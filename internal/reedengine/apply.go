@@ -64,9 +64,10 @@ func paneIDsByTop(live []LivePane) []string {
 
 // renderInputs is the single mapping from persisted state plus the live pane set down to the
 // arguments the render package takes: the strand table, the height-policy params (including the
-// header, blanked when its pane is no longer present), and the physical pane order. Both planLayout
-// and fixedHeightPins are built on toRenderInputs and never compute this mapping themselves, so the
-// two can never disagree about which header id — or which strand set — they are laying out.
+// Selvage band, blanked when its pane is no longer present), and the physical pane order. Both
+// planLayout and fixedHeightPins are built on toRenderInputs and never compute this mapping
+// themselves, so the two can never disagree about which Selvage id — or which strand set — they are
+// laying out.
 type renderInputs struct {
 	strands   []render.Strand
 	params    render.Params
@@ -74,7 +75,7 @@ type renderInputs struct {
 }
 
 // toRenderInputs performs the persisted-state-to-render mapping exactly once: it filters st.Strands
-// to the present pane set, blanks st.HeaderPaneID when the header pane is not present, assembles the
+// to the present pane set, blanks st.HeaderPaneID when the Selvage pane is not present, assembles the
 // render.Params this engine's config implies, and orders live's pane ids top to bottom. It touches no
 // tmux and queries nothing of its own — box and live are told to it by the caller, matching
 // planLayout's own told-box contract.
@@ -90,7 +91,7 @@ func (e *Engine) toRenderInputs(st *ReedState, live []LivePane) renderInputs {
 		params: render.Params{
 			CollapsedStripRows: e.cfg.CollapsedStripRows,
 			MinFullRows:        e.cfg.MinFullRows,
-			Header:             render.Header{PaneID: headerPaneID, HeightRows: e.cfg.Header.HeightRows},
+			Selvage:            render.Selvage{PaneID: headerPaneID, HeightRows: e.cfg.Header.HeightRows},
 		},
 		paneOrder: paneIDsByTop(live),
 	}
@@ -113,7 +114,7 @@ func (e *Engine) planLayout(st *ReedState, live []LivePane, box render.Box) (lay
 	return render.Rules(in.strands, box, in.params, in.paneOrder)
 }
 
-// fixedHeightPins reports the panes whose heights are absolute row budgets — the header band and
+// fixedHeightPins reports the panes whose heights are absolute row budgets — the Selvage band and
 // every collapsed strip — for st's current strand table against live, within box. It calls
 // toRenderInputs and queries nothing of its own: box is told to it by the caller exactly as
 // planLayout is, and it must always be called with the same st, live and box triple the layout for

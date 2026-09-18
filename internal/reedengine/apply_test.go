@@ -124,7 +124,7 @@ func TestPlanLayout_StaleHeaderPaneIDNeverEmittedAsLayoutCell(t *testing.T) {
 	}
 	wantLayout, _, err = render.Rules(renderStrands,
 		render.Box{X: 0, Y: 0, W: 100, H: 21},
-		render.Params{CollapsedStripRows: 2, MinFullRows: 3, Header: render.Header{PaneID: "%9", HeightRows: 1}},
+		render.Params{CollapsedStripRows: 2, MinFullRows: 3, Selvage: render.Selvage{PaneID: "%9", HeightRows: 1}},
 		[]string{"%9", "%1", "%2"})
 	if err != nil {
 		t.Fatalf("render.Rules() with header unexpected error: %v", err)
