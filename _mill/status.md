@@ -85,6 +85,8 @@ batches:
     commit_sha: 43644ab4e3b325ebb0e11ddb7ef77b844cf9cd84
     verify_baseline_failures: []
   - name: docs-smokes-and-residue
-    state: pending
+    state: running
+    implementer_session: 5e9bb68c-b308-4512-9581-584957e6ed61
+    start_sha: 07fe3aa0995371b80f5f83feae4f8a1162419c65
     verify_baseline_failures: []
 ```
