@@ -11,9 +11,6 @@ This section holds what's committed to next.
 
 1. **ly-supervise + orchestrator: launch via `lyx reed add`, not ad hoc** — a convention change, not a design task, and the fastest of this cluster to land: update the `/ly:ly-supervise` skill's own instructions to launch via `lyx reed add --cmd claude --name ... --focus` instead of an ad hoc terminal, and build the VS Code task/shortcut for it (`lyx reed up; lyx reed add --cmd claude --name claude --focus; lyx reed attach` already works today, unchanged). This alone satisfies the watchdog and orchestrator halves of the Someday `reed: born-as-strand` item below — only that item's operator-attach half remains an actual code gap once this lands.
 
-1. **reed: replace the header pane with a native tmux status-line, a permanent "Selvage" terminal pane, and a detached per-hub watchdog process** — today's one header pane conflates three unrelated jobs: rendering identity text, keeping the tmux session alive when every other pane dies, and hosting the already-Done watchdog daemon (`eng.Watch`) — and dies on a stray Ctrl-C today (no signal handling). Split all three: identity content moves to tmux's own native status-line; a deliberately ordinary shell pane, named **Selvage**, becomes the always-on, pinned-to-the-bottom control terminal that keeps the session alive and doubles as where you'd run `lyx reed add` and friends directly; and the watchdog daemon moves out of any pane entirely, into its own detached background process scoped one-per-hub (matching the existing tmux-server-per-hub boundary, deliberately not per-worktree-session or per-machine).
-   See [designs/reed-header-selvage.md](designs/reed-header-selvage.md).
-
 ## Someday
 
 Committed to eventually — will be done — but not scheduled next.
@@ -32,7 +29,7 @@ No build order is implied between these items.
 
 1. **Claude Code plugin packaging** — ship `lyx` as an installable plugin.
 
-1. **reed: cross-worktree columns** — all worktrees in one window, a column per worktree; needs its own name for the per-worktree grouping layer this introduces (not "session" — already tmux's own term, and already 1:1 with a worktree in reed's plumbing today), and a decision on how many columns fit before falling back to tmux windows-as-pages. Candidate group-layer names surveyed so far and still free: Heddle, Batten, Bobbin, Sley (Warp, Weft, Shuttle, Treadle, Shed, Loom, Reed, Strand, Fabric, Quarry, Crucible, and now Selvage — claimed by the Planned header-replacement item above — are all already taken elsewhere in this codebase).
+1. **reed: cross-worktree columns** — all worktrees in one window, a column per worktree; needs its own name for the per-worktree grouping layer this introduces (not "session" — already tmux's own term, and already 1:1 with a worktree in reed's plumbing today), and a decision on how many columns fit before falling back to tmux windows-as-pages. Candidate group-layer names surveyed so far and still free: Heddle, Batten, Bobbin, Sley (Warp, Weft, Shuttle, Treadle, Shed, Loom, Reed, Strand, Fabric, Quarry, Crucible, and now Selvage — claimed by the now-Done header-replacement item — are all already taken elsewhere in this codebase).
 
 1. **reed: own-window strand anchoring** — a `display` anchor that spawns a strand into its own switchable tmux window instead of a pane.
 
@@ -110,6 +107,9 @@ Cleared 2026-08-25 to keep this file lean — shipped items' history lives in `g
 
 1. **reed: watchdog daemon** — the header-pane watch loop, with both halves landed: the resize-geometry reconcile and the pane reap.
    See `internal/reedengine`'s package documentation.
+
+1. **reed: replace the header pane with a native tmux status-line, a permanent "Selvage" terminal pane, and a detached per-hub watchdog process** — the one header pane's three conflated jobs are split apart: identity content now renders through tmux's own native status-line; a deliberately ordinary shell pane, named **Selvage**, is the always-on, pinned-to-the-bottom control terminal that keeps the session alive and doubles as where you'd run `lyx reed add` and friends directly; and the watchdog daemon moved out of any pane entirely, into its own detached background process scoped one-per-hub (matching the existing tmux-server-per-hub boundary).
+   See [designs/reed-header-selvage.md](designs/reed-header-selvage.md).
 
 1. **Real-Linux validation** — the sandbox suite and every tmux/`/proc` assumption are exercised on real Linux, now the platform everything runs on.
 
