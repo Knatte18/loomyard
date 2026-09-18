@@ -24,7 +24,8 @@ The roadmap names this as part of why task cleanup leaves orphaned branches upst
 - A remote-ref deletion primitive on `internal/gitrepo` (`git push <remote> --delete <branch>`), sitting on the `gitexec` side of the gitrepo Client Boundary Invariant.
 - A new gated executor in `internal/fabricengine/destroy.go` — the only file permitted a destructive primitive — plus its own request type, so remote deletion runs the same ownership/dirtiness pipeline local deletion already runs.
 - A new mutation kind for the remote deletion, appended via `AppendRef`.
-- Wiring the executor into exactly the two existing call sites the roadmap names: `Topology.Cleanup` and `removeWeftWorktree`'s `alsoDeleteBranch` path (reached from `Topology.Remove`).
+- Wiring the executor into the two existing call sites the roadmap names: `Topology.Cleanup` and `removeWeftWorktree`'s `alsoDeleteBranch` path **as reached from `Topology.Remove`**.
+  `removeWeftWorktree` has a second caller, `rollbackAdd` (`add.go:264`), which also reaches that same `alsoDeleteBranch` arm; it passes `remote: false` and is unchanged in behaviour, but it does have to compile against the widened signature — so the change touches three call sites even though only two of them ever delete remotely.
 - An opt-in `--remote` flag on `lyx fabric cleanup` and `lyx fabric remove`, defaulting off.
 - Result-type fields reporting the remote outcome per branch, so the JSON envelope says what happened on the remote and why it didn't when it didn't, plus the CLI-layer verdict change that keeps a remote failure from exiting 0.
 - Enforcement-ledger updates in `cmd/lyx/destructiveguard_test.go` and `internal/fabricengine/livestate_mutationoracle_test.go` — see Testing → "Enforcement ledgers" for the exact rows.
@@ -38,8 +39,11 @@ The roadmap names this as part of why task cleanup leaves orphaned branches upst
 - Warp-branch deletion, local or remote.
   `Topology.Remove` does not delete the warp branch locally today; adding warp branch deletion is a new capability, not the missing remote half of an existing one.
   The roadmap item's "the corresponding branch" is the branch the two named sites already delete — a weft branch.
-- The two rollback call sites, `rollbackAdd` (`add.go:317`) and `rollbackSwitch` (`checkout.go:205`).
-  Both delete a branch the same failed call just created, which was never pushed, so there is no remote copy to chase.
+- Remote deletion from the rollback paths: `rollbackAdd`'s warp-branch deletion (`add.go:317`), `rollbackAdd`'s weft-branch deletion via `removeWeftWorktree` (`add.go:264`), and `rollbackSwitch`'s forked weft branch (`checkout.go:205`).
+  All three pass `remote: false`.
+  The reason is NOT "the branch was never pushed" — that premise is false for `rollbackAdd`, which is reached after `Add`'s step (11) pushes the warp branch (`add.go:218`) and after step (12) pushes the weft branch, so a rollback can face an already-pushed branch on either side.
+  The real reason is that a rollback undoes a failed call and must not make a **network-visible destructive change** while doing it: it runs unattended on an error path the operator did not choose, it is already best-effort and void-returning at both sites (a refusal there only gets a `logger.Warn`), and `--remote` is opt-in precisely because deleting a shared ref needs an explicit operator decision.
+  Recovering an orphan left by a rolled-back `Add` is what `cleanup --apply --remote` is for.
 - GitHub-specific API work: no `internal/githubclient` consumer, no owner/repo parsing, no PR-aware branch deletion.
 - Remote-name configuration. `origin` is hardcoded, matching every other remote assumption in `fabricengine`.
 - Probing the remote during a dry run.
@@ -225,9 +229,18 @@ The remote deletion belongs strictly inside the final `apply` arm, after `delete
 
 **`Topology.Remove` shape.** `remove.go:43` validates the slug, refuses the prime worktree, refuses a pair mid-merge in either direction, tears down portal and launchers, runs the no-force dirtiness gates on both sides, sweeps junctions, removes the warp worktree, then calls `removeWeftWorktree(rec, l, slug, weftBranch, force, true, t.cfg.BranchPrefix)`.
 Note `Remove` never deletes `warpBranch` — it computes it only to derive `weftBranch = WeftBranchName(warpBranch)` and to check merge-source in-flight.
-`removeWeftWorktree` (`weftwiring.go:202`) already tolerates a partial failure via a `firstErr` accumulator; the remote deletion must not feed that accumulator, per remote-failure-is-non-fatal.
-That means `removeWeftWorktree`'s signature has to grow a way to report the remote outcome back to `Remove` — either an out-parameter struct or a changed return shape.
-`removeWeftWorktree`'s only caller is `Remove`, so this is a contained change.
+`removeWeftWorktree` (`weftwiring.go:202`) already tolerates a partial failure via a `firstErr` accumulator; the remote deletion must not feed that accumulator, per remote-failure-is-non-fatal-in-the-engine.
+
+**`removeWeftWorktree` has TWO callers, and both must compile against the new shape:**
+
+- `remove.go:132` — `Remove`, passing `alsoDeleteBranch: true`;
+- `add.go:264` — `rollbackAdd`, passing `alsoDeleteBranch: !weftBranchAdopted`, so the rollback path genuinely reaches the branch-deletion arm this task wires into.
+  It passes `remote: false` (see the Scope → Out bullet on the rollback sites) and discards the new return value.
+
+Decided reporting shape, so the plan writer has no fork: `removeWeftWorktree` returns `(weftTeardownResult, error)`, where `weftTeardownResult` is a small unexported struct carrying `remoteBranchDeleted bool`, `remoteBranchError string`, and `remoteSkippedReason string`.
+The existing `error` return keeps its exact current meaning — the `firstErr` accumulator over worktree removal, local branch deletion, and prune — and the remote outcome rides the struct, never the error.
+Chosen over an out-parameter (`*weftTeardownResult` argument) because the function already returns a value-typed error, a second return is the ordinary Go shape here, and an out-parameter would let a caller pass nil and silently drop the outcome.
+`Remove` copies the struct's three fields onto `RemoveResult`; `rollbackAdd` discards it with `_`.
 
 **`gitrepo` conventions.** `Repo.runChecked` wraps `gitexec.Run` and yields a `*gitexec.GitError` (with `ExitCode` and `Stderr`) recoverable via `errors.As` whenever git ran and rejected the command; `Repo.run` is the raw form and carries a `//gitexec:raw` marker.
 `PushRebaseFree` (`push.go:90`) is the closest model for the new method: `runChecked`, then `errors.As` into `*gitexec.GitError`, then a stderr-substring classification, then either a sentinel or a wrapped error.
@@ -387,7 +400,7 @@ The `fabriccli` help-tree tests see the two new `--remote` flags.
 - **Q:** Does a failed remote deletion fail the enclosing verb? **A:** [auto-pick] No — recorded per entry, verb still succeeds. **Why:** matches `PushAnchored`'s offline-laptop reasoning and `Cleanup`'s existing per-entry `Error` posture; the local deletion genuinely succeeded.
 - **Q:** Local delete first or remote delete first? **A:** [auto-pick] Local first, remote only if local succeeded. **Why:** the gate's ownership and dirtiness answers come from local state; a branch the gate protects locally must not lose its remote copy, and the reverse order is unrecoverable.
 - **Q:** Does this task also delete the warp branch, locally or on the remote? **A:** [auto-pick] No — out of scope. **Why:** `Remove` does not delete the warp branch locally today, so warp deletion is a new capability rather than the missing remote half; the roadmap item names `Cleanup` and `alsoDeleteBranch`, both of which act on weft branches.
-- **Q:** Do the two rollback call sites (`rollbackAdd`, `rollbackSwitch`) get remote deletion too? **A:** [auto-pick] No. **Why:** both delete a branch the same failed call just created, which was never pushed.
+- **Q:** Do the rollback call sites (`rollbackAdd`, `rollbackSwitch`) get remote deletion too? **A:** [auto-pick, reason corrected r5] No — all pass `remote: false`. **Why:** not because the branch was never pushed (false for `rollbackAdd`, which runs after `Add` has pushed both sides), but because an unattended best-effort rollback on an error path must not make a network-visible destructive change the operator never asked for.
 - **Q:** Is the remote name configurable? **A:** [auto-pick] No — hardcoded `origin`. **Why:** `clone.go` already hardcodes `origin` throughout fabric's weft binding; a lone configurable point here would be inconsistent and untested.
 - **Q:** Should a cleanup dry run probe the remote to report which remote copies exist? **A:** [auto-pick] No probe, no new dry-run field. **Why:** one network round trip per orphan for information that changes no operator decision; the dry run is currently offline-safe and should stay so.
 - **Q:** New mutation kind, or reuse `KindBranchDeleted`? **A:** [auto-pick] New `KindRemoteBranchDeleted`, appended via `AppendRef`. **Why:** a consumer must be able to tell the recoverable local deletion from the irreversible remote one.
