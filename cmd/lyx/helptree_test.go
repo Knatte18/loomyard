@@ -81,7 +81,7 @@ func TestHelpTree_VerbModuleSubcommands(t *testing.T) {
 		{
 			name:     "reed",
 			module:   "reed",
-			wantSubs: []string{"up", "add", "remove", "status", "attach", "resume", "down", "header"},
+			wantSubs: []string{"up", "add", "remove", "status", "attach", "resume", "down", "statusline", "watchdog"},
 		},
 		{
 			name:     "selfreport",
