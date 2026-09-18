@@ -22,5 +22,5 @@ Running `loom run` outside reed remains a valid escape hatch for debugging/CI, m
 ## Related
 
 - The Planned `ly-supervise + orchestrator: launch via lyx reed add` item covers the watchdog and orchestrator halves of "born as a Strand" — this item is the one remaining code gap, for the operator's own `loom run` attach.
-- The Next Up `reed: strand-based mailbox/addressing system` item depends on this one for its receive side.
+- The Someday `reed: strand-based mailbox/addressing system` item depends on this one for its receive side.
 - Distinct from the Next Up `AddStrand`/`attach` self-heal item: that one is about a session not existing yet; this one is about a pane never becoming a Strand at all, even once a session exists.
