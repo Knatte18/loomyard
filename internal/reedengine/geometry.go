@@ -1,4 +1,4 @@
-// geometry.go declares Geometry, the eight-field struct reed is told its coordinates through.
+// geometry.go declares Geometry, the nine-field struct reed is told its coordinates through.
 // It declares the type only — New and every method stay in their existing files (lock.go,
 // lifecycle.go, strand.go, header.go); this file adds no constructor, no validator, and no default.
 
@@ -42,8 +42,10 @@ type Geometry struct {
 	WorktreeRoot string
 	// LogsDir is the shared per-hub server's runtime log directory.
 	LogsDir string
-	// RepoName is the header pane's "repo" token, passed through internal/tokenvocab.
+	// RepoName is the status-line's "repo" token, passed through internal/tokenvocab.
 	RepoName string
-	// HubPath is the header pane's "hub" token, passed through internal/tokenvocab.
+	// WorktreeName is the status-line's "worktree" token, passed through internal/tokenvocab.
+	WorktreeName string
+	// HubPath is the status-line's "hub" token, passed through internal/tokenvocab.
 	HubPath string
 }
