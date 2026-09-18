@@ -19,9 +19,9 @@ import (
 
 // planPaneTarget always yields a split target for the next strand realization
 // — it never adopts an existing pane. The surviving rules are a pure function
-// of live and headerPaneID: prefer the tallest alive non-header pane, fall
-// back to any present non-header pane (a corpse) when none is alive, and fall
-// back to live[0] (the header itself) when no non-header pane exists at all.
+// of live and selvagePaneID: prefer the tallest alive non-Selvage pane, fall
+// back to any present non-Selvage pane (a corpse) when none is alive, and fall
+// back to live[0] (Selvage itself) when no non-Selvage pane exists at all.
 //
 // Adoption used to give a fresh session's initial pane a use rather than
 // splitting a needless second one, but the seam it required — deciding
@@ -32,11 +32,11 @@ import (
 // strand's command was typed onto its screen and never ran, with status
 // reporting live:true and no such process on the box) and M16 (adoption
 // claimed an operator's own manually-created split-window pane). Once the
-// untracked reap is authorized by an alive header (reconcile.go), the initial
+// untracked reap is authorized by an alive Selvage (reconcile.go), the initial
 // pane is disposed of like any other untracked pane before this function ever
 // runs, so a fresh split — idle by construction — costs one kill-pane plus
 // one split-window and buys correctness back.
-func planPaneTarget(live []LivePane, headerPaneID string) (splitTargetID string, err error) {
+func planPaneTarget(live []LivePane, selvagePaneID string) (splitTargetID string, err error) {
 	if len(live) == 0 {
 		return "", fmt.Errorf("session has no panes to split")
 	}
@@ -44,7 +44,7 @@ func planPaneTarget(live []LivePane, headerPaneID string) (splitTargetID string,
 	splitTargetID = ""
 	tallestAlive := -1
 	for _, p := range live {
-		if p.ID == headerPaneID || p.Dead {
+		if p.ID == selvagePaneID || p.Dead {
 			continue
 		}
 		if p.Height > tallestAlive {
@@ -53,19 +53,19 @@ func planPaneTarget(live []LivePane, headerPaneID string) (splitTargetID string,
 		}
 	}
 	if splitTargetID == "" {
-		// No alive non-header pane: fall back to any present non-header
-		// pane (a dead corpse), mirroring the pre-header "every pane dead"
+		// No alive non-Selvage pane: fall back to any present non-Selvage
+		// pane (a dead corpse), mirroring the pre-Selvage "every pane dead"
 		// fallback.
 		for _, p := range live {
-			if p.ID != headerPaneID {
+			if p.ID != selvagePaneID {
 				splitTargetID = p.ID
 				break
 			}
 		}
 	}
 	if splitTargetID == "" {
-		// No non-header pane exists at all: every strand has been removed
-		// and only the header remains. Split the header itself so this add
+		// No non-Selvage pane exists at all: every strand has been removed
+		// and only Selvage remains. Split Selvage itself so this add
 		// still has a pane to split.
 		splitTargetID = live[0].ID
 	}
@@ -146,7 +146,7 @@ func (e *Engine) launchStrandLocked(st *ReedState, s *Strand, launchCmd string) 
 		}
 	}
 
-	splitTargetID, err := planPaneTarget(live, st.HeaderPaneID)
+	splitTargetID, err := planPaneTarget(live, st.SelvagePaneID)
 	if err != nil {
 		return err
 	}
