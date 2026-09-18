@@ -70,3 +70,4 @@ Granularity: **per hub, not per worktree-session and not per machine.**
 ## Related
 
 - [loom-step.md](loom-step.md) and the `ly-supervise` skill — the Next Up [`reed: born-as-strand for the operator's loom run attach`](reed-born-as-strand.md) item depends on reed's pane lifecycle being solid, which this item is a prerequisite for.
+- The Next Up `reed: per-hub daemon reaps orphaned sessions` item extends this daemon, once it exists, to also check whether each live session's worktree still exists on disk and tear down any that don't.

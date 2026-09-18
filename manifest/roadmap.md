@@ -29,6 +29,16 @@ Not yet started, and exact order can still shift as Planned work reveals what un
 1. **generalize `ly-supervise` and loom's `run`/`drive`/`step` CLI verbs into a Shed-generic watchdog** — `shedengine`/`shedbuild`/`shedrecipe` are already fully generic; only `loomcli` hardcodes loom's own recipe/paths. Speculative until a second `shedrecipe` consumer exists.
    See [designs/shed-generic-watchdog.md](designs/shed-generic-watchdog.md).
 
+1. **reed: `AddStrand` and `attach` self-heal a cold worktree instead of requiring `up` first** — both verbs only check `requireSessionLocked` today and fail with "no session" if nobody has run `reed up` yet; call the same locked helper `Up()` already uses instead in both, so any spawn OR view into a worktree nobody has visited (no VS Code, no manual `up`) just works. Fully internal to `reedengine` — fabric never needs to know reed exists. Distinct from the `born-as-strand` item above: that one is about a pane never becoming a Strand at all; this one is about a session not existing yet.
+
+1. **worktree spawn/teardown as Shed producers** — fold `fabric create`, reed's self-healing bootstrap, optional VS Code embedding, and `loom`'s own producer list into one driven `Shed` run, with a single teardown producer sequencing `reed down` then fabric's own cleanup at the end.
+   See [designs/worktree-lifecycle-shed-producers.md](designs/worktree-lifecycle-shed-producers.md).
+
+1. **reed: per-hub daemon reaps orphaned sessions** — the per-hub watchdog daemon (see the Planned header-pane split) periodically checks whether each live session's worktree still exists on disk, and tears down any that don't. A safety net for when the `worktree spawn/teardown as Shed producers` item's deliberate teardown sequencing doesn't run (crash, manual deletion, aborted task) — not a replacement for it.
+   See [designs/reed-header-selvage.md](designs/reed-header-selvage.md).
+
+1. **fabric: no remote/GitHub branch deletion** — `fabricengine`'s existing branch cleanup (`Cleanup`, `removeWeftWorktree`'s `alsoDeleteBranch`) only ever runs `git branch -D` locally; there is no capability anywhere to delete the corresponding branch on the GitHub remote. Part of why task cleanup today leaves orphaned branches upstream.
+
 ## Someday
 
 Committed to eventually — will be done — but not scheduled next.
@@ -36,8 +46,6 @@ No build order is implied between these items.
 
 1. **webster: worktree-per-card parallel execution** — give each DAG-independent group its own `fabric`-spawned worktree, so concurrent cards stop sharing one git index. A speed optimization over an already-correct sequential system.
    See [designs/plan-card-format.md](designs/plan-card-format.md) and [designs/webster-parallel-execution.md](designs/webster-parallel-execution.md).
-
-1. **worktree spawn/teardown as Shed producers** — fold today's three manually-sequenced steps (`lyx fabric` create, `lyx loom run`, `lyx fabric` teardown) into `ShedProducer` rows bookending `loom`'s own list, so the task lifecycle is one driven `Shed` run instead of a human bridging three CLI invocations. Likely needs `fabric`'s worktree creation brought into `_launchers`/`_board` wiring first, so it needs its own look before it can be scoped.
 
 1. **VS Code as opt-in per worktree, not spun up by default** — default to CLI/tmux and start VS Code only on request, since the common case is reviewing the final PR rather than watching an agent edit live. Likely shape: a fourth per-worktree launcher variant (see `internal/fabricengine/launchers.go`) that opens VS Code just far enough to `lyx reed attach` — a terminal-launcher convenience, not a standing editor.
 
@@ -55,8 +63,6 @@ No build order is implied between these items.
 
 1. **reed: independent per-window attach via tmux session groups** — tmux's session-groups feature would let multiple `lyx reed attach` invocations show different windows independently, instead of sharing one today.
    See [designs/reed-multi-window.md](designs/reed-multi-window.md#independent-per-window-attach-via-tmux-session-groups).
-
-1. **reed: `AddStrand` self-heals a cold worktree instead of requiring `up` first** — today `AddStrand` only checks `requireSessionLocked` and fails with "no session" if nobody has run `reed up` yet; call the same locked helper `Up()` already uses instead, so any external spawn into a worktree nobody has visited (no VS Code, no manual `up`) just works. Fully internal to `reedengine` — fabric never needs to know reed exists. Enables the headless-orchestration future behind the Next Up `born-as-strand` and `mailbox` items.
 
 1. **fabric: Windows path behaviour is unverified after six hardening rounds** — the platform sibling of the now-Done `Real-Linux validation`; needs a Windows host to close, not further design.
    See [designs/fabric-windows-verification.md](designs/fabric-windows-verification.md).
