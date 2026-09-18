@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussion-gap-fix-r2
 slug: loom-cli-rename
 branch: loom-cli-rename
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-09-18T19:06:42Z'
+discussion-gap-fix-r2  '2026-09-18T19:19:33Z'
 ```

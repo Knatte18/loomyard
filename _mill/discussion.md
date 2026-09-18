@@ -23,21 +23,34 @@ Renaming after either lands means renaming a wider surface, and the generic-watc
 
 ## Scope
 
-**In:**
+**In — stated as an enumeration rule, not a file whitelist.**
+Scope is *every* hit of the grep set below, anywhere in the repository tree, each one read and classified before it is touched.
+A file is in scope because it contains a hit, never because it appears on a list;
+the named sites elsewhere in this document are worked examples and landmarks, never the boundary.
 
-- `internal/loomcli` — the three verbs' cobra definitions, the `RunAliasCommand` root alias, file names, and receiver-method names.
-- `internal/fabricengine/launchers.go` — the embedded command string the per-worktree launcher script invokes.
-- `cmd/lyx/main.go` — the root-child alias registration.
-- Every test that names a loom verb: `internal/loomcli/*_test.go`, `cmd/lyx/helptree_test.go`, and any other package's tests that name one.
-- `contracts/specs/loom-status-spec.md` and `contracts/specs/llm-model-spec.md` — the spec prose naming the seeding verb and the driving verb.
-- `docs/overview.md` — the module table row, the alias note, the interactive-handoff exception paragraph, and the bootstrap paragraph.
-- `CONSTRAINTS.md` — the CLI/Cobra Invariant's interactive-handoff exception list.
-- `manifest/designs/loom.md`, `manifest/designs/loom-step.md`, and every other `manifest/designs/*.md` naming a renamed verb.
-- `manifest/roadmap.md` — move this item Planned → Done, and update any other entry naming a renamed verb.
-- `manifest/designs/loom-cli-rename.md` — deleted on landing per the Documentation Lifecycle.
-- `manifest/designs/shed-generic-watchdog.md` — its inbound link to the deleted design doc, plus its own verb references.
-- `plugins/ly/skills/ly-supervise/` → `plugins/ly/skills/ly-drive/`, its `SKILL.md` frontmatter `name`/`description` and body, and `plugins/ly/skills/INDEX.md`.
-- `tools/sandbox/SANDBOX-CORE-SUITE.md` — the scenarios naming the seeding verb in their expected refusal text.
+The grep set, run over the whole tree (including `README.md`, which a file-by-file enumeration missed):
+
+- `loom run`, `loom drive`, `loom step`, `lyx run` — the verb hits.
+- `ly-supervise` — the skill hits, in every file type, not only under `plugins/`.
+  The skill name is not a verb, so it needs its own pass;
+  it appears in `manifest/roadmap.md` Done entries, several `manifest/designs/*.md`, and Go comments.
+- `driveCmd`, `runCmd`, `RunAliasCommand` — the Go identifier hits.
+- `"run"`/`"drive"` as cobra `Use` or command-name string literals, and as test-table literals.
+
+Each hit is classified into exactly one of three dispositions:
+
+1. **Rename** — it names a loom verb, the alias, the skill, or a renamed identifier.
+2. **Leave** — it is a known false positive: "run" used as a *noun* meaning "an execution", or a `run`/`drive` belonging to another module.
+   The known false-positive sites are listed under Technical context;
+   a hit not on that list still gets read rather than assumed.
+3. **Structural** — a file rename, a file deletion, or a link fix, handled by the decisions below rather than by editing text in place.
+
+Structural changes, enumerated because they are not text edits a grep finds:
+
+- `internal/loomcli/run.go` → `start.go`, `internal/loomcli/drive.go` → `run.go`.
+- `plugins/ly/skills/ly-supervise/` → `plugins/ly/skills/ly-drive/` (directory rename), plus the `SKILL.md` frontmatter `name`/`description`, and the skill's own `.scratch/ly-supervise/` → `.scratch/ly-drive/` step-envelope path.
+- `manifest/designs/loom-cli-rename.md` deleted, with both inbound links fixed.
+- `manifest/roadmap.md`'s Planned entry for this item moved to Done.
 
 **Out:**
 
@@ -87,6 +100,19 @@ Renaming after either lands means renaming a wider surface, and the generic-watc
   It is also shorter, which matters for a skill invoked by hand.
 - Rejected: `ly-watch` (undersells — it decides and advances, it does not observe);
   `ly-run` (collides with both `lyx run`'s successor and `lyx loom run`).
+
+### historical-prose-rewritten-not-glossed
+
+- Decision: retrospective records — `manifest/roadmap.md`'s Done entries, `manifest/designs/loom-step.md`'s "Shipped" header and its Done list, and Go comments narrating past incidents — are rewritten to the new names outright.
+  No "(formerly `ly-supervise`)" gloss, no preserved old name anywhere.
+  This includes the literal path `plugins/ly/skills/ly-supervise/SKILL.md` in `manifest/designs/loom-step.md:22`, which becomes the new path.
+- Rationale: these documents describe the tree as it stands, not as it stood;
+  a Done entry pointing at `plugins/ly/skills/ly-supervise/SKILL.md` after the rename names a path that no longer exists, which is worse than a mild anachronism in the narrative.
+  The repo already has precedent for removing a retired name rather than carrying it: the Hub Suffix Invariant states outright that "no code parses, trims, or recognises the retired `-HUB`".
+  A gloss would also defeat the point of the rename by keeping the old name grep-discoverable, which is the same objection that rejected back-compat aliases.
+- Rejected: preserving old names in historical prose with a one-time gloss — leaves dangling path references and keeps the retired name in the vocabulary;
+  leaving historical prose untouched entirely — same problem, without even the gloss to explain it.
+- Known sites (landmarks, not the boundary — the Scope rule governs): `manifest/roadmap.md:120,157`, `manifest/designs/loom-step.md:3,22`, `manifest/designs/reed-mailbox.md:7,15`, `manifest/designs/reed-header-selvage.md:72`, `manifest/designs/self-report-tier1.md:17`, `internal/shedadapters/bouncer_seed_test.go:475`, `internal/loomcli/smoke_bootstrapwiring_test.go:147`.
 
 ### launcher-filename-unchanged
 
@@ -148,8 +174,8 @@ The file's own header comment names the verb.
 Its `Long` string contains several sentences contrasting itself with `lyx loom run`, all of which now must contrast with `lyx loom start` — these are the highest-risk lines in the rename, because a mechanical replace would turn "exactly as `lyx loom run` does" into a self-reference.
 Its `RunE` also emits a runtime refusal naming the bootstrap verb: `loom: no status file at <path>; run "lyx loom run" first to bootstrap this task`.
 
-`pause.go:40` emits the same shape of refusal with the same verb name.
-Both refusal strings must name `lyx loom start` after this change, and `tools/sandbox/SANDBOX-CORE-SUITE.md` asserts on that exact text in two scenarios.
+Two further verbs emit the same shape of refusal naming the same verb: `pause.go:40`, and `status.go:116` on its `!found` branch.
+All three refusal strings must name `lyx loom start` after this change, and `tools/sandbox/SANDBOX-CORE-SUITE.md` asserts on that exact text in two scenarios.
 
 `step.go`'s `Long` also references `"lyx loom run"` as the bootstrap it mirrors.
 `bootstrap.go`, `selfreport.go`, `loomshed/seed.go`, `loomshed/interruptpolicy.go`, `websterengine/strand.go`, and `landingshed/deps.go` all carry comments naming one of the verbs.
@@ -184,8 +210,15 @@ line 31's "Convenience alias: `lyx run` → `lyx loom run`" and line 337's inter
 **Gotcha: `run` appears in unrelated senses.**
 `grep` for `lyx run` or `loom run` catches prose like "a `lyx burler` run is not a loom run" (`internal/burlercli/wiring.go:131,190`), "can never stall an autonomous lyx run" (`internal/githubclient/doc.go:84`), "the last row of a loom run" (`internal/landingshed/deps.go:88`), and "hang an autonomous lyx run indefinitely" (`internal/selfreportengine/selfreport.go:84`).
 These use "run" as a noun meaning "an execution", not as a verb name, and must be left alone.
-This rules out a blind repo-wide textual substitution;
+This is the Scope rule's disposition-2 list.
+It rules out a blind repo-wide textual substitution;
 each hit needs reading.
+
+**Counterpart gotcha: genuine verb hits live in packages a file-by-file scope would not think to name.**
+`internal/loomengine/config.go:253` ("a second `lyx loom run`"), `internal/loomengine/seed.go:138`, `internal/frictionengine/spec.go:29` ("lyx loom run is by definition the unattended path"), `internal/webstercli/wiring.go:116`, `internal/loomengine/seedownership_test.go:77-78`, and `internal/loomshed/seed_test.go:95,101` all name a renamed verb in comments or fixtures.
+`README.md:20,37,42,204` does too, including its own "Convenience alias: `lyx run` → `lyx loom run`" line at 42 — the same sentence `docs/overview.md:31` carries, in a file no verb-oriented enumeration would have reached.
+These are landmarks confirming the Scope rule is the right shape;
+they are not a substitute for running the grep set.
 
 ## Constraints
 
@@ -236,11 +269,11 @@ Assert that loom's command tree contains no command named `drive`, and that the 
 Both are pure `*cobra.Command` walks over `loomcli.Command()` and the root builder, so they spawn nothing.
 Second TDD candidate: write it first, watch it fail on today's tree.
 
-**Refusal-text coverage.**
-`drive.go`'s and `pause.go`'s unseeded-status refusals name the bootstrap verb in operator-facing text that the sandbox suite asserts on.
-Cover both in `internal/loomcli`'s own tests so a stale verb name in a refusal string fails at `go test` rather than only in the sandbox run.
-Scenarios: unseeded status file → the new foreground `run` verb refuses naming `lyx loom start`;
-unseeded status file → `pause` refuses naming `lyx loom start`.
+**Refusal-text coverage — adapt, do not author.**
+`internal/loomcli/cli_test.go:129-151` already holds `TestVerbRefusals`, a table test covering the `drive` and `pause` verbs' unseeded-status refusals with `wantRemedy: "lyx loom run"`.
+Do not write a second test for this: change both rows' `wantRemedy` to `lyx loom start`, rename the `Drive_SeedMissing` row to match the renamed verb, repoint its `buildCmd` at the renamed method, and **add a third row** for `status.go:116`'s `!found` refusal, which the existing table does not cover.
+That third row is the one genuinely new assertion here.
+The test builds leaf commands directly against a hand-populated `*loomCLI` with `shedPaths` pointing at a `t.TempDir()`, so it stays tier 1 and the new row must follow that same shape.
 
 **`internal/fabricengine/launcher_content_test.go` — adapt.**
 Update the expected embedded command to `loom start`.
@@ -269,4 +302,5 @@ A rename that compiles and passes both, with the three new guards in place, has 
 - **Q:** Code-and-tests now with a docs follow-up, or everything in one commit? **A:** [auto-pick] One commit, repo-wide. **Why:** ~233 matches across 57 files; a partial rename leaves specs and design docs asserting untruths, and CLAUDE.md requires docs in the same commit.
 - **Q:** How is the `contracts/specs/` hash-mismatch on already-seeded hubs handled? **A:** [auto-pick] Accepted as pre-existing `stencilstore` behaviour; no force-sync. **Why:** the Stencil Ownership Invariant bans a force-sync carve-out for specs, and this hazard is not introduced by the rename.
 - **Q:** What happens to `manifest/designs/loom-cli-rename.md` on landing? **A:** [auto-pick] Deleted, with the roadmap item moved Planned→Done and both inbound links fixed. **Why:** the Documentation Lifecycle deletes a design doc when its work lands, and Markdown Link Integrity fails the build on a dangling link.
+- **Q:** Should Scope enumerate the files to change, or state a rule for finding them? **A:** [auto-pick] A rule — a bounded grep set run over the whole tree, with every hit read and classified into rename / leave / structural. **Why:** review round 2 demonstrated the enumeration was already short by inspection, missing `README.md` entirely (including its own copy of the alias sentence) and every verb-naming comment in `loomengine`, `frictionengine`, and `webstercli`. With ~233 hits across ~57 files, a whitelist cannot be both complete and maintainable, and a silently-short one is worse than no list because it reads as authoritative.
 - **Q:** Is there a hazard in doing this as a textual find-and-replace? **A:** [auto-pick] Yes — it must be done by reading each hit. **Why:** "run" appears as a noun meaning "an execution" in at least four unrelated files (`burlercli/wiring.go`, `githubclient/doc.go`, `landingshed/deps.go`, `selfreportengine/selfreport.go`), and `drive.go`'s `Long` string contrasts itself against `lyx loom run` in sentences a blind replace would turn into self-references.
