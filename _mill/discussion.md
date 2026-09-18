@@ -121,8 +121,14 @@ The roadmap names this as part of why task cleanup leaves orphaned branches upst
     `fmt.Errorf("remote branch deletion failed for %d of %d orphan branches (%s); each branch's reason is in entries[].remote_error", failed, attempted, strings.Join(failedBranchNames, ", "))`.
     `Deleted == true` IS the attempted set and needs no new field: local-first-then-remote means a remote deletion is tried exactly when the local one succeeded, and an entry that was protected, skipped, or dry-run never has `Deleted` set.
     Branch names are joined in enumeration order, so the string is deterministic across runs.
-  - When the same run ALSO has entries whose local `Error` is non-empty, the two counts are reported in one error rather than two calls — the CLI builds a single string naming each failing class it actually saw, since `errWithRecordFields` takes one `error`.
-    A run with only local failures says so without mentioning the remote at all.
+  - `runCleanupWithFlags`, local failures only (the new non-zero exit this task introduces, so its wording is newly observable and pinned the same way):
+    `fmt.Errorf("branch deletion failed for %d of %d orphan branches (%s); each branch's reason is in entries[].error", localFailed, attemptedLocal, strings.Join(localFailedBranchNames, ", "))`,
+    where `attemptedLocal` counts entries that reached `deleteWeftBranch` at all — neither protected nor dry-run.
+    It never mentions the remote.
+  - `runCleanupWithFlags`, both classes in one run: `errWithRecordFields` takes one `error`, so the two are joined into one string rather than reported by two calls —
+    `fmt.Errorf("%v; additionally, %v", localErr, remoteErr)`, where each half is the exact string its own format above produces, local first.
+    Both halves' per-branch reasons stay in the entries array; the joined string adds no new content.
+  - The three formats compose from the same two counts, so a run with one failing class never emits the other half's wording.
   - `runRemoveWithFlag`, with exactly one branch and therefore no aggregation:
     `fmt.Errorf("weft branch %q was deleted locally, but its copy on %q was not: %s", weftBranch, remoteName, r.RemoteBranchError)`.
     Here the reason IS inlined, because there is one of it and no array to read it from.
@@ -216,7 +222,9 @@ The roadmap names this as part of why task cleanup leaves orphaned branches upst
 
 ### no-origin-is-resolved-once-per-verb
 
-- Decision: a weft repo with no `origin` remote configured is detected **once per verb**, before the loop, via `gitrepo.New(weftRepoRoot).RemoteURL("origin")`.
+- Decision: a weft repo with no `origin` remote configured is detected **once per verb**, before the loop, via `gitrepo.New(weftRepoRoot).RemoteURL("origin")` — and **only when `remote` is true**.
+  With `remote` false the pre-check does not run at all, `RemoteSkippedReason` stays empty, and the JSON key is present-but-empty exactly as `remote_branch_error` is.
+  This matters because the fields maps emit their keys unconditionally: without the `remote` guard, a plain `cleanup --apply` or `remove` against a remoteless repo would start reporting a non-empty `remote_skipped_reason`, an observable change to a path this task does not otherwise touch.
   On failure, `Cleanup` performs no remote deletion for any entry and records the reason once — on the verb's result, not per branch — and every entry's `RemoteError` stays empty.
   `Remove`, having one branch, does the same check inline and records the reason the same way.
   This pre-check is the ONLY thing it gates; it is not a general reachability probe, and a configured-but-unreachable remote still fails per-branch through the ordinary path.
@@ -339,7 +347,8 @@ Plus the project rule from `CLAUDE.md`: a task changing observable CLI behaviour
 - a genuine failure (unreachable remote) returns a wrapped non-nil error and `deleted == false`.
 
 These spawn git, so they live in an `integration`-tagged file against a local bare repo acting as `origin`.
-The absent-ref case is the reason to cover both stderr spellings git uses.
+The absent-ref case asserts against a real `git push --delete` of a ref that is not there, so the test observes git's actual stderr rather than a fixture — that is what makes it a tripwire on the single pinned substring `remote ref does not exist` (per absent-remote-ref-is-success) if a future git reworded it.
+One case, one substring; there is no second spelling to cover.
 
 **`internal/fabricengine` gate tests — untagged, TDD candidates, and DIRECT-CALL only.**
 These construct a `remoteBranchRequest` and call `checkRemoteBranchRequest`/`deleteRemoteBranch` directly.
