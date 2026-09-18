@@ -39,6 +39,7 @@ Why now: the design is already written and recorded (`manifest/designs/reed-head
   `manifest/roadmap.md` item moved to Done;
   `internal/reedengine/doc.go`'s package doc updated;
   `manifest/designs/reed-fabric-standalone-api.md`'s `*Engine` method inventory (line 124) updated for the two renamed methods;
+  `tools/sandbox/SANDBOX-REED-SUITE.md` rewritten per scenario (see Testing);
   and `docs/overview.md` corrected in three places — line 301 (reed's verb list still names `header`, and calls `reed header --blocking` one of reed's two registered interactive-handoff exceptions, which is now `reed watchdog`), line 408 and line 462 (both describe `tokenvocab` as the `repo`/`hub` registry consumed by "reed's header pipeline", now a three-token registry feeding the status-line).
 
 **Out:**
@@ -563,6 +564,9 @@ From `CONSTRAINTS.md`, the ones this task can break:
 - **Config Strictness Invariant** — `reedengine` is on the degrading side (`LoadOrTemplate`);
   the daemon's per-worktree config reads must use the same call, so a worktree with no `_lyx` still resolves the embedded template rather than erroring.
 - **Test Tier Purity Invariant** — no `exec.Command`, no real tmux, no `time.Sleep` ≥ 1s in untagged files.
+- **Sandbox Suite Coverage** — every registered lyx module stays exercised by the sandbox suite or is explicitly excluded with a reason.
+  reed stays exercised, so `tools/sandbox/SANDBOX-REED-SUITE.md` is rewritten with the code rather than left asserting a pane that no longer exists;
+  the per-scenario dispositions are in the Testing section.
 - **Documentation Lifecycle** and this repo's CLAUDE.md task-completion rule — the module design doc, `manifest/roadmap.md`, and `CONSTRAINTS.md` all move in the same commit as the code.
 
 Discovered during discussion:
@@ -633,8 +637,11 @@ assert a `down` immediately followed by an `up` does not kill it;
 assert a departing session's watcher is cancelled — bring two sessions up, `down` one, and assert the daemon drops that entry and stops touching that session, while the sibling keeps being watched;
 assert re-entry re-reads config: `down` a worktree, flip its `watchdog:` key, `up` it again, and assert the new value takes effect without restarting the daemon;
 assert `attach` and `resume` each attempt the spawn when no daemon holds the lock.
-Disposition per header-adjacent site, re-derived by a stated method rather than enumerated from the reed packages alone: a repo-wide grep for `reed header`, `HeaderPaneID`, `console-header`, and `headerpane`, excluding `.git/` and `_mill/`.
-The plan re-runs that grep and treats any site it names that is not listed below as an unhandled case, not as out of scope.
+Disposition per header-adjacent site, re-derived by a stated method rather than enumerated from the reed packages alone: a **case-insensitive** repo-wide scan for `header` over `.md` and `.go` files, excluding `.git/` and `_mill/`, then discarding the unrelated senses (HTTP headers, markdown/table headings, the sandbox suites' own "fingerprint header" section, and `docs/`-style document headers).
+The plan re-runs that scan and treats any surviving site it names that is not listed below as an unhandled case, not as out of scope.
+
+The narrower token set used through round 6 — `reed header`, `HeaderPaneID`, `console-header`, `headerpane` — is **not** sufficient and was replaced here: it matches identifiers and command names, and therefore finds none of the prose sites that describe the header pane without naming a symbol.
+Verified misses of that token set: `tools/sandbox/SANDBOX-REED-SUITE.md` (which contains zero occurrences of `reed header` but 23 of `header`), `internal/tokenvocab/doc.go:5` and `render.go:2` ("reed's header pipeline"), and `internal/standalonegeom/reedgeom.go:43` plus `standalonegeom_test.go:178` ("the header pane's display token") — the last in a file this task already edits for `WorktreeName`.
 
 Outside the reed packages:
 
@@ -652,7 +659,30 @@ Outside the reed packages:
 - `.gitattributes:29` — names `console-header.md`;
   update to `status-line.md` with the rename.
 - `internal/loomcli/bootstrap.go:183` — a comment pointing at `headerLaunchCmd`/`headerpane.go` as the model for composing an exe command line.
-  `headerpane.go` is deleted, so the comment must be repointed (the daemon spawn in `reedcli` is the surviving analog) or dropped.
+  `headerpane.go` is deleted, so **repoint it** at the daemon spawn in `internal/reedcli`, which is the surviving analog: it composes an `os.Executable()` command line the same way, and the comment's value is naming a live example rather than the specific file it used to name.
+- `internal/tokenvocab/doc.go:5` and `internal/tokenvocab/render.go:2` — package prose describing the vocabulary as feeding "reed's header pipeline";
+  update to the status-line, alongside the third-token addition this task already makes in that package.
+- `internal/standalonegeom/reedgeom.go:43` and `standalonegeom_test.go:178` — "RepoName is ... the header pane's display token".
+  Update to the status-line, in the same edit that adds `WorktreeName` to that file.
+- `tools/sandbox/SANDBOX-REED-SUITE.md` — rewritten per scenario, see below.
+  `SANDBOX-REED-WATCH-SUITE.md` needs **no** change: its only three `header` occurrences are the suite's own fingerprint-header section and boilerplate, none of them about the header pane.
+  No other suite under `tools/sandbox/` mentions the header pane.
+
+The sandbox reed suite, per scenario (CONSTRAINTS.md's **Sandbox Suite Coverage** invariant makes this mandatory, not optional — every registered module stays exercised or explicitly excluded with a reason):
+
+- **M19 "Always-on header pane (operator console)"** (line 323) — rewritten end to end as "Always-on Selvage pane".
+  Its central assertion inverts: the extra pane is physically **bottom**-most, and its visible content is a **shell prompt**, not rendered text — the old "a bare shell prompt ... is a `FAIL`" clause becomes the pass condition.
+  The rendered identity text moves to a separate check against `#{status-left}`.
+  The survives-its-last-strand, excluded-from-the-`strands`-count, and heal-after-its-process-dies assertions all carry over unchanged in substance, retargeted onto Selvage;
+  the "kill the header's own process" step gets easier to state, since killing an interactive shell is what `reed down` already does.
+  `header.height_rows` becomes `selvage.height_rows` throughout.
+- **Line 371-375** (the wedged-heal scenario) — "the one-row header band at the top" becomes the bottom band, and "the freshly rebuilt header ends up alone, full-height, at the very top" becomes Selvage alone filling the window, which is now tmux's own tiling rather than something reed computes.
+- **Lines 409, 427** (the watchdog dormancy scenarios) — "check the renamed session's header pane log" is falsified twice over: there is no header pane, and the daemon's warnings now land in `HubLogsDir`, not in any pane.
+  Both become a check of the hub log file for exactly one vanished-worktree-root warning.
+  The one-warning-not-one-every-two-seconds assertion itself is unchanged — it is about the dormant cadence, which this task does not touch.
+- **Line 439-440** (the attach geometry scenario) — "a session holding a header pane and at least two strands" becomes Selvage, and `header.height_rows` becomes `selvage.height_rows`.
+- **Line 284** — "the untracked reap now fires from the alive header this `up` boots" becomes the alive Selvage;
+  the reap policy is unchanged.
 - `docs/overview.md`, `manifest/designs/reed-fabric-standalone-api.md`, `manifest/designs/reed-header-selvage.md` — already in the Scope doc list above.
 
 Inside `internal/reedcli`, the smoke files:
@@ -698,6 +728,9 @@ the markdown link-integrity test over `manifest/`/`docs/` after the design doc a
 - **Q:** What replaces the `header:` config block? **A:** [auto-pick] `status_line: {template}` plus `selvage: {height_rows}`. **Why:** the two settings now describe unrelated mechanisms; reinterpreting the old keys would silently apply an operator's `header.height_rows` to a different pane in a different place.
 - **Q:** Should the plan write removal logic for a stale `header:` block in existing `reed.yaml` files? **A:** [auto-pick] No. **Why:** `lyx config reconcile --apply` already strips stale leaves once the template drops them (see the round-1-gap entry below); the plan only has to keep the un-reconciled state harmless, which it is — nothing unmarshals `header:` into `Config` any more.
 - **Q:** How is the `worktree` token fed? **A:** [auto-pick] `Ctx.WorktreeName`, filled from `lyxcwd.Location.WorktreeName` via a new `Geometry.WorktreeName` field. **Why:** deriving it inside `reedengine` with `filepath.Base` would be a per-module path derivation the Cwd Resolution Invariant reserves for `lyxcwd`.
+- **Q:** (review round 7 gap) Is the four-token grep enough to find every header-adjacent site? **A:** [auto-pick] No — widened to a case-insensitive `header` scan over `.md`/`.go`, minus the unrelated senses. **Why:** the token set matches symbols and command names, so it missed every prose site, including a sandbox suite with 23 occurrences of `header` and zero of `reed header`.
+- **Q:** (review round 7 gap) What happens to the sandbox reed suite? **A:** [auto-pick] `SANDBOX-REED-SUITE.md` rewritten per scenario (M19 inverted to a bottom-most shell pane, the height key renamed, the watchdog-log checks moved to `HubLogsDir`); `SANDBOX-REED-WATCH-SUITE.md` needs none. **Why:** CONSTRAINTS.md's Sandbox Suite Coverage keeps reed exercised, and M19's central assertion — that a bare shell prompt in that pane is a FAIL — is exactly inverted by this task.
+- **Q:** (review round 7 gap) Repoint or drop the `loomcli/bootstrap.go` comment? **A:** [auto-pick] Repoint it at the daemon spawn in `reedcli`. **Why:** it is the surviving analog that composes an `os.Executable()` command line, and the comment's value is naming a live example.
 - **Q:** (review round 6 gap) How does the daemon enumerate sessions with no engine in hand? **A:** [auto-pick] One new exported `reedengine.ListSessions(tmuxPath, socketKey)`; socket key from `ServerName(hubPath)`, tmux binary told via a new `--tmux` flag. **Why:** `TmuxCmd.run`/`output` are unexported and every exported `*Engine` method is session-bound, and telling the binary keeps the daemon deriving nothing.
 - **Q:** (review round 6 gap) Which `list-sessions` outcomes count toward the idle-exit counter? **A:** [auto-pick] Anything but "exit 0 with at least one session name" — empty listing, no-server error, and any other failure alike. **Why:** the normal last-`down` case is an *error*, not an empty list, so the earlier wording left the main exit path undefined; and psmux exits identically with and without a server, so any rule that read the error would be unimplementable on Windows.
 - **Q:** (review round 6 gap) Where do the daemon's log lines actually go? **A:** [auto-pick] `logger.SetDurableSinkDir(fabricengine.HubLogsDir(hub))` as its first action, before discarding stderr. **Why:** the cwd-anchored fallback arms only inside a lyx-owned worktree and never from a hub cwd — which is exactly where `cmd.Dir` pins this process — so every diagnostic the design leans on would otherwise go nowhere.
