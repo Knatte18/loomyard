@@ -71,7 +71,9 @@ batches:
     commit_sha: c2608520b44c0552475c5b9236e69fe731436a59
     verify_baseline_failures: []
   - name: watchdog-daemon
-    state: pending
+    state: running
+    implementer_session: 398d825e-1d2c-489f-a26a-e2c536b749ed
+    start_sha: 6aed78f01190d7d81e0e3008a81278c517c0c42c
     verify_baseline_failures: []
   - name: standalone-watcher
     state: pending
