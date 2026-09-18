@@ -210,7 +210,10 @@ All three refusal strings must name `lyx loom start` after this change, and `too
 
 **The root alias.**
 `cmd/lyx/main.go:115` registers `loomcli.RunAliasCommand()` as a bare root child alongside `loomcli.Command()`, with a four-line comment explaining why it is a real registered child rather than argv splicing.
-`cmd/lyx/helptree_test.go:28` asserts the root names `"run"` among its children (this becomes `"start"`), and line 114 asserts loom's subcommand set is exactly `{"run", "drive", "step", "status", "pause", "validate-discussion", "validate-plan"}` (this becomes `{"start", "run", "step", ...}`).
+`cmd/lyx/helptree_test.go:28` lists `"run"` among the root's children (this becomes `"start"`), and line 114 lists loom's subcommands as `{"run", "drive", "step", "status", "pause", "validate-discussion", "validate-plan"}` (this becomes `{"start", "run", "step", ...}`).
+Note what this test actually checks: lines 133-137 loop over `wantSubs` doing a per-item `strings.Contains` against the rendered help text.
+It is a presence check, not set equality — it can confirm `start` appeared, but it can never catch a `drive` command that survived the rename, since an extra subcommand in the help output fails no `Contains` call.
+Proving `drive` is gone needs the separate retired-name cobra walk described under Testing.
 
 `internal/loomcli/cli_test.go:79-93` holds `TestRunAliasCommand_StaysOneCommandWithSubtreeVerb`, which asserts the alias has a non-empty `Short`, that `alias.Use == "run"`, and that it exposes the `--parent` flag.
 Rename the test and flip the expected `Use` to `"start"`.
@@ -249,14 +252,20 @@ These are landmarks confirming the Scope rule is the right shape;
 they are not a substitute for running the grep set.
 
 **Third gotcha: prose whose *meaning* turns on the two verbs being different.**
-Two sites must be rewritten as sentences, never token-substituted, because a mechanical swap inverts what they assert:
+Some prose must be rewritten as sentences, never token-substituted, because a mechanical swap inverts what it asserts.
+The sites below are landmarks, never the boundary — the Scope rule's classify step is what bounds this class, exactly as it bounds the other two gotchas.
+Any hit whose sentence contrasts the two verbs against each other belongs here, whether or not it is listed:
 
 - `internal/loomcli/drive.go`'s `Long` string contrasts the verb against `lyx loom run` repeatedly ("ensures that session itself, exactly as `lyx loom run` does").
   Substituting turns each contrast into a self-reference.
 - `manifest/designs/self-report-tier1.md:13-20` states an exemption that turns on `lyx loom drive` and `lyx loom run` being two different verbs.
   A token swap collapses both sides onto the same name and silently inverts the stated rule.
+- `internal/shuttleengine/attach.go:415-421` — "recreated in-band by `lyx reed up`, or simply by `lyx loom run` and `lyx loom drive`, which both call `reed.Up()` themselves", plus a later sentence naming `lyx loom drive` in a crucible-round finding.
+  The "both" is the whole point of the sentence;
+  substitution makes it name one verb twice.
+- `internal/loomengine/seedownership_test.go:77-78` — the same contrast in a test comment.
 
-Both need a human-legible rewrite against the new verb set, and both are the reason the classify step exists rather than a `--replace` flag.
+Each needs a human-legible rewrite against the new verb set, and they are collectively the reason the classify step exists rather than a `--replace` flag.
 
 ## Constraints
 
@@ -294,7 +303,9 @@ No new behaviour ships, so the testing job is threefold: keep every existing ass
 
 **`cmd/lyx/helptree_test.go` — adapt in place.**
 The root-children list becomes `"start"` instead of `"run"`, and loom's subcommand list becomes `{"start", "run", "step", "status", "pause", "validate-discussion", "validate-plan"}`.
-These two assertions are the primary structural guard that the rename actually reached cobra, so write them before touching `loomcli` — a genuine TDD candidate, since both fail loudly on the old tree and pass only once the rename is complete.
+These two assertions confirm the new names reached cobra, so write them before touching `loomcli` — a genuine TDD candidate, since neither `start` nor any `Short`/`Long` containing it exists on today's tree, so both fail loudly now and pass only once the rename lands.
+They do **not** prove the old names are gone: the test is a per-item `strings.Contains` sweep, so a surviving `drive` command fails nothing here.
+The retired-name guard below is what closes that half.
 
 **`internal/loomcli/cli_test.go` — adapt and extend.**
 Rename `TestRunAliasCommand_StaysOneCommandWithSubtreeVerb` to match the new function and flip its expected `Use` to `"start"`;
