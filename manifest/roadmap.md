@@ -14,6 +14,19 @@ This section holds what's committed to next.
 1. **reed: replace the header pane with a native tmux status-line, a permanent "Selvage" terminal pane, and a detached per-hub watchdog process** — today's one header pane conflates three unrelated jobs: rendering identity text, keeping the tmux session alive when every other pane dies, and hosting the already-Done watchdog daemon (`eng.Watch`) — and dies on a stray Ctrl-C today (no signal handling). Split all three: identity content moves to tmux's own native status-line; a deliberately ordinary shell pane, named **Selvage**, becomes the always-on, pinned-to-the-bottom control terminal that keeps the session alive and doubles as where you'd run `lyx reed add` and friends directly; and the watchdog daemon moves out of any pane entirely, into its own detached background process scoped one-per-hub (matching the existing tmux-server-per-hub boundary, deliberately not per-worktree-session or per-machine).
    See [designs/reed-header-selvage.md](designs/reed-header-selvage.md).
 
+## Next Up
+
+What comes right after Planned clears — committed and ordered, unlike Someday below.
+Not yet started, and exact order can still shift as Planned work reveals what unblocks what, but the rough sequence below is the current best guess.
+
+1. **reed: born-as-strand for the operator's `loom run` attach** — the one remaining code gap after the Planned `ly-supervise + orchestrator` launch-convention item above covers its two siblings: `loom run`'s terminal handoff does a bare `tmux attach-session` today with no `AddStrand` call at all, so it never becomes a Strand no matter how it's launched. Fix it to spawn the pane as a Strand first, then attach, mirroring what `reed add` already does for everything else — never adopting an already-running pane after the fact, per `internal/reedengine/spawn.go`'s two cited bugs against that approach. Running it outside reed becomes the explicit debug/CI escape hatch, mirroring `drive`'s relationship to `run`. Not yet defined: exactly what "repo-orchestrator" means as a concept, and whether reed's core pane lifecycle (see the Planned header-pane split above) is solid enough yet to trust with any of this.
+
+1. **reed: strand-based mailbox/addressing system** — deliver messages/events to any Strand (agent, operator, `ly-supervise` watchdog, orchestrator) by address. Being a Strand is only required to *receive* mail (an address needs somewhere durable to deliver to); it is not required to *send* — anything able to reach the delivery mechanism (an in-process Claude Code fork subagent included, despite never itself being a Strand) can send without needing an address of its own. Deliberately a separate, later task from the Planned `ly-supervise + orchestrator` launch-convention item and the `born-as-strand` item above, which it depends on for the receive side only: everything that should be addressable must already exist as a Strand before addressing it means anything. Not yet designed: the actual delivery mechanism (written into the pane? a separate side-channel?) and whether it rides the already-Done `reed: watchdog daemon`'s per-tick loop rather than adding a new process.
+
+1. **loom CLI: rename `run`/`drive`/`step` for verb/engine symmetry, plus rename `ly-supervise`** — today's `lyx loom run` never calls `shedengine.Shed.Run`; `lyx loom drive` does, while `run` only bootstraps, spawns `drive`, and attaches tmux. Not yet decided; leading proposal so far is swapping `drive`→`run` (matches `Shed.Run`) and renaming today's `run` to something like `start` (bootstrap + attach), plus renaming the `/ly:ly-supervise` skill to something shorter that still says it drives the whole loop (`ly-drive` was the leading candidate over `ly-watch`/`ly-run`, which either undersell or overclaim what the skill does).
+
+1. **generalize `ly-supervise` and loom's `run`/`drive`/`step` CLI verbs into a Shed-generic watchdog** — `shedengine`/`shedbuild`/`shedrecipe` are already fully generic (the Told-Geometry Invariant), and `loomrecipe.New` is the only loom-specific glue; `internal/loomcli`'s `run.go`/`drive.go`/`step.go` are the one place hardcoding loom's own recipe/paths, and no sibling CLI package has an equivalent trio. Genuinely speculative until a second `shedrecipe` consumer beyond loom exists to validate the generalization against — not yet promotable to Planned. Separate from the `born-as-strand` item above — orthogonal axis of change.
+
 ## Someday
 
 Committed to eventually — will be done — but not scheduled next.
@@ -87,14 +100,6 @@ No build order is implied between these items.
 
 1. **reed: daemon Slack relay** — bidirectional Slack relay per worktree, riding on the now-Done `reed: watchdog daemon`. Low priority, well behind the daemon's own self-heal jobs — split out on purpose so it never blocks or gets conflated with the watchdog work.
 
-1. **loom CLI: rename `run`/`drive`/`step` for verb/engine symmetry, plus rename `ly-supervise`** — today's `lyx loom run` never calls `shedengine.Shed.Run`; `lyx loom drive` does, while `run` only bootstraps, spawns `drive`, and attaches tmux. Not yet decided; leading proposal so far is swapping `drive`→`run` (matches `Shed.Run`) and renaming today's `run` to something like `start` (bootstrap + attach), plus renaming the `/ly:ly-supervise` skill to something shorter that still says it drives the whole loop (`ly-drive` was the leading candidate over `ly-watch`/`ly-run`, which either undersell or overclaim what the skill does).
-
-1. **reed: born-as-strand for the operator's `loom run` attach** — the one remaining code gap after the Planned `ly-supervise + orchestrator` launch-convention item above covers its two siblings: `loom run`'s terminal handoff does a bare `tmux attach-session` today with no `AddStrand` call at all, so it never becomes a Strand no matter how it's launched. Fix it to spawn the pane as a Strand first, then attach, mirroring what `reed add` already does for everything else — never adopting an already-running pane after the fact, per `internal/reedengine/spawn.go`'s two cited bugs against that approach. Running it outside reed becomes the explicit debug/CI escape hatch, mirroring `drive`'s relationship to `run`. Not yet defined: exactly what "repo-orchestrator" means as a concept, and whether reed's core pane lifecycle (see the Planned header-pane split above) is solid enough yet to trust with any of this.
-
-1. **reed: strand-based mailbox/addressing system** — deliver messages/events to any Strand (agent, operator, `ly-supervise` watchdog, orchestrator) by address. Being a Strand is only required to *receive* mail (an address needs somewhere durable to deliver to); it is not required to *send* — anything able to reach the delivery mechanism (an in-process Claude Code fork subagent included, despite never itself being a Strand) can send without needing an address of its own. Deliberately a separate, later task from the Planned `ly-supervise + orchestrator` launch-convention item and the Someday `born-as-strand` item above, which it depends on for the receive side only: everything that should be addressable must already exist as a Strand before addressing it means anything. Not yet designed: the actual delivery mechanism (written into the pane? a separate side-channel?) and whether it rides the already-Done `reed: watchdog daemon`'s per-tick loop rather than adding a new process.
-
-1. **generalize `ly-supervise` and loom's `run`/`drive`/`step` CLI verbs into a Shed-generic watchdog** — `shedengine`/`shedbuild`/`shedrecipe` are already fully generic (the Told-Geometry Invariant), and `loomrecipe.New` is the only loom-specific glue; `internal/loomcli`'s `run.go`/`drive.go`/`step.go` are the one place hardcoding loom's own recipe/paths, and no sibling CLI package has an equivalent trio. Deliberately Someday, not Planned: genuinely speculative until a second `shedrecipe` consumer beyond loom exists to validate the generalization against. Separate from the born-as-strand item above — orthogonal axis of change.
-
 ## Done
 
 Cleared 2026-08-25 to keep this file lean — shipped items' history lives in `git log` and each module's own package documentation, not here.
@@ -142,15 +147,17 @@ Cleared 2026-08-25 to keep this file lean — shipped items' history lives in `g
 - **Numbering is automatic, not manual, and restarts at 1 in each section.**
   Every item is written literally as `1.` in the source — GitHub/CommonMark renders ordered-list items sequentially from the first item in a contiguous list block regardless of the literal digit on the rest,
   and a new `##` heading starts a new block.
-  So Planned, Someday, and Done each render as their own 1, 2, 3, … with **zero number edits ever needed** — inserting, removing, or reordering items anywhere just works.
-- **Numbers are not stable cross-reference IDs** (the same number exists in all three sections).
+  So Planned, Next Up, Someday, and Done each render as their own 1, 2, 3, … with **zero number edits ever needed** — inserting, removing, or reordering items anywhere just works.
+- **Numbers are not stable cross-reference IDs** (the same number exists in all four sections).
   Cross-reference by **bold item name** instead (e.g. "the Planned `board` item," "Someday's `raddle` item") — every reference elsewhere in this file and in `designs/*.md` already does this.
 - **Entries are short — a name plus one or two sentences of what/why, never a design writeup.**
   Detail belongs in the entry's own `designs/<name>.md` while the item is Planned or Someday.
   Delete that doc once the module ships (see the [documentation lifecycle](../docs/overview.md#documentation-lifecycle)) — a Done entry instead points at the module's own package documentation, which is where its durable detail lives from then on.
   If an entry keeps growing past a couple of sentences, that is a signal to move the growth into the doc it points to, not to let the entry itself grow.
 - Move an item from Planned or Someday to Done, with a link to its module doc if one exists, when it ships — no renumbering needed anywhere.
-- Someday items get a `designs/<name>.md` doc when there's real design behind them (`raddle`, `webster: worktree-per-card parallel execution`, `hardener`, `warp-visibility`, `semantic-index` above do);
+- Someday and Next Up items get a `designs/<name>.md` doc when there's real design behind them (`raddle`, `webster: worktree-per-card parallel execution`, `hardener`, `warp-visibility`, `semantic-index` above do);
   trivial ones don't need one until they're promoted to Planned.
 - This file is the single home for everything not scheduled, whether firmly committed to (`warp-visibility`, `raddle`) or genuinely speculative (`hardener`, the shuttle `Spec` ideas) — no separate long-term-ideas file.
-  Add new speculative ideas directly to Someday.
+  Add new speculative ideas directly to Someday — Next Up is a promotion stage, not an entry point, so nothing is added there fresh.
+- **Promotion path:** Someday → Next Up → Planned → Done.
+  An item can skip Next Up straight from Someday to Planned if it becomes urgent; Next Up is a waypoint, not a mandatory gate.
