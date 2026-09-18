@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: ly-supervise-reed-add
 branch: ly-supervise-reed-add
 plan: _mill/plan
@@ -31,4 +31,17 @@ plan-review-r2  '2026-09-18T17:30:30Z'
 plan-fix-r2  '2026-09-18T17:31:30Z'
 plan-review-r3  '2026-09-18T17:38:06Z'
 planned  '2026-09-18T17:38:24Z'
+implementing  '2026-09-18T17:38:53Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: reed-if-absent
+    state: pending
+  - name: vscode-launch-chain
+    state: pending
+  - name: skill-and-roadmap
+    state: pending
 ```
