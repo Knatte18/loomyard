@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: loom-cli-rename
 branch: loom-cli-rename
-plan: null
+plan: _mill/plan
 parent: main
 task: Rename loom CLI run/drive/step for verb/engine symmetry, plus rename ly-supervise
 task_description: |
@@ -21,4 +21,5 @@ discussion-fix-r4  '2026-09-18T19:27:38Z'
 discussion-gap-fix-r5  '2026-09-18T19:30:41Z'
 discussion-fix-r6  '2026-09-18T19:34:49Z'
 discussed  '2026-09-18T19:34:49Z'
+planning  '2026-09-18T19:46:34Z'
 ```
