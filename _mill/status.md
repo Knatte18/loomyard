@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-reed-if-absent
 slug: ly-supervise-reed-add
 branch: ly-supervise-reed-add
 plan: _mill/plan
@@ -32,6 +32,7 @@ plan-fix-r2  '2026-09-18T17:31:30Z'
 plan-review-r3  '2026-09-18T17:38:06Z'
 planned  '2026-09-18T17:38:24Z'
 implementing  '2026-09-18T17:38:53Z'
+approved-reed-if-absent  '2026-09-18T17:46:49Z'
 ```
 
 ## Batches
@@ -39,9 +40,10 @@ implementing  '2026-09-18T17:38:53Z'
 ```yaml
 batches:
   - name: reed-if-absent
-    state: running
+    state: approved
     implementer_session: 7254e004-d4ea-4b10-8551-a06121ac8535
     start_sha: 4fb8285f86d1db0220b02d15651c86b7f74f3c8f
+    commit_sha: aa553821043ac2367f66c62c4dfc236a306282ba
     verify_baseline_failures: []
   - name: vscode-launch-chain
     state: pending
