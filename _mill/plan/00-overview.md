@@ -3,7 +3,7 @@
 ```yaml
 task: "Replace reed's header pane with a status-line and Selvage"
 slug: "reed-header-selvage"
-approved: false
+approved: true
 started: "20260918-171925"
 parent: "main"
 root: ""
