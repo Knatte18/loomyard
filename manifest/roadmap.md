@@ -9,6 +9,11 @@ See Maintenance below for how the numbering works.
 
 This section holds what's committed to next.
 
+1. **ly-supervise + orchestrator: launch via `lyx reed add`, not ad hoc** — a convention change, not a design task, and the fastest of this cluster to land: update the `/ly:ly-supervise` skill's own instructions to launch via `lyx reed add --cmd claude --name ... --focus` instead of an ad hoc terminal, and build the VS Code task/shortcut for it (`lyx reed up; lyx reed add --cmd claude --name claude --focus; lyx reed attach` already works today, unchanged). This alone satisfies the watchdog and orchestrator halves of the Someday `reed: born-as-strand` item below — only that item's operator-attach half remains an actual code gap once this lands.
+
+1. **reed: replace the header pane with a native tmux status-line, a permanent "Selvage" terminal pane, and a detached per-hub watchdog process** — today's one header pane conflates three unrelated jobs: rendering identity text, keeping the tmux session alive when every other pane dies, and hosting the already-Done watchdog daemon (`eng.Watch`) — and dies on a stray Ctrl-C today (no signal handling). Split all three: identity content moves to tmux's own native status-line; a deliberately ordinary shell pane, named **Selvage**, becomes the always-on, pinned-to-the-bottom control terminal that keeps the session alive and doubles as where you'd run `lyx reed add` and friends directly; and the watchdog daemon moves out of any pane entirely, into its own detached background process scoped one-per-hub (matching the existing tmux-server-per-hub boundary, deliberately not per-worktree-session or per-machine).
+   See [designs/reed-header-selvage.md](designs/reed-header-selvage.md).
+
 ## Someday
 
 Committed to eventually — will be done — but not scheduled next.
@@ -27,9 +32,11 @@ No build order is implied between these items.
 
 1. **Claude Code plugin packaging** — ship `lyx` as an installable plugin.
 
-1. **reed: cross-worktree columns** — all worktrees in one window, a column per worktree.
+1. **reed: cross-worktree columns** — all worktrees in one window, a column per worktree; needs its own name for the per-worktree grouping layer this introduces (not "session" — already tmux's own term, and already 1:1 with a worktree in reed's plumbing today), and a decision on how many columns fit before falling back to tmux windows-as-pages. Candidate group-layer names surveyed so far and still free: Heddle, Batten, Bobbin, Sley (Warp, Weft, Shuttle, Treadle, Shed, Loom, Reed, Strand, Fabric, Quarry, Crucible, and now Selvage — claimed by the Planned header-replacement item above — are all already taken elsewhere in this codebase).
 
 1. **reed: own-window strand anchoring** — a `display` anchor that spawns a strand into its own switchable tmux window instead of a pane.
+
+1. **reed: independent per-window attach via tmux session groups** — today two `lyx reed attach` invocations join the same tmux session object (a shared "current window" pointer, and mismatched terminal sizes fighting over layout); tmux's session-groups feature (`new-session -t <existing-session>`) would let each invocation show a different window independently, which reed's `attach` verb does not use today. A candidate building block for the cross-worktree-columns and own-window-strand-anchoring items above, likely exposed as something like an `--window <n>` flag, or hidden entirely behind one verb that spawns the needed loose terminal windows automatically.
 
 1. **fabric: Windows path behaviour is unverified after six hardening rounds** — the platform sibling of the now-Done `Real-Linux validation`; needs a Windows host to close, not further design.
    See [designs/fabric-windows-verification.md](designs/fabric-windows-verification.md).
@@ -81,6 +88,12 @@ No build order is implied between these items.
 1. **reed: daemon Slack relay** — bidirectional Slack relay per worktree, riding on the now-Done `reed: watchdog daemon`. Low priority, well behind the daemon's own self-heal jobs — split out on purpose so it never blocks or gets conflated with the watchdog work.
 
 1. **loom CLI: rename `run`/`drive`/`step` for verb/engine symmetry, plus rename `ly-supervise`** — today's `lyx loom run` never calls `shedengine.Shed.Run`; `lyx loom drive` does, while `run` only bootstraps, spawns `drive`, and attaches tmux. Not yet decided; leading proposal so far is swapping `drive`→`run` (matches `Shed.Run`) and renaming today's `run` to something like `start` (bootstrap + attach), plus renaming the `/ly:ly-supervise` skill to something shorter that still says it drives the whole loop (`ly-drive` was the leading candidate over `ly-watch`/`ly-run`, which either undersell or overclaim what the skill does).
+
+1. **reed: born-as-strand for the operator's `loom run` attach** — the one remaining code gap after the Planned `ly-supervise + orchestrator` launch-convention item above covers its two siblings: `loom run`'s terminal handoff does a bare `tmux attach-session` today with no `AddStrand` call at all, so it never becomes a Strand no matter how it's launched. Fix it to spawn the pane as a Strand first, then attach, mirroring what `reed add` already does for everything else — never adopting an already-running pane after the fact, per `internal/reedengine/spawn.go`'s two cited bugs against that approach. Running it outside reed becomes the explicit debug/CI escape hatch, mirroring `drive`'s relationship to `run`. Not yet defined: exactly what "repo-orchestrator" means as a concept, and whether reed's core pane lifecycle (see the Planned header-pane split above) is solid enough yet to trust with any of this.
+
+1. **reed: strand-based mailbox/addressing system** — deliver messages/events to any Strand (agent, operator, `ly-supervise` watchdog, orchestrator) by address. Being a Strand is only required to *receive* mail (an address needs somewhere durable to deliver to); it is not required to *send* — anything able to reach the delivery mechanism (an in-process Claude Code fork subagent included, despite never itself being a Strand) can send without needing an address of its own. Deliberately a separate, later task from the Planned `ly-supervise + orchestrator` launch-convention item and the Someday `born-as-strand` item above, which it depends on for the receive side only: everything that should be addressable must already exist as a Strand before addressing it means anything. Not yet designed: the actual delivery mechanism (written into the pane? a separate side-channel?) and whether it rides the already-Done `reed: watchdog daemon`'s per-tick loop rather than adding a new process.
+
+1. **generalize `ly-supervise` and loom's `run`/`drive`/`step` CLI verbs into a Shed-generic watchdog** — `shedengine`/`shedbuild`/`shedrecipe` are already fully generic (the Told-Geometry Invariant), and `loomrecipe.New` is the only loom-specific glue; `internal/loomcli`'s `run.go`/`drive.go`/`step.go` are the one place hardcoding loom's own recipe/paths, and no sibling CLI package has an equivalent trio. Deliberately Someday, not Planned: genuinely speculative until a second `shedrecipe` consumer beyond loom exists to validate the generalization against. Separate from the born-as-strand item above — orthogonal axis of change.
 
 ## Done
 
