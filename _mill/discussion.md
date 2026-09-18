@@ -32,7 +32,14 @@ The roadmap names this as part of why task cleanup leaves orphaned branches upst
 - `destroy.go`'s file header: its "five primitives" enumeration (`destroy.go:1-6`) becomes six, and its recording contract's "every one of the eight executors below" (`destroy.go:53`) becomes nine.
   `CONSTRAINTS.md` is NOT edited by this task: the shipped Fabric Destruction Chokepoint Invariant names no primitive count and no individual executor — its bullets are "every executor checks, in order", "`--force` answers dirtiness only", "a gate refusal is never silently discarded", "the `rec *Mutations` recorder is threaded into `destroy.go` only" — and every one of those stays true verbatim with a sixth primitive.
 - An amendment to `internal/fabricengine/doc.go`'s per-item-failure carve-out paragraph (`:570-572`), narrowing `cleanup`'s exemption to its designed-refusal fields so `RemoteError` is visibly excluded.
-- Doc updates in the same commit: the two CLI `Long` texts (the cleanup one currently asserts the opposite behaviour), `destroy.go`'s file header, `cleanup.go`'s file header, and `docs/overview.md` if the fabric verb surface line changes.
+- Doc updates in the same commit, as a checklist rather than a category:
+  - `cleanupCmd.Long` (`fabric.go:333`) — its final paragraph currently asserts the exact behaviour this task removes, so it is rewritten, not appended to; its flag matrix gains `--remote` and the dry-run disposition.
+  - `removeCmd.Long` (`fabric.go:191`).
+  - `cleanupCmd.Use` (`"cleanup [--apply] [--force]"`, `fabric.go:331`) and `removeCmd.Use` (`"remove [--force] <slug>"`, `fabric.go:189`) — both gain `[--remote]`, and the help-tree tests see them.
+  - `runRemoveWithFlag`'s usage string (`"usage: lyx fabric remove [--force] <slug>"`, `fabric.go:802`) — the same line, in a third place.
+  - `destroy.go`'s file header (the primitive and executor counts, above) and `cleanup.go`'s file header (its flag matrix).
+  - `CleanupBranchEntry.Error`'s own field doc (`cleanup.go:77`), now that the field drives an exit code.
+  - `docs/overview.md`, if the fabric verb surface line changes.
 
 **Out:**
 
@@ -71,7 +78,9 @@ The roadmap names this as part of why task cleanup leaves orphaned branches upst
 ### absent-remote-ref-is-success
 
 - Decision: `git push --delete` failing because the remote ref does not exist is mapped to `(false, nil)` — idempotent success, no mutation recorded, no error surfaced.
-  Detection is by matching git's stderr (`remote ref does not exist`, plus the `error: unable to delete '<branch>': remote ref does not exist` form) on a `*gitexec.GitError`, the same stderr-substring technique `PushRebaseFree`'s `rebaseRetryTriggers` already uses.
+  Detection is a single `strings.Contains` for the substring `remote ref does not exist` against a `*gitexec.GitError`'s `Stderr`, the same stderr-substring technique `PushRebaseFree`'s `rebaseRetryTriggers` already uses.
+  One substring is enough: git's fuller wording (`error: unable to delete '<branch>': remote ref does not exist`) contains it verbatim, so there is no second spelling to match and no list is needed.
+  The test pins that exact substring, so a future git rewording fails loudly rather than silently reclassifying the common case as an error.
 - Rationale: every executor in `destroy.go` is idempotent for an already-absent target (`removeContainedPath` reports "nothing removed" rather than failing), and the overwhelmingly common case is a weft branch that was never pushed at all.
   Failing there would make `--remote` useless in exactly the situation it is safest.
 - Rejected: pre-probing with `git ls-remote` — a second network round trip per branch, and still racy.
@@ -108,10 +117,12 @@ The roadmap names this as part of why task cleanup leaves orphaned branches upst
   `partial` then reads true (error non-nil, record non-empty), which is exactly the truth: the local branch went, the remote copy did not.
 - **The synthesised error**, since the engine returns nil and `errWithRecordFields(w, rec, err, fields)` calls `err.Error()`:
   the CLI builds it with `fmt.Errorf`, and it is a **summary, not a transcript** — the per-branch reasons already ride `entries[].remote_error`, so repeating them in the error string would duplicate the envelope's own content.
-  - `runCleanupWithFlags`, aggregating across N entries: count the entries with a non-empty `RemoteError`, then
-    `fmt.Errorf("remote branch deletion failed for %d of %d orphan branches (%s); each branch's reason is in entries[].remote_error", failed, attempted, strings.Join(failedBranchNames, ", "))`,
-    where `attempted` counts only entries a remote deletion was actually tried for (not protected, not skipped, not dry-run).
+  - `runCleanupWithFlags`, aggregating across N entries: count the entries with a non-empty `RemoteError` as `failed`, and the entries with `Deleted == true` as `attempted`, then
+    `fmt.Errorf("remote branch deletion failed for %d of %d orphan branches (%s); each branch's reason is in entries[].remote_error", failed, attempted, strings.Join(failedBranchNames, ", "))`.
+    `Deleted == true` IS the attempted set and needs no new field: local-first-then-remote means a remote deletion is tried exactly when the local one succeeded, and an entry that was protected, skipped, or dry-run never has `Deleted` set.
     Branch names are joined in enumeration order, so the string is deterministic across runs.
+  - When the same run ALSO has entries whose local `Error` is non-empty, the two counts are reported in one error rather than two calls — the CLI builds a single string naming each failing class it actually saw, since `errWithRecordFields` takes one `error`.
+    A run with only local failures says so without mentioning the remote at all.
   - `runRemoveWithFlag`, with exactly one branch and therefore no aggregation:
     `fmt.Errorf("weft branch %q was deleted locally, but its copy on %q was not: %s", weftBranch, remoteName, r.RemoteBranchError)`.
     Here the reason IS inlined, because there is one of it and no array to read it from.
@@ -120,8 +131,16 @@ The roadmap names this as part of why task cleanup leaves orphaned branches upst
 - Rejected: exit 0 with the reason buried in a field — reproduces verbatim the `runReconcile` defect `doc.go` records, for a scripted caller that has no reason to parse `remote_error`.
 - Rejected: joining every per-branch reason into the error string — duplicates `entries[].remote_error` and grows without bound on a wide sweep.
 - Rejected: widening `prune`/`cleanup`'s existing carve-out to cover this — the carve-out's stated test is "designed refusal", and stretching it to cover a genuine failure would erase the distinction the doc draws.
-- Consequence for the plan: `doc.go`'s carve-out paragraph must be amended in the same commit to say that `cleanup`'s exemption covers its **refusal** fields (`Error` on a protected or unmanaged entry) and not `RemoteError`, which follows reconcile's rule.
-  A protected or unmanaged entry, and a local-delete failure, keep exactly today's behaviour.
+- **`cleanup` leaves `doc.go`'s carve-out entirely; `prune` stays in it alone.** The carve-out's premise does not hold for `cleanup` and never did.
+  `doc.go:570-572` justifies exempting both verbs on their per-entry `Error` doubling as a designed-refusal explanation, and quotes two strings to prove it — but both belong to **`prune`** (`prune.go:205` "fabric will not remove it", `prune.go:236` "commit them or re-run with --force").
+  `Cleanup` never sets `Error` on a protected or unmanaged entry: those arms set `Protected: true` and nothing else (`cleanup.go:137-166`), and `CleanupBranchEntry.Error` is documented at `cleanup.go:77` as "non-empty when apply is true and branch deletion failed" — a genuine failure, populated only at `cleanup.go:258` and `:270`.
+  So `cleanup` has no designed-refusal `Error` at all, and by `doc.go`'s own test its existing local-delete failure belongs on the reconcile side exactly as `RemoteError` does.
+- **Consequently `runCleanupWithFlags` keys `errWithRecordFields` on BOTH `Error` and `RemoteError`**, not on `RemoteError` alone.
+  This is a deliberate, in-scope behaviour change to an existing path: a `cleanup --apply` whose local `git branch -D` failed exits non-zero from now on, where today it exits 0.
+  Taking it is the only way to avoid shipping the asymmetry — same verb, same entry struct, two failures of the same class, two verdicts — and the fix is one condition at a call site this task already rewrites.
+  `Protected`/`Unowned` entries still exit 0, because they set no `Error` at all.
+  `prune` is untouched: its `Error` genuinely is a designed refusal, and it is a different verb with a different result type.
+- Consequence for the plan: `doc.go`'s carve-out paragraph is amended in the same commit to name `prune` alone, and to record that `cleanup` was removed from it because its `Error` is a failure rather than a refusal — with a pointer to `cleanup.go:77`'s own field doc as the evidence.
 
 ### opt-in-remote-flag
 
@@ -155,6 +174,10 @@ The roadmap names this as part of why task cleanup leaves orphaned branches upst
   The reused dirtiness check is defence-in-depth and request-shape enforcement at the executor — it keeps a future call site that reaches the executor *without* a preceding local deletion from bypassing the probe, and it keeps the request type unconstructable without a declared dirtiness kind.
   It is not an end-to-end guarantee, and the plan must not describe it as one.
 - **Ownership is only partly vacuous, unlike dirtiness.** `ownedManagedBranch`'s naming predicate (accepted by `WeftWarpSlug`, or carrying `branchPrefix`) and its primary-weft-branch carve-out both read values that survive the local deletion, so those still evaluate meaningfully at the real call sites; only its checked-out component shares dirtiness's fate.
+- **A gate error is not a push failure, and `RemoteError` must say which.** `resolveBranchOwnership` spawns git twice (`primaryWeftBranch`, `listWeftBranches`), so the executor can return a `*destructiveRefusal` — or a refusal whose own `Reason` is a spawn failure — before `git push --delete` ever runs.
+  Reporting that as "remote branch deletion failed" would blame the remote for a local git failure.
+  Rule: the call site inspects the executor's error with `fabricengine.RefusalOf` and formats accordingly — `fmt.Sprintf("gate refused remote deletion of %q: %s", branch, refusal.Reason)` on a match, `fmt.Sprintf("delete remote branch %q on %q failed: %v", branch, remoteName, err)` otherwise — so `RemoteError`'s text always names the layer that said no.
+  The CLI's synthesised summary stays the neutral "remote branch deletion failed for N of M", which is true of both.
 - Rejected: a laxer remote-side gate — would let a future direct caller delete a remote ref against no predicate at all.
 - Rejected: reordering to run the remote deletion first so the dirtiness probe bites — see local-first-then-remote; an unrecoverable remote deletion ahead of a gate refusal is strictly worse than a check that is redundant with the ordering.
 
@@ -362,8 +385,11 @@ Scenarios:
 - `--remote` alone (without `--apply`) on cleanup performs no deletion — the flag-matrix corner an operator is most likely to get wrong;
 - `lyx fabric remove --remote`'s success envelope carries `remote_branch_deleted` — the regression guard for the hand-built fields map, which would otherwise drop the field silently;
 - a cleanup run where one entry carries `RemoteError` exits non-zero, emits `"ok":false` and `"partial":true`, and still carries the full `entries` array — the remote-failure-is-a-cli-failure contract;
-- a cleanup run whose only non-empty entry field is a protected/unmanaged `Error` still exits 0 — the regression guard proving the existing `prune`/`cleanup` carve-out was narrowed, not removed.
-  `internal/fabriccli/envelopecontract_integration_test.go` is the existing model for these, since it covers exactly the `runReconcile` defect this decision follows.
+- a cleanup run whose entries are all `Protected` (primary weft, checked out, or unmanaged) and carry no `Error` at all still exits 0 — the guard that protection is a report, not a failure.
+  Note this is `Protected` with an EMPTY `Error`: `Cleanup` never sets `Error` on a protected or unmanaged entry, so a test asserting "protected entry with a non-empty `Error`" would be asserting a state the verb cannot produce.
+- a cleanup run where one entry carries a local `Error` (the `git branch -D` itself failed) exits non-zero — the new behaviour from remote-failure-is-a-cli-failure's second bullet, and the one existing-path change this task makes deliberately;
+- a `prune` run with a `Protected` or `Unowned` entry still exits 0 — the regression guard that `prune`'s carve-out survived untouched while `cleanup` left it.
+  `internal/fabriccli/envelopecontract_integration_test.go` is the existing model for all of these, since it covers exactly the `runReconcile` defect this decision follows.
 
 **The no-origin path.**
 A weft repo with no `origin` configured, run under `cleanup --apply --remote`: every orphan branch is deleted locally, no remote attempt is made, the reason appears exactly once in `remote_skipped_reason` rather than N times across `entries[].remote_error`, and the verb exits 0.
@@ -408,6 +434,8 @@ The `fabriccli` help-tree tests see the two new `--remote` flags.
 - **Q:** Does a remote-deletion failure exit 0 with the reason in a field, or exit non-zero? **A:** [r2 review] Non-zero, via `errWithRecordFields`, while the engine verb still returns nil. **Why:** `fabricengine/doc.go:560-572` requires a per-item failure to reach the caller as a failure, and carves `prune`/`cleanup` out only for *designed refusals*; a rejected push is not one. Exit 0 here would reproduce the `runReconcile` defect that doc records.
 - **Q:** What happens on a weft repo with no `origin` remote — N identical errors, or something else? **A:** [r2 review] Resolved once per verb with `gitrepo.RemoteURL("origin")` (a free local config read), reported once, no per-entry `RemoteError`. **Why:** it is a configuration state, not a per-branch outcome; folding it into the per-branch path would emit N copies of one fact and, under the exit-code decision above, fail the whole verb for it.
 - **Q:** Which field carries the once-per-verb no-origin reason, and does it change the exit code? **A:** [r3 review] A dedicated verb-level `RemoteSkippedReason` on both result types; exit 0 from both verbs. **Why:** reusing `RemoteError`/`RemoteBranchError` would trip the CLI's failure branch, which would have made the identical configuration state exit 0 from `cleanup` and non-zero from `remove`.
+- **Q:** `cleanup`'s existing local-delete `Error` is a genuine failure too — does it also exit non-zero, or stay at today's exit 0? **A:** [r6 review] It exits non-zero as well; `errWithRecordFields` keys on both `Error` and `RemoteError`. **Why:** `doc.go`'s carve-out rests on the entry `Error` being a designed refusal, which is true of `prune` but never was of `cleanup` (it sets only `Protected` on those arms); shipping the asymmetry would mean two verdicts for the same class of failure in the same struct. `cleanup` leaves the carve-out; `prune` stays in it.
+- **Q:** How is a gate refusal escaping the remote executor told apart from a push failure? **A:** [r6 review] The call site inspects the error with `RefusalOf` and prefixes `RemoteError` accordingly. **Why:** ownership resolution spawns git twice, so a local spawn failure could otherwise be reported as "remote branch deletion failed".
 - **Q:** What error does the CLI synthesise for the failure exit, given the engine returns nil? **A:** [r4 review] A `fmt.Errorf` summary — cleanup names the failed/attempted counts and the branch names and points at `entries[].remote_error`; remove, having one branch, inlines its reason. No `refusal` key, since `RefusalOf` cannot match a synthesised error. **Why:** `errWithRecordFields` dereferences `err.Error()`, so leaving it unnamed would have the plan writer inventing observable CLI output.
 - **Q:** Does the no-origin pre-check run on a dry run? **A:** [r4 review] Yes, and it populates `remote_skipped_reason` there. **Why:** `RemoteURL` is a local config read, so the dry run stays offline-safe, and telling the operator up front is the whole value of a dry run.
 - **Q:** Does the reused dirtiness check actually protect the two real call sites? **A:** [r3 review] No — it is vacuous as sequenced, and the discussion now says so. **Why:** the remote executor runs only after the local `git branch -D` succeeded, so the branch is already gone from the local list the probe reads; the protection comes from local-first ordering, and the reused check is defence-in-depth plus request-shape enforcement for any future direct caller.
