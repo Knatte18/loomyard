@@ -152,3 +152,76 @@ func enterSession(hub, tmuxPath, sessionName string) (watchedSession, error) {
 	}()
 	return watchedSession{eng: eng, cancel: cancel}, nil
 }
+
+// runWatchdogLoop is the daemon's outer loop: it polls hub for live sessions every
+// watchdogHubDiscoveryCycle, enters newly-appeared sessions, tears down departed ones, and returns
+// once watchdogHubIdleCycles consecutive cycles are idle (see sessionsAreIdle) or ctx is done.
+//
+// Teardown on departure is not optional: Engine.Watch never returns while its context is live, so
+// without cancelling a departed entry's goroutine, a worktree whose session goes away while
+// siblings remain would leave a goroutine polling a dead session for the daemon's whole remaining
+// lifetime. Cancelling on departure is also what makes "re-entry re-reads config" true at all:
+// watchLoop reads cfg.Watchdog exactly once at start, so a flipped watchdog: value only takes
+// effect once the entry leaves (this departure teardown) and re-enters (enterSession, on the next
+// appearance) — there is no other re-read path.
+func runWatchdogLoop(ctx context.Context, hub, tmuxPath string) error {
+	logger.Info("reed: watchdog daemon starting", "hub", hub)
+
+	known := make(map[string]watchedSession)
+	defer func() {
+		for name, ws := range known {
+			if ws.cancel != nil {
+				ws.cancel()
+			}
+			logger.Debug("reed: watchdog stopped watching session on daemon exit", "hub", hub, "session", name)
+		}
+	}()
+
+	ticker := time.NewTicker(watchdogHubDiscoveryCycle)
+	defer ticker.Stop()
+
+	idleCycles := 0
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
+
+		live, err := reedengine.ListSessions(tmuxPath, reedengine.ServerName(hub))
+		if sessionsAreIdle(live, err) {
+			idleCycles++
+			if idleCycles >= watchdogHubIdleCycles {
+				logger.Info("reed: watchdog daemon exiting after consecutive idle discovery cycles", "hub", hub, "cycles", idleCycles)
+				return nil
+			}
+			continue
+		}
+		idleCycles = 0
+
+		appeared, departed := planSessionDiff(live, known)
+		for _, name := range appeared {
+			ws, err := enterSession(hub, tmuxPath, name)
+			if err != nil {
+				// A name that does not resolve to a worktree is skipped, not retried until it next
+				// re-appears in the live set: resolveWatchedSession's own ResolveWorktree call is
+				// what actually failed, so there is nothing more to learn by retrying immediately.
+				logger.Debug("reed: watchdog could not enter session, skipping", "hub", hub, "session", name, "err", err)
+				continue
+			}
+			known[name] = ws
+			logger.Debug("reed: watchdog entered session", "hub", hub, "session", name)
+		}
+		for _, name := range departed {
+			ws, ok := known[name]
+			if !ok {
+				continue
+			}
+			if ws.cancel != nil {
+				ws.cancel()
+			}
+			delete(known, name)
+			logger.Debug("reed: watchdog session departed", "hub", hub, "session", name)
+		}
+	}
+}
