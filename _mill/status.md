@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: blocked
+phase: approved-vocabulary-and-config
 slug: reed-header-selvage
 branch: reed-header-selvage
 plan: _mill/plan
@@ -35,6 +35,8 @@ planned  '2026-09-18T18:00:17Z'
 implementing  '2026-09-18T18:00:49Z'
 approved-render-bottom-band  '2026-09-18T18:10:34Z'
 blocked  '2026-09-18T18:20:09Z'
+self-resolved-verify-logic  '2026-09-18T18:40:12Z'
+approved-vocabulary-and-config  '2026-09-18T18:40:12Z'
 ```
 
 ## Batches
@@ -48,9 +50,10 @@ batches:
     commit_sha: f17bc76749c1175e9d16aab635259164a485ea94
     verify_baseline_failures: []
   - name: vocabulary-and-config
-    state: blocked
+    state: approved
     implementer_session: b10b8c5f-73a0-4eb4-8fa4-ca98ae6f09e6
     start_sha: 3032ada47f66bd210b1f1095c813a110e5b4c657
+    commit_sha: 803ca020f
     blocked_reason: 'verify/logic self-resolve blocked: card 15 already used by batch ''03-selvage-pane''; ''02-vocabulary-and-config'' and ''03-selvage-pane'' occupy overlapping numeric ranges (PlanDAGError while computing next card number for vocabulary-and-config); underlying failure: [module-wide verify] internal/reedcli/header.go:103:23: c.eng.HeaderText undefined (type *reedengine.Engine has no field or method HeaderText)'
     verify_baseline_failures: []
   - name: selvage-pane
