@@ -149,7 +149,9 @@ func assertLayoutSelfHeals(t *testing.T, fx *watchdogFixture, newCols, newRows i
 
 	waitUntil(t, 15*time.Second, "layout never self-healed after the resize", func() bool {
 		w, h := windowSizeNow(t, e)
-		if w != newCols || h != newRows {
+		// "status" is pinned on, so tmux's live content window settles at newRows-1, not the client's
+		// told newRows verbatim — the status-line's own row is not part of the window reported here.
+		if w != newCols || h != newRows-1 {
 			return false
 		}
 		wantLayout, ok := expectedLayoutForCurrentBox(t, e)
@@ -229,7 +231,8 @@ func TestWatchdogSelfHeal_BurstCoalesces(t *testing.T) {
 
 	waitUntil(t, 15*time.Second, "burst never converged to the final size's layout", func() bool {
 		w, h := windowSizeNow(t, e)
-		if w != finalCols || h != finalRows {
+		// "status" is pinned on, so the live content window settles at finalRows-1, not finalRows.
+		if w != finalCols || h != finalRows-1 {
 			return false
 		}
 		height, ok := selvagePaneHeightNow(t, e)
@@ -264,7 +267,8 @@ func TestWatchdogSelfHeal_DegradedPathStillConverges(t *testing.T) {
 
 	waitUntil(t, 10*timing.PollCycle+5*time.Second, "poll-mode fallback never healed the layout after the resize", func() bool {
 		w, h := windowSizeNow(t, e)
-		if w != 130 || h != 42 {
+		// "status" is pinned on, so the live content window settles at 42-1=41, not the client's told 42.
+		if w != 130 || h != 41 {
 			return false
 		}
 		height, ok := selvagePaneHeightNow(t, e)
