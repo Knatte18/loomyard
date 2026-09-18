@@ -20,9 +20,6 @@ Not yet started, and exact order can still shift as Planned work reveals what un
 1. **reed: born-as-strand for the operator's `loom run` attach** — `loom run`'s terminal handoff never calls `AddStrand`, unlike every other agent launch in lyx; fix it to spawn-then-attach like `reed add` does.
    See [designs/reed-born-as-strand.md](designs/reed-born-as-strand.md).
 
-1. **reed: strand-based mailbox/addressing system** — deliver messages/events to any Strand by address; being a Strand is required to *receive* mail, not to *send* it.
-   See [designs/reed-mailbox.md](designs/reed-mailbox.md).
-
 1. **loom CLI: rename `run`/`drive`/`step` for verb/engine symmetry, plus rename `ly-supervise`** — today's verb names don't match what each one actually calls; not yet decided.
    See [designs/loom-cli-rename.md](designs/loom-cli-rename.md).
 
@@ -54,6 +51,9 @@ No build order is implied between these items.
 1. **session sync** — copy Claude `.jsonl` transcripts across machines so `--resume` works elsewhere.
 
 1. **Claude Code plugin packaging** — ship `lyx` as an installable plugin.
+
+1. **reed: strand-based mailbox/addressing system** — deliver messages/events to any Strand by address; being a Strand is required to *receive* mail, not to *send* it.
+   See [designs/reed-mailbox.md](designs/reed-mailbox.md).
 
 1. **reed: cross-worktree columns** — all worktrees in one tmux window, a column per worktree; needs a name for the new per-worktree grouping layer this introduces and a column-count/fallback policy.
    See [designs/reed-multi-window.md](designs/reed-multi-window.md#cross-worktree-columns).
