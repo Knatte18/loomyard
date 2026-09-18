@@ -81,7 +81,9 @@ The session→worktree mapping is a **direct join** (`filepath.Join(hub, session
   - `internal/lyxcwd/lyxcwd.go`
   - `internal/hubgeom/hubgeom.go`
   - `internal/reedengine/config.go`
+  - `internal/reedengine/lock.go`
   - `internal/reedengine/server.go`
+  - `internal/reedengine/watchloop.go`
   - `internal/logger/logger.go`
   - `CONSTRAINTS.md`
 - **Edits:**

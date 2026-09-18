@@ -9,15 +9,6 @@ verify: go test ./internal/reedengine/... && go test -tags integration ./interna
 depends-on: [2]
 ```
 
-## Rename mechanic
-
-For each `Moves:` pair the implementer MUST:
-
-1. Run `git mv <old> <new>` FIRST, before making any other change to the moved file.
-2. Make ONLY surgical edits — touch only the lines that must change after the move (package or module declaration, imports, identifier retargeting, seam splits).
-3. Use a full-file `Creates:` entry only for genuinely new files that have no predecessor.
-4. Never write the relocated file from scratch and delete the original — that breaks git rename history and inflates review diffs.
-
 ## Batch Scope
 
 This batch turns the header pane into Selvage: `ReedState.HeaderPaneID` becomes `SelvagePaneID`, `ensureHeaderPaneLocked` becomes `ensureSelvagePaneLocked` splitting **below** the physically bottom-most pane and launching `e.cfg.Shell` rather than a re-exec of lyx, `internal/reedengine/headerpane.go` and `Engine.suppressHeaderLaunch` are deleted with the re-exec they existed for, and reconcile's exemption/authorization, spawn's split-target choice, apply's blanking and generation's clear all retarget onto the new field.
