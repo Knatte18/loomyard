@@ -1,6 +1,7 @@
 // geometry.go declares Geometry, the nine-field struct reed is told its coordinates through.
 // It declares the type only — New and every method stay in their existing files (lock.go,
-// lifecycle.go, strand.go, header.go); this file adds no constructor, no validator, and no default.
+// lifecycle.go, strand.go, statusline.go); this file adds no constructor, no validator, and no
+// default.
 
 package reedengine
 
