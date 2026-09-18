@@ -75,23 +75,23 @@ type renderInputs struct {
 }
 
 // toRenderInputs performs the persisted-state-to-render mapping exactly once: it filters st.Strands
-// to the present pane set, blanks st.HeaderPaneID when the Selvage pane is not present, assembles the
+// to the present pane set, blanks st.SelvagePaneID when the Selvage pane is not present, assembles the
 // render.Params this engine's config implies, and orders live's pane ids top to bottom. It touches no
 // tmux and queries nothing of its own — box and live are told to it by the caller, matching
 // planLayout's own told-box contract.
 func (e *Engine) toRenderInputs(st *ReedState, live []LivePane) renderInputs {
 	presentIDs := liveIDSet(live)
 	strands := toRenderStrands(st.Strands, presentIDs)
-	headerPaneID := st.HeaderPaneID
-	if !presentIDs[headerPaneID] {
-		headerPaneID = ""
+	selvagePaneID := st.SelvagePaneID
+	if !presentIDs[selvagePaneID] {
+		selvagePaneID = ""
 	}
 	return renderInputs{
 		strands: strands,
 		params: render.Params{
 			CollapsedStripRows: e.cfg.CollapsedStripRows,
 			MinFullRows:        e.cfg.MinFullRows,
-			Selvage:            render.Selvage{PaneID: headerPaneID, HeightRows: e.cfg.Selvage.HeightRows},
+			Selvage:            render.Selvage{PaneID: selvagePaneID, HeightRows: e.cfg.Selvage.HeightRows},
 		},
 		paneOrder: paneIDsByTop(live),
 	}
@@ -102,7 +102,7 @@ func (e *Engine) toRenderInputs(st *ReedState, live []LivePane) renderInputs {
 // itself: box is always told to it by the caller, and it queries nothing of
 // its own. The persisted-state-to-render mapping lives in toRenderInputs,
 // which fixedHeightPins below shares, so the layout and the pin path can
-// never be computed from a different header id than each other.
+// never be computed from a different Selvage id than each other.
 //
 // The two callers pass two different box sources: applyLayoutLocked passes
 // e.liveBoxLocked()'s live tmux window query (falling back to the configured

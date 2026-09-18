@@ -79,9 +79,9 @@ func TestPlanLayout_HiddenStrandExcludedFromPlacement(t *testing.T) {
 	}
 }
 
-// TestPlanLayout_StaleHeaderPaneIDNeverEmittedAsLayoutCell pins planLayout's header presence
-// filter: a stale absent header must render as if no header existed.
-func TestPlanLayout_StaleHeaderPaneIDNeverEmittedAsLayoutCell(t *testing.T) {
+// TestPlanLayout_StaleSelvagePaneIDNeverEmittedAsLayoutCell pins planLayout's Selvage presence
+// filter: a stale absent Selvage must render as if no Selvage existed.
+func TestPlanLayout_StaleSelvagePaneIDNeverEmittedAsLayoutCell(t *testing.T) {
 	e := newTestEngine(t)
 	e.cfg.Width, e.cfg.Height = 100, 21
 	e.cfg.CollapsedStripRows, e.cfg.MinFullRows = 2, 3
@@ -97,9 +97,9 @@ func TestPlanLayout_StaleHeaderPaneIDNeverEmittedAsLayoutCell(t *testing.T) {
 	}
 	live := []LivePane{{ID: "%1", Top: 0}, {ID: "%2", Top: 11}}
 
-	// Stale header: %9 is nowhere in live, so the plan must equal the
-	// no-header plan bit for bit.
-	st := &ReedState{Strands: strands, HeaderPaneID: "%9"}
+	// Stale Selvage: %9 is nowhere in live, so the plan must equal the
+	// no-Selvage plan bit for bit.
+	st := &ReedState{Strands: strands, SelvagePaneID: "%9"}
 	gotLayout, gotFocus, err := e.planLayout(st, live, render.Box{X: 0, Y: 0, W: 100, H: 21})
 	if err != nil {
 		t.Fatalf("planLayout() unexpected error: %v", err)
@@ -112,25 +112,25 @@ func TestPlanLayout_StaleHeaderPaneIDNeverEmittedAsLayoutCell(t *testing.T) {
 		t.Fatalf("render.Rules() unexpected error: %v", err)
 	}
 	if gotLayout != wantLayout || gotFocus != wantFocus {
-		t.Errorf("planLayout() with stale header = (%q,%q), want the no-header plan (%q,%q)", gotLayout, gotFocus, wantLayout, wantFocus)
+		t.Errorf("planLayout() with stale Selvage = (%q,%q), want the no-Selvage plan (%q,%q)", gotLayout, gotFocus, wantLayout, wantFocus)
 	}
 
-	// Present-but-dead header corpse: the cell must still be emitted, same
+	// Present-but-dead Selvage corpse: the cell must still be emitted, same
 	// as any dead-but-present pane the layout has to enumerate.
 	liveWithCorpse := append([]LivePane{{ID: "%9", Dead: true, Top: 0}}, []LivePane{{ID: "%1", Top: 2}, {ID: "%2", Top: 12}}...)
 	gotLayout, _, err = e.planLayout(st, liveWithCorpse, render.Box{X: 0, Y: 0, W: 100, H: 21})
 	if err != nil {
-		t.Fatalf("planLayout() with corpse header unexpected error: %v", err)
+		t.Fatalf("planLayout() with corpse Selvage unexpected error: %v", err)
 	}
 	wantLayout, _, err = render.Rules(renderStrands,
 		render.Box{X: 0, Y: 0, W: 100, H: 21},
 		render.Params{CollapsedStripRows: 2, MinFullRows: 3, Selvage: render.Selvage{PaneID: "%9", HeightRows: 1}},
 		[]string{"%9", "%1", "%2"})
 	if err != nil {
-		t.Fatalf("render.Rules() with header unexpected error: %v", err)
+		t.Fatalf("render.Rules() with Selvage unexpected error: %v", err)
 	}
 	if gotLayout != wantLayout {
-		t.Errorf("planLayout() with corpse header = %q, want the with-header plan %q (a present corpse still occupies a layout slot)", gotLayout, wantLayout)
+		t.Errorf("planLayout() with corpse Selvage = %q, want the with-Selvage plan %q (a present corpse still occupies a layout slot)", gotLayout, wantLayout)
 	}
 }
 
@@ -509,7 +509,7 @@ func TestApplyLayoutLocked_InstallsResizePinsAfterSelectLayout(t *testing.T) {
 	e.tmux.execHook = newApplyRecordingHook(rec)
 
 	st := &ReedState{
-		HeaderPaneID: "%9",
+		SelvagePaneID: "%9",
 		Strands: []Strand{
 			{GUID: "root", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent, ShrinkWhenWaitingOnChild: true}},
 			{GUID: "child", Parent: "root", PaneID: "%2", Display: render.Display{Anchor: render.AnchorBelowParent, Focus: true}},
@@ -550,7 +550,7 @@ func TestApplyLayoutLocked_InstallsResizePinsAfterSelectLayout(t *testing.T) {
 }
 
 // TestApplyLayoutLocked_ZeroPinsStillIssuesTheClear pins the-clear-is-unconditional-including-zero-pins:
-// an apply whose plan yields zero pins — a HeaderPaneID absent from the live set, no strip strand
+// an apply whose plan yields zero pins — a SelvagePaneID absent from the live set, no strip strand
 // present — still issues the clear, and issues no resize-pane entry behind it.
 // The two subtests separate the two opinions a zero-pin rebuild carries: "nothing is pinned" is
 // unconditional, while the watchdog's touch entry rides watchdog on/off, so a watchdog: on session
@@ -568,7 +568,7 @@ func TestApplyLayoutLocked_ZeroPinsStillIssuesTheClear(t *testing.T) {
 		e.tmux.execHook = newApplyRecordingHook(rec)
 
 		st := &ReedState{
-			HeaderPaneID: "%9", // absent from live below, so the mapping blanks it
+			SelvagePaneID: "%9", // absent from live below, so the mapping blanks it
 			Strands: []Strand{
 				{GUID: "root", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}},
 				{GUID: "child", Parent: "root", PaneID: "%2", Display: render.Display{Anchor: render.AnchorBelowParent}},
