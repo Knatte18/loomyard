@@ -100,6 +100,48 @@ func exactSessionWindowTarget(session string) string {
 	return "=" + session + ":"
 }
 
+// ListSessions returns every session name live on the -L tmuxPath socket named socketKey,
+// or an error if the round trip itself failed.
+//
+// It is the one engine-less, exported function in this package: every other exported method
+// hangs off *Engine and is bound to one session, but the watchdog daemon (internal/reedcli) must
+// enumerate a hub socket's sessions BEFORE it has built any Engine for any of them — there is
+// nothing yet to bind a method call to. TmuxCmd.run and TmuxCmd.output stay unexported; this is
+// the one seam this package opens for that discovery, built on the identical
+// `tmux -L <socket> list-sessions -F '#{session_name}'` invocation five call sites in this
+// package already issue.
+//
+// Telling ListSessions the binary rather than having it load a config keeps the Told-Geometry
+// Invariant intact from this side too: every session on one hub socket shares one tmux binary, so
+// naming it explicitly is the only coherent answer for an enumeration that spans sessions.
+//
+// The three outcomes a caller can distinguish are: a non-empty slice (sessions live), an empty
+// slice with a nil error (exit 0, no sessions — a normal empty hub), and a non-nil error (the
+// round trip itself failed — no server, unreachable socket, or another tmux failure). The error
+// is returned unwrapped beyond output's own wrapTmuxError.
+func ListSessions(tmuxPath, socketKey string) ([]string, error) {
+	return listSessionsVia(NewTmuxCmd(tmuxPath, socketKey))
+}
+
+// listSessionsVia is ListSessions' implementation, taking an already-built TmuxCmd rather than raw
+// binary/socket strings — the split exists so a test can drive the parsing half through TmuxCmd's
+// execHook seam directly, without a live server.
+func listSessionsVia(cmd TmuxCmd) ([]string, error) {
+	out, err := cmd.output("list-sessions", "-F", "#{session_name}")
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		names = append(names, line)
+	}
+	return names, nil
+}
+
 // hasSession reports whether the named session exists (by exact match, not prefix).
 func (p TmuxCmd) hasSession(name string) (bool, error) {
 	err := p.run("has-session", "-t", exactSessionTarget(name))
