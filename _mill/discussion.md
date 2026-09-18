@@ -241,9 +241,14 @@ Why now: the design is already written and recorded (`manifest/designs/reed-head
   `height_rows` stays configurable rather than becoming a constant because the band math already reads it and a wider Selvage is a plausible operator preference.
 - Rejected: keeping the `header:` block and reinterpreting its keys (an operator's existing `header.height_rows: 3` would silently become Selvage's height, which is a different pane in a different place);
   dropping `height_rows` to a hard-coded 1 (removes a knob the layout math already supports for free).
-- Gotcha for the plan: `lyx config reconcile` is key-based and additive — it adds the new keys but does not remove a stale `header:` block from an already-materialized `reed.yaml`.
-  A leftover `header:` block is inert (nothing unmarshals it), and that is acceptable;
-  do not write removal logic for it.
+- Gotcha for the plan: reconcile **does** remove the stale keys, so no removal logic gets written — but it is not automatic.
+  `configsync.ReconcileAll` calls `yamlengine.Reconcile(template, existing)`, which diffs leaf key-paths in both directions and merges only what the template still declares, returning `added` **and** `removed`;
+  `internal/configsync/configsync_test.go`'s `TestReconcileAll_DropsStaleReedClaudeKey` pins exactly this for a prior stale reed key (`claude:`) the template stopped declaring.
+  Once the template drops `header:`, `header.template` and `header.height_rows` are stale leaves and are stripped the same way.
+  It only happens where `ReconcileAll` is actually called with `apply=true`: `lyx config reconcile --apply` (`internal/configcli/configcli.go:274`, where `apply` is flag-gated) and `fabric clone` (`internal/fabriccli/clone.go:100`, unconditionally `true`).
+  No reed verb reconciles — `up`, `down`, `resume` and `attach` all leave an unreconciled `reed.yaml` exactly as it is.
+  So the plan must handle both states: a reconciled file with only `status_line:`/`selvage:`, and an un-reconciled file still carrying `header:` alongside them.
+  A leftover `header:` block is inert (nothing unmarshals it into `Config` any more), which is what makes the un-reconciled state safe.
 
 ### worktree-token-joins-the-vocabulary
 
@@ -380,7 +385,11 @@ The existing `rules_test.go`/`height_test.go`/`pins_test.go` fixtures are the st
 `resizePinHookArgvs`: the band pin stays at array index 0 and the signal entry stays last.
 `reservedRowsFromStatus` already covers `"on"` → 1;
 add the status-line text escaping helper (`#` → `##`) as a pure, table-driven test.
-Config: `status_line`/`selvage` unmarshal, defaults, and a `reed.yaml` still carrying a stale `header:` block unmarshalling cleanly and being ignored.
+Config: `status_line`/`selvage` unmarshal and defaults, plus an un-reconciled `reed.yaml` still carrying a stale `header:` block alongside the new ones — it must unmarshal cleanly with the stale block ignored.
+
+**`internal/configsync` (untagged).**
+Add a reconcile-removal case alongside `TestReconcileAll_DropsStaleReedClaudeKey`: a seeded `reed.yaml` carrying `header.template`/`header.height_rows` has both reported in `Removed` and stripped from the merged output once the template declares `status_line:`/`selvage:` instead, with the new keys reported in `Added`.
+This is the test that pins the migration path the operator actually gets from `lyx config reconcile --apply`.
 
 **`internal/tokenvocab` (untagged).**
 `worktree` resolves from `Ctx.WorktreeName`;
@@ -430,4 +439,5 @@ the markdown link-integrity test over `manifest/`/`docs/` after the design doc a
 - **Q:** What replaces the `header:` config block? **A:** [auto-pick] `status_line: {template}` plus `selvage: {height_rows}`. **Why:** the two settings now describe unrelated mechanisms; reinterpreting the old keys would silently apply an operator's `header.height_rows` to a different pane in a different place.
 - **Q:** Should the plan remove a stale `header:` block from existing `reed.yaml` files? **A:** [auto-pick] No. **Why:** `lyx config reconcile` is additive and key-based; a leftover block unmarshals to nothing and is inert.
 - **Q:** How is the `worktree` token fed? **A:** [auto-pick] `Ctx.WorktreeName`, filled from `lyxcwd.Location.WorktreeName` via a new `Geometry.WorktreeName` field. **Why:** deriving it inside `reedengine` with `filepath.Base` would be a per-module path derivation the Cwd Resolution Invariant reserves for `lyxcwd`.
+- **Q:** (review round 1 gap) Does `lyx config reconcile` remove a stale `header:` block, or leave it? **A:** [auto-pick] It removes it — but only on an explicit `lyx config reconcile --apply` or a `fabric clone`, never from a reed verb. **Why:** `yamlengine.Reconcile` diffs leaf key-paths both ways and `TestReconcileAll_DropsStaleReedClaudeKey` pins the identical stale-reed-key case; the original claim that reconcile is additive-only was wrong.
 - **Q:** Does this task add a CONSTRAINTS.md invariant? **A:** [auto-pick] No new invariant — only the CLI/Cobra exception-list edit. **Why:** Selvage's rules bind one package and are already enforced by that package's own tests; CONSTRAINTS.md is for cross-cutting structure.
