@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: reed-header-selvage
 branch: reed-header-selvage
 plan: _mill/plan
@@ -31,4 +31,25 @@ plan-fix-r2  '2026-09-18T17:51:49Z'
 plan-review-r3  '2026-09-18T17:59:18Z'
 plan-fix-r3  '2026-09-18T18:00:04Z'
 planned  '2026-09-18T18:00:17Z'
+implementing  '2026-09-18T18:00:49Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: render-bottom-band
+    state: pending
+  - name: vocabulary-and-config
+    state: pending
+  - name: selvage-pane
+    state: pending
+  - name: status-line-pins
+    state: pending
+  - name: watchdog-daemon
+    state: pending
+  - name: standalone-watcher
+    state: pending
+  - name: docs-smokes-and-residue
+    state: pending
 ```
