@@ -171,6 +171,26 @@ Why now: the design is already written and recorded (`manifest/designs/reed-head
 - Rejected: per-machine (must multiplex across every hub's socket, must discover hubs appearing and disappearing, needs its own login-time lifecycle, and makes one crash take reconcile down for every hub at once);
   per-worktree-session (that is what we have, minus the pane — it would just move the same N processes somewhere else).
 
+### windows-status-line-is-an-accepted-named-degrade
+
+- Decision: reed issues the same four new `set-option` calls on every platform — no `runtime.GOOS == "windows"` branch for the status-line — and accepts that psmux may reject some or all of them.
+  Each failure stays Warn-only, as every other geometry option already is.
+- Rationale: the layout stays correct either way, and that is the part that must not break.
+  `readStatusRowsLocked` reads `#{status}` back rather than assuming what was set (`internal/reedengine/windowsize.go`), so a `status on` that psmux refused reads back as `off`, yields `reserved = 0`, and the attach chain's told box is right for the window that actually exists.
+  The mechanism is self-correcting by construction, which is exactly why the readback was kept in the round-2 decision instead of hard-coding 1.
+- The degrade, named rather than left to be discovered: if psmux rejects these options, **Windows loses the identity text** that today's header pane shows.
+  Selvage, the layout, the reap rules, and the watchdog are all unaffected.
+  `status-position` falling back to `top` is acceptable on its own — the status-line is not a pane, so its edge is independent of Selvage's, and the band pane stays bottom-most regardless.
+- Rationale for not branching: reed branches on Windows where the consequence is silent and unrecoverable — `hookInstalledLocked` returns `(false, false)` with no round trip because a hook that installs but never fires would pin the watcher in signal mode forever with zero self-heal (`internal/reedengine/reapply.go:53-56`).
+  A refused `set-option` has the opposite shape: it fails loudly into the log, changes nothing, and is answered by a readback.
+  Skipping the attempt would guarantee the regression on Windows;
+  attempting it costs four Warn lines in the worst case and delivers the feature if psmux supports it.
+- Note for the plan: this is unverified, not verified.
+  The plan carries a Windows verification item — run `lyx reed up` under psmux and record which of the four options survive — and this decision is revisited against that result rather than being treated as settled.
+- Rejected: skipping the status-line on Windows entirely (guarantees the regression rather than risking it);
+  gating on a psmux capability probe (`requiredSubcommands` covers subcommands, not option names, so the probe would be new machinery for a question the readback already answers);
+  keeping the header pane on Windows only (two pane-lifecycle designs in one module, which is the thing this task exists to stop).
+
 ### daemon-invocation-contract
 
 - Decision: the verb is `lyx reed watchdog --hub-path <abs>`, and the hub path is **told**, never resolved from cwd.
@@ -189,8 +209,17 @@ Why now: the design is already written and recorded (`manifest/designs/reed-head
 ### standalone-runs-the-watch-loop-in-process
 
 - Decision: the detached per-hub daemon is a **hub-mode** mechanism only.
-  Standalone reed sessions instead run `Engine.Watch(ctx)` as an in-process goroutine, started by the same seam that already boots them — `c.reedUp` in `internal/burlercli/wiring.go:186` and its `internal/webstercli` counterpart — and cancelled by that run's own context.
+  Standalone reed sessions instead run `Engine.Watch(ctx)` as an in-process goroutine, started by the same seam that already boots them.
   No lock, no discovery, no second process, no `--hub-path`.
+- Seam signature, stated because today's cannot carry this: `reedUp func() error` (`internal/burlercli/cli.go:41`, `internal/webstercli/cli.go:69`) takes no context, and it is assigned in `wireStandalone`, where no context exists.
+  It becomes `reedUp func(ctx context.Context, watch bool) error`.
+  The closure boots the engine as it does today and, when `watch` is true and the boot succeeded, starts `go eng.Watch(ctx)`;
+  the caller's context is what stops it.
+- `recover-batch` disposition: **no watcher**.
+  `internal/webstercli/run.go:104` passes `(cmd.Context(), true)`;
+  `internal/webstercli/recoverbatch.go:129` passes `(cmd.Context(), false)`, and `internal/burlercli/run.go:167` passes `(cmd.Context(), true)`.
+  `recover-batch` is a short-lived verb that spawns a cold recovery strand and returns, so a watcher bound to its context would be dead before it observed anything, while one detached from that context would be an unowned goroutine in an exiting process.
+  The `watch bool` is an explicit parameter rather than an implicit rule precisely so this asymmetry is visible at both call sites instead of being rediscovered from a comment.
 - Rationale: standalone reed is never booted by `lyx reed up` (that verb is hub-only, as `wiring.go:181`'s comment states);
   it is booted in-process by a long-lived supervising run that exists for exactly the session's working lifetime.
   That supervising process is precisely what hub mode lacks and why hub mode needs a daemon at all, so reusing it is the smaller mechanism, not a special case.
@@ -206,7 +235,7 @@ Why now: the design is already written and recorded (`manifest/designs/reed-head
 
 - Decision: `internal/reedcli` owns the spawn outright.
   `reedengine` never spawns it and never learns it exists.
-  `PersistentPreRunE` stores the resolved `*lyxcwd.Location` (or just its `HubPath`) on the `reedCLI` receiver beside `c.eng`, and `upCmd`, `resumeCmd` and `attachCmd` each call one shared `c.ensureWatchdogSpawned()` helper immediately after their engine op returns without error.
+  `PersistentPreRunE` stores `location.HubPath` as a `hubPath string` field on the `reedCLI` receiver beside `c.eng` — the hub path alone, not the whole `*lyxcwd.Location`, since the spawn needs nothing else from it and a stored `Location` would invite other code to re-read geometry the engine was already told — and `upCmd`, `resumeCmd` and `attachCmd` each call one shared `c.ensureWatchdogSpawned()` helper immediately after their engine op returns without error.
   "A boot happened" is therefore just "the verb's own engine call succeeded" — there is no signal to plumb back out of the engine.
 - Rationale: the engine is told its geometry and derives nothing;
   making it spawn would require it to import `fabricengine` for the lock path and to be told an executable path, both of which the Told-Geometry Invariant and the engine's own contract exclude.
@@ -293,6 +322,9 @@ Why now: the design is already written and recorded (`manifest/designs/reed-head
   Every discovery cycle the daemon runs **one** `list-sessions` round trip against the hub socket — cheap, no process spawns.
   When that live session-name set differs from the cached one, it resolves each newly-appeared name by joining it onto the hub (`filepath.Join(hub, sessionName)`) and calling `lyxcwd.ResolveWorktree` on **that one path**, then builds a `reedengine.Engine` from `hubgeom.ReedGeometry(location)` + `reedengine.LoadConfig` and runs that worktree's existing watch work against it.
   A name that does not resolve — a foreign session, a renamed directory — is skipped and logged at `logger.Debug`, not retried until it next re-appears in the set.
+- Teardown is the other half, and is not optional: the daemon holds a `map[sessionName]struct{engine, cancel context.CancelFunc}`, and on each cycle every name that has **dropped out** of the live set has its context cancelled and its entry deleted.
+  `Engine.Watch` never returns while its context is live (`internal/reedengine/watchloop.go:147-154`), so without this a worktree whose session goes away while siblings remain leaves a goroutine polling a dead session for the daemon's whole lifetime.
+  Cancelling on departure is also what makes the config-re-read claim true: `watchLoop` reads `cfg.Watchdog` exactly once at start (`watchloop.go:168-171`), so "re-read on re-entry" only means anything if entries can leave.
   The `ResolveWorktree` git spawns are logged at `logger.Debug`, as spawns inside a polling probe (Live-Substrate Spawn Observability).
 - Rationale: in **hub mode** the derivation is exactly invertible.
   `reedengine.SessionName(worktreeRoot)` is `filepath.Base(worktreeRoot)` verbatim (`internal/reedengine/server.go:105-107`) — hub mode deliberately does **not** sanitize, and `validateToldTmuxIdentity` refuses an unusable name instead (`server.go:126-133`, whose own comment says rewriting `.` there would collapse sibling worktrees `svc.v2` and `svc_v2` onto one session).
@@ -530,7 +562,8 @@ Daemon discovery is the TDD candidate here: the session-name → worktree matchi
 Also assert `watchdog` takes the `PersistentPreRunE` early return — it must run with no git repository present and must never populate `c.eng` — and that it refuses an absent or relative `--hub-path` on the envelope before blocking.
 
 **`internal/burlercli` / `internal/webstercli` (untagged).**
-The standalone `c.reedUp` seam starts the in-process watcher and cancels it with the run's context: assert the goroutine is started on a successful boot, is not started when the boot fails, and stops when the context is cancelled.
+The standalone `reedUp(ctx, watch)` seam: the watcher goroutine starts on a successful boot with `watch: true`, does not start when the boot fails, does not start when `watch: false`, and stops when the context is cancelled.
+Assert the three call sites pass what this discussion decides — `burlercli/run.go` and `webstercli/run.go` true, `webstercli/recoverbatch.go` false — since that asymmetry is the whole reason the parameter exists.
 Assert too that standalone never computes a hub lock path and never spawns a daemon.
 
 **`internal/standalonegeom` and `internal/hubgeom` (untagged).**
@@ -541,13 +574,41 @@ Both tellers fill `WorktreeName`: hub mode from `Location.WorktreeName`, standal
 assert Selvage is physically bottom-most after a series of adds and removes;
 assert Selvage survives a Ctrl-C sent to it at an idle prompt, and survives a Ctrl-C that kills a foreground job inside it.
 A status-line smoke: after `up`, `#{status}` reads `on`, `status-position` reads `bottom`, and `status-left` contains the repo and worktree names.
+On Windows the same smoke asserts the self-correcting half instead of the value — whatever `#{status}` reads back, the reserved-row count derived from it matches the window the layout was planned against — so a psmux that refuses the options fails the identity assertion loudly rather than the layout silently (see the Windows degrade decision).
 An upgrade smoke: a `reed.json` carrying `headerPaneId` plus a live header-shaped pane — after `up`, Selvage exists at the bottom and the stale pane is gone.
 A daemon integration test: spawn the daemon against a hub with two live worktree sessions, resize one window, assert only that worktree's layout is re-applied;
 assert a second spawn attempt exits 0 without taking the lock;
 assert the daemon exits after the last session goes away, within `watchdogHubIdleCycles * watchdogHubDiscoveryCycle` plus slack, and that it releases the lock so a later spawn takes it;
 assert a `down` immediately followed by an `up` does not kill it;
+assert a departing session's watcher is cancelled — bring two sessions up, `down` one, and assert the daemon drops that entry and stops touching that session, while the sibling keeps being watched;
+assert re-entry re-reads config: `down` a worktree, flip its `watchdog:` key, `up` it again, and assert the new value takes effect without restarting the daemon;
 assert `attach` and `resume` each attempt the spawn when no daemon holds the lock.
-Disposition for every existing header-adjacent smoke file, decided rather than deferred:
+Disposition per header-adjacent site, re-derived by a stated method rather than enumerated from the reed packages alone: a repo-wide grep for `reed header`, `HeaderPaneID`, `console-header`, and `headerpane`, excluding `.git/` and `_mill/`.
+The plan re-runs that grep and treats any site it names that is not listed below as an unhandled case, not as out of scope.
+
+Outside the reed packages:
+
+- `cmd/lyx/tiersleep_test.go:27` — two `allowedLongSleepers` entries whose justification cites "stand-in for the real `lyx reed header --blocking` keepalive".
+  Both entries go away with the re-exec they excuse;
+  removing them is part of this task, not a follow-up.
+- `cmd/lyx/stencilseedgate_test.go:2,84` — pins `SkipStencilSeedAnnotation` on `reed header` **by name**.
+  Retarget to `reed statusline`;
+  the gate itself is unchanged, only the command it names.
+- `cmd/lyx/stencilseed.go` and `internal/clihelp/annotations_test.go` — check whether either names the verb;
+  retarget if so, leave alone if the reference is to the annotation rather than to `header`.
+- `internal/reedcli/testmain_test.go` and `internal/reedengine/testmain_test.go` — both carry an `os.Args[1] == "reed"` stand-in that blocks forever, existing solely so a re-exec'd test binary impersonates the header keepalive.
+  With no pane re-exec they have no subject: delete both.
+  Note this does **not** conflict with `suppressWatchdogSpawn` — that field prevents the daemon spawn from ever re-exec'ing under test, which is why no replacement stand-in is needed.
+- `.gitattributes:29` — names `console-header.md`;
+  update to `status-line.md` with the rename.
+- `internal/loomcli/bootstrap.go:183` — a comment pointing at `headerLaunchCmd`/`headerpane.go` as the model for composing an exe command line.
+  `headerpane.go` is deleted, so the comment must be repointed (the daemon spawn in `reedcli` is the surviving analog) or dropped.
+- `docs/overview.md`, `manifest/designs/reed-fabric-standalone-api.md`, `manifest/designs/reed-header-selvage.md` — already in the Scope doc list above.
+
+Inside `internal/reedcli`, the smoke files:
+
+- `smoke_lifecycle_test.go` — **adapt**, and it is the largest single test edit in the task: four `st.HeaderPaneID` assertions retarget to `SelvagePaneID`, and its `pollPaneContains(..., "hub: "+HubPath)` assertion against the header pane's rendered text becomes unassertable once the text lives in a tmux option rather than a pane's screen.
+  Replace that one with a `display-message -p '#{status-left}'` readback, not a pane-content poll.
 
 - `smoke_header_keepalive_test.go` — **adapt** and rename to Selvage: the keepalive subject survives, only its mechanism changes.
 - `smoke_headerscrollback_test.go` — **delete**: its subject is `headerBlockingPayload`'s ED2/ED3 screen-and-scrollback clear, which this task deletes outright.
@@ -556,6 +617,9 @@ Disposition for every existing header-adjacent smoke file, decided rather than d
 - `smoke_dotfill_test.go`, `smoke_dotfill_measure_test.go` — **keep**, retargeting any assertion that names the header band onto the Selvage band.
   The dot-fill artifact is a resize-render property of the strand stack and is not header-specific;
   `internal/reedengine/doc.go`'s "Measurement record (repaint candidates)" block still governs it unchanged.
+
+Inside `internal/reedengine`, the unit and integration test files that name the header — `headerpane_test.go` (delete with its subject), `header_test.go`, `apply_test.go`, `reconcile_test.go`, `spawn_test.go`, `lifecycle_test.go`, `attach_test.go`, `strand_test.go`, `generation_test.go`, `contract_integration_test.go`, `attachgeometry_integration_test.go`, `watchdog_integration_test.go` — all **adapt** with the rename and the band flip.
+They are listed rather than summarized so the plan's batching sees the real spread: the `HeaderPaneID` → `SelvagePaneID` rename alone reaches a dozen test files across two packages.
 
 **Whole-repo gates.**
 `go build ./...` and `go test ./...` with `CGO_ENABLED=1`;
@@ -584,6 +648,9 @@ the markdown link-integrity test over `manifest/`/`docs/` after the design doc a
 - **Q:** What replaces the `header:` config block? **A:** [auto-pick] `status_line: {template}` plus `selvage: {height_rows}`. **Why:** the two settings now describe unrelated mechanisms; reinterpreting the old keys would silently apply an operator's `header.height_rows` to a different pane in a different place.
 - **Q:** Should the plan write removal logic for a stale `header:` block in existing `reed.yaml` files? **A:** [auto-pick] No. **Why:** `lyx config reconcile --apply` already strips stale leaves once the template drops them (see the round-1-gap entry below); the plan only has to keep the un-reconciled state harmless, which it is — nothing unmarshals `header:` into `Config` any more.
 - **Q:** How is the `worktree` token fed? **A:** [auto-pick] `Ctx.WorktreeName`, filled from `lyxcwd.Location.WorktreeName` via a new `Geometry.WorktreeName` field. **Why:** deriving it inside `reedengine` with `filepath.Base` would be a per-module path derivation the Cwd Resolution Invariant reserves for `lyxcwd`.
+- **Q:** (review round 5 gap) The standalone `reedUp` seam takes no context — how does the in-process watcher get one, and what about `recover-batch`? **A:** [auto-pick] The seam becomes `reedUp(ctx context.Context, watch bool) error`; `run.go` in both CLIs passes true, `webstercli/recoverbatch.go` passes false. **Why:** `recover-batch` returns right after spawning a cold strand, so a watcher bound to its context would die before observing anything and one detached from it would be an unowned goroutine in an exiting process; an explicit parameter keeps that asymmetry visible at the call sites.
+- **Q:** (review round 5 gap) What cancels a watcher when its session goes away but siblings remain? **A:** [auto-pick] The daemon holds a cancel func per watched session and cancels on departure from the live set. **Why:** `Engine.Watch` never returns while its context is live, so the goroutine would otherwise poll a dead session forever — and `watchLoop` reads config once at start, so "re-read on re-entry" is meaningless unless entries can leave.
+- **Q:** (review round 5 gap) What do the four new status-line options do on Windows/psmux? **A:** [auto-pick] Attempt them unbranched and accept a named degrade: the layout self-corrects via the `#{status}` readback, but Windows may lose the identity text. **Why:** reed branches on Windows only where the consequence is silent and unrecoverable; a refused `set-option` fails loudly, changes nothing, and is already answered by a readback — and the plan carries a psmux verification item rather than treating this as settled.
 - **Q:** (review round 4 gap) Where do the two new daemon timing constants live? **A:** [auto-pick] In `internal/reedcli`, beside the discovery loop that reads them; `reedengine`'s existing `watchdog*` constants stay unexported and untouched. **Why:** they would otherwise have to be exported from `reedengine` purely for a consumer in another package.
 - **Q:** (review round 4 gap) Is the session → worktree mapping really a scan? **A:** [auto-pick] No — `filepath.Join(hub, sessionName)` recovers it directly. **Why:** hub-mode `SessionName` is `filepath.Base(worktreeRoot)` verbatim and is refused rather than sanitized; the "lossy derivation" premise behind the scan was true of standalone only, which this daemon never serves.
 - **Q:** (review round 4 gap) What happens when the daemon cannot take its lock? **A:** [auto-pick] Contention (`nil` error, not locked) → Info, exit 0; a non-nil error → Error to the durable sink, exit non-zero; and the spawning helper `MkdirAll`s `HubScratchDir(hub)` first. **Why:** `TryAcquireWriteLock` does not create the parent, so a first-`up` hub could otherwise become permanently watchdog-less behind an Info line that reads like a normal losing race.

@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-gap-fix-r4
+phase: discussion-gap-fix-r5
 slug: reed-header-selvage
 branch: reed-header-selvage
 plan: null
@@ -19,4 +19,5 @@ discussion-fix-r1  '2026-09-18T16:41:14Z'
 discussion-gap-fix-r2  '2026-09-18T16:46:30Z'
 discussion-gap-fix-r3  '2026-09-18T16:53:05Z'
 discussion-gap-fix-r4  '2026-09-18T16:58:30Z'
+discussion-gap-fix-r5  '2026-09-18T17:04:34Z'
 ```
