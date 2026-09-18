@@ -5,7 +5,7 @@
 ## The full lifecycle
 
 - **Create**: a `fabric create`-equivalent producer row.
-- **Bootstrap**: no explicit "reed up" row needed. Once the Planned `AddStrand`/`attach` self-heal item ships, whatever runs next — a `loom run` producer spawning strands, or an operator's `reed attach` — brings the session up as a side effect of actually using it.
+- **Bootstrap**: no explicit "reed up" row needed. Once `AddStrand`/`attach` self-heal ships, whatever runs next — a `loom run` producer spawning strands, or an operator's `reed attach` — brings the session up as a side effect of actually using it.
 - **Optional VS Code embedding**: a worktree can optionally spawn VS Code, with its `.vscode/tasks.json` `folderOpen` task running `lyx reed attach` directly (self-healing, landing in the always-present Selvage pane once the header-pane split ships). This is just another passive tmux client attaching to the same session — it never conflicts with the Shed driver's own producer work.
 - **Content producers** (`Discussion-Write`, `Plan-Write`, `Webster-Write`, etc.): unchanged by any of this. The Shed driver's own orchestration loop runs wherever it runs (never needs to be inside a pane), but every content-producing producer still spawns its agent strand via `AddStrand`, which always roots that strand's pane inside the actual worktree's reed session — that's inherent to what `AddStrand`/reed already do today, not something this item changes.
 - **Teardown**: a single producer, sequencing internally — never two separate Shed rows — first `reed down`, then fabric's own local cleanup (`Cleanup`/`removeWeftWorktree`). One row keeps this simple; `reed down` is idempotent and cheap, so the producer never needs to check whether a session actually exists before calling it.
@@ -30,6 +30,6 @@ lyx fabric remove <slug>
 
 ## Related
 
-- The Planned `AddStrand`/`attach` self-heal item — the up-side mechanism this item's bootstrap step relies on.
-- [reed-header-selvage.md](reed-header-selvage.md) — the per-hub daemon whose orphan-reaping extension (see the Next Up `per-hub daemon reaps orphaned sessions` item) is the safety net for when this item's own teardown sequencing doesn't run.
+- `AddStrand`/`attach` self-heal — the up-side mechanism this item's bootstrap step relies on.
+- [reed-header-selvage.md](reed-header-selvage.md) — the per-hub daemon whose orphan-reaping extension (see `reed: per-hub daemon reaps orphaned sessions`) is the safety net for when this item's own teardown sequencing doesn't run.
 - [shed-generic-watchdog.md](shed-generic-watchdog.md) — a related but orthogonal generalization axis: that item generalizes the watchdog/CLI-verb layer across any `Shed` recipe; this item adds bookend producer rows to a specific recipe's own `Shed` run. They compose, but are separate efforts.

@@ -6,7 +6,7 @@
 
 Every LLM agent lyx's own Go code launches goes through `internal/shuttleengine.Runner`, whose `Start` calls `AddStrand` unconditionally — with one exception. `loom run`'s own terminal handoff does a bare `tmux attach-session` today, with no `AddStrand` call at all, so it never becomes a Strand no matter how it's launched.
 
-This matters once reed grows features that only work for Strands (the watchdog daemon's reap/reconcile loop, and eventually the Someday `reed: strand-based mailbox/addressing system`) — an un-tracked pane is invisible to all of it.
+This matters once reed grows features that only work for Strands (the watchdog daemon's reap/reconcile loop, and eventually `reed: strand-based mailbox/addressing system`) — an un-tracked pane is invisible to all of it.
 
 ## The fix
 
@@ -17,10 +17,10 @@ Running `loom run` outside reed remains a valid escape hatch for debugging/CI, m
 ## Open items
 
 - Exactly what "repo-orchestrator" means as a concept is not yet defined.
-- Whether reed's core pane lifecycle is solid enough yet to trust with this depends on the Planned header-pane split (see [reed-header-selvage.md](reed-header-selvage.md)) landing first.
+- Whether reed's core pane lifecycle is solid enough yet to trust with this depends on the header-pane split (see [reed-header-selvage.md](reed-header-selvage.md)) landing first.
 
 ## Related
 
-- The Planned `ly-supervise + orchestrator: launch via lyx reed add` item covers the watchdog and orchestrator halves of "born as a Strand" — this item is the one remaining code gap, for the operator's own `loom run` attach.
-- The Someday `reed: strand-based mailbox/addressing system` item depends on this one for its receive side.
-- Distinct from the Planned `AddStrand`/`attach` self-heal item: that one is about a session not existing yet; this one is about a pane never becoming a Strand at all, even once a session exists.
+- `ly-supervise + orchestrator: launch via lyx reed add` covers the watchdog and orchestrator halves of "born as a Strand" — this item is the one remaining code gap, for the operator's own `loom run` attach.
+- `reed: strand-based mailbox/addressing system` depends on this one for its receive side.
+- Distinct from `AddStrand`/`attach` self-heal: that one is about a session not existing yet; this one is about a pane never becoming a Strand at all, even once a session exists.

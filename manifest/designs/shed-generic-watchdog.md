@@ -14,5 +14,5 @@ Genuinely speculative until a second `shedrecipe` consumer beyond loom exists to
 
 ## Related
 
-- Separate from the Planned [`loom CLI: rename run/drive/step`](loom-cli-rename.md) item — orthogonal axis of change (genericity vs. naming).
-- Separate from the Next Up [`reed: born-as-strand`](reed-born-as-strand.md) item.
+- Separate from [`loom CLI: rename run/drive/step`](loom-cli-rename.md) — orthogonal axis of change (genericity vs. naming).
+- Separate from [`reed: born-as-strand`](reed-born-as-strand.md).
