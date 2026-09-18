@@ -71,6 +71,7 @@ The pins are session/window-targeted, never global: a session- or window-scoped 
 - **Edits:**
   - `internal/reedengine/windowsize_test.go`
   - `internal/reedengine/attachgeometry_integration_test.go`
+  - `internal/reedengine/attach_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
