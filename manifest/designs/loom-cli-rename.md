@@ -16,4 +16,4 @@ Not yet decided; the leading proposal so far:
 
 ## Related
 
-- Separate from the Next Up [`generalize ly-supervise and loom's CLI verbs into a Shed-generic watchdog`](shed-generic-watchdog.md) item — orthogonal axis of change (naming vs. genericity).
+- Separate from [`generalize ly-supervise and loom's CLI verbs into a Shed-generic watchdog`](shed-generic-watchdog.md) — orthogonal axis of change (naming vs. genericity).
