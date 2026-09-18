@@ -50,7 +50,9 @@ landing it also satisfies the watchdog and orchestrator halves of the Someday `r
 ### sequenced-tasks-not-shell-operators
 
 - Decision: express the chain as three separate VS Code tasks plus a `Start Claude` task that names them via `dependsOn` with `"dependsOrder": "sequence"`. No `&&`, `;`, or `windows.command` override.
-- Rationale: a `"type": "shell"` task's command string is interpreted by the platform default shell — bash on POSIX, PowerShell on Windows — and the two disagree on operator semantics (`;` does not short-circuit in bash, and older PowerShell has no `&&`). loomyard is a cross-OS repo (`internal/fslink`, the `launch_linux.go`/`launch_windows.go` split), so a portability trap here would be a real bug, not a theoretical one. `dependsOrder: sequence` gives ordering and failure-stops-the-chain semantics from VS Code itself, shell-independent.
+- Rationale: a `"type": "shell"` task's command string is interpreted by the platform default shell — bash on POSIX, PowerShell on Windows — and the two disagree on operator semantics (`;` does not short-circuit in bash, and older PowerShell has no `&&`). loomyard is a cross-OS repo (`internal/fslink`, the `launch_linux.go`/`launch_windows.go` split), so a portability trap here would be a real bug, not a theoretical one. `dependsOrder: sequence` is relied on for **ordering only**, shell-independent.
+Do not assume it aborts the chain on a non-zero exit: VS Code's task runner has historically run the next dependent task regardless of the previous one's exit code, and whether it still does is a claim to verify at implementation time rather than design against.
+The chain is safe either way without that guarantee — see the `fail-loud-on-no-hub` decision below for where the actual safety comes from.
 - Rejected: a single shell task with `&&` (breaks or silently mis-sequences on Windows PowerShell);
   parallel `windows.command`/`linux.command` overrides (two spellings of one chain to keep in sync).
 
@@ -93,8 +95,9 @@ landing it also satisfies the watchdog and orchestrator halves of the Someday `r
 
 ### fail-loud-on-no-hub
 
-- Decision: if `lyx reed up` fails, the task chain fails and no Claude starts. No fallback to a bare `claude` invocation.
+- Decision: if `lyx reed up` fails, no Claude starts. No fallback to a bare `claude` invocation.
 - Rationale: `lyx ide spawn` derives the worktree path through `fabricengine.WorktreePath`, so it only ever writes this config inside a hub worktree where `reed up` is expected to work. A silent fallback would mask a broken hub as "Claude just didn't become a strand today", which is precisely the invisible-session state this task exists to eliminate. reed's JSON error envelope names its own remedy.
+- The safety here comes from each downstream command's own guard, not from VS Code aborting the sequence. `AddStrand` pre-flights `requireSessionLocked` and fails with reed's friendly `no reed session; run "lyx reed up"` envelope, and `attach` pre-flights `c.eng.Status()` on the envelope before any terminal handover — so even if the runner does fire the later tasks after a failed `up`, the end state is the intended one: no strand registered, no pane, and no bare `claude` anywhere. The implementation should not add a guard of its own to compensate for the runner's behaviour either way.
 - Rejected: a fallback task that runs bare `claude` when the chain fails (reintroduces the untracked session as a hidden default and makes the convention unenforceable).
 
 ## Technical context
