@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-skill-and-roadmap
+phase: holistic-reviewing
 slug: ly-supervise-reed-add
 branch: ly-supervise-reed-add
 plan: _mill/plan
@@ -35,6 +35,7 @@ implementing  '2026-09-18T17:38:53Z'
 approved-reed-if-absent  '2026-09-18T17:46:49Z'
 approved-vscode-launch-chain  '2026-09-18T17:50:01Z'
 approved-skill-and-roadmap  '2026-09-18T17:52:19Z'
+holistic-reviewing  '2026-09-18T17:52:36Z'
 ```
 
 ## Batches
