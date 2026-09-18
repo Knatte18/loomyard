@@ -15,6 +15,7 @@ package reedcli
 
 import (
 	"io"
+	"testing"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -27,6 +28,19 @@ import (
 // reedCLI carries the resolved *reedengine.Engine for each reed verb; the zero value is invalid until PersistentPreRunE populates eng.
 type reedCLI struct {
 	eng *reedengine.Engine
+
+	// hubPath is the hub path PersistentPreRunE stored off the resolved *lyxcwd.Location — the hub
+	// path alone, deliberately not the whole Location, since ensureWatchdogSpawned needs nothing
+	// else from it and a stored Location would invite other code to re-read geometry the engine was
+	// already told.
+	hubPath string
+
+	// suppressWatchdogSpawn, when true, makes ensureWatchdogSpawned a no-op. It is initialised from
+	// testing.Testing() in Command(): re-exec'ing os.Executable() from a test binary runs the whole
+	// suite recursively, the same hazard and the same shape as the Engine.suppressHeaderLaunch field
+	// batch 3 deleted, relocated to the layer that now owns the spawn. An in-package test flips it
+	// back off to drive the real spawn path.
+	suppressWatchdogSpawn bool
 }
 
 // Command returns the cobra command tree for the reed module.
@@ -38,7 +52,7 @@ type reedCLI struct {
 // Every verb card (22-27) creates its own (c *reedCLI) xCmd() builder and registers it here via
 // parent.AddCommand — this card registers no subcommands itself.
 func Command() *cobra.Command {
-	c := &reedCLI{}
+	c := &reedCLI{suppressWatchdogSpawn: testing.Testing()}
 
 	parent := &cobra.Command{
 		Use:   "reed",
@@ -57,9 +71,12 @@ rather than booting substrate it cannot reach.`,
 		RunE: clihelp.GroupRunE,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			// Guard: when the reed group command itself is invoked (bare listing or
-			// unknown-subcommand error path via GroupRunE), skip cwd/location/config
-			// resolution so that neither path requires a git repository to be present.
-			if cmd.Name() == "reed" {
+			// unknown-subcommand error path via GroupRunE), or when the watchdog daemon is
+			// invoked, skip cwd/location/config resolution entirely. The daemon is told its hub
+			// path on its own flags and must never be reached through c.eng — letting it run the
+			// normal pre-run would make it refuse to start outside a worktree and hold a geometry
+			// it must not use.
+			if cmd.Name() == "reed" || cmd.Name() == "watchdog" {
 				return nil
 			}
 
@@ -95,11 +112,12 @@ rather than booting substrate it cannot reach.`,
 
 			reedGeom := hubgeom.ReedGeometry(location)
 			c.eng = reedengine.New(cfg, reedGeom)
+			c.hubPath = location.HubPath
 			return nil
 		},
 	}
 
-	parent.AddCommand(c.upCmd(), c.downCmd(), c.addCmd(), c.removeCmd(), c.statusCmd(), c.resumeCmd(), c.attachCmd(), c.headerCmd())
+	parent.AddCommand(c.upCmd(), c.downCmd(), c.addCmd(), c.removeCmd(), c.statusCmd(), c.resumeCmd(), c.attachCmd(), c.statuslineCmd(), c.watchdogCmd())
 
 	return parent
 }
