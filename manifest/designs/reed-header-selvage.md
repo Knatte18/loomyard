@@ -69,4 +69,4 @@ Granularity: **per hub, not per worktree-session and not per machine.**
 
 ## Related
 
-- [loom-step.md](loom-step.md) and the `ly-supervise` skill — a longer-term Someday item (`reed: born-as-strand for operator, watchdog, and orchestrator sessions`, in `manifest/roadmap.md`) depends on reed's pane lifecycle being solid, which this item is a prerequisite for.
+- [loom-step.md](loom-step.md) and the `ly-supervise` skill — the Next Up [`reed: born-as-strand for the operator's loom run attach`](reed-born-as-strand.md) item depends on reed's pane lifecycle being solid, which this item is a prerequisite for.
