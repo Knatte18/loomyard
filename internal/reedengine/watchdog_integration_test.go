@@ -57,7 +57,7 @@ func attachWatchdogClient(t *testing.T, e *Engine, cols, rows int) *attachGeomet
 	return pty
 }
 
-// bootWatchdogFixture boots setupAttachGeometryFixture's two-strand session (a header pane, a
+// bootWatchdogFixture boots setupAttachGeometryFixture's two-strand session (a Selvage pane, a
 // collapsed parent, and a full child), turns the watchdog on, and attaches a pty client at
 // cols x rows.
 func bootWatchdogFixture(t *testing.T, cols, rows int) *watchdogFixture {
@@ -84,13 +84,13 @@ func resizePTY(t *testing.T, pty *attachGeometryPTY, cols, rows int) {
 	}
 }
 
-// headerPaneHeightNow reports the live header pane's current row count and whether it could be
-// determined at all — false while state or the live pane list cannot be read, or the header pane is
+// selvagePaneHeightNow reports the live Selvage pane's current row count and whether it could be
+// determined at all — false while state or the live pane list cannot be read, or the Selvage pane is
 // momentarily absent from either.
-func headerPaneHeightNow(t *testing.T, e *Engine) (height int, ok bool) {
+func selvagePaneHeightNow(t *testing.T, e *Engine) (height int, ok bool) {
 	t.Helper()
 	st, err := LoadState(e.stateDir())
-	if err != nil || st == nil || st.HeaderPaneID == "" {
+	if err != nil || st == nil || st.SelvagePaneID == "" {
 		return 0, false
 	}
 	live, err := e.tmux.listPanes(e.SessionName())
@@ -98,7 +98,7 @@ func headerPaneHeightNow(t *testing.T, e *Engine) (height int, ok bool) {
 		return 0, false
 	}
 	for _, p := range live {
-		if p.ID == st.HeaderPaneID {
+		if p.ID == st.SelvagePaneID {
 			return p.Height, true
 		}
 	}
@@ -140,7 +140,7 @@ func expectedLayoutForCurrentBox(t *testing.T, e *Engine) (layout string, ok boo
 
 // assertLayoutSelfHeals resizes fx's pty client to newCols x newRows and asserts that, within a
 // bounded wait, the live #{window_layout} becomes exactly what the engine plans for the new box and
-// the header pane is back to exactly cfg.Header.HeightRows rows — the M7 assertion, driven in
+// Selvage is back to exactly cfg.Selvage.HeightRows rows — the M7 assertion, driven in
 // whichever direction the caller resizes.
 func assertLayoutSelfHeals(t *testing.T, fx *watchdogFixture, newCols, newRows int) {
 	t.Helper()
@@ -156,8 +156,8 @@ func assertLayoutSelfHeals(t *testing.T, fx *watchdogFixture, newCols, newRows i
 		if !ok || windowLayoutNow(t, e) != wantLayout {
 			return false
 		}
-		height, ok := headerPaneHeightNow(t, e)
-		return ok && height == e.cfg.Header.HeightRows
+		height, ok := selvagePaneHeightNow(t, e)
+		return ok && height == e.cfg.Selvage.HeightRows
 	})
 }
 
@@ -232,8 +232,8 @@ func TestWatchdogSelfHeal_BurstCoalesces(t *testing.T) {
 		if w != finalCols || h != finalRows {
 			return false
 		}
-		height, ok := headerPaneHeightNow(t, e)
-		return ok && height == e.cfg.Header.HeightRows
+		height, ok := selvagePaneHeightNow(t, e)
+		return ok && height == e.cfg.Selvage.HeightRows
 	})
 
 	mu.Lock()
@@ -267,8 +267,8 @@ func TestWatchdogSelfHeal_DegradedPathStillConverges(t *testing.T) {
 		if w != 130 || h != 42 {
 			return false
 		}
-		height, ok := headerPaneHeightNow(t, e)
-		return ok && height == e.cfg.Header.HeightRows
+		height, ok := selvagePaneHeightNow(t, e)
+		return ok && height == e.cfg.Selvage.HeightRows
 	})
 }
 
@@ -326,8 +326,8 @@ func TestWatchdogSelfHeal_FocusNeverStolen(t *testing.T) {
 
 	resizePTY(t, fx.pty, 150, 44)
 	waitUntil(t, 15*time.Second, "layout never settled after the resize", func() bool {
-		height, ok := headerPaneHeightNow(t, e)
-		return ok && height == e.cfg.Header.HeightRows
+		height, ok := selvagePaneHeightNow(t, e)
+		return ok && height == e.cfg.Selvage.HeightRows
 	})
 
 	if got := activePaneID(t, e); got != childPaneID {
@@ -346,8 +346,8 @@ func TestWatchdogSelfHeal_NoSelfTriggerLoop(t *testing.T) {
 
 	resizePTY(t, fx.pty, 145, 41)
 	waitUntil(t, 15*time.Second, "layout never settled after the resize", func() bool {
-		height, ok := headerPaneHeightNow(t, e)
-		return ok && height == e.cfg.Header.HeightRows
+		height, ok := selvagePaneHeightNow(t, e)
+		return ok && height == e.cfg.Selvage.HeightRows
 	})
 
 	settled := windowLayoutNow(t, e)

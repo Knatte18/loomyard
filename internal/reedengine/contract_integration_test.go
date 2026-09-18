@@ -610,19 +610,19 @@ func TestSessionNameRewriteIsSilentAndExactTargetsMissIt(t *testing.T) {
 	}
 }
 
-// TestRemoveStrand_SoleStrandEmptiesSessionSucceeds is the header-pane keepalive regression this
-// batch adds: with the always-present header pane booted, removing a session's sole non-hidden
+// TestRemoveStrand_SoleStrandEmptiesSessionSucceeds is the Selvage keepalive regression this
+// batch adds: with the always-present Selvage pane booted, removing a session's sole non-hidden
 // strand must return success, leave reed.json holding zero persisted strands, AND leave both the
-// session and the header pane specifically alive — the header's whole purpose.
-// This supersedes the original pre-header regression (removing a session's true last pane used to
+// session and the Selvage pane specifically alive — Selvage's whole purpose.
+// This supersedes the original pre-Selvage regression (removing a session's true last pane used to
 // be backend-dependent: tmux destroyed the session outright, forcing RemoveStrand to swallow the
 // resulting "no server running" error as an expected success — see removalEmptiedSession,
 // strand.go).
-// With the header pane as a permanent second pane, killing the strand's pane is never a
+// With Selvage as a permanent second pane, killing the strand's pane is never a
 // last-pane-destroy on ANY backend, so that swallow branch is no longer reached by this scenario at
 // all;
 // it remains in place for the (now believed unreachable in practice, but still defensive) case
-// where the header pane is itself somehow absent.
+// where Selvage is itself somehow absent.
 func TestRemoveStrand_SoleStrandEmptiesSessionSucceeds(t *testing.T) {
 	tmpDir := t.TempDir()
 	seedReedConfig(t, tmpDir)
@@ -672,14 +672,14 @@ func TestRemoveStrand_SoleStrandEmptiesSessionSucceeds(t *testing.T) {
 		t.Fatalf("Up: %v", err)
 	}
 
-	// The header pane is booted as part of Up, before any strand exists;
+	// Selvage is booted as part of Up, before any strand exists;
 	// capture its id so the post-remove assertions below can confirm it
 	// specifically (not merely "some pane") survived.
 	upSt, err := LoadState(e.stateDir())
-	if err != nil || upSt == nil || upSt.HeaderPaneID == "" {
-		t.Fatalf("LoadState after Up = (%+v, %v), want a persisted HeaderPaneID", upSt, err)
+	if err != nil || upSt == nil || upSt.SelvagePaneID == "" {
+		t.Fatalf("LoadState after Up = (%+v, %v), want a persisted SelvagePaneID", upSt, err)
 	}
-	headerPaneID := upSt.HeaderPaneID
+	selvagePaneID := upSt.SelvagePaneID
 
 	// One non-hidden strand, anchored so it is realized into a live pane at
 	// add time; a long-lived command so it is still running when removed.
@@ -693,7 +693,7 @@ func TestRemoveStrand_SoleStrandEmptiesSessionSucceeds(t *testing.T) {
 
 	removed, err := e.RemoveStrand(strand.GUID, false)
 	if err != nil {
-		t.Fatalf("RemoveStrand(sole strand) = %v, want nil error (the header pane keeps the session alive, so emptying the strand table is never a last-pane-destroy)", err)
+		t.Fatalf("RemoveStrand(sole strand) = %v, want nil error (Selvage keeps the session alive, so emptying the strand table is never a last-pane-destroy)", err)
 	}
 	if len(removed.Strands) != 1 || removed.Strands[0].GUID != strand.GUID {
 		t.Fatalf("RemoveStrand.Removed.Strands = %+v, want exactly guid %q", removed.Strands, strand.GUID)
@@ -707,41 +707,41 @@ func TestRemoveStrand_SoleStrandEmptiesSessionSucceeds(t *testing.T) {
 		return err == nil && st != nil && len(st.Strands) == 0
 	})
 
-	// The keepalive guarantee this batch adds: the session, and the header
-	// pane specifically, must still be alive with zero strands tracked.
+	// The keepalive guarantee this batch adds: the session, and Selvage
+	// specifically, must still be alive with zero strands tracked.
 	up, err := e.tmux.hasSession(e.SessionName())
 	if err != nil || !up {
-		t.Fatalf("hasSession after removing the sole strand = (%v, %v), want (true, nil) — the header pane must keep the session alive", up, err)
+		t.Fatalf("hasSession after removing the sole strand = (%v, %v), want (true, nil) — Selvage must keep the session alive", up, err)
 	}
 	live, err := e.tmux.listPanes(e.SessionName())
 	if err != nil {
 		t.Fatalf("listPanes after removing the sole strand: %v", err)
 	}
-	headerFound := false
+	selvageFound := false
 	for _, p := range live {
-		if p.ID == headerPaneID {
-			headerFound = true
+		if p.ID == selvagePaneID {
+			selvageFound = true
 			if p.Dead {
-				t.Errorf("header pane %s reports Dead = true after removing the sole strand, want it alive", headerPaneID)
+				t.Errorf("Selvage pane %s reports Dead = true after removing the sole strand, want it alive", selvagePaneID)
 			}
 		}
 	}
-	if !headerFound {
-		t.Fatalf("header pane %s missing from live panes %+v after removing the sole strand", headerPaneID, live)
+	if !selvageFound {
+		t.Fatalf("Selvage pane %s missing from live panes %+v after removing the sole strand", selvagePaneID, live)
 	}
 }
 
-// TestDeadHeaderPaneIsHealedByUpWithoutCorruptingLayout drives the dead-header lifecycle the
-// fable-header-r1 round found broken, end to end against a real multiplexer: the header's keepalive
+// TestDeadSelvagePaneIsHealedByUpWithoutCorruptingLayout drives the dead-Selvage lifecycle the
+// fable-header-r1 round found broken, end to end against a real multiplexer: Selvage's shell
 // process exits (pane_dead=1 under remain-on-exit), a subsequent AddStrand must keep the corpse
 // enumerable (reconcile's dead-kill exemption) and lay out with no window-bottom overflow and no
-// stale-cell scramble (planLayout's presence filter), and the next Up must heal the header — kill
-// the corpse, split a fresh header back in at the physical top, persist the new id — instead of
-// treating the corpse as a working header (the old presence-keyed idempotency check) or wedging on
+// stale-cell scramble (planLayout's presence filter), and the next Up must heal Selvage — kill
+// the corpse, split a fresh Selvage back in at the physical bottom, persist the new id — instead of
+// treating the corpse as a working Selvage (the old presence-keyed idempotency check) or wedging on
 // a too-short split target (the old first-alive targeting).
 // Pre-fix this sequence scrambled every strand's height on the add and then failed every up with
 // "no space for new pane" until a full down.
-func TestDeadHeaderPaneIsHealedByUpWithoutCorruptingLayout(t *testing.T) {
+func TestDeadSelvagePaneIsHealedByUpWithoutCorruptingLayout(t *testing.T) {
 	tmpDir := t.TempDir()
 	seedReedConfig(t, tmpDir)
 
@@ -775,127 +775,127 @@ func TestDeadHeaderPaneIsHealedByUpWithoutCorruptingLayout(t *testing.T) {
 		t.Fatalf("Up: %v", err)
 	}
 	st, err := LoadState(e.stateDir())
-	if err != nil || st == nil || st.HeaderPaneID == "" {
-		t.Fatalf("LoadState after Up = (%+v, %v), want a persisted HeaderPaneID", st, err)
+	if err != nil || st == nil || st.SelvagePaneID == "" {
+		t.Fatalf("LoadState after Up = (%+v, %v), want a persisted SelvagePaneID", st, err)
 	}
-	deadHeaderID := st.HeaderPaneID
+	deadSelvageID := st.SelvagePaneID
 
 	if _, err := e.AddStrand(AddSpec{Cmd: "sleep 300", Display: render.Display{Anchor: render.AnchorBelowParent}}); err != nil {
 		t.Fatalf("AddStrand (first): %v", err)
 	}
 
-	// Kill the header's keepalive by pid: the pane's shell/keepalive does
-	// not read stdin (that is the keepalive's whole contract), so typing
-	// exit would go nowhere — killing #{pane_pid} is how a real keepalive
-	// death looks to tmux. remain-on-exit then corpses the pane
-	// (pane_dead=1); the flip is asynchronous, so poll.
+	// Kill Selvage's shell by pid: Selvage does not read stdin the way a
+	// script-driven pane would react to typed input, so killing
+	// #{pane_pid} is how a real shell death looks to tmux. remain-on-exit
+	// then corpses the pane (pane_dead=1); the flip is asynchronous, so
+	// poll.
 	live, err := e.tmux.listPanes(e.SessionName())
 	if err != nil {
-		t.Fatalf("listPanes before header kill: %v", err)
+		t.Fatalf("listPanes before Selvage kill: %v", err)
 	}
 	for _, p := range live {
-		if p.ID == deadHeaderID {
+		if p.ID == deadSelvageID {
 			proc, err := os.FindProcess(p.PID)
 			if err != nil {
-				t.Fatalf("FindProcess(header pane pid %d): %v", p.PID, err)
+				t.Fatalf("FindProcess(Selvage pane pid %d): %v", p.PID, err)
 			}
 			if err := proc.Kill(); err != nil {
-				t.Fatalf("kill header pane pid %d: %v", p.PID, err)
+				t.Fatalf("kill Selvage pane pid %d: %v", p.PID, err)
 			}
 		}
 	}
-	waitUntil(t, 10*time.Second, "header pane never reported dead", func() bool {
+	waitUntil(t, 10*time.Second, "Selvage pane never reported dead", func() bool {
 		live, err := e.tmux.listPanes(e.SessionName())
 		if err != nil {
 			return false
 		}
 		for _, p := range live {
-			if p.ID == deadHeaderID {
+			if p.ID == deadSelvageID {
 				return p.Dead
 			}
 		}
 		return false
 	})
 
-	// An add with the header dead: must succeed, keep the corpse enumerable,
+	// An add with Selvage dead: must succeed, keep the corpse enumerable,
 	// and produce a sane layout (no pane past the window's bottom edge — the
 	// stale-cell scramble's signature was positional misassignment).
 	if _, err := e.AddStrand(AddSpec{Cmd: "sleep 300", Display: render.Display{Anchor: render.AnchorBelowParent}}); err != nil {
-		t.Fatalf("AddStrand with dead header: %v", err)
+		t.Fatalf("AddStrand with dead Selvage: %v", err)
 	}
 	live, err = e.tmux.listPanes(e.SessionName())
 	if err != nil {
-		t.Fatalf("listPanes after add-with-dead-header: %v", err)
+		t.Fatalf("listPanes after add-with-dead-Selvage: %v", err)
 	}
 	corpsePresent := false
 	for _, p := range live {
-		if p.ID == deadHeaderID {
+		if p.ID == deadSelvageID {
 			corpsePresent = true
 			if !p.Dead {
-				t.Errorf("header corpse %s reports alive after add, want still dead", deadHeaderID)
+				t.Errorf("Selvage corpse %s reports alive after add, want still dead", deadSelvageID)
 			}
 		}
 		if p.Top+p.Height > cfg.Height {
-			t.Errorf("pane %s top+height = %d+%d exceeds window height %d after add-with-dead-header (stale-cell scramble)", p.ID, p.Top, p.Height, cfg.Height)
+			t.Errorf("pane %s top+height = %d+%d exceeds window height %d after add-with-dead-Selvage (stale-cell scramble)", p.ID, p.Top, p.Height, cfg.Height)
 		}
 	}
 	if !corpsePresent {
-		t.Fatalf("header corpse %s was killed by the add's reconcile; it must stay enumerable until up/resume heals it (panes: %+v)", deadHeaderID, live)
+		t.Fatalf("Selvage corpse %s was killed by the add's reconcile; it must stay enumerable until up/resume heals it (panes: %+v)", deadSelvageID, live)
 	}
 
 	// The heal: Up must replace the corpse with a fresh, alive, physically
-	// topmost header and persist its id.
+	// bottommost Selvage and persist its id.
 	if _, err := e.Up(); err != nil {
 		t.Fatalf("Up (heal) = %v, want success — pre-fix this wedged on \"no space for new pane\"", err)
 	}
 	st, err = LoadState(e.stateDir())
-	if err != nil || st == nil || st.HeaderPaneID == "" {
-		t.Fatalf("LoadState after healing Up = (%+v, %v), want a persisted HeaderPaneID", st, err)
+	if err != nil || st == nil || st.SelvagePaneID == "" {
+		t.Fatalf("LoadState after healing Up = (%+v, %v), want a persisted SelvagePaneID", st, err)
 	}
-	if st.HeaderPaneID == deadHeaderID {
-		t.Fatalf("HeaderPaneID still names the corpse %s after the healing Up", deadHeaderID)
+	if st.SelvagePaneID == deadSelvageID {
+		t.Fatalf("SelvagePaneID still names the corpse %s after the healing Up", deadSelvageID)
 	}
 	live, err = e.tmux.listPanes(e.SessionName())
 	if err != nil {
 		t.Fatalf("listPanes after healing Up: %v", err)
 	}
-	headerSeen := false
+	selvageSeen := false
 	for _, p := range live {
-		if p.ID == deadHeaderID {
-			t.Errorf("header corpse %s still present after the healing Up, want it killed and replaced", deadHeaderID)
+		if p.ID == deadSelvageID {
+			t.Errorf("Selvage corpse %s still present after the healing Up, want it killed and replaced", deadSelvageID)
 		}
-		if p.ID == st.HeaderPaneID {
-			headerSeen = true
+		if p.ID == st.SelvagePaneID {
+			selvageSeen = true
 			if p.Dead {
-				t.Errorf("healed header pane %s reports dead", p.ID)
+				t.Errorf("healed Selvage pane %s reports dead", p.ID)
 			}
-			if p.Top != 0 {
-				t.Errorf("healed header pane %s top = %d, want 0 (physically topmost — render.Rules emits its cell first)", p.ID, p.Top)
+			if p.Top+p.Height != cfg.Height {
+				t.Errorf("healed Selvage pane %s top+height = %d+%d, want == window height %d (physically bottommost — render.Rules emits its cell last)", p.ID, p.Top, p.Height, cfg.Height)
 			}
 		}
 		if p.Top+p.Height > cfg.Height {
 			t.Errorf("pane %s top+height = %d+%d exceeds window height %d after the healing Up", p.ID, p.Top, p.Height, cfg.Height)
 		}
 	}
-	if !headerSeen {
-		t.Fatalf("healed header pane %s missing from live panes %+v", st.HeaderPaneID, live)
+	if !selvageSeen {
+		t.Fatalf("healed Selvage pane %s missing from live panes %+v", st.SelvagePaneID, live)
 	}
 }
 
-// TestHeaderNeverGetsZeroHeightLayoutCell pins clampHeaderHeight's never-below-1 floor (height.go)
+// TestSelvageNeverGetsZeroHeightLayoutCell pins clampBandHeight's never-below-1 floor (height.go)
 // against a real multiplexer.
 // A pathological config — height_rows large relative to a tiny window height — used to let
-// clampHeaderHeight legally return 0, which bandHeader would then emit as a literal "WxH,..."
-// header cell with H=0 in the window_layout string.
+// clampBandHeight legally return 0, which bandSelvage would then emit as a literal "WxH,..."
+// Selvage cell with H=0 in the window_layout string.
 // Manual probing against a live tmux 3.6 instance showed that a genuinely zero-height cell is NOT
-// rendered as "no header": select-layout accepts the string (no error),
-// but silently keeps a row for the header pane anyway, pushing every pane below it down by one row
+// rendered as "no Selvage": select-layout accepts the string (no error),
+// but silently keeps a row for the Selvage pane anyway, pushing every pane above it up by one row
 // and overflowing the bottom of the window by exactly one row (the last pane's top+height exceeds
 // the window height).
-// clampHeaderHeight now floors the header at 1 row whenever it exists, which this test confirms
+// clampBandHeight now floors Selvage at 1 row whenever it exists, which this test confirms
 // produces a layout the real multiplexer applies cleanly, with every pane's top+height staying
 // within the window.
-func TestHeaderNeverGetsZeroHeightLayoutCell(t *testing.T) {
+func TestSelvageNeverGetsZeroHeightLayoutCell(t *testing.T) {
 	tmpDir := t.TempDir()
 	seedReedConfig(t, tmpDir)
 
@@ -909,8 +909,8 @@ func TestHeaderNeverGetsZeroHeightLayoutCell(t *testing.T) {
 	}
 
 	const windowRows = 6
-	socket := fmt.Sprintf("lyx-contract-header-floor-test-%d-%d", os.Getpid(), time.Now().UnixNano())
-	session := "header-floor-session"
+	socket := fmt.Sprintf("lyx-contract-selvage-floor-test-%d-%d", os.Getpid(), time.Now().UnixNano())
+	session := "selvage-floor-session"
 	reed := NewTmuxCmd(cfg.Tmux, socket)
 
 	t.Cleanup(func() {
@@ -921,11 +921,11 @@ func TestHeaderNeverGetsZeroHeightLayoutCell(t *testing.T) {
 		t.Fatalf("new-session: %v", err)
 	}
 
-	headerOut, err := reed.output("split-window", "-t", session, "-b", "-P", "-F", "#{pane_id}")
+	selvageOut, err := reed.output("split-window", "-t", session, "-P", "-F", "#{pane_id}")
 	if err != nil {
-		t.Fatalf("split-window (header): %v", err)
+		t.Fatalf("split-window (Selvage): %v", err)
 	}
-	headerPaneID := strings.TrimSpace(headerOut)
+	selvagePaneID := strings.TrimSpace(selvageOut)
 
 	live, err := reed.listPanes(session)
 	if err != nil {
@@ -936,32 +936,32 @@ func TestHeaderNeverGetsZeroHeightLayoutCell(t *testing.T) {
 	}
 	var strandPaneID string
 	for _, p := range live {
-		if p.ID != headerPaneID {
+		if p.ID != selvagePaneID {
 			strandPaneID = p.ID
 		}
 	}
 	if strandPaneID == "" {
-		t.Fatalf("could not identify the non-header pane among %+v", live)
+		t.Fatalf("could not identify the non-Selvage pane among %+v", live)
 	}
 
 	// A pathological config (MinFullRows far larger than the window, plus an
 	// oversized configured height_rows) that pre-fix would have driven
-	// clampHeaderHeight all the way to 0.
+	// clampBandHeight all the way to 0.
 	strands := []render.Strand{
 		{GUID: "s1", PaneID: strandPaneID, Display: render.Display{Anchor: render.AnchorBelowParent}, Live: true},
 	}
 	box := render.Box{X: 0, Y: 0, W: 80, H: windowRows}
 	params := render.Params{
 		MinFullRows: windowRows * 5,
-		Header:      render.Header{PaneID: headerPaneID, HeightRows: windowRows * 5},
+		Selvage:     render.Selvage{PaneID: selvagePaneID, HeightRows: windowRows * 5},
 	}
-	layout, _, err := render.Rules(strands, box, params, []string{headerPaneID, strandPaneID})
+	layout, _, err := render.Rules(strands, box, params, []string{strandPaneID, selvagePaneID})
 	if err != nil {
 		t.Fatalf("render.Rules: %v", err)
 	}
 
 	if err := reed.run("select-layout", "-t", session, layout); err != nil {
-		t.Fatalf("select-layout %q: %v (a real multiplexer rejecting this layout means clampHeaderHeight's floor no longer matches what select-layout accepts)", layout, err)
+		t.Fatalf("select-layout %q: %v (a real multiplexer rejecting this layout means clampBandHeight's floor no longer matches what select-layout accepts)", layout, err)
 	}
 
 	live, err = reed.listPanes(session)
@@ -973,7 +973,7 @@ func TestHeaderNeverGetsZeroHeightLayoutCell(t *testing.T) {
 			t.Errorf("pane %s height = %d after select-layout %q, want >= 1 (a zero-height cell must never survive the real multiplexer)", p.ID, p.Height, layout)
 		}
 		if p.Top+p.Height > windowRows {
-			t.Errorf("pane %s top+height = %d+%d = %d after select-layout %q, want <= window height %d (the off-by-one overflow a bare H=0 header cell used to cause)", p.ID, p.Top, p.Height, p.Top+p.Height, layout, windowRows)
+			t.Errorf("pane %s top+height = %d+%d = %d after select-layout %q, want <= window height %d (the off-by-one overflow a bare H=0 Selvage cell used to cause)", p.ID, p.Top, p.Height, p.Top+p.Height, layout, windowRows)
 		}
 	}
 }

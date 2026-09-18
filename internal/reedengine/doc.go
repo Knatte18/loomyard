@@ -33,45 +33,46 @@
 // the same tmux server rather than each spawning its own.
 //
 // A second package-level invariant: every session also carries exactly one
-// additional, permanent pane beyond its strands — the header
-// (ReedState.HeaderPaneID). It is a first-class construct, deliberately never
-// a Strand (Shared Decision header-is-not-a-strand): it is excluded from
-// strand accounting, from being the preferred split target, and from both
-// halves of reconcile's kill schedule (see ensureHeaderPaneLocked in
+// additional, permanent pane beyond its strands — Selvage
+// (ReedState.SelvagePaneID). It is a first-class construct, deliberately
+// never a Strand (Shared Decision header-is-not-a-strand): it is excluded
+// from strand accounting, from being the preferred split target, and from
+// both halves of reconcile's kill schedule (see ensureSelvagePaneLocked in
 // lifecycle.go, planPaneTarget in spawn.go, and planReconcile's
 // exemptPaneIDs in reconcile.go for the three exclusion seams), so that
 // removing a session's last strand can never destroy the
-// session or corpse its sole pane — the header keeps the session (and the
+// session or corpse its sole pane — Selvage keeps the session (and the
 // substrate the next add needs) alive no matter how many strands come and
-// go. It boots alongside the session/initial pane on both Up and Resume, and
-// Engine.ValidateHeader runs eagerly on every boot path so a bad header
-// template surfaces loud before the pane is ever created, never silently.
-// The header pane is created by a split-window call that carries the
-// keepalive command (`lyx reed header --blocking`) as its own trailing
-// shell-command argument, rather than by splitting a bare shell and typing
-// the command into it afterwards with send-keys: the pane runs that command
-// directly from birth, so it hosts no interactive shell for anything to echo
-// the launch line into or read ~/.bashrc from. This makes the corpse-and-heal
-// contract below actually work as documented: with the keepalive as the
-// pane's own process, "set-option -g remain-on-exit on" corpses the pane the
-// moment that process dies, where a surviving bash previously kept the pane
-// alive and a dead header was silently mistaken for a working one. Under
-// go test the pane still boots commandless — a bare shell, no split-window
-// trailing argument and no send-keys — because headerLaunchLine
-// (headerpane.go) returns "" whenever the boot decides to suppress the
-// launch, which prevents os.Executable() from re-exec'ing the test binary
-// and running its whole suite recursively; that decision now rides on
-// Engine.suppressHeaderLaunch, an unexported field New initialises from
-// testing.Testing(), rather than a testing.Testing() call hard-wired at the
-// boot site. A header whose keepalive process dies (pane_dead=1) is
-// deliberately kept as an enumerable corpse by reconcile — never killed
-// there — and healed (corpse killed, a fresh header split back in at the
-// physical top, carrying the same launch command on both the first attempt
-// and any even-vertical-retile retry) by ensureHeaderPaneLocked on the next
-// Up/Resume; planLayout only ever emits a header cell for a pane actually
-// present in the window, so a stale HeaderPaneID can never put an absent
-// pane's cell into select-layout's string (which a real tmux accepts and
-// misassigns positionally rather than rejecting).
+// go. It boots alongside the session/initial pane on both Up and Resume.
+// Selvage is created by a split-window call that carries e.cfg.Shell — the
+// operator's configured shell, `bash` on POSIX and `pwsh` on Windows by
+// default — as its own trailing shell-command argument, the same way
+// new-session already launches the session's first pane: Selvage is an
+// ordinary, typeable interactive shell, never a re-exec of lyx and never
+// sent a command of reed's own choosing. A Selvage pane whose shell process
+// dies (pane_dead=1) is deliberately kept as an enumerable corpse by
+// reconcile — never killed there — and healed (corpse killed, a fresh
+// Selvage split back in at the physical bottom, carrying e.cfg.Shell on
+// both the first attempt and any even-vertical-retile retry) by
+// ensureSelvagePaneLocked on the next Up/Resume; planLayout only ever emits
+// a Selvage cell for a pane actually present in the window, so a stale
+// SelvagePaneID can never put an absent pane's cell into select-layout's
+// string (which a real tmux accepts and misassigns positionally rather than
+// rejecting).
+//
+// Three module-local Selvage rules, kept here rather than in CONSTRAINTS.md
+// because they describe this package's own design rather than a
+// cross-cutting invariant another module could violate: Selvage is always
+// physically bottom-most in the window — render.Rules emits its cell last
+// and every split site that creates or rebuilds it targets the bottommost
+// live pane, never the topmost. Selvage is never a strand — it is excluded
+// from ReedState.Strands, from strand accounting, and from every strand-only
+// code path, by construction rather than by a runtime check. And Selvage is
+// never written to, cleared, or sent keys by reed — it is a real, usable
+// terminal an operator can run lyx/reed commands in, and reed's own writes
+// stop at booting its shell; the ED2/ED3 screen-clear payload the header
+// pane once needed to display identity text has no counterpart here, since
+// Selvage never displays anything of reed's choosing.
 //
 // The live-geometry rule: the render box a layout is computed against is no
 // longer the config-pinned Width/Height. planLayout (apply.go) is always
@@ -160,8 +161,8 @@
 //     errors loud with "no space for new pane") — so EVERY split site must
 //     verify a split's returned pane id was absent from the pre-split live
 //     set before trusting it as genuinely new: launchStrandLocked's strand
-//     splits and ensureHeaderPaneLocked's header rebuild both run the shared
-//     validateSplitCreatedNewPane guard.
+//     splits and ensureSelvagePaneLocked's Selvage rebuild both run the
+//     shared validateSplitCreatedNewPane guard.
 //   - Dead panes under remain-on-exit (spawn.go): with
 //     "set-option -g remain-on-exit on" set at boot, a pane whose command
 //     exits stays enumerable (pane_dead=1) instead of vanishing WHILE THE
@@ -175,19 +176,19 @@
 //     non-last pane (any backend) and to psmux even for the true last pane;
 //     it does NOT hold for tmux's true last pane — see the next bullet.
 //   - The untracked-pane reap gate (spawn.go, reconcile.go): every pane in
-//     a reed session is either the header or a bound strand's pane, and the
-//     untracked reap enforces that rule as `anyBoundPresent || headerAlive`,
-//     where the header anchor requires ALIVENESS rather than mere
+//     a reed session is either Selvage or a bound strand's pane, and the
+//     untracked reap enforces that rule as `anyBoundPresent || selvageAlive`,
+//     where the Selvage anchor requires ALIVENESS rather than mere
 //     presence — launchStrandLocked makes the gate fire from AddStrand and
-//     UpdateStrand, neither of which calls ensureHeaderPaneLocked to heal a
-//     header corpse first, so a dead header id must never itself authorize
+//     UpdateStrand, neither of which calls ensureSelvagePaneLocked to heal a
+//     Selvage corpse first, so a dead Selvage id must never itself authorize
 //     sparing the untracked set. The reap runs before pane allocation at
 //     one chokepoint inside launchStrandLocked, so the property holds by
 //     construction on every realization path rather than requiring two
 //     call sites to stay in sync. Two consequences follow: an `up` against
-//     a session with zero tracked strands ends up header-only and
+//     a session with zero tracked strands ends up Selvage-only and
 //     full-height, because applyLayoutLockedOpts deliberately skips
-//     select-layout when no strand owns a present pane, and the header
+//     select-layout when no strand owns a present pane, and Selvage
 //     snaps back to its configured height the moment a strand pane exists;
 //     and RemoveStrand's own code is unchanged, but its
 //     reconcileApplyPersistLocked tail inherits the new gate, so removing
@@ -220,8 +221,8 @@
 //   - Told-geometry lifetime and the vanished worktree root (server.go's
 //     validateToldWorktreeRootLive, lock.go's withOpLock/withTryOpLock): a
 //     told Geometry is resolved once per process and pinned for that
-//     process's whole life, so a long-lived process such as the header
-//     pane's keepalive holds a frozen WorktreeRoot that a `mv` of the
+//     process's whole life, so a long-lived process such as the watch loop
+//     (watchloop.go) holds a frozen WorktreeRoot that a `mv` of the
 //     worktree makes stale. Every operation therefore re-checks that told
 //     worktree root's liveness at the op-lock chokepoint, and refuses
 //     rather than creating substrate under a path that is no longer a
@@ -237,7 +238,7 @@
 //     the rest of its life. It automatically returns to whichever mode
 //     (poll or signal) it was in before dormancy, logging exactly one more
 //     line, once the worktree root exists again. Dormancy never tears down
-//     the header pane and never stops the watch loop itself: the session
+//     Selvage and never stops the watch loop itself: the session
 //     reed walked away from may still be hosting the operator's live
 //     strands.
 //   - Silent session-name rewriting (server.go's validateToldTmuxIdentity):
@@ -353,24 +354,24 @@
 //     The cost of "on" is that native terminal text selection needs the
 //     terminal's shift-bypass (hold Shift while dragging); tmux copy-mode is
 //     the in-band alternative. "on" also enables click-to-switch-pane.
-//   - Header band divider row (render/rules.go, height.go): the header pane
-//     and the strand stack below it are physically adjacent, so tmux/psmux
-//     always renders the same one-row border between them that
+//   - Selvage band divider row (render/rules.go, height.go): the Selvage
+//     pane and the strand stack above it are physically adjacent, so
+//     tmux/psmux always renders the same one-row border between them that
 //     buildStackBody already budgets for between individual strands —
 //     omitting that budget still lets select-layout return success, but
 //     tmux inserts the border row anyway, silently overflowing the window
-//     by one row. clampHeaderHeight (height.go) also never clamps the
-//     header below 1 row for the same reason: a real tmux/psmux
+//     by one row. clampBandHeight (height.go) also never clamps
+//     Selvage.HeightRows below 1 row for the same reason: a real tmux/psmux
 //     select-layout does not cleanly support a genuinely zero-height cell
 //     for an always-on pane either. Verified against a real tmux instance;
-//     contract_integration_test.go's TestHeaderNeverGetsZeroHeightLayoutCell
-//     pins it.
+//     contract_integration_test.go's TestSelvageNeverGetsZeroHeightLayoutCell
+//     pins it (renamed for the Selvage band).
 //   - Silent layout rescale (apply.go, windowsize.go): select-layout accepts a
 //     layout string whose dimensions disagree with the live window (exit 0)
 //     and silently rescales it proportionally — measured live on tmux 3.6, a
 //     "220x50" string applied to a "100x30" window turned a 3-row collapsed
 //     strip (3 was the then-default; it is 6 today) into 1 row — so every
-//     absolute row budget reed computes (Header.HeightRows,
+//     absolute row budget reed computes (Selvage.HeightRows,
 //     CollapsedStripRows, MinFullRows) is scaled by live_height/string_height
 //     unless the string is sized to the live window. This is why
 //     applyLayoutLocked always plans against liveBoxLocked's live box rather
@@ -386,16 +387,16 @@
 //     window-size delta arriving after attach time is handed out one row at
 //     a time, round-robin across every vertical cell in the stack — so no
 //     absolute row budget reed computes survives a resize on its own.
-//     Measured live on tmux 3.6: a healthy attached session's header went
+//     Measured live on tmux 3.6: a healthy attached session's Selvage went
 //     from 1 row to 6 across a 76-to-90-row client resize, and to 16 across
 //     a further 90-to-120 one.
 //     The answer is a window-resized window hook holding one
-//     "resize-pane -y" array entry per fixed-height pane — the header band
+//     "resize-pane -y" array entry per fixed-height pane — the Selvage band
 //     and every collapsed strip — installed by reed and executed by the
 //     tmux server itself, refreshed on every successful apply
 //     (applyLayoutLocked) and again in AttachArgv's pre-flight, with the
 //     pinned heights coming from render.FixedHeightPins: the heights render
-//     actually placed the cells at, after clampHeaderHeight and
+//     actually placed the cells at, after clampBandHeight and
 //     clampToFit, never the raw configured budgets.
 //     The watchdog's own signal entry rides the SAME array, always as its
 //     last entry, and installResizePinsLocked is its only install site —
@@ -423,12 +424,12 @@
 //     with no rebuild behind it would drift on the very next resize.
 //     That is safe in both guard cases. resize-pane -y against a window's
 //     sole pane is a verified silent no-op (exit 0, height unchanged), so
-//     the len(live) < 2 case's surviving header pin cannot contradict
+//     the len(live) < 2 case's surviving Selvage pin cannot contradict
 //     render.Rules' sole-cell branch.
 //     And in the !anyPlacedStrand case — reachable via the operator remedy
 //     state.go documents, which deletes reed.json while the session keeps
 //     running untracked only until the next mutating verb reaps it — the
-//     surviving array is a benefit, still holding the live header and
+//     surviving array is a benefit, still holding the live Selvage and
 //     strips at the budgets reed last
 //     computed for them.
 //     Since the signal entry rides the same array, the same rule decides it:
@@ -440,7 +441,7 @@
 //     template_posix.yaml's "height: 50" boot box showing through the BARE
 //     (unchained) attach path, not evidence of a miscomputed layout — a
 //     synthetic bare attach reproduces the reported table exactly, with 40
-//     and 50 rows leaving the header at 1 row and 76 rows taking it to 10.
+//     and 50 rows leaving Selvage at 1 row and 76 rows taking it to 10.
 //     The watchdog's own run-shell signal command (watchdog.go's
 //     resizeHookCommand) lives in THIS SAME array, appended as one further
 //     entry by installResizePinsLocked whenever the watchdog is enabled —
@@ -681,10 +682,6 @@
 //   - The header pane's stdout/stderr is its screen (reedcli/header.go): the
 //     --blocking tail rebinds the logger's stderr sink to a discarding
 //     writer before entering the loop; the durable sink is untouched.
-//   - testing.Testing() gates the header launch line (headerpane.go,
-//     lifecycle.go): no Go test can exercise a header-hosted watch loop by
-//     booting a header pane, which is why the tier-2 proof runs the loop
-//     in-process against a real session instead.
 //
 // requiredSubcommands (probe.go) still does not grow for the live-geometry
 // rule, the attach chain, or the two option pins: display-message,

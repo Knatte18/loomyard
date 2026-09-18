@@ -466,7 +466,7 @@ func TestAttachArgv_NeverMutatesTheSessionOrPersistsState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadState after AttachArgv: %v", err)
 	}
-	if len(after.Strands) != len(before.Strands) || after.HeaderPaneID != before.HeaderPaneID {
+	if len(after.Strands) != len(before.Strands) || after.SelvagePaneID != before.SelvagePaneID {
 		t.Errorf("reed.json changed across AttachArgv: before=%+v after=%+v", before, after)
 	}
 }
