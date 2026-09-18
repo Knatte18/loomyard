@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: ly-supervise-reed-add
 branch: ly-supervise-reed-add
-plan: null
+plan: _mill/plan
 parent: main
 task: Launch ly-supervise and orchestrator via lyx reed add
 task_description: |
@@ -24,4 +24,5 @@ discussion-gap-fix-r6  '2026-09-18T17:01:47Z'
 discussion-gap-fix-r7  '2026-09-18T17:05:41Z'
 blocked  '2026-09-18T17:05:51Z'
 discussed  '2026-09-18T17:06:36Z'
+planning  '2026-09-18T17:15:34Z'
 ```
