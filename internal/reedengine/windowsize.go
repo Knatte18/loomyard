@@ -1,6 +1,6 @@
-// windowsize.go owns the live-window-size query and its fallback, the two geometry option pins
-// (status off, window-size latest), the two effective-value readbacks the attach path (batch 2)
-// gates the chain on, and the whole write side of the `window-resized` hook array — both the
+// windowsize.go owns the live-window-size query and its fallback, the geometry option pins (the
+// rendered status-line and window-size latest), the two effective-value readbacks the attach path
+// (batch 2) gates the chain on, and the whole write side of the `window-resized` hook array — both the
 // resize-pane pins and the watchdog's own resize-signal entry, which are one array and are therefore
 // installed by one function (installResizePinsLocked). The array's READ side is reapply.go's
 // hookInstalledLocked.
@@ -118,15 +118,34 @@ func statusLeftLength(escaped string) int {
 	return n
 }
 
-// pinGeometryOptionsLocked pins this session's window to "status off" and "window-size latest", and
-// owns the UNSET half of the window-resized hook's lifecycle — the install half belongs to
-// installResizePinsLocked at the bottom of this file, which rebuilds the whole array (pins plus the
-// watchdog's signal entry) from scratch on every successful apply.
-// Both geometry pins are session/window-targeted rather than -g, because a session- or window-scoped
-// value set from the operator's own ~/.tmux.conf silently wins over a global set while set-option
-// still exits 0 — verified live. Each call's error is logged via logger.Warn and then ignored; every
-// later step, including the hook block, is attempted even when an earlier one failed, per the Shared
-// Decision geometry-tmux-failures-are-non-fatal-everywhere.
+// pinGeometryOptionsLocked renders this hub's status-line text into tmux's status-line and pins this
+// session's window to "window-size latest", and owns the UNSET half of the window-resized hook's
+// lifecycle — the install half belongs to installResizePinsLocked at the bottom of this file, which
+// rebuilds the whole array (pins plus the watchdog's signal entry) from scratch on every successful
+// apply.
+//
+// The status-line render is one call to e.StatusLineText(). On error it logs via logger.Warn naming
+// the socket, the session and the error, and skips the two text-derived options (status-left and
+// status-left-length) while still issuing the other five status-line options — a template that fails
+// to render is already refused loudly at boot by ValidateStatusLine, so reaching here means a degraded
+// path, not a normal one. On success it escapes the rendered text with escapeStatusText (tmux expands
+// "#{…}"/"#[…]" inside a status string) and issues, in order: "status" "on"; "status-position"
+// "bottom"; "status-left" <escaped>; "status-right" ""; "status-left-length"
+// <statusLeftLength(escaped)>; and, window-targeted with -w, "window-status-format" "" and
+// "window-status-current-format" "". Suppressing the window-status segment is deliberate rather than
+// left at tmux's default: reed's session has exactly one window, so the default "0:bash*" segment
+// beside the identity text names nothing the operator can act on and would shift position as the
+// window's active pane name changes.
+//
+// Every geometry pin — the status-line options and window-size — is session/window-targeted rather
+// than -g, because a session- or window-scoped value set from the operator's own ~/.tmux.conf silently
+// wins over a global set while set-option still exits 0 — verified live. Each call's error is logged
+// via logger.Warn and then ignored; every later step, including the hook block, is attempted even when
+// an earlier one failed, per the Shared Decision geometry-tmux-failures-are-non-fatal-everywhere.
+//
+// No runtime.GOOS == "windows" branch guards any of the eight set-option calls above: per the Shared
+// Decision windows-status-line-is-an-unbranched-accepted-degrade they are attempted on every platform,
+// and psmux may refuse some or all of them.
 //
 // This function is the right home for the unset because it already runs both at boot (lifecycle.go)
 // and in the attach pre-flight (attach.go), so an operator who flips watchdog: off gets the hook torn
@@ -141,9 +160,42 @@ func statusLeftLength(escaped string) int {
 // Assumes the op lock is already held.
 func (e *Engine) pinGeometryOptionsLocked() {
 	target := exactSessionWindowTarget(e.SessionName())
-	if err := e.tmux.run("set-option", "-t", target, "status", "off"); err != nil {
-		logger.Warn("reed: failed to pin status off", "socket", e.Socket(), "session", e.SessionName(), "option", "status", "err", err)
+
+	text, textErr := e.StatusLineText()
+	haveText := textErr == nil
+	var escaped string
+	if !haveText {
+		logger.Warn("reed: failed to render status-line text, skipping status-left and status-left-length", "socket", e.Socket(), "session", e.SessionName(), "err", textErr)
+	} else {
+		escaped = escapeStatusText(strings.TrimRight(text, "\r\n"))
 	}
+
+	if err := e.tmux.run("set-option", "-t", target, "status", "on"); err != nil {
+		logger.Warn("reed: failed to pin status on", "socket", e.Socket(), "session", e.SessionName(), "option", "status", "err", err)
+	}
+	if err := e.tmux.run("set-option", "-t", target, "status-position", "bottom"); err != nil {
+		logger.Warn("reed: failed to pin status-position bottom", "socket", e.Socket(), "session", e.SessionName(), "option", "status-position", "err", err)
+	}
+	if haveText {
+		if err := e.tmux.run("set-option", "-t", target, "status-left", escaped); err != nil {
+			logger.Warn("reed: failed to pin status-left", "socket", e.Socket(), "session", e.SessionName(), "option", "status-left", "err", err)
+		}
+	}
+	if err := e.tmux.run("set-option", "-t", target, "status-right", ""); err != nil {
+		logger.Warn("reed: failed to pin status-right empty", "socket", e.Socket(), "session", e.SessionName(), "option", "status-right", "err", err)
+	}
+	if haveText {
+		if err := e.tmux.run("set-option", "-t", target, "status-left-length", strconv.Itoa(statusLeftLength(escaped))); err != nil {
+			logger.Warn("reed: failed to pin status-left-length", "socket", e.Socket(), "session", e.SessionName(), "option", "status-left-length", "err", err)
+		}
+	}
+	if err := e.tmux.run("set-option", "-w", "-t", target, "window-status-format", ""); err != nil {
+		logger.Warn("reed: failed to pin window-status-format empty", "socket", e.Socket(), "session", e.SessionName(), "option", "window-status-format", "err", err)
+	}
+	if err := e.tmux.run("set-option", "-w", "-t", target, "window-status-current-format", ""); err != nil {
+		logger.Warn("reed: failed to pin window-status-current-format empty", "socket", e.Socket(), "session", e.SessionName(), "option", "window-status-current-format", "err", err)
+	}
+
 	if err := e.tmux.run("set-option", "-w", "-t", target, "window-size", "latest"); err != nil {
 		logger.Warn("reed: failed to pin window-size latest", "socket", e.Socket(), "session", e.SessionName(), "option", "window-size", "err", err)
 	}
