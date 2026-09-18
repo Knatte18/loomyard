@@ -625,8 +625,9 @@
 //     would re-enter the watcher in an infinite loop. window-resized fires
 //     exactly once per settled size, after the window already has the new
 //     geometry, on both growth and shrink.
-//   - SIGWINCH is not a substitute (reedcli/header.go's blocking tail): with
-//     the header pinned to one row, growing the window delivers SIGWINCH
+//   - SIGWINCH is not a substitute (reedcli/watchdog.go's daemon process):
+//     the daemon has no pane of its own to receive terminal signals from,
+//     but even for a process that did, growing the window delivers SIGWINCH
 //     every time — and that growth IS the layout bug — but SHRINKING
 //     delivers nothing while the strand budgets below are silently violated
 //     (at 30 rows the bottom strand had been squeezed from 15 rows to 2). A
@@ -679,9 +680,15 @@
 //     second return value — otherwise a fallback that happens to equal the
 //     last applied box skips forever and one that differs re-applies
 //     forever.
-//   - The header pane's stdout/stderr is its screen (reedcli/header.go): the
-//     --blocking tail rebinds the logger's stderr sink to a discarding
-//     writer before entering the loop; the durable sink is untouched.
+//   - The watchdog daemon's own stderr is discarded, not watched
+//     (reedcli/watchdog.go): the daemon points the logger's durable sink at
+//     fabricengine.HubLogsDir(hub) FIRST, then rebinds the logger's stderr
+//     half to a discarding writer before it starts polling — the ordering is
+//     what keeps its diagnostics reachable at all, since nothing reads a
+//     detached process's stdio. This is also the long-lived process that
+//     holds the logger's rebound output for its whole life: unlike a
+//     one-shot verb, the daemon's SetOutput call persists for as long as the
+//     process runs.
 //
 // requiredSubcommands (probe.go) still does not grow for the live-geometry
 // rule, the attach chain, or the two option pins: display-message,
