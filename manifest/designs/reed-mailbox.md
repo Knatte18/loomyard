@@ -12,7 +12,7 @@ Being a Strand is only required to *receive* mail — an address needs somewhere
 
 ## Dependencies
 
-Deliberately a separate, later task from the Planned `ly-supervise + orchestrator` launch-convention item and the Next Up [`reed: born-as-strand`](reed-born-as-strand.md) item, which it depends on **for the receive side only**: everything that should be addressable must already exist as a Strand before addressing it means anything. Also downstream of the Next Up `worktree spawn/teardown as Shed producers` item's headless-orchestration future, since a mailbox is most useful once external actors can reach a worktree without a human ever having opened it first.
+Deliberately a separate, later task from the Planned `ly-supervise + orchestrator` launch-convention item and the Next Up [`reed: born-as-strand`](reed-born-as-strand.md) item, which it depends on **for the receive side only**: everything that should be addressable must already exist as a Strand before addressing it means anything. Also downstream of the Planned `worktree spawn/teardown as Shed producers` item's headless-orchestration future, since a mailbox is most useful once external actors can reach a worktree without a human ever having opened it first.
 
 ## Open items
 
