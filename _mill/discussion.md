@@ -66,6 +66,8 @@ Why now: the design is already written and recorded (`manifest/designs/reed-head
 - Decision: reed sets, per session, `status on`, `status-position bottom`, `status-left <rendered text>`, `status-right ""`, and `status-left-length` set to `max(10, utf8.RuneCountInString(escaped))` — measured over the **escaped** string that is actually handed to `status-left`, in runes, since tmux's length limit counts characters rather than bytes and 10 is its own default (which would truncate).
   Any `#` in the rendered text is escaped to `##` before it reaches `status-left` and before the length is measured, since tmux expands `#{…}`/`#[…]` inside a status string.
   The escape-then-measure order is load-bearing: a hub path carrying `#` grows by one character per occurrence, and measuring the pre-escape string would truncate exactly those lines.
+  The **window-status segment** tmux renders between `status-left` and `status-right` is suppressed, not left at its default: `window-status-format ""` and `window-status-current-format ""`, window-targeted like the other pins.
+  reed's session has exactly one window, so tmux's default `0:bash*` segment beside the identity text names nothing the operator can act on, and it would shift position as the window's active pane name changes.
   These are set in `pinGeometryOptionsLocked` (`windowsize.go`), session/window-targeted like today's pins, and each failure stays non-fatal per the existing `geometry-tmux-failures-are-non-fatal-everywhere` decision.
 - Rationale: `pinGeometryOptionsLocked` already runs on both the paths that need it — boot (`lifecycle.go`) and the attach pre-flight (`attach.go`) — so a session booted by an older lyx picks the new status-line up on the operator's next attach, exactly as the hook install already does.
   The status-line is not a pane: it cannot take focus and cannot be typed into, which is what makes it the right home for text that was never interactive.
@@ -233,9 +235,16 @@ Why now: the design is already written and recorded (`manifest/designs/reed-head
 
 - Decision: single-instance is enforced by `lock.TryAcquireWriteLock` on `filepath.Join(fabricengine.HubScratchDir(hub), "reed-watchdog.lock")` — `HubScratchDir` is the already-declared accessor for `<hub>/_board/.lyx` (`internal/fabricengine/junctionnames.go:149`), the same hub-anchored ephemeral tree `HubLogsDir` is a sibling inside.
   The path is computed in `internal/reedcli` (which may import `fabricengine` directly, as `hubgeom` already does) and told to the daemon, never derived inside `reedengine`.
-  A daemon that cannot take the lock logs at Info and exits 0, so a racing spawn costs one short-lived process and nothing else.
+  The two ways "I did not get the lock" can happen are answered differently, because `lock.TryAcquireWriteLock` reports them differently (`internal/lock/lock.go:31-41`):
+  `(nil, false, nil)` is **contention** — another daemon holds it — which logs at Info and exits 0, so a racing spawn costs one short-lived process and nothing else;
+  a non-nil error is a **failure** (the lock path is unusable — absent parent directory, permissions, a read-only filesystem), which logs at Error to the durable sink and exits non-zero, never silently.
+  `lock.TryAcquireWriteLock` does not create the lock file's parent, so `c.ensureWatchdogSpawned()` calls `os.MkdirAll(fabricengine.HubScratchDir(hub), 0o755)` before it spawns;
+  a `MkdirAll` failure is logged at Warn, naming the path, and the spawn is skipped rather than failing the operator's `up` (geometry-adjacent failures stay non-fatal in this module).
 - Rationale: `HubScratchDir` already exists and is already the declared home for hub-level ephemeral state, so the Durable-vs-Ephemeral State Invariant's "no engine derives its own `.lyx` path" holds without a new accessor.
   The lock is itself the check, so there is no race between probing and spawning.
+  Splitting contention from failure is what keeps a hub whose `_board/.lyx` is missing or unwritable from becoming permanently watchdog-less behind an Info line that reads exactly like the normal, expected losing race.
+  `<hub>/_board/.lyx` normally exists already — `HubLogsDir` lives inside it — but a hub that has never booted a reed server is not guaranteed to have it, which is precisely the first-`up` case.
+- Diagnosis path, worth stating because the daemon is detached and nobody reads its stdio: running `lyx reed watchdog --hub-path <abs>` in the foreground reproduces both answers directly.
   `internal/lock` already owns advisory file locking in this repo, and `TryAcquireWriteLock`'s non-blocking half is exactly the "somebody else already has it" answer this needs.
 - Rejected: a PID-file liveness check with `proc.IsAlive` as the primary gate (racy between check and spawn — the lock is the check);
   a tmux-hosted daemon in a hidden window (reintroduces the pane coupling, and a hidden window pops into view the instant the visible one loses its last pane, live-confirmed during design);
@@ -243,7 +252,7 @@ Why now: the design is already written and recorded (`manifest/designs/reed-head
 
 ### daemon-spawn-attempted-by-up-resume-and-attach
 
-- Decision: `up`, `resume`, and `attach` each attempt the spawn unconditionally, exactly as they each already call `pinGeometryOptionsLocked`.
+- Decision: `up`, `resume`, and `attach` each attempt the spawn unconditionally — the same three paths `pinGeometryOptionsLocked` already heals on, but from the CLI layer after the engine op returns, not from inside it (see `daemon-spawn-is-owned-by-reedcli`).
   `down` never spawns.
   A spawn attempt against a live daemon costs one short-lived child that fails the lock and exits 0.
 - Rationale: `up` alone is not enough.
@@ -255,12 +264,15 @@ Why now: the design is already written and recorded (`manifest/designs/reed-head
 
 ### daemon-idle-exit-timings-are-fixed-constants
 
-- Decision: the daemon's discovery cycle and its idle-exit grace are two new fixed constants declared alongside the existing `watchdog*` timings in `internal/reedengine/watchdog.go`: `watchdogHubDiscoveryCycle = 5 * time.Second` and `watchdogHubIdleCycles = 3`.
+- Decision: the daemon's discovery cycle and its idle-exit grace are two new fixed constants declared in `internal/reedcli`, beside the discovery loop that consumes them: `watchdogHubDiscoveryCycle = 5 * time.Second` and `watchdogHubIdleCycles = 3`.
+  `internal/reedengine/watchdog.go`'s existing `watchdog*` constants stay exactly where they are and stay unexported — they govern `Engine.Watch`'s own internals, which `reedengine` still owns.
   The daemon re-enumerates the hub socket's live sessions every discovery cycle, and exits after three consecutive enumerations that find none — a 15-second grace.
-- Rationale: the existing watchdog timings are deliberately fixed and non-configurable, and these belong in the same block for the same reason.
+- Rationale: the existing watchdog timings are deliberately fixed and non-configurable, and these two are fixed for the same reason — but they are not the same package's business.
+  The discovery loop and the process lifetime they govern are `reedcli`'s (see the ownership decision above), and exporting two constants from `reedengine` purely so another package can read them would put the timings somewhere the code that uses them is not.
   Five seconds is well below any human `down` + `up` gap while being an order of magnitude slower than the 100ms signal tick, so discovery costs one `list-sessions` round trip per hub every five seconds rather than riding the per-worktree tick.
   Three cycles covers a `down` immediately followed by an `up` without the daemon dying and respawning in between.
-- Rejected: leaving the count to the plan writer (it interacts with the `down` + `up` case this decision exists to cover);
+- Rejected: declaring them beside the existing `watchdog*` block in `reedengine` (they would have to be exported to be readable by their only consumer, widening that package's surface for nothing);
+  leaving the count to the plan writer (it interacts with the `down` + `up` case this decision exists to cover);
   reusing `watchdogPollCycle` for discovery (that constant means "the fallback platform's reconcile cadence" and would silently change meaning);
   a config key (the other watchdog timings are fixed, and an operator has no information with which to tune this one).
 
@@ -277,19 +289,25 @@ Why now: the design is already written and recorded (`manifest/designs/reed-head
 
 ### daemon-discovers-worktrees-by-scanning-the-hub
 
-- Decision: two different cadences, deliberately.
+- Decision: the mapping is a **direct join**, not a scan.
   Every discovery cycle the daemon runs **one** `list-sessions` round trip against the hub socket — cheap, no process spawns.
-  It rebuilds the session-name → worktree mapping **only** when that live session-name set differs from the cached one: it then scans the hub directory's immediate subdirectories, calls `lyxcwd.ResolveWorktree(<subdir>)` per candidate, and matches `reedengine.SessionName(location.WorktreePath())` against the listed names.
-  For each match it builds a `reedengine.Engine` from `hubgeom.ReedGeometry(location)` + `reedengine.LoadConfig` and runs that worktree's existing watch work against it.
-  The per-candidate `ResolveWorktree` git spawns are logged at `logger.Debug`, as spawns inside a polling probe (Live-Substrate Spawn Observability).
-- Rationale: `lyxcwd.ResolveWorktree` already resolves a `Location` from a worktree root without touching cwd, and `lyxcwd` stays the sole owner of that resolution (Cwd Resolution Invariant).
-  `SessionName` is a one-way derivation from the worktree path, so forward-deriving every candidate and matching is the only mapping available without inventing a registry.
-  The hub is `filepath.Dir(worktreeRoot)`, so its immediate subdirectories are exactly the candidate set.
-  Splitting the cadences matters because `lyxcwd.ResolveWorktree` shells out to `git rev-parse --show-toplevel` per candidate (`internal/lyxcwd/lyxcwd.go:149`);
-  rescanning unconditionally every five seconds would mean N real process spawns per cycle, forever, to learn nothing.
-  The live session set is the only thing that can change which worktrees are watched, so it is the right trigger.
+  When that live session-name set differs from the cached one, it resolves each newly-appeared name by joining it onto the hub (`filepath.Join(hub, sessionName)`) and calling `lyxcwd.ResolveWorktree` on **that one path**, then builds a `reedengine.Engine` from `hubgeom.ReedGeometry(location)` + `reedengine.LoadConfig` and runs that worktree's existing watch work against it.
+  A name that does not resolve — a foreign session, a renamed directory — is skipped and logged at `logger.Debug`, not retried until it next re-appears in the set.
+  The `ResolveWorktree` git spawns are logged at `logger.Debug`, as spawns inside a polling probe (Live-Substrate Spawn Observability).
+- Rationale: in **hub mode** the derivation is exactly invertible.
+  `reedengine.SessionName(worktreeRoot)` is `filepath.Base(worktreeRoot)` verbatim (`internal/reedengine/server.go:105-107`) — hub mode deliberately does **not** sanitize, and `validateToldTmuxIdentity` refuses an unusable name instead (`server.go:126-133`, whose own comment says rewriting `.` there would collapse sibling worktrees `svc.v2` and `svc_v2` onto one session).
+  Since the hub is `filepath.Dir(worktreeRoot)`, `filepath.Join(hub, sessionName)` recovers the worktree root exactly, with no scan and no candidate set.
+  `ResolveWorktree` is still required on top of that join — the join yields a path, while `hubgeom.ReedGeometry` needs a resolved `*lyxcwd.Location` (its `RepoName`, `HubPath`, `WorktreeName`, and `AnchorPath()`), and `lyxcwd` stays the sole owner of that resolution (Cwd Resolution Invariant).
+  It is also the gate that rejects a session name that is not a worktree at all.
+  Gating on the session-set diff still matters because `ResolveWorktree` shells out to `git rev-parse --show-toplevel` (`internal/lyxcwd/lyxcwd.go:149`);
+  re-resolving unconditionally every five seconds would mean one real process spawn per live session per cycle, forever, to learn nothing.
+- Correction to the earlier wording: rounds 1-3 justified a full hub-subdirectory scan with "`SessionName` is a lossy one-way derivation and deliberately sanitizes".
+  That is true of **standalone** (`SanitizeSessionName` plus a `-<hash8>` suffix, `internal/standalonegeom/reedgeom.go`), and false of hub mode, which is the only mode this daemon serves.
+  The scan was solving a problem that does not exist here;
+  the direct join replaces it, and costs one git spawn per live session rather than one per hub subdirectory.
 - Rejected: persisting a session→worktree registry file (a second source of truth that goes stale precisely when a worktree is renamed or removed — the case it exists for);
-  parsing the worktree back out of the session name (`SessionName` is lossy and deliberately sanitizes).
+  scanning every hub subdirectory and forward-matching (strictly more work than the join, and it resolves worktrees that have no session);
+  skipping `ResolveWorktree` and hand-building a `Geometry` from the joined path (it would re-derive `RepoName`/`AnchorPath` per module, which the Cwd Resolution Invariant forbids).
 
 ### per-worktree-signal-files-stay-per-worktree
 
@@ -529,7 +547,15 @@ assert a second spawn attempt exits 0 without taking the lock;
 assert the daemon exits after the last session goes away, within `watchdogHubIdleCycles * watchdogHubDiscoveryCycle` plus slack, and that it releases the lock so a later spawn takes it;
 assert a `down` immediately followed by an `up` does not kill it;
 assert `attach` and `resume` each attempt the spawn when no daemon holds the lock.
-`smoke_headerscrollback_test.go`, `smoke_headerseed_test.go` and the dot-fill/header smokes need review one by one — some assert behaviour (ED3 scrollback clearing, stencil-seed suppression) that no longer has a subject and should be deleted rather than adapted.
+Disposition for every existing header-adjacent smoke file, decided rather than deferred:
+
+- `smoke_header_keepalive_test.go` — **adapt** and rename to Selvage: the keepalive subject survives, only its mechanism changes.
+- `smoke_headerscrollback_test.go` — **delete**: its subject is `headerBlockingPayload`'s ED2/ED3 screen-and-scrollback clear, which this task deletes outright.
+  Selvage is never written to or cleared by reed, so there is nothing left to assert.
+- `smoke_headerseed_test.go` — **adapt** and retarget to `lyx reed statusline`: `clihelp.SkipStencilSeedAnnotation` survives on the replacement verb, and the thing the test protects — a preview command leaving no stencilstore warnings and no git commits in the hub — is still true and still worth pinning.
+- `smoke_dotfill_test.go`, `smoke_dotfill_measure_test.go` — **keep**, retargeting any assertion that names the header band onto the Selvage band.
+  The dot-fill artifact is a resize-render property of the strand stack and is not header-specific;
+  `internal/reedengine/doc.go`'s "Measurement record (repaint candidates)" block still governs it unchanged.
 
 **Whole-repo gates.**
 `go build ./...` and `go test ./...` with `CGO_ENABLED=1`;
@@ -550,7 +576,7 @@ the markdown link-integrity test over `manifest/`/`docs/` after the design doc a
 - **Q:** How is the daemon hosted and started? **A:** [auto-pick] A blocking `lyx reed watchdog` verb, spawned detached by `reed up` via `proc.Detach`. **Why:** it needs no tty; detaching matches the existing spawn pattern in `internal/vscode`/`internal/fabricengine`, and a tmux-hosted daemon would reintroduce the pane coupling this task removes.
 - **Q:** How is one-daemon-per-hub enforced? **A:** [auto-pick] `lock.TryAcquireWriteLock` on a hub-scoped lock file; a losing spawn logs and exits 0. **Why:** the lock is itself the check, so there is no race between probing and spawning, and an unconditional attempt on every `up` makes the daemon self-healing after a crash or logout.
 - **Q:** When does the daemon stop? **A:** [auto-pick] It exits itself once the hub socket has had no live sessions for a short grace period; `reed down` never kills it. **Why:** one worktree's `down` cannot speak for its siblings, and reference-counting breaks the moment a session dies without a `down`.
-- **Q:** How does the daemon map tmux sessions to worktrees? **A:** [auto-pick] Scan the hub's immediate subdirectories, `lyxcwd.ResolveWorktree` each, and match forward-derived `SessionName` values against the live session list. **Why:** `SessionName` is a lossy one-way derivation, and a persisted registry would go stale exactly when a worktree is renamed or removed.
+- **Q:** How does the daemon map tmux sessions to worktrees? **A:** [auto-pick] ~~Scan the hub's immediate subdirectories and forward-match~~ — superseded in round 4: `filepath.Join(hub, sessionName)` recovers the worktree root directly, then `lyxcwd.ResolveWorktree` on that one path. **Why:** hub-mode `SessionName` is `filepath.Base(worktreeRoot)` verbatim and is refused rather than sanitized, so the derivation is exactly invertible; `ResolveWorktree` is still needed for the `Location` the geometry requires, and a registry file would go stale exactly when a worktree is renamed.
 - **Q:** One hub-wide resize signal file or one per worktree? **A:** [auto-pick] One per worktree, unchanged. **Why:** the Durable-vs-Ephemeral State Invariant puts each worktree's ephemeral state under its own `.lyx`, and a shared file loses one of two simultaneous resizes.
 - **Q:** Is the watch loop rewritten for multi-worktree operation? **A:** [auto-pick] No — it is rehosted; `Engine.Watch` stays the per-worktree entry point and the daemon owns only discovery, scheduling, and process lifetime. **Why:** the debounce, retry cap, and mode machine are already live-verified, and sharing one state across worktrees would couple unrelated failure streaks.
 - **Q:** Does `watchdog:` stay a per-worktree key? **A:** [auto-pick] Yes, and the daemon re-reads a worktree's config when it re-enters the watched set. **Why:** one worktree's kill-switch must not disable a sibling's, and a once-per-process read would make a config edit need a daemon restart nobody would think to do.
@@ -558,6 +584,11 @@ the markdown link-integrity test over `manifest/`/`docs/` after the design doc a
 - **Q:** What replaces the `header:` config block? **A:** [auto-pick] `status_line: {template}` plus `selvage: {height_rows}`. **Why:** the two settings now describe unrelated mechanisms; reinterpreting the old keys would silently apply an operator's `header.height_rows` to a different pane in a different place.
 - **Q:** Should the plan write removal logic for a stale `header:` block in existing `reed.yaml` files? **A:** [auto-pick] No. **Why:** `lyx config reconcile --apply` already strips stale leaves once the template drops them (see the round-1-gap entry below); the plan only has to keep the un-reconciled state harmless, which it is — nothing unmarshals `header:` into `Config` any more.
 - **Q:** How is the `worktree` token fed? **A:** [auto-pick] `Ctx.WorktreeName`, filled from `lyxcwd.Location.WorktreeName` via a new `Geometry.WorktreeName` field. **Why:** deriving it inside `reedengine` with `filepath.Base` would be a per-module path derivation the Cwd Resolution Invariant reserves for `lyxcwd`.
+- **Q:** (review round 4 gap) Where do the two new daemon timing constants live? **A:** [auto-pick] In `internal/reedcli`, beside the discovery loop that reads them; `reedengine`'s existing `watchdog*` constants stay unexported and untouched. **Why:** they would otherwise have to be exported from `reedengine` purely for a consumer in another package.
+- **Q:** (review round 4 gap) Is the session → worktree mapping really a scan? **A:** [auto-pick] No — `filepath.Join(hub, sessionName)` recovers it directly. **Why:** hub-mode `SessionName` is `filepath.Base(worktreeRoot)` verbatim and is refused rather than sanitized; the "lossy derivation" premise behind the scan was true of standalone only, which this daemon never serves.
+- **Q:** (review round 4 gap) What happens when the daemon cannot take its lock? **A:** [auto-pick] Contention (`nil` error, not locked) → Info, exit 0; a non-nil error → Error to the durable sink, exit non-zero; and the spawning helper `MkdirAll`s `HubScratchDir(hub)` first. **Why:** `TryAcquireWriteLock` does not create the parent, so a first-`up` hub could otherwise become permanently watchdog-less behind an Info line that reads like a normal losing race.
+- **Q:** (review round 4 gap) What happens to tmux's window-status segment beside the identity text? **A:** [auto-pick] Suppressed via empty `window-status-format`/`window-status-current-format`. **Why:** reed's session has exactly one window, so the default `0:bash*` segment names nothing actionable and moves as the active pane's name changes.
+- **Q:** (review round 4 gap) What happens to each existing header smoke file? **A:** [auto-pick] Adapt the keepalive and seed smokes, delete the scrollback smoke, keep both dot-fill smokes with their band assertions retargeted. **Why:** the scrollback smoke's only subject is the ED2/ED3 payload this task deletes; every other subject survives the mechanism change.
 - **Q:** (review round 3 gap) Standalone reed sessions boot in-process, never through `lyx reed up` — what watches them once the header pane is gone? **A:** [auto-pick] `Engine.Watch(ctx)` as an in-process goroutine off the same `c.reedUp` seam, cancelled by the run's context. **Why:** standalone already has a long-lived supervising run for exactly the session's working lifetime, which is the thing hub mode lacks and the reason hub mode needs a daemon; a hub-shaped lock path is meaningless there anyway.
 - **Q:** (review round 3 gap) Which layer spawns the daemon? **A:** [auto-pick] `internal/reedcli`, via one shared helper each of `up`/`resume`/`attach` calls after its engine op returns nil. **Why:** an engine-owned spawn would need `fabricengine` and an executable path the Told-Geometry Invariant keeps out of it; the CLI already holds the `Location` and can gate on the error being nil.
 - **Q:** (review round 3 gap) Which binary does the spawn run, and what stops it under `go test`? **A:** [auto-pick] `os.Executable()`, suppressed by a `testing.Testing()`-initialised `suppressWatchdogSpawn` field on `reedCLI`. **Why:** re-exec'ing the test binary runs the suite recursively — the exact hazard `Engine.suppressHeaderLaunch` exists for, so the pattern moves to the layer that now owns the spawn rather than disappearing with the pane.
@@ -565,7 +596,7 @@ the markdown link-integrity test over `manifest/`/`docs/` after the design doc a
 - **Q:** (review round 3 gap) What happens to `HeaderText`/`ValidateHeader`? **A:** [auto-pick] Renamed `StatusLineText`/`ValidateStatusLine` and kept, boot gate included, with the standalone-API doc's method inventory updated in the same commit. **Why:** the gate matters more now, not less — every `set-option` on the new path is non-fatal and merely logged, so a broken template would otherwise fail silently.
 - **Q:** (review round 2 gap) How does the hub reach the detached daemon, and what is its cwd? **A:** [auto-pick] An explicit `--hub-path <abs>` flag, `watchdog` opted out of reed's `PersistentPreRunE`, and `cmd.Dir` pinned to the hub. **Why:** the process outlives the spawning worktree, both existing detached precedents pass the path explicitly, and a cwd handle on a worktree blocks that directory's deletion on Windows.
 - **Q:** (review round 2 gap) Is `reed up` the only spawn site? **A:** [auto-pick] No — `up`, `resume` and `attach` all attempt it; `down` never does. **Why:** a crash while sessions stay alive would otherwise go unrepaired, and the status-line pins already heal on exactly those three paths, so narrower daemon coverage would be an unexplained asymmetry.
-- **Q:** (review round 2 gap) What does `{{.worktree}}` render in standalone mode, which has no worktree? **A:** [auto-pick] The normalized target basename, so the default template reads `foo/foo · <stateDir>`. **Why:** `tokenvocab.Build` resolves every token unconditionally, so an unfilled token renders an empty segment; a repeated name reads as what it is, an empty one reads as a bug.
+- **Q:** (review round 2 gap) What does `{{.worktree}}` render in standalone mode, which has no worktree? **A:** [auto-pick] ~~The normalized target basename~~ — corrected in round 4: the **raw** `filepath.Base(target)`, the identical expression `RepoName` already uses, so the default template reads `foo/foo · <stateDir>` with both tokens byte-identical even for a symlinked spelling. **Why:** `tokenvocab.Build` resolves every token unconditionally, so an unfilled token renders an empty segment; a repeated name reads as what it is, an empty one reads as a bug.
 - **Q:** (review round 2 gap) Where exactly does the daemon's lock live? **A:** [auto-pick] `filepath.Join(fabricengine.HubScratchDir(hub), "reed-watchdog.lock")`, computed in `reedcli` and told to the daemon. **Why:** `HubScratchDir` is the already-declared accessor for `<hub>/_board/.lyx`, so no engine derives its own `.lyx` path.
 - **Q:** (review round 2 gap) How long is the daemon's idle-exit grace? **A:** [auto-pick] Three consecutive empty enumerations on a five-second discovery cycle, as two new fixed constants beside the existing `watchdog*` timings. **Why:** those timings are deliberately fixed and non-configurable, and 15 seconds covers a `down` + immediate `up` without the daemon dying and respawning.
 - **Q:** (review round 1 gap) Does `lyx config reconcile` remove a stale `header:` block, or leave it? **A:** [auto-pick] It removes it — but only on an explicit `lyx config reconcile --apply` or a `fabric clone`, never from a reed verb. **Why:** `yamlengine.Reconcile` diffs leaf key-paths both ways and `TestReconcileAll_DropsStaleReedClaudeKey` pins the identical stale-reed-key case; the original claim that reconcile is additive-only was wrong.
