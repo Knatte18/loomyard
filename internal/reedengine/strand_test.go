@@ -436,6 +436,133 @@ func TestClassifyIfAbsent(t *testing.T) {
 	}
 }
 
+// TestValidateIfAbsent pins the one requirement --if-absent adds: rejected (naming --name) whenever
+// IfAbsent is true and NameOverride is empty, and accepted otherwise — including the ordinary
+// IfAbsent-false case with no name at all.
+func TestValidateIfAbsent(t *testing.T) {
+	tests := []struct {
+		name    string
+		spec    AddSpec
+		wantErr bool
+	}{
+		{"IfAbsentTrue_NoName_Rejected", AddSpec{IfAbsent: true}, true},
+		{"IfAbsentTrue_WithName_Accepted", AddSpec{IfAbsent: true, NameOverride: "claude"}, false},
+		{"IfAbsentFalse_NoName_Accepted", AddSpec{}, false},
+		{"IfAbsentFalse_WithName_Accepted", AddSpec{NameOverride: "claude"}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateIfAbsent(tt.spec)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("validateIfAbsent(%+v) error = %v, wantErr %v", tt.spec, err, tt.wantErr)
+			}
+			if err != nil && !strings.Contains(err.Error(), "--name") {
+				t.Errorf("validateIfAbsent(%+v) error = %v, want it to name the --name requirement", tt.spec, err)
+			}
+		})
+	}
+}
+
+// addIfAbsentHook builds an execHook answering the tmux round trips AddStrand's --if-absent path
+// makes before it ever reaches a no-op return: has-session (the session is up), display-message (a
+// stable pane generation, so loadOrInitStateLocked's adoptPaneGenerationLocked stamp check never
+// clears the fixture's bindings), and list-panes (paneLines, the alive-pane snapshot classifyIfAbsent
+// decides against).
+func addIfAbsentHook(paneLines string) func(capture bool, args ...string) (string, error) {
+	return func(capture bool, args ...string) (string, error) {
+		switch args[0] {
+		case "has-session":
+			return "", nil
+		case "display-message":
+			return "$0|4321|1787000000", nil
+		case "list-panes":
+			return paneLines, nil
+		default:
+			return "", nil
+		}
+	}
+}
+
+// TestAddStrand_IfAbsent_MatchedAliveNoOps pins the alive no-op branch at the engine-call level:
+// AddStrand must return the matched strand unchanged and persist nothing, even though the incoming
+// spec carries a Focus:true Display and different Cmd/ResumeCmd/Parent than what is persisted.
+func TestAddStrand_IfAbsent_MatchedAliveNoOps(t *testing.T) {
+	e := newTestEngine(t)
+	e.tmux.execHook = addIfAbsentHook("%1 0 0 100 20 4321\n")
+
+	persisted := Strand{
+		GUID: "persisted-guid", Name: "claude", PaneID: "%1",
+		Cmd: "old-cmd", ResumeCmd: "old-resume", Parent: "old-parent",
+		Display: render.Display{Anchor: render.AnchorBelowParent, Focus: false},
+	}
+	if err := SaveState(e.stateDir(), &ReedState{Strands: []Strand{persisted}}); err != nil {
+		t.Fatalf("SaveState: %v", err)
+	}
+
+	got, err := e.AddStrand(AddSpec{
+		IfAbsent: true, NameOverride: "claude",
+		Cmd: "new-cmd", ResumeCmd: "new-resume", Parent: "new-parent",
+		Display: render.Display{Anchor: render.AnchorBelowParent, Focus: true},
+	})
+	if err != nil {
+		t.Fatalf("AddStrand(--if-absent, alive match): %v", err)
+	}
+	if got != persisted {
+		t.Errorf("AddStrand(--if-absent, alive match) = %+v, want unchanged persisted strand %+v", got, persisted)
+	}
+
+	loaded, err := LoadState(e.stateDir())
+	if err != nil {
+		t.Fatalf("LoadState: %v", err)
+	}
+	if len(loaded.Strands) != 1 || loaded.Strands[0] != persisted {
+		t.Errorf("persisted state after alive no-op = %+v, want unchanged single strand %+v", loaded.Strands, persisted)
+	}
+}
+
+// TestAddStrand_IfAbsent_HiddenOnlyNoOps mirrors the alive no-op for the hidden-only branch: the same
+// four fields stay unchanged, plus the strand count is unchanged (nothing was added) and the returned
+// strand is the hidden one, carrying a non-empty GUID and Name.
+func TestAddStrand_IfAbsent_HiddenOnlyNoOps(t *testing.T) {
+	e := newTestEngine(t)
+	e.tmux.execHook = addIfAbsentHook("")
+
+	persisted := Strand{
+		GUID: "hidden-guid", Name: "claude",
+		Cmd: "old-cmd", ResumeCmd: "old-resume", Parent: "old-parent",
+		Display: render.Display{Anchor: render.AnchorHidden},
+	}
+	if err := SaveState(e.stateDir(), &ReedState{Strands: []Strand{persisted}}); err != nil {
+		t.Fatalf("SaveState: %v", err)
+	}
+
+	got, err := e.AddStrand(AddSpec{
+		IfAbsent: true, NameOverride: "claude",
+		Cmd: "new-cmd", ResumeCmd: "new-resume", Parent: "new-parent",
+		Display: render.Display{Anchor: render.AnchorBelowParent, Focus: true},
+	})
+	if err != nil {
+		t.Fatalf("AddStrand(--if-absent, hidden match): %v", err)
+	}
+	if got.GUID == "" || got.Name == "" {
+		t.Fatalf("AddStrand(--if-absent, hidden match) = %+v, want non-empty GUID and Name", got)
+	}
+	if got != persisted {
+		t.Errorf("AddStrand(--if-absent, hidden match) = %+v, want unchanged persisted strand %+v", got, persisted)
+	}
+
+	loaded, err := LoadState(e.stateDir())
+	if err != nil {
+		t.Fatalf("LoadState: %v", err)
+	}
+	if len(loaded.Strands) != 1 {
+		t.Errorf("strand count after hidden no-op = %d, want 1 (nothing added)", len(loaded.Strands))
+	}
+	if loaded.Strands[0] != persisted {
+		t.Errorf("persisted state after hidden no-op = %+v, want unchanged single strand %+v", loaded.Strands, persisted)
+	}
+}
+
 func TestResolveStrandName(t *testing.T) {
 	const tpl = "<ROLE>:<ROUND>:<SHORT_GUID>"
 	guid := "abc1234500000000000000000000000"
