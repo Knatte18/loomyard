@@ -138,6 +138,74 @@ func resolveStrandName(template string, spec AddSpec, guid, worktreeRoot string)
 	return FormatStrandName(template, parts)
 }
 
+// ifAbsentDecision is the closed set of branch rows AddStrand's --if-absent path chooses among for a
+// given name against the persisted strand table.
+type ifAbsentDecision int
+
+const (
+	// ifAbsentAdd means no strand named name exists: AddStrand falls through to its ordinary add path.
+	ifAbsentAdd ifAbsentDecision = iota
+	// ifAbsentNoOpAlive means a matched, visible candidate is alive: AddStrand returns it unchanged.
+	ifAbsentNoOpAlive
+	// ifAbsentRelaunch means a matched, visible candidate exists but none is alive: AddStrand relaunches
+	// the first one in persisted order.
+	ifAbsentRelaunch
+	// ifAbsentNoOpHidden means every matched strand is hidden (anchor:hidden): AddStrand returns the
+	// first matched strand unchanged.
+	ifAbsentNoOpHidden
+)
+
+// classifyIfAbsent decides which of the four --if-absent branch rows AddStrand must take for name
+// against strands, given aliveIDs.
+//
+// aliveIDs must be the set aliveIDSet (apply.go) builds, never liveIDSet: a candidate is alive exactly
+// when s.PaneID != "" && aliveIDs[s.PaneID] — both halves, copying planResumeLaunches in
+// lifecycle.go, whose own comment records why the empty-PaneID half carries its weight after a server
+// reboot clears every binding. liveIDSet would instead read a dead-but-present pane as live, so the
+// case most worth recovering (a strand whose pane died) would be exactly the one --if-absent refused
+// to fix.
+//
+// It returns the decision and the index into strands the decision names; the index is -1 only for
+// ifAbsentAdd, since that row names no existing strand at all.
+//
+// Two sets drive the four rows: matched is every strand whose Name equals name, hidden ones included;
+// candidates is matched minus every strand whose Display.Anchor equals render.AnchorHidden, in
+// persisted (slice) order. matched empty returns ifAbsentAdd with -1. candidates holding at least one
+// alive strand returns ifAbsentNoOpAlive with the index of the first alive candidate in persisted
+// order. candidates non-empty with none alive returns ifAbsentRelaunch with the index of the first
+// candidate in persisted order. matched non-empty with candidates empty returns ifAbsentNoOpHidden
+// with the index of the first matched strand in persisted order. The four rows are mutually exclusive
+// and exhaustive.
+func classifyIfAbsent(strands []Strand, name string, aliveIDs map[string]bool) (ifAbsentDecision, int) {
+	var matched []int
+	for i, s := range strands {
+		if s.Name == name {
+			matched = append(matched, i)
+		}
+	}
+	if len(matched) == 0 {
+		return ifAbsentAdd, -1
+	}
+
+	var candidates []int
+	for _, i := range matched {
+		if strands[i].Display.Anchor != render.AnchorHidden {
+			candidates = append(candidates, i)
+		}
+	}
+	if len(candidates) == 0 {
+		return ifAbsentNoOpHidden, matched[0]
+	}
+
+	for _, i := range candidates {
+		s := strands[i]
+		if s.PaneID != "" && aliveIDs[s.PaneID] {
+			return ifAbsentNoOpAlive, i
+		}
+	}
+	return ifAbsentRelaunch, candidates[0]
+}
+
 // needsLaunchOnAdd reports whether AddStrand must realize display into a
 // live pane: every anchor except hidden.
 func needsLaunchOnAdd(display render.Display) bool {

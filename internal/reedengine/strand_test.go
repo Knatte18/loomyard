@@ -330,6 +330,112 @@ func TestRemovalEmptiedSession(t *testing.T) {
 	}
 }
 
+// TestClassifyIfAbsent drives every one of the four branch rows plus the extra cases the discussion's
+// Testing section enumerates: an empty-PaneID candidate, a candidate bound to a pane present but not
+// alive, and a hidden strand sharing a name with a not-alive visible one.
+func TestClassifyIfAbsent(t *testing.T) {
+	visible := render.Display{Anchor: render.AnchorBelowParent}
+	hidden := render.Display{Anchor: render.AnchorHidden}
+
+	tests := []struct {
+		name       string
+		strands    []Strand
+		targetName string
+		aliveIDs   map[string]bool
+		wantDec    ifAbsentDecision
+		wantIdx    int
+	}{
+		{
+			name:       "NoMatch_Add",
+			strands:    []Strand{{GUID: "a", Name: "other", Display: visible}},
+			targetName: "claude",
+			wantDec:    ifAbsentAdd,
+			wantIdx:    -1,
+		},
+		{
+			name:       "MatchedAlive_NoOp",
+			strands:    []Strand{{GUID: "a", Name: "claude", PaneID: "%1", Display: visible}},
+			targetName: "claude",
+			aliveIDs:   map[string]bool{"%1": true},
+			wantDec:    ifAbsentNoOpAlive,
+			wantIdx:    0,
+		},
+		{
+			name:       "MatchedNotAlive_Relaunch",
+			strands:    []Strand{{GUID: "a", Name: "claude", PaneID: "%1", Display: visible}},
+			targetName: "claude",
+			aliveIDs:   map[string]bool{},
+			wantDec:    ifAbsentRelaunch,
+			wantIdx:    0,
+		},
+		{
+			name:       "MatchedHiddenOnly_NoOpHidden",
+			strands:    []Strand{{GUID: "a", Name: "claude", Display: hidden}},
+			targetName: "claude",
+			aliveIDs:   map[string]bool{},
+			wantDec:    ifAbsentNoOpHidden,
+			wantIdx:    0,
+		},
+		{
+			name:       "EmptyPaneID_NotAlive_Relaunch",
+			strands:    []Strand{{GUID: "a", Name: "claude", PaneID: "", Display: visible}},
+			targetName: "claude",
+			aliveIDs:   map[string]bool{"": true},
+			wantDec:    ifAbsentRelaunch,
+			wantIdx:    0,
+		},
+		{
+			name:       "PanePresentButNotInAliveSet_Relaunch",
+			strands:    []Strand{{GUID: "a", Name: "claude", PaneID: "%1", Display: visible}},
+			targetName: "claude",
+			aliveIDs:   map[string]bool{"%1": false},
+			wantDec:    ifAbsentRelaunch,
+			wantIdx:    0,
+		},
+		{
+			name: "TwoCandidates_SecondAlive_SelectsSecond",
+			strands: []Strand{
+				{GUID: "a", Name: "claude", PaneID: "%1", Display: visible},
+				{GUID: "b", Name: "claude", PaneID: "%2", Display: visible},
+			},
+			targetName: "claude",
+			aliveIDs:   map[string]bool{"%2": true},
+			wantDec:    ifAbsentNoOpAlive,
+			wantIdx:    1,
+		},
+		{
+			name: "TwoCandidates_NeitherAlive_SelectsFirst",
+			strands: []Strand{
+				{GUID: "a", Name: "claude", PaneID: "%1", Display: visible},
+				{GUID: "b", Name: "claude", PaneID: "%2", Display: visible},
+			},
+			targetName: "claude",
+			aliveIDs:   map[string]bool{},
+			wantDec:    ifAbsentRelaunch,
+			wantIdx:    0,
+		},
+		{
+			name: "HiddenSharesNameWithNotAliveVisible_RelaunchAgainstVisible",
+			strands: []Strand{
+				{GUID: "a", Name: "claude", Display: hidden},
+				{GUID: "b", Name: "claude", PaneID: "%1", Display: visible},
+			},
+			targetName: "claude",
+			aliveIDs:   map[string]bool{},
+			wantDec:    ifAbsentRelaunch,
+			wantIdx:    1,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotDec, gotIdx := classifyIfAbsent(tt.strands, tt.targetName, tt.aliveIDs)
+			if gotDec != tt.wantDec || gotIdx != tt.wantIdx {
+				t.Errorf("classifyIfAbsent() = (%v, %d), want (%v, %d)", gotDec, gotIdx, tt.wantDec, tt.wantIdx)
+			}
+		})
+	}
+}
+
 func TestResolveStrandName(t *testing.T) {
 	const tpl = "<ROLE>:<ROUND>:<SHORT_GUID>"
 	guid := "abc1234500000000000000000000000"
