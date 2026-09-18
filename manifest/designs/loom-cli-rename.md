@@ -1,6 +1,6 @@
 # loom CLI: rename `run`/`drive`/`step` for verb/engine symmetry, plus rename `ly-supervise`
 
-> **Status: Next Up, naming not yet decided.**
+> **Status: Planned, naming not yet decided.**
 
 ## The problem
 
