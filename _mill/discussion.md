@@ -56,6 +56,15 @@ Each hit is classified into exactly one of three dispositions:
    a hit not on that list still gets read rather than assumed.
 3. **Structural** — a file rename, a file deletion, or a link fix, handled by the decisions below rather than by editing text in place.
 
+**Carve-out: meta and archival trees are excluded wholesale, before classification.**
+`_mill/`, `crucible/`, and `docs/research/` are out of scope entirely — not classified hit-by-hit, just skipped.
+`_mill/` in particular is tracked (`.gitignore` excludes only `**/_mill/*.active`), so the whole-tree rule would otherwise sweep in this very discussion file, `status.md`, and every file under `reviews/` and `briefs/` — around 70 hits across 13 files, none of them describing the tree.
+These files record *what a task decided*, at the time it decided it;
+rewriting them would falsify the record rather than update it.
+That is the opposite of the `historical-prose-rewritten-not-glossed` decision, which governs documents asserting what the tree currently *is* — a Done roadmap entry and a shipped-status design doc describe today's repo, whereas a review file describes a conversation that happened.
+The "~233 hits across ~57 files" figure quoted elsewhere in this document was counted with these trees already excluded;
+it is the in-scope count, not the raw grep count.
+
 Structural changes, enumerated because they are not text edits a grep finds:
 
 - `internal/loomcli/run.go` → `start.go`, `internal/loomcli/drive.go` → `run.go`.
@@ -119,14 +128,19 @@ Structural changes, enumerated because they are not text edits a grep finds:
   1. `internal/loomcli/run.go:137` — `exec.Command(exe, "loom", "drive")`, the detached driver the bootstrap spawns.
      After the rename the `start` verb spawns `exec.Command(exe, "loom", "run")`.
      The local variable holding it, currently `driveCmd`, is renamed with it.
-  2. `internal/loomcli/smoke_test.go:246,272` — `findDriverPIDs` locates that detached process by scanning `/proc/<pid>/cmdline` for an argv element equal to `"drive"`.
-     After the rename it scans for `"run"`, and its doc comment's "the detached `lyx loom drive` process" is rewritten.
+  2. `internal/loomcli/smoke_test.go:249-279` — `findDriverPIDs` locates that detached process by filtering on `cwd == worktree` plus a single argv element equal to `"drive"`.
+     It must **not** simply start scanning for a lone `"run"` element.
+     `"drive"` is unique to the loom driver, but `"run"` is a verb on `shuttle`, `burler`, `webster`, and loom itself, so a lone-`"run"` probe matches any such process sharing the worktree cwd and the function silently over-reports.
+     Require the **adjacent `"loom"` + `"run"` argv pair** instead, preserving the discriminator's uniqueness.
+     Its doc comment's "the detached `lyx loom drive` process" is rewritten to match.
   3. `internal/loomcli/smoke_test.go` lines ~464-1023 — roughly ten `runLoomCLINoFatal(exe, …, "loom", "run")` invocations, which today mean the bootstrap.
      Every one becomes `"loom", "start"`.
 - Rationale: this is the single most dangerous class of hit in the task, because `run` is *reused* rather than retired.
   A missed `"loom", "drive"` fails loudly as an unknown verb.
   A missed `"loom", "run"` does not fail at all — it silently invokes the new foreground driver, which never seeds and refuses on an unseeded worktree, so a smoke test that meant "bootstrap this worktree" quietly becomes "run the debug driver against an unbootstrapped worktree".
-  The `/proc` argv probe is the same hazard in reverse: left unchanged it scans for `"drive"`, an argv element no process will carry any more, so `findDriverPIDs` returns nil forever and every assertion built on it passes vacuously.
+  The `/proc` argv probe carries this hazard in both directions: left unchanged it scans for `"drive"`, an argv element no process will carry any more, so `findDriverPIDs` returns nil forever and every assertion built on it passes vacuously;
+  changed naively to a lone `"run"` it over-matches instead, since `run` is no longer a name unique to loom's driver.
+  Only the adjacent-pair form is correct.
 - Rejected: relying on the textual grep patterns to surface these — they match none of the split-argv forms, which is why this needs its own pattern and its own decision.
 
 ### historical-prose-rewritten-not-glossed
