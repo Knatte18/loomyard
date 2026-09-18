@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-vscode-launch-chain
+phase: approved-skill-and-roadmap
 slug: ly-supervise-reed-add
 branch: ly-supervise-reed-add
 plan: _mill/plan
@@ -34,6 +34,7 @@ planned  '2026-09-18T17:38:24Z'
 implementing  '2026-09-18T17:38:53Z'
 approved-reed-if-absent  '2026-09-18T17:46:49Z'
 approved-vscode-launch-chain  '2026-09-18T17:50:01Z'
+approved-skill-and-roadmap  '2026-09-18T17:52:19Z'
 ```
 
 ## Batches
@@ -53,8 +54,9 @@ batches:
     commit_sha: 83791eaed2c826cbf21f87f508d5a2b383a255a0
     verify_baseline_failures: []
   - name: skill-and-roadmap
-    state: running
+    state: approved
     implementer_session: 137a6886-35c6-447e-9b38-53be47b6af9c
     start_sha: 79c73fd75bb7932f144e9f867ca93305470fa10d
+    commit_sha: feee04607c41008d28e0e18880fb81af3094cea4
     verify_baseline_failures: []
 ```
