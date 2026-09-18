@@ -46,7 +46,9 @@ batches:
     commit_sha: aa553821043ac2367f66c62c4dfc236a306282ba
     verify_baseline_failures: []
   - name: vscode-launch-chain
-    state: pending
+    state: running
+    implementer_session: 478f1f4b-168c-4664-81b7-10f4c64855c5
+    start_sha: 9004fb576910bd6cec3e78dc948a4b2130b7b9a6
     verify_baseline_failures: []
   - name: skill-and-roadmap
     state: pending
