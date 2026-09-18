@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r1
+phase: discussion-gap-fix-r2
 slug: ly-supervise-reed-add
 branch: ly-supervise-reed-add
 plan: null
@@ -16,4 +16,5 @@ task_description: |
 ```text
 discussing  '2026-09-18T16:30:00Z'
 discussion-fix-r1  '2026-09-18T16:43:15Z'
+discussion-gap-fix-r2  '2026-09-18T16:47:11Z'
 ```
