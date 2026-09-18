@@ -18,6 +18,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
@@ -91,6 +92,30 @@ func reservedRowsFromStatus(raw string) (rows int, ok bool) {
 // "manual", "largest", "smallest" and the empty string. No I/O.
 func windowSizeAllowsChain(raw string) bool {
 	return strings.ToLower(strings.TrimSpace(raw)) == "latest"
+}
+
+// escapeStatusText returns s with every "#" doubled to "##". tmux expands "#{…}" and "#[…]" inside a
+// status string, so a hub path or repo name carrying a "#" would otherwise be interpreted as a format
+// directive rather than displayed verbatim. No I/O.
+func escapeStatusText(s string) string {
+	return strings.ReplaceAll(s, "#", "##")
+}
+
+// statusLeftLength returns the status-left-length value for escaped, an already-escaped status-left
+// string: max(10, utf8.RuneCountInString(escaped)). The count is measured in runes, not bytes, because
+// tmux's status-left-length limit counts characters rather than bytes, and it is floored at 10 because
+// that is tmux's own default, which would truncate a shorter explicit value down to nothing gained.
+//
+// escaped MUST already have passed through escapeStatusText: this order is load-bearing rather than
+// stylistic, because a hub path carrying "#" grows by one character per occurrence once escaped, so
+// measuring the pre-escape string here would truncate exactly the lines that need the escaping most.
+// No I/O.
+func statusLeftLength(escaped string) int {
+	n := utf8.RuneCountInString(escaped)
+	if n < 10 {
+		return 10
+	}
+	return n
 }
 
 // pinGeometryOptionsLocked pins this session's window to "status off" and "window-size latest", and
