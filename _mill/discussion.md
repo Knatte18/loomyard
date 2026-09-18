@@ -28,14 +28,25 @@ Scope is *every* hit of the grep set below, anywhere in the repository tree, eac
 A file is in scope because it contains a hit, never because it appears on a list;
 the named sites elsewhere in this document are worked examples and landmarks, never the boundary.
 
-The grep set, run over the whole tree (including `README.md`, which a file-by-file enumeration missed):
+The grep set, run over the whole tree (including `README.md`, which a file-by-file enumeration missed).
+The set is deliberately over-broad: it is a *candidate* generator feeding the read-and-classify step below, not a list of edits.
 
-- `loom run`, `loom drive`, `loom step`, `lyx run` — the verb hits.
+- **Word-boundary `drive` and `run`, case-insensitive, over the whole tree.**
+  This is the primary pattern and it subsumes the rest.
+  It is broad on purpose: prose names a verb as a bare backticked `` `drive` `` or `` `run` ``, with no "loom" nearby and no quotes, in many places — `docs/overview.md:244,331`, `manifest/roadmap.md:154`, `manifest/designs/loom.md:440`, `manifest/designs/loom-step.md:48,49`, `manifest/designs/self-report-tier2.md:42`, and `internal/loomcli/drive.go:1` among them.
+  A narrower pattern keyed on the two-word `loom run` form matches none of those, which is exactly how round 2's whitelist came to be short.
+  Most hits of this pattern are disposition 2 (leave);
+  that is expected and is what the classify step is for.
+- **Split-argv forms** — `"loom", "drive"`, `"loom", "run"`, `"loom", "step"` as adjacent Go string-literal arguments.
+  These match no textual `loom run` pattern at all, and they are load-bearing;
+  see the split-argv decision below.
 - `ly-supervise` — the skill hits, in every file type, not only under `plugins/`.
   The skill name is not a verb, so it needs its own pass;
   it appears in `manifest/roadmap.md` Done entries, several `manifest/designs/*.md`, and Go comments.
 - `driveCmd`, `runCmd`, `RunAliasCommand` — the Go identifier hits.
-- `"run"`/`"drive"` as cobra `Use` or command-name string literals, and as test-table literals.
+  Note `driveCmd` is also a *local variable* name at `internal/loomcli/run.go:137`, unrelated to the method of the same name;
+  it holds the detached driver's `*exec.Cmd` and is renamed for the same reason.
+- `lyx run` — the alias hits, caught by the bare-`run` pattern but listed because the alias is its own decision.
 
 Each hit is classified into exactly one of three dispositions:
 
@@ -100,6 +111,23 @@ Structural changes, enumerated because they are not text edits a grep finds:
   It is also shorter, which matters for a skill invoked by hand.
 - Rejected: `ly-watch` (undersells — it decides and advances, it does not observe);
   `ly-run` (collides with both `lyx run`'s successor and `lyx loom run`).
+
+### split-argv-sites-are-scope-targets
+
+- Decision: every site that passes a loom verb as a separate Go string-literal argument is a scope target, enumerated by the split-argv grep pattern rather than by any textual `loom run` search.
+  Three concrete dispositions:
+  1. `internal/loomcli/run.go:137` — `exec.Command(exe, "loom", "drive")`, the detached driver the bootstrap spawns.
+     After the rename the `start` verb spawns `exec.Command(exe, "loom", "run")`.
+     The local variable holding it, currently `driveCmd`, is renamed with it.
+  2. `internal/loomcli/smoke_test.go:246,272` — `findDriverPIDs` locates that detached process by scanning `/proc/<pid>/cmdline` for an argv element equal to `"drive"`.
+     After the rename it scans for `"run"`, and its doc comment's "the detached `lyx loom drive` process" is rewritten.
+  3. `internal/loomcli/smoke_test.go` lines ~464-1023 — roughly ten `runLoomCLINoFatal(exe, …, "loom", "run")` invocations, which today mean the bootstrap.
+     Every one becomes `"loom", "start"`.
+- Rationale: this is the single most dangerous class of hit in the task, because `run` is *reused* rather than retired.
+  A missed `"loom", "drive"` fails loudly as an unknown verb.
+  A missed `"loom", "run"` does not fail at all — it silently invokes the new foreground driver, which never seeds and refuses on an unseeded worktree, so a smoke test that meant "bootstrap this worktree" quietly becomes "run the debug driver against an unbootstrapped worktree".
+  The `/proc` argv probe is the same hazard in reverse: left unchanged it scans for `"drive"`, an argv element no process will carry any more, so `findDriverPIDs` returns nil forever and every assertion built on it passes vacuously.
+- Rejected: relying on the textual grep patterns to surface these — they match none of the split-argv forms, which is why this needs its own pattern and its own decision.
 
 ### historical-prose-rewritten-not-glossed
 
@@ -220,6 +248,16 @@ each hit needs reading.
 These are landmarks confirming the Scope rule is the right shape;
 they are not a substitute for running the grep set.
 
+**Third gotcha: prose whose *meaning* turns on the two verbs being different.**
+Two sites must be rewritten as sentences, never token-substituted, because a mechanical swap inverts what they assert:
+
+- `internal/loomcli/drive.go`'s `Long` string contrasts the verb against `lyx loom run` repeatedly ("ensures that session itself, exactly as `lyx loom run` does").
+  Substituting turns each contrast into a self-reference.
+- `manifest/designs/self-report-tier1.md:13-20` states an exemption that turns on `lyx loom drive` and `lyx loom run` being two different verbs.
+  A token swap collapses both sides onto the same name and silently inverts the stated rule.
+
+Both need a human-legible rewrite against the new verb set, and both are the reason the classify step exists rather than a `--replace` flag.
+
 ## Constraints
 
 From `CONSTRAINTS.md`:
@@ -303,4 +341,5 @@ A rename that compiles and passes both, with the three new guards in place, has 
 - **Q:** How is the `contracts/specs/` hash-mismatch on already-seeded hubs handled? **A:** [auto-pick] Accepted as pre-existing `stencilstore` behaviour; no force-sync. **Why:** the Stencil Ownership Invariant bans a force-sync carve-out for specs, and this hazard is not introduced by the rename.
 - **Q:** What happens to `manifest/designs/loom-cli-rename.md` on landing? **A:** [auto-pick] Deleted, with the roadmap item moved Planned→Done and both inbound links fixed. **Why:** the Documentation Lifecycle deletes a design doc when its work lands, and Markdown Link Integrity fails the build on a dangling link.
 - **Q:** Should Scope enumerate the files to change, or state a rule for finding them? **A:** [auto-pick] A rule — a bounded grep set run over the whole tree, with every hit read and classified into rename / leave / structural. **Why:** review round 2 demonstrated the enumeration was already short by inspection, missing `README.md` entirely (including its own copy of the alias sentence) and every verb-naming comment in `loomengine`, `frictionengine`, and `webstercli`. With ~233 hits across ~57 files, a whitelist cannot be both complete and maintainable, and a silently-short one is worse than no list because it reads as authoritative.
+- **Q:** Do the split-argv Go sites (`exec.Command(exe, "loom", "drive")`, the `/proc` argv probe, the smoke-test invocations) need their own decision? **A:** [auto-pick] Yes — their own grep pattern and their own decision, since no textual pattern finds them. **Why:** because `run` is reused rather than retired, a missed `"loom", "run"` fails silently instead of loudly — it invokes the new foreground driver against an unbootstrapped worktree rather than erroring as an unknown verb. The `/proc` probe inverts the same way: left scanning for `"drive"` it matches nothing forever, so every assertion built on it passes vacuously.
 - **Q:** Is there a hazard in doing this as a textual find-and-replace? **A:** [auto-pick] Yes — it must be done by reading each hit. **Why:** "run" appears as a noun meaning "an execution" in at least four unrelated files (`burlercli/wiring.go`, `githubclient/doc.go`, `landingshed/deps.go`, `selfreportengine/selfreport.go`), and `drive.go`'s `Long` string contrasts itself against `lyx loom run` in sentences a blind replace would turn into self-references.
