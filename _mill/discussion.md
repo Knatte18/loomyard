@@ -213,7 +213,11 @@ All three refusal strings must name `lyx loom start` after this change, and `too
 `cmd/lyx/helptree_test.go:28` lists `"run"` among the root's children (this becomes `"start"`), and line 114 lists loom's subcommands as `{"run", "drive", "step", "status", "pause", "validate-discussion", "validate-plan"}` (this becomes `{"start", "run", "step", ...}`).
 Note what this test actually checks: lines 133-137 loop over `wantSubs` doing a per-item `strings.Contains` against the rendered help text.
 It is a presence check, not set equality — it can confirm `start` appeared, but it can never catch a `drive` command that survived the rename, since an extra subcommand in the help output fails no `Contains` call.
-Proving `drive` is gone needs the separate retired-name cobra walk described under Testing.
+
+The exact-set guard for the loom subtree already exists elsewhere: `internal/loomcli/cli_test.go:43-77`'s `TestCommand_RegisteredVerbs_ExactSet` walks `Command().Commands()` and checks both directions against `want := []string{"drive", "pause", "run", "status", "step", "validate-discussion", "validate-plan"}` (line 56), so a surviving or stray loom verb fails it.
+That `want` literal is a mandatory edit — the test fails the moment `start` is registered.
+
+`cmd/lyx/sandbox_coverage_test.go:31` is a third mandatory edit the doc-level reading misses: its `excludedModules` allowlist carries a `"run"` key ("alias of loom's own bootstrap verb; covered by the loom module's scenario"), and the test asserts every excluded name is actually registered, so the key must become `"start"` or the assertion fails with "excludedModules names %q but no such module is registered".
 
 `internal/loomcli/cli_test.go:79-93` holds `TestRunAliasCommand_StaysOneCommandWithSubtreeVerb`, which asserts the alias has a non-empty `Short`, that `alias.Use == "run"`, and that it exposes the `--parent` flag.
 Rename the test and flip the expected `Use` to `"start"`.
@@ -287,7 +291,8 @@ From `CONSTRAINTS.md`:
 - **Test Tier Purity Invariant** — untagged test files perform no expensive spawns.
   Any new guard test must stay tier 1: no `exec.Command`, no `gitexec`, no `hubforge.NewHub`.
 - **Sandbox Suite Coverage** — every registered lyx module is exercised or explicitly excluded.
-  The renamed root child `lyx start` is a registration change the suite doc should reflect.
+  Enforced by `cmd/lyx/sandbox_coverage_test.go`'s `excludedModules` allowlist, whose `"run"` key (line 31) must become `"start"`, keeping its existing reason text — the test asserts every excluded name is a registered module, so a stale key fails outright.
+  No suite doc changes for this: no `**Covers:**` tag names `run`.
 
 From `CLAUDE.md`:
 
@@ -305,7 +310,16 @@ No new behaviour ships, so the testing job is threefold: keep every existing ass
 The root-children list becomes `"start"` instead of `"run"`, and loom's subcommand list becomes `{"start", "run", "step", "status", "pause", "validate-discussion", "validate-plan"}`.
 These two assertions confirm the new names reached cobra, so write them before touching `loomcli` — a genuine TDD candidate, since neither `start` nor any `Short`/`Long` containing it exists on today's tree, so both fail loudly now and pass only once the rename lands.
 They do **not** prove the old names are gone: the test is a per-item `strings.Contains` sweep, so a surviving `drive` command fails nothing here.
-The retired-name guard below is what closes that half.
+The two exact-set guards below close that half.
+
+**`internal/loomcli/cli_test.go`'s `TestCommand_RegisteredVerbs_ExactSet` — adapt, and it is already the loom-subtree guard.**
+Update its `want` literal to `{"pause", "run", "start", "status", "step", "validate-discussion", "validate-plan"}`.
+It walks the parent's registered commands and errors in both directions, so it already fails on a surviving `drive` — no new test is needed for the loom subtree, and none should be written.
+This is a mandatory edit, not optional: the test fails as soon as `start` is registered.
+
+**`cmd/lyx/sandbox_coverage_test.go` — adapt.**
+Change the `excludedModules` key at line 31 from `"run"` to `"start"`, keeping its existing reason text.
+The suite asserts each excluded name is a registered module, so a stale key fails outright.
 
 **`internal/loomcli/cli_test.go` — adapt and extend.**
 Rename `TestRunAliasCommand_StaysOneCommandWithSubtreeVerb` to match the new function and flip its expected `Use` to `"start"`;
@@ -313,9 +327,11 @@ its existing non-empty-`Short` and `--parent`-flag assertions carry over unchang
 Add one assertion the current test lacks: the alias's `Use` equals the name of the subtree verb it was built from, so the two can never drift apart again.
 This is the assertion that encodes the `root-alias-becomes-start` decision structurally rather than as a literal.
 
-**A retired-name guard — new, tier 1.**
-Assert that loom's command tree contains no command named `drive`, and that the root tree contains no bare child named `run`.
-Both are pure `*cobra.Command` walks over `loomcli.Command()` and the root builder, so they spawn nothing.
+**A retired-name guard — new, tier 1, root tree only.**
+Assert the root tree carries no bare child named `run`.
+Scope it to exactly that: the loom subtree's half is already covered by `TestCommand_RegisteredVerbs_ExactSet` above, and duplicating it would leave two tests to keep in sync for one property.
+The root half genuinely is uncovered — `helptree_test.go:28` only does `Contains` over the root's children, and `sandbox_coverage_test.go`'s map asserts that excluded names *are* registered, never that a retired one is absent.
+A pure `*cobra.Command` walk over the root builder, so it spawns nothing.
 Second TDD candidate: write it first, watch it fail on today's tree.
 
 **Refusal-text coverage — adapt, do not author.**
@@ -352,5 +368,6 @@ A rename that compiles and passes both, with the three new guards in place, has 
 - **Q:** How is the `contracts/specs/` hash-mismatch on already-seeded hubs handled? **A:** [auto-pick] Accepted as pre-existing `stencilstore` behaviour; no force-sync. **Why:** the Stencil Ownership Invariant bans a force-sync carve-out for specs, and this hazard is not introduced by the rename.
 - **Q:** What happens to `manifest/designs/loom-cli-rename.md` on landing? **A:** [auto-pick] Deleted, with the roadmap item moved Planned→Done and both inbound links fixed. **Why:** the Documentation Lifecycle deletes a design doc when its work lands, and Markdown Link Integrity fails the build on a dangling link.
 - **Q:** Should Scope enumerate the files to change, or state a rule for finding them? **A:** [auto-pick] A rule — a bounded grep set run over the whole tree, with every hit read and classified into rename / leave / structural. **Why:** review round 2 demonstrated the enumeration was already short by inspection, missing `README.md` entirely (including its own copy of the alias sentence) and every verb-naming comment in `loomengine`, `frictionengine`, and `webstercli`. With ~233 hits across ~57 files, a whitelist cannot be both complete and maintainable, and a silently-short one is worse than no list because it reads as authoritative.
+- **Q:** Does the rename need a new exact-set test proving `drive` is gone? **A:** [auto-pick] No for the loom subtree, yes for the root tree. **Why:** `internal/loomcli/cli_test.go:43-77`'s `TestCommand_RegisteredVerbs_ExactSet` already checks both directions against a `want` literal, so it fails on a surviving `drive` — and its `want` is a mandatory edit anyway. Duplicating it would leave two tests to keep in sync for one property. The root tree genuinely has no absence guard, so the new test is scoped to that alone.
 - **Q:** Do the split-argv Go sites (`exec.Command(exe, "loom", "drive")`, the `/proc` argv probe, the smoke-test invocations) need their own decision? **A:** [auto-pick] Yes — their own grep pattern and their own decision, since no textual pattern finds them. **Why:** because `run` is reused rather than retired, a missed `"loom", "run"` fails silently instead of loudly — it invokes the new foreground driver against an unbootstrapped worktree rather than erroring as an unknown verb. The `/proc` probe inverts the same way: left scanning for `"drive"` it matches nothing forever, so every assertion built on it passes vacuously.
 - **Q:** Is there a hazard in doing this as a textual find-and-replace? **A:** [auto-pick] Yes — it must be done by reading each hit. **Why:** "run" appears as a noun meaning "an execution" in at least four unrelated files (`burlercli/wiring.go`, `githubclient/doc.go`, `landingshed/deps.go`, `selfreportengine/selfreport.go`), and `drive.go`'s `Long` string contrasts itself against `lyx loom run` in sentences a blind replace would turn into self-references.
