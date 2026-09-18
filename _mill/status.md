@@ -78,7 +78,9 @@ batches:
     commit_sha: b8126d29749e74b7a5a271c8dcefa4af18188937
     verify_baseline_failures: []
   - name: standalone-watcher
-    state: pending
+    state: running
+    implementer_session: 14443cb4-b31b-440a-ac48-dcf26b1c40fe
+    start_sha: c91df24c296f951de9b7924d6b81811e5d7cf98f
     verify_baseline_failures: []
   - name: docs-smokes-and-residue
     state: pending
