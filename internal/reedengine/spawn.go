@@ -152,7 +152,7 @@ func (e *Engine) launchStrandLocked(st *ReedState, s *Strand, launchCmd string) 
 	}
 
 	// -c pins the new pane's cwd to Geometry.PaneCwd, exactly as
-	// new-session and the header split (lifecycle.go) already do. Without
+	// new-session and Selvage's own split (lifecycle.go) already do. Without
 	// it tmux resolves the cwd from the invoking CLIENT — verified live
 	// (tmux 3.6): a split issued from outside tmux lands in the calling
 	// process's cwd, neither the target pane's cwd nor the session's. That
@@ -161,7 +161,24 @@ func (e *Engine) launchStrandLocked(st *ReedState, s *Strand, launchCmd string) 
 	// caller injects a cwd through the RunCLIIn seam instead — at which
 	// point every strand command would run against the wrong tree while
 	// reed reported success.
-	out, err := e.tmux.output("split-window", "-t", splitTargetID, "-c", e.geom.PaneCwd, "-P", "-F", "#{pane_id}")
+	//
+	// -b is the one exception to "a strand split always lands below its
+	// target": when planPaneTarget's third tier fires (Selvage is the
+	// sole pane, so it is the split target), splitting below it — tmux's
+	// default — would insert the new strand pane AFTER Selvage in tmux's
+	// own physical pane order, the same "cells apply positionally, not by
+	// pane id" hazard splitSelvagePaneAtBottomLocked's doc comment
+	// describes for Selvage's own split. -b keeps the new strand pane
+	// physically above Selvage instead, preserving the bottom-most
+	// invariant on exactly the one path that would otherwise violate it.
+	// Every other split target is a strand, and inserting below another
+	// strand never touches Selvage's position.
+	argv := []string{"split-window"}
+	if splitTargetID == st.SelvagePaneID {
+		argv = append(argv, "-b")
+	}
+	argv = append(argv, "-t", splitTargetID, "-c", e.geom.PaneCwd, "-P", "-F", "#{pane_id}")
+	out, err := e.tmux.output(argv...)
 	if err != nil {
 		return fmt.Errorf("split window: %w", err)
 	}

@@ -654,6 +654,7 @@ func TestRemoveStrand_SoleStrandEmptiesSessionSucceeds(t *testing.T) {
 		LogsDir:      filepath.Join(hub, "logs"),
 		RepoName:     "test-repo",
 		HubPath:      hub,
+		WorktreeName: filepath.Base(tmpDir),
 	}
 	e := New(cfg, geom)
 
@@ -763,6 +764,7 @@ func TestDeadSelvagePaneIsHealedByUpWithoutCorruptingLayout(t *testing.T) {
 		LogsDir:      filepath.Join(hub, "logs"),
 		RepoName:     "test-repo",
 		HubPath:      hub,
+		WorktreeName: filepath.Base(tmpDir),
 	}
 	e := New(cfg, geom)
 
