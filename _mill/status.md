@@ -64,7 +64,9 @@ batches:
     commit_sha: 64fa306ca56c50805e920b12036ea92c1f7beefd
     verify_baseline_failures: []
   - name: status-line-pins
-    state: pending
+    state: running
+    implementer_session: e660438e-bc71-4acd-95e4-6eb8123352b5
+    start_sha: 3b4097a8757b4c27cd532455312ac21a20b42ceb
     verify_baseline_failures: []
   - name: watchdog-daemon
     state: pending
