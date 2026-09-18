@@ -58,6 +58,8 @@ No build order is implied between these items.
 1. **reed: independent per-window attach via tmux session groups** — tmux's session-groups feature would let multiple `lyx reed attach` invocations show different windows independently, instead of sharing one today.
    See [designs/reed-multi-window.md](designs/reed-multi-window.md#independent-per-window-attach-via-tmux-session-groups).
 
+1. **reed: `AddStrand` self-heals a cold worktree instead of requiring `up` first** — today `AddStrand` only checks `requireSessionLocked` and fails with "no session" if nobody has run `reed up` yet; call the same locked helper `Up()` already uses instead, so any external spawn into a worktree nobody has visited (no VS Code, no manual `up`) just works. Fully internal to `reedengine` — fabric never needs to know reed exists. Enables the headless-orchestration future behind the Next Up `born-as-strand` and `mailbox` items.
+
 1. **fabric: Windows path behaviour is unverified after six hardening rounds** — the platform sibling of the now-Done `Real-Linux validation`; needs a Windows host to close, not further design.
    See [designs/fabric-windows-verification.md](designs/fabric-windows-verification.md).
 
