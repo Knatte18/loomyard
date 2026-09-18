@@ -100,7 +100,7 @@ Example:
 			}
 			out := cmd.OutOrStdout()
 
-			text, err := c.eng.HeaderText()
+			text, err := c.eng.StatusLineText()
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
