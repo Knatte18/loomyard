@@ -213,8 +213,10 @@ func TestAttachGeometry_ExactLayoutAndRowBudgets(t *testing.T) {
 	if gotW != cols {
 		t.Errorf("#{window_width} after attach = %d, want %d (the client's told cols)", gotW, cols)
 	}
-	if gotH != rows {
-		t.Errorf("#{window_height} after attach = %d, want exactly %d (status is off, so the window is the client's full rows, not rows-1)", gotH, rows)
+	// The status-line pins now leave "status" on, which reserves one row, so the live window settles
+	// at rows-1 rather than the client's full told rows.
+	if gotH != rows-1 {
+		t.Errorf("#{window_height} after attach = %d, want exactly %d (status is on, reserving one row)", gotH, rows-1)
 	}
 	if gotLayout := windowLayoutNow(t, e); gotLayout != wantLayout {
 		t.Errorf("#{window_layout} after attach = %q, want %q byte for byte — a mismatch here means tmux rescaled the planned string instead of applying it verbatim", gotLayout, wantLayout)
@@ -418,9 +420,11 @@ func TestAttachGeometry_ResizeAfterAttachHoldsRowBudgets(t *testing.T) {
 	if err := unix.IoctlSetWinsize(int(pty.master.Fd()), unix.TIOCSWINSZ, &unix.Winsize{Col: uint16(resizedCols), Row: uint16(resizedRows)}); err != nil {
 		t.Fatalf("TIOCSWINSZ (%dx%d): %v", resizedCols, resizedRows, err)
 	}
+	// With "status" pinned on, tmux's content window settles at resizedRows-1, not resizedRows — the
+	// status-line's own row is not part of the window tmux reports here.
 	waitUntil(t, 15*time.Second, "window never reported the resized height", func() bool {
 		_, h := windowSizeNow(t, e)
-		return h == resizedRows
+		return h == resizedRows-1
 	})
 
 	assertAttachGeometryRowBudgets(t, e, selvagePaneID, parentPaneID, "after resize")
@@ -509,9 +513,10 @@ func TestAttachGeometry_DeadStripPinDoesNotBreakSelvagePin(t *testing.T) {
 	if err := unix.IoctlSetWinsize(int(pty.master.Fd()), unix.TIOCSWINSZ, &unix.Winsize{Col: uint16(resizedCols), Row: uint16(resizedRows)}); err != nil {
 		t.Fatalf("TIOCSWINSZ (%dx%d): %v", resizedCols, resizedRows, err)
 	}
+	// With "status" pinned on, tmux's content window settles at resizedRows-1, not resizedRows.
 	waitUntil(t, 15*time.Second, "window never reported the resized height", func() bool {
 		_, h := windowSizeNow(t, e)
-		return h == resizedRows
+		return h == resizedRows-1
 	})
 
 	live, err := e.tmux.listPanes(e.SessionName())
