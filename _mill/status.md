@@ -47,7 +47,9 @@ batches:
     commit_sha: f17bc76749c1175e9d16aab635259164a485ea94
     verify_baseline_failures: []
   - name: vocabulary-and-config
-    state: pending
+    state: running
+    implementer_session: b10b8c5f-73a0-4eb4-8fa4-ca98ae6f09e6
+    start_sha: 3032ada47f66bd210b1f1095c813a110e5b4c657
     verify_baseline_failures: []
   - name: selvage-pane
     state: pending
