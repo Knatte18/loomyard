@@ -1,7 +1,7 @@
 // spawnwatchdog_test.go pins ensureWatchdogSpawned's no-spawn early returns and its lock-path
-// target, driving no exec.Command and no live tmux at all — per the Test Tier Purity Invariant an
-// untagged test file spawns nothing; the daemon's live spawn/lock behaviour is card 41's
-// integration suite.
+// target, spawning no subprocess and driving no live tmux at all — per the Test Tier Purity
+// Invariant an untagged test file spawns nothing; the daemon's live spawn/lock behaviour is card
+// 41's integration suite.
 
 package reedcli
 
