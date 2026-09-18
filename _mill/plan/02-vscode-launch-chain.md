@@ -53,6 +53,9 @@ The external interface batch 3 consumes is the convention itself — the task na
   and `folderOpen` still triggers the entry task.
   Add one case per fallback, driven against `WriteConfig` because it owns the rule: an empty `lyxPath` yields the bare name `lyx` in every step's `command`, and an empty `claudePath` yields the bare name `claude` in the add step's `--cmd`, each still producing a valid JSON file.
   `TestWriteVSCodeConfigDoesNotClobber` keeps passing with its assertions unchanged beyond the new signature — it is the regression guard for the never-clobber contract that makes existing worktrees keep their current task.
+  `internal/vscode/config_test.go` holds a third positional call site, in `TestWriteVSCodeConfigRegistersInGitignore`;
+  update that call to the new signature as well, leaving its own gitignore assertions unchanged, since the two new parameters have no bearing on them.
+  All three call sites must move together or the package stops compiling and this batch's own `verify:` fails.
   In `docs/overview.md`, rewrite the **ide** bullet to say that the generated `folderOpen` task is now the reed launch chain rather than a bare `claude`, that both binary paths are stamped absolute at generation time, and that an existing worktree keeps its current `tasks.json` because `WriteConfig` never clobbers — the manual upgrade being to delete `.vscode/tasks.json` and re-run `lyx ide spawn`.
 - **Commit:** `feat(vscode): generate the reed launch chain as sequenced tasks`
 

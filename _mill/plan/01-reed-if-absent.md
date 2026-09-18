@@ -78,7 +78,9 @@ Batch-local decision beyond the overview's shared set: the classifier returns an
   the two no-op branches log nothing at `Info`, since they start no process.
   Every branch returns a `Strand` carrying a non-empty `GUID` and `Name`, the hidden row included.
   In `internal/reedengine/strand_test.go`, add cases for `validateIfAbsent` (rejected with the requirement named when `NameOverride` is empty and `IfAbsent` is true;
-  accepted otherwise, including the `IfAbsent` false case with no name), and drive the no-op branches through the engine helpers so the no-mutation guarantee is pinned: a no-op against an alive candidate leaves `Display` untouched even when the incoming spec carries `Focus: true`, and leaves `Cmd`/`ResumeCmd`/`Parent` as persisted even when the spec supplies different ones.
+  accepted otherwise, including the `IfAbsent` false case with no name), and drive both no-op branches through the engine helpers so the no-mutation guarantee is pinned at the engine-call level, one case per branch.
+  For the alive-candidate no-op: `Display` is untouched even when the incoming spec carries `Focus: true`, and `Cmd`/`ResumeCmd`/`Parent` stay as persisted even when the spec supplies different ones.
+  For the hidden-only no-op: the same four assertions hold, and additionally the strand count is unchanged — nothing was added — and the returned strand is the hidden one, carrying a non-empty `GUID` and `Name`.
   Keep the tmux-facing relaunch out of this untagged file — card 5 covers it.
 - **Commit:** `feat(reedengine): branch AddStrand on the --if-absent decision`
 
