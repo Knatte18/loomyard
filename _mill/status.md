@@ -1,8 +1,7 @@
 # Status
 
 ```yaml
-phase: blocked
-blocked_reason: 'auto: discussion review gaps unresolved after 7 rounds'
+phase: discussed
 slug: ly-supervise-reed-add
 branch: ly-supervise-reed-add
 plan: null
@@ -24,4 +23,5 @@ discussion-gap-fix-r5  '2026-09-18T16:58:24Z'
 discussion-gap-fix-r6  '2026-09-18T17:01:47Z'
 discussion-gap-fix-r7  '2026-09-18T17:05:41Z'
 blocked  '2026-09-18T17:05:51Z'
+discussed  '2026-09-18T17:06:36Z'
 ```
