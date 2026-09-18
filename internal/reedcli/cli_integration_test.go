@@ -70,6 +70,61 @@ func TestRunCLI_AddNotUp_FriendlyError(t *testing.T) {
 	}
 }
 
+// TestRunCLI_AddIfAbsentNoName_RejectsBeforeSessionCheck verifies that `add --if-absent` with no
+// --name is rejected by the engine's --name requirement, and specifically BEFORE the session-existence
+// check: against a fixture hub with no session up, the error must name the --name requirement, not the
+// "no reed session" message TestRunCLI_AddNotUp_FriendlyError pins for an ordinary add.
+func TestRunCLI_AddIfAbsentNoName_RejectsBeforeSessionCheck(t *testing.T) {
+	t.Parallel()
+
+	h := hubforge.NewHub(t, ".")
+
+	var out bytes.Buffer
+	exitCode := RunCLIIn(h.PrimeWorktree(), &out, []string{"add", "--if-absent", "--cmd", "pwsh -NoExit -Command Write-Host ready"})
+
+	if exitCode != 1 {
+		t.Errorf("RunCLI(add --if-absent, no --name) = %d; want 1", exitCode)
+	}
+
+	var env map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
+		t.Fatalf("RunCLI(add --if-absent, no --name) output is not valid JSON: %v; got: %q", err, out.String())
+	}
+	errMsg, _ := env["error"].(string)
+	if !strings.Contains(errMsg, "--name") {
+		t.Errorf("RunCLI(add --if-absent, no --name) error = %q; want it to name the --name requirement", errMsg)
+	}
+	noSessionMsg := `no reed session; run "lyx reed up"`
+	if errMsg == noSessionMsg {
+		t.Errorf("RunCLI(add --if-absent, no --name) error = %q; want the --name rejection to precede the session check, not the no-session message", errMsg)
+	}
+}
+
+// TestRunCLI_AddIfAbsentNoCmd_StillRequiresCmd verifies that --if-absent relaxes nothing about --cmd:
+// it stays required, so `add --if-absent --name claude` with no --cmd must still fail with cobra's
+// missing-required-flag error.
+func TestRunCLI_AddIfAbsentNoCmd_StillRequiresCmd(t *testing.T) {
+	t.Parallel()
+
+	h := hubforge.NewHub(t, ".")
+
+	var out bytes.Buffer
+	exitCode := RunCLIIn(h.PrimeWorktree(), &out, []string{"add", "--if-absent", "--name", "claude"})
+
+	if exitCode != 1 {
+		t.Errorf("RunCLI(add --if-absent, no --cmd) = %d; want 1", exitCode)
+	}
+
+	var env map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
+		t.Fatalf("RunCLI(add --if-absent, no --cmd) output is not valid JSON: %v; got: %q", err, out.String())
+	}
+	errMsg, _ := env["error"].(string)
+	if !strings.Contains(errMsg, `"cmd"`) {
+		t.Errorf("RunCLI(add --if-absent, no --cmd) error = %q; want it to name the missing required --cmd flag", errMsg)
+	}
+}
+
 // TestRunCLI_RemoveNotUp_FriendlyError verifies that running `remove` before `up` surfaces the
 // friendly "no reed session" error.
 func TestRunCLI_RemoveNotUp_FriendlyError(t *testing.T) {

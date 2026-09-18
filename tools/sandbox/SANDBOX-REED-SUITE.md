@@ -452,6 +452,23 @@ The header pane's log must also carry exactly one `promoting resize watchdog to 
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
+---
+
+### M27 -- Repeated add --if-absent is idempotent
+
+**Covers:** reed
+
+**Goal:** "Prove a repeated `add --if-absent` never stacks a duplicate strand, whichever of the three reopen shapes it hits."
+
+**Watch:** `up`, then `add --if-absent --cmd <claude> --name claude --focus`.
+Record the returned guid.
+Run the identical `add --if-absent` a second time while that strand's pane is still alive: it must add nothing and report the SAME guid, and `status` must show exactly one strand under that name.
+Kill the strand's pane (not `remove` -- the strand must stay tracked, only its pane must die) and run the identical `add --if-absent` a third time: it must relaunch the SAME guid rather than adding a second strand, and `status` must then report that guid `live: true`.
+Finally, `add --if-absent` naming a HIDDEN strand (added via the engine with `anchor: hidden`, since the CLI has no hidden-add path of its own) must add nothing and report the hidden strand's own guid.
+A second strand appearing under the same name at any point, a guid that changes across the reopen, or a `live: false` after the third add's relaunch is a `FAIL`.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
 ## Session log format
 
 After running all scenarios, record a short session summary:
@@ -487,6 +504,7 @@ M23: <OK|WARN|FAIL> -- <one-line note if not OK>
 M24: <OK|WARN|FAIL> -- <one-line note if not OK>
 M25: <OK|WARN|FAIL> -- <one-line note if not OK>
 M26: <OK|WARN|FAIL> -- <one-line note if not OK>
+M27: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 sandbox-report.json written: <count of WARN/FAIL items>
 ```

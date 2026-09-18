@@ -14,8 +14,23 @@ It never names a producer, never predicts what comes next, and never decides wha
 
 The session's current working directory must already be the task worktree root, because `lyx loom step` derives everything from cwd, and `lyxcwd.Resolve` requires that cwd to be a git worktree root.
 Verify this before the first step — for example, confirm the directory looks like a task worktree — rather than discovering the mismatch as a resolve failure mid-loop.
-Tell the operator to open `lyx reed attach` in a side terminal before starting.
-That is a second, independent watching layer, not a substitute for this loop.
+
+The operator does not need to open a side terminal for this: a worktree opened through `lyx ide spawn`'s generated VS Code task already starts `lyx reed up`, then `lyx reed add --if-absent --cmd claude --name claude --focus`, then `lyx reed attach`, in that sequence.
+The session running this skill is therefore itself the strand named `claude`, and the panes loom spawns while this loop runs are its siblings inside that same reed session — not a second, independent layer this skill needs to ask the operator to open.
+
+Run this self-check once, before the first step, to confirm that expectation holds for the session actually running: read `$TMUX_PANE` from the environment, then run `lyx reed status` and compare that pane id against the tracked strands the envelope reports.
+Exactly three outcomes follow.
+
+- `$TMUX_PANE` is set and its pane id appears among the tracked strands: proceed silently.
+- `$TMUX_PANE` is set but its pane id does not appear among the tracked strands: tell the operator this session is running in a pane reed does not track, name the launch chain above as the fix, and offer the choice — as a numbered text list, per this skill's own `## Operator choices` section — of relaunching through that chain or proceeding without reed supervision.
+- `$TMUX_PANE` is unset: report the check as unconfirmed, not failed.
+  Say the check could not run, that this session may or may not be a strand, and that proceeding is fine.
+
+That third outcome exists because on Windows reed drives psmux, a tmux-compatible port, and nothing in this repo verifies that psmux exports `TMUX_PANE` into a pane's environment — so a two-outcome check would tell every correctly-launched Windows operator to relaunch on a signal that never fires for them.
+State the relaunch advice only in the tracked-absent branch above; the unconfirmed branch never recommends it.
+
+A worktree created before this launch convention keeps its existing `.vscode/tasks.json`, because the generator never clobbers a file that already exists.
+The manual upgrade is to delete `.vscode/tasks.json` and re-run `lyx ide spawn`.
 
 ## The pre-loop baseline
 

@@ -26,6 +26,12 @@ type AddSpec struct {
 	// appended Strand and never interpreted or branched on by reed.
 	SessionID string
 	Display   render.Display
+	// IfAbsent is opt-in: false (the default) makes AddStrand behave byte-for-byte as it does
+	// today. When true, AddStrand matches NameOverride against this worktree's persisted strands
+	// (via classifyIfAbsent) before adding anything, requires NameOverride be non-empty (see
+	// validateIfAbsent), and either no-ops on a matched strand, relaunches a matched-but-dead one,
+	// or falls through to an ordinary add when nothing matches.
+	IfAbsent bool
 }
 
 // Removed reports every strand RemoveStrand deleted: the target plus its whole cascaded descendant
@@ -45,6 +51,20 @@ func validateAnchor(anchor render.Anchor) error {
 	default:
 		return fmt.Errorf("invalid anchor %q; want below-parent|hidden", anchor)
 	}
+}
+
+// validateIfAbsent rejects spec at the op boundary, before any state is loaded, when IfAbsent is set
+// without NameOverride.
+//
+// --if-absent requires --name because resolveStrandName falls back to guid[:8] when NameOverride is
+// empty, and the shipped templates (template_posix.yaml, template_windows.yaml) carry <SHORT_GUID>,
+// minted fresh per invocation — so a templated name can never match an existing strand, and
+// --if-absent would stack a duplicate strand on every reopen instead of ever finding one to match.
+func validateIfAbsent(spec AddSpec) error {
+	if spec.IfAbsent && spec.NameOverride == "" {
+		return fmt.Errorf("--if-absent requires --name")
+	}
+	return nil
 }
 
 // strandIndex returns the index of the strand with the given guid, or -1.
@@ -136,6 +156,74 @@ func resolveStrandName(template string, spec AddSpec, guid, worktreeRoot string)
 		"<SHORT_GUID>": guid[:8],
 	}
 	return FormatStrandName(template, parts)
+}
+
+// ifAbsentDecision is the closed set of branch rows AddStrand's --if-absent path chooses among for a
+// given name against the persisted strand table.
+type ifAbsentDecision int
+
+const (
+	// ifAbsentAdd means no strand named name exists: AddStrand falls through to its ordinary add path.
+	ifAbsentAdd ifAbsentDecision = iota
+	// ifAbsentNoOpAlive means a matched, visible candidate is alive: AddStrand returns it unchanged.
+	ifAbsentNoOpAlive
+	// ifAbsentRelaunch means a matched, visible candidate exists but none is alive: AddStrand relaunches
+	// the first one in persisted order.
+	ifAbsentRelaunch
+	// ifAbsentNoOpHidden means every matched strand is hidden (anchor:hidden): AddStrand returns the
+	// first matched strand unchanged.
+	ifAbsentNoOpHidden
+)
+
+// classifyIfAbsent decides which of the four --if-absent branch rows AddStrand must take for name
+// against strands, given aliveIDs.
+//
+// aliveIDs must be the set aliveIDSet (apply.go) builds, never liveIDSet: a candidate is alive exactly
+// when s.PaneID != "" && aliveIDs[s.PaneID] — both halves, copying planResumeLaunches in
+// lifecycle.go, whose own comment records why the empty-PaneID half carries its weight after a server
+// reboot clears every binding. liveIDSet would instead read a dead-but-present pane as live, so the
+// case most worth recovering (a strand whose pane died) would be exactly the one --if-absent refused
+// to fix.
+//
+// It returns the decision and the index into strands the decision names; the index is -1 only for
+// ifAbsentAdd, since that row names no existing strand at all.
+//
+// Two sets drive the four rows: matched is every strand whose Name equals name, hidden ones included;
+// candidates is matched minus every strand whose Display.Anchor equals render.AnchorHidden, in
+// persisted (slice) order. matched empty returns ifAbsentAdd with -1. candidates holding at least one
+// alive strand returns ifAbsentNoOpAlive with the index of the first alive candidate in persisted
+// order. candidates non-empty with none alive returns ifAbsentRelaunch with the index of the first
+// candidate in persisted order. matched non-empty with candidates empty returns ifAbsentNoOpHidden
+// with the index of the first matched strand in persisted order. The four rows are mutually exclusive
+// and exhaustive.
+func classifyIfAbsent(strands []Strand, name string, aliveIDs map[string]bool) (ifAbsentDecision, int) {
+	var matched []int
+	for i, s := range strands {
+		if s.Name == name {
+			matched = append(matched, i)
+		}
+	}
+	if len(matched) == 0 {
+		return ifAbsentAdd, -1
+	}
+
+	var candidates []int
+	for _, i := range matched {
+		if strands[i].Display.Anchor != render.AnchorHidden {
+			candidates = append(candidates, i)
+		}
+	}
+	if len(candidates) == 0 {
+		return ifAbsentNoOpHidden, matched[0]
+	}
+
+	for _, i := range candidates {
+		s := strands[i]
+		if s.PaneID != "" && aliveIDs[s.PaneID] {
+			return ifAbsentNoOpAlive, i
+		}
+	}
+	return ifAbsentRelaunch, candidates[0]
 }
 
 // needsLaunchOnAdd reports whether AddStrand must realize display into a
@@ -288,6 +376,13 @@ func removalEmptiedSession(remaining []Strand, sessionGone bool) bool {
 func (e *Engine) AddStrand(spec AddSpec) (Strand, error) {
 	var result Strand
 	err := e.withOpLock(func() error {
+		// The --if-absent name requirement is a pure config error, unrelated to session/state, so
+		// it must surface before requireSessionLocked — a rejected call must never deposit a
+		// friendly no-session error over what is actually a missing --name.
+		if err := validateIfAbsent(spec); err != nil {
+			return err
+		}
+
 		if err := e.requireSessionLocked(); err != nil {
 			return err
 		}
@@ -295,6 +390,61 @@ func (e *Engine) AddStrand(spec AddSpec) (Strand, error) {
 		st, err := e.loadOrInitStateLocked()
 		if err != nil {
 			return err
+		}
+
+		if spec.IfAbsent {
+			live, err := e.tmux.listPanes(e.SessionName())
+			if err != nil {
+				return fmt.Errorf("list panes: %w", err)
+			}
+			// aliveIDSet, not liveIDSet: see classifyIfAbsent's own doc comment for why.
+			decision, idx := classifyIfAbsent(st.Strands, spec.NameOverride, aliveIDSet(live))
+			switch decision {
+			case ifAbsentNoOpAlive, ifAbsentNoOpHidden:
+				// Neither no-op branch mutates anything: no SaveState, no reconcile/apply, and
+				// no rewrite of Cmd/ResumeCmd/Parent/Display from this invocation's flags — an
+				// add that silently rewrote a matched strand's recorded command would be an
+				// update verb wearing add's name (Shared Decision
+				// matched-branches-never-rewrite-persisted-spec).
+				result = st.Strands[idx]
+				return nil
+			case ifAbsentRelaunch:
+				strand := &st.Strands[idx]
+				// The identical stored-ResumeCmd-else-Cmd fallback Resume applies in
+				// lifecycle.go, so a name-matched relaunch is identical to what "resume" would
+				// have done for the same strand.
+				launchCmd := strand.ResumeCmd
+				if launchCmd == "" {
+					launchCmd = strand.Cmd
+				}
+				if err := e.launchStrandLocked(st, strand, launchCmd); err != nil {
+					return fmt.Errorf("launch strand: %w", err)
+				}
+				// Persist immediately after the launch succeeds and before the layout apply —
+				// the identical ordering this function's own ordinary add path and Resume both
+				// already use, for the identical reason: if apply then fails, the strand is
+				// already tracked with its new PaneID, so the next reconcile repairs the layout
+				// instead of treating the launched pane as an untracked orphan.
+				if err := SaveState(e.stateDir(), st); err != nil {
+					return fmt.Errorf("persist strand: %w", err)
+				}
+				// A deliberate, scoped exception, not an emerging inconsistency: the three
+				// sibling paths through launchStrandLocked (ordinary AddStrand below,
+				// UpdateStrand's hidden->visible surface, and each per-strand replay inside
+				// Resume) carry no equivalent per-strand Info log today, relying on the generic
+				// tmux Debug trace instead. The discussion for this task settled the question
+				// for this branch alone, per CONSTRAINTS.md's Live-Substrate Spawn
+				// Observability invariant; widening or narrowing the sibling paths' logging is
+				// separate work and stays out of this plan.
+				logger.Info("reed: relaunched strand for --if-absent reopen",
+					"socket", e.Socket(), "session", e.SessionName(), "guid", strand.GUID, "name", strand.Name)
+				if _, err := e.reconcileApplyPersistLocked(st); err != nil {
+					return err
+				}
+				result, _ = strandByGUID(st.Strands, strand.GUID)
+				return nil
+			}
+			// ifAbsentAdd: no matching strand at all — fall through to the ordinary add path below.
 		}
 
 		strand, err := e.addStrandLocked(st, spec)

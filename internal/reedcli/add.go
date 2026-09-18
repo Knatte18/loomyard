@@ -26,6 +26,7 @@ func (c *reedCLI) addCmd() *cobra.Command {
 		parent    string
 		anchor    string
 		focus     bool
+		ifAbsent  bool
 	)
 
 	cmd := &cobra.Command{
@@ -38,6 +39,13 @@ The strand's display name resolves from --name (if given), else the
 configured strand-name template filled from --role/--round, else a short
 guid. The generated guid and resolved name are printed on success so a
 later --parent or "lyx reed remove" can reference this strand.
+
+--if-absent makes a repeated add idempotent: it requires --name, and matches
+that name against this worktree's persisted strands before adding anything.
+A matched strand is left exactly as persisted rather than rewritten from
+this invocation's flags — a live match is returned unchanged, a dead match
+is relaunched under its own guid, and only an unmatched name falls through
+to an ordinary add.
 
 Example:
   lyx reed add --cmd "claude --session-id %SID%" --role producer --round 1`,
@@ -73,6 +81,7 @@ Example:
 					Focus:                    focus,
 					ShrinkWhenWaitingOnChild: true,
 				},
+				IfAbsent: ifAbsent,
 			}
 
 			strand, err := c.eng.AddStrand(spec)
@@ -97,6 +106,7 @@ Example:
 	cmd.Flags().StringVar(&parent, "parent", "", "parent strand's guid")
 	cmd.Flags().StringVar(&anchor, "anchor", string(render.AnchorBelowParent), "placement: below-parent|hidden")
 	cmd.Flags().BoolVar(&focus, "focus", false, "give this strand tmux input focus")
+	cmd.Flags().BoolVar(&ifAbsent, "if-absent", false, "make a repeated add idempotent by matching --name against this worktree's strands")
 	if err := cmd.MarkFlagRequired("cmd"); err != nil {
 		// MarkFlagRequired only errors when the named flag does not exist on
 		// cmd; --cmd is registered immediately above, so this can never fire

@@ -4,6 +4,8 @@
 package ideengine
 
 import (
+	"os"
+	"os/exec"
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -25,7 +27,13 @@ func Spawn(l *lyxcwd.Location, slug string) error {
 	primeName, _ := fabricengine.PrimeName(l)
 	color := vscode.PickColor(l, primeName)
 
-	if err := vscode.WriteConfig(worktreeDir, l.AnchorRel, slug, color); err != nil {
+	// Resolve both binary paths the generated folderOpen chain stamps in absolute.
+	// Each degrades to the empty string on error so vscode.WriteConfig's own bare-name
+	// fallback rule applies; Spawn substitutes no bare name itself.
+	lyxPath, _ := os.Executable()
+	claudePath, _ := exec.LookPath("claude")
+
+	if err := vscode.WriteConfig(worktreeDir, l.AnchorRel, slug, color, lyxPath, claudePath); err != nil {
 		return err
 	}
 
