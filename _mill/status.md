@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-render-bottom-band
 slug: reed-header-selvage
 branch: reed-header-selvage
 plan: _mill/plan
@@ -33,6 +33,7 @@ plan-review-r3  '2026-09-18T17:59:18Z'
 plan-fix-r3  '2026-09-18T18:00:04Z'
 planned  '2026-09-18T18:00:17Z'
 implementing  '2026-09-18T18:00:49Z'
+approved-render-bottom-band  '2026-09-18T18:10:34Z'
 ```
 
 ## Batches
@@ -40,9 +41,10 @@ implementing  '2026-09-18T18:00:49Z'
 ```yaml
 batches:
   - name: render-bottom-band
-    state: running
+    state: approved
     implementer_session: a3b414f3-4e7e-4135-ac43-0f5db3fc6bbb
     start_sha: 9e6e98a7dbe8fda7ac65890dd80f86b9434aaec8
+    commit_sha: f17bc76749c1175e9d16aab635259164a485ea94
     verify_baseline_failures: []
   - name: vocabulary-and-config
     state: pending
