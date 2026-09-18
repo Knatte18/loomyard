@@ -664,3 +664,58 @@ func TestBottommostPaneID(t *testing.T) {
 		})
 	}
 }
+
+// TestEnsureSelvagePaneLocked_SplitsBelowTheBottommostPaneWithNoBFlag pins the new split direction
+// end to end: given a scripted pane list whose largest pane_top is a known id, ensureSelvagePaneLocked
+// targets that id, and the split-window argv it issues carries no -b — tmux's default direction
+// (new pane below target) is exactly where Selvage must land now that render.Rules emits the band
+// cell last rather than first.
+func TestEnsureSelvagePaneLocked_SplitsBelowTheBottommostPaneWithNoBFlag(t *testing.T) {
+	e := newTestEngine(t)
+
+	const topPaneID = "%0"
+	const bottomPaneID = "%1"
+	const newPaneID = "%2"
+	listPanesOut := topPaneID + " 0 0 100 10 4321\n" + bottomPaneID + " 0 10 100 10 4322\n"
+
+	var splitArgs []string
+	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
+		switch args[0] {
+		case "list-panes":
+			return listPanesOut, nil
+		case "split-window":
+			splitArgs = append([]string{}, args...)
+			return newPaneID + "\n", nil
+		default:
+			return "", nil
+		}
+	}
+
+	st := &ReedState{Socket: e.Socket(), Session: e.SessionName()}
+	if err := e.ensureSelvagePaneLocked(st); err != nil {
+		t.Fatalf("ensureSelvagePaneLocked: %v", err)
+	}
+
+	for _, arg := range splitArgs {
+		if arg == "-b" {
+			t.Errorf("split-window argv %v carries -b; want no -b (Selvage now splits below, not above)", splitArgs)
+		}
+	}
+
+	targetFound := false
+	for i, arg := range splitArgs {
+		if arg != "-t" {
+			continue
+		}
+		if i+1 >= len(splitArgs) {
+			t.Fatalf("split-window argv %v has a trailing -t with no value", splitArgs)
+		}
+		targetFound = true
+		if splitArgs[i+1] != bottomPaneID {
+			t.Errorf("split-window -t value = %q, want %q (the bottommost pane)", splitArgs[i+1], bottomPaneID)
+		}
+	}
+	if !targetFound {
+		t.Fatalf("split-window argv %v has no -t flag", splitArgs)
+	}
+}
