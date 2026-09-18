@@ -6,6 +6,7 @@ slug: reed-header-selvage
 branch: reed-header-selvage
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: Replace reed's header pane with a status-line and Selvage
 task_description: |
   Replace reed's header pane with a status-line and Selvage
@@ -39,17 +40,26 @@ implementing  '2026-09-18T18:00:49Z'
 ```yaml
 batches:
   - name: render-bottom-band
-    state: pending
+    state: running
+    implementer_session: a3b414f3-4e7e-4135-ac43-0f5db3fc6bbb
+    start_sha: 9e6e98a7dbe8fda7ac65890dd80f86b9434aaec8
+    verify_baseline_failures: []
   - name: vocabulary-and-config
     state: pending
+    verify_baseline_failures: []
   - name: selvage-pane
     state: pending
+    verify_baseline_failures: []
   - name: status-line-pins
     state: pending
+    verify_baseline_failures: []
   - name: watchdog-daemon
     state: pending
+    verify_baseline_failures: []
   - name: standalone-watcher
     state: pending
+    verify_baseline_failures: []
   - name: docs-smokes-and-residue
     state: pending
+    verify_baseline_failures: []
 ```
