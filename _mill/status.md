@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-review-r2
+phase: plan-fix-r2
 slug: ly-supervise-reed-add
 branch: ly-supervise-reed-add
 plan: _mill/plan
@@ -28,4 +28,5 @@ planning  '2026-09-18T17:15:34Z'
 plan-review-r1  '2026-09-18T17:22:11Z'
 plan-fix-r1  '2026-09-18T17:23:10Z'
 plan-review-r2  '2026-09-18T17:30:30Z'
+plan-fix-r2  '2026-09-18T17:31:30Z'
 ```

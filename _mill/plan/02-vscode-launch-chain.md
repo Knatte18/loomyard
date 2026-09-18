@@ -63,6 +63,7 @@ The external interface batch 3 consumes is the convention itself — the task na
 
 - **Context:**
   - `internal/vscode/config.go`
+  - `internal/ideengine/spawn.go`
   - `internal/lyxcwd/lyxcwd.go`
 - **Edits:**
   - `internal/ideengine/spawn_test.go`
