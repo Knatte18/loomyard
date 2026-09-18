@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: reed-header-selvage
 branch: reed-header-selvage
-plan: null
+plan: _mill/plan
 parent: main
 task: Replace reed's header pane with a status-line and Selvage
 task_description: |
@@ -23,4 +23,5 @@ discussion-gap-fix-r5  '2026-09-18T17:04:34Z'
 discussion-gap-fix-r6  '2026-09-18T17:10:31Z'
 discussion-gap-fix-r7  '2026-09-18T17:14:39Z'
 discussed  '2026-09-18T17:14:39Z'
+planning  '2026-09-18T17:32:29Z'
 ```
