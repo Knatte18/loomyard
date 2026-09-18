@@ -81,13 +81,13 @@ Batch-local decisions live in each batch file._
 
 ### Decision: windows-status-line-is-an-unbranched-accepted-degrade
 
-- **Decision:** no `runtime.GOOS == "windows"` branch is written for the four new status-line options. They are issued on every platform and psmux may reject some or all of them; on rejection Windows loses the identity text while Selvage, the layout, the reap rules and the watchdog are all unaffected.
+- **Decision:** no `runtime.GOOS == "windows"` branch is written for the seven new status-line options. They are issued on every platform and psmux may reject some or all of them; on rejection Windows loses the identity text while Selvage, the layout, the reap rules and the watchdog are all unaffected.
 - **Rationale:** per the discussion's `windows-status-line-is-an-accepted-named-degrade` decision, a refused `set-option` fails loudly into the log, changes nothing, and is answered by the `#{status}` readback — the opposite shape from `hookInstalledLocked`'s silent-and-unrecoverable Windows case, which is the one place reed does branch. Skipping the attempt would guarantee the regression rather than risk it.
 - **Applies to:** status-line-pins, docs-smokes-and-residue
 
 ### Decision: windows-psmux-verification-is-an-open-item-carried-by-this-plan
 
-- **Decision:** the four status-line options' behaviour under psmux is **unverified**, not verified. Card 46 in `docs-smokes-and-residue` records the verification item in the shipped design doc as an explicitly open item with the exact command to run (`lyx reed up` under psmux, then reading back `#{status}`, `#{status-position}`, `#{status-left}` and `#{window-status-format}`), rather than the doc asserting a settled outcome.
+- **Decision:** the seven status-line options' behaviour under psmux is **unverified**, not verified. Card 46 in `docs-smokes-and-residue` records the verification item in the shipped design doc as an explicitly open item with the exact command to run (`lyx reed up` under psmux, then reading back `#{status}`, `#{status-position}`, `#{status-left}` and `#{window-status-format}`), rather than the doc asserting a settled outcome.
 - **Rationale:** the discussion's own "Note for the plan" on that decision requires the plan to carry a Windows verification item and to revisit the decision against its result rather than treating it as settled; nobody on this task has a Windows host, so recording the item is the honest discharge.
 - **Applies to:** docs-smokes-and-residue
 
@@ -217,6 +217,7 @@ _Full union of every `Creates:` / `Edits:` / `Moves:` **target** path across eve
 - `internal/tokenvocab/tokenvocab.go`
 - `internal/tokenvocab/tokenvocab_test.go`
 - `internal/webstercli/cli.go`
+- `internal/webstercli/cli_test.go`
 - `internal/webstercli/recoverbatch.go`
 - `internal/webstercli/run.go`
 - `internal/webstercli/wiring.go`

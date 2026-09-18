@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-review-r2
+phase: plan-fix-r2
 slug: reed-header-selvage
 branch: reed-header-selvage
 plan: _mill/plan
@@ -27,4 +27,5 @@ planning  '2026-09-18T17:32:29Z'
 plan-review-r1  '2026-09-18T17:41:35Z'
 plan-fix-r1  '2026-09-18T17:42:23Z'
 plan-review-r2  '2026-09-18T17:49:55Z'
+plan-fix-r2  '2026-09-18T17:51:49Z'
 ```
