@@ -3,7 +3,7 @@
 ```yaml
 task: "Launch ly-supervise and orchestrator via lyx reed add"
 slug: "ly-supervise-reed-add"
-approved: false
+approved: true
 started: "20260918-171126"
 parent: "main"
 root: ""
