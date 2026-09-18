@@ -35,7 +35,11 @@ Why now: the design is already written and recorded (`manifest/designs/reed-head
   `geometry.go`'s "eight-field struct" doc comment and its `RepoName`/`HubPath` "header pane's … token" field comments are corrected in the same commit.
 - `lyx reed header` is replaced by `lyx reed statusline` (envelope-returning preview only, no `--blocking`).
 - reed.yaml: the `header:` block is replaced by `status_line:` (template) and `selvage:` (height_rows).
-- Docs in the same commit: `manifest/designs/reed-header-selvage.md` rewritten from "Planned, not yet built" to what shipped, `manifest/roadmap.md` item moved to Done, `internal/reedengine/doc.go`'s package doc updated.
+- Docs in the same commit: `manifest/designs/reed-header-selvage.md` rewritten from "Planned, not yet built" to what shipped;
+  `manifest/roadmap.md` item moved to Done;
+  `internal/reedengine/doc.go`'s package doc updated;
+  `manifest/designs/reed-fabric-standalone-api.md`'s `*Engine` method inventory (line 124) updated for the two renamed methods;
+  and `docs/overview.md` corrected in three places — line 301 (reed's verb list still names `header`, and calls `reed header --blocking` one of reed's two registered interactive-handoff exceptions, which is now `reed watchdog`), line 408 and line 462 (both describe `tokenvocab` as the `repo`/`hub` registry consumed by "reed's header pipeline", now a three-token registry feeding the status-line).
 
 **Out:**
 
@@ -59,8 +63,9 @@ Why now: the design is already written and recorded (`manifest/designs/reed-head
 
 ### status-line-content-and-pins
 
-- Decision: reed sets, per session, `status on`, `status-position bottom`, `status-left <rendered text>`, `status-right ""`, and `status-left-length` large enough for the rendered text (tmux's default is 10, which would truncate).
-  Any `#` in the rendered text is escaped to `##` before it reaches `status-left`, since tmux expands `#{…}`/`#[…]` inside a status string.
+- Decision: reed sets, per session, `status on`, `status-position bottom`, `status-left <rendered text>`, `status-right ""`, and `status-left-length` set to `max(10, utf8.RuneCountInString(escaped))` — measured over the **escaped** string that is actually handed to `status-left`, in runes, since tmux's length limit counts characters rather than bytes and 10 is its own default (which would truncate).
+  Any `#` in the rendered text is escaped to `##` before it reaches `status-left` and before the length is measured, since tmux expands `#{…}`/`#[…]` inside a status string.
+  The escape-then-measure order is load-bearing: a hub path carrying `#` grows by one character per occurrence, and measuring the pre-escape string would truncate exactly those lines.
   These are set in `pinGeometryOptionsLocked` (`windowsize.go`), session/window-targeted like today's pins, and each failure stays non-fatal per the existing `geometry-tmux-failures-are-non-fatal-everywhere` decision.
 - Rationale: `pinGeometryOptionsLocked` already runs on both the paths that need it — boot (`lifecycle.go`) and the attach pre-flight (`attach.go`) — so a session booted by an older lyx picks the new status-line up on the operator's next attach, exactly as the hook install already does.
   The status-line is not a pane: it cannot take focus and cannot be typed into, which is what makes it the right home for text that was never interactive.
@@ -144,6 +149,9 @@ Why now: the design is already written and recorded (`manifest/designs/reed-head
 - Decision: `lyx reed header` is removed and `lyx reed statusline` takes its place: envelope-returning preview of the rendered text, no `--blocking` flag, keeping `clihelp.SkipStencilSeedAnnotation`.
   `internal/reedcli/header.go` is renamed to `statusline.go`;
   `headerBlockingPayload`, `headerWatch`, `headerPark`, and `blockForever` are all deleted.
+  The engine methods behind it are renamed and kept, not retired: `Engine.HeaderText` → `Engine.StatusLineText`, `Engine.ValidateHeader` → `Engine.ValidateStatusLine`, with `internal/reedengine/header.go` renamed `statusline.go`.
+  `ValidateStatusLine` stays the eager pre-tmux boot gate `ensureServerAndSessionLocked` already calls (`lifecycle.go:202`) — it is now more load-bearing, not less, since a template that fails to render would otherwise reach `set-option status-left` where every failure is non-fatal and merely logged.
+  `manifest/designs/reed-fabric-standalone-api.md`'s public-surface inventory (line 124: 17 exported `*Engine` methods, naming `HeaderText` and `ValidateHeader`) is updated in the same commit.
 - Rationale: the verb's remaining job is previewing the template after an edit, which the default (non-blocking) mode already did.
   With the text now living in a tmux option that `pinGeometryOptionsLocked` rewrites on every boot and every attach, the preview stays useful and the "the running pane keeps its old text" caveat in today's help goes away.
   The name does not collide with `lyx reed status`, which reports session state.
@@ -175,6 +183,51 @@ Why now: the design is already written and recorded (`manifest/designs/reed-head
   inheriting the spawning process's cwd (the Windows deletion block above, plus a daemon whose cwd is a directory it has no relationship to).
 - Note for the plan: `watchdog` is a reed verb without an engine, so it must not be reached through `c.eng` anywhere;
   it builds its own per-worktree engines during discovery, as the next decision describes.
+
+### standalone-runs-the-watch-loop-in-process
+
+- Decision: the detached per-hub daemon is a **hub-mode** mechanism only.
+  Standalone reed sessions instead run `Engine.Watch(ctx)` as an in-process goroutine, started by the same seam that already boots them — `c.reedUp` in `internal/burlercli/wiring.go:186` and its `internal/webstercli` counterpart — and cancelled by that run's own context.
+  No lock, no discovery, no second process, no `--hub-path`.
+- Rationale: standalone reed is never booted by `lyx reed up` (that verb is hub-only, as `wiring.go:181`'s comment states);
+  it is booted in-process by a long-lived supervising run that exists for exactly the session's working lifetime.
+  That supervising process is precisely what hub mode lacks and why hub mode needs a daemon at all, so reusing it is the smaller mechanism, not a special case.
+  It also sidesteps two things that are simply meaningless in standalone: `fabricengine.HubScratchDir(hub)` (standalone's `Geometry.HubPath` is a derived `stateDir`, not a hub), and worktree discovery (standalone has exactly one target and one session, known at wiring time).
+- Accepted behaviour change, stated rather than discovered later: today the standalone header pane keeps watching after the run that booted it finishes;
+  with this decision the watcher's life is bounded to that run.
+  A standalone session with no run in progress has no strands being added or removed, so it keeps its last layout and self-heals on the next reed op — the same degrade a hub session takes when the watchdog is off.
+- Rejected: watchdog off in standalone (a silent capability regression for a mode that has it today);
+  a per-target detached daemon with a `standalonestate`-anchored lock (a whole second lifecycle, lock, and spawn path for a mode that already has a supervising process to hang the loop on);
+  generalizing the daemon over "socket root" to cover both modes (the two modes differ in discovery, lock home, and lifetime — the generalization would be three conditionals wearing one name).
+
+### daemon-spawn-is-owned-by-reedcli
+
+- Decision: `internal/reedcli` owns the spawn outright.
+  `reedengine` never spawns it and never learns it exists.
+  `PersistentPreRunE` stores the resolved `*lyxcwd.Location` (or just its `HubPath`) on the `reedCLI` receiver beside `c.eng`, and `upCmd`, `resumeCmd` and `attachCmd` each call one shared `c.ensureWatchdogSpawned()` helper immediately after their engine op returns without error.
+  "A boot happened" is therefore just "the verb's own engine call succeeded" — there is no signal to plumb back out of the engine.
+- Rationale: the engine is told its geometry and derives nothing;
+  making it spawn would require it to import `fabricengine` for the lock path and to be told an executable path, both of which the Told-Geometry Invariant and the engine's own contract exclude.
+  `reedcli` already holds the `Location`, already imports `hubgeom`, and can import `fabricengine` directly (as `hubgeom` does).
+- Correction to the earlier wording: the round-2 decision said the spawn fires "exactly as they each already call `pinGeometryOptionsLocked`".
+  That named the right three verbs but the wrong layer — `pinGeometryOptionsLocked` is engine-internal (`internal/reedengine/windowsize.go:117`).
+  The three verbs are the same; the call site is the CLI's, after the engine returns.
+- Rejected: spawning from inside `Engine.Up`/`Resume`/`AttachArgv` (drags `fabricengine` and an exe path into the engine);
+  a new engine return field saying "I booted" (nothing would consume it except the spawn the CLI can already gate on the error being nil).
+
+### daemon-spawn-uses-os-executable-with-a-test-suppression-field
+
+- Decision: the spawn resolves its binary with `os.Executable()`, matching `internal/boardengine/spawn.go:18` and `internal/fabricengine/spawn.go` exactly.
+  Test-time suppression moves, rather than disappearing: `reedCLI` carries a `suppressWatchdogSpawn bool` field initialised from `testing.Testing()`, with an in-package enabler so a test can flip it back on and drive the real spawn path — the same shape, and the same rationale, as today's `Engine.suppressHeaderLaunch` (`internal/reedengine/lock.go:38-55`).
+  `gitkit.refuseCLIReexec` stays what it is: a backstop that aborts a test binary re-exec'd as a CLI, never the gate.
+- Rationale: re-exec'ing `os.Executable()` from a test binary runs the whole suite recursively, which is exactly the hazard `suppressHeaderLaunch` was written for.
+  Deleting the header pane's re-exec removes that call site but not the hazard — the daemon spawn is a new one — so the mechanism is relocated to the layer that now owns the spawn.
+- Correction to the earlier wording: the Technical context said `suppressHeaderLaunch` "becomes unnecessary".
+  The field on `Engine` does go away with the pane launch, but its pattern is reproduced on `reedCLI` for the daemon spawn;
+  it is moved, not dropped.
+- Rejected: a configured binary path (a second way to be wrong about which lyx is running);
+  relying on `refuseCLIReexec` alone (it aborts the child after the spawn has already happened, so the suite still pays the process and the test still sees a spawn it did not want);
+  skipping suppression and marking every test that boots reed as integration-tagged (Test Tier Purity already bars the spawn from untagged files, but the suppression is what makes an untagged test of the surrounding logic possible at all).
 
 ### daemon-single-instance-via-hub-lockfile
 
@@ -224,12 +277,17 @@ Why now: the design is already written and recorded (`manifest/designs/reed-head
 
 ### daemon-discovers-worktrees-by-scanning-the-hub
 
-- Decision: each cycle the daemon lists live sessions on the hub socket, and maps session name → worktree by scanning the hub directory's immediate subdirectories, calling `lyxcwd.ResolveWorktree(<subdir>)` and matching `reedengine.SessionName(location.WorktreePath())` against the listed names.
+- Decision: two different cadences, deliberately.
+  Every discovery cycle the daemon runs **one** `list-sessions` round trip against the hub socket — cheap, no process spawns.
+  It rebuilds the session-name → worktree mapping **only** when that live session-name set differs from the cached one: it then scans the hub directory's immediate subdirectories, calls `lyxcwd.ResolveWorktree(<subdir>)` per candidate, and matches `reedengine.SessionName(location.WorktreePath())` against the listed names.
   For each match it builds a `reedengine.Engine` from `hubgeom.ReedGeometry(location)` + `reedengine.LoadConfig` and runs that worktree's existing watch work against it.
-  The mapping is cached and rebuilt when the live session set changes.
+  The per-candidate `ResolveWorktree` git spawns are logged at `logger.Debug`, as spawns inside a polling probe (Live-Substrate Spawn Observability).
 - Rationale: `lyxcwd.ResolveWorktree` already resolves a `Location` from a worktree root without touching cwd, and `lyxcwd` stays the sole owner of that resolution (Cwd Resolution Invariant).
   `SessionName` is a one-way derivation from the worktree path, so forward-deriving every candidate and matching is the only mapping available without inventing a registry.
   The hub is `filepath.Dir(worktreeRoot)`, so its immediate subdirectories are exactly the candidate set.
+  Splitting the cadences matters because `lyxcwd.ResolveWorktree` shells out to `git rev-parse --show-toplevel` per candidate (`internal/lyxcwd/lyxcwd.go:149`);
+  rescanning unconditionally every five seconds would mean N real process spawns per cycle, forever, to learn nothing.
+  The live session set is the only thing that can change which worktrees are watched, so it is the right trigger.
 - Rejected: persisting a session→worktree registry file (a second source of truth that goes stale precisely when a worktree is renamed or removed — the case it exists for);
   parsing the worktree back out of the session name (`SessionName` is lossy and deliberately sanitizes).
 
@@ -295,11 +353,13 @@ Why now: the design is already written and recorded (`manifest/designs/reed-head
 ### worktree-token-joins-the-vocabulary
 
 - Decision: add a `worktree` token to `internal/tokenvocab`'s registry, resolving from a new `Ctx.WorktreeName` field.
-  Feed it by adding `WorktreeName` to `reedengine.Geometry` and filling it in **both** tellers: `hubgeom.ReedGeometry` from `l.WorktreeName` (already exposed by `lyxcwd.Location`), and `standalonegeom.ReedGeometry` (`internal/standalonegeom/reedgeom.go:45`) from `filepath.Base(standalonestate.Normalize(target))` — the same normalized readable name that file already computes for `SessionName`'s readable half, reused rather than re-derived.
+  Feed it by adding `WorktreeName` to `reedengine.Geometry` and filling it in **both** tellers: `hubgeom.ReedGeometry` from `l.WorktreeName` (already exposed by `lyxcwd.Location`), and `standalonegeom.ReedGeometry` (`internal/standalonegeom/reedgeom.go:45`) from the **raw** `filepath.Base(target)` — the identical expression that file already uses for `RepoName` (`reedgeom.go:57`), not the normalized spelling `SessionName`'s readable half takes.
   The default template becomes `{{.repo}}/{{.worktree}} · {{.hub}}`, and the embedded asset `console-header.md` is renamed `status-line.md`.
   Also in scope, same commit: `internal/reedengine/geometry.go`'s own doc comment says "the eight-field struct" and must say nine, and the `RepoName`/`HubPath` field comments say "the header pane's … token" and must name the status-line instead.
-- Standalone disposition, stated explicitly: standalone mode has no worktree — `WorktreeRoot` is the plain checkout the operator pointed at — so `{{.worktree}}` there renders the same directory name `{{.repo}}` does, and the default template reads `foo/foo · <stateDir>`.
-  That redundancy is accepted deliberately: in standalone the target genuinely is both the repo and the working directory, and a mildly repetitive line is the right trade against a token that renders empty.
+- Standalone disposition, stated explicitly: standalone mode has no worktree — `WorktreeRoot` is the plain checkout the operator pointed at — so `{{.worktree}}` and `{{.repo}}` there render the **same string**, byte for byte, and the default template reads `foo/foo · <stateDir>`.
+  Taking the raw spelling for both is what makes that exact rather than approximate: `RepoName` is deliberately raw ("the told spelling is the one the operator typed and will recognise", per `reedgeom.go`'s own doc comment), and normalizing only the new token would make a symlinked target render two different names on one line.
+  Both tokens are display values that never reach a tmux target, so neither needs `SessionName`'s normalization, which exists to keep one repository on one socket key.
+  The redundancy is accepted deliberately: in standalone the target genuinely is both the repo and the working directory, and a mildly repetitive line is the right trade against a token that renders empty.
 - Rationale: `tokenvocab.Build` resolves every registry token unconditionally (`internal/tokenvocab/tokenvocab.go:30`), so a token left unfilled by one teller does not degrade — it renders an empty segment (`foo/ · …`) in every template that names it.
   Filling both tellers is therefore the only option that keeps the default template honest in both modes.
   In hub mode the status-line is per-session and every session is a worktree, so the worktree name is the single most useful token the old header could not show.
@@ -322,7 +382,7 @@ Why now: the design is already written and recorded (`manifest/designs/reed-head
 
 - `internal/reedcli/header.go` — the `header` verb, its `--blocking` branch, `headerBlockingPayload` (ED2/ED3/cursor-home), `headerWatch` (calls `eng.Watch`), `headerPark` (`blockForever`).
 - `internal/reedengine/headerpane.go` — `headerLaunchCmd`/`headerLaunchLine`, the pure command-line composer (`shell.Invoke`/`shell.Quote`), with the `underTest` branch that leaves the pane a bare shell under `go test` (`Engine.suppressHeaderLaunch`).
-  With Selvage launching `cfg.Shell` and nothing else, this whole file and the `suppressHeaderLaunch` flag become unnecessary.
+  With Selvage launching `cfg.Shell` and nothing else, this whole file goes away and `Engine.suppressHeaderLaunch` leaves the engine — but the suppression itself reappears on `reedCLI` for the daemon spawn (see the `daemon-spawn-uses-os-executable-with-a-test-suppression-field` decision).
 - `internal/reedengine/header.go` — `HeaderText`/`ValidateHeader` over `tokenvocab.Render`.
 - `internal/reedengine/headertemplate.go` + `console-header.md` — the embedded default template, deliberately outside the stencil mechanism.
 - `internal/reedengine/lifecycle.go` — `ensureHeaderPaneLocked` (~line 448), `splitHeaderPaneAtTopLocked` (~line 555) with its even-vertical retry, the `-b` split argv (~line 627), the `ValidateHeader` pre-tmux call (~line 202), and the two `st.HeaderPaneID = ""` clears on server-respawn/heal paths (~lines 678, 727).
@@ -383,7 +443,8 @@ Why now: the design is already written and recorded (`manifest/designs/reed-head
   Adding `WorktreeName` to `Ctx` is fine; making it resolve a path is not.
 - Test-tier purity: anything spawning a real process or a real tmux belongs in an `integration`- or `smoke`-tagged file, and any package whose tests spawn git must call `gitkit.HermeticGitEnv()` in `TestMain`.
 - `Engine.suppressHeaderLaunch` exists only because re-exec'ing the test binary as the header pane's command would run the test binary's own `main`.
-  Selvage launching a plain shell removes that hazard entirely — but the daemon spawn reintroduces it in a new place, so the daemon must never re-exec `os.Executable()` under `go test` (already a written rule under Live-Substrate Spawn Observability).
+  Selvage launching a plain shell removes that call site — but the daemon spawn is a new one, so the field is relocated rather than deleted;
+  see the `daemon-spawn-uses-os-executable-with-a-test-suppression-field` decision for where it lands and why `gitkit.refuseCLIReexec` is only a backstop.
 
 ## Constraints
 
@@ -450,8 +511,12 @@ Help-tree tests updated: `header` gone, `statusline` and `watchdog` present with
 Daemon discovery is the TDD candidate here: the session-name → worktree matching should be a pure function over (listed session names, candidate worktree roots) so it can be tested with no tmux and no filesystem spawning, with the `lyxcwd.ResolveWorktree` call injected or the candidate list told.
 Also assert `watchdog` takes the `PersistentPreRunE` early return — it must run with no git repository present and must never populate `c.eng` — and that it refuses an absent or relative `--hub-path` on the envelope before blocking.
 
+**`internal/burlercli` / `internal/webstercli` (untagged).**
+The standalone `c.reedUp` seam starts the in-process watcher and cancels it with the run's context: assert the goroutine is started on a successful boot, is not started when the boot fails, and stops when the context is cancelled.
+Assert too that standalone never computes a hub lock path and never spawns a daemon.
+
 **`internal/standalonegeom` and `internal/hubgeom` (untagged).**
-Both tellers fill `WorktreeName`: hub mode from `Location.WorktreeName`, standalone from the normalized target basename, with a symlinked and a real spelling of one target yielding the same value (the existing `SessionName` normalization tests are the model).
+Both tellers fill `WorktreeName`: hub mode from `Location.WorktreeName`, standalone from the raw target basename — assert standalone's `WorktreeName` and `RepoName` are byte-identical for both a symlinked and a real spelling of one target, which is what pins the "same string, not merely the same directory" claim.
 
 **Smoke/integration (tagged).**
 `smoke_header_keepalive_test.go` becomes the Selvage keepalive smoke: kill every strand pane, assert the session survives and Selvage remains;
@@ -493,6 +558,11 @@ the markdown link-integrity test over `manifest/`/`docs/` after the design doc a
 - **Q:** What replaces the `header:` config block? **A:** [auto-pick] `status_line: {template}` plus `selvage: {height_rows}`. **Why:** the two settings now describe unrelated mechanisms; reinterpreting the old keys would silently apply an operator's `header.height_rows` to a different pane in a different place.
 - **Q:** Should the plan write removal logic for a stale `header:` block in existing `reed.yaml` files? **A:** [auto-pick] No. **Why:** `lyx config reconcile --apply` already strips stale leaves once the template drops them (see the round-1-gap entry below); the plan only has to keep the un-reconciled state harmless, which it is — nothing unmarshals `header:` into `Config` any more.
 - **Q:** How is the `worktree` token fed? **A:** [auto-pick] `Ctx.WorktreeName`, filled from `lyxcwd.Location.WorktreeName` via a new `Geometry.WorktreeName` field. **Why:** deriving it inside `reedengine` with `filepath.Base` would be a per-module path derivation the Cwd Resolution Invariant reserves for `lyxcwd`.
+- **Q:** (review round 3 gap) Standalone reed sessions boot in-process, never through `lyx reed up` — what watches them once the header pane is gone? **A:** [auto-pick] `Engine.Watch(ctx)` as an in-process goroutine off the same `c.reedUp` seam, cancelled by the run's context. **Why:** standalone already has a long-lived supervising run for exactly the session's working lifetime, which is the thing hub mode lacks and the reason hub mode needs a daemon; a hub-shaped lock path is meaningless there anyway.
+- **Q:** (review round 3 gap) Which layer spawns the daemon? **A:** [auto-pick] `internal/reedcli`, via one shared helper each of `up`/`resume`/`attach` calls after its engine op returns nil. **Why:** an engine-owned spawn would need `fabricengine` and an executable path the Told-Geometry Invariant keeps out of it; the CLI already holds the `Location` and can gate on the error being nil.
+- **Q:** (review round 3 gap) Which binary does the spawn run, and what stops it under `go test`? **A:** [auto-pick] `os.Executable()`, suppressed by a `testing.Testing()`-initialised `suppressWatchdogSpawn` field on `reedCLI`. **Why:** re-exec'ing the test binary runs the suite recursively — the exact hazard `Engine.suppressHeaderLaunch` exists for, so the pattern moves to the layer that now owns the spawn rather than disappearing with the pane.
+- **Q:** (review round 3 gap) Does the daemon rescan worktrees every cycle? **A:** [auto-pick] No — one `list-sessions` per cycle, and the worktree mapping is rebuilt only when the live session-name set changes; the per-candidate git spawns log at Debug. **Why:** `ResolveWorktree` shells out per candidate, so an unconditional five-second rescan would be N process spawns per cycle to learn nothing.
+- **Q:** (review round 3 gap) What happens to `HeaderText`/`ValidateHeader`? **A:** [auto-pick] Renamed `StatusLineText`/`ValidateStatusLine` and kept, boot gate included, with the standalone-API doc's method inventory updated in the same commit. **Why:** the gate matters more now, not less — every `set-option` on the new path is non-fatal and merely logged, so a broken template would otherwise fail silently.
 - **Q:** (review round 2 gap) How does the hub reach the detached daemon, and what is its cwd? **A:** [auto-pick] An explicit `--hub-path <abs>` flag, `watchdog` opted out of reed's `PersistentPreRunE`, and `cmd.Dir` pinned to the hub. **Why:** the process outlives the spawning worktree, both existing detached precedents pass the path explicitly, and a cwd handle on a worktree blocks that directory's deletion on Windows.
 - **Q:** (review round 2 gap) Is `reed up` the only spawn site? **A:** [auto-pick] No — `up`, `resume` and `attach` all attempt it; `down` never does. **Why:** a crash while sessions stay alive would otherwise go unrepaired, and the status-line pins already heal on exactly those three paths, so narrower daemon coverage would be an unexplained asymmetry.
 - **Q:** (review round 2 gap) What does `{{.worktree}}` render in standalone mode, which has no worktree? **A:** [auto-pick] The normalized target basename, so the default template reads `foo/foo · <stateDir>`. **Why:** `tokenvocab.Build` resolves every token unconditionally, so an unfilled token renders an empty segment; a repeated name reads as what it is, an empty one reads as a bug.
