@@ -4,10 +4,15 @@
 task: "Replace reed's header pane with a status-line and Selvage"
 batch: "vocabulary-and-config"
 number: 2
-cards: 8
+cards: 9
 verify: go test ./internal/tokenvocab/ ./internal/reedengine/ ./internal/hubgeom/ ./internal/standalonegeom/ ./internal/configsync/
 depends-on: [1]
 ```
+
+## Prior failure
+
+- Round 1: module-wide verify failed after batch 2's finalize — `go build ./...` broke on `internal/reedcli/header.go:103:23: c.eng.HeaderText undefined (type *reedengine.Engine has no field or method HeaderText)`, because the only caller of the renamed `Engine.HeaderText` method is not touched until batch 5's card 29.
+  Resolved by inserting card 15 (a minimal one-line compat fix) into this batch rather than by editing batch 5, so the module builds again without duplicating batch 5's full rename scope.
 
 ## Rename mechanic
 
@@ -161,6 +166,18 @@ No removal logic is written for a stale `header:` block in an existing `reed.yam
   - `internal/reedengine/header_test.go` -> `internal/reedengine/statusline_test.go`
 - **Requirements:** After `git mv`, edit `internal/reedengine/statusline_test.go` surgically: retarget every call from `HeaderText`/`ValidateHeader` to `StatusLineText`/`ValidateStatusLine`, every `Config{Header: ...}` construction to `Config{StatusLine: ...}`, and every `HeaderTemplate()` reference to `StatusLineTemplate()`. Rename each test function so it names the status-line rather than the header. Add a case asserting the rendered default template carries all three token values — a `Geometry` with distinct `RepoName`, `WorktreeName` and `HubPath` must render a string containing each of the three. In `internal/configsync/configsync_test.go`, add a new test beside `TestReconcileAll_DropsStaleReedClaudeKey` and modelled on it: seed a `reed.yaml` at `configengine.ConfigFile(tmpDir, "reed")` carrying `header.template` and `header.height_rows`, call `ReconcileAll(tmpDir, true)`, take the `reed` entry out of the results, and assert that `Applied` is true, that `Removed` contains both `header.template` and `header.height_rows` under whatever leaf-key spelling `yamlengine.Reconcile` reports (read `TestReconcileAll_DropsStaleReedClaudeKey`'s own assertion for the exact spelling convention and follow it), that `Added` contains the new `status_line`/`selvage` leaves, and that the merged file on disk no longer carries a `header:` block. This is the test that pins the migration path an operator actually gets from `lyx config reconcile --apply`.
 - **Commit:** `test(reedengine,configsync): pin the status-line pipeline and the stale header-key removal`
+
+### Card 15: point reedcli's header verb at the renamed text method
+
+- **Context:**
+  - `internal/reedengine/statusline.go`
+- **Edits:**
+  - `internal/reedcli/header.go`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** In `internal/reedcli/header.go`, change the single call `text, err := c.eng.HeaderText()` to `text, err := c.eng.StatusLineText()`. That one line is the whole card: `internal/reedcli` is the only package outside the five this batch's `verify` names that calls the method card 12 renamed, so until this line moves the module-wide `go build ./...` gate fails for batches 2, 3 and 4 alike. Change nothing else in the file — not its name, not the `header` verb, not the `--blocking` branch, not `headerBlockingPayload`, and not the prose comments that still describe a header pane. Every one of those is card 29's in `watchdog-daemon`, which renames the file and the verb outright, and pre-empting them here would collide with that card's diff. Before committing, re-scan the tree for any other production call site of the renamed methods (`grep -rn 'ValidateHeader\|\.HeaderText(' internal/`) and confirm the only surviving hits are comments and the already-retargeted `internal/reedengine` files — a second live call site would mean this card is under-scoped rather than that it may be skipped.
+- **Commit:** `fix(reedcli): call the renamed StatusLineText from the header verb`
 
 ## Batch Tests
 

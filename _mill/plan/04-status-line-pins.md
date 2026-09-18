@@ -21,7 +21,7 @@ The pins are session/window-targeted, never global: a session- or window-scoped 
 
 ## Cards
 
-### Card 23: add the status-left escaping and length helpers
+### Card 24: add the status-left escaping and length helpers
 
 - **Context:**
   - `_mill/discussion.md`
@@ -34,7 +34,7 @@ The pins are session/window-targeted, never global: a session- or window-scoped 
 - **Requirements:** Add two pure, I/O-free helpers to `internal/reedengine/windowsize.go`, beside the existing `parseWindowSize`/`reservedRowsFromStatus`/`windowSizeAllowsChain` group. `escapeStatusText(s string) string` returns `s` with every `#` doubled to `##`, since tmux expands `#{…}` and `#[…]` inside a status string and a hub path containing `#` would otherwise be interpreted rather than displayed. `statusLeftLength(escaped string) int` returns `max(10, utf8.RuneCountInString(escaped))` — measured in **runes**, because tmux's `status-left-length` limit counts characters rather than bytes, and floored at 10 because that is tmux's own default, which would truncate. Document on `statusLeftLength` that it takes the already-escaped string, and state why that order is load-bearing: a hub path carrying `#` grows by one character per occurrence, so measuring the pre-escape string would truncate exactly those lines. Add the `unicode/utf8` import. Do not build these strings through `internal/shell` — the Shell Mechanics Seam governs pane-shell command strings, and a tmux option value is neither.
 - **Commit:** `feat(reedengine): add the status-left escape and length helpers`
 
-### Card 24: render the status-line from pinGeometryOptionsLocked
+### Card 25: render the status-line from pinGeometryOptionsLocked
 
 - **Context:**
   - `internal/reedengine/statusline.go`
@@ -49,7 +49,7 @@ The pins are session/window-targeted, never global: a session- or window-scoped 
 - **Requirements:** In `internal/reedengine/windowsize.go`'s `pinGeometryOptionsLocked`, replace the `set-option -t <target> status off` call with the status-line block, leaving the `window-size latest` pin and the whole watchdog-hook half of the function untouched. The block calls `e.StatusLineText()` once; on error it logs via `logger.Warn` naming the socket, the session and the error, and skips the two text-derived options (`status-left` and `status-left-length`) while still issuing the other five — a template that fails to render is already refused loudly at boot by `ValidateStatusLine`, so reaching here means a degraded path, not a normal one. On success it computes `escaped := escapeStatusText(strings.TrimRight(text, "\r\n"))` and issues, each session/window-targeted on the same `target` the existing pins use and each with its own `logger.Warn`-and-continue on failure: `set-option -t <target> status on`; `set-option -t <target> status-position bottom`; `set-option -t <target> status-left <escaped>`; `set-option -t <target> status-right ""`; `set-option -t <target> status-left-length <statusLeftLength(escaped)>`; and, window-targeted with `-w` like the existing `window-size` pin, `set-option -w -t <target> window-status-format ""` and `set-option -w -t <target> window-status-current-format ""`. Suppressing the window-status segment is deliberate rather than left at tmux's default: reed's session has exactly one window, so the default `0:bash*` segment beside the identity text names nothing the operator can act on and would shift position as the window's active pane name changes. Write **no** `runtime.GOOS == "windows"` branch around any of these — per the `windows-status-line-is-an-unbranched-accepted-degrade` Shared Decision they are attempted on every platform and psmux may refuse them. Rewrite the function's doc comment: it today opens "pins this session's window to \"status off\" and \"window-size latest\"" and must instead describe the status-line render plus the `window-size latest` pin, keeping the session-vs-global paragraph, the both-paths (boot and attach pre-flight) paragraph, and the whole watchdog-hook paragraph verbatim. Also rewrite the file's own leading comment, which today reads "the two geometry option pins (status off, window-size latest)".
 - **Commit:** `feat(reedengine): render the identity text into tmux's status-line`
 
-### Card 25: correct the attach chain's status-off premise
+### Card 26: correct the attach chain's status-off premise
 
 - **Context:**
   - `internal/reedengine/windowsize.go`
@@ -61,7 +61,7 @@ The pins are session/window-targeted, never global: a session- or window-scoped 
 - **Requirements:** In `internal/reedengine/attach.go`, rewrite the comment above the `e.pinGeometryOptionsLocked()` call, which today reads "The ordering is load-bearing: the told box is only correct once \"status off\" has landed, since that is what makes the post-attach window equal the client's rows rather than rows - 1." The ordering is still load-bearing but for the opposite reason: the told box is only correct once the status-line pins have landed **and been read back**, because `readStatusRowsLocked` a few statements later is what turns whatever `#{status}` actually became into the reserved-row count the box is computed from. Also update the comment on the `readStatusRowsLocked` call, which today reads "A #{status} that reads back as something other than \"off\" does NOT suppress the chain" — with `status on` now the intended value, that sentence should state the rule positively: the reserved-row count is taken from whatever value reads back, and only an unrecognized value (`ok == false`) suppresses the chain. Change **no** logic in this file: `reserved` still comes from the readback, the `reserved > rows-1` floor stays, `box` is still `render.Box{X: 0, Y: 0, W: cols, H: rows - reserved}`, and both `anyPlacedStrand` guards stay. This is the whole of the `reserved-row-accounting-follows-the-pin` decision — the machinery for a status-line consuming rows is already written and tested, and the only thing that changes is which value the readback returns.
 - **Commit:** `docs(reedengine): correct the attach chain's status-off premise`
 
-### Card 26: pin the status-line options and the escaping rules
+### Card 27: pin the status-line options and the escaping rules
 
 - **Context:**
   - `internal/reedengine/windowsize.go`
@@ -81,4 +81,4 @@ The pins are session/window-targeted, never global: a session- or window-scoped 
 
 `verify: go test ./internal/reedengine/ && go test -tags integration ./internal/reedengine/` covers the one package this batch edits, at both the tier that owns the new pure helpers (`windowsize_test.go`, table-driven, no tmux) and the tier that owns the attach chain's end-to-end reserved-row behaviour (`attachgeometry_integration_test.go`).
 The `execHook` seam on `TmuxCmd` is what makes the seven new `set-option` calls assertable without a live server, so the option-issuing test stays in the untagged tier where it belongs — it spawns no process and needs no tmux.
-The batch deliberately adds no test asserting what psmux does with these options: that is an unverified open item this plan carries into the shipped design doc (card 46) rather than a claim any test here can make, and the Windows half of the status-line smoke — asserting the self-correcting reserved-row property rather than the option values — is written in batch 7 with the rest of the smoke tier.
+The batch deliberately adds no test asserting what psmux does with these options: that is an unverified open item this plan carries into the shipped design doc (card 47) rather than a claim any test here can make, and the Windows half of the status-line smoke — asserting the self-correcting reserved-row property rather than the option values — is written in batch 7 with the rest of the smoke tier.

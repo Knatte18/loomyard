@@ -87,7 +87,7 @@ Batch-local decisions live in each batch file._
 
 ### Decision: windows-psmux-verification-is-an-open-item-carried-by-this-plan
 
-- **Decision:** the seven status-line options' behaviour under psmux is **unverified**, not verified. Card 46 in `docs-smokes-and-residue` records the verification item in the shipped design doc as an explicitly open item with the exact command to run (`lyx reed up` under psmux, then reading back `#{status}`, `#{status-position}`, `#{status-left}` and `#{window-status-format}`), rather than the doc asserting a settled outcome.
+- **Decision:** the seven status-line options' behaviour under psmux is **unverified**, not verified. Card 47 in `docs-smokes-and-residue` records the verification item in the shipped design doc as an explicitly open item with the exact command to run (`lyx reed up` under psmux, then reading back `#{status}`, `#{status-position}`, `#{status-left}` and `#{window-status-format}`), rather than the doc asserting a settled outcome.
 - **Rationale:** the discussion's own "Note for the plan" on that decision requires the plan to carry a Windows verification item and to revisit the decision against its result rather than treating it as settled; nobody on this task has a Windows host, so recording the item is the honest discharge.
 - **Applies to:** docs-smokes-and-residue
 
@@ -106,12 +106,12 @@ Batch-local decisions live in each batch file._
 ### Decision: per-card-commits-with-docs-riding-their-own-card
 
 - **Decision:** every card produces exactly one commit. Documentation that describes a mechanism this task changes rides in the batch that changes that mechanism wherever the doc and the code are the same card's concern (e.g. `internal/reedengine/doc.go`'s Selvage sections in `selvage-pane`); the standalone prose deliverables — the module design doc, `manifest/roadmap.md`, `docs/overview.md`, the standalone-API inventory and the sandbox suite — land in `docs-smokes-and-residue`.
-- **Rationale:** this repo's CLAUDE.md requires a module doc, `docs/overview.md` and `CONSTRAINTS.md` to move in the same commit as the change they describe; the `CONSTRAINTS.md` exception-list edit therefore rides card 34 in `watchdog-daemon` (the commit that introduces the `watchdog` verb), not the docs batch.
+- **Rationale:** this repo's CLAUDE.md requires a module doc, `docs/overview.md` and `CONSTRAINTS.md` to move in the same commit as the change they describe; the `CONSTRAINTS.md` exception-list edit therefore rides card 35 in `watchdog-daemon` (the commit that introduces the `watchdog` verb), not the docs batch.
 - **Applies to:** all batches
 
 ### Decision: the-header-scan-is-re-run-and-its-residue-is-in-scope
 
-- **Decision:** the case-insensitive `header` scan over `.go`/`.md` (excluding `.git/` and `_mill/`) the discussion's Testing section mandates was re-run during planning. Four surviving sites it names that the discussion's own disposition list does **not** enumerate are in scope and carry cards of their own: `cmd/lyx/helptree_test.go:84` (card 37), `cmd/lyx/stencilseed.go:46` (card 38), `internal/reedcli/smoke_panecwd_test.go` (card 51), and `tools/sandbox/SANDBOX-REED-SUITE.md:451` (card 49, a third header-pane-log check beside the two at lines 409 and 427 the discussion did name).
+- **Decision:** the case-insensitive `header` scan over `.go`/`.md` (excluding `.git/` and `_mill/`) the discussion's Testing section mandates was re-run during planning. Four surviving sites it names that the discussion's own disposition list does **not** enumerate are in scope and carry cards of their own: `cmd/lyx/helptree_test.go:84` (card 38), `cmd/lyx/stencilseed.go:46` (card 39), `internal/reedcli/smoke_panecwd_test.go` (card 52), and `tools/sandbox/SANDBOX-REED-SUITE.md:451` (card 50, a third header-pane-log check beside the two at lines 409 and 427 the discussion did name).
 - **Rationale:** the discussion states outright that the plan re-runs that scan and treats any surviving site it names that is not listed as an unhandled case, not as out of scope.
 - **Applies to:** watchdog-daemon, docs-smokes-and-residue
 
@@ -150,6 +150,7 @@ _Full union of every `Creates:` / `Edits:` / `Moves:` **target** path across eve
 - `internal/reedcli/attach.go`
 - `internal/reedcli/cli.go`
 - `internal/reedcli/cli_test.go`
+- `internal/reedcli/header.go`
 - `internal/reedcli/resume.go`
 - `internal/reedcli/smoke_dotfill_test.go`
 - `internal/reedcli/smoke_lifecycle_test.go`
