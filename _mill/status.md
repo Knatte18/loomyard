@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-approved
 slug: ly-supervise-reed-add
 branch: ly-supervise-reed-add
 plan: _mill/plan
@@ -37,6 +37,8 @@ approved-vscode-launch-chain  '2026-09-18T17:50:01Z'
 approved-skill-and-roadmap  '2026-09-18T17:52:19Z'
 holistic-reviewing  '2026-09-18T17:52:36Z'
 holistic-fixing  '2026-09-18T17:55:38Z'
+nits-fixed-holistic  '2026-09-18T17:56:56Z'
+holistic-approved  '2026-09-18T17:57:03Z'
 ```
 
 ## Batches
