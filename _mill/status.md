@@ -39,9 +39,14 @@ implementing  '2026-09-18T17:38:53Z'
 ```yaml
 batches:
   - name: reed-if-absent
-    state: pending
+    state: running
+    implementer_session: 7254e004-d4ea-4b10-8551-a06121ac8535
+    start_sha: 4fb8285f86d1db0220b02d15651c86b7f74f3c8f
+    verify_baseline_failures: []
   - name: vscode-launch-chain
     state: pending
+    verify_baseline_failures: []
   - name: skill-and-roadmap
     state: pending
+    verify_baseline_failures: []
 ```
