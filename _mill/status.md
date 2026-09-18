@@ -53,6 +53,8 @@ batches:
     commit_sha: 83791eaed2c826cbf21f87f508d5a2b383a255a0
     verify_baseline_failures: []
   - name: skill-and-roadmap
-    state: pending
+    state: running
+    implementer_session: 137a6886-35c6-447e-9b38-53be47b6af9c
+    start_sha: 79c73fd75bb7932f144e9f867ca93305470fa10d
     verify_baseline_failures: []
 ```
