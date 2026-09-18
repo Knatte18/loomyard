@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-status-line-pins
+phase: approved-watchdog-daemon
 slug: reed-header-selvage
 branch: reed-header-selvage
 plan: _mill/plan
@@ -39,6 +39,7 @@ self-resolved-verify-logic  '2026-09-18T18:40:12Z'
 approved-vocabulary-and-config  '2026-09-18T18:40:12Z'
 approved-selvage-pane  '2026-09-18T19:06:29Z'
 approved-status-line-pins  '2026-09-18T19:18:53Z'
+approved-watchdog-daemon  '2026-09-18T19:34:52Z'
 ```
 
 ## Batches
@@ -71,9 +72,10 @@ batches:
     commit_sha: c2608520b44c0552475c5b9236e69fe731436a59
     verify_baseline_failures: []
   - name: watchdog-daemon
-    state: running
+    state: approved
     implementer_session: 398d825e-1d2c-489f-a26a-e2c536b749ed
     start_sha: 6aed78f01190d7d81e0e3008a81278c517c0c42c
+    commit_sha: b8126d29749e74b7a5a271c8dcefa4af18188937
     verify_baseline_failures: []
   - name: standalone-watcher
     state: pending
