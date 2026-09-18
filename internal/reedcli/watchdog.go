@@ -13,14 +13,20 @@ package reedcli
 
 import (
 	"context"
+	"io"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/spf13/cobra"
 )
 
 // watchdogHubDiscoveryCycle is how often the daemon's outer loop runs one list-sessions round trip
@@ -224,4 +230,91 @@ func runWatchdogLoop(ctx context.Context, hub, tmuxPath string) error {
 			logger.Debug("reed: watchdog session departed", "hub", hub, "session", name)
 		}
 	}
+}
+
+// watchdogLockFileName is the daemon's single-instance lock file's name inside
+// fabricengine.HubScratchDir(hub).
+const watchdogLockFileName = "reed-watchdog.lock"
+
+// watchdogCmd builds the `watchdog` subcommand: a blocking, single-instance, per-hub daemon that
+// runs runWatchdogLoop until it idles out or its context is cancelled.
+//
+// Everything fallible runs pre-flight, on the envelope, before the command blocks: an absent or
+// non-absolute --hub-path and an empty --tmux each report through output.Err, and lock contention
+// (another daemon already holds the lock) exits 0 rather than erroring, since a racing spawn
+// costing one short-lived process is the expected, harmless outcome.
+func (c *reedCLI) watchdogCmd() *cobra.Command {
+	var hubPath, tmuxPath string
+
+	cmd := &cobra.Command{
+		Use:   "watchdog",
+		Short: "run the blocking, single-instance, per-hub watchdog daemon",
+		Long: `watchdog is the detached, single-instance, per-hub daemon that hosts reed's
+resize self-heal watch loop for every worktree session on the hub named by
+--hub-path. It is told its hub path and the tmux binary to use on its
+command line — it opts out of reed's normal cwd/location/config resolution
+entirely and must never derive either from its own environment.
+
+up, resume and attach each attempt to spawn this daemon detached after
+their own engine op returns without error; a spawn that finds the lock
+already held exits 0 immediately. Running it directly in the foreground
+is a real diagnosis path: its diagnostics land in the hub's durable log
+directory rather than nowhere, since its own stdio is discarded before it
+starts polling.
+
+Example:
+  lyx reed watchdog --hub-path /abs/path/to/hub --tmux /usr/bin/tmux`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if clihelp.ShouldAbort(cmd.Context()) {
+				return nil
+			}
+			out := cmd.OutOrStdout()
+
+			if hubPath == "" || !filepath.IsAbs(hubPath) {
+				clihelp.SetExit(cmd.Context(), output.Err(out, "--hub-path must be an absolute, non-empty path"))
+				return nil
+			}
+			if tmuxPath == "" {
+				clihelp.SetExit(cmd.Context(), output.Err(out, "--tmux must not be empty"))
+				return nil
+			}
+
+			// The durable sink is pointed FIRST, before stderr is discarded: its cwd-anchored
+			// fallback arms only inside a lyx-owned worktree and never from a hub cwd, which is
+			// exactly where cmd.Dir pins this process when it is spawned detached — without this
+			// explicit call, every diagnostic the design leans on would go nowhere.
+			logger.SetDurableSinkDir(fabricengine.HubLogsDir(hubPath))
+			// The daemon's own stdio is not a screen anyone watches; only the durable sink matters
+			// from here on.
+			logger.SetOutput(io.Discard)
+
+			lockPath := filepath.Join(fabricengine.HubScratchDir(hubPath), watchdogLockFileName)
+			fl, acquired, err := lock.TryAcquireWriteLock(lockPath)
+			if err != nil {
+				// A non-nil error is a FAILURE, not contention: the lock path itself is unusable
+				// (an absent parent directory, permissions, a read-only filesystem), which must
+				// never fail silently.
+				logger.Error("reed: watchdog could not acquire its lock", "hub", hubPath, "lock", lockPath, "err", err)
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				return nil
+			}
+			if !acquired {
+				// Contention: another daemon already holds the lock. This costs one short-lived
+				// process and nothing else.
+				logger.Info("reed: watchdog lock already held, exiting", "hub", hubPath, "lock", lockPath)
+				return nil
+			}
+			defer fl.Release()
+
+			if err := runWatchdogLoop(cmd.Context(), hubPath, tmuxPath); err != nil {
+				logger.Warn("reed: watchdog daemon's loop returned", "hub", hubPath, "err", err)
+			}
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&hubPath, "hub-path", "", "absolute path to the hub this daemon watches (required)")
+	cmd.Flags().StringVar(&tmuxPath, "tmux", "", "path to the tmux binary this daemon uses (required)")
+
+	return cmd
 }
