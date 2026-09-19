@@ -1,9 +1,9 @@
-// cli_test.go covers the lifecyclecli cobra seam: the built tree's Short completeness, the exact set
+// cli_test.go covers the battencli cobra seam: the built tree's Short completeness, the exact set
 // of registered verbs, each verb's argument-count rejection, the bare-group invocation's git-free
 // guard, and the unknown-subcommand JSON error envelope -- mirroring internal/loomcli/cli_test.go's
 // shape.
 
-package lifecyclecli
+package battencli
 
 import (
 	"bytes"
@@ -16,24 +16,24 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// lifecycleVerbCommand builds the single shedverbs command named verb ("run", "status", or
+// battenVerbCommand builds the single shedverbs command named verb ("run", "status", or
 // "pause"), armed against c.specFor(verb) assigned onto c.spec -- the tier-1 seam arm.go's
 // specFor/arm split exists for, letting this untagged suite fill a Spec with no resolution and no
 // git spawn. It sets Args: cobra.ExactArgs(1), mirroring what Command() itself sets on every one
 // of these three verbs.
-func lifecycleVerbCommand(c *lifecycleCLI, verb string) *cobra.Command {
+func battenVerbCommand(c *battenCLI, verb string) *cobra.Command {
 	spec := c.specFor(verb)
 	c.spec = &spec
-	for _, cmd := range shedverbs.Verbs(lifecycleVerbTexts, c.spec) {
+	for _, cmd := range shedverbs.Verbs(battenVerbTexts, c.spec) {
 		if cmd.Name() == verb {
 			cmd.Args = cobra.ExactArgs(1)
 			return cmd
 		}
 	}
-	panic("lifecycleVerbCommand: no shedverbs command named " + verb)
+	panic("battenVerbCommand: no shedverbs command named " + verb)
 }
 
-// TestCommand_EveryCommandHasShort walks the full lifecycle command tree and asserts that every
+// TestCommand_EveryCommandHasShort walks the full batten command tree and asserts that every
 // command -- the parent group and every subcommand -- carries a non-empty Short, per the CLI/Cobra
 // Invariant.
 func TestCommand_EveryCommandHasShort(t *testing.T) {
@@ -50,8 +50,8 @@ func TestCommand_EveryCommandHasShort(t *testing.T) {
 }
 
 // TestCommand_RegisteredVerbs_ExactSet asserts that the parent command's registered subcommands are
-// exactly the three lifecycle verbs, no more and no fewer -- "pause" included, per this task's
-// agreed additive surface change, and "step" deliberately excluded, since lifecycle has no
+// exactly the three batten verbs, no more and no fewer -- "pause" included, per this task's
+// agreed additive surface change, and "step" deliberately excluded, since batten has no
 // analogue for it and shedverbs.Verbs' returned step command is never added to this subtree.
 func TestCommand_RegisteredVerbs_ExactSet(t *testing.T) {
 	parent := Command()
@@ -79,12 +79,12 @@ func TestCommand_RegisteredVerbs_ExactSet(t *testing.T) {
 
 	for _, name := range want {
 		if !gotSet[name] {
-			t.Errorf("verb %q is not registered under the lifecycle parent command", name)
+			t.Errorf("verb %q is not registered under the batten parent command", name)
 		}
 	}
 	for _, name := range got {
 		if !wantSet[name] {
-			t.Errorf("unexpected verb %q is registered under the lifecycle parent command", name)
+			t.Errorf("unexpected verb %q is registered under the batten parent command", name)
 		}
 	}
 }
@@ -105,9 +105,9 @@ func TestCommand_EveryVerbRejectsWrongArgCount(t *testing.T) {
 	}
 }
 
-// TestRunCLI_GroupGuard_NoGitRepoNeeded asserts that a bare "lyx lifecycle" invocation succeeds
+// TestRunCLI_GroupGuard_NoGitRepoNeeded asserts that a bare "lyx batten" invocation succeeds
 // without needing a git repository, proving the PersistentPreRunE guard for cmd.Name() ==
-// "lifecycle" fires before any cwd resolution.
+// "batten" fires before any cwd resolution.
 func TestRunCLI_GroupGuard_NoGitRepoNeeded(t *testing.T) {
 	t.Parallel()
 

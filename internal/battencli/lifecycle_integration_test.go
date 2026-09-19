@@ -2,17 +2,17 @@
 
 // lifecycle_integration_test.go is the end-to-end suite over a real hub built by
 // internal/hubforge through its fabric fixture entry point, per the hubforge Fabric-Fixture
-// Invariant. It stays a white-box "package lifecyclecli" test, not an external "_test" package,
+// Invariant. It stays a white-box "package battencli" test, not an external "_test" package,
 // because it stubs Env.InnerRun.Spawn and Env.InnerRun.ReadStatus at the field level after a real
 // wire() call -- a no-op spawn and a read-status answering a chosen state -- so the real poll logic
 // (Env.InnerRun.ResolveStatus, the persisted-state branching) is exercised rather than bypassed, and
-// that stubbing needs the unexported wire method and the lifecycleCLI receiver.
+// that stubbing needs the unexported wire method and the battenCLI receiver.
 //
 // It lives at the integration tier rather than Tier 1 because the prime-name lookup this package's
 // own pre-run refusal performs reaches a real git worktree listing, and getting there at all needs
 // the resolver -- both barred from untagged files by the Test Tier Purity Invariant.
 
-package lifecyclecli
+package battencli
 
 import (
 	"bytes"
@@ -23,20 +23,20 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lifecyclerecipe"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// wireForHub builds a *lifecycleCLI wired for real against h's prime Location and slug -- a real
+// wireForHub builds a *battenCLI wired for real against h's prime Location and slug -- a real
 // CreateWorktree and a real Teardown, both driving fabricengine's topology holder against h's own
 // hub -- then overrides Env.InnerRun.Spawn and Env.InnerRun.ReadStatus with readStatus, per this
 // file's own header.
-func wireForHub(t *testing.T, h *hubforge.Hub, slug string, readStatus func(statusPath, statusLockPath string) (shedengine.Status, bool, error)) *lifecycleCLI {
+func wireForHub(t *testing.T, h *hubforge.Hub, slug string, readStatus func(statusPath, statusLockPath string) (shedengine.Status, bool, error)) *battenCLI {
 	t.Helper()
-	c := &lifecycleCLI{}
+	c := &battenCLI{}
 	if err := c.wire(h.Location, slug); err != nil {
 		t.Fatalf("wire(%s): %v", slug, err)
 	}
@@ -47,7 +47,7 @@ func wireForHub(t *testing.T, h *hubforge.Hub, slug string, readStatus func(stat
 
 // seedEntryStatus writes c's status file with CurrentProducer/State as given, an empty non-nil
 // History, under c's own StatusPath/StatusLockPath.
-func seedEntryStatus(t *testing.T, c *lifecycleCLI, producer string, rowState shedengine.State, history []shedengine.HistoryEntry) {
+func seedEntryStatus(t *testing.T, c *battenCLI, producer string, rowState shedengine.State, history []shedengine.HistoryEntry) {
 	t.Helper()
 	if history == nil {
 		history = []shedengine.HistoryEntry{}
@@ -77,11 +77,11 @@ func TestLifecycleIntegration_CreateThenTeardown_DoneRemovesThePair(t *testing.T
 	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
 		return shedengine.Status{State: shedengine.StateDone}, true, nil
 	})
-	seedEntryStatus(t, c, lifecyclerecipe.NameWorktreeCreate, shedengine.StateRunning, nil)
+	seedEntryStatus(t, c, battenrecipe.NameWorktreeCreate, shedengine.StateRunning, nil)
 
-	shed, err := lifecyclerecipe.New(c.env, c.shedPaths)
+	shed, err := battenrecipe.New(c.env, c.shedPaths)
 	if err != nil {
-		t.Fatalf("lifecyclerecipe.New: %v", err)
+		t.Fatalf("battenrecipe.New: %v", err)
 	}
 
 	ctx := context.Background()
@@ -119,11 +119,11 @@ func TestLifecycleIntegration_LoomRunBlocked_LeavesThePairIntact(t *testing.T) {
 	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
 		return shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: "loom-side-producer", Error: "loom session blocked"}, true, nil
 	})
-	seedEntryStatus(t, c, lifecyclerecipe.NameWorktreeCreate, shedengine.StateRunning, nil)
+	seedEntryStatus(t, c, battenrecipe.NameWorktreeCreate, shedengine.StateRunning, nil)
 
-	shed, err := lifecyclerecipe.New(c.env, c.shedPaths)
+	shed, err := battenrecipe.New(c.env, c.shedPaths)
 	if err != nil {
-		t.Fatalf("lifecyclerecipe.New: %v", err)
+		t.Fatalf("battenrecipe.New: %v", err)
 	}
 
 	result, err := shed.Run(context.Background())
@@ -154,11 +154,11 @@ func TestLifecycleIntegration_DirtyPrime_CreateRowBlocksBeforeAnythingCreated(t 
 		t.Fatal("ReadStatus must not be called: the create row must block before the poll row ever runs")
 		return shedengine.Status{}, false, nil
 	})
-	seedEntryStatus(t, c, lifecyclerecipe.NameWorktreeCreate, shedengine.StateRunning, nil)
+	seedEntryStatus(t, c, battenrecipe.NameWorktreeCreate, shedengine.StateRunning, nil)
 
-	shed, err := lifecyclerecipe.New(c.env, c.shedPaths)
+	shed, err := battenrecipe.New(c.env, c.shedPaths)
 	if err != nil {
-		t.Fatalf("lifecyclerecipe.New: %v", err)
+		t.Fatalf("battenrecipe.New: %v", err)
 	}
 
 	result, err := shed.Run(context.Background())
@@ -168,8 +168,8 @@ func TestLifecycleIntegration_DirtyPrime_CreateRowBlocksBeforeAnythingCreated(t 
 	if result.Outcome != shedengine.RunBlocked {
 		t.Errorf("Outcome = %q; want %q", result.Outcome, shedengine.RunBlocked)
 	}
-	if result.HaltedProducer != lifecyclerecipe.NameWorktreeCreate {
-		t.Errorf("HaltedProducer = %q; want %q", result.HaltedProducer, lifecyclerecipe.NameWorktreeCreate)
+	if result.HaltedProducer != battenrecipe.NameWorktreeCreate {
+		t.Errorf("HaltedProducer = %q; want %q", result.HaltedProducer, battenrecipe.NameWorktreeCreate)
 	}
 	if pathExists(h.PairWarpWorktree(slug)) {
 		t.Errorf("pair exists even though the create row blocked before creating anything: %s", h.PairWarpWorktree(slug))
@@ -193,12 +193,12 @@ func TestLifecycleIntegration_MidListResume_SkipsTheCompletedCreateRow(t *testin
 		t.Fatal("CreateWorktree must not run again: the create row already completed before the crash this test simulates")
 		return nil
 	}
-	seedEntryStatus(t, c, lifecyclerecipe.NameLoomRun, shedengine.StateBlocked, []shedengine.HistoryEntry{
-		{Producer: lifecyclerecipe.NameWorktreeCreate, Outcome: shedengine.Done},
+	seedEntryStatus(t, c, battenrecipe.NameRunShed, shedengine.StateBlocked, []shedengine.HistoryEntry{
+		{Producer: battenrecipe.NameWorktreeCreate, Outcome: shedengine.Done},
 	})
 
 	var out bytes.Buffer
-	exitCode := clihelp.Execute(lifecycleVerbCommand(c, "run"), &out, []string{slug})
+	exitCode := clihelp.Execute(battenVerbCommand(c, "run"), &out, []string{slug})
 	if exitCode != 0 {
 		t.Fatalf("run() exit code = %d; want 0; output: %s", exitCode, out.String())
 	}

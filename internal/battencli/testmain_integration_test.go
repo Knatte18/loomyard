@@ -6,7 +6,7 @@
 // Hermetic Git Test Environment Invariant), in the shape internal/landingshed's own equivalent
 // already uses.
 
-package lifecyclecli
+package battencli
 
 import (
 	"os"

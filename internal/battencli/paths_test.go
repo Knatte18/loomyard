@@ -1,4 +1,4 @@
-package lifecyclecli
+package battencli
 
 import (
 	"path/filepath"
@@ -30,22 +30,22 @@ func locationFixtures(t *testing.T) map[string]*lyxcwd.Location {
 	}
 }
 
-func TestLifecycleDir(t *testing.T) {
+func TestBattenDir(t *testing.T) {
 	for name, l := range locationFixtures(t) {
 		t.Run(name, func(t *testing.T) {
-			got := LifecycleDir(l, "some-slug")
+			got := BattenDir(l, "some-slug")
 			want := filepath.Join(l.AnchorPath(), ".lyx", "lifecycle", "some-slug")
 			if got != want {
-				t.Errorf("LifecycleDir() = %q; want %q", got, want)
+				t.Errorf("BattenDir() = %q; want %q", got, want)
 			}
 		})
 	}
 }
 
-func TestPerSlugPathsAreDistinctAndUnderLifecycleDir(t *testing.T) {
+func TestPerSlugPathsAreDistinctAndUnderBattenDir(t *testing.T) {
 	for name, l := range locationFixtures(t) {
 		t.Run(name, func(t *testing.T) {
-			dir := LifecycleDir(l, "some-slug")
+			dir := BattenDir(l, "some-slug")
 			statusFile := StatusFile(l, "some-slug")
 			runLock := RunLock(l, "some-slug")
 			statusLock := StatusLock(l, "some-slug")
@@ -59,7 +59,7 @@ func TestPerSlugPathsAreDistinctAndUnderLifecycleDir(t *testing.T) {
 				{"StatusLock", statusLock},
 			} {
 				if !strings.HasPrefix(p.path, dir+string(filepath.Separator)) {
-					t.Errorf("%s() = %q; want it under LifecycleDir %q", p.name, p.path, dir)
+					t.Errorf("%s() = %q; want it under BattenDir %q", p.name, p.path, dir)
 				}
 			}
 
@@ -92,7 +92,7 @@ func TestPrimeRunLock(t *testing.T) {
 
 // TestPathsStayUnderAnchorAndNeverNameTheManagedSlugWorktree asserts every returned path is under
 // the given Location's own anchor, and that none of them contains a managed task worktree's own
-// path -- this package's half of the Lifecycle Bookend Invariant's mechanical proxy: every seam this
+// path -- this package's half of the Batten Bookend Invariant's mechanical proxy: every seam this
 // package builds resolves against the prime Location's own anchored tree, never against the managed
 // slug's worktree path, which does not exist at wiring time.
 func TestPathsStayUnderAnchorAndNeverNameTheManagedSlugWorktree(t *testing.T) {
@@ -102,7 +102,7 @@ func TestPathsStayUnderAnchorAndNeverNameTheManagedSlugWorktree(t *testing.T) {
 			managedWorktreePath := filepath.Join(l.HubPath, managedSlug)
 
 			paths := map[string]string{
-				"LifecycleDir": LifecycleDir(l, managedSlug),
+				"BattenDir":    BattenDir(l, managedSlug),
 				"StatusFile":   StatusFile(l, managedSlug),
 				"RunLock":      RunLock(l, managedSlug),
 				"StatusLock":   StatusLock(l, managedSlug),

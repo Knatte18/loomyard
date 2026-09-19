@@ -8,16 +8,16 @@
 // to the status-path pair, the spawn directory, and both teardown halves alike -- not only to the one
 // whose laziness (ResolveStatus's own signature) makes it visible.
 
-package lifecyclecli
+package battencli
 
 import (
 	"context"
 	"os"
 	"os/exec"
 
+	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
-	"github.com/Knatte18/loomyard/internal/lifecycleshed"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -43,12 +43,12 @@ func taskWorktreeLocation(prime *lyxcwd.Location, slug string) (*lyxcwd.Location
 
 // wire builds and stores the shedrecipe.Env and shedbuild.ShedPaths the run and status verbs
 // need, over the resolved prime location and slug.
-func (c *lifecycleCLI) wire(location *lyxcwd.Location, slug string) error {
+func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 	primeRunLockPath := PrimeRunLock(location)
-	primeLock := lifecycleshed.PrimeLock{
+	primeLock := battenshed.PrimeLock{
 		Path: primeRunLockPath,
 		Acquire: func() (release func() error, ok bool, err error) {
-			if err := os.MkdirAll(LifecycleDir(location, slug), 0o755); err != nil {
+			if err := os.MkdirAll(BattenDir(location, slug), 0o755); err != nil {
 				return nil, false, err
 			}
 			fl, acquired, err := lock.TryAcquireWriteLock(primeRunLockPath)
@@ -64,7 +64,7 @@ func (c *lifecycleCLI) wire(location *lyxcwd.Location, slug string) error {
 
 	env := shedrecipe.Env{
 		Slug:       slug,
-		ScratchDir: LifecycleDir(location, slug),
+		ScratchDir: BattenDir(location, slug),
 		PrimeLock:  primeLock,
 		CreateWorktree: func(ctx context.Context) error {
 			cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(location.HubPath))
@@ -73,10 +73,10 @@ func (c *lifecycleCLI) wire(location *lyxcwd.Location, slug string) error {
 			}
 			top := fabricengine.NewTopology(cfg)
 			res, err := top.Add(location, slug, fabricengine.AddOptions{})
-			logger.Info("lifecyclecli: create worktree", "slug", slug, "mutations", res.Mutated())
+			logger.Info("battencli: create worktree", "slug", slug, "mutations", res.Mutated())
 			return err
 		},
-		Teardown: lifecycleshed.TeardownDeps{
+		Teardown: battenshed.TeardownDeps{
 			Shutdown: func(ctx context.Context) (abandonedSession string, err error) {
 				taskLocation, err := taskWorktreeLocation(location, slug)
 				if err != nil {
@@ -104,11 +104,11 @@ func (c *lifecycleCLI) wire(location *lyxcwd.Location, slug string) error {
 				}
 				top := fabricengine.NewTopology(cfg)
 				res, err := top.Remove(location, slug, false, false)
-				logger.Info("lifecyclecli: teardown worktree", "slug", slug, "mutations", res.Mutated())
+				logger.Info("battencli: teardown worktree", "slug", slug, "mutations", res.Mutated())
 				return err
 			},
 		},
-		InnerRun: lifecycleshed.InnerRunDeps{
+		InnerRun: battenshed.InnerRunDeps{
 			ResolveStatus: func() (statusPath, statusLockPath string, err error) {
 				taskLocation, err := taskWorktreeLocation(location, slug)
 				if err != nil {
@@ -130,9 +130,9 @@ func (c *lifecycleCLI) wire(location *lyxcwd.Location, slug string) error {
 				// subpath-anchored hub.
 				cmd := exec.Command(exe, "loom", "start", "--no-attach")
 				cmd.Dir = taskLocation.AnchorPath()
-				logger.Info("lifecyclecli: spawning loom session", "slug", slug, "dir", cmd.Dir)
+				logger.Info("battencli: spawning loom session", "slug", slug, "dir", cmd.Dir)
 				err = cmd.Run()
-				logger.Info("lifecyclecli: loom session wait complete", "slug", slug, "dir", cmd.Dir)
+				logger.Info("battencli: loom session wait complete", "slug", slug, "dir", cmd.Dir)
 				return err
 			},
 			ReadStatus: func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {

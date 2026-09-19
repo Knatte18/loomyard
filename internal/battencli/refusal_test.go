@@ -1,4 +1,4 @@
-package lifecyclecli
+package battencli
 
 import (
 	"errors"

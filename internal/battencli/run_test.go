@@ -2,7 +2,7 @@
 // hand-written status file under t.TempDir(), bypassing wire entirely: every Env seam here is a
 // fake that performs no real I/O, no git spawn, and no process spawn.
 
-package lifecyclecli
+package battencli
 
 import (
 	"bytes"
@@ -12,9 +12,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/battenrecipe"
+	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/lifecyclerecipe"
-	"github.com/Knatte18/loomyard/internal/lifecycleshed"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
@@ -23,14 +23,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// newFakeReceiver builds a *lifecycleCLI whose Env is filled entirely with fakes that perform no
+// newFakeReceiver builds a *battenCLI whose Env is filled entirely with fakes that perform no
 // real I/O, over a fresh t.TempDir(). shutdown, when non-nil, replaces the default no-op
 // Teardown.Shutdown closure.
-func newFakeReceiver(t *testing.T, shutdown func(ctx context.Context) (string, error)) *lifecycleCLI {
+func newFakeReceiver(t *testing.T, shutdown func(ctx context.Context) (string, error)) *battenCLI {
 	t.Helper()
 	dir := t.TempDir()
 
-	c := &lifecycleCLI{
+	c := &battenCLI{
 		location: &lyxcwd.Location{RepoName: "example", HubPath: dir, WorktreeName: "hub-repo", AnchorRel: "."},
 		slug:     "some-slug",
 	}
@@ -47,18 +47,18 @@ func newFakeReceiver(t *testing.T, shutdown func(ctx context.Context) (string, e
 	c.env = shedrecipe.Env{
 		Slug:       c.slug,
 		ScratchDir: dir,
-		PrimeLock: lifecycleshed.PrimeLock{
+		PrimeLock: battenshed.PrimeLock{
 			Path: filepath.Join(dir, "prime.lock"),
 			Acquire: func() (func() error, bool, error) {
 				return func() error { return nil }, true, nil
 			},
 		},
 		CreateWorktree: func(ctx context.Context) error { return nil },
-		Teardown: lifecycleshed.TeardownDeps{
+		Teardown: battenshed.TeardownDeps{
 			Shutdown: shutdown,
 			Remove:   func(ctx context.Context) error { return nil },
 		},
-		InnerRun: lifecycleshed.InnerRunDeps{
+		InnerRun: battenshed.InnerRunDeps{
 			Spawn: func(ctx context.Context) error { return nil },
 			ResolveStatus: func() (string, string, error) {
 				return filepath.Join(dir, "loom-status.json"), filepath.Join(dir, "loom-status.json.lock"), nil
@@ -73,7 +73,7 @@ func newFakeReceiver(t *testing.T, shutdown func(ctx context.Context) (string, e
 
 // writeStatus writes st as c's status file, unlocked -- the test owns the file outright before the
 // verb ever runs.
-func writeStatus(t *testing.T, c *lifecycleCLI, st shedengine.Status) {
+func writeStatus(t *testing.T, c *battenCLI, st shedengine.Status) {
 	t.Helper()
 	if err := state.WriteJSON(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, st); err != nil {
 		t.Fatalf("writeStatus: %v", err)
@@ -88,12 +88,12 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 		t.Run(string(state), func(t *testing.T) {
 			c := newFakeReceiver(t, nil)
 			writeStatus(t, c, shedengine.Status{
-				CurrentProducer: lifecyclerecipe.NameWorktreeCreate,
+				CurrentProducer: battenrecipe.NameWorktreeCreate,
 				State:           state,
 			})
 
 			var out bytes.Buffer
-			exitCode := clihelp.Execute(lifecycleVerbCommand(c, "run"), &out, []string{c.slug})
+			exitCode := clihelp.Execute(battenVerbCommand(c, "run"), &out, []string{c.slug})
 
 			if exitCode != 0 {
 				t.Fatalf("run(%s) exit code = %d; want 0; output: %s", state, exitCode, out.String())
@@ -105,22 +105,22 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 	}
 }
 
-// TestRunCmd_StateDoneRefusesNamingTheLifecycleDir asserts a StateDone slug refuses on the envelope
+// TestRunCmd_StateDoneRefusesNamingTheBattenDir asserts a StateDone slug refuses on the envelope
 // rather than silently re-running, naming the per-slug directory to delete.
-func TestRunCmd_StateDoneRefusesNamingTheLifecycleDir(t *testing.T) {
+func TestRunCmd_StateDoneRefusesNamingTheBattenDir(t *testing.T) {
 	c := newFakeReceiver(t, nil)
 	writeStatus(t, c, shedengine.Status{
-		CurrentProducer: lifecyclerecipe.NameWorktreeTeardown,
+		CurrentProducer: battenrecipe.NameWorktreeTeardown,
 		State:           shedengine.StateDone,
 	})
 
 	var out bytes.Buffer
-	exitCode := clihelp.Execute(lifecycleVerbCommand(c, "run"), &out, []string{c.slug})
+	exitCode := clihelp.Execute(battenVerbCommand(c, "run"), &out, []string{c.slug})
 
 	if exitCode != 1 {
 		t.Fatalf("run() exit code = %d; want 1; output: %s", exitCode, out.String())
 	}
-	wantDir := LifecycleDir(c.location, c.slug)
+	wantDir := BattenDir(c.location, c.slug)
 	if !strings.Contains(out.String(), wantDir) {
 		t.Errorf("run() output = %q; want it to name the per-slug directory %q", out.String(), wantDir)
 	}
@@ -132,7 +132,7 @@ func TestRunCmd_AbsentStatusFileStartsFresh(t *testing.T) {
 	c := newFakeReceiver(t, nil)
 
 	var out bytes.Buffer
-	exitCode := clihelp.Execute(lifecycleVerbCommand(c, "run"), &out, []string{c.slug})
+	exitCode := clihelp.Execute(battenVerbCommand(c, "run"), &out, []string{c.slug})
 
 	if exitCode != 0 {
 		t.Fatalf("run() exit code = %d; want 0; output: %s", exitCode, out.String())
@@ -148,7 +148,7 @@ func TestRunCmd_AbsentStatusFileStartsFresh(t *testing.T) {
 func TestRunCmd_HeldRunLockRefusesNamingTheLockPath(t *testing.T) {
 	c := newFakeReceiver(t, nil)
 	writeStatus(t, c, shedengine.Status{
-		CurrentProducer: lifecyclerecipe.NameWorktreeCreate,
+		CurrentProducer: battenrecipe.NameWorktreeCreate,
 		State:           shedengine.StateBlocked,
 	})
 
@@ -159,7 +159,7 @@ func TestRunCmd_HeldRunLockRefusesNamingTheLockPath(t *testing.T) {
 	t.Cleanup(func() { _ = held.Release() })
 
 	var out bytes.Buffer
-	exitCode := clihelp.Execute(lifecycleVerbCommand(c, "run"), &out, []string{c.slug})
+	exitCode := clihelp.Execute(battenVerbCommand(c, "run"), &out, []string{c.slug})
 
 	if exitCode != 1 {
 		t.Fatalf("run() exit code = %d; want 1; output: %s", exitCode, out.String())
@@ -182,19 +182,19 @@ func TestRunCmd_AbandonedSessionKey(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var c *lifecycleCLI
+			var c *battenCLI
 			shutdown := func(ctx context.Context) (string, error) {
 				c.abandonedSession = tt.abandonedSession
 				return tt.abandonedSession, nil
 			}
 			c = newFakeReceiver(t, shutdown)
 			writeStatus(t, c, shedengine.Status{
-				CurrentProducer: lifecyclerecipe.NameWorktreeTeardown,
+				CurrentProducer: battenrecipe.NameWorktreeTeardown,
 				State:           shedengine.StateBlocked,
 			})
 
 			var out bytes.Buffer
-			exitCode := clihelp.Execute(lifecycleVerbCommand(c, "run"), &out, []string{c.slug})
+			exitCode := clihelp.Execute(battenVerbCommand(c, "run"), &out, []string{c.slug})
 			if exitCode != 0 {
 				t.Fatalf("run() exit code = %d; want 0; output: %s", exitCode, out.String())
 			}
@@ -218,7 +218,7 @@ func TestRunCmd_HistoryLengthKey(t *testing.T) {
 	c := newFakeReceiver(t, nil)
 
 	var out bytes.Buffer
-	exitCode := clihelp.Execute(lifecycleVerbCommand(c, "run"), &out, []string{c.slug})
+	exitCode := clihelp.Execute(battenVerbCommand(c, "run"), &out, []string{c.slug})
 	if exitCode != 0 {
 		t.Fatalf("run() exit code = %d; want 0; output: %s", exitCode, out.String())
 	}
@@ -251,12 +251,12 @@ func TestRunCmd_HistoryLengthKey(t *testing.T) {
 func TestPauseCmd_SetsPauseRequestedAndEnvelope(t *testing.T) {
 	c := newFakeReceiver(t, nil)
 	writeStatus(t, c, shedengine.Status{
-		CurrentProducer: lifecyclerecipe.NameWorktreeCreate,
+		CurrentProducer: battenrecipe.NameWorktreeCreate,
 		State:           shedengine.StateBlocked,
 	})
 
 	var out bytes.Buffer
-	exitCode := clihelp.Execute(lifecycleVerbCommand(c, "pause"), &out, []string{c.slug})
+	exitCode := clihelp.Execute(battenVerbCommand(c, "pause"), &out, []string{c.slug})
 	if exitCode != 0 {
 		t.Fatalf("pause() exit code = %d; want 0; output: %s", exitCode, out.String())
 	}
@@ -279,21 +279,21 @@ func TestPauseCmd_SetsPauseRequestedAndEnvelope(t *testing.T) {
 }
 
 // TestPauseCmd_AbsentFileRefuses asserts pause refuses over a slug whose per-slug directory
-// exists but holds no status.json -- the absent-file precondition lifecycle-absent-file-needs-an-
+// exists but holds no status.json -- the absent-file precondition batten-absent-file-needs-an-
 // existing-directory requires, since pause reaches state.UpdateJSON directly.
 func TestPauseCmd_AbsentFileRefuses(t *testing.T) {
 	c := newFakeReceiver(t, nil)
 
 	var out bytes.Buffer
-	exitCode := clihelp.Execute(lifecycleVerbCommand(c, "pause"), &out, []string{c.slug})
+	exitCode := clihelp.Execute(battenVerbCommand(c, "pause"), &out, []string{c.slug})
 	if exitCode != 1 {
 		t.Fatalf("pause() exit code = %d; want 1; output: %s", exitCode, out.String())
 	}
 	if !strings.Contains(out.String(), "there is nothing running to pause") {
 		t.Errorf("pause() output = %q; want it to name the absent-file refusal", out.String())
 	}
-	if !strings.Contains(out.String(), "lyx lifecycle run") {
-		t.Errorf("pause() output = %q; want it to name lifecycle's own entry verb as the remedy", out.String())
+	if !strings.Contains(out.String(), "lyx batten run") {
+		t.Errorf("pause() output = %q; want it to name batten's own entry verb as the remedy", out.String())
 	}
 }
 
@@ -301,7 +301,7 @@ func TestPauseCmd_AbsentFileRefuses(t *testing.T) {
 // --watch and --interval, the two flags shedverbs' generic status body itself reads.
 func TestStatusCmd_RegistersWatchAndIntervalFlags(t *testing.T) {
 	c := newFakeReceiver(t, nil)
-	cmd := lifecycleVerbCommand(c, "status")
+	cmd := battenVerbCommand(c, "status")
 
 	if cmd.Flags().Lookup("watch") == nil {
 		t.Error(`status command is missing the --watch flag`)
@@ -314,14 +314,14 @@ func TestStatusCmd_RegistersWatchAndIntervalFlags(t *testing.T) {
 // TestStatusCmd_WatchOverAbsentFileExitsImmediately asserts --watch over a slug whose per-slug
 // directory exists but holds no status.json exits immediately with the found: false envelope
 // rather than entering the tail -- the absent-file disposition short-circuits before --watch is
-// ever read, per the lifecycle-absent-file-needs-an-existing-directory Shared Decision. The
+// ever read, per the batten-absent-file-needs-an-existing-directory Shared Decision. The
 // directory must already exist for this disposition to be reachable at all: newFakeReceiver's own
 // t.TempDir() is that directory.
 func TestStatusCmd_WatchOverAbsentFileExitsImmediately(t *testing.T) {
 	c := newFakeReceiver(t, nil)
 
 	var out bytes.Buffer
-	exitCode := clihelp.Execute(lifecycleVerbCommand(c, "status"), &out, []string{"--watch", c.slug})
+	exitCode := clihelp.Execute(battenVerbCommand(c, "status"), &out, []string{"--watch", c.slug})
 	if exitCode != 0 {
 		t.Fatalf("status(--watch) exit code = %d; want 0; output: %s", exitCode, out.String())
 	}

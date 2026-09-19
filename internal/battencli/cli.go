@@ -1,13 +1,13 @@
-// cli.go builds the cobra command tree for the lifecycle module and the RunCLI/RunCLIIn seams that
+// cli.go builds the cobra command tree for the batten module and the RunCLI/RunCLIIn seams that
 // wire it into the standard io.Writer-based call contract.
 //
-// Package lifecyclecli is the module that drives one task worktree's whole lifecycle as a single
-// Shed run from the hub's prime worktree. It imports internal/lifecycleshed and
-// internal/lifecyclerecipe, neither of which imports cobra, and it is outside the Fabric Vocabulary
+// Package battencli is the module that drives one task worktree's whole lifecycle as a single
+// Shed run from the hub's prime worktree. It imports internal/battenshed and
+// internal/battenrecipe, neither of which imports cobra, and it is outside the Fabric Vocabulary
 // Invariant's owner set, so no identifier, literal, or comment in this package -- or in either of
 // those two it imports -- may name either side of the pair: write "the task worktree", "the pair",
 // and "the hub's prime worktree" instead.
-package lifecyclecli
+package battencli
 
 import (
 	"io"
@@ -21,13 +21,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// lifecycleCLI carries the fields wire (wire.go) populates; every lifecycle verb hangs off this
+// battenCLI carries the fields wire (wire.go) populates; every batten verb hangs off this
 // receiver.
-type lifecycleCLI struct {
+type battenCLI struct {
 	// location is the resolved *lyxcwd.Location for the hub's prime worktree. wire reads it to
 	// anchor every path constructor and every seam.
 	location *lyxcwd.Location
-	// env is the assembled shedrecipe.Env the run verb passes to lifecyclerecipe.New.
+	// env is the assembled shedrecipe.Env the run verb passes to battenrecipe.New.
 	env shedrecipe.Env
 	// shedPaths carries the five told values shedengine.Shed itself reads, which the run verb
 	// passes alongside env, and which the status verb reads directly.
@@ -44,14 +44,14 @@ type lifecycleCLI struct {
 	spec *shedverbs.Spec
 }
 
-// lifecycleVerbTexts carries lifecycle's three shedverbs-driven verbs' Use/Short/Long text.
+// battenVerbTexts carries batten's three shedverbs-driven verbs' Use/Short/Long text.
 // run's and status's are lifted verbatim from their original hand-written constructors (run.go,
 // status.go, since deleted) before shedverbs.Verbs took over their bodies -- including every
 // Example: block and every embedded newline, byte-for-byte -- plus new text for pause in the same
-// shape. step's fields are left at their zero value: lifecycle has no analogue for it, and an
+// shape. step's fields are left at their zero value: batten has no analogue for it, and an
 // unregistered returned command with a blank Short never reaches the live tree
 // cmd/lyx/drift_test.go walks.
-var lifecycleVerbTexts = shedverbs.VerbTexts{
+var battenVerbTexts = shedverbs.VerbTexts{
 	Run: shedverbs.VerbText{
 		Use:   "run <slug>",
 		Short: "start or resume a task worktree's whole lifecycle run to its next halt",
@@ -64,7 +64,7 @@ which is the everyday resume path. A slug already done refuses on the
 envelope, naming the per-slug directory to delete to run it again.
 
 Example:
-  lyx lifecycle run some-slug`,
+  lyx batten run some-slug`,
 	},
 	Status: shedverbs.VerbText{
 		Use:   "status <slug>",
@@ -80,8 +80,8 @@ the file and never exits, printing a line only when the composed activity
 actually changes rather than once per poll.
 
 Example:
-  lyx lifecycle status some-slug
-  lyx lifecycle status some-slug --watch`,
+  lyx batten status some-slug
+  lyx batten status some-slug --watch`,
 	},
 	Pause: shedverbs.VerbText{
 		Use:   "pause <slug>",
@@ -91,18 +91,18 @@ boundary. It does not kill anything -- the machine itself clears the flag
 in the persist that records the paused state.
 
 Example:
-  lyx lifecycle pause some-slug`,
+  lyx batten pause some-slug`,
 	},
 }
 
-// Command returns the cobra command tree for the lifecycle module.
+// Command returns the cobra command tree for the batten module.
 func Command() *cobra.Command {
-	c := &lifecycleCLI{spec: &shedverbs.Spec{}}
+	c := &battenCLI{spec: &shedverbs.Spec{}}
 
 	parent := &cobra.Command{
-		Use:   "lifecycle",
+		Use:   "batten",
 		Short: "drive one task worktree's whole lifecycle as a single Shed run",
-		Long: `lifecycle drives one task worktree's whole lifecycle -- create, run the loom
+		Long: `batten drives one task worktree's whole lifecycle -- create, run the loom
 session to a terminal state, and tear down -- as a single Shed run over a
 per-slug status.json. "run" starts or resumes that run for a slug; "status"
 reports its current state; "pause" requests a pause at the run's next
@@ -112,16 +112,16 @@ All three verbs run from the hub's prime worktree only: they refuse when
 invoked from a task worktree.
 
 Example:
-  lyx lifecycle run some-slug
-  lyx lifecycle status some-slug
-  lyx lifecycle pause some-slug`,
-		// RunE is set so that bare "lyx lifecycle" lists subcommands and "lyx lifecycle bogus"
+  lyx batten run some-slug
+  lyx batten status some-slug
+  lyx batten pause some-slug`,
+		// RunE is set so that bare "lyx batten" lists subcommands and "lyx batten bogus"
 		// emits a JSON error envelope instead of falling through to cobra's plain-text help.
 		RunE:              clihelp.GroupRunE,
 		PersistentPreRunE: c.resolvePersistentPreRun,
 	}
 
-	verbs := shedverbs.Verbs(lifecycleVerbTexts, c.spec)
+	verbs := shedverbs.Verbs(battenVerbTexts, c.spec)
 	runVerb, statusVerb, pauseVerb := verbs[0], verbs[2], verbs[3]
 	runVerb.Args = cobra.ExactArgs(1)
 	statusVerb.Args = cobra.ExactArgs(1)
@@ -137,11 +137,11 @@ Example:
 // refusal (refusal.go) before resolving anything further. It then reads the slug from the command's
 // own arguments and calls wire.
 //
-// Skips resolution entirely when the lifecycle group command itself is invoked (bare listing or
+// Skips resolution entirely when the batten group command itself is invoked (bare listing or
 // unknown-subcommand error path via clihelp.GroupRunE), so neither path requires a git repository to
 // be present.
-func (c *lifecycleCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) error {
-	if cmd.Name() == "lifecycle" {
+func (c *battenCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) error {
+	if cmd.Name() == "batten" {
 		return nil
 	}
 
@@ -168,7 +168,7 @@ func (c *lifecycleCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string
 	return nil
 }
 
-// RunCLI is the public seam for the lifecycle module CLI.
+// RunCLI is the public seam for the batten module CLI.
 //
 // It delegates to clihelp.Execute with the cobra command tree, passing out as the capture writer
 // for all output (including cobra's error text).
@@ -181,7 +181,7 @@ func RunCLI(out io.Writer, args []string) int {
 // the execution context via clihelp.ExecuteIn.
 //
 // RunCLIIn is carried rather than skipped for a concrete reason: the path-derivation tests serving
-// as the Lifecycle Bookend Invariant's mechanical proxy and the non-prime refusal test both need an
+// as the Batten Bookend Invariant's mechanical proxy and the non-prime refusal test both need an
 // injectable cwd, and neither is reachable through RunCLI alone. The branch exists because
 // lyxcwd.WithCwd panics on an empty directory, so a uniform delegation to ExecuteIn would panic on
 // every existing RunCLI call.

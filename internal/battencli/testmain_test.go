@@ -12,7 +12,7 @@
 // the resolver, run git, or spawn a process -- only the TestMain wiring itself needs this one file
 // excluded once the integration-tagged sibling supplies its own.
 
-package lifecyclecli
+package battencli
 
 import (
 	"os"

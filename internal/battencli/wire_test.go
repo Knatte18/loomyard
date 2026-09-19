@@ -6,7 +6,7 @@
 // suite stays untagged and Tier 1, so it proves laziness structurally rather than by invoking a
 // seam and observing it run.
 
-package lifecyclecli
+package battencli
 
 import (
 	"testing"
@@ -18,7 +18,7 @@ import (
 // managed task worktree named by slug does not exist anywhere on disk -- the mechanical proof that
 // wire itself resolves nothing about that worktree.
 func TestWire_SucceedsForNonexistentTaskWorktree(t *testing.T) {
-	c := &lifecycleCLI{}
+	c := &battenCLI{}
 	location := &lyxcwd.Location{
 		RepoName:     "example",
 		HubPath:      t.TempDir(),
@@ -39,7 +39,7 @@ func TestWire_SucceedsForNonexistentTaskWorktree(t *testing.T) {
 // failure laziness exists to avoid, and a test covering only one seam would let the other three
 // regress silently.
 func TestWire_LazySeams(t *testing.T) {
-	c := &lifecycleCLI{}
+	c := &battenCLI{}
 	location := &lyxcwd.Location{
 		RepoName:     "example",
 		HubPath:      t.TempDir(),
