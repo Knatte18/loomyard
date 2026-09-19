@@ -90,6 +90,7 @@ Each card names the hits confirmed at planning time and requires the implementer
 - **Context:**
   - `internal/burlercli/wiring.go`
   - `internal/burlercli/cli.go`
+  - `internal/cliwire/standalone.go`
   - `internal/configengine/config.go`
   - `internal/reedengine/config.go`
   - `internal/reedengine/lifecycle.go`
@@ -111,7 +112,8 @@ Each card names the hits confirmed at planning time and requires the implementer
 
   Make the boot impossible by pointing reed's configured multiplexer binary at a path that does not exist, so `sessionSubstrateLocked`'s own session probe fails at process lookup and nothing is ever spawned.
   Reach that by calling the CLI's wire method twice: the first call resolves the standalone state directory onto the receiver and spawns nothing, since `wireStandalone` assigns its boot closure without executing it.
-  Between the two calls, seed a reed config under that state directory following `seedReedConfig`'s recipe in `internal/reedengine/contract_integration_test.go` — create the `_lyx` directory, create the config directory under it at the path `ConfigDir` returns, and write `ConfigTemplate`'s bytes to the path `ConfigFile` returns for the reed module, with the multiplexer key's value replaced by a path under the test's own temp directory that is never created.
+  Between the two calls, seed a reed config under that state directory, writing `ConfigTemplate`'s bytes to the path `ConfigFile` returns for the reed module with the multiplexer key's value replaced by a path under the test's own temp directory that is never created.
+  Create the config directory with a recursive, already-exists-tolerant call rather than the single-level `os.Mkdir` that `seedReedConfig` uses in `internal/reedengine/contract_integration_test.go`: that helper assumes a bare temp directory, whereas the first wire call has already created this state directory's `_lyx` tree — `ResolveStandalone` seeds the standalone stencils and specs directories beneath it, and `internal/stencilstore/`'s reconcile creates their parents on the way — so transplanting the single-level form verbatim fails on an existing directory before the config is ever written.
   Write the whole template rather than a single-key fragment, since the degrading config loader resolves a present file rather than merging it over the template.
   Then call wire again on a fresh CLI receiver and drive the same entry point the test drives today.
 

@@ -81,7 +81,8 @@ The card still requires a fresh grep sweep, because a suite added between planni
   In `tools/sandbox/SANDBOX-REED-SUITE.md`, scenario M1 names an add invocation failing with the friendly no-session error as its `OK` outcome, and covers two verbs in one Watch line.
   Those two verbs now diverge: remove still refuses, add no longer does.
   Split M1 into two scenarios rather than rewording it — one for the verbs that still refuse, whose `OK` outcome is unchanged, and one for the self-healing add, whose `OK` outcome is that a session comes up and the strand is added.
-  Renumber the following scenarios if the suite's numbering requires it, keep each scenario's existing Goal/Watch/Verdict shape, and carry the `Covers:` tag across the split so the coverage guard still sees every module it saw before.
+  Renumber the following scenarios if the suite's numbering requires it, and keep each scenario's existing Goal/Watch/Verdict shape.
+  Neither half needs a coverage tag: M1 carries none today, and the suite's reed-module coverage is satisfied independently by the three later scenarios that do carry one, so the split cannot drop coverage the guard was relying on.
 
   In `tools/sandbox/SANDBOX-WEBSTER-SUITE.md`, prerequisite 5 states that an explicit boot is required before any spawn and that without it the spawn fails loud with the no-session error.
   That is falsified: webster's run verb spawns Master through shuttle, which reaches `AddStrand`, which now boots.
@@ -99,5 +100,5 @@ The card still requires a fresh grep sweep, because a suite added between planni
 
 `verify: go test ./internal/lyxcwd/ ./cmd/lyx/` runs the two packages that mechanically guard this batch's output.
 `internal/lyxcwd/docslink_test.go` enforces CONSTRAINTS.md's Markdown Link Integrity invariant over the manifest and docs trees, which is what card 9's roadmap move and design-document edits can break — a relocated item taking a relative link with it, or an anchor that no longer resolves.
-`cmd/lyx/sandbox_coverage_test.go` enforces the Sandbox Suite Coverage invariant, which is what card 10's M1 split can break: a scenario's coverage tag must survive the split so every registered module stays exercised or explicitly excluded.
+`cmd/lyx/sandbox_coverage_test.go` enforces the Sandbox Suite Coverage invariant over card 10's edits: its check is module-level rather than per-scenario, and the reed module's coverage comes from scenarios M1 does not touch, so the M1 split is expected to leave it green — this run is what confirms that rather than assuming it.
 Neither card has a runnable Go surface of its own, so these two guards are the whole automated signal for this batch; the rest is review.
