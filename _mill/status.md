@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-approved
 slug: reed-per-hub-daemon-reap
 branch: reed-per-hub-daemon-reap
 plan: _mill/plan
@@ -42,6 +42,7 @@ approved-daemon wiring  '2026-09-19T10:57:22Z'
 approved-tagged reap tests  '2026-09-19T11:21:38Z'
 approved-docs  '2026-09-19T11:24:41Z'
 holistic-reviewing  '2026-09-19T11:25:17Z'
+holistic-approved  '2026-09-19T11:27:44Z'
 ```
 
 ## Batches
