@@ -50,7 +50,9 @@ batches:
     commit_sha: 81cf1987882e702d5c8e1faabf39a4490f99adac
     verify_baseline_failures: []
   - name: shedrecipe lifecycle entries
-    state: pending
+    state: running
+    implementer_session: db8bb68d-cb16-4825-89be-8d9379de73f4
+    start_sha: c3438bf118b87ea6226b7f007252507a2822db7e
     verify_baseline_failures: []
   - name: lifecycle recipe and coverage guard
     state: pending
