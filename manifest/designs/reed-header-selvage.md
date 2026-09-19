@@ -47,7 +47,7 @@ Selvage is pinned to the bottom, one row tall by default, with every strand pane
 It stays in the **same single window** as every strand, never a second window:
 
 - Reed has no window support today (see the Someday `reed: own-window strand anchoring` item).
-- tmux auto-switches the attached client to a window the instant its previously-active window loses its last pane — a "hidden" second window holding Selvage would pop into view at exactly the moment it needs to stay out of the way, defeating the point.
+- *(confirmed live)* tmux auto-switches the attached client to a window the instant its previously-active window loses its last pane — a "hidden" second window holding Selvage would pop into view at exactly the moment it needs to stay out of the way, defeating the point.
 
 ### The single-pane degenerate case
 
@@ -86,5 +86,5 @@ Standalone reed runs `Engine.Watch` as an in-process goroutine off the `reedUp` 
 
 ## Related
 
-- [loom-step.md](loom-step.md) and the `ly-supervise` skill — a longer-term Someday item (`reed: born-as-strand for operator, watchdog, and orchestrator sessions`, in `manifest/roadmap.md`) depends on reed's pane lifecycle being solid, which this item is a prerequisite for.
-</content>
+- [loom-step.md](loom-step.md) and the `ly-supervise` skill — [`reed: born-as-strand for the operator's loom run attach`](reed-born-as-strand.md) depends on reed's pane lifecycle being solid, which this item is a prerequisite for.
+- `reed: per-hub daemon reaps orphaned sessions` extends this daemon, once it exists, to also check whether each live session's worktree still exists on disk and tear down any that don't.

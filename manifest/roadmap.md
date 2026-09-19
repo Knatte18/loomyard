@@ -9,17 +9,36 @@ See Maintenance below for how the numbering works.
 
 This section holds what's committed to next.
 
-1. **ly-supervise + orchestrator: launch via `lyx reed add`, not ad hoc** — a convention change, not a design task, and the fastest of this cluster to land: update the `/ly:ly-supervise` skill's own instructions to launch via `lyx reed add --cmd claude --name ... --focus` instead of an ad hoc terminal, and build the VS Code task/shortcut for it (`lyx reed up; lyx reed add --cmd claude --name claude --focus; lyx reed attach` already works today, unchanged). This alone satisfies the watchdog and orchestrator halves of the Someday `reed: born-as-strand` item below — only that item's operator-attach half remains an actual code gap once this lands.
+1. **loom CLI: rename `run`/`drive`/`step` for verb/engine symmetry, plus rename `ly-supervise`** — today's verb names don't match what each one actually calls; not yet decided.
+   See [designs/loom-cli-rename.md](designs/loom-cli-rename.md).
 
+1. **reed: `AddStrand` and `attach` self-heal a cold worktree instead of requiring `up` first** — both verbs only check `requireSessionLocked` today and fail with "no session" if nobody has run `reed up` yet; call the same locked helper `Up()` already uses instead in both, so any spawn OR view into a worktree nobody has visited (no VS Code, no manual `up`) just works. Fully internal to `reedengine` — fabric never needs to know reed exists. Distinct from the Next Up `born-as-strand` item: that one is about a pane never becoming a Strand at all; this one is about a session not existing yet.
+
+1. **worktree spawn/teardown as Shed producers** — fold `fabric create`, reed's self-healing bootstrap, optional VS Code embedding, and `loom`'s own producer list into one driven `Shed` run, with a single teardown producer sequencing `reed down` then fabric's own cleanup at the end. Depends on the `AddStrand`/`attach` self-heal item above landing first, for this item's own bootstrap step.
+   See [designs/worktree-lifecycle-shed-producers.md](designs/worktree-lifecycle-shed-producers.md).
+
+1. **fabric: no remote/GitHub branch deletion** — `fabricengine`'s existing branch cleanup (`Cleanup`, `removeWeftWorktree`'s `alsoDeleteBranch`) only ever runs `git branch -D` locally; there is no capability anywhere to delete the corresponding branch on the GitHub remote. Part of why task cleanup today leaves orphaned branches upstream.
+
+## Next Up
+
+What comes right after Planned clears — committed and ordered, unlike Someday below.
+Not yet started, and exact order can still shift as Planned work reveals what unblocks what, but the rough sequence below is the current best guess.
+
+1. **reed: born-as-strand for the operator's `loom run` attach** — `loom run`'s terminal handoff never calls `AddStrand`, unlike every other agent launch in lyx; fix it to spawn-then-attach like `reed add` does.
+   See [designs/reed-born-as-strand.md](designs/reed-born-as-strand.md).
+
+1. **generalize `ly-supervise` and loom's `run`/`drive`/`step` CLI verbs into a Shed-generic watchdog** — `shedengine`/`shedbuild`/`shedrecipe` are already fully generic; only `loomcli` hardcodes loom's own recipe/paths. Speculative until a second `shedrecipe` consumer exists.
+   See [designs/shed-generic-watchdog.md](designs/shed-generic-watchdog.md).
+
+1. **reed: per-hub daemon reaps orphaned sessions** — the per-hub watchdog daemon (see the Planned header-pane split) periodically checks whether each live session's worktree still exists on disk, and tears down any that don't. A safety net for when the Planned `worktree spawn/teardown as Shed producers` item's deliberate teardown sequencing doesn't run (crash, manual deletion, aborted task) — not a replacement for it.
+   See [designs/reed-header-selvage.md](designs/reed-header-selvage.md).
 ## Someday
 
 Committed to eventually — will be done — but not scheduled next.
 No build order is implied between these items.
 
-1. **webster: worktree-per-card parallel execution** — give each DAG-independent group its own `fabric`-spawned worktree, so concurrent cards stop sharing one git index. Deliberately Someday, not Planned: a speed optimization over an already-correct sequential system. The now-Done `Adopt quarry's glyph alphabet as the plan alphabet` item unblocks the edges its scheduler would need but does not itself deliver them, so this item stays Someday until picked up on its own.
+1. **webster: worktree-per-card parallel execution** — give each DAG-independent group its own `fabric`-spawned worktree, so concurrent cards stop sharing one git index. A speed optimization over an already-correct sequential system.
    See [designs/plan-card-format.md](designs/plan-card-format.md) and [designs/webster-parallel-execution.md](designs/webster-parallel-execution.md).
-
-1. **worktree spawn/teardown as Shed producers** — fold today's three manually-sequenced steps (`lyx fabric` create, `lyx loom run`, `lyx fabric` teardown) into `ShedProducer` rows bookending `loom`'s own list, so the task lifecycle is one driven `Shed` run instead of a human bridging three CLI invocations. Likely needs `fabric`'s worktree creation brought into `_launchers`/`_board` wiring first, so it needs its own look before it can be scoped.
 
 1. **VS Code as opt-in per worktree, not spun up by default** — default to CLI/tmux and start VS Code only on request, since the common case is reviewing the final PR rather than watching an agent edit live. Likely shape: a fourth per-worktree launcher variant (see `internal/fabricengine/launchers.go`) that opens VS Code just far enough to `lyx reed attach` — a terminal-launcher convenience, not a standing editor.
 
@@ -29,11 +48,17 @@ No build order is implied between these items.
 
 1. **Claude Code plugin packaging** — ship `lyx` as an installable plugin.
 
-1. **reed: cross-worktree columns** — all worktrees in one window, a column per worktree; needs its own name for the per-worktree grouping layer this introduces (not "session" — already tmux's own term, and already 1:1 with a worktree in reed's plumbing today), and a decision on how many columns fit before falling back to tmux windows-as-pages. Candidate group-layer names surveyed so far and still free: Heddle, Batten, Bobbin, Sley (Warp, Weft, Shuttle, Treadle, Shed, Loom, Reed, Strand, Fabric, Quarry, Crucible, and now Selvage — claimed by the shipped header-replacement work — are all already taken elsewhere in this codebase).
+1. **reed: strand-based mailbox/addressing system** — deliver messages/events to any Strand by address; being a Strand is required to *receive* mail, not to *send* it.
+   See [designs/reed-mailbox.md](designs/reed-mailbox.md).
+
+1. **reed: cross-worktree columns** — all worktrees in one tmux window, a column per worktree; needs a name for the new per-worktree grouping layer this introduces and a column-count/fallback policy.
+   See [designs/reed-multi-window.md](designs/reed-multi-window.md#cross-worktree-columns).
 
 1. **reed: own-window strand anchoring** — a `display` anchor that spawns a strand into its own switchable tmux window instead of a pane.
+   See [designs/reed-multi-window.md](designs/reed-multi-window.md#own-window-strand-anchoring).
 
-1. **reed: independent per-window attach via tmux session groups** — today two `lyx reed attach` invocations join the same tmux session object (a shared "current window" pointer, and mismatched terminal sizes fighting over layout); tmux's session-groups feature (`new-session -t <existing-session>`) would let each invocation show a different window independently, which reed's `attach` verb does not use today. A candidate building block for the cross-worktree-columns and own-window-strand-anchoring items above, likely exposed as something like an `--window <n>` flag, or hidden entirely behind one verb that spawns the needed loose terminal windows automatically.
+1. **reed: independent per-window attach via tmux session groups** — tmux's session-groups feature would let multiple `lyx reed attach` invocations show different windows independently, instead of sharing one today.
+   See [designs/reed-multi-window.md](designs/reed-multi-window.md#independent-per-window-attach-via-tmux-session-groups).
 
 1. **fabric: Windows path behaviour is unverified after six hardening rounds** — the platform sibling of the now-Done `Real-Linux validation`; needs a Windows host to close, not further design.
    See [designs/fabric-windows-verification.md](designs/fabric-windows-verification.md).
@@ -84,17 +109,11 @@ No build order is implied between these items.
 
 1. **reed: daemon Slack relay** — bidirectional Slack relay per worktree, riding on the now-Done `reed: watchdog daemon`. Low priority, well behind the daemon's own self-heal jobs — split out on purpose so it never blocks or gets conflated with the watchdog work.
 
-1. **loom CLI: rename `run`/`drive`/`step` for verb/engine symmetry, plus rename `ly-supervise`** — today's `lyx loom run` never calls `shedengine.Shed.Run`; `lyx loom drive` does, while `run` only bootstraps, spawns `drive`, and attaches tmux. Not yet decided; leading proposal so far is swapping `drive`→`run` (matches `Shed.Run`) and renaming today's `run` to something like `start` (bootstrap + attach), plus renaming the `/ly:ly-supervise` skill to something shorter that still says it drives the whole loop (`ly-drive` was the leading candidate over `ly-watch`/`ly-run`, which either undersell or overclaim what the skill does).
-
-1. **reed: born-as-strand for the operator's `loom run` attach** — the one remaining code gap after the Planned `ly-supervise + orchestrator` launch-convention item above covers its two siblings: `loom run`'s terminal handoff does a bare `tmux attach-session` today with no `AddStrand` call at all, so it never becomes a Strand no matter how it's launched. Fix it to spawn the pane as a Strand first, then attach, mirroring what `reed add` already does for everything else — never adopting an already-running pane after the fact, per `internal/reedengine/spawn.go`'s two cited bugs against that approach. Running it outside reed becomes the explicit debug/CI escape hatch, mirroring `drive`'s relationship to `run`. Not yet defined: exactly what "repo-orchestrator" means as a concept, and whether reed's core pane lifecycle (see the Planned header-pane split above) is solid enough yet to trust with any of this.
-
-1. **reed: strand-based mailbox/addressing system** — deliver messages/events to any Strand (agent, operator, `ly-supervise` watchdog, orchestrator) by address. Being a Strand is only required to *receive* mail (an address needs somewhere durable to deliver to); it is not required to *send* — anything able to reach the delivery mechanism (an in-process Claude Code fork subagent included, despite never itself being a Strand) can send without needing an address of its own. Deliberately a separate, later task from the Planned `ly-supervise + orchestrator` launch-convention item and the Someday `born-as-strand` item above, which it depends on for the receive side only: everything that should be addressable must already exist as a Strand before addressing it means anything. Not yet designed: the actual delivery mechanism (written into the pane? a separate side-channel?) and whether it rides the already-Done `reed: watchdog daemon`'s per-tick loop rather than adding a new process.
-
-1. **generalize `ly-supervise` and loom's `run`/`drive`/`step` CLI verbs into a Shed-generic watchdog** — `shedengine`/`shedbuild`/`shedrecipe` are already fully generic (the Told-Geometry Invariant), and `loomrecipe.New` is the only loom-specific glue; `internal/loomcli`'s `run.go`/`drive.go`/`step.go` are the one place hardcoding loom's own recipe/paths, and no sibling CLI package has an equivalent trio. Deliberately Someday, not Planned: genuinely speculative until a second `shedrecipe` consumer beyond loom exists to validate the generalization against. Separate from the born-as-strand item above — orthogonal axis of change.
-
 ## Done
 
 Cleared 2026-08-25 to keep this file lean — shipped items' history lives in `git log` and each module's own package documentation, not here.
+
+1. **ly-supervise + orchestrator: launch via `lyx reed add`, not ad hoc** — the generated VS Code `folderOpen` task is now the reed launch chain, with both binary paths stamped absolute; `lyx reed add` gained `--if-absent` so reopening a worktree is idempotent; and the `/ly:ly-supervise` skill now treats the session running it as the orchestrator strand itself, rather than telling the operator to open a second one.
 
 1. **Adopt quarry's glyph alphabet as the plan alphabet** — `planparser`/the validator switched a card's symbol declarations from bare names to quarry glyphs, resolved via batched `Resolve`, with placeholder handles (`plan:<expected-glyph>`) for symbols a plan itself creates and mechanical drift detection against the code. Superseded the Someday `quarry-backed plan symbol verification` item.
    See [designs/quarry-glyph-plan-alphabet.md](designs/quarry-glyph-plan-alphabet.md).
@@ -142,15 +161,17 @@ Cleared 2026-08-25 to keep this file lean — shipped items' history lives in `g
 - **Numbering is automatic, not manual, and restarts at 1 in each section.**
   Every item is written literally as `1.` in the source — GitHub/CommonMark renders ordered-list items sequentially from the first item in a contiguous list block regardless of the literal digit on the rest,
   and a new `##` heading starts a new block.
-  So Planned, Someday, and Done each render as their own 1, 2, 3, … with **zero number edits ever needed** — inserting, removing, or reordering items anywhere just works.
-- **Numbers are not stable cross-reference IDs** (the same number exists in all three sections).
+  So Planned, Next Up, Someday, and Done each render as their own 1, 2, 3, … with **zero number edits ever needed** — inserting, removing, or reordering items anywhere just works.
+- **Numbers are not stable cross-reference IDs** (the same number exists in all four sections).
   Cross-reference by **bold item name** instead (e.g. "the Planned `board` item," "Someday's `raddle` item") — every reference elsewhere in this file and in `designs/*.md` already does this.
 - **Entries are short — a name plus one or two sentences of what/why, never a design writeup.**
   Detail belongs in the entry's own `designs/<name>.md` while the item is Planned or Someday.
   Delete that doc once the module ships (see the [documentation lifecycle](../docs/overview.md#documentation-lifecycle)) — a Done entry instead points at the module's own package documentation, which is where its durable detail lives from then on.
   If an entry keeps growing past a couple of sentences, that is a signal to move the growth into the doc it points to, not to let the entry itself grow.
 - Move an item from Planned or Someday to Done, with a link to its module doc if one exists, when it ships — no renumbering needed anywhere.
-- Someday items get a `designs/<name>.md` doc when there's real design behind them (`raddle`, `webster: worktree-per-card parallel execution`, `hardener`, `warp-visibility`, `semantic-index` above do);
+- Someday and Next Up items get a `designs/<name>.md` doc when there's real design behind them (`raddle`, `webster: worktree-per-card parallel execution`, `hardener`, `warp-visibility`, `semantic-index` above do);
   trivial ones don't need one until they're promoted to Planned.
 - This file is the single home for everything not scheduled, whether firmly committed to (`warp-visibility`, `raddle`) or genuinely speculative (`hardener`, the shuttle `Spec` ideas) — no separate long-term-ideas file.
-  Add new speculative ideas directly to Someday.
+  Add new speculative ideas directly to Someday — Next Up is a promotion stage, not an entry point, so nothing is added there fresh.
+- **Promotion path:** Someday → Next Up → Planned → Done.
+  An item can skip Next Up straight from Someday to Planned if it becomes urgent; Next Up is a waypoint, not a mandatory gate.
