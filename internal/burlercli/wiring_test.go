@@ -49,10 +49,12 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/cliwire"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/preflight"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/standalonegeom"
 	"github.com/Knatte18/loomyard/internal/standalonestate"
 )
@@ -350,9 +352,17 @@ func TestWire_RelativeStencilsDirResolvesAgainstCwd(t *testing.T) {
 // immediately without ever reaching reed. A runner that is merely non-nil proves nothing here, so
 // this test drives the one public entry point reachable from this package -- c.engine.Run, with a
 // minimal but validate()-passing Profile -- and asserts the returned error is an ordinary reed
-// "no session" verdict rather than a told-path refusal. It reaches no live reed session (none was
-// ever started, so requireSessionLocked fails fast) and spawns no process: claudeengine.Prepare only
-// writes prompt/settings files before AddStrand's pre-flight rejects the call.
+// "no session" verdict rather than a told-path refusal.
+//
+// AddStrand now self-heals a cold worktree rather than failing fast on requireSessionLocked, so this
+// test can no longer rely on a bare wire to reach its assertion without spawning a real tmux server.
+// It instead pins its configured multiplexer binary out of existence before the engine call: a first
+// wire call resolves the standalone state directory onto the receiver and spawns nothing (wireStandalone
+// only assigns its boot closure, never executes it), then a reed config is seeded under that state
+// directory with the tmux key pointed at a path that is never created, so sessionSubstrateLocked's own
+// session probe fails at process lookup and nothing is ever spawned. A fresh CLI receiver then wires
+// again -- picking up the seeded config -- and drives the same entry point. This is what keeps this
+// untagged test inside the Test Tier Purity Invariant.
 func TestWireStandalone_RunnerReachesPublicEntryPointWithoutToldPathError(t *testing.T) {
 	target := t.TempDir()
 	setStandaloneStateRoot(t)
@@ -362,6 +372,36 @@ func TestWireStandalone_RunnerReachesPublicEntryPointWithoutToldPathError(t *tes
 		t.Fatalf("write fixture file: %v", err)
 	}
 
+	// The first wire call only resolves and assigns the standalone state directory onto the
+	// receiver -- wireStandalone assigns its c.reedUp boot closure without ever executing it -- so
+	// this call spawns nothing.
+	primer := &burlerCLI{}
+	if err := primer.wire(nil, preflight.ModeStandalone, target, "", ""); err != nil {
+		t.Fatalf("wire() = %v; want nil", err)
+	}
+
+	// Seed a reed config under the state directory this invocation derived, with the multiplexer
+	// key pointed at a path that is never created, so no process is ever spawned. MkdirAll, not
+	// os.Mkdir: the first wire call above has already created this state directory's _lyx tree --
+	// ResolveStandalone seeds the standalone stencils and specs directories beneath it, and
+	// internal/stencilstore's reconcile creates their parents on the way -- so a single-level Mkdir
+	// would fail against an already-existing directory before the config is ever written.
+	configDir := configengine.ConfigDir(primer.stateDir)
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", configDir, err)
+	}
+	noSuchTmux := filepath.Join(t.TempDir(), "no-such-tmux-binary")
+	rawTemplate := reedengine.ConfigTemplate()
+	lines := strings.SplitN(rawTemplate, "\n", 2)
+	// The whole template is written, not a single-key fragment -- the degrading config loader
+	// resolves a present file rather than merging it over the template.
+	seededConfig := fmt.Sprintf("tmux: %s\n%s", noSuchTmux, lines[1])
+	configFile := configengine.ConfigFile(primer.stateDir, "reed")
+	if err := os.WriteFile(configFile, []byte(seededConfig), 0o644); err != nil {
+		t.Fatalf("write reed config: %v", err)
+	}
+
+	// Wire again on a fresh receiver so this second call's engine picks up the seeded config.
 	c := &burlerCLI{}
 	if err := c.wire(nil, preflight.ModeStandalone, target, "", ""); err != nil {
 		t.Fatalf("wire() = %v; want nil", err)
