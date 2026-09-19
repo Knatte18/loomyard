@@ -37,6 +37,8 @@ Batch-local decision beyond `## Shared Decisions`: the in-flight set's synchroni
   A failed reap does nothing beyond the `Warn`: there is no retry loop, no backoff, and no escalation. Recovery is the ordinary loop — the gone-counter was deleted at dispatch, so a still-live orphan re-confirms across three more affirmative cycles and is reaped again. State this in the doc comment, along with why the send is non-blocking: a blocking or unbuffered send would deadlock a reap goroutine against the deferred `WaitGroup` wait at daemon exit, since nothing drains the channel once the loop is out of its `for`. A dropped send is inert — the loop is gone, and with it the set.
 
   The goroutine never touches the in-flight map, the gone-counter map, or the `known` map. All three stay single-threaded on the loop goroutine.
+
+  Update this file's own header doc comment in the same edit. Its closing sentence states that `internal/reedengine` "gains exactly one new engine-less function (ListSessions) and learns nothing about the daemon's existence", and `dispatchReap` makes the first half false by calling that package's second one. Reword it to name both `ListSessions` and `ReapSession` while keeping the second half intact — `reedengine` still learns nothing about the daemon, which is the claim the surrounding told-geometry paragraph actually rests on. This mirrors the same correction card 2 makes to `ListSessions`' own doc comment on the other side of the boundary; both stale claims say "the one" and both are falsified by the same addition.
 - **Commit:** `feat(reedcli): add the daemon's off-loop reap dispatch`
 
 ### Card 10: `runWatchdogLoop` gains the reap pass

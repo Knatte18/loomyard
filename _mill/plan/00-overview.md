@@ -3,7 +3,7 @@
 ```yaml
 task: 'reed: per-hub daemon reaps orphaned sessions'
 slug: 'reed-per-hub-daemon-reap'
-approved: false
+approved: true
 started: '20260919-094639'
 parent: 'main'
 root: ""
