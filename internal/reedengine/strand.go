@@ -488,9 +488,10 @@ func (e *Engine) AddStrand(spec AddSpec) (Strand, error) {
 // UpdateStrand mutates guid's display settings, then reconciles and re-applies the layout.
 // It rejects a visible->hidden transition ("cannot hide a live strand in v1");
 // a hidden->visible transition surfaces the strand (creates its pane, runs its cmd).
-// Pre-flights the session's existence (like AddStrand/RemoveStrand) so surfacing a hidden strand
+// Pre-flights the session's existence (like Status/RemoveStrand) so surfacing a hidden strand
 // before "up" fails with the friendly no-session error (see requireSessionLocked/noSessionMessage)
-// instead of a raw tmux error from inside launchStrandLocked.
+// instead of a raw tmux error from inside launchStrandLocked. Unlike AddStrand, UpdateStrand keeps
+// requireSessionLocked and does not self-heal a cold worktree.
 // UpdateStrand is engine-API-only in v1 — there is no CLI verb for it.
 func (e *Engine) UpdateStrand(guid string, display render.Display) (Strand, error) {
 	var result Strand
@@ -596,7 +597,8 @@ func sessionReapRoots(live []LivePane) []int {
 // Returns every strand actually removed.
 // Pre-flights the session's existence (mirroring Status) so running remove before up fails with the
 // same friendly no-session error (see requireSessionLocked/noSessionMessage) instead of a raw tmux
-// error surfacing later from inside reconcileApplyPersistLocked's listPanes.
+// error surfacing later from inside reconcileApplyPersistLocked's listPanes. Like UpdateStrand,
+// RemoveStrand keeps requireSessionLocked and does not self-heal a cold worktree.
 // Like Down, it waits for the destroyed panes' process subtrees to exit before returning: tmux
 // terminates a pane's children asynchronously, and on Windows the process actually holding the
 // worktree directory is a deep descendant of #{pane_pid} — a remove that returned without the reap
