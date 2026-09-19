@@ -242,15 +242,15 @@ This scenario is deliberately read-only: `promote` and `sync` both mutate the op
 
 **Covers:** loom
 
-**Fixture note:** This scenario hand-writes `_lyx/loom/status.json` as a fixture rather than reaching a seeded state through any shipped verb, because no shipped verb seeds one without going through `lyx loom start`'s tmux bootstrap handover, and `lyx loom pause` on an absent status file is specified to error.
-Write the fixture with a realistic `current_producer`/`state`/`activity`/`history` shell and a `product` carrying a `slug` and `parent` of your choosing, following the shape in `contracts/specs/loom-status-spec.md`'s worked example.
+**Fixture note:** This scenario hand-writes `_lyx/shed/self/seed.json` and `_lyx/shed/self/status.json` as a fixture rather than reaching a seeded state through any shipped verb, because no shipped verb seeds one without going through `lyx loom start`'s tmux bootstrap handover, and `lyx loom pause` on an absent seed is specified to refuse by naming the run as unseeded.
+A status file with no seed beside it is now the inconsistency `internal/loomcli`'s own seed-presence refusal exists to catch, so write the seed first: `{"recipe": "loom", "driver": "go"}`.
+Write the status fixture with a realistic `current_producer`/`state`/`activity`/`history` shell and a `product` carrying a `slug` and `parent` of your choosing, following the shape in `contracts/specs/loom-status-spec.md`'s worked example.
 
-**Watch:** Before writing the fixture at all, run `lyx loom status` and `lyx loom pause` against the freshly-added, never-bootstrapped pair.
-Does each refuse by naming its own remedy -- "no status file ... run `lyx loom start`" -- rather than leaking an internal lock path such as `.lyx/loom/status.json.lock: no such file or directory`?
-Both messages were unreachable until crucible round 1: the status file is durable under `_lyx` while its advisory lock is ephemeral under `.lyx`, and nothing creates that second tree before a bootstrap, so both verbs failed inside lock acquisition before the branch carrying those messages was ever reached.
+**Watch:** Before writing either fixture, run `lyx loom status` and `lyx loom pause` against the freshly-added, never-bootstrapped pair.
+Does each refuse by naming the seed as absent -- `loom: no seed found for run "self"; no run is seeded yet. run "lyx loom start" first to bootstrap this task` -- rather than leaking an internal lock path such as `.lyx/shed/self/status.json.lock: no such file or directory`?
 This is the supervisor skill's literal first instruction, so it is the first thing to check, not an afterthought.
 
-Then write the fixture and continue.
+Then write both fixtures and continue.
 Does `lyx loom status` round-trip the fixture's own `slug`/`parent`/`current_producer`/`state`/`activity`/`history` values back out through its JSON envelope unchanged -- this also pins that envelope against the status contract?
 Does the same envelope carry an `interrupt_policy` matching the fixture's own `current_producer` -- `handback` for `Webster`, `reinvoke` for every other row name, absent for a name that is no row at all?
 Does `lyx loom pause` set `pause_requested` true while leaving every other field -- `current_producer`, `state`, `activity`, `history`, and `product` -- untouched?
