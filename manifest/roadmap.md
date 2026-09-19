@@ -29,7 +29,7 @@ No build order is implied between these items.
 
 1. **Claude Code plugin packaging** — ship `lyx` as an installable plugin.
 
-1. **reed: cross-worktree columns** — all worktrees in one window, a column per worktree; needs its own name for the per-worktree grouping layer this introduces (not "session" — already tmux's own term, and already 1:1 with a worktree in reed's plumbing today), and a decision on how many columns fit before falling back to tmux windows-as-pages. Candidate group-layer names surveyed so far and still free: Heddle, Batten, Bobbin, Sley (Warp, Weft, Shuttle, Treadle, Shed, Loom, Reed, Strand, Fabric, Quarry, Crucible, and now Selvage — claimed by the now-Done header-replacement item — are all already taken elsewhere in this codebase).
+1. **reed: cross-worktree columns** — all worktrees in one window, a column per worktree; needs its own name for the per-worktree grouping layer this introduces (not "session" — already tmux's own term, and already 1:1 with a worktree in reed's plumbing today), and a decision on how many columns fit before falling back to tmux windows-as-pages. Candidate group-layer names surveyed so far and still free: Heddle, Batten, Bobbin, Sley (Warp, Weft, Shuttle, Treadle, Shed, Loom, Reed, Strand, Fabric, Quarry, Crucible, and now Selvage — claimed by the shipped header-replacement work — are all already taken elsewhere in this codebase).
 
 1. **reed: own-window strand anchoring** — a `display` anchor that spawns a strand into its own switchable tmux window instead of a pane.
 
