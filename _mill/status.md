@@ -48,7 +48,9 @@ batches:
     commit_sha: 0806a56d3fa88cfcdfae2af45c091870abb689eb
     verify_baseline_failures: []
   - name: engine-wiring
-    state: pending
+    state: running
+    implementer_session: d8275a32-9769-4f57-9cbb-17462c2249af
+    start_sha: 1ca17131d66ad74e96680b18d0ca2be1c602e357
     verify_baseline_failures: []
   - name: cli-surface-and-docs
     state: pending
