@@ -49,6 +49,7 @@ func newColdScratchEngine(t *testing.T) *Engine {
 		WorktreeRoot: tmpDir,
 		LogsDir:      filepath.Join(hub, "logs"),
 		RepoName:     "test-repo",
+		WorktreeName: filepath.Base(tmpDir),
 		HubPath:      hub,
 	}
 	e := New(cfg, geom)
