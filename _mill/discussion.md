@@ -28,9 +28,11 @@ The third consumer is already drafted (`manifest/designs/hardener.md`: `Hardener
 - `loomcli`'s `run`, `step`, `status`, `pause` reimplemented as arming over `shedcli`, preserving their present CLI surface and envelopes byte-for-byte.
 - `lifecyclecli`'s `run` and `status` reimplemented the same way; `lifecyclecli` gains `pause` as a consequence of the shared verb set.
 - `shedbuild` gains the deduplicated `ShedPaths` type and a `NewShed(recipe []byte, env, paths)` assembler; `loomrecipe.New` and `lifecyclerecipe.New` shrink to a delegation plus their own package-specific guards, and both packages' own `ShedPaths` types are removed in favour of the hoisted one.
+- The lifecycle recipe's inner-run producer neutralized: the registry engine name `LoomRun`, the `Env.LoomRun` field, the `lifecycleshed.LoomRunDeps` type, `NewLoomRun`, the entry's own identifiers, and the producer's log and stuck-reason strings all stop naming loom.
+  The seam only — no second lifecycle recipe and no Hardener innards (see the `inner-run-engine-goes-product-neutral` Decision).
 - The `ly-drive` skill generalized to drive any recipe through `lyx shed step --recipe <name>`, with its loom-specific sections gated on the recipe name.
 - A new **Shed Verb-Set Invariant** in `CONSTRAINTS.md`, with a seam-enforcement scan and a help-tree test enforcing it.
-- Doc updates in the same commit: `manifest/designs/shed-generic-watchdog.md`, `docs/overview.md`'s module table and execution-stack entries, `manifest/roadmap.md`'s Planned item, and the package headers of every touched package.
+- Doc updates in the same commit: `manifest/designs/shed-generic-watchdog.md` — including a note recording Hardener as a future consumer of both the verb set and the neutralized inner-run engine — plus `docs/overview.md`'s module table and execution-stack entries, `manifest/roadmap.md`'s Planned item, and the package headers of every touched package.
 
 **Out:**
 
@@ -38,7 +40,11 @@ The third consumer is already drafted (`manifest/designs/hardener.md`: `Hardener
   `start` does not generalize (see the `start-stays-loom-specific` Decision); its file, its bootstrap helpers (`seedAndCommitBootstrap`, `ensureStatusStrand`, `awaitRunLock`, `mustSpawnDriver`, `spawnWatchdog`, `recordStepHandoff`), and its tests are untouched apart from any signature change forced by the hoisted `ShedPaths` type.
 - `lyx loom validate-discussion` / `validate-plan`.
   These are standalone format self-checks, not Shed drivers, and stay on `loomcli`'s lightweight wiring path unchanged.
-- Any change to `shedengine`, `shedadapters`, `shedcheck`, the recipe file format, the seventeen registered engine names, or either shipped recipe YAML.
+- Any change to `shedengine`, `shedadapters`, `shedcheck`, or the recipe file format.
+- Any change to a *durable* recipe identity: the row names in either shipped recipe YAML, their `entry`/`terminals` values, or the `Name*` constants' string values that pin them.
+  The one recipe-YAML edit in scope is the `Loom-Run` row's `engine:` value, which changes with the registry rename and is resolved at build time, never persisted.
+  The registry stays at seventeen keys — this is a rename, not an addition.
+- A second lifecycle recipe, a Hardener recipe, a Hardener arming function, or any Hardener innards.
 - Any change to loom's own producer graph, its row names, its interrupt-policy table's *contents*, or `loomshed`/`lifecycleshed` producer constructors.
 - Building a `Hardener` recipe or arming function.
   The generalization must make the third consumer cheap; it does not write it.
@@ -134,6 +140,19 @@ The third consumer is already drafted (`manifest/designs/hardener.md`: `Hardener
 - Note for the plan: `loomcli`'s `verbUsesLightweightWiring` set (`status`, `pause`, `validate-discussion`, `validate-plan`) must keep working.
   `status` and `pause` still need only the two status-file paths and must not acquire a dependency on the full `wire()` through this change — `shedcli`'s `status` and `pause` bodies must therefore take their paths told and never require a built `*shedengine.Shed`.
 
+### inner-run-engine-goes-product-neutral
+
+- Decision: the lifecycle recipe's middle producer stops naming loom.
+  The registry key `LoomRun` becomes a product-neutral name, `shedrecipe.Env.LoomRun` and `lifecycleshed.LoomRunDeps`/`NewLoomRun`/`loomRunProducer` and the entry's `loomRunEntry`/`defaultLoomRun*` identifiers follow, and the producer's `logger.Info` lines and stuck reasons stop saying "loom session".
+  What does *not* change: the `Loom-Run` row name in `contracts/recipes/lifecycle-recipe.yaml`, `lifecyclerecipe.NameLoomRun`'s string value `"Loom-Run"`, the recipe's `entry`/`terminals`, the `poll_interval_s`/`poll_attempts` Config keys and their defaults, and the producer's own logic.
+  No second lifecycle recipe is written and no Hardener artefact is created; the design doc gains a note recording Hardener as the future consumer of this seam.
+- Rationale: the producer is already generic in substance — its poll loop and its verdict table branch on `shedengine.Status.State`, which is the Shed contract, not loom's, and the two genuinely product-specific parts (`Spawn`, `ResolveStatus`) are already injected seams on a Deps struct.
+  Only the names claim otherwise.
+  Neutralizing them is the same axis as the rest of this task — getting loom out of the layers above the engine — and is cheap now and dearer later, once a second caller exists.
+  The split between what is renamed and what is not follows directly from what is durable: the status file persists `CurrentProducer`, which is the *row* name, so renaming a row breaks resume for an in-flight run (the recipe YAML's own header and `names.go`'s own comment both say so); an `engine:` value is resolved by `shedbuild.Build` at construction time and is persisted nowhere, so renaming it is safe.
+- Rejected: adding a second lifecycle recipe or a parameterized inner-product Config key now (validates the seam against an empty consumer — the trap this project explicitly avoided by holding `shedrecipe`'s own generalization until `lifecyclerecipe` existed as a real second consumer; `manifest/designs/hardener.md` also carries a standing DRAFT banner saying not to implement from it yet, so any recipe written now would be guesswork to be rewritten); renaming the `Loom-Run` row for symmetry (breaks resume, for cosmetics); leaving the whole thing alone (throws away a mapping already made, and leaves the next consumer renaming a registry key under an in-flight run instead of ahead of one).
+- Note for the plan: `lifecyclerecipe.RecipeEngines()` derives the engine set from the parsed recipe rather than a literal, so it needs no edit, but `shedrecipe`'s cross-consumer coverage guard and `lifecyclerecipe`'s own coverage guard both assert against the renamed key and must move with it in the same commit.
+
 ### generic-package-resolves-nothing
 
 - Decision: `shedcli` derives no path, imports no resolver, and never calls `os.Getwd` or `lyxcwd`.
@@ -194,6 +213,16 @@ That seed-when-absent behaviour is lifecycle's `PreRun` and must not leak into t
 `status.go` is already recipe-agnostic apart from its `lifecyclecli:` error prefix and is the natural template for the generic `status`.
 `paths.go` anchors everything on prime's `AnchorPath()` under `lyxdirs.DotLyxDirName` — ephemeral, never durable, per the Durable-vs-Ephemeral State Invariant — and its path-derivation tests are one of the two mechanical proxies for the Lifecycle Bookend Invariant.
 
+**`internal/lifecycleshed/loomrun.go` — the inner-run producer to neutralize.**
+`loomRunProducer.Call` resolves the status path through `deps.ResolveStatus` (evaluated on `Call`, never at wiring time, because the task worktree does not exist until `WorktreeCreate` has run), logs the spawn, calls `deps.Spawn` and blocks on it, logs the completed wait — both log lines required by the Live-Substrate Spawn Observability invariant, since this producer waits for its child rather than detaching — and then polls `deps.ReadStatus` up to `pollAttempts` times at `pollInterval`.
+The verdict table is exhaustive over `shedengine.Status.State`: `StateDone` → `Done`; `StateBlocked`/`StatePaused`/`StateFailed` → `Stuck` naming the state, `Error` and `CurrentProducer`; `StateRunning` consumes an attempt; anything else is a hard error.
+A `ResolveStatus` or `ReadStatus` error is a hard error rather than a verdict; a `Spawn` error and `found == false` are both `Stuck`.
+`Now`/`Sleep` are nil-resolved to `time.Now`/`time.Sleep` once in the constructor so only a test substitutes them.
+None of that logic changes — the neutralization is names and strings only.
+The corresponding registry entry is `loomRunEntry` in `internal/shedrecipe/entries_lifecycle.go`, which validates `Env.Slug`, `Env.ScratchDir` and `Env.LoomRun.Spawn`/`ResolveStatus`/`ReadStatus` (and deliberately not `Now`/`Sleep`, whose nil values are legitimate), and whose `requireSeam`/`requireNonEmpty`/`requireAbsRoot` entry-name strings and error texts all carry the old name.
+The recipe row's `on_stuck` is empty and load-bearing: a stuck verdict there escalates to a human with the task worktree fully intact, which is what keeps the destructive `Worktree-Teardown` row unreachable from any failure path.
+That must survive untouched.
+
 **Registration and the help tree.**
 `cmd/lyx/main.go` assembles every module's `Command()` under one root (`loomcli.Command()`, `lifecyclecli.Command()`, and `loomcli.StartAliasCommand()` as a sibling).
 `cmd/lyx/helptree_test.go` asserts the root help names every subtree, `cmd/lyx/drift_test.go` fails CI on any command with a blank `Short`, `cmd/lyx/longlist_test.go` keeps `--help` prose from drifting from the live tree, and `cmd/lyx/jsonhelp_test.go` asserts the `--json` help schema at several levels.
@@ -251,6 +280,9 @@ Assert that `lyx loom step` and `lyx shed step --recipe loom` produce byte-ident
 `internal/loomcli`'s `step_test.go`, `status_test.go`, `smoke_test.go`, `wiring_test.go`, `stephandoff_test.go`, `start_watchdog_test.go`, `friction_test.go`, `selfreport_test.go`; `internal/lifecyclecli`'s `run_test.go`, `status`/`paths`/`refusal`/`wire` tests and `lifecycle_integration_test.go`; `internal/loomrecipe`'s and `internal/lifecyclerecipe`'s full suites.
 A change to any of these assertions is a signal the extraction changed behaviour and must be justified in the plan, not silently absorbed — the two exceptions agreed here are `lifecyclecli`'s run envelope gaining `history_length` and `lifecyclecli` gaining a `pause` verb.
 
+**Inner-run neutralization** — a pure rename, so its proof is that nothing moved: `internal/lifecycleshed`'s `loomrun_test.go` and `internal/shedrecipe`'s `entries_lifecycle_test.go` pass with identifiers renamed and no assertion weakened, and both coverage guards (`shedrecipe`'s cross-consumer one and `lifecyclerecipe`'s own) assert the new engine key with the registry still at seventeen.
+Add one assertion that `lifecyclerecipe.NameLoomRun`'s *value* is still `"Loom-Run"` and that the recipe's row names are unchanged, so a later symmetry-minded rename of the durable identity fails loudly rather than silently breaking resume.
+
 **`shedbuild`** — a test that `NewShed` returns the same `*shedengine.Shed` fields the two old `New` bodies did, and that an empty-producer recipe still errors.
 
 **CLI tree** — `cmd/lyx`'s `helptree_test.go`, `drift_test.go`, `longlist_test.go` and `jsonhelp_test.go` all cover the new subtree automatically once it is registered; confirm each passes rather than assuming it.
@@ -263,6 +295,7 @@ A change to any of these assertions is a signal the extraction changed behaviour
 - **Q:** How is the generic verb set armed with its recipe? **A:** [auto-pick] A named-recipe table mapping `--recipe <name>` to an arming function supplying recipe bytes, `Env`, paths, hooks, and label. **Why:** a recipe file cannot carry `Env`'s injected seams, and a path-taking flag would imply a runtime on-disk recipe location the Recipe-Format Sole-Parser Invariant forbids.
 - **Q:** Does `start` generalize? **A:** [auto-pick] No — it stays loom-specific. **Why:** there is no `Shed.Start`; every one of its seven steps sits above the engine and the second consumer has an analogue for none of them.
 - **Q:** What happens to the existing `lyx loom` and `lyx lifecycle` verbs? **A:** [auto-pick] Kept with their surface unchanged, reimplemented as arming over `shedcli`. **Why:** their existing behavioural suites are the proof the extraction is behaviour-preserving, and they only prove it if they pass unchanged.
+- **Q:** lifecycle should be able to wrap something other than loom — Hardener eventually. How much of that belongs here? **A:** The seam only: neutralize the inner-run engine's names and strings, leave the recipe's durable identities and any Hardener artefact alone. **Why:** neutralizing the engine is the same axis as the rest of the task and is cheap now; a second recipe would validate against an empty consumer, which is the trap this project avoided by waiting for `lifecyclerecipe` to exist before generalizing `shedrecipe`, and `hardener.md` is still an explicit DRAFT.
 - **Q:** Where does the deduplicated `ShedPaths`/`New` live? **A:** [auto-pick] Hoisted into `shedbuild` as `ShedPaths` + `NewShed`; the two recipe packages shrink to delegation plus their own guards. **Why:** `shedbuild` already owns `Parse` and `Build` and already imports both `shedengine` and `shedrecipe`.
 - **Q:** Does `loomrecipe`'s Env/paths coherence guard hoist too? **A:** [auto-pick] No — it stays in `loomrecipe`. **Why:** it exists for `loomPreflightEntry`'s `Env.StatusPath` read, which is loom's coupling; `lifecyclerecipe` deliberately has no such check.
 - **Q:** How do loom's run/step extras stay out of the generic body? **A:** [auto-pick] Four nil-by-default hooks — `PreRun`, `PostRun`, `PreStep`, `InterruptPolicyFor`. **Why:** `PostRun` taking `runErr` and running unconditionally is what preserves `detectAndFileAnomalies`'s deliberate placement above `run`'s early error return.
