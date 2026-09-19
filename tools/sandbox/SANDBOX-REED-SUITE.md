@@ -489,6 +489,7 @@ Binary fingerprint: <copy from the header above>
 
 M0: <OK|WARN|FAIL> -- <one-line note if not OK>
 M1: <OK|WARN|FAIL> -- <one-line note if not OK>
+M1b: <OK|WARN|FAIL> -- <one-line note if not OK>
 M2: <OK|WARN|FAIL> -- <one-line note if not OK>
 M3: <OK|WARN|FAIL> -- <one-line note if not OK>
 M4: <OK|WARN|FAIL> -- <one-line note if not OK>
