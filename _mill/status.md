@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: reed-per-hub-daemon-reap
 branch: reed-per-hub-daemon-reap
-plan: null
+plan: _mill/plan
 parent: main
 task: 'reed: per-hub daemon reaps orphaned sessions'
 task_description: |
@@ -23,4 +23,5 @@ discussion-gap-fix-r5  '2026-09-19T09:37:50Z'
 discussion-gap-fix-r6  '2026-09-19T09:41:15Z'
 discussion-gap-fix-r7  '2026-09-19T09:43:39Z'
 discussed  '2026-09-19T09:43:50Z'
+planning  '2026-09-19T09:52:19Z'
 ```
