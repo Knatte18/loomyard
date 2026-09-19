@@ -1,8 +1,7 @@
 # Status
 
 ```yaml
-phase: blocked
-blocked_reason: 'auto: discussion review gaps unresolved after 7 rounds'
+phase: discussed
 slug: worktree-lifecycle-shed-producers
 branch: worktree-lifecycle-shed-producers
 plan: null
@@ -24,4 +23,5 @@ discussion-gap-fix-r5  '2026-09-18T19:41:31Z'
 discussion-gap-fix-r6  '2026-09-18T19:46:18Z'
 discussion-gap-fix-r7  '2026-09-19T05:05:15Z'
 blocked  '2026-09-19T05:05:27Z'
+discussed  '2026-09-19T05:07:57Z'
 ```
