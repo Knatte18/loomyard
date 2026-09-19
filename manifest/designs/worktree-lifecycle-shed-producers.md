@@ -1,11 +1,11 @@
 # worktree spawn/teardown as Shed producers
 
-> **Status: Planned, not yet designed in depth — depends on the `AddStrand`/`attach` self-heal item landing first for its own bootstrap step.** Fold today's three manually-sequenced steps (`lyx fabric` create, `lyx loom run`, `lyx fabric` teardown) into `ShedProducer` rows bookending `loom`'s own list, so the task lifecycle is one driven `Shed` run instead of a human bridging three CLI invocations.
+> **Status: Planned, not yet designed in depth — its own bootstrap step relies on the `AddStrand`/`attach` self-heal item, which has landed.** Fold today's three manually-sequenced steps (`lyx fabric` create, `lyx loom run`, `lyx fabric` teardown) into `ShedProducer` rows bookending `loom`'s own list, so the task lifecycle is one driven `Shed` run instead of a human bridging three CLI invocations.
 
 ## The full lifecycle
 
 - **Create**: a `fabric create`-equivalent producer row.
-- **Bootstrap**: no explicit "reed up" row needed. Once `AddStrand`/`attach` self-heal ships, whatever runs next — a `loom run` producer spawning strands, or an operator's `reed attach` — brings the session up as a side effect of actually using it.
+- **Bootstrap**: no explicit "reed up" row needed. Since `AddStrand`/`attach` self-heal shipped, whatever runs next — a `loom run` producer spawning strands, or an operator's `reed attach` — brings the session up as a side effect of actually using it.
 - **Optional VS Code embedding**: a worktree can optionally spawn VS Code, with its `.vscode/tasks.json` `folderOpen` task running `lyx reed attach` directly (self-healing, landing in the always-present Selvage pane once the header-pane split ships). This is just another passive tmux client attaching to the same session — it never conflicts with the Shed driver's own producer work.
 - **Content producers** (`Discussion-Write`, `Plan-Write`, `Webster-Write`, etc.): unchanged by any of this. The Shed driver's own orchestration loop runs wherever it runs (never needs to be inside a pane), but every content-producing producer still spawns its agent strand via `AddStrand`, which always roots that strand's pane inside the actual worktree's reed session — that's inherent to what `AddStrand`/reed already do today, not something this item changes.
 - **Teardown**: a single producer, sequencing internally — never two separate Shed rows — first `reed down`, then fabric's own local cleanup (`Cleanup`/`removeWeftWorktree`). One row keeps this simple; `reed down` is idempotent and cheap, so the producer never needs to check whether a session actually exists before calling it.
