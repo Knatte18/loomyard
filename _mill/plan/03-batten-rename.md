@@ -136,7 +136,9 @@ That is sanctioned by the overview's `no-migration-and-no-in-flight-runs-at-land
   - `internal/shedrecipe/seam_enforcement_test.go`
   - `internal/shedrecipe/fixture_test.go`
   - `internal/shedcli/table.go`
+  - `internal/shedcli/table_test.go`
   - `internal/shedcli/cli.go`
+  - `internal/shedcli/cli_test.go`
   - `internal/shedcli/doc.go`
   - `internal/shedcli/parity_test.go`
   - `internal/shedcli/testmain_integration_test.go`
@@ -151,6 +153,7 @@ That is sanctioned by the overview's `no-migration-and-no-in-flight-runs-at-land
   In `internal/shedcli/table.go`, rename the `"lifecycle"` map key to `"batten"`, retarget its `Arm` value from `lifecyclecli.Arm` to `battencli.Arm`, and rewrite the map's own doc comment, which today explains why lifecycle has no `step` analogue — keep that explanation, renamed, since batten does not gain `step` until batch 6.
   In `internal/shedcli/cli.go`, rewrite the `--recipe lifecycle` examples in the group and verb `Long` text to `--recipe batten`; leave the `--recipe` flag itself in place, since batch 7 removes it.
   Update `internal/shedcli/doc.go`, `parity_test.go` and `testmain_integration_test.go`'s lifecycle references, including `parity_test.go`'s recipe-name literals.
+  `internal/shedcli/table_test.go` and `internal/shedcli/cli_test.go` also pin the table's `"lifecycle"` key and recipe-name literal directly (`TestNames_ExactSet`'s want slice, `lookup("lifecycle")`, and the unsupported-verb refusal case), so they retarget to `"batten"` in this same card -- the table.go key rename above does not compile against them otherwise.
 - **Commit:** `refactor(shedrecipe,shedcli): rename the lifecycle entries file and table key to batten`
 
 ### Card 11: retarget the cross-cutting tests and the four falsified CONSTRAINTS lines
