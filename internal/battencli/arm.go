@@ -285,7 +285,18 @@ func ArmAt(location *lyxcwd.Location, verb string, runID string) (shedverbs.Spec
 // This seed-when-absent behaviour is batten's alone and must not leak into the generic body:
 // loom refuses in exactly the situation batten seeds here, because only "lyx loom start" may
 // seed loom's own status file.
+//
+// It MkdirAlls the status lock's own ephemeral directory before the first read, mirroring
+// battenPreStep's own MkdirAll(filepath.Dir(LockPath)) call: StatusPath is durable and
+// StatusLockPath is ephemeral, the two no longer share a directory the way they did before this
+// task's durable/ephemeral split, and state.ReadJSONStrict deliberately never creates one itself
+// (see its own "no MkdirAll" contract) -- so on a run-id that has never stepped on this machine,
+// the very first read here would otherwise fail to acquire the lock with a bare "no such file or
+// directory", before the run ever reaches shedengine's own run-lock probe.
 func (c *battenCLI) battenPreRun(ctx context.Context) error {
+	if err := os.MkdirAll(filepath.Dir(c.shedPaths.StatusLockPath), 0o755); err != nil {
+		return err
+	}
 	st, found, err := state.ReadJSONStrict[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
 	if err != nil {
 		return errors.New("battencli: decode status file " + c.shedPaths.StatusPath + ": " + err.Error())
