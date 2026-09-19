@@ -12,3 +12,9 @@ import (
 //
 //go:embed loom-recipe.yaml
 var LoomRecipe []byte
+
+// LifecycleRecipe is the task-worktree lifecycle's producer graph, in internal/shedbuild's recipe
+// format.
+//
+//go:embed lifecycle-recipe.yaml
+var LifecycleRecipe []byte
