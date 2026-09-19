@@ -69,9 +69,11 @@ func WriteConfig(worktreeDir, relpath, slug, color, lyxPath, claudePath string) 
 	} else if os.IsNotExist(err) {
 		// dependsOrder: "sequence" is relied on for ordering alone. VS Code's runner has
 		// historically run the next dependent task regardless of the previous one's exit
-		// code, and the chain is safe either way: AddStrand pre-flights requireSessionLocked
-		// and attach pre-flights Status, so a failed "reed up" ends with no strand, no pane,
-		// and no bare claude. No compensating guard of the runner's behaviour is added here.
+		// code, and the chain is still safe: AddStrand now self-heals a cold worktree via
+		// ensureSessionLocked, so a failed "reed up" row is simply followed by an add row
+		// that attempts its own boot and fails for the same underlying reason, leaving no
+		// strand, no pane, and no bare claude either way. No compensating guard of the
+		// runner's behaviour is added here.
 		tasks := map[string]any{
 			"version": "2.0.0",
 			"tasks": []map[string]any{

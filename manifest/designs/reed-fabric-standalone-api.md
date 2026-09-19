@@ -121,16 +121,16 @@ a reader who wants to confirm the layout or façade shape must clone `github.com
 `reedengine/doc.go` already documents this honestly and is quoted rather than re-derived: reed is told its geometry and derives none of it, so `internal/lyxcwd` is absent from reed's *direct* production imports even though it is present transitively.
 
 **Public surface.**
-7 free functions, 20 types, and `*Engine` with **17** exported methods and no value-receiver methods — `Socket`, `SessionName`, `TmuxPath`, `AddStrand`, `UpdateStrand`, `RemoveStrand`, `AttachArgv`, `SendText`, `SendKey`, `CapturePane`, `Up`, `Resume`, `Down`, `Status`, `Watch`, `StatusLineText`, `ValidateStatusLine`.
+7 free functions, 20 types, and `*Engine` with **18** exported methods and no value-receiver methods — `Socket`, `SessionName`, `TmuxPath`, `AddStrand`, `UpdateStrand`, `RemoveStrand`, `AttachArgv`, `SendText`, `SendKey`, `CapturePane`, `Up`, `EnsureSession`, `Resume`, `Down`, `Status`, `Watch`, `StatusLineText`, `ValidateStatusLine`.
 Producing command: `go doc ./internal/reedengine Engine | grep -c '^func (e \*Engine)'`.
 
 **External contract footprint.**
 **14 distinct exported package-level identifiers** are referenced *in code* by production packages outside `reedengine`: `AddSpec`, `ConfigTemplate`, `Engine`, `Geometry`, `ListSessions`, `LoadConfig`, `LoadState`, `New`, `Removed`, `ServerName`, `SessionName`, `StatusResult`, `Strand`, `StrandStatus`.
 The metric's definition is exactly that phrase — "referenced in code by production packages outside the module" — and it is stated here alongside the number because the same shape of count appears throughout this document.
-This footprint counts `render`'s own exported names (`Display`, `Strand`, `Box`, `Params`, and the `Anchor` constants) and the 17 methods reached through `*Engine` separately from the 14 above, not folded into it.
+This footprint counts `render`'s own exported names (`Display`, `Strand`, `Box`, `Params`, and the `Anchor` constants) and the 18 methods reached through `*Engine` separately from the 14 above, not folded into it.
 `ListSessions` is the fourteenth: `internal/reedcli`'s watchdog daemon (`internal/reedcli/watchdog.go`) is its one production caller, per the `told-geometry-keeps-the-daemon-out-of-reedengine` decision that keeps the daemon itself out of `reedengine`.
 
-A bare `grep -ro 'reedengine\.[A-Za-z0-9_]*'` over non-test files additionally returns three identifiers, none of which is a real external reference: `CleanClaudeEnv` and `AddStrand` appear only as doc-comment prose (`internal/burlerengine/doc.go:205`, `internal/reedcli/add.go:1,4`), and `requireSessionLocked` (`internal/reedcli/attach.go:52`) is not even exported.
+A bare `grep -ro 'reedengine\.[A-Za-z0-9_]*'` over non-test files additionally returns three identifiers, none of which is a real external reference: `CleanClaudeEnv` and `AddStrand` appear only as doc-comment prose (`internal/burlerengine/doc.go:205`, `internal/reedcli/add.go:1,4`), and `requireSessionLocked` (`internal/reedcli/attach.go`) is not even exported.
 Counting these three is how the first draft of the underlying investigation reached 15 external identifiers instead of 13.
 
 **Direct production importers (9) and their consumer shapes.**
@@ -167,7 +167,7 @@ The gate is not code readiness — Reed is already close to ready, per the measu
 The gate is the existence of a second consumer, or Reed becoming a long-running service rather than a library.
 
 **Reasoning.**
-Reed's contract is small enough to freeze: 14 external identifiers across 9 direct production importers, most of them construction-only, with one handle type carrying 17 methods.
+Reed's contract is small enough to freeze: 14 external identifiers across 9 direct production importers, most of them construction-only, with one handle type carrying 18 methods.
 But loomyard is Reed's only user, and the quarry precedent measures what extracting ahead of a consumer buys — a separate release cadence and a dependency edge that, months later, still is not drawn.
 
 Three further Reed items sit in `manifest/roadmap.md`'s Someday section — `reed: cross-worktree columns`, `reed: own-window strand anchoring`, `reed: daemon Slack relay` — and all three are Someday, committed but unscheduled, **not Planned**.
