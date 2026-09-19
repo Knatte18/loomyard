@@ -498,7 +498,10 @@ lyx loom start:
                                                            before the driver spawns, or the phase machine's
                                                            own first precondition row sees an uncommitted
                                                            status file and fails immediately)
-  1. ensure the worktree's tmux session is up           (reed)
+  1. ensure the worktree's tmux session is up, then       (reed; reedengine.SpawnWatchdog is
+     spawn the per-hub watchdog daemon                    best-effort and per-hub, called even under
+                                                           --no-attach since the detached driver still
+                                                           spawns agent strands that need reconciling)
   2. add the status strand                                (reed.AddStrand "lyx loom status --watch",
                                                            display: below-parent, shrinkWhenWaitingOnChild:true —
                                                            full height while it has no live child, collapsing to
