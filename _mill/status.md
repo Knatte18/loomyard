@@ -58,7 +58,9 @@ batches:
     commit_sha: b2ad251f6fd8fa22ab6e5c3116dccf2ab5432e78
     verify_baseline_failures: []
   - name: docs-and-suites
-    state: pending
+    state: running
+    implementer_session: ec20578a-d5e5-4832-8d2d-c0425f129a1e
+    start_sha: 2ba1097f057aaa4eac8d3bcb2d24a692e9df235e
     verify_baseline_failures: []
   - name: tagged-tests
     state: pending
