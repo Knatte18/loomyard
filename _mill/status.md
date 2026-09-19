@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: worktree-lifecycle-shed-producers
 branch: worktree-lifecycle-shed-producers
 plan: _mill/plan
@@ -38,6 +38,7 @@ approved-registration and docs  '2026-09-19T06:14:35Z'
 holistic-reviewing  '2026-09-19T06:14:54Z'
 holistic-approved  '2026-09-19T06:19:49Z'
 done  '2026-09-19T06:21:19Z'
+pr-pending  '2026-09-19T06:29:50Z'
 ```
 
 ## Batches
