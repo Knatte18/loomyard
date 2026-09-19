@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: fabric-remote-branch-delete
 branch: fabric-remote-branch-delete
 plan: _mill/plan
@@ -35,6 +35,7 @@ approved-cli-surface-and-docs  '2026-09-19T06:08:15Z'
 holistic-reviewing  '2026-09-19T06:08:46Z'
 holistic-fixing  '2026-09-19T06:12:55Z'
 holistic-reviewing  '2026-09-19T06:16:44Z'
+holistic-fixing  '2026-09-19T06:21:44Z'
 ```
 
 ## Batches
