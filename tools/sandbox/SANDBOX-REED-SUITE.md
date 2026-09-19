@@ -101,12 +101,22 @@ Find out what `lyx reed` can do and report the full command tree."
 
 ---
 
-### M1 -- Pre-up ergonomics
+### M1 -- Pre-up ergonomics (remove still refuses)
 
-**Goal:** "From a fresh state (no reed session running), try to add a strand and remove one.
+**Goal:** "From a fresh state (no reed session running), try to remove a strand.
 See how reed tells you what to do first."
 
-**Watch:** `lyx reed add --cmd ...` and `lyx reed remove <guid>` must fail with the friendly JSON-envelope error `no reed session; run "lyx reed up"` -- that message is the `OK` outcome, not a finding.
+**Watch:** `lyx reed remove <guid>` must fail with the friendly JSON-envelope error `no reed session; run "lyx reed up"` -- that message is the `OK` outcome, not a finding.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
+### M1b -- Add self-heals a cold worktree
+
+**Goal:** "From a fresh state (no reed session running), add a strand and see whether reed boots the session for you instead of refusing."
+
+**Watch:** `lyx reed add --cmd ...` against a fresh state boots this worktree's session with `up`'s own semantics (a bare substrate, no persisted strand relaunched) and then adds the strand -- a session coming up and the strand landing is the `OK` outcome, not a finding.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 

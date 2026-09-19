@@ -175,7 +175,7 @@ Three things must hold, and each was a real defect before:
 2. The envelope must still carry `guid`, `sessionId` and `runDir`, so the operator can reach the pane that is still running.
 3. Confirm the agent really is still alive afterward (`tmux -L <socket> capture-pane` on its pane shows the same turn still progressing) -- the whole point of the verdict in (1).
 
-Then, with `reed.json` still absent, start a SECOND run in the same worktree (it will fail at `add strand: no reed session` -- that is expected and costs no tokens) and confirm the FIRST run's directory under `<worktree>/.lyx/shuttle/` is **still there**. A missing run directory is a FAIL: it holds the `events.jsonl` the live agent's Stop hook is still appending to, and the `run.json` without which `lyx shuttle interrupt/send <guid>` can no longer find the running agent at all.
+Then, with `reed.json` still absent, start a SECOND run in the same worktree with a deliberately cheap prompt (e.g. `--model haiku --prompt "write ok" --output-file second.md`): `add strand` now self-heals rather than refusing, so this second run boots a fresh session and spawns a real second agent -- **this step now costs real tokens**, unlike the no-session refusal it used to hit. Confirm the FIRST run's directory under `<worktree>/.lyx/shuttle/` is **still there** once the second run has started. A missing run directory is a FAIL: it holds the `events.jsonl` the live agent's Stop hook is still appending to, and the `run.json` without which `lyx shuttle interrupt/send <guid>` can no longer find the running agent at all.
 
 Restore with `lyx reed up` (which writes a fresh `reed.json`) and `lyx reed down` to tear the session down.
 
