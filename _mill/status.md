@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: reed-per-hub-daemon-reap
 branch: reed-per-hub-daemon-reap
 plan: _mill/plan
@@ -44,6 +44,7 @@ approved-docs  '2026-09-19T11:24:41Z'
 holistic-reviewing  '2026-09-19T11:25:17Z'
 holistic-approved  '2026-09-19T11:27:44Z'
 done  '2026-09-19T11:32:24Z'
+pr-pending  '2026-09-19T11:38:30Z'
 ```
 
 ## Batches
