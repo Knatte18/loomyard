@@ -18,7 +18,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/lifecyclecli"
+	"github.com/Knatte18/loomyard/internal/battencli"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -79,11 +79,11 @@ func transientSet(l *lyxcwd.Location) []namedPath {
 		{"loomengine.LoomFrictionDir", loomengine.LoomFrictionDir(l)},
 		{"logger.LogsDir", logger.LogsDir(l)},
 		{"treadleengine.PauseFlagPath", treadleengine.PauseFlagPath(filepath.Join(websterengine.ScratchDir(l.AnchorPath()), "blk"))},
-		{"lifecyclecli.LifecycleDir", lifecyclecli.LifecycleDir(l, "slug")},
-		{"lifecyclecli.StatusFile", lifecyclecli.StatusFile(l, "slug")},
-		{"lifecyclecli.RunLock", lifecyclecli.RunLock(l, "slug")},
-		{"lifecyclecli.StatusLock", lifecyclecli.StatusLock(l, "slug")},
-		{"lifecyclecli.PrimeRunLock", lifecyclecli.PrimeRunLock(l)},
+		{"battencli.BattenDir", battencli.BattenDir(l, "slug")},
+		{"battencli.StatusFile", battencli.StatusFile(l, "slug")},
+		{"battencli.RunLock", battencli.RunLock(l, "slug")},
+		{"battencli.StatusLock", battencli.StatusLock(l, "slug")},
+		{"battencli.PrimeRunLock", battencli.PrimeRunLock(l)},
 	}
 }
 

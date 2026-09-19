@@ -5,17 +5,17 @@
 // the other consumer's engines, the same bug, doubled.
 //
 // It lives in package shedrecipe_test, the external test package, because that is the only place
-// that may import both recipe consumers -- internal/loomrecipe and internal/lifecyclerecipe --
+// that may import both recipe consumers -- internal/loomrecipe and internal/battenrecipe --
 // without an import cycle: neither consumer package may import the other, and this package's own
 // internal test package cannot import either without producing shedrecipe -> loomrecipe ->
-// shedrecipe (and the lifecyclerecipe equivalent).
+// shedrecipe (and the battenrecipe equivalent).
 
 package shedrecipe_test
 
 import (
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/lifecyclerecipe"
+	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 )
@@ -34,13 +34,13 @@ var coverageGuardAllowedUnreachableEngines = map[string]bool{
 
 // TestCoverageGuard_EveryRegisteredEngineIsReachedOrAllowlisted asserts every name in
 // shedrecipe.Names() is in the union of loomrecipe.RecipeEngines() and
-// lifecyclerecipe.RecipeEngines(), or is on coverageGuardAllowedUnreachableEngines.
+// battenrecipe.RecipeEngines(), or is on coverageGuardAllowedUnreachableEngines.
 func TestCoverageGuard_EveryRegisteredEngineIsReachedOrAllowlisted(t *testing.T) {
 	reached := make(map[string]bool)
 	for _, engine := range loomrecipe.RecipeEngines() {
 		reached[engine] = true
 	}
-	for _, engine := range lifecyclerecipe.RecipeEngines() {
+	for _, engine := range battenrecipe.RecipeEngines() {
 		reached[engine] = true
 	}
 
@@ -65,7 +65,7 @@ func TestCoverageGuard_AllowlistDoesNotDrift(t *testing.T) {
 	for _, engine := range loomrecipe.RecipeEngines() {
 		reached[engine] = true
 	}
-	for _, engine := range lifecyclerecipe.RecipeEngines() {
+	for _, engine := range battenrecipe.RecipeEngines() {
 		reached[engine] = true
 	}
 
