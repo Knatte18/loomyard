@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-selvagepane-extraction
+phase: approved-docs-and-full-verification
 slug: reed-selvage-pane-extraction
 branch: reed-selvage-pane-extraction
 plan: _mill/plan
@@ -29,6 +29,7 @@ plan-fix-r1  '2026-09-19T10:09:33Z'
 planned  '2026-09-19T10:09:44Z'
 implementing  '2026-09-19T10:10:18Z'
 approved-selvagepane-extraction  '2026-09-19T10:25:58Z'
+approved-docs-and-full-verification  '2026-09-19T10:38:10Z'
 ```
 
 ## Batches
@@ -42,8 +43,9 @@ batches:
     commit_sha: a336fcca783daf6984580ea0e59046c16f8dc552
     verify_baseline_failures: []
   - name: docs-and-full-verification
-    state: running
+    state: approved
     implementer_session: 558eb8ae-3bec-4df5-965d-2ac3c9153391
     start_sha: e4fbc3c40805c4c06f4f223685227a9233bf5025
+    commit_sha: 2afe5f09ac2ab2559783a18bda4edd8b1e57cf65
     verify_baseline_failures: []
 ```
