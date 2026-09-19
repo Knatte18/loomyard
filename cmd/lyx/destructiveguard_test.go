@@ -11,7 +11,7 @@
 // filepath.WalkDir skipping of test files, and the filepath.ToSlash normalisation before any
 // comparison, which matters because Windows is the primary dev OS.
 //
-// Two of the eight banned tokens were corrected against a naive first guess in opposite
+// Two of the nine banned tokens were corrected against a naive first guess in opposite
 // directions, and the reasons are recorded here because both mistakes are easy to reintroduce.
 //
 // "RemoveAll(" rather than "os.RemoveAll(": the bare form is a deliberate superset. It catches the
@@ -44,7 +44,7 @@
 // This file also carries TestMutationRecord_FabricengineProductionSource, the Mutation Record
 // Invariant's guard (see CONSTRAINTS.md's Mutation Record Invariant). It pins two shapes by raw
 // source inspection alone, both against internal/fabricengine/destroy.go and the mutating result
-// types' declarations: that every one of destroy.go's eight executors declares a leading
+// types' declarations: that every one of destroy.go's nine executors declares a leading
 // `rec *Mutations` parameter, and that every mutating verb's result type embeds MutationRecord
 // while the read-only verbs' result types do not. Its blind spots are deliberate and
 // significant: it never inspects an executor's body for a `rec.Append`/`rec.AppendRef` call, so it
@@ -74,8 +74,10 @@ var destructiveGuardScanPackages = []string{
 
 // destructiveGuardBannedTokens are the raw substrings a non-test .go file in
 // destructiveGuardScanPackages may not contain, unless the file is on destructiveGuardAllowlist.
-// This is the discussion's final seven tokens plus "createdToken{", added per the overview's
-// decision that the token's unforgeability is guard-enforced rather than type-enforced.
+// This is the discussion's final seven tokens plus "createdToken{" (added per the overview's
+// decision that the token's unforgeability is guard-enforced rather than type-enforced) plus
+// ".DeleteRemoteBranch(" (added alongside the sixth destructive primitive, so a file other than
+// destroy.go cannot reach the remote-branch-deletion primitive either).
 var destructiveGuardBannedTokens = []string{
 	"RemoveAll(",
 	"os.Remove(",
@@ -85,6 +87,7 @@ var destructiveGuardBannedTokens = []string{
 	"weft.ResetHard(",
 	"fslink.Remove(",
 	"createdToken{",
+	".DeleteRemoteBranch(",
 }
 
 // destructiveGuardAllowlist is this guard's per-file allowlist (path module-relative,
@@ -137,13 +140,14 @@ var destructiveGuardRecordingExecutors = []struct {
 	{"removeLink", "func removeLink(rec *Mutations, "},
 	{"repointLink", "func repointLink(rec *Mutations, "},
 	{"deleteBranch", "func deleteBranch(rec *Mutations, "},
+	{"deleteRemoteBranch", "func deleteRemoteBranch(rec *Mutations, "},
 	{"createExclusiveDir", "func createExclusiveDir(rec *Mutations, "},
 	{"createGitWorktree", "func createGitWorktree(rec *Mutations, "},
 	{"resetHardTo", "func resetHardTo(rec *Mutations, "},
 }
 
 // destructiveGuardRecordingExecutorsMin is the vacuous-scan floor for
-// destructiveGuardRecordingExecutors: the table declares 8 rows today, this floors well below that
+// destructiveGuardRecordingExecutors: the table declares 9 rows today, this floors well below that
 // so a table that silently stopped matching (e.g. a rename that broke every declPrefix at once)
 // fails loudly rather than passing on zero found declarations.
 const destructiveGuardRecordingExecutorsMin = 5
@@ -190,7 +194,7 @@ var destructiveGuardReadOnlyResultTypes = []struct {
 
 // TestNoDestructiveBypass_FabricengineProductionSource walks internal/fabricengine's non-test .go
 // files and fails if any of them (other than a destructiveGuardAllowlist entry) contains one of
-// destructiveGuardBannedTokens — the eight construction/call tokens a destructive primitive
+// destructiveGuardBannedTokens — the nine construction/call tokens a destructive primitive
 // reached outside the gate would carry.
 func TestNoDestructiveBypass_FabricengineProductionSource(t *testing.T) {
 	// Skip cleanly rather than fail when the go toolchain is not on PATH, mirroring
