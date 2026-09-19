@@ -129,7 +129,7 @@ Example:
 			// lock exists to serialise. The call returns nothing and is never error-checked or
 			// reported on the envelope: every failure path inside the seam logs and returns, and
 			// up, attach and resume already treat it as best-effort.
-			c.spawnWatchdog(c.location.HubPath, c.reed.TmuxPath(), c.suppressWatchdogSpawn)
+			c.spawnWatchdog(c.location.HubPath, c.reed.TmuxPath(), c.reed.ShellPath(), c.suppressWatchdogSpawn)
 
 			// Step 5: probe the run lock non-blockingly -- releasing it immediately when it was
 			// free, never holding it across this probe -- and spawn the detached driver only when

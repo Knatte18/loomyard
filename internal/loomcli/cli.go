@@ -76,7 +76,7 @@ type loomCLI struct {
 	// leaves no process, no log line, and nothing else to assert against. Named after
 	// awaitRunLock's own four injected seams (bootstrap.go) and this file's own doc comment
 	// principle that the verb body is assembly over judgment already under test.
-	spawnWatchdog func(hubPath, tmuxPath string, suppress bool)
+	spawnWatchdog func(hubPath, tmuxPath, shellPath string, suppress bool)
 }
 
 // newLoomCLI is the only place production code may build a *loomCLI: it is what keeps

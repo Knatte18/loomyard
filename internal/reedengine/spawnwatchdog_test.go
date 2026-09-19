@@ -11,9 +11,9 @@ package reedengine
 import "testing"
 
 func TestSpawnWatchdog_SuppressedReturnsWithoutSpawning(t *testing.T) {
-	SpawnWatchdog(t.TempDir(), "tmux", true)
+	SpawnWatchdog(t.TempDir(), "tmux", "shell", true)
 }
 
 func TestSpawnWatchdog_EmptyHubPathReturnsWithoutSpawning(t *testing.T) {
-	SpawnWatchdog("", "tmux", false)
+	SpawnWatchdog("", "tmux", "shell", false)
 }

@@ -103,10 +103,10 @@ func exactSessionWindowTarget(session string) string {
 // ListSessions returns every session name live on the -L tmuxPath socket named socketKey,
 // or an error if the round trip itself failed.
 //
-// It is the one engine-less, exported function in this package: every other exported method
-// hangs off *Engine and is bound to one session, but the watchdog daemon (internal/reedcli) must
-// enumerate a hub socket's sessions BEFORE it has built any Engine for any of them — there is
-// nothing yet to bind a method call to. TmuxCmd.run and TmuxCmd.output stay unexported; this is
+// It is engine-less because the watchdog daemon (internal/reedcli) must enumerate a hub socket's
+// sessions BEFORE it has built any Engine for any of them — there is nothing yet to bind a method
+// call to; every other exported method hangs off *Engine and is bound to one session.
+// TmuxCmd.run and TmuxCmd.output stay unexported; this is
 // the one seam this package opens for that discovery, built on the identical
 // `tmux -L <socket> list-sessions -F '#{session_name}'` invocation five call sites in this
 // package already issue.
@@ -140,6 +140,61 @@ func listSessionsVia(cmd TmuxCmd) ([]string, error) {
 		names = append(names, line)
 	}
 	return names, nil
+}
+
+// reapSessionPanes lists session's panes, split out from ReapSession so a test can drive the
+// pane-listing half through TmuxCmd's execHook seam directly, mirroring listSessionsVia's own
+// reason for existing.
+func reapSessionPanes(cmd TmuxCmd, session string) ([]LivePane, error) {
+	return cmd.listPanes(session)
+}
+
+// reapSessionKill kills session by exact-match target. The exactSessionTarget wrapper is
+// mandatory: a bare "-t session" prefix-matches a sibling worktree's session.
+func reapSessionKill(cmd TmuxCmd, session string) error {
+	return cmd.run("kill-session", "-t", exactSessionTarget(session))
+}
+
+// ReapSession is the second engine-less exported function in this package: the per-hub daemon
+// (internal/reedcli) reaps a session belonging to a worktree that no longer exists, so there is no
+// live Geometry to build a real Engine from, and reaching for one would route through withOpLock's
+// told-geometry validators — which is exactly the check a gone worktree cannot pass.
+//
+// ReapSession acquires no lock — it never calls withOpLock or withTryOpLock — and touches no state
+// directory, which is what makes it legal for a worktree that no longer exists. It reads no
+// geometry field beyond socketKey and sessionName, both passed as plain strings.
+//
+// It runs four steps in this exact order, and the order is load-bearing: the pane-derived
+// descendant closure is computed in step 2, BEFORE the kill in step 3, because kill-session
+// reparents the pane children — a closure computed after the kill collapses to the root pids
+// alone and silently loses the detached agent descendants the reap exists to kill
+// (paneProcessTreePIDsLocked, lifecycle.go, carries this same rule in its own doc comment).
+func ReapSession(tmuxPath, shellPath, socketKey, sessionName string) error {
+	cmd := NewTmuxCmd(tmuxPath, socketKey)
+
+	live, err := reapSessionPanes(cmd, sessionName)
+	if err != nil {
+		// A session whose panes cannot be listed is the one most worth killing, so a
+		// listing failure never skips the kill — it only loses the descendant closure.
+		logger.Warn("reed: could not list panes before reaping session", "socket", socketKey, "session", sessionName, "err", err)
+		live = nil
+	}
+
+	// eng carries only the one field descendantClosurePIDs' Windows body reads (it spawns
+	// e.cfg.Shell); its Linux body reads no Engine field at all, and neither body reads
+	// geometry. Deliberately no Geometry value here, not even a zero one: CONSTRAINTS.md's
+	// Told-Geometry Invariant names internal/hubgeom and internal/standalonegeom as the only
+	// Geometry-struct constructors, and this throwaway is not a usable Engine — it exists
+	// solely to reach one method.
+	eng := &Engine{cfg: Config{Shell: shellPath}}
+	pids := eng.descendantClosurePIDs(sessionReapRoots(live))
+
+	logger.Info("reed: reaping orphaned session", "socket", socketKey, "session", sessionName, "pids", len(pids))
+	killErr := reapSessionKill(cmd, sessionName)
+	reapPaneChildren(pids, reapExitTimeout)
+	logger.Info("reed: reaped orphaned session", "socket", socketKey, "session", sessionName, "err", killErr)
+
+	return killErr
 }
 
 // hasSession reports whether the named session exists (by exact match, not prefix).

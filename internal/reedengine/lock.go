@@ -62,6 +62,13 @@ func (e *Engine) TmuxPath() string {
 	return e.cfg.Tmux
 }
 
+// ShellPath returns the configured shell this engine's descendant-closure walk spawns on Windows.
+// It validates nothing and defaults nothing: an empty cfg.Shell is returned as the empty string,
+// because the shell is never validated on this path.
+func (e *Engine) ShellPath() string {
+	return e.cfg.Shell
+}
+
 // withOpLock acquires the operation lock, runs fn while holding it,
 // and releases it before returning. This is the only acquisition point
 // for reed.lock in the package; it is non-reentrant.
