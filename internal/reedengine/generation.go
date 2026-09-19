@@ -148,7 +148,7 @@ func (e *Engine) adoptPaneGenerationLocked(st *ReedState) error {
 		"recordedSession", recorded.SessionName, "recordedTmuxSession", recorded.TmuxSessionID, "recordedServerPID", recorded.ServerPID,
 		"liveTmuxSession", live.TmuxSessionID, "liveServerPID", live.ServerPID)
 	clearAllPaneBindings(st)
-	st.SelvagePaneID = ""
+	clearSelvagePaneBinding(st)
 	st.PaneGeneration = live
 	return nil
 }
