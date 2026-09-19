@@ -74,7 +74,9 @@ batches:
     commit_sha: 78c64550acac55aa497481868c6f24002729b8fb
     verify_baseline_failures: ["FAIL\t./internal/battencli/... [setup failed]"]
   - name: shed-addressing
-    state: pending
+    state: running
+    implementer_session: a66a298d-f8e6-441e-8b93-ac5032f9891a
+    start_sha: 893e44315ef5cfbecc796b0dc37bdaeff1270350
     verify_baseline_failures: ["FAIL\t./internal/battencli/... [setup failed]"]
   - name: docs-and-integration
     state: pending
