@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-go-cli-rename
 slug: loom-cli-rename
 branch: loom-cli-rename
 plan: _mill/plan
@@ -30,6 +30,7 @@ plan-review-r3  '2026-09-19T05:46:47Z'
 plan-fix-r3  '2026-09-19T05:46:47Z'
 planned  '2026-09-19T05:47:01Z'
 implementing  '2026-09-19T05:47:33Z'
+approved-go-cli-rename  '2026-09-19T06:09:13Z'
 ```
 
 ## Batches
@@ -37,9 +38,10 @@ implementing  '2026-09-19T05:47:33Z'
 ```yaml
 batches:
   - name: go-cli-rename
-    state: running
+    state: approved
     implementer_session: 7225ef42-5c92-4e6f-b500-eac9a3f48fc5
     start_sha: f5cefba55ec1600cd150e41d893bc8f4cfd5197c
+    commit_sha: be5c8f98e3b0a2beb740ef9705f2b478aa245dda
     verify_baseline_failures: []
   - name: launchers
     state: pending
