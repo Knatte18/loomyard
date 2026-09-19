@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: shed-generic-watchdog
 branch: shed-generic-watchdog
-plan: null
+plan: _mill/plan
 parent: main
 task: Shed-generic watchdog for ly-drive and loom's CLI verbs
 task_description: |
@@ -22,4 +22,5 @@ discussion-fix-r4  '2026-09-19T12:54:13Z'
 discussion-gap-fix-r5  '2026-09-19T12:57:53Z'
 discussion-gap-fix-r6  '2026-09-19T13:01:58Z'
 discussed  '2026-09-19T13:02:18Z'
+planning  '2026-09-19T13:18:12Z'
 ```
