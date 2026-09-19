@@ -214,10 +214,16 @@ the new guard in card 1 is scoped to the root tree alone, which genuinely has no
   - `internal/loomcli/wiring.go`
   - `internal/loomcli/sharedbootstrap.go`
   - `internal/loomcli/seedinput.go`
+  - `internal/loomcli/landingdeps.go`
+  - `internal/loomcli/wiring_test.go`
+  - `internal/loomcli/step_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** These six files name the verbs in comments and doc strings, so they are almost entirely compile-safe, but they are retrospective records describing the tree as it stands and are rewritten outright rather than glossed.
+  `internal/loomcli/landingdeps.go`'s header and its `landingDeps` doc comment both retarget the stale `drive.go` filename citation to `run.go`, per card 2's move.
+  `internal/loomcli/wiring_test.go`'s comment above `c.landingCfg` likewise retargets its `drive.go` filename citation to `run.go`, and its `TestVerbUsesLightweightWiring` table's `{"Drive", "drive", false}` row — a retired-verb literal duplicating what `{"Run", "run", false}` already covers, since `verbUsesLightweightWiring`'s switch never named either verb — becomes `{"Start", "start", false}`, adding real coverage for the other producer-building verb instead.
+  `internal/loomcli/step_test.go`'s `TestStepCmd_BusyRefusal_BeforeBootstrap` doc comment, which cites `TestVerbRefusals`'s in-process capture idiom as used "for drive/pause", retargets to "for run/pause" to match that table's renamed `Run_SeedMissing` row.
   Two classes of hit appear here that the rest of the batch does not have: stale *filename* citations, where a comment names `run.go` or `drive.go` to say where a block came from or where its caller lives, and which must be retargeted to `start.go` and `run.go` respectively after card 2's moves;
   and a single test-function identifier, handled at the end of this card.
   In `internal/loomcli/bootstrap.go`, rewrite the comments naming `lyx loom drive` (the `shedengine.Run` lock-release narrative and the friction-timeout narrative) to name `lyx loom run`, and the comment naming `lyx loom run` as the repeated bootstrap invocation to name `lyx loom start`.
