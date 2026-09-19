@@ -472,7 +472,7 @@ func TestBouncer_ReBounce(t *testing.T) {
 //
 // Reproduced live in crucible round 1: `lyx loom step` SIGKILLed mid-Discussion-Bouncer seed with
 // exactly one agent alive, then re-invoked. It correctly did not double-spawn -- and left the
-// paid-for agent running behind it, which the ly-supervise skill tells operators cannot happen
+// paid-for agent running behind it, which the ly-drive skill tells operators cannot happen
 // ("there is no orphan: the next step attaches to the agent rather than abandoning it").
 func TestBouncer_ReBounceProbesForALiveSeed(t *testing.T) {
 	seeded := "---\nround: 1\nexclude_lenses: []\nfocus: [\"already seeded\"]\n---\n"
