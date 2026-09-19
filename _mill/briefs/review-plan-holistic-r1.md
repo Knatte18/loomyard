@@ -352,7 +352,7 @@ Which docs are kept vs deleted: see [docs/overview.md#documentation-lifecycle](d
 Every unprefixed path below is relative to `/home/knatte/Code/loomyard/wts/loom-cli-rename`.
 - `wiki/` paths are relative to `/home/knatte/Code/loomyard/wiki`
 
-## Files included (N=73)
+## Files included (N=76)
 
 - _mill/plan/00-overview.md
 - _mill/plan/01-go-cli-rename.md
@@ -373,6 +373,9 @@ Every unprefixed path below is relative to `/home/knatte/Code/loomyard/wts/loom-
 - internal/loomcli/bootstrap.go
 - internal/loomcli/bootstrap_test.go
 - internal/loomcli/friction_test.go
+- internal/loomcli/wiring.go
+- internal/loomcli/sharedbootstrap.go
+- internal/loomcli/seedinput.go
 - internal/fabricengine/launchers.go
 - internal/fabricengine/launcher_content_test.go
 - internal/loomengine/config.go
@@ -451,6 +454,9 @@ Read the overview and every batch listed above. Then read the source files refer
 - `internal/loomcli/bootstrap.go`
 - `internal/loomcli/bootstrap_test.go`
 - `internal/loomcli/friction_test.go`
+- `internal/loomcli/wiring.go`
+- `internal/loomcli/sharedbootstrap.go`
+- `internal/loomcli/seedinput.go`
 - `internal/fabricengine/launchers.go`
 - `internal/fabricengine/launcher_content_test.go`
 - `internal/loomengine/config.go`
