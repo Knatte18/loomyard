@@ -513,15 +513,16 @@
 // `partial` exist to stop a consumer from doing by accident.
 //
 // The vocabulary is `Kind` (mutation.go's closed, string-backed enum — `path_removed`,
-// `worktree_removed`, `link_removed`, `branch_deleted`, `worktree_reset`, `dir_created`,
-// `worktree_created`, `branch_created`, `branch_pushed`, `commit_created`, `link_created`,
-// `file_written`, `push_spawned`, `worktree_switched`, `repo_advanced`), a flat `Mutation` entry
-// (kind, target, optional detail), and `Mutations`, the ordered accumulator a verb call threads
-// through everything it performs.
+// `worktree_removed`, `link_removed`, `branch_deleted`, `remote_branch_deleted`, `worktree_reset`,
+// `dir_created`, `worktree_created`, `branch_created`, `branch_pushed`, `commit_created`,
+// `link_created`, `file_written`, `push_spawned`, `worktree_switched`, `repo_advanced`,
+// `merge_staged`, `merge_resolved_staged`, `merge_committed`), a flat `Mutation` entry (kind,
+// target, optional detail), and `Mutations`, the ordered accumulator a verb call threads through
+// everything it performs.
 //
 // The accumulate-as-you-mutate rule is simple and has no exception: append an entry immediately
 // after a primitive observably changed state, never before, and never for a no-op or a refusal.
-// destroy.go's nine gate executors auto-record seven of the sixteen kinds this way, since every
+// destroy.go's nine gate executors auto-record eight of the nineteen kinds this way, since every
 // one of them already funnels through the one chokepoint the Fabric Destruction Chokepoint
 // Invariant names; the remaining kinds have no such chokepoint and are hand-recorded at their own
 // success sites instead.
