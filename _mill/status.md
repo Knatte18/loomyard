@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-gap-fix-r7
+phase: discussed
 slug: reed-per-hub-daemon-reap
 branch: reed-per-hub-daemon-reap
 plan: null
@@ -22,4 +22,5 @@ discussion-gap-fix-r4  '2026-09-19T09:34:44Z'
 discussion-gap-fix-r5  '2026-09-19T09:37:50Z'
 discussion-gap-fix-r6  '2026-09-19T09:41:15Z'
 discussion-gap-fix-r7  '2026-09-19T09:43:39Z'
+discussed  '2026-09-19T09:43:50Z'
 ```
