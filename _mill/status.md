@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-shedrun-leaf
 slug: seeded-shed-core
 branch: seeded-shed-core
 plan: _mill/plan
@@ -23,6 +23,7 @@ plan-review-r1  '2026-09-19T17:35:14Z'
 plan-fix-r1  '2026-09-19T17:37:26Z'
 planned  '2026-09-19T17:37:37Z'
 implementing  '2026-09-19T17:37:56Z'
+approved-shedrun-leaf  '2026-09-19T17:43:20Z'
 ```
 
 ## Batches
@@ -30,9 +31,10 @@ implementing  '2026-09-19T17:37:56Z'
 ```yaml
 batches:
   - name: shedrun-leaf
-    state: running
+    state: approved
     implementer_session: 5f6b400d-be0c-40c6-8a82-c320b99f09c9
     start_sha: 40c2d81948c3d9542a1adf853c0abd95ea1a6338
+    commit_sha: 7cc03e538e1d81d787274bd467e383684eb84c07
     verify_baseline_failures: ["FAIL\t./internal/shedrun/... [setup failed]"]
   - name: board-type-field
     state: pending
