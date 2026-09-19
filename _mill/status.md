@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-gap-fix-r5
+phase: discussed
 slug: reed-born-as-strand
 branch: reed-born-as-strand
 plan: null
@@ -19,4 +19,6 @@ discussion-gap-fix-r2  '2026-09-19T09:27:59Z'
 discussion-gap-fix-r3  '2026-09-19T09:33:24Z'
 discussion-gap-fix-r4  '2026-09-19T09:36:52Z'
 discussion-gap-fix-r5  '2026-09-19T09:41:53Z'
+discussion-gap-fix-r6  '2026-09-19T09:46:05Z'
+discussed  '2026-09-19T09:46:05Z'
 ```
