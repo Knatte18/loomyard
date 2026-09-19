@@ -134,11 +134,12 @@ func DeleteBranchForTest(l *lyxcwd.Location, repoDir, branch, branchPrefix strin
 // ownedManagedBranch(l, branchPrefix) and dirtyCheckedOutBranch(), for package fabricengine_test
 // integration tests that need to drive the remote-branch gate directly against a real hub —
 // mirroring DeleteBranchForTest's shape for the local executor. package fabricengine_test cannot
-// construct a remoteBranchRequest directly (it is unexported) and cannot import internal/hubforge
-// from an internal (unsuffixed package fabricengine) test file either, since hubforge imports
+// construct a remoteBranchRequest directly (it is unexported) and cannot import the hubforge package
+// from an internal (unsuffixed package fabricengine) test file either, since that package imports
 // fabriccli, which imports fabricengine, closing an import cycle for Go's internal test
 // augmentation — this seam is what lets a package fabricengine_test file reach the gate while still
-// building its hub through hubforge.NewHub, per the hubforge Fabric-Fixture Invariant.
+// building its real-hub fixture through that package's own factory function, per the hubforge
+// Fabric-Fixture Invariant.
 func CheckRemoteBranchRequestForTest(l *lyxcwd.Location, repoDir, remote, branch, branchPrefix string) error {
 	req := remoteBranchRequest{
 		what:      "test delete remote branch",
