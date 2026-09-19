@@ -140,7 +140,7 @@ Per-importer shape:
 - `burlercli` and `shuttlecli` construct and hand off: each calls `LoadConfig`+`New` and hands the engine to `shuttleengine.NewRunner`.
 - `hubgeom` and `standalonegeom` build the told-geometry value: `Geometry` (plus `ServerName`/`SessionName`).
 - `configreg` calls a config-template function only: `ConfigTemplate`.
-- `loomcli` is the sole consumer *retaining* a concrete `*reedengine.Engine` as a struct field (`internal/loomcli/cli.go:44`), using `Up`, `Status`, `AddStrand`, `RemoveStrand`, `TmuxPath` and `AttachArgv` (`internal/loomcli/run.go:145-320`, `drive.go:64`).
+- `loomcli` is the sole consumer *retaining* a concrete `*reedengine.Engine` as a struct field (`internal/loomcli/cli.go:44`), using `Up`, `Status`, `AddStrand`, `RemoveStrand`, `TmuxPath` and `AttachArgv` (`internal/loomcli/sharedbootstrap.go`, `start.go`, `run.go`).
 - `reedcli` is Reed's own CLI and legitimately uses the whole surface.
 
 **Geometry.**
