@@ -1,5 +1,5 @@
 // generation.go implements the pane-generation stamp: the identity of the tmux session incarnation
-// that a persisted reed.json's PaneIDs and HeaderPaneID were bound against, the probe that reads
+// that a persisted reed.json's PaneIDs and SelvagePaneID were bound against, the probe that reads
 // that identity off a live session, and the two load-time guards built on it — clearing bindings
 // minted against a session that is no longer the one running, and refusing to operate when this
 // worktree's recorded session is still alive on the shared socket under a different name.
@@ -148,7 +148,7 @@ func (e *Engine) adoptPaneGenerationLocked(st *ReedState) error {
 		"recordedSession", recorded.SessionName, "recordedTmuxSession", recorded.TmuxSessionID, "recordedServerPID", recorded.ServerPID,
 		"liveTmuxSession", live.TmuxSessionID, "liveServerPID", live.ServerPID)
 	clearAllPaneBindings(st)
-	st.HeaderPaneID = ""
+	st.SelvagePaneID = ""
 	st.PaneGeneration = live
 	return nil
 }

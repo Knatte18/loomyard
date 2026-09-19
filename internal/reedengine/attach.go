@@ -73,7 +73,7 @@ func chainedAttachArgv(socket, session, layout string) []string {
 // same told box the chained layout is. This is what corrects a later client resize, and — on a
 // session whose earlier apply already installed the hook — a degraded bare attach too. A degrade
 // return installs nothing: the uncovered window is a session between "up" and its first placed
-// strand, which has nothing to pin anyway because a lone header pane takes render.Rules' sole-cell
+// strand, which has nothing to pin anyway because a lone Selvage pane takes render.Rules' sole-cell
 // branch.
 func (e *Engine) AttachArgv(cols, rows int) []string {
 	bare := bareAttachArgv(e.Socket(), e.SessionName())
@@ -92,9 +92,10 @@ func (e *Engine) AttachArgv(cols, rows int) []string {
 		e.warnMismatchedClientsLocked(cols, rows)
 
 		// The pins are made here, by the builder itself, not by a second exported call a CLI must
-		// remember. The ordering is load-bearing: the told box is only correct once "status off" has
-		// landed, since that is what makes the post-attach window equal the client's rows rather than
-		// rows - 1.
+		// remember. The ordering is still load-bearing, but for the opposite reason it used to be: the
+		// told box is only correct once the status-line pins have landed AND been read back, because
+		// readStatusRowsLocked a few statements later is what turns whatever #{status} actually became
+		// into the reserved-row count the box is computed from.
 		e.pinGeometryOptionsLocked()
 
 		if !e.readWindowSizeLatestLocked() {
@@ -106,9 +107,8 @@ func (e *Engine) AttachArgv(cols, rows int) []string {
 
 		reserved, ok := e.readStatusRowsLocked()
 		if !ok {
-			// A #{status} that reads back as something other than "off" does NOT suppress the chain: the
-			// reserved-row count is simply taken from that value instead. Only an unrecognized value
-			// (readStatusRowsLocked's ok == false) suppresses it.
+			// The reserved-row count is taken from whatever value #{status} reads back as; only an
+			// unrecognized value (readStatusRowsLocked's ok == false) suppresses the chain.
 			return errAttachChainSuppressed
 		}
 

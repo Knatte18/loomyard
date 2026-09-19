@@ -31,6 +31,19 @@ func mustSpawnDriver(runLockHeld bool) bool {
 	return !runLockHeld
 }
 
+// mustAttach reports whether the bootstrap must hand the terminal over to the tmux session, from the
+// operator's own --no-attach choice. It is the twin of mustSpawnDriver: both are the whole of a
+// re-entrancy or handoff decision, expressed as one pure predicate rather than written inline in the
+// verb body.
+//
+// The terminal handover this predicate gates is the CLI/Cobra Invariant's narrow interactive-handoff
+// exception for `lyx loom run`/`lyx run`. Skipping it on noAttach's say-so removes that exception for
+// this one invocation -- every step before it, including the run-lock handshake, still runs -- rather
+// than adding a new exception of its own.
+func mustAttach(noAttach bool) bool {
+	return !noAttach
+}
+
 // awaitRunLockResult is the four-way outcome of awaitRunLock.
 type awaitRunLockResult int
 
@@ -180,8 +193,8 @@ func resolveStatusStrandAction(strands []reedengine.StrandStatus) (statusStrandA
 }
 
 // statusStrandCmd composes the status strand's pane command line through the shell seam, exactly as
-// the reed header pane's own builder (headerLaunchCmd, headerpane.go) composes its command line: exe
-// invoked with the two-word status verb and the watch flag.
+// the watchdog daemon's own spawn (ensureWatchdogSpawned, internal/reedcli/spawnwatchdog.go) composes
+// its os.Executable() command line: exe invoked with the two-word status verb and the watch flag.
 func statusStrandCmd(sh shell.Shell, exe string) string {
 	return sh.Invoke(exe) + " " + sh.Quote("loom") + " " + sh.Quote("status") + " " + sh.Quote("--watch")
 }

@@ -9,16 +9,8 @@ See Maintenance below for how the numbering works.
 
 This section holds what's committed to next.
 
-1. **reed: replace the header pane with a native tmux status-line, a permanent "Selvage" terminal pane, and a detached per-hub watchdog process** — the header pane conflates three unrelated jobs (content, session keepalive, watchdog hosting); split each onto its own purpose-built mechanism.
-   See [designs/reed-header-selvage.md](designs/reed-header-selvage.md).
-
 1. **loom CLI: rename `run`/`drive`/`step` for verb/engine symmetry, plus rename `ly-supervise`** — today's verb names don't match what each one actually calls; not yet decided.
    See [designs/loom-cli-rename.md](designs/loom-cli-rename.md).
-
-1. **worktree spawn/teardown as Shed producers** — fold `fabric create`, reed's self-healing bootstrap, optional VS Code embedding, and `loom`'s own producer list into one driven `Shed` run, with a single teardown producer sequencing `reed down` then fabric's own cleanup at the end. Depends on the `AddStrand`/`attach` self-heal item, which has landed.
-   See [designs/worktree-lifecycle-shed-producers.md](designs/worktree-lifecycle-shed-producers.md).
-
-1. **fabric: no remote/GitHub branch deletion** — `fabricengine`'s existing branch cleanup (`Cleanup`, `removeWeftWorktree`'s `alsoDeleteBranch`) only ever runs `git branch -D` locally; there is no capability anywhere to delete the corresponding branch on the GitHub remote. Part of why task cleanup today leaves orphaned branches upstream.
 
 ## Next Up
 
@@ -31,9 +23,8 @@ Not yet started, and exact order can still shift as Planned work reveals what un
 1. **generalize `ly-supervise` and loom's `run`/`drive`/`step` CLI verbs into a Shed-generic watchdog** — `shedengine`/`shedbuild`/`shedrecipe` are already fully generic; only `loomcli` hardcodes loom's own recipe/paths. Speculative until a second `shedrecipe` consumer exists.
    See [designs/shed-generic-watchdog.md](designs/shed-generic-watchdog.md).
 
-1. **reed: per-hub daemon reaps orphaned sessions** — the per-hub watchdog daemon (see the Planned header-pane split) periodically checks whether each live session's worktree still exists on disk, and tears down any that don't. A safety net for when the Planned `worktree spawn/teardown as Shed producers` item's deliberate teardown sequencing doesn't run (crash, manual deletion, aborted task) — not a replacement for it.
+1. **reed: per-hub daemon reaps orphaned sessions** — the per-hub watchdog daemon periodically checks whether each live session's worktree still exists on disk, and tears down any that don't. A safety net for when the Done `worktree spawn/teardown as Shed producers` item's deliberate teardown sequencing doesn't run (crash, manual deletion, aborted task) — not a replacement for it.
    See [designs/reed-header-selvage.md](designs/reed-header-selvage.md).
-
 ## Someday
 
 Committed to eventually — will be done — but not scheduled next.
@@ -52,6 +43,9 @@ No build order is implied between these items.
 
 1. **reed: strand-based mailbox/addressing system** — deliver messages/events to any Strand by address; being a Strand is required to *receive* mail, not to *send* it.
    See [designs/reed-mailbox.md](designs/reed-mailbox.md).
+
+1. **reed: extract Selvage-pane lifecycle out of apply/reconcile/spawn/lifecycle** — a post-merge audit of the shipped header-pane split found the Selvage pane's own lifecycle code still scattered across the same four files the original design doc named as the smell (just renamed from Header to Selvage); the watchdog and status-line separations landed cleanly, this third one didn't.
+   See [designs/reed-selvage-pane-extraction.md](designs/reed-selvage-pane-extraction.md).
 
 1. **reed: cross-worktree columns** — all worktrees in one tmux window, a column per worktree; needs a name for the new per-worktree grouping layer this introduces and a column-count/fallback policy.
    See [designs/reed-multi-window.md](designs/reed-multi-window.md#cross-worktree-columns).
@@ -107,7 +101,7 @@ No build order is implied between these items.
 
 1. **finalize: the discrepancy-document conflict shape** — some divergences cannot be expressed as a git conflict at all, so there are no markers to hand a resolving agent; the answer is a precomputed document describing the disagreement instead. Only the ordinary-git-conflict shape shipped (`internal/mergeresolve`), while `PullResult.PatternResidue` already is this shape for the history-rewrite case — design it once, for both, whenever picked up.
 
-1. **shedrecipe: capability-declaration instead of manual seam-threading** — giving a producer a new capability means hand-threading a passthrough `Env` field through three layers, because the Shed Recipe Registry Invariant bars `shedrecipe` from importing the capability's owning package. The idea, not yet designed: let a producer declare what it needs and have the registry wire it — deep, likely touching the invariant itself and all fourteen registry entries.
+1. **shedrecipe: capability-declaration instead of manual seam-threading** — giving a producer a new capability means hand-threading a passthrough `Env` field through three layers, because the Shed Recipe Registry Invariant bars `shedrecipe` from importing the capability's owning package. The idea, not yet designed: let a producer declare what it needs and have the registry wire it — deep, likely touching the invariant itself and all seventeen registry entries.
 
 1. **reed: daemon Slack relay** — bidirectional Slack relay per worktree, riding on the now-Done `reed: watchdog daemon`. Low priority, well behind the daemon's own self-heal jobs — split out on purpose so it never blocks or gets conflated with the watchdog work.
 
@@ -116,6 +110,12 @@ No build order is implied between these items.
 Cleared 2026-08-25 to keep this file lean — shipped items' history lives in `git log` and each module's own package documentation, not here.
 
 1. **reed: `AddStrand` and `attach` self-heal a cold worktree instead of requiring `up` first** — both verbs pre-flight through the new `ensureSessionLocked`/`EnsureSession()` seam, which probes session liveness first and only delegates to `upLocked()` when nothing usable is up, so any spawn OR view into a worktree nobody has visited (no VS Code, no manual `up`) just works. `attach` boots via `EnsureSession()` and keeps its existing `Status()` call, in that order, so both the friendly no-session diagnosis and the foreign-session refusal survive unchanged. A warm call against a live session is never routed through `Up()`/`upLocked()`: that path reaches `planReconcile`, which would kill an operator's hand-split pane, and validates config ahead of its already-up early return, which would refuse a healthy `attach` on an unrelated typo. Fully internal to `reedengine` — fabric never needs to know reed exists.
+
+1. **fabric: no remote/GitHub branch deletion** — `lyx fabric cleanup` and `lyx fabric remove` both gained an opt-in `--remote` flag that additionally deletes each deleted weft branch's copy on the weft remote.
+   See the `internal/fabricengine` package documentation's destruction chokepoint section.
+
+1. **worktree spawn/teardown as Shed producers** — one driven `Shed` run now takes a task worktree through create, run the loom session to a terminal state, and tear down, driven from the hub's prime worktree (`internal/lifecycleshed` + `internal/lifecyclerecipe` + `internal/lifecyclecli`; `lyx lifecycle run|status`); teardown is one row sequencing session shutdown before worktree removal, never forcing. Optional VS Code embedding did not ship as part of this driven run — see the Someday `VS Code as opt-in per worktree, not spun up by default` item for where that work lives.
+   See the `internal/lifecycleshed` and `internal/lifecyclerecipe` package documentation.
 
 1. **ly-supervise + orchestrator: launch via `lyx reed add`, not ad hoc** — the generated VS Code `folderOpen` task is now the reed launch chain, with both binary paths stamped absolute; `lyx reed add` gained `--if-absent` so reopening a worktree is idempotent; and the `/ly:ly-supervise` skill now treats the session running it as the orchestrator strand itself, rather than telling the operator to open a second one.
 
@@ -130,6 +130,9 @@ Cleared 2026-08-25 to keep this file lean — shipped items' history lives in `g
 
 1. **reed: watchdog daemon** — the header-pane watch loop, with both halves landed: the resize-geometry reconcile and the pane reap.
    See `internal/reedengine`'s package documentation.
+
+1. **reed: replace the header pane with a native tmux status-line, a permanent "Selvage" terminal pane, and a detached per-hub watchdog process** — the one header pane's three conflated jobs are split apart: identity content now renders through tmux's own native status-line; a deliberately ordinary shell pane, named **Selvage**, is the always-on, pinned-to-the-bottom control terminal that keeps the session alive and doubles as where you'd run `lyx reed add` and friends directly; and the watchdog daemon moved out of any pane entirely, into its own detached background process scoped one-per-hub (matching the existing tmux-server-per-hub boundary).
+   See [designs/reed-header-selvage.md](designs/reed-header-selvage.md).
 
 1. **Real-Linux validation** — the sandbox suite and every tmux/`/proc` assumption are exercised on real Linux, now the platform everything runs on.
 

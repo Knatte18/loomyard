@@ -544,3 +544,81 @@ func TestSmokeRemoveNeverKillsASiblingWorktreesPane(t *testing.T) {
 			victimPane, listPaneLines(t, tmuxPath, socket, victimSession))
 	}
 }
+
+// TestSmokeUpgradeFromAPreRenameStateFileHealsInOneOp pins the
+// no-migration-for-the-renamed-state-field Shared Decision's claim that an operator upgrading from a
+// pre-rename lyx sees one stale pane for less than one op.
+//
+// A pre-rename reed.json carried the old "headerPaneId" key rather than today's "selvagePaneId": that
+// key is deliberately not read (no compatibility shim, no dual-read, no migration step in
+// loadOrInitStateLocked), so on the first `up` after the upgrade SelvagePaneID reads empty,
+// ensureSelvagePaneLocked splits a fresh Selvage at the bottom, and the session's own reconcile —
+// authorized by that freshly alive Selvage — reaps the old header-shaped pane as untracked in the
+// SAME op, never a follow-up verb.
+func TestSmokeUpgradeFromAPreRenameStateFileHealsInOneOp(t *testing.T) {
+	tmuxPath := tmuxBinaryPath(t)
+
+	h := hubforge.NewHub(t, ".")
+	deferHubRelease(t, h.PrimeWorktree())
+	t.Chdir(h.PrimeWorktree())
+	t.Cleanup(func() {
+		var buf bytes.Buffer
+		RunCLI(&buf, []string{"down"})
+	})
+
+	var out bytes.Buffer
+	if code := RunCLI(&out, []string{"up"}); code != 0 {
+		t.Fatalf("up = %d; want 0, output: %s", code, out.String())
+	}
+	socket, session := socketAndSession(t)
+
+	statePath := filepath.Join(h.PrimeWorktree(), ".lyx", "reed.json")
+	raw, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatalf("read %s: %v", statePath, err)
+	}
+	var fields map[string]any
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		t.Fatalf("parse %s: %v", statePath, err)
+	}
+	oldSelvagePaneID, _ := fields["selvagePaneId"].(string)
+	if oldSelvagePaneID == "" {
+		t.Fatalf("freshly booted state at %s carries no selvagePaneId: %s", statePath, raw)
+	}
+	// Rewrite under the pre-rename key: the pane this names is genuinely alive (it is Selvage's own
+	// pane, freshly split by the up above), exactly the "live header-shaped pane" precondition — the
+	// point is that the KEY, not the pane's liveness, is what today's code no longer recognizes.
+	delete(fields, "selvagePaneId")
+	fields["headerPaneId"] = oldSelvagePaneID
+	rewritten, err := json.Marshal(fields)
+	if err != nil {
+		t.Fatalf("marshal rewritten state: %v", err)
+	}
+	if err := os.WriteFile(statePath, rewritten, 0o600); err != nil {
+		t.Fatalf("write rewritten state to %s: %v", statePath, err)
+	}
+
+	out.Reset()
+	if code := RunCLI(&out, []string{"up"}); code != 0 {
+		t.Fatalf("up after the pre-rename state file was restored = %d; want 0, output: %s", code, out.String())
+	}
+
+	st, err := reedengine.LoadState(filepath.Join(h.PrimeWorktree(), ".lyx"))
+	if err != nil || st == nil || st.SelvagePaneID == "" {
+		t.Fatalf("LoadState after the healing up = (%+v, %v); want a freshly persisted SelvagePaneID", st, err)
+	}
+	if st.SelvagePaneID == oldSelvagePaneID {
+		t.Fatalf("SelvagePaneID after the healing up = %s; want a NEW id distinct from the pre-rename pane %s", st.SelvagePaneID, oldSelvagePaneID)
+	}
+
+	panes := listPaneLines(t, tmuxPath, socket, session)
+	if len(panes) != 1 || !paneLiveOnSession(panes, st.SelvagePaneID) {
+		t.Fatalf("panes after the healing up = %v; want exactly the freshly rebuilt Selvage pane %s", panes, st.SelvagePaneID)
+	}
+	for _, line := range panes {
+		fields := strings.Fields(line)
+		if len(fields) > 0 && fields[0] == oldSelvagePaneID {
+			t.Errorf("old pre-rename pane %s still present after the healing up; want it reaped in this same op", oldSelvagePaneID)
+		}
+	}
+}

@@ -43,8 +43,9 @@ func seedStencils(cmd *cobra.Command) {
 	}
 
 	// A command that carries the skip annotation reads no stencils, so the pass is pure waste for
-	// it -- and skipping also keeps a long-lived pane process (e.g. reed header's keepalive) from
-	// ever reaching fabricengine.CommitSeededStencils and performing a git commit in the hub. This
+	// it -- and skipping also keeps a long-lived process (e.g. lyx reed watchdog, the detached
+	// per-hub daemon) from ever reaching fabricengine.CommitSeededStencils and performing a git
+	// commit in the hub. This
 	// early return sits ahead of stencilSeedTarget so an opted-out command resolves no geometry and
 	// spawns no `git rev-parse`.
 	if skipStencilSeed(cmd) {

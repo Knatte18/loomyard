@@ -38,7 +38,7 @@ func TestCleanup_ProtectsPrimaryWeftBranchAfterCheckout(t *testing.T) {
 
 	topology := fabricengine.NewTopology(fabricengine.Config{})
 
-	result, err := topology.Cleanup(l, true, true)
+	result, err := topology.Cleanup(l, true, true, false)
 	if err != nil {
 		t.Fatalf("Cleanup(apply=true, force=true) error = %v", err)
 	}
@@ -77,7 +77,7 @@ func TestCleanup_RefusesWhenPrimaryWeftBranchIsUndeterminable(t *testing.T) {
 	}
 
 	topology := fabricengine.NewTopology(fabricengine.Config{})
-	if _, err := topology.Cleanup(fixture.Layout, true, true); err == nil {
+	if _, err := topology.Cleanup(fixture.Layout, true, true, false); err == nil {
 		t.Fatal("Cleanup() = nil error; want a refusal when the primary weft branch cannot be determined")
 	}
 }

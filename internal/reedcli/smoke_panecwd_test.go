@@ -29,10 +29,10 @@ import (
 // genuinely different planPaneTarget branches, worth asserting as two distinct cases rather than one
 // duplicated twice: by
 // the time this fixture's first add runs, the preceding up's own reconcile has already reaped the
-// session down to the header pane alone (the same zero-strands-plus-alive-header reap
-// TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable pins), so the FIRST strand's split targets the
-// header itself (planPaneTarget's header-as-last-resort fallback, since no non-header pane exists to
-// split otherwise). The SECOND strand then targets the tallest alive non-header pane — the first
+// session down to Selvage alone (the same zero-strands-plus-alive-Selvage reap
+// TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable pins), so the FIRST strand's split targets Selvage
+// itself (planPaneTarget's Selvage-as-last-resort fallback, since no non-Selvage pane exists to
+// split otherwise). The SECOND strand then targets the tallest alive non-Selvage pane — the first
 // strand's own pane, once it exists. Both are exercised for the -c regression identically: the split
 // path is the one the defect broke, on either branch.
 func TestSmokeStrandPaneSpawnsAtToldAnchorNotProcessCwd(t *testing.T) {
@@ -76,7 +76,7 @@ func TestSmokeStrandPaneSpawnsAtToldAnchorNotProcessCwd(t *testing.T) {
 		name string
 		guid string
 	}{
-		{"first strand (splits off the header)", first},
+		{"first strand (splits off Selvage)", first},
 		{"second strand (splits off the first)", second},
 	}
 	for _, tt := range tests {

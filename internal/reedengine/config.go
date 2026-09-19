@@ -30,13 +30,20 @@ type Config struct {
 
 	Watchdog string `yaml:"watchdog"`
 
-	Header HeaderConfig `yaml:"header"`
+	StatusLine StatusLineConfig `yaml:"status_line"`
+	Selvage    SelvageConfig    `yaml:"selvage"`
 }
 
-// HeaderConfig configures the header pane's rendered text.
-type HeaderConfig struct {
-	Template   string `yaml:"template"`
-	HeightRows int    `yaml:"height_rows"`
+// StatusLineConfig configures the tmux status-line's rendered text.
+// This is a distinct mechanism from SelvageConfig: text in a tmux option, versus a row budget for a
+// pane -- one block holding both would be misleading.
+type StatusLineConfig struct {
+	Template string `yaml:"template"`
+}
+
+// SelvageConfig configures the Selvage pane's fixed row budget.
+type SelvageConfig struct {
+	HeightRows int `yaml:"height_rows"`
 }
 
 // LoadConfig loads and unmarshals configuration for the reed module.

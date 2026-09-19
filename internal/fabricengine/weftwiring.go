@@ -31,6 +31,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/weftname"
@@ -192,21 +193,37 @@ func removeJunctionRecords(rec *Mutations, container string, junctions []WarpJun
 	return errors.Join(errs...)
 }
 
+// weftTeardownResult carries the remote outcome of removeWeftWorktree's branch deletion, so it can
+// reach Remove without passing through the error return, whose meaning must not change.
+type weftTeardownResult struct {
+	// remoteBranchDeleted reports whether the weft branch's copy on the remote was observably
+	// removed.
+	remoteBranchDeleted bool
+	// remoteBranchError is non-empty when the remote deletion was attempted and did not succeed.
+	remoteBranchError string
+	// remoteSkippedReason carries the once-per-call reason no remote deletion was attempted at all
+	// — today only a weft repo with no origin remote configured.
+	remoteSkippedReason string
+}
+
 // removeWeftWorktree tears down the weft worktree, optionally its branch, and
-// prunes stale worktree entries. Returns the first error encountered, or nil
-// if all steps succeed.
+// prunes stale worktree entries. Returns the accumulated remote outcome alongside the first error
+// encountered among worktree removal, local branch deletion, and prune, or nil if all three succeed
+// — the error return's meaning is unchanged, and a remote deletion failure is never accumulated into
+// it.
 // branchPrefix is the caller's configured warp branch prefix, forwarded to ownedManagedBranch — this
 // function has no config in scope of its own.
-// rec is the calling verb's own recorder, threaded through to both removeGitWorktree and
-// deleteBranch below.
-func removeWeftWorktree(rec *Mutations, l *lyxcwd.Location, slug, branch string, force, alsoDeleteBranch bool, branchPrefix string) error {
+// rec is the calling verb's own recorder, threaded through to removeGitWorktree, deleteBranch, and
+// deleteRemoteBranch below.
+func removeWeftWorktree(rec *Mutations, l *lyxcwd.Location, slug, branch string, force, alsoDeleteBranch, remote bool, branchPrefix string) (weftTeardownResult, error) {
 	weftPath := WeftWorktreePath(l, slug)
 	weftRoot, err := WeftRepoRoot(l)
 	if err != nil {
-		return fmt.Errorf("resolve weft repo root: %w", err)
+		return weftTeardownResult{}, fmt.Errorf("resolve weft repo root: %w", err)
 	}
 
 	var firstErr error
+	var result weftTeardownResult
 
 	req := pathRequest{
 		what:      "remove weft worktree",
@@ -230,8 +247,39 @@ func removeWeftWorktree(rec *Mutations, l *lyxcwd.Location, slug, branch string,
 			dirtiness: dirtyCheckedOutBranch(),
 			force:     false,
 		}
-		if err := deleteBranch(rec, branchReq); err != nil && firstErr == nil {
-			firstErr = err
+		deleteErr := deleteBranch(rec, branchReq)
+		if deleteErr != nil && firstErr == nil {
+			firstErr = deleteErr
+		}
+
+		if deleteErr == nil && remote {
+			if _, urlErr := gitrepo.New(weftRoot).RemoteURL(originRemoteName); urlErr != nil {
+				result.remoteSkippedReason = fmt.Sprintf(
+					"no remote deletion attempted: the weft repo has no %q remote configured: %v",
+					originRemoteName, urlErr)
+			} else {
+				remoteReq := remoteBranchRequest{
+					what:      "delete weft branch on remote",
+					repoDir:   weftRoot,
+					remote:    originRemoteName,
+					branch:    branch,
+					ownership: ownedManagedBranch(l, branchPrefix),
+					dirtiness: dirtyCheckedOutBranch(),
+					force:     false,
+				}
+				deleted, remoteErr := deleteRemoteBranch(rec, remoteReq)
+				if remoteErr != nil {
+					if refusal, ok := RefusalOf(remoteErr); ok {
+						result.remoteBranchError = fmt.Sprintf(
+							"gate refused remote deletion of %q: %s", branch, refusal.Reason)
+					} else {
+						result.remoteBranchError = fmt.Sprintf(
+							"delete remote branch %q on %q failed: %v", branch, originRemoteName, remoteErr)
+					}
+				} else {
+					result.remoteBranchDeleted = deleted
+				}
+			}
 		}
 	}
 
@@ -241,5 +289,5 @@ func removeWeftWorktree(rec *Mutations, l *lyxcwd.Location, slug, branch string,
 		}
 	}
 
-	return firstErr
+	return result, firstErr
 }

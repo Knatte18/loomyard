@@ -64,9 +64,10 @@ func paneIDsByTop(live []LivePane) []string {
 
 // renderInputs is the single mapping from persisted state plus the live pane set down to the
 // arguments the render package takes: the strand table, the height-policy params (including the
-// header, blanked when its pane is no longer present), and the physical pane order. Both planLayout
-// and fixedHeightPins are built on toRenderInputs and never compute this mapping themselves, so the
-// two can never disagree about which header id — or which strand set — they are laying out.
+// Selvage band, blanked when its pane is no longer present), and the physical pane order. Both
+// planLayout and fixedHeightPins are built on toRenderInputs and never compute this mapping
+// themselves, so the two can never disagree about which Selvage id — or which strand set — they are
+// laying out.
 type renderInputs struct {
 	strands   []render.Strand
 	params    render.Params
@@ -74,23 +75,23 @@ type renderInputs struct {
 }
 
 // toRenderInputs performs the persisted-state-to-render mapping exactly once: it filters st.Strands
-// to the present pane set, blanks st.HeaderPaneID when the header pane is not present, assembles the
+// to the present pane set, blanks st.SelvagePaneID when the Selvage pane is not present, assembles the
 // render.Params this engine's config implies, and orders live's pane ids top to bottom. It touches no
 // tmux and queries nothing of its own — box and live are told to it by the caller, matching
 // planLayout's own told-box contract.
 func (e *Engine) toRenderInputs(st *ReedState, live []LivePane) renderInputs {
 	presentIDs := liveIDSet(live)
 	strands := toRenderStrands(st.Strands, presentIDs)
-	headerPaneID := st.HeaderPaneID
-	if !presentIDs[headerPaneID] {
-		headerPaneID = ""
+	selvagePaneID := st.SelvagePaneID
+	if !presentIDs[selvagePaneID] {
+		selvagePaneID = ""
 	}
 	return renderInputs{
 		strands: strands,
 		params: render.Params{
 			CollapsedStripRows: e.cfg.CollapsedStripRows,
 			MinFullRows:        e.cfg.MinFullRows,
-			Header:             render.Header{PaneID: headerPaneID, HeightRows: e.cfg.Header.HeightRows},
+			Selvage:            render.Selvage{PaneID: selvagePaneID, HeightRows: e.cfg.Selvage.HeightRows},
 		},
 		paneOrder: paneIDsByTop(live),
 	}
@@ -101,7 +102,7 @@ func (e *Engine) toRenderInputs(st *ReedState, live []LivePane) renderInputs {
 // itself: box is always told to it by the caller, and it queries nothing of
 // its own. The persisted-state-to-render mapping lives in toRenderInputs,
 // which fixedHeightPins below shares, so the layout and the pin path can
-// never be computed from a different header id than each other.
+// never be computed from a different Selvage id than each other.
 //
 // The two callers pass two different box sources: applyLayoutLocked passes
 // e.liveBoxLocked()'s live tmux window query (falling back to the configured
@@ -113,7 +114,7 @@ func (e *Engine) planLayout(st *ReedState, live []LivePane, box render.Box) (lay
 	return render.Rules(in.strands, box, in.params, in.paneOrder)
 }
 
-// fixedHeightPins reports the panes whose heights are absolute row budgets — the header band and
+// fixedHeightPins reports the panes whose heights are absolute row budgets — the Selvage band and
 // every collapsed strip — for st's current strand table against live, within box. It calls
 // toRenderInputs and queries nothing of its own: box is told to it by the caller exactly as
 // planLayout is, and it must always be called with the same st, live and box triple the layout for
@@ -197,7 +198,7 @@ type applyResult struct {
 //
 // select-layout with a layout string whose dimensions disagree with the live
 // window exits 0 and silently rescales the layout proportionally, so every
-// absolute row budget reed computes (Header.HeightRows, CollapsedStripRows,
+// absolute row budget reed computes (Selvage.HeightRows, CollapsedStripRows,
 // MinFullRows) was being scaled by live_height/cfg.Height on any window that
 // is not exactly cfg.Height rows tall — this is why the box passed to
 // planLayout below is always the live one, not the configured one.

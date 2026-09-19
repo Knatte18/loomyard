@@ -291,7 +291,7 @@ Skip with a note if no claude is configured. (Covered headlessly by `TestSmokeCl
 **Goal:** "With the overlay up and **no strands added**, create a pane in the reed session behind reed's back, then run `lyx reed up` again and prove the session is still usable."
 
 **Watch:** `tmux -L <socket> split-window -t <session>` (controlled exception) simulates an operator-split/foreign pane.
-The follow-up `lyx reed up` must **not** destroy the session's pane set (`tmux -L <socket> list-panes` still shows panes — an empty pane list means an empty layout was applied and tmux wiped the window: `FAIL`), and that SAME `up` -- not a subsequent `add` -- is what **deterministically reaps** the foreign pane (the documented "reed owns the session window" policy, not a finding), since the untracked reap now fires from the alive header this `up` boots.
+The follow-up `lyx reed up` must **not** destroy the session's pane set (`tmux -L <socket> list-panes` still shows panes — an empty pane list means an empty layout was applied and tmux wiped the window: `FAIL`), and that SAME `up` -- not a subsequent `add` -- is what **deterministically reaps** the foreign pane (the documented "reed owns the session window" policy, not a finding), since the untracked reap now fires from the alive Selvage this `up` boots.
 A subsequent `lyx reed add --cmd <long-running command>` must succeed and read `live: true` in `status` (a "session has no panes to split" error means the session became a zero-pane husk: `FAIL`) — what would be a `FAIL` is a *tracked* strand's pane disappearing instead of the foreign one.
 Covered headlessly by `TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable` (the `up` reap) and `TestSmokeForeignPaneIsReapedNotAdoptedByAdd` (the faithful M16 regression).
 
@@ -330,18 +330,17 @@ a plain-text line has no such corruption risk.
 
 ---
 
-### M19 -- Always-on header pane (operator console)
+### M19 -- Always-on Selvage pane
 
-**Goal:** "With the overlay up, find the always-on header pane, confirm it actually shows its rendered text, and prove it survives everything the strand lifecycle throws at it — including the removal of the session's last strand and the death of its own process."
+**Goal:** "With the overlay up, find the always-on Selvage pane, confirm it is a genuine shell prompt, confirm the rendered identity text lives in the status-line instead, and prove Selvage survives everything the strand lifecycle throws at it — including the removal of the session's last strand and the death of its own process."
 
-**Watch:** After `lyx reed up`, the session holds one extra pane beyond any strands: the header, physically topmost, whose **visible content** is the rendered header line (default template: `hub: <hub path>`) — a JSON error body, a bare shell prompt,
-or an empty row where the text should be is a `FAIL`, not cosmetics (the pane merely being *alive* is not enough). `lyx reed status` must never list the header as a strand, and `up`'s `strands` count must exclude it.
-Then: add a strand, remove it — the session **survives** on the header alone (pre-header reed destroyed the session with its last pane;
-that teardown is the footgun this feature exists to remove) and a follow-up `add` still works, with the header back at its configured `height_rows` (default 1) and still topmost.
-Finally kill the header's own process (`tmux -L <socket> list-panes -t "=<session>:" -F "#{pane_id} #{pane_pid}"` to find it, then kill that pid — controlled exception;
-on POSIX use `kill -9`, interactive shells ignore TERM): intermediate verbs (`add`/`remove`) must keep working with sane pane geometry (a strand squeezed to 1 row means a stale header cell scrambled the layout: `FAIL`),
-and the next `lyx reed up` must **heal** the header — a fresh, alive, topmost pane showing the rendered text again, with the corpse gone.
-A `split header pane: ... no space for new pane` error from `up` is the wedged-heal regression: `FAIL`.
+**Watch:** After `lyx reed up`, the session holds one extra pane beyond any strands: Selvage, physically **bottom**-most, whose **visible content** is a bare **shell prompt** — a JSON error body, an empty row, or anything other than an idle shell prompt is a `FAIL`, not cosmetics (the pane merely being *alive* is not enough). Separately, `tmux -L <socket> display-message -p '#{status-left}'` (controlled exception) must show the rendered identity text (default template names the repo and the hub) — a blank or stale readback there is a `FAIL` in its own right. `lyx reed status` must never list Selvage as a strand, and `up`'s `strands` count must exclude it.
+Then: add a strand, remove it — the session **survives** on Selvage alone (a session with no permanent pane would die with its last strand;
+that teardown is the footgun this feature exists to remove) and a follow-up `add` still works, with Selvage back at its configured `selvage.height_rows` (default 1) and still bottom-most.
+Finally kill Selvage's own shell process (`tmux -L <socket> list-panes -t "=<session>:" -F "#{pane_id} #{pane_pid}"` to find it, then kill that pid — controlled exception;
+on POSIX use `kill -9`, interactive shells ignore TERM): intermediate verbs (`add`/`remove`) must keep working with sane pane geometry (a strand squeezed to 1 row means a stale Selvage cell scrambled the layout: `FAIL`),
+and the next `lyx reed up` must **heal** Selvage — a fresh, alive, bottom-most pane with an idle shell prompt again, with the corpse gone.
+A `split Selvage pane: ... no space for new pane` error from `up` is the wedged-heal regression: `FAIL`.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -378,11 +377,11 @@ A new server on the default socket (the capability probe's historical leak, R2-F
 
 **Goal:** "Prove a lost `.lyx/reed.json` does not permanently wedge a worktree whose tmux session is still running."
 
-**Watch:** `up`, then `add` one strand, so the one-row header band at the top of the window is actually laid out.
+**Watch:** `up`, then `add` one strand, so the one-row Selvage band at the bottom of the window is actually laid out.
 Delete `.lyx/reed.json` (or run `git clean -xdf` in the worktree -- `.lyx` is never-tracked machine-local scratch, so this is a sanctioned operator action) while leaving the session up.
-`lyx reed up` must then SUCCEED and converge IMMEDIATELY, not one verb late: the old header and the now-untracked strand pane are both reaped in this same `up`, and the freshly rebuilt header ends up alone, full-height, at the very top of the window, with nothing below it -- a full-height header with an empty strand stack is the expected `OK` here, not a defect.
+`lyx reed up` must then SUCCEED and converge IMMEDIATELY, not one verb late: the old Selvage pane and the now-untracked strand pane are both reaped in this same `up`, and the freshly rebuilt Selvage ends up alone, full-height, filling the whole window, with nothing above it -- Selvage alone filling the window is tmux's own tiling rather than something reed computes, and it is the expected `OK` here, not a defect.
 A subsequent `lyx reed add` must run its command for real (check the pane, and check the process exists), not type it onto a pane that is already busy.
-An `up` that fails with `no space for new pane`, a header that does not end up topmost, or an added strand whose command never runs is a `FAIL` -- and so now is a surviving OLD header pane or a surviving ORPHANED strand pane left behind by that `up`.
+An `up` that fails with `no space for new pane`, a Selvage that does not end up bottom-most, or an added strand whose command never runs is a `FAIL` -- and so now is a surviving OLD Selvage pane or a surviving ORPHANED strand pane left behind by that `up`.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -416,7 +415,7 @@ controlled exception, restore the name when done).
 Running the `kill-session` the error names, then `lyx reed resume` again, must succeed normally.
 A silent success, two copies of the strand process, a second session left on the socket, or a refusal the operator cannot escape is a `FAIL`.
 After that successful `resume`, inspect the hub root: it must contain no directory named after the pre-rename worktree -- a stray directory there is a `FAIL`, since the whole point of the refusal is that nothing gets conjured under the old name.
-Before running the remedy, check the renamed session's header pane log: it must show exactly one warning about the vanished worktree root rather than a reconcile failure repeating every two seconds, which is a `FAIL`.
+Before running the remedy, check the hub's log file (`fabricengine.HubLogsDir(hub)`): it must show exactly one warning about the vanished worktree root rather than a reconcile failure repeating every two seconds, which is a `FAIL`.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -434,7 +433,7 @@ A `down` that kills the old session is also a `FAIL`.
 Then run an ordinary `lyx reed up` / `down` cycle in a normal worktree and confirm `abandonedSession` is ABSENT there -- the key must be signal, not noise.
 Inspect the hub root as well, but not immediately: wait well past the two-second watchdog poll cycle before checking, since `down` deliberately leaves the abandoned session running, and checking too early would mask a watcher that resumed leaking.
 Once that wait has elapsed, the hub root must contain no directory named after the pre-rename worktree -- a stray directory there is a `FAIL`.
-Across that same wait, the abandoned session's header pane must have logged exactly one warning about the vanished worktree root, not one every two seconds -- a stream of repeating warnings there is a `FAIL`, since it means the watcher never dropped to its dormant cadence.
+Across that same wait, the hub's log file (`fabricengine.HubLogsDir(hub)`) must show exactly one warning about the vanished worktree root, not one every two seconds -- a stream of repeating warnings there is a `FAIL`, since it means the watcher never dropped to its dormant cadence.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -446,19 +445,19 @@ Across that same wait, the abandoned session's header pane must have logged exac
 
 **Goal:** "Prove a live terminal resize re-applies the planned layout on its own, in both directions, with no `lyx` command run."
 
-**Watch:** The agent pauses and instructs the operator to attach with `lyx reed attach` **in a second terminal** against a session holding a header pane and at least two strands.
-Confirm the header is exactly `header.height_rows` tall and the strand budgets look right.
+**Watch:** The agent pauses and instructs the operator to attach with `lyx reed attach` **in a second terminal** against a session holding Selvage and at least two strands.
+Confirm Selvage is exactly `selvage.height_rows` tall and the strand budgets look right.
 Then have the operator **drag the terminal window larger** and confirm the layout re-applies within about a second, with no `lyx` command run.
 Then have the operator **drag it smaller** and confirm the same.
 The shrink direction is the non-negotiable half of this scenario -- it is the one SIGWINCH misses entirely, and a watcher that only self-heals on growth must be reported as a `FAIL` here, not a `WARN`.
-A header that grows past its configured row count, or a bottom strand squeezed below `min_full_rows`, is also a `FAIL`.
+A Selvage that grows past its configured row count, or a bottom strand squeezed below `min_full_rows`, is also a `FAIL`.
 The operator must also confirm the cursor did NOT jump to another pane across either resize (the focus-steal regression), and that typing into a pane before a resize leaves that same pane focused after it.
 Rationale: the agent session owns the current terminal, so it cannot demonstrate or observe a live client resize itself.
 
 The agent then checks the mechanism the self-heal is supposed to be RUNNING on, which the visual half cannot distinguish on its own -- a watcher stuck on the two-second poll fallback heals a resize about as convincingly as a signal-driven one does, only later.
 `tmux -L <socket> show-options -v -t '=<session>:' window-resized` (controlled exception) must print one `resize-pane -t "%<id>" -y <rows>` line per fixed-height pane AND, as its LAST line, a `run-shell -b` line naming THIS worktree's own `.lyx/reed-resize.signal` path.
 A missing `run-shell` line is a `FAIL`: it means every watcher on the box is silently in poll mode, with the hook probe reporting "absent" forever.
-The header pane's log must also carry exactly one `promoting resize watchdog to signal mode` line for the session -- absent means the probe never matched, and repeated means the watcher is flapping between modes.
+The hub's log file (`fabricengine.HubLogsDir(hub)`) must also carry exactly one `promoting resize watchdog to signal mode` line for the session -- absent means the probe never matched, and repeated means the watcher is flapping between modes.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 

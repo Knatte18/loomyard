@@ -31,7 +31,7 @@ func TestRemove_RefusesPrimeWorktreeAndLeavesItIntact(t *testing.T) {
 	primeSlug := filepath.Base(l.WorktreePath())
 	topology := fabricengine.NewTopology(fabricengine.Config{})
 
-	_, err := topology.Remove(l, primeSlug, false)
+	_, err := topology.Remove(l, primeSlug, false, false)
 	if err == nil {
 		t.Fatalf("Remove(%q) = nil error; want a refusal naming the prime worktree", primeSlug)
 	}
@@ -73,7 +73,7 @@ func TestRemove_RefusesForeignWorktreeWithoutDeletingIt(t *testing.T) {
 	gitkit.MustRun(t, foreign, "git", "commit", "-m", "seed marker")
 
 	topology := fabricengine.NewTopology(fabricengine.Config{})
-	_, err := topology.Remove(l, slug, false)
+	_, err := topology.Remove(l, slug, false, false)
 	if err == nil {
 		t.Fatalf("Remove(%q) = nil error; want a refusal naming git's own reason", slug)
 	}

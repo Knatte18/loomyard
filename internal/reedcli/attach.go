@@ -78,6 +78,11 @@ Example:
 				return nil
 			}
 
+			// Attempted after the Status pre-flight and BEFORE attach.Run() hands the operator's
+			// stdio over: a spawn placed after the handover would fire only once the operator
+			// detaches, which is the one moment it is useless.
+			c.ensureWatchdogSpawned()
+
 			// Read the operator's own terminal size against stdout. On error (piped
 			// output, no controlling terminal) this does not report on the envelope
 			// and does not abort: AttachArgv answers a non-positive cols/rows with

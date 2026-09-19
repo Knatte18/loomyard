@@ -184,6 +184,73 @@ func TestReconcileAll_DropsStaleReedClaudeKey(t *testing.T) {
 	}
 }
 
+// TestReconcileAll_DropsStaleReedHeaderBlock pins the migration path an operator actually gets from
+// "lyx config reconcile --apply": a reed.yaml written before the header: block was split into
+// status_line: and selvage: must have header.template and header.height_rows reconciled away, and
+// the new status_line/selvage leaves added, exactly like TestReconcileAll_DropsStaleReedClaudeKey
+// pins the earlier claude: key removal.
+func TestReconcileAll_DropsStaleReedHeaderBlock(t *testing.T) {
+	tmpDir := t.TempDir()
+	configDir := configengine.ConfigDir(tmpDir)
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	// Seed reed.yaml as it would exist on disk for a user who set up their
+	// worktree before the header: block was split into status_line: and
+	// selvage:.
+	reedPath := configengine.ConfigFile(tmpDir, "reed")
+	seedContent := "tmux: C:\\tools\\tmux.exe\nheader:\n  template: \"\"\n  height_rows: 1\n"
+	if err := os.WriteFile(reedPath, []byte(seedContent), 0o644); err != nil {
+		t.Fatalf("write reed.yaml: %v", err)
+	}
+
+	results, err := ReconcileAll(tmpDir, true)
+	if err != nil {
+		t.Fatalf("ReconcileAll(true): %v", err)
+	}
+
+	reedResult := findResult(results, "reed")
+	if reedResult == nil {
+		t.Fatal("reed result not found")
+	}
+	if !reedResult.Applied {
+		t.Error("reed.Applied is false; want true (stale header block should trigger a rewrite)")
+	}
+
+	wantRemoved := map[string]bool{"header.template": false, "header.height_rows": false}
+	for _, r := range reedResult.Removed {
+		if _, ok := wantRemoved[r]; ok {
+			wantRemoved[r] = true
+		}
+	}
+	for key, found := range wantRemoved {
+		if !found {
+			t.Errorf("reed.Removed = %v, want it to contain %q", reedResult.Removed, key)
+		}
+	}
+
+	wantAdded := map[string]bool{"status_line.template": false, "selvage.height_rows": false}
+	for _, a := range reedResult.Added {
+		if _, ok := wantAdded[a]; ok {
+			wantAdded[a] = true
+		}
+	}
+	for key, found := range wantAdded {
+		if !found {
+			t.Errorf("reed.Added = %v, want it to contain %q", reedResult.Added, key)
+		}
+	}
+
+	content, err := os.ReadFile(reedPath)
+	if err != nil {
+		t.Fatalf("read reed.yaml: %v", err)
+	}
+	if contains(string(content), "header:") {
+		t.Error("reed.yaml still contains a header: block after apply; should have been removed")
+	}
+}
+
 func TestReconcileAll_Idempotent(t *testing.T) {
 	tmpDir := t.TempDir()
 	configDir := configengine.ConfigDir(tmpDir)

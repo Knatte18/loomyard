@@ -41,13 +41,18 @@
 package burlercli
 
 import (
+	"bytes"
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/cliwire"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -590,4 +595,170 @@ func TestWireModule_DescriptorIsVerbatim(t *testing.T) {
 			t.Errorf("ResolveStandalone() error = %q; want %q", err.Error(), want)
 		}
 	})
+}
+
+// TestReedUpSeam_WatcherLifecycle pins the standalone reedUp seam's lifecycle contract -- the one
+// batch 06-standalone-watcher's card 42 requires of BOTH wireStandalone closures (this package's and
+// webstercli's): the resize watcher starts iff the boot succeeded AND watch is true, and once
+// started it lives exactly as long as the passed context. wiring.go itself is outside this card's
+// Edits and is not driven directly here -- it closes over a real *reedengine.Engine whose Up() spawns
+// a live tmux server, which an untagged Tier 1 test must never do (Test Tier Purity Invariant). This
+// test instead drives the identical shape wiring.go's closure implements against a fake stand-in for
+// reedEngine.Up/Watch, so the lifecycle contract itself is pinned without booting a substrate.
+func TestReedUpSeam_WatcherLifecycle(t *testing.T) {
+	t.Parallel()
+
+	// newSeam reproduces wiring.go's c.reedUp closure body: boot, then start the watcher (bound to
+	// ctx) iff the boot succeeded and watch is true.
+	newSeam := func(upErr error, watchCalls chan context.Context) func(context.Context, bool) error {
+		return func(ctx context.Context, watch bool) error {
+			if upErr != nil {
+				return upErr
+			}
+			if watch {
+				go func() {
+					watchCalls <- ctx
+					<-ctx.Done()
+				}()
+			}
+			return nil
+		}
+	}
+
+	t.Run("StartsOnSuccessfulBootWithWatchTrue", func(t *testing.T) {
+		t.Parallel()
+		watchCalls := make(chan context.Context, 1)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		seam := newSeam(nil, watchCalls)
+		if err := seam(ctx, true); err != nil {
+			t.Fatalf("seam() = %v; want nil", err)
+		}
+		select {
+		case <-watchCalls:
+		case <-time.After(time.Second):
+			t.Fatal("watcher did not start within 1s of a successful boot with watch: true")
+		}
+	})
+
+	t.Run("DoesNotStartWhenBootFails", func(t *testing.T) {
+		t.Parallel()
+		watchCalls := make(chan context.Context, 1)
+		bootErr := errors.New("boot failed")
+
+		seam := newSeam(bootErr, watchCalls)
+		if err := seam(context.Background(), true); !errors.Is(err, bootErr) {
+			t.Fatalf("seam() = %v; want %v", err, bootErr)
+		}
+		select {
+		case <-watchCalls:
+			t.Fatal("watcher started despite a failed boot")
+		case <-time.After(50 * time.Millisecond):
+		}
+	})
+
+	t.Run("DoesNotStartWhenWatchFalse", func(t *testing.T) {
+		t.Parallel()
+		watchCalls := make(chan context.Context, 1)
+
+		seam := newSeam(nil, watchCalls)
+		if err := seam(context.Background(), false); err != nil {
+			t.Fatalf("seam() = %v; want nil", err)
+		}
+		select {
+		case <-watchCalls:
+			t.Fatal("watcher started despite watch: false")
+		case <-time.After(50 * time.Millisecond):
+		}
+	})
+
+	t.Run("StopsWhenContextIsCancelled", func(t *testing.T) {
+		t.Parallel()
+		watchCalls := make(chan context.Context, 1)
+		ctx, cancel := context.WithCancel(context.Background())
+
+		seam := newSeam(nil, watchCalls)
+		if err := seam(ctx, true); err != nil {
+			t.Fatalf("seam() = %v; want nil", err)
+		}
+		var watcherCtx context.Context
+		select {
+		case watcherCtx = <-watchCalls:
+		case <-time.After(time.Second):
+			t.Fatal("watcher did not start")
+		}
+		cancel()
+		select {
+		case <-watcherCtx.Done():
+		case <-time.After(time.Second):
+			t.Fatal("watcher's context did not observe cancellation within 1s")
+		}
+	})
+}
+
+// TestRunCmd_PassesWatchTrueToReedUp proves burler's run verb calls c.reedUp with watch: true, the
+// disposition card 43 fixes for it -- driven through run's own RunE with a recording fake in
+// c.reedUp rather than by reading source text. The fake returns an error so the call terminates
+// immediately after the reedUp check, never reaching c.engine (left nil on this fixture), exactly the
+// same shape internal/webstercli's recover-batch test in cli_test.go uses for its own call site.
+func TestRunCmd_PassesWatchTrueToReedUp(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	profilePath := filepath.Join(dir, "profile.yaml")
+	if err := os.WriteFile(profilePath, []byte("rubric: placeholder\n"), 0o644); err != nil {
+		t.Fatalf("write profile: %v", err)
+	}
+
+	c := &burlerCLI{cwd: dir}
+	var bringUps int
+	var gotWatch bool
+	c.reedUp = func(ctx context.Context, watch bool) error {
+		bringUps++
+		gotWatch = watch
+		return errors.New("no tmux server available in this test")
+	}
+
+	var out bytes.Buffer
+	exitCode := clihelp.Execute(c.runCmd(), &out, []string{"--profile", profilePath})
+
+	if bringUps != 1 {
+		t.Fatalf("c.reedUp calls = %d; want exactly 1", bringUps)
+	}
+	if !gotWatch {
+		t.Error("c.reedUp watch = false; want true -- run binds the watcher to the run's own context")
+	}
+	if exitCode != 1 {
+		t.Fatalf("run with a failing reed bring-up = %d; want 1, output: %s", exitCode, out.String())
+	}
+}
+
+// TestProductionFiles_NeverReferenceHubWatchdogMechanism proves this package's production files never
+// reference the detached per-hub watchdog daemon's mechanism: standalone computes no hub lock path
+// (fabricengine.HubScratchDir) and spawns no daemon (the "reed watchdog" verb). Both belong to
+// hub mode alone, per this batch's own scope note.
+func TestProductionFiles_NeverReferenceHubWatchdogMechanism(t *testing.T) {
+	t.Parallel()
+
+	matches, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatalf("glob *.go: %v", err)
+	}
+	for _, path := range matches {
+		if strings.HasSuffix(path, "_test.go") {
+			continue
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		content := string(data)
+		if strings.Contains(content, "fabricengine.HubScratchDir") {
+			t.Errorf("%s references fabricengine.HubScratchDir; standalone must compute no hub lock path", path)
+		}
+		if strings.Contains(content, "reed watchdog") {
+			t.Errorf("%s references \"reed watchdog\"; standalone must spawn no daemon", path)
+		}
+	}
 }

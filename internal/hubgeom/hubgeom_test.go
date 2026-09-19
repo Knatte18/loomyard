@@ -69,6 +69,9 @@ func TestReedGeometry(t *testing.T) {
 			if got.RepoName != l.RepoName {
 				t.Errorf("ReedGeometry(l).RepoName = %q; want %q", got.RepoName, l.RepoName)
 			}
+			if got.WorktreeName != l.WorktreeName {
+				t.Errorf("ReedGeometry(l).WorktreeName = %q; want %q", got.WorktreeName, l.WorktreeName)
+			}
 			if got.HubPath != hub {
 				t.Errorf("ReedGeometry(l).HubPath = %q; want %q", got.HubPath, hub)
 			}
