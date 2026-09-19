@@ -3,7 +3,7 @@
 ```yaml
 task: "reed: born-as-strand for loom start's operator attach"
 slug: "reed-born-as-strand"
-approved: false
+approved: true
 started: "20260919-094854"
 parent: "main"
 root: ""
@@ -94,6 +94,8 @@ _Full union of every `Creates:` / `Edits:` / `Moves:` **target** path across eve
 - `internal/loomcli/start_watchdog_test.go`
 - `internal/reedcli/spawnwatchdog.go`
 - `internal/reedcli/spawnwatchdog_test.go`
+- `internal/reedcli/watchdog.go`
+- `internal/reedengine/doc.go`
 - `internal/reedengine/emptycmd_integration_test.go`
 - `internal/reedengine/render/focus_test.go`
 - `internal/reedengine/spawnwatchdog.go`
