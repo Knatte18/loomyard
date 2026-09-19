@@ -19,6 +19,7 @@
 package shedcli
 
 import (
+	"errors"
 	"io"
 	"strings"
 
@@ -135,10 +136,10 @@ Example:
 // resolvePersistentPreRun is this subtree's own equivalent of each module's existing group guard,
 // extended to also exempt "lyx shed seed" (card 29's command): it short-circuits when the bare
 // "shed" group command or "seed" itself is invoked, so neither needs a git repository or an
-// already-existing seed. Otherwise it resolves cwd, resolves it into a *lyxcwd.Location, resolves
-// the addressed run-id, reads that run's seed, looks the seed's recipe up through the table, applies
-// the verb gate, and calls the resolved entry's Arm. See this file's own header comment for the
-// full pinned sequence.
+// already-existing seed. Otherwise it resolves cwd, resolves it into a *lyxcwd.Location -- the one
+// resolution stage armFromSeed below performs no part of, and therefore the one stage this
+// package's own untagged tests never drive directly -- and delegates the rest of the pinned
+// sequence to armFromSeed. See this file's own header comment for the full pinned sequence.
 func (c *shedCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) error {
 	if cmd.Name() == "shed" || cmd.Name() == "seed" {
 		return nil
@@ -163,6 +164,31 @@ func (c *shedCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) err
 		return nil
 	}
 
+	armed, err := armFromSeed(location, cmd.Name(), args)
+	if err != nil {
+		output.Err(out, err.Error())
+		clihelp.Abort(ctx, 1)
+		return nil
+	}
+	*c.spec = armed
+	return nil
+}
+
+// armFromSeed resolves the addressed run-id from args -- args[0] when present,
+// shedrun.SelfRunID otherwise -- reads that run's seed, looks the seed's recipe up through the
+// table's own lookup, applies the verb gate against the resolved entry's Verbs set, and calls the
+// entry's Arm (the Location-taking ArmAt shape) with location and the resolved run-id. It performs
+// no lyxcwd.Resolve of its own: location is already resolved, told rather than derived, by
+// resolvePersistentPreRun -- which is what lets cli_test.go drive this directly against a hand-built
+// *lyxcwd.Location, with no real git repository behind it, and stay Tier 1.
+//
+// Every error it returns is a plain error, never a fields-carrying envelope: resolvePersistentPreRun
+// reports every one of them through output.Err, never output.ErrFields, so the missing-run refusal
+// this function returns can never pick up a "kind" field by accident -- unlike shedverbs' own step
+// body, whose PreStep errors round-trip through output.ErrFields with a "kind" key. A missing run is
+// not a sixth value in that closed vocabulary, and this function's own return type is what keeps it
+// that way structurally rather than by review discipline alone.
+func armFromSeed(location *lyxcwd.Location, verb string, args []string) (shedverbs.Spec, error) {
 	runID := shedrun.SelfRunID
 	if len(args) > 0 {
 		runID = args[0]
@@ -170,47 +196,34 @@ func (c *shedCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) err
 
 	seed, found, err := shedrun.ReadSeed(location, runID)
 	if err != nil {
-		output.Err(out, err.Error())
-		clihelp.Abort(ctx, 1)
-		return nil
+		return shedverbs.Spec{}, err
 	}
 	if !found {
 		existing, listErr := shedrun.List(location)
 		if listErr != nil {
-			output.Err(out, listErr.Error())
-			clihelp.Abort(ctx, 1)
-			return nil
+			return shedverbs.Spec{}, listErr
 		}
-		output.Err(out, shedrun.MissingSeedMessage("shedcli", runID, existing, `run "lyx shed seed `+runID+` --recipe <name>" first`))
-		clihelp.Abort(ctx, 1)
-		return nil
+		return shedverbs.Spec{}, errors.New(shedrun.MissingSeedMessage("shedcli", runID, existing, `run "lyx shed seed `+runID+` --recipe <name>" first`))
 	}
 
 	e, err := lookup(seed.Recipe)
 	if err != nil {
-		output.Err(out, err.Error())
-		clihelp.Abort(ctx, 1)
-		return nil
+		return shedverbs.Spec{}, err
 	}
 
-	if !verbSupported(e.Verbs, cmd.Name()) {
-		output.Err(out, unsupportedVerbMessage(cmd.Name(), seed.Recipe, e.Verbs))
-		clihelp.Abort(ctx, 1)
-		return nil
+	if !verbSupported(e.Verbs, verb) {
+		return shedverbs.Spec{}, errors.New(unsupportedVerbMessage(verb, seed.Recipe, e.Verbs))
 	}
 
-	armed, err := e.Arm(location, cmd.Name(), runID)
+	armed, err := e.Arm(location, verb, runID)
 	if err != nil {
 		// The arming module's own error is already self-describing (either lyxcwd.Resolve's
 		// "not a git repository" sentinel or a non-prime refusal naming both worktrees); pass it
 		// through bare rather than doubling text on top of it, exactly as both modules' own
 		// pre-runs already do.
-		output.Err(out, err.Error())
-		clihelp.Abort(ctx, 1)
-		return nil
+		return shedverbs.Spec{}, err
 	}
-	*c.spec = armed
-	return nil
+	return armed, nil
 }
 
 // verbSupported reports whether verb appears in supported.

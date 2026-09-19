@@ -13,6 +13,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 // allGenericVerbs names the four generic subcommands shedverbs.Verbs returns, in the order its own
@@ -38,7 +40,8 @@ func TestRecipes_KeySetIsExactlyLoomAndBatten(t *testing.T) {
 }
 
 // TestRecipes_VerbsIsSubsetOfGenericVerbs asserts every recipe's Verbs set is a subset of the four
-// generic verbs, and that loom carries all four while batten carries three.
+// generic verbs, and that both loom and batten carry all four now that batch 7 gave batten a step
+// verb (batch 6's own PreStep hook and kind mapping made it armable).
 func TestRecipes_VerbsIsSubsetOfGenericVerbs(t *testing.T) {
 	generic := map[string]bool{}
 	for _, v := range allGenericVerbs {
@@ -65,12 +68,25 @@ func TestRecipes_VerbsIsSubsetOfGenericVerbs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("lookup(batten): %v", err)
 	}
-	if len(batten.Verbs) != 3 {
-		t.Errorf("batten.Verbs = %v; want exactly three verbs", batten.Verbs)
+	if len(batten.Verbs) != 4 {
+		t.Errorf("batten.Verbs = %v; want all four generic verbs", batten.Verbs)
 	}
-	for _, v := range batten.Verbs {
-		if v == "step" {
-			t.Errorf("batten.Verbs = %v; must not include \"step\", which batten has no analogue for", batten.Verbs)
+}
+
+// TestRecipes_KeySetMatchesShedrunVocabulary is the sync meta-test the overview's
+// shedrun-owns-the-recipe-name-vocabulary Shared Decision requires: this table's key set must equal
+// shedrun.RecipeNames() exactly, so the vocabulary internal/shedrun declares and the arming table
+// internal/shedcli declares cannot silently drift apart, mirroring the refKind<->allRefKinds
+// meta-test pattern already used elsewhere in this repo.
+func TestRecipes_KeySetMatchesShedrunVocabulary(t *testing.T) {
+	got := names()
+	want := shedrun.RecipeNames()
+	if len(got) != len(want) {
+		t.Fatalf("names() = %v; want shedrun.RecipeNames() = %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("names()[%d] = %q; want shedrun.RecipeNames()[%d] = %q", i, got[i], i, want[i])
 		}
 	}
 }
