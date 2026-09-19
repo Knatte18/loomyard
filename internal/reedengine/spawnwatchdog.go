@@ -25,11 +25,15 @@ import (
 // would run the whole suite recursively) or when hubPath is empty (this caller was never given a
 // hub, e.g. the watchdog verb's own PersistentPreRunE early return).
 //
+// shellPath is passed unconditionally, empty or not: this spawn is best-effort and its child's
+// stderr is discarded, so refusing here would silently cost the hub its entire watchdog daemon over
+// one empty config value, while an empty shell costs only the descendant half of a reap on Windows.
+//
 // A spawn failure is never fatal to the caller's own operation: up, resume and attach each already
 // succeeded at their own engine op by the time this runs, and the daemon is a convenience the
 // operator can always start by hand (running `lyx reed watchdog` in the foreground) if this
 // best-effort spawn does not land.
-func SpawnWatchdog(hubPath, tmuxPath string, suppress bool) {
+func SpawnWatchdog(hubPath, tmuxPath, shellPath string, suppress bool) {
 	if suppress || hubPath == "" {
 		return
 	}
@@ -48,7 +52,7 @@ func SpawnWatchdog(hubPath, tmuxPath string, suppress bool) {
 		return
 	}
 
-	cmd := exec.Command(exe, "reed", "watchdog", "--hub-path", hubPath, "--tmux", tmuxPath)
+	cmd := exec.Command(exe, "reed", "watchdog", "--hub-path", hubPath, "--tmux", tmuxPath, "--shell", shellPath)
 	// The daemon is per-hub and outlives the worktree that spawned it. On Windows a held cwd handle
 	// on a worktree directory blocks that directory's deletion, which would break fabric teardown —
 	// pinning cmd.Dir to the hub instead avoids that entirely.
@@ -56,7 +60,7 @@ func SpawnWatchdog(hubPath, tmuxPath string, suppress bool) {
 	// Leave stdin/stdout/stderr nil so no parent handles are inherited.
 	proc.Detach(cmd)
 
-	logger.Info("reed: spawning detached per-hub watchdog", "exe", exe, "hub", hubPath, "tmux", tmuxPath)
+	logger.Info("reed: spawning detached per-hub watchdog", "exe", exe, "hub", hubPath, "tmux", tmuxPath, "shell", shellPath)
 	if err := cmd.Start(); err != nil { // intentionally not Wait()ed: a detached Start with no Wait
 		// logs the spawn alone, since there is no teardown to log.
 		logger.Warn("reed: watchdog spawn failed", "exe", exe, "hub", hubPath, "err", err)

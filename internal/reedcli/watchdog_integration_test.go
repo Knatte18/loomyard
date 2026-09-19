@@ -165,7 +165,7 @@ func TestWatchdogIntegration_DiscoversAndDropsDepartedSessions(t *testing.T) {
 
 	loopDone := make(chan error, 1)
 	go func() {
-		loopDone <- runWatchdogLoop(ctx, h.Path, tmuxPath)
+		loopDone <- runWatchdogLoop(ctx, h.Path, tmuxPath, eng1.ShellPath(), watchdogDefaultTiming())
 	}()
 
 	// Both sessions must be discovered within a couple of discovery cycles.
@@ -363,7 +363,7 @@ func TestWatchdogIntegration_ResizeAppliesOnlyToThatWorktree(t *testing.T) {
 
 	loopDone := make(chan error, 1)
 	go func() {
-		loopDone <- runWatchdogLoop(ctx, h.Path, tmuxPath)
+		loopDone <- runWatchdogLoop(ctx, h.Path, tmuxPath, eng1.ShellPath(), watchdogDefaultTiming())
 	}()
 
 	waitForCondition(t, watchdogHubDiscoveryCycle*3, func() bool {
@@ -462,7 +462,7 @@ func TestWatchdogIntegration_DownThenUpDoesNotKillDaemon(t *testing.T) {
 	defer cancel()
 	loopDone := make(chan error, 1)
 	go func() {
-		loopDone <- runWatchdogLoop(ctx, h.Path, tmuxPath)
+		loopDone <- runWatchdogLoop(ctx, h.Path, tmuxPath, eng.ShellPath(), watchdogDefaultTiming())
 	}()
 
 	waitForCondition(t, watchdogHubDiscoveryCycle*3, func() bool {
@@ -524,7 +524,7 @@ func TestWatchdogIntegration_ReEntryReReadsFlippedConfig(t *testing.T) {
 	defer cancel()
 	loopDone := make(chan error, 1)
 	go func() {
-		loopDone <- runWatchdogLoop(ctx, h.Path, tmuxPath)
+		loopDone <- runWatchdogLoop(ctx, h.Path, tmuxPath, eng.ShellPath(), watchdogDefaultTiming())
 	}()
 
 	waitForCondition(t, watchdogHubDiscoveryCycle*3, func() bool {

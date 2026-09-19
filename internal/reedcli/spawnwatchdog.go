@@ -5,9 +5,9 @@ package reedcli
 
 import "github.com/Knatte18/loomyard/internal/reedengine"
 
-// ensureWatchdogSpawned reaches reedengine.SpawnWatchdog with this CLI's three inputs: c.hubPath,
-// c.eng.TmuxPath(), and c.suppressWatchdogSpawn (this CLI's own testing.Testing()-derived guard
-// against re-exec'ing os.Executable() from a test binary).
+// ensureWatchdogSpawned reaches reedengine.SpawnWatchdog with this CLI's four inputs: c.hubPath,
+// c.eng.TmuxPath(), c.eng.ShellPath(), and c.suppressWatchdogSpawn (this CLI's own
+// testing.Testing()-derived guard against re-exec'ing os.Executable() from a test binary).
 func (c *reedCLI) ensureWatchdogSpawned() {
-	reedengine.SpawnWatchdog(c.hubPath, c.eng.TmuxPath(), c.suppressWatchdogSpawn)
+	reedengine.SpawnWatchdog(c.hubPath, c.eng.TmuxPath(), c.eng.ShellPath(), c.suppressWatchdogSpawn)
 }

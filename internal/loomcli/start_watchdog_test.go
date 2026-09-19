@@ -1,6 +1,6 @@
 // start_watchdog_test.go pins the watchdog seam's call site: that the verb reaches c.spawnWatchdog
-// with the hub path and tmux path the receiver carries, driven with a recording stub substituted for
-// the seam so the assertion needs no real process.
+// with the hub path, tmux path, and shell path the receiver carries, driven with a recording stub
+// substituted for the seam so the assertion needs no real process.
 //
 // The call's gate position -- that it fires even under --no-attach -- is deliberately NOT asserted
 // here. The call sits after c.ensureStatusStrand() must return nil, and that helper calls
@@ -30,19 +30,20 @@ func TestStartCmd_ReachesSpawnWatchdogWithHubAndTmuxPath(t *testing.T) {
 	c.reed = reedengine.New(reedengine.Config{Tmux: "/fictional/tmux"}, reedengine.Geometry{})
 
 	var calls int
-	var gotHubPath, gotTmuxPath string
+	var gotHubPath, gotTmuxPath, gotShellPath string
 	var gotSuppress bool
-	c.spawnWatchdog = func(hubPath, tmuxPath string, suppress bool) {
+	c.spawnWatchdog = func(hubPath, tmuxPath, shellPath string, suppress bool) {
 		calls++
 		gotHubPath = hubPath
 		gotTmuxPath = tmuxPath
+		gotShellPath = shellPath
 		gotSuppress = suppress
 	}
 
 	// Drive the seam directly, exactly as start.go's RunE does at its own call site -- this file
 	// cannot drive the real RunE (see the file-level doc comment), so it pins the same call
 	// expression the call site uses instead.
-	c.spawnWatchdog(c.location.HubPath, c.reed.TmuxPath(), c.suppressWatchdogSpawn)
+	c.spawnWatchdog(c.location.HubPath, c.reed.TmuxPath(), c.reed.ShellPath(), c.suppressWatchdogSpawn)
 
 	if calls != 1 {
 		t.Fatalf("spawnWatchdog calls = %d; want exactly 1", calls)
@@ -52,6 +53,9 @@ func TestStartCmd_ReachesSpawnWatchdogWithHubAndTmuxPath(t *testing.T) {
 	}
 	if gotTmuxPath != c.reed.TmuxPath() {
 		t.Errorf("spawnWatchdog tmuxPath = %q; want c.reed.TmuxPath() %q", gotTmuxPath, c.reed.TmuxPath())
+	}
+	if gotShellPath != c.reed.ShellPath() {
+		t.Errorf("spawnWatchdog shellPath = %q; want c.reed.ShellPath() %q", gotShellPath, c.reed.ShellPath())
 	}
 	if gotSuppress != c.suppressWatchdogSpawn {
 		t.Errorf("spawnWatchdog suppress = %v; want c.suppressWatchdogSpawn %v", gotSuppress, c.suppressWatchdogSpawn)

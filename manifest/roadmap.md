@@ -9,9 +9,6 @@ See Maintenance below for how the numbering works.
 
 This section holds what's committed to next.
 
-1. **reed: per-hub daemon reaps orphaned sessions** — the per-hub watchdog daemon periodically checks whether each live session's worktree still exists on disk, and tears down any that don't. A safety net for when the `worktree spawn/teardown as Shed producers` item's deliberate teardown sequencing doesn't run (crash, manual deletion, aborted task) — not a replacement for it.
-   See [designs/reed-header-selvage.md](designs/reed-header-selvage.md).
-
 ## Next Up
 
 What comes right after Planned clears — committed and ordered, unlike Someday below.
@@ -100,6 +97,9 @@ No build order is implied between these items.
 ## Done
 
 Cleared 2026-08-25 to keep this file lean — shipped items' history lives in `git log` and each module's own package documentation, not here.
+
+1. **reed: per-hub daemon reaps orphaned sessions** — the per-hub daemon now checks each live session name's worktree directory every discovery cycle, reaps a session confirmed gone across three consecutive affirmative cycles by capturing its pane process closure and then killing the session by exact target, and refuses to act at all while the hub directory itself does not stat live.
+   See [designs/reed-header-selvage.md](designs/reed-header-selvage.md).
 
 1. **reed: born-as-strand for the operator's `loom start` attach** — `lyx loom start`'s terminal handoff now adds an operator-owned Strand before attaching, spawn-then-attach like `reed add` does, and the same verb spawns the per-hub watchdog daemon its session runs on regardless of `--attach`.
    See the `internal/loomcli` and `internal/reedengine` package documentation.
