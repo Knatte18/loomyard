@@ -61,7 +61,7 @@ Those four are exported for a reason rather than for symmetry: `internal/loomcli
   `PauseAbsentMessage string`;
   `EnsureStatusLockDir bool`.
   Declare `type AbsentDisposition struct` with a `Refuse bool` and a `RefuseMessage string`: `Refuse` true means `status` reports `RefuseMessage` on the error envelope (loom's case), `Refuse` false means it reports `found: false` plus `status_path` on the success envelope (lifecycle's case).
-  Declare `type Hooks struct` with five nil-by-default function fields, each skipped when nil, documented individually:
+  Declare `type Hooks struct` with six nil-by-default function fields, each skipped when nil, documented individually:
   `PreRun func(ctx context.Context) error`;
   `PostRun func(ctx context.Context, result shedengine.Result, runErr error) map[string]any`;
   `PreStep func(ctx context.Context) (kind string, err error)`;
@@ -129,7 +129,7 @@ Those four are exported for a reason rather than for symmetry: `internal/loomcli
   Implement `stepCmd(texts VerbTexts, spec *Spec) *cobra.Command` whose `RunE` checks `clihelp.ShouldAbort` first, then calls `spec.Hooks.PreStep` when non-nil and, on a non-nil error, reports it with `output.ErrFields` carrying the hook's own returned `kind` on the envelope's `kind` field;
   then calls `spec.BuildShed()`, reporting a build error with `kind: KindBootstrap`;
   then calls `shed.Step(ctx)`, mapping an `errors.Is(err, shedengine.ErrShedBusy)` onto `spec.StepBusyKind` with `spec.StepBusyMessage` when non-empty and `err.Error()` verbatim otherwise, and any other error onto `kind: KindProducer` with `err.Error()`;
-  then, on success, calls `spec.Hooks.PostStep(res)` when non-nil and then reports `output.Ok(out, stepEnvelope(res, nextPolicy, spec.StatusPath))` where `nextPolicy` is `spec.Hooks.InterruptPolicyFor(res.Next)` when the hook is non-nil and the empty string when it is nil.
+  then, on success, calls `spec.Hooks.PostStep(res)` when non-nil and then reports `output.Ok(out, StepEnvelope(res, nextPolicy, spec.StatusPath))` where `nextPolicy` is `spec.Hooks.InterruptPolicyFor(res.Next)` when the hook is non-nil and the empty string when it is nil.
   `PostStep` runs only on the success path and only before the envelope is written — never on an error path, since the marker records a clean handoff and a step that failed produced none.
   A recipe with no policy table therefore yields an empty `next_interrupt_policy`, which is the caller's "no entry" signal and never a third policy word.
   Record every envelope write through `clihelp.SetExit(cmd.Context(), …)` per this batch's own scope decision, wrapping `output.ErrFields` on each refusal and `output.Ok` on success.
@@ -182,7 +182,7 @@ Those four are exported for a reason rather than for symmetry: `internal/loomcli
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** add `renderStatusLine(label string, st shedengine.Status) string` composing exactly one line: the told `label`, then the state, then `" | now "` and `st.Activity.Now`, then `" | last "` and `st.Activity.Last` only when non-empty, then `" | wait "` and `st.Activity.Wait` only when non-empty.
+- **Requirements:** add **exported** `RenderStatusLine(label string, st shedengine.Status) string` composing exactly one line: the told `label`, then the state, then `" | now "` and `st.Activity.Now`, then `" | last "` and `st.Activity.Last` only when non-empty, then `" | wait "` and `st.Activity.Wait` only when non-empty.
   For `label` of `loom` this must render byte-identically to `internal/loomcli/status.go`'s existing unexported `renderStatusLine`, whose format is `loom %s | now %s` plus the two optional tails.
   Add **exported** `UnavailableLine(label string) string` composing `<label> status unavailable (status file transiently unreadable)`, and compute it ONCE outside the poll loop rather than per poll.
   That is required, not stylistic: the tail dedupes on printed text, so a line recomposed per poll that ever differed by a byte would turn a transient fault into its own flood, which is the whole thing the dedupe exists to prevent.

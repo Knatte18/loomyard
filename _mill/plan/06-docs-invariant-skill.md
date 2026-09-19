@@ -144,7 +144,9 @@ Those instances are illustrations of each rule, not its extent — a hand-listed
 - **Moves:** none
 - **Requirements:** run this batch's `verify:` command and confirm both packages pass, then run the repo's Markdown Link Integrity checker over the four edited markdown files and confirm every link added by card 38 resolves.
   Locate that checker by grepping the repo for the invariant's name rather than assuming a path, and run it the way its own documentation says to.
-  Confirm `cmd/lyx/constraintchokepoint_test.go` still passes against the new `CONSTRAINTS.md` section, since it is the guard that reads that file's structure, and confirm `cmd/lyx/retiredverbs_test.go` still passes, since this task retires no verb and that guard must not have started reporting one.
+  Be clear about what does not guard this: no test in the repo parses `CONSTRAINTS.md`'s structure.
+  `cmd/lyx/constraintchokepoint_test.go` enforces the Glyph Conversion Chokepoint Invariant by scanning production `.go` source and only names `CONSTRAINTS.md` in its own doc comment, so card 35's new section has no mechanical structure guard at all — its enforcement is the three tests card 35 names plus review discipline.
+  Confirm `cmd/lyx/retiredverbs_test.go` still passes, since this task retires no verb and that guard must not have started reporting one.
   Confirm by grep that no file under `plugins/ly/skills/ly-drive/` still contains the prefix `lyx loom ` at all — not merely `lyx loom step`, since rule (a) covers every `lyx loom <verb>` invocation and the file also carries `lyx loom status`, `lyx loom start` and `lyx loom run` today.
   A grep for the single `step` literal would pass while three other invocations survived, which is the partial application rule (a) exists to prevent.
   A surviving `lyx loom start` inside a recipe-gated loom-only section is the one legitimate exception — if the rewrite keeps one, confirm it sits inside such a gate rather than in recipe-agnostic prose.
@@ -154,7 +156,7 @@ Those instances are illustrations of each rule, not its extent — a hand-listed
 
 ## Batch Tests
 
-`verify:` runs `cmd/lyx`, `tools/...` and `internal/lyxcwd`: the first because `constraintchokepoint_test.go` reads `CONSTRAINTS.md`'s structure and `retiredverbs_test.go` reads the live command tree against the docs, the second because the sandbox suite files and their guard live under `tools/sandbox`, and the third because `docslink_test.go` — the Markdown Link Integrity checker — lives there and is what gates the links card 38 adds.
+`verify:` runs `cmd/lyx`, `tools/...` and `internal/lyxcwd`: the first because `retiredverbs_test.go` reads the live command tree against the docs and the help-tree guards must stay green over the subtree batch 5 registered, the second because the sandbox suite files and their guard live under `tools/sandbox`, and the third because `docslink_test.go` — the Markdown Link Integrity checker — lives there and is what gates the links card 38 adds.
 
 This is a docs-and-skill batch with no Go production surface of its own, so beyond the three test packages its verification is the two greps card 39 performs, proving the two exhaustive rewrites — no surviving `lyx loom step` under the skill directory, and both new packages present in the module table.
 

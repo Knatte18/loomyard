@@ -26,7 +26,8 @@ The rename is all-or-nothing within one batch because the recipe YAML's `engine:
 The split between what is renamed and what is not follows from what is durable.
 The status file persists `CurrentProducer`, which is the *row* name, so renaming a row would break resume for an in-flight run;
 an `engine:` value is resolved by `shedbuild.Build` at construction time and is persisted nowhere, so renaming it is safe.
-Unchanged, deliberately: the `Loom-Run` row name in `contracts/recipes/lifecycle-recipe.yaml`, `lifecyclerecipe.NameLoomRun`'s string value `"Loom-Run"`, the recipe's `entry`/`terminals`, the `poll_interval_s`/`poll_attempts` Config keys and their defaults, and the producer's own logic.
+Unchanged, deliberately: `loomengine.LoomRunLock` — loom's own run-lock path accessor, which shares the `LoomRun` substring but belongs to loom rather than to this producer, and which the prescribed greps below will match at `internal/loomcli/wiring.go`, `internal/loomcli/smoke_test.go` and two `cmd/lyx` guards;
+the `Loom-Run` row name in `contracts/recipes/lifecycle-recipe.yaml`, `lifecyclerecipe.NameLoomRun`'s string value `"Loom-Run"`, the recipe's `entry`/`terminals`, the `poll_interval_s`/`poll_attempts` Config keys and their defaults, and the producer's own logic.
 Card 9 adds a guard asserting exactly that, so a later symmetry-minded rename of the durable identity fails loudly rather than silently breaking resume.
 
 This batch writes no second lifecycle recipe and creates no Hardener artefact.
@@ -99,6 +100,7 @@ The edge sequences them rather than expressing a logical need: nothing here read
   `registry_test.go`'s expected-key list must still assert seventeen keys.
   Update `internal/lifecyclecli/wire.go`'s `LoomRun: lifecycleshed.LoomRunDeps{…}` literal to `InnerRun: lifecycleshed.InnerRunDeps{…}`, changing no closure body — the `ResolveStatus`, `Spawn` and `ReadStatus` closures stay exactly as they are, including `Spawn`'s `exec.Command(exe, "loom", "start", "--no-attach")`, which spawns loom because that is what this hub's lifecycle recipe actually wraps today.
   Find every remaining construction and field-read site with a repo-wide grep rather than the hand list below, which is this plan's own inventory at authoring time and is the floor, not the ceiling: grep for `LoomRun:`, `.LoomRun.` and `LoomRunDeps`.
+  Discard every hit on `loomengine.LoomRunLock` — loom's own run-lock path accessor, which the `.LoomRun.` pattern matches at `internal/loomcli/wiring.go`, `internal/loomcli/smoke_test.go` and two `cmd/lyx` guards, and which this rename does not touch.
   The sites this plan found beyond the two production files above are `internal/lifecyclecli/wire_test.go`'s three `c.env.LoomRun.*` field reads, and the `LoomRun: lifecycleshed.LoomRunDeps{…}` fixtures in `internal/shedbuild/fixture_test.go`, `internal/shedrecipe/fixture_test.go`, `internal/lifecyclerecipe/fixture_test.go` and `internal/lifecyclecli/run_test.go`, plus `internal/lifecyclecli/lifecycle_integration_test.go`'s two `c.env.LoomRun.Spawn`/`c.env.LoomRun.ReadStatus` overrides and the doc comment above them that names the same fields.
   Retarget each onto the new field name, weakening no assertion and changing no closure body.
 - **Commit:** `refactor(shedrecipe): rename the LoomRun registry key and Env field to InnerRun`

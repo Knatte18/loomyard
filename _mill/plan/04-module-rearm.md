@@ -5,7 +5,7 @@ task: "Shed-generic watchdog for ly-drive and loom's CLI verbs"
 batch: "module-rearm"
 number: 4
 cards: 8
-verify: go test ./internal/loomcli/... ./internal/lifecyclecli/... ./internal/shedverbs/... && go test -tags integration ./internal/loomcli/... ./internal/lifecyclecli/...
+verify: go test ./internal/loomcli/... ./internal/lifecyclecli/... ./internal/shedverbs/... ./cmd/lyx/... && go test -tags integration ./internal/loomcli/... ./internal/lifecyclecli/...
 depends-on: [1, 2, 3]
 ```
 
@@ -122,13 +122,18 @@ A verb-blind arming keyed on recipe name alone would run the full `wire()` for `
   The `MkdirAll` is part of the probe rather than an accident of ordering, and treating a missing-parent error as "lock free" stays explicitly rejected: it would convert a filesystem fault into a false green light on the one check guarding against a second driver.
   The busy refusal `PreStep` raises when the run lock is held keeps its exact existing text naming `lyx loom pause` as the remedy — that is the early probe's own message and is not the `ErrShedBusy` told message, which stays passthrough;
   conflating the two would silently reword a shipped envelope.
+  Do not touch `Command()`'s `parent.AddCommand(...)` call in this card, and do not register `--parent` here either: card 24 owns the whole `Command()` rewiring, including binding `--parent` onto the returned `step` command.
+  That split has a cost this card must carry deliberately — `internal/loomcli` does not compile between this card's commit and card 24's, because `Command()` still names the constructors cards 22 and 23 delete.
+  Record that in this card's commit message and in card 23's, and run this batch's `verify:` only after card 24 has landed;
+  the three cards are one compilation unit even though each carries its own commit, which is the same shape `mill-go`'s per-card commit convention already produces for any multi-card refactor of one package.
   Fill the `PostStep` hook batch 3 declared with loom's `recordStepHandoff(loomengine.LoomStepHandoff(c.location), loomengine.LoomStepHandoffLock(c.location), len(res.History), res.State)` call, which is what keeps that marker at its required position — after a successful `shed.Step` and before the envelope is reported.
   Fill `InterruptPolicyFor` with `loomshed.InterruptPolicyFor`, which is the table `next_interrupt_policy` reads today.
   Preserve the comment recording that the early probe is an optimisation and `shedengine.Step`'s own acquisition is the authority.
   Retarget the in-package test call sites these deletions orphan, which is mechanical compilation repair rather than an assertion change: `internal/loomcli/cli_test.go`'s `TestVerbRefusals` table uses the method expression `(*loomCLI).runCmd` (its other two entries, `pauseCmd` and `statusCmd`, are card 23's), and `internal/loomcli/step_test.go` calls `stepEnvelope`, `stepKinds`, `stepKindBusy` and `c.stepCmd()`.
   Each of those tests hand-populates its receiver and bypasses the pre-run, so each must now also fill `c.spec` from `c.specFor(<verb>)` before executing the command — that is the tier-1 seam card 21 declares, and without it the rearmed commands read a zero `Spec`.
   Point each at its new home — `shedverbs.StepEnvelope`, `shedverbs.StepKinds`, `shedverbs.KindBusy`, and the command `shedverbs.Verbs` returns — keeping every assertion's meaning identical.
-  Batch 3 exports those three identifiers precisely so these tables retarget rather than being deleted;
+  Find every orphaned reference with a repo-wide grep rather than the hand list above, which is this plan's own inventory at authoring time and is the floor, not the ceiling — `internal/loomcli/step_test.go` also references `stepKindUnseeded`, `stepKindOwnership`, `stepKindBootstrap` and `stepKindProducer` in its `TestStepKinds_ClosedSetOfFive` and `TestStepKindForBootstrapStage` tables, all four of which retarget onto their `shedverbs.Kind*` equivalents.
+  Batch 3 exports those identifiers precisely so these tables retarget rather than being deleted;
   `internal/loomcli/step_test.go`'s ten-key and five-kind closure assertions must keep asserting the same closed sets, and none of them may be dropped here.
   Route `--parent` through a named carrier rather than a closure over a local, because the local it is captured from today (`parentFlag` in `stepCmd`) disappears with that function: add a `parentFlag string` field to the `loomCLI` struct, have `Command()` bind the returned `step` command's flag to `&c.parentFlag` with `cmd.Flags().StringVar`, and have the `PreStep` hook read `c.parentFlag` when calling `c.seedAndCommitBootstrap(slug, c.parentFlag)`.
   A closure cannot carry it: after the move the flag variable lives in `Command()` while `PreStep` is built inside `arm`, which sees only `(cwd, verb, args)` — and a `PersistentPreRunE`'s `args` are positional only, never parsed flags.

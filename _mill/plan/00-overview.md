@@ -37,7 +37,7 @@ batches:
     name: module-rearm
     file: 04-module-rearm.md
     depends-on: [1, 2, 3]
-    verify: go test ./internal/loomcli/... ./internal/lifecyclecli/... ./internal/shedverbs/... && go test -tags integration ./internal/loomcli/... ./internal/lifecyclecli/...
+    verify: go test ./internal/loomcli/... ./internal/lifecyclecli/... ./internal/shedverbs/... ./cmd/lyx/... && go test -tags integration ./internal/loomcli/... ./internal/lifecyclecli/...
   - number: 5
     name: shed-subtree
     file: 05-shed-subtree.md
