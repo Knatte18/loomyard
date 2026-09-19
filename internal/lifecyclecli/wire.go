@@ -108,7 +108,7 @@ func (c *lifecycleCLI) wire(location *lyxcwd.Location, slug string) error {
 				return err
 			},
 		},
-		LoomRun: lifecycleshed.LoomRunDeps{
+		InnerRun: lifecycleshed.InnerRunDeps{
 			ResolveStatus: func() (statusPath, statusLockPath string, err error) {
 				taskLocation, err := taskWorktreeLocation(location, slug)
 				if err != nil {

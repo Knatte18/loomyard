@@ -1,10 +1,10 @@
-// entries_lifecycle_test.go covers the three lifecycle entries: worktreeCreateEntry, loomRunEntry,
+// entries_lifecycle_test.go covers the three lifecycle entries: worktreeCreateEntry, innerRunEntry,
 // and worktreeTeardownEntry. It follows entries_simple_test.go's table shape for the shared
-// Slug/ScratchDir/seam validation, plus loomRunEntry's own poll_interval_s/poll_attempts config
+// Slug/ScratchDir/seam validation, plus innerRunEntry's own poll_interval_s/poll_attempts config
 // coverage.
 //
 // Every seam the three lifecycle entries validate -- CreateWorktree, PrimeLock.Acquire,
-// Teardown.Shutdown, Teardown.Remove, LoomRun.Spawn, LoomRun.ResolveStatus, and LoomRun.ReadStatus
+// Teardown.Shutdown, Teardown.Remove, InnerRun.Spawn, InnerRun.ResolveStatus, and InnerRun.ReadStatus
 // -- is a concrete func type, not an interface, so there is no separate typed-nil-interface case to
 // exercise beyond the plain-nil case requireSeam handles for a reflect.Func value: a nil func value
 // passed as any already reports Kind() == reflect.Func with IsNil() true, the same detection path a
@@ -56,12 +56,12 @@ func lifecycleEntryCases() []lifecycleEntryCase {
 			},
 		},
 		{
-			registryKey: "LoomRun",
-			entry:       loomRunEntry,
+			registryKey: "InnerRun",
+			entry:       innerRunEntry,
 			zeroSeams: []lifecycleSeamCase{
-				{"LoomRun.Spawn", func(env Env) Env { env.LoomRun.Spawn = nil; return env }},
-				{"LoomRun.ResolveStatus", func(env Env) Env { env.LoomRun.ResolveStatus = nil; return env }},
-				{"LoomRun.ReadStatus", func(env Env) Env { env.LoomRun.ReadStatus = nil; return env }},
+				{"InnerRun.Spawn", func(env Env) Env { env.InnerRun.Spawn = nil; return env }},
+				{"InnerRun.ResolveStatus", func(env Env) Env { env.InnerRun.ResolveStatus = nil; return env }},
+				{"InnerRun.ReadStatus", func(env Env) Env { env.InnerRun.ReadStatus = nil; return env }},
 			},
 		},
 	}
@@ -158,78 +158,78 @@ func TestLifecycleEntries_RejectsUnrecognisedConfigKey(t *testing.T) {
 	}
 }
 
-// TestLoomRunEntry_NilNowAndSleepAreAccepted asserts loomRunEntry does not validate Env.LoomRun.Now
-// or Env.LoomRun.Sleep: their nil values are legitimate and select the production clock and sleep
-// inside lifecycleshed.NewLoomRun.
-func TestLoomRunEntry_NilNowAndSleepAreAccepted(t *testing.T) {
+// TestInnerRunEntry_NilNowAndSleepAreAccepted asserts innerRunEntry does not validate
+// Env.InnerRun.Now or Env.InnerRun.Sleep: their nil values are legitimate and select the production
+// clock and sleep inside lifecycleshed.NewInnerRun.
+func TestInnerRunEntry_NilNowAndSleepAreAccepted(t *testing.T) {
 	env := newTestEnv(t)
-	if env.LoomRun.Now != nil {
-		t.Fatalf("newTestEnv(t).LoomRun.Now is non-nil; want nil by default")
+	if env.InnerRun.Now != nil {
+		t.Fatalf("newTestEnv(t).InnerRun.Now is non-nil; want nil by default")
 	}
-	if env.LoomRun.Sleep != nil {
-		t.Fatalf("newTestEnv(t).LoomRun.Sleep is non-nil; want nil by default")
+	if env.InnerRun.Sleep != nil {
+		t.Fatalf("newTestEnv(t).InnerRun.Sleep is non-nil; want nil by default")
 	}
-	producer, err := loomRunEntry("LoomRun", Config{}, env)
+	producer, err := innerRunEntry("InnerRun", Config{}, env)
 	if err != nil {
-		t.Fatalf("loomRunEntry() error = %v; want nil", err)
+		t.Fatalf("innerRunEntry() error = %v; want nil", err)
 	}
 	if producer == nil {
-		t.Fatalf("loomRunEntry() = nil producer; want non-nil")
+		t.Fatalf("innerRunEntry() = nil producer; want non-nil")
 	}
 }
 
-// TestLoomRunEntry_PollConfigKeys covers loomRunEntry's poll_interval_s and poll_attempts config
-// keys: both absent resolve to defaultLoomRunPollIntervalS and defaultLoomRunPollAttempts, an
+// TestInnerRunEntry_PollConfigKeys covers innerRunEntry's poll_interval_s and poll_attempts config
+// keys: both absent resolve to defaultInnerRunPollIntervalS and defaultInnerRunPollAttempts, an
 // explicit value for either builds successfully, and a negative value for either is rejected naming
 // that key.
-func TestLoomRunEntry_PollConfigKeys(t *testing.T) {
+func TestInnerRunEntry_PollConfigKeys(t *testing.T) {
 	t.Run("AbsentBuildsSuccessfully", func(t *testing.T) {
-		producer, err := loomRunEntry("LoomRun", Config{}, newTestEnv(t))
+		producer, err := innerRunEntry("InnerRun", Config{}, newTestEnv(t))
 		if err != nil {
-			t.Fatalf("loomRunEntry() error = %v; want nil", err)
+			t.Fatalf("innerRunEntry() error = %v; want nil", err)
 		}
 		if producer == nil {
-			t.Fatalf("loomRunEntry() = nil producer; want non-nil")
+			t.Fatalf("innerRunEntry() = nil producer; want non-nil")
 		}
 	})
 
 	t.Run("ExplicitPollIntervalS", func(t *testing.T) {
-		producer, err := loomRunEntry("LoomRun", Config{"poll_interval_s": 30}, newTestEnv(t))
+		producer, err := innerRunEntry("InnerRun", Config{"poll_interval_s": 30}, newTestEnv(t))
 		if err != nil {
-			t.Fatalf("loomRunEntry() error = %v; want nil", err)
+			t.Fatalf("innerRunEntry() error = %v; want nil", err)
 		}
 		if producer == nil {
-			t.Fatalf("loomRunEntry() = nil producer; want non-nil")
+			t.Fatalf("innerRunEntry() = nil producer; want non-nil")
 		}
 	})
 
 	t.Run("ExplicitPollAttempts", func(t *testing.T) {
-		producer, err := loomRunEntry("LoomRun", Config{"poll_attempts": 3}, newTestEnv(t))
+		producer, err := innerRunEntry("InnerRun", Config{"poll_attempts": 3}, newTestEnv(t))
 		if err != nil {
-			t.Fatalf("loomRunEntry() error = %v; want nil", err)
+			t.Fatalf("innerRunEntry() error = %v; want nil", err)
 		}
 		if producer == nil {
-			t.Fatalf("loomRunEntry() = nil producer; want non-nil")
+			t.Fatalf("innerRunEntry() = nil producer; want non-nil")
 		}
 	})
 
 	t.Run("NegativePollIntervalSIsRejected", func(t *testing.T) {
-		_, err := loomRunEntry("LoomRun", Config{"poll_interval_s": -1}, newTestEnv(t))
+		_, err := innerRunEntry("InnerRun", Config{"poll_interval_s": -1}, newTestEnv(t))
 		if err == nil {
-			t.Fatalf("loomRunEntry() error = nil; want non-nil for a negative poll_interval_s")
+			t.Fatalf("innerRunEntry() error = nil; want non-nil for a negative poll_interval_s")
 		}
 		if !strings.Contains(err.Error(), "poll_interval_s") {
-			t.Errorf("loomRunEntry() error = %v; want it to name the offending key %q", err, "poll_interval_s")
+			t.Errorf("innerRunEntry() error = %v; want it to name the offending key %q", err, "poll_interval_s")
 		}
 	})
 
 	t.Run("NegativePollAttemptsIsRejected", func(t *testing.T) {
-		_, err := loomRunEntry("LoomRun", Config{"poll_attempts": -1}, newTestEnv(t))
+		_, err := innerRunEntry("InnerRun", Config{"poll_attempts": -1}, newTestEnv(t))
 		if err == nil {
-			t.Fatalf("loomRunEntry() error = nil; want non-nil for a negative poll_attempts")
+			t.Fatalf("innerRunEntry() error = nil; want non-nil for a negative poll_attempts")
 		}
 		if !strings.Contains(err.Error(), "poll_attempts") {
-			t.Errorf("loomRunEntry() error = %v; want it to name the offending key %q", err, "poll_attempts")
+			t.Errorf("innerRunEntry() error = %v; want it to name the offending key %q", err, "poll_attempts")
 		}
 	})
 }

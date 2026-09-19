@@ -30,7 +30,7 @@ func testEnv(t *testing.T) (shedrecipe.Env, shedbuild.ShedPaths) {
 		CreateWorktree: func(context.Context) error {
 			return nil
 		},
-		LoomRun: lifecycleshed.LoomRunDeps{
+		InnerRun: lifecycleshed.InnerRunDeps{
 			Spawn: func(context.Context) error { return nil },
 			ResolveStatus: func() (string, string, error) {
 				return filepath.Join(dir, "loomrun-status.json"), filepath.Join(dir, "loomrun-status.json.lock"), nil

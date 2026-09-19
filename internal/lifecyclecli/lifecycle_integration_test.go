@@ -3,9 +3,9 @@
 // lifecycle_integration_test.go is the end-to-end suite over a real hub built by
 // internal/hubforge through its fabric fixture entry point, per the hubforge Fabric-Fixture
 // Invariant. It stays a white-box "package lifecyclecli" test, not an external "_test" package,
-// because it stubs Env.LoomRun.Spawn and Env.LoomRun.ReadStatus at the field level after a real
+// because it stubs Env.InnerRun.Spawn and Env.InnerRun.ReadStatus at the field level after a real
 // wire() call -- a no-op spawn and a read-status answering a chosen state -- so the real poll logic
-// (Env.LoomRun.ResolveStatus, the persisted-state branching) is exercised rather than bypassed, and
+// (Env.InnerRun.ResolveStatus, the persisted-state branching) is exercised rather than bypassed, and
 // that stubbing needs the unexported wire method and the lifecycleCLI receiver.
 //
 // It lives at the integration tier rather than Tier 1 because the prime-name lookup this package's
@@ -31,7 +31,7 @@ import (
 
 // wireForHub builds a *lifecycleCLI wired for real against h's prime Location and slug -- a real
 // CreateWorktree and a real Teardown, both driving fabricengine's topology holder against h's own
-// hub -- then overrides Env.LoomRun.Spawn and Env.LoomRun.ReadStatus with readStatus, per this
+// hub -- then overrides Env.InnerRun.Spawn and Env.InnerRun.ReadStatus with readStatus, per this
 // file's own header.
 func wireForHub(t *testing.T, h *hubforge.Hub, slug string, readStatus func(statusPath, statusLockPath string) (shedengine.Status, bool, error)) *lifecycleCLI {
 	t.Helper()
@@ -39,8 +39,8 @@ func wireForHub(t *testing.T, h *hubforge.Hub, slug string, readStatus func(stat
 	if err := c.wire(h.Location, slug); err != nil {
 		t.Fatalf("wire(%s): %v", slug, err)
 	}
-	c.env.LoomRun.Spawn = func(ctx context.Context) error { return nil }
-	c.env.LoomRun.ReadStatus = readStatus
+	c.env.InnerRun.Spawn = func(ctx context.Context) error { return nil }
+	c.env.InnerRun.ReadStatus = readStatus
 	return c
 }
 

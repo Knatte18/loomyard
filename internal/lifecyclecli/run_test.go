@@ -58,7 +58,7 @@ func newFakeReceiver(t *testing.T, shutdown func(ctx context.Context) (string, e
 			Shutdown: shutdown,
 			Remove:   func(ctx context.Context) error { return nil },
 		},
-		LoomRun: lifecycleshed.LoomRunDeps{
+		InnerRun: lifecycleshed.InnerRunDeps{
 			Spawn: func(ctx context.Context) error { return nil },
 			ResolveStatus: func() (string, string, error) {
 				return filepath.Join(dir, "loom-status.json"), filepath.Join(dir, "loom-status.json.lock"), nil
