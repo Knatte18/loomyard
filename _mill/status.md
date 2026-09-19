@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-selvagepane-extraction
 slug: reed-selvage-pane-extraction
 branch: reed-selvage-pane-extraction
 plan: _mill/plan
@@ -28,6 +28,7 @@ plan-review-r1  '2026-09-19T10:08:29Z'
 plan-fix-r1  '2026-09-19T10:09:33Z'
 planned  '2026-09-19T10:09:44Z'
 implementing  '2026-09-19T10:10:18Z'
+approved-selvagepane-extraction  '2026-09-19T10:25:58Z'
 ```
 
 ## Batches
@@ -35,9 +36,10 @@ implementing  '2026-09-19T10:10:18Z'
 ```yaml
 batches:
   - name: selvagepane-extraction
-    state: running
+    state: approved
     implementer_session: 9431660f-20cf-48d6-8576-fb216d12d565
     start_sha: ebc6596129e6bf6d334907969bb6ebd37ed055fc
+    commit_sha: a336fcca783daf6984580ea0e59046c16f8dc552
     verify_baseline_failures: []
   - name: docs-and-full-verification
     state: pending
