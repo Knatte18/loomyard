@@ -8,6 +8,7 @@
 package shedbuild
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -15,8 +16,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
+	"github.com/Knatte18/loomyard/internal/lifecycleshed"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
+	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
@@ -133,8 +136,9 @@ func testLandingDeps(dir string) landingshed.Deps {
 // does -- a DiscussionSpec closure returning a Spec over one absolute output path under the same
 // temp root, a CommitDiscussion closure returning nil, a PlanSpec closure returning a Spec over one
 // absolute output path under the same temp root, and a CommitPlan closure returning nil -- and
-// additionally fills Env.Landing via testLandingDeps, because two of the fourteen engines need it,
-// which its sibling does not do.
+// additionally fills Env.Landing via testLandingDeps, because two of the seventeen engines need it,
+// which its sibling does not do. It also fills the six lifecycle fields (Slug, ScratchDir,
+// CreateWorktree, LoomRun, Teardown, PrimeLock) the same way that sibling's own newTestEnv does.
 //
 // Every seam any registered engine requires non-nil must be filled here:
 // TestBuild_EveryRegisteredEngineBuilds drives its assertion off shedrecipe.Names(), so a new
@@ -192,6 +196,30 @@ func newTestEnv(t *testing.T) shedrecipe.Env {
 		},
 		CommitPlan: func() error { return nil },
 		Landing:    testLandingDeps(mustMkdir("landing")),
+		Slug:       "test-slug",
+		ScratchDir: mustMkdir("scratch"),
+		CreateWorktree: func(context.Context) error {
+			return nil
+		},
+		LoomRun: lifecycleshed.LoomRunDeps{
+			Spawn: func(context.Context) error { return nil },
+			ResolveStatus: func() (string, string, error) {
+				return filepath.Join(dir, "loomrun-status.json"), filepath.Join(dir, "loomrun-status.json.lock"), nil
+			},
+			ReadStatus: func(string, string) (shedengine.Status, bool, error) {
+				return shedengine.Status{}, false, nil
+			},
+		},
+		Teardown: lifecycleshed.TeardownDeps{
+			Shutdown: func(context.Context) (string, error) { return "", nil },
+			Remove:   func(context.Context) error { return nil },
+		},
+		PrimeLock: lifecycleshed.PrimeLock{
+			Path: filepath.Join(dir, "prime.lock"),
+			Acquire: func() (func() error, bool, error) {
+				return func() error { return nil }, true, nil
+			},
+		},
 	}
 }
 

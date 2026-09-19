@@ -14,11 +14,14 @@ import (
 )
 
 // engineMinimalConfig maps an engine name to its minimal Config, covering only the three engines
-// that need one. The other eleven engines take no config at all and are given none in this test,
-// since a non-empty config block on any of them is an error from the constructor.
+// that need one. The other fourteen engines take no config at all and are given none in this test,
+// since a non-empty config block on any of them is an error from the constructor. All three
+// lifecycle engines join that fourteen: WorktreeCreate and WorktreeTeardown take no Config keys at
+// all, and Loom-Run's own two Config keys (poll_interval_s, poll_attempts) both default, so an
+// empty Config block is legal there too.
 //
-// DiscussionWrite and PlanWrite are two of the eleven: each wraps a single-LLM producer behind its
-// own commit decorator, but its Spec arrives as an injected Env closure (DiscussionSpec or
+// DiscussionWrite and PlanWrite are two of the fourteen: each wraps a single-LLM producer behind
+// its own commit decorator, but its Spec arrives as an injected Env closure (DiscussionSpec or
 // PlanSpec) rather than as recipe Config, so it has no config keys of its own and its seams are
 // filled by newTestEnv instead.
 func engineMinimalConfig(stencilName, rubricStencilName string) map[string]map[string]any {
