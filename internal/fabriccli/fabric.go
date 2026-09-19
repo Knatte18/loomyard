@@ -183,10 +183,10 @@ use "lyx fabric pairs".`,
 		RunE: clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int { return runList(ctx, out, args) }),
 	})
 
-	// remove [--force] <slug>
+	// remove [--force] [--remote] <slug>
 	var removeCmd *cobra.Command
 	removeCmd = &cobra.Command{
-		Use:   "remove [--force] <slug>",
+		Use:   "remove [--force] [--remote] <slug>",
 		Args:  cobra.MaximumNArgs(1),
 		Short: "destroy a dual warp+weft worktree pair",
 		Long: `Remove a paired warp and weft git worktree, plus every warp junction
@@ -202,16 +202,26 @@ are all refused — the same set "lyx fabric add" refuses. When git itself
 declines to remove the worktree, fabric reports git's own reason and deletes
 nothing unless the target is a registered linked worktree of this repo.
 
+The pair's weft branch is deleted locally as before. Use --remote to
+additionally delete its copy on the weft remote — an irreversible action,
+visible to every other clone. A weft repo with no origin remote configured
+reports the reason in remote_skipped_reason and still exits 0. A failed
+remote deletion exits non-zero, with the reason in remote_branch_error.
+
 Example:
   lyx fabric remove my-task
-  lyx fabric remove --force my-task`,
+  lyx fabric remove --force my-task
+  lyx fabric remove --remote my-task`,
 		RunE: clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int {
-			// The --force flag is read from the cobra flag set via closure over removeCmd.
+			// The --force and --remote flags are read from the cobra flag set via closure over
+			// removeCmd.
 			force, _ := removeCmd.Flags().GetBool("force")
-			return runRemoveWithFlag(ctx, out, args, force)
+			remote, _ := removeCmd.Flags().GetBool("remote")
+			return runRemoveWithFlag(ctx, out, args, force, remote)
 		}),
 	}
 	removeCmd.Flags().Bool("force", false, "forcefully remove worktree with uncommitted changes")
+	removeCmd.Flags().Bool("remote", false, "irreversibly delete the pair's weft branch on the weft remote too, visible to every other clone")
 	cmd.AddCommand(removeCmd)
 
 	cmd.AddCommand(&cobra.Command{
@@ -328,7 +338,7 @@ Example:
 
 	var cleanupCmd *cobra.Command
 	cleanupCmd = &cobra.Command{
-		Use:   "cleanup [--apply] [--force]",
+		Use:   "cleanup [--apply] [--force] [--remote]",
 		Args:  cobra.NoArgs,
 		Short: "delete weft branches whose warp sibling is gone",
 		Long: `cleanup finds weft branches with no corresponding warp worktree sibling.
@@ -339,9 +349,17 @@ Flag matrix:
                       and checked-out branches stay protected).
   --force (alone)     report only; --force does not imply --apply, and today
                       answers no cleanup gate.
+  --remote (alone)    report only; --remote requires --apply to delete
+                      anything, so --remote alone is still a dry run.
+  --apply --remote    delete every orphan weft branch, both locally and on
+                      the weft remote.
 
 A dry run reports the same protected verdict the matching --apply run would
-act on, so "protected: false" in a dry run means "--apply would delete this".
+act on, so "protected: false" in a dry run means "--apply would delete this",
+and — with --remote — "would attempt the remote copy too". A dry run makes
+no network call and reports no remote-specific verdict.
+
+--remote is independent of --force.
 
 A weft branch currently checked out at a worktree is always reported as
 protected and never deleted, in every mode — git cannot delete a checked-out
@@ -359,16 +377,27 @@ The weft repo may also hold weft branches without the fabric suffix (e.g.
 inherited from history predating fabric's uniform naming scheme); those are
 reported but never deleted here, since they are not fabric-managed.
 
-Deletion is local to the hub's weft repo: a deleted branch's copy on the
-weft remote, if it was ever pushed, is left untouched.`,
+Deletion is local to the hub's weft repo by default. Use --remote to
+additionally delete each deleted branch's copy on the weft remote, an
+irreversible action visible to every other clone. A weft repo with no origin
+remote configured reports the reason once in remote_skipped_reason and still
+exits 0. A remote deletion that fails exits non-zero, with the per-branch
+reason in entries[].remote_error.
+
+This is also the one existing-path change this command makes: --apply now
+exits non-zero when a local branch deletion fails, where it previously
+exited 0. A protected entry still exits 0, since protection sets no error at
+all.`,
 		RunE: clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int {
 			apply, _ := cleanupCmd.Flags().GetBool("apply")
 			force, _ := cleanupCmd.Flags().GetBool("force")
-			return runCleanupWithFlags(ctx, out, apply, force)
+			remote, _ := cleanupCmd.Flags().GetBool("remote")
+			return runCleanupWithFlags(ctx, out, apply, force, remote)
 		}),
 	}
 	cleanupCmd.Flags().Bool("apply", false, "delete orphaned weft branches (default is dry-run/report)")
 	cleanupCmd.Flags().Bool("force", false, "reserved; answers no cleanup gate today")
+	cleanupCmd.Flags().Bool("remote", false, "irreversibly delete each deleted branch's copy on the weft remote too, visible to every other clone; requires --apply")
 	cmd.AddCommand(cleanupCmd)
 
 	cmd.AddCommand(&cobra.Command{
@@ -799,7 +828,7 @@ func runRemoveWithFlag(ctx context.Context, out io.Writer, args []string, force 
 
 	// args[0] is the slug; cobra has already consumed "remove" from the argument list.
 	if len(args) < 1 {
-		return output.Err(out, "usage: lyx fabric remove [--force] <slug>")
+		return output.Err(out, "usage: lyx fabric remove [--force] [--remote] <slug>")
 	}
 	slug := args[0]
 
