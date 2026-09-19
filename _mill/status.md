@@ -1,0 +1,18 @@
+# Status
+
+```yaml
+phase: discussing
+slug: reed-born-as-strand
+branch: reed-born-as-strand
+plan: null
+parent: main
+task: 'reed: born-as-strand for loom start''s operator attach'
+task_description: |
+  reed: born-as-strand for loom start's operator attach
+```
+
+## Timeline
+
+```text
+discussing  '2026-09-19T09:13:28Z'
+```
