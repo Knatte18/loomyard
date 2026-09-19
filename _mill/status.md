@@ -37,7 +37,11 @@ implementing  '2026-09-19T10:26:38Z'
 ```yaml
 batches:
   - name: watchdog-seam-and-focus-pin
-    state: pending
+    state: running
+    implementer_session: 2aed2413-fdc3-4932-8017-cea4e8cfa02e
+    start_sha: c00ffdf761be24fbfb8777607dd62cf58357d8a9
+    verify_baseline_failures: []
   - name: operator-strand-and-loom-wiring
     state: pending
+    verify_baseline_failures: []
 ```
