@@ -12,9 +12,6 @@ This section holds what's committed to next.
 1. **reed: born-as-strand for the operator's `loom start` attach** — `loom start`'s terminal handoff never calls `AddStrand`, unlike every other agent launch in lyx; fix it to spawn-then-attach like `reed add` does.
    See [designs/reed-born-as-strand.md](designs/reed-born-as-strand.md).
 
-1. **reed: per-hub daemon reaps orphaned sessions** — the per-hub watchdog daemon periodically checks whether each live session's worktree still exists on disk, and tears down any that don't. A safety net for when the `worktree spawn/teardown as Shed producers` item's deliberate teardown sequencing doesn't run (crash, manual deletion, aborted task) — not a replacement for it.
-   See [designs/reed-header-selvage.md](designs/reed-header-selvage.md).
-
 1. **reed: extract Selvage-pane lifecycle out of apply/reconcile/spawn/lifecycle** — a post-merge audit of the shipped header-pane split found the Selvage pane's own lifecycle code still scattered across the same four files the original design doc named as the smell (just renamed from Header to Selvage); the watchdog and status-line separations landed cleanly, this third one didn't.
    See [designs/reed-selvage-pane-extraction.md](designs/reed-selvage-pane-extraction.md).
 
@@ -106,6 +103,9 @@ No build order is implied between these items.
 ## Done
 
 Cleared 2026-08-25 to keep this file lean — shipped items' history lives in `git log` and each module's own package documentation, not here.
+
+1. **reed: per-hub daemon reaps orphaned sessions** — the per-hub daemon now checks each live session name's worktree directory every discovery cycle, reaps a session confirmed gone across three consecutive affirmative cycles by capturing its pane process closure and then killing the session by exact target, and refuses to act at all while the hub directory itself does not stat live.
+   See [designs/reed-header-selvage.md](designs/reed-header-selvage.md).
 
 1. **reed: `AddStrand` and `attach` self-heal a cold worktree instead of requiring `up` first** — both verbs pre-flight through the new `ensureSessionLocked`/`EnsureSession()` seam, which probes session liveness first and only delegates to `upLocked()` when nothing usable is up, so any spawn OR view into a worktree nobody has visited (no VS Code, no manual `up`) just works. `attach` boots via `EnsureSession()` and keeps its existing `Status()` call, in that order, so both the friendly no-session diagnosis and the foreign-session refusal survive unchanged. A warm call against a live session is never routed through `Up()`/`upLocked()`: that path reaches `planReconcile`, which would kill an operator's hand-split pane, and validates config ahead of its already-up early return, which would refuse a healthy `attach` on an unrelated typo. Fully internal to `reedengine` — fabric never needs to know reed exists.
 
