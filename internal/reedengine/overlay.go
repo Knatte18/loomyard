@@ -25,7 +25,7 @@ type TmuxCmd struct {
 	socket   string
 	// execHook, when non-nil, replaces the real subprocess exec for BOTH run
 	// and output — the single white-box seam a test can stub to drive a
-	// composed engine call site (e.g. ensureHeaderPaneLocked's header-rebuild
+	// composed engine call site (e.g. ensureSelvagePaneLocked's Selvage-rebuild
 	// split) against a scripted tmux response WITHOUT a live server. It is the
 	// only way to exercise the psmux-only silent-split failure shape (exit 0
 	// with an EXISTING pane id printed) that native tmux cannot produce — the
