@@ -107,6 +107,7 @@ Batch-local decision beyond `## Shared Decisions`: every test drives `runWatchdo
   - `internal/reedcli/watchdog.go`
   - `internal/reedcli/watchdogreap_integration_test.go`
   - `internal/reedengine/overlay.go`
+  - `internal/reedengine/proctree_linux.go`
 - **Edits:**
   - `internal/reedcli/watchdogreap_integration_test.go`
 - **Creates:** none
@@ -116,7 +117,7 @@ Batch-local decision beyond `## Shared Decisions`: every test drives `runWatchdo
 
   This is where the discussion's degrade-never-refuse decision is proven at the live tier. Together with the untagged assertion that the flag pre-flight has no shell parameter to reject, both halves are covered: nothing rejects an empty shell, and an empty shell still reaps.
 
-  Assert the pane **root** pids specifically, not their descendants: an empty shell is exactly the configuration whose Windows descendant walk degrades to returning the roots unchanged, so asserting descendants here would assert a guarantee this configuration deliberately does not make. The descendant assertion belongs to card 19's fully-configured reap.
+  Assert the pane **root** pids specifically, not their descendants. The reason is portability of the assertion, not this platform's behaviour: on Linux — where this suite runs — `descendantClosurePIDs` reads no `Engine` field at all and walks `/proc` identically whatever the shell is, so an empty shell changes nothing here and the descendants would in fact die. It is the Windows body that degrades to returning the roots unchanged when its probe cannot spawn. Asserting only the roots keeps this case asserting the guarantee the empty-shell configuration makes on *every* platform, rather than one that happens to hold on the one it executes on today. The descendant assertion belongs to card 19's fully-configured reap, which makes no such platform carve-out.
 
   This case runs the loop in-process and starts no `lyx reed watchdog` process of any kind.
 - **Commit:** `test(reedcli): assert an empty --shell still reaps`

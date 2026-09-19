@@ -112,6 +112,7 @@ Batch-local decision beyond `## Shared Decisions`: the in-flight set's synchroni
 
 - **Context:**
   - `internal/reedcli/watchdog.go`
+  - `internal/reedengine/lock.go`
 - **Edits:**
   - `internal/reedcli/watchdog_integration_test.go`
 - **Creates:** none
