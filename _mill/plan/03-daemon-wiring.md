@@ -24,6 +24,7 @@ Batch-local decision beyond `## Shared Decisions`: the in-flight set's synchroni
 - **Context:**
   - `internal/reedengine/overlay.go`
   - `internal/reedengine/lock.go`
+  - `internal/reedengine/server.go`
 - **Edits:**
   - `internal/reedcli/watchdog.go`
 - **Creates:** none

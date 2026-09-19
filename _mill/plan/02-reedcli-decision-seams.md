@@ -50,6 +50,8 @@ Batch-local decision beyond `## Shared Decisions`: every function here is writte
 
   The function takes exactly two parameters and has no shell parameter at all. That absence is the structural guarantee behind the discussion's `the-daemon-is-told-its-shell` decision: `--shell` is accepted on every GOOS but never validated, and having no shell parameter to inspect makes that a property of the signature rather than a branch someone can add later. Say so in the doc comment, naming the consequence a hard `--shell` pre-flight would have — `ensureWatchdogSpawned` is best-effort and its child's stderr is discarded, so a rejection there would silently cost the hub its entire watchdog daemon, resize self-heal for every worktree included, over one empty config value.
 
+  `internal/reedcli/spawnwatchdog.go` is this card's `Context:` for exactly that doc comment: the claim it asserts — that `ensureWatchdogSpawned` is best-effort and discards its child's stderr — is a claim about that file's own code, and the allowlist must let the implementer confirm it rather than transcribe it on faith.
+
   This card only adds the function. Rewiring `watchdogCmd`'s `RunE` to call it is card 11 in batch 3, so the ordering guarantee "pre-flight runs before any side effect" is established in one place at wiring time.
 - **Commit:** `refactor(reedcli): extract validateWatchdogFlags as a pure pre-flight`
 
@@ -74,7 +76,7 @@ Batch-local decision beyond `## Shared Decisions`: every function here is writte
 ### Card 7: `planReapCycle`
 
 - **Context:**
-  - `internal/reedcli/spawnwatchdog.go`
+  - `_mill/discussion.md`
 - **Edits:**
   - `internal/reedcli/watchdog.go`
 - **Creates:** none
@@ -93,6 +95,8 @@ Batch-local decision beyond `## Shared Decisions`: every function here is writte
   Deleting the counter at dispatch rather than leaving it at `threshold` is the discussion's `counter-resets-after-a-reap` decision: `kill-session` teardown is asynchronous, so a reaped name can still appear in the next cycle's listing, and a still-listed name must re-confirm across three more affirmative cycles before a second kill is issued.
 
   The doc comment states that the seam is told the cycle's inputs rather than discovering them, that it is the only place the three bookkeeping rules interact, and that "three consecutive cycles" means three consecutive *affirmative* cycles — a cycle whose listing was non-affirmative never reaches this function at all, so it advances, resets and prunes nothing.
+
+  `_mill/discussion.md` is this card's `Context:` because the three rules the function encodes are argued there and nowhere in the code yet: read its `three-consecutive-cycles-before-a-reap`, `counter-resets-after-a-reap` and `the-hub-itself-is-probed-before-the-reap-pass` decisions before writing the body.
 - **Commit:** `feat(reedcli): add planReapCycle, the daemon's per-cycle reap decision seam`
 
 ### Card 8: untagged tests for the decision seams
@@ -122,6 +126,10 @@ Batch-local decision beyond `## Shared Decisions`: every function here is writte
   The in-flight case: a name in `inFlight` appears in neither return value — not reaped again, and not passed to `planSessionDiff`, so it can never read as appeared while its reap is still running. Assert this on both the `hubLive` true and false branches.
 
   `worktreeRootGone` over a `t.TempDir()` fixture: a missing path is gone; a path that exists as a plain file is gone; an existing directory is not gone. `hubIsLiveDir` over the same fixture: an existing directory is live; a missing path is not; a plain file is not.
+
+  The stat-error case both predicates must answer conservatively — a path whose stat fails with neither a not-exist result nor success, the EACCES shape — is asserted too, since it is the one case where treating an unreadable path as gone would destroy live work. Construct it by creating a directory under `t.TempDir()`, placing the target path inside it, and chmod-ing the parent to `0o000` so the stat of the target is denied, with `t.Cleanup` restoring the mode so the temp dir can be removed. Assert `worktreeRootGone` returns false and `hubIsLiveDir` returns false for that path — both conservative, and deliberately not each other's negation.
+
+  Guard this one case rather than let it report a false pass: skip it on Windows, where directory mode bits do not deny traversal this way, and skip it when the test runs as uid 0, where mode bits are not enforced at all. In both cases the stat would succeed and the assertion would pass for the wrong reason. Use `t.Skip` with a message naming which of the two conditions fired, so a skipped run is visible rather than silent. The other cases in this card carry no such guard and run everywhere.
 
   `validateWatchdogFlags` directly, as a pure function: it rejects an empty `hubPath`, rejects a relative `hubPath`, rejects an empty `tmuxPath`, and accepts an absolute `hubPath` with a non-empty `tmuxPath`. This is the regression guard for the never-validated `--shell` rule, and it is asserted here rather than through the command's `RunE` deliberately — a CLI-level test of the accepting case would fall through the pre-flight into a global logger mutation, a lock acquisition under a scratch directory the command never creates, and then the discovery loop, whose first tick reaches `exec.Command` and is forbidden in an untagged file. An implementer who adds a shell validator cannot make this test compile, which is the point.
 

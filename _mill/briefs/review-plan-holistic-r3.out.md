@@ -1,0 +1,27 @@
+MILL_REVIEW_BEGIN
+# Review: reed: per-hub daemon reaps orphaned sessions — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: sonnetxhigh
+reviewer_self_id: claude-sonnet-5 (system-reported model ID; self-assessment concurs)
+reviewed_file: plan/
+date: 2026-09-19
+```
+
+## Findings
+
+### [BLOCKING:scope] Card 9 omits server.go despite calling ServerName
+**Location:** Batch 3, Card 9 **Issue:** Requirements instructs "call `reedengine.ReapSession(tmuxPath, shellPath, reedengine.ServerName(hub), sessionName)`", but `ServerName` is declared in `internal/reedengine/server.go` (verified: `func ServerName(hubPath string) string`), which is absent from Card 9's `Context:`/`Edits:` (only `overlay.go`, `lock.go` listed). **Fix:** add `internal/reedengine/server.go` to Card 9's `Context:`, or mark the `ServerName` mention with a citation/escape marker the way Cards 7 and 10 mark their own out-of-context references ("no file read needed").
+
+### [NIT:consistency] Cards 5 and 7 list an unused Context file
+**Location:** Batch 2, Cards 5 and 7 **Issue:** Both cards list `internal/reedcli/spawnwatchdog.go` in `Context:`, but neither card's `Requirements:` references anything from it — Card 5 lifts checks out of `watchdogCmd`'s `RunE` (in `watchdog.go`), and Card 7's `planReapCycle` is pure Go with no spawn-site dependency. Looks like a copy/paste bleed from Card 12, which is the card that actually edits `spawnwatchdog.go`. **Fix:** drop `spawnwatchdog.go` from Cards 5 and 7's `Context:`.
+
+### [NIT:scope] Card 8 drops the discussion's "other stat error" predicate case
+**Location:** Batch 2, Card 8 **Issue:** `_mill/discussion.md`'s Testing section calls for a stat-error-that-is-neither-missing-nor-a-directory case (e.g. EACCES) proving `worktreeRootGone`/`hubIsLiveDir` both answer false, but Card 8's enumerated `t.TempDir()` cases cover only missing/file/directory. **Fix:** add the EACCES-style case, or state explicitly why it's dropped (e.g. unreliable to construct portably when running as root).
+
+## Verdict
+
+REQUEST_CHANGES
+One BLOCKING context-completeness gap (Card 9 / server.go); two minor NITs on Context hygiene and test coverage.
+MILL_REVIEW_END

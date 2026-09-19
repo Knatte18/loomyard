@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-review-r3
+phase: plan-fix-r3
 slug: reed-per-hub-daemon-reap
 branch: reed-per-hub-daemon-reap
 plan: _mill/plan
@@ -29,4 +29,5 @@ plan-fix-r1  '2026-09-19T10:01:11Z'
 plan-review-r2  '2026-09-19T10:07:42Z'
 plan-fix-r2  '2026-09-19T10:09:03Z'
 plan-review-r3  '2026-09-19T10:17:00Z'
+plan-fix-r3  '2026-09-19T10:19:18Z'
 ```
