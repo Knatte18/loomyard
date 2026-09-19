@@ -14,7 +14,7 @@ import (
 	"testing"
 )
 
-// TestRunCLI_NoArgs verifies that "lyx reed" with no subcommand lists all seven registered verbs
+// TestRunCLI_NoArgs verifies that "lyx reed" with no subcommand lists all nine registered verbs
 // and exits 0.
 func TestRunCLI_NoArgs(t *testing.T) {
 	t.Parallel()
