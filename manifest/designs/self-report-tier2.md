@@ -19,17 +19,17 @@ Go collects every Tier 2 note emitted during a run (it reads every phase's outpu
 
 ## Scope: this is specifically for the unsupervised path
 
-This aggregation-and-reflection machinery exists to work around loom having no single full-context session — but a task driven by the step-loop supervisor skill (see [loom-step.md](loom-step.md)) *is* such a session while it's running. When that skill is driving, the supervisor notices friction directly and calls `lyx selfreport create` itself — no separate aggregation pass needed for that run. So Tier 2 as designed here is scoped specifically to a task run via plain `lyx loom run`, with nobody watching live. This is a documentation/scoping note, not a code dependency — Tier 2 can be built and shipped whether or not `loom-step.md`'s skill exists yet.
+This aggregation-and-reflection machinery exists to work around loom having no single full-context session — but a task driven by the step-loop supervisor skill (see [loom-step.md](loom-step.md)) *is* such a session while it's running. When that skill is driving, the supervisor notices friction directly and calls `lyx selfreport create` itself — no separate aggregation pass needed for that run. So Tier 2 as designed here is scoped specifically to a task run via plain `lyx loom start`, with nobody watching live. This is a documentation/scoping note, not a code dependency — Tier 2 can be built and shipped whether or not `loom-step.md`'s skill exists yet.
 
 ## The reflection step runs after the run lock is released, and the bootstrap has to know that
 
 `shedengine.Run` releases loom's run lock when it returns, and the reflection step fires after that return — so for the whole of the reflection agent's life (up to `friction_timeout_min`, 30 minutes in the shipped template) the driver process is alive while the run lock reads as free.
 
-That combination did not exist before Tier 2, and `lyx loom run`'s driver handshake was written against its absence: it polled 30 seconds for the spawned driver to take the lock and treated "child alive, lock never taken" as a wedged spawn. A run that halted fast — a blocked `Preflight`, an exhausted bounce budget — and then reflected on even one friction note was therefore reported as a failed bootstrap, and the handover to tmux was skipped, leaving the operator outside the one session where the halt is legible. Found live in crucible round 1.
+That combination did not exist before Tier 2, and `lyx loom start`'s driver handshake was written against its absence: it polled 30 seconds for the spawned driver to take the lock and treated "child alive, lock never taken" as a wedged spawn. A run that halted fast — a blocked `Preflight`, an exhausted bounce budget — and then reflected on even one friction note was therefore reported as a failed bootstrap, and the handover to tmux was skipped, leaving the operator outside the one session where the halt is legible. Found live in crucible round 1.
 
 The handshake now reads the machine's own persisted state as a third signal: a child that is alive with the lock free but whose state has already left `running` has finished its pass, and the bootstrap proceeds to the handover. Only a child that is alive, never took the lock, **and** left the machine in `running` is still a wedged spawn.
 
-The corollary a future change must respect: anything else added after `shed.Run` returns inherits the same property. A post-run phase is invisible to the run lock, so it must not be relied on for mutual exclusion — a second `lyx loom run` started during a reflection will see a free lock and spawn a second driver.
+The corollary a future change must respect: anything else added after `shed.Run` returns inherits the same property. A post-run phase is invisible to the run lock, so it must not be relied on for mutual exclusion — a second `lyx loom start` started during a reflection will see a free lock and spawn a second driver.
 
 ## Relationship to the shipped `selfreport` module
 
@@ -38,7 +38,7 @@ This does not replace `lyx selfreport create` (shipped) — it adds an automatic
 ## How the design settled
 
 - Where notes physically live: `.lyx/loom/friction/`, via `loomengine.LoomFrictionDir` built on `LoomScratchDir`, because the Durable-vs-Ephemeral State Invariant puts never-tracked files under `.lyx` and `_lyx` would drag in the Fabric Git Invariant's commit-seam machinery for a file deleted minutes later.
-- The directory's lifecycle is owned by the **shared bootstrap**, not by either driving verb: `seedAndCommitBootstrap` clears it on a genuine first seed and only ensures it on an `ErrSeedExists` re-entry, so `lyx loom run` and `lyx loom step` behave identically.
+- The directory's lifecycle is owned by the **shared bootstrap**, not by either driving verb: `seedAndCommitBootstrap` clears it on a genuine first seed and only ensures it on an `ErrSeedExists` re-entry, so `lyx loom start` and `lyx loom step` behave identically.
   It is deliberately not `drive`'s job alone — `step` spawns no driver, and a step-driven task would otherwise compose note paths into a directory nothing had created, while a reused worktree would feed an earlier task's leftover notes to the next task's reflection agent.
   Both halves were live defects found in crucible round 1.
 - Default-on versus opt-in per producer or profile: default-on, with one global `loom.yaml` key (`friction`) that is both the model spec and the kill switch, because the feature's value is breadth of coverage and per-row opt-in would mean a Tier 2 key on five different recipe engines whose row names are durable on-disk identities.
