@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-gitrepo-remote-delete-primitive
+phase: approved-fabricengine-remote-executor
 slug: fabric-remote-branch-delete
 branch: fabric-remote-branch-delete
 plan: _mill/plan
@@ -28,6 +28,7 @@ plan-fix-r1  '2026-09-19T05:17:32Z'
 planned  '2026-09-19T05:17:43Z'
 implementing  '2026-09-19T05:18:17Z'
 approved-gitrepo-remote-delete-primitive  '2026-09-19T05:24:19Z'
+approved-fabricengine-remote-executor  '2026-09-19T05:39:58Z'
 ```
 
 ## Batches
@@ -41,9 +42,10 @@ batches:
     commit_sha: 14184418fa6beeb7193f91cef439ba5cd2164d2c
     verify_baseline_failures: []
   - name: fabricengine-remote-executor
-    state: running
+    state: approved
     implementer_session: f0420034-1239-48c6-944d-e4a6c1e4bb80
     start_sha: 36ed231cad284781716cfa3a478f9028cba86c4e
+    commit_sha: 0806a56d3fa88cfcdfae2af45c091870abb689eb
     verify_baseline_failures: []
   - name: engine-wiring
     state: pending
