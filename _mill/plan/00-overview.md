@@ -3,7 +3,7 @@
 ```yaml
 task: 'reed: extract Selvage-pane lifecycle'
 slug: reed-selvage-pane-extraction
-approved: false
+approved: true
 started: '20260919-095315'
 parent: 'main'
 root: ""

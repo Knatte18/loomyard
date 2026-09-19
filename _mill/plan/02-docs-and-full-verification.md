@@ -112,10 +112,12 @@ No batch-local decision differs from the overview's Shared Decisions.
 
   Rewrite the entry body to Done shape: a name plus one or two sentences of what shipped, not the pre-work framing it carries now.
   Per the Maintenance rule that a Done entry points at the module's own package documentation, point it at `internal/reedengine`'s package documentation.
-  Also keep a link to the design doc, which survives this task carrying the before-and-after audit record — see the overview's `design-doc-is-kept-with-a-status-section` Shared Decision.
+  Write that reference as plain prose with no markdown link, matching how every existing Done entry already references a package doc.
+  Add one real markdown link alongside it, to the design doc, which survives this task carrying the before-and-after audit record — see the overview's `design-doc-is-kept-with-a-status-section` Shared Decision.
+  Write it as a bare file link with no `#anchor` fragment, in the same `See [designs/<name>.md](designs/<name>.md)` shape the entry already uses while Planned.
 
   Change no other entry, and add no entry anywhere else.
-  Both links must resolve, per the repository's Markdown Link Integrity invariant.
+  That one link must resolve, per the repository's Markdown Link Integrity invariant.
 - **Commit:** `docs(manifest): move the Selvage-pane extraction item to Done`
 
 ### Card 14: full-run verification across every tier

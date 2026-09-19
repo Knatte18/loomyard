@@ -1,0 +1,21 @@
+MILL_REVIEW_BEGIN
+# Review: reed: extract Selvage-pane lifecycle — holistic
+
+```yaml
+verdict: APPROVE
+reviewer_model: sonnetxhigh
+reviewer_self_id: claude-sonnet-5 (Sonnet 5)
+reviewed_file: plan/
+date: 2026-09-19
+```
+
+## Findings
+
+### [NIT:consistency] Card 13's "Both links must resolve" is ambiguous
+**Location:** batch 02-docs-and-full-verification.md, Card 13 **Issue:** it names two things to link ("internal/reedengine's package documentation" and the design doc), but every existing Done entry in `manifest/roadmap.md` (e.g. the "reed: watchdog daemon" and "reed: replace the header pane…" entries) references package documentation as plain prose with no markdown brackets, so it is unclear whether a second real hyperlink is wanted or "both" means the one design-doc link's file+anchor parts. **Fix:** state explicitly that the package-doc reference follows existing prose convention (no link) and that "both" refers to the design-doc link's file part and its `#status-implemented`-style anchor.
+
+## Verdict
+
+APPROVE
+Verified against source: every `SelvagePaneID`/Selvage-identifier site in the four host files is accounted for, decisions are internally consistent, and doc figures/mechanism claims check out exactly.
+MILL_REVIEW_END
