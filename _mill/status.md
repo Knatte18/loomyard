@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs-smokes-and-residue
+phase: holistic-reviewing
 slug: reed-header-selvage
 branch: reed-header-selvage
 plan: _mill/plan
@@ -42,6 +42,7 @@ approved-status-line-pins  '2026-09-18T19:18:53Z'
 approved-watchdog-daemon  '2026-09-18T19:34:52Z'
 approved-standalone-watcher  '2026-09-18T19:41:27Z'
 approved-docs-smokes-and-residue  '2026-09-19T05:15:29Z'
+holistic-reviewing  '2026-09-19T05:15:51Z'
 ```
 
 ## Batches
