@@ -48,6 +48,10 @@ Example:
 				return nil
 			}
 
+			// Attempted after Up returns without error, before the envelope write: the daemon
+			// needs a live session to discover, and up is exactly the op that ensures one exists.
+			c.ensureWatchdogSpawned()
+
 			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{
 				"session": result.Session,
 				"socket":  result.Socket,

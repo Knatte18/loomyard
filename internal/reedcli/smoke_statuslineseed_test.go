@@ -1,12 +1,13 @@
 //go:build smoke
 
-// smoke_headerseed_test.go pins noise class 3's suppression directly: TestSmokeHeaderDeclinesStencilSeedPass
-// arranges both stencilstore Warn emitters cmd/lyx's root PersistentPreRunE can reach (the dev-refusal
-// warn and the port-back drift warn) and asserts that `lyx reed header`'s stderr is empty. No tmux,
-// pane, or escape sequence is anywhere in this picture: the assertion runs the built binary as a plain
-// subprocess and reads its own stderr stream directly, so this test is structurally incapable of being
-// masked by the `ED 3` scrollback backstop batch 3 adds — that backstop clears a pane's scrollback, and
-// there is no pane here for it to touch.
+// smoke_statuslineseed_test.go pins noise class 3's suppression directly:
+// TestSmokeStatuslineDeclinesStencilSeedPass arranges both stencilstore Warn emitters cmd/lyx's root
+// PersistentPreRunE can reach (the dev-refusal warn and the port-back drift warn) and asserts that
+// `lyx reed statusline`'s stderr is empty. No tmux, pane, or escape sequence is anywhere in this
+// picture: the assertion runs the built binary as a plain subprocess and reads its own stderr stream
+// directly. `clihelp.SkipStencilSeedAnnotation` survives on the replacement verb, and what this test
+// protects — a preview command leaving no stencilstore warnings and no git commits in the hub — is
+// still true and still worth pinning.
 
 package reedcli
 
@@ -23,14 +24,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
-// TestSmokeHeaderDeclinesStencilSeedPass is P2, the batch's regression pin: a dev-stamped real binary
-// runs `lyx reed header` against a hub carrying both a stale-but-untouched board stencil (the
+// TestSmokeStatuslineDeclinesStencilSeedPass is the regression pin: a dev-stamped real binary runs
+// `lyx reed statusline` against a hub carrying both a stale-but-untouched board stencil (the
 // dev-refusal warn's precondition) and a drifted contracts/stencils worktree copy (the port-back
 // drift warn's precondition), and stderr must come back empty.
 // Assert emptiness only -- never a line count and never a particular message: either emitter alone is
 // enough to make stderr non-empty pre-fix, and post-fix stderr is silent because the pass does not run
 // at all for an opted-out command.
-func TestSmokeHeaderDeclinesStencilSeedPass(t *testing.T) {
+func TestSmokeStatuslineDeclinesStencilSeedPass(t *testing.T) {
 	lyxExe := buildLyxBinaryWithLDFlags(t, "-X github.com/Knatte18/loomyard/internal/buildinfo.Channel=dev")
 
 	h := hubforge.NewHub(t, ".")
@@ -73,16 +74,16 @@ func TestSmokeHeaderDeclinesStencilSeedPass(t *testing.T) {
 		t.Fatalf("write contracts/stencils source %s: %v", sourcePath, err)
 	}
 
-	cmd := exec.Command(lyxExe, "reed", "header")
+	cmd := exec.Command(lyxExe, "reed", "statusline")
 	cmd.Dir = h.PrimeWorktree()
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		t.Fatalf("lyx reed header: %v; stdout: %s; stderr: %s", err, stdout.String(), stderr.String())
+		t.Fatalf("lyx reed statusline: %v; stdout: %s; stderr: %s", err, stdout.String(), stderr.String())
 	}
 
 	if stderr.Len() != 0 {
-		t.Errorf("lyx reed header stderr = %q; want empty -- the header must decline the root pre-run's stencil-seed pass entirely", stderr.String())
+		t.Errorf("lyx reed statusline stderr = %q; want empty -- statusline must decline the root pre-run's stencil-seed pass entirely", stderr.String())
 	}
 }

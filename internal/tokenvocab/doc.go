@@ -2,8 +2,8 @@
 // extension rule for adding a new token.
 
 // Package tokenvocab is the shared token vocabulary for prompt/template rendering across lyx: today
-// reed's header text pipeline, later loom's prompt templates.
-// It owns the token registry (currently "repo" and "hub", both plain fields on Ctx) and
+// reed's status-line text pipeline, later loom's prompt templates.
+// It owns the token registry (currently "repo", "hub", and "worktree", all plain fields on Ctx) and
 // Render, the reusable compose over internal/stencil that every consumer calls to fill a template
 // with the vocabulary.
 //

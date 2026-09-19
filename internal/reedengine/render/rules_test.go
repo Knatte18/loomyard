@@ -1,7 +1,7 @@
 // rules_test.go golden-tests the composed Rules entry point: the below-parent stack ordered by
 // parent chain, hidden-strand exclusion, empty/single-strand/parent-child edges, the
 // checksum-prefix invariant, the own-window rejection error, pane-order resequencing to physical
-// pane position, and the header top-band enumeration (Params.Header).
+// pane position, and the Selvage bottom-band enumeration (Params.Selvage).
 // It also pins the two layout regimes a real (as opposed to config-pinned) terminal box makes
 // reachable: a budget-satisfying box where height.go's clamps never fire, and a too-short box where
 // they must — the latter with a companion assertion that no clamped cell height is ever non-positive.
@@ -35,7 +35,7 @@ func TestRulesGolden(t *testing.T) {
 		name      string
 		strands   []Strand
 		box       Box
-		header    Header
+		selvage   Selvage
 		wantBody  string
 		wantFocus string
 	}{
@@ -92,35 +92,37 @@ func TestRulesGolden(t *testing.T) {
 		{
 			// A live terminal is routinely 24 or 30 rows, unlike the 220x50
 			// box a pinned config used to always hand Rules — a box this
-			// short means clampHeaderHeight/clampToFit now govern the common
+			// short means clampBandHeight/clampToFit now govern the common
 			// case rather than almost never firing. This row's box has room
-			// for the header band, its one-row divider, the collapsed strip
+			// for the Selvage band, its one-row divider, the collapsed strip
 			// at CollapsedStripRows, and both full panes above MinFullRows,
-			// so no clamp fires: header=2 (unclamped: floor=3, maxHeader=
-			// box.H-1-3=20, 2<=20), stack region {Y:3,H:21}, usable=21-2
+			// so no clamp fires: band=2 (unclamped: floor=3, maxBand=
+			// box.H-1-3=20, 2<=20), stack region {Y:0,H:21}, usable=21-2
 			// dividers=19, stripDemand=2 (mid collapses), fullRemaining=17
-			// split 8/9 between root and active (remainder to active).
-			name:      "HeaderPresentBudgetSatisfyingPreservesConfiguredHeaderAndStripHeights",
+			// split 8/9 between root and active (remainder to active); the
+			// band cell lands last, at Y=box.H-2=22.
+			name:      "SelvagePresentBudgetSatisfyingPreservesConfiguredSelvageAndStripHeights",
 			strands:   belowParentChain(),
 			box:       Box{X: 0, Y: 0, W: 100, H: 24},
-			header:    Header{PaneID: "%h", HeightRows: 2},
-			wantBody:  "100x24,0,0[100x2,0,0,h,100x8,0,3,1,100x2,0,12,2,100x9,0,15,3]",
+			selvage:   Selvage{PaneID: "%h", HeightRows: 2},
+			wantBody:  "100x24,0,0[100x8,0,0,1,100x2,0,9,2,100x9,0,12,3,100x2,0,22,h]",
 			wantFocus: "%3",
 		},
 		{
 			// The same strand fixture against a box too short for those
-			// budgets: header=2 stays unclamped (floor=3, maxHeader=
-			// box.H-1-3=4, 2<=4), stack region {Y:3,H:5}, usable=5-2
+			// budgets: band=2 stays unclamped (floor=3, maxBand=
+			// box.H-1-3=4, 2<=4), stack region {Y:0,H:5}, usable=5-2
 			// dividers=3, stripDemand=2 (mid), fullRemaining=1 split 0/1
 			// between root and active (remainder to active) — root's natural
 			// 0 borrows 1 row via clampToFit's priority-1 reclaim, which the
 			// strip (mid) repays by shrinking from its natural 2 down to 1,
-			// leaving every stack cell at exactly 1 row.
-			name:      "HeaderPresentClampedRowNoCellEverNonPositive",
+			// leaving every stack cell at exactly 1 row; the band cell lands
+			// last, at Y=box.H-2=6.
+			name:      "SelvagePresentClampedRowNoCellEverNonPositive",
 			strands:   belowParentChain(),
 			box:       Box{X: 0, Y: 0, W: 100, H: 8},
-			header:    Header{PaneID: "%h", HeightRows: 2},
-			wantBody:  "100x8,0,0[100x2,0,0,h,100x1,0,3,1,100x1,0,5,2,100x1,0,7,3]",
+			selvage:   Selvage{PaneID: "%h", HeightRows: 2},
+			wantBody:  "100x8,0,0[100x1,0,0,1,100x1,0,2,2,100x1,0,4,3,100x2,0,6,h]",
 			wantFocus: "%3",
 		},
 	}
@@ -128,8 +130,8 @@ func TestRulesGolden(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p := params
-			if tt.header != (Header{}) {
-				p.Header = tt.header
+			if tt.selvage != (Selvage{}) {
+				p.Selvage = tt.selvage
 			}
 			layout, focus, err := Rules(tt.strands, tt.box, p, nil)
 			if err != nil {
@@ -168,7 +170,7 @@ var cellHeightPattern = regexp.MustCompile(`\d+x(\d+),`)
 
 // TestRulesClampedRowNeverEmitsANonPositiveCellHeight is the companion assertion
 // TestRulesGolden's table shape cannot express: every cell height in the
-// HeaderPresentClampedRowNoCellEverNonPositive golden row must be at least 1, no matter how far the
+// SelvagePresentClampedRowNoCellEverNonPositive golden row must be at least 1, no matter how far the
 // clamp had to reach. clampToFit's own documented last-resort branch (the active pane absorbing
 // whatever the earlier priority passes could not reclaim) is deliberately permitted to leave the
 // emitted cell heights summing to MORE than box.H when the window is shorter than the pane count —
@@ -176,7 +178,7 @@ var cellHeightPattern = regexp.MustCompile(`\d+x(\d+),`)
 // future reader should not read an over-sum in some OTHER fixture as a defect this test would have
 // caught.
 func TestRulesClampedRowNeverEmitsANonPositiveCellHeight(t *testing.T) {
-	params := Params{CollapsedStripRows: 2, MinFullRows: 3, Header: Header{PaneID: "%h", HeightRows: 2}}
+	params := Params{CollapsedStripRows: 2, MinFullRows: 3, Selvage: Selvage{PaneID: "%h", HeightRows: 2}}
 	box := Box{X: 0, Y: 0, W: 100, H: 8}
 
 	layout, _, err := Rules(belowParentChain(), box, params, nil)
@@ -278,16 +280,16 @@ func TestRulesPaneOrderResequencesCellsToPhysicalOrder(t *testing.T) {
 	}
 }
 
-// TestRulesHeaderBandEnumeratesHeaderPlusEveryStrandCell asserts the header top-band shape card
-// 15/16 add: a fixed-height header cell at the top, followed by the below-parent stack laid out in
-// the shrunk region below it — the emitted window_layout must enumerate the header cell plus every
-// strand cell so the live-pane count the caller's select-layout applies against matches tmux's
-// actual pane set.
-func TestRulesHeaderBandEnumeratesHeaderPlusEveryStrandCell(t *testing.T) {
+// TestRulesSelvageBandEnumeratesEveryStrandCellPlusSelvage asserts the Selvage bottom-band shape: the
+// below-parent stack laid out in the shrunk region at the top, followed by a fixed-height Selvage
+// cell at the bottom — the emitted window_layout must enumerate every strand cell plus the Selvage
+// cell so the live-pane count the caller's select-layout applies against matches tmux's actual pane
+// set.
+func TestRulesSelvageBandEnumeratesEveryStrandCellPlusSelvage(t *testing.T) {
 	params := Params{
 		CollapsedStripRows: 2,
 		MinFullRows:        3,
-		Header:             Header{PaneID: "%h", HeightRows: 3},
+		Selvage:            Selvage{PaneID: "%h", HeightRows: 3},
 	}
 	box := Box{X: 0, Y: 0, W: 100, H: 21}
 
@@ -296,37 +298,37 @@ func TestRulesHeaderBandEnumeratesHeaderPlusEveryStrandCell(t *testing.T) {
 		t.Fatalf("Rules() unexpected error: %v", err)
 	}
 
-	// headerHeight=3 (unclamped: with the header's own one-row divider
+	// bandHeight=3 (unclamped: with the Selvage band's own one-row divider
 	// budget subtracted first (box.H-1=20), MinFullRows=3 leaves 17 rows for
 	// the stack, well above the natural split's needs). The stack region is
-	// {X:0,Y:4,W:100,H:17} (Y shifted by headerHeight+1 for the divider
-	// between the header band and the stack): usable=17-2 dividers=15,
-	// stripDemand=2 (mid collapses to CollapsedStripRows), fullRemaining=13
-	// split 6/7 between root and active (remainder to active).
-	wantBody := "100x21,0,0[100x3,0,0,h,100x6,0,4,1,100x2,0,11,2,100x7,0,14,3]"
+	// {X:0,Y:0,W:100,H:17}: usable=17-2 dividers=15, stripDemand=2 (mid
+	// collapses to CollapsedStripRows), fullRemaining=13 split 6/7 between
+	// root and active (remainder to active). The Selvage cell lands last, at
+	// Y=box.H-3=18.
+	wantBody := "100x21,0,0[100x6,0,0,1,100x2,0,7,2,100x7,0,10,3,100x3,0,18,h]"
 	if want := wrapLayout(wantBody); layout != want {
-		t.Errorf("Rules() with header layout = %q, want %q", layout, want)
+		t.Errorf("Rules() with Selvage layout = %q, want %q", layout, want)
 	}
 	if want := "%3"; focus != want {
-		t.Errorf("Rules() with header focus = %q, want %q (header never affects focus)", focus, want)
+		t.Errorf("Rules() with Selvage focus = %q, want %q (Selvage never affects focus)", focus, want)
 	}
 }
 
-// TestRulesHeaderWithNoPlacedStrandClaimsWholeBoxAsSoleCell pins the empty-stack header shape: with
-// a header pane and ZERO placed strands, Rules must emit the header as a bracket-less single-cell
-// body claiming the whole box — the same shape tmux reports for a one-pane window — never a
-// zero-height header cell inside a group (the fable-header-r1 finding: headerHeight stayed 0 on
-// this path and bandHeader emitted a literal "Wx0" cell, exactly the shape
-// TestHeaderNeverGetsZeroHeightLayoutCell exists to forbid, while the doc comment claimed the
-// header "may claim the whole box").
+// TestRulesSelvageWithNoPlacedStrandClaimsWholeBoxAsSoleCell pins the empty-stack Selvage shape: with
+// a Selvage pane and ZERO placed strands, Rules must emit the Selvage band as a bracket-less
+// single-cell body claiming the whole box — the same shape tmux reports for a one-pane window — never
+// a zero-height Selvage cell inside a group (the fable-header-r1 finding: bandHeight stayed 0 on
+// this path and bandSelvage emitted a literal "Wx0" cell, exactly the shape
+// TestSelvageNeverGetsZeroHeightLayoutCell exists to forbid, while the doc comment claimed the
+// band "may claim the whole box").
 // Unreachable through applyLayoutLocked today (anyPlacedStrand gates the apply),
 // but Rules is a pure function whose contract must hold for any caller.
-func TestRulesHeaderWithNoPlacedStrandClaimsWholeBoxAsSoleCell(t *testing.T) {
+func TestRulesSelvageWithNoPlacedStrandClaimsWholeBoxAsSoleCell(t *testing.T) {
 	box := Box{X: 0, Y: 0, W: 100, H: 21}
-	p := Params{CollapsedStripRows: 2, MinFullRows: 3, Header: Header{PaneID: "%h", HeightRows: 3}}
+	p := Params{CollapsedStripRows: 2, MinFullRows: 3, Selvage: Selvage{PaneID: "%h", HeightRows: 3}}
 
 	// nil strands and an all-filtered stack (a hidden strand) must both
-	// produce the sole-header shape.
+	// produce the sole-band shape.
 	for name, strands := range map[string][]Strand{
 		"NilStrands":       nil,
 		"OnlyHiddenStrand": {{GUID: "hid", PaneID: "%9", Live: true, Display: Display{Anchor: AnchorHidden}}},
@@ -336,7 +338,7 @@ func TestRulesHeaderWithNoPlacedStrandClaimsWholeBoxAsSoleCell(t *testing.T) {
 			t.Fatalf("%s: Rules() unexpected error: %v", name, err)
 		}
 		if want := wrapLayout("100x21,0,0,h"); layout != want {
-			t.Errorf("%s: Rules() layout = %q, want the sole-header body %q", name, layout, want)
+			t.Errorf("%s: Rules() layout = %q, want the sole-band body %q", name, layout, want)
 		}
 		if focus != "" {
 			t.Errorf("%s: Rules() focus = %q, want \"\" (no placed strand to focus)", name, focus)
@@ -344,20 +346,20 @@ func TestRulesHeaderWithNoPlacedStrandClaimsWholeBoxAsSoleCell(t *testing.T) {
 	}
 }
 
-// TestRulesNoHeaderPreservesPreHeaderBehavior asserts a zero-value Params.Header (empty PaneID)
-// produces byte-identical output to omitting Header entirely — every pre-header caller must be
+// TestRulesNoSelvagePreservesPreSelvageBehavior asserts a zero-value Params.Selvage (empty PaneID)
+// produces byte-identical output to omitting Selvage entirely — every pre-Selvage caller must be
 // unaffected.
-func TestRulesNoHeaderPreservesPreHeaderBehavior(t *testing.T) {
+func TestRulesNoSelvagePreservesPreSelvageBehavior(t *testing.T) {
 	strands := belowParentChain()
 	box := Box{X: 0, Y: 0, W: 100, H: 21}
 
-	withZeroHeader, focus1, err1 := Rules(strands, box, Params{CollapsedStripRows: 2, MinFullRows: 3, Header: Header{}}, nil)
+	withZeroSelvage, focus1, err1 := Rules(strands, box, Params{CollapsedStripRows: 2, MinFullRows: 3, Selvage: Selvage{}}, nil)
 	without, focus2, err2 := Rules(strands, box, Params{CollapsedStripRows: 2, MinFullRows: 3}, nil)
 	if err1 != nil || err2 != nil {
 		t.Fatalf("Rules() unexpected errors: %v, %v", err1, err2)
 	}
-	if withZeroHeader != without || focus1 != focus2 {
-		t.Errorf("Rules() with zero-value Header = (%q,%q), want identical to omitting Header entirely (%q,%q)", withZeroHeader, focus1, without, focus2)
+	if withZeroSelvage != without || focus1 != focus2 {
+		t.Errorf("Rules() with zero-value Selvage = (%q,%q), want identical to omitting Selvage entirely (%q,%q)", withZeroSelvage, focus1, without, focus2)
 	}
 }
 
@@ -401,29 +403,29 @@ func paneNumberCounts(layout string) map[string]int {
 // tmux does not REJECT a window_layout string naming one pane twice: it accepts it with exit 0,
 // assigns cells positionally, and destroys every pane the short cell list no longer covers
 // (reproduced live, tmux 3.6 — one `lyx reed up` reduced a two-pane session to one, reported
-// ok:true, and then reported the strand live against the header pane).
+// ok:true, and then reported the strand live against the Selvage pane).
 // Rules is documented as pure and TOTAL, so it must be structurally incapable of producing that
 // string no matter how corrupt the strand table it is handed.
 func TestRules_NeverEmitsOnePaneNumberTwice(t *testing.T) {
 	box := Box{X: 0, Y: 0, W: 100, H: 40}
 
 	tests := []struct {
-		name         string
-		strands      []Strand
-		headerPaneID string
+		name          string
+		strands       []Strand
+		selvagePaneID string
 	}{
 		{
-			name:         "a strand bound to the header's own pane",
-			strands:      []Strand{{GUID: "a", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorBelowParent}}},
-			headerPaneID: "%1",
+			name:          "a strand bound to the Selvage band's own pane",
+			strands:       []Strand{{GUID: "a", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorBelowParent}}},
+			selvagePaneID: "%1",
 		},
 		{
-			name: "a strand bound to the header's pane beside a healthy strand",
+			name: "a strand bound to the Selvage band's pane beside a healthy strand",
 			strands: []Strand{
 				{GUID: "a", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorBelowParent}},
 				{GUID: "b", PaneID: "%2", Live: true, Display: Display{Anchor: AnchorBelowParent}},
 			},
-			headerPaneID: "%1",
+			selvagePaneID: "%1",
 		},
 		{
 			name: "two strands bound to one pane",
@@ -431,21 +433,21 @@ func TestRules_NeverEmitsOnePaneNumberTwice(t *testing.T) {
 				{GUID: "a", PaneID: "%2", Live: true, Display: Display{Anchor: AnchorBelowParent}},
 				{GUID: "b", PaneID: "%2", Live: true, Display: Display{Anchor: AnchorBelowParent}},
 			},
-			headerPaneID: "%1",
+			selvagePaneID: "%1",
 		},
 		{
-			name: "two strands bound to one pane with no header at all",
+			name: "two strands bound to one pane with no Selvage band at all",
 			strands: []Strand{
 				{GUID: "a", PaneID: "%2", Live: true, Display: Display{Anchor: AnchorBelowParent}},
 				{GUID: "b", PaneID: "%2", Live: true, Display: Display{Anchor: AnchorBelowParent}},
 			},
-			headerPaneID: "",
+			selvagePaneID: "",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			params := Params{CollapsedStripRows: 2, MinFullRows: 3, Header: Header{PaneID: tt.headerPaneID, HeightRows: 1}}
+			params := Params{CollapsedStripRows: 2, MinFullRows: 3, Selvage: Selvage{PaneID: tt.selvagePaneID, HeightRows: 1}}
 			layout, _, err := Rules(tt.strands, box, params, nil)
 			if err != nil {
 				t.Fatalf("Rules() error = %v; want nil", err)
@@ -460,11 +462,11 @@ func TestRules_NeverEmitsOnePaneNumberTwice(t *testing.T) {
 }
 
 // TestRules_KeepsTheFirstOwnerWhenPaneCellsCollide pins WHICH strand survives a collision, so the
-// repair stays deterministic rather than merely non-destructive: the header always keeps its own
-// pane, and among strands the earlier table entry wins.
+// repair stays deterministic rather than merely non-destructive: the Selvage band always keeps its
+// own pane, and among strands the earlier table entry wins.
 func TestRules_KeepsTheFirstOwnerWhenPaneCellsCollide(t *testing.T) {
 	box := Box{X: 0, Y: 0, W: 100, H: 40}
-	params := Params{CollapsedStripRows: 2, MinFullRows: 3, Header: Header{PaneID: "%1", HeightRows: 1}}
+	params := Params{CollapsedStripRows: 2, MinFullRows: 3, Selvage: Selvage{PaneID: "%1", HeightRows: 1}}
 
 	strands := []Strand{
 		{GUID: "first", PaneID: "%2", Live: true, Display: Display{Anchor: AnchorBelowParent}},

@@ -126,8 +126,13 @@ Example:
 			// number, an unparseable plan, or an absent run boots no substrate at all; the
 			// state-mutation lease is already held across the spawn RecoverSpawnOrAttach itself
 			// performs, so bringing the session up under it adds no new hold.
+			//
+			// watch is false here, unlike run's true: recover-batch is a short-lived verb that spawns
+			// a cold recovery strand and returns, so a watcher bound to this call's context would be
+			// dead before it observed anything, while one detached from that context would be an
+			// unowned goroutine in an exiting process.
 			if c.reedUp != nil {
-				if err := c.reedUp(); err != nil {
+				if err := c.reedUp(cmd.Context(), false); err != nil {
 					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: bring up the standalone reed session: %v", err)))
 					return nil
 				}

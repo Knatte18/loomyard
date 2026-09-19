@@ -180,8 +180,8 @@ func resolveStatusStrandAction(strands []reedengine.StrandStatus) (statusStrandA
 }
 
 // statusStrandCmd composes the status strand's pane command line through the shell seam, exactly as
-// the reed header pane's own builder (headerLaunchCmd, headerpane.go) composes its command line: exe
-// invoked with the two-word status verb and the watch flag.
+// the watchdog daemon's own spawn (ensureWatchdogSpawned, internal/reedcli/spawnwatchdog.go) composes
+// its os.Executable() command line: exe invoked with the two-word status verb and the watch flag.
 func statusStrandCmd(sh shell.Shell, exe string) string {
 	return sh.Invoke(exe) + " " + sh.Quote("loom") + " " + sh.Quote("status") + " " + sh.Quote("--watch")
 }

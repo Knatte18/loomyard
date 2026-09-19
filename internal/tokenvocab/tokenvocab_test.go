@@ -50,6 +50,12 @@ func TestTokenResolve(t *testing.T) {
 			ctx:       Ctx{RepoName: "unrelated-repo-value", HubPath: "/hub/loomyard-LYXHUB"},
 			want:      "/hub/loomyard-LYXHUB",
 		},
+		{
+			name:      "worktree reads Ctx.WorktreeName",
+			tokenName: "worktree",
+			ctx:       Ctx{RepoName: "unrelated-repo-value", HubPath: "unrelated-hub-value", WorktreeName: "reed-header-selvage"},
+			want:      "reed-header-selvage",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -79,15 +85,15 @@ func TestTokenResolve_RepoReadsFieldVerbatim(t *testing.T) {
 	}
 }
 
-// TestBuild_ReturnsBothKeys verifies Build resolves the full registry into a flat map keyed by
-// token name, with both current tokens (repo, hub) present and correctly valued.
-func TestBuild_ReturnsBothKeys(t *testing.T) {
+// TestBuild_ReturnsAllThreeKeys verifies Build resolves the full registry into a flat map keyed by
+// token name, with all three current tokens (repo, hub, worktree) present and correctly valued.
+func TestBuild_ReturnsAllThreeKeys(t *testing.T) {
 	t.Parallel()
 
-	ctx := Ctx{RepoName: "loomyard", HubPath: "/hub/loomyard-LYXHUB"}
+	ctx := Ctx{RepoName: "loomyard", HubPath: "/hub/loomyard-LYXHUB", WorktreeName: "reed-header-selvage"}
 	got := Build(ctx)
 
-	want := map[string]string{"repo": "loomyard", "hub": "/hub/loomyard-LYXHUB"}
+	want := map[string]string{"repo": "loomyard", "hub": "/hub/loomyard-LYXHUB", "worktree": "reed-header-selvage"}
 	if len(got) != len(want) {
 		t.Fatalf("Build() returned %d keys; want %d: %+v", len(got), len(want), got)
 	}
@@ -150,13 +156,13 @@ func TestRegistry_AddingATokenIsOneEntry(t *testing.T) {
 		Resolve: func(c Ctx) string { return "example-slug" },
 	})
 
-	ctx := Ctx{RepoName: "loomyard", HubPath: "/hub/loomyard-LYXHUB"}
+	ctx := Ctx{RepoName: "loomyard", HubPath: "/hub/loomyard-LYXHUB", WorktreeName: "reed-header-selvage"}
 	got := make(map[string]string, len(hypothetical))
 	for _, token := range hypothetical {
 		got[token.Name] = token.Resolve(ctx)
 	}
 
-	want := map[string]string{"repo": "loomyard", "hub": "/hub/loomyard-LYXHUB", "slug": "example-slug"}
+	want := map[string]string{"repo": "loomyard", "hub": "/hub/loomyard-LYXHUB", "worktree": "reed-header-selvage", "slug": "example-slug"}
 	if len(got) != len(want) {
 		t.Fatalf("hypothetical registry resolved to %d keys; want %d: %+v", len(got), len(want), got)
 	}

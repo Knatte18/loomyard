@@ -28,8 +28,8 @@ type reconcilePlan struct {
 // planReconcile decides which pane bindings to clear, which dead panes to kill, and which
 // untracked panes to reap.
 // Pure logic; unit-testable without a running server.
-// Keeps at least one pane alive (session-survival rule); spares header pane.
-func planReconcile(strands []Strand, live []LivePane, headerPaneID string) reconcilePlan {
+// Keeps at least one pane alive (session-survival rule); spares Selvage.
+func planReconcile(strands []Strand, live []LivePane, selvagePaneID string) reconcilePlan {
 	var plan reconcilePlan
 
 	liveByID := make(map[string]LivePane, len(live))
@@ -59,20 +59,20 @@ func planReconcile(strands []Strand, live []LivePane, headerPaneID string) recon
 		}
 	}
 
-	// The header pane is exempt from the dead-pane kill too, not only from
-	// the untracked reap below: nothing outside up/resume ever rebuilds the
-	// header, so killing a pane_dead=1 header here would leave the session
-	// headerless (breaking the always-on keepalive the header exists for)
-	// with a stale HeaderPaneID until the next up/resume — and, before the
-	// planLayout presence filter existed, that stale id was still emitted as
-	// a layout cell, which a real tmux ACCEPTS (exit 0) and assigns
-	// positionally, scrambling every strand's height (observed live,
-	// tmux 3.6). A kept header corpse instead stays enumerable, keeps the
-	// cell/pane count consistent, and is healed — killed and re-split — by
-	// ensureHeaderPaneLocked on the next up/resume.
+	// Selvage is exempt from the dead-pane kill too, not only from the
+	// untracked reap below: nothing outside up/resume ever rebuilds it, so
+	// killing a pane_dead=1 Selvage here would leave the session without its
+	// always-on operator console with a stale SelvagePaneID until the next
+	// up/resume — and, before the planLayout presence filter existed, that
+	// stale id was still emitted as a layout cell, which a real tmux
+	// ACCEPTS (exit 0) and assigns positionally, scrambling every strand's
+	// height (observed live, tmux 3.6). A kept Selvage corpse instead stays
+	// enumerable, keeps the cell/pane count consistent, and is healed —
+	// killed and re-split — by ensureSelvagePaneLocked on the next
+	// up/resume.
 	killSet := make(map[string]bool, len(live))
 	for _, p := range live {
-		if p.Dead && p.ID != keptDeadPaneID && p.ID != headerPaneID {
+		if p.Dead && p.ID != keptDeadPaneID && p.ID != selvagePaneID {
 			killSet[p.ID] = true
 			plan.deadPanesToKill = append(plan.deadPanesToKill, p.ID)
 		}
@@ -80,14 +80,14 @@ func planReconcile(strands []Strand, live []LivePane, headerPaneID string) recon
 
 	// Deterministic untracked-pane reaping (see the doc comment): kill every
 	// live pane no strand owns, while EITHER some strand is bound to a
-	// present pane OR the header itself is alive — killing an alive pane at
+	// present pane OR Selvage itself is alive — killing an alive pane at
 	// worst corpses it under remain-on-exit, so the surviving bound pane or
-	// header always keeps the session alive. The header disjunct exists
+	// Selvage always keeps the session alive. The Selvage disjunct exists
 	// because this reap fires from AddStrand/UpdateStrand once the
 	// reap-before-allocate chokepoint lands, and neither of those paths ever
-	// calls ensureHeaderPaneLocked — so a dead-but-present header must not
+	// calls ensureSelvagePaneLocked — so a dead-but-present Selvage must not
 	// be allowed to authorize reaping the session's only alive pane; only an
-	// ALIVE header may.
+	// ALIVE Selvage may.
 	boundPaneIDs := make(map[string]bool, len(strands))
 	for _, s := range strands {
 		if s.PaneID != "" {
@@ -102,14 +102,14 @@ func planReconcile(strands []Strand, live []LivePane, headerPaneID string) recon
 		}
 	}
 
-	// headerAlive is a third, separate local, never folded into
-	// boundPaneIDs/anyBoundPresent/exemptPaneIDs: the header stays exempt
-	// from being killed by mere presence (a header corpse is still never
-	// killed), while only an alive header authorizes killing anything else.
-	headerAlive := false
-	if headerPaneID != "" {
-		if p, present := liveByID[headerPaneID]; present && !p.Dead {
-			headerAlive = true
+	// selvageAlive is a third, separate local, never folded into
+	// boundPaneIDs/anyBoundPresent/exemptPaneIDs: Selvage stays exempt from
+	// being killed by mere presence (a Selvage corpse is still never
+	// killed), while only an alive Selvage authorizes killing anything else.
+	selvageAlive := false
+	if selvagePaneID != "" {
+		if p, present := liveByID[selvagePaneID]; present && !p.Dead {
+			selvageAlive = true
 		}
 	}
 
@@ -120,11 +120,11 @@ func planReconcile(strands []Strand, live []LivePane, headerPaneID string) recon
 	for id := range boundPaneIDs {
 		exemptPaneIDs[id] = true
 	}
-	if headerPaneID != "" {
-		exemptPaneIDs[headerPaneID] = true
+	if selvagePaneID != "" {
+		exemptPaneIDs[selvagePaneID] = true
 	}
 
-	if anyBoundPresent || headerAlive {
+	if anyBoundPresent || selvageAlive {
 		for _, p := range live {
 			if !exemptPaneIDs[p.ID] && !killSet[p.ID] && p.ID != keptDeadPaneID {
 				killSet[p.ID] = true
@@ -158,11 +158,11 @@ func clearAllPaneBindings(st *ReedState) {
 }
 
 // clearConflictingPaneBindings clears every strand PaneID that names a pane the strand cannot
-// possibly own — the header pane, or a pane an earlier strand in the table already claims — and
+// possibly own — Selvage's pane, or a pane an earlier strand in the table already claims — and
 // returns the GUIDs it cleared, in table order.
 //
 // A pane has exactly one owner. reed's own construction paths already guarantee that
-// (planPaneTarget never yields the header as a split target while any non-header pane exists, and
+// (planPaneTarget never yields Selvage as a split target while any non-Selvage pane exists, and
 // its result is always validated as genuinely new by validateSplitCreatedNewPane), so a table
 // violating it is a CORRUPT table, not one reed produced: a stale
 // reed.json restored over a newer session, a hand-edited file, a partially restored backup. Every
@@ -171,11 +171,11 @@ func clearAllPaneBindings(st *ReedState) {
 //
 // The damage is worth naming, because it is neither theoretical nor loud (R5 review finding R5-F3,
 // both shapes reproduced live on tmux 3.6):
-//   - A strand sharing the HEADER's pane id makes planLayout place that pane twice — once as
-//     bandHeader's fixed top cell, once inside the stack body — and tmux answers a layout string
+//   - A strand sharing SELVAGE's pane id makes planLayout place that pane twice — once as
+//     bandSelvage's fixed bottom cell, once inside the stack body — and tmux answers a layout string
 //     whose cell count exceeds the panes it can name by DESTROYING the panes it has no cell for.
 //     Observed: a single `lyx reed up` reduced a two-pane session to one, reported ok:true, and then
-//     reported the strand live:true against the header pane running `lyx reed header --blocking`.
+//     reported the strand live:true against the Selvage pane.
 //   - Two strands sharing one pane id leave the second strand's REAL pane bound to nobody, so
 //     planReconcile's deterministic untracked reap kills it. Observed: `up` reported ok:true and
 //     strands:2 while destroying the second strand's pane and its running process, after which
@@ -187,8 +187,8 @@ func clearAllPaneBindings(st *ReedState) {
 // would wedge the worktree on exactly the corruption this exists to survive.
 func clearConflictingPaneBindings(st *ReedState) []string {
 	claimed := make(map[string]bool, len(st.Strands)+1)
-	if st.HeaderPaneID != "" {
-		claimed[st.HeaderPaneID] = true
+	if st.SelvagePaneID != "" {
+		claimed[st.SelvagePaneID] = true
 	}
 
 	var clearedGUIDs []string
@@ -210,7 +210,7 @@ func clearConflictingPaneBindings(st *ReedState) []string {
 // reconcileLocked reconciles the persisted table against live panes.
 // Kills panes per planReconcile's schedule; clears bindings for gone panes.
 func (e *Engine) reconcileLocked(st *ReedState, live []LivePane) (killed []string, err error) {
-	plan := planReconcile(st.Strands, live, st.HeaderPaneID)
+	plan := planReconcile(st.Strands, live, st.SelvagePaneID)
 
 	// Accumulate the ids actually destroyed, separately for each kill reason,
 	// as the loops below progress -- never plan.deadPanesToKill /
@@ -225,7 +225,7 @@ func (e *Engine) reconcileLocked(st *ReedState, live []LivePane) (killed []strin
 	// This is Info, not Debug: per CONSTRAINTS.md's Live-Substrate Spawn
 	// Observability lifecycle-vs-probe split, a real pane teardown is a
 	// lifecycle event, not a probe. And it needs a trace at all because the
-	// headerAlive disjunct above makes this reap fire on the zero-strand
+	// selvageAlive disjunct above makes this reap fire on the zero-strand
 	// precondition (every AddStrand/UpdateStrand once the reap-before-
 	// allocate chokepoint lands), taking it from near-dormant to routine --
 	// and it destroys panes an operator may have created themselves.

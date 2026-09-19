@@ -1,5 +1,5 @@
 // annotations_test.go asserts the exact literal values of this package's cobra-annotation constants,
-// so a rename cannot silently decouple a producer command (e.g. reed header) from the consumer gate
+// so a rename cannot silently decouple a producer command (e.g. reed statusline) from the consumer gate
 // (cmd/lyx's skipStencilSeed).
 
 package clihelp

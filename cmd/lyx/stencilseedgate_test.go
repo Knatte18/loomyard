@@ -1,5 +1,5 @@
 // stencilseedgate_test.go pins two things about the stencil-seed skip gate this batch adds:
-// skipStencilSeed's predicate against synthetic *cobra.Command values, and that "lyx reed header"
+// skipStencilSeed's predicate against synthetic *cobra.Command values, and that "lyx reed statusline"
 // actually carries the annotation the predicate reads. It deliberately does NOT pin any ordering
 // between skipStencilSeed and stencilSeedTarget, and does NOT assert "no `git rev-parse` was
 // spawned": seedStencils returns under testing.Testing() before either step runs, so an in-process
@@ -67,21 +67,21 @@ func TestSkipStencilSeed_HonoursTheAnnotation(t *testing.T) {
 	}
 }
 
-// TestReedHeaderCarriesTheStencilSeedSkipAnnotation walks reedcli.Command()'s subcommands for
-// "header" and asserts it carries clihelp.SkipStencilSeedAnnotation set to clihelp.AnnotationEnabled.
-func TestReedHeaderCarriesTheStencilSeedSkipAnnotation(t *testing.T) {
-	var header *cobra.Command
+// TestReedStatuslineCarriesTheStencilSeedSkipAnnotation walks reedcli.Command()'s subcommands for
+// "statusline" and asserts it carries clihelp.SkipStencilSeedAnnotation set to clihelp.AnnotationEnabled.
+func TestReedStatuslineCarriesTheStencilSeedSkipAnnotation(t *testing.T) {
+	var statusline *cobra.Command
 	for _, sub := range reedcli.Command().Commands() {
-		if sub.Name() == "header" {
-			header = sub
+		if sub.Name() == "statusline" {
+			statusline = sub
 			break
 		}
 	}
-	if header == nil {
-		t.Fatal("reedcli.Command() has no \"header\" subcommand")
+	if statusline == nil {
+		t.Fatal("reedcli.Command() has no \"statusline\" subcommand")
 	}
-	if got := header.Annotations[clihelp.SkipStencilSeedAnnotation]; got != clihelp.AnnotationEnabled {
-		t.Errorf("reed header Annotations[%q] = %q; want %q -- the annotation was silently dropped, making the gate worthless",
+	if got := statusline.Annotations[clihelp.SkipStencilSeedAnnotation]; got != clihelp.AnnotationEnabled {
+		t.Errorf("reed statusline Annotations[%q] = %q; want %q -- the annotation was silently dropped, making the gate worthless",
 			clihelp.SkipStencilSeedAnnotation, got, clihelp.AnnotationEnabled)
 	}
 }

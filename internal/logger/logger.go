@@ -376,6 +376,13 @@ func Warn(msg string, args ...any) {
 	log.With("trace", TraceID()).Warn(msg, args...)
 }
 
+// Error logs msg at error level with the given key/value args, stamping trace= as Debug does.
+// Like Warn, it reaches both the durable sink and the stderr half unconditionally, since error
+// level sits above the default Warn threshold.
+func Error(msg string, args ...any) {
+	log.With("trace", TraceID()).Error(msg, args...)
+}
+
 // SetVerbosity maps a -v repeat count to a log level: count<=0 keeps the default Warn threshold
 // (silent normal run), count==1 lowers it to Info, and count>=2 lowers it to Debug.
 // cmd/lyx/main.go calls this once at startup from the root -v/--verbose flag.

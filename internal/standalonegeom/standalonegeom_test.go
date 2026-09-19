@@ -132,6 +132,14 @@ func TestReedGeometry(t *testing.T) {
 	if got.HubPath != stateDir {
 		t.Errorf("ReedGeometry().HubPath = %q; want %q (stateDir)", got.HubPath, stateDir)
 	}
+	if want := "distinctive-repo-name"; got.WorktreeName != want {
+		t.Errorf("ReedGeometry().WorktreeName = %q; want %q", got.WorktreeName, want)
+	}
+	// Standalone mode has no worktree distinct from the repository it targets, so the two
+	// tokens must render the same string byte for byte.
+	if got.WorktreeName != got.RepoName {
+		t.Errorf("ReedGeometry().WorktreeName = %q; want == RepoName %q", got.WorktreeName, got.RepoName)
+	}
 }
 
 // TestReedGeometry_SessionNameSanitizesTheReadableHalf is the regression guard for the R4 review's
@@ -175,9 +183,47 @@ func TestReedGeometry_SessionNameSanitizesTheReadableHalf(t *testing.T) {
 			if want := reedengine.SanitizeSessionName(c.basename) + "-" + hash8; got.SessionName != want {
 				t.Errorf("ReedGeometry(%q).SessionName = %q; want %q (reedengine.SanitizeSessionName + hash8)", target, got.SessionName, want)
 			}
-			// RepoName is the header pane's display token, not a tmux target, so it stays raw.
+			// RepoName is the status-line's display token, not a tmux target, so it stays raw.
 			if got.RepoName != c.basename {
 				t.Errorf("ReedGeometry(%q).RepoName = %q; want %q (raw basename)", target, got.RepoName, c.basename)
+			}
+			// WorktreeName takes the identical raw expression, so a routine repository name
+			// must not be sanitized or normalized out from under either token.
+			if got.WorktreeName != c.basename {
+				t.Errorf("ReedGeometry(%q).WorktreeName = %q; want %q (raw basename)", target, got.WorktreeName, c.basename)
+			}
+			if got.WorktreeName != got.RepoName {
+				t.Errorf("ReedGeometry(%q).WorktreeName = %q; want == RepoName %q", target, got.WorktreeName, got.RepoName)
+			}
+		})
+	}
+}
+
+// TestReedGeometry_WorktreeNameMatchesRepoNameForSymlinkedTarget pins the standalone-specific claim
+// in reedgeom.go's doc comment: {{.worktree}} and {{.repo}} must render the same string byte for
+// byte for BOTH a symlinked and a real spelling of one target, since both tokens are taken from the
+// raw filepath.Base(target) rather than a normalized spelling that would resolve a symlinked
+// spelling to a different basename than the real one.
+func TestReedGeometry_WorktreeNameMatchesRepoNameForSymlinkedTarget(t *testing.T) {
+	t.Parallel()
+
+	stateDir := filepath.Join(string(filepath.Separator), "var", "lib", "lyx-state", "abcd1234")
+	hash8 := "abcd1234"
+
+	targets := []string{
+		filepath.Join(string(filepath.Separator), "home", "operator", "src", "real-repo-name"),
+		filepath.Join(string(filepath.Separator), "home", "operator", "links", "symlinked-repo-name"),
+	}
+	for _, target := range targets {
+		t.Run(target, func(t *testing.T) {
+			t.Parallel()
+
+			got := ReedGeometry(target, stateDir, hash8)
+			if got.WorktreeName != got.RepoName {
+				t.Errorf("ReedGeometry(%q).WorktreeName = %q; want == RepoName %q", target, got.WorktreeName, got.RepoName)
+			}
+			if want := filepath.Base(target); got.WorktreeName != want {
+				t.Errorf("ReedGeometry(%q).WorktreeName = %q; want %q (raw basename)", target, got.WorktreeName, want)
 			}
 		})
 	}

@@ -38,17 +38,17 @@ type ReedState struct {
 	Session     string   `json:"session"`
 	StrippedEnv []string `json:"strippedEnv"`
 	Strands     []Strand `json:"strands"`
-	// HeaderPaneID is the tmux pane id of the always-present header pane —
-	// deliberately outside Strands, since the header is a first-class but
+	// SelvagePaneID is the tmux pane id of the always-present Selvage pane —
+	// deliberately outside Strands, since Selvage is a first-class but
 	// separate construct and never itself a strand (Shared Decision
 	// header-is-not-a-strand): it is excluded from strand accounting, from
 	// being the preferred split target, and from both halves of reconcile's
-	// kill schedule. Empty means the header pane has not yet been created (a
-	// fresh worktree, or a server rebirth that cleared every binding) and
-	// must be (re)created at the next up/resume boot.
-	HeaderPaneID string `json:"headerPaneId,omitempty"`
+	// kill schedule. Empty means Selvage has not yet been created (a fresh
+	// worktree, or a server rebirth that cleared every binding) and must be
+	// (re)created at the next up/resume boot.
+	SelvagePaneID string `json:"selvagePaneId,omitempty"`
 	// PaneGeneration identifies the tmux session incarnation every PaneID
-	// above — the strands' and HeaderPaneID alike — was bound against. It is
+	// above — the strands' and SelvagePaneID alike — was bound against. It is
 	// the one field in this struct reed reads back semantically rather than
 	// carrying for its caller: without it a persisted pane id cannot be told
 	// apart from a live pane belonging to something else, because tmux pane
@@ -152,7 +152,7 @@ func LoadState(dotLyxDir string) (*ReedState, error) {
 // Both remedies are named because they are genuinely different trades, and the operator — not
 // reed — has to pick. Deleting the file keeps the session: the panes and their processes keep
 // running and can be attached to, but only until the next mutating verb (up, resume, add, or
-// remove) reaps them, since an alive header now authorizes reaping every other pane the moment
+// remove) reaps them, since an alive Selvage now authorizes reaping every other pane the moment
 // one of those verbs reconciles.
 //
 // Repairing the file automatically is deliberately not offered: every repair reed could perform

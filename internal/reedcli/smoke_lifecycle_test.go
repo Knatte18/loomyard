@@ -88,7 +88,7 @@ func TestSmokeUpAddStatusDown(t *testing.T) {
 // the session.
 // The fix splits the tallest alive pane explicitly and hard-errors on a non-new reported id, so
 // this sequence must now yield one live pane per visible strand, plus one more for the
-// always-present header pane.
+// always-present Selvage pane.
 func TestSmokeStackedAddsKeepEverySessionPane(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 
@@ -115,9 +115,9 @@ func TestSmokeStackedAddsKeepEverySessionPane(t *testing.T) {
 
 	socket, session := socketAndSession(t)
 	panes := listPaneLines(t, tmuxPath, socket, session)
-	wantPanes := len(guids) + 1 // +1 for the always-present header pane
+	wantPanes := len(guids) + 1 // +1 for the always-present Selvage pane
 	if len(panes) != wantPanes {
-		t.Fatalf("session holds %d panes %v; want %d (one per visible strand plus the header pane — a shortfall means a silent split failure destroyed panes)", len(panes), panes, wantPanes)
+		t.Fatalf("session holds %d panes %v; want %d (one per visible strand plus Selvage — a shortfall means a silent split failure destroyed panes)", len(panes), panes, wantPanes)
 	}
 
 	out.Reset()
@@ -136,10 +136,10 @@ func TestSmokeStackedAddsKeepEverySessionPane(t *testing.T) {
 }
 
 // TestSmokeRemoveLastStrandThenAddRunsTheNewCommand exercises removing a session's last STRAND and
-// then adding a new one, with the always-present header pane in play: removeStrandLocked collects
-// pane ids from strands only, and the header is never a strand, so the removed strand's pane is never
+// then adding a new one, with the always-present Selvage pane in play: removeStrandLocked collects
+// pane ids from strands only, and Selvage is never a strand, so the removed strand's pane is never
 // the session's actual last pane — kill-pane removes it outright, on either backend, rather than
-// corpsing it under remain-on-exit, and the header alone is left holding the session up. The
+// corpsing it under remain-on-exit, and Selvage alone is left holding the session up. The
 // following add must split a fresh pane whose command genuinely runs and STAYS live across the next
 // reconciling verb.
 //
@@ -213,11 +213,11 @@ func TestSmokeRemoveLastStrandThenAddRunsTheNewCommand(t *testing.T) {
 // skips select-layout whenever no strand owns a present pane): this fixture's two up calls always
 // arrive at apply holding exactly one pane, well under the len(live) < 2 guard applyLayoutLockedOpts
 // checks first, so the anyPlacedStrand branch is never even reached from here anymore.
-// What this test still proves instead: with zero strands tracked, an ALIVE header now authorizes
+// What this test still proves instead: with zero strands tracked, an ALIVE Selvage now authorizes
 // reconcile's deterministic untracked-pane reap (reconcile.go), so an up against a session holding
-// only foreign panes leaves a USABLE session — the header pane intact, every foreign pane gone — not
+// only foreign panes leaves a USABLE session — Selvage intact, every foreign pane gone — not
 // the old zero-pane wedge, and a subsequent add comes up live on its own fresh pane without ever
-// displacing the header.
+// displacing Selvage.
 func TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 
@@ -235,29 +235,29 @@ func TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable(t *testing.T) {
 	}
 	socket, session := socketAndSession(t)
 
-	// up boots the always-present header pane before any strand exists, and
+	// up boots the always-present Selvage pane before any strand exists, and
 	// this SAME up's own reconcile (reconcileApplyPersistLocked's tail)
 	// already reaps the session's not-yet-adopted initial pane: with zero
-	// strands tracked, the newly-alive header authorizes the untracked-pane
+	// strands tracked, the newly-alive Selvage authorizes the untracked-pane
 	// reap (reconcile.go), so that initial pane never survives past this
-	// first up at all. Read the header's pane id directly from reed.json so
+	// first up at all. Read Selvage's pane id directly from reed.json so
 	// the assertions below can tell it apart from the foreign pane added
 	// next.
 	st, err := reedengine.LoadState(filepath.Join(h.PrimeWorktree(), ".lyx"))
-	if err != nil || st == nil || st.HeaderPaneID == "" {
-		t.Fatalf("LoadState after up = (%+v, %v), want a persisted HeaderPaneID", st, err)
+	if err != nil || st == nil || st.SelvagePaneID == "" {
+		t.Fatalf("LoadState after up = (%+v, %v), want a persisted SelvagePaneID", st, err)
 	}
-	headerPaneID := st.HeaderPaneID
+	selvagePaneID := st.SelvagePaneID
 
 	// A foreign pane reed does not track (the operator-split case): the
-	// session holds 1 pane (the header) and 0 strands going in — the first
+	// session holds 1 pane (Selvage) and 0 strands going in — the first
 	// up above already reaped its own not-yet-adopted initial pane — so this
-	// split leaves it at 2 panes (header, foreign) and 0 strands.
+	// split leaves it at 2 panes (Selvage, foreign) and 0 strands.
 	if err := exec.Command(tmuxPath, "-L", socket, "split-window", "-t", session).Run(); err != nil {
 		t.Fatalf("foreign split-window: %v", err)
 	}
 
-	// The second up: with zero strands tracked and the header alive,
+	// The second up: with zero strands tracked and Selvage alive,
 	// reconcile's untracked reap fires again and kills the foreign pane too
 	// — this up must still exit 0 and leave the session usable, never the
 	// zero-pane wedge the old empty-layout-apply defect produced.
@@ -265,8 +265,8 @@ func TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable(t *testing.T) {
 	if code := RunCLI(&out, []string{"up"}); code != 0 {
 		t.Fatalf("second up = %d; want 0, output: %s", code, out.String())
 	}
-	if panes := listPaneLines(t, tmuxPath, socket, session); len(panes) != 1 || !paneLiveOnSession(panes, headerPaneID) {
-		t.Fatalf("up with only a foreign pane must reap it, leaving exactly the header pane %s alive; got panes=%v", headerPaneID, panes)
+	if panes := listPaneLines(t, tmuxPath, socket, session); len(panes) != 1 || !paneLiveOnSession(panes, selvagePaneID) {
+		t.Fatalf("up with only a foreign pane must reap it, leaving exactly Selvage %s alive; got panes=%v", selvagePaneID, panes)
 	}
 
 	// The session must still be able to host a strand: the add both proves
@@ -288,27 +288,20 @@ func TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable(t *testing.T) {
 	}
 	strandPane, _ := strand["paneId"].(string)
 	panes := listPaneLines(t, tmuxPath, socket, session)
-	if len(panes) != 2 || !paneLiveOnSession(panes, strandPane) || !paneLiveOnSession(panes, headerPaneID) {
-		t.Errorf("after add, session panes = %v; want exactly the strand's pane %s and the header pane %s (foreign pane must be reaped, neither pane ever displaced)", panes, strandPane, headerPaneID)
+	if len(panes) != 2 || !paneLiveOnSession(panes, strandPane) || !paneLiveOnSession(panes, selvagePaneID) {
+		t.Errorf("after add, session panes = %v; want exactly the strand's pane %s and Selvage %s (foreign pane must be reaped, neither pane ever displaced)", panes, strandPane, selvagePaneID)
 	}
 }
 
-// TestSmokeHeaderPaneDisplaysRenderedHeaderText pins the header pane's actual OUTPUT — the rendered
-// "hub: <hub path>" line from the embedded default template — not merely its liveness.
-// This is the regression test for the header-cwd defect the fable-header-r1 round found: the pane
-// used to be split with -c set to the HUB path, a container directory that is by definition not a
-// git repo (the engine field that then held it is long gone; today the anchor arrives as the told
-// Geometry.AnchorPath),
-// so its "lyx reed header --blocking" command died at geometry resolution ({"ok":false,"error":"not
-// a git repository"}) and the operator console showed a JSON error over a bash prompt forever —
-// while every liveness-only assertion stayed green, because the pane's parent shell survived the
-// failed command.
-// Two things make content assertable here where the other smoke tests cannot: up must run as a
-// SUBPROCESS of the built lyx binary (the header pane boots os.Executable() + " reed header
-// --blocking", and an in-process RunCLI's executable is this TEST binary, whose header invocation
-// is nonsense), and the assertion polls capture-pane for the rendered text rather than list-panes
-// for presence.
-func TestSmokeHeaderPaneDisplaysRenderedHeaderText(t *testing.T) {
+// TestSmokeStatusLineDisplaysRenderedText pins the tmux status-line's actual OUTPUT — the rendered
+// text from the embedded default template, which names the hub's absolute path — not merely that
+// `up` succeeded. This is the surviving analogue of the old header-cwd regression test: content is
+// no longer assertable against any pane at all (pinGeometryOptionsLocked pins it into tmux's
+// status-line option), so the assertion is a `display-message -p '#{status-left}'` readback rather
+// than a pane-content poll, and the former 1-row pane-clamping regression this test also pinned has
+// no counterpart either — the status-line is not a pane and carries no row budget of its own to
+// clamp against.
+func TestSmokeStatusLineDisplaysRenderedText(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 	lyxExe := buildLyxBinary(t)
 
@@ -326,42 +319,28 @@ func TestSmokeHeaderPaneDisplaysRenderedHeaderText(t *testing.T) {
 		t.Fatalf("built-binary up: %v\n%s", err, out)
 	}
 
-	st, err := reedengine.LoadState(filepath.Join(h.PrimeWorktree(), ".lyx"))
-	if err != nil || st == nil || st.HeaderPaneID == "" {
-		t.Fatalf("LoadState after up = (%+v, %v), want a persisted HeaderPaneID", st, err)
+	socket, session := socketAndSession(t)
+	statusLeft, err := exec.Command(tmuxPath, "-L", socket, "display-message", "-p", "-t", session, "#{status-left}").Output()
+	if err != nil {
+		t.Fatalf("display-message #{status-left}: %v", err)
 	}
-
-	socket, _ := socketAndSession(t)
-	// The embedded default template renders "hub: {{.hub}}"; the fixture's
-	// hub is its temp container. A JSON error body in the pane (the pre-fix
-	// symptom) can never contain this line.
-	pollPaneContains(t, tmuxPath, socket, st.HeaderPaneID, "hub: "+h.Location.HubPath, 20*time.Second)
-
-	// The 1-row regression (fable-header-r1 F10): once a strand exists the
-	// header clamps to its configured single row (height_rows: 1), and
-	// capture-pane's default output is the VISIBLE area only — so this
-	// second poll proves the rendered text sits ON that one visible row.
-	// Pre-fix, the pane's echoed launch line plus a trailing newline left
-	// the cursor on a fresh empty row, which was the only row the 1-row
-	// pane showed; the text existed solely in scrollback.
-	addCmd := exec.Command(lyxExe, "reed", "add", "--cmd", smokeReapLaunchCmd(), "--name", "clamps-header")
-	addCmd.Dir = h.PrimeWorktree()
-	if out, err := addCmd.CombinedOutput(); err != nil {
-		t.Fatalf("built-binary add: %v\n%s", err, out)
+	// The embedded default template renders "{{.repo}}/{{.worktree}} · {{.hub}}"; the fixture's
+	// hub path is still rendered verbatim inside it regardless of the surrounding template shape.
+	if got := strings.TrimSpace(string(statusLeft)); !strings.Contains(got, h.Location.HubPath) {
+		t.Errorf("#{status-left} = %q; want it to contain the hub path %q", got, h.Location.HubPath)
 	}
-	pollPaneContains(t, tmuxPath, socket, st.HeaderPaneID, "hub: "+h.Location.HubPath, 20*time.Second)
 }
 
-// TestSmokeHeaderPaneSurvivesUpAddRemoveAndReconcile pins the header-pane keepalive guarantee this
-// batch adds: the always-present header pane must survive a full up -> add -> remove -> add cycle
+// TestSmokeSelvageSurvivesUpAddRemoveAndReconcile pins Selvage's keepalive guarantee: the
+// always-present Selvage pane must survive a full up -> add -> remove -> add cycle
 // and every reconcile along the way, and it is never a strand's pane — because a strand's pane is
-// always a fresh split (planPaneTarget never targets the header while any non-header pane exists),
-// and the header is exempt from both halves of reconcile's kill schedule — and, the whole point,
+// always a fresh split (planPaneTarget never targets Selvage while any non-Selvage pane exists),
+// and Selvage is exempt from both halves of reconcile's kill schedule — and, the whole point,
 // still alive even when the strand table momentarily drops to zero after a remove.
 // Mirrors TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable's tmux-driven verification style
-// (list-panes via the real binary, not reed's own reporting) but for the header instead of a
+// (list-panes via the real binary, not reed's own reporting) but for Selvage instead of a
 // foreign pane.
-func TestSmokeHeaderPaneSurvivesUpAddRemoveAndReconcile(t *testing.T) {
+func TestSmokeSelvageSurvivesUpAddRemoveAndReconcile(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 
 	h := hubforge.NewHub(t, ".")
@@ -377,34 +356,34 @@ func TestSmokeHeaderPaneSurvivesUpAddRemoveAndReconcile(t *testing.T) {
 		t.Fatalf("up = %d; want 0, output: %s", code, out.String())
 	}
 
-	// up boots the header pane before any strand exists (card 17). Read the
-	// persisted pane id directly from reed.json (RunCLI/status carries no
-	// header field) rather than assuming which of the session's panes it is.
+	// up boots Selvage before any strand exists. Read the persisted pane id
+	// directly from reed.json (RunCLI/status carries no Selvage field)
+	// rather than assuming which of the session's panes it is.
 	st, err := reedengine.LoadState(filepath.Join(h.PrimeWorktree(), ".lyx"))
-	if err != nil || st == nil || st.HeaderPaneID == "" {
-		t.Fatalf("LoadState after up = (%+v, %v), want a persisted HeaderPaneID", st, err)
+	if err != nil || st == nil || st.SelvagePaneID == "" {
+		t.Fatalf("LoadState after up = (%+v, %v), want a persisted SelvagePaneID", st, err)
 	}
-	headerPaneID := st.HeaderPaneID
+	selvagePaneID := st.SelvagePaneID
 
 	socket, session := socketAndSession(t)
-	requireHeaderAlive := func(when string) {
+	requireSelvageAlive := func(when string) {
 		t.Helper()
 		lines := listPaneLines(t, tmuxPath, socket, session)
-		if !paneLiveOnSession(lines, headerPaneID) {
-			t.Fatalf("header pane %s not alive %s; panes=%v", headerPaneID, when, lines)
+		if !paneLiveOnSession(lines, selvagePaneID) {
+			t.Fatalf("Selvage pane %s not alive %s; panes=%v", selvagePaneID, when, lines)
 		}
 	}
-	requireHeaderAlive("right after up (zero strands)")
+	requireSelvageAlive("right after up (zero strands)")
 
 	// add: the preceding up's own reconcile already reaped the session's
-	// pre-header pane (the same zero-strands-plus-alive-header reap
-	// TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable pins), so the header
+	// pre-Selvage pane (the same zero-strands-plus-alive-Selvage reap
+	// TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable pins), so Selvage
 	// is the session's only pane when this first strand is added.
-	// planPaneTarget's header-as-last-resort fallback then splits off the
-	// header itself — the header stays alive as the split TARGET, and the
-	// strand lands on the freshly split pane, never on the header pane.
+	// planPaneTarget's Selvage-as-last-resort fallback then splits off
+	// Selvage itself — Selvage stays alive as the split TARGET, and the
+	// strand lands on the freshly split pane, never on Selvage.
 	guid := addStrand(t, "pwsh -NoExit -Command Write-Host ready", "--name", "first")
-	requireHeaderAlive("after add")
+	requireSelvageAlive("after add")
 
 	out.Reset()
 	if code := RunCLI(&out, []string{"status"}); code != 0 {
@@ -418,11 +397,11 @@ func TestSmokeHeaderPaneSurvivesUpAddRemoveAndReconcile(t *testing.T) {
 		t.Errorf("strand %s live = false; want true", guid)
 	}
 	strandPaneID, _ := strand["paneId"].(string)
-	if strandPaneID == "" || strandPaneID == headerPaneID {
-		t.Fatalf("strand %s paneId = %q, want a real, non-header pane id", guid, strandPaneID)
+	if strandPaneID == "" || strandPaneID == selvagePaneID {
+		t.Fatalf("strand %s paneId = %q, want a real, non-Selvage pane id", guid, strandPaneID)
 	}
 
-	// remove: the session's only strand is gone, but the header pane — a
+	// remove: the session's only strand is gone, but Selvage — a
 	// permanent second pane — must keep the session (and itself) alive,
 	// exactly the invariant contract_integration_test.go's
 	// TestRemoveStrand_SoleStrandEmptiesSessionSucceeds pins at the engine
@@ -432,24 +411,24 @@ func TestSmokeHeaderPaneSurvivesUpAddRemoveAndReconcile(t *testing.T) {
 		t.Fatalf("remove = %d; want 0, output: %s", code, out.String())
 	}
 	if !sessionAlive(tmuxPath, socket, session) {
-		t.Fatalf("session %s died after removing its sole strand; the header pane must have kept it alive", session)
+		t.Fatalf("session %s died after removing its sole strand; Selvage must have kept it alive", session)
 	}
-	requireHeaderAlive("after removing the sole strand (zero strands tracked)")
+	requireSelvageAlive("after removing the sole strand (zero strands tracked)")
 
-	// A reconciling verb (up) with zero strands must not disturb the header
+	// A reconciling verb (up) with zero strands must not disturb Selvage
 	// either — mirrors TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable's
 	// same-shaped assertion for a foreign pane.
 	out.Reset()
 	if code := RunCLI(&out, []string{"up"}); code != 0 {
 		t.Fatalf("post-remove up = %d; want 0, output: %s", code, out.String())
 	}
-	requireHeaderAlive("after a reconciling up with zero strands")
+	requireSelvageAlive("after a reconciling up with zero strands")
 
-	// add again: the header must still never become the new strand's own
-	// pane, and the new strand must come up live — the substrate the header
+	// add again: Selvage must still never become the new strand's own
+	// pane, and the new strand must come up live — the substrate Selvage
 	// keeps alive is still genuinely usable, not a wedged husk.
 	second := addStrand(t, "pwsh -NoExit -Command Write-Host ready", "--name", "second")
-	requireHeaderAlive("after a second add with strands now bound")
+	requireSelvageAlive("after a second add with strands now bound")
 
 	out.Reset()
 	if code := RunCLI(&out, []string{"status"}); code != 0 {
@@ -462,8 +441,8 @@ func TestSmokeHeaderPaneSurvivesUpAddRemoveAndReconcile(t *testing.T) {
 	if live, _ := strand2["live"].(bool); !live {
 		t.Errorf("strand %s live = false; want true", second)
 	}
-	if paneID, _ := strand2["paneId"].(string); paneID == headerPaneID {
-		t.Errorf("strand %s was bound to the header pane %s; the header must never become a strand's own pane", second, headerPaneID)
+	if paneID, _ := strand2["paneId"].(string); paneID == selvagePaneID {
+		t.Errorf("strand %s was bound to Selvage %s; Selvage must never become a strand's own pane", second, selvagePaneID)
 	}
 }
 
@@ -489,11 +468,11 @@ func pollProcessGone(t *testing.T, pid int, timeout time.Duration) {
 // manually-created split-window pane must never be adopted as a strand's pane, and must instead be
 // reaped by add's reconcile.
 //
-// M16 fires only when the sole alive non-header pane is the foreign one — a session that still holds
-// its unadopted initial new-session pane has TWO alive non-header panes, which is why
+// M16 fires only when the sole alive non-Selvage pane is the foreign one — a session that still holds
+// its unadopted initial new-session pane has TWO alive non-Selvage panes, which is why
 // TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable passed even before this round's fix. So the
-// fixture first drives the session to a header-plus-foreign-pane-only state: up, add a strand, remove
-// that strand (its pane is gone, not corpsed — the always-present header keeps the session up), then
+// fixture first drives the session to a Selvage-plus-foreign-pane-only state: up, add a strand, remove
+// that strand (its pane is gone, not corpsed — the always-present Selvage pane keeps the session up), then
 // split a foreign pane in with the real tmux binary, exactly as
 // TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable does.
 //
@@ -521,10 +500,10 @@ func TestSmokeForeignPaneIsReapedNotAdoptedByAdd(t *testing.T) {
 	}
 
 	st, err := reedengine.LoadState(filepath.Join(h.PrimeWorktree(), ".lyx"))
-	if err != nil || st == nil || st.HeaderPaneID == "" {
-		t.Fatalf("LoadState after up = (%+v, %v), want a persisted HeaderPaneID", st, err)
+	if err != nil || st == nil || st.SelvagePaneID == "" {
+		t.Fatalf("LoadState after up = (%+v, %v), want a persisted SelvagePaneID", st, err)
 	}
-	headerPaneID := st.HeaderPaneID
+	selvagePaneID := st.SelvagePaneID
 
 	guid := addStrand(t, smokeReapLaunchCmd(), "--name", "throwaway")
 	out.Reset()
@@ -536,19 +515,19 @@ func TestSmokeForeignPaneIsReapedNotAdoptedByAdd(t *testing.T) {
 
 	// A foreign pane reed does not track (the operator-split case), created
 	// exactly as TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable's own
-	// foreign split-window: the session now holds the header plus this one
-	// foreign pane, and zero strands — the sole-alive-non-header-pane
+	// foreign split-window: the session now holds Selvage plus this one
+	// foreign pane, and zero strands — the sole-alive-non-Selvage-pane
 	// precondition M16 requires.
 	if err := exec.Command(tmuxPath, "-L", socket, "split-window", "-t", session).Run(); err != nil {
 		t.Fatalf("foreign split-window: %v", err)
 	}
 
-	// The foreign pane is the one live pane that is neither the header nor
+	// The foreign pane is the one live pane that is neither Selvage nor
 	// the (already-gone, kill-pane-removed-outright) removed strand's pane.
 	foreignPaneID := ""
 	for _, line := range listPaneLines(t, tmuxPath, socket, session) {
 		fields := strings.Fields(line)
-		if len(fields) == 0 || fields[0] == headerPaneID {
+		if len(fields) == 0 || fields[0] == selvagePaneID {
 			continue
 		}
 		foreignPaneID = fields[0]
@@ -587,27 +566,27 @@ func TestSmokeForeignPaneIsReapedNotAdoptedByAdd(t *testing.T) {
 // TestSmokeUpSurvivesAScrubbedStateFileWhileTheSessionIsUp is the end-to-end regression guard for
 // the R4 review's R4-F4, driven at the CLI seam a real operator uses.
 //
-// Reproduced live before the fix: with the session up, a strand added and the default one-row header
+// Reproduced live before the fix: with the session up, a strand added and the default one-row Selvage
 // band laid out, deleting .lyx/reed.json — a never-tracked machine-local tree the
 // Durable-vs-Ephemeral State Invariant makes disposable, and exactly what `git clean -xdf` in the
 // worktree removes — permanently wedged the worktree. `lyx reed up` and `lyx reed resume` both
 // failed, on every subsequent invocation, with
-// `split header pane: exit status 1: no space for new pane`, because the physically topmost pane was
-// now an UNTRACKED one-row header band that tmux cannot split, while `lyx reed status` kept
+// `split Selvage pane: exit status 1: no space for new pane`, because the physically bottom-most pane was
+// now an UNTRACKED one-row Selvage band that tmux cannot split, while `lyx reed status` kept
 // reporting the session healthy and nothing named the one escape (`down`, then `up`).
 //
 // Under the reap this batch adds, the observable pane set after the recovering `up` has changed: it
-// used to be three panes (the untracked old header, the untracked orphaned strand pane, and the
-// freshly split header), and is now exactly one — the freshly split header alone. The scrub erases the
-// strand table along with HeaderPaneID, so the recovering up's own reconcile runs with zero strands
-// tracked and a freshly-alive header, which authorizes reaping every other pane (reconcile.go). That
-// makes the rebuilt header pane's pane_top == 0 assertion below TRIVIALLY true — with one pane there is
-// nowhere else for it to be — so it is vacuous rather than live coverage now; "a fix that recovered by
+// used to be three panes (the untracked old Selvage pane, the untracked orphaned strand pane, and the
+// freshly split Selvage pane), and is now exactly one — the freshly split Selvage pane alone. The scrub
+// erases the strand table along with SelvagePaneID, so the recovering up's own reconcile runs with zero
+// strands tracked and a freshly-alive Selvage, which authorizes reaping every other pane (reconcile.go).
+// That makes the rebuilt Selvage pane's pane_top == 0 assertion below TRIVIALLY true — with one pane there
+// is nowhere else for it to be — so it is vacuous rather than live coverage now; "a fix that recovered by
 // splitting somewhere else would fail here" no longer has teeth for this fixture. What stays
 // load-bearing is the other half: the recovering `up` must still exit 0 — the actual R4-F4 wedge
-// (`split header pane: exit status 1: no space for new pane` on every subsequent invocation) — plus
+// (`split Selvage pane: exit status 1: no space for new pane` on every subsequent invocation) — plus
 // the following `add` proving the session is genuinely usable again, not merely non-erroring.
-// TestSmokeUpAfterScrubbedStateLeavesOnlyTheRebuiltHeader is where the reap's own effect on this
+// TestSmokeUpAfterScrubbedStateLeavesOnlyTheRebuiltSelvage is where the reap's own effect on this
 // scenario is actually pinned, asserting on the recovering `up` itself rather than a follow-up verb.
 func TestSmokeUpSurvivesAScrubbedStateFileWhileTheSessionIsUp(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
@@ -626,7 +605,7 @@ func TestSmokeUpSurvivesAScrubbedStateFileWhileTheSessionIsUp(t *testing.T) {
 		t.Fatalf("up = %d; want 0, output: %s", code, out.String())
 	}
 	// A strand, so applyLayoutLocked actually applies reed's layout and the
-	// header band is squeezed down to its configured one row — the whole
+	// Selvage band is squeezed down to its configured one row — the whole
 	// precondition for the wedge.
 	addStrand(t, "pwsh -NoExit -Command Write-Host ready", "--name", "before-scrub")
 	socket, session := socketAndSession(t)
@@ -643,33 +622,33 @@ func TestSmokeUpSurvivesAScrubbedStateFileWhileTheSessionIsUp(t *testing.T) {
 	}
 
 	st, err := reedengine.LoadState(stateDir)
-	if err != nil || st == nil || st.HeaderPaneID == "" {
-		t.Fatalf("LoadState after the recovering up = (%+v, %v); want a freshly persisted HeaderPaneID", st, err)
+	if err != nil || st == nil || st.SelvagePaneID == "" {
+		t.Fatalf("LoadState after the recovering up = (%+v, %v); want a freshly persisted SelvagePaneID", st, err)
 	}
-	headerTop := ""
+	selvageTop := ""
 	for _, line := range listPaneLines(t, tmuxPath, socket, session) {
 		fields := strings.Fields(line)
-		if len(fields) >= 3 && fields[0] == st.HeaderPaneID {
-			headerTop = fields[2]
+		if len(fields) >= 3 && fields[0] == st.SelvagePaneID {
+			selvageTop = fields[2]
 		}
 	}
-	if headerTop != "0" {
-		t.Errorf("rebuilt header pane %s has pane_top %q; want %q — the header must land physically topmost or select-layout misassigns its cell", st.HeaderPaneID, headerTop, "0")
+	if selvageTop != "0" {
+		t.Errorf("rebuilt Selvage pane %s has pane_top %q; want %q — as the session's sole pane, Selvage must land at the origin or select-layout misassigns its cell", st.SelvagePaneID, selvageTop, "0")
 	}
 
 	// The session must be genuinely usable again, not merely non-erroring.
 	addStrand(t, "pwsh -NoExit -Command Write-Host recovered", "--name", "after-scrub")
 }
 
-// TestSmokeUpAfterScrubbedStateLeavesOnlyTheRebuiltHeader is the M22 regression: a scrubbed
+// TestSmokeUpAfterScrubbedStateLeavesOnlyTheRebuiltSelvage is the M22 regression: a scrubbed
 // .lyx/reed.json must converge on the recovering `up` under test itself, not one verb later.
 //
-// The pre-fix defect converged one verb late — the recovering up left the old header pane and the
-// orphaned strand pane both untracked-but-alive alongside the freshly split header, and only a
+// The pre-fix defect converged one verb late — the recovering up left the old Selvage pane and the
+// orphaned strand pane both untracked-but-alive alongside the freshly split Selvage pane, and only a
 // FOLLOW-UP verb's reconcile cleared them. An assertion placed after that follow-up would pass either
 // way, which is why this test asserts on the recovering `up` itself, with no intervening verb: the
-// session must hold exactly one pane (the newly persisted HeaderPaneID, distinct from the captured old
-// one), and both the old header pane id and the old strand pane id must already be gone from
+// session must hold exactly one pane (the newly persisted SelvagePaneID, distinct from the captured old
+// one), and both the old Selvage pane id and the old strand pane id must already be gone from
 // list-panes.
 //
 // The orphaned strand pane's captured #{pane_pid} is polled gone too, under a bounded deadline
@@ -678,12 +657,12 @@ func TestSmokeUpSurvivesAScrubbedStateFileWhileTheSessionIsUp(t *testing.T) {
 // leak this pins is the pane and its own process, not the whole subtree (RemoveStrand's and Down's own
 // tests pin subtree reaping).
 //
-// The header-only, full-height end state this test asserts is the accepted outcome, not a layout
+// The Selvage-only, full-height end state this test asserts is the accepted outcome, not a layout
 // defect to "fix" by synthesizing a spacer pane: applyLayoutLockedOpts deliberately skips
 // select-layout when no strand owns a present pane (anyPlacedStrand, apply.go), and the scrub erases
-// the strand table along with HeaderPaneID, so the recovering up's reconcile leaves nothing else for
+// the strand table along with SelvagePaneID, so the recovering up's reconcile leaves nothing else for
 // this session to place.
-func TestSmokeUpAfterScrubbedStateLeavesOnlyTheRebuiltHeader(t *testing.T) {
+func TestSmokeUpAfterScrubbedStateLeavesOnlyTheRebuiltSelvage(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 
 	h := hubforge.NewHub(t, ".")
@@ -701,10 +680,10 @@ func TestSmokeUpAfterScrubbedStateLeavesOnlyTheRebuiltHeader(t *testing.T) {
 
 	stateDir := filepath.Join(h.PrimeWorktree(), ".lyx")
 	stBefore, err := reedengine.LoadState(stateDir)
-	if err != nil || stBefore == nil || stBefore.HeaderPaneID == "" {
-		t.Fatalf("LoadState after up = (%+v, %v), want a persisted HeaderPaneID", stBefore, err)
+	if err != nil || stBefore == nil || stBefore.SelvagePaneID == "" {
+		t.Fatalf("LoadState after up = (%+v, %v), want a persisted SelvagePaneID", stBefore, err)
 	}
-	oldHeaderPaneID := stBefore.HeaderPaneID
+	oldSelvagePaneID := stBefore.SelvagePaneID
 
 	guid := addStrand(t, smokeReapLaunchCmd(), "--name", "orphaned-by-scrub")
 	socket, session := socketAndSession(t)
@@ -734,25 +713,25 @@ func TestSmokeUpAfterScrubbedStateLeavesOnlyTheRebuiltHeader(t *testing.T) {
 	}
 
 	stAfter, err := reedengine.LoadState(stateDir)
-	if err != nil || stAfter == nil || stAfter.HeaderPaneID == "" {
-		t.Fatalf("LoadState after the recovering up = (%+v, %v); want a freshly persisted HeaderPaneID", stAfter, err)
+	if err != nil || stAfter == nil || stAfter.SelvagePaneID == "" {
+		t.Fatalf("LoadState after the recovering up = (%+v, %v); want a freshly persisted SelvagePaneID", stAfter, err)
 	}
-	newHeaderPaneID := stAfter.HeaderPaneID
-	if newHeaderPaneID == oldHeaderPaneID {
-		t.Fatalf("HeaderPaneID after the recovering up = %s; want a NEW id distinct from the pre-scrub header %s", newHeaderPaneID, oldHeaderPaneID)
+	newSelvagePaneID := stAfter.SelvagePaneID
+	if newSelvagePaneID == oldSelvagePaneID {
+		t.Fatalf("SelvagePaneID after the recovering up = %s; want a NEW id distinct from the pre-scrub Selvage pane %s", newSelvagePaneID, oldSelvagePaneID)
 	}
 
 	panes := listPaneLines(t, tmuxPath, socket, session)
-	if len(panes) != 1 || !paneLiveOnSession(panes, newHeaderPaneID) {
-		t.Fatalf("panes after the recovering up = %v; want exactly the freshly rebuilt header pane %s", panes, newHeaderPaneID)
+	if len(panes) != 1 || !paneLiveOnSession(panes, newSelvagePaneID) {
+		t.Fatalf("panes after the recovering up = %v; want exactly the freshly rebuilt Selvage pane %s", panes, newSelvagePaneID)
 	}
 	for _, line := range panes {
 		fields := strings.Fields(line)
 		if len(fields) == 0 {
 			continue
 		}
-		if fields[0] == oldHeaderPaneID {
-			t.Errorf("old header pane %s still present after the recovering up; want it reaped", oldHeaderPaneID)
+		if fields[0] == oldSelvagePaneID {
+			t.Errorf("old Selvage pane %s still present after the recovering up; want it reaped", oldSelvagePaneID)
 		}
 		if fields[0] == oldStrandPaneID {
 			t.Errorf("orphaned strand pane %s still present after the recovering up; want it reaped", oldStrandPaneID)

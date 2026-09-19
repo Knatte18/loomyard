@@ -35,6 +35,10 @@ Example:
 				return nil
 			}
 
+			// Attempted after Resume returns without error, before the envelope write: same
+			// reasoning as up's own spawn attempt.
+			c.ensureWatchdogSpawned()
+
 			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{
 				"session": result.Session,
 				"resumed": result.Resumed,

@@ -7,12 +7,12 @@
 
 package render
 
-// clampHeaderHeight returns headerRows clamped to preserve the strand-stack
-// region's minStackRows floor, which the header yields first when the window
+// clampBandHeight returns bandRows clamped to preserve the strand-stack
+// region's minStackRows floor, which the band yields first when the window
 // cannot fit both.
-func clampHeaderHeight(headerRows, windowRows, minStackRows int) int {
-	if headerRows < 0 {
-		headerRows = 0
+func clampBandHeight(bandRows, windowRows, minStackRows int) int {
+	if bandRows < 0 {
+		bandRows = 0
 	}
 	if windowRows <= 0 {
 		return 0
@@ -21,25 +21,25 @@ func clampHeaderHeight(headerRows, windowRows, minStackRows int) int {
 	if floor < 1 {
 		floor = 1
 	}
-	maxHeader := windowRows - floor
-	if maxHeader < 1 {
-		// Never fully starve the header once it exists: the stack's own
+	maxBand := windowRows - floor
+	if maxBand < 1 {
+		// Never fully starve the band once it exists: the stack's own
 		// floor is the lesser of two structural violations when the window
 		// cannot fit both, since a starved stack strand still renders
 		// (clampToFit floors every strand at 1 row already) while a
-		// zero-height header cell is mishandled by the real multiplexer.
-		maxHeader = 1
+		// zero-height band cell is mishandled by the real multiplexer.
+		maxBand = 1
 	}
-	if maxHeader > windowRows {
-		maxHeader = windowRows
+	if maxBand > windowRows {
+		maxBand = windowRows
 	}
-	if headerRows < 1 {
-		headerRows = 1
+	if bandRows < 1 {
+		bandRows = 1
 	}
-	if headerRows > maxHeader {
-		return maxHeader
+	if bandRows > maxBand {
+		return maxBand
 	}
-	return headerRows
+	return bandRows
 }
 
 // stackHeights computes a height for every strand in stack within box.

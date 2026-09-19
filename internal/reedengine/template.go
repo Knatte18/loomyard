@@ -13,7 +13,7 @@ package reedengine
 // preserving defaults when not set: the two machine tool paths (tmux, shell) plus debug_log, mouse,
 // and watchdog.
 // The layout-tuning keys (width, height, collapsed_strip_rows, min_full_rows, strand_name) and the
-// header block are plain literals.
+// status_line and selvage blocks are plain literals.
 // No provider tool is named here: reed stays provider-invariant per the Shuttle Provider-Seam
 // Invariant, so a claude path belongs to shuttle's template, never this one.
 // On Windows the tmux/shell defaults are the machine's pinned psmux.exe/pwsh.exe paths;

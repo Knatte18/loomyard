@@ -8,6 +8,7 @@
 package webstercli
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
@@ -270,9 +271,25 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag str
 	// (see the field's own doc comment). Assigned here, executed by the two verbs that spawn an
 	// agent themselves, run and recover-batch: wiring runs for EVERY verb, and validate, status,
 	// pause and await-batch must boot no tmux server at all.
-	c.reedUp = func() error {
-		_, err := reedEngine.Up()
-		return err
+	//
+	// Standalone reed is never booted by `lyx reed up` — that verb is hub-only — it is booted
+	// in-process by a long-lived supervising run that exists for exactly the session's working
+	// lifetime, and that supervising process is precisely what hub mode lacks and why hub mode needs
+	// a detached daemon at all — so reusing it here is the smaller mechanism, not a special case. The
+	// caller's ctx is what stops the watcher; standalone computes no hub lock path and spawns no
+	// daemon.
+	c.reedUp = func(ctx context.Context, watch bool) error {
+		if _, err := reedEngine.Up(); err != nil {
+			return err
+		}
+		if watch {
+			go func() {
+				if err := reedEngine.Watch(ctx); err != nil {
+					logger.Debug("webster: standalone resize watcher returned", "err", err)
+				}
+			}()
+		}
+		return nil
 	}
 
 	c.setRunner(runner, claudeEngine, reedEngine)

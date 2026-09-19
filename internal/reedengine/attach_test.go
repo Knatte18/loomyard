@@ -407,20 +407,26 @@ func TestAttachArgv_EveryOtherDegradedPathYieldsBareArgv(t *testing.T) {
 	})
 }
 
-// TestAttachArgv_PinsMadeByBuilderBeforeStatusReadback pins that AttachArgv itself issues both
-// geometry pins — not a second exported call the CLI has to remember — and that the status-off pin
+// TestAttachArgv_PinsMadeByBuilderBeforeStatusReadback pins that AttachArgv itself issues every
+// geometry pin — not a second exported call the CLI has to remember — and that the status-line pin
 // precedes the #{status} readback, the ordering the told box depends on (pinGeometryOptionsLocked's
-// doc comment: the told box is only correct once status off has landed).
+// doc comment: the told box is only correct once the status-line pins have landed and been read back).
 func TestAttachArgv_PinsMadeByBuilderBeforeStatusReadback(t *testing.T) {
 	e, rec := newAttachTestEngine(t, goodAttachScript(), goodAttachStrands())
+	// newTestEngine's Geometry leaves WorktreeName unset; the default status-line template's
+	// {{.worktree}} marker requires it, so this case sets it so StatusLineText() succeeds and all
+	// eight set-option calls (not the six-call degraded shape) are issued.
+	e.geom.WorktreeName = "test-worktree"
 
 	got := e.AttachArgv(80, 24)
 	if len(got) != 10 {
 		t.Fatalf("AttachArgv() = %v, want the 10-element chained argv on this known-good script", got)
 	}
 
-	if len(rec.setOptionCalls) != 2 {
-		t.Fatalf("AttachArgv() issued %d set-option calls, want 2: %v", len(rec.setOptionCalls), rec.setOptionCalls)
+	// The seven status-line options plus the pre-existing window-size pin.
+	const wantSetOptionCalls = 8
+	if len(rec.setOptionCalls) != wantSetOptionCalls {
+		t.Fatalf("AttachArgv() issued %d set-option calls, want %d: %v", len(rec.setOptionCalls), wantSetOptionCalls, rec.setOptionCalls)
 	}
 
 	statusPinIdx, statusReadbackIdx := -1, -1
@@ -466,7 +472,7 @@ func TestAttachArgv_NeverMutatesTheSessionOrPersistsState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadState after AttachArgv: %v", err)
 	}
-	if len(after.Strands) != len(before.Strands) || after.HeaderPaneID != before.HeaderPaneID {
+	if len(after.Strands) != len(before.Strands) || after.SelvagePaneID != before.SelvagePaneID {
 		t.Errorf("reed.json changed across AttachArgv: before=%+v after=%+v", before, after)
 	}
 }

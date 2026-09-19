@@ -55,22 +55,22 @@ func wrapLayout(body string) string {
 	return layoutChecksum(body) + "," + body
 }
 
-// bandHeader prepends a fixed-height header cell to stackBody's pane group,
-// producing the full window_layout body when a header pane is present.
+// bandSelvage appends a fixed-height Selvage cell to stackBody's pane group,
+// producing the full window_layout body when the Selvage band is present.
 // stackBody must be a region-relative body string from buildStackBody, not
-// checksum-wrapped; this function only splices the header in front and
-// re-wraps at fullBox's dimensions.
-func bandHeader(fullBox Box, headerPaneID string, headerHeight int, stackBody string) string {
+// checksum-wrapped; this function only splices the band cell on at the end
+// and re-wraps at fullBox's dimensions.
+func bandSelvage(fullBox Box, selvagePaneID string, bandHeight int, stackBody string) string {
 	open := strings.IndexByte(stackBody, '[')
 	closeIdx := strings.LastIndexByte(stackBody, ']')
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "%dx%d,%d,%d[", fullBox.W, fullBox.H, fullBox.X, fullBox.Y)
-	fmt.Fprintf(&b, "%dx%d,%d,%d,%s", fullBox.W, headerHeight, fullBox.X, fullBox.Y, strings.TrimPrefix(headerPaneID, "%"))
 	if inner := stackBody[open+1 : closeIdx]; inner != "" {
-		b.WriteByte(',')
 		b.WriteString(inner)
+		b.WriteByte(',')
 	}
+	fmt.Fprintf(&b, "%dx%d,%d,%d,%s", fullBox.W, bandHeight, fullBox.X, fullBox.Y+fullBox.H-bandHeight, strings.TrimPrefix(selvagePaneID, "%"))
 	b.WriteByte(']')
 	return b.String()
 }
