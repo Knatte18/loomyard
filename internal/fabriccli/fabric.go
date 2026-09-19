@@ -786,9 +786,9 @@ func runPruneWithFlags(ctx context.Context, out io.Writer, apply, force bool) in
 	})
 }
 
-// runCleanupWithFlags executes the cleanup logic with the resolved apply and
-// force flags.
-func runCleanupWithFlags(ctx context.Context, out io.Writer, apply, force bool) int {
+// runCleanupWithFlags executes the cleanup logic with the resolved apply,
+// force, and remote flags.
+func runCleanupWithFlags(ctx context.Context, out io.Writer, apply, force, remote bool) int {
 	// Nothing has been mutated yet at cwd/location resolution: a bare output.Err carries no record.
 	_, l, err := resolveWarpLocation(ctx)
 	if err != nil {
@@ -802,17 +802,71 @@ func runCleanupWithFlags(ctx context.Context, out io.Writer, apply, force bool) 
 
 	top := fabricengine.NewTopology(cfg)
 
-	r, err := top.Cleanup(l, apply, force, false)
+	r, err := top.Cleanup(l, apply, force, remote)
 	if err != nil {
 		return errWithRecord(out, r.Mutated(), err)
 	}
-	return okWithRecord(out, r.Mutated(), map[string]any{
-		"entries": r.Entries,
-	})
+
+	// CleanupResult itself is never marshalled — only Entries is, as a map value — so
+	// remote_skipped_reason reaches the envelope because the map names it, never because the struct
+	// declares it. Emitted unconditionally, on both the success and the failure exit below, whatever
+	// CleanupResult.RemoteSkippedReason's own omitempty tag says. The per-entry remote_deleted and
+	// remote_error keys need no map entry of their own: they marshal from CleanupBranchEntry
+	// automatically because Entries is itself a map value.
+	fields := map[string]any{
+		"entries":               r.Entries,
+		"remote_skipped_reason": r.RemoteSkippedReason,
+	}
+
+	// Keying the failure exit on Error as well as RemoteError is a deliberate existing-path change:
+	// Cleanup sets no Error on a protected or unmanaged entry, so a non-empty Error is always a
+	// genuine failure and never a designed refusal — unlike prune's Error, which stays in doc.go's
+	// carve-out untouched.
+	var localFailedBranches, remoteFailedBranches []string
+	var attemptedLocal, attempted int
+	for _, entry := range r.Entries {
+		if entry.Error != "" {
+			localFailedBranches = append(localFailedBranches, entry.Branch)
+		}
+		if entry.Error != "" || entry.Deleted {
+			attemptedLocal++
+		}
+		if entry.RemoteError != "" {
+			remoteFailedBranches = append(remoteFailedBranches, entry.Branch)
+		}
+		if entry.Deleted {
+			attempted++
+		}
+	}
+
+	var synthesised error
+	switch {
+	case len(localFailedBranches) > 0 && len(remoteFailedBranches) > 0:
+		localErr := fmt.Errorf(
+			"branch deletion failed for %d of %d orphan branches (%s); each branch's reason is in entries[].error",
+			len(localFailedBranches), attemptedLocal, strings.Join(localFailedBranches, ", "))
+		remoteErr := fmt.Errorf(
+			"remote branch deletion failed for %d of %d orphan branches (%s); each branch's reason is in entries[].remote_error",
+			len(remoteFailedBranches), attempted, strings.Join(remoteFailedBranches, ", "))
+		synthesised = fmt.Errorf("%v; additionally, %v", localErr, remoteErr)
+	case len(localFailedBranches) > 0:
+		synthesised = fmt.Errorf(
+			"branch deletion failed for %d of %d orphan branches (%s); each branch's reason is in entries[].error",
+			len(localFailedBranches), attemptedLocal, strings.Join(localFailedBranches, ", "))
+	case len(remoteFailedBranches) > 0:
+		synthesised = fmt.Errorf(
+			"remote branch deletion failed for %d of %d orphan branches (%s); each branch's reason is in entries[].remote_error",
+			len(remoteFailedBranches), attempted, strings.Join(remoteFailedBranches, ", "))
+	}
+
+	if synthesised != nil {
+		return errWithRecordFields(out, r.Mutated(), synthesised, fields)
+	}
+	return okWithRecord(out, r.Mutated(), fields)
 }
 
-// runRemoveWithFlag executes the remove logic with the resolved force flag.
-func runRemoveWithFlag(ctx context.Context, out io.Writer, args []string, force bool) int {
+// runRemoveWithFlag executes the remove logic with the resolved force and remote flags.
+func runRemoveWithFlag(ctx context.Context, out io.Writer, args []string, force, remote bool) int {
 	// Nothing has been mutated yet at cwd/location resolution: a bare output.Err carries no record.
 	_, l, err := resolveWarpLocation(ctx)
 	if err != nil {
@@ -832,15 +886,39 @@ func runRemoveWithFlag(ctx context.Context, out io.Writer, args []string, force 
 	}
 	slug := args[0]
 
-	r, err := top.Remove(l, slug, force, false)
+	r, err := top.Remove(l, slug, force, remote)
 	if err != nil {
 		return errWithRecord(out, r.Mutated(), err)
 	}
-	return okWithRecord(out, r.Mutated(), map[string]any{
-		"slug":          r.Slug,
-		"path":          r.Path,
-		"links_removed": r.LinksRemoved,
-	})
+
+	// This handler hand-builds its fields map and never marshals RemoveResult at all, so every new
+	// field is invisible unless the map names it. Emitted unconditionally, on both the success and
+	// the failure exit below, whatever RemoveResult's own omitempty tags say.
+	fields := map[string]any{
+		"slug":                  r.Slug,
+		"path":                  r.Path,
+		"links_removed":         r.LinksRemoved,
+		"remote_branch_deleted": r.RemoteBranchDeleted,
+		"remote_branch_error":   r.RemoteBranchError,
+		"remote_skipped_reason": r.RemoteSkippedReason,
+	}
+
+	// Keyed on RemoteBranchError alone — never on RemoteSkippedReason — so that a missing origin
+	// produces exit 0 here exactly as it does from cleanup, and the identical configuration state
+	// never yields two different verdicts across the two verbs.
+	if r.RemoteBranchError != "" {
+		weftBranch := fabricengine.WeftBranchName(cfg.BranchPrefix + slug)
+		// The remote name is the literal "origin", hardcoded here at the fabriccli site:
+		// originRemoteName is unexported in internal/fabricengine and stays that way, since exporting
+		// a constant purely to spell one error string would widen the engine's API for no caller that
+		// needs it. This matches the discussion's hardcoded-origin decision, which fixes "origin"
+		// throughout fabric's geometry.
+		synthesised := fmt.Errorf(
+			"weft branch %q was deleted locally, but its copy on %q was not: %s",
+			weftBranch, "origin", r.RemoteBranchError)
+		return errWithRecordFields(out, r.Mutated(), synthesised, fields)
+	}
+	return okWithRecord(out, r.Mutated(), fields)
 }
 
 // addOptionsFromEnv returns the AddOptions for a CLI-driven `lyx fabric add`,
