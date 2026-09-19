@@ -1,0 +1,38 @@
+MILL_REVIEW_BEGIN
+# Review: reed: per-hub daemon reaps orphaned sessions — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: sonnetxhigh
+reviewer_self_id: claude-sonnet-5
+reviewed_file: plan/
+date: 2026-09-19
+```
+
+## Findings
+
+### [BLOCKING:scope] Card 13 undercounts runWatchdogLoop's call sites in the tagged file
+**Location:** Batch 3 / Card 13 (and Card 14's gate)
+**Issue:** Grep of `internal/reedcli/watchdog_integration_test.go` shows FOUR calls `runWatchdogLoop(ctx, h.Path, tmuxPath)` (lines 168, 366, 465, 527 — in `TestWatchdogIntegration_DiscoversAndDropsDepartedSessions`, `_ResizeAppliesOnlyToThatWorktree`, `_DownThenUpDoesNotKillDaemon`, `_ReEntryReReadsFlippedConfig`), but Card 13 says "calls ... at three places" and Card 14 repeats "the three in the integration test file."
+**Fix:** Name all four call sites in Card 13 (five total with `watchdogCmd`'s `RunE`) and update Card 14's gate text accordingly; as written, an implementer who updates only three leaves the fourth on the old signature, and batch 3's own `go vet -tags integration ./internal/reedcli/` fails to compile.
+
+### [BLOCKING:design] Cards 17–19 never require the `-run`-matching test-name prefix Card 16 uses
+**Location:** Batch 4 / Cards 17, 18, 19
+**Issue:** Batch 4's verify is `go test -tags integration -race -run 'TestWatchdogReap|TestWatchdogIntegration' ./internal/reedcli/`. Card 16 explicitly says its test is "named so it matches the batch verify's `TestWatchdogReap` prefix," but Cards 17 (never-entered orphan), 18 (empty-shell), and 19 (process half + loop liveness) state no naming requirement at all — `_mill/discussion.md`'s own Testing section likewise never states a naming convention.
+**Fix:** Add the same "name it to match `TestWatchdogReap`/`TestWatchdogIntegration`" instruction to Cards 17–19; otherwise a reasonably-named test (e.g. `TestNeverEnteredOrphanIsReaped`) silently never runs under this batch's own `-run` filter, which the rubric calls out as BLOCKING on its own terms.
+
+### [BLOCKING:consistency] Batch 5's own text contradicts its stated independence from batch 4
+**Location:** Batch 5 (05-docs.md) — Batch Scope vs. Batch Tests
+**Issue:** Batch Scope states batch 5 "is independent of batch 4, so the two can run in parallel" (and `depends-on: [3]` only, never 4), but the Batch Tests section then asserts "batches 3 and 4, whose own verify commands already ran by the time this batch starts" — a false ordering guarantee given the declared parallel scheduling.
+**Fix:** Drop the batch-4 reference from Batch Tests (batch 5's `verify: null` doesn't need it to justify itself), or add `4` to batch 5's `depends-on` if that ordering is actually required.
+
+### [BLOCKING:consistency] Card 21's stated reason for dropping the design-doc link is false
+**Location:** Batch 5 / Card 21
+**Issue:** Card 21 justifies dropping the moved entry's `See [designs/...]` line with "The `## Done` entries do not carry a `See [designs/...]` line." `manifest/roadmap.md`'s own `## Done` section contradicts this directly — at least nine Done entries carry one (lines 123, 135, 140, 143, 146, 149, 152, 158, 161), including line 135's link to this very doc, `reed-header-selvage.md`, on the closely related "reed: replace the header pane..." entry.
+**Fix:** Correct the premise; either keep `See [designs/reed-header-selvage.md]` on the moved entry (matching the sibling Done entries that already link the same still-present doc) or give an explicit, entry-specific reason to omit it here.
+
+## Verdict
+
+REQUEST_CHANGES
+Two batch-3/4 mechanical undercounts risk compile/verify failures; batch 5 has two source-contradicted claims.
+MILL_REVIEW_END

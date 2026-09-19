@@ -116,7 +116,9 @@ Batch-local decision beyond `## Shared Decisions`: the in-flight set's synchroni
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** `internal/reedcli/watchdog_integration_test.go` calls `runWatchdogLoop(ctx, h.Path, tmuxPath)` at three places. Update all three to the widened signature by passing the engine's own shell and the production timing: `runWatchdogLoop(ctx, h.Path, tmuxPath, eng1.ShellPath(), watchdogDefaultTiming())`, naming whichever engine variable is already in scope at each call site.
+- **Requirements:** `internal/reedcli/watchdog_integration_test.go` calls `runWatchdogLoop(ctx, h.Path, tmuxPath)` at **four** places — once each inside the tests named `TestWatchdogIntegration_DiscoversAndDropsDepartedSessions`, `TestWatchdogIntegration_ResizeAppliesOnlyToThatWorktree`, `TestWatchdogIntegration_DownThenUpDoesNotKillDaemon` and `TestWatchdogIntegration_ReEntryReReadsFlippedConfig`. Update all four to the widened signature by passing the engine's own shell and the production timing: `runWatchdogLoop(ctx, h.Path, tmuxPath, eng1.ShellPath(), watchdogDefaultTiming())`, naming whichever engine variable is already in scope at each call site. Missing any one of the four leaves it on the old signature and fails this batch's own `go vet -tags integration` half.
+
+  All four sit inside a `go func() { loopDone <- ... }()` wrapper, so each is a one-line argument-list edit.
 
   Passing `watchdogDefaultTiming()` rather than a compressed timing keeps every existing assertion's behaviour identical — these tests already wait on `watchdogHubDiscoveryCycle` multiples through their own `waitForCondition` helper, and changing their cadence here would be an unrelated change to tests this batch is only keeping compilable. Batch 4's new cases are the ones that drive compressed timings.
 
@@ -135,9 +137,9 @@ Batch-local decision beyond `## Shared Decisions`: the in-flight set's synchroni
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** A zero-diff verification gate. Grep the repository for `runWatchdogLoop` and confirm every call site outside the loop's own declaration and doc comments is one of the four this batch already updated — the one in the command's `RunE` (card 11) and the three in the integration test file (card 13). Then run the batch's own `verify:` command and confirm both halves pass: the untagged test run, and the `go vet -tags integration` compile of the tagged file.
+- **Requirements:** A zero-diff verification gate. Grep the repository for `runWatchdogLoop` and confirm every call site outside the loop's own declaration and doc comments is one of the five this batch already updated — the one in the command's `RunE` (card 11) and the four in the integration test file (card 13). A grep returning any other count than five is the failure this gate exists to catch. Then run the batch's own `verify:` command and confirm both halves pass: the untagged test run, and the `go vet -tags integration` compile of the tagged file.
 
-  This card exists because the `runWatchdogLoop` signature change is the one edit in this batch that can break a file no card lists. The untagged `go test` run alone cannot catch it — a build-tagged file is excluded from that compile entirely — so the `-tags integration` vet is the only gate that does.
+  This card exists because the `runWatchdogLoop` signature change is the one edit in this batch that can break a file no card lists, and because a partially-updated call-site set is the likeliest way to get it wrong. The untagged `go test` run alone cannot catch either — a build-tagged file is excluded from that compile entirely — so the `-tags integration` vet is the only gate that does.
 
   Confirm the gate rather than change anything: this card writes no file and produces no diff.
 - **Commit:** none

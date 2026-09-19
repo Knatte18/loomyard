@@ -53,7 +53,7 @@ Batch-local decision beyond `## Shared Decisions`: this batch touches neither `d
 
   Rewrite the summary to describe the shipped behaviour rather than the intent the Planned entry stated — the per-hub daemon now checks each live session name's worktree directory every discovery cycle, reaps a session confirmed gone across three consecutive affirmative cycles by capturing its pane process closure and then killing the session by exact target, and refuses to act at all while the hub directory itself does not stat live.
 
-  The `## Done` entries do not carry a `See [designs/...]` line, so the moved entry drops the one the Planned version had; the design doc is reachable from the module's own documentation. Renumber nothing — the file uses the `1.` repeated-marker form throughout, so the surrounding entries need no edit.
+  Keep the entry's `See [designs/reed-header-selvage.md](designs/reed-header-selvage.md)` line on its own second line when it moves. Most `## Done` entries carry such a line, and the entry directly above the `## Done` heading's midpoint — the shipped header/Selvage/watchdog split — already links this exact same design doc, which card 20 leaves in place and extends. Dropping the link would be the odd one out and would orphan the very document this task just updated. Renumber nothing — the file uses the `1.` repeated-marker form throughout, so the surrounding entries need no edit.
 
   Leave every other item in `## Planned` in its existing order.
 - **Commit:** `docs(manifest): move the per-hub daemon orphan reap to Done`
@@ -63,4 +63,5 @@ Batch-local decision beyond `## Shared Decisions`: this batch touches neither `d
 `verify: null` — this batch edits two markdown files under `manifest/` and has no runnable surface at all.
 Neither file is read by any Go test or by the build;
 there is no doc-link checker or markdown lint gate in this repo to run against them.
-The behaviour the prose describes is verified by batches 3 and 4, whose own verify commands already ran by the time this batch starts.
+The behaviour the prose describes is verified by batch 3, this batch's only declared dependency, whose verify command has already run by the time this batch starts.
+Batch 4's tagged assertions cover the same behaviour more deeply, but this batch does not depend on them and the two may run in parallel, so nothing here assumes batch 4 has run.
