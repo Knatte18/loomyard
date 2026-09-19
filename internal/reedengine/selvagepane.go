@@ -12,6 +12,68 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
+// reapPolicy answers the three Selvage-related questions planReconcile asks: whether a given pane is
+// exempt from the dead-pane kill, whether it is exempt from the untracked-pane reap, and whether the
+// Selvage pane's own state authorizes the untracked reap to run at all.
+// The zero value has an empty pane id and reports not-alive, matching a state with no Selvage pane
+// recorded.
+type reapPolicy struct {
+	paneID string
+	alive  bool
+}
+
+// newReapPolicy builds the reap policy planReconcile consults from st's recorded Selvage pane id and
+// the current live pane set.
+func newReapPolicy(st *ReedState, live []LivePane) reapPolicy {
+	policy := reapPolicy{paneID: st.SelvagePaneID}
+	if policy.paneID == "" {
+		return policy
+	}
+	for _, p := range live {
+		if p.ID == policy.paneID && !p.Dead {
+			policy.alive = true
+			break
+		}
+	}
+	return policy
+}
+
+// exemptFromDeadKill reports whether paneID is Selvage's own pane and so must never be scheduled by
+// the dead-pane kill loop: nothing outside up/resume ever rebuilds Selvage, so killing a
+// pane_dead=1 Selvage here would leave the session without its always-on operator console with a
+// stale SelvagePaneID until the next up/resume — and, before the planLayout presence filter existed,
+// that stale id was still emitted as a layout cell, which a real tmux ACCEPTS (exit 0) and assigns
+// positionally, scrambling every strand's height (observed live, tmux 3.6). A kept Selvage corpse
+// instead stays enumerable, keeps the cell/pane count consistent, and is healed — killed and
+// re-split — by ensureSelvagePaneLocked on the next up/resume.
+// The non-empty guard is explicit rather than relying on a live pane id never being the empty string.
+func (p reapPolicy) exemptFromDeadKill(paneID string) bool {
+	return p.paneID != "" && p.paneID == paneID
+}
+
+// exemptFromUntrackedReap reports whether paneID is Selvage's own pane and so must never be reaped as
+// an untracked pane, regardless of whether Selvage itself is alive: Selvage stays exempt from being
+// killed by mere presence (a Selvage corpse is still never killed), distinct from authorizesReap,
+// which governs only whether killing anything else is allowed at all. Presence-exemption and
+// aliveness-authorization must not be folded together — see authorizesReap's doc comment for why.
+// The non-empty guard is explicit rather than relying on a live pane id never being the empty string.
+func (p reapPolicy) exemptFromUntrackedReap(paneID string) bool {
+	return p.paneID != "" && p.paneID == paneID
+}
+
+// authorizesReap reports whether an alive Selvage pane authorizes the untracked-pane reap to run:
+// killing an alive pane at worst corpses it under remain-on-exit, so the surviving Selvage always
+// keeps the session alive. This is a separate question from exemptFromUntrackedReap/exemptFromDeadKill
+// and must never be folded into them: Selvage stays exempt from being killed by mere presence (a
+// Selvage corpse is still never killed), while only an ALIVE Selvage may authorize killing anything
+// else. This disjunct exists because this reap fires from AddStrand/UpdateStrand once the
+// reap-before-allocate chokepoint lands, and neither of those paths ever calls
+// ensureSelvagePaneLocked — so a dead-but-present Selvage must not be allowed to authorize reaping the
+// session's only alive pane.
+func (p reapPolicy) authorizesReap() bool {
+	return p.paneID != "" && p.alive
+}
+
 // clearSelvagePaneBinding clears st's Selvage pane binding.
 // It is the single writer of that clear; its three callers are upLocked's and Resume's own
 // server-rebirth handling (lifecycle.go) and adoptPaneGenerationLocked's pane-generation mismatch

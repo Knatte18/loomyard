@@ -29,7 +29,7 @@ type reconcilePlan struct {
 // untracked panes to reap.
 // Pure logic; unit-testable without a running server.
 // Keeps at least one pane alive (session-survival rule); spares Selvage.
-func planReconcile(strands []Strand, live []LivePane, selvagePaneID string) reconcilePlan {
+func planReconcile(strands []Strand, live []LivePane, policy reapPolicy) reconcilePlan {
 	var plan reconcilePlan
 
 	liveByID := make(map[string]LivePane, len(live))
@@ -59,20 +59,9 @@ func planReconcile(strands []Strand, live []LivePane, selvagePaneID string) reco
 		}
 	}
 
-	// Selvage is exempt from the dead-pane kill too, not only from the
-	// untracked reap below: nothing outside up/resume ever rebuilds it, so
-	// killing a pane_dead=1 Selvage here would leave the session without its
-	// always-on operator console with a stale SelvagePaneID until the next
-	// up/resume — and, before the planLayout presence filter existed, that
-	// stale id was still emitted as a layout cell, which a real tmux
-	// ACCEPTS (exit 0) and assigns positionally, scrambling every strand's
-	// height (observed live, tmux 3.6). A kept Selvage corpse instead stays
-	// enumerable, keeps the cell/pane count consistent, and is healed —
-	// killed and re-split — by ensureSelvagePaneLocked on the next
-	// up/resume.
 	killSet := make(map[string]bool, len(live))
 	for _, p := range live {
-		if p.Dead && p.ID != keptDeadPaneID && p.ID != selvagePaneID {
+		if p.Dead && p.ID != keptDeadPaneID && !policy.exemptFromDeadKill(p.ID) {
 			killSet[p.ID] = true
 			plan.deadPanesToKill = append(plan.deadPanesToKill, p.ID)
 		}
@@ -80,14 +69,7 @@ func planReconcile(strands []Strand, live []LivePane, selvagePaneID string) reco
 
 	// Deterministic untracked-pane reaping (see the doc comment): kill every
 	// live pane no strand owns, while EITHER some strand is bound to a
-	// present pane OR Selvage itself is alive — killing an alive pane at
-	// worst corpses it under remain-on-exit, so the surviving bound pane or
-	// Selvage always keeps the session alive. The Selvage disjunct exists
-	// because this reap fires from AddStrand/UpdateStrand once the
-	// reap-before-allocate chokepoint lands, and neither of those paths ever
-	// calls ensureSelvagePaneLocked — so a dead-but-present Selvage must not
-	// be allowed to authorize reaping the session's only alive pane; only an
-	// ALIVE Selvage may.
+	// present pane OR Selvage's policy authorizes it.
 	boundPaneIDs := make(map[string]bool, len(strands))
 	for _, s := range strands {
 		if s.PaneID != "" {
@@ -102,31 +84,17 @@ func planReconcile(strands []Strand, live []LivePane, selvagePaneID string) reco
 		}
 	}
 
-	// selvageAlive is a third, separate local, never folded into
-	// boundPaneIDs/anyBoundPresent/exemptPaneIDs: Selvage stays exempt from
-	// being killed by mere presence (a Selvage corpse is still never
-	// killed), while only an alive Selvage authorizes killing anything else.
-	selvageAlive := false
-	if selvagePaneID != "" {
-		if p, present := liveByID[selvagePaneID]; present && !p.Dead {
-			selvageAlive = true
-		}
-	}
-
 	// exemptPaneIDs gates ONLY which untracked panes escape the deterministic
-	// reap below; anyBoundPresent above stays computed from real strand
-	// bindings alone (see this function's doc comment).
-	exemptPaneIDs := make(map[string]bool, len(boundPaneIDs)+1)
-	for id := range boundPaneIDs {
-		exemptPaneIDs[id] = true
-	}
-	if selvagePaneID != "" {
-		exemptPaneIDs[selvagePaneID] = true
-	}
+	// reap below, and holds bound strand pane ids alone; anyBoundPresent
+	// above stays computed from real strand bindings alone too (see this
+	// function's doc comment). Selvage's own exemption is asked of the
+	// policy separately, as its own disjunct, rather than being folded into
+	// this map.
+	exemptPaneIDs := boundPaneIDs
 
-	if anyBoundPresent || selvageAlive {
+	if anyBoundPresent || policy.authorizesReap() {
 		for _, p := range live {
-			if !exemptPaneIDs[p.ID] && !killSet[p.ID] && p.ID != keptDeadPaneID {
+			if !exemptPaneIDs[p.ID] && !policy.exemptFromUntrackedReap(p.ID) && !killSet[p.ID] && p.ID != keptDeadPaneID {
 				killSet[p.ID] = true
 				plan.untrackedPanesToKill = append(plan.untrackedPanesToKill, p.ID)
 			}
@@ -210,7 +178,7 @@ func clearConflictingPaneBindings(st *ReedState) []string {
 // reconcileLocked reconciles the persisted table against live panes.
 // Kills panes per planReconcile's schedule; clears bindings for gone panes.
 func (e *Engine) reconcileLocked(st *ReedState, live []LivePane) (killed []string, err error) {
-	plan := planReconcile(st.Strands, live, st.SelvagePaneID)
+	plan := planReconcile(st.Strands, live, newReapPolicy(st, live))
 
 	// Accumulate the ids actually destroyed, separately for each kill reason,
 	// as the loops below progress -- never plan.deadPanesToKill /
