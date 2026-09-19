@@ -9,13 +9,13 @@ See Maintenance below for how the numbering works.
 
 This section holds what's committed to next.
 
+1. **generalize `ly-drive` and loom's `start`/`run`/`step` CLI verbs into a Shed-generic watchdog** — `shedengine`/`shedbuild`/`shedrecipe` are already fully generic; only `loomcli` hardcodes loom's own recipe/paths. The second `shedrecipe` consumer this needed to validate against now exists (`lifecyclerecipe`).
+   See [designs/shed-generic-watchdog.md](designs/shed-generic-watchdog.md).
+
 ## Next Up
 
 What comes right after Planned clears — committed and ordered, unlike Someday below.
 Not yet started, and exact order can still shift as Planned work reveals what unblocks what, but the rough sequence below is the current best guess.
-
-1. **generalize `ly-drive` and loom's `start`/`run`/`step` CLI verbs into a Shed-generic watchdog** — `shedengine`/`shedbuild`/`shedrecipe` are already fully generic; only `loomcli` hardcodes loom's own recipe/paths. The second `shedrecipe` consumer this needed to validate against now exists (`lifecyclerecipe`).
-   See [designs/shed-generic-watchdog.md](designs/shed-generic-watchdog.md).
 
 ## Someday
 
