@@ -160,9 +160,11 @@ Batch-local decisions beyond the overview's Shared Decisions:
   - `internal/fabricengine/refusalof_test.go`
   - `internal/fabricengine/testmain_test.go`
   - `internal/hubforge/hub.go`
+  - `internal/fabricengine/livestate_refusal_test.go`
   - `CONSTRAINTS.md`
 - **Edits:**
   - `internal/fabricengine/destroy_test.go`
+  - `internal/fabricengine/export_test.go`
 - **Creates:**
   - `internal/fabricengine/destroyremote_integration_test.go`
 - **Deletes:** none
@@ -183,12 +185,16 @@ Batch-local decisions beyond the overview's Shared Decisions:
   an unset dirtiness kind is refused with `CheckDirtiness`;
   a branch whose name fabric's scheme does not construct is refused with `CheckOwnership`.
 
-  Create `internal/fabricengine/destroyremote_integration_test.go` with a leading `//go:build integration` line, a file-header comment, and `package fabricengine` — the internal test package, because these tests construct the unexported `remoteBranchRequest`.
+  Create `internal/fabricengine/destroyremote_integration_test.go` with a leading `//go:build integration` line, a file-header comment, and `package fabricengine_test` — NOT `package fabricengine` as originally drafted here: building the two cases below needs a real hub, which the hubforge Fabric-Fixture Invariant requires be built through `hubforge.NewHub`, but `internal/fabricengine`'s own internal test package (an unsuffixed `package fabricengine` test file) cannot import `internal/hubforge` at all — `hubforge` imports `fabriccli`, which imports `fabricengine`, and Go refuses that as an import cycle for an internal test file specifically (`export_test.go`'s own "cannot import the hubforge package" note documents this same constraint for a different helper; confirmed here again by a throwaway build against this exact import pair).
+  Add `CheckRemoteBranchRequestForTest` to `internal/fabricengine/export_test.go`, mirroring the existing `DeleteBranchForTest` shape one function above it: it takes `(l *lyxcwd.Location, repoDir, remote, branch, branchPrefix string)`, builds a `remoteBranchRequest` with `ownership: ownedManagedBranch(l, branchPrefix)`, `dirtiness: dirtyCheckedOutBranch()`, `force: false`, and calls `checkRemoteBranchRequest` — the standard export-test-shim idiom this file already uses throughout, giving the new `package fabricengine_test` file a qualified path to the unexported request type without constructing one directly.
   Confirm that `internal/fabricengine/testmain_test.go` already satisfies the Hermetic Git Test Environment Invariant for this package before adding a `TestMain`;
-  do not add a second one.
+  do not add a second one — this file's own `package fabricengine_test` shares the package's single `TestMain`, matching every existing hubforge-consuming integration test in this package.
   Two cases, each integration-tagged because each reaches a git spawn: the repo's primary weft branch is refused with `CheckOwnership`, reaching `primaryWeftBranch`;
-  and a branch still checked out at a worktree is refused with `CheckDirtiness`, reaching `listWeftBranches`.
+  and a branch still checked out at a worktree is refused with **`CheckOwnership`**, reaching `listWeftBranches` from inside `resolveManagedBranch` — not `CheckDirtiness` as originally drafted here.
+  `resolveManagedBranch`'s own checked-out-at-a-worktree test (reused unchanged per card 4's "reuse `branchOwnership`, `branchDirtiness`, `resolveBranchOwnership`, and the dirtiness probe unchanged" instruction) already refuses before `checkBranchDirtiness`'s own duplicate checked-out test is ever reached, confirmed empirically against a real hub built through `hubforge.NewHub` and `hubforge.AddPair`: `resolveBranchOwnership`/`resolveManagedBranch` runs first in both `checkBranchRequest` and `checkRemoteBranchRequest`, and it independently calls `listWeftBranches` and refuses a checked-out branch there, so `checkBranchDirtiness`'s own equivalent test on a `remoteBranchRequest` is unreachable dead code on every `ownedManagedBranch`-typed request — a pre-existing property of `resolveManagedBranch`/`checkBranchDirtiness` this batch inherits rather than changes, true of the existing local `branchRequest` today as well.
+  The assertion "reaching `listWeftBranches`" still holds for this case exactly as drafted; only the reported `Check` value changes from `CheckDirtiness` to `CheckOwnership`, since ownership resolution is what actually spawns that call first.
   Build the hub these two need through `hubforge.NewHub`, per the hubforge Fabric-Fixture Invariant — no hub is hand-assembled.
+  Use `hubforge.AddPair` to materialise the checked-out-branch case's pair, and `RefusedByGate` (`internal/fabricengine/livestate_refusal_test.go`, already in this package's `fabricengine_test` test binary) to assert the reported `Check`.
 
   No test in this card asserts that a remote ref was actually deleted: that is batch 3's behaviour-test surface, over a real hub with a real remote.
   Card 6 asserts refusals and request shape only.

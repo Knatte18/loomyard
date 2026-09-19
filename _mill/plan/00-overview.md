@@ -146,6 +146,7 @@ this section is the input `_plan_validate.py`'s `all-files-touched-mismatch` che
 - `internal/fabricengine/destroy_test.go`
 - `internal/fabricengine/destroyremote_integration_test.go`
 - `internal/fabricengine/doc.go`
+- `internal/fabricengine/export_test.go`
 - `internal/fabricengine/livestate_mutationoracle_test.go`
 - `internal/fabricengine/livestate_refusal_selftest_test.go`
 - `internal/fabricengine/livestate_verbs_test.go`
