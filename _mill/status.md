@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-module-rearm
+phase: approved-shed-subtree
 slug: shed-generic-watchdog
 branch: shed-generic-watchdog
 plan: _mill/plan
@@ -42,6 +42,7 @@ approved-shedbuild-shedpaths-hoist  '2026-09-19T14:52:33Z'
 approved-shedverbs-package  '2026-09-19T15:05:51Z'
 approved-inner-run-neutralization  '2026-09-19T15:14:01Z'
 approved-module-rearm  '2026-09-19T15:29:15Z'
+approved-shed-subtree  '2026-09-19T15:40:50Z'
 ```
 
 ## Batches
@@ -73,9 +74,10 @@ batches:
     commit_sha: 783e57d290a13747dd482a85631eadcd3731c314
     verify_baseline_failures: ["FAIL\t./internal/shedverbs/... [setup failed]"]
   - name: shed-subtree
-    state: running
+    state: approved
     implementer_session: 4afb5a2c-7b3c-4289-ad90-d912d5d116dc
     start_sha: da032ec5f8309c42d7e268e69c7294471e81bd4a
+    commit_sha: 2b5a8826e03a97ec2610cab592b6da35928d8d02
     verify_baseline_failures: ["FAIL\t./internal/shedcli/... [setup failed]"]
   - name: docs-invariant-skill
     state: pending
