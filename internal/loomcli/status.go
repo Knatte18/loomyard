@@ -113,7 +113,7 @@ Example:
 				return nil
 			}
 			if !found {
-				clihelp.SetExit(cmd.Context(), output.Err(out, "loom: no status file at "+c.shedPaths.StatusPath+"; run \"lyx loom run\" first to bootstrap this task"))
+				clihelp.SetExit(cmd.Context(), output.Err(out, "loom: no status file at "+c.shedPaths.StatusPath+"; run \"lyx loom start\" first to bootstrap this task"))
 				return nil
 			}
 
