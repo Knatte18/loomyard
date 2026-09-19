@@ -3,7 +3,7 @@
 ```yaml
 task: 'reed: AddStrand and attach self-heal a cold worktree'
 slug: 'reed-cold-worktree-selfheal'
-approved: false
+approved: true
 started: '20260919-050951'
 parent: 'main'
 root: ""

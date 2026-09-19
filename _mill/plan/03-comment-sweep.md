@@ -47,9 +47,10 @@ Each card names the hits confirmed at planning time and requires the implementer
   Rewrite it so the observation survives: on psmux the session survived the last-pane kill, which is why the later add found a live session rather than booting one.
   Revisit the surrounding lifecycle grammar in the same pass and correct any sentence that now describes add or attach as non-booting verbs.
 
-  In `internal/reedengine/strand.go`, `UpdateStrand`'s and `RemoveStrand`'s doc comments both describe their pre-flight by cross-reference to `AddStrand`.
-  That cross-reference is now false for both.
-  Re-point each at `Status` instead, and state explicitly that these two verbs keep `requireSessionLocked` and do not self-heal.
+  In `internal/reedengine/strand.go`, `UpdateStrand`'s doc comment describes its pre-flight by cross-reference to `AddStrand` and `RemoveStrand`.
+  That cross-reference is now false for the `AddStrand` half; re-point it at `Status` instead.
+  `RemoveStrand`'s own doc comment already cites `Status` and needs no re-pointing.
+  For both verbs, state explicitly that they keep `requireSessionLocked` and do not self-heal.
   `AddStrand`'s own doc comment was already rewritten in batch 1 and must not be rewritten again here.
 
   In `internal/reedengine/attach.go`, `AttachArgv`'s code is unchanged, but its file header and doc comments describe a world in which the builder's caller has not booted anything.

@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-review-r2
+phase: plan-fix-r2
 slug: reed-cold-worktree-selfheal
 branch: reed-cold-worktree-selfheal
 plan: _mill/plan
@@ -27,4 +27,5 @@ planning  '2026-09-19T05:18:10Z'
 plan-review-r1  '2026-09-19T05:28:08Z'
 plan-fix-r1  '2026-09-19T05:29:16Z'
 plan-review-r2  '2026-09-19T05:35:58Z'
+plan-fix-r2  '2026-09-19T05:36:43Z'
 ```
