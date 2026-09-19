@@ -44,7 +44,9 @@ batches:
     commit_sha: 06c6b5f2325a62dcb6bf6187e7a9b3bc4bc84ce1
     verify_baseline_failures: []
   - name: attach-preflight
-    state: pending
+    state: running
+    implementer_session: c402f1a0-f6fa-460b-85e4-0322e2473129
+    start_sha: b89e8ec8c4f401daa8e17e2425485f0f2c8b9b84
     verify_baseline_failures: []
   - name: comment-sweep
     state: pending
