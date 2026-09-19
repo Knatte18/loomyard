@@ -258,7 +258,7 @@ github.com/Knatte18/loomyard/
 ├── internal/lock/                shared file locking
 ├── internal/output/              shared JSON output
 ├── internal/modelspec/           model-spec parser + models.yaml registry leaf
-├── internal/tokenvocab/          shared token vocabulary (repo, hub) + Render compose over stencil, a leaf
+├── internal/tokenvocab/          shared token vocabulary (repo, hub, worktree) + Render compose over stencil, a leaf
 ├── internal/pattern/             PATTERN active check + role directive leaf, consumed by webster/burler/loom
 ├── internal/friction/            the Tier 2 friction-note directive leaf, consumed by webster, burler, and loom
 └── internal/shell/               provider-invariant pane-shell mechanics leaf (pwsh + posix)
