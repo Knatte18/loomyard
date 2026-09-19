@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-shedrecipe lifecycle entries
+phase: approved-lifecycle recipe and coverage guard
 slug: worktree-lifecycle-shed-producers
 branch: worktree-lifecycle-shed-producers
 plan: _mill/plan
@@ -32,6 +32,7 @@ implementing  '2026-09-19T05:34:55Z'
 approved-lifecycleshed producers  '2026-09-19T05:41:15Z'
 approved-loom run --no-attach  '2026-09-19T05:43:38Z'
 approved-shedrecipe lifecycle entries  '2026-09-19T05:48:58Z'
+approved-lifecycle recipe and coverage guard  '2026-09-19T05:54:36Z'
 ```
 
 ## Batches
@@ -57,9 +58,10 @@ batches:
     commit_sha: a89b4b968bc3c12567d7c1972d2ef8d728e6c961
     verify_baseline_failures: []
   - name: lifecycle recipe and coverage guard
-    state: running
+    state: approved
     implementer_session: 2f4032c7-0241-4f04-829b-e2d5d67b51f6
     start_sha: 62d6a61bf06b2b48d01df9ab3ca07bda5d9359be
+    commit_sha: 2ad28f00d679a9da936f3eb535e688866e746523
     verify_baseline_failures: ["FAIL\t./internal/lifecyclerecipe/... [setup failed]"]
   - name: lifecyclecli module
     state: pending
