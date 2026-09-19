@@ -658,20 +658,6 @@ func capturePane(t *testing.T, tmuxPath, socket, target string) string {
 	return string(out)
 }
 
-// capturePaneScrollback returns the target pane's full scrollback (via -S -), not merely its
-// visible viewport.
-// This is deliberately a separate helper from capturePane rather than an edit to it: capturePane
-// passes no -S and captures the visible viewport only, which is what its existing callers assert
-// against, whereas the header-noise assertions need the full scrollback that -S - reaches.
-func capturePaneScrollback(t *testing.T, tmuxPath, socket, target string) string {
-	t.Helper()
-	out, err := exec.Command(tmuxPath, "-L", socket, "capture-pane", "-p", "-S", "-", "-t", target).Output()
-	if err != nil {
-		t.Fatalf("capture-pane -S - -t %s: %v", target, err)
-	}
-	return string(out)
-}
-
 // sendKeysLine types text literally into the target pane and submits it with Enter.
 func sendKeysLine(t *testing.T, tmuxPath, socket, target, text string) {
 	t.Helper()

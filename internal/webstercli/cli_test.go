@@ -15,6 +15,7 @@ package webstercli
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -617,8 +618,10 @@ func TestRecoverBatchCmd_BootsStandaloneReedSessionFirst(t *testing.T) {
 	}
 
 	bringUps := 0
-	c.reedUp = func() error {
+	var gotWatch bool
+	c.reedUp = func(ctx context.Context, watch bool) error {
 		bringUps++
+		gotWatch = watch
 		return errors.New("no tmux server available in this test")
 	}
 
@@ -627,6 +630,9 @@ func TestRecoverBatchCmd_BootsStandaloneReedSessionFirst(t *testing.T) {
 
 	if bringUps != 1 {
 		t.Fatalf("c.reedUp calls = %d; want exactly 1 -- recover-batch spawns an agent and must boot standalone's own reed session first", bringUps)
+	}
+	if gotWatch {
+		t.Error("c.reedUp watch = true; want false -- recover-batch is short-lived and its context would be gone before a bound watcher observed anything")
 	}
 	if exitCode != 1 {
 		t.Fatalf("recover-batch with a failing reed bring-up = %d; want 1, output: %s", exitCode, out.String())
@@ -637,6 +643,41 @@ func TestRecoverBatchCmd_BootsStandaloneReedSessionFirst(t *testing.T) {
 	}
 	if strings.Contains(got, "not found in the plan's execution batches") {
 		t.Errorf("output reports the batch-not-found refusal, so the bring-up ran too late to matter; got %q", got)
+	}
+}
+
+// TestRunCmd_PassesWatchTrueToReedUp proves webster's run verb calls c.reedUp with watch: true, the
+// disposition card 43 fixes for it and the counterpart of
+// TestRecoverBatchCmd_BootsStandaloneReedSessionFirst's watch: false assertion above -- driven
+// through run's own RunE with a recording fake in c.reedUp rather than by reading source text. The
+// fake returns an error so the call terminates immediately after the reedUp check, never reaching
+// websterengine.Run.
+func TestRunCmd_PassesWatchTrueToReedUp(t *testing.T) {
+	c, _ := newTestCLI(t)
+	seedValidPlanDir(t, c.geom.PlanDir)
+
+	var bringUps int
+	var gotWatch bool
+	c.reedUp = func(ctx context.Context, watch bool) error {
+		bringUps++
+		gotWatch = watch
+		return errors.New("no tmux server available in this test")
+	}
+
+	var out bytes.Buffer
+	exitCode := clihelp.Execute(c.runCmd(), &out, nil)
+
+	if bringUps != 1 {
+		t.Fatalf("c.reedUp calls = %d; want exactly 1", bringUps)
+	}
+	if !gotWatch {
+		t.Error("c.reedUp watch = false; want true -- run binds the watcher to the run's own context")
+	}
+	if exitCode != 1 {
+		t.Fatalf("run with a failing reed bring-up = %d; want 1, output: %s", exitCode, out.String())
+	}
+	if got := out.String(); !strings.Contains(got, "bring up the standalone reed session") {
+		t.Errorf("output does not name the reed bring-up failure; got %q", got)
 	}
 }
 
