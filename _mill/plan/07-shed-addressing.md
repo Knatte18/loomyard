@@ -58,6 +58,8 @@ That is acceptable because the clearer message stays reachable by the command an
   - `internal/shedcli/cli.go`
   - `internal/shedcli/table.go`
   - `internal/shedcli/doc.go`
+  - `cmd/lyx/constructoranchoring_test.go`
+  - `cmd/lyx/notransients_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -70,6 +72,8 @@ That is acceptable because the clearer message stays reachable by the command an
   Add `"step"` to the `"batten"` entry's `Verbs` set, now that batch 6 gave batten a step verb, and rewrite the map's doc comment, which today explains why batten has no step analogue — replace that explanation with a note that the gate itself stays because a future recipe may still exclude a verb, and the gate is what keeps `step`'s refusal-kind vocabulary closed at five values.
   The missing-run refusal must carry **no** `kind` field: a run-id that does not exist must not become a sixth kind.
   Rewrite every `--recipe` mention in the group's and the four verbs' `Short`, `Long` and `Example` text to the run-id positional form, keeping each `Short` non-empty, and update `doc.go` to match.
+  This batch's own `verify` runs `go test ./cmd/lyx/...`, which surfaces two pre-existing defects from earlier same-task batches: `cmd/lyx/constructoranchoring_test.go` and `cmd/lyx/notransients_test.go` still reference `loomengine.LoomStatusFile`/`LoomStatusLock`/`LoomRunLock`, deleted by batch 4's `loomDirName-survives-the-status-relocation` decision in favour of `shedrun.StatusFile`/`StatusLock`/`RunLock`, and `notransients_test.go` still classifies `battencli.StatusFile` as transient after batch 3/6 relocated it onto the durable shed run directory.
+  Retarget both files' constructor references onto the `shedrun` equivalents (at `shedrun.SelfRunID`) and move `battencli.StatusFile` into `durableSet`, so `go test ./cmd/lyx/...` passes; this is pre-existing breakage from an earlier batch in this same task, not new API surface this batch introduces.
 - **Commit:** `feat(shedcli): address runs by run-id and resolve the recipe from the seed`
 
 ### Card 29: the lyx shed seed command
