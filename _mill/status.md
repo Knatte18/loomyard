@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: reed-header-selvage
 branch: reed-header-selvage
 plan: _mill/plan
@@ -50,6 +50,7 @@ holistic-reviewing  '2026-09-19T05:35:05Z'
 holistic-fixing  '2026-09-19T05:39:17Z'
 nits-fixed-holistic  '2026-09-19T05:40:33Z'
 holistic-approved  '2026-09-19T05:40:39Z'
+done  '2026-09-19T05:42:08Z'
 ```
 
 ## Batches
