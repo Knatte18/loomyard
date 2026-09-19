@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-inner-run-neutralization
+phase: approved-module-rearm
 slug: shed-generic-watchdog
 branch: shed-generic-watchdog
 plan: _mill/plan
@@ -41,6 +41,7 @@ implementing  '2026-09-19T14:41:25Z'
 approved-shedbuild-shedpaths-hoist  '2026-09-19T14:52:33Z'
 approved-shedverbs-package  '2026-09-19T15:05:51Z'
 approved-inner-run-neutralization  '2026-09-19T15:14:01Z'
+approved-module-rearm  '2026-09-19T15:29:15Z'
 ```
 
 ## Batches
@@ -66,9 +67,10 @@ batches:
     commit_sha: 3cf468d1b1202994a292288788501cf78b6e1f6e
     verify_baseline_failures: []
   - name: module-rearm
-    state: running
+    state: approved
     implementer_session: 46dd139f-6fa9-4eb9-b5c0-ae09256b9026
     start_sha: c373ae0244de99d4af5c29d743eb28ed863535d9
+    commit_sha: 783e57d290a13747dd482a85631eadcd3731c314
     verify_baseline_failures: ["FAIL\t./internal/shedverbs/... [setup failed]"]
   - name: shed-subtree
     state: pending
