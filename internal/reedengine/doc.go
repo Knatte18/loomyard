@@ -37,9 +37,9 @@
 // (ReedState.SelvagePaneID). It is a first-class construct, deliberately
 // never a Strand (Shared Decision header-is-not-a-strand): it is excluded
 // from strand accounting, from being the preferred split target, and from
-// both halves of reconcile's kill schedule (see ensureSelvagePaneLocked in
-// lifecycle.go, planPaneTarget in spawn.go, and planReconcile's
-// exemptPaneIDs in reconcile.go for the three exclusion seams), so that
+// both halves of reconcile's kill schedule (see selvagepane.go's
+// create/heal path, planPaneTarget, and the reapPolicy value
+// planReconcile is handed for the three exclusion seams), so that
 // removing a session's last strand can never destroy the
 // session or corpse its sole pane — Selvage keeps the session (and the
 // substrate the next add needs) alive no matter how many strands come and
@@ -72,7 +72,10 @@
 // terminal an operator can run lyx/reed commands in, and reed's own writes
 // stop at booting its shell; the ED2/ED3 screen-clear payload the header
 // pane once needed to display identity text has no counterpart here, since
-// Selvage never displays anything of reed's choosing.
+// Selvage never displays anything of reed's choosing. selvagepane.go is now
+// the single file these three rules are implemented in, and
+// selvagepane_enforcement_test.go is the mechanical check keeping them
+// there.
 //
 // The live-geometry rule: the render box a layout is computed against is no
 // longer the config-pinned Width/Height. planLayout (apply.go) is always
@@ -177,7 +180,7 @@
 //     it does NOT hold for tmux's true last pane — see the next bullet.
 //   - The untracked-pane reap gate (spawn.go, reconcile.go): every pane in
 //     a reed session is either Selvage or a bound strand's pane, and the
-//     untracked reap enforces that rule as `anyBoundPresent || selvageAlive`,
+//     untracked reap enforces that rule as `anyBoundPresent || policy.authorizesReap()`,
 //     where the Selvage anchor requires ALIVENESS rather than mere
 //     presence — launchStrandLocked makes the gate fire from AddStrand and
 //     UpdateStrand, neither of which calls ensureSelvagePaneLocked to heal a

@@ -38,7 +38,7 @@ Selvage is a deliberately ordinary shell — **not** a custom binary, and it nee
 
 Being a real, typeable shell is intentional, not a residual flaw: it is the always-on control terminal for running `lyx`/`reed` commands directly against the worktree — e.g. `lyx reed add` to spawn a new strand (a new Claude instance) — without needing a spare pane first.
 
-`internal/reedengine/lifecycle.go`'s `ensureSelvagePaneLocked` ensures Selvage exists and is alive on both Up and Resume, (re)creating it when missing, dead, or gone via `splitSelvagePaneAtBottomLocked`, which splits a new pane in below the physically bottom-most live pane and retries once behind an even-vertical re-tile when the first attempt has no room — the retry is what keeps a lost or stale `ReedState.SelvagePaneID` from wedging a worktree permanently. `ReedState.SelvagePaneID` (`json:"selvagePaneId,omitempty"`) is the persisted binding; `reed.yaml`'s `selvage.height_rows` config key configures the band's height (the render side is `render.Selvage`/`Params.Selvage`).
+`internal/reedengine/selvagepane.go`'s `ensureSelvagePaneLocked` ensures Selvage exists and is alive on both Up and Resume, (re)creating it when missing, dead, or gone via `splitSelvagePaneAtBottomLocked`, which splits a new pane in below the physically bottom-most live pane and retries once behind an even-vertical re-tile when the first attempt has no room — the retry is what keeps a lost or stale `ReedState.SelvagePaneID` from wedging a worktree permanently. `ReedState.SelvagePaneID` (`json:"selvagePaneId,omitempty"`) is the persisted binding; `reed.yaml`'s `selvage.height_rows` config key configures the band's height (the render side is `render.Selvage`/`Params.Selvage`).
 
 ### Placement
 
