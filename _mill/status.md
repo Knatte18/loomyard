@@ -1,7 +1,8 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: blocked
+blocked_reason: 'verify/logic: unresolved after retry -- batch-5 smoke verify (TestSmokeClaudeResumeRecallsCodeword) fails deterministically under nested-Claude-Code execution; see _mill/plan/00-overview.md Prior failure note'
 slug: reed-cold-worktree-selfheal
 branch: reed-cold-worktree-selfheal
 plan: _mill/plan
@@ -39,6 +40,7 @@ holistic-reviewing  '2026-09-19T06:18:13Z'
 holistic-fixing  '2026-09-19T06:21:49Z'
 self-resolved-verify-logic  '2026-09-19T06:32:03Z'
 holistic-fixing  '2026-09-19T06:32:08Z'
+blocked  '2026-09-19T06:41:42Z'
 ```
 
 ## Batches
