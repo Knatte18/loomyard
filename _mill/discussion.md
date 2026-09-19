@@ -162,12 +162,14 @@ Do not finalize this task's plan until `seeded-shed-core` has merged to `main`.
 - Decision: `plugins/ly/skills/ly-drive/SKILL.md` gains an **Autonomous driver** section, entered when the launch prompt says so.
   Four things change from the operator-driven path, and nothing else does:
   1. **No operator choices.** The `$TMUX_PANE` self-check's tracked-absent branch and every other numbered-list prompt in the skill become a line in the report, never a question.
-     There is no operator in the session to answer one, and `settings.json`'s `AskUserQuestion` deny means the tool is not even available.
+     There is no operator in the session to answer one, and **the SKILL.md edit is the sole enforcement**: the skill asks its questions as numbered text lists in its own prose, not through `AskUserQuestion`, so `settings.json`'s deny of that tool prevents nothing the skill actually does.
+     The deny is defence-in-depth against a future edit that reaches for the tool, not the mechanism that makes this change work.
   2. **The report goes to the file.** Every place the skill says "report to the operator" or "hand back with a report", the autonomous path writes that report to the output-file path named in its launch prompt and then stops.
   3. **The step cap is a budget, not a check-in, and the number is 120.** The operator-driven cap of 40 exists so a human can look; with no human, 40 would stop a healthy run three times before it finished.
      120 is loom's own worst case as the skill already computes it — seventeen rows, six review rows at five bounces each, three validator rows at the inherited default of ten, which lands near a hundred steps — plus a margin that keeps an unlucky-but-legitimate run inside the budget.
      The literal `120` is pinned in **both** places and must agree: the SKILL.md autonomous section states it as the cap, and the Go-composed launch prompt repeats it as the number this session runs under, so a reader of either sees the same value.
      Drift between the two is silent, so it gets a cheap mechanical check rather than a convention: one **exported** Go constant, `loomcli.AutonomousDriveStepCap = 120`, is the single source that the prompt composer interpolates, and a test in `cmd/lyx` reads `plugins/ly/skills/ly-drive/SKILL.md` from the repo tree and asserts that value appears in its cap sentence.
+     The test needs a stable anchor, because SKILL.md already contains `40` and "near a hundred steps" and a bare substring search would stay green against the operator cap: it locates the `## Autonomous driver` heading and matches the cap on a fixed phrase within that section — `autonomous step cap: <N>` — which the SKILL.md edit writes verbatim.
      `cmd/lyx/sandbox_coverage_test.go` is the precedent to copy — a `runtime.Caller`-derived repo root, which is the repo's one working way for a Go test to read a file outside its own package tree.
      The constant is exported and the test lives in `cmd/lyx` for the same reason: no package under `plugins/` compiles Go, and a test elsewhere cannot see an unexported `loomcli` identifier.
      On exhausting it the driver writes the report and stops, leaving the run exactly as it is.
@@ -296,7 +298,8 @@ From `CONSTRAINTS.md`, the ones this task is most likely to trip:
 - **Cwd Resolution Invariant** — the seed path comes from a `shedrun` constructor over the bootstrap's own already-resolved `*lyxcwd.Location`; `loomcli` derives no path of its own and calls no resolver a second time.
 - **Told-Geometry Invariant** — nothing new is handed to an engine unresolved; the report path and the run-id reach the spec as absolute/told values.
 - **Durable-vs-Ephemeral State Invariant** — the drive report is ephemeral, under `.lyx/shed/<run-id>/`, at the mirrored subpath of the durable run directory.
-- **Lyxdirs Single-Declarer Invariant** — the report path is composed from `shedrun`'s ephemeral accessor, never from a second `.lyx` literal.
+- **Lyxdirs Single-Declarer Invariant** — the report path is composed from `shedrun`'s ephemeral run-directory accessor, never from a `.lyx` literal spelled in `loomcli`.
+  `seeded-shed-core`'s decided constructor list includes a `ScratchDir` for `.lyx/shed/<run-id>/`, but if the rebase shows no such accessor shipped, **this task adds it to `shedrun`** — the same hedge the report-directory `MkdirAll` takes, and for the same reason: `loomcli` may not name the segment itself, and the Shed Run-Directory Invariant makes `shedrun` the only package that may.
 - **Shed Verb-Set Invariant** — the `step` refusal-kind vocabulary stays closed at five; nothing in this task adds a sixth, and no driver-related refusal is raised inside a verb body.
 - **Shed Producer-Seam Invariant** — `internal/shedengine` imports only stdlib, `state`, `lock`.
   Nothing here adds an import there.
@@ -336,7 +339,7 @@ Tier 1 (untagged, offline, fast) unless stated otherwise.
   The report-path composer is tested directly as the pure function it is, with a **frozen clock and a stub random source**: two calls differ, and the path lands under the run's ephemeral directory with the timestamp ahead of the random component.
   The load-bearing one: **two launches in the same worktree produce two different report paths under a frozen clock** — a test that advances the clock between them proves nothing, since it is the same-second relaunch that the random component exists for, and a fixed path would pass every other test here.
   Pin that the prompt names the run-id, the report path, and the autonomous mode, and that it stays well under the 30000-byte cap (a prompt that grew into a copy of the skill would fail only at launch).
-- **`internal/loomcli` (readiness probe)** — against a fake launcher and a fake clock: a pane that stays live reports ready within the first poll; a pane that is already dead refuses the bootstrap with a message naming the driver log; the probe caps attempt count rather than looping on elapsed time alone.
+- **`internal/loomcli` (readiness probe)** — against a fake launcher and a fake clock: a pane that stays live reports ready within the first poll; a pane that is already dead refuses the bootstrap with a message naming **the shuttle run directory** (which holds `prompt.md`, `settings.json` and the events file) and the strand's GUID — never `loomengine.LoomDriverLog`, which is the detached Go driver's captured output and is written only by the `go` branch's `exec.Command` path; the probe caps attempt count rather than looping on elapsed time alone.
   The refusing case is the whole point of the probe — a test covering only the live case passes against no probe at all.
 - **`internal/loomcli` (error paths)** — the bootstrap lock is released on every `llm`-branch failure: a config load failure, a `reed.Status()` error, a `RemoveStrand` failure, a `Runner.Start` failure, a `MkdirAll` failure on the report's parent directory, and a probe that refuses.
   A leaked bootstrap lock wedges every subsequent `lyx loom start` in that worktree, and it is invisible until the second invocation.
@@ -354,7 +357,8 @@ Tier 1 (untagged, offline, fast) unless stated otherwise.
 - **Integration (`integration`-tagged)** — one end-to-end `driver: llm` bootstrap over a `hubforge`-built fixture with a stubbed driver that writes a report and exits: assert the run reaches a terminal state, the report file exists at the path the spec named, and `Runner.Start`'s `run.json` is persisted.
   The point is that the bootstrap returns without waiting for the driver, which is what makes an `llm` child watchable by `Run-Shed` at all.
 - **`plugins/ly/skills/ly-drive`** — one Go test in `cmd/lyx`, plus a review.
-  The test resolves the repo root through `runtime.Caller` (as `sandbox_coverage_test.go` does), reads `SKILL.md`, and asserts `loomcli.AutonomousDriveStepCap`'s value appears in its cap sentence, so the SKILL.md literal and the Go-composed prompt cannot drift apart silently.
+  The test resolves the repo root through `runtime.Caller` (as `sandbox_coverage_test.go` does), reads `SKILL.md`, locates the `## Autonomous driver` section, and asserts `loomcli.AutonomousDriveStepCap`'s value against the fixed `autonomous step cap: <N>` phrase inside it — anchored rather than searched, since the file also carries the operator cap of 40 and a "near a hundred steps" aside.
+  A test that matched anywhere in the file would stay green against exactly the wrong number.
   The review is the part no test covers: the autonomous section against the four changes the decision enumerates, and the launch prompt naming the same skill invocation the section documents.
   A drift between the prompt and the skill is silent: the session simply does something else.
 

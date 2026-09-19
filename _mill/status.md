@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-gap-fix-r5
+phase: discussed
 slug: seeded-driver-choice
 branch: seeded-driver-choice
 plan: null
@@ -20,4 +20,6 @@ discussion-gap-fix-r2  '2026-09-19T17:26:12Z'
 discussion-gap-fix-r3  '2026-09-19T17:29:47Z'
 discussion-gap-fix-r4  '2026-09-19T17:34:49Z'
 discussion-gap-fix-r5  '2026-09-19T17:38:53Z'
+discussion-fix-r6  '2026-09-19T17:42:09Z'
+discussed  '2026-09-19T17:42:09Z'
 ```
