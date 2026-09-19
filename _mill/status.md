@@ -51,7 +51,9 @@ batches:
     commit_sha: 48ff357ce8fccbbec03babfa639e6f10d13f952f
     verify_baseline_failures: []
   - name: comment-sweep
-    state: pending
+    state: running
+    implementer_session: 8ed48b03-ebc0-44c6-8f2e-7419e02e8180
+    start_sha: 45120356769882ce817f87cc01dad76a022a7aae
     verify_baseline_failures: []
   - name: docs-and-suites
     state: pending
