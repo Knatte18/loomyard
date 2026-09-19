@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-watchdog-seam-and-focus-pin
+phase: approved-operator-strand-and-loom-wiring
 slug: reed-born-as-strand
 branch: reed-born-as-strand
 plan: _mill/plan
@@ -31,6 +31,7 @@ plan-fix-r3  '2026-09-19T10:26:01Z'
 planned  '2026-09-19T10:26:10Z'
 implementing  '2026-09-19T10:26:38Z'
 approved-watchdog-seam-and-focus-pin  '2026-09-19T10:35:23Z'
+approved-operator-strand-and-loom-wiring  '2026-09-19T10:47:46Z'
 ```
 
 ## Batches
@@ -44,8 +45,9 @@ batches:
     commit_sha: 38e4bb5c4fc5ec2b2c4a76883fd1a16e36676773
     verify_baseline_failures: []
   - name: operator-strand-and-loom-wiring
-    state: running
+    state: approved
     implementer_session: 1264fcbf-a8d0-46e2-8206-c663ad64c640
     start_sha: a28a028f748b3c4ee3bed949485db77e645aaa42
+    commit_sha: c375879edd176eab3b723895edfca58fc4c151b4
     verify_baseline_failures: []
 ```
