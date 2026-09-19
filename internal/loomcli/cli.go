@@ -191,7 +191,7 @@ func verbUsesLightweightWiring(name string) bool {
 // every embedded newline, byte-for-byte.
 var loomVerbTexts = shedverbs.VerbTexts{
 	Run: shedverbs.VerbText{
-		Use:   "run",
+		Use:   "run [run-id]",
 		Short: "run loom's phase machine in the foreground, with no status strand and no terminal handover",
 		Long: `run runs loom's phase machine in the foreground: no status strand and
 no terminal handover. It is the escape hatch for debugging and CI.
@@ -205,13 +205,16 @@ What run does not do is add the status strand or hand the terminal over.
 
 run never seeds a status file and never commits anything -- only
 "lyx loom start" seeds, because only it owns the commit-before-precondition
-ordering the bootstrap needs.
+ordering the bootstrap needs. run itself never seeds either: an optional
+run-id positional addresses a run other than this worktree's own default
+("self"), and run refuses when no seed already exists at that run-id.
 
 Example:
-  lyx loom run`,
+  lyx loom run
+  lyx loom run <run-id>`,
 	},
 	Step: shedverbs.VerbText{
-		Use:   "step",
+		Use:   "step [run-id]",
 		Short: "bootstrap idempotently and drive exactly one producer, reporting a JSON envelope",
 		Long: `step bootstraps this worktree's loom task exactly as "lyx loom start" does --
 seeding the status file when absent and committing it into the fabric --
@@ -222,12 +225,17 @@ over nothing: it is the single-producer primitive an external supervisor
 drives, one invocation at a time, reading the returned envelope's
 "continue" and "next_interrupt_policy" fields to decide what to do next.
 
+An optional run-id positional addresses a run other than this worktree's
+own default ("self"); step refuses when no seed already exists at that
+run-id, since it never writes one itself.
+
 Example:
   lyx loom step
-  lyx loom step --parent main`,
+  lyx loom step --parent main
+  lyx loom step <run-id>`,
 	},
 	Status: shedverbs.VerbText{
-		Use:   "status",
+		Use:   "status [run-id]",
 		Short: "report loom's current phase, once or as a live-tailed watch",
 		Long: `status reports the current phase-machine state.
 
@@ -244,20 +252,30 @@ the one documented interactive-handoff exception on this verb, taken
 narrowly on the tail only, after every fallible step has already run
 pre-flight.
 
+An optional run-id positional addresses a run other than this worktree's
+own default ("self"); status refuses when no seed already exists at that
+run-id.
+
 Example:
   lyx loom status
   lyx loom status --watch
-  lyx loom status --watch --interval 200ms`,
+  lyx loom status --watch --interval 200ms
+  lyx loom status <run-id>`,
 	},
 	Pause: shedverbs.VerbText{
-		Use:   "pause",
+		Use:   "pause [run-id]",
 		Short: "request a pause at loom's next producer boundary",
 		Long: `pause sets a request the running phase machine consumes at its next
 producer boundary. It does not kill anything -- the machine itself clears
 the flag in the persist that records the paused state.
 
+An optional run-id positional addresses a run other than this worktree's
+own default ("self"); pause refuses when no seed already exists at that
+run-id.
+
 Example:
-  lyx loom pause`,
+  lyx loom pause
+  lyx loom pause <run-id>`,
 	},
 }
 
@@ -303,6 +321,16 @@ Example:
 	verbs := shedverbs.Verbs(loomVerbTexts, c.spec)
 	runVerb, stepVerb, statusVerb, pauseVerb := verbs[0], verbs[1], verbs[2], verbs[3]
 	stepVerb.Flags().StringVar(&c.parentFlag, "parent", "", "write the pair's provenance record once for a worktree created before that record existed; refused when it disagrees with an already-recorded value")
+
+	// Each of the four generic verbs takes at most one positional argument -- the run-id arm
+	// resolves (arm.go). None declared an Args validator before this card, so a second positional
+	// was silently swallowed and the command addressed "self" regardless -- the worst of the
+	// available behaviours. "lyx loom start" keeps its own arity (no positional at all): it takes
+	// no run-id.
+	runVerb.Args = cobra.MaximumNArgs(1)
+	stepVerb.Args = cobra.MaximumNArgs(1)
+	statusVerb.Args = cobra.MaximumNArgs(1)
+	pauseVerb.Args = cobra.MaximumNArgs(1)
 
 	parent.AddCommand(c.startCmd(), runVerb, stepVerb, statusVerb, pauseVerb, c.validateDiscussionCmd(), c.validatePlanCmd())
 
