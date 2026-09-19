@@ -14,7 +14,7 @@ This section holds what's committed to next.
 What comes right after Planned clears — committed and ordered, unlike Someday below.
 Not yet started, and exact order can still shift as Planned work reveals what unblocks what, but the rough sequence below is the current best guess.
 
-1. **seeded Shed core: run addressing, seed contract, batten** — every Shed run gets a run directory (`shed/<run-id>/` with seed + status, durable in task worktrees, ephemeral in prime) addressed by the generic verbs; a `Seed-Child` row and a Board `type` field carry the recipe choice; the lifecycle recipe is renamed batten and its `Loom-Run` row becomes a product-neutral, step-friendly `Run-Shed`.
+1. **seeded Shed core: run addressing, seed contract, batten** — every Shed run gets a run directory (`shed/<run-id>/` with seed + status, always durable under `_lyx/shed/`, prime included) addressed by the generic verbs; a `Seed-Child` row and a Board `type` field carry the recipe choice; the lifecycle recipe is renamed batten and its `Loom-Run` row becomes a product-neutral, step-friendly `Run-Shed`.
    See [designs/seeded-shed.md](designs/seeded-shed.md).
 
 1. **seeded driver choice: ly-drive strand as the child's driver** — the seed's `driver` field selects who steps a run: the detached Go runner, or a Claude strand running ly-drive in the worktree's own reed session, booted by the same Spawn seam.
