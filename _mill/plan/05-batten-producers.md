@@ -110,6 +110,7 @@ Neither producer imports `internal/shedrun`, per the overview's `seed-encoding-s
   - `internal/battenrecipe/names.go`
   - `internal/battenrecipe/recipe_test.go`
   - `internal/battenrecipe/coverage_guard_test.go`
+  - `internal/battenrecipe/fixture_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
