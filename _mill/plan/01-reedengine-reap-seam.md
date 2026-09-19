@@ -67,6 +67,8 @@ Batch-local decision beyond `## Shared Decisions`: the new symbols go in `intern
   Logging, per CONSTRAINTS.md's Live-Substrate Spawn Observability rule and the overview's `reap-logging-names-the-socket-not-the-hub` decision: one `logger.Info` line immediately before step 3 naming `socket` (the `socketKey` parameter), `session` and the count of `pids` captured in step 2, and one `logger.Info` line after step 4 reporting the outcome with the same `socket`/`session` keys plus the kill error. `reapPaneChildren` itself is left unchanged — it is a shared helper `Engine.Down` also calls, and its existing `Warn` lines for a straggler and a survived force-kill already cover the per-pid failures.
 
   Give `ReapSession` a doc comment stating that it is the second engine-less exported function in this package, why the closure must precede the kill, and that it holds no lock and persists nothing.
+
+  Update the existing `ListSessions` doc comment in the same file, whose opening sentence currently claims it "is the one engine-less, exported function in this package". That claim becomes false the moment `ReapSession` ships. Rephrase it so it states what is still true and still load-bearing — that `ListSessions` is engine-less because the daemon must enumerate a hub socket's sessions before it has built any `Engine` to bind a method to — without asserting it is the only such function. Leave the rest of that comment, including its three-outcomes paragraph and its `TmuxCmd.run`/`output` stay-unexported note, unchanged.
 - **Commit:** `feat(reedengine): add engine-less ReapSession for orphaned hub sessions`
 
 ### Card 3: untagged tests for the reap seam

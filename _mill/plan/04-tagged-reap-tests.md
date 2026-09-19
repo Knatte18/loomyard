@@ -13,6 +13,7 @@ depends-on: [3]
 
 This batch delivers every assertion that can only be made against a live tmux server and a real process tree: the end-to-end orphan reap, the never-entered orphan, the healthy-sibling non-interference guard, the empty-shell degradation, the process half of the reap, and loop liveness during a reap under `-race`.
 It is one batch because all six cases share one fixture shape — a hub built through `internal/hubforge`, one or two booted sessions, a deleted worktree directory, and `runWatchdogLoop` driven in-process with compressed timings — and because several of them are assertions about the same single reap.
+Card 15 declares that shared shape as three named helpers — `newReapFixture`, `compressedReapTiming` and `orphanWorktree` — and cards 16 through 19 call those identifiers rather than each building a fixture of its own.
 It depends on batch 3: every case drives the wired loop.
 
 All new cases carry the `integration` build tag, matching the file they extend and the existing daemon test tier, rather than being split across `integration` and `smoke`. That keeps one `-tags` value on this batch's verify command.
@@ -31,6 +32,7 @@ Batch-local decision beyond `## Shared Decisions`: every test drives `runWatchdo
   - `internal/reedcli/smoke_lifecycle_test.go`
   - `internal/reedcli/testmain_test.go`
   - `internal/reedcli/watchdog.go`
+  - `internal/hubforge/hub.go`
 - **Edits:** none
 - **Creates:**
   - `internal/reedcli/watchdogreap_integration_test.go`
@@ -38,11 +40,28 @@ Batch-local decision beyond `## Shared Decisions`: every test drives `runWatchdo
 - **Moves:** none
 - **Requirements:** Create `internal/reedcli/watchdogreap_integration_test.go`, opening with the `//go:build integration` constraint line and a header comment stating that it holds the orphan-reap tier's live assertions, that it is a separate file from the existing watchdog integration file so the reap's fixture and helpers stay together, and that every case drives the loop in-process with compressed timings rather than spawning a daemon.
 
-  Add the batch's shared fixture helper: it builds a hub through `internal/hubforge` (never hand-assembled, per the hubforge Fabric-Fixture Invariant), boots the worktree sessions the caller asks for, and returns what the cases need — the hub, the engines, and the tmux path. Follow the existing watchdog integration file's own engine-construction helper and its `waitForCondition` polling helper rather than inventing new ones; reuse them directly where they already fit, since both files are in the same package and the same build-tag tier.
+  Add exactly three new helpers, named and shaped as follows, so cards 16 through 19 call one agreed identifier each rather than inventing their own:
 
-  Add a compressed-timing helper returning a `watchdogTiming` whose `DiscoveryCycle` is on the order of tens of milliseconds, with `IdleCycles` and `OrphanGoneCycles` at their production values of 3 — the cadence is what compresses, never the confirmation count, so every case still proves the three-consecutive-cycle rule rather than bypassing it. No case waits on the production 5s cycle.
+  `func newReapFixture(t *testing.T, pairNames ...string) reapFixture` builds a hub through `hubforge.NewHub(t, ".")` (never hand-assembled, per the hubforge Fabric-Fixture Invariant), adds one pair per name in `pairNames`, boots a session for the prime worktree and for each pair, and returns them. Its result type is a small struct declared in this same file:
 
-  Add the worktree-deletion helper the orphan cases need: it removes the booted worktree's directory from disk while its tmux session stays live on the hub socket, which is the exact state the reap exists to clean up.
+  ```go
+  type reapFixture struct {
+  	hub       *hubforge.Hub
+  	engines   []*reedengine.Engine
+  	worktrees []string
+  	tmuxPath  string
+  }
+  ```
+
+  `engines` and `worktrees` are index-aligned, prime first, so a case can orphan `worktrees[1]` and still assert against `engines[0]`. `tmuxPath` is taken from the first engine.
+
+  `func compressedReapTiming() watchdogTiming` returns a `watchdogTiming` whose `DiscoveryCycle` is on the order of tens of milliseconds, with `IdleCycles` and `OrphanGoneCycles` both at their production value of 3. The cadence is what compresses, never the confirmation count, so every case still proves the three-consecutive-cycle rule rather than bypassing it. No case waits on the production 5s cycle.
+
+  `func orphanWorktree(t *testing.T, worktreeRoot string)` removes the booted worktree's directory from disk while its tmux session stays live on the hub socket — the exact state the reap exists to clean up.
+
+  All three call `t.Helper()` as their first statement, matching the existing helpers in this package's tagged tier.
+
+  Reuse rather than duplicate what the package already has: `watchdogIntegrationEngine(t, worktreeRoot)` for engine construction and `waitForCondition(t, timeout, cond)` for polling both already live in `internal/reedcli/watchdog_integration_test.go`, in the same package and the same build-tag tier, so they are directly callable from this new file. `newReapFixture` builds its engines through `watchdogIntegrationEngine`; do not write a second engine-construction helper.
 
   The package's `TestMain` already arms the hermetic git test environment, so this file adds none.
 - **Commit:** `test(reedcli): add the tagged orphan-reap fixture`
