@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-standalone-watcher
+phase: approved-docs-smokes-and-residue
 slug: reed-header-selvage
 branch: reed-header-selvage
 plan: _mill/plan
@@ -41,6 +41,7 @@ approved-selvage-pane  '2026-09-18T19:06:29Z'
 approved-status-line-pins  '2026-09-18T19:18:53Z'
 approved-watchdog-daemon  '2026-09-18T19:34:52Z'
 approved-standalone-watcher  '2026-09-18T19:41:27Z'
+approved-docs-smokes-and-residue  '2026-09-19T05:15:29Z'
 ```
 
 ## Batches
@@ -85,8 +86,9 @@ batches:
     commit_sha: 43644ab4e3b325ebb0e11ddb7ef77b844cf9cd84
     verify_baseline_failures: []
   - name: docs-smokes-and-residue
-    state: running
+    state: approved
     implementer_session: 5e9bb68c-b308-4512-9581-584957e6ed61
     start_sha: 07fe3aa0995371b80f5f83feae4f8a1162419c65
+    commit_sha: afbafc50c2e545e5f79480043f81b7257928bad0
     verify_baseline_failures: []
 ```
