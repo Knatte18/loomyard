@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: worktree-lifecycle-shed-producers
 branch: worktree-lifecycle-shed-producers
 plan: _mill/plan
@@ -37,6 +37,7 @@ approved-lifecyclecli module  '2026-09-19T06:09:14Z'
 approved-registration and docs  '2026-09-19T06:14:35Z'
 holistic-reviewing  '2026-09-19T06:14:54Z'
 holistic-approved  '2026-09-19T06:19:49Z'
+done  '2026-09-19T06:21:19Z'
 ```
 
 ## Batches
