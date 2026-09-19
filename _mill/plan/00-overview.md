@@ -36,13 +36,13 @@ batches:
   - number: 4
     name: module-rearm
     file: 04-module-rearm.md
-    depends-on: [1, 3]
+    depends-on: [1, 2, 3]
     verify: go test ./internal/loomcli/... ./internal/lifecyclecli/... ./internal/shedverbs/... && go test -tags integration ./internal/loomcli/... ./internal/lifecyclecli/...
   - number: 5
     name: shed-subtree
     file: 05-shed-subtree.md
     depends-on: [2, 4]
-    verify: go test ./internal/shedcli/... ./cmd/lyx/... ./internal/loomcli/... ./internal/lifecyclecli/...
+    verify: go test ./internal/shedcli/... ./cmd/lyx/... ./internal/loomcli/... ./internal/lifecyclecli/... && go test -tags integration ./internal/shedcli/...
   - number: 6
     name: docs-invariant-skill
     file: 06-docs-invariant-skill.md
@@ -137,6 +137,7 @@ Batch-local decisions live in each batch file._
 - `internal/lifecyclecli/wire.go`
 - `internal/lifecyclecli/wire_test.go`
 - `internal/lifecyclerecipe/coverage_guard_test.go`
+- `internal/lifecyclerecipe/fixture_test.go`
 - `internal/lifecyclerecipe/lifecyclerecipe.go`
 - `internal/lifecyclerecipe/names.go`
 - `internal/lifecyclerecipe/recipe_test.go`
@@ -145,13 +146,20 @@ Batch-local decisions live in each batch file._
 - `internal/lifecycleshed/innerrun_test.go`
 - `internal/loomcli/arm.go`
 - `internal/loomcli/cli.go`
+- `internal/loomcli/cli_test.go`
 - `internal/loomcli/pause.go`
 - `internal/loomcli/run.go`
+- `internal/loomcli/sharedbootstrap.go`
+- `internal/loomcli/sharedbootstrap_test.go`
 - `internal/loomcli/status.go`
+- `internal/loomcli/status_test.go`
 - `internal/loomcli/step.go`
+- `internal/loomcli/step_test.go`
 - `internal/loomcli/wiring.go`
 - `internal/loomcli/wiring_test.go`
+- `internal/loomrecipe/fixture_test.go`
 - `internal/loomrecipe/loomrecipe.go`
+- `internal/loomrecipe/shape_test.go`
 - `internal/shedbuild/fixture_test.go`
 - `internal/shedbuild/newshed.go`
 - `internal/shedbuild/newshed_test.go`
@@ -162,8 +170,10 @@ Batch-local decisions live in each batch file._
 - `internal/shedcli/parity_test.go`
 - `internal/shedcli/table.go`
 - `internal/shedcli/table_test.go`
+- `internal/shedcli/testmain_integration_test.go`
 - `internal/shedrecipe/entries_lifecycle.go`
 - `internal/shedrecipe/entries_lifecycle_test.go`
+- `internal/shedrecipe/fixture_test.go`
 - `internal/shedrecipe/recipe.go`
 - `internal/shedrecipe/registry.go`
 - `internal/shedrecipe/registry_test.go`

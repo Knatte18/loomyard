@@ -137,6 +137,7 @@ Batch-local decision: the four verb bodies live in four files named after their 
   - `internal/state/state.go`
   - `internal/clihelp/exec.go`
   - `internal/output/output.go`
+  - `internal/loomcli/sharedbootstrap.go`
 - **Edits:** none
 - **Creates:**
   - `internal/shedverbs/status.go`
@@ -151,8 +152,11 @@ Batch-local decision: the four verb bodies live in four files named after their 
   This disposition short-circuits *before* both the generic core and `StatusExtras`, so neither contributes a key to an absent-file envelope;
   passing a zero `shedengine.Status` through `StatusExtras` is explicitly rejected, because it would add keys to an envelope that carries neither today.
   On `found`, build the four-key generic core `{"current_producer": st.CurrentProducer, "state": string(st.State), "error": st.Error, "activity": st.Activity}`, call `spec.Hooks.StatusExtras(st)` when non-nil, report a non-nil hook error verbatim on the error envelope with no re-prefixing — the hook owns its whole string — and otherwise merge the returned map onto the core and report it with `output.Ok`.
-  Declare an unexported `ensureStatusLockDir(statusLockPath string) error` in this file performing `os.MkdirAll(filepath.Dir(statusLockPath), 0o755)`;
-  its error text may differ from `loomcli`'s, since that text is not asserted by any existing surface test — confirm that by grepping `internal/loomcli` for the string `create the status lock's directory` before choosing, and if it is asserted, carry it told on the spec instead.
+  Declare an unexported `ensureStatusLockDir(prefix, statusLockPath string) error` in this file performing `os.MkdirAll(filepath.Dir(statusLockPath), 0o755)` and, on failure, returning `<prefix> create the status lock's directory <dir>: <err>` composed from the told `spec.DecodeErrPrefix`.
+  Reusing that told prefix reproduces `internal/loomcli/sharedbootstrap.go`'s existing `loom: create the status lock's directory %s: %w` text byte-for-byte for loom's spec, rather than inventing a second prefix field for one string.
+  Carry that function's existing doc comment across: the status file is durable under `_lyx` while its lock is ephemeral under `.lyx`, `internal/lock` opens with `O_CREATE` and never creates a parent, nothing creates the ephemeral directory before a bootstrap has run, and without this both verbs' carefully-worded "no status file … run \"lyx loom start\"" messages were unreachable on the one path they exist for.
+  Keep its closing note that this creates a directory and reads nothing, so it cannot resurrect a deleted status file or mask a genuine absence — `found` still answers that question.
+  Batch 4, card 23 deletes `loomcli`'s own copy once its two callers are gone, so this doc comment is where that history lives afterwards.
   The `--watch` branch is card 14's; leave a call site for it between the absent-file disposition and the core-envelope assembly, matching `internal/loomcli/status.go`'s own ordering.
 - **Commit:** `feat(shedverbs): implement the generic status verb's one-shot envelope`
 

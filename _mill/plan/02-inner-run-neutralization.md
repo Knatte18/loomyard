@@ -78,6 +78,10 @@ The edge sequences them rather than expressing a logical need: nothing here read
   - `internal/lifecyclecli/wire.go`
   - `internal/lifecyclecli/wire_test.go`
   - `internal/shedbuild/fixture_test.go`
+  - `internal/shedrecipe/fixture_test.go`
+  - `internal/lifecyclerecipe/fixture_test.go`
+  - `internal/lifecyclecli/run_test.go`
+  - `internal/lifecyclecli/lifecycle_integration_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -91,7 +95,9 @@ The edge sequences them rather than expressing a logical need: nothing here read
   Update `internal/shedrecipe/entries_lifecycle_test.go` and `internal/shedrecipe/registry_test.go` so every `"LoomRun"` registry key, `loomRunEntry` reference and `Env.LoomRun.*` seam-nil case names the new identifiers, weakening no assertion;
   `registry_test.go`'s expected-key list must still assert seventeen keys.
   Update `internal/lifecyclecli/wire.go`'s `LoomRun: lifecycleshed.LoomRunDeps{…}` literal to `InnerRun: lifecycleshed.InnerRunDeps{…}`, changing no closure body — the `ResolveStatus`, `Spawn` and `ReadStatus` closures stay exactly as they are, including `Spawn`'s `exec.Command(exe, "loom", "start", "--no-attach")`, which spawns loom because that is what this hub's lifecycle recipe actually wraps today.
-  Update `internal/lifecyclecli/wire_test.go`'s three `c.env.LoomRun.*` field reads and `internal/shedbuild/fixture_test.go`'s `LoomRun: lifecycleshed.LoomRunDeps{…}` fixture the same way.
+  Find every remaining construction and field-read site with a repo-wide grep rather than the hand list below, which is this plan's own inventory at authoring time and is the floor, not the ceiling: grep for `LoomRun:`, `.LoomRun.` and `LoomRunDeps`.
+  The sites this plan found beyond the two production files above are `internal/lifecyclecli/wire_test.go`'s three `c.env.LoomRun.*` field reads, and the `LoomRun: lifecycleshed.LoomRunDeps{…}` fixtures in `internal/shedbuild/fixture_test.go`, `internal/shedrecipe/fixture_test.go`, `internal/lifecyclerecipe/fixture_test.go` and `internal/lifecyclecli/run_test.go`, plus `internal/lifecyclecli/lifecycle_integration_test.go`'s two `c.env.LoomRun.Spawn`/`c.env.LoomRun.ReadStatus` overrides and the doc comment above them that names the same fields.
+  Retarget each onto the new field name, weakening no assertion and changing no closure body.
 - **Commit:** `refactor(shedrecipe): rename the LoomRun registry key and Env field to InnerRun`
 
 ### Card 8: move the recipe's engine value and the coverage guards
@@ -104,6 +110,7 @@ The edge sequences them rather than expressing a logical need: nothing here read
 - **Edits:**
   - `contracts/recipes/lifecycle-recipe.yaml`
   - `internal/lifecyclerecipe/coverage_guard_test.go`
+  - `internal/lifecyclerecipe/recipe_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -111,6 +118,8 @@ The edge sequences them rather than expressing a logical need: nothing here read
   Change nothing else in that file: the row's own `name: Loom-Run` stays, the file header comment explaining that `Loom-Run`'s empty `on_stuck` is load-bearing stays, the `on_done: Loom-Run` edge from the create row stays, and the recipe's `entry`/`terminals` stay.
   The empty `on_stuck` itself is load-bearing and must survive untouched: a stuck verdict there escalates to a human with the task worktree fully intact, which is what keeps the destructive `Worktree-Teardown` row unreachable from any failure path.
   In `internal/lifecyclerecipe/coverage_guard_test.go`, change the guard's expected engine name for `NameLoomRun` from `"LoomRun"` to `"InnerRun"`, leaving the map's key — the row-name constant `NameLoomRun` — alone.
+  In `internal/lifecyclerecipe/recipe_test.go`, change the engine-name expectation `want := []string{"LoomRun", "WorktreeCreate", "WorktreeTeardown"}` to name `"InnerRun"` in `"LoomRun"`'s place, re-sorting the slice if the assertion compares it sorted.
+  That one assertion belongs to this card and not to card 9, which adds a new guard and changes no existing assertion in that file.
   Search `internal/shedrecipe` for the cross-consumer coverage guard that asserts every registry key is reachable from some shipped recipe and update its expectation to the new key if it names engines literally;
   if it derives the set from the parsed recipes rather than a literal, it needs no edit — `lifecyclerecipe.RecipeEngines()` already derives its set from the parsed recipe, so verify before editing rather than assuming.
 - **Commit:** `refactor(recipes): point the lifecycle recipe's inner row at the InnerRun engine`
@@ -131,7 +140,7 @@ The edge sequences them rather than expressing a logical need: nothing here read
 - **Requirements:** add one test to `internal/lifecyclerecipe/recipe_test.go` asserting that `NameLoomRun`'s *value* is still the literal string `"Loom-Run"`, and that the built recipe's three row names are still exactly `NameWorktreeCreate`, `NameLoomRun`, `NameWorktreeTeardown` in that order.
   State in the test's own doc comment why it exists: `shedengine` persists `CurrentProducer` — the row name — into the status file, so renaming a row breaks resume for an in-flight run, and this guard makes a later symmetry-minded rename of the durable identity fail loudly rather than silently.
   Extend the comment on `NameLoomRun` in `internal/lifecyclerecipe/names.go` to record the same split: the constant's *name* may follow a neutralization but its *value* is durable and pinned by that test.
-  Change no existing assertion in `recipe_test.go` — the `Worktree-Create` to `Loom-Run` to `Worktree-Teardown` `OnDone` chain, `Loom-Run`'s empty `OnStuck`, and the engine-name list are all still correct facts, with only the engine-name list's `"LoomRun"` entry already updated by card 8's guard change if that list lives here rather than in the coverage guard.
+  Change no existing assertion in `recipe_test.go`: the `Worktree-Create` to `Loom-Run` to `Worktree-Teardown` `OnDone` chain and `Loom-Run`'s empty `OnStuck` are still correct facts, and the engine-name list's `"LoomRun"` entry is card 8's to update, not this card's.
 - **Commit:** `test(lifecyclerecipe): pin Loom-Run's durable row name against a symmetry rename`
 
 ## Batch Tests

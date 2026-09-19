@@ -5,7 +5,7 @@ task: "Shed-generic watchdog for ly-drive and loom's CLI verbs"
 batch: "shed-subtree"
 number: 5
 cards: 6
-verify: go test ./internal/shedcli/... ./cmd/lyx/... ./internal/loomcli/... ./internal/lifecyclecli/...
+verify: go test ./internal/shedcli/... ./cmd/lyx/... ./internal/loomcli/... ./internal/lifecyclecli/... && go test -tags integration ./internal/shedcli/...
 depends-on: [2, 4]
 ```
 
@@ -85,21 +85,31 @@ It is a *different* table from the engine registry (recipe names, not engine nam
   - `internal/loomcli/status_test.go`
   - `internal/lifecyclecli/run_test.go`
   - `internal/shedengine/status.go`
+  - `internal/lifecyclecli/testmain_integration_test.go`
+  - `internal/lifecyclecli/lifecycle_integration_test.go`
 - **Edits:** none
 - **Creates:**
   - `internal/shedcli/parity_test.go`
   - `internal/shedcli/table_test.go`
   - `internal/shedcli/cli_test.go`
+  - `internal/shedcli/testmain_integration_test.go`
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** in `parity_test.go`, assert byte-identical envelopes from the same fixture across the two invocation paths for each verb: `lyx loom step` against `lyx shed step --recipe loom`, and likewise for `run`, `status` and `pause`, plus `lyx lifecycle run <slug>` against `lyx shed run --recipe lifecycle <slug>`.
-  Drive both sides through `RunCLIIn` over one `t.TempDir()`-rooted fixture so cwd is injectable and no test reads the process working directory, and compare the captured stdout byte-for-byte rather than comparing decoded maps, since key ordering and formatting are part of what "byte-identical" means to a supervisor parsing the line.
-  `internal/loomcli/parity_test.go` is the precedent for the shape;
-  follow its three-way verdict discipline where a comparison can produce more than a binary pass, and keep every case tier 1 — no real hub, no spawned process, no git.
+  Drive both sides through `RunCLIIn` over one hub fixture so cwd is injectable and no test reads the process working directory, and compare the captured stdout byte-for-byte rather than comparing decoded maps, since key ordering and formatting are part of what "byte-identical" means to a supervisor parsing the line.
+  `parity_test.go` carries `//go:build integration` as its first line, and every case in it is tier 2.
+  That tier is forced, not chosen: `RunCLIIn` reaches each module's `PersistentPreRunE` and therefore `lyxcwd.Resolve`, which spawns git through `internal/gitexec`, and the Test Tier Purity Invariant bans `gitexec.Run` outside `integration`/`smoke`-tagged files;
+  loom's `run` additionally calls `c.reed.Up()` and `fabricengine.Open`.
+  `internal/loomcli/parity_test.go` is the precedent for the comparison *shape* but not for the tier — its own header states "no test here calls RunCLIIn -- so both stay tier 1", which is exactly why it stays untagged and this file cannot.
+  Follow its three-way verdict discipline where a comparison can produce more than a binary pass.
+  Build the hub through `internal/hubforge`'s fabric-fixture entry point per the hubforge Fabric-Fixture Invariant, and create `internal/shedcli/testmain_integration_test.go` carrying `//go:build integration` and a `TestMain` calling `gitkit.HermeticGitEnv()` before `m.Run()`, in the shape `internal/lifecyclecli/testmain_integration_test.go` already uses — the Hermetic Git Test Environment Invariant requires it for any package whose tests spawn git.
+  `table_test.go` and `cli_test.go` stay untagged tier 1: neither drives `RunCLIIn`, and `cli_test.go`'s bare-listing and unknown-recipe cases run through `RunCLI` against a command tree whose pre-run short-circuits before any resolution.
   Assert positional-argument parity explicitly: `lyx shed run --recipe lifecycle` with no slug and with two slugs must be refused byte-identically to `lyx lifecycle run` with the same argument counts, which holds because both sides validate through the same `cobra.ExactArgs(1)` value;
   `lyx shed run --recipe loom <extra>` must be refused by `cobra.NoArgs`.
   In `table_test.go`, assert the table's key set is exactly `loom` and `lifecycle`, that `lookup` on an unknown name returns an error naming the available recipes, and — by an AST scan over this package's production files in the style of `internal/shedverbs`'s own seam test — that no `init()` function is declared and no exported `Register`-shaped function exists, which is the table clause of the new Shed Verb-Set Invariant.
   In `cli_test.go`, assert a bare `lyx shed` lists the four subcommands and needs no git repository, that `lyx shed bogus` emits a JSON error envelope, that `--recipe` defaults to `loom`, and that an unknown `--recipe` value emits the unknown-recipe error envelope rather than an argument-count error.
+  Add one further case to `parity_test.go`, in the integration tier alongside the rest: over a fixture whose loom module config is deliberately broken in a way that refuses `lyx shed run --recipe loom`, assert `lyx shed status --recipe loom` still succeeds.
+  That is the proof `lyx shed status` reaches loom's lightweight wiring rather than the full `wire()` — the exact hazard `wireLightweight` exists to avoid, which a verb-blind arming would silently reintroduce on this path only.
 - **Commit:** `test(shedcli): prove envelope and argument parity across both invocation paths`
 
 ### Card 32: register the subtree under the lyx root
@@ -162,9 +172,9 @@ It is a *different* table from the engine registry (recipe names, not engine nam
 - **Moves:** none
 - **Requirements:** run this batch's `verify:` command and confirm every package passes.
   Confirm specifically that `internal/loomcli` and `internal/lifecyclecli` still pass unchanged by this batch — this batch edits no file in either package, so any failure there means card 32's registration changed shared state it should not have.
-  Confirm `lyx shed status --recipe loom` reaches loom's lightweight wiring rather than the full `wire()`, by asserting it succeeds against a fixture whose module config is deliberately broken in a way that refuses `lyx shed run --recipe loom` — that is the exact hazard `wireLightweight` exists to avoid, and a verb-blind arming would silently reintroduce it on this path only.
-  If `internal/shedcli/parity_test.go` has no such case, add it there rather than here;
-  this card changes no file.
+  Confirm card 31's lightweight-wiring case passed — the one asserting `lyx shed status --recipe loom` still succeeds against a fixture whose loom module config is broken enough to refuse `lyx shed run --recipe loom`.
+  A green run that skipped it is not evidence, since it is the only case proving the `shed` path did not silently reacquire the full `wire()`.
+  This card changes no file.
 - **Commit:** none
 
 ## Batch Tests
@@ -173,5 +183,4 @@ It is a *different* table from the engine registry (recipe names, not engine nam
 
 Parity is the proof the extraction preserved behaviour across the two invocation paths, and it is asserted on captured stdout bytes rather than on decoded maps, because a supervisor parses the line.
 
-No `-tags integration` run is chained: this batch edits `cmd/lyx/main.go`, `cmd/lyx/sandbox_coverage_test.go` and new files under `internal/shedcli` only, none of which any `//go:build integration` file references.
-The repo-wide done gate (`go test ./... && go test -tags integration ./...`) covers the tagged tier at task end.
+`verify:` chains `go test -tags integration ./internal/shedcli/...` because `parity_test.go` and `testmain_integration_test.go` are both tagged — without that chain the whole parity suite, which is this batch's entire proof, would never compile in-batch and the batch would pass green having run none of it.

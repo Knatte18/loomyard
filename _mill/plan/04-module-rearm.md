@@ -6,7 +6,7 @@ batch: "module-rearm"
 number: 4
 cards: 8
 verify: go test ./internal/loomcli/... ./internal/lifecyclecli/... ./internal/shedverbs/... && go test -tags integration ./internal/loomcli/... ./internal/lifecyclecli/...
-depends-on: [1, 3]
+depends-on: [1, 2, 3]
 ```
 
 ## Batch Scope
@@ -19,7 +19,8 @@ The proof is that `internal/loomcli`'s `step_test.go`, `status_test.go`, `smoke_
 the only assertion changes permitted in this batch are the ones card 27 justifies one by one.
 
 It depends on batch 1 for `shedbuild.ShedPaths` (both `Arm` bodies fill one) and on batch 3 for `shedverbs` itself.
-It deliberately does not depend on batch 2: the inner-run rename touches `internal/lifecyclecli/wire.go`, which this batch never edits — `Arm` lives in a new `arm.go` in each package for exactly that reason, and because it is a new exported seam that deserves its own file rather than being buried in an existing one.
+It also depends on batch 2, which the first draft of this plan wrongly denied: batch 2's `Env.LoomRun` rename edits `internal/lifecyclecli/run_test.go` and `internal/lifecyclecli/lifecycle_integration_test.go`, and card 27 below edits both of the same files, so the two batches must be sequenced rather than run in parallel.
+`Arm` still lives in a new `arm.go` in each package — it is a new exported seam that deserves its own file rather than being buried in an existing one — but that alone was never enough to make the two batches independent.
 
 Batch-local decision: `verbUsesLightweightWiring` stays unexported and `loomcli.Arm` is its sole caller, routing `status` and `pause` through `wireLightweight` and `run`/`step` through the full `wire`.
 A verb-blind arming keyed on recipe name alone would run the full `wire()` for `lyx shed status --recipe loom` and reintroduce the broken-config hazard that lightweight path exists to avoid.
@@ -44,7 +45,11 @@ A verb-blind arming keyed on recipe name alone would run the full `wire()` for `
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** add a `spec *shedverbs.Spec` field to the `loomCLI` struct in `internal/loomcli/cli.go`, initialised to a non-nil zero `&shedverbs.Spec{}` in `newLoomCLI`, so `Command()` can hand the same pointer to `shedverbs.Verbs` and the pre-run can fill it in place.
-  In the new `internal/loomcli/arm.go`, declare `func Arm(cwd string, verb string, args []string) (shedverbs.Spec, error)`: it resolves `cwd` through `lyxcwd.Resolve`, constructs a fresh `*loomCLI` via `newLoomCLI`, routes through `wireLightweight` when `verbUsesLightweightWiring(verb)` and through `wire` otherwise, and returns the filled `shedverbs.Spec` for that verb.
+  In the new `internal/loomcli/arm.go`, declare **two** functions, because one fixed signature cannot serve both callers.
+  The worker is an unexported `func (c *loomCLI) arm(cwd string, verb string, args []string) (shedverbs.Spec, error)` on the receiver: it resolves `cwd` through `lyxcwd.Resolve`, routes through `c.wireLightweight` when `verbUsesLightweightWiring(verb)` and through `c.wire` otherwise, and returns the filled `shedverbs.Spec` for that verb, with every hook closing over that same `c`.
+  The exported seam is a thin wrapper `func Arm(cwd string, verb string, args []string) (shedverbs.Spec, error)` that constructs a fresh receiver via `newLoomCLI` and returns `c.arm(cwd, verb, args)`;
+  it exists for `internal/shedcli`'s table, whose `entry.Arm` field is exactly this type.
+  The split is required, not stylistic: `resolvePersistentPreRun` must wire **its own** `c`, because `internal/loomcli/start.go` reads thirteen receiver fields and `internal/loomcli/validate.go` reads `c.env.DecisionRecordPath`, `c.env.SupportLogPath`, `c.env.AnchorPath` and `c.env.WorktreeRoot` — all four verbs that depend on that population (`start`, `validate-discussion`, `validate-plan`, and `step`'s own bootstrap helpers) would break if the pre-run armed a throwaway receiver and assigned only `*c.spec`.
   `Arm` carries no command-name guard: the existing `cmd.Name() == "loom"` short-circuit stays behind in `resolvePersistentPreRun`, where it belongs — it exists to let the bare group listing run without a git repository, and a bare `lyx shed` listing is `shedcli`'s own equivalent guard, not this module's.
   Fill the returned `Spec` from the receiver: `StatusPath`/`LockPath`/`StatusLockPath` from `c.shedPaths`;
   `EnsureStatusLockDir: true`, because both of loom's read-only verbs call `ensureStatusLockDir` today and must keep doing so;
@@ -54,11 +59,16 @@ A verb-blind arming keyed on recipe name alone would run the full `wire()` for `
   `StepBusyKind: shedverbs.KindBusy`;
   `AbsentStatus` refusing with the exact existing text `loom: no status file at <StatusPath>; run "lyx loom start" first to bootstrap this task`;
   `PauseAbsentMessage` set to the exact existing text `loom: no status file at <StatusPath>; there is nothing running to pause -- run "lyx loom start" first to bootstrap this task`.
-  Leave `BuildShed` nil on the lightweight path and set it to a closure returning `c.buildLoomShed()` on the full path — `status` and `pause` never call it, which is what keeps them off `wire()`.
-  Rewrite `resolvePersistentPreRun` to call `Arm(cwd, cmd.Name(), args)` and assign `*c.spec = armed` on success, reporting an error exactly as it reports a `wire` error today — `output.Err(out, err.Error())` followed by `clihelp.Abort(ctx, 1)`.
+  Leave `BuildShed` nil on the lightweight path — `status` and `pause` never call it, which is what keeps them off `wire()`.
+  On the full path, fill `BuildShed` **per verb**, because loom's two producer-driving verbs build their Shed differently today and collapsing them would change behaviour:
+  for `step`, a closure returning `c.buildLoomShed()`;
+  for `run`, a closure returning `loomrecipe.New(c.env, c.shedPaths)` directly.
+  The distinction is load-bearing: `internal/loomcli/sharedbootstrap.go`'s `buildLoomShed` already performs the whole `fabricengine.Open`/`CurrentBranch`/`OriginURL`/`ReadOrigin`/`resolveLandingParent` block and the `c.env.Landing = landingDeps(…)` assignment before calling `loomrecipe.New`, while `run` performs that same block inline in its own pre-flight and then calls `loomrecipe.New` itself.
+  Giving `run` a `buildLoomShed`-backed `BuildShed` would open the fabric and read origin twice where it does so once today.
+  Rewrite `resolvePersistentPreRun` to call `c.arm(cwd, cmd.Name(), args)` — the unexported worker, on its own receiver — and assign `*c.spec = armed` on success, reporting an error exactly as it reports a `wire` error today: `output.Err(out, err.Error())` followed by `clihelp.Abort(ctx, 1)`.
+  Because `arm` routes through `c.wire`/`c.wireLightweight`, the pre-run still populates `c` exactly as it does today, so `start`, `validate-discussion` and `validate-plan` keep working unchanged even though none of them is a `shedverbs` verb and none reads `c.spec`.
   It must keep reading cwd through `lyxcwd.CwdFrom(ctx)` and keep passing `lyxcwd.Resolve`'s error through bare rather than doubling text on top of it, since that error is already the self-describing "not a git repository" sentinel.
-  The receiver `Arm` builds internally is the one whose hooks close over `c`, so the `*loomCLI` the pre-run holds and the one the returned hooks capture must be the same value — have `resolvePersistentPreRun` reuse `Arm`'s result rather than wiring a second receiver.
-  Restructure `Arm` to return both the spec and the receiver, or to take the receiver as a parameter, whichever keeps that single-receiver property explicit.
+  The single-receiver property is what the two-function split buys and must be preserved: the `*loomCLI` whose fields the returned hooks close over is always the same value the caller holds — the pre-run's own `c` on the `lyx loom` path, and the wrapper's freshly-constructed one on the `lyx shed` path.
 - **Commit:** `feat(loomcli): add the exported Arm resolution entry point`
 
 ### Card 22: rearm loomcli's run and step over shedverbs
@@ -85,7 +95,8 @@ A verb-blind arming keyed on recipe name alone would run the full `wire()` for `
 - **Requirements:** delete `runCmd` and `stepCmd` from `internal/loomcli/run.go` and `internal/loomcli/step.go`, along with `stepEnvelope`, the five `stepKind*` constants, the `stepKinds` slice and `stepKindForBootstrapStage`'s *mapping targets* — `stepKindForBootstrapStage` itself stays, retargeted onto `shedverbs.KindUnseeded`/`shedverbs.KindOwnership`/`shedverbs.KindBootstrap`, because it maps loom's own `bootstrapStage` vocabulary and belongs here.
   Keep `shouldReflectFriction` and `reflectFriction` in `run.go`: both are loom's own and are now called from the `PostRun` hook.
   Move the body of the deleted `runCmd` into a `PreRun` hook and a `PostRun` hook filled by `Arm`, preserving the existing ordering exactly.
-  `PreRun` runs, in this order: the status-file existence refusal naming `lyx loom start`;
+  `PreRun` keeps `run`'s existing pre-flight block, which is the one `run` performs today and which its own `BuildShed` therefore must not repeat (card 21).
+  It runs, in this order: the status-file existence refusal naming `lyx loom start`;
   `loomengine.VerifySeedOwnership`;
   `observeEntry`, still guarded on the `selfreport` knob directly so a disabled run pays for no lock probe and no extra status decode;
   `c.reed.Up()`;
@@ -104,7 +115,11 @@ A verb-blind arming keyed on recipe name alone would run the full `wire()` for `
   Fill the `PostStep` hook batch 3 declared with loom's `recordStepHandoff(loomengine.LoomStepHandoff(c.location), loomengine.LoomStepHandoffLock(c.location), len(res.History), res.State)` call, which is what keeps that marker at its required position — after a successful `shed.Step` and before the envelope is reported.
   Fill `InterruptPolicyFor` with `loomshed.InterruptPolicyFor`, which is the table `next_interrupt_policy` reads today.
   Preserve the comment recording that the early probe is an optimisation and `shedengine.Step`'s own acquisition is the authority.
-  Have `Command()` build its `run` and `step` commands from `shedverbs.Verbs`, and register `--parent` on the returned `step` command with its existing flag help text unchanged, reading it by closure into the `PreStep` hook exactly as `parentFlag` is captured today.
+  Route `--parent` through a named carrier rather than a closure over a local, because the local it is captured from today (`parentFlag` in `stepCmd`) disappears with that function: add a `parentFlag string` field to the `loomCLI` struct, have `Command()` bind the returned `step` command's flag to `&c.parentFlag` with `cmd.Flags().StringVar`, and have the `PreStep` hook read `c.parentFlag` when calling `c.seedAndCommitBootstrap(slug, c.parentFlag)`.
+  A closure cannot carry it: after the move the flag variable lives in `Command()` while `PreStep` is built inside `arm`, which sees only `(cwd, verb, args)` — and a `PersistentPreRunE`'s `args` are positional only, never parsed flags.
+  Keep the flag's existing help text byte-for-byte.
+  State the disposition on the other path explicitly: `lyx shed step --recipe loom` registers no `--parent` flag of its own, so `c.parentFlag` is the empty string there — which is exactly the value `lyx loom step` passes when the operator omits the flag, so the two paths agree and the provenance record is simply never written from the `shed` path.
+  Record that in `arm.go`'s doc comment, since it is a real behavioural difference between the two entry points rather than an oversight.
 - **Commit:** `refactor(loomcli): rearm run and step over shedverbs hooks`
 
 ### Card 23: rearm loomcli's status and pause over shedverbs
@@ -123,6 +138,7 @@ A verb-blind arming keyed on recipe name alone would run the full `wire()` for `
   - `internal/loomcli/status.go`
   - `internal/loomcli/pause.go`
   - `internal/loomcli/arm.go`
+  - `internal/loomcli/sharedbootstrap.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -133,6 +149,9 @@ A verb-blind arming keyed on recipe name alone would run the full `wire()` for `
   Its empty-string value when `current_producer` names no row is the caller's "no entry" signal and never a third policy value.
   If `internal/loomcli/status.go` ends up holding no declaration at all after the deletions, delete the file rather than leaving an empty one, and record that in the commit message;
   the same applies to `pause.go`.
+  Give `internal/loomcli/sharedbootstrap.go`'s `ensureStatusLockDir` a disposition too: deleting `statusCmd` and `pauseCmd` removes its only two callers, so delete the function along with them rather than leaving dead code.
+  Its `MkdirAll` is not lost — `shedverbs`' own `ensureStatusLockDir` performs it, gated on the told `EnsureStatusLockDir` boolean — and the crucible history its doc comment records was already carried into that function's own doc comment by batch 3, card 13.
+  Confirm before deleting that no third caller has appeared since this plan was written.
   Confirm the resulting `lyx loom status` envelope is byte-identical to today's nine keys — the four generic core keys plus these five — and that `lyx loom pause`'s is still the single key `status_file`.
 - **Commit:** `refactor(loomcli): rearm status and pause over shedverbs`
 
@@ -228,7 +247,8 @@ A verb-blind arming keyed on recipe name alone would run the full `wire()` for `
   That seed-when-absent behaviour is lifecycle's alone and must not leak into the generic body — loom refuses in exactly the situation lifecycle seeds, because only `lyx loom start` may seed loom's status file.
   `PostRun` returns `map[string]any{"abandonedSession": c.abandonedSession}` only when `c.abandonedSession` is non-empty, preserving today's conditional emission, and returns a nil or empty map otherwise.
   `StatusExtras` returns lifecycle's own three keys and no others: `found: true`, `status_path` and `history` from `st.History`.
-  The generic body supplies `current_producer`, `state`, `error` and `activity`, which together with these three reproduce today's six-key found-envelope exactly.
+  The generic body supplies `current_producer`, `state`, `error` and `activity`, which together with these three reproduce today's **seven**-key found-envelope exactly — `internal/lifecyclecli/status.go` emits `found`, `status_path`, `current_producer`, `state`, `error`, `activity` and `history`.
+  Do not pin a six-key closure assertion.
   Register the `pause` command on the lifecycle subtree for the first time, with `Args: cobra.ExactArgs(1)` like the other two, since it needs the slug before `wire` can build any path.
   Change `Command()`'s `parent.AddCommand(c.runCmd(), c.statusCmd())` to add the three commands returned by `shedverbs.Verbs(lifecycleVerbTexts, c.spec)` that this module exposes — `run`, `status` and `pause` — and not `step`, which lifecycle has no analogue for.
   Declare `lifecycleVerbTexts` carrying `run`'s and `status`'s existing `Use`/`Short`/`Long` byte-for-byte, plus new text for `pause` in the same shape, and extend `status`'s `Long` with an `Example:` line for `--watch` since the flag is now present.
