@@ -73,7 +73,9 @@ batches:
     commit_sha: 783e57d290a13747dd482a85631eadcd3731c314
     verify_baseline_failures: ["FAIL\t./internal/shedverbs/... [setup failed]"]
   - name: shed-subtree
-    state: pending
+    state: running
+    implementer_session: 4afb5a2c-7b3c-4289-ad90-d912d5d116dc
+    start_sha: da032ec5f8309c42d7e268e69c7294471e81bd4a
     verify_baseline_failures: ["FAIL\t./internal/shedcli/... [setup failed]"]
   - name: docs-invariant-skill
     state: pending
