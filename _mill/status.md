@@ -37,7 +37,9 @@ batches:
     commit_sha: 7cc03e538e1d81d787274bd467e383684eb84c07
     verify_baseline_failures: ["FAIL\t./internal/shedrun/... [setup failed]"]
   - name: board-type-field
-    state: pending
+    state: running
+    implementer_session: 368ab9ad-b686-42f9-b03d-a03e39f1e455
+    start_sha: 52b9db7971c4d1177a8417a97e2069fb2a5540b9
     verify_baseline_failures: []
   - name: batten-rename
     state: pending
