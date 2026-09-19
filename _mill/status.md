@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-operator-strand-and-loom-wiring
+phase: holistic-reviewing
 slug: reed-born-as-strand
 branch: reed-born-as-strand
 plan: _mill/plan
@@ -32,6 +32,7 @@ planned  '2026-09-19T10:26:10Z'
 implementing  '2026-09-19T10:26:38Z'
 approved-watchdog-seam-and-focus-pin  '2026-09-19T10:35:23Z'
 approved-operator-strand-and-loom-wiring  '2026-09-19T10:47:46Z'
+holistic-reviewing  '2026-09-19T10:48:24Z'
 ```
 
 ## Batches
