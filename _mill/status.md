@@ -6,6 +6,7 @@ slug: reed-selvage-pane-extraction
 branch: reed-selvage-pane-extraction
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: 'reed: extract Selvage-pane lifecycle'
 task_description: |
   reed: extract Selvage-pane lifecycle
@@ -34,7 +35,11 @@ implementing  '2026-09-19T10:10:18Z'
 ```yaml
 batches:
   - name: selvagepane-extraction
-    state: pending
+    state: running
+    implementer_session: 9431660f-20cf-48d6-8576-fb216d12d565
+    start_sha: ebc6596129e6bf6d334907969bb6ebd37ed055fc
+    verify_baseline_failures: []
   - name: docs-and-full-verification
     state: pending
+    verify_baseline_failures: []
 ```
