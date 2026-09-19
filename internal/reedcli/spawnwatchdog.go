@@ -1,7 +1,8 @@
 // spawnwatchdog.go implements ensureWatchdogSpawned, the best-effort spawn attempt up, resume and
 // attach each make after their own engine op returns without error: it re-execs this same binary
-// as `lyx reed watchdog --hub-path <hub> --tmux <tmux>`, detached, so the spawned process outlives
-// this one and hosts the per-hub resize self-heal daemon for every worktree on the hub.
+// as `lyx reed watchdog --hub-path <hub> --tmux <tmux> --shell <shell>`, detached, so the spawned
+// process outlives this one and hosts the per-hub resize self-heal daemon for every worktree on
+// the hub.
 
 package reedcli
 
@@ -43,7 +44,11 @@ func (c *reedCLI) ensureWatchdogSpawned() {
 		return
 	}
 
-	cmd := exec.Command(exe, "reed", "watchdog", "--hub-path", c.hubPath, "--tmux", c.eng.TmuxPath())
+	// c.eng.ShellPath() is passed unconditionally, empty or not: this spawn is best-effort and its
+	// child's stderr is discarded, so refusing here would silently cost the hub its entire watchdog
+	// daemon over one empty config value, while an empty shell costs only the descendant half of a
+	// reap on Windows.
+	cmd := exec.Command(exe, "reed", "watchdog", "--hub-path", c.hubPath, "--tmux", c.eng.TmuxPath(), "--shell", c.eng.ShellPath())
 	// The daemon is per-hub and outlives the worktree that spawned it. On Windows a held cwd handle
 	// on a worktree directory blocks that directory's deletion, which would break fabric teardown —
 	// pinning cmd.Dir to the hub instead avoids that entirely.
@@ -51,7 +56,7 @@ func (c *reedCLI) ensureWatchdogSpawned() {
 	// Leave stdin/stdout/stderr nil so no parent handles are inherited.
 	proc.Detach(cmd)
 
-	logger.Info("reed: spawning detached per-hub watchdog", "exe", exe, "hub", c.hubPath, "tmux", c.eng.TmuxPath())
+	logger.Info("reed: spawning detached per-hub watchdog", "exe", exe, "hub", c.hubPath, "tmux", c.eng.TmuxPath(), "shell", c.eng.ShellPath())
 	if err := cmd.Start(); err != nil { // intentionally not Wait()ed: a detached Start with no Wait
 		// logs the spawn alone, since there is no teardown to log.
 		logger.Warn("reed: watchdog spawn failed", "exe", exe, "hub", c.hubPath, "err", err)
