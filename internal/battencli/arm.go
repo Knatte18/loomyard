@@ -23,9 +23,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -85,6 +88,17 @@ func battenAutoSeedVerbs(verb string) bool {
 	}
 }
 
+// battenDriver returns flagVal, defaulting to shedrun.DriverGo when flagVal is empty -- the shape
+// both --driver and --child-driver take when arm_seed_test.go drives armSeed directly against a
+// zero-value receiver, and the shape "lyx batten run"/"lyx batten step" take once cli.go's own
+// StringVar default ("go") has already filled the field.
+func battenDriver(flagVal string) string {
+	if flagVal == "" {
+		return shedrun.DriverGo
+	}
+	return flagVal
+}
+
 // armSeed gates batten's auto-seed: it reads the seed at runID, does nothing when one already
 // exists, writes a fresh one for "run" and "step" when absent, and refuses every other verb with
 // shedrun.MissingSeedMessage naming "lyx batten run <slug>" as the remedy.
@@ -93,6 +107,10 @@ func battenAutoSeedVerbs(verb string) bool {
 // runs' recipes, and a prime seed carrying "loom" would make "lyx shed status <slug>" from prime arm
 // loomcli against prime -- the wrong recipe against the wrong worktree. The child worktree's own
 // recipe is chosen later, by battenshed's Seed-Child producer, from the Board task's type.
+//
+// The auto-seeded driver and child_driver come from c.driverFlag/c.childDriverFlag -- "run"'s and
+// "step"'s own --driver/--child-driver flags, each validated via shedrun.ValidateDriver before the
+// seed is written, so an "llm" value refuses here rather than being written to disk unseen.
 //
 // The refusal carries no "kind" field, keeping the five-value step refusal-kind vocabulary closed:
 // a missing run is not a sixth kind.
@@ -113,12 +131,21 @@ func (c *battenCLI) armSeed(location *lyxcwd.Location, runID, verb string) error
 		return errors.New(shedrun.MissingSeedMessage("battencli", runID, existing, `run "lyx batten run <slug>" first`))
 	}
 
+	driver := battenDriver(c.driverFlag)
+	if err := shedrun.ValidateDriver(driver); err != nil {
+		return err
+	}
+	childDriver := battenDriver(c.childDriverFlag)
+	if err := shedrun.ValidateDriver(childDriver); err != nil {
+		return err
+	}
+
 	return shedrun.WriteSeed(location, runID, shedrun.Seed{
 		Recipe: shedrun.RecipeBatten,
-		Driver: shedrun.DriverGo,
+		Driver: driver,
 		Params: map[string]string{
 			"slug":         runID,
-			"child_driver": shedrun.DriverGo,
+			"child_driver": childDriver,
 		},
 	})
 }
@@ -175,9 +202,12 @@ func (c *battenCLI) specFor(verb string) shedverbs.Spec {
 		StatusLabel:         "batten",
 		DecodeErrPrefix:     "battencli:",
 		RunBusyMessage:      fmt.Sprintf("battencli: another batten run already holds the run lock %q", c.shedPaths.LockPath),
-		// step has no batten analogue, so both of its told fields stay at their zero values.
-		StepBusyMessage: "",
-		StepBusyKind:    "",
+		// StepBusyMessage mirrors RunBusyMessage's own wording: shed.Step's own busy detection (a
+		// race landing after battenPreStep's early probe releases the lock) reports through this
+		// told text rather than passthrough, and StepBusyKind stays inside the closed five-value
+		// vocabulary.
+		StepBusyMessage: fmt.Sprintf("battencli: another batten run already holds the run lock %q", c.shedPaths.LockPath),
+		StepBusyKind:    shedverbs.KindBusy,
 		AbsentStatus: shedverbs.AbsentDisposition{
 			// A slug that has never run on this machine is a determined answer, not an error.
 			Refuse: false,
@@ -186,11 +216,16 @@ func (c *battenCLI) specFor(verb string) shedverbs.Spec {
 		Hooks: shedverbs.Hooks{
 			PreRun:       c.battenPreRun,
 			PostRun:      c.battenPostRun,
+			PreStep:      c.battenPreStep,
 			StatusExtras: c.battenStatusExtras,
 		},
 	}
 
-	if verb == "run" {
+	// BuildShed is batten's plain battenrecipe.New(c.env, c.shedPaths) for both "run" and "step":
+	// unlike loom's own step arm (buildLoomShed), batten's wire performs no fabric-open/origin-read
+	// work that a second construction would duplicate, so there is no reason for step to take a
+	// different path than run does.
+	if verb == "run" || verb == "step" {
 		spec.BuildShed = func() (*shedengine.Shed, error) { return battenrecipe.New(c.env, c.shedPaths) }
 	}
 
@@ -254,6 +289,69 @@ func (c *battenCLI) battenPreRun(ctx context.Context) error {
 			History:         []shedengine.HistoryEntry{},
 		}, nil
 	})
+}
+
+// battenPreStep implements the PreStep hook for batten's spec, modelled on loomcli's own
+// loomPreStep: a run-lock probe first, then the same work battenPreRun performs -- decode the
+// status, refuse a done slug, resume silently over every other state, seed the status when absent.
+//
+// Without this hook, stepLocked's own read gate would hit an absent status and hard-error, which
+// shedverbs/step.go reports as kind: "producer" -- the one kind ly-drive retries, so a fresh slug's
+// first step would loop rather than seed.
+//
+// Its refusal-kind mapping stays inside the closed five: the run lock already held is
+// shedverbs.KindBusy; a status decode failure or a failed status seed is shedverbs.KindUnseeded; any
+// other pre-producer failure (the unrecognized-state default and the done-slug refusal alike) is
+// shedverbs.KindBootstrap. shedverbs.KindOwnership is not used -- it exists for loom's own
+// seeded-status-belongs-to-another-slug check, which has no batten analogue -- and
+// shedverbs.KindProducer is shed.Step's own to emit, never this hook's.
+func (c *battenCLI) battenPreStep(ctx context.Context) (string, error) {
+	if err := os.MkdirAll(filepath.Dir(c.shedPaths.LockPath), 0o755); err != nil {
+		return shedverbs.KindBootstrap, err
+	}
+	probe, runLockFree, err := lock.TryAcquireWriteLock(c.shedPaths.LockPath)
+	if err != nil {
+		return shedverbs.KindBootstrap, err
+	}
+	if runLockFree {
+		_ = probe.Release()
+	} else {
+		return shedverbs.KindBusy, fmt.Errorf("battencli: another batten run already holds the run lock %q", c.shedPaths.LockPath)
+	}
+
+	st, found, err := state.ReadJSONStrict[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
+	if err != nil {
+		return shedverbs.KindUnseeded, errors.New("battencli: decode status file " + c.shedPaths.StatusPath + ": " + err.Error())
+	}
+	if found {
+		switch st.State {
+		case shedengine.StateDone:
+			return shedverbs.KindBootstrap, fmt.Errorf(
+				"battencli: %q has already completed; delete %s to run it again",
+				c.slug, BattenDir(c.location, c.slug),
+			)
+		case shedengine.StateRunning, shedengine.StateBlocked, shedengine.StateFailed, shedengine.StatePaused:
+			// Resumes silently, exactly as battenPreRun's own identical switch does.
+		default:
+			return shedverbs.KindBootstrap, fmt.Errorf("battencli: unrecognized status state %q", st.State)
+		}
+		return "", nil
+	}
+
+	if err := state.UpdateJSON(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, func(cur shedengine.Status, found bool) (shedengine.Status, error) {
+		if found {
+			return cur, nil
+		}
+		return shedengine.Status{
+			CurrentProducer: battenrecipe.NameWorktreeCreate,
+			State:           shedengine.StateRunning,
+			History:         []shedengine.HistoryEntry{},
+		}, nil
+	}); err != nil {
+		return shedverbs.KindUnseeded, err
+	}
+
+	return "", nil
 }
 
 // battenPostRun implements the PostRun hook for batten's spec: it returns the envelope's

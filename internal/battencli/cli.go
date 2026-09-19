@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/spf13/cobra"
 )
@@ -42,6 +43,14 @@ type battenCLI struct {
 	// at run time. It is always non-nil after construction, so Command() can hand the same
 	// pointer to shedverbs.Verbs before the pre-run has ever run.
 	spec *shedverbs.Spec
+	// driverFlag carries "run"'s and "step"'s own --driver value: a closure cannot carry it, since
+	// cobra parses flags after Command() has already built and returned the whole tree, so arm.go's
+	// armSeed reads it back off the receiver instead. Empty means "unset"; battenDriver (arm.go)
+	// resolves that to shedrun.DriverGo.
+	driverFlag string
+	// childDriverFlag is driverFlag's sibling for --child-driver, the value armSeed writes into the
+	// auto-seeded seed's params.child_driver.
+	childDriverFlag string
 }
 
 // battenVerbTexts carries batten's three shedverbs-driven verbs' Use/Short/Long text.
@@ -93,6 +102,17 @@ in the persist that records the paused state.
 Example:
   lyx batten pause some-slug`,
 	},
+	Step: shedverbs.VerbText{
+		Use:   "step <slug>",
+		Short: "drive a task worktree's lifecycle one producer forward",
+		Long: `step drives the pair's create/run/teardown lifecycle exactly one producer
+forward from its persisted current producer, seeding a fresh run first when
+none is persisted yet -- the single-producer primitive an external
+supervisor drives one call at a time.
+
+Example:
+  lyx batten step some-slug`,
+	},
 }
 
 // Command returns the cobra command tree for the batten module.
@@ -122,12 +142,21 @@ Example:
 	}
 
 	verbs := shedverbs.Verbs(battenVerbTexts, c.spec)
-	runVerb, statusVerb, pauseVerb := verbs[0], verbs[2], verbs[3]
+	runVerb, stepVerb, statusVerb, pauseVerb := verbs[0], verbs[1], verbs[2], verbs[3]
 	runVerb.Args = cobra.ExactArgs(1)
+	stepVerb.Args = cobra.ExactArgs(1)
 	statusVerb.Args = cobra.ExactArgs(1)
 	pauseVerb.Args = cobra.ExactArgs(1)
 
-	parent.AddCommand(runVerb, statusVerb, pauseVerb)
+	// --driver and --child-driver exist now so a later roadmap item changes a default rather than a
+	// surface: both flags currently accept only "go" (shedrun.ValidateDriver, consulted in
+	// arm.go's armSeed, refuses "llm").
+	runVerb.Flags().StringVar(&c.driverFlag, "driver", shedrun.DriverGo, "the run's own driver")
+	runVerb.Flags().StringVar(&c.childDriverFlag, "child-driver", shedrun.DriverGo, "the driver the task worktree's own inner run uses")
+	stepVerb.Flags().StringVar(&c.driverFlag, "driver", shedrun.DriverGo, "the run's own driver")
+	stepVerb.Flags().StringVar(&c.childDriverFlag, "child-driver", shedrun.DriverGo, "the driver the task worktree's own inner run uses")
+
+	parent.AddCommand(runVerb, stepVerb, statusVerb, pauseVerb)
 
 	return parent
 }

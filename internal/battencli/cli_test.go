@@ -16,11 +16,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// battenVerbCommand builds the single shedverbs command named verb ("run", "status", or
+// battenVerbCommand builds the single shedverbs command named verb ("run", "step", "status", or
 // "pause"), armed against c.specFor(verb) assigned onto c.spec -- the tier-1 seam arm.go's
 // specFor/arm split exists for, letting this untagged suite fill a Spec with no resolution and no
 // git spawn. It sets Args: cobra.ExactArgs(1), mirroring what Command() itself sets on every one
-// of these three verbs.
+// of these four verbs.
 func battenVerbCommand(c *battenCLI, verb string) *cobra.Command {
 	spec := c.specFor(verb)
 	c.spec = &spec
@@ -50,9 +50,9 @@ func TestCommand_EveryCommandHasShort(t *testing.T) {
 }
 
 // TestCommand_RegisteredVerbs_ExactSet asserts that the parent command's registered subcommands are
-// exactly the three batten verbs, no more and no fewer -- "pause" included, per this task's
-// agreed additive surface change, and "step" deliberately excluded, since batten has no
-// analogue for it and shedverbs.Verbs' returned step command is never added to this subtree.
+// exactly the four batten verbs, no more and no fewer -- "pause" and "step" both included, per this
+// task's agreed additive surface change: batten now registers all four of shedverbs.Verbs' returned
+// commands, "step" included, rather than the three-verb subtree an earlier card in this task shipped.
 func TestCommand_RegisteredVerbs_ExactSet(t *testing.T) {
 	parent := Command()
 
@@ -66,7 +66,7 @@ func TestCommand_RegisteredVerbs_ExactSet(t *testing.T) {
 	}
 	sort.Strings(got)
 
-	want := []string{"pause", "run", "status"}
+	want := []string{"pause", "run", "status", "step"}
 
 	gotSet := make(map[string]bool, len(got))
 	for _, name := range got {
