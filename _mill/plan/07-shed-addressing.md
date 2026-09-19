@@ -116,10 +116,12 @@ That is acceptable because the clearer message stays reachable by the command an
   - `internal/shedcli/table_test.go`
   - `internal/shedcli/cli_test.go`
   - `internal/shedcli/parity_test.go`
+  - `internal/shedcli/cli.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Extend `table_test.go`'s existing arming-coverage shape to the new `entry` struct with no `Args` field, and add the sync meta-test the overview's `shedrun-owns-the-recipe-name-vocabulary` Shared Decision requires: the `recipes` map's key set equals `shedrun.RecipeNames()`, so the vocabulary and the arming table cannot drift apart.
+- **Requirements:** Extract `armFromSeed(location *lyxcwd.Location, verb string, args []string) (shedverbs.Spec, error)` out of `resolvePersistentPreRun` in `cli.go`: the resolution-free body (run-id resolution, seed read, recipe lookup, verb gate, `Arm` call), taking an already-resolved Location, so `cli_test.go` can drive the seed-driven arming and refusal-precedence coverage below directly, with no real git repository behind it, staying Tier 1 -- matching `lyxcwd.Resolve` real-git-spawn cases belonging only in integration-tagged files elsewhere in this repo (e.g. `internal/lyxcwd/lyxcwd_test.go`).
+  Extend `table_test.go`'s existing arming-coverage shape to the new `entry` struct with no `Args` field, and add the sync meta-test the overview's `shedrun-owns-the-recipe-name-vocabulary` Shared Decision requires: the `recipes` map's key set equals `shedrun.RecipeNames()`, so the vocabulary and the arming table cannot drift apart.
   In `cli_test.go`, cover seed-driven arming: the run-id positional defaulting to `self`; an absent seed refusing with a listing of existing run-ids; a seed naming an unknown recipe refusing with the table's available names; and the verb gate still firing for a verb a recipe's entry excludes.
   Pin the **refusal precedence** as a table — not-a-git-repository, then the run-id listing, then the verb gate, then `Arm`'s own refusals — since that order changed in this batch and a regression in it is invisible until an operator gets the wrong message from the wrong worktree.
   Pin explicitly that a missing-run refusal carries **no** `kind` field, which is the regression the Shed Verb-Set Invariant most invites.
