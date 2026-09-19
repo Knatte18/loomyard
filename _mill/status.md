@@ -65,7 +65,9 @@ batches:
     commit_sha: 84537b2d22a55df9dd877c09d91e572b17345ef0
     verify_baseline_failures: []
   - name: tagged-tests
-    state: pending
+    state: running
+    implementer_session: fb5ae492-7b7a-41bb-82af-861afe1205b7
+    start_sha: 80929dc84479e7f48448609d98c16cdc3b088e7d
     verify_baseline_failures: ['--- FAIL: TestSmokeClaudeResumeRecallsCodeword (181.02s)', "FAIL\tgithub.com/Knatte18/loomyard/internal/reedcli\t\
     236.438s", '--- FAIL: TestSmokeClaudeResumeRecallsCodeword (180.88s)', "FAIL\t\
     github.com/Knatte18/loomyard/internal/reedcli\t235.886s"]
