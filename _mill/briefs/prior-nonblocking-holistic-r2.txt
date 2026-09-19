@@ -1,1 +1,0 @@
-- Plan never named doc.go's chokepoint section as a location to amend: **Location:** `_mill/plan/02-fabricengine-remote-executor.md` card 4, `_mill/plan/03-engine-wiring.md` card 9

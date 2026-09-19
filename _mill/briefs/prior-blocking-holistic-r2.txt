@@ -1,1 +1,0 @@
-- doc.go's chokepoint section left un-synced with the sixth primitive: **Location:** `internal/fabricengine/doc.go:631-655` (the "# The destruction chokepoint" section) vs `internal/fabricengine/destroy.go:1-4,54,524-527`
