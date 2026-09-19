@@ -12,8 +12,26 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/spf13/cobra"
 )
+
+// lifecycleVerbCommand builds the single shedverbs command named verb ("run", "status", or
+// "pause"), armed against c.specFor(verb) assigned onto c.spec -- the tier-1 seam arm.go's
+// specFor/arm split exists for, letting this untagged suite fill a Spec with no resolution and no
+// git spawn. It sets Args: cobra.ExactArgs(1), mirroring what Command() itself sets on every one
+// of these three verbs.
+func lifecycleVerbCommand(c *lifecycleCLI, verb string) *cobra.Command {
+	spec := c.specFor(verb)
+	c.spec = &spec
+	for _, cmd := range shedverbs.Verbs(lifecycleVerbTexts, c.spec) {
+		if cmd.Name() == verb {
+			cmd.Args = cobra.ExactArgs(1)
+			return cmd
+		}
+	}
+	panic("lifecycleVerbCommand: no shedverbs command named " + verb)
+}
 
 // TestCommand_EveryCommandHasShort walks the full lifecycle command tree and asserts that every
 // command -- the parent group and every subcommand -- carries a non-empty Short, per the CLI/Cobra
@@ -32,7 +50,9 @@ func TestCommand_EveryCommandHasShort(t *testing.T) {
 }
 
 // TestCommand_RegisteredVerbs_ExactSet asserts that the parent command's registered subcommands are
-// exactly the two lifecycle verbs, no more and no fewer.
+// exactly the three lifecycle verbs, no more and no fewer -- "pause" included, per this task's
+// agreed additive surface change, and "step" deliberately excluded, since lifecycle has no
+// analogue for it and shedverbs.Verbs' returned step command is never added to this subtree.
 func TestCommand_RegisteredVerbs_ExactSet(t *testing.T) {
 	parent := Command()
 
@@ -46,7 +66,7 @@ func TestCommand_RegisteredVerbs_ExactSet(t *testing.T) {
 	}
 	sort.Strings(got)
 
-	want := []string{"run", "status"}
+	want := []string{"pause", "run", "status"}
 
 	gotSet := make(map[string]bool, len(got))
 	for _, name := range got {
@@ -69,10 +89,10 @@ func TestCommand_RegisteredVerbs_ExactSet(t *testing.T) {
 	}
 }
 
-// TestCommand_EveryVerbRejectsWrongArgCount asserts that both verbs reject zero arguments and two
-// arguments -- each takes exactly one, the slug.
+// TestCommand_EveryVerbRejectsWrongArgCount asserts that all three verbs reject zero arguments and
+// two arguments -- each takes exactly one, the slug.
 func TestCommand_EveryVerbRejectsWrongArgCount(t *testing.T) {
-	for _, verb := range []string{"run", "status"} {
+	for _, verb := range []string{"run", "status", "pause"} {
 		for _, args := range [][]string{{verb}, {verb, "a", "b"}} {
 			t.Run(verb+"_"+strings.Join(args, "_"), func(t *testing.T) {
 				var out bytes.Buffer

@@ -32,7 +32,7 @@ func TestWire_SucceedsForNonexistentTaskWorktree(t *testing.T) {
 }
 
 // TestWire_LazySeams covers all four lazy seams individually: the status-path resolver
-// (Env.LoomRun.ResolveStatus), the spawn directory (Env.LoomRun.Spawn), and both teardown halves
+// (Env.InnerRun.ResolveStatus), the spawn directory (Env.InnerRun.Spawn), and both teardown halves
 // (Env.Teardown.Shutdown, Env.Teardown.Remove) are each present as an injected closure after wire
 // returns -- not already-evaluated values -- for a slug whose worktree does not exist. Covering all
 // four separately, rather than just the first, is deliberate: eager evaluation is exactly the
@@ -55,8 +55,8 @@ func TestWire_LazySeams(t *testing.T) {
 		name    string
 		present bool
 	}{
-		{"StatusPathResolver", c.env.LoomRun.ResolveStatus != nil},
-		{"SpawnDirectory", c.env.LoomRun.Spawn != nil},
+		{"StatusPathResolver", c.env.InnerRun.ResolveStatus != nil},
+		{"SpawnDirectory", c.env.InnerRun.Spawn != nil},
 		{"TeardownShutdown", c.env.Teardown.Shutdown != nil},
 		{"TeardownRemove", c.env.Teardown.Remove != nil},
 	}

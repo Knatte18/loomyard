@@ -1,7 +1,7 @@
 // fixture_test.go implements buildSequenceFixture, the one shared Tier-1 builder every sequence,
 // resume, and bounce-routing test in this package reuses rather than building its own fixture: a
 // whole temp anchor a real New-built producer list can run against offline, plus the
-// shedrecipe.Env/ShedPaths pair pointing at it.
+// shedrecipe.Env/shedbuild.ShedPaths pair pointing at it.
 //
 // The helpers this file duplicates rather than imports -- writeDiscussionFixture,
 // validDecisionRecord, seedPlanValidateFixture, fakeWebsterRun, and writeBatcherConfig -- are
@@ -30,6 +30,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
+	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -317,10 +318,10 @@ func (f *fakeWebsterRun) run(deps websterengine.RunDeps, _ websterengine.RunOpti
 // sequence.
 //
 // buildSequenceFixture's return signature stays fixed at exactly (anchorPath string, env
-// shedrecipe.Env, paths ShedPaths): seven call sites across sequence_test.go and resume_test.go
-// destructure it as "_, env, paths := buildSequenceFixture(t)", and Go requires an exact arity
-// match on ":=", so a fourth return value here would fail to compile at every one of those call
-// sites. A test that needs this fake instead reaches it by type-asserting
+// shedrecipe.Env, paths shedbuild.ShedPaths): seven call sites across sequence_test.go and
+// resume_test.go destructure it as "_, env, paths := buildSequenceFixture(t)", and Go requires an
+// exact arity match on ":=", so a fourth return value here would fail to compile at every one of
+// those call sites. A test that needs this fake instead reaches it by type-asserting
 // env.Shuttle.(*fakeLoomShuttle) -- buildSequenceFixture is the only thing that ever fills
 // that field, so the assertion is total.
 type fakeLoomShuttle struct {
@@ -499,8 +500,8 @@ func writeBatcherConfig(t *testing.T, anchorPath, content string) {
 
 // buildSequenceFixture builds a temp anchor whose on-disk state makes rows 3 (Discussion-Validate),
 // 7 (Plan-Validate), and 9 (Batchifier) -- the three real, non-injectable producers this task builds
-// -- genuinely pass, and returns the anchor path alongside the shedrecipe.Env/ShedPaths pair
-// pointing at it.
+// -- genuinely pass, and returns the anchor path alongside the shedrecipe.Env/shedbuild.ShedPaths
+// pair pointing at it.
 //
 // Discussion-Validate: both discussion files are written, the decision record carrying all seven
 // required H2 sections (writeDiscussionFixture, duplicated above from discussionvalidate_test.go).
@@ -554,7 +555,7 @@ func writeBatcherConfig(t *testing.T, anchorPath, content string) {
 // a closure running the real planparser.SetApproved over the same plan directory, wired to
 // Plan-Bouncer's approve_seam key -- the flag is only ever set once the review segment's approved
 // settle fires.
-func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, paths ShedPaths) {
+func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, paths shedbuild.ShedPaths) {
 	t.Helper()
 
 	dir := t.TempDir()
@@ -661,7 +662,7 @@ func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, 
 		},
 	}
 
-	paths = ShedPaths{
+	paths = shedbuild.ShedPaths{
 		StatusPath:     statusPath,
 		LockPath:       filepath.Join(dir, "run.lock"),
 		StatusLockPath: statusLockPath,

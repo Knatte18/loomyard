@@ -1,7 +1,8 @@
 // fixture_test.go implements testEnv, the package-internal test scaffolding every later test file
-// in this package reuses: a minimal shedrecipe.Env and a ShedPaths, every path derived from one
-// t.TempDir() root, filling only the six fields the three lifecycle entries read and leaving the
-// rest of Env zero -- which is legal, since each entry validates exactly the fields it reads.
+// in this package reuses: a minimal shedrecipe.Env and a shedbuild.ShedPaths, every path derived
+// from one t.TempDir() root, filling only the six fields the three lifecycle entries read and
+// leaving the rest of Env zero -- which is legal, since each entry validates exactly the fields it
+// reads.
 
 package lifecyclerecipe
 
@@ -11,13 +12,14 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lifecycleshed"
+	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 )
 
-// testEnv returns a minimal filled shedrecipe.Env and a ShedPaths, every path derived from one
-// t.TempDir() root.
-func testEnv(t *testing.T) (shedrecipe.Env, ShedPaths) {
+// testEnv returns a minimal filled shedrecipe.Env and a shedbuild.ShedPaths, every path derived
+// from one t.TempDir() root.
+func testEnv(t *testing.T) (shedrecipe.Env, shedbuild.ShedPaths) {
 	t.Helper()
 
 	dir := t.TempDir()
@@ -28,7 +30,7 @@ func testEnv(t *testing.T) (shedrecipe.Env, ShedPaths) {
 		CreateWorktree: func(context.Context) error {
 			return nil
 		},
-		LoomRun: lifecycleshed.LoomRunDeps{
+		InnerRun: lifecycleshed.InnerRunDeps{
 			Spawn: func(context.Context) error { return nil },
 			ResolveStatus: func() (string, string, error) {
 				return filepath.Join(dir, "loomrun-status.json"), filepath.Join(dir, "loomrun-status.json.lock"), nil
@@ -49,7 +51,7 @@ func testEnv(t *testing.T) (shedrecipe.Env, ShedPaths) {
 		},
 	}
 
-	paths := ShedPaths{
+	paths := shedbuild.ShedPaths{
 		StatusPath:     filepath.Join(dir, "status.json"),
 		LockPath:       filepath.Join(dir, "run.lock"),
 		StatusLockPath: filepath.Join(dir, "status.json.lock"),

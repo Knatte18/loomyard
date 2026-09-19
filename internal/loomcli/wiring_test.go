@@ -160,7 +160,7 @@ func hubLocation(t *testing.T, worktreeName, anchorRel string) *lyxcwd.Location 
 }
 
 // TestWire_PathFieldsMatchLoomengineAccessors asserts every path field of the assembled
-// shedrecipe.Env and loomrecipe.ShedPaths equals the corresponding loomengine accessor's own output
+// shedrecipe.Env and shedbuild.ShedPaths equals the corresponding loomengine accessor's own output
 // for the same location.
 //
 // StatusPath and StatusLockPath are told twice -- once on c.env (read by loomPreflightEntry) and

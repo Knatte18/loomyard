@@ -21,7 +21,7 @@ producers:
     on_done: Loom-Run
 
   - name: Loom-Run
-    engine: LoomRun
+    engine: InnerRun
     on_done: Worktree-Teardown
 
   - name: Worktree-Teardown

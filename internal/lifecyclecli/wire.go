@@ -1,5 +1,5 @@
 // wire.go implements wire, the assembly seam that builds the shedrecipe.Env and
-// lifecyclerecipe.ShedPaths the run and status verbs need, plus the receiver field the abandoned
+// shedbuild.ShedPaths the run and status verbs need, plus the receiver field the abandoned
 // session value is recorded into.
 //
 // Every seam that touches the managed task worktree resolves inside its own closure body on Call,
@@ -17,13 +17,13 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
-	"github.com/Knatte18/loomyard/internal/lifecyclerecipe"
 	"github.com/Knatte18/loomyard/internal/lifecycleshed"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -41,7 +41,7 @@ func taskWorktreeLocation(prime *lyxcwd.Location, slug string) (*lyxcwd.Location
 	return lyxcwd.ResolveWorktree(fabricengine.WorktreePath(prime, slug))
 }
 
-// wire builds and stores the shedrecipe.Env and lifecyclerecipe.ShedPaths the run and status verbs
+// wire builds and stores the shedrecipe.Env and shedbuild.ShedPaths the run and status verbs
 // need, over the resolved prime location and slug.
 func (c *lifecycleCLI) wire(location *lyxcwd.Location, slug string) error {
 	primeRunLockPath := PrimeRunLock(location)
@@ -108,7 +108,7 @@ func (c *lifecycleCLI) wire(location *lyxcwd.Location, slug string) error {
 				return err
 			},
 		},
-		LoomRun: lifecycleshed.LoomRunDeps{
+		InnerRun: lifecycleshed.InnerRunDeps{
 			ResolveStatus: func() (statusPath, statusLockPath string, err error) {
 				taskLocation, err := taskWorktreeLocation(location, slug)
 				if err != nil {
@@ -142,7 +142,7 @@ func (c *lifecycleCLI) wire(location *lyxcwd.Location, slug string) error {
 	}
 
 	c.env = env
-	c.shedPaths = lifecyclerecipe.ShedPaths{
+	c.shedPaths = shedbuild.ShedPaths{
 		StatusPath:     StatusFile(location, slug),
 		LockPath:       RunLock(location, slug),
 		StatusLockPath: StatusLock(location, slug),

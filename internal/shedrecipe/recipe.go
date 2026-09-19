@@ -114,7 +114,7 @@ type Env struct {
 	// seam.
 	ApprovePlan func() error
 
-	// Slug is the run-wide task slug, read by all three lifecycle entries (WorktreeCreate, LoomRun,
+	// Slug is the run-wide task slug, read by all three lifecycle entries (WorktreeCreate, InnerRun,
 	// WorktreeTeardown) for producer identity and stuck-reason text. It is legal on Env because Env
 	// carries roots and run-wide values, and a value that differs per row belongs in Config instead
 	// -- Slug does not differ between the three lifecycle rows a single caller wires.
@@ -126,12 +126,12 @@ type Env struct {
 	// following the CommitDiscussion/CommitPlan/ApprovePlan convention: that producer's whole job is
 	// one told action with no behaviour of its own a caller must observe.
 	CreateWorktree func(context.Context) error
-	// LoomRun is a whole-struct passthrough to lifecycleshed.NewLoomRun, following Env.Landing's own
-	// precedent: LoomRun has behaviour of its own -- spawning, resolving, and polling status -- that
-	// per-seam fakes must be able to substitute individually.
-	LoomRun lifecycleshed.LoomRunDeps
+	// InnerRun is a whole-struct passthrough to lifecycleshed.NewInnerRun, following Env.Landing's
+	// own precedent: InnerRun has behaviour of its own -- spawning, resolving, and polling status --
+	// that per-seam fakes must be able to substitute individually.
+	InnerRun lifecycleshed.InnerRunDeps
 	// Teardown is a whole-struct passthrough to lifecycleshed.NewWorktreeTeardown, following
-	// Env.Landing's own precedent for the same reason as LoomRun: it has behaviour of its own that
+	// Env.Landing's own precedent for the same reason as InnerRun: it has behaviour of its own that
 	// per-seam fakes must be able to substitute individually.
 	Teardown lifecycleshed.TeardownDeps
 	// PrimeLock is the told hub-scoped advisory lock WorktreeCreate and WorktreeTeardown both

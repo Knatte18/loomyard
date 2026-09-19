@@ -17,11 +17,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
@@ -186,7 +186,7 @@ func (c *loomCLI) wireLightweight(location *lyxcwd.Location, cwd string) {
 	// this doc comment's own claim that wireLightweight "loads no module config, constructs no
 	// engine, and can fail only if loomengine's own path accessors do" stays true with this fill in
 	// place.
-	c.shedPaths = loomrecipe.ShedPaths{
+	c.shedPaths = shedbuild.ShedPaths{
 		StatusPath:     loomengine.LoomStatusFile(location),
 		LockPath:       loomengine.LoomRunLock(location),
 		StatusLockPath: loomengine.LoomStatusLock(location),
@@ -204,7 +204,7 @@ func (c *loomCLI) wireLightweight(location *lyxcwd.Location, cwd string) {
 
 // wire builds the whole engine stack onto c from location and cwd: every module config anchored at
 // location.AnchorPath(), the reed engine and shuttle runner, the assembled websterengine.RunDeps, and
-// the assembled shedrecipe.Env/loomrecipe.ShedPaths pair wrapping it.
+// the assembled shedrecipe.Env/shedbuild.ShedPaths pair wrapping it.
 func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	anchorPath := location.AnchorPath()
 
@@ -411,7 +411,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	// argument types and must not be collapsed; loomrecipe.New errors if the two copies disagree.
 	// Each pair is filled from the single statusPath/statusLockPath evaluation above rather than a
 	// second loomengine accessor call, so the two copies cannot drift here.
-	c.shedPaths = loomrecipe.ShedPaths{
+	c.shedPaths = shedbuild.ShedPaths{
 		StatusPath:     statusPath,
 		LockPath:       loomengine.LoomRunLock(location),
 		StatusLockPath: statusLockPath,

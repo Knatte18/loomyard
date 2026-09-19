@@ -31,6 +31,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/quarrycli"
 	"github.com/Knatte18/loomyard/internal/reedcli"
 	"github.com/Knatte18/loomyard/internal/selfreportcli"
+	"github.com/Knatte18/loomyard/internal/shedcli"
 	"github.com/Knatte18/loomyard/internal/shuttlecli"
 	"github.com/Knatte18/loomyard/internal/stencilcli"
 	"github.com/Knatte18/loomyard/internal/webstercli"
@@ -73,7 +74,7 @@ It assembles every module's cobra command tree under a single root so that
 all modules are discoverable via "lyx --help" and every subcommand carries
 its own --help and --json help output.
 
-Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler, webster, stencil, loom, start, quarry, lifecycle.`,
+Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler, webster, stencil, loom, start, quarry, lifecycle, shed.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		// Modules' PersistentPreRunE hooks run after root's via EnableTraverseRunHooks.
@@ -110,6 +111,7 @@ Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler
 		webstercli.Command(),
 		loomcli.Command(),
 		lifecyclecli.Command(),
+		shedcli.Command(),
 		// StartAliasCommand registers the same "start" verb as loomcli.Command()'s
 		// subtree already carries, a second time, as a bare root child rather
 		// than spliced into the argument vector, so it is discoverable in help
