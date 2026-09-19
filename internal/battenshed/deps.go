@@ -1,15 +1,22 @@
-// deps.go declares the three seam types this package's producers are constructed with: PrimeLock,
-// shared by WorktreeCreate and WorktreeTeardown, and InnerRunDeps and TeardownDeps, each specific
-// to one producer.
+// deps.go declares the four seam types this package's producers are constructed with: PrimeLock,
+// shared by WorktreeCreate and WorktreeTeardown, and InnerRunDeps, SeedChildDeps and TeardownDeps,
+// each specific to one producer.
 
 package battenshed
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
+
+// ErrUnknownRecipe is the sentinel a SeedChildDeps.WriteSeed closure wraps when recipe names no
+// recipe the encoder knows. SeedChild recognises it with errors.Is to route to Stuck -- a business
+// judgment a human can act on -- while any other WriteSeed error is mechanism failure (a
+// path-resolution or write failure) and is a returned hard error instead.
+var ErrUnknownRecipe = errors.New("battenshed: unknown recipe name")
 
 // PrimeLock carries the told absolute path to a hub-scoped advisory lock plus the injected
 // acquire closure both WorktreeCreate and WorktreeTeardown hold it behind, so the two producers
@@ -56,6 +63,33 @@ type InnerRunDeps struct {
 	// with a no-op so the attempt-cap test proves the bound is attempt-counted, not
 	// wall-clock-timed, without spending any real time.
 	Sleep func(d time.Duration)
+}
+
+// SeedChildDeps carries every told value and injected closure NewSeedChild needs, carrying no
+// paths of its own: reading the Board task's own type, reading prime's own seed driver, encoding
+// and writing the child's seed, and committing and pushing it. Every field is a seam a Tier 1 test
+// substitutes with a stub closure, per the seed-encoding-stays-behind-a-seam-in-battenshed Shared
+// Decision -- this type never imports internal/shedrun itself.
+type SeedChildDeps struct {
+	// ReadBoardType returns the Board task's own "type" field, evaluated fresh on every Call --
+	// never captured at wiring time -- so a type corrected after prime was seeded is still
+	// honoured. The empty string means "loom".
+	ReadBoardType func(ctx context.Context) (string, error)
+	// ChildDriver returns the driver read from prime's own seed params: the child always
+	// inherits prime's driver, never the Board's.
+	ChildDriver func() (string, error)
+	// WriteSeed resolves the child's seed path and encodes recipe and driver into it. An error
+	// wrapping ErrUnknownRecipe means recipe names no recipe the encoder knows, a business
+	// judgment SeedChild routes to Stuck; any other error is a path-resolution or write failure,
+	// mechanism failure SeedChild returns as a hard error.
+	WriteSeed func(ctx context.Context, recipe, driver string) error
+	// CommitSeed commits the just-written seed file. A non-nil error is Stuck: it names why a
+	// commit failed, a condition a human can act on.
+	CommitSeed func(ctx context.Context) error
+	// PushSeed pushes the just-committed seed. A non-nil error is only warned about and never
+	// changes SeedChild's verdict: an offline machine must not halt a run, and the next push on
+	// this pair catches the branch up.
+	PushSeed func(ctx context.Context) error
 }
 
 // TeardownDeps carries the two closures NewWorktreeTeardown calls in sequence: Shutdown strictly
