@@ -807,21 +807,15 @@ func runCleanupWithFlags(ctx context.Context, out io.Writer, apply, force, remot
 		return errWithRecord(out, r.Mutated(), err)
 	}
 
-	// CleanupResult itself is never marshalled — only Entries is, as a map value — so
-	// remote_skipped_reason reaches the envelope because the map names it, never because the struct
-	// declares it. Emitted unconditionally, on both the success and the failure exit below, whatever
-	// CleanupResult.RemoteSkippedReason's own omitempty tag says. The per-entry remote_deleted and
-	// remote_error keys need no map entry of their own: they marshal from CleanupBranchEntry
-	// automatically because Entries is itself a map value.
+	// fields, not CleanupResult, is what actually marshals — remote_skipped_reason reaches the
+	// envelope because the map names it, regardless of the struct's own omitempty tag.
 	fields := map[string]any{
 		"entries":               r.Entries,
 		"remote_skipped_reason": r.RemoteSkippedReason,
 	}
 
-	// Keying the failure exit on Error as well as RemoteError is a deliberate existing-path change:
-	// Cleanup sets no Error on a protected or unmanaged entry, so a non-empty Error is always a
-	// genuine failure and never a designed refusal — unlike prune's Error, which stays in doc.go's
-	// carve-out untouched.
+	// Error is always a genuine failure here, never a designed refusal — Cleanup sets no Error on a
+	// protected or unmanaged entry — unlike prune's Error, which stays in doc.go's carve-out.
 	var localFailedBranches, remoteFailedBranches []string
 	var attemptedLocal, attempted int
 	for _, entry := range r.Entries {
@@ -891,9 +885,7 @@ func runRemoveWithFlag(ctx context.Context, out io.Writer, args []string, force,
 		return errWithRecord(out, r.Mutated(), err)
 	}
 
-	// This handler hand-builds its fields map and never marshals RemoveResult at all, so every new
-	// field is invisible unless the map names it. Emitted unconditionally, on both the success and
-	// the failure exit below, whatever RemoveResult's own omitempty tags say.
+	// New RemoveResult fields must be added to this map explicitly — it is hand-built, not reflected.
 	fields := map[string]any{
 		"slug":                  r.Slug,
 		"path":                  r.Path,
@@ -908,11 +900,9 @@ func runRemoveWithFlag(ctx context.Context, out io.Writer, args []string, force,
 	// never yields two different verdicts across the two verbs.
 	if r.RemoteBranchError != "" {
 		weftBranch := fabricengine.WeftBranchName(cfg.BranchPrefix + slug)
-		// The remote name is the literal "origin", hardcoded here at the fabriccli site:
-		// originRemoteName is unexported in internal/fabricengine and stays that way, since exporting
-		// a constant purely to spell one error string would widen the engine's API for no caller that
-		// needs it. This matches the discussion's hardcoded-origin decision, which fixes "origin"
-		// throughout fabric's geometry.
+		// "origin" is hardcoded here rather than referencing fabricengine's own unexported
+		// originRemoteName, which stays unexported: exporting it just to spell this one error string
+		// would widen the engine's API for no caller that needs it.
 		synthesised := fmt.Errorf(
 			"weft branch %q was deleted locally, but its copy on %q was not: %s",
 			weftBranch, "origin", r.RemoteBranchError)

@@ -320,16 +320,11 @@ func deleteWeftBranch(rec *Mutations, l *lyxcwd.Location, branch, branchPrefix s
 }
 
 // deleteWeftBranchOnRemote deletes branch on the weft repo's origin remote through the gate's
-// deleteRemoteBranch executor, recording the outcome on entry. It is called only after
-// deleteWeftBranch has already returned true for the same branch, per the
-// local-first-then-remote-everywhere Shared Decision: the gate's ownership and dirtiness answers are
-// read from local state, so a branch the gate refuses to delete locally must never lose its copy on
-// a shared remote.
-// A remote failure never aborts the sweep — it distinguishes a gate refusal (resolveBranchOwnership
-// spawns git twice and can therefore fail locally before git push --delete ever runs) from an
-// operational remote failure, so the entry's RemoteError always names the layer that actually said
-// no.
-// rec is the calling verb's own recorder, passed straight through to deleteRemoteBranch.
+// deleteRemoteBranch executor, recording the outcome on entry. It runs only after deleteWeftBranch
+// has already returned true for the same branch: the gate's ownership and dirtiness answers come
+// from local state, so a branch it refuses to delete locally must never lose its remote copy either.
+// A remote failure never aborts the sweep. It distinguishes a gate refusal from an operational
+// failure so entry.RemoteError always names the layer that actually said no.
 func deleteWeftBranchOnRemote(rec *Mutations, l *lyxcwd.Location, branch, branchPrefix, weftRepoRoot string, entry *CleanupBranchEntry) {
 	req := remoteBranchRequest{
 		what:      "delete weft branch on remote",

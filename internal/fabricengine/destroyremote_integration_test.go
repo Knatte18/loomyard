@@ -5,24 +5,15 @@
 // declaration and the naming-predicate refusal are hermetic and covered in destroy_test.go instead,
 // per the Test Tier Purity Invariant.
 //
-// These are direct-call tests: each drives checkRemoteBranchRequest through
-// CheckRemoteBranchRequestForTest (export_test.go), never through deleteRemoteBranch itself — no
-// test in this file asserts that a remote ref was actually deleted, since that is batch 3's
-// behaviour-test surface over a real hub with a real remote. What these pin is the executor's own
-// request shape: that it cannot be reached with an undeclared predicate, and that a future call site
-// arriving without a preceding local deletion is still gated.
+// Each case drives checkRemoteBranchRequest through CheckRemoteBranchRequestForTest
+// (export_test.go), never through deleteRemoteBranch itself — no test here asserts a ref was
+// actually deleted on a remote. Both are refusals the real call sites cannot reach: those run only
+// after the same branch's local `git branch -D` already succeeded, at which point the branch is
+// already gone locally, so its own dirtiness probe never sees it.
 //
-// Neither case is an end-to-end guarantee, and must not be read as one: the remote executor's two
-// real call sites (batch 3) run only after the local `git branch -D` for the same branch already
-// succeeded, so by the time either real call site's dirtiness probe would read the branch, it is
-// already gone from the local repo, and the probe therefore cannot refuse there. Both cases below
-// exercise a refusal the real call sites cannot reach.
-//
-// Package fabricengine_test, not package fabricengine: building either case needs a real hub, which
-// the hubforge Fabric-Fixture Invariant requires be built through hubforge.NewHub, but an internal
-// (unsuffixed package fabricengine) test file cannot import internal/hubforge at all — hubforge
-// imports fabriccli, which imports fabricengine, closing an import cycle for Go's internal test
-// augmentation. Shares the single TestMain in testmain_test.go.
+// Package fabricengine_test: building either case needs a real hub via hubforge.NewHub, but an
+// internal fabricengine test file cannot import internal/hubforge without closing an import cycle
+// (hubforge -> fabriccli -> fabricengine). Shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -54,21 +45,15 @@ func TestDeleteRemoteBranchGate_PrimaryWeftBranchRefused(t *testing.T) {
 }
 
 // TestDeleteRemoteBranchGate_CheckedOutBranchRefused proves a weft branch still checked out at a
-// worktree is refused with CheckOwnership, reaching listWeftBranches from inside resolveManagedBranch
-// — a real git spawn only an integration-tier test can exercise.
+// worktree is refused with CheckOwnership (not CheckDirtiness), reaching listWeftBranches from
+// inside resolveManagedBranch — a real git spawn only an integration-tier test can exercise.
+// resolveManagedBranch's own checked-out-at-a-worktree check runs before checkBranchDirtiness's
+// duplicate check is ever reached, so the latter is unreachable dead code on an
+// ownedManagedBranch-typed request.
 //
-// This is CheckOwnership, not CheckDirtiness: resolveManagedBranch's own checked-out-at-a-worktree
-// test (reused unchanged from the local branchRequest gate) runs before checkBranchDirtiness's own
-// duplicate test is ever reached, so the latter is unreachable dead code on every
-// ownedManagedBranch-typed request — true of the existing local branchRequest gate today as well, not
-// something this batch introduces. The assertion this case pins is still "reaching
-// listWeftBranches" — both the ownership and dirtiness steps call it — only the reported Check value
-// differs from what an earlier draft of this test assumed.
-//
-// This is also a refusal the real call sites cannot reach: the remote executor's real call sites run
-// only after the same branch's local `git branch -D` already succeeded, at which point the branch has
-// already been deleted from the weft repo (and so is no longer checked out anywhere, nor even
-// enumerable) by the time the remote deletion runs.
+// This is also a refusal the real call sites cannot reach: they run only after the same branch's
+// local `git branch -D` already succeeded, at which point the branch is already gone locally and so
+// is no longer checked out anywhere.
 func TestDeleteRemoteBranchGate_CheckedOutBranchRefused(t *testing.T) {
 	t.Parallel()
 
