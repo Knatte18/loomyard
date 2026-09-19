@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: reed-per-hub-daemon-reap
 branch: reed-per-hub-daemon-reap
 plan: _mill/plan
@@ -35,4 +35,21 @@ plan-fix-r4  '2026-09-19T10:30:40Z'
 plan-review-r5  '2026-09-19T10:37:58Z'
 plan-fix-r5  '2026-09-19T10:38:47Z'
 planned  '2026-09-19T10:38:57Z'
+implementing  '2026-09-19T10:39:37Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: reedengine reap seam
+    state: pending
+  - name: reedcli pure decision seams
+    state: pending
+  - name: daemon wiring
+    state: pending
+  - name: tagged reap tests
+    state: pending
+  - name: docs
+    state: pending
 ```
