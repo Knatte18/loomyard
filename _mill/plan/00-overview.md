@@ -3,7 +3,7 @@
 ```yaml
 task: 'Seeded Shed core: run addressing, seed contract, batten'
 slug: seeded-shed-core
-approved: false
+approved: true
 started: '20260919-171012'
 parent: main
 root: ""

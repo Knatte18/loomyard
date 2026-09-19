@@ -84,8 +84,9 @@ That is sanctioned by the overview's `no-migration-and-no-in-flight-runs-at-land
   Retarget `RecipeEngines`'s `shedbuild.Parse(recipes.LifecycleRecipe)` call to `recipes.BattenRecipe` and its panic prefix to `battenrecipe:`.
   In the moved `internal/lifecyclerecipe/lifecyclerecipe.go`, retarget `New`'s `shedbuild.NewShed(recipes.LifecycleRecipe, …)` call and its error prefix, and update the doc comment's `recipes.LifecycleRecipe` mention.
   In `contracts/recipes/recipes.go`, rename the byte var `LifecycleRecipe` to `BattenRecipe`, point its `//go:embed` directive at `batten-recipe.yaml`, and update its doc comment from "the task-worktree lifecycle's producer graph" to name batten.
-  In the moved `contracts/recipes/lifecycle-recipe.yaml`, rename the `Loom-Run` producer to `Run-Shed` and update the `on_done` reference in the `Worktree-Create` row that points at it, plus the header comment's two mentions of `Loom-Run` and its mention of the old filename and of `internal/lifecyclerecipe`.
-  Leave `Loom-Run`'s `on_stuck` semantics and the header's load-bearing-empty-`on_stuck` paragraph exactly as they are — batch 5 rewrites that paragraph when it changes the routing, and changing it here would leave the comment describing a mechanism that has not moved yet.
+  In the moved `contracts/recipes/lifecycle-recipe.yaml`, rename the `Loom-Run` producer to `Run-Shed` and update the `on_done` reference in the `Worktree-Create` row that points at it, plus the header comment's mention of the old filename and of `internal/lifecyclerecipe`.
+  The header's one remaining `Loom-Run` mention is the load-bearing-empty-`on_stuck` paragraph, and it is deliberately **not** touched here beyond the row-name substitution: batch 5 rewrites that paragraph when it changes the routing, and rewriting it now would leave the comment describing a mechanism that has not moved yet.
+  Leave `Loom-Run`'s `on_stuck` semantics unchanged for the same reason.
   In the moved `internal/lifecyclerecipe/recipe_test.go`, update the coverage guard so it pins the **value** `"Run-Shed"` explicitly, the same way it pins `"Loom-Run"` today against a symmetry-minded rename.
 - **Commit:** `refactor(battenrecipe): rename lifecyclerecipe to battenrecipe, Loom-Run to Run-Shed`
 
@@ -193,4 +194,5 @@ The `go build ./...` half is load-bearing rather than belt-and-braces: a rename 
 `cmd/lyx/...` covers the help-tree, registration, drift and sandbox-coverage gates the rename moves.
 `internal/shedrecipe`'s cross-consumer coverage guard is what proves `battenrecipe.RecipeEngines()` still closes the engine set after the recipe file moved.
 
-No integration-tagged test runs in this batch's verify: the moved `internal/battencli/lifecycle_integration_test.go` is `integration`-tagged and is exercised by batch 8's verify, which is where the end-to-end run is asserted against the finished shape.
+The verify's trailing `go test -tags integration ./internal/shedcli/...` is not optional garnish: card 10 edits `internal/shedcli/parity_test.go` and `testmain_integration_test.go`, both `//go:build integration`, so the untagged run would never compile them and the rename's effect on the recipe-name literals they pin would go unseen until a much later batch.
+`internal/battencli/lifecycle_integration_test.go` is the one integration-tagged file this batch deliberately leaves out of scope — it is exercised by batch 8's verify, which is where the end-to-end run is asserted against the finished shape.

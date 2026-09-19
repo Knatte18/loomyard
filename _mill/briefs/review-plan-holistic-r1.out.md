@@ -1,0 +1,38 @@
+MILL_REVIEW_BEGIN
+# Review: Seeded Shed core: run addressing, seed contract, batten — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: sonnetxhigh
+reviewer_self_id: claude-sonnet-5
+reviewed_file: plan/
+date: 2026-09-19
+```
+
+## Findings
+
+### [BLOCKING:consistency] Batch 3 & 7 "Batch Tests" prose contradicts their own verify
+**Location:** `01`-independent — `03-batten-rename.md` and `07-shed-addressing.md`, "Batch Tests" sections.
+**Issue:** Both batches' `verify:` field (frontmatter and overview's Batch Index alike) ends `&& go test -tags integration ./internal/shedcli/...`, but batch 3's narrative states "No integration-tagged test runs in this batch's verify" and batch 7's states shedcli's `testmain_integration_test.go` "is out of this verify's scope" — both false against the declared command. Verified: `internal/shedcli/parity_test.go` and `testmain_integration_test.go` are `//go:build integration`, and both are edited in batch 3 (card 10/11) and reachable in batch 7.
+**Fix:** Correct both narratives to state the integration suite runs in-batch (to prove the renamed recipe literals / re-addressed refusals still pass), or remove the `-tags integration` clause from `verify:` if truly deferred.
+
+### [BLOCKING:consistency] Card 8's header-comment edit contradicts its own carve-out
+**Location:** `03-batten-rename.md`, Card 8.
+**Issue:** Card 8 says to update "the header comment's two mentions of `Loom-Run`" in `lifecycle-recipe.yaml`, but the header comment (lines 1–11) contains exactly one `Loom-Run` mention (verified by grep) — line 7, "Loom-Run's empty on_stuck is load-bearing..." — and that is precisely the paragraph the same card says to "leave ... exactly as they are" (batch 5 rewrites it).
+**Fix:** Drop the "two mentions" instruction (there is one, and it's carved out) or name the actual second location if one was intended elsewhere in the file.
+
+### [NIT:consistency] registry.go's key-count comment goes stale
+**Location:** `05-batten-producers.md`, Card 18.
+**Issue:** `internal/shedrecipe/registry.go`'s doc comment reads "The table is complete at seventeen keys." Card 18 adds an 18th key (`"SeedChild"`), and no card updates this count; `coverage_guard_test.go` doesn't enforce the literal count either, so it silently drifts.
+**Fix:** Add a line to Card 18 updating the comment to eighteen keys.
+
+### [NIT:design] Card 34's roadmap edit target text doesn't match current wording
+**Location:** `08-docs-and-integration.md`, Card 34.
+**Issue:** Card 34 says to fix the Next Up item "where it says the seed's `driver` field does not exist yet" — current `manifest/roadmap.md` line 20 already reads "the seed's `driver` field selects who steps a run: ..." with no non-existence claim to correct.
+**Fix:** Re-check the live roadmap wording before landing; adjust or drop the instruction if there is nothing to change there.
+
+## Verdict
+
+REQUEST_CHANGES
+Two self-contradictory plan-prose findings (verify-scope claims, a header-edit carve-out); mechanism claims across all 8 batches otherwise verified accurate against source.
+MILL_REVIEW_END

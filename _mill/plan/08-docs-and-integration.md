@@ -84,7 +84,9 @@ It must **not** add a force-sync path, which that invariant forbids.
 - **Moves:** none
 - **Requirements:** Update `manifest/designs/seeded-shed.md` to describe what shipped rather than what was proposed, correcting the three places this task's decisions diverged from its text: the run's locks live under `.lyx/shed/<run-id>/` at the mirrored subpath rather than beside the durable pair; `Run-Shed`'s still-running re-entry is a self-routed `Stuck` with a row-level `max_bounces: 1440` and a `config: {poll_interval_s: 30}` pair encoding a 12-hour window, while every non-running non-done child state is a hard error; and the recipe-name vocabulary is declared in `internal/shedrun` with `internal/shedcli`'s table pinned against it by a sync meta-test, because a reverse import from `battencli` into `shedcli` would be a cycle.
   Remove the DRAFT framing from the sections this task implemented and leave the two explicitly-out-of-scope items — `driver: llm` and relay-stepping — marked as the next roadmap item's and as rejected respectively.
-  In `manifest/roadmap.md`, move the `seeded Shed core: run addressing, seed contract, batten` item from Planned to its completed section following that file's own convention, and update the following item's one-line description where it says the seed's `driver` field does not exist yet — it does now, carrying `go` and refusing `llm`.
+  In `manifest/roadmap.md`, move the `seeded Shed core: run addressing, seed contract, batten` item from Planned to its completed section following that file's own convention.
+  The Next Up item beneath it — `seeded driver choice: ly-drive strand as the child's driver` — needs no rewording: it already describes the `driver` field as selecting who steps a run, which stays true now that the field exists carrying `go` and refusing `llm`.
+  Re-read it before landing and leave it alone unless the wording has since drifted.
   Every link target both files gain or change must resolve, per the Markdown Link Integrity invariant, whose allowlist is keyed by `(file, target)`.
 - **Commit:** `docs(manifest): record the seeded Shed core as landed and correct the design's diverged points`
 

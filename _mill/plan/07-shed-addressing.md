@@ -151,7 +151,8 @@ That is acceptable because the clearer message stays reachable by the command an
 `verify: go build ./... && go test ./internal/shedcli/... ./internal/loomcli/... ./internal/battencli/... ./cmd/lyx/...` covers the four trees this batch changes plus a whole-module build.
 Both arming modules are in scope because card 27 changes their exported surface and card 28 retargets the table at it; `cmd/lyx/...` is in scope because card 31 moves the help-tree gate and because the deleted `--recipe` flag changes the live command tree `drift_test.go` walks.
 
-`internal/shedcli`'s untagged tests are Tier 1 and stay so; its `testmain_integration_test.go` is `integration`-tagged and is out of this verify's scope, exercised in batch 8.
+`internal/shedcli`'s untagged tests are Tier 1 and stay so.
+Its `integration`-tagged pair runs too, via the verify's trailing `go test -tags integration ./internal/shedcli/...`: card 30 rewrites `parity_test.go`, which is `//go:build integration`, and an untagged run would never compile the file whose two rewritten cases are this batch's arity contract — `testmain_integration_test.go` comes along as that suite's `TestMain`.
 
 Two pieces of coverage in this batch are load-bearing beyond their size.
 The refusal-precedence table in `cli_test.go` is the only thing pinning an order this batch deliberately reordered, and the wrong-message-from-the-wrong-worktree failure it guards against is silent.
