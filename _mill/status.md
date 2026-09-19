@@ -44,6 +44,8 @@ batches:
     commit_sha: 38e4bb5c4fc5ec2b2c4a76883fd1a16e36676773
     verify_baseline_failures: []
   - name: operator-strand-and-loom-wiring
-    state: pending
+    state: running
+    implementer_session: 1264fcbf-a8d0-46e2-8206-c663ad64c640
+    start_sha: a28a028f748b3c4ee3bed949485db77e645aaa42
     verify_baseline_failures: []
 ```
