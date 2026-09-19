@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-loom-run-directory
+phase: approved-batten-producers
 slug: seeded-shed-core
 branch: seeded-shed-core
 plan: _mill/plan
@@ -27,6 +27,7 @@ approved-shedrun-leaf  '2026-09-19T17:43:20Z'
 approved-board-type-field  '2026-09-19T17:46:12Z'
 approved-batten-rename  '2026-09-19T18:01:51Z'
 approved-loom-run-directory  '2026-09-19T18:21:06Z'
+approved-batten-producers  '2026-09-19T18:30:06Z'
 ```
 
 ## Batches
@@ -59,9 +60,10 @@ batches:
     commit_sha: 32cb9ee6641cf71f28481c7c8982a0c4519d3d6d
     verify_baseline_failures: []
   - name: batten-producers
-    state: running
+    state: approved
     implementer_session: 9308179b-197c-49c0-8221-49bed03a45a0
     start_sha: 020f47292620705c82427733ef7ea0377b3cbefb
+    commit_sha: f1a2c8f5c953936ffc717379eced2b7df544e2dc
     verify_baseline_failures: ["FAIL\t./internal/battenshed/... [setup failed]", "FAIL\t./internal/battenrecipe/...\
     \ [setup failed]"]
   - name: batten-wiring
