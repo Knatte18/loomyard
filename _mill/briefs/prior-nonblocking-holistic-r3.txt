@@ -1,0 +1,1 @@
+- roadmap's positional claim is now false after the item moved to Done: **Location:** `manifest/roadmap.md:32`
