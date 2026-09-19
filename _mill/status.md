@@ -59,7 +59,9 @@ batches:
     commit_sha: 32cb9ee6641cf71f28481c7c8982a0c4519d3d6d
     verify_baseline_failures: []
   - name: batten-producers
-    state: pending
+    state: running
+    implementer_session: 9308179b-197c-49c0-8221-49bed03a45a0
+    start_sha: 020f47292620705c82427733ef7ea0377b3cbefb
     verify_baseline_failures: ["FAIL\t./internal/battenshed/... [setup failed]", "FAIL\t./internal/battenrecipe/...\
     \ [setup failed]"]
   - name: batten-wiring
