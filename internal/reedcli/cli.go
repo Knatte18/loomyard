@@ -2,8 +2,8 @@
 // the standard io.Writer-based call contract.
 // The parent "reed" command carries a PersistentPreRunE that resolves
 // cwd -> location -> config -> geometry -> *reedengine.Engine exactly once per invocation,
-// into a receiver every verb (up.go, add.go, remove.go, status.go, resume.go, attach.go, header.go)
-// closes over, so no subcommand re-resolves geometry or config itself.
+// into a receiver every verb (up.go, add.go, remove.go, status.go, resume.go, attach.go,
+// statusline.go, watchdog.go) closes over, so no subcommand re-resolves geometry or config itself.
 // The geometry step is hubgeom.ReedGeometry: this file is where the resolved Location becomes the
 // reedengine.Geometry the engine is told, and the engine never sees the Location.
 // The resolved *lyxcwd.Location is named "location" throughout, never "layout": "layout" is a live

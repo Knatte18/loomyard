@@ -296,8 +296,8 @@ func (e *Engine) readWindowSizeLatestLocked() bool {
 // set-hook takes its body as a single argument and a separate ";" element would terminate the
 // set-hook command itself. The array encoding — rather than one ";"-separated command string — exists
 // for failure isolation: verified live on tmux 3.6, a resize-pane naming a destroyed pane aborts the
-// rest of a single command list, while array entries are independent. The header is always pin index
-// 0 so it fires before any strip pin can go wrong.
+// rest of a single command list, while array entries are independent. The Selvage pin is always pin
+// index 0 so it fires before any strip pin can go wrong.
 func resizePinHookArgvs(session string, pins []render.Pin, signalCommand string) [][]string {
 	target := exactSessionWindowTarget(session)
 	argvs := make([][]string, 0, len(pins)+2)
