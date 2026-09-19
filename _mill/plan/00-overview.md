@@ -135,6 +135,7 @@ Cards are the source of truth;
 this section is the input `_plan_validate.py`'s `all-files-touched-mismatch` check cross-references against the derived union of every card's `Edits:`/`Creates:`/Move-target paths, to catch drift between the hand/agent-maintained list here and that derived union._
 
 - `cmd/lyx/destructiveguard_test.go`
+- `cmd/lyx/gitrepoboundary_test.go`
 - `internal/fabriccli/fabric.go`
 - `internal/fabriccli/remoteenvelope_integration_test.go`
 - `internal/fabricengine/add.go`

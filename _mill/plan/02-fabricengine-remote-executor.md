@@ -129,6 +129,7 @@ Batch-local decisions beyond the overview's Shared Decisions:
   - `internal/fabricengine/mutation.go`
 - **Edits:**
   - `cmd/lyx/destructiveguard_test.go`
+  - `cmd/lyx/gitrepoboundary_test.go`
   - `internal/fabricengine/livestate_mutationoracle_test.go`
 - **Creates:** none
 - **Deletes:** none
@@ -149,6 +150,8 @@ Batch-local decisions beyond the overview's Shared Decisions:
   In `internal/fabricengine/livestate_mutationoracle_test.go`, add `fabricengine.KindRemoteBranchDeleted: false` to `manifestObservableKind`, grouped with the other git-state kinds alongside `KindBranchDeleted` and `KindBranchPushed`.
   The value is `false` because a remote ref is not something the filesystem `CaptureManifest` records, exactly as local branch existence already is not.
   Declaring it is mandatory rather than optional: that map's own comment records that declaring every kind, rather than testing list membership, is what makes a newly added `Kind` fail loud through `participatesInCommission`.
+
+  A fourth ledger surfaced only once this batch's own `go test ./cmd/lyx/...` scope ran (batch 1's own verify never included `cmd/lyx`): `cmd/lyx/gitrepoboundary_test.go`'s `TestGitrepoBoundary_PinnedRunCallSites` pins the exact set of `internal/gitrepo` methods whose body calls `r.run`/`r.runChecked`, and batch 1's `DeleteRemoteBranch` (which calls `r.runChecked`) was never added to `gitrepoPinnedRunBoundMethods`, so this batch's own `every-batch-compiles-and-passes` Shared Decision requires fixing it here rather than deferring it. Add `"DeleteRemoteBranch": true` to `gitrepoPinnedRunBoundMethods`, alphabetical position not required (the existing table is not alphabetized).
 - **Commit:** `test(fabric): register the remote-branch-deletion primitive in all three enforcement ledgers`
 
 ### Card 6: Direct-call gate tests for the remote executor
