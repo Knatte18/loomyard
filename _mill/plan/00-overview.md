@@ -15,6 +15,11 @@ discussion_sha: b8bbaa85a790e4055f1193a11329bb24a9984a0e
 
 - Holistic review round 1 fix: `go test -tags smoke ./internal/reedcli/` (batch 5, tagged-tests) fails deterministically on `TestSmokeClaudeResumeRecallsCodeword` when run from inside a nested Claude Code session — the test's own doc comment names this exact failure mode (no new claude transcript persisted+stabilized because a nested `claude` invocation stops writing transcripts). Reproduced twice by the fixer session, unaffected by either finding fixed that round.
 - Resolution: a third reproduction from the top-level orchestrator session (not a subagent) failed identically, and a code-diff audit confirmed the env-hygiene mechanism (`reedengine.CleanClaudeEnv`) and every helper the test relies on are byte-identical to `main` — this task's diff never touches that path. The test is a manual/human-operated real-subscription check (per its own doc comment), not CI-shaped, and cannot run inside any Claude-Code-ancestored process regardless of code correctness. Batch 5's `verify:` (both here and in `05-tagged-tests.md`) now `-skip`s only that one test by name; every other smoke/integration assertion this batch and the plan's regression-signal intent depend on still runs.
+- Done-gate failure: `go test -tags integration ./...` failed deterministically on `internal/reedcli/cli_integration_test.go`'s pre-existing `TestRunCLI_AddNotUp_FriendlyError`, which still pinned the refused-when-cold `add` behaviour this task deliberately removes (exit 1 plus the "no reed session" error).
+  No batch touched that file, and none of the five batches' `verify:` commands ran `-tags integration` against `internal/reedcli` (batch 5 ran it against `internal/reedengine` only), so the stale assertion surfaced only at the repo-wide done gate.
+- Resolution: the test is rewritten as `TestRunCLI_AddNotUp_SelfHealsAndSucceeds`, the integration-tier twin of the smoke-tier headline scenario — exit 0, a guid-and-name envelope, and a following `status` succeeding against the booted session with the strand live — with a `down` cleanup so the booted session never outlives the test;
+  `TestRunCLI_AddIfAbsentNoName_RejectsBeforeSessionCheck`'s comment no longer cites the retired scenario and the test now also asserts that the rejection boots nothing.
+  The `remove` and `status` refusal tests in the same file are unchanged, since only `add` and `attach` self-heal.
 
 ## Batch Index
 
@@ -158,6 +163,7 @@ batches:
 - `docs/overview.md`
 - `internal/burlercli/wiring_test.go`
 - `internal/reedcli/attach.go`
+- `internal/reedcli/cli_integration_test.go`
 - `internal/reedcli/smoke_coldstart_test.go`
 - `internal/reedcli/smoke_staterecovery_test.go`
 - `internal/reedcli/smoke_warmpath_test.go`
