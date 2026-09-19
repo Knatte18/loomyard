@@ -521,7 +521,7 @@
 //
 // The accumulate-as-you-mutate rule is simple and has no exception: append an entry immediately
 // after a primitive observably changed state, never before, and never for a no-op or a refusal.
-// destroy.go's eight gate executors auto-record seven of the sixteen kinds this way, since every
+// destroy.go's nine gate executors auto-record seven of the sixteen kinds this way, since every
 // one of them already funnels through the one chokepoint the Fabric Destruction Chokepoint
 // Invariant names; the remaining kinds have no such chokepoint and are hand-recorded at their own
 // success sites instead.
@@ -629,8 +629,9 @@
 // # The destruction chokepoint
 //
 // `destroy.go` is the one file in this package permitted to perform a destructive primitive —
-// `os.RemoveAll`/`os.Remove`, `git worktree remove`, `git branch -D`, `fslink.Remove`, and a warp
-// checkout's `ResetHard` — and every one of them runs its shared four-check pipeline first.
+// `os.RemoveAll`/`os.Remove`, `git worktree remove`, `git branch -D`, `fslink.Remove`, deleting a
+// branch on a remote (`git push <remote> --delete`), and a warp checkout's `ResetHard` — and every
+// one of them runs its shared four-check pipeline first.
 // See `CONSTRAINTS.md`'s Fabric Destruction Chokepoint Invariant for the rules;
 // this section is the rationale the invariant deliberately omits.
 //
@@ -648,9 +649,10 @@
 // A gate a caller consults and then acts on independently is advice, not enforcement — the
 // caller can still reach `os.RemoveAll` directly, and nothing distinguishes "checked, then
 // destroyed" from "destroyed". `destroy.go`'s executors (`removePath`, `removeGitWorktree`,
-// `removeLink`, `repointLink`, `deleteBranch`, `resetHardTo`) run the pipeline and then perform
-// the primitive themselves, so the two can never come apart. This is also what makes the bypass
-// guard meaningful: a raw call to any of the five primitives is mechanically bannable everywhere
+// `removeLink`, `repointLink`, `deleteBranch`, `deleteRemoteBranch`, `resetHardTo`) run the
+// pipeline and then perform the primitive themselves, so the two can never come apart. This is
+// also what makes the bypass guard meaningful: a raw call to any of the six primitives is
+// mechanically bannable everywhere
 // else in this package precisely because there is no legitimate reason for one to exist there —
 // the gate is not one way to destroy something, it is the only way.
 //
