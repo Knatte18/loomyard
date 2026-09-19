@@ -34,11 +34,17 @@ implementing  '2026-09-19T05:18:17Z'
 ```yaml
 batches:
   - name: gitrepo-remote-delete-primitive
-    state: pending
+    state: running
+    implementer_session: 5ed11283-5420-42cc-bca2-079ea431224d
+    start_sha: ff30d6c4796c2fe68618edbec83ec9be3adf3fd1
+    verify_baseline_failures: []
   - name: fabricengine-remote-executor
     state: pending
+    verify_baseline_failures: []
   - name: engine-wiring
     state: pending
+    verify_baseline_failures: []
   - name: cli-surface-and-docs
     state: pending
+    verify_baseline_failures: []
 ```
