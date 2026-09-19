@@ -78,11 +78,11 @@ func TestNames(t *testing.T) {
 	})
 }
 
-// TestRegistry_ShipsFourteenEntries asserts Names() returns exactly the sorted fourteen engine
+// TestRegistry_ShipsSeventeenEntries asserts Names() returns exactly the sorted seventeen engine
 // names this task's registry ships. What is unique to this test relative to TestNames above is the
 // exact-contents pin -- TestNames covers Names()<->registry key agreement and sortedness alone -- and
 // the pin belongs beside the registry rather than with any one consumer of it.
-func TestRegistry_ShipsFourteenEntries(t *testing.T) {
+func TestRegistry_ShipsSeventeenEntries(t *testing.T) {
 	want := []string{
 		"Batchifier",
 		"Bouncer",
@@ -91,6 +91,7 @@ func TestRegistry_ShipsFourteenEntries(t *testing.T) {
 		"DiscussionWrite",
 		"Finalize",
 		"LoomPreflight",
+		"LoomRun",
 		"PlanValidate",
 		"PlanWrite",
 		"Preflight",
@@ -98,6 +99,8 @@ func TestRegistry_ShipsFourteenEntries(t *testing.T) {
 		"SingleLLM",
 		"Stub",
 		"Webster",
+		"WorktreeCreate",
+		"WorktreeTeardown",
 	}
 
 	got := Names()

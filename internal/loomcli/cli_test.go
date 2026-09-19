@@ -78,8 +78,9 @@ func TestCommand_RegisteredVerbs_ExactSet(t *testing.T) {
 
 // TestRunAliasCommand_StaysOneCommandWithSubtreeVerb guards RunAliasCommand and the subtree's own
 // runCmd against drifting into two different commands: the alias must carry a non-empty Short, its
-// Use must be the bare verb ("run"), and it must expose the same --parent flag the subtree's own run
-// verb does.
+// Use must be the bare verb ("run"), and it must expose the same --parent and --no-attach flags the
+// subtree's own run verb does -- the alias takes the subtree's own runCmd unchanged, so it would
+// otherwise silently diverge whenever a new flag lands on the subtree verb alone.
 func TestRunAliasCommand_StaysOneCommandWithSubtreeVerb(t *testing.T) {
 	alias := RunAliasCommand()
 
@@ -91,6 +92,29 @@ func TestRunAliasCommand_StaysOneCommandWithSubtreeVerb(t *testing.T) {
 	}
 	if alias.Flags().Lookup("parent") == nil {
 		t.Error("RunAliasCommand() is missing the --parent flag the subtree's run verb exposes")
+	}
+	if alias.Flags().Lookup("no-attach") == nil {
+		t.Error("RunAliasCommand() is missing the --no-attach flag the subtree's run verb exposes")
+	}
+}
+
+// TestCommand_RunVerb_RegistersNoAttachFlag asserts that the "run" verb registered under the "loom"
+// parent command -- not just its bare-root alias -- exposes --no-attach, since it is the flag's
+// primary home.
+func TestCommand_RunVerb_RegistersNoAttachFlag(t *testing.T) {
+	parent := Command()
+
+	var run *cobra.Command
+	for _, sub := range parent.Commands() {
+		if sub.Name() == "run" {
+			run = sub
+		}
+	}
+	if run == nil {
+		t.Fatal(`"run" verb is not registered under the loom parent command`)
+	}
+	if run.Flags().Lookup("no-attach") == nil {
+		t.Error(`"loom run" is missing the --no-attach flag`)
 	}
 }
 

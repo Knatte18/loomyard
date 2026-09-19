@@ -1,5 +1,6 @@
-// env.go implements the two unexported helpers every entry uses to validate the Env fields it
-// reads: requireAbsRoot for a told absolute-path root, and requireSeam for a told injected seam.
+// env.go implements the three unexported helpers every entry uses to validate the Env fields it
+// reads: requireAbsRoot for a told absolute-path root, requireNonEmpty for a told plain-name value,
+// and requireSeam for a told injected seam.
 
 package shedrecipe
 
@@ -20,6 +21,16 @@ func requireAbsRoot(entry, field, value string) error {
 	}
 	if !filepath.IsAbs(value) {
 		return fmt.Errorf("shedrecipe: %s: Env.%s %q is not absolute", entry, field, value)
+	}
+	return nil
+}
+
+// requireNonEmpty errors when value is empty, naming entry and field. It is a separate helper from
+// requireAbsRoot rather than a reuse of it, because Env.Slug is a plain name and not a path, so
+// requireAbsRoot's absoluteness half would be wrong for it.
+func requireNonEmpty(entry, field, value string) error {
+	if value == "" {
+		return fmt.Errorf("shedrecipe: %s: Env.%s must not be empty", entry, field)
 	}
 	return nil
 }

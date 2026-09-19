@@ -37,6 +37,24 @@ func TestRequireAbsRoot(t *testing.T) {
 	})
 }
 
+func TestRequireNonEmpty(t *testing.T) {
+	t.Run("Empty", func(t *testing.T) {
+		err := requireNonEmpty("MyEntry", "MyField", "")
+		if err == nil {
+			t.Fatalf("requireNonEmpty() error = nil; want non-nil")
+		}
+		if !strings.Contains(err.Error(), "MyEntry") || !strings.Contains(err.Error(), "MyField") {
+			t.Errorf("requireNonEmpty() error = %v; want it to name entry %q and field %q", err, "MyEntry", "MyField")
+		}
+	})
+
+	t.Run("NonEmpty", func(t *testing.T) {
+		if err := requireNonEmpty("MyEntry", "MyField", "a-slug"); err != nil {
+			t.Errorf("requireNonEmpty() error = %v; want nil", err)
+		}
+	})
+}
+
 func TestRequireSeam(t *testing.T) {
 	t.Run("UntypedNil", func(t *testing.T) {
 		err := requireSeam("MyEntry", "MyField", nil)

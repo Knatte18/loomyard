@@ -5,12 +5,15 @@
 package shedrecipe
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/lifecycleshed"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
+	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -76,14 +79,18 @@ type (
 
 // newTestEnv builds an Env whose every path field is an absolute path derived from a single
 // t.TempDir(), one subdirectory per field: a directory field (Cwd, WorktreeRoot, StencilsDir,
-// SpecsDir, RunRoot, AnchorPath) is created with os.MkdirAll, while a file field (StatusPath,
-// StatusLockPath, DecisionRecordPath, SupportLogPath) is left as a joined path nobody creates. It
-// fills Shuttle, Burler, and WebsterRun with this file's fakes, fills WebsterDeps with the four
-// required seams non-nil and every other field left zero, fills DiscussionSpec with a closure
-// returning a shuttleengine.Spec over one absolute output path under the same temp root, fills
-// CommitDiscussion with a closure returning nil, fills PlanSpec with a closure returning a
-// shuttleengine.Spec over one absolute output path under the same temp root, fills CommitPlan with
-// a closure returning nil, leaves Landing zero, and leaves Now nil.
+// SpecsDir, RunRoot, AnchorPath, ScratchDir) is created with os.MkdirAll, while a file field
+// (StatusPath, StatusLockPath, DecisionRecordPath, SupportLogPath, PrimeLock.Path) is left as a
+// joined path nobody creates. It fills Shuttle, Burler, and WebsterRun with this file's fakes,
+// fills WebsterDeps with the four required seams non-nil and every other field left zero, fills
+// DiscussionSpec with a closure returning a shuttleengine.Spec over one absolute output path under
+// the same temp root, fills CommitDiscussion with a closure returning nil, fills PlanSpec with a
+// closure returning a shuttleengine.Spec over one absolute output path under the same temp root,
+// fills CommitPlan with a closure returning nil, leaves Landing zero, and leaves Now nil.
+//
+// It also fills the six lifecycle fields: a non-empty Slug, CreateWorktree returning nil, LoomRun
+// and Teardown whose own closures return nil or zero values, and a PrimeLock whose Path sits under
+// the same temp root and whose Acquire seam returns a no-op release with ok == true.
 //
 // No test in this package may reference a path outside its own t.TempDir(): a real repo path would
 // mask a told-geometry violation, which is the exact property this package's own Env validation
@@ -137,5 +144,29 @@ func newTestEnv(t *testing.T) Env {
 			}, nil
 		},
 		CommitPlan: func() error { return nil },
+		Slug:       "test-slug",
+		ScratchDir: mustMkdir("scratch"),
+		CreateWorktree: func(context.Context) error {
+			return nil
+		},
+		LoomRun: lifecycleshed.LoomRunDeps{
+			Spawn: func(context.Context) error { return nil },
+			ResolveStatus: func() (string, string, error) {
+				return filepath.Join(dir, "loomrun-status.json"), filepath.Join(dir, "loomrun-status.json.lock"), nil
+			},
+			ReadStatus: func(string, string) (shedengine.Status, bool, error) {
+				return shedengine.Status{}, false, nil
+			},
+		},
+		Teardown: lifecycleshed.TeardownDeps{
+			Shutdown: func(context.Context) (string, error) { return "", nil },
+			Remove:   func(context.Context) error { return nil },
+		},
+		PrimeLock: lifecycleshed.PrimeLock{
+			Path: filepath.Join(dir, "prime.lock"),
+			Acquire: func() (func() error, bool, error) {
+				return func() error { return nil }, true, nil
+			},
+		},
 	}
 }

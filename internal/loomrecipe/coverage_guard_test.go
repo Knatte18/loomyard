@@ -3,6 +3,12 @@
 // below, checked in both directions against New's real, current output rather than against a
 // standalone literal that could drift silently. It builds a real shedrecipe.Env/ShedPaths pair and
 // calls this package's own New, rather than iterating the table alone.
+//
+// This file used to also assert that shedrecipe.Names() carried no engine unreachable by this
+// table beyond an allowlist -- a fourth, closed-coverage direction. That assertion was correct but
+// was stated in a package that structurally cannot answer it once the registry has two consumers:
+// it now lives in internal/shedrecipe's own external test package, where both consumers are
+// visible, as internal/shedrecipe/coverage_guard_test.go.
 
 package loomrecipe
 
@@ -39,27 +45,12 @@ var loomRowEngines = map[string]string{
 	loomshed.NameFinalize:           "Finalize",
 }
 
-// coverageGuardAllowedUnreachableEngines names the registry engines this task's coverage guard
-// tolerates as unreferenced by any of the seventeen built rows. Stub joins this allowlist now that
-// the last stubbed row -- Webster-Review -- is real: no loom row reaches Stub any more, and the
-// engine stays registered because internal/shedrecipe's registry is generic Shed machinery shared
-// by reference with a future product's producer list rather than loom's private property.
-// SingleLLM is the other tolerated entry: the two other "loom: real LLM producers" roadmap items
-// (manifest/roadmap.md) have not yet landed a row that reaches it.
-var coverageGuardAllowedUnreachableEngines = map[string]bool{
-	"SingleLLM": true,
-	"Stub":      true,
-}
-
-// TestCoverageGuard_EveryLoomRowHasAnEngine asserts four things about loomRowEngines against New's
-// real, current row list: every row New assembles has an entry in the table (the direction that
-// catches a row added to the recipe before its consuming task lands); every key in the table names a
-// row New actually has (the direction that keeps the table from accumulating dead entries); every
-// engine name the table maps to resolves through shedrecipe.Lookup without error; and, as a fourth
-// half, that shedrecipe.Names() carries no entry left unreachable by the table beyond
-// coverageGuardAllowedUnreachableEngines. This last half is a newly added assertion, not a
-// weakening of an earlier one -- the guard previously made no claim at all about unused registry
-// entries.
+// TestCoverageGuard_EveryLoomRowHasAnEngine asserts three things about loomRowEngines against
+// New's real, current row list: every row New assembles has an entry in the table (the direction
+// that catches a row added to the recipe before its consuming task lands); every key in the table
+// names a row New actually has (the direction that keeps the table from accumulating dead
+// entries); and every engine name the table maps to resolves through shedrecipe.Lookup without
+// error.
 func TestCoverageGuard_EveryLoomRowHasAnEngine(t *testing.T) {
 	env, paths := testEnv(t)
 	shed, err := New(env, paths)
@@ -68,7 +59,6 @@ func TestCoverageGuard_EveryLoomRowHasAnEngine(t *testing.T) {
 	}
 
 	rowNames := make(map[string]bool, len(shed.Producers))
-	usedEngines := make(map[string]bool, len(loomRowEngines))
 	for _, p := range shed.Producers {
 		rowNames[p.Name] = true
 		if _, ok := loomRowEngines[p.Name]; !ok {
@@ -83,15 +73,66 @@ func TestCoverageGuard_EveryLoomRowHasAnEngine(t *testing.T) {
 		if _, err := shedrecipe.Lookup(engineName); err != nil {
 			t.Errorf("Lookup(%q) (engine for row %q) error = %v, want nil", engineName, rowName, err)
 		}
-		usedEngines[engineName] = true
+	}
+}
+
+// TestCoverageGuard_EveryDirectionFailsOnItsOwnTrigger proves each of the three surviving
+// directions actually fails on its own trigger, rather than assuming the deletion above left them
+// intact: a row absent from loomRowEngines, a table key naming no row, and a table engine that
+// does not resolve.
+func TestCoverageGuard_EveryDirectionFailsOnItsOwnTrigger(t *testing.T) {
+	env, paths := testEnv(t)
+	shed, err := New(env, paths)
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
 	}
 
-	for _, name := range shedrecipe.Names() {
-		if usedEngines[name] || coverageGuardAllowedUnreachableEngines[name] {
-			continue
-		}
-		t.Errorf("shedrecipe.Names() has %q, which no row reaches and which is not in coverageGuardAllowedUnreachableEngines", name)
+	rowNames := make(map[string]bool, len(shed.Producers))
+	for _, p := range shed.Producers {
+		rowNames[p.Name] = true
 	}
+
+	t.Run("RowAbsentFromTable", func(t *testing.T) {
+		table := make(map[string]string, len(loomRowEngines))
+		for rowName, engineName := range loomRowEngines {
+			if rowName == loomshed.NamePreflight {
+				continue
+			}
+			table[rowName] = engineName
+		}
+
+		var failures []string
+		for _, p := range shed.Producers {
+			if _, ok := table[p.Name]; !ok {
+				failures = append(failures, p.Name)
+			}
+		}
+		if len(failures) == 0 {
+			t.Error("expected a row absent from the trimmed table to be reported, found none")
+		}
+	})
+
+	t.Run("TableKeyNamesNoRow", func(t *testing.T) {
+		table := map[string]string{
+			"Not-A-Real-Row": "Preflight",
+		}
+
+		var failures []string
+		for rowName := range table {
+			if !rowNames[rowName] {
+				failures = append(failures, rowName)
+			}
+		}
+		if len(failures) == 0 {
+			t.Error("expected a table key naming no row to be reported, found none")
+		}
+	})
+
+	t.Run("TableEngineDoesNotResolve", func(t *testing.T) {
+		if _, err := shedrecipe.Lookup("Not-A-Real-Engine"); err == nil {
+			t.Error("Lookup(\"Not-A-Real-Engine\") error = nil, want non-nil")
+		}
+	})
 }
 
 // TestCoverageGuard_PublishAndFinalizeRowNamesMatchTheirProducerIdentity asserts the rows named

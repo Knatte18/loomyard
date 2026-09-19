@@ -11,13 +11,13 @@ import (
 // registry is the single place every engine name is declared, mapping each recipe row's engine
 // name to the Constructor that builds it.
 //
-// The table is complete at fourteen keys. Any fifteenth entry must arrive with a coverage-guard
-// update in the same commit.
+// The table is complete at seventeen keys. Any new entry's coverage is checked in exactly one
+// place: the cross-consumer coverage guard in this package's own external test package.
 //
-// init() self-registration was rejected: the entries span four packages
-// (internal/shedrecipe, internal/preflightshed, internal/landingshed, internal/loomshed), and
-// registration would then depend on link-time blank imports of packages this package already
-// imports directly -- an indirection with no benefit here.
+// init() self-registration was rejected: the entries span five packages
+// (internal/shedrecipe, internal/preflightshed, internal/landingshed, internal/loomshed,
+// internal/lifecycleshed), and registration would then depend on link-time blank imports of
+// packages this package already imports directly -- an indirection with no benefit here.
 var registry = map[string]Constructor{
 	"Preflight":          preflightEntry,
 	"Publish":            publishEntry,
@@ -33,6 +33,9 @@ var registry = map[string]Constructor{
 	"SingleLLM":          singleLLMEntry,
 	"Bouncer":            bouncerEntry,
 	"BurlerRound":        burlerRoundEntry,
+	"WorktreeCreate":     worktreeCreateEntry,
+	"LoomRun":            loomRunEntry,
+	"WorktreeTeardown":   worktreeTeardownEntry,
 }
 
 // Lookup resolves name against the registry, returning its Constructor.

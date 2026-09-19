@@ -347,7 +347,7 @@ User-facing modules each get one `lyx <module>` namespace:
   No `lyx shed` verb of its own by design — a product's own CLI constructs a `Shed` with its own producer list and calls `Run`, and a bare verb would be a command with no list to walk.
   The skeleton (the loop, the status file, the `ShedProducer` interface) is ✅ **implemented**; the four engine adapters (`SingleLLMProducer`, the `Webster` adapter, the burler round producer, and the Bouncer) are ✅ **implemented** too, shipped as `internal/shedadapters`.
   `internal/shedcheck` is the shipped structural checker over an assembled producer list, enforced by a `go test` invariant over loom's own list rather than called from any production constructor — see [manifest/designs/shed.md](../manifest/designs/shed.md#checking-an-assembled-producer-list) for the eight finding kinds it reports.
-  The Shed recipe group's engine registry (piece 1 of that group) is ✅ **implemented** too, as `internal/shedrecipe`; it registers twelve engine names.
+  The Shed recipe group's engine registry (piece 1 of that group) is ✅ **implemented** too, as `internal/shedrecipe`; it registers seventeen engine names.
   The recipe file format and the loader/builder shipped too, as `internal/shedbuild`, and loom's own conversion to a recipe file has now shipped as well: `contracts/recipes/loom-recipe.yaml` plus `internal/loomrecipe`, which assembles it into the `*shedengine.Shed` `internal/loomcli` runs.
   See the `internal/shedengine`, `internal/shedadapters`, `internal/shedcheck`, `internal/shedrecipe`, `internal/shedbuild`, and `internal/loomrecipe` package documentation and [manifest/designs/shed.md](../manifest/designs/shed.md).
 - **burler** — one review+fix round: A-review → B-fix, one agent, no self-grading, over the shuttle file contract (`internal/burlerengine` + `internal/burlercli`).
@@ -360,6 +360,9 @@ User-facing modules each get one `lyx <module>` namespace:
   Behavior-based reviewer that *runs* a live-substrate module (needs a sandbox repo) to harden it before merge;
   on-demand, post-loom, **off the spine**, shares only the `burler` round discipline.
   See [manifest/designs/hardener.md](../manifest/designs/hardener.md).
+- **lifecycle** — drives one task worktree's whole lifecycle — create, run the loom session to a terminal state, and tear down — as a single Shed run from the hub's prime worktree (`internal/lifecycleshed` + `internal/lifecyclerecipe` + `internal/lifecyclecli`; `lyx lifecycle run|status`).
+  Teardown is one row sequencing session shutdown before worktree removal, and never forces.
+  ✅ Implemented. See the `internal/lifecycleshed` and `internal/lifecyclerecipe` package documentation.
 
 The cross-OS spawn primitive **proc**, and the generic outer phase-FSM **shed**, are the two remaining internal (non-CLI) layers — proc the base of the stack, shed the generic engine `loom` configures rather than a stack layer of its own;
 see the [Execution stack](#execution-stack-orchestration-layers) section below for how proc / reed / shuttle fit together. (Earlier drafts split reed into separate `shed`/`glance` modules;
@@ -390,6 +393,9 @@ shed              generic outer phase-FSM: walk one flat producer list,        [
 loom              phase machine: drive each phase through a Bouncer gate       [builds on shed,
                                                                                  burler]
 ```
+
+The lifecycle Shed nests loom's: it is its own three-row recipe whose middle row drives a task's loom run as a child process and polls that run's own persisted status for the verdict, so there are two status files by design — the task's, committed on the task branch, and the lifecycle's, per-machine under prime's own ephemeral tree — each resuming independently.
+See the [Lifecycle Bookend Invariant](../CONSTRAINTS.md#lifecycle-bookend-invariant).
 
 The whole stack runs **headless** (auto mode): strands exist (the interactive-session requirement), agents run, output files are read, nobody need watch.
 
