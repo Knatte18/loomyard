@@ -57,7 +57,13 @@ Batch-local decisions live in each batch file._
 ### Decision: docs-land-with-the-behaviour-card-that-makes-them-true
 
 - **Decision:** each user-visible doc line is edited by the same card that makes its new wording true, not by a trailing docs card. `internal/loomcli/start.go`'s `Long`, `manifest/designs/loom.md`'s `lyx loom start` step list and `docs/overview.md`'s four-step sentence are each touched twice across batch 2 — once by the operator-strand card, once by the watchdog card. `manifest/designs/reed-born-as-strand.md` and `manifest/roadmap.md` are edited once, by the final card, since both describe the item as a whole.
-- **Rationale:** the project `CLAUDE.md`'s "docs land in the same commit" rule, reconciled with mill's one-commit-per-card execution model — a single trailing docs card would leave the step list stale for the span of two intermediate commits. `docs/overview.md`'s line 330 is in scope for the same reason `start.go`'s `Long` is: it enumerates the same four steps verbatim, so both this change's additions make it inaccurate. It was not named in `_mill/discussion.md`'s Scope inventory; it is the identical defect the discussion's round-4 review caught for `Long`, found in a second file.
+- **Rationale:** the project `CLAUDE.md`'s "docs land in the same commit" rule, reconciled with mill's one-commit-per-card execution model — a single trailing docs card would leave the step list stale for the span of two intermediate commits. `docs/overview.md` is in scope for the same reason `start.go`'s `Long` is, and in two independent places: the `loom` module bullet's four-step sentence and the separate `the bootstrap` bullet under the execution-stack section both enumerate the same steps, so both go stale. Neither was named in `_mill/discussion.md`'s Scope inventory; both are the identical defect the discussion's round-4 review caught for `Long`, found in a second file.
+- **Applies to:** operator-strand-and-loom-wiring
+
+### Decision: a-landed-items-design-doc-is-deleted-not-rewritten
+
+- **Decision:** `manifest/designs/reed-born-as-strand.md` is deleted when this item lands, its inbound links repaired, and the roadmap's Done entry points at the `internal/loomcli` and `internal/reedengine` package documentation instead. Its durable rationale is written into the Go doc comments beside the code by the cards that add that code, not carried forward as a rewritten design doc.
+- **Rationale:** `docs/overview.md`'s Documentation lifecycle section states that a `manifest/designs/` module-design doc is deleted when its module lands, with the implementation, its tests, and the package header comment becoming the source of truth. `manifest/roadmap.md`'s own maintenance rules say the same and add that a Done entry points at the module's package documentation. An earlier draft of this plan rewrote the doc to describe what shipped while claiming to follow those rules, which is a contradiction rather than a judgment call.
 - **Applies to:** operator-strand-and-loom-wiring
 
 ### Decision: verify-commands-are-package-scoped-not-repo-wide
@@ -93,5 +99,7 @@ _Full union of every `Creates:` / `Edits:` / `Moves:` **target** path across eve
 - `internal/reedengine/spawnwatchdog.go`
 - `internal/reedengine/spawnwatchdog_test.go`
 - `manifest/designs/loom.md`
-- `manifest/designs/reed-born-as-strand.md`
+- `manifest/designs/reed-header-selvage.md`
+- `manifest/designs/reed-mailbox.md`
+- `manifest/designs/shed-generic-watchdog.md`
 - `manifest/roadmap.md`
