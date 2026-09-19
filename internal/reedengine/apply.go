@@ -75,23 +75,19 @@ type renderInputs struct {
 }
 
 // toRenderInputs performs the persisted-state-to-render mapping exactly once: it filters st.Strands
-// to the present pane set, blanks st.SelvagePaneID when the Selvage pane is not present, assembles the
-// render.Params this engine's config implies, and orders live's pane ids top to bottom. It touches no
-// tmux and queries nothing of its own — box and live are told to it by the caller, matching
-// planLayout's own told-box contract.
+// to the present pane set, blanks the Selvage id when its pane is not present (via
+// selvageRenderParams), assembles the render.Params this engine's config implies, and orders live's
+// pane ids top to bottom. It touches no tmux and queries nothing of its own — box and live are told
+// to it by the caller, matching planLayout's own told-box contract.
 func (e *Engine) toRenderInputs(st *ReedState, live []LivePane) renderInputs {
 	presentIDs := liveIDSet(live)
 	strands := toRenderStrands(st.Strands, presentIDs)
-	selvagePaneID := st.SelvagePaneID
-	if !presentIDs[selvagePaneID] {
-		selvagePaneID = ""
-	}
 	return renderInputs{
 		strands: strands,
 		params: render.Params{
 			CollapsedStripRows: e.cfg.CollapsedStripRows,
 			MinFullRows:        e.cfg.MinFullRows,
-			Selvage:            render.Selvage{PaneID: selvagePaneID, HeightRows: e.cfg.Selvage.HeightRows},
+			Selvage:            e.selvageRenderParams(st, presentIDs),
 		},
 		paneOrder: paneIDsByTop(live),
 	}
