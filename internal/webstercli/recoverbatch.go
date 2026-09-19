@@ -117,13 +117,18 @@ Example:
 			// Standalone mode boots its own reed session here, idempotently, because nothing else
 			// can: `lyx reed up` is hub-only, so the advice reed's own "no reed session" error gives
 			// cannot reach standalone geometry at all. recover-batch is not a read-only verb — it
-			// SPAWNS a cold recovery strand through reed.AddStrand, which requires a live session —
-			// and after a run ends its session is gone, so `lyx webster recover-batch N` was the same
-			// impossible-recourse dead end `run` already fixed. Nil in hub mode, where the session is
-			// the operator's or loom's own to manage.
+			// spawns a cold recovery strand through reed.AddStrand, which now self-heals a cold
+			// worktree on its own rather than requiring a live session — so this call is no longer
+			// the only thing standing between a standalone spawn and a dead end. It stays as a
+			// deliberate early, explicit boot: after a run ends its session is gone, and this keeps
+			// `lyx webster recover-batch N` failing with its own envelope-reportable error rather
+			// than whatever AddStrand's own self-heal would surface. Nil in hub mode, where the
+			// session is the operator's or loom's own to manage.
 			//
 			// It runs HERE rather than at the top of this RunE so a call that refuses on a bad batch
-			// number, an unparseable plan, or an absent run boots no substrate at all; the
+			// number, an unparseable plan, or an absent run boots no substrate at all — an ordering
+			// property the self-heal does not provide on its own, since AddStrand's boot now happens
+			// wherever AddStrand is called, not at a controlled chokepoint like this one; the
 			// state-mutation lease is already held across the spawn RecoverSpawnOrAttach itself
 			// performs, so bringing the session up under it adds no new hold.
 			if c.reedUp != nil {
