@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: planned
 slug: worktree-lifecycle-shed-producers
 branch: worktree-lifecycle-shed-producers
 plan: _mill/plan
@@ -27,4 +27,5 @@ discussed  '2026-09-19T05:07:57Z'
 planning  '2026-09-19T05:23:14Z'
 plan-review-r1  '2026-09-19T05:32:51Z'
 plan-fix-r1  '2026-09-19T05:34:19Z'
+planned  '2026-09-19T05:34:29Z'
 ```
