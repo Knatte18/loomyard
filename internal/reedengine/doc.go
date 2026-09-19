@@ -598,23 +598,21 @@
 //     the layout (exit 1, "have 3 panes but need 2") and destroys nothing;
 //     when the count still matches but membership shifted, cells apply
 //     positionally, so a strand ends up mis-sized rather than lost.
-//   - The two geometry option pins (windowsize.go): "status off" and
-//     "window-size latest" are pinned session/window-targeted
-//     (-t '=<session>:', and -w for window-size, per the Session targeting
-//     grammar above) both at boot and again in AttachArgv's pre-flight, and
-//     their EFFECTIVE values are read back with display-message rather than
-//     trusted from set-option's exit status, because a -g pin plus exit 0 is
-//     not proof the option took — verified live, tmux 3.6: a session-scoped
-//     "status on" survives a global "set-option -g status off" with exit 0,
-//     and a window-scoped "window-size manual" survives the global "latest"
-//     pin the same way. "#{status}" feeds the reserved-row count reserved
-//     for the status line ("off" -> 0, "on" -> 1, a numeric N -> N); a
-//     "#{window-size}" other than "latest", or either readback erroring or
-//     answering an unrecognised value, suppresses the chain rather than
-//     risking a wrong-height string. Unlike the remain-on-exit/mouse pins
-//     beside them, both pins and both readbacks here are NON-FATAL: those
-//     two are correctness dependencies, these two are geometry-quality
-//     options whose absence degrades to a working session, and psmux's
+//   - The geometry option pins (windowsize.go): pinGeometryOptionsLocked pins seven status-line
+//     options — "status" "on"; "status-position" "bottom"; "status-left" <rendered text>;
+//     "status-right" ""; "status-left-length" <computed>; and, window-targeted with -w,
+//     "window-status-format" "" and "window-status-current-format" "" — plus "window-size" "latest",
+//     all session/window-targeted (-t '=<session>:', and -w for window-size, per the Session targeting
+//     grammar above) both at boot and again in AttachArgv's pre-flight. Their EFFECTIVE values are read
+//     back with display-message rather than trusted from set-option's exit status, because a -g pin
+//     plus exit 0 is not proof the option took — verified live, tmux 3.6: a session-scoped "status on"
+//     survives a global "set-option -g status off" with exit 0, and a window-scoped "window-size
+//     manual" survives the global "latest" pin the same way. "#{status}" feeds the reserved-row count
+//     reserved for the status line ("off" -> 0, "on" -> 1, a numeric N -> N); a "#{window-size}" other
+//     than "latest", or either readback erroring or answering an unrecognised value, suppresses the
+//     chain rather than risking a wrong-height string. Unlike the remain-on-exit/mouse pins beside
+//     them, every pin and both readbacks here are NON-FATAL: those two are correctness dependencies,
+//     these are geometry-quality options whose absence degrades to a working session, and psmux's
 //     support for them is unverified anywhere in this repo (Shared Decision
 //     geometry-tmux-failures-are-non-fatal-everywhere).
 //   - window-resized is the only usable resize event source (windowsize.go,
