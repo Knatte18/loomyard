@@ -36,15 +36,23 @@ implementing  '2026-09-19T05:34:55Z'
 ```yaml
 batches:
   - name: lifecycleshed producers
-    state: pending
+    state: running
+    implementer_session: 4ee9b987-9322-4bc8-9f8e-6e296871a94e
+    start_sha: fc7472bd5167b8f603f354eb340f7cb5ce02cfbe
+    verify_baseline_failures: ["FAIL\t./internal/lifecycleshed/... [setup failed]"]
   - name: loom run --no-attach
     state: pending
+    verify_baseline_failures: []
   - name: shedrecipe lifecycle entries
     state: pending
+    verify_baseline_failures: []
   - name: lifecycle recipe and coverage guard
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/lifecyclerecipe/... [setup failed]"]
   - name: lifecyclecli module
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/lifecyclecli/... [setup failed]"]
   - name: registration and docs
     state: pending
+    verify_baseline_failures: []
 ```
