@@ -58,7 +58,9 @@ batches:
     commit_sha: 36f5e559bd2d15affe87a815909d44372dabadc0
     verify_baseline_failures: []
   - name: skill-rename
-    state: pending
+    state: running
+    implementer_session: b6e36dd8-44d1-4cf1-9b41-3bc31447bf0a
+    start_sha: 0644ad78df1c969be4fbb6b34b6002c61ba7cc95
   - name: docs-and-manifest
     state: pending
     verify_baseline_failures: []
