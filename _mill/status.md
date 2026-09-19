@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: fabric-remote-branch-delete
 branch: fabric-remote-branch-delete
 plan: _mill/plan
@@ -26,4 +26,19 @@ planning  '2026-09-19T05:08:49Z'
 plan-review-r1  '2026-09-19T05:16:30Z'
 plan-fix-r1  '2026-09-19T05:17:32Z'
 planned  '2026-09-19T05:17:43Z'
+implementing  '2026-09-19T05:18:17Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: gitrepo-remote-delete-primitive
+    state: pending
+  - name: fabricengine-remote-executor
+    state: pending
+  - name: engine-wiring
+    state: pending
+  - name: cli-surface-and-docs
+    state: pending
 ```
