@@ -74,6 +74,76 @@ func (p reapPolicy) authorizesReap() bool {
 	return p.paneID != "" && p.alive
 }
 
+// planPaneTarget always yields a split target for the next strand realization
+// — it never adopts an existing pane. The surviving rules are a pure function
+// of st's Selvage pane id and live: prefer the tallest alive non-Selvage pane, fall
+// back to any present non-Selvage pane (a corpse) when none is alive, and fall
+// back to live[0] (Selvage itself) when no non-Selvage pane exists at all.
+//
+// Adoption used to give a fresh session's initial pane a use rather than
+// splitting a needless second one, but the seam it required — deciding
+// whether a candidate pane was reed's own idle initial pane or a foreign one
+// — could not be made safely, and produced two live findings: R4-F5 (after
+// .lyx/reed.json was scrubbed from a running session, adoption picked the
+// previous header pane — still running "lyx reed header --blocking" — and the
+// strand's command was typed onto its screen and never ran, with status
+// reporting live:true and no such process on the box) and M16 (adoption
+// claimed an operator's own manually-created split-window pane). Once the
+// untracked reap is authorized by an alive Selvage (reconcile.go), the initial
+// pane is disposed of like any other untracked pane before this function ever
+// runs, so a fresh split — idle by construction — costs one kill-pane plus
+// one split-window and buys correctness back.
+//
+// insertAbove is true only when the third tier fires — no non-Selvage pane exists at all, so Selvage
+// itself is the chosen target — and false for the tallest-alive and present-corpse tiers. This is
+// exactly equivalent to the condition launchStrandLocked used to compute at its call site: it
+// appended -b when the chosen target equalled the Selvage pane id, and that can only hold when tier
+// three fired, because tiers one and two both exclude the Selvage pane by construction and tier three
+// is reachable only when every present pane IS the Selvage pane. When tier three fires, splitting
+// below Selvage — tmux's default — would insert the new strand pane AFTER Selvage in tmux's own
+// physical pane order, the same "cells apply positionally, not by pane id" hazard
+// splitSelvagePaneAtBottomLocked's doc comment describes for Selvage's own split; -b keeps the new
+// strand pane physically above Selvage instead, preserving the bottom-most invariant on exactly the
+// one path that would otherwise violate it. Every other split target is a strand, and inserting below
+// another strand never touches Selvage's position.
+func planPaneTarget(st *ReedState, live []LivePane) (splitTargetID string, insertAbove bool, err error) {
+	if len(live) == 0 {
+		return "", false, fmt.Errorf("session has no panes to split")
+	}
+	selvagePaneID := st.SelvagePaneID
+
+	splitTargetID = ""
+	tallestAlive := -1
+	for _, p := range live {
+		if p.ID == selvagePaneID || p.Dead {
+			continue
+		}
+		if p.Height > tallestAlive {
+			tallestAlive = p.Height
+			splitTargetID = p.ID
+		}
+	}
+	if splitTargetID == "" {
+		// No alive non-Selvage pane: fall back to any present non-Selvage
+		// pane (a dead corpse), mirroring the pre-Selvage "every pane dead"
+		// fallback.
+		for _, p := range live {
+			if p.ID != selvagePaneID {
+				splitTargetID = p.ID
+				break
+			}
+		}
+	}
+	if splitTargetID == "" {
+		// No non-Selvage pane exists at all: every strand has been removed
+		// and only Selvage remains. Split Selvage itself so this add
+		// still has a pane to split.
+		splitTargetID = live[0].ID
+		insertAbove = true
+	}
+	return splitTargetID, insertAbove, nil
+}
+
 // seedSelvageClaim adds st's Selvage pane id to claimed when it is non-empty.
 // It encodes the rule that a strand may never own Selvage's pane: Selvage's own binding always seeds
 // the claimed set before any strand's pane id is considered.
