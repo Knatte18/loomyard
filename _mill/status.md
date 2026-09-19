@@ -1,8 +1,7 @@
 # Status
 
 ```yaml
-phase: blocked
-blocked_reason: predecessor seeded-shed-core not merged to main; discussion.md forbids finalizing this plan until it is
+phase: discussed
 slug: seeded-driver-choice
 branch: seeded-driver-choice
 plan: null
@@ -24,4 +23,5 @@ discussion-gap-fix-r5  '2026-09-19T17:38:53Z'
 discussion-fix-r6  '2026-09-19T17:42:09Z'
 discussed  '2026-09-19T17:42:09Z'
 blocked  '2026-09-19T17:43:17Z'
+discussed  '2026-09-19T17:46:38Z'
 ```
