@@ -101,6 +101,16 @@ Every value in `internal/shedrecipe`'s registry constructs a `shedengine.ShedPro
 
 - No direct import of `lyxcwd`; every path is told.
 
+## Shed Verb-Set Invariant
+
+`internal/shedverbs` owns the generic `run`/`step`/`status`/`pause` verb bodies; no `<module>cli` reimplements one. This first clause is review discipline, not a scan — "reimplements" has no static shape a scan can see.
+
+- `shedverbs` derives no path and imports no resolver — no `lyxcwd`, no `os.Getwd`, no `git rev-parse` — and imports no `<module>cli`, which is what keeps it a leaf and keeps `internal/shedcli`'s own imports acyclic. Enforced by `internal/shedverbs/seam_enforcement_test.go`.
+- The `lyx shed` recipe table lives in `internal/shedcli` alone, as one map literal reached through accessors, with every name armed by exactly one arming function and no `init()` self-registration. Enforced by `internal/shedcli/table_test.go`.
+- The `step` refusal-kind vocabulary stays closed at its five values. Enforced by `internal/shedverbs/step_test.go`.
+- `internal/shedverbs` is not itself a CLI module and is not counted in the CLI/Cobra Invariant's tally at all — it exposes no `Command()`/`RunCLI` seam, only the `Verbs(texts, spec)` constructor the three subtrees build from.
+- Neither `shedverbs` nor `shedcli` is added to the Told-Geometry Invariant's bound-packages list: that list binds engines, both sit above that layer, and their identical no-derived-paths obligation is carried by this invariant's own no-resolver clause instead.
+
 ## Tokenvocab Leaf Invariant
 
 `internal/tokenvocab` imports only stdlib and `internal/stencil`. Reverse import never allowed.
@@ -137,12 +147,12 @@ Every producer prompt and every deployed normative spec is read at call time fro
 
 Every lyx CLI module is a cobra subtree assembled under one root in `cmd/lyx/main.go`.
 
-- Each module exposes `Command() *cobra.Command` and `RunCLI(out io.Writer, args []string) int`; twelve of thirteen also carry `RunCLIIn(cwd, out, args) int`.
+- Each module exposes `Command() *cobra.Command` and `RunCLI(out io.Writer, args []string) int`; thirteen of fourteen also carry `RunCLIIn(cwd, out, args) int`.
 - An alias command may delegate into another module's subtree with no seam function of its own.
 - Non-empty `Short` on every command.
 - Errors are JSON via `internal/output`, one object per line; every `RunE` checks `clihelp.ShouldAbort` first.
-- Interactive-handoff exception, narrow and per-command: `reedengine` `attach`/`watchdog`, `lyx loom status --watch`, `lyx loom start`/`lyx start`.
-- Package naming: `<module>cli` imports `<module>engine`; engine never imports cli/cobra. Deviations: `stencilcli` → `internal/stencilstore`; `quarrycli` → `internal/planglyph`; `lifecyclecli` → `internal/lifecycleshed`, `internal/lifecyclerecipe` (no engine package of its own).
+- Interactive-handoff exception, narrow and per-command: `reedengine` `attach`/`watchdog`, `lyx loom status --watch`, `lyx loom start`/`lyx start`, `lyx shed status --watch`, `lyx lifecycle status --watch`.
+- Package naming: `<module>cli` imports `<module>engine`; engine never imports cli/cobra. Deviations: `stencilcli` → `internal/stencilstore`; `quarrycli` → `internal/planglyph`; `lifecyclecli` → `internal/lifecycleshed`, `internal/lifecyclerecipe` (no engine package of its own); `shedcli` → `internal/shedverbs`, `internal/loomcli`, `internal/lifecyclecli` (no engine package of its own).
 
 ## Completion Signal Invariant
 
