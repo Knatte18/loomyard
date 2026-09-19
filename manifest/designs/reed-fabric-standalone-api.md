@@ -15,7 +15,7 @@ Every grep-derived count in this document therefore means "referenced in code by
 ## Disposition of this document
 
 This document lands with no owning entry in `manifest/roadmap.md`, **by design**: its content is the evidence needed to decide whether any roadmap entry is warranted at all, so writing the entry first would presuppose the verdict this document exists to reach.
-The follow-up decision has two legitimate outcomes: one or more Someday entries are added pointing at this document, or none is.
+The follow-up decision has two legitimate outcomes: one or more roadmap entries are added pointing at this document, or none is.
 In the second case, this document is **deleted** rather than left orphaned.
 That deletion trigger is named here explicitly, so a later reader of an entry-less designs file under `manifest/designs/` knows the state is intentional and knows what closes it.
 
@@ -92,10 +92,12 @@ const KindFunction = engine.KindFunction
 
 The façade never had to invent a narrower method set than the engine already had, only decide which of the engine's types the façade's own names re-export.
 
-**The evidence on extraction timing, stated plainly.**
-This repo's `go.mod` still carries no requirement on `github.com/Knatte18/quarry`, and adoption is a single unstarted item in `manifest/roadmap.md`'s Planned section ("Adopt quarry's glyph alphabet as the plan alphabet").
-Quarry shipped as a standalone repo months before this document was written, and loomyard — the only real candidate consumer — has still not drawn the dependency edge to it.
-That is the measured cost of extracting before a consumer exists, and it is the one piece of evidence this document weighs most heavily against extracting Reed or Fabric now.
+**The evidence on extraction timing, stated plainly — updated 2026-09-19.**
+When this document was first written, this repo's `go.mod` carried no requirement on `github.com/Knatte18/quarry`:
+quarry had shipped as a standalone repo months earlier, and loomyard — the only real candidate consumer — had not yet drawn the dependency edge to it.
+That edge has since been drawn — `go.mod` now requires `github.com/Knatte18/quarry v0.2.0`, via the shipped **Adopt quarry's glyph alphabet as the plan alphabet** item — so the precedent no longer measures a consumer that never arrived;
+it measures the gap: months of standalone release cadence with zero consumers, even though quarry's first consumer was first-party and intended from the start.
+For Reed and Fabric the same gap has no closing event on any horizon — their only consumer already lives in this repo, where no extraction is needed to serve it — so the timing evidence still weighs against extracting now, as a measured lag rather than a still-open absence.
 
 **Residue cost.**
 The port's own record, `docs/research/quarry-holistic-fix-log.md`, documents real cleanup cost after the port: loomyard-internal references surviving in ported comments, a stale checksum file (`go.sum`), and cross-repo review rounds needing a two-repo authorization decision.
@@ -168,7 +170,7 @@ The gate is the existence of a second consumer, or Reed becoming a long-running 
 
 **Reasoning.**
 Reed's contract is small enough to freeze: 14 external identifiers across 9 direct production importers, most of them construction-only, with one handle type carrying 18 methods.
-But loomyard is Reed's only user, and the quarry precedent measures what extracting ahead of a consumer buys — a separate release cadence and a dependency edge that, months later, still is not drawn.
+But loomyard is Reed's only user, and the quarry precedent measures what extracting ahead of a consumer buys — a separate release cadence and a dependency edge that took months to be drawn even for a first-party consumer intended from the start.
 
 Three further Reed items are tracked in `manifest/roadmap.md` — `reed: cross-worktree columns`, `reed: own-window strand anchoring`, `reed: daemon Slack relay` — committed but not yet scheduled to build.
 They are a weak churn argument and must not be read as imminent change.
