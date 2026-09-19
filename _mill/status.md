@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-review-r1
+phase: plan-fix-r1
 slug: fabric-remote-branch-delete
 branch: fabric-remote-branch-delete
 plan: _mill/plan
@@ -24,4 +24,5 @@ discussion-fix-r7  '2026-09-18T19:41:38Z'
 discussed  '2026-09-18T19:41:38Z'
 planning  '2026-09-19T05:08:49Z'
 plan-review-r1  '2026-09-19T05:16:30Z'
+plan-fix-r1  '2026-09-19T05:17:32Z'
 ```

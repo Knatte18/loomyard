@@ -3,7 +3,7 @@
 ```yaml
 task: 'fabric: no remote/GitHub branch deletion'
 slug: 'fabric-remote-branch-delete'
-approved: false
+approved: true
 started: '20260918-194549'
 parent: 'main'
 root: ""

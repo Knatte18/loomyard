@@ -158,6 +158,11 @@ weft branch %q was deleted locally, but its copy on %q was not: %s
 ```
 
   with the weft branch name, the remote name, and `RemoteBranchError`.
+
+  The remote name is the literal `"origin"`, hardcoded here at the `fabriccli` site.
+  `originRemoteName` is unexported in `internal/fabricengine`, so this package cannot read it, and it stays unexported: exporting a constant purely to spell one error string would widen the engine's API for no caller that needs it.
+  Hardcoding the literal matches the discussion's `hardcoded-origin` decision, which fixes `origin` throughout fabric's geometry and rejects making it configurable, so the two spellings cannot drift into disagreement about a value neither side can change.
+
   The weft branch name is not currently in scope in this handler — derive it the same way the engine does, or read it from the result, rather than reconstructing a suffix by hand.
   If neither is available without widening `RemoveResult` further, report that as a plan defect rather than hand-spelling the suffix.
 - **Commit:** `feat(fabric): report and fail on remove's remote branch deletion outcome`
