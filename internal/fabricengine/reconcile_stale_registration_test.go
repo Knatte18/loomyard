@@ -408,7 +408,7 @@ func TestCleanup_PrimaryBranchSurvivesForceWhenNotCheckedOut(t *testing.T) {
 	// checked-out branch.
 	gitkit.MustRun(t, weftPrime, "git", "checkout", "-b", "primary-parked")
 
-	res, err := topology.Cleanup(l, true, true)
+	res, err := topology.Cleanup(l, true, true, false)
 	if err != nil {
 		t.Fatalf("Cleanup(apply, force): %v", err)
 	}
@@ -436,7 +436,7 @@ func TestCleanup_NonSuffixedBranchNeverDeleted(t *testing.T) {
 	const warpManagedBranch = "cleanup-warp-owned"
 	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "branch", warpManagedBranch, fabricengine.WeftBranchName("main"))
 
-	res, err := topology.Cleanup(l, true, true)
+	res, err := topology.Cleanup(l, true, true, false)
 	if err != nil {
 		t.Fatalf("Cleanup(apply, force): %v", err)
 	}
@@ -480,7 +480,7 @@ func TestCleanup_DetachedWarpHeadProtectsCheckedOutWeftBranch(t *testing.T) {
 
 	// Dry-run must already report the branch protected, so dry-run and apply
 	// agree about its fate.
-	dry, err := topology.Cleanup(l, false, false)
+	dry, err := topology.Cleanup(l, false, false, false)
 	if err != nil {
 		t.Fatalf("Cleanup(dry-run): %v", err)
 	}
@@ -489,7 +489,7 @@ func TestCleanup_DetachedWarpHeadProtectsCheckedOutWeftBranch(t *testing.T) {
 		t.Errorf("dry-run Protected = false for checked-out weft branch %q; want true", weftBranch)
 	}
 
-	forced, err := topology.Cleanup(l, true, true)
+	forced, err := topology.Cleanup(l, true, true, false)
 	if err != nil {
 		t.Fatalf("Cleanup(apply, force): %v", err)
 	}
@@ -613,7 +613,7 @@ func TestCleanup_DryRunMatchesApplyVerdict(t *testing.T) {
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
 		t.Fatalf("Add: %v", err)
 	}
-	if _, err := topology.Remove(l, slug, true); err != nil {
+	if _, err := topology.Remove(l, slug, true, false); err != nil {
 		t.Fatalf("Remove: %v", err)
 	}
 
@@ -637,11 +637,11 @@ func TestCleanup_DryRunMatchesApplyVerdict(t *testing.T) {
 		return fabricengine.CleanupBranchEntry{}
 	}
 
-	dry, err := topology.Cleanup(l, false, false)
+	dry, err := topology.Cleanup(l, false, false, false)
 	if err != nil {
 		t.Fatalf("Cleanup(dry): %v", err)
 	}
-	applied, err := topology.Cleanup(l, true, false)
+	applied, err := topology.Cleanup(l, true, false, false)
 	if err != nil {
 		t.Fatalf("Cleanup(apply): %v", err)
 	}
@@ -681,7 +681,7 @@ func TestCleanup_ForceIsReservedAndChangesNoVerdict(t *testing.T) {
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
 		t.Fatalf("Add: %v", err)
 	}
-	if _, err := topology.Remove(l, slug, true); err != nil {
+	if _, err := topology.Remove(l, slug, true, false); err != nil {
 		t.Fatalf("Remove: %v", err)
 	}
 
@@ -694,11 +694,11 @@ func TestCleanup_ForceIsReservedAndChangesNoVerdict(t *testing.T) {
 	const unmanaged = "legacy-notes"
 	gitkit.MustRun(t, weftRepoRoot, "git", "branch", unmanaged)
 
-	dryWithoutForce, err := topology.Cleanup(l, false, false)
+	dryWithoutForce, err := topology.Cleanup(l, false, false, false)
 	if err != nil {
 		t.Fatalf("Cleanup(dry, force=false): %v", err)
 	}
-	dryWithForce, err := topology.Cleanup(l, false, true)
+	dryWithForce, err := topology.Cleanup(l, false, true, false)
 	if err != nil {
 		t.Fatalf("Cleanup(dry, force=true): %v", err)
 	}
@@ -706,7 +706,7 @@ func TestCleanup_ForceIsReservedAndChangesNoVerdict(t *testing.T) {
 		t.Errorf("Cleanup(dry) entries differ between force=false and force=true (-without +with):\n%s\nforce is reserved and must answer no gate in this verb", diff)
 	}
 
-	applied, err := topology.Cleanup(l, true, true)
+	applied, err := topology.Cleanup(l, true, true, false)
 	if err != nil {
 		t.Fatalf("Cleanup(apply, force=true): %v", err)
 	}
