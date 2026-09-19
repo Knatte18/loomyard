@@ -64,6 +64,8 @@ batches:
     start_sha: 0644ad78df1c969be4fbb6b34b6002c61ba7cc95
     commit_sha: efab5778d738462424530c0e5d82b85e765917ca
   - name: docs-and-manifest
-    state: pending
+    state: running
+    implementer_session: 6ca4366f-64d2-46d7-81c1-6d46d1ad8fea
+    start_sha: f470d597e2421ffe0f4c75ad92846dfeff564cdf
     verify_baseline_failures: []
 ```
