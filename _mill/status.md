@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: reed-born-as-strand
 branch: reed-born-as-strand
-plan: null
+plan: _mill/plan
 parent: main
 task: 'reed: born-as-strand for loom start''s operator attach'
 task_description: |
@@ -21,4 +21,5 @@ discussion-gap-fix-r4  '2026-09-19T09:36:52Z'
 discussion-gap-fix-r5  '2026-09-19T09:41:53Z'
 discussion-gap-fix-r6  '2026-09-19T09:46:05Z'
 discussed  '2026-09-19T09:46:05Z'
+planning  '2026-09-19T09:52:37Z'
 ```
