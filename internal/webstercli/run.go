@@ -102,7 +102,7 @@ Example:
 			// an impossible recourse (found live in crucible round fable5-high-r3, F-A1). Nil in
 			// hub mode, where the session is the operator's or loom's own to manage.
 			if c.reedUp != nil {
-				if err := c.reedUp(); err != nil {
+				if err := c.reedUp(cmd.Context(), true); err != nil {
 					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: bring up the standalone reed session: %v", err)))
 					return nil
 				}

@@ -21,7 +21,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
-	"github.com/Knatte18/loomyard/internal/shell"
 )
 
 // stateDir returns the path to the worktree-level ephemeral tree holding reed.json and reed.lock.
@@ -159,7 +158,7 @@ func planResumeLaunches(strands []Strand, liveIDs map[string]bool) []Strand {
 
 // ensureServerAndSessionLocked ensures this hub's tmux server and this
 // worktree's session exist. Reports booted=true on fresh spawn; validates
-// capability, debug_log, mouse, watchdog, and header template before any tmux round trip.
+// capability, debug_log, mouse, watchdog, and status-line template before any tmux round trip.
 func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []string, err error) {
 	// Validate debug_log before anything else touches tmux: a misconfigured
 	// value is a pure config error, unrelated to server/session state, so it
@@ -185,8 +184,8 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 		return false, nil, err
 	}
 
-	// Validate the header template in the same pre-tmux block — it reads
-	// only cfg+geometry (HeaderText makes no tmux round trip), so like
+	// Validate the status-line template in the same pre-tmux block — it reads
+	// only cfg+geometry (StatusLineText makes no tmux round trip), so like
 	// debug_log and mouse it must fail the boot before anything is spawned.
 	// An earlier version validated only AFTER the session existed, which
 	// left a half-created session behind on a bad template — and, on the
@@ -199,7 +198,7 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	// path into that trap; a set-option failure between spawn and return
 	// can still theoretically lose the signal, but has no config-shaped
 	// trigger.
-	if err := e.ValidateHeader(); err != nil {
+	if err := e.ValidateStatusLine(); err != nil {
 		return false, nil, err
 	}
 
@@ -239,7 +238,7 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 			return false, nil, fmt.Errorf("list panes: %w", err)
 		}
 		if len(live) > 0 {
-			// The header template was already validated in the pre-tmux
+			// The status-line template was already validated in the pre-tmux
 			// block above, so this healthy already-up path returns directly.
 			return false, nil, nil
 		}
@@ -445,14 +444,14 @@ func stripTraceID(env []string) []string {
 	return out
 }
 
-// ensureHeaderPaneLocked ensures the header pane exists and is alive.
-// (Re)creates it when missing, dead, or gone. The header is separate from
-// strands and must land physically topmost so layout heights stay correct.
-// The (re)creation itself is splitHeaderPaneAtTopLocked's job, including the
-// even-vertical retry that keeps a stale or lost HeaderPaneID from wedging the
-// worktree — see that function for why a split against the top pane can fail
-// at all.
-func (e *Engine) ensureHeaderPaneLocked(st *ReedState) error {
+// ensureSelvagePaneLocked ensures Selvage exists and is alive.
+// (Re)creates it when missing, dead, or gone. Selvage is separate from
+// strands and must land physically bottom-most so layout heights stay
+// correct. The (re)creation itself is splitSelvagePaneAtBottomLocked's job,
+// including the even-vertical retry that keeps a stale or lost
+// SelvagePaneID from wedging the worktree — see that function for why a
+// split against the bottom pane can fail at all.
+func (e *Engine) ensureSelvagePaneLocked(st *ReedState) error {
 	session := e.SessionName()
 	live, err := e.tmux.listPanes(session)
 	if err != nil {
@@ -464,112 +463,103 @@ func (e *Engine) ensureHeaderPaneLocked(st *ReedState) error {
 		// panicking on an empty slice below. ensureServerAndSessionLocked
 		// kills husks before this runs, so reaching this means the session
 		// emptied between the two probes — an error, not an invariant.
-		return fmt.Errorf("session %s has no panes to split a header pane from", session)
+		return fmt.Errorf("session %s has no panes to split Selvage from", session)
 	}
 
-	if st.HeaderPaneID != "" && aliveIDSet(live)[st.HeaderPaneID] {
+	if st.SelvagePaneID != "" && aliveIDSet(live)[st.SelvagePaneID] {
 		// Present AND alive: idempotent no-op across up/resume. Aliveness,
-		// not mere presence, is the check — a dead-but-present header corpse
-		// (kept enumerable by reconcile's deliberate exemption) must be
-		// healed here, not mistaken for a working header.
+		// not mere presence, is the check — a dead-but-present Selvage
+		// corpse (kept enumerable by reconcile's deliberate exemption) must
+		// be healed here, not mistaken for a working Selvage.
 		return nil
 	}
 
-	// A dead-but-present header corpse is killed before the replacement is
-	// split, so its top row is freed and the topmost target below is a real
-	// (usually alive) pane — unless the corpse is the session's SOLE pane,
-	// where killing first would end the session; then the corpse itself is
-	// the split target and it is killed after the new pane exists.
+	// A dead-but-present Selvage corpse is killed before the replacement is
+	// split, so its bottom row is freed and the bottommost target below is a
+	// real (usually alive) pane — unless the corpse is the session's SOLE
+	// pane, where killing first would end the session; then the corpse
+	// itself is the split target and it is killed after the new pane
+	// exists.
 	corpseID := ""
-	if st.HeaderPaneID != "" && liveIDSet(live)[st.HeaderPaneID] {
-		corpseID = st.HeaderPaneID
+	if st.SelvagePaneID != "" && liveIDSet(live)[st.SelvagePaneID] {
+		corpseID = st.SelvagePaneID
 		if len(live) > 1 {
 			if err := e.tmux.run("kill-pane", "-t", corpseID); err != nil {
-				return fmt.Errorf("kill dead header pane %s: %w", corpseID, err)
+				return fmt.Errorf("kill dead Selvage pane %s: %w", corpseID, err)
 			}
 			corpseID = ""
 			live, err = e.tmux.listPanes(session)
 			if err != nil {
-				return fmt.Errorf("list panes after killing dead header: %w", err)
+				return fmt.Errorf("list panes after killing dead Selvage: %w", err)
 			}
 			if len(live) == 0 {
-				return fmt.Errorf("session %s has no panes to split a header pane from", session)
+				return fmt.Errorf("session %s has no panes to split Selvage from", session)
 			}
 		}
 	}
 
-	exe, err := os.Executable()
+	// Selvage's trailing split-window argument is e.cfg.Shell, the same way
+	// new-session already launches the session's first pane — an ordinary
+	// interactive shell, never a re-exec of lyx.
+	paneID, err := e.splitSelvagePaneAtBottomLocked(session, live, e.cfg.Shell)
 	if err != nil {
-		return fmt.Errorf("resolve lyx binary path: %w", err)
-	}
-
-	// Computed above the split so it can be passed straight into split-window as its own trailing
-	// shell-command argument: the pane then runs launchCmd directly from birth, hosting no
-	// interactive shell for anything to echo the command into or read ~/.bashrc from.
-	launchCmd := headerLaunchLine(shell.ForGOOS(), exe, e.suppressHeaderLaunch)
-	if launchCmd == "" {
-		// Under go test the header pane stays a bare blocking shell — see
-		// headerLaunchLine: re-exec'ing exe here would run the test binary's
-		// entire suite recursively. The pane still exists and its id is still
-		// recorded below, so layout geometry and up/resume idempotence are
-		// unchanged.
-		logger.Info("reed: header re-exec suppressed under go test, pane left as bare shell", "socket", e.Socket(), "exe", exe)
-	}
-
-	paneID, err := e.splitHeaderPaneAtTopLocked(session, live, launchCmd)
-	if err != nil {
-		return fmt.Errorf("split header pane: %w", err)
+		return fmt.Errorf("split Selvage pane: %w", err)
 	}
 
 	if corpseID != "" {
-		// The sole-pane corpse the new header was split off of: now that a
+		// The sole-pane corpse the new Selvage was split off of: now that a
 		// second pane exists, killing it can no longer end the session.
 		// Best-effort — a corpse that somehow vanished already is fine; the
 		// discard is still worth a Debug line so the step is observable at
 		// the trace level without upgrading routine cleanup to a Warn.
 		if err := e.tmux.run("kill-pane", "-t", corpseID); err != nil {
-			logger.Debug("reed: best-effort kill of header corpse pane failed", "socket", e.Socket(), "pane", corpseID, "err", err)
+			logger.Debug("reed: best-effort kill of Selvage corpse pane failed", "socket", e.Socket(), "pane", corpseID, "err", err)
 		}
 	}
 
-	st.HeaderPaneID = paneID
+	st.SelvagePaneID = paneID
 	if err := SaveState(e.stateDir(), st); err != nil {
-		return fmt.Errorf("persist header pane id: %w", err)
+		return fmt.Errorf("persist Selvage pane id: %w", err)
 	}
 	return nil
 }
 
-// topmostPaneID returns the id of the pane sitting physically highest in the window — the smallest
-// pane_top — which is the only place a header pane may be split in.
+// bottommostPaneID returns the id of the pane sitting physically lowest in the window — the largest
+// pane_top — which is the only place Selvage may be split in.
 // live must be non-empty.
-func topmostPaneID(live []LivePane) string {
-	topmost := live[0]
+func bottommostPaneID(live []LivePane) string {
+	bottommost := live[0]
 	for _, p := range live[1:] {
-		if p.Top < topmost.Top {
-			topmost = p
+		if p.Top > bottommost.Top {
+			bottommost = p
 		}
 	}
-	return topmost.ID
+	return bottommost.ID
 }
 
-// splitHeaderPaneAtTopLocked splits a new pane in above the physically topmost pane of session and
-// returns its id, retrying once behind an even-vertical re-tile when the first attempt has no room.
+// splitSelvagePaneAtBottomLocked splits a new pane in below the physically bottom-most pane of
+// session and returns its id, retrying once behind an even-vertical re-tile when the first attempt
+// has no room.
 //
-// The retry is what keeps a lost or stale ReedState.HeaderPaneID from wedging a worktree
-// permanently (R4 review finding R4-F4). The header band is one row by default
-// (HeaderConfig.HeightRows), and tmux cannot split a one-row pane at all — so the moment
-// HeaderPaneID stops naming the pane at the top, the topmost split target IS an untracked one-row
-// band and every later up/resume fails with "no space for new pane", forever, while status keeps
-// reporting the session healthy and the only escape ("lyx reed down", then up) is named nowhere.
-// Two ordinary routes reach that state: scrubbing .lyx/reed.json, a never-tracked machine-local
-// tree the Durable-vs-Ephemeral State Invariant makes disposable (a plain `git clean -xdf` in the
-// worktree does it), and a process death in the window between the split above and the SaveState
-// that records its id.
+// The retry is what keeps a lost or stale ReedState.SelvagePaneID from wedging a worktree
+// permanently (R4 review finding R4-F4). The Selvage band is one row by default, and tmux cannot
+// split a one-row pane at all — so the moment SelvagePaneID stops naming the pane at the bottom,
+// the bottommost split target IS an untracked one-row band and every later up/resume fails with
+// "no space for new pane", forever, while status keeps reporting the session healthy and the only
+// escape ("lyx reed down", then up) is named nowhere. Two ordinary routes reach that state:
+// scrubbing .lyx/reed.json, a never-tracked machine-local tree the Durable-vs-Ephemeral State
+// Invariant makes disposable (a plain `git clean -xdf` in the worktree does it), and a process
+// death in the window between the split above and the SaveState that records its id.
+//
+// The physical-position requirement is symmetric to the header's former top-placement requirement:
+// render.Rules emits the band cell LAST and paneIDsByTop resequences by pane_top, so a Selvage pane
+// that is not physically bottom-most would invert cell heights on the very first select-layout.
 //
 // select-layout even-vertical evens every pane's height using tmux's own built-in layout — no reed
 // layout string is computed or applied here, so anyPlacedStrand's empty-layout hazard (apply.go) is
-// not in play — after which the same split has room and STILL lands the new pane at pane_top 0
-// (verified live, tmux 3.6). The op's normal reconcileApplyPersistLocked tail then restores reed's
+// not in play — after which the same split has room again; the even-vertical re-tile retry survives
+// this flip verbatim, because tmux cannot split a one-row pane at all, which is just as true at the
+// bottom as it was at the top. The op's normal reconcileApplyPersistLocked tail then restores reed's
 // real geometry and reaps the untracked band; an op that fails before reaching that tail leaves the
 // window evenly tiled, a cosmetic state the next successful op corrects.
 // Both subcommands are already in requiredSubcommands, so the multiplexer capability contract is
@@ -578,15 +568,15 @@ func topmostPaneID(live []LivePane) string {
 // On a failed retry the FIRST error is returned, not the retry's: it describes the state the
 // operator actually has, and the re-tile is an internal repair attempt rather than something they
 // asked for.
-func (e *Engine) splitHeaderPaneAtTopLocked(session string, live []LivePane, launchCmd string) (string, error) {
-	paneID, firstErr := e.splitPaneAboveLocked(topmostPaneID(live), live, launchCmd)
+func (e *Engine) splitSelvagePaneAtBottomLocked(session string, live []LivePane, launchCmd string) (string, error) {
+	paneID, firstErr := e.splitPaneBelowLocked(bottommostPaneID(live), live, launchCmd)
 	if firstErr == nil {
 		return paneID, nil
 	}
-	logger.Warn("reed: failed to split header pane, retrying behind an even-vertical re-tile", "socket", e.Socket(), "session", session, "err", firstErr)
+	logger.Warn("reed: failed to split Selvage pane, retrying behind an even-vertical re-tile", "socket", e.Socket(), "session", session, "err", firstErr)
 
 	if err := e.tmux.run("select-layout", "-t", exactSessionWindowTarget(session), "even-vertical"); err != nil {
-		logger.Warn("reed: even-vertical re-tile failed, header split not retried", "socket", e.Socket(), "session", session, "err", err)
+		logger.Warn("reed: even-vertical re-tile failed, Selvage split not retried", "socket", e.Socket(), "session", session, "err", err)
 		return "", firstErr
 	}
 	retiled, err := e.tmux.listPanes(session)
@@ -594,43 +584,36 @@ func (e *Engine) splitHeaderPaneAtTopLocked(session string, live []LivePane, lau
 		logger.Warn("reed: could not re-enumerate panes after the even-vertical re-tile", "socket", e.Socket(), "session", session, "err", err)
 		return "", firstErr
 	}
-	// The retry carries launchCmd too — a retried header must never boot commandless, or it would
+	// The retry carries launchCmd too — a retried Selvage must never boot commandless, or it would
 	// be left hosting an interactive shell exactly like the noise this batch removes.
-	paneID, err = e.splitPaneAboveLocked(topmostPaneID(retiled), retiled, launchCmd)
+	paneID, err = e.splitPaneBelowLocked(bottommostPaneID(retiled), retiled, launchCmd)
 	if err != nil {
-		logger.Warn("reed: header split still had no room after the even-vertical re-tile", "socket", e.Socket(), "session", session, "err", err)
+		logger.Warn("reed: Selvage split still had no room after the even-vertical re-tile", "socket", e.Socket(), "session", session, "err", err)
 		return "", firstErr
 	}
-	logger.Info("reed: header split recovered by an even-vertical re-tile", "socket", e.Socket(), "session", session, "pane", paneID)
+	logger.Info("reed: Selvage split recovered by an even-vertical re-tile", "socket", e.Socket(), "session", session, "pane", paneID)
 	return paneID, nil
 }
 
-// splitPaneAboveLocked splits a new pane in directly above target and returns its id, refusing an
+// splitPaneBelowLocked splits a new pane in directly below target and returns its id, refusing an
 // id that was already present in preSplitLive.
 //
-// -b places the NEW pane above target rather than below it (tmux's default split direction is
-// vertical, new pane below): render.Rules always emits the header cell FIRST, assuming a fixed top
-// band, and psmux/tmux apply layout cells POSITIONALLY to the window's actual top-to-bottom pane
-// order — so the header pane must physically stay topmost, or the very first select-layout would
-// invert the header and the first strand's heights (verified live: without -b, a stacked-adds smoke
-// scenario failed a later split with "no space for new pane" because the 1-row header cell landed
-// on the STRAND's physically-top pane instead). Every strand split (spawn.go) always targets a
-// non-header pane and inserts below it, so the header is the only split in the whole engine that
-// needs -b.
+// No -b flag is needed here: tmux's default split direction is vertical with the new pane below,
+// which is exactly where Selvage must land now that render.Rules emits the band cell LAST rather
+// than first. Selvage is still the only split in the whole engine that must land at a specific
+// physical edge — every strand split (spawn.go) always targets a non-Selvage pane and inserts
+// below it too, but strands have no positional requirement of their own the way Selvage does.
 //
 // The genuinely-new-pane guard is the same one launchStrandLocked runs: psmux's silent
-// too-small-to-split failure prints an EXISTING pane's id with exit 0, and recording that id as the
-// header would bind the header to a strand's pane — the next layout string would then carry a
-// duplicate pane number, destroying the session's panes wholesale (see
-// validateSplitCreatedNewPane).
-func (e *Engine) splitPaneAboveLocked(target string, preSplitLive []LivePane, launchCmd string) (string, error) {
-	argv := []string{"split-window", "-b", "-t", target, "-c", e.geom.PaneCwd, "-P", "-F", "#{pane_id}"}
+// too-small-to-split failure prints an EXISTING pane's id with exit 0, and recording that id as
+// Selvage would bind Selvage to a strand's pane — the next layout string would then carry a
+// duplicate pane number, destroying the session's panes wholesale (see validateSplitCreatedNewPane).
+func (e *Engine) splitPaneBelowLocked(target string, preSplitLive []LivePane, launchCmd string) (string, error) {
+	argv := []string{"split-window", "-t", target, "-c", e.geom.PaneCwd, "-P", "-F", "#{pane_id}"}
 	if launchCmd != "" {
 		// A single trailing shell-command argument, exactly like an interactive `tmux split-window`
 		// invocation's own trailing-command syntax: the pane then runs launchCmd directly rather than
-		// an interactive shell, so nothing types it, echoes it, or reads a shell rc file for it. Empty
-		// launchCmd leaves the argv exactly as it was before this parameter existed — the go test
-		// default (see Engine.suppressHeaderLaunch).
+		// an interactive shell, so nothing types it, echoes it, or reads a shell rc file for it.
 		argv = append(argv, launchCmd)
 	}
 	out, err := e.tmux.output(argv...)
@@ -665,20 +648,20 @@ func (e *Engine) Up() (UpResult, error) {
 		// live strand. Clear every binding: a just-booted session hosts none
 		// of the prior strands. Up leaves them not-live (Resume rebuilds them).
 		// The stripped env keys are stamped for diagnosis — reed.json records
-		// what the server spawn actually removed. HeaderPaneID is cleared
+		// what the server spawn actually removed. SelvagePaneID is cleared
 		// alongside every strand binding for the identical reason — a
 		// reborn session's reused pane id would otherwise be mistaken for
-		// the still-live header pane — so ensureHeaderPaneLocked below
+		// the still-live Selvage pane — so ensureSelvagePaneLocked below
 		// rebuilds it fresh; the clear lives here, not inside
-		// clearAllPaneBindings itself, since the header is not a strand
+		// clearAllPaneBindings itself, since Selvage is not a strand
 		// binding.
 		if booted {
 			clearAllPaneBindings(st)
 			st.StrippedEnv = stripped
-			st.HeaderPaneID = ""
+			st.SelvagePaneID = ""
 		}
 
-		if err := e.ensureHeaderPaneLocked(st); err != nil {
+		if err := e.ensureSelvagePaneLocked(st); err != nil {
 			return err
 		}
 
@@ -686,11 +669,11 @@ func (e *Engine) Up() (UpResult, error) {
 			return err
 		}
 
-		// len(st.Strands) deliberately excludes the header pane: the header
-		// is not in st.Strands (Shared Decision header-is-not-a-strand), so
-		// this count is already correct by construction. Do not "fix" a
-		// future off-by-one here by adding the header — it must never be
-		// counted as a strand.
+		// len(st.Strands) deliberately excludes Selvage: Selvage is not in
+		// st.Strands (Shared Decision header-is-not-a-strand), so this
+		// count is already correct by construction. Do not "fix" a future
+		// off-by-one here by adding Selvage — it must never be counted as
+		// a strand.
 		result = UpResult{Session: e.SessionName(), Socket: e.Socket(), Strands: len(st.Strands)}
 		return nil
 	})
@@ -715,19 +698,19 @@ func (e *Engine) Resume() (ResumeResult, error) {
 		// On a server rebirth the reborn session reuses pane ids, so a stale
 		// binding would look live to reconcile below and wrongly skip relaunch.
 		// Clear every binding first so all non-hidden strands are rebuilt.
-		// HeaderPaneID is cleared alongside them for the identical reason —
+		// SelvagePaneID is cleared alongside them for the identical reason —
 		// a reborn session's reused pane id would otherwise be mistaken for
-		// the still-live header pane — so ensureHeaderPaneLocked below
+		// the still-live Selvage pane — so ensureSelvagePaneLocked below
 		// rebuilds it fresh before any strand replay below runs; the clear
-		// lives here, not inside clearAllPaneBindings itself, since the
-		// header is not a strand binding.
+		// lives here, not inside clearAllPaneBindings itself, since Selvage
+		// is not a strand binding.
 		if booted {
 			clearAllPaneBindings(st)
 			st.StrippedEnv = stripped
-			st.HeaderPaneID = ""
+			st.SelvagePaneID = ""
 		}
 
-		if err := e.ensureHeaderPaneLocked(st); err != nil {
+		if err := e.ensureSelvagePaneLocked(st); err != nil {
 			return err
 		}
 
@@ -1140,10 +1123,9 @@ func (e *Engine) requireSessionLocked() error {
 		return nil
 	}
 
-	// len(st.Strands) deliberately excludes the header pane (see
-	// noSessionMessage's doc comment): st.HeaderPaneID is a separate field,
-	// never part of Strands, so this count is already correct by
-	// construction.
+	// len(st.Strands) deliberately excludes Selvage (see noSessionMessage's
+	// doc comment): st.SelvagePaneID is a separate field, never part of
+	// Strands, so this count is already correct by construction.
 	strandCount := 0
 	st, loadErr := LoadState(e.stateDir())
 	if st != nil {
@@ -1183,11 +1165,11 @@ func (e *Engine) Status() (StatusResult, error) {
 		// the strand's process is running, not whether tmux still lists a
 		// (dead) pane for it.
 		aliveIDs := aliveIDSet(live)
-		// This loop iterates st.Strands only — the header pane is
-		// deliberately never reported as a strand here (it is not one; see
-		// ReedState.HeaderPaneID). Status still succeeds (the session is up)
-		// when st.Strands is empty but the header pane is alive; a future
-		// edit must not "fix" a missing header row by appending one here.
+		// This loop iterates st.Strands only — Selvage is deliberately
+		// never reported as a strand here (it is not one; see
+		// ReedState.SelvagePaneID). Status still succeeds (the session is
+		// up) when st.Strands is empty but Selvage is alive; a future edit
+		// must not "fix" a missing Selvage row by appending one here.
 		strands := make([]StrandStatus, len(st.Strands))
 		for i, s := range st.Strands {
 			strands[i] = StrandStatus{GUID: s.GUID, Name: s.Name, PaneID: s.PaneID, Live: aliveIDs[s.PaneID]}

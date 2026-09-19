@@ -10,6 +10,8 @@ type Ctx struct {
 	RepoName string
 	// HubPath feeds the "hub" token.
 	HubPath string
+	// WorktreeName feeds the "worktree" token.
+	WorktreeName string
 }
 
 // Token is one named, resolvable entry in the vocabulary.
@@ -24,6 +26,7 @@ type Token struct {
 var registry = []Token{
 	{Name: "repo", Resolve: func(c Ctx) string { return c.RepoName }},
 	{Name: "hub", Resolve: func(c Ctx) string { return c.HubPath }},
+	{Name: "worktree", Resolve: func(c Ctx) string { return c.WorktreeName }},
 }
 
 // Build resolves every token in the registry against c.
