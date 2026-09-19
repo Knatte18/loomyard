@@ -37,16 +37,17 @@ var manifestObservableKind = map[fabricengine.Kind]bool{
 	fabricengine.KindLinkRemoved:     true,
 	fabricengine.KindLinkCreated:     true,
 
-	fabricengine.KindBranchCreated:    false,
-	fabricengine.KindBranchDeleted:    false,
-	fabricengine.KindBranchPushed:     false,
-	fabricengine.KindCommitCreated:    false,
-	fabricengine.KindWorktreeReset:    false,
-	fabricengine.KindWorktreeSwitched: false,
-	fabricengine.KindPushSpawned:      false,
-	fabricengine.KindRepoAdvanced:     false,
-	fabricengine.KindMergeStaged:      false,
-	fabricengine.KindMergeCommitted:   false,
+	fabricengine.KindBranchCreated:       false,
+	fabricengine.KindBranchDeleted:       false,
+	fabricengine.KindRemoteBranchDeleted: false,
+	fabricengine.KindBranchPushed:        false,
+	fabricengine.KindCommitCreated:       false,
+	fabricengine.KindWorktreeReset:       false,
+	fabricengine.KindWorktreeSwitched:    false,
+	fabricengine.KindPushSpawned:         false,
+	fabricengine.KindRepoAdvanced:        false,
+	fabricengine.KindMergeStaged:         false,
+	fabricengine.KindMergeCommitted:      false,
 }
 
 // invertedBy maps a constructive kind to the kinds of a later entry, at the same Target, that undo it

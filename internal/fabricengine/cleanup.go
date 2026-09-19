@@ -6,6 +6,10 @@
 //   - apply == true  → deletes every orphan weft branch that is not the primary weft branch, not
 //     checked out at a worktree, and not unmanaged (no "-weft" suffix, e.g. inherited from history
 //     predating fabric's uniform naming scheme).
+//   - remote is independent of --force and requires apply to delete anything (remote alone with
+//     apply false is still a dry run): when true, every orphan weft branch actually deleted locally
+//     is also deleted on the weft repo's origin remote. A weft repo with no origin remote configured
+//     reports that once per verb, on the result's RemoteSkippedReason, rather than once per branch.
 //
 // force is reserved and currently consulted by no gate in this verb; see Topology.Cleanup's own
 // doc comment.
@@ -58,6 +62,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
@@ -74,8 +79,17 @@ type CleanupBranchEntry struct {
 	// predating fabric's uniform naming scheme), or because the branch is
 	// currently checked out at a worktree (git branch -D could never delete it).
 	Protected bool `json:"protected,omitempty"`
-	// Error is non-empty when apply is true and branch deletion failed.
+	// Error is non-empty when apply is true and branch deletion failed. A non-empty Error makes
+	// `lyx fabric cleanup --apply` exit non-zero, because it names a genuine failure of the local
+	// `git branch -D` rather than a designed refusal — Protected and unmanaged entries set no Error
+	// at all.
 	Error string `json:"error,omitempty"`
+	// RemoteDeleted reports whether this branch's copy on the remote was observably removed. It is
+	// true only when the remote deletion was attempted and actually removed a ref.
+	RemoteDeleted bool `json:"remote_deleted,omitempty"`
+	// RemoteError is non-empty when the remote deletion was attempted and did not succeed. Its text
+	// always names the layer that said no — the gate's own refusal, or the remote deletion itself.
+	RemoteError string `json:"remote_error,omitempty"`
 }
 
 // CleanupResult is the top-level result type returned by Cleanup.
@@ -85,6 +99,11 @@ type CleanupResult struct {
 	MutationRecord
 	// Entries lists the orphaned weft branches and their dispositions.
 	Entries []CleanupBranchEntry `json:"entries"`
+	// RemoteSkippedReason carries a once-per-verb reason no remote deletion was attempted at all —
+	// today only a weft repo with no origin remote configured. It is deliberately not RemoteError,
+	// because RemoteError is the field the CLI switches its exit code on and a missing origin must
+	// exit 0.
+	RemoteSkippedReason string `json:"remote_skipped_reason,omitempty"`
 }
 
 // Cleanup finds weft branches with no corresponding warp worktree sibling and reports or deletes
@@ -93,7 +112,10 @@ type CleanupResult struct {
 // see primaryWeftBranch for why branch-space liveness alone cannot protect it.
 // force is reserved and currently consulted by no gate in this verb: deleteWeftBranch already
 // hardcodes force: false for its own request, and that stays true.
-func (t *Topology) Cleanup(l *lyxcwd.Location, apply, force bool) (res CleanupResult, err error) {
+// remote gates whether an orphan weft branch actually deleted locally is also deleted on the weft
+// repo's origin remote; see this file's header for the flag matrix. A remote deletion failure never
+// makes Cleanup return a non-nil error — it is recorded on the entry and the sweep continues.
+func (t *Topology) Cleanup(l *lyxcwd.Location, apply, force, remote bool) (res CleanupResult, err error) {
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
 
@@ -106,6 +128,29 @@ func (t *Topology) Cleanup(l *lyxcwd.Location, apply, force bool) (res CleanupRe
 	primaryWeft, err := primaryWeftBranch(l)
 	if err != nil {
 		return CleanupResult{}, err
+	}
+
+	// The no-origin pre-check runs once per call, ahead of the per-branch loop, and only when remote
+	// is true. It runs under a dry run too, since RemoteURL is a go-git local config read that spawns
+	// no process and contacts no network, so telling the operator up front that --apply --remote
+	// would do nothing remotely is the whole value of reporting it. With remote false the pre-check
+	// does not run at all, so a plain cleanup --apply against a remoteless repo reports no reason.
+	var result CleanupResult
+	remoteOK := false
+	var weftRepoRootForRemote string
+	if remote {
+		weftRepoRoot, weftRootErr := WeftRepoRoot(l)
+		if weftRootErr != nil {
+			result.RemoteSkippedReason = fmt.Sprintf(
+				"no remote deletion attempted: cannot resolve the weft repo root: %v", weftRootErr)
+		} else if _, urlErr := gitrepo.New(weftRepoRoot).RemoteURL(originRemoteName); urlErr != nil {
+			result.RemoteSkippedReason = fmt.Sprintf(
+				"no remote deletion attempted: the weft repo has no %q remote configured: %v",
+				originRemoteName, urlErr)
+		} else {
+			remoteOK = true
+			weftRepoRootForRemote = weftRepoRoot
+		}
 	}
 
 	// Build the set of live warp branches; unreadable branches (stale registrations) skip.
@@ -124,8 +169,6 @@ func (t *Topology) Cleanup(l *lyxcwd.Location, apply, force bool) (res CleanupRe
 	if err != nil {
 		return CleanupResult{}, fmt.Errorf("list weft branches: %w", err)
 	}
-
-	var result CleanupResult
 
 	for _, weftBranch := range weftBranches {
 		branch := weftBranch.Branch
@@ -171,6 +214,9 @@ func (t *Topology) Cleanup(l *lyxcwd.Location, apply, force bool) (res CleanupRe
 		}
 
 		entry.Deleted = deleteWeftBranch(rec, l, branch, t.cfg.BranchPrefix, &entry)
+		if entry.Deleted && remote && remoteOK {
+			deleteWeftBranchOnRemote(rec, l, branch, t.cfg.BranchPrefix, weftRepoRootForRemote, &entry)
+		}
 		result.Entries = append(result.Entries, entry)
 	}
 
@@ -271,4 +317,32 @@ func deleteWeftBranch(rec *Mutations, l *lyxcwd.Location, branch, branchPrefix s
 		return false
 	}
 	return true
+}
+
+// deleteWeftBranchOnRemote deletes branch on the weft repo's origin remote through the gate's
+// deleteRemoteBranch executor, recording the outcome on entry. It runs only after deleteWeftBranch
+// has already returned true for the same branch: the gate's ownership and dirtiness answers come
+// from local state, so a branch it refuses to delete locally must never lose its remote copy either.
+// A remote failure never aborts the sweep. It distinguishes a gate refusal from an operational
+// failure so entry.RemoteError always names the layer that actually said no.
+func deleteWeftBranchOnRemote(rec *Mutations, l *lyxcwd.Location, branch, branchPrefix, weftRepoRoot string, entry *CleanupBranchEntry) {
+	req := remoteBranchRequest{
+		what:      "delete weft branch on remote",
+		repoDir:   weftRepoRoot,
+		remote:    originRemoteName,
+		branch:    branch,
+		ownership: ownedManagedBranch(l, branchPrefix),
+		dirtiness: dirtyCheckedOutBranch(),
+		force:     false,
+	}
+	deleted, err := deleteRemoteBranch(rec, req)
+	if err != nil {
+		if refusal, ok := RefusalOf(err); ok {
+			entry.RemoteError = fmt.Sprintf("gate refused remote deletion of %q: %s", branch, refusal.Reason)
+		} else {
+			entry.RemoteError = fmt.Sprintf("delete remote branch %q on %q failed: %v", branch, originRemoteName, err)
+		}
+		return
+	}
+	entry.RemoteDeleted = deleted
 }

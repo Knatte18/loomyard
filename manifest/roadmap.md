@@ -14,8 +14,6 @@ This section holds what's committed to next.
 
 1. **reed: `AddStrand` and `attach` self-heal a cold worktree instead of requiring `up` first** — both verbs only check `requireSessionLocked` today and fail with "no session" if nobody has run `reed up` yet; call the same locked helper `Up()` already uses instead in both, so any spawn OR view into a worktree nobody has visited (no VS Code, no manual `up`) just works. Fully internal to `reedengine` — fabric never needs to know reed exists. Distinct from the Next Up `born-as-strand` item: that one is about a pane never becoming a Strand at all; this one is about a session not existing yet.
 
-1. **fabric: no remote/GitHub branch deletion** — `fabricengine`'s existing branch cleanup (`Cleanup`, `removeWeftWorktree`'s `alsoDeleteBranch`) only ever runs `git branch -D` locally; there is no capability anywhere to delete the corresponding branch on the GitHub remote. Part of why task cleanup today leaves orphaned branches upstream.
-
 ## Next Up
 
 What comes right after Planned clears — committed and ordered, unlike Someday below.
@@ -112,6 +110,9 @@ No build order is implied between these items.
 ## Done
 
 Cleared 2026-08-25 to keep this file lean — shipped items' history lives in `git log` and each module's own package documentation, not here.
+
+1. **fabric: no remote/GitHub branch deletion** — `lyx fabric cleanup` and `lyx fabric remove` both gained an opt-in `--remote` flag that additionally deletes each deleted weft branch's copy on the weft remote.
+   See the `internal/fabricengine` package documentation's destruction chokepoint section.
 
 1. **worktree spawn/teardown as Shed producers** — one driven `Shed` run now takes a task worktree through create, run the loom session to a terminal state, and tear down, driven from the hub's prime worktree (`internal/lifecycleshed` + `internal/lifecyclerecipe` + `internal/lifecyclecli`; `lyx lifecycle run|status`); teardown is one row sequencing session shutdown before worktree removal, never forcing. Optional VS Code embedding did not ship as part of this driven run — see the Someday `VS Code as opt-in per worktree, not spun up by default` item for where that work lives.
    See the `internal/lifecycleshed` and `internal/lifecyclerecipe` package documentation.
