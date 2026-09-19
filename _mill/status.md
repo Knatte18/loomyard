@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-review-r1
 slug: loom-cli-rename
 branch: loom-cli-rename
 plan: _mill/plan
@@ -22,4 +22,5 @@ discussion-gap-fix-r5  '2026-09-18T19:30:41Z'
 discussion-fix-r6  '2026-09-18T19:34:49Z'
 discussed  '2026-09-18T19:34:49Z'
 planning  '2026-09-18T19:46:34Z'
+plan-review-r1  '2026-09-19T05:21:20Z'
 ```
