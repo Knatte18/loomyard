@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: shed-generic-watchdog
 branch: shed-generic-watchdog
 plan: _mill/plan
@@ -36,4 +36,23 @@ plan-fix-r5  '2026-09-19T14:24:42Z'
 plan-review-r6  '2026-09-19T14:38:12Z'
 plan-fix-r6  '2026-09-19T14:40:39Z'
 planned  '2026-09-19T14:40:50Z'
+implementing  '2026-09-19T14:41:25Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: shedbuild-shedpaths-hoist
+    state: pending
+  - name: shedverbs-package
+    state: pending
+  - name: inner-run-neutralization
+    state: pending
+  - name: module-rearm
+    state: pending
+  - name: shed-subtree
+    state: pending
+  - name: docs-invariant-skill
+    state: pending
 ```
