@@ -76,6 +76,7 @@ var gitrepoPinnedRunBoundMethods = map[string]bool{
 	"pushWithRebaseRetry": true,
 	"PushRebaseFree":      true,
 	"HasUnpushed":         true,
+	"DeleteRemoteBranch":  true,
 	"MergeStart":          true,
 	"MergeConclude":       true,
 	"ConflictedFiles":     true,
