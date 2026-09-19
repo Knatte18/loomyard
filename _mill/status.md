@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-lifecycleshed producers
+phase: approved-loom run --no-attach
 slug: worktree-lifecycle-shed-producers
 branch: worktree-lifecycle-shed-producers
 plan: _mill/plan
@@ -30,6 +30,7 @@ plan-fix-r1  '2026-09-19T05:34:19Z'
 planned  '2026-09-19T05:34:29Z'
 implementing  '2026-09-19T05:34:55Z'
 approved-lifecycleshed producers  '2026-09-19T05:41:15Z'
+approved-loom run --no-attach  '2026-09-19T05:43:38Z'
 ```
 
 ## Batches
@@ -43,9 +44,10 @@ batches:
     commit_sha: 7ea13676645dc28adda1e2077ca64f3359815df7
     verify_baseline_failures: ["FAIL\t./internal/lifecycleshed/... [setup failed]"]
   - name: loom run --no-attach
-    state: running
+    state: approved
     implementer_session: 67cdaade-34a7-4b42-b4c4-a937fea72b5e
     start_sha: 0ce0bc8015a4e2d6300866b1474e9d76081fa423
+    commit_sha: 81cf1987882e702d5c8e1faabf39a4490f99adac
     verify_baseline_failures: []
   - name: shedrecipe lifecycle entries
     state: pending
