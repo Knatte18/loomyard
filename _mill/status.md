@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-tagged-tests
+phase: holistic-reviewing
 slug: reed-cold-worktree-selfheal
 branch: reed-cold-worktree-selfheal
 plan: _mill/plan
@@ -35,6 +35,7 @@ approved-attach-preflight  '2026-09-19T05:51:53Z'
 approved-comment-sweep  '2026-09-19T05:56:06Z'
 approved-docs-and-suites  '2026-09-19T05:59:54Z'
 approved-tagged-tests  '2026-09-19T06:17:51Z'
+holistic-reviewing  '2026-09-19T06:18:13Z'
 ```
 
 ## Batches
