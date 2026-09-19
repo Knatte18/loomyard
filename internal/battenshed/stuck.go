@@ -9,7 +9,7 @@
 // tests assert two stuck causes are distinguishable against, since the engine's own persisted
 // reason is identical in all of them.
 
-package lifecycleshed
+package battenshed
 
 import (
 	"fmt"
@@ -34,15 +34,15 @@ const stuckFileSuffix = "-stuck.md"
 // nothing for a caller to act on.
 func reportStuck(producer, reason, scratchDir string, fields ...any) {
 	logFields := append([]any{"producer", producer, "reason", reason}, fields...)
-	logger.Warn("lifecycleshed: producer stuck", logFields...)
+	logger.Warn("battenshed: producer stuck", logFields...)
 
 	if err := os.MkdirAll(scratchDir, 0o755); err != nil {
-		logger.Warn("lifecycleshed: create scratch directory for stuck-reason file failed", "producer", producer, "scratchDir", scratchDir, "error", err)
+		logger.Warn("battenshed: create scratch directory for stuck-reason file failed", "producer", producer, "scratchDir", scratchDir, "error", err)
 		return
 	}
 
 	path := filepath.Join(scratchDir, producer+stuckFileSuffix)
 	if err := os.WriteFile(path, []byte(fmt.Sprintf("%s\n", reason)), 0o644); err != nil {
-		logger.Warn("lifecycleshed: write stuck-reason file failed", "producer", producer, "path", path, "error", err)
+		logger.Warn("battenshed: write stuck-reason file failed", "producer", producer, "path", path, "error", err)
 	}
 }

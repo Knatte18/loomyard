@@ -2,7 +2,7 @@
 // shared by WorktreeCreate and WorktreeTeardown, and InnerRunDeps and TeardownDeps, each specific
 // to one producer.
 
-package lifecycleshed
+package battenshed
 
 import (
 	"context"

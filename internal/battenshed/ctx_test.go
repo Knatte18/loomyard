@@ -1,6 +1,6 @@
 // ctx_test.go covers entryErr and cancelErr over a live context and a cancelled one.
 
-package lifecycleshed
+package battenshed
 
 import (
 	"context"

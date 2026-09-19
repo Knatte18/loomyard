@@ -2,7 +2,7 @@
 // ordering, which half a stuck reason names, the abandoned-session log path, and prime-lock
 // dispositions.
 
-package lifecycleshed
+package battenshed
 
 import (
 	"context"

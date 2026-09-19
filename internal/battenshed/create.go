@@ -1,7 +1,7 @@
 // create.go implements NewWorktreeCreate, the producer that creates the task worktree under the
 // hub's prime lock.
 
-package lifecycleshed
+package battenshed
 
 import (
 	"context"
@@ -55,19 +55,19 @@ func (p *worktreeCreateProducer) Call(ctx context.Context) (shedengine.Outcome, 
 
 	release, ok, err := p.primeLock.Acquire()
 	if err != nil {
-		return "", shedengine.OutputPointer{}, fmt.Errorf("lifecycleshed: %s: acquire prime lock %q: %w", p.name, p.primeLock.Path, err)
+		return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: acquire prime lock %q: %w", p.name, p.primeLock.Path, err)
 	}
 	if !ok {
 		if cerr := cancelErr(ctx, p.name); cerr != nil {
 			return "", shedengine.OutputPointer{}, cerr
 		}
-		reason := fmt.Sprintf("prime lock %q is already held; another lifecycle producer is creating or tearing down a task worktree", p.primeLock.Path)
+		reason := fmt.Sprintf("prime lock %q is already held; another batten producer is creating or tearing down a task worktree", p.primeLock.Path)
 		reportStuck(p.name, reason, p.scratchDir, "slug", p.slug)
 		return shedengine.Stuck, shedengine.OutputPointer{}, nil
 	}
 	defer func() {
 		if rerr := release(); rerr != nil {
-			logger.Warn("lifecycleshed: release prime lock failed", "producer", p.name, "slug", p.slug, "path", p.primeLock.Path, "error", rerr)
+			logger.Warn("battenshed: release prime lock failed", "producer", p.name, "slug", p.slug, "path", p.primeLock.Path, "error", rerr)
 		}
 	}()
 

@@ -2,7 +2,7 @@
 // a fake Sleep that never sleeps -- so the attempt-cap test proves the bound is attempt-counted,
 // not wall-clock-timed, in unmeasurable real time.
 
-package lifecycleshed
+package battenshed
 
 import (
 	"context"

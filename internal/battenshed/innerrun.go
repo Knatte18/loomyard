@@ -1,7 +1,7 @@
 // innerrun.go implements NewInnerRun, the producer that spawns the inner shed run inside the task
 // worktree and polls its persisted status to a terminal verdict.
 
-package lifecycleshed
+package battenshed
 
 import (
 	"context"
@@ -76,12 +76,12 @@ func (p *innerRunProducer) Call(ctx context.Context) (shedengine.Outcome, sheden
 
 	statusPath, statusLockPath, err := p.deps.ResolveStatus()
 	if err != nil {
-		return "", shedengine.OutputPointer{}, fmt.Errorf("lifecycleshed: %s: resolve status path: %w", p.name, err)
+		return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: resolve status path: %w", p.name, err)
 	}
 
-	logger.Info("lifecycleshed: spawning inner shed run", "producer", p.name, "slug", p.slug)
+	logger.Info("battenshed: spawning inner shed run", "producer", p.name, "slug", p.slug)
 	spawnErr := p.deps.Spawn(ctx)
-	logger.Info("lifecycleshed: inner shed run wait complete", "producer", p.name, "slug", p.slug)
+	logger.Info("battenshed: inner shed run wait complete", "producer", p.name, "slug", p.slug)
 	if spawnErr != nil {
 		if cerr := cancelErr(ctx, p.name); cerr != nil {
 			return "", shedengine.OutputPointer{}, cerr
@@ -95,7 +95,7 @@ func (p *innerRunProducer) Call(ctx context.Context) (shedengine.Outcome, sheden
 	for attempt := 1; attempt <= p.pollAttempts; attempt++ {
 		status, found, err := p.deps.ReadStatus(statusPath, statusLockPath)
 		if err != nil {
-			return "", shedengine.OutputPointer{}, fmt.Errorf("lifecycleshed: %s: read status: %w", p.name, err)
+			return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: read status: %w", p.name, err)
 		}
 		if !found {
 			if cerr := cancelErr(ctx, p.name); cerr != nil {
@@ -129,7 +129,7 @@ func (p *innerRunProducer) Call(ctx context.Context) (shedengine.Outcome, sheden
 			p.deps.Sleep(p.pollInterval)
 			continue
 		default:
-			return "", shedengine.OutputPointer{}, fmt.Errorf("lifecycleshed: %s: unrecognized status state %q", p.name, status.State)
+			return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: unrecognized status state %q", p.name, status.State)
 		}
 	}
 

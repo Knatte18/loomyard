@@ -16,7 +16,7 @@ import (
 //
 // init() self-registration was rejected: the entries span five packages
 // (internal/shedrecipe, internal/preflightshed, internal/landingshed, internal/loomshed,
-// internal/lifecycleshed), and registration would then depend on link-time blank imports of
+// internal/battenshed), and registration would then depend on link-time blank imports of
 // packages this package already imports directly -- an indirection with no benefit here.
 var registry = map[string]Constructor{
 	"Preflight":          preflightEntry,

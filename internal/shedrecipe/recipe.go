@@ -8,8 +8,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/landingshed"
-	"github.com/Knatte18/loomyard/internal/lifecycleshed"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -114,27 +114,27 @@ type Env struct {
 	// seam.
 	ApprovePlan func() error
 
-	// Slug is the run-wide task slug, read by all three lifecycle entries (WorktreeCreate, InnerRun,
+	// Slug is the run-wide task slug, read by all three batten entries (WorktreeCreate, InnerRun,
 	// WorktreeTeardown) for producer identity and stuck-reason text. It is legal on Env because Env
 	// carries roots and run-wide values, and a value that differs per row belongs in Config instead
-	// -- Slug does not differ between the three lifecycle rows a single caller wires.
+	// -- Slug does not differ between the three batten rows a single caller wires.
 	Slug string
-	// ScratchDir is the told absolute directory the three lifecycle producers write their
+	// ScratchDir is the told absolute directory the three batten producers write their
 	// stuck-reason file into, read by all three.
 	ScratchDir string
 	// CreateWorktree is the single closure WorktreeCreate calls to create the task worktree pair,
 	// following the CommitDiscussion/CommitPlan/ApprovePlan convention: that producer's whole job is
 	// one told action with no behaviour of its own a caller must observe.
 	CreateWorktree func(context.Context) error
-	// InnerRun is a whole-struct passthrough to lifecycleshed.NewInnerRun, following Env.Landing's
+	// InnerRun is a whole-struct passthrough to battenshed.NewInnerRun, following Env.Landing's
 	// own precedent: InnerRun has behaviour of its own -- spawning, resolving, and polling status --
 	// that per-seam fakes must be able to substitute individually.
-	InnerRun lifecycleshed.InnerRunDeps
-	// Teardown is a whole-struct passthrough to lifecycleshed.NewWorktreeTeardown, following
+	InnerRun battenshed.InnerRunDeps
+	// Teardown is a whole-struct passthrough to battenshed.NewWorktreeTeardown, following
 	// Env.Landing's own precedent for the same reason as InnerRun: it has behaviour of its own that
 	// per-seam fakes must be able to substitute individually.
-	Teardown lifecycleshed.TeardownDeps
+	Teardown battenshed.TeardownDeps
 	// PrimeLock is the told hub-scoped advisory lock WorktreeCreate and WorktreeTeardown both
 	// acquire, read by those two bookend entries only.
-	PrimeLock lifecycleshed.PrimeLock
+	PrimeLock battenshed.PrimeLock
 }

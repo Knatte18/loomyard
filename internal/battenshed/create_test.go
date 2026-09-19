@@ -1,7 +1,7 @@
 // create_test.go covers NewWorktreeCreate over fake seams: the happy path, the prime-lock
 // dispositions, and createWorktree's error mappings, including fabric's own verbatim refusal text.
 
-package lifecycleshed
+package battenshed
 
 import (
 	"context"

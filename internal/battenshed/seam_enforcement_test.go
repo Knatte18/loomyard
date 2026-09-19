@@ -1,5 +1,5 @@
 // seam_enforcement_test.go enforces this package's Told-Geometry Invariant membership: production
-// code in internal/lifecycleshed takes every absolute path it operates on from its caller and has
+// code in internal/battenshed takes every absolute path it operates on from its caller and has
 // no direct production import of internal/lyxcwd.
 //
 // The allowlist below is deliberately a membership list rather than a bare internal/lyxcwd
@@ -7,7 +7,7 @@
 // excluded import and anything else that would drag geometry resolution in, with no list
 // maintenance beyond a genuine new dependency.
 
-package lifecycleshed
+package battenshed
 
 import (
 	"go/parser"
@@ -19,25 +19,25 @@ import (
 	"testing"
 )
 
-// lifecycleshedAllowedImports are the only non-stdlib import paths production code in this package
+// battenshedAllowedImports are the only non-stdlib import paths production code in this package
 // may use.
-var lifecycleshedAllowedImports = map[string]bool{
+var battenshedAllowedImports = map[string]bool{
 	"github.com/Knatte18/loomyard/internal/shedengine": true,
 	"github.com/Knatte18/loomyard/internal/logger":     true,
 }
 
-// lifecycleshedDeniedLyxcwdImport is the exact import path the Told-Geometry Invariant excludes
+// battenshedDeniedLyxcwdImport is the exact import path the Told-Geometry Invariant excludes
 // from this package's production files, named here so a violation of that specific rule is
 // reported by name rather than only implied by its absence from the allowlist above.
-const lifecycleshedDeniedLyxcwdImport = "github.com/Knatte18/loomyard/internal/lyxcwd"
+const battenshedDeniedLyxcwdImport = "github.com/Knatte18/loomyard/internal/lyxcwd"
 
 // TestToldGeometryInvariant_AllowlistOnly verifies that every non-test .go file in this package
-// imports only stdlib or an entry in lifecycleshedAllowedImports, and separately asserts that no
-// production import path is lifecycleshedDeniedLyxcwdImport.
+// imports only stdlib or an entry in battenshedAllowedImports, and separately asserts that no
+// production import path is battenshedDeniedLyxcwdImport.
 func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {
-		t.Fatal("could not determine lifecycleshed source directory location")
+		t.Fatal("could not determine battenshed source directory location")
 	}
 	pkgDir := filepath.Dir(file)
 
@@ -66,7 +66,7 @@ func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {
 			importPath := strings.Trim(imp.Path.Value, `"`)
 
 			relPath, _ := filepath.Rel(pkgDir, path)
-			if importPath == lifecycleshedDeniedLyxcwdImport {
+			if importPath == battenshedDeniedLyxcwdImport {
 				deniedFound = append(deniedFound, relPath)
 			}
 
@@ -76,7 +76,7 @@ func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {
 			}
 			isStdlib := !strings.Contains(firstSegment, ".")
 
-			if isStdlib || lifecycleshedAllowedImports[importPath] {
+			if isStdlib || battenshedAllowedImports[importPath] {
 				continue
 			}
 
@@ -86,13 +86,13 @@ func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {
 		return nil
 	})
 	if err != nil {
-		t.Fatalf("failed to walk lifecycleshed directory: %v", err)
+		t.Fatalf("failed to walk battenshed directory: %v", err)
 	}
 
 	if len(failures) > 0 {
 		t.Errorf("Told-Geometry Invariant violated; imports outside the allowlist found: %v", failures)
 	}
 	if len(deniedFound) > 0 {
-		t.Errorf("Told-Geometry Invariant violated; %s imported directly in: %v", lifecycleshedDeniedLyxcwdImport, deniedFound)
+		t.Errorf("Told-Geometry Invariant violated; %s imported directly in: %v", battenshedDeniedLyxcwdImport, deniedFound)
 	}
 }

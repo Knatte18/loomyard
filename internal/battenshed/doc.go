@@ -1,4 +1,4 @@
-// Package lifecycleshed owns the three task-worktree lifecycle producers: creating the task
+// Package battenshed owns the three task-worktree batten producers: creating the task
 // worktree, running the loom session inside it, and tearing it down. Any producer list may name
 // them by reference, the same way internal/landingshed frames its own two producers.
 //
@@ -15,4 +15,4 @@
 // carrier (stuck.go) for the same deliberate-duplication reason internal/preflightshed/doc.go and
 // internal/landingshed/stuck.go already record: each producer-owning package carries its own copy
 // rather than sharing one across packages it otherwise has no reason to depend on.
-package lifecycleshed
+package battenshed

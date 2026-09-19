@@ -1,9 +1,9 @@
 // ctx.go implements the two context checks this package's three producers share: entryErr,
 // consulted before Call starts anything, and cancelErr, consulted by every non-Done exit path.
-// This is lifecycleshed's own copy of preflightshed's and landingshed's identically-shaped
+// This is battenshed's own copy of preflightshed's and landingshed's identically-shaped
 // helpers -- see doc.go for why the duplication is deliberate.
 
-package lifecycleshed
+package battenshed
 
 import (
 	"context"
@@ -16,7 +16,7 @@ func entryErr(ctx context.Context, name string) error {
 	if ctx.Err() == nil {
 		return nil
 	}
-	return fmt.Errorf("lifecycleshed: %s: context cancelled before run started: %w", name, ctx.Err())
+	return fmt.Errorf("battenshed: %s: context cancelled before run started: %w", name, ctx.Err())
 }
 
 // cancelErr returns nil when ctx is not cancelled, and otherwise a wrapped error naming name (the
@@ -29,5 +29,5 @@ func cancelErr(ctx context.Context, name string) error {
 	if ctx.Err() == nil {
 		return nil
 	}
-	return fmt.Errorf("lifecycleshed: %s: context cancelled during run: %w", name, ctx.Err())
+	return fmt.Errorf("battenshed: %s: context cancelled during run: %w", name, ctx.Err())
 }
