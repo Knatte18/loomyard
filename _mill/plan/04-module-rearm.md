@@ -66,6 +66,8 @@ A verb-blind arming keyed on recipe name alone would run the full `wire()` for `
   for `run`, a closure returning `loomrecipe.New(c.env, c.shedPaths)` directly.
   The distinction is load-bearing: `internal/loomcli/sharedbootstrap.go`'s `buildLoomShed` already performs the whole `fabricengine.Open`/`CurrentBranch`/`OriginURL`/`ReadOrigin`/`resolveLandingParent` block and the `c.env.Landing = landingDeps(…)` assignment before calling `loomrecipe.New`, while `run` performs that same block inline in its own pre-flight and then calls `loomrecipe.New` itself.
   Giving `run` a `buildLoomShed`-backed `BuildShed` would open the fabric and read origin twice where it does so once today.
+  Declare `loomVerbTexts` in this card too, as a package-level `shedverbs.VerbTexts` value in `internal/loomcli/cli.go`, lifting the four verbs' `Use`, `Short` and `Long` strings verbatim out of the still-present `runCmd`/`stepCmd`/`statusCmd`/`pauseCmd` constructors — including every `Example:` block and every embedded newline.
+  It is lifted **here**, before cards 22 and 23 delete those constructors, precisely so the copy is made from live source rather than from git history.
   Rewrite `resolvePersistentPreRun` to call `c.arm(cwd, cmd.Name(), args)` — the unexported worker, on its own receiver — and assign `*c.spec = armed` on success, reporting an error exactly as it reports a `wire` error today: `output.Err(out, err.Error())` followed by `clihelp.Abort(ctx, 1)`.
   Because `arm` routes through `c.wire`/`c.wireLightweight`, the pre-run still populates `c` exactly as it does today, so `start`, `validate-discussion` and `validate-plan` keep working unchanged even though none of them is a `shedverbs` verb and none reads `c.spec`.
   It must keep reading cwd through `lyxcwd.CwdFrom(ctx)` and keep passing `lyxcwd.Resolve`'s error through bare rather than doubling text on top of it, since that error is already the self-describing "not a git repository" sentinel.
@@ -90,6 +92,7 @@ A verb-blind arming keyed on recipe name alone would run the full `wire()` for `
   - `internal/loomcli/run.go`
   - `internal/loomcli/step.go`
   - `internal/loomcli/arm.go`
+  - `internal/loomcli/cli.go`
   - `internal/loomcli/cli_test.go`
   - `internal/loomcli/step_test.go`
 - **Creates:** none
@@ -119,9 +122,9 @@ A verb-blind arming keyed on recipe name alone would run the full `wire()` for `
   Fill `InterruptPolicyFor` with `loomshed.InterruptPolicyFor`, which is the table `next_interrupt_policy` reads today.
   Preserve the comment recording that the early probe is an optimisation and `shedengine.Step`'s own acquisition is the authority.
   Retarget the in-package test call sites these deletions orphan, which is mechanical compilation repair rather than an assertion change: `internal/loomcli/cli_test.go` uses the method expressions `(*loomCLI).runCmd` and `(*loomCLI).stepCmd`, and `internal/loomcli/step_test.go` calls `stepEnvelope`, `stepKinds`, `stepKindBusy` and `c.stepCmd()`.
-  Point each at its new home — `shedverbs.stepEnvelope`'s exported equivalent, `shedverbs.StepKinds`, `shedverbs.KindBusy`, and the command `shedverbs.Verbs` returns — keeping every assertion's meaning identical.
-  `internal/loomcli/step_test.go`'s ten-key and five-kind closure assertions in particular must keep asserting the same closed sets, now against the `shedverbs` constants;
-  if either can no longer be expressed from `loomcli`, say so rather than weakening it — batch 3 card 18 already asserts both inside `shedverbs`, so the honest resolution is to delete the duplicated closure assertion here and keep the behavioural ones, recorded in the commit message.
+  Point each at its new home — `shedverbs.StepEnvelope`, `shedverbs.StepKinds`, `shedverbs.KindBusy`, and the command `shedverbs.Verbs` returns — keeping every assertion's meaning identical.
+  Batch 3 exports those three identifiers precisely so these tables retarget rather than being deleted;
+  `internal/loomcli/step_test.go`'s ten-key and five-kind closure assertions must keep asserting the same closed sets, and none of them may be dropped here.
   Route `--parent` through a named carrier rather than a closure over a local, because the local it is captured from today (`parentFlag` in `stepCmd`) disappears with that function: add a `parentFlag string` field to the `loomCLI` struct, have `Command()` bind the returned `step` command's flag to `&c.parentFlag` with `cmd.Flags().StringVar`, and have the `PreStep` hook read `c.parentFlag` when calling `c.seedAndCommitBootstrap(slug, c.parentFlag)`.
   A closure cannot carry it: after the move the flag variable lives in `Command()` while `PreStep` is built inside `arm`, which sees only `(cwd, verb, args)` — and a `PersistentPreRunE`'s `args` are positional only, never parsed flags.
   Keep the flag's existing help text byte-for-byte.
@@ -162,8 +165,9 @@ A verb-blind arming keyed on recipe name alone would run the full `wire()` for `
   Its `MkdirAll` is not lost — `shedverbs`' own `ensureStatusLockDir` performs it, gated on the told `EnsureStatusLockDir` boolean — and the crucible history its doc comment records was already carried into that function's own doc comment by batch 3, card 13.
   Confirm before deleting that no third caller has appeared since this plan was written.
   Retarget the in-package test call sites these deletions orphan, which is mechanical compilation repair rather than an assertion change: `internal/loomcli/status_test.go` calls `renderStatusLine`, `statusUnavailableLine`, `printStatusLinesOnChange` and `c.statusCmd()`, and `internal/loomcli/cli_test.go` uses the `(*loomCLI).statusCmd` and `(*loomCLI).pauseCmd` method expressions.
-  `renderStatusLine` and the unavailable line now take a label argument (batch 3, card 14), so those call sites pass `"loom"` and keep asserting the identical rendered strings;
-  batch 3 card 18 already covers the same properties inside `shedverbs`, so a pure-duplicate table here may be deleted rather than retargeted, recorded in the commit message, while `TestStatusCmd_EnvelopeKeySet` stays and keeps asserting loom's own nine-key envelope through the rearmed command.
+  Point each at `shedverbs.RenderStatusLine`, `shedverbs.UnavailableLine`, `shedverbs.PrintStatusLinesOnChange` and the command `shedverbs.Verbs` returns.
+  The first two now take a label argument (batch 3, card 14), so those call sites pass `"loom"` and keep asserting the identical rendered strings — which is exactly what card 28 requires `status_test.go` to keep pinning, so none of these tables may be deleted.
+  `TestStatusCmd_EnvelopeKeySet` stays and keeps asserting loom's own nine-key envelope through the rearmed command.
   Confirm the resulting `lyx loom status` envelope is byte-identical to today's nine keys — the four generic core keys plus these five — and that `lyx loom pause`'s is still the single key `status_file`.
 - **Commit:** `refactor(loomcli): rearm status and pause over shedverbs`
 
@@ -186,8 +190,12 @@ A verb-blind arming keyed on recipe name alone would run the full `wire()` for `
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** change `Command()` so its `parent.AddCommand(...)` call passes the four commands returned by `shedverbs.Verbs(loomVerbTexts, c.spec)` in place of `c.runCmd()`, `c.stepCmd()`, `c.statusCmd()` and `c.pauseCmd()`, while `c.startCmd()`, `c.validateDiscussionCmd()` and `c.validatePlanCmd()` stay exactly as they are.
-  Declare `loomVerbTexts` as a package-level `shedverbs.VerbTexts` value carrying the four verbs' existing `Use`, `Short` and `Long` strings copied byte-for-byte out of the deleted `runCmd`/`stepCmd`/`statusCmd`/`pauseCmd` constructors, including every `Example:` block and every embedded newline.
-  Byte-identical is the requirement, not "equivalent": `cmd/lyx/longlist_test.go` keeps `--help` prose from drifting from the live tree and `cmd/lyx/jsonhelp_test.go` asserts the `--json` help schema at several levels, so a reflowed `Long` is a test failure, and `cmd/lyx/drift_test.go` fails CI on any command with a blank `Short`.
+  `loomVerbTexts` already exists, lifted verbatim from the live constructors by card 21 before cards 22 and 23 deleted them;
+  this card only wires it into `shedverbs.Verbs`.
+  Byte-identical remains the requirement, not "equivalent" — but be clear about what does and does not enforce it.
+  No existing `cmd/lyx` guard machine-checks a verb's `Long`: `longlist_test.go` only asserts `root.Long` names every registered top-level module, and `jsonhelp_test.go` exercises root, `board`, `config`, `ide`, `reed` and `selfreport`, so neither fails on a reflowed `loom` or `lifecycle` `Long`.
+  `drift_test.go` does fail CI on a blank `Short`, which is the one part that is machine-checked.
+  The byte-for-byte copy is therefore guarded by card 21 lifting it from live source and by review, not by a test — do not reflow, re-indent, or re-wrap any of it.
   Decorate the returned `step` command with `--parent` before adding it, per card 22.
   Leave the parent `loom` command's own `Use`/`Short`/`Long`, its `RunE: clihelp.GroupRunE` and its `PersistentPreRunE` untouched apart from card 21's rewrite of the pre-run's body.
   `StartAliasCommand` is out of scope and must not be touched.
@@ -227,7 +235,9 @@ A verb-blind arming keyed on recipe name alone would run the full `wire()` for `
   `AbsentStatus` with `Refuse: false`, the `found: false` success form;
   `PauseAbsentMessage` set to the new text `lifecyclecli: no status file at <StatusPath>; there is nothing running to pause -- run "lyx lifecycle run <slug>" first`, mirroring loom's shape and naming lifecycle's own entry verb rather than loom's;
   `BuildShed` a closure returning `lifecyclerecipe.New(c.env, c.shedPaths)`.
+  It is lifted **here**, before cards 22 and 23 delete those constructors, precisely so the copy is made from live source rather than from git history.
   Rewrite `resolvePersistentPreRun` to call `c.arm(cwd, cmd.Name(), args)` — the unexported worker, on its own receiver — and assign `*c.spec = armed`, keeping its existing `cmd.Name() == "lifecycle"` short-circuit and its existing `lyxcwd.CwdFrom(ctx)` read in place, and keeping the pass-through rendering of `lyxcwd.Resolve`'s self-describing error.
+  Declare `lifecycleVerbTexts` in this card too, as a package-level `shedverbs.VerbTexts` value in `internal/lifecyclecli/cli.go`, lifting `run`'s and `status`'s `Use`/`Short`/`Long` verbatim out of the still-present `runCmd`/`statusCmd` constructors before card 26 deletes them, and leaving the `step` fields at their zero values.
   The worker performs the `c.location` and `c.slug` assignments the pre-run does today, so they keep happening on both paths rather than only on the `lyx lifecycle` one.
   The single-receiver property holds as in card 21: the `*lifecycleCLI` whose fields the returned hooks close over is always the value the caller holds — the pre-run's own `c` on the `lyx lifecycle` path, the wrapper's freshly-constructed one on the `lyx shed` path.
 - **Commit:** `feat(lifecyclecli): add the exported Arm resolution entry point`
@@ -268,7 +278,8 @@ A verb-blind arming keyed on recipe name alone would run the full `wire()` for `
   Do not pin a six-key closure assertion.
   Register the `pause` command on the lifecycle subtree for the first time, with `Args: cobra.ExactArgs(1)` like the other two, since it needs the slug before `wire` can build any path.
   Change `Command()`'s `parent.AddCommand(c.runCmd(), c.statusCmd())` to add the three commands returned by `shedverbs.Verbs(lifecycleVerbTexts, c.spec)` that this module exposes — `run`, `status` and `pause` — and not `step`, which lifecycle has no analogue for.
-  Declare `lifecycleVerbTexts` carrying `run`'s and `status`'s existing `Use`/`Short`/`Long` byte-for-byte, plus new text for `pause` in the same shape, and extend `status`'s `Long` with an `Example:` line for `--watch` since the flag is now present.
+  `lifecycleVerbTexts` is declared by card 25, lifted verbatim from the live `runCmd`/`statusCmd` constructors before this card deletes them, for the same reason card 21 lifts loom's.
+  It carries `run`'s and `status`'s existing `Use`/`Short`/`Long` byte-for-byte, plus new text for `pause` in the same shape, and extend `status`'s `Long` with an `Example:` line for `--watch` since the flag is now present.
   Leave the `step` texts at their zero values and never add the returned `step` command to the lifecycle subtree, so its blank `Short` never reaches the live tree `cmd/lyx/drift_test.go` walks — that guard fails CI on any *registered* command with a blank `Short`, and an unregistered returned command is not in the tree at all.
   Set `Args: cobra.ExactArgs(1)` on each of the three returned commands before adding them.
   Update the lifecycle parent command's own `Long` to name `pause` alongside `run` and `status`, and to state that all three run from the hub's prime worktree only.

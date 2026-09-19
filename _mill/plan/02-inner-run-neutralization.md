@@ -39,6 +39,8 @@ The edge sequences them rather than expressing a logical need: nothing here read
 
 - **Context:**
   - `internal/lifecycleshed/doc.go`
+  - `internal/lifecycleshed/teardown.go`
+  - `_mill/discussion.md`
   - `internal/lifecycleshed/stuck.go`
   - `internal/lifecycleshed/ctx.go`
   - `internal/shedengine/producer.go`
@@ -54,7 +56,8 @@ The edge sequences them rather than expressing a logical need: nothing here read
   - `internal/lifecycleshed/loomrun_test.go` -> `internal/lifecycleshed/innerrun_test.go`
 - **Requirements:** rename `LoomRunDeps` to `InnerRunDeps` in `internal/lifecycleshed/deps.go`, `NewLoomRun` to `NewInnerRun`, and `loomRunProducer` to `innerRunProducer` in the moved file, updating every reference and every `var _ shedengine.ShedProducer = (*innerRunProducer)(nil)` style assertion.
   Rename the test helpers and test functions in the moved test file the same way: `newLoomRunDeps` to `newInnerRunDeps`, and each `TestLoomRun_*` function to `TestInnerRun_*`.
-  Change the producer's two required log lines so they say "inner shed run" in place of "loom session" — the spawn line and the wait-complete line — and change its stuck reasons the same way, so no string in this package names loom.
+  Change the producer's two required log lines so they say "inner shed run" in place of "loom session" — the spawn line and the wait-complete line — and change its stuck reasons the same way, so no string in the moved file or in `InnerRunDeps` names loom.
+  The clause is scoped to those two places deliberately: `internal/lifecycleshed/doc.go` and `internal/lifecycleshed/teardown.go` also name the loom session, and both are out of scope — `_mill/discussion.md` scopes this neutralization to the inner-run producer's own names, log lines and stuck reasons, and `teardown.go` describes what the shipped lifecycle recipe actually tears down.
   Both log lines stay, unconditionally: the Live-Substrate Spawn Observability invariant requires them because this producer waits for its child rather than detaching.
   Change no logic: the poll loop, the exhaustive verdict table over `shedengine.Status.State` (`StateDone` to `Done`; `StateBlocked`/`StatePaused`/`StateFailed` to `Stuck` naming the state, `Error` and `CurrentProducer`; `StateRunning` consumes an attempt; anything else a hard error), the treatment of a `ResolveStatus`/`ReadStatus` error as a hard error rather than a verdict, the treatment of a `Spawn` error and of `found == false` as `Stuck`, and the nil-resolution of `Now`/`Sleep` to `time.Now`/`time.Sleep` in the constructor all stay exactly as they are.
   Weaken no assertion in the moved test file — every existing case keeps its shape, and only identifiers and the asserted log/reason substrings change.

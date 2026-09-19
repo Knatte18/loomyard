@@ -145,7 +145,9 @@ Those instances are illustrations of each rule, not its extent — a hand-listed
 - **Requirements:** run this batch's `verify:` command and confirm both packages pass, then run the repo's Markdown Link Integrity checker over the four edited markdown files and confirm every link added by card 38 resolves.
   Locate that checker by grepping the repo for the invariant's name rather than assuming a path, and run it the way its own documentation says to.
   Confirm `cmd/lyx/constraintchokepoint_test.go` still passes against the new `CONSTRAINTS.md` section, since it is the guard that reads that file's structure, and confirm `cmd/lyx/retiredverbs_test.go` still passes, since this task retires no verb and that guard must not have started reporting one.
-  Confirm by grep that no file under `plugins/ly/skills/ly-drive/` still contains the literal string `lyx loom step`, which is the mechanical check that card 36's rule (a) was applied exhaustively rather than partially.
+  Confirm by grep that no file under `plugins/ly/skills/ly-drive/` still contains the prefix `lyx loom ` at all — not merely `lyx loom step`, since rule (a) covers every `lyx loom <verb>` invocation and the file also carries `lyx loom status`, `lyx loom start` and `lyx loom run` today.
+  A grep for the single `step` literal would pass while three other invocations survived, which is the partial application rule (a) exists to prevent.
+  A surviving `lyx loom start` inside a recipe-gated loom-only section is the one legitimate exception — if the rewrite keeps one, confirm it sits inside such a gate rather than in recipe-agnostic prose.
   Confirm by grep that `internal/shedverbs` and `internal/shedcli` each appear in `docs/overview.md`, which is the mechanical check that card 38's module-table rows landed.
   This card changes no file.
 - **Commit:** none

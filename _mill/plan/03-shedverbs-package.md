@@ -23,6 +23,13 @@ This batch creates no file any other batch edits and therefore carries no `depen
 
 Batch-local decision: the four verb bodies live in four files named after their verbs, mirroring `internal/loomcli`'s own `run.go`/`step.go`/`status.go`/`pause.go` layout, so a reader moving between the two sees the same shape.
 
+Batch-local decision, and non-negotiable in every verb body below: **every** envelope write is recorded through `clihelp.SetExit(cmd.Context(), …)` wrapping the `output` helper's return, exactly as all six deleted bodies do (`clihelp.SetExit(ctx, output.Err(out, …))`, `clihelp.SetExit(ctx, output.ErrFields(out, …, fields))`, `clihelp.SetExit(ctx, output.Ok(out, envelope))`).
+This is what makes the process exit code correct: `internal/clihelp/exec.go`'s `RunRootCtx` returns `es.code`, and `es.code` is written only by `SetExit` and `Abort` — `output.Err`/`ErrFields`/`Ok` merely *return* 1 or 0.
+A body that writes the envelope without `SetExit` exits 0 on every refusal, silently breaking every caller that branches on the exit code, `ly-drive` included.
+
+Batch-local decision: the helpers the two arming modules' own test tables reach are **exported** — `StepEnvelope`, `RenderStatusLine`, `UnavailableLine` and `PrintStatusLinesOnChange` — while everything else in the package stays unexported.
+Those four are exported for a reason rather than for symmetry: `internal/loomcli`'s `step_test.go` and `status_test.go` pin the exact ten-key envelope and the exact rendered watch line for the `loom` label, which are loom's own shipped contract, and batch 4 retargets those tables onto these functions rather than deleting them.
+
 ## Cards
 
 ### Card 10: declare Spec, Hooks, VerbTexts and the package doc
@@ -96,6 +103,7 @@ Batch-local decision: the four verb bodies live in four files named after their 
   `PostRun`'s map is merged into the success envelope only and discarded when `runErr` is non-nil, since an error envelope carries no extras;
   `PostRun` is still called on that path, for its side effects, which is the whole reason it runs there.
   A nil `BuildShed` is an error on this verb: report a clear message naming the verb rather than panicking on a nil call.
+  Record every envelope write through `clihelp.SetExit(cmd.Context(), …)` per this batch's own scope decision — both the error envelopes above and the success one.
   Take the `Use`/`Short`/`Long` strings from `texts`, never from a literal in this file.
 - **Commit:** `feat(shedverbs): implement the generic run verb body`
 
@@ -116,7 +124,7 @@ Batch-local decision: the four verb bodies live in four files named after their 
 - **Requirements:** move the five refusal-kind constants and the `stepKinds` slice out of `internal/loomcli/step.go` and declare them here, exported, as the closed vocabulary: `KindBusy = "busy"`, `KindUnseeded = "unseeded"`, `KindOwnership = "ownership"`, `KindBootstrap = "bootstrap"`, `KindProducer = "producer"`, plus a `StepKinds` slice listing exactly those five.
   Carry across the existing doc comment explaining why the set is closed and why the supervisor skill's one-retry rule applies to `KindProducer` alone.
   Do not delete the loom-side constants in this card — batch 4 card 22 removes them, once `loomcli` has been rearmed onto these.
-  Declare `stepEnvelope(res shedengine.StepResult, nextPolicy, statusFile string) map[string]any` returning exactly the ten keys `internal/loomcli/step.go`'s own `stepEnvelope` returns, with the same derivations: `producer`, `outcome`, `output`, `next`, `state`, `reason`, `continue` derived as `res.State == shedengine.StateRunning`, `history_length`, `next_interrupt_policy`, `status_file`.
+  Declare **exported** `StepEnvelope(res shedengine.StepResult, nextPolicy, statusFile string) map[string]any` returning exactly the ten keys `internal/loomcli/step.go`'s own `stepEnvelope` returns, with the same derivations: `producer`, `outcome`, `output`, `next`, `state`, `reason`, `continue` derived as `res.State == shedengine.StateRunning`, `history_length`, `next_interrupt_policy`, `status_file`.
   Carry across that function's doc comment, including the reason `continue` is derived in Go rather than left to the caller — a thin external supervisor skill never carries its own copy of the `State` vocabulary.
   Implement `stepCmd(texts VerbTexts, spec *Spec) *cobra.Command` whose `RunE` checks `clihelp.ShouldAbort` first, then calls `spec.Hooks.PreStep` when non-nil and, on a non-nil error, reports it with `output.ErrFields` carrying the hook's own returned `kind` on the envelope's `kind` field;
   then calls `spec.BuildShed()`, reporting a build error with `kind: KindBootstrap`;
@@ -124,6 +132,7 @@ Batch-local decision: the four verb bodies live in four files named after their 
   then, on success, calls `spec.Hooks.PostStep(res)` when non-nil and then reports `output.Ok(out, stepEnvelope(res, nextPolicy, spec.StatusPath))` where `nextPolicy` is `spec.Hooks.InterruptPolicyFor(res.Next)` when the hook is non-nil and the empty string when it is nil.
   `PostStep` runs only on the success path and only before the envelope is written — never on an error path, since the marker records a clean handoff and a step that failed produced none.
   A recipe with no policy table therefore yields an empty `next_interrupt_policy`, which is the caller's "no entry" signal and never a third policy word.
+  Record every envelope write through `clihelp.SetExit(cmd.Context(), …)` per this batch's own scope decision, wrapping `output.ErrFields` on each refusal and `output.Ok` on success.
   This body owns nothing above `shed.Step`: the run-lock probe, the `MkdirAll`, the seed-and-commit bootstrap and the status-strand work all belong to loom's `PreStep` and stay in `loomcli`.
 - **Commit:** `feat(shedverbs): implement the generic step verb body and the closed kind set`
 
@@ -157,6 +166,7 @@ Batch-local decision: the four verb bodies live in four files named after their 
   Carry that function's existing doc comment across: the status file is durable under `_lyx` while its lock is ephemeral under `.lyx`, `internal/lock` opens with `O_CREATE` and never creates a parent, nothing creates the ephemeral directory before a bootstrap has run, and without this both verbs' carefully-worded "no status file … run \"lyx loom start\"" messages were unreachable on the one path they exist for.
   Keep its closing note that this creates a directory and reads nothing, so it cannot resurrect a deleted status file or mask a genuine absence — `found` still answers that question.
   Batch 4, card 23 deletes `loomcli`'s own copy once its two callers are gone, so this doc comment is where that history lives afterwards.
+  Record every envelope write through `clihelp.SetExit(cmd.Context(), …)` per this batch's own scope decision.
   The `--watch` branch is card 14's; leave a call site for it between the absent-file disposition and the core-envelope assembly, matching `internal/loomcli/status.go`'s own ordering.
 - **Commit:** `feat(shedverbs): implement the generic status verb's one-shot envelope`
 
@@ -173,10 +183,10 @@ Batch-local decision: the four verb bodies live in four files named after their 
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** add `renderStatusLine(label string, st shedengine.Status) string` composing exactly one line: the told `label`, then the state, then `" | now "` and `st.Activity.Now`, then `" | last "` and `st.Activity.Last` only when non-empty, then `" | wait "` and `st.Activity.Wait` only when non-empty.
-  For `label` of `loom` this must render byte-identically to `internal/loomcli/status.go`'s existing `renderStatusLine`, whose format is `loom %s | now %s` plus the two optional tails.
-  Add `unavailableLine(label string) string` composing `<label> status unavailable (status file transiently unreadable)`, and compute it ONCE outside the poll loop rather than per poll.
+  For `label` of `loom` this must render byte-identically to `internal/loomcli/status.go`'s existing unexported `renderStatusLine`, whose format is `loom %s | now %s` plus the two optional tails.
+  Add **exported** `UnavailableLine(label string) string` composing `<label> status unavailable (status file transiently unreadable)`, and compute it ONCE outside the poll loop rather than per poll.
   That is required, not stylistic: the tail dedupes on printed text, so a line recomposed per poll that ever differed by a byte would turn a transient fault into its own flood, which is the whole thing the dedupe exists to prevent.
-  Add `printStatusLinesOnChange(out io.Writer, poll func() string, sleep func(), polls int)` with the same body and the same semantics as `internal/loomcli/status.go`'s own: print only when the polled line differs from the last printed one, and treat a non-positive `polls` as "poll forever", which is what the production call passes.
+  Add **exported** `PrintStatusLinesOnChange(out io.Writer, poll func() string, sleep func(), polls int)` with the same body and the same semantics as `internal/loomcli/status.go`'s own: print only when the polled line differs from the last printed one, and treat a non-positive `polls` as "poll forever", which is what the production call passes.
   Carry across that function's doc comment explaining why suppressing an unchanged line is the whole point — a producer call lasts minutes while the tail polls every second, so printing unconditionally fills tmux's scrollback and buries the one line an operator needs.
   Wire the `--watch` branch into `statusCmd`'s `RunE` at the call site card 13 left: after the absent-file disposition has already short-circuited, so a `--watch` against an absent status file returns the told disposition immediately instead of entering the tail.
   On a never-run slug, `lyx lifecycle status --watch` therefore exits immediately rather than waiting;
@@ -201,6 +211,7 @@ Batch-local decision: the four verb bodies live in four files named after their 
 - **Moves:** none
 - **Requirements:** implement `pauseCmd(texts VerbTexts, spec *Spec) *cobra.Command` whose `RunE` checks `clihelp.ShouldAbort` first, performs `ensureStatusLockDir(spec.DecodeErrPrefix, spec.StatusLockPath)` when `spec.EnsureStatusLockDir` is true, matching card 13's two-argument signature, then calls `state.UpdateJSON(spec.StatusPath, spec.StatusLockPath, …)` with a mutate closure that returns `errors.New(spec.PauseAbsentMessage)` when `!found` and otherwise sets `cur.PauseRequested = true` and returns `cur`.
   Report any error on the error envelope and, on success, report `output.Ok` with exactly the one key `status_file: spec.StatusPath`.
+  Record both writes through `clihelp.SetExit(cmd.Context(), …)` per this batch's own scope decision.
   `pause` never calls `BuildShed` — a nil one is legal here, exactly as on `status`.
 - **Commit:** `feat(shedverbs): implement the generic pause verb body`
 
@@ -287,7 +298,7 @@ Batch-local decision: the four verb bodies live in four files named after their 
   with it false, the parent is still absent afterwards and the read fails in lock acquisition instead.
   That failing arm is the assertion, not an accident: `internal/lock`'s `AcquireReadLock` is `flock.New(path).RLock()`, which creates the lock file but never its parent, and `state.ReadJSONStrict` adds no `MkdirAll` of its own — so a skipped `MkdirAll` is observable exactly there.
   Drive the reachable `found: false` and refusal dispositions separately, over a status-lock path whose parent already exists, which is the state both shipped consumers are in whenever those dispositions actually fire.
-  For the `--watch` tail, drive `printStatusLinesOnChange` through a finite `polls` count with an injected sleep and no wall-clock wait, exactly as `printStatusLinesOnChange` and `awaitRunLock` are driven today;
+  For the `--watch` tail, drive `PrintStatusLinesOnChange` through a finite `polls` count with an injected sleep and no wall-clock wait, exactly as `printStatusLinesOnChange` and `awaitRunLock` are driven today;
   assert change-only printing;
   assert the told label appears in the rendered line;
   assert the composed unavailable line is byte-identical across polls for a given label, which is the dedupe property;
@@ -340,6 +351,7 @@ Batch-local decision: the four verb bodies live in four files named after their 
 - **Moves:** none
 - **Requirements:** run `go build ./internal/shedverbs/...` and `go vet ./internal/shedverbs/...` and confirm both exit zero, then run the batch's own `verify:` command and confirm every test in the package passes.
   Confirm by inspection that no file in the package declares a `Command()` or a `RunCLI` function, since `shedverbs` is not a CLI module and must not be counted in the CLI/Cobra Invariant's module tally.
+  Confirm by grep that every `output.Err`, `output.ErrFields` and `output.Ok` call in this package is wrapped in a `clihelp.SetExit(...)` call — an unwrapped one exits 0 on a refusal, which no test asserting envelope *content* would catch.
   Confirm every command returned by `Verbs` carries a non-blank `Short`, which `cmd/lyx/drift_test.go` will enforce across the whole tree once batch 5 registers the subtree.
   This card changes no file;
   it is the gate that the package is self-contained before batch 4 arms it.
