@@ -1,7 +1,7 @@
 // cli_test.go covers the loomcli cobra seam: the built tree's Short completeness, the exact set of
-// registered verbs, the bare-group invocation's git-free guard, and the drive/pause verbs' own
+// registered verbs, the bare-group invocation's git-free guard, and the run/pause/status verbs' own
 // refusal paths driven directly against a hand-populated receiver -- bypassing wire entirely, since
-// neither refusal needs a wired hub.
+// none of the three refusals needs a wired hub.
 
 package loomcli
 
@@ -53,7 +53,7 @@ func TestCommand_RegisteredVerbs_ExactSet(t *testing.T) {
 	}
 	sort.Strings(got)
 
-	want := []string{"drive", "pause", "run", "status", "step", "validate-discussion", "validate-plan"}
+	want := []string{"pause", "run", "start", "status", "step", "validate-discussion", "validate-plan"}
 
 	gotSet := make(map[string]bool, len(got))
 	for _, name := range got {
@@ -76,21 +76,27 @@ func TestCommand_RegisteredVerbs_ExactSet(t *testing.T) {
 	}
 }
 
-// TestRunAliasCommand_StaysOneCommandWithSubtreeVerb guards RunAliasCommand and the subtree's own
-// runCmd against drifting into two different commands: the alias must carry a non-empty Short, its
-// Use must be the bare verb ("run"), and it must expose the same --parent flag the subtree's own run
-// verb does.
-func TestRunAliasCommand_StaysOneCommandWithSubtreeVerb(t *testing.T) {
-	alias := RunAliasCommand()
+// TestStartAliasCommand_StaysOneCommandWithSubtreeVerb guards StartAliasCommand and the subtree's own
+// startCmd against drifting into two different commands: the alias must carry a non-empty Short, its
+// Use must be the bare verb ("start"), it must expose the same --parent flag the subtree's own start
+// verb does, and its Use must equal the subtree verb's own Use so the alias and the subtree verb can
+// never drift apart.
+func TestStartAliasCommand_StaysOneCommandWithSubtreeVerb(t *testing.T) {
+	alias := StartAliasCommand()
 
 	if alias.Short == "" {
-		t.Error("RunAliasCommand() has empty Short")
+		t.Error("StartAliasCommand() has empty Short")
 	}
-	if alias.Use != "run" {
-		t.Errorf("RunAliasCommand().Use = %q; want %q", alias.Use, "run")
+	if alias.Use != "start" {
+		t.Errorf("StartAliasCommand().Use = %q; want %q", alias.Use, "start")
 	}
 	if alias.Flags().Lookup("parent") == nil {
-		t.Error("RunAliasCommand() is missing the --parent flag the subtree's run verb exposes")
+		t.Error("StartAliasCommand() is missing the --parent flag the subtree's start verb exposes")
+	}
+
+	subtreeVerb := (&loomCLI{}).startCmd()
+	if alias.Use != subtreeVerb.Use {
+		t.Errorf("StartAliasCommand().Use = %q; want it to equal the subtree verb's own Use %q", alias.Use, subtreeVerb.Use)
 	}
 }
 
@@ -126,12 +132,12 @@ func TestRunCLI_UnknownSubcommand_NoGitRepoNeeded(t *testing.T) {
 	}
 }
 
-// TestVerbRefusals covers the drive verb's seed-missing pre-flight and the pause verb's absent-file
-// refusal. Both are driven directly against the leaf command built by driveCmd/pauseCmd on a
-// hand-populated *loomCLI -- never through the full PersistentPreRunE/wire path, which needs a real
-// git repository this untagged suite must not spawn. c.shedPaths.StatusPath/StatusLockPath point at
-// a plain temporary directory that never receives a status.json, so each verb's own refusal fires on
-// exactly the precondition it owns.
+// TestVerbRefusals covers the run verb's seed-missing pre-flight, the pause verb's absent-file
+// refusal, and the status verb's !found refusal. All three are driven directly against the leaf
+// command built by runCmd/pauseCmd/statusCmd on a hand-populated *loomCLI -- never through the full
+// PersistentPreRunE/wire path, which needs a real git repository this untagged suite must not spawn.
+// c.shedPaths.StatusPath/StatusLockPath point at a plain temporary directory that never receives a
+// status.json, so each verb's own refusal fires on exactly the precondition it owns.
 func TestVerbRefusals(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -139,14 +145,19 @@ func TestVerbRefusals(t *testing.T) {
 		wantRemedy string
 	}{
 		{
-			name:       "Drive_SeedMissing",
-			buildCmd:   (*loomCLI).driveCmd,
-			wantRemedy: `lyx loom run`,
+			name:       "Run_SeedMissing",
+			buildCmd:   (*loomCLI).runCmd,
+			wantRemedy: `lyx loom start`,
 		},
 		{
 			name:       "Pause_AbsentFile",
 			buildCmd:   (*loomCLI).pauseCmd,
-			wantRemedy: `lyx loom run`,
+			wantRemedy: `lyx loom start`,
+		},
+		{
+			name:       "Status_NotFound",
+			buildCmd:   (*loomCLI).statusCmd,
+			wantRemedy: `lyx loom start`,
 		},
 	}
 
