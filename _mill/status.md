@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: reed-cold-worktree-selfheal
 branch: reed-cold-worktree-selfheal
-plan: null
+plan: _mill/plan
 parent: main
 task: 'reed: AddStrand and attach self-heal a cold worktree'
 task_description: |
@@ -23,4 +23,5 @@ discussion-fix-r5  '2026-09-18T19:37:54Z'
 discussion-gap-fix-r6  '2026-09-18T19:42:29Z'
 discussion-fix-r7  '2026-09-18T19:47:20Z'
 discussed  '2026-09-18T19:47:20Z'
+planning  '2026-09-19T05:18:10Z'
 ```
