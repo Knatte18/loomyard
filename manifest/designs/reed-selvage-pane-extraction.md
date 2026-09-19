@@ -24,15 +24,55 @@ By contrast, the other two goals landed cleanly:
 
 ## The one complication
 
-`windowsize.go`'s `pinGeometryOptionsLocked` deliberately recombines all three concerns in one function: it issues the status-line `set-option` calls, pins Selvage as "always pin index 0," and installs the watchdog's resize-signal hook — all three writers target the same live tmux session-option/hook state, so the file's own comment states this is one atomic writer by design, not an accident. Any extraction work has to either preserve this invariant (keep `pinGeometryOptionsLocked` as the single writer, calling out to per-concern helper functions instead of inlining) or find a different way to avoid the race between three uncoordinated writers.
+`windowsize.go`'s `pinGeometryOptionsLocked` does not recombine all three concerns: read against the current code, it issues the status-line `set-option` calls, pins `window-size latest`, and unsets the watchdog's resize-signal hook — the unset half of that hook's lifecycle only.
+The whole install half — the resize-pane pins plus the watchdog signal entry — lives in `installResizePinsLocked`, a separate function, and the "Selvage pin at index 0" property is not something either function decides: it is a consequence of `render.FixedHeightPins`' own ordering, surfaced by `resizePinHookArgvs` when it turns that pin list into `set-hook` argv.
+`windowsize.go`'s only Selvage hit in the whole file is a comment (see the Status section's audit below).
+There is no three-way merge left to split here, and `pinGeometryOptionsLocked` is deliberately left untouched by this task — the complication this section originally raised does not apply to the extraction as landed.
+
+## Status: Implemented
+
+A post-extraction audit re-ran the same kind of grep the audit finding above used, but not the same measurement: it matches lines case-sensitively for the literal string `Selvage`, across `internal/reedengine`'s non-test `.go` files, one count per file.
+A case-insensitive count is a different measurement and reports different figures, so the method is stated here rather than left implicit.
+
+This worktree's HEAD, before the extraction landed, carried:
+
+- `lifecycle.go` — 58 hits
+- `doc.go` — 34 hits
+- `reconcile.go` — 20 hits
+- `spawn.go` — 17 hits
+- `apply.go` — 8 hits
+- `state.go` — 6 hits
+- `config.go` — 4 hits
+- `generation.go` — 2 hits
+- `windowsize.go`, `attach.go`, `overlay.go` — 1 comment-only hit each
+
+These are this re-count, not the figures recorded above against commit `d39b30648` — the two differ by one on `lifecycle.go` (58 here against 57 there).
+
+After the extraction:
+
+- `selvagepane.go` — 92 hits, the new owner of every one of these seams
+- `lifecycle.go` — 19 hits
+- `reconcile.go` — 8 hits
+- `apply.go` — 7 hits
+- `spawn.go` — 1 hit
+- `state.go` — 6 hits
+- `config.go` — 4 hits
+- `generation.go` — 2 hits
+- `windowsize.go`, `attach.go`, `overlay.go` — 1 comment-only hit each, unchanged
+- `doc.go` — 33 hits
+
+The four former host files — `lifecycle.go`, `reconcile.go`, `spawn.go`, `apply.go` — are expected to show comment-only hits after the extraction, and do: their remaining occurrences are call-position references into `selvagepane.go`'s seams (`clearSelvagePaneBinding`, `ensureSelvagePaneLocked`, `seedSelvageClaim`, `e.selvageRenderParams`), a `render.Selvage{Selvage: …}` composite-literal field key, and prose comments, none of them the module-local logic the audit finding complained was scattered.
+`doc.go`'s figure is reported as changed-by-design, not as evidence: card 10 of this task's own plan rewrote its Selvage section to name `selvagepane.go` as the owner, which is what moved its count from 34 to 33.
+
+`selvagepane_enforcement_test.go` is what keeps this count from regressing: it is a mechanical AST check, not a grep run by hand, so the scatter this audit measured cannot silently return.
 
 ## What needs to happen
 
-Not yet designed — open questions for whoever picks this up:
+Each of the following is now answered by the Status section above it:
 
-- Extract Selvage's pane creation/reap/reconcile logic into its own file (`selvagepane.go` or similar), leaving `apply.go`/`reconcile.go`/`spawn.go`/`lifecycle.go` calling a narrow interface instead of inlining Selvage-specific logic.
-- Decide whether `pinGeometryOptionsLocked`'s three-way merge can be preserved as a thin coordinator over three separately-testable helpers, or whether the atomic-writer requirement makes further separation not worth it.
-- Re-run the same kind of grep-based audit after any extraction to confirm the scatter is actually gone, not just relocated again.
+- Selvage's pane creation/reap/reconcile logic is extracted into `internal/reedengine/selvagepane.go`; `apply.go`/`reconcile.go`/`spawn.go`/`lifecycle.go` call its narrow seams instead of inlining Selvage-specific logic.
+- `pinGeometryOptionsLocked`'s three-way merge did not need preserving as designed: per "The one complication" above, it was never a three-way merge, so no further separation of it was needed or attempted.
+- The grep-based audit was re-run after the extraction landed; the Status section above records its method and figures.
 
 ## Related
 
