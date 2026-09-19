@@ -311,7 +311,7 @@ Example:
 // The alias is not registered inside Command(); the root command registers it as a sibling of the
 // "loom" group, in a later batch.
 func StartAliasCommand() *cobra.Command {
-	c := &loomCLI{}
+	c := newLoomCLI()
 	cmd := c.startCmd()
 	cmd.PersistentPreRunE = c.resolvePersistentPreRun
 	return cmd
