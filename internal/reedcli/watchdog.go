@@ -50,6 +50,38 @@ const watchdogHubDiscoveryCycle = 5 * time.Second
 // respawning in between.
 const watchdogHubIdleCycles = 3
 
+// watchdogOrphanGoneCycles is how many consecutive **affirmative** discovery cycles a session name
+// must be observed gone (see worktreeRootGone) before the daemon reaps it — roughly 15s at the
+// existing 5s watchdogHubDiscoveryCycle.
+//
+// The reap this guards is destructive and unattended, and a worktree directory can be legitimately
+// absent for a moment: a `git worktree move`, an editor or backup tool swapping a directory, a
+// filesystem remount. None of those may cost a session its live agent work. Three is the same figure
+// and the same reasoning watchdogHubIdleCycles already uses for the daemon's own exit, so this file
+// carries one cadence idiom rather than two.
+const watchdogOrphanGoneCycles = 3
+
+// watchdogTiming carries the daemon's loop tunables as data, so a test can drive the loop against
+// compressed cycles while production wires the fixed package constants through
+// watchdogDefaultTiming. This deliberately mirrors the shape internal/reedengine/watchloop.go
+// already uses for its own watchTiming/watchDefaultTiming pair, so the repo carries one idiom for
+// loop-timing injection rather than two.
+type watchdogTiming struct {
+	DiscoveryCycle   time.Duration
+	IdleCycles       int
+	OrphanGoneCycles int
+}
+
+// watchdogDefaultTiming returns the daemon's production timings, sourced from the package's fixed
+// watchdog* constants and nothing else.
+func watchdogDefaultTiming() watchdogTiming {
+	return watchdogTiming{
+		DiscoveryCycle:   watchdogHubDiscoveryCycle,
+		IdleCycles:       watchdogHubIdleCycles,
+		OrphanGoneCycles: watchdogOrphanGoneCycles,
+	}
+}
+
 // sessionsAreIdle reports whether one discovery cycle's list-sessions round trip counts toward the
 // daemon's idle-exit counter.
 //
