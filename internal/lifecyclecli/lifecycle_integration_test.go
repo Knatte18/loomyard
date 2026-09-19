@@ -17,6 +17,7 @@ package lifecyclecli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -197,7 +198,7 @@ func TestLifecycleIntegration_MidListResume_SkipsTheCompletedCreateRow(t *testin
 	})
 
 	var out bytes.Buffer
-	exitCode := clihelp.Execute(c.runCmd(), &out, []string{slug})
+	exitCode := clihelp.Execute(lifecycleVerbCommand(c, "run"), &out, []string{slug})
 	if exitCode != 0 {
 		t.Fatalf("run() exit code = %d; want 0; output: %s", exitCode, out.String())
 	}
@@ -206,6 +207,20 @@ func TestLifecycleIntegration_MidListResume_SkipsTheCompletedCreateRow(t *testin
 	}
 	if pathExists(h.PairWarpWorktree(slug)) {
 		t.Errorf("pair still exists after the resumed run's teardown row completed: %s", h.PairWarpWorktree(slug))
+	}
+
+	var envelope map[string]any
+	if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode envelope: %v; output: %s", err, out.String())
+	}
+	// history_length is new in this task: the resumed run's persisted history already carries the
+	// pre-seeded create-row entry plus whatever this invocation appended, so it must be at least 2.
+	gotLen, ok := envelope["history_length"].(float64)
+	if !ok {
+		t.Fatalf("envelope[\"history_length\"] = %v (%T); want a number", envelope["history_length"], envelope["history_length"])
+	}
+	if gotLen < 2 {
+		t.Errorf("envelope[\"history_length\"] = %v; want at least 2 (the pre-seeded entry plus this run's own)", gotLen)
 	}
 }
 
