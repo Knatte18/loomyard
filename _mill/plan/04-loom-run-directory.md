@@ -81,6 +81,7 @@ A status file present with no seed beside it takes the same refusal, whose remed
   - `internal/shedverbs/step_test.go`
 - **Edits:**
   - `internal/loomcli/arm.go`
+  - `internal/loomcli/cli.go`
 - **Creates:**
   - `internal/loomcli/arm_seed_test.go`
 - **Deletes:** none
