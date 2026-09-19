@@ -1,13 +1,21 @@
 // arm.go implements battencli's exported Arm resolution entry point, plus the two-function
-// split behind it: the unexported worker arm resolves cwd, applies the non-prime refusal, reads
-// the slug, and wires the whole engine stack exactly as resolvePersistentPreRun (cli.go) always
-// has, and the resolution-free specFor fills a Spec from an already-wired receiver. See the
-// overview's exported-Arm-is-the-single-resolution-entry-point and
-// spec-fill-is-separable-from-resolution Shared Decisions.
+// split behind it: the unexported worker arm resolves cwd, applies the non-prime refusal, resolves
+// the addressed run-id, refuses a self address, gates the auto-seed, and wires the whole engine
+// stack exactly as resolvePersistentPreRun (cli.go) always has, and the resolution-free specFor
+// fills a Spec from an already-wired receiver. See the overview's
+// exported-Arm-is-the-single-resolution-entry-point and spec-fill-is-separable-from-resolution
+// Shared Decisions.
 //
 // Arm carries no command-name guard of its own: the existing cmd.Name() == "batten" short-
 // circuit stays in resolvePersistentPreRun, where it lets a bare group listing run without a git
 // repository -- a bare "lyx shed" listing is shedcli's own equivalent guard, not this module's.
+//
+// arm's order is exactly: lyxcwd.Resolve, the non-prime refusal, run-id resolution from args, a
+// self-address refusal, the verb branch (the gated auto-seed), then wire. The auto-seed runs here,
+// ahead of wire, never inside battenPreRun: battenPreRun is a shedverbs.Spec hook called inside
+// run's RunE, which is after arm has already called wire and built the whole Env, so seeding there
+// would leave anything reading the seed at wiring time looking at a seed that does not exist yet on
+// a first "lyx batten run <slug>".
 
 package battencli
 
@@ -20,15 +28,107 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// arm resolves cwd into a *lyxcwd.Location, applies the non-prime refusal, reads the slug from
-// args, wires the receiver, and returns the filled Spec. It is the single worker both
-// resolvePersistentPreRun and the exported Arm wrapper delegate to, so the *battenCLI whose
-// fields the returned hooks close over is always the same value the caller holds: the pre-run's
-// own c on the "lyx batten" path, the wrapper's freshly-constructed one on the "lyx shed" path.
+// resolveBattenRunID resolves the run-id verb addresses -- args[0] when present, shedrun.SelfRunID
+// otherwise -- reporting explicit == true only when the operator actually supplied a positional
+// argument.
+//
+// The explicit flag matters to refuseSelfAddress below: an omitted argument and an
+// explicitly-typed "self" both resolve to the identical run-id value, but they are different
+// operator mistakes and get different refusal text -- an omitted argument names the missing slug,
+// while an explicit "self" names the reservation collision.
+func resolveBattenRunID(args []string) (runID string, explicit bool) {
+	if len(args) > 0 {
+		return args[0], true
+	}
+	return shedrun.SelfRunID, false
+}
+
+// refuseSelfAddress refuses a self address outright, ahead of the auto-seed gate: prime hosts many
+// slug-addressed batten runs, so "self" -- "this worktree's own primary run" -- has no meaning
+// there.
+//
+// Two distinct cases reach here, worded differently. An omitted positional argument is the
+// operator's mistake being an omitted slug argument, not a wrong one: without this refusal an
+// argument-less "lyx batten run" would take the self default, fall through the gate, and write
+// prime a seed with an empty params.slug. An explicitly-typed slug of "self" is a different
+// mistake -- it collides with shedrun.SelfRunID's own reserved meaning -- caught here via
+// shedrun.IsReserved because this is the one site a batten run-id derives from a Board slug;
+// IsReserved does not catch the omitted-argument case on its own, since that check is scoped to
+// run-ids derived from a Board slug and the omitted-argument default never named one.
+func refuseSelfAddress(runID string, explicit bool) error {
+	if !explicit {
+		return fmt.Errorf(
+			"battencli: no slug given; batten addresses a task worktree by slug, and prime has no run of its own to default to -- pass the slug: \"lyx batten run <slug>\"",
+		)
+	}
+	if shedrun.IsReserved(runID) {
+		return fmt.Errorf("battencli: slug %q is reserved for addressing prime's own run and cannot name a task", runID)
+	}
+	return nil
+}
+
+// battenAutoSeedVerbs is the set of verbs that seed a fresh run when no seed exists yet at the
+// addressed run-id. Every other verb requires one and refuses instead: read-only verbs must not
+// create state as a side effect of being asked a question, the same reasoning
+// specFor's EnsureStatusLockDir: false already encodes for batten's status verb.
+func battenAutoSeedVerbs(verb string) bool {
+	switch verb {
+	case "run", "step":
+		return true
+	default:
+		return false
+	}
+}
+
+// armSeed gates batten's auto-seed: it reads the seed at runID, does nothing when one already
+// exists, writes a fresh one for "run" and "step" when absent, and refuses every other verb with
+// shedrun.MissingSeedMessage naming "lyx batten run <slug>" as the remedy.
+//
+// Prime's seed carries recipe: "batten", never the Board task's own type: the two are different
+// runs' recipes, and a prime seed carrying "loom" would make "lyx shed status <slug>" from prime arm
+// loomcli against prime -- the wrong recipe against the wrong worktree. The child worktree's own
+// recipe is chosen later, by battenshed's Seed-Child producer, from the Board task's type.
+//
+// The refusal carries no "kind" field, keeping the five-value step refusal-kind vocabulary closed:
+// a missing run is not a sixth kind.
+func (c *battenCLI) armSeed(location *lyxcwd.Location, runID, verb string) error {
+	_, found, err := shedrun.ReadSeed(location, runID)
+	if err != nil {
+		return err
+	}
+	if found {
+		return nil
+	}
+
+	if !battenAutoSeedVerbs(verb) {
+		existing, listErr := shedrun.List(location)
+		if listErr != nil {
+			return listErr
+		}
+		return errors.New(shedrun.MissingSeedMessage("battencli", runID, existing, `run "lyx batten run <slug>" first`))
+	}
+
+	return shedrun.WriteSeed(location, runID, shedrun.Seed{
+		Recipe: shedrun.RecipeBatten,
+		Driver: shedrun.DriverGo,
+		Params: map[string]string{
+			"slug":         runID,
+			"child_driver": shedrun.DriverGo,
+		},
+	})
+}
+
+// arm resolves cwd into a *lyxcwd.Location, applies the non-prime refusal, resolves the addressed
+// run-id, refuses a self address, gates the auto-seed, wires the receiver, and returns the filled
+// Spec. It is the single worker both resolvePersistentPreRun and the exported Arm wrapper delegate
+// to, so the *battenCLI whose fields the returned hooks close over is always the same value the
+// caller holds: the pre-run's own c on the "lyx batten" path, the wrapper's freshly-constructed one
+// on the "lyx shed" path.
 func (c *battenCLI) arm(cwd string, verb string, args []string) (shedverbs.Spec, error) {
 	location, err := lyxcwd.Resolve(cwd)
 	if err != nil {
@@ -42,14 +142,19 @@ func (c *battenCLI) arm(cwd string, verb string, args []string) (shedverbs.Spec,
 		return shedverbs.Spec{}, refusalErr
 	}
 
-	slug := ""
-	if len(args) > 0 {
-		slug = args[0]
+	runID, explicit := resolveBattenRunID(args)
+	if refusalErr := refuseSelfAddress(runID, explicit); refusalErr != nil {
+		return shedverbs.Spec{}, refusalErr
 	}
-	c.location = location
-	c.slug = slug
 
-	if err := c.wire(location, slug); err != nil {
+	c.location = location
+	c.slug = runID
+
+	if err := c.armSeed(location, runID, verb); err != nil {
+		return shedverbs.Spec{}, err
+	}
+
+	if err := c.wire(location, runID); err != nil {
 		return shedverbs.Spec{}, err
 	}
 
