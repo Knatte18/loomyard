@@ -107,6 +107,15 @@ Batch-local decision: retrospective prose is rewritten outright, per the shared 
   In `manifest/designs/shed-recipe.md`, the geometry sentence naming `lyx loom run` for hub mode becomes `lyx loom start`.
   In `manifest/designs/shed-generic-watchdog.md`, rewrite the title and the body sentence naming `ly-supervise` and loom's three verbs, and rewrite the Related bullet so it no longer links `loom-cli-rename.md` — card 19 deletes that file, and the Markdown Link Integrity invariant fails the build on a link to a deleted file.
   Replace that bullet with prose recording that the naming half shipped, carrying no markdown link to the deleted doc.
+  Add a new `## The shape it would take` section to that same file, between `## The idea` and `## Why not Planned`, recording what this task settled about the generalisation — the doc currently states only that the skill and the three verbs "could, in principle, become a watchdog over any `Shed`", with no account of what that would look like.
+  The section must state four things.
+  First, that the three verbs generalise rather than collapse: the end state is a verb set on a generic `shed`, armed with an FSM recipe supplied from outside — from the task description or an equivalent carrier — rather than a single merged watchdog command.
+  Second, that under that set the verb/engine symmetry this task established becomes literal, since the generic `run` calls `Shed.Run` and the generic `step` calls `Shed.Step`;
+  record that landing the rename first is what makes this true, because the pre-rename names would have carried the asymmetry into the abstraction, where it is harder to unpick than in `loomcli` alone.
+  Third, that `start` is the one verb with no engine counterpart — there is no `Shed.Start`, because it seeds, commits, spawns the detached driver and hands the terminal over, all of which sit above the engine — so whether it belongs on a generic `shed` at all, or stays loom-specific, is itself open.
+  Fourth, that the skill's role in that end state is to loop the generic `step` until the recipe's own producer list is exhausted or the run reaches a non-`running` state, which is what it already does over `lyx loom step` today.
+  Do not change the `## Why not Planned` section's verdict: a second `shedrecipe` consumer beyond loom is still what the generalisation needs before it can be validated, and this new section describes a shape, not a commitment.
+  Use semantic line breaks throughout the new section.
   In `manifest/designs/worktree-lifecycle-shed-producers.md`, the status line naming `lyx loom run` as one of three manually-sequenced steps and the bootstrap bullet naming a `loom run` producer both name the bootstrap and become the `start` form.
   Use semantic line breaks in every rewritten paragraph.
 - **Commit:** `docs(manifest): rename the verbs and skill across the remaining design docs`
