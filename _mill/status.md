@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussion-fix-r1
 slug: reed-selvage-pane-extraction
 branch: reed-selvage-pane-extraction
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-09-19T09:13:53Z'
+discussion-fix-r1  '2026-09-19T09:23:51Z'
 ```

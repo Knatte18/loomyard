@@ -14,7 +14,10 @@ Two landed: the watchdog daemon talks to the engine through exactly one method (
 The third did not: the Selvage keepalive pane's own lifecycle code still sits scattered across the same four files the original design doc named as the smell — `lifecycle.go`, `reconcile.go`, `spawn.go`, `apply.go` — just renamed from Header to Selvage.
 There is no `selvagepane.go`.
 
-**Why now:** a post-merge grep audit of `main` recorded the scatter (`lifecycle.go` 58 "Selvage" hits, `reconcile.go` 32, `spawn.go` 20, `apply.go` 10, `state.go` 6, `config.go` 4), and the item was promoted from Next Up to Planned on the strength of that audit.
+**Why now:** a post-merge grep audit of `main` recorded the scatter, and the item was promoted from Next Up to Planned on the strength of that audit.
+Re-counted against this worktree's HEAD with the audit's own method — matching *lines* for the case-sensitive string `Selvage`, i.e. `grep -c Selvage` — the numbers are `lifecycle.go` 58, `reconcile.go` 20, `spawn.go` 17, `apply.go` 8, `state.go` 6, `config.go` 4, plus `generation.go` 2 and one comment-only line each in `windowsize.go`, `attach.go` and `overlay.go`.
+Those match the design doc's recorded baseline except `lifecycle.go`, which has drifted 57 → 58 since the audit's commit `d39b30648`.
+The method matters, so state it wherever these numbers are republished: a case-*insensitive* count also catches locals and parameters spelled `selvagePaneID` and reports 32 for `reconcile.go` and 10 for `apply.go` — a different measurement, not a correction of this one.
 Nothing is broken at runtime — this is a shotgun-surgery cost: every change to how Selvage is created, spared, targeted, or blanked currently means editing four files that are each about something else.
 
 ## Scope
@@ -98,19 +101,20 @@ Nothing is broken at runtime — this is a shotgun-surgery cost: every change to
 
 Everything is inside `internal/reedengine` (a `Told-Geometry Invariant` bound package — it imports no `internal/lyxcwd` and must not start).
 
-Current homes of the code that moves:
+Current homes of the code that moves.
+Each is cited by its declaration line at this worktree's HEAD, as an approximate pointer only — locate every one of these by name with `grep`, never by the number, which drifts with any edit above it:
 
-- `lifecycle.go:464-545` `ensureSelvagePaneLocked` — heal-or-create. Aliveness (not presence) is the check; a dead-but-present corpse is killed, then the replacement is split, then the corpse is best-effort re-killed if it was the sole pane.
-- `lifecycle.go:544-556` `bottommostPaneID` — largest `pane_top`.
-- `lifecycle.go:557-614` `splitSelvagePaneAtBottomLocked` — split below the bottom-most pane, with a one-shot retry behind an even-vertical re-tile (review finding R4-F4: a one-row Selvage cannot be split, so a stale `SelvagePaneID` would otherwise wedge the worktree permanently). The retry must keep carrying `launchCmd`.
-- `lifecycle.go:615-652` `splitPaneBelowLocked` — sole caller is the above; guards with `validateSplitCreatedNewPane`.
-- Call sites that stay: `upLocked` (`lifecycle.go:653`) and `Resume` (`lifecycle.go:752`) each clear the binding after a server rebirth and then call `ensureSelvagePaneLocked`.
-- `reconcile.go:32-150` `planReconcile(strands, live, selvagePaneID)` — three Selvage touches: the `p.ID != selvagePaneID` dead-kill exemption, the `selvageAlive` local, the `exemptPaneIDs` insertion, plus the `anyBoundPresent || selvageAlive` reap gate.
-- `reconcile.go:188-211` `clearConflictingPaneBindings` — claims `st.SelvagePaneID` so no strand can share it.
-- `spawn.go:39-73` `planPaneTarget(live, selvagePaneID)` — tallest alive non-Selvage, else any present non-Selvage corpse, else `live[0]` (Selvage itself).
-- `spawn.go:149` and `spawn.go:176-178` — the call, and the `-b` decision keyed on `splitTargetID == st.SelvagePaneID`.
-- `apply.go:82-98` `toRenderInputs` — blanks `selvagePaneID` when the pane is absent, feeds `render.Selvage{PaneID, HeightRows}`.
-- `generation.go:151` — clears `st.SelvagePaneID` in `adoptPaneGenerationLocked`.
+- `lifecycle.go:471` `ensureSelvagePaneLocked` — heal-or-create. Aliveness (not presence) is the check; a dead-but-present corpse is killed, then the replacement is split, then the corpse is best-effort re-killed if it was the sole pane.
+- `lifecycle.go:547` `bottommostPaneID` — largest `pane_top`.
+- `lifecycle.go:588` `splitSelvagePaneAtBottomLocked` — split below the bottom-most pane, with a one-shot retry behind an even-vertical re-tile (review finding R4-F4: a one-row Selvage cannot be split, so a stale `SelvagePaneID` would otherwise wedge the worktree permanently). The retry must keep carrying `launchCmd`.
+- `lifecycle.go:628` `splitPaneBelowLocked` — sole caller is the above; guards with `validateSplitCreatedNewPane`.
+- Call sites that stay: `upLocked` (`lifecycle.go:653`) and `Resume` (`lifecycle.go:752`) each clear the binding after a server rebirth (`lifecycle.go:680` and `lifecycle.go:777`) and then call `ensureSelvagePaneLocked`.
+- `reconcile.go:32` `planReconcile(strands, live, selvagePaneID)` — three Selvage touches: the `p.ID != selvagePaneID` dead-kill exemption, the `selvageAlive` local, the `exemptPaneIDs` insertion, plus the `anyBoundPresent || selvageAlive` reap gate.
+- `reconcile.go:188` `clearConflictingPaneBindings` — claims `st.SelvagePaneID` so no strand can share it.
+- `spawn.go:39` `planPaneTarget(live, selvagePaneID)` — tallest alive non-Selvage, else any present non-Selvage corpse, else `live[0]` (Selvage itself).
+- `spawn.go:149` and `spawn.go:177` — the call, and the `-b` decision keyed on `splitTargetID == st.SelvagePaneID`.
+- `apply.go:82` `toRenderInputs` — blanks `selvagePaneID` when the pane is absent, feeds `render.Selvage{PaneID, HeightRows}`.
+- `generation.go:151` — the `st.SelvagePaneID = ""` clear, inside `adoptPaneGenerationLocked` (`generation.go:126`).
 
 Files whose Selvage hits are comments only today, and must stay that way: `windowsize.go` (1), `attach.go` (1), `overlay.go` (1), `template.go` (1).
 `state.go` (the field + a comment) and `config.go` (`SelvageConfig`) keep their declarations.
@@ -132,7 +136,7 @@ Discovered during exploration:
 
 - The op-lock convention: every `…Locked` method assumes the op lock is already held. Moved methods keep the suffix and the "Assumes the op lock is already held" comment.
 - `reconcile.go`'s comments document three live-verified hazards (a stale id emitted as a layout cell is accepted by tmux 3.6 and scrambles heights; presence-exemption vs aliveness-authorization must stay separate because `AddStrand`/`UpdateStrand` never heal a corpse). These must move with the code, not be paraphrased away.
-- `manifest/designs/reed-selvage-pane-extraction.md`'s own audit numbers are the before-state baseline the new Status section is measured against.
+- `manifest/designs/reed-selvage-pane-extraction.md`'s own audit numbers are the before-state baseline the new Status section is measured against. Re-run the count with the stated method at implementation time rather than copying the figures out of this file — see the "Why now" note on case sensitivity, and record the method alongside the numbers so the after-state is comparable.
 
 ## Testing
 
@@ -140,7 +144,7 @@ Discovered during exploration:
 - **The enforcement test** — TDD candidate, and it must be written so it demonstrably fails before the extraction: run it against the pre-move tree and confirm it reports `lifecycle.go`, `reconcile.go`, `spawn.go`, `apply.go` and `generation.go`. A check that passes on both sides of the refactor proves nothing.
 - **Moved lifecycle tests** — the existing `lifecycle_test.go` cases covering `ensureSelvagePaneLocked`'s heal-or-create matrix and the re-tile retry move to `selvagepane_test.go` unchanged. Passing unchanged is the evidence the move was behavior-preserving.
 - **Existing suites, untouched** — `reconcile_test.go` (80 Selvage assertions), `spawn_test.go` (51), `apply_test.go` (18), `contract_integration_test.go` (73), `attachgeometry_integration_test.go` (45), `watchdog_integration_test.go` (17) must all pass with no edits beyond what a changed `planPaneTarget` arity forces.
-- **Post-extraction audit** — re-run the per-file `Selvage` count the design doc recorded, and record the new numbers in its Status section. The four host files should show comment-only hits.
+- **Post-extraction audit** — re-run the per-file `Selvage` count with the method named in "Why now" (case-sensitive matching lines), record both the method and the new numbers in the design doc's Status section, and state the before-state figures the after-state is compared against rather than implying the design doc's original ones still hold. The four host files should show comment-only hits.
 - **Full run** — `go build ./...` and `go test ./...` (cgo enabled), plus the integration-tagged reed suites, since Selvage's split path is only exercised for real against a live tmux server.
 
 ## Q&A log
