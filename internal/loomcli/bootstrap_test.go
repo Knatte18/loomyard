@@ -28,6 +28,26 @@ func TestMustSpawnDriver(t *testing.T) {
 	}
 }
 
+func TestMustAttach(t *testing.T) {
+	tests := []struct {
+		name       string
+		noAttach   bool
+		wantAttach bool
+	}{
+		{"NoAttachSet_NoAttach", true, false},
+		{"NoAttachUnset_Attach", false, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := mustAttach(tt.noAttach)
+			if got != tt.wantAttach {
+				t.Errorf("mustAttach(%v) = %v; want %v", tt.noAttach, got, tt.wantAttach)
+			}
+		})
+	}
+}
+
 // countingWait returns a wait seam that counts its own invocations, for use in place of a real
 // sleep in awaitRunLock tests.
 func countingWait(count *int) func() {
