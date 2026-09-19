@@ -1,9 +1,10 @@
 // destroy.go is the only file in package fabricengine permitted to perform a destructive primitive.
-// The five primitives are: removing a path (os.RemoveAll/os.Remove), removing a git worktree (git
+// The six primitives are: removing a path (os.RemoveAll/os.Remove), removing a git worktree (git
 // worktree remove), removing or re-pointing a link (fslink.Remove), deleting a branch (git branch
-// -D), and resetting a warp checkout hard (ResetHard). Every one of them is reached only through one
-// of this file's executors, and every executor runs the shared check pipeline before performing its
-// act — the gate executes, it does not merely approve.
+// -D), deleting a branch on a remote (git push <remote> --delete), and resetting a warp checkout
+// hard (ResetHard). Every one of them is reached only through one of this file's executors, and
+// every executor runs the shared check pipeline before performing its act — the gate executes, it
+// does not merely approve.
 //
 // The pipeline runs four checks, always in this fixed order, stopping at the first failure:
 // containment, ownership, dirtiness, force.
@@ -50,12 +51,14 @@
 // See CONSTRAINTS.md's Fabric Destruction Chokepoint Invariant (added once this slice's guard test
 // lands) for the machine-enforced half of this rule.
 //
-// Recording contract: every one of the eight executors below takes a leading `rec *Mutations`
+// Recording contract: every one of the nine executors below takes a leading `rec *Mutations`
 // parameter and appends its own primitive's entry itself, after the primitive observably changed
 // state — never before, and never for a no-op. A refusal records nothing, since nothing happened;
-// removeGitWorktree and deleteBranch record only when the underlying git command returned a nil
-// error, since a non-nil error — whether git ran and rejected the command or could not be run at all
-// — would otherwise claim a destruction that never occurred.
+// removeGitWorktree, deleteBranch, and deleteRemoteBranch record only when the underlying git command
+// returned a nil error, since a non-nil error — whether git ran and rejected the command or could not
+// be run at all — would otherwise claim a destruction that never occurred; deleteRemoteBranch
+// additionally requires an observed deletion rather than a nil error alone, since its own
+// nil-error-plus-deleted==false case is the already-absent idempotent success.
 // The parameter is explicit, never a request-type field,
 // because a missing struct field is a silent zero value the compiler accepts while a missing
 // parameter does not compile — this slice exists because a record was silently dropped, so the
@@ -80,6 +83,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
+
+// originRemoteName is the remote name deleteRemoteBranch always operates against.
+// fabric's geometry already hardcodes "origin" throughout — clone.go's weft adopt-or-create path
+// uses "refs/remotes/origin/" and "origin/<branch>" directly — so introducing configurability at
+// this one point alone would be inconsistent with the rest of the package and untested against any
+// other value.
+const originRemoteName = "origin"
 
 // Check names one of the three checks a destructive-gate refusal can be attributed to: containment,
 // ownership, or dirtiness. It is string-backed so a refusal renders and marshals without a
@@ -220,6 +230,32 @@ type branchRequest struct {
 	// parameter is likewise reserved and consulted by no gate — see cleanup.go). Even if a future
 	// gate did consult it, force could never answer the checked-out-branch dirtiness check itself —
 	// see branch-deletion-is-ref-shaped in _mill/discussion.md.
+	force bool
+}
+
+// remoteBranchRequest is the gate's request shape for the primitive whose target is a ref on a
+// remote: git push <remote> --delete. It is a distinct type from branchRequest, never a remote field
+// added to it, because branchRequest's own doc comment rejects a per-site empty-string sentinel for a
+// structurally-N/A field, and a remote that must be "" at branchRequest's four existing local call
+// sites is exactly that shape; keeping the two types distinct also keeps the two executors' call-site
+// sets disjoint and auditable. Like branchRequest, it carries no container and no target field:
+// containment is structurally N/A for a ref.
+type remoteBranchRequest struct {
+	// what names the act being attempted, for the refusal message.
+	what string
+	// repoDir is the weft repo the branch lives in — not a path being destroyed.
+	repoDir string
+	// remote is the remote name the branch is deleted from.
+	remote string
+	// branch is the branch name the executor will delete on remote.
+	branch string
+	// ownership declares which closed-enum ownership kind branch must satisfy.
+	ownership branchOwnership
+	// dirtiness declares which dirtiness probe the pipeline runs against branch.
+	dirtiness branchDirtiness
+	// force is reserved: every remoteBranchRequest construction in this package hardcodes it false
+	// today, exactly as branchRequest's own force field does, for the same reason — no call site's own
+	// gate currently answers to it.
 	force bool
 }
 
@@ -701,16 +737,47 @@ func checkBranchRequest(req branchRequest) error {
 // branchRequest construction in this package hardcodes force: false, and Cleanup's own force
 // parameter is likewise reserved and consulted by no gate (see cleanup.go).
 func checkBranchDirtiness(req branchRequest) error {
-	branches, err := listWeftBranches(req.ownership.location)
+	return checkedOutBranchDirtiness(req.ownership.location, req.what, req.branch)
+}
+
+// checkedOutBranchDirtiness is the checked-out-at-a-worktree dirtiness probe both branchRequest (via
+// checkBranchDirtiness) and remoteBranchRequest (via checkRemoteBranchRequest) run: is branch checked
+// out at any worktree. git branch -D cannot delete a checked-out branch anyway, so this converts
+// git's own refusal into a named gate refusal, the same move as re-gating removeWarpWorktreeDir's
+// fallback.
+// It keeps the *lyxcwd.Location access path checkBranchDirtiness already used, rather than adding a
+// location field to remoteBranchRequest — the three values here are everything the probe needs.
+func checkedOutBranchDirtiness(l *lyxcwd.Location, what, branch string) error {
+	branches, err := listWeftBranches(l)
 	if err != nil {
-		return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.branch, Reason: err.Error()}
+		return &destructiveRefusal{Check: CheckDirtiness, What: what, Target: branch, Reason: err.Error()}
 	}
 	for _, b := range branches {
-		if b.Branch == req.branch && b.WorktreePath != "" {
-			return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.branch, Reason: fmt.Sprintf("branch is checked out at %s", b.WorktreePath)}
+		if b.Branch == branch && b.WorktreePath != "" {
+			return &destructiveRefusal{Check: CheckDirtiness, What: what, Target: branch, Reason: fmt.Sprintf("branch is checked out at %s", b.WorktreePath)}
 		}
 	}
 	return nil
+}
+
+// checkRemoteBranchRequest runs the gate's checks against req, structurally mirroring
+// checkBranchRequest: an unset ownership or dirtiness declaration is refused before either predicate
+// runs, then resolveBranchOwnership resolves ownership, then the same checked-out-at-a-worktree
+// dirtiness probe checkBranchDirtiness runs. Containment is structurally N/A here exactly as it is
+// for branchRequest, and there is no container field to check.
+func checkRemoteBranchRequest(req remoteBranchRequest) error {
+	if req.ownership.kind == branchOwnershipUnset {
+		return &destructiveRefusal{Check: CheckOwnership, What: req.what, Target: req.branch, Reason: "no ownership kind declared"}
+	}
+	if req.dirtiness.kind == branchDirtinessUnset {
+		return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.branch, Reason: "no dirtiness declared"}
+	}
+
+	if ok, reason := resolveBranchOwnership(req.ownership, req.branch); !ok {
+		return &destructiveRefusal{Check: CheckOwnership, What: req.what, Target: req.branch, Reason: reason}
+	}
+
+	return checkedOutBranchDirtiness(req.ownership.location, req.what, req.branch)
 }
 
 // removeContainedPath removes the container-relative form of target through an os.Root rooted at
@@ -888,6 +955,26 @@ func deleteBranch(rec *Mutations, req branchRequest) error {
 		rec.AppendRef(KindBranchDeleted, req.branch, "")
 	}
 	return err
+}
+
+// deleteRemoteBranch is the executor for the git push <remote> --delete primitive: it runs the
+// pipeline, then calls gitrepo.New(req.repoDir).DeleteRemoteBranch(req.remote, req.branch).
+// It returns the (deleted, err) pair through unchanged, wrapping nothing — every call site builds its
+// own message from it, exactly as deleteBranch and removeGitWorktree already do.
+// It appends KindRemoteBranchDeleted to rec via AppendRef, not Append, only when err is nil AND
+// deleted is true: a remote ref is a ref, not a path, so it carries no hub-relative conversion, and
+// the append happens only on an observed deletion — never on deleted == false, which is the
+// already-absent idempotent success, and never on an error.
+func deleteRemoteBranch(rec *Mutations, req remoteBranchRequest) (deleted bool, err error) {
+	if checkErr := checkRemoteBranchRequest(req); checkErr != nil {
+		return false, checkErr
+	}
+
+	deleted, err = gitrepo.New(req.repoDir).DeleteRemoteBranch(req.remote, req.branch)
+	if err == nil && deleted {
+		rec.AppendRef(KindRemoteBranchDeleted, req.branch, req.remote)
+	}
+	return deleted, err
 }
 
 // createExclusiveDir creates path as a directory the gate can later authorise the removal of, and
