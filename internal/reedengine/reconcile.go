@@ -155,9 +155,7 @@ func clearAllPaneBindings(st *ReedState) {
 // would wedge the worktree on exactly the corruption this exists to survive.
 func clearConflictingPaneBindings(st *ReedState) []string {
 	claimed := make(map[string]bool, len(st.Strands)+1)
-	if st.SelvagePaneID != "" {
-		claimed[st.SelvagePaneID] = true
-	}
+	seedSelvageClaim(st, claimed)
 
 	var clearedGUIDs []string
 	for i := range st.Strands {

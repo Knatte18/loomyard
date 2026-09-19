@@ -74,6 +74,15 @@ func (p reapPolicy) authorizesReap() bool {
 	return p.paneID != "" && p.alive
 }
 
+// seedSelvageClaim adds st's Selvage pane id to claimed when it is non-empty.
+// It encodes the rule that a strand may never own Selvage's pane: Selvage's own binding always seeds
+// the claimed set before any strand's pane id is considered.
+func seedSelvageClaim(st *ReedState, claimed map[string]bool) {
+	if st.SelvagePaneID != "" {
+		claimed[st.SelvagePaneID] = true
+	}
+}
+
 // clearSelvagePaneBinding clears st's Selvage pane binding.
 // It is the single writer of that clear; its three callers are upLocked's and Resume's own
 // server-rebirth handling (lifecycle.go) and adoptPaneGenerationLocked's pane-generation mismatch
