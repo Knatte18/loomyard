@@ -37,13 +37,22 @@ implementing  '2026-09-19T05:37:15Z'
 ```yaml
 batches:
   - name: engine-seam
-    state: pending
+    state: running
+    implementer_session: 9adb3e3c-2d25-4bd4-9e6c-dd9bc262c345
+    start_sha: 976f1b2f7fa5f27f8fa2a9a4df5eca3efcc57440
+    verify_baseline_failures: []
   - name: attach-preflight
     state: pending
+    verify_baseline_failures: []
   - name: comment-sweep
     state: pending
+    verify_baseline_failures: []
   - name: docs-and-suites
     state: pending
+    verify_baseline_failures: []
   - name: tagged-tests
     state: pending
+    verify_baseline_failures: ['--- FAIL: TestSmokeClaudeResumeRecallsCodeword (181.02s)', "FAIL\tgithub.com/Knatte18/loomyard/internal/reedcli\t\
+    236.438s", '--- FAIL: TestSmokeClaudeResumeRecallsCodeword (180.88s)', "FAIL\t\
+    github.com/Knatte18/loomyard/internal/reedcli\t235.886s"]
 ```
