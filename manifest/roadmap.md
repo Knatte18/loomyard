@@ -20,8 +20,6 @@ This section holds what's committed to next.
 1. **worktree spawn/teardown as Shed producers** — fold `fabric create`, reed's self-healing bootstrap, optional VS Code embedding, and `loom`'s own producer list into one driven `Shed` run, with a single teardown producer sequencing `reed down` then fabric's own cleanup at the end. Depends on the `AddStrand`/`attach` self-heal item above landing first, for this item's own bootstrap step.
    See [designs/worktree-lifecycle-shed-producers.md](designs/worktree-lifecycle-shed-producers.md).
 
-1. **fabric: no remote/GitHub branch deletion** — `fabricengine`'s existing branch cleanup (`Cleanup`, `removeWeftWorktree`'s `alsoDeleteBranch`) only ever runs `git branch -D` locally; there is no capability anywhere to delete the corresponding branch on the GitHub remote. Part of why task cleanup today leaves orphaned branches upstream.
-
 ## Next Up
 
 What comes right after Planned clears — committed and ordered, unlike Someday below.
@@ -116,6 +114,9 @@ No build order is implied between these items.
 ## Done
 
 Cleared 2026-08-25 to keep this file lean — shipped items' history lives in `git log` and each module's own package documentation, not here.
+
+1. **fabric: no remote/GitHub branch deletion** — `lyx fabric cleanup` and `lyx fabric remove` both gained an opt-in `--remote` flag that additionally deletes each deleted weft branch's copy on the weft remote.
+   See the `internal/fabricengine` package documentation's destruction chokepoint section.
 
 1. **ly-supervise + orchestrator: launch via `lyx reed add`, not ad hoc** — the generated VS Code `folderOpen` task is now the reed launch chain, with both binary paths stamped absolute; `lyx reed add` gained `--if-absent` so reopening a worktree is idempotent; and the `/ly:ly-supervise` skill now treats the session running it as the orchestrator strand itself, rather than telling the operator to open a second one.
 
