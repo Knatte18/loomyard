@@ -80,6 +80,8 @@ batches:
     commit_sha: 2b5a8826e03a97ec2610cab592b6da35928d8d02
     verify_baseline_failures: ["FAIL\t./internal/shedcli/... [setup failed]"]
   - name: docs-invariant-skill
-    state: pending
+    state: running
+    implementer_session: 93fb13ff-e433-4354-bc74-1cb219d65e56
+    start_sha: 267221947b59090edb4ab5002a29c6b7c4d4adee
     verify_baseline_failures: []
 ```
