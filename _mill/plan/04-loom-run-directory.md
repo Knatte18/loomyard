@@ -37,6 +37,8 @@ A status file present with no seed beside it takes the same refusal, whose remed
   - `internal/loomcli/wiring_test.go`
   - `internal/loomcli/sharedbootstrap.go`
   - `internal/loomcli/landingdeps.go`
+  - `internal/battencli/wire.go`
+  - `internal/battencli/paths.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -46,6 +48,8 @@ A status file present with no seed beside it takes the same refusal, whose remed
   Retarget every call site: `internal/loomcli/wiring.go`'s two `ShedPaths` literals (lines filling `StatusPath`, `LockPath`, `StatusLockPath` in both `wireLightweight` and `wire`) and its `statusPath`/`statusLockPath` locals become `shedrun.StatusFile(location, shedrun.SelfRunID)`, `shedrun.RunLock(location, shedrun.SelfRunID)` and `shedrun.StatusLock(location, shedrun.SelfRunID)`; `loomCommitStatusDeps`'s `fabricengine.CommitAnchoredPaths` pathspec becomes `[]string{shedrun.StatusRel(shedrun.SelfRunID)}`; `internal/loomcli/sharedbootstrap.go`'s `commitPaths` first element and `internal/loomcli/landingdeps.go`'s single-element pathspec take the same replacement, and `landingdeps.go`'s comment naming `loomengine.LoomStatusRel()` is updated with it.
   Do not change `landingdeps.go`'s `ScratchDir: loomengine.LoomScratchDir(l)` — that is loom's own scratch tree under `.lyx/loom/`, a different directory from `shedrun.ScratchDir`'s run directory, and it stays.
   Update the three test files listed so their pinned path expectations name the new locations.
+  `internal/battencli/wire.go`'s `ResolveStatus` closure also calls `loomengine.LoomStatusFile`/`LoomStatusLock` on the spawned task worktree's own location, to read that worktree's loom status -- retarget it to `shedrun.StatusFile(taskLocation, shedrun.SelfRunID)` and `shedrun.StatusLock(taskLocation, shedrun.SelfRunID)`, the child worktree's own "self" run, dropping the now-unused `loomengine` import from that file.
+  `internal/battencli/paths.go`'s header comment names `loomengine.LoomStatusFile` and `loomengine.LoomStatusLock` by way of comparison; reword those two mentions to name `shedrun`'s equivalents instead, with no functional change to that file.
 - **Commit:** `refactor(loomcli,loomengine): move loom's status and run lock onto the shed run directory`
 
 ### Card 13: lyx loom start writes and commits the seed
