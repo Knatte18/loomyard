@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussion-fix-r1
 slug: reed-per-hub-daemon-reap
 branch: reed-per-hub-daemon-reap
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-09-19T09:13:40Z'
+discussion-fix-r1  '2026-09-19T09:22:33Z'
 ```

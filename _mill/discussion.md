@@ -34,7 +34,7 @@ The roadmap entry names it explicitly as a *safety net* for when the `worktree s
 - A pure, injectable decision seam (`planSessionReap`-shaped) so the whole rule is unit-testable with no tmux, no filesystem, and no fixture.
 - Reaping a confirmed orphan: kill its tmux session by exact target, and reap its pane process subtrees so the agent processes inside it actually die rather than being re-parented.
 - One new engine-less exported function in `internal/reedengine` (`ReapSession`) alongside the existing `ListSessions`, plus an `Engine.ShellPath()` accessor.
-- A `--shell` flag on `lyx reed watchdog`, told by `ensureWatchdogSpawned`'s three spawn sites exactly as `--tmux` already is.
+- A `--shell` flag on `lyx reed watchdog`, told by `ensureWatchdogSpawned`'s single `exec.Command` construction — the one `up`, `resume` and `attach` all reach — exactly as `--tmux` already is.
 - Cancelling and dropping the daemon's own `watchedSession` entry for a reaped name, so no goroutine keeps polling a killed session.
 - Logging: `Warn` on an actual reap (a destructive, unattended action), `Debug` on per-cycle confirmation increments.
 - Docs: the watchdog section of `manifest/designs/reed-header-selvage.md`, and moving the roadmap item out of Planned.
@@ -131,7 +131,8 @@ The roadmap entry names it explicitly as a *safety net* for when the `worktree s
 `enterSession` resolves via `resolveWatchedSession` (the `filepath.Join(hub, sessionName)` + `lyxcwd.ResolveWorktree` pair this task's predicate deliberately does **not** reuse), builds geometry through `hubgeom.ReedGeometry`, loads config via `reedengine.LoadConfig`, and starts `eng.Watch` in a goroutine.
 `watchdogCmd` does every fallible thing pre-flight on the envelope (`--hub-path` absolute, `--tmux` non-empty), points `logger.SetDurableSinkDir(fabricengine.HubLogsDir(hubPath))` **before** `logger.SetOutput(io.Discard)`, then takes `reed-watchdog.lock` under `fabricengine.HubScratchDir(hubPath)` — contention exits 0, a lock *error* is a real failure.
 
-**The spawn sites** — `internal/reedcli/spawnwatchdog.go`.
+**The spawn site** — `internal/reedcli/spawnwatchdog.go`.
+`up`, `resume` and `attach` each call `ensureWatchdogSpawned`, but there is exactly one `exec.Command` construction for all three, so `--tmux` appears once in production code and `--shell` gets added once beside it.
 `ensureWatchdogSpawned` re-execs `os.Executable()` as `lyx reed watchdog --hub-path <hub> --tmux <tmux>`, detached via `proc.Detach`, with `cmd.Dir` pinned to the hub (a held cwd handle on a worktree directory blocks deletion on Windows).
 `suppressWatchdogSpawn` guards test binaries from recursive re-exec.
 This is where `--shell` gets added.
@@ -215,7 +216,7 @@ Do not add a test that deletes a worktree while a live `Engine.Watch` goroutine 
 - **Q:** Debounce before reaping, or reap on first observation? **A:** [auto-pick] Three consecutive gone cycles (~15s), counter reset on any not-gone observation. **Why:** the reap is destructive and unattended, and it reuses `watchdogHubIdleCycles`' existing figure and reasoning rather than introducing a second cadence idiom.
 - **Q:** Does the reap kill the tmux session only, or also reap pane process subtrees? **A:** [auto-pick] Both, capturing roots before `kill-session` exactly as `Engine.Down` does. **Why:** session-only leaves the agent processes running, which is the leak the task exists to close.
 - **Q:** How does the reap reach tmux, given `TmuxCmd.run`/`output` are unexported? **A:** [auto-pick] One new engine-less exported `reedengine.ReapSession`, mirroring `ListSessions`. **Why:** `ListSessions` set the precedent for exactly this shape, and it caps the new exported surface at one function instead of opening `TmuxCmd`.
-- **Q:** Where does the daemon get the shell path Windows' process-tree walk needs? **A:** [auto-pick] A new `--shell` flag told by the three spawn sites, alongside `--tmux`. **Why:** the orphan's own config is in the deleted worktree, and being told its inputs on the command line is the daemon's existing posture.
+- **Q:** Where does the daemon get the shell path Windows' process-tree walk needs? **A:** [auto-pick] A new `--shell` flag told by `ensureWatchdogSpawned`'s single spawn construction, alongside `--tmux`. **Why:** the orphan's own config is in the deleted worktree, and being told its inputs on the command line is the daemon's existing posture.
 - **Q:** Should `watchdog: off` exempt a worktree from the reap? **A:** [auto-pick] No, and the reap never attempts to load config. **Why:** the config file is in the gone directory, so the question is unanswerable; a resize opt-out is also a different mechanism from a hub-level orphan safety net.
 - **Q:** Restrict reaping to session names the daemon previously resolved? **A:** [auto-pick] No — apply the rule to every live session on the hub socket. **Why:** the socket is lyx-owned by construction and the kill uses an exact `=<name>` target, while an allowlist would restore the never-entered blind spot.
 - **Q:** Should a reap that empties the socket also `kill-server`? **A:** [auto-pick] No. **Why:** a sibling may be mid-boot, and the existing idle-exit already retires the daemon when the hub goes quiet.
