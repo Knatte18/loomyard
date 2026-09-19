@@ -79,14 +79,16 @@ Do not finalize this task's plan until `seeded-shed-core` has merged to `main`.
 
 ### driver-report-is-the-run-s-output-file
 
-- Decision: the driver run's `Spec.OutputFiles` is a single **drive report** under the run's own ephemeral tree, timestamped per bootstrap attempt: `.lyx/shed/<run-id>/drive-report-<compact-timestamp>.md`.
+- Decision: the driver run's `Spec.OutputFiles` is a single **drive report** under the run's own ephemeral tree, made unique per bootstrap attempt: `.lyx/shed/<run-id>/drive-report-<compact-timestamp>-<4-hex>.md`.
   `ly-drive`'s autonomous mode writes it at every stop condition — a `continue: false` envelope, an error envelope it hands back on, the step cap, or an interrupted-invocation hand-back.
 - Rationale: `shuttleengine.Spec.validate` requires at least one output file and rejects one that already exists, and the Completion Signal Invariant makes that file the *only* thing that answers "did this run finish".
   A driver session that stops without writing one would be classified as died/timed-out by any later `Attach`, which is wrong — an autonomous driver that hands back has finished its job.
   Giving the driver a real return value is therefore not ceremony to satisfy a validator; it is what makes the driver legible to the machinery that already exists.
-- The timestamp is what keeps a relaunch legal: a second bootstrap after a driver stopped must not trip the must-not-exist check on a report the first one wrote.
+- The per-attempt suffix is what keeps a relaunch legal: a second bootstrap after a driver stopped must not trip the must-not-exist check on a report the first one wrote.
+  A compact timestamp alone is second-granular and **does** collide on a fast relaunch — corpse removal plus a fresh `Start` inside one second is not hypothetical, it is exactly what the smoke test's instantly-exiting stub pane produces — and the collision's symptom is `Spec.validate` refusing the relaunch, the one case the suffix exists to permit.
+  The random component removes that case rather than documenting it; the timestamp stays because it is what makes a directory listing of past attempts readable in order.
   Ephemeral placement is right by the Durable-vs-Ephemeral State Invariant — the report is a per-machine record of one session's own narration; the durable truth about the run is `status.json` beside it under `_lyx`.
-- Rejected: a fixed report path (a second bootstrap refuses on a stale file, and the stale file is evidence, not debris to delete); reusing `status.json` as the output file (it already exists when the driver starts, so `validate` refuses it, and the driver would then be declaring ownership of a file the engine writes); relaxing shuttle's output-file requirement for this caller (see the previous decision's rejected list).
+- Rejected: a fixed report path (a second bootstrap refuses on a stale file, and the stale file is evidence, not debris to delete); a bare second-granular timestamp with the collision accepted as a self-describing residual (it fires precisely under the automated relaunch the smoke test drives, so it would be a residual that shows up as a red test rather than as a rare operator surprise); reusing `status.json` as the output file (it already exists when the driver starts, so `validate` refuses it, and the driver would then be declaring ownership of a file the engine writes); relaxing shuttle's output-file requirement for this caller (see the previous decision's rejected list).
 
 ### handshake-is-driver-specific
 
@@ -130,7 +132,9 @@ Do not finalize this task's plan until `seeded-shed-core` has merged to `main`.
   1. **No operator choices.** The `$TMUX_PANE` self-check's tracked-absent branch and every other numbered-list prompt in the skill become a line in the report, never a question.
      There is no operator in the session to answer one, and `settings.json`'s `AskUserQuestion` deny means the tool is not even available.
   2. **The report goes to the file.** Every place the skill says "report to the operator" or "hand back with a report", the autonomous path writes that report to the output-file path named in its launch prompt and then stops.
-  3. **The step cap is a budget, not a check-in.** The operator-driven cap of 40 exists so a human can look; with no human, the autonomous cap is stated as its own number derived from loom's own worst case (near a hundred steps, per the skill's existing arithmetic) rather than inherited from the check-in default.
+  3. **The step cap is a budget, not a check-in, and the number is 120.** The operator-driven cap of 40 exists so a human can look; with no human, 40 would stop a healthy run three times before it finished.
+     120 is loom's own worst case as the skill already computes it — seventeen rows, six review rows at five bounces each, three validator rows at the inherited default of ten, which lands near a hundred steps — plus a margin that keeps an unlucky-but-legitimate run inside the budget.
+     The literal `120` is pinned in **both** places and must agree: the SKILL.md autonomous section states it as the cap, and the Go-composed launch prompt repeats it as the number this session runs under, so a reader of either sees the same value.
      On exhausting it the driver writes the report and stops, leaving the run exactly as it is.
   4. **Stop conditions are otherwise unchanged and remain absolute.** `continue: false` stops. An error envelope stops, with the single `producer`-kind retry the skill already allows. The skill still never clears `state`, never edits the status file, never re-seeds, never pushes, never kills a pane, and never touches git.
 - Rationale: the skill's judgment is the product; autonomy changes only *who reads the output* and *what to do when there is nobody to ask*.
@@ -167,11 +171,16 @@ Do not finalize this task's plan until `seeded-shed-core` has merged to `main`.
 
 ### new-invariant-driver-choice-single-site
 
-- Decision: record a new invariant in `CONSTRAINTS.md` in the same commit — **Driver Choice Single-Site Invariant**: a Shed run's `driver` value is read in exactly one place per recipe, that recipe's own bootstrap verb, and the branch on it selects a spawn and nothing else.
-  No producer, no generic verb, and no engine reads it; no code path gates a refusal on it.
-- Rationale: the value is a startup choice, and the failure mode a second reader introduces is silent divergence between what a run was seeded as and what it is actually doing — which is unobservable from either the status file or the envelope.
-  One site keeps "who drives this" answerable by reading one function.
-- The invariant's mechanical proxy: a scan asserting that `shedrun`'s driver constants have exactly one production consumer outside `shedrun` itself, in `internal/loomcli`.
+- Decision: record a new invariant in `CONSTRAINTS.md` in the same commit — **Driver Choice Single-Site Invariant**: a *recorded* `Seed.Driver` value is read in exactly one place per recipe, that recipe's own bootstrap verb, and the branch on it selects a spawn and nothing else.
+  No producer, no generic verb, and no engine reads the recorded value; no code path gates a refusal on it.
+- **The invariant governs the read, not the vocabulary.** The driver *constants* (`shedrun`'s `go`/`llm`) are legitimately named at the seeding sites, which validate a flag before a seed exists — `lyx shed seed`'s `--driver`, and `lyx batten run|step`'s `--driver`/`--child-driver`, including the batten-path refusal this task rewrites rather than lifts.
+  Those sites validate an *argument*; they never read a written seed's driver and never decide who drives.
+  Conflating the two is what makes a naive "one consumer of the constants" rule false against this task's own scope.
+- Rationale: the recorded value is a startup choice, and the failure mode a second *reader* introduces is silent divergence between what a run was seeded as and what it is actually doing — which is unobservable from either the status file or the envelope.
+  One read site keeps "who drives this" answerable by reading one function.
+  A flag validator, by contrast, fails loudly at the command line, where a mistake is visible immediately.
+- The invariant's mechanical proxy: a scan asserting that the only production reader of `shedrun.Seed`'s `Driver` **field** outside `shedrun` itself is `internal/loomcli`, with the seeding sites named in the invariant as the permitted consumers of the constants alone (`internal/shedcli`'s `seed` command and `internal/battencli`'s flag validation).
+  The proxy is a tripwire, not a completeness proof: adding a reader fails it and forces a human to confirm.
 
 ## Technical context
 
@@ -262,7 +271,7 @@ Tier 1 (untagged, offline, fast) unless stated otherwise.
   Cover: the driver branch selecting the detached spawn for `go`, for an absent/empty driver value, and the strand launch for `llm`; the three-way strand-liveness predicate (live → no spawn, absent → spawn, dead → remove-then-spawn); the driver-strand name constant being the same literal the lookup uses (a table test over add and lookup, the way the status and operator strand names are already pinned).
   Assert explicitly that **`mustSpawnDriver`/`awaitRunLock` are not reached on the `llm` path** — the handshake's absence there is a decision, and a refactor that "unifies" the two paths would silently reintroduce the race.
 - **`internal/loomcli` (spec composition)** — the `shuttleengine.Spec` the driver launch builds: `Interactive` false, `ForkSubagents` false, `NameOverride` set to the driver-strand constant, exactly one `OutputFiles` entry under the run's ephemeral directory, the model taken from the loom config's `driver` key, the timeout from `driver_timeout_min`.
-  The load-bearing one: **two launches in the same worktree produce two different report paths** — that is what keeps `Spec.validate`'s must-not-exist check from refusing every relaunch, and a fixed path would pass every other test here.
+  The load-bearing one: **two launches in the same worktree produce two different report paths under a frozen clock** — a test that advances the clock between them proves nothing, since it is the same-second relaunch that the random component exists for, and a fixed path would pass every other test here.
   Pin that the prompt names the run-id, the report path, and the autonomous mode, and that it stays well under the 30000-byte cap (a prompt that grew into a copy of the skill would fail only at launch).
 - **`internal/loomcli` (error paths)** — the bootstrap lock is released on every `llm`-branch failure: a config load failure, a `reed.Status()` error, a `RemoveStrand` failure, a `Runner.Start` failure.
   A leaked bootstrap lock wedges every subsequent `lyx loom start` in that worktree, and it is invisible until the second invocation.
