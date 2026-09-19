@@ -152,11 +152,17 @@ Belt-and-braces alongside the ordering: every seed-param read stays lazy inside 
 - **Edits:**
   - `internal/battencli/arm.go`
   - `internal/battencli/cli.go`
+  - `internal/battencli/cli_test.go`
 - **Creates:**
   - `internal/battencli/step_test.go`
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Give batten a `step` verb.
+- **Requirements:** `cli_test.go`'s `TestCommand_RegisteredVerbs_ExactSet` currently asserts `step`
+  is deliberately excluded from the registered subtree, per a comment that predates this card;
+  registering `step` here falsifies that comment and the assertion both, so update the test's `want`
+  set to include `"step"` and rewrite the comment to describe today's four-verb set rather than the
+  three-verb set this card supersedes.
+  Give batten a `step` verb.
   The table entry alone is not enough, because `step`'s `RunE` shares none of `run`'s path — four things are wired with it.
   First, a `battenPreStep` hook on the spec's `Hooks.PreStep`, modelled on `loomPreStep`: a run-lock probe first, then the same work `battenPreRun` performs — decode the status, refuse a `done` slug, resume silently over every other state, seed the status when absent.
   Without it, `stepLocked`'s read gate hits an absent status and hard-errors, which `shedverbs/step.go` reports as `kind: "producer"` — the one kind `ly-drive` retries, so the failure would loop.
