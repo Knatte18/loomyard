@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-lifecyclecli module
+phase: approved-registration and docs
 slug: worktree-lifecycle-shed-producers
 branch: worktree-lifecycle-shed-producers
 plan: _mill/plan
@@ -34,6 +34,7 @@ approved-loom run --no-attach  '2026-09-19T05:43:38Z'
 approved-shedrecipe lifecycle entries  '2026-09-19T05:48:58Z'
 approved-lifecycle recipe and coverage guard  '2026-09-19T05:54:36Z'
 approved-lifecyclecli module  '2026-09-19T06:09:14Z'
+approved-registration and docs  '2026-09-19T06:14:35Z'
 ```
 
 ## Batches
@@ -71,8 +72,9 @@ batches:
     commit_sha: 510817abb13ba1634e5158ac330b3a2e9fe86610
     verify_baseline_failures: ["FAIL\t./internal/lifecyclecli/... [setup failed]"]
   - name: registration and docs
-    state: running
+    state: approved
     implementer_session: e45c430a-a88b-46ee-b0cd-ccdfdd169b5f
     start_sha: 30e6f18e2dde3d669dc02bba5e23af3ce3d28c04
+    commit_sha: 1da7ee7ccede0432377bb8392207719a84c16680
     verify_baseline_failures: []
 ```

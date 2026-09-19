@@ -1,0 +1,7 @@
+All 6 cards (29-34) have matching commits (plus one extra self-fix commit for the verify failure). All cards committed and verify passes.
+
+6 of 6 cards committed (cards 29-34), plus one additional self-fix commit (a8496b07d) needed to satisfy `go test ./cmd/lyx/...` — TestLongList_NamesEveryRegisteredModule required the lifecycle module named in root.Long's "Available modules" line in cmd/lyx/main.go, which card 29's stated Edits didn't call out but which the batch's own verify command caught. Verify passes, working tree is clean.
+
+Files touched: /home/knatte/Code/loomyard/wts/worktree-lifecycle-shed-producers/cmd/lyx/main.go, /home/knatte/Code/loomyard/wts/worktree-lifecycle-shed-producers/cmd/lyx/helptree_test.go, /home/knatte/Code/loomyard/wts/worktree-lifecycle-shed-producers/cmd/lyx/notransients_test.go, /home/knatte/Code/loomyard/wts/worktree-lifecycle-shed-producers/CONSTRAINTS.md, /home/knatte/Code/loomyard/wts/worktree-lifecycle-shed-producers/docs/overview.md, /home/knatte/Code/loomyard/wts/worktree-lifecycle-shed-producers/manifest/roadmap.md, /home/knatte/Code/loomyard/wts/worktree-lifecycle-shed-producers/manifest/designs/worktree-lifecycle-shed-producers.md (deleted), /home/knatte/Code/loomyard/wts/worktree-lifecycle-shed-producers/tools/sandbox/SANDBOX-FABRIC-SUITE.md.
+
+{"status":"success","commit_sha":"1da7ee7ccede0432377bb8392207719a84c16680","session_id":"e45c430a-a88b-46ee-b0cd-ccdfdd169b5f","cards_done":[29,30,31,32,33,34]}
