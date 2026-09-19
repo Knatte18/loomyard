@@ -57,7 +57,9 @@ batches:
     commit_sha: 74e1fe5e8e2fa4cd2da651c2a1140358aa456c17
     verify_baseline_failures: []
   - name: daemon wiring
-    state: pending
+    state: running
+    implementer_session: bb69727e-7ffd-477c-96c8-7ebefd5c0609
+    start_sha: 1125ea51b40818215d03b2a38f1c846f8ed12e10
     verify_baseline_failures: []
   - name: tagged reap tests
     state: pending
