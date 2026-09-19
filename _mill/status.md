@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-tagged reap tests
+phase: approved-docs
 slug: reed-per-hub-daemon-reap
 branch: reed-per-hub-daemon-reap
 plan: _mill/plan
@@ -40,6 +40,7 @@ approved-reedengine reap seam  '2026-09-19T10:46:07Z'
 approved-reedcli pure decision seams  '2026-09-19T10:51:04Z'
 approved-daemon wiring  '2026-09-19T10:57:22Z'
 approved-tagged reap tests  '2026-09-19T11:21:38Z'
+approved-docs  '2026-09-19T11:24:41Z'
 ```
 
 ## Batches
@@ -71,7 +72,8 @@ batches:
     commit_sha: d05c4c2549dffb201d153d8d7cea31c1fc901e24
     verify_baseline_failures: []
   - name: docs
-    state: running
+    state: approved
     implementer_session: e4b8f64e-bae4-4fa6-9c78-413b25139023
     start_sha: 86601300d0c61aa7da9c6b87df0da4b517caf667
+    commit_sha: 5fee07a8c5b40ed3f2a7667308925190bef4ea03
 ```
