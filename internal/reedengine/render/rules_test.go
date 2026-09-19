@@ -319,7 +319,7 @@ func TestRulesSelvageBandEnumeratesEveryStrandCellPlusSelvage(t *testing.T) {
 // single-cell body claiming the whole box — the same shape tmux reports for a one-pane window — never
 // a zero-height Selvage cell inside a group (the fable-header-r1 finding: bandHeight stayed 0 on
 // this path and bandSelvage emitted a literal "Wx0" cell, exactly the shape
-// TestHeaderNeverGetsZeroHeightLayoutCell exists to forbid, while the doc comment claimed the
+// TestSelvageNeverGetsZeroHeightLayoutCell exists to forbid, while the doc comment claimed the
 // band "may claim the whole box").
 // Unreachable through applyLayoutLocked today (anyPlacedStrand gates the apply),
 // but Rules is a pure function whose contract must hold for any caller.
