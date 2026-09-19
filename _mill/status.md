@@ -57,7 +57,9 @@ batches:
     commit_sha: a89b4b968bc3c12567d7c1972d2ef8d728e6c961
     verify_baseline_failures: []
   - name: lifecycle recipe and coverage guard
-    state: pending
+    state: running
+    implementer_session: 2f4032c7-0241-4f04-829b-e2d5d67b51f6
+    start_sha: 62d6a61bf06b2b48d01df9ab3ca07bda5d9359be
     verify_baseline_failures: ["FAIL\t./internal/lifecyclerecipe/... [setup failed]"]
   - name: lifecyclecli module
     state: pending
