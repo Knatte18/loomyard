@@ -111,7 +111,8 @@ It is a *different* table from the engine registry (recipe names, not engine nam
   `internal/loomcli/parity_test.go` is the precedent for the comparison *shape* but not for the tier — its own header states "no test here calls RunCLIIn -- so both stay tier 1", which is exactly why it stays untagged and this file cannot.
   Follow its three-way verdict discipline where a comparison can produce more than a binary pass.
   Build the hub through `internal/hubforge`'s fabric-fixture entry point per the hubforge Fabric-Fixture Invariant, and create `internal/shedcli/testmain_integration_test.go` carrying `//go:build integration` and a `TestMain` calling `gitkit.HermeticGitEnv()` before `m.Run()`, in the shape `internal/lifecyclecli/testmain_integration_test.go` already uses — the Hermetic Git Test Environment Invariant requires it for any package whose tests spawn git.
-  `table_test.go` and `cli_test.go` stay untagged tier 1: neither drives `RunCLIIn`, and `cli_test.go`'s bare-listing and unknown-recipe cases run through `RunCLI` against a command tree whose pre-run short-circuits before any resolution.
+  `table_test.go` and `cli_test.go` stay untagged tier 1, but for a reason narrower than "they never call `RunCLIIn`": `cli_test.go` does call `RunCLIIn(t.TempDir(), …)`, because `RunCLI` delegates to `RunCLIIn("", …)` and therefore reads the process cwd — the package source directory, which is inside this repo's worktree — so an injected non-git cwd is reachable only through the cwd-carrying seam.
+  What keeps those cases tier 1 is that every one of them short-circuits before `Arm` and therefore before `lyxcwd.Resolve`: the bare listing exits at the `cmd.Name() == "shed"` guard, the unknown-recipe case at `lookup`, and the unsupported-verb case at the `Verbs` check, none of which spawns git.
   Pin which arm of each verb the fixture lands on, per verb, and never leave it to the implementer — every parity case must refuse or complete *above* the substrate, because `lyx loom run`'s pre-flight reaches `c.reed.Up()` and `step`'s `PreStep` reaches `ensureStatusStrand`, which calls `c.reed.Up()` too, and a real tmux session is what every existing loomcli test touching that substrate is `//go:build smoke` for.
   The arms to use: `run` against a hub with **no** loom status file, which refuses at the status-file existence check — the first statement in loom's `PreRun`, well above `reed.Up()`;
   `step` against a hub whose run lock is already held, which refuses at the early run-lock probe with `kind: busy`, above `seedAndCommitBootstrap` and above `ensureStatusStrand`;
@@ -142,6 +143,7 @@ It is a *different* table from the engine registry (recipe names, not engine nam
   - `cmd/lyx/registration_test.go`
 - **Edits:**
   - `cmd/lyx/main.go`
+  - `cmd/lyx/helptree_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -149,7 +151,11 @@ It is a *different* table from the engine registry (recipe names, not engine nam
   Place it adjacent to `loomcli.Command()` and `lifecyclecli.Command()` so the grouping reads by subject rather than by insertion order.
   Add `shed` to the root `Long`'s "Available modules:" list, which currently ends `loom, start, quarry, lifecycle`.
   `shedverbs` is never registered directly and must not appear here: it exposes no `Command()` seam at all.
-  Run `cmd/lyx`'s four guards and confirm each passes: `helptree_test.go` asserts the root help names every subtree, `drift_test.go` fails CI on any command with a blank `Short`, `longlist_test.go` asserts `root.Long` names every registered top-level module, and `jsonhelp_test.go` asserts the `--json` help schema for root, `board`, `config`, `ide`, `reed` and `selfreport`.
+  Add `shed` to `cmd/lyx/helptree_test.go` in both places it is needed, because that file's guards are table-driven and would otherwise pass vacuously for a subtree they never name: append `"shed"` to `TestHelpTree_RootNamesAllModules`'s hardcoded `requiredModules` slice, and add a `TestHelpTree_VerbModuleSubcommands` case for module `shed` whose `wantSubs` lists the four verbs `run`, `step`, `status` and `pause`.
+  This is what satisfies `_mill/discussion.md`'s Scope requirement of "a seam-enforcement scan **and** a help-tree test enforcing it" — the scan is batch 3 card 19's, and without this edit the help-tree half never lands.
+  Then run `cmd/lyx`'s guards and confirm each passes, distinguishing what each actually checks: `helptree_test.go` compares against the two hardcoded tables this card just extended, `drift_test.go` fails CI on any command with a blank `Short` and derives its set from the live tree, `longlist_test.go` asserts `root.Long` names every registered top-level module and also derives its set from the live tree, `registration_test.go` likewise walks the live root, and `jsonhelp_test.go` asserts the `--json` help schema for root, `board`, `config`, `ide`, `reed` and `selfreport` only and so never sees `shed` at all.
+  Only the three live-tree-derived guards pick the new subtree up automatically;
+  the other two are table-driven and need the edit above or see nothing.
   A `longlist_test.go` failure here means `shed` is missing from the root `Long`'s "Available modules:" list, which this card adds — it holds no snapshot of any verb's prose and derives its module set from the live tree, so it can neither catch nor be broken by a reflowed `loom` or `lifecycle` `Long`.
   There is no expectation file to regenerate in any of the four.
 - **Commit:** `feat(lyx): register the shed subtree under the root`
@@ -196,7 +202,7 @@ It is a *different* table from the engine registry (recipe names, not engine nam
 
 ## Batch Tests
 
-`verify:` runs `internal/shedcli` (the new parity, table and CLI suites), `cmd/lyx` (the four help-tree guards plus the sandbox coverage guard, all of which pick the new subtree up automatically once registered — confirmed rather than assumed, per card 32), and both `internal/loomcli` and `internal/lifecyclecli`, which this batch edits no file in but which the registration could regress through shared root state.
+`verify:` runs `internal/shedcli` (the new parity, table and CLI suites), `cmd/lyx` (the help-tree guards plus the sandbox coverage guard — of which only `drift_test.go`, `longlist_test.go` and `registration_test.go` pick the new subtree up automatically, while `helptree_test.go` is table-driven and card 32 extends its two tables so it stops passing vacuously), and both `internal/loomcli` and `internal/lifecyclecli`, which this batch edits no file in but which the registration could regress through shared root state.
 
 Parity is the proof the extraction preserved behaviour across the two invocation paths, and it is asserted on captured stdout bytes rather than on decoded maps, because a supervisor parses the line.
 

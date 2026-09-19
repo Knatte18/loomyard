@@ -3,7 +3,7 @@
 ```yaml
 task: "Shed-generic watchdog for ly-drive and loom's CLI verbs"
 slug: "shed-generic-watchdog"
-approved: false
+approved: true
 started: "20260919-130542"
 parent: "main"
 root: ""
@@ -155,6 +155,7 @@ Batch-local decisions live in each batch file._
 ## All Files Touched
 
 - `CONSTRAINTS.md`
+- `cmd/lyx/helptree_test.go`
 - `cmd/lyx/main.go`
 - `cmd/lyx/sandbox_coverage_test.go`
 - `contracts/recipes/lifecycle-recipe.yaml`
@@ -163,9 +164,7 @@ Batch-local decisions live in each batch file._
 - `internal/lifecyclecli/cli.go`
 - `internal/lifecyclecli/cli_test.go`
 - `internal/lifecyclecli/lifecycle_integration_test.go`
-- `internal/lifecyclecli/run.go`
 - `internal/lifecyclecli/run_test.go`
-- `internal/lifecyclecli/status.go`
 - `internal/lifecyclecli/wire.go`
 - `internal/lifecyclecli/wire_test.go`
 - `internal/lifecyclerecipe/coverage_guard_test.go`
@@ -179,11 +178,9 @@ Batch-local decisions live in each batch file._
 - `internal/loomcli/arm.go`
 - `internal/loomcli/cli.go`
 - `internal/loomcli/cli_test.go`
-- `internal/loomcli/pause.go`
 - `internal/loomcli/run.go`
 - `internal/loomcli/sharedbootstrap.go`
 - `internal/loomcli/sharedbootstrap_test.go`
-- `internal/loomcli/status.go`
 - `internal/loomcli/status_test.go`
 - `internal/loomcli/step.go`
 - `internal/loomcli/step_test.go`

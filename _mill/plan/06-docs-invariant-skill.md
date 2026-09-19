@@ -61,6 +61,7 @@ Those instances are illustrations of each rule, not its extent — a hand-listed
   - `internal/shedverbs/status.go`
   - `internal/loomshed/interruptpolicy.go`
   - `internal/lifecyclecli/arm.go`
+  - `internal/shedcli/table.go`
   - `internal/lifecyclecli/refusal.go`
   - `contracts/recipes/loom-recipe.yaml`
   - `contracts/recipes/lifecycle-recipe.yaml`
@@ -77,6 +78,9 @@ Those instances are illustrations of each rule, not its extent — a hand-listed
   Rule (d) — every numeric claim derived from a recipe's own graph is gated: that covers `## The loop`'s "Loom's list is seventeen rows" arithmetic behind the 40-step cap, including the review-round and bounce-budget arithmetic that follows from it.
   Rule (e) — the skill's own identity metadata is generalized: the frontmatter `description` stops saying "Drive a loom task", and the frontmatter gains `argument-hint: "[recipe]"`, which is how the recipe name is passed, defaulting to `loom` when the operator gives none.
   Rule (f) — every claim about a recipe's producer or adapter semantics is gated: that covers `## Interrupted invocations`' "kills the in-flight agent and restarts that row's work" and its closing "every spawning row's adapter probes for a live agent and waits on it", both of which are statements about loom's own adapters that a recipe built from different registry entries need not satisfy.
+  State the disposition for a recipe that has no `step` verb, which the skill's contract currently has no arm for: batch 5 card 29's table gives `lifecycle` the verb set `{run, status, pause}`, so `lyx shed step --recipe lifecycle` is refused by `shed`'s own pre-run, and that refusal is a bare `output.Err` carrying no `kind` field — outside the five `## Error envelopes` pins closed.
+  Record in the skill that `loom` is the only steppable recipe shipped today, that the recipe argument exists for the next consumer rather than for `lifecycle`, and add one arm to `## Error envelopes`: an error envelope with no `kind` field is handed straight back to the operator with no retry, naming the refusal text verbatim.
+  Do not widen the five-kind vocabulary to cover it — that set is closed by a test and by the new Shed Verb-Set Invariant, and the refusal in question is raised above the verb body that owns those kinds.
   Keep every recipe-agnostic section as written: the 40-step cap itself, the `continue` branch, the five error kinds and the one-retry rule for `producer`, the interrupted-invocation branch on `current_producer`/`history_length`, the never-clean-up rule, and `## Operator choices`' numbered-text-list requirement.
   Keep `disable-model-invocation: true` — the skill stays explicit-invocation-only.
   Write every prose paragraph and list item with semantic line breaks, one sentence per line, per this repo's markdown convention.
@@ -156,7 +160,7 @@ Those instances are illustrations of each rule, not its extent — a hand-listed
 
 ## Batch Tests
 
-`verify:` runs `cmd/lyx`, `tools/...` and `internal/lyxcwd`: the first because `retiredverbs_test.go` reads the live command tree against the docs and the help-tree guards must stay green over the subtree batch 5 registered, the second because the sandbox suite files and their guard live under `tools/sandbox`, and the third because `docslink_test.go` — the Markdown Link Integrity checker — lives there and is what gates the links card 38 adds.
+`verify:` runs `cmd/lyx`, `tools/...` and `internal/lyxcwd`: the first because `retiredverbs_test.go` reads the live command tree against the docs and the help-tree guards must stay green over the subtree batch 5 registered, the second because the sandbox suite files live under `tools/sandbox` (their guard is `cmd/lyx/sandbox_coverage_test.go`, already covered by the first), and the third because `docslink_test.go` — the Markdown Link Integrity checker — lives there and is what gates the links card 38 adds.
 
 This is a docs-and-skill batch with no Go production surface of its own, so beyond the three test packages its verification is the two greps card 39 performs, proving the two exhaustive rewrites — no surviving `lyx loom step` under the skill directory, and both new packages present in the module table.
 

@@ -33,6 +33,7 @@ A verb-blind arming keyed on recipe name alone would run the full `wire()` for `
 - **Context:**
   - `internal/shedverbs/spec.go`
   - `internal/shedverbs/verbs.go`
+  - `internal/shedverbs/step.go`
   - `internal/loomcli/wiring.go`
   - `internal/loomcli/sharedbootstrap.go`
   - `internal/loomengine/config.go`
@@ -155,22 +156,21 @@ A verb-blind arming keyed on recipe name alone would run the full `wire()` for `
   - `internal/loomengine/status.go`
   - `internal/shedengine/status.go`
 - **Edits:**
-  - `internal/loomcli/status.go`
-  - `internal/loomcli/pause.go`
   - `internal/loomcli/arm.go`
   - `internal/loomcli/sharedbootstrap.go`
   - `internal/loomcli/status_test.go`
   - `internal/loomcli/cli_test.go`
 - **Creates:** none
-- **Deletes:** none
+- **Deletes:**
+  - `internal/loomcli/status.go`
+  - `internal/loomcli/pause.go`
 - **Moves:** none
 - **Requirements:** delete `statusCmd`, `pauseCmd`, `renderStatusLine`, `statusUnavailableLine` and `printStatusLinesOnChange` from `internal/loomcli/status.go` and `internal/loomcli/pause.go`, leaving each file holding only what loom still owns.
   Fill a `StatusExtras` hook in `Arm` returning loom's own five keys and no others: `pause_requested` from `st.PauseRequested`, `history_length` from `len(st.History)`, `slug` and `parent` from a `json.Unmarshal` of `st.Product` into `loomengine.Status`, and `interrupt_policy` from `loomshed.InterruptPolicyFor(st.CurrentProducer)`.
   Perform the unmarshal only when `len(st.Product) > 0`, exactly as today, and on a failure return the existing error text `loom: decode status file <StatusPath>'s product payload: <err>` — returned verbatim from the hook, never re-prefixed by the generic body, which is what keeps it from being double-prefixed.
   `interrupt_policy` is a plain map read keyed by a name this verb already has, needing no config load and no engine construction, which is what keeps `status` on the lightweight path.
   Its empty-string value when `current_producer` names no row is the caller's "no entry" signal and never a third policy value.
-  If `internal/loomcli/status.go` ends up holding no declaration at all after the deletions, delete the file rather than leaving an empty one, and record that in the commit message;
-  the same applies to `pause.go`.
+  Both files are emptied outright, not conditionally: `internal/loomcli/status.go` declares exactly `renderStatusLine`, `statusUnavailableLine`, `printStatusLinesOnChange` and `statusCmd`, and `pause.go` exactly `pauseCmd` — every one of them listed for deletion above — so both are removed from the tree, which is why they appear in this card's `Deletes:` rather than as a conditional instruction.
   Give `internal/loomcli/sharedbootstrap.go`'s `ensureStatusLockDir` a disposition too: deleting `statusCmd` and `pauseCmd` removes its only two callers, so delete the function along with them rather than leaving dead code.
   Its `MkdirAll` is not lost — `shedverbs`' own `ensureStatusLockDir` performs it, gated on the told `EnsureStatusLockDir` boolean — and the crucible history its doc comment records was already carried into that function's own doc comment by batch 3, card 13.
   Confirm before deleting that no third caller has appeared since this plan was written.
@@ -270,14 +270,14 @@ A verb-blind arming keyed on recipe name alone would run the full `wire()` for `
   - `internal/shedengine/status.go`
   - `internal/state/state.go`
 - **Edits:**
-  - `internal/lifecyclecli/run.go`
-  - `internal/lifecyclecli/status.go`
   - `internal/lifecyclecli/cli.go`
   - `internal/lifecyclecli/arm.go`
   - `internal/lifecyclecli/run_test.go`
   - `internal/lifecyclecli/lifecycle_integration_test.go`
 - **Creates:** none
-- **Deletes:** none
+- **Deletes:**
+  - `internal/lifecyclecli/run.go`
+  - `internal/lifecyclecli/status.go`
 - **Moves:** none
 - **Requirements:** delete `runCmd` and `statusCmd` and fill the equivalent hooks in `Arm` instead.
   `PreRun` performs this module's existing pre-flight in its existing order: `state.ReadJSONStrict[shedengine.Status]` over the two status paths;
@@ -296,8 +296,9 @@ A verb-blind arming keyed on recipe name alone would run the full `wire()` for `
   Leave the `step` texts at their zero values and never add the returned `step` command to the lifecycle subtree, so its blank `Short` never reaches the live tree `cmd/lyx/drift_test.go` walks — that guard fails CI on any *registered* command with a blank `Short`, and an unregistered returned command is not in the tree at all.
   Set `Args: cobra.ExactArgs(1)` on each of the three returned commands before adding them.
   Update the lifecycle parent command's own `Long` to name `pause` alongside `run` and `status`, and to state that all three run from the hub's prime worktree only.
-  Preserve `internal/lifecyclecli/run.go`'s doc comment explaining why the run envelope carries neither a mutations array nor a `partial` bool — it stays true and its reasoning is unaffected by the move.
-  If either file ends up holding no declaration after the deletions, delete it rather than leaving it empty.
+  Both files are emptied outright, not conditionally: `internal/lifecyclecli/run.go` declares exactly `runCmd` and `status.go` exactly `statusCmd`, so both are removed from the tree, which is why they appear in this card's `Deletes:`.
+  The doc comment on `run.go` explaining why the run envelope carries neither a mutations array nor a `partial` bool must survive that removal rather than being lost with the file: move it onto the `PostRun` field's own doc in `internal/lifecyclecli/arm.go`, which is where that envelope is now assembled.
+  Its reasoning is unaffected by the move — a run may perform zero, one or two topology mutations at arbitrary points hours apart, so there is no coherent single array at run scope and `partial` has no referent.
   Retarget the in-package test call sites this deletion orphans, which is mechanical compilation repair rather than an assertion change: `internal/lifecyclecli/run_test.go` calls `c.runCmd()` at five sites and `internal/lifecyclecli/lifecycle_integration_test.go` calls it once.
   Point each at the `run` command `shedverbs.Verbs` returns, filling `c.spec` from `c.specFor("run")` on the receiver the test already builds — the resolution-free seam card 25 declares — and keeping every assertion's meaning identical.
 - **Commit:** `refactor(lifecyclecli): rearm run and status over shedverbs and add pause`
