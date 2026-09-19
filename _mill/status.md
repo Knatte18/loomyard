@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-reedcli pure decision seams
+phase: approved-daemon wiring
 slug: reed-per-hub-daemon-reap
 branch: reed-per-hub-daemon-reap
 plan: _mill/plan
@@ -38,6 +38,7 @@ planned  '2026-09-19T10:38:57Z'
 implementing  '2026-09-19T10:39:37Z'
 approved-reedengine reap seam  '2026-09-19T10:46:07Z'
 approved-reedcli pure decision seams  '2026-09-19T10:51:04Z'
+approved-daemon wiring  '2026-09-19T10:57:22Z'
 ```
 
 ## Batches
@@ -57,9 +58,10 @@ batches:
     commit_sha: 74e1fe5e8e2fa4cd2da651c2a1140358aa456c17
     verify_baseline_failures: []
   - name: daemon wiring
-    state: running
+    state: approved
     implementer_session: bb69727e-7ffd-477c-96c8-7ebefd5c0609
     start_sha: 1125ea51b40818215d03b2a38f1c846f8ed12e10
+    commit_sha: c6d7e88e4b3e12c39a66bcb42e9ba88c3429bd61
     verify_baseline_failures: []
   - name: tagged reap tests
     state: pending
