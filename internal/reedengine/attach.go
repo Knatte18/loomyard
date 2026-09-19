@@ -69,7 +69,7 @@ func chainedAttachArgv(socket, session, layout string) []string {
 // same told box the chained layout is. This is what corrects a later client resize, and — on a
 // session whose earlier apply already installed the hook — a degraded bare attach too. A degrade
 // return installs nothing: the uncovered window is a session between "up" and its first placed
-// strand, which has nothing to pin anyway because a lone header pane takes render.Rules' sole-cell
+// strand, which has nothing to pin anyway because a lone Selvage pane takes render.Rules' sole-cell
 // branch.
 func (e *Engine) AttachArgv(cols, rows int) []string {
 	bare := bareAttachArgv(e.Socket(), e.SessionName())
