@@ -156,6 +156,27 @@ func planResumeLaunches(strands []Strand, liveIDs map[string]bool) []Strand {
 	return out
 }
 
+// sessionSubstrateLocked is the single "usable substrate" predicate both ensureServerAndSessionLocked's
+// already-up early return and ensureSessionLocked read; neither may carry its own copy of the
+// non-empty-pane-list condition.
+// A session holding zero panes is broken substrate a strand can never be split into: up reports true
+// while usable stays false, distinguishing that husk from a session that never came up at all.
+func (e *Engine) sessionSubstrateLocked() (up bool, usable bool, err error) {
+	session := e.SessionName()
+	up, err = e.tmux.hasSession(session)
+	if err != nil {
+		return false, false, fmt.Errorf("check session: %w", err)
+	}
+	if !up {
+		return false, false, nil
+	}
+	live, err := e.tmux.listPanes(session)
+	if err != nil {
+		return true, false, fmt.Errorf("list panes: %w", err)
+	}
+	return true, len(live) > 0, nil
+}
+
 // ensureServerAndSessionLocked ensures this hub's tmux server and this
 // worktree's session exist. Reports booted=true on fresh spawn; validates
 // capability, debug_log, mouse, watchdog, and status-line template before any tmux round trip.
@@ -220,11 +241,16 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	}
 
 	session := e.SessionName()
-	up, err := e.tmux.hasSession(session)
+	up, usable, err := e.sessionSubstrateLocked()
 	if err != nil {
-		return false, nil, fmt.Errorf("check session: %w", err)
+		return false, nil, err
 	}
 	if up {
+		if usable {
+			// The status-line template was already validated in the pre-tmux
+			// block above, so this healthy already-up path returns directly.
+			return false, nil, nil
+		}
 		// A session that exists but holds ZERO panes is broken substrate: it
 		// cannot host a strand (there is no pane to split, and tmux
 		// offers no way to add a pane to an empty window), so add would fail
@@ -233,15 +259,6 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 		// pane absent from a select-layout string). Kill the husk and fall
 		// through to a fresh boot — the booted=true return then makes the
 		// caller clear every stale binding, exactly like a server rebirth.
-		live, err := e.tmux.listPanes(session)
-		if err != nil {
-			return false, nil, fmt.Errorf("list panes: %w", err)
-		}
-		if len(live) > 0 {
-			// The status-line template was already validated in the pre-tmux
-			// block above, so this healthy already-up path returns directly.
-			return false, nil, nil
-		}
 		_ = e.tmux.run("kill-session", "-t", exactSessionTarget(session))
 	}
 
@@ -627,57 +644,107 @@ func (e *Engine) splitPaneBelowLocked(target string, preSplitLive []LivePane, la
 	return paneID, nil
 }
 
+// upLocked ensures the server and session exist and returns Up's result plus
+// ensureServerAndSessionLocked's own booted flag, passed straight out.
+// No caller reaches it directly — it is called only from within an already-held withOpLock closure,
+// Up's own thin wrapper below being the sole caller today.
+// It is what ensureSessionLocked delegates to on the cold path.
+// Widening its return breaks no contract because it is unexported.
+func (e *Engine) upLocked() (UpResult, bool, error) {
+	var result UpResult
+	booted, stripped, err := e.ensureServerAndSessionLocked()
+	if err != nil {
+		return result, booted, err
+	}
+
+	st, err := e.loadOrInitStateLocked()
+	if err != nil {
+		return result, booted, err
+	}
+
+	// On a server rebirth the reborn session reuses pane ids (the initial
+	// pane is %1 again), so a persisted binding would be mistaken for a
+	// live strand. Clear every binding: a just-booted session hosts none
+	// of the prior strands. Up leaves them not-live (Resume rebuilds them).
+	// The stripped env keys are stamped for diagnosis — reed.json records
+	// what the server spawn actually removed. SelvagePaneID is cleared
+	// alongside every strand binding for the identical reason — a
+	// reborn session's reused pane id would otherwise be mistaken for
+	// the still-live Selvage pane — so ensureSelvagePaneLocked below
+	// rebuilds it fresh; the clear lives here, not inside
+	// clearAllPaneBindings itself, since Selvage is not a strand
+	// binding.
+	if booted {
+		clearAllPaneBindings(st)
+		st.StrippedEnv = stripped
+		st.SelvagePaneID = ""
+	}
+
+	if err := e.ensureSelvagePaneLocked(st); err != nil {
+		return result, booted, err
+	}
+
+	if _, err := e.reconcileApplyPersistLocked(st); err != nil {
+		return result, booted, err
+	}
+
+	// len(st.Strands) deliberately excludes Selvage: Selvage is not in
+	// st.Strands (Shared Decision header-is-not-a-strand), so this
+	// count is already correct by construction. Do not "fix" a future
+	// off-by-one here by adding Selvage — it must never be counted as
+	// a strand.
+	result = UpResult{Session: e.SessionName(), Socket: e.Socket(), Strands: len(st.Strands)}
+	return result, booted, nil
+}
+
 // Up ensures the server and session exist.
 // Up never launches strands;
 // Resume rebuilds content after a server restart.
 func (e *Engine) Up() (UpResult, error) {
 	var result UpResult
 	err := e.withOpLock(func() error {
-		booted, stripped, err := e.ensureServerAndSessionLocked()
-		if err != nil {
-			return err
-		}
-
-		st, err := e.loadOrInitStateLocked()
-		if err != nil {
-			return err
-		}
-
-		// On a server rebirth the reborn session reuses pane ids (the initial
-		// pane is %1 again), so a persisted binding would be mistaken for a
-		// live strand. Clear every binding: a just-booted session hosts none
-		// of the prior strands. Up leaves them not-live (Resume rebuilds them).
-		// The stripped env keys are stamped for diagnosis — reed.json records
-		// what the server spawn actually removed. SelvagePaneID is cleared
-		// alongside every strand binding for the identical reason — a
-		// reborn session's reused pane id would otherwise be mistaken for
-		// the still-live Selvage pane — so ensureSelvagePaneLocked below
-		// rebuilds it fresh; the clear lives here, not inside
-		// clearAllPaneBindings itself, since Selvage is not a strand
-		// binding.
-		if booted {
-			clearAllPaneBindings(st)
-			st.StrippedEnv = stripped
-			st.SelvagePaneID = ""
-		}
-
-		if err := e.ensureSelvagePaneLocked(st); err != nil {
-			return err
-		}
-
-		if _, err := e.reconcileApplyPersistLocked(st); err != nil {
-			return err
-		}
-
-		// len(st.Strands) deliberately excludes Selvage: Selvage is not in
-		// st.Strands (Shared Decision header-is-not-a-strand), so this
-		// count is already correct by construction. Do not "fix" a future
-		// off-by-one here by adding Selvage — it must never be counted as
-		// a strand.
-		result = UpResult{Session: e.SessionName(), Socket: e.Socket(), Strands: len(st.Strands)}
-		return nil
+		var err error
+		result, _, err = e.upLocked()
+		return err
 	})
 	return result, err
+}
+
+// ensureSessionLocked boots this worktree's session only when there is nothing usable to attach to,
+// returning whether a session was actually created.
+// It calls sessionSubstrateLocked and returns (false, nil) immediately, having done nothing else — no
+// config validation, no reconcile, no state read, no write — when the session is already usable.
+// The early return exists rather than routing a warm call through upLocked for two reasons: upLocked's
+// tail reaches planReconcile, which adds every live non-exempt pane to its kill list whenever the
+// Selvage pane is alive, and ensureServerAndSessionLocked runs its whole pre-tmux config-validation block
+// ahead of its already-up early return.
+// Otherwise it delegates to upLocked and returns that call's own booted flag verbatim, never a
+// hardcoded true: the session can come up between the two probes (a sibling `lyx reed up` in another
+// terminal is the realistic trigger), so a hardcoded true would make the caller's attribution log claim
+// a spawn that never happened.
+func (e *Engine) ensureSessionLocked() (bool, error) {
+	_, usable, err := e.sessionSubstrateLocked()
+	if err != nil {
+		return false, err
+	}
+	if usable {
+		return false, nil
+	}
+	_, booted, err := e.upLocked()
+	return booted, err
+}
+
+// EnsureSession boots this worktree's session only when there is nothing usable to attach to, and
+// reports whether a session was actually created.
+// It reads no persisted state on the warm path, so a caller needing reed's state-level refusals must
+// still make its own Status call.
+func (e *Engine) EnsureSession() (booted bool, err error) {
+	err = e.withOpLock(func() error {
+		var innerErr error
+		booted, innerErr = e.ensureSessionLocked()
+		return innerErr
+	})
+	return booted, err
 }
 
 // Resume boots server+session if absent, reconciles stale bindings, relaunches non-live strands,

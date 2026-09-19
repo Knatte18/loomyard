@@ -9,7 +9,9 @@ package reedcli
 import (
 	"bytes"
 	"encoding/json"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -46,34 +48,110 @@ func TestRunCLI_ResolvesLayoutAndConfig(t *testing.T) {
 	}
 }
 
-// TestRunCLI_AddNotUp_FriendlyError verifies that running `add` before `up` surfaces the friendly
-// "no reed session" error.
-func TestRunCLI_AddNotUp_FriendlyError(t *testing.T) {
+// coldAddLaunchCmd returns an OS-appropriate long-running --cmd for the cold-add scenario, so the
+// strand's pane stays alive long enough for the follow-up `status` to report it live rather than
+// racing a command that exits at once.
+func coldAddLaunchCmd() string {
+	if runtime.GOOS == "windows" {
+		return "pwsh -NoExit -Command Write-Host ready"
+	}
+	return "sleep 300"
+}
+
+// skipWithoutMultiplexer skips the calling test when the configured multiplexer binary is absent,
+// the same self-skip reedengine's own integration fixtures apply, so a -tags=integration run on a
+// machine without the tool never hard-fails on a scenario that has to boot a real session.
+func skipWithoutMultiplexer(t *testing.T, h *hubforge.Hub) {
+	t.Helper()
+	cfg, err := reedengine.LoadConfig(h.Location.AnchorPath(), "reed")
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if _, err := exec.LookPath(cfg.Tmux); err != nil {
+		t.Skipf("configured multiplexer binary %q not found: %v", cfg.Tmux, err)
+	}
+}
+
+// TestRunCLI_AddNotUp_SelfHealsAndSucceeds verifies that running `add` before `up` no longer refuses
+// with the friendly "no reed session" error: add boots this worktree's session itself, exits zero with
+// the ordinary guid-and-name envelope, and the `status` verb -- which still refuses on a cold worktree
+// (TestRunCLI_ResolvesLayoutAndConfig) -- then succeeds against the session add deposited, naming this
+// worktree's own socket and session and listing the new strand live. It is the integration-tier twin
+// of smoke_coldstart_test.go's TestSmokeColdAddBootsAndAddsInOneCall, written against this file's
+// in-process RunCLIIn fixture rather than the smoke tier's multiplexer probes.
+func TestRunCLI_AddNotUp_SelfHealsAndSucceeds(t *testing.T) {
 	t.Parallel()
 
 	h := hubforge.NewHub(t, ".")
+	skipWithoutMultiplexer(t, h)
+	worktree := h.PrimeWorktree()
+	t.Cleanup(func() {
+		// Best-effort: the session add booted must not outlive the test, and down has nothing to
+		// tear down when add failed before booting anything.
+		var buf bytes.Buffer
+		RunCLIIn(worktree, &buf, []string{"down"})
+	})
 
+	const strandName = "cold-add"
 	var out bytes.Buffer
-	exitCode := RunCLIIn(h.PrimeWorktree(), &out, []string{"add", "--cmd", "pwsh -NoExit -Command Write-Host ready"})
+	exitCode := RunCLIIn(worktree, &out, []string{"add", "--name", strandName, "--cmd", coldAddLaunchCmd()})
 
-	if exitCode != 1 {
-		t.Errorf("RunCLI(add) before up = %d; want 1 (no live tmux session)", exitCode)
+	if exitCode != 0 {
+		t.Fatalf("RunCLI(add) before up = %d; want 0 (add self-heals a cold worktree), output: %s", exitCode, out.String())
 	}
-
 	var env map[string]any
 	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
 		t.Fatalf("RunCLI(add) output is not valid JSON: %v; got: %q", err, out.String())
 	}
-	wantErr := `no reed session; run "lyx reed up"`
-	if errMsg, _ := env["error"].(string); errMsg != wantErr {
-		t.Errorf("RunCLI(add) before up error = %q; want %q", errMsg, wantErr)
+	if ok, _ := env["ok"].(bool); !ok {
+		t.Errorf("RunCLI(add) before up ok = false; want true, output: %s", out.String())
+	}
+	guid, _ := env["guid"].(string)
+	if guid == "" {
+		t.Errorf("RunCLI(add) before up envelope = %s; want a non-empty guid", out.String())
+	}
+	if name, _ := env["name"].(string); name != strandName {
+		t.Errorf("RunCLI(add) before up name = %q; want %q", name, strandName)
+	}
+
+	out.Reset()
+	if code := RunCLIIn(worktree, &out, []string{"status"}); code != 0 {
+		t.Fatalf("RunCLI(status) after a cold add = %d; want 0 (the session add booted must now exist), output: %s", code, out.String())
+	}
+	var status map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &status); err != nil {
+		t.Fatalf("RunCLI(status) output is not valid JSON: %v; got: %q", err, out.String())
+	}
+	if session, _ := status["session"].(string); session != reedengine.SessionName(worktree) {
+		t.Errorf("RunCLI(status) after a cold add session = %q; want %q (this worktree's own session)", session, reedengine.SessionName(worktree))
+	}
+	if socket, _ := status["socket"].(string); socket != reedengine.ServerName(h.Path) {
+		t.Errorf("RunCLI(status) after a cold add socket = %q; want %q (this hub's own socket)", socket, reedengine.ServerName(h.Path))
+	}
+
+	strands, _ := status["strands"].([]any)
+	found := false
+	for _, s := range strands {
+		strand, _ := s.(map[string]any)
+		if strand["guid"] != guid {
+			continue
+		}
+		found = true
+		if live, _ := strand["live"].(bool); !live {
+			t.Errorf("RunCLI(status) strand %s live = false; want true (the cold add launched it into the session it booted)", guid)
+		}
+	}
+	if !found {
+		t.Errorf("RunCLI(status) strands = %v; want the cold add's strand %s listed", strands, guid)
 	}
 }
 
 // TestRunCLI_AddIfAbsentNoName_RejectsBeforeSessionCheck verifies that `add --if-absent` with no
-// --name is rejected by the engine's --name requirement, and specifically BEFORE the session-existence
-// check: against a fixture hub with no session up, the error must name the --name requirement, not the
-// "no reed session" message TestRunCLI_AddNotUp_FriendlyError pins for an ordinary add.
+// --name is rejected by the engine's --name requirement, and specifically BEFORE the session pre-flight
+// that would otherwise self-heal the cold worktree (TestRunCLI_AddNotUp_SelfHealsAndSucceeds): against
+// a fixture hub with no session up, the error must name the --name requirement, never the "no reed
+// session" message, and a rejected call must never boot a session as residue over what is actually a
+// missing --name.
 func TestRunCLI_AddIfAbsentNoName_RejectsBeforeSessionCheck(t *testing.T) {
 	t.Parallel()
 
@@ -97,6 +175,13 @@ func TestRunCLI_AddIfAbsentNoName_RejectsBeforeSessionCheck(t *testing.T) {
 	noSessionMsg := `no reed session; run "lyx reed up"`
 	if errMsg == noSessionMsg {
 		t.Errorf("RunCLI(add --if-absent, no --name) error = %q; want the --name rejection to precede the session check, not the no-session message", errMsg)
+	}
+
+	// The rejection must have fired before the self-heal pre-flight: status still refuses, proving
+	// no session was booted as residue.
+	out.Reset()
+	if code := RunCLIIn(h.PrimeWorktree(), &out, []string{"status"}); code != 1 {
+		t.Errorf("RunCLI(status) after the rejected add = %d; want 1 (the --name rejection must precede the session pre-flight, booting nothing), output: %s", code, out.String())
 	}
 }
 

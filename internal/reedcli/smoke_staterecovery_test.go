@@ -283,53 +283,120 @@ func TestSmokeNoSessionMessageDistinguishesAnUnreadableStateFromAnEmptyOne(t *te
 }
 
 // TestSmokeDiagnosticVerbsNameTheOrphanSessionRatherThanPointingAtResume is the end-to-end
-// regression guard for the R6 review's R6-F1, driven at the CLI seam.
+// regression guard for the R6 review's R6-F1, driven at the CLI seam, extended by this task's
+// tagged-tests batch to also pin that the refusal survives self-heal and leaves no residue.
 //
-// Reproduced live before the fix: both ordinary routes into the foreign-session refusal — a worktree
-// renamed while its session was up, a .lyx copied between worktrees of one hub — leave THIS
+// Reproduced live before the R6-F1 fix: both ordinary routes into the foreign-session refusal — a
+// worktree renamed while its session was up, a .lyx copied between worktrees of one hub — leave THIS
 // worktree's session absent, so every non-booting verb lands in requireSessionLocked. That returned
 // `no reed session (1 strands persisted); run "lyx reed resume" to rebuild, or "lyx reed up" for a
 // bare substrate`, and both commands it named then refused with the orphan-session error. The
 // operator's whole diagnostic surface reported a bare "no session", never named the still-running
 // session, and routed them into a loop.
 //
-// The test asserts the diagnosis at the CALL SITE rather than the helper: refuseLiveForeignSessionLocked
+// The stronger property this task adds: status still reaches the diagnosis directly through
+// requireSessionLocked, but attach and add now reach it via their own self-healing boot path
+// (EnsureSession/AddStrand's ensureSessionLocked) — refuseRecordedForeignSessionBeforeBootLocked
+// consults the identical diagnosis ahead of anything that creates substrate, so all three verbs
+// still refuse with the same message, and — the property that matters most now that two of them
+// reach a boot path first — the refusal must still deposit nothing on the hub socket under this
+// worktree's own session name. It is no longer true (as the pre-task framing said) that every verb
+// reaching this diagnosis does so through requireSessionLocked alone.
+//
+// The rename case and the copied-state case are folded into one test as sub-cases, reusing the same
+// helpers and the same shared assertion body, rather than a third fixture shape.
+//
+// The diagnosis is asserted at the CALL SITE rather than the helper: refuseLiveForeignSessionLocked
 // has its own hermetic coverage (generation_test.go), and what is not otherwise pinned is that
-// requireSessionLocked consults it at all. Removing that call restores the misleading text verbatim,
-// which the negative assertion below catches.
+// requireSessionLocked and the two self-healing boot paths all consult it. Removing any of those
+// calls restores the misleading text verbatim (or deposits a stray session), which the assertions
+// below catch.
 func TestSmokeDiagnosticVerbsNameTheOrphanSessionRatherThanPointingAtResume(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 
-	h := hubforge.NewHub(t, ".")
-	original := materializeSibling(t, h, "diag-before-rename")
-	renamed := filepath.Join(h.Path, "diag-after-rename")
+	t.Run("worktree renamed while its session was up", func(t *testing.T) {
+		h := hubforge.NewHub(t, ".")
+		original := materializeSibling(t, h, "diag-before-rename")
+		renamed := filepath.Join(h.Path, "diag-after-rename")
 
-	deferHubRelease(t, h.PrimeWorktree())
-	deferHubRelease(t, renamed)
+		deferHubRelease(t, h.PrimeWorktree())
+		deferHubRelease(t, renamed)
+
+		var out bytes.Buffer
+		if code := RunCLIIn(original, &out, []string{"up"}); code != 0 {
+			t.Fatalf("up = %d; want 0, output: %s", code, out.String())
+		}
+		socket, originalSession := socketAndSessionIn(t, original)
+		t.Cleanup(func() {
+			exec.Command(tmuxPath, "-L", socket, "kill-session", "-t", "="+originalSession).Run()
+			var buf bytes.Buffer
+			RunCLIIn(renamed, &buf, []string{"down"})
+		})
+		addStrandIn(t, original, smokeReapLaunchCmd(), "--name", "pre-rename")
+
+		if err := os.Rename(original, renamed); err != nil {
+			t.Fatalf("rename %s -> %s: %v", original, renamed, err)
+		}
+
+		assertDiagnosticVerbsRefuseAndDepositNothing(t, tmuxPath, renamed, socket, originalSession)
+	})
+
+	t.Run(".lyx copied between worktrees of one hub while the original session was up", func(t *testing.T) {
+		h := hubforge.NewHub(t, ".")
+		original := materializeSibling(t, h, "diag-copy-source")
+		copied := materializeSibling(t, h, "diag-copy-target")
+
+		deferHubRelease(t, h.PrimeWorktree())
+		deferHubRelease(t, original)
+		deferHubRelease(t, copied)
+
+		var out bytes.Buffer
+		if code := RunCLIIn(original, &out, []string{"up"}); code != 0 {
+			t.Fatalf("up = %d; want 0, output: %s", code, out.String())
+		}
+		socket, originalSession := socketAndSessionIn(t, original)
+		t.Cleanup(func() {
+			var buf bytes.Buffer
+			RunCLIIn(copied, &buf, []string{"down"})
+			buf.Reset()
+			RunCLIIn(original, &buf, []string{"down"})
+		})
+		addStrandIn(t, original, smokeReapLaunchCmd(), "--name", "copy-source-strand")
+
+		// The hand-copy the R5 review drove: an operator moving a .lyx directory between worktrees of
+		// one hub, while the original session is still live.
+		originalState, err := os.ReadFile(filepath.Join(original, ".lyx", "reed.json"))
+		if err != nil {
+			t.Fatalf("read original state: %v", err)
+		}
+		copiedStatePath := filepath.Join(copied, ".lyx", "reed.json")
+		if err := os.MkdirAll(filepath.Dir(copiedStatePath), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", filepath.Dir(copiedStatePath), err)
+		}
+		if err := os.WriteFile(copiedStatePath, originalState, 0o600); err != nil {
+			t.Fatalf("write copied state to %s: %v", copiedStatePath, err)
+		}
+
+		assertDiagnosticVerbsRefuseAndDepositNothing(t, tmuxPath, copied, socket, originalSession)
+	})
+}
+
+// assertDiagnosticVerbsRefuseAndDepositNothing drives status, attach and add against cwd — a
+// worktree whose reed.json names originalSession, a session still running on socket under a
+// different name than cwd's own — asserting each refuses, names originalSession and the
+// kill-session remedy, never points at resume, and deposits no session under cwd's own (derivable
+// but never-yet-created) session name. status reaches the refusal directly through
+// requireSessionLocked; attach and add reach it via their own self-healing boot path. Either way the
+// refusal must fire before anything creates substrate.
+func assertDiagnosticVerbsRefuseAndDepositNothing(t *testing.T, tmuxPath, cwd, socket, originalSession string) {
+	t.Helper()
+	ownSession := reedengine.SessionName(cwd)
 
 	var out bytes.Buffer
-	if code := RunCLIIn(original, &out, []string{"up"}); code != 0 {
-		t.Fatalf("up = %d; want 0, output: %s", code, out.String())
-	}
-	socket, originalSession := socketAndSessionIn(t, original)
-	t.Cleanup(func() {
-		exec.Command(tmuxPath, "-L", socket, "kill-session", "-t", "="+originalSession).Run()
-		var buf bytes.Buffer
-		RunCLIIn(renamed, &buf, []string{"down"})
-	})
-	addStrandIn(t, original, smokeReapLaunchCmd(), "--name", "pre-rename")
-
-	if err := os.Rename(original, renamed); err != nil {
-		t.Fatalf("rename %s -> %s: %v", original, renamed, err)
-	}
-
-	// Every verb that goes through requireSessionLocked rather than through a boot must report the
-	// same diagnosis: status is the one an operator reaches for first, attach the one they reach for
-	// next, and add the one an agent driving reed hits.
 	for _, verb := range [][]string{{"status"}, {"attach"}, {"add", "--cmd", smokeReapLaunchCmd(), "--name", "post-rename"}} {
 		out.Reset()
-		if code := RunCLIIn(renamed, &out, verb); code == 0 {
-			t.Fatalf("%v in the renamed worktree = 0; want a failure naming the orphan session, output: %s", verb, out.String())
+		if code := RunCLIIn(cwd, &out, verb); code == 0 {
+			t.Fatalf("%v in %s = 0; want a failure naming the orphan session, output: %s", verb, cwd, out.String())
 		}
 		reported := out.String()
 		for _, want := range []string{originalSession, "kill-session"} {
@@ -341,6 +408,13 @@ func TestSmokeDiagnosticVerbsNameTheOrphanSessionRatherThanPointingAtResume(t *t
 		// the message omitted. Naming it here would send the operator back into that loop.
 		if strings.Contains(reported, `run "lyx reed resume"`) {
 			t.Errorf("%v error = %s; want it NOT to point at resume, which refuses while %q is still running", verb, reported, originalSession)
+		}
+
+		// The property that matters most now that add and attach reach a boot path before this
+		// refusal: both self-healing verbs must still refuse BEFORE depositing any substrate under
+		// cwd's own session name.
+		if sessionAlive(tmuxPath, socket, ownSession) {
+			t.Errorf("%v in %s deposited a session %q on socket %s despite refusing; want the refusal to leave no residue", verb, cwd, ownSession, socket)
 		}
 	}
 }

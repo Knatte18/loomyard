@@ -204,9 +204,10 @@
 //     (pane_dead=1, exit 0) and the session survives — verified, not
 //     unverified, by internal/reedcli/smoke_lifecycle_test.go's
 //     TestSmokeRemoveLastStrandThenAddRunsTheNewCommand (remove of the sole
-//     strand returns 0, then a subsequent add — which calls
-//     requireSessionLocked and never re-boots — yields a live second
-//     strand, which can only hold if the session survived). has-session and
+//     strand returns 0, then a subsequent add finds the session already up
+//     through ensureSessionLocked's own liveness probe and boots nothing —
+//     which can only hold if the session survived the prior remove — and
+//     yields a live second strand). has-session and
 //     list-panes exit 1 for "no server running" (the same exit-1 the
 //     reproduction showed from listPanes), which hasSession (overlay.go)
 //     maps to (false, nil) — in CONTRAST to the next bullet's list-sessions

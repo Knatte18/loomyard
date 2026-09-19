@@ -98,9 +98,14 @@ Example:
 			}
 
 			// Standalone mode boots its own reed session here, idempotently, because nothing else
-			// can: `lyx reed up` is hub-only, and pre-fix the spawn died on "no reed session" with
-			// an impossible recourse (found live in crucible round fable5-high-r3, F-A1). Nil in
-			// hub mode, where the session is the operator's or loom's own to manage.
+			// can: `lyx reed up` is hub-only. AddStrand now self-heals a cold worktree on its own,
+			// so this call is no longer the only thing standing between a standalone spawn and a
+			// dead end (pre-fix the spawn died on "no reed session" with an impossible recourse,
+			// found live in crucible round fable5-high-r3, F-A1) — it stays as a deliberate early,
+			// explicit boot, chosen so a boot failure surfaces here with its own
+			// envelope-reportable error and so the boot happens at a controlled point rather than
+			// wherever AddStrand is first called. Nil in hub mode, where the session is the
+			// operator's or loom's own to manage.
 			if c.reedUp != nil {
 				if err := c.reedUp(cmd.Context(), true); err != nil {
 					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: bring up the standalone reed session: %v", err)))

@@ -12,8 +12,6 @@ This section holds what's committed to next.
 1. **reed: replace the header pane with a native tmux status-line, a permanent "Selvage" terminal pane, and a detached per-hub watchdog process** — the header pane conflates three unrelated jobs (content, session keepalive, watchdog hosting); split each onto its own purpose-built mechanism.
    See [designs/reed-header-selvage.md](designs/reed-header-selvage.md).
 
-1. **reed: `AddStrand` and `attach` self-heal a cold worktree instead of requiring `up` first** — both verbs only check `requireSessionLocked` today and fail with "no session" if nobody has run `reed up` yet; call the same locked helper `Up()` already uses instead in both, so any spawn OR view into a worktree nobody has visited (no VS Code, no manual `up`) just works. Fully internal to `reedengine` — fabric never needs to know reed exists. Distinct from the Next Up `born-as-strand` item: that one is about a pane never becoming a Strand at all; this one is about a session not existing yet.
-
 ## Next Up
 
 What comes right after Planned clears — committed and ordered, unlike Someday below.
@@ -110,6 +108,8 @@ No build order is implied between these items.
 ## Done
 
 Cleared 2026-08-25 to keep this file lean — shipped items' history lives in `git log` and each module's own package documentation, not here.
+
+1. **reed: `AddStrand` and `attach` self-heal a cold worktree instead of requiring `up` first** — both verbs pre-flight through the new `ensureSessionLocked`/`EnsureSession()` seam, which probes session liveness first and only delegates to `upLocked()` when nothing usable is up, so any spawn OR view into a worktree nobody has visited (no VS Code, no manual `up`) just works. `attach` boots via `EnsureSession()` and keeps its existing `Status()` call, in that order, so both the friendly no-session diagnosis and the foreign-session refusal survive unchanged. A warm call against a live session is never routed through `Up()`/`upLocked()`: that path reaches `planReconcile`, which would kill an operator's hand-split pane, and validates config ahead of its already-up early return, which would refuse a healthy `attach` on an unrelated typo. Fully internal to `reedengine` — fabric never needs to know reed exists.
 
 1. **loom CLI: rename `run`/`drive`/`step` for verb/engine symmetry, plus rename `ly-supervise`** — `drive` became `run`, the old `run` became `start`, `step` is unchanged, the root alias became `lyx start`, and `ly-supervise` became `ly-drive`.
 

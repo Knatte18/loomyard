@@ -8,8 +8,8 @@
 // this file's only remaining pre-flight addition is reading the operator's own terminal size via
 // golang.org/x/term and handing it to the engine's builder. That size read and the builder call are
 // both pre-flight steps that nonetheless never write to the envelope — each degrades to today's bare
-// argv and logs a warning instead, so c.eng.Status() remains the only pre-flight step that can abort
-// with an envelope error.
+// argv and logs a warning instead, so c.eng.EnsureSession() and c.eng.Status() remain the only two
+// pre-flight steps that can abort with an envelope error.
 
 package reedcli
 
@@ -31,10 +31,12 @@ func (c *reedCLI) attachCmd() *cobra.Command {
 		Use:   "attach",
 		Short: "attach the operator's terminal to the reed session in place",
 		Long: `attach hands the operator's own stdio over to a tmux attach-session
-child, in place — no new window is spawned (never wt.exe). Every fallible
-step (checking that the server/session is up) runs pre-flight and reports
-through the normal JSON envelope; once the terminal handover begins, stdio
-belongs to tmux and nothing further is written to it, even on success.
+child, in place — no new window is spawned (never wt.exe). attach boots
+this worktree's session when none is up, rather than refusing. Every
+fallible step (booting the session if it is cold, then checking that the
+server/session is up) runs pre-flight and reports through the normal JSON
+envelope; once the terminal handover begins, stdio belongs to tmux and
+nothing further is written to it, even on success.
 The handover also asks tmux to apply a layout computed for this terminal's
 own size, chained onto the attach; when no terminal size is readable (a
 piped stdout, no controlling terminal), the attach proceeds exactly as
@@ -48,7 +50,26 @@ Example:
 			}
 			out := cmd.OutOrStdout()
 
-			// Pre-flight: surface the friendly no-session error (see
+			// Pre-flight, in a load-bearing order: EnsureSession first, Status
+			// second. EnsureSession self-heals a cold worktree by booting the
+			// session; Status calls requireSessionLocked, which refuses when no
+			// session is up, so running Status first would refuse on a cold
+			// worktree before anything booted, reinstating the exact bug this
+			// task removes. Status is kept rather than replaced because it also
+			// reaches loadOrInitStateLocked, which is what makes a warm attach
+			// refuse on an unreadable .lyx/reed.json and on a live foreign
+			// session — refusals EnsureSession's early return cannot produce,
+			// since it reads no state at all.
+			booted, err := c.eng.EnsureSession()
+			if err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				return nil
+			}
+			if booted {
+				logger.Info("reedcli: attach booted a cold worktree's session", "socket", c.eng.Socket(), "session", c.eng.SessionName())
+			}
+
+			// Surface the friendly no-session error (see
 			// reedengine.requireSessionLocked/noSessionMessage), or any other
 			// Status failure, on the envelope before ever touching stdio, since
 			// after the handover below no JSON can reach the caller.

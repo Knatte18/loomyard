@@ -26,8 +26,8 @@ Before starting a session:
    and a logged-in `claude` on PATH.
    If any of these is unavailable in the session, **note that as the session outcome rather than treating it as a webster defect** -- the `**Covers:** webster` tag on W1 satisfies the sandbox coverage guard (`sandbox_coverage_test.go`) regardless of runtime availability.
 4. **Wired worktree required.** `lyx webster` requires a worktree wired by `lyx fabric clone`/`lyx fabric add` -- which materializes `_lyx/config/webster.yaml`, `batcher.yaml`, plus `shuttle.yaml`/`reed.yaml` since webster branches off shuttle directly -- exactly like `lyx shuttle`/`lyx burler` do.
-5. **`lyx reed up` before any spawn.** `webster run` spawns the Master session through shuttle into an existing reed session and does not boot one itself;
-   without it the spawn fails loud with `no reed session; run "lyx reed up"`.
+5. **`lyx reed up` is no longer required before a spawn, but still an option.** `webster run` spawns the Master session through shuttle, which reaches `AddStrand`, which self-heals a cold worktree by booting the session with `up`'s own semantics before adding the strand -- a bare reed session is no longer a precondition for the spawn to succeed.
+   An operator may still run `lyx reed up` explicitly first, e.g. to watch the session come up in a separate pane before `webster run` starts.
 6. **Attached interactive terminal.**
    Launch `sandbox/webster-suite.cmd` from a real, attached console -- never redirected, backgrounded, or detached.
    Without a TTY the driving claude session cannot idle between turns waiting for notifications, so the process ends as soon as a turn ends and the remaining scenarios are silently abandoned.

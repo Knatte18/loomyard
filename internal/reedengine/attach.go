@@ -4,6 +4,10 @@
 // behind a single withOpLock acquisition, and degrades to today's bare attach-session argv on every
 // failure. The builder never refuses: attach is the operator's escape hatch into a session, including
 // a broken one, so no engine-side failure here may ever block the handover.
+// internal/reedcli's attach pre-flight now boots the session (EnsureSession) before this builder ever
+// runs, so AttachArgv's own requireSessionLocked call below ordinarily finds a session already up —
+// but this builder does no booting of its own: it returns no error by contract, and it stays read-only
+// with respect to .lyx/reed.json.
 
 package reedengine
 

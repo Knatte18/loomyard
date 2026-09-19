@@ -466,8 +466,12 @@ func TestValidateIfAbsent(t *testing.T) {
 // addIfAbsentHook builds an execHook answering the tmux round trips AddStrand's --if-absent path
 // makes before it ever reaches a no-op return: has-session (the session is up), display-message (a
 // stable pane generation, so loadOrInitStateLocked's adoptPaneGenerationLocked stamp check never
-// clears the fixture's bindings), and list-panes (paneLines, the alive-pane snapshot classifyIfAbsent
-// decides against).
+// clears the fixture's bindings), and list-panes (paneLines, both the substrate snapshot
+// ensureSessionLocked's sessionSubstrateLocked reads to decide the session is already usable and the
+// alive-pane snapshot classifyIfAbsent decides against — the same list-panes call answers both, since
+// both run against the identical fixture session). paneLines must therefore carry at least one pane
+// line whenever a case wants AddStrand to see the session as already usable and skip the boot path,
+// even when that pane is not any strand's own PaneID.
 func addIfAbsentHook(paneLines string) func(capture bool, args ...string) (string, error) {
 	return func(capture bool, args ...string) (string, error) {
 		switch args[0] {
@@ -525,7 +529,10 @@ func TestAddStrand_IfAbsent_MatchedAliveNoOps(t *testing.T) {
 // strand is the hidden one, carrying a non-empty GUID and Name.
 func TestAddStrand_IfAbsent_HiddenOnlyNoOps(t *testing.T) {
 	e := newTestEngine(t)
-	e.tmux.execHook = addIfAbsentHook("")
+	// A header-only pane line (no strand's own PaneID) so ensureSessionLocked's substrate probe finds
+	// the session already usable and never boots: the hidden-only decision must not depend on any
+	// pane being alive, since it is chosen regardless of aliveness.
+	e.tmux.execHook = addIfAbsentHook("%0 0 0 100 20 4321\n")
 
 	persisted := Strand{
 		GUID: "hidden-guid", Name: "claude",
@@ -562,6 +569,56 @@ func TestAddStrand_IfAbsent_HiddenOnlyNoOps(t *testing.T) {
 		t.Errorf("persisted state after hidden no-op = %+v, want unchanged single strand %+v", loaded.Strands, persisted)
 	}
 }
+
+// TestAddStrand_IfAbsentWithoutName_FailsBeforeAnyTmuxContact pins that validateIfAbsent's config
+// rejection still precedes any tmux contact at all, now that AddStrand's pre-flight is
+// ensureSessionLocked rather than requireSessionLocked: a --if-absent call with no name override must
+// fail with validateIfAbsent's own error, not the nonexistent multiplexer binary's.
+func TestAddStrand_IfAbsentWithoutName_FailsBeforeAnyTmuxContact(t *testing.T) {
+	e := newTestEngine(t)
+
+	_, err := e.AddStrand(AddSpec{IfAbsent: true, Display: render.Display{Anchor: render.AnchorHidden}})
+	if err == nil {
+		t.Fatal("AddStrand(--if-absent, no name) = nil error, want validateIfAbsent's rejection")
+	}
+	if !strings.Contains(err.Error(), "--name") {
+		t.Errorf("AddStrand(--if-absent, no name) error = %q, want it to name the --name requirement (validateIfAbsent must run before any tmux contact)", err)
+	}
+}
+
+// TestAddStrand_ColdEngine_NoLongerReturnsNoSessionMessage pins the self-heal behaviour change at the
+// engine-call level: AddStrand against a cold engine (no live session, nothing booted) no longer
+// refuses with noSessionMessage's friendly text. The returned error IS still non-nil — the fixture's
+// configured tmux/shell binaries do not exist on disk, so ensureSessionLocked's own
+// sessionSubstrateLocked probe fails with that nonexistent binary's exec error, reached before
+// anything else runs. Asserting that binary error's exact text would pin an OS-specific string, so
+// this only asserts what the self-heal change actually promises: neither the no-session phrase nor the
+// `lyx reed up` remedy noSessionMessage names appears in the error AddStrand now returns.
+func TestAddStrand_ColdEngine_NoLongerReturnsNoSessionMessage(t *testing.T) {
+	e := newTestEngine(t)
+
+	_, err := e.AddStrand(AddSpec{NameOverride: "claude", Display: render.Display{Anchor: render.AnchorHidden}})
+	if err == nil {
+		t.Fatal("AddStrand against a cold engine = nil error, want the nonexistent tmux binary's error")
+	}
+	if strings.Contains(err.Error(), "no reed session") {
+		t.Errorf("AddStrand against a cold engine error = %q, want it to no longer carry noSessionMessage's no-session phrase", err)
+	}
+	if strings.Contains(err.Error(), "lyx reed up") {
+		t.Errorf("AddStrand against a cold engine error = %q, want it to no longer name the `lyx reed up` remedy", err)
+	}
+}
+
+// Deliberately NOT tested hermetically: a validation-ordering test shaped like
+// TestUp_BadHeaderTemplateFailsBeforeAnyTmuxContact, pinning that a config error (e.g. a bad header
+// template) fails AddStrand before any tmux contact. ensureSessionLocked's first act is
+// sessionSubstrateLocked's own session probe, so — unlike Up, whose pre-tmux validation block runs
+// ahead of any session check — AddStrand's cold path always contacts tmux first, and the config
+// validation buried inside upLocked's delegate only runs, if at all, after that probe. That ordering
+// is the point of the seam (a warm AddStrand must cost only the one extra probe round trip, never a
+// config validation it did not already perform — Shared Decision "the warm path changes only by
+// adding probe round trips"), not an ordering defect to fix. Cold-path validation ordering for
+// AddStrand is covered by the smoke tier instead (batch 5).
 
 func TestResolveStrandName(t *testing.T) {
 	const tpl = "<ROLE>:<ROUND>:<SHORT_GUID>"

@@ -225,8 +225,9 @@ func (e *Engine) loadOrInitStateLocked() (*ReedState, error) {
 	// Discard bindings minted against a session incarnation that is no longer the one running, and
 	// refuse outright when the session they were minted against is still alive on this socket under
 	// another name. Every call site reaches here with the told session already up — Up/Resume via
-	// ensureServerAndSessionLocked, every other op via requireSessionLocked — so the generation
-	// probe always has a session to ask about. See generation.go.
+	// ensureServerAndSessionLocked, AddStrand via ensureSessionLocked's own self-heal, every other
+	// op via requireSessionLocked — so the generation probe always has a session to ask about. See
+	// generation.go.
 	if err := e.adoptPaneGenerationLocked(st); err != nil {
 		return nil, err
 	}
