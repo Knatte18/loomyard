@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: self-resolved-verify-logic
+phase: approved-engine-wiring
 slug: fabric-remote-branch-delete
 branch: fabric-remote-branch-delete
 plan: _mill/plan
@@ -30,6 +30,7 @@ implementing  '2026-09-19T05:18:17Z'
 approved-gitrepo-remote-delete-primitive  '2026-09-19T05:24:19Z'
 approved-fabricengine-remote-executor  '2026-09-19T05:39:58Z'
 self-resolved-verify-logic  '2026-09-19T05:56:01Z'
+approved-engine-wiring  '2026-09-19T05:59:09Z'
 ```
 
 ## Batches
@@ -49,9 +50,10 @@ batches:
     commit_sha: 0806a56d3fa88cfcdfae2af45c091870abb689eb
     verify_baseline_failures: []
   - name: engine-wiring
-    state: running
+    state: approved
     implementer_session: 20ff53e9-f36f-4a03-93fb-2ffcb18f5df5
     start_sha: 1ca17131d66ad74e96680b18d0ca2be1c602e357
+    commit_sha: 0936c28baf842cc0a6c679db0b609711842ca793
     verify_baseline_failures: []
     self_resolve_remint_at: '2026-09-19T05:56:01Z'
   - name: cli-surface-and-docs
