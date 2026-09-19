@@ -1,0 +1,27 @@
+MILL_REVIEW_BEGIN
+# Review: Rename loom CLI run/drive/step for verb/engine symmetry, plus rename ly-supervise — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: sonnethigh
+reviewed_file: plan/ + source
+date: 2026-09-19
+```
+
+## Findings
+
+### [BLOCKING:scope] Stale `drive.go` filename citation in landingshed, a file the plan deliberately excluded
+**Location:** `internal/landingshed/deps.go:77`
+**Issue:** The comment reads "internal/loomcli/drive.go fills both closures via fabricengine.Open and fabricengine.OpenParent" — `drive.go` no longer exists (batch 1 moved it to `run.go`). The plan's `00-overview.md`/`03-go-comment-sweep.md` name this exact file as a "known noun site" (`internal/landingshed/deps.go:88`, "run" meaning an execution) and place it outside every batch's `Edits:` list on that basis, but the file-level audit that produced that classification missed this second, distinct hit at line 77 in the same file.
+**Fix:** Add `internal/landingshed/deps.go` to a batch's `Edits:` (or a follow-up card) and retarget the citation to `run.go`, leaving line 88's noun usage untouched.
+
+### [BLOCKING:scope] Stale `TestSmokeDriveStandalone_...` test-name citation in shuttleengine, a package never in scope
+**Location:** `internal/shuttleengine/wait_test.go:958-960`
+**Issue:** The comment cites `TestSmokeDriveStandalone_AdvancesMachineFromExistingSeed` by name as "the pre-existing smoke test this gap escaped." Card 6 renamed that exact test to `TestSmokeRunStandalone_AdvancesMachineFromExistingSeed` in `internal/loomcli/smoke_test.go`, but `internal/shuttleengine` was never in any batch's file list, so this cross-package citation to the old identifier was never swept and now names a test function that does not exist.
+**Fix:** Update the comment to cite `TestSmokeRunStandalone_AdvancesMachineFromExistingSeed`.
+
+## Verdict
+
+REQUEST_CHANGES
+Two stale pre-rename citations survive outside the plan's audited file set — one wrong filename, one wrong test name.
+MILL_REVIEW_END
