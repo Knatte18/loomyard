@@ -52,13 +52,14 @@ func (c *loomCLI) startCmd() *cobra.Command {
   3. spawn the detached loom driver, unless one is already alive -- a second
      invocation while a driver is running ensures substrate and attaches
      rather than spawning a second one
-  4. hand the terminal to the tmux session
+  4. add the operator's own strand and then hand the terminal to the tmux session
 
 The detached driver's own stdout/stderr go to the log the ephemeral-tree
 driver-log accessor names, never to this command's own output.
 
 --no-attach performs steps 1 through 3 and the handshake that confirms the
-driver took the run lock, then returns instead of running step 4.
+driver took the run lock, then returns instead of running step 4 -- skipping
+the terminal handover this way skips the operator's own strand with it.
 
 Example:
   lyx loom start
@@ -235,6 +236,22 @@ Example:
 			}
 
 			if _, err := c.reed.Status(); err != nil {
+				clihelp.SetExit(ctx, output.Err(out, err.Error()))
+				return nil
+			}
+
+			// Add the operator's own strand before the attach below. The position is load-bearing
+			// in three ways. First, it is after the bootstrap lock's release, which is already
+			// documented above as deliberate. Second, it is inside this mustAttach gate: an
+			// invocation that hands no terminal over has no operator to give a pane to, and a
+			// tracked idle shell in every CI worktree is debris the watchdog would then keep
+			// alive. Third, it is before the term.GetSize call and the AttachArgv it feeds below,
+			// because that argv chains a select-layout computed for the current pane count, so
+			// adding the strand afterwards would compute a layout for a pane count about to
+			// change. A failed add is an ordinary pre-flight error and must not be swallowed into
+			// the handover -- doing so would widen the CLI/Cobra Invariant's deliberately narrow
+			// interactive-handoff exception.
+			if _, err := c.reed.AddStrand(operatorStrandAddSpec()); err != nil {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}

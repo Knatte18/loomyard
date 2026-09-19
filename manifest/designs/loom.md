@@ -520,7 +520,19 @@ lyx loom start:
                                                            alive after the whole attempt budget that never
                                                            took the lock AND left the machine in `running`
                                                            is a wedged spawn and refuses)
-  4. attach the current terminal to the tmux session     (reed takes the foreground)
+  4. add the operator's own strand, then attach the       (reed.AddStrand "loom-operator", display:
+     current terminal to the tmux session                 below-parent, if-absent:true, focus:false,
+                                                           shrinkWhenWaitingOnChild:false — unlike the
+                                                           status strand above, whose full height is
+                                                           conditional on having no live child, the
+                                                           operator strand takes a full share
+                                                           unconditionally for the rest of the run. The
+                                                           stronger property is accepted for the same
+                                                           reason the childless-full-height-is-acceptable
+                                                           Decision above accepts the weaker one: the
+                                                           pane an operator types in has the strongest
+                                                           claim of any pane to real height. reed takes
+                                                           the foreground.)
 ```
 
 So **loom goes to the background and the tmux session takes the window.** loom needs no terminal — it coordinates through files and drives strands via reed — so the screen is free for the reed view (the status line on top, agents below as they spawn). loom and the view are independent: loom writes the `_lyx/` status file;
