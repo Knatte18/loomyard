@@ -64,7 +64,9 @@ batches:
     commit_sha: 2ad28f00d679a9da936f3eb535e688866e746523
     verify_baseline_failures: ["FAIL\t./internal/lifecyclerecipe/... [setup failed]"]
   - name: lifecyclecli module
-    state: pending
+    state: running
+    implementer_session: e1ec6b9a-d76e-48bc-add3-1cf51d0a847f
+    start_sha: ccb73cc0266c6b84c085dc96a1765adc60e73664
     verify_baseline_failures: ["FAIL\t./internal/lifecyclecli/... [setup failed]"]
   - name: registration and docs
     state: pending
