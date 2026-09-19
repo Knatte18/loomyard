@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: reed-selvage-pane-extraction
 branch: reed-selvage-pane-extraction
 plan: _mill/plan
@@ -31,6 +31,7 @@ implementing  '2026-09-19T10:10:18Z'
 approved-selvagepane-extraction  '2026-09-19T10:25:58Z'
 approved-docs-and-full-verification  '2026-09-19T10:38:10Z'
 holistic-reviewing  '2026-09-19T10:38:44Z'
+holistic-fixing  '2026-09-19T10:42:48Z'
 ```
 
 ## Batches
