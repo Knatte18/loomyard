@@ -6,8 +6,6 @@ package lifecyclecli
 import (
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/lifecyclerecipe"
@@ -62,17 +60,29 @@ Example:
 					clihelp.SetExit(ctx, output.Err(out, fmt.Sprintf("lifecyclecli: unrecognized status state %q", st.State)))
 					return nil
 				}
+			} else {
+				// An absent status file is a fresh start: shedengine.Shed.Run refuses to walk from a
+				// status file that does not exist yet (it never seeds one itself), so this verb seeds
+				// it here, at the entry row, before the Shed ever reads it. The mutate closure is
+				// idempotent against a concurrently-seeded file: it leaves an already-present status
+				// untouched rather than overwriting it.
+				if err := state.UpdateJSON(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, func(cur shedengine.Status, found bool) (shedengine.Status, error) {
+					if found {
+						return cur, nil
+					}
+					return shedengine.Status{
+						CurrentProducer: lifecyclerecipe.NameWorktreeCreate,
+						State:           shedengine.StateRunning,
+						History:         []shedengine.HistoryEntry{},
+					}, nil
+				}); err != nil {
+					clihelp.SetExit(ctx, output.Err(out, err.Error()))
+					return nil
+				}
 			}
-			// An absent status file (found == false) is a fresh start; nothing further to check
-			// before building the Shed.
 
 			shed, err := lifecyclerecipe.New(c.env, c.shedPaths)
 			if err != nil {
-				clihelp.SetExit(ctx, output.Err(out, err.Error()))
-				return nil
-			}
-
-			if err := os.MkdirAll(filepath.Dir(c.shedPaths.StatusPath), 0o755); err != nil {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
