@@ -7,6 +7,7 @@ package loomrecipe
 
 import (
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 
@@ -174,6 +175,35 @@ func TestRecipe_SeedAndResumeRowNamesExist(t *testing.T) {
 		}
 		if !found {
 			t.Errorf("recipe row names %v do not contain %q", haveNames, want)
+		}
+	}
+}
+
+// TestRecipeEngines_ReportsExactlyLoomsOwnEngineSet asserts RecipeEngines() reports exactly loom's
+// own recipe's engine set, sorted and de-duplicated -- derived from wantProducerTable's own engine
+// column rather than a second hand-written literal, for the same reason its lifecyclerecipe twin
+// gets this test: a silently empty return would disable the cross-consumer coverage guard rather
+// than fail it.
+func TestRecipeEngines_ReportsExactlyLoomsOwnEngineSet(t *testing.T) {
+	seen := make(map[string]bool, len(loomRowEngines))
+	var want []string
+	for _, engine := range loomRowEngines {
+		if seen[engine] {
+			continue
+		}
+		seen[engine] = true
+		want = append(want, engine)
+	}
+	sort.Strings(want)
+
+	got := RecipeEngines()
+
+	if len(got) != len(want) {
+		t.Fatalf("RecipeEngines() = %v, want %v", got, want)
+	}
+	for i, w := range want {
+		if got[i] != w {
+			t.Errorf("RecipeEngines()[%d] = %q; want %q", i, got[i], w)
 		}
 	}
 }
