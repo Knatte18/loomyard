@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: reed-selvage-pane-extraction
 branch: reed-selvage-pane-extraction
 plan: _mill/plan
@@ -35,6 +35,7 @@ holistic-fixing  '2026-09-19T10:42:48Z'
 holistic-reviewing  '2026-09-19T10:45:45Z'
 holistic-approved  '2026-09-19T10:48:34Z'
 done  '2026-09-19T10:50:13Z'
+pr-pending  '2026-09-19T10:51:46Z'
 ```
 
 ## Batches
