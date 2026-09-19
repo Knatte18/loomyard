@@ -449,9 +449,22 @@ func effectiveMaxBounces(def ProducerDef, shedMax int) int {
 // has already happened and is durable -- that ordering is load-bearing. The accepted cost is a
 // millisecond-scale read-then-commit window in which a reader can see the new state on disk
 // before git carries it, which is strictly better than today, where that gap lasts the whole run
-// rather than milliseconds. The closure is called on every persist invocation, never
-// conditionally on nextCurrentProducer having changed: state, history, and error can all change
-// without it, and the pause and resume writes happen outside any producer call.
+// rather than milliseconds.
+//
+// This engine itself calls CommitStatus unconditionally on every persist invocation, never
+// skipping it because nextCurrentProducer stayed the same as the producer that just ran: state,
+// history, and error can all change without current_producer changing, and the pause and resume
+// writes happen outside any producer call. What is caller-side, and therefore outside this
+// package's own guarantee, is what a filled CommitStatus closure itself chooses to do with a
+// call it receives -- and a caller's own closure may skip its own commit work for some calls. The
+// batten seam (internal/battenrecipe, wired one layer out from this package) does exactly that:
+// it skips its own commit, keyed on the (producer, state) pair alone, and is therefore
+// deliberately blind to a call whose history or error changed while producer and state did not.
+// That blindness is safe there because the only transition it ever skips is Run-Shed's own
+// still-running self-bounce (internal/battenrecipe.NameRunShed's on_stuck route back to itself):
+// error is empty by construction on that transition, since it is a Stuck verdict rather than a
+// hard error, and the accumulated history is committed whole by the next transition that does
+// change producer or state.
 func (s *Shed) persist(nextCurrentProducer string, nextState State, nextError string, nextHistory []HistoryEntry, consumePause bool) error {
 	err := state.UpdateJSON(s.StatusPath, s.StatusLockPath, func(cur Status, found bool) (Status, error) {
 		if !found {
