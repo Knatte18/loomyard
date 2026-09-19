@@ -1,6 +1,6 @@
-// innerrun_test.go covers NewInnerRun's full verdict table over a fake ReadStatus, a fake Now, and
-// a fake Sleep that never sleeps -- so the attempt-cap test proves the bound is attempt-counted,
-// not wall-clock-timed, in unmeasurable real time.
+// innerrun_test.go covers NewInnerRun's full re-entrant disposition table over a fake ReadStatus, a
+// fake Now, and a fake Sleep that never sleeps -- so the still-running case is provably a single
+// Stuck with a single sleep, never a bounded poll loop, in unmeasurable real time.
 
 package battenshed
 
@@ -14,9 +14,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// fakeClock is a Now/Sleep pair a test can hold still: Now always returns the same instant
-// (advanced only when the test wants to prove elapsed-time reporting), and Sleep records calls
-// without ever blocking.
+// fakeClock is a Now/Sleep pair a test can hold still: Now always returns the same instant, and
+// Sleep records calls without ever blocking.
 type fakeClock struct {
 	now        time.Time
 	sleepCalls int
@@ -27,6 +26,9 @@ func (c *fakeClock) Sleep(d time.Duration) {
 	c.sleepCalls++
 }
 
+// newInnerRunDeps builds an InnerRunDeps whose ReadStatus returns the next entry of statuses on
+// each call, holding on the last entry once exhausted, and whose Spawn returns spawnErr and
+// records how many times it was called.
 func newInnerRunDeps(spawnErr error, resolveErr error, statuses []statusResult, clock *fakeClock) (*int, *int, InnerRunDeps) {
 	readCalls := 0
 	spawnCalls := 0
@@ -73,40 +75,42 @@ func TestInnerRun_VerdictTable(t *testing.T) {
 		wantReason string
 	}{
 		{
-			name:     "StateDone",
+			name:     "AlreadyDone",
 			statuses: []statusResult{{status: shedengine.Status{State: shedengine.StateDone}, found: true}},
 			wantDone: true,
 		},
 		{
-			name:       "StateBlocked",
+			name:      "StillRunningIsStuck",
+			statuses:  []statusResult{{status: shedengine.Status{State: shedengine.StateRunning}, found: true}},
+			wantStuck: true,
+		},
+		{
+			name:      "AbsentStatusSpawnsThenRunningIsStuck",
+			statuses:  []statusResult{{found: false}, {status: shedengine.Status{State: shedengine.StateRunning}, found: true}},
+			wantStuck: true,
+		},
+		{
+			name:       "Blocked",
 			statuses:   []statusResult{{status: shedengine.Status{State: shedengine.StateBlocked, Error: "boom", CurrentProducer: "p1"}, found: true}},
-			wantStuck:  true,
+			wantErr:    true,
 			wantReason: "blocked",
 		},
 		{
-			name:       "StatePaused",
+			name:       "Paused",
 			statuses:   []statusResult{{status: shedengine.Status{State: shedengine.StatePaused, Error: "paused-err", CurrentProducer: "p2"}, found: true}},
-			wantStuck:  true,
+			wantErr:    true,
 			wantReason: "paused",
 		},
 		{
-			name:       "StateFailed",
+			name:       "Failed",
 			statuses:   []statusResult{{status: shedengine.Status{State: shedengine.StateFailed, Error: "failed-err", CurrentProducer: "p3"}, found: true}},
-			wantStuck:  true,
+			wantErr:    true,
 			wantReason: "failed",
 		},
 		{
-			name: "StateRunningThenDone",
-			statuses: []statusResult{
-				{status: shedengine.Status{State: shedengine.StateRunning}, found: true},
-				{status: shedengine.Status{State: shedengine.StateDone}, found: true},
-			},
-			wantDone: true,
-		},
-		{
-			name:      "AbsentStatusAfterSuccessfulSpawn",
-			statuses:  []statusResult{{found: false}},
-			wantStuck: true,
+			name:     "AbsentStatusStillAbsentAfterSpawnIsError",
+			statuses: []statusResult{{found: false}, {found: false}},
+			wantErr:  true,
 		},
 		{
 			name:     "ReadErrorIsReturnedError",
@@ -126,12 +130,15 @@ func TestInnerRun_VerdictTable(t *testing.T) {
 			clock := &fakeClock{now: time.Unix(0, 0)}
 			_, _, deps := newInnerRunDeps(nil, nil, tt.statuses, clock)
 
-			producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, 5, scratchDir)
+			producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir)
 			outcome, _, err := producer.Call(context.Background())
 
 			if tt.wantErr {
 				if err == nil {
 					t.Fatalf("Call() error = nil; want non-nil")
+				}
+				if tt.wantReason != "" && !strings.Contains(err.Error(), tt.wantReason) {
+					t.Errorf("Call() error = %q; want substring %q", err.Error(), tt.wantReason)
 				}
 				return
 			}
@@ -144,29 +151,56 @@ func TestInnerRun_VerdictTable(t *testing.T) {
 			if tt.wantStuck && outcome != shedengine.Stuck {
 				t.Errorf("Call() outcome = %v; want Stuck", outcome)
 			}
-			if tt.wantReason != "" {
-				reason := readStuckFile(t, scratchDir, "innerrun")
-				if !strings.Contains(reason, tt.wantReason) {
-					t.Errorf("stuck-reason file = %q; want substring %q", reason, tt.wantReason)
-				}
+		})
+	}
+}
+
+// TestInnerRun_StuckIsReturnedForRunningAndNoOtherCase is the load-bearing assertion the static
+// self-route depends on: every non-running verdict this producer can reach -- Done, or any of the
+// three hard-error states -- must never itself be Stuck, since ProducerDef.OnStuck is a static
+// per-producer value and once non-empty routes every Stuck from this row back to itself with no
+// per-verdict distinction possible.
+func TestInnerRun_StuckIsReturnedForRunningAndNoOtherCase(t *testing.T) {
+	tests := []struct {
+		name   string
+		status shedengine.Status
+	}{
+		{"Done", shedengine.Status{State: shedengine.StateDone}},
+		{"Blocked", shedengine.Status{State: shedengine.StateBlocked}},
+		{"Paused", shedengine.Status{State: shedengine.StatePaused}},
+		{"Failed", shedengine.Status{State: shedengine.StateFailed}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			scratchDir := t.TempDir()
+			clock := &fakeClock{now: time.Unix(0, 0)}
+			_, _, deps := newInnerRunDeps(nil, nil, []statusResult{{status: tt.status, found: true}}, clock)
+
+			producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir)
+			outcome, _, _ := producer.Call(context.Background())
+			if outcome == shedengine.Stuck {
+				t.Errorf("Call() outcome = Stuck for status %q; want Stuck reserved for the still-running case alone", tt.status.State)
 			}
 		})
 	}
 }
 
-func TestInnerRun_SpawnFailureIsStuck(t *testing.T) {
+func TestInnerRun_SpawnFailureIsReturnedError(t *testing.T) {
 	scratchDir := t.TempDir()
 	clock := &fakeClock{now: time.Unix(0, 0)}
 	spawnErr := errors.New("spawn failed")
-	_, spawnCalls, deps := newInnerRunDeps(spawnErr, nil, nil, clock)
+	_, spawnCalls, deps := newInnerRunDeps(spawnErr, nil, []statusResult{{found: false}}, clock)
 
-	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, 5, scratchDir)
+	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir)
 	outcome, _, err := producer.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
+	if err == nil {
+		t.Fatal("Call() error = nil; want a returned error")
 	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %v; want Stuck", outcome)
+	if !errors.Is(err, spawnErr) {
+		t.Errorf("Call() error = %v; want it to wrap %v", err, spawnErr)
+	}
+	if outcome == shedengine.Stuck {
+		t.Error("Call() outcome = Stuck; want a spawn failure to hard-error, not Stuck")
 	}
 	if *spawnCalls != 1 {
 		t.Errorf("spawn calls = %d; want 1", *spawnCalls)
@@ -179,7 +213,7 @@ func TestInnerRun_ResolveStatusFailureIsReturnedError(t *testing.T) {
 	resolveErr := errors.New("resolve failed")
 	_, _, deps := newInnerRunDeps(nil, resolveErr, nil, clock)
 
-	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, 5, scratchDir)
+	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir)
 	_, _, err := producer.Call(context.Background())
 	if err == nil {
 		t.Fatal("Call() error = nil; want a returned error")
@@ -197,7 +231,7 @@ func TestInnerRun_CancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, 5, scratchDir)
+	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir)
 	outcome, _, err := producer.Call(ctx)
 	if err == nil {
 		t.Fatal("Call() error = nil; want a non-nil error for a cancelled context")
@@ -207,46 +241,37 @@ func TestInnerRun_CancelledContext(t *testing.T) {
 	}
 }
 
-// TestInnerRun_StateFailedConsumesZeroPollAttempts asserts StateFailed resolves on its first read,
-// calling ReadStatus exactly once and never calling Sleep, proving it does not loop through the
-// remaining poll budget the way StateRunning does.
-func TestInnerRun_StateFailedConsumesZeroPollAttempts(t *testing.T) {
+// TestInnerRun_ReentryAgainstExistingStatusDoesNotRespawn is the second load-bearing assertion:
+// once a status file exists, a re-entered Call -- the shape shedengine's on_stuck self-route
+// produces -- must read it without spawning again, which is what makes re-entry safe against a
+// double spawn.
+func TestInnerRun_ReentryAgainstExistingStatusDoesNotRespawn(t *testing.T) {
 	scratchDir := t.TempDir()
 	clock := &fakeClock{now: time.Unix(0, 0)}
-	readCalls, _, deps := newInnerRunDeps(nil, nil, []statusResult{
-		{status: shedengine.Status{State: shedengine.StateFailed, Error: "boom"}, found: true},
-	}, clock)
+	_, spawnCalls, deps := newInnerRunDeps(nil, nil, []statusResult{{status: shedengine.Status{State: shedengine.StateRunning}, found: true}}, clock)
 
-	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, 5, scratchDir)
+	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir)
 	outcome, _, err := producer.Call(context.Background())
 	if err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
 	}
 	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %v; want Stuck", outcome)
+		t.Fatalf("Call() outcome = %v; want Stuck", outcome)
 	}
-	if *readCalls != 1 {
-		t.Errorf("ReadStatus calls = %d; want exactly 1", *readCalls)
-	}
-	if clock.sleepCalls != 0 {
-		t.Errorf("Sleep calls = %d; want 0", clock.sleepCalls)
+	if *spawnCalls != 0 {
+		t.Errorf("spawn calls = %d; want 0 against an existing status file", *spawnCalls)
 	}
 }
 
-// TestInnerRun_AttemptCapFiresOnCountNotWallClock proves the poll bound is attempt-counted: with
-// the fake clock held still (Now never advances) and Sleep never actually sleeping, exhausting
-// pollAttempts while the state stays StateRunning still produces Stuck, in unmeasurable real time.
-func TestInnerRun_AttemptCapFiresOnCountNotWallClock(t *testing.T) {
+// TestInnerRun_StillRunningSleepsExactlyOnce asserts the still-running arm performs exactly one
+// deps.Sleep call and no more -- the single sleep this producer performs, since the wait across
+// Call invocations is shedengine's own bounce budget, not a loop inside this producer.
+func TestInnerRun_StillRunningSleepsExactlyOnce(t *testing.T) {
 	scratchDir := t.TempDir()
 	clock := &fakeClock{now: time.Unix(0, 0)}
-	const pollAttempts = 4
-	statuses := make([]statusResult, pollAttempts)
-	for i := range statuses {
-		statuses[i] = statusResult{status: shedengine.Status{State: shedengine.StateRunning}, found: true}
-	}
-	readCalls, _, deps := newInnerRunDeps(nil, nil, statuses, clock)
+	_, _, deps := newInnerRunDeps(nil, nil, []statusResult{{status: shedengine.Status{State: shedengine.StateRunning}, found: true}}, clock)
 
-	producer := NewInnerRun("innerrun", "myslug", deps, 5*time.Second, pollAttempts, scratchDir)
+	producer := NewInnerRun("innerrun", "myslug", deps, 5*time.Second, scratchDir)
 
 	start := time.Now()
 	outcome, _, err := producer.Call(context.Background())
@@ -258,18 +283,11 @@ func TestInnerRun_AttemptCapFiresOnCountNotWallClock(t *testing.T) {
 	if outcome != shedengine.Stuck {
 		t.Errorf("Call() outcome = %v; want Stuck", outcome)
 	}
-	if *readCalls != pollAttempts {
-		t.Errorf("ReadStatus calls = %d; want exactly %d", *readCalls, pollAttempts)
-	}
-	if clock.sleepCalls != pollAttempts-1 {
-		t.Errorf("Sleep calls = %d; want %d (sleeps happen only between attempts)", clock.sleepCalls, pollAttempts-1)
+	if clock.sleepCalls != 1 {
+		t.Errorf("Sleep calls = %d; want exactly 1", clock.sleepCalls)
 	}
 	if elapsed >= time.Second {
 		t.Errorf("Call() took %s of real time; want well under 1s, proving the fake Sleep never actually slept", elapsed)
-	}
-	reason := readStuckFile(t, scratchDir, "innerrun")
-	if !strings.Contains(reason, "4") {
-		t.Errorf("stuck-reason file = %q; want it to name the attempt count", reason)
 	}
 }
 
@@ -286,7 +304,7 @@ func TestInnerRun_NilSeamsDefaultToStdlib(t *testing.T) {
 			return shedengine.Status{State: shedengine.StateDone}, true, nil
 		},
 	}
-	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, 1, scratchDir)
+	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir)
 	outcome, _, err := producer.Call(context.Background())
 	if err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)

@@ -34,7 +34,10 @@ type PrimeLock struct {
 // keep the poll loop out of real time.
 type InnerRunDeps struct {
 	// Spawn starts the inner shed run and blocks until it exits. InnerRun waits for its child
-	// rather than detaching, per the Live-Substrate Spawn Observability invariant.
+	// rather than detaching, per the Live-Substrate Spawn Observability invariant. Call invokes
+	// Spawn at most once per invocation, and only when its own read-before-spawn check found no
+	// status file yet -- the child's own status file, not a call count, is what makes a resumed
+	// Call safe against double-spawning.
 	Spawn func(ctx context.Context) error
 	// ResolveStatus resolves the absolute status-file path and its companion lock path for the
 	// task worktree. It is evaluated on Call, never at wiring time: the task worktree this status
@@ -42,7 +45,9 @@ type InnerRunDeps struct {
 	// earlier would resolve a path that is not there yet.
 	ResolveStatus func() (statusPath, statusLockPath string, err error)
 	// ReadStatus reads and decodes the persisted status file under statusLockPath's protection,
-	// reporting found == false when no status file exists yet.
+	// reporting found == false when no status file exists yet. Call reads it before doing
+	// anything else, and again once more after a spawn it triggers -- never in a bounded poll
+	// loop, since the wait across Call invocations is shedengine's own bounce budget.
 	ReadStatus func(statusPath, statusLockPath string) (shedengine.Status, bool, error)
 	// Now returns the current time. A nil Now resolves to time.Now in NewInnerRun, so production
 	// code never sets this field; a test holds the clock still by setting it.
