@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-shedbuild-shedpaths-hoist
 slug: shed-generic-watchdog
 branch: shed-generic-watchdog
 plan: _mill/plan
@@ -38,6 +38,7 @@ plan-review-r6  '2026-09-19T14:38:12Z'
 plan-fix-r6  '2026-09-19T14:40:39Z'
 planned  '2026-09-19T14:40:50Z'
 implementing  '2026-09-19T14:41:25Z'
+approved-shedbuild-shedpaths-hoist  '2026-09-19T14:52:33Z'
 ```
 
 ## Batches
@@ -45,9 +46,10 @@ implementing  '2026-09-19T14:41:25Z'
 ```yaml
 batches:
   - name: shedbuild-shedpaths-hoist
-    state: running
+    state: approved
     implementer_session: 24bedf87-8e12-4274-b38b-6426c6a57413
     start_sha: 448185fb2f8558cf1034a4ebd59af8f6df2d00cf
+    commit_sha: d4d38e8617988c5d0cfa92a77dbec6c040002a71
     verify_baseline_failures: []
   - name: shedverbs-package
     state: pending
