@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: planned
 slug: seeded-shed-core
 branch: seeded-shed-core
 plan: _mill/plan
@@ -20,4 +20,5 @@ discussed  '2026-09-19T17:04:38Z'
 planning  '2026-09-19T17:24:06Z'
 plan-review-r1  '2026-09-19T17:35:14Z'
 plan-fix-r1  '2026-09-19T17:37:26Z'
+planned  '2026-09-19T17:37:37Z'
 ```
