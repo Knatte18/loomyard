@@ -146,6 +146,167 @@ func TestPlanPaneTarget(t *testing.T) {
 	}
 }
 
+// TestNewReapPolicy_ThreeQuestionsAssertedIndependently drives newReapPolicy's three consulting
+// questions independently rather than through a single combined predicate, so a future
+// fold-together fails here. The corpse case is the one that pins the distinction: it is exempt from
+// both kills and authorizes neither reap.
+func TestNewReapPolicy_ThreeQuestionsAssertedIndependently(t *testing.T) {
+	const selvagePane = "%selvage"
+	const otherPane = "%other"
+
+	tests := []struct {
+		name                        string
+		st                          *ReedState
+		live                        []LivePane
+		wantExemptFromDeadKill      bool
+		wantExemptFromUntrackedReap bool
+		wantAuthorizesReap          bool
+	}{
+		{
+			name:                        "AliveSelvage",
+			st:                          &ReedState{SelvagePaneID: selvagePane},
+			live:                        []LivePane{{ID: selvagePane, Dead: false}},
+			wantExemptFromDeadKill:      true,
+			wantExemptFromUntrackedReap: true,
+			wantAuthorizesReap:          true,
+		},
+		{
+			name:                        "DeadButPresentSelvageCorpse",
+			st:                          &ReedState{SelvagePaneID: selvagePane},
+			live:                        []LivePane{{ID: selvagePane, Dead: true}},
+			wantExemptFromDeadKill:      true,
+			wantExemptFromUntrackedReap: true,
+			wantAuthorizesReap:          false,
+		},
+		{
+			name:                        "SelvagePaneIDNamingAnAbsentPane",
+			st:                          &ReedState{SelvagePaneID: selvagePane},
+			live:                        []LivePane{{ID: otherPane, Dead: false}},
+			wantExemptFromDeadKill:      true,
+			wantExemptFromUntrackedReap: true,
+			wantAuthorizesReap:          false,
+		},
+		{
+			name:                        "EmptySelvagePaneID",
+			st:                          &ReedState{},
+			live:                        []LivePane{{ID: otherPane, Dead: false}},
+			wantExemptFromDeadKill:      false,
+			wantExemptFromUntrackedReap: false,
+			wantAuthorizesReap:          false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			policy := newReapPolicy(tt.st, tt.live)
+
+			if got := policy.exemptFromDeadKill(selvagePane); got != tt.wantExemptFromDeadKill {
+				t.Errorf("exemptFromDeadKill(selvagePane) = %v, want %v", got, tt.wantExemptFromDeadKill)
+			}
+			if got := policy.exemptFromDeadKill(otherPane); got {
+				t.Errorf("exemptFromDeadKill(otherPane) = %v, want false (never exempts an unrelated pane)", got)
+			}
+			if got := policy.exemptFromUntrackedReap(selvagePane); got != tt.wantExemptFromUntrackedReap {
+				t.Errorf("exemptFromUntrackedReap(selvagePane) = %v, want %v", got, tt.wantExemptFromUntrackedReap)
+			}
+			if got := policy.exemptFromUntrackedReap(otherPane); got {
+				t.Errorf("exemptFromUntrackedReap(otherPane) = %v, want false (never exempts an unrelated pane)", got)
+			}
+			if got := policy.authorizesReap(); got != tt.wantAuthorizesReap {
+				t.Errorf("authorizesReap() = %v, want %v", got, tt.wantAuthorizesReap)
+			}
+		})
+	}
+}
+
+// TestSelvageRenderParams asserts the present, absent and empty-id cases, and that HeightRows comes
+// through from the engine's config rather than being defaulted.
+func TestSelvageRenderParams(t *testing.T) {
+	const selvagePane = "%selvage"
+	const heightRows = 4
+
+	tests := []struct {
+		name       string
+		st         *ReedState
+		presentIDs map[string]bool
+		want       string
+	}{
+		{
+			name:       "PresentPane_IDPassesThrough",
+			st:         &ReedState{SelvagePaneID: selvagePane},
+			presentIDs: map[string]bool{selvagePane: true},
+			want:       selvagePane,
+		},
+		{
+			name:       "AbsentPane_IDBlanked",
+			st:         &ReedState{SelvagePaneID: selvagePane},
+			presentIDs: map[string]bool{},
+			want:       "",
+		},
+		{
+			name:       "EmptySelvagePaneID_StaysEmpty",
+			st:         &ReedState{},
+			presentIDs: map[string]bool{},
+			want:       "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newTestEngine(t)
+			e.cfg.Selvage.HeightRows = heightRows
+
+			got := e.selvageRenderParams(tt.st, tt.presentIDs)
+			if got.PaneID != tt.want {
+				t.Errorf("selvageRenderParams().PaneID = %q, want %q", got.PaneID, tt.want)
+			}
+			if got.HeightRows != heightRows {
+				t.Errorf("selvageRenderParams().HeightRows = %d, want %d (from the engine's config, not defaulted)", got.HeightRows, heightRows)
+			}
+		})
+	}
+}
+
+// TestSeedSelvageClaim asserts it adds the id when non-empty and leaves the map untouched when empty.
+func TestSeedSelvageClaim(t *testing.T) {
+	t.Run("NonEmptyID_Added", func(t *testing.T) {
+		st := &ReedState{SelvagePaneID: "%selvage"}
+		claimed := map[string]bool{}
+		seedSelvageClaim(st, claimed)
+		if !claimed["%selvage"] {
+			t.Errorf("claimed = %v, want it to contain %q", claimed, "%selvage")
+		}
+	})
+
+	t.Run("EmptyID_MapUntouched", func(t *testing.T) {
+		st := &ReedState{}
+		claimed := map[string]bool{}
+		seedSelvageClaim(st, claimed)
+		if len(claimed) != 0 {
+			t.Errorf("claimed = %v, want empty (an absent Selvage claims nothing)", claimed)
+		}
+	})
+}
+
+// TestClearSelvagePaneBinding asserts it empties a set id and is a no-op on an already-empty one.
+func TestClearSelvagePaneBinding(t *testing.T) {
+	t.Run("SetID_Cleared", func(t *testing.T) {
+		st := &ReedState{SelvagePaneID: "%selvage"}
+		clearSelvagePaneBinding(st)
+		if st.SelvagePaneID != "" {
+			t.Errorf("SelvagePaneID = %q, want empty", st.SelvagePaneID)
+		}
+	})
+
+	t.Run("AlreadyEmpty_NoOp", func(t *testing.T) {
+		st := &ReedState{}
+		clearSelvagePaneBinding(st)
+		if st.SelvagePaneID != "" {
+			t.Errorf("SelvagePaneID = %q, want empty", st.SelvagePaneID)
+		}
+	})
+}
+
 // TestBottommostPaneID asserts the Selvage split target is chosen by pane_top rather than by
 // list-panes order, which tmux does not guarantee is top-to-bottom.
 func TestBottommostPaneID(t *testing.T) {
