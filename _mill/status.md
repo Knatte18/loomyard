@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-batten-wiring
+phase: approved-shed-addressing
 slug: seeded-shed-core
 branch: seeded-shed-core
 plan: _mill/plan
@@ -29,6 +29,7 @@ approved-batten-rename  '2026-09-19T18:01:51Z'
 approved-loom-run-directory  '2026-09-19T18:21:06Z'
 approved-batten-producers  '2026-09-19T18:30:06Z'
 approved-batten-wiring  '2026-09-19T18:46:34Z'
+approved-shed-addressing  '2026-09-19T19:09:17Z'
 ```
 
 ## Batches
@@ -74,9 +75,10 @@ batches:
     commit_sha: 78c64550acac55aa497481868c6f24002729b8fb
     verify_baseline_failures: ["FAIL\t./internal/battencli/... [setup failed]"]
   - name: shed-addressing
-    state: running
+    state: approved
     implementer_session: a66a298d-f8e6-441e-8b93-ac5032f9891a
     start_sha: 893e44315ef5cfbecc796b0dc37bdaeff1270350
+    commit_sha: 63a9a2413dd4715ce78b6f99e6e3d5e5df3b82cc
     verify_baseline_failures: ["FAIL\t./internal/battencli/... [setup failed]"]
   - name: docs-and-integration
     state: pending
