@@ -5,7 +5,7 @@ task: "Shed-generic watchdog for ly-drive and loom's CLI verbs"
 batch: "docs-invariant-skill"
 number: 6
 cards: 5
-verify: go test ./cmd/lyx/... ./tools/...
+verify: go test ./cmd/lyx/... ./tools/... ./internal/lyxcwd/...
 depends-on: [5]
 ```
 
@@ -137,6 +137,7 @@ Those instances are illustrations of each rule, not its extent — a hand-listed
   - `plugins/ly/skills/INDEX.md`
   - `cmd/lyx/constraintchokepoint_test.go`
   - `cmd/lyx/retiredverbs_test.go`
+  - `internal/lyxcwd/docslink_test.go`
 - **Edits:** none
 - **Creates:** none
 - **Deletes:** none
@@ -151,8 +152,8 @@ Those instances are illustrations of each rule, not its extent — a hand-listed
 
 ## Batch Tests
 
-`verify:` runs `cmd/lyx` and `tools/...`: the first because `constraintchokepoint_test.go` reads `CONSTRAINTS.md`'s structure and `retiredverbs_test.go` reads the live command tree against the docs, the second because the sandbox suite files and their guard live under `tools/sandbox`.
+`verify:` runs `cmd/lyx`, `tools/...` and `internal/lyxcwd`: the first because `constraintchokepoint_test.go` reads `CONSTRAINTS.md`'s structure and `retiredverbs_test.go` reads the live command tree against the docs, the second because the sandbox suite files and their guard live under `tools/sandbox`, and the third because `docslink_test.go` — the Markdown Link Integrity checker — lives there and is what gates the links card 38 adds.
 
-This is a docs-and-skill batch with no Go production surface of its own, so most of its verification is the mechanical confirmation card 39 performs: the Markdown Link Integrity checker over the four edited markdown files, and two greps proving the two exhaustive rewrites — no surviving `lyx loom step` under the skill directory, and both new packages present in the module table.
+This is a docs-and-skill batch with no Go production surface of its own, so beyond the three test packages its verification is the two greps card 39 performs, proving the two exhaustive rewrites — no surviving `lyx loom step` under the skill directory, and both new packages present in the module table.
 
 The narrower scope is deliberate rather than an omission: no card in this batch edits a `.go` file, so the wider suites cannot have changed, and the repo-wide done gate covers them at task end regardless.

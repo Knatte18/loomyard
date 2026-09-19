@@ -15,7 +15,8 @@ This batch removes the second duplication: `loomcli`'s four verb bodies and `lif
 Both modules gain an exported `Arm(cwd, verb, args)` that factors their existing `PersistentPreRunE` resolution out into one name-independent entry point, which batch 5's `lyx shed` table calls — without it, `lyx shed run --recipe lifecycle` would silently lose lifecycle's `lyxcwd.Resolve`, its `fabricengine.PrimeName` lookup, its non-prime refusal and its `args[0]` slug read, because the hooks cobra fires are the executed command's *ancestor* chain and `lifecycle` is not an ancestor of `shed run`.
 
 The whole batch is behaviour-preserving apart from the three additive changes the overview's `no-surface-change-to-existing-verbs` Shared Decision names.
-The proof is that `internal/loomcli`'s `step_test.go`, `status_test.go`, `smoke_test.go`, `wiring_test.go`, `stephandoff_test.go`, `start_watchdog_test.go`, `friction_test.go`, `selfreport_test.go` and `internal/lifecyclecli`'s `run_test.go`, `cli_test.go`, `paths_test.go`, `refusal_test.go`, `wire_test.go` and `lifecycle_integration_test.go` keep passing;
+The proof is that `internal/loomcli`'s `step_test.go`, `status_test.go`, `wiring_test.go`, `stephandoff_test.go`, `start_watchdog_test.go`, `friction_test.go`, `selfreport_test.go` and `internal/lifecyclecli`'s `run_test.go`, `cli_test.go`, `paths_test.go`, `refusal_test.go`, `wire_test.go` and `lifecycle_integration_test.go` keep passing;
+`internal/loomcli`'s four `//go:build smoke` suites — `smoke_test.go`, `smoke_bootstrapwiring_test.go`, `smoke_attachprobe_test.go` and `smoke_operatorstrand_test.go` — are deliberately not on that list and not in this batch's `verify:`, because the smoke tier spawns real sessions and is not run per-batch anywhere in this repo's pipeline;
 the only assertion changes permitted in this batch are the ones card 27 justifies one by one.
 
 It depends on batch 1 for `shedbuild.ShedPaths` (both `Arm` bodies fill one) and on batch 3 for `shedverbs` itself.
@@ -89,6 +90,8 @@ A verb-blind arming keyed on recipe name alone would run the full `wire()` for `
   - `internal/loomcli/run.go`
   - `internal/loomcli/step.go`
   - `internal/loomcli/arm.go`
+  - `internal/loomcli/cli_test.go`
+  - `internal/loomcli/step_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -115,6 +118,10 @@ A verb-blind arming keyed on recipe name alone would run the full `wire()` for `
   Fill the `PostStep` hook batch 3 declared with loom's `recordStepHandoff(loomengine.LoomStepHandoff(c.location), loomengine.LoomStepHandoffLock(c.location), len(res.History), res.State)` call, which is what keeps that marker at its required position — after a successful `shed.Step` and before the envelope is reported.
   Fill `InterruptPolicyFor` with `loomshed.InterruptPolicyFor`, which is the table `next_interrupt_policy` reads today.
   Preserve the comment recording that the early probe is an optimisation and `shedengine.Step`'s own acquisition is the authority.
+  Retarget the in-package test call sites these deletions orphan, which is mechanical compilation repair rather than an assertion change: `internal/loomcli/cli_test.go` uses the method expressions `(*loomCLI).runCmd` and `(*loomCLI).stepCmd`, and `internal/loomcli/step_test.go` calls `stepEnvelope`, `stepKinds`, `stepKindBusy` and `c.stepCmd()`.
+  Point each at its new home — `shedverbs.stepEnvelope`'s exported equivalent, `shedverbs.StepKinds`, `shedverbs.KindBusy`, and the command `shedverbs.Verbs` returns — keeping every assertion's meaning identical.
+  `internal/loomcli/step_test.go`'s ten-key and five-kind closure assertions in particular must keep asserting the same closed sets, now against the `shedverbs` constants;
+  if either can no longer be expressed from `loomcli`, say so rather than weakening it — batch 3 card 18 already asserts both inside `shedverbs`, so the honest resolution is to delete the duplicated closure assertion here and keep the behavioural ones, recorded in the commit message.
   Route `--parent` through a named carrier rather than a closure over a local, because the local it is captured from today (`parentFlag` in `stepCmd`) disappears with that function: add a `parentFlag string` field to the `loomCLI` struct, have `Command()` bind the returned `step` command's flag to `&c.parentFlag` with `cmd.Flags().StringVar`, and have the `PreStep` hook read `c.parentFlag` when calling `c.seedAndCommitBootstrap(slug, c.parentFlag)`.
   A closure cannot carry it: after the move the flag variable lives in `Command()` while `PreStep` is built inside `arm`, which sees only `(cwd, verb, args)` — and a `PersistentPreRunE`'s `args` are positional only, never parsed flags.
   Keep the flag's existing help text byte-for-byte.
@@ -139,6 +146,8 @@ A verb-blind arming keyed on recipe name alone would run the full `wire()` for `
   - `internal/loomcli/pause.go`
   - `internal/loomcli/arm.go`
   - `internal/loomcli/sharedbootstrap.go`
+  - `internal/loomcli/status_test.go`
+  - `internal/loomcli/cli_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -152,6 +161,9 @@ A verb-blind arming keyed on recipe name alone would run the full `wire()` for `
   Give `internal/loomcli/sharedbootstrap.go`'s `ensureStatusLockDir` a disposition too: deleting `statusCmd` and `pauseCmd` removes its only two callers, so delete the function along with them rather than leaving dead code.
   Its `MkdirAll` is not lost — `shedverbs`' own `ensureStatusLockDir` performs it, gated on the told `EnsureStatusLockDir` boolean — and the crucible history its doc comment records was already carried into that function's own doc comment by batch 3, card 13.
   Confirm before deleting that no third caller has appeared since this plan was written.
+  Retarget the in-package test call sites these deletions orphan, which is mechanical compilation repair rather than an assertion change: `internal/loomcli/status_test.go` calls `renderStatusLine`, `statusUnavailableLine`, `printStatusLinesOnChange` and `c.statusCmd()`, and `internal/loomcli/cli_test.go` uses the `(*loomCLI).statusCmd` and `(*loomCLI).pauseCmd` method expressions.
+  `renderStatusLine` and the unavailable line now take a label argument (batch 3, card 14), so those call sites pass `"loom"` and keep asserting the identical rendered strings;
+  batch 3 card 18 already covers the same properties inside `shedverbs`, so a pure-duplicate table here may be deleted rather than retargeted, recorded in the commit message, while `TestStatusCmd_EnvelopeKeySet` stays and keeps asserting loom's own nine-key envelope through the rearmed command.
   Confirm the resulting `lyx loom status` envelope is byte-identical to today's nine keys — the four generic core keys plus these five — and that `lyx loom pause`'s is still the single key `status_file`.
 - **Commit:** `refactor(loomcli): rearm status and pause over shedverbs`
 
@@ -201,7 +213,9 @@ A verb-blind arming keyed on recipe name alone would run the full `wire()` for `
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** add a `spec *shedverbs.Spec` field to the `lifecycleCLI` struct, initialised non-nil where the receiver is constructed in `Command()`.
-  In the new `internal/lifecyclecli/arm.go`, declare `func Arm(cwd string, verb string, args []string) (shedverbs.Spec, error)` performing this module's whole existing resolution in its existing order: `lyxcwd.Resolve(cwd)`, then `fabricengine.PrimeName(location)`, then `refuseNonPrime(location.WorktreeName, primeName, primeNameErr)`, then the slug read from `args[0]` when `len(args) > 0`, then `wire(location, slug)`.
+  In the new `internal/lifecyclecli/arm.go`, declare the same two-function split card 21 requires of `loomcli`, and for the same reason: an unexported worker `func (c *lifecycleCLI) arm(cwd string, verb string, args []string) (shedverbs.Spec, error)` on the receiver, plus a thin exported `func Arm(cwd string, verb string, args []string) (shedverbs.Spec, error)` wrapper that constructs a fresh `*lifecycleCLI` and returns `c.arm(...)` for `internal/shedcli`'s table.
+  A package-level `Arm` alone cannot serve the pre-run: `wire` is a method on the receiver, the hooks close over `c.env`, `c.shedPaths` and `c.abandonedSession`, and the pre-run's own `c.location` and `c.slug` assignments would stop happening.
+  The worker performs this module's whole existing resolution in its existing order: `lyxcwd.Resolve(cwd)`, then `fabricengine.PrimeName(location)`, then `refuseNonPrime(location.WorktreeName, primeName, primeNameErr)`, then the slug read from `args[0]` when `len(args) > 0`, then `wire(location, slug)`.
   Every one of those refusals stays a returned error the caller renders on the envelope, never a hard error and never a panic, exactly as `refuseNonPrime`'s own doc comment requires.
   Preserving the non-prime refusal through `Arm` is what keeps the Lifecycle Bookend Invariant intact when lifecycle is reached through `lyx shed --recipe lifecycle` rather than through `lyx lifecycle`.
   Fill the returned `Spec`: the three paths from `c.shedPaths`;
@@ -213,8 +227,9 @@ A verb-blind arming keyed on recipe name alone would run the full `wire()` for `
   `AbsentStatus` with `Refuse: false`, the `found: false` success form;
   `PauseAbsentMessage` set to the new text `lifecyclecli: no status file at <StatusPath>; there is nothing running to pause -- run "lyx lifecycle run <slug>" first`, mirroring loom's shape and naming lifecycle's own entry verb rather than loom's;
   `BuildShed` a closure returning `lifecyclerecipe.New(c.env, c.shedPaths)`.
-  Rewrite `resolvePersistentPreRun` to call `Arm(cwd, cmd.Name(), args)` and assign `*c.spec = armed`, keeping its existing `cmd.Name() == "lifecycle"` short-circuit and its existing `lyxcwd.CwdFrom(ctx)` read in place, and keeping the pass-through rendering of `lyxcwd.Resolve`'s self-describing error.
-  Keep the single-receiver property card 21 requires of `loomcli.Arm`: the receiver whose closures the returned hooks capture must be the one the pre-run holds.
+  Rewrite `resolvePersistentPreRun` to call `c.arm(cwd, cmd.Name(), args)` — the unexported worker, on its own receiver — and assign `*c.spec = armed`, keeping its existing `cmd.Name() == "lifecycle"` short-circuit and its existing `lyxcwd.CwdFrom(ctx)` read in place, and keeping the pass-through rendering of `lyxcwd.Resolve`'s self-describing error.
+  The worker performs the `c.location` and `c.slug` assignments the pre-run does today, so they keep happening on both paths rather than only on the `lyx lifecycle` one.
+  The single-receiver property holds as in card 21: the `*lifecycleCLI` whose fields the returned hooks close over is always the value the caller holds — the pre-run's own `c` on the `lyx lifecycle` path, the wrapper's freshly-constructed one on the `lyx shed` path.
 - **Commit:** `feat(lifecyclecli): add the exported Arm resolution entry point`
 
 ### Card 26: rearm lifecyclecli's run and status, and add pause
@@ -236,6 +251,8 @@ A verb-blind arming keyed on recipe name alone would run the full `wire()` for `
   - `internal/lifecyclecli/status.go`
   - `internal/lifecyclecli/cli.go`
   - `internal/lifecyclecli/arm.go`
+  - `internal/lifecyclecli/run_test.go`
+  - `internal/lifecyclecli/lifecycle_integration_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -252,10 +269,13 @@ A verb-blind arming keyed on recipe name alone would run the full `wire()` for `
   Register the `pause` command on the lifecycle subtree for the first time, with `Args: cobra.ExactArgs(1)` like the other two, since it needs the slug before `wire` can build any path.
   Change `Command()`'s `parent.AddCommand(c.runCmd(), c.statusCmd())` to add the three commands returned by `shedverbs.Verbs(lifecycleVerbTexts, c.spec)` that this module exposes — `run`, `status` and `pause` — and not `step`, which lifecycle has no analogue for.
   Declare `lifecycleVerbTexts` carrying `run`'s and `status`'s existing `Use`/`Short`/`Long` byte-for-byte, plus new text for `pause` in the same shape, and extend `status`'s `Long` with an `Example:` line for `--watch` since the flag is now present.
+  Leave the `step` texts at their zero values and never add the returned `step` command to the lifecycle subtree, so its blank `Short` never reaches the live tree `cmd/lyx/drift_test.go` walks — that guard fails CI on any *registered* command with a blank `Short`, and an unregistered returned command is not in the tree at all.
   Set `Args: cobra.ExactArgs(1)` on each of the three returned commands before adding them.
   Update the lifecycle parent command's own `Long` to name `pause` alongside `run` and `status`, and to state that all three run from the hub's prime worktree only.
   Preserve `internal/lifecyclecli/run.go`'s doc comment explaining why the run envelope carries neither a mutations array nor a `partial` bool — it stays true and its reasoning is unaffected by the move.
   If either file ends up holding no declaration after the deletions, delete it rather than leaving it empty.
+  Retarget the in-package test call sites this deletion orphans, which is mechanical compilation repair rather than an assertion change: `internal/lifecyclecli/run_test.go` calls `c.runCmd()` at five sites and `internal/lifecyclecli/lifecycle_integration_test.go` calls it once.
+  Point each at the `run` command `shedverbs.Verbs` returns, armed through the same receiver the test already builds, keeping every assertion's meaning identical.
 - **Commit:** `refactor(lifecyclecli): rearm run and status over shedverbs and add pause`
 
 ### Card 27: absorb the three agreed surface changes into the existing suites
@@ -267,6 +287,9 @@ A verb-blind arming keyed on recipe name alone would run the full `wire()` for `
   - `internal/shedverbs/status.go`
   - `internal/shedengine/shed.go`
   - `internal/loomcli/parity_test.go`
+  - `internal/loomcli/cli_test.go`
+  - `internal/loomcli/step_test.go`
+  - `internal/loomcli/status_test.go`
 - **Edits:**
   - `internal/lifecyclecli/run_test.go`
   - `internal/lifecyclecli/cli_test.go`
@@ -278,8 +301,11 @@ A verb-blind arming keyed on recipe name alone would run the full `wire()` for `
   First, `lyx lifecycle run`'s success envelope now carries `history_length`, free from `len(result.History)` via the generic body: extend any envelope-key assertion in `run_test.go` and `lifecycle_integration_test.go` that enumerates the run envelope's keys, and add a case asserting the new key's value matches the run's own history length.
   This is a deliberate widening, not an accident of the move.
   Second, `lyx lifecycle` now exposes `pause`: extend `cli_test.go`'s subcommand-listing assertion, if it has one, and add a case driving `lyx lifecycle pause <slug>` against a seeded status and asserting `PauseRequested` is set and the envelope carries exactly `status_file`, plus a case asserting the new absent-file refusal text against a never-run slug.
-  Third, `lyx lifecycle status` now carries `--watch` and `--interval`: add a case asserting both flags are registered, and one asserting a `--watch` against a never-run slug exits immediately with the `found: false` envelope rather than entering the tail.
+  Third, `lyx lifecycle status` now carries `--watch` and `--interval`: add a case asserting both flags are registered, and one asserting a `--watch` over a slug whose per-slug directory exists but holds no `status.json` exits immediately with the `found: false` envelope rather than entering the tail.
+  The directory must exist in that fixture — see the overview's `lifecycle-absent-file-needs-an-existing-directory` Shared Decision: against a slug whose `LifecycleDir` was never created at all, the read fails in lock acquisition before `found` is ever produced, which is today's behaviour and is not this task's to change.
+  Write the same precondition into the `pause` absent-file case above, which reaches `state.UpdateJSON` and therefore behaves differently again.
   Change no other assertion in either package.
+  The mechanical call-site retargeting cards 22, 23 and 26 perform in `internal/loomcli/cli_test.go`, `step_test.go`, `status_test.go`, `internal/lifecyclecli/run_test.go` and `lifecycle_integration_test.go` is explicitly carved out of that rule: it repairs compilation against moved identifiers and changes no assertion's meaning.
   If any existing assertion outside these three fails, that is a signal the extraction changed behaviour: stop and report it rather than editing the assertion to match — the overview's `no-surface-change-to-existing-verbs` Shared Decision forbids silently absorbing it.
 - **Commit:** `test(lifecyclecli): cover the three agreed additive surface changes`
 
@@ -292,7 +318,6 @@ A verb-blind arming keyed on recipe name alone would run the full `wire()` for `
   - `internal/loomcli/wiring_test.go`
   - `internal/loomcli/friction_test.go`
   - `internal/loomcli/selfreport_test.go`
-  - `internal/loomcli/smoke_test.go`
   - `internal/loomcli/parity_test.go`
   - `internal/lifecyclecli/run_test.go`
   - `internal/lifecyclecli/paths_test.go`
@@ -303,7 +328,8 @@ A verb-blind arming keyed on recipe name alone would run the full `wire()` for `
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** run this batch's full `verify:` command, both tiers, and confirm every listed suite passes with no assertion edited beyond card 27's three.
-  Confirm specifically that `internal/loomcli`'s `step_test.go` still asserts the ten-key envelope and the five-kind closure — now against the `shedverbs` constants — that `stephandoff_test.go` still proves `recordStepHandoff` fires after a successful step, that `status_test.go` still pins the rendered watch line's format for the `loom` label, and that `friction_test.go` and `selfreport_test.go` still prove `detectAndFileAnomalies` runs on the hard-error path and that `friction` is emitted on every success envelope.
+  The four `//go:build smoke` suites are out of this batch's gate by design and must not be added to it;
+  confirm specifically that `internal/loomcli`'s `step_test.go` still asserts the ten-key envelope and the five-kind closure — now against the `shedverbs` constants — that `stephandoff_test.go` still proves `recordStepHandoff` fires after a successful step, that `status_test.go` still pins the rendered watch line's format for the `loom` label, and that `friction_test.go` and `selfreport_test.go` still prove `detectAndFileAnomalies` runs on the hard-error path and that `friction` is emitted on every success envelope.
   Those four are the properties most easily lost in this extraction;
   a green run that skipped them is not evidence.
   Confirm `internal/lifecyclecli`'s `paths_test.go` and `refusal_test.go` still pass untouched, since they are the two mechanical proxies for the Lifecycle Bookend Invariant and `Arm` must not have moved either path or weakened the refusal.

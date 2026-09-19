@@ -47,7 +47,7 @@ batches:
     name: docs-invariant-skill
     file: 06-docs-invariant-skill.md
     depends-on: [5]
-    verify: go test ./cmd/lyx/... ./tools/...
+    verify: go test ./cmd/lyx/... ./tools/... ./internal/lyxcwd/...
 ```
 
 ## Shared Decisions
@@ -63,6 +63,25 @@ Batch-local decisions live in each batch file._
   There is no `RunResult` identifier in the tree.
   The discussion's name is a slip, not a request to rename the engine type — `shedengine` is explicitly out of scope, so the plan uses the real name everywhere.
 - **Applies to:** all batches
+
+### Decision: poststep-is-a-sixth-hook
+
+- **Decision:** `shedverbs.Hooks` carries six fields, not the five `_mill/discussion.md`'s `optional-hooks-for-module-specific-work` Decision fixes: the five it names plus `PostStep func(res shedengine.StepResult)`, which runs after a successful `Shed.Step` and before the envelope is written, filled by loom and left nil by lifecycle.
+- **Rationale:** the discussion's five-hook set has no slot for `recordStepHandoff`, which `internal/loomcli/step.go` calls at exactly that point today.
+  Its placement is load-bearing: a completed step's persisted aftermath is byte-identical to a mid-run driver death, and that marker is the one thing letting the next run's entry observation tell the two apart, so it can move neither above the `Step` call nor below the envelope.
+  `InterruptPolicyFor` cannot host it — that hook is a pure table read the generic body calls while composing the envelope, and giving it a side effect would hide the ordering the marker depends on.
+  This is a deviation from the discussion, recorded here rather than only inside a card, in the same way the `Result`-versus-`RunResult` deviation is.
+- **Applies to:** shedverbs-package, module-rearm
+
+### Decision: lifecycle-absent-file-needs-an-existing-directory
+
+- **Decision:** lifecycle's `found: false` absent-file disposition is specified over a slug whose per-slug `LifecycleDir` exists but holds no `status.json`, not over a slug whose directory was never created.
+  Every plan test case driving that disposition creates the directory first.
+- **Rationale:** `internal/lock`'s `AcquireReadLock` is `flock.New(path).RLock()`, which creates the lock file but never its parent, and `internal/state`'s `ReadJSONStrict` adds no `MkdirAll` — so against a never-created `LifecycleDir`, `lyx lifecycle status <slug>` fails in lock acquisition before `found` is ever produced.
+  That is today's behaviour, not something this task introduces: `internal/lifecyclecli`'s existing tests all anchor their status paths directly in a `t.TempDir()` that already exists, so no shipped test covers the never-created case.
+  Fixing it is out of scope and would mean creating a directory as a side effect of a read-only verb, which `_mill/discussion.md`'s `pause-and-watch-generalize` Decision explicitly rejects for lifecycle — it is why `EnsureStatusLockDir` is told false there.
+  Specifying the disposition over the reachable state is what keeps the plan's test cases satisfiable.
+- **Applies to:** shedverbs-package, module-rearm
 
 ### Decision: build-time-texts-run-time-spec
 

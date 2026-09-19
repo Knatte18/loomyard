@@ -199,7 +199,7 @@ Batch-local decision: the four verb bodies live in four files named after their 
   - `internal/shedverbs/pause.go`
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** implement `pauseCmd(texts VerbTexts, spec *Spec) *cobra.Command` whose `RunE` checks `clihelp.ShouldAbort` first, performs `ensureStatusLockDir(spec.StatusLockPath)` when `spec.EnsureStatusLockDir` is true, then calls `state.UpdateJSON(spec.StatusPath, spec.StatusLockPath, …)` with a mutate closure that returns `errors.New(spec.PauseAbsentMessage)` when `!found` and otherwise sets `cur.PauseRequested = true` and returns `cur`.
+- **Requirements:** implement `pauseCmd(texts VerbTexts, spec *Spec) *cobra.Command` whose `RunE` checks `clihelp.ShouldAbort` first, performs `ensureStatusLockDir(spec.DecodeErrPrefix, spec.StatusLockPath)` when `spec.EnsureStatusLockDir` is true, matching card 13's two-argument signature, then calls `state.UpdateJSON(spec.StatusPath, spec.StatusLockPath, …)` with a mutate closure that returns `errors.New(spec.PauseAbsentMessage)` when `!found` and otherwise sets `cur.PauseRequested = true` and returns `cur`.
   Report any error on the error envelope and, on success, report `output.Ok` with exactly the one key `status_file: spec.StatusPath`.
   `pause` never calls `BuildShed` — a nil one is legal here, exactly as on `status`.
 - **Commit:** `feat(shedverbs): implement the generic pause verb body`
@@ -283,7 +283,10 @@ Batch-local decision: the four verb bodies live in four files named after their 
   assert `StatusExtras` merging onto the four-key core;
   assert a `StatusExtras` error reaches the error envelope verbatim with no added prefix;
   assert the decode-error prefix is the told one;
-  assert the `MkdirAll` is performed for a spec with `EnsureStatusLockDir` true and skipped for one with it false, the latter asserted by the directory's absence after a status read against a never-run slug.
+  assert the told lock-dir boolean's effect both ways, over a status-lock path whose parent directory does not yet exist: with `EnsureStatusLockDir` true, the parent is created and the read goes on to produce the told absent-file disposition;
+  with it false, the parent is still absent afterwards and the read fails in lock acquisition instead.
+  That failing arm is the assertion, not an accident: `internal/lock`'s `AcquireReadLock` is `flock.New(path).RLock()`, which creates the lock file but never its parent, and `state.ReadJSONStrict` adds no `MkdirAll` of its own — so a skipped `MkdirAll` is observable exactly there.
+  Drive the reachable `found: false` and refusal dispositions separately, over a status-lock path whose parent already exists, which is the state both shipped consumers are in whenever those dispositions actually fire.
   For the `--watch` tail, drive `printStatusLinesOnChange` through a finite `polls` count with an injected sleep and no wall-clock wait, exactly as `printStatusLinesOnChange` and `awaitRunLock` are driven today;
   assert change-only printing;
   assert the told label appears in the rendered line;
