@@ -37,13 +37,19 @@ implementing  '2026-09-19T05:47:33Z'
 ```yaml
 batches:
   - name: go-cli-rename
-    state: pending
+    state: running
+    implementer_session: 7225ef42-5c92-4e6f-b500-eac9a3f48fc5
+    start_sha: f5cefba55ec1600cd150e41d893bc8f4cfd5197c
+    verify_baseline_failures: []
   - name: launchers
     state: pending
+    verify_baseline_failures: []
   - name: go-comment-sweep
     state: pending
+    verify_baseline_failures: []
   - name: skill-rename
     state: pending
   - name: docs-and-manifest
     state: pending
+    verify_baseline_failures: []
 ```
