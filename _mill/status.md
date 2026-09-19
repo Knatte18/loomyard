@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-skill-rename
+phase: approved-docs-and-manifest
 slug: loom-cli-rename
 branch: loom-cli-rename
 plan: _mill/plan
@@ -34,6 +34,7 @@ approved-go-cli-rename  '2026-09-19T06:09:13Z'
 approved-launchers  '2026-09-19T06:11:42Z'
 approved-go-comment-sweep  '2026-09-19T06:15:48Z'
 approved-skill-rename  '2026-09-19T06:18:48Z'
+approved-docs-and-manifest  '2026-09-19T06:28:23Z'
 ```
 
 ## Batches
@@ -64,8 +65,9 @@ batches:
     start_sha: 0644ad78df1c969be4fbb6b34b6002c61ba7cc95
     commit_sha: efab5778d738462424530c0e5d82b85e765917ca
   - name: docs-and-manifest
-    state: running
+    state: approved
     implementer_session: 6ca4366f-64d2-46d7-81c1-6d46d1ad8fea
     start_sha: f470d597e2421ffe0f4c75ad92846dfeff564cdf
+    commit_sha: 4c298c7759a201306a73aeb304c45f31218b4734
     verify_baseline_failures: []
 ```
