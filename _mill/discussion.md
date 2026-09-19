@@ -112,10 +112,32 @@ The third consumer is already drafted (`manifest/designs/hardener.md`: `Hardener
   - `PostRun func(ctx, result shedengine.RunResult, runErr error) map[string]any` — runs unconditionally after `Shed.Run` returns, including when `runErr` is non-nil, and before the error envelope is written; its returned map is merged into the success envelope.
   - `PreStep func(ctx) (kind string, err error)` — runs before `Shed.Step`; a non-nil error is reported with the returned refusal kind on the envelope's `kind` field.
   - `InterruptPolicyFor func(row string) string` — supplies `step`'s `next_interrupt_policy`; the empty string when nil.
-  `loomcli` fills all four; `lifecyclecli` fills `PostRun` only (for its `abandonedSession` field) and leaves the rest nil.
+  `loomcli` fills all four.
+  `lifecyclecli` fills `PreRun` — its status decode, its `StateDone` refusal naming the per-slug directory, its unrecognised-state refusal, and its seed-when-absent `state.UpdateJSON` — and `PostRun`, for its `abandonedSession` field, leaving `PreStep` and `InterruptPolicyFor` nil.
 - Rationale: the loom-specific work is real and ordered, and the ordering is load-bearing in ways the existing comments already record — the entry observation must be taken before the reed substrate comes up, and `detectAndFileAnomalies` must run *above* `run`'s early error return because the hard-error arm would otherwise drop a whole failure class and lose the in-memory crash observation permanently.
   `PostRun` receiving `runErr` and running unconditionally is what preserves that exact property through the extraction.
 - Rejected: a single combined `Hooks.Around` closure (hides the unconditional-`PostRun` ordering, which is the one property most easily lost); moving the loom extras into recipe rows (friction reflection and anomaly filing both run after `Shed.Run` has already returned and after `RunDone` merged and published, so no producer row can host them — `shedengine.Run` returns immediately on `RunBlocked` without calling a further producer, so a row could structurally never cover the blocked half); `loomcli` keeping its own `RunE` wrapper around a thin shared core (puts the envelope assembly back in two places).
+
+### flags-and-args-belong-to-the-arming-module
+
+- Decision: `shedcli.Verbs(spec)` returns the four `*cobra.Command` values with only the flags the generic bodies themselves read (`status`'s `--watch`).
+  A module that needs more decorates the returned command itself, before adding it to its own subtree: `loomcli` registers `--parent` on the `step` command it got back, and `lifecyclecli` sets `Args: cobra.ExactArgs(1)` on `run` and `status`.
+  Hooks reach those values by closure over the module's own receiver, never through a `shedcli` parameter — the same way `loomcli`'s `parentFlag` and `lifecyclecli`'s `c.slug` are already captured today.
+  For the `lyx shed` subtree, each recipe's table entry declares its own positional-arg contract, which `shed`'s `PersistentPreRunE` applies after resolving `--recipe`: `loom` takes no positional argument, `lifecycle` takes exactly one slug.
+  `--recipe` itself is a persistent flag on the `shed` parent, so it is never confused with a recipe's own arguments.
+- Rationale: the flag and argument surfaces are genuinely per-module and there is no generic shape to give them — `--parent` writes a fabric provenance record that only loom's bootstrap has, and the slug is what `lifecyclecli`'s `wire` needs before it can build `Env` or `ShedPaths` at all, so it must be read in the pre-run, ahead of any arming.
+  Decorating a returned command is ordinary cobra and keeps `shedcli` free of a flag-registration DSL it would otherwise need.
+  It also keeps each module's existing `PersistentPreRunE` as the sole reader of its own arguments, which is what the `generic-package-resolves-nothing` Decision already requires.
+- Rejected: a flag/arg declaration list on the arming spec (a DSL reimplementing what cobra already does, and one `shedcli` would have to keep in sync with cobra's own validators); passing parsed values into hooks as a `map[string]any` (loses typing and hides which verb reads what); letting `shedcli` own `--parent` and `--slug` generically (puts two product-specific flags on every recipe's verbs, including recipes that have neither).
+- Consequence for the parity tests: `lyx shed run --recipe lifecycle <slug>` is the positional form the parity test compares against `lyx lifecycle run <slug>`; a missing or extra positional argument must be refused identically by both, and that refusal is part of what the parity test asserts.
+
+### busy-refusal-comes-from-the-arming-spec
+
+- Decision: the arming spec carries the told `ErrShedBusy` treatment — the message text and, for `step`, the refusal kind — so the generic bodies keep the three existing behaviours distinguishable without branching on which module armed them.
+  `loomcli`'s `run` keeps reporting it as an ordinary error envelope, `lifecyclecli`'s `run` keeps its lock-path-naming message, and `step` keeps mapping it to `kind: busy` with its `lyx loom pause` remedy text.
+- Rationale: `ErrShedBusy` is one sentinel with three shipped user-facing treatments, and the wording is what an operator acts on — `lifecyclecli`'s message names the lock path precisely so the refusal is legible rather than a raw lock error.
+  Telling the message rather than deriving it is the same told-not-derived discipline the rest of the arming follows.
+- Rejected: collapsing the three to one wording (a user-visible regression in two of the three, and the `existing-subtrees-keep-their-surface` Decision bars it); a fourth hook for the busy case alone (a hook is for work, and this is a string); branching inside `shedcli` on the recipe name (makes the generic body know its callers, which is exactly what this task removes).
 
 ### envelope-contracts-move-with-the-verbs
 
@@ -205,7 +227,7 @@ Pre-flight: status-file existence refusal naming `lyx loom start`, `loomengine.V
 Then `loomrecipe.New` and `shed.Run`.
 Then, unconditionally and deliberately above the early error return, `detectAndFileAnomalies(…)`.
 Then the error envelope, or `shouldReflectFriction(frictionDir, result.Outcome)` → `c.reflectFriction()` and the success envelope with its `friction` field.
-Note `run` treats `ErrShedBusy` as an ordinary error envelope while `lifecyclecli`'s `run` special-cases it with a lock-path-naming message and `step` maps it to `kind: busy` — three different treatments of one sentinel that the generic body must keep distinguishable (the cleanest route is a told busy-message/kind on the arming spec rather than a fourth behaviour).
+Note `run` treats `ErrShedBusy` as an ordinary error envelope while `lifecyclecli`'s `run` special-cases it with a lock-path-naming message and `step` maps it to `kind: busy` — three different treatments of one sentinel, resolved by the `busy-refusal-comes-from-the-arming-spec` Decision.
 
 **`internal/lifecyclecli`** — the second consumer, and the shape that proves the abstraction.
 `run.go` reads the status with `state.ReadJSONStrict[shedengine.Status]`, refuses `StateDone` naming the per-slug directory to delete, resumes silently on `StateRunning`/`StateBlocked`/`StateFailed`/`StatePaused`, refuses an unrecognised state, and seeds inline via `state.UpdateJSON` with an idempotent mutate closure when the file is absent.
@@ -299,6 +321,8 @@ Add one assertion that `lifecyclerecipe.NameLoomRun`'s *value* is still `"Loom-R
 - **Q:** Where does the deduplicated `ShedPaths`/`New` live? **A:** [auto-pick] Hoisted into `shedbuild` as `ShedPaths` + `NewShed`; the two recipe packages shrink to delegation plus their own guards. **Why:** `shedbuild` already owns `Parse` and `Build` and already imports both `shedengine` and `shedrecipe`.
 - **Q:** Does `loomrecipe`'s Env/paths coherence guard hoist too? **A:** [auto-pick] No — it stays in `loomrecipe`. **Why:** it exists for `loomPreflightEntry`'s `Env.StatusPath` read, which is loom's coupling; `lifecyclerecipe` deliberately has no such check.
 - **Q:** How do loom's run/step extras stay out of the generic body? **A:** [auto-pick] Four nil-by-default hooks — `PreRun`, `PostRun`, `PreStep`, `InterruptPolicyFor`. **Why:** `PostRun` taking `runErr` and running unconditionally is what preserves `detectAndFileAnomalies`'s deliberate placement above `run`'s early error return.
+- **Q:** Where do per-module flags and positional arguments live, given `shedcli` owns the verb bodies? **A:** The arming module decorates the returned commands with its own `--parent`/`Args` and hooks capture them by closure; each `lyx shed` recipe entry declares its own positional-arg contract. **Why:** there is no generic shape for a flag that writes a fabric provenance record or an argument `wire` needs before `Env` exists, and a declaration DSL would reimplement cobra.
+- **Q:** How is `ErrShedBusy`'s three-way divergence resolved? **A:** The arming spec carries the told message and, for `step`, the refusal kind. **Why:** the wording is what an operator acts on and two of the three would regress if collapsed; a told string is not hook-shaped work.
 - **Q:** Does the envelope contract change? **A:** [auto-pick] No for `step` — the ten keys and five refusal kinds stay closed and move with the verb. **Why:** the key set is what `ly-drive` reads; a rename in the move is a silent break of the skill.
 - **Q:** Do `pause` and `status --watch` generalize too? **A:** [auto-pick] Yes, with the watch line's `loom` prefix becoming a told label. **Why:** `shedengine` honours `PauseRequested` for every Shed, so a pausable-loom/unpausable-lifecycle split is arbitrary; `lyx lifecycle pause` appearing is intended.
 - **Q:** Where does cwd resolution live? **A:** [auto-pick] Unchanged, in each module's own `PersistentPreRunE`; `shedcli` resolves nothing. **Why:** required by the Cwd Resolution and Told-Geometry invariants, and it is the only way `lyx shed --recipe lifecycle` keeps lifecycle's non-prime refusal.
