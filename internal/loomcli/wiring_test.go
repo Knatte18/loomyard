@@ -23,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 // seedLoomConfig creates <anchorPath>/_lyx/config/loom.yaml with the embedded template's contents --
@@ -177,13 +178,13 @@ func TestWire_PathFieldsMatchLoomengineAccessors(t *testing.T) {
 		t.Fatalf("wire() = %v; want nil", err)
 	}
 
-	if want := loomengine.LoomStatusFile(loc); c.shedPaths.StatusPath != want {
+	if want := shedrun.StatusFile(loc, shedrun.SelfRunID); c.shedPaths.StatusPath != want {
 		t.Errorf("c.shedPaths.StatusPath = %q; want %q", c.shedPaths.StatusPath, want)
 	}
-	if want := loomengine.LoomRunLock(loc); c.shedPaths.LockPath != want {
+	if want := shedrun.RunLock(loc, shedrun.SelfRunID); c.shedPaths.LockPath != want {
 		t.Errorf("c.shedPaths.LockPath = %q; want %q", c.shedPaths.LockPath, want)
 	}
-	if want := loomengine.LoomStatusLock(loc); c.shedPaths.StatusLockPath != want {
+	if want := shedrun.StatusLock(loc, shedrun.SelfRunID); c.shedPaths.StatusLockPath != want {
 		t.Errorf("c.shedPaths.StatusLockPath = %q; want %q", c.shedPaths.StatusLockPath, want)
 	}
 	if want := loc.AnchorPath(); c.env.AnchorPath != want {
@@ -198,10 +199,10 @@ func TestWire_PathFieldsMatchLoomengineAccessors(t *testing.T) {
 	if want := loomengine.DiscussionSupportLog(loc); c.env.SupportLogPath != want {
 		t.Errorf("c.env.SupportLogPath = %q; want %q", c.env.SupportLogPath, want)
 	}
-	if want := loomengine.LoomStatusFile(loc); c.env.StatusPath != want {
+	if want := shedrun.StatusFile(loc, shedrun.SelfRunID); c.env.StatusPath != want {
 		t.Errorf("c.env.StatusPath = %q; want %q", c.env.StatusPath, want)
 	}
-	if want := loomengine.LoomStatusLock(loc); c.env.StatusLockPath != want {
+	if want := shedrun.StatusLock(loc, shedrun.SelfRunID); c.env.StatusLockPath != want {
 		t.Errorf("c.env.StatusLockPath = %q; want %q", c.env.StatusLockPath, want)
 	}
 }
@@ -655,14 +656,14 @@ func TestWireLightweight_FillsThePathsWithoutLoadingAnyConfig(t *testing.T) {
 	if c.location != location {
 		t.Errorf("location = %v; want the told location", c.location)
 	}
-	if c.shedPaths.StatusPath != loomengine.LoomStatusFile(location) {
-		t.Errorf("StatusPath = %q; want %q", c.shedPaths.StatusPath, loomengine.LoomStatusFile(location))
+	if c.shedPaths.StatusPath != shedrun.StatusFile(location, shedrun.SelfRunID) {
+		t.Errorf("StatusPath = %q; want %q", c.shedPaths.StatusPath, shedrun.StatusFile(location, shedrun.SelfRunID))
 	}
-	if c.shedPaths.StatusLockPath != loomengine.LoomStatusLock(location) {
-		t.Errorf("StatusLockPath = %q; want %q", c.shedPaths.StatusLockPath, loomengine.LoomStatusLock(location))
+	if c.shedPaths.StatusLockPath != shedrun.StatusLock(location, shedrun.SelfRunID) {
+		t.Errorf("StatusLockPath = %q; want %q", c.shedPaths.StatusLockPath, shedrun.StatusLock(location, shedrun.SelfRunID))
 	}
-	if c.shedPaths.LockPath != loomengine.LoomRunLock(location) {
-		t.Errorf("LockPath = %q; want %q", c.shedPaths.LockPath, loomengine.LoomRunLock(location))
+	if c.shedPaths.LockPath != shedrun.RunLock(location, shedrun.SelfRunID) {
+		t.Errorf("LockPath = %q; want %q", c.shedPaths.LockPath, shedrun.RunLock(location, shedrun.SelfRunID))
 	}
 	if c.shedPaths.LockPath == c.shedPaths.StatusLockPath {
 		t.Error("LockPath and StatusLockPath name the same file; shedengine.validate rejects that outright")

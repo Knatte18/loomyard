@@ -23,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -44,7 +45,7 @@ type commitStatusDeps struct {
 
 // loomCommitStatusDeps builds a commitStatusDeps over location, filling each field from fabric:
 // MergeActive from fabricengine.MergeStateActive, Commit from fabricengine.CommitAnchoredPaths
-// scoped to loomengine.LoomStatusRel(), and Push from fabricengine.PushAnchored.
+// scoped to shedrun.StatusRel(shedrun.SelfRunID), and Push from fabricengine.PushAnchored.
 func loomCommitStatusDeps(location *lyxcwd.Location) commitStatusDeps {
 	return commitStatusDeps{
 		MergeActive: func() (bool, error) {
@@ -54,7 +55,7 @@ func loomCommitStatusDeps(location *lyxcwd.Location) commitStatusDeps {
 		// landingdeps.go's own CommitStatus closure does -- which is what makes a second call over
 		// an already-clean tracked path a no-op rather than a failure.
 		Commit: func(msg string) error {
-			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, []string{loomengine.LoomStatusRel()}, msg, fabricengine.EnvSyncOptions())
+			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, []string{shedrun.StatusRel(shedrun.SelfRunID)}, msg, fabricengine.EnvSyncOptions())
 			return err
 		},
 		Push: func() error {
@@ -187,9 +188,9 @@ func (c *loomCLI) wireLightweight(location *lyxcwd.Location, cwd string) {
 	// engine, and can fail only if loomengine's own path accessors do" stays true with this fill in
 	// place.
 	c.shedPaths = shedbuild.ShedPaths{
-		StatusPath:     loomengine.LoomStatusFile(location),
-		LockPath:       loomengine.LoomRunLock(location),
-		StatusLockPath: loomengine.LoomStatusLock(location),
+		StatusPath:     shedrun.StatusFile(location, shedrun.SelfRunID),
+		LockPath:       shedrun.RunLock(location, shedrun.SelfRunID),
+		StatusLockPath: shedrun.StatusLock(location, shedrun.SelfRunID),
 		CommitStatus:   newCommitStatusSeam(loomCommitStatusDeps(location)),
 	}
 	// c.env is otherwise left at its zero value deliberately: status/pause read nothing from it, and
@@ -302,8 +303,8 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		},
 	}
 
-	statusPath := loomengine.LoomStatusFile(location)
-	statusLockPath := loomengine.LoomStatusLock(location)
+	statusPath := shedrun.StatusFile(location, shedrun.SelfRunID)
+	statusLockPath := shedrun.StatusLock(location, shedrun.SelfRunID)
 
 	c.env = shedrecipe.Env{
 		Cwd:                cwd,
@@ -413,7 +414,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	// second loomengine accessor call, so the two copies cannot drift here.
 	c.shedPaths = shedbuild.ShedPaths{
 		StatusPath:     statusPath,
-		LockPath:       loomengine.LoomRunLock(location),
+		LockPath:       shedrun.RunLock(location, shedrun.SelfRunID),
 		StatusLockPath: statusLockPath,
 		// MaxBounces is left zero so shedengine.Shed's own default applies. "Default" here means
 		// the inherited per-producer default every ProducerDef.MaxBounces of 0 falls back to

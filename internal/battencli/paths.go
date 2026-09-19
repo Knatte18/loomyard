@@ -3,7 +3,7 @@
 // *lyxcwd.Location's AnchorPath(), per the Cwd Resolution Invariant -- none of them calls os.Getwd
 // or any git command.
 //
-// This whole tree is ephemeral, not durable, unlike loom's own status file (loomengine.LoomStatusFile
+// This whole tree is ephemeral, not durable, unlike loom's own status file (shedrun.StatusFile
 // lives under _lyx and is fabric-synced): the lifecycle's state -- which task worktree is mid-create,
 // which lock is held, what a run last observed -- is per-machine and per-attempt, never meant to be
 // committed or shared between machines working the same hub. Per the Durable-vs-Ephemeral State
@@ -27,7 +27,7 @@ const battenDirName = "lifecycle"
 // BattenDir returns the path to the per-slug lifecycle directory: the prime *lyxcwd.Location's
 // AnchorPath() joined with lyxdirs.DotLyxDirName, battenDirName, and slug.
 // The .lyx segment comes from lyxdirs.DotLyxDirName rather than a literal, per the Lyxdirs
-// Single-Declarer Invariant, exactly as loomengine.LoomStatusLock already does.
+// Single-Declarer Invariant, exactly as shedrun.StatusLock already does.
 func BattenDir(l *lyxcwd.Location, slug string) string {
 	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, battenDirName, slug)
 }

@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shell"
 )
 
@@ -114,7 +115,7 @@ func (c *loomCLI) seedAndCommitBootstrap(slug, parentFlag string) (string, boots
 	// This must precede any producer call: the phase machine's very first precondition row scans the
 	// fabric including untracked files, and neither file is on the never-tracked exclude list, so an
 	// uncommitted seed or record would fail that check immediately.
-	commitPaths := []string{loomengine.LoomStatusRel(), fabricengine.OriginRecordRel()}
+	commitPaths := []string{shedrun.StatusRel(shedrun.SelfRunID), fabricengine.OriginRecordRel()}
 	commitRec := fabricengine.NewMutations("")
 	commitMsg := fmt.Sprintf("loom: seed session bootstrap for %s", slug)
 	if _, _, err := fabricengine.CommitAnchoredPaths(commitRec, c.location, commitPaths, commitMsg, fabricengine.EnvSyncOptions()); err != nil {
