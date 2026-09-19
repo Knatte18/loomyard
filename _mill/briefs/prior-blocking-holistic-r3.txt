@@ -1,2 +1,0 @@
-- doc.go's status-line pin bullet still describes the removed "status off" mechanism: **Location:** `internal/reedengine/doc.go:601-619`
-- card 41's watchdog daemon integration suite is missing several mandated assertions: **Location:** `internal/reedcli/watchdog_integration_test.go`

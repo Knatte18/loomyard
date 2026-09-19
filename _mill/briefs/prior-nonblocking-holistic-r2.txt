@@ -1,6 +1,0 @@
-- overlay.go's execHook doc still names the deleted ensureHeaderPaneLocked: **Location:** `internal/reedengine/overlay.go:28`
-- attach.go's AttachArgv doc still says "a lone header pane": **Location:** `internal/reedengine/attach.go:71-73`
-- render/rules_test.go points at a test that was renamed: **Location:** `internal/reedengine/render/rules_test.go:320-322`
-- cli_test.go's no-arg listing comment undercounts the verb list: **Location:** `internal/reedcli/cli_test.go:17-19`
-- docs/overview.md's tokenvocab directory-tree entry omits the worktree token: **Location:** `docs/overview.md:261`
-- reed-header-selvage.md's token-count sentence still says "the header's ... two tokens": **Location:** `manifest/designs/reed-header-selvage.md:25`
