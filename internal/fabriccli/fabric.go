@@ -773,7 +773,7 @@ func runCleanupWithFlags(ctx context.Context, out io.Writer, apply, force bool) 
 
 	top := fabricengine.NewTopology(cfg)
 
-	r, err := top.Cleanup(l, apply, force)
+	r, err := top.Cleanup(l, apply, force, false)
 	if err != nil {
 		return errWithRecord(out, r.Mutated(), err)
 	}
@@ -803,7 +803,7 @@ func runRemoveWithFlag(ctx context.Context, out io.Writer, args []string, force 
 	}
 	slug := args[0]
 
-	r, err := top.Remove(l, slug, force)
+	r, err := top.Remove(l, slug, force, false)
 	if err != nil {
 		return errWithRecord(out, r.Mutated(), err)
 	}
