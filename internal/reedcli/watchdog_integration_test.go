@@ -26,6 +26,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -308,6 +310,302 @@ func TestWatchdogIntegration_OffWorktreeEntersKnownButStartsNoWatcher(t *testing
 	if ws.eng == nil {
 		t.Error("enterSession() for a watchdog:off worktree returned a nil eng; want a built Engine so departure bookkeeping stays uniform")
 	}
+}
+
+// watchdogWindowSize reads session's live #{window_width} and #{window_height} via a plain tmux
+// display-message, bypassing the engine entirely so a test can observe either worktree's window from
+// outside both — exactSessionWindowTarget's "=<name>:" form is used so two sessions sharing this
+// hub's one socket can never prefix-match each other.
+func watchdogWindowSize(t *testing.T, tmuxPath, socket, session string) (w, h int) {
+	t.Helper()
+	out, err := exec.Command(tmuxPath, "-L", socket, "display-message", "-p", "-t", "="+session+":", "#{window_width} #{window_height}").Output()
+	if err != nil {
+		t.Fatalf("display-message #{window_width} #{window_height} for %s: %v", session, err)
+	}
+	fields := strings.Fields(string(out))
+	if len(fields) != 2 {
+		t.Fatalf("display-message #{window_width} #{window_height} for %s = %q, want two fields", session, out)
+	}
+	w, errW := strconv.Atoi(fields[0])
+	h, errH := strconv.Atoi(fields[1])
+	if errW != nil || errH != nil {
+		t.Fatalf("parse window size %q for %s: width err=%v height err=%v", out, session, errW, errH)
+	}
+	return w, h
+}
+
+// watchdogResizeWindow issues a direct resize-window against session — the same live trigger
+// smoke_dotfill_test.go already drives against a single session — bypassing the engine entirely so a
+// test can resize one worktree's window from outside every engine.
+func watchdogResizeWindow(t *testing.T, tmuxPath, socket, session string, cols, rows int) {
+	t.Helper()
+	out, err := exec.Command(tmuxPath, "-L", socket, "resize-window", "-t", "="+session+":", "-x", strconv.Itoa(cols), "-y", strconv.Itoa(rows)).CombinedOutput()
+	if err != nil {
+		t.Fatalf("resize-window %s to %dx%d: %v (%s)", session, cols, rows, err, out)
+	}
+}
+
+// TestWatchdogIntegration_ResizeAppliesOnlyToThatWorktree drives a real resize against one of two
+// worktrees discovered by the same daemon and asserts the sibling's own window is left exactly alone
+// — the daemon's per-session watch loops must stay isolated from each other, never cross-applying a
+// resize meant for a different worktree's session.
+func TestWatchdogIntegration_ResizeAppliesOnlyToThatWorktree(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+	hubforge.AddPair(t, h, "watchdog-resize-second")
+
+	eng1 := watchdogIntegrationEngine(t, h.PrimeWorktree())
+	eng2 := watchdogIntegrationEngine(t, h.PairWarpWorktree("watchdog-resize-second"))
+
+	tmuxPath := eng1.TmuxPath()
+	socket := reedengine.ServerName(h.Path)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	loopDone := make(chan error, 1)
+	go func() {
+		loopDone <- runWatchdogLoop(ctx, h.Path, tmuxPath)
+	}()
+
+	waitForCondition(t, watchdogHubDiscoveryCycle*3, func() bool {
+		names, err := reedengine.ListSessions(tmuxPath, socket)
+		if err != nil {
+			return false
+		}
+		found1, found2 := false, false
+		for _, n := range names {
+			if n == eng1.SessionName() {
+				found1 = true
+			}
+			if n == eng2.SessionName() {
+				found2 = true
+			}
+		}
+		return found1 && found2
+	})
+
+	eng2W, eng2H := watchdogWindowSize(t, tmuxPath, socket, eng2.SessionName())
+
+	_, eng1H := watchdogWindowSize(t, tmuxPath, socket, eng1.SessionName())
+	newH := eng1H + 10
+	watchdogResizeWindow(t, tmuxPath, socket, eng1.SessionName(), 90, newH)
+
+	waitForCondition(t, 15*time.Second, func() bool {
+		_, gotH := watchdogWindowSize(t, tmuxPath, socket, eng1.SessionName())
+		return gotH == newH
+	})
+
+	// Give eng1's own watch loop goroutine ample time to actually react before checking the sibling
+	// never moved — a false pass here would mean we checked before either loop had a chance to run.
+	time.Sleep(watchdogHubDiscoveryCycle)
+
+	gotW2, gotH2 := watchdogWindowSize(t, tmuxPath, socket, eng2.SessionName())
+	if gotW2 != eng2W || gotH2 != eng2H {
+		t.Errorf("eng2's window size became %dx%d after resizing only eng1's window; want unchanged %dx%d — a resize must re-apply only the worktree whose own window actually resized", gotW2, gotH2, eng2W, eng2H)
+	}
+
+	cancel()
+	<-loopDone
+}
+
+// TestWatchdogIntegration_WritesDiagnosticsIntoHubLogsDir asserts the daemon points its durable log
+// sink at fabricengine.HubLogsDir(hub) before discarding stderr — the only observable proof of
+// watchdogCmd's documented ordering (sink first, then io.Discard, then the lock).
+func TestWatchdogIntegration_WritesDiagnosticsIntoHubLogsDir(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+	cfg, err := reedengine.LoadConfig(h.Location.AnchorPath(), "reed")
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	tmuxPath := watchdogIntegrationTmux(t, cfg)
+
+	logsDir := fabricengine.HubLogsDir(h.Path)
+	if _, err := os.Stat(logsDir); err == nil {
+		t.Fatalf("hub logs dir %s already exists before the daemon ever ran", logsDir)
+	}
+
+	cancel, done, _ := runWatchdogCmdInBackground(t, h.Path, tmuxPath)
+	defer cancel()
+
+	waitForCondition(t, 10*time.Second, func() bool {
+		entries, err := os.ReadDir(logsDir)
+		return err == nil && len(entries) > 0
+	})
+
+	entries, err := os.ReadDir(logsDir)
+	if err != nil {
+		t.Fatalf("ReadDir(%s): %v", logsDir, err)
+	}
+	var sawTrace bool
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), "trace-") {
+			sawTrace = true
+		}
+	}
+	if !sawTrace {
+		t.Errorf("hub logs dir %s entries = %v, want at least one trace-*.log file — this is the only observable proof the durable sink was pointed at HubLogsDir before stderr was discarded", logsDir, entries)
+	}
+
+	cancel()
+	<-done
+}
+
+// TestWatchdogIntegration_DownThenUpDoesNotKillDaemon drives a down immediately followed by an up
+// against the daemon's one live worktree and asserts the daemon itself never exits and rediscovers
+// the re-upped session — watchdogHubIdleCycles exists precisely to cover this gap.
+func TestWatchdogIntegration_DownThenUpDoesNotKillDaemon(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+	eng := watchdogIntegrationEngine(t, h.PrimeWorktree())
+	tmuxPath := eng.TmuxPath()
+	socket := reedengine.ServerName(h.Path)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	loopDone := make(chan error, 1)
+	go func() {
+		loopDone <- runWatchdogLoop(ctx, h.Path, tmuxPath)
+	}()
+
+	waitForCondition(t, watchdogHubDiscoveryCycle*3, func() bool {
+		names, err := reedengine.ListSessions(tmuxPath, socket)
+		if err != nil {
+			return false
+		}
+		for _, n := range names {
+			if n == eng.SessionName() {
+				return true
+			}
+		}
+		return false
+	})
+
+	if _, err := eng.Down(); err != nil {
+		t.Fatalf("eng.Down(): %v", err)
+	}
+	if _, err := eng.Up(); err != nil {
+		t.Fatalf("eng.Up() (immediate re-up): %v", err)
+	}
+
+	waitForCondition(t, watchdogHubDiscoveryCycle*3, func() bool {
+		names, err := reedengine.ListSessions(tmuxPath, socket)
+		if err != nil {
+			return false
+		}
+		for _, n := range names {
+			if n == eng.SessionName() {
+				return true
+			}
+		}
+		return false
+	})
+
+	select {
+	case err := <-loopDone:
+		t.Fatalf("runWatchdogLoop exited after a down immediately followed by an up (err=%v); want it still running", err)
+	default:
+	}
+
+	cancel()
+	<-loopDone
+}
+
+// TestWatchdogIntegration_ReEntryReReadsFlippedConfig downs a worktree, flips its watchdog: key to
+// off, ups it again, and asserts BOTH halves of re-entry re-reading the config: the one continuously
+// running daemon (never restarted — loopDone is asserted still open throughout) rediscovers the
+// re-upped session, and enterSession — the exact function the daemon's own discovery loop calls on
+// every appeared name — now reads the flipped value straight off disk rather than the value it held
+// before the down/up.
+func TestWatchdogIntegration_ReEntryReReadsFlippedConfig(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+	eng := watchdogIntegrationEngine(t, h.PrimeWorktree())
+	tmuxPath := eng.TmuxPath()
+	socket := reedengine.ServerName(h.Path)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	loopDone := make(chan error, 1)
+	go func() {
+		loopDone <- runWatchdogLoop(ctx, h.Path, tmuxPath)
+	}()
+
+	waitForCondition(t, watchdogHubDiscoveryCycle*3, func() bool {
+		names, err := reedengine.ListSessions(tmuxPath, socket)
+		if err != nil {
+			return false
+		}
+		for _, n := range names {
+			if n == eng.SessionName() {
+				return true
+			}
+		}
+		return false
+	})
+
+	if _, err := eng.Down(); err != nil {
+		t.Fatalf("eng.Down(): %v", err)
+	}
+
+	location, err := lyxcwd.ResolveWorktree(h.PrimeWorktree())
+	if err != nil {
+		t.Fatalf("ResolveWorktree: %v", err)
+	}
+	// enterSession loads its own config straight off disk, so the flip must actually be seeded into
+	// the fixture's reed.yaml — the whole resolved config, every key present, since a partial override
+	// fails LoadConfig's strictness check (mirrors TestWatchdogIntegration_OffWorktreeEntersKnownButStartsNoWatcher).
+	offCfg, err := reedengine.LoadConfig(location.AnchorPath(), "reed")
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	offCfg.Watchdog = "off"
+	seeded, err := yaml.Marshal(offCfg)
+	if err != nil {
+		t.Fatalf("marshal flipped config: %v", err)
+	}
+	hubforge.SeedConfig(t, h, map[string]string{"reed": string(seeded)})
+
+	geom := hubgeom.ReedGeometry(location)
+	eng2 := reedengine.New(offCfg, geom)
+	if _, err := eng2.Up(); err != nil {
+		t.Fatalf("eng2.Up() (re-up with watchdog: off): %v", err)
+	}
+	t.Cleanup(func() { _, _ = eng2.Down() })
+
+	// The one daemon started above is still running throughout this whole down/flip/up sequence —
+	// never restarted — and rediscovers the re-upped session under the SAME session name.
+	waitForCondition(t, watchdogHubDiscoveryCycle*3, func() bool {
+		names, err := reedengine.ListSessions(tmuxPath, socket)
+		if err != nil {
+			return false
+		}
+		for _, n := range names {
+			if n == eng2.SessionName() {
+				return true
+			}
+		}
+		return false
+	})
+	select {
+	case err := <-loopDone:
+		t.Fatalf("runWatchdogLoop exited during the down/flip/up sequence (err=%v); want it still running throughout", err)
+	default:
+	}
+
+	// enterSession is exactly the function the running daemon's own discovery loop calls for a newly
+	// appeared name — calling it here against the same hub/tmux/session identity proves what value the
+	// daemon itself would now read on its own next discovery cycle.
+	ws, err := enterSession(h.Path, tmuxPath, eng2.SessionName())
+	if err != nil {
+		t.Fatalf("enterSession (after down + flip-to-off + up): %v", err)
+	}
+	if ws.cancel != nil {
+		ws.cancel()
+		t.Error("enterSession() after down + flip-to-off + up returned a non-nil cancel; want nil — re-entry must re-read the flipped config rather than the value it held before the down/up")
+	}
+	if ws.eng == nil {
+		t.Error("enterSession() after re-entry returned a nil eng; want a built Engine so departure bookkeeping stays uniform")
+	}
+
+	cancel()
+	<-loopDone
 }
 
 func TestWatchdogIntegration_AttachAndResumeAttemptTheSpawn(t *testing.T) {
