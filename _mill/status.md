@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: fabric-remote-branch-delete
 branch: fabric-remote-branch-delete
-plan: null
+plan: _mill/plan
 parent: main
 task: 'fabric: no remote/GitHub branch deletion'
 task_description: |
@@ -22,4 +22,5 @@ discussion-fix-r5  '2026-09-18T19:33:29Z'
 discussion-gap-fix-r6  '2026-09-18T19:38:53Z'
 discussion-fix-r7  '2026-09-18T19:41:38Z'
 discussed  '2026-09-18T19:41:38Z'
+planning  '2026-09-19T05:08:49Z'
 ```
