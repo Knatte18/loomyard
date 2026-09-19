@@ -561,6 +561,55 @@ func TestGate_ZeroValueDeclarationsAreRefusals(t *testing.T) {
 		err := checkBranchRequest(req)
 		assertRefusalCheck(t, err, CheckDirtiness)
 	})
+
+	// The three subtests below cover remoteBranchRequest/checkRemoteBranchRequest, mirroring the
+	// branchRequest cases above exactly.
+
+	t.Run("RemoteBranchZeroOwnership", func(t *testing.T) {
+		req := remoteBranchRequest{
+			what:      "test",
+			repoDir:   t.TempDir(),
+			remote:    originRemoteName,
+			branch:    "task-weft",
+			dirtiness: dirtyCheckedOutBranch(),
+		}
+		err := checkRemoteBranchRequest(req)
+		assertRefusalCheck(t, err, CheckOwnership)
+	})
+
+	t.Run("RemoteBranchZeroDirtiness", func(t *testing.T) {
+		// A hand-built Location is fine here, for the same reason BranchZeroDirtiness's is: the
+		// zero-value dirtiness declaration refuses before resolveManagedBranch ever runs, so
+		// primaryWeftBranch (which spawns git) is never reached.
+		l := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "prime"}
+		req := remoteBranchRequest{
+			what:      "test",
+			repoDir:   t.TempDir(),
+			remote:    originRemoteName,
+			branch:    "task-weft",
+			ownership: ownedManagedBranch(l, ""),
+		}
+		err := checkRemoteBranchRequest(req)
+		assertRefusalCheck(t, err, CheckDirtiness)
+	})
+
+	t.Run("RemoteBranchNamingPredicateRefused", func(t *testing.T) {
+		// A branch name fabric's own scheme does not construct (no "-weft" suffix, no branchPrefix
+		// match) is refused by resolveManagedBranch's naming predicate before it spawns git at all —
+		// safe with a hand-built Location for the same reason the naming-predicate case is safe
+		// elsewhere in this file: the predicate short-circuits ahead of the first spawn.
+		l := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "prime"}
+		req := remoteBranchRequest{
+			what:      "test",
+			repoDir:   t.TempDir(),
+			remote:    originRemoteName,
+			branch:    "not-a-fabric-branch",
+			ownership: ownedManagedBranch(l, ""),
+			dirtiness: dirtyCheckedOutBranch(),
+		}
+		err := checkRemoteBranchRequest(req)
+		assertRefusalCheck(t, err, CheckOwnership)
+	})
 }
 
 // TestGate_AbsentTargetIsNoOp proves an absent target is a no-op success, for every ownership kind,
