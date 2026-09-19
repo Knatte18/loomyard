@@ -72,7 +72,7 @@ It assembles every module's cobra command tree under a single root so that
 all modules are discoverable via "lyx --help" and every subcommand carries
 its own --help and --json help output.
 
-Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler, webster, stencil, loom, run, quarry.`,
+Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler, webster, stencil, loom, start, quarry.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		// Modules' PersistentPreRunE hooks run after root's via EnableTraverseRunHooks.
@@ -108,11 +108,11 @@ Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler
 		stencilcli.Command(),
 		webstercli.Command(),
 		loomcli.Command(),
-		// RunAliasCommand registers the same "run" verb as loomcli.Command()'s
+		// StartAliasCommand registers the same "start" verb as loomcli.Command()'s
 		// subtree already carries, a second time, as a bare root child rather
 		// than spliced into the argument vector, so it is discoverable in help
 		// and covered by the help-tree and registration guards.
-		loomcli.RunAliasCommand(),
+		loomcli.StartAliasCommand(),
 		quarrycli.Command(),
 	)
 
