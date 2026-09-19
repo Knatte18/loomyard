@@ -181,6 +181,7 @@ batches:
 - `manifest/designs/loom-step.md`
 - `manifest/designs/loom.md`
 - `manifest/designs/reed-born-as-strand.md`
+- `manifest/designs/reed-fabric-standalone-api.md`
 - `manifest/designs/reed-header-selvage.md`
 - `manifest/designs/reed-mailbox.md`
 - `manifest/designs/self-report-tier1.md`

@@ -94,6 +94,7 @@ Batch-local decision: retrospective prose is rewritten outright, per the shared 
   - `manifest/designs/shed-recipe.md`
   - `manifest/designs/shed-generic-watchdog.md`
   - `manifest/designs/worktree-lifecycle-shed-producers.md`
+  - `manifest/designs/reed-fabric-standalone-api.md`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -124,6 +125,9 @@ Batch-local decision: retrospective prose is rewritten outright, per the shared 
   Do not change the `## Why not Planned` section's verdict: a second `shedrecipe` consumer beyond loom is still what the generalisation needs before it can be validated, and this new section describes a shape, not a commitment.
   Use semantic line breaks throughout the new section.
   In `manifest/designs/worktree-lifecycle-shed-producers.md`, the status line naming `lyx loom run` as one of three manually-sequenced steps and the bootstrap bullet naming a `loom run` producer both name the bootstrap and become the `start` form.
+  In `manifest/designs/reed-fabric-standalone-api.md`, the per-importer shape bullet describing `loomcli` as the sole consumer retaining a concrete `*reedengine.Engine` field cites the pre-move filenames and line ranges for the six `Up`/`Status`/`AddStrand`/`RemoveStrand`/`TmuxPath`/`AttachArgv` call sites (`internal/loomcli/run.go:145-320`, `drive.go:64`).
+  After the rename those calls live in `internal/loomcli/sharedbootstrap.go` (`Up`, `Status`, `RemoveStrand`, `AddStrand`), `internal/loomcli/start.go` (`Status`, `TmuxPath`, `AttachArgv`), and `internal/loomcli/run.go` (`Up`);
+  retarget the citation to `internal/loomcli/sharedbootstrap.go, start.go, run.go` naming the call sites without the now-false line-range claim, since the six calls are no longer contiguous in one file.
   Use semantic line breaks in every rewritten paragraph.
 - **Commit:** `docs(manifest): rename the verbs and skill across the remaining design docs`
 
