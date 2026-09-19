@@ -29,6 +29,7 @@ var excludedModules = map[string]string{
 	"ide":        "side-effect heavy: spawn opens a real VS Code window, menu is an interactive stdin picker",
 	"selfreport": "create files a real GitHub issue",
 	"start":      "alias of loom's own bootstrap verb; covered by the loom module's scenario",
+	"shed":       "armed re-exposure of loom's and lifecycle's own verbs; covered by those two modules' own scenarios",
 }
 
 // TestSandboxCoverage_AllModulesCoveredOrExcluded asserts every module is covered or excluded.
