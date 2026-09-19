@@ -73,7 +73,7 @@ It assembles every module's cobra command tree under a single root so that
 all modules are discoverable via "lyx --help" and every subcommand carries
 its own --help and --json help output.
 
-Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler, webster, stencil, loom, run, quarry.`,
+Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler, webster, stencil, loom, run, quarry, lifecycle.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		// Modules' PersistentPreRunE hooks run after root's via EnableTraverseRunHooks.
