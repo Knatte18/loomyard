@@ -52,7 +52,9 @@ batches:
     verify_baseline_failures: ["FAIL\t./internal/battenshed/... [setup failed]", "FAIL\t./internal/battenrecipe/...\
     \ [setup failed]", "FAIL\t./internal/battencli/... [setup failed]"]
   - name: loom-run-directory
-    state: pending
+    state: running
+    implementer_session: 060abfe6-f21a-4ddd-a258-b2458c105f00
+    start_sha: ddb48667942309459b1923387a4a662464d1687e
     verify_baseline_failures: []
   - name: batten-producers
     state: pending
