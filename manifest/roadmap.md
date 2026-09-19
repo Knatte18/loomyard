@@ -17,7 +17,11 @@ This section holds what's committed to next.
 What comes right after Planned clears — committed and ordered, unlike Someday below.
 Not yet started, and exact order can still shift as Planned work reveals what unblocks what, but the rough sequence below is the current best guess.
 
-1. **loom as a named Shed recipe, not its own CLI module** — loom and the future Hardener are both Shed runs; the only real difference is which FSM recipe the name looks up. Once **generalize `ly-drive` and loom's `start`/`run`/`step` CLI verbs into a Shed-generic watchdog** lands, what `loomcli` still owns is a recipe file, its hand-wired producer list, and config wiring — collapse that to a named recipe binding over the generic verbs, minding the durable row-name identities in `status.json`.
+1. **seeded Shed core: run addressing, seed contract, batten** — every Shed run gets a run directory (`shed/<run-id>/` with seed + status, durable in task worktrees, ephemeral in prime) addressed by the generic verbs; a `Seed-Child` row and a Board `type` field carry the recipe choice; the lifecycle recipe is renamed batten and its `Loom-Run` row becomes a product-neutral, step-friendly `Run-Shed`.
+   See [designs/seeded-shed.md](designs/seeded-shed.md).
+
+1. **seeded driver choice: ly-drive strand as the child's driver** — the seed's `driver` field selects who steps a run: the detached Go runner, or a Claude strand running ly-drive in the worktree's own reed session, booted by the same Spawn seam.
+   See [designs/seeded-shed.md](designs/seeded-shed.md).
 
 ## Someday
 
