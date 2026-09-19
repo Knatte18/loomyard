@@ -6,6 +6,7 @@ slug: seeded-shed-core
 branch: seeded-shed-core
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: 'Seeded Shed core: run addressing, seed contract, batten'
 task_description: |
   Seeded Shed core: run addressing, seed contract, batten
@@ -29,19 +30,31 @@ implementing  '2026-09-19T17:37:56Z'
 ```yaml
 batches:
   - name: shedrun-leaf
-    state: pending
+    state: running
+    implementer_session: 5f6b400d-be0c-40c6-8a82-c320b99f09c9
+    start_sha: 40c2d81948c3d9542a1adf853c0abd95ea1a6338
+    verify_baseline_failures: ["FAIL\t./internal/shedrun/... [setup failed]"]
   - name: board-type-field
     state: pending
+    verify_baseline_failures: []
   - name: batten-rename
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/battenshed/... [setup failed]", "FAIL\t./internal/battenrecipe/...\
+    \ [setup failed]", "FAIL\t./internal/battencli/... [setup failed]"]
   - name: loom-run-directory
     state: pending
+    verify_baseline_failures: []
   - name: batten-producers
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/battenshed/... [setup failed]", "FAIL\t./internal/battenrecipe/...\
+    \ [setup failed]"]
   - name: batten-wiring
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/battencli/... [setup failed]"]
   - name: shed-addressing
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/battencli/... [setup failed]"]
   - name: docs-and-integration
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/battencli/... [setup failed]"]
 ```
