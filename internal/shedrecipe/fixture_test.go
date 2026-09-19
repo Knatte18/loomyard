@@ -88,7 +88,7 @@ type (
 // closure returning a shuttleengine.Spec over one absolute output path under the same temp root,
 // fills CommitPlan with a closure returning nil, leaves Landing zero, and leaves Now nil.
 //
-// It also fills the six lifecycle fields: a non-empty Slug, CreateWorktree returning nil, LoomRun
+// It also fills the six lifecycle fields: a non-empty Slug, CreateWorktree returning nil, InnerRun
 // and Teardown whose own closures return nil or zero values, and a PrimeLock whose Path sits under
 // the same temp root and whose Acquire seam returns a no-op release with ok == true.
 //
@@ -149,7 +149,7 @@ func newTestEnv(t *testing.T) Env {
 		CreateWorktree: func(context.Context) error {
 			return nil
 		},
-		LoomRun: lifecycleshed.LoomRunDeps{
+		InnerRun: lifecycleshed.InnerRunDeps{
 			Spawn: func(context.Context) error { return nil },
 			ResolveStatus: func() (string, string, error) {
 				return filepath.Join(dir, "loomrun-status.json"), filepath.Join(dir, "loomrun-status.json.lock"), nil

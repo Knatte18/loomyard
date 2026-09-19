@@ -1,5 +1,5 @@
 // entries_lifecycle.go implements the three lifecycle registry entries: worktreeCreateEntry,
-// loomRunEntry, and worktreeTeardownEntry. They are grouped into their own file rather than folded
+// innerRunEntry, and worktreeTeardownEntry. They are grouped into their own file rather than folded
 // into entries_simple.go because they share the Env.Slug/Env.ScratchDir/Env.PrimeLock validation
 // shape that entries_simple.go's nine entries do not have.
 
@@ -13,14 +13,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// defaultLoomRunPollIntervalS and defaultLoomRunPollAttempts are loomRunEntry's own defaults for the
-// poll_interval_s and poll_attempts Config keys, used when the extracted value is zero -- configInt
-// reports an absent key and an explicit zero identically, so both resolve to these defaults. The
-// twelve-hour default the attempt count expresses at the default interval is deliberately generous:
-// a real task run spans hours.
+// defaultInnerRunPollIntervalS and defaultInnerRunPollAttempts are innerRunEntry's own defaults for
+// the poll_interval_s and poll_attempts Config keys, used when the extracted value is zero --
+// configInt reports an absent key and an explicit zero identically, so both resolve to these
+// defaults. The twelve-hour default the attempt count expresses at the default interval is
+// deliberately generous: a real task run spans hours.
 const (
-	defaultLoomRunPollIntervalS = 5
-	defaultLoomRunPollAttempts  = 8640
+	defaultInnerRunPollIntervalS = 5
+	defaultInnerRunPollAttempts  = 8640
 )
 
 // worktreeCreateEntry is the Constructor for the "WorktreeCreate" registry row: it validates
@@ -78,25 +78,25 @@ func worktreeTeardownEntry(name string, cfg Config, env Env) (shedengine.ShedPro
 	return lifecycleshed.NewWorktreeTeardown(name, env.Slug, env.Teardown, env.PrimeLock, env.ScratchDir), nil
 }
 
-// loomRunEntry is the Constructor for the "LoomRun" registry row: it reads the optional int Config
-// keys poll_interval_s and poll_attempts through configInt, defaulting to
-// defaultLoomRunPollIntervalS and defaultLoomRunPollAttempts respectively when the extracted value
-// is zero -- configInt reports an absent key and an explicit zero identically, so both resolve to
-// the same default -- and rejects a negative value for either key with an error naming that key. It
-// validates Env.Slug, Env.ScratchDir, and Env.LoomRun.Spawn/ResolveStatus/ReadStatus -- and neither
-// Env.LoomRun.Now nor Env.LoomRun.Sleep, whose nil values are legitimate and select the production
-// clock and sleep. It returns lifecycleshed.NewLoomRun(name, env.Slug, env.LoomRun,
-// time.Duration(pollIntervalS)*time.Second, pollAttempts, env.ScratchDir).
-func loomRunEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
+// innerRunEntry is the Constructor for the "InnerRun" registry row: it reads the optional int
+// Config keys poll_interval_s and poll_attempts through configInt, defaulting to
+// defaultInnerRunPollIntervalS and defaultInnerRunPollAttempts respectively when the extracted
+// value is zero -- configInt reports an absent key and an explicit zero identically, so both
+// resolve to the same default -- and rejects a negative value for either key with an error naming
+// that key. It validates Env.Slug, Env.ScratchDir, and Env.InnerRun.Spawn/ResolveStatus/ReadStatus
+// -- and neither Env.InnerRun.Now nor Env.InnerRun.Sleep, whose nil values are legitimate and
+// select the production clock and sleep. It returns lifecycleshed.NewInnerRun(name, env.Slug,
+// env.InnerRun, time.Duration(pollIntervalS)*time.Second, pollAttempts, env.ScratchDir).
+func innerRunEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	pollIntervalS, err := configInt(cfg, "poll_interval_s", false)
 	if err != nil {
 		return nil, err
 	}
 	if pollIntervalS < 0 {
-		return nil, fmt.Errorf("shedrecipe: LoomRun: config key %q must not be negative, got %d", "poll_interval_s", pollIntervalS)
+		return nil, fmt.Errorf("shedrecipe: InnerRun: config key %q must not be negative, got %d", "poll_interval_s", pollIntervalS)
 	}
 	if pollIntervalS == 0 {
-		pollIntervalS = defaultLoomRunPollIntervalS
+		pollIntervalS = defaultInnerRunPollIntervalS
 	}
 
 	pollAttempts, err := configInt(cfg, "poll_attempts", false)
@@ -104,29 +104,29 @@ func loomRunEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 		return nil, err
 	}
 	if pollAttempts < 0 {
-		return nil, fmt.Errorf("shedrecipe: LoomRun: config key %q must not be negative, got %d", "poll_attempts", pollAttempts)
+		return nil, fmt.Errorf("shedrecipe: InnerRun: config key %q must not be negative, got %d", "poll_attempts", pollAttempts)
 	}
 	if pollAttempts == 0 {
-		pollAttempts = defaultLoomRunPollAttempts
+		pollAttempts = defaultInnerRunPollAttempts
 	}
 
 	if err := configRejectUnknown(cfg, "poll_interval_s", "poll_attempts"); err != nil {
 		return nil, err
 	}
-	if err := requireNonEmpty("LoomRun", "Slug", env.Slug); err != nil {
+	if err := requireNonEmpty("InnerRun", "Slug", env.Slug); err != nil {
 		return nil, err
 	}
-	if err := requireAbsRoot("LoomRun", "ScratchDir", env.ScratchDir); err != nil {
+	if err := requireAbsRoot("InnerRun", "ScratchDir", env.ScratchDir); err != nil {
 		return nil, err
 	}
-	if err := requireSeam("LoomRun", "LoomRun.Spawn", env.LoomRun.Spawn); err != nil {
+	if err := requireSeam("InnerRun", "InnerRun.Spawn", env.InnerRun.Spawn); err != nil {
 		return nil, err
 	}
-	if err := requireSeam("LoomRun", "LoomRun.ResolveStatus", env.LoomRun.ResolveStatus); err != nil {
+	if err := requireSeam("InnerRun", "InnerRun.ResolveStatus", env.InnerRun.ResolveStatus); err != nil {
 		return nil, err
 	}
-	if err := requireSeam("LoomRun", "LoomRun.ReadStatus", env.LoomRun.ReadStatus); err != nil {
+	if err := requireSeam("InnerRun", "InnerRun.ReadStatus", env.InnerRun.ReadStatus); err != nil {
 		return nil, err
 	}
-	return lifecycleshed.NewLoomRun(name, env.Slug, env.LoomRun, time.Duration(pollIntervalS)*time.Second, pollAttempts, env.ScratchDir), nil
+	return lifecycleshed.NewInnerRun(name, env.Slug, env.InnerRun, time.Duration(pollIntervalS)*time.Second, pollAttempts, env.ScratchDir), nil
 }

@@ -1,6 +1,6 @@
-// loomrun_test.go covers NewLoomRun's full verdict table over a fake ReadStatus, a fake Now, and a
-// fake Sleep that never sleeps -- so the attempt-cap test proves the bound is attempt-counted, not
-// wall-clock-timed, in unmeasurable real time.
+// innerrun_test.go covers NewInnerRun's full verdict table over a fake ReadStatus, a fake Now, and
+// a fake Sleep that never sleeps -- so the attempt-cap test proves the bound is attempt-counted,
+// not wall-clock-timed, in unmeasurable real time.
 
 package lifecycleshed
 
@@ -27,10 +27,10 @@ func (c *fakeClock) Sleep(d time.Duration) {
 	c.sleepCalls++
 }
 
-func newLoomRunDeps(spawnErr error, resolveErr error, statuses []statusResult, clock *fakeClock) (*int, *int, LoomRunDeps) {
+func newInnerRunDeps(spawnErr error, resolveErr error, statuses []statusResult, clock *fakeClock) (*int, *int, InnerRunDeps) {
 	readCalls := 0
 	spawnCalls := 0
-	deps := LoomRunDeps{
+	deps := InnerRunDeps{
 		Spawn: func(ctx context.Context) error {
 			spawnCalls++
 			return spawnErr
@@ -63,7 +63,7 @@ type statusResult struct {
 	err    error
 }
 
-func TestLoomRun_VerdictTable(t *testing.T) {
+func TestInnerRun_VerdictTable(t *testing.T) {
 	tests := []struct {
 		name       string
 		statuses   []statusResult
@@ -124,9 +124,9 @@ func TestLoomRun_VerdictTable(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			scratchDir := t.TempDir()
 			clock := &fakeClock{now: time.Unix(0, 0)}
-			_, _, deps := newLoomRunDeps(nil, nil, tt.statuses, clock)
+			_, _, deps := newInnerRunDeps(nil, nil, tt.statuses, clock)
 
-			producer := NewLoomRun("loomrun", "myslug", deps, time.Millisecond, 5, scratchDir)
+			producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, 5, scratchDir)
 			outcome, _, err := producer.Call(context.Background())
 
 			if tt.wantErr {
@@ -145,7 +145,7 @@ func TestLoomRun_VerdictTable(t *testing.T) {
 				t.Errorf("Call() outcome = %v; want Stuck", outcome)
 			}
 			if tt.wantReason != "" {
-				reason := readStuckFile(t, scratchDir, "loomrun")
+				reason := readStuckFile(t, scratchDir, "innerrun")
 				if !strings.Contains(reason, tt.wantReason) {
 					t.Errorf("stuck-reason file = %q; want substring %q", reason, tt.wantReason)
 				}
@@ -154,13 +154,13 @@ func TestLoomRun_VerdictTable(t *testing.T) {
 	}
 }
 
-func TestLoomRun_SpawnFailureIsStuck(t *testing.T) {
+func TestInnerRun_SpawnFailureIsStuck(t *testing.T) {
 	scratchDir := t.TempDir()
 	clock := &fakeClock{now: time.Unix(0, 0)}
 	spawnErr := errors.New("spawn failed")
-	_, spawnCalls, deps := newLoomRunDeps(spawnErr, nil, nil, clock)
+	_, spawnCalls, deps := newInnerRunDeps(spawnErr, nil, nil, clock)
 
-	producer := NewLoomRun("loomrun", "myslug", deps, time.Millisecond, 5, scratchDir)
+	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, 5, scratchDir)
 	outcome, _, err := producer.Call(context.Background())
 	if err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
@@ -173,13 +173,13 @@ func TestLoomRun_SpawnFailureIsStuck(t *testing.T) {
 	}
 }
 
-func TestLoomRun_ResolveStatusFailureIsReturnedError(t *testing.T) {
+func TestInnerRun_ResolveStatusFailureIsReturnedError(t *testing.T) {
 	scratchDir := t.TempDir()
 	clock := &fakeClock{now: time.Unix(0, 0)}
 	resolveErr := errors.New("resolve failed")
-	_, _, deps := newLoomRunDeps(nil, resolveErr, nil, clock)
+	_, _, deps := newInnerRunDeps(nil, resolveErr, nil, clock)
 
-	producer := NewLoomRun("loomrun", "myslug", deps, time.Millisecond, 5, scratchDir)
+	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, 5, scratchDir)
 	_, _, err := producer.Call(context.Background())
 	if err == nil {
 		t.Fatal("Call() error = nil; want a returned error")
@@ -189,15 +189,15 @@ func TestLoomRun_ResolveStatusFailureIsReturnedError(t *testing.T) {
 	}
 }
 
-func TestLoomRun_CancelledContext(t *testing.T) {
+func TestInnerRun_CancelledContext(t *testing.T) {
 	scratchDir := t.TempDir()
 	clock := &fakeClock{now: time.Unix(0, 0)}
-	_, _, deps := newLoomRunDeps(nil, nil, []statusResult{{status: shedengine.Status{State: shedengine.StateDone}, found: true}}, clock)
+	_, _, deps := newInnerRunDeps(nil, nil, []statusResult{{status: shedengine.Status{State: shedengine.StateDone}, found: true}}, clock)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	producer := NewLoomRun("loomrun", "myslug", deps, time.Millisecond, 5, scratchDir)
+	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, 5, scratchDir)
 	outcome, _, err := producer.Call(ctx)
 	if err == nil {
 		t.Fatal("Call() error = nil; want a non-nil error for a cancelled context")
@@ -207,17 +207,17 @@ func TestLoomRun_CancelledContext(t *testing.T) {
 	}
 }
 
-// TestLoomRun_StateFailedConsumesZeroPollAttempts asserts StateFailed resolves on its first read,
+// TestInnerRun_StateFailedConsumesZeroPollAttempts asserts StateFailed resolves on its first read,
 // calling ReadStatus exactly once and never calling Sleep, proving it does not loop through the
 // remaining poll budget the way StateRunning does.
-func TestLoomRun_StateFailedConsumesZeroPollAttempts(t *testing.T) {
+func TestInnerRun_StateFailedConsumesZeroPollAttempts(t *testing.T) {
 	scratchDir := t.TempDir()
 	clock := &fakeClock{now: time.Unix(0, 0)}
-	readCalls, _, deps := newLoomRunDeps(nil, nil, []statusResult{
+	readCalls, _, deps := newInnerRunDeps(nil, nil, []statusResult{
 		{status: shedengine.Status{State: shedengine.StateFailed, Error: "boom"}, found: true},
 	}, clock)
 
-	producer := NewLoomRun("loomrun", "myslug", deps, time.Millisecond, 5, scratchDir)
+	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, 5, scratchDir)
 	outcome, _, err := producer.Call(context.Background())
 	if err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
@@ -233,10 +233,10 @@ func TestLoomRun_StateFailedConsumesZeroPollAttempts(t *testing.T) {
 	}
 }
 
-// TestLoomRun_AttemptCapFiresOnCountNotWallClock proves the poll bound is attempt-counted: with the
-// fake clock held still (Now never advances) and Sleep never actually sleeping, exhausting
+// TestInnerRun_AttemptCapFiresOnCountNotWallClock proves the poll bound is attempt-counted: with
+// the fake clock held still (Now never advances) and Sleep never actually sleeping, exhausting
 // pollAttempts while the state stays StateRunning still produces Stuck, in unmeasurable real time.
-func TestLoomRun_AttemptCapFiresOnCountNotWallClock(t *testing.T) {
+func TestInnerRun_AttemptCapFiresOnCountNotWallClock(t *testing.T) {
 	scratchDir := t.TempDir()
 	clock := &fakeClock{now: time.Unix(0, 0)}
 	const pollAttempts = 4
@@ -244,9 +244,9 @@ func TestLoomRun_AttemptCapFiresOnCountNotWallClock(t *testing.T) {
 	for i := range statuses {
 		statuses[i] = statusResult{status: shedengine.Status{State: shedengine.StateRunning}, found: true}
 	}
-	readCalls, _, deps := newLoomRunDeps(nil, nil, statuses, clock)
+	readCalls, _, deps := newInnerRunDeps(nil, nil, statuses, clock)
 
-	producer := NewLoomRun("loomrun", "myslug", deps, 5*time.Second, pollAttempts, scratchDir)
+	producer := NewInnerRun("innerrun", "myslug", deps, 5*time.Second, pollAttempts, scratchDir)
 
 	start := time.Now()
 	outcome, _, err := producer.Call(context.Background())
@@ -267,17 +267,17 @@ func TestLoomRun_AttemptCapFiresOnCountNotWallClock(t *testing.T) {
 	if elapsed >= time.Second {
 		t.Errorf("Call() took %s of real time; want well under 1s, proving the fake Sleep never actually slept", elapsed)
 	}
-	reason := readStuckFile(t, scratchDir, "loomrun")
+	reason := readStuckFile(t, scratchDir, "innerrun")
 	if !strings.Contains(reason, "4") {
 		t.Errorf("stuck-reason file = %q; want it to name the attempt count", reason)
 	}
 }
 
-// NewLoomRun's nil-seam defaults are exercised implicitly by every production caller; this test
+// NewInnerRun's nil-seam defaults are exercised implicitly by every production caller; this test
 // pins that a nil Now/Sleep resolve to the real stdlib functions rather than panicking.
-func TestLoomRun_NilSeamsDefaultToStdlib(t *testing.T) {
+func TestInnerRun_NilSeamsDefaultToStdlib(t *testing.T) {
 	scratchDir := t.TempDir()
-	deps := LoomRunDeps{
+	deps := InnerRunDeps{
 		Spawn: func(ctx context.Context) error { return nil },
 		ResolveStatus: func() (string, string, error) {
 			return "/status/path", "/status/lock/path", nil
@@ -286,7 +286,7 @@ func TestLoomRun_NilSeamsDefaultToStdlib(t *testing.T) {
 			return shedengine.Status{State: shedengine.StateDone}, true, nil
 		},
 	}
-	producer := NewLoomRun("loomrun", "myslug", deps, time.Millisecond, 1, scratchDir)
+	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, 1, scratchDir)
 	outcome, _, err := producer.Call(context.Background())
 	if err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)

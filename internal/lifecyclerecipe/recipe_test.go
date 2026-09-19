@@ -95,12 +95,39 @@ func TestNew_CarriesShedPathsVerbatim(t *testing.T) {
 	}
 }
 
+// TestNameLoomRun_ValueIsPinnedAgainstASymmetryRename exists because shedengine persists
+// CurrentProducer -- the row name, not the engine name -- into the status file, so renaming a row
+// breaks resume for an in-flight run. This guard makes a later symmetry-minded rename of the
+// durable identity (matching the engine's InnerRun rename onto the row) fail loudly here rather
+// than silently breaking resume.
+func TestNameLoomRun_ValueIsPinnedAgainstASymmetryRename(t *testing.T) {
+	if NameLoomRun != "Loom-Run" {
+		t.Errorf("NameLoomRun = %q; want the durable value %q", NameLoomRun, "Loom-Run")
+	}
+
+	env, paths := testEnv(t)
+	shed, err := New(env, paths)
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+
+	wantNames := []string{NameWorktreeCreate, NameLoomRun, NameWorktreeTeardown}
+	if len(shed.Producers) != len(wantNames) {
+		t.Fatalf("New() row count = %d, want %d", len(shed.Producers), len(wantNames))
+	}
+	for i, want := range wantNames {
+		if got := shed.Producers[i].Name; got != want {
+			t.Errorf("row %d name = %q; want %q", i, got, want)
+		}
+	}
+}
+
 // TestRecipeEngines_ReportsExactlyTheThreeEngineNamesSorted asserts RecipeEngines() returns
 // exactly the three engine names, sorted -- this is the input the cross-consumer guard trusts, so
 // a silently empty return would disable that guard rather than fail it.
 func TestRecipeEngines_ReportsExactlyTheThreeEngineNamesSorted(t *testing.T) {
 	got := RecipeEngines()
-	want := []string{"LoomRun", "WorktreeCreate", "WorktreeTeardown"}
+	want := []string{"InnerRun", "WorktreeCreate", "WorktreeTeardown"}
 
 	if len(got) != len(want) {
 		t.Fatalf("RecipeEngines() = %v, want %v", got, want)

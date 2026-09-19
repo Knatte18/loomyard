@@ -19,7 +19,11 @@ import (
 const (
 	// NameWorktreeCreate is the row that creates the task worktree.
 	NameWorktreeCreate = "Worktree-Create"
-	// NameLoomRun is the row that runs the loom session inside the task worktree.
+	// NameLoomRun is the row that runs the inner shed run inside the task worktree. The constant's
+	// name may follow a neutralization of the producer it identifies, but its value is durable:
+	// shedengine persists CurrentProducer -- this row name -- into the status file, so a rename of
+	// the value breaks resume for an in-flight run. recipe_test.go pins the value against that
+	// symmetry-minded rename.
 	NameLoomRun = "Loom-Run"
 	// NameWorktreeTeardown is the row that tears the task worktree down.
 	NameWorktreeTeardown = "Worktree-Teardown"

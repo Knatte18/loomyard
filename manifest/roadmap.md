@@ -9,9 +9,6 @@ See Maintenance below for how the numbering works.
 
 This section holds what's committed to next.
 
-1. **generalize `ly-drive` and loom's `start`/`run`/`step` CLI verbs into a Shed-generic watchdog** — `shedengine`/`shedbuild`/`shedrecipe` are already fully generic; only `loomcli` hardcodes loom's own recipe/paths. The second `shedrecipe` consumer this needed to validate against now exists (`lifecyclerecipe`).
-   See [designs/shed-generic-watchdog.md](designs/shed-generic-watchdog.md).
-
 ## Next Up
 
 What comes right after Planned clears — committed and ordered, unlike Someday below.
@@ -103,6 +100,9 @@ No build order is implied between these items.
 ## Done
 
 Cleared 2026-08-25 to keep this file lean — shipped items' history lives in `git log` and each module's own package documentation, not here.
+
+1. **generalize `ly-drive` and loom's `start`/`run`/`step` CLI verbs into a Shed-generic watchdog** — the generic `run`/`step`/`status`/`pause` verb bodies now live in `internal/shedverbs`, armed by a new named-recipe `lyx shed` subtree (`internal/shedcli`) alongside loom's and lifecycle's own subtrees; lifecycle gained `pause` and `status --watch` to match. The `ly-drive` skill now drives any recipe through `lyx shed step --recipe <name>`, defaulting to `loom`.
+   See [designs/shed-generic-watchdog.md](designs/shed-generic-watchdog.md).
 
 1. **reed: per-hub daemon reaps orphaned sessions** — the per-hub daemon now checks each live session name's worktree directory every discovery cycle, reaps a session confirmed gone across three consecutive affirmative cycles by capturing its pane process closure and then killing the session by exact target, and refuses to act at all while the hub directory itself does not stat live.
    See [designs/reed-header-selvage.md](designs/reed-header-selvage.md).

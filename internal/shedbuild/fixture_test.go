@@ -138,7 +138,7 @@ func testLandingDeps(dir string) landingshed.Deps {
 // absolute output path under the same temp root, and a CommitPlan closure returning nil -- and
 // additionally fills Env.Landing via testLandingDeps, because two of the seventeen engines need it,
 // which its sibling does not do. It also fills the six lifecycle fields (Slug, ScratchDir,
-// CreateWorktree, LoomRun, Teardown, PrimeLock) the same way that sibling's own newTestEnv does.
+// CreateWorktree, InnerRun, Teardown, PrimeLock) the same way that sibling's own newTestEnv does.
 //
 // Every seam any registered engine requires non-nil must be filled here:
 // TestBuild_EveryRegisteredEngineBuilds drives its assertion off shedrecipe.Names(), so a new
@@ -201,7 +201,7 @@ func newTestEnv(t *testing.T) shedrecipe.Env {
 		CreateWorktree: func(context.Context) error {
 			return nil
 		},
-		LoomRun: lifecycleshed.LoomRunDeps{
+		InnerRun: lifecycleshed.InnerRunDeps{
 			Spawn: func(context.Context) error { return nil },
 			ResolveStatus: func() (string, string, error) {
 				return filepath.Join(dir, "loomrun-status.json"), filepath.Join(dir, "loomrun-status.json.lock"), nil

@@ -3,9 +3,9 @@
 // lifecycle_integration_test.go is the end-to-end suite over a real hub built by
 // internal/hubforge through its fabric fixture entry point, per the hubforge Fabric-Fixture
 // Invariant. It stays a white-box "package lifecyclecli" test, not an external "_test" package,
-// because it stubs Env.LoomRun.Spawn and Env.LoomRun.ReadStatus at the field level after a real
+// because it stubs Env.InnerRun.Spawn and Env.InnerRun.ReadStatus at the field level after a real
 // wire() call -- a no-op spawn and a read-status answering a chosen state -- so the real poll logic
-// (Env.LoomRun.ResolveStatus, the persisted-state branching) is exercised rather than bypassed, and
+// (Env.InnerRun.ResolveStatus, the persisted-state branching) is exercised rather than bypassed, and
 // that stubbing needs the unexported wire method and the lifecycleCLI receiver.
 //
 // It lives at the integration tier rather than Tier 1 because the prime-name lookup this package's
@@ -17,6 +17,7 @@ package lifecyclecli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,7 +32,7 @@ import (
 
 // wireForHub builds a *lifecycleCLI wired for real against h's prime Location and slug -- a real
 // CreateWorktree and a real Teardown, both driving fabricengine's topology holder against h's own
-// hub -- then overrides Env.LoomRun.Spawn and Env.LoomRun.ReadStatus with readStatus, per this
+// hub -- then overrides Env.InnerRun.Spawn and Env.InnerRun.ReadStatus with readStatus, per this
 // file's own header.
 func wireForHub(t *testing.T, h *hubforge.Hub, slug string, readStatus func(statusPath, statusLockPath string) (shedengine.Status, bool, error)) *lifecycleCLI {
 	t.Helper()
@@ -39,8 +40,8 @@ func wireForHub(t *testing.T, h *hubforge.Hub, slug string, readStatus func(stat
 	if err := c.wire(h.Location, slug); err != nil {
 		t.Fatalf("wire(%s): %v", slug, err)
 	}
-	c.env.LoomRun.Spawn = func(ctx context.Context) error { return nil }
-	c.env.LoomRun.ReadStatus = readStatus
+	c.env.InnerRun.Spawn = func(ctx context.Context) error { return nil }
+	c.env.InnerRun.ReadStatus = readStatus
 	return c
 }
 
@@ -197,7 +198,7 @@ func TestLifecycleIntegration_MidListResume_SkipsTheCompletedCreateRow(t *testin
 	})
 
 	var out bytes.Buffer
-	exitCode := clihelp.Execute(c.runCmd(), &out, []string{slug})
+	exitCode := clihelp.Execute(lifecycleVerbCommand(c, "run"), &out, []string{slug})
 	if exitCode != 0 {
 		t.Fatalf("run() exit code = %d; want 0; output: %s", exitCode, out.String())
 	}
@@ -206,6 +207,20 @@ func TestLifecycleIntegration_MidListResume_SkipsTheCompletedCreateRow(t *testin
 	}
 	if pathExists(h.PairWarpWorktree(slug)) {
 		t.Errorf("pair still exists after the resumed run's teardown row completed: %s", h.PairWarpWorktree(slug))
+	}
+
+	var envelope map[string]any
+	if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode envelope: %v; output: %s", err, out.String())
+	}
+	// history_length is new in this task: the resumed run's persisted history already carries the
+	// pre-seeded create-row entry plus whatever this invocation appended, so it must be at least 2.
+	gotLen, ok := envelope["history_length"].(float64)
+	if !ok {
+		t.Fatalf("envelope[\"history_length\"] = %v (%T); want a number", envelope["history_length"], envelope["history_length"])
+	}
+	if gotLen < 2 {
+		t.Errorf("envelope[\"history_length\"] = %v; want at least 2 (the pre-seeded entry plus this run's own)", gotLen)
 	}
 }
 

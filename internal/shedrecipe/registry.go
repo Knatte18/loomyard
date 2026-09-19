@@ -34,7 +34,7 @@ var registry = map[string]Constructor{
 	"Bouncer":            bouncerEntry,
 	"BurlerRound":        burlerRoundEntry,
 	"WorktreeCreate":     worktreeCreateEntry,
-	"LoomRun":            loomRunEntry,
+	"InnerRun":           innerRunEntry,
 	"WorktreeTeardown":   worktreeTeardownEntry,
 }
 

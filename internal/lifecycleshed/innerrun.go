@@ -1,4 +1,4 @@
-// loomrun.go implements NewLoomRun, the producer that spawns the loom session inside the task
+// innerrun.go implements NewInnerRun, the producer that spawns the inner shed run inside the task
 // worktree and polls its persisted status to a terminal verdict.
 
 package lifecycleshed
@@ -12,34 +12,34 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// loomRunProducer spawns the loom session for a task worktree and waits for it to reach a
+// innerRunProducer spawns the inner shed run for a task worktree and waits for it to reach a
 // terminal state, polling its persisted status up to a bounded number of attempts.
-type loomRunProducer struct {
+type innerRunProducer struct {
 	name         string
 	slug         string
-	deps         LoomRunDeps
+	deps         InnerRunDeps
 	pollInterval time.Duration
 	pollAttempts int
 	scratchDir   string
 }
 
-var _ shedengine.ShedProducer = (*loomRunProducer)(nil)
+var _ shedengine.ShedProducer = (*innerRunProducer)(nil)
 
-// NewLoomRun returns a shedengine.ShedProducer that resolves the task worktree's status path,
-// spawns the loom session via deps.Spawn, and polls deps.ReadStatus up to pollAttempts times,
+// NewInnerRun returns a shedengine.ShedProducer that resolves the task worktree's status path,
+// spawns the inner shed run via deps.Spawn, and polls deps.ReadStatus up to pollAttempts times,
 // waiting pollInterval between attempts, to reach a terminal shedengine.State.
 //
 // A nil deps.Now resolves to time.Now and a nil deps.Sleep resolves to time.Sleep, both resolved
 // once here rather than on every Call, so a test's fake clock and no-op sleep are the only values
 // ever substituted.
-func NewLoomRun(name, slug string, deps LoomRunDeps, pollInterval time.Duration, pollAttempts int, scratchDir string) shedengine.ShedProducer {
+func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duration, pollAttempts int, scratchDir string) shedengine.ShedProducer {
 	if deps.Now == nil {
 		deps.Now = time.Now
 	}
 	if deps.Sleep == nil {
 		deps.Sleep = time.Sleep
 	}
-	return &loomRunProducer{
+	return &innerRunProducer{
 		name:         name,
 		slug:         slug,
 		deps:         deps,
@@ -69,7 +69,7 @@ func NewLoomRun(name, slug string, deps LoomRunDeps, pollInterval time.Duration,
 // returned hard error. Exhausting pollAttempts while still StateRunning is Stuck, naming the
 // interval, the attempt count, and the elapsed wall clock computed from deps.Now() readings taken
 // before the first attempt and at exhaustion.
-func (p *loomRunProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
+func (p *innerRunProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, p.name); err != nil {
 		return "", shedengine.OutputPointer{}, err
 	}
@@ -79,14 +79,14 @@ func (p *loomRunProducer) Call(ctx context.Context) (shedengine.Outcome, shedeng
 		return "", shedengine.OutputPointer{}, fmt.Errorf("lifecycleshed: %s: resolve status path: %w", p.name, err)
 	}
 
-	logger.Info("lifecycleshed: spawning loom session", "producer", p.name, "slug", p.slug)
+	logger.Info("lifecycleshed: spawning inner shed run", "producer", p.name, "slug", p.slug)
 	spawnErr := p.deps.Spawn(ctx)
-	logger.Info("lifecycleshed: loom session wait complete", "producer", p.name, "slug", p.slug)
+	logger.Info("lifecycleshed: inner shed run wait complete", "producer", p.name, "slug", p.slug)
 	if spawnErr != nil {
 		if cerr := cancelErr(ctx, p.name); cerr != nil {
 			return "", shedengine.OutputPointer{}, cerr
 		}
-		reason := fmt.Sprintf("spawn loom session failed: %s", spawnErr.Error())
+		reason := fmt.Sprintf("spawn inner shed run failed: %s", spawnErr.Error())
 		reportStuck(p.name, reason, p.scratchDir, "slug", p.slug)
 		return shedengine.Stuck, shedengine.OutputPointer{}, nil
 	}
@@ -101,7 +101,7 @@ func (p *loomRunProducer) Call(ctx context.Context) (shedengine.Outcome, shedeng
 			if cerr := cancelErr(ctx, p.name); cerr != nil {
 				return "", shedengine.OutputPointer{}, cerr
 			}
-			reason := "no status file found after the loom session's own handshake confirmed a driver took the run lock"
+			reason := "no status file found after the inner shed run's own handshake confirmed a driver took the run lock"
 			reportStuck(p.name, reason, p.scratchDir, "slug", p.slug)
 			return shedengine.Stuck, shedengine.OutputPointer{}, nil
 		}
@@ -116,7 +116,7 @@ func (p *loomRunProducer) Call(ctx context.Context) (shedengine.Outcome, shedeng
 			if cerr := cancelErr(ctx, p.name); cerr != nil {
 				return "", shedengine.OutputPointer{}, cerr
 			}
-			reason := fmt.Sprintf("loom session reached state %q: error=%q current_producer=%q", status.State, status.Error, status.CurrentProducer)
+			reason := fmt.Sprintf("inner shed run reached state %q: error=%q current_producer=%q", status.State, status.Error, status.CurrentProducer)
 			reportStuck(p.name, reason, p.scratchDir, "slug", p.slug)
 			return shedengine.Stuck, shedengine.OutputPointer{}, nil
 		case shedengine.StateRunning:
@@ -137,7 +137,7 @@ func (p *loomRunProducer) Call(ctx context.Context) (shedengine.Outcome, shedeng
 		return "", shedengine.OutputPointer{}, cerr
 	}
 	elapsed := p.deps.Now().Sub(start)
-	reason := fmt.Sprintf("loom session still running after %d attempts at interval %s (elapsed %s)", p.pollAttempts, p.pollInterval, elapsed)
+	reason := fmt.Sprintf("inner shed run still running after %d attempts at interval %s (elapsed %s)", p.pollAttempts, p.pollInterval, elapsed)
 	reportStuck(p.name, reason, p.scratchDir, "slug", p.slug)
 	return shedengine.Stuck, shedengine.OutputPointer{}, nil
 }
