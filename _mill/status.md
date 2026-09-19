@@ -81,6 +81,8 @@ batches:
     commit_sha: 63a9a2413dd4715ce78b6f99e6e3d5e5df3b82cc
     verify_baseline_failures: ["FAIL\t./internal/battencli/... [setup failed]"]
   - name: docs-and-integration
-    state: pending
+    state: running
+    implementer_session: bb2e1db5-9613-4401-9679-defe7f1e38dd
+    start_sha: 3cf3961d3f9c2f91738041ebfe7d48b27622128c
     verify_baseline_failures: ["FAIL\t./internal/battencli/... [setup failed]"]
 ```
