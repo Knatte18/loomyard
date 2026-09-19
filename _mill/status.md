@@ -51,7 +51,9 @@ batches:
     commit_sha: d2966b39860ebc2c3989cc837e06902a8ee28171
     verify_baseline_failures: []
   - name: go-comment-sweep
-    state: pending
+    state: running
+    implementer_session: a6a75c9c-1c63-4372-b22e-614e50f214b6
+    start_sha: 925dcf25ca3281bf779c59e8c1275c648380a3f6
     verify_baseline_failures: []
   - name: skill-rename
     state: pending
