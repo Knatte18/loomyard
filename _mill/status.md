@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-loom run --no-attach
+phase: approved-shedrecipe lifecycle entries
 slug: worktree-lifecycle-shed-producers
 branch: worktree-lifecycle-shed-producers
 plan: _mill/plan
@@ -31,6 +31,7 @@ planned  '2026-09-19T05:34:29Z'
 implementing  '2026-09-19T05:34:55Z'
 approved-lifecycleshed producers  '2026-09-19T05:41:15Z'
 approved-loom run --no-attach  '2026-09-19T05:43:38Z'
+approved-shedrecipe lifecycle entries  '2026-09-19T05:48:58Z'
 ```
 
 ## Batches
@@ -50,9 +51,10 @@ batches:
     commit_sha: 81cf1987882e702d5c8e1faabf39a4490f99adac
     verify_baseline_failures: []
   - name: shedrecipe lifecycle entries
-    state: running
+    state: approved
     implementer_session: db8bb68d-cb16-4825-89be-8d9379de73f4
     start_sha: c3438bf118b87ea6226b7f007252507a2822db7e
+    commit_sha: a89b4b968bc3c12567d7c1972d2ef8d728e6c961
     verify_baseline_failures: []
   - name: lifecycle recipe and coverage guard
     state: pending
