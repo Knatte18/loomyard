@@ -13,7 +13,10 @@ package reedcli
 
 import (
 	"context"
+	"errors"
 	"io"
+	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -129,6 +132,76 @@ func planSessionDiff(live []string, known map[string]watchedSession) (appeared, 
 		}
 	}
 	return appeared, departed
+}
+
+// planReapCycle is the daemon's pure decision seam for one whole cycle's reap bookkeeping. It is
+// told the cycle's inputs rather than discovering them, and it is the only place the three
+// bookkeeping rules below interact: it performs no filesystem access of any kind — gone-ness is an
+// input, produced by worktreeRootGone outside it — and it mutates counters in place while returning
+// the two name lists the caller needs: reap (names to dispatch a reap for this cycle) and remaining
+// (names that survive into planSessionDiff).
+//
+// "Three consecutive cycles" means three consecutive *affirmative* cycles: a cycle whose listing was
+// non-affirmative never reaches this function at all, so it advances, resets and prunes nothing.
+//
+// Behaviour, in this order:
+//
+//  1. When hubLive is false, short-circuit: return a nil reap and a remaining holding every name in
+//     live except those in inFlight, no file read needed, with every entry in counters untouched —
+//     neither advanced, reset, nor pruned. This is the hub probe's refusal to act, and the in-flight
+//     exclusion holds on this branch too: a hub outage must not become the one path on which
+//     planSessionDiff sees a name whose reap goroutine is still running.
+//  2. Otherwise, prune counters: delete every key that is not present in live. A name that left the
+//     live list starts from zero when it returns.
+//  3. Then walk live in order. A name in inFlight is skipped entirely — it appears in neither return
+//     value. For a name whose gone entry is true, increment counters[name]; if the incremented value
+//     is at or above threshold, append it to reap and delete(counters, name), otherwise append it to
+//     remaining. For a name whose gone entry is false or absent, delete(counters, name) and append it
+//     to remaining.
+//
+// Deleting the counter at dispatch rather than leaving it at threshold is the discussion's
+// counter-resets-after-a-reap decision: kill-session teardown is asynchronous, so a reaped name can
+// still appear in the next cycle's listing, and a still-listed name must re-confirm across three more
+// affirmative cycles before a second kill is issued.
+func planReapCycle(live []string, hubLive bool, gone map[string]bool, counters map[string]int, inFlight map[string]bool, threshold int) (reap []string, remaining []string) {
+	if !hubLive {
+		for _, name := range live {
+			if inFlight[name] {
+				continue
+			}
+			remaining = append(remaining, name)
+		}
+		return nil, remaining
+	}
+
+	liveSet := make(map[string]bool, len(live))
+	for _, name := range live {
+		liveSet[name] = true
+	}
+	for name := range counters {
+		if !liveSet[name] {
+			delete(counters, name)
+		}
+	}
+
+	for _, name := range live {
+		if inFlight[name] {
+			continue
+		}
+		if gone[name] {
+			counters[name]++
+			if counters[name] >= threshold {
+				reap = append(reap, name)
+				delete(counters, name)
+			} else {
+				remaining = append(remaining, name)
+			}
+			continue
+		}
+		delete(counters, name)
+		remaining = append(remaining, name)
+	}
+	return reap, remaining
 }
 
 // resolveWatchedSession resolves a live tmux session name back to the *lyxcwd.Location of the
@@ -262,6 +335,55 @@ func runWatchdogLoop(ctx context.Context, hub, tmuxPath string) error {
 			logger.Debug("reed: watchdog session departed", "hub", hub, "session", name)
 		}
 	}
+}
+
+// validateWatchdogFlags is watchdogCmd's pure pre-flight: it reports the same two refusals its
+// RunE performs inline today, lifted here so they are testable without a cobra invocation.
+//
+// It takes exactly two parameters and has no shell parameter at all. That absence is the structural
+// guarantee behind the discussion's the-daemon-is-told-its-shell decision: --shell is accepted on
+// every GOOS but never validated, and having no shell parameter to inspect makes that a property of
+// the signature rather than a branch someone can add later. A hard --shell pre-flight would have a
+// real consequence: ensureWatchdogSpawned is best-effort and its child's stderr is discarded, so a
+// rejection there would silently cost the hub its entire watchdog daemon, resize self-heal for every
+// worktree included, over one empty config value.
+func validateWatchdogFlags(hubPath, tmuxPath string) error {
+	if hubPath == "" || !filepath.IsAbs(hubPath) {
+		return errors.New("--hub-path must be an absolute, non-empty path")
+	}
+	if tmuxPath == "" {
+		return errors.New("--tmux must not be empty")
+	}
+	return nil
+}
+
+// worktreeRootGone reports whether path is **proven** gone: a not-exist stat error, or a stat that
+// succeeds against something other than a directory. Every other outcome — a successful stat of a
+// directory, or any other stat error (EACCES, EIO, a network-filesystem hiccup) — answers false.
+//
+// This restates validateToldWorktreeRootLive's own only-proven-gone contract at the one layer that
+// cannot call it: treating an unreadable path as gone would let a momentary permission or I/O blip
+// destroy a session full of live work.
+func worktreeRootGone(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return errors.Is(err, fs.ErrNotExist)
+	}
+	return !info.IsDir()
+}
+
+// hubIsLiveDir reports whether hub is **proven** live: a stat that succeeds and reports a directory.
+// Every error — proven-gone or merely unreadable alike — answers false.
+//
+// It is written as its own predicate rather than as the negation of worktreeRootGone, per the
+// overview's two-distinct-stat-predicates-not-one-negated decision: an EACCES must make both false,
+// and a negation would make one of them true.
+func hubIsLiveDir(hub string) bool {
+	info, err := os.Stat(hub)
+	if err != nil {
+		return false
+	}
+	return info.IsDir()
 }
 
 // watchdogLockFileName is the daemon's single-instance lock file's name inside
