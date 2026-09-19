@@ -1,8 +1,14 @@
-// arm.go implements loomcli's exported Arm resolution entry point, plus the two-function split
-// behind it: the unexported worker arm resolves cwd and wires the whole engine stack exactly as
-// resolvePersistentPreRun (cli.go) always has, and the resolution-free specFor fills a Spec from
-// an already-wired receiver. See the overview's exported-Arm-is-the-single-resolution-entry-point
-// and spec-fill-is-separable-from-resolution Shared Decisions.
+// arm.go implements loomcli's two exported resolution entry points -- Arm, which resolves cwd
+// itself, and ArmAt, which takes an already-resolved *lyxcwd.Location and a resolved run-id and
+// performs no lyxcwd.Resolve of its own -- plus the three-function split behind them: the
+// unexported worker arm resolves cwd and delegates to armAt, armAt records the run-id, applies the
+// seed-presence refusal, and wires the whole engine stack exactly as resolvePersistentPreRun
+// (cli.go) always has, and the resolution-free specFor fills a Spec from an already-wired receiver.
+// Arm stays the single cwd-resolution entry point for loom's own subtree -- that rule survives
+// unchanged there -- but it no longer describes the "lyx shed" path, which enters through ArmAt
+// with the Location and run-id already in hand. See the overview's
+// exported-Arm-is-the-single-resolution-entry-point and spec-fill-is-separable-from-resolution
+// Shared Decisions.
 //
 // Arm carries no command-name guard of its own: the existing cmd.Name() == "loom" short-circuit
 // stays in resolvePersistentPreRun, where it lets a bare group listing run without a git
@@ -102,16 +108,10 @@ func (c *loomCLI) resolveRunID(location *lyxcwd.Location, verb string, args []st
 	return errors.New(shedrun.MissingSeedMessage("loom", runID, existing, `run "lyx loom start" first to bootstrap this task`))
 }
 
-// arm resolves cwd into a *lyxcwd.Location, resolves and records the addressed run-id, refuses
-// when one of the four generic verbs addresses a run-id with no seed, wires the receiver's whole
-// engine stack -- through wireLightweight when verb is one of the lightweight verbs, through the
-// full wire otherwise -- and returns the filled Spec. It is the single worker both
-// resolvePersistentPreRun and the exported Arm wrapper delegate to, so the *loomCLI whose fields
-// the returned hooks close over is always the same value the caller holds: the pre-run's own c on
-// the "lyx loom" path, the wrapper's freshly-constructed one on the "lyx shed" path.
-//
-// The seed-presence refusal runs before either wiring call -- before wireLightweight or wire have
-// touched the filesystem at all -- so a refusing run/step writes nothing to disk.
+// arm resolves cwd into a *lyxcwd.Location and delegates to armAt with the raw positional args,
+// which resolveRunID resolves into a run-id exactly as it always has. It is loom's own subtree
+// entry point: every "lyx loom <verb>" invocation reaches Arm, never ArmAt directly, so its own
+// resolvePersistentPreRun keeps resolving cwd exactly once per invocation as it always has.
 func (c *loomCLI) arm(cwd string, verb string, args []string) (shedverbs.Spec, error) {
 	location, err := lyxcwd.Resolve(cwd)
 	if err != nil {
@@ -120,10 +120,30 @@ func (c *loomCLI) arm(cwd string, verb string, args []string) (shedverbs.Spec, e
 		return shedverbs.Spec{}, err
 	}
 
+	return c.armAt(location, verb, args)
+}
+
+// armAt resolves and records the addressed run-id via resolveRunID, refuses when one of the four
+// generic verbs addresses a run-id with no seed, wires the receiver's whole engine stack -- through
+// wireLightweight when verb is one of the lightweight verbs, through the full wire otherwise -- and
+// returns the filled Spec. It performs no lyxcwd.Resolve of its own: location is already resolved,
+// told rather than derived, by whichever caller holds it.
+//
+// It is the single worker both arm (loom's own subtree, which resolves cwd first) and the exported
+// ArmAt wrapper delegate to, so the *loomCLI whose fields the returned hooks close over is always
+// the same value the caller holds: the pre-run's own c on the "lyx loom" path, the wrapper's
+// freshly-constructed one on the "lyx shed" path.
+//
+// The seed-presence refusal runs before either wiring call -- before wireLightweight or wire have
+// touched the filesystem at all -- so a refusing run/step writes nothing to disk. cwd is derived as
+// location.AnchorPath() for wireLightweight/wire's own cwd parameter, since cwd is provably equal to
+// AnchorPath() after a successful resolve (see lyxcwd.Location's own doc comment).
+func (c *loomCLI) armAt(location *lyxcwd.Location, verb string, args []string) (shedverbs.Spec, error) {
 	if err := c.resolveRunID(location, verb, args); err != nil {
 		return shedverbs.Spec{}, err
 	}
 
+	cwd := location.AnchorPath()
 	if verbUsesLightweightWiring(verb) {
 		c.wireLightweight(location, cwd)
 	} else if err := c.wire(location, cwd); err != nil {
@@ -182,15 +202,28 @@ func (c *loomCLI) specFor(verb string) shedverbs.Spec {
 	return spec
 }
 
-// Arm is loomcli's exported resolution entry point, for internal/shedcli's table: it constructs a
-// fresh receiver via newLoomCLI and returns c.arm(cwd, verb, args). A package-level Arm alone
-// could not serve resolvePersistentPreRun, because that pre-run must wire its own c: start.go
-// reads thirteen receiver fields and validate.go reads four more, so arming a throwaway receiver
-// and assigning only *c.spec would break start, validate-discussion and validate-plan, none of
-// which is a shedverbs verb and none of which reads c.spec.
+// Arm is loomcli's exported resolution entry point, for loom's own subtree: it constructs a fresh
+// receiver via newLoomCLI and returns c.arm(cwd, verb, args), resolving cwd itself. A package-level
+// Arm alone could not serve resolvePersistentPreRun, because that pre-run must wire its own c:
+// start.go reads thirteen receiver fields and validate.go reads four more, so arming a throwaway
+// receiver and assigning only *c.spec would break start, validate-discussion and validate-plan,
+// none of which is a shedverbs verb and none of which reads c.spec.
 func Arm(cwd string, verb string, args []string) (shedverbs.Spec, error) {
 	c := newLoomCLI()
 	return c.arm(cwd, verb, args)
+}
+
+// ArmAt is loomcli's Location-taking resolution entry point, for internal/shedcli's "lyx shed"
+// table: it constructs a fresh receiver via newLoomCLI and returns c.armAt(location, verb,
+// []string{runID}), performing no lyxcwd.Resolve of its own. It exists because shedcli's own
+// pre-run must read a seed before it knows which recipe to arm, a seed read is a path read, a path
+// read needs an anchor, and resolving one twice per invocation to preserve Arm's own single
+// signature would cost a second "git rev-parse" on every call. Wrapping runID as a one-element
+// slice reuses resolveRunID's own args[0]-or-default logic unchanged; since runID is already
+// resolved and non-empty by the time ArmAt is called, args[0] is always what resolveRunID records.
+func ArmAt(location *lyxcwd.Location, verb string, runID string) (shedverbs.Spec, error) {
+	c := newLoomCLI()
+	return c.armAt(location, verb, []string{runID})
 }
 
 // loomPreRun implements the PreRun hook for loom's spec: run's whole existing pre-flight, in

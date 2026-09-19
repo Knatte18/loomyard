@@ -1,8 +1,12 @@
-// arm.go implements battencli's exported Arm resolution entry point, plus the two-function
-// split behind it: the unexported worker arm resolves cwd, applies the non-prime refusal, resolves
-// the addressed run-id, refuses a self address, gates the auto-seed, and wires the whole engine
-// stack exactly as resolvePersistentPreRun (cli.go) always has, and the resolution-free specFor
-// fills a Spec from an already-wired receiver. See the overview's
+// arm.go implements battencli's two exported resolution entry points -- Arm, which resolves cwd
+// itself, and ArmAt, which takes an already-resolved *lyxcwd.Location and a resolved run-id and
+// performs no lyxcwd.Resolve of its own -- plus the three-function split behind them: the
+// unexported worker arm resolves cwd and delegates to armAt, armAt applies the non-prime refusal,
+// refuses a self address, gates the auto-seed, and wires the whole engine stack exactly as
+// resolvePersistentPreRun (cli.go) always has, and the resolution-free specFor fills a Spec from an
+// already-wired receiver. Arm stays the single cwd-resolution entry point for batten's own subtree
+// -- that rule survives unchanged there -- but it no longer describes the "lyx shed" path, which
+// enters through ArmAt with the Location and run-id already in hand. See the overview's
 // exported-Arm-is-the-single-resolution-entry-point and spec-fill-is-separable-from-resolution
 // Shared Decisions.
 //
@@ -150,12 +154,11 @@ func (c *battenCLI) armSeed(location *lyxcwd.Location, runID, verb string) error
 	})
 }
 
-// arm resolves cwd into a *lyxcwd.Location, applies the non-prime refusal, resolves the addressed
-// run-id, refuses a self address, gates the auto-seed, wires the receiver, and returns the filled
-// Spec. It is the single worker both resolvePersistentPreRun and the exported Arm wrapper delegate
-// to, so the *battenCLI whose fields the returned hooks close over is always the same value the
-// caller holds: the pre-run's own c on the "lyx batten" path, the wrapper's freshly-constructed one
-// on the "lyx shed" path.
+// arm resolves cwd into a *lyxcwd.Location, resolves the addressed run-id and whether it was
+// explicitly typed -- args[0] when present, shedrun.SelfRunID and explicit == false otherwise --
+// and delegates to armAt. It is batten's own subtree entry point: every "lyx batten <verb>"
+// invocation reaches Arm, never ArmAt directly, so its own resolvePersistentPreRun keeps resolving
+// cwd exactly once per invocation as it always has.
 func (c *battenCLI) arm(cwd string, verb string, args []string) (shedverbs.Spec, error) {
 	location, err := lyxcwd.Resolve(cwd)
 	if err != nil {
@@ -164,12 +167,32 @@ func (c *battenCLI) arm(cwd string, verb string, args []string) (shedverbs.Spec,
 		return shedverbs.Spec{}, err
 	}
 
+	runID, explicit := resolveBattenRunID(args)
+	return c.armAt(location, runID, explicit, verb)
+}
+
+// armAt applies the non-prime refusal, refuses a self address, gates the auto-seed, wires the
+// receiver, and returns the filled Spec. It performs no lyxcwd.Resolve of its own: location is
+// already resolved, told rather than derived, by whichever caller holds it.
+//
+// explicit carries resolveBattenRunID's own distinction through to refuseSelfAddress: it is always
+// true when called through the exported ArmAt, since that entry point receives an already-resolved
+// runID rather than raw positional args and so cannot itself tell an omitted argument from an
+// explicitly-typed "self" -- both collapse to the same runID value before ArmAt ever sees it. The
+// "no slug given" wording is therefore reachable only through batten's own subtree (Arm); the "lyx
+// shed" path's identical mistake reads the reserved-collision message instead, which still refuses,
+// just with the other of the two existing texts.
+//
+// It is the single worker both arm (batten's own subtree, which resolves cwd first) and the
+// exported ArmAt wrapper delegate to, so the *battenCLI whose fields the returned hooks close over
+// is always the same value the caller holds: the pre-run's own c on the "lyx batten" path, the
+// wrapper's freshly-constructed one on the "lyx shed" path.
+func (c *battenCLI) armAt(location *lyxcwd.Location, runID string, explicit bool, verb string) (shedverbs.Spec, error) {
 	primeName, primeNameErr := fabricengine.PrimeName(location)
 	if refusalErr := refuseNonPrime(location.WorktreeName, primeName, primeNameErr); refusalErr != nil {
 		return shedverbs.Spec{}, refusalErr
 	}
 
-	runID, explicit := resolveBattenRunID(args)
 	if refusalErr := refuseSelfAddress(runID, explicit); refusalErr != nil {
 		return shedverbs.Spec{}, refusalErr
 	}
@@ -232,14 +255,25 @@ func (c *battenCLI) specFor(verb string) shedverbs.Spec {
 	return spec
 }
 
-// Arm is battencli's exported resolution entry point, for internal/shedcli's table: it
-// constructs a fresh receiver and returns c.arm(cwd, verb, args). A package-level Arm alone could
-// not serve resolvePersistentPreRun, because wire is a method on the receiver and the hooks close
-// over c.env, c.shedPaths and c.abandonedSession, and the pre-run's own c.location and c.slug
-// assignments would stop happening.
+// Arm is battencli's exported resolution entry point, for batten's own subtree: it constructs a
+// fresh receiver and returns c.arm(cwd, verb, args), resolving cwd itself. A package-level Arm
+// alone could not serve resolvePersistentPreRun, because wire is a method on the receiver and the
+// hooks close over c.env, c.shedPaths and c.abandonedSession, and the pre-run's own c.location and
+// c.slug assignments would stop happening.
 func Arm(cwd string, verb string, args []string) (shedverbs.Spec, error) {
 	c := &battenCLI{}
 	return c.arm(cwd, verb, args)
+}
+
+// ArmAt is battencli's Location-taking resolution entry point, for internal/shedcli's "lyx shed"
+// table: it constructs a fresh receiver and returns c.armAt(location, runID, true, verb),
+// performing no lyxcwd.Resolve of its own. It exists because shedcli's own pre-run must read a seed
+// before it knows which recipe to arm, a seed read is a path read, a path read needs an anchor, and
+// resolving one twice per invocation to preserve Arm's own single signature would cost a second
+// "git rev-parse" on every call. explicit is always true here; see armAt's own doc comment for why.
+func ArmAt(location *lyxcwd.Location, verb string, runID string) (shedverbs.Spec, error) {
+	c := &battenCLI{}
+	return c.armAt(location, runID, true, verb)
 }
 
 // battenPreRun implements the PreRun hook for batten's spec: run's whole existing
