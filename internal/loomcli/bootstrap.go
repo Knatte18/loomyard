@@ -9,6 +9,7 @@ package loomcli
 
 import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shell"
 )
 
@@ -18,6 +19,42 @@ import (
 // bootstrap's re-entrant call finds the pane it created on an earlier invocation instead of
 // duplicating it.
 const statusStrandDisplayName = "loom-status"
+
+// operatorStrandDisplayName is the operator's own strand's stable identity, pinned for the same
+// three reasons statusStrandDisplayName is: it is the --if-absent match key operatorStrandAddSpec's
+// IfAbsent option matches against, it is the name an operator sees for their own pane in
+// `lyx reed status`, and it must stay byte-stable across versions -- reed's add has no upsert
+// semantics, so a re-run under a changed literal would stack a second pane instead of matching the
+// first.
+const operatorStrandDisplayName = "loom-operator"
+
+// operatorStrandAddSpec builds the operator strand's reedengine.AddSpec: a below-parent pane that
+// reuses an already-present entry rather than duplicating it, takes no focus, and never collapses.
+//
+// Four choices are non-default and each is pinned deliberately. Cmd is left at its zero value
+// because a Strand's Cmd is typed into an already-running shell via send-keys, not passed as a
+// trailing split-window argument -- naming a shell here would nest one shell inside another and make
+// `lyx reed resume` stack a third; the pane instead runs whatever shell tmux gives a freshly split
+// pane. IfAbsent is true because `lyx loom start` is explicitly re-entrant and the engine already
+// implements the needed no-op / relaunch-dead / fall-through-to-add behaviour, so this must not
+// repeat resolveStatusStrandAction's older manual keep/replace/add dance. Focus is false because
+// Display.Focus is persisted on the strand and re-evaluated on every subsequent AddStrand, so a true
+// value would re-capture focus on every agent-pane spawn for the rest of the run -- the operator
+// still lands in their own pane at cold bootstrap for free, via the bottom-most default.
+// ShrinkWhenWaitingOnChild is false as a declaration of intent rather than a rendering change: the
+// flag is inert for a parentless, childless strand, and setting it true would accidentally encode
+// that the operator's own pane may collapse to a one-row strip.
+func operatorStrandAddSpec() reedengine.AddSpec {
+	return reedengine.AddSpec{
+		NameOverride: operatorStrandDisplayName,
+		IfAbsent:     true,
+		Display: render.Display{
+			Anchor:                   render.AnchorBelowParent,
+			Focus:                    false,
+			ShrinkWhenWaitingOnChild: false,
+		},
+	}
+}
 
 // mustSpawnDriver reports whether the bootstrap must spawn a new detached driver, from whether the
 // run lock is currently held.
