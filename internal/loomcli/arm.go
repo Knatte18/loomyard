@@ -13,6 +13,12 @@
 // is the empty string there -- exactly the value "lyx loom step" passes when the operator omits
 // the flag, so the two paths agree and the provenance record is simply never written from the
 // shed path.
+//
+// arm also resolves the run-id every one of loom's four generic verbs addresses -- args[0] when
+// present, shedrun.SelfRunID otherwise -- and, for those four verbs alone, refuses when no seed
+// exists at that run-id. "lyx loom start" is not a generic verb and never reaches this check: it is
+// the one site that writes a seed, per the batch's loom's-run-and-step-do-not-auto-seed decision.
+// See genericShedVerb's own doc comment for the exact four-verb set.
 
 package loomcli
 
@@ -34,20 +40,87 @@ import (
 	"github.com/Knatte18/loomyard/internal/selfreportengine"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 )
 
-// arm resolves cwd into a *lyxcwd.Location, wires the receiver's whole engine stack -- through
-// wireLightweight when verb is one of the lightweight verbs, through the full wire otherwise --
-// and returns the filled Spec. It is the single worker both resolvePersistentPreRun and the
-// exported Arm wrapper delegate to, so the *loomCLI whose fields the returned hooks close over is
-// always the same value the caller holds: the pre-run's own c on the "lyx loom" path, the
-// wrapper's freshly-constructed one on the "lyx shed" path.
+// genericShedVerb reports whether verb is one of the four verbs shedverbs.Verbs drives -- run,
+// step, status, pause -- as opposed to loom's own hand-written verbs (start,
+// validate-discussion, validate-plan), which never reach arm's seed-presence check below.
+func genericShedVerb(verb string) bool {
+	switch verb {
+	case "run", "step", "status", "pause":
+		return true
+	default:
+		return false
+	}
+}
+
+// resolveRunID resolves the run-id verb addresses -- args[0] when present, shedrun.SelfRunID
+// otherwise -- and records it on c before either wiring call, unconditionally for every verb, not
+// only the four generic ones, so wireLightweight and wire (wiring.go) can read c.runID back to
+// build every shedrun.* path, in place of a hardcoded shedrun.SelfRunID.
+//
+// For the four generic verbs alone (genericShedVerb), it also refuses when no seed exists at that
+// run-id: ReadSeed answers found == false purely from seed.json's own absence, so a status file
+// present with no seed beside it takes the same refusal. "lyx loom start" is not a generic verb and
+// never reaches this refusal -- it is the one site that writes a seed, per the batch's
+// loom's-run-and-step-do-not-auto-seed decision.
+//
+// It performs no I/O beyond shedrun.ReadSeed and shedrun.List, both pure filesystem reads under
+// location's own AnchorPath -- no git spawn -- so a test can drive it directly against a hand-built
+// *lyxcwd.Location with no real git repository behind it, which is what lets arm_seed_test.go stay
+// Tier 1 despite arm itself needing lyxcwd.Resolve's real git spawn.
+func (c *loomCLI) resolveRunID(location *lyxcwd.Location, verb string, args []string) error {
+	runID := shedrun.SelfRunID
+	if len(args) > 0 {
+		runID = args[0]
+	}
+	c.runID = runID
+
+	if !genericShedVerb(verb) {
+		return nil
+	}
+
+	_, found, err := shedrun.ReadSeed(location, runID)
+	if err != nil {
+		return err
+	}
+	if found {
+		return nil
+	}
+
+	existing, err := shedrun.List(location)
+	if err != nil {
+		return err
+	}
+	// Rendered through shedrun.MissingSeedMessage, the shared renderer batch 1 card 3 declares, so
+	// this refusal words identically to battencli's own. The rendered text carries no "kind" field:
+	// it surfaces through resolvePersistentPreRun's own output.Err(out, err.Error()) path, which is
+	// kind-less by construction, never through step's own output.ErrFields envelope -- this refusal
+	// fires before PreStep ever runs.
+	return errors.New(shedrun.MissingSeedMessage("loom", runID, existing, `run "lyx loom start" first to bootstrap this task`))
+}
+
+// arm resolves cwd into a *lyxcwd.Location, resolves and records the addressed run-id, refuses
+// when one of the four generic verbs addresses a run-id with no seed, wires the receiver's whole
+// engine stack -- through wireLightweight when verb is one of the lightweight verbs, through the
+// full wire otherwise -- and returns the filled Spec. It is the single worker both
+// resolvePersistentPreRun and the exported Arm wrapper delegate to, so the *loomCLI whose fields
+// the returned hooks close over is always the same value the caller holds: the pre-run's own c on
+// the "lyx loom" path, the wrapper's freshly-constructed one on the "lyx shed" path.
+//
+// The seed-presence refusal runs before either wiring call -- before wireLightweight or wire have
+// touched the filesystem at all -- so a refusing run/step writes nothing to disk.
 func (c *loomCLI) arm(cwd string, verb string, args []string) (shedverbs.Spec, error) {
 	location, err := lyxcwd.Resolve(cwd)
 	if err != nil {
 		// lyxcwd.Resolve's error is already self-describing (it IS the "not a git repository"
 		// sentinel); pass it through bare rather than doubling that same text on top of it.
+		return shedverbs.Spec{}, err
+	}
+
+	if err := c.resolveRunID(location, verb, args); err != nil {
 		return shedverbs.Spec{}, err
 	}
 

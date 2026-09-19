@@ -173,7 +173,7 @@ func TestWire_PathFieldsMatchLoomengineAccessors(t *testing.T) {
 	loc := hubLocation(t, "warp", ".")
 	cwd := loc.AnchorPath()
 
-	c := &loomCLI{}
+	c := &loomCLI{runID: shedrun.SelfRunID}
 	if err := c.wire(loc, cwd); err != nil {
 		t.Fatalf("wire() = %v; want nil", err)
 	}
@@ -214,7 +214,7 @@ func TestWire_RunLockDiffersFromStatusLock(t *testing.T) {
 
 	loc := hubLocation(t, "warp", ".")
 
-	c := &loomCLI{}
+	c := &loomCLI{runID: shedrun.SelfRunID}
 	if err := c.wire(loc, loc.AnchorPath()); err != nil {
 		t.Fatalf("wire() = %v; want nil", err)
 	}
@@ -238,7 +238,7 @@ func TestWire_CwdIsToldToTheEnv(t *testing.T) {
 	loc := hubLocation(t, "warp", ".")
 	cwd := loc.AnchorPath()
 
-	c := &loomCLI{}
+	c := &loomCLI{runID: shedrun.SelfRunID}
 	if err := c.wire(loc, cwd); err != nil {
 		t.Fatalf("wire() = %v; want nil", err)
 	}
@@ -259,7 +259,7 @@ func TestWire_WebsterRunIsFilled(t *testing.T) {
 
 	loc := hubLocation(t, "warp", ".")
 
-	c := &loomCLI{}
+	c := &loomCLI{runID: shedrun.SelfRunID}
 	if err := c.wire(loc, loc.AnchorPath()); err != nil {
 		t.Fatalf("wire() = %v; want nil", err)
 	}
@@ -276,7 +276,7 @@ func TestWire_WebsterDepsFullyPopulated(t *testing.T) {
 
 	loc := hubLocation(t, "warp", ".")
 
-	c := &loomCLI{}
+	c := &loomCLI{runID: shedrun.SelfRunID}
 	if err := c.wire(loc, loc.AnchorPath()); err != nil {
 		t.Fatalf("wire() = %v; want nil", err)
 	}
@@ -320,7 +320,7 @@ func TestWire_RefMatcherIsRealScanner(t *testing.T) {
 
 	loc := hubLocation(t, "warp", ".")
 
-	c := &loomCLI{}
+	c := &loomCLI{runID: shedrun.SelfRunID}
 	if err := c.wire(loc, loc.AnchorPath()); err != nil {
 		t.Fatalf("wire() = %v; want nil", err)
 	}
@@ -337,7 +337,7 @@ func TestWire_BisectorOpenerNonNilInHubOnlyMode(t *testing.T) {
 
 	loc := hubLocation(t, "warp", ".")
 
-	c := &loomCLI{}
+	c := &loomCLI{runID: shedrun.SelfRunID}
 	if err := c.wire(loc, loc.AnchorPath()); err != nil {
 		t.Fatalf("wire() = %v; want nil", err)
 	}
@@ -359,7 +359,7 @@ func TestWire_LandingSeamFieldsPopulated(t *testing.T) {
 
 	loc := hubLocation(t, "warp", ".")
 
-	c := &loomCLI{}
+	c := &loomCLI{runID: shedrun.SelfRunID}
 	if err := c.wire(loc, loc.AnchorPath()); err != nil {
 		t.Fatalf("wire() = %v; want nil", err)
 	}
@@ -388,7 +388,7 @@ func TestWire_DiscussionSeamsFilled(t *testing.T) {
 
 	loc := hubLocation(t, "warp", ".")
 
-	c := &loomCLI{}
+	c := &loomCLI{runID: shedrun.SelfRunID}
 	if err := c.wire(loc, loc.AnchorPath()); err != nil {
 		t.Fatalf("wire() = %v; want nil", err)
 	}
@@ -432,7 +432,7 @@ func TestWire_DiscussionSpecEvaluatesToExpectedShape(t *testing.T) {
 				seedLoomConfigWithInteractive(t, loc.AnchorPath(), true)
 			}
 
-			c := &loomCLI{}
+			c := &loomCLI{runID: shedrun.SelfRunID}
 			if err := c.wire(loc, loc.AnchorPath()); err != nil {
 				t.Fatalf("wire() = %v; want nil", err)
 			}
@@ -480,7 +480,7 @@ func TestWire_PlanSeamsFilled(t *testing.T) {
 
 	loc := hubLocation(t, "warp", ".")
 
-	c := &loomCLI{}
+	c := &loomCLI{runID: shedrun.SelfRunID}
 	if err := c.wire(loc, loc.AnchorPath()); err != nil {
 		t.Fatalf("wire() = %v; want nil", err)
 	}
@@ -503,7 +503,7 @@ func TestWire_ReviewSegmentSeamsFilled(t *testing.T) {
 
 	loc := hubLocation(t, "warp", ".")
 
-	c := &loomCLI{}
+	c := &loomCLI{runID: shedrun.SelfRunID}
 	if err := c.wire(loc, loc.AnchorPath()); err != nil {
 		t.Fatalf("wire() = %v; want nil", err)
 	}
@@ -532,7 +532,7 @@ func TestWire_ReviewTripleMatchesLoadedConfig(t *testing.T) {
 
 	loc := hubLocation(t, "warp", ".")
 
-	c := &loomCLI{}
+	c := &loomCLI{runID: shedrun.SelfRunID}
 	if err := c.wire(loc, loc.AnchorPath()); err != nil {
 		t.Fatalf("wire() = %v; want nil", err)
 	}
@@ -567,7 +567,7 @@ func TestWire_PlanSpecEvaluatesToExpectedShape(t *testing.T) {
 
 	loc := hubLocation(t, "warp", ".")
 
-	c := &loomCLI{}
+	c := &loomCLI{runID: shedrun.SelfRunID}
 	if err := c.wire(loc, loc.AnchorPath()); err != nil {
 		t.Fatalf("wire() = %v; want nil", err)
 	}
@@ -650,7 +650,7 @@ func TestWireLightweight_FillsThePathsWithoutLoadingAnyConfig(t *testing.T) {
 	// a path that loaded any module config could not possibly succeed here.
 	location := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
 
-	c := &loomCLI{}
+	c := &loomCLI{runID: shedrun.SelfRunID}
 	c.wireLightweight(location, location.AnchorPath())
 
 	if c.location != location {
@@ -715,7 +715,7 @@ func TestWire_FrictionDirFillsBurlerAndWebster(t *testing.T) {
 			loc := hubLocation(t, "warp", ".")
 			seedLoomConfigWithFriction(t, loc.AnchorPath(), tt.friction)
 
-			c := &loomCLI{}
+			c := &loomCLI{runID: shedrun.SelfRunID}
 			if err := c.wire(loc, loc.AnchorPath()); err != nil {
 				t.Fatalf("wire() = %v; want nil", err)
 			}

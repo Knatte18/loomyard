@@ -87,6 +87,11 @@ type loomCLI struct {
 	// inside arm, which sees only (cwd, verb, args) -- and a PersistentPreRunE's args are
 	// positional only, never parsed flags.
 	parentFlag string
+	// runID is the run-id arm (arm.go) resolves from args[0] when present, shedrun.SelfRunID
+	// otherwise, and records here before either wiring call -- wireLightweight and wire (wiring.go)
+	// read it back to build every shedrun.* path, in place of a hardcoded shedrun.SelfRunID, so a
+	// later card and batch 7's addressing surface can read it too.
+	runID string
 	// entryObservation carries loomPreRun's entry observation forward to loomPostRun, since
 	// PreRun returns no envelope map of its own.
 	entryObservation loomengine.EntryObservation

@@ -12,6 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 // TestNewCommitStatusSeam_OrdinaryPath asserts that, with MergeActive false, Commit nil, and Push
@@ -257,7 +258,7 @@ func TestWireLightweight_CommitStatusFilled(t *testing.T) {
 
 	location := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
 
-	c := &loomCLI{}
+	c := &loomCLI{runID: shedrun.SelfRunID}
 	c.wireLightweight(location, location.AnchorPath())
 
 	if c.shedPaths.CommitStatus == nil {
@@ -273,7 +274,7 @@ func TestWire_CommitStatusFilled(t *testing.T) {
 
 	loc := hubLocation(t, "warp", ".")
 
-	c := &loomCLI{}
+	c := &loomCLI{runID: shedrun.SelfRunID}
 	if err := c.wire(loc, loc.AnchorPath()); err != nil {
 		t.Fatalf("wire() = %v; want nil", err)
 	}
