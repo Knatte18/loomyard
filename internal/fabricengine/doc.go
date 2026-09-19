@@ -565,11 +565,23 @@
 // that did not happen.
 // It now emits the same `pairs` array through `errWithRecordFields` whenever any pair carries an
 // `Error`, so the per-pair report survives and the verdict is honest.
-// `prune` and `cleanup` deliberately do NOT follow: their per-entry `Error` doubles as the
-// explanation for a DESIGNED refusal (`Protected`'s "commit them or re-run with --force",
-// `Unowned`'s "fabric will not remove it"), so treating it as a failure would report a documented
-// outcome as one. The distinction is whether the field means "this verb failed at its job" or "this
-// verb is telling you what it deliberately did not do".
+// `prune` alone deliberately does NOT follow: its per-entry `Error` doubles as the explanation for a
+// DESIGNED refusal ("commit them or re-run with --force to discard them", "fabric will not remove
+// it"), so treating it as a failure would report a documented outcome as one. The distinction is
+// whether the field means "this verb failed at its job" or "this verb is telling you what it
+// deliberately did not do", and it is that test — not membership in this carve-out — that decides
+// the question below for `cleanup`.
+//
+// `cleanup` was removed from this carve-out because the premise never held for it: unlike `prune`,
+// `CleanupBranchEntry.Error` is a genuine deletion failure, not a refusal, per its own field doc in
+// `internal/fabricengine/cleanup.go`, and the new `CleanupBranchEntry.RemoteError` falls on the same
+// side for the same reason — both drive `cleanup`'s exit code. This does not extend to `cleanup`'s
+// own designed-refusal dispositions: a `Protected` or unmanaged entry still exits 0, because those
+// arms set no `Error` at all — a property of the field being empty, not of any carve-out.
+// A missing `origin` remote sits on the deliberately-did-not-do side too, and exits 0: it is carried
+// by the verb-level `RemoteSkippedReason` on both `CleanupResult` and `RemoveResult` rather than by
+// either per-branch error field, so the identical configuration state produces the identical verdict
+// from `cleanup` and `remove` alike.
 //
 // One consequence of that rule is a new `ReconcileAction`. `Reconcile` reads `git worktree list`
 // once, before its per-pair loop, so a concurrent `remove`/`prune` can delete a pair's directory
