@@ -6,6 +6,7 @@ slug: shed-generic-watchdog
 branch: shed-generic-watchdog
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: Shed-generic watchdog for ly-drive and loom's CLI verbs
 task_description: |
   Shed-generic watchdog for ly-drive and loom's CLI verbs
@@ -44,15 +45,23 @@ implementing  '2026-09-19T14:41:25Z'
 ```yaml
 batches:
   - name: shedbuild-shedpaths-hoist
-    state: pending
+    state: running
+    implementer_session: 24bedf87-8e12-4274-b38b-6426c6a57413
+    start_sha: 448185fb2f8558cf1034a4ebd59af8f6df2d00cf
+    verify_baseline_failures: []
   - name: shedverbs-package
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/shedverbs/... [setup failed]"]
   - name: inner-run-neutralization
     state: pending
+    verify_baseline_failures: []
   - name: module-rearm
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/shedverbs/... [setup failed]"]
   - name: shed-subtree
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/shedcli/... [setup failed]"]
   - name: docs-invariant-skill
     state: pending
+    verify_baseline_failures: []
 ```
