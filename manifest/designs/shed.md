@@ -14,8 +14,8 @@ See [loom.md's own producer-list table](loom.md#the-phase-machine--a-flat-produc
 
 - **`loom`** = `Shed` + `loom`'s own producer list — unchanged behavior/CLI from the outside, `lyx loom start`. See [loom.md's own producer table](loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots) for the concrete list; this doc never repeats it, so a producer added, removed, or reclassified there needs no edit here.
 - **`Hardener`** = `Shed` + Hardener's own list (its own `Preflight`, `Tenter` — `Treadle` + a live-substrate round-runner + behavior-review profile, see the `internal/treadleengine` package documentation — and its own `Publish`/`Finalize`) — `lyx hardener run`.
-  Someday, deprioritized;
-  not part of this doc's Planned scope.
+  Deprioritized;
+  outside this doc's own scope.
 
 `Publish` and `Finalize` are not `Shed`'s own special code — each is an ordinary producer both `loom` and `Hardener` happen to reference (by *reference* — the same producer definition named in both lists, so a change to either's definition is visible to both without either copying it), not something `Shed` special-cases.
 **Raddle folds into `Finalize`'s own contract**, not a separate producer or a separate slot: updating Raddle before the Finalize merge is impractical given merge-conflict risk, so Raddle-regeneration is scoped as part of the merge itself.
@@ -386,7 +386,7 @@ This mirrors `loom.md`'s own stated approach ("testable against fake phases befo
 `Shed`'s own skeleton (the loop, the status file, the `ShedProducer` interface) is one task on its own — no adapters, no `Publish`/`Finalize`, nothing `loom`-specific.
 The engine adapters (`SingleLLMProducer`, `Webster`, the `Burler`-round adapter) are a separate task: each is a small, self-contained wrapper around an already-shipped engine, sharing nothing with `Shed`'s own skeleton beyond the `ShedProducer` interface each implements.
 `Publish` and `Finalize` are bundled with neither — they are genuinely new code (see [internal/landingshed](../../internal/landingshed/doc.go)), scoped as their own task, independent of `loom`'s own build order, on the same footing as the not-yet-detailed Plan and Webster phases.
-See `manifest/roadmap.md`'s Planned section for the concrete task sequence this decomposes into.
+See `manifest/roadmap.md` for the concrete task sequence this decomposes into.
 
 ## Why this doc doesn't rewrite loom.md's full detail
 
@@ -401,4 +401,4 @@ What this doc does *not* redo is `loom.md`'s remaining `loom`-specific detail �
 - [raddle.md](raddle.md) — the merge-time regeneration decision and merge-lock scope `Finalize`'s own contract must honor, now that Raddle folds into it rather than keeping a separate slot.
 - `internal/treadleengine` package documentation — the sibling generic engine (inner round-loop, not outer phase-FSM), and the precedent for `Shed`'s own engine-adapter seam (`RoundRunner`).
 - `internal/batcher` package documentation — the other existing precedent for the engine-adapter pattern (`Batcher` interface).
-- [hardener.md](hardener.md) — `Hardener` (`Shed` + Hardener's own producer list), Someday.
+- [hardener.md](hardener.md) — `Hardener` (`Shed` + Hardener's own producer list).

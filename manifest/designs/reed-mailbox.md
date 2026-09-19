@@ -1,7 +1,5 @@
 # reed: strand-based mailbox/addressing system
 
-> **Status: Someday, not yet designed in depth.**
-
 ## The idea
 
 Deliver messages/events to any Strand (agent, operator, `ly-drive` watchdog, orchestrator) by address.

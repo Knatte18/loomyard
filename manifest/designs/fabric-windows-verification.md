@@ -1,6 +1,5 @@
 # fabric: Windows path behaviour is unverified after six hardening rounds
 
-> **Status: Someday.**
 > Deferred deliberately — not because the gap is small, but because closing it needs a Windows host rather than a design.
 > Filed as GitHub issue #147 (`bug`) by the fabric v2 crucible campaign's orchestrator and folded into the manifest here;
 > the issue is closed, pointing at this file.
@@ -61,7 +60,7 @@ Beyond the suite, the scenarios worth driving by hand on Windows are the ones th
 - `prune` / `clone --reset` ownership refusals.
 
 Slice 13's live-state harness is the natural vehicle: once it exists, closing this item is largely a matter of running it on Windows rather than writing anything new.
-That makes this item cheaper *after* slice 13, which is one reason it sits in Someday rather than ahead of it.
+That makes this item cheaper *after* slice 13, which is one reason to do it once slice 13 exists rather than ahead of it.
 
 ## The legitimate alternative answer
 

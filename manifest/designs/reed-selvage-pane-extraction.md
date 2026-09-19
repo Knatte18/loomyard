@@ -1,6 +1,6 @@
 # reed: extract Selvage-pane lifecycle out of apply/reconcile/spawn/lifecycle
 
-> **Status: Someday, not yet designed in depth.** Follow-up to `reed: replace the header pane with a native tmux status-line, a permanent "Selvage" terminal pane, and a detached per-hub watchdog process` — a post-merge audit found that item only fully achieved one of its three separation goals.
+> Follow-up to `reed: replace the header pane with a native tmux status-line, a permanent "Selvage" terminal pane, and a detached per-hub watchdog process` — a post-merge audit found that item only fully achieved one of its three separation goals.
 
 ## The audit finding
 

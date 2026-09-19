@@ -1,7 +1,5 @@
 # generalize `ly-drive` and loom's `start`/`run`/`step` CLI verbs into a Shed-generic watchdog
 
-> **Status: Next Up, genuinely speculative.**
-
 ## The idea
 
 `shedengine`/`shedbuild`/`shedrecipe` are already fully generic — the Told-Geometry Invariant — and `loomrecipe.New` is the only loom-specific glue. `internal/loomcli`'s `start.go`/`run.go`/`step.go` are the one place hardcoding loom's own recipe/paths, and no sibling CLI package has an equivalent `start`/`run`/`step` trio.
@@ -24,7 +22,7 @@ Fourth, the skill's role in that end state is to loop the generic `step` until t
 
 This section describes a shape, not a commitment: the verdict below is unchanged, and a second `shedrecipe` consumer beyond loom is still what the generalisation needs before it can be validated.
 
-## Why not Planned
+## Why still speculative
 
 Genuinely speculative until a second `shedrecipe` consumer beyond loom exists to validate the generalization against — nothing today proves the abstraction is right instead of just theoretically possible.
 

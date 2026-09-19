@@ -1,6 +1,6 @@
 # reed: multi-window ideas (cross-worktree columns, own-window anchoring, session-groups attach)
 
-> **Status: Someday, not yet designed.** Three related, not-yet-scoped ideas about reed outgrowing "one pane per strand, one window per worktree." Grouped here because each is a candidate building block for the others.
+> Three related, not-yet-scoped ideas about reed outgrowing "one pane per strand, one window per worktree." Grouped here because each is a candidate building block for the others.
 
 ## Cross-worktree columns
 

@@ -46,7 +46,7 @@ Selvage is pinned to the bottom, one row tall by default, with every strand pane
 
 It stays in the **same single window** as every strand, never a second window:
 
-- Reed has no window support today (see the Someday `reed: own-window strand anchoring` item).
+- Reed has no window support today (see `reed: own-window strand anchoring`).
 - *(confirmed live)* tmux auto-switches the attached client to a window the instant its previously-active window loses its last pane — a "hidden" second window holding Selvage would pop into view at exactly the moment it needs to stay out of the way, defeating the point.
 
 ### The single-pane degenerate case

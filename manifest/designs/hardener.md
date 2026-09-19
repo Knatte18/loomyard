@@ -4,7 +4,7 @@
 >
 > **Hand-executed origin:** [`crucible`](../../crucible/README.md) is the method this module would automate — the hand-run version of the same idea, named separately to avoid colliding with this module's own name. This was developed over the last week out of a concrete need: to **run** actual `reed` code hard enough to surface defects a green `go test` never proves. Six hand-orchestrated rounds fixed what many rounds of text-based review could not — it was genuinely *hardening*.
 >
-> **Status: Someday, deprioritized.** Not required to get `loom` running — `loom` only ever uses text-review (its `Bouncer`+`Burler` review segments), never behavior-review. Kept separate from the Planned `Treadle`/`Shed` work for exactly that reason: nothing here blocks `loom`.
+> Not required to get `loom` running — `loom` only ever uses text-review (its `Bouncer`+`Burler` review segments), never behavior-review. Kept separate from the `Treadle`/`Shed` work for exactly that reason: nothing here blocks `loom`.
 
 ## Naming: two things, not one
 
@@ -37,8 +37,7 @@ A text-review segment's `command` gate lets a code profile *touch* behavior ligh
 
 **The engine underneath `Tenter` is a general one, not Tenter-specific — see the `internal/treadleengine` package documentation.**
 That doc covers the round-runner interface, the judge-maintained handoff (a general improvement, not just Tenter's),
-and the process for getting there (`Treadle` is Planned;
-`Tenter` itself stays Someday, built on `Treadle` only once `Treadle` exists).
+and the process for getting there (`Tenter` itself is built on `Treadle` only once `Treadle` exists).
 What follows here is Tenter's own instance of that shared design.
 
 In the hand-run version (see [crucible/README.md](../../crucible/README.md)), **one persistent orchestrator thread** stayed alive across the campaign: it spawned a fresh round agent per round, **independently verified** the round's work (re-ran the gates from cold state on the committed tree — never trusting the round's own "merge-ready" verdict), **accumulated** an understanding of where the module's bugs live, **targeted** each next round agent ("focus on X"), maintained a **handoff** that survived compaction, and asked the operator what to do next.
@@ -131,7 +130,7 @@ Whether the round agent literally imports the `burler` package or only follows t
 - `internal/treadleengine` package documentation — the generic round-loop engine `Tenter` would configure (as-built;
   module doc deleted per the documentation lifecycle), independent of whether `Tenter`/`Hardener` ever get built.
 - [`shed.md`](shed.md) — the generic outer phase-FSM `Hardener` configures;
-  Planned, same independence.
+  same independence as above.
 - `shuttle` — spawns the round agents and judges `Treadle`/`Tenter` drive.
 - [`internal/stencil`](../../docs/shared-libs/stencil.md) — fills the round-agent / orchestrator prompt templates (shared with `burler` and the review gate).
 - `internal/state` — handoff + round artifacts on disk (the memory that makes respawn work).
@@ -146,7 +145,7 @@ Whether the round agent literally imports the `burler` package or only follows t
 - ~~Naming: one module or two?~~ — resolved: `Tenter` (review-loop) + `Hardener` (`Shed` + `Tenter`, the campaign);
   see "Naming" above.
 - The shared engine designs (round-runner interface, handoff/ledger format, pre-round-targeting mechanics for `Treadle`;
-  the outer FSM for `Shed`) live in their own docs — not decided here, and both are Planned independently of whether `Tenter`/`Hardener` themselves ever get scheduled.
+  the outer FSM for `Shed`) live in their own docs — not decided here, independently of whether `Tenter`/`Hardener` themselves ever get scheduled.
 - Exactly what the handoff must carry losslessly (key-ledger confirmed;
   what else?).
 - The Go-scaffolding / LLM-brain boundary above.
@@ -154,4 +153,4 @@ Whether the round agent literally imports the `burler` package or only follows t
 - Sandbox provisioning: how much lyx automates vs. a pre-existing sandbox repo.
 
 **This module is post-loom and on-demand;
-nothing here blocks the `burler → shed → loom` spine, nor the Planned `Treadle`/`Shed` work, which proceeds independently of whether `Tenter`/`Hardener` are ever scheduled.**
+nothing here blocks the `burler → shed → loom` spine, nor the `Treadle`/`Shed` work, which proceeds independently of whether `Tenter`/`Hardener` are ever scheduled.**
