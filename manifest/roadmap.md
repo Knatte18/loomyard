@@ -30,7 +30,7 @@ Not yet started, and exact order can still shift as Planned work reveals what un
 1. **generalize `ly-supervise` and loom's `run`/`drive`/`step` CLI verbs into a Shed-generic watchdog** — `shedengine`/`shedbuild`/`shedrecipe` are already fully generic; only `loomcli` hardcodes loom's own recipe/paths. Speculative until a second `shedrecipe` consumer exists.
    See [designs/shed-generic-watchdog.md](designs/shed-generic-watchdog.md).
 
-1. **reed: per-hub daemon reaps orphaned sessions** — the per-hub watchdog daemon (see the Planned header-pane split) periodically checks whether each live session's worktree still exists on disk, and tears down any that don't. A safety net for when the Planned `worktree spawn/teardown as Shed producers` item's deliberate teardown sequencing doesn't run (crash, manual deletion, aborted task) — not a replacement for it.
+1. **reed: per-hub daemon reaps orphaned sessions** — the per-hub watchdog daemon periodically checks whether each live session's worktree still exists on disk, and tears down any that don't. A safety net for when the `worktree spawn/teardown as Shed producers` item's deliberate teardown sequencing doesn't run (crash, manual deletion, aborted task) — not a replacement for it.
    See [designs/reed-header-selvage.md](designs/reed-header-selvage.md).
 ## Someday
 
@@ -50,6 +50,9 @@ No build order is implied between these items.
 
 1. **reed: strand-based mailbox/addressing system** — deliver messages/events to any Strand by address; being a Strand is required to *receive* mail, not to *send* it.
    See [designs/reed-mailbox.md](designs/reed-mailbox.md).
+
+1. **reed: extract Selvage-pane lifecycle out of apply/reconcile/spawn/lifecycle** — a post-merge audit of the shipped header-pane split found the Selvage pane's own lifecycle code still scattered across the same four files the original design doc named as the smell (just renamed from Header to Selvage); the watchdog and status-line separations landed cleanly, this third one didn't.
+   See [designs/reed-selvage-pane-extraction.md](designs/reed-selvage-pane-extraction.md).
 
 1. **reed: cross-worktree columns** — all worktrees in one tmux window, a column per worktree; needs a name for the new per-worktree grouping layer this introduces and a column-count/fallback policy.
    See [designs/reed-multi-window.md](designs/reed-multi-window.md#cross-worktree-columns).
