@@ -727,6 +727,43 @@ func (e *Engine) Up() (UpResult, error) {
 	return result, err
 }
 
+// ensureSessionLocked boots this worktree's session only when there is nothing usable to attach to,
+// returning whether a session was actually created.
+// It calls sessionSubstrateLocked and returns (false, nil) immediately, having done nothing else — no
+// config validation, no reconcile, no state read, no write — when the session is already usable.
+// The early return exists rather than routing a warm call through upLocked for two reasons: upLocked's
+// tail reaches planReconcile, which adds every live non-exempt pane to its kill list whenever the
+// header is alive, and ensureServerAndSessionLocked runs its whole pre-tmux config-validation block
+// ahead of its already-up early return.
+// Otherwise it delegates to upLocked and returns that call's own booted flag verbatim, never a
+// hardcoded true: the session can come up between the two probes (a sibling `lyx reed up` in another
+// terminal is the realistic trigger), so a hardcoded true would make the caller's attribution log claim
+// a spawn that never happened.
+func (e *Engine) ensureSessionLocked() (bool, error) {
+	_, usable, err := e.sessionSubstrateLocked()
+	if err != nil {
+		return false, err
+	}
+	if usable {
+		return false, nil
+	}
+	_, booted, err := e.upLocked()
+	return booted, err
+}
+
+// EnsureSession boots this worktree's session only when there is nothing usable to attach to, and
+// reports whether a session was actually created.
+// It reads no persisted state on the warm path, so a caller needing reed's state-level refusals must
+// still make its own Status call.
+func (e *Engine) EnsureSession() (booted bool, err error) {
+	err = e.withOpLock(func() error {
+		var innerErr error
+		booted, innerErr = e.ensureSessionLocked()
+		return innerErr
+	})
+	return booted, err
+}
+
 // Resume boots server+session if absent, reconciles stale bindings, relaunches non-live strands,
 // and re-applies the layout.
 func (e *Engine) Resume() (ResumeResult, error) {
