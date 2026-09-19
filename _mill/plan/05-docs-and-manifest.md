@@ -9,6 +9,13 @@ verify: go test ./internal/lyxcwd/ ./contracts/... ./tools/...
 depends-on: [4]
 ```
 
+## Per-file sweep rule
+
+Identical to batch 1's rule of the same name, and it governs this batch too: a file in a card's `Edits:` is swept **whole**, and the sites named in `Requirements:` are landmarks pinning the hard judgment calls and the sentences that must be rewritten rather than substituted — never the boundary.
+Sweep for verb names (`lyx loom run`/`lyx loom drive`/`lyx run` and bare backticked `` `run` ``/`` `drive` `` naming a verb), pre-move filename citations (`run.go` -> `start.go`, `drive.go` -> `run.go`), and `ly-supervise` -> `ly-drive`, including in link text and document titles.
+
+Leave the noun sense alone — "run" meaning "an execution", and "drives"/"driver" as ordinary English — and leave the other modules' own verbs (`lyx webster run`, `lyx burler run`, `lyx shuttle run`) untouched.
+
 ## Batch Scope
 
 This batch is the whole prose surface: the top-level operator docs, the invariant text, every design doc naming a renamed verb or the skill, the roadmap's Planned-to-Done move, the loom status spec, and the sandbox suite doc.

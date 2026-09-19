@@ -74,6 +74,16 @@ batches:
 - **Rationale:** a blind replace turns `drive.go`'s contrast prose into self-references and rewrites four unrelated files' noun usage.
 - **Applies to:** all batches
 
+### Decision: cards-name-landmarks-not-boundaries
+
+- **Decision:** a file in any card's `Edits:` is swept whole.
+  The sites a card's `Requirements:` names are landmarks — they pin the hard judgment calls, the sentences that must be rewritten rather than substituted, and the identifiers that change — and are explicitly not an exhaustive list.
+  A hit not named is still classified and fixed.
+  Batches 1, 3, and 5 each restate this as a `## Per-file sweep rule` section naming the hit classes concretely.
+- **Rationale:** this mirrors the discussion's own Scope section, which states scope as an enumeration *rule* rather than a file whitelist, for the reason its Q&A log records: a whitelist cannot be both complete and maintainable at this hit count, and a silently-short one is worse than none because it reads as authoritative.
+  Plan review rounds 1 and 2 demonstrated the same failure one level down — every finding in both rounds was a `scope` miss where a card enumerated some of a file's hits and a literal implementer would have left the rest.
+- **Applies to:** all batches
+
 ### Decision: contrast-prose-rewritten-as-sentences
 
 - **Decision:** prose whose meaning turns on the two verbs being *different* is rewritten as sentences, never token-substituted.

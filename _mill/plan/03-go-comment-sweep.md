@@ -9,6 +9,13 @@ verify: go test ./internal/loomengine/... ./internal/loomshed/... ./internal/shu
 depends-on: [2]
 ```
 
+## Per-file sweep rule
+
+Identical to batch 1's rule of the same name, and it governs this batch too: a file in a card's `Edits:` is swept **whole**, and the sites named in `Requirements:` are landmarks pinning the hard judgment calls, never the boundary.
+Sweep for verb names (`lyx loom run`/`lyx loom drive` and bare backticked `` `run` ``/`` `drive` `` naming a verb), pre-move filename citations (`run.go` -> `start.go`, `drive.go` -> `run.go`), the identifiers `runCmd`/`driveCmd`/`RunAliasCommand` including test function names, and `ly-supervise` -> `ly-drive`.
+
+Leave the noun sense alone — "run" meaning "an execution", and "driver"/"drives" as ordinary English — per the batch-local decision below.
+
 ## Batch Scope
 
 This batch sweeps the verb names out of Go comments in packages outside `internal/loomcli` — the counterpart gotcha the discussion names, where genuine verb hits live in packages a file-by-file scope would not think to enumerate.

@@ -27,6 +27,22 @@ git mv internal/loomcli/drive.go internal/loomcli/run.go
 
 Running them in the other order clobbers `run.go` before it has been relocated.
 
+## Per-file sweep rule
+
+Every card in this batch follows the discussion's own Scope rule: a file listed in a card's `Edits:` is swept **whole**, and every hit is read and classified before it is touched.
+The sites named in each card's `Requirements:` are landmarks that pin the hard judgment calls — they are never the boundary, and a hit that is not named still gets classified and fixed.
+
+The hit classes to sweep each `Edits:` file for:
+
+1. **Verb names** — `lyx loom run`, `lyx loom drive`, `loom run`, `loom drive`, and bare backticked `` `run` ``/`` `drive` `` where the word names a loom verb.
+2. **Pre-move filename citations** — a comment naming `run.go` or `drive.go` to say where a block came from or where its caller lives.
+   After card 2's moves these become `start.go` and `run.go` respectively.
+3. **Identifiers** — `runCmd`, `driveCmd`, `RunAliasCommand` in prose or in Go code, including **test function names** that encode a retired verb.
+4. **Skill name** — `ly-supervise`, which becomes `ly-drive`.
+
+Leave the disposition-2 noun sense alone: "run" meaning "an execution" (a run's bookkeeping, an autonomous run, mid-run, the run lock, a driver process) is not a verb name and is untouched.
+"driver" and "drives" as ordinary English describing what a process does are likewise untouched — only the verb *name* `drive` is retired.
+
 ## Batch Scope
 
 This batch is the atomic Go rename: the two file moves, the three identifier renames, the cobra surface, the three runtime refusal strings, and every test that names a renamed identifier or verb literal.
@@ -86,7 +102,7 @@ the new guard in card 1 is scoped to the root tree alone, which genuinely has no
   Also in that file, change the seed-missing refusal string so it reads `loom: no status file at <path>; run "lyx loom start" first to bootstrap this task`, and update the two inline comments above it and above the `c.reed.Up()` call that name `"lyx loom run"` as the seeder or the `Up` caller.
   In `internal/loomcli/cli.go`: change `parent.AddCommand(c.runCmd(), c.driveCmd(), ...)` to `parent.AddCommand(c.startCmd(), c.runCmd(), ...)`, keeping the remaining five verbs and their order;
   rewrite the parent's `Long` so the sentences describing each verb's role name `"start"` as the bootstrap and `"run"` as the no-tmux foreground escape hatch, and update its `Example:` block's first two lines to `lyx loom start` and `lyx loom run`;
-  rewrite the `loomCLI` struct field comments on `env`, `shedPaths`, and `frictionDir` that name `driveCmd`, `runCmd`, `drive.go`, or `run.go` so they name the new identifiers and the new filenames;
+  sweep the whole `loomCLI` struct and rewrite **every** field comment naming a renamed verb, a renamed identifier, or a pre-move filename — at minimum `cfg`, `env`, `shedPaths`, `registry`, `runner`, `frictionDir`, and `landingCfg`, which between them name `driveCmd`, `runCmd`, `drive.go`, `run.go`, the "run/bootstrap verb", and `drive`'s detached driver log — so each names the post-rename identifier or filename;
   and rewrite `verbUsesLightweightWiring`'s doc comment, whose last sentence names `"run"` and `"drive"` as the comparison for why `"step"` is excluded, so it names `"start"` and `"run"` instead.
   The `verbUsesLightweightWiring` switch's own case list is untouched — none of the renamed verbs appear in it.
   Also in the relocated file, rewrite `reflectFriction`'s own doc comment, whose sentence about the run lock reading as free so that a second `"lyx loom run"` spawns a second driver is a bootstrap-sense hit and becomes `"lyx loom start"`;
@@ -112,8 +128,11 @@ the new guard in card 1 is scoped to the root tree alone, which genuinely has no
 - **Requirements:** These three files name the bootstrap verb in operator-facing text and must follow card 2's rename.
   In `internal/loomcli/pause.go`, change the absent-status-file error so its remedy reads `run "lyx loom start" first to bootstrap this task`, keeping the rest of the message (including the "there is nothing running to pause" clause) byte-identical.
   In `internal/loomcli/status.go`, change the `!found` branch's refusal so its remedy likewise names `"lyx loom start"`, keeping the rest of the message unchanged.
-  In `internal/loomcli/step.go`, rewrite the `Long` string's opening sentence, which currently says step bootstraps the worktree's loom task exactly as `"lyx loom run"` does, so it names `"lyx loom start"`.
-  `step`'s own `Use`, `Short`, and behaviour are unchanged — the verb keeps its name because it already matches `shedengine.Shed.Step`.
+  In `internal/loomcli/step.go`, sweep the whole file per the batch's `## Per-file sweep rule`.
+  Three landmarks: the `Long` string's opening sentence, which says step bootstraps the worktree's loom task exactly as `"lyx loom run"` does, and becomes `"lyx loom start"`;
+  the file's own header comment, which says step bootstraps idempotently exactly as `` `run` `` does and that unlike `` `run` `` it spawns no detached driver — both of those name the bootstrap and become `` `start` ``;
+  and the two `RunE`-body comments naming the foreground verb, one saying a producer hard error mirrors `drive`'s handling of the same condition and one about the next `drive`'s Tier-1 entry observation, which both become `run`.
+  `step`'s own `Use`, `Short`, and behaviour are unchanged — the verb keeps its name because it already matches `shedengine.Shed.Step` — and the many uses of "driver" and "drives" as ordinary English are untouched.
 - **Commit:** `refactor(loomcli): name lyx loom start in the pause, status, and step operator text`
 
 ### Card 4: update cli_test.go's verb set, alias guard, and refusal table
@@ -174,9 +193,13 @@ the new guard in card 1 is scoped to the root tree alone, which genuinely has no
   A lone `"run"` probe is wrong in the other direction — `run` is a verb on `shuttle`, `burler`, and `webster` too, so it would over-match any such process sharing the worktree cwd and the function would silently over-report;
   left unchanged it matches an argv element no process carries any more and returns nil forever, making every assertion built on it pass vacuously.
   Update `findDriverPIDs`' doc comment, which names "the detached `lyx loom drive` process" and the `"drive"` argv element, to describe the adjacent-pair discriminator and the new verb name.
+  Beyond the argv and probe work, sweep both files whole per the batch's `## Per-file sweep rule`.
+  In `smoke_test.go` that means at least: the file's own header doc comment, which narrates `"lyx loom run"` spawning its detached driver and a binary that knows how to dispatch `"loom drive"`;
+  `newWiredPairFixture`'s doc comment, which mentions a caller's own first `"loom run"` call;
+  and the three test function names `TestSmokeDriveStandalone_AdvancesMachineFromExistingSeed`, `TestSmokeDriveStandalone_RefusesOnNeverSeededPair`, and `TestSmokeDriveStandalone_FailureBeforeFirstPersistLeavesNonEmptyLog`, which encode the retired verb in Go identifiers and are renamed to their `Run` forms.
   In `internal/loomcli/smoke_bootstrapwiring_test.go`, change the assertion `strings.Contains(envelope.Error, "loom run")` to `"loom start"` — this asserts on the refusal text card 2 and card 3 changed, and is an assertion rather than a comment.
-  Also rewrite that file's comments naming `lyx loom run`, `lyx loom drive`, or the `ly-supervise` skill so they name `lyx loom start`, `lyx loom run`, and `ly-drive` respectively;
-  the three `runLoomCLINoFatal(..., "loom", "step")` invocations are unchanged, because `step` keeps its name.
+  Also rewrite that file's comments naming `lyx loom run`, `lyx loom drive`, or the `ly-supervise` skill so they name `lyx loom start`, `lyx loom run`, and `ly-drive` respectively, and retarget its stale citation saying `ensureFrictionDirAfterSeed` was written, documented and unit-tested in run.go and reached by neither `runCmd`'s `RunE` nor `seedAndCommitBootstrap` — after card 2 that file is start.go and that method is `startCmd`.
+  The three `runLoomCLINoFatal(..., "loom", "step")` invocations are unchanged, because `step` keeps its name.
 - **Commit:** `test(loomcli): retarget the smoke argv sites, driver probe, and refusal assertion`
 
 ### Card 7: loomcli comment and filename-citation sweep

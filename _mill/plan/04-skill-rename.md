@@ -48,8 +48,11 @@ It names no individual skill, so it needs no change, and per this repo's convent
   In the relocated SKILL.md at the move pair's destination, change the frontmatter `name:` from `ly-supervise` to `ly-drive` and rewrite the frontmatter `description:` so it describes driving a loom task through a loop over `lyx loom step` rather than supervising one, keeping its "Explicit invocation only." sentence and the `disable-model-invocation: true` key unchanged.
   Change the per-step envelope scratch path from `.scratch/ly-supervise/step-<n>.json` to `.scratch/ly-drive/step-<n>.json`, leaving the surrounding explanation that `.scratch/` is the mandated scratch location and is already gitignored repo-wide exactly as it is.
   Rewrite every place the body refers to the skill by its own name so it reads `ly-drive`.
-  The body's `lyx loom step` invocations are unchanged throughout — `step` keeps its name.
-  The one place the body names `lyx loom run` as the bootstrap remedy in its pre-loop-baseline section becomes `lyx loom start`.
+  Then sweep the whole relocated file rather than only the sites named here, classifying every hit of a loom verb name, the skill's own name, or a pre-move filename before touching it.
+  Three landmarks: the pre-loop-baseline section names `lyx loom run` as the bootstrap remedy, which becomes `lyx loom start`;
+  and the `## Self-report` section names the foreground verb twice — once saying loom's two automatic self-report tiers both hang off `lyx loom drive`'s own run, and once saying `step` never spawns the reflection pass that `drive` runs — both of which become the `run` form.
+  That second pair matters beyond consistency: the sentence's whole point is that the tiers fire on one verb and not on `step`, so naming the wrong verb inverts what the skill tells the operator about its own reporting duty.
+  The body's `lyx loom step` invocations are unchanged throughout — `step` keeps its name — as are the uses of "drives"/"driver" as ordinary English, such as reed driving psmux and the operator having a driver running.
   In `plugins/ly/skills/INDEX.md`, update the table row so both the link text and the link target name `ly-drive` and point at `ly-drive/SKILL.md`, rewrite the row's description to match the new frontmatter `description:`, and change the explicit-invocation note on the following line so it names `ly-drive`.
   Leave `plugins/ly/.claude-plugin/plugin.json` untouched, including its `version` field.
 - **Commit:** `refactor(ly): rename the ly-supervise skill to ly-drive`
