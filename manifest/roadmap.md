@@ -15,9 +15,7 @@ This section holds what's committed to next.
 1. **loom CLI: rename `run`/`drive`/`step` for verb/engine symmetry, plus rename `ly-supervise`** — today's verb names don't match what each one actually calls; not yet decided.
    See [designs/loom-cli-rename.md](designs/loom-cli-rename.md).
 
-1. **reed: `AddStrand` and `attach` self-heal a cold worktree instead of requiring `up` first** — both verbs only check `requireSessionLocked` today and fail with "no session" if nobody has run `reed up` yet; call the same locked helper `Up()` already uses instead in both, so any spawn OR view into a worktree nobody has visited (no VS Code, no manual `up`) just works. Fully internal to `reedengine` — fabric never needs to know reed exists. Distinct from the Next Up `born-as-strand` item: that one is about a pane never becoming a Strand at all; this one is about a session not existing yet.
-
-1. **worktree spawn/teardown as Shed producers** — fold `fabric create`, reed's self-healing bootstrap, optional VS Code embedding, and `loom`'s own producer list into one driven `Shed` run, with a single teardown producer sequencing `reed down` then fabric's own cleanup at the end. Depends on the `AddStrand`/`attach` self-heal item above landing first, for this item's own bootstrap step.
+1. **worktree spawn/teardown as Shed producers** — fold `fabric create`, reed's self-healing bootstrap, optional VS Code embedding, and `loom`'s own producer list into one driven `Shed` run, with a single teardown producer sequencing `reed down` then fabric's own cleanup at the end. Depends on the `AddStrand`/`attach` self-heal item, which has landed.
    See [designs/worktree-lifecycle-shed-producers.md](designs/worktree-lifecycle-shed-producers.md).
 
 1. **fabric: no remote/GitHub branch deletion** — `fabricengine`'s existing branch cleanup (`Cleanup`, `removeWeftWorktree`'s `alsoDeleteBranch`) only ever runs `git branch -D` locally; there is no capability anywhere to delete the corresponding branch on the GitHub remote. Part of why task cleanup today leaves orphaned branches upstream.
@@ -116,6 +114,8 @@ No build order is implied between these items.
 ## Done
 
 Cleared 2026-08-25 to keep this file lean — shipped items' history lives in `git log` and each module's own package documentation, not here.
+
+1. **reed: `AddStrand` and `attach` self-heal a cold worktree instead of requiring `up` first** — both verbs pre-flight through the new `ensureSessionLocked`/`EnsureSession()` seam, which probes session liveness first and only delegates to `upLocked()` when nothing usable is up, so any spawn OR view into a worktree nobody has visited (no VS Code, no manual `up`) just works. `attach` boots via `EnsureSession()` and keeps its existing `Status()` call, in that order, so both the friendly no-session diagnosis and the foreign-session refusal survive unchanged. A warm call against a live session is never routed through `Up()`/`upLocked()`: that path reaches `planReconcile`, which would kill an operator's hand-split pane, and validates config ahead of its already-up early return, which would refuse a healthy `attach` on an unrelated typo. Fully internal to `reedengine` — fabric never needs to know reed exists.
 
 1. **ly-supervise + orchestrator: launch via `lyx reed add`, not ad hoc** — the generated VS Code `folderOpen` task is now the reed launch chain, with both binary paths stamped absolute; `lyx reed add` gained `--if-absent` so reopening a worktree is idempotent; and the `/ly:ly-supervise` skill now treats the session running it as the orchestrator strand itself, rather than telling the operator to open a second one.
 

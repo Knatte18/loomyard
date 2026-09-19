@@ -14,7 +14,7 @@
 
 Established while designing this: `fabricengine` must never import `reedengine`, in either direction — `reedengine` already imports fabric-ish path/geometry concepts, so the reverse would risk an import cycle, and conceptually fabric (git/worktree mechanics) is orthogonal to whatever orchestration substrate an agent happens to use. Neither "up" nor "down" is fabric's job.
 
-- **Up** doesn't need an explicit owner: it's ambient, self-healing behavior inside reed's own entrypoints (`AddStrand`, `attach`), triggered by whoever is about to actually use the session. This also naturally survives a machine restart — tmux doesn't, but worktrees do, so "set up once at creation" would go stale anyway; self-heal-on-use is the only mechanism that keeps working after a reboot with zero special-casing.
+- **Up** needs no explicit owner: it is ambient, self-healing behavior inside reed's own entrypoints (`AddStrand`, `attach`), triggered by whoever is about to actually use the session. This also naturally survives a machine restart — tmux doesn't, but worktrees do, so "set up once at creation" would go stale anyway; self-heal-on-use is the only mechanism that keeps working after a reboot with zero special-casing.
 - **Down** cannot self-heal from inside reed (reed has no signal that a worktree's life is ending) and must not be fabric's job either. It has to be an explicit step owned by whatever coordinates the whole task lifecycle — this Shed-producer pipeline, once built.
 
 ## Today, without this item built yet
@@ -30,6 +30,6 @@ lyx fabric remove <slug>
 
 ## Related
 
-- `AddStrand`/`attach` self-heal — the up-side mechanism this item's bootstrap step relies on.
+- `AddStrand`/`attach` self-heal — the up-side mechanism this item's bootstrap step relies on, shipped.
 - [reed-header-selvage.md](reed-header-selvage.md) — the per-hub daemon whose orphan-reaping extension (see `reed: per-hub daemon reaps orphaned sessions`) is the safety net for when this item's own teardown sequencing doesn't run.
 - [shed-generic-watchdog.md](shed-generic-watchdog.md) — a related but orthogonal generalization axis: that item generalizes the watchdog/CLI-verb layer across any `Shed` recipe; this item adds bookend producer rows to a specific recipe's own `Shed` run. They compose, but are separate efforts.
