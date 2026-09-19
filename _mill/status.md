@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: seeded-shed-core
 branch: seeded-shed-core
 plan: null
@@ -15,4 +15,6 @@ task_description: |
 
 ```text
 discussing  '2026-09-19T16:20:51Z'
+discussion-fix-r7  '2026-09-19T17:04:38Z'
+discussed  '2026-09-19T17:04:38Z'
 ```
