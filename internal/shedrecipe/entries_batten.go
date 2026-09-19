@@ -1,7 +1,8 @@
-// entries_batten.go implements the three batten registry entries: worktreeCreateEntry,
-// innerRunEntry, and worktreeTeardownEntry. They are grouped into their own file rather than folded
-// into entries_simple.go because they share the Env.Slug/Env.ScratchDir/Env.PrimeLock validation
-// shape that entries_simple.go's nine entries do not have.
+// entries_batten.go implements the four batten registry entries: worktreeCreateEntry,
+// innerRunEntry, seedChildEntry, and worktreeTeardownEntry. They are grouped into their own file
+// rather than folded into entries_simple.go because they share the
+// Env.Slug/Env.ScratchDir/Env.PrimeLock validation shape that entries_simple.go's nine entries do
+// not have.
 
 package shedrecipe
 
@@ -13,15 +14,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// defaultInnerRunPollIntervalS and defaultInnerRunPollAttempts are innerRunEntry's own defaults for
-// the poll_interval_s and poll_attempts Config keys, used when the extracted value is zero --
-// configInt reports an absent key and an explicit zero identically, so both resolve to these
-// defaults. The twelve-hour default the attempt count expresses at the default interval is
-// deliberately generous: a real task run spans hours.
-const (
-	defaultInnerRunPollIntervalS = 5
-	defaultInnerRunPollAttempts  = 8640
-)
+// defaultInnerRunPollIntervalS is innerRunEntry's own default for the poll_interval_s Config key,
+// used when the extracted value is zero -- configInt reports an absent key and an explicit zero
+// identically, so both resolve to this default. It agrees with the batten recipe's own explicit
+// poll_interval_s so an omitted key and the recipe's own value never diverge; the wait budget
+// itself now lives on the recipe row's own max_bounces, not on a Go constant, since InnerRun's
+// bounce loop lives in shedengine's own on_stuck routing rather than inside this producer.
+const defaultInnerRunPollIntervalS = 30
 
 // worktreeCreateEntry is the Constructor for the "WorktreeCreate" registry row: it validates
 // Env.Slug, Env.ScratchDir, Env.CreateWorktree, Env.PrimeLock.Acquire, and Env.PrimeLock.Path, and
@@ -79,14 +78,16 @@ func worktreeTeardownEntry(name string, cfg Config, env Env) (shedengine.ShedPro
 }
 
 // innerRunEntry is the Constructor for the "InnerRun" registry row: it reads the optional int
-// Config keys poll_interval_s and poll_attempts through configInt, defaulting to
-// defaultInnerRunPollIntervalS and defaultInnerRunPollAttempts respectively when the extracted
-// value is zero -- configInt reports an absent key and an explicit zero identically, so both
-// resolve to the same default -- and rejects a negative value for either key with an error naming
-// that key. It validates Env.Slug, Env.ScratchDir, and Env.InnerRun.Spawn/ResolveStatus/ReadStatus
-// -- and neither Env.InnerRun.Now nor Env.InnerRun.Sleep, whose nil values are legitimate and
-// select the production clock and sleep. It returns battenshed.NewInnerRun(name, env.Slug,
-// env.InnerRun, time.Duration(pollIntervalS)*time.Second, pollAttempts, env.ScratchDir).
+// Config key poll_interval_s through configInt, defaulting to defaultInnerRunPollIntervalS when
+// the extracted value is zero -- configInt reports an absent key and an explicit zero identically,
+// so both resolve to the same default -- and rejects a negative value with an error naming the
+// key. poll_attempts is retired: the wait budget now lives on the recipe row's own max_bounces,
+// read by shedengine itself, not on a Config key this entry reads, so poll_attempts is rejected as
+// an unrecognised key rather than silently read. It validates Env.Slug, Env.ScratchDir, and
+// Env.InnerRun.Spawn/ResolveStatus/ReadStatus -- and neither Env.InnerRun.Now nor
+// Env.InnerRun.Sleep, whose nil values are legitimate and select the production clock and sleep.
+// It returns battenshed.NewInnerRun(name, env.Slug, env.InnerRun,
+// time.Duration(pollIntervalS)*time.Second, env.ScratchDir).
 func innerRunEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	pollIntervalS, err := configInt(cfg, "poll_interval_s", false)
 	if err != nil {
@@ -99,18 +100,7 @@ func innerRunEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, e
 		pollIntervalS = defaultInnerRunPollIntervalS
 	}
 
-	pollAttempts, err := configInt(cfg, "poll_attempts", false)
-	if err != nil {
-		return nil, err
-	}
-	if pollAttempts < 0 {
-		return nil, fmt.Errorf("shedrecipe: InnerRun: config key %q must not be negative, got %d", "poll_attempts", pollAttempts)
-	}
-	if pollAttempts == 0 {
-		pollAttempts = defaultInnerRunPollAttempts
-	}
-
-	if err := configRejectUnknown(cfg, "poll_interval_s", "poll_attempts"); err != nil {
+	if err := configRejectUnknown(cfg, "poll_interval_s"); err != nil {
 		return nil, err
 	}
 	if err := requireNonEmpty("InnerRun", "Slug", env.Slug); err != nil {
@@ -128,5 +118,36 @@ func innerRunEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, e
 	if err := requireSeam("InnerRun", "InnerRun.ReadStatus", env.InnerRun.ReadStatus); err != nil {
 		return nil, err
 	}
-	return battenshed.NewInnerRun(name, env.Slug, env.InnerRun, time.Duration(pollIntervalS)*time.Second, pollAttempts, env.ScratchDir), nil
+	return battenshed.NewInnerRun(name, env.Slug, env.InnerRun, time.Duration(pollIntervalS)*time.Second, env.ScratchDir), nil
+}
+
+// seedChildEntry is the Constructor for the "SeedChild" registry row: it validates Env.Slug,
+// Env.ScratchDir, and all five Env.SeedChild closures, and returns
+// battenshed.NewSeedChild(name, env.Slug, env.SeedChild, env.ScratchDir).
+func seedChildEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
+	if err := configRejectUnknown(cfg); err != nil {
+		return nil, err
+	}
+	if err := requireNonEmpty("SeedChild", "Slug", env.Slug); err != nil {
+		return nil, err
+	}
+	if err := requireAbsRoot("SeedChild", "ScratchDir", env.ScratchDir); err != nil {
+		return nil, err
+	}
+	if err := requireSeam("SeedChild", "SeedChild.ReadBoardType", env.SeedChild.ReadBoardType); err != nil {
+		return nil, err
+	}
+	if err := requireSeam("SeedChild", "SeedChild.ChildDriver", env.SeedChild.ChildDriver); err != nil {
+		return nil, err
+	}
+	if err := requireSeam("SeedChild", "SeedChild.WriteSeed", env.SeedChild.WriteSeed); err != nil {
+		return nil, err
+	}
+	if err := requireSeam("SeedChild", "SeedChild.CommitSeed", env.SeedChild.CommitSeed); err != nil {
+		return nil, err
+	}
+	if err := requireSeam("SeedChild", "SeedChild.PushSeed", env.SeedChild.PushSeed); err != nil {
+		return nil, err
+	}
+	return battenshed.NewSeedChild(name, env.Slug, env.SeedChild, env.ScratchDir), nil
 }

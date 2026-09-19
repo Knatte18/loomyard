@@ -130,6 +130,11 @@ type Env struct {
 	// own precedent: InnerRun has behaviour of its own -- spawning, resolving, and polling status --
 	// that per-seam fakes must be able to substitute individually.
 	InnerRun battenshed.InnerRunDeps
+	// SeedChild is a whole-struct passthrough to battenshed.NewSeedChild, following Env.Landing's
+	// own precedent for the same reason as InnerRun: it has behaviour of its own -- reading the
+	// Board's own type, reading prime's own seed driver, and writing, committing, and pushing the
+	// child's seed -- that per-seam fakes must be able to substitute individually.
+	SeedChild battenshed.SeedChildDeps
 	// Teardown is a whole-struct passthrough to battenshed.NewWorktreeTeardown, following
 	// Env.Landing's own precedent for the same reason as InnerRun: it has behaviour of its own that
 	// per-seam fakes must be able to substitute individually.
