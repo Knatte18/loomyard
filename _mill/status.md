@@ -43,7 +43,9 @@ batches:
     commit_sha: 7ea13676645dc28adda1e2077ca64f3359815df7
     verify_baseline_failures: ["FAIL\t./internal/lifecycleshed/... [setup failed]"]
   - name: loom run --no-attach
-    state: pending
+    state: running
+    implementer_session: 67cdaade-34a7-4b42-b4c4-a937fea72b5e
+    start_sha: 0ce0bc8015a4e2d6300866b1474e9d76081fa423
     verify_baseline_failures: []
   - name: shedrecipe lifecycle entries
     state: pending
