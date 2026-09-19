@@ -36,6 +36,8 @@ The roadmap entry names it explicitly as a *safety net* for when the `worktree s
 - One new engine-less exported function in `internal/reedengine` (`ReapSession`) alongside the existing `ListSessions`, plus an `Engine.ShellPath()` accessor.
 - A `--shell` flag on `lyx reed watchdog`, told by `ensureWatchdogSpawned`'s single `exec.Command` construction — the one `up`, `resume` and `attach` all reach — exactly as `--tmux` already is.
 - Cancelling and dropping the daemon's own `watchedSession` entry for a reaped name, so no goroutine keeps polling a killed session.
+- An in-flight-reap set and a `sync.WaitGroup` in `runWatchdogLoop`, so reaps run off-loop without racing each other and the daemon never exits mid-reap.
+- A timing-injection seam for the daemon's loop, so no test waits on the production cadence: `runWatchdogLoop` gains a `watchdogTiming` struct parameter (`DiscoveryCycle`, `IdleCycles`, `OrphanGoneCycles`) with a `watchdogDefaultTiming()` constructor sourcing the existing package constants and nothing else, and `watchdogCmd` passes that. This is deliberately the same shape `internal/reedengine/watchloop.go` already uses for `watchTiming`/`watchDefaultTiming`, so the repo carries one idiom for it rather than two. The `watchdogHubDiscoveryCycle`/`watchdogHubIdleCycles` constants stay exactly where they are and keep their doc comments; only their consumer changes.
 - Logging: `Warn` on an actual reap (a destructive, unattended action), `Debug` on per-cycle confirmation increments.
 - Docs: the watchdog section of `manifest/designs/reed-header-selvage.md`, and moving the roadmap item out of Planned.
 
@@ -77,8 +79,8 @@ The roadmap entry names it explicitly as a *safety net* for when the `worktree s
 
 ### counter-resets-after-a-reap
 
-- Decision: after a reap is issued for a name, that name is deleted from the gone-counter map rather than left at its threshold value.
-- Rationale: `kill-session` teardown is asynchronous, so the name can still appear in the next cycle's listing. Resetting means a still-listed name has to re-confirm across three more cycles before a second kill is issued, which both gives the first kill time to land and keeps the repeat kill idempotent rather than fired every 5s.
+- Decision: when a reap is dispatched for a name, that name is deleted from the gone-counter map rather than left at its threshold value.
+- Rationale: `kill-session` teardown is asynchronous, so the name can still appear in the next cycle's listing. Resetting means a still-listed name has to re-confirm across three more cycles before a second kill is issued, which both gives the first kill time to land and keeps the repeat kill idempotent rather than fired every 5s. The in-flight set (see `the-reap-runs-off-loop-not-inline`) covers the shorter window the reset alone does not: while the goroutine is still running, the name is not even eligible for re-selection.
 - Rejected: leaving the counter at threshold (a lagging teardown means a kill every cycle); tracking a separate "already reaped" set (more state for a case the reset already answers).
 
 ### reap-kills-the-session-and-its-pane-subtrees
@@ -90,6 +92,10 @@ The roadmap entry names it explicitly as a *safety net* for when the `worktree s
 ### ReapSession-is-a-second-engine-less-exported-function
 
 - Decision: `internal/reedengine` gains exactly one new exported symbol, engine-less and mirroring `ListSessions`: `ReapSession(tmuxPath, shellPath, socketKey, sessionName string) error`. It builds a throwaway `*Engine` internally purely to reach the existing pane-reap helpers, acquires **no** lock, touches **no** state directory, and reads **no** geometry field beyond `SocketKey`/`SessionName`. It never calls `withOpLock`/`withTryOpLock`, so it never reaches a told-geometry validator.
+- Decision — the split point, named: the tmux half is `reapSessionTmux(cmd TmuxCmd, session string) (roots []int, err error)`, which takes a `TmuxCmd` by value exactly as `listSessionsVia` does. It calls `cmd.listPanes(session)`, derives `sessionReapRoots(live)`, then issues `cmd.run("kill-session", "-t", exactSessionTarget(session))` and returns the roots it captured. It spawns no process of its own beyond tmux and waits on nothing, so it is fully drivable through `TmuxCmd`'s `execHook` seam with no live server. The process half — `(*Engine).descendantClosurePIDs(roots)` followed by `reapPaneChildren(pids, reapExitTimeout)` — stays on `*Engine`, because `descendantClosurePIDs` reads `e.cfg.Shell` on Windows. `ReapSession` is the two-line composition of the two halves, in that order.
+- Rationale for the split landing there: it is the same seam `Engine.Down` already has implicitly — capture-roots-and-kill is pure tmux round trips, and everything after it touches real OS processes. Putting the boundary anywhere later would drag `waitProcessExit`/`proc.KillPID` into whatever covers the first half.
+- Test consequence, stated so it is not discovered at code time: the **untagged** test covers `reapSessionTmux` only, through `execHook`. The process half is never exercised by an untagged test — it kills and waits on real pids, which the Test Tier Purity Invariant forbids outside `integration`/`smoke`-tagged files, and it is covered there instead by the end-to-end orphan reap.
+- A `listPanes` failure does not abort the reap: `reapSessionTmux` returns nil roots and still issues `kill-session`, because a session whose panes cannot be listed is exactly the one most worth killing. The error is logged, not propagated as a reason to skip the kill.
 - Rationale: `TmuxCmd.run`/`output`, `sessionReapRoots`, `descendantClosurePIDs` and `reapPaneChildren` are all unexported package internals, so the reap physically cannot be written in `internal/reedcli`. `ListSessions` already established the precedent and the justification for exactly this shape: the daemon acts across sessions before it has any Engine to bind a method to. Keeping it lock-free and state-free is what makes it legal for a worktree that no longer exists — there is nothing left to lock or persist.
 - Rejected: exporting `TmuxCmd.run` (opens the whole tmux surface to every caller for one use); having `reedcli` shell out to tmux itself (a second tmux invocation site outside `reedengine`, which is the boundary `reedengine` exists to hold); building a real `Engine` in `reedcli` and calling `Down` (refused by `validateToldWorktreeRootLive`, and `Down` also deletes state files and tidies the shared server — neither of which this path may do).
 
@@ -97,7 +103,9 @@ The roadmap entry names it explicitly as a *safety net* for when the `worktree s
 
 - Decision: `lyx reed watchdog` gains a `--shell <path>` flag alongside `--hub-path` and `--tmux`, validated non-empty in the same pre-flight, and `ensureWatchdogSpawned` passes `c.eng.ShellPath()` for it. `Engine` gains a `ShellPath()` accessor beside the existing `TmuxPath()`.
 - Rationale: `descendantClosurePIDs` on Windows (`internal/reedengine/proctree_windows.go`) spawns `e.cfg.Shell` to walk the process tree, so the reap needs a shell path, and the orphan's own config is unreachable by construction — it lived in the deleted worktree. Telling the daemon its shell on the command line is exactly the posture it already takes for its tmux binary and its hub path: it opts out of cwd/location/config resolution entirely and must never derive either from its own environment.
-- Rejected: defaulting to a per-GOOS shell inside `ReapSession` (an unrelated second source of truth for the shell, diverging silently from the config the rest of reed honours); loading some other worktree's config to borrow its shell (arbitrary, and wrong the moment two worktrees differ); making `--shell` optional with a fallback (a flag that is sometimes told and sometimes derived is the worst of both).
+- Decision: `--shell` is required on **every** GOOS, including Linux, where `proctree_linux.go`'s `/proc` walk never reads `cfg.Shell` and the value therefore goes unused. One contract for the daemon's command line beats a flag whose requiredness depends on the platform reading the log.
+- Consequence to carry through: `watchdogCmd`'s own `Long` text advertises running the daemon by hand as "a real diagnosis path" and prints an example carrying only `--hub-path` and `--tmux`. That example becomes wrong the moment the pre-flight requires `--shell`, so the `Long` text and its example are updated in the same change — they are part of this task's documentation surface, not incidental help prose.
+- Rejected: defaulting to a per-GOOS shell inside `ReapSession` (an unrelated second source of truth for the shell, diverging silently from the config the rest of reed honours); loading some other worktree's config to borrow its shell (arbitrary, and wrong the moment two worktrees differ); making `--shell` optional with a fallback, or required on Windows only (a flag that is sometimes told and sometimes derived is the worst of both, and a per-GOOS requiredness rule makes the hand-run diagnosis command differ per platform for no gain).
 
 ### reap-ignores-the-watchdog-config-key
 
@@ -108,14 +116,22 @@ The roadmap entry names it explicitly as a *safety net* for when the `worktree s
 ### reap-any-live-session-whose-join-is-gone
 
 - Decision: the rule is applied to every session name on the hub socket, with no allowlist of names the daemon has previously resolved.
-- Rationale: the socket is lyx-owned — `ServerName(hub)` is `lyx-<basename>-<hash>` keyed on the hub path, so a session on it is a lyx session by construction — and the kill uses the exact `=<name>` target, so a prefix-sharing sibling can never be hit by collateral. Restricting to previously-resolved names would reintroduce the never-entered blind spot this design is built to close.
+- Rationale: every session *lyx itself* creates on this socket is worktree-named by construction (`SessionName(worktreeRoot)` is `filepath.Base(worktreeRoot)`), so the join is exact for every session the daemon is actually responsible for, and the kill uses the exact `=<name>` target, so a prefix-sharing sibling can never be hit by collateral. Restricting to previously-resolved names would reintroduce the never-entered blind spot this design is built to close.
+- Accepted collateral, stated rather than assumed away: `ServerName(hub)` only makes the socket lyx-*named*, it does not stop an operator running `tmux -L lyx-<base>-<hash> new-session -s scratch` by hand on it. Such a session has no matching directory under the hub and would be reaped ~15s later. That is accepted: a hand-made session on a socket keyed to lyx's own hub hash is squatting on lyx's substrate, the reap logs it by name at `Warn` in the hub's durable log, and the alternative (a persisted allowlist) costs the never-entered case this whole design exists for.
 - Rejected: reaping only names the daemon once resolved successfully (the blind spot); maintaining a persisted registry of lyx-created session names (durable state for a daemon deliberately built to hold none).
 
 ### ordering-within-a-cycle
 
-- Decision: one cycle runs: list sessions → update gone-counters and select reaps → reap each selected name (cancel and delete its `known` entry if present) → remove reaped names from the working live list → run the existing `planSessionDiff` appeared/departed pass against what remains.
-- Rationale: reaping before the diff is what stops the daemon from entering a session in the same cycle it is about to kill, and stops the kill from immediately registering as a "departure" it would then have to unwind. Removing reaped names from the live list before the diff keeps `planSessionDiff` pure and unchanged.
+- Decision: one cycle runs: list sessions → update gone-counters and select reaps → for each selected name, cancel and delete its `known` entry, mark it in-flight, and **dispatch its reap to its own goroutine** → remove selected names from the working live list → run the existing `planSessionDiff` appeared/departed pass against what remains.
+- Rationale: reaping before the diff is what stops the daemon from entering a session in the same cycle it is about to kill, and stops the kill from immediately registering as a "departure" it would then have to unwind. Removing selected names from the live list before the diff keeps `planSessionDiff` pure and unchanged.
 - Rejected: reaping after the diff (a pointless enter-then-tear-down in the same cycle); folding the reap decision into `planSessionDiff` (it would stop being the pure two-set comparison it is, and its existing tests would have to absorb an unrelated concern).
+
+### the-reap-runs-off-loop-not-inline
+
+- Decision: a reap runs in its own goroutine, never inline in `runWatchdogLoop`'s tick body. The loop dispatches it and moves on within the same tick. Concurrency is bounded by two pieces of loop-owned bookkeeping: an **in-flight set** of names currently being reaped, which excludes a name from reap selection *and* from the appeared set until its goroutine returns, and a `sync.WaitGroup` the existing deferred cleanup waits on before `runWatchdogLoop` returns, so the daemon never exits mid-reap and never force-kills its own reaper.
+- Rationale: a reap is not cheap and not bounded by anything small. `reapPaneChildren(pids, reapExitTimeout)` waits up to `reapExitTimeout` (15s) for a graceful exit and then up to `forceKillExitGrace` (5s) per straggler after `proc.KillPID`, so one orphan stalls an inline tick body for ~20s and several stall it for multiples of that. Run inline, that stall would silently corrupt three things the rest of this design depends on: the "~15s" the three-cycle confirmation rule is quoted at stops being true (a `time.Ticker` coalesces at most one pending tick, so the loop simply skips cycles it slept through), a newly-appeared healthy session waits up to 20s to be entered and start self-healing, and `ctx.Done()` — the daemon's only shutdown signal — goes unread for the whole stall. Off-loop, the discovery cadence, the idle accounting, and shutdown responsiveness are all exactly what they were before this task, and the reap's cost is paid where nothing is waiting on it.
+- The in-flight set is the piece that makes this safe rather than merely fast: without it, the next tick 5s later would see the still-listed name (teardown is asynchronous), and — because the gone-counter was reset at dispatch — would eventually dispatch a second concurrent reap for the same session, two goroutines racing to force-kill the same pids.
+- Rejected: reaping inline and accepting the stall (the three consequences above, none of which the confirmation rule survives); a single serialized reaper goroutine fed by a channel (an unbounded queue and a second lifetime to reason about, for a case where concurrent orphans are already rare); plumbing `ctx` into `reapPaneChildren` so an inline reap stays interruptible (it would change a shared teardown helper `Engine.Down` also depends on, to work around a problem the goroutine removes outright).
 
 ### idle-accounting-is-untouched
 
@@ -186,24 +202,30 @@ Discovered during exploration:
 - The reap decision seam. Table-driven over an injected stat function, covering: a live directory (never reaps, counter stays zero); a missing directory across fewer than the threshold of cycles (no reap yet); missing across exactly the threshold (reaps); missing, then present, then missing (counter reset — no reap); a path that exists but is a file (reaps, same as missing); a stat error that is neither (never reaps, no matter how many cycles); a name that leaves the live list (counter entry dropped, so its return starts from zero); several sessions on one hub progressing independently.
 - Counter-map hygiene: no unbounded growth across cycles whose live set churns.
 - `planSessionDiff` keeps its existing tests unchanged — proof the reap did not leak into it.
-- The `--shell` pre-flight: absent or empty `--shell` reports through `output.Err` and sets a non-zero exit, exactly as `--tmux` does, with no daemon started.
+- The `--shell` pre-flight: absent or empty `--shell` reports through `output.Err` and sets a non-zero exit, exactly as `--tmux` does, with no daemon started. This runs on every GOOS, not just Windows.
+- `watchdogDefaultTiming()` returns exactly the package constants — the guard against a test-only default silently becoming production's cadence, mirroring `watchDefaultTiming`'s own coverage in `watchloop_test.go`.
+- In-flight bookkeeping: a name whose reap goroutine has not yet returned is selected neither for a second reap nor as an "appeared" session, even while it is still listed by tmux.
 
 **`internal/reedengine` — pure, untagged:**
 
-- `ReapSession`'s tmux half driven through `TmuxCmd`'s `execHook` seam with no live server: it issues `kill-session` against `=<name>` (never a bare name), it lists panes before it kills, and a `list-panes` failure still results in a `kill-session` attempt rather than an early return.
-- `sessionReapRoots` already has coverage; assert the reap path feeds it the pane list it got, without re-testing its filter.
+- `reapSessionTmux` driven through `TmuxCmd`'s `execHook` seam with no live server: it issues `kill-session` against `=<name>` (never a bare name), it lists panes before it kills, and a `list-panes` failure still results in a `kill-session` attempt and nil roots rather than an early return.
+- `sessionReapRoots` already has coverage; assert `reapSessionTmux` feeds it the pane list it got, without re-testing its filter.
+- Nothing untagged covers `ReapSession`'s process half (`descendantClosurePIDs` + `reapPaneChildren`) — it waits on and kills real pids, so the Test Tier Purity Invariant puts it in the integration/smoke tier below, not here.
 
 **`internal/reedcli` — integration/smoke-tagged:**
 
 - End-to-end orphan reap: boot a hub session in a temporary worktree, delete the worktree directory, drive the daemon loop with compressed timings, and assert the session is gone from `list-sessions` and its pane children have exited.
 - Never-entered orphan: the worktree is already gone when the loop's first cycle runs (the case `enterSession` can never reach), and it is still reaped.
 - Non-interference: a healthy sibling session on the same hub socket survives the orphan's reap untouched — this is the collateral-damage guard, and it belongs in the same test as the reap so a broken exact-match target fails loudly.
-- Existing `watchdog_integration_test.go`, `smoke_teardown_test.go` and `smoke_lifecycle_test.go` are the fixture patterns to follow; the loop's timings must be injectable so no test waits on the production 5s × 3.
+- The reap's process half: after the end-to-end reap, the orphan's pane child pids are confirmed exited, not merely SIGHUP'd — this is the only tier that can exercise `descendantClosurePIDs` + `reapPaneChildren` at all.
+- Loop liveness during a reap: with a reap in flight, the discovery loop still ticks and still enters a newly-appeared session, and cancelling the daemon's context returns promptly rather than after the reap's full ~20s budget. This is the regression guard for `the-reap-runs-off-loop-not-inline`; an inline implementation fails it.
+- Existing `watchdog_integration_test.go`, `smoke_teardown_test.go` and `smoke_lifecycle_test.go` are the fixture patterns to follow; every test here drives `runWatchdogLoop` through the `watchdogTiming` parameter (see Scope In) so none waits on the production 5s × 3.
 
 Do not add a test that deletes a worktree while a live `Engine.Watch` goroutine is mid-`reapplyLayout` and asserts on dormancy — that is `watchloop`'s existing contract and is not what this task changes.
 
 ## Documentation
 
+- `internal/reedcli/watchdog.go` — `watchdogCmd`'s `Long` help text and its `Example:` line, which today show only `--hub-path` and `--tmux` while advertising the hand-run foreground diagnosis path. Both gain `--shell`.
 - `manifest/designs/reed-header-selvage.md` — extend the "Watchdog daemon → a detached, per-hub background process" section with the orphan-reap rule, and drop the trailing "Related" line that forward-references this item as future work.
 - `manifest/roadmap.md` — move the item out of Planned on completion.
 - `docs/overview.md` — no change expected: no new module, and the execution stack is unchanged. Touch it only if that stops being true.
