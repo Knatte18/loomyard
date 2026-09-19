@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lifecycleshed"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -33,7 +34,7 @@ func newFakeReceiver(t *testing.T, shutdown func(ctx context.Context) (string, e
 		location: &lyxcwd.Location{RepoName: "example", HubPath: dir, WorktreeName: "hub-repo", AnchorRel: "."},
 		slug:     "some-slug",
 	}
-	c.shedPaths = lifecyclerecipe.ShedPaths{
+	c.shedPaths = shedbuild.ShedPaths{
 		StatusPath:     filepath.Join(dir, "status.json"),
 		LockPath:       filepath.Join(dir, "run.lock"),
 		StatusLockPath: filepath.Join(dir, "status.json.lock"),

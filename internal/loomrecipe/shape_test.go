@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/preflightshed"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
+	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedcheck"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
@@ -58,12 +59,12 @@ var wantProducerTable = []wantProducerRow{
 	{loomshed.NameFinalize, "", "", "", 0, reflect.TypeOf(&landingshed.Finalize{})},
 }
 
-// testEnv builds a shedrecipe.Env/ShedPaths pair whose every path field is an absolute path derived
-// from a single t.TempDir(), fills Landing via testLandingDeps, fills WebsterRun and the four
-// WebsterDeps seams the way buildSequenceFixture does, and fills Shuttle, DiscussionSpec,
+// testEnv builds a shedrecipe.Env/shedbuild.ShedPaths pair whose every path field is an absolute
+// path derived from a single t.TempDir(), fills Landing via testLandingDeps, fills WebsterRun and
+// the four WebsterDeps seams the way buildSequenceFixture does, and fills Shuttle, DiscussionSpec,
 // CommitDiscussion, PlanSpec, and CommitPlan with the non-writing fakeLoomShuttle variant so the
 // discussion and plan paths this builder points at stay absent on disk.
-func testEnv(t *testing.T) (shedrecipe.Env, ShedPaths) {
+func testEnv(t *testing.T) (shedrecipe.Env, shedbuild.ShedPaths) {
 	t.Helper()
 	dir := t.TempDir()
 
@@ -136,7 +137,7 @@ func testEnv(t *testing.T) (shedrecipe.Env, ShedPaths) {
 		ApprovePlan: func() error { return nil },
 	}
 
-	paths := ShedPaths{
+	paths := shedbuild.ShedPaths{
 		StatusPath:     statusPath,
 		LockPath:       filepath.Join(dir, "run.lock"),
 		StatusLockPath: statusLockPath,

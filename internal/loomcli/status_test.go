@@ -12,8 +12,8 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/loomshed"
+	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
 )
@@ -164,7 +164,7 @@ func TestStatusCmd_EnvelopeKeySet(t *testing.T) {
 			}
 
 			c := &loomCLI{
-				shedPaths: loomrecipe.ShedPaths{
+				shedPaths: shedbuild.ShedPaths{
 					StatusPath:     statusPath,
 					StatusLockPath: statusLockPath,
 				},

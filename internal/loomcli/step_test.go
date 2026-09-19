@@ -16,9 +16,9 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
@@ -301,7 +301,7 @@ func TestStepCmd_BusyRefusal_BeforeBootstrap(t *testing.T) {
 
 	c := &loomCLI{
 		location: &lyxcwd.Location{HubPath: dir, WorktreeName: "warp", AnchorRel: "."},
-		shedPaths: loomrecipe.ShedPaths{
+		shedPaths: shedbuild.ShedPaths{
 			LockPath:       lockPath,
 			StatusPath:     filepath.Join(dir, "status.json"),
 			StatusLockPath: filepath.Join(dir, "status.json.lock"),

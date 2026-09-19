@@ -14,9 +14,9 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lifecyclerecipe"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/spf13/cobra"
 )
@@ -31,7 +31,7 @@ type lifecycleCLI struct {
 	env shedrecipe.Env
 	// shedPaths carries the five told values shedengine.Shed itself reads, which the run verb
 	// passes alongside env, and which the status verb reads directly.
-	shedPaths lifecyclerecipe.ShedPaths
+	shedPaths shedbuild.ShedPaths
 	// slug is the task slug read from the command's own arguments.
 	slug string
 	// abandonedSession is the value the Teardown.Shutdown seam records on the receiver -- carried

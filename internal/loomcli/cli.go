@@ -17,11 +17,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -47,7 +47,7 @@ type loomCLI struct {
 	env shedrecipe.Env
 	// shedPaths carries the five told values shedengine.Shed itself reads, which runCmd passes
 	// alongside env, and which statusCmd, pauseCmd, and startCmd read directly.
-	shedPaths loomrecipe.ShedPaths
+	shedPaths shedbuild.ShedPaths
 	// runDeps is the assembled websterengine.RunDeps, embedded verbatim as env.WebsterDeps. It is
 	// also kept here directly so a test can inspect it without unwrapping env.
 	runDeps websterengine.RunDeps

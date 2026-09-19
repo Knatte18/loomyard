@@ -14,7 +14,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/loomrecipe"
+	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/spf13/cobra"
 )
 
@@ -236,7 +236,7 @@ func TestVerbRefusals(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := t.TempDir()
 			c := &loomCLI{
-				shedPaths: loomrecipe.ShedPaths{
+				shedPaths: shedbuild.ShedPaths{
 					StatusPath:     filepath.Join(dir, "status.json"),
 					StatusLockPath: filepath.Join(dir, "status.json.lock"),
 				},

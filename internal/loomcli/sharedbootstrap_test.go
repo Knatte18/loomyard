@@ -11,8 +11,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/shedbuild"
 )
 
 // TestBootstrapStage_ConstantsAreDistinctAndZeroValued asserts the four stage constants are
@@ -52,7 +52,7 @@ func TestSeedAndCommitBootstrap_SecondCallDoesNotDivergeOnErrSeedExists(t *testi
 	loc := &lyxcwd.Location{HubPath: dir, WorktreeName: "warp", AnchorRel: "."}
 	c := &loomCLI{
 		location: loc,
-		shedPaths: loomrecipe.ShedPaths{
+		shedPaths: shedbuild.ShedPaths{
 			StatusPath:     filepath.Join(dir, "status.json"),
 			StatusLockPath: filepath.Join(dir, "status.json.lock"),
 		},
@@ -88,7 +88,7 @@ func TestBuildLoomShed_OutputShape(t *testing.T) {
 	loc := &lyxcwd.Location{HubPath: dir, WorktreeName: "warp", AnchorRel: "."}
 	c := &loomCLI{
 		location: loc,
-		shedPaths: loomrecipe.ShedPaths{
+		shedPaths: shedbuild.ShedPaths{
 			StatusPath:     filepath.Join(dir, "status.json"),
 			LockPath:       filepath.Join(dir, "status.json.runlock"),
 			StatusLockPath: filepath.Join(dir, "status.json.lock"),
