@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: worktree-lifecycle-shed-producers
 branch: worktree-lifecycle-shed-producers
 plan: _mill/plan
@@ -28,4 +28,23 @@ planning  '2026-09-19T05:23:14Z'
 plan-review-r1  '2026-09-19T05:32:51Z'
 plan-fix-r1  '2026-09-19T05:34:19Z'
 planned  '2026-09-19T05:34:29Z'
+implementing  '2026-09-19T05:34:55Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: lifecycleshed producers
+    state: pending
+  - name: loom run --no-attach
+    state: pending
+  - name: shedrecipe lifecycle entries
+    state: pending
+  - name: lifecycle recipe and coverage guard
+    state: pending
+  - name: lifecyclecli module
+    state: pending
+  - name: registration and docs
+    state: pending
 ```
