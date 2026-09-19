@@ -1,0 +1,1 @@
+- Stale "no session" framing survives the self-heal rework: **Location:** `internal/burlercli/wiring_test.go:347-355,421,424`

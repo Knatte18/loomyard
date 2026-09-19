@@ -1,0 +1,27 @@
+MILL_REVIEW_BEGIN
+# Review: reed: AddStrand and attach self-heal a cold worktree — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: sonnethigh
+reviewed_file: plan/ + source
+date: 2026-09-19
+```
+
+## Findings
+
+### [BLOCKING:consistency] Stale "no session" framing survives the self-heal rework
+**Location:** `internal/burlercli/wiring_test.go:347-355,421,424`
+**Issue:** The test's opening doc paragraph (carried over from the pre-existing F16 test) still says the test "asserts the returned error is an ordinary reed 'no session' verdict," and the two `t.Fatal`/`t.Fatalf` messages at lines 421 and 424 still describe the expected failure as "a reed 'no session' error" / "the ordinary reed 'no session' verdict." After this task, `AddStrand`'s cold path no longer produces `noSessionMessage`'s text at all — it now fails inside `sessionSubstrateLocked`'s `hasSession` call with an exec-lookup error against the nonexistent tmux binary (`"check session: exec: ..."`), which is exactly what the second doc paragraph (357-365) correctly explains. The first paragraph and the two failure strings were not reconciled to match, so the file now asserts one thing in code/added-comment and describes a different, no-longer-true thing in its original framing and its assertion failure text.
+**Fix:** Rewrite the opening paragraph's closing sentence and both Fatal messages to describe the actual current expectation (a non-nil error that is not a told-path refusal, reached via the pinned-out tmux binary), rather than "an ordinary reed 'no session' verdict."
+
+### [NIT:consistency] New M1b scenario missing from the results checklist template
+**Location:** `tools/sandbox/SANDBOX-REED-SUITE.md:115,490-491`
+**Issue:** Card 10 split M1 into M1 and M1b, and M1b is a real, distinct scenario an operator runs and verdicts. The report-template checklist block at the bottom of the file (`M0:` … `M9:` …) still lists only `M1:` and jumps straight to `M2:`, with no `M1b:` line for the operator to fill in.
+**Fix:** Add an `M1b: <OK|WARN|FAIL> -- <one-line note if not OK>` line to the checklist template, alongside `M1:`.
+
+## Verdict
+
+REQUEST_CHANGES
+Implementation matches the plan closely; one stale test doc/assertion-message inconsistency and one checklist gap need fixing.
+MILL_REVIEW_END
