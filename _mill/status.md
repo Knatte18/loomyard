@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: reed-cold-worktree-selfheal
 branch: reed-cold-worktree-selfheal
 plan: _mill/plan
@@ -29,4 +29,21 @@ plan-fix-r1  '2026-09-19T05:29:16Z'
 plan-review-r2  '2026-09-19T05:35:58Z'
 plan-fix-r2  '2026-09-19T05:36:43Z'
 planned  '2026-09-19T05:36:56Z'
+implementing  '2026-09-19T05:37:15Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: engine-seam
+    state: pending
+  - name: attach-preflight
+    state: pending
+  - name: comment-sweep
+    state: pending
+  - name: docs-and-suites
+    state: pending
+  - name: tagged-tests
+    state: pending
 ```
