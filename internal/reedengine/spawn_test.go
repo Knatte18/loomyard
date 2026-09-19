@@ -1,7 +1,7 @@
 // spawn_test.go table-tests planPaneTarget's split-target policy — prefer the tallest alive
-// non-header pane, fall back to any present non-header pane (a corpse) when none is alive, and fall
-// back to the header itself as a last resort when no non-header pane exists at all — and the
-// header's exclusion from being the PREFERRED split target (it is never chosen while any non-header
+// non-Selvage pane, fall back to any present non-Selvage pane (a corpse) when none is alive, and fall
+// back to Selvage itself as a last resort when no non-Selvage pane exists at all — and Selvage's
+// exclusion from being the PREFERRED split target (it is never chosen while any non-Selvage
 // pane, alive or dead, is present) — and verifies loadOrInitStateLocked's fresh-worktree bootstrap.
 // Both are pure/hermetic, no live tmux required.
 // TestLaunchStrandLocked_* below invokes launchStrandLocked directly through the e.tmux.execHook
@@ -18,7 +18,7 @@ func TestPlanPaneTarget(t *testing.T) {
 	tests := []struct {
 		name            string
 		live            []LivePane
-		headerPaneID    string
+		selvagePaneID   string
 		wantSplitTarget string
 		wantErr         bool
 	}{
@@ -26,7 +26,7 @@ func TestPlanPaneTarget(t *testing.T) {
 			// Collapses the old FreshSession_AdoptsTheAliveInitialPane and
 			// AllStrandsPaneless_AdoptsFirstAlivePane cases, which differed
 			// only in the (now-deleted) strand table they supplied: a sole
-			// alive pane and no header both reduce to the same input once
+			// alive pane and no Selvage both reduce to the same input once
 			// the strand table stops mattering.
 			name:            "FreshSession_SplitsTheAliveInitialPane",
 			live:            []LivePane{{ID: "%1", Height: 50}},
@@ -45,7 +45,7 @@ func TestPlanPaneTarget(t *testing.T) {
 			// Collapses the old OneStrandHoldsAPane_SplitsTheTallestAlive and
 			// TinyActiveBand_SplitTargetsTheTallestNotTheFirst cases, which
 			// differed only in the (now-deleted) strand table they supplied:
-			// a 2-row pane beside a 47-row pane and no header, in both.
+			// a 2-row pane beside a 47-row pane and no Selvage, in both.
 			name: "TinyActiveBand_SplitTargetsTheTallestNotTheFirst",
 			// The session-target split defect this planner replaces: tmux
 			// splits the active pane, which select-layout can leave on a
@@ -65,20 +65,20 @@ func TestPlanPaneTarget(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "HeaderPresentNoStrandBound_NonHeaderPaneIsTheSplitTarget",
-			// A live header pane plus an alive non-header pane: the split
-			// target must land on the non-header pane, never the header.
-			live:            []LivePane{{ID: "%header", Height: 1}, {ID: "%1", Height: 50}},
-			headerPaneID:    "%header",
+			name: "SelvagePresentNoStrandBound_NonSelvagePaneIsTheSplitTarget",
+			// A live Selvage pane plus an alive non-Selvage pane: the split
+			// target must land on the non-Selvage pane, never Selvage.
+			live:            []LivePane{{ID: "%selvage", Height: 1}, {ID: "%1", Height: 50}},
+			selvagePaneID:   "%selvage",
 			wantSplitTarget: "%1",
 		},
 		{
-			name: "HeaderPresentWithStrand_HeaderNeverTheSplitTarget",
-			// The header is tallest by raw Height here, but must still
-			// never be chosen over a genuine (if shorter) non-header
+			name: "SelvagePresentWithStrand_SelvageNeverTheSplitTarget",
+			// Selvage is tallest by raw Height here, but must still
+			// never be chosen over a genuine (if shorter) non-Selvage
 			// candidate.
-			live:            []LivePane{{ID: "%header", Height: 90}, {ID: "%1", Height: 10}},
-			headerPaneID:    "%header",
+			live:            []LivePane{{ID: "%selvage", Height: 90}, {ID: "%1", Height: 10}},
+			selvagePaneID:   "%selvage",
 			wantSplitTarget: "%1",
 		},
 		{
@@ -87,44 +87,45 @@ func TestPlanPaneTarget(t *testing.T) {
 			// seam was removed: after .lyx/reed.json was scrubbed from a
 			// running session, no strand held a binding and several
 			// untracked alive panes remained — one of them the previous
-			// header pane, still running "lyx reed header --blocking".
-			// Adoption picked it, send-keys typed the strand's command onto
+			// header pane, still running "lyx reed header --blocking" (the
+			// pre-Selvage keepalive this batch removes). Adoption picked
+			// it, send-keys typed the strand's command onto
 			// a blocked pane's screen where it never executed (exit 0
 			// throughout), and status then reported the strand live with no
 			// such process on the box. With more than one candidate there
 			// was no way to tell an idle shell from a busy one, so the
 			// planner always splits a guaranteed-idle new pane instead — off
 			// the tallest, %2 here.
-			live:            []LivePane{{ID: "%header", Height: 1}, {ID: "%stale", Height: 12}, {ID: "%2", Height: 37}},
-			headerPaneID:    "%header",
+			live:            []LivePane{{ID: "%selvage", Height: 1}, {ID: "%stale", Height: 12}, {ID: "%2", Height: 37}},
+			selvagePaneID:   "%selvage",
 			wantSplitTarget: "%2",
 		},
 		{
-			name: "SeveralAlivePanesButOnlyOneNonHeaderAlive_StillSplits",
-			// A fresh boot's header plus the sole new-session pane, with a
-			// dead corpse also present. Exactly one alive non-header pane —
+			name: "SeveralAlivePanesButOnlyOneNonSelvageAlive_StillSplits",
+			// A fresh boot's Selvage plus the sole new-session pane, with a
+			// dead corpse also present. Exactly one alive non-Selvage pane —
 			// it is the split target regardless.
-			live:            []LivePane{{ID: "%header", Height: 1}, {ID: "%corpse", Dead: true, Height: 12}, {ID: "%1", Height: 37}},
-			headerPaneID:    "%header",
+			live:            []LivePane{{ID: "%selvage", Height: 1}, {ID: "%corpse", Dead: true, Height: 12}, {ID: "%1", Height: 37}},
+			selvagePaneID:   "%selvage",
 			wantSplitTarget: "%1",
 		},
 		{
-			name: "HeaderIsSolePane_SplitTargetFallsBackToHeader",
-			// Every strand has been removed: only the header remains. The
-			// header must become the split target so a subsequent add still
-			// has something to split (the header survives the split).
-			live:            []LivePane{{ID: "%header", Height: 21}},
-			headerPaneID:    "%header",
-			wantSplitTarget: "%header",
+			name: "SelvageIsSolePane_SplitTargetFallsBackToSelvage",
+			// Every strand has been removed: only Selvage remains. Selvage
+			// must become the split target so a subsequent add still
+			// has something to split (Selvage survives the split).
+			live:            []LivePane{{ID: "%selvage", Height: 21}},
+			selvagePaneID:   "%selvage",
+			wantSplitTarget: "%selvage",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			splitTarget, err := planPaneTarget(tt.live, tt.headerPaneID)
+			splitTarget, err := planPaneTarget(tt.live, tt.selvagePaneID)
 			if tt.wantErr {
 				if err == nil {
-					t.Fatalf("planPaneTarget(%+v, %q): expected error, got nil", tt.live, tt.headerPaneID)
+					t.Fatalf("planPaneTarget(%+v, %q): expected error, got nil", tt.live, tt.selvagePaneID)
 				}
 				return
 			}
@@ -133,7 +134,7 @@ func TestPlanPaneTarget(t *testing.T) {
 			}
 			if splitTarget != tt.wantSplitTarget {
 				t.Errorf("planPaneTarget(%+v, %q) = %q, want %q",
-					tt.live, tt.headerPaneID, splitTarget, tt.wantSplitTarget)
+					tt.live, tt.selvagePaneID, splitTarget, tt.wantSplitTarget)
 			}
 		})
 	}
@@ -143,17 +144,17 @@ func TestPlanPaneTarget(t *testing.T) {
 // chokepoint at the unit tier: launchStrandLocked must reconcile before it plans a split target, so
 // an untracked alive pane is never eligible to become the split target and is instead reaped first.
 //
-// The fixture is a ReedState with an alive header pane, zero strands bound to a present pane, and one
+// The fixture is a ReedState with an alive Selvage pane, zero strands bound to a present pane, and one
 // untracked alive pane; the strand being launched has PaneID == "", mirroring how addStrandLocked
-// appends a fresh strand before calling launchStrandLocked. The alive header — not any strand
-// binding — is what authorizes the untracked reap here (see reconcile.go's headerAlive disjunct).
+// appends a fresh strand before calling launchStrandLocked. The alive Selvage — not any strand
+// binding — is what authorizes the untracked reap here (see reconcile.go's selvageAlive disjunct).
 func TestLaunchStrandLocked_ReapsUntrackedPanesBeforeChoosingASplitTarget(t *testing.T) {
 	e := newTestEngine(t)
 
-	const headerPaneID = "%header"
+	const selvagePaneID = "%selvage"
 	const untrackedPaneID = "%untracked"
-	preReap := headerPaneID + " 0 0 100 3 4321\n" + untrackedPaneID + " 0 3 100 20 4322\n"
-	postReap := headerPaneID + " 0 0 100 3 4321\n"
+	preReap := selvagePaneID + " 0 0 100 3 4321\n" + untrackedPaneID + " 0 3 100 20 4322\n"
+	postReap := selvagePaneID + " 0 0 100 3 4321\n"
 
 	var verbs []string
 	var listPanesCalls int
@@ -175,7 +176,7 @@ func TestLaunchStrandLocked_ReapsUntrackedPanesBeforeChoosingASplitTarget(t *tes
 		}
 	}
 
-	st := &ReedState{HeaderPaneID: headerPaneID}
+	st := &ReedState{SelvagePaneID: selvagePaneID}
 	st.Strands = append(st.Strands, Strand{GUID: "new"})
 	s := &st.Strands[0]
 
@@ -232,14 +233,14 @@ func TestLaunchStrandLocked_ReapsUntrackedPanesBeforeChoosingASplitTarget(t *tes
 // TestLaunchStrandLocked_ReapsUntrackedPanesBeforeChoosingASplitTarget: when reconcile kills nothing,
 // launchStrandLocked must not pay for a second list-panes round trip it does not need.
 //
-// The fixture has nothing to reap: an alive header plus a strand already bound to a present alive
+// The fixture has nothing to reap: an alive Selvage plus a strand already bound to a present alive
 // pane. The strand being launched is a second one, again with PaneID == "".
 func TestLaunchStrandLocked_SkipsTheRedundantReEnumerationWhenNothingIsReaped(t *testing.T) {
 	e := newTestEngine(t)
 
-	const headerPaneID = "%header"
+	const selvagePaneID = "%selvage"
 	const boundPaneID = "%bound"
-	live := headerPaneID + " 0 0 100 3 4321\n" + boundPaneID + " 0 3 100 20 4322\n"
+	live := selvagePaneID + " 0 0 100 3 4321\n" + boundPaneID + " 0 3 100 20 4322\n"
 
 	var verbs []string
 	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
@@ -254,7 +255,7 @@ func TestLaunchStrandLocked_SkipsTheRedundantReEnumerationWhenNothingIsReaped(t 
 		}
 	}
 
-	st := &ReedState{HeaderPaneID: headerPaneID}
+	st := &ReedState{SelvagePaneID: selvagePaneID}
 	st.Strands = append(st.Strands, Strand{GUID: "bound", PaneID: boundPaneID}, Strand{GUID: "new"})
 	s := &st.Strands[1]
 
@@ -364,7 +365,7 @@ func TestSendKeysLiteralArg(t *testing.T) {
 }
 
 // TestValidateSplitCreatedNewPane pins the genuinely-new-pane guard both split sites
-// (launchStrandLocked, ensureHeaderPaneLocked) share: psmux's silent too-small-to-split failure
+// (launchStrandLocked, ensureSelvagePaneLocked) share: psmux's silent too-small-to-split failure
 // exits 0 and prints an EXISTING pane's id, and trusting it would bind two owners to one pane — a
 // duplicate pane number in the next select-layout string, which destroys the session's panes
 // wholesale.
@@ -404,13 +405,13 @@ func TestValidateSplitCreatedNewPane(t *testing.T) {
 // PaneID names a pane another owner already claims is cleared and reported not-live; without it, that
 // pane IS alive, so status reports live:true against someone else's pane — exactly the false-healthy
 // symptom the R5 review reproduced live ("status reported the strand live:true against the header
-// pane running `lyx reed header --blocking`").
+// pane running `lyx reed header --blocking`", the pre-Selvage keepalive this batch removes).
 //
 // The recorded generation deliberately MATCHES the one the probe answers, so the pane-generation
 // guard adopts rather than clears and the only thing that can clear a binding here is the repair
 // under test.
 func TestStatus_NeverReportsAStrandLiveOnAPaneAnotherOwnerClaims(t *testing.T) {
-	const headerPane = "%1"
+	const selvagePane = "%1"
 	const firstStrandPane = "%2"
 	const liveAnswer = "$0|4321|1787000000"
 	liveGeneration := PaneGeneration{SessionName: "worktree", TmuxSessionID: "$0", ServerPID: "4321", Created: "1787000000"}
@@ -423,8 +424,8 @@ func TestStatus_NeverReportsAStrandLiveOnAPaneAnotherOwnerClaims(t *testing.T) {
 		wantLive      []bool
 	}{
 		{
-			name:          "a strand bound to the header's own pane is not reported live on it",
-			strandPaneIDs: []string{headerPane},
+			name:          "a strand bound to Selvage's own pane is not reported live on it",
+			strandPaneIDs: []string{selvagePane},
 			wantLive:      []bool{false},
 		},
 		{
@@ -451,13 +452,13 @@ func TestStatus_NeverReportsAStrandLiveOnAPaneAnotherOwnerClaims(t *testing.T) {
 				case "list-panes":
 					// Both panes present and alive, so a binding that survives the repair reads as
 					// live and one that does not reads as not-live.
-					return headerPane + " 0 0 100 3 4322\n" + firstStrandPane + " 0 3 100 20 4323\n", nil
+					return selvagePane + " 0 0 100 3 4322\n" + firstStrandPane + " 0 3 100 20 4323\n", nil
 				default:
 					return "", nil
 				}
 			}
 
-			st := &ReedState{HeaderPaneID: headerPane, PaneGeneration: liveGeneration}
+			st := &ReedState{SelvagePaneID: selvagePane, PaneGeneration: liveGeneration}
 			names := []string{"first", "second"}
 			for i, paneID := range tt.strandPaneIDs {
 				st.Strands = append(st.Strands, Strand{GUID: names[i], Name: names[i], PaneID: paneID})

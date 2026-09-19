@@ -60,7 +60,7 @@ func TestRemove_DoesNotDeleteOutsideHubThroughLauncherSymlink(t *testing.T) {
 	}
 
 	// Remove --force must not carry the removal outside the hub through the escaping symlink.
-	_, _ = topology.Remove(l, slug, true)
+	_, _ = topology.Remove(l, slug, true, false)
 
 	for _, name := range canaries {
 		if _, err := os.Stat(filepath.Join(outside, name)); err != nil {

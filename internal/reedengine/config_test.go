@@ -138,7 +138,25 @@ func TestLoadConfig_UninitializedFallsBackToTemplate(t *testing.T) {
 	if cfg.CollapsedStripRows != 6 {
 		t.Errorf("CollapsedStripRows = %d, want 6", cfg.CollapsedStripRows)
 	}
-	if cfg.Header.HeightRows != 1 {
-		t.Errorf("Header.HeightRows = %d, want 1", cfg.Header.HeightRows)
+	if cfg.Selvage.HeightRows != 1 {
+		t.Errorf("Selvage.HeightRows = %d, want 1", cfg.Selvage.HeightRows)
+	}
+}
+
+// TestLoadConfig_StaleHeaderBlockIsIgnored pins the no-removal-logic decision: an un-reconciled
+// reed.yaml that still carries a stale header: block alongside the new status_line: and selvage:
+// blocks must unmarshal cleanly, with the stale block simply ignored because nothing unmarshals it
+// into Config any more.
+func TestLoadConfig_StaleHeaderBlockIsIgnored(t *testing.T) {
+	tmpDir := t.TempDir()
+	staleContent := reedengine.ConfigTemplate() + "\nheader:\n  template: \"stale\"\n  height_rows: 5\n"
+	seedLyxConfig(t, tmpDir, "reed", staleContent)
+
+	cfg, err := reedengine.LoadConfig(tmpDir, "reed")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Selvage.HeightRows != 1 {
+		t.Errorf("Selvage.HeightRows = %d, want 1 (stale header: block must not override it)", cfg.Selvage.HeightRows)
 	}
 }

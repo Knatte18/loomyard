@@ -120,7 +120,7 @@ func pollPaneDotRunClears(t *testing.T, tmuxPath, socket, target string, timeout
 //
 // Both pollers in this file sample at 100 ms rather than reusing pollPaneContains: pollPaneContains
 // takes a plain substring, and legitimate harness-pane content contains dots (file paths, ellipses, the
-// header template), so reusing it would ship a test that proves nothing. Its 500 ms cadence is also a
+// rendered status-line text), so reusing it would ship a test that proves nothing. Its 500 ms cadence is also a
 // quarter of the window the artifact would occupy under watchdog: on, too coarse to characterise it.
 func paneStaysCleanOfDotRun(t *testing.T, tmuxPath, socket, target string, window time.Duration) bool {
 	t.Helper()
@@ -147,8 +147,8 @@ type dotFillHarness struct {
 	reedSession   string
 }
 
-// newDotFillHarness boots a dot-fill scenario's full fixture: a reed session carrying a header pane
-// plus two strand panes, and a private harness tmux server sized cols x rows to host the attach
+// newDotFillHarness boots a dot-fill scenario's full fixture: a reed session carrying Selvage plus
+// two strand panes, and a private harness tmux server sized cols x rows to host the attach
 // client(s) that observe it.
 func newDotFillHarness(t *testing.T, cols, rows int) *dotFillHarness {
 	t.Helper()
@@ -178,8 +178,8 @@ func newDotFillHarness(t *testing.T, cols, rows int) *dotFillHarness {
 	}
 
 	// Two strands, not one, is a fidelity choice rather than a pin-count requirement:
-	// render.FixedHeightPins emits the header pin whenever a header is placed and the layout is not
-	// the sole-header case, so a single strand already yields a non-empty pin set. What two strands
+	// render.FixedHeightPins emits the Selvage pin whenever Selvage is placed and the layout is not
+	// the sole-Selvage case, so a single strand already yields a non-empty pin set. What two strands
 	// buy is a taller stack for the resize round-robin to distribute rows across, so the
 	// mid-relayout region is larger and the artifact reproduces more reliably, and it keeps the
 	// scenario clear of AttachArgv's len(live) < 2 guard boundary rather than sitting exactly on it.

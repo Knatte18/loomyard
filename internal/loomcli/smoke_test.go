@@ -794,7 +794,7 @@ func TestSmokeFabricAdd_RunLauncherExistsThenGoneAfterRemove(t *testing.T) {
 		t.Fatalf("run launcher missing after add: %v", err)
 	}
 
-	if _, err := h.Topology.Remove(h.Location, slug, false); err != nil {
+	if _, err := h.Topology.Remove(h.Location, slug, false, false); err != nil {
 		t.Fatalf("Remove(%s): %v", slug, err)
 	}
 	if _, err := os.Stat(runLauncherPath); !os.IsNotExist(err) {

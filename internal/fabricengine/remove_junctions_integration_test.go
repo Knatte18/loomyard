@@ -88,7 +88,7 @@ func TestRemove_TearsDownNestedJunction(t *testing.T) {
 	// name-load finds the configured pathspec's junctions regardless of this
 	// pair's RelPath, and the happy-path nested teardown below is actually
 	// exercised, not just the degraded nothing-removed path.
-	if _, err := topology.Remove(nestedLayout, slug, true); err != nil {
+	if _, err := topology.Remove(nestedLayout, slug, true, false); err != nil {
 		t.Fatalf("Remove: %v", err)
 	}
 
@@ -139,7 +139,7 @@ func TestRemove_SweepsAnchoredLinksOnSubpathHub(t *testing.T) {
 		t.Fatalf("setup: %s is not a junction (isLink=%v err=%v)", lyxLink, isLink, linkErr)
 	}
 
-	result, err := topology.Remove(l, slug, true)
+	result, err := topology.Remove(l, slug, true, false)
 	if err != nil {
 		t.Fatalf("Remove: %v", err)
 	}
@@ -169,7 +169,7 @@ func TestRemove_FailedWeftTeardownIsReported(t *testing.T) {
 	weftTarget := fabricengine.WeftWorktreePath(l, slug)
 	gitkit.MustRun(t, fixture.WeftPrime, "git", "worktree", "lock", weftTarget)
 
-	_, err := topology.Remove(l, slug, true)
+	_, err := topology.Remove(l, slug, true, false)
 	if err == nil {
 		t.Fatal("Remove() with a locked weft worktree error = nil; want the surviving weft worktree reported")
 	}

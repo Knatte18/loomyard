@@ -21,7 +21,7 @@ An engine is handed the absolute paths it operates on and derives none of its ow
 - Three tiers: `lyxcwd.Resolve` → `preflight.Check` (fabric wired/synced/clean) → `loomengine.CheckSeed`.
 - A producer needs none of the tiers; an orchestrator needs tier 3; a standalone CLI probes tier 1 via `preflight.ResolveMode` only.
 - `internal/hubgeom`/`internal/standalonegeom` are the only `Geometry`-struct constructors.
-- Bound packages: `internal/tokenvocab`, `pattern`, `buildinfo`, `standalonestate`, `shedengine`, `treadleengine`, `loomshed`, `landingshed`, `mergeresolve`, `shedrecipe`, `shedbuild`, `loomrecipe`, `planparser`, `planglyph`, `configengine`, `shuttleengine`, `reedengine`, `burlerengine`, `websterengine`, `cliwire`.
+- Bound packages: `internal/tokenvocab`, `pattern`, `buildinfo`, `standalonestate`, `shedengine`, `treadleengine`, `loomshed`, `landingshed`, `mergeresolve`, `shedrecipe`, `shedbuild`, `loomrecipe`, `planparser`, `planglyph`, `configengine`, `shuttleengine`, `reedengine`, `burlerengine`, `websterengine`, `cliwire`, `lifecycleshed`, `lifecyclerecipe`.
 - A `shuttleengine` runner whose anchor is deliberately outside its worktree root is constructed only through `shuttleengine.NewDetachedRunner`, only from a standalone CLI's own wiring, and `NewRunner`'s containment assertion is never relaxed to accommodate it.
 
 ## Cliwire Sole-Wiring Invariant
@@ -137,12 +137,12 @@ Every producer prompt and every deployed normative spec is read at call time fro
 
 Every lyx CLI module is a cobra subtree assembled under one root in `cmd/lyx/main.go`.
 
-- Each module exposes `Command() *cobra.Command` and `RunCLI(out io.Writer, args []string) int`; eleven of twelve also carry `RunCLIIn(cwd, out, args) int`.
+- Each module exposes `Command() *cobra.Command` and `RunCLI(out io.Writer, args []string) int`; twelve of thirteen also carry `RunCLIIn(cwd, out, args) int`.
 - An alias command may delegate into another module's subtree with no seam function of its own.
 - Non-empty `Short` on every command.
 - Errors are JSON via `internal/output`, one object per line; every `RunE` checks `clihelp.ShouldAbort` first.
-- Interactive-handoff exception, narrow and per-command: `reedengine` `attach`/`header --blocking`, `lyx loom status --watch`, `lyx loom start`/`lyx start`.
-- Package naming: `<module>cli` imports `<module>engine`; engine never imports cli/cobra. Deviations: `stencilcli` → `internal/stencilstore`; `quarrycli` → `internal/planglyph`.
+- Interactive-handoff exception, narrow and per-command: `reedengine` `attach`/`watchdog`, `lyx loom status --watch`, `lyx loom start`/`lyx start`.
+- Package naming: `<module>cli` imports `<module>engine`; engine never imports cli/cobra. Deviations: `stencilcli` → `internal/stencilstore`; `quarrycli` → `internal/planglyph`; `lifecyclecli` → `internal/lifecycleshed`, `internal/lifecyclerecipe` (no engine package of its own).
 
 ## Completion Signal Invariant
 
@@ -195,6 +195,15 @@ Every git op LYX's own code performs, on either weft or warp, goes through `inte
 ## Fabric Write-Side Containment Invariant
 
 A `fabricengine` write to a hub-level structural container (`_launchers/…`, `_portals/…`) routes through an `os.Root` rooted at the hub — never a raw `os.MkdirAll`/`os.WriteFile`/`fslink`.
+
+## Lifecycle Bookend Invariant
+
+A producer that creates or destroys a task worktree never runs from inside that worktree.
+
+- The lifecycle Shed is driven from the hub's prime worktree, and its status file and locks live under prime's own ephemeral tree, never under the worktree being managed.
+- A teardown row sequences session shutdown before worktree removal, in one producer, never two rows.
+- Enforcement is review discipline with two partial mechanical proxies, not an enforcing test: the invariant constrains which directory a running process is driven from, which has no static shape an AST scan can see.
+  `internal/lifecycleshed`'s seam-enforcement scan bars a direct resolver import so the package cannot resolve its way into the managed worktree, and `internal/lifecyclecli`'s path-derivation tests pin the status and lock paths to prime's anchor so a relocation under the managed worktree fails there — neither proves the driver's own working directory, which stays a review obligation.
 
 ## Mutation Record Invariant
 

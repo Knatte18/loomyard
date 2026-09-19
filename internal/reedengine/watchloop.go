@@ -170,9 +170,9 @@ func tickerPeriodFor(mode watchMode, t watchTiming) time.Duration {
 func (e *Engine) watchLoop(ctx context.Context, t watchTiming) error {
 	enabled, err := watchdogOption(e.cfg.Watchdog)
 	if err != nil {
-		// This consumer has no error channel a caller could survive — returning here would let the
-		// header pane's RunE fall through and kill the keepalive — so an invalid value is off, never
-		// fatal.
+		// This consumer has no error channel a caller could survive — returning here would let this
+		// goroutine's own Watch call fall through and stop watching this session entirely — so an
+		// invalid value is off, never fatal.
 		logger.Warn("reed: invalid watchdog value, treating watchdog as off", "socket", e.Socket(), "session", e.SessionName(), "value", e.cfg.Watchdog, "err", err)
 		enabled = false
 	}
@@ -328,8 +328,9 @@ func (e *Engine) handleWatchOutcome(mode watchMode, state *watchState, t watchTi
 		return watchModeSignal
 	}
 	// Signal mode never demotes and never re-probes: watchdog: off unsets the hook while an
-	// already-running signal-mode watcher keeps going until the next header-pane rebuild, and a
-	// signal-mode watcher with no hook receives no signals and therefore does nothing, which is
-	// exactly what the operator asked for.
+	// already-running signal-mode watcher keeps going until a flipped watchdog: value takes effect —
+	// which happens when the worktree's session re-enters the daemon's watched set (a `down` + `up`)
+	// — and a signal-mode watcher with no hook receives no signals and therefore does nothing, which
+	// is exactly what the operator asked for.
 	return mode
 }

@@ -98,6 +98,29 @@ func TestStartAliasCommand_StaysOneCommandWithSubtreeVerb(t *testing.T) {
 	if alias.Use != subtreeVerb.Use {
 		t.Errorf("StartAliasCommand().Use = %q; want it to equal the subtree verb's own Use %q", alias.Use, subtreeVerb.Use)
 	}
+	if alias.Flags().Lookup("no-attach") == nil {
+		t.Error("StartAliasCommand() is missing the --no-attach flag the subtree's start verb exposes")
+	}
+}
+
+// TestCommand_StartVerb_RegistersNoAttachFlag asserts that the "start" verb registered under the
+// "loom" parent command -- not just its bare-root alias -- exposes --no-attach, since it is the
+// flag's primary home.
+func TestCommand_StartVerb_RegistersNoAttachFlag(t *testing.T) {
+	parent := Command()
+
+	var start *cobra.Command
+	for _, sub := range parent.Commands() {
+		if sub.Name() == "start" {
+			start = sub
+		}
+	}
+	if start == nil {
+		t.Fatal(`"start" verb is not registered under the loom parent command`)
+	}
+	if start.Flags().Lookup("no-attach") == nil {
+		t.Error(`"loom start" is missing the --no-attach flag`)
+	}
 }
 
 // TestRunCLI_GroupGuard_NoGitRepoNeeded asserts that a bare "lyx loom" invocation succeeds without

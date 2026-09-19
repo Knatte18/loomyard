@@ -1,5 +1,5 @@
 // reconcile_test.go table-tests planReconcile's pure decision logic against saved strand tables and
-// fake list-panes results (including pane_dead=1 rows and the header-pane exemption),
+// fake list-panes results (including pane_dead=1 rows and the Selvage exemption),
 // exercises reconcileLocked's real-record mutation for the no-dead-panes path, which never
 // touches tmux and so stays hermetic, and pins reconcileLocked's reap log line via
 // captureLogOutput (logcapture_test.go).
@@ -29,7 +29,7 @@ func TestPlanReconcile(t *testing.T) {
 		name                     string
 		strands                  []Strand
 		live                     []LivePane
-		headerPaneID             string
+		selvagePaneID            string
 		wantCleared              []string
 		wantDeadPanesToKill      []string
 		wantUntrackedPanesToKill []string
@@ -102,136 +102,137 @@ func TestPlanReconcile(t *testing.T) {
 			wantUntrackedPanesToKill: []string{"%7"},
 		},
 		{
-			// With no strand bound to any present pane and no alive header
-			// (headerPaneID unset, so headerAlive is false), reed has
+			// With no strand bound to any present pane and no alive Selvage
+			// (selvagePaneID unset, so selvageAlive is false), reed has
 			// nothing to lay out and leaves foreign panes strictly alone
 			// (the apply is skipped too — anyPlacedStrand). This is the
-			// absent-header shape of "nothing authorizes the reap"; see
-			// HeaderAloneNeverMakesAnyBoundPresentTrue and the two
-			// headerAlive-false-with-a-live-header cases below for the other
+			// absent-Selvage shape of "nothing authorizes the reap"; see
+			// SelvageAloneNeverMakesAnyBoundPresentTrue and the two
+			// selvageAlive-false-with-a-live-Selvage cases below for the other
 			// shapes.
-			name:        "UntrackedPanesUntouchedWhenNoHeaderAndNothingBound",
+			name:        "UntrackedPanesUntouchedWhenNoSelvageAndNothingBound",
 			strands:     []Strand{{GUID: "cleared", PaneID: ""}},
 			live:        []LivePane{{ID: "%7", Dead: false}, {ID: "%8", Dead: false}},
 			wantCleared: nil,
 		},
 		{
-			// The header pane must never be reaped as an "untracked" pane
-			// even while a strand is bound and anyBoundPresent is true —
-			// exemptPaneIDs (boundPaneIDs plus the header) is what protects
+			// Selvage must never be reaped as an "untracked" pane even
+			// while a strand is bound and anyBoundPresent is true —
+			// exemptPaneIDs (boundPaneIDs plus Selvage) is what protects
 			// it, distinct from boundPaneIDs itself (which must stay
 			// strand-only so anyBoundPresent is never inflated by a merely
-			// live header). This shape also covers "alive header alongside a
-			// bound strand" for the headerAlive disjunct: the reap already
-			// fires via anyBoundPresent here, so headerAlive contributes
+			// live Selvage). This shape also covers "alive Selvage alongside a
+			// bound strand" for the selvageAlive disjunct: the reap already
+			// fires via anyBoundPresent here, so selvageAlive contributes
 			// nothing new to this case, and no separate case is needed for
 			// it.
-			name:         "HeaderPaneNeverReapedAsUntrackedWhileStrandBound",
-			strands:      []Strand{{GUID: "g1", PaneID: "%1"}},
-			live:         []LivePane{{ID: "%1", Dead: false}, {ID: "%header", Dead: false}, {ID: "%7", Dead: false}},
-			headerPaneID: "%header",
-			wantCleared:  nil,
-			// %7 is a genuine foreign pane and is still reaped; %header is
+			name:          "SelvageNeverReapedAsUntrackedWhileStrandBound",
+			strands:       []Strand{{GUID: "g1", PaneID: "%1"}},
+			live:          []LivePane{{ID: "%1", Dead: false}, {ID: "%selvage", Dead: false}, {ID: "%7", Dead: false}},
+			selvagePaneID: "%selvage",
+			wantCleared:   nil,
+			// %7 is a genuine foreign pane and is still reaped; %selvage is
 			// exempt and must not appear here.
 			wantUntrackedPanesToKill: []string{"%7"},
 		},
 		{
-			// The header is alive and no strand is bound to any present
+			// Selvage is alive and no strand is bound to any present
 			// pane: anyBoundPresent stays false (derived from boundPaneIDs
-			// alone, never the header — folding the header in would wrongly
-			// flip it), but headerAlive is true, so the untracked reap fires
-			// from that disjunct alone and %7 is killed while the header
+			// alone, never Selvage — folding Selvage in would wrongly
+			// flip it), but selvageAlive is true, so the untracked reap fires
+			// from that disjunct alone and %7 is killed while Selvage
 			// itself stays exempt.
-			name:                     "HeaderAloneNeverMakesAnyBoundPresentTrue",
+			name:                     "SelvageAloneNeverMakesAnyBoundPresentTrue",
 			strands:                  []Strand{{GUID: "cleared", PaneID: ""}},
-			live:                     []LivePane{{ID: "%header", Dead: false}, {ID: "%7", Dead: false}},
-			headerPaneID:             "%header",
+			live:                     []LivePane{{ID: "%selvage", Dead: false}, {ID: "%7", Dead: false}},
+			selvagePaneID:            "%selvage",
 			wantCleared:              nil,
 			wantUntrackedPanesToKill: []string{"%7"},
 		},
 		{
-			// An alive header with zero strands and one untracked alive
+			// An alive Selvage with zero strands and one untracked alive
 			// pane: that pane is killed as an untracked kill (not a dead-pane
-			// kill) and the header itself is spared.
-			name:                     "AliveHeaderNoStrandsReapsOneUntrackedPane",
+			// kill) and Selvage itself is spared.
+			name:                     "AliveSelvageNoStrandsReapsOneUntrackedPane",
 			strands:                  nil,
-			live:                     []LivePane{{ID: "%header", Dead: false}, {ID: "%orphan", Dead: false}},
-			headerPaneID:             "%header",
+			live:                     []LivePane{{ID: "%selvage", Dead: false}, {ID: "%orphan", Dead: false}},
+			selvagePaneID:            "%selvage",
 			wantCleared:              nil,
 			wantUntrackedPanesToKill: []string{"%orphan"},
 		},
 		{
-			// An alive header with zero strands and several untracked panes
-			// (an old header pane plus an orphaned strand pane, M22's
-			// shape): all of them are killed and the current header is
+			// An alive Selvage with zero strands and several untracked panes
+			// (an old Selvage pane plus an orphaned strand pane, M22's
+			// shape): all of them are killed and the current Selvage is
 			// spared.
-			name:    "AliveHeaderNoStrandsReapsSeveralUntrackedPanes",
+			name:    "AliveSelvageNoStrandsReapsSeveralUntrackedPanes",
 			strands: nil,
 			live: []LivePane{
-				{ID: "%header", Dead: false},
-				{ID: "%oldheader", Dead: false},
+				{ID: "%selvage", Dead: false},
+				{ID: "%oldselvage", Dead: false},
 				{ID: "%orphanstrand", Dead: false},
 			},
-			headerPaneID:             "%header",
+			selvagePaneID:            "%selvage",
 			wantCleared:              nil,
-			wantUntrackedPanesToKill: []string{"%oldheader", "%orphanstrand"},
+			wantUntrackedPanesToKill: []string{"%oldselvage", "%orphanstrand"},
 		},
 		{
-			// A header present but Dead: true, with no strand bound and one
-			// alive untracked pane: headerAlive is false (the header entry
+			// Selvage present but Dead: true, with no strand bound and one
+			// alive untracked pane: selvageAlive is false (the Selvage entry
 			// is present but dead), so nothing is reaped.
-			name:         "PresentButDeadHeaderDoesNotAuthorizeReap",
-			strands:      nil,
-			live:         []LivePane{{ID: "%header", Dead: true}, {ID: "%orphan", Dead: false}},
-			headerPaneID: "%header",
-			wantCleared:  nil,
+			name:          "PresentButDeadSelvageDoesNotAuthorizeReap",
+			strands:       nil,
+			live:          []LivePane{{ID: "%selvage", Dead: true}, {ID: "%orphan", Dead: false}},
+			selvagePaneID: "%selvage",
+			wantCleared:   nil,
 		},
 		{
-			// A non-empty headerPaneID naming no entry in live at all, with
-			// no strand bound and one alive untracked pane: headerAlive's
+			// A non-empty selvagePaneID naming no entry in live at all, with
+			// no strand bound and one alive untracked pane: selvageAlive's
 			// third way of being false, distinct from the empty-id and
 			// present-but-dead cases above. Reachable on the add path once
-			// an operator kills the header pane outright, since no verb but
+			// an operator kills Selvage outright, since no verb but
 			// up/resume rebuilds it.
-			name:         "HeaderIDNamingNoLivePaneDoesNotAuthorizeReap",
-			strands:      nil,
-			live:         []LivePane{{ID: "%orphan", Dead: false}},
-			headerPaneID: "%header",
-			wantCleared:  nil,
+			name:          "SelvageIDNamingNoLivePaneDoesNotAuthorizeReap",
+			strands:       nil,
+			live:          []LivePane{{ID: "%orphan", Dead: false}},
+			selvagePaneID: "%selvage",
+			wantCleared:   nil,
 		},
 		{
-			// A dead header alongside a strand bound to a present pane: the
-			// reap fires anyway via anyBoundPresent, and the header corpse
+			// A dead Selvage alongside a strand bound to a present pane: the
+			// reap fires anyway via anyBoundPresent, and the Selvage corpse
 			// is still spared.
-			name:                     "DeadHeaderAlongsideBoundStrandStillReapsViaAnyBoundPresent",
+			name:                     "DeadSelvageAlongsideBoundStrandStillReapsViaAnyBoundPresent",
 			strands:                  []Strand{{GUID: "g1", PaneID: "%1"}},
-			live:                     []LivePane{{ID: "%header", Dead: true}, {ID: "%1", Dead: false}, {ID: "%7", Dead: false}},
-			headerPaneID:             "%header",
+			live:                     []LivePane{{ID: "%selvage", Dead: true}, {ID: "%1", Dead: false}, {ID: "%7", Dead: false}},
+			selvagePaneID:            "%selvage",
 			wantCleared:              nil,
 			wantUntrackedPanesToKill: []string{"%7"},
 		},
 		{
-			// A DEAD header pane must not be scheduled for killing either —
+			// A DEAD Selvage pane must not be scheduled for killing either —
 			// the dead-pane kill loop, not only the untracked reap, spares
-			// it. Nothing outside up/resume rebuilds a header, so killing
+			// it. Nothing outside up/resume rebuilds Selvage, so killing
 			// the corpse here would leave every intermediate add/remove
-			// headerless with a stale HeaderPaneID (the fable-header-r1
-			// layout-scramble-then-wedged-up defect). The kept corpse stays
-			// enumerable; ensureHeaderPaneLocked heals it at the next boot.
-			name:         "DeadHeaderPaneKeptNotKilled",
-			strands:      []Strand{{GUID: "g1", PaneID: "%1"}},
-			live:         []LivePane{{ID: "%header", Dead: true}, {ID: "%1", Dead: false}},
-			headerPaneID: "%header",
-			wantCleared:  nil,
+			// without a Selvage, holding a stale SelvagePaneID (the
+			// fable-header-r1 layout-scramble-then-wedged-up defect). The
+			// kept corpse stays enumerable; ensureSelvagePaneLocked heals it
+			// at the next boot.
+			name:          "DeadSelvagePaneKeptNotKilled",
+			strands:       []Strand{{GUID: "g1", PaneID: "%1"}},
+			live:          []LivePane{{ID: "%selvage", Dead: true}, {ID: "%1", Dead: false}},
+			selvagePaneID: "%selvage",
+			wantCleared:   nil,
 		},
 		{
-			// A dead header alongside a dead strand pane: the strand corpse
+			// A dead Selvage alongside a dead strand pane: the strand corpse
 			// is still killable business-as-usual (an alive pane remains),
-			// while the header corpse stays exempt.
-			name:                "DeadHeaderExemptWhileDeadStrandPaneStillKilled",
+			// while the Selvage corpse stays exempt.
+			name:                "DeadSelvageExemptWhileDeadStrandPaneStillKilled",
 			strands:             []Strand{{GUID: "g1", PaneID: "%1"}, {GUID: "g2", PaneID: "%2"}},
-			live:                []LivePane{{ID: "%header", Dead: true}, {ID: "%1", Dead: true}, {ID: "%2", Dead: false}},
-			headerPaneID:        "%header",
+			live:                []LivePane{{ID: "%selvage", Dead: true}, {ID: "%1", Dead: true}, {ID: "%2", Dead: false}},
+			selvagePaneID:       "%selvage",
 			wantCleared:         []string{"g1"},
 			wantDeadPanesToKill: []string{"%1"},
 		},
@@ -239,7 +240,7 @@ func TestPlanReconcile(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotPlan := planReconcile(tt.strands, tt.live, tt.headerPaneID)
+			gotPlan := planReconcile(tt.strands, tt.live, tt.selvagePaneID)
 			if !equalStringSlices(gotPlan.clearedGUIDs, tt.wantCleared) {
 				t.Errorf("planReconcile() clearedGUIDs = %v, want %v", gotPlan.clearedGUIDs, tt.wantCleared)
 			}
@@ -306,8 +307,8 @@ func TestReconcileLocked_LogsTheUntrackedPanesItReaps(t *testing.T) {
 		}
 		buf := captureLogOutput(t)
 
-		st := &ReedState{HeaderPaneID: "%header"}
-		live := []LivePane{{ID: "%header", Dead: false}, {ID: "%orphan1", Dead: false}, {ID: "%orphan2", Dead: false}}
+		st := &ReedState{SelvagePaneID: "%selvage"}
+		live := []LivePane{{ID: "%selvage", Dead: false}, {ID: "%orphan1", Dead: false}, {ID: "%orphan2", Dead: false}}
 
 		killed, err := e.reconcileLocked(st, live)
 		if err != nil {
@@ -355,8 +356,8 @@ func TestReconcileLocked_LogsTheUntrackedPanesItReaps(t *testing.T) {
 		}
 		buf := captureLogOutput(t)
 
-		st := &ReedState{HeaderPaneID: "%header"}
-		live := []LivePane{{ID: "%header", Dead: false}, {ID: "%orphan1", Dead: false}, {ID: "%orphan2", Dead: false}}
+		st := &ReedState{SelvagePaneID: "%selvage"}
+		live := []LivePane{{ID: "%selvage", Dead: false}, {ID: "%orphan1", Dead: false}, {ID: "%orphan2", Dead: false}}
 
 		killed, err := e.reconcileLocked(st, live)
 		if err == nil {
@@ -380,7 +381,7 @@ func TestReconcileLocked_LogsTheUntrackedPanesItReaps(t *testing.T) {
 }
 
 // TestClearConflictingPaneBindings is the regression guard for the R5 review's R5-F3: a corrupt
-// reed.json whose strand pane bindings contradict each other (a strand naming the header's pane, or
+// reed.json whose strand pane bindings contradict each other (a strand naming Selvage's pane, or
 // two strands naming one pane) made `up` destroy unrelated live panes and their processes while
 // reporting ok:true, then report the strand live against a pane it does not own.
 // The repair is first-writer-wins, so the table order of the cleared GUIDs is part of the contract,
@@ -395,17 +396,17 @@ func TestClearConflictingPaneBindings(t *testing.T) {
 		{
 			name: "a healthy table is untouched",
 			state: ReedState{
-				HeaderPaneID: "%1",
-				Strands:      []Strand{{GUID: "a", PaneID: "%2"}, {GUID: "b", PaneID: "%3"}},
+				SelvagePaneID: "%1",
+				Strands:       []Strand{{GUID: "a", PaneID: "%2"}, {GUID: "b", PaneID: "%3"}},
 			},
 			wantCleared:  nil,
 			wantPaneByID: map[string]string{"a": "%2", "b": "%3"},
 		},
 		{
-			name: "a strand naming the header pane is cleared",
+			name: "a strand naming Selvage's pane is cleared",
 			state: ReedState{
-				HeaderPaneID: "%1",
-				Strands:      []Strand{{GUID: "a", PaneID: "%1"}, {GUID: "b", PaneID: "%2"}},
+				SelvagePaneID: "%1",
+				Strands:       []Strand{{GUID: "a", PaneID: "%1"}, {GUID: "b", PaneID: "%2"}},
 			},
 			wantCleared:  []string{"a"},
 			wantPaneByID: map[string]string{"a": "", "b": "%2"},
@@ -413,8 +414,8 @@ func TestClearConflictingPaneBindings(t *testing.T) {
 		{
 			name: "the later of two strands sharing one pane is cleared",
 			state: ReedState{
-				HeaderPaneID: "%1",
-				Strands:      []Strand{{GUID: "a", PaneID: "%2"}, {GUID: "b", PaneID: "%2"}},
+				SelvagePaneID: "%1",
+				Strands:       []Strand{{GUID: "a", PaneID: "%2"}, {GUID: "b", PaneID: "%2"}},
 			},
 			wantCleared:  []string{"b"},
 			wantPaneByID: map[string]string{"a": "%2", "b": ""},
@@ -422,17 +423,17 @@ func TestClearConflictingPaneBindings(t *testing.T) {
 		{
 			name: "unbound strands are never reported as conflicting with each other",
 			state: ReedState{
-				HeaderPaneID: "%1",
-				Strands:      []Strand{{GUID: "a", PaneID: ""}, {GUID: "b", PaneID: ""}},
+				SelvagePaneID: "%1",
+				Strands:       []Strand{{GUID: "a", PaneID: ""}, {GUID: "b", PaneID: ""}},
 			},
 			wantCleared:  nil,
 			wantPaneByID: map[string]string{"a": "", "b": ""},
 		},
 		{
-			name: "an absent header claims nothing, so an empty HeaderPaneID clears no strand",
+			name: "an absent Selvage claims nothing, so an empty SelvagePaneID clears no strand",
 			state: ReedState{
-				HeaderPaneID: "",
-				Strands:      []Strand{{GUID: "a", PaneID: "%2"}, {GUID: "b", PaneID: "%3"}},
+				SelvagePaneID: "",
+				Strands:       []Strand{{GUID: "a", PaneID: "%2"}, {GUID: "b", PaneID: "%3"}},
 			},
 			wantCleared:  nil,
 			wantPaneByID: map[string]string{"a": "%2", "b": "%3"},
@@ -440,8 +441,8 @@ func TestClearConflictingPaneBindings(t *testing.T) {
 		{
 			name: "three strands on one pane clear all but the first",
 			state: ReedState{
-				HeaderPaneID: "%9",
-				Strands:      []Strand{{GUID: "a", PaneID: "%4"}, {GUID: "b", PaneID: "%4"}, {GUID: "c", PaneID: "%4"}},
+				SelvagePaneID: "%9",
+				Strands:       []Strand{{GUID: "a", PaneID: "%4"}, {GUID: "b", PaneID: "%4"}, {GUID: "c", PaneID: "%4"}},
 			},
 			wantCleared:  []string{"b", "c"},
 			wantPaneByID: map[string]string{"a": "%4", "b": "", "c": ""},
@@ -464,8 +465,8 @@ func TestClearConflictingPaneBindings(t *testing.T) {
 					t.Errorf("strand %s PaneID = %q; want %q", guid, paneID, want)
 				}
 			}
-			if st.HeaderPaneID != tt.state.HeaderPaneID {
-				t.Errorf("HeaderPaneID = %q; want %q (the header binding is never the one cleared)", st.HeaderPaneID, tt.state.HeaderPaneID)
+			if st.SelvagePaneID != tt.state.SelvagePaneID {
+				t.Errorf("SelvagePaneID = %q; want %q (the Selvage binding is never the one cleared)", st.SelvagePaneID, tt.state.SelvagePaneID)
 			}
 		})
 	}

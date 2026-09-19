@@ -39,6 +39,7 @@ const (
 // startCmd builds the `start` subcommand: the session bootstrap.
 func (c *loomCLI) startCmd() *cobra.Command {
 	var parentFlag string
+	var noAttachFlag bool
 
 	cmd := &cobra.Command{
 		Use:   "start",
@@ -56,9 +57,13 @@ func (c *loomCLI) startCmd() *cobra.Command {
 The detached driver's own stdout/stderr go to the log the ephemeral-tree
 driver-log accessor names, never to this command's own output.
 
+--no-attach performs steps 1 through 3 and the handshake that confirms the
+driver took the run lock, then returns instead of running step 4.
+
 Example:
   lyx loom start
-  lyx loom start --parent main`,
+  lyx loom start --parent main
+  lyx loom start --no-attach`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
@@ -225,6 +230,10 @@ Example:
 			// reported before stdio is handed away here.
 			_ = bootstrapLock.Release()
 
+			if !mustAttach(noAttachFlag) {
+				return nil
+			}
+
 			if _, err := c.reed.Status(); err != nil {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
@@ -264,6 +273,7 @@ Example:
 	}
 
 	cmd.Flags().StringVar(&parentFlag, "parent", "", "write the pair's provenance record once for a worktree created before that record existed; refused when it disagrees with an already-recorded value")
+	cmd.Flags().BoolVar(&noAttachFlag, "no-attach", false, "perform every bootstrap step and return once the driver has taken the run lock, instead of handing the terminal to the session")
 
 	return cmd
 }

@@ -1,6 +1,6 @@
 # reed: replace the header pane with a native status-line plus "Selvage"
 
-> **Status: Planned, not yet built.** Every claim below marked *(confirmed live)* was tested in a throwaway tmux session during design; everything else is reasoned but unverified.
+> **Status: Implemented.** The design below describes what shipped, not a proposal.
 
 ## The problem
 
@@ -20,9 +20,11 @@ Split all three jobs onto three different mechanisms, instead of hardening the o
 
 tmux's own status-line (`status on`, `status-position bottom`) is not a pane — it cannot receive focus and cannot be typed into.
 
-- The header's only two tokens today, `{{.repo}}` and `{{.hub}}` (`tokenvocab.Ctx`), are static and never need a live update *(confirmed live: `HeaderText()` makes no tmux round trip and reads only `cfg`+`geom`)*.
-- *(confirmed live)* A status-line alone does **not** keep a session alive when every real pane dies — killing all panes in a throwaway session with the status-line on still killed the whole tmux server. The status-line only ever covers content, never keepalive.
-- Showing both repo and worktree (not just hub) needs a new `worktree` token added to `tokenvocab` alongside the existing two — this token does not exist today.
+`internal/reedengine/windowsize.go`'s `pinGeometryOptionsLocked` renders the status-line text via `Engine.StatusLineText()` and issues seven `set-option` calls to pin it: `status on`, `status-position bottom`, `status-left <escaped text>`, `status-right ""`, `status-left-length <statusLeftLength(escaped)>`, and, window-targeted, `window-status-format ""` and `window-status-current-format ""`. `escapeStatusText` doubles every `#` in the rendered text before it reaches `status-left`, since tmux expands `#{…}`/`#[…]` inside a status string. `statusLeftLength` floors the length at tmux's own default of 10 and otherwise measures the escaped string in runes. `pinGeometryOptionsLocked` runs at boot (`lifecycle.go`) and again in the attach pre-flight (`attach.go`), and every call it issues is non-fatal — logged via `logger.Warn` and ignored, per the `geometry-tmux-failures-are-non-fatal-everywhere` decision — because a `set-option` failing loudly changes nothing and is answered by the `#{status}` readback (`readStatusRowsLocked`) rather than trusted from `set-option`'s own exit status.
+
+- The status-line's three tokens, `{{.repo}}`, `{{.hub}}` and `{{.worktree}}` (`tokenvocab.Ctx`), are static and never need a live update. `StatusLineText()` makes no tmux round trip and reads only `cfg`+`geom`.
+- A status-line alone does **not** keep a session alive when every real pane dies — killing all panes in a session with the status-line on still kills the whole tmux server. The status-line only ever covers content, never keepalive.
+- Showing both repo and worktree needs the `worktree` token this task added to `tokenvocab` alongside the pre-existing `repo` and `hub` tokens.
 
 ### Keepalive → a permanent pane named "Selvage"
 
@@ -30,42 +32,57 @@ The pane that must always exist is named **Selvage** — the self-finished edge 
 
 Selvage is a deliberately ordinary shell — **not** a custom binary, and it needs no signal-handling code:
 
-- *(confirmed live)* A plain shell already survives an accidental Ctrl-C at its idle prompt (interactive bash ignores SIGINT while waiting at the prompt).
-- *(confirmed live)* Ctrl-C to a foreground job running inside it kills only that job, not the shell — the pane survives.
+- A plain shell already survives an accidental Ctrl-C at its idle prompt (interactive bash ignores SIGINT while waiting at the prompt).
+- Ctrl-C to a foreground job running inside it kills only that job, not the shell — the pane survives.
 - It still dies cleanly when `reed down` deliberately tears the session down (pty close / SIGHUP path, distinct from SIGINT) — a session's life is bounded to its worktree's life, not immortal. Killing it is a normal part of worktree housekeeping, not something to defend against.
 
 Being a real, typeable shell is intentional, not a residual flaw: it is the always-on control terminal for running `lyx`/`reed` commands directly against the worktree — e.g. `lyx reed add` to spawn a new strand (a new Claude instance) — without needing a spare pane first.
 
+`internal/reedengine/lifecycle.go`'s `ensureSelvagePaneLocked` ensures Selvage exists and is alive on both Up and Resume, (re)creating it when missing, dead, or gone via `splitSelvagePaneAtBottomLocked`, which splits a new pane in below the physically bottom-most live pane and retries once behind an even-vertical re-tile when the first attempt has no room — the retry is what keeps a lost or stale `ReedState.SelvagePaneID` from wedging a worktree permanently. `ReedState.SelvagePaneID` (`json:"selvagePaneId,omitempty"`) is the persisted binding; `reed.yaml`'s `selvage.height_rows` config key configures the band's height (the render side is `render.Selvage`/`Params.Selvage`).
+
 ### Placement
 
-Selvage is pinned to the bottom, one row tall, with every strand pane scaled to fill the remainder above it — mirroring today's fixed-band header layout in `apply.go`, just from the opposite edge. *(Not yet confirmed live, unlike everything above.)*
+Selvage is pinned to the bottom, one row tall by default, with every strand pane scaled to fill the remainder above it — mirroring the former fixed-band header layout in `apply.go`, just from the opposite edge.
 
 It stays in the **same single window** as every strand, never a second window:
 
-- Reed has no window support today (see `reed: own-window strand anchoring`).
+- Reed has no window support today (see the Someday `reed: own-window strand anchoring` item).
 - *(confirmed live)* tmux auto-switches the attached client to a window the instant its previously-active window loses its last pane — a "hidden" second window holding Selvage would pop into view at exactly the moment it needs to stay out of the way, defeating the point.
 
 ### The single-pane degenerate case
 
-*(confirmed live)* When Selvage is the only pane left (every strand has died), it automatically fills the entire window — tmux always tiles existing panes to 100% of the window, so there is no "shrink to minimum, leave blank space" option. This needs no special-casing: it is tmux's own default tiling behavior, not something reed's layout math has to detect or handle.
+When Selvage is the only pane left (every strand has died), it automatically fills the entire window — tmux always tiles existing panes to 100% of the window, so there is no "shrink to minimum, leave blank space" option. This needs no special-casing: it is tmux's own default tiling behavior, not something reed's layout math has to detect or handle.
 
 ### Watchdog daemon → a detached, per-hub background process
 
-`eng.Watch(ctx)` needs no tty and no pane at all — it only ever issues tmux commands against a socket from the outside. Once it is no longer riding along inside the header pane's process, its hosting can be chosen freely; it does not have to move to Selvage (or to any pane).
+`eng.Watch(ctx)` needs no tty and no pane at all — it only ever issues tmux commands against a socket from the outside. Once it is no longer riding along inside the header pane's process, its hosting is chosen freely; it does not have to live on Selvage (or on any pane).
 
 Granularity: **per hub, not per worktree-session and not per machine.**
 
 - **Per machine** was considered and rejected. The tempting argument (a reconcile daemon is cheap, so why not have just one) optimizes for CPU, which was never the actual cost. The real cost is that a single machine-wide daemon must multiplex across every hub's own tmux socket at once (today's daemon only ever touches the one socket it was started against), discover hubs appearing and disappearing over time, and — since it no longer maps to any single `reed up`/`down` call — needs its own independent lifecycle (e.g. autostart at login) rather than starting and stopping with worktree activity. It also turns every hub on the machine into one shared blast radius: a crash takes down reconcile for all of them at once, not just one.
 - **Per hub** matches a boundary that already exists — `SocketKey`/`ServerName` is already keyed on hub path (`hubgeom.ReedGeometry`), so a per-hub daemon only ever talks to the one tmux socket that hub already owns, no multiplexing needed.
-- Lifecycle is a genuine open question at this granularity (see below): unlike a per-session daemon, it can no longer simply start with one worktree's `reed up` and stop with that same worktree's `reed down`, since other worktree sessions under the same hub may still be alive.
+
+`internal/reedcli/watchdog.go` implements the daemon as `lyx reed watchdog --hub-path <abs> --tmux <path>`: told its hub path and tmux binary on the command line, opting out of reed's normal cwd/location/config resolution. `runWatchdogLoop` polls `reedengine.ListSessions` (the one new exported, engine-less function `internal/reedengine` gained for this — see the `told-geometry-keeps-the-daemon-out-of-reedengine` decision below) against the hub's socket every `watchdogHubDiscoveryCycle` (5s), enters newly-appeared sessions by building a `*reedengine.Engine` for each and starting its `Engine.Watch` goroutine (unless that worktree's own config says `watchdog: off`), and tears down departed ones. Single-instance per hub is enforced by a `reed-watchdog.lock` file under `fabricengine.HubScratchDir(hub)`: a spawn that finds the lock already held exits 0 immediately, since a racing spawn costing one short-lived process is the expected, harmless outcome. The daemon's own stdio is discarded and its diagnostics land in `fabricengine.HubLogsDir(hub)` instead.
+
+Lifecycle: the daemon exits itself rather than being killed by any reed verb. `watchdogHubDiscoveryCycle`/`watchdogHubIdleCycles` govern this — the idle counter increments on anything other than an affirmative listing (exit 0 with at least one session name), so an exit-0 empty listing, a "no server running" error, and any other `list-sessions` failure all count as idle alike; a non-empty listing resets the counter to zero, and `watchdogHubIdleCycles` (3) consecutive idle cycles exit the daemon. `reed down` never kills it — the daemon notices the hub going quiet on its own next discovery cycle instead.
+
+It is spawned as a **detached child**, never an OS-level service, launch agent, or systemd unit — that broader pattern is explicitly out of scope for this task. Three spawn sites attempt it: `up`, `resume`, and `attach`, each after its own engine op returns without error, via `os.Executable()` + `exec.Command` + `proc.Detach`.
 
 ## Open items
 
-- The `worktree` token for the status-line template does not exist yet — needs adding to `tokenvocab`.
-- Exact layout-math change in `apply.go` to flip the fixed band from top to bottom is reasoned by analogy, not yet implemented or tested.
-- Whether Selvage's shell should be the user's own `$SHELL` or a fixed `bash` is not yet decided.
-- The per-hub daemon's exact lifecycle is undecided: started by the first `reed up` in a hub and stopped by the last `reed down` (reference-counted), or something else entirely (e.g. spawned once at `fabric clone` time and left running for the hub's whole existence)?
-- Whether the daemon should keep being spawned as a detached child of whichever `reed up` starts it, or move to a proper OS-level service/supervisor pattern, is not yet decided.
+- **Windows/psmux verification of the status-line options is unverified, not verified.** The exact check: run `lyx reed up` under psmux, then read back `#{status}`, `#{status-position}`, `#{status-left}` and `#{window-status-format}`, recording which of the options survived. The named degrade accepted in the meantime: if psmux refuses them, Windows loses the identity text, while Selvage, the layout, the reap rules and the watchdog are all unaffected, and `status-position` falling back to `top` is acceptable on its own since the status-line is not a pane and its edge is independent of Selvage's. reed does not branch on Windows here — unlike `hookInstalledLocked`, the one place it does branch — because a refused `set-option` fails loudly into the log, changes nothing, and is answered by the `#{status}` readback, whereas `hookInstalledLocked`'s consequence would be silent and unrecoverable. This decision is to be revisited against the verification's result, not treated as settled.
+
+## Module-local Selvage rules
+
+Kept here rather than in `CONSTRAINTS.md`, because they describe this package's own design rather than a cross-cutting invariant another module could violate:
+
+- Selvage is always physically bottom-most in the window.
+- Selvage is never a strand.
+- Selvage is never written to, cleared, or sent keys by reed — it is a real, usable terminal an operator can run lyx/reed commands in.
+
+## Standalone disposition
+
+Standalone reed runs `Engine.Watch` as an in-process goroutine off the `reedUp` seam, never the daemon — the per-hub watchdog daemon is a hub-mode-only mechanism, since standalone mode has no hub to key a shared socket off of.
 
 ## Related
 
