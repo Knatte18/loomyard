@@ -121,12 +121,12 @@ func TestHelpTree_VerbModuleSubcommands(t *testing.T) {
 		{
 			name:     "batten",
 			module:   "batten",
-			wantSubs: []string{"run", "status", "pause"},
+			wantSubs: []string{"run", "step", "status", "pause"},
 		},
 		{
 			name:     "shed",
 			module:   "shed",
-			wantSubs: []string{"run", "step", "status", "pause"},
+			wantSubs: []string{"run", "step", "status", "pause", "seed"},
 		},
 	}
 
