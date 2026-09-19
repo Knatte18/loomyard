@@ -20,20 +20,7 @@ import (
 // slash-separated file paths permitted to contain a literal time.Sleep(...) of at
 // least one second in an untagged test file, each with a one-line reason — mirroring
 // tierpurity_test.go's allowedSpawners style.
-var allowedLongSleepers = map[string]string{
-	"internal/reedengine/testmain_test.go": "untagged header-pane-keepalive TestMain stand-in whose body loops calling " +
-		"time.Sleep(time.Hour) at line 31 — intentional and safe because TestMain itself " +
-		"intercepts this exact invocation shape (os.Args[1] == \"reed\") as a deliberate " +
-		"stand-in for the real `lyx reed header --blocking` keepalive, not an accidental " +
-		"recursive re-exec; it is not reachable during a normal `go test` run (no test " +
-		"invokes the binary with a leading \"reed\" argument)",
-	"internal/reedcli/testmain_test.go": "same shape and the same TestMain-intercept rationale at its own matching " +
-		"loop on line 35 — this file's TestMain also calls gitkit.HermeticGitEnv() later in " +
-		"the same function, but only on the code path reached when the \"reed\" branch above " +
-		"is NOT taken; the sleep loop itself is an infinite for loop that never returns, so " +
-		"HermeticGitEnv() never executes on the sleep-loop path and plays no part in why that " +
-		"path is safe",
-}
+var allowedLongSleepers = map[string]string{}
 
 // findLongLiteralSleep parses data as Go and finds time.Sleep(...) calls with duration >= 1 second.
 func findLongLiteralSleep(fset *token.FileSet, filename string, data []byte) (evidence string, found bool) {

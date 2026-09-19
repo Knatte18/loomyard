@@ -24,6 +24,7 @@ func ReedGeometry(l *lyxcwd.Location) reedengine.Geometry {
 		WorktreeRoot: l.WorktreePath(),
 		LogsDir:      fabricengine.HubLogsDir(l.HubPath),
 		RepoName:     l.RepoName,
+		WorktreeName: l.WorktreeName,
 		HubPath:      l.HubPath,
 	}
 }

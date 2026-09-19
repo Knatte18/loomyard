@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -133,6 +134,66 @@ func TestWindowSizeAllowsChain(t *testing.T) {
 	}
 }
 
+// TestEscapeStatusText covers the pure doubling rule: every "#" becomes "##", regardless of position.
+func TestEscapeStatusText(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"NoHash", "plain text", "plain text"},
+		{"OneHash", "a#b", "a##b"},
+		{"SeveralHashes", "#a#b#c", "##a##b##c"},
+		{"HashAtEachEnd", "#middle#", "##middle##"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := escapeStatusText(tt.in); got != tt.want {
+				t.Errorf("escapeStatusText(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestStatusLeftLength covers the rune-counted floor-at-10 rule, including a multi-byte string whose
+// rune count differs materially from its byte count — statusLeftLength must report the rune count, not
+// the byte count.
+func TestStatusLeftLength(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want int
+	}{
+		{"ShorterThanFloor", "short", 10},
+		{"ExactlyTen", "1234567890", 10},
+		{"LongerThanFloor", "this is a long status line", 26},
+		// 12 runes, 36 bytes (3 bytes per hiragana character): a byte-counting implementation would
+		// wrongly answer 36 here.
+		{"MultiByteRuneCountDiffersFromByteCount", "あいうえおかきくけこさし", 12},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := statusLeftLength(tt.in); got != tt.want {
+				t.Errorf("statusLeftLength(%q) = %d, want %d", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestStatusLeftLength_EscapeThenMeasureOrderMatters pins the load-bearing order documented on
+// statusLeftLength: measuring a string before escapeStatusText doubles its "#" characters can
+// under-report the length tmux will actually receive. "######" is 6 runes unescaped (floored to 10),
+// but "############" once escaped is 12 runes — over the floor — so escaping first must yield a
+// strictly larger answer.
+func TestStatusLeftLength_EscapeThenMeasureOrderMatters(t *testing.T) {
+	const s = "######"
+	before := statusLeftLength(s)
+	after := statusLeftLength(escapeStatusText(s))
+	if after <= before {
+		t.Errorf("statusLeftLength(escapeStatusText(%q)) = %d, want it to exceed statusLeftLength(%q) = %d — measuring the pre-escape string would truncate a hub path containing '#'", s, after, s, before)
+	}
+}
+
 func TestReadStatusRowsLocked(t *testing.T) {
 	t.Run("ScriptedAnswer", func(t *testing.T) {
 		e := newTestEngine(t)
@@ -185,70 +246,119 @@ func TestReadWindowSizeLatestLocked(t *testing.T) {
 	})
 }
 
-// TestPinGeometryOptionsLocked records every set-option argv the hook receives, asserting both pins
-// are issued session/window-targeted (never -g), and that a first-pin error does not stop the second
-// pin from being issued.
+// TestPinGeometryOptionsLocked drives pinGeometryOptionsLocked against TmuxCmd's execHook seam,
+// recording every set-option argv issued. It asserts the seven status-line options plus the
+// pre-existing window-size pin are all issued with the expected target/value, that status-left carries
+// the escaped rendered text, that a StatusLineText render error skips only status-left and
+// status-left-length while the other six calls (five status-line options plus window-size) still
+// happen, and that no call's failure stops the calls after it.
 func TestPinGeometryOptionsLocked(t *testing.T) {
-	tests := []struct {
-		name        string
-		firstErrors bool
-	}{
-		{"BothSucceed", false},
-		{"FirstPinErrors", true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			e := newTestEngine(t)
-			var calls [][]string
-			e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-				if args[0] != "set-option" {
-					return "", nil
-				}
-				calls = append(calls, append([]string{}, args...))
-				if tt.firstErrors && len(calls) == 1 {
-					return "", errors.New("boom")
-				}
+	t.Run("AllOptionsIssuedWithEscapedText", func(t *testing.T) {
+		e := newTestEngine(t)
+		// newTestEngine's Geometry leaves WorktreeName unset; the default status-line template's
+		// {{.worktree}} marker requires it, so this case sets it so StatusLineText() succeeds.
+		e.geom.WorktreeName = "test-worktree"
+		var calls [][]string
+		e.tmux.execHook = func(capture bool, args ...string) (string, error) {
+			if args[0] != "set-option" {
 				return "", nil
 			}
+			calls = append(calls, append([]string{}, args...))
+			return "", nil
+		}
 
-			e.pinGeometryOptionsLocked()
+		wantText, err := e.StatusLineText()
+		if err != nil {
+			t.Fatalf("StatusLineText() unexpected error: %v", err)
+		}
+		wantEscaped := escapeStatusText(strings.TrimRight(wantText, "\r\n"))
 
-			if len(calls) != 2 {
-				t.Fatalf("pinGeometryOptionsLocked issued %d set-option calls, want 2: %v", len(calls), calls)
-			}
+		e.pinGeometryOptionsLocked()
 
-			wantTarget := exactSessionWindowTarget(e.SessionName())
+		target := exactSessionWindowTarget(e.SessionName())
+		wantOptions := [][]string{
+			{"set-option", "-t", target, "status", "on"},
+			{"set-option", "-t", target, "status-position", "bottom"},
+			{"set-option", "-t", target, "status-left", wantEscaped},
+			{"set-option", "-t", target, "status-right", ""},
+			{"set-option", "-t", target, "status-left-length", strconv.Itoa(statusLeftLength(wantEscaped))},
+			{"set-option", "-w", "-t", target, "window-status-format", ""},
+			{"set-option", "-w", "-t", target, "window-status-current-format", ""},
+			{"set-option", "-w", "-t", target, "window-size", "latest"},
+		}
 
-			first := calls[0]
-			if !containsArg(first, "-t") || !containsArg(first, wantTarget) {
-				t.Errorf("first pin args = %v, want it to carry -t %q", first, wantTarget)
+		if len(calls) != len(wantOptions) {
+			t.Fatalf("pinGeometryOptionsLocked issued %d set-option calls, want %d: %v", len(calls), len(wantOptions), calls)
+		}
+		for i, want := range wantOptions {
+			if len(calls[i]) != len(want) {
+				t.Fatalf("call[%d] = %v, want %v", i, calls[i], want)
 			}
-			if containsArg(first, "-g") {
-				t.Errorf("first pin args = %v, want no -g", first)
+			for j := range want {
+				if calls[i][j] != want[j] {
+					t.Errorf("call[%d][%d] = %q, want %q (full call %v, want %v)", i, j, calls[i][j], want[j], calls[i], want)
+				}
 			}
-			if !containsArg(first, "status") || !containsArg(first, "off") {
-				t.Errorf("first pin args = %v, want the status off pair", first)
-			}
+		}
+	})
 
-			second := calls[1]
-			if !containsArg(second, "-w") {
-				t.Errorf("second pin args = %v, want -w", second)
+	t.Run("StatusLineTextErrorSkipsOnlyTheTwoTextDerivedOptions", func(t *testing.T) {
+		e := newTestEngine(t)
+		// An unknown top-level token forces StatusLineText() to error, the same shape
+		// TestValidateStatusLine_UnknownTopLevelTokenErrors pins.
+		e.cfg.StatusLine.Template = "{{.slug}}"
+		var calls [][]string
+		e.tmux.execHook = func(capture bool, args ...string) (string, error) {
+			if args[0] != "set-option" {
+				return "", nil
 			}
-			if containsArg(second, "-g") {
-				t.Errorf("second pin args = %v, want no -g", second)
+			calls = append(calls, append([]string{}, args...))
+			return "", nil
+		}
+
+		e.pinGeometryOptionsLocked()
+
+		for _, c := range calls {
+			if containsArg(c, "status-left") || containsArg(c, "status-left-length") {
+				t.Errorf("calls = %v, want no status-left or status-left-length call when StatusLineText errors", calls)
 			}
-			if !containsArg(second, "window-size") || !containsArg(second, "latest") {
-				t.Errorf("second pin args = %v, want the window-size latest pair", second)
+		}
+		const wantCalls = 6 // status, status-position, status-right, window-status-format, window-status-current-format, window-size
+		if len(calls) != wantCalls {
+			t.Fatalf("pinGeometryOptionsLocked issued %d set-option calls on a StatusLineText error, want %d: %v", len(calls), wantCalls, calls)
+		}
+	})
+
+	t.Run("OneOptionFailureDoesNotStopTheRest", func(t *testing.T) {
+		e := newTestEngine(t)
+		e.geom.WorktreeName = "test-worktree"
+		var calls [][]string
+		e.tmux.execHook = func(capture bool, args ...string) (string, error) {
+			if args[0] != "set-option" {
+				return "", nil
 			}
-		})
-	}
+			calls = append(calls, append([]string{}, args...))
+			if len(calls) == 1 {
+				return "", errors.New("boom")
+			}
+			return "", nil
+		}
+
+		e.pinGeometryOptionsLocked()
+
+		const wantCalls = 8
+		if len(calls) != wantCalls {
+			t.Fatalf("pinGeometryOptionsLocked issued %d set-option calls despite one erroring, want all %d still attempted: %v", len(calls), wantCalls, calls)
+		}
+	})
 }
 
 // TestPinGeometryOptionsLocked_HookLifecycle covers the window-resized hook install/unset lifecycle
-// pinGeometryOptionsLocked now owns, alongside the two pre-existing geometry pins.
+// pinGeometryOptionsLocked now owns, alongside the status-line and window-size geometry pins.
 func TestPinGeometryOptionsLocked_HookLifecycle(t *testing.T) {
 	t.Run("WatchdogOnPinsGeometryOptionsOnly", func(t *testing.T) {
 		e := newTestEngine(t)
+		e.geom.WorktreeName = "test-worktree"
 		e.cfg.Watchdog = "on"
 		var calls [][]string
 		e.tmux.execHook = func(capture bool, args ...string) (string, error) {
@@ -277,8 +387,8 @@ func TestPinGeometryOptionsLocked_HookLifecycle(t *testing.T) {
 				setOptionCalls++
 			}
 		}
-		if setOptionCalls != 2 {
-			t.Errorf("pinGeometryOptionsLocked calls = %v, want 2 set-option calls (status and window-size)", calls)
+		if setOptionCalls != 8 {
+			t.Errorf("pinGeometryOptionsLocked calls = %v, want 8 set-option calls (the seven status-line options and window-size)", calls)
 		}
 	})
 
@@ -338,6 +448,7 @@ func TestPinGeometryOptionsLocked_HookLifecycle(t *testing.T) {
 
 	t.Run("SetHookErrorIsNonFatalWhenWatchdogOff", func(t *testing.T) {
 		e := newTestEngine(t)
+		e.geom.WorktreeName = "test-worktree"
 		e.cfg.Watchdog = "off"
 		var setOptionCalls int
 		var setHookErrors int
@@ -355,8 +466,8 @@ func TestPinGeometryOptionsLocked_HookLifecycle(t *testing.T) {
 
 		e.pinGeometryOptionsLocked()
 
-		if setOptionCalls != 2 {
-			t.Errorf("set-option calls = %d, want 2 (both preceding pins still attempted despite later set-hook error)", setOptionCalls)
+		if setOptionCalls != 8 {
+			t.Errorf("set-option calls = %d, want 8 (all preceding pins still attempted despite the later set-hook error)", setOptionCalls)
 		}
 		if setHookErrors != 1 {
 			t.Errorf("set-hook errors = %d, want 1", setHookErrors)

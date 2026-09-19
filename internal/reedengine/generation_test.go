@@ -252,7 +252,7 @@ func TestAdoptPaneGenerationLocked(t *testing.T) {
 			e.tmux.execHook = generationHook(t, tt.generations)
 
 			st := &ReedState{
-				HeaderPaneID:   "%1",
+				SelvagePaneID:  "%1",
 				Strands:        []Strand{{GUID: "a", PaneID: "%2"}},
 				PaneGeneration: tt.recorded,
 			}
@@ -274,10 +274,10 @@ func TestAdoptPaneGenerationLocked(t *testing.T) {
 				t.Fatalf("adoptPaneGenerationLocked() = %v; want nil", err)
 			}
 
-			gotCleared := st.HeaderPaneID == "" && findStrandPaneID(st.Strands, "a") == ""
+			gotCleared := st.SelvagePaneID == "" && findStrandPaneID(st.Strands, "a") == ""
 			if gotCleared != tt.wantCleared {
-				t.Errorf("bindings cleared = %v (HeaderPaneID=%q, strand a=%q); want cleared = %v",
-					gotCleared, st.HeaderPaneID, findStrandPaneID(st.Strands, "a"), tt.wantCleared)
+				t.Errorf("bindings cleared = %v (SelvagePaneID=%q, strand a=%q); want cleared = %v",
+					gotCleared, st.SelvagePaneID, findStrandPaneID(st.Strands, "a"), tt.wantCleared)
 			}
 			if st.PaneGeneration != tt.wantGeneration {
 				t.Errorf("PaneGeneration = %+v; want %+v", st.PaneGeneration, tt.wantGeneration)
