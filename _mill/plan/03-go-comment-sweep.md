@@ -40,6 +40,7 @@ Batch-local decision: the disposition-2 leave list is enforced per card, not jus
   - `internal/frictionengine/spec.go`
   - `internal/webstercli/wiring.go`
   - `internal/websterengine/strand.go`
+  - `internal/landingshed/deps.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -52,6 +53,7 @@ Batch-local decision: the disposition-2 leave list is enforced per card, not jus
   In `internal/webstercli/wiring.go`, the comment about a directive under `lyx loom run`, where Master drives the batch loop, names the bootstrap;
   the separate comment stating that a standalone webster run is not a loom run uses "run" as a noun twice and must be left exactly as it is.
   In `internal/websterengine/strand.go`, the comment describing the log "the one `lyx loom run` points an operator at" names the bootstrap, since it is the bootstrap that reports the detached driver's log path.
+  `internal/landingshed/deps.go:77` has a stale filename citation, not a noun-vs-bootstrap classification call: it names `internal/loomcli/drive.go` as the file that fills `OpenFabric`/`OpenParentFabric`, but batch 1 moved that file to `run.go`. Retarget the citation to `internal/loomcli/run.go`. Leave line 88's noun usage of "run" untouched — the batch-local leave list below still covers it.
 - **Commit:** `docs(engines): name lyx loom start in the bootstrap-sense comments`
 
 ### Card 11: contrast prose rewritten as sentences
@@ -86,6 +88,7 @@ Batch-local decision: the disposition-2 leave list is enforced per card, not jus
   - `internal/loomengine/seedownership_test.go`
   - `internal/loomshed/seed_test.go`
   - `internal/shedadapters/bouncer_seed_test.go`
+  - `internal/shuttleengine/wait_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -93,6 +96,7 @@ Batch-local decision: the disposition-2 leave list is enforced per card, not jus
   In `internal/loomshed/seed_test.go`, the two comments describing how escalating the decode failure made `lyx loom run` refuse on the envelope both name the bootstrap and become `lyx loom start`.
   In `internal/shedadapters/bouncer_seed_test.go`, the comment referring to what "the ly-supervise skill tells operators cannot happen" names the skill and becomes `ly-drive`, matching the rename batch 4 performs;
   this is a retrospective record describing the tree as it stands, so it is rewritten outright rather than glossed.
+  In `internal/shuttleengine/wait_test.go:958-960`, the regression-guard comment for `TestRun_Wait_AttachedButNeverStarted_StartupProbeStillRuns` cites `TestSmokeDriveStandalone_AdvancesMachineFromExistingSeed` by name as "the pre-existing smoke test this gap escaped" — card 6 renamed that test to `TestSmokeRunStandalone_AdvancesMachineFromExistingSeed` in `internal/loomcli/smoke_test.go`. Retarget the citation to the new name; change no assertion in this file.
   These are comment-only edits in untagged Tier 1 suites — change no assertion, no fixture value, and no test name, and add no new test.
 - **Commit:** `docs(tests): rewrite the verb and skill names in engine test comments`
 
