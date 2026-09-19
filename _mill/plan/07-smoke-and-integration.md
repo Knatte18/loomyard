@@ -51,12 +51,13 @@ The predicate is already under test at Tier 1 with a four-row truth table; what 
 - **Context:**
   - `internal/loomcli/start.go`
   - `internal/loomcli/driverreport.go`
-  - `internal/hubforge/hubforge.go`
+  - `internal/hubforge/hub.go`
   - `internal/shedrun/paths.go`
   - `internal/shedrun/seed.go`
   - `internal/shuttleengine/run.go`
-- **Edits:**
-  - `internal/loomcli/testmain_integration_test.go`
+  - `internal/loomcli/testmain_test.go`
+  - `internal/loomcli/wiring_commitstatus_integration_test.go`
+- **Edits:** none
 - **Creates:**
   - `internal/loomcli/integration_driverbootstrap_test.go`
 - **Deletes:** none
@@ -67,7 +68,7 @@ The predicate is already under test at Tier 1 with a four-row truth table; what 
   The run's persisted state file exists under the run directory the handle reports.
   The report file exists at the path the spec named, written by a stubbed driver that writes one and exits.
   Assert the report's path sits under the run's ephemeral scratch directory rather than its durable one — the report is a per-machine record of one session's own narration, and the durable truth about the run is the status file beside it.
-  Extend `internal/loomcli/testmain_integration_test.go` only if this new file needs setup the existing entry point does not already perform; leave it untouched otherwise.
+  Add no test entry point of your own: this package's existing one is untagged, so it compiles into the integration build alongside the tagged files and already supplies the hermetic git environment that tier needs — `internal/loomcli/wiring_commitstatus_integration_test.go` is the existing integration-tagged file relying on exactly that, and is the model for how this tier is already wired here.
   Do not assert anything about the driver run's deadline: nothing on this path reads it.
 - **Commit:** `test(loomcli): cover the llm bootstrap end to end`
 

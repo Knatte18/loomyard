@@ -147,7 +147,6 @@ _Full union of every `Creates:` / `Edits:` / `Moves:` **target** path across eve
 - `internal/loomcli/smoke_driverstrand_test.go`
 - `internal/loomcli/start.go`
 - `internal/loomcli/start_driver_test.go`
-- `internal/loomcli/testmain_integration_test.go`
 - `internal/loomcli/wiring.go`
 - `internal/loomengine/config.go`
 - `internal/loomengine/config_test.go`

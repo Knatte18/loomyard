@@ -52,7 +52,7 @@ An ly-drive session takes the run lock only inside each `lyx shed step` and rele
 
 - **Context:**
   - `internal/shedrun/paths.go`
-  - `internal/lyxdirs/lyxdirs.go`
+  - `internal/lyxdirs/dirs.go`
   - `internal/lyxcwd/lyxcwd.go`
 - **Edits:** none
 - **Creates:**
@@ -73,7 +73,7 @@ An ly-drive session takes the run lock only inside each `lyx shed step` and rele
 ### Card 10: the autonomous step cap and the launch prompt
 
 - **Context:**
-  - `internal/shuttleengine/claudeengine/prepare.go`
+  - `internal/shuttleengine/claudeengine/claudeengine.go`
   - `internal/shedrun/runid.go`
 - **Edits:** none
 - **Creates:**
@@ -96,7 +96,7 @@ An ly-drive session takes the run lock only inside each `lyx shed step` and rele
 - **Context:**
   - `internal/shuttleengine/spec.go`
   - `internal/loomengine/driver.go`
-  - `internal/reedengine/render/render.go`
+  - `internal/reedengine/render/types.go`
   - `internal/loomcli/bootstrap.go`
   - `internal/loomcli/driverprompt.go`
   - `internal/loomcli/driverreport.go`
