@@ -89,7 +89,12 @@ the new guard in card 1 is scoped to the root tree alone, which genuinely has no
   rewrite the `loomCLI` struct field comments on `env`, `shedPaths`, and `frictionDir` that name `driveCmd`, `runCmd`, `drive.go`, or `run.go` so they name the new identifiers and the new filenames;
   and rewrite `verbUsesLightweightWiring`'s doc comment, whose last sentence names `"run"` and `"drive"` as the comparison for why `"step"` is excluded, so it names `"start"` and `"run"` instead.
   The `verbUsesLightweightWiring` switch's own case list is untouched — none of the renamed verbs appear in it.
+  Also in the relocated file, rewrite `reflectFriction`'s own doc comment, whose sentence about the run lock reading as free so that a second `"lyx loom run"` spawns a second driver is a bootstrap-sense hit and becomes `"lyx loom start"`;
+  it is a separate comment from `shouldReflectFriction`'s and is easy to miss because the two read almost identically.
   In `cmd/lyx/main.go`: change `loomcli.RunAliasCommand()` to `loomcli.StartAliasCommand()` and rewrite the four-line comment above it so it names the `"start"` verb rather than the `"run"` verb.
+  Also change the root command's `Long` string, whose closing sentence `Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler, webster, stencil, loom, run, quarry.` names the bare root alias as `run`;
+  that entry becomes `start`, matching the alias's own `Use` after this card.
+  Leaving it would keep the retired name in the root help text, against the no-back-compat-aliases decision.
   Do not touch the `runCmd` methods in `internal/burlercli`, `internal/shuttlecli`, or `internal/webstercli`.
 - **Commit:** `refactor(loomcli): rename the drive verb to run and the run verb to start`
 
@@ -174,7 +179,7 @@ the new guard in card 1 is scoped to the root tree alone, which genuinely has no
   the three `runLoomCLINoFatal(..., "loom", "step")` invocations are unchanged, because `step` keeps its name.
 - **Commit:** `test(loomcli): retarget the smoke argv sites, driver probe, and refusal assertion`
 
-### Card 7: loomcli comment sweep
+### Card 7: loomcli comment and filename-citation sweep
 
 - **Context:**
   - `internal/loomcli/start.go`
@@ -183,16 +188,30 @@ the new guard in card 1 is scoped to the root tree alone, which genuinely has no
   - `internal/loomcli/bootstrap.go`
   - `internal/loomcli/bootstrap_test.go`
   - `internal/loomcli/friction_test.go`
+  - `internal/loomcli/wiring.go`
+  - `internal/loomcli/sharedbootstrap.go`
+  - `internal/loomcli/seedinput.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** These three files name the verbs only in comments, so they are compile-safe, but they are retrospective records describing the tree as it stands and are rewritten outright rather than glossed.
+- **Requirements:** These six files name the verbs in comments and doc strings, so they are almost entirely compile-safe, but they are retrospective records describing the tree as it stands and are rewritten outright rather than glossed.
+  Two classes of hit appear here that the rest of the batch does not have: stale *filename* citations, where a comment names `run.go` or `drive.go` to say where a block came from or where its caller lives, and which must be retargeted to `start.go` and `run.go` respectively after card 2's moves;
+  and a single test-function identifier, handled at the end of this card.
   In `internal/loomcli/bootstrap.go`, rewrite the comments naming `lyx loom drive` (the `shedengine.Run` lock-release narrative and the friction-timeout narrative) to name `lyx loom run`, and the comment naming `lyx loom run` as the repeated bootstrap invocation to name `lyx loom start`.
+  Also rewrite that file's own header comment, whose closing clause says the verb body in run.go is assembly over judgment already under test: after card 2's moves that body lives in start.go, so the citation is retargeted.
   In `internal/loomcli/bootstrap_test.go`, apply the same rule: the handshake comment naming `lyx loom run` becomes `lyx loom start`, the friction-timeout comment naming `lyx loom drive` becomes `lyx loom run`, and the "every subsequent \"lyx loom run\"" comment becomes `lyx loom start`.
   In `internal/loomcli/friction_test.go`, rewrite the file header and the four comments naming `driveCmd`, `runCmd`, or `drive`'s own `RunE` so they name the post-rename identifiers — the former `driveCmd` is now `runCmd` and the former `runCmd` is now `startCmd`, so every one of these needs reading rather than substituting.
-  Also change the comment naming "a second \"lyx loom run\" spawns a second driver" to name `lyx loom start`.
-  Change no code in these files — they carry no renamed identifier in an executable position.
-- **Commit:** `docs(loomcli): rewrite the verb names in bootstrap and friction comments`
+  Also change the comment naming "a second \"lyx loom run\" spawns a second driver" to name `lyx loom start`, and rename the test function `TestDriveEnsuresAbsentFrictionDir` to `TestRunEnsuresAbsentFrictionDir`, so the retired verb does not survive in a Go identifier.
+  That rename is the one executable change in this card;
+  it is a package-local test function with no other caller, so it is safe on its own.
+  In `internal/loomcli/wiring.go`, rewrite the doc comment whose sentence says the verbs that actually build producers — naming the two renamed verbs — deliberately keep the full `wire()`, so it names the post-rename verbs;
+  also retarget its two stale filename citations, one saying `CommitDiscussion` mirrors the seed commit the bootstrap source file already performs, and one saying `Env.Landing` is assembled in the foreground driver's source file.
+  Its many other uses of the word "run" are the noun sense meaning "an execution" and must be left alone.
+  In `internal/loomcli/sharedbootstrap.go`, rewrite the file header naming the two verbs whose shared blocks it holds, the lock-position sentences contrasting those two verbs, the failure-classification sentence naming them again, the comment saying the bootstrap verb spawns the foreground driver which ensures the directory itself, the quoted refusal text `run \"lyx loom ...\"`, and the four stale filename citations naming the pre-move source files.
+  The verb this file calls `step` is unchanged throughout;
+  the contrast sentences here name both renamed verbs against each other and must be rewritten as sentences rather than substituted, since a token swap makes each name one verb twice.
+  In `internal/loomcli/seedinput.go`, retarget the two filename citations naming the foreground driver's pre-move source file as the seeder of `Env.Landing` and as the verb with no `--parent` flag, and rename the `drive-refuses-an-unrecorded-parent` decision name in its comment to match the renamed verb.
+- **Commit:** `docs(loomcli): rewrite the verb and filename citations across the package comments`
 
 ## Batch Tests
 

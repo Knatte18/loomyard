@@ -150,11 +150,14 @@ batches:
 - `internal/loomcli/friction_test.go`
 - `internal/loomcli/pause.go`
 - `internal/loomcli/run.go`
+- `internal/loomcli/seedinput.go`
+- `internal/loomcli/sharedbootstrap.go`
 - `internal/loomcli/smoke_bootstrapwiring_test.go`
 - `internal/loomcli/smoke_test.go`
 - `internal/loomcli/start.go`
 - `internal/loomcli/status.go`
 - `internal/loomcli/step.go`
+- `internal/loomcli/wiring.go`
 - `internal/loomengine/config.go`
 - `internal/loomengine/seed.go`
 - `internal/loomengine/seedownership_test.go`
