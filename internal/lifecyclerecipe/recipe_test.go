@@ -100,7 +100,7 @@ func TestNew_CarriesShedPathsVerbatim(t *testing.T) {
 // a silently empty return would disable that guard rather than fail it.
 func TestRecipeEngines_ReportsExactlyTheThreeEngineNamesSorted(t *testing.T) {
 	got := RecipeEngines()
-	want := []string{"LoomRun", "WorktreeCreate", "WorktreeTeardown"}
+	want := []string{"InnerRun", "WorktreeCreate", "WorktreeTeardown"}
 
 	if len(got) != len(want) {
 		t.Fatalf("RecipeEngines() = %v, want %v", got, want)

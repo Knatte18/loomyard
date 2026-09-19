@@ -20,7 +20,7 @@ import (
 // row-name-authority-stays-with-the-go-constants Shared Decision.
 var lifecycleRowEngines = map[string]string{
 	NameWorktreeCreate:   "WorktreeCreate",
-	NameLoomRun:          "LoomRun",
+	NameLoomRun:          "InnerRun",
 	NameWorktreeTeardown: "WorktreeTeardown",
 }
 
