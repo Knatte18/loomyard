@@ -28,7 +28,7 @@ var coversLinePattern = regexp.MustCompile(`^\*\*Covers:\*\*\s*(.+)$`)
 var excludedModules = map[string]string{
 	"ide":        "side-effect heavy: spawn opens a real VS Code window, menu is an interactive stdin picker",
 	"selfreport": "create files a real GitHub issue",
-	"run":        "alias of loom's own bootstrap verb; covered by the loom module's scenario",
+	"start":      "alias of loom's own bootstrap verb; covered by the loom module's scenario",
 }
 
 // TestSandboxCoverage_AllModulesCoveredOrExcluded asserts every module is covered or excluded.
