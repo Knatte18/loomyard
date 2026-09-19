@@ -86,6 +86,8 @@ A status file present with no seed beside it takes the same refusal, whose remed
 - **Edits:**
   - `internal/loomcli/arm.go`
   - `internal/loomcli/cli.go`
+  - `internal/loomcli/wiring_test.go`
+  - `internal/loomcli/wiring_commitstatus_test.go`
 - **Creates:**
   - `internal/loomcli/arm_seed_test.go`
 - **Deletes:** none
@@ -97,6 +99,7 @@ A status file present with no seed beside it takes the same refusal, whose remed
   Record the run-id on the receiver so card 15 and batch 7 can read it back, and carry it into the `shedrun.*` path calls card 12 introduced, replacing the hardcoded `shedrun.SelfRunID` there.
   The refusal must carry **no** `kind` field on its envelope: the `step` refusal-kind vocabulary is pinned closed at five values by `internal/shedverbs/step_test.go` and by `ly-drive`'s contract, and a missing run is not a sixth kind.
   In `arm_seed_test.go` cover each of the four verbs refusing when no seed is present, the refusal naming every existing run-id, a status file present with no seed taking the same refusal, and — the asymmetry that matters — `run` and `step` writing nothing to disk when they refuse.
+  Card 12's `wiring.go` changes read `shedrun.SelfRunID` directly; once `wireLightweight`/`wire` read `c.runID` back instead, every `wiring_test.go`/`wiring_commitstatus_test.go` fixture that builds a bare `&loomCLI{}` and calls `c.wire`/`c.wireLightweight` directly (bypassing `arm`) needs `runID: shedrun.SelfRunID` set on the literal, so those pre-existing path-pinning assertions keep matching a `shedrun.SelfRunID`-addressed run exactly as before this card.
 - **Commit:** `feat(loomcli): refuse every generic verb with a run-id listing when no seed exists`
 
 ### Card 15: loom's verbs accept an optional run-id positional
