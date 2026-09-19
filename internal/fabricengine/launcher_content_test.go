@@ -3,11 +3,18 @@
 // Because launcherScript and launcherExt take goos as a parameter rather than reading runtime.GOOS,
 // both branches are exercised on any warp, including this Windows dev box.
 // The fabric-checkout case asserts fabric's own checkout script content ("fabric checkout" lyx
-// args), and the run case asserts the run launcher's own command line ("loom run" lyx args).
+// args), and the run case asserts the run launcher's own command line ("loom start" lyx args).
+//
+// TestWriteLaunchers_RunScriptContentAndFilename additionally drives writeLaunchers itself, pinning
+// the launcher-filename-unchanged decision's two halves together: the written run launcher's filename
+// stays "run"+ext while its content names "loom start".
 
 package fabricengine
 
 import (
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -69,8 +76,8 @@ func TestLauncherScript(t *testing.T) {
 			name:     "windows run nested climb",
 			goos:     "windows",
 			climbRel: "../../myslug/sub",
-			lyxArgs:  "loom run",
-			want:     "@cd /d \"%~dp0..\\..\\myslug\\sub\" && lyx loom run\r\n",
+			lyxArgs:  "loom start",
+			want:     "@cd /d \"%~dp0..\\..\\myslug\\sub\" && lyx loom start\r\n",
 			wantMode: 0o644,
 		},
 		{
@@ -101,8 +108,8 @@ func TestLauncherScript(t *testing.T) {
 			name:     "linux run nested climb",
 			goos:     "linux",
 			climbRel: "../../myslug/sub",
-			lyxArgs:  "loom run",
-			want:     "#!/usr/bin/env bash\ncd \"$(dirname \"$0\")/../../myslug/sub\" && lyx loom run\n",
+			lyxArgs:  "loom start",
+			want:     "#!/usr/bin/env bash\ncd \"$(dirname \"$0\")/../../myslug/sub\" && lyx loom start\n",
 			wantMode: 0o755,
 		},
 	}
@@ -165,4 +172,53 @@ func TestLauncherScript(t *testing.T) {
 			t.Errorf("launcherScript(linux) content = %q; want LF ending", s)
 		}
 	})
+}
+
+// TestWriteLaunchers_RunScriptContentAndFilename pins the launcher-filename-unchanged decision's two
+// halves together: writeLaunchers still names the run launcher file "run"+ext, and that file's
+// content still invokes "loom start", not "loom drive" or the retired "loom run" bootstrap sense.
+//
+// A scenario in launcherScript/launcherExt's own shape cannot catch a rename of the file, since
+// neither of those constructs a path — runPath is built by filepath.Join(launcherDir, "run"+ext)
+// inside writeLaunchers alone. So this scenario calls writeLaunchers directly, against a hand-built
+// *lyxcwd.Location whose HubPath is a t.TempDir(), the same pattern portallauncher_test.go's other
+// tier 1 suites use to avoid a real hub. The menu launcher is pre-seeded at menuLauncherPath(l) so
+// writeLaunchers' never-clobber early return fires before it ever reaches PrimeName(l), which a
+// hand-built Location cannot satisfy.
+func TestWriteLaunchers_RunScriptContentAndFilename(t *testing.T) {
+	t.Parallel()
+
+	hub := t.TempDir()
+	l := newPortalLauncherTestLocation(hub, filepath.Join(hub, "prime"), ".")
+	const slug = "test-slug"
+
+	menuPath := menuLauncherPath(l)
+	if err := os.MkdirAll(filepath.Dir(menuPath), 0o755); err != nil {
+		t.Fatalf("mkdir menu launcher dir: %v", err)
+	}
+	if err := os.WriteFile(menuPath, []byte("preexisting menu launcher\n"), 0o755); err != nil {
+		t.Fatalf("seed menu launcher: %v", err)
+	}
+
+	if err := writeLaunchers(NewMutations(hub), l, slug); err != nil {
+		t.Fatalf("writeLaunchers() error = %v; want nil", err)
+	}
+
+	ext := launcherExt(runtime.GOOS)
+	launcherDir := LauncherDir(l, slug)
+
+	runPath := filepath.Join(launcherDir, "run"+ext)
+	runContent, err := os.ReadFile(runPath)
+	if err != nil {
+		t.Fatalf("read %s: %v; want the run launcher written at run%s", runPath, err, ext)
+	}
+	if !strings.Contains(string(runContent), "loom start") {
+		t.Errorf("run launcher content = %q; want it to contain %q", string(runContent), "loom start")
+	}
+
+	startPath := filepath.Join(launcherDir, "start"+ext)
+	if _, err := os.Stat(startPath); !os.IsNotExist(err) {
+		t.Errorf("start%s exists at %s; want the launcher filename to stay run%s per the "+
+			"launcher-filename-unchanged decision", ext, startPath, ext)
+	}
 }
