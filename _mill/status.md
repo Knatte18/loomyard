@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: reed-born-as-strand
 branch: reed-born-as-strand
 plan: _mill/plan
@@ -29,4 +29,15 @@ plan-fix-r2  '2026-09-19T10:16:34Z'
 plan-review-r3  '2026-09-19T10:24:35Z'
 plan-fix-r3  '2026-09-19T10:26:01Z'
 planned  '2026-09-19T10:26:10Z'
+implementing  '2026-09-19T10:26:38Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: watchdog-seam-and-focus-pin
+    state: pending
+  - name: operator-strand-and-loom-wiring
+    state: pending
 ```
