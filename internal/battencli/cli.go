@@ -53,16 +53,18 @@ type battenCLI struct {
 	childDriverFlag string
 }
 
-// battenVerbTexts carries batten's three shedverbs-driven verbs' Use/Short/Long text.
+// battenVerbTexts carries batten's four shedverbs-driven verbs' Use/Short/Long text.
 // run's and status's are lifted verbatim from their original hand-written constructors (run.go,
 // status.go, since deleted) before shedverbs.Verbs took over their bodies -- including every
-// Example: block and every embedded newline, byte-for-byte -- plus new text for pause in the same
-// shape. step's fields are left at their zero value: batten has no analogue for it, and an
-// unregistered returned command with a blank Short never reaches the live tree
-// cmd/lyx/drift_test.go walks.
+// Example: block and every embedded newline, byte-for-byte -- plus new text for pause and step in
+// the same shape.
+//
+// Every Use string reads "[<run-id>]", not "<slug>": card 24's self-address refusal means an
+// omitted positional is a legal cobra parse that reaches a named refusal, not an arity error, so
+// the run-id is documented as optional here even though "self" itself always refuses for batten.
 var battenVerbTexts = shedverbs.VerbTexts{
 	Run: shedverbs.VerbText{
-		Use:   "run <slug>",
+		Use:   "run [<run-id>]",
 		Short: "start or resume a task worktree's whole lifecycle run to its next halt",
 		Long: `run drives the pair's create/run/teardown lifecycle to its next halt: done,
 blocked, or paused. Invoked against a slug with no persisted status, it
@@ -72,11 +74,15 @@ because every operator-fixable refusal this task raises lands as blocked,
 which is the everyday resume path. A slug already done refuses on the
 envelope, naming the per-slug directory to delete to run it again.
 
+The run-id positional is required in practice, even though cobra accepts
+its absence: prime hosts many slug-addressed batten runs, so an omitted
+run-id refuses by name rather than defaulting to "self".
+
 Example:
   lyx batten run some-slug`,
 	},
 	Status: shedverbs.VerbText{
-		Use:   "status <slug>",
+		Use:   "status [<run-id>]",
 		Short: "report a task worktree's persisted lifecycle status",
 		Long: `status reports a slug's persisted lifecycle status: the current producer, the
 state, the error field, the activity, and the history, plus the resolved
@@ -88,27 +94,39 @@ With --watch, it performs the same read once as a pre-flight, then tails
 the file and never exits, printing a line only when the composed activity
 actually changes rather than once per poll.
 
+The run-id positional is required in practice, even though cobra accepts
+its absence: prime hosts many slug-addressed batten runs, so an omitted
+run-id refuses by name rather than defaulting to "self".
+
 Example:
   lyx batten status some-slug
   lyx batten status some-slug --watch`,
 	},
 	Pause: shedverbs.VerbText{
-		Use:   "pause <slug>",
+		Use:   "pause [<run-id>]",
 		Short: "request a pause at a task worktree's next lifecycle producer boundary",
 		Long: `pause sets a request the running lifecycle consumes at its next producer
 boundary. It does not kill anything -- the machine itself clears the flag
 in the persist that records the paused state.
 
+The run-id positional is required in practice, even though cobra accepts
+its absence: prime hosts many slug-addressed batten runs, so an omitted
+run-id refuses by name rather than defaulting to "self".
+
 Example:
   lyx batten pause some-slug`,
 	},
 	Step: shedverbs.VerbText{
-		Use:   "step <slug>",
+		Use:   "step [<run-id>]",
 		Short: "drive a task worktree's lifecycle one producer forward",
 		Long: `step drives the pair's create/run/teardown lifecycle exactly one producer
 forward from its persisted current producer, seeding a fresh run first when
 none is persisted yet -- the single-producer primitive an external
 supervisor drives one call at a time.
+
+The run-id positional is required in practice, even though cobra accepts
+its absence: prime hosts many slug-addressed batten runs, so an omitted
+run-id refuses by name rather than defaulting to "self".
 
 Example:
   lyx batten step some-slug`,
@@ -143,10 +161,14 @@ Example:
 
 	verbs := shedverbs.Verbs(battenVerbTexts, c.spec)
 	runVerb, stepVerb, statusVerb, pauseVerb := verbs[0], verbs[1], verbs[2], verbs[3]
-	runVerb.Args = cobra.ExactArgs(1)
-	stepVerb.Args = cobra.ExactArgs(1)
-	statusVerb.Args = cobra.ExactArgs(1)
-	pauseVerb.Args = cobra.ExactArgs(1)
+	// MaximumNArgs(1), not ExactArgs(1): all three surfaces -- "lyx shed", "lyx batten", "lyx loom"
+	// -- land on this one arity contract. "lyx batten run" with no argument stops being an arity
+	// error and becomes a "self" address, which arm.go's refuseSelfAddress rejects by name with a
+	// better message than cobra's own count error.
+	runVerb.Args = cobra.MaximumNArgs(1)
+	stepVerb.Args = cobra.MaximumNArgs(1)
+	statusVerb.Args = cobra.MaximumNArgs(1)
+	pauseVerb.Args = cobra.MaximumNArgs(1)
 
 	// --driver and --child-driver exist now so a later roadmap item changes a default rather than a
 	// surface: both flags currently accept only "go" (shedrun.ValidateDriver, consulted in
