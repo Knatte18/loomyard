@@ -88,10 +88,18 @@ Belt-and-braces alongside the ordering: every seed-param read stays lazy inside 
 - **Edits:**
   - `internal/battencli/wire.go`
   - `internal/battencli/wire_test.go`
+  - `internal/battencli/run_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Add a fifth seam group to the `shedrecipe.Env` literal in `wire`, filling `SeedChild` with the five closures `battenshed.SeedChildDeps` declares.
+- **Requirements:** `run_test.go`'s `newFakeReceiver` builds its `shedrecipe.Env` by hand, bypassing
+  `wire` entirely, and batch 5 already registered the `Seed-Child` row in the batten recipe; without
+  a fake `Env.SeedChild` group the registry's own non-nil-field validation refuses every `run_test.go`
+  case before the verb body runs, which is what surfaces here rather than in `wire_test.go`. Fill
+  `newFakeReceiver`'s `Env.SeedChild` with five trivial no-op fakes (each returning a zero value and
+  a nil error) so every existing `run_test.go` case keeps exercising the same run-verb disposition it
+  already covers, with no behavioural change to what any of those cases asserts.
+  Add a fifth seam group to the `shedrecipe.Env` literal in `wire`, filling `SeedChild` with the five closures `battenshed.SeedChildDeps` declares.
   `ReadBoardType` opens the Board over `fabricengine.BoardDir(location.HubPath)` and returns `task.Type` from `Board.GetTask(slug)`, read fresh on every `Call` inside the closure body rather than captured at wiring time — a `type` corrected after prime was seeded must still be honoured.
   `ChildDriver` reads `child_driver` from prime's own seed via `shedrun.ReadSeed(location, slug)`, defaulting to `shedrun.DriverGo` when the param is absent.
   `WriteSeed` resolves the child worktree's `*lyxcwd.Location` through the existing `taskWorktreeLocation(location, slug)` helper, validates the recipe name with `shedrun.ValidateRecipe` — returning its error, which the producer maps to `Stuck` — and calls `shedrun.WriteSeed(childLocation, shedrun.SelfRunID, …)`.
