@@ -117,7 +117,9 @@ The third consumer is already drafted (`manifest/designs/hardener.md`: `Hardener
 ### optional-hooks-for-module-specific-work
 
 - Decision: `shedverbs.Hooks` is a struct of nil-by-default function fields, each skipped when nil:
-  - `PreRun func(ctx) (extraEnvelope map[string]any, err error)` — runs before `Shed.Run`; a non-nil error is reported on the error envelope and the run does not start.
+  - `PreRun func(ctx) error` — runs before `Shed.Run`; a non-nil error is reported on the error envelope and the run does not start.
+    It returns no envelope map: neither shipped filler produces one, and a second extras source would need a precedence rule against `PostRun`'s for no present benefit.
+    A pre-flight value that must reach the envelope travels on the module's own receiver and is emitted by `PostRun`, which is how lifecycle's `abandonedSession` already works.
   - `PostRun func(ctx, result shedengine.RunResult, runErr error) map[string]any` — runs unconditionally after `Shed.Run` returns, including when `runErr` is non-nil, and before the error envelope is written; its returned map is merged into the success envelope, and discarded when `runErr` is non-nil, since an error envelope carries no extras.
     It is called for its side effects on that path, which is the whole reason it runs there.
   - `PreStep func(ctx) (kind string, err error)` — runs before `Shed.Step`; a non-nil error is reported with the returned refusal kind on the envelope's `kind` field.
@@ -147,8 +149,12 @@ The third consumer is already drafted (`manifest/designs/hardener.md`: `Hardener
 ### busy-refusal-comes-from-the-arming-spec
 
 - Decision: the arming spec carries the told `ErrShedBusy` treatment — the message text and, for `step`, the refusal kind — so the generic bodies keep the three existing behaviours distinguishable without branching on which module armed them.
-  `loomcli`'s `run` keeps reporting it as an ordinary error envelope, `lifecyclecli`'s `run` keeps its lock-path-naming message, and `step` keeps mapping it to `kind: busy` with its `lyx loom pause` remedy text.
-  An empty told message means passthrough — the generic body reports `err.Error()` verbatim — which is what `loomcli`'s `run` needs, since it reports the bare sentinel text today and must keep doing so.
+  `loomcli`'s `run` keeps reporting it as an ordinary error envelope, `lifecyclecli`'s `run` keeps its lock-path-naming message, and `step` keeps mapping `shed.Step`'s own `ErrShedBusy` to `kind: busy` with a bare `err.Error()` — an empty told message, i.e. passthrough.
+  The `lyx loom pause` remedy wording is *not* that message: it belongs to `step`'s early run-lock probe, which this task assigns to loom's `PreStep`, and stays there verbatim.
+  Conflating the two would silently reword a shipped envelope.
+  An empty told message means passthrough — the generic body reports `err.Error()` verbatim — which is what `loomcli`'s `run` and `step` both need, since each reports the bare sentinel text today and must keep doing so.
+  The same told-string treatment covers the status decode-failure message, which diverges the same way and for the same reason: `loom: decode status file <path>: <err>` against `lifecyclecli: decode status file <path>: <err>`.
+  The prefix is not derivable from the status label (`loom`/`lifecycle` against `loom:`/`lifecyclecli:`), so the arming spec carries the error prefix explicitly rather than composing it.
 - Rationale: `ErrShedBusy` is one sentinel with three shipped user-facing treatments, and the wording is what an operator acts on — `lifecyclecli`'s message names the lock path precisely so the refusal is legible rather than a raw lock error.
   Telling the message rather than deriving it is the same told-not-derived discipline the rest of the arming follows.
 - Rejected: collapsing the three to one wording (a user-visible regression in two of the three, and the `existing-subtrees-keep-their-surface` Decision bars it); a fourth hook for the busy case alone (a hook is for work, and this is a string); branching inside `shedverbs` on the recipe name (makes the generic body know its callers, which is exactly what this task removes).
@@ -157,7 +163,8 @@ The third consumer is already drafted (`manifest/designs/hardener.md`: `Hardener
 
 - Decision: `step`'s envelope keeps loom's exact ten keys — `producer`, `outcome`, `output`, `next`, `state`, `reason`, `continue`, `history_length`, `next_interrupt_policy`, `status_file` — with `continue` still derived as `res.State == shedengine.StateRunning` and `next_interrupt_policy` supplied by the `InterruptPolicyFor` hook.
   The five refusal kinds (`busy`, `unseeded`, `ownership`, `bootstrap`, `producer`) move to `shedverbs` as the closed vocabulary, with the closure test moving with them.
-  `run`'s envelope carries `outcome`, `halted_producer`, `reason`, `history_length`, plus the `PostRun` extras map.
+  `run`'s envelope carries `outcome`, `halted_producer`, `reason`, `history_length`, plus the `PostRun` extras map — which is where loom's `friction` key arrives, carrying its present success-only gating (`shouldReflectFriction` runs only on `RunDone` or `RunBlocked`, never `RunPaused` and never after a non-nil `runErr`), and where lifecycle's `abandonedSession` arrives, still emitted only when non-empty.
+  `pause`'s envelope is the single key `status_file`, unchanged.
 - Rationale: the ten-key set is closed by an existing test and is the contract `ly-drive` reads; a key added or renamed in the move is a silent break of the skill.
   Deriving `continue` in Go, not in the skill, is the stated reason a thin supervisor never carries its own copy of the `State` vocabulary — that reason is now stronger, not weaker, since the skill must serve several recipes.
 - Rejected: adding a `recipe` field to every envelope (widens a closed, tested key set for information the caller already passed in on the flag); letting each module keep its own envelope builder (re-creates the drift the extraction exists to remove).
@@ -182,6 +189,10 @@ The third consumer is already drafted (`manifest/designs/hardener.md`: `Hardener
 - Rejected: keeping either verb loom-only (would leave `shedverbs` owning two of four verbs and `loomcli` still hosting verb bodies, defeating the invariant below); hardcoding the `loom` prefix in the generic renderer.
 - Note for the plan: `loomcli`'s `verbUsesLightweightWiring` set (`status`, `pause`, `validate-discussion`, `validate-plan`) must keep working.
   `status` and `pause` still need only the two status-file paths and must not acquire a dependency on the full `wire()` through this change — `shedverbs`'s `status` and `pause` bodies must therefore take their paths told and never require a built `*shedengine.Shed`.
+  Both verbs also begin today with `loomcli.ensureStatusLockDir`, a `MkdirAll` of the status lock's ephemeral parent.
+  It is load-bearing and crucible-fixed: the status file is durable under `_lyx` while its lock is ephemeral under `.lyx`, `internal/lock` opens with `O_CREATE` and never creates a parent, and nothing creates that directory before a bootstrap — so without it both verbs failed inside lock acquisition on a never-bootstrapped pair, before `found` was ever produced, and reported a raw "no such file or directory" instead of their own remedy.
+  It travels as a told boolean on the arming spec, set for loom and unset for lifecycle, rather than as an unconditional generic step: lifecycle's `status` is read-only and creating its per-slug directory as a side effect of reading it would be a new, unasked-for write.
+  A told boolean rather than a hook because the action is one `MkdirAll` over a path the spec already carries.
 
 ### inner-run-engine-goes-product-neutral
 
@@ -224,8 +235,9 @@ The third consumer is already drafted (`manifest/designs/hardener.md`: `Hardener
   (a) every `lyx loom <verb>` invocation in the skill becomes `lyx shed <verb> --recipe <name>` — that covers the step calls, the pre-loop baseline read, and both `lyx loom status` reads in the interrupted-invocation branch;
   (b) every claim the skill makes about a command's *output shape* that is not in the generic contract must be gated or generalized — that covers the assertion that an absent status file returns an error envelope naming `lyx loom start` (true for loom, false for lifecycle, which returns `found: false` on success), and the `interrupt_policy` field read off the status envelope, which for a recipe with no policy table is absent from the envelope entirely rather than present-and-empty;
   (c) every claim about the *substrate or filesystem* a recipe runs over is gated on the recipe name — that covers the reed-strand `$TMUX_PANE` self-check, the cwd precondition "must be the task worktree root" (lifecycle refuses from anything but the hub's prime worktree), the friction directory at `.lyx/loom/friction/`, and the `lyx selfreport create` gate;
-  (d) every numeric claim derived from a recipe's own graph is gated — that covers the "loom's list is seventeen rows" arithmetic behind the 40-step cap.
-  The plan must apply (a)–(d) exhaustively across the whole skill file rather than patching the instances named here, which are illustrations of each rule, not its extent.
+  (d) every numeric claim derived from a recipe's own graph is gated — that covers the "loom's list is seventeen rows" arithmetic behind the 40-step cap;
+  (e) every claim about a recipe's *producer or adapter semantics* is gated — that covers "every spawning row's adapter probes for a live agent and waits on it" and "kills the in-flight agent and restarts that row's work", both of which are statements about loom's own adapters that a recipe built from different registry entries need not satisfy.
+  The plan must apply (a)–(e) exhaustively across the whole skill file rather than patching the instances named here, which are illustrations of each rule, not its extent.
 - Rationale: the skill already claims to carry no phase knowledge and to branch only on policy words and envelope fields; that claim is true of its loop and false only of its preamble.
   Splitting into two skills would duplicate the loop, which is the part worth having once.
 - Rejected: a separate `shed-drive` skill (duplicates the loop); leaving `ly-drive` loom-only (the design doc pins the skill's end-state role as looping the generic `step`); gating the loom-specific sections on new envelope fields instead of the recipe name (would widen the closed ten-key envelope set, which the `envelope-contracts-move-with-the-verbs` Decision bars).
@@ -329,7 +341,8 @@ Drive every verb body against a fake `*shedengine.Shed` (or a recipe of `Stub` r
   That last one is the property most easily lost in the extraction and deserves a named test.
 - `step`: the ten-key envelope's key set asserted closed; `continue` true only for `StateRunning`; `next_interrupt_policy` empty when the hook is nil and threaded when filled; the five refusal kinds asserted closed, mirroring the existing `stepKinds` test; `PreStep`'s returned kind reaching the envelope's `kind` field.
 - `status`: both told absent-file dispositions driven — the refusal form (loom's) and the `found: false` success form (lifecycle's) — plus `StatusExtras` merging onto the core and a `StatusExtras` error reaching the error envelope; the `--watch` tail's change-only printing driven through a finite `polls` count with no wall-clock wait, exactly as `printStatusLinesOnChange` and `awaitRunLock` are driven today; the told label appearing in the rendered line.
-- `pause`: sets `PauseRequested`; refuses with the told message when the status file is absent.
+- `pause`: sets `PauseRequested`; refuses with the told message when the status file is absent; emits exactly the one key `status_file`.
+- The told strings and the told lock-dir boolean: busy message empty (passthrough) against filled, decode-error prefix, absent-file disposition, and the `MkdirAll` performed for loom's spec and skipped for lifecycle's — the last asserted by the directory's absence after a `lifecycle status` against a never-run slug.
 - A seam-enforcement scan asserting `shedverbs` imports no resolver (`lyxcwd`, `os.Getwd`, `git rev-parse`), in the style of `lifecycleshed`'s and `loomrecipe`'s existing scans.
 
 **Parity — the proof the extraction preserved behaviour.**

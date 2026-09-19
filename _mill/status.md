@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-gap-fix-r3
+phase: discussion-fix-r4
 slug: shed-generic-watchdog
 branch: shed-generic-watchdog
 plan: null
@@ -18,4 +18,5 @@ discussing  '2026-09-19T12:24:17Z'
 discussion-gap-fix-r1  '2026-09-19T12:42:18Z'
 discussion-gap-fix-r2  '2026-09-19T12:45:54Z'
 discussion-gap-fix-r3  '2026-09-19T12:50:33Z'
+discussion-fix-r4  '2026-09-19T12:54:13Z'
 ```
