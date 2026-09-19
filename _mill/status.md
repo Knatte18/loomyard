@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-engine-seam
+phase: approved-attach-preflight
 slug: reed-cold-worktree-selfheal
 branch: reed-cold-worktree-selfheal
 plan: _mill/plan
@@ -31,6 +31,7 @@ plan-fix-r2  '2026-09-19T05:36:43Z'
 planned  '2026-09-19T05:36:56Z'
 implementing  '2026-09-19T05:37:15Z'
 approved-engine-seam  '2026-09-19T05:49:49Z'
+approved-attach-preflight  '2026-09-19T05:51:53Z'
 ```
 
 ## Batches
@@ -44,9 +45,10 @@ batches:
     commit_sha: 06c6b5f2325a62dcb6bf6187e7a9b3bc4bc84ce1
     verify_baseline_failures: []
   - name: attach-preflight
-    state: running
+    state: approved
     implementer_session: c402f1a0-f6fa-460b-85e4-0322e2473129
     start_sha: b89e8ec8c4f401daa8e17e2425485f0f2c8b9b84
+    commit_sha: 48ff357ce8fccbbec03babfa639e6f10d13f952f
     verify_baseline_failures: []
   - name: comment-sweep
     state: pending
