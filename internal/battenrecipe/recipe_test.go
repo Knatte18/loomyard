@@ -1,10 +1,10 @@
-// recipe_test.go builds through New and asserts the shape the lifecycle recipe's three rows must
+// recipe_test.go builds through New and asserts the shape the batten recipe's three rows must
 // carry: their names, the OnDone chain, the load-bearing empty OnStuck/OnDone edges, the absence
 // of any Segment, and that the returned *shedengine.Shed carries ShedPaths' five values verbatim.
 // It also asserts RecipeEngines()'s own shape, since a silently empty return would disable the
 // cross-consumer coverage guard rather than fail it.
 
-package lifecyclerecipe
+package battenrecipe
 
 import (
 	"testing"
@@ -24,7 +24,7 @@ func TestNew_RowNamesMatchTheDurableIdentityConstants(t *testing.T) {
 		t.Fatalf("New() row count = %d, want 3", len(shed.Producers))
 	}
 
-	wantNames := []string{NameWorktreeCreate, NameLoomRun, NameWorktreeTeardown}
+	wantNames := []string{NameWorktreeCreate, NameRunShed, NameWorktreeTeardown}
 	for i, want := range wantNames {
 		if got := shed.Producers[i].Name; got != want {
 			t.Errorf("row %d name = %q; want %q", i, got, want)
@@ -32,8 +32,8 @@ func TestNew_RowNamesMatchTheDurableIdentityConstants(t *testing.T) {
 	}
 }
 
-// TestNew_OnDoneChainAndLoadBearingEmptyEdges asserts the Worktree-Create -> Loom-Run ->
-// Worktree-Teardown OnDone chain, Loom-Run's OnStuck is empty, Worktree-Teardown's OnDone is
+// TestNew_OnDoneChainAndLoadBearingEmptyEdges asserts the Worktree-Create -> Run-Shed ->
+// Worktree-Teardown OnDone chain, Run-Shed's OnStuck is empty, Worktree-Teardown's OnDone is
 // empty, and no row declares a Segment.
 func TestNew_OnDoneChainAndLoadBearingEmptyEdges(t *testing.T) {
 	env, paths := testEnv(t)
@@ -48,16 +48,16 @@ func TestNew_OnDoneChainAndLoadBearingEmptyEdges(t *testing.T) {
 	}
 
 	create := shed.Producers[byName[NameWorktreeCreate]]
-	if create.OnDone != NameLoomRun {
-		t.Errorf("Worktree-Create OnDone = %q; want %q", create.OnDone, NameLoomRun)
+	if create.OnDone != NameRunShed {
+		t.Errorf("Worktree-Create OnDone = %q; want %q", create.OnDone, NameRunShed)
 	}
 
-	loomRun := shed.Producers[byName[NameLoomRun]]
-	if loomRun.OnDone != NameWorktreeTeardown {
-		t.Errorf("Loom-Run OnDone = %q; want %q", loomRun.OnDone, NameWorktreeTeardown)
+	runShed := shed.Producers[byName[NameRunShed]]
+	if runShed.OnDone != NameWorktreeTeardown {
+		t.Errorf("Run-Shed OnDone = %q; want %q", runShed.OnDone, NameWorktreeTeardown)
 	}
-	if loomRun.OnStuck != "" {
-		t.Errorf("Loom-Run OnStuck = %q; want empty -- this edge escalates to a human with the task worktree intact", loomRun.OnStuck)
+	if runShed.OnStuck != "" {
+		t.Errorf("Run-Shed OnStuck = %q; want empty -- this edge escalates to a human with the task worktree intact", runShed.OnStuck)
 	}
 
 	teardown := shed.Producers[byName[NameWorktreeTeardown]]
@@ -95,14 +95,14 @@ func TestNew_CarriesShedPathsVerbatim(t *testing.T) {
 	}
 }
 
-// TestNameLoomRun_ValueIsPinnedAgainstASymmetryRename exists because shedengine persists
+// TestNameRunShed_ValueIsPinnedAgainstASymmetryRename exists because shedengine persists
 // CurrentProducer -- the row name, not the engine name -- into the status file, so renaming a row
 // breaks resume for an in-flight run. This guard makes a later symmetry-minded rename of the
 // durable identity (matching the engine's InnerRun rename onto the row) fail loudly here rather
 // than silently breaking resume.
-func TestNameLoomRun_ValueIsPinnedAgainstASymmetryRename(t *testing.T) {
-	if NameLoomRun != "Loom-Run" {
-		t.Errorf("NameLoomRun = %q; want the durable value %q", NameLoomRun, "Loom-Run")
+func TestNameRunShed_ValueIsPinnedAgainstASymmetryRename(t *testing.T) {
+	if NameRunShed != "Run-Shed" {
+		t.Errorf("NameRunShed = %q; want the durable value %q", NameRunShed, "Run-Shed")
 	}
 
 	env, paths := testEnv(t)
@@ -111,7 +111,7 @@ func TestNameLoomRun_ValueIsPinnedAgainstASymmetryRename(t *testing.T) {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
 
-	wantNames := []string{NameWorktreeCreate, NameLoomRun, NameWorktreeTeardown}
+	wantNames := []string{NameWorktreeCreate, NameRunShed, NameWorktreeTeardown}
 	if len(shed.Producers) != len(wantNames) {
 		t.Fatalf("New() row count = %d, want %d", len(shed.Producers), len(wantNames))
 	}

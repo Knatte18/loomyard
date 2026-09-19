@@ -1,10 +1,10 @@
-# lifecycle-recipe.yaml is the task-worktree lifecycle's producer graph. It is embedded into the
+# batten-recipe.yaml is the task-worktree batten's producer graph. It is embedded into the
 # binary by the sibling recipes.go rather than read from disk. The three row names below are
-# durable on-disk identities that resume depends on, pinned against internal/lifecyclerecipe's own
+# durable on-disk identities that resume depends on, pinned against internal/battenrecipe's own
 # Name* constants by that package's coverage guard -- a rename here without a matching constant
 # rename breaks resume for any in-flight run.
 #
-# Loom-Run's empty on_stuck is load-bearing: a stuck verdict there escalates to a human with the
+# Run-Shed's empty on_stuck is load-bearing: a stuck verdict there escalates to a human with the
 # task worktree fully intact, which is what makes the destructive Worktree-Teardown row unreachable
 # from any failure path.
 #
@@ -18,9 +18,9 @@ terminals:
 producers:
   - name: Worktree-Create
     engine: WorktreeCreate
-    on_done: Loom-Run
+    on_done: Run-Shed
 
-  - name: Loom-Run
+  - name: Run-Shed
     engine: InnerRun
     on_done: Worktree-Teardown
 

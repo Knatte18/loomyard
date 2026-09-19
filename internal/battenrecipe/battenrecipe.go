@@ -1,8 +1,8 @@
-// lifecyclerecipe.go implements New: the entry point that delegates to shedbuild.NewShed to parse
-// contracts/recipes.LifecycleRecipe, build it against a caller-supplied shedrecipe.Env, and return
+// battenrecipe.go implements New: the entry point that delegates to shedbuild.NewShed to parse
+// contracts/recipes.BattenRecipe, build it against a caller-supplied shedrecipe.Env, and return
 // the assembled *shedengine.Shed.
 
-package lifecyclerecipe
+package battenrecipe
 
 import (
 	"fmt"
@@ -13,11 +13,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 )
 
-// New parses recipes.LifecycleRecipe, builds it against env, and returns a *shedengine.Shed
+// New parses recipes.BattenRecipe, builds it against env, and returns a *shedengine.Shed
 // carrying the built []shedengine.ProducerDef plus paths' five fields.
 //
 // New delegates its parse-and-build work to shedbuild.NewShed, wrapping a non-nil returned error
-// with a "lifecyclerecipe: " prefix and nothing more: shedbuild.NewShed already names the
+// with a "battenrecipe: " prefix and nothing more: shedbuild.NewShed already names the
 // offending row's zero-based index and name in every error it raises after decode, and the
 // decoder keeps yaml line numbers, so no further position work is needed.
 //
@@ -28,13 +28,13 @@ import (
 // New performs no nil-guard or absolute-path check of its own on any Env field: each registry
 // entry validates exactly the fields it reads.
 //
-// Unlike loomrecipe.New, New performs no coherence check across its two arguments: no lifecycle
+// Unlike loomrecipe.New, New performs no coherence check across its two arguments: no batten
 // registry entry reads Env.StatusPath or Env.StatusLockPath, so there is no duplicated copy for a
 // check to guard, and a check added for symmetry would guard nothing.
 func New(env shedrecipe.Env, paths shedbuild.ShedPaths) (*shedengine.Shed, error) {
-	shed, err := shedbuild.NewShed(recipes.LifecycleRecipe, env, paths)
+	shed, err := shedbuild.NewShed(recipes.BattenRecipe, env, paths)
 	if err != nil {
-		return nil, fmt.Errorf("lifecyclerecipe: %w", err)
+		return nil, fmt.Errorf("battenrecipe: %w", err)
 	}
 
 	return shed, nil

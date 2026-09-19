@@ -1,5 +1,5 @@
 // seam_enforcement_test.go enforces this package's Told-Geometry Invariant membership: production
-// code in internal/lifecyclerecipe takes every absolute path it operates on from its caller and
+// code in internal/battenrecipe takes every absolute path it operates on from its caller and
 // has no direct production import of internal/lyxcwd.
 //
 // The allowlist below is deliberately a membership list rather than a bare internal/lyxcwd
@@ -11,7 +11,7 @@
 // allowlisted explicitly, since the stdlib test below is "the first path segment contains no dot",
 // which a full module path never satisfies.
 
-package lifecyclerecipe
+package battenrecipe
 
 import (
 	"go/parser"
@@ -23,27 +23,27 @@ import (
 	"testing"
 )
 
-// lifecyclerecipeAllowedImports are the only non-stdlib import paths production code in this
+// battenrecipeAllowedImports are the only non-stdlib import paths production code in this
 // package may use.
-var lifecyclerecipeAllowedImports = map[string]bool{
+var battenrecipeAllowedImports = map[string]bool{
 	"github.com/Knatte18/loomyard/contracts/recipes":   true,
 	"github.com/Knatte18/loomyard/internal/shedbuild":  true,
 	"github.com/Knatte18/loomyard/internal/shedrecipe": true,
 	"github.com/Knatte18/loomyard/internal/shedengine": true,
 }
 
-// lifecyclerecipeDeniedLyxcwdImport is the exact import path the Told-Geometry Invariant excludes
+// battenrecipeDeniedLyxcwdImport is the exact import path the Told-Geometry Invariant excludes
 // from this package's production files, named here so a violation of that specific rule is
 // reported by name rather than only implied by its absence from the allowlist above.
-const lifecyclerecipeDeniedLyxcwdImport = "github.com/Knatte18/loomyard/internal/lyxcwd"
+const battenrecipeDeniedLyxcwdImport = "github.com/Knatte18/loomyard/internal/lyxcwd"
 
 // TestToldGeometryInvariant_AllowlistOnly verifies that every non-test .go file in this package
-// imports only stdlib or an entry in lifecyclerecipeAllowedImports, and separately asserts that no
-// production import path is lifecyclerecipeDeniedLyxcwdImport.
+// imports only stdlib or an entry in battenrecipeAllowedImports, and separately asserts that no
+// production import path is battenrecipeDeniedLyxcwdImport.
 func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {
-		t.Fatal("could not determine lifecyclerecipe source directory location")
+		t.Fatal("could not determine battenrecipe source directory location")
 	}
 	pkgDir := filepath.Dir(file)
 
@@ -72,7 +72,7 @@ func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {
 			importPath := strings.Trim(imp.Path.Value, `"`)
 
 			relPath, _ := filepath.Rel(pkgDir, path)
-			if importPath == lifecyclerecipeDeniedLyxcwdImport {
+			if importPath == battenrecipeDeniedLyxcwdImport {
 				deniedFound = append(deniedFound, relPath)
 			}
 
@@ -82,7 +82,7 @@ func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {
 			}
 			isStdlib := !strings.Contains(firstSegment, ".")
 
-			if isStdlib || lifecyclerecipeAllowedImports[importPath] {
+			if isStdlib || battenrecipeAllowedImports[importPath] {
 				continue
 			}
 
@@ -92,13 +92,13 @@ func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {
 		return nil
 	})
 	if err != nil {
-		t.Fatalf("failed to walk lifecyclerecipe directory: %v", err)
+		t.Fatalf("failed to walk battenrecipe directory: %v", err)
 	}
 
 	if len(failures) > 0 {
 		t.Errorf("Told-Geometry Invariant violated; imports outside the allowlist found: %v", failures)
 	}
 	if len(deniedFound) > 0 {
-		t.Errorf("Told-Geometry Invariant violated; %s imported directly in: %v", lifecyclerecipeDeniedLyxcwdImport, deniedFound)
+		t.Errorf("Told-Geometry Invariant violated; %s imported directly in: %v", battenrecipeDeniedLyxcwdImport, deniedFound)
 	}
 }

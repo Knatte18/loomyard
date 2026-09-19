@@ -1,17 +1,17 @@
 // fixture_test.go implements testEnv, the package-internal test scaffolding every later test file
 // in this package reuses: a minimal shedrecipe.Env and a shedbuild.ShedPaths, every path derived
-// from one t.TempDir() root, filling only the six fields the three lifecycle entries read and
+// from one t.TempDir() root, filling only the six fields the three batten entries read and
 // leaving the rest of Env zero -- which is legal, since each entry validates exactly the fields it
 // reads.
 
-package lifecyclerecipe
+package battenrecipe
 
 import (
 	"context"
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/lifecycleshed"
+	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
@@ -30,7 +30,7 @@ func testEnv(t *testing.T) (shedrecipe.Env, shedbuild.ShedPaths) {
 		CreateWorktree: func(context.Context) error {
 			return nil
 		},
-		InnerRun: lifecycleshed.InnerRunDeps{
+		InnerRun: battenshed.InnerRunDeps{
 			Spawn: func(context.Context) error { return nil },
 			ResolveStatus: func() (string, string, error) {
 				return filepath.Join(dir, "loomrun-status.json"), filepath.Join(dir, "loomrun-status.json.lock"), nil
@@ -39,11 +39,11 @@ func testEnv(t *testing.T) (shedrecipe.Env, shedbuild.ShedPaths) {
 				return shedengine.Status{}, false, nil
 			},
 		},
-		Teardown: lifecycleshed.TeardownDeps{
+		Teardown: battenshed.TeardownDeps{
 			Shutdown: func(context.Context) (string, error) { return "", nil },
 			Remove:   func(context.Context) error { return nil },
 		},
-		PrimeLock: lifecycleshed.PrimeLock{
+		PrimeLock: battenshed.PrimeLock{
 			Path: filepath.Join(dir, "prime.lock"),
 			Acquire: func() (func() error, bool, error) {
 				return func() error { return nil }, true, nil
