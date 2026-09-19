@@ -101,6 +101,19 @@ Batch-local decisions live in each batch file._
 - **Rationale:** `_mill/discussion.md`'s `generic-package-resolves-nothing` Decision requires it: `cmd/lyx/main.go` sets `cobra.EnableTraverseRunHooks = true`, so the hooks that fire are the executed command's *ancestor* chain, and `lifecycle` is not an ancestor of `shed run` — lifecycle's `lyxcwd.Resolve`, its `fabricengine.PrimeName` lookup, its non-prime refusal and its `args[0]` slug read would all be skipped under `lyx shed run --recipe lifecycle` unless both paths call one shared function.
 - **Applies to:** shedverbs-package, module-rearm, shed-subtree
 
+### Decision: spec-fill-is-separable-from-resolution
+
+- **Decision:** each arming module splits its arming in two.
+  `(c *loomCLI) specFor(verb string) shedverbs.Spec` (and `(c *lifecycleCLI) specFor`) fills the `Spec` over an **already-wired** receiver and performs no resolution of any kind;
+  `(c *…) arm(cwd, verb, args)` resolves, wires, and then calls `specFor`.
+  The exported `Arm` wrapper and each module's `PersistentPreRunE` both go through `arm`;
+  tier-1 tests that hand-populate a receiver go through `specFor`.
+- **Rationale:** `internal/loomcli`'s `cli_test.go`, `status_test.go` and `step_test.go` and `internal/lifecyclecli`'s `run_test.go` all drive a leaf command against a hand-built receiver, deliberately bypassing `resolvePersistentPreRun`, and they are untagged tier-1 files.
+  After the rearm those commands read their refusal text, absent-file disposition and `StatusExtras` from `*c.spec`, so without a resolution-free fill the tests would have to call `arm` — which begins with `lyxcwd.Resolve` and spawns git, which the Test Tier Purity Invariant bans in an untagged file.
+  The split keeps those tests proving what they prove today (the module's own spec fill and its verb bodies' behaviour) at the tier they already run at;
+  resolution was never in their scope, since they bypass the pre-run that performs it.
+- **Applies to:** module-rearm, shed-subtree
+
 ### Decision: no-surface-change-to-existing-verbs
 
 - **Decision:** `lyx loom run|step|status|pause` and `lyx lifecycle run|status` keep their present `Use`, `Short`, `Long`, flags, exit codes, envelope key sets and refusal wording byte-for-byte.

@@ -47,7 +47,11 @@ A verb-blind arming keyed on recipe name alone would run the full `wire()` for `
 - **Moves:** none
 - **Requirements:** add a `spec *shedverbs.Spec` field to the `loomCLI` struct in `internal/loomcli/cli.go`, initialised to a non-nil zero `&shedverbs.Spec{}` in `newLoomCLI`, so `Command()` can hand the same pointer to `shedverbs.Verbs` and the pre-run can fill it in place.
   In the new `internal/loomcli/arm.go`, declare **two** functions, because one fixed signature cannot serve both callers.
-  The worker is an unexported `func (c *loomCLI) arm(cwd string, verb string, args []string) (shedverbs.Spec, error)` on the receiver: it resolves `cwd` through `lyxcwd.Resolve`, routes through `c.wireLightweight` when `verbUsesLightweightWiring(verb)` and through `c.wire` otherwise, and returns the filled `shedverbs.Spec` for that verb, with every hook closing over that same `c`.
+  The worker is an unexported `func (c *loomCLI) arm(cwd string, verb string, args []string) (shedverbs.Spec, error)` on the receiver: it resolves `cwd` through `lyxcwd.Resolve`, routes through `c.wireLightweight` when `verbUsesLightweightWiring(verb)` and through `c.wire` otherwise, and then returns `c.specFor(verb), nil`.
+  Declare `specFor` as its own resolution-free method — `func (c *loomCLI) specFor(verb string) shedverbs.Spec` — holding the whole `Spec` fill described below and performing no resolution, no `wire`, and no I/O, with every hook closing over that same `c`.
+  The split is required by the overview's `spec-fill-is-separable-from-resolution` Shared Decision: `internal/loomcli`'s untagged `cli_test.go`, `status_test.go` and `step_test.go` drive leaf commands against hand-populated receivers, and after the rearm those commands read `*c.spec`, so they need a way to fill it that does not spawn git.
+  They call `c.specFor(verb)` and assign it into their own `c.spec`;
+  card 22, 23 and 28's retargeting instructions below assume that seam exists.
   The exported seam is a thin wrapper `func Arm(cwd string, verb string, args []string) (shedverbs.Spec, error)` that constructs a fresh receiver via `newLoomCLI` and returns `c.arm(cwd, verb, args)`;
   it exists for `internal/shedcli`'s table, whose `entry.Arm` field is exactly this type.
   The split is required, not stylistic: `resolvePersistentPreRun` must wire **its own** `c`, because `internal/loomcli/start.go` reads thirteen receiver fields and `internal/loomcli/validate.go` reads `c.env.DecisionRecordPath`, `c.env.SupportLogPath`, `c.env.AnchorPath` and `c.env.WorktreeRoot` — all four verbs that depend on that population (`start`, `validate-discussion`, `validate-plan`, and `step`'s own bootstrap helpers) would break if the pre-run armed a throwaway receiver and assigned only `*c.spec`.
@@ -121,7 +125,8 @@ A verb-blind arming keyed on recipe name alone would run the full `wire()` for `
   Fill the `PostStep` hook batch 3 declared with loom's `recordStepHandoff(loomengine.LoomStepHandoff(c.location), loomengine.LoomStepHandoffLock(c.location), len(res.History), res.State)` call, which is what keeps that marker at its required position — after a successful `shed.Step` and before the envelope is reported.
   Fill `InterruptPolicyFor` with `loomshed.InterruptPolicyFor`, which is the table `next_interrupt_policy` reads today.
   Preserve the comment recording that the early probe is an optimisation and `shedengine.Step`'s own acquisition is the authority.
-  Retarget the in-package test call sites these deletions orphan, which is mechanical compilation repair rather than an assertion change: `internal/loomcli/cli_test.go` uses the method expressions `(*loomCLI).runCmd` and `(*loomCLI).stepCmd`, and `internal/loomcli/step_test.go` calls `stepEnvelope`, `stepKinds`, `stepKindBusy` and `c.stepCmd()`.
+  Retarget the in-package test call sites these deletions orphan, which is mechanical compilation repair rather than an assertion change: `internal/loomcli/cli_test.go`'s `TestVerbRefusals` table uses the method expression `(*loomCLI).runCmd` (its other two entries, `pauseCmd` and `statusCmd`, are card 23's), and `internal/loomcli/step_test.go` calls `stepEnvelope`, `stepKinds`, `stepKindBusy` and `c.stepCmd()`.
+  Each of those tests hand-populates its receiver and bypasses the pre-run, so each must now also fill `c.spec` from `c.specFor(<verb>)` before executing the command — that is the tier-1 seam card 21 declares, and without it the rearmed commands read a zero `Spec`.
   Point each at its new home — `shedverbs.StepEnvelope`, `shedverbs.StepKinds`, `shedverbs.KindBusy`, and the command `shedverbs.Verbs` returns — keeping every assertion's meaning identical.
   Batch 3 exports those three identifiers precisely so these tables retarget rather than being deleted;
   `internal/loomcli/step_test.go`'s ten-key and five-kind closure assertions must keep asserting the same closed sets, and none of them may be dropped here.
@@ -166,6 +171,8 @@ A verb-blind arming keyed on recipe name alone would run the full `wire()` for `
   Confirm before deleting that no third caller has appeared since this plan was written.
   Retarget the in-package test call sites these deletions orphan, which is mechanical compilation repair rather than an assertion change: `internal/loomcli/status_test.go` calls `renderStatusLine`, `statusUnavailableLine`, `printStatusLinesOnChange` and `c.statusCmd()`, and `internal/loomcli/cli_test.go` uses the `(*loomCLI).statusCmd` and `(*loomCLI).pauseCmd` method expressions.
   Point each at `shedverbs.RenderStatusLine`, `shedverbs.UnavailableLine`, `shedverbs.PrintStatusLinesOnChange` and the command `shedverbs.Verbs` returns.
+  `cli_test.go`'s `pauseCmd` and `statusCmd` table entries belong to this card;
+  like card 22's, each hand-built receiver must fill `c.spec` from `c.specFor(<verb>)` before executing, per card 21's tier-1 seam.
   The first two now take a label argument (batch 3, card 14), so those call sites pass `"loom"` and keep asserting the identical rendered strings — which is exactly what card 28 requires `status_test.go` to keep pinning, so none of these tables may be deleted.
   `TestStatusCmd_EnvelopeKeySet` stays and keeps asserting loom's own nine-key envelope through the rearmed command.
   Confirm the resulting `lyx loom status` envelope is byte-identical to today's nine keys — the four generic core keys plus these five — and that `lyx loom pause`'s is still the single key `status_file`.
@@ -214,6 +221,7 @@ A verb-blind arming keyed on recipe name alone would run the full `wire()` for `
   - `internal/lyxcwd/lyxcwd.go`
   - `internal/fabricengine/worktreelist.go`
   - `internal/loomcli/arm.go`
+  - `internal/lifecyclecli/run_test.go`
 - **Edits:**
   - `internal/lifecyclecli/cli.go`
 - **Creates:**
@@ -223,6 +231,7 @@ A verb-blind arming keyed on recipe name alone would run the full `wire()` for `
 - **Requirements:** add a `spec *shedverbs.Spec` field to the `lifecycleCLI` struct, initialised non-nil where the receiver is constructed in `Command()`.
   In the new `internal/lifecyclecli/arm.go`, declare the same two-function split card 21 requires of `loomcli`, and for the same reason: an unexported worker `func (c *lifecycleCLI) arm(cwd string, verb string, args []string) (shedverbs.Spec, error)` on the receiver, plus a thin exported `func Arm(cwd string, verb string, args []string) (shedverbs.Spec, error)` wrapper that constructs a fresh `*lifecycleCLI` and returns `c.arm(...)` for `internal/shedcli`'s table.
   A package-level `Arm` alone cannot serve the pre-run: `wire` is a method on the receiver, the hooks close over `c.env`, `c.shedPaths` and `c.abandonedSession`, and the pre-run's own `c.location` and `c.slug` assignments would stop happening.
+  Split it the same way card 21 splits loom's: `arm` resolves and wires, then returns `c.specFor(verb), nil`, and a resolution-free `func (c *lifecycleCLI) specFor(verb string) shedverbs.Spec` holds the whole `Spec` fill, which `internal/lifecyclecli/run_test.go`'s hand-built receivers call directly.
   The worker performs this module's whole existing resolution in its existing order: `lyxcwd.Resolve(cwd)`, then `fabricengine.PrimeName(location)`, then `refuseNonPrime(location.WorktreeName, primeName, primeNameErr)`, then the slug read from `args[0]` when `len(args) > 0`, then `wire(location, slug)`.
   Every one of those refusals stays a returned error the caller renders on the envelope, never a hard error and never a panic, exactly as `refuseNonPrime`'s own doc comment requires.
   Preserving the non-prime refusal through `Arm` is what keeps the Lifecycle Bookend Invariant intact when lifecycle is reached through `lyx shed --recipe lifecycle` rather than through `lyx lifecycle`.
@@ -235,7 +244,6 @@ A verb-blind arming keyed on recipe name alone would run the full `wire()` for `
   `AbsentStatus` with `Refuse: false`, the `found: false` success form;
   `PauseAbsentMessage` set to the new text `lifecyclecli: no status file at <StatusPath>; there is nothing running to pause -- run "lyx lifecycle run <slug>" first`, mirroring loom's shape and naming lifecycle's own entry verb rather than loom's;
   `BuildShed` a closure returning `lifecyclerecipe.New(c.env, c.shedPaths)`.
-  It is lifted **here**, before cards 22 and 23 delete those constructors, precisely so the copy is made from live source rather than from git history.
   Rewrite `resolvePersistentPreRun` to call `c.arm(cwd, cmd.Name(), args)` — the unexported worker, on its own receiver — and assign `*c.spec = armed`, keeping its existing `cmd.Name() == "lifecycle"` short-circuit and its existing `lyxcwd.CwdFrom(ctx)` read in place, and keeping the pass-through rendering of `lyxcwd.Resolve`'s self-describing error.
   Declare `lifecycleVerbTexts` in this card too, as a package-level `shedverbs.VerbTexts` value in `internal/lifecyclecli/cli.go`, lifting `run`'s and `status`'s `Use`/`Short`/`Long` verbatim out of the still-present `runCmd`/`statusCmd` constructors before card 26 deletes them, and leaving the `step` fields at their zero values.
   The worker performs the `c.location` and `c.slug` assignments the pre-run does today, so they keep happening on both paths rather than only on the `lyx lifecycle` one.
@@ -286,7 +294,7 @@ A verb-blind arming keyed on recipe name alone would run the full `wire()` for `
   Preserve `internal/lifecyclecli/run.go`'s doc comment explaining why the run envelope carries neither a mutations array nor a `partial` bool — it stays true and its reasoning is unaffected by the move.
   If either file ends up holding no declaration after the deletions, delete it rather than leaving it empty.
   Retarget the in-package test call sites this deletion orphans, which is mechanical compilation repair rather than an assertion change: `internal/lifecyclecli/run_test.go` calls `c.runCmd()` at five sites and `internal/lifecyclecli/lifecycle_integration_test.go` calls it once.
-  Point each at the `run` command `shedverbs.Verbs` returns, armed through the same receiver the test already builds, keeping every assertion's meaning identical.
+  Point each at the `run` command `shedverbs.Verbs` returns, filling `c.spec` from `c.specFor("run")` on the receiver the test already builds — the resolution-free seam card 25 declares — and keeping every assertion's meaning identical.
 - **Commit:** `refactor(lifecyclecli): rearm run and status over shedverbs and add pause`
 
 ### Card 27: absorb the three agreed surface changes into the existing suites

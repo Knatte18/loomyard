@@ -1,0 +1,42 @@
+MILL_REVIEW_BEGIN
+# Review: Shed-generic watchdog for ly-drive and loom's CLI verbs — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: sonnetxhigh
+reviewer_self_id: Claude Opus 5 (claude-opus-5)
+reviewed_file: plan/
+date: 2026-09-19
+```
+
+## Findings
+
+### [BLOCKING:design] Tier-1 verb tests have no way to arm a Spec
+**Location:** batch 4, cards 22/23/26 (with 27/28)
+**Issue:** `internal/loomcli/cli_test.go`'s `TestVerbRefusals` (lines 212–246, method expressions `(*loomCLI).runCmd/.pauseCmd/.statusCmd`), `status_test.go`'s `TestStatusCmd_EnvelopeKeySet` (line 166: `c := &loomCLI{shedPaths: …}` then `clihelp.Execute(c.statusCmd(), …)`), `step_test.go`'s `TestStepCmd_BusyRefusal_BeforeBootstrap` (line 312) and `lifecyclecli/run_test.go`'s `newFakeReceiver`+`c.runCmd()` (5 sites) all drive a leaf command against a hand-populated receiver, deliberately bypassing `resolvePersistentPreRun`; after the rearm those commands read their refusal text, absent-file disposition and `StatusExtras` only from `*c.spec`, which card 21/25 say is filled solely by `arm`, and `arm` begins with `lyxcwd.Resolve` (git spawn, banned in untagged files by the Test Tier Purity Invariant). **Fix:** decide and state a tier-1 arming seam — e.g. split the spec fill off `arm` into a resolution-free function over an already-wired receiver — or state explicitly that these tests hand-build a `shedverbs.Spec` and accept that they no longer prove loom's/lifecycle's own arming.
+
+### [BLOCKING:decision] `lyx shed step --recipe lifecycle` has no disposition
+**Location:** batch 4 card 25 / batch 5 cards 30–31
+**Issue:** card 30 registers all four generic verbs under `shed` and card 29's table carries `lifecycle`, so `lyx shed step --recipe lifecycle <slug>` is reachable, yet card 25 leaves `StepBusyKind`/`StepBusyMessage` at zero "since lifecycle exposes no `step`" and leaves `PreStep` nil — so an `ErrShedBusy` there emits `kind: ""` (a sixth value outside the closed five the new invariant and `ly-drive` both pin), and lifecycle's whole `PreRun` pre-flight (`StateDone` refusal, seed-when-absent) is skipped before `BuildShed`. **Fix:** state the disposition — either give the table a per-recipe supported-verb set that `shedcli` registers from, or fill lifecycle's `StepBusyKind` and say what `shed step --recipe lifecycle` does against an unseeded slug.
+
+### [BLOCKING:decision] `--watch`/`--interval` flag help has no told slot
+**Location:** batch 3 card 13, batch 4 cards 21/25
+**Issue:** the overview's `no-surface-change-to-existing-verbs` Decision keeps each verb's flags byte-for-byte, but `VerbTexts` carries only `Use`/`Short`/`Long`, and card 13 fixes the two flags' names/defaults while saying nothing about their usage strings — so `lyx loom status --help` silently loses `internal/loomcli/status.go`'s lines 165–166 wording, and no `cmd/lyx` guard catches it (`longlist_test.go` only checks `root.Long` names each registered module). **Fix:** state whether `shedverbs` reuses loom's two existing flag-description strings verbatim for all three subtrees, or carry them on `VerbTexts`.
+
+### [NIT:consistency] Card 30 misstates how the existing pre-runs record exits
+**Location:** batch 5 card 30
+**Issue:** the card says to wrap pre-run envelopes in `clihelp.SetExit` "exactly as both existing modules' pre-runs do", then two lines later says they use `clihelp.Abort(ctx, 1)`; `internal/loomcli/cli.go` (lines 127–152) and `internal/lifecyclecli/cli.go` (lines 88–122) call bare `output.Err(out, …)` followed by `clihelp.Abort`, never `SetExit`. **Fix:** drop the false "exactly as … do" clause and keep the `Abort` sentence alone.
+
+### [NIT:consistency] Cards 24 and 32 contradict on `longlist_test.go`
+**Location:** batch 4 card 24 vs batch 5 card 32
+**Issue:** card 24 correctly states `longlist_test.go` "only asserts `root.Long` names every registered top-level module", while card 32 claims it "keeps `--help` prose from drifting", can fail "naming a `loom` or `lifecycle` verb", and has an expectation to regenerate — `cmd/lyx/longlist_test.go` derives its module set from the live tree and holds no snapshot, so none of that is possible. **Fix:** restate card 32's description to match card 24's and drop the regeneration instruction.
+
+### [NIT:consistency] Two stray card cross-references
+**Location:** batch 4 cards 25 and 22
+**Issue:** card 25 carries a duplicated sentence "lifted **here**, before cards 22 and 23 delete those constructors" in the middle of the `Spec`-fill bullet — lifecycle's constructors are deleted by card 26, which the card states correctly six lines later; and card 22 claims `internal/loomcli/cli_test.go` uses `(*loomCLI).stepCmd`, but that file uses `runCmd`/`pauseCmd`/`statusCmd` only (lines 220/225/230) and `stepCmd` is called in `step_test.go`. **Fix:** delete the stray sentence in card 25 and correct card 22's call-site list.
+
+## Verdict
+
+REQUEST_CHANGES
+Three unstated dispositions plus test-arming reachability; rest of the plan is sound.
+MILL_REVIEW_END
