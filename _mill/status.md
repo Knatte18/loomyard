@@ -64,7 +64,9 @@ batches:
     commit_sha: c6d7e88e4b3e12c39a66bcb42e9ba88c3429bd61
     verify_baseline_failures: []
   - name: tagged reap tests
-    state: pending
+    state: running
+    implementer_session: 594e0952-c78e-4b14-b83e-9b2c4183df0a
+    start_sha: 13a7ea4eb11c89eb02de85c6d1fab71a9f4a3594
     verify_baseline_failures: []
   - name: docs
     state: pending
