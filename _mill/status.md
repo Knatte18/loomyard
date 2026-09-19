@@ -66,7 +66,9 @@ batches:
     commit_sha: 3cf468d1b1202994a292288788501cf78b6e1f6e
     verify_baseline_failures: []
   - name: module-rearm
-    state: pending
+    state: running
+    implementer_session: 46dd139f-6fa9-4eb9-b5c0-ae09256b9026
+    start_sha: c373ae0244de99d4af5c29d743eb28ed863535d9
     verify_baseline_failures: ["FAIL\t./internal/shedverbs/... [setup failed]"]
   - name: shed-subtree
     state: pending
