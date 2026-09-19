@@ -23,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
+	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 	"github.com/spf13/cobra"
@@ -77,6 +78,18 @@ type loomCLI struct {
 	// awaitRunLock's own four injected seams (bootstrap.go) and this file's own doc comment
 	// principle that the verb body is assembly over judgment already under test.
 	spawnWatchdog func(hubPath, tmuxPath, shellPath string, suppress bool)
+	// spec is the shedverbs.Spec the pre-run fills in place (arm.go) and the four shedverbs
+	// verbs read at run time. It is always non-nil after newLoomCLI, so Command() can hand the
+	// same pointer to shedverbs.Verbs before the pre-run has ever run.
+	spec *shedverbs.Spec
+	// parentFlag carries "run"'s and "step"'s own --parent value: a closure cannot carry it,
+	// since the flag variable lives in Command() while the PreStep hook that reads it is built
+	// inside arm, which sees only (cwd, verb, args) -- and a PersistentPreRunE's args are
+	// positional only, never parsed flags.
+	parentFlag string
+	// entryObservation carries loomPreRun's entry observation forward to loomPostRun, since
+	// PreRun returns no envelope map of its own.
+	entryObservation loomengine.EntryObservation
 }
 
 // newLoomCLI is the only place production code may build a *loomCLI: it is what keeps
@@ -87,6 +100,7 @@ func newLoomCLI() *loomCLI {
 	return &loomCLI{
 		suppressWatchdogSpawn: testing.Testing(),
 		spawnWatchdog:         reedengine.SpawnWatchdog,
+		spec:                  &shedverbs.Spec{},
 	}
 }
 
@@ -130,26 +144,16 @@ func (c *loomCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) err
 		return nil
 	}
 
-	location, err := lyxcwd.Resolve(cwd)
+	armed, err := c.arm(cwd, cmd.Name(), args)
 	if err != nil {
-		// lyxcwd.Resolve's error is already self-describing (it IS the
-		// "not a git repository" sentinel); pass it through bare rather than
-		// doubling that same text on top of it.
+		// arm's own lyxcwd.Resolve error is already self-describing (it IS the "not a git
+		// repository" sentinel); pass it through bare rather than doubling that same text on
+		// top of it -- exactly as every other arm/wire error is reported.
 		output.Err(out, err.Error())
 		clihelp.Abort(ctx, 1)
 		return nil
 	}
-
-	if verbUsesLightweightWiring(cmd.Name()) {
-		c.wireLightweight(location, cwd)
-		return nil
-	}
-
-	if err := c.wire(location, cwd); err != nil {
-		output.Err(out, err.Error())
-		clihelp.Abort(ctx, 1)
-		return nil
-	}
+	*c.spec = armed
 	return nil
 }
 
@@ -174,6 +178,82 @@ func verbUsesLightweightWiring(name string) bool {
 	default:
 		return false
 	}
+}
+
+// loomVerbTexts carries loom's four shedverbs-driven verbs' Use/Short/Long text, lifted verbatim
+// from their original hand-written constructors (run.go, step.go, status.go, pause.go, since
+// deleted) before shedverbs.Verbs took over their bodies -- including every Example: block and
+// every embedded newline, byte-for-byte.
+var loomVerbTexts = shedverbs.VerbTexts{
+	Run: shedverbs.VerbText{
+		Use:   "run",
+		Short: "run loom's phase machine in the foreground, with no status strand and no terminal handover",
+		Long: `run runs loom's phase machine in the foreground: no status strand and
+no terminal handover. It is the escape hatch for debugging and CI.
+
+run is NOT tmux-free. Every LLM row underneath it -- Discussion-Write,
+Plan-Write, and all three review segments -- spawns its agent through
+shuttle into a reed pane, so a live tmux session is required. run
+ensures that session itself, exactly as "lyx loom start" does, rather than
+failing several producers deep once a row first tries to add a strand.
+What run does not do is add the status strand or hand the terminal over.
+
+run never seeds a status file and never commits anything -- only
+"lyx loom start" seeds, because only it owns the commit-before-precondition
+ordering the bootstrap needs.
+
+Example:
+  lyx loom run`,
+	},
+	Step: shedverbs.VerbText{
+		Use:   "step",
+		Short: "bootstrap idempotently and drive exactly one producer, reporting a JSON envelope",
+		Long: `step bootstraps this worktree's loom task exactly as "lyx loom start" does --
+seeding the status file when absent and committing it into the fabric --
+and then drives exactly one producer through shedengine.Shed's own Step.
+
+step spawns no detached driver, hands the terminal to nothing, and loops
+over nothing: it is the single-producer primitive an external supervisor
+drives, one invocation at a time, reading the returned envelope's
+"continue" and "next_interrupt_policy" fields to decide what to do next.
+
+Example:
+  lyx loom step
+  lyx loom step --parent main`,
+	},
+	Status: shedverbs.VerbText{
+		Use:   "status",
+		Short: "report loom's current phase, once or as a live-tailed watch",
+		Long: `status reports the current phase-machine state.
+
+Without --watch, it reads the status file once and emits a single JSON
+envelope carrying the current producer, state, error text, pause flag,
+composed activity, history length, the task's slug/parent, and the
+interrupt policy for the current producer.
+
+With --watch, it performs the same read once as a pre-flight, then tails
+the file and never exits, printing a line only when the composed activity
+actually CHANGES rather than once per poll -- so a quiet pane means the
+current producer is still working, not that the tail has stopped. This is
+the one documented interactive-handoff exception on this verb, taken
+narrowly on the tail only, after every fallible step has already run
+pre-flight.
+
+Example:
+  lyx loom status
+  lyx loom status --watch
+  lyx loom status --watch --interval 200ms`,
+	},
+	Pause: shedverbs.VerbText{
+		Use:   "pause",
+		Short: "request a pause at loom's next producer boundary",
+		Long: `pause sets a request the running phase machine consumes at its next
+producer boundary. It does not kill anything -- the machine itself clears
+the flag in the persist that records the paused state.
+
+Example:
+  lyx loom pause`,
+	},
 }
 
 // Command returns the cobra command tree for the loom module.
@@ -215,7 +295,11 @@ Example:
 		PersistentPreRunE: c.resolvePersistentPreRun,
 	}
 
-	parent.AddCommand(c.startCmd(), c.runCmd(), c.stepCmd(), c.statusCmd(), c.pauseCmd(), c.validateDiscussionCmd(), c.validatePlanCmd())
+	verbs := shedverbs.Verbs(loomVerbTexts, c.spec)
+	runVerb, stepVerb, statusVerb, pauseVerb := verbs[0], verbs[1], verbs[2], verbs[3]
+	stepVerb.Flags().StringVar(&c.parentFlag, "parent", "", "write the pair's provenance record once for a worktree created before that record existed; refused when it disagrees with an already-recorded value")
+
+	parent.AddCommand(c.startCmd(), runVerb, stepVerb, statusVerb, pauseVerb, c.validateDiscussionCmd(), c.validatePlanCmd())
 
 	return parent
 }

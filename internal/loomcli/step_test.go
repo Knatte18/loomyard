@@ -20,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedverbs"
 )
 
 // TestStepEnvelope_KeySetIsExactlyTen asserts stepEnvelope's returned map carries exactly the ten
@@ -35,7 +36,7 @@ func TestStepEnvelope_KeySetIsExactlyTen(t *testing.T) {
 		Reason:   "",
 		History:  []shedengine.HistoryEntry{{Producer: "Discussion-Write", Outcome: shedengine.Done}},
 	}
-	envelope := stepEnvelope(res, "reinvoke", "/tmp/status.json")
+	envelope := shedverbs.StepEnvelope(res, "reinvoke", "/tmp/status.json")
 
 	want := []string{
 		"producer", "outcome", "output", "next", "state", "reason",
@@ -43,11 +44,11 @@ func TestStepEnvelope_KeySetIsExactlyTen(t *testing.T) {
 	}
 
 	if len(envelope) != len(want) {
-		t.Fatalf("len(stepEnvelope(...)) = %d; want %d", len(envelope), len(want))
+		t.Fatalf("len(shedverbs.StepEnvelope(...)) = %d; want %d", len(envelope), len(want))
 	}
 	for _, key := range want {
 		if _, ok := envelope[key]; !ok {
-			t.Errorf("stepEnvelope(...) missing key %q", key)
+			t.Errorf("shedverbs.StepEnvelope(...) missing key %q", key)
 		}
 	}
 	for key := range envelope {
@@ -59,7 +60,7 @@ func TestStepEnvelope_KeySetIsExactlyTen(t *testing.T) {
 			}
 		}
 		if !found {
-			t.Errorf("stepEnvelope(...) carries undocumented key %q", key)
+			t.Errorf("shedverbs.StepEnvelope(...) carries undocumented key %q", key)
 		}
 	}
 }
@@ -76,10 +77,10 @@ func TestStepEnvelope_ContinueTracksRunningState(t *testing.T) {
 	}
 	for _, state := range states {
 		t.Run(string(state), func(t *testing.T) {
-			envelope := stepEnvelope(shedengine.StepResult{State: state}, "", "")
+			envelope := shedverbs.StepEnvelope(shedengine.StepResult{State: state}, "", "")
 			want := state == shedengine.StateRunning
 			if envelope["continue"] != want {
-				t.Errorf("stepEnvelope(state=%q)[\"continue\"] = %v; want %v", state, envelope["continue"], want)
+				t.Errorf("shedverbs.StepEnvelope(state=%q)[\"continue\"] = %v; want %v", state, envelope["continue"], want)
 			}
 		})
 	}
@@ -177,7 +178,7 @@ func TestStepEnvelope_FieldMapping(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			envelope := stepEnvelope(tt.res, "", "/some/status.json")
+			envelope := shedverbs.StepEnvelope(tt.res, "", "/some/status.json")
 
 			if got := envelope["producer"]; got != tt.wantProducer {
 				t.Errorf("envelope[\"producer\"] = %v; want %v", got, tt.wantProducer)
@@ -224,7 +225,7 @@ func TestStepEnvelope_NextInterruptPolicyMatchesTable(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			nextPolicy := loomshed.InterruptPolicyFor(tt.next)
-			envelope := stepEnvelope(shedengine.StepResult{Next: tt.next}, nextPolicy, "")
+			envelope := shedverbs.StepEnvelope(shedengine.StepResult{Next: tt.next}, nextPolicy, "")
 			if got := envelope["next_interrupt_policy"]; got != tt.want {
 				t.Errorf("envelope[\"next_interrupt_policy\"] = %v; want %v", got, tt.want)
 			}
@@ -235,12 +236,12 @@ func TestStepEnvelope_NextInterruptPolicyMatchesTable(t *testing.T) {
 // TestStepKinds_ClosedSetOfFive asserts stepKinds contains exactly the five declared refusal-kind
 // constants, each non-empty and distinct, so an undeclared sixth kind cannot ship silently.
 func TestStepKinds_ClosedSetOfFive(t *testing.T) {
-	if len(stepKinds) != 5 {
-		t.Fatalf("len(stepKinds) = %d; want 5", len(stepKinds))
+	if len(shedverbs.StepKinds) != 5 {
+		t.Fatalf("len(shedverbs.StepKinds) = %d; want 5", len(shedverbs.StepKinds))
 	}
 
-	seen := make(map[string]bool, len(stepKinds))
-	for _, kind := range stepKinds {
+	seen := make(map[string]bool, len(shedverbs.StepKinds))
+	for _, kind := range shedverbs.StepKinds {
 		if kind == "" {
 			t.Error("stepKinds contains an empty entry")
 		}
@@ -250,7 +251,7 @@ func TestStepKinds_ClosedSetOfFive(t *testing.T) {
 		seen[kind] = true
 	}
 
-	for _, want := range []string{stepKindBusy, stepKindUnseeded, stepKindOwnership, stepKindBootstrap, stepKindProducer} {
+	for _, want := range []string{shedverbs.KindBusy, shedverbs.KindUnseeded, shedverbs.KindOwnership, shedverbs.KindBootstrap, shedverbs.KindProducer} {
 		if !seen[want] {
 			t.Errorf("stepKinds is missing declared constant %q", want)
 		}
@@ -267,11 +268,11 @@ func TestStepKindForBootstrapStage(t *testing.T) {
 		stage bootstrapStage
 		want  string
 	}{
-		{"Seed", bootstrapStageSeed, stepKindUnseeded},
-		{"Ownership", bootstrapStageOwnership, stepKindOwnership},
-		{"Origin", bootstrapStageOrigin, stepKindBootstrap},
-		{"Commit", bootstrapStageCommit, stepKindBootstrap},
-		{"None", bootstrapStageNone, stepKindBootstrap},
+		{"Seed", bootstrapStageSeed, shedverbs.KindUnseeded},
+		{"Ownership", bootstrapStageOwnership, shedverbs.KindOwnership},
+		{"Origin", bootstrapStageOrigin, shedverbs.KindBootstrap},
+		{"Commit", bootstrapStageCommit, shedverbs.KindBootstrap},
+		{"None", bootstrapStageNone, shedverbs.KindBootstrap},
 	}
 
 	for _, tt := range tests {
@@ -309,7 +310,7 @@ func TestStepCmd_BusyRefusal_BeforeBootstrap(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	exitCode := clihelp.Execute(c.stepCmd(), &out, nil)
+	exitCode := clihelp.Execute(loomVerbCommand(c, "step"), &out, nil)
 
 	if exitCode != 1 {
 		t.Errorf("stepCmd() exit code = %d; want 1", exitCode)

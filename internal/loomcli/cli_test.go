@@ -15,6 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
+	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/spf13/cobra"
 )
 
@@ -203,31 +204,46 @@ func TestProductionFiles_LoomCLILiteralOnlyInFactory(t *testing.T) {
 	}
 }
 
+// loomVerbCommand builds the single shedverbs command named verb ("run", "step", "status", or
+// "pause"), armed against c.specFor(verb) assigned onto c.spec -- the tier-1 seam arm.go's
+// specFor/arm split exists for, letting this untagged suite fill a Spec with no resolution and no
+// git spawn.
+func loomVerbCommand(c *loomCLI, verb string) *cobra.Command {
+	spec := c.specFor(verb)
+	c.spec = &spec
+	for _, cmd := range shedverbs.Verbs(loomVerbTexts, c.spec) {
+		if cmd.Name() == verb {
+			return cmd
+		}
+	}
+	panic("loomVerbCommand: no shedverbs command named " + verb)
+}
+
 // TestVerbRefusals covers the run verb's seed-missing pre-flight, the pause verb's absent-file
 // refusal, and the status verb's !found refusal. All three are driven directly against the leaf
-// command built by runCmd/pauseCmd/statusCmd on a hand-populated *loomCLI -- never through the full
+// command shedverbs.Verbs returns for a hand-populated *loomCLI -- never through the full
 // PersistentPreRunE/wire path, which needs a real git repository this untagged suite must not spawn.
 // c.shedPaths.StatusPath/StatusLockPath point at a plain temporary directory that never receives a
 // status.json, so each verb's own refusal fires on exactly the precondition it owns.
 func TestVerbRefusals(t *testing.T) {
 	tests := []struct {
 		name       string
-		buildCmd   func(c *loomCLI) *cobra.Command
+		verb       string
 		wantRemedy string
 	}{
 		{
 			name:       "Run_SeedMissing",
-			buildCmd:   (*loomCLI).runCmd,
+			verb:       "run",
 			wantRemedy: `lyx loom start`,
 		},
 		{
 			name:       "Pause_AbsentFile",
-			buildCmd:   (*loomCLI).pauseCmd,
+			verb:       "pause",
 			wantRemedy: `lyx loom start`,
 		},
 		{
 			name:       "Status_NotFound",
-			buildCmd:   (*loomCLI).statusCmd,
+			verb:       "status",
 			wantRemedy: `lyx loom start`,
 		},
 	}
@@ -243,7 +259,7 @@ func TestVerbRefusals(t *testing.T) {
 			}
 
 			var out bytes.Buffer
-			exitCode := clihelp.Execute(tt.buildCmd(c), &out, nil)
+			exitCode := clihelp.Execute(loomVerbCommand(c, tt.verb), &out, nil)
 
 			if exitCode != 1 {
 				t.Errorf("%s: exit code = %d; want 1", tt.name, exitCode)

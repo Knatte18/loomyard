@@ -1,6 +1,6 @@
-// status_test.go is a table over renderStatusLine, pinning its exact rendered line for each shape of
-// Activity the composed status file can carry, plus a table over printStatusLinesOnChange's
-// suppress-an-unchanged-line rule.
+// status_test.go is a table over shedverbs.RenderStatusLine for the "loom" label, pinning its exact
+// rendered line for each shape of Activity the composed status file can carry, plus a table over
+// shedverbs.PrintStatusLinesOnChange's suppress-an-unchanged-line rule.
 
 package loomcli
 
@@ -15,12 +15,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// TestRenderStatusLine covers renderStatusLine's three shapes: an empty last and wait, a populated
-// last only, and both populated -- each asserting the exact expected line, since the format is pinned
-// rather than left to judgment.
+// TestRenderStatusLine covers shedverbs.RenderStatusLine's three shapes for the "loom" label: an
+// empty last and wait, a populated last only, and both populated -- each asserting the exact
+// expected line, since the format is pinned rather than left to judgment.
 func TestRenderStatusLine(t *testing.T) {
 	tests := []struct {
 		name string
@@ -55,8 +56,8 @@ func TestRenderStatusLine(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := renderStatusLine(tt.st); got != tt.want {
-				t.Errorf("renderStatusLine(%+v) = %q; want %q", tt.st, got, tt.want)
+			if got := shedverbs.RenderStatusLine("loom", tt.st); got != tt.want {
+				t.Errorf("shedverbs.RenderStatusLine(\"loom\", %+v) = %q; want %q", tt.st, got, tt.want)
 			}
 		})
 	}
@@ -89,8 +90,8 @@ func TestPrintStatusLinesOnChange(t *testing.T) {
 		},
 		{
 			name:  "TransientUnavailableIsAlsoDeduped",
-			polls: []string{statusUnavailableLine, statusUnavailableLine, "loom running | now Plan-Write"},
-			want:  []string{statusUnavailableLine, "loom running | now Plan-Write"},
+			polls: []string{shedverbs.UnavailableLine("loom"), shedverbs.UnavailableLine("loom"), "loom running | now Plan-Write"},
+			want:  []string{shedverbs.UnavailableLine("loom"), "loom running | now Plan-Write"},
 		},
 		{
 			name:  "FirstLineIsAlwaysPrinted",
@@ -109,22 +110,22 @@ func TestPrintStatusLinesOnChange(t *testing.T) {
 				return line
 			}
 			slept := 0
-			printStatusLinesOnChange(&out, poll, func() { slept++ }, len(tt.polls))
+			shedverbs.PrintStatusLinesOnChange(&out, poll, func() { slept++ }, len(tt.polls))
 
 			got := strings.Split(strings.TrimSuffix(out.String(), "\n"), "\n")
 			if out.Len() == 0 {
 				got = nil
 			}
 			if len(got) != len(tt.want) {
-				t.Fatalf("printStatusLinesOnChange(%v) printed %d line(s) %q; want %d line(s) %q", tt.polls, len(got), got, len(tt.want), tt.want)
+				t.Fatalf("shedverbs.PrintStatusLinesOnChange(%v) printed %d line(s) %q; want %d line(s) %q", tt.polls, len(got), got, len(tt.want), tt.want)
 			}
 			for i := range tt.want {
 				if got[i] != tt.want[i] {
-					t.Errorf("printStatusLinesOnChange(%v) line %d = %q; want %q", tt.polls, i, got[i], tt.want[i])
+					t.Errorf("shedverbs.PrintStatusLinesOnChange(%v) line %d = %q; want %q", tt.polls, i, got[i], tt.want[i])
 				}
 			}
 			if slept != len(tt.polls) {
-				t.Errorf("printStatusLinesOnChange(%v) slept %d time(s); want %d -- the tail must keep polling at its interval even while suppressing output", tt.polls, slept, len(tt.polls))
+				t.Errorf("shedverbs.PrintStatusLinesOnChange(%v) slept %d time(s); want %d -- the tail must keep polling at its interval even while suppressing output", tt.polls, slept, len(tt.polls))
 			}
 		})
 	}
@@ -171,7 +172,7 @@ func TestStatusCmd_EnvelopeKeySet(t *testing.T) {
 			}
 
 			var out bytes.Buffer
-			exitCode := clihelp.Execute(c.statusCmd(), &out, nil)
+			exitCode := clihelp.Execute(loomVerbCommand(c, "status"), &out, nil)
 			if exitCode != 0 {
 				t.Fatalf("statusCmd() exit code = %d; want 0; output: %q", exitCode, out.String())
 			}
