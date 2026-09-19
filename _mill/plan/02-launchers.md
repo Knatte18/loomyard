@@ -52,7 +52,15 @@ Card 9's new test scenario exists precisely to stop a later tidying pass from "f
   Read each assertion before changing it — this file also covers the `ide` and `fabric-checkout` launchers, whose commands are untouched.
   Add one scenario asserting the two halves of the launcher-filename-unchanged decision together: that the written run launcher's filename is still `"run" + launcherExt(runtime.GOOS)` while its content names `loom start`.
   Without that pairing a later tidying pass renames the file to `start<ext>` and silently breaks teardown on every existing hub, because `removeLaunchers` deletes by an explicit name list and then removes the directory non-recursively.
-  Keep the new scenario in the same shape as the file's existing cases and within the Test Tier Purity Invariant — this is an untagged suite, so no `exec.Command`, no `gitexec`, and no `hubforge.NewHub`.
+  This scenario must call `writeLaunchers` itself, not `launcherScript`.
+  The file's existing cases all drive `launcherScript`/`launcherExt` directly, and neither of those constructs a path — `runPath` is built by `filepath.Join(launcherDir, "run"+ext)` inside `writeLaunchers`, so a scenario in the existing shape would assert a filename the production code never computes and would not catch the rename it exists to prevent.
+  No untagged test in this package exercises `writeLaunchers` today;
+  every existing caller of it is `//go:build integration`.
+  The mechanism: build a `*lyxcwd.Location` by hand whose `HubPath` is a `t.TempDir()`, the same hand-built-Location pattern other tier 1 suites in this repo already use to avoid a real hub, pass a fresh `*Mutations` recorder and a slug, and call `writeLaunchers` directly.
+  Then assert on the real filesystem result: a file exists at `LauncherDir(l, slug)/run<ext>`, its bytes contain `loom start`, and no `start<ext>` file exists beside it.
+  `writeLaunchers` performs only `os.OpenRoot`, `MkdirAll` and file writes, so it stays inside the Test Tier Purity Invariant — no `exec.Command`, no `gitexec`, no `hubforge.NewHub`.
+  Its one tail hazard is the menu-launcher branch, which calls `PrimeName(l)` and propagates that error rather than degrading;
+  if a hand-built `Location` cannot satisfy `PrimeName`, pre-seed the file at `menuLauncherPath(l)` so the never-clobber early return fires before `PrimeName` is ever reached.
 - **Commit:** `test(fabricengine): pin the launcher command to loom start and its filename to run`
 
 ## Batch Tests

@@ -3,7 +3,7 @@
 ```yaml
 task: "Rename loom CLI run/drive/step for verb/engine symmetry, plus rename ly-supervise"
 slug: "loom-cli-rename"
-approved: false
+approved: true
 started: "20260918-193929"
 parent: "main"
 root: ""

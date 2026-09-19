@@ -26,7 +26,11 @@ Do not create `plugins/ly/skills/ly-drive/` by hand first and copy the file into
 This batch renames the `/ly:ly-supervise` skill to `/ly:ly-drive`: the directory, the frontmatter, the body's self-references, the step-envelope scratch path, and the plugin skill index.
 It is one batch and one card because the rename is a single indivisible unit — the frontmatter `name` and the directory name must agree for the skill to resolve at all, and `INDEX.md`'s link would dangle if either moved without it.
 
-It depends on batch 3 because `internal/shedadapters/bouncer_seed_test.go` already names `ly-drive` in a comment by then, and the skill should exist under that name before anything else in the tree refers to it.
+It depends on batch 3 only to keep the DAG a single chain, not for any ordering property of its own.
+The whole task lands on the parent as one squashed commit, so no intermediate ordering is externally observable, and the one cross-reference between the two batches — `internal/shedadapters/bouncer_seed_test.go`'s comment naming the skill, which batch 3 rewrites to `ly-drive` — is a Go comment with no link resolution and no test asserting on it.
+Batch 3 landing first therefore leaves a comment naming a path this batch has not created yet, for the span of those two batches, with no functional or test consequence.
+Swapping the two would be equally correct;
+the chain order is arbitrary here and deliberately not load-bearing.
 
 Batch-local decision: the plugin manifest `plugins/ly/.claude-plugin/plugin.json` is deliberately not edited.
 It names no individual skill, so it needs no change, and per this repo's convention its `version` stays at `1.0.0` regardless — unpublished plugins do not take a version bump for a feature change.
