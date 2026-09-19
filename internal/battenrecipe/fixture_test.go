@@ -1,8 +1,7 @@
 // fixture_test.go implements testEnv, the package-internal test scaffolding every later test file
 // in this package reuses: a minimal shedrecipe.Env and a shedbuild.ShedPaths, every path derived
-// from one t.TempDir() root, filling only the six fields the three batten entries read and
-// leaving the rest of Env zero -- which is legal, since each entry validates exactly the fields it
-// reads.
+// from one t.TempDir() root, filling only the fields the four batten entries read and leaving the
+// rest of Env zero -- which is legal, since each entry validates exactly the fields it reads.
 
 package battenrecipe
 
@@ -38,6 +37,13 @@ func testEnv(t *testing.T) (shedrecipe.Env, shedbuild.ShedPaths) {
 			ReadStatus: func(string, string) (shedengine.Status, bool, error) {
 				return shedengine.Status{}, false, nil
 			},
+		},
+		SeedChild: battenshed.SeedChildDeps{
+			ReadBoardType: func(context.Context) (string, error) { return "loom", nil },
+			ChildDriver:   func() (string, error) { return "claude", nil },
+			WriteSeed:     func(context.Context, string, string) error { return nil },
+			CommitSeed:    func(context.Context) error { return nil },
+			PushSeed:      func(context.Context) error { return nil },
 		},
 		Teardown: battenshed.TeardownDeps{
 			Shutdown: func(context.Context) (string, error) { return "", nil },

@@ -1,12 +1,17 @@
 # batten-recipe.yaml is the task-worktree batten's producer graph. It is embedded into the
-# binary by the sibling recipes.go rather than read from disk. The three row names below are
+# binary by the sibling recipes.go rather than read from disk. The four row names below are
 # durable on-disk identities that resume depends on, pinned against internal/battenrecipe's own
 # Name* constants by that package's coverage guard -- a rename here without a matching constant
 # rename breaks resume for any in-flight run.
 #
-# Run-Shed's empty on_stuck is load-bearing: a stuck verdict there escalates to a human with the
-# task worktree fully intact, which is what makes the destructive Worktree-Teardown row unreachable
-# from any failure path.
+# Run-Shed's on_stuck: Run-Shed self-route, paired with max_bounces: 1440 and config.poll_interval_s:
+# 30 (a 12-hour watch window -- 1440 bounces at 30 seconds, the same wall clock today's Go constants
+# once expressed, not the same attempt count), is what lets Run-Shed's producer re-check its child's
+# status once per bounce without looping internally. It never routes to Worktree-Teardown: the
+# destructive teardown row is unreachable from any failure path because Run-Shed's own hard-error
+# return -- not an empty on_stuck -- is what shedengine turns into StateFailed at Run-Shed with the
+# run halted. A dropped max_bounces would silently inherit the engine's default budget of ten
+# bounces and turn every long child run into a spurious StateBlocked.
 #
 # Worktree-Teardown's empty on_done is likewise load-bearing and is what ends the run quietly.
 
@@ -18,11 +23,19 @@ terminals:
 producers:
   - name: Worktree-Create
     engine: WorktreeCreate
+    on_done: Seed-Child
+
+  - name: Seed-Child
+    engine: SeedChild
     on_done: Run-Shed
 
   - name: Run-Shed
     engine: InnerRun
     on_done: Worktree-Teardown
+    on_stuck: Run-Shed
+    max_bounces: 1440
+    config:
+      poll_interval_s: 30
 
   - name: Worktree-Teardown
     engine: WorktreeTeardown

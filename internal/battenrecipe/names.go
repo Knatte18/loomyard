@@ -12,13 +12,18 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 )
 
-// The three batten recipe row names. These are durable on-disk identities that resume depends
+// The four batten recipe row names. These are durable on-disk identities that resume depends
 // on: a rename here without a matching rename in contracts/recipes/batten-recipe.yaml breaks
 // resume for any in-flight run, and this package's own coverage guard pins the two against each
 // other.
 const (
 	// NameWorktreeCreate is the row that creates the task worktree.
 	NameWorktreeCreate = "Worktree-Create"
+	// NameSeedChild is the row that seeds the task worktree's own inner shed run, deriving its
+	// recipe from the Board task's own type and its driver from prime's own seed. It runs between
+	// Worktree-Create and Run-Shed, since Run-Shed's own inner shed run cannot start until its
+	// seed exists.
+	NameSeedChild = "Seed-Child"
 	// NameRunShed is the row that runs the inner shed run inside the task worktree. The constant's
 	// name may follow a neutralization of the producer it identifies, but its value is durable:
 	// shedengine persists CurrentProducer -- this row name -- into the status file, so a rename of
