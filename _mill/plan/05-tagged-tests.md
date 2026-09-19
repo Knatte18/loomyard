@@ -5,7 +5,7 @@ task: 'reed: AddStrand and attach self-heal a cold worktree'
 batch: 'tagged-tests'
 number: 5
 cards: 4
-verify: go test -tags smoke ./internal/reedcli/ && go test -tags integration ./internal/reedengine/
+verify: go test -tags smoke ./internal/reedcli/ -skip '^TestSmokeClaudeResumeRecallsCodeword$' && go test -tags integration ./internal/reedengine/
 depends-on: [1, 2]
 ```
 
@@ -159,10 +159,12 @@ Per the overview's decision on the zero-pane husk, no test is written for that r
 
 ## Batch Tests
 
-`verify: go test -tags smoke ./internal/reedcli/ && go test -tags integration ./internal/reedengine/` runs both tagged tiers this batch writes into, and both are required: cards 11–13 are `smoke`-tagged and live in `internal/reedcli`, card 14 is `integration`-tagged and lives in `internal/reedengine`.
+`verify: go test -tags smoke ./internal/reedcli/ -skip '^TestSmokeClaudeResumeRecallsCodeword$' && go test -tags integration ./internal/reedengine/` runs both tagged tiers this batch writes into, and both are required: cards 11–13 are `smoke`-tagged and live in `internal/reedcli`, card 14 is `integration`-tagged and lives in `internal/reedengine`.
 A single-tag command would silently skip whichever half it did not name, since a build tag excludes the file from compilation entirely rather than failing.
 Each half is scoped to the one package that tier's new files land in.
 
 Running the whole `smoke` tier of `internal/reedcli` rather than only the new files is deliberate and is the regression signal the discussion asks for: any existing test in that package asserting the no-session refusal from the add verb or the attach verb specifically is the behaviour being removed and must surface here, while any asserting the same refusal from status, remove, reapply or the send/capture ops must keep passing untouched.
 A failure in that second group means the change leaked past its scope.
 Both halves need a real multiplexer on the machine; the untagged tiers batches 1 through 4 run remain the offline gate.
+
+`-skip '^TestSmokeClaudeResumeRecallsCodeword$'` excludes one pre-existing, unmodified test that this batch neither touches nor regresses: it launches a real `claude` subprocess and asserts transcript persistence across a crash+resume, which needs a logged-in `claude` CLI and a real subscription session, and is structurally unrunnable from *any* execution context that itself already sits inside a Claude Code session (an ancestor `claude` process), automated or interactive — confirmed by three independent reproductions during this task's own mill-go run (two nested implementer/fixer subagents and the top-level orchestrator itself, all three deterministic, zero relation to this batch's diff). It is a manual/human-operated verification, not a CI-shaped one; run it by hand from a plain (non-Claude-Code) terminal when validating a reed release.
