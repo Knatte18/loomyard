@@ -71,7 +71,8 @@ See the overview's `design-doc-is-deleted-not-rewritten` Shared Decision for why
   Name both proxies so a reviewer knows what is already covered — `internal/lifecycleshed`'s seam-enforcement scan bars a direct resolver import so the package cannot resolve its way into the managed worktree, and `internal/lifecyclecli`'s path-derivation tests pin the status and lock paths to prime's anchor so a relocation under the managed worktree fails there — and state that neither proves the driver's own working directory, which stays a review obligation.
   Place the new section in the file's existing ordering next to the fabric invariants it neighbours in subject matter.
   In `## Told-Geometry Invariant`, add `internal/lifecycleshed` and `internal/lifecyclerecipe` to the bound-packages list.
-  In `## CLI / Cobra Invariant`, change the module-count line from eleven of twelve to twelve of thirteen.
+  In `## CLI / Cobra Invariant`, change the module-count line from eleven of twelve to twelve of thirteen, and add a third entry to that section's closed `Deviations:` list naming the new module and the two packages it imports in place of an engine package of its own.
+  That list tracks every exception to the package-naming rule by name and already holds two entries of exactly this shape; the new module has no engine package anywhere in this task, so it is the same deviation and belongs recorded beside them rather than left implicit.
 - **Commit:** `docs(constraints): record the Lifecycle Bookend Invariant and amend two counts`
 
 ### Card 32: the overview's module map and execution stack
@@ -90,6 +91,8 @@ See the overview's `design-doc-is-deleted-not-rewritten` Shared Decision for why
   In `## Execution stack (orchestration layers)`, add one short paragraph after the stack diagram stating that the lifecycle Shed nests loom's: it is its own three-row recipe whose middle row drives a task's loom run as a child process and polls that run's own persisted status for the verdict, so there are two status files by design — the task's, committed on the task branch, and the lifecycle's, per-machine under prime's ephemeral tree — each resuming independently.
   Do not restate the invariant text from `CONSTRAINTS.md` here; link to it the way the surrounding paragraphs already link to the Told-Geometry Invariant.
   Every inline link added must resolve, file part and anchor, per the Markdown Link Integrity invariant.
+  While that same section is open, correct the shed bullet's stale engine-registry count: it states the registry holds twelve engine names, which already understated the pre-task table of fourteen and becomes three generations stale once batch 2 takes it to seventeen.
+  It is a one-word correction in a paragraph this card is already editing, so it lands here rather than as its own card.
 - **Commit:** `docs(overview): add lifecycle to the module map and the execution stack`
 
 ### Card 33: the roadmap move and the design doc's deletion
@@ -109,8 +112,10 @@ See the overview's `design-doc-is-deleted-not-rewritten` Shared Decision for why
   No renumbering is needed anywhere, since every entry is written literally as `1.` and each section renders its own sequence.
   In the entry's new text, correct what the old one got wrong rather than carrying it forward: the self-heal item it recorded as a hard dependency is not one, because the driven path already ensures the session before any producer that spawns into it runs, and that item stays Planned and untouched.
   Delete `manifest/designs/worktree-lifecycle-shed-producers.md`, per the Documentation Lifecycle: a module-design doc is deleted when its module lands, and the implementation, its tests and the packages' own documentation become the source of truth.
+  State the disposition of the optional editor-embedding ingredient the old Planned entry named, per the overview's `vscode-embedding-is-out-of-scope` Shared Decision, pointing at the Someday entry named `VS Code as opt-in per worktree, not spun up by default` as where that work lives — without it the Done entry reads as though all four of the old entry's ingredients shipped.
   Separately, in the Someday entry named `shedrecipe: capability-declaration instead of manual seam-threading`, change its trailing registry-entry count from fourteen to seventeen so that description does not go stale against the table this task grew.
-  Leave the Next Up entry that references this item by bold name alone: it references by name, not by link, so it still resolves.
+  In the Next Up entry named `reed: per-hub daemon reaps orphaned sessions`, which cross-references this item by bold name, change the qualifier that calls it Planned so it names the section this card just moved it to.
+  Its link resolves either way, but the qualifier becomes factually wrong the instant this same card makes the move.
 - **Commit:** `docs(roadmap): move the lifecycle item to Done and delete its design doc`
 
 ### Card 34: the sandbox scenario

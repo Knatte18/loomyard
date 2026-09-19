@@ -3,7 +3,7 @@
 ```yaml
 task: "Worktree spawn/teardown as Shed producers"
 slug: "worktree-lifecycle-shed-producers"
-approved: false
+approved: true
 started: "20260919-051253"
 parent: "main"
 root: ""
@@ -83,6 +83,14 @@ batches:
   The Documentation Lifecycle, recorded in `docs/overview.md` and referenced from `CONSTRAINTS.md`, says the opposite for exactly this doc class: a module-design doc is a draft for a planned, not-yet-built module and is deleted when the module lands, with its purpose and rationale moving into the Go package header comment next to the code.
   `manifest/roadmap.md`'s own Maintenance section repeats the rule and says a Done entry points at the module's package documentation instead.
   Ten shipped modules are already recorded in `docs/overview.md` as "module doc deleted per the documentation lifecycle", so rewriting this one would be the exception, not the convention.
+- **Applies to:** registration and docs
+
+### Decision: vscode-embedding-is-out-of-scope
+
+- **Decision:** The optional VS Code embedding the roadmap's Planned entry names as one of this item's four ingredients is deliberately not delivered and not deferred silently: it stays an operator action outside the driven run, and the Done entry says so, pointing at the Someday entry named `VS Code as opt-in per worktree, not spun up by default` as where that work lives.
+- **Rationale:** The Planned entry folds four ingredients into one run — the create verb, reed's self-healing bootstrap, optional VS Code embedding, and the task's own producer list — and three of them are delivered here.
+  Embedding is not, because a VS Code window is a passive client attaching to a session the driven path brings up anyway, so it is an interactive convenience with no place in a driven run, which is what the discussion's own Out list records.
+  Stating the disposition matters because the Done entry would otherwise read as though all four shipped.
 - **Applies to:** registration and docs
 
 ### Decision: sandbox-runners-need-no-edit
