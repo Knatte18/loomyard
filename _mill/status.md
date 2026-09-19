@@ -44,7 +44,9 @@ batches:
     commit_sha: be5c8f98e3b0a2beb740ef9705f2b478aa245dda
     verify_baseline_failures: []
   - name: launchers
-    state: pending
+    state: running
+    implementer_session: aa8dd6c7-260c-4905-8b6a-1b4191f5bd24
+    start_sha: c899d49a73d56c1d09e0fef9bd9affe992d4e3d6
     verify_baseline_failures: []
   - name: go-comment-sweep
     state: pending
