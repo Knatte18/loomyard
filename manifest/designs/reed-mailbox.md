@@ -10,7 +10,7 @@ Being a Strand is only required to *receive* mail — an address needs somewhere
 
 ## Dependencies
 
-Deliberately a separate, later task from `ly-drive + orchestrator`'s launch-convention change and [`reed: born-as-strand`](reed-born-as-strand.md), which it depends on **for the receive side only**: everything that should be addressable must already exist as a Strand before addressing it means anything. Also downstream of `worktree spawn/teardown as Shed producers`' headless-orchestration future, since a mailbox is most useful once external actors can reach a worktree without a human ever having opened it first.
+Deliberately a separate, later task from `ly-drive + orchestrator`'s launch-convention change and the shipped `reed: born-as-strand` item, which it depends on **for the receive side only**: everything that should be addressable must already exist as a Strand before addressing it means anything. Also downstream of `worktree spawn/teardown as Shed producers`' headless-orchestration future, since a mailbox is most useful once external actors can reach a worktree without a human ever having opened it first.
 
 ## Open items
 
@@ -19,5 +19,5 @@ Deliberately a separate, later task from `ly-drive + orchestrator`'s launch-conv
 
 ## Related
 
-- [reed-born-as-strand.md](reed-born-as-strand.md) — the receive-side prerequisite.
+- the shipped `reed: born-as-strand` item — the receive-side prerequisite.
 - [reed-header-selvage.md](reed-header-selvage.md) — the watchdog daemon this may end up riding on.

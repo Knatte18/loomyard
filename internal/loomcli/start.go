@@ -48,17 +48,20 @@ func (c *loomCLI) startCmd() *cobra.Command {
 
   1. resolve the recorded parent branch, seed the status file when it is
      absent, and commit that seed into the fabric before anything else touches it
-  2. ensure the worktree's tmux session is up and its status strand exists
+  2. ensure the worktree's tmux session is up and its status strand exists,
+     then spawn the per-hub watchdog daemon, best-effort -- --no-attach
+     still performs this spawn
   3. spawn the detached loom driver, unless one is already alive -- a second
      invocation while a driver is running ensures substrate and attaches
      rather than spawning a second one
-  4. hand the terminal to the tmux session
+  4. add the operator's own strand and then hand the terminal to the tmux session
 
 The detached driver's own stdout/stderr go to the log the ephemeral-tree
 driver-log accessor names, never to this command's own output.
 
 --no-attach performs steps 1 through 3 and the handshake that confirms the
-driver took the run lock, then returns instead of running step 4.
+driver took the run lock, then returns instead of running step 4 -- skipping
+the terminal handover this way skips the operator's own strand with it.
 
 Example:
   lyx loom start
@@ -108,6 +111,25 @@ Example:
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
+
+			// Still part of step 4, not a step of its own: this call reports nothing on the
+			// envelope, so it earns no "// Step N:" marker, and giving it one would leave a reader
+			// wondering why the numbering appears to skip something. Three placement facts matter
+			// here. First, it sits outside this RunE's own mustAttach gate below, unlike the
+			// operator strand added at step 7 -- the daemon is per-hub and reconciles a session
+			// that exists on every invocation, --no-attach included, where the detached driver
+			// still spawns agent strands that need reconciling. Second, it is called here rather
+			// than from inside ensureStatusStrand, because that helper lives in
+			// sharedbootstrap.go and `lyx loom step` calls it too, and widening the watchdog spawn
+			// onto `step` is out of this task's scope. Third, it stays inside the region where the
+			// bootstrap lock is still held, deliberately: the spawn is a MkdirAll, an
+			// os.Executable(), and a detached Start with no Wait, so it is bounded and cannot
+			// extend the hold the way a wait could, while releasing the lock earlier to place this
+			// call outside it would mean releasing before the driver-spawn and handshake steps the
+			// lock exists to serialise. The call returns nothing and is never error-checked or
+			// reported on the envelope: every failure path inside the seam logs and returns, and
+			// up, attach and resume already treat it as best-effort.
+			c.spawnWatchdog(c.location.HubPath, c.reed.TmuxPath(), c.reed.ShellPath(), c.suppressWatchdogSpawn)
 
 			// Step 5: probe the run lock non-blockingly -- releasing it immediately when it was
 			// free, never holding it across this probe -- and spawn the detached driver only when
@@ -239,6 +261,22 @@ Example:
 				return nil
 			}
 
+			// Add the operator's own strand before the attach below. The position is load-bearing
+			// in three ways. First, it is after the bootstrap lock's release, which is already
+			// documented above as deliberate. Second, it is inside this mustAttach gate: an
+			// invocation that hands no terminal over has no operator to give a pane to, and a
+			// tracked idle shell in every CI worktree is debris the watchdog would then keep
+			// alive. Third, it is before the term.GetSize call and the AttachArgv it feeds below,
+			// because that argv chains a select-layout computed for the current pane count, so
+			// adding the strand afterwards would compute a layout for a pane count about to
+			// change. A failed add is an ordinary pre-flight error and must not be swallowed into
+			// the handover -- doing so would widen the CLI/Cobra Invariant's deliberately narrow
+			// interactive-handoff exception.
+			if _, err := c.reed.AddStrand(operatorStrandAddSpec()); err != nil {
+				clihelp.SetExit(ctx, output.Err(out, err.Error()))
+				return nil
+			}
+
 			// Read the operator's own terminal size against stdout, exactly as
 			// internal/reedcli's own attach verb does. On error (piped output, no
 			// controlling terminal) this does not report on the envelope and does not
@@ -294,7 +332,7 @@ Example:
 // The alias is not registered inside Command(); the root command registers it as a sibling of the
 // "loom" group, in a later batch.
 func StartAliasCommand() *cobra.Command {
-	c := &loomCLI{}
+	c := newLoomCLI()
 	cmd := c.startCmd()
 	cmd.PersistentPreRunE = c.resolvePersistentPreRun
 	return cmd

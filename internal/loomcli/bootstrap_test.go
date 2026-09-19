@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shell"
 )
 
@@ -334,6 +335,45 @@ func TestDispositionForHandshake(t *testing.T) {
 				t.Errorf("dispositionForHandshake(%v) = %v; want %v", tt.result, got, tt.want)
 			}
 		})
+	}
+}
+
+// TestOperatorStrandAddSpec pins operatorStrandAddSpec's whole output shape, including the two
+// fields an implementer would most plausibly "fix" to something else and be wrong: Focus, because
+// Display.Focus is persisted and re-evaluated on every subsequent AddStrand, so a true value would
+// re-capture focus on every later agent-pane spawn for the rest of the run; and Cmd, because a
+// Strand's Cmd is typed into an already-running shell via send-keys, not passed as a trailing
+// split-window argument, so a non-empty value here would nest a shell inside the pane's own shell.
+func TestOperatorStrandAddSpec(t *testing.T) {
+	got := operatorStrandAddSpec()
+
+	if got.NameOverride != operatorStrandDisplayName {
+		t.Errorf("operatorStrandAddSpec().NameOverride = %q; want %q", got.NameOverride, operatorStrandDisplayName)
+	}
+	if !got.IfAbsent {
+		t.Error("operatorStrandAddSpec().IfAbsent = false; want true -- lyx loom start is re-entrant")
+	}
+	if got.Cmd != "" {
+		t.Errorf("operatorStrandAddSpec().Cmd = %q; want empty -- the pane runs whatever shell tmux gives a freshly split pane", got.Cmd)
+	}
+	if got.Display.Anchor != render.AnchorBelowParent {
+		t.Errorf("operatorStrandAddSpec().Display.Anchor = %q; want %q", got.Display.Anchor, render.AnchorBelowParent)
+	}
+	if got.Display.Focus {
+		t.Error("operatorStrandAddSpec().Display.Focus = true; want false -- Focus is persisted and re-evaluated on every later AddStrand")
+	}
+	if got.Display.ShrinkWhenWaitingOnChild {
+		t.Error("operatorStrandAddSpec().Display.ShrinkWhenWaitingOnChild = true; want false -- the operator's own pane must never collapse")
+	}
+}
+
+// TestOperatorStrandDisplayName_DiffersFromStatusStrandDisplayName guards the exact failure
+// resolveStatusStrandAction's own doc comment describes: reed's add has no upsert semantics, so a
+// name collision between the two pinned strand names would append a second pane rather than replace
+// the first.
+func TestOperatorStrandDisplayName_DiffersFromStatusStrandDisplayName(t *testing.T) {
+	if operatorStrandDisplayName == statusStrandDisplayName {
+		t.Errorf("operatorStrandDisplayName and statusStrandDisplayName are both %q; want distinct names", operatorStrandDisplayName)
 	}
 }
 
