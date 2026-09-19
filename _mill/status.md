@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: loom-cli-rename
 branch: loom-cli-rename
 plan: _mill/plan
@@ -29,4 +29,21 @@ plan-fix-r2  '2026-09-19T05:31:01Z'
 plan-review-r3  '2026-09-19T05:46:47Z'
 plan-fix-r3  '2026-09-19T05:46:47Z'
 planned  '2026-09-19T05:47:01Z'
+implementing  '2026-09-19T05:47:33Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: go-cli-rename
+    state: pending
+  - name: launchers
+    state: pending
+  - name: go-comment-sweep
+    state: pending
+  - name: skill-rename
+    state: pending
+  - name: docs-and-manifest
+    state: pending
 ```
