@@ -22,9 +22,9 @@ tmux's own status-line (`status on`, `status-position bottom`) is not a pane —
 
 `internal/reedengine/windowsize.go`'s `pinGeometryOptionsLocked` renders the status-line text via `Engine.StatusLineText()` and issues seven `set-option` calls to pin it: `status on`, `status-position bottom`, `status-left <escaped text>`, `status-right ""`, `status-left-length <statusLeftLength(escaped)>`, and, window-targeted, `window-status-format ""` and `window-status-current-format ""`. `escapeStatusText` doubles every `#` in the rendered text before it reaches `status-left`, since tmux expands `#{…}`/`#[…]` inside a status string. `statusLeftLength` floors the length at tmux's own default of 10 and otherwise measures the escaped string in runes. `pinGeometryOptionsLocked` runs at boot (`lifecycle.go`) and again in the attach pre-flight (`attach.go`), and every call it issues is non-fatal — logged via `logger.Warn` and ignored, per the `geometry-tmux-failures-are-non-fatal-everywhere` decision — because a `set-option` failing loudly changes nothing and is answered by the `#{status}` readback (`readStatusRowsLocked`) rather than trusted from `set-option`'s own exit status.
 
-- The header's only two tokens today, `{{.repo}}` and `{{.hub}}` (`tokenvocab.Ctx`), are static and never need a live update. `StatusLineText()` makes no tmux round trip and reads only `cfg`+`geom`.
+- The status-line's three tokens, `{{.repo}}`, `{{.hub}}` and `{{.worktree}}` (`tokenvocab.Ctx`), are static and never need a live update. `StatusLineText()` makes no tmux round trip and reads only `cfg`+`geom`.
 - A status-line alone does **not** keep a session alive when every real pane dies — killing all panes in a session with the status-line on still kills the whole tmux server. The status-line only ever covers content, never keepalive.
-- Showing both repo and worktree needs the `worktree` token this task added to `tokenvocab` alongside the existing two.
+- Showing both repo and worktree needs the `worktree` token this task added to `tokenvocab` alongside the pre-existing `repo` and `hub` tokens.
 
 ### Keepalive → a permanent pane named "Selvage"
 
