@@ -129,8 +129,8 @@ func TestAwaitRunLock_ReadyBeforeAliveCheck_ChildAboutToExit(t *testing.T) {
 }
 
 // TestAwaitRunLock_HaltedWhileChildStillAlive is the regression guard for the defect Tier 2
-// introduced in `lyx loom run`'s handshake. shedengine.Run releases the run lock on return, and
-// `lyx loom drive` then spends up to friction_timeout_min -- thirty minutes in the shipped template
+// introduced in `lyx loom start`'s handshake. shedengine.Run releases the run lock on return, and
+// `lyx loom run` then spends up to friction_timeout_min -- thirty minutes in the shipped template
 // -- running the friction reflection agent, against a handshake budget of thirty seconds. Before the
 // halted seam existed, that combination (lock free, child alive, machine finished) fell through to
 // awaitRunLockDeadline, which dispositionForHandshake refuses: a healthy run was reported as
@@ -296,7 +296,7 @@ func TestDispositionForHandshake(t *testing.T) {
 // TestResolveStatusStrandAction is the regression guard for a status pane that never came back.
 // The DeadEntry row is the defect: the bootstrap used to decide by presence alone, and reed keeps
 // tracking a strand whose pane is gone, so after any reed server restart -- a reboot, a crash, a
-// kill-server, or reed's own zombie-boot force-reap -- every subsequent "lyx loom run" in that
+// kill-server, or reed's own zombie-boot force-reap -- every subsequent "lyx loom start" in that
 // worktree saw the stale "loom-status" entry, reported "already there", and left the operator with
 // no status read-out at all.
 func TestResolveStatusStrandAction(t *testing.T) {

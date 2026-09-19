@@ -172,7 +172,7 @@ func newCommitStatusSeam(deps commitStatusDeps) func(producer, state string) err
 // configs wire() loads -- and validateDiscussionCmd/validatePlanCmd (validate.go) read only
 // DecisionRecordPath/SupportLogPath/AnchorPath/WorktreeRoot, none of which need any config load.
 //
-// The verbs that actually build producers -- run and drive -- deliberately keep the full wire(), and
+// The verbs that actually build producers -- start and run -- deliberately keep the full wire(), and
 // keep failing early on a bad config, because for them an unloadable config is a real refusal rather
 // than an unrelated one. That is the same reasoning wire()'s own landingCfg comment already gives
 // for loading landing.yaml eagerly.
@@ -331,7 +331,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		DiscussionSpec: func() (shuttleengine.Spec, error) {
 			return loomengine.DiscussionSpec(location, websterGeom.StencilsDir, loomCfg, registry, seedSlug(location.WorktreeName), !loomCfg.DiscussionInteractive)
 		},
-		// CommitDiscussion mirrors the seed commit run.go already performs, including its
+		// CommitDiscussion mirrors the seed commit start.go already performs, including its
 		// NewMutations("") record and its EnvSyncOptions(). The pathspec is the whole discussion
 		// directory deliberately, so archiveStaleOutputs' timestamped siblings are committed rather
 		// than left as untracked dirt. A second Done over already-committed artifacts is a
@@ -398,7 +398,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		ReviewTimeout: reviewSettings.Timeout,
 
 		// Landing is deliberately left unfilled here, for a different reason than the four above:
-		// Env.Landing is assembled in drive.go, immediately before loomrecipe.New, because
+		// Env.Landing is assembled in run.go, immediately before loomrecipe.New, because
 		// NewPublish/NewFinalize both open their fabric pair eagerly at construction, and wire()
 		// runs for every verb including "status"/"pause" -- the same OpenBisector hazard the
 		// comment above already guards against. See landingDeps (landingdeps.go) and the

@@ -1,7 +1,7 @@
 // bootstrap.go implements the session bootstrap's pure decisions: whether a driver must be spawned,
 // the handshake that waits for the spawned driver to take the run lock, the status strand's lookup
 // by its fixed name, and the one command-string builder the bootstrap composes over. Every piece
-// here is a pure function or takes injected seams, so the verb body in run.go is assembly over
+// here is a pure function or takes injected seams, so the verb body in start.go is assembly over
 // judgment that is already under test -- no real lock, no real process, and no real clock is needed
 // to exercise any of it.
 
@@ -60,7 +60,7 @@ const (
 // halted comes last because it is the weakest of the three signals — it says only that the machine
 // is no longer running, which is also true of a status file a wedged driver never touched. It exists
 // because the run lock alone stopped being able to tell "wedged spawn" from "finished, still
-// working": shedengine.Run releases the lock on return, and `lyx loom drive` then spends up to
+// working": shedengine.Run releases the lock on return, and `lyx loom run` then spends up to
 // friction_timeout_min in the Tier 2 reflection step with the lock free and the process very much
 // alive. Without this signal a fast halt plus any friction note is reported as a wedged spawn and
 // the bootstrap skips its own terminal handover — see dispositionForHandshake.
@@ -110,7 +110,7 @@ const (
 // one place they are not put.
 //
 // awaitRunLockHalted proceeds for exactly the same reason, and covers the case Tier 2 introduced:
-// the driver halted just as fast, but did NOT exit, because `lyx loom drive` runs the friction
+// the driver halted just as fast, but did NOT exit, because `lyx loom run` runs the friction
 // reflection after shedengine.Run has already returned and released the lock. That step spawns a
 // real agent bounded by friction_timeout_min -- thirty minutes in the shipped template -- against a
 // handshake budget of thirty seconds, so the child is alive, the lock is free, and the machine is
@@ -160,7 +160,7 @@ const (
 // tracking a strand whose pane is gone -- which is exactly the state any reed server restart leaves
 // behind: a reboot, a crash, a "tmux kill-server", or reed's own zombie-boot force-reap all leave
 // "loom-status" in reed.json with a cleared pane binding. A presence-only check then reported
-// "already there" on every subsequent `lyx loom run` in that worktree, so the status strand was
+// "already there" on every subsequent `lyx loom start` in that worktree, so the status strand was
 // never re-added and the operator permanently lost the one-line read-out step 2 of the bootstrap
 // exists to give them.
 //
