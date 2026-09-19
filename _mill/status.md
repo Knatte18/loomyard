@@ -50,7 +50,9 @@ batches:
     commit_sha: d4e89bf727407d166e0c10d15c3e5e16fbf10301
     verify_baseline_failures: []
   - name: reedcli pure decision seams
-    state: pending
+    state: running
+    implementer_session: 7935bc09-f194-46ab-8c54-309aa205153c
+    start_sha: bca9c3643636f46537ee3b53ed706b0e5a7c0af4
     verify_baseline_failures: []
   - name: daemon wiring
     state: pending
