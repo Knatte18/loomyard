@@ -170,10 +170,10 @@ The gate is the existence of a second consumer, or Reed becoming a long-running 
 Reed's contract is small enough to freeze: 14 external identifiers across 9 direct production importers, most of them construction-only, with one handle type carrying 18 methods.
 But loomyard is Reed's only user, and the quarry precedent measures what extracting ahead of a consumer buys — a separate release cadence and a dependency edge that, months later, still is not drawn.
 
-Three further Reed items sit in `manifest/roadmap.md`'s Someday section — `reed: cross-worktree columns`, `reed: own-window strand anchoring`, `reed: daemon Slack relay` — and all three are Someday, committed but unscheduled, **not Planned**.
+Three further Reed items are tracked in `manifest/roadmap.md` — `reed: cross-worktree columns`, `reed: own-window strand anchoring`, `reed: daemon Slack relay` — committed but not yet scheduled to build.
 They are a weak churn argument and must not be read as imminent change.
 The verdict stands on the second-consumer gate alone;
-the Someday items are a secondary note that the surface is not finished, not the load-bearing reason.
+those items are a secondary note that the surface is not finished, not the load-bearing reason.
 
 The likelier trigger than "another project wants tmux orchestration" is the daemon story: watchdog plus relay plus mailbox together give Reed a lifecycle of its own, and that is when a repo boundary starts paying.
 
@@ -417,7 +417,7 @@ A mailbox must read addresses semantically, so putting it inside Reed contradict
 
 The structural argument is the same conclusion from a different angle: Reed's geometry type carries a worktree root, a repository name and a hub path, but no slug, no branch and no role, so the addressing a mailbox needs lives in webster's and loom's state, not Reed's.
 
-This is not "drop it": `manifest/roadmap.md`'s Someday section already carries `reed: daemon Slack relay`, which is bidirectional messaging by another name and would be `creel`'s first non-agent sender.
+This is not "drop it": `manifest/roadmap.md` already carries `reed: daemon Slack relay`, which is bidirectional messaging by another name and would be `creel`'s first non-agent sender.
 
 **Addressing: `<worktree-slug>/<role>`, optionally with a round, resolved to a live strand identifier only at delivery time.
 An identifier is never an address.**

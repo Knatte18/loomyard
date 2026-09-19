@@ -2,7 +2,7 @@
 
 > **Status: Design — not built.** Split out from [`internal/fabricengine`](../../internal/fabricengine/doc.go) — the vacation-time discussion bundled this into the Fabric cutover step opportunistically ("we're touching that area anyway"), but the mechanism itself is filesystem-linking/worktree setup, not git coordination — it doesn't depend on `fabric`'s own architecture (`gitrepo`, `SyncWeft`, `RevertWithWeft`) at all. Per the [documentation lifecycle](../../docs/overview.md#documentation-lifecycle), durable parts fold into whichever package ends up owning worktree setup (`warp`/`fabric`'s topology side, or `loom`'s init step) when this lands, and this file is deleted.
 >
-> **Scope reduced (2026-07):** the `CONSTRAINTS.md`-equivalent half of this task is superseded by the Planned `PATTERN.md` item — `PATTERN.md` lives in `weft`, already invisible to the Fabric repo, so there is no constraints directory left to hide. This task now covers only `CLAUDE.local.md`.
+> **Scope reduced (2026-07):** the `CONSTRAINTS.md`-equivalent half of this task is superseded by the `PATTERN.md` item — `PATTERN.md` lives in `weft`, already invisible to the Fabric repo, so there is no constraints directory left to hide. This task now covers only `CLAUDE.local.md`.
 
 ## Design principle
 
@@ -10,7 +10,7 @@ Nothing lyx-related should be visible in the Fabric repo's own git history — e
 
 ## `CONSTRAINTS.md`-equivalent — superseded by `PATTERN.md`
 
-**No longer this task's concern.** `PATTERN.md` (roadmap's Planned list) is the loomyard-owned `CONSTRAINTS.md`-equivalent,
+**No longer this task's concern.** `PATTERN.md` is the loomyard-owned `CONSTRAINTS.md`-equivalent,
 and it lives in `weft` (see the `internal/boardengine` package documentation — "everything that isn't warp already lives in weft"), a separate repo reached through a junction into the warp worktree — so it is **already invisible to the Fabric repo's git history** simply by living there, with nothing extra to build.
 This task therefore reduces to `CLAUDE.local.md` below.
 

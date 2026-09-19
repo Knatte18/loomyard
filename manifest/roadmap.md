@@ -9,22 +9,23 @@ See Maintenance below for how the numbering works.
 
 This section holds what's committed to next.
 
-1. **reed: replace the header pane with a native tmux status-line, a permanent "Selvage" terminal pane, and a detached per-hub watchdog process** — the header pane conflates three unrelated jobs (content, session keepalive, watchdog hosting); split each onto its own purpose-built mechanism.
+1. **reed: born-as-strand for the operator's `loom start` attach** — `loom start`'s terminal handoff never calls `AddStrand`, unlike every other agent launch in lyx; fix it to spawn-then-attach like `reed add` does.
+   See [designs/reed-born-as-strand.md](designs/reed-born-as-strand.md).
+
+1. **reed: per-hub daemon reaps orphaned sessions** — the per-hub watchdog daemon periodically checks whether each live session's worktree still exists on disk, and tears down any that don't. A safety net for when the `worktree spawn/teardown as Shed producers` item's deliberate teardown sequencing doesn't run (crash, manual deletion, aborted task) — not a replacement for it.
    See [designs/reed-header-selvage.md](designs/reed-header-selvage.md).
+
+1. **reed: extract Selvage-pane lifecycle out of apply/reconcile/spawn/lifecycle** — a post-merge audit of the shipped header-pane split found the Selvage pane's own lifecycle code still scattered across the same four files the original design doc named as the smell (just renamed from Header to Selvage); the watchdog and status-line separations landed cleanly, this third one didn't.
+   See [designs/reed-selvage-pane-extraction.md](designs/reed-selvage-pane-extraction.md).
 
 ## Next Up
 
 What comes right after Planned clears — committed and ordered, unlike Someday below.
 Not yet started, and exact order can still shift as Planned work reveals what unblocks what, but the rough sequence below is the current best guess.
 
-1. **reed: born-as-strand for the operator's `loom start` attach** — `loom start`'s terminal handoff never calls `AddStrand`, unlike every other agent launch in lyx; fix it to spawn-then-attach like `reed add` does.
-   See [designs/reed-born-as-strand.md](designs/reed-born-as-strand.md).
-
-1. **generalize `ly-drive` and loom's `start`/`run`/`step` CLI verbs into a Shed-generic watchdog** — `shedengine`/`shedbuild`/`shedrecipe` are already fully generic; only `loomcli` hardcodes loom's own recipe/paths. Speculative until a second `shedrecipe` consumer exists.
+1. **generalize `ly-drive` and loom's `start`/`run`/`step` CLI verbs into a Shed-generic watchdog** — `shedengine`/`shedbuild`/`shedrecipe` are already fully generic; only `loomcli` hardcodes loom's own recipe/paths. The second `shedrecipe` consumer this needed to validate against now exists (`lifecyclerecipe`), but held back from Planned until the `born-as-strand` item above lands, since both touch `loomcli`'s `start`/`run` verbs directly.
    See [designs/shed-generic-watchdog.md](designs/shed-generic-watchdog.md).
 
-1. **reed: per-hub daemon reaps orphaned sessions** — the per-hub watchdog daemon periodically checks whether each live session's worktree still exists on disk, and tears down any that don't. A safety net for when the Done `worktree spawn/teardown as Shed producers` item's deliberate teardown sequencing doesn't run (crash, manual deletion, aborted task) — not a replacement for it.
-   See [designs/reed-header-selvage.md](designs/reed-header-selvage.md).
 ## Someday
 
 Committed to eventually — will be done — but not scheduled next.
@@ -43,9 +44,6 @@ No build order is implied between these items.
 
 1. **reed: strand-based mailbox/addressing system** — deliver messages/events to any Strand by address; being a Strand is required to *receive* mail, not to *send* it.
    See [designs/reed-mailbox.md](designs/reed-mailbox.md).
-
-1. **reed: extract Selvage-pane lifecycle out of apply/reconcile/spawn/lifecycle** — a post-merge audit of the shipped header-pane split found the Selvage pane's own lifecycle code still scattered across the same four files the original design doc named as the smell (just renamed from Header to Selvage); the watchdog and status-line separations landed cleanly, this third one didn't.
-   See [designs/reed-selvage-pane-extraction.md](designs/reed-selvage-pane-extraction.md).
 
 1. **reed: cross-worktree columns** — all worktrees in one tmux window, a column per worktree; needs a name for the new per-worktree grouping layer this introduces and a column-count/fallback policy.
    See [designs/reed-multi-window.md](designs/reed-multi-window.md#cross-worktree-columns).

@@ -1,6 +1,6 @@
 # board — curation/triage automation (DRAFT — deferred out of `board: move storage to weft:main`)
 
-> **Status: Someday, deferred.** A stub, not a settled design — carried forward from `board-weft-storage.md`'s now-deleted "Curation flow" section (its host design, `board: move storage to weft:main`, shipped without this piece). Do not implement from this doc yet; it records the deferred idea so it isn't lost, not a ready-to-build spec.
+> A stub, not a settled design — carried forward from `board-weft-storage.md`'s now-deleted "Curation flow" section (its host design, `board: move storage to weft:main`, shipped without this piece). Do not implement from this doc yet; it records the deferred idea so it isn't lost, not a ready-to-build spec.
 
 ## What already shipped (out of scope here)
 

@@ -1,6 +1,6 @@
 # Loom: the phased orchestrator
 
-> **Status: built, except `Plan-Sweep`.** All seventeen `contracts/recipes/loom-recipe.yaml` rows have real producers — `internal/loomshed`'s `stubProducer` is no longer used by loom's own list — across `internal/loomengine`, `internal/loomcli`, `internal/loomrecipe`, and `internal/loomshed`. The one table row never built is `Plan-Sweep`, which is not a recipe row at all; it has its own Someday roadmap item.
+> **Status: built, except `Plan-Sweep`.** All seventeen `contracts/recipes/loom-recipe.yaml` rows have real producers — `internal/loomshed`'s `stubProducer` is no longer used by loom's own list — across `internal/loomengine`, `internal/loomcli`, `internal/loomrecipe`, and `internal/loomshed`. The one table row never built is `Plan-Sweep`, which is not a recipe row at all; it has its own roadmap item.
 > This banner said "Design — not built" until the 2026-08-29 designs audit, long after the module shipped, while the body below already described the recipe in as-built present tense.
 > Per the [documentation lifecycle](../../docs/overview.md#documentation-lifecycle) this file is now overdue for retirement: its durable parts belong in `overview.md` and the package headers, and reconciling 489 lines of design prose against the as-built module is its own task, not a status-line edit. Until that happens it remains the single design reference for the loom orchestration model, and should be read as design intent that the code may have moved past.
 
@@ -203,7 +203,7 @@ Also flag:
 
 **Build order note:** `Plan-Sweep` was not built in `loom: phase-machine scaffolding` — it stayed a stub there, alongside `Plan-Write`, its only consumer.
 Building a real `Plan-Sweep` before `Plan-Write` is real would have nothing to feed.
-Unlike `Plan-Write` (its own split-out `loom: Plan-Write producer` roadmap item, since shipped), `Plan-Sweep` was never built at all — it is not even a recipe row, and is deferred to its own Someday roadmap item, since quarry-backed work is low-priority project-wide right now and this is the only row in the initiative that touches quarry.
+Unlike `Plan-Write` (its own split-out `loom: Plan-Write producer` roadmap item, since shipped), `Plan-Sweep` was never built at all — it is not even a recipe row, and is deferred to its own roadmap item, since quarry-backed work is low-priority project-wide right now and this is the only row in the initiative that touches quarry.
 `Discussion-Validate` and `Plan-Validate`, which do land in scaffolding, carry no such dependency.
 
 `Plan-Sweep` (row 6) is `simple`/`mechanical` like `Discussion-Validate` — no judgment, exhaustively defined by the checks below, not a smaller version of what `Plan-Write` (the LLM) does.
@@ -321,7 +321,7 @@ The difference is in loom's *yielding*, not in whether anyone is looking.
 - **The status file (`_lyx/loom/status.json`, JSON via `internal/state` — see [loom-status-spec.md](../../contracts/specs/loom-status-spec.md)) is the single source of truth** for orchestration state: `current_producer` names which producer this run is at, and a **per-producer-call outcome** trail (`history`) records every call, including stuck-handler bounce-backs — per-round verdicts live in the review segment's own round artifacts, not here.
   Nothing orchestration-relevant lives anywhere else.
   The pause flag (`pause_requested`) is also kept **in-status** (see [Graceful pause](#graceful-pause)).
-  Product-scoped under `loom/`, not bare `_lyx/status.json`, because `Shed` (see [shed.md](shed.md)) is instantiated by more than one product — the Someday `Hardener` will need its own status file too, and a bare `_lyx/status.json` could not serve both without colliding.
+  Product-scoped under `loom/`, not bare `_lyx/status.json`, because `Shed` (see [shed.md](shed.md)) is instantiated by more than one product — `Hardener` will need its own status file too, and a bare `_lyx/status.json` could not serve both without colliding.
   `Shed` itself has no opinion on this path at all: it is told its status-file path, never derives it (see `shed.md`'s own producer-contract section) — this scoping is entirely `loom`'s own choice as the caller.
 - **It also carries a human-readable *current-activity* `activity`, mechanically composed by `Shed` itself** — not just the machine enum, but "*now:* spawned plan-handler round 2, waiting on Stop hook / *last:* round 1 BLOCKING, 3 findings / *wait:* —".
   This is what the `lyx loom status --watch` strand prints (a 1-line pane at the top, per the `internal/reedengine` package documentation on the strand contract) so the operator sees what the Go driver is *doing*, not only what the agents are saying.

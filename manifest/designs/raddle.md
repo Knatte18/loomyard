@@ -1,4 +1,4 @@
-# raddle — codeguide's woven-in successor (Someday, deprioritized)
+# raddle — codeguide's woven-in successor
 
 > **Status: Design partially exists, not scheduled.** Deprioritized — not required to land a first `loom` plan. Raddle-regeneration is folded into `Finalize`'s own contract, not a reserved phase slot of its own (see [loom.md](loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots)). This doc covers the parts of raddle's design settled during the vacation-time discussion, not the whole module.
 

@@ -1,7 +1,5 @@
 # reed: born-as-strand for the operator's `loom start` attach
 
-> **Status: Next Up, not yet built.**
-
 ## The problem
 
 Every LLM agent lyx's own Go code launches goes through `internal/shuttleengine.Runner`, whose `Start` calls `AddStrand` unconditionally — with one exception. `loom start`'s own terminal handoff does a bare `tmux attach-session` today, with no `AddStrand` call at all, so it never becomes a Strand no matter how it's launched.

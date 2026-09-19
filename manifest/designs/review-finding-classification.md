@@ -1,6 +1,6 @@
 # discussion-format / plan-format — classify review findings by kind (DRAFT)
 
-> **Status: Someday, not yet designed in implementation detail.** This doc records the proposal and its motivating evidence; it is not a ready-to-build spec.
+> This doc records the proposal and its motivating evidence; it is not a ready-to-build spec.
 
 ## Idea
 
