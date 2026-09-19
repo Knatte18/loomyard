@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-cli-surface-and-docs
+phase: holistic-reviewing
 slug: fabric-remote-branch-delete
 branch: fabric-remote-branch-delete
 plan: _mill/plan
@@ -32,6 +32,7 @@ approved-fabricengine-remote-executor  '2026-09-19T05:39:58Z'
 self-resolved-verify-logic  '2026-09-19T05:56:01Z'
 approved-engine-wiring  '2026-09-19T05:59:09Z'
 approved-cli-surface-and-docs  '2026-09-19T06:08:15Z'
+holistic-reviewing  '2026-09-19T06:08:46Z'
 ```
 
 ## Batches
