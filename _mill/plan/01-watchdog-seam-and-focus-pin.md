@@ -108,6 +108,7 @@ what those two tests still prove — that calling the method under a test binary
 - **Context:**
   - `internal/reedengine/spawn.go`
   - `internal/reedengine/strand.go`
+  - `internal/reedengine/lifecycle.go`
   - `internal/reedengine/contract_integration_test.go`
 - **Edits:** none
 - **Creates:**

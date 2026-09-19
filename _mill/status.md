@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-review-r1
+phase: plan-fix-r1
 slug: reed-born-as-strand
 branch: reed-born-as-strand
 plan: _mill/plan
@@ -23,4 +23,5 @@ discussion-gap-fix-r6  '2026-09-19T09:46:05Z'
 discussed  '2026-09-19T09:46:05Z'
 planning  '2026-09-19T09:52:37Z'
 plan-review-r1  '2026-09-19T10:01:24Z'
+plan-fix-r1  '2026-09-19T10:03:06Z'
 ```
