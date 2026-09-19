@@ -299,8 +299,46 @@ func dispatchReap(wg *sync.WaitGroup, done chan<- string, hub, tmuxPath, shellPa
 }
 
 // runWatchdogLoop is the daemon's outer loop: it polls hub for live sessions every
-// watchdogHubDiscoveryCycle, enters newly-appeared sessions, tears down departed ones, and returns
-// once watchdogHubIdleCycles consecutive cycles are idle (see sessionsAreIdle) or ctx is done.
+// timing.DiscoveryCycle, enters newly-appeared sessions, tears down departed ones, reaps orphaned
+// ones, and returns once timing.IdleCycles consecutive cycles are idle (see sessionsAreIdle) or ctx
+// is done.
+//
+// shellPath sits immediately after tmuxPath because the two are told together and travel together —
+// both are told-not-derived values the reap pass needs. An empty shellPath is logged once at Warn,
+// here at loop start naming hub, because the reap still runs but kills each orphaned session's pane
+// root pids without their descendants on Windows — the degradation the discussion's
+// the-daemon-is-told-its-shell decision chose over refusing to start.
+//
+// One cycle's body runs, after the existing sessionsAreIdle/idleCycles handling and its continue, in
+// this exact order:
+//
+//  1. Drain reapDone non-blockingly, clearing finished names from the in-flight set before anything
+//     below reads it.
+//  2. Probe hubLive := hubIsLiveDir(hub).
+//  3. Build the per-name gone map when hubLive is true — the exact worktree-root join
+//     (filepath.Join(hub, name)), not a scan, since hub-mode reedengine.SessionName(worktreeRoot) is
+//     filepath.Base(worktreeRoot) verbatim — or pass a nil map when hubLive is false, since
+//     planReapCycle never reads it on that branch.
+//  4. Call planReapCycle for this cycle's reap/remaining split.
+//  5. For each name planReapCycle selected for a reap: cancel its known entry (stopping the
+//     goroutine polling a session about to be killed), remove it from known, mark it in-flight, log
+//     the reap at Warn naming hub and session, and dispatchReap it off-loop.
+//  6. Call planSessionDiff(remaining, known) rather than planSessionDiff(live, known) — remaining
+//     already excludes both this cycle's reaps and every name still in-flight from an earlier cycle,
+//     which is load-bearing: a reap dispatched last cycle whose session tmux still lists would
+//     otherwise read as *appeared*, and the daemon would start watching a session it is in the
+//     middle of killing.
+//
+// The idle counter keeps its existing meaning: a cycle whose listing was affirmative resets
+// idleCycles to zero even when every session in it was reaped, because the hub socket did answer
+// with sessions — a hub going genuinely quiet afterwards is observed by the following cycles
+// through the existing path.
+//
+// The reap itself runs off-loop, in the goroutine dispatchReap starts, rather than inline in this
+// loop: reapPaneChildren waits up to reapExitTimeout (15s) and then up to forceKillExitGrace (5s)
+// per straggler, so an inline reap would stall one tick for ~20s — breaking the confirmation rule's
+// quoted cadence, delaying entry into a newly-appeared healthy session, and leaving ctx.Done()
+// unread for the whole stall.
 //
 // Teardown on departure is not optional: Engine.Watch never returns while its context is live, so
 // without cancelling a departed entry's goroutine, a worktree whose session goes away while
@@ -309,10 +347,17 @@ func dispatchReap(wg *sync.WaitGroup, done chan<- string, hub, tmuxPath, shellPa
 // watchLoop reads cfg.Watchdog exactly once at start, so a flipped watchdog: value only takes
 // effect once the entry leaves (this departure teardown) and re-enters (enterSession, on the next
 // appearance) — there is no other re-read path.
-func runWatchdogLoop(ctx context.Context, hub, tmuxPath string) error {
+func runWatchdogLoop(ctx context.Context, hub, tmuxPath, shellPath string, timing watchdogTiming) error {
 	logger.Info("reed: watchdog daemon starting", "hub", hub)
+	if shellPath == "" {
+		logger.Warn("reed: watchdog daemon starting with no shell path; the reap will kill pane root pids without their descendants on Windows", "hub", hub)
+	}
 
 	known := make(map[string]watchedSession)
+	goneCounters := make(map[string]int)
+	inFlight := make(map[string]bool)
+	reapDone := make(chan string, 64)
+	var wg sync.WaitGroup
 	defer func() {
 		for name, ws := range known {
 			if ws.cancel != nil {
@@ -320,9 +365,12 @@ func runWatchdogLoop(ctx context.Context, hub, tmuxPath string) error {
 			}
 			logger.Debug("reed: watchdog stopped watching session on daemon exit", "hub", hub, "session", name)
 		}
+		// The daemon never returns mid-reap and never force-kills its own reaper: wg.Wait() runs
+		// only after every known entry's cancel has already been issued above.
+		wg.Wait()
 	}()
 
-	ticker := time.NewTicker(watchdogHubDiscoveryCycle)
+	ticker := time.NewTicker(timing.DiscoveryCycle)
 	defer ticker.Stop()
 
 	idleCycles := 0
@@ -336,7 +384,7 @@ func runWatchdogLoop(ctx context.Context, hub, tmuxPath string) error {
 		live, err := reedengine.ListSessions(tmuxPath, reedengine.ServerName(hub))
 		if sessionsAreIdle(live, err) {
 			idleCycles++
-			if idleCycles >= watchdogHubIdleCycles {
+			if idleCycles >= timing.IdleCycles {
 				logger.Info("reed: watchdog daemon exiting after consecutive idle discovery cycles", "hub", hub, "cycles", idleCycles)
 				return nil
 			}
@@ -344,7 +392,40 @@ func runWatchdogLoop(ctx context.Context, hub, tmuxPath string) error {
 		}
 		idleCycles = 0
 
-		appeared, departed := planSessionDiff(live, known)
+	drainReapDone:
+		for {
+			select {
+			case name := <-reapDone:
+				delete(inFlight, name)
+			default:
+				break drainReapDone
+			}
+		}
+
+		hubLive := hubIsLiveDir(hub)
+		var gone map[string]bool
+		if hubLive {
+			gone = make(map[string]bool, len(live))
+			for _, name := range live {
+				gone[name] = worktreeRootGone(filepath.Join(hub, name))
+			}
+		}
+		reap, remaining := planReapCycle(live, hubLive, gone, goneCounters, inFlight, timing.OrphanGoneCycles)
+		for _, name := range reap {
+			// Cancelling the entry first is what stops a goroutine from polling a session the
+			// daemon is killing.
+			if ws, ok := known[name]; ok {
+				if ws.cancel != nil {
+					ws.cancel()
+				}
+				delete(known, name)
+			}
+			inFlight[name] = true
+			logger.Warn("reed: watchdog reaping orphaned session", "hub", hub, "session", name)
+			dispatchReap(&wg, reapDone, hub, tmuxPath, shellPath, name)
+		}
+
+		appeared, departed := planSessionDiff(remaining, known)
 		for _, name := range appeared {
 			ws, err := enterSession(hub, tmuxPath, name)
 			if err != nil {
@@ -427,21 +508,23 @@ const watchdogLockFileName = "reed-watchdog.lock"
 // watchdogCmd builds the `watchdog` subcommand: a blocking, single-instance, per-hub daemon that
 // runs runWatchdogLoop until it idles out or its context is cancelled.
 //
-// Everything fallible runs pre-flight, on the envelope, before the command blocks: an absent or
-// non-absolute --hub-path and an empty --tmux each report through output.Err, and lock contention
-// (another daemon already holds the lock) exits 0 rather than erroring, since a racing spawn
-// costing one short-lived process is the expected, harmless outcome.
+// Everything fallible runs pre-flight, on the envelope, before the command blocks:
+// validateWatchdogFlags' refusals (an absent or non-absolute --hub-path, an empty --tmux) each
+// report through output.Err, and lock contention (another daemon already holds the lock) exits 0
+// rather than erroring, since a racing spawn costing one short-lived process is the expected,
+// harmless outcome.
 func (c *reedCLI) watchdogCmd() *cobra.Command {
-	var hubPath, tmuxPath string
+	var hubPath, tmuxPath, shellPath string
 
 	cmd := &cobra.Command{
 		Use:   "watchdog",
 		Short: "run the blocking, single-instance, per-hub watchdog daemon",
 		Long: `watchdog is the detached, single-instance, per-hub daemon that hosts reed's
 resize self-heal watch loop for every worktree session on the hub named by
---hub-path. It is told its hub path and the tmux binary to use on its
+--hub-path. It is told its hub path, the tmux binary to use, and (optionally)
+the shell it should spawn to walk a reaped session's descendant pids on its
 command line — it opts out of reed's normal cwd/location/config resolution
-entirely and must never derive either from its own environment.
+entirely and must never derive any of them from its own environment.
 
 up, resume and attach each attempt to spawn this daemon detached after
 their own engine op returns without error; a spawn that finds the lock
@@ -451,19 +534,15 @@ directory rather than nowhere, since its own stdio is discarded before it
 starts polling.
 
 Example:
-  lyx reed watchdog --hub-path /abs/path/to/hub --tmux /usr/bin/tmux`,
+  lyx reed watchdog --hub-path /abs/path/to/hub --tmux /usr/bin/tmux --shell /bin/bash`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
 			}
 			out := cmd.OutOrStdout()
 
-			if hubPath == "" || !filepath.IsAbs(hubPath) {
-				clihelp.SetExit(cmd.Context(), output.Err(out, "--hub-path must be an absolute, non-empty path"))
-				return nil
-			}
-			if tmuxPath == "" {
-				clihelp.SetExit(cmd.Context(), output.Err(out, "--tmux must not be empty"))
+			if err := validateWatchdogFlags(hubPath, tmuxPath); err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
 
@@ -494,7 +573,7 @@ Example:
 			}
 			defer fl.Release()
 
-			if err := runWatchdogLoop(cmd.Context(), hubPath, tmuxPath); err != nil {
+			if err := runWatchdogLoop(cmd.Context(), hubPath, tmuxPath, shellPath, watchdogDefaultTiming()); err != nil {
 				logger.Warn("reed: watchdog daemon's loop returned", "hub", hubPath, "err", err)
 			}
 			return nil
@@ -503,6 +582,7 @@ Example:
 
 	cmd.Flags().StringVar(&hubPath, "hub-path", "", "absolute path to the hub this daemon watches (required)")
 	cmd.Flags().StringVar(&tmuxPath, "tmux", "", "path to the tmux binary this daemon uses (required)")
+	cmd.Flags().StringVar(&shellPath, "shell", "", "shell this daemon spawns to walk a reaped session's descendant pids on Windows (accepted, never required)")
 
 	return cmd
 }
