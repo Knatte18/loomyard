@@ -1,7 +1,7 @@
-// friction_test.go covers the Tier 2 friction wiring this batch's driveCmd/runCmd call sites own: the
-// once-per-task clear-and-create split ensureFrictionDirAfterSeed implements for the shared bootstrap, drive's own
+// friction_test.go covers the Tier 2 friction wiring this batch's runCmd/startCmd call sites own: the
+// once-per-task clear-and-create split ensureFrictionDirAfterSeed implements for the shared bootstrap, run's own
 // unconditional ensure, and the reflection-trigger decision shouldReflectFriction/reflectFriction
-// implement for driveCmd. Every test here is untagged Tier 1: it spawns no subprocess, drives no
+// implement for runCmd. Every test here is untagged Tier 1: it spawns no subprocess, drives no
 // real git operation, builds no real hub fixture, and contains no time.Sleep at or above one second.
 
 package loomcli
@@ -96,16 +96,16 @@ func TestEnsureFrictionDirAfterSeed_MkdirAllFailureDoesNotError(t *testing.T) {
 	dir := filepath.Join(blocker, "friction")
 
 	// The assertion is that this returns at all, without panicking: ensureFrictionDirAfterSeed has no
-	// error return, so a caller (runCmd) proceeds with the seed's own outcome regardless of whether
+	// error return, so a caller (startCmd) proceeds with the seed's own outcome regardless of whether
 	// the directory could actually be created.
 	ensureFrictionDirAfterSeed(dir, nil)
 }
 
-// TestDriveEnsuresAbsentFrictionDir asserts the same friction.EnsureDir call drive.go makes at
+// TestRunEnsuresAbsentFrictionDir asserts the same friction.EnsureDir call run.go makes at
 // startup creates an absent friction directory before the run proceeds -- mirrored here directly
-// against the package driveCmd calls, since drive's own RunE is not independently invocable without a
+// against the package runCmd calls, since run's own RunE is not independently invocable without a
 // real Shed.
-func TestDriveEnsuresAbsentFrictionDir(t *testing.T) {
+func TestRunEnsuresAbsentFrictionDir(t *testing.T) {
 	t.Parallel()
 
 	dir := filepath.Join(t.TempDir(), "friction")
@@ -121,11 +121,11 @@ func TestDriveEnsuresAbsentFrictionDir(t *testing.T) {
 }
 
 // TestShouldReflectFriction covers every combination of the resolved friction directory and the run
-// outcome shouldReflectFriction gates driveCmd's reflection call on: RunPaused never triggers it
+// outcome shouldReflectFriction gates runCmd's reflection call on: RunPaused never triggers it
 // regardless of the directory, an empty directory never triggers it regardless of outcome, and
 // RunDone/RunBlocked both trigger it when the directory is non-empty.
 //
-// The non-nil-err path is not exercised here because it is structurally unreachable: driveCmd's RunE
+// The non-nil-err path is not exercised here because it is structurally unreachable: runCmd's RunE
 // already returns on a non-nil shed.Run error before this decision is ever consulted, so there is no
 // outcome/err combination this function itself could be called with to represent it.
 func TestShouldReflectFriction(t *testing.T) {
@@ -182,7 +182,7 @@ func TestReflectFriction_DepsValidationFailureReportsFailed(t *testing.T) {
 //
 // shedengine.Run releases the run lock on return, and the reflection step fires after that return --
 // so for the whole of the reflection agent's life (friction_timeout_min, thirty minutes in the
-// shipped template) the run lock reads as free and a second "lyx loom run" spawns a second driver.
+// shipped template) the run lock reads as free and a second "lyx loom start" spawns a second driver.
 // That second driver is a legitimate resume of a halted run, but its own reflection would archive
 // the friction directory out from under the first one's live agent while both held the same
 // reflection-report.md as a declared output.

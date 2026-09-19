@@ -25,7 +25,7 @@ func TestHelpTree_RootNamesAllModules(t *testing.T) {
 
 	got := out.String()
 	requiredModules := []string{
-		"board", "config", "ide", "reed", "fabric", "selfreport", "shuttle", "burler", "webster", "stencil", "loom", "run", "quarry", "lifecycle",
+		"board", "config", "ide", "reed", "fabric", "selfreport", "shuttle", "burler", "webster", "stencil", "loom", "start", "quarry", "lifecycle",
 	}
 	for _, module := range requiredModules {
 		if !strings.Contains(got, module) {
@@ -111,7 +111,7 @@ func TestHelpTree_VerbModuleSubcommands(t *testing.T) {
 		{
 			name:     "loom",
 			module:   "loom",
-			wantSubs: []string{"run", "drive", "step", "status", "pause", "validate-discussion", "validate-plan"},
+			wantSubs: []string{"start", "run", "step", "status", "pause", "validate-discussion", "validate-plan"},
 		},
 		{
 			name:     "quarry",

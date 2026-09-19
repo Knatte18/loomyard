@@ -17,7 +17,7 @@ Those calls are made through a narrow file contract — a prompt goes in, named 
 The practical payoff is that the same run does the same thing twice, a crashed run resumes exactly where it stopped, and the parts most likely to break are the parts covered by `go test` rather than by hope.
 
 At its center is **`lyx`** — a single Go binary (LoomYard eXecutable) that owns the task board, the git topology, and the orchestrator.
-The full spine now ships: `lyx run` in a worktree bootstraps a task and drives it through a seventeen-row phase machine to a merge-back, unattended.
+The full spine now ships: `lyx start` in a worktree bootstraps a task and drives it through a seventeen-row phase machine to a merge-back, unattended.
 
 > **Built on Millhouse's ideas, not a port of it.** LoomYard started as a Go rebuild of [Millhouse](https://github.com/Knatte18/millhouse) and still owes it the core premise — task orchestration for Claude Code, isolated worktrees, AI subagents for the judgment steps. It has since grown well past that: the orchestrator is a data-driven phase machine rather than a skill set, review is a Go-owned gate loop, and the git topology is a model Millhouse has no equivalent of.
 
@@ -34,12 +34,12 @@ Through Millhouse, LoomYard builds on ideas from three projects:
 Three names for three layers, deliberately non-overlapping:
 
 - **`lyx`** — the binary/CLI (**L**oom**Y**ard e**X**ecutable): one binary with a namespaced subcommand tree (`lyx board`, `lyx fabric`, `lyx webster`, …).
-- **`loom`** — the orchestrator *module* (`lyx loom run`), a domain like `board` or `fabric` that drives a phased run.
+- **`loom`** — the orchestrator *module* (`lyx loom start`), a domain like `board` or `fabric` that drives a phased run.
 - **`ly`** — the skill / orchestration plugin;
   skills are `/ly-*`.
   Still a plan rather than a shipped set — see [docs/skills.md](docs/skills.md) for which mill skills become `lyx` verbs and which survive as skills.
 
-Convenience alias: **`lyx run` → `lyx loom run`** (the everyday autonomous call).
+Convenience alias: **`lyx start` → `lyx loom start`** (the everyday autonomous call).
 
 ## Design principles
 
@@ -119,7 +119,7 @@ All commands print JSON: `{"ok":true, ...}` on success, `{"ok":false,"error":"..
 - **burler** — one review+fix round over an artifact: A-review → B-fix, one agent, no self-grading, driven entirely by a profile YAML so the round itself carries zero domain knowledge.
 - **webster** — the implementer: one long-lived Master session reads the flat card-list plan once and forks one implementer per batch **in-session**, bracketed by `begin-batch`/`await-batch`/`record-batch`, escalating a stuck fork to a cold recovery strand.
 - **stencil** — the operator surface over the producer prompts every agent reads from disk at call time: `list|validate|diff|sync|promote`.
-- **loom** — the phased orchestrator (`run|drive|status|pause|validate-discussion|validate-plan`).
+- **loom** — the phased orchestrator (`start|run|status|pause|validate-discussion|validate-plan`).
   See [the phase machine](#the-phase-machine) below.
 - **selfreport** — file bugs/enhancements against the repo via go-github, authenticated through `internal/githubclient` (`gh` is a fallback token source, not the transport).
 
@@ -201,7 +201,7 @@ go test ./...             # run the full suite (structural invariants included)
 `./deploy-dev` targets a derived `.dev-bin` instead, so a dev build never overwrites the production install.
 
 To start a hub, run `lyx fabric clone <weft-url> [<warp-url>]` — it clones both repos, wires the junctions, materializes every module's config, and creates `_board`, in one call.
-Then `lyx fabric add <slug>` for a task worktree, and `lyx run` inside it.
+Then `lyx fabric add <slug>` for a task worktree, and `lyx start` inside it.
 
 ## Sandbox Hub
 

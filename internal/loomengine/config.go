@@ -182,7 +182,7 @@ func LoomSelfreportFiledLock(l *lyxcwd.Location) string {
 // status file per the Durable-vs-Ephemeral State Invariant, since the marker is never tracked.
 // It exists because a completed step leaves the status file byte-identical to a mid-run driver
 // death -- state running, run lock free, history non-empty -- so without this marker the next
-// drive's Tier-1 entry observation files a spurious crash-resume issue for a task in which nothing
+// run's Tier-1 entry observation files a spurious crash-resume issue for a task in which nothing
 // crashed. A step killed mid-producer never writes it, so a genuine step-crash still reports.
 // Losing the marker -- a fresh clone, a fabric re-wire -- costs at most one spurious issue, the
 // same trade LoomSelfreportFiled already accepts, which is why it is machine-local rather than
@@ -250,7 +250,7 @@ func LoomFrictionArchivePrefix(l *lyxcwd.Location) string {
 //
 // It is a lock of its own rather than a reuse of the run lock because the run lock cannot cover this
 // step at all: shedengine.Run releases it on return, and the reflection fires after that return, so
-// for the whole of the reflection agent's life the run lock reads as free and a second `lyx loom run`
+// for the whole of the reflection agent's life the run lock reads as free and a second `lyx loom start`
 // spawns a second driver. That second driver is legitimate -- it is an operator resuming a halted
 // run -- but its own reflection would then archive the friction directory out from under the first
 // one's agent, and both would have declared the same reflection-report.md as an output.

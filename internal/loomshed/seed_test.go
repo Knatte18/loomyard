@@ -92,13 +92,13 @@ func TestSeed_RefusesExistingFile(t *testing.T) {
 // TestSeed_RefusesUndecodableFileAsExists is crucible round fable5-high-r5's F3 regression guard: a
 // status file that is PRESENT but cannot be decoded (malformed JSON, or an unknown top-level field)
 // is still present, so Seed must refuse it via ErrSeedExists — never overwrite it, and never
-// escalate the decode failure as its own error. Escalating it made `lyx loom run` refuse on the
+// escalate the decode failure as its own error. Escalating it made `lyx loom start` refuse on the
 // envelope before ever spawning a driver, for the exact "poisoned status file" state
 // manifest/designs/loom.md's crash-recovery section promises never looks like bootstrap's own gate;
 // mapping it to ErrSeedExists lets the bootstrap proceed and defers the decode diagnosis to the
 // driver's own Shed.Run step-1 read gate, exactly as a cleanly-decoding existing file already does.
 //
-// Reproduced live before this test: `lyx loom run` against a status file overwritten with non-JSON
+// Reproduced live before this test: `lyx loom start` against a status file overwritten with non-JSON
 // returned `{"error":"unmarshal state: invalid character...","ok":false}` and never spawned a
 // driver.
 func TestSeed_RefusesUndecodableFileAsExists(t *testing.T) {

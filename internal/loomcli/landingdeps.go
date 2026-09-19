@@ -1,5 +1,5 @@
 // landingdeps.go declares landingDeps, the assembly seam that builds a landingshed.Deps struct from
-// every value already resolved by drive.go. landingDeps performs no I/O of any kind -- it exists so
+// every value already resolved by run.go. landingDeps performs no I/O of any kind -- it exists so
 // the drift-guard test in landingdeps_test.go stays Tier 1 with no hubforge fixture, mirroring
 // wiring.go's own header-comment convention for why wire is extracted.
 
@@ -18,7 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// landingDeps assembles a landingshed.Deps from values already resolved by the caller (drive.go),
+// landingDeps assembles a landingshed.Deps from values already resolved by the caller (run.go),
 // per the assembly-seam-takes-plain-values decision: every argument arrives already resolved, and
 // this function does no I/O and returns no error.
 //
