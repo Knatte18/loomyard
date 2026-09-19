@@ -21,10 +21,12 @@ The generic verbs take the run-id as an optional argument: `lyx shed run <run-id
 - **Default run-id is the literal `self`.**
   `lyx shed run` with no argument means `shed/self/` — the worktree's own primary run, which is what Seed-Child (below) always writes for a task worktree.
   If `self` is absent the verb refuses with a list of the run-ids that do exist; it never guesses by scanning, because guessing is how the wrong run gets resumed.
-- **Durable vs. ephemeral placement follows the same rule status already follows.**
-  A task worktree's own run is durable, fabric-synced state: `_lyx/shed/<run-id>/`, like loom's status file today — a worktree recreated on another machine (the mill-resume pattern) must still know what it is running.
-  A management run in the hub's prime worktree is per-machine, per-attempt state: `.lyx/shed/<run-id>/`, like `.lyx/lifecycle/<slug>/` today, because the Board is the durable truth it derives from.
-  Lookup order: durable tree first, then ephemeral.
+- **One placement, always durable: `_lyx/shed/<run-id>/`.**
+  Every run's directory is weft-tracked, fabric-synced state, like loom's status file today — a worktree recreated on another machine (the mill-resume pattern) must still know what it is running.
+  This deliberately includes management runs in the hub's prime worktree, which an earlier draft placed ephemerally (`.lyx/shed/`, like `.lyx/lifecycle/<slug>/` today) on the argument that the Board is the durable truth they derive from.
+  That argument only covers *what* should run; it says nothing about *how far* a run has come.
+  On a machine switch mid-run, the Board says a task is active, but only a durable batten status in prime says the worktree is already created, the child already seeded, `Run-Shed` already in flight — without it, resuming means reconstructing that from branch inspection.
+  The cost is that batten's rows must self-heal machine-local resources a durable status promises but a cold machine lacks (recreate the child worktree from its branch before watching it) — the same pattern `loom start` already applies to a cold task worktree.
 
 The run-id replaces `lyx lifecycle run <slug>`'s positional argument (in prime, run-id = task slug), and the seed's params absorb `lyx loom start --parent` — both were flagged by review as loose ends of the verb extraction, and this is their landing place.
 
@@ -73,7 +75,8 @@ Optional comfort rows can come later: launching VS Code into the child after see
 ### Durable row identity
 
 `Loom-Run` is a durable on-disk identity: `status.json`'s `current_producer` names it, and the recipe header pins the constant and the YAML against each other.
-Batten's run state is per-machine and ephemeral, so the rename to `Run-Shed` (and the recipe rename) lands whenever no batten runs are in flight — a coordination point, not a migration.
+Today's lifecycle run state is per-machine and ephemeral (`.lyx/lifecycle/`), so the rename to `Run-Shed` (and the recipe rename) lands whenever no such runs are in flight — a coordination point, not a migration.
+Once batten's state moves to the durable tree, its row names are pinned the same way loom's are, so the rename must land no later than that move.
 Engine names, deps structs, and log strings carry no on-disk identity and rename freely.
 
 ## Rejected: relay-stepping
@@ -87,7 +90,7 @@ The envelope contract (`continue`, closed refusal kinds) makes either mode cheap
 
 - `loomcli` and `lifecyclecli` shrink toward bindings over the generic verbs; "loom" survives as a recipe name and a directory of producers, not as a verb owner.
 - `shedengine`/`shedbuild`/`shedrecipe`, the status contract, the envelope contract, and the perch segments are untouched — this design adds addressing and a seed contract *around* them, not new machinery *in* them.
-- `.lyx/lifecycle/` becomes `.lyx/shed/` (and `_lyx/shed/` on the durable side): the per-run directory shape generalizes, the product-named segment goes away.
+- `.lyx/lifecycle/` goes away entirely: the per-run directory shape generalizes into the single durable `_lyx/shed/` tree, and with it both the product-named segment and the durable-vs-ephemeral split disappear.
 
 ## Depends on
 
