@@ -1,4 +1,4 @@
-// entries_lifecycle.go implements the three lifecycle registry entries: worktreeCreateEntry,
+// entries_batten.go implements the three batten registry entries: worktreeCreateEntry,
 // innerRunEntry, and worktreeTeardownEntry. They are grouped into their own file rather than folded
 // into entries_simple.go because they share the Env.Slug/Env.ScratchDir/Env.PrimeLock validation
 // shape that entries_simple.go's nine entries do not have.
@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/lifecycleshed"
+	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
@@ -25,7 +25,7 @@ const (
 
 // worktreeCreateEntry is the Constructor for the "WorktreeCreate" registry row: it validates
 // Env.Slug, Env.ScratchDir, Env.CreateWorktree, Env.PrimeLock.Acquire, and Env.PrimeLock.Path, and
-// returns lifecycleshed.NewWorktreeCreate(name, env.Slug, env.CreateWorktree, env.PrimeLock,
+// returns battenshed.NewWorktreeCreate(name, env.Slug, env.CreateWorktree, env.PrimeLock,
 // env.ScratchDir).
 func worktreeCreateEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	if err := configRejectUnknown(cfg); err != nil {
@@ -46,13 +46,13 @@ func worktreeCreateEntry(name string, cfg Config, env Env) (shedengine.ShedProdu
 	if err := requireAbsRoot("WorktreeCreate", "PrimeLock.Path", env.PrimeLock.Path); err != nil {
 		return nil, err
 	}
-	return lifecycleshed.NewWorktreeCreate(name, env.Slug, env.CreateWorktree, env.PrimeLock, env.ScratchDir), nil
+	return battenshed.NewWorktreeCreate(name, env.Slug, env.CreateWorktree, env.PrimeLock, env.ScratchDir), nil
 }
 
 // worktreeTeardownEntry is the Constructor for the "WorktreeTeardown" registry row: worktreeCreateEntry's
 // twin, validating the same Slug/ScratchDir/PrimeLock fields under the "WorktreeTeardown" entry name,
 // plus Env.Teardown.Shutdown and Env.Teardown.Remove, and returns
-// lifecycleshed.NewWorktreeTeardown(name, env.Slug, env.Teardown, env.PrimeLock, env.ScratchDir).
+// battenshed.NewWorktreeTeardown(name, env.Slug, env.Teardown, env.PrimeLock, env.ScratchDir).
 func worktreeTeardownEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	if err := configRejectUnknown(cfg); err != nil {
 		return nil, err
@@ -75,7 +75,7 @@ func worktreeTeardownEntry(name string, cfg Config, env Env) (shedengine.ShedPro
 	if err := requireAbsRoot("WorktreeTeardown", "PrimeLock.Path", env.PrimeLock.Path); err != nil {
 		return nil, err
 	}
-	return lifecycleshed.NewWorktreeTeardown(name, env.Slug, env.Teardown, env.PrimeLock, env.ScratchDir), nil
+	return battenshed.NewWorktreeTeardown(name, env.Slug, env.Teardown, env.PrimeLock, env.ScratchDir), nil
 }
 
 // innerRunEntry is the Constructor for the "InnerRun" registry row: it reads the optional int
@@ -85,7 +85,7 @@ func worktreeTeardownEntry(name string, cfg Config, env Env) (shedengine.ShedPro
 // resolve to the same default -- and rejects a negative value for either key with an error naming
 // that key. It validates Env.Slug, Env.ScratchDir, and Env.InnerRun.Spawn/ResolveStatus/ReadStatus
 // -- and neither Env.InnerRun.Now nor Env.InnerRun.Sleep, whose nil values are legitimate and
-// select the production clock and sleep. It returns lifecycleshed.NewInnerRun(name, env.Slug,
+// select the production clock and sleep. It returns battenshed.NewInnerRun(name, env.Slug,
 // env.InnerRun, time.Duration(pollIntervalS)*time.Second, pollAttempts, env.ScratchDir).
 func innerRunEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	pollIntervalS, err := configInt(cfg, "poll_interval_s", false)
@@ -128,5 +128,5 @@ func innerRunEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, e
 	if err := requireSeam("InnerRun", "InnerRun.ReadStatus", env.InnerRun.ReadStatus); err != nil {
 		return nil, err
 	}
-	return lifecycleshed.NewInnerRun(name, env.Slug, env.InnerRun, time.Duration(pollIntervalS)*time.Second, pollAttempts, env.ScratchDir), nil
+	return battenshed.NewInnerRun(name, env.Slug, env.InnerRun, time.Duration(pollIntervalS)*time.Second, pollAttempts, env.ScratchDir), nil
 }

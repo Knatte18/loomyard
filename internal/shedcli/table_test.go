@@ -22,11 +22,11 @@ import (
 // four-name contract is the simpler, equally authoritative source.
 var allGenericVerbs = []string{"run", "step", "status", "pause"}
 
-// TestRecipes_KeySetIsExactlyLoomAndLifecycle asserts recipes' key set is exactly {"loom",
-// "lifecycle"} -- no more, no fewer.
-func TestRecipes_KeySetIsExactlyLoomAndLifecycle(t *testing.T) {
+// TestRecipes_KeySetIsExactlyLoomAndBatten asserts recipes' key set is exactly {"loom",
+// "batten"} -- no more, no fewer.
+func TestRecipes_KeySetIsExactlyLoomAndBatten(t *testing.T) {
 	got := names()
-	want := []string{"lifecycle", "loom"}
+	want := []string{"batten", "loom"}
 	if len(got) != len(want) {
 		t.Fatalf("names() = %v; want %v", got, want)
 	}
@@ -38,7 +38,7 @@ func TestRecipes_KeySetIsExactlyLoomAndLifecycle(t *testing.T) {
 }
 
 // TestRecipes_VerbsIsSubsetOfGenericVerbs asserts every recipe's Verbs set is a subset of the four
-// generic verbs, and that loom carries all four while lifecycle carries three.
+// generic verbs, and that loom carries all four while batten carries three.
 func TestRecipes_VerbsIsSubsetOfGenericVerbs(t *testing.T) {
 	generic := map[string]bool{}
 	for _, v := range allGenericVerbs {
@@ -61,16 +61,16 @@ func TestRecipes_VerbsIsSubsetOfGenericVerbs(t *testing.T) {
 		t.Errorf("loom.Verbs = %v; want all four generic verbs", loom.Verbs)
 	}
 
-	lifecycle, err := lookup("lifecycle")
+	batten, err := lookup("batten")
 	if err != nil {
-		t.Fatalf("lookup(lifecycle): %v", err)
+		t.Fatalf("lookup(batten): %v", err)
 	}
-	if len(lifecycle.Verbs) != 3 {
-		t.Errorf("lifecycle.Verbs = %v; want exactly three verbs", lifecycle.Verbs)
+	if len(batten.Verbs) != 3 {
+		t.Errorf("batten.Verbs = %v; want exactly three verbs", batten.Verbs)
 	}
-	for _, v := range lifecycle.Verbs {
+	for _, v := range batten.Verbs {
 		if v == "step" {
-			t.Errorf("lifecycle.Verbs = %v; must not include \"step\", which lifecycle has no analogue for", lifecycle.Verbs)
+			t.Errorf("batten.Verbs = %v; must not include \"step\", which batten has no analogue for", batten.Verbs)
 		}
 	}
 }

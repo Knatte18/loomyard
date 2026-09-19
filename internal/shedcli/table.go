@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/Knatte18/loomyard/internal/lifecyclecli"
+	"github.com/Knatte18/loomyard/internal/battencli"
 	"github.com/Knatte18/loomyard/internal/loomcli"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/spf13/cobra"
@@ -19,7 +19,7 @@ import (
 // engine stack, the positional-argument contract cobra validates before Arm ever runs, and the set
 // of the four generic shedverbs verbs that recipe actually supports.
 type entry struct {
-	// Arm is the recipe's exported resolution entry point -- loomcli.Arm or lifecyclecli.Arm --
+	// Arm is the recipe's exported resolution entry point -- loomcli.Arm or battencli.Arm --
 	// called with the resolved cwd, the invoked verb name, and the command's positional arguments.
 	Arm func(cwd string, verb string, args []string) (shedverbs.Spec, error)
 	// Args is the cobra.PositionalArgs contract this recipe's commands validate against, shared
@@ -28,25 +28,25 @@ type entry struct {
 	Args cobra.PositionalArgs
 	// Verbs names the shedverbs verbs this recipe supports. It is this table's sole authority on
 	// which verb/recipe pairs exist: the four generic verbs are registered once for every recipe,
-	// but the recipes do not all support all four -- lifecycle has no "step" analogue.
+	// but the recipes do not all support all four -- batten has no "step" analogue.
 	Verbs []string
 }
 
 // recipes is the single place every named recipe is declared, mapping each recipe name to the
 // entry that arms it.
 //
-// lifecycle has no "step" analogue: without this table gating step's dispatch, "lyx shed step
-// --recipe lifecycle" would reach the generic step body with StepBusyKind unset and PreStep nil,
+// batten has no "step" analogue: without this table gating step's dispatch, "lyx shed step
+// --recipe batten" would reach the generic step body with StepBusyKind unset and PreStep nil,
 // emitting kind: "" -- a sixth value outside the five the Shed Verb-Set Invariant and ly-drive both
-// pin closed -- and skipping lifecycle's whole PreRun pre-flight.
+// pin closed -- and skipping batten's whole PreRun pre-flight.
 var recipes = map[string]entry{
 	"loom": {
 		Arm:   loomcli.Arm,
 		Args:  cobra.NoArgs,
 		Verbs: []string{"run", "step", "status", "pause"},
 	},
-	"lifecycle": {
-		Arm:   lifecyclecli.Arm,
+	"batten": {
+		Arm:   battencli.Arm,
 		Args:  cobra.ExactArgs(1),
 		Verbs: []string{"run", "status", "pause"},
 	},

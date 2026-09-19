@@ -24,8 +24,8 @@
 // PreRun; step's arm is a hub whose run lock is already held, refusing at the early run-lock probe
 // above seedAndCommitBootstrap and ensureStatusStrand; status and pause are read-only and never
 // reach the substrate on any path, so they are driven against a seeded status file to exercise the
-// success envelope; and lifecycle's run is driven against a slug whose persisted status is
-// StateDone, which refuses inside lifecycle's own PreRun before BuildShed is ever called. That bound
+// success envelope; and batten's run is driven against a slug whose persisted status is
+// StateDone, which refuses inside batten's own PreRun before BuildShed is ever called. That bound
 // is what keeps this suite in the integration tier rather than pushing it to smoke, and it is also
 // why it proves what it needs to: the two paths' divergence risk lives entirely in arming and
 // pre-run resolution, which every one of these arms exercises in full.
@@ -38,8 +38,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/battencli"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lifecyclecli"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/loomcli"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -50,7 +50,7 @@ import (
 
 // lyxcwdResolveWorktreeForTest resolves cwd -- a pair's warp worktree root -- into a *lyxcwd.Location
 // via lyxcwd.ResolveWorktree, which applies no cwd gate: the caller here holds a worktree root, not
-// an acting cwd, exactly as internal/lifecyclecli's own taskWorktreeLocation does.
+// an acting cwd, exactly as internal/battencli's own taskWorktreeLocation does.
 func lyxcwdResolveWorktreeForTest(t *testing.T, cwd string) (*lyxcwd.Location, error) {
 	t.Helper()
 	return lyxcwd.ResolveWorktree(cwd)
@@ -209,37 +209,37 @@ func TestParity_LoomPause_Seeded(t *testing.T) {
 	)
 }
 
-// TestParity_LifecycleRun_StateDone drives "lyx lifecycle run <slug>" and "lyx shed run --recipe
-// lifecycle <slug>" over a slug whose persisted status is StateDone, which refuses inside
-// lifecycle's own PreRun before BuildShed is ever called.
-func TestParity_LifecycleRun_StateDone(t *testing.T) {
+// TestParity_BattenRun_StateDone drives "lyx batten run <slug>" and "lyx shed run --recipe
+// batten <slug>" over a slug whose persisted status is StateDone, which refuses inside
+// batten's own PreRun before BuildShed is ever called.
+func TestParity_BattenRun_StateDone(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	cwd := h.PrimeWorktree()
-	const slug = "parity-lifecycle-done"
+	const slug = "parity-batten-done"
 
-	if err := state.WriteJSON(lifecyclecli.StatusFile(h.Location, slug), lifecyclecli.StatusLock(h.Location, slug), shedengine.Status{
+	if err := state.WriteJSON(battencli.StatusFile(h.Location, slug), battencli.StatusLock(h.Location, slug), shedengine.Status{
 		CurrentProducer: "WorktreeTeardown",
 		State:           shedengine.StateDone,
 	}); err != nil {
-		t.Fatalf("seed lifecycle status: %v", err)
+		t.Fatalf("seed batten status: %v", err)
 	}
 
-	runBoth(t, "lifecycle run (state done)",
+	runBoth(t, "batten run (state done)",
 		func() (int, string) {
 			var out bytes.Buffer
-			code := lifecyclecli.RunCLIIn(cwd, &out, []string{"run", slug})
+			code := battencli.RunCLIIn(cwd, &out, []string{"run", slug})
 			return code, out.String()
 		},
 		func() (int, string) {
 			var out bytes.Buffer
-			code := RunCLIIn(cwd, &out, []string{"run", "--recipe", "lifecycle", slug})
+			code := RunCLIIn(cwd, &out, []string{"run", "--recipe", "batten", slug})
 			return code, out.String()
 		},
 	)
 }
 
-// TestParity_PositionalArgs asserts positional-argument parity: "lyx shed run --recipe lifecycle"
-// with no slug and with two slugs must be refused byte-identically to "lyx lifecycle run" with the
+// TestParity_PositionalArgs asserts positional-argument parity: "lyx shed run --recipe batten"
+// with no slug and with two slugs must be refused byte-identically to "lyx batten run" with the
 // same argument counts, since both sides validate through the identical cobra.ExactArgs(1) value.
 func TestParity_PositionalArgs(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
@@ -255,15 +255,15 @@ func TestParity_PositionalArgs(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			runBoth(t, "lifecycle run positional-arg parity: "+tc.name,
+			runBoth(t, "batten run positional-arg parity: "+tc.name,
 				func() (int, string) {
 					var out bytes.Buffer
-					code := lifecyclecli.RunCLIIn(cwd, &out, append([]string{"run"}, tc.args...))
+					code := battencli.RunCLIIn(cwd, &out, append([]string{"run"}, tc.args...))
 					return code, out.String()
 				},
 				func() (int, string) {
 					var out bytes.Buffer
-					code := RunCLIIn(cwd, &out, append([]string{"run", "--recipe", "lifecycle"}, tc.args...))
+					code := RunCLIIn(cwd, &out, append([]string{"run", "--recipe", "batten"}, tc.args...))
 					return code, out.String()
 				},
 			)

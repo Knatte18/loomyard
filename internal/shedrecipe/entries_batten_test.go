@@ -1,9 +1,9 @@
-// entries_lifecycle_test.go covers the three lifecycle entries: worktreeCreateEntry, innerRunEntry,
+// entries_batten_test.go covers the three batten entries: worktreeCreateEntry, innerRunEntry,
 // and worktreeTeardownEntry. It follows entries_simple_test.go's table shape for the shared
 // Slug/ScratchDir/seam validation, plus innerRunEntry's own poll_interval_s/poll_attempts config
 // coverage.
 //
-// Every seam the three lifecycle entries validate -- CreateWorktree, PrimeLock.Acquire,
+// Every seam the three batten entries validate -- CreateWorktree, PrimeLock.Acquire,
 // Teardown.Shutdown, Teardown.Remove, InnerRun.Spawn, InnerRun.ResolveStatus, and InnerRun.ReadStatus
 // -- is a concrete func type, not an interface, so there is no separate typed-nil-interface case to
 // exercise beyond the plain-nil case requireSeam handles for a reflect.Func value: a nil func value
@@ -160,7 +160,7 @@ func TestLifecycleEntries_RejectsUnrecognisedConfigKey(t *testing.T) {
 
 // TestInnerRunEntry_NilNowAndSleepAreAccepted asserts innerRunEntry does not validate
 // Env.InnerRun.Now or Env.InnerRun.Sleep: their nil values are legitimate and select the production
-// clock and sleep inside lifecycleshed.NewInnerRun.
+// clock and sleep inside battenshed.NewInnerRun.
 func TestInnerRunEntry_NilNowAndSleepAreAccepted(t *testing.T) {
 	env := newTestEnv(t)
 	if env.InnerRun.Now != nil {

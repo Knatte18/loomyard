@@ -1,6 +1,6 @@
 // cli.go builds the cobra command tree for the shed subtree and the RunCLI/RunCLIIn seams that wire
 // it into the standard io.Writer-based call contract, matching internal/loomcli's and
-// internal/lifecyclecli's own shapes so all three modules read identically at the call site.
+// internal/battencli's own shapes so all three modules read identically at the call site.
 
 package shedcli
 
@@ -24,7 +24,7 @@ type shedCLI struct {
 }
 
 // shedVerbTexts carries this subtree's own generic Use/Short/Long text for the four shedverbs
-// verbs: it is not loom's and not lifecycle's, since one "lyx shed status --help" must serve every
+// verbs: it is not loom's and not batten's, since one "lyx shed status --help" must serve every
 // recipe rather than describing only one of them.
 var shedVerbTexts = shedverbs.VerbTexts{
 	Run: shedverbs.VerbText{
@@ -55,7 +55,7 @@ exactly as that recipe's own "status" verb does.
 
 Example:
   lyx shed status --recipe loom
-  lyx shed status --recipe lifecycle some-slug`,
+  lyx shed status --recipe batten some-slug`,
 	},
 	Pause: shedverbs.VerbText{
 		Use:   "pause",
@@ -85,7 +85,7 @@ verb, and an unsupported verb/recipe pair is refused before arming.
 
 Example:
   lyx shed run --recipe loom
-  lyx shed run --recipe lifecycle some-slug
+  lyx shed run --recipe batten some-slug
   lyx shed status --recipe loom
   lyx shed pause --recipe loom`,
 		// RunE is set so that bare "lyx shed" lists subcommands and "lyx shed bogus" emits a JSON
@@ -195,7 +195,7 @@ func unsupportedVerbMessage(verb, recipe string, supported []string) string {
 
 // RunCLI is the public seam for the shed subtree.
 //
-// It delegates to RunCLIIn with an empty cwd, exactly as loomcli.RunCLI and lifecyclecli.RunCLI do.
+// It delegates to RunCLIIn with an empty cwd, exactly as loomcli.RunCLI and battencli.RunCLI do.
 func RunCLI(out io.Writer, args []string) int {
 	return RunCLIIn("", out, args)
 }

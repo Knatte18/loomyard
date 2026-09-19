@@ -17,7 +17,7 @@ import (
 )
 
 // TestCommand_RecipeFlagDefaultsToLoom asserts --recipe's DefValue is "loom", read directly off the
-// built flag rather than by driving an invocation -- resolving what a default recipe of "lifecycle"
+// built flag rather than by driving an invocation -- resolving what a default recipe of "batten"
 // versus "loom" actually does would require reaching Arm, which spawns git and does not belong in
 // an untagged file.
 func TestCommand_RecipeFlagDefaultsToLoom(t *testing.T) {
@@ -79,20 +79,20 @@ func TestRunCLIIn_UnknownRecipeEmitsUnknownRecipeEnvelope(t *testing.T) {
 	}
 }
 
-// TestRunCLIIn_UnsupportedVerbRefusesBeforeResolvingCwd asserts "lyx shed step --recipe lifecycle
-// <slug>" is refused on the envelope naming the verb, the recipe, and lifecycle's three supported
+// TestRunCLIIn_UnsupportedVerbRefusesBeforeResolvingCwd asserts "lyx shed step --recipe batten
+// <slug>" is refused on the envelope naming the verb, the recipe, and batten's three supported
 // verbs -- and that the refusal happens without ever resolving cwd, proven by passing a directory
 // that is not a git worktree at all and still succeeding at the refusal rather than failing on a
 // "not a git repository" error.
 func TestRunCLIIn_UnsupportedVerbRefusesBeforeResolvingCwd(t *testing.T) {
 	var out bytes.Buffer
-	exitCode := RunCLIIn(t.TempDir(), &out, []string{"step", "--recipe", "lifecycle", "some-slug"})
+	exitCode := RunCLIIn(t.TempDir(), &out, []string{"step", "--recipe", "batten", "some-slug"})
 
 	if exitCode != 1 {
-		t.Fatalf("RunCLIIn(step --recipe lifecycle) exit code = %d; want 1; output: %s", exitCode, out.String())
+		t.Fatalf("RunCLIIn(step --recipe batten) exit code = %d; want 1; output: %s", exitCode, out.String())
 	}
 	got := out.String()
-	for _, want := range []string{"step", "lifecycle", "run", "status", "pause"} {
+	for _, want := range []string{"step", "batten", "run", "status", "pause"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("unsupported-verb refusal = %q; want it to name %q", got, want)
 		}
