@@ -23,12 +23,12 @@ The third consumer is already drafted (`manifest/designs/hardener.md`: `Hardener
 
 **In:**
 
-- A new `internal/shedcli` package owning the generic verb bodies — `run`, `step`, `status` (including `--watch`), and `pause` — built over a told `*shedengine.Shed` plus a told arming spec, with optional injected hooks for module-specific work.
+- A new `internal/shedverbs` package owning the generic verb bodies — `run`, `step`, `status` (including `--watch`), and `pause` — built over a told `*shedengine.Shed` plus a told arming spec, with optional injected hooks for module-specific work.
 - A new `lyx shed` cobra subtree exposing those four verbs, armed by a `--recipe <name>` flag resolved against a named-recipe table.
-- `loomcli`'s `run`, `step`, `status`, `pause` reimplemented as arming over `shedcli`, preserving their present CLI surface and envelopes byte-for-byte.
+- `loomcli`'s `run`, `step`, `status`, `pause` reimplemented as arming over `shedverbs`, preserving their present CLI surface and envelopes byte-for-byte.
 - `lifecyclecli`'s `run` and `status` reimplemented the same way; `lifecyclecli` gains `pause` as a consequence of the shared verb set.
 - `shedbuild` gains the deduplicated `ShedPaths` type and a `NewShed(recipe []byte, env, paths)` assembler; `loomrecipe.New` and `lifecyclerecipe.New` shrink to a delegation plus their own package-specific guards, and both packages' own `ShedPaths` types are removed in favour of the hoisted one.
-- The lifecycle recipe's inner-run producer neutralized: the registry engine name `LoomRun`, the `Env.LoomRun` field, the `lifecycleshed.LoomRunDeps` type, `NewLoomRun`, the entry's own identifiers, and the producer's log and stuck-reason strings all stop naming loom.
+- The lifecycle recipe's inner-run producer neutralized to the name **`InnerRun`**: the registry key `"LoomRun"` → `"InnerRun"`, `Env.LoomRun` → `Env.InnerRun`, `lifecycleshed.LoomRunDeps` → `InnerRunDeps`, `NewLoomRun` → `NewInnerRun`, `loomRunProducer` → `innerRunProducer`, `loomRunEntry` → `innerRunEntry`, `defaultLoomRunPollIntervalS`/`defaultLoomRunPollAttempts` → `defaultInnerRun*`, and the producer's log and stuck-reason strings stop naming loom.
   The seam only — no second lifecycle recipe and no Hardener innards (see the `inner-run-engine-goes-product-neutral` Decision).
 - The `ly-drive` skill generalized to drive any recipe through `lyx shed step --recipe <name>`, with its loom-specific sections gated on the recipe name.
 - A new **Shed Verb-Set Invariant** in `CONSTRAINTS.md`, with a seam-enforcement scan and a help-tree test enforcing it.
@@ -45,19 +45,28 @@ The third consumer is already drafted (`manifest/designs/hardener.md`: `Hardener
   The one recipe-YAML edit in scope is the `Loom-Run` row's `engine:` value, which changes with the registry rename and is resolved at build time, never persisted.
   The registry stays at seventeen keys — this is a rename, not an addition.
 - A second lifecycle recipe, a Hardener recipe, a Hardener arming function, or any Hardener innards.
-- Any change to loom's own producer graph, its row names, its interrupt-policy table's *contents*, or `loomshed`/`lifecycleshed` producer constructors.
-- Building a `Hardener` recipe or arming function.
   The generalization must make the third consumer cheap; it does not write it.
+- Any change to loom's own producer graph, its row names, its interrupt-policy table's *contents*, or `loomshed`/`lifecycleshed` producer constructors.
 - Deleting `loomrecipe`/`lifecyclerecipe`.
   Both keep their graph-shape, sequence, resume and coverage-guard tests, which are product-specific and have no home in a generic package.
 - Any new on-disk location for recipe files (barred by the Recipe-Format Sole-Parser Invariant) and any `shed.yaml`-style runtime recipe discovery.
 
 ## Decisions
 
-### shedcli-owns-the-verb-bodies
+### two-packages-verb-bodies-and-subtree
 
-- Decision: create `internal/shedcli`, a `<module>cli`-shaped package whose exported surface is an arming `Spec` type, a `Hooks` type, a `Verbs(spec) []*cobra.Command` (or equivalent) constructor returning the four generic subcommands, plus the module's own `Command()`/`RunCLI`/`RunCLIIn` seams for the `lyx shed` subtree.
-  `loomcli` and `lifecyclecli` build their own subtrees from the same constructor, so there is exactly one body per verb in the tree.
+- Decision: split the work across two packages, because one package cannot hold both halves without an import cycle.
+  - `internal/shedverbs` — the generic verb bodies and nothing else: the arming `Spec` type, the `Hooks` type, and a `Verbs(spec) []*cobra.Command` constructor returning the four subcommands.
+    It imports `cobra`, `clihelp`, `output`, `state` and `shedengine`, and imports no `<module>cli`.
+    `loomcli` and `lifecyclecli` import it and build their own subtrees from it, so there is exactly one body per verb in the tree.
+  - `internal/shedcli` — the `lyx shed` subtree: the recipe table, plus the plain `Command()`/`RunCLI`/`RunCLIIn` seams.
+    It imports `shedverbs`, `loomcli` and `lifecyclecli`, and nothing imports it but `cmd/lyx/main.go`.
+  The table is a plain map literal in `shedcli`, in the same shape and for the same reason as `shedrecipe`'s own registry: one declaration site, reached through accessors, with no `init()` self-registration and no runtime `Register`.
+- Rationale on the split specifically: the arming functions are built over the `loomCLI` and `lifecycleCLI` receivers (`wire`, `wireLightweight`, `verbUsesLightweightWiring`), so whichever package owns the table must import those two `<module>cli` packages — and those two must import the verb bodies.
+  Putting both halves in one package makes that a cycle.
+  Splitting them puts the bodies at a leaf and the table at the composition layer, which is what the dependency direction already demands.
+  It also keeps every module's `Command()` signature argument-free, so the CLI/Cobra Invariant needs no new deviation entry — the alternative, `shedcli.Command(entries)` with the table injected from `cmd/lyx/main.go`, would break that uniformity for the first time in the tree.
+  `shedverbs` importing cobra while not being a `<module>cli` package is deliberate and is recorded in the new invariant below; the rule it must not break is the one that matters — an *engine* never imports cli/cobra, and `shedverbs` is not an engine.
 - Rationale: the duplication is already two-deep and the third consumer is drafted.
   A shared package is what makes the verb/engine symmetry the design doc settled (`run` → `Shed.Run`, `step` → `Shed.Step`) literal rather than a coincidence maintained by hand in each `<module>cli`.
 - Rejected: a shared-helpers-only refactor with each module keeping its own `RunE` (leaves the envelope key sets and the busy-refusal wording free to drift, which is the exact failure the parity tests would then have to police forever); a `lyx shed` subtree with `loomcli`/`lifecyclecli` left untouched (ships a third copy instead of removing two).
@@ -83,10 +92,10 @@ The third consumer is already drafted (`manifest/designs/hardener.md`: `Hardener
 ### existing-subtrees-keep-their-surface
 
 - Decision: `lyx loom run|step|status|pause` and `lyx lifecycle run|status` keep their present names, flags, `Short`/`Long` text, exit codes, and envelopes.
-  They become arming over `shedcli` with no user-visible change.
+  They become arming over `shedverbs` with no user-visible change.
   `lyx shed run --recipe loom` and `lyx loom run` are the same body armed the same way.
 - Rationale: the existing behavioural suites (`loomcli`'s `smoke_test.go`, `step_test.go`, `parity_test.go`, `status_test.go`, `wiring_test.go`; `lifecyclecli`'s `run_test.go`, `lifecycle_integration_test.go`) are the real proof the extraction is behaviour-preserving, and they only prove it if they keep passing unchanged.
-- Rejected: removing the per-module subtrees in favour of `lyx shed --recipe` alone (breaks every documented invocation, the `ly-drive` skill, `.vscode/tasks.json`-generated launch chains, and `start`'s own `exec.Command(exe, "loom", "run")` driver spawn); registering the per-module verbs as aliases owned by `shedcli` (the CLI/Cobra Invariant allows an alias with no seam of its own, but these verbs each need their own module's `PersistentPreRunE` resolution, which an alias cannot supply generically).
+- Rejected: removing the per-module subtrees in favour of `lyx shed --recipe` alone (breaks every documented invocation, the `ly-drive` skill, `.vscode/tasks.json`-generated launch chains, and `start`'s own `exec.Command(exe, "loom", "run")` driver spawn); registering the per-module verbs as aliases owned by `shedverbs` (the CLI/Cobra Invariant allows an alias with no seam of its own, but these verbs each need their own module's `PersistentPreRunE` resolution, which an alias cannot supply generically).
 
 ### shedpaths-and-newshed-hoist-to-shedbuild
 
@@ -95,7 +104,7 @@ The third consumer is already drafted (`manifest/designs/hardener.md`: `Hardener
   `loomrecipe.ShedPaths` and `lifecyclerecipe.ShedPaths` are removed.
 - Rationale: the two `New` bodies are the same eight lines and the two structs are field-identical including their doc comments.
   `shedbuild` already owns `Parse` and `Build` and already imports `shedengine` and `shedrecipe`, so the assembly step is adjacent to what it owns rather than a new responsibility.
-- Rejected: leaving the duplication and generalizing only the CLI verbs (the two copies would then diverge under a `shedengine.Shed` field addition, which is precisely the silent-divergence class `loomrecipe.New`'s own coherence guard exists to catch); putting `NewShed` in `shedcli` (would make a cobra-importing package the assembler, and would leave any non-CLI consumer without one).
+- Rejected: leaving the duplication and generalizing only the CLI verbs (the two copies would then diverge under a `shedengine.Shed` field addition, which is precisely the silent-divergence class `loomrecipe.New`'s own coherence guard exists to catch); putting `NewShed` in `shedverbs` (would make a cobra-importing package the assembler, and would leave any non-CLI consumer without one).
 
 ### loomrecipe-keeps-its-coherence-guard
 
@@ -107,9 +116,10 @@ The third consumer is already drafted (`manifest/designs/hardener.md`: `Hardener
 
 ### optional-hooks-for-module-specific-work
 
-- Decision: `shedcli.Hooks` is a struct of nil-by-default function fields, each skipped when nil:
+- Decision: `shedverbs.Hooks` is a struct of nil-by-default function fields, each skipped when nil:
   - `PreRun func(ctx) (extraEnvelope map[string]any, err error)` — runs before `Shed.Run`; a non-nil error is reported on the error envelope and the run does not start.
-  - `PostRun func(ctx, result shedengine.RunResult, runErr error) map[string]any` — runs unconditionally after `Shed.Run` returns, including when `runErr` is non-nil, and before the error envelope is written; its returned map is merged into the success envelope.
+  - `PostRun func(ctx, result shedengine.RunResult, runErr error) map[string]any` — runs unconditionally after `Shed.Run` returns, including when `runErr` is non-nil, and before the error envelope is written; its returned map is merged into the success envelope, and discarded when `runErr` is non-nil, since an error envelope carries no extras.
+    It is called for its side effects on that path, which is the whole reason it runs there.
   - `PreStep func(ctx) (kind string, err error)` — runs before `Shed.Step`; a non-nil error is reported with the returned refusal kind on the envelope's `kind` field.
   - `InterruptPolicyFor func(row string) string` — supplies `step`'s `next_interrupt_policy`; the empty string when nil.
   - `StatusExtras func(st shedengine.Status) (map[string]any, error)` — supplies the product-specific half of `status`'s envelope, merged onto the generic core; a non-nil error is reported on the error envelope.
@@ -123,29 +133,30 @@ The third consumer is already drafted (`manifest/designs/hardener.md`: `Hardener
 
 ### flags-and-args-belong-to-the-arming-module
 
-- Decision: `shedcli.Verbs(spec)` returns the four `*cobra.Command` values with only the flags the generic bodies themselves read — `status`'s `--watch` and its `--interval`, the latter read by the watch body's own sleep and defaulting to one second.
+- Decision: `shedverbs.Verbs(spec)` returns the four `*cobra.Command` values with only the flags the generic bodies themselves read — `status`'s `--watch` and its `--interval`, the latter read by the watch body's own sleep and defaulting to one second.
   A module that needs more decorates the returned command itself, before adding it to its own subtree: `loomcli` registers `--parent` on the `step` command it got back, and `lifecyclecli` sets `Args: cobra.ExactArgs(1)` on `run` and `status`.
-  Hooks reach those values by closure over the module's own receiver, never through a `shedcli` parameter — the same way `loomcli`'s `parentFlag` and `lifecyclecli`'s `c.slug` are already captured today.
+  Hooks reach those values by closure over the module's own receiver, never through a `shedverbs` parameter — the same way `loomcli`'s `parentFlag` and `lifecyclecli`'s `c.slug` are already captured today.
   For the `lyx shed` subtree, each recipe's table entry declares its own positional-arg contract, which `shed`'s `PersistentPreRunE` applies after resolving `--recipe`: `loom` takes no positional argument, `lifecycle` takes exactly one slug.
   `--recipe` itself is a persistent flag on the `shed` parent, so it is never confused with a recipe's own arguments.
 - Rationale: the flag and argument surfaces are genuinely per-module and there is no generic shape to give them — `--parent` writes a fabric provenance record that only loom's bootstrap has, and the slug is what `lifecyclecli`'s `wire` needs before it can build `Env` or `ShedPaths` at all, so it must be read in the pre-run, ahead of any arming.
-  Decorating a returned command is ordinary cobra and keeps `shedcli` free of a flag-registration DSL it would otherwise need.
+  Decorating a returned command is ordinary cobra and keeps `shedverbs` free of a flag-registration DSL it would otherwise need.
   It also keeps each module's existing `PersistentPreRunE` as the sole reader of its own arguments, which is what the `generic-package-resolves-nothing` Decision already requires.
-- Rejected: a flag/arg declaration list on the arming spec (a DSL reimplementing what cobra already does, and one `shedcli` would have to keep in sync with cobra's own validators); passing parsed values into hooks as a `map[string]any` (loses typing and hides which verb reads what); letting `shedcli` own `--parent` and `--slug` generically (puts two product-specific flags on every recipe's verbs, including recipes that have neither).
+- Rejected: a flag/arg declaration list on the arming spec (a DSL reimplementing what cobra already does, and one `shedverbs` would have to keep in sync with cobra's own validators); passing parsed values into hooks as a `map[string]any` (loses typing and hides which verb reads what); letting `shedverbs` own `--parent` and `--slug` generically (puts two product-specific flags on every recipe's verbs, including recipes that have neither).
 - Consequence for the parity tests: `lyx shed run --recipe lifecycle <slug>` is the positional form the parity test compares against `lyx lifecycle run <slug>`; a missing or extra positional argument must be refused identically by both, and that refusal is part of what the parity test asserts.
 
 ### busy-refusal-comes-from-the-arming-spec
 
 - Decision: the arming spec carries the told `ErrShedBusy` treatment — the message text and, for `step`, the refusal kind — so the generic bodies keep the three existing behaviours distinguishable without branching on which module armed them.
   `loomcli`'s `run` keeps reporting it as an ordinary error envelope, `lifecyclecli`'s `run` keeps its lock-path-naming message, and `step` keeps mapping it to `kind: busy` with its `lyx loom pause` remedy text.
+  An empty told message means passthrough — the generic body reports `err.Error()` verbatim — which is what `loomcli`'s `run` needs, since it reports the bare sentinel text today and must keep doing so.
 - Rationale: `ErrShedBusy` is one sentinel with three shipped user-facing treatments, and the wording is what an operator acts on — `lifecyclecli`'s message names the lock path precisely so the refusal is legible rather than a raw lock error.
   Telling the message rather than deriving it is the same told-not-derived discipline the rest of the arming follows.
-- Rejected: collapsing the three to one wording (a user-visible regression in two of the three, and the `existing-subtrees-keep-their-surface` Decision bars it); a fourth hook for the busy case alone (a hook is for work, and this is a string); branching inside `shedcli` on the recipe name (makes the generic body know its callers, which is exactly what this task removes).
+- Rejected: collapsing the three to one wording (a user-visible regression in two of the three, and the `existing-subtrees-keep-their-surface` Decision bars it); a fourth hook for the busy case alone (a hook is for work, and this is a string); branching inside `shedverbs` on the recipe name (makes the generic body know its callers, which is exactly what this task removes).
 
 ### envelope-contracts-move-with-the-verbs
 
 - Decision: `step`'s envelope keeps loom's exact ten keys — `producer`, `outcome`, `output`, `next`, `state`, `reason`, `continue`, `history_length`, `next_interrupt_policy`, `status_file` — with `continue` still derived as `res.State == shedengine.StateRunning` and `next_interrupt_policy` supplied by the `InterruptPolicyFor` hook.
-  The five refusal kinds (`busy`, `unseeded`, `ownership`, `bootstrap`, `producer`) move to `shedcli` as the closed vocabulary, with the closure test moving with them.
+  The five refusal kinds (`busy`, `unseeded`, `ownership`, `bootstrap`, `producer`) move to `shedverbs` as the closed vocabulary, with the closure test moving with them.
   `run`'s envelope carries `outcome`, `halted_producer`, `reason`, `history_length`, plus the `PostRun` extras map.
 - Rationale: the ten-key set is closed by an existing test and is the contract `ly-drive` reads; a key added or renamed in the move is a silent break of the skill.
   Deriving `continue` in Go, not in the skill, is the stated reason a thin supervisor never carries its own copy of the `State` vocabulary — that reason is now stronger, not weaker, since the skill must serve several recipes.
@@ -153,7 +164,9 @@ The third consumer is already drafted (`manifest/designs/hardener.md`: `Hardener
 - `status`'s envelope is built in two halves.
   The generic core is the four keys both shipped verbs already share — `current_producer`, `state`, `error`, `activity` — and everything else comes from the `StatusExtras` hook: `loomcli` adds `pause_requested`, `history_length`, `slug` and `parent` (from a `json.Unmarshal` of `st.Product` into `loomengine.Status`) and `interrupt_policy` (a plain `loomshed.InterruptPolicyFor(st.CurrentProducer)` map read); `lifecyclecli` adds `found`, `status_path` and `history`.
   Both verbs therefore keep their present key sets exactly.
-  The absent-file disposition is a told field on the arming spec, not a hook and not a generic default, because the two shipped verbs disagree on it deliberately: loom refuses with `no status file at <path>; run "lyx loom start" first to bootstrap this task`, since only `start` may seed; lifecycle reports `found: false` with `status_path` on the success envelope, since nothing failed and a slug simply has not been run on this machine.
+  The absent-file disposition short-circuits *before* both the core and `StatusExtras`, so neither contributes a key to an absent-file envelope: lifecycle's absent envelope stays exactly its present two keys, `found` and `status_path`, and loom's absent case stays a bare error envelope.
+  Passing a zero `shedengine.Status` through `StatusExtras` is explicitly rejected — it would add `history` and the four core keys to an envelope that carries neither today, which the no-key-added rule below forbids.
+  The disposition is a told field on the arming spec, not a hook and not a generic default, because the two shipped verbs disagree on it deliberately: loom refuses with `no status file at <path>; run "lyx loom start" first to bootstrap this task`, since only `start` may seed; lifecycle reports `found: false` with `status_path` on the success envelope, since nothing failed and a slug simply has not been run on this machine.
   Neither loom extra needs a config load or a built Shed, which is what keeps `status` on the lightweight path (see `per-verb-arming-preserves-lightweight-wiring`).
 - Consequence to state plainly: `lyx lifecycle run`'s envelope gains `history_length`, which it does not carry today.
   This is a deliberate widening — additive, and the field is free from `result.History` — not an accident of the move.
@@ -166,14 +179,14 @@ The third consumer is already drafted (`manifest/designs/hardener.md`: `Hardener
   `status --watch`'s rendered line takes its literal prefix from a told label on the arming spec (`loom` for the loom recipe), keeping `loom <state> | now <now> | last <last> | wait <wait>` byte-identical for loom.
 - Rationale: `shedengine` honours `PauseRequested` at producer granularity for every Shed, so a Shed that can be run and stepped but not paused is an arbitrary gap.
   `lifecyclecli` gaining `lyx lifecycle pause` is the intended consequence, not a side effect to suppress.
-- Rejected: keeping either verb loom-only (would leave `shedcli` owning two of four verbs and `loomcli` still hosting verb bodies, defeating the invariant below); hardcoding the `loom` prefix in the generic renderer.
+- Rejected: keeping either verb loom-only (would leave `shedverbs` owning two of four verbs and `loomcli` still hosting verb bodies, defeating the invariant below); hardcoding the `loom` prefix in the generic renderer.
 - Note for the plan: `loomcli`'s `verbUsesLightweightWiring` set (`status`, `pause`, `validate-discussion`, `validate-plan`) must keep working.
-  `status` and `pause` still need only the two status-file paths and must not acquire a dependency on the full `wire()` through this change — `shedcli`'s `status` and `pause` bodies must therefore take their paths told and never require a built `*shedengine.Shed`.
+  `status` and `pause` still need only the two status-file paths and must not acquire a dependency on the full `wire()` through this change — `shedverbs`'s `status` and `pause` bodies must therefore take their paths told and never require a built `*shedengine.Shed`.
 
 ### inner-run-engine-goes-product-neutral
 
 - Decision: the lifecycle recipe's middle producer stops naming loom.
-  The registry key `LoomRun` becomes a product-neutral name, `shedrecipe.Env.LoomRun` and `lifecycleshed.LoomRunDeps`/`NewLoomRun`/`loomRunProducer` and the entry's `loomRunEntry`/`defaultLoomRun*` identifiers follow, and the producer's `logger.Info` lines and stuck reasons stop saying "loom session".
+  The chosen replacement is **`InnerRun`**, fixed here rather than left to the plan because the recipe YAML's `engine:` value, both coverage guards, and the entry's own `requireSeam`/`requireNonEmpty`/`requireAbsRoot` error texts must all land on one string in one commit: registry key `"InnerRun"`, `shedrecipe.Env.InnerRun`, `lifecycleshed.InnerRunDeps`/`NewInnerRun`/`innerRunProducer`, and the entry's `innerRunEntry`/`defaultInnerRun*`, with the producer's `logger.Info` lines and stuck reasons saying "inner shed run" in place of "loom session".
   What does *not* change: the `Loom-Run` row name in `contracts/recipes/lifecycle-recipe.yaml`, `lifecyclerecipe.NameLoomRun`'s string value `"Loom-Run"`, the recipe's `entry`/`terminals`, the `poll_interval_s`/`poll_attempts` Config keys and their defaults, and the producer's own logic.
   No second lifecycle recipe is written and no Hardener artefact is created; the design doc gains a note recording Hardener as the future consumer of this seam.
 - Rationale: the producer is already generic in substance — its poll loop and its verdict table branch on `shedengine.Status.State`, which is the Shed contract, not loom's, and the two genuinely product-specific parts (`Spawn`, `ResolveStatus`) are already injected seams on a Deps struct.
@@ -190,32 +203,37 @@ The third consumer is already drafted (`manifest/designs/hardener.md`: `Hardener
   A lightweight spec fills the told paths, the status label, the absent-file disposition and `StatusExtras`, and leaves `BuildShed` nil; the generic `status` and `pause` bodies never call `BuildShed`, so a nil one is legal for exactly those two verbs and an error for `run`/`step`.
 - Rationale: `verbUsesLightweightWiring` exists because `status` and `pause` read only the two status-file paths, and forcing them through `wire()` would make an unrelated module's broken config break loom's own read-only status verbs — the hazard `wireLightweight`'s own history records.
   A verb-blind arming keyed on recipe name alone would reintroduce that hazard on `lyx shed status --recipe loom` and make it diverge from `lyx loom status`, which the `existing-subtrees-keep-their-surface` Decision forbids.
-- Rejected: one spec per recipe with the heavy wiring always applied (reintroduces the broken-config hazard); `shedcli` deciding which verbs are lightweight (it would then hold a policy that is `loomcli`'s, and `lifecyclecli` has no such split at all); duplicating the verb-name predicate in the shed table (two authorities for one set, guaranteed to drift).
+- Rejected: one spec per recipe with the heavy wiring always applied (reintroduces the broken-config hazard); `shedverbs` deciding which verbs are lightweight (it would then hold a policy that is `loomcli`'s, and `lifecyclecli` has no such split at all); duplicating the verb-name predicate in the shed table (two authorities for one set, guaranteed to drift).
 
 ### generic-package-resolves-nothing
 
-- Decision: `shedcli` derives no path, imports no resolver, and never calls `os.Getwd` or `lyxcwd`.
+- Decision: `shedverbs` derives no path, imports no resolver, and never calls `os.Getwd` or `lyxcwd`.
   Every path reaches it told, through the arming spec.
   Resolution stays where it is: `loomcli`'s `resolvePersistentPreRun` (cwd → `lyxcwd.Resolve`, hub-only, then `wire`/`wireLightweight`), and `lifecyclecli`'s (cwd → `lyxcwd.Resolve` → `fabricengine.PrimeName` → non-prime refusal → slug from args → `wire`).
   `lyx shed`'s own `PersistentPreRunE` reads `--recipe`, looks the name up, and delegates to that recipe's arming function, so each recipe keeps its own resolution and its own refusals.
 - Rationale: required by the Cwd Resolution Invariant and the Told-Geometry Invariant.
   It is also the only way `lyx shed run --recipe lifecycle` can keep the Lifecycle Bookend Invariant's non-prime refusal, which is inseparable from lifecycle's own arming.
-- Rejected: `shedcli` resolving cwd once for all recipes (would centralise a resolution that legitimately differs per recipe and would silently drop lifecycle's prime refusal).
+- Rejected: `shedverbs` resolving cwd once for all recipes (would centralise a resolution that legitimately differs per recipe and would silently drop lifecycle's prime refusal).
 
 ### ly-drive-drives-any-recipe
 
 - Decision: generalize the existing `ly-drive` skill rather than adding a second one.
   It takes a recipe name as its argument, defaults to `loom`, and invokes `lyx shed step --recipe <name>` in the background-to-file pattern it already mandates.
   Its recipe-agnostic content — the 40-step cap, the `continue` branch, the five error kinds, the one-retry rule for `producer`, the interrupted-invocation branch on `current_producer`/`history_length`/`interrupt_policy`, the never-clean-up rule — stays as written.
-  Its loom-specific sections — the reed-strand `$TMUX_PANE` self-check, the friction directory at `.lyx/loom/friction/`, the `lyx selfreport create` gate, and the "loom's list is seventeen rows" arithmetic behind the cap — become explicitly gated on the `loom` recipe.
+  The rewrite is driven by an enumeration *method*, not a hand-listed set, because a hand-listed set has already proved incomplete once:
+  (a) every `lyx loom <verb>` invocation in the skill becomes `lyx shed <verb> --recipe <name>` — that covers the step calls, the pre-loop baseline read, and both `lyx loom status` reads in the interrupted-invocation branch;
+  (b) every claim the skill makes about a command's *output shape* that is not in the generic contract must be gated or generalized — that covers the assertion that an absent status file returns an error envelope naming `lyx loom start` (true for loom, false for lifecycle, which returns `found: false` on success), and the `interrupt_policy` field read off the status envelope, which for a recipe with no policy table is absent from the envelope entirely rather than present-and-empty;
+  (c) every claim about the *substrate or filesystem* a recipe runs over is gated on the recipe name — that covers the reed-strand `$TMUX_PANE` self-check, the cwd precondition "must be the task worktree root" (lifecycle refuses from anything but the hub's prime worktree), the friction directory at `.lyx/loom/friction/`, and the `lyx selfreport create` gate;
+  (d) every numeric claim derived from a recipe's own graph is gated — that covers the "loom's list is seventeen rows" arithmetic behind the 40-step cap.
+  The plan must apply (a)–(d) exhaustively across the whole skill file rather than patching the instances named here, which are illustrations of each rule, not its extent.
 - Rationale: the skill already claims to carry no phase knowledge and to branch only on policy words and envelope fields; that claim is true of its loop and false only of its preamble.
   Splitting into two skills would duplicate the loop, which is the part worth having once.
 - Rejected: a separate `shed-drive` skill (duplicates the loop); leaving `ly-drive` loom-only (the design doc pins the skill's end-state role as looping the generic `step`); gating the loom-specific sections on new envelope fields instead of the recipe name (would widen the closed ten-key envelope set, which the `envelope-contracts-move-with-the-verbs` Decision bars).
 
 ### new-shed-verb-set-invariant
 
-- Decision: add a **Shed Verb-Set Invariant** to `CONSTRAINTS.md` in the same commit, stating: `internal/shedcli` owns the generic `run`/`step`/`status`/`pause` verb bodies and no `<module>cli` reimplements one; `shedcli` derives no path and imports no resolver (no `lyxcwd`, no `os.Getwd`, no `git rev-parse`); every name in the `lyx shed` recipe table is armed by exactly one arming function; and the `step` refusal-kind vocabulary stays closed at its five values.
-- Rationale: the CLI/Cobra Invariant's package-naming clause already needs an entry for `shedcli` (`<module>cli` imports `<module>engine` — `shedcli` → `internal/shedengine`), and the extraction's whole value evaporates if a later module quietly grows its own `run` body again.
+- Decision: add a **Shed Verb-Set Invariant** to `CONSTRAINTS.md` in the same commit, stating: `internal/shedverbs` owns the generic `run`/`step`/`status`/`pause` verb bodies and no `<module>cli` reimplements one; `shedverbs` derives no path and imports no resolver (no `lyxcwd`, no `os.Getwd`, no `git rev-parse`) and imports no `<module>cli`, which is what keeps it a leaf and the `internal/shedcli` table's own imports acyclic; the `lyx shed` recipe table lives in `internal/shedcli` alone, as one map literal reached through accessors, with every name armed by exactly one arming function and no `init()` self-registration; and the `step` refusal-kind vocabulary stays closed at its five values.
+- Rationale: the extraction's whole value evaporates if a later module quietly grows its own `run` body again, and the leaf clause is what stops the import cycle the two-package split exists to avoid from being reintroduced by a later convenience import.
   CONSTRAINTS.md's own preamble requires a new cross-cutting invariant to land in the same commit.
 - Rejected: relying on review discipline alone (two of the three clauses have a static shape a scan can see, so there is no reason to leave them unenforced).
 
@@ -265,7 +283,7 @@ That must survive untouched.
 **Registration and the help tree.**
 `cmd/lyx/main.go` assembles every module's `Command()` under one root (`loomcli.Command()`, `lifecyclecli.Command()`, and `loomcli.StartAliasCommand()` as a sibling).
 `cmd/lyx/helptree_test.go` asserts the root help names every subtree, `cmd/lyx/drift_test.go` fails CI on any command with a blank `Short`, `cmd/lyx/longlist_test.go` keeps `--help` prose from drifting from the live tree, and `cmd/lyx/jsonhelp_test.go` asserts the `--json` help schema at several levels.
-A new `shedcli.Command()` must be added to the root and will be picked up by all four.
+A new `shedcli.Command()` must be added to the root and will be picked up by all four; `shedverbs` is never registered directly.
 
 **`internal/loomshed/interruptpolicy.go`** — `InterruptPolicies` maps loom's seventeen row names to `reinvoke`/`handback` (every row `reinvoke` except `NameWebster`), and `InterruptPolicyFor` returns the empty string for an unknown name, which is the caller's "no entry" signal and never a third policy word.
 This table is loom's and stays in `loomshed`; it reaches the generic `step` only through the `InterruptPolicyFor` hook.
@@ -277,9 +295,11 @@ Treat an empty policy as `handback` in the skill (hand back rather than re-invok
 From `CONSTRAINTS.md`, the ones this task must satisfy:
 
 - **Cwd Resolution Invariant** — `internal/lyxcwd` owns cwd resolution alone; a module's own durable subdirectory is its own constant joined onto `AnchorPath()`, never a `lyxcwd` call.
-  `shedcli` must import no resolver and derive no path.
+  `shedverbs` must import no resolver and derive no path.
 - **Told-Geometry Invariant** — an engine is handed the absolute paths it operates on and derives none of its own, with no direct `internal/lyxcwd` import.
-  The bound-packages list already names `shedengine`, `shedrecipe`, `shedbuild`, `loomrecipe`, `lifecycleshed`, `lifecyclerecipe`; the list must be reviewed for whether `shedcli` belongs on it (it is a CLI, not an engine, but its no-derived-paths obligation is the same — state the decision explicitly rather than leaving it implied).
+  Decided here: neither `shedverbs` nor `shedcli` joins the bound-packages list.
+  That list binds *engines* — packages an orchestrator hands paths to — and both new packages sit above that layer, `shedverbs` importing cobra and `shedcli` importing two `<module>cli` packages.
+  Their identical no-derived-paths obligation is carried instead by the new Shed Verb-Set Invariant's own no-resolver clause, so nothing is left unenforced by keeping them off the list.
 - **Shed Producer-Seam Invariant** — `shedengine` imports only stdlib, `state`, `lock`; `StatusPath`/`LockPath`/`StatusLockPath` stay caller-supplied.
   Nothing in this task may add an import to `shedengine`.
 - **Shed Recipe Registry Invariant** — one `map[string]Constructor` reached only through `Lookup`/`Names`, no `init()` self-registration, no runtime `Register`.
@@ -287,7 +307,8 @@ From `CONSTRAINTS.md`, the ones this task must satisfy:
 - **Recipe-Format Sole-Parser Invariant** — `internal/shedbuild` is the sole parser of the recipe file format and declares no on-disk location for recipe files.
   `--recipe` takes a name, never a path.
 - **CLI / Cobra Invariant** — every module exposes `Command()` and `RunCLI(out, args) int`, most also `RunCLIIn(cwd, out, args) int`; non-empty `Short` on every command; errors are JSON via `internal/output`, one object per line; every `RunE` checks `clihelp.ShouldAbort` first; `<module>cli` imports `<module>engine` and the engine never imports cli/cobra.
-  The invariant's "twelve of thirteen" count needs updating for `shedcli`; its deviations list does not, since `shedcli` → `internal/shedengine` conforms to the `<module>cli` naming rule.
+  `internal/shedcli` is the new CLI module and carries all three seams, so the invariant's "twelve of thirteen" count moves to "thirteen of fourteen"; its deviations list needs no entry, since `shedcli` → `internal/shedengine` conforms to the `<module>cli` naming rule.
+  `internal/shedverbs` is not a CLI module and is not counted there at all — it exposes no `Command()`/`RunCLI` seam, only the `Verbs(spec)` constructor the three subtrees build from.
   The interactive-handoff exception list *does* change: generalizing `status --watch` creates two new never-exiting commands, `lyx shed status --watch` and `lyx lifecycle status --watch`, and both must be named alongside the existing `lyx loom status --watch` entry.
 - **Lifecycle Bookend Invariant** — the lifecycle Shed is driven from the hub's prime worktree; `lifecycleshed`'s seam-enforcement scan bars a direct resolver import and `lifecyclecli`'s path-derivation tests pin the status and lock paths to prime's anchor.
   The non-prime refusal must survive reaching lifecycle through `lyx shed --recipe lifecycle` as well as through `lyx lifecycle`.
@@ -301,7 +322,7 @@ Build prerequisite: `CGO_ENABLED=1` and a C compiler on `PATH` (quarry's tree-si
 
 ## Testing
 
-**`internal/shedcli` — the TDD candidate, and the only genuinely new test surface.**
+**`internal/shedverbs` — the TDD candidate, and the only genuinely new test surface.**
 Drive every verb body against a fake `*shedengine.Shed` (or a recipe of `Stub` rows, which the registry already provides) so no LLM, no tmux, and no git is involved:
 
 - `run`: success, `ErrShedBusy`, producer hard error, each hook nil, each hook filled, and specifically that `PostRun` runs on the error path *before* the error envelope is written.
@@ -309,7 +330,7 @@ Drive every verb body against a fake `*shedengine.Shed` (or a recipe of `Stub` r
 - `step`: the ten-key envelope's key set asserted closed; `continue` true only for `StateRunning`; `next_interrupt_policy` empty when the hook is nil and threaded when filled; the five refusal kinds asserted closed, mirroring the existing `stepKinds` test; `PreStep`'s returned kind reaching the envelope's `kind` field.
 - `status`: both told absent-file dispositions driven — the refusal form (loom's) and the `found: false` success form (lifecycle's) — plus `StatusExtras` merging onto the core and a `StatusExtras` error reaching the error envelope; the `--watch` tail's change-only printing driven through a finite `polls` count with no wall-clock wait, exactly as `printStatusLinesOnChange` and `awaitRunLock` are driven today; the told label appearing in the rendered line.
 - `pause`: sets `PauseRequested`; refuses with the told message when the status file is absent.
-- A seam-enforcement scan asserting `shedcli` imports no resolver (`lyxcwd`, `os.Getwd`, `git rev-parse`), in the style of `lifecycleshed`'s and `loomrecipe`'s existing scans.
+- A seam-enforcement scan asserting `shedverbs` imports no resolver (`lyxcwd`, `os.Getwd`, `git rev-parse`), in the style of `lifecycleshed`'s and `loomrecipe`'s existing scans.
 
 **Parity — the proof the extraction preserved behaviour.**
 Assert that `lyx loom step` and `lyx shed step --recipe loom` produce byte-identical envelopes from the same fixture, and likewise for `run`, `status`, and `pause`, and for `lyx lifecycle run` against `lyx shed run --recipe lifecycle`.
@@ -331,22 +352,27 @@ Add one assertion that `lifecyclerecipe.NameLoomRun`'s *value* is still `"Loom-R
 
 ## Q&A log
 
-- **Q:** Should the generalization be a shared library, a `lyx shed` subtree, or both? **A:** [auto-pick] Both — a new `internal/shedcli` owning the generic verb bodies, consumed by `loomcli`/`lifecyclecli` and registered as its own `lyx shed` subtree. **Why:** the duplication is already two-deep with a third consumer drafted; a library alone leaves the verb set unreachable for a new recipe, a subtree alone ships a third copy instead of removing two.
+- **Q:** Should the generalization be a shared library, a `lyx shed` subtree, or both? **A:** [auto-pick] Both — a new `internal/shedverbs` owning the generic verb bodies, consumed by `loomcli`/`lifecyclecli` and registered as its own `lyx shed` subtree. **Why:** the duplication is already two-deep with a third consumer drafted; a library alone leaves the verb set unreachable for a new recipe, a subtree alone ships a third copy instead of removing two.
 - **Q:** How is the generic verb set armed with its recipe? **A:** [auto-pick] A named-recipe table mapping `--recipe <name>` to an arming function supplying recipe bytes, `Env`, paths, hooks, and label. **Why:** a recipe file cannot carry `Env`'s injected seams, and a path-taking flag would imply a runtime on-disk recipe location the Recipe-Format Sole-Parser Invariant forbids.
 - **Q:** Does `start` generalize? **A:** [auto-pick] No — it stays loom-specific. **Why:** there is no `Shed.Start`; every one of its seven steps sits above the engine and the second consumer has an analogue for none of them.
-- **Q:** What happens to the existing `lyx loom` and `lyx lifecycle` verbs? **A:** [auto-pick] Kept with their surface unchanged, reimplemented as arming over `shedcli`. **Why:** their existing behavioural suites are the proof the extraction is behaviour-preserving, and they only prove it if they pass unchanged.
+- **Q:** What happens to the existing `lyx loom` and `lyx lifecycle` verbs? **A:** [auto-pick] Kept with their surface unchanged, reimplemented as arming over `shedverbs`. **Why:** their existing behavioural suites are the proof the extraction is behaviour-preserving, and they only prove it if they pass unchanged.
 - **Q:** lifecycle should be able to wrap something other than loom — Hardener eventually. How much of that belongs here? **A:** The seam only: neutralize the inner-run engine's names and strings, leave the recipe's durable identities and any Hardener artefact alone. **Why:** neutralizing the engine is the same axis as the rest of the task and is cheap now; a second recipe would validate against an empty consumer, which is the trap this project avoided by waiting for `lifecyclerecipe` to exist before generalizing `shedrecipe`, and `hardener.md` is still an explicit DRAFT.
 - **Q:** Where does the deduplicated `ShedPaths`/`New` live? **A:** [auto-pick] Hoisted into `shedbuild` as `ShedPaths` + `NewShed`; the two recipe packages shrink to delegation plus their own guards. **Why:** `shedbuild` already owns `Parse` and `Build` and already imports both `shedengine` and `shedrecipe`.
 - **Q:** Does `loomrecipe`'s Env/paths coherence guard hoist too? **A:** [auto-pick] No — it stays in `loomrecipe`. **Why:** it exists for `loomPreflightEntry`'s `Env.StatusPath` read, which is loom's coupling; `lifecyclerecipe` deliberately has no such check.
 - **Q:** How do loom's run/step extras stay out of the generic body? **A:** [auto-pick] Four nil-by-default hooks — `PreRun`, `PostRun`, `PreStep`, `InterruptPolicyFor`. **Why:** `PostRun` taking `runErr` and running unconditionally is what preserves `detectAndFileAnomalies`'s deliberate placement above `run`'s early error return.
-- **Q:** Where do per-module flags and positional arguments live, given `shedcli` owns the verb bodies? **A:** The arming module decorates the returned commands with its own `--parent`/`Args` and hooks capture them by closure; each `lyx shed` recipe entry declares its own positional-arg contract. **Why:** there is no generic shape for a flag that writes a fabric provenance record or an argument `wire` needs before `Env` exists, and a declaration DSL would reimplement cobra.
+- **Q:** Where does the `lyx shed` recipe table live, given the arming functions are built on the `<module>cli` receivers? **A:** In its own `internal/shedcli`, which imports `loomcli`/`lifecyclecli`; the generic verb bodies sit one layer down in `internal/shedverbs`, which imports no `<module>cli`. **Why:** one package holding both halves is an import cycle, and the split avoids it without giving `shedcli.Command()` an argument, which would be the tree's first `Command()` signature deviation.
+- **Q:** What product-neutral name replaces `LoomRun`? **A:** `InnerRun`, fixed in the discussion. **Why:** the recipe YAML's `engine:` value, both coverage guards and the entry's error texts must land on one string in one commit, so the plan cannot be left to pick it.
+- **Q:** What does `status` emit when the file is absent? **A:** The disposition short-circuits before both the core and `StatusExtras`; lifecycle's absent envelope stays exactly `found` + `status_path`, loom's stays a bare error envelope. **Why:** passing a zero `Status` through `StatusExtras` would silently add `history` and the core keys to an envelope carrying neither today.
+- **Q:** How is `ly-drive`'s loom-specific content found exhaustively? **A:** By four enumeration rules over the whole file — every `lyx loom <verb>` call, every output-shape claim, every substrate/filesystem claim, every graph-derived number — not a hand-listed set. **Why:** the hand-listed set in the first draft already missed four instances.
+- **Q:** Does `shedverbs` or `shedcli` join the Told-Geometry bound-packages list? **A:** Neither. **Why:** that list binds engines, and both sit above that layer; the no-derived-paths obligation is carried by the new Shed Verb-Set Invariant instead.
+- **Q:** Where do per-module flags and positional arguments live, given `shedverbs` owns the verb bodies? **A:** The arming module decorates the returned commands with its own `--parent`/`Args` and hooks capture them by closure; each `lyx shed` recipe entry declares its own positional-arg contract. **Why:** there is no generic shape for a flag that writes a fabric provenance record or an argument `wire` needs before `Env` exists, and a declaration DSL would reimplement cobra.
 - **Q:** How is `ErrShedBusy`'s three-way divergence resolved? **A:** The arming spec carries the told message and, for `step`, the refusal kind. **Why:** the wording is what an operator acts on and two of the three would regress if collapsed; a told string is not hook-shaped work.
 - **Q:** What is the generic `status` envelope, given loom's and lifecycle's disagree on both keys and the absent-file case? **A:** A four-key core (`current_producer`, `state`, `error`, `activity`) plus a `StatusExtras` hook for each product's own keys, with the absent-file disposition a told field on the arming spec. **Why:** the disagreement is deliberate — only `lyx loom start` may seed, so loom must refuse where lifecycle legitimately reports `found: false`.
 - **Q:** Is the Shed built at arming time? **A:** No — the spec carries a `BuildShed` constructor called after `PreRun`/`PreStep` returns. **Why:** loom's pre-flight assigns `env.Landing` on the way through, so a Shed built earlier would carry a nil `Landing`.
 - **Q:** How does `lyx shed status --recipe loom` keep loom's lightweight wiring? **A:** The arming function takes the verb, and loom's arming routes `status`/`pause` through `wireLightweight` using `verbUsesLightweightWiring` as the single shared authority; a lightweight spec leaves `BuildShed` nil. **Why:** a verb-blind arming would run the full `wire()` and reintroduce the broken-config hazard that path exists to avoid.
 - **Q:** Does the envelope contract change? **A:** [auto-pick] No for `step` — the ten keys and five refusal kinds stay closed and move with the verb. **Why:** the key set is what `ly-drive` reads; a rename in the move is a silent break of the skill.
 - **Q:** Do `pause` and `status --watch` generalize too? **A:** [auto-pick] Yes, with the watch line's `loom` prefix becoming a told label. **Why:** `shedengine` honours `PauseRequested` for every Shed, so a pausable-loom/unpausable-lifecycle split is arbitrary; `lyx lifecycle pause` appearing is intended.
-- **Q:** Where does cwd resolution live? **A:** [auto-pick] Unchanged, in each module's own `PersistentPreRunE`; `shedcli` resolves nothing. **Why:** required by the Cwd Resolution and Told-Geometry invariants, and it is the only way `lyx shed --recipe lifecycle` keeps lifecycle's non-prime refusal.
+- **Q:** Where does cwd resolution live? **A:** [auto-pick] Unchanged, in each module's own `PersistentPreRunE`; `shedverbs` resolves nothing. **Why:** required by the Cwd Resolution and Told-Geometry invariants, and it is the only way `lyx shed --recipe lifecycle` keeps lifecycle's non-prime refusal.
 - **Q:** One skill or two for driving a generic step? **A:** [auto-pick] One — generalize `ly-drive`, gating its loom-specific sections on the recipe name. **Why:** its loop already branches only on envelope fields; two skills would duplicate the one part worth having once.
 - **Q:** Does this need a new invariant? **A:** [auto-pick] Yes — a Shed Verb-Set Invariant, in the same commit. **Why:** the extraction's value evaporates if a later module grows its own `run` body again, and two of the three clauses have a static shape a scan can enforce.
-- **Q:** What test surface is genuinely new? **A:** [auto-pick] `internal/shedcli`'s own fake-Shed table tests plus cross-subtree envelope parity; everything else is regression. **Why:** the existing suites already cover the behaviour, so the new tests only need to cover the seam and prove nothing moved.
+- **Q:** What test surface is genuinely new? **A:** [auto-pick] `internal/shedverbs`'s own fake-Shed table tests plus cross-subtree envelope parity; everything else is regression. **Why:** the existing suites already cover the behaviour, so the new tests only need to cover the seam and prove nothing moved.
