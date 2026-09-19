@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/reedengine/render"
 )
 
 // reapPolicy answers the three Selvage-related questions planReconcile asks: whether a given pane is
@@ -142,6 +143,18 @@ func planPaneTarget(st *ReedState, live []LivePane) (splitTargetID string, inser
 		insertAbove = true
 	}
 	return splitTargetID, insertAbove, nil
+}
+
+// selvageRenderParams builds the render.Selvage value toRenderInputs assembles into render.Params:
+// the pane id taken from st, blanked to the empty string when presentIDs does not hold it, and
+// HeightRows read from e.cfg.Selvage.HeightRows. This is the package's only render.Selvage
+// construction and, outside config.go, its only e.cfg.Selvage read.
+func (e *Engine) selvageRenderParams(st *ReedState, presentIDs map[string]bool) render.Selvage {
+	paneID := st.SelvagePaneID
+	if !presentIDs[paneID] {
+		paneID = ""
+	}
+	return render.Selvage{PaneID: paneID, HeightRows: e.cfg.Selvage.HeightRows}
 }
 
 // seedSelvageClaim adds st's Selvage pane id to claimed when it is non-empty.
