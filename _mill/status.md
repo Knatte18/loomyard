@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-board-type-field
+phase: approved-batten-rename
 slug: seeded-shed-core
 branch: seeded-shed-core
 plan: _mill/plan
@@ -25,6 +25,7 @@ planned  '2026-09-19T17:37:37Z'
 implementing  '2026-09-19T17:37:56Z'
 approved-shedrun-leaf  '2026-09-19T17:43:20Z'
 approved-board-type-field  '2026-09-19T17:46:12Z'
+approved-batten-rename  '2026-09-19T18:01:51Z'
 ```
 
 ## Batches
@@ -44,9 +45,10 @@ batches:
     commit_sha: 2070ab3f3bd57a0f68d2c5c180672c69c8dee682
     verify_baseline_failures: []
   - name: batten-rename
-    state: running
+    state: approved
     implementer_session: 2b87ce82-4eb2-4fb5-9d44-6fbc5804dbd3
     start_sha: e012f1bef06e890fc8b675a106ff3cb861781ffa
+    commit_sha: c0ac05af41eeaf1606918e7da4b662fe8ea1e2bd
     verify_baseline_failures: ["FAIL\t./internal/battenshed/... [setup failed]", "FAIL\t./internal/battenrecipe/...\
     \ [setup failed]", "FAIL\t./internal/battencli/... [setup failed]"]
   - name: loom-run-directory
