@@ -82,20 +82,6 @@ func erroringRow(name string, callErr error) shedengine.ProducerDef {
 	}}
 }
 
-// stuckRow returns a ProducerDef named name whose Call always reports Stuck, routed via onStuck
-// (empty means escalate with no target).
-func stuckRow(name, onStuck string) shedengine.ProducerDef {
-	return shedengine.ProducerDef{
-		Name:    name,
-		OnStuck: onStuck,
-		Producer: &funcProducer{
-			call: func(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
-				return shedengine.Stuck, shedengine.OutputPointer{}, nil
-			},
-		},
-	}
-}
-
 // newFakeShed builds a *shedengine.Shed over producers and paths' three told fields, with no
 // CommitStatus -- the tier-1 fake every test in this package drives instead of a real hub.
 func newFakeShed(paths testPaths, producers []shedengine.ProducerDef) *shedengine.Shed {
