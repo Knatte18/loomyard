@@ -32,7 +32,7 @@ batches:
     name: engine-wiring
     file: 03-engine-wiring.md
     depends-on: [2]
-    verify: go vet ./... && go vet -tags integration ./... && go vet -tags smoke ./... && go test ./internal/fabricengine/... && go test -tags integration ./internal/fabricengine/...
+    verify: go vet ./... && go vet -tags integration ./... && go vet -tags smoke ./internal/loomcli/... ./cmd/lyx/... && go test ./internal/fabricengine/... && go test -tags integration ./internal/fabricengine/...
   - number: 4
     name: cli-surface-and-docs
     file: 04-cli-surface-and-docs.md

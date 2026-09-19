@@ -5,9 +5,17 @@ task: 'fabric: no remote/GitHub branch deletion'
 batch: 'engine-wiring'
 number: 3
 cards: 6
-verify: go vet ./... && go vet -tags integration ./... && go vet -tags smoke ./... && go test ./internal/fabricengine/... && go test -tags integration ./internal/fabricengine/...
+verify: go vet ./... && go vet -tags integration ./... && go vet -tags smoke ./internal/loomcli/... ./cmd/lyx/... && go test ./internal/fabricengine/... && go test -tags integration ./internal/fabricengine/...
 depends-on: [2]
 ```
+
+## Prior failure
+
+- Round 1: finalize's verify replay failed with `stuck_type: verify`, reason: `vet: internal/burlerengine/smoke_cluster_test.go:140:122: not enough arguments in call to burlerengine.New (have (*shuttleengine.Runner, burlerengine.Geometry, burlerengine.Config, string), want (burlerengine.Shuttle, burlerengine.Geometry, burlerengine.Config, string, string))`.
+  Confirmed pre-existing on `main` (same call site, same error, verified directly against the `main` worktree) and untouched by any commit in this task — a plan defect in this batch's `verify:` scope, not a card defect.
+  Card 11's own text already narrows the real call site under the `smoke` tag to `internal/loomcli/smoke_test.go`;
+  the whole-module `./...` scope for the `-tags smoke` vet pass was overbroad and tripped on this unrelated, already-broken package.
+  Fixed by scoping the `-tags smoke` vet pass to `internal/loomcli/...` and `cmd/lyx/...` — the two packages holding `smoke`-tagged files reachable from this task's surface — instead of `./...`.
 
 ## Batch Scope
 
@@ -277,5 +285,6 @@ They come first so a missed call site fails fast, before any test runs.
 `go test ./internal/fabricengine/...` then covers the untagged tier, which for this batch is a compile check on cards 7 through 9 plus the existing untagged gate tests.
 `go test -tags integration ./internal/fabricengine/...` is where card 12's two new files and most of card 11's edits actually execute.
 
-Neither `internal/fabriccli` nor `cmd/lyx` is in this batch's test scope: card 10's change to `internal/fabriccli/fabric.go` is a two-argument compile fix with no behavioural surface, and the three `go vet` passes already prove it compiles.
+Neither `internal/fabriccli` nor `cmd/lyx` is in this batch's `go test` scope: card 10's change to `internal/fabriccli/fabric.go` is a two-argument compile fix with no behavioural surface, and the `go vet` passes already prove it compiles.
 Batch 4 is what tests that file.
+`cmd/lyx` is included in the `-tags smoke` vet pass only because it holds a `smoke`-tagged file (`tierpurity_test.go`, unrelated to this batch's verbs) alongside the module's other smoke-tagged packages — see `## Prior failure` for why the `-tags smoke` pass is scoped rather than whole-module.
