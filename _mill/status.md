@@ -52,7 +52,9 @@ batches:
     commit_sha: d4d38e8617988c5d0cfa92a77dbec6c040002a71
     verify_baseline_failures: []
   - name: shedverbs-package
-    state: pending
+    state: running
+    implementer_session: e43bd799-3999-444c-add3-11ed93314975
+    start_sha: f902fb5a03034d964a9da053e94f85798f7c0f5a
     verify_baseline_failures: ["FAIL\t./internal/shedverbs/... [setup failed]"]
   - name: inner-run-neutralization
     state: pending
