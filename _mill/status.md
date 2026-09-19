@@ -44,7 +44,9 @@ batches:
     commit_sha: 2070ab3f3bd57a0f68d2c5c180672c69c8dee682
     verify_baseline_failures: []
   - name: batten-rename
-    state: pending
+    state: running
+    implementer_session: 2b87ce82-4eb2-4fb5-9d44-6fbc5804dbd3
+    start_sha: e012f1bef06e890fc8b675a106ff3cb861781ffa
     verify_baseline_failures: ["FAIL\t./internal/battenshed/... [setup failed]", "FAIL\t./internal/battenrecipe/...\
     \ [setup failed]", "FAIL\t./internal/battencli/... [setup failed]"]
   - name: loom-run-directory
