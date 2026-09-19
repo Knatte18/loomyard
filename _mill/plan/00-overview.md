@@ -11,6 +11,10 @@ verify: null
 discussion_sha: b8bbaa85a790e4055f1193a11329bb24a9984a0e
 ```
 
+## Prior failure
+
+- Holistic review round 1 fix: `go test -tags smoke ./internal/reedcli/` (batch 5, tagged-tests) fails deterministically on `TestSmokeClaudeResumeRecallsCodeword` when run from inside a nested Claude Code session — the test's own doc comment names this exact failure mode (no new claude transcript persisted+stabilized because a nested `claude` invocation stops writing transcripts). Reproduced twice by the fixer session, unaffected by either finding fixed that round. No plan/card edit made: this is an environmental limitation of the test harness under nested-agent execution, not a defect in the implementation.
+
 ## Batch Index
 
 _The fenced yaml block below is the authoritative DAG mill-go reads to schedule batches.

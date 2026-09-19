@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: self-resolved-verify-logic
 slug: reed-cold-worktree-selfheal
 branch: reed-cold-worktree-selfheal
 plan: _mill/plan
@@ -37,6 +37,7 @@ approved-docs-and-suites  '2026-09-19T05:59:54Z'
 approved-tagged-tests  '2026-09-19T06:17:51Z'
 holistic-reviewing  '2026-09-19T06:18:13Z'
 holistic-fixing  '2026-09-19T06:21:49Z'
+self-resolved-verify-logic  '2026-09-19T06:32:03Z'
 ```
 
 ## Batches
