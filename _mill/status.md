@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: worktree-lifecycle-shed-producers
 branch: worktree-lifecycle-shed-producers
-plan: null
+plan: _mill/plan
 parent: main
 task: Worktree spawn/teardown as Shed producers
 task_description: |
@@ -24,4 +24,5 @@ discussion-gap-fix-r6  '2026-09-18T19:46:18Z'
 discussion-gap-fix-r7  '2026-09-19T05:05:15Z'
 blocked  '2026-09-19T05:05:27Z'
 discussed  '2026-09-19T05:07:57Z'
+planning  '2026-09-19T05:23:14Z'
 ```
