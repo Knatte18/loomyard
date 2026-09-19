@@ -25,10 +25,9 @@
 // Recipe-Format Sole-Parser Invariant both forbid: a recipe is a compiled Go function, never a
 // parsed file, anywhere in this tree.
 //
-// Each table entry also declares its own positional-arg contract (Args), rather than sharing one
-// contract across every recipe, because the two shipped recipes disagree: "loom" takes no
-// positional argument and "batten" takes exactly one slug. Each entry's Args value is the exact
-// cobra.PositionalArgs value battencli and loomcli already assign to their own commands, which is
-// what makes the two invocation paths refuse a wrong argument count byte-identically rather than by
-// luck.
+// Every entry's arming function shares one positional-argument contract, cobra.MaximumNArgs(1),
+// set statically on each of the four generic verbs rather than read off the table: an addressed
+// run is named by run-id, not by a per-recipe argument shape, so there is nothing left for a
+// per-recipe contract to vary. The run-id itself is resolved once, ahead of the recipe lookup, by
+// resolvePersistentPreRun's own seed read — see cli.go's own doc comment for the full sequence.
 package shedcli

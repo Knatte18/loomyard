@@ -1,6 +1,20 @@
 // cli.go builds the cobra command tree for the shed subtree and the RunCLI/RunCLIIn seams that wire
 // it into the standard io.Writer-based call contract, matching internal/loomcli's and
 // internal/battencli's own shapes so all three modules read identically at the call site.
+//
+// resolvePersistentPreRun is the whole reason this package resolves cwd at all, unlike
+// internal/shedverbs' own no-resolver leaf: it must read a seed before it knows which recipe to
+// arm, and a seed read is a path read that needs an anchor. Its sequence, pinned as this batch's own
+// refusal precedence, is: short-circuit on the bare group ("shed") and on "seed" (card 29's command,
+// exempt because it is the one site invoked when no seed yet exists); resolve cwd via
+// lyxcwd.CwdFrom; resolve it into a *lyxcwd.Location via lyxcwd.Resolve, whose own
+// not-a-git-repository sentinel passes through bare; resolve the run-id from the command's
+// positional argument, defaulting to shedrun.SelfRunID; read the seed at that run-id via
+// shedrun.ReadSeed, refusing via shedrun.MissingSeedMessage naming "lyx shed seed <run-id> --recipe
+// <name>" as the remedy when none is found; look the seed's recipe up through the table's own
+// lookup, whose unknown-name error already names the available recipes; apply the verb gate against
+// the resolved entry's Verbs set; and call the entry's Arm (the Location-taking ArmAt shape) with
+// the Location and run-id already in hand.
 
 package shedcli
 
@@ -11,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/spf13/cobra"
 )
@@ -28,43 +43,50 @@ type shedCLI struct {
 // recipe rather than describing only one of them.
 var shedVerbTexts = shedverbs.VerbTexts{
 	Run: shedverbs.VerbText{
-		Use:   "run",
-		Short: "run the named recipe's phase machine in the foreground",
-		Long: `run arms the recipe named by --recipe and runs its phase machine in the
-foreground, exactly as that recipe's own "run" verb does.
+		Use:   "run [<run-id>]",
+		Short: "run the addressed run's phase machine in the foreground",
+		Long: `run arms the recipe named by the addressed run's own seed and runs its phase
+machine in the foreground, exactly as that recipe's own "run" verb does. The
+run-id positional defaults to "self" when omitted.
 
 Example:
-  lyx shed run --recipe loom`,
+  lyx shed run
+  lyx shed run some-slug`,
 	},
 	Step: shedverbs.VerbText{
-		Use:   "step",
-		Short: "bootstrap idempotently and drive exactly one producer of the named recipe",
-		Long: `step arms the recipe named by --recipe and drives exactly one producer,
-reporting a JSON envelope, exactly as that recipe's own "step" verb does.
-Not every recipe supports step: a recipe whose table entry excludes it is
-refused before arming.
+		Use:   "step [<run-id>]",
+		Short: "bootstrap idempotently and drive exactly one producer of the addressed run",
+		Long: `step arms the recipe named by the addressed run's own seed and drives exactly
+one producer, reporting a JSON envelope, exactly as that recipe's own "step"
+verb does. Not every recipe supports step: a recipe whose table entry
+excludes it is refused before arming. The run-id positional defaults to
+"self" when omitted.
 
 Example:
-  lyx shed step --recipe loom`,
+  lyx shed step
+  lyx shed step some-slug`,
 	},
 	Status: shedverbs.VerbText{
-		Use:   "status",
-		Short: "report the named recipe's current phase, once or as a live-tailed watch",
-		Long: `status arms the recipe named by --recipe and reports its current phase,
-exactly as that recipe's own "status" verb does.
+		Use:   "status [<run-id>]",
+		Short: "report the addressed run's current phase, once or as a live-tailed watch",
+		Long: `status arms the recipe named by the addressed run's own seed and reports its
+current phase, exactly as that recipe's own "status" verb does. The run-id
+positional defaults to "self" when omitted.
 
 Example:
-  lyx shed status --recipe loom
-  lyx shed status --recipe batten some-slug`,
+  lyx shed status
+  lyx shed status some-slug`,
 	},
 	Pause: shedverbs.VerbText{
-		Use:   "pause",
-		Short: "request a pause at the named recipe's next producer boundary",
-		Long: `pause arms the recipe named by --recipe and requests a pause at its next
-producer boundary, exactly as that recipe's own "pause" verb does.
+		Use:   "pause [<run-id>]",
+		Short: "request a pause at the addressed run's next producer boundary",
+		Long: `pause arms the recipe named by the addressed run's own seed and requests a
+pause at its next producer boundary, exactly as that recipe's own "pause"
+verb does. The run-id positional defaults to "self" when omitted.
 
 Example:
-  lyx shed pause --recipe loom`,
+  lyx shed pause
+  lyx shed pause some-slug`,
 	},
 }
 
@@ -72,89 +94,58 @@ Example:
 func Command() *cobra.Command {
 	c := &shedCLI{spec: &shedverbs.Spec{}}
 
-	var recipeFlag string
-
 	parent := &cobra.Command{
 		Use:   "shed",
-		Short: "drive a named recipe's generic run/step/status/pause verbs",
-		Long: `shed drives a named recipe's phase machine through the same four generic
+		Short: "drive an addressed run's generic run/step/status/pause verbs",
+		Long: `shed drives an addressed run's phase machine through the same four generic
 verbs internal/shedverbs builds for every module: "run", "step", "status",
-and "pause". The --recipe flag (default "loom") selects which recipe's
-arming function resolves the invocation; not every recipe supports every
-verb, and an unsupported verb/recipe pair is refused before arming.
+and "pause". Each verb takes an optional run-id positional (defaulting to
+"self") naming the run to address; the run's own seed.json, written by "lyx
+shed seed", names the recipe that arms the invocation. Not every recipe
+supports every verb, and an unsupported verb/recipe pair is refused before
+arming.
 
 Example:
-  lyx shed run --recipe loom
-  lyx shed run --recipe batten some-slug
-  lyx shed status --recipe loom
-  lyx shed pause --recipe loom`,
+  lyx shed run
+  lyx shed run some-slug
+  lyx shed status
+  lyx shed pause`,
 		// RunE is set so that bare "lyx shed" lists subcommands and "lyx shed bogus" emits a JSON
 		// error envelope instead of falling through to cobra's plain-text help.
 		RunE:              clihelp.GroupRunE,
 		PersistentPreRunE: c.resolvePersistentPreRun,
 	}
 
-	parent.PersistentFlags().StringVar(&recipeFlag, "recipe", "loom", "the named recipe to arm and drive")
-
 	verbs := shedverbs.Verbs(shedVerbTexts, c.spec)
 	runVerb, stepVerb, statusVerb, pauseVerb := verbs[0], verbs[1], verbs[2], verbs[3]
 
-	// Args is a closure rather than a static assignment: cobra parses flags before it validates
-	// Args, so --recipe is readable at that point, but the table entry is not known when the tree
-	// is built. Returning nil for an unresolvable recipe lets the unknown-recipe refusal come from
-	// the pre-run's own envelope rather than from an argument-count error.
-	argsFor := func() cobra.PositionalArgs {
-		return func(cmd *cobra.Command, args []string) error {
-			e, err := lookup(recipeFlag)
-			if err != nil {
-				return nil
-			}
-			return e.Args(cmd, args)
-		}
-	}
-	runVerb.Args = argsFor()
-	stepVerb.Args = argsFor()
-	statusVerb.Args = argsFor()
-	pauseVerb.Args = argsFor()
+	// MaximumNArgs(1), not a per-recipe contract read off the table: an addressed run is named by
+	// run-id, not by a per-recipe argument shape, so there is nothing left for a per-recipe
+	// contract to vary now that --recipe is gone.
+	runVerb.Args = cobra.MaximumNArgs(1)
+	stepVerb.Args = cobra.MaximumNArgs(1)
+	statusVerb.Args = cobra.MaximumNArgs(1)
+	pauseVerb.Args = cobra.MaximumNArgs(1)
 
-	parent.AddCommand(runVerb, stepVerb, statusVerb, pauseVerb)
+	parent.AddCommand(runVerb, stepVerb, statusVerb, pauseVerb, newSeedCommand())
 
 	return parent
 }
 
-// resolvePersistentPreRun is this subtree's own equivalent of each module's existing group guard:
-// it short-circuits when the bare "shed" group command itself is invoked, so a bare listing needs
-// no git repository. Otherwise it reads cwd through lyxcwd.CwdFrom, looks the --recipe value up
-// through lookup, refuses a verb the resolved recipe does not support, and then calls that entry's
-// Arm -- never resolving cwd into a *lyxcwd.Location itself, since each module's Arm owns its own
-// resolution.
+// resolvePersistentPreRun is this subtree's own equivalent of each module's existing group guard,
+// extended to also exempt "lyx shed seed" (card 29's command): it short-circuits when the bare
+// "shed" group command or "seed" itself is invoked, so neither needs a git repository or an
+// already-existing seed. Otherwise it resolves cwd, resolves it into a *lyxcwd.Location, resolves
+// the addressed run-id, reads that run's seed, looks the seed's recipe up through the table, applies
+// the verb gate, and calls the resolved entry's Arm. See this file's own header comment for the
+// full pinned sequence.
 func (c *shedCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) error {
-	if cmd.Name() == "shed" {
+	if cmd.Name() == "shed" || cmd.Name() == "seed" {
 		return nil
 	}
 
 	ctx := cmd.Context()
 	out := cmd.OutOrStdout()
-
-	recipeFlag, err := cmd.Flags().GetString("recipe")
-	if err != nil {
-		output.Err(out, err.Error())
-		clihelp.Abort(ctx, 1)
-		return nil
-	}
-
-	e, err := lookup(recipeFlag)
-	if err != nil {
-		output.Err(out, err.Error())
-		clihelp.Abort(ctx, 1)
-		return nil
-	}
-
-	if !verbSupported(e.Verbs, cmd.Name()) {
-		output.Err(out, unsupportedVerbMessage(cmd.Name(), recipeFlag, e.Verbs))
-		clihelp.Abort(ctx, 1)
-		return nil
-	}
 
 	cwd, err := lyxcwd.CwdFrom(ctx)
 	if err != nil {
@@ -163,7 +154,52 @@ func (c *shedCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) err
 		return nil
 	}
 
-	armed, err := e.Arm(cwd, cmd.Name(), args)
+	location, err := lyxcwd.Resolve(cwd)
+	if err != nil {
+		// lyxcwd.Resolve's error is already self-describing (it IS the "not a git repository"
+		// sentinel); pass it through bare rather than doubling that same text on top of it.
+		output.Err(out, err.Error())
+		clihelp.Abort(ctx, 1)
+		return nil
+	}
+
+	runID := shedrun.SelfRunID
+	if len(args) > 0 {
+		runID = args[0]
+	}
+
+	seed, found, err := shedrun.ReadSeed(location, runID)
+	if err != nil {
+		output.Err(out, err.Error())
+		clihelp.Abort(ctx, 1)
+		return nil
+	}
+	if !found {
+		existing, listErr := shedrun.List(location)
+		if listErr != nil {
+			output.Err(out, listErr.Error())
+			clihelp.Abort(ctx, 1)
+			return nil
+		}
+		output.Err(out, shedrun.MissingSeedMessage("shedcli", runID, existing, `run "lyx shed seed `+runID+` --recipe <name>" first`))
+		clihelp.Abort(ctx, 1)
+		return nil
+	}
+
+	e, err := lookup(seed.Recipe)
+	if err != nil {
+		output.Err(out, err.Error())
+		clihelp.Abort(ctx, 1)
+		return nil
+	}
+
+	if !verbSupported(e.Verbs, cmd.Name()) {
+		output.Err(out, unsupportedVerbMessage(cmd.Name(), seed.Recipe, e.Verbs))
+		clihelp.Abort(ctx, 1)
+		return nil
+	}
+
+	armed, err := e.Arm(location, cmd.Name(), runID)
 	if err != nil {
 		// The arming module's own error is already self-describing (either lyxcwd.Resolve's
 		// "not a git repository" sentinel or a non-prime refusal naming both worktrees); pass it

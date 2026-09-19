@@ -24,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/treadleengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -58,10 +59,14 @@ func durableSet(l *lyxcwd.Location) []namedPath {
 		{"planparser.PlanDir", planparser.PlanDir(l.AnchorPath())},
 		{"planparser.PlanOverview", planparser.PlanOverview(l.AnchorPath())},
 		{"loomengine.DiscussionDir", loomengine.DiscussionDir(l)},
-		{"loomengine.LoomStatusFile", loomengine.LoomStatusFile(l)},
+		{"shedrun.StatusFile", shedrun.StatusFile(l, shedrun.SelfRunID)},
 		{"websterengine.Dir", websterengine.Dir(l.AnchorPath())},
 		{"websterengine.ReportsDir", websterengine.ReportsDir(l.AnchorPath())},
 		{"websterengine.ReportsDir/blk", filepath.Join(websterengine.ReportsDir(l.AnchorPath()), "blk")},
+		// battencli.StatusFile is durable, fabric-synced state living at shedrun's _lyx-rooted run
+		// directory -- battencli/paths.go's own doc comment states this outright -- unlike
+		// battencli.RunLock, StatusLock and PrimeRunLock below, which stay ephemeral.
+		{"battencli.StatusFile", battencli.StatusFile(l, "slug")},
 	}
 }
 
@@ -70,8 +75,8 @@ func transientSet(l *lyxcwd.Location) []namedPath {
 	return []namedPath{
 		{"websterengine.ScratchDir", websterengine.ScratchDir(l.AnchorPath())},
 		{"websterengine.PromptsDir", websterengine.PromptsDir(l.AnchorPath())},
-		{"loomengine.LoomStatusLock", loomengine.LoomStatusLock(l)},
-		{"loomengine.LoomRunLock", loomengine.LoomRunLock(l)},
+		{"shedrun.StatusLock", shedrun.StatusLock(l, shedrun.SelfRunID)},
+		{"shedrun.RunLock", shedrun.RunLock(l, shedrun.SelfRunID)},
 		{"loomengine.LoomDriverLog", loomengine.LoomDriverLog(l)},
 		{"loomengine.LoomBootstrapLock", loomengine.LoomBootstrapLock(l)},
 		{"loomengine.LoomSelfreportFiled", loomengine.LoomSelfreportFiled(l)},
@@ -80,7 +85,6 @@ func transientSet(l *lyxcwd.Location) []namedPath {
 		{"logger.LogsDir", logger.LogsDir(l)},
 		{"treadleengine.PauseFlagPath", treadleengine.PauseFlagPath(filepath.Join(websterengine.ScratchDir(l.AnchorPath()), "blk"))},
 		{"battencli.BattenDir", battencli.BattenDir(l, "slug")},
-		{"battencli.StatusFile", battencli.StatusFile(l, "slug")},
 		{"battencli.RunLock", battencli.RunLock(l, "slug")},
 		{"battencli.StatusLock", battencli.StatusLock(l, "slug")},
 		{"battencli.PrimeRunLock", battencli.PrimeRunLock(l)},
