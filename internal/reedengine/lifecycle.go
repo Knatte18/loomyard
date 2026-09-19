@@ -157,6 +157,27 @@ func planResumeLaunches(strands []Strand, liveIDs map[string]bool) []Strand {
 	return out
 }
 
+// sessionSubstrateLocked is the single "usable substrate" predicate both ensureServerAndSessionLocked's
+// already-up early return and ensureSessionLocked read; neither may carry its own copy of the
+// non-empty-pane-list condition.
+// A session holding zero panes is broken substrate a strand can never be split into: up reports true
+// while usable stays false, distinguishing that husk from a session that never came up at all.
+func (e *Engine) sessionSubstrateLocked() (up bool, usable bool, err error) {
+	session := e.SessionName()
+	up, err = e.tmux.hasSession(session)
+	if err != nil {
+		return false, false, fmt.Errorf("check session: %w", err)
+	}
+	if !up {
+		return false, false, nil
+	}
+	live, err := e.tmux.listPanes(session)
+	if err != nil {
+		return true, false, fmt.Errorf("list panes: %w", err)
+	}
+	return true, len(live) > 0, nil
+}
+
 // ensureServerAndSessionLocked ensures this hub's tmux server and this
 // worktree's session exist. Reports booted=true on fresh spawn; validates
 // capability, debug_log, mouse, watchdog, and header template before any tmux round trip.
@@ -221,11 +242,16 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	}
 
 	session := e.SessionName()
-	up, err := e.tmux.hasSession(session)
+	up, usable, err := e.sessionSubstrateLocked()
 	if err != nil {
-		return false, nil, fmt.Errorf("check session: %w", err)
+		return false, nil, err
 	}
 	if up {
+		if usable {
+			// The header template was already validated in the pre-tmux
+			// block above, so this healthy already-up path returns directly.
+			return false, nil, nil
+		}
 		// A session that exists but holds ZERO panes is broken substrate: it
 		// cannot host a strand (there is no pane to split, and tmux
 		// offers no way to add a pane to an empty window), so add would fail
@@ -234,15 +260,6 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 		// pane absent from a select-layout string). Kill the husk and fall
 		// through to a fresh boot — the booted=true return then makes the
 		// caller clear every stale binding, exactly like a server rebirth.
-		live, err := e.tmux.listPanes(session)
-		if err != nil {
-			return false, nil, fmt.Errorf("list panes: %w", err)
-		}
-		if len(live) > 0 {
-			// The header template was already validated in the pre-tmux
-			// block above, so this healthy already-up path returns directly.
-			return false, nil, nil
-		}
 		_ = e.tmux.run("kill-session", "-t", exactSessionTarget(session))
 	}
 
@@ -644,55 +661,68 @@ func (e *Engine) splitPaneAboveLocked(target string, preSplitLive []LivePane, la
 	return paneID, nil
 }
 
+// upLocked ensures the server and session exist and returns Up's result plus
+// ensureServerAndSessionLocked's own booted flag, passed straight out.
+// No caller reaches it directly — it is called only from within an already-held withOpLock closure,
+// Up's own thin wrapper below being the sole caller today.
+// It is what ensureSessionLocked delegates to on the cold path.
+// Widening its return breaks no contract because it is unexported.
+func (e *Engine) upLocked() (UpResult, bool, error) {
+	var result UpResult
+	booted, stripped, err := e.ensureServerAndSessionLocked()
+	if err != nil {
+		return result, booted, err
+	}
+
+	st, err := e.loadOrInitStateLocked()
+	if err != nil {
+		return result, booted, err
+	}
+
+	// On a server rebirth the reborn session reuses pane ids (the initial
+	// pane is %1 again), so a persisted binding would be mistaken for a
+	// live strand. Clear every binding: a just-booted session hosts none
+	// of the prior strands. Up leaves them not-live (Resume rebuilds them).
+	// The stripped env keys are stamped for diagnosis — reed.json records
+	// what the server spawn actually removed. HeaderPaneID is cleared
+	// alongside every strand binding for the identical reason — a
+	// reborn session's reused pane id would otherwise be mistaken for
+	// the still-live header pane — so ensureHeaderPaneLocked below
+	// rebuilds it fresh; the clear lives here, not inside
+	// clearAllPaneBindings itself, since the header is not a strand
+	// binding.
+	if booted {
+		clearAllPaneBindings(st)
+		st.StrippedEnv = stripped
+		st.HeaderPaneID = ""
+	}
+
+	if err := e.ensureHeaderPaneLocked(st); err != nil {
+		return result, booted, err
+	}
+
+	if _, err := e.reconcileApplyPersistLocked(st); err != nil {
+		return result, booted, err
+	}
+
+	// len(st.Strands) deliberately excludes the header pane: the header
+	// is not in st.Strands (Shared Decision header-is-not-a-strand), so
+	// this count is already correct by construction. Do not "fix" a
+	// future off-by-one here by adding the header — it must never be
+	// counted as a strand.
+	result = UpResult{Session: e.SessionName(), Socket: e.Socket(), Strands: len(st.Strands)}
+	return result, booted, nil
+}
+
 // Up ensures the server and session exist.
 // Up never launches strands;
 // Resume rebuilds content after a server restart.
 func (e *Engine) Up() (UpResult, error) {
 	var result UpResult
 	err := e.withOpLock(func() error {
-		booted, stripped, err := e.ensureServerAndSessionLocked()
-		if err != nil {
-			return err
-		}
-
-		st, err := e.loadOrInitStateLocked()
-		if err != nil {
-			return err
-		}
-
-		// On a server rebirth the reborn session reuses pane ids (the initial
-		// pane is %1 again), so a persisted binding would be mistaken for a
-		// live strand. Clear every binding: a just-booted session hosts none
-		// of the prior strands. Up leaves them not-live (Resume rebuilds them).
-		// The stripped env keys are stamped for diagnosis — reed.json records
-		// what the server spawn actually removed. HeaderPaneID is cleared
-		// alongside every strand binding for the identical reason — a
-		// reborn session's reused pane id would otherwise be mistaken for
-		// the still-live header pane — so ensureHeaderPaneLocked below
-		// rebuilds it fresh; the clear lives here, not inside
-		// clearAllPaneBindings itself, since the header is not a strand
-		// binding.
-		if booted {
-			clearAllPaneBindings(st)
-			st.StrippedEnv = stripped
-			st.HeaderPaneID = ""
-		}
-
-		if err := e.ensureHeaderPaneLocked(st); err != nil {
-			return err
-		}
-
-		if _, err := e.reconcileApplyPersistLocked(st); err != nil {
-			return err
-		}
-
-		// len(st.Strands) deliberately excludes the header pane: the header
-		// is not in st.Strands (Shared Decision header-is-not-a-strand), so
-		// this count is already correct by construction. Do not "fix" a
-		// future off-by-one here by adding the header — it must never be
-		// counted as a strand.
-		result = UpResult{Session: e.SessionName(), Socket: e.Socket(), Strands: len(st.Strands)}
-		return nil
+		var err error
+		result, _, err = e.upLocked()
+		return err
 	})
 	return result, err
 }
