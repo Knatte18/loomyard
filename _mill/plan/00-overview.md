@@ -127,7 +127,6 @@ _Full union of every `Creates:` / `Edits:` / `Moves:` **target** path across eve
 - `docs/overview.md`
 - `internal/battencli/bootstrapverb.go`
 - `internal/battencli/bootstrapverb_test.go`
-- `internal/battencli/cli.go`
 - `internal/battencli/cli_test.go`
 - `internal/battencli/refusal.go`
 - `internal/battencli/refusal_test.go`
