@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: reed-born-as-strand
 branch: reed-born-as-strand
 plan: _mill/plan
@@ -37,6 +37,7 @@ holistic-fixing  '2026-09-19T10:52:22Z'
 nits-fixed-holistic  '2026-09-19T10:53:22Z'
 holistic-approved  '2026-09-19T10:53:30Z'
 done  '2026-09-19T10:55:10Z'
+pr-pending  '2026-09-19T10:56:17Z'
 ```
 
 ## Batches
