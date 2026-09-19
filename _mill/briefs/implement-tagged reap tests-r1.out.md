@@ -1,0 +1,9 @@
+All 5 of 5 cards in this batch were committed (cards 15-19, combined into one commit since they all necessarily touch the single new file `internal/reedcli/watchdogreap_integration_test.go`, named with card 19's commit message per the plan's combined-commit allowance). The batch's `verify:` command (`go test -tags integration -race -run 'TestWatchdogReap|TestWatchdogIntegration' ./internal/reedcli/`) passed twice in a row, including all pre-existing `TestWatchdogIntegration_*` cases.
+
+Key files:
+- `/home/knatte/Code/loomyard/wts/reed-per-hub-daemon-reap/internal/reedcli/watchdogreap_integration_test.go` (new file, all 5 cards)
+- Context read (unmodified): `/home/knatte/Code/loomyard/wts/reed-per-hub-daemon-reap/internal/reedcli/watchdog.go`, `/home/knatte/Code/loomyard/wts/reed-per-hub-daemon-reap/internal/reedcli/watchdog_integration_test.go`, `/home/knatte/Code/loomyard/wts/reed-per-hub-daemon-reap/internal/reedengine/overlay.go`, `/home/knatte/Code/loomyard/wts/reed-per-hub-daemon-reap/internal/hubforge/hub.go`, `/home/knatte/Code/loomyard/wts/reed-per-hub-daemon-reap/internal/proc/proc_linux.go`
+
+Notable implementation detail worth flagging for review: the card-19 process-half test needed a genuinely orphan-surviving descendant (immune to `kill-session`'s own SIGHUP-to-process-group), which required detaching it into a new session via `setsid` invoked from a non-interactive on-disk script (rather than inline in the pane's own script) - an inline `setsid` under the pane's own interactive, job-control-enabled shell hits `setsid()`'s EPERM-on-process-group-leader case and silently double-forks, killing the pane's root process prematurely. This was verified empirically against a live tmux server before being encoded into the test.
+
+{"status":"success","commit_sha":"d05c4c2549dffb201d153d8d7cea31c1fc901e24","session_id":"594e0952-c78e-4b14-b83e-9b2c4183df0a","cards_done":[15,16,17,18,19]}
