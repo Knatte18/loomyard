@@ -48,7 +48,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 	primeLock := battenshed.PrimeLock{
 		Path: primeRunLockPath,
 		Acquire: func() (release func() error, ok bool, err error) {
-			if err := os.MkdirAll(BattenDir(location, slug), 0o755); err != nil {
+			if err := os.MkdirAll(shedrun.ScratchDir(location, slug), 0o755); err != nil {
 				return nil, false, err
 			}
 			fl, acquired, err := lock.TryAcquireWriteLock(primeRunLockPath)

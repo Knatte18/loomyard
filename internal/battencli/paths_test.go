@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
 // locationFixtures returns two synthetic *lyxcwd.Location fixtures: one anchored at the worktree
@@ -34,7 +35,7 @@ func TestBattenDir(t *testing.T) {
 	for name, l := range locationFixtures(t) {
 		t.Run(name, func(t *testing.T) {
 			got := BattenDir(l, "some-slug")
-			want := filepath.Join(l.AnchorPath(), ".lyx", "lifecycle", "some-slug")
+			want := filepath.Join(l.AnchorPath(), ".lyx", "shed", "some-slug")
 			if got != want {
 				t.Errorf("BattenDir() = %q; want %q", got, want)
 			}
@@ -42,7 +43,33 @@ func TestBattenDir(t *testing.T) {
 	}
 }
 
-func TestPerSlugPathsAreDistinctAndUnderBattenDir(t *testing.T) {
+// TestStatusFileIsDurableWhileLocksStayEphemeral asserts the durable/ephemeral split this batch
+// introduces: StatusFile now lives under the fabric-synced _lyx segment, while RunLock, StatusLock
+// and PrimeRunLock stay under the never-tracked .lyx segment, per the Durable-vs-Ephemeral State
+// Invariant.
+func TestStatusFileIsDurableWhileLocksStayEphemeral(t *testing.T) {
+	for name, l := range locationFixtures(t) {
+		t.Run(name, func(t *testing.T) {
+			durablePrefix := filepath.Join(l.AnchorPath(), lyxdirs.LyxDirName) + string(filepath.Separator)
+			ephemeralPrefix := filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName) + string(filepath.Separator)
+
+			if got := StatusFile(l, "some-slug"); !strings.HasPrefix(got, durablePrefix) {
+				t.Errorf("StatusFile() = %q; want it under the durable segment %q", got, durablePrefix)
+			}
+			for name, got := range map[string]string{
+				"RunLock":      RunLock(l, "some-slug"),
+				"StatusLock":   StatusLock(l, "some-slug"),
+				"PrimeRunLock": PrimeRunLock(l),
+			} {
+				if !strings.HasPrefix(got, ephemeralPrefix) {
+					t.Errorf("%s() = %q; want it under the ephemeral segment %q", name, got, ephemeralPrefix)
+				}
+			}
+		})
+	}
+}
+
+func TestPerSlugPathsAreDistinctAndTheTwoLocksAreUnderBattenDir(t *testing.T) {
 	for name, l := range locationFixtures(t) {
 		t.Run(name, func(t *testing.T) {
 			dir := BattenDir(l, "some-slug")
@@ -50,11 +77,13 @@ func TestPerSlugPathsAreDistinctAndUnderBattenDir(t *testing.T) {
 			runLock := RunLock(l, "some-slug")
 			statusLock := StatusLock(l, "some-slug")
 
+			// Only the two ephemeral locks live under BattenDir now: StatusFile is durable, under
+			// the mirrored _lyx segment instead, per the durable/ephemeral split this batch
+			// introduces.
 			for _, p := range []struct {
 				name string
 				path string
 			}{
-				{"StatusFile", statusFile},
 				{"RunLock", runLock},
 				{"StatusLock", statusLock},
 			} {
@@ -82,7 +111,7 @@ func TestPrimeRunLock(t *testing.T) {
 	for name, l := range locationFixtures(t) {
 		t.Run(name, func(t *testing.T) {
 			got := PrimeRunLock(l)
-			want := filepath.Join(l.AnchorPath(), ".lyx", "lifecycle", "run.lock")
+			want := filepath.Join(l.AnchorPath(), ".lyx", "shed", "run.lock")
 			if got != want {
 				t.Errorf("PrimeRunLock() = %q; want %q", got, want)
 			}

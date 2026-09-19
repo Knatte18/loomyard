@@ -1,62 +1,50 @@
 // paths.go declares the five prime-anchored lifecycle path constructors: BattenDir, StatusFile,
-// RunLock, StatusLock, and PrimeRunLock. Every one of them is a plain filepath.Join onto the given
-// *lyxcwd.Location's AnchorPath(), per the Cwd Resolution Invariant -- none of them calls os.Getwd
-// or any git command.
+// RunLock, StatusLock, and PrimeRunLock. Each is a thin forwarding layer over the corresponding
+// shedrun constructor, keyed on the given run-id -- battencli owns no path-derivation logic of its
+// own, per the Shed Run-Directory Invariant's sole-declarer claim over the "shed" segment.
 //
-// This whole tree is ephemeral, not durable, unlike loom's own status file (shedrun.StatusFile
-// lives under _lyx and is fabric-synced): the lifecycle's state -- which task worktree is mid-create,
-// which lock is held, what a run last observed -- is per-machine and per-attempt, never meant to be
-// committed or shared between machines working the same hub. Per the Durable-vs-Ephemeral State
-// Invariant, every never-tracked file lives under .lyx, so this package's whole tree sits there
-// rather than under _lyx.
-
+// StatusFile is durable, fabric-synced state, unlike RunLock, StatusLock and PrimeRunLock, which
+// stay ephemeral: per the Durable-vs-Ephemeral State Invariant, StatusFile lives under prime's own
+// anchor at shedrun's _lyx-rooted run directory, while the three locks live at the mirrored .lyx
+// subpath. None of the five calls os.Getwd or any git command -- each is a plain filepath.Join
+// resolved through shedrun onto the given *lyxcwd.Location's AnchorPath(), per the Cwd Resolution
+// Invariant.
 package battencli
 
 import (
-	"path/filepath"
-
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// battenDirName is the relative-path segment battencli joins onto lyxdirs.DotLyxDirName to
-// scope every lifecycle-owned path under its own subdirectory.
-// battencli is this segment's sole declarer.
-const battenDirName = "lifecycle"
-
-// BattenDir returns the path to the per-slug lifecycle directory: the prime *lyxcwd.Location's
-// AnchorPath() joined with lyxdirs.DotLyxDirName, battenDirName, and slug.
-// The .lyx segment comes from lyxdirs.DotLyxDirName rather than a literal, per the Lyxdirs
-// Single-Declarer Invariant, exactly as shedrun.StatusLock already does.
-func BattenDir(l *lyxcwd.Location, slug string) string {
-	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, battenDirName, slug)
+// BattenDir returns the path to a run's ephemeral scratch directory, under which its run lock and
+// status lock live: shedrun.ScratchDir(l, runID).
+func BattenDir(l *lyxcwd.Location, runID string) string {
+	return shedrun.ScratchDir(l, runID)
 }
 
-// StatusFile returns the path to a slug's persisted lifecycle status.json, under BattenDir(l,
-// slug).
-func StatusFile(l *lyxcwd.Location, slug string) string {
-	return filepath.Join(BattenDir(l, slug), "status.json")
+// StatusFile returns the path to a run's durable, fabric-synced status.json: shedrun.StatusFile(l,
+// runID).
+func StatusFile(l *lyxcwd.Location, runID string) string {
+	return shedrun.StatusFile(l, runID)
 }
 
-// RunLock returns the path to a slug's lifecycle run lock, under BattenDir(l, slug).
-// It must never equal StatusLock(l, slug): shedengine.Shed's own validation rejects LockPath ==
+// RunLock returns the path to a run's ephemeral run lock: shedrun.RunLock(l, runID).
+// It must never equal StatusLock(l, runID): shedengine.Shed's own validation rejects LockPath ==
 // StatusLockPath outright, and a shared file would hang on the first persist rather than fail.
-func RunLock(l *lyxcwd.Location, slug string) string {
-	return filepath.Join(BattenDir(l, slug), "run.lock")
+func RunLock(l *lyxcwd.Location, runID string) string {
+	return shedrun.RunLock(l, runID)
 }
 
 // StatusLock returns the path to the advisory lock guarding concurrent access to StatusFile(l,
-// slug), under BattenDir(l, slug).
-func StatusLock(l *lyxcwd.Location, slug string) string {
-	return filepath.Join(BattenDir(l, slug), "status.json.lock")
+// runID): shedrun.StatusLock(l, runID).
+func StatusLock(l *lyxcwd.Location, runID string) string {
+	return shedrun.StatusLock(l, runID)
 }
 
-// PrimeRunLock returns the path to the hub-scoped advisory lock that serialises every slug's
-// WorktreeCreate and WorktreeTeardown rows against one another: the prime *lyxcwd.Location's
-// AnchorPath() joined with lyxdirs.DotLyxDirName and battenDirName, one level above any single
-// slug's own BattenDir.
-// Unlike the four accessors above, PrimeRunLock takes no slug: the lock it names is shared across
-// every task worktree this hub creates or tears down, not scoped to one.
+// PrimeRunLock returns the path to the hub-scoped advisory lock that serialises every slug's create
+// and teardown against one another: shedrun.PrimeRunLock(l).
+// The lock it names is per-hub rather than per-run, so it takes no run-id; battencli stays its only
+// caller while shedrun declares it.
 func PrimeRunLock(l *lyxcwd.Location) string {
-	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, battenDirName, "run.lock")
+	return shedrun.PrimeRunLock(l)
 }

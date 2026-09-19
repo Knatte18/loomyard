@@ -218,7 +218,7 @@ A `fabricengine` write to a hub-level structural container (`_launchers/…`, `_
 
 A producer that creates or destroys a task worktree never runs from inside that worktree.
 
-- The batten Shed is driven from the hub's prime worktree, and its status file and locks live under prime's own ephemeral tree, never under the worktree being managed.
+- The batten Shed is driven from the hub's prime worktree; its status file is durable under prime's own anchor and its locks stay ephemeral there, never under the worktree being managed.
 - A teardown row sequences session shutdown before worktree removal, in one producer, never two rows.
 - Enforcement is review discipline with two partial mechanical proxies, not an enforcing test: the invariant constrains which directory a running process is driven from, which has no static shape an AST scan can see.
   `internal/battenshed`'s seam-enforcement scan bars a direct resolver import so the package cannot resolve its way into the managed worktree, and `internal/battencli`'s path-derivation tests pin the status and lock paths to prime's anchor so a relocation under the managed worktree fails there — neither proves the driver's own working directory, which stays a review obligation.
