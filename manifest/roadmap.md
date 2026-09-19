@@ -9,18 +9,18 @@ See Maintenance below for how the numbering works.
 
 This section holds what's committed to next.
 
-1. **loom CLI: rename `run`/`drive`/`step` for verb/engine symmetry, plus rename `ly-supervise`** — today's verb names don't match what each one actually calls; not yet decided.
-   See [designs/loom-cli-rename.md](designs/loom-cli-rename.md).
+1. **reed: replace the header pane with a native tmux status-line, a permanent "Selvage" terminal pane, and a detached per-hub watchdog process** — the header pane conflates three unrelated jobs (content, session keepalive, watchdog hosting); split each onto its own purpose-built mechanism.
+   See [designs/reed-header-selvage.md](designs/reed-header-selvage.md).
 
 ## Next Up
 
 What comes right after Planned clears — committed and ordered, unlike Someday below.
 Not yet started, and exact order can still shift as Planned work reveals what unblocks what, but the rough sequence below is the current best guess.
 
-1. **reed: born-as-strand for the operator's `loom run` attach** — `loom run`'s terminal handoff never calls `AddStrand`, unlike every other agent launch in lyx; fix it to spawn-then-attach like `reed add` does.
+1. **reed: born-as-strand for the operator's `loom start` attach** — `loom start`'s terminal handoff never calls `AddStrand`, unlike every other agent launch in lyx; fix it to spawn-then-attach like `reed add` does.
    See [designs/reed-born-as-strand.md](designs/reed-born-as-strand.md).
 
-1. **generalize `ly-supervise` and loom's `run`/`drive`/`step` CLI verbs into a Shed-generic watchdog** — `shedengine`/`shedbuild`/`shedrecipe` are already fully generic; only `loomcli` hardcodes loom's own recipe/paths. Speculative until a second `shedrecipe` consumer exists.
+1. **generalize `ly-drive` and loom's `start`/`run`/`step` CLI verbs into a Shed-generic watchdog** — `shedengine`/`shedbuild`/`shedrecipe` are already fully generic; only `loomcli` hardcodes loom's own recipe/paths. Speculative until a second `shedrecipe` consumer exists.
    See [designs/shed-generic-watchdog.md](designs/shed-generic-watchdog.md).
 
 1. **reed: per-hub daemon reaps orphaned sessions** — the per-hub watchdog daemon periodically checks whether each live session's worktree still exists on disk, and tears down any that don't. A safety net for when the Done `worktree spawn/teardown as Shed producers` item's deliberate teardown sequencing doesn't run (crash, manual deletion, aborted task) — not a replacement for it.
@@ -111,13 +111,15 @@ Cleared 2026-08-25 to keep this file lean — shipped items' history lives in `g
 
 1. **reed: `AddStrand` and `attach` self-heal a cold worktree instead of requiring `up` first** — both verbs pre-flight through the new `ensureSessionLocked`/`EnsureSession()` seam, which probes session liveness first and only delegates to `upLocked()` when nothing usable is up, so any spawn OR view into a worktree nobody has visited (no VS Code, no manual `up`) just works. `attach` boots via `EnsureSession()` and keeps its existing `Status()` call, in that order, so both the friendly no-session diagnosis and the foreign-session refusal survive unchanged. A warm call against a live session is never routed through `Up()`/`upLocked()`: that path reaches `planReconcile`, which would kill an operator's hand-split pane, and validates config ahead of its already-up early return, which would refuse a healthy `attach` on an unrelated typo. Fully internal to `reedengine` — fabric never needs to know reed exists.
 
+1. **loom CLI: rename `run`/`drive`/`step` for verb/engine symmetry, plus rename `ly-supervise`** — `drive` became `run`, the old `run` became `start`, `step` is unchanged, the root alias became `lyx start`, and `ly-supervise` became `ly-drive`.
+
+1. **ly-drive + orchestrator: launch via `lyx reed add`, not ad hoc** — the generated VS Code `folderOpen` task is now the reed launch chain, with both binary paths stamped absolute; `lyx reed add` gained `--if-absent` so reopening a worktree is idempotent; and the `/ly:ly-drive` skill now treats the session running it as the orchestrator strand itself, rather than telling the operator to open a second one.
+
 1. **fabric: no remote/GitHub branch deletion** — `lyx fabric cleanup` and `lyx fabric remove` both gained an opt-in `--remote` flag that additionally deletes each deleted weft branch's copy on the weft remote.
    See the `internal/fabricengine` package documentation's destruction chokepoint section.
 
 1. **worktree spawn/teardown as Shed producers** — one driven `Shed` run now takes a task worktree through create, run the loom session to a terminal state, and tear down, driven from the hub's prime worktree (`internal/lifecycleshed` + `internal/lifecyclerecipe` + `internal/lifecyclecli`; `lyx lifecycle run|status`); teardown is one row sequencing session shutdown before worktree removal, never forcing. Optional VS Code embedding did not ship as part of this driven run — see the Someday `VS Code as opt-in per worktree, not spun up by default` item for where that work lives.
    See the `internal/lifecycleshed` and `internal/lifecyclerecipe` package documentation.
-
-1. **ly-supervise + orchestrator: launch via `lyx reed add`, not ad hoc** — the generated VS Code `folderOpen` task is now the reed launch chain, with both binary paths stamped absolute; `lyx reed add` gained `--if-absent` so reopening a worktree is idempotent; and the `/ly:ly-supervise` skill now treats the session running it as the orchestrator strand itself, rather than telling the operator to open a second one.
 
 1. **Adopt quarry's glyph alphabet as the plan alphabet** — `planparser`/the validator switched a card's symbol declarations from bare names to quarry glyphs, resolved via batched `Resolve`, with placeholder handles (`plan:<expected-glyph>`) for symbols a plan itself creates and mechanical drift detection against the code. Superseded the Someday `quarry-backed plan symbol verification` item.
    See [designs/quarry-glyph-plan-alphabet.md](designs/quarry-glyph-plan-alphabet.md).
@@ -154,10 +156,10 @@ Cleared 2026-08-25 to keep this file lean — shipped items' history lives in `g
 1. **producer-agnostic final-summary artifact** — the read contract is now a producer-agnostic leaf, `internal/summaryparser`, and `landingshed` takes a told path rather than reaching into a producer's own directory; `Finalize`'s squash-merge `MergeOptions.Message` is now wired to the composed title and body.
    See [final-summary-spec.md](../contracts/specs/final-summary-spec.md).
 
-1. **self-report Tier 2: per-agent friction notes for unsupervised runs** — every one of the seven prompt-composing agents now gets an optional friction-note directive injected into its prompt, default-on via `loom.yaml`'s `friction` model-spec key, and `internal/loomcli`'s drive verb spawns one dedicated reflection agent per run to aggregate whatever notes were written and file them via `lyx selfreport create`.
+1. **self-report Tier 2: per-agent friction notes for unsupervised runs** — every one of the seven prompt-composing agents now gets an optional friction-note directive injected into its prompt, default-on via `loom.yaml`'s `friction` model-spec key, and `internal/loomcli`'s run verb spawns one dedicated reflection agent per run to aggregate whatever notes were written and file them via `lyx selfreport create`.
    See the `internal/friction` and `internal/frictionengine` package documentation, and [designs/self-report-tier2.md](designs/self-report-tier2.md).
 
-1. **`lyx loom step` + an external supervisor skill** — a new Go verb runs exactly one of `loom`'s next phases (loom still owns all sequencing) and returns; the `/ly:ly-supervise` skill drives it in a loop, watching live for anything a mechanical gate wouldn't catch, and handing back to the operator on any non-running state or error envelope. Supersedes `llm-driven-loom-alternative`.
+1. **`lyx loom step` + an external supervisor skill** — a new Go verb runs exactly one of `loom`'s next phases (loom still owns all sequencing) and returns; the `/ly:ly-drive` skill drives it in a loop, watching live for anything a mechanical gate wouldn't catch, and handing back to the operator on any non-running state or error envelope. Supersedes `llm-driven-loom-alternative`.
    See [designs/loom-step.md](designs/loom-step.md).
 
 ## Maintenance

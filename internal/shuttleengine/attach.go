@@ -412,13 +412,13 @@ func dispositionCandidate(c attachCandidate, strands []reedengine.StrandStatus, 
 	// sweepOrphansOpportunistic, which runs inside Start, which this error path never reaches.
 	//
 	// The two reed-state answers differ in whether anything repairs them, and only one of them
-	// does. An ABSENT reed.json is recreated in-band by "lyx reed up", or simply by "lyx loom run"
-	// and "lyx loom drive", which both call reed.Up() themselves. An UNREADABLE one is not: reed
+	// does. An ABSENT reed.json is recreated in-band by "lyx reed up", or simply by "lyx loom start"
+	// and "lyx loom run", which both call reed.Up() themselves. An UNREADABLE one is not: reed
 	// refuses every verb that loads state, "lyx reed up" included, and declines to repair it on
 	// purpose, because every repair it could perform amounts to discarding the strand table (see
 	// reedengine's unreadableStateError, which states this and names the operator's two real
 	// remedies — "lyx reed down", or deleting the file by hand). Confirmed live in crucible round
-	// opus5-high-r7: "lyx loom drive" over a truncated reed.json refuses at its own reed.Up() and
+	// opus5-high-r7: "lyx loom run" over a truncated reed.json refuses at its own reed.Up() and
 	// never reaches this file at all. That is why soleFinishedCandidate, not this age escape, is
 	// what keeps a finished run harvestable through those gates.
 	return leftoverThenAgeVerdict(c, spec, minAge, now)

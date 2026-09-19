@@ -209,7 +209,7 @@ func pathTaken(path string) bool {
 }
 
 // EnsureDir creates dir, including any missing parents, and never returns an error: a failed create
-// must never fail `lyx loom run` or `lyx loom drive`, so a failure is reported via logger.Warn
+// must never fail `lyx loom start` or `lyx loom run`, so a failure is reported via logger.Warn
 // instead.
 // It no-ops on an empty dir.
 func EnsureDir(dir string) {
