@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-reviewing
 slug: loom-cli-rename
 branch: loom-cli-rename
 plan: _mill/plan
@@ -41,6 +41,7 @@ holistic-reviewing  '2026-09-19T06:40:43Z'
 holistic-fixing  '2026-09-19T06:47:08Z'
 holistic-reviewing  '2026-09-19T06:51:54Z'
 holistic-fixing  '2026-09-19T06:58:45Z'
+holistic-reviewing  '2026-09-19T07:00:17Z'
 ```
 
 ## Batches

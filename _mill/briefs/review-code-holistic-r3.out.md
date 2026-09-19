@@ -1,0 +1,22 @@
+MILL_REVIEW_BEGIN
+# Review: Rename loom CLI run/drive/step for verb/engine symmetry, plus rename ly-supervise — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: sonnethigh
+reviewed_file: plan/ + source
+date: 2026-09-19
+```
+
+## Findings
+
+### [BLOCKING:scope] Decision-name identifier still embeds the retired `drive` verb
+**Location:** `internal/loomcli/wiring.go:405`
+**Issue:** The comment `// env-landing-filled-in-drive-not-wire design decision.` still names the retired `drive` verb inside a decision-name identifier. `wiring.go` is in card 7's `Edits:` list and is swept whole per the batch's own sweep rule; this hit was not classified. It also conflicts with the `no-back-compat-aliases` decision ("the old names survive nowhere in the tree, including in historical prose") — the decision name is otherwise unreferenced anywhere else in the repo (verified by repo-wide grep), so it is free to rename.
+**Fix:** Rename the decision identifier to `env-landing-filled-in-run-not-wire` (matching the file's own sibling citation two lines above, `Env.Landing is assembled in run.go`), consistent with the rest of the file's rename.
+
+## Verdict
+
+REQUEST_CHANGES
+One leftover `drive`-named decision identifier in a swept file; everything else verified against every batch's cards.
+MILL_REVIEW_END
