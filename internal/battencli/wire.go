@@ -12,10 +12,12 @@ package battencli
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -139,6 +141,73 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				return state.ReadJSONStrict[shedengine.Status](statusPath, statusLockPath)
 			},
 		},
+		SeedChild: battenshed.SeedChildDeps{
+			// ReadBoardType opens the Board fresh on every Call, over fabricengine.BoardDir(
+			// location.HubPath), and returns the task's own Type field -- never a value captured at
+			// wiring time, so a type corrected after prime was seeded is still honoured.
+			ReadBoardType: func(ctx context.Context) (string, error) {
+				b := boardengine.New(boardengine.Config{Path: fabricengine.BoardDir(location.HubPath)})
+				task, found, err := b.GetTask(slug)
+				if err != nil {
+					return "", err
+				}
+				if !found {
+					return "", fmt.Errorf("battencli: board task %q not found", slug)
+				}
+				return task.Type, nil
+			},
+			// ChildDriver reads the "child_driver" param from prime's own seed -- the seed
+			// card 24's auto-seed writes at this run-id -- defaulting to shedrun.DriverGo when the
+			// seed is absent or the param is absent or empty.
+			ChildDriver: func() (string, error) {
+				seed, found, err := shedrun.ReadSeed(location, slug)
+				if err != nil {
+					return "", err
+				}
+				if !found {
+					return shedrun.DriverGo, nil
+				}
+				if driver, ok := seed.Params["child_driver"]; ok && driver != "" {
+					return driver, nil
+				}
+				return shedrun.DriverGo, nil
+			},
+			// WriteSeed is the only place in the batten path that encodes a seed, per the
+			// seed-encoding-stays-behind-a-seam-in-battenshed Shared Decision. It validates recipe
+			// itself, wrapping a failure in battenshed.ErrUnknownRecipe so seedChildProducer's own
+			// errors.Is check routes it to Stuck rather than a hard error.
+			WriteSeed: func(ctx context.Context, recipe, driver string) error {
+				if err := shedrun.ValidateRecipe(recipe); err != nil {
+					return fmt.Errorf("%w: %s", battenshed.ErrUnknownRecipe, err.Error())
+				}
+				childLocation, err := taskWorktreeLocation(location, slug)
+				if err != nil {
+					return err
+				}
+				return shedrun.WriteSeed(childLocation, shedrun.SelfRunID, shedrun.Seed{Recipe: recipe, Driver: driver})
+			},
+			// CommitSeed commits the child's own seed onto the child's own weft-fabric pair -- a
+			// one-off write, distinct from CommitStatus below, which commits prime's own batten
+			// status onto prime's own pair on every non-no-op transition.
+			CommitSeed: func(ctx context.Context) error {
+				childLocation, err := taskWorktreeLocation(location, slug)
+				if err != nil {
+					return err
+				}
+				_, _, err = fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), childLocation, []string{shedrun.SeedRel(shedrun.SelfRunID)}, fmt.Sprintf("batten: seed child %s", slug), fabricengine.EnvSyncOptions())
+				return err
+			},
+			// PushSeed pushes the child's own weft-fabric pair, the same location CommitSeed just
+			// committed onto.
+			PushSeed: func(ctx context.Context) error {
+				childLocation, err := taskWorktreeLocation(location, slug)
+				if err != nil {
+					return err
+				}
+				_, err = fabricengine.PushAnchored(childLocation, fabricengine.EnvSyncOptions())
+				return err
+			},
+		},
 	}
 
 	c.env = env
@@ -146,9 +215,10 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 		StatusPath:     StatusFile(location, slug),
 		LockPath:       RunLock(location, slug),
 		StatusLockPath: StatusLock(location, slug),
-		// CommitStatus is left nil: nil is the documented absent value meaning "commit nothing",
-		// which is exactly right for this package's per-machine, never-committed state.
-		CommitStatus: nil,
+		// CommitStatus is now batten's own seam, committing prime's own batten status onto prime's
+		// own pair on every non-no-op transition: the status file is durable, fabric-synced state
+		// now (see paths.go), so nil is no longer right here.
+		CommitStatus: battenCommitStatusSeam(location, slug),
 	}
 	return nil
 }

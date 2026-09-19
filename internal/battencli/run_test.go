@@ -67,6 +67,16 @@ func newFakeReceiver(t *testing.T, shutdown func(ctx context.Context) (string, e
 				return shedengine.Status{State: shedengine.StateDone}, true, nil
 			},
 		},
+		// SeedChild is filled with trivial no-op fakes -- never invoked by any case in this file,
+		// since every one of them resumes from a status file already past Worktree-Create -- so the
+		// recipe registry's own non-nil-field validation does not refuse before the verb body runs.
+		SeedChild: battenshed.SeedChildDeps{
+			ReadBoardType: func(ctx context.Context) (string, error) { return "", nil },
+			ChildDriver:   func() (string, error) { return "", nil },
+			WriteSeed:     func(ctx context.Context, recipe, driver string) error { return nil },
+			CommitSeed:    func(ctx context.Context) error { return nil },
+			PushSeed:      func(ctx context.Context) error { return nil },
+		},
 	}
 	return c
 }
