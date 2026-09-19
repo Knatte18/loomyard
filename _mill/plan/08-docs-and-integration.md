@@ -114,7 +114,6 @@ It must **not** add a force-sync path, which that invariant forbids.
 
 - **Context:**
   - `internal/battencli/wire.go`
-  - `internal/battencli/arm.go`
   - `internal/battenshed/seamchild.go`
   - `internal/battenshed/innerrun.go`
   - `internal/battenrecipe/names.go`
@@ -124,6 +123,7 @@ It must **not** add a force-sync path, which that invariant forbids.
   - `internal/gitkit/gitkit.go`
 - **Edits:**
   - `internal/battencli/lifecycle_integration_test.go`
+  - `internal/battencli/arm.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -134,6 +134,7 @@ It must **not** add a force-sync path, which that invariant forbids.
   The bounded return is the property the re-entrancy decision buys; it is not a non-blocking step, and nothing here makes it one.
   Keep the fixture's poll interval short enough that the variant does not spend 30 real seconds — inject it through the recipe fixture's own `config`, not by faking `deps.Sleep`, since this tier is exercising the assembled wiring rather than the producer in isolation.
   The file stays `integration`-tagged and its package keeps calling `gitkit.HermeticGitEnv()` in `TestMain`, per the Hermetic Git Test Environment Invariant; nothing here may move into an untagged file, per the Test Tier Purity Invariant's ban on `hubforge.NewHub` outside tagged files.
+  Driving the real `run`/`step` verbs against the real, split durable/ephemeral status paths (rather than the unit tests' single-directory fixture) surfaces a genuine bug the split introduced: `battenPreRun` (`arm.go`) reads/writes the status file through `state.ReadJSONStrict`/`state.UpdateJSON` without ever creating the ephemeral `ScratchDir` its lock file lives under, unlike `battenPreStep`, which already creates that same directory (as `filepath.Dir(LockPath)`) before its own probe -- so a fresh `lyx batten run <slug>` hard-errors on `acquire read lock: ... no such file or directory` on a machine where that run has never stepped before. Fix `battenPreRun` to `os.MkdirAll` the ephemeral scratch directory first, mirroring `battenPreStep`'s own existing `MkdirAll(filepath.Dir(LockPath))` call, rather than adjusting the test fixture to dodge the gap.
 - **Commit:** `test(battencli): cover the four-row batten run and the re-entrant step end to end`
 
 ## Batch Tests
