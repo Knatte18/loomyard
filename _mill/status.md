@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-attach-preflight
+phase: approved-comment-sweep
 slug: reed-cold-worktree-selfheal
 branch: reed-cold-worktree-selfheal
 plan: _mill/plan
@@ -32,6 +32,7 @@ planned  '2026-09-19T05:36:56Z'
 implementing  '2026-09-19T05:37:15Z'
 approved-engine-seam  '2026-09-19T05:49:49Z'
 approved-attach-preflight  '2026-09-19T05:51:53Z'
+approved-comment-sweep  '2026-09-19T05:56:06Z'
 ```
 
 ## Batches
@@ -51,9 +52,10 @@ batches:
     commit_sha: 48ff357ce8fccbbec03babfa639e6f10d13f952f
     verify_baseline_failures: []
   - name: comment-sweep
-    state: running
+    state: approved
     implementer_session: 8ed48b03-ebc0-44c6-8f2e-7419e02e8180
     start_sha: 45120356769882ce817f87cc01dad76a022a7aae
+    commit_sha: b2ad251f6fd8fa22ab6e5c3116dccf2ab5432e78
     verify_baseline_failures: []
   - name: docs-and-suites
     state: pending
