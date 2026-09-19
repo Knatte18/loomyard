@@ -57,6 +57,8 @@ batches:
     verify_baseline_failures: []
     self_resolve_remint_at: '2026-09-19T05:56:01Z'
   - name: cli-surface-and-docs
-    state: pending
+    state: running
+    implementer_session: 27f6029e-6bdb-4f1e-8b30-2ffe16ba45e0
+    start_sha: c9c127b7b3a81a42e387c57339c91d231b9dd392
     verify_baseline_failures: []
 ```
