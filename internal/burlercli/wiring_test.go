@@ -351,8 +351,8 @@ func TestWire_RelativeStencilsDirResolvesAgainstCwd(t *testing.T) {
 // repository), setting the runner's held toldErr, which every public entry point returns
 // immediately without ever reaching reed. A runner that is merely non-nil proves nothing here, so
 // this test drives the one public entry point reachable from this package -- c.engine.Run, with a
-// minimal but validate()-passing Profile -- and asserts the returned error is an ordinary reed
-// "no session" verdict rather than a told-path refusal.
+// minimal but validate()-passing Profile -- and asserts the returned error is some non-nil error
+// other than a told-path refusal.
 //
 // AddStrand now self-heals a cold worktree rather than failing fast on requireSessionLocked, so this
 // test can no longer rely on a bare wire to reach its assertion without spawning a real tmux server.
@@ -418,10 +418,10 @@ func TestWireStandalone_RunnerReachesPublicEntryPointWithoutToldPathError(t *tes
 
 	_, err := c.engine.Run(profile, burlerengine.RunOpts{})
 	if err == nil {
-		t.Fatal("engine.Run() error = nil; want a reed \"no session\" error, since no reed session was ever started")
+		t.Fatal("engine.Run() error = nil; want a non-nil error, since the pinned-out tmux binary makes sessionSubstrateLocked's probe fail")
 	}
 	if strings.Contains(err.Error(), "NewRunner") || strings.Contains(err.Error(), "NewDetachedRunner") {
-		t.Fatalf("engine.Run() error = %v; want the ordinary reed \"no session\" verdict, not a told-path refusal -- this is exactly the error NewRunner's containment assertion would have produced against standalone's detached anchor/worktree-root pair", err)
+		t.Fatalf("engine.Run() error = %v; want the exec-lookup error from the pinned-out tmux binary, not a told-path refusal -- this is exactly the error NewRunner's containment assertion would have produced against standalone's detached anchor/worktree-root pair", err)
 	}
 }
 
