@@ -180,7 +180,7 @@
 //     it does NOT hold for tmux's true last pane — see the next bullet.
 //   - The untracked-pane reap gate (spawn.go, reconcile.go): every pane in
 //     a reed session is either Selvage or a bound strand's pane, and the
-//     untracked reap enforces that rule as `anyBoundPresent || selvageAlive`,
+//     untracked reap enforces that rule as `anyBoundPresent || policy.authorizesReap()`,
 //     where the Selvage anchor requires ALIVENESS rather than mere
 //     presence — launchStrandLocked makes the gate fire from AddStrand and
 //     UpdateStrand, neither of which calls ensureSelvagePaneLocked to heal a

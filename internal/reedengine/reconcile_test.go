@@ -103,12 +103,12 @@ func TestPlanReconcile(t *testing.T) {
 		},
 		{
 			// With no strand bound to any present pane and no alive Selvage
-			// (selvagePaneID unset, so selvageAlive is false), reed has
+			// (selvagePaneID unset, so policy.authorizesReap() is false), reed has
 			// nothing to lay out and leaves foreign panes strictly alone
 			// (the apply is skipped too — anyPlacedStrand). This is the
 			// absent-Selvage shape of "nothing authorizes the reap"; see
 			// SelvageAloneNeverMakesAnyBoundPresentTrue and the two
-			// selvageAlive-false-with-a-live-Selvage cases below for the other
+			// policy.authorizesReap()-false-with-a-live-Selvage cases below for the other
 			// shapes.
 			name:        "UntrackedPanesUntouchedWhenNoSelvageAndNothingBound",
 			strands:     []Strand{{GUID: "cleared", PaneID: ""}},
@@ -122,8 +122,8 @@ func TestPlanReconcile(t *testing.T) {
 			// it, distinct from boundPaneIDs itself (which must stay
 			// strand-only so anyBoundPresent is never inflated by a merely
 			// live Selvage). This shape also covers "alive Selvage alongside a
-			// bound strand" for the selvageAlive disjunct: the reap already
-			// fires via anyBoundPresent here, so selvageAlive contributes
+			// bound strand" for the policy.authorizesReap() disjunct: the reap already
+			// fires via anyBoundPresent here, so policy.authorizesReap() contributes
 			// nothing new to this case, and no separate case is needed for
 			// it.
 			name:          "SelvageNeverReapedAsUntrackedWhileStrandBound",
@@ -139,7 +139,7 @@ func TestPlanReconcile(t *testing.T) {
 			// Selvage is alive and no strand is bound to any present
 			// pane: anyBoundPresent stays false (derived from boundPaneIDs
 			// alone, never Selvage — folding Selvage in would wrongly
-			// flip it), but selvageAlive is true, so the untracked reap fires
+			// flip it), but policy.authorizesReap() is true, so the untracked reap fires
 			// from that disjunct alone and %7 is killed while Selvage
 			// itself stays exempt.
 			name:                     "SelvageAloneNeverMakesAnyBoundPresentTrue",
@@ -178,7 +178,7 @@ func TestPlanReconcile(t *testing.T) {
 		},
 		{
 			// Selvage present but Dead: true, with no strand bound and one
-			// alive untracked pane: selvageAlive is false (the Selvage entry
+			// alive untracked pane: policy.authorizesReap() is false (the Selvage entry
 			// is present but dead), so nothing is reaped.
 			name:          "PresentButDeadSelvageDoesNotAuthorizeReap",
 			strands:       nil,
@@ -188,7 +188,7 @@ func TestPlanReconcile(t *testing.T) {
 		},
 		{
 			// A non-empty selvagePaneID naming no entry in live at all, with
-			// no strand bound and one alive untracked pane: selvageAlive's
+			// no strand bound and one alive untracked pane: policy.authorizesReap()'s
 			// third way of being false, distinct from the empty-id and
 			// present-but-dead cases above. Reachable on the add path once
 			// an operator kills Selvage outright, since no verb but

@@ -17,7 +17,7 @@ import (
 // The fixture is a ReedState with an alive Selvage pane, zero strands bound to a present pane, and one
 // untracked alive pane; the strand being launched has PaneID == "", mirroring how addStrandLocked
 // appends a fresh strand before calling launchStrandLocked. The alive Selvage — not any strand
-// binding — is what authorizes the untracked reap here (see reconcile.go's selvageAlive disjunct).
+// binding — is what authorizes the untracked reap here (see reconcile.go's policy.authorizesReap() disjunct).
 func TestLaunchStrandLocked_ReapsUntrackedPanesBeforeChoosingASplitTarget(t *testing.T) {
 	e := newTestEngine(t)
 
