@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r4
+phase: plan-review-r5
 slug: shed-generic-watchdog
 branch: shed-generic-watchdog
 plan: _mill/plan
@@ -31,4 +31,5 @@ plan-review-r3  '2026-09-19T13:54:42Z'
 plan-fix-r3  '2026-09-19T13:58:46Z'
 plan-review-r4  '2026-09-19T14:08:47Z'
 plan-fix-r4  '2026-09-19T14:12:13Z'
+plan-review-r5  '2026-09-19T14:21:57Z'
 ```
