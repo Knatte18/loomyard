@@ -111,6 +111,14 @@ Every value in `internal/shedrecipe`'s registry constructs a `shedengine.ShedPro
 - `internal/shedverbs` is not itself a CLI module and is not counted in the CLI/Cobra Invariant's tally at all — it exposes no `Command()`/`RunCLI` seam, only the `Verbs(texts, spec)` constructor the three subtrees build from.
 - Neither `shedverbs` nor `shedcli` is added to the Told-Geometry Invariant's bound-packages list: that list binds engines, both sit above that layer, and their identical no-derived-paths obligation is carried by this invariant's own no-resolver clause instead.
 
+## Shed Run-Directory Invariant
+
+`internal/shedrun` is the sole declarer of the `shed` path segment, of the run-id vocabulary including the literal `self`, and the sole parser and writer of `seed.json`.
+
+- No other production file names the `shed` segment or the `seed.json` filename in path-construction context.
+- No other package decodes or encodes the `Seed` struct.
+- A run-id is validated as a single path segment (`ValidateRunID`) before being joined onto any anchor.
+
 ## Tokenvocab Leaf Invariant
 
 `internal/tokenvocab` imports only stdlib and `internal/stencil`. Reverse import never allowed.
