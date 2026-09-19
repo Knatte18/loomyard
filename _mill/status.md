@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs-invariant-skill
+phase: holistic-reviewing
 slug: shed-generic-watchdog
 branch: shed-generic-watchdog
 plan: _mill/plan
@@ -44,6 +44,7 @@ approved-inner-run-neutralization  '2026-09-19T15:14:01Z'
 approved-module-rearm  '2026-09-19T15:29:15Z'
 approved-shed-subtree  '2026-09-19T15:40:50Z'
 approved-docs-invariant-skill  '2026-09-19T15:49:41Z'
+holistic-reviewing  '2026-09-19T15:50:19Z'
 ```
 
 ## Batches
