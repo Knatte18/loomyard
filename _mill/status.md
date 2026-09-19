@@ -43,13 +43,19 @@ implementing  '2026-09-19T10:39:37Z'
 ```yaml
 batches:
   - name: reedengine reap seam
-    state: pending
+    state: running
+    implementer_session: fecbecb5-c408-437f-a919-72cac29ef728
+    start_sha: ff743db008820d459d18175d2d19e26636b0834f
+    verify_baseline_failures: []
   - name: reedcli pure decision seams
     state: pending
+    verify_baseline_failures: []
   - name: daemon wiring
     state: pending
+    verify_baseline_failures: []
   - name: tagged reap tests
     state: pending
+    verify_baseline_failures: []
   - name: docs
     state: pending
 ```
