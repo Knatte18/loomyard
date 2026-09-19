@@ -234,11 +234,13 @@ github.com/Knatte18/loomyard/
 ├── internal/shedengine/          generic outer phase-FSM: walks one flat producer list, honoring resume, crash-recovery, and pause at producer granularity
 ├── internal/shedadapters/        the three Shed engine adapters (SingleLLMProducer, Webster, the burler round producer) over shuttle/websterengine/burlerengine, plus the Bouncer adapter
 ├── internal/shedcheck/           authoring-time structural checker over an assembled OnDone/OnStuck producer graph
-├── internal/loomcli/             loom's cobra module: the session bootstrap plus the driver, status, and pause verbs
+├── internal/loomcli/             loom's cobra module: the session bootstrap, arming `internal/shedverbs`' generic driver, status, and pause verb bodies
 ├── internal/loomshed/            loom's own row-name constants and producer constructors over `shedengine`
 ├── internal/loomrecipe/          assembles loom's `*shedengine.Shed` from the embedded recipe
 ├── internal/shedrecipe/          the engine registry — the name to `ShedProducer`-constructor mapping a recipe loader resolves each row's `Engine` against
 ├── internal/shedbuild/           the recipe file format's loader and builder — decodes a recipe document and assembles the producer-definition list the shed engine already consumes
+├── internal/shedverbs/           the generic run/step/status/pause cobra verb bodies shared by every module that arms a `*shedengine.Shed` onto a CLI subtree
+├── internal/shedcli/             the `lyx shed` subtree: a named-recipe arming table plus the three CLI seams that register it under the lyx root
 ├── internal/landingshed/         landing's two general ShedProducers, Publish and Finalize, shared by reference across producer lists
 ├── internal/mergeresolve/        the merge-in + LLM conflict-resolution engine internal/landingshed's two producers each call
 ├── internal/frictionengine/      the aggregation-and-reflection step internal/loomcli's run verb calls once per run
@@ -326,7 +328,7 @@ User-facing modules each get one `lyx <module>` namespace:
   Consumed by `internal/landingshed`'s `Publish` and `Finalize` and by `internal/websterengine` (`internal/summaryparser`). ✅ Implemented.
 - **batcher** — the name-keyed batchifier registry that groups a plan's flat card list into webster's execution batches, selected by `batcher.yaml`'s `active:` config key (default: identity, one card per batch); its own standalone configreg module, separate from webster's (`internal/batcher`). ✅ Implemented.
 - **stencil** — the operator surface over the hub's producer-prompt stencils (`internal/stencilcli` + `internal/stencilstore`; `lyx stencil list|validate|diff|sync|promote`): `list` reports every registered stencil's board-copy path and edit state, `validate` reports marker mismatches between a board copy and its shipped default, `diff` shows upstream changes not yet taken or (`--all`/`--exit-code`) board edits not yet ported back, `sync` force-refreshes every stencil against the shipped registry even from a `-dev` build, and `promote` copies a board-copy edit back into the worktree's `contracts/stencils/` source tree. `list` and `sync` also cover the deployed `contracts/specs` registry; `validate`, `diff`, and `promote` do not — a spec declares no markers for `validate` to compare, and `diff`/`promote` both need the worktree source directory a deployed spec deliberately does not have. ✅ Implemented.
-- **loom** — phased orchestrator: drives its flat, ordered [producer list](../manifest/designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots), each gated by a `Bouncer` review segment (`internal/loomcli` + `internal/loomengine` + `internal/loomshed` + `internal/loomrecipe`; `lyx loom start|run|step|status|pause|validate-discussion|validate-plan`, plus the `start` verb registered a second time as the bare root alias `lyx start`).
+- **loom** — phased orchestrator: drives its flat, ordered [producer list](../manifest/designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots), each gated by a `Bouncer` review segment (`internal/loomcli` + `internal/loomengine` + `internal/loomshed` + `internal/loomrecipe` + `internal/shedverbs`; `lyx loom start|run|step|status|pause|validate-discussion|validate-plan`, plus the `start` verb registered a second time as the bare root alias `lyx start`). `internal/shedverbs` owns the generic `run`/`step`/`status`/`pause` verb bodies loomcli arms; `internal/loomcli` hosts only `start` and the arming glue.
   `start` is the session bootstrap, performing four steps in order: resolve the recorded parent branch and seed+commit the status file weft-side when it is absent; ensure the worktree's tmux session is up and its status strand exists, then spawn the per-hub watchdog daemon, best-effort; spawn the detached loom driver unless one is already alive; and add the operator's own strand before handing the terminal to the tmux session.
   `run` is the no-tmux escape hatch that runs the phase machine in the foreground, for debugging and CI.
   `step` bootstraps idempotently, exactly as `start` does, and drives exactly one producer through `shedengine.Shed`'s own `Step`, emitting a JSON envelope; it spawns no detached driver and hands the terminal over to nothing, making it the single-producer primitive an external supervisor drives.
@@ -349,7 +351,9 @@ User-facing modules each get one `lyx <module>` namespace:
   `internal/shedcheck` is the shipped structural checker over an assembled producer list, enforced by a `go test` invariant over loom's own list rather than called from any production constructor — see [manifest/designs/shed.md](../manifest/designs/shed.md#checking-an-assembled-producer-list) for the eight finding kinds it reports.
   The Shed recipe group's engine registry (piece 1 of that group) is ✅ **implemented** too, as `internal/shedrecipe`; it registers seventeen engine names.
   The recipe file format and the loader/builder shipped too, as `internal/shedbuild`, and loom's own conversion to a recipe file has now shipped as well: `contracts/recipes/loom-recipe.yaml` plus `internal/loomrecipe`, which assembles it into the `*shedengine.Shed` `internal/loomcli` runs.
-  See the `internal/shedengine`, `internal/shedadapters`, `internal/shedcheck`, `internal/shedrecipe`, `internal/shedbuild`, and `internal/loomrecipe` package documentation and [manifest/designs/shed.md](../manifest/designs/shed.md).
+  The generic verb set is ✅ **implemented** too, as `internal/shedverbs`: the `run`/`step`/`status`/`pause` cobra bodies every arming module builds its own subtree from, owning no path of its own and deriving nothing.
+  The named-recipe `lyx shed` subtree is ✅ **implemented** as `internal/shedcli`, arming either `loom` or `lifecycle` behind one `--recipe` flag through the same generic bodies each module's own subtree already uses.
+  See the `internal/shedengine`, `internal/shedadapters`, `internal/shedcheck`, `internal/shedrecipe`, `internal/shedbuild`, `internal/shedverbs`, `internal/shedcli`, and `internal/loomrecipe` package documentation and [manifest/designs/shed.md](../manifest/designs/shed.md).
 - **burler** — one review+fix round: A-review → B-fix, one agent, no self-grading, over the shuttle file contract (`internal/burlerengine` + `internal/burlercli`).
   Profile-driven: `{overlay, source}` fix-scope, tool-use.
   Cluster review fans job A out into N fork-subagent reviewers by naming a fan (`cluster-fan`) from the seed-only `burler.yaml` lens/fan library — never on by default.
@@ -360,7 +364,7 @@ User-facing modules each get one `lyx <module>` namespace:
   Behavior-based reviewer that *runs* a live-substrate module (needs a sandbox repo) to harden it before merge;
   on-demand, post-loom, **off the spine**, shares only the `burler` round discipline.
   See [manifest/designs/hardener.md](../manifest/designs/hardener.md).
-- **lifecycle** — drives one task worktree's whole lifecycle — create, run the loom session to a terminal state, and tear down — as a single Shed run from the hub's prime worktree (`internal/lifecycleshed` + `internal/lifecyclerecipe` + `internal/lifecyclecli`; `lyx lifecycle run|status`).
+- **lifecycle** — drives one task worktree's whole lifecycle — create, run the loom session to a terminal state, and tear down — as a single Shed run from the hub's prime worktree (`internal/lifecycleshed` + `internal/lifecyclerecipe` + `internal/lifecyclecli`; `lyx lifecycle run|status|pause`).
   Teardown is one row sequencing session shutdown before worktree removal, and never forces.
   ✅ Implemented. See the `internal/lifecycleshed` and `internal/lifecyclerecipe` package documentation.
 
