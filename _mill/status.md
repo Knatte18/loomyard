@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r5
+phase: discussed
 slug: reed-selvage-pane-extraction
 branch: reed-selvage-pane-extraction
 plan: null
@@ -20,4 +20,6 @@ discussion-gap-fix-r2  '2026-09-19T09:30:02Z'
 discussion-gap-fix-r3  '2026-09-19T09:33:41Z'
 discussion-gap-fix-r4  '2026-09-19T09:38:40Z'
 discussion-fix-r5  '2026-09-19T09:42:53Z'
+discussion-fix-r6  '2026-09-19T09:47:14Z'
+discussed  '2026-09-19T09:47:14Z'
 ```
