@@ -6,8 +6,8 @@
 // told-geometry-keeps-the-daemon-out-of-reedengine decision: CONSTRAINTS.md's Told-Geometry
 // Invariant bars internal/reedengine from importing internal/lyxcwd, and reedcli already holds the
 // *lyxcwd.Location and already imports internal/hubgeom, so it may import internal/fabricengine
-// directly as hubgeom does. internal/reedengine gains exactly one new engine-less function
-// (ListSessions) and learns nothing about the daemon's existence.
+// directly as hubgeom does. internal/reedengine gains exactly two new engine-less functions
+// (ListSessions and ReapSession) and learns nothing about the daemon's existence.
 
 package reedcli
 
@@ -19,6 +19,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
@@ -262,6 +263,39 @@ func enterSession(hub, tmuxPath, sessionName string) (watchedSession, error) {
 		}
 	}()
 	return watchedSession{eng: eng, cancel: cancel}, nil
+}
+
+// dispatchReap starts the one off-loop goroutine that reaps sessionName, registering it with wg and
+// returning immediately so the calling cycle is never blocked by a reap in progress.
+//
+// The goroutine's only cross-goroutine act, after the reap itself returns, is a non-blocking send
+// of sessionName on done: `select { case done <- sessionName: default: }`. The send must be
+// non-blocking because nothing drains done once the loop is out of its for — a blocking or
+// unbuffered send here would deadlock this goroutine against the deferred wg.Wait() the loop runs
+// at daemon exit. A dropped send is inert: the loop is already gone, and with it the in-flight set
+// the send would have cleared.
+//
+// A failed reap does nothing beyond the Warn below: there is no retry loop, no backoff, and no
+// escalation. Recovery is the ordinary loop — the gone-counter for sessionName was deleted at
+// dispatch, so a still-live orphan re-confirms across three more affirmative cycles and is reaped
+// again.
+//
+// This goroutine never touches the in-flight map, the gone-counter map, or the known map: all
+// three stay single-threaded on the loop goroutine, and reapDone is the only channel between them.
+func dispatchReap(wg *sync.WaitGroup, done chan<- string, hub, tmuxPath, shellPath, sessionName string) {
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := reedengine.ReapSession(tmuxPath, shellPath, reedengine.ServerName(hub), sessionName); err != nil {
+			// A destructive unattended action's failure is what the operator needs in the hub's
+			// durable log.
+			logger.Warn("reed: watchdog could not reap orphaned session", "hub", hub, "session", sessionName, "err", err)
+		}
+		select {
+		case done <- sessionName:
+		default:
+		}
+	}()
 }
 
 // runWatchdogLoop is the daemon's outer loop: it polls hub for live sessions every
