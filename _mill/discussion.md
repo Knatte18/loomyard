@@ -30,9 +30,9 @@ Do not finalize this task's plan until `seeded-shed-core` has merged to `main`.
 
 - Lifting the `llm` refusal for the **loom** recipe's own run: `lyx loom start` reads its run's seed, and on `driver: llm` boots a Claude strand running `ly-drive` instead of spawning the detached `lyx loom run` process.
 - A new driver-launch seam in `internal/loomcli` that composes the driver run through `internal/shuttleengine` + `internal/shuttleengine/claudeengine`, mirroring how loom's own producer rounds spawn agents.
-- Driver-strand identity and re-entrancy: a fixed display name (`loom-driver`), a liveness pre-check, and dead-corpse removal before a relaunch — the `llm` analogue of today's `mustSpawnDriver(runLockHeld)` decision.
+- Driver-strand identity and re-entrancy: a fixed display name (`loom-driver`), a liveness pre-check, and dead-corpse removal before a relaunch, with `mustSpawnDriver` widened to take the run-lock and strand signals together on **both** driver paths.
 - A driver-specific handshake: the run-lock handshake stays the `go` path's alone; the `llm` path's readiness signal is the strand being registered and its pane alive.
-- `internal/loomengine`'s `Config` gains a `driver` model-spec key and a `driver_timeout_min` knob, validated at load time exactly like the four existing role keys.
+- `internal/loomengine`'s `Config` gains one `driver` model-spec key, validated at load time exactly like the four existing role keys.
 - `plugins/ly/skills/ly-drive/SKILL.md` gains an **autonomous driver** section: no operator prompts, the report written to the driver run's output file rather than spoken to a human, and the stop conditions restated for a session with nobody to hand back to.
 - Accepting `--child-driver llm` on `lyx batten run|step <slug>` and `--driver llm` on `lyx shed seed <run-id>` when the seeded recipe is `loom`, replacing the refusals `seeded-shed-core` installs.
 - Doc updates in the same commit: `manifest/designs/seeded-shed.md` (the driver section moves from "expected" to as-built), `docs/overview.md` if the module table or execution stack changes, `CONSTRAINTS.md` for the new invariant below, and `manifest/roadmap.md` (the Planned item moves to shipped).
@@ -88,6 +88,8 @@ Do not finalize this task's plan until `seeded-shed-core` has merged to `main`.
   A compact timestamp alone is second-granular and **does** collide on a fast relaunch — corpse removal plus a fresh `Start` inside one second is not hypothetical, it is exactly what the smoke test's instantly-exiting stub pane produces — and the collision's symptom is `Spec.validate` refusing the relaunch, the one case the suffix exists to permit.
   The random component removes that case rather than documenting it; the timestamp stays because it is what makes a directory listing of past attempts readable in order.
   Ephemeral placement is right by the Durable-vs-Ephemeral State Invariant — the report is a per-machine record of one session's own narration; the durable truth about the run is `status.json` beside it under `_lyx`.
+- **The directory already exists by the time the driver writes there**, and nothing in this task needs to create it: `.lyx/shed/<run-id>/` is where `seeded-shed-core` puts the run lock and the status lock, and `start.go` already `MkdirAll`s that directory at step 4 for the bootstrap lock — which is why its own comment notes that creating it there also covers the run lock and driver log.
+  Worth stating because `Spec.validate` only rejects a pre-existing output file; it creates no directory, and a driver writing its report into a missing one would fail at the very end of a long session.
 - Rejected: a fixed report path (a second bootstrap refuses on a stale file, and the stale file is evidence, not debris to delete); a bare second-granular timestamp with the collision accepted as a self-describing residual (it fires precisely under the automated relaunch the smoke test drives, so it would be a residual that shows up as a red test rather than as a rare operator surprise); reusing `status.json` as the output file (it already exists when the driver starts, so `validate` refuses it, and the driver would then be declaring ownership of a file the engine writes); relaxing shuttle's output-file requirement for this caller (see the previous decision's rejected list).
 
 ### handshake-is-driver-specific
@@ -103,8 +105,13 @@ Do not finalize this task's plan until `seeded-shed-core` has merged to `main`.
 
 ### re-entrancy-by-named-driver-strand
 
-- Decision: the `llm` path's re-entrancy decision — the analogue of `mustSpawnDriver(runLockHeld)` — is **"is there a live strand named `loom-driver` in this worktree's reed session?"**.
-  The bootstrap reads `reed.Status()`, and branches three ways: live strand → do nothing, no strand → start a driver run, strand present but its pane dead → `RemoveStrand` the corpse, then start a fresh driver run.
+- Decision: the spawn predicate takes **both** signals on **both** paths.
+  `mustSpawnDriver` gains a second input, and a driver is spawned only when the run lock is free **and** no live strand named `loom-driver` exists in this worktree's reed session.
+  The `llm` branch then resolves the strand half three ways: live strand → do nothing, no strand → start a driver run, strand present but its pane dead → `RemoveStrand` the corpse, then start a fresh driver run.
+- **Both signals on both paths, because a run's driver kind is not fixed by its seed.** `generic-verbs-never-gate-on-driver` deliberately lets an operator run `lyx loom run` by hand against an `llm`-seeded run — so a later `lyx loom start` that consulted the strand table alone would find no strand and launch a Claude driver alongside the live Go one, which is the two-drivers collision this decision exists to prevent, surfacing as spurious `busy` refusals rather than as anything legible.
+  The mirror case is real too: a live `llm` driver between two steps holds no run lock, so a `go`-path bootstrap consulting the lock alone would spawn a second driver into a worktree that already has one.
+  Each signal is blind to exactly the driver kind the other sees, so the predicate is the conjunction and neither path may drop its half.
+  Both reads are cheap and already performed on the `go` path today (`lock.TryAcquireWriteLock` non-blocking, released immediately; `reed.Status()`, which step 4 has already made a live session for).
 - Rationale: `lyx loom start` is explicitly re-entrant, and a second invocation must never stack a second Claude session onto the same run — two drivers stepping one FSM is exactly the collision the run lock protects against, and it would surface as spurious `busy` refusals rather than as anything legible.
   The name is pinned as a constant beside `statusStrandDisplayName` and `operatorStrandDisplayName` in `internal/loomcli/bootstrap.go`, for the same reason those are: reed's add has no upsert semantics, so every add and every lookup must agree on one byte-stable literal.
 - The pre-check is what keeps the no-op case clean.
@@ -113,7 +120,9 @@ Do not finalize this task's plan until `seeded-shed-core` has merged to `main`.
   The `NameOverride` still travels on the spec (a new pass-through field on `shuttleengine.Spec`, forwarded verbatim into the `AddSpec` `Runner.Start` already builds), because the name is what the next bootstrap looks up.
 - Explicit corpse removal rather than `IfAbsent`'s relaunch-dead arm: a dead driver's pane must not be relaunched with the *old* launch line, which points at the previous attempt's `prompt.md` and its already-written report path.
   A fresh shuttle run with a fresh report path is the only correct relaunch.
-- Rejected: `IfAbsent: true` with no pre-check (orphan run directories, and a relaunch against a stale launch line); the run lock as the liveness signal (the same structural race as the handshake decision above); a marker file recording the driver's pid (reed already holds the authoritative strand table, and a second record of the same fact drifts).
+- Note that this does **not** reintroduce the run lock as the `llm` path's *readiness* signal — `handshake-is-driver-specific` still stands.
+  The lock answers "is something already driving this run", which is a question about the *past*; the handshake asked "has the thing I just spawned started driving", which is a question about the *future* and is what an ly-drive session cannot answer through a lock it holds only inside each step.
+- Rejected: the strand table as the `llm` path's only signal (misses a hand-started `go` driver, per the paragraph above); the run lock as the `llm` path's only signal (misses a live ly-drive session between two steps); `IfAbsent: true` with no pre-check (orphan run directories, and a relaunch against a stale launch line); a marker file recording the driver's pid (reed already holds the authoritative strand table, and a second record of the same fact drifts).
 
 ### generic-verbs-never-gate-on-driver
 
@@ -122,7 +131,8 @@ Do not finalize this task's plan until `seeded-shed-core` has merged to `main`.
 - Rationale: those verbs *are* drivers. An operator typing `lyx shed step` against a run seeded `llm` is driving it by hand, which is legitimate and is the one thing that still works when an llm driver has wedged.
   Gating there would mean the seed's recorded startup choice could lock an operator out of their own run.
   It would also put a new refusal shape inside the verb body whose refusal-kind vocabulary the Shed Verb-Set Invariant pins closed at five.
-- The run lock remains the only thing that stops two drivers colliding, which is what it is for and what it already does.
+- What stops two drivers colliding is the bootstrap's conjunction predicate (run lock free **and** no live driver strand — see `re-entrancy-by-named-driver-strand`), backed by the run lock itself inside each step.
+  A hand-driven run is exactly the case that predicate's second half was widened for.
 - Rejected: refusing `lyx loom run` when the seed says `llm` (locks the operator out of the manual-recovery path, and a `go` driver started by hand against an `llm` seed is a legitimate override); warning on the envelope (a field nothing branches on is noise, and the envelope's shape is pinned by tests and by `ly-drive`'s contract).
 
 ### ly-drive-gains-an-autonomous-mode
@@ -135,6 +145,7 @@ Do not finalize this task's plan until `seeded-shed-core` has merged to `main`.
   3. **The step cap is a budget, not a check-in, and the number is 120.** The operator-driven cap of 40 exists so a human can look; with no human, 40 would stop a healthy run three times before it finished.
      120 is loom's own worst case as the skill already computes it — seventeen rows, six review rows at five bounces each, three validator rows at the inherited default of ten, which lands near a hundred steps — plus a margin that keeps an unlucky-but-legitimate run inside the budget.
      The literal `120` is pinned in **both** places and must agree: the SKILL.md autonomous section states it as the cap, and the Go-composed launch prompt repeats it as the number this session runs under, so a reader of either sees the same value.
+     Drift between the two is silent, so it gets a cheap mechanical check rather than a convention: one Go constant is the single source, the prompt composer interpolates it, and a test reads `plugins/ly/skills/ly-drive/SKILL.md` from the repo and asserts the constant's value appears in its cap sentence — the same shape `internal/loomcli`'s `discussiontemplate_test.go` already uses to pin stencil text against Go.
      On exhausting it the driver writes the report and stops, leaving the run exactly as it is.
   4. **Stop conditions are otherwise unchanged and remain absolute.** `continue: false` stops. An error envelope stops, with the single `producer`-kind retry the skill already allows. The skill still never clears `state`, never edits the status file, never re-seeds, never pushes, never kills a pane, and never touches git.
 - Rationale: the skill's judgment is the product; autonomy changes only *who reads the output* and *what to do when there is nobody to ask*.
@@ -144,13 +155,17 @@ Do not finalize this task's plan until `seeded-shed-core` has merged to `main`.
 
 ### driver-is-a-loom-config-key
 
-- Decision: `internal/loomengine`'s `Config` gains `Driver string \`yaml:"driver"\`` and `DriverTimeoutMin int \`yaml:"driver_timeout_min"\``, both added to `ConfigTemplate`.
-  `Driver` is validated with `modelspec.Parse` at load time when non-empty, exactly as `friction` is; `DriverTimeoutMin` is rejected when negative and accepted at zero, exactly as the four existing timeout knobs are.
+- Decision: `internal/loomengine`'s `Config` gains exactly one new key, `Driver string \`yaml:"driver"\``, added to `ConfigTemplate` and validated with `modelspec.Parse` at load time when non-empty, exactly as `friction` is.
+  **No `driver_timeout_min` knob.** `shuttleengine.Spec.Timeout` feeds `Run.deadline`, which only `Wait` reads, and `RunState` never persists it — so on a path that deliberately never calls `Wait` and never `Attach`es, a timeout key would configure nothing and a test asserting it would pass against a dead field.
+  The driver spec leaves `Timeout` at its zero value, which `Spec.validate` fills from shuttle's own `run_timeout_min`, inert and unread.
+- **What actually bounds a driver session, since no clock in this task does:** the skill's own 120-step budget, and above it `Run-Shed`'s 12-hour watch budget, which lands the outer run in `StateBlocked` whether the driver is looping, wedged, or dead.
+  Neither is a wall clock on the Claude session itself, and this task adds none.
+  If one is wanted later, it belongs where it can be enforced — something that `Wait`s or probes — not as an unread field on a spec.
 - Rationale: every agent-spawning role in the stack says which model runs it through a model spec, and the driver is an agent-spawning role.
   Validating at load time is the existing discipline and the stated reason for it applies here with more force than anywhere: a driver spawn failing on a bad model id fails *after* the bootstrap has already seeded and committed, leaving a run that looks started and is not.
 - Empty `driver` means the engine default, the same "defer to the provider" meaning `Spec.Model`'s empty value already carries.
   The driver's reasoning effort travels in the bracket form the spec grammar already provides, so no separate effort key is added.
-- Rejected: a `--driver-model` flag on `lyx loom start` (per-invocation model choice for a role every other role configures in a file); reusing the `plan` or `review` key (a driver is a different role with a different cost profile, and sharing a key means a change to one silently moves the other).
+- Rejected: a `--driver-model` flag on `lyx loom start` (per-invocation model choice for a role every other role configures in a file); reusing the `plan` or `review` key (a driver is a different role with a different cost profile, and sharing a key means a change to one silently moves the other); a `driver_timeout_min` key shipped now as a forward-compatible placeholder (an unread config key is a promise the code does not keep, and the first person to set it would get silence).
 
 ### autonomous-posture-is-shuttle-s-default
 
@@ -254,7 +269,9 @@ From `CONSTRAINTS.md`, the ones this task is most likely to trip:
 - **Test Tier Purity Invariant** — no `gitexec.Run`, `exec.Command`, `gitkit.Copy*`, or `hubforge.NewHub` outside `integration`/`smoke`-tagged files, and no `time.Sleep` ≥ 1s untagged.
   The driver-launch seam must be injectable so the branch is testable at Tier 1.
 - **Hermetic Git Test Environment Invariant** — any new test package spawning git calls `gitkit.HermeticGitEnv()` in `TestMain`.
-- **Sandbox Suite Coverage** — the llm driver path is a new operator-visible behaviour; either exercise it in the suite or record an explicit exclusion with its reason.
+- **Sandbox Suite Coverage** — the llm driver path takes the **explicit exclusion**, recorded in the suite document in the same commit, with this reason: exercising it end to end spawns a live, billed Claude session that runs for as long as the task takes, which a sandbox scenario cannot bound or assert against;
+  the mechanics that are testable without one — the branch, the conjunction predicate, the spec composition, the strand count across relaunches — are covered by the Tier 1 and smoke tests below, against a stubbed binary.
+  The `go` path's existing suite coverage is unchanged and still exercises the bootstrap around the branch.
 - **Markdown Link Integrity** — `manifest/designs/seeded-shed.md`, `docs/overview.md`, and `manifest/roadmap.md` all change; the allowlist is keyed by `(file, target)`.
 - **Documentation Lifecycle** — see `docs/overview.md#documentation-lifecycle`.
 
@@ -269,13 +286,16 @@ Tier 1 (untagged, offline, fast) unless stated otherwise.
 
 - **`internal/loomcli` (bootstrap decisions)** — the strongest TDD candidate, and the one to write first, because the whole task reduces to a branch and a predicate that are both pure.
   Cover: the driver branch selecting the detached spawn for `go`, for an absent/empty driver value, and the strand launch for `llm`; the three-way strand-liveness predicate (live → no spawn, absent → spawn, dead → remove-then-spawn); the driver-strand name constant being the same literal the lookup uses (a table test over add and lookup, the way the status and operator strand names are already pinned).
-  Assert explicitly that **`mustSpawnDriver`/`awaitRunLock` are not reached on the `llm` path** — the handshake's absence there is a decision, and a refactor that "unifies" the two paths would silently reintroduce the race.
-- **`internal/loomcli` (spec composition)** — the `shuttleengine.Spec` the driver launch builds: `Interactive` false, `ForkSubagents` false, `NameOverride` set to the driver-strand constant, exactly one `OutputFiles` entry under the run's ephemeral directory, the model taken from the loom config's `driver` key, the timeout from `driver_timeout_min`.
+  Assert explicitly that **`awaitRunLock` is not reached on the `llm` path** — the handshake's absence there is a decision, and a refactor that "unifies" the two paths would silently reintroduce the race.
+  The widened `mustSpawnDriver`, by contrast, *is* reached on both paths and gets its own truth table: spawn only when the lock is free and no driver strand is live, with the two mixed cases called out by name — a hand-started `lyx loom run` against an `llm` seed (lock held, no strand → no spawn) and a live ly-drive session between two steps (lock free, strand live → no spawn).
+  Those two rows are the finding this predicate was widened for; a test covering only the two pure cases passes against the narrow version.
+- **`internal/loomcli` (spec composition)** — the `shuttleengine.Spec` the driver launch builds: `Interactive` false, `ForkSubagents` false, `NameOverride` set to the driver-strand constant, exactly one `OutputFiles` entry under the run's ephemeral directory, and the model taken from the loom config's `driver` key.
+  Do **not** assert anything about `Spec.Timeout`: nothing on this path reads it, so an assertion there would pin a dead field.
   The load-bearing one: **two launches in the same worktree produce two different report paths under a frozen clock** — a test that advances the clock between them proves nothing, since it is the same-second relaunch that the random component exists for, and a fixed path would pass every other test here.
   Pin that the prompt names the run-id, the report path, and the autonomous mode, and that it stays well under the 30000-byte cap (a prompt that grew into a copy of the skill would fail only at launch).
 - **`internal/loomcli` (error paths)** — the bootstrap lock is released on every `llm`-branch failure: a config load failure, a `reed.Status()` error, a `RemoveStrand` failure, a `Runner.Start` failure.
   A leaked bootstrap lock wedges every subsequent `lyx loom start` in that worktree, and it is invisible until the second invocation.
-- **`internal/loomengine`** — the two new config keys: `driver` validated by `modelspec.Parse` only when non-empty, a bad spec failing at load time with the key named, a negative `driver_timeout_min` rejected, zero accepted, and both keys present in `ConfigTemplate` so an existing worktree picks them up.
+- **`internal/loomengine`** — the one new config key: `driver` validated by `modelspec.Parse` only when non-empty, a bad spec failing at load time with the key named, an absent key loading cleanly, and the key present in `ConfigTemplate` so an existing worktree picks it up.
 - **`internal/shuttleengine`** — `Spec.NameOverride` forwarding verbatim into the `AddSpec` `Start` builds, and being inert (no validation, no interpretation) exactly as `SessionID` is.
   Nothing else in the package changes; if a test in `wait.go`/`attach.go`'s completion-signal tripwire needs touching, that is a signal the change drifted out of scope.
 - **`internal/shedrun` / the seeding paths** — `llm` now accepted where `seeded-shed-core` refused it: `lyx shed seed <run-id> --driver llm` for a `loom` recipe, and `lyx batten run|step <slug> --child-driver llm`.
@@ -285,7 +305,9 @@ Tier 1 (untagged, offline, fast) unless stated otherwise.
   `internal/loomcli/smoke_operatorstrand_test.go` is the existing model for counting strands by display name.
 - **Integration (`integration`-tagged)** — one end-to-end `driver: llm` bootstrap over a `hubforge`-built fixture with a stubbed driver that writes a report and exits: assert the run reaches a terminal state, the report file exists at the path the spec named, and `Runner.Start`'s `run.json` is persisted.
   The point is that the bootstrap returns without waiting for the driver, which is what makes an `llm` child watchable by `Run-Shed` at all.
-- **`plugins/ly/skills/ly-drive`** — no Go test, but the skill's autonomous section must be reviewed against the four changes the decision enumerates, and the launch prompt composed in Go must be checked to name the same skill invocation the section documents.
+- **`plugins/ly/skills/ly-drive`** — one Go test, plus a review.
+  The test reads `SKILL.md` from the repo and asserts the step-cap constant's value appears in its cap sentence, so the SKILL.md literal and the Go-composed prompt cannot drift apart silently.
+  The review is the part no test covers: the autonomous section against the four changes the decision enumerates, and the launch prompt naming the same skill invocation the section documents.
   A drift between the prompt and the skill is silent: the session simply does something else.
 
 ## Q&A log
@@ -294,7 +316,9 @@ Tier 1 (untagged, offline, fast) unless stated otherwise.
 - **Q:** How is the Claude session launched — through `shuttleengine`, or a hand-composed command on `reedengine.AddStrand`? **A:** [auto-pick] through `shuttleengine` + `claudeengine`. **Why:** the launch line carries settings, permission posture, session id, model resolution and a resume line; hand-composing it breaks the Shuttle Provider-Seam and Shell Mechanics invariants on its first line.
 - **Q:** Shuttle requires an output file per run. What is a driver run's? **A:** [auto-pick] a timestamped drive report under `.lyx/shed/<run-id>/`. **Why:** it satisfies the Completion Signal Invariant honestly rather than by exemption, and the timestamp is what lets a relaunch past the must-not-exist check.
 - **Q:** Does the run-lock handshake apply to the llm driver? **A:** [auto-pick] no — it stays the `go` path's alone. **Why:** an ly-drive session holds the run lock only inside each step, so a handshake on it either races the Claude boot or observes a free lock between two healthy steps.
-- **Q:** What replaces `mustSpawnDriver` for the llm path? **A:** [auto-pick] a live strand named `loom-driver`, with explicit corpse removal before a relaunch. **Why:** two Claude sessions stepping one FSM must be impossible; `IfAbsent` alone would leak a shuttle run directory on every re-entrant bootstrap and would relaunch a stale launch line.
+- **Q:** What replaces `mustSpawnDriver` for the llm path? **A:** [auto-pick] nothing replaces it — it is widened, taking the run lock and a live `loom-driver` strand together on both paths, with explicit corpse removal before a relaunch. **Why:** two drivers stepping one FSM must be impossible, and each signal is blind to exactly the driver kind the other sees; `IfAbsent` alone would additionally leak a shuttle run directory per re-entrant bootstrap and relaunch a stale launch line.
+- **Q:** Does the driver role get a timeout knob like the other loom roles? **A:** [auto-pick] no — `driver` alone, no `driver_timeout_min`. **Why:** `Spec.Timeout` is read only by `Wait`, which this path never calls, so the key would configure nothing; the real bounds are the skill's 120-step budget and `Run-Shed`'s 12-hour watch.
+- **Q:** Sandbox suite — exercise the llm bootstrap or exclude it? **A:** [auto-pick] exclude, with the reason recorded in the suite document. **Why:** an end-to-end run spawns a live billed Claude session of unbounded duration, which a sandbox scenario cannot bound or assert against; the stub-backed smoke tests cover the mechanics.
 - **Q:** Should `lyx shed run|step` refuse when the seed says `llm`? **A:** [auto-pick] no, never. **Why:** those verbs are the manual-recovery path, and gating them would lock an operator out of their own run while adding a refusal shape to a vocabulary pinned closed at five.
 - **Q:** Does `driver: llm` work for batten's own run too? **A:** [auto-pick] no — out of scope, refusal rewritten rather than lifted. **Why:** batten has no bootstrap verb to branch; its `go` driver is the process the operator typed, so there is nothing to replace.
 - **Q:** Does this task flip any default to `llm`? **A:** [auto-pick] no. **Why:** the design's "expected default" is a config decision worth making after an llm-driven run has been watched end to end; the flags already exist, so flipping it later changes a default rather than a surface.
