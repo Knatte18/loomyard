@@ -421,7 +421,7 @@ func TestAdd_RunLauncherLifecycle(t *testing.T) {
 		t.Fatalf("run launcher missing at %s after add: %v", runPath, err)
 	}
 
-	if _, err := h.Topology.Remove(l, slug, false); err != nil {
+	if _, err := h.Topology.Remove(l, slug, false, false); err != nil {
 		t.Fatalf("Remove(%q): %v", slug, err)
 	}
 

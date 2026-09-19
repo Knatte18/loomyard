@@ -27,6 +27,16 @@ type RemoveResult struct {
 	Slug         string `json:"slug"`
 	Path         string `json:"path"`
 	LinksRemoved int    `json:"links_removed"`
+	// RemoteBranchDeleted reports whether the pair's weft branch was observably removed from the
+	// remote. It is true only when the remote deletion was attempted and actually removed a ref.
+	RemoteBranchDeleted bool `json:"remote_branch_deleted,omitempty"`
+	// RemoteBranchError is non-empty when the remote deletion was attempted and did not succeed. Its
+	// text always names the layer that said no — the gate's own refusal, or the remote deletion
+	// itself.
+	RemoteBranchError string `json:"remote_branch_error,omitempty"`
+	// RemoteSkippedReason carries a once-per-verb reason no remote deletion was attempted at all —
+	// today only a weft repo with no origin remote configured.
+	RemoteSkippedReason string `json:"remote_skipped_reason,omitempty"`
 }
 
 // Remove removes a paired warp and weft git worktree with all associated artifacts.
@@ -40,7 +50,11 @@ type RemoveResult struct {
 // licence to delete the clone.
 // Portal and launcher cleanup run after those checks but before the git removal, so they still run
 // when the worktree directory is already gone.
-func (t *Topology) Remove(l *lyxcwd.Location, slug string, force bool) (res RemoveResult, err error) {
+// remote gates whether the pair's weft branch, once deleted locally, is also deleted on the weft
+// repo's origin remote; a remote deletion failure never makes Remove return a non-nil error. Remove
+// still never deletes warpBranch — it is computed only to derive weftBranch and to check
+// merge-source in-flight — and remote adds no warp-branch deletion of either kind.
+func (t *Topology) Remove(l *lyxcwd.Location, slug string, force, remote bool) (res RemoveResult, err error) {
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
 
@@ -128,8 +142,9 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force bool) (res Remo
 
 	// A weft-teardown failure is tolerated only when the weft worktree is actually gone (already
 	// absent, or removed with just a branch/prune step failing) — a weft worktree still on disk
-	// after a "successful" Remove is a half-torn pair the operator was never told about.
-	weftErr := removeWeftWorktree(rec, l, slug, weftBranch, force, true, t.cfg.BranchPrefix)
+	// after a "successful" Remove is a half-torn pair the operator was never told about. This check
+	// reads the error return alone, never the teardown struct: the remote outcome never affects it.
+	teardown, weftErr := removeWeftWorktree(rec, l, slug, weftBranch, force, true, remote, t.cfg.BranchPrefix)
 	if weftErr != nil {
 		weftTarget := WeftWorktreePath(l, slug)
 		if _, statErr := os.Stat(weftTarget); statErr == nil {
@@ -140,9 +155,12 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force bool) (res Remo
 	}
 
 	return RemoveResult{
-		Slug:         slug,
-		Path:         target,
-		LinksRemoved: linksRemoved,
+		Slug:                slug,
+		Path:                target,
+		LinksRemoved:        linksRemoved,
+		RemoteBranchDeleted: teardown.remoteBranchDeleted,
+		RemoteBranchError:   teardown.remoteBranchError,
+		RemoteSkippedReason: teardown.remoteSkippedReason,
 	}, nil
 }
 

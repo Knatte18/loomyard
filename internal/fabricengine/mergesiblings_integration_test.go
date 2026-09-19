@@ -141,7 +141,7 @@ func TestMergeSiblings_Dispositions(t *testing.T) {
 	})
 
 	t.Run("RemoveWithoutForce", func(t *testing.T) {
-		_, err := h.Topology.Remove(l, slug, false)
+		_, err := h.Topology.Remove(l, slug, false, false)
 		var refused *fabricengine.ErrMergeInProgress
 		if !errors.As(err, &refused) {
 			t.Fatalf("Remove(force=false) error = %v (%T); want *ErrMergeInProgress", err, err)
@@ -156,7 +156,7 @@ func TestMergeSiblings_Dispositions(t *testing.T) {
 
 	t.Run("RemoveWithForce", func(t *testing.T) {
 		// force answers dirtiness only, never a live merge record — the gate's own rule (card 13).
-		_, err := h.Topology.Remove(l, slug, true)
+		_, err := h.Topology.Remove(l, slug, true, false)
 		var refused *fabricengine.ErrMergeInProgress
 		if !errors.As(err, &refused) {
 			t.Fatalf("Remove(force=true) error = %v (%T); want *ErrMergeInProgress even with --force", err, err)
@@ -181,7 +181,7 @@ func TestMergeSiblings_Dispositions(t *testing.T) {
 			{"ApplyForce", true, true},
 		} {
 			t.Run(tt.name, func(t *testing.T) {
-				cleanupRes, err := h.Topology.Cleanup(l, tt.apply, tt.force)
+				cleanupRes, err := h.Topology.Cleanup(l, tt.apply, tt.force, false)
 				if err != nil {
 					t.Fatalf("Cleanup(apply=%v, force=%v) error = %v", tt.apply, tt.force, err)
 				}

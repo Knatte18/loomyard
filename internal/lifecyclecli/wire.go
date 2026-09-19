@@ -103,7 +103,7 @@ func (c *lifecycleCLI) wire(location *lyxcwd.Location, slug string) error {
 					return err
 				}
 				top := fabricengine.NewTopology(cfg)
-				res, err := top.Remove(location, slug, false)
+				res, err := top.Remove(location, slug, false, false)
 				logger.Info("lifecyclecli: teardown worktree", "slug", slug, "mutations", res.Mutated())
 				return err
 			},

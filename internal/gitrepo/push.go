@@ -1,9 +1,10 @@
 // push.go implements the push surface: Push (a single synchronous push with rebase-retry
 // resilience), PushCoalesced (a single-pusher lock plus one guarded push, coalescing across
-// processes via the lock queue rather than an internal retry loop), and PushRebaseFree (a single
-// plain push that never rebases, for callers that supply their own serialization).
-// All three are push-only; committing is always the caller's separate StageAndCommit or
-// StageAllAndCommit call.
+// processes via the lock queue rather than an internal retry loop), PushRebaseFree (a single
+// plain push that never rebases, for callers that supply their own serialization), and
+// DeleteRemoteBranch (a single remote branch deletion, idempotent when the ref is already absent).
+// All four are push-shaped remote calls; committing is always the caller's separate StageAndCommit
+// or StageAllAndCommit call.
 
 package gitrepo
 
@@ -28,6 +29,15 @@ const PushLockFileName = ".gitrepo-push.lock"
 // rebaseRetryTriggers are the git-push stderr substrings indicating the
 // remote has commits this checkout lacks.
 var rebaseRetryTriggers = []string{"non-fast-forward", "rejected", "fetch first"}
+
+// remoteRefAbsentTrigger is the git-push-delete stderr substring meaning the
+// remote ref was already gone before the delete ran. Git's fuller wording is
+// `error: unable to delete '<branch>': remote ref does not exist`, which
+// contains this substring verbatim, so matching on it alone needs no list. A
+// future git rewording that drops or changes this substring must fail the
+// test that pins it, rather than silently reclassifying the common case as
+// an error.
+const remoteRefAbsentTrigger = "remote ref does not exist"
 
 // Push runs git push, recovering from one non-fast-forward rejection via pull --rebase before
 // retrying.
@@ -100,6 +110,25 @@ func (r *Repo) PushRebaseFree() error {
 		return ErrPushRejected
 	}
 	return fmt.Errorf("gitrepo: git push: %w", err)
+}
+
+// DeleteRemoteBranch deletes branch on the named remote via `git push --delete`.
+// A remote ref that does not exist is reported as (false, nil) — an idempotent success recording no
+// mutation and surfacing no error — because every executor in fabric's destruction gate is
+// idempotent for an already-absent target and the common case is a branch that was never pushed.
+// deleted is returned separately from err precisely so the caller can tell "removed it" from "there
+// was nothing there", which is what the caller's mutation record needs.
+func (r *Repo) DeleteRemoteBranch(remote, branch string) (deleted bool, err error) {
+	_, err = r.runChecked("push", remote, "--delete", branch)
+	if err == nil {
+		return true, nil
+	}
+
+	var gitErr *gitexec.GitError
+	if errors.As(err, &gitErr) && strings.Contains(gitErr.Stderr, remoteRefAbsentTrigger) {
+		return false, nil
+	}
+	return false, fmt.Errorf("gitrepo: git push --delete: %w", err)
 }
 
 // containsAny reports whether s contains any substring from substrs.

@@ -47,7 +47,7 @@ func TestMutationRecord_RemoveDirtyWarpRefusalCarriesThePortalAndLauncherDeletio
 		t.Fatalf("dirty the warp worktree at %s: %v", target, err)
 	}
 
-	res, err := topology.Remove(l, slug, false)
+	res, err := topology.Remove(l, slug, false, false)
 	if err == nil {
 		t.Fatalf("Remove(%q, force=false) = nil error; want the dirty-warp pre-flight refusal", slug)
 	}

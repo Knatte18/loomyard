@@ -433,7 +433,7 @@ func TestRepoWideMigratedSites_ResolveFromBoardDirWithNoPerPairConfig(t *testing
 	lyxLink := fabricengine.WarpLyxLinkHere(removeWarpLayout)
 	extraLink := filepath.Join(removeWarpLayout.WorktreePath(), removeWarpLayout.AnchorRel, "_extra")
 
-	if _, err := topology.Remove(l, removeSlug, true); err != nil {
+	if _, err := topology.Remove(l, removeSlug, true, false); err != nil {
 		t.Fatalf("Remove(%s): %v", removeSlug, err)
 	}
 	if _, statErr := os.Lstat(lyxLink); !os.IsNotExist(statErr) {

@@ -261,7 +261,12 @@ func (t *Topology) rollbackAdd(rec *Mutations, l *lyxcwd.Location, slug, warpBra
 
 	// (1) Remove the weft worktree; delete the weft branch only when this Add
 	// created it, so a rollback never destroys pre-existing weft history.
-	if err := removeWeftWorktree(rec, l, slug, weftBranch, true, !weftBranchAdopted, t.cfg.BranchPrefix); err != nil {
+	// remote is hardcoded false here — not because the branch was never pushed (Add pushes the warp
+	// branch at step (11) and the weft branch at step (12), so a rollback can genuinely face an
+	// already-pushed branch on either side), but because an unattended best-effort rollback on an
+	// error path the operator did not choose must not make a network-visible destructive change:
+	// --remote is opt-in precisely because deleting a shared ref needs an explicit operator decision.
+	if _, err := removeWeftWorktree(rec, l, slug, weftBranch, true, !weftBranchAdopted, false, t.cfg.BranchPrefix); err != nil {
 		if firstErr == nil {
 			firstErr = err
 		}

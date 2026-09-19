@@ -252,7 +252,7 @@ func TestRefusedBefore(t *testing.T) {
 			t.Fatalf("write %s: %v", scratch, err)
 		}
 
-		_, err := h.Topology.Remove(h.Location, slug, false)
+		_, err := h.Topology.Remove(h.Location, slug, false, false)
 		if err == nil {
 			t.Fatalf("Remove(%s, force=false) against a dirty warp worktree: want an error, got nil", slug)
 		}
@@ -287,7 +287,7 @@ func TestRefusedBefore(t *testing.T) {
 		t.Parallel()
 
 		h := hubforge.NewHub(t, ".")
-		_, err := h.Topology.Remove(h.Location, "..", false)
+		_, err := h.Topology.Remove(h.Location, "..", false, false)
 		if err == nil {
 			t.Fatalf(`Remove(h.Location, "..", false): want an error, got nil`)
 		}
