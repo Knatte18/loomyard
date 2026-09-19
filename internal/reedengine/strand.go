@@ -370,21 +370,35 @@ func removalEmptiedSession(remaining []Strand, sessionGone bool) bool {
 // The engine, not the caller, stamps Worktree and generates GUID, since it owns both this
 // worktree's geometry and guid generation (the guid-dependent <SHORT_GUID> name token cannot be
 // computed before the guid exists).
-// Pre-flights the session's existence (mirroring Status) so running add before up fails with the
-// same friendly no-session error (see requireSessionLocked/noSessionMessage) instead of a raw tmux
-// error surfacing later from inside launchStrandLocked.
+//
+// AddStrand self-heals a cold worktree: rather than mirroring Status and failing with the friendly
+// no-session error, its pre-flight boots the session through ensureSessionLocked with up's own
+// semantics — a bare substrate, with no persisted strand relaunched — whenever there is nothing usable
+// to add into. The foreign-session refusal survives this change because ensureServerAndSessionLocked
+// consults refuseRecordedForeignSessionBeforeBootLocked ahead of anything that creates a session.
+//
+// One place up-semantics and --if-absent interact is worth recording: after a self-heal boot every
+// pane binding has just been cleared, so classifyIfAbsent reaches ifAbsentRelaunch rather than
+// ifAbsentNoOpAlive for a name that exists in the persisted table. That is the intended answer, not a
+// defect to fix.
 func (e *Engine) AddStrand(spec AddSpec) (Strand, error) {
 	var result Strand
 	err := e.withOpLock(func() error {
 		// The --if-absent name requirement is a pure config error, unrelated to session/state, so
-		// it must surface before requireSessionLocked — a rejected call must never deposit a
-		// friendly no-session error over what is actually a missing --name.
+		// it must surface before the session pre-flight below — a rejected call must never deposit
+		// a spawned tmux server as residue over what is actually a missing --name.
 		if err := validateIfAbsent(spec); err != nil {
 			return err
 		}
 
-		if err := e.requireSessionLocked(); err != nil {
+		booted, err := e.ensureSessionLocked()
+		if err != nil {
 			return err
+		}
+		if booted {
+			// Attributable in the log: a session appearing out of a bare `lyx reed add` must name
+			// the verb that caused it, alongside this engine's socket and session name.
+			logger.Info("reed: add self-healed a cold worktree's session", "socket", e.Socket(), "session", e.SessionName())
 		}
 
 		st, err := e.loadOrInitStateLocked()
