@@ -50,9 +50,10 @@ batches:
     verify_baseline_failures: []
   - name: engine-wiring
     state: running
-    implementer_session: d8275a32-9769-4f57-9cbb-17462c2249af
-    start_sha: 1ca17131d66ad74e96680b18d0ca2be1c602e357
+    implementer_session: 20ff53e9-f36f-4a03-93fb-2ffcb18f5df5
+    start_sha: 9c45f62035eab6782b817a4e7491e1830dcbf7af
     verify_baseline_failures: []
+    self_resolve_remint_at: '2026-09-19T05:56:01Z'
   - name: cli-surface-and-docs
     state: pending
     verify_baseline_failures: []
