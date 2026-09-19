@@ -39,8 +39,9 @@ const (
 	// bootstrapStageOrigin means the failure occurred while reading or writing the origin record, or
 	// while resolving the parent branch from it.
 	bootstrapStageOrigin
-	// bootstrapStageSeed means the failure occurred while seeding the status file, for a reason other
-	// than the file already existing.
+	// bootstrapStageSeed means the failure occurred while writing loom's own shedrun.Seed, or while
+	// seeding the status file, for a reason other than either already existing with an agreeing
+	// value.
 	bootstrapStageSeed
 	// bootstrapStageOwnership means the failure occurred while verifying the seeded status file
 	// belongs to this task's own slug.
@@ -50,10 +51,10 @@ const (
 	bootstrapStageCommit
 )
 
-// seedAndCommitBootstrap resolves the parent branch, seeds the status file when absent, verifies
-// seed ownership, and commits the seed and the origin record into the fabric -- today's steps 1
-// through 3 from start.go's RunE, held here verbatim and in today's order so `step` can call the exact
-// same sequence.
+// seedAndCommitBootstrap resolves the parent branch, writes loom's own shedrun.Seed, seeds the
+// status file when absent, verifies seed ownership, and commits the seed, the status file, and the
+// origin record into the fabric -- today's steps 1 through 3 from start.go's RunE, held here
+// verbatim and in today's order so `step` can call the exact same sequence.
 //
 // On success it returns the resolved parent branch, bootstrapStageNone, and a nil error. On failure
 // it returns the empty string, the stage that failed, and the error unwrapped.
@@ -76,6 +77,17 @@ func (c *loomCLI) seedAndCommitBootstrap(slug, parentFlag string) (string, boots
 		if err := fabricengine.WriteOrigin(originRec, c.location, slug, fabricengine.Origin{ParentBranch: parent}); err != nil {
 			return "", bootstrapStageOrigin, err
 		}
+	}
+
+	// Step 1b: write loom's own seed, the run's identity, before the status file it seeds next --
+	// the status file must never exist without a seed beside it, which is the inconsistency card
+	// 14's refusal exists to catch. WriteSeed is already idempotent against a byte-identical seed,
+	// so a re-run needs no sentinel handling of its own; a disagreeing seed's refusal propagates as
+	// a returned error here, at bootstrapStageSeed. params.parent is the run's recorded startup
+	// choice, not the durable truth -- fabricengine.Origin.ParentBranch (written just above) stays
+	// the durable record, and resolveParentBranch's own disagreement refusal already guards it.
+	if err := shedrun.WriteSeed(c.location, shedrun.SelfRunID, loomSeedFor(parent)); err != nil {
+		return "", bootstrapStageSeed, err
 	}
 
 	// Step 2: seed the status file, tolerating exactly the already-seeded sentinel so a re-run works.
@@ -113,9 +125,13 @@ func (c *loomCLI) seedAndCommitBootstrap(slug, parentFlag string) (string, boots
 	// already does -- and costs nothing on the ordinary path, since committing an already-clean,
 	// already-tracked path is a no-op (StageAndCommit reports committed == false).
 	// This must precede any producer call: the phase machine's very first precondition row scans the
-	// fabric including untracked files, and neither file is on the never-tracked exclude list, so an
-	// uncommitted seed or record would fail that check immediately.
-	commitPaths := []string{shedrun.StatusRel(shedrun.SelfRunID), fabricengine.OriginRecordRel()}
+	// fabric including untracked files, and none of the three is on the never-tracked exclude list,
+	// so an uncommitted seed, status file, or record would fail that check immediately. The
+	// shedrun.SeedRel entry is included unconditionally for the same self-healing reason the origin
+	// record's own comment already gives: WriteSeed above is idempotent, so a prior invocation that
+	// wrote the seed to disk but crashed before this step committed it self-heals on the very next
+	// call.
+	commitPaths := bootstrapCommitPaths()
 	commitRec := fabricengine.NewMutations("")
 	commitMsg := fmt.Sprintf("loom: seed session bootstrap for %s", slug)
 	if _, _, err := fabricengine.CommitAnchoredPaths(commitRec, c.location, commitPaths, commitMsg, fabricengine.EnvSyncOptions()); err != nil {
@@ -123,6 +139,28 @@ func (c *loomCLI) seedAndCommitBootstrap(slug, parentFlag string) (string, boots
 	}
 
 	return parent, bootstrapStageNone, nil
+}
+
+// loomSeedFor builds the shedrun.Seed seedAndCommitBootstrap's step 1b writes: loom's fixed
+// recipe/driver pair, and the run's recorded startup choice of parent branch as its sole param.
+// It is a pure function, factored out of seedAndCommitBootstrap so its shape is directly testable
+// without driving the whole bootstrap sequence -- WriteSeed itself needs no real fabric, but
+// seedAndCommitBootstrap's own step 1 (fabricengine.ReadOrigin) does, which would otherwise put
+// this value's shape out of a Tier 1 test's reach.
+func loomSeedFor(parent string) shedrun.Seed {
+	return shedrun.Seed{
+		Recipe: shedrun.RecipeLoom,
+		Driver: shedrun.DriverGo,
+		Params: map[string]string{"parent": parent},
+	}
+}
+
+// bootstrapCommitPaths returns the three anchor-relative paths seedAndCommitBootstrap's step 3
+// commits unconditionally: the status file, the seed, and the origin record. It is a pure
+// function, factored out for the same reason loomSeedFor is -- so a Tier 1 test can pin the
+// pathspec's exact shape without a real fabric behind it.
+func bootstrapCommitPaths() []string {
+	return []string{shedrun.StatusRel(shedrun.SelfRunID), shedrun.SeedRel(shedrun.SelfRunID), fabricengine.OriginRecordRel()}
 }
 
 // ensureFrictionDirAfterSeed performs the once-per-task clear-and-create split immediately after
