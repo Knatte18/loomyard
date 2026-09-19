@@ -1,0 +1,27 @@
+MILL_REVIEW_BEGIN
+# Review: fabric: no remote/GitHub branch deletion — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: sonnethigh
+reviewed_file: plan/ + source
+date: 2026-09-19
+```
+
+## Findings
+
+### [BLOCKING:consistency] doc.go's chokepoint section left un-synced with the sixth primitive
+**Location:** `internal/fabricengine/doc.go:631-655` (the "# The destruction chokepoint" section) vs `internal/fabricengine/destroy.go:1-4,54,524-527`
+**Issue:** `destroy.go`'s own header was correctly updated to "six primitives"/"nine executors" (card 4), and `cmd/lyx/destructiveguard_test.go`'s comment now correctly says "9 rows" (card 5), but `doc.go`'s own "why a chokepoint at all" section — a file this same task edited (card 9) — still says `destroy.go` performs one of only five primitives ("`os.RemoveAll`/`os.Remove`, `git worktree remove`, `git branch -D`, `fslink.Remove`, and a warp checkout's `ResetHard`"), still lists only six executor names omitting `deleteRemoteBranch` in "why the gate executes rather than approves", and its "mutation record" section still says "eight gate executors" (now nine). This is exactly the count-accuracy discipline the task's own cards insist on elsewhere (mutation.go's header comment, card 3: "Verify the two counts against the block's actual membership before writing them rather than incrementing blind").
+**Fix:** Update `doc.go`'s chokepoint section to name the sixth primitive and `deleteRemoteBranch` in the executor list, and correct "eight gate executors" to nine.
+
+### [NIT:scope] Plan never named doc.go's chokepoint section as a location to amend
+**Location:** `_mill/plan/02-fabricengine-remote-executor.md` card 4, `_mill/plan/03-engine-wiring.md` card 9
+**Issue:** Neither card's Requirements mentions `doc.go`'s separate "why a chokepoint at all" prose (distinct from the carve-out paragraph card 9 does rewrite), so the drift above is a plan enumeration gap rather than an implementer deviation from an explicit instruction.
+**Fix:** Note for a future round: when a primitive/executor count changes, grep `doc.go` for every restatement of it, not just the one paragraph a card names.
+
+## Verdict
+
+REQUEST_CHANGES
+Implementation matches the plan closely across all four batches; one cross-file doc-count inconsistency in fabricengine/doc.go needs fixing.
+MILL_REVIEW_END
