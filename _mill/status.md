@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: reed-selvage-pane-extraction
 branch: reed-selvage-pane-extraction
-plan: null
+plan: _mill/plan
 parent: main
 task: 'reed: extract Selvage-pane lifecycle'
 task_description: |
@@ -22,4 +22,5 @@ discussion-gap-fix-r4  '2026-09-19T09:38:40Z'
 discussion-fix-r5  '2026-09-19T09:42:53Z'
 discussion-fix-r6  '2026-09-19T09:47:14Z'
 discussed  '2026-09-19T09:47:14Z'
+planning  '2026-09-19T09:57:32Z'
 ```
