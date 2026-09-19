@@ -18,14 +18,22 @@
 // stays acyclic (reedcli -> reedengine -> render).
 //
 // reedengine is told its geometry as a Geometry value (geometry.go) and
-// derives none of it. internal/lyxcwd and internal/fabricengine are
-// consequently absent from this package's DIRECT production imports;
-// hubgeom.ReedGeometry is the hub-mode teller that builds a Geometry from a
-// resolved *lyxcwd.Location for every hub-mode caller. Stated honestly, that
-// is a direct-import fact and not a transitive one: internal/lyxcwd is still
-// in `go list -deps ./internal/reedengine`, reached through internal/logger,
-// so what the absence buys is that reed never RESOLVES its own coordinates —
-// not isolation from the package that does.
+// derives none of it. internal/lyxcwd is consequently absent from this
+// package's DIRECT production imports; hubgeom.ReedGeometry is the hub-mode
+// teller that builds a Geometry from a resolved *lyxcwd.Location for every
+// hub-mode caller. Stated honestly, that is a direct-import fact and not a
+// transitive one: internal/lyxcwd is still in `go list -deps
+// ./internal/reedengine`, reached through internal/logger, so what the
+// absence buys is that reed never RESOLVES its own coordinates — not
+// isolation from the package that does.
+//
+// internal/fabricengine became a direct production import when
+// spawnwatchdog.go landed (SpawnWatchdog calls fabricengine.HubScratchDir).
+// That does not relax the Told-Geometry Invariant: the invariant bars a
+// direct internal/lyxcwd import and requires an engine be handed the
+// absolute paths it operates on, and the one fabricengine call here takes
+// hubPath as a parameter and derives nothing from it — the seam is told its
+// geometry exactly as the rest of this package is.
 //
 // One additional invariant this package enforces: exactly one named tmux
 // server per hub. The server name is derived deterministically from the hub

@@ -9,9 +9,6 @@ See Maintenance below for how the numbering works.
 
 This section holds what's committed to next.
 
-1. **reed: born-as-strand for the operator's `loom start` attach** — `loom start`'s terminal handoff never calls `AddStrand`, unlike every other agent launch in lyx; fix it to spawn-then-attach like `reed add` does.
-   See [designs/reed-born-as-strand.md](designs/reed-born-as-strand.md).
-
 1. **reed: per-hub daemon reaps orphaned sessions** — the per-hub watchdog daemon periodically checks whether each live session's worktree still exists on disk, and tears down any that don't. A safety net for when the `worktree spawn/teardown as Shed producers` item's deliberate teardown sequencing doesn't run (crash, manual deletion, aborted task) — not a replacement for it.
    See [designs/reed-header-selvage.md](designs/reed-header-selvage.md).
 
@@ -20,7 +17,7 @@ This section holds what's committed to next.
 What comes right after Planned clears — committed and ordered, unlike Someday below.
 Not yet started, and exact order can still shift as Planned work reveals what unblocks what, but the rough sequence below is the current best guess.
 
-1. **generalize `ly-drive` and loom's `start`/`run`/`step` CLI verbs into a Shed-generic watchdog** — `shedengine`/`shedbuild`/`shedrecipe` are already fully generic; only `loomcli` hardcodes loom's own recipe/paths. The second `shedrecipe` consumer this needed to validate against now exists (`lifecyclerecipe`), but held back from Planned until the `born-as-strand` item above lands, since both touch `loomcli`'s `start`/`run` verbs directly.
+1. **generalize `ly-drive` and loom's `start`/`run`/`step` CLI verbs into a Shed-generic watchdog** — `shedengine`/`shedbuild`/`shedrecipe` are already fully generic; only `loomcli` hardcodes loom's own recipe/paths. The second `shedrecipe` consumer this needed to validate against now exists (`lifecyclerecipe`).
    See [designs/shed-generic-watchdog.md](designs/shed-generic-watchdog.md).
 
 ## Someday
@@ -103,6 +100,9 @@ No build order is implied between these items.
 ## Done
 
 Cleared 2026-08-25 to keep this file lean — shipped items' history lives in `git log` and each module's own package documentation, not here.
+
+1. **reed: born-as-strand for the operator's `loom start` attach** — `lyx loom start`'s terminal handoff now adds an operator-owned Strand before attaching, spawn-then-attach like `reed add` does, and the same verb spawns the per-hub watchdog daemon its session runs on regardless of `--attach`.
+   See the `internal/loomcli` and `internal/reedengine` package documentation.
 
 1. **reed: extract Selvage-pane lifecycle out of apply/reconcile/spawn/lifecycle** — Selvage's pane creation, reap-exemption, and split-target lifecycle now lives in one file, `internal/reedengine/selvagepane.go`, with a mechanical AST enforcement test barring it from re-scattering across `apply.go`/`reconcile.go`/`spawn.go`/`lifecycle.go`. See `internal/reedengine`'s package documentation.
    See [designs/reed-selvage-pane-extraction.md](designs/reed-selvage-pane-extraction.md).

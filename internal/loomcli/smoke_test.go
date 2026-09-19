@@ -218,17 +218,71 @@ func fastDeadlineLoomConfig() string {
 }
 
 // registerBootstrapTeardown registers a cleanup that kills any surviving driver process for worktree
-// and tears the reed substrate down, so a failed assertion never leaves a live tmux server or a
-// detached driver running past the test.
+// and the per-hub watchdog daemon card 12 now spawns for it, then tears the reed substrate down, so
+// a failed assertion never leaves a live tmux server, a detached driver, or a watchdog daemon running
+// past the test.
+//
+// The watchdog reap is unconditional inventory, not a branch: out of process the smoke tier builds
+// and runs a real binary, so testing.Testing() is false there and the spawn genuinely fires against
+// this fixture's own hub, which this test then tears down. LYX_REED_WATCHDOG does not suppress it
+// either -- that key reaches the worktree-level watch goroutine, never the process start.
 func registerBootstrapTeardown(t *testing.T, loc *lyxcwd.Location, worktree string) {
 	t.Helper()
 	t.Cleanup(func() {
 		for _, pid := range findDriverPIDs(worktree) {
 			_ = proc.KillPID(pid)
 		}
+		for _, pid := range findWatchdogPIDs(loc.HubPath) {
+			_ = proc.KillPID(pid)
+		}
 		eng := probeReedEngine(t, loc)
 		_, _ = eng.Down()
 	})
+}
+
+// findWatchdogPIDs returns the pids of every live process whose argv contains an adjacent "reed"
+// followed by "watchdog" pair AND a "--hub-path" argument equal to hubPath -- the /proc-native way to
+// find the per-hub watchdog daemon a bootstrap spawned, mirroring findDriverPIDs' own shape and the
+// same find-then-proc.KillPID pattern this file's cleanup already applies to driver pids. A lone
+// "watchdog" argv element is not a sufficient discriminator, for the identical reason a lone "run" is
+// not for the driver: "watchdog" is this verb's own unique name today, but matching on the adjacent
+// verb pair plus the --hub-path value it was told is what keeps this scan specific to THIS fixture's
+// own daemon rather than a sibling fixture's, since the daemon is a detached, per-hub process this
+// test's own cwd does not identify the way a driver's cwd does. Linux only, mirroring
+// findDriverPIDs; returns nil on any other GOOS.
+func findWatchdogPIDs(hubPath string) []int {
+	if runtime.GOOS != "linux" {
+		return nil
+	}
+	entries, err := os.ReadDir("/proc")
+	if err != nil {
+		return nil
+	}
+	var pids []int
+	for _, e := range entries {
+		pid, err := strconv.Atoi(e.Name())
+		if err != nil {
+			continue
+		}
+		raw, err := os.ReadFile(filepath.Join("/proc", e.Name(), "cmdline"))
+		if err != nil {
+			continue
+		}
+		argv := strings.Split(strings.TrimRight(string(raw), "\x00"), "\x00")
+		var isWatchdog, matchesHub bool
+		for i, arg := range argv {
+			if i+1 < len(argv) && arg == "reed" && argv[i+1] == "watchdog" {
+				isWatchdog = true
+			}
+			if arg == "--hub-path" && i+1 < len(argv) && argv[i+1] == hubPath {
+				matchesHub = true
+			}
+		}
+		if isWatchdog && matchesHub {
+			pids = append(pids, pid)
+		}
+	}
+	return pids
 }
 
 // probeReedEngine builds a standalone *reedengine.Engine against loc, independent of any loomCLI

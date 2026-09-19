@@ -29,4 +29,4 @@ Genuinely speculative until a second `shedrecipe` consumer beyond loom exists to
 ## Related
 
 - Separate from the loom CLI rename (`run`/`drive`/`step` renamed to `start`/`run`/`step`, `ly-supervise` renamed to `ly-drive`) — orthogonal axis of change (genericity vs. naming), and shipped.
-- Separate from [`reed: born-as-strand`](reed-born-as-strand.md).
+- Separate from the shipped `reed: born-as-strand` item.

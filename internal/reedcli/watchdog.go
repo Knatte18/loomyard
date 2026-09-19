@@ -2,12 +2,17 @@
 // loop, and the pure seams that make discovery and the idle-exit rule unit-testable without a live
 // tmux server.
 //
-// internal/reedcli owns the daemon outright, per the discussion's
-// told-geometry-keeps-the-daemon-out-of-reedengine decision: CONSTRAINTS.md's Told-Geometry
-// Invariant bars internal/reedengine from importing internal/lyxcwd, and reedcli already holds the
-// *lyxcwd.Location and already imports internal/hubgeom, so it may import internal/fabricengine
-// directly as hubgeom does. internal/reedengine gains exactly one new engine-less function
-// (ListSessions) and learns nothing about the daemon's existence.
+// internal/reedcli still owns the daemon's verb, its discovery loop, and its idle-exit rule, per
+// the discussion's told-geometry-keeps-the-daemon-out-of-reedengine decision: CONSTRAINTS.md's
+// Told-Geometry Invariant bars internal/reedengine from importing internal/lyxcwd, and reedcli
+// already holds the *lyxcwd.Location and already imports internal/hubgeom, so it may import
+// internal/fabricengine directly as hubgeom does. That decision was revisited, not dropped, for one
+// piece of the daemon alone: the detached spawn itself moved to internal/reedengine
+// (SpawnWatchdog, spawnwatchdog.go) so internal/loomcli could reach it over an already-shipped
+// import edge without depending on another module's cobra layer — see the
+// watchdog-seam-lives-in-reedengine decision. reedengine's SpawnWatchdog takes hubPath and tmuxPath
+// as plain parameters rather than resolving them itself, so it learns nothing about the daemon's
+// discovery loop, its idle-exit rule, or its lock file, all of which remain here.
 
 package reedcli
 

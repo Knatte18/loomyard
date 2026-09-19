@@ -7,6 +7,7 @@ package loomcli
 
 import (
 	"bytes"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -152,6 +153,53 @@ func TestRunCLI_UnknownSubcommand_NoGitRepoNeeded(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), `"ok":false`) {
 		t.Errorf("RunCLIIn(%q, [bogus]) output missing ok:false envelope; got: %q", dir, out.String())
+	}
+}
+
+// TestNewLoomCLI_SetsBothInjectedSeams pins newLoomCLI's own fields, since neither Command() nor
+// StartAliasCommand() exposes the receiver each constructs and neither may grow an accessor purely
+// for a test.
+func TestNewLoomCLI_SetsBothInjectedSeams(t *testing.T) {
+	c := newLoomCLI()
+
+	if c.spawnWatchdog == nil {
+		t.Error("newLoomCLI().spawnWatchdog = nil; want reedengine.SpawnWatchdog")
+	}
+	if c.suppressWatchdogSpawn != testing.Testing() {
+		t.Errorf("newLoomCLI().suppressWatchdogSpawn = %v; want %v (testing.Testing())", c.suppressWatchdogSpawn, testing.Testing())
+	}
+}
+
+// TestProductionFiles_LoomCLILiteralOnlyInFactory proves no production file in this package builds a
+// *loomCLI composite literal outside newLoomCLI, by scanning this package's own non-_test.go *.go
+// files for the "&loomCLI{" token and allowing it only in cli.go, newLoomCLI's own file -- the same
+// source-scan shape internal/burlercli/wiring_test.go already uses
+// (TestProductionFiles_NeverReferenceHubWatchdogMechanism) for a boundary property that has no other
+// static form.
+//
+// Together with TestNewLoomCLI_SetsBothInjectedSeams above, this is what would have caught the alias
+// gotcha newLoomCLI now designs out: that test proves the fields are set, this one proves both
+// constructors go through the place that sets them.
+func TestProductionFiles_LoomCLILiteralOnlyInFactory(t *testing.T) {
+	matches, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatalf("glob *.go: %v", err)
+	}
+
+	const token = "&loomCLI{"
+	const factoryFile = "cli.go"
+
+	for _, path := range matches {
+		if strings.HasSuffix(path, "_test.go") {
+			continue
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		if strings.Contains(string(data), token) && filepath.Base(path) != factoryFile {
+			t.Errorf("%s references %q outside %s; every *loomCLI must be built through newLoomCLI", path, token, factoryFile)
+		}
 	}
 }
 

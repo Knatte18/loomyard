@@ -734,10 +734,18 @@ func TestRunCmd_PassesWatchTrueToReedUp(t *testing.T) {
 	}
 }
 
-// TestProductionFiles_NeverReferenceHubWatchdogMechanism proves this package's production files never
+// TestProductionFiles_NeverReferenceHubWatchdogMechanism proves standalone's production files never
 // reference the detached per-hub watchdog daemon's mechanism: standalone computes no hub lock path
-// (fabricengine.HubScratchDir) and spawns no daemon (the "reed watchdog" verb). Both belong to
-// hub mode alone, per this batch's own scope note.
+// (fabricengine.HubScratchDir), spawns no daemon (the "reed watchdog" verb), and never calls the
+// seam that owns the daemon's detached spawn (reedengine.SpawnWatchdog). All three belong to hub
+// mode alone, per this batch's own scope note.
+//
+// The scanned file set widened to include internal/standalonegeom's production files, reached by a
+// relative glob from this package's directory, when the spawn moved into internal/reedengine: that
+// package is also standalone's own engine, so the never-touches-the-hub-watchdog property is no
+// longer structurally obvious from this package's own files alone. This is the guard
+// _mill/discussion.md's watchdog-seam-lives-in-reedengine decision asks for in place of leaving the
+// boundary unpinned. This test spawns nothing and stays untagged.
 func TestProductionFiles_NeverReferenceHubWatchdogMechanism(t *testing.T) {
 	t.Parallel()
 
@@ -745,6 +753,12 @@ func TestProductionFiles_NeverReferenceHubWatchdogMechanism(t *testing.T) {
 	if err != nil {
 		t.Fatalf("glob *.go: %v", err)
 	}
+	standaloneGeomMatches, err := filepath.Glob(filepath.Join("..", "standalonegeom", "*.go"))
+	if err != nil {
+		t.Fatalf("glob ../standalonegeom/*.go: %v", err)
+	}
+	matches = append(matches, standaloneGeomMatches...)
+
 	for _, path := range matches {
 		if strings.HasSuffix(path, "_test.go") {
 			continue
@@ -759,6 +773,9 @@ func TestProductionFiles_NeverReferenceHubWatchdogMechanism(t *testing.T) {
 		}
 		if strings.Contains(content, "reed watchdog") {
 			t.Errorf("%s references \"reed watchdog\"; standalone must spawn no daemon", path)
+		}
+		if strings.Contains(content, "reedengine.SpawnWatchdog") {
+			t.Errorf("%s references reedengine.SpawnWatchdog; standalone must never call the hub watchdog seam", path)
 		}
 	}
 }

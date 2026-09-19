@@ -12,6 +12,7 @@ package loomcli
 
 import (
 	"io"
+	"testing"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/landingshed"
@@ -65,6 +66,28 @@ type loomCLI struct {
 	// landing-config-loads-in-wire decision, so an unreconciled hub's absent-config error reaches
 	// the operator's own terminal on every verb, not only inside run's detached driver log.
 	landingCfg landingshed.Config
+	// suppressWatchdogSpawn, initialised from testing.Testing(), makes spawnWatchdog's call a no-op
+	// under a test binary. It exists to enforce the Live-Substrate Spawn Observability invariant's
+	// "never re-exec os.Executable() under go test" clause -- without it, every test reaching the
+	// bootstrap would re-exec the test binary and run the whole suite recursively.
+	suppressWatchdogSpawn bool
+	// spawnWatchdog defaults to reedengine.SpawnWatchdog and is an injection point so a test can
+	// assert the call site's arguments -- under go test the real call returns immediately and
+	// leaves no process, no log line, and nothing else to assert against. Named after
+	// awaitRunLock's own four injected seams (bootstrap.go) and this file's own doc comment
+	// principle that the verb body is assembly over judgment already under test.
+	spawnWatchdog func(hubPath, tmuxPath string, suppress bool)
+}
+
+// newLoomCLI is the only place production code may build a *loomCLI: it is what keeps
+// suppressWatchdogSpawn and spawnWatchdog set identically on every constructed receiver, so neither
+// of this package's two constructors (Command, StartAliasCommand) can forget one and leave a nil
+// spawnWatchdog to panic rather than degrade.
+func newLoomCLI() *loomCLI {
+	return &loomCLI{
+		suppressWatchdogSpawn: testing.Testing(),
+		spawnWatchdog:         reedengine.SpawnWatchdog,
+	}
 }
 
 // runnerMasterStarter adapts *shuttleengine.Runner to websterengine.MasterStarter.
@@ -155,7 +178,7 @@ func verbUsesLightweightWiring(name string) bool {
 
 // Command returns the cobra command tree for the loom module.
 func Command() *cobra.Command {
-	c := &loomCLI{}
+	c := newLoomCLI()
 
 	parent := &cobra.Command{
 		Use:   "loom",
