@@ -347,7 +347,7 @@ func TestWire_BisectorOpenerNonNilInHubOnlyMode(t *testing.T) {
 }
 
 // TestWire_LandingSeamFieldsPopulated asserts wire() populates c.registry, c.runner, and
-// c.landingCfg -- the three fields drive.go passes to landingDeps.
+// c.landingCfg -- the three fields run.go passes to landingDeps.
 //
 // c.landingCfg is compared via reflect.DeepEqual, not !=, because landingshed.Config carries a
 // RequirePRToBase []string field, which makes the struct non-comparable and would fail to compile
@@ -622,7 +622,7 @@ func TestVerbUsesLightweightWiring(t *testing.T) {
 		{"ValidateDiscussion", "validate-discussion", true},
 		{"ValidatePlan", "validate-plan", true},
 		{"Run", "run", false},
-		{"Drive", "drive", false},
+		{"Start", "start", false},
 		{"Step", "step", false},
 		{"UnknownVerb", "something-else", false},
 	}

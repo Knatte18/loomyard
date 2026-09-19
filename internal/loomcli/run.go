@@ -1,301 +1,267 @@
-// run.go implements the `run` loom verb: the session bootstrap.
-// It resolves the recorded parent branch, seeds the status file when absent, commits that seed
-// into the fabric, ensures the reed substrate and its status strand, spawns the detached driver when none
-// is already alive, waits for the handshake that confirms the driver took the run lock, and finally
-// hands the operator's terminal to a tmux attach.
-// Every fallible step runs pre-flight, on the envelope; only the terminal handover at the very end
-// takes the CLI/Cobra Invariant's narrow interactive-handoff exception.
+// run.go implements the `run` loom verb: the escape hatch that runs the phase machine in the
+// foreground, for debugging and CI.
+// It ensures the reed substrate and then runs the machine, adding no status strand and handing the
+// terminal over to nothing -- those two omissions, not tmux itself, are what separate it from
+// `lyx loom start`.
 
 package loomcli
 
 import (
-	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/friction"
+	"github.com/Knatte18/loomyard/internal/frictionengine"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/output"
-	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/selfreportengine"
+	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
-	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/spf13/cobra"
-	"golang.org/x/term"
 )
 
-// bootstrapHandshakePollInterval and bootstrapHandshakeAttempts bound the handshake's wait for the
-// just-spawned driver to take the run lock: a generous but finite deadline (30s) so a genuinely wedged
-// spawn is reported rather than hung on forever, while an ordinary boot -- well under a second in
-// practice -- never comes close to it.
-const (
-	bootstrapHandshakePollInterval = 100 * time.Millisecond
-	bootstrapHandshakeAttempts     = 300
-)
-
-// runCmd builds the `run` subcommand: the session bootstrap.
+// runCmd builds the `run` subcommand.
 func (c *loomCLI) runCmd() *cobra.Command {
-	var parentFlag string
-	var noAttachFlag bool
-
-	cmd := &cobra.Command{
+	return &cobra.Command{
 		Use:   "run",
-		Short: "bootstrap this worktree's loom task and hand the terminal to the driver session",
-		Long: `run is the session bootstrap. It performs four steps in order:
+		Short: "run loom's phase machine in the foreground, with no status strand and no terminal handover",
+		Long: `run runs loom's phase machine in the foreground: no status strand and
+no terminal handover. It is the escape hatch for debugging and CI.
 
-  1. resolve the recorded parent branch, seed the status file when it is
-     absent, and commit that seed into the fabric before anything else touches it
-  2. ensure the worktree's tmux session is up and its status strand exists
-  3. spawn the detached loom driver, unless one is already alive -- a second
-     invocation while a driver is running ensures substrate and attaches
-     rather than spawning a second one
-  4. hand the terminal to the tmux session
+run is NOT tmux-free. Every LLM row underneath it -- Discussion-Write,
+Plan-Write, and all three review segments -- spawns its agent through
+shuttle into a reed pane, so a live tmux session is required. run
+ensures that session itself, exactly as "lyx loom start" does, rather than
+failing several producers deep once a row first tries to add a strand.
+What run does not do is add the status strand or hand the terminal over.
 
-The detached driver's own stdout/stderr go to the log the ephemeral-tree
-driver-log accessor names, never to this command's own output.
-
---no-attach performs steps 1 through 3 and the handshake that confirms the
-driver took the run lock, then returns instead of running step 4.
+run never seeds a status file and never commits anything -- only
+"lyx loom start" seeds, because only it owns the commit-before-precondition
+ordering the bootstrap needs.
 
 Example:
-  lyx loom run
-  lyx loom run --parent main
-  lyx loom run --no-attach`,
+  lyx loom run`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
 			}
-			ctx := cmd.Context()
 			out := cmd.OutOrStdout()
 
-			slug := seedSlug(c.location.WorktreeName)
+			// Pre-flight: refuse on the envelope when the status file does not exist yet, naming
+			// the two-word bootstrap verb as the remedy. This refusal exists so the operator is
+			// told on the envelope rather than discovering it as the phase machine's own
+			// seed-missing precondition failure buried in the detached driver's log -- only
+			// "lyx loom start" may seed, because only it owns the commit-before-precondition
+			// ordering.
+			if _, err := os.Stat(c.shedPaths.StatusPath); err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, "loom: no status file at "+c.shedPaths.StatusPath+"; run \"lyx loom start\" first to bootstrap this task"))
+				return nil
+			}
+			// The status file must be THIS task's own, for the same reason "lyx loom start" checks:
+			// a worktree forked from a task worktree inherits the old task's `_lyx` state, and the
+			// phase machine would silently resume the inherited run under the wrong slug (crucible
+			// round fable5-high-r3, F-B7).
+			if err := loomengine.VerifySeedOwnership(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, seedSlug(c.location.WorktreeName)); err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				return nil
+			}
 
-			// Steps 1 through 3: resolve the parent branch, seed the status file, verify seed
-			// ownership, and commit the seed and origin record into the fabric. The stage this
-			// helper also returns is deliberately discarded here: `run` writes the same envelope on
-			// any failure regardless of which sub-step produced it, exactly as before this
-			// extraction; `step` is the caller that maps the stage onto its own refusal-kind
-			// vocabulary.
-			_, _, err := c.seedAndCommitBootstrap(slug, parentFlag)
+			// Observed here, next to the read VerifySeedOwnership just performed, and guarded on
+			// the knob directly: a disabled run must not pay for a lock probe and an extra status
+			// decode on every run, which is exactly the cost the knob's rationale claims it
+			// avoids.
+			entryObservation := observeEntry(c.cfg.Selfreport, c.shedPaths.LockPath, c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, loomengine.LoomStepHandoff(c.location), loomengine.LoomStepHandoffLock(c.location))
+
+			// Ensure the reed substrate before the first producer call. run adds no strand and
+			// hands no terminal over, but the rows beneath it spawn agents into reed panes, so
+			// without a live session the run gets several producers deep and then hard-errors on
+			// "no reed session" -- after the Discussion-Bouncer's seed spawn has already failed
+			// silently (runSeedSpawn degrades every failure to a warning), had a synthetic empty
+			// focus file written over its real one, and consumed a unit of the segment's bounce
+			// budget. Up is idempotent and is what "lyx loom start" already calls at its own step 4.
+			if _, err := c.reed.Up(); err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				return nil
+			}
+
+			handle, err := fabricengine.Open(c.location)
 			if err != nil {
-				clihelp.SetExit(ctx, output.Err(out, err.Error()))
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
-
-			// Step 4: take the bootstrap lock, then ensure the reed substrate and its status
-			// strand. The lock's parent directory is the same ephemeral-tree directory the run
-			// lock and driver log also live in, so creating it here also covers those.
-			bootstrapLockPath := loomengine.LoomBootstrapLock(c.location)
-			if err := os.MkdirAll(filepath.Dir(bootstrapLockPath), 0o755); err != nil {
-				clihelp.SetExit(ctx, output.Err(out, err.Error()))
-				return nil
-			}
-			bootstrapLock, err := lock.AcquireWriteLock(bootstrapLockPath)
+			taskBranch, err := handle.CurrentBranch()
 			if err != nil {
-				clihelp.SetExit(ctx, output.Err(out, err.Error()))
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
-			// Released explicitly, not deferred: it must stay held across the spawn AND the
-			// handshake below, and is released only once the run lock is observed held -- a plain
-			// defer here would release it far too early, at RunE return, rather than at the exact
-			// points the steps below release it themselves.
-
-			if err := c.ensureStatusStrand(); err != nil {
-				_ = bootstrapLock.Release()
-				clihelp.SetExit(ctx, output.Err(out, err.Error()))
-				return nil
-			}
-
-			// Step 5: probe the run lock non-blockingly -- releasing it immediately when it was
-			// free, never holding it across this probe -- and spawn the detached driver only when
-			// mustSpawnDriver says no driver is already alive.
-			runLockPath := c.shedPaths.LockPath
-			probe, runLockFree, err := lock.TryAcquireWriteLock(runLockPath)
+			originURL, err := handle.OriginURL()
 			if err != nil {
-				_ = bootstrapLock.Release()
-				clihelp.SetExit(ctx, output.Err(out, err.Error()))
-				return nil
+				// scalar-read-errors-refuse-or-defer-by-consumer: only Publish reads OriginURL, and only
+				// when a pull request is actually required, so an unusable origin URL passes through as
+				// an empty string rather than refusing run itself.
+				originURL = ""
 			}
-			if runLockFree {
-				_ = probe.Release()
-			}
-			runLockHeld := !runLockFree
-
-			var childPID int
-			if mustSpawnDriver(runLockHeld) {
-				exe, err := os.Executable()
-				if err != nil {
-					_ = bootstrapLock.Release()
-					clihelp.SetExit(ctx, output.Err(out, err.Error()))
-					return nil
-				}
-				driverLogPath := loomengine.LoomDriverLog(c.location)
-				logFile, err := os.OpenFile(driverLogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-				if err != nil {
-					_ = bootstrapLock.Release()
-					clihelp.SetExit(ctx, output.Err(out, err.Error()))
-					return nil
-				}
-				driveCmd := exec.Command(exe, "loom", "drive")
-				driveCmd.Stdout = logFile
-				driveCmd.Stderr = logFile
-				proc.Detach(driveCmd)
-				if err := driveCmd.Start(); err != nil {
-					_ = logFile.Close()
-					_ = bootstrapLock.Release()
-					clihelp.SetExit(ctx, output.Err(out, err.Error()))
-					return nil
-				}
-				logger.Info("loom: spawned detached driver", "pid", driveCmd.Process.Pid, "log", driverLogPath)
-				childPID = driveCmd.Process.Pid
-				// The log file handle is safe to close here: the child inherited its own
-				// duplicated descriptor at Start, so this process's copy is no longer needed.
-				_ = logFile.Close()
-				// Reap the child as soon as it exits, in the background: this process is still the
-				// driver's direct parent (Detach's Setsid only puts it in a new session; the child
-				// is re-parented away only once THIS process itself exits), so a driver that
-				// finishes before this bootstrap invocation does -- the common case, since a fresh
-				// task's Discussion-Validate has nothing to validate yet and bounces to its budget
-				// within milliseconds -- would otherwise sit as a zombie. A zombie's pid still
-				// answers kill(pid, 0) as "alive", which is exactly the probe proc.IsAlive uses, so
-				// leaving this unreaped would make the handshake below spin its entire deadline and
-				// falsely refuse a bootstrap whose driver actually completed cleanly.
-				go func() { _ = driveCmd.Wait() }()
-			}
-
-			// Step 6: still holding the bootstrap lock, wait for the driver to take the run lock.
-			if mustSpawnDriver(runLockHeld) {
-				lockHeld := func() (bool, error) {
-					fl, acquired, err := lock.TryAcquireWriteLock(runLockPath)
-					if err != nil {
-						return false, err
-					}
-					if acquired {
-						_ = fl.Release()
-						return false, nil
-					}
-					return true, nil
-				}
-				alive := func() bool { return proc.IsAlive(childPID) }
-				// halted reads the machine's own persisted state, which is the only thing that can
-				// still separate "wedged spawn" from "pass finished, driver still doing post-run
-				// bookkeeping" now that the run lock is released before the friction reflection
-				// runs. A read failure, and a status file that is not there at all, both report
-				// false rather than true: neither is evidence the machine halted, so neither may
-				// shortcut the handshake -- the deadline stays the arbiter in that case.
-				halted := func() bool {
-					st, found, readErr := state.ReadJSONStrict[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
-					if readErr != nil || !found {
-						return false
-					}
-					return st.State != shedengine.StateRunning
-				}
-				wait := func() { time.Sleep(bootstrapHandshakePollInterval) }
-
-				result, err := awaitRunLock(lockHeld, alive, halted, wait, bootstrapHandshakeAttempts)
-				if err != nil {
-					_ = bootstrapLock.Release()
-					clihelp.SetExit(ctx, output.Err(out, err.Error()))
-					return nil
-				}
-				driverLogPath := loomengine.LoomDriverLog(c.location)
-				if dispositionForHandshake(result) == handshakeRefuse {
-					_ = bootstrapLock.Release()
-					clihelp.SetExit(ctx, output.Err(out, "loom: driver did not take the run lock; see "+driverLogPath))
-					return nil
-				}
-				if result == awaitRunLockChildDied {
-					// Not a failure: the driver ran to completion and exited before the handshake's
-					// first poll, which is what every fast-halting run does. The tmux handover below
-					// still happens, because the status strand in that session is where the halt is
-					// legible. See dispositionForHandshake for the full argument.
-					logger.Info("loom: driver exited before the handshake observed the run lock; its outcome is recorded in the driver log", "pid", childPID, "log", driverLogPath)
-				}
-				if result == awaitRunLockHalted {
-					// The halted disposition's breadcrumb, symmetric with the child-died one above:
-					// on every resume of an already-halted run this arm fires on the handshake's
-					// first poll, before the driver has done anything, so without this line the log
-					// carries zero evidence which handshake path the bootstrap took — including in
-					// the narrow case where the child is not doing post-run bookkeeping but is
-					// genuinely wedged before its first persist (crucible round 2, R2-F3).
-					logger.Info("loom: driver is alive with the machine already halted; proceeding to the handover while it finishes post-run bookkeeping", "pid", childPID, "log", driverLogPath)
-				}
-			}
-
-			// Step 7: this tail is the CLI/Cobra Invariant's interactive-handoff exception. Steps
-			// 1 through 6 are pre-flight precisely so every fallible thing has already been
-			// reported before stdio is handed away here.
-			_ = bootstrapLock.Release()
-
-			if !mustAttach(noAttachFlag) {
-				return nil
-			}
-
-			if _, err := c.reed.Status(); err != nil {
-				clihelp.SetExit(ctx, output.Err(out, err.Error()))
-				return nil
-			}
-
-			// Read the operator's own terminal size against stdout, exactly as
-			// internal/reedcli's own attach verb does. On error (piped output, no
-			// controlling terminal) this does not report on the envelope and does not
-			// abort: AttachArgv answers a non-positive cols/rows with the bare argv,
-			// exactly today's behaviour, so nothing regresses on a non-TTY. This adds
-			// no new fallible step that reports on the envelope, so step 7 keeps its
-			// interactive-handoff exception unchanged.
-			cols, rows, err := term.GetSize(int(os.Stdout.Fd()))
+			recorded, found, err := fabricengine.ReadOrigin(c.location)
 			if err != nil {
-				logger.Warn("loom: no terminal size available, attaching without a chained layout", "err", err)
-				cols, rows = 0, 0
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				return nil
+			}
+			parentBranch, err := resolveLandingParent(recorded, found, taskBranch)
+			if err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				return nil
+			}
+			syncOpts := fabricengine.EnvSyncOptions()
+			pushBranch := func() error {
+				_, err := handle.PushBranch(syncOpts)
+				return err
+			}
+			c.env.Landing = landingDeps(
+				c.location,
+				c.runDeps.Geom,
+				taskBranch,
+				originURL,
+				parentBranch,
+				syncOpts.SkipPush,
+				pushBranch,
+				c.registry,
+				c.runner,
+				c.landingCfg,
+			)
+
+			// Ensure the friction directory before the run starts, and never clear it: run requires
+			// an already-seeded task (VerifySeedOwnership above), so a run-only invocation is by
+			// definition a resume, and frictionengine.Reflect renames the directory away on a clean
+			// reflection -- including on the RunBlocked trigger -- so a
+			// blocked -> operator investigates -> lyx loom run sequence would otherwise run with no
+			// friction directory at all and lose every note silently.
+			friction.EnsureDir(c.frictionDir)
+
+			shed, err := loomrecipe.New(c.env, c.shedPaths)
+			if err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				return nil
 			}
 
-			attach := exec.Command(c.reed.TmuxPath(), c.reed.AttachArgv(cols, rows)...)
-			attach.Stdin = os.Stdin
-			attach.Stdout = os.Stdout
-			attach.Stderr = os.Stderr
-			logger.Info("loomcli: spawning tmux attach", "tmux", c.reed.TmuxPath(), "cols", cols, "rows", rows)
-			if err := attach.Run(); err != nil {
-				exitCode := 1
-				var exitErr *exec.ExitError
-				if errors.As(err, &exitErr) {
-					exitCode = exitErr.ExitCode()
-				}
-				logger.Info("loomcli: tmux attach exited", "tmux", c.reed.TmuxPath(), "exitCode", exitCode)
-				clihelp.SetExit(ctx, exitCode)
-			} else {
-				logger.Info("loomcli: tmux attach exited", "tmux", c.reed.TmuxPath(), "exitCode", 0)
+			// Run's already-running sentinel (shedengine.ErrShedBusy) is treated as an ordinary
+			// error envelope rather than a special case here: a second driver against the same
+			// status file is a real refusal, not a race to tolerate.
+			result, err := shed.Run(cmd.Context())
+
+			// Unconditional, and deliberately above the early return below: the hard-error arm
+			// persists the failed state and returns a non-nil error, so appending this after the
+			// success envelope would drop that whole failure class -- and, worse, the entry-time
+			// crash observation lives only in this process's memory, so a crash-resume followed by
+			// a failing producer would be lost permanently, unrecoverable by any later run.
+			detectAndFileAnomalies(selfreportDeps{
+				Ctx:            cmd.Context(),
+				Selfreport:     c.cfg.Selfreport,
+				Entry:          entryObservation,
+				StatusPath:     c.shedPaths.StatusPath,
+				StatusLockPath: c.shedPaths.StatusLockPath,
+				MarkerPath:     loomengine.LoomSelfreportFiled(c.location),
+				MarkerLockPath: loomengine.LoomSelfreportFiledLock(c.location),
+				RunErr:         err,
+				IsLedgerPath:   shedadapters.IsLedgerPath,
+				ReadLedger:     shedadapters.ReadLedger,
+				FileIssue:      selfreportengine.CreateIssue,
+			})
+
+			if err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				return nil
 			}
+
+			// The reflection step fires here, after shed.Run has already returned and after
+			// RunDone has already merged and published: self-report filing is out-of-band
+			// bookkeeping, never a gate on landing the work. It fires only on RunDone or
+			// RunBlocked, never RunPaused (the run is not over -- re-filing on every pause would
+			// be noise) and never when err is non-nil (an engine-level fault leaves the run's own
+			// bookkeeping untrustworthy) -- structurally guaranteed here since a non-nil err from
+			// shed.Run already returned above. It can never fire from a recipe row: shedengine.Run
+			// returns immediately on RunBlocked without calling any further producer, so a row can
+			// structurally never cover the stuck half of these two trigger points.
+			frictionStatus := frictionengine.StatusSkipped
+			if shouldReflectFriction(c.frictionDir, result.Outcome) {
+				frictionStatus = c.reflectFriction()
+			}
+
+			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{
+				"outcome":         string(result.Outcome),
+				"halted_producer": result.HaltedProducer,
+				"reason":          result.Reason,
+				"history_length":  len(result.History),
+				"friction":        frictionStatus,
+			}))
 			return nil
 		},
 	}
-
-	cmd.Flags().StringVar(&parentFlag, "parent", "", "write the pair's provenance record once for a worktree created before that record existed; refused when it disagrees with an already-recorded value")
-	cmd.Flags().BoolVar(&noAttachFlag, "no-attach", false, "perform every bootstrap step and return once the driver has taken the run lock, instead of handing the terminal to the session")
-
-	return cmd
 }
 
-// RunAliasCommand returns the run verb registered a second time, as a bare root child ("lyx run"),
-// alongside the full "lyx loom run" subtree.
+// shouldReflectFriction reports whether runCmd's RunE should fire the friction reflection step: a
+// non-empty friction directory and an outcome of shedengine.RunDone or shedengine.RunBlocked.
+// It is the pure decision the reflection call site gates on, factored out so a test can drive every
+// outcome without a real Shed.
+func shouldReflectFriction(frictionDir string, outcome shedengine.RunOutcome) bool {
+	if frictionDir == "" {
+		return false
+	}
+	return outcome == shedengine.RunDone || outcome == shedengine.RunBlocked
+}
+
+// reflectFriction builds Deps from c's own already-resolved fields and calls frictionengine.Reflect,
+// returning the envelope's "friction" status. A non-nil error from Reflect is a Deps-validation
+// failure -- a wiring bug -- and is logged rather than surfaced: failing a successful, already-merged
+// run because an optional bookkeeping agent could not run is strictly worse than filing nothing, and
+// RunBlocked is worse still -- an operator staring at a blocked run does not need a second, unrelated
+// failure layered on top.
 //
-// It builds a fresh receiver and takes that receiver's own runCmd unchanged -- it carries no seam
-// functions of its own, because it delegates entirely into the subtree's verb -- and attaches that
-// same receiver's resolvePersistentPreRun as the returned command's own PersistentPreRunE. That
-// attachment is necessary here, not optional: a root child gets no parent group's PersistentPreRunE
-// to inherit, so without it the alias would run with location, cwd, env, and shedPaths all left
-// unresolved.
-// The group short-circuit inside resolvePersistentPreRun (its cmd.Name() == "loom" check) does not
-// fire for this command, since this command's own Name() is "run", never "loom" -- so the alias
-// always resolves the full engine stack exactly as "lyx loom run" does.
-//
-// The alias is not registered inside Command(); the root command registers it as a sibling of the
-// "loom" group, in a later batch.
-func RunAliasCommand() *cobra.Command {
-	c := &loomCLI{}
-	cmd := c.runCmd()
-	cmd.PersistentPreRunE = c.resolvePersistentPreRun
-	return cmd
+// The whole call is wrapped in a non-blocking lock on loomengine.LoomFrictionLock, and a lock already
+// held skips the step rather than waiting for it. This step runs AFTER shed.Run has returned, and
+// shed.Run releases the run lock on return -- so for the whole of the reflection agent's life (up to
+// friction_timeout_min, thirty minutes in the shipped template) the run lock reads as free and a
+// second "lyx loom start" spawns a second driver. That second driver is legitimate, but its own
+// reflection would archive the friction directory out from under the first one's live agent while
+// both held the same reflection-report.md as a declared output. Skipping rather than waiting is
+// correct here: the other reflection is already covering these very notes, so there is nothing left
+// for this one to do, and blocking would hold a driver open for another agent's whole deadline.
+func (c *loomCLI) reflectFriction() string {
+	// The logged "dir" is the lock's own parent — the directory this MkdirAll actually creates —
+	// not c.frictionDir, which is a sibling this call never touches (crucible round 2, R2-F4).
+	lockDir := filepath.Dir(loomengine.LoomFrictionLock(c.location))
+	if err := os.MkdirAll(lockDir, 0o755); err != nil {
+		logger.Warn("loom: could not create the friction lock's directory; skipping the reflection", "dir", lockDir, "error", err)
+		return frictionengine.StatusFailed
+	}
+	reflectionLock, free, err := lock.TryAcquireWriteLock(loomengine.LoomFrictionLock(c.location))
+	if err != nil {
+		logger.Warn("loom: could not probe the friction reflection lock; skipping the reflection", "dir", c.frictionDir, "error", err)
+		return frictionengine.StatusFailed
+	}
+	if !free {
+		logger.Warn("loom: another driver is already reflecting over this task's friction notes; skipping", "dir", c.frictionDir)
+		return frictionengine.StatusSkipped
+	}
+	defer func() { _ = reflectionLock.Release() }()
+
+	report, err := frictionengine.Reflect(frictionengine.Deps{
+		Shuttle:       c.runner,
+		FrictionDir:   c.frictionDir,
+		ArchivePrefix: loomengine.LoomFrictionArchivePrefix(c.location),
+		StencilsDir:   c.runDeps.Geom.StencilsDir,
+		FrictionSpec:  c.cfg.Friction,
+		Registry:      c.registry,
+		Timeout:       time.Duration(c.cfg.FrictionTimeoutMin) * time.Minute,
+	})
+	if err != nil {
+		logger.Warn("loom: friction reflection failed", "dir", c.frictionDir, "error", err)
+		return frictionengine.StatusFailed
+	}
+	return report.Status
 }

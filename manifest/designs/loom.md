@@ -7,12 +7,12 @@
 ## What it is
 
 Loom is the orchestrator that takes a task from intent to a merged change through a fixed sequence of **phases**, each guarded by a uniform **review gate**.
-The control flow — phase order, the review round-loop, gate decisions, resume — lives in Go (`lyx loom run`).
+The control flow — phase order, the review round-loop, gate decisions, resume — lives in Go (`lyx loom start`).
 The judgment — discussing, planning, building, reviewing, fixing — lives in agents spawned one-shot per step.
 Go owns the machine;
 the LLM owns the thinking.
 
-The orchestrator is the **`loom`** module (`lyx loom run`); the gate is a **review segment** in loom's own producer list — a generic `Bouncer` review-gate producer paired with a `Burler`-round producer, both in `internal/shedadapters` — the iterative review loop, hand-wired once per phase. The `Burler`-round producer composes `burler` (see the `internal/burlerengine` package documentation), the review+fix round worker. The `/ly-*` skill layer shrinks to thin human-facing wrappers over these. The everyday call has a convenience alias: **`lyx run` → `lyx loom run`**. (Naming: `lyx` is the binary, `loom`/`burler` are modules, `ly-*` are the skills — see [overview.md](../../docs/overview.md).)
+The orchestrator is the **`loom`** module (`lyx loom start`); the gate is a **review segment** in loom's own producer list — a generic `Bouncer` review-gate producer paired with a `Burler`-round producer, both in `internal/shedadapters` — the iterative review loop, hand-wired once per phase. The `Burler`-round producer composes `burler` (see the `internal/burlerengine` package documentation), the review+fix round worker. The `/ly-*` skill layer shrinks to thin human-facing wrappers over these. The everyday call has a convenience alias: **`lyx start` → `lyx loom start`**. (Naming: `lyx` is the binary, `loom`/`burler` are modules, `ly-*` are the skills — see [overview.md](../../docs/overview.md).)
 
 `loom` = `Shed` (see [shed.md](shed.md), the generic outer phase-FSM: sequencing, resume, crash recovery, pause, the status-file contract) + `loom`'s own ordered producer list, given in full in [the producer table below](#the-phase-machine--a-flat-producer-list-no-predefined-slots).
 That list is recipe-backed: `contracts/recipes/loom-recipe.yaml` names the recipe's seventeen rows and their routing, and `internal/loomrecipe` assembles it into the `[]shedengine.ProducerDef` `Shed` consumes — see `manifest/designs/shed-recipe.md`.
@@ -76,7 +76,7 @@ Review is never a property attached to the producer it reviews — it stays a se
 **The phase-machine skeleton is testable against fake phases before real producers are wired in**, the same fake-tested approach the round loop used against a fake `burler`.
 Build order followed from this as a deliberate operator decision, not just a testing technique: every `mechanical` row `loom` itself owns (plus `Webster`) was built for real first, and every `LLM`/review-segment row stayed a stub until then. All of them have since shipped.
 `Publish` and `Finalize` (rows 13–14) sit outside this ordering entirely — they are not `loom`'s to build; `loom: phase-machine scaffolding` stubbed both, then swapped in the real, shared-by-reference producers once `landing: Publish + Finalize producers` landed, on its own schedule (see [internal/landingshed](../../internal/landingshed/doc.go)).
-The shipped `landing: parent-fabric resolution chain` item completed their construction chain by filling `Env.Landing`, so `Publish`/`Finalize` are now genuinely constructible in a real `lyx loom drive` run, not merely implemented.
+The shipped `landing: parent-fabric resolution chain` item completed their construction chain by filling `Env.Landing`, so `Publish`/`Finalize` are now genuinely constructible in a real `lyx loom run` run, not merely implemented.
 The concrete breakdown of `loom`'s own rows — which land in `loom: phase-machine scaffolding` vs. `loom: session bootstrap` vs. the deliberately-last per-producer prompt/rubric tasks (`loom: Discussion-Write producer`, `loom: Discussion-Review producer`, `loom: Plan-Write producer`, `loom: Plan-Review producer` (shipped), `loom: Webster-Review producer` (shipped)), and exactly which rubrics are missing — lives in `manifest/roadmap.md` and the tasks' own wiki briefs, not restated here.
 
 `Discussion`'s mechanical pre-gate and `Preflight`/`Finalize`'s thin-Output shape are both resolved by `Discussion-Validate` (row 4) and `shed.md`'s producer-contract section respectively — see [`shed.md`'s producer contract vs. producer definition](shed.md#producer-contract-vs-producer-definition).
@@ -280,12 +280,12 @@ The stencil adds two things beyond those two bullets, so this durable record is 
 
 ## `loom` — the autonomous driver
 
-`lyx loom run` (alias `lyx run`) is the phase machine,
+`lyx loom start` (alias `lyx start`) is the phase machine,
 and it is essentially autonomous.
 It reads loom's **status file** in `_lyx/`, sees which phase (and review sub-state) the task is on, and continues from there.
-It is idempotent and re-entrant: **stop anywhere — Ctrl-C, crash, close the laptop — and the next `lyx run` continues where it left off.**
+It is idempotent and re-entrant: **stop anywhere — Ctrl-C, crash, close the laptop — and the next `lyx start` continues where it left off.**
 
-This is the lyx model applied to orchestration: one-shot, daemonless, file-coordinated, resume-from-disk. `lyx run` is a pure function of {status file + artifact files} with no hidden process state.
+This is the lyx model applied to orchestration: one-shot, daemonless, file-coordinated, resume-from-disk. `lyx start` is a pure function of {status file + artifact files} with no hidden process state.
 The status file lives in the weft repo, and `Shed` commits and pushes it on every producer transition through an injected seam `internal/loomcli` fills, so a second machine that pulls the branch sees the run's live FSM state rather than wherever the last commit happened to leave it.
 The push respects `SkipPush`;
 a commit failure halts the run, since a git fault on the run's own bookkeeping is infrastructure breakage, while a push failure only warns and self-heals on the next transition, since an offline laptop must not kill an autonomous run.
@@ -302,15 +302,15 @@ Both rows take it through `landingshed.Deps.CommitStatus`, an injected loop-owne
 It runs inside each producer's own `Call`, never once at bootstrap, because a resumed run persists again immediately before the producer is called.
 It is per-task and cwd-authoritative ([Principle 4](../../docs/overview.md#principles)).
 
-**Human boundaries.** `lyx run` drives every phase it *can* drive **unattended** — the agents are interactive tmux sessions,
+**Human boundaries.** `lyx start` drives every phase it *can* drive **unattended** — the agents are interactive tmux sessions,
 but no human sits in them ([Agent execution](#agent-execution)).
 When it reaches an inherently interactive boundary — Discussion input, or a `stuck` escalation — it stops cleanly, writes the next action to the status file, and exits.
 The human does the interactive part (which advances the status),
-and the next `lyx run` resumes unattended.
-So `lyx run` is autonomous for everything it can advance and yields only at the human gates.
+and the next `lyx start` resumes unattended.
+So `lyx start` is autonomous for everything it can advance and yields only at the human gates.
 
 **Auto mode.**
-A run can be told to *never* yield — `lyx run --auto`.
+A run can be told to *never* yield — `lyx start --auto`.
 The phase machine is unchanged;
 the only difference is that at a would-be human gate the agent is instructed to **make its own best guess and proceed** instead of asking (and the `AskUserQuestion` guardrail — see the `internal/shuttleengine/claudeengine` package documentation — already forbids it from blocking on a dialog).
 Auto mode does **not** turn off the view: reed still shows every strand (incl. the `lyx loom status` line), because you still want to watch.
@@ -332,11 +332,11 @@ The difference is in loom's *yielding*, not in whether anyone is looking.
   a producer call lasts minutes while the tail polls every second, so printing unconditionally turns the one-line pane into a scrolling ticker, fills tmux's scrollback with byte-identical lines until nothing else that pane printed survives, and buries the one line that matters — the transition — among the hundreds that do not.
 - **Round-level resume.**
   Handler/fixer artifacts are already on disk, so resuming inside a review block continues at the current round rather than restarting the phase.
-- **Separation of state.** The review segment owns its round state in its own run-directory files; `lyx run`'s status only needs phase + the segment's outcome. When the segment's `Bouncer` returns `Done`, `lyx run` advances.
+- **Separation of state.** The review segment owns its round state in its own run-directory files; `lyx start`'s status only needs phase + the segment's outcome. When the segment's `Bouncer` returns `Done`, `lyx start` advances.
 
 ### Crash recovery — resume on output files, not live processes
 
-After a crash, a restarted `lyx run` cold-starts from the `_lyx/` status file and must reconcile its logical state with whatever agents may or may not still be alive.
+After a crash, a restarted `lyx start` cold-starts from the `_lyx/` status file and must reconcile its logical state with whatever agents may or may not still be alive.
 The discipline that makes this tractable: **loom resumes on output files AND on live-agent evidence — file existence is never used on its own to skip a step.**
 The file contract still decouples "was the work done" from "is the process alive," but a check that reads output-file existence alone cannot tell an interrupted step from a re-entered one whose files were left behind by something other than a finished agent — see "The crash-versus-bounce question," below.
 For the step it was on:
@@ -375,7 +375,7 @@ For the step it was on:
    The probe there waits on such a seed instead of abandoning it, and costs nothing when nothing is live.
    `shedadapters.BurlerProducer` probes it for all three `*-Burler` rows, matching on the round's own `round-<N>-review.md`/`round-<N>-fixer-report.md` pair, which is exactly the `OutputFiles` set `burlerengine` declares for that round's shuttle run.
    The `Webster` row reaches the same no-duplicate property by a different mechanism it owns itself: `websterengine`'s entry-time reclaim stops a leftover live Master before starting a new one, rather than attaching to it.
-   Until the review-segment rows gained the probe, a driver crash inside any segment left that segment's agent alive and the next `lyx loom run` started a second one over it — two agents writing one review, and on the `Webster-Burler` row (`fix-scope: source`) two agents committing to one branch.
+   Until the review-segment rows gained the probe, a driver crash inside any segment left that segment's agent alive and the next `lyx loom start` started a second one over it — two agents writing one review, and on the `Webster-Burler` row (`fix-scope: source`) two agents committing to one branch.
 3. **Else (dead, no output):** `SingleLLMProducer.Call`'s unchanged archive-then-spawn fallback respawns a **fresh** agent for the step, hydrated from the prior round's on-disk artifacts.
    **Every destructive preparation a row owes before a fresh agent belongs on this branch, never ahead of step 2's probe** — `SingleLLMProducer`'s `prepareFreshSpawn` seam is where such a step runs, and `Plan-Write`'s stale-plan-directory rotation is the one row that uses it.
    A decorator wrapping the producer cannot host that work, because a decorator necessarily runs before `Call` and therefore before the probe: rotating `_lyx/plan` there moves `00-overview.md`, the Plan spec's sole declared output file, out from under the very agent the next line attaches to, and since the wait loop polls for bare existence at the spec's paths, a plan that was finished never classifies `done` and times out into a hard run failure instead.
@@ -395,9 +395,9 @@ This is why the harvest in step 2 is safe and a naive producer-level file-existe
 **A poisoned status file must never look like it belongs to bootstrap's own gate.** Every bootstrap gate that reads the status file before a driver is spawned passes a status file that fails to decode (malformed JSON, or an unknown field) rather than refusing on it — a decode failure is not any bootstrap gate's business to diagnose; the spawned driver's own `Shed.Run` step-1 read gate (the strict `state.ReadJSONStrict` read at the top of its loop, which runs before any producer is looked up) diagnoses it and surfaces it in the driver log, after which the handshake observes the fast-exiting driver and the bootstrap proceeds to the tmux handover, exactly the "a driver that died is a run that finished" flow.
 Three gates draw this line, and all three had to:
 
-- `loomengine.VerifySeedOwnership` — the ownership check both `lyx loom run` and `lyx loom drive` run — returns `nil` for a `state.ErrDecode` failure rather than escalating it, since the recorded slug it checks is unreadable from a file that does not decode and that question is not ownership's to answer.
-- `loomshed.Seed` — which only `lyx loom run` calls, to seed the file when absent — maps a `state.ErrDecode` failure to its own `ErrSeedExists` sentinel, the bootstrap's tolerated "already present, leave it" outcome: a present-but-undecodable file is still present, and a corrupt file is exactly what must not be overwritten (it may be the only forensic record of the broken run). `Seed` reads through the lenient `state.UpdateJSON`, which tolerates an unknown field but not malformed JSON, so before this mapping the unknown-field shape reached the handover while the malformed-JSON shape refused on the envelope at the Seed step — the split crucible round `fable5-high-r5` reproduced live and closed (F3).
-- `Shed.Run`'s own step-1 read gate is where the decode failure is finally diagnosed and logged — NOT the `Loom-Preflight` producer, which never runs when step 1's strict read errors first (see `CheckSeed`'s own doc comment on that pre-emption). `lyx loom drive`'s envelope names it directly: `shedengine: read status file …: state: decode failed`.
+- `loomengine.VerifySeedOwnership` — the ownership check both `lyx loom start` and `lyx loom run` run — returns `nil` for a `state.ErrDecode` failure rather than escalating it, since the recorded slug it checks is unreadable from a file that does not decode and that question is not ownership's to answer.
+- `loomshed.Seed` — which only `lyx loom start` calls, to seed the file when absent — maps a `state.ErrDecode` failure to its own `ErrSeedExists` sentinel, the bootstrap's tolerated "already present, leave it" outcome: a present-but-undecodable file is still present, and a corrupt file is exactly what must not be overwritten (it may be the only forensic record of the broken run). `Seed` reads through the lenient `state.UpdateJSON`, which tolerates an unknown field but not malformed JSON, so before this mapping the unknown-field shape reached the handover while the malformed-JSON shape refused on the envelope at the Seed step — the split crucible round `fable5-high-r5` reproduced live and closed (F3).
+- `Shed.Run`'s own step-1 read gate is where the decode failure is finally diagnosed and logged — NOT the `Loom-Preflight` producer, which never runs when step 1's strict read errors first (see `CheckSeed`'s own doc comment on that pre-emption). `lyx loom run`'s envelope names it directly: `shedengine: read status file …: state: decode failed`.
 
 Escalating a decode failure at any of the two pre-spawn gates used to stop the bootstrap before it ever spawned a driver, took the run lock, or reached the tmux handover, for a condition the driver's own run loop already surfaces in its own log — the same "one layer answering a question that belongs to a downstream layer" shape both residuals below are about.
 
@@ -437,7 +437,7 @@ the running orchestration honours it at the next **step boundary**, never mid-op
 **`pause` and `status` depend on the status file and nothing else.**
 Neither loads a module config, constructs an engine, or builds a producer — they resolve the location and the two status-file paths, and stop there.
 That independence is the point rather than an optimisation: an emergency brake that a fault in any of eight config files can take away is not an emergency brake, and the fault does not have to be the operator's — an agent loom itself spawned can rewrite `loom.yaml` mid-run.
-The verbs that genuinely build producers (`run`, `drive`) keep failing early and loudly on a bad config, because for them it is a real refusal rather than an unrelated one.
+The verbs that genuinely build producers (`start`, `run`) keep failing early and loudly on a bad config, because for them it is a real refusal rather than an unrelated one.
 
 - **A property of the loop pattern, not loom alone.**
   Every loop — loom (phases), the review segment (rounds), [Webster](#webster--a-black-box-loom-drives-the-sibling-of-the-review-segment) (batches;
@@ -448,7 +448,7 @@ The verbs that genuinely build producers (`run`, `drive`) keep failing early and
 - **The leaf agent finishes its unit;
   nothing is killed.**
   Boundary pause lets the in-flight worker complete its small unit (one batch / round — its output file written), then the driver stops.
-  Resume (`lyx loom run`) spawns the next step from the status file — the same resume-on-files-and-live-agent-evidence discipline as [crash recovery](#crash-recovery--resume-on-output-files-not-live-processes), minus the crash.
+  Resume (`lyx loom start`) spawns the next step from the status file — the same resume-on-files-and-live-agent-evidence discipline as [crash recovery](#crash-recovery--resume-on-output-files-not-live-processes), minus the crash.
 - **In-agent interrupt is optional.**
   To pause *faster* than the current unit finishes, `shuttle` (see the `internal/shuttleengine` package documentation) can ESC-and-hold the live agent (session kept warm in the reed server — see [overview.md#modules](../../docs/overview.md#modules), not killed;
   resume continues it in place).
@@ -463,7 +463,7 @@ The verbs that genuinely build producers (`run`, `drive`) keep failing early and
 
 | Piece | Form | Notes |
 |-------|------|-------|
-| `loom` (`lyx loom run`) | new Go module | the phase machine / autonomous driver |
+| `loom` (`lyx loom start`) | new Go module | the phase machine / autonomous driver |
 | the review segment (`Bouncer` + `Burler`-round producer) | new Shed adapters | the gate loop: run `burler` rounds → `APPROVED`/`stuck` + progress-judge + cap |
 | `burler` | new Go module | one review+fix round: A-review (+ optional cluster) → B-fix; composed by the segment's `Burler`-round producer |
 | webster | LLM orchestrator (Master session, in-session forks) + Go verbs (`internal/websterengine`/`internal/webstercli`) | a black box from loom's view — see `internal/websterengine`'s package documentation and [webster-spec.md](../../contracts/specs/webster-spec.md), webster's own cross-module contract |
@@ -473,7 +473,7 @@ The verbs that genuinely build producers (`run`, `drive`) keep failing early and
 | execution stack | existing/new infra | `proc` → reed → shuttle — see [overview.md#execution-stack](../../docs/overview.md#execution-stack-orchestration-layers) — built once, used by both modules above |
 | Preflight (row 1, generic) | new Go package (`internal/preflightshed`) | ✅ **Done**, engine-only (no cobra module yet) — validates the tier-1/tier-2 preconditions (geometry + at-worktree-root, warp worktree clean, weft paired & in sync) over git/filesystem state, over `internal/preflight.Check`; reusable verbatim by a second product's producer list |
 | Loom-Preflight (row 2, loom's own) | new Go package (`internal/loomengine`) | ✅ **Done**, engine-only (no cobra module yet) — validates that loom's own status file exists and is a coherent fresh seed (no half-finished prior run), over told paths; builds on `internal/state` |
-| `/ly-*` skills | thin wrappers | the first shipped skill, `ly-supervise`, is a supervised step-loop over `lyx loom step` with no phase knowledge of its own |
+| `/ly-*` skills | thin wrappers | the first shipped skill, `ly-drive`, is a supervised step-loop over `lyx loom step` with no phase knowledge of its own |
 
 The new Go specific to loom is the **two modules** (`loom`, `burler`) plus the **webster module** (`internal/websterengine`/`internal/webstercli` — the fat verbs + distillation the Master orchestrator drives) and the `lyx loom status` subcommand;
 beneath them is the shared [execution stack](../../docs/overview.md#execution-stack-orchestration-layers) (`proc`, `reed`, `shuttle`);
@@ -484,11 +484,11 @@ The display is **not** a module — it is `lyx loom status` running in a strand 
 ## Entry point — the session bootstrap
 
 Today: launch `claude` in a terminal, then `/mill-start` — an interactive LLM session drives everything.
-Loom inverts this: `lyx loom run` (alias `lyx run`) is the **session bootstrap** — more than the driver alone.
+Loom inverts this: `lyx loom start` (alias `lyx start`) is the **session bootstrap** — more than the driver alone.
 Run in a worktree's pane, it:
 
 ```
-lyx loom run:
+lyx loom start:
   0a. resolve the recorded parent branch                  (fabricengine.ReadOrigin, plus --parent for a
                                                            legacy worktree created before the record existed;
                                                            refused when --parent disagrees with a recorded value)
@@ -530,7 +530,7 @@ neither blocks the other.
 **The run-launcher.**
 A double-click shortcut makes this one click: `lyx fabric add` drops a third script, `run<ext>`, into the pair's existing per-slug hub launcher directory, beside the `ide` and `fabric-checkout` scripts already written there.
 It is written by the same builder and torn down by the same pair as those two, cross-platform by the same GOOS-selected extension (`.cmd` on Windows, `.sh` elsewhere).
-It invokes the explicit two-word verb, `lyx loom run`, rather than the root alias, so it keeps working regardless of what happens to the alias.
+It invokes the explicit two-word verb, `lyx loom start`, rather than the root alias, so it keeps working regardless of what happens to the alias.
 Because everything is [cwd-authoritative](../../docs/overview.md#principles), the launcher needs no arguments — geometry resolves from cwd, so you cannot run it from the wrong place.
 It embeds no absolute path: it climbs relatively to the worktree subpath, so nothing is machine-bound.
 It reuses the [launcher geometry](../../docs/overview.md#hub-geometry-invariants) already in `internal/fabricengine`.

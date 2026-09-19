@@ -114,7 +114,7 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetD
 
 	// The friction directory is resolved tolerantly, here rather than deferred to loomcli: this is
 	// what makes the per-batch implementer fork and the cold recovery strand actually receive the
-	// directive under `lyx loom run`, since Master drives the batch loop by running
+	// directive under `lyx loom start`, since Master drives the batch loop by running
 	// `lyx webster begin-batch <NN>` and `lyx webster recover-batch <NN>` as separate processes, so
 	// their prompts are composed here and not in internal/loomcli/wiring.go -- see the
 	// webstercli-resolves-the-friction-directory-in-hub-mode Shared Decision. A load error, or an

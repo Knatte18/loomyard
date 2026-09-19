@@ -3,7 +3,7 @@
 // Launchers are cross-platform: a .cmd script on Windows, an executable .sh script everywhere else,
 // both built from the pure content builder in launcher_content.go.
 // The checkout launcher file (fabric-checkout<ext>) invokes "lyx fabric checkout", and the run
-// launcher file (run<ext>) invokes "lyx loom run".
+// launcher file (run<ext>) invokes "lyx loom start".
 
 package fabricengine
 
@@ -159,7 +159,7 @@ func writeLaunchers(rec *Mutations, l *lyxcwd.Location, slug string) error {
 	// session bootstrap. It reuses spawnRel like the ide launcher, and invokes the explicit
 	// two-word verb rather than any root alias, so it keeps working regardless of what happens
 	// to the alias.
-	runContent, runMode := launcherScript(runtime.GOOS, spawnRel, "loom run")
+	runContent, runMode := launcherScript(runtime.GOOS, spawnRel, "loom start")
 	runPath := filepath.Join(launcherDir, "run"+ext)
 	if err := writeLauncherScriptIfChanged(rec, root, l.HubPath, runPath, runContent, runMode); err != nil {
 		return fmt.Errorf("write run%s: %w", ext, err)

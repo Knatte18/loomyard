@@ -74,8 +74,8 @@ func TestVerifySeedOwnership(t *testing.T) {
 	// which does the same strict read at the top of its loop and errors on it before any producer
 	// (the Loom-Preflight row that calls CheckSeed included) is ever looked up — so CheckSeed itself
 	// never runs on a decode failure, and this ownership check must not stand in for the step-1 gate.
-	// Reproduced live: before this test existed, a poisoned status file made both "lyx loom run" and
-	// "lyx loom drive" refuse on the envelope before ever spawning a driver, contradicting this
+	// Reproduced live: before this test existed, a poisoned status file made both "lyx loom start" and
+	// "lyx loom run" refuse on the envelope before ever spawning a driver, contradicting this
 	// function's own doc comment ("each is some other check's business").
 	t.Run("DecodeFailurePasses", func(t *testing.T) {
 		dir := t.TempDir()

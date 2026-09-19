@@ -1,6 +1,6 @@
-// sharedbootstrap.go holds the blocks `run` and `step` share.
+// sharedbootstrap.go holds the blocks `start` and `step` share.
 // Every helper here is lock-agnostic: none acquires or releases loomengine.LoomBootstrapLock,
-// because the lock's position differs between the two calling verbs -- `run` acquires it later than
+// because the lock's position differs between the two calling verbs -- `start` acquires it later than
 // its own seed/verify/commit block and holds it across the strand work, the driver spawn, and the
 // run-lock handshake, while `step` spawns no driver and runs no handshake, so it wraps the strand
 // block alone and releases before calling the producer. Each verb wraps its own lock window around
@@ -27,7 +27,7 @@ import (
 )
 
 // bootstrapStage names the sub-step of seedAndCommitBootstrap a failure occurred at, so a caller can
-// classify the failure without re-running the sub-steps: `run` deliberately ignores it and keeps
+// classify the failure without re-running the sub-steps: `start` deliberately ignores it and keeps
 // writing its envelope exactly as before this extraction, while `step` maps it onto its own refusal-
 // kind vocabulary.
 type bootstrapStage int
@@ -52,7 +52,7 @@ const (
 
 // seedAndCommitBootstrap resolves the parent branch, seeds the status file when absent, verifies
 // seed ownership, and commits the seed and the origin record into the fabric -- today's steps 1
-// through 3 from run.go's RunE, held here verbatim and in today's order so `step` can call the exact
+// through 3 from start.go's RunE, held here verbatim and in today's order so `step` can call the exact
 // same sequence.
 //
 // On success it returns the resolved parent branch, bootstrapStageNone, and a nil error. On failure
@@ -98,7 +98,7 @@ func (c *loomCLI) seedAndCommitBootstrap(slug, parentFlag string) (string, boots
 	// Step 2b: Tier 2's once-per-task friction directory handling, positioned after the ownership
 	// check on purpose -- the first-seed branch DELETES the directory, and a status file belonging to
 	// another task must never have its friction notes cleared by this worktree.
-	// Both calling verbs reach this, which is the point: `run` spawns `drive`, which ensures the
+	// Both calling verbs reach this, which is the point: `start` spawns `run`, which ensures the
 	// directory itself, but `step` spawns no driver at all and would otherwise leave every
 	// step-driven run composing note paths into a directory nothing had created.
 	ensureFrictionDirAfterSeed(c.frictionDir, seedErr)
@@ -135,7 +135,7 @@ func (c *loomCLI) seedAndCommitBootstrap(slug, parentFlag string) (string, boots
 // never-bootstrapped pair used to fail inside lock acquisition -- before the `found` value each of
 // them branches on was ever produced -- and reported an internal "no such file or directory" path
 // instead of their own remedy. Both verbs' carefully-worded "no status file ... run \"lyx loom
-// run\"" messages were unreachable on the one path they exist for.
+// start\"" messages were unreachable on the one path they exist for.
 //
 // This creates a directory and reads nothing, so it cannot resurrect a deleted status file or mask a
 // genuine absence: `found` still answers that question, and now actually gets asked.
@@ -155,7 +155,7 @@ func ensureStatusLockDir(statusLockPath string) error {
 // and never fails this call; a failed friction.EnsureDir is handled entirely inside that function,
 // which never returns an error either.
 //
-// It lives here, beside its one caller, rather than in run.go where it was first written: it was
+// It lives here, beside its one caller, rather than in start.go where it was first written: it was
 // never called from there at all. The clear-on-first-seed behaviour this function documents did not
 // ship, and its four unit tests were green over an orphan -- so a worktree whose friction directory
 // still held notes from an earlier task, or from an earlier run that never reached a reflection
@@ -174,7 +174,7 @@ func ensureFrictionDirAfterSeed(frictionDir string, seedErr error) {
 }
 
 // ensureStatusStrand ensures the worktree's tmux session is up and its status strand exists --
-// today's step-4 strand work from run.go's RunE, held here verbatim and in today's order, starting
+// today's step-4 strand work from start.go's RunE, held here verbatim and in today's order, starting
 // after the bootstrap-lock acquisition and ending before the run-lock probe.
 //
 // It returns the first error encountered, unwrapped, and nil on success. It must not acquire or
@@ -222,8 +222,8 @@ func (c *loomCLI) ensureStatusStrand() error {
 	return nil
 }
 
-// buildLoomShed builds the *shedengine.Shed drive.go's RunE runs -- today's shed-construction
-// block from drive.go, held here verbatim and in today's order: open the fabric, read the current
+// buildLoomShed builds the *shedengine.Shed run.go's RunE runs -- today's shed-construction
+// block from run.go, held here verbatim and in today's order: open the fabric, read the current
 // branch and origin URL, resolve the recorded origin and the landing parent, assemble Env.Landing,
 // and construct the shed via loomrecipe.New.
 //

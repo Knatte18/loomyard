@@ -1,10 +1,10 @@
 ---
-name: ly-supervise
-description: Drive a loom task through a supervised loop over `lyx loom step`, reading each step's envelope and stopping on any non-running state. Explicit invocation only.
+name: ly-drive
+description: Drive a loom task through a loop over `lyx loom step`, reading each step's envelope and stopping on any non-running state. Explicit invocation only.
 disable-model-invocation: true
 ---
 
-# ly-supervise
+# ly-drive
 
 Drive one loom task by repeatedly invoking `lyx loom step`, reading the envelope it returns, and stopping the moment the task reaches a state a human needs to look at.
 This skill carries no phase knowledge of its own.
@@ -38,14 +38,14 @@ Before the first step, take one `lyx loom status` read and record its `current_p
 It exists for one reason: the interrupted-step branch later in this loop compares against it.
 The very first step of a session — or the first step after an operator re-invokes past the iteration cap — has no prior step envelope to compare with, so the baseline is what makes that comparison possible.
 
-On a task that has never been bootstrapped there is no status file yet, and this read returns an error envelope naming `lyx loom run` as the remedy.
+On a task that has never been bootstrapped there is no status file yet, and this read returns an error envelope naming `lyx loom start` as the remedy.
 That is not a failure to report: record an empty baseline and proceed to the first step, which bootstraps the task itself.
 Treat any *other* status error as a hand-back, the same as an error envelope from a step.
 
 ## How to invoke a step
 
 Never invoke a step as a blocking foreground shell call.
-Launch it in the background with stdout redirected to a per-step file under `.scratch/ly-supervise/step-<n>.json`, then wait for that process to exit and read the envelope from the file.
+Launch it in the background with stdout redirected to a per-step file under `.scratch/ly-drive/step-<n>.json`, then wait for that process to exit and read the envelope from the file.
 
 This matters for a concrete reason: a single step blocks for a whole producer call, loom's LLM rows are minutes-to-an-hour agent spawns, and every agent shell tool caps a foreground call in the single-digit minutes.
 A foreground call would be killed mid-producer on exactly the rows this loop exists to watch.
@@ -113,12 +113,12 @@ Outside the handback branch, print no orphaned-agent warning, because there is n
 ## Self-report
 
 Nothing files automatically while this loop is driving.
-Loom's two automatic self-report tiers both hang off `lyx loom drive`'s own run, and `lyx loom step` runs neither — so on a supervised task, a blocked halt, a producer failure, and a friction note left behind all pass unreported unless this skill reports them.
+Loom's two automatic self-report tiers both hang off `lyx loom run`'s own run, and `lyx loom step` runs neither — so on a supervised task, a blocked halt, a producer failure, and a friction note left behind all pass unreported unless this skill reports them.
 That is the trade this design makes: a live supervisor with an operator in the loop instead of a primitive filing public issues on its own, forty times a run.
 Read it as a responsibility, not a gap.
 
 The friction notes live at `.lyx/loom/friction/` under the task worktree root — a fixed location, not phase knowledge.
-Whenever the loop stops — terminal state, blocked, hand-back, or iteration cap — list that directory and name any notes found in the stop report, because nothing else will: `step` never spawns the reflection pass that `drive` runs, and the next task's own first seed clears the directory, so a note left unread here is dropped silently.
+Whenever the loop stops — terminal state, blocked, hand-back, or iteration cap — list that directory and name any notes found in the stop report, because nothing else will: `step` never spawns the reflection pass that `run` runs, and the next task's own first seed clears the directory, so a note left unread here is dropped silently.
 Reading the notes and judging whether one is worth a `lyx selfreport create` call is part of the same operator-gated flow below.
 
 This skill may call `lyx selfreport create` only after the loop has stopped — terminal state, blocked, hand-back, or iteration cap — never between steps, and at most once per supervised run.

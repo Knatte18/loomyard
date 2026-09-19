@@ -7,9 +7,9 @@
 // hubforge.NewHub, a real tmux binary resolved from PATH or an override env var, skipping outright
 // when the multiplexer is absent -- adapted for loom's own shape: every verb here goes through the
 // REAL BUILT cmd/lyx binary as a genuine subprocess, never RunCLI in-process, because
-// "lyx loom run" spawns its detached driver via os.Executable(), which resolves to whatever binary is
-// currently running -- an in-process RunCLI call would resolve that to the test binary itself, not a
-// binary "loom drive" knows how to dispatch.
+// "lyx loom start" spawns its detached driver via os.Executable(), which resolves to whatever binary
+// is currently running -- an in-process RunCLI call would resolve that to the test binary itself, not
+// a binary "loom run" knows how to dispatch.
 //
 // This suite is the regression home for the two bugs this task's own design rounds found before any
 // code existed: the cleanliness-ordering blocker (loom's own seed dirtying the weft and failing
@@ -147,7 +147,7 @@ func runLoomCLINoFatal(exe, dir string, timeout time.Duration, args ...string) (
 // adds one worktree pair -- the shape every test in this suite needs before it can bootstrap loom
 // against it. AddPair already writes and commits the pair's origin record (see the plan's
 // origin-record-records-both-its-write-and-its-commit decision), so a caller never needs a --parent
-// flag on its own first "loom run" call.
+// flag on its own first "loom start" call.
 func newWiredPairFixture(t *testing.T) (h *hubforge.Hub, loc *lyxcwd.Location, worktree, slug string) {
 	t.Helper()
 
@@ -179,7 +179,7 @@ func newWiredPairFixture(t *testing.T) (h *hubforge.Hub, loc *lyxcwd.Location, w
 // This is a correction, not a convenience. The suite's own header used to assert that every fixture
 // here "bounces before a real spawn", and the campaign's cost model was written on that claim. It
 // stopped being true: a crucible round measured one real `claude` subprocess alive for the full
-// thirty seconds of TestSmokeDriveStandalone_AdvancesMachineFromExistingSeed, which is why that test
+// thirty seconds of TestSmokeRunStandalone_AdvancesMachineFromExistingSeed, which is why that test
 // timed out rather than merely being slow. Every test in this file is about bootstrap and driver
 // mechanics -- locks, handshakes, strands, the status file -- and none of them is about what a
 // provider does, so removing the provider makes the suite test what it claims to test AND makes the
@@ -243,9 +243,12 @@ func probeReedEngine(t *testing.T, loc *lyxcwd.Location) *reedengine.Engine {
 }
 
 // findDriverPIDs returns the pids of every live process whose current working directory is worktree
-// and whose argv contains "drive" -- the /proc-native way to find the detached "lyx loom drive"
-// process a bootstrap spawned, since it inherits its parent's cwd and its own argv is fixed. Linux
-// only, mirroring internal/reedcli's own /proc-native probes; returns nil on any other GOOS.
+// and whose argv contains an adjacent "loom" followed by "run" pair -- the /proc-native way to find
+// the detached "lyx loom run" process a bootstrap spawned, since it inherits its parent's cwd and its
+// own argv is fixed. A lone "run" argv element is not a sufficient discriminator: "run" is also a verb
+// on shuttle, burler, and webster, so it would over-match any such process sharing the worktree cwd;
+// the adjacent-pair requirement is what makes this specific to the loom driver. Linux only, mirroring
+// internal/reedcli's own /proc-native probes; returns nil on any other GOOS.
 func findDriverPIDs(worktree string) []int {
 	if runtime.GOOS != "linux" {
 		return nil
@@ -268,8 +271,9 @@ func findDriverPIDs(worktree string) []int {
 		if err != nil {
 			continue
 		}
-		for _, a := range strings.Split(strings.TrimRight(string(raw), "\x00"), "\x00") {
-			if a == "drive" {
+		argv := strings.Split(strings.TrimRight(string(raw), "\x00"), "\x00")
+		for i := 0; i+1 < len(argv); i++ {
+			if argv[i] == "loom" && argv[i+1] == "run" {
 				pids = append(pids, pid)
 				break
 			}
@@ -305,7 +309,7 @@ func waitRunLockFree(t *testing.T, loc *lyxcwd.Location, timeout time.Duration) 
 // It exists because "kill the detached driver, then assert the row it was on" is a race unless the
 // row is ESTABLISHED first, and a killed-at-an-arbitrary-moment driver lands on whichever row it
 // happened to reach. Killing without this wait made
-// TestSmokeDriveStandalone_AdvancesMachineFromExistingSeed fail intermittently whenever the kill
+// TestSmokeRunStandalone_AdvancesMachineFromExistingSeed fail intermittently whenever the kill
 // landed while the driver was still on Loom-Preflight: the follow-up drive then legitimately
 // completed that row and advanced to the next one, so both the current_producer-unchanged and the
 // history-unchanged assertions reported a routing bug that was not there (crucible round
@@ -365,7 +369,7 @@ func weftHeadChangedFiles(t *testing.T, dir string) []string {
 }
 
 // seedAndCommitStatus seeds loc's status file directly through the production Seed function and
-// commits it weft-side -- the same seed-then-commit shape "lyx loom run" itself performs, used here
+// commits it weft-side -- the same seed-then-commit shape "lyx loom start" itself performs, used here
 // so a standalone-driver test does not need a live tmux server just to get a valid seeded pair.
 func seedAndCommitStatus(t *testing.T, loc *lyxcwd.Location, slug string) {
 	t.Helper()
@@ -417,7 +421,7 @@ func poisonStatusFile(t *testing.T, loc *lyxcwd.Location) {
 // JSON (not merely an unknown field) and commits it weft-side. It is the second poison shape the
 // crash-recovery design promises never looks like bootstrap's own gate: unlike the unknown-field
 // shape poisonStatusFile writes, malformed JSON does not decode even leniently, so before crucible
-// round fable5-high-r5's F3 fix it made loomshed.Seed (and therefore `lyx loom run`) refuse on the
+// round fable5-high-r5's F3 fix it made loomshed.Seed (and therefore `lyx loom start`) refuse on the
 // envelope before ever spawning a driver. loomshed.Seed now maps a decode failure to ErrSeedExists,
 // so both poison shapes reach the same "a driver that died is a run that finished" bootstrap path.
 func poisonStatusFileMalformed(t *testing.T, loc *lyxcwd.Location) {
@@ -461,9 +465,9 @@ func TestSmokeBootstrap_BringsUpSessionStrandAndDriver(t *testing.T) {
 	// loop can finish inside a single poll gap) can make the handshake itself report a refusal even
 	// though every one of this case's own assertions -- session up, strand present, status seeded --
 	// already succeeded before the handshake ever ran. See the file-level doc comment.
-	stdout, _, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "run")
+	stdout, _, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "start")
 	if err != nil {
-		t.Fatalf("loom run: %v; output: %s", err, stdout)
+		t.Fatalf("loom start: %v; output: %s", err, stdout)
 	}
 
 	eng := probeReedEngine(t, loc)
@@ -502,15 +506,15 @@ func TestSmokeBootstrap_SecondInvocationDoesNotSpawnASecondDriver(t *testing.T) 
 	// reason the file-level doc comment states -- what this case actually guards is that the
 	// SEED-EXISTS sentinel specifically is never what surfaces as a failure, which is asserted
 	// directly against the error text below rather than against ok:false's mere presence.
-	stdout1, _, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "run")
+	stdout1, _, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "start")
 	if err != nil {
-		t.Fatalf("first loom run: %v; output: %s", err, stdout1)
+		t.Fatalf("first loom start: %v; output: %s", err, stdout1)
 	}
 	firstPIDs := findDriverPIDs(worktree)
 
-	stdout2, _, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "run")
+	stdout2, _, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "start")
 	if err != nil {
-		t.Fatalf("second loom run: %v; output: %s", err, stdout2)
+		t.Fatalf("second loom start: %v; output: %s", err, stdout2)
 	}
 	if strings.Contains(stdout2, `"ok":false`) && strings.Contains(strings.ToLower(stdout2), "already exists") {
 		t.Errorf("second bootstrap surfaced the seed-exists sentinel as a failure (must be tolerated, not surfaced): %s", stdout2)
@@ -533,16 +537,16 @@ func TestSmokeBootstrap_SecondInvocationDoesNotSpawnASecondDriver(t *testing.T) 
 	}
 }
 
-// (c) the driver verb standalone with no tmux at all, on a pair the fixture seeded by running the
+// (c) the run verb standalone with no tmux at all, on a pair the fixture seeded by running the
 // bootstrap once and then killing the driver, advances the machine and records that advance in the
 // status file.
-func TestSmokeDriveStandalone_AdvancesMachineFromExistingSeed(t *testing.T) {
+func TestSmokeRunStandalone_AdvancesMachineFromExistingSeed(t *testing.T) {
 	tmuxBinaryPath(t)
 	exe := buildLyxBinary(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
 	registerBootstrapTeardown(t, loc, worktree)
 
-	stdout, _, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "run")
+	stdout, _, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "start")
 	if err != nil {
 		t.Fatalf("bootstrap: %v; output: %s", err, stdout)
 	}
@@ -586,11 +590,11 @@ func TestSmokeDriveStandalone_AdvancesMachineFromExistingSeed(t *testing.T) {
 	// test's own timeout in CI; once Wait's started-gating fix let the dead pane classify fast
 	// (~startup_timeout_s), the same "no history entry" outcome surfaced immediately and revealed
 	// the stale assertion.
-	driveOut, driveCode, err := runLoomCLINoFatal(exe, worktree, 3*time.Minute, "loom", "drive")
+	driveOut, driveCode, err := runLoomCLINoFatal(exe, worktree, 3*time.Minute, "loom", "run")
 	if err != nil {
-		t.Fatalf("loom drive: %v; output: %s", err, driveOut)
+		t.Fatalf("loom run: %v; output: %s", err, driveOut)
 	}
-	t.Logf("loom drive exited %d: %s", driveCode, strings.TrimSpace(driveOut))
+	t.Logf("loom run exited %d: %s", driveCode, strings.TrimSpace(driveOut))
 
 	after, foundAfter, err := state.ReadJSONStrict[shedengine.Status](loomengine.LoomStatusFile(loc), loomengine.LoomStatusLock(loc))
 	if err != nil || !foundAfter {
@@ -610,21 +614,21 @@ func TestSmokeDriveStandalone_AdvancesMachineFromExistingSeed(t *testing.T) {
 	}
 }
 
-// (d) the driver verb on a never-seeded pair refuses on the envelope with a message naming the
+// (d) the run verb on a never-seeded pair refuses on the envelope with a message naming the
 // bootstrap verb, writes no driver log, and leaves the weft clean.
-func TestSmokeDriveStandalone_RefusesOnNeverSeededPair(t *testing.T) {
+func TestSmokeRunStandalone_RefusesOnNeverSeededPair(t *testing.T) {
 	exe := buildLyxBinary(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
 
 	weftDir := fabricengine.WeftWorktree(loc)
 	beforeCount := weftCommitCount(t, weftDir)
 
-	stdout, code, err := runLoomCLINoFatal(exe, worktree, 15*time.Second, "loom", "drive")
+	stdout, code, err := runLoomCLINoFatal(exe, worktree, 15*time.Second, "loom", "run")
 	if err != nil {
-		t.Fatalf("loom drive: %v; output: %s", err, stdout)
+		t.Fatalf("loom run: %v; output: %s", err, stdout)
 	}
 	if code != 1 {
-		t.Fatalf("loom drive on a never-seeded pair = %d; want 1", code)
+		t.Fatalf("loom run on a never-seeded pair = %d; want 1", code)
 	}
 
 	var envelope struct {
@@ -637,7 +641,7 @@ func TestSmokeDriveStandalone_RefusesOnNeverSeededPair(t *testing.T) {
 	if envelope.OK {
 		t.Fatalf("refusal envelope ok = true; want false: %s", stdout)
 	}
-	if !strings.Contains(envelope.Error, "loom run") {
+	if !strings.Contains(envelope.Error, "loom start") {
 		t.Errorf("refusal error = %q; want it to name the bootstrap verb", envelope.Error)
 	}
 
@@ -661,10 +665,10 @@ func TestSmokeDriveStandalone_RefusesOnNeverSeededPair(t *testing.T) {
 // failure. See poisonStatusFile's doc comment for the rig itself: an unknown field state.UpdateJSON
 // tolerates but state.ReadJSONStrict rejects, so Shed.Run's own read gate fails before the loop ever
 // calls a producer -- before any persist can happen.
-func TestSmokeDriveStandalone_FailureBeforeFirstPersistLeavesNonEmptyLog(t *testing.T) {
+func TestSmokeRunStandalone_FailureBeforeFirstPersistLeavesNonEmptyLog(t *testing.T) {
 	exe := buildLyxBinary(t)
 	_, loc, worktree, slug := newWiredPairFixture(t)
-	// "loom drive" calls reed.Up() before the phase machine runs, so this case brings a real tmux
+	// "loom run" calls reed.Up() before the phase machine runs, so this case brings a real tmux
 	// server up even though it never reaches a producer. Without this teardown it leaked that server
 	// past the test -- measured, not theorised: two of them were left running by a crucible round's
 	// own smoke sweep.
@@ -685,17 +689,17 @@ func TestSmokeDriveStandalone_FailureBeforeFirstPersistLeavesNonEmptyLog(t *test
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, exe, "loom", "drive")
+	cmd := exec.CommandContext(ctx, exe, "loom", "run")
 	cmd.Dir = worktree
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	runErr := cmd.Run()
 	_ = logFile.Close()
 	if ctx.Err() == context.DeadlineExceeded {
-		t.Fatalf("loom drive against a poisoned status file timed out")
+		t.Fatalf("loom run against a poisoned status file timed out")
 	}
 	if runErr == nil {
-		t.Fatalf("loom drive against a poisoned status file succeeded; want a failure before any persist")
+		t.Fatalf("loom run against a poisoned status file succeeded; want a failure before any persist")
 	}
 
 	content, err := os.ReadFile(logPath)
@@ -718,15 +722,15 @@ func TestSmokeDriveStandalone_FailureBeforeFirstPersistLeavesNonEmptyLog(t *test
 	}
 }
 
-// (e2) `lyx loom run` against a MALFORMED-JSON status file proceeds to the tmux handover exactly as
+// (e2) `lyx loom start` against a MALFORMED-JSON status file proceeds to the tmux handover exactly as
 // the unknown-field shape does, rather than refusing on the envelope at the Seed step. This is
 // crucible round fable5-high-r5's F3 regression guard, and the composed CLI-verb half its unit tests
 // (loomshed.TestSeed_RefusesUndecodableFileAsExists, state.TestCorruptFile) cannot see: only the
-// real `lyx loom run` binary exercises the whole Seed -> VerifySeedOwnership -> commit -> spawn ->
+// real `lyx loom start` binary exercises the whole Seed -> VerifySeedOwnership -> commit -> spawn ->
 // handshake chain against a poisoned weft-committed status file.
 //
 // Before the fix, loomshed.Seed returned the raw decode error (not ErrSeedExists) for malformed
-// JSON, so step 2 of `lyx loom run` refused on the envelope before ever spawning a driver — the very
+// JSON, so step 2 of `lyx loom start` refused on the envelope before ever spawning a driver — the very
 // "poisoned status file looks like bootstrap's own gate" state the crash-recovery design forbids.
 // After it, Seed maps the decode failure to ErrSeedExists, the bootstrap tolerates it, and the
 // spawned driver's own Shed.Run step-1 read gate diagnoses the decode failure in the driver log,
@@ -738,7 +742,7 @@ func TestSmokeBootstrap_MalformedStatusProceedsToHandoverAndLogsWhy(t *testing.T
 	_, loc, worktree, _ := newWiredPairFixture(t)
 	registerBootstrapTeardown(t, loc, worktree)
 
-	firstOut, _, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "run")
+	firstOut, _, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "start")
 	if err != nil {
 		t.Fatalf("first bootstrap: %v; output: %s", err, firstOut)
 	}
@@ -749,7 +753,7 @@ func TestSmokeBootstrap_MalformedStatusProceedsToHandoverAndLogsWhy(t *testing.T
 
 	poisonStatusFileMalformed(t, loc)
 
-	stdout, _, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "run")
+	stdout, _, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "start")
 	if err != nil {
 		t.Fatalf("second (malformed-status) bootstrap: %v; output: %s", err, stdout)
 	}
@@ -804,8 +808,8 @@ func TestSmokeFabricAdd_RunLauncherExistsThenGoneAfterRemove(t *testing.T) {
 // status file. This is one of the two named regression guards this suite exists for and asserts the
 // mechanism directly, not merely a happy outcome.
 // This case deliberately drives just the seed-then-commit mechanism directly (seedAndCommitStatus,
-// the same Seed+CommitWeftPaths pair "lyx loom run" itself performs at its own steps 2-3) rather than
-// the full "loom run" bootstrap: once a driver actually runs, its own persists rewrite the status
+// the same Seed+CommitWeftPaths pair "lyx loom start" itself performs at its own steps 2-3) rather than
+// the full "loom start" bootstrap: once a driver actually runs, its own persists rewrite the status
 // file's WORKING TREE content on every phase transition without ever committing those rewrites (only
 // the CLI's own explicit seed commit is ever committed), which would dirty the weft again and make a
 // post-driver cleanliness check fail for a reason that has nothing to do with the ordering this case
@@ -857,8 +861,8 @@ func mustGitSmoke(t *testing.T, dir string, args ...string) {
 }
 
 // (g2) the regression guard for the origin-record self-healing gap the holistic review found: a
-// legacy pair whose provenance record was written to disk (step 1 of "loom run") but never committed
-// weft-side (step 3), because the process died in between. The very next "loom run" must find the
+// legacy pair whose provenance record was written to disk (step 1 of "loom start") but never committed
+// weft-side (step 3), because the process died in between. The very next "loom start" must find the
 // record already present on disk with a matching value -- resolveParentBranch's ordinary re-run row,
 // requesting no write of its own -- and still commit the still-untracked record, exactly as the status
 // file already self-heals, rather than leaving it stranded as an untracked file that permanently fails
@@ -889,12 +893,12 @@ func TestSmokeBootstrap_OriginRecordSelfHealsAfterCrashBetweenWriteAndCommit(t *
 		t.Fatalf("origin record status before the healing run = clean; want the simulated crash to leave it uncommitted")
 	}
 
-	// The next "loom run" needs no --parent: ReadOrigin finds the just-written record on disk with a
+	// The next "loom start" needs no --parent: ReadOrigin finds the just-written record on disk with a
 	// matching value, so resolveParentBranch reports write == false -- the exact row the finding says
 	// used to strand the record forever.
-	stdout, _, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "run")
+	stdout, _, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "start")
 	if err != nil {
-		t.Fatalf("healing loom run: %v; output: %s", err, stdout)
+		t.Fatalf("healing loom start: %v; output: %s", err, stdout)
 	}
 
 	// The origin record specifically must now be committed and clean. The overall weft is not
@@ -922,7 +926,7 @@ func weftPathspecStatus(t *testing.T, dir, relPath string) string {
 // (h) the spawn handshake -- two bootstrap invocations started concurrently produce exactly one
 // driver process and no already-running refusal in the driver log. This is the other named regression
 // guard: the pre-fix defect was the run lock being taken by the child long after the spawn call
-// returned, which raced two concurrent "lyx loom run" invocations into each believing it must spawn
+// returned, which raced two concurrent "lyx loom start" invocations into each believing it must spawn
 // its own driver.
 func TestSmokeBootstrap_ConcurrentSpawnHandshakeYieldsOneDriver(t *testing.T) {
 	tmuxBinaryPath(t)
@@ -930,7 +934,7 @@ func TestSmokeBootstrap_ConcurrentSpawnHandshakeYieldsOneDriver(t *testing.T) {
 	_, loc, worktree, _ := newWiredPairFixture(t)
 	registerBootstrapTeardown(t, loc, worktree)
 
-	// A background sampler polls the live driver-pid count for the whole duration both "loom run"
+	// A background sampler polls the live driver-pid count for the whole duration both "loom start"
 	// invocations are in flight, tracking the maximum ever observed -- a post-hoc single check after
 	// both return cannot prove a double-spawn never happened transiently, since either or both
 	// drivers may already have finished their own bounded bounce loop by the time a caller checks
@@ -962,7 +966,7 @@ func TestSmokeBootstrap_ConcurrentSpawnHandshakeYieldsOneDriver(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			outputs[i], _, runErrs[i] = runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "run")
+			outputs[i], _, runErrs[i] = runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "start")
 		}(i)
 	}
 	wg.Wait()
@@ -1009,7 +1013,7 @@ func TestSmokeBootstrap_DiedDriverProceedsToHandoverAndLogsWhy(t *testing.T) {
 	_, loc, worktree, _ := newWiredPairFixture(t)
 	registerBootstrapTeardown(t, loc, worktree)
 
-	firstOut, _, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "run")
+	firstOut, _, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "start")
 	if err != nil {
 		t.Fatalf("first bootstrap: %v; output: %s", err, firstOut)
 	}
@@ -1020,7 +1024,7 @@ func TestSmokeBootstrap_DiedDriverProceedsToHandoverAndLogsWhy(t *testing.T) {
 
 	poisonStatusFile(t, loc)
 
-	stdout, _, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "run")
+	stdout, _, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "start")
 	if err != nil {
 		t.Fatalf("second (rigged) bootstrap: %v; output: %s", err, stdout)
 	}

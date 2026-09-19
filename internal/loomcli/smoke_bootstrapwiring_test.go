@@ -48,16 +48,16 @@ func plantFrictionNote(t *testing.T, loc *lyxcwd.Location, name string) string {
 // TestSmokeBootstrap_FirstSeedClearsFrictionNotesAndReentryKeepsThem is the regression guard for the
 // once-per-task friction clear that never shipped.
 //
-// ensureFrictionDirAfterSeed was written, documented, and unit-tested in run.go, and called from
-// nowhere: neither runCmd's RunE nor seedAndCommitBootstrap reached it. Its four tests were green
+// ensureFrictionDirAfterSeed was written, documented, and unit-tested in start.go, and called from
+// nowhere: neither startCmd's RunE nor seedAndCommitBootstrap reached it. Its four tests were green
 // over an orphan. The consequence, reproduced live against a real hub in crucible round 1: notes
 // left in .lyx/loom/friction/ by an earlier task, or by an earlier run that never reached a
 // reflection trigger, survived a genuine first seed and were handed to the NEXT task's reflection
 // agent as that task's own friction -- which then filed a GitHub issue about them.
 //
 // Both branches are asserted through the real bootstrap, because the branch is not the thing that
-// was broken; reaching it was. `lyx loom step` is the driving verb rather than `lyx loom run`
-// precisely because `step` spawns no driver: `run` delegates to `drive`, which calls
+// was broken; reaching it was. `lyx loom step` is the driving verb rather than `lyx loom start`
+// precisely because `step` spawns no driver: `start` delegates to `run`, which calls
 // friction.EnsureDir itself and would mask an unwired clear behind a directory that exists anyway.
 func TestSmokeBootstrap_FirstSeedClearsFrictionNotesAndReentryKeepsThem(t *testing.T) {
 	exe := buildLyxBinary(t)
@@ -100,7 +100,7 @@ func TestSmokeBootstrap_FirstSeedClearsFrictionNotesAndReentryKeepsThem(t *testi
 // the marker landed beside the ephemeral tree's other loom files, matching the persisted status.
 //
 // Without the marker, a completed step leaves state running with a live history and a free run
-// lock, which is byte-identical to a mid-run driver death: the next `lyx loom drive` with
+// lock, which is byte-identical to a mid-run driver death: the next `lyx loom run` with
 // selfreport on then files a spurious crash-resume GitHub issue for a task in which nothing
 // crashed.
 //
@@ -126,7 +126,7 @@ func TestSmokeStep_RecordsCleanHandoffMarkerMatchingPersistedStatus(t *testing.T
 		t.Fatalf("read step clean-handoff marker: %v", err)
 	}
 	if !found {
-		t.Fatalf("no clean-handoff marker at %s after a completed step; want one matching the persisted status -- without it the next drive files a spurious crash-resume", loomengine.LoomStepHandoff(loc))
+		t.Fatalf("no clean-handoff marker at %s after a completed step; want one matching the persisted status -- without it the next run files a spurious crash-resume", loomengine.LoomStepHandoff(loc))
 	}
 	if marker.HistoryLength != len(persisted.History) || marker.State != string(persisted.State) {
 		t.Errorf("clean-handoff marker = {history %d, state %q}; want {history %d, state %q} to match the persisted status",
@@ -144,7 +144,7 @@ func TestSmokeStep_RecordsCleanHandoffMarkerMatchingPersistedStatus(t *testing.T
 // and leaked an internal "no such file or directory" path instead of their own remedy. Neither verb's
 // unit tests could see it: they build both paths under a t.TempDir() that already exists.
 //
-// This is the ly-supervise skill's literal first instruction ("take one `lyx loom status` read...
+// This is the ly-drive skill's literal first instruction ("take one `lyx loom status` read...
 // This baseline always exists"), so the skill's opening move failed on every brand-new task.
 func TestSmokeStatusAndPause_OnNeverBootstrappedPairNameTheRemedy(t *testing.T) {
 	exe := buildLyxBinary(t)
@@ -181,7 +181,7 @@ func TestSmokeStatusAndPause_OnNeverBootstrappedPairNameTheRemedy(t *testing.T) 
 			if !strings.Contains(envelope.Error, "no status file") {
 				t.Errorf("loom %s error = %q; want it to say there is no status file", tt.verb, envelope.Error)
 			}
-			if !strings.Contains(envelope.Error, "loom run") {
+			if !strings.Contains(envelope.Error, "loom start") {
 				t.Errorf("loom %s error = %q; want it to name the bootstrap verb as the remedy", tt.verb, envelope.Error)
 			}
 			if strings.Contains(envelope.Error, ".lock") {

@@ -2,6 +2,6 @@
 
 | Skill | Description |
 | --- | --- |
-| [ly-supervise](ly-supervise/SKILL.md) | Drive a loom task through a supervised loop over `lyx loom step`, reading each step's envelope and stopping on any non-running state. Explicit invocation only. |
+| [ly-drive](ly-drive/SKILL.md) | Drive a loom task through a loop over `lyx loom step`, reading each step's envelope and stopping on any non-running state. Explicit invocation only. |
 
-`ly-supervise` is explicit-invocation-only and is never started by a model on its own.
+`ly-drive` is explicit-invocation-only and is never started by a model on its own.

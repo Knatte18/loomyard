@@ -1,7 +1,7 @@
 // step.go implements the `step` loom verb: the single-producer primitive an external supervisor
-// drives. It bootstraps idempotently exactly as `run` does, probes the run lock before doing that
+// drives. It bootstraps idempotently exactly as `start` does, probes the run lock before doing that
 // bootstrap work so a live driver is never disturbed, then calls shedengine.Shed's own Step exactly
-// once and reports the result as a JSON envelope. Unlike `run`, it spawns no detached driver, runs no
+// once and reports the result as a JSON envelope. Unlike `start`, it spawns no detached driver, runs no
 // handshake, and hands the terminal to nothing.
 
 package loomcli
@@ -107,7 +107,7 @@ func (c *loomCLI) stepCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "step",
 		Short: "bootstrap idempotently and drive exactly one producer, reporting a JSON envelope",
-		Long: `step bootstraps this worktree's loom task exactly as "lyx loom run" does --
+		Long: `step bootstraps this worktree's loom task exactly as "lyx loom start" does --
 seeding the status file when absent and committing it into the fabric --
 and then drives exactly one producer through shedengine.Shed's own Step.
 
@@ -130,7 +130,7 @@ Example:
 
 			// The early run-lock probe, before the bootstrap. The MkdirAll here is part of the
 			// probe rather than an accident of ordering: the run lock lives in the ephemeral
-			// tree, internal/lock opens with O_CREATE but never creates a parent, and `run`
+			// tree, internal/lock opens with O_CREATE but never creates a parent, and `start`
 			// creates that same directory at its own step 4 before its own step-5 probe -- so
 			// hoisting only the probe would run it on a fresh worktree whose parent directory
 			// does not exist. Treating a missing-parent error as "lock free" is explicitly
@@ -198,7 +198,7 @@ Example:
 					clihelp.SetExit(ctx, output.ErrFields(out, err.Error(), map[string]any{"kind": stepKindBusy}))
 					return nil
 				}
-				// A producer hard error mirrors drive's handling of the same condition, and the
+				// A producer hard error mirrors run's handling of the same condition, and the
 				// status file already records state: "failed" with the error text, so the
 				// supervisor loses nothing.
 				clihelp.SetExit(ctx, output.ErrFields(out, err.Error(), map[string]any{"kind": stepKindProducer}))
@@ -207,7 +207,7 @@ Example:
 
 			// Record the clean-handoff marker before reporting: a completed step's persisted
 			// aftermath is byte-identical to a mid-run driver death, and this marker is the one
-			// thing that lets the next drive's Tier-1 entry observation tell the two apart
+			// thing that lets the next run's Tier-1 entry observation tell the two apart
 			// (crucible round 2, R2-F1). A step killed mid-producer never reaches this line, so a
 			// genuine step-crash still reports.
 			recordStepHandoff(loomengine.LoomStepHandoff(c.location), loomengine.LoomStepHandoffLock(c.location), len(res.History), res.State)

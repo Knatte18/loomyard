@@ -285,7 +285,7 @@ func TestStepKindForBootstrapStage(t *testing.T) {
 
 // TestStepCmd_BusyRefusal_BeforeBootstrap drives stepCmd()'s RunE against a hand-populated receiver
 // whose shedPaths.LockPath points into a t.TempDir() and whose lock this test acquires first,
-// mirroring the in-process capture idiom TestVerbRefusals (cli_test.go) already uses for drive/
+// mirroring the in-process capture idiom TestVerbRefusals (cli_test.go) already uses for run/
 // pause. It confirms the busy refusal reaches the envelope with its remedy text, and that the
 // refusal happened before the bootstrap: seedAndCommitBootstrap would have seeded a status file, so
 // its absence afterwards proves the early probe fired first.

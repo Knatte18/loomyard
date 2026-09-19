@@ -26,7 +26,7 @@ const reflectionStencilName = "friction-template-reflection"
 // read from deps.StencilsDir via stencilstore.Read and filled with stencil.Fill — never composed from
 // a Go string literal, per the Stencil Ownership Invariant.
 //
-// Interactive is false because lyx loom run is by definition the unattended path, and an interactive
+// Interactive is false because lyx loom start is by definition the unattended path, and an interactive
 // spec would hang waiting for a human who is not there. ForkSubagents is false because the reflection
 // agent has nothing to fan out over, and authorizing forks with no user present is authorization for
 // nothing.

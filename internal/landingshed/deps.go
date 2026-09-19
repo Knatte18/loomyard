@@ -74,7 +74,7 @@ type Deps struct {
 	// has confirmed anything is wired -- a constraint that holds regardless of which layer fills
 	// the closure.
 	//
-	// internal/loomcli/drive.go fills both closures via fabricengine.Open and fabricengine.OpenParent,
+	// internal/loomcli/run.go fills both closures via fabricengine.Open and fabricengine.OpenParent,
 	// respectively, since it is the layer that legitimately resolves geometry. This package's own
 	// tests still fill them directly with fakes rather than depending on a real fabric.
 	OpenFabric       func() (*fabricengine.Fabric, error)

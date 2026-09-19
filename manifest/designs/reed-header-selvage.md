@@ -86,5 +86,5 @@ Standalone reed runs `Engine.Watch` as an in-process goroutine off the `reedUp` 
 
 ## Related
 
-- [loom-step.md](loom-step.md) and the `ly-supervise` skill — [`reed: born-as-strand for the operator's loom run attach`](reed-born-as-strand.md) depends on reed's pane lifecycle being solid, which this item is a prerequisite for.
+- [loom-step.md](loom-step.md) and the `ly-drive` skill — [`reed: born-as-strand for the operator's loom start attach`](reed-born-as-strand.md) depends on reed's pane lifecycle being solid, which this item is a prerequisite for.
 - `reed: per-hub daemon reaps orphaned sessions` extends this daemon, once it exists, to also check whether each live session's worktree still exists on disk and tear down any that don't.

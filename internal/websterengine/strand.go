@@ -107,7 +107,7 @@ func removeStrandIfLive(reed shuttleengine.ReedOps, guid string) error {
 	// the replacement being started and nothing about the one it stopped.
 	//
 	// At Warn, not Info: internal/logger's default console level is Warn, and the detached driver's
-	// own log — the one `lyx loom run` points an operator at — carries Warn and above, so at Info
+	// own log — the one `lyx loom start` points an operator at — carries Warn and above, so at Info
 	// this reached the durable trace file and nothing anybody is sent to. That matters most on
 	// exactly the row it matters most for. loomshed.InterruptPolicies maps Webster alone to
 	// "handback" precisely because re-invoking an interrupted Webster step reaches this line, kills

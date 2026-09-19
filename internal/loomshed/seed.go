@@ -73,11 +73,11 @@ func Seed(statusPath, statusLockPath, slug, parent string) error {
 		// This defers the decode diagnosis to the spawned driver's own Shed.Run step-1 read gate,
 		// exactly as the unknown-field shape already did (UpdateJSON's lenient read tolerates an
 		// unknown field, so that shape decodes here and takes the found branch above). Without this
-		// mapping the malformed-JSON shape made `lyx loom run` refuse on the envelope before ever
+		// mapping the malformed-JSON shape made `lyx loom start` refuse on the envelope before ever
 		// spawning a driver -- the very state manifest/designs/loom.md's crash-recovery section
 		// promises a poisoned status file never presents as ("A poisoned status file must never look
 		// like it belongs to bootstrap's own gate"), reproduced live in crucible round
-		// fable5-high-r5 (F3). `lyx loom drive` was already correct, since it never calls Seed.
+		// fable5-high-r5 (F3). `lyx loom run` was already correct, since it never calls Seed.
 		return fmt.Errorf("%w: %q already exists but does not decode; Seed refuses to overwrite it, deferring the decode diagnosis to the driver's own preflight read", ErrSeedExists, statusPath)
 	}
 	return err

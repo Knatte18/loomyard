@@ -128,7 +128,7 @@ func (c *lifecycleCLI) wire(location *lyxcwd.Location, slug string) error {
 				// Dir is the task worktree's AnchorPath(), never its bare worktree root: the resolver
 				// gates a child's working directory to the anchor, and a bare root fails on any
 				// subpath-anchored hub.
-				cmd := exec.Command(exe, "loom", "run", "--no-attach")
+				cmd := exec.Command(exe, "loom", "start", "--no-attach")
 				cmd.Dir = taskLocation.AnchorPath()
 				logger.Info("lifecyclecli: spawning loom session", "slug", slug, "dir", cmd.Dir)
 				err = cmd.Run()

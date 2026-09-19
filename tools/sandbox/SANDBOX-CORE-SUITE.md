@@ -242,11 +242,11 @@ This scenario is deliberately read-only: `promote` and `sync` both mutate the op
 
 **Covers:** loom
 
-**Fixture note:** This scenario hand-writes `_lyx/loom/status.json` as a fixture rather than reaching a seeded state through any shipped verb, because no shipped verb seeds one without going through `lyx loom run`'s tmux bootstrap handover, and `lyx loom pause` on an absent status file is specified to error.
+**Fixture note:** This scenario hand-writes `_lyx/loom/status.json` as a fixture rather than reaching a seeded state through any shipped verb, because no shipped verb seeds one without going through `lyx loom start`'s tmux bootstrap handover, and `lyx loom pause` on an absent status file is specified to error.
 Write the fixture with a realistic `current_producer`/`state`/`activity`/`history` shell and a `product` carrying a `slug` and `parent` of your choosing, following the shape in `contracts/specs/loom-status-spec.md`'s worked example.
 
 **Watch:** Before writing the fixture at all, run `lyx loom status` and `lyx loom pause` against the freshly-added, never-bootstrapped pair.
-Does each refuse by naming its own remedy -- "no status file ... run `lyx loom run`" -- rather than leaking an internal lock path such as `.lyx/loom/status.json.lock: no such file or directory`?
+Does each refuse by naming its own remedy -- "no status file ... run `lyx loom start`" -- rather than leaking an internal lock path such as `.lyx/loom/status.json.lock: no such file or directory`?
 Both messages were unreachable until crucible round 1: the status file is durable under `_lyx` while its advisory lock is ephemeral under `.lyx`, and nothing creates that second tree before a bootstrap, so both verbs failed inside lock acquisition before the branch carrying those messages was ever reached.
 This is the supervisor skill's literal first instruction, so it is the first thing to check, not an afterthought.
 

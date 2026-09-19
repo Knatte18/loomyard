@@ -53,18 +53,18 @@ func resolveParentBranch(recorded fabricengine.Origin, found bool, parentFlag st
 	)
 }
 
-// resolveLandingParent resolves the parent branch drive.go seeds Env.Landing with, wrapping
+// resolveLandingParent resolves the parent branch run.go seeds Env.Landing with, wrapping
 // resolveParentBranch with the two refusal clauses landing's own bootstrap needs.
 //
-// It calls resolveParentBranch(recorded, found, "") -- an empty flag, since drive.go has no --parent
+// It calls resolveParentBranch(recorded, found, "") -- an empty flag, since run.go has no --parent
 // flag of its own, which lands resolveParentBranch's table on its final row for an absent-or-empty
 // record. A present-but-empty recorded value is treated exactly as absent, inherited unchanged from
 // resolveParentBranch.
 //
 // Two refusal clauses apply:
 //   - an unrecorded (or empty) parent: resolveParentBranch's own error is returned unchanged, per the
-//     drive-refuses-an-unrecorded-parent decision, which deliberately reuses that message rather than
-//     writing a drive-specific one.
+//     run-refuses-an-unrecorded-parent decision, which deliberately reuses that message rather than
+//     writing a run-specific one.
 //   - a resolved parent equal to taskBranch: refused here, not inside fabricengine.OpenParent, per the
 //     self-parent-is-loom-policy-not-fabric-policy decision -- a task may not be its own parent.
 func resolveLandingParent(recorded fabricengine.Origin, found bool, taskBranch string) (parentBranch string, err error) {

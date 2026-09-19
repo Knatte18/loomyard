@@ -955,7 +955,7 @@ func TestRun_Wait_StartupDeadline_BindsEveryNotReadyPath(t *testing.T) {
 // fix here (started := run.attached, dropping the state.Started conjunct) reproduces exactly that:
 // the run deadline (10 minutes, virtual) is what would bind instead of the 1-second startup
 // deadline, so this test's own elapsed-time assertion below fails loudly rather than merely running
-// slower, unlike the pre-existing smoke test this gap escaped (TestSmokeDriveStandalone_
+// slower, unlike the pre-existing smoke test this gap escaped (TestSmokeRunStandalone_
 // AdvancesMachineFromExistingSeed only asserts the final state, never the elapsed time or outcome
 // kind, so the old seed's mismeasurement made it slower, not failing).
 //

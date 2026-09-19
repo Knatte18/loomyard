@@ -36,34 +36,34 @@ type loomCLI struct {
 	// preflightEntry as Env.Cwd, and that entry makes the same preflightshed.NewPreflight(name,
 	// env.Cwd) call over this exact cwd -- Preflight is the one row that spawns git.
 	cwd string
-	// cfg is the loaded loom.yaml config. Batch 5's run/bootstrap verb reads its Discussion/Plan
+	// cfg is the loaded loom.yaml config. Batch 5's start/bootstrap verb reads its Discussion/Plan
 	// role model-specs and timeout knobs.
 	cfg loomengine.Config
 	// reed is the constructed reed engine. Batch 5's bootstrap spawn machinery reads it to add and
 	// resolve the driver's own strand.
 	reed *reedengine.Engine
-	// env is the assembled shedrecipe.Env that driveCmd (drive.go) passes to loomrecipe.New.
+	// env is the assembled shedrecipe.Env that runCmd (run.go) passes to loomrecipe.New.
 	env shedrecipe.Env
-	// shedPaths carries the five told values shedengine.Shed itself reads, which driveCmd passes
-	// alongside env, and which statusCmd, pauseCmd, and runCmd read directly.
+	// shedPaths carries the five told values shedengine.Shed itself reads, which runCmd passes
+	// alongside env, and which statusCmd, pauseCmd, and startCmd read directly.
 	shedPaths loomrecipe.ShedPaths
 	// runDeps is the assembled websterengine.RunDeps, embedded verbatim as env.WebsterDeps. It is
 	// also kept here directly so a test can inspect it without unwrapping env.
 	runDeps websterengine.RunDeps
-	// registry is the resolved model-spec registry, carried onto the struct so drive.go can pass
+	// registry is the resolved model-spec registry, carried onto the struct so run.go can pass
 	// it to landingDeps without a second modelspec.LoadRegistry call.
 	registry modelspec.Registry
 	// frictionDir is the absolute Tier 2 friction directory resolved once in wire, empty when Tier 2
-	// is off. It is carried on the struct so run.go and drive.go read it without re-resolving it or
+	// is off. It is carried on the struct so start.go and run.go read it without re-resolving it or
 	// re-reading loom.yaml a second time. Left at its zero value by wireLightweight, whose verbs are
 	// all read-only and load no module config.
 	frictionDir string
-	// runner is the constructed shuttle runner, carried onto the struct so drive.go can pass it to
+	// runner is the constructed shuttle runner, carried onto the struct so run.go can pass it to
 	// landingDeps as the landing seam's Shuttle value.
 	runner *shuttleengine.Runner
 	// landingCfg is the loaded landing.yaml configuration, loaded once in wire() per the
 	// landing-config-loads-in-wire decision, so an unreconciled hub's absent-config error reaches
-	// the operator's own terminal on every verb, not only inside drive's detached driver log.
+	// the operator's own terminal on every verb, not only inside run's detached driver log.
 	landingCfg landingshed.Config
 }
 
@@ -143,7 +143,7 @@ func (c *loomCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) err
 // drives producers and keeps the full wire(), including its early config refusal. "step" is
 // deliberately excluded from this set for that same reason: it drives a producer through
 // shedengine.Shed's own Step, so it needs the full wire() and its early config refusal exactly as
-// "run" and "drive" do.
+// "start" and "run" do.
 func verbUsesLightweightWiring(name string) bool {
 	switch name {
 	case "status", "pause", "validate-discussion", "validate-plan":
@@ -164,9 +164,9 @@ func Command() *cobra.Command {
 on the generic shed engine. The machine walks seventeen producer rows: a
 two-row preflight, then Discussion, Plan, and Webster, each of the three
 followed by its own LLM review segment that loops until it approves or
-escalates, and finally Publish and Finalize. "run" is the bootstrap verb:
+escalates, and finally Publish and Finalize. "start" is the bootstrap verb:
 it seeds the status file, commits the seed, and spawns/attaches the
-detached driver session; "drive" is the no-tmux escape hatch that runs the
+detached driver session; "run" is the no-tmux escape hatch that runs the
 phase machine in the foreground for debugging and CI; "step" bootstraps
 idempotently and drives exactly one producer, reporting a JSON envelope --
 the single-producer primitive an external supervisor drives; "status"
@@ -177,8 +177,8 @@ standalone form of the Discussion-Validate and Plan-Validate mechanical
 gates, callable by the writer agent before handoff.
 
 Example:
+  lyx loom start
   lyx loom run
-  lyx loom drive
   lyx loom step
   lyx loom status
   lyx loom status --watch
@@ -192,7 +192,7 @@ Example:
 		PersistentPreRunE: c.resolvePersistentPreRun,
 	}
 
-	parent.AddCommand(c.runCmd(), c.driveCmd(), c.stepCmd(), c.statusCmd(), c.pauseCmd(), c.validateDiscussionCmd(), c.validatePlanCmd())
+	parent.AddCommand(c.startCmd(), c.runCmd(), c.stepCmd(), c.statusCmd(), c.pauseCmd(), c.validateDiscussionCmd(), c.validatePlanCmd())
 
 	return parent
 }

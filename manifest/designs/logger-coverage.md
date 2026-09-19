@@ -41,7 +41,7 @@ comment mentions are excluded, per the spawn selector above.
 | `internal/reedengine/lifecycle.go` | 1 | `Run` | covered |
 | `internal/reedengine/overlay.go` | 2 | `Run`/`Output` | covered |
 | `internal/reedcli/attach.go` | 1 | waits via `Run` | covered (`Info` spawn + teardown) |
-| `internal/loomcli/run.go` | 2 | one waits via `Run` | covered (both; `Info` spawn + teardown on the attach site) |
+| `internal/loomcli/start.go` | 2 | one waits via `Run` | covered (both; `Info` spawn + teardown on the attach site) |
 | `internal/fabricengine/spawn.go` | 1 | detached | covered (`Info` spawn, `Warn` on `Start` failure) |
 | `internal/websterengine/integration.go` | 1 | `Run` | covered (`Info` spawn + teardown) |
 | `internal/treadleengine/gate.go` | 1 | `CombinedOutput` | covered (`Info` spawn + teardown) |
@@ -57,9 +57,9 @@ comment mentions are excluded, per the spawn selector above.
 | `cmd/testtiming/main.go` | 1 | `Run` | excluded (test-timing harness) |
 | `tools/deploy/main.go`, `tools/sandbox/*` | 7 | — | excluded (dev tooling, outside the walk) |
 
-`internal/loomcli/run.go`'s two sites were the survey's one split verdict: the `loom drive` spawn was already covered (`Info` at spawn), while the tmux-attach spawn waited via `Run` unlogged.
+`internal/loomcli/start.go`'s two sites were the survey's one split verdict: the `loom run` spawn was already covered (`Info` at spawn), while the tmux-attach spawn waited via `Run` unlogged.
 Both are logged now.
-`internal/loomcli/run.go`, `internal/reedcli/attach.go`, and `internal/fabricengine/spawn.go` were re-verdicted from an earlier, coarser `covered` reading before being fixed — see "What 'covered' means here" below.
+`internal/loomcli/start.go`, `internal/reedcli/attach.go`, and `internal/fabricengine/spawn.go` were re-verdicted from an earlier, coarser `covered` reading before being fixed — see "What 'covered' means here" below.
 
 ## Detached spawns are spawn-only
 
@@ -76,7 +76,7 @@ As found, before the fixes landed:
 
 - `internal/fabricengine/spawn.go` logged only a `Warn` on `Start` failure and announced no spawn.
 - `internal/reedcli/attach.go`'s only `logger` line was an unrelated terminal-size warning, leaving its tmux-attach spawn unlogged.
-- `internal/loomcli/run.go` logged its `loom drive` spawn but not its tmux-attach spawn.
+- `internal/loomcli/start.go` logged its `loom run` spawn but not its tmux-attach spawn.
 
 `internal/reedengine/overlay.go`'s two sites are `covered` at `Debug` — `TmuxCmd.run` and `TmuxCmd.output` each log the argv immediately before spawning —
 and `Debug` is correct there for the same reason it is correct for `internal/reedengine/proctree_windows.go`: both are high-frequency probe wrappers whose `Info` volume would flood the durable sink.

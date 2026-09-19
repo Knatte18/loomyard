@@ -20,7 +20,7 @@ Three distinct names for three layers, deliberately non-overlapping to avoid the
 
 - **`lyx`** — the binary/CLI, **L**oom**Y**ard e**X**ecutable — one binary with a namespaced subcommand tree (`lyx board`, `lyx fabric`, `lyx loom`, …).
   The analog of millhouse's `millpy` backend.
-- **`loom`** — the orchestrator *module* (`lyx loom run`, `lyx loom status`): the domain that drives the phased run, a module like `board` or `fabric`.
+- **`loom`** — the orchestrator *module* (`lyx loom start`, `lyx loom status`): the domain that drives the phased run, a module like `board` or `fabric`.
   See [manifest/designs/loom.md](../manifest/designs/loom.md).
 - **`ly`** — the skill / orchestration plugin (the analog of `mill`);
   skills are `/ly-*`.
@@ -28,7 +28,7 @@ Three distinct names for three layers, deliberately non-overlapping to avoid the
 **Never name skills `lyx-*` or `loom-*`** — skills are `ly-*`, distinct from both the binary (`lyx`) and every module (`loom`, `burler`, …), so no name is shared between a skill and a script/module (the ambiguity that forced the millhouse `mill` → `millpy` rename).
 Internal Go feature packages follow the `<module>cli` / `<module>engine` split (e.g. `internal/boardcli` + `internal/boardengine`, `internal/fabriccli` + `internal/fabricengine`) — see the Package naming rule in [CONSTRAINTS.md](../CONSTRAINTS.md#package-naming).
 
-Convenience alias: **`lyx run` → `lyx loom run`** (the everyday autonomous call).
+Convenience alias: **`lyx start` → `lyx loom start`** (the everyday autonomous call).
 
 ## Principles
 
@@ -241,7 +241,7 @@ github.com/Knatte18/loomyard/
 ├── internal/shedbuild/           the recipe file format's loader and builder — decodes a recipe document and assembles the producer-definition list the shed engine already consumes
 ├── internal/landingshed/         landing's two general ShedProducers, Publish and Finalize, shared by reference across producer lists
 ├── internal/mergeresolve/        the merge-in + LLM conflict-resolution engine internal/landingshed's two producers each call
-├── internal/frictionengine/      the aggregation-and-reflection step internal/loomcli's drive verb calls once per run
+├── internal/frictionengine/      the aggregation-and-reflection step internal/loomcli's run verb calls once per run
 ├── internal/hubgeom/             the hub-mode told-geometry teller that converts a resolved `lyxcwd.Location` into each engine's geometry struct
 ├── internal/standalonegeom/      the told-mode geometry teller that builds each engine's geometry struct from told absolute path strings
 ├── internal/cliwire/             the shared standalone/hub wiring resolver for the standalone-capable CLIs, the layer that runs after `preflight.ResolveMode` has chosen a mode
@@ -295,7 +295,7 @@ User-facing modules each get one `lyx <module>` namespace:
   The generated `folderOpen` task is now the sequenced reed launch chain (`reed up` → `reed add --if-absent` → `reed attach`) rather than a bare `claude`, with both binary paths (`lyx`, `claude`) stamped absolute at generation time.
   An existing worktree keeps its current `tasks.json` because `WriteConfig` never clobbers;
   the manual upgrade is to delete `.vscode/tasks.json` and re-run `lyx ide spawn`. ✅ Implemented.
-- **selfreport** — file bugs and enhancements against `Knatte18/loomyard` via go-github through `internal/githubclient`, triggered two ways: manually (`lyx selfreport create <title>`) and automatically, off `loom`'s own status file (`internal/loomcli`'s `selfreport.go`), which detects five Tier-1 structural anomalies — a crash-resume, an escalation-to-human halt, a bounce-budget-exhausted halt, a producer-hard-failure halt, and a recurring ledger finding — and files them after every `lyx loom drive` call, gated by the `selfreport` key in `loom.yaml` (default on).
+- **selfreport** — file bugs and enhancements against `Knatte18/loomyard` via go-github through `internal/githubclient`, triggered two ways: manually (`lyx selfreport create <title>`) and automatically, off `loom`'s own status file (`internal/loomcli`'s `selfreport.go`), which detects five Tier-1 structural anomalies — a crash-resume, an escalation-to-human halt, a bounce-budget-exhausted halt, a producer-hard-failure halt, and a recurring ledger finding — and files them after every `lyx loom run` call, gated by the `selfreport` key in `loom.yaml` (default on).
   Credentials resolve from `GH_TOKEN`/`GITHUB_TOKEN` first, with the `gh` CLI (`gh auth token`) as a bounded, non-blocking fallback token source — not a hard prerequisite.
   Target repo is hardcoded;
   supports `--body` (or `-` for stdin) and `--label`;
@@ -326,15 +326,15 @@ User-facing modules each get one `lyx <module>` namespace:
   Consumed by `internal/landingshed`'s `Publish` and `Finalize` and by `internal/websterengine` (`internal/summaryparser`). ✅ Implemented.
 - **batcher** — the name-keyed batchifier registry that groups a plan's flat card list into webster's execution batches, selected by `batcher.yaml`'s `active:` config key (default: identity, one card per batch); its own standalone configreg module, separate from webster's (`internal/batcher`). ✅ Implemented.
 - **stencil** — the operator surface over the hub's producer-prompt stencils (`internal/stencilcli` + `internal/stencilstore`; `lyx stencil list|validate|diff|sync|promote`): `list` reports every registered stencil's board-copy path and edit state, `validate` reports marker mismatches between a board copy and its shipped default, `diff` shows upstream changes not yet taken or (`--all`/`--exit-code`) board edits not yet ported back, `sync` force-refreshes every stencil against the shipped registry even from a `-dev` build, and `promote` copies a board-copy edit back into the worktree's `contracts/stencils/` source tree. `list` and `sync` also cover the deployed `contracts/specs` registry; `validate`, `diff`, and `promote` do not — a spec declares no markers for `validate` to compare, and `diff`/`promote` both need the worktree source directory a deployed spec deliberately does not have. ✅ Implemented.
-- **loom** — phased orchestrator: drives its flat, ordered [producer list](../manifest/designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots), each gated by a `Bouncer` review segment (`internal/loomcli` + `internal/loomengine` + `internal/loomshed` + `internal/loomrecipe`; `lyx loom run|drive|step|status|pause|validate-discussion|validate-plan`, plus the `run` verb registered a second time as the bare root alias `lyx run`).
-  `run` is the session bootstrap, performing four steps in order: resolve the recorded parent branch and seed+commit the status file weft-side when it is absent; ensure the worktree's tmux session is up and its status strand exists; spawn the detached loom driver unless one is already alive; and hand the terminal to the tmux session.
-  `drive` is the no-tmux escape hatch that runs the phase machine in the foreground, for debugging and CI.
-  `step` bootstraps idempotently, exactly as `run` does, and drives exactly one producer through `shedengine.Shed`'s own `Step`, emitting a JSON envelope; it spawns no detached driver and hands the terminal over to nothing, making it the single-producer primitive an external supervisor drives.
+- **loom** — phased orchestrator: drives its flat, ordered [producer list](../manifest/designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots), each gated by a `Bouncer` review segment (`internal/loomcli` + `internal/loomengine` + `internal/loomshed` + `internal/loomrecipe`; `lyx loom start|run|step|status|pause|validate-discussion|validate-plan`, plus the `start` verb registered a second time as the bare root alias `lyx start`).
+  `start` is the session bootstrap, performing four steps in order: resolve the recorded parent branch and seed+commit the status file weft-side when it is absent; ensure the worktree's tmux session is up and its status strand exists; spawn the detached loom driver unless one is already alive; and hand the terminal to the tmux session.
+  `run` is the no-tmux escape hatch that runs the phase machine in the foreground, for debugging and CI.
+  `step` bootstraps idempotently, exactly as `start` does, and drives exactly one producer through `shedengine.Shed`'s own `Step`, emitting a JSON envelope; it spawns no detached driver and hands the terminal over to nothing, making it the single-producer primitive an external supervisor drives.
   `status` reports the current phase as a single JSON envelope and, with `--watch`, tails it, printing a line only when the composed activity changes rather than once per poll.
   `pause` requests a pause at the next producer boundary.
   `validate-discussion` runs the Discussion-Validate gate's checks standalone, exiting 0 on a clean gate and 1 otherwise, with findings in the failure envelope so a writer agent can self-check before handing off.
   `validate-plan` runs the Plan-Validate gate's checks standalone, with the same exit-code and findings-envelope contract, over the current worktree's plan instead of its discussion.
-  `lyx loom status --watch` and `lyx loom run` (alias `lyx run`) are this module's two registered interactive-handoff exceptions (CONSTRAINTS.md CLI/Cobra Invariant): `status --watch` self-displays the polled status line then blocks forever as its own keepalive tail, and `run` hands the operator's stdio to a `tmux attach-session` child as its own terminal-handover tail — in both cases every fallible step runs pre-flight, on the envelope, and only the named tail itself is exempt from emitting JSON.
+  `lyx loom status --watch` and `lyx loom start` (alias `lyx start`) are this module's two registered interactive-handoff exceptions (CONSTRAINTS.md CLI/Cobra Invariant): `status --watch` self-displays the polled status line then blocks forever as its own keepalive tail, and `start` hands the operator's stdio to a `tmux attach-session` child as its own terminal-handover tail — in both cases every fallible step runs pre-flight, on the envelope, and only the named tail itself is exempt from emitting JSON.
   ✅ Implemented. loom's config module (`loom.yaml`, holding the `discussion`/`plan`/`review` role model-specs, `discussion_timeout_min`/`plan_timeout_min`/`review_timeout_min`, and `discussion_interactive`) exists and reconciles via `lyx config reconcile --apply` (the bare verb is a dry run that only reports added and removed keys and writes nothing).
   The `review` pair is the review segments' own model and timeout, and lives here rather than in the recipe because the recipe is embedded in the binary and a recipe-literal model would be untunable without a rebuild — see [manifest/designs/loom.md](../manifest/designs/loom.md)'s "The review model's home is `loom.yaml`, not the recipe" section.
   The Discussion producer: a prompt/profile fed to `shuttle.Run`, its prompt shipped as an embedded default in the top-level `contracts/stencils` package and read at call time from the hub's stencils directory (`contracts/stencils/loom/loom-template-discussion.md`), composed by `internal/loomengine`'s `prompt.go` + `discussion.go`.
@@ -417,7 +417,7 @@ See the [Told-Geometry Invariant](../CONSTRAINTS.md#told-geometry-invariant) for
 - **`tokenvocab` is a shared leaf, not a stack layer** — `internal/tokenvocab` (the three-token registry + the `Render` compose over `internal/stencil`) sits beside `stencil` and `modelspec` as a general-purpose leaf the stack's modules consume, not a stage of the proc→reed→shuttle→burler→shed→loom chain itself. reed's status-line pipeline consumes it today;
   loom's prompt templates are expected to reuse the same `Render` compose later.
   See the `internal/tokenvocab` package documentation.
-- **the bootstrap** — `lyx loom run` (alias `lyx run`) brings up the worktree's tmux session, adds the `lyx loom status` strand (a 1-line top pane), spawns the loom driver **detached** (via `proc`, no TTY), and attaches the terminal to the session. loom runs in the background;
+- **the bootstrap** — `lyx loom start` (alias `lyx start`) brings up the worktree's tmux session, adds the `lyx loom status` strand (a 1-line top pane), spawns the loom driver **detached** (via `proc`, no TTY), and attaches the terminal to the session. loom runs in the background;
   the reed view takes the foreground.
   A `.lyx/lyxrun.cmd` launcher makes it one click.
 - `reed`, `shuttle`, and `loom` each get a user-facing `lyx <module>` CLI (`lyx shuttle run|interrupt|send` lets an operator or another process drive one agent standalone, before loom exists); `burler` is composed by loom's own review segments (`lyx burler run` is a debug-only wrapper, not a product verb), and `proc` alone stays an internal library with no CLI of its own.
