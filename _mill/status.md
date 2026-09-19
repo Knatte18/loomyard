@@ -59,7 +59,9 @@ batches:
     commit_sha: cc96e0c927cdb7540547b1e8f84073412b324927
     verify_baseline_failures: ["FAIL\t./internal/shedverbs/... [setup failed]"]
   - name: inner-run-neutralization
-    state: pending
+    state: running
+    implementer_session: 1f59ccfd-e160-4057-9c9c-2f3b3a6722ce
+    start_sha: f111d6509fc1e0fb8fc464db184e17123f6d590e
     verify_baseline_failures: []
   - name: module-rearm
     state: pending
