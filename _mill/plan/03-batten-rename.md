@@ -175,6 +175,7 @@ That is sanctioned by the overview's `no-migration-and-no-in-flight-runs-at-land
   - `internal/shedverbs/pause_test.go`
   - `internal/shedverbs/status_test.go`
   - `internal/shedverbs/seam_enforcement_test.go`
+  - `tools/sandbox/SANDBOX-FABRIC-SUITE.md`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -185,6 +186,8 @@ That is sanctioned by the overview's `no-migration-and-no-in-flight-runs-at-land
   (3) In `## CLI / Cobra Invariant`'s package-naming deviations, replace the `lifecyclecli` deviation with `battencli` naming `internal/battenshed`, `internal/battenrecipe`, and update `shedcli`'s own deviation line, which names `internal/lifecyclecli` among its imports.
   (4) Rename the `## Lifecycle Bookend Invariant` heading to `## Batten Bookend Invariant`, rewrite its body's "The lifecycle Shed" opening to name batten, and re-point both mechanical proxies in its enforcement bullet at `internal/battenshed` and `internal/battencli`.
   Leave that invariant's "prime's own ephemeral tree" clause untouched here — it becomes false only when batch 6 makes the status durable, and it is amended there.
+  `tools/sandbox/SANDBOX-FABRIC-SUITE.md`'s F22 scenario tags `**Covers:** lifecycle`, which this batch's verify (`cmd/lyx/...`'s `TestSandboxCoverage_AllModulesCoveredOrExcluded`) fails against once the module is registered as `batten`: the newly-registered `batten` module has no covering tag, and the stale `lifecycle` tag names a module that no longer exists.
+  Retarget that one scenario's heading, `**Covers:**` tag, `Goal:`/`Fixture note:`/`Watch:` prose, and its `lyx lifecycle …` CLI invocations to `batten`, leaving its `.lyx/lifecycle/<slug>/…` fixture paths untouched, since `battencli`'s on-disk directory segment does not relocate until batch 6.
   Leave the `## Shed Verb-Set Invariant`'s no-resolver bullet untouched here too; batch 7 falsifies and amends it.
 - **Commit:** `refactor(constraints,tests): retarget the lifecycle-to-batten rename across tests and CONSTRAINTS`
 
