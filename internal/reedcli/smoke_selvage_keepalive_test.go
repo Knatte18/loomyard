@@ -17,6 +17,7 @@ import (
 	"bytes"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -251,5 +252,104 @@ func TestSmokeSelvageSurvivesCtrlCKillingAForegroundJob(t *testing.T) {
 	}
 	if panes := listPaneLines(t, tmuxPath, socket, session); !paneLiveOnSession(panes, selvage) {
 		t.Fatalf("Selvage pane %s not alive after Ctrl-C killed its foreground job; panes=%v", selvage, panes)
+	}
+}
+
+// TestSmokeStatusLinePinsIdentityAndPosition pins pinGeometryOptionsLocked's status-line pins after
+// `up`: `#{status}` reads "on", `#{status-position}` reads "bottom", and `#{status-left}` names both
+// the repo and the worktree.
+//
+// On Windows the identity values are not asserted directly — per the
+// windows-status-line-is-an-unbranched-accepted-degrade Shared Decision, psmux may refuse some or all
+// of the seven status-line set-option calls, and reed does not branch to compensate. What is asserted
+// there instead is the SELF-CORRECTING half: whatever `#{status}` reads back, the reserved-row count
+// it implies must match the window the layout was actually planned against, so a psmux that refuses
+// the options fails the identity assertion loudly (an operator watching the status-line notices)
+// rather than silently corrupting the layout.
+func TestSmokeStatusLinePinsIdentityAndPosition(t *testing.T) {
+	tmuxPath := tmuxBinaryPath(t)
+
+	h := hubforge.NewHub(t, ".")
+	deferHubRelease(t, h.PrimeWorktree())
+	t.Chdir(h.PrimeWorktree())
+	t.Cleanup(func() {
+		var buf bytes.Buffer
+		RunCLI(&buf, []string{"down"})
+	})
+
+	var out bytes.Buffer
+	if code := RunCLI(&out, []string{"up"}); code != 0 {
+		t.Fatalf("up = %d; want 0, output: %s", code, out.String())
+	}
+	socket, session := socketAndSession(t)
+	target := "=" + session + ":"
+
+	readOption := func(option string) string {
+		t.Helper()
+		out, err := exec.Command(tmuxPath, "-L", socket, "display-message", "-p", "-t", target, "#{"+option+"}").Output()
+		if err != nil {
+			t.Fatalf("display-message #{%s}: %v", option, err)
+		}
+		return strings.TrimSpace(string(out))
+	}
+
+	if runtime.GOOS == "windows" {
+		// reservedRowsFromStatus's own mapping, inlined here since it is unexported in reedengine:
+		// "off" -> 0, "on" -> 1, a non-negative integer string -> that integer verbatim.
+		status := strings.ToLower(readOption("status"))
+		reserved := 0
+		switch status {
+		case "off":
+			reserved = 0
+		case "on":
+			reserved = 1
+		default:
+			n, err := strconv.Atoi(status)
+			if err != nil || n < 0 {
+				t.Fatalf("#{status} = %q; want off, on, or a non-negative integer", status)
+			}
+			reserved = n
+		}
+
+		windowHeight, err := strconv.Atoi(readOption("window_height"))
+		if err != nil {
+			t.Fatalf("parse #{window_height}: %v", err)
+		}
+		lines := listPaneLines(t, tmuxPath, socket, session)
+		paneRowsSum := 0
+		for _, line := range lines {
+			fields := strings.Fields(line)
+			if len(fields) < 4 {
+				continue
+			}
+			height, err := strconv.Atoi(fields[3])
+			if err != nil {
+				t.Fatalf("parse pane_height %q: %v", fields[3], err)
+			}
+			paneRowsSum += height
+		}
+		// tmux draws one border row between each pair of vertically stacked panes.
+		borders := len(lines) - 1
+		if borders < 0 {
+			borders = 0
+		}
+		if paneRowsSum+borders+reserved != windowHeight {
+			t.Errorf("panes(%d) + borders(%d) + status-reserved(%d) = %d; want the live window height %d — whatever #{status} reads back must match the window the layout was actually planned against", paneRowsSum, borders, reserved, paneRowsSum+borders+reserved, windowHeight)
+		}
+		return
+	}
+
+	if got := readOption("status"); got != "on" {
+		t.Errorf("#{status} = %q; want \"on\"", got)
+	}
+	if got := readOption("status-position"); got != "bottom" {
+		t.Errorf("#{status-position} = %q; want \"bottom\"", got)
+	}
+	statusLeft := readOption("status-left")
+	if !strings.Contains(statusLeft, h.Location.RepoName) {
+		t.Errorf("#{status-left} = %q; want it to contain the repo name %q", statusLeft, h.Location.RepoName)
+	}
+	if !strings.Contains(statusLeft, h.Location.WorktreeName) {
+		t.Errorf("#{status-left} = %q; want it to contain the worktree name %q", statusLeft, h.Location.WorktreeName)
 	}
 }
