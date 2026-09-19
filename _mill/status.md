@@ -67,7 +67,9 @@ batches:
     verify_baseline_failures: ["FAIL\t./internal/battenshed/... [setup failed]", "FAIL\t./internal/battenrecipe/...\
     \ [setup failed]"]
   - name: batten-wiring
-    state: pending
+    state: running
+    implementer_session: c07581ee-2c45-4d91-82e1-2adb29df2066
+    start_sha: cbec5b147e90235add56d4e9891a6ec07816b365
     verify_baseline_failures: ["FAIL\t./internal/battencli/... [setup failed]"]
   - name: shed-addressing
     state: pending
