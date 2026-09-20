@@ -117,12 +117,12 @@ func NewDiscussionGate(decisionRecordPath, supportLogPath string) shuttleengine.
 // fmt.Errorf values by construction, and they describe the bytes the agent wrote, which is the
 // single most LLM-fixable defect class there is.
 //
-// This is a reasoned reversal of the disposition the standing plan-validate producer takes: that
-// producer's rationale -- a plan that will not parse is not a plan the bounce target can be asked to
-// improve -- was about a cold respawn that knows nothing of the complaint, whereas the gate's bounce
-// target is the live session that just wrote the file, holding its full context, so the premise no
-// longer holds. This also makes both gates behave identically on a missing-or-malformed artifact,
-// since discussionparser.Validate already reports a missing file as a finding and only a
+// This is a reasoned reversal of the disposition the now-removed Plan-Validate row's producer took:
+// that producer's rationale -- a plan that will not parse is not a plan the bounce target can be
+// asked to improve -- was about a cold respawn that knows nothing of the complaint, whereas the
+// gate's bounce target is the live session that just wrote the file, holding its full context, so the
+// premise no longer holds. This also makes both gates behave identically on a missing-or-malformed
+// artifact, since discussionparser.Validate already reports a missing file as a finding and only a
 // non-not-exist read failure as an error.
 //
 // Every planglyph error stays a returned error in full and is explicitly NOT part of the carve-out:

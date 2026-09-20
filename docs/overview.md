@@ -322,7 +322,7 @@ User-facing modules each get one `lyx <module>` namespace:
   `quarrycli` is a named CLI/Cobra Invariant package-naming deviation: it imports `internal/planglyph`, not a `quarryengine`. ✅ Implemented.
 - **discussionparser** — the sole reader of `_lyx/discussion/`'s on-disk format (the decision record's required sections and the support log's existence);
   it takes told absolute paths and declares no location of its own — deliberately unlike `planparser`, because `loomengine`'s accessors take a `*lyxcwd.Location`, which this stdlib-only leaf may not import.
-  Consumed by `loomshed.discussionValidate` and by the `lyx loom validate-discussion` verb (`internal/discussionparser`). ✅ Implemented.
+  Consumed by `loomshed.NewDiscussionGate` (the Discussion-Write and Discussion-Burler rows' own gates) and by the `lyx loom validate-discussion` verb (`internal/discussionparser`). ✅ Implemented.
 - **summaryparser** — the sole declarer of the final-summary artifact's filename and the sole parser of its format (see [final-summary-spec.md](../contracts/specs/final-summary-spec.md));
   it takes told paths and declares no directory of its own, and is stdlib-only so neither consumer depends on a producer.
   Consumed by `internal/landingshed`'s `Publish` and `Finalize` and by `internal/websterengine` (`internal/summaryparser`). ✅ Implemented.
