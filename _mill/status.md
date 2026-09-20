@@ -65,7 +65,9 @@ batches:
     commit_sha: 373aef1d198f9931879d36b45a5ac99b3b48a14c
     verify_baseline_failures: []
   - name: row-removal
-    state: pending
+    state: running
+    implementer_session: b463eac3-64f5-447c-9b1c-42513ba2a433
+    start_sha: 05002a22e952d96508b3f749b93e2b2c5946cd40
     verify_baseline_failures: []
   - name: parity-docs-sweep
     state: pending
