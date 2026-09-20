@@ -67,7 +67,9 @@ batches:
     commit_sha: 073ae94f49a56aca2d312a115b0c20d739c94a85
     verify_baseline_failures: []
   - name: lift-llm-refusals
-    state: pending
+    state: running
+    implementer_session: 4957b599-873c-467c-8b04-33ec06e12af9
+    start_sha: 58433d54c9a5eff115508b52fc4f1bd014aee1ec
     verify_baseline_failures: []
   - name: ly-drive-autonomous
     state: pending
