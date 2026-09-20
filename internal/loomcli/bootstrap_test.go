@@ -9,23 +9,106 @@ import (
 	"github.com/Knatte18/loomyard/internal/shell"
 )
 
+// TestMustSpawnDriver's two mixed rows are the finding the predicate was widened for: a table
+// covering only the two pure rows (both false, both true) passes against the narrow
+// single-argument version that read the run lock alone. LockHeld_NoStrand_NoSpawn is the hand-started
+// "lyx loom run" case: an operator ran the go driver by hand against an llm-seeded run, so the lock
+// is held but no driver strand exists -- the bootstrap must still not spawn a second driver.
+// LockFree_LiveStrand_NoSpawn is the ly-drive-between-steps case: the driver session takes the run
+// lock only inside each "lyx shed step" and releases it between steps, so the lock reads free while
+// the driver strand is live -- the bootstrap must not mistake that gap for "no driver running".
 func TestMustSpawnDriver(t *testing.T) {
 	tests := []struct {
-		name        string
-		runLockHeld bool
-		wantSpawn   bool
+		name             string
+		runLockHeld      bool
+		driverStrandLive bool
+		wantSpawn        bool
 	}{
-		{"LockHeld_NoSpawn", true, false},
-		{"LockFree_Spawn", false, true},
+		{"LockFree_NoStrand_Spawn", false, false, true},
+		{"LockHeld_LiveStrand_NoSpawn", true, true, false},
+		{"LockHeld_NoStrand_NoSpawn", true, false, false},
+		{"LockFree_LiveStrand_NoSpawn", false, true, false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := mustSpawnDriver(tt.runLockHeld)
+			got := mustSpawnDriver(tt.runLockHeld, tt.driverStrandLive)
 			if got != tt.wantSpawn {
-				t.Errorf("mustSpawnDriver(%v) = %v; want %v", tt.runLockHeld, got, tt.wantSpawn)
+				t.Errorf("mustSpawnDriver(%v, %v) = %v; want %v", tt.runLockHeld, tt.driverStrandLive, got, tt.wantSpawn)
 			}
 		})
+	}
+}
+
+// TestResolveDriverStrandAction covers resolveDriverStrandAction's three arms.
+func TestResolveDriverStrandAction(t *testing.T) {
+	tests := []struct {
+		name     string
+		strands  []reedengine.StrandStatus
+		want     driverStrandAction
+		wantGUID string
+	}{
+		{
+			name:    "NoStrandsAtAll",
+			strands: nil,
+			want:    driverStrandNone,
+		},
+		{
+			name:    "OnlyOtherStrands",
+			strands: []reedengine.StrandStatus{{GUID: "g1", Name: statusStrandDisplayName, PaneID: "%1", Live: true}},
+			want:    driverStrandNone,
+		},
+		{
+			name:     "LiveDriverStrand",
+			strands:  []reedengine.StrandStatus{{GUID: "g0", Name: driverStrandDisplayName, PaneID: "%0", Live: true}},
+			want:     driverStrandLive,
+			wantGUID: "g0",
+		},
+		{
+			name:     "DeadDriverStrand",
+			strands:  []reedengine.StrandStatus{{GUID: "g0", Name: driverStrandDisplayName, PaneID: "", Live: false}},
+			want:     driverStrandDead,
+			wantGUID: "g0",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, gotGUID := resolveDriverStrandAction(tt.strands)
+			if got != tt.want {
+				t.Errorf("resolveDriverStrandAction(%+v) action = %v; want %v", tt.strands, got, tt.want)
+			}
+			if gotGUID != tt.wantGUID {
+				t.Errorf("resolveDriverStrandAction(%+v) guid = %q; want %q", tt.strands, gotGUID, tt.wantGUID)
+			}
+		})
+	}
+}
+
+// TestDriverStrandDisplayName_AddAndLookupAgree pins that the name used to add the driver strand and
+// the name looked up are the same constant, in the shape statusStrandDisplayName and
+// operatorStrandDisplayName are already pinned: reed's add has no upsert semantics, so a mismatch
+// between the two would stack a second pane rather than match the first.
+func TestDriverStrandDisplayName_AddAndLookupAgree(t *testing.T) {
+	strands := []reedengine.StrandStatus{{GUID: "g0", Name: driverStrandDisplayName, PaneID: "%0", Live: true}}
+	action, guid := resolveDriverStrandAction(strands)
+	if action != driverStrandLive {
+		t.Fatalf("resolveDriverStrandAction found no match for driverStrandDisplayName %q; the add and lookup names have diverged", driverStrandDisplayName)
+	}
+	if guid != "g0" {
+		t.Errorf("resolveDriverStrandAction(%+v) guid = %q; want %q", strands, guid, "g0")
+	}
+}
+
+// TestDriverStrandDisplayName_DiffersFromOtherStrandNames guards against a name collision with
+// either of the other two pinned strand names, which would append a second pane rather than replace
+// the first (reed's add has no upsert semantics).
+func TestDriverStrandDisplayName_DiffersFromOtherStrandNames(t *testing.T) {
+	if driverStrandDisplayName == statusStrandDisplayName {
+		t.Errorf("driverStrandDisplayName and statusStrandDisplayName are both %q; want distinct names", driverStrandDisplayName)
+	}
+	if driverStrandDisplayName == operatorStrandDisplayName {
+		t.Errorf("driverStrandDisplayName and operatorStrandDisplayName are both %q; want distinct names", driverStrandDisplayName)
 	}
 }
 
