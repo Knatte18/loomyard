@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-parity-docs-sweep
+phase: holistic-reviewing
 slug: producer-gates
 branch: producer-gates
 plan: _mill/plan
@@ -36,6 +36,7 @@ approved-loomshed-gates  '2026-09-20T15:29:29Z'
 approved-shedrecipe-wiring  '2026-09-20T15:47:19Z'
 approved-row-removal  '2026-09-20T16:08:22Z'
 approved-parity-docs-sweep  '2026-09-20T16:31:19Z'
+holistic-reviewing  '2026-09-20T16:31:37Z'
 ```
 
 ## Batches
