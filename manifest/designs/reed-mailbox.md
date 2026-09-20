@@ -40,10 +40,25 @@ The address format is **`[hub:]slug:name`** — colon as hierarchy separator, sa
 
 Deliberately a separate, later task from `ly-drive + orchestrator`'s launch-convention change and the shipped `reed: born-as-strand` item, which it depends on **for the receive side only**: everything that should be addressable must already exist as a Strand before addressing it means anything. Also downstream of `worktree spawn/teardown as Shed producers`' headless-orchestration future, since a mailbox is most useful once external actors can reach a worktree without a human ever having opened it first.
 
-## Open items
+## Delivery (settled in the same 2026-09-20 discussion)
 
-- The actual delivery mechanism is undecided: written into the pane directly? A separate side-channel?
-- Whether it rides the already-Done `reed: watchdog daemon`'s per-tick loop, or needs a new process, is undecided.
+Transport and log are two different jobs, and the terminal is bad at the second one (scrollback dies with the pane, is unsearchable, and mixes mail into everything else) — so delivery is **pull, not full-content injection**, with a durable store carrying the audit trail.
+
+- **Every message is an envelope in the creel store**: `from`, `to`, timestamp, `kind`, status (`sent` → `delivered` → `read`).
+  `from` is filled in by the send verb itself — derived from `$LYX_STRAND_NAME` + the cwd slug, never free-typed — so a receiver always knows exactly where the reply goes, and a sender can neither forge nor forget it.
+  Replying is just sending to `from`.
+- **Two kinds.**
+  `mail` is stored and *pulled*: the receiver is notified with one short line and reads at its own pace (`lyx creel inbox` for the count, a get-one verb that flips status to `read`).
+  Pulled content arrives as tool output the agent asked for — better context than a giant injected user-message — and a short fixed notification line can never break on escaping the way multi-line `send-keys` can.
+  `inject` is typed verbatim into the receiving pane instead: its body is a command to *execute*, not content to read, so it never sits in an inbox — the first use case is `lyx reed self-compact`, sugar for sending `/compact` to one's own address.
+  Self-injection is free; injecting into *another* strand's pane is the driver privilege, restricted to privileged senders, never something any strand can do to any other.
+- **The daemon delivers, at idle.**
+  Both kinds ride the per-hub daemon's existing per-tick loop (resolving the old open item — no new process): the notification line or injected body is sent-keys into the receiving pane only when the receiver is idle, not mid-turn.
+- **Everything is journaled, regardless of kind.**
+  An `inject` is not mail but is still logged with sender, receiver, body, and delivery time; `lyx creel log` shows all traffic hub-wide — who sent, who read, when — searchable and durable, which is strictly better backtracking than terminal scrollback ever was.
+  The live-watching human still sees traffic as it happens: the notification line carries sender + subject (`2 new: watchdog:prime "loom stuck at Gate"`), bodies stay in the store.
+- **Plain CLI verbs, no MCP layer.**
+  Creel needs no streaming or client-side session state, so it stays ordinary `lyx` verbs like every other module; an MCP server could be layered *on top of* the same verbs later if an agent outside a terminal ever needs access — deferred until someone does, not decided against.
 
 ## Related
 
