@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-shuttle-gate-loop
 slug: producer-gates
 branch: producer-gates
 plan: _mill/plan
@@ -30,6 +30,7 @@ plan-review-r2  '2026-09-20T14:56:33Z'
 plan-fix-r2  '2026-09-20T14:57:27Z'
 planned  '2026-09-20T14:57:37Z'
 implementing  '2026-09-20T14:57:55Z'
+approved-shuttle-gate-loop  '2026-09-20T15:13:03Z'
 ```
 
 ## Batches
@@ -37,9 +38,10 @@ implementing  '2026-09-20T14:57:55Z'
 ```yaml
 batches:
   - name: shuttle-gate-loop
-    state: running
+    state: approved
     implementer_session: 05443526-89b7-4a35-8a93-96bb76687f95
     start_sha: d469a0502560548b157273f2fc75c467cdd273ba
+    commit_sha: 94735db5daaa00daa419ce2ec8af0be1a9edd8e5
     verify_baseline_failures: []
   - name: seam-and-producers
     state: pending
