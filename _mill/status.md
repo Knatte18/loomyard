@@ -88,6 +88,8 @@ batches:
     commit_sha: 2186050e9182512b8d9d4b0a455e9e1f76a1046d
     verify_baseline_failures: ["FAIL\tgithub.com/Knatte18/loomyard/internal/loomcli [build failed]"]
   - name: docs-sweep
-    state: pending
+    state: running
+    implementer_session: e4e10f46-ec71-42ba-9219-2be1553e758b
+    start_sha: 1967f4a011c9e16b80084dc15a327c8cb7c34ad6
     verify_baseline_failures: []
 ```
