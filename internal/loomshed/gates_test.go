@@ -2,12 +2,10 @@
 // split that is the subtlest rule in the task, and the fail-closed severity predicate both gates key
 // their pass/fail split on.
 //
-// It reuses three fixture helpers declared alongside the two producers this batch does not touch --
-// validDecisionRecord and writeDiscussionFixture (discussionvalidate_test.go), seedPlanValidateFixture
-// (planvalidate_test.go) -- rather than writing new ones, since all three already build exactly the
-// on-disk shapes these cases need. Batch 5 relocates all three into a surviving fixture file when it
-// deletes their current hosts, so this reuse is deliberate rather than a dependency on files that are
-// about to disappear.
+// It reuses three fixture helpers -- validDecisionRecord, writeDiscussionFixture, and
+// seedPlanFormatFixture -- that used to live alongside the two removed validate producers'
+// own test files and now live in fixture_test.go, since all three already build exactly the
+// on-disk shapes these cases need.
 //
 // All of it is untagged and offline, per the Test Tier Purity Invariant; the quarry-unavailable case
 // asserts on the error path rather than requiring a resolvable fixture, which is what keeps the
@@ -102,7 +100,7 @@ func TestNewPlanGate(t *testing.T) {
 	t.Run("Pass", func(t *testing.T) {
 		anchorPath := t.TempDir()
 		worktreeRoot := t.TempDir()
-		seedPlanValidateFixture(t, anchorPath, false)
+		seedPlanFormatFixture(t, anchorPath, false)
 
 		gate := NewPlanGate(anchorPath, worktreeRoot)
 		result, err := gate()
@@ -117,7 +115,7 @@ func TestNewPlanGate(t *testing.T) {
 	t.Run("FindingsSurfaceAsAFailedGateAndAWarnLine", func(t *testing.T) {
 		anchorPath := t.TempDir()
 		worktreeRoot := t.TempDir()
-		seedFormatInvalidPlanValidateFixture(t, anchorPath)
+		seedFormatInvalidPlanFixture(t, anchorPath)
 
 		buf := captureGateWarnings(t)
 		gate := NewPlanGate(anchorPath, worktreeRoot)

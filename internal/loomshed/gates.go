@@ -9,6 +9,7 @@ package loomshed
 import (
 	"errors"
 	"io/fs"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -16,6 +17,54 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
+
+// formatDiscussionFindings renders findings as a single semicolon-separated list, using each
+// Finding's own Error() rendering so the log line and the standalone verb's envelope describe a
+// violation identically.
+func formatDiscussionFindings(findings []discussionparser.Finding) string {
+	parts := make([]string, len(findings))
+	for i, f := range findings {
+		parts[i] = f.Error()
+	}
+	return strings.Join(parts, "; ")
+}
+
+// formatPlanFindings renders findings as a single semicolon-separated list, each entry carrying
+// its own Check[/Card]: Detail rendering plus its Severity, so the log line and "lyx loom
+// validate-plan"'s envelope describe a violation identically and an informational
+// create-new-unit is distinguishable from a blocking glyph-not-found in the one place this record
+// exists.
+// It calls each Finding's own Error() rather than re-deriving its layout, which is what makes the
+// "describe a violation identically" promise above hold by construction rather than by two copies of
+// one format string agreeing today; formatDiscussionFindings above does the same.
+func formatPlanFindings(findings []planglyph.Finding) string {
+	parts := make([]string, len(findings))
+	for i, f := range findings {
+		parts[i] = f.Error()
+	}
+	return strings.Join(parts, "; ")
+}
+
+// hasBlockingFinding reports whether findings carries at least one entry that is not explicitly
+// informational.
+//
+// It tests NOT-informational rather than equals-blocking, and that asymmetry is the point.
+// planglyph.Severity is an open string type, so an unrecognized value — or the zero value, which a
+// hand-built Finding or a future producer that forgets to stamp one carries — took the informational
+// branch, logged a Warn, and returned Done with the plan directory as its pointer: the run advanced
+// past a finding that was meant to block it. That is the same "a validator's complaint reported as a
+// clean plan" failure this file's own error-path comment records as deliberately rejected, still
+// present on the severity path (crucible round opus-medium-r6, R6-27).
+// Failing closed costs at most a spurious bounce on a severity nobody has defined yet; failing open
+// costs a dispatched batch over a defect the gate saw.
+func hasBlockingFinding(findings []planglyph.Finding) bool {
+	for _, f := range findings {
+		if f.Severity != planglyph.SeverityInformational {
+			return true
+		}
+	}
+	return false
+}
 
 // NewDiscussionGate returns the Discussion-Write row's gate closure: a shuttleengine.Gate that
 // calls discussionparser.Validate(decisionRecordPath, supportLogPath) once and maps the result onto
