@@ -72,6 +72,8 @@ batches:
     commit_sha: 6d0e082d356dbb8a9e14821721097245bd2cc4d9
     verify_baseline_failures: []
   - name: parity-docs-sweep
-    state: pending
+    state: running
+    implementer_session: 80f07fcf-f2b2-483b-952d-b57b5ede1413
+    start_sha: 8c9cd003ef851fdeda8cfb33e5b1009be5adc85b
     verify_baseline_failures: []
 ```
