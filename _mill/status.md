@@ -81,7 +81,9 @@ batches:
     commit_sha: eb673421a1f1f6bebcfaa7a352ee029e61cf1cc3
     verify_baseline_failures: []
   - name: smoke-and-integration
-    state: pending
+    state: running
+    implementer_session: f53fe215-41e1-4a01-8a82-7136c9c8a609
+    start_sha: 4dd163ababff85d7eed49e891fb56ddbd495f496
     verify_baseline_failures: ["FAIL\tgithub.com/Knatte18/loomyard/internal/loomcli [build failed]"]
   - name: docs-sweep
     state: pending
