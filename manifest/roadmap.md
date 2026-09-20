@@ -17,6 +17,8 @@ This section holds what's committed to next.
 What comes right after Planned clears — committed and ordered, unlike Someday below.
 Not yet started, and exact order can still shift as Planned work reveals what unblocks what, but the rough sequence below is the current best guess.
 
+1. **producer accept-loop: mechanical gates before session release** — Discussion-Write, Plan-Write, and the Burler fix step run their row's own validator (Go, free) while the agent session is still alive, re-prompting the same session with the findings on failure (a small attempt budget, then ordinary Stuck) instead of accepting an invalid handoff; the downstream Validate/Revalidate rows stay as defense in depth, demoted from normal path to fallback. Webster already embodies the pattern (in-process verify command per batch). Should land before the batten end-to-end crucible campaign (wiki: `crucible-batten-end-to-end`).
+
 ## Someday
 
 Committed to eventually — will be done — but not scheduled next.
