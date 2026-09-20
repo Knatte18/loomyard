@@ -1,0 +1,1 @@
+- `gate_attempts: 0` alongside no `gate:` key is silently accepted: **Location:** `internal/shedrecipe/entries_gate.go:51-56`

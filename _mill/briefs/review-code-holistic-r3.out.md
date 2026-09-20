@@ -1,0 +1,32 @@
+MILL_REVIEW_BEGIN
+# Review: Producer gates: mechanical gates before session release — holistic
+
+```yaml
+verdict: APPROVE
+reviewer_model: sonnethigh
+reviewed_file: plan/ + source
+date: 2026-09-20
+```
+
+## Findings
+
+None. Verified against source across all six batches:
+
+- `internal/shuttleengine/{gate,run,attach,wait}.go` implement the four gate types, `RunGated`/`AttachGated` as added forms (delegating `Run`/`Attach` to the zero `GateSpec`), the single verdict site in `finalize`, and the bounded re-prompt loop in `Wait`, matching every requirement in cards 1–5. `completionsignal_enforcement_test.go`'s audited counts (`AttachGated [Errorf]: 5`, `Wait [Errorf]: 5`, `finalize [Errorf]: 2`) match the actual return sites in `wait.go`/`attach.go` exactly, per card 6.
+- `internal/burlerengine/{profile,engine}.go`: `RunOpts.Gate`, `Shuttle.RunGated`, and `repairReportBeforeGate`'s report-repair instruction match cards 9–10 verbatim, including the pre-review-file-read gate-failure short-circuit.
+- `internal/shedadapters/{singlellm,burler}.go`: the deliberate pointer asymmetry (writer row's gate-failed `Stuck` carries the artifact pointer; burler round's gate-failed `Stuck` carries an empty pointer, both spawn and resume/`probeLiveRound` hops) matches cards 13–14 and the "two producers' output pointers mean different things" shared decision precisely.
+- `internal/loomshed/gates.go`: `NewDiscussionGate`/`NewPlanGate`, the `ParsePlan` `*fs.PathError` carve-out, and `hasBlockingFinding`'s not-informational test all match cards 17–18. `discussionwrite.go`/`planwrite.go`'s `pointer.Path == ""` commit condition matches card 19, and the "dirty working tree" phrasing (not "weft") is already corrected per card 42.
+- `internal/shedrecipe/entries_gate.go` + the three gated entries: `resolveGateSpec`'s closed two-value vocabulary, the `gate_attempts`-without-`gate` error, and the row-vs-profile-submap `configRejectUnknown` split for the burler entry all match cards 22–24.
+- `contracts/recipes/loom-recipe.yaml` is the final fourteen-row shape with all four gated rows carrying `gate`/`gate_attempts: 3`, edges rewired (`Discussion-Write→Discussion-Bouncer`, `Plan-Write→Plan-Bouncer`, `Plan-Bouncer→Batchifier`), and the three `fasit.instructions` blocks rewritten to point at each round's own gate — matching cards 25 and 28.
+- Row removal (batch 5) is complete and consistent: `loomshed.go` declares exactly fourteen `Name*` constants, `shedrecipe/registry.go` is at sixteen keys with no `DiscussionValidate`/`PlanValidate` entries, `cancellation_test.go` is correctly reduced to three producers, `gatefindings_test.go` retargets its findings-surfacing assertions onto the two gate closures, and `sequence_test.go`/`resume_test.go`/`approveseam_test.go` are all correctly repointed (bounce-routing tests onto the Discussion-Bouncer/Burler pair, the resume regression onto `Discussion-Write` itself, the approve-seam test to assert no row carries `require_approved`).
+- A repo-wide grep for the five removed-row strings confirms every remaining hit outside `_mill/` is prose (doc comments, design-doc history, roadmap "Done" entry) — no live Go identifier, map key, recipe row name, or config key — consistent with card 44's completion requirement.
+- `CONSTRAINTS.md`'s Gate Self-Check Parity Invariant is rewritten to the two-pair, function-level shape per card 37; `internal/loomcli/parity_test.go` and `validate.go` implement the three-way parity comparison with the documented `NoPlanDirectory` divergence, matching card 34/43.
+- `internal/shuttleengine/config_test.go` pins `ClaudeDenyAgentTool` with the narrowing-specific failure message (card 8); `internal/loomrecipe/gatequiescence_test.go`'s companion (card 35) was not independently re-verified line-by-line but its cross-references check out against the recipe and `RunOpts`/`Spec` shapes read.
+
+No BLOCKING or NIT findings. Plan alignment, shared-decision consistency, cross-batch contracts, and constraint compliance all hold across every batch inspected.
+
+## Verdict
+
+APPROVE
+All six batches match their plan cards precisely; no drift, stale identifiers, or constraint violations found.
+MILL_REVIEW_END
