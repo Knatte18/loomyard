@@ -1,9 +1,10 @@
-// validate.go implements Validate, the Discussion-Validate gate's complete machine check set:
-// both `_lyx/discussion/` files exist, and the decision record carries every required H2 section.
-// Its control flow reproduces internal/loomshed/discussionvalidate.go's discussionValidate.Call
-// step for step, per the short-circuit-order-is-load-bearing Shared Decision, so extracting it into
-// this stdlib-only leaf changes nothing about when a Stuck outcome bounces back to Discussion-Write
-// versus when an I/O fault aborts the run.
+// validate.go implements Validate, the discussion gate's complete machine check set: both
+// `_lyx/discussion/` files exist, and the decision record carries every required H2 section.
+// It backs both gated discussion sites -- Discussion-Write's own gate and Discussion-Burler's own
+// fix-step gate, both built by internal/loomshed's NewDiscussionGate -- and the standalone
+// `lyx loom validate-discussion` verb, per the Gate Self-Check Parity Invariant, so extracting it
+// into this stdlib-only leaf changes nothing about when a failed check re-prompts the live session
+// versus when an I/O fault aborts the run as an ordinary producer error.
 
 package discussionparser
 
@@ -100,11 +101,11 @@ func Validate(decisionRecordPath, supportLogPath string) ([]Finding, error) {
 // is a correctness choice, not a style one. Scanner stops at the first line longer than
 // bufio.MaxScanTokenSize (64 KB) and reports that only through scanner.Err(), which this function
 // never checked -- so one pasted base64 blob or minified snippet, entirely ordinary in a discussion
-// document an agent wrote, made every heading BELOW it report missing. loomshed's
-// Discussion-Validate row maps those findings to Stuck, bounces to Discussion-Write, respawns, and
-// repeats on the same document until the bounce budget escalates to a human, over a document that
-// was valid all along (crucible round opus-medium-r6, R6-28). content is already fully in memory,
-// so there is no line length to cap and no error left to drop.
+// document an agent wrote, made every heading BELOW it report missing. loomshed's Discussion-Write
+// gate maps those findings to a re-prompt of the same live session, up to its attempt budget, and
+// repeats on the same document until the budget is exhausted and escalates to a human, over a
+// document that was valid all along (crucible round opus-medium-r6, R6-28). content is already
+// fully in memory, so there is no line length to cap and no error left to drop.
 func missingSections(content string, required []string) []string {
 	found := make(map[string]bool, len(required))
 

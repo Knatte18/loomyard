@@ -16,7 +16,7 @@ func TestInterruptPolicyFor(t *testing.T) {
 		{"webster handback", NameWebster, InterruptPolicyHandback},
 		{"gate reinvoke", NamePreflight, InterruptPolicyReinvoke},
 		{"writer reinvoke", NameDiscussionWrite, InterruptPolicyReinvoke},
-		{"validator reinvoke", NameDiscussionValidate, InterruptPolicyReinvoke},
+		{"batchifier reinvoke", NameBatchifier, InterruptPolicyReinvoke},
 		{"bouncer reinvoke", NameDiscussionBouncer, InterruptPolicyReinvoke},
 		{"burler reinvoke", NameDiscussionBurler, InterruptPolicyReinvoke},
 		{"empty name", "", ""},

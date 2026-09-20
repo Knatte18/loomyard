@@ -11,7 +11,7 @@ import (
 // registry is the single place every engine name is declared, mapping each recipe row's engine
 // name to the Constructor that builds it.
 //
-// The table is complete at eighteen keys. Any new entry's coverage is checked in exactly one
+// The table is complete at sixteen keys. Any new entry's coverage is checked in exactly one
 // place: the cross-consumer coverage guard in this package's own external test package.
 //
 // init() self-registration was rejected: the entries span five packages
@@ -19,24 +19,22 @@ import (
 // internal/battenshed), and registration would then depend on link-time blank imports of
 // packages this package already imports directly -- an indirection with no benefit here.
 var registry = map[string]Constructor{
-	"Preflight":          preflightEntry,
-	"Publish":            publishEntry,
-	"Finalize":           finalizeEntry,
-	"LoomPreflight":      loomPreflightEntry,
-	"Batchifier":         batchifierEntry,
-	"DiscussionValidate": discussionValidateEntry,
-	"DiscussionWrite":    discussionWriteEntry,
-	"PlanValidate":       planValidateEntry,
-	"PlanWrite":          planWriteEntry,
-	"Stub":               stubEntry,
-	"Webster":            websterEntry,
-	"SingleLLM":          singleLLMEntry,
-	"Bouncer":            bouncerEntry,
-	"BurlerRound":        burlerRoundEntry,
-	"WorktreeCreate":     worktreeCreateEntry,
-	"InnerRun":           innerRunEntry,
-	"SeedChild":          seedChildEntry,
-	"WorktreeTeardown":   worktreeTeardownEntry,
+	"Preflight":        preflightEntry,
+	"Publish":          publishEntry,
+	"Finalize":         finalizeEntry,
+	"LoomPreflight":    loomPreflightEntry,
+	"Batchifier":       batchifierEntry,
+	"DiscussionWrite":  discussionWriteEntry,
+	"PlanWrite":        planWriteEntry,
+	"Stub":             stubEntry,
+	"Webster":          websterEntry,
+	"SingleLLM":        singleLLMEntry,
+	"Bouncer":          bouncerEntry,
+	"BurlerRound":      burlerRoundEntry,
+	"WorktreeCreate":   worktreeCreateEntry,
+	"InnerRun":         innerRunEntry,
+	"SeedChild":        seedChildEntry,
+	"WorktreeTeardown": worktreeTeardownEntry,
 }
 
 // Lookup resolves name against the registry, returning its Constructor.

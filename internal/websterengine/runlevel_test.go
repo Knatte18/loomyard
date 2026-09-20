@@ -456,8 +456,8 @@ func TestRun_BlockingGlyphFindingRefusesRun(t *testing.T) {
 // TestRun_InformationalFindingsDoNotRefuseRun proves that an informational-only findings set --
 // create-new-unit, on a Create target introducing a brand-new package -- does not refuse the run:
 // Run reaches the Master spawn exactly as it would for a plan carrying no findings at all, per the
-// severity-decides-the-verdict rule this pre-flight gate shares with the Plan-Validate producer and
-// the validate-plan/validate CLI verbs.
+// severity-decides-the-verdict rule this pre-flight gate shares with Plan-Write's and
+// Plan-Burler's own gate and the validate-plan/validate CLI verbs.
 func TestRun_InformationalFindingsDoNotRefuseRun(t *testing.T) {
 	fx := newRunFixture(t, 1)
 	commitFile(t, fx.Worktree, "sub/a.go", "package sub\n\nfunc Foo() {}\n", "add sub package")
@@ -489,7 +489,7 @@ func TestRun_InformationalFindingsDoNotRefuseRun(t *testing.T) {
 
 // TestRun_QuarryUnavailableRefusesRunNamingQuarry proves that a quarry-unavailable error -- an
 // unopenable WorktreeRoot -- refuses the run before ever spawning Master, with an error message
-// naming quarry rather than the plan, matching internal/loomshed/planvalidate.go's producer-side
+// naming quarry rather than the plan, matching internal/loomshed's own plan gate (gates.go's NewPlanGate) producer-side
 // disposition and internal/loomcli/validate.go and internal/webstercli/validate.go's CLI-side halves
 // of this same parity.
 func TestRun_QuarryUnavailableRefusesRunNamingQuarry(t *testing.T) {

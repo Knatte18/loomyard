@@ -50,6 +50,36 @@ func (f *fakeShuttle) Attach(shuttleengine.Spec) (shuttleengine.Result, bool, er
 	return shuttleengine.Result{}, false, nil
 }
 
+// RunGated and AttachGated implement the shared fake contract every shedadapters.Shuttle/
+// burlerengine.Shuttle test fake follows (see the "every test fake evaluates the gate once"
+// decision), required here purely so the type still satisfies shedadapters.Shuttle: see
+// fakeShuttle's own doc comment for why neither is ever called.
+func (f *fakeShuttle) RunGated(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (shuttleengine.Result, error) {
+	result, err := f.Run(spec)
+	if err != nil || gate.Gate == nil || result.Outcome != shuttleengine.OutcomeDone {
+		return result, err
+	}
+	gateResult, gerr := gate.Gate()
+	if gerr != nil {
+		return result, gerr
+	}
+	result.Gate = &shuttleengine.GateOutcome{Passed: gateResult.Passed}
+	return result, nil
+}
+
+func (f *fakeShuttle) AttachGated(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (shuttleengine.Result, bool, error) {
+	result, found, err := f.Attach(spec)
+	if err != nil || !found || gate.Gate == nil || result.Outcome != shuttleengine.OutcomeDone {
+		return result, found, err
+	}
+	gateResult, gerr := gate.Gate()
+	if gerr != nil {
+		return result, found, gerr
+	}
+	result.Gate = &shuttleengine.GateOutcome{Passed: gateResult.Passed}
+	return result, found, nil
+}
+
 // fakeBurlerRunner implements shedadapters.BurlerRunner by returning a zero burlerengine.Result and
 // a nil error, recording every burlerengine.Profile and burlerengine.RunOpts it was handed. It is
 // never called: no test in this package invokes a producer's Call.
@@ -136,7 +166,7 @@ func testLandingDeps(dir string) landingshed.Deps {
 // does -- a DiscussionSpec closure returning a Spec over one absolute output path under the same
 // temp root, a CommitDiscussion closure returning nil, a PlanSpec closure returning a Spec over one
 // absolute output path under the same temp root, and a CommitPlan closure returning nil -- and
-// additionally fills Env.Landing via testLandingDeps, because two of the seventeen engines need it,
+// additionally fills Env.Landing via testLandingDeps, because two of the sixteen engines need it,
 // which its sibling does not do. It also fills the seven batten fields (Slug, ScratchDir,
 // CreateWorktree, InnerRun, Teardown, PrimeLock, SeedChild) the same way that sibling's own
 // newTestEnv does.

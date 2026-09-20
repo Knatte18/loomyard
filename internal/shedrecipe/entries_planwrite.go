@@ -12,7 +12,8 @@ import (
 )
 
 // planWriteEntry is the Constructor for the "PlanWrite" registry row: it validates Env.PlanSpec,
-// Env.CommitPlan, Env.Shuttle, and Env.AnchorPath, then builds a SingleLLMProducer carrying
+// Env.CommitPlan, Env.Shuttle, and Env.AnchorPath, resolves the row's "gate"/"gate_attempts"
+// Config keys through resolveGateSpec, then builds a gated SingleLLMProducer carrying
 // loomshed.NewPlanDirRotator as its fresh-spawn preparation, behind loomshed.NewPlanWrite's
 // post-Done commit decorator.
 //
@@ -26,12 +27,21 @@ import (
 // resolution and its plan_timeout_min timeout entirely.
 //
 // AnchorPath is validated here and threaded through because loomshed.NewPlanDirRotator resolves the
-// plan directory itself via planparser.PlanDir, the same split planValidateEntry already uses,
-// which keeps this package free of any planparser import.
+// plan directory itself via planparser.PlanDir, the same split loomshed.NewPlanGate uses between
+// that call and planglyph.ValidateFormat's separate worktree-root parameter, which keeps this
+// package free of any planparser import.
 //
-// The row carries no Config keys of its own, per the Config Strictness Invariant.
+// The row carries exactly two Config keys, "gate" and "gate_attempts", per the Config Strictness
+// Invariant. It carries a "gate" key even though this entry's own dedicated constructor could
+// imply the validator, so that one key means one thing at all four gated sites and a reader of the
+// recipe can see which validator guards each row without opening Go; this entry therefore never
+// hard-codes a validator choice of its own.
 func planWriteEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
-	if err := configRejectUnknown(cfg); err != nil {
+	gate, err := resolveGateSpec("PlanWrite", cfg, env)
+	if err != nil {
+		return nil, err
+	}
+	if err := configRejectUnknown(cfg, "gate", "gate_attempts"); err != nil {
 		return nil, err
 	}
 	if err := requireSeam("PlanWrite", "PlanSpec", env.PlanSpec); err != nil {
@@ -50,6 +60,6 @@ func planWriteEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, 
 	// ahead of it: it must not touch _lyx/plan until the producer's own attach probe has proved no
 	// live plan agent is writing there. See loomshed.NewPlanDirRotator.
 	rotate := loomshed.NewPlanDirRotator(env.AnchorPath, env.Now)
-	inner := shedadapters.NewSingleLLMProducer(name, env.PlanSpec, env.Shuttle, env.Now, rotate)
+	inner := shedadapters.NewSingleLLMProducerGated(name, env.PlanSpec, env.Shuttle, env.Now, rotate, gate)
 	return loomshed.NewPlanWrite(name, inner, env.CommitPlan), nil
 }

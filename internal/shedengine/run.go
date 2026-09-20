@@ -185,10 +185,11 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 			return next
 		}
 		return append(next, HistoryEntry{
-			Producer: def.Name,
-			Outcome:  outcome,
-			Output:   output.Path,
-			At:       nowRFC3339(),
+			Producer:     def.Name,
+			Outcome:      outcome,
+			Output:       output.Path,
+			At:           nowRFC3339(),
+			GateAttempts: output.GateAttempts,
 		})
 	}
 

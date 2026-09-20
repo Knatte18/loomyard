@@ -46,6 +46,15 @@ type fakeShuttle struct {
 	// write the files an attached-and-waited-on run would have produced, exactly as duringRun does
 	// for a spawned one.
 	duringAttach func()
+
+	// gotGateSpec and gotAttachGateSpec record the GateSpec RunGated/AttachGated last received.
+	gotGateSpec       shuttleengine.GateSpec
+	gotAttachGateSpec shuttleengine.GateSpec
+
+	// gateAttempts is the count RunGated/AttachGated stamp onto the GateOutcome they build when the
+	// gate closure is consulted -- a test leaves this at its zero value unless it specifically needs
+	// to assert GateAttempts propagation with a non-zero count.
+	gateAttempts int
 }
 
 func (f *fakeShuttle) Run(spec shuttleengine.Spec) (shuttleengine.Result, error) {
@@ -66,6 +75,45 @@ func (f *fakeShuttle) Attach(spec shuttleengine.Spec) (shuttleengine.Result, boo
 		f.duringAttach()
 	}
 	return f.attachResult, f.attachFound, f.attachErr
+}
+
+// RunGated implements the shared fake contract every shedadapters.Shuttle/burlerengine.Shuttle test
+// fake follows (see the "every test fake evaluates the gate once" decision): record the received
+// GateSpec, delegate to Run's own body, then -- only when gate.Gate is non-nil and the delegated
+// outcome is OutcomeDone -- invoke the closure exactly once, returning its error if non-nil and
+// otherwise stamping a *GateOutcome onto the returned Result. No re-prompt loop is simulated; there
+// is no pane to send into.
+func (f *fakeShuttle) RunGated(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (shuttleengine.Result, error) {
+	f.gotGateSpec = gate
+
+	result, err := f.Run(spec)
+	if err != nil || gate.Gate == nil || result.Outcome != shuttleengine.OutcomeDone {
+		return result, err
+	}
+
+	gateResult, gerr := gate.Gate()
+	if gerr != nil {
+		return result, gerr
+	}
+	result.Gate = &shuttleengine.GateOutcome{Passed: gateResult.Passed, Attempts: f.gateAttempts}
+	return result, nil
+}
+
+// AttachGated is AttachGated's Attach twin, following the identical shared fake contract.
+func (f *fakeShuttle) AttachGated(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (shuttleengine.Result, bool, error) {
+	f.gotAttachGateSpec = gate
+
+	result, found, err := f.Attach(spec)
+	if err != nil || !found || gate.Gate == nil || result.Outcome != shuttleengine.OutcomeDone {
+		return result, found, err
+	}
+
+	gateResult, gerr := gate.Gate()
+	if gerr != nil {
+		return result, found, gerr
+	}
+	result.Gate = &shuttleengine.GateOutcome{Passed: gateResult.Passed, Attempts: f.gateAttempts}
+	return result, found, nil
 }
 
 func specSource(spec shuttleengine.Spec, err error) SpecSource {
@@ -692,6 +740,16 @@ func (f *fakeShuttleWithAttachHook) Attach(spec shuttleengine.Spec) (shuttleengi
 	return result, found, err
 }
 
+// AttachGated overrides fakeShuttle's AttachGated in the same shape Attach is overridden above, so
+// the duringAttach hook still fires on the gated call path SingleLLMProducer.Call now drives through.
+func (f *fakeShuttleWithAttachHook) AttachGated(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (shuttleengine.Result, bool, error) {
+	result, found, err := f.fakeShuttle.AttachGated(spec, gate)
+	if f.duringAttach != nil {
+		f.duringAttach()
+	}
+	return result, found, err
+}
+
 // TestSingleLLMProducer_PrepareFreshSpawnRunsOnlyOnTheRespawnPath is the guard for the ordering the
 // whole probe-before-archive design rests on: a caller's destructive preparation must never touch the
 // output files while a live agent may still be writing them.
@@ -760,6 +818,139 @@ func TestSingleLLMProducer_PrepareFreshSpawnRunsOnlyOnTheRespawnPath(t *testing.
 
 // TestSingleLLMProducer_PrepareFreshSpawnErrorNeitherArchivesNorSpawns pins the failure posture: a
 // preparation that cannot complete is a returned error, and nothing downstream of it runs.
+// --- Gate ---
+
+func TestSingleLLMProducer_Gate_PassingGateReachesDone(t *testing.T) {
+	dir := t.TempDir()
+	outPath := filepath.Join(dir, "out.md")
+	spec := shuttleengine.Spec{Prompt: "run", OutputFiles: []string{outPath}}
+	shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+	gate := shuttleengine.GateSpec{Gate: func() (shuttleengine.GateResult, error) {
+		return shuttleengine.GateResult{Passed: true}, nil
+	}}
+	p := NewSingleLLMProducerGated("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil, gate)
+
+	outcome, ptr, err := p.Call(context.Background())
+	if err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	if outcome != shedengine.Done {
+		t.Errorf("Call() outcome = %q; want %q -- unchanged from today for a passing gate", outcome, shedengine.Done)
+	}
+	if ptr.Path != outPath {
+		t.Errorf("Call() pointer = %q; want %q", ptr.Path, outPath)
+	}
+}
+
+// TestSingleLLMProducer_Gate_FailedGateReachesStuckWithArtifactPointer is the load-bearing assertion
+// for the "the two producers' output pointers mean different things" decision's writer-row half: the
+// pointer must be explicitly equal to spec.OutputFiles[0], never the zero OutputPointer -- a test
+// asserting an empty pointer here would silently disable commit-on-gate-failure.
+func TestSingleLLMProducer_Gate_FailedGateReachesStuckWithArtifactPointer(t *testing.T) {
+	dir := t.TempDir()
+	outPath := filepath.Join(dir, "out.md")
+	spec := shuttleengine.Spec{Prompt: "run", OutputFiles: []string{outPath}}
+	shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+	gate := shuttleengine.GateSpec{Gate: func() (shuttleengine.GateResult, error) {
+		return shuttleengine.GateResult{Passed: false, Findings: "the widget is wrong"}, nil
+	}}
+	p := NewSingleLLMProducerGated("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil, gate)
+
+	outcome, ptr, err := p.Call(context.Background())
+	if err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	if outcome != shedengine.Stuck {
+		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
+	}
+	if ptr.Path != outPath {
+		t.Errorf("Call() pointer.Path = %q; want %q (never empty)", ptr.Path, outPath)
+	}
+	if ptr.GateAttempts == nil || *ptr.GateAttempts != 0 {
+		t.Errorf("Call() pointer.GateAttempts = %v; want pointer to 0 (fakeShuttle's default attempt count)", ptr.GateAttempts)
+	}
+}
+
+// TestSingleLLMProducer_Gate_AskingKeepsEmptyPointer proves a gated producer's OutcomeAsking still
+// maps to Stuck with an empty pointer, exactly as the ungated case does -- the gate is never
+// consulted for a non-done outcome.
+func TestSingleLLMProducer_Gate_AskingKeepsEmptyPointer(t *testing.T) {
+	dir := t.TempDir()
+	spec := shuttleengine.Spec{Prompt: "ask", OutputFiles: []string{filepath.Join(dir, "out.md")}}
+	shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking, LastAssistantMessage: "what next?"}}
+	gate := shuttleengine.GateSpec{Gate: func() (shuttleengine.GateResult, error) {
+		t.Fatal("gate closure invoked for a non-done outcome")
+		return shuttleengine.GateResult{}, nil
+	}}
+	p := NewSingleLLMProducerGated("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil, gate)
+
+	outcome, ptr, err := p.Call(context.Background())
+	if err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	if outcome != shedengine.Stuck {
+		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
+	}
+	if ptr != (shedengine.OutputPointer{}) {
+		t.Errorf("Call() pointer = %+v; want empty", ptr)
+	}
+}
+
+// TestSingleLLMProducer_Gate_AttachPathIsGatedToo proves the probe reaches AttachGated with the
+// producer's own GateSpec, so a resumed run is gated exactly as a fresh one is.
+func TestSingleLLMProducer_Gate_AttachPathIsGatedToo(t *testing.T) {
+	dir := t.TempDir()
+	outputs := []string{filepath.Join(dir, "primary.md")}
+	spec := shuttleengine.Spec{Prompt: "run", OutputFiles: outputs}
+	shuttle := &fakeShuttle{
+		attachFound:  true,
+		attachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
+	}
+	gate := shuttleengine.GateSpec{Gate: func() (shuttleengine.GateResult, error) {
+		return shuttleengine.GateResult{Passed: true}, nil
+	}}
+	p := NewSingleLLMProducerGated("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil, gate)
+
+	if _, _, err := p.Call(context.Background()); err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	if shuttle.gotAttachGateSpec.Gate == nil {
+		t.Error("AttachGated was not called with the producer's own GateSpec")
+	}
+}
+
+// TestSingleLLMProducer_Gate_AttemptsPropagatesOntoOutputPointer proves a non-zero
+// GateOutcome.Attempts (a gate that needed re-prompts before passing) reaches the returned
+// OutputPointer.GateAttempts unchanged, per manifest/designs/producer-gates.md's "recorded in the
+// row's envelope/history so the status file shows it" requirement -- shedengine's own
+// TestStep_GateAttempts_* tests (internal/shedengine/gateattempts_test.go) cover the persisted
+// side of that chain; this test covers the producer's own half, that it reads result.Gate.Attempts
+// and carries it, rather than shedengine silently receiving a value nobody actually populated.
+func TestSingleLLMProducer_Gate_AttemptsPropagatesOntoOutputPointer(t *testing.T) {
+	dir := t.TempDir()
+	outPath := filepath.Join(dir, "out.md")
+	spec := shuttleengine.Spec{Prompt: "run", OutputFiles: []string{outPath}}
+	shuttle := &fakeShuttle{
+		result:       shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
+		gateAttempts: 2,
+	}
+	gate := shuttleengine.GateSpec{Gate: func() (shuttleengine.GateResult, error) {
+		return shuttleengine.GateResult{Passed: true}, nil
+	}}
+	p := NewSingleLLMProducerGated("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil, gate)
+
+	outcome, ptr, err := p.Call(context.Background())
+	if err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	if outcome != shedengine.Done {
+		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Done)
+	}
+	if ptr.GateAttempts == nil || *ptr.GateAttempts != 2 {
+		t.Errorf("Call() pointer.GateAttempts = %v; want pointer to 2 (passed after two re-prompts)", ptr.GateAttempts)
+	}
+}
+
 func TestSingleLLMProducer_PrepareFreshSpawnErrorNeitherArchivesNorSpawns(t *testing.T) {
 	dir := t.TempDir()
 	output := filepath.Join(dir, "00-overview.md")

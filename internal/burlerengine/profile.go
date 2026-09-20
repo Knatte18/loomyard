@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // FileSet names what a review phase reads: paths and/or free-form instructions.
@@ -63,6 +64,13 @@ type RunOpts struct {
 	// path is composed for this round, exactly as an empty friction
 	// directory does.
 	NoteID string
+	// Gate is the per-invocation, non-rendered mechanical validator this round's shuttle run is
+	// gated by. The zero value is ungated, which is what the Webster segment's round passes, always.
+	// Gate sits on RunOpts rather than on Profile because Profile is validated, path-resolved data
+	// the round renders into prompts, so a func field there would have to be excluded from validate
+	// and from every profile test's comparison, while RunOpts already carries Model, Effort,
+	// Timeout, Round, and NoteID, which is exactly what a gate is.
+	Gate shuttleengine.GateSpec
 }
 
 // validate normalizes p in place and reports a fail-loud error if not runnable.

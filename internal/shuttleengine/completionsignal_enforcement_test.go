@@ -69,9 +69,9 @@ var negativeVerdictMarkers = map[string]bool{
 	"Errorf":                      true,
 }
 
-// auditedNegativeVerdictReturns is the audited set of negative-verdict return sites as of crucible
-// round opus5-high-r7, keyed by "<function> [<markers>]" with the number of such returns in that
-// function as the value.
+// auditedNegativeVerdictReturns is the audited set of negative-verdict return sites as of the
+// producer-gates task's shuttle-gate-loop batch, keyed by "<function> [<markers>]" with the number of
+// such returns in that function as the value.
 //
 // Keying on the enclosing function plus the marker set — rather than on file:line — is deliberate:
 // line numbers drift on every edit above them, which would make this test fail for reasons that have
@@ -81,8 +81,12 @@ var negativeVerdictMarkers = map[string]bool{
 // Every entry carries its justification, because "the count is 7" is not something a future reader
 // can check without one:
 //
-//   - Wait [Errorf] x4 — the events-unreadable cap and the three status-cap arms. All four sit behind
-//     finishedDespiteMechanismFailure (wait.go), which consults the contract first.
+//   - Wait [Errorf] x5 — the events-unreadable cap, the three status-cap arms (all four sit behind
+//     finishedDespiteMechanismFailure, which consults the contract first), plus the gate-evaluation
+//     error the events-tick Done branch returns when run.evaluateGate() fails. That fifth one is an
+//     infrastructure fault that never burns an attempt and never reaches the LLM, so it needs no
+//     file-contract consultation of its own — the run reached a positive OutcomeDone already, and the
+//     gate runs strictly after it, at a turn boundary with no in-progress turn to interrupt.
 //   - Wait [OutcomeTimeout] x1 — the run deadline, routed through classifyDeadlineExpiry.
 //   - checkLivenessTick [OutcomeDied] x1 — the dead-pane branch, guarded by the allOutputFilesExist
 //     directly above it.
@@ -99,17 +103,24 @@ var negativeVerdictMarkers = map[string]bool{
 //     present; neither needs a further check.
 //   - leftoverThenAgeVerdict [verdictRespawnEligible] x2, [verdictError] x1 — the leftover-then-age
 //     rule, whose first line is the contract check.
-//   - Attach [Errorf] x5 — the three reed-state gates (each now consulting soleFinishedCandidate
-//     first, crucible round opus5-high-r7's F1) plus the two multiplicity refusals, which are
-//     refusals to CHOOSE rather than verdicts on any run.
-//   - normalizeAttachSpec [Errorf] x1, collectAttachCandidates [Errorf] x1, readEventsFrom [Errorf] x3,
-//     finalize [Errorf] x1 — argument validation, a scan-root read failure, events-file I/O, and the
-//     fork-audit failure. None classifies a run as unfinished; all are listed because an
-//     AST scan that hand-excluded them would need a second, unenforceable judgement about which
-//     Errorf "counts", and a human looking at a new one costs less than that.
+//   - AttachGated [Errorf] x5 — a rename of Attach's own unchanged set, not a new site: card 3 moved
+//     Attach's whole body into AttachGated wholesale and added no return of its own. The five are
+//     still the three reed-state gates (each consulting soleFinishedCandidate first) plus the two
+//     multiplicity refusals, which are refusals to CHOOSE rather than verdicts on any run.
+//   - normalizeAttachSpec [Errorf] x1, collectAttachCandidates [Errorf] x1, readEventsFrom [Errorf] x3
+//     — argument validation, a scan-root read failure, and events-file I/O. None classifies a run as
+//     unfinished; all are listed because an AST scan that hand-excluded them would need a second,
+//     unenforceable judgement about which Errorf "counts", and a human looking at a new one costs
+//     less than that.
+//   - finalize [Errorf] x2 — the fork-audit failure, plus the gate-evaluation error finalize itself
+//     returns when run.evaluateGate() fails for an OutcomeDone it is about to finalize. Both fire
+//     strictly after the run already reached a positive verdict (a done fork-mode run, or a Done
+//     finalize's own gate check), so neither is itself a negative verdict on whether the run
+//     finished — they are infrastructure faults surfacing after the fact, the same reasoning the
+//     pre-existing fork-audit entry already carried.
 var auditedNegativeVerdictReturns = map[string]int{
-	"Attach [Errorf]":                                 5,
-	"Wait [Errorf]":                                   4,
+	"AttachGated [Errorf]":                            5,
+	"Wait [Errorf]":                                   5,
 	"Wait [OutcomeTimeout]":                           1,
 	"checkLivenessTick [Errorf]":                      1,
 	"checkLivenessTick [OutcomeDied]":                 1,
@@ -118,7 +129,7 @@ var auditedNegativeVerdictReturns = map[string]int{
 	"classifyStartupWindow [OutcomeDied]":             1,
 	"collectAttachCandidates [Errorf]":                1,
 	"dispositionCandidate [verdictRespawnEligible]":   2,
-	"finalize [Errorf]":                               1,
+	"finalize [Errorf]":                               2,
 	"leftoverThenAgeVerdict [verdictError]":           1,
 	"leftoverThenAgeVerdict [verdictRespawnEligible]": 2,
 	"normalizeAttachSpec [Errorf]":                    1,

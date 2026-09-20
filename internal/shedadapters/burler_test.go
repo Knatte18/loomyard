@@ -891,6 +891,136 @@ func TestBurlerProducer_Call_CancelledDuringCompletedRoundLeavesArtifacts(t *tes
 	}
 }
 
+// --- Gate ---
+
+func TestBurlerProducer_Gate_PassedGateIsByteForByteAsToday(t *testing.T) {
+	runDir := t.TempDir()
+	runner := &fakeBurlerRunner{results: []burlerengine.Result{{
+		Outcome: shuttleengine.OutcomeDone,
+		Gate:    &shuttleengine.GateOutcome{Passed: true},
+	}}}
+	p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
+
+	outcome, ptr, err := p.Call(context.Background())
+	if err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	if outcome != shedengine.Stuck {
+		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
+	}
+	wantPath := roundReviewPath(runDir, 1)
+	if ptr.Path != wantPath {
+		t.Errorf("Call() pointer = %q; want %q (unchanged for a passed gate)", ptr.Path, wantPath)
+	}
+}
+
+// TestBurlerProducer_Gate_FailedGateMapsToStuckWithEmptyPointer proves a gate-failed round returns
+// Stuck with an EMPTY pointer -- the signal that tells the segment's Bouncer there is no round
+// artifact to judge -- and that both round paths are archived (never left for the Bouncer to read).
+func TestBurlerProducer_Gate_FailedGateMapsToStuckWithEmptyPointer(t *testing.T) {
+	runDir := t.TempDir()
+	reviewPath := roundReviewPath(runDir, 1)
+	fixerPath := roundFixerReportPath(runDir, 1)
+	runner := &fakeBurlerRunner{results: []burlerengine.Result{{
+		Outcome: shuttleengine.OutcomeDone,
+		Gate:    &shuttleengine.GateOutcome{Passed: false, FindingsPath: "/kept/gate-findings.md"},
+	}}}
+	runner.duringRun = func(int) {
+		writeRoundFile(t, reviewPath)
+		writeRoundFile(t, fixerPath)
+	}
+	instant := time.Date(2026, 8, 20, 10, 15, 0, 0, time.UTC)
+	p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, fixedClock(instant))
+
+	outcome, ptr, err := p.Call(context.Background())
+	if err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	if outcome != shedengine.Stuck {
+		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
+	}
+	if ptr.Path != "" {
+		t.Errorf("Call() pointer.Path = %q; want empty -- there is no round artifact for the Bouncer to judge", ptr.Path)
+	}
+	if ptr.GateAttempts == nil || *ptr.GateAttempts != 0 {
+		t.Errorf("Call() pointer.GateAttempts = %v; want pointer to 0", ptr.GateAttempts)
+	}
+	if _, statErr := os.Stat(reviewPath); !os.IsNotExist(statErr) {
+		t.Error("gate-failed round's review file was not archived away")
+	}
+	if _, statErr := os.Stat(fixerPath); !os.IsNotExist(statErr) {
+		t.Error("gate-failed round's fixer report was not archived away")
+	}
+}
+
+// TestBurlerProducer_Gate_FailedGateDoesNotConsumeAttemptRetry proves a gate-failed round returns
+// directly without ever invoking the runner a second time -- the attempt-1/attempt-2 retry belongs
+// to OutcomeDied/OutcomeTimeout alone.
+func TestBurlerProducer_Gate_FailedGateDoesNotConsumeAttemptRetry(t *testing.T) {
+	runDir := t.TempDir()
+	runner := &fakeBurlerRunner{results: []burlerengine.Result{{
+		Outcome: shuttleengine.OutcomeDone,
+		Gate:    &shuttleengine.GateOutcome{Passed: false},
+	}}}
+	p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
+
+	if _, _, err := p.Call(context.Background()); err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	if runner.calls != 1 {
+		t.Errorf("runner.Run calls = %d; want 1 -- a gate-failed round is a determinate verdict, never retried", runner.calls)
+	}
+}
+
+// TestBurlerProducer_Gate_ProbeLiveRoundPassesGateAndMapsFailedGateIdentically is the regression
+// guard for the resume hole: probeLiveRound must pass p.opts.Gate into the gated attach, and an
+// attached round's failed gate must map identically to the spawn path's -- Stuck with an empty
+// pointer, archived, retry untouched.
+func TestBurlerProducer_Gate_ProbeLiveRoundPassesGateAndMapsFailedGateIdentically(t *testing.T) {
+	runDir := t.TempDir()
+	reviewPath := roundReviewPath(runDir, 1)
+	runner := &fakeBurlerRunner{results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
+	attach := &fakeShuttle{
+		attachFound: true,
+		attachResult: shuttleengine.Result{
+			Outcome: shuttleengine.OutcomeDone,
+			Gate:    &shuttleengine.GateOutcome{Passed: false},
+		},
+	}
+	opts := burlerengine.RunOpts{Gate: shuttleengine.GateSpec{Gate: func() (shuttleengine.GateResult, error) {
+		return shuttleengine.GateResult{Passed: false}, nil
+	}}}
+	p := newTestBurlerProducerWithAttach(t, runDir, simpleBurlerProfile(), opts, runner, attach, fixedClock(time.Now()))
+	// Only the review file exists at Call entry -- a complete pair here would make
+	// highestCompleteRound treat round 1 as already finished and hand back before probeLiveRound is
+	// ever reached, exactly as the pre-existing attach tests in this file are careful to leave
+	// incomplete.
+	writeRoundFile(t, reviewPath)
+
+	outcome, ptr, err := p.Call(context.Background())
+	if err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	if outcome != shedengine.Stuck {
+		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
+	}
+	if ptr.Path != "" {
+		t.Errorf("Call() pointer.Path = %q; want empty, identically to the spawn path's own gate-failed exit", ptr.Path)
+	}
+	if ptr.GateAttempts == nil || *ptr.GateAttempts != 0 {
+		t.Errorf("Call() pointer.GateAttempts = %v; want pointer to 0", ptr.GateAttempts)
+	}
+	if attach.gotAttachGateSpec.Gate == nil {
+		t.Error("probeLiveRound did not pass p.opts.Gate into AttachGated -- this reopens the resume gate hole")
+	}
+	if runner.calls != 0 {
+		t.Errorf("runner.Run calls = %d; want 0 -- an attached round is never respawned", runner.calls)
+	}
+	if _, statErr := os.Stat(reviewPath); !os.IsNotExist(statErr) {
+		t.Error("gate-failed attached round's review file was not archived away")
+	}
+}
+
 // --- Archive-on-exit ---
 
 func TestBurlerProducer_Call_ArchiveOnExit(t *testing.T) {

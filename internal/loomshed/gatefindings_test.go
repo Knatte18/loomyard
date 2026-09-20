@@ -1,9 +1,18 @@
 // gatefindings_test.go asserts that this package's mechanical gates surface the determined findings
 // they used to discard.
-// The rule matters most exactly where it is cheapest to skip: Loom-Preflight carries no OnStuck at
-// all, so its Stuck halts the run for a human; Discussion-Validate and Plan-Validate bounce to a
-// writer that is respawned with no knowledge of the complaint. In every one of those cases the
-// driver log is the only place the reason can be read, and it used to say nothing.
+// The rule matters most exactly where it is cheapest to skip, but the reason has changed with the
+// row-removal batch: Loom-Preflight still carries no OnStuck at all, so its Stuck still halts the
+// run for a human. NewDiscussionGate and NewPlanGate, though, no longer bounce to a respawned
+// writer on a failed attempt -- a gated writer row's exhausted gate halts the run for a human too,
+// so the logger.Warn line this file pins is not merely the best record of a refusal, it is the ONLY
+// one that outlives the ephemeral run directory the findings file is deleted with.
+//
+// This file and gates_test.go both drive the two gate closures and must not silently drift into
+// testing each other's subject: gates_test.go owns the closures' own pass/fail/error mapping,
+// including the ParsePlan error split, in full; this file owns only that a failed gate's specific
+// determined findings (not merely "some findings") reach the warn line, which is why each case below
+// pins a specific check name (discussion-section-missing, index-file-mismatch) that gates_test.go's
+// own findings-surfacing cases do not assert.
 
 package loomshed
 
@@ -30,12 +39,14 @@ func captureGateWarnings(t *testing.T) *bytes.Buffer {
 	return &buf
 }
 
-func TestDiscussionValidate_StuckSurfacesItsFindings(t *testing.T) {
+// TestDiscussionGate_FailureSurfacesItsFindings replaces the deleted Discussion-Validate producer's
+// own findings-surfacing case: the gate closure now carries the same obligation the producer used
+// to, over the same fixture shape (a decision record missing every required heading, with the
+// support log present, so Validate reports heading findings rather than a file-missing one).
+func TestDiscussionGate_FailureSurfacesItsFindings(t *testing.T) {
 	dir := t.TempDir()
 	decisionRecord := filepath.Join(dir, "decision-record.md")
 	supportLog := filepath.Join(dir, "support-log.md")
-	// A decision record missing every required heading, with the support log present, so Validate
-	// reports heading findings rather than a file-missing one.
 	if err := os.WriteFile(decisionRecord, []byte("# Nothing required is here\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(%s): %v", decisionRecord, err)
 	}
@@ -44,38 +55,37 @@ func TestDiscussionValidate_StuckSurfacesItsFindings(t *testing.T) {
 	}
 
 	buf := captureGateWarnings(t)
-	p := NewDiscussionValidate(NameDiscussionValidate, decisionRecord, supportLog)
+	gate := NewDiscussionGate(decisionRecord, supportLog)
 
-	outcome, ptr, err := p.Call(context.Background())
+	result, err := gate()
 	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
+		t.Fatalf("gate() error = %v; want nil", err)
 	}
-	if outcome != shedengine.Stuck {
-		t.Fatalf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-	}
-	if ptr != (shedengine.OutputPointer{}) {
-		t.Errorf("Call() pointer = %+v; want the zero value", ptr)
+	if result.Passed {
+		t.Fatalf("gate() Passed = true; want false for a decision record missing every required heading")
 	}
 
 	logged := buf.String()
-	if !strings.Contains(logged, "discussion artifacts failed validation") {
-		t.Errorf("log = %q; want it to report the validation refusal", logged)
+	if !strings.Contains(logged, "discussion gate failed validation") {
+		t.Errorf("log = %q; want it to report the gate refusal", logged)
 	}
-	if !strings.Contains(logged, "findings=") {
-		t.Errorf("log = %q; want it to carry a findings field -- the refusal reason is the whole point", logged)
+	if !strings.Contains(logged, "discussion-section-missing") {
+		t.Errorf("log = %q; want it to name the check that fired", logged)
 	}
-	if !strings.Contains(logged, NameDiscussionValidate) {
-		t.Errorf("log = %q; want it to name the producer %q", logged, NameDiscussionValidate)
+	if !strings.Contains(logged, "Discussion-Gate") {
+		t.Errorf("log = %q; want it to name the gate", logged)
 	}
 }
 
-func TestPlanValidate_StuckSurfacesItsFindings(t *testing.T) {
+// TestPlanGate_FailureSurfacesItsFindings replaces the deleted Plan-Validate producer's own
+// findings-surfacing case: the gate closure now carries the same obligation the producer used to,
+// over the same fixture shape (a plan that PARSES cleanly and fails validation on exactly one
+// determined check: an extra .md file on disk that no Card Index entry names, which planparser
+// reports as index-file-mismatch). This test's subject is that exactly one finding reaches the warn
+// line -- plumbing, not mode behaviour -- so the fixture carries no approval dimension at all: the
+// gate always runs planglyph.ValidateFormat, never the require_approved-aware planglyph.Validate.
+func TestPlanGate_FailureSurfacesItsFindings(t *testing.T) {
 	anchorPath, planDir := setupPlanDir(t)
-	// A minimal plan that PARSES cleanly, is approved, and fails validation on exactly one
-	// determined check: an extra .md file on disk that no Card Index entry names, which planparser
-	// reports as index-file-mismatch. This test's subject is that exactly one finding reaches the
-	// warn line -- plumbing, not mode behaviour -- so the fixture is kept mode-independent rather
-	// than keyed on the plan-unapproved check the mode table in planvalidate_test.go now owns.
 	overview := "---\nformat: 5\napproved: true\nlanguage: none\n---\n\n" +
 		"# Plan: add a helper\n\n" +
 		"## Card Index\n\n" +
@@ -98,27 +108,25 @@ func TestPlanValidate_StuckSurfacesItsFindings(t *testing.T) {
 	}
 
 	buf := captureGateWarnings(t)
-	// false: the default mode. The mode table in planvalidate_test.go is where requireApproved
-	// belongs, and this test must not become the one place it is covered.
-	p := NewPlanValidate(NamePlanValidate, anchorPath, anchorPath, false)
+	gate := NewPlanGate(anchorPath, anchorPath)
 
-	outcome, _, err := p.Call(context.Background())
+	result, err := gate()
 	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
+		t.Fatalf("gate() error = %v; want nil", err)
 	}
-	if outcome != shedengine.Stuck {
-		t.Fatalf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
+	if result.Passed {
+		t.Fatalf("gate() Passed = true; want false for a plan carrying one blocking finding")
 	}
 
 	logged := buf.String()
-	if !strings.Contains(logged, "plan failed validation") {
-		t.Errorf("log = %q; want it to report the validation refusal", logged)
+	if !strings.Contains(logged, "plan gate failed validation") {
+		t.Errorf("log = %q; want it to report the gate refusal", logged)
 	}
 	if !strings.Contains(logged, "index-file-mismatch") {
 		t.Errorf("log = %q; want it to name the check that fired", logged)
 	}
-	if !strings.Contains(logged, NamePlanValidate) {
-		t.Errorf("log = %q; want it to name the producer %q, so Plan-Validate and Plan-Revalidate are distinguishable", logged, NamePlanValidate)
+	if !strings.Contains(logged, "Plan-Gate") {
+		t.Errorf("log = %q; want it to name the gate", logged)
 	}
 }
 

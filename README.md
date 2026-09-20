@@ -17,7 +17,7 @@ Those calls are made through a narrow file contract — a prompt goes in, named 
 The practical payoff is that the same run does the same thing twice, a crashed run resumes exactly where it stopped, and the parts most likely to break are the parts covered by `go test` rather than by hope.
 
 At its center is **`lyx`** — a single Go binary (LoomYard eXecutable) that owns the task board, the git topology, and the orchestrator.
-The full spine now ships: `lyx start` in a worktree bootstraps a task and drives it through a seventeen-row phase machine to a merge-back, unattended.
+The full spine now ships: `lyx start` in a worktree bootstraps a task and drives it through a fourteen-row phase machine to a merge-back, unattended.
 
 > **Built on Millhouse's ideas, not a port of it.** LoomYard started as a Go rebuild of [Millhouse](https://github.com/Knatte18/millhouse) and still owes it the core premise — task orchestration for Claude Code, isolated worktrees, AI subagents for the judgment steps. It has since grown well past that: the orchestrator is a data-driven phase machine rather than a skill set, review is a Go-owned gate loop, and the git topology is a model Millhouse has no equivalent of.
 
@@ -158,12 +158,12 @@ Routing is per-producer and explicit, never positional: a `Done` verdict follows
 List order is display order only.
 
 `loom` is therefore `shed` plus one list, and that list is data rather than code: [`contracts/recipes/loom-recipe.yaml`](contracts/recipes/loom-recipe.yaml), embedded into the binary and assembled into producers by `internal/loomrecipe` against `internal/shedrecipe`'s engine registry.
-Its seventeen rows:
+Its fourteen rows:
 
 ```
 Preflight → Loom-Preflight
-  → Discussion-Write → Discussion-Validate → [Discussion-Review segment]
-  → Plan-Write → Plan-Validate → [Plan-Review segment] → Plan-Revalidate
+  → Discussion-Write → [Discussion-Review segment]
+  → Plan-Write → [Plan-Review segment]
   → Batchifier → Webster → [Webster-Review segment]
   → Publish → Finalize
 ```

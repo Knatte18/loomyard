@@ -1,7 +1,18 @@
 # Producer gates — mechanical accept-gates on LLM-running producers
 
-**Status:** a settled direction distilled from a design discussion (2026-09-20).
-Ready to be broken into a task, but not a row-level spec — validate details against the code before implementing from it.
+**Status:** shipped (2026-09-20).
+The three places the implementation deliberately narrowed or diverged from this doc, each with its reason:
+
+1. **The per-attempt done-signal ships as the turn boundary alone, not the compound quiescence definition this doc sketches below.**
+   The compound definition — turn-idle together with a process-tree probe and a hook-maintained pending-work ledger — exists to guard against an agent that ends its turn while an async in-process subagent it launched is still working.
+   That hazard cannot arise at any of the four gated sites: the in-process `Agent` tool is denied there by the shipped shuttle template (`internal/shuttleengine/config_test.go`'s `TestLoadConfig_ClaudeDenyAgentTool_PinsGateNarrowingPrecondition`), and none of the four gated rows authorizes fork subagents either (`internal/loomrecipe/gatequiescence_test.go`'s `TestNoGatedRowAuthorizesForkSubagents`).
+   With both halves of that precondition pinned, the simple turn boundary is sound and the process-tree/ledger machinery was never built.
+2. **Findings always ride a file with a one-line pointer — never the doc's inline-or-file split below.**
+   The send path rejects any text containing a newline outright, and both validators render findings as an unbounded list, so the inline branch was never reliably available; a two-branch rule would have been a latent delivery failure on the long branch.
+3. **The gate signature shipped as `func() (GateResult, error)`, closing over its own told paths, rather than the doc's `func(artifactDir string) (GateResult, error)`.**
+   The two validators (`discussionparser.Validate`, `planglyph.ValidateFormat`) take materially different path shapes, and no single directory argument fits either one.
+
+Everything else below is the design as discussed; read it as history, not as what shipped, where it conflicts with the three points above.
 
 ## The concept
 

@@ -9,9 +9,6 @@ See Maintenance below for how the numbering works.
 
 This section holds what's committed to next.
 
-1. **producer gates: mechanical accept-gates on LLM-running producers** — a producer that runs an LLM declares a mechanical gate: a validator whose findings the producer injects back into the still-live session as a re-prompt, holding the handoff until the gate passes (bounded by an explicit attempt counter, then ordinary Stuck); the standalone Discussion-Validate, Plan-Validate, and Plan-Revalidate rows are removed in the same task. Lands before the batten end-to-end crucible campaign (wiki: `crucible-batten-end-to-end`).
-   See [designs/producer-gates.md](designs/producer-gates.md).
-
 ## Next Up
 
 What comes right after Planned clears — committed and ordered, unlike Someday below.
@@ -90,13 +87,16 @@ No build order is implied between these items.
 
 1. **finalize: the discrepancy-document conflict shape** — some divergences cannot be expressed as a git conflict at all, so there are no markers to hand a resolving agent; the answer is a precomputed document describing the disagreement instead. Only the ordinary-git-conflict shape shipped (`internal/mergeresolve`), while `PullResult.PatternResidue` already is this shape for the history-rewrite case — design it once, for both, whenever picked up.
 
-1. **shedrecipe: capability-declaration instead of manual seam-threading** — giving a producer a new capability means hand-threading a passthrough `Env` field through three layers, because the Shed Recipe Registry Invariant bars `shedrecipe` from importing the capability's owning package. The idea, not yet designed: let a producer declare what it needs and have the registry wire it — deep, likely touching the invariant itself and all seventeen registry entries.
+1. **shedrecipe: capability-declaration instead of manual seam-threading** — giving a producer a new capability means hand-threading a passthrough `Env` field through three layers, because the Shed Recipe Registry Invariant bars `shedrecipe` from importing the capability's owning package. The idea, not yet designed: let a producer declare what it needs and have the registry wire it — deep, likely touching the invariant itself and all sixteen registry entries.
 
 1. **reed: daemon Slack relay** — bidirectional Slack relay per worktree, riding on the now-Done `reed: watchdog daemon`. Low priority, well behind the daemon's own self-heal jobs — split out on purpose so it never blocks or gets conflated with the watchdog work.
 
 ## Done
 
 Cleared 2026-08-25 to keep this file lean — shipped items' history lives in `git log` and each module's own package documentation, not here.
+
+1. **producer gates: mechanical accept-gates on LLM-running producers** — a producer that runs an LLM declares a mechanical gate: a validator whose findings the producer injects back into the still-live session as a re-prompt, holding the handoff until the gate passes (bounded by an explicit attempt counter, then ordinary Stuck); the standalone Discussion-Validate, Plan-Validate, and Plan-Revalidate rows are removed in the same task. Lands before the batten end-to-end crucible campaign (wiki: `crucible-batten-end-to-end`).
+   See [designs/producer-gates.md](designs/producer-gates.md) and [designs/loom.md](designs/loom.md#the-gate).
 
 1. **seeded driver choice: ly-drive strand as the child's driver** — the seed's `driver` field selects who steps a run: the detached Go runner, or a Claude strand running ly-drive in the worktree's own reed session, booted by that run's own recipe bootstrap verb. Loom's `start` is the only bootstrap verb that reads it today, per the new Driver Choice Single-Site Invariant; a recipe with no bootstrap verb of its own cannot be seeded for the `llm` driver until it grows one. No default flips — every run still defaults to `go`.
    See [designs/seeded-shed.md](designs/seeded-shed.md#the-driver-choice-as-built).

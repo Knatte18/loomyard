@@ -146,11 +146,13 @@ func WarnIfMarkerAbsent(template []byte, stencilName, directive string) {
 // The free-name scan is best-effort under concurrency: two spawns racing inside the same directory
 // can both resolve to the same suffix and one note is lost. That is accepted -- concurrent same-site
 // spawns do not occur today, and a lost note is optional bookkeeping. The case this function closes
-// structurally is sequential re-invocation of the same site, which is guaranteed on any bounced or
-// crash-resumed run: Discussion-Write is re-entered whenever Discussion-Validate bounces to it,
-// Plan-Write whenever Plan-Validate or Plan-Revalidate bounces, and recoverSpawn is re-runnable for
-// the same batch -- internal/websterengine/recoverbatch.go timestamp-archives a stale report on each
-// call for exactly that reason.
+// structurally is sequential re-invocation of the same site, which is guaranteed on any
+// crash-resumed run: Discussion-Write and Plan-Write are each respawned after a crash mid-step (see
+// manifest/designs/loom.md's crash-recovery section) -- a mechanical gate's own re-prompt never
+// triggers a second spawn of this kind, since it re-prompts the same live session rather than
+// re-entering the row -- and recoverSpawn is re-runnable for the same batch --
+// internal/websterengine/recoverbatch.go timestamp-archives a stale report on each call for exactly
+// that reason.
 func NotePath(frictionDir, id string) string {
 	if frictionDir == "" {
 		return ""

@@ -21,6 +21,10 @@ import (
 // Shuttle is the seam Engine drives one round through.
 type Shuttle interface {
 	Run(shuttleengine.Spec) (shuttleengine.Result, error)
+	// RunGated is Run, gated: the run's declared output artifacts are additionally validated by
+	// gate.Gate (if non-nil) before the round's report is trusted. Added beside Run rather than a
+	// widening of it, per the "added forms, never widened signatures" decision.
+	RunGated(shuttleengine.Spec, shuttleengine.GateSpec) (shuttleengine.Result, error)
 }
 
 var _ Shuttle = (*shuttleengine.Runner)(nil)
@@ -77,6 +81,9 @@ type Result struct {
 	// report) — sloppiness no mechanism prevents in advance, surfaced here
 	// rather than failing the round. Empty for a non-cluster round.
 	ClusterWarnings []string
+	// Gate is a 1:1 passthrough of shuttleengine.Result.Gate, exactly as RunDir and ForkAudit
+	// already are. nil means the round ran ungated.
+	Gate *shuttleengine.GateOutcome
 }
 
 // Run drives one burler round for p, tuned by opts.
@@ -89,13 +96,18 @@ type Result struct {
 // build the shuttle Spec (Interactive/Parent/Display/ KeepPane stay zero-valued — rounds are
 // autonomous by default, per the run-tuning-off-profile decision) with Prompt set to the thin
 // orchestrator only;
-// run it through the Shuttle seam;
-// populate Result from the shuttle Result;
-// for a cluster round (p.ClusterFan != "") that reached done, copy the shuttle's ForkAudit onto
-// Result and enforce the cluster audit policy (auditClusterRound) before reading the review file at
-// all;
-// and, only when the run reached shuttleengine.OutcomeDone, read and strictly parse the review file
-// into Verdict/Findings.
+// run it through the Shuttle seam via RunGated, wrapping a non-nil opts.Gate.Gate in
+// repairReportBeforeGate so a failing gate's findings also instruct the agent to rewrite this
+// round's own review and fixer-report files;
+// populate Result (including its 1:1 Gate passthrough) from the shuttle Result;
+// when the run reached done with a non-nil, failing Result.Gate, return immediately with Verdict and
+// Findings left empty — the round's review file was written before the gate ran, so a gate that
+// failed leaves it describing a fix over an artifact state that has since been proven invalid, and a
+// caller parsing it would be trusting a report the gate itself just discredited;
+// for a cluster round (p.ClusterFan != "") that reached done with a passing (or absent) gate, copy
+// the shuttle's ForkAudit onto Result and enforce the cluster audit policy (auditClusterRound)
+// before reading the review file at all;
+// and, only then, read and strictly parse the review file into Verdict/Findings.
 //
 // Run returns a nil error for every non-done outcome (asking/died/timeout are normal loop events a
 // caller branches on via Result.Outcome, with an empty Verdict) and reserves errors for hard
@@ -164,7 +176,12 @@ func (e *Engine) Run(p Profile, opts RunOpts) (Result, error) {
 		ForkSubagents: p.ClusterFan != "",
 	}
 
-	shuttleResult, err := e.shuttle.Run(spec)
+	gateSpec := opts.Gate
+	if gateSpec.Gate != nil {
+		gateSpec.Gate = repairReportBeforeGate(opts.Gate.Gate, p.ReviewPath, p.FixerReportPath)
+	}
+
+	shuttleResult, err := e.shuttle.RunGated(spec, gateSpec)
 	if err != nil {
 		return Result{}, fmt.Errorf("burler: shuttle run: %w", err)
 	}
@@ -177,12 +194,23 @@ func (e *Engine) Run(p Profile, opts RunOpts) (Result, error) {
 		StrandGUID:           shuttleResult.StrandGUID,
 		LastAssistantMessage: shuttleResult.LastAssistantMessage,
 		RunDir:               shuttleResult.RunDir,
+		Gate:                 shuttleResult.Gate,
 	}
 
 	if result.Outcome != shuttleengine.OutcomeDone {
 		// asking/died/timeout are normal loop events, not errors — the
 		// caller branches on Outcome (and, for asking, LastAssistantMessage
 		// above). Verdict stays empty: there is no review file to trust yet.
+		return result, nil
+	}
+
+	if result.Gate != nil && !result.Gate.Passed {
+		// A failed gate is not an error and not a synthesised Outcome — the round genuinely
+		// classified OutcomeDone and the gate is a separate fact about it. A burler round writes
+		// both its review file and its fixer report BEFORE its gate runs, so a gate that fails,
+		// re-prompts, and then passes would otherwise leave this function parsing a verdict written
+		// against the pre-repair artifact — a report claiming a fix over a state that has since
+		// changed. Verdict/Findings are left empty and the review file is never read.
 		return result, nil
 	}
 
@@ -212,4 +240,34 @@ func (e *Engine) Run(p Profile, opts RunOpts) (Result, error) {
 	result.Verdict = verdict
 	result.Findings = findings
 	return result, nil
+}
+
+// repairReportBeforeGate wraps told, a round's own gate closure, in a per-round closure that
+// additionally instructs the agent to rewrite reviewPath and fixerReportPath when the gate fails.
+//
+// It exists because a burler round writes both of those files BEFORE its gate runs, so a gate that
+// fails, re-prompts, and then passes would otherwise leave Engine.Run parsing a verdict written
+// against the pre-repair artifact — a report claiming a fix over a state that has since changed,
+// which is exactly what the segment's judge then consumes.
+//
+// It calls told exactly once; on a non-nil error or a passing result it returns that verbatim; on a
+// failing result it appends to GateResult.Findings a blank line and an instruction naming reviewPath
+// and fixerReportPath, requiring both to be rewritten to reflect the repair the agent is about to
+// make. The instruction rides the findings FILE and never the Send line, which must stay a single
+// line — see the "findings always ride a file" decision.
+//
+// It is composed here, in Engine.Run, rather than in the closure the caller built, because only
+// Engine.Run knows the round's own two paths.
+func repairReportBeforeGate(told shuttleengine.Gate, reviewPath, fixerReportPath string) shuttleengine.Gate {
+	return func() (shuttleengine.GateResult, error) {
+		result, err := told()
+		if err != nil || result.Passed {
+			return result, err
+		}
+		result.Findings += fmt.Sprintf(
+			"\n\nBoth this round's own review file (%s) and its own fixer report (%s) were written before this gate ran. Rewrite both to reflect the repair you are about to make.",
+			reviewPath, fixerReportPath,
+		)
+		return result, nil
+	}
 }

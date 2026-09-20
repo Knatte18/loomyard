@@ -2,73 +2,34 @@
 // rejected rather than silently accepted. Removing approve_seam from the shipped Plan-Bouncer row is
 // not reachable through the sequence fixture -- the recipe is parsed unconditionally from the
 // embedded document, and a nil Env.ApprovePlan fails at requireSeam before the run starts -- so the
-// negative case is expressed two ways here instead: dynamically, by substituting env.ApprovePlan
-// with a non-nil no-op closure and driving a real run, and statically, by parsing hand-authored
-// recipe YAML through shedbuild.Parse the way overlay_seam_guard_test.go already does for its own
-// fixtures.
+// negative case is expressed statically instead, by parsing hand-authored recipe YAML through
+// shedbuild.Parse the way overlay_seam_guard_test.go already does for its own fixtures.
+//
+// This file used to also carry a dynamic negative case, substituting env.ApprovePlan with a non-nil
+// no-op closure and driving a real run to prove Plan-Revalidate's require_approved: true key caught
+// the resulting no-op seam. That row -- and the whole class of standalone post-segment mechanical
+// re-check it belonged to -- is deleted by the row-removal batch, and nothing re-checks the approval
+// flag after Plan-Bouncer's settle writes it any more. The property this file's deleted case pinned
+// now rests on two things instead: the approve seam failing loudly at requireSeam if it is ever
+// wired nil (still covered below), and sequence_test.go's own trailing planparser.ParsePlan
+// approved-flag assertion, the only standing guard left anywhere that the seam genuinely ran on a
+// clean pass -- by design, no row re-checks the flag.
 
 package loomrecipe
 
 import (
-	"context"
 	"testing"
 
 	"github.com/Knatte18/loomyard/contracts/recipes"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
-	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// TestSequence_NoOpApproveSeamBouncesAtRevalidate builds the sequence fixture and substitutes
-// env.ApprovePlan with a non-nil closure that writes nothing, rather than the real
-// planparser.SetApproved closure buildSequenceFixture wires by default. Construction succeeds --
-// bouncerEntry's requireSeam guard only checks non-nil -- and Plan-Bouncer's approved settle calls
-// the closure and commits, but nothing ever flips the plan's approved: flag. The run must therefore
-// halt at Plan-Revalidate with Stuck and bounce to Plan-Write rather than reaching Batchifier: this
-// pins that Plan-Revalidate's require_approved: true key is genuinely enforcing the approval it is
-// now the only row in the recipe to check.
-func TestSequence_NoOpApproveSeamBouncesAtRevalidate(t *testing.T) {
-	_, env, paths := buildSequenceFixture(t)
-	env.ApprovePlan = func() error { return nil }
-
-	shed, err := New(env, paths)
-	if err != nil {
-		t.Fatalf("New() error = %v; want nil", err)
-	}
-	shed.Producers[0].Producer = fakeAlwaysDoneProducer{}
-
-	result, err := shed.Run(context.Background())
-	if err != nil {
-		t.Fatalf("Run() error = %v; want nil", err)
-	}
-
-	revalidateIdx := -1
-	for i, e := range result.History {
-		if e.Producer == loomshed.NamePlanRevalidate && e.Outcome == shedengine.Stuck {
-			revalidateIdx = i
-			break
-		}
-	}
-	if revalidateIdx == -1 {
-		t.Fatalf("Run() History has no %s Stuck entry: %+v", loomshed.NamePlanRevalidate, result.History)
-	}
-	if revalidateIdx+1 >= len(result.History) {
-		t.Fatalf("Run() History ends at the %s Stuck entry; want a following entry naming the bounce target %q", loomshed.NamePlanRevalidate, loomshed.NamePlanWrite)
-	}
-	if got := result.History[revalidateIdx+1].Producer; got != loomshed.NamePlanWrite {
-		t.Errorf("History[%d].Producer (following the %s Stuck entry) = %q; want the declared bounce target %q", revalidateIdx+1, loomshed.NamePlanRevalidate, got, loomshed.NamePlanWrite)
-	}
-
-	for _, e := range result.History {
-		if e.Producer == loomshed.NameBatchifier {
-			t.Fatalf("Run() History reaches %s; want the run to bounce at %s instead", loomshed.NameBatchifier, loomshed.NamePlanRevalidate)
-		}
-	}
-}
-
 // TestShippedRecipe_ApproveSeamWiredOnPlanBouncerOnly parses the real embedded recipes.LoomRecipe
-// and asserts the approval seam's shipped shape: approve_seam: plan on the Plan-Bouncer row,
-// require_approved: true on the Plan-Revalidate row, and neither key present on any other row.
+// and asserts the approval seam's shipped shape: approve_seam: plan on the Plan-Bouncer row and no
+// other row, and require_approved present on no row at all -- the key is no longer recognized by any
+// registry entry now that both rows sharing the old PlanValidate engine are deleted, and a row
+// carrying it would fail construction outright rather than silently doing nothing.
 func TestShippedRecipe_ApproveSeamWiredOnPlanBouncerOnly(t *testing.T) {
 	r, err := shedbuild.Parse(recipes.LoomRecipe)
 	if err != nil {
@@ -77,23 +38,20 @@ func TestShippedRecipe_ApproveSeamWiredOnPlanBouncerOnly(t *testing.T) {
 
 	for _, row := range r.Producers {
 		approveSeam, hasApproveSeam := row.Config["approve_seam"]
-		requireApproved, hasRequireApproved := row.Config["require_approved"]
+		_, hasRequireApproved := row.Config["require_approved"]
+
+		if hasRequireApproved {
+			t.Errorf("row %q: carries an unexpected \"require_approved\" key; want it absent from every row -- the key is no longer recognized by any registry entry", row.Name)
+		}
 
 		switch row.Name {
 		case loomshed.NamePlanBouncer:
 			if !hasApproveSeam || approveSeam != "plan" {
 				t.Errorf("row %q: config[\"approve_seam\"] = %v (present=%v); want \"plan\"", row.Name, approveSeam, hasApproveSeam)
 			}
-		case loomshed.NamePlanRevalidate:
-			if !hasRequireApproved || requireApproved != true {
-				t.Errorf("row %q: config[\"require_approved\"] = %v (present=%v); want true", row.Name, requireApproved, hasRequireApproved)
-			}
 		default:
 			if hasApproveSeam {
 				t.Errorf("row %q: carries an unexpected \"approve_seam\" key = %v; want it absent", row.Name, approveSeam)
-			}
-			if hasRequireApproved {
-				t.Errorf("row %q: carries an unexpected \"require_approved\" key = %v; want it absent", row.Name, requireApproved)
 			}
 		}
 	}

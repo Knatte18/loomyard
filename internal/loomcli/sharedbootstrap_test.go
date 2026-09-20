@@ -204,7 +204,7 @@ func TestBootstrapCommitPaths_IncludesSeedRel(t *testing.T) {
 }
 
 // TestBuildLoomShed_OutputShape asserts the built *shedengine.Shed's StatusPath, LockPath, and
-// StatusLockPath equal the receiver's own c.shedPaths values, and that it carries all seventeen
+// StatusLockPath equal the receiver's own c.shedPaths values, and that it carries all fourteen
 // producer rows.
 //
 // buildLoomShed opens the fabric as its first act (fabricengine.Open), which this untagged suite's

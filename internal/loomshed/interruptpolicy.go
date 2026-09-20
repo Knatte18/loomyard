@@ -1,4 +1,4 @@
-// interruptpolicy.go declares the exported table mapping each of loom's seventeen durable row names
+// interruptpolicy.go declares the exported table mapping each of loom's fourteen durable row names
 // to the operator-facing action an external supervisor should take when it finds `lyx loom step`
 // interrupted mid-row, and the accessor that reads it.
 
@@ -18,7 +18,7 @@ const (
 	InterruptPolicyHandback = "handback"
 )
 
-// InterruptPolicies maps each of loom's seventeen durable row names (the Name* constants declared
+// InterruptPolicies maps each of loom's fourteen durable row names (the Name* constants declared
 // in loomshed.go) to the InterruptPolicyReinvoke/InterruptPolicyHandback action an external
 // supervisor should take after finding that row interrupted. It is keyed by those constants rather
 // than by repeated string literals, because the constants are the durable on-disk identity a rename
@@ -40,23 +40,20 @@ const (
 // the most expensive row in the list, and that cost is the operator's to accept rather than the
 // supervisor skill's.
 var InterruptPolicies = map[string]string{
-	NamePreflight:          InterruptPolicyReinvoke,
-	NameLoomPreflight:      InterruptPolicyReinvoke,
-	NameDiscussionWrite:    InterruptPolicyReinvoke,
-	NameDiscussionValidate: InterruptPolicyReinvoke,
-	NameDiscussionBouncer:  InterruptPolicyReinvoke,
-	NameDiscussionBurler:   InterruptPolicyReinvoke,
-	NamePlanWrite:          InterruptPolicyReinvoke,
-	NamePlanValidate:       InterruptPolicyReinvoke,
-	NamePlanBouncer:        InterruptPolicyReinvoke,
-	NamePlanBurler:         InterruptPolicyReinvoke,
-	NamePlanRevalidate:     InterruptPolicyReinvoke,
-	NameBatchifier:         InterruptPolicyReinvoke,
-	NameWebster:            InterruptPolicyHandback,
-	NameWebsterBouncer:     InterruptPolicyReinvoke,
-	NameWebsterBurler:      InterruptPolicyReinvoke,
-	NamePublish:            InterruptPolicyReinvoke,
-	NameFinalize:           InterruptPolicyReinvoke,
+	NamePreflight:         InterruptPolicyReinvoke,
+	NameLoomPreflight:     InterruptPolicyReinvoke,
+	NameDiscussionWrite:   InterruptPolicyReinvoke,
+	NameDiscussionBouncer: InterruptPolicyReinvoke,
+	NameDiscussionBurler:  InterruptPolicyReinvoke,
+	NamePlanWrite:         InterruptPolicyReinvoke,
+	NamePlanBouncer:       InterruptPolicyReinvoke,
+	NamePlanBurler:        InterruptPolicyReinvoke,
+	NameBatchifier:        InterruptPolicyReinvoke,
+	NameWebster:           InterruptPolicyHandback,
+	NameWebsterBouncer:    InterruptPolicyReinvoke,
+	NameWebsterBurler:     InterruptPolicyReinvoke,
+	NamePublish:           InterruptPolicyReinvoke,
+	NameFinalize:          InterruptPolicyReinvoke,
 }
 
 // InterruptPolicyFor returns InterruptPolicies' entry for name, or the empty string when name is
