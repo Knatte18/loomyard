@@ -109,7 +109,20 @@ The design doc is explicit that it is "not a row-level spec — validate details
   Only `GateResult{Passed: false}` produces findings, a re-prompt, and an attempt charge.
 - **Rationale:** verbatim from the design doc, and it matches what `loomshed`'s existing producers already do: `planValidate.Call` maps *every* `planglyph` error to a returned error, explicitly because "a gate that could not read the code has not found a plan defect to bounce", and `discussionValidate.Call` does the same for a non-not-exist read failure.
   Mixing the two spends the budget on infrastructure faults and makes the exhaustion message lie about the cause.
-- **Rejected:** treating an error as a failed attempt with the error text as findings — the LLM cannot fix a missing quarry binary, and three absurd re-prompts would hide the real fault.
+- **The one carve-out: `planparser.ParsePlan`.** A malformed overview — bad frontmatter, an unparseable card index, a missing `00-overview.md` — comes back from `ParsePlan` as a plain `error`, not as findings.
+  That is the single most LLM-fixable defect class there is, and routing it to a returned error would abort the run without ever re-prompting: the exact failure the task exists to remove.
+  So the plan gate closure splits `ParsePlan`'s error set by shape rather than treating it whole:
+  - `errors.As(err, new(*fs.PathError))` → **returned error**. `ParsePlan` wraps its one genuine read fault with `%w` around the `os.ReadFile` error, so this matches when and only when the OS refused the read. That is infrastructure, and it never burns an attempt.
+  - every other `ParsePlan` error → **`GateResult{Passed: false}`**, findings being the error's own text. The not-exist branch and every structural/format error are plain `fmt.Errorf` values by construction, so they fall here, which is where they belong: they describe the bytes the agent wrote.
+  `planglyph.Validate`/`ValidateFormat` errors are **not** part of this carve-out and stay returned errors in full, exactly as `planValidate.Call` maps them today — a resolve or quarry failure means the gate could not read the code, not that it found a defect.
+- **Reconciling the discussion/plan asymmetry.** `discussionparser.Validate` already draws this same line from the other side: a missing artifact file is a **finding**, and only a non-not-exist read failure is an error.
+  With the `ParsePlan` carve-out both gates now behave identically on the same class of input — missing or malformed is findings-and-re-prompt, an OS-level read fault is a returned error — so the two sites cannot diverge on an artifact defect.
+- **Deliberate divergence from the deleted producer.** `planValidate.Call` maps every `ParsePlan` error to a returned error, with the recorded rationale that "a plan that will not parse is not a plan the Plan-Write bounce target can be asked to improve".
+  That reasoning was about a **cold respawn** that knows nothing of the complaint.
+  The gate's bounce target is the live session that just wrote the file, holding its full context, so the premise no longer holds and the disposition changes with it.
+  This is a reasoned reversal, not an oversight, and the plan records it where the old rationale lived.
+- **Rejected:** treating a `planglyph` error as a failed attempt with the error text as findings — the LLM cannot fix a missing quarry binary, and three absurd re-prompts would hide the real fault.
+  Also rejected: pre-`stat`ing the plan directory to separate I/O from format before calling `ParsePlan` — the `*fs.PathError` test already draws the line at the only place `ParsePlan` can produce an I/O error, and a pre-check would add a second, racier source of truth for the same question.
 
 ### Exhaustion is reported in `Result`, not as a new `Outcome`
 
@@ -143,7 +156,7 @@ The design doc is explicit that it is "not a row-level spec — validate details
 - **Rationale:** the hazard that definition exists to close is an agent that ends its turn while an async in-process subagent is still working.
   On all four gate sites that cannot happen, because `buildSettings` (`internal/shuttleengine/claudeengine/settings.go`) installs a `PreToolUse` hook that **denies the in-process `Agent` tool outright** whenever `cfg.ClaudeDenyAgentTool` is set, and none of the four gated specs sets `ForkSubagents` (`DiscussionSpec` and `PlanSpec` leave it zero; `burlerengine` sets it only for a cluster round, `ClusterFan != ""`, which the two gated segments do not configure).
   The remaining case — a real background shell child — is a genuine OS process, but reaching it would require exporting a pane-descendant probe from `reedengine` (`descendantClosurePIDs` is unexported and built for reap/kill) plus a new hook vocabulary, for a failure mode that degrades to one burned attempt on a half-written artifact rather than to an invalid artifact escaping.
-  The budget bounds it; the gate still runs.
+  The budget bounds it; the gate still runs, and a half-written plan degrades to findings and a burned attempt rather than to a returned error, because of the `ParsePlan` carve-out recorded above.
   This is a deliberate narrowing of the design doc, taken under its own instruction to validate against the code first.
 - **Rejected:** building the compound probe now (large, touches two more packages, guards against a tool that is denied at these sites).
   Also rejected: a per-attempt receipt file named in the re-prompt — it adds a second thing the agent must remember to do, and the doc itself frames it only as a fallback if hooks turn out insufficient, which they are not here.
@@ -215,7 +228,8 @@ The design doc is explicit that it is "not a row-level spec — validate details
 
 ### A Done with no live session still runs the gate
 
-- **Decision:** the gate runs on **every** Done classification `Wait` reaches, including the ones where no session remains to re-prompt: `checkLivenessTick`'s not-tracked and not-live branches, `classifyDeadlineExpiry`, and `finishedDespiteMechanismFailure`.
+- **Decision:** the gate runs on **every** Done classification `Wait` reaches, including the ones where no session remains to re-prompt.
+  There are **five** such call sites, and the gate must route through all five: `checkLivenessTick`'s not-tracked branch, its not-live branch, `classifyStartupWindow` → `classifyDeadlineExpiry(OutcomeDied)` (the startup-window expiry — a distinct call site, and the one most easily missed), the run-deadline `classifyDeadlineExpiry(OutcomeTimeout)`, and `finishedDespiteMechanismFailure`.
   When the gate fails on one of those, the loop does not attempt a `Send`; it returns immediately with `GateOutcome{Passed: false, Attempts: 0}`.
   A `Send` that fails for any reason (pane gone, delivery unverified) likewise ends the loop with the attempts spent so far rather than being retried.
 - **Rationale:** the whole justification for deleting the three standalone rows is that "no path remains where an invalid artifact leaves a row as `Done`".
@@ -357,7 +371,7 @@ Everything about where the gate can live follows from this.
 `pollEventsTick` (`wait.go`) reads new bytes from `events.jsonl`, parses them via the engine, and — if `allOutputFilesExist(run.spec.OutputFiles)` — returns `OutcomeDone` regardless of the last event's kind.
 So in an autonomous run, where the only hook appending to that file is the `Stop` hook, "a new event arrives" *is* "a turn ended".
 That is the property the per-attempt done-signal rests on.
-Three other paths also reach Done: `checkLivenessTick`'s not-tracked and not-live branches, `classifyDeadlineExpiry`, and `finishedDespiteMechanismFailure` — all four must route through the gate.
+Five other paths also reach Done: `checkLivenessTick`'s not-tracked branch, its not-live branch, `classifyStartupWindow` (via `classifyDeadlineExpiry(OutcomeDied)`), the run-deadline `classifyDeadlineExpiry(OutcomeTimeout)`, and `finishedDespiteMechanismFailure` — all six sites, `pollEventsTick` included, must route through the gate.
 
 **Re-prompt delivery.**
 `Run.Send` (`run.go`) requires a ready agent pane, rejects multiline and blank text (`validateSendText`, `run.go`), and verifies delivery by scanning the pane capture, replaying once if the text never appears (`sendVerified`, `run.go`).
@@ -441,7 +455,8 @@ A round carrying the zero `GateSpec` behaves exactly as today, `Gate` nil (guard
 Reuse the package's existing `Shuttle` fake, extended with the gated method.
 
 **`internal/shedadapters`.**
-`SingleLLMProducer` maps `OutcomeDone` + failed `GateOutcome` onto `shedengine.Stuck` with an empty `OutputPointer`, and `OutcomeDone` + passed onto `Done` with the first output file as pointer.
+`SingleLLMProducer` maps `OutcomeDone` + failed `GateOutcome` onto `shedengine.Stuck` with the **artifact** `OutputPointer{Path: spec.OutputFiles[0]}` — not an empty one — which is what the writer rows' commit decorators key on; `OutcomeDone` + passed maps onto `Done` with that same pointer, and `OutcomeAsking` keeps its empty pointer.
+The empty-pointer-on-gate-failure shape belongs to `BurlerProducer` alone, where emptiness tells the `Bouncer` there is no round artifact to judge; a test asserting an empty pointer here would silently disable commit-on-gate-failure, so both producers get an explicit pointer assertion.
 `BurlerProducer.Call` maps a gate-failed round onto `Stuck` with an empty pointer **after** archiving the round's two output paths, does not consume the attempt-1/attempt-2 retry, and leaves the gate-passed path byte-for-byte as today.
 `BurlerProducer.probeLiveRound` passes `p.opts.Gate` into the gated attach call and maps an attached round's failed gate identically — this is the regression guard for the resume hole, and it must fail if the probe ever reverts to the ungated `Attach`.
 The existing attach-before-archive ordering tests must still pass unchanged.
@@ -451,6 +466,7 @@ The existing attach-before-archive ordering tests must still pass unchanged.
 Plus the fail-closed severity predicate's existing table (unrecognized severity, zero-value severity, informational-only).
 The two commit decorators get a case each for the new rule: `Done` commits (unchanged); `Stuck` with a non-empty pointer (gate-failed) commits; `Stuck` with an empty pointer (asking) does not; a commit error on the gate-failed path maps to a returned error exactly as it does on the `Done` path.
 `NewDiscussionGate`/`NewPlanGate` each get a pass case, a findings case, and an error case proving a validator error is returned rather than reported as a failed gate.
+`NewPlanGate` additionally gets the `ParsePlan` split, which is the subtlest rule in the task: a malformed overview, an unparseable card index and an absent `00-overview.md` each produce `GateResult{Passed:false}` with the error text as findings, while an `*fs.PathError` (an unreadable directory or file) produces a returned error — and a `planglyph` resolve failure stays a returned error in every case.
 
 **`internal/shedrecipe`.**
 `gate: discussion` and `gate: plan` each build the right closure; an unrecognised `gate:` value, and a `gate_attempts` with no `gate:`, both fail loud with a message naming the key; `gate_attempts` is accepted at the row level and rejected inside the `profile:` sub-map; a row carrying neither key builds an ungated producer. The existing `seam_enforcement_test.go` allowlist assertion is the guard that the closures did not drift into this package.
@@ -511,4 +527,5 @@ All in the same commit, per `CLAUDE.md`'s task-completion rule:
 - **Q:** The two writer rows are wrapped by commit decorators that fire only on `Done`, so a gate-failed `Stuck` would leave the artifact uncommitted — commit it or not? **A:** [auto-pick] Commit it. The decorators commit whenever the returned pointer is non-empty, and the gate-failed `Stuck` carries the artifact pointer. **Why:** it preserves the decorator's own recorded rationale ("the commit keeps the working tree clean and the artifact durable, it does not certify it") rather than superseding it, and the human the run just halted for needs the invalid artifact committed to diagnose. `OutcomeAsking` keeps its empty pointer and stays uncommitted, correctly — it never satisfied its file contract.
 - **Q:** `gate_attempts` is spent in memory inside one `Wait`, but every gated row is `InterruptPolicyReinvoke` — does the budget bound anything across a re-invocation? **A:** [auto-pick] No, and that is stated rather than fixed: an interrupted step re-attaches with a fresh budget. **Why:** the earlier re-prompts were delivered and acted on, so the re-attached session is further along than a fresh one and refusing it attempts would halt a run that is progressing; an uninterrupted run always terminates at the budget, and the unbounded case needs repeated operator interruptions. A durable counter would need either the on-disk status schema (declined) or a sidecar with its own lifecycle.
 - **Q:** The gate `Send`s into a pane a human may be conversing in, for interactive `Discussion-Write` — skip gating there? **A:** [auto-pick] No, gate interactively too. **Why:** skipping would leave one of the four sites ungated, and the re-prompt is a one-line pointer to a findings file the operator would want to read anyway.
+- **Q:** `planparser.ParsePlan` returns a plain `error` for a malformed plan, which "`error` is never 'not passed'" would turn into a run-aborting failure with no re-prompt — the exact defect the gate exists to fix. Carve it out? **A:** [auto-pick] Yes, split `ParsePlan`'s error set by shape: `*fs.PathError` (the one `%w`-wrapped read fault) is a returned error; every other `ParsePlan` error is findings and a re-prompt. `planglyph` errors are untouched and stay returned errors. **Why:** it makes both gates behave identically on a missing-or-malformed artifact (`discussionparser.Validate` already reports not-exist as a finding), and it is a reasoned reversal of `planValidate.Call`'s disposition rather than an oversight — that rationale was about a cold respawn, and the gate's bounce target is the live session that just wrote the file.
 
