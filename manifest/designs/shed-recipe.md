@@ -16,7 +16,7 @@ Motivation: several rows are already pure `Engine + Config` in spirit, exactly t
 Its Spec also carries per-run values a static recipe `Config` cannot hold — the task slug and the mode-rules block — plus a model and timeout resolved from the `discussion` role's own config rather than from recipe strings.
 That is why it ships as its own `DiscussionWrite` registry entry, over an injected `shedadapters.SpecSource` closure, rather than as a `SingleLLM` row.
 `Plan-Write` is the second such row: its Spec is resolved from the `plan` role's own model-spec and timeout rather than from recipe strings, and building it needs a `*lyxcwd.Location` to build the plan paths, so it ships as its own `PlanWrite` entry for the same reason.
-The question the discussion worked through was whether the *other* rows (the loom-specific ones — `Loom-Preflight`, `DiscussionValidate`, `PlanValidate`) resist this shape, and the answer was no: they don't need to be reusable to fit the pattern, they just need a name in the same registry as everything else — a bespoke, single-consumer `Engine` is exactly as valid a registry entry as a widely-shared one.
+The question the discussion worked through was whether the *other* rows (the loom-specific ones — `Loom-Preflight`, `Batchifier`) resist this shape, and the answer was no: they don't need to be reusable to fit the pattern, they just need a name in the same registry as everything else — a bespoke, single-consumer `Engine` is exactly as valid a registry entry as a widely-shared one.
 
 ## What's in a recipe row
 
