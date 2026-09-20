@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs-and-integration
+phase: holistic-reviewing
 slug: seeded-shed-core
 branch: seeded-shed-core
 plan: _mill/plan
@@ -31,6 +31,7 @@ approved-batten-producers  '2026-09-19T18:30:06Z'
 approved-batten-wiring  '2026-09-19T18:46:34Z'
 approved-shed-addressing  '2026-09-19T19:09:17Z'
 approved-docs-and-integration  '2026-09-19T19:28:40Z'
+holistic-reviewing  '2026-09-20T08:39:54Z'
 ```
 
 ## Batches
