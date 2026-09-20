@@ -27,7 +27,9 @@ The design doc is explicit that it is "not a row-level spec — validate details
 - Gated entry points on `Runner` reaching both the spawn path and the attach/resume path, so a resumed run is gated exactly as a fresh one is.
 - `internal/burlerengine`: `RunOpts` gains one `Gate GateSpec` field and `Result` gains a `Gate *shuttleengine.GateOutcome` passthrough; its `Shuttle` seam gains the gated method, so a fix round's own output is gated before the round reports back to its `Bouncer`.
 - `internal/shedadapters`: `Shuttle` gains `RunGated`/`AttachGated` alongside `Run`/`Attach`; `SingleLLMProducer` and `BurlerProducer` (both its spawn path and its `probeLiveRound` resume path) call the gated forms and map a failed gate onto `shedengine.Stuck`.
+- `internal/loomshed`: the two commit decorators `discussionWrite`/`planWrite` commit on a gate-failed `Stuck` as well as on `Done`, so a halted run leaves the invalid artifact committed rather than dirtying the weft.
 - Four gate sites, two validators: `Discussion-Write` and `Discussion-Burler` share `discussionparser.Validate`; `Plan-Write` and `Plan-Burler` share `planglyph.ValidateFormat`.
+- A deliberate routing change: gate exhaustion on either writer row halts the run for a human, where `Plan-Validate` previously bounced to a fresh writer. Recorded in the recipe header's escalate-set paragraph alongside `Plan-Write`'s `Stuck` becoming reachable for the first time.
 - Removal of the `Discussion-Validate`, `Plan-Validate` and `Plan-Revalidate` rows from `contracts/recipes/loom-recipe.yaml`, their `loomshed` `Name*` constants, their `interruptPolicy` entries, their `shedrecipe` registry entries, and the `loomshed` producers `NewDiscussionValidate`/`NewPlanValidate` — the recipe goes from seventeen rows to fourteen.
 - Two row-config keys, `gate:` (closed vocabulary `discussion`|`plan`; absent = ungated) and `gate_attempts:`, read by the `shedrecipe` entry constructors that build the four gated rows and packed into the `GateSpec` they hand downstream.
 - `internal/loomshed`: two exported closure constructors, `NewDiscussionGate` and `NewPlanGate`, plus the one import-allowlist entry they need (`internal/shuttleengine`, for the `Gate`/`GateResult` types). `internal/shedrecipe`'s allowlist is unchanged.
@@ -52,7 +54,7 @@ The design doc is explicit that it is "not a row-level spec — validate details
 - **Decision:** the attempt loop runs inside `internal/shuttleengine`, on `Wait`'s Done path, before `finalize` is reached.
   `*Run` gains one unexported `GateSpec` field; `Runner` gains gated entry points (`RunGated`, and the attach-side equivalent) that thread it in.
   Plain `Runner.Run`/`Runner.Attach` keep today's behaviour by supplying the zero `GateSpec`, so every ungated row is bit-for-bit unchanged.
-- **Rationale:** `finalize` (`internal/shuttleengine/wait.go:554`) removes the reed strand and deletes the run directory whenever the outcome is `OutcomeDone` and `spec.KeepPane` is false.
+- **Rationale:** `finalize` (`internal/shuttleengine/wait.go`) removes the reed strand and deletes the run directory whenever the outcome is `OutcomeDone` and `spec.KeepPane` is false.
   By the time `Runner.Run` returns Done, the session the gate is supposed to re-prompt is already gone.
   `Wait`'s Done path is the only point in the system that holds both a classified Done and a live session, which is exactly the fixed point in the producer's own control flow the design doc's step 3 describes.
   It also covers the attach path for free: `Attach` → `reconstructAndWait` → `Wait` is the same funnel, so a resumed run is gated without a second implementation.
@@ -125,7 +127,7 @@ The design doc is explicit that it is "not a row-level spec — validate details
 
 - **Decision:** on a failed attempt the gate loop writes `GateResult.Findings` to a per-run findings file under the ephemeral `.lyx` tree (inside the run directory, alongside `prompt.md`/`settings.json`/`events.jsonl`), and `Send`s a single line naming that absolute path.
   Each attempt overwrites the same file, so the agent always reads the current complaint.
-- **Rationale:** `validateSendText` (`internal/shuttleengine/run.go:437`) rejects any text containing a newline outright, with the message "multiline updates ride the file contract (write a file, Send a one-line pointer to it)".
+- **Rationale:** `validateSendText` (`internal/shuttleengine/run.go`) rejects any text containing a newline outright, with the message "multiline updates ride the file contract (write a file, Send a one-line pointer to it)".
   Both validators render findings as a semicolon-joined list today, but `discussionparser`/`planglyph` findings are unbounded in count, so the inline branch the design doc sketches ("inline for a line or two") is not reliably available and a two-branch rule would be a latent `Send` failure on the long branch.
   One shape, always, is simpler and matches the short-notification/content-in-file split the rest of the system uses.
 - **Rejected:** the doc's inline-or-file split.
@@ -147,7 +149,11 @@ The design doc is explicit that it is "not a row-level spec — validate details
   Also rejected: a per-attempt receipt file named in the re-prompt — it adds a second thing the agent must remember to do, and the doc itself frames it only as a fallback if hooks turn out insufficient, which they are not here.
 - **Plan must assert:** that `cfg.ClaudeDenyAgentTool` is on in the shipped `internal/shuttleengine/template.yaml`, and that none of the four gated sites sets `ForkSubagents`.
   If either is false the narrowing does not hold and the task must stop and re-open this decision rather than ship a gate that can fire mid-turn.
-- **Known limitation, recorded not fixed:** in an interactive `Discussion-Write` run (`autonomous == false`), `buildSettings` installs the `AskUserQuestion` *marker* hook, which appends to the same `events.jsonl`.
+- **Interactive mode: the gate runs, and its re-prompt lands in the operator's pane.** `DiscussionSpec` sets `Interactive`/`AwaitOperator` from `!autonomous`, so an interactive `Discussion-Write` run has a human conversing in the pane the gate `Send`s into.
+  Gating is **not** skipped there: skipping it would leave interactive discussion writing ungated, which is one of the four sites the task exists to close, and the gate's re-prompt is a single line naming a findings file — the same thing an operator would want to read anyway.
+  The operator sees a turn arrive that they did not type, attributable in the pane and in the driver log.
+  This is behaviour the gate introduces rather than inherits, so it is a recorded decision, not a limitation.
+- **Known limitation, inherited not introduced:** in an interactive `Discussion-Write` run (`autonomous == false`), `buildSettings` installs the `AskUserQuestion` *marker* hook, which appends to the same `events.jsonl`.
   `pollEventsTick` classifies any newly parsed event as `OutcomeDone` once the output files exist, regardless of event kind, so an `AskUserQuestion` mid-turn ends the attempt's wait early.
   This is already true of the first `Wait` today and the gate loop neither creates nor worsens it; it degrades to a gate run against a mid-turn artifact, i.e. one burned attempt.
 
@@ -164,6 +170,39 @@ The design doc is explicit that it is "not a row-level spec — validate details
   (1) A `logger.Warn` on every failed attempt and on exhaustion, carrying producer name, attempt number, budget, and the formatted findings.
   (2) `GateOutcome.Attempts` on the `Result`, which the producer includes in the `Stuck` log line.
   Widening `HistoryEntry` would change the on-disk status schema every `shed status` consumer reads, for a value only these four rows can ever populate.
+
+### A writer row's failed gate halts the run, and still commits
+
+- **Decision — the halt is intended.** `Discussion-Write` and `Plan-Write` carry **no `on_stuck`**, and `shedengine` maps a `Stuck` with an empty `OnStuck` onto `StateBlocked` — the run stops for a human.
+  Gate exhaustion on either writer row therefore halts the run, replacing `Plan-Validate`'s old cheap `on_stuck: Plan-Write` respawn with a human escalation.
+  This is wanted, not a side effect: the design doc's whole argument for deleting the standalone rows is that their bounce was "a heavy, masking recovery path (a fresh-writer respawn) for what is by definition a bug in the gate".
+  After three in-session re-prompts with the findings in hand, a cold respawn that knows nothing about the complaint is strictly worse than stopping and telling someone.
+  No `on_stuck` is added to either row.
+- **Consequence to record in the recipe header.** `Plan-Write`'s `Stuck` becomes **reachable for the first time** (today nothing makes it fire), and `Discussion-Write` gains a second reachable path alongside the `OutcomeAsking` one the header already names.
+  The header's escalate-set paragraph is updated for both in the same change; the count of escalating rows does not change, since both rows are already in that set.
+- **Decision — a gate-failed writer row still commits.** `Discussion-Write` and `Plan-Write` are not bare `SingleLLMProducer`s: each is wrapped by a commit decorator (`discussionWrite`, `planWrite`, built by `discussionWriteEntry`/`planWriteEntry`) that fires the commit seam **only** on `Done`.
+  Left alone, a gate-failed `Stuck` would skip the commit and halt the run with the invalid artifact sitting uncommitted in a dirty weft — which is exactly the state the decorator's own recorded rationale exists to prevent: "the commit keeps the working tree clean and the artifact durable, it does not certify it."
+  That rationale is **preserved rather than superseded**: the decorators commit on a gate-failed `Stuck` too, so the human the run just halted for finds the artifact committed and diagnosable.
+- **Decision — how the decorator knows.** On a gate-failed exhaustion the writer rows' `SingleLLMProducer` returns `Stuck` with `OutputPointer{Path: spec.OutputFiles[0]}` — the artifact pointer, exactly as `Done` does — and the decorator's rule becomes "commit whenever the pointer is non-empty".
+  `OutcomeAsking` keeps returning `Stuck` with an empty pointer and is therefore still not committed, correctly: an asking run has not satisfied its file contract, so there is nothing to commit.
+  `shedengine` does not read the pointer when routing a `Stuck`, so this changes no routing; it does put the artifact path into the row's `HistoryEntry.Output`, which is useful to the operator reading a halted run's status file.
+- **Asymmetry with the `Burler` rows, deliberate.** A gate-failed `Burler` round returns `Stuck` with an **empty** pointer because there the emptiness has a consumer: it tells the segment's `Bouncer` there is no round artifact to judge.
+  A writer row has no judge downstream of its `Stuck` — the run halts — so its pointer is free to carry the meaning the commit decorator needs.
+  Each row's pointer means "what, if anything, the next actor should look at", and the two answers differ because the next actors differ.
+- **Rejected:** adding an `on_stuck` self-edge on the writer rows bounded by `max_bounces` — it reinstates the masking respawn the task exists to remove, one layer down.
+  Also rejected: leaving the decorators untouched and accepting an uncommitted artifact at the halt (contradicts the decorator's own rationale and hands the operator a dirty tree).
+  Also rejected: moving the commit into the producer (the commit seam belongs to the decorator; two committers is worse than one rule).
+
+### The attempt budget bounds one `Wait`, not one episode
+
+- **Decision:** `gate_attempts` is spent in memory, inside a single `Wait`, and is not carried across process boundaries.
+  A step that is interrupted mid-gate-loop and re-invoked re-enters `Call` → `Attach` → `Wait` with a **fresh** budget.
+  This is stated rather than fixed: no durable per-episode counter is added.
+- **Rationale:** every gated row carries `InterruptPolicyReinvoke`, whose premise is that an external supervisor re-invokes `lyx loom step` after an interruption and the adapter re-attaches to the still-live agent.
+  Resetting the budget there is the **correct** behaviour rather than a leak: the re-prompts the previous process sent were delivered and acted on, so the re-attached session is strictly further along than a fresh one, and refusing it new attempts would halt a run that is making progress.
+  The unbounded case — interrupt, reinvoke, three more re-prompts, interrupt again — requires a repeated external interruption, which is an operator action, not something the system does to itself; an uninterrupted run always terminates at `gate_attempts`, in `Stuck`.
+  Every attempt is logged with its number and budget, so a repeating pattern is visible in the driver log even though no counter accumulates.
+- **Rejected:** a durable per-episode counter — the only honest homes for it are `shedengine.HistoryEntry` (the on-disk status schema, which the attempt-budget decision already declines to widen for a value only four rows can populate) or a new sidecar file under `.lyx`, which would then need its own lifecycle, reset rule, and resume semantics for a bound that an uninterrupted run already enforces.
 
 ### One deadline covers every attempt
 
@@ -189,21 +228,21 @@ The design doc is explicit that it is "not a row-level spec — validate details
 ### The four sites and how each gets its gate
 
 - **Decision:** one value, `GateSpec`, is the carrier at every hop — the gate closure and its `gate_attempts` budget are packed together where both are known (the `shedrecipe` entry constructor, which reads the row's `config:` block and `Env` in the same place) and travel as a unit from there.
-  - `Discussion-Write` and `Plan-Write`: the two rows' own entry constructors — `discussionWriteEntry` (`internal/shedrecipe/entries_discussionwrite.go:26`) and `planWriteEntry` (`internal/shedrecipe/entries_planwrite.go:33`), **not** the generic `singleLLMEntry` — build the closure from the same `Env` fields the removed `discussionValidateEntry`/`planValidateEntry` read today (`Env.DecisionRecordPath`, `Env.SupportLogPath`, `Env.AnchorPath`, `Env.WorktreeRoot`), pack it with the row's `gate_attempts` into a `GateSpec`, and hand that to `shedadapters.NewSingleLLMProducer`, which passes it through to the gated `Runner` entry point.
+  - `Discussion-Write` and `Plan-Write`: the two rows' own entry constructors — `discussionWriteEntry` (`internal/shedrecipe/entries_discussionwrite.go`) and `planWriteEntry` (`internal/shedrecipe/entries_planwrite.go`), **not** the generic `singleLLMEntry` — build the closure from the same `Env` fields the removed `discussionValidateEntry`/`planValidateEntry` read today (`Env.DecisionRecordPath`, `Env.SupportLogPath`, `Env.AnchorPath`, `Env.WorktreeRoot`), pack it with the row's `gate_attempts` into a `GateSpec`, and hand that to `shedadapters.NewSingleLLMProducer`, which passes it through to the gated `Runner` entry point.
     Both rows carry **no `config:` block at all today** and both constructors call `configRejectUnknown(cfg)` with an empty permitted set, so each gains its first config block here: the recipe rows gain `config: {gate: discussion|plan, gate_attempts: N}`, the two `configRejectUnknown` calls gain `"gate"` and `"gate_attempts"`, and `planWriteEntry`'s doc comment ("The row carries no Config keys of its own, per the Config Strictness Invariant") is corrected in the same change.
     The writer rows carry `gate:` even though their dedicated constructors could imply the validator, so that one key means one thing at all four sites and a reader of the recipe can see which validator guards each row without opening Go.
   - `Discussion-Burler` and `Plan-Burler`: `burlerengine.RunOpts` gains one `Gate GateSpec` field — the zero value is ungated, which is what `Webster-Burler` passes — threaded into the gated shuttle call in `burlerengine.Engine.Run`.
     `burlerengine.Shuttle` gains the gated method the same way.
-    All three burler rows share `engine: BurlerRound` and therefore one constructor, `burlerRoundEntry` (`internal/shedrecipe/entries_burler.go:21`), so the validator is **selected by a `gate:` config key**, not implied by the constructor — see the next decision.
+    All three burler rows share `engine: BurlerRound` and therefore one constructor, `burlerRoundEntry` (`internal/shedrecipe/entries_burler.go`), so the validator is **selected by a `gate:` config key**, not implied by the constructor — see the next decision.
     Both new keys are **row-level**: they go in `entries_burler.go`'s row `configRejectUnknown` at line 42 (today `run_subdir`, `profile`, `model`, `effort`, `timeout_s`), never in `burlerRoundProfile`'s nested `profile:` sub-map allowlist at line 189 (`target`, `fasit`, `rubric`, …), which is a different list governing a different map.
     The gate runs after the round's own handoff and before `Run` parses the review file, so a round can never report back an artifact it made invalid.
-  - **The burler resume path carries the same gate.** `shedadapters.BurlerProducer` does not reach a resumed round through `burlerengine.Engine.Run` at all: `probeLiveRound` (`internal/shedadapters/burler.go:447`) calls `p.attach.Attach(spec)` on the shared `Shuttle` seam directly, with a spec it builds itself.
+  - **The burler resume path carries the same gate.** `shedadapters.BurlerProducer` does not reach a resumed round through `burlerengine.Engine.Run` at all: `probeLiveRound` (`internal/shedadapters/burler.go`) calls `p.attach.Attach(spec)` on the shared `Shuttle` seam directly, with a spec it builds itself.
     That path takes the gate from `p.opts.Gate` — the `RunOpts` the producer already holds — and calls the gated attach form, so an attached Discussion/Plan fix round is gated exactly as a freshly-spawned one is.
     This is what makes the "one value, `GateSpec`, at every hop" claim true rather than aspirational: the same field is read at both the spawn hop (`Engine.Run`) and the resume hop (`probeLiveRound`), and no second carrier is introduced into `NewBurlerProducer`.
     `probeLiveRound`'s `OutcomeDone` branch consults the returned `GateOutcome` before reporting the attached round successful, mapping a failed gate exactly as the spawn path does (see the next decision).
 - **Seam shape — added methods, not widened ones.** `shuttleengine.Runner` keeps `Run(Spec)` and `Attach(Spec)` exactly as they are (`Run(spec)` becomes `RunGated(spec, GateSpec{})`) and gains `RunGated`/`AttachGated`.
   `shedadapters.Shuttle` gains `RunGated`/`AttachGated` **alongside** its existing `Run`/`Attach`; `burlerengine.Shuttle` gains `RunGated` alongside `Run`.
-  This is deliberate rather than widening the existing signatures: `shedadapters.Shuttle` is shared by three consumers — `SingleLLMProducer`, `BurlerProducer`'s attach probe, and `Bouncer` (`internal/shedadapters/bouncer.go:338,364`) — and `Bouncer` has no gate and never will, so widening `Run`/`Attach` would rewrite its call sites to pass a zero value that means nothing there.
+  This is deliberate rather than widening the existing signatures: `shedadapters.Shuttle` is shared by three consumers — `SingleLLMProducer`, `BurlerProducer`'s attach probe, and `Bouncer` (`internal/shedadapters/bouncer.go`) — and `Bouncer` has no gate and never will, so widening `Run`/`Attach` would rewrite its call sites to pass a zero value that means nothing there.
   Added methods leave every ungated call site untouched.
 - **Churn this creates, in scope and expected:** every test fake implementing `shedadapters.Shuttle` or `burlerengine.Shuttle` gains the new methods, because Go interfaces admit no partial implementation.
   That is the intended cost and matches this seam's own precedent — `Attach` was added to the shared `Shuttle` seam rather than type-asserted as an optional interface, reasoned in `singlellm.go` as "a compile error in a test fake is a better failure than a producer that quietly stops probing".
@@ -249,7 +288,7 @@ The design doc is explicit that it is "not a row-level spec — validate details
   That retry exists for `OutcomeDied`/`OutcomeTimeout` — infrastructure — while gate exhaustion is a determinate verdict the gate already re-prompted `gate_attempts` times inside the session.
   A second full round on the same input would re-spend an LLM generation to reach the same answer.
 - **Rationale:** archiving is what keeps the hand-back honest.
-  `Call`'s own resume logic treats the highest complete round with no recorded verdict as "hand back for judgment, spawn nothing" (`internal/shedadapters/burler.go:295`), so leaving a gate-failed round's review file in place would offer the `Bouncer` a review written over an artifact a Go validator already proved invalid.
+  `Call`'s own resume logic treats the highest complete round with no recorded verdict as "hand back for judgment, spawn nothing" (`internal/shedadapters/burler.go`), so leaving a gate-failed round's review file in place would offer the `Bouncer` a review written over an artifact a Go validator already proved invalid.
   Archiving it means the next `Bouncer` pass judges the artifact itself and, finding it broken, produces a fresh round — costly, but correct, and bounded by the segment's bounce budget rather than unbounded.
 - **Rejected:** returning an `error` from the gate-failed branch (`shedengine` persists `failed` and aborts the whole run — too harsh for a condition the segment's own budget is designed to absorb, and it contradicts the design doc's "fails the round back to the Bouncer").
   Also rejected: `Stuck` with the review path (offers the judge a review over a known-invalid artifact).
@@ -311,17 +350,17 @@ The design doc is explicit that it is "not a row-level spec — validate details
 ## Technical context
 
 **The decisive mechanical fact.**
-`internal/shuttleengine/wait.go:554` `finalize` removes the reed strand and `os.RemoveAll`s the run directory whenever `outcome == OutcomeDone && !run.spec.KeepPane`.
+`internal/shuttleengine/wait.go` `finalize` removes the reed strand and `os.RemoveAll`s the run directory whenever `outcome == OutcomeDone && !run.spec.KeepPane`.
 Everything about where the gate can live follows from this.
 
 **How Done is classified.**
-`pollEventsTick` (`wait.go:288`) reads new bytes from `events.jsonl`, parses them via the engine, and — if `allOutputFilesExist(run.spec.OutputFiles)` — returns `OutcomeDone` regardless of the last event's kind.
+`pollEventsTick` (`wait.go`) reads new bytes from `events.jsonl`, parses them via the engine, and — if `allOutputFilesExist(run.spec.OutputFiles)` — returns `OutcomeDone` regardless of the last event's kind.
 So in an autonomous run, where the only hook appending to that file is the `Stop` hook, "a new event arrives" *is* "a turn ended".
 That is the property the per-attempt done-signal rests on.
 Three other paths also reach Done: `checkLivenessTick`'s not-tracked and not-live branches, `classifyDeadlineExpiry`, and `finishedDespiteMechanismFailure` — all four must route through the gate.
 
 **Re-prompt delivery.**
-`Run.Send` (`run.go:425`) requires a ready agent pane, rejects multiline and blank text (`validateSendText`, `run.go:437`), and verifies delivery by scanning the pane capture, replaying once if the text never appears (`sendVerified`, `run.go:716`).
+`Run.Send` (`run.go`) requires a ready agent pane, rejects multiline and blank text (`validateSendText`, `run.go`), and verifies delivery by scanning the pane capture, replaying once if the text never appears (`sendVerified`, `run.go`).
 `Run.Interrupt` is available but must **not** be used — the gate fires at a turn boundary, when there is no in-progress turn to interrupt.
 
 **Spec validation forbids a second Start.**
@@ -344,11 +383,11 @@ Both helpers and both warn lines move into the gate closures.
 `internal/loomshed/gatefindings_test.go` is the test that pins this property and must be carried over, not deleted.
 
 **Where the gated rows' specs come from.**
-`loomengine.DiscussionSpec` (`internal/loomengine/discussion.go:22`) — `OutputFiles: [decisionRecordPath, supportLogPath]`, `Interactive`/`AwaitOperator` both `!autonomous`, `Timeout: cfg.DiscussionTimeoutMin`.
-`loomengine.PlanSpec` (`internal/loomengine/plan.go:69`) — `OutputFiles: [overviewPath]`, `Interactive: false`, `Timeout: cfg.PlanTimeoutMin`.
+`loomengine.DiscussionSpec` (`internal/loomengine/discussion.go`) — `OutputFiles: [decisionRecordPath, supportLogPath]`, `Interactive`/`AwaitOperator` both `!autonomous`, `Timeout: cfg.DiscussionTimeoutMin`.
+`loomengine.PlanSpec` (`internal/loomengine/plan.go`) — `OutputFiles: [overviewPath]`, `Interactive: false`, `Timeout: cfg.PlanTimeoutMin`.
 Note that `Plan-Write`'s declared output file is the overview alone, while the plan gate validates the whole parsed plan directory — that asymmetry exists today and is not changed here.
 
-**`burlerengine.Engine.Run`** (`internal/burlerengine/engine.go:105`) validates the profile, materializes three instruction files under `.lyx/burler/round-*`, builds a `shuttleengine.Spec` with `OutputFiles: [p.ReviewPath, p.FixerReportPath]`, calls `e.shuttle.Run(spec)`, and only on `OutcomeDone` reads and strictly parses the review file.
+**`burlerengine.Engine.Run`** (`internal/burlerengine/engine.go`) validates the profile, materializes three instruction files under `.lyx/burler/round-*`, builds a `shuttleengine.Spec` with `OutputFiles: [p.ReviewPath, p.FixerReportPath]`, calls `e.shuttle.Run(spec)`, and only on `OutcomeDone` reads and strictly parses the review file.
 The gate belongs between the shuttle call and the review-file read: a round whose fix left the artifact invalid must not get as far as reporting a verdict.
 
 **Recipe plumbing.**
@@ -410,6 +449,8 @@ The existing attach-before-archive ordering tests must still pass unchanged.
 **`internal/loomshed`.**
 `gatefindings_test.go` carried over onto the gate closures: a failing gate's `logger.Warn` must carry the formatted findings.
 Plus the fail-closed severity predicate's existing table (unrecognized severity, zero-value severity, informational-only).
+The two commit decorators get a case each for the new rule: `Done` commits (unchanged); `Stuck` with a non-empty pointer (gate-failed) commits; `Stuck` with an empty pointer (asking) does not; a commit error on the gate-failed path maps to a returned error exactly as it does on the `Done` path.
+`NewDiscussionGate`/`NewPlanGate` each get a pass case, a findings case, and an error case proving a validator error is returned rather than reported as a failed gate.
 
 **`internal/shedrecipe`.**
 `gate: discussion` and `gate: plan` each build the right closure; an unrecognised `gate:` value, and a `gate_attempts` with no `gate:`, both fail loud with a message naming the key; `gate_attempts` is accepted at the row level and rejected inside the `profile:` sub-map; a row carrying neither key builds an ungated producer. The existing `seam_enforcement_test.go` allowlist assertion is the guard that the closures did not drift into this package.
@@ -419,6 +460,7 @@ Plus the fail-closed severity predicate's existing table (unrecognized severity,
 
 **`internal/loomrecipe`.**
 Coverage guard, shape, sequence and resume tests updated for the fourteen-row recipe; `revalidate_test.go` deleted with its row; `interruptpolicy_meta_test.go` updated for the three removed entries.
+Add an assertion that neither writer row gained an `on_stuck`, so the halt-for-a-human decision cannot be quietly reverted into a respawn edge.
 
 **Integration / smoke (tagged).**
 One end-to-end that a real agent, re-prompted after a deliberately-invalid first artifact, fixes it and the row reports `Done` — the only test that exercises real `Send` delivery against a real pane.
@@ -465,4 +507,8 @@ All in the same commit, per `CLAUDE.md`'s task-completion rule:
 - **Q:** All three burler rows share one `BurlerRound` constructor — how does it pick the right validator? **A:** [auto-pick] A row-level `gate:` key with a closed two-value vocabulary (`discussion`|`plan`), absent = ungated; `gate_attempts` without `gate:` is a config error, and a `gate:` on `Webster-Burler` fails loud. **Why:** it mirrors how `bouncerEntry` already reads `commit_seam`/`approve_seam`, keeps the recipe readable without opening Go, and — unlike a row-name switch — a renamed row fails to build rather than silently losing its gate.
 - **Q:** Where does the gate closure body live, given `shedrecipe` may import neither validator and `loomshed` may not import `shuttleengine`? **A:** [auto-pick] In `loomshed`, as `NewDiscussionGate`/`NewPlanGate`, with `loomshed`'s allowlist gaining `internal/shuttleengine` and `shedrecipe`'s unchanged. **Why:** one allowlist entry instead of two, and `loomshed` already owns both validators plus the formatters, the severity predicate, and the `gatefindings_test.go` warn-line guard the closures inherit.
 - **Q:** How does an already-seeded worktree pick up a corrected rubric stencil? **A:** [auto-pick] Per `stencilstore`'s real four-state reconcile — untouched copies refresh themselves in prod mode, dev builds run `lyx stencil sync`, hand-edited copies keep the edit and the warning. **Why:** the earlier "never overwritten, no force-sync carve-out" framing was wrong on both halves; only `StateEdited` is never overwritten, and `ForceRefresh` is exactly the documented force route.
+- **Q:** Neither writer row has an `on_stuck`, so gate exhaustion blocks the run for a human instead of bouncing to a fresh writer — is that wanted? **A:** [auto-pick] Yes, and no `on_stuck` is added. **Why:** the design doc's case for deleting the standalone rows is precisely that their bounce was a heavy, masking respawn; after three in-session re-prompts with the findings in hand, a cold writer that knows nothing about the complaint is strictly worse than halting. `Plan-Write`'s `Stuck` becomes reachable for the first time, recorded in the recipe header.
+- **Q:** The two writer rows are wrapped by commit decorators that fire only on `Done`, so a gate-failed `Stuck` would leave the artifact uncommitted — commit it or not? **A:** [auto-pick] Commit it. The decorators commit whenever the returned pointer is non-empty, and the gate-failed `Stuck` carries the artifact pointer. **Why:** it preserves the decorator's own recorded rationale ("the commit keeps the working tree clean and the artifact durable, it does not certify it") rather than superseding it, and the human the run just halted for needs the invalid artifact committed to diagnose. `OutcomeAsking` keeps its empty pointer and stays uncommitted, correctly — it never satisfied its file contract.
+- **Q:** `gate_attempts` is spent in memory inside one `Wait`, but every gated row is `InterruptPolicyReinvoke` — does the budget bound anything across a re-invocation? **A:** [auto-pick] No, and that is stated rather than fixed: an interrupted step re-attaches with a fresh budget. **Why:** the earlier re-prompts were delivered and acted on, so the re-attached session is further along than a fresh one and refusing it attempts would halt a run that is progressing; an uninterrupted run always terminates at the budget, and the unbounded case needs repeated operator interruptions. A durable counter would need either the on-disk status schema (declined) or a sidecar with its own lifecycle.
+- **Q:** The gate `Send`s into a pane a human may be conversing in, for interactive `Discussion-Write` — skip gating there? **A:** [auto-pick] No, gate interactively too. **Why:** skipping would leave one of the four sites ungated, and the re-prompt is a one-line pointer to a findings file the operator would want to read anyway.
 
