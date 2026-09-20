@@ -46,7 +46,9 @@ batches:
     commit_sha: 7bf9aeaff2243d72c1d1aac030284a54531c612f
     verify_baseline_failures: []
   - name: loom-driver-config
-    state: pending
+    state: running
+    implementer_session: 7f70cd6b-ba44-49f4-bc85-c7d7f58fe5f5
+    start_sha: 833ba5f869b77b76d58b2ca4d409f9c2f61ba231
     verify_baseline_failures: []
   - name: bootstrap-verb-capability
     state: pending
