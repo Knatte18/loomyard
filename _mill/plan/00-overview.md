@@ -193,6 +193,7 @@ this section is the input `_plan_validate.py`'s `all-files-touched-mismatch` che
 - `internal/burlerengine/engine_test.go`
 - `internal/burlerengine/profile.go`
 - `internal/discussionparser/validate.go`
+- `internal/discussionparser/validate_test.go`
 - `internal/friction/friction.go`
 - `internal/loomcli/cli.go`
 - `internal/loomcli/parity_test.go`

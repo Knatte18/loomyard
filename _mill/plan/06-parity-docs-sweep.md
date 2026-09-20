@@ -140,6 +140,7 @@ Moving the shipped item to Done empties Planned, and choosing what fills it is t
   - `internal/planglyph/planglyph.go`
   - `internal/planparser/validate.go`
   - `internal/discussionparser/validate.go`
+  - `internal/discussionparser/validate_test.go`
   - `internal/loomcli/validate_test.go`
   - `internal/websterengine/runlevel_test.go`
   - `internal/shedengine/run_routing_test.go`
