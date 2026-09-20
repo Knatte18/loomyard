@@ -35,9 +35,24 @@ const singleLLMEngineLabel = "shuttle"
 // Attacher interface inside Call: that would make the attach behaviour silently absent for any
 // implementor that forgets it, whereas a compile error in a test fake is a better failure than a
 // producer that quietly stops probing.
+//
+// RunGated and AttachGated are added beside Run and Attach rather than a widening of either, per
+// the "added forms, never widened signatures" decision: this seam is shared by three consumers --
+// SingleLLMProducer, BurlerProducer's attach probe, and Bouncer -- and Bouncer has no gate and never
+// will, so widening Run/Attach would rewrite its six call sites to pass a zero value that means
+// nothing there. Every test fake implementing this seam gains both methods because Go admits no
+// partial implementation, and that churn is the intended cost, matching the precedent already
+// stated above for Attach: a compile error in a test fake is a better failure than a producer that
+// quietly stops probing.
 type Shuttle interface {
 	Run(shuttleengine.Spec) (shuttleengine.Result, error)
 	Attach(shuttleengine.Spec) (shuttleengine.Result, bool, error)
+	// RunGated is Run, gated: the run's declared output artifacts are additionally validated by
+	// gate.Gate (if non-nil) before the round's report is trusted.
+	RunGated(shuttleengine.Spec, shuttleengine.GateSpec) (shuttleengine.Result, error)
+	// AttachGated is Attach, gated: an attached run's declared output artifacts are gated exactly as
+	// a freshly-spawned run's are.
+	AttachGated(shuttleengine.Spec, shuttleengine.GateSpec) (shuttleengine.Result, bool, error)
 }
 
 var _ Shuttle = (*shuttleengine.Runner)(nil)
