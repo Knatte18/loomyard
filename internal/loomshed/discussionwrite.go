@@ -34,17 +34,28 @@ func NewDiscussionWrite(name string, inner shedengine.ShedProducer, commit func(
 }
 
 // Call implements shedengine.ShedProducer: it calls p.inner.Call(ctx) exactly once and returns its
-// three results verbatim whenever the error is non-nil or the outcome is anything other than
-// shedengine.Done. Only a Done outcome with a nil error invokes p.commit before returning.
+// three results verbatim whenever the error is non-nil or pointer.Path is empty. The commit seam
+// fires whenever the wrapped producer reports a non-empty output pointer with a nil error -- Done or
+// a gate-failed Stuck, the only two outcomes the wrapped *shedadapters.SingleLLMProducer can report
+// with a non-empty pointer -- and the returned triple is (outcome, pointer, nil) rather than being
+// forced to Done.
 //
-// A non-nil commit error maps to a returned error, never to shedengine.Stuck: a git fault is not
-// something re-writing the discussion can fix, the same reasoning discussionvalidate.go already
-// applies to a non-not-exist read failure. The commit fires before Discussion-Validate has judged
-// the output, and that is intentional -- the commit keeps the working tree clean and the artifact
-// durable, it does not certify it.
+// shuttleengine.OutcomeAsking keeps returning Stuck with an empty pointer and is therefore still not
+// committed, correctly: an asking run has not satisfied its file contract, so there is nothing to
+// commit.
+//
+// A non-nil commit error maps to a returned error, never to shedengine.Stuck, on both the Done path
+// and the gate-failed Stuck path alike: a git fault is not something re-writing the discussion can
+// fix, the same reasoning discussionvalidate.go already applies to a non-not-exist read failure. The
+// commit fires before Discussion-Validate has judged the output, and that is intentional -- the
+// commit keeps the working tree clean and the artifact durable, it does not certify it. Left alone,
+// a gate-failed Stuck would skip the commit and halt the run with the invalid artifact sitting
+// uncommitted in a dirty weft -- exactly the state this decorator's own recorded rationale exists to
+// prevent -- so committing it here means the human the run just halted for finds the artifact
+// committed and diagnosable.
 func (p *discussionWrite) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	outcome, pointer, err := p.inner.Call(ctx)
-	if err != nil || outcome != shedengine.Done {
+	if err != nil || pointer.Path == "" {
 		return outcome, pointer, err
 	}
 
