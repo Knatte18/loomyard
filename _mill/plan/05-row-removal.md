@@ -57,7 +57,13 @@ Batch-local decision: two standing guards lose their subject entirely and are de
   - `internal/shedrecipe/recipe.go`
   - `internal/planglyph/repo.go`
   - `internal/discussionparser/validate.go`
+  - `internal/loomshed/discussionvalidate.go`
+  - `internal/loomshed/planvalidate.go`
+  - `internal/loomshed/discussionvalidate_test.go`
+  - `internal/loomshed/planvalidate_test.go`
+  - `internal/loomshed/webster_test.go`
 - **Edits:**
+  - `internal/loomshed/cancellation_test.go`
   - `internal/loomshed/gates.go`
   - `internal/loomshed/loomshed.go`
   - `internal/loomshed/interruptpolicy.go`
@@ -66,20 +72,23 @@ Batch-local decision: two standing guards lose their subject entirely and are de
   - `internal/shedrecipe/registry.go`
   - `internal/shedrecipe/registry_test.go`
   - `internal/shedrecipe/entries_simple_test.go`
-- **Creates:** none
+- **Creates:**
+  - `internal/loomshed/fixture_test.go`
 - **Deletes:**
   - `internal/loomshed/discussionvalidate.go`
   - `internal/loomshed/discussionvalidate_test.go`
   - `internal/loomshed/planvalidate.go`
   - `internal/loomshed/planvalidate_test.go`
-  - `internal/loomshed/cancellation_test.go`
 - **Moves:** none
 - **Requirements:** Delete both producer files and their own tests, and move the three helpers the gate closures already call — `formatDiscussionFindings`, `formatPlanFindings`, and `hasBlockingFinding` — into the gates file, each keeping its existing doc comment verbatim, because each carries a hard-won rationale that must survive its file.
   `hasBlockingFinding`'s in particular records that `planglyph.Severity` is an open string type, so testing not-informational rather than equals-blocking is what keeps an unrecognized or zero-valued severity from silently passing.
   Delete `NameDiscussionValidate`, `NamePlanValidate`, and `NamePlanRevalidate` from the row-name constant block and their three entries from the `InterruptPolicies` map, correcting both files' "seventeen" prose to fourteen; drop the retired constant from the interrupt-policy test's table and re-point that row onto a surviving reinvoke row.
   Delete `discussionValidateEntry` and `planValidateEntry` from the simple-entries file, their `"DiscussionValidate"` and `"PlanValidate"` keys from the registry map, and correct the registry's own "complete at eighteen keys" count to sixteen; drop the two names from the registry test's expected-name list and the two rows from the simple-entries test's table.
   Correct the two `Env` field doc comments naming `DiscussionValidate` as the reader of `DecisionRecordPath`/`SupportLogPath` and `PlanValidate` as a reader of `AnchorPath`/`WorktreeRoot`, which are now read by the gate resolver instead.
-  The whole cancellation test file goes with the producers: its own doc comment states that it is in this suite because it constructs those two producers, and it has no other subject.
+  The cancellation test is **reduced, never deleted**: `TestCancellation_RealProducersReturnErrorNotStuck` drives five producers, and only two of them are being removed — the batch gate, the Webster wrapper, and loom's own seed row all survive this task, and this is the only test anywhere proving their real `Call` wiring returns an error rather than a verdict under an already-cancelled context, since the shared cancellation helpers' own tests exercise those helpers in isolation and never through a producer.
+  Drop the two removed producers from its table and reduce `buildCancellationFixture` to the seeding the three survivors actually read, keeping the status seed the preflight row needs; correct the file's own doc comment, which names all five.
+  Before deleting the two producer test files, carry the three package-level fixture helpers the gates test built in batch 3 already depends on — `validDecisionRecord` and `writeDiscussionFixture` from the discussion validator's test file, and `seedPlanValidateFixture` from the plan validator's — into the new fixture file, verbatim, and rename the third so it does not carry a removed row's identity.
+  Both deleted producer files are listed in this card's `Context:` as well as its `Deletes:` deliberately: the card's job includes carrying doc comments and helpers out of them verbatim, so the implementer must read them, and a path that appears only under `Deletes:` does not say that.
   Keeping the producers as dead code for a release was rejected: nothing would construct them, and the coverage guard would need an exemption to tolerate that.
 - **Commit:** `refactor(loomshed): delete the two validate producers and their registry entries`
 

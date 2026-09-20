@@ -211,8 +211,10 @@ this section is the input `_plan_validate.py`'s `all-files-touched-mismatch` che
 - `internal/loomrecipe/resume_test.go`
 - `internal/loomrecipe/sequence_test.go`
 - `internal/loomrecipe/shape_test.go`
+- `internal/loomshed/cancellation_test.go`
 - `internal/loomshed/discussionwrite.go`
 - `internal/loomshed/discussionwrite_test.go`
+- `internal/loomshed/fixture_test.go`
 - `internal/loomshed/gatefindings_test.go`
 - `internal/loomshed/gates.go`
 - `internal/loomshed/gates_test.go`
