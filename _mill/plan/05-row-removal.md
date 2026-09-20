@@ -65,6 +65,7 @@ Batch-local decision: two standing guards lose their subject entirely and are de
 - **Edits:**
   - `internal/loomshed/cancellation_test.go`
   - `internal/loomshed/gates.go`
+  - `internal/loomshed/gates_test.go`
   - `internal/loomshed/loomshed.go`
   - `internal/loomshed/interruptpolicy.go`
   - `internal/loomshed/interruptpolicy_test.go`
