@@ -387,6 +387,42 @@ func (f *fakeLoomShuttle) Attach(spec shuttleengine.Spec) (shuttleengine.Result,
 	return f.attachResult, true, nil
 }
 
+// RunGated and AttachGated implement the shared fake contract every shedadapters.Shuttle/
+// burlerengine.Shuttle test fake follows (see the "every test fake evaluates the gate once"
+// decision): delegate to Run/Attach's own body, then -- only when gate.Gate is non-nil and the
+// delegated outcome is OutcomeDone -- invoke the closure exactly once, returning its error if
+// non-nil and otherwise stamping a *GateOutcome onto the returned Result.
+//
+// This fake's pair matters most among the four downstream fakes this task teaches the gated seam:
+// fakeLoomShuttle is the only one a FULL recipe sequence drives, so it is what makes a gate-failed
+// writer row genuinely halt a loomrecipe run rather than the wiring going silently untested here
+// from batch 4 onward, once a real production caller starts supplying a non-zero GateSpec.
+func (f *fakeLoomShuttle) RunGated(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (shuttleengine.Result, error) {
+	result, err := f.Run(spec)
+	if err != nil || gate.Gate == nil || result.Outcome != shuttleengine.OutcomeDone {
+		return result, err
+	}
+	gateResult, gerr := gate.Gate()
+	if gerr != nil {
+		return result, gerr
+	}
+	result.Gate = &shuttleengine.GateOutcome{Passed: gateResult.Passed}
+	return result, nil
+}
+
+func (f *fakeLoomShuttle) AttachGated(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (shuttleengine.Result, bool, error) {
+	result, found, err := f.Attach(spec)
+	if err != nil || !found || gate.Gate == nil || result.Outcome != shuttleengine.OutcomeDone {
+		return result, found, err
+	}
+	gateResult, gerr := gate.Gate()
+	if gerr != nil {
+		return result, found, gerr
+	}
+	result.Gate = &shuttleengine.GateOutcome{Passed: gateResult.Passed}
+	return result, found, nil
+}
+
 // Run implements shedadapters.Shuttle: on spec.Role == "plan" it rewrites the whole plan directory
 // and reports Done; on spec.Role == "bouncer-judge" it writes the round's verdict, ledger, and
 // focus files (in that order, per spec.OutputFiles) and records the call; on spec.Role ==
