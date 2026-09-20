@@ -273,17 +273,27 @@ func (c *loomCLI) startCmd() *cobra.Command {
   2. ensure the worktree's tmux session is up and its status strand exists,
      then spawn the per-hub watchdog daemon, best-effort -- --no-attach
      still performs this spawn
-  3. spawn the detached loom driver, unless one is already alive -- a second
-     invocation while a driver is running ensures substrate and attaches
-     rather than spawning a second one
+  3. read this run's seed and, unless a driver is already alive, spawn the
+     driver its recorded choice selects -- the detached Go runner, or a
+     Claude strand running ly-drive in this worktree's own reed session --
+     a second invocation while a driver is running ensures substrate and
+     attaches rather than spawning a second one; which driver runs is the
+     seed's recorded choice, never a flag on this command
   4. add the operator's own strand and then hand the terminal to the tmux session
 
-The detached driver's own stdout/stderr go to the log the ephemeral-tree
-driver-log accessor names, never to this command's own output.
+The detached Go driver's own stdout/stderr go to the log the ephemeral-tree
+driver-log accessor names, never to this command's own output -- an ly-drive
+strand writes no such log, since its own pane is where its output already
+lives.
 
---no-attach performs steps 1 through 3 and the handshake that confirms the
-driver took the run lock, then returns instead of running step 4 -- skipping
-the terminal handover this way skips the operator's own strand with it.
+--no-attach performs steps 1 through 3 and returns once the driver's
+readiness signal confirms it is up, instead of running step 4 -- skipping
+the terminal handover this way skips the operator's own strand with it. That
+readiness signal is the run lock being taken for the Go driver, and the
+strand's own pane coming alive for an ly-drive driver -- the documented
+meaning is the same on both paths, perform every bootstrap step, confirm the
+driver is up by that path's own signal, and return without the terminal
+handover.
 
 Example:
   lyx loom start
