@@ -70,6 +70,7 @@ type SingleLLMProducer struct {
 	shuttle           Shuttle
 	now               func() time.Time
 	prepareFreshSpawn func() error
+	gate              shuttleengine.GateSpec
 }
 
 var _ shedengine.ShedProducer = (*SingleLLMProducer)(nil)
@@ -94,10 +95,20 @@ var _ shedengine.ShedProducer = (*SingleLLMProducer)(nil)
 // then attached to a live plan agent left that agent's completion unobservable -- Wait polls for
 // bare existence at the spec's paths -- and the finished plan timed out into a hard run failure.
 func NewSingleLLMProducer(name string, specs SpecSource, shuttle Shuttle, now func() time.Time, prepareFreshSpawn func() error) *SingleLLMProducer {
+	return NewSingleLLMProducerGated(name, specs, shuttle, now, prepareFreshSpawn, shuttleengine.GateSpec{})
+}
+
+// NewSingleLLMProducerGated returns a SingleLLMProducer identical to NewSingleLLMProducer's, gated
+// by gate: the run's declared output artifacts (fresh or attached) are additionally validated by
+// gate.Gate (if non-nil) before the run's outcome is trusted. Added beside NewSingleLLMProducer
+// rather than a widening of it, per the "added forms, never widened signatures" decision -- the
+// generic SingleLLM registry row, the smoke harness, and roughly thirty existing test call sites
+// have no gate and never will.
+func NewSingleLLMProducerGated(name string, specs SpecSource, shuttle Shuttle, now func() time.Time, prepareFreshSpawn func() error, gate shuttleengine.GateSpec) *SingleLLMProducer {
 	if now == nil {
 		now = time.Now
 	}
-	return &SingleLLMProducer{name: name, specs: specs, shuttle: shuttle, now: now, prepareFreshSpawn: prepareFreshSpawn}
+	return &SingleLLMProducer{name: name, specs: specs, shuttle: shuttle, now: now, prepareFreshSpawn: prepareFreshSpawn, gate: gate}
 }
 
 // Call runs one SingleLLMProducer iteration: entry-check the context, build the Spec, probe for a
@@ -130,7 +141,7 @@ func (p *SingleLLMProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 	// to protect. Respawning over a still-live agent is a correctness bug in autonomous mode too --
 	// gating on interactive would knowingly ship the duplicate-agent path for Plan-Write and every
 	// other generic SingleLLM row.
-	attachResult, found, err := p.shuttle.Attach(spec)
+	attachResult, found, err := p.shuttle.AttachGated(spec, p.gate)
 	if err != nil {
 		if cerr := cancelErr(ctx, p.name, singleLLMEngineLabel); cerr != nil {
 			return "", shedengine.OutputPointer{}, cerr
@@ -155,7 +166,7 @@ func (p *SingleLLMProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): archive stale outputs: %w", p.name, singleLLMEngineLabel, err)
 	}
 
-	result, err := p.shuttle.Run(spec)
+	result, err := p.shuttle.RunGated(spec, p.gate)
 	if err != nil {
 		if cerr := cancelErr(ctx, p.name, singleLLMEngineLabel); cerr != nil {
 			return "", shedengine.OutputPointer{}, cerr
@@ -167,6 +178,16 @@ func (p *SingleLLMProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 
 // mapOutcome maps result.Outcome onto shedengine's contract: shared by the attach path and the spawn
 // path so the mapping is never duplicated.
+//
+// A gated run's OutcomeDone splits further on result.Gate: nil or Passed true maps to Done exactly
+// as an ungated run does, but a non-nil, failing Gate maps to Stuck carrying the same artifact
+// pointer a Done would have carried. That pointer is non-empty deliberately -- this producer has no
+// judge downstream of its own Stuck, since the run halts there, so its pointer is free to carry the
+// meaning the commit decorators key on, which is what keeps a gate-failed artifact committed and
+// diagnosable rather than sitting in a dirty weft. This is the writer-row half of the "the two
+// producers' output pointers mean different things" decision; BurlerProducer's own gate-failed exit
+// carries the opposite, empty pointer, because emptiness is what tells the segment's Bouncer there
+// is no round artifact to judge -- a meaning this producer has no downstream consumer for.
 func (p *SingleLLMProducer) mapOutcome(ctx context.Context, spec shuttleengine.Spec, result shuttleengine.Result) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	switch result.Outcome {
 	case shuttleengine.OutcomeDone:
@@ -174,6 +195,13 @@ func (p *SingleLLMProducer) mapOutcome(ctx context.Context, spec shuttleengine.S
 			// Guards a panic from indexing an empty slice: a panic inside a long unattended Shed
 			// run is exactly what this guard exists to avoid.
 			return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): shuttle reported %s but spec.OutputFiles is empty", p.name, singleLLMEngineLabel, shuttleengine.OutcomeDone)
+		}
+		if result.Gate != nil && !result.Gate.Passed {
+			if cerr := cancelErr(ctx, p.name, singleLLMEngineLabel); cerr != nil {
+				return "", shedengine.OutputPointer{}, cerr
+			}
+			logger.Warn("shedadapters: shuttle run's gate did not pass", "producer", p.name, "engine", singleLLMEngineLabel, "attempts", result.Gate.Attempts, "findingsPath", result.Gate.FindingsPath, "sessionID", result.SessionID, "strandGUID", result.StrandGUID)
+			return shedengine.Stuck, shedengine.OutputPointer{Path: spec.OutputFiles[0]}, nil
 		}
 		// A genuine success verdict survives cancellation -- the one exception cancelErr never
 		// applies to.
