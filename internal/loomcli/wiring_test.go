@@ -93,8 +93,8 @@ func seedPlanStencil(t *testing.T, hubPath string) {
 }
 
 // seedLoomConfigWithInteractive overwrites <anchorPath>/_lyx/config/loom.yaml with a full
-// nine-key literal, identical to the embedded template's own values except
-// discussion_interactive, which takes the caller-chosen value. All nine keys are written
+// eleven-key literal, identical to the embedded template's own values except
+// discussion_interactive, which takes the caller-chosen value. All eleven keys are written
 // explicitly, rather than string-substituting the template, because configengine.Load is strict
 // on missing keys -- an explicit literal is what internal/loomengine/config_test.go already does.
 func seedLoomConfigWithInteractive(t *testing.T, anchorPath string, discussionInteractive bool) {
@@ -121,9 +121,9 @@ driver: ""
 	}
 }
 
-// seedLoomConfigWithFriction overwrites <anchorPath>/_lyx/config/loom.yaml with a full nine-key
+// seedLoomConfigWithFriction overwrites <anchorPath>/_lyx/config/loom.yaml with a full eleven-key
 // literal, identical to the embedded template's own values except the friction key, which takes the
-// caller-chosen value -- empty to mean Tier 2 is off. All nine keys are written explicitly for the
+// caller-chosen value -- empty to mean Tier 2 is off. All eleven keys are written explicitly for the
 // same configengine.Load strictness reason seedLoomConfigWithInteractive already documents.
 func seedLoomConfigWithFriction(t *testing.T, anchorPath, friction string) {
 	t.Helper()
