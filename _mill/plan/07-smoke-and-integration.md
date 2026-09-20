@@ -30,7 +30,9 @@ The predicate is already under test at Tier 1 with a four-row truth table; what 
   - `internal/loomcli/start.go`
   - `internal/shedrun/seed.go`
   - `internal/reedengine/lifecycle.go`
-- **Edits:** none
+- **Edits:**
+  - `internal/loomcli/smoke_test.go`
+  - `internal/loomcli/smoke_bootstrapwiring_test.go`
 - **Creates:**
   - `internal/loomcli/smoke_driverstrand_test.go`
 - **Deletes:** none
@@ -44,6 +46,7 @@ The predicate is already under test at Tier 1 with a four-row truth table; what 
   Drive the stub so its pane exits promptly in the third case rather than by waiting out a real timeout, and let the third bootstrap follow the second closely: a relaunch inside one second is the case the report path's random component exists for, and this test is where that collision would surface as a refused relaunch.
   Give the test package the hermetic git environment in its own entry point if this tier does not already have one in this package, per the Hermetic Git Test Environment Invariant.
   Never re-exec the test binary as the provider: the stub is a separate script or binary the test writes and points the engine at, per the Live-Substrate Spawn Observability invariant's clause on that.
+  While bringing this tier green, also fix `internal/loomcli/smoke_test.go` and `internal/loomcli/smoke_bootstrapwiring_test.go`'s stale references to the now-removed `loomengine.LoomStatusFile`/`LoomStatusLock`/`LoomRunLock`/`LoomStatusRel` (relocated to `shedrun.StatusFile`/`StatusLock`/`RunLock`/`StatusRel` by an earlier Seeded Shed core migration that never updated this tier, since nothing in this plan's earlier batches ran `-tags smoke` against this package): this pre-existing break reproduces on `main` itself, but it blocks this very batch's own `verify:` from ever compiling the smoke build regardless of card content, so it is fixed here rather than reported as unrelated.
 - **Commit:** `test(loomcli): smoke the driver strand's re-entrancy across bootstraps`
 
 ### Card 24: the integration bootstrap
