@@ -222,16 +222,24 @@ func TestResume_PauseStopsAtBoundaryAndClearsFlag(t *testing.T) {
 // genuinely Stuck by removing its decision record from disk, and asserts the run continues at its
 // declared OnStuck target, Discussion-Write, immediately afterward.
 //
-// Discussion-Write is a real producer now, and the bounce it receives must leave the record absent
-// for the bounce to repeat: the fixture's fake shuttle is switched to its non-writing variant here,
-// immediately after buildSequenceFixture and before New, since the default writing variant would
-// restore the file this test just removed and destroy the test's own premise.
+// current_producer is planted directly at Discussion-Validate via resetCurrentProducer, skipping
+// Discussion-Write's own first invocation, rather than driven through the whole sequence from row
+// one: Discussion-Write now carries its own "gate: discussion" Config key (resolveGateSpec,
+// internal/shedrecipe/entries_gate.go), so a fresh Discussion-Write run that found the decision
+// record missing would fail its OWN gate first and halt there -- Discussion-Write carries no
+// on_stuck, so that halt would block the whole run before ever reaching Discussion-Validate, never
+// mind bouncing to it. Planting current_producer here is what makes this test exercise
+// Discussion-Validate's own bounce, its actual subject, undisturbed by Discussion-Write's gate.
+// This test asserts nothing about Discussion-Write's own outcome on the bounce it receives -- only
+// that routing continues there at all -- matching the same shape
+// TestSequence_PlanRevalidateCatchesPostSegmentRegression already established for its own
+// now-gated writer partner.
 func TestBounceRouting_StuckContinuesAtDeclaredTarget(t *testing.T) {
 	_, env, paths := buildSequenceFixture(t)
-	env.Shuttle.(*fakeLoomShuttle).writeOutputs = false
 	if err := os.Remove(env.DecisionRecordPath); err != nil {
 		t.Fatalf("remove decision record: %v", err)
 	}
+	resetCurrentProducer(t, env.StatusPath, env.StatusLockPath, loomshed.NameDiscussionValidate, false)
 
 	shed, err := New(env, paths)
 	if err != nil {
@@ -288,30 +296,42 @@ func TestBounceRouting_EmptyTargetBlocksInstead(t *testing.T) {
 	}
 }
 
-// TestBounceRouting_BudgetExhaustionBlocks drives Discussion-Validate genuinely and repeatedly
-// Stuck (its decision record stays absent for the whole run, so Discussion-Write's own Done never
-// fixes it), with a small ShedPaths.MaxBounces, and asserts Discussion-Validate's own bounce budget
-// is consumed and exhausting it blocks -- MaxBounces+1 Stuck entries authored by Discussion-Validate,
-// then shedengine.RunBlocked.
+// TestBounceRouting_BudgetExhaustionBlocks drives Discussion-Bouncer (a real producer) genuinely
+// and repeatedly Stuck by scripting its judge round's verdict as BLOCKING every time, and asserts
+// Discussion-Bouncer's own bounce budget is consumed and exhausting it blocks -- MaxBounces+1 Stuck
+// entries authored by Discussion-Bouncer, then shedengine.RunBlocked.
 //
-// The budget here is per-producer and episode-scoped, counted from the persisted history[] --
-// never a run-wide counter. Discussion-Validate's decision record is absent for the whole run, so
-// it never returns Done, and its episode (the run of its own history entries since its last Done)
-// is therefore the whole run: every Stuck entry it authors counts. Discussion-Write, the producer
-// it bounces to, consumes none of Discussion-Validate's budget -- each producer's episode count is
-// its own, and its own episode restarts on each of its own Done verdicts.
+// Discussion-Validate is no longer this test's vehicle. Discussion-Write now carries its own "gate:
+// discussion" Config key (resolveGateSpec, internal/shedrecipe/entries_gate.go), which calls the
+// exact same discussionparser.Validate function Discussion-Validate's own Call does -- so a
+// Discussion-Write whose redo never fixes its artifact fails its OWN gate on every bounce, and
+// Discussion-Write carries no on_stuck, so that failure blocks the whole run on the very first
+// bounce rather than letting Discussion-Validate cycle it repeatedly. Discussion-Bouncer's mutual
+// on_stuck with Discussion-Burler (segment: Discussion-Review) has no such dependency on this
+// task's new gates -- fakeLoomBurler, this fixture's shedadapters.BurlerRunner fake, never reads
+// burlerengine.RunOpts.Gate at all -- so it is what remains a genuinely, repeatably bounceable real
+// producer pair under the new design, matching the property this test exists to prove (a real
+// producer's per-episode bounce budget is consumed and exhausted, never a fake standing in for a
+// generic engine mechanism the recipe's own graph never exercises).
 //
-// Discussion-Write is a real producer now, and the bounce it receives must leave the record absent
-// for the bounce to repeat: the fixture's fake shuttle is switched to its non-writing variant here,
-// immediately after buildSequenceFixture and before New, for the same reason
-// TestBounceRouting_StuckContinuesAtDeclaredTarget does.
+// The budget here is per-producer and episode-scoped, counted from the persisted history[] -- never
+// a run-wide counter. f.bouncerVerdict = "BLOCKING" makes the judge round reject on every pass, so
+// Discussion-Bouncer never returns Done and its episode (the run of its own history entries since
+// its last Done) is therefore the whole run: every Stuck entry it authors counts. Discussion-Burler,
+// the producer it bounces to, consumes none of Discussion-Bouncer's own budget -- each producer's
+// episode count is its own.
+//
+// Discussion-Bouncer's max_bounces is declared directly on its own recipe row
+// (contracts/recipes/loom-recipe.yaml), not inherited from ShedPaths.MaxBounces the way
+// Discussion-Validate's budget was, so this test drives discussionBouncerMaxBounces+1 round trips
+// rather than parameterizing a small paths.MaxBounces.
 func TestBounceRouting_BudgetExhaustionBlocks(t *testing.T) {
+	// discussionBouncerMaxBounces mirrors the "max_bounces: 5" this task's Card 25 left untouched
+	// on the Discussion-Bouncer row of contracts/recipes/loom-recipe.yaml.
+	const discussionBouncerMaxBounces = 5
+
 	_, env, paths := buildSequenceFixture(t)
-	env.Shuttle.(*fakeLoomShuttle).writeOutputs = false
-	paths.MaxBounces = 2
-	if err := os.Remove(env.DecisionRecordPath); err != nil {
-		t.Fatalf("remove decision record: %v", err)
-	}
+	env.Shuttle.(*fakeLoomShuttle).bouncerVerdict = "BLOCKING"
 
 	shed, err := New(env, paths)
 	if err != nil {
@@ -325,27 +345,24 @@ func TestBounceRouting_BudgetExhaustionBlocks(t *testing.T) {
 	if result.Outcome != shedengine.RunBlocked {
 		t.Fatalf("Run() outcome = %q; want %q", result.Outcome, shedengine.RunBlocked)
 	}
-	if result.HaltedProducer != loomshed.NameDiscussionValidate {
-		t.Errorf("Run() HaltedProducer = %q; want %q", result.HaltedProducer, loomshed.NameDiscussionValidate)
+	if result.HaltedProducer != loomshed.NameDiscussionBouncer {
+		t.Errorf("Run() HaltedProducer = %q; want %q", result.HaltedProducer, loomshed.NameDiscussionBouncer)
 	}
 	if result.Reason != "bounce budget exhausted" {
 		t.Errorf("Run() Reason = %q; want %q", result.Reason, "bounce budget exhausted")
 	}
 
-	// Discussion-Validate's own per-producer, episode-scoped budget (paths.MaxBounces, since
-	// neither Discussion-Validate nor Shed itself sets a MaxBounces of its own) performs
-	// MaxBounces bounce-backs to Discussion-Write and blocks on the next Stuck -- one more than
-	// the budget -- because the blocking Stuck entry is itself appended to history before the
-	// inner switch decides whether to bounce or block, so it counts toward the total even though
-	// it is the one that triggers the block rather than one the budget check let through.
+	// The blocking Stuck entry is itself appended to history before the inner switch decides
+	// whether to bounce or block, so it counts toward the total even though it is the one that
+	// triggers the block rather than one the budget check let through -- MaxBounces+1 total.
 	stuckCount := 0
 	for _, e := range result.History {
-		if e.Producer == loomshed.NameDiscussionValidate && e.Outcome == shedengine.Stuck {
+		if e.Producer == loomshed.NameDiscussionBouncer && e.Outcome == shedengine.Stuck {
 			stuckCount++
 		}
 	}
-	if want := paths.MaxBounces + 1; stuckCount != want {
-		t.Errorf("Discussion-Validate Stuck count = %d; want %d (MaxBounces+1)", stuckCount, want)
+	if want := discussionBouncerMaxBounces + 1; stuckCount != want {
+		t.Errorf("Discussion-Bouncer Stuck count = %d; want %d (MaxBounces+1)", stuckCount, want)
 	}
 }
 
