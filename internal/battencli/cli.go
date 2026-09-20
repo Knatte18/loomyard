@@ -170,12 +170,15 @@ Example:
 	statusVerb.Args = cobra.MaximumNArgs(1)
 	pauseVerb.Args = cobra.MaximumNArgs(1)
 
-	// --driver and --child-driver exist now so a later roadmap item changes a default rather than a
-	// surface: both flags currently accept only "go" (shedrun.ValidateDriver, consulted in
-	// arm.go's armSeed, refuses "llm").
-	runVerb.Flags().StringVar(&c.driverFlag, "driver", shedrun.DriverGo, "the run's own driver")
+	// --driver and --child-driver answer different questions now: --driver names the process the
+	// operator typed, and batten has no bootstrap verb, so armSeed's refuseBattenOwnDriverLLM still
+	// refuses "llm" there. --child-driver names the driver the task worktree's own bootstrap will
+	// honour, which is a fact about that worktree's recipe, not batten's, so it accepts both "go" and
+	// "llm" -- the child's own recipe capability is checked when that child's seed is written, not
+	// here.
+	runVerb.Flags().StringVar(&c.driverFlag, "driver", shedrun.DriverGo, "the run's own driver (batten has no bootstrap verb, so \"llm\" is refused)")
 	runVerb.Flags().StringVar(&c.childDriverFlag, "child-driver", shedrun.DriverGo, "the driver the task worktree's own inner run uses")
-	stepVerb.Flags().StringVar(&c.driverFlag, "driver", shedrun.DriverGo, "the run's own driver")
+	stepVerb.Flags().StringVar(&c.driverFlag, "driver", shedrun.DriverGo, "the run's own driver (batten has no bootstrap verb, so \"llm\" is refused)")
 	stepVerb.Flags().StringVar(&c.childDriverFlag, "child-driver", shedrun.DriverGo, "the driver the task worktree's own inner run uses")
 
 	parent.AddCommand(runVerb, stepVerb, statusVerb, pauseVerb)
