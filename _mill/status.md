@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-row-removal
+phase: approved-parity-docs-sweep
 slug: producer-gates
 branch: producer-gates
 plan: _mill/plan
@@ -35,6 +35,7 @@ approved-seam-and-producers  '2026-09-20T15:22:27Z'
 approved-loomshed-gates  '2026-09-20T15:29:29Z'
 approved-shedrecipe-wiring  '2026-09-20T15:47:19Z'
 approved-row-removal  '2026-09-20T16:08:22Z'
+approved-parity-docs-sweep  '2026-09-20T16:31:19Z'
 ```
 
 ## Batches
@@ -72,8 +73,9 @@ batches:
     commit_sha: 6d0e082d356dbb8a9e14821721097245bd2cc4d9
     verify_baseline_failures: []
   - name: parity-docs-sweep
-    state: running
+    state: approved
     implementer_session: 80f07fcf-f2b2-483b-952d-b57b5ede1413
     start_sha: 8c9cd003ef851fdeda8cfb33e5b1009be5adc85b
+    commit_sha: 126a86537b7d1129bcbd6a8308aff04e6b5a1961
     verify_baseline_failures: []
 ```
