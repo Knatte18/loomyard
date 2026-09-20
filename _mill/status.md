@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r2
+phase: planned
 slug: producer-gates
 branch: producer-gates
 plan: _mill/plan
@@ -27,4 +27,5 @@ plan-review-r1  '2026-09-20T14:47:27Z'
 plan-fix-r1  '2026-09-20T14:49:29Z'
 plan-review-r2  '2026-09-20T14:56:33Z'
 plan-fix-r2  '2026-09-20T14:57:27Z'
+planned  '2026-09-20T14:57:37Z'
 ```
