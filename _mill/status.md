@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: producer-gates
 branch: producer-gates
 plan: _mill/plan
@@ -28,4 +28,23 @@ plan-fix-r1  '2026-09-20T14:49:29Z'
 plan-review-r2  '2026-09-20T14:56:33Z'
 plan-fix-r2  '2026-09-20T14:57:27Z'
 planned  '2026-09-20T14:57:37Z'
+implementing  '2026-09-20T14:57:55Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: shuttle-gate-loop
+    state: pending
+  - name: seam-and-producers
+    state: pending
+  - name: loomshed-gates
+    state: pending
+  - name: shedrecipe-wiring
+    state: pending
+  - name: row-removal
+    state: pending
+  - name: parity-docs-sweep
+    state: pending
 ```
