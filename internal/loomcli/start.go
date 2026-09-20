@@ -81,8 +81,9 @@ Example:
 			// helper also returns is deliberately discarded here: `run` writes the same envelope on
 			// any failure regardless of which sub-step produced it, exactly as before this
 			// extraction; `step` is the caller that maps the stage onto its own refusal-kind
-			// vocabulary.
-			_, _, err := c.seedAndCommitBootstrap(slug, parentFlag)
+			// vocabulary. The returned driver is discarded here for now, purely to keep the build
+			// green -- step 5 below is what will consume it as the real branch condition.
+			_, _, _, err := c.seedAndCommitBootstrap(slug, parentFlag)
 			if err != nil {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil

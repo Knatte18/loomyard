@@ -360,7 +360,9 @@ func (c *loomCLI) loomPreStep(ctx context.Context) (string, error) {
 	}
 
 	slug := seedSlug(c.location.WorktreeName)
-	_, stage, err := c.seedAndCommitBootstrap(slug, c.parentFlag)
+	// The returned driver is discarded permanently here, not just for now: "step" spawns no driver
+	// at all, so a driver value reaching this path is one nothing can act on.
+	_, _, stage, err := c.seedAndCommitBootstrap(slug, c.parentFlag)
 	if err != nil {
 		return stepKindForBootstrapStage(stage), err
 	}

@@ -56,18 +56,26 @@ const (
 // origin record into the fabric -- today's steps 1 through 3 from start.go's RunE, held here
 // verbatim and in today's order so `step` can call the exact same sequence.
 //
-// On success it returns the resolved parent branch, bootstrapStageNone, and a nil error. On failure
-// it returns the empty string, the stage that failed, and the error unwrapped.
-func (c *loomCLI) seedAndCommitBootstrap(slug, parentFlag string) (string, bootstrapStage, error) {
+// On success it returns the resolved parent branch, the run's effective driver, bootstrapStageNone,
+// and a nil error. On failure it returns two empty strings, the stage that failed, and the error
+// unwrapped.
+//
+// The effective driver is read from any already-recorded seed -- never chosen by this function and
+// never taken from a flag, since this command declares no driver flag of its own -- falling back to
+// shedrun.DriverGo only when no seed exists yet. Without this read-through, a run already seeded for
+// the llm driver would be refused here: WriteSeed rejects a disagreeing existing seed, and this step
+// used to hard-code the go driver into every write, making the llm arm unreachable regardless of what
+// a run was seeded as.
+func (c *loomCLI) seedAndCommitBootstrap(slug, parentFlag string) (string, string, bootstrapStage, error) {
 	// Step 1: resolve the recorded parent branch, writing the provenance record only for a legacy
 	// worktree created before it existed.
 	recorded, found, err := fabricengine.ReadOrigin(c.location)
 	if err != nil {
-		return "", bootstrapStageOrigin, err
+		return "", "", bootstrapStageOrigin, err
 	}
 	parent, writeOrigin, err := resolveParentBranch(recorded, found, parentFlag)
 	if err != nil {
-		return "", bootstrapStageOrigin, err
+		return "", "", bootstrapStageOrigin, err
 	}
 	if writeOrigin {
 		// loom's envelope deliberately gains no mutation keys here: the Mutation Record Invariant
@@ -75,19 +83,26 @@ func (c *loomCLI) seedAndCommitBootstrap(slug, parentFlag string) (string, boots
 		// away rather than surfaced.
 		originRec := fabricengine.NewMutations("")
 		if err := fabricengine.WriteOrigin(originRec, c.location, slug, fabricengine.Origin{ParentBranch: parent}); err != nil {
-			return "", bootstrapStageOrigin, err
+			return "", "", bootstrapStageOrigin, err
 		}
 	}
 
 	// Step 1b: write loom's own seed, the run's identity, before the status file it seeds next --
 	// the status file must never exist without a seed beside it, which is the inconsistency card
-	// 14's refusal exists to catch. WriteSeed is already idempotent against a byte-identical seed,
-	// so a re-run needs no sentinel handling of its own; a disagreeing seed's refusal propagates as
-	// a returned error here, at bootstrapStageSeed. params.parent is the run's recorded startup
-	// choice, not the durable truth -- fabricengine.Origin.ParentBranch (written just above) stays
-	// the durable record, and resolveParentBranch's own disagreement refusal already guards it.
-	if err := shedrun.WriteSeed(c.location, shedrun.SelfRunID, loomSeedFor(parent)); err != nil {
-		return "", bootstrapStageSeed, err
+	// 14's refusal exists to catch. The existing seed, if any, is read first so its recorded driver
+	// survives this write unchanged -- see resolveSeedDriver. WriteSeed is already idempotent
+	// against a byte-identical seed, so a re-run needs no sentinel handling of its own; a disagreeing
+	// seed's refusal propagates as a returned error here, at bootstrapStageSeed. params.parent is the
+	// run's recorded startup choice, not the durable truth -- fabricengine.Origin.ParentBranch
+	// (written just above) stays the durable record, and resolveParentBranch's own disagreement
+	// refusal already guards it.
+	existingSeed, seedFound, err := shedrun.ReadSeed(c.location, shedrun.SelfRunID)
+	if err != nil {
+		return "", "", bootstrapStageSeed, err
+	}
+	driver := resolveSeedDriver(existingSeed, seedFound)
+	if err := shedrun.WriteSeed(c.location, shedrun.SelfRunID, loomSeedFor(parent, driver)); err != nil {
+		return "", "", bootstrapStageSeed, err
 	}
 
 	// Step 2: seed the status file, tolerating exactly the already-seeded sentinel so a re-run works.
@@ -97,14 +112,14 @@ func (c *loomCLI) seedAndCommitBootstrap(slug, parentFlag string) (string, boots
 	// from an ErrSeedExists re-entry, and this is the only place that distinction is observable.
 	seedErr := loomshed.Seed(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, slug, parent)
 	if seedErr != nil && !errors.Is(seedErr, loomshed.ErrSeedExists) {
-		return "", bootstrapStageSeed, seedErr
+		return "", "", bootstrapStageSeed, seedErr
 	}
 	// An already-present status file must be THIS task's own: `lyx fabric add` run from a task
 	// worktree forks the whole pair, `_lyx` task state included, and the driver would otherwise
 	// silently resume the inherited task's run under the wrong slug (crucible round fable5-high-r3,
 	// F-B7).
 	if err := loomengine.VerifySeedOwnership(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, slug); err != nil {
-		return "", bootstrapStageOwnership, err
+		return "", "", bootstrapStageOwnership, err
 	}
 
 	// Step 2b: Tier 2's once-per-task friction directory handling, positioned after the ownership
@@ -135,22 +150,37 @@ func (c *loomCLI) seedAndCommitBootstrap(slug, parentFlag string) (string, boots
 	commitRec := fabricengine.NewMutations("")
 	commitMsg := fmt.Sprintf("loom: seed session bootstrap for %s", slug)
 	if _, _, err := fabricengine.CommitAnchoredPaths(commitRec, c.location, commitPaths, commitMsg, fabricengine.EnvSyncOptions()); err != nil {
-		return "", bootstrapStageCommit, err
+		return "", "", bootstrapStageCommit, err
 	}
 
-	return parent, bootstrapStageNone, nil
+	return parent, driver, bootstrapStageNone, nil
 }
 
-// loomSeedFor builds the shedrun.Seed seedAndCommitBootstrap's step 1b writes: loom's fixed
-// recipe/driver pair, and the run's recorded startup choice of parent branch as its sole param.
+// resolveSeedDriver reads the effective driver seedAndCommitBootstrap's step 1b must write: the
+// already-recorded seed's own Driver when one exists, falling back to shedrun.DriverGo only when no
+// seed has been written yet. It is a pure function, factored out so a Tier 1 test can pin the three
+// cases -- unseeded, already-go, already-llm -- with no real fabric behind it.
+//
+// This is the read, not a choice: the driver is never chosen here, only preserved. Choosing a
+// different driver mid-run is not this function's job and has no call site that would ask it to.
+func resolveSeedDriver(existing shedrun.Seed, found bool) string {
+	if !found {
+		return shedrun.DriverGo
+	}
+	return existing.Driver
+}
+
+// loomSeedFor builds the shedrun.Seed seedAndCommitBootstrap's step 1b writes: loom's fixed recipe,
+// the driver to record (told by the caller, never chosen here -- see resolveSeedDriver), and the
+// run's recorded startup choice of parent branch as its sole param.
 // It is a pure function, factored out of seedAndCommitBootstrap so its shape is directly testable
 // without driving the whole bootstrap sequence -- WriteSeed itself needs no real fabric, but
 // seedAndCommitBootstrap's own step 1 (fabricengine.ReadOrigin) does, which would otherwise put
 // this value's shape out of a Tier 1 test's reach.
-func loomSeedFor(parent string) shedrun.Seed {
+func loomSeedFor(parent string, driver string) shedrun.Seed {
 	return shedrun.Seed{
 		Recipe: shedrun.RecipeLoom,
-		Driver: shedrun.DriverGo,
+		Driver: driver,
 		Params: map[string]string{"parent": parent},
 	}
 }
