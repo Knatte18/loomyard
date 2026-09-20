@@ -22,7 +22,7 @@ The predicate is already under test at Tier 1 with a four-row truth table; what 
 
 ## Cards
 
-### Card 22: the smoke re-entrancy property
+### Card 23: the smoke re-entrancy property
 
 - **Context:**
   - `internal/loomcli/smoke_operatorstrand_test.go`
@@ -46,7 +46,7 @@ The predicate is already under test at Tier 1 with a four-row truth table; what 
   Never re-exec the test binary as the provider: the stub is a separate script or binary the test writes and points the engine at, per the Live-Substrate Spawn Observability invariant's clause on that.
 - **Commit:** `test(loomcli): smoke the driver strand's re-entrancy across bootstraps`
 
-### Card 23: the integration bootstrap
+### Card 24: the integration bootstrap
 
 - **Context:**
   - `internal/loomcli/start.go`

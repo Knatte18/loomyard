@@ -27,8 +27,10 @@ Batch-local decision beyond the overview's: **no `driver_timeout_min` key**, and
 - **Context:**
   - `internal/modelspec/modelspec.go`
   - `internal/configreg/configreg.go`
+  - `internal/loomengine/configtemplate.go`
 - **Edits:**
   - `internal/loomengine/config.go`
+  - `internal/loomengine/template.yaml`
   - `internal/loomengine/config_test.go`
 - **Creates:** none
 - **Deletes:** none
@@ -36,11 +38,12 @@ Batch-local decision beyond the overview's: **no `driver_timeout_min` key**, and
 - **Requirements:** Add `Driver string ` with the yaml tag `driver` to `loomengine.Config` in `internal/loomengine/config.go`, placed beside the existing `Friction` field.
   Validate it in `LoadConfig` with `modelspec.Parse` **only when non-empty**, following the `Friction` arm line for line, including the error shape `fmt.Errorf("loom config key %q: %w", "driver", err)`.
   An empty or absent value is legal and means "defer to the engine default" — the same meaning `shuttleengine.Spec.Model`'s empty value already carries — so it must not be defaulted to a literal model alias here.
-  Add the key to `ConfigTemplate` with a comment saying it names the model that runs an `llm`-driven run's ly-drive session, and that an empty value defers to the provider default.
-  `ConfigTemplate` is registered in `internal/configreg`'s module list as `loom`, so existing worktrees pick the key up through `configengine.Load`'s template merge with no migration step.
+  Add the key to the config template with a trailing `#` comment saying it names the model that runs an `llm`-driven run's ly-drive session, and that an empty value defers to the provider default — matching the one-line-per-key shape every existing key in that file already has, and placing it after the `friction` pair since it is the newest role.
+  The template is **not** an inline Go string: it is `internal/loomengine/template.yaml`, embedded through `//go:embed` by the accessor in `internal/loomengine/configtemplate.go`, so the edit lands in the yaml file and the accessor is untouched.
+  That template is registered in `internal/configreg`'s module list as `loom`, so existing worktrees pick the key up through `configengine.Load`'s template merge with no migration step.
   Amend the file's own package doc comment, whose opening sentence enumerates the role model-specs this file validates as "discussion, plan, review, and friction" — add driver to that list and to the "validated only when non-empty" sentence that today names friction alone.
   Do **not** add a `driver_timeout_min` key and do not copy the negative-timeout guards that sit beside the other role keys.
-  In `config_test.go` cover: a valid `driver` spec loading cleanly; a malformed one failing at load time with the error naming the key `driver`; an absent key loading cleanly with `Driver` empty; a present-but-empty key loading cleanly rather than erroring; and the key being present in `ConfigTemplate`.
+  In `config_test.go` cover: a valid `driver` spec loading cleanly; a malformed one failing at load time with the error naming the key `driver`; an absent key loading cleanly with `Driver` empty; a present-but-empty key loading cleanly rather than erroring; and the key being present in the string `ConfigTemplate()` returns.
 - **Commit:** `feat(loomengine): add the driver role model-spec config key`
 
 ### Card 4: ResolveDriver

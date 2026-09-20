@@ -4,7 +4,7 @@
 task: 'Seeded driver choice: ly-drive strand as the child''s driver'
 batch: driver-launch
 number: 4
-cards: 9
+cards: 10
 verify: go build ./... && go test ./internal/loomcli/... ./cmd/lyx/...
 depends-on: [1, 2, 3]
 ```
@@ -21,7 +21,7 @@ Every card here is nonetheless fully tested: the predicates and composers are pu
 The external interface batch 6 consumes is `loomcli.AutonomousDriveStepCap`; batch 7 consumes the two seam fields.
 
 Batch-local decision beyond the overview's: **the handshake stays the `go` path's alone.**
-`awaitRunLock`, `bootstrapHandshakeAttempts` and `dispositionForHandshake` are not called, not widened and not refactored on the `llm` path, and card 15 asserts that absence explicitly.
+`awaitRunLock`, `bootstrapHandshakeAttempts` and `dispositionForHandshake` are not called, not widened and not refactored on the `llm` path, and card 16 asserts that absence explicitly.
 An ly-drive session takes the run lock only inside each `lyx shed step` and releases it between steps, so a handshake on it would either race the Claude boot or observe a free lock between two perfectly healthy steps — converting a working driver into a refused bootstrap.
 
 ## Cards
@@ -168,7 +168,30 @@ An ly-drive session takes the run lock only inside each `lyx shed step` and rele
   Also cover a strand that is live on the first poll reporting ready immediately, a strand absent from the slice entirely being treated as not-ready rather than as an error, the seam erroring propagating that error, and the attempt budget being respected by counting calls rather than by measuring elapsed time.
 - **Commit:** `feat(loomcli): probe the driver pane for liveness after launch`
 
-### Card 14: the driver branch in the bootstrap
+### Card 14: the bootstrap's own seed write must preserve a recorded driver
+
+- **Context:**
+  - `internal/shedrun/seed.go`
+  - `internal/shedrun/runid.go`
+  - `internal/loomcli/cli.go`
+- **Edits:**
+  - `internal/loomcli/sharedbootstrap.go`
+  - `internal/loomcli/sharedbootstrap_test.go`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** `loomSeedFor` in `internal/loomcli/sharedbootstrap.go` hard-codes the go driver into the seed `seedAndCommitBootstrap` writes at step 1b, and the seed writer refuses a disagreeing existing seed.
+  As shipped, that combination makes this whole task unreachable: a run seeded for the llm driver is refused by `lyx loom start` at the seed-write stage, before step 5's branch is ever evaluated, with a message about a disagreeing seed rather than anything a reader would connect to driver choice.
+  Fix it at the write: give `loomSeedFor` the driver to record rather than letting it choose one, and have `seedAndCommitBootstrap` read the existing seed first and pass that seed's recorded driver through when one is present, falling back to the go driver when no seed exists yet.
+  This keeps the write idempotent in both directions — a first `lyx loom start` in an unseeded worktree still records the go driver exactly as today, and a start against a worktree seeded for either driver rewrites a byte-identical seed and no-ops.
+  Return the effective driver from `seedAndCommitBootstrap` alongside the values it already returns, so card 15's branch consumes it directly rather than performing a second read of the file this function just wrote.
+  Preserve the existing `Params` handling unchanged: the parent parameter is still the run's recorded startup choice, and the durable parent record stays where it is.
+  Preserve the returned stage vocabulary and every existing refusal, the seed-ownership check among them.
+  In `sharedbootstrap_test.go` cover: an unseeded worktree recording the go driver; a worktree already seeded for the go driver re-running as a no-op; and — the case this card exists for — **a worktree already seeded for the llm driver surviving the write and reporting that driver back**, which fails against the shipped version with a disagreeing-seed refusal.
+  Add a case pinning that the driver is read from the seed rather than from any flag or config, since there is deliberately no driver flag on this command.
+- **Commit:** `fix(loomcli): preserve a recorded driver when the bootstrap writes its seed`
+
+### Card 15: the driver branch in the bootstrap
 
 - **Context:**
   - `internal/shedrun/seed.go`
@@ -202,7 +225,7 @@ An ly-drive session takes the run lock only inside each `lyx shed step` and rele
   In `start_driver_test.go` drive the branch through the two seams with a synthetic seed value and a fake starter: assert the go driver value and an empty driver value both select the detached-spawn arm, and the llm value selects the strand launch.
 - **Commit:** `feat(loomcli): branch the bootstrap on the seed's driver`
 
-### Card 15: the llm arm's error paths and the absent handshake
+### Card 16: the llm arm's error paths and the absent handshake
 
 - **Context:**
   - `internal/loomcli/bootstrap.go`
@@ -225,13 +248,16 @@ An ly-drive session takes the run lock only inside each `lyx shed step` and rele
   Assert also that the corpse removal happens before the run start when the strand action is dead, and does not happen at all when the action is none — a relaunch that starts first and removes second would leave two strands under one name, which reed's add has no upsert semantics to reconcile.
 - **Commit:** `fix(loomcli): release the bootstrap lock on every llm-arm failure`
 
-### Card 16: the Driver Choice Single-Site Invariant
+### Card 17: the Driver Choice Single-Site Invariant
 
 - **Context:**
   - `internal/shedrun/seed.go`
   - `internal/loomcli/start.go`
   - `internal/shedcli/table.go`
   - `internal/battencli/bootstrapverb.go`
+  - `internal/battencli/arm.go`
+  - `internal/battencli/wire.go`
+  - `internal/loomcli/sharedbootstrap.go`
 - **Edits:**
   - `CONSTRAINTS.md`
   - `internal/loomcli/bootstrap_test.go`
@@ -241,7 +267,8 @@ An ly-drive session takes the run lock only inside each `lyx shed step` and rele
 - **Requirements:** Record a new invariant in `CONSTRAINTS.md`, the **Driver Choice Single-Site Invariant**: a *recorded* seed driver value is read in exactly one place per recipe, that recipe's own bootstrap verb, and the branch on it selects a spawn and nothing else.
   No producer, no generic verb and no engine reads the recorded value, and no code path gates a refusal on it.
   State plainly in the invariant's own bullets that it governs the **read, not the vocabulary**: the driver constants are legitimately named at the seeding sites, which validate a flag before a seed exists, and those sites validate an argument rather than reading a written seed, so a naive "one consumer of the constants" rule would be false against this very task.
-  Name the permitted constant consumers by package: the shed CLI's seed command and batten's own flag validation.
+  Name the permitted constant consumers, which are four and were verified against the merged tree rather than assumed: the shed CLI's `seed` command, batten's own flag validation in `internal/battencli/arm.go`, batten's child-driver param reader in `internal/battencli/wire.go`, and loom's own seed writer in `internal/loomcli/sharedbootstrap.go`.
+  The last two are the ones a shorter list would wrongly omit — neither reads a written seed's `Driver` field (batten's reads a `child_driver` *param*, loom's *writes* the field), so both are constant consumers rather than readers, which is exactly the distinction this invariant turns on.
   Give the rationale in one bullet: the recorded value is a startup choice, and the failure mode a second reader introduces is silent divergence between what a run was seeded as and what it is actually doing, which is unobservable from either the status file or the envelope — whereas a flag validator fails loudly at the command line, where a mistake is visible immediately.
   Record the mechanical proxy as a **tripwire, not a completeness proof**, in the wording the Completion Signal Invariant already uses for its own scan: adding a reader fails it and forces a human to confirm.
   Implement that proxy as a scan in `internal/loomcli/bootstrap_test.go` asserting that the only production reader of the seed's driver **field** outside the shedrun package is this package.
@@ -252,7 +279,7 @@ An ly-drive session takes the run lock only inside each `lyx shed step` and rele
 ## Batch Tests
 
 `verify: go build ./... && go test ./internal/loomcli/... ./cmd/lyx/...` runs the loom CLI's untagged suite plus the command tree's, on top of a whole-module build.
-The command tree is in scope because card 14 changes the body of a registered command and because card 16's scan is a package test whose failure mode is a compile error when a scanned package moves.
+The command tree is in scope because card 15 changes the body of a registered command and because card 17's scan is a package test whose failure mode is a compile error when a scanned package moves.
 The whole-module build is in scope for card 12, which adds two struct fields populated in the wiring layer — a field left unpopulated compiles here and fails as a nil-interface panic at the first llm bootstrap, so the build is the cheapest place to catch a wiring typo.
 
 Four pieces of coverage in this batch are load-bearing beyond their size.

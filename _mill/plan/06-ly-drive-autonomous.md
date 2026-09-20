@@ -23,7 +23,7 @@ Stating this in the plan matters because the obvious-looking reading is that the
 
 ## Cards
 
-### Card 20: the autonomous driver section
+### Card 21: the autonomous driver section
 
 - **Context:**
   - `internal/loomcli/driverprompt.go`
@@ -36,7 +36,7 @@ Stating this in the plan matters because the obvious-looking reading is that the
 - **Requirements:** Add an `## Autonomous driver` section to `plugins/ly/skills/ly-drive/SKILL.md`, entered when the launch prompt says so, stating the four things that change from the operator-driven path and nothing else.
   First, **no operator choices**: the pane self-check's tracked-absent branch and every other numbered-list prompt in the skill become a line in the report rather than a question, because there is no operator in the session to answer one.
   Second, **the report goes to the file**: every place the skill says to report to the operator or hand back with a report, the autonomous path writes that report to the output-file path named in its launch prompt and then stops.
-  Third, **the step cap is a budget, not a check-in**, written on its own line in the fixed phrase `autonomous step cap: 120` so card 21's test has a stable anchor to match on.
+  Third, **the step cap is a budget, not a check-in**, written on its own line in the fixed phrase `autonomous step cap: 120` so card 22's test has a stable anchor to match on.
   Give the number its derivation in the surrounding prose — loom's own worst case as this skill already computes it, plus a margin — and say that the operator-driven cap of 40 exists so a human can look, which with no human would stop a healthy run three times before it finished.
   On exhausting the budget the driver writes the report and stops, leaving the run exactly as it is.
   Fourth, **stop conditions are otherwise unchanged and remain absolute**: a halting envelope stops, an error envelope stops with the single retry the skill already allows, and the skill still never clears state, never edits the status file, never re-seeds, never pushes, never kills a pane, and never touches git.
@@ -45,7 +45,7 @@ Stating this in the plan matters because the obvious-looking reading is that the
   Follow this repo's markdown rule: one sentence per line, semantic breaks, no fixed-column hard wrap.
 - **Commit:** `docs(ly-drive): add the autonomous driver section`
 
-### Card 21: pin the step cap against drift
+### Card 22: pin the step cap against drift
 
 - **Context:**
   - `cmd/lyx/sandbox_coverage_test.go`
@@ -58,7 +58,7 @@ Stating this in the plan matters because the obvious-looking reading is that the
 - **Moves:** none
 - **Requirements:** Create `cmd/lyx/drivercap_test.go` asserting that the exported step-cap constant in the loom CLI package and the cap stated in the ly-drive skill are the same number.
   Resolve the repository root through the runtime caller, copying the mechanism `cmd/lyx/sandbox_coverage_test.go` already uses — that is this repo's one working way for a Go test to read a file outside its own package tree.
-  Read the skill file, locate the `## Autonomous driver` heading, and match the cap on the fixed phrase card 20 writes, **within that section only**.
+  Read the skill file, locate the `## Autonomous driver` heading, and match the cap on the fixed phrase card 21 writes, **within that section only**.
   The anchoring is the whole design of this test and must not be relaxed to a bare file-wide search: the skill already contains the operator cap of 40 and a prose aside about loom's worst case landing near a hundred steps, so a search across the whole file would stay green against exactly the wrong number.
   Assert the located value equals the constant's value, and fail with a message naming both sides and both files so a reader of the failure knows which one to move.
   Fail loudly rather than skipping when the heading or the phrase is absent — a skipped test here is indistinguishable from a passing one, and the section's removal is precisely the drift this test exists to catch.
@@ -68,7 +68,7 @@ Stating this in the plan matters because the obvious-looking reading is that the
 ## Batch Tests
 
 `verify: go build ./... && go test ./cmd/lyx/...` runs the command tree's untagged suite, which is where the new drift test lives, plus a whole-module build.
-No other package is in scope: card 20 edits a markdown file that no Go package compiles, and card 21 reads it at test time rather than embedding it.
+No other package is in scope: card 21 edits a markdown file that no Go package compiles, and card 22 reads it at test time rather than embedding it.
 
 The anchored-match requirement is the load-bearing part of this batch and the easy thing to get wrong.
 A test that searched the whole skill file for the constant's value would pass today against the operator cap sitting a hundred lines above, and would keep passing after someone edited the autonomous section's number — which is the exact drift the test is being written for.

@@ -120,16 +120,16 @@ Batch-local decisions live in each batch file._
 ## All Files Touched
 
 _Full union of every `Creates:` / `Edits:` / `Moves:` **target** path across every batch, sorted alphabetically (Move **source** paths are excluded — they disappear, like `Deletes:` tokens)._
-
 - `CONSTRAINTS.md`
 - `cmd/lyx/drivercap_test.go`
 - `cmd/lyx/helptree_test.go`
 - `docs/overview.md`
+- `internal/battencli/arm.go`
+- `internal/battencli/arm_seed_test.go`
 - `internal/battencli/bootstrapverb.go`
 - `internal/battencli/bootstrapverb_test.go`
+- `internal/battencli/cli.go`
 - `internal/battencli/cli_test.go`
-- `internal/battencli/refusal.go`
-- `internal/battencli/refusal_test.go`
 - `internal/loomcli/bootstrap.go`
 - `internal/loomcli/bootstrap_test.go`
 - `internal/loomcli/bootstrapverb.go`
@@ -144,6 +144,8 @@ _Full union of every `Creates:` / `Edits:` / `Moves:` **target** path across eve
 - `internal/loomcli/driverspec.go`
 - `internal/loomcli/driverspec_test.go`
 - `internal/loomcli/integration_driverbootstrap_test.go`
+- `internal/loomcli/sharedbootstrap.go`
+- `internal/loomcli/sharedbootstrap_test.go`
 - `internal/loomcli/smoke_driverstrand_test.go`
 - `internal/loomcli/start.go`
 - `internal/loomcli/start_driver_test.go`
@@ -152,6 +154,7 @@ _Full union of every `Creates:` / `Edits:` / `Moves:` **target** path across eve
 - `internal/loomengine/config_test.go`
 - `internal/loomengine/driver.go`
 - `internal/loomengine/driver_test.go`
+- `internal/loomengine/template.yaml`
 - `internal/shedcli/seed.go`
 - `internal/shedcli/seed_test.go`
 - `internal/shedcli/table.go`

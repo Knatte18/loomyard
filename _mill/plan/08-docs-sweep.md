@@ -20,7 +20,7 @@ The gate is module-keyed, with no sub-module slot for one path within a covered 
 
 ## Cards
 
-### Card 24: the bootstrap's own help text
+### Card 25: the bootstrap's own help text
 
 - **Context:**
   - `internal/loomcli/driverlaunch.go`
@@ -41,7 +41,7 @@ The gate is module-keyed, with no sub-module slot for one path within a covered 
   In `cmd/lyx/helptree_test.go` confirm the pinned command tree still matches and update it only if this card's edits changed a name or a short description — the help-tree gate is where an accidental rename surfaces, and this card changes prose, so the expected outcome is no change to the pinned set.
 - **Commit:** `docs(loomcli): describe the seed-driven driver choice in start's help`
 
-### Card 25: the design doc and the roadmap
+### Card 26: the design doc and the roadmap
 
 - **Context:**
   - `internal/loomcli/start.go`
@@ -66,7 +66,7 @@ The gate is module-keyed, with no sub-module slot for one path within a covered 
   Follow this repo's markdown rule throughout: one sentence per line, semantic breaks, no fixed-column hard wrap.
 - **Commit:** `docs(manifest): record the seeded driver choice as shipped`
 
-### Card 26: the sandbox suite's recorded disposition
+### Card 27: the sandbox suite's recorded disposition
 
 - **Context:**
   - `cmd/lyx/sandbox_coverage_test.go`
@@ -87,9 +87,9 @@ The gate is module-keyed, with no sub-module slot for one path within a covered 
 ## Batch Tests
 
 `verify: go build ./... && go test ./cmd/lyx/... ./internal/loomcli/...` runs the command tree's and the loom CLI's untagged suites plus a whole-module build.
-The command tree is in scope because card 24 touches help text the help-tree gate walks, and because card 26's subject is that package's own coverage gate — which must stay green with loom still covered and no exclusion added, the one mechanical outcome this otherwise prose-only batch has.
-The loom CLI is in scope because card 24 edits a command's long text, which its own command tests assert against.
+The command tree is in scope because card 25 touches help text the help-tree gate walks, and because card 27's subject is that package's own coverage gate — which must stay green with loom still covered and no exclusion added, the one mechanical outcome this otherwise prose-only batch has.
+The loom CLI is in scope because card 25 edits a command's long text, which its own command tests assert against.
 
-This batch is prose apart from card 24's help text, so its real verification is the two gates it must not break.
-The sandbox coverage gate must still report loom as covered, which is the assertion that catches the tempting wrong move card 26 exists to forbid.
+This batch is prose apart from card 25's help text, so its real verification is the two gates it must not break.
+The sandbox coverage gate must still report loom as covered, which is the assertion that catches the tempting wrong move card 27 exists to forbid.
 The markdown link gate must still pass over three changed documents, and it is keyed by file and target, so a moved anchor in the design doc fails there rather than at review.
