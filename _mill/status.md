@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: producer-gates
 branch: producer-gates
-plan: null
+plan: _mill/plan
 parent: main
 task: 'Producer gates: mechanical gates before session release'
 task_description: |
@@ -22,4 +22,5 @@ discussion-gap-fix-r4  '2026-09-20T14:09:14Z'
 discussion-gap-fix-r5  '2026-09-20T14:13:28Z'
 discussion-gap-fix-r6  '2026-09-20T14:18:11Z'
 discussed  '2026-09-20T14:18:19Z'
+planning  '2026-09-20T14:40:11Z'
 ```
