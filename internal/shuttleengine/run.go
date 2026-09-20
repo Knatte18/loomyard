@@ -250,13 +250,14 @@ func (r *Runner) Start(spec Spec) (*Run, error) {
 	}
 
 	strand, err := r.reed.AddStrand(reedengine.AddSpec{
-		Role:      spec.Role,
-		Round:     spec.Round,
-		Parent:    spec.Parent,
-		Cmd:       launch.Cmd,
-		ResumeCmd: launch.ResumeCmd,
-		SessionID: launch.SessionID,
-		Display:   spec.Display,
+		Role:         spec.Role,
+		Round:        spec.Round,
+		NameOverride: spec.NameOverride,
+		Parent:       spec.Parent,
+		Cmd:          launch.Cmd,
+		ResumeCmd:    launch.ResumeCmd,
+		SessionID:    launch.SessionID,
+		Display:      spec.Display,
 	})
 	if err != nil {
 		// Nothing to resume: the strand never registered, so the run

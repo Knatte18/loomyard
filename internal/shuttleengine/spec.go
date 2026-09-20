@@ -87,6 +87,12 @@ type Spec struct {
 	Round string
 	// Parent is the parent strand's GUID, or "" for a root strand.
 	Parent string
+	// NameOverride is forwarded verbatim into the reedengine.AddSpec that
+	// Runner.Start builds and never interpreted — the same contract
+	// SessionID's own doc comment states above. An empty value leaves
+	// reed's own <ROLE>:<ROUND>:<SHORT_GUID> display-name template in
+	// force (see reedengine.resolveStrandName).
+	NameOverride string
 	// Display carries the reed placement/focus/shrink settings for this
 	// run's strand.
 	Display render.Display

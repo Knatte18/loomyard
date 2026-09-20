@@ -197,6 +197,28 @@ func TestSpec_Validate_AwaitOperatorUntouched(t *testing.T) {
 	}
 }
 
+// TestSpec_Validate_NameOverrideUntouched proves validate neither defaults nor rejects
+// NameOverride — it is engine/reed vocabulary forwarded verbatim into reedengine.AddSpec, so
+// Spec.validate must leave an empty NameOverride empty and a non-empty NameOverride unchanged and
+// error-free (a later "tidy up the validator" change must not quietly start rejecting either).
+func TestSpec_Validate_NameOverrideUntouched(t *testing.T) {
+	s := &Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}}
+	if err := s.validate(`C:\worktree`, Config{RunTimeoutMin: 30}); err != nil {
+		t.Fatalf("validate() error: %v", err)
+	}
+	if s.NameOverride != "" {
+		t.Errorf("NameOverride = %q, want unchanged empty string", s.NameOverride)
+	}
+
+	s2 := &Spec{Prompt: "do the thing", OutputFiles: []string{"other.md"}, NameOverride: "driver"}
+	if err := s2.validate(`C:\worktree`, Config{RunTimeoutMin: 30}); err != nil {
+		t.Fatalf("validate() error: %v, want validate to never reject or inspect NameOverride", err)
+	}
+	if s2.NameOverride != "driver" {
+		t.Errorf("NameOverride = %q, want unchanged %q", s2.NameOverride, "driver")
+	}
+}
+
 func TestSpec_Validate_AnchorPassThroughWhenSet(t *testing.T) {
 	s := &Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}, Display: render.Display{Anchor: render.AnchorBelowParent}}
 	if err := s.validate(`C:\worktree`, Config{RunTimeoutMin: 30}); err != nil {
