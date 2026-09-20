@@ -366,10 +366,20 @@ func (run *Run) StrandGUID() string {
 // Run starts spec and blocks until it reaches a terminal outcome — the Start+Wait convenience for a
 // caller with no need to Interrupt/Send between the two.
 func (r *Runner) Run(spec Spec) (Result, error) {
+	return r.RunGated(spec, GateSpec{})
+}
+
+// RunGated is Run, gated: spec's run is additionally validated by gate.Gate (if non-nil) at its
+// single verdict site in finalize, re-prompting the agent up to gate.attempts() times on a failed
+// verdict before giving up.
+// RunGated is a deliberate added form beside Run rather than a widening of it, because Run's shared
+// seam is held by callers that have no gate and never will (see the "added forms" decision).
+func (r *Runner) RunGated(spec Spec, gate GateSpec) (Result, error) {
 	run, err := r.Start(spec)
 	if err != nil {
 		return Result{}, err
 	}
+	run.gate = gate
 	return run.Wait()
 }
 
