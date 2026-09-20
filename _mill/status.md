@@ -51,7 +51,9 @@ batches:
     commit_sha: 91a0b7731cc168caa6a99fef20c33283c6a29f26
     verify_baseline_failures: []
   - name: loomshed-gates
-    state: pending
+    state: running
+    implementer_session: 3fa704e4-eaa1-4530-9014-709218638c98
+    start_sha: f52dee20fc793c60cba966b2ceec6bf1244ba9a0
     verify_baseline_failures: []
   - name: shedrecipe-wiring
     state: pending
