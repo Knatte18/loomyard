@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs-sweep
+phase: holistic-reviewing
 slug: seeded-driver-choice
 branch: seeded-driver-choice
 plan: _mill/plan
@@ -40,6 +40,7 @@ approved-lift-llm-refusals  '2026-09-20T10:49:26Z'
 approved-ly-drive-autonomous  '2026-09-20T10:51:57Z'
 approved-smoke-and-integration  '2026-09-20T11:16:53Z'
 approved-docs-sweep  '2026-09-20T11:22:34Z'
+holistic-reviewing  '2026-09-20T11:22:56Z'
 ```
 
 ## Batches
