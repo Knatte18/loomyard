@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: plan-review-r2
 slug: seeded-driver-choice
 branch: seeded-driver-choice
 plan: _mill/plan
@@ -28,4 +28,5 @@ discussed  '2026-09-19T17:46:38Z'
 planning  '2026-09-20T09:36:50Z'
 plan-review-r1  '2026-09-20T09:44:19Z'
 plan-fix-r1  '2026-09-20T09:46:48Z'
+plan-review-r2  '2026-09-20T09:55:06Z'
 ```
