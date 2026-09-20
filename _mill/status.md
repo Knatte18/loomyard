@@ -53,7 +53,9 @@ batches:
     commit_sha: 30809e398aea0c49fec4801e03eaba67b1f07e59
     verify_baseline_failures: []
   - name: bootstrap-verb-capability
-    state: pending
+    state: running
+    implementer_session: 0330ca15-abfb-4d83-8d40-f1d19cd0eb63
+    start_sha: 515c39b7cd88f9f9f5a89d0345ade47fb1b6ee0b
     verify_baseline_failures: []
   - name: driver-launch
     state: pending
