@@ -166,7 +166,7 @@ func testLandingDeps(dir string) landingshed.Deps {
 // does -- a DiscussionSpec closure returning a Spec over one absolute output path under the same
 // temp root, a CommitDiscussion closure returning nil, a PlanSpec closure returning a Spec over one
 // absolute output path under the same temp root, and a CommitPlan closure returning nil -- and
-// additionally fills Env.Landing via testLandingDeps, because two of the seventeen engines need it,
+// additionally fills Env.Landing via testLandingDeps, because two of the sixteen engines need it,
 // which its sibling does not do. It also fills the seven batten fields (Slug, ScratchDir,
 // CreateWorktree, InnerRun, Teardown, PrimeLock, SeedChild) the same way that sibling's own
 // newTestEnv does.
