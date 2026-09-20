@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-gap-fix-r6
+phase: discussed
 slug: producer-gates
 branch: producer-gates
 plan: null
@@ -21,4 +21,5 @@ discussion-gap-fix-r3  '2026-09-20T14:04:05Z'
 discussion-gap-fix-r4  '2026-09-20T14:09:14Z'
 discussion-gap-fix-r5  '2026-09-20T14:13:28Z'
 discussion-gap-fix-r6  '2026-09-20T14:18:11Z'
+discussed  '2026-09-20T14:18:19Z'
 ```
