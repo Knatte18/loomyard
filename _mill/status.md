@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-ly-drive-autonomous
+phase: approved-smoke-and-integration
 slug: seeded-driver-choice
 branch: seeded-driver-choice
 plan: _mill/plan
@@ -38,6 +38,7 @@ approved-bootstrap-verb-capability  '2026-09-20T10:15:12Z'
 approved-driver-launch  '2026-09-20T10:42:19Z'
 approved-lift-llm-refusals  '2026-09-20T10:49:26Z'
 approved-ly-drive-autonomous  '2026-09-20T10:51:57Z'
+approved-smoke-and-integration  '2026-09-20T11:16:53Z'
 ```
 
 ## Batches
@@ -81,9 +82,10 @@ batches:
     commit_sha: eb673421a1f1f6bebcfaa7a352ee029e61cf1cc3
     verify_baseline_failures: []
   - name: smoke-and-integration
-    state: running
+    state: approved
     implementer_session: f53fe215-41e1-4a01-8a82-7136c9c8a609
     start_sha: 4dd163ababff85d7eed49e891fb56ddbd495f496
+    commit_sha: 2186050e9182512b8d9d4b0a455e9e1f76a1046d
     verify_baseline_failures: ["FAIL\tgithub.com/Knatte18/loomyard/internal/loomcli [build failed]"]
   - name: docs-sweep
     state: pending
