@@ -1,7 +1,7 @@
 // gate_test.go covers the gate attempt loop end to end, driven over the package's existing
 // fakeReed/fakeEngine fakes, newWaitTestRunner, newAttachTestRunner, and the fakeClock/multiStepClock
-// seams — hermetic, untagged, no exec.Command, no gitexec, no hubforge.NewHub, no real sleeping, per
-// the Test Tier Purity Invariant.
+// seams — hermetic, untagged: it spawns no external process, builds no real fixture hub, and never
+// sleeps for real, per the Test Tier Purity Invariant.
 
 package shuttleengine
 
