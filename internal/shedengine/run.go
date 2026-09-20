@@ -457,7 +457,7 @@ func effectiveMaxBounces(def ProducerDef, shedMax int) int {
 // writes happen outside any producer call. What is caller-side, and therefore outside this
 // package's own guarantee, is what a filled CommitStatus closure itself chooses to do with a
 // call it receives -- and a caller's own closure may skip its own commit work for some calls. The
-// batten seam (internal/battenrecipe, wired one layer out from this package) does exactly that:
+// batten seam (internal/battencli, wired one layer out from this package) does exactly that:
 // it skips its own commit, keyed on the (producer, state) pair alone, and is therefore
 // deliberately blind to a call whose history or error changed while producer and state did not.
 // That blindness is safe there because the only transition it ever skips is Run-Shed's own
