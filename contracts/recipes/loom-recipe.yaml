@@ -40,6 +40,11 @@ producers:
   - name: Discussion-Write
     engine: DiscussionWrite
     on_done: Discussion-Validate
+    config:
+      # gate holds this row's handoff until the artifact is mechanically valid, re-prompting the
+      # live session up to gate_attempts times, so a failure never reaches the row below.
+      gate: discussion
+      gate_attempts: 3
 
   - name: Discussion-Validate
     engine: DiscussionValidate
@@ -79,6 +84,10 @@ producers:
       # The same run_subdir value as Discussion-Bouncer is what makes both rows write into one
       # shared run directory.
       run_subdir: discussion
+      # gate holds this row's handoff until the artifact is mechanically valid, re-prompting the
+      # live session up to gate_attempts times, so a failure never reaches the row below.
+      gate: discussion
+      gate_attempts: 3
       profile:
         target:
           paths:
@@ -101,6 +110,11 @@ producers:
   - name: Plan-Write
     engine: PlanWrite
     on_done: Plan-Validate
+    config:
+      # gate holds this row's handoff until the artifact is mechanically valid, re-prompting the
+      # live session up to gate_attempts times, so a failure never reaches the row below.
+      gate: plan
+      gate_attempts: 3
 
   - name: Plan-Validate
     engine: PlanValidate
@@ -156,6 +170,10 @@ producers:
       # The same run_subdir value as Plan-Bouncer is what makes both rows write into one shared
       # run directory.
       run_subdir: plan
+      # gate holds this row's handoff until the artifact is mechanically valid, re-prompting the
+      # live session up to gate_attempts times, so a failure never reaches the row below.
+      gate: plan
+      gate_attempts: 3
       profile:
         target:
           paths:
@@ -262,6 +280,8 @@ producers:
       # The same run_subdir value as Webster-Bouncer is what makes both rows write into one shared
       # run directory.
       run_subdir: webster
+      # No gate key, deliberately: there is no mechanical validator over a committed diff, so this
+      # row builds an ungated producer.
       profile:
         target:
           # No paths key, deliberately: burlerengine's own Profile.validate resolves and stats
