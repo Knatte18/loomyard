@@ -58,7 +58,9 @@ batches:
     commit_sha: 88aafa794d788cec09108f26635515cfba5a0946
     verify_baseline_failures: []
   - name: shedrecipe-wiring
-    state: pending
+    state: running
+    implementer_session: 5e81325f-34eb-4a05-a64b-73f2cdc23a71
+    start_sha: 17365449613f0e9b46a1195d9e7ac8deacb86b3f
     verify_baseline_failures: []
   - name: row-removal
     state: pending
