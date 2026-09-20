@@ -21,6 +21,17 @@
 // this interview waiting for me, or is it wedged?" reads the trace sink -- stated here because the
 // design that introduced AwaitOperator asserted the driver log records each ask, and it does not.
 //
+// The events-tick Done branch splits in two, on run.gate.Gate: an ungated run's Done (and every
+// OutcomeAsking not deferred to AwaitOperator) finalizes exactly as before the gate existed, unaware
+// the gate exists at all. A gated Done instead evaluates the gate through run.evaluateGate() and, on
+// a failed verdict with budget remaining, sends a one-line re-prompt naming the findings file and
+// keeps polling rather than finalizing -- the bounded re-prompt loop the "one GateSpec at every hop"
+// and "attempts counts re-prompts actually sent" plan decisions describe. The other three finalize
+// call sites in this file (the events-unreadable/status-retry mechanism-failure exits via
+// finishedDespiteMechanismFailure, the liveness-tick exit, and the deadline exit) are left untouched:
+// each is reached precisely because the session is gone, the clock ran out, or the bookkeeping broke,
+// so no Send is attempted there and finalize's own evaluation reports Attempts as it stands.
+//
 // # Completion Signal Invariant
 //
 // Any code path in this package that finalizes a NEGATIVE answer to "did this run finish" -- an
@@ -219,8 +230,45 @@ func (run *Run) Wait() (Result, error) {
 				// records each one, and keep polling instead of finalizing here. OutcomeDone still
 				// falls through to finalize below, unaffected by this branch.
 				logger.Info("shuttle: awaiting operator, ask observed", "strandGUID", run.state.StrandGUID, "lastAssistantMessage", message)
-			} else if outcome != "" {
+			} else if outcome != "" && (outcome != OutcomeDone || run.gate.Gate == nil) {
+				// Not a gated Done: finalize exactly as this branch always has.
 				return run.finalize(outcome, message)
+			} else if outcome == OutcomeDone {
+				// A gated Done. Run.Interrupt is never used anywhere in this branch: the gate fires at
+				// a turn boundary, when there is no in-progress turn to interrupt. No new deadline is
+				// introduced and run.deadline is never extended — the loop runs under the deadline
+				// Start already set from spec.Timeout, so a timeout mid-loop still reaches
+				// classifyDeadlineExpiry, which classifies OutcomeDone when the files are present and
+				// therefore still runs the gate one final time through finalize.
+				verdict, gerr := run.evaluateGate()
+				if gerr != nil {
+					return run.identity(), fmt.Errorf("shuttle: gate: %w", gerr)
+				}
+				switch {
+				case verdict.Passed, run.gateSent >= run.gate.attempts():
+					// Reads the memo evaluateGate just stored rather than re-validating.
+					return run.finalize(outcome, message)
+				default:
+					// The gate failed with budget remaining: re-prompt the agent and keep polling.
+					if serr := run.Send(gateRepromptText(verdict.FindingsPath)); serr != nil {
+						logger.Warn("shuttle: gate: re-prompt send failed, ending the loop with the attempts spent so far", "strandGUID", run.state.StrandGUID, "sessionID", run.state.SessionID, "error", serr)
+						return run.finalize(outcome, message)
+					}
+					run.gateSent++
+					// The run directory is deleted on the Done cleanup every exhausted gate takes, so
+					// the findings TEXT (never just its path) is folded into this Warn line — the
+					// durable record of why the gate failed, same as the deleted producers' own warn
+					// lines carried. The file was just written by evaluateGate, so a read failure here
+					// is unexpected but non-fatal to the loop.
+					findingsText, rerr := os.ReadFile(verdict.FindingsPath)
+					if rerr != nil {
+						findingsText = []byte(fmt.Sprintf("<unreadable: %v>", rerr))
+					}
+					logger.Warn("shuttle: gate: re-prompting after a failed attempt", "strandGUID", run.state.StrandGUID, "attempt", run.gateSent, "budget", run.gate.attempts(), "findings", string(findingsText))
+					// Clear the memo so the next attempt re-validates rather than reading this
+					// attempt's stale verdict.
+					run.gateVerdict = nil
+				}
 			}
 		}
 
