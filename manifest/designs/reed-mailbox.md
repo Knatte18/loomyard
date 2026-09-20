@@ -24,6 +24,11 @@ The address format is **`[hub:]slug:name`** — colon as hierarchy separator, sa
   Agents should treat the injected name as their own: ly-drive and sibling stencils read `$LYX_STRAND_NAME` at session start and use it in self-reference and as sender.
 - **Names mirror to pane titles for humans, authority stays in state.**
   Reed sets the tmux pane title (`select-pane -T`) to the strand name at spawn/relaunch; tmux titles are display-only and enforce nothing, so the state's name field remains the single lookup key — the same volatile-view/durable-truth split `PaneID` already has.
+  Reed owns the title channel alone: `allow-set-title off` on reed-managed panes, because any program in a pane can otherwise retitle it via the OSC 0/2 escape at any time (Claude Code does, continuously), and a cooperating-agent scheme is exactly the drift vector to close, not a feature.
+  The per-hub daemon's tick adds the safety net: compare each tracked pane's actual title against the strand name, rewrite on divergence, and log that it happened — reconcile, same as the rest of reed's repair machinery.
+  And the hard rule that makes display drift harmless rather than merely unlikely: **delivery never resolves through a pane title** — routing is always name → state → guid, so a stale title can mislead an eye but never a message; a send to a name the state doesn't know refuses with the list of names that exist (the same refuse-with-list idiom shed's run addressing uses), which itself surfaces the drift.
+  A listing verb (`lyx reed list`: name, guid, session/worktree, pane-id, actual pane title, alive/dormant, drift flagged) doubles as the address directory and the diagnostic for exactly this concern.
+  "Every pane has a name" is then nearly free: everything reed spawns is a strand (the shipped born-as-strand item makes even the operator's attach pane one), every strand has a name, every name mirrors to its title; panes outside reed are outside the system and never routed to.
 - **Rename is a relaunch.**
   Env is frozen at process start, so the name is a birth attribute set at `AddStrand` and never mutated in place — renaming a role means tearing down and respawning its strand.
 - **Well-known role names make addresses guessable.**
