@@ -184,7 +184,7 @@ func (p *SingleLLMProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 // pointer a Done would have carried. That pointer is non-empty deliberately -- this producer has no
 // judge downstream of its own Stuck, since the run halts there, so its pointer is free to carry the
 // meaning the commit decorators key on, which is what keeps a gate-failed artifact committed and
-// diagnosable rather than sitting in a dirty weft. This is the writer-row half of the "the two
+// diagnosable rather than sitting in a dirty working tree. This is the writer-row half of the "the two
 // producers' output pointers mean different things" decision; BurlerProducer's own gate-failed exit
 // carries the opposite, empty pointer, because emptiness is what tells the segment's Bouncer there
 // is no round artifact to judge -- a meaning this producer has no downstream consumer for.

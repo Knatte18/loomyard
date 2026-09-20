@@ -53,9 +53,9 @@ func NewDiscussionWrite(name string, inner shedengine.ShedProducer, commit func(
 // verdict is already settled -- Done because the gate passed, or a gate-failed Stuck because it did
 // not -- and the commit itself keeps the working tree clean and the artifact durable, it does not
 // certify it. Left alone, a gate-failed Stuck would skip the commit and halt the run with the invalid
-// artifact sitting uncommitted in a dirty weft -- exactly the state this decorator's own recorded
-// rationale exists to prevent -- so committing it here means the human the run just halted for finds
-// the artifact committed and diagnosable.
+// artifact sitting uncommitted in a dirty working tree -- exactly the state this decorator's own
+// recorded rationale exists to prevent -- so committing it here means the human the run just halted
+// for finds the artifact committed and diagnosable.
 func (p *discussionWrite) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	outcome, pointer, err := p.inner.Call(ctx)
 	if err != nil || pointer.Path == "" {

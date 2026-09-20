@@ -69,8 +69,8 @@ func NewPlanWrite(name string, inner shedengine.ShedProducer, commit func() erro
 // gate-failed Stuck path alike: a git fault is infrastructure rather than plan quality, and a
 // returned error persists failed and aborts while Stuck persists blocked and bounces. Left alone, a
 // gate-failed Stuck would skip the commit and halt the run with the invalid artifact sitting
-// uncommitted in a dirty weft -- exactly the state this decorator's own recorded rationale exists to
-// prevent -- so committing it here means the human the run just halted for finds the artifact
+// uncommitted in a dirty working tree -- exactly the state this decorator's own recorded rationale
+// exists to prevent -- so committing it here means the human the run just halted for finds the artifact
 // committed and diagnosable, keeping the working tree clean and the artifact durable without
 // certifying it.
 func (p *planWrite) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
