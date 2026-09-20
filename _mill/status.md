@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: seeded-driver-choice
 branch: seeded-driver-choice
 plan: _mill/plan
@@ -31,4 +31,27 @@ plan-fix-r1  '2026-09-20T09:46:48Z'
 plan-review-r2  '2026-09-20T09:55:06Z'
 plan-fix-r2  '2026-09-20T09:56:07Z'
 planned  '2026-09-20T09:56:23Z'
+implementing  '2026-09-20T10:01:30Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: shuttle-seam
+    state: pending
+  - name: loom-driver-config
+    state: pending
+  - name: bootstrap-verb-capability
+    state: pending
+  - name: driver-launch
+    state: pending
+  - name: lift-llm-refusals
+    state: pending
+  - name: ly-drive-autonomous
+    state: pending
+  - name: smoke-and-integration
+    state: pending
+  - name: docs-sweep
+    state: pending
 ```
