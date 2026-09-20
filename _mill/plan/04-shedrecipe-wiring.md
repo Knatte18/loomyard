@@ -91,6 +91,7 @@ The absent-means-default branch stays covered by the `shedrecipe` unit tests.
   - `contracts/recipes/recipes.go`
 - **Edits:**
   - `contracts/recipes/loom-recipe.yaml`
+  - `internal/loomrecipe/resume_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -99,6 +100,7 @@ The absent-means-default branch stays covered by the `shedrecipe` unit tests.
   Leave the Webster round's block untouched and add a comment there stating that its absent `gate:` key is deliberate, matching the style the row's existing absent-key comments already set.
   Each new block carries a comment naming what the key buys: the gate holds the row's handoff until the artifact is mechanically valid, re-prompting the live session up to `gate_attempts` times, so a failure never reaches the row below.
   Do not touch any `on_done`/`on_stuck` edge, any `max_bounces`, or the three standalone validate rows in this card — the graph is unchanged here and batch 5 owns its rewiring.
+  Discussion-Write's new gate makes `internal/loomrecipe/resume_test.go`'s `TestBounceRouting_StuckContinuesAtDeclaredTarget` and `TestBounceRouting_BudgetExhaustionBlocks` fall out of date: both assumed Discussion-Write always reports Done regardless of its artifact's content, which the gate makes false, so both are adjusted in this card to drive their same generic shed-routing assertions (single-bounce continuation, and per-producer bounce-budget exhaustion) through a producer pair the new gate does not touch -- Discussion-Validate (planted directly via `resetCurrentProducer`, skipping Discussion-Write's own now-load-bearing gate) for the first, and Discussion-Bouncer/Discussion-Burler (whose mutual bounce this task's Burler-round gating never reaches inside this package's own fakes) for the second.
 - **Commit:** `feat(recipe): declare gate and gate_attempts on the four gated rows`
 
 ### Card 26: shedrecipe gate-key tests
