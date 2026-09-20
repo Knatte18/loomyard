@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-seam-and-producers
+phase: approved-loomshed-gates
 slug: producer-gates
 branch: producer-gates
 plan: _mill/plan
@@ -32,6 +32,7 @@ planned  '2026-09-20T14:57:37Z'
 implementing  '2026-09-20T14:57:55Z'
 approved-shuttle-gate-loop  '2026-09-20T15:13:03Z'
 approved-seam-and-producers  '2026-09-20T15:22:27Z'
+approved-loomshed-gates  '2026-09-20T15:29:29Z'
 ```
 
 ## Batches
@@ -51,9 +52,10 @@ batches:
     commit_sha: 91a0b7731cc168caa6a99fef20c33283c6a29f26
     verify_baseline_failures: []
   - name: loomshed-gates
-    state: running
+    state: approved
     implementer_session: 3fa704e4-eaa1-4530-9014-709218638c98
     start_sha: f52dee20fc793c60cba966b2ceec6bf1244ba9a0
+    commit_sha: 88aafa794d788cec09108f26635515cfba5a0946
     verify_baseline_failures: []
   - name: shedrecipe-wiring
     state: pending
