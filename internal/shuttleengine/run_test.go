@@ -202,6 +202,32 @@ func TestNewDetachedRunner_AcceptsStandaloneShapeAndBothPaneCwdPositions(t *test
 	}
 }
 
+// TestRun_RunDir_ReturnsStartCreatedDirectory pins RunDir() against the run-directory root the
+// test's own Runner config names — a caller that starts a run and never Waits on it has no other
+// way to name the one directory holding prompt.md, settings.json and the events file.
+func TestRun_RunDir_ReturnsStartCreatedDirectory(t *testing.T) {
+	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
+	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", SessionID: "sess"}}
+	runner, anchorPath, _ := newTestRunner(t, reed, engine)
+
+	run, err := runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}})
+	if err != nil {
+		t.Fatalf("Start() error: %v", err)
+	}
+
+	root := runDirRoot(runner.cfg, anchorPath)
+	dir := run.RunDir()
+	if dir == "" {
+		t.Fatal("RunDir() = \"\", want the directory Start created")
+	}
+	if rel, err := filepath.Rel(root, dir); err != nil || strings.HasPrefix(rel, "..") {
+		t.Errorf("RunDir() = %q, want a directory under the run-directory root %q", dir, root)
+	}
+	if _, err := os.Stat(dir); err != nil {
+		t.Errorf("RunDir() = %q, want it to name a directory Start actually created: %v", dir, err)
+	}
+}
+
 func TestRunner_Start_HappyPath_WiresAddSpecVerbatim(t *testing.T) {
 	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "launch-cmd", ResumeCmd: "resume-cmd", SessionID: "session-1"}}

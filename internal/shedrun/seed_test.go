@@ -63,21 +63,23 @@ func TestReadSeed_AbsentDriverDefaultsToGo(t *testing.T) {
 	}
 }
 
-func TestReadSeed_LLMDriverRefusalNamesRoadmapItem(t *testing.T) {
+func TestWriteSeed_ReadSeed_RoundTrip_LLMDriver(t *testing.T) {
 	l := syntheticLocation(t)
-	if err := os.MkdirAll(RunDir(l, "self"), 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
-	if err := os.WriteFile(SeedFile(l, "self"), []byte(`{"recipe":"loom","driver":"llm"}`), 0o644); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
+	seed := Seed{Recipe: RecipeLoom, Driver: DriverLLM}
+
+	if err := WriteSeed(l, "self", seed); err != nil {
+		t.Fatalf("WriteSeed() = %v; want nil", err)
 	}
 
-	_, _, err := ReadSeed(l, "self")
-	if err == nil {
-		t.Fatalf("ReadSeed() error = nil; want refusal naming the roadmap item")
+	got, found, err := ReadSeed(l, "self")
+	if err != nil {
+		t.Fatalf("ReadSeed() error = %v; want nil", err)
 	}
-	if !strings.Contains(err.Error(), "seeded driver choice: ly-drive strand as the child's driver") {
-		t.Errorf("ReadSeed() error = %q; want it to name the roadmap item", err.Error())
+	if !found {
+		t.Fatalf("ReadSeed() found = false; want true")
+	}
+	if got.Driver != DriverLLM {
+		t.Errorf("ReadSeed() Driver = %q; want %q", got.Driver, DriverLLM)
 	}
 }
 
@@ -88,7 +90,7 @@ func TestValidateDriver(t *testing.T) {
 		wantErr bool
 	}{
 		{"go", DriverGo, false},
-		{"llm", DriverLLM, true},
+		{"llm", DriverLLM, false},
 		{"unknown", "rust", true},
 	}
 	for _, tt := range tests {
@@ -98,6 +100,16 @@ func TestValidateDriver(t *testing.T) {
 				t.Errorf("ValidateDriver(%q) = %v; want error = %v", tt.driver, err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestValidateDriver_UnknownNamesBothLegalValues(t *testing.T) {
+	err := ValidateDriver("rust")
+	if err == nil {
+		t.Fatalf("ValidateDriver(%q) error = nil; want refusal naming both legal values", "rust")
+	}
+	if !strings.Contains(err.Error(), DriverGo) || !strings.Contains(err.Error(), DriverLLM) {
+		t.Errorf("ValidateDriver(%q) error = %q; want it to name both %q and %q", "rust", err.Error(), DriverGo, DriverLLM)
 	}
 }
 

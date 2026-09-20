@@ -29,6 +29,13 @@ type entry struct {
 	// which verb/recipe pairs exist: the four generic verbs are registered once for every recipe,
 	// but the recipes do not all support all four.
 	Verbs []string
+	// BootstrapVerb answers "may a run seeded for this recipe be driven by an LLM": it is populated
+	// from the owning module's own exported constant (loomcli.BootstrapVerb, battencli.BootstrapVerb),
+	// never a literal, so this field cannot drift from the module that declares the fact. Batch 5's
+	// "lyx shed seed --driver llm" validator consults it by emptiness rather than by comparing the
+	// recipe name against the literal "loom". Nothing reads this field yet in this batch -- that is
+	// deliberate, not dead code.
+	BootstrapVerb string
 }
 
 // recipes is the single place every named recipe is declared, mapping each recipe name to the
@@ -41,12 +48,14 @@ type entry struct {
 // ly-drive both pin closed -- and skipping that recipe's own PreRun pre-flight.
 var recipes = map[string]entry{
 	"loom": {
-		Arm:   loomcli.ArmAt,
-		Verbs: []string{"run", "step", "status", "pause"},
+		Arm:           loomcli.ArmAt,
+		Verbs:         []string{"run", "step", "status", "pause"},
+		BootstrapVerb: loomcli.BootstrapVerb,
 	},
 	"batten": {
-		Arm:   battencli.ArmAt,
-		Verbs: []string{"run", "step", "status", "pause"},
+		Arm:           battencli.ArmAt,
+		Verbs:         []string{"run", "step", "status", "pause"},
+		BootstrapVerb: battencli.BootstrapVerb,
 	},
 }
 

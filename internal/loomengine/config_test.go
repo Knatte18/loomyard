@@ -92,6 +92,9 @@ func TestLoadConfig_WellFormed(t *testing.T) {
 	if cfg.FrictionTimeoutMin != 30 {
 		t.Errorf("cfg.FrictionTimeoutMin = %d; want %d", cfg.FrictionTimeoutMin, 30)
 	}
+	if cfg.Driver != "" {
+		t.Errorf("cfg.Driver = %q; want \"\" (the template's own default: defer to the provider default)", cfg.Driver)
+	}
 }
 
 // TestLoadConfig_SelfreportFalse verifies a hand-edited loom.yaml with selfreport: false round-trips
@@ -190,6 +193,7 @@ review_timeout_min: 240
 selfreport: true
 friction: ""
 friction_timeout_min: 30
+driver: ""
 `)
 
 	cfg, err := LoadConfig(baseDir, "loom")
@@ -216,6 +220,7 @@ review_timeout_min: 240
 selfreport: true
 friction: "opus[effort"
 friction_timeout_min: 30
+driver: ""
 `)
 
 	_, err := LoadConfig(baseDir, "loom")
@@ -251,6 +256,82 @@ review_timeout_min: 240
 	}
 	if !strings.Contains(err.Error(), "friction") {
 		t.Errorf("LoadConfig() error = %q; want it to name the missing %q key", err.Error(), "friction")
+	}
+}
+
+// TestLoadConfig_ValidDriverSpec verifies a hand-edited loom.yaml with a well-formed driver
+// model-spec loads cleanly and round-trips onto Config.Driver.
+func TestLoadConfig_ValidDriverSpec(t *testing.T) {
+	baseDir := t.TempDir()
+	writeLoomConfigWithKey(t, baseDir, "driver", "opus[effort=high]")
+
+	cfg, err := LoadConfig(baseDir, "loom")
+	if err != nil {
+		t.Fatalf("LoadConfig(%q, \"loom\") = _, %v; want nil error", baseDir, err)
+	}
+	if cfg.Driver != "opus[effort=high]" {
+		t.Errorf("cfg.Driver = %q; want %q", cfg.Driver, "opus[effort=high]")
+	}
+}
+
+// TestLoadConfig_MalformedDriverSpec verifies a hand-edited loom.yaml with well-formed
+// discussion/plan/review/friction specs but an ungrammatical non-empty driver model-spec fails
+// loud at load time, naming the "driver" key, rather than being silently carried into the driver
+// session's spawn site.
+func TestLoadConfig_MalformedDriverSpec(t *testing.T) {
+	baseDir := t.TempDir()
+	writeLoomConfigWithKey(t, baseDir, "driver", `"opus[effort"`)
+
+	_, err := LoadConfig(baseDir, "loom")
+	if err == nil {
+		t.Fatal("LoadConfig() = _, nil; want non-nil error for malformed driver spec")
+	}
+	if !strings.Contains(err.Error(), "driver") {
+		t.Errorf("LoadConfig() error = %q; want it to name the %q key", err.Error(), "driver")
+	}
+}
+
+// TestLoadConfig_AbsentDriverLoadsCleanly verifies a driver key present with no value at all (YAML
+// null, the shape a bare "driver:" line takes) loads cleanly and yields the zero value for
+// Config.Driver -- "defer to the provider default" must not require an operator to type a literal
+// empty string.
+func TestLoadConfig_AbsentDriverLoadsCleanly(t *testing.T) {
+	baseDir := t.TempDir()
+	seedLoomConfig(t, baseDir, `discussion: opus[effort=high]
+discussion_timeout_min: 480
+discussion_interactive: false
+plan: opus[effort=high]
+plan_timeout_min: 120
+review: opus[effort=high]
+review_timeout_min: 240
+selfreport: true
+friction: opus[effort=high]
+friction_timeout_min: 30
+driver:
+`)
+
+	cfg, err := LoadConfig(baseDir, "loom")
+	if err != nil {
+		t.Fatalf("LoadConfig(%q, \"loom\") = _, %v; want nil error for a driver key with no value", baseDir, err)
+	}
+	if cfg.Driver != "" {
+		t.Errorf("cfg.Driver = %q; want \"\" (defer to the provider default)", cfg.Driver)
+	}
+}
+
+// TestLoadConfig_EmptyDriverLoadsCleanly verifies a present-but-explicitly-empty driver value loads
+// cleanly and yields the zero value for Config.Driver, exactly like friction's own empty case,
+// distinct from TestLoadConfig_AbsentDriverLoadsCleanly's bare-key shape.
+func TestLoadConfig_EmptyDriverLoadsCleanly(t *testing.T) {
+	baseDir := t.TempDir()
+	writeLoomConfigWithKey(t, baseDir, "driver", `""`)
+
+	cfg, err := LoadConfig(baseDir, "loom")
+	if err != nil {
+		t.Fatalf("LoadConfig(%q, \"loom\") = _, %v; want nil error for a present-but-empty driver value", baseDir, err)
+	}
+	if cfg.Driver != "" {
+		t.Errorf("cfg.Driver = %q; want \"\" (defer to the provider default)", cfg.Driver)
 	}
 }
 

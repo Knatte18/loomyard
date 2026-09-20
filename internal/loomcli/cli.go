@@ -95,6 +95,16 @@ type loomCLI struct {
 	// entryObservation carries loomPreRun's entry observation forward to loomPostRun, since
 	// PreRun returns no envelope map of its own.
 	entryObservation loomengine.EntryObservation
+	// driverStarter is the seam through which the llm arm starts the ly-drive session's shuttle run,
+	// wrapping the same *shuttleengine.Runner c.runner already carries. The seam exists because the
+	// Test Tier Purity Invariant bars a real spawn from an untagged file and *shuttleengine.Runner is
+	// a concrete type.
+	driverStarter driverStarter
+	// driverPaneProbe is the seam through which the llm arm reads and removes driver strands,
+	// wrapping the same *reedengine.Engine c.reed already carries. The seam exists for the same
+	// reason driverStarter does: *reedengine.Engine is a concrete type and the Test Tier Purity
+	// Invariant bars a real reed call from an untagged file.
+	driverPaneProbe driverPaneProbe
 }
 
 // newLoomCLI is the only place production code may build a *loomCLI: it is what keeps

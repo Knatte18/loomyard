@@ -2,12 +2,13 @@
 //
 // Defines the Config type mirroring loom.yaml's keys and LoadConfig, which uses
 // internal/configengine.Load with ConfigTemplate() to strictly validate and resolve loom's config
-// file, then validates the discussion, plan, review, and friction role model-specs' grammar via
-// modelspec.Parse, and rejects a negative value on each of the four timeout knobs, so a mistake in
-// any of those eight keys fails loud at load time rather than hours into a run when the discussion,
-// plan, review, or friction producer first spawns.
-// friction is the one role key validated only when non-empty: a present-but-empty value means
-// Tier 2 self-reporting is off, and must load cleanly, unlike the other three role keys.
+// file, then validates the discussion, plan, review, friction, and driver role model-specs' grammar
+// via modelspec.Parse, and rejects a negative value on each of the four timeout knobs, so a mistake
+// in any of those nine keys fails loud at load time rather than hours into a run when the
+// discussion, plan, review, friction, or driver producer first spawns.
+// friction and driver are the two role keys validated only when non-empty: a present-but-empty
+// value means, respectively, Tier 2 self-reporting is off or the engine default model runs the
+// driver, and both must load cleanly, unlike the other role keys, which are always required.
 
 package loomengine
 
@@ -230,6 +231,7 @@ type Config struct {
 	Selfreport            bool   `yaml:"selfreport"`
 	Friction              string `yaml:"friction"`
 	FrictionTimeoutMin    int    `yaml:"friction_timeout_min"`
+	Driver                string `yaml:"driver"`
 }
 
 // LoadConfig loads and unmarshals configuration for the loom module.
@@ -265,6 +267,15 @@ func LoadConfig(baseDir, module string) (Config, error) {
 	if cfg.Friction != "" {
 		if _, err := modelspec.Parse(cfg.Friction); err != nil {
 			return Config{}, fmt.Errorf("loom config key %q: %w", "friction", err)
+		}
+	}
+
+	// driver is validated only when non-empty, exactly like friction above: an empty value means
+	// "defer to the engine default" -- the same meaning shuttleengine.Spec.Model's empty value
+	// already carries -- and must load cleanly rather than being forced to name a literal alias.
+	if cfg.Driver != "" {
+		if _, err := modelspec.Parse(cfg.Driver); err != nil {
+			return Config{}, fmt.Errorf("loom config key %q: %w", "driver", err)
 		}
 	}
 

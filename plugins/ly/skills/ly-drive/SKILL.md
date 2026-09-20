@@ -153,3 +153,30 @@ Record why the gate exists: the verb files a real public issue through the GitHu
 ## Operator choices
 
 Any point where this skill offers the operator a choice must present it as a numbered text list, one option per line in the form `1) Label — description`, never a mouse-driven prompt.
+
+## Autonomous driver
+
+Enter this section instead of the operator-driven posture above when the launch prompt says this session runs autonomously.
+Exactly four things change; everything else in this skill — every stop condition, every retry rule, every cleanup limit — stays exactly as written above.
+
+**No operator choices.**
+There is no operator in the session to answer a question, so every numbered-list prompt this skill would otherwise raise — including the pane self-check's tracked-absent branch and the `## Operator choices` section itself — becomes a line in the stop report instead of a question.
+Decide nothing on the operator's behalf that the prose above reserves for the operator; record the choice that would have been offered, and the reasoning available for it, and move on to stopping and reporting.
+
+**The report goes to the file.**
+Every place the skill above says to report to the operator or hand back with a report, the autonomous path instead writes that report to the output-file path named in its own launch prompt, and then stops.
+Nothing here changes what belongs in the report — only where it goes and that no further action follows it in this session.
+
+**The step cap is a budget, not a check-in.**
+
+autonomous step cap: 120
+
+This section's own loop runs a hard cap of the number above rather than the operator-driven cap of 40 stated in `## The loop`.
+The number is derived, not a bare round figure: `## The loop` already works out that loom's own worst case — three review rounds in each of three segments, plus the review rows' own bounce budget — lands near a hundred steps, and 120 keeps a margin over that worst case rather than cutting an unlucky-but-legitimate run off mid-task.
+The operator-driven cap of 40 exists so a human can look in on a run in progress; with no human to look in on it, that same cap would stop a healthy autonomous run three times over before it ever finished, for no benefit anyone would see.
+On exhausting the autonomous budget, the driver writes the report and stops, leaving the driven recipe's own state exactly as it is — the same as the operator-driven cap's own disposition in `## The loop`, just with nobody to re-invoke the loop afterward.
+
+**Stop conditions are otherwise unchanged and remain absolute.**
+A halting envelope stops the loop exactly as `## Stopping` describes.
+An error envelope stops with the single retry `## Error envelopes` already allows on `kind: producer`, and with no retry on every other kind.
+The skill still never clears `state`, never edits the status file, never re-seeds, never pushes, never kills a reed pane, and never touches git — autonomy changes only who reads the output and what happens when there is nobody to ask, never what this skill is willing to do to the run or the repo.

@@ -113,8 +113,14 @@ func battenDriver(flagVal string) string {
 // recipe is chosen later, by battenshed's Seed-Child producer, from the Board task's type.
 //
 // The auto-seeded driver and child_driver come from c.driverFlag/c.childDriverFlag -- "run"'s and
-// "step"'s own --driver/--child-driver flags, each validated via shedrun.ValidateDriver before the
-// seed is written, so an "llm" value refuses here rather than being written to disk unseen.
+// "step"'s own --driver/--child-driver flags -- but the two are validated differently, because they
+// answer different questions. Batten's own driver flag names the process the operator typed, and
+// batten has no bootstrap verb, so an "llm" value there is refused outright by
+// refuseBattenOwnDriverLLM, worded as a statement about batten's own recipe rather than a pointer to
+// a roadmap item. The child-driver flag names the driver the task worktree's own bootstrap will
+// honour, which is a fact about that worktree's recipe, not batten's; it is validated through
+// shedrun.ValidateDriver alone and nothing further -- the child's own recipe capability is checked
+// when that child's seed is written (internal/shedcli's writeSeed), not here.
 //
 // The refusal carries no "kind" field, keeping the five-value step refusal-kind vocabulary closed:
 // a missing run is not a sixth kind.
@@ -139,6 +145,9 @@ func (c *battenCLI) armSeed(location *lyxcwd.Location, runID, verb string) error
 	if err := shedrun.ValidateDriver(driver); err != nil {
 		return err
 	}
+	if err := refuseBattenOwnDriverLLM(driver); err != nil {
+		return err
+	}
 	childDriver := battenDriver(c.childDriverFlag)
 	if err := shedrun.ValidateDriver(childDriver); err != nil {
 		return err
@@ -152,6 +161,22 @@ func (c *battenCLI) armSeed(location *lyxcwd.Location, runID, verb string) error
 			"child_driver": childDriver,
 		},
 	})
+}
+
+// refuseBattenOwnDriverLLM refuses driver when it is shedrun.DriverLLM, reading BootstrapVerb
+// directly from this package's own constant rather than reaching for the shed CLI's table: battencli
+// cannot import internal/shedcli without an import cycle, which is the reason the bootstrap-verb
+// capability is declared per module in the first place. The message is a statement about the
+// recipe -- batten has no bootstrap verb, so it cannot be driven by an LLM -- never a pointer to a
+// roadmap item.
+func refuseBattenOwnDriverLLM(driver string) error {
+	if driver != shedrun.DriverLLM {
+		return nil
+	}
+	if BootstrapVerb != "" {
+		return nil
+	}
+	return fmt.Errorf("battencli: batten has no bootstrap verb, so it cannot be driven by an LLM")
 }
 
 // arm resolves cwd into a *lyxcwd.Location, resolves the addressed run-id and whether it was

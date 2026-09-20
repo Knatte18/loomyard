@@ -14,6 +14,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/battencli"
+	"github.com/Knatte18/loomyard/internal/loomcli"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
@@ -88,6 +90,53 @@ func TestRecipes_KeySetMatchesShedrunVocabulary(t *testing.T) {
 		if got[i] != want[i] {
 			t.Errorf("names()[%d] = %q; want shedrun.RecipeNames()[%d] = %q", i, got[i], i, want[i])
 		}
+	}
+}
+
+// TestRecipes_BootstrapVerbMatchesOwningModuleConstant is the sync meta-test this batch's whole shape
+// rests on: each entry's BootstrapVerb must equal its own module's exported constant, mirroring
+// TestRecipes_KeySetMatchesShedrunVocabulary's shape. Without it, the constants and the table are two
+// hand-maintained records of one fact, and a stale copy fails silently in the worst direction: a stale
+// "" copied into the loom entry would make batch 5 refuse --driver llm for the one recipe that
+// supports it.
+func TestRecipes_BootstrapVerbMatchesOwningModuleConstant(t *testing.T) {
+	loom, err := lookup("loom")
+	if err != nil {
+		t.Fatalf("lookup(loom): %v", err)
+	}
+	if loom.BootstrapVerb != loomcli.BootstrapVerb {
+		t.Errorf("recipes[loom].BootstrapVerb = %q; want loomcli.BootstrapVerb = %q", loom.BootstrapVerb, loomcli.BootstrapVerb)
+	}
+
+	batten, err := lookup("batten")
+	if err != nil {
+		t.Fatalf("lookup(batten): %v", err)
+	}
+	if batten.BootstrapVerb != battencli.BootstrapVerb {
+		t.Errorf("recipes[batten].BootstrapVerb = %q; want battencli.BootstrapVerb = %q", batten.BootstrapVerb, battencli.BootstrapVerb)
+	}
+}
+
+// TestRecipes_BootstrapVerbHasBothAnEmptyAndANonEmptyEntry asserts the table cannot degenerate to
+// all-empty or all-non-empty: at least one entry must have a non-empty BootstrapVerb and at least one
+// must have an empty one. Every per-entry equality assertion above passes against a table where both
+// entries are empty, and that table is exactly what a bad merge or an over-eager "initialise the new
+// field" edit produces -- it would make batch 5's validator refuse every recipe while this test's
+// sibling above still passed.
+func TestRecipes_BootstrapVerbHasBothAnEmptyAndANonEmptyEntry(t *testing.T) {
+	var sawEmpty, sawNonEmpty bool
+	for _, e := range recipes {
+		if e.BootstrapVerb == "" {
+			sawEmpty = true
+		} else {
+			sawNonEmpty = true
+		}
+	}
+	if !sawEmpty {
+		t.Error("recipes: no entry has an empty BootstrapVerb; want at least one")
+	}
+	if !sawNonEmpty {
+		t.Error("recipes: no entry has a non-empty BootstrapVerb; want at least one")
 	}
 }
 

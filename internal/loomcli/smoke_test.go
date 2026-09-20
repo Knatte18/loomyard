@@ -56,6 +56,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -342,7 +343,7 @@ func waitRunLockFree(t *testing.T, loc *lyxcwd.Location, timeout time.Duration) 
 	t.Helper()
 	deadline := time.Now().Add(timeout)
 	for {
-		fl, free, err := lock.TryAcquireWriteLock(loomengine.LoomRunLock(loc))
+		fl, free, err := lock.TryAcquireWriteLock(shedrun.RunLock(loc, shedrun.SelfRunID))
 		if err != nil {
 			t.Fatalf("probe run lock: %v", err)
 		}
@@ -377,7 +378,7 @@ func waitForCurrentProducer(t *testing.T, loc *lyxcwd.Location, want string, tim
 	deadline := time.Now().Add(timeout)
 	var last string
 	for {
-		st, found, err := state.ReadJSONStrict[shedengine.Status](loomengine.LoomStatusFile(loc), loomengine.LoomStatusLock(loc))
+		st, found, err := state.ReadJSONStrict[shedengine.Status](shedrun.StatusFile(loc, shedrun.SelfRunID), shedrun.StatusLock(loc, shedrun.SelfRunID))
 		if err == nil && found {
 			last = string(st.CurrentProducer)
 			if st.CurrentProducer == want && st.State == shedengine.StateRunning {
@@ -422,16 +423,43 @@ func weftHeadChangedFiles(t *testing.T, dir string) []string {
 	return files
 }
 
+// seedGoDriverRun writes loc's own self-run seed.json directly to disk for the go driver, with
+// Params agreeing byte-for-byte with what seedAndCommitBootstrap itself would write on the very next
+// bootstrap against it (loomSeedFor) -- the same recorded.ParentBranch-matching shape
+// smoke_driverstrand_test.go's own seedLLMDriver uses for the llm driver.
+//
+// It exists because arm.go's resolveRunID now refuses "run"/"step"/"status"/"pause" outright when no
+// seed exists at the addressed run-id, before either verb's own bootstrap or absent-status-file
+// checks ever run: several of this file's fixtures drive one of those four verbs directly against a
+// pair whose STATUS FILE is deliberately still absent (to exercise the status-file-absent path
+// itself), which now also needs the run's own seed.json present first -- exactly the state a seed
+// written via "lyx shed seed" before any bootstrap has ever run would leave.
+func seedGoDriverRun(t *testing.T, loc *lyxcwd.Location) {
+	t.Helper()
+	recorded, found, err := fabricengine.ReadOrigin(loc)
+	if err != nil || !found {
+		t.Fatalf("ReadOrigin before seeding the go driver run: found=%v err=%v", found, err)
+	}
+	seed := shedrun.Seed{
+		Recipe: shedrun.RecipeLoom,
+		Driver: shedrun.DriverGo,
+		Params: map[string]string{"parent": recorded.ParentBranch},
+	}
+	if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, seed); err != nil {
+		t.Fatalf("WriteSeed(go driver): %v", err)
+	}
+}
+
 // seedAndCommitStatus seeds loc's status file directly through the production Seed function and
 // commits it weft-side -- the same seed-then-commit shape "lyx loom start" itself performs, used here
 // so a standalone-driver test does not need a live tmux server just to get a valid seeded pair.
 func seedAndCommitStatus(t *testing.T, loc *lyxcwd.Location, slug string) {
 	t.Helper()
-	if err := loomshed.Seed(loomengine.LoomStatusFile(loc), loomengine.LoomStatusLock(loc), slug, "main"); err != nil {
+	if err := loomshed.Seed(shedrun.StatusFile(loc, shedrun.SelfRunID), shedrun.StatusLock(loc, shedrun.SelfRunID), slug, "main"); err != nil {
 		t.Fatalf("loomshed.Seed: %v", err)
 	}
 	rec := fabricengine.NewMutations("")
-	if _, _, err := fabricengine.CommitWeftPaths(rec, fabricengine.WeftWorktree(loc), loc.AnchorRel, []string{loomengine.LoomStatusRel()}, "smoke: seed status", fabricengine.EnvSyncOptions()); err != nil {
+	if _, _, err := fabricengine.CommitWeftPaths(rec, fabricengine.WeftWorktree(loc), loc.AnchorRel, []string{shedrun.StatusRel(shedrun.SelfRunID)}, "smoke: seed status", fabricengine.EnvSyncOptions()); err != nil {
 		t.Fatalf("commit seed: %v", err)
 	}
 }
@@ -446,7 +474,7 @@ func seedAndCommitStatus(t *testing.T, loc *lyxcwd.Location, slug string) {
 // it.
 func poisonStatusFile(t *testing.T, loc *lyxcwd.Location) {
 	t.Helper()
-	statusPath := loomengine.LoomStatusFile(loc)
+	statusPath := shedrun.StatusFile(loc, shedrun.SelfRunID)
 
 	raw, err := os.ReadFile(statusPath)
 	if err != nil {
@@ -466,7 +494,7 @@ func poisonStatusFile(t *testing.T, loc *lyxcwd.Location) {
 	}
 
 	rec := fabricengine.NewMutations("")
-	if _, _, err := fabricengine.CommitWeftPaths(rec, fabricengine.WeftWorktree(loc), loc.AnchorRel, []string{loomengine.LoomStatusRel()}, "smoke: poison status file for driver-failure rig", fabricengine.EnvSyncOptions()); err != nil {
+	if _, _, err := fabricengine.CommitWeftPaths(rec, fabricengine.WeftWorktree(loc), loc.AnchorRel, []string{shedrun.StatusRel(shedrun.SelfRunID)}, "smoke: poison status file for driver-failure rig", fabricengine.EnvSyncOptions()); err != nil {
 		t.Fatalf("commit poisoned status: %v", err)
 	}
 }
@@ -480,12 +508,12 @@ func poisonStatusFile(t *testing.T, loc *lyxcwd.Location) {
 // so both poison shapes reach the same "a driver that died is a run that finished" bootstrap path.
 func poisonStatusFileMalformed(t *testing.T, loc *lyxcwd.Location) {
 	t.Helper()
-	statusPath := loomengine.LoomStatusFile(loc)
+	statusPath := shedrun.StatusFile(loc, shedrun.SelfRunID)
 	if err := os.WriteFile(statusPath, []byte(`{ "current_producer": "Discussion-Write", "state": "run`), 0o644); err != nil {
 		t.Fatalf("write malformed status: %v", err)
 	}
 	rec := fabricengine.NewMutations("")
-	if _, _, err := fabricengine.CommitWeftPaths(rec, fabricengine.WeftWorktree(loc), loc.AnchorRel, []string{loomengine.LoomStatusRel()}, "smoke: malformed status file for driver-failure rig", fabricengine.EnvSyncOptions()); err != nil {
+	if _, _, err := fabricengine.CommitWeftPaths(rec, fabricengine.WeftWorktree(loc), loc.AnchorRel, []string{shedrun.StatusRel(shedrun.SelfRunID)}, "smoke: malformed status file for driver-failure rig", fabricengine.EnvSyncOptions()); err != nil {
 		t.Fatalf("commit malformed status: %v", err)
 	}
 }
@@ -538,7 +566,7 @@ func TestSmokeBootstrap_BringsUpSessionStrandAndDriver(t *testing.T) {
 		t.Errorf("driver pid %d found but not alive", pids[0])
 	}
 
-	st, found, err := state.ReadJSONStrict[shedengine.Status](loomengine.LoomStatusFile(loc), loomengine.LoomStatusLock(loc))
+	st, found, err := state.ReadJSONStrict[shedengine.Status](shedrun.StatusFile(loc, shedrun.SelfRunID), shedrun.StatusLock(loc, shedrun.SelfRunID))
 	if err != nil || !found {
 		t.Fatalf("read status file after bootstrap: found=%v err=%v", found, err)
 	}
@@ -616,7 +644,7 @@ func TestSmokeRunStandalone_AdvancesMachineFromExistingSeed(t *testing.T) {
 	}
 	waitRunLockFree(t, loc, 20*time.Second)
 
-	before, foundBefore, err := state.ReadJSONStrict[shedengine.Status](loomengine.LoomStatusFile(loc), loomengine.LoomStatusLock(loc))
+	before, foundBefore, err := state.ReadJSONStrict[shedengine.Status](shedrun.StatusFile(loc, shedrun.SelfRunID), shedrun.StatusLock(loc, shedrun.SelfRunID))
 	if err != nil || !foundBefore {
 		t.Fatalf("read status file before standalone drive: found=%v err=%v", foundBefore, err)
 	}
@@ -650,7 +678,7 @@ func TestSmokeRunStandalone_AdvancesMachineFromExistingSeed(t *testing.T) {
 	}
 	t.Logf("loom run exited %d: %s", driveCode, strings.TrimSpace(driveOut))
 
-	after, foundAfter, err := state.ReadJSONStrict[shedengine.Status](loomengine.LoomStatusFile(loc), loomengine.LoomStatusLock(loc))
+	after, foundAfter, err := state.ReadJSONStrict[shedengine.Status](shedrun.StatusFile(loc, shedrun.SelfRunID), shedrun.StatusLock(loc, shedrun.SelfRunID))
 	if err != nil || !foundAfter {
 		t.Fatalf("read status file after standalone drive: found=%v err=%v", foundAfter, err)
 	}
@@ -728,9 +756,10 @@ func TestSmokeRunStandalone_FailureBeforeFirstPersistLeavesNonEmptyLog(t *testin
 	// own smoke sweep.
 	registerBootstrapTeardown(t, loc, worktree)
 
+	seedGoDriverRun(t, loc)
 	seedAndCommitStatus(t, loc, slug)
 	poisonStatusFile(t, loc)
-	poisonedBytes, err := os.ReadFile(loomengine.LoomStatusFile(loc))
+	poisonedBytes, err := os.ReadFile(shedrun.StatusFile(loc, shedrun.SelfRunID))
 	if err != nil {
 		t.Fatalf("read poisoned status file: %v", err)
 	}
@@ -767,7 +796,7 @@ func TestSmokeRunStandalone_FailureBeforeFirstPersistLeavesNonEmptyLog(t *testin
 		t.Errorf("driver log = %q; want it to name the decode failure", content)
 	}
 
-	after, err := os.ReadFile(loomengine.LoomStatusFile(loc))
+	after, err := os.ReadFile(shedrun.StatusFile(loc, shedrun.SelfRunID))
 	if err != nil {
 		t.Fatalf("read status file after the failed drive: %v", err)
 	}
@@ -889,7 +918,7 @@ func TestSmokeBootstrap_CleanlinessOrderingAfterSeedCommit(t *testing.T) {
 	if afterCount != beforeCount+1 {
 		t.Errorf("weft commit count = %d; want exactly %d (the single seed commit)", afterCount, beforeCount+1)
 	}
-	wantFiles := []string{loomengine.LoomStatusRel()}
+	wantFiles := []string{shedrun.StatusRel(shedrun.SelfRunID)}
 	if changed := weftHeadChangedFiles(t, weftDir); !slices.Equal(changed, wantFiles) {
 		t.Errorf("weft HEAD changed files = %v; want exactly %v", changed, wantFiles)
 	}

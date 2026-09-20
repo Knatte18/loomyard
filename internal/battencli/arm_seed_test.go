@@ -74,6 +74,27 @@ func TestArmSeed_StatusAndPauseRefuseAndSeedNothing(t *testing.T) {
 	}
 }
 
+// TestArmSeed_OwnDriverLLMStillRefuses asserts batten's own --driver flag still refuses the llm
+// value: batten has no bootstrap verb, so the driver it seeds itself with IS the process the
+// operator typed, and there is no spawn seam to branch on a seed's driver. The message must name
+// the missing bootstrap verb and must no longer name a roadmap item -- the likeliest regression in
+// this batch is lifting both refusals for symmetry, and this is the one assertion that catches it.
+func TestArmSeed_OwnDriverLLMStillRefuses(t *testing.T) {
+	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+	c := &battenCLI{driverFlag: shedrun.DriverLLM}
+
+	err := c.armSeed(loc, "some-slug", "run")
+	if err == nil {
+		t.Fatal("armSeed() with driverFlag=llm = nil; want a refusal")
+	}
+	if !strings.Contains(err.Error(), "no bootstrap verb") {
+		t.Errorf("armSeed() error = %q; want it to name the missing bootstrap verb", err.Error())
+	}
+	if strings.Contains(err.Error(), "roadmap") {
+		t.Errorf("armSeed() error = %q; want it to no longer name a roadmap item", err.Error())
+	}
+}
+
 // TestRefuseSelfAddress_ArgumentLessRefusesByNameBeforeTheGate asserts an omitted positional
 // argument refuses by name, before the auto-seed gate ever runs, rather than silently taking the
 // self default.

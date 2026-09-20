@@ -119,6 +119,16 @@ Every value in `internal/shedrecipe`'s registry constructs a `shedengine.ShedPro
 - No other package decodes or encodes the `Seed` struct.
 - A run-id is validated as a single path segment (`ValidateRunID`) before being joined onto any anchor.
 
+## Driver Choice Single-Site Invariant
+
+A *recorded* seed driver value is read in exactly one place per recipe, that recipe's own bootstrap verb, and the branch on it selects a spawn and nothing else.
+
+- No producer, no generic verb and no engine reads the recorded value, and no code path gates a refusal on it.
+- This governs the **read, not the vocabulary**: the driver constants are legitimately named at the seeding sites, which validate a flag before a seed exists — those sites validate an argument rather than reading a written seed, so a naive "one consumer of the constants" rule would be false against this very invariant.
+- Permitted constant consumers, verified against the merged tree rather than assumed: the shed CLI's `seed` command; batten's own flag validation in `internal/battencli/arm.go`; batten's child-driver param reader in `internal/battencli/wire.go`; and loom's own seed writer in `internal/loomcli/sharedbootstrap.go`. The last two are the ones a shorter list would wrongly omit — neither reads a written seed's `Driver` field (batten's reads a `child_driver` *param*, loom's *writes* the field), so both are constant consumers rather than readers, which is exactly the distinction this invariant turns on.
+- Rationale: the recorded value is a startup choice, and the failure mode a second reader introduces is silent divergence between what a run was seeded as and what it is actually doing — unobservable from either the status file or the envelope. A flag validator, by contrast, fails loudly at the command line, where a mistake is visible immediately.
+- Enforcement is a **tripwire, not a completeness proof**, in the same sense the Completion Signal Invariant's own scan is: `internal/loomcli/bootstrap_test.go` asserts that the only production reader of the seed's driver **field** outside the `shedrun` package is `internal/loomcli`, scanning the field selector rather than the driver constants (the constants are legitimately named elsewhere, per the bullet above). Adding a reader fails it and forces a human to confirm.
+
 ## Tokenvocab Leaf Invariant
 
 `internal/tokenvocab` imports only stdlib and `internal/stencil`. Reverse import never allowed.

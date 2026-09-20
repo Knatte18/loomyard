@@ -28,6 +28,13 @@ const statusStrandDisplayName = "loom-status"
 // first.
 const operatorStrandDisplayName = "loom-operator"
 
+// driverStrandDisplayName is the ly-drive session's own strand's stable identity, pinned for the
+// same reason statusStrandDisplayName and operatorStrandDisplayName are: reed's add has no upsert
+// semantics, so a second add under this same display name would append a second pane rather than
+// replace the first. Every add and every lookup must use this exact constant, or a re-entrant
+// bootstrap stacks a second driver pane instead of matching the one already running.
+const driverStrandDisplayName = "loom-driver"
+
 // operatorStrandAddSpec builds the operator strand's reedengine.AddSpec: a below-parent pane that
 // reuses an already-present entry rather than duplicating it, takes no focus, and never collapses.
 //
@@ -56,16 +63,22 @@ func operatorStrandAddSpec() reedengine.AddSpec {
 	}
 }
 
-// mustSpawnDriver reports whether the bootstrap must spawn a new detached driver, from whether the
-// run lock is currently held.
+// mustSpawnDriver reports whether the bootstrap must spawn a new driver, from the run lock's held
+// state AND whether a live driver strand already exists.
 //
-// This is the whole re-entrancy decision: the run lock being held means a driver is already alive,
-// so the bootstrap only needs to ensure the reed substrate and attach, never spawn a second driver.
-// The lock is only ever probed non-blockingly and released immediately by the caller -- never held
-// by the probe itself -- because holding it here would make this predicate indistinguishable from
-// the very driver it is checking for.
-func mustSpawnDriver(runLockHeld bool) bool {
-	return !runLockHeld
+// The conjunction is required on BOTH paths, not one signal per path, because each signal is blind
+// to exactly the driver kind the other sees. An operator may run `lyx loom run` by hand against an
+// `llm`-seeded run: that spawns no driver strand at all, so a bootstrap consulting the strand table
+// alone would find none and launch a Claude driver alongside the live Go one. And a live ly-drive
+// session between two `lyx shed step` invocations holds no run lock -- it takes the lock only inside
+// each step and releases it between them -- so a bootstrap consulting the lock alone would spawn a
+// second driver into a worktree that already has one.
+//
+// The run lock is only ever probed non-blockingly and released immediately by the caller -- never
+// held by the probe itself -- because holding it here would make this predicate indistinguishable
+// from the very driver it is checking for.
+func mustSpawnDriver(runLockHeld bool, driverStrandLive bool) bool {
+	return !runLockHeld && !driverStrandLive
 }
 
 // mustAttach reports whether the bootstrap must hand the terminal over to the tmux session, from the
@@ -226,6 +239,38 @@ func resolveStatusStrandAction(strands []reedengine.StrandStatus) (statusStrandA
 		return statusStrandKeep, strand.GUID
 	default:
 		return statusStrandReplace, strand.GUID
+	}
+}
+
+// driverStrandAction is what the bootstrap must do about the ly-drive session's own strand.
+type driverStrandAction int
+
+const (
+	// driverStrandNone means no strand carries the driver strand's name: nothing to remove, and the
+	// llm arm's own launch decision is unaffected by this signal.
+	driverStrandNone driverStrandAction = iota
+	// driverStrandLive means a strand carries the name and is live: a driver is already running, and
+	// mustSpawnDriver must not launch a second one.
+	driverStrandLive
+	// driverStrandDead means a strand carries the name but is not live: the corpse must be removed
+	// before a relaunch, since reed's add has no upsert semantics.
+	driverStrandDead
+)
+
+// resolveDriverStrandAction decides what the bootstrap owes the driver strand, from reed's tracked
+// strands, modelled on resolveStatusStrandAction. It returns the action and the matched strand's
+// GUID; a driverStrandNone action carries no GUID, since nothing was found to act on. Nothing here
+// removes anything -- a driverStrandDead result only tells the caller a corpse is present so it can
+// remove it before relaunching.
+func resolveDriverStrandAction(strands []reedengine.StrandStatus) (driverStrandAction, string) {
+	strand, found := findStatusStrand(strands, driverStrandDisplayName)
+	switch {
+	case !found:
+		return driverStrandNone, ""
+	case strand.Live:
+		return driverStrandLive, strand.GUID
+	default:
+		return driverStrandDead, strand.GUID
 	}
 }
 
