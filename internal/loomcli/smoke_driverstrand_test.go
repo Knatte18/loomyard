@@ -14,6 +14,15 @@
 // through a real shuttle run against a real tmux pane, and only a genuine subprocess boundary keeps
 // this test's own binary out of that pane's launch line.
 //
+// Every strand's own launch line is typed into an already-running plain shell pane via tmux send-keys
+// (reedengine's own launchStrandLocked, spawn.go), not run as the split-window's own trailing
+// command, so the stub provider process finishing its own work leaves the pane's shell alive and the
+// pane itself reported live indefinitely -- exactly the same reason the operator-strand smoke suite
+// simulates a dead pane by killing tmux outright rather than waiting on a spawned command to exit (see
+// smoke_operatorstrand_test.go's own TestSmokeOperatorStrand_RelaunchesAfterReedServerRestart). This
+// file's own third case follows that same shape at the single-pane grain: it kills the driver's own
+// pane directly via "tmux kill-pane", never by waiting for the stub script to finish on its own.
+//
 // The provider binary behind every one of this file's spawns is a stubbed shell script, never a real
 // `claude`: per this batch's own scope note, exercising the real thing spawns a live, billed Claude
 // session bounded only by the task at hand, which is why the sandbox suite deliberately does not
@@ -28,8 +37,8 @@
 package loomcli
 
 import (
-	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -44,34 +53,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// driverStrandStubSettleDelay is the fixed delay writeStubDriverScript's generated script sleeps
-// through before its first marker check, on every invocation. It exists so the pane it runs in is
-// guaranteed to be observed live at least once, even in this file's third case, where the marker is
-// already present the instant the pane is spawned and the script would otherwise exit before
-// awaitDriverPane's own poll ever caught it alive -- a race, not a hypothetical, since a script with
-// no delay at all checks and exits inside the same scheduling quantum tmux uses to report the pane
-// live in the first place.
-const driverStrandStubSettleDelay = 300 * time.Millisecond
-
 // writeStubDriverScript writes a POSIX shell script standing in for the claude binary this file's
-// spawns launch: it ignores its stdin (the prompt claudeengine's own launch line feeds via shell
-// redirection) and every flag argument that line appends (--session-id, --settings, and the rest),
-// sleeps driverStrandStubSettleDelay, then polls for exitMarker's presence every 100ms and exits 0 as
-// soon as it appears.
-//
-// exitMarker's path is baked into the script's own text rather than read from an environment
-// variable, because tmux's own server is not guaranteed to forward this test process's environment
-// into the pane it spawns.
-func writeStubDriverScript(t *testing.T, exitMarker string) string {
+// spawns launch: it ignores every argument the claude engine's own launch line appends and simply
+// sleeps for a long, harmless duration. It never needs to exit on its own -- this file's own third
+// case kills its pane directly (see the file-level doc comment) -- so the sleep only needs to outlast
+// the whole test, never to be observed finishing.
+func writeStubDriverScript(t *testing.T) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "stub-claude.sh")
-	script := fmt.Sprintf(`#!/bin/sh
-sleep %s
-while [ ! -f '%s' ]; do
-  sleep 0.1
-done
-exit 0
-`, driverStrandStubSettleDelay, exitMarker)
+	script := "#!/bin/sh\nsleep 3600\n"
 	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
 		t.Fatalf("write stub driver script: %v", err)
 	}
@@ -125,22 +115,6 @@ func driverStrand(t *testing.T, eng *reedengine.Engine) (reedengine.StrandStatus
 	return findStatusStrand(status.Strands, driverStrandDisplayName)
 }
 
-// waitDriverStrandLive blocks until eng reports a live strand named driverStrandDisplayName, or fails
-// the test after timeout.
-func waitDriverStrandLive(t *testing.T, eng *reedengine.Engine, timeout time.Duration) {
-	t.Helper()
-	deadline := time.Now().Add(timeout)
-	for {
-		if strand, found := driverStrand(t, eng); found && strand.Live {
-			return
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("driver strand %q never became live within %s", driverStrandDisplayName, timeout)
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-}
-
 // waitDriverStrandDead blocks until eng reports a strand named driverStrandDisplayName that is
 // present but no longer live -- the corpse resolveDriverStrandAction's own dead case matches -- or
 // fails the test after timeout.
@@ -165,15 +139,14 @@ func waitDriverStrandDead(t *testing.T, eng *reedengine.Engine, timeout time.Dur
 // A first bootstrap leaves exactly one. A second, while the first driver's pane is still alive,
 // leaves exactly one again -- the re-entrancy property no Tier 1 test can prove, since the predicate
 // saying do-not-spawn and reed actually holding one strand are two different facts. A third, run
-// promptly after the stub's pane has exited, leaves exactly one once more and never a corpse plus a
-// live pane beside it -- the count is what distinguishes corpse removal from a second add, a
-// distinction reed's own upsert-less add cannot make for us.
+// promptly after the pane's own kill, leaves exactly one once more and never a corpse plus a live
+// pane beside it -- the count is what distinguishes corpse removal from a second add, a distinction
+// reed's own upsert-less add cannot make for us.
 func TestSmokeDriverStrand_ReentrantAcrossThreeBootstraps(t *testing.T) {
-	tmuxBinaryPath(t)
+	tmuxPath := tmuxBinaryPath(t)
 	exe := buildLyxBinary(t)
 
-	exitMarker := filepath.Join(t.TempDir(), "driver-exit-marker")
-	stubPath := writeStubDriverScript(t, exitMarker)
+	stubPath := writeStubDriverScript(t)
 
 	h := hubforge.NewHub(t, ".")
 	hubforge.SeedConfig(t, h, map[string]string{
@@ -200,7 +173,10 @@ func TestSmokeDriverStrand_ReentrantAcrossThreeBootstraps(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first loom start: %v; output: %s", err, firstOut)
 	}
-	waitDriverStrandLive(t, eng, 10*time.Second)
+	strand, found := driverStrand(t, eng)
+	if !found || !strand.Live {
+		t.Fatalf("driver strand after the first bootstrap = (found=%v live=%v); want a live strand", found, found && strand.Live)
+	}
 	if count := statusStrandCount(t, eng, driverStrandDisplayName); count != 1 {
 		t.Fatalf("driver strands after the first bootstrap = %d; want exactly 1", count)
 	}
@@ -214,20 +190,22 @@ func TestSmokeDriverStrand_ReentrantAcrossThreeBootstraps(t *testing.T) {
 	if count := statusStrandCount(t, eng, driverStrandDisplayName); count != 1 {
 		t.Fatalf("driver strands after the second bootstrap = %d; want exactly 1 -- a do-not-spawn verdict must leave reed holding one strand, not two", count)
 	}
-	if strand, found := driverStrand(t, eng); !found || !strand.Live {
+	strand, found = driverStrand(t, eng)
+	if !found || !strand.Live {
 		t.Fatalf("driver strand after the second bootstrap = (found=%v live=%v); want it still live and untouched by the second bootstrap's own no-op", found, found && strand.Live)
 	}
 
-	// Signal the stub to exit and wait for reed to observe the pane as dead before the third
-	// bootstrap: the corpse-removal path this case exists to exercise only fires against a genuinely
-	// dead pane, and running the third bootstrap against a still-live one would only repeat the
-	// second case's own assertion.
-	if err := os.WriteFile(exitMarker, []byte("go\n"), 0o644); err != nil {
-		t.Fatalf("write exit marker: %v", err)
+	// Kill the driver's own pane directly, before the third bootstrap: every strand's launch line is
+	// typed into an already-running shell via send-keys (see the file-level doc comment), so the
+	// stub's own process finishing leaves the pane's shell alive and the pane reported live forever --
+	// only killing the pane itself produces the dead-but-tracked corpse resolveDriverStrandAction's
+	// own third case exists to remove.
+	if err := exec.Command(tmuxPath, "-L", eng.Socket(), "kill-pane", "-t", strand.PaneID).Run(); err != nil {
+		t.Fatalf("kill-pane %s: %v", strand.PaneID, err)
 	}
 	waitDriverStrandDead(t, eng, 10*time.Second)
 
-	// (3) a third bootstrap, run promptly after the pane's own exit, removes the dead entry and
+	// (3) a third bootstrap, run promptly after the pane's own kill, removes the dead entry and
 	// relaunches: exactly one strand again, never a corpse plus a live pane beside it. Landing this
 	// relaunch inside one second of the corpse's own removal is deliberate: it is the case
 	// driverReportPath's own random suffix exists for, since two attempts composing a report path in

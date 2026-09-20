@@ -423,6 +423,33 @@ func weftHeadChangedFiles(t *testing.T, dir string) []string {
 	return files
 }
 
+// seedGoDriverRun writes loc's own self-run seed.json directly to disk for the go driver, with
+// Params agreeing byte-for-byte with what seedAndCommitBootstrap itself would write on the very next
+// bootstrap against it (loomSeedFor) -- the same recorded.ParentBranch-matching shape
+// smoke_driverstrand_test.go's own seedLLMDriver uses for the llm driver.
+//
+// It exists because arm.go's resolveRunID now refuses "run"/"step"/"status"/"pause" outright when no
+// seed exists at the addressed run-id, before either verb's own bootstrap or absent-status-file
+// checks ever run: several of this file's fixtures drive one of those four verbs directly against a
+// pair whose STATUS FILE is deliberately still absent (to exercise the status-file-absent path
+// itself), which now also needs the run's own seed.json present first -- exactly the state a seed
+// written via "lyx shed seed" before any bootstrap has ever run would leave.
+func seedGoDriverRun(t *testing.T, loc *lyxcwd.Location) {
+	t.Helper()
+	recorded, found, err := fabricengine.ReadOrigin(loc)
+	if err != nil || !found {
+		t.Fatalf("ReadOrigin before seeding the go driver run: found=%v err=%v", found, err)
+	}
+	seed := shedrun.Seed{
+		Recipe: shedrun.RecipeLoom,
+		Driver: shedrun.DriverGo,
+		Params: map[string]string{"parent": recorded.ParentBranch},
+	}
+	if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, seed); err != nil {
+		t.Fatalf("WriteSeed(go driver): %v", err)
+	}
+}
+
 // seedAndCommitStatus seeds loc's status file directly through the production Seed function and
 // commits it weft-side -- the same seed-then-commit shape "lyx loom start" itself performs, used here
 // so a standalone-driver test does not need a live tmux server just to get a valid seeded pair.
@@ -729,6 +756,7 @@ func TestSmokeRunStandalone_FailureBeforeFirstPersistLeavesNonEmptyLog(t *testin
 	// own smoke sweep.
 	registerBootstrapTeardown(t, loc, worktree)
 
+	seedGoDriverRun(t, loc)
 	seedAndCommitStatus(t, loc, slug)
 	poisonStatusFile(t, loc)
 	poisonedBytes, err := os.ReadFile(shedrun.StatusFile(loc, shedrun.SelfRunID))
