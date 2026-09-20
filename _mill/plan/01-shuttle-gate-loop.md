@@ -177,6 +177,8 @@ A memo that were per-run would make every attempt after the first read the first
 - **Moves:** none
 - **Requirements:** The per-attempt done-signal is the next turn boundary and nothing more, and that narrowing holds only because the in-process `Agent` tool is denied at every gated site.
   Add a test asserting that the shipped embedded template parses with `Config.ClaudeDenyAgentTool` true, so a future edit that flips the default fails here with a message naming the narrowing rather than silently making a gate able to fire while an async in-process subagent is still working.
+  Two tests in this file already assert that same field is true against the shipped template, and the overlap is deliberate rather than an oversight to dedupe: those two assert it as one line item among a dozen parsed defaults, and their failure message says only that the value is wrong.
+  This test's distinct value is its failure message, which names what the value protects — the same tripwire shape batch 5's own quiescence test takes for the paired half of the precondition.
   The test's failure message must say that flipping this default re-opens the compound-quiescence question this task deliberately declined and that the decision must be re-opened rather than the test updated.
   The paired half of the precondition — that none of the four gated sites sets `Spec.ForkSubagents` — cannot be seen from this package and is pinned in batch 5.
 - **Commit:** `test(shuttleengine): pin claude_deny_agent_tool true in the shipped template`

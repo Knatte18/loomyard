@@ -3,7 +3,7 @@
 ```yaml
 task: 'Producer gates: mechanical gates before session release'
 slug: 'producer-gates'
-approved: false
+approved: true
 started: '20260920-142558'
 parent: 'main'
 root: ""
