@@ -322,10 +322,12 @@ In production code, `internal/summaryparser` is the sole declarer of the final-s
 
 ## Gate Self-Check Parity Invariant
 
-A mechanical gate's `ShedProducer` row and its CLI self-check verb call the same package function for every mode.
+A mechanical gate's **closure** and its CLI self-check verb call the same package function for every mode.
 
-- Discussion-Validate ↔ `validate-discussion`: `discussionparser.Validate`. Plan-Validate ↔ `validate-plan`: `planglyph.ValidateFormat`. Plan-Revalidate ↔ `validate-plan --require-approved`: `planglyph.Validate`.
+- Discussion-Write's and Discussion-Burler's gates ↔ `validate-discussion`: `discussionparser.Validate`. Plan-Write's and Plan-Burler's gates ↔ `validate-plan`: `planglyph.ValidateFormat`.
+- The verb's `--require-approved` mode, running the full check set, has no recipe counterpart by design: both plan gate sites run strictly before the Plan-Review segment's approve seam writes the approval flag, so demanding it would fail every fix round, and the flag's guarantee rests on that seam failing loudly instead — never on a row re-checking it.
 - Adding a mechanical gate means adding its verb and its parity check in the same task.
+- Moving a gate from a standalone row into a producer's own closure changed *where* the call sits, never the property this invariant binds, which is why the invariant survives the move rather than retiring with the rows.
 
 ## Recipe-Format Sole-Parser Invariant
 
