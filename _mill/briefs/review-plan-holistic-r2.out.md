@@ -1,0 +1,24 @@
+MILL_REVIEW_BEGIN
+# Review: Seeded driver choice: ly-drive strand as the child's driver — holistic
+
+```yaml
+verdict: APPROVE
+reviewer_model: sonnetxhigh
+reviewer_self_id: claude-sonnet-5 (Sonnet 5)
+reviewed_file: plan/
+date: 2026-09-20
+```
+
+## Findings
+
+### [NIT:consistency] Card 15's "existing strand read" is not in shipped source
+**Location:** batch 04-driver-launch, card 15 **Issue:** The requirement says to reuse "the existing run-lock probe and the existing strand read" as inputs to the widened `mustSpawnDriver`, but verified against `internal/loomcli/start.go`'s current `RunE` body, no strand read (`c.reed.Status()`/`driverPaneProbe.Strands()`) occurs before step 5 today — the only pre-step-5 `Status()` call lives inside `ensureStatusStrand` (`internal/loomcli/sharedbootstrap.go`), whose strand slice is never returned to the caller, and card 15's own Edits list only `start.go`. Read together with card 16, which separately enumerates "the strand read" as one of six failure sites *inside the llm arm* (implying it is new, llm-scoped, and introduced by this batch's own cards 12/13 seams), the two cards' framing of the same read is inconsistent about whether it is pre-existing shared infrastructure or new llm-arm-local code. **Fix:** In card 15, say explicitly that the "strand read" is the new call through the `driverPaneProbe.Strands()` seam cards 12/13 introduce earlier in this same batch, called once, with its result feeding both the widened predicate and (in the llm arm) the corpse-check — not a reuse of any call that exists in today's shipped `start.go`.
+
+### [NIT:scope] Card 9 cites Spec.validate's behavior without listing its file
+**Location:** batch 04-driver-launch, card 9 **Issue:** The requirement's rationale paragraph names `Spec.validate`'s "rejects an output file that already exists" behavior (`internal/shuttleengine/spec.go`, verified) to justify the per-attempt filename suffix, but neither `internal/shuttleengine/spec.go` nor `spec_test.go` is listed in card 9's `Context:`. This reads as citation/rationale rather than an instruction to read or change that file (the composer itself is pure and self-contained), so it is likely exempt, but it is worth tightening since the criterion is strict about named functions from unlisted files. **Fix:** Either add `internal/shuttleengine/spec.go` to card 9's `Context:` or reword the sentence to avoid naming `Spec.validate` directly (e.g. "the run's own output-file contract already refuses a pre-existing path").
+
+## Verdict
+
+APPROVE
+Plan is internally consistent, source-grounded, and DAG/completeness-clean; only two low-impact wording nits found.
+MILL_REVIEW_END

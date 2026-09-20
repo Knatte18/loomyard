@@ -3,7 +3,7 @@
 ```yaml
 task: 'Seeded driver choice: ly-drive strand as the child''s driver'
 slug: seeded-driver-choice
-approved: false
+approved: true
 started: '20260919-174938'
 parent: main
 root: ""

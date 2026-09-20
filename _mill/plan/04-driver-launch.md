@@ -54,6 +54,7 @@ An ly-drive session takes the run lock only inside each `lyx shed step` and rele
   - `internal/shedrun/paths.go`
   - `internal/lyxdirs/dirs.go`
   - `internal/lyxcwd/lyxcwd.go`
+  - `internal/shuttleengine/spec.go`
 - **Edits:** none
 - **Creates:**
   - `internal/loomcli/driverreport.go`
@@ -223,7 +224,9 @@ An ly-drive session takes the run lock only inside each `lyx shed step` and rele
   That function has just written or found this run's seed, so re-reading the file it authored would be a second read of a value already in hand, and card 14's added return exists precisely to avoid it.
   This also keeps the Cwd Resolution Invariant satisfied for free: no path is resolved in this verb body at all, locally or otherwise.
   Per the seed contract an absent driver value already defaults to the go driver on read, so the branch is a two-value switch with the go driver as both the default and the zero-config answer.
-  Keep the existing run-lock probe and the existing strand read as the two inputs to the widened predicate, and compute the strand action from the same strand slice rather than reading reed twice.
+  Feed the widened predicate two inputs of different provenance, and do not let the wording blur them: the run-lock probe is the one already in this verb's step 5 and is reused unchanged, while the strand read is **new** — a single call through the `driverPaneProbe.Strands()` seam card 12 introduces, added by this card.
+  There is no strand read in today's `start.go` to reuse: the only pre-branch `reed.Status()` call in the bootstrap is the one inside `ensureStatusStrand`, which returns an error alone and never hands its strand slice back to the caller.
+  Call the seam once and feed that one slice to both consumers — the widened predicate and, in the llm arm, the corpse check — rather than reading reed twice.
   The go arm keeps today's body byte-for-byte: the detached spawn, the log file, the reaper goroutine, and step 6's handshake, all unchanged and still gated on the predicate.
   The llm arm, in order: resolve the driver settings through the loom engine's driver resolver using the config and registry the receiver already carries; when the strand action is dead, remove the corpse through the probe seam before anything else; compose the report path; create the report's parent directory unconditionally with a mkdir-all immediately before composing the spec; compose the prompt and the spec; start the run through the starter seam; log the spawn at info level through the logger, as the detached spawn already does, per the Live-Substrate Spawn Observability invariant; then run the pane probe and refuse the bootstrap when it reports not-ready.
   Create the report's parent directory here rather than leaning on step 4's existing mkdir: that call's argument is the bootstrap lock's parent, and whether the predecessor task's relocation moved the bootstrap lock is a premise this task would be inheriting unverified.
