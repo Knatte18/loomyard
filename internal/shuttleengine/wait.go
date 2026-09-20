@@ -66,6 +66,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -532,9 +533,63 @@ func (run *Run) identity() Result {
 	}
 }
 
+// evaluateGate runs run's gate exactly once per attempt, memoising the verdict on run.gateVerdict —
+// which is what makes "the gate runs exactly once per settling" true: this method returns the stored
+// memo unchanged when it is already non-nil, and Wait clears the memo to nil before each re-prompt so
+// the next attempt re-validates rather than reading the first attempt's stale verdict.
+//
+// Returns (nil, nil) when run.gate.Gate is nil (an ungated run) — the method's own way of saying
+// "there is nothing to evaluate", distinct from Result.Gate's own nil-means-no-gate contract.
+//
+// A non-nil error from the closure is returned verbatim and stores no memo, per the "a gate error is
+// never not passed" decision: a gate that could not run has found no defect, it is an infrastructure
+// fault, not a GateResult{Passed: false}.
+//
+// On a GateResult whose Passed is false, the method writes GateResult.Findings to
+// <run.runDir>/gateFindingsFileName, overwriting any previous attempt's file so the agent always
+// reads the current complaint (the "findings always ride a file" decision), and sets the returned
+// GateOutcome.FindingsPath to that path. A write failure is a returned error, not a failed gate —
+// findings the agent can never read cannot fix anything.
+//
+// Every evaluated verdict sets GateOutcome.Attempts from run.gateSent, per the "attempts counts
+// re-prompts actually sent" decision.
+func (run *Run) evaluateGate() (*GateOutcome, error) {
+	if run.gateVerdict != nil {
+		return run.gateVerdict, nil
+	}
+	if run.gate.Gate == nil {
+		return nil, nil
+	}
+
+	result, err := run.gate.Gate()
+	if err != nil {
+		return nil, err
+	}
+
+	outcome := &GateOutcome{Passed: result.Passed, Attempts: run.gateSent}
+	if !result.Passed {
+		findingsPath := filepath.Join(run.runDir, gateFindingsFileName)
+		if err := os.WriteFile(findingsPath, []byte(result.Findings), 0o644); err != nil {
+			return nil, fmt.Errorf("shuttle: gate: write findings: %w", err)
+		}
+		outcome.FindingsPath = findingsPath
+	}
+
+	run.gateVerdict = outcome
+	return outcome, nil
+}
+
 // finalize builds run's terminal Result, persists the classification into the run's RunState.Outcome,
 // and performs cleanup for OutcomeDone.
 // For fork mode, audits fork subagents and attaches the result.
+//
+// finalize is the gate's single verdict site: immediately on entry, and only when outcome ==
+// OutcomeDone, it calls run.evaluateGate() and stamps the returned pointer onto result.Gate — before
+// the RunState.Outcome write, the fork-audit block, and cleanup, so no Done escapes ungated and an
+// exhausted gate still takes the ordinary Done-path cleanup. One verdict site reached by all four of
+// Wait's finalize calls is what makes "no Done escapes ungated" true BY CONSTRUCTION rather than by
+// four correct edits — classifyStartupWindow and classifyDeadlineExpiry cannot host the gate
+// themselves, because they return an Outcome rather than a Result.
 //
 // The Outcome write happens for EVERY terminal outcome, before the fork-audit block: finalize returns
 // early with (result, err) when AuditForks fails, so a write placed after the audit would leave a run
@@ -558,6 +613,14 @@ func (run *Run) finalize(outcome Outcome, message string) (Result, error) {
 		StrandGUID:           run.state.StrandGUID,
 		LastAssistantMessage: message,
 		RunDir:               run.runDir,
+	}
+
+	if outcome == OutcomeDone {
+		gateOutcome, err := run.evaluateGate()
+		if err != nil {
+			return result, fmt.Errorf("shuttle: gate: %w", err)
+		}
+		result.Gate = gateOutcome
 	}
 
 	run.state.Outcome = string(outcome)
