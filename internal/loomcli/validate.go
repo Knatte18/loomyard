@@ -1,8 +1,9 @@
 // validate.go implements the `validate-discussion` and `validate-plan` loom verbs: standalone,
-// zero-argument callers of the identical package functions the Discussion-Validate and
-// Plan-Validate mechanical gates call, per the shared-implementation-is-the-whole-point Shared
-// Decision. Neither verb re-implements or re-derives any check; both map their package's result
-// onto the envelope-and-exit-contract Shared Decision.
+// zero-argument callers of the identical package functions Discussion-Write's and
+// Discussion-Burler's own gate, and Plan-Write's and Plan-Burler's own gate, call, per the
+// shared-implementation-is-the-whole-point Shared Decision. Neither verb re-implements or
+// re-derives any check; both map their package's result onto the envelope-and-exit-contract Shared
+// Decision.
 
 package loomcli
 
@@ -29,16 +30,17 @@ func renderFindings[T interface{ Error() string }](items []T) []string {
 }
 
 // validateDiscussionCmd builds the `validate-discussion` subcommand: the standalone form of the
-// Discussion-Validate mechanical gate, callable by the writer agent before handoff.
+// checks Discussion-Write's and Discussion-Burler's own gate runs, callable by the writer agent
+// before handoff.
 func (c *loomCLI) validateDiscussionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "validate-discussion",
-		Short: "run the Discussion-Validate gate's checks standalone against the current discussion files",
+		Short: "run the checks Discussion-Write's and Discussion-Burler's own gate runs standalone against the current discussion files",
 		Long: `validate-discussion runs discussionparser.Validate against the current
-worktree's decision record and support log -- the identical check the
-Discussion-Validate mechanical gate runs -- and reports the result as one
-JSON envelope. It takes no arguments and no flags; it always checks the
-worktree's own discussion files.
+worktree's decision record and support log -- the identical check
+Discussion-Write's and Discussion-Burler's own gate runs -- and reports the
+result as one JSON envelope. It takes no arguments and no flags; it always
+checks the worktree's own discussion files.
 
 Example:
   lyx loom validate-discussion`,
@@ -71,7 +73,7 @@ Example:
 }
 
 // planFindingsHaveBlocking reports whether findings carries at least one entry that is not
-// explicitly informational, mirroring internal/loomshed/planvalidate.go's own hasBlockingFinding:
+// explicitly informational, mirroring internal/loomshed/gates.go's own hasBlockingFinding:
 // severity, not finding count, decides the verdict on both sides of this parity pair.
 // It tests NOT-informational rather than equals-blocking for the reason that function's own doc
 // gives -- planglyph.Severity is an open string type, and an unrecognized or zero value must not
@@ -86,23 +88,26 @@ func planFindingsHaveBlocking(findings []planglyph.Finding) bool {
 	return false
 }
 
-// validatePlanCmd builds the `validate-plan` subcommand: the standalone form of the Plan-Validate/
-// Plan-Revalidate mechanical gate, callable by the writer agent before handoff.
+// validatePlanCmd builds the `validate-plan` subcommand: the standalone form of the checks
+// Plan-Write's and Plan-Burler's own gate runs, plus the plan-unapproved approval check no gate
+// runs at all, callable by the writer agent before handoff.
 func (c *loomCLI) validatePlanCmd() *cobra.Command {
 	var requireApproved bool
 
 	cmd := &cobra.Command{
 		Use:   "validate-plan",
-		Short: "run the Plan-Validate gate's checks standalone against the current plan",
+		Short: "run the checks Plan-Write's and Plan-Burler's own gate runs standalone against the current plan",
 		Long: `validate-plan parses the current worktree's plan and checks it in one of
 two modes. With no flags, it runs planglyph.ValidateFormat -- the same
-format-only check set the Plan-Validate mechanical gate runs before review,
-and the mode the plan writer calls before handoff. With --require-approved,
-it runs planglyph.Validate -- the same full check set, including the
-plan-unapproved approval gate, that the Plan-Revalidate mechanical gate runs
-after review settles. Either way it reports the result as one JSON
-envelope, carrying any informational findings under their own envelope key
-even on the success path. It takes no arguments.
+format-only check set Plan-Write's and Plan-Burler's own gate runs before
+handoff, and the mode the plan writer calls before handoff. With
+--require-approved, it runs planglyph.Validate -- the same format-only set
+plus the plan-unapproved approval check, which no gate runs at all: this
+flag is the one place an operator can still reach that check standalone,
+since its own guarantee otherwise rests on the review segment's approve
+seam failing loudly if it is ever wired nil. Either way it reports the
+result as one JSON envelope, carrying any informational findings under
+their own envelope key even on the success path. It takes no arguments.
 
 Example:
   lyx loom validate-plan
@@ -163,7 +168,7 @@ Example:
 		},
 	}
 
-	cmd.Flags().BoolVar(&requireApproved, "require-approved", false, "also run the plan-unapproved approval gate, matching the Plan-Revalidate row")
+	cmd.Flags().BoolVar(&requireApproved, "require-approved", false, "also run the plan-unapproved approval check, the one check no gate runs -- this flag is the sole way to reach it standalone")
 
 	return cmd
 }
