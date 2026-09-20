@@ -9,12 +9,13 @@ See Maintenance below for how the numbering works.
 
 This section holds what's committed to next.
 
+1. **producer gates: mechanical accept-gates on LLM-running producers** — a producer that runs an LLM declares a mechanical gate: a validator whose findings the producer injects back into the still-live session as a re-prompt, holding the handoff until the gate passes (bounded by an explicit attempt counter, then ordinary Stuck); the standalone Discussion-Validate, Plan-Validate, and Plan-Revalidate rows are removed in the same task. Lands before the batten end-to-end crucible campaign (wiki: `crucible-batten-end-to-end`).
+   See [designs/producer-gates.md](designs/producer-gates.md).
+
 ## Next Up
 
 What comes right after Planned clears — committed and ordered, unlike Someday below.
 Not yet started, and exact order can still shift as Planned work reveals what unblocks what, but the rough sequence below is the current best guess.
-
-1. **producer gates: mechanical accept-gates on LLM-running producers** — a producer that runs an LLM can declare a mechanical gate: a validator (Go, free) whose machine-readable findings the producer injects back into the still-live session as a re-prompt, holding the handoff until the gate passes. An explicit attempt counter (same idiom as `max_bounces`, recorded in the row's envelope/history) bounds the loop: exhausted means ordinary Stuck, never another attempt — so neither a stubborn session nor a validator bug can loop forever. The concept applies to LLM-running producers only — a pure-Go producer just codes the check inline, where it cannot be skipped; it is the LLM that makes "was the instruction followed" a question, so the gate and its injectable-findings contract exist exactly there. Four gate sites, two validators: Discussion-Write and Discussion-Burler's fix step share the discussion validator; Plan-Write and Plan-Burler's fix step share the plan validator. With every LLM mutation of an artifact gated at its source, the standalone Discussion-Validate, Plan-Validate, and Plan-Revalidate rows are removed from the recipe in the same task — no path remains where an invalid artifact leaves a row as Done, and the approval flag never needed a row (it is written by Plan-Bouncer's Go approve seam, which fails loudly on its own). Webster already embodies the pattern (in-process verify command per batch). Should land before the batten end-to-end crucible campaign (wiki: `crucible-batten-end-to-end`).
 
 ## Someday
 
