@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-loom-driver-config
+phase: approved-bootstrap-verb-capability
 slug: seeded-driver-choice
 branch: seeded-driver-choice
 plan: _mill/plan
@@ -34,6 +34,7 @@ planned  '2026-09-20T09:56:23Z'
 implementing  '2026-09-20T10:01:30Z'
 approved-shuttle-seam  '2026-09-20T10:05:11Z'
 approved-loom-driver-config  '2026-09-20T10:09:57Z'
+approved-bootstrap-verb-capability  '2026-09-20T10:15:12Z'
 ```
 
 ## Batches
@@ -53,9 +54,10 @@ batches:
     commit_sha: 30809e398aea0c49fec4801e03eaba67b1f07e59
     verify_baseline_failures: []
   - name: bootstrap-verb-capability
-    state: running
+    state: approved
     implementer_session: 0330ca15-abfb-4d83-8d40-f1d19cd0eb63
     start_sha: 515c39b7cd88f9f9f5a89d0345ade47fb1b6ee0b
+    commit_sha: e1963d2b9afd53eb50db9067a6093a811eae6abe
     verify_baseline_failures: []
   - name: driver-launch
     state: pending
