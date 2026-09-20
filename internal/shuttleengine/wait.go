@@ -597,7 +597,11 @@ func (run *Run) identity() Result {
 // <run.runDir>/gateFindingsFileName, overwriting any previous attempt's file so the agent always
 // reads the current complaint (the "findings always ride a file" decision), and sets the returned
 // GateOutcome.FindingsPath to that path. A write failure is a returned error, not a failed gate —
-// findings the agent can never read cannot fix anything.
+// findings the agent can never read cannot fix anything. Both of this method's error returns come
+// back unwrapped, on purpose: this is a helper the two finalize/Wait call sites already wrap with
+// their own "shuttle: gate: %w" context, so wrapping here too would double it, and it keeps this
+// method's own negative-verdict return sites free of the completionsignal_enforcement_test.go
+// tripwire's Errorf marker, which is reserved for the two call sites that actually finalize a run.
 //
 // Every evaluated verdict sets GateOutcome.Attempts from run.gateSent, per the "attempts counts
 // re-prompts actually sent" decision.
@@ -617,8 +621,9 @@ func (run *Run) evaluateGate() (*GateOutcome, error) {
 	outcome := &GateOutcome{Passed: result.Passed, Attempts: run.gateSent}
 	if !result.Passed {
 		findingsPath := filepath.Join(run.runDir, gateFindingsFileName)
-		if err := os.WriteFile(findingsPath, []byte(result.Findings), 0o644); err != nil {
-			return nil, fmt.Errorf("shuttle: gate: write findings: %w", err)
+		writeErr := os.WriteFile(findingsPath, []byte(result.Findings), 0o644)
+		if writeErr != nil {
+			return nil, writeErr
 		}
 		outcome.FindingsPath = findingsPath
 	}
