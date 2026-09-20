@@ -9,9 +9,6 @@ See Maintenance below for how the numbering works.
 
 This section holds what's committed to next.
 
-1. **seeded driver choice: ly-drive strand as the child's driver** — the seed's `driver` field selects who steps a run: the detached Go runner, or a Claude strand running ly-drive in the worktree's own reed session, booted by the same Spawn seam.
-   Depends on the seed contract from the item above.
-   See [designs/seeded-shed.md](designs/seeded-shed.md).
 ## Next Up
 
 What comes right after Planned clears — committed and ordered, unlike Someday below.
@@ -97,6 +94,9 @@ No build order is implied between these items.
 ## Done
 
 Cleared 2026-08-25 to keep this file lean — shipped items' history lives in `git log` and each module's own package documentation, not here.
+
+1. **seeded driver choice: ly-drive strand as the child's driver** — the seed's `driver` field selects who steps a run: the detached Go runner, or a Claude strand running ly-drive in the worktree's own reed session, booted by that run's own recipe bootstrap verb. Loom's `start` is the only bootstrap verb that reads it today, per the new Driver Choice Single-Site Invariant; a recipe with no bootstrap verb of its own cannot be seeded for the `llm` driver until it grows one. No default flips — every run still defaults to `go`.
+   See [designs/seeded-shed.md](designs/seeded-shed.md#the-driver-choice-as-built).
 
 1. **seeded Shed core: run addressing, seed contract, batten** — every Shed run now has a run directory addressed by run-id (durable `_lyx/shed/<run-id>/` holding `seed.json`+`status.json`, ephemeral `.lyx/shed/<run-id>/` holding its locks), defaulting to `self`; `internal/shedrun` owns the run-id vocabulary and the seed contract end to end. A new `Seed-Child` row and the Board's `type` field carry the recipe choice into a task worktree's own inner run. The lifecycle recipe is renamed **batten** (`internal/battenshed`+`internal/battenrecipe`+`internal/battencli`), its `Loom-Run` row becomes the product-neutral, step-friendly `Run-Shed`, and `lyx shed seed`/`lyx batten run|step|status|pause` replace the old `--recipe` flag and `lyx lifecycle` verbs.
    See [designs/seeded-shed.md](designs/seeded-shed.md).
