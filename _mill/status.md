@@ -44,7 +44,9 @@ batches:
     commit_sha: 94735db5daaa00daa419ce2ec8af0be1a9edd8e5
     verify_baseline_failures: []
   - name: seam-and-producers
-    state: pending
+    state: running
+    implementer_session: 3e1f9530-795a-4873-9067-d51b716c6e00
+    start_sha: 804c9439d9cb1e211ff86d72adab9763702576ae
     verify_baseline_failures: []
   - name: loomshed-gates
     state: pending
