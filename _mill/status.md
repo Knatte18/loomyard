@@ -6,6 +6,7 @@ slug: producer-gates
 branch: producer-gates
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: 'Producer gates: mechanical gates before session release'
 task_description: |
   Producer gates: mechanical gates before session release
@@ -36,15 +37,23 @@ implementing  '2026-09-20T14:57:55Z'
 ```yaml
 batches:
   - name: shuttle-gate-loop
-    state: pending
+    state: running
+    implementer_session: 05443526-89b7-4a35-8a93-96bb76687f95
+    start_sha: d469a0502560548b157273f2fc75c467cdd273ba
+    verify_baseline_failures: []
   - name: seam-and-producers
     state: pending
+    verify_baseline_failures: []
   - name: loomshed-gates
     state: pending
+    verify_baseline_failures: []
   - name: shedrecipe-wiring
     state: pending
+    verify_baseline_failures: []
   - name: row-removal
     state: pending
+    verify_baseline_failures: []
   - name: parity-docs-sweep
     state: pending
+    verify_baseline_failures: []
 ```
