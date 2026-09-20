@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/burlerengine"
-	"github.com/Knatte18/loomyard/internal/lifecycleshed"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -88,7 +88,7 @@ type (
 // closure returning a shuttleengine.Spec over one absolute output path under the same temp root,
 // fills CommitPlan with a closure returning nil, leaves Landing zero, and leaves Now nil.
 //
-// It also fills the six lifecycle fields: a non-empty Slug, CreateWorktree returning nil, InnerRun
+// It also fills the six batten fields: a non-empty Slug, CreateWorktree returning nil, InnerRun
 // and Teardown whose own closures return nil or zero values, and a PrimeLock whose Path sits under
 // the same temp root and whose Acquire seam returns a no-op release with ok == true.
 //
@@ -149,7 +149,7 @@ func newTestEnv(t *testing.T) Env {
 		CreateWorktree: func(context.Context) error {
 			return nil
 		},
-		InnerRun: lifecycleshed.InnerRunDeps{
+		InnerRun: battenshed.InnerRunDeps{
 			Spawn: func(context.Context) error { return nil },
 			ResolveStatus: func() (string, string, error) {
 				return filepath.Join(dir, "loomrun-status.json"), filepath.Join(dir, "loomrun-status.json.lock"), nil
@@ -158,11 +158,11 @@ func newTestEnv(t *testing.T) Env {
 				return shedengine.Status{}, false, nil
 			},
 		},
-		Teardown: lifecycleshed.TeardownDeps{
+		Teardown: battenshed.TeardownDeps{
 			Shutdown: func(context.Context) (string, error) { return "", nil },
 			Remove:   func(context.Context) error { return nil },
 		},
-		PrimeLock: lifecycleshed.PrimeLock{
+		PrimeLock: battenshed.PrimeLock{
 			Path: filepath.Join(dir, "prime.lock"),
 			Acquire: func() (func() error, bool, error) {
 				return func() error { return nil }, true, nil

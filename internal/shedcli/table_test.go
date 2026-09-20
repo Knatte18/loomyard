@@ -13,6 +13,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 // allGenericVerbs names the four generic subcommands shedverbs.Verbs returns, in the order its own
@@ -22,11 +24,11 @@ import (
 // four-name contract is the simpler, equally authoritative source.
 var allGenericVerbs = []string{"run", "step", "status", "pause"}
 
-// TestRecipes_KeySetIsExactlyLoomAndLifecycle asserts recipes' key set is exactly {"loom",
-// "lifecycle"} -- no more, no fewer.
-func TestRecipes_KeySetIsExactlyLoomAndLifecycle(t *testing.T) {
+// TestRecipes_KeySetIsExactlyLoomAndBatten asserts recipes' key set is exactly {"loom",
+// "batten"} -- no more, no fewer.
+func TestRecipes_KeySetIsExactlyLoomAndBatten(t *testing.T) {
 	got := names()
-	want := []string{"lifecycle", "loom"}
+	want := []string{"batten", "loom"}
 	if len(got) != len(want) {
 		t.Fatalf("names() = %v; want %v", got, want)
 	}
@@ -38,7 +40,8 @@ func TestRecipes_KeySetIsExactlyLoomAndLifecycle(t *testing.T) {
 }
 
 // TestRecipes_VerbsIsSubsetOfGenericVerbs asserts every recipe's Verbs set is a subset of the four
-// generic verbs, and that loom carries all four while lifecycle carries three.
+// generic verbs, and that both loom and batten carry all four now that batch 7 gave batten a step
+// verb (batch 6's own PreStep hook and kind mapping made it armable).
 func TestRecipes_VerbsIsSubsetOfGenericVerbs(t *testing.T) {
 	generic := map[string]bool{}
 	for _, v := range allGenericVerbs {
@@ -61,16 +64,29 @@ func TestRecipes_VerbsIsSubsetOfGenericVerbs(t *testing.T) {
 		t.Errorf("loom.Verbs = %v; want all four generic verbs", loom.Verbs)
 	}
 
-	lifecycle, err := lookup("lifecycle")
+	batten, err := lookup("batten")
 	if err != nil {
-		t.Fatalf("lookup(lifecycle): %v", err)
+		t.Fatalf("lookup(batten): %v", err)
 	}
-	if len(lifecycle.Verbs) != 3 {
-		t.Errorf("lifecycle.Verbs = %v; want exactly three verbs", lifecycle.Verbs)
+	if len(batten.Verbs) != 4 {
+		t.Errorf("batten.Verbs = %v; want all four generic verbs", batten.Verbs)
 	}
-	for _, v := range lifecycle.Verbs {
-		if v == "step" {
-			t.Errorf("lifecycle.Verbs = %v; must not include \"step\", which lifecycle has no analogue for", lifecycle.Verbs)
+}
+
+// TestRecipes_KeySetMatchesShedrunVocabulary is the sync meta-test the overview's
+// shedrun-owns-the-recipe-name-vocabulary Shared Decision requires: this table's key set must equal
+// shedrun.RecipeNames() exactly, so the vocabulary internal/shedrun declares and the arming table
+// internal/shedcli declares cannot silently drift apart, mirroring the refKind<->allRefKinds
+// meta-test pattern already used elsewhere in this repo.
+func TestRecipes_KeySetMatchesShedrunVocabulary(t *testing.T) {
+	got := names()
+	want := shedrun.RecipeNames()
+	if len(got) != len(want) {
+		t.Fatalf("names() = %v; want shedrun.RecipeNames() = %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("names()[%d] = %q; want shedrun.RecipeNames()[%d] = %q", i, got[i], i, want[i])
 		}
 	}
 }

@@ -23,8 +23,9 @@ import (
 const (
 	// KindBusy means the run lock is already held by a live driver or another `step` invocation.
 	KindBusy = "busy"
-	// KindUnseeded means the status file could not be seeded -- the bootstrap's seed sub-step
-	// failed for a reason other than the file already existing.
+	// KindUnseeded means the status file specifically -- not seed.json, which "lyx shed seed"
+	// writes and this vocabulary never reports on -- could not be seeded: the bootstrap's status
+	// sub-step failed for a reason other than the file already existing.
 	KindUnseeded = "unseeded"
 	// KindOwnership means the seeded status file belongs to a different task's slug.
 	KindOwnership = "ownership"

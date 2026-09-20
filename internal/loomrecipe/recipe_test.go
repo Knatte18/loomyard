@@ -181,7 +181,7 @@ func TestRecipe_SeedAndResumeRowNamesExist(t *testing.T) {
 
 // TestRecipeEngines_ReportsExactlyLoomsOwnEngineSet asserts RecipeEngines() reports exactly loom's
 // own recipe's engine set, sorted and de-duplicated -- derived from wantProducerTable's own engine
-// column rather than a second hand-written literal, for the same reason its lifecyclerecipe twin
+// column rather than a second hand-written literal, for the same reason its battenrecipe twin
 // gets this test: a silently empty return would disable the cross-consumer coverage guard rather
 // than fail it.
 func TestRecipeEngines_ReportsExactlyLoomsOwnEngineSet(t *testing.T) {

@@ -403,3 +403,34 @@ func TestGateParity_PlanValidate(t *testing.T) {
 		}
 	}
 }
+
+// TestGenericVerbs_AcceptOptionalRunIDPositional asserts each of loom's four generic verbs --
+// run, step, status, pause -- independently carries cobra.MaximumNArgs(1): zero and one
+// positional are both accepted, and two are refused. Command() builds the whole cobra tree with no
+// I/O of its own, and (*cobra.Command).Find is a pure tree traversal, so this test spawns no
+// process and stays Tier 1.
+func TestGenericVerbs_AcceptOptionalRunIDPositional(t *testing.T) {
+	root := Command()
+
+	for _, name := range []string{"run", "step", "status", "pause"} {
+		t.Run(name, func(t *testing.T) {
+			cmd, _, err := root.Find([]string{name})
+			if err != nil {
+				t.Fatalf("root.Find(%q) = %v; want nil", name, err)
+			}
+			if cmd.Args == nil {
+				t.Fatalf("%s.Args = nil; want cobra.MaximumNArgs(1)", name)
+			}
+
+			if err := cmd.Args(cmd, nil); err != nil {
+				t.Errorf("%s.Args(cmd, nil) = %v; want nil (zero positionals accepted)", name, err)
+			}
+			if err := cmd.Args(cmd, []string{"a-run-id"}); err != nil {
+				t.Errorf("%s.Args(cmd, [%q]) = %v; want nil (one positional accepted)", name, "a-run-id", err)
+			}
+			if err := cmd.Args(cmd, []string{"a-run-id", "extra"}); err == nil {
+				t.Errorf("%s.Args(cmd, [%q, %q]) = nil; want a refusal (two positionals)", name, "a-run-id", "extra")
+			}
+		})
+	}
+}

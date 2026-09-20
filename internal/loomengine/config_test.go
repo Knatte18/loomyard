@@ -16,6 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 // seedLoomConfig creates <baseDir>/_lyx/config/loom.yaml with the given contents.
@@ -267,34 +268,14 @@ func TestLoadConfig_NotInitialized(t *testing.T) {
 	}
 }
 
-// TestLoomStatusRel verifies LoomStatusRel is exactly the durable directory name joined with the
-// loom subdirectory and the status filename -- the anchor-relative form a weft commit pathspec
-// caller builds from.
-func TestLoomStatusRel(t *testing.T) {
-	want := filepath.Join(lyxdirs.LyxDirName, "loom", "status.json")
-	if got := LoomStatusRel(); got != want {
-		t.Errorf("LoomStatusRel() = %q; want %q", got, want)
-	}
-}
-
-// TestLoomStatusFile_EqualsAnchorPathJoinedWithLoomStatusRel is the regression guard that card
-// 11's refactor -- rewriting LoomStatusFile to join through LoomStatusRel -- left the returned
-// value byte-identical to a plain AnchorPath()/LoomStatusRel() join.
-func TestLoomStatusFile_EqualsAnchorPathJoinedWithLoomStatusRel(t *testing.T) {
-	l := &lyxcwd.Location{
-		HubPath:      filepath.Join("home", "user", "repo-LYXHUB"),
-		WorktreeName: "repo",
-		AnchorRel:    filepath.Join("sub", "dir"),
-	}
-
-	want := filepath.Join(l.AnchorPath(), LoomStatusRel())
-	if got := LoomStatusFile(l); got != want {
-		t.Errorf("LoomStatusFile() = %q; want %q", got, want)
-	}
-}
-
 // TestLoomDriverLogAndBootstrapLock covers LoomDriverLog and LoomBootstrapLock at both an
 // unanchored and a subpath-anchored *lyxcwd.Location, hand-built rather than spawned.
+//
+// It also proves the two survive card 12's status/run-lock relocation onto shedrun.RunDir:
+// LoomBootstrapLock must never collide with shedrun's own StatusLock or RunLock for the same
+// location and shedrun.SelfRunID, exactly as it never collided with loomengine's own
+// now-deleted LoomStatusLock/LoomRunLock before the relocation -- this is what makes the
+// overview's loomDirName-survives-the-status-relocation decision checkable rather than asserted.
 func TestLoomDriverLogAndBootstrapLock(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -324,21 +305,23 @@ func TestLoomDriverLogAndBootstrapLock(t *testing.T) {
 
 			// Three distinct lock files is a correctness property, not a coincidence:
 			// LoomBootstrapLock must never collide with either the per-persist status
-			// lock or the whole-run lock.
-			if got := LoomBootstrapLock(l); got == LoomStatusLock(l) {
-				t.Errorf("LoomBootstrapLock() = %q; must differ from LoomStatusLock() = %q", got, LoomStatusLock(l))
+			// lock or the whole-run lock, both now on shedrun's run directory.
+			if got := LoomBootstrapLock(l); got == shedrun.StatusLock(l, shedrun.SelfRunID) {
+				t.Errorf("LoomBootstrapLock() = %q; must differ from shedrun.StatusLock() = %q", got, shedrun.StatusLock(l, shedrun.SelfRunID))
 			}
-			if got := LoomBootstrapLock(l); got == LoomRunLock(l) {
-				t.Errorf("LoomBootstrapLock() = %q; must differ from LoomRunLock() = %q", got, LoomRunLock(l))
+			if got := LoomBootstrapLock(l); got == shedrun.RunLock(l, shedrun.SelfRunID) {
+				t.Errorf("LoomBootstrapLock() = %q; must differ from shedrun.RunLock() = %q", got, shedrun.RunLock(l, shedrun.SelfRunID))
 			}
 		})
 	}
 }
 
-// TestLoomScratchDir_MirrorsRunLockDriverLogAndBootstrapLockParent verifies LoomScratchDir names
-// exactly the directory LoomRunLock, LoomDriverLog, and LoomBootstrapLock already share, so the
-// four never drift apart.
-func TestLoomScratchDir_MirrorsRunLockDriverLogAndBootstrapLockParent(t *testing.T) {
+// TestLoomScratchDir_MirrorsDriverLogAndBootstrapLockParent verifies LoomScratchDir names exactly
+// the directory LoomDriverLog and LoomBootstrapLock already share, so the three never drift apart.
+// LoomRunLock dropped out of this pin when card 12 relocated it onto shedrun.ScratchDir, which is a
+// different directory from LoomScratchDir -- loom's own scratch tree under .lyx/loom/, not the run
+// directory's own .lyx/shed/<runID>/ mirror.
+func TestLoomScratchDir_MirrorsDriverLogAndBootstrapLockParent(t *testing.T) {
 	l := &lyxcwd.Location{
 		HubPath:      filepath.Join("home", "user", "repo-LYXHUB"),
 		WorktreeName: "repo",
@@ -346,14 +329,27 @@ func TestLoomScratchDir_MirrorsRunLockDriverLogAndBootstrapLockParent(t *testing
 
 	got := LoomScratchDir(l)
 
-	if want := filepath.Dir(LoomRunLock(l)); got != want {
-		t.Errorf("LoomScratchDir() = %q; want %q (filepath.Dir(LoomRunLock()))", got, want)
-	}
 	if want := filepath.Dir(LoomDriverLog(l)); got != want {
 		t.Errorf("LoomScratchDir() = %q; want %q (filepath.Dir(LoomDriverLog()))", got, want)
 	}
 	if want := filepath.Dir(LoomBootstrapLock(l)); got != want {
 		t.Errorf("LoomScratchDir() = %q; want %q (filepath.Dir(LoomBootstrapLock()))", got, want)
+	}
+}
+
+// TestLoomScratchDir_DiffersFromShedrunScratchDir proves LoomScratchDir and
+// shedrun.ScratchDir(l, shedrun.SelfRunID) are distinct directories for the same location, per the
+// overview's loomDirName-survives-the-status-relocation decision: the "loom" segment still backs a
+// real, distinct ephemeral tree of its own, it is simply no longer where the status file's locks
+// live.
+func TestLoomScratchDir_DiffersFromShedrunScratchDir(t *testing.T) {
+	l := &lyxcwd.Location{
+		HubPath:      filepath.Join("home", "user", "repo-LYXHUB"),
+		WorktreeName: "repo",
+	}
+
+	if got := LoomScratchDir(l); got == shedrun.ScratchDir(l, shedrun.SelfRunID) {
+		t.Errorf("LoomScratchDir() = %q; must differ from shedrun.ScratchDir() = %q", got, shedrun.ScratchDir(l, shedrun.SelfRunID))
 	}
 }
 

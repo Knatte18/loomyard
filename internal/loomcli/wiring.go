@@ -23,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -42,10 +43,11 @@ type commitStatusDeps struct {
 	Push func() error
 }
 
-// loomCommitStatusDeps builds a commitStatusDeps over location, filling each field from fabric:
-// MergeActive from fabricengine.MergeStateActive, Commit from fabricengine.CommitAnchoredPaths
-// scoped to loomengine.LoomStatusRel(), and Push from fabricengine.PushAnchored.
-func loomCommitStatusDeps(location *lyxcwd.Location) commitStatusDeps {
+// loomCommitStatusDeps builds a commitStatusDeps over location and runID, filling each field from
+// fabric: MergeActive from fabricengine.MergeStateActive, Commit from
+// fabricengine.CommitAnchoredPaths scoped to shedrun.StatusRel(runID), and Push from
+// fabricengine.PushAnchored.
+func loomCommitStatusDeps(location *lyxcwd.Location, runID string) commitStatusDeps {
 	return commitStatusDeps{
 		MergeActive: func() (bool, error) {
 			return fabricengine.MergeStateActive(location)
@@ -54,7 +56,7 @@ func loomCommitStatusDeps(location *lyxcwd.Location) commitStatusDeps {
 		// landingdeps.go's own CommitStatus closure does -- which is what makes a second call over
 		// an already-clean tracked path a no-op rather than a failure.
 		Commit: func(msg string) error {
-			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, []string{loomengine.LoomStatusRel()}, msg, fabricengine.EnvSyncOptions())
+			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, []string{shedrun.StatusRel(runID)}, msg, fabricengine.EnvSyncOptions())
 			return err
 		},
 		Push: func() error {
@@ -187,10 +189,10 @@ func (c *loomCLI) wireLightweight(location *lyxcwd.Location, cwd string) {
 	// engine, and can fail only if loomengine's own path accessors do" stays true with this fill in
 	// place.
 	c.shedPaths = shedbuild.ShedPaths{
-		StatusPath:     loomengine.LoomStatusFile(location),
-		LockPath:       loomengine.LoomRunLock(location),
-		StatusLockPath: loomengine.LoomStatusLock(location),
-		CommitStatus:   newCommitStatusSeam(loomCommitStatusDeps(location)),
+		StatusPath:     shedrun.StatusFile(location, c.runID),
+		LockPath:       shedrun.RunLock(location, c.runID),
+		StatusLockPath: shedrun.StatusLock(location, c.runID),
+		CommitStatus:   newCommitStatusSeam(loomCommitStatusDeps(location, c.runID)),
 	}
 	// c.env is otherwise left at its zero value deliberately: status/pause read nothing from it, and
 	// filling only the four fields validate-discussion/validate-plan actually read (rather than the
@@ -302,8 +304,8 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		},
 	}
 
-	statusPath := loomengine.LoomStatusFile(location)
-	statusLockPath := loomengine.LoomStatusLock(location)
+	statusPath := shedrun.StatusFile(location, c.runID)
+	statusLockPath := shedrun.StatusLock(location, c.runID)
 
 	c.env = shedrecipe.Env{
 		Cwd:                cwd,
@@ -413,14 +415,14 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	// second loomengine accessor call, so the two copies cannot drift here.
 	c.shedPaths = shedbuild.ShedPaths{
 		StatusPath:     statusPath,
-		LockPath:       loomengine.LoomRunLock(location),
+		LockPath:       shedrun.RunLock(location, c.runID),
 		StatusLockPath: statusLockPath,
 		// MaxBounces is left zero so shedengine.Shed's own default applies. "Default" here means
 		// the inherited per-producer default every ProducerDef.MaxBounces of 0 falls back to
 		// (which itself falls back to shedengine's internal default of ten), not a run-wide
 		// total -- the budget itself is per-producer and episode-scoped, counted from the
 		// persisted history rather than held in memory.
-		CommitStatus: newCommitStatusSeam(loomCommitStatusDeps(location)),
+		CommitStatus: newCommitStatusSeam(loomCommitStatusDeps(location, c.runID)),
 	}
 
 	c.location = location

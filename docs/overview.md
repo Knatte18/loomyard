@@ -352,8 +352,9 @@ User-facing modules each get one `lyx <module>` namespace:
   The Shed recipe group's engine registry (piece 1 of that group) is ✅ **implemented** too, as `internal/shedrecipe`; it registers seventeen engine names.
   The recipe file format and the loader/builder shipped too, as `internal/shedbuild`, and loom's own conversion to a recipe file has now shipped as well: `contracts/recipes/loom-recipe.yaml` plus `internal/loomrecipe`, which assembles it into the `*shedengine.Shed` `internal/loomcli` runs.
   The generic verb set is ✅ **implemented** too, as `internal/shedverbs`: the `run`/`step`/`status`/`pause` cobra bodies every arming module builds its own subtree from, owning no path of its own and deriving nothing.
-  The named-recipe `lyx shed` subtree is ✅ **implemented** as `internal/shedcli`, arming either `loom` or `lifecycle` behind one `--recipe` flag through the same generic bodies each module's own subtree already uses.
-  See the `internal/shedengine`, `internal/shedadapters`, `internal/shedcheck`, `internal/shedrecipe`, `internal/shedbuild`, `internal/shedverbs`, `internal/shedcli`, and `internal/loomrecipe` package documentation and [manifest/designs/shed.md](../manifest/designs/shed.md).
+  The named-recipe `lyx shed` subtree is ✅ **implemented** as `internal/shedcli`, arming either `loom` or `batten` by run-id rather than by an explicit recipe name: each verb (`lyx shed run|step|status|pause [<run-id>]`, defaulting to `self`) reads the addressed run's own `seed.json` and looks its `recipe` field up in the table, and `lyx shed seed <run-id> --recipe <name> [--driver <name>] [--param k=v]` writes that first seed.
+  `internal/shedrun` is the sole declarer of the `shed` run-directory path segment (`_lyx/shed/<run-id>/` durable, `.lyx/shed/<run-id>/` ephemeral), the run-id vocabulary (including the default literal `self`), and the `seed.json` contract — the closed `recipe`/`driver` vocabularies and the sole `ReadSeed`/`WriteSeed`/`List` reader-writer, consumed by `loomcli`, `battencli`, and `shedcli` alike. See the [Shed Run-Directory Invariant](../CONSTRAINTS.md#shed-run-directory-invariant).
+  See the `internal/shedengine`, `internal/shedadapters`, `internal/shedcheck`, `internal/shedrecipe`, `internal/shedbuild`, `internal/shedverbs`, `internal/shedcli`, `internal/shedrun`, and `internal/loomrecipe` package documentation and [manifest/designs/shed.md](../manifest/designs/shed.md).
 - **burler** — one review+fix round: A-review → B-fix, one agent, no self-grading, over the shuttle file contract (`internal/burlerengine` + `internal/burlercli`).
   Profile-driven: `{overlay, source}` fix-scope, tool-use.
   Cluster review fans job A out into N fork-subagent reviewers by naming a fan (`cluster-fan`) from the seed-only `burler.yaml` lens/fan library — never on by default.
@@ -364,9 +365,10 @@ User-facing modules each get one `lyx <module>` namespace:
   Behavior-based reviewer that *runs* a live-substrate module (needs a sandbox repo) to harden it before merge;
   on-demand, post-loom, **off the spine**, shares only the `burler` round discipline.
   See [manifest/designs/hardener.md](../manifest/designs/hardener.md).
-- **lifecycle** — drives one task worktree's whole lifecycle — create, run the loom session to a terminal state, and tear down — as a single Shed run from the hub's prime worktree (`internal/lifecycleshed` + `internal/lifecyclerecipe` + `internal/lifecyclecli`; `lyx lifecycle run|status|pause`).
+- **batten** — drives one task worktree's whole lifecycle — create, seed the child's own inner run from the Board task's own `type`, run it to a terminal state, and tear down — as a single Shed run from the hub's prime worktree (`internal/battenshed` + `internal/battenrecipe` + `internal/battencli`; `lyx batten run|step|status|pause <run-id>`).
   Teardown is one row sequencing session shutdown before worktree removal, and never forces.
-  ✅ Implemented. See the `internal/lifecycleshed` and `internal/lifecyclerecipe` package documentation.
+  `step` drives exactly one producer forward from the run's persisted current producer, seeding a fresh run first when none is persisted yet — the same single-producer primitive `lyx loom step` is.
+  ✅ Implemented. See the `internal/battenshed` and `internal/battenrecipe` package documentation.
 
 The cross-OS spawn primitive **proc**, and the generic outer phase-FSM **shed**, are the two remaining internal (non-CLI) layers — proc the base of the stack, shed the generic engine `loom` configures rather than a stack layer of its own;
 see the [Execution stack](#execution-stack-orchestration-layers) section below for how proc / reed / shuttle fit together. (Earlier drafts split reed into separate `shed`/`glance` modules;
@@ -398,8 +400,11 @@ loom              phase machine: drive each phase through a Bouncer gate       [
                                                                                  burler]
 ```
 
-The lifecycle Shed nests loom's: it is its own three-row recipe whose middle row drives a task's loom run as a child process and polls that run's own persisted status for the verdict, so there are two status files by design — the task's, committed on the task branch, and the lifecycle's, per-machine under prime's own ephemeral tree — each resuming independently.
-See the [Lifecycle Bookend Invariant](../CONSTRAINTS.md#lifecycle-bookend-invariant).
+The batten Shed nests loom's: it is its own four-row recipe whose `Run-Shed` row seeds and drives a task's loom run as a child process and polls that run's own persisted status for the verdict, so there are two status files by design — the task's, committed on the task branch, and batten's own, durable under prime's own `_lyx/shed/<slug>/` — each resuming independently.
+See the [Batten Bookend Invariant](../CONSTRAINTS.md#batten-bookend-invariant).
+
+**Landing preconditions.** This task's relocation of run state requires no `lifecycle` or `loom` run in flight at landing: no migration reads or moves the old `.lyx/lifecycle/<slug>/`/`_lyx/loom/status.json` layouts, so a run left in flight under either old layout resumes nowhere afterward.
+It also requires deleting any already-deployed copy of `contracts/specs/loom-status-spec.md` by hand: `internal/stencilstore` never overwrites a hash-mismatched file, with no force-sync carve-out for specs, so a deployed copy predating this task's path rename never refreshes on its own — delete it, and the next run re-seeds it fresh.
 
 The whole stack runs **headless** (auto mode): strands exist (the interactive-session requirement), agents run, output files are read, nobody need watch.
 

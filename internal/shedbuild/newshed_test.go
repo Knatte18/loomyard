@@ -88,7 +88,7 @@ producers:
 // errors, and that NewShed's returned error is identical to Parse's own error for the same bytes
 // -- the single-prefix rule card 1 states: NewShed must add no prefix of its own, so a later
 // prefix addition here would double-wrap the error and silently reword both recipe packages'
-// shipped envelopes (loomrecipe.New and lifecyclerecipe.New each add exactly one prefix of their
+// shipped envelopes (loomrecipe.New and battenrecipe.New each add exactly one prefix of their
 // own on top of NewShed's return value).
 func TestNewShed_EmptyProducersErrorsWithoutDoublePrefix(t *testing.T) {
 	const recipeYAML = `

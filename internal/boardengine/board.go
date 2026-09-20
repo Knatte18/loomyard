@@ -466,6 +466,9 @@ func taskToUpsertFields(t Task) map[string]any {
 	if t.Status != nil {
 		fields["status"] = *t.Status
 	}
+	if t.Type != "" {
+		fields["type"] = t.Type
+	}
 	if t.ShortName != "" {
 		fields["short_name"] = t.ShortName
 	}

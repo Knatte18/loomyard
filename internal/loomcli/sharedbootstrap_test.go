@@ -1,18 +1,28 @@
 // sharedbootstrap_test.go covers the three helpers sharedbootstrap.go extracts, driven against a
 // hand-populated *loomCLI receiver -- bypassing wire entirely, the idiom cli_test.go already uses for
-// the drive/pause refusal paths. Per the plan's new-tests-stay-untagged-and-pure Shared Decision, no
-// test here spawns a real hub or brings up a real reed session; ensureStatusStrand's own
-// resolveStatusStrandAction branches are covered directly through that pure function in
-// bootstrap_test.go rather than re-covered here through a real reed engine.
+// the drive/pause refusal paths. No test here spawns a real hub or brings up a real reed session;
+// ensureStatusStrand's own resolveStatusStrandAction branches are covered directly through that pure
+// function in bootstrap_test.go rather than re-covered here through a real reed engine.
+//
+// seedAndCommitBootstrap's own step 1 (fabricengine.ReadOrigin) always needs a real git-backed weft
+// sibling to succeed -- even on the record-already-found path -- so no test in this file drives the
+// whole function past bootstrapStageOrigin; TestSeedAndCommitBootstrap_SecondCallDoesNotDivergeOnErrSeedExists
+// below documents that wall directly. Card 13's own seed-write coverage (the recipe/driver/param
+// shape, WriteSeed's idempotency, and the seed's presence in the commit pathspec) is instead pinned
+// through loomSeedFor and bootstrapCommitPaths, the two pure helpers factored out of
+// seedAndCommitBootstrap for exactly this reason.
 
 package loomcli
 
 import (
 	"path/filepath"
+	"reflect"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 // TestBootstrapStage_ConstantsAreDistinctAndZeroValued asserts the four stage constants are
@@ -72,6 +82,71 @@ func TestSeedAndCommitBootstrap_SecondCallDoesNotDivergeOnErrSeedExists(t *testi
 	}
 	if err2 != nil && err1 != nil && err2.Error() != err1.Error() {
 		t.Errorf("seedAndCommitBootstrap's second call surfaced a different error than the first: first = %v, second = %v", err1, err2)
+	}
+}
+
+// TestLoomSeedFor_RecipeAndParentParam asserts loomSeedFor's returned shedrun.Seed carries
+// RecipeLoom, DriverGo, and a single "parent" param matching the given parent -- the shape
+// seedAndCommitBootstrap's step 1b writes with shedrun.WriteSeed.
+func TestLoomSeedFor_RecipeAndParentParam(t *testing.T) {
+	seed := loomSeedFor("main")
+
+	if seed.Recipe != shedrun.RecipeLoom {
+		t.Errorf("loomSeedFor(%q).Recipe = %q; want %q", "main", seed.Recipe, shedrun.RecipeLoom)
+	}
+	if seed.Driver != shedrun.DriverGo {
+		t.Errorf("loomSeedFor(%q).Driver = %q; want %q", "main", seed.Driver, shedrun.DriverGo)
+	}
+	want := map[string]string{"parent": "main"}
+	if !reflect.DeepEqual(seed.Params, want) {
+		t.Errorf("loomSeedFor(%q).Params = %v; want %v", "main", seed.Params, want)
+	}
+}
+
+// TestLoomSeedFor_WriteSeedIsIdempotent asserts writing loomSeedFor's shape twice, for the same
+// parent, at the same location and run-id, is a no-op the second time -- the idempotency
+// seedAndCommitBootstrap's own comment relies on to make a crashed-and-resumed bootstrap safe to
+// re-run.
+func TestLoomSeedFor_WriteSeedIsIdempotent(t *testing.T) {
+	dir := t.TempDir()
+	loc := &lyxcwd.Location{HubPath: dir, WorktreeName: "warp", AnchorRel: "."}
+
+	if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, loomSeedFor("main")); err != nil {
+		t.Fatalf("first WriteSeed(...) = %v; want nil", err)
+	}
+	if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, loomSeedFor("main")); err != nil {
+		t.Errorf("second WriteSeed(...) = %v; want nil (idempotent against a byte-identical seed)", err)
+	}
+
+	seed, found, err := shedrun.ReadSeed(loc, shedrun.SelfRunID)
+	if err != nil {
+		t.Fatalf("ReadSeed(...) = %v; want nil", err)
+	}
+	if !found {
+		t.Fatal("ReadSeed(...) found = false; want true")
+	}
+	if seed.Recipe != shedrun.RecipeLoom {
+		t.Errorf("ReadSeed(...).Recipe = %q; want %q", seed.Recipe, shedrun.RecipeLoom)
+	}
+	if seed.Params["parent"] != "main" {
+		t.Errorf("ReadSeed(...).Params[\"parent\"] = %q; want %q", seed.Params["parent"], "main")
+	}
+}
+
+// TestBootstrapCommitPaths_IncludesSeedRel asserts bootstrapCommitPaths -- the pathspec
+// seedAndCommitBootstrap's step 3 commits unconditionally -- includes shedrun.SeedRel(shedrun.
+// SelfRunID) alongside the status file and origin record, so a crashed-and-resumed bootstrap's
+// seed self-heals into the fabric exactly as the status file and origin record already do.
+func TestBootstrapCommitPaths_IncludesSeedRel(t *testing.T) {
+	got := bootstrapCommitPaths()
+
+	want := []string{
+		shedrun.StatusRel(shedrun.SelfRunID),
+		shedrun.SeedRel(shedrun.SelfRunID),
+		fabricengine.OriginRecordRel(),
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("bootstrapCommitPaths() = %v; want %v", got, want)
 	}
 }
 

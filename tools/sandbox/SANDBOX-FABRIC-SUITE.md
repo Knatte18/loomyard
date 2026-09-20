@@ -526,19 +526,19 @@ Finally check the opposite state is NOT refused -- a target merely **behind** it
 
 ---
 
-### F22 -- Lifecycle status and refusal surface (`lifecycle status`, `lifecycle run`)
+### F22 -- Batten status and refusal surface (`batten status`, `batten run`, `batten step`, `shed seed`)
 
-**Covers:** lifecycle
+**Covers:** batten
 
-**Goal:** "Exercise everything `lyx lifecycle`'s run/status surface can prove without an LLM: the status verb round-tripping a hand-written fixture, the run verb's refusals on a `done` status and a held run lock, both verbs' prime-only refusal, and the create row halting blocked against a deliberately dirty prime."
+**Goal:** "Exercise everything `lyx batten`'s run/status/step surface can prove without an LLM: the status verb round-tripping a hand-written fixture, the run and step verbs' shared refusals on a `done` status and a held run lock, both verbs' prime-only refusal, `lyx shed seed` pre-seeding a batten run ahead of batten's own auto-seed, and the create row halting blocked against a deliberately dirty prime."
 
-**Fixture note:** This scenario deliberately never completes the middle row, because a freshly created pair has no task status file and the bootstrap spawns a real driver into the LLM rows whenever the run lock is free, and the lifecycle module exposes no step or pause verb to interpose a fixture mid-run.
+**Fixture note:** This scenario still never drives a fresh pair past the create row: a freshly created pair with no task status file spawns a real driver into the LLM rows the first time either `batten run` or `batten step` reaches past create with the run lock free, and neither verb exposes a way to interpose a fixture mid-run. `step`'s own refusals below are exercised the same way `run`'s are -- against a fixture that refuses before the engine is ever called -- never against a completed step.
 
-**Watch:** Hand-write a slug's `.lyx/lifecycle/<slug>/status.json` as a fixture, following `shedengine.Status`'s own shape (`current_producer`/`state`/`error`/`activity`/`history`), and confirm `lyx lifecycle status <slug>` round-trips every one of those fields back out through its JSON envelope unchanged.
-Set the fixture's `state` to `done` and confirm `lyx lifecycle run <slug>` refuses, naming the per-slug directory to delete to run it again.
-Hold `.lyx/lifecycle/<slug>/run.lock` yourself (any advisory-lock-compatible hold) and confirm `lyx lifecycle run <slug>` refuses, naming that lock path.
-Run both `lyx lifecycle run <slug>` and `lyx lifecycle status <slug>` from a task worktree rather than the hub's prime, and confirm each refuses naming both worktree names and telling the operator to re-run it from the prime.
-Finally, dirty the prime worktree with an uncommitted edit to a tracked file, then run `lyx lifecycle run <a-fresh-slug>` with no status file present for that slug: confirm the create row halts `blocked` rather than `stuck`, the reason surfaces fabric's own dirty-worktree refusal text, and no task worktree was created.
+**Watch:** Hand-write a slug's `_lyx/shed/<slug>/status.json` as a fixture, following `shedengine.Status`'s own shape (`current_producer`/`state`/`error`/`activity`/`history`), and confirm `lyx batten status <slug>` round-trips every one of those fields back out through its JSON envelope unchanged.
+Set the fixture's `state` to `done` and confirm both `lyx batten run <slug>` and `lyx batten step <slug>` refuse, naming the per-slug directory to delete to run it again.
+Hold `.lyx/shed/<slug>/run.lock` yourself (any advisory-lock-compatible hold) and confirm both `lyx batten run <slug>` and `lyx batten step <slug>` refuse, naming that lock path.
+Run `lyx batten run <slug>`, `lyx batten step <slug>`, and `lyx batten status <slug>` from a task worktree rather than the hub's prime, and confirm each refuses naming both worktree names and telling the operator to re-run it from the prime.
+Before touching a fresh slug, run `lyx shed seed <a-fresh-slug> --recipe batten` by hand and confirm it writes `_lyx/shed/<a-fresh-slug>/seed.json` naming `recipe: batten`; then dirty the prime worktree with an uncommitted edit to a tracked file and run `lyx batten run <a-fresh-slug>`: confirm the create row halts `blocked` rather than `stuck`, the reason surfaces fabric's own dirty-worktree refusal text, no task worktree was created, and batten's own auto-seed step left the hand-written seed untouched rather than treating it as a disagreeing seed.
 
 Say in the report that the full driven path -- a completed create, loom run, and teardown -- is covered by the `integration`-tagged end-to-end test instead, so a sandbox operator does not read this scenario's narrower scope as an oversight.
 

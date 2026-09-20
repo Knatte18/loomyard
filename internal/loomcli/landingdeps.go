@@ -13,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -63,10 +64,10 @@ func landingDeps(
 		// CommitAnchoredPaths call, the same throwaway mutation recorder, the same EnvSyncOptions,
 		// and the same discard of the (sha, committed) pair in favour of the error alone, which is
 		// what makes a second call over an already-committed, already-clean path a no-op rather
-		// than a failure. The pathspec is loomengine.LoomStatusRel(), never a hand-built join
-		// naming the _lyx literal, which the Lyxdirs Single-Declarer Invariant forbids.
+		// than a failure. The pathspec is shedrun.StatusRel(shedrun.SelfRunID), never a hand-built
+		// join naming the _lyx literal, which the Lyxdirs Single-Declarer Invariant forbids.
 		CommitStatus: func() error {
-			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), l, []string{loomengine.LoomStatusRel()}, fmt.Sprintf("loom: status checkpoint for %s", seedSlug(l.WorktreeName)), fabricengine.EnvSyncOptions())
+			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), l, []string{shedrun.StatusRel(shedrun.SelfRunID)}, fmt.Sprintf("loom: status checkpoint for %s", seedSlug(l.WorktreeName)), fabricengine.EnvSyncOptions())
 			return err
 		},
 		Shuttle:  runner,

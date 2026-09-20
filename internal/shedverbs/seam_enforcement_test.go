@@ -3,7 +3,7 @@
 // never imports back into a CLI module.
 //
 // The allowlist below is deliberately a membership list rather than a bare denylist, mirroring
-// internal/lifecycleshed's and internal/loomrecipe's own reasoning: it catches the excluded imports
+// internal/battenshed's and internal/loomrecipe's own reasoning: it catches the excluded imports
 // and anything else that would drag geometry resolution in, with no list maintenance beyond a genuine
 // new dependency. shedverbs importing cobra while not being a <module>cli package is deliberate: the
 // rule that matters is that an ENGINE never imports cli/cobra, and shedverbs is not an engine.

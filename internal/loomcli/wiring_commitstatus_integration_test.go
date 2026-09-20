@@ -18,8 +18,8 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 // gitOut runs a git command in dir and returns its trimmed combined output alongside the error, so
@@ -59,15 +59,15 @@ func realSeamFixture(t *testing.T) (seam func(producer, state string) error, loc
 	}
 	writeStatusFile(t, location, `{"current_producer":"seed","state":"running"}`)
 
-	return newCommitStatusSeam(loomCommitStatusDeps(location)), location, hub.PairWeftSibling(slug)
+	return newCommitStatusSeam(loomCommitStatusDeps(location, shedrun.SelfRunID)), location, hub.PairWeftSibling(slug)
 }
 
 // writeStatusFile writes content at loom's own status path for location, creating the directory the
-// first call needs. It goes through loomengine's accessor rather than a hand-built join so the test
+// first call needs. It goes through shedrun's own accessor rather than a hand-built join so the test
 // commits exactly the path the seam's own pathspec names.
 func writeStatusFile(t *testing.T, location *lyxcwd.Location, content string) {
 	t.Helper()
-	path := loomengine.LoomStatusFile(location)
+	path := shedrun.StatusFile(location, shedrun.SelfRunID)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatalf("MkdirAll(%s) error = %v; want nil", filepath.Dir(path), err)
 	}
@@ -127,8 +127,8 @@ func TestCommitStatusSeam_Real_OrdinaryPathCommitsAndPushes(t *testing.T) {
 	if got := mustGitOut(t, weftSibling, "log", "-1", "--format=%s"); got != "loom: Discussion-Write -> running" {
 		t.Errorf("weft HEAD subject = %q; want %q", got, "loom: Discussion-Write -> running")
 	}
-	if got := mustGitOut(t, weftSibling, "show", "--name-only", "--format=", "HEAD"); !strings.Contains(got, loomengine.LoomStatusRel()) {
-		t.Errorf("weft HEAD touched %q; want it to include %q", got, loomengine.LoomStatusRel())
+	if got := mustGitOut(t, weftSibling, "show", "--name-only", "--format=", "HEAD"); !strings.Contains(got, shedrun.StatusRel(shedrun.SelfRunID)) {
+		t.Errorf("weft HEAD touched %q; want it to include %q", got, shedrun.StatusRel(shedrun.SelfRunID))
 	}
 	if got := mustGitOut(t, weftSibling, "log", "--oneline", "@{u}..HEAD"); got != "" {
 		t.Errorf("unpushed weft commits after the seam = %q; want none — the seam pushes synchronously", got)
@@ -170,7 +170,7 @@ func TestCommitStatusSeam_Real_MergeGoesLiveAfterProbeSkipsInsteadOfHalting(t *t
 	startForeignMergeInWeft(t, weftSibling)
 	before := headSHA(t, weftSibling)
 
-	deps := loomCommitStatusDeps(location)
+	deps := loomCommitStatusDeps(location, shedrun.SelfRunID)
 	realMergeActive := deps.MergeActive
 	probes := 0
 	deps.MergeActive = func() (bool, error) {

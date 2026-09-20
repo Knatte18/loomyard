@@ -219,6 +219,7 @@ var upsertAllowedKeys = map[string]bool{
 	"brief":      true,
 	"body":       true,
 	"status":     true,
+	"type":       true,
 	"short_name": true,
 }
 
