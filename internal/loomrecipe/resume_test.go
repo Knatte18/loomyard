@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/loomshed"
@@ -218,28 +217,20 @@ func TestResume_PauseStopsAtBoundaryAndClearsFlag(t *testing.T) {
 	}
 }
 
-// TestBounceRouting_StuckContinuesAtDeclaredTarget drives Discussion-Validate (a real producer)
-// genuinely Stuck by removing its decision record from disk, and asserts the run continues at its
-// declared OnStuck target, Discussion-Write, immediately afterward.
+// TestBounceRouting_StuckContinuesAtDeclaredTarget drives Discussion-Bouncer (a real producer)
+// genuinely Stuck by scripting its judge round's verdict as non-approving, and asserts the run
+// continues at its declared OnStuck target, Discussion-Burler, immediately afterward.
 //
-// current_producer is planted directly at Discussion-Validate via resetCurrentProducer, skipping
-// Discussion-Write's own first invocation, rather than driven through the whole sequence from row
-// one: Discussion-Write now carries its own "gate: discussion" Config key (resolveGateSpec,
-// internal/shedrecipe/entries_gate.go), so a fresh Discussion-Write run that found the decision
-// record missing would fail its OWN gate first and halt there -- Discussion-Write carries no
-// on_stuck, so that halt would block the whole run before ever reaching Discussion-Validate, never
-// mind bouncing to it. Planting current_producer here is what makes this test exercise
-// Discussion-Validate's own bounce, its actual subject, undisturbed by Discussion-Write's gate.
-// This test asserts nothing about Discussion-Write's own outcome on the bounce it receives -- only
-// that routing continues there at all -- matching the same shape
-// TestSequence_PlanRevalidateCatchesPostSegmentRegression already established for its own
-// now-gated writer partner.
+// Discussion-Validate is gone, and with it the standalone-validator vehicle this test used to drive:
+// a real, repeatably bounceable producer pair is what this test needs, and the Discussion-Review
+// segment's mutual on_stuck pair (Discussion-Bouncer/Discussion-Burler) is the one this task's new
+// writer-row gates have no bearing on -- fakeLoomBurler never reads burlerengine.RunOpts.Gate at
+// all -- so it is what remains, matching the same assertion shape over a pair that still exists.
+// This test asserts only that routing continues at the declared target after one Stuck -- the
+// budget-exhaustion property belongs to TestBounceRouting_BudgetExhaustionBlocks below.
 func TestBounceRouting_StuckContinuesAtDeclaredTarget(t *testing.T) {
 	_, env, paths := buildSequenceFixture(t)
-	if err := os.Remove(env.DecisionRecordPath); err != nil {
-		t.Fatalf("remove decision record: %v", err)
-	}
-	resetCurrentProducer(t, env.StatusPath, env.StatusLockPath, loomshed.NameDiscussionValidate, false)
+	env.Shuttle.(*fakeLoomShuttle).bouncerVerdict = "BLOCKING"
 
 	shed, err := New(env, paths)
 	if err != nil {
@@ -253,19 +244,19 @@ func TestBounceRouting_StuckContinuesAtDeclaredTarget(t *testing.T) {
 
 	stuckIdx := -1
 	for i, e := range result.History {
-		if e.Producer == loomshed.NameDiscussionValidate && e.Outcome == shedengine.Stuck {
+		if e.Producer == loomshed.NameDiscussionBouncer && e.Outcome == shedengine.Stuck {
 			stuckIdx = i
 			break
 		}
 	}
 	if stuckIdx == -1 {
-		t.Fatalf("Run() History has no %s Stuck entry: %+v", loomshed.NameDiscussionValidate, result.History)
+		t.Fatalf("Run() History has no %s Stuck entry: %+v", loomshed.NameDiscussionBouncer, result.History)
 	}
 	if stuckIdx+1 >= len(result.History) {
-		t.Fatalf("Run() History ends at the Stuck entry; want a following entry naming the bounce target %q", loomshed.NameDiscussionWrite)
+		t.Fatalf("Run() History ends at the Stuck entry; want a following entry naming the bounce target %q", loomshed.NameDiscussionBurler)
 	}
-	if got := result.History[stuckIdx+1].Producer; got != loomshed.NameDiscussionWrite {
-		t.Errorf("History[%d].Producer (following the Stuck entry) = %q; want the declared bounce target %q", stuckIdx+1, got, loomshed.NameDiscussionWrite)
+	if got := result.History[stuckIdx+1].Producer; got != loomshed.NameDiscussionBurler {
+		t.Errorf("History[%d].Producer (following the Stuck entry) = %q; want the declared bounce target %q", stuckIdx+1, got, loomshed.NameDiscussionBurler)
 	}
 }
 
@@ -323,8 +314,14 @@ func TestBounceRouting_EmptyTargetBlocksInstead(t *testing.T) {
 //
 // Discussion-Bouncer's max_bounces is declared directly on its own recipe row
 // (contracts/recipes/loom-recipe.yaml), not inherited from ShedPaths.MaxBounces the way
-// Discussion-Validate's budget was, so this test drives discussionBouncerMaxBounces+1 round trips
-// rather than parameterizing a small paths.MaxBounces.
+// Discussion-Validate's budget once was, so this test drives discussionBouncerMaxBounces+1 round
+// trips rather than parameterizing a small paths.MaxBounces.
+//
+// The Bouncer is what this test binds its assertion to, never the Burler, even though both segment
+// rows declare their own max_bounces of 5: Discussion-Bouncer's own Stuck sequence runs one ahead of
+// the round producer's count -- its seed call authors the segment's very first Stuck before
+// Discussion-Burler ever runs once -- so with equal budgets Discussion-Bouncer exhausts first,
+// within the segment's first generation, and Discussion-Burler's own budget is never spent at all.
 func TestBounceRouting_BudgetExhaustionBlocks(t *testing.T) {
 	// discussionBouncerMaxBounces mirrors the "max_bounces: 5" this task's Card 25 left untouched
 	// on the Discussion-Bouncer row of contracts/recipes/loom-recipe.yaml.
@@ -366,39 +363,28 @@ func TestBounceRouting_BudgetExhaustionBlocks(t *testing.T) {
 	}
 }
 
-// TestResume_DiscussionValidateBounceRespawnsDiscussionWrite is one half of the
-// manifest/designs/loom.md "interactive-mode trap" regression pair: a Discussion-Validate bounce
-// re-enters Discussion-Write with both discussion artifacts already present on disk -- the identical
-// on-disk shape a crash mid-interview leaves -- and the fake shuttle's Attach reports not-found (no
-// live agent matches), so Discussion-Write must respawn rather than report Done off bare file
-// existence. The decision record is deliberately missing one required section ("## Goal") rather
-// than absent entirely, so Discussion-Validate goes Stuck for the ordinary reason a bounce happens,
-// with both files genuinely present throughout -- unlike TestBounceRouting_StuckContinuesAtDeclaredTarget,
-// which drives the bounce by removing the file outright.
+// TestResume_DiscussionWriteRespawnsRatherThanReportDoneOffFileExistence is one half of the
+// manifest/designs/loom.md "interactive-mode trap" regression pair, retargeted onto the row it was
+// always really about now that Discussion-Validate, the bounce that used to reach it, is gone:
+// current_producer is planted directly at Discussion-Write with both discussion artifacts already
+// present and complete on disk -- the identical on-disk shape a crash mid-interview leaves -- and
+// the fake shuttle's Attach reports not-found (no live agent matches), so Discussion-Write must
+// respawn rather than report Done off bare file existence.
 //
-// current_producer is planted directly at Discussion-Validate via resetCurrentProducer, per the
+// current_producer is planted directly at Discussion-Write via resetCurrentProducer, per the
 // resume tests above, rather than driven through the whole sequence from row 1 -- the point under
 // test is what Discussion-Write does when re-entered, not how the run got there.
 //
-// The fake's default writeOutputs=true means the respawned run rewrites both output files with valid
-// content, so Discussion-Validate passes on its very next call: this is what proves the run does not
-// ping-pong until the bounce budget (paths.MaxBounces, left at buildSequenceFixture's default) is
-// exhausted -- a genuine ping-pong would consume the whole budget and end shedengine.RunBlocked with
-// reason "bounce budget exhausted", which this test asserts against.
-func TestResume_DiscussionValidateBounceRespawnsDiscussionWrite(t *testing.T) {
+// The fake's default writeOutputs=true means the respawned run rewrites both output files with
+// valid content, so Discussion-Write's own gate passes on the respawned run's very next call: this
+// is what proves the respawn resolves to a genuine Done rather than reporting Done straight off the
+// pre-existing files without ever calling Run again.
+func TestResume_DiscussionWriteRespawnsRatherThanReportDoneOffFileExistence(t *testing.T) {
 	_, env, paths := buildSequenceFixture(t)
-
-	incompleteDecisionRecord := strings.Replace(validDecisionRecord, "## Goal\n\nGoal text.\n\n", "", 1)
-	if incompleteDecisionRecord == validDecisionRecord {
-		t.Fatalf("incompleteDecisionRecord: \"## Goal\" section not found in validDecisionRecord; fixture drifted")
-	}
-	if err := os.WriteFile(env.DecisionRecordPath, []byte(incompleteDecisionRecord), 0o644); err != nil {
-		t.Fatalf("write incomplete decision record: %v", err)
-	}
 
 	loomShuttle := env.Shuttle.(*fakeLoomShuttle)
 
-	resetCurrentProducer(t, paths.StatusPath, paths.StatusLockPath, loomshed.NameDiscussionValidate, false)
+	resetCurrentProducer(t, paths.StatusPath, paths.StatusLockPath, loomshed.NameDiscussionWrite, false)
 
 	shed, err := New(env, paths)
 	if err != nil {
@@ -409,28 +395,19 @@ func TestResume_DiscussionValidateBounceRespawnsDiscussionWrite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run() error = %v; want nil", err)
 	}
-	if result.Reason == "bounce budget exhausted" {
-		t.Fatalf("Run() Reason = %q; want the bounce to resolve rather than ping-pong until the budget is exhausted", result.Reason)
-	}
 
-	stuckIdx := -1
+	writeIdx := -1
 	for i, e := range result.History {
-		if e.Producer == loomshed.NameDiscussionValidate && e.Outcome == shedengine.Stuck {
-			stuckIdx = i
+		if e.Producer == loomshed.NameDiscussionWrite {
+			writeIdx = i
 			break
 		}
 	}
-	if stuckIdx == -1 {
-		t.Fatalf("Run() History has no %s Stuck entry: %+v", loomshed.NameDiscussionValidate, result.History)
+	if writeIdx == -1 {
+		t.Fatalf("Run() History has no %s entry: %+v", loomshed.NameDiscussionWrite, result.History)
 	}
-	if stuckIdx+1 >= len(result.History) {
-		t.Fatalf("Run() History ends at the Stuck entry; want a following entry naming the bounce target %q", loomshed.NameDiscussionWrite)
-	}
-	if got := result.History[stuckIdx+1].Producer; got != loomshed.NameDiscussionWrite {
-		t.Fatalf("History[%d].Producer (following the Stuck entry) = %q; want the declared bounce target %q", stuckIdx+1, got, loomshed.NameDiscussionWrite)
-	}
-	if got := result.History[stuckIdx+1].Outcome; got != shedengine.Done {
-		t.Errorf("Discussion-Write outcome after the bounce = %q; want %q -- a bounce must respawn and the respawned run must itself report Done, never report Done off bare pre-existing file existence", got, shedengine.Done)
+	if got := result.History[writeIdx].Outcome; got != shedengine.Done {
+		t.Errorf("Discussion-Write outcome = %q; want %q -- a respawned run must itself report Done, never report Done off bare pre-existing file existence", got, shedengine.Done)
 	}
 
 	if loomShuttle.attachCalls == 0 {
