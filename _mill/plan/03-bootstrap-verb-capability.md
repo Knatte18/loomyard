@@ -72,6 +72,12 @@ Two constants plus a synced field is the cheapest shape that keeps both sides co
 - **Edits:**
   - `internal/shedcli/table.go`
   - `internal/shedcli/table_test.go`
+  - `internal/loomcli/wiring_test.go` (added mid-batch: batch loom-driver-config's own commits added
+    a required `driver` key to `internal/loomengine/template.yaml` without updating this file's two
+    hand-written nine-key-now literals, `seedLoomConfigWithInteractive` and
+    `seedLoomConfigWithFriction`, which still wrote eight keys -- breaking this batch's own `verify:`
+    scope, which runs `internal/loomcli`'s suite. Fixed here rather than left for a later batch since
+    this batch's `verify:` is what surfaces it.)
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
