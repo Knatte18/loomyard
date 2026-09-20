@@ -74,7 +74,9 @@ batches:
     commit_sha: f4045201a209e43430e98afb840d44a5b6af090c
     verify_baseline_failures: []
   - name: ly-drive-autonomous
-    state: pending
+    state: running
+    implementer_session: c3316c64-9f6b-4de8-b30d-35ed56f89c9f
+    start_sha: 0d3675a3e8b5c18be1cef21e29c36fa33ccbebb8
     verify_baseline_failures: []
   - name: smoke-and-integration
     state: pending
