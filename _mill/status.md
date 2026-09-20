@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: seeded-shed-core
 branch: seeded-shed-core
 plan: _mill/plan
@@ -36,6 +36,7 @@ holistic-fixing  '2026-09-20T08:42:41Z'
 nits-fixed-holistic  '2026-09-20T08:44:44Z'
 holistic-approved  '2026-09-20T08:44:51Z'
 done  '2026-09-20T08:54:07Z'
+pr-pending  '2026-09-20T08:57:38Z'
 ```
 
 ## Batches
