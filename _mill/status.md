@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-shuttle-gate-loop
+phase: approved-seam-and-producers
 slug: producer-gates
 branch: producer-gates
 plan: _mill/plan
@@ -31,6 +31,7 @@ plan-fix-r2  '2026-09-20T14:57:27Z'
 planned  '2026-09-20T14:57:37Z'
 implementing  '2026-09-20T14:57:55Z'
 approved-shuttle-gate-loop  '2026-09-20T15:13:03Z'
+approved-seam-and-producers  '2026-09-20T15:22:27Z'
 ```
 
 ## Batches
@@ -44,9 +45,10 @@ batches:
     commit_sha: 94735db5daaa00daa419ce2ec8af0be1a9edd8e5
     verify_baseline_failures: []
   - name: seam-and-producers
-    state: running
+    state: approved
     implementer_session: 3e1f9530-795a-4873-9067-d51b716c6e00
     start_sha: 804c9439d9cb1e211ff86d72adab9763702576ae
+    commit_sha: 91a0b7731cc168caa6a99fef20c33283c6a29f26
     verify_baseline_failures: []
   - name: loomshed-gates
     state: pending
