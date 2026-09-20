@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: seeded-driver-choice
 branch: seeded-driver-choice
-plan: null
+plan: _mill/plan
 parent: main
 module_verify_baseline: clean
 task: 'Seeded driver choice: ly-drive strand as the child''s driver'
@@ -25,4 +25,5 @@ discussion-fix-r6  '2026-09-19T17:42:09Z'
 discussed  '2026-09-19T17:42:09Z'
 blocked  '2026-09-19T17:43:17Z'
 discussed  '2026-09-19T17:46:38Z'
+planning  '2026-09-20T09:36:50Z'
 ```
