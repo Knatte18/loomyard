@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-shuttle-seam
 slug: seeded-driver-choice
 branch: seeded-driver-choice
 plan: _mill/plan
@@ -32,6 +32,7 @@ plan-review-r2  '2026-09-20T09:55:06Z'
 plan-fix-r2  '2026-09-20T09:56:07Z'
 planned  '2026-09-20T09:56:23Z'
 implementing  '2026-09-20T10:01:30Z'
+approved-shuttle-seam  '2026-09-20T10:05:11Z'
 ```
 
 ## Batches
@@ -39,9 +40,10 @@ implementing  '2026-09-20T10:01:30Z'
 ```yaml
 batches:
   - name: shuttle-seam
-    state: running
+    state: approved
     implementer_session: b2ceb9c6-1163-40dc-b075-9766e03898ef
     start_sha: d583994fe397eb6cc60f1606ef7d87d6e98c64b0
+    commit_sha: 7bf9aeaff2243d72c1d1aac030284a54531c612f
     verify_baseline_failures: []
   - name: loom-driver-config
     state: pending
