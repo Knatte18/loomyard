@@ -71,6 +71,7 @@ Moving the shipped item to Done empties Planned, and choosing what fills it is t
   - `README.md`
   - `contracts/specs/loom-plan-spec.md`
   - `contracts/specs/specs.go`
+  - `plugins/ly/skills/ly-drive/SKILL.md`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -79,6 +80,7 @@ Moving the shipped item to Done empties Planned, and choosing what fills it is t
   In the README, correct the pipeline diagram's two lines, which walk through both removed validate rows and the removed revalidate row, so the walk reads writer straight into its review segment and the plan segment straight into the batchifier.
   In the plan spec, correct the three sentences attributing checks to the removed rows: the validation-checks pointer in the header, the rename-resolution paragraph naming both plan rows, and the consumer-guard paragraph that contrasts the pre-review gate against the post-segment row — that contrast no longer exists, and the paragraph must instead say that both plan gate sites run the format-only set before approval, that the standalone consumers still enforce the flag, and that no row re-checks it.
   In the specs package doc, correct the sentence naming the two plan rows as what parses a written plan against the shipped grammar.
+  In the `ly-drive` skill, correct its two references to loom's row count to fourteen.
 - **Commit:** `docs: correct the deployed specs and top-level docs for the gated rows`
 
 ### Card 40: Correct the manifest design docs
@@ -92,6 +94,7 @@ Moving the shipped item to Done empties Planned, and choosing what fills it is t
   - `manifest/designs/loom.md`
   - `manifest/designs/shed.md`
   - `manifest/designs/shed-recipe.md`
+  - `manifest/designs/seeded-shed.md`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -100,6 +103,7 @@ Moving the shipped item to Done empties Planned, and choosing what fills it is t
   Add to the same section the one thing no removed row ever covered and the whole reason the task exists: a fix round's own output is now checked, so a round can no longer hand back an artifact it just made invalid.
   In the shed design doc, correct the single sentence using the removed plan row as its worked example of a per-producer `OnStuck` config value, re-pointing it at a surviving pair.
   In the shed-recipe design doc, correct the sentence listing the loom-specific engine names as examples of bespoke single-consumer registry entries, dropping the two retired engines and keeping the point, which is unaffected.
+  In the seeded-shed design doc, correct its "all seventeen loom rows" reference to fourteen.
   Every markdown link this card touches must still resolve, file part and anchor alike, per the Markdown Link Integrity invariant.
 - **Commit:** `docs(manifest): correct the loom, shed and shed-recipe design docs for the gated rows`
 
@@ -133,6 +137,7 @@ Moving the shipped item to Done empties Planned, and choosing what fills it is t
 - **Edits:**
   - `internal/shuttleengine/attach.go`
   - `internal/loomshed/discussionwrite.go`
+  - `internal/loomshed/doc.go`
   - `internal/loomcli/start.go`
   - `internal/loomcli/wiring.go`
   - `internal/loomcli/cli.go`
@@ -142,6 +147,7 @@ Moving the shipped item to Done empties Planned, and choosing what fills it is t
   - `internal/discussionparser/validate.go`
   - `internal/discussionparser/validate_test.go`
   - `internal/loomcli/validate_test.go`
+  - `internal/loomcli/sharedbootstrap_test.go`
   - `internal/websterengine/runlevel_test.go`
   - `internal/shedengine/run_routing_test.go`
   - `internal/loomcli/smoke_test.go`
@@ -155,6 +161,7 @@ Moving the shipped item to Done empties Planned, and choosing what fills it is t
   Re-point each at what actually performs that behaviour now: the discussion parser's file comment and its bounce-behaviour paragraph name the discussion gate rather than the removed row; the glyph package's whole-plan comment and the plan parser's done-check comment name the plan gate; the friction package's re-entry paragraph is rewritten for the new graph, in which a writer row is re-entered by a resume rather than by a validate row's bounce; the attach file's crash-versus-bounce comment, which currently reasons via a bounce that no longer exists, is rewritten for the resume case it actually guards; the discussion write decorator's comment naming the row that used to judge its output afterwards now names its own gate, which judges it before the handoff; the CLI's package comment, the loom start comment, and the wiring comment each name their own gate.
   The four test comments are corrected the same way.
   Where a comment's *reasoning* rested on the removed row's existence rather than merely naming it — the friction re-entry paragraph and the attach crash-versus-bounce paragraph are both of that kind — rewrite the reasoning rather than substituting a name into a sentence that no longer holds.
+  Two doc comments outside the "which row does this" sweep also carry the stale numeral rather than a removed-row name: `internal/loomshed/doc.go`'s package comment ("its seventeen durable row names") and `internal/loomcli/sharedbootstrap_test.go`'s doc comment ("carries all seventeen producer rows"), both of which `loomshed.go`'s own fourteen-row declaration and `internal/loomrecipe`'s fourteen-row guards have already outrun; correct both to fourteen.
 - **Commit:** `docs: re-point Go prose at the gates that replaced the three validate rows`
 
 ### Card 43: Correct the self-check verbs' own help text

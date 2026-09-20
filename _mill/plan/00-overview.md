@@ -197,6 +197,7 @@ this section is the input `_plan_validate.py`'s `all-files-touched-mismatch` che
 - `internal/friction/friction.go`
 - `internal/loomcli/cli.go`
 - `internal/loomcli/parity_test.go`
+- `internal/loomcli/sharedbootstrap_test.go`
 - `internal/loomcli/smoke_gate_test.go`
 - `internal/loomcli/smoke_test.go`
 - `internal/loomcli/start.go`
@@ -215,6 +216,7 @@ this section is the input `_plan_validate.py`'s `all-files-touched-mismatch` che
 - `internal/loomshed/cancellation_test.go`
 - `internal/loomshed/discussionwrite.go`
 - `internal/loomshed/discussionwrite_test.go`
+- `internal/loomshed/doc.go`
 - `internal/loomshed/fixture_test.go`
 - `internal/loomshed/gatefindings_test.go`
 - `internal/loomshed/gates.go`
@@ -256,6 +258,8 @@ this section is the input `_plan_validate.py`'s `all-files-touched-mismatch` che
 - `internal/websterengine/runlevel_test.go`
 - `manifest/designs/loom.md`
 - `manifest/designs/producer-gates.md`
+- `manifest/designs/seeded-shed.md`
 - `manifest/designs/shed-recipe.md`
 - `manifest/designs/shed.md`
 - `manifest/roadmap.md`
+- `plugins/ly/skills/ly-drive/SKILL.md`
