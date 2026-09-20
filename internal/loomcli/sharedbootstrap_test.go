@@ -160,42 +160,29 @@ func TestResolveSeedDriver(t *testing.T) {
 	}
 }
 
-// TestSeedWriteStep_PreservesRecordedLLMDriver drives the actual step-1b sequence
-// seedAndCommitBootstrap performs -- shedrun.ReadSeed, resolveSeedDriver, loomSeedFor, shedrun.
-// WriteSeed -- against a worktree already seeded for the llm driver, isolated from step 1
-// (fabricengine.ReadOrigin), which this untagged suite's receiver cannot satisfy without a real
-// fabric (see this file's own header comment). It is what proves the write survives and reports the
-// driver back: against the shipped version, WriteSeed's own disagreeing-seed refusal would fire here,
-// since the shipped step 1b hard-coded DriverGo into every write.
+// TestResolveSeedDriver_ReadsOnlyTheSeedNeverAFlagOrConfig pins the shape the card exists to
+// guarantee: resolveSeedDriver's signature takes only the existing seed and whether it was found --
+// no flag, no config -- so an llm-seeded worktree's driver survives this step's write regardless of
+// anything the invocation's own flags carry. This is the case that fails against the shipped version,
+// which hard-coded shedrun.DriverGo into loomSeedFor and never consulted the existing seed at all.
 //
-// This also pins that the driver is read from the seed rather than from any flag or config: nothing
-// in this sequence reads a flag, and this command declares no driver flag of its own.
-func TestSeedWriteStep_PreservesRecordedLLMDriver(t *testing.T) {
-	dir := t.TempDir()
-	loc := &lyxcwd.Location{HubPath: dir, WorktreeName: "warp", AnchorRel: "."}
+// The full disk round trip (WriteSeed an llm seed, ReadSeed it back) cannot be driven from this
+// suite: shedrun.ValidateDriver still refuses shedrun.DriverLLM until batch 5 lifts the gate (see the
+// overview's mechanism-ships-before-the-gate-is-lifted Shared Decision), so both WriteSeed and
+// ReadSeed refuse an llm seed on disk today by design. resolveSeedDriver is exercised directly
+// against an in-memory shedrun.Seed value instead, which is exactly what lets this decision be fully
+// tested while the llm arm stays unreachable in production.
+func TestResolveSeedDriver_ReadsOnlyTheSeedNeverAFlagOrConfig(t *testing.T) {
+	existing := shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: shedrun.DriverLLM, Params: map[string]string{"parent": "main"}}
 
-	if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: shedrun.DriverLLM, Params: map[string]string{"parent": "main"}}); err != nil {
-		t.Fatalf("seed the worktree for the llm driver: %v", err)
-	}
-
-	existing, found, err := shedrun.ReadSeed(loc, shedrun.SelfRunID)
-	if err != nil {
-		t.Fatalf("ReadSeed(...) = %v; want nil", err)
-	}
-	driver := resolveSeedDriver(existing, found)
-	if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, loomSeedFor("main", driver)); err != nil {
-		t.Fatalf("re-running the step-1b write over an llm-seeded worktree = %v; want nil (the write must survive, not refuse on a disagreeing seed)", err)
+	got := resolveSeedDriver(existing, true)
+	if got != shedrun.DriverLLM {
+		t.Errorf("resolveSeedDriver(%+v, true) = %q; want %q -- an already-recorded llm driver must survive this step's write", existing, got, shedrun.DriverLLM)
 	}
 
-	if driver != shedrun.DriverLLM {
-		t.Errorf("resolveSeedDriver reported %q; want %q", driver, shedrun.DriverLLM)
-	}
-	reread, _, err := shedrun.ReadSeed(loc, shedrun.SelfRunID)
-	if err != nil {
-		t.Fatalf("ReadSeed(...) after the write = %v; want nil", err)
-	}
-	if reread.Driver != shedrun.DriverLLM {
-		t.Errorf("ReadSeed(...).Driver after the write = %q; want %q", reread.Driver, shedrun.DriverLLM)
+	seed := loomSeedFor("main", got)
+	if seed.Driver != shedrun.DriverLLM {
+		t.Errorf("loomSeedFor(%q, %q).Driver = %q; want %q", "main", got, seed.Driver, shedrun.DriverLLM)
 	}
 }
 
