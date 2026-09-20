@@ -184,6 +184,11 @@ type Result struct {
 	// path where Outcome is OutcomeDone and the returned error is non-nil,
 	// which is a done run whose audit could not be read (see finalize).
 	ForkAudit *ForkAudit
+	// Gate is a 1:1 report of this run's gate, populated only for a run started via RunGated/AttachGated
+	// whose gate closure actually ran. Nil means "this run had no gate" — never "the gate passed": a
+	// gated run whose closure could not run at all (an infrastructure error) also leaves this nil, with
+	// the error itself returned alongside Result instead.
+	Gate *GateOutcome
 }
 
 // Run is the handle to one in-progress or completed shuttle run, returned by Start.
@@ -210,6 +215,19 @@ type Run struct {
 	// pane would misclassify a live interview as OutcomeDied, or play the trust-dismiss sequence into
 	// it.
 	attached bool
+
+	// gate is the GateSpec this run was told, zero (a nil Gate) for an ungated run — the same zero
+	// value Run/Attach's own RunGated(spec, GateSpec{})/AttachGated(spec, GateSpec{}) delegation
+	// passes, so an ungated run behaves byte-for-byte as it did before the gate existed.
+	gate GateSpec
+	// gateVerdict is the current attempt's gate memo: nil when the current attempt has not been
+	// evaluated yet, non-nil once evaluateGate has run it. The memo is PER ATTEMPT, not per run —
+	// Wait clears it to nil immediately before each re-prompt, so the next attempt re-validates
+	// rather than reading the first attempt's stale verdict.
+	gateVerdict *GateOutcome
+	// gateSent is the count of re-prompts successfully delivered (Send returned no error) on this
+	// run — the same count evaluateGate stamps onto every GateOutcome.Attempts it produces.
+	gateSent int
 }
 
 // The run directory's fixed artifact file names. Every Engine.Prepare
