@@ -49,7 +49,7 @@ func resolveGateSpec(entry string, cfg Config, env Env) (shuttleengine.GateSpec,
 	}
 
 	if gate == "" {
-		if attempts != 0 {
+		if _, present := cfg["gate_attempts"]; present {
 			return shuttleengine.GateSpec{}, fmt.Errorf("shedrecipe: %s: config key %q requires config key %q", entry, "gate_attempts", "gate")
 		}
 		return shuttleengine.GateSpec{}, nil

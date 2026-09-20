@@ -188,6 +188,19 @@ func TestPlanWriteEntry_GateConfig(t *testing.T) {
 		assertErrContains(t, err, "gate")
 	})
 
+	t.Run("ExplicitZeroGateAttemptsWithoutGateStillFails", func(t *testing.T) {
+		// resolveGateSpec must detect "gate_attempts" by key presence, not by a non-zero value: an
+		// explicit "gate_attempts: 0" with no "gate" key is the same author mistake as any other
+		// value and must not pass silently just because it happens to match configInt's zero value.
+		env := newTestEnv(t)
+		_, err := planWriteEntry("Row", Config{"gate_attempts": 0}, env)
+		if err == nil {
+			t.Fatal("planWriteEntry() error = nil; want non-nil for an explicit gate_attempts: 0 with no gate")
+		}
+		assertErrContains(t, err, "gate_attempts")
+		assertErrContains(t, err, "gate")
+	})
+
 	t.Run("AbsentGateAttemptsYieldsPackageDefault", func(t *testing.T) {
 		env := newTestEnv(t)
 		gateSpec, err := resolveGateSpec("PlanWrite", Config{"gate": "plan"}, env)
