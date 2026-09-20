@@ -39,19 +39,29 @@ implementing  '2026-09-20T10:01:30Z'
 ```yaml
 batches:
   - name: shuttle-seam
-    state: pending
+    state: running
+    implementer_session: b2ceb9c6-1163-40dc-b075-9766e03898ef
+    start_sha: d583994fe397eb6cc60f1606ef7d87d6e98c64b0
+    verify_baseline_failures: []
   - name: loom-driver-config
     state: pending
+    verify_baseline_failures: []
   - name: bootstrap-verb-capability
     state: pending
+    verify_baseline_failures: []
   - name: driver-launch
     state: pending
+    verify_baseline_failures: []
   - name: lift-llm-refusals
     state: pending
+    verify_baseline_failures: []
   - name: ly-drive-autonomous
     state: pending
+    verify_baseline_failures: []
   - name: smoke-and-integration
     state: pending
+    verify_baseline_failures: ["FAIL\tgithub.com/Knatte18/loomyard/internal/loomcli [build failed]"]
   - name: docs-sweep
     state: pending
+    verify_baseline_failures: []
 ```
