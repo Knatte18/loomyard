@@ -1,7 +1,8 @@
 # Seeded Shed — one engine, N recipes, the seed decides
 
 **Status:** landed (2026-09-19), as the `seeded Shed core: run addressing, seed contract, batten` roadmap item — the concept, run addressing, the seed contract, and the batten rename below all describe what shipped, not a proposal.
-Two pieces from the original discussion are explicitly not part of this landing: `driver: llm` (see the Next Up `seeded driver choice: ly-drive strand as the child's driver` roadmap item) and relay-stepping (see [Rejected: relay-stepping](#rejected-relay-stepping) below).
+`driver: llm` has since landed too, as the `seeded driver choice: ly-drive strand as the child's driver` roadmap item — see [The driver choice, as built](#the-driver-choice-as-built) below.
+One piece from the original discussion is still not part of either landing: relay-stepping (see [Rejected: relay-stepping](#rejected-relay-stepping) below).
 
 ## The concept
 
@@ -45,7 +46,24 @@ The durable truth lives on the Board: a task entry carries a **type** field nami
 
 Drivers are chosen per level and live in their own host worktree's reed session.
 Reed sessions are per-worktree, so an LLM driving a batten run in prime and an LLM driving a loom run in the child can never clutter each other.
-The expected defaults: `llm` for task-work runs (the whole point of ly-drive is an intelligence that can fix what a mechanical gate cannot), `go` for batten runs (five mechanical rows with deterministic outcomes — a failure there becomes `Stuck`, which is a better escalation point than a watching LLM).
+No default flips as part of this task: the driver still defaults to `go` everywhere, including for a task-work run's child.
+The `llm` default this design once expected for task-work runs — the whole point of ly-drive is an intelligence that can fix what a mechanical gate cannot — is left as a config decision for a later pass, once an `llm`-driven run has been watched end to end.
+`go` stays the only driver batten runs use: five mechanical rows with deterministic outcomes, where a failure becomes `Stuck`, a better escalation point than a watching LLM.
+
+## The driver choice, as built
+
+A run's recorded driver is read in exactly one place: that run's own recipe's bootstrap verb — `internal/loomcli`'s `start` for loom, today the only recipe with one.
+A recipe with no bootstrap verb of its own cannot be seeded for the `llm` driver until it grows one, since there is no other site the choice could be read from — see the Driver Choice Single-Site Invariant in `CONSTRAINTS.md`.
+Batten stays `go`-only for exactly this reason: it has no bootstrap verb of its own, and growing one to reach `llm` is not part of this task.
+
+Two residuals ship with this task, deliberately, rather than being solved by it:
+
+- **A driver strand that dies mid-run is not detected, reported, or recovered by anything here.** The outer run watches the child's status file, not the driver's own liveness; a driver that dies before writing another status transition leaves the run looking merely slow, not failed, until something else notices.
+- **A driver that finishes normally leaves its strand and its run directory behind.** Both persist until the next bootstrap's own corpse removal unregisters the strand; nothing tears either down as part of a clean finish.
+
+This task also corrects an earlier draft's phrasing that the driver branch was "one changed command in the existing Spawn seam" of batten's `Run-Shed` row — see that row's own description above.
+The branch is not in the parent's Spawn seam at all: it is inside the child's own bootstrap verb, the innermost point that actually knows which run and which recipe it is bootstrapping.
+The substance the earlier phrasing was reaching for still holds, because the command the parent's Spawn seam runs is itself a bootstrap — so from the parent's own vantage the change is still legible as "the command Spawn runs now branches," even though the branch itself lives one level further in.
 
 ## One FSM per worktree
 
@@ -68,7 +86,7 @@ Its rows:
 1. `Worktree-Create` — fabric only, no seeding (unchanged).
 2. `Seed-Child` — new: writes the child's `_lyx/shed/self/seed.json`, copying the recipe choice from the Board task's type field and the driver choice from batten's own seed params.
 3. `Run-Shed` — the row named `Loom-Run` today, made product-neutral: spawn the child's run per the child's seed, then watch the child's status file to a terminal state.
-   For `driver: llm` the spawn boots a reed strand running ly-drive instead of the detached Go runner — one changed command in the existing Spawn seam, nothing else, because status-watching is driver-agnostic.
+   For `driver: llm` the branch that boots a reed strand running ly-drive instead of the detached Go runner lives inside the child's own bootstrap verb, not in this row's Spawn seam — see [The driver choice, as built](#the-driver-choice-as-built) below for why. The substance holds either way: the command this row's Spawn seam runs is itself the child's bootstrap, and status-watching stays driver-agnostic regardless of which command that bootstrap ran underneath.
    The row is self-routed on `Stuck` (`on_stuck: Run-Shed`) with a row-level `max_bounces: 1440` and a `config: {poll_interval_s: 30}` pair, encoding a 12-hour watch window as one poll per bounce rather than one blocking `Run` call held for the child's whole duration — the property a step-driven outer run needs. Every non-running, non-done child state is a hard error, not a bounce: only "the child is still running" re-enters, and shedengine turns the hard-error return into `StateFailed` at this row with the run halted, never routing on to `Worktree-Teardown`.
 4. `Worktree-Teardown` — session shutdown before worktree removal (unchanged).
 

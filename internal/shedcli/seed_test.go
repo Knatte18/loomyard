@@ -57,17 +57,57 @@ func TestWriteSeed_UnknownRecipeRefusesWithTheAvailableNames(t *testing.T) {
 	}
 }
 
-// TestWriteSeed_LLMDriverRefusesWithTheRoadmapPointer asserts --driver llm refuses via
-// shedrun.ValidateDriver, naming the not-yet-implemented roadmap item.
-func TestWriteSeed_LLMDriverRefusesWithTheRoadmapPointer(t *testing.T) {
+// TestWriteSeed_LLMDriverGatedOnBootstrapVerbCapability pins the capability predicate itself, not
+// the recipe name: a test-local table entry with an empty bootstrap verb refuses the llm driver,
+// and one with a non-empty verb accepts it, so this assertion cannot silently degenerate into "is
+// it spelled loom".
+func TestWriteSeed_LLMDriverGatedOnBootstrapVerbCapability(t *testing.T) {
+	original := recipes
+	t.Cleanup(func() { recipes = original })
+
+	// The table entries are keyed by shedrun's own closed recipe vocabulary -- RecipeBatten and
+	// RecipeLoom -- because shedrun.WriteSeed validates the recipe name itself, on top of this
+	// package's own lookup; a test-local recipe name outside that vocabulary would refuse there
+	// instead of exercising the capability predicate this test targets.
+	recipes = map[string]entry{
+		shedrun.RecipeBatten: {Arm: original[shedrun.RecipeBatten].Arm, Verbs: original[shedrun.RecipeBatten].Verbs, BootstrapVerb: ""},
+		shedrun.RecipeLoom:   {Arm: original[shedrun.RecipeLoom].Arm, Verbs: original[shedrun.RecipeLoom].Verbs, BootstrapVerb: "start"},
+	}
+
+	t.Run("EmptyBootstrapVerbRefuses", func(t *testing.T) {
+		loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+		err := writeSeed(loc, "some-slug", shedrun.RecipeBatten, shedrun.DriverLLM, nil)
+		if err == nil {
+			t.Fatal("writeSeed(driver=llm) = nil; want a refusal naming the missing bootstrap verb")
+		}
+		if !strings.Contains(err.Error(), "no bootstrap verb") {
+			t.Errorf("writeSeed(driver=llm) error = %q; want it to name the missing bootstrap verb", err.Error())
+		}
+	})
+
+	t.Run("NonEmptyBootstrapVerbAccepts", func(t *testing.T) {
+		loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+		if err := writeSeed(loc, "some-slug", shedrun.RecipeLoom, shedrun.DriverLLM, nil); err != nil {
+			t.Fatalf("writeSeed(driver=llm) = %v; want nil", err)
+		}
+	})
+}
+
+// TestWriteSeed_LLMDriverOnTheRealTableRoundTrips covers the real table: seeding the loom recipe
+// with the llm driver succeeds, and the seed reads back carrying that value.
+func TestWriteSeed_LLMDriverOnTheRealTableRoundTrips(t *testing.T) {
 	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
 
-	err := writeSeed(loc, "some-slug", "batten", shedrun.DriverLLM, nil)
-	if err == nil {
-		t.Fatal("writeSeed(driver=llm) = nil; want a refusal")
+	if err := writeSeed(loc, "some-slug", "loom", shedrun.DriverLLM, nil); err != nil {
+		t.Fatalf("writeSeed(driver=llm) = %v; want nil", err)
 	}
-	if !strings.Contains(err.Error(), "not implemented yet") {
-		t.Errorf("writeSeed(driver=llm) error = %q; want it to name the roadmap item", err.Error())
+
+	seed, found, err := shedrun.ReadSeed(loc, "some-slug")
+	if err != nil || !found {
+		t.Fatalf("ReadSeed after writeSeed = (found=%v, err=%v); want (true, nil)", found, err)
+	}
+	if seed.Driver != shedrun.DriverLLM {
+		t.Errorf("seed.Driver = %q; want %q", seed.Driver, shedrun.DriverLLM)
 	}
 }
 

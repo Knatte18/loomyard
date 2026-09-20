@@ -93,8 +93,8 @@ func seedPlanStencil(t *testing.T, hubPath string) {
 }
 
 // seedLoomConfigWithInteractive overwrites <anchorPath>/_lyx/config/loom.yaml with a full
-// eight-key literal, identical to the embedded template's own values except
-// discussion_interactive, which takes the caller-chosen value. All eight keys are written
+// eleven-key literal, identical to the embedded template's own values except
+// discussion_interactive, which takes the caller-chosen value. All eleven keys are written
 // explicitly, rather than string-substituting the template, because configengine.Load is strict
 // on missing keys -- an explicit literal is what internal/loomengine/config_test.go already does.
 func seedLoomConfigWithInteractive(t *testing.T, anchorPath string, discussionInteractive bool) {
@@ -114,15 +114,16 @@ review_timeout_min: 240
 selfreport: true
 friction: opus[effort=high]
 friction_timeout_min: 30
+driver: ""
 `, discussionInteractive)
 	if err := os.WriteFile(cfgPath, []byte(contents), 0o644); err != nil {
 		t.Fatalf("WriteFile(%q) = %v; want nil", cfgPath, err)
 	}
 }
 
-// seedLoomConfigWithFriction overwrites <anchorPath>/_lyx/config/loom.yaml with a full eight-key
+// seedLoomConfigWithFriction overwrites <anchorPath>/_lyx/config/loom.yaml with a full eleven-key
 // literal, identical to the embedded template's own values except the friction key, which takes the
-// caller-chosen value -- empty to mean Tier 2 is off. All eight keys are written explicitly for the
+// caller-chosen value -- empty to mean Tier 2 is off. All eleven keys are written explicitly for the
 // same configengine.Load strictness reason seedLoomConfigWithInteractive already documents.
 func seedLoomConfigWithFriction(t *testing.T, anchorPath, friction string) {
 	t.Helper()
@@ -141,6 +142,7 @@ review_timeout_min: 240
 selfreport: true
 friction: %s
 friction_timeout_min: 30
+driver: ""
 `, friction)
 	if err := os.WriteFile(cfgPath, []byte(contents), 0o644); err != nil {
 		t.Fatalf("WriteFile(%q) = %v; want nil", cfgPath, err)

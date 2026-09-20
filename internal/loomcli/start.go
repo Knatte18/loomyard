@@ -9,7 +9,10 @@
 package loomcli
 
 import (
+	"context"
 	"errors"
+	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -22,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -35,6 +39,224 @@ const (
 	bootstrapHandshakePollInterval = 100 * time.Millisecond
 	bootstrapHandshakeAttempts     = 300
 )
+
+// mustUseLLMDriverArm reports whether step 5 must take the llm arm's strand launch rather than the
+// go arm's detached spawn, from the run's recorded driver.
+//
+// Per the seed contract an absent driver value already defaults to the go driver on read, so this is
+// a two-value switch with the go driver as both the default and the zero-config answer -- any value
+// other than shedrun.DriverLLM, empty included, selects the go arm.
+func mustUseLLMDriverArm(driver string) bool {
+	return driver == shedrun.DriverLLM
+}
+
+// startLLMDriverArm performs the llm arm's whole launch, in order: resolve the driver settings
+// through the loom engine's driver resolver, using the config and registry the receiver already
+// carries; when driverAction reports a dead driver strand, remove that corpse through the pane-probe
+// seam before anything else -- a relaunch that started first and removed second would leave two
+// strands under one name, which reed's add has no upsert semantics to reconcile; compose the report
+// path and create its parent directory unconditionally with a mkdir-all immediately before composing
+// the spec -- this arm's own mkdir, rather than leaning on step 4's, since whether that mkdir's
+// parent covers this directory too is a premise this task would otherwise inherit unverified; compose
+// the prompt and the spec; and start the run through the starter seam.
+//
+// It returns the started run's handle so the caller can log the spawn and run the pane-liveness
+// probe against it.
+func (c *loomCLI) startLLMDriverArm(driverAction driverStrandAction, driverGUID string, runID string) (driverHandle, error) {
+	settings, err := loomengine.ResolveDriver(c.cfg, c.registry)
+	if err != nil {
+		return nil, err
+	}
+
+	if driverAction == driverStrandDead {
+		if err := c.driverPaneProbe.RemoveDriverStrand(driverGUID); err != nil {
+			return nil, err
+		}
+	}
+
+	reportPath := driverReportPath(c.location, runID, time.Now, newDriverReportRand())
+	if err := os.MkdirAll(filepath.Dir(reportPath), 0o755); err != nil {
+		return nil, err
+	}
+
+	prompt := driverPrompt(runID, reportPath)
+	spec := driverSpec(prompt, reportPath, settings)
+
+	run, err := c.driverStarter.StartDriver(spec)
+	if err != nil {
+		return nil, err
+	}
+	// Per the Live-Substrate Spawn Observability invariant, logged exactly as the go arm's own
+	// detached spawn already is.
+	logger.Info("loom: spawned driver strand", "guid", run.StrandGUID(), "runDir", run.RunDir())
+	return run, nil
+}
+
+// runDriverSpawnAndWait performs steps 5 and 6 of the bootstrap: it probes the run lock and the
+// driver strand table once, decides via mustSpawnDriver whether a spawn is needed, and -- when one
+// is -- branches on driver into the go arm's detached spawn and run-lock handshake (both
+// byte-for-byte unchanged from before this extraction, aside from taking lockHeld as a parameter
+// rather than building it locally) or the llm arm's strand launch and pane-liveness probe.
+//
+// lockHeld is the go arm's handshake seam, built by the caller over the real run lock in production;
+// a test substitutes a counting fake to prove the handshake is never consulted on an llm-seeded
+// bootstrap -- the assertion this batch's own scope note names.
+//
+// Every failure return releases bootstrapLock explicitly, before reporting on out's envelope, and
+// then returns false so the caller returns immediately without a second release. On success it
+// returns true, leaving bootstrapLock held for the caller's own step 7 release.
+func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driver string, bootstrapLock *lock.FileLock, lockHeld func() (bool, error)) bool {
+	runLockPath := c.shedPaths.LockPath
+	probe, runLockFree, err := lock.TryAcquireWriteLock(runLockPath)
+	if err != nil {
+		_ = bootstrapLock.Release()
+		clihelp.SetExit(ctx, output.Err(out, err.Error()))
+		return false
+	}
+	if runLockFree {
+		_ = probe.Release()
+	}
+	runLockHeld := !runLockFree
+
+	// The strand table is read once here, through the driverPaneProbe.Strands() seam, and the one
+	// slice feeds both consumers: the widened spawn predicate below, and, on the llm arm, the
+	// corpse check -- there is no pre-branch strand read in today's start.go to reuse, so this is a
+	// new call, made exactly once.
+	strands, err := c.driverPaneProbe.Strands()
+	if err != nil {
+		_ = bootstrapLock.Release()
+		clihelp.SetExit(ctx, output.Err(out, err.Error()))
+		return false
+	}
+	driverAction, driverGUID := resolveDriverStrandAction(strands)
+	mustSpawn := mustSpawnDriver(runLockHeld, driverAction == driverStrandLive)
+
+	var childPID int
+	var driverRun driverHandle
+	if mustSpawn && mustUseLLMDriverArm(driver) {
+		driverRun, err = c.startLLMDriverArm(driverAction, driverGUID, c.runID)
+		if err != nil {
+			_ = bootstrapLock.Release()
+			clihelp.SetExit(ctx, output.Err(out, err.Error()))
+			return false
+		}
+	} else if mustSpawn {
+		exe, err := os.Executable()
+		if err != nil {
+			_ = bootstrapLock.Release()
+			clihelp.SetExit(ctx, output.Err(out, err.Error()))
+			return false
+		}
+		driverLogPath := loomengine.LoomDriverLog(c.location)
+		logFile, err := os.OpenFile(driverLogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+		if err != nil {
+			_ = bootstrapLock.Release()
+			clihelp.SetExit(ctx, output.Err(out, err.Error()))
+			return false
+		}
+		runCmd := exec.Command(exe, "loom", "run")
+		runCmd.Stdout = logFile
+		runCmd.Stderr = logFile
+		proc.Detach(runCmd)
+		if err := runCmd.Start(); err != nil {
+			_ = logFile.Close()
+			_ = bootstrapLock.Release()
+			clihelp.SetExit(ctx, output.Err(out, err.Error()))
+			return false
+		}
+		logger.Info("loom: spawned detached driver", "pid", runCmd.Process.Pid, "log", driverLogPath)
+		childPID = runCmd.Process.Pid
+		// The log file handle is safe to close here: the child inherited its own
+		// duplicated descriptor at Start, so this process's copy is no longer needed.
+		_ = logFile.Close()
+		// Reap the child as soon as it exits, in the background: this process is still the
+		// driver's direct parent (Detach's Setsid only puts it in a new session; the child
+		// is re-parented away only once THIS process itself exits), so a driver that
+		// finishes before this bootstrap invocation does -- the common case, since a fresh
+		// task's Discussion-Validate has nothing to validate yet and bounces to its budget
+		// within milliseconds -- would otherwise sit as a zombie. A zombie's pid still
+		// answers kill(pid, 0) as "alive", which is exactly the probe proc.IsAlive uses, so
+		// leaving this unreaped would make the handshake below spin its entire deadline and
+		// falsely refuse a bootstrap whose driver actually completed cleanly.
+		go func() { _ = runCmd.Wait() }()
+	}
+
+	// Step 6, go arm: still holding the bootstrap lock, wait for the driver to take the run
+	// lock. The handshake stays the go path's alone -- see this batch's own scope note --
+	// so this block is never reached on the llm arm, is never widened to cover it, and is
+	// never refactored into a shared helper that reaches it.
+	if mustSpawn && !mustUseLLMDriverArm(driver) {
+		alive := func() bool { return proc.IsAlive(childPID) }
+		// halted reads the machine's own persisted state, which is the only thing that can
+		// still separate "wedged spawn" from "pass finished, driver still doing post-run
+		// bookkeeping" now that the run lock is released before the friction reflection
+		// runs. A read failure, and a status file that is not there at all, both report
+		// false rather than true: neither is evidence the machine halted, so neither may
+		// shortcut the handshake -- the deadline stays the arbiter in that case.
+		halted := func() bool {
+			st, found, readErr := state.ReadJSONStrict[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
+			if readErr != nil || !found {
+				return false
+			}
+			return st.State != shedengine.StateRunning
+		}
+		wait := func() { time.Sleep(bootstrapHandshakePollInterval) }
+
+		result, err := awaitRunLock(lockHeld, alive, halted, wait, bootstrapHandshakeAttempts)
+		if err != nil {
+			_ = bootstrapLock.Release()
+			clihelp.SetExit(ctx, output.Err(out, err.Error()))
+			return false
+		}
+		driverLogPath := loomengine.LoomDriverLog(c.location)
+		if dispositionForHandshake(result) == handshakeRefuse {
+			_ = bootstrapLock.Release()
+			clihelp.SetExit(ctx, output.Err(out, "loom: driver did not take the run lock; see "+driverLogPath))
+			return false
+		}
+		if result == awaitRunLockChildDied {
+			// Not a failure: the driver ran to completion and exited before the handshake's
+			// first poll, which is what every fast-halting run does. The tmux handover below
+			// still happens, because the status strand in that session is where the halt is
+			// legible. See dispositionForHandshake for the full argument.
+			logger.Info("loom: driver exited before the handshake observed the run lock; its outcome is recorded in the driver log", "pid", childPID, "log", driverLogPath)
+		}
+		if result == awaitRunLockHalted {
+			// The halted disposition's breadcrumb, symmetric with the child-died one above:
+			// on every resume of an already-halted run this arm fires on the handshake's
+			// first poll, before the driver has done anything, so without this line the log
+			// carries zero evidence which handshake path the bootstrap took — including in
+			// the narrow case where the child is not doing post-run bookkeeping but is
+			// genuinely wedged before its first persist (crucible round 2, R2-F3).
+			logger.Info("loom: driver is alive with the machine already halted; proceeding to the handover while it finishes post-run bookkeeping", "pid", childPID, "log", driverLogPath)
+		}
+	}
+
+	// Step 6, llm arm: probe the just-launched driver strand's pane for liveness, in place
+	// of the go arm's run-lock handshake -- an ly-drive session takes the run lock only
+	// inside each "lyx shed step" and releases it between steps, so a handshake on it would
+	// either race the Claude boot or observe a free lock between two perfectly healthy
+	// steps. Refuse when the probe reports not-ready, naming the run directory and strand
+	// guid the handle reports -- never the driver log accessor, which names only the
+	// detached go driver's captured output.
+	if mustSpawn && mustUseLLMDriverArm(driver) {
+		wait := func() { time.Sleep(driverPanePollInterval) }
+		ready, err := awaitDriverPane(c.driverPaneProbe.Strands, driverRun.StrandGUID(), wait, driverPaneAttempts)
+		if err != nil {
+			_ = bootstrapLock.Release()
+			clihelp.SetExit(ctx, output.Err(out, err.Error()))
+			return false
+		}
+		if !ready {
+			_ = bootstrapLock.Release()
+			clihelp.SetExit(ctx, output.Err(out, fmt.Sprintf("loom: driver strand did not come up; see run dir %s (strand %s)", driverRun.RunDir(), driverRun.StrandGUID())))
+			return false
+		}
+		logger.Info("loom: driver strand pane is live", "guid", driverRun.StrandGUID(), "runDir", driverRun.RunDir())
+	}
+
+	return true
+}
 
 // startCmd builds the `start` subcommand: the session bootstrap.
 func (c *loomCLI) startCmd() *cobra.Command {
@@ -51,17 +273,27 @@ func (c *loomCLI) startCmd() *cobra.Command {
   2. ensure the worktree's tmux session is up and its status strand exists,
      then spawn the per-hub watchdog daemon, best-effort -- --no-attach
      still performs this spawn
-  3. spawn the detached loom driver, unless one is already alive -- a second
-     invocation while a driver is running ensures substrate and attaches
-     rather than spawning a second one
+  3. read this run's seed and, unless a driver is already alive, spawn the
+     driver its recorded choice selects -- the detached Go runner, or a
+     Claude strand running ly-drive in this worktree's own reed session --
+     a second invocation while a driver is running ensures substrate and
+     attaches rather than spawning a second one; which driver runs is the
+     seed's recorded choice, never a flag on this command
   4. add the operator's own strand and then hand the terminal to the tmux session
 
-The detached driver's own stdout/stderr go to the log the ephemeral-tree
-driver-log accessor names, never to this command's own output.
+The detached Go driver's own stdout/stderr go to the log the ephemeral-tree
+driver-log accessor names, never to this command's own output -- an ly-drive
+strand writes no such log, since its own pane is where its output already
+lives.
 
---no-attach performs steps 1 through 3 and the handshake that confirms the
-driver took the run lock, then returns instead of running step 4 -- skipping
-the terminal handover this way skips the operator's own strand with it.
+--no-attach performs steps 1 through 3 and returns once the driver's
+readiness signal confirms it is up, instead of running step 4 -- skipping
+the terminal handover this way skips the operator's own strand with it. That
+readiness signal is the run lock being taken for the Go driver, and the
+strand's own pane coming alive for an ly-drive driver -- the documented
+meaning is the same on both paths, perform every bootstrap step, confirm the
+driver is up by that path's own signal, and return without the terminal
+handover.
 
 Example:
   lyx loom start
@@ -81,8 +313,10 @@ Example:
 			// helper also returns is deliberately discarded here: `run` writes the same envelope on
 			// any failure regardless of which sub-step produced it, exactly as before this
 			// extraction; `step` is the caller that maps the stage onto its own refusal-kind
-			// vocabulary.
-			_, _, err := c.seedAndCommitBootstrap(slug, parentFlag)
+			// vocabulary. The returned driver is step 5's branch condition below -- this call is
+			// the only read of it: seedAndCommitBootstrap has just written or found this run's
+			// seed, so a second shedrun.ReadSeed here would re-read a value already in hand.
+			_, driver, _, err := c.seedAndCommitBootstrap(slug, parentFlag)
 			if err != nil {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
@@ -131,120 +365,24 @@ Example:
 			// up, attach and resume already treat it as best-effort.
 			c.spawnWatchdog(c.location.HubPath, c.reed.TmuxPath(), c.reed.ShellPath(), c.suppressWatchdogSpawn)
 
-			// Step 5: probe the run lock non-blockingly -- releasing it immediately when it was
-			// free, never holding it across this probe -- and spawn the detached driver only when
-			// mustSpawnDriver says no driver is already alive.
+			// Steps 5 and 6: probe the run lock and the driver strand table, decide whether a spawn
+			// is needed, and run the arm-specific launch and wait. lockHeld is the go arm's
+			// handshake seam, built here over the real run lock -- see runDriverSpawnAndWait's own
+			// doc comment for why it is a parameter rather than built inside that function.
 			runLockPath := c.shedPaths.LockPath
-			probe, runLockFree, err := lock.TryAcquireWriteLock(runLockPath)
-			if err != nil {
-				_ = bootstrapLock.Release()
-				clihelp.SetExit(ctx, output.Err(out, err.Error()))
+			lockHeld := func() (bool, error) {
+				fl, acquired, err := lock.TryAcquireWriteLock(runLockPath)
+				if err != nil {
+					return false, err
+				}
+				if acquired {
+					_ = fl.Release()
+					return false, nil
+				}
+				return true, nil
+			}
+			if !c.runDriverSpawnAndWait(ctx, out, driver, bootstrapLock, lockHeld) {
 				return nil
-			}
-			if runLockFree {
-				_ = probe.Release()
-			}
-			runLockHeld := !runLockFree
-
-			var childPID int
-			if mustSpawnDriver(runLockHeld) {
-				exe, err := os.Executable()
-				if err != nil {
-					_ = bootstrapLock.Release()
-					clihelp.SetExit(ctx, output.Err(out, err.Error()))
-					return nil
-				}
-				driverLogPath := loomengine.LoomDriverLog(c.location)
-				logFile, err := os.OpenFile(driverLogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-				if err != nil {
-					_ = bootstrapLock.Release()
-					clihelp.SetExit(ctx, output.Err(out, err.Error()))
-					return nil
-				}
-				runCmd := exec.Command(exe, "loom", "run")
-				runCmd.Stdout = logFile
-				runCmd.Stderr = logFile
-				proc.Detach(runCmd)
-				if err := runCmd.Start(); err != nil {
-					_ = logFile.Close()
-					_ = bootstrapLock.Release()
-					clihelp.SetExit(ctx, output.Err(out, err.Error()))
-					return nil
-				}
-				logger.Info("loom: spawned detached driver", "pid", runCmd.Process.Pid, "log", driverLogPath)
-				childPID = runCmd.Process.Pid
-				// The log file handle is safe to close here: the child inherited its own
-				// duplicated descriptor at Start, so this process's copy is no longer needed.
-				_ = logFile.Close()
-				// Reap the child as soon as it exits, in the background: this process is still the
-				// driver's direct parent (Detach's Setsid only puts it in a new session; the child
-				// is re-parented away only once THIS process itself exits), so a driver that
-				// finishes before this bootstrap invocation does -- the common case, since a fresh
-				// task's Discussion-Validate has nothing to validate yet and bounces to its budget
-				// within milliseconds -- would otherwise sit as a zombie. A zombie's pid still
-				// answers kill(pid, 0) as "alive", which is exactly the probe proc.IsAlive uses, so
-				// leaving this unreaped would make the handshake below spin its entire deadline and
-				// falsely refuse a bootstrap whose driver actually completed cleanly.
-				go func() { _ = runCmd.Wait() }()
-			}
-
-			// Step 6: still holding the bootstrap lock, wait for the driver to take the run lock.
-			if mustSpawnDriver(runLockHeld) {
-				lockHeld := func() (bool, error) {
-					fl, acquired, err := lock.TryAcquireWriteLock(runLockPath)
-					if err != nil {
-						return false, err
-					}
-					if acquired {
-						_ = fl.Release()
-						return false, nil
-					}
-					return true, nil
-				}
-				alive := func() bool { return proc.IsAlive(childPID) }
-				// halted reads the machine's own persisted state, which is the only thing that can
-				// still separate "wedged spawn" from "pass finished, driver still doing post-run
-				// bookkeeping" now that the run lock is released before the friction reflection
-				// runs. A read failure, and a status file that is not there at all, both report
-				// false rather than true: neither is evidence the machine halted, so neither may
-				// shortcut the handshake -- the deadline stays the arbiter in that case.
-				halted := func() bool {
-					st, found, readErr := state.ReadJSONStrict[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
-					if readErr != nil || !found {
-						return false
-					}
-					return st.State != shedengine.StateRunning
-				}
-				wait := func() { time.Sleep(bootstrapHandshakePollInterval) }
-
-				result, err := awaitRunLock(lockHeld, alive, halted, wait, bootstrapHandshakeAttempts)
-				if err != nil {
-					_ = bootstrapLock.Release()
-					clihelp.SetExit(ctx, output.Err(out, err.Error()))
-					return nil
-				}
-				driverLogPath := loomengine.LoomDriverLog(c.location)
-				if dispositionForHandshake(result) == handshakeRefuse {
-					_ = bootstrapLock.Release()
-					clihelp.SetExit(ctx, output.Err(out, "loom: driver did not take the run lock; see "+driverLogPath))
-					return nil
-				}
-				if result == awaitRunLockChildDied {
-					// Not a failure: the driver ran to completion and exited before the handshake's
-					// first poll, which is what every fast-halting run does. The tmux handover below
-					// still happens, because the status strand in that session is where the halt is
-					// legible. See dispositionForHandshake for the full argument.
-					logger.Info("loom: driver exited before the handshake observed the run lock; its outcome is recorded in the driver log", "pid", childPID, "log", driverLogPath)
-				}
-				if result == awaitRunLockHalted {
-					// The halted disposition's breadcrumb, symmetric with the child-died one above:
-					// on every resume of an already-halted run this arm fires on the handshake's
-					// first poll, before the driver has done anything, so without this line the log
-					// carries zero evidence which handshake path the bootstrap took — including in
-					// the narrow case where the child is not doing post-run bookkeeping but is
-					// genuinely wedged before its first persist (crucible round 2, R2-F3).
-					logger.Info("loom: driver is alive with the machine already halted; proceeding to the handover while it finishes post-run bookkeeping", "pid", childPID, "log", driverLogPath)
-				}
 			}
 
 			// Step 7: this tail is the CLI/Cobra Invariant's interactive-handoff exception. Steps

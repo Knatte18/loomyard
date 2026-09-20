@@ -1,7 +1,8 @@
 // seed.go declares the seed.json contract: the Seed struct, the closed driver and recipe
 // vocabularies, and ReadSeed/WriteSeed/List, the sole parser and writer of the file anywhere in this
 // repository. seed.json is written once at run creation and never mutated mid-run, so ReadSeed reads
-// it with no lock.
+// it with no lock. The driver vocabulary is closed at two values; whether a given recipe can honour
+// DriverLLM is decided at the seeding sites by that recipe's bootstrap-verb capability, not here.
 
 package shedrun
 
@@ -33,22 +34,21 @@ type Seed struct {
 const (
 	// DriverGo is the shipped driver: a Go-implemented producer arming the run's child directly.
 	DriverGo = "go"
-	// DriverLLM is the not-yet-implemented driver naming an LLM-chosen child driver.
-	// ValidateDriver refuses it, naming the roadmap item that will implement it.
+	// DriverLLM names an ly-drive session inside the run's own worktree, booted by the recipe's
+	// bootstrap verb. Whether a given recipe can honour it is decided at the seeding sites by that
+	// recipe's bootstrap-verb capability, not by ValidateDriver.
 	DriverLLM = "llm"
 )
 
 // ValidateDriver reports whether driver is a legal Seed.Driver value.
-// It accepts DriverGo, refuses DriverLLM by naming the "seeded driver choice: ly-drive strand as the
-// child's driver" roadmap item that will implement it, and refuses any other value as unknown.
+// It accepts DriverGo and DriverLLM, and refuses any other value as unknown by naming both legal
+// values.
 func ValidateDriver(driver string) error {
 	switch driver {
-	case DriverGo:
+	case DriverGo, DriverLLM:
 		return nil
-	case DriverLLM:
-		return fmt.Errorf("shedrun: driver %q is not implemented yet; see roadmap item %q", DriverLLM, "seeded driver choice: ly-drive strand as the child's driver")
 	default:
-		return fmt.Errorf("shedrun: unknown driver %q; must be %q", driver, DriverGo)
+		return fmt.Errorf("shedrun: unknown driver %q; must be %q or %q", driver, DriverGo, DriverLLM)
 	}
 }
 

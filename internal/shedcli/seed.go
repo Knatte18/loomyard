@@ -59,12 +59,19 @@ func writeSeed(location *lyxcwd.Location, runID, recipeName, driverFlag string, 
 	if err := shedrun.ValidateRunID(runID); err != nil {
 		return err
 	}
-	if _, err := lookup(recipeName); err != nil {
+	e, err := lookup(recipeName)
+	if err != nil {
 		return err
 	}
 	driver := resolveSeedDriver(driverFlag)
 	if err := shedrun.ValidateDriver(driver); err != nil {
 		return err
+	}
+	// The capability check is reached only for a legal driver value: an operator who typed a
+	// misspelling gets the vocabulary error above, not a capability error about a recipe that
+	// would have accepted the value they meant.
+	if driver == shedrun.DriverLLM && e.BootstrapVerb == "" {
+		return fmt.Errorf("shedcli: recipe %q has no bootstrap verb, so it cannot be driven by an LLM", recipeName)
 	}
 	return shedrun.WriteSeed(location, runID, shedrun.Seed{
 		Recipe: recipeName,
@@ -94,9 +101,9 @@ sequence is predicated on a seed already existing -- "seed" is the command
 invoked when one does not.
 
 --recipe is required and validated against the same table every "lyx shed"
-invocation arms through. --driver defaults to "go"; "llm" is refused as not
-yet implemented. --param is repeatable and sets a seed parameter as
-key=value.
+invocation arms through. --driver defaults to "go", unchanged; "llm" is
+accepted for a recipe that has a bootstrap verb, and refused for one that
+does not. --param is repeatable and sets a seed parameter as key=value.
 
 seed is idempotent against a byte-identical existing seed and refuses a
 disagreeing one.
@@ -152,7 +159,7 @@ Example:
 	// MarkFlagRequired's own error surfaces through RunRootCtx's cobra-error wrapping as a JSON
 	// envelope, exactly as every other cobra-level validation failure does on this tree.
 	_ = cmd.MarkFlagRequired("recipe")
-	cmd.Flags().StringVar(&driverFlag, "driver", shedrun.DriverGo, "the driver this run's child uses")
+	cmd.Flags().StringVar(&driverFlag, "driver", shedrun.DriverGo, `the driver this run's child uses; "llm" is refused for a recipe with no bootstrap verb`)
 	cmd.Flags().StringArrayVar(&paramFlags, "param", nil, "a seed parameter as key=value (repeatable)")
 
 	return cmd

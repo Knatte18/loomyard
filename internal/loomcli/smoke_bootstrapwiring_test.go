@@ -27,6 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
@@ -63,6 +64,7 @@ func TestSmokeBootstrap_FirstSeedClearsFrictionNotesAndReentryKeepsThem(t *testi
 	exe := buildLyxBinary(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
 	registerBootstrapTeardown(t, loc, worktree)
+	seedGoDriverRun(t, loc)
 
 	stalePath := plantFrictionNote(t, loc, "left-over-from-an-earlier-task.md")
 
@@ -110,13 +112,14 @@ func TestSmokeStep_RecordsCleanHandoffMarkerMatchingPersistedStatus(t *testing.T
 	exe := buildLyxBinary(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
 	registerBootstrapTeardown(t, loc, worktree)
+	seedGoDriverRun(t, loc)
 
 	stdout, _, err := runLoomCLINoFatal(exe, worktree, 60*time.Second, "loom", "step")
 	if err != nil {
 		t.Fatalf("loom step: %v; output: %s", err, stdout)
 	}
 
-	persisted, found, err := state.ReadJSONStrict[shedengine.Status](loomengine.LoomStatusFile(loc), loomengine.LoomStatusLock(loc))
+	persisted, found, err := state.ReadJSONStrict[shedengine.Status](shedrun.StatusFile(loc, shedrun.SelfRunID), shedrun.StatusLock(loc, shedrun.SelfRunID))
 	if err != nil || !found {
 		t.Fatalf("read persisted status after step: found=%v err=%v", found, err)
 	}
@@ -148,7 +151,11 @@ func TestSmokeStep_RecordsCleanHandoffMarkerMatchingPersistedStatus(t *testing.T
 // This baseline always exists"), so the skill's opening move failed on every brand-new task.
 func TestSmokeStatusAndPause_OnNeverBootstrappedPairNameTheRemedy(t *testing.T) {
 	exe := buildLyxBinary(t)
-	_, _, worktree, _ := newWiredPairFixture(t)
+	_, loc, worktree, _ := newWiredPairFixture(t)
+	// arm.go's resolveRunID now refuses "status"/"pause" outright when no seed exists at all,
+	// before either verb's own absent-status-file check ever runs -- a seed must be present so this
+	// case reaches the lock-parent-directory bug it actually guards.
+	seedGoDriverRun(t, loc)
 
 	tests := []struct {
 		name string

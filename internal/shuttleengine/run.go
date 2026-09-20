@@ -250,13 +250,14 @@ func (r *Runner) Start(spec Spec) (*Run, error) {
 	}
 
 	strand, err := r.reed.AddStrand(reedengine.AddSpec{
-		Role:      spec.Role,
-		Round:     spec.Round,
-		Parent:    spec.Parent,
-		Cmd:       launch.Cmd,
-		ResumeCmd: launch.ResumeCmd,
-		SessionID: launch.SessionID,
-		Display:   spec.Display,
+		Role:         spec.Role,
+		Round:        spec.Round,
+		NameOverride: spec.NameOverride,
+		Parent:       spec.Parent,
+		Cmd:          launch.Cmd,
+		ResumeCmd:    launch.ResumeCmd,
+		SessionID:    launch.SessionID,
+		Display:      spec.Display,
 	})
 	if err != nil {
 		// Nothing to resume: the strand never registered, so the run
@@ -325,6 +326,15 @@ func (r *Runner) Start(spec Spec) (*Run, error) {
 		clock:    clk,
 		deadline: clk.Now().Add(spec.Timeout),
 	}, nil
+}
+
+// RunDir returns the directory holding this run's artifacts (prompt.md, settings.json, the events
+// file).
+// It is exported because a caller that starts a run and never Waits on it has no other way to name
+// the one directory an operator would look in — batch 4's pane-liveness probe refuses the bootstrap
+// with exactly this path.
+func (run *Run) RunDir() string {
+	return run.runDir
 }
 
 // StrandGUID returns the reed strand guid bound to this run.

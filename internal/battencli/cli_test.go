@@ -12,6 +12,8 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/spf13/cobra"
 )
@@ -142,6 +144,50 @@ func TestCommand_ZeroOrOneArgArePermittedByCobrasOwnArity(t *testing.T) {
 			}
 			if err := cmd.Args(cmd, []string{"one", "two"}); err == nil {
 				t.Errorf("%s: Args(two) = nil; want a rejection -- MaximumNArgs(1)", verb)
+			}
+		})
+	}
+}
+
+// TestArmSeed_DriverFlagMatrix pins the four-way matrix between --driver and --child-driver: batten's
+// own driver flag still accepts "go" and still refuses both "llm" and an unknown value, while
+// --child-driver accepts both "go" and "llm" -- the value it accepts reaches the auto-seeded seed's
+// own "child_driver" param, which wire.go's own ChildDriver reader consults -- and still refuses an
+// unknown value. The likeliest regression this batch names is lifting both refusals for symmetry;
+// only a case asserting the batten driver flag still refuses catches it.
+func TestArmSeed_DriverFlagMatrix(t *testing.T) {
+	tests := []struct {
+		name            string
+		driverFlag      string
+		childDriverFlag string
+		wantErr         bool
+	}{
+		{"BothGo", shedrun.DriverGo, shedrun.DriverGo, false},
+		{"ChildDriverLLMAccepted", shedrun.DriverGo, shedrun.DriverLLM, false},
+		{"OwnDriverLLMRefused", shedrun.DriverLLM, shedrun.DriverGo, true},
+		{"BothLLMRefusedByOwnDriver", shedrun.DriverLLM, shedrun.DriverLLM, true},
+		{"OwnDriverUnknownRefused", "rust", shedrun.DriverGo, true},
+		{"ChildDriverUnknownRefused", shedrun.DriverGo, "rust", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+			c := &battenCLI{driverFlag: tt.driverFlag, childDriverFlag: tt.childDriverFlag}
+
+			err := c.armSeed(loc, "some-slug", "run")
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("armSeed(driver=%q, childDriver=%q) error = %v; want error = %v", tt.driverFlag, tt.childDriverFlag, err, tt.wantErr)
+			}
+			if tt.wantErr {
+				return
+			}
+
+			seed, found, readErr := shedrun.ReadSeed(loc, "some-slug")
+			if readErr != nil || !found {
+				t.Fatalf("ReadSeed after armSeed = (found=%v, err=%v); want (true, nil)", found, readErr)
+			}
+			if seed.Params["child_driver"] != tt.childDriverFlag {
+				t.Errorf("seed.Params[\"child_driver\"] = %q; want %q", seed.Params["child_driver"], tt.childDriverFlag)
 			}
 		})
 	}

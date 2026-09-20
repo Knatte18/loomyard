@@ -434,5 +434,9 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	c.runner = runner
 	c.landingCfg = landingCfg
 	c.frictionDir = frictionDir
+	// driverStarter and driverPaneProbe wrap the runner and reed engine already constructed above --
+	// no second runner and no second reed engine are constructed here.
+	c.driverStarter = runnerDriverStarter{runner: runner}
+	c.driverPaneProbe = newReedDriverPaneProbe(reedEngine)
 	return nil
 }
