@@ -13,9 +13,12 @@ Being a Strand is only required to *receive* mail — an address needs somewhere
 The address format is **`name@slug[.hub]`** — the email shape, deliberately: "deliver to *name* at *place*" needs no explanation for humans or agents, and the grammar is collision-free because slugs (`[a-z][a-z0-9-]*`) can contain neither `@` nor `.`, so the single `@` splits unambiguously and the optional `.hub` suffix reads exactly like an unqualified-vs-qualified hostname (omitted = own hub).
 The resemblance to real email is a known confusion risk, accepted on purpose — it buys the mental model.
 Real external channels never ride on it: a raw email address is never a valid recipient, and creel never guesses whether something "is" email.
-Instead, external channels are a small set of **reserved endpoint names** (`useremail`, `userslack`, …) — configured endpoints, not addresses: creel config maps each one to a connector plus the operator's real address, so the config *is* the allowlist and a confused agent structurally cannot "escalate" to an arbitrary third party.
-The reserved names are excluded from the strand-name grammar, so no strand can ever shadow one.
-Resolution is thus heuristic-free everywhere: a recipient either resolves to a strand, or is a reserved endpoint, or is refused with the list of names that exist.
+Instead — **later, not creel v1** — external channels are **connector domains**: the rule is that the rightmost element decides the router — a known hub (or nothing) means internal post, while a reserved connector domain (`slack`, `email`, …) hands *everything left of it* to that connector module to interpret (`user@slack`; possibly `orch@slug.hub.slack` if each slug gets its own Slack channel — the connector owns that mapping, creel's core never parses it).
+Each connector module owns its own list of valid left-side names, and that configured list *is* the allowlist: a confused agent structurally cannot reach an arbitrary third party.
+Inbound goes the same way: a reply arriving from Slack enters creel as ordinary mail with the connector address as `from`, so the receiving agent just replies to `from` and never knows Slack exists.
+Connector domains are excluded from the hub-name grammar, so no hub can ever shadow one.
+Resolution stays heuristic-free everywhere: a recipient resolves to a strand, or ends in a connector domain, or is refused with the list of names that exist.
+Creel v1 reserves the grammar only; no connector ships with it.
 (The `@` file-mention in Claude Code's interactive input is a UI autocomplete trigger only — an address in a shell argument is just text — so the overlap costs a cosmetic popup when a human types an address in the prompt box, nothing more.)
 
 - **The strand guid is the identity; names are the address.**
@@ -51,7 +54,9 @@ Deliberately a separate, later task from `ly-drive + orchestrator`'s launch-conv
 Transport and log are two different jobs, and the terminal is bad at the second one (scrollback dies with the pane, is unsearchable, and mixes mail into everything else) — so delivery is **pull, not full-content injection**, with a durable store carrying the audit trail.
 
 - **Every message is an envelope in the creel store**: `from`, `to`, timestamp, `kind`, status (`sent` → `delivered` → `read`).
-  `from` is filled in by the send verb itself — derived from `$LYX_STRAND_NAME` + the cwd slug, never free-typed — so a receiver always knows exactly where the reply goes, and a sender can neither forge nor forget it.
+  `from` is filled in by the send verb itself, never free-typed: derived from `$LYX_STRAND_NAME` + the cwd slug when it can be (env is inherited down the whole process tree, so Go code running inside a strand signs with the strand's address for free), falling back to the `$TMUX_PANE`-to-state join.
+  Outside reed there is no address, and creel does not pretend otherwise: `from` becomes a reserved not-addressable marker (`operator`), meaning a reply is impossible and the message must stand on its own — no reply-routing is configured for the marker.
+  So a receiver always knows exactly where the reply goes (or that it can't), and a sender can neither forge nor forget its identity.
   Replying is just sending to `from`.
 - **Two kinds.**
   `mail` is stored and *pulled*: the receiver is notified with one short line and reads at its own pace (`lyx creel inbox` for the count, a get-one verb that flips status to `read`).
