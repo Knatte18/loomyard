@@ -162,8 +162,8 @@ Its seventeen rows:
 
 ```
 Preflight → Loom-Preflight
-  → Discussion-Write → Discussion-Validate → [Discussion-Review segment]
-  → Plan-Write → Plan-Validate → [Plan-Review segment] → Plan-Revalidate
+  → Discussion-Write → [Discussion-Review segment]
+  → Plan-Write → [Plan-Review segment]
   → Batchifier → Webster → [Webster-Review segment]
   → Publish → Finalize
 ```
