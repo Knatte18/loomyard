@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-driver-launch
+phase: approved-lift-llm-refusals
 slug: seeded-driver-choice
 branch: seeded-driver-choice
 plan: _mill/plan
@@ -36,6 +36,7 @@ approved-shuttle-seam  '2026-09-20T10:05:11Z'
 approved-loom-driver-config  '2026-09-20T10:09:57Z'
 approved-bootstrap-verb-capability  '2026-09-20T10:15:12Z'
 approved-driver-launch  '2026-09-20T10:42:19Z'
+approved-lift-llm-refusals  '2026-09-20T10:49:26Z'
 ```
 
 ## Batches
@@ -67,9 +68,10 @@ batches:
     commit_sha: 073ae94f49a56aca2d312a115b0c20d739c94a85
     verify_baseline_failures: []
   - name: lift-llm-refusals
-    state: running
+    state: approved
     implementer_session: 4957b599-873c-467c-8b04-33ec06e12af9
     start_sha: 58433d54c9a5eff115508b52fc4f1bd014aee1ec
+    commit_sha: f4045201a209e43430e98afb840d44a5b6af090c
     verify_baseline_failures: []
   - name: ly-drive-autonomous
     state: pending
