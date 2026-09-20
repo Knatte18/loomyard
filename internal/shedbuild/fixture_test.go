@@ -137,8 +137,9 @@ func testLandingDeps(dir string) landingshed.Deps {
 // temp root, a CommitDiscussion closure returning nil, a PlanSpec closure returning a Spec over one
 // absolute output path under the same temp root, and a CommitPlan closure returning nil -- and
 // additionally fills Env.Landing via testLandingDeps, because two of the seventeen engines need it,
-// which its sibling does not do. It also fills the six batten fields (Slug, ScratchDir,
-// CreateWorktree, InnerRun, Teardown, PrimeLock) the same way that sibling's own newTestEnv does.
+// which its sibling does not do. It also fills the seven batten fields (Slug, ScratchDir,
+// CreateWorktree, InnerRun, Teardown, PrimeLock, SeedChild) the same way that sibling's own
+// newTestEnv does.
 //
 // Every seam any registered engine requires non-nil must be filled here:
 // TestBuild_EveryRegisteredEngineBuilds drives its assertion off shedrecipe.Names(), so a new
@@ -219,6 +220,13 @@ func newTestEnv(t *testing.T) shedrecipe.Env {
 			Acquire: func() (func() error, bool, error) {
 				return func() error { return nil }, true, nil
 			},
+		},
+		SeedChild: battenshed.SeedChildDeps{
+			ReadBoardType: func(context.Context) (string, error) { return "loom", nil },
+			ChildDriver:   func() (string, error) { return "claude", nil },
+			WriteSeed:     func(context.Context, string, string) error { return nil },
+			CommitSeed:    func(context.Context) error { return nil },
+			PushSeed:      func(context.Context) error { return nil },
 		},
 	}
 }
