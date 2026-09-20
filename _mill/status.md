@@ -60,7 +60,9 @@ batches:
     commit_sha: e1963d2b9afd53eb50db9067a6093a811eae6abe
     verify_baseline_failures: []
   - name: driver-launch
-    state: pending
+    state: running
+    implementer_session: de2b5473-26b8-4e13-bfff-cdf2de18da52
+    start_sha: e710bc7056ead892dd6ed47cf74a60a09dcd4b2f
     verify_baseline_failures: []
   - name: lift-llm-refusals
     state: pending
