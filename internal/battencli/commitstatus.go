@@ -1,10 +1,10 @@
 // commitstatus.go implements batten's own CommitStatus seam: the shedengine.Shed hook that commits
-// prime's own batten status.json onto prime's own weft-fabric pair after each transition.
+// prime's own batten status.json onto prime's own fabric pair after each transition.
 //
 // Modelled on internal/loomcli/wiring.go's newCommitStatusSeam/loomCommitStatusDeps pair, whose
 // three-case disposition -- skip-while-mid-merge, commit-hard-errors, push-warns -- applies here
 // verbatim rather than being reinvented. This is not fabricengine.Bolt: Bolt.Commit stages every
-// change in its repo, which the Fabric Git Invariant forbids a weft-commit caller, and Bolt is the
+// change in its repo, which the Fabric Git Invariant forbids a fabric-commit caller, and Bolt is the
 // Board's own carve-out scoped to the Board directory. Batten does not take the Board's push lock
 // either; a push rejected because a Board write advanced the branch takes the same disposition the
 // loom seam already applies to every push error, including gitrepo.ErrPushRejected: warn and let

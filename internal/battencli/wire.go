@@ -186,7 +186,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				}
 				return shedrun.WriteSeed(childLocation, shedrun.SelfRunID, shedrun.Seed{Recipe: recipe, Driver: driver})
 			},
-			// CommitSeed commits the child's own seed onto the child's own weft-fabric pair -- a
+			// CommitSeed commits the child's own seed onto the child's own fabric pair -- a
 			// one-off write, distinct from CommitStatus below, which commits prime's own batten
 			// status onto prime's own pair on every non-no-op transition.
 			CommitSeed: func(ctx context.Context) error {
@@ -197,7 +197,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				_, _, err = fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), childLocation, []string{shedrun.SeedRel(shedrun.SelfRunID)}, fmt.Sprintf("batten: seed child %s", slug), fabricengine.EnvSyncOptions())
 				return err
 			},
-			// PushSeed pushes the child's own weft-fabric pair, the same location CommitSeed just
+			// PushSeed pushes the child's own fabric pair, the same location CommitSeed just
 			// committed onto.
 			PushSeed: func(ctx context.Context) error {
 				childLocation, err := taskWorktreeLocation(location, slug)
