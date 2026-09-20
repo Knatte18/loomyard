@@ -144,10 +144,13 @@ Moving the shipped item to Done empties Planned, and choosing what fills it is t
   - `internal/websterengine/runlevel_test.go`
   - `internal/shedengine/run_routing_test.go`
   - `internal/loomcli/smoke_test.go`
+  - `internal/loomshed/planwrite.go`
+  - `internal/shedadapters/singlellm.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Every hit in these files is a doc comment or a test comment naming a removed row as the thing that performs some behaviour; none is an identifier, and none changes any code.
+  `internal/loomshed/planwrite.go` and `internal/shedadapters/singlellm.go` are added mid-batch: fixing `internal/loomshed/discussionwrite.go`'s "dirty weft" phrase surfaced the same bare-token Fabric Vocabulary Invariant hit, already present pre-batch, in these two files' own "dirty weft" comments -- `internal/lyxcwd`'s tree-scan enforcement test only entered this batch's `verify:` set, so no earlier batch caught it. Reword each to "dirty working tree", the phrasing `discussionwrite.go`/`planwrite.go` already use elsewhere, with no other change.
   Re-point each at what actually performs that behaviour now: the discussion parser's file comment and its bounce-behaviour paragraph name the discussion gate rather than the removed row; the glyph package's whole-plan comment and the plan parser's done-check comment name the plan gate; the friction package's re-entry paragraph is rewritten for the new graph, in which a writer row is re-entered by a resume rather than by a validate row's bounce; the attach file's crash-versus-bounce comment, which currently reasons via a bounce that no longer exists, is rewritten for the resume case it actually guards; the discussion write decorator's comment naming the row that used to judge its output afterwards now names its own gate, which judges it before the handoff; the CLI's package comment, the loom start comment, and the wiring comment each name their own gate.
   The four test comments are corrected the same way.
   Where a comment's *reasoning* rested on the removed row's existence rather than merely naming it — the friction re-entry paragraph and the attach crash-versus-bounce paragraph are both of that kind — rewrite the reasoning rather than substituting a name into a sentence that no longer holds.
