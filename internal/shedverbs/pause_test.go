@@ -58,7 +58,7 @@ func TestPauseCmd_AbsentFile(t *testing.T) {
 		message string
 	}{
 		{name: "LoomWording", message: "loom: no status file at /x; there is nothing running to pause -- run \"lyx loom start\" first to bootstrap this task"},
-		{name: "LifecycleWording", message: "lifecyclecli: no status file at /x; nothing is running for this slug"},
+		{name: "BattenWording", message: "battencli: no status file at /x; nothing is running for this slug"},
 	}
 
 	for _, tt := range tests {

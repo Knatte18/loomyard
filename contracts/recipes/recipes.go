@@ -13,8 +13,8 @@ import (
 //go:embed loom-recipe.yaml
 var LoomRecipe []byte
 
-// LifecycleRecipe is the task-worktree lifecycle's producer graph, in internal/shedbuild's recipe
+// BattenRecipe is the task-worktree batten's producer graph, in internal/shedbuild's recipe
 // format.
 //
-//go:embed lifecycle-recipe.yaml
-var LifecycleRecipe []byte
+//go:embed batten-recipe.yaml
+var BattenRecipe []byte

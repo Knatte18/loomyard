@@ -191,6 +191,28 @@ func TestUpsertFieldAllowlist(t *testing.T) {
 		}
 	})
 
+	t.Run("upsert_type_field_allowed_and_persisted", func(t *testing.T) {
+		s := boardengine.NewStore("")
+		task, err := s.UpsertTask(map[string]any{
+			"slug": "task1",
+			"type": "batten",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if task.Type != "batten" {
+			t.Errorf("expected type=batten, got %v", task.Type)
+		}
+		// Verify the value is persisted in the store.
+		retrieved, found := s.GetTask("task1")
+		if !found {
+			t.Fatalf("task not found after upsert")
+		}
+		if retrieved.Type != "batten" {
+			t.Errorf("expected stored type=batten, got %v", retrieved.Type)
+		}
+	})
+
 	t.Run("upsert_batch_stray_phase_errors", func(t *testing.T) {
 		s := boardengine.NewStore("")
 		err := s.UpsertTasksBatch([]map[string]any{

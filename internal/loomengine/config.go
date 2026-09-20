@@ -29,14 +29,12 @@ import (
 const discussionDirName = "discussion"
 
 // loomDirName is the relative-path segment loomengine joins onto lyxdirs.LyxDirName or
-// lyxdirs.DotLyxDirName to scope every loom-owned path under its own subdirectory, distinct from
-// the other products (e.g. Someday Hardener) that also configure Shed.
+// lyxdirs.DotLyxDirName to scope every loom-owned path that is not part of the shed run directory
+// under its own subdirectory, distinct from the other products (e.g. Someday Hardener) that also
+// configure Shed. loom's own status file and its two locks moved onto internal/shedrun's run
+// directory; this segment now backs only the seven accessors that have no shedrun equivalent.
 // loomengine is this segment's sole declarer.
 const loomDirName = "loom"
-
-// loomStatusFileName is the filename of loom's phase-machine status sidecar within loomDirName.
-// loomengine is this segment's sole declarer.
-const loomStatusFileName = "status.json"
 
 // loomSelfreportFiledFileName is the filename of the self-report filed-title marker within
 // loomDirName.
@@ -88,47 +86,6 @@ func DiscussionDecisionRecord(l *lyxcwd.Location) string {
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func DiscussionSupportLog(l *lyxcwd.Location) string {
 	return filepath.Join(DiscussionDir(l), "support-log.md")
-}
-
-// LoomStatusRel returns the worktree-anchor-relative form of LoomStatusFile's path: the join of
-// lyxdirs.LyxDirName, loomDirName, and loomStatusFileName.
-// It exists so a caller building a fabric commit pathspec never has to name a directory segment loom
-// owns.
-func LoomStatusRel() string {
-	return filepath.Join(lyxdirs.LyxDirName, loomDirName, loomStatusFileName)
-}
-
-// LoomStatusFile returns the path to the loom phase-machine's status.json sidecar for this
-// worktree.
-// It is AnchorPath-anchored so a caller invoked from anywhere else within the worktree still
-// resolves the one true status.json at the anchored subpath.
-// Scoped under a "loom" subdirectory, not bare _lyx, because Shed (see manifest/designs/shed.md) is
-// a generic engine more than one product configures -- the Someday Hardener product will need its
-// own status file too, and a bare _lyx/status.json could not serve both without colliding.
-func LoomStatusFile(l *lyxcwd.Location) string {
-	return filepath.Join(l.AnchorPath(), LoomStatusRel())
-}
-
-// LoomStatusLock returns the path to the advisory lock file guarding concurrent access to
-// LoomStatusFile(l).
-// It is AnchorPath-anchored like LoomStatusFile, but lives under lyxdirs.DotLyxDirName rather than
-// LoomStatusFile's lyxdirs.LyxDirName: the lock is a never-tracked transient, not durable orchestration
-// status, so it is stated outright at its mirrored .lyx subpath rather than derived by analogy.
-// Scoped under the same "loom" subdirectory as LoomStatusFile, for the same product-collision reason.
-func LoomStatusLock(l *lyxcwd.Location) string {
-	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, loomDirName, "status.json.lock")
-}
-
-// LoomRunLock returns the path to the advisory lock file Shed holds for the whole duration of a
-// run, distinct from LoomStatusLock's per-persist status lock.
-// It is AnchorPath-anchored like LoomStatusFile and LoomStatusLock.
-// It must never equal LoomStatusLock(l): internal/state acquires the status lock with the
-// blocking form, so Shed.validate() rejects LockPath == StatusLockPath outright, and a shared file
-// would hang on the first persist rather than fail.
-// Scoped under the same "loom" subdirectory as LoomStatusFile and LoomStatusLock, for the same
-// product-collision reason.
-func LoomRunLock(l *lyxcwd.Location) string {
-	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, loomDirName, "run.lock")
 }
 
 // LoomDriverLog returns the path to the detached driver's captured stdout and stderr for this
@@ -199,10 +156,11 @@ func LoomStepHandoffLock(l *lyxcwd.Location) string {
 }
 
 // LoomScratchDir returns the path to loom's ephemeral scratch directory for this worktree.
-// It is AnchorPath-anchored, like LoomRunLock, LoomDriverLog, and LoomBootstrapLock, and names the
-// directory those three already share: lyxdirs.DotLyxDirName joined with loomDirName.
-// Per the Durable-vs-Ephemeral State Invariant, this accessor is the mirrored-subpath counterpart
-// loomengine exposes beside its durable LoomStatusFile.
+// It is AnchorPath-anchored, like LoomDriverLog and LoomBootstrapLock, and names the directory
+// those two already share: lyxdirs.DotLyxDirName joined with loomDirName.
+// Per the Durable-vs-Ephemeral State Invariant, this accessor is the mirrored-subpath counterpart of
+// the "loom" segment's durable side -- now the run directory shedrun owns, not a path this package
+// declares.
 func LoomScratchDir(l *lyxcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, loomDirName)
 }

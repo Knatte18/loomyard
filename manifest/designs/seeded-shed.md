@@ -1,7 +1,7 @@
 # Seeded Shed — one engine, N recipes, the seed decides
 
-**Status:** a settled direction distilled from a design discussion (2026-09-19).
-Ready to be broken into tasks, but not yet a row-level spec — validate details against the code before implementing from it.
+**Status:** landed (2026-09-19), as the `seeded Shed core: run addressing, seed contract, batten` roadmap item — the concept, run addressing, the seed contract, and the batten rename below all describe what shipped, not a proposal.
+Two pieces from the original discussion are explicitly not part of this landing: `driver: llm` (see the Next Up `seeded driver choice: ly-drive strand as the child's driver` roadmap item) and relay-stepping (see [Rejected: relay-stepping](#rejected-relay-stepping) below).
 
 ## The concept
 
@@ -15,13 +15,13 @@ This is the Shed Recipe Registry Invariant seen from the other side.
 
 ## Run addressing
 
-Every run lives in a run directory named by a **run-id**: `shed/<run-id>/` containing `seed.json`, `status.json`, and the run's locks.
+Every run lives in a run directory named by a **run-id**: the durable `_lyx/shed/<run-id>/` holds `seed.json` and `status.json`; the run's own locks live at the mirrored ephemeral subpath, `.lyx/shed/<run-id>/`, per the Durable-vs-Ephemeral State Invariant — a lock is machine-local advisory state, never something a fresh clone on another machine needs to see.
 The generic verbs take the run-id as an optional argument: `lyx shed run <run-id>`, `lyx shed step <run-id>`.
 
 - **Default run-id is the literal `self`.**
-  `lyx shed run` with no argument means `shed/self/` — the worktree's own primary run, which is what Seed-Child (below) always writes for a task worktree.
+  `lyx shed run` with no argument means `_lyx/shed/self/` — the worktree's own primary run, which is what Seed-Child (below) always writes for a task worktree.
   If `self` is absent the verb refuses with a list of the run-ids that do exist; it never guesses by scanning, because guessing is how the wrong run gets resumed.
-- **One placement, always durable: `_lyx/shed/<run-id>/`.**
+- **`seed.json` and `status.json`, always durable: `_lyx/shed/<run-id>/`.**
   Every run's directory is weft-tracked, fabric-synced state, like loom's status file today — a worktree recreated on another machine (the mill-resume pattern) must still know what it is running.
   This deliberately includes management runs in the hub's prime worktree, which an earlier draft placed ephemerally (`.lyx/shed/`, like `.lyx/lifecycle/<slug>/` today) on the argument that the Board is the durable truth they derive from.
   That argument only covers *what* should run; it says nothing about *how far* a run has come.
@@ -37,6 +37,8 @@ The run-id replaces `lyx lifecycle run <slug>`'s positional argument (in prime, 
 - `recipe` — which registered recipe this run executes (`loom`, `batten`, later `hardener`).
 - `driver` — who steps the FSM: `go` (a detached runner process, today's `lyx loom run`) or `llm` (a Claude session running the ly-drive skill, as an interactive tmux strand via reed).
 - params — per-recipe startup values, e.g. the parent branch that is a CLI flag today, or the child slug for a batten run.
+
+`internal/shedrun` is the sole declarer of the closed `recipe` vocabulary, alongside the `driver` vocabulary it already owns; `internal/shedcli`'s own name-to-arming-function table is pinned against it by a sync meta-test rather than the other way around, because the natural seeding site (`internal/battencli`, which writes a child's seed) already imports `internal/shedcli`, so a reverse import from `shedcli` into `battencli`'s validation would be a cycle.
 
 The seed is the run's *recorded* startup choice, not the durable truth about the task.
 The durable truth lives on the Board: a task entry carries a **type** field naming the inner recipe (default `loom`), and whoever seeds a run copies from it.
@@ -67,7 +69,7 @@ Its rows:
 2. `Seed-Child` — new: writes the child's `_lyx/shed/self/seed.json`, copying the recipe choice from the Board task's type field and the driver choice from batten's own seed params.
 3. `Run-Shed` — the row named `Loom-Run` today, made product-neutral: spawn the child's run per the child's seed, then watch the child's status file to a terminal state.
    For `driver: llm` the spawn boots a reed strand running ly-drive instead of the detached Go runner — one changed command in the existing Spawn seam, nothing else, because status-watching is driver-agnostic.
-   The row also needs a step-friendly waiting form (one status check per step with a re-entrant "still running" outcome) so a step-driven outer run is not held inside one blocking `Run` call for the child's whole duration.
+   The row is self-routed on `Stuck` (`on_stuck: Run-Shed`) with a row-level `max_bounces: 1440` and a `config: {poll_interval_s: 30}` pair, encoding a 12-hour watch window as one poll per bounce rather than one blocking `Run` call held for the child's whole duration — the property a step-driven outer run needs. Every non-running, non-done child state is a hard error, not a bounce: only "the child is still running" re-enters, and shedengine turns the hard-error return into `StateFailed` at this row with the run halted, never routing on to `Worktree-Teardown`.
 4. `Worktree-Teardown` — session shutdown before worktree removal (unchanged).
 
 Optional comfort rows can come later: launching VS Code into the child after seeding, and closing it before teardown — the launcher-variant half of this is described in the VS Code opt-in discussion (see `internal/fabricengine/launchers.go`).

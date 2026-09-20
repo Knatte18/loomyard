@@ -6,6 +6,7 @@
 package boardengine_test
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -113,6 +114,47 @@ func TestNewTask(t *testing.T) {
 		}
 		if task.ShortName != "mt" {
 			t.Errorf("expected ShortName='mt', got %q", task.ShortName)
+		}
+	})
+
+	t.Run("type field round-trips onto Task.Type", func(t *testing.T) {
+		fields := map[string]any{
+			"slug": "my-task",
+			"type": "batten",
+		}
+		task, err := boardengine.NewTask(fields, 1)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if task.Type != "batten" {
+			t.Errorf("expected Type='batten', got %q", task.Type)
+		}
+	})
+
+	t.Run("absent type field reads back as the empty string", func(t *testing.T) {
+		fields := map[string]any{
+			"slug": "my-task",
+		}
+		task, err := boardengine.NewTask(fields, 1)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if task.Type != "" {
+			t.Errorf("expected Type='', got %q", task.Type)
+		}
+	})
+
+	t.Run("omitempty keeps a record with no type byte-identical to today's", func(t *testing.T) {
+		task, err := boardengine.NewTask(map[string]any{"slug": "my-task"}, 1)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		got, err := json.Marshal(task)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		if strings.Contains(string(got), `"type"`) {
+			t.Errorf("expected no \"type\" byte in JSON with empty Type, got: %s", got)
 		}
 	})
 }

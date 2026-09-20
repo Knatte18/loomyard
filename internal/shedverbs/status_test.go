@@ -55,7 +55,7 @@ func TestStatusCmd_AbsentFile_FoundFalse(t *testing.T) {
 	spec := &Spec{
 		StatusPath:      paths.StatusPath,
 		StatusLockPath:  paths.StatusLockPath,
-		DecodeErrPrefix: "lifecyclecli:",
+		DecodeErrPrefix: "battencli:",
 		AbsentStatus:    AbsentDisposition{Refuse: false},
 		Hooks: Hooks{
 			StatusExtras: func(st shedengine.Status) (map[string]any, error) {
@@ -163,7 +163,7 @@ func TestStatusCmd_DecodeErrorPrefixIsTold(t *testing.T) {
 	spec := &Spec{
 		StatusPath:      paths.StatusPath,
 		StatusLockPath:  paths.StatusLockPath,
-		DecodeErrPrefix: "lifecyclecli:",
+		DecodeErrPrefix: "battencli:",
 	}
 
 	env, code := execEnvelope(t, statusCmd(statusTexts(), spec), nil)
@@ -171,7 +171,7 @@ func TestStatusCmd_DecodeErrorPrefixIsTold(t *testing.T) {
 		t.Fatalf("exit code = %d; want 1", code)
 	}
 	gotErr, _ := env["error"].(string)
-	if !strings.HasPrefix(gotErr, "lifecyclecli: decode status file "+paths.StatusPath+": ") {
+	if !strings.HasPrefix(gotErr, "battencli: decode status file "+paths.StatusPath+": ") {
 		t.Errorf("error = %q; want the told prefix", gotErr)
 	}
 }
@@ -189,7 +189,7 @@ func TestStatusCmd_EnsureStatusLockDir_True(t *testing.T) {
 	spec := &Spec{
 		StatusPath:          paths.StatusPath,
 		StatusLockPath:      paths.StatusLockPath,
-		DecodeErrPrefix:     "lifecyclecli:",
+		DecodeErrPrefix:     "battencli:",
 		EnsureStatusLockDir: true,
 		AbsentStatus:        AbsentDisposition{Refuse: false},
 	}
@@ -219,7 +219,7 @@ func TestStatusCmd_EnsureStatusLockDir_False(t *testing.T) {
 	spec := &Spec{
 		StatusPath:          paths.StatusPath,
 		StatusLockPath:      paths.StatusLockPath,
-		DecodeErrPrefix:     "lifecyclecli:",
+		DecodeErrPrefix:     "battencli:",
 		EnsureStatusLockDir: false,
 		AbsentStatus:        AbsentDisposition{Refuse: false},
 	}
@@ -247,8 +247,8 @@ func TestRenderStatusLine_LabelAndOptionalTails(t *testing.T) {
 	}
 
 	stNoTails := shedengine.Status{State: shedengine.StateRunning, Activity: shedengine.Activity{Now: "Plan-Write"}}
-	line = RenderStatusLine("lifecycle", stNoTails)
-	want = "lifecycle running | now Plan-Write"
+	line = RenderStatusLine("batten", stNoTails)
+	want = "batten running | now Plan-Write"
 	if line != want {
 		t.Errorf("RenderStatusLine (no tails) = %q; want %q", line, want)
 	}

@@ -6,6 +6,7 @@ package boardengine_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -322,5 +323,66 @@ func TestPromoteNoteCrashBetweenSavesConvergesOnRetry(t *testing.T) {
 	}
 	if count != 1 {
 		t.Errorf("expected exactly one tasks.json entry for promo-note (no duplicate id), got %d", count)
+	}
+}
+
+// TestPromoteNotePreservesType covers taskToUpsertFields' conditional "type" emission: promoting a
+// note that carries a type must preserve it on the resulting task, and a note with no type must
+// still round-trip with the "type" key absent (not present-and-empty), matching the neighbouring
+// Status/ShortName conditional shape.
+func TestPromoteNotePreservesType(t *testing.T) {
+	boardPath := t.TempDir()
+	cfg := boardengine.Config{Path: boardPath, Readme: "Home.md", DesignPrefix: "proposal-", SkipGit: true}
+	w := boardengine.New(cfg)
+
+	if _, err := w.UpsertNote(map[string]any{"slug": "note-typed", "title": "Typed", "type": "batten"}); err != nil {
+		t.Fatalf("UpsertNote note-typed failed: %v", err)
+	}
+	if _, err := w.UpsertNote(map[string]any{"slug": "note-untyped", "title": "Untyped"}); err != nil {
+		t.Fatalf("UpsertNote note-untyped failed: %v", err)
+	}
+
+	typed, err := w.PromoteNote("note-typed")
+	if err != nil {
+		t.Fatalf("PromoteNote note-typed failed: %v", err)
+	}
+	if typed.Type != "batten" {
+		t.Errorf("expected promoted task Type='batten', got %q", typed.Type)
+	}
+
+	untyped, err := w.PromoteNote("note-untyped")
+	if err != nil {
+		t.Fatalf("PromoteNote note-untyped failed: %v", err)
+	}
+	if untyped.Type != "" {
+		t.Errorf("expected promoted task Type='', got %q", untyped.Type)
+	}
+
+	tasksPath := filepath.Join(boardPath, "tasks.json")
+	raw, err := os.ReadFile(tasksPath)
+	if err != nil {
+		t.Fatalf("read tasks.json: %v", err)
+	}
+
+	var rawTasks []map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &rawTasks); err != nil {
+		t.Fatalf("unmarshal tasks.json: %v", err)
+	}
+	for _, rawTask := range rawTasks {
+		var slug string
+		if err := json.Unmarshal(rawTask["slug"], &slug); err != nil {
+			t.Fatalf("unmarshal task slug: %v", err)
+		}
+		_, hasType := rawTask["type"]
+		switch slug {
+		case "note-typed":
+			if !hasType {
+				t.Errorf("expected \"type\" key present for note-typed's promoted task")
+			}
+		case "note-untyped":
+			if hasType {
+				t.Errorf("expected \"type\" key absent for note-untyped's promoted task, found it present")
+			}
+		}
 	}
 }
