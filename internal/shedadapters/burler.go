@@ -435,7 +435,7 @@ func (p *BurlerProducer) Call(ctx context.Context) (shedengine.Outcome, shedengi
 					return "", shedengine.OutputPointer{}, cerr
 				}
 				logger.Warn("shedadapters: burler round's gate did not pass", "producer", p.name, "engine", burlerEngineLabel, "round", round, "attempts", result.Gate.Attempts, "findingsPath", result.Gate.FindingsPath)
-				return shedengine.Stuck, shedengine.OutputPointer{}, nil
+				return shedengine.Stuck, shedengine.OutputPointer{GateAttempts: gateAttemptsPointer(result.Gate)}, nil
 			}
 			// A genuine success verdict survives cancellation only up to the moment the round
 			// completed and parsed; a cancellation observed after that point still yields an
@@ -444,7 +444,7 @@ func (p *BurlerProducer) Call(ctx context.Context) (shedengine.Outcome, shedengi
 			if cerr := cancelErr(ctx, p.name, burlerEngineLabel); cerr != nil {
 				return "", shedengine.OutputPointer{}, cerr
 			}
-			return shedengine.Stuck, shedengine.OutputPointer{Path: reviewPath}, nil
+			return shedengine.Stuck, shedengine.OutputPointer{Path: reviewPath, GateAttempts: gateAttemptsPointer(result.Gate)}, nil
 
 		case shuttleengine.OutcomeAsking:
 			return failureExit(fmt.Errorf("shedadapters: %s (%s): round %d attempt %s: shuttle run is asking: %s", p.name, burlerEngineLabel, round, attemptToken, result.LastAssistantMessage))
@@ -523,14 +523,14 @@ func (p *BurlerProducer) probeLiveRound(
 				return "", shedengine.OutputPointer{}, cerr, true
 			}
 			logger.Warn("shedadapters: attached burler round's gate did not pass", "producer", p.name, "engine", burlerEngineLabel, "round", round, "attempts", result.Gate.Attempts, "findingsPath", result.Gate.FindingsPath)
-			return shedengine.Stuck, shedengine.OutputPointer{}, nil, true
+			return shedengine.Stuck, shedengine.OutputPointer{GateAttempts: gateAttemptsPointer(result.Gate)}, nil, true
 		}
 		// Identical to the spawn path's own success return, including the cancellation rule: a
 		// completed round's artifacts survive, but a cancelled context still errors.
 		if cerr := cancelErr(ctx, p.name, burlerEngineLabel); cerr != nil {
 			return "", shedengine.OutputPointer{}, cerr, true
 		}
-		return shedengine.Stuck, shedengine.OutputPointer{Path: reviewPath}, nil, true
+		return shedengine.Stuck, shedengine.OutputPointer{Path: reviewPath, GateAttempts: gateAttemptsPointer(result.Gate)}, nil, true
 
 	case shuttleengine.OutcomeAsking:
 		outcome, ptr, exitErr := failureExit(fmt.Errorf("shedadapters: %s (%s): round %d attached run is asking: %s", p.name, burlerEngineLabel, round, result.LastAssistantMessage))

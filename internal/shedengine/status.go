@@ -50,6 +50,13 @@ type HistoryEntry struct {
 	Outcome  Outcome `json:"outcome"`
 	Output   string  `json:"output"`
 	At       string  `json:"at"`
+	// GateAttempts is the gate's own re-prompt count (shuttleengine.GateOutcome.Attempts),
+	// carried through so the status file shows it -- the same idiom as max_bounces, per
+	// manifest/designs/producer-gates.md's "An explicit attempt counter bounds the loop"
+	// requirement. Nil means this call's producer applied no gate; non-nil is shown even when
+	// its value is 0 (a gate that passed on the first try), since 0 is a meaningful, distinct
+	// verdict from "ungated" and collapsing the two would silently lose it.
+	GateAttempts *int `json:"gate_attempts,omitempty"`
 }
 
 // Status is the whole status file.

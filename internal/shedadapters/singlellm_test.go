@@ -50,6 +50,11 @@ type fakeShuttle struct {
 	// gotGateSpec and gotAttachGateSpec record the GateSpec RunGated/AttachGated last received.
 	gotGateSpec       shuttleengine.GateSpec
 	gotAttachGateSpec shuttleengine.GateSpec
+
+	// gateAttempts is the count RunGated/AttachGated stamp onto the GateOutcome they build when the
+	// gate closure is consulted -- a test leaves this at its zero value unless it specifically needs
+	// to assert GateAttempts propagation with a non-zero count.
+	gateAttempts int
 }
 
 func (f *fakeShuttle) Run(spec shuttleengine.Spec) (shuttleengine.Result, error) {
@@ -90,7 +95,7 @@ func (f *fakeShuttle) RunGated(spec shuttleengine.Spec, gate shuttleengine.GateS
 	if gerr != nil {
 		return result, gerr
 	}
-	result.Gate = &shuttleengine.GateOutcome{Passed: gateResult.Passed}
+	result.Gate = &shuttleengine.GateOutcome{Passed: gateResult.Passed, Attempts: f.gateAttempts}
 	return result, nil
 }
 
@@ -107,7 +112,7 @@ func (f *fakeShuttle) AttachGated(spec shuttleengine.Spec, gate shuttleengine.Ga
 	if gerr != nil {
 		return result, found, gerr
 	}
-	result.Gate = &shuttleengine.GateOutcome{Passed: gateResult.Passed}
+	result.Gate = &shuttleengine.GateOutcome{Passed: gateResult.Passed, Attempts: f.gateAttempts}
 	return result, found, nil
 }
 
@@ -858,8 +863,11 @@ func TestSingleLLMProducer_Gate_FailedGateReachesStuckWithArtifactPointer(t *tes
 	if outcome != shedengine.Stuck {
 		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
 	}
-	if ptr != (shedengine.OutputPointer{Path: outPath}) {
-		t.Errorf("Call() pointer = %+v; want {Path: %q} (never the zero OutputPointer)", ptr, outPath)
+	if ptr.Path != outPath {
+		t.Errorf("Call() pointer.Path = %q; want %q (never empty)", ptr.Path, outPath)
+	}
+	if ptr.GateAttempts == nil || *ptr.GateAttempts != 0 {
+		t.Errorf("Call() pointer.GateAttempts = %v; want pointer to 0 (fakeShuttle's default attempt count)", ptr.GateAttempts)
 	}
 }
 
@@ -908,6 +916,38 @@ func TestSingleLLMProducer_Gate_AttachPathIsGatedToo(t *testing.T) {
 	}
 	if shuttle.gotAttachGateSpec.Gate == nil {
 		t.Error("AttachGated was not called with the producer's own GateSpec")
+	}
+}
+
+// TestSingleLLMProducer_Gate_AttemptsPropagatesOntoOutputPointer proves a non-zero
+// GateOutcome.Attempts (a gate that needed re-prompts before passing) reaches the returned
+// OutputPointer.GateAttempts unchanged, per manifest/designs/producer-gates.md's "recorded in the
+// row's envelope/history so the status file shows it" requirement -- shedengine's own
+// TestStep_GateAttempts_* tests (internal/shedengine/gateattempts_test.go) cover the persisted
+// side of that chain; this test covers the producer's own half, that it reads result.Gate.Attempts
+// and carries it, rather than shedengine silently receiving a value nobody actually populated.
+func TestSingleLLMProducer_Gate_AttemptsPropagatesOntoOutputPointer(t *testing.T) {
+	dir := t.TempDir()
+	outPath := filepath.Join(dir, "out.md")
+	spec := shuttleengine.Spec{Prompt: "run", OutputFiles: []string{outPath}}
+	shuttle := &fakeShuttle{
+		result:       shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
+		gateAttempts: 2,
+	}
+	gate := shuttleengine.GateSpec{Gate: func() (shuttleengine.GateResult, error) {
+		return shuttleengine.GateResult{Passed: true}, nil
+	}}
+	p := NewSingleLLMProducerGated("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil, gate)
+
+	outcome, ptr, err := p.Call(context.Background())
+	if err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	if outcome != shedengine.Done {
+		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Done)
+	}
+	if ptr.GateAttempts == nil || *ptr.GateAttempts != 2 {
+		t.Errorf("Call() pointer.GateAttempts = %v; want pointer to 2 (passed after two re-prompts)", ptr.GateAttempts)
 	}
 }
 

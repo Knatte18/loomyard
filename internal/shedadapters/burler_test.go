@@ -939,8 +939,11 @@ func TestBurlerProducer_Gate_FailedGateMapsToStuckWithEmptyPointer(t *testing.T)
 	if outcome != shedengine.Stuck {
 		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
 	}
-	if ptr != (shedengine.OutputPointer{}) {
-		t.Errorf("Call() pointer = %+v; want empty -- there is no round artifact for the Bouncer to judge", ptr)
+	if ptr.Path != "" {
+		t.Errorf("Call() pointer.Path = %q; want empty -- there is no round artifact for the Bouncer to judge", ptr.Path)
+	}
+	if ptr.GateAttempts == nil || *ptr.GateAttempts != 0 {
+		t.Errorf("Call() pointer.GateAttempts = %v; want pointer to 0", ptr.GateAttempts)
 	}
 	if _, statErr := os.Stat(reviewPath); !os.IsNotExist(statErr) {
 		t.Error("gate-failed round's review file was not archived away")
@@ -1001,8 +1004,11 @@ func TestBurlerProducer_Gate_ProbeLiveRoundPassesGateAndMapsFailedGateIdenticall
 	if outcome != shedengine.Stuck {
 		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
 	}
-	if ptr != (shedengine.OutputPointer{}) {
-		t.Errorf("Call() pointer = %+v; want empty, identically to the spawn path's own gate-failed exit", ptr)
+	if ptr.Path != "" {
+		t.Errorf("Call() pointer.Path = %q; want empty, identically to the spawn path's own gate-failed exit", ptr.Path)
+	}
+	if ptr.GateAttempts == nil || *ptr.GateAttempts != 0 {
+		t.Errorf("Call() pointer.GateAttempts = %v; want pointer to 0", ptr.GateAttempts)
 	}
 	if attach.gotAttachGateSpec.Gate == nil {
 		t.Error("probeLiveRound did not pass p.opts.Gate into AttachGated -- this reopens the resume gate hole")

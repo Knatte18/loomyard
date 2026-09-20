@@ -201,11 +201,11 @@ func (p *SingleLLMProducer) mapOutcome(ctx context.Context, spec shuttleengine.S
 				return "", shedengine.OutputPointer{}, cerr
 			}
 			logger.Warn("shedadapters: shuttle run's gate did not pass", "producer", p.name, "engine", singleLLMEngineLabel, "attempts", result.Gate.Attempts, "findingsPath", result.Gate.FindingsPath, "sessionID", result.SessionID, "strandGUID", result.StrandGUID)
-			return shedengine.Stuck, shedengine.OutputPointer{Path: spec.OutputFiles[0]}, nil
+			return shedengine.Stuck, shedengine.OutputPointer{Path: spec.OutputFiles[0], GateAttempts: gateAttemptsPointer(result.Gate)}, nil
 		}
 		// A genuine success verdict survives cancellation -- the one exception cancelErr never
 		// applies to.
-		return shedengine.Done, shedengine.OutputPointer{Path: spec.OutputFiles[0]}, nil
+		return shedengine.Done, shedengine.OutputPointer{Path: spec.OutputFiles[0], GateAttempts: gateAttemptsPointer(result.Gate)}, nil
 
 	case shuttleengine.OutcomeAsking:
 		if cerr := cancelErr(ctx, p.name, singleLLMEngineLabel); cerr != nil {
