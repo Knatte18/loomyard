@@ -328,6 +328,15 @@ func (r *Runner) Start(spec Spec) (*Run, error) {
 	}, nil
 }
 
+// RunDir returns the directory holding this run's artifacts (prompt.md, settings.json, the events
+// file).
+// It is exported because a caller that starts a run and never Waits on it has no other way to name
+// the one directory an operator would look in — batch 4's pane-liveness probe refuses the bootstrap
+// with exactly this path.
+func (run *Run) RunDir() string {
+	return run.runDir
+}
+
 // StrandGUID returns the reed strand guid bound to this run.
 // It is available as soon as Start returns — before Wait completes — so an in-process caller
 // holding the handle can capture the run's pane, log its identity, or resolve it for diagnosis
