@@ -6,6 +6,7 @@ slug: seeded-driver-choice
 branch: seeded-driver-choice
 plan: null
 parent: main
+module_verify_baseline: clean
 task: 'Seeded driver choice: ly-drive strand as the child''s driver'
 task_description: |
   Seeded driver choice: ly-drive strand as the child's driver
