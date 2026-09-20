@@ -130,6 +130,7 @@ _Full union of every `Creates:` / `Edits:` / `Moves:` **target** path across eve
 - `internal/battencli/bootstrapverb_test.go`
 - `internal/battencli/cli.go`
 - `internal/battencli/cli_test.go`
+- `internal/loomcli/arm.go`
 - `internal/loomcli/bootstrap.go`
 - `internal/loomcli/bootstrap_test.go`
 - `internal/loomcli/bootstrapverb.go`

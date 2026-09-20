@@ -74,6 +74,7 @@ An ly-drive session takes the run lock only inside each `lyx shed step` and rele
 
 - **Context:**
   - `internal/shuttleengine/claudeengine/claudeengine.go`
+  - `internal/shuttleengine/claudeengine/command.go`
   - `internal/shedrun/runid.go`
 - **Edits:** none
 - **Creates:**
@@ -85,10 +86,10 @@ An ly-drive session takes the run lock only inside each `lyx shed step` and rele
   The constant is exported deliberately and the reason belongs in its doc comment: batch 6 pins the same number in the ly-drive skill's own autonomous section, no package under the plugins tree compiles Go, and a test outside this package cannot see an unexported identifier — so the constant is the single source the prompt interpolates and that test reads.
   State the derivation too, so the number is not a bare magic value: it is loom's own worst case as the skill already computes it, plus a margin that keeps an unlucky-but-legitimate run inside the budget.
   `driverPrompt` composes a **short pointer**, never a copy of the skill: the ly-drive skill invocation, the run-id, the report path the session must write at every stop condition, and an explicit statement that this session runs in autonomous mode with no operator to ask, carrying `AutonomousDriveStepCap` as the number of steps it runs under.
-  Keep it short on purpose — the Claude engine caps a prompt at 30000 bytes because the whole prompt expands into one command-line argument, and a prompt that grew into a copy of the skill would fail only at launch, after a bootstrap has already seeded and committed.
+  Keep it short on purpose — the Claude engine caps a prompt at `maxLaunchPromptBytes`, declared in `internal/shuttleengine/claudeengine/command.go` and enforced in `internal/shuttleengine/claudeengine/claudeengine.go`, because the whole prompt expands into one command-line argument, and a prompt that grew into a copy of the skill would fail only at launch, after a bootstrap has already seeded and committed.
   Name no Claude flag and compose no command line here: this file produces prompt text alone, and the Shuttle Provider-Seam Invariant keeps provider specifics under the claude engine package.
   In `driverprompt_test.go` assert the prompt names the run-id, names the report path verbatim, states autonomous mode, and carries `AutonomousDriveStepCap`'s value interpolated rather than a hard-coded `120`.
-  Assert its length stays well under 30000 bytes for a realistic run-id and report path — a bound check, not an exact-length pin.
+  Assert its length stays well under that cap's value for a realistic run-id and report path — a bound check, not an exact-length pin.
 - **Commit:** `feat(loomcli): compose the autonomous driver launch prompt`
 
 ### Card 11: the driver spec composition
@@ -177,6 +178,8 @@ An ly-drive session takes the run lock only inside each `lyx shed step` and rele
 - **Edits:**
   - `internal/loomcli/sharedbootstrap.go`
   - `internal/loomcli/sharedbootstrap_test.go`
+  - `internal/loomcli/arm.go`
+  - `internal/loomcli/start.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -185,6 +188,10 @@ An ly-drive session takes the run lock only inside each `lyx shed step` and rele
   Fix it at the write: give `loomSeedFor` the driver to record rather than letting it choose one, and have `seedAndCommitBootstrap` read the existing seed first and pass that seed's recorded driver through when one is present, falling back to the go driver when no seed exists yet.
   This keeps the write idempotent in both directions — a first `lyx loom start` in an unseeded worktree still records the go driver exactly as today, and a start against a worktree seeded for either driver rewrites a byte-identical seed and no-ops.
   Return the effective driver from `seedAndCommitBootstrap` alongside the values it already returns, so card 15's branch consumes it directly rather than performing a second read of the file this function just wrote.
+  That grows the function's return arity, so **both** of its call sites must be updated in this same card — this card's own commit must compile on its own, so neither may be deferred to card 15.
+  `loomPreStep`'s call in `internal/loomcli/arm.go` discards the new value permanently: `step` spawns no driver at all, so a driver value reaching that path would be one nothing can act on.
+  `startCmd`'s call in `internal/loomcli/start.go` discards it **for now**, in this card, purely to keep the build green; card 15 is what replaces that discard with the real consumer.
+  Leave the rest of `start.go` untouched here — this card adds no branch and no driver behaviour to the verb body.
   Preserve the existing `Params` handling unchanged: the parent parameter is still the run's recorded startup choice, and the durable parent record stays where it is.
   Preserve the returned stage vocabulary and every existing refusal, the seed-ownership check among them.
   In `sharedbootstrap_test.go` cover: an unseeded worktree recording the go driver; a worktree already seeded for the go driver re-running as a no-op; and — the case this card exists for — **a worktree already seeded for the llm driver surviving the write and reporting that driver back**, which fails against the shipped version with a disagreeing-seed refusal.
@@ -212,7 +219,9 @@ An ly-drive session takes the run lock only inside each `lyx shed step` and rele
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Branch step 5 of the command `startCmd` builds in `internal/loomcli/start.go` on the seed's driver, leaving steps 1 through 4 and step 7 identical on both paths.
-  Read the seed with the shedrun read function over the shedrun seed-path constructor, against the location the receiver already carries and the self run-id, immediately after the existing bootstrap-lock and status-strand work — never resolving a path locally and never calling a resolver a second time, per the Cwd Resolution Invariant.
+  Take the driver from the value card 14 added to `seedAndCommitBootstrap`'s return, which step 1 of this verb already calls — do **not** add a second `shedrun.ReadSeed` call here.
+  That function has just written or found this run's seed, so re-reading the file it authored would be a second read of a value already in hand, and card 14's added return exists precisely to avoid it.
+  This also keeps the Cwd Resolution Invariant satisfied for free: no path is resolved in this verb body at all, locally or otherwise.
   Per the seed contract an absent driver value already defaults to the go driver on read, so the branch is a two-value switch with the go driver as both the default and the zero-config answer.
   Keep the existing run-lock probe and the existing strand read as the two inputs to the widened predicate, and compute the strand action from the same strand slice rather than reading reed twice.
   The go arm keeps today's body byte-for-byte: the detached spawn, the log file, the reaper goroutine, and step 6's handshake, all unchanged and still gated on the predicate.
