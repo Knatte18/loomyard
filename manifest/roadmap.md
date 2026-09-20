@@ -9,13 +9,13 @@ See Maintenance below for how the numbering works.
 
 This section holds what's committed to next.
 
+1. **seeded driver choice: ly-drive strand as the child's driver** — the seed's `driver` field selects who steps a run: the detached Go runner, or a Claude strand running ly-drive in the worktree's own reed session, booted by the same Spawn seam.
+   Depends on the seed contract from the item above.
+   See [designs/seeded-shed.md](designs/seeded-shed.md).
 ## Next Up
 
 What comes right after Planned clears — committed and ordered, unlike Someday below.
 Not yet started, and exact order can still shift as Planned work reveals what unblocks what, but the rough sequence below is the current best guess.
-
-1. **seeded driver choice: ly-drive strand as the child's driver** — the seed's `driver` field selects who steps a run: the detached Go runner, or a Claude strand running ly-drive in the worktree's own reed session, booted by the same Spawn seam.
-   See [designs/seeded-shed.md](designs/seeded-shed.md).
 
 ## Someday
 
