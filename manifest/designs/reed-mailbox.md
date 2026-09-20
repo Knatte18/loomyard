@@ -10,12 +10,18 @@ Being a Strand is only required to *receive* mail — an address needs somewhere
 
 ## Addressing (settled in a 2026-09-20 design discussion)
 
-The address format is **`[hub:]slug:name`** — colon as hierarchy separator, safe because the slug grammar (`[a-z][a-z0-9-]*`) can never contain one.
+The address format is **`name@slug[.hub]`** — the email shape, deliberately: "deliver to *name* at *place*" needs no explanation for humans or agents, and the grammar is collision-free because slugs (`[a-z][a-z0-9-]*`) can contain neither `@` nor `.`, so the single `@` splits unambiguously and the optional `.hub` suffix reads exactly like an unqualified-vs-qualified hostname (omitted = own hub).
+The resemblance to real email is a known confusion risk, accepted on purpose — it buys the mental model.
+Real external channels never ride on it: a raw email address is never a valid recipient, and creel never guesses whether something "is" email.
+Instead, external channels are a small set of **reserved endpoint names** (`useremail`, `userslack`, …) — configured endpoints, not addresses: creel config maps each one to a connector plus the operator's real address, so the config *is* the allowlist and a confused agent structurally cannot "escalate" to an arbitrary third party.
+The reserved names are excluded from the strand-name grammar, so no strand can ever shadow one.
+Resolution is thus heuristic-free everywhere: a recipient either resolves to a strand, or is a reserved endpoint, or is refused with the list of names that exist.
+(The `@` file-mention in Claude Code's interactive input is a UI autocomplete trigger only — an address in a shell argument is just text — so the overlap costs a cosmetic popup when a human types an address in the prompt box, nothing more.)
 
 - **The strand guid is the identity; names are the address.**
   Every strand has a guid for its whole life, pane or no pane; creel resolves an address at *delivery* time (slug → session, name → strand → guid) and delivers to the guid.
   Names are what humans and agents write, because names are role-stable while guids are instance-bound:
-  a torn-down-and-respawned orchestrator has a new guid but the same name, and mail to `taskA:orchestrator` should reach whoever holds the role now.
+  a torn-down-and-respawned orchestrator has a new guid but the same name, and mail to `orchestrator@task-a` should reach whoever holds the role now.
   A reply can carry the guid when pinning one specific instance matters (detecting "the one I was talking to is gone").
 - **Self-identification is injected, not looked up.**
   Reed owns every spawn/relaunch command line, so it injects `LYX_REED_ID` (the guid) and `LYX_STRAND_NAME` into every process it starts.
@@ -32,7 +38,7 @@ The address format is **`[hub:]slug:name`** — colon as hierarchy separator, sa
 - **Rename is a relaunch.**
   Env is frozen at process start, so the name is a birth attribute set at `AddStrand` and never mutated in place — renaming a role means tearing down and respawning its strand.
 - **Well-known role names make addresses guessable.**
-  A small canonical vocabulary (`orchestrator`, `driver`, `operator`, …) lets an agent address `<slug>:driver` with no directory lookup at all; a listing verb covers the rest.
+  A small canonical vocabulary (`orchestrator`, `driver`, `operator`, …) lets an agent address `driver@<slug>` with no directory lookup at all; a listing verb covers the rest.
 - **Multi-hub is out of scope, but the grammar reserves the door.**
   Operating across several repos at once would not need one reed server spanning hubs: each hub keeps its own server and per-hub daemon, and cross-hub mail becomes daemon-to-daemon relay — the optional `hub:` prefix (omitted = own hub) is the entire forward-compatibility cost, paid here in grammar only.
 
@@ -56,7 +62,7 @@ Transport and log are two different jobs, and the terminal is bad at the second 
   Both kinds ride the per-hub daemon's existing per-tick loop (resolving the old open item — no new process): the notification line or injected body is sent-keys into the receiving pane only when the receiver is idle, not mid-turn.
 - **Everything is journaled, regardless of kind.**
   An `inject` is not mail but is still logged with sender, receiver, body, and delivery time; `lyx creel log` shows all traffic hub-wide — who sent, who read, when — searchable and durable, which is strictly better backtracking than terminal scrollback ever was.
-  The live-watching human still sees traffic as it happens: the notification line carries sender + subject (`2 new: watchdog:prime "loom stuck at Gate"`), bodies stay in the store.
+  The live-watching human still sees traffic as it happens: the notification line carries sender + subject (`2 new: watchdog@prime "loom stuck at Gate"`), bodies stay in the store.
 - **Plain CLI verbs, no MCP layer.**
   Creel needs no streaming or client-side session state, so it stays ordinary `lyx` verbs like every other module; an MCP server could be layered *on top of* the same verbs later if an agent outside a terminal ever needs access — deferred until someone does, not decided against.
 
