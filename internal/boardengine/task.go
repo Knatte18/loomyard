@@ -21,6 +21,7 @@ type Task struct {
 	Brief     string   `json:"brief"`
 	Body      string   `json:"body"`
 	Status    *string  `json:"status,omitempty"`     // pointer: nil → field omitted in JSON; non-nil → status value present
+	Type      string   `json:"type,omitempty"`       // recipe name for the task's child worktree; empty means "loom". Resolved (and validated against the recipe vocabulary) at the seeding site, not here. omitempty keeps every existing tasks.json record valid with no migration.
 	ShortName string   `json:"short_name,omitempty"` // optional short display label; falls back to Slug via ShortNameOrSlug
 }
 

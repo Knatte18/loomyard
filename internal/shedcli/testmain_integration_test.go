@@ -4,7 +4,7 @@
 // test environment: gitkit.HermeticGitEnv() runs once before any test, since parity_test.go builds a
 // real hub through internal/hubforge's fabric-fixture entry point and therefore spawns git (Test
 // Tier Purity Invariant / Hermetic Git Test Environment Invariant), in the shape
-// internal/lifecyclecli's own equivalent already uses.
+// internal/battencli's own equivalent already uses.
 
 package shedcli
 

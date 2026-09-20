@@ -1,25 +1,25 @@
 ---
 name: ly-drive
-description: Drive a named recipe (defaulting to loom) through a loop over `lyx shed step --recipe <name>`, reading each step's envelope and stopping on any non-running state. Explicit invocation only.
-argument-hint: "[recipe]"
+description: Drive an addressed run (defaulting to self, which arms loom) through a loop over `lyx shed step [<run-id>]`, reading each step's envelope and stopping on any non-running state. Explicit invocation only.
+argument-hint: "[run-id]"
 disable-model-invocation: true
 ---
 
 # ly-drive
 
-Drive one recipe's run by repeatedly invoking `lyx shed step --recipe <name>` — the recipe argument defaults to `loom` when the operator gives none — reading the envelope it returns, and stopping the moment the run reaches a state a human needs to look at.
+Drive one addressed run by repeatedly invoking `lyx shed step [<run-id>]` — the run-id argument defaults to `self`, which arms `loom`, when the operator gives none — reading the envelope it returns, and stopping the moment the run reaches a state a human needs to look at.
 This skill carries no phase knowledge of its own.
 It never names a producer, never predicts what comes next, and never decides what runs — every branch below is on a policy word or an envelope field the step verb itself hands over, never on a row name.
 
-`loom` is the only recipe shipped today whose table entry supports `step` at all — see `## Error envelopes`'s closing note for what happens when the operator names one that does not.
-The recipe argument exists for the next consumer this loop can drive, not for a second recipe available now.
+`loom` and `batten` are the two recipes shipped today whose table entries support `step` — see `## Error envelopes`'s closing note for what happens when the addressed run's own recipe does not.
+The run-id argument exists so this loop can address any seeded run, not only `self`; which recipe it drives is a property of the addressed run's own seed, not of this loop.
 
 ## Preconditions
 
-The session's current working directory must already match the driven recipe's own resolution requirement, because `lyx shed step --recipe <name>` derives everything from cwd through that recipe's own `Arm`.
+The session's current working directory must already match the driven recipe's own resolution requirement, because `lyx shed step [<run-id>]` derives everything from cwd through that recipe's own `Arm`.
 For `loom`, that requirement is the task worktree root, because `lyxcwd.Resolve` requires cwd to be a git worktree root.
 Verify this before the first step — for example, confirm the directory looks like a task worktree — rather than discovering the mismatch as a resolve failure mid-loop.
-A different recipe may carry a different requirement — lifecycle, for instance, refuses from anywhere but the hub's prime worktree — but lifecycle carries no `step` verb at all, so this precondition has only one shape reachable through this loop today.
+A different recipe may carry a different requirement — `batten`, for instance, refuses from anywhere but the hub's prime worktree, so driving a batten-seeded run-id with this loop is reachable only from there.
 
 The rest of this section describes `loom`'s own launch convention; a different recipe's own driving session has no equivalent convention recorded here yet.
 
@@ -42,7 +42,7 @@ The manual upgrade is to delete `.vscode/tasks.json` and re-run `lyx ide spawn`.
 
 ## The pre-loop baseline
 
-Before the first step, take one `lyx shed status --recipe <name>` read and record its `current_producer` and `history_length` as the baseline.
+Before the first step, take one `lyx shed status [<run-id>]` read and record its `current_producer` and `history_length` as the baseline.
 It exists for one reason: the interrupted-step branch later in this loop compares against it.
 The very first step of a session — or the first step after an operator re-invokes past the iteration cap — has no prior step envelope to compare with, so the baseline is what makes that comparison possible.
 
@@ -54,7 +54,7 @@ Treat any *other* status error as a hand-back, the same as an error envelope fro
 ## How to invoke a step
 
 Never invoke a step as a blocking foreground shell call.
-Launch `lyx shed step --recipe <name>` in the background with stdout redirected to a per-step file under `.scratch/ly-drive/step-<n>.json`, then wait for that process to exit and read the envelope from the file.
+Launch `lyx shed step [<run-id>]` in the background with stdout redirected to a per-step file under `.scratch/ly-drive/step-<n>.json`, then wait for that process to exit and read the envelope from the file.
 
 This matters for a concrete reason: a single step blocks for a whole producer call, and every agent shell tool caps a foreground call in the single-digit minutes.
 For `loom`, the LLM rows are minutes-to-an-hour agent spawns, so a foreground call would be killed mid-producer on exactly the rows this loop exists to watch; a different recipe's own producers may run faster or slower, but the underlying blocking-call risk is the same regardless of which recipe is driven.
@@ -93,7 +93,8 @@ None of the other kinds can be fixed by running the same command again, and retr
 Name the remedy the envelope itself gives for the `busy` kind: the operator has a driver running and must pause it before this loop can proceed.
 
 A recipe with no `step` verb at all is refused before any of the five kinds is ever reached.
-`loom` is the only recipe shipped today whose table entry includes `step`, so `lyx shed step --recipe lifecycle` — or any future recipe absent from that entry — is refused by `shed`'s own pre-run, and that refusal is a bare error envelope carrying no `kind` field at all, outside the five-kind vocabulary above.
+`loom` and `batten` are the two recipes shipped today whose table entries include `step`; any future recipe absent from that entry is refused by `shed`'s own pre-run the same bare-envelope way.
+A run-id that has never been seeded is refused earlier still, before any recipe is even resolved: the envelope names the addressed run-id and lists every seeded run-id found, and carries no `kind` field either — like the excluded-verb refusal, it sits outside the five-kind vocabulary above and is not a retryable condition.
 On an error envelope with no `kind` field, hand it straight back to the operator with no retry, naming the refusal text verbatim.
 Do not widen the five-kind vocabulary to explain it: that set is closed by a test and by the Shed Verb-Set Invariant, and this refusal is raised above the verb body that owns those kinds, not inside it.
 
@@ -104,7 +105,7 @@ It reports debris; the operator resolves it.
 
 An invocation that was killed, timed out, or exited without writing a parseable envelope is a distinct case from an error envelope, and it writes no envelope of its own.
 
-On detecting one, read `lyx shed status --recipe <name>` once and branch on that single read:
+On detecting one, read `lyx shed status [<run-id>]` once and branch on that single read:
 
 - If `current_producer` or `history_length` differs from the baseline, or `state` is no longer running, the producer finished and only the invocation died.
   Continue from the fresh status and do not count the step twice.
@@ -113,7 +114,7 @@ On detecting one, read `lyx shed status --recipe <name>` once and branch on that
 - If nothing differs and the policy is `handback`, or the envelope carries no `interrupt_policy` field at all (empty or absent), stop and hand back, saying plainly that a live agent may still be running in its pane, and that a later re-invocation would restart it rather than attach to it.
   Treating an absent policy as `handback` is the conservative arm — it is the one that never restarts in-flight work sight unseen, which is what a recipe with no interrupt-policy table of its own needs, since its status envelope carries no `interrupt_policy` field at all rather than a present-and-empty one.
 
-Read the policy off `lyx shed status --recipe <name>`, not off the previous step's envelope, even though the previous envelope's `next_interrupt_policy` names the same row and the same table.
+Read the policy off `lyx shed status [<run-id>]`, not off the previous step's envelope, even though the previous envelope's `next_interrupt_policy` names the same row and the same table.
 The status read is a fresh fact taken after the interruption, and it is the only one available on the very first step of a session, where no previous envelope exists.
 The two agreeing is the point, not a redundancy to optimise away: if they ever disagree, the status file is authoritative and something is wrong worth handing back over.
 
@@ -134,7 +135,7 @@ This whole section describes `loom`'s own friction machinery.
 A different recipe carries no analogous friction directory recorded here today, so treat every claim below as loom-specific until a second recipe's own shape is documented.
 
 Nothing files automatically while this loop is driving `loom`.
-Loom's two automatic self-report tiers both hang off `lyx loom run`'s own run, and `lyx shed step --recipe loom` runs neither — so on a supervised task, a blocked halt, a producer failure, and a friction note left behind all pass unreported unless this skill reports them.
+Loom's two automatic self-report tiers both hang off `lyx loom run`'s own run, and `lyx shed step` against a loom-seeded run-id runs neither — so on a supervised task, a blocked halt, a producer failure, and a friction note left behind all pass unreported unless this skill reports them.
 That is the trade this design makes: a live supervisor with an operator in the loop instead of a primitive filing public issues on its own, forty times a run.
 Read it as a responsibility, not a gap.
 

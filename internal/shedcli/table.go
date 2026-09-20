@@ -9,46 +9,44 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/Knatte18/loomyard/internal/lifecyclecli"
+	"github.com/Knatte18/loomyard/internal/battencli"
 	"github.com/Knatte18/loomyard/internal/loomcli"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
-	"github.com/spf13/cobra"
 )
 
-// entry is one recipe's arming contract: the function that resolves and wires that recipe's whole
-// engine stack, the positional-argument contract cobra validates before Arm ever runs, and the set
-// of the four generic shedverbs verbs that recipe actually supports.
+// entry is one recipe's arming contract: the Location-taking function that resolves and wires that
+// recipe's whole engine stack, and the set of the four generic shedverbs verbs that recipe actually
+// supports.
 type entry struct {
-	// Arm is the recipe's exported resolution entry point -- loomcli.Arm or lifecyclecli.Arm --
-	// called with the resolved cwd, the invoked verb name, and the command's positional arguments.
-	Arm func(cwd string, verb string, args []string) (shedverbs.Spec, error)
-	// Args is the cobra.PositionalArgs contract this recipe's commands validate against, shared
-	// with the same recipe's own <module>cli commands so both invocation paths refuse a wrong
-	// argument count byte-identically.
-	Args cobra.PositionalArgs
+	// Arm is the recipe's exported Location-taking resolution entry point -- loomcli.ArmAt or
+	// battencli.ArmAt -- called with the already-resolved *lyxcwd.Location, the invoked verb name,
+	// and the already-resolved run-id. It performs no lyxcwd.Resolve of its own: resolvePersistentPreRun
+	// resolves cwd exactly once, ahead of the seed read that decides which recipe this entry belongs
+	// to, and hands the same Location on to Arm here.
+	Arm func(location *lyxcwd.Location, verb string, runID string) (shedverbs.Spec, error)
 	// Verbs names the shedverbs verbs this recipe supports. It is this table's sole authority on
 	// which verb/recipe pairs exist: the four generic verbs are registered once for every recipe,
-	// but the recipes do not all support all four -- lifecycle has no "step" analogue.
+	// but the recipes do not all support all four.
 	Verbs []string
 }
 
 // recipes is the single place every named recipe is declared, mapping each recipe name to the
 // entry that arms it.
 //
-// lifecycle has no "step" analogue: without this table gating step's dispatch, "lyx shed step
-// --recipe lifecycle" would reach the generic step body with StepBusyKind unset and PreStep nil,
-// emitting kind: "" -- a sixth value outside the five the Shed Verb-Set Invariant and ly-drive both
-// pin closed -- and skipping lifecycle's whole PreRun pre-flight.
+// The gate this table's Verbs field backs stays even though every recipe now supports every verb it
+// once excluded, because a future recipe may still exclude one: without this table gating a
+// recipe's dispatch, an excluded verb would reach the generic body with StepBusyKind unset and
+// PreStep nil, emitting kind: "" -- a sixth value outside the five the Shed Verb-Set Invariant and
+// ly-drive both pin closed -- and skipping that recipe's own PreRun pre-flight.
 var recipes = map[string]entry{
 	"loom": {
-		Arm:   loomcli.Arm,
-		Args:  cobra.NoArgs,
+		Arm:   loomcli.ArmAt,
 		Verbs: []string{"run", "step", "status", "pause"},
 	},
-	"lifecycle": {
-		Arm:   lifecyclecli.Arm,
-		Args:  cobra.ExactArgs(1),
-		Verbs: []string{"run", "status", "pause"},
+	"batten": {
+		Arm:   battencli.ArmAt,
+		Verbs: []string{"run", "step", "status", "pause"},
 	},
 }
 
