@@ -46,6 +46,11 @@ var loomshedAllowedImports = map[string]bool{
 	// kind, so it cannot drag cwd resolution in. internal/shedadapters, already on this list,
 	// imports it too.
 	"github.com/Knatte18/loomyard/internal/logger": true,
+	// internal/shuttleengine is imported for two type names (Gate, GateResult) and no behaviour --
+	// gates.go's two closures build and return shuttleengine.Gate values but never drive a run
+	// through the package. internal/shedadapters, already on this list, imports it transitively
+	// anyway, so this does not widen the package's own geometry footprint.
+	"github.com/Knatte18/loomyard/internal/shuttleengine": true,
 }
 
 // TestToldGeometryInvariant_AllowlistOnly verifies that every non-test .go file in this package
