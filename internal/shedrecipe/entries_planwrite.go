@@ -27,8 +27,9 @@ import (
 // resolution and its plan_timeout_min timeout entirely.
 //
 // AnchorPath is validated here and threaded through because loomshed.NewPlanDirRotator resolves the
-// plan directory itself via planparser.PlanDir, the same split planValidateEntry already uses,
-// which keeps this package free of any planparser import.
+// plan directory itself via planparser.PlanDir, the same split loomshed.NewPlanGate uses between
+// that call and planglyph.ValidateFormat's separate worktree-root parameter, which keeps this
+// package free of any planparser import.
 //
 // The row carries exactly two Config keys, "gate" and "gate_attempts", per the Config Strictness
 // Invariant. It carries a "gate" key even though this entry's own dedicated constructor could
