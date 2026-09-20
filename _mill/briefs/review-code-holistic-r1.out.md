@@ -1,0 +1,22 @@
+MILL_REVIEW_BEGIN
+# Review: Seeded Shed core: run addressing, seed contract, batten — holistic
+
+```yaml
+verdict: APPROVE
+reviewer_model: sonnethigh
+reviewed_file: plan/ + source
+date: 2026-09-20
+```
+
+## Findings
+
+### [NIT:consistency] persist's doc comment misattributes the batten CommitStatus seam's package
+**Location:** `internal/shedengine/run.go:460-467`
+**Issue:** The comment says "The batten seam (`internal/battenrecipe`, wired one layer out from this package) does exactly that: it skips its own commit...". The on-disk no-op-transition skip actually lives in `internal/battencli/commitstatus.go` (`newCommitStatusSeam`/`battenCommitStatusSeam`); `internal/battenrecipe` only declares row names and `New`/`RecipeEngines` and contains no CommitStatus logic.
+**Fix:** Retarget the parenthetical to `internal/battencli`, keeping the `battenrecipe.NameRunShed` reference (which is correctly attributed) unchanged.
+
+## Verdict
+
+APPROVE
+All eight batches are implemented faithfully to plan and Shared Decisions, with only one comment-only misattribution found.
+MILL_REVIEW_END

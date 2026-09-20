@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-approved
 slug: seeded-shed-core
 branch: seeded-shed-core
 plan: _mill/plan
@@ -33,6 +33,8 @@ approved-shed-addressing  '2026-09-19T19:09:17Z'
 approved-docs-and-integration  '2026-09-19T19:28:40Z'
 holistic-reviewing  '2026-09-20T08:39:54Z'
 holistic-fixing  '2026-09-20T08:42:41Z'
+nits-fixed-holistic  '2026-09-20T08:44:44Z'
+holistic-approved  '2026-09-20T08:44:51Z'
 ```
 
 ## Batches
