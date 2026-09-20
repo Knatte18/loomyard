@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: seeded-driver-choice
 branch: seeded-driver-choice
 plan: _mill/plan
@@ -43,6 +43,7 @@ approved-docs-sweep  '2026-09-20T11:22:34Z'
 holistic-reviewing  '2026-09-20T11:22:56Z'
 holistic-approved  '2026-09-20T11:26:58Z'
 done  '2026-09-20T11:32:10Z'
+pr-pending  '2026-09-20T11:34:35Z'
 ```
 
 ## Batches
