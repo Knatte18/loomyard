@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-shedrecipe-wiring
+phase: approved-row-removal
 slug: producer-gates
 branch: producer-gates
 plan: _mill/plan
@@ -34,6 +34,7 @@ approved-shuttle-gate-loop  '2026-09-20T15:13:03Z'
 approved-seam-and-producers  '2026-09-20T15:22:27Z'
 approved-loomshed-gates  '2026-09-20T15:29:29Z'
 approved-shedrecipe-wiring  '2026-09-20T15:47:19Z'
+approved-row-removal  '2026-09-20T16:08:22Z'
 ```
 
 ## Batches
@@ -65,9 +66,10 @@ batches:
     commit_sha: 373aef1d198f9931879d36b45a5ac99b3b48a14c
     verify_baseline_failures: []
   - name: row-removal
-    state: running
+    state: approved
     implementer_session: b463eac3-64f5-447c-9b1c-42513ba2a433
     start_sha: 05002a22e952d96508b3f749b93e2b2c5946cd40
+    commit_sha: 6d0e082d356dbb8a9e14821721097245bd2cc4d9
     verify_baseline_failures: []
   - name: parity-docs-sweep
     state: pending
