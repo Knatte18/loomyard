@@ -153,7 +153,7 @@ type Shed struct {
 }
 ```
 
-`OnStuck` is what makes "`Plan-Validate`'s stuck route bounces back to `Plan-Write`" a per-producer config value in the list, not a hardcoded branch in `Shed`'s loop.
+`OnStuck` is what makes "`Plan-Bouncer`'s stuck route bounces to `Plan-Burler`" a per-producer config value in the list, not a hardcoded branch in `Shed`'s loop.
 `OnDone` is the same idea applied to the happy path: the sole router for a `Done` verdict, with no positional fallback of any kind.
 `Segment` is a plain grouping label with exactly one mechanical effect — `validate()`'s rule that a non-empty `OnStuck` must name a target sharing this producer's own `Segment` — and no other effect anywhere else; it does not scope the bounce budget and does not constrain `OnDone`, because crossing *out* of a segment on approval is the point.
 `MaxBounces` inherits at two levels, and `0` never means "no bounces allowed" at either: a `ProducerDef`'s own `MaxBounces` of `0` inherits `Shed.MaxBounces`, which itself falls back to the internal default of ten when it too is `0`.

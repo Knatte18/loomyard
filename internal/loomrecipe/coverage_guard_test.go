@@ -19,30 +19,27 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 )
 
-// loomRowEngines maps each of New's seventeen row names to the engine name backing it. The row-name
+// loomRowEngines maps each of New's fourteen row names to the engine name backing it. The row-name
 // side is keyed off loomshed's own Name* constants, per the row-name-authority-stays-with-the-go-
 // constants Shared Decision -- loomshed reads two of them for status-seed and resume purposes, so
 // those constants remain the authority even though this package now builds the list. The engine
 // side genuinely has to be written down by hand, because shedengine.ProducerDef carries no engine
 // name at all -- only the row-name side is derivable from New's own assembled output.
 var loomRowEngines = map[string]string{
-	loomshed.NamePreflight:          "Preflight",
-	loomshed.NameLoomPreflight:      "LoomPreflight",
-	loomshed.NameDiscussionWrite:    "DiscussionWrite",
-	loomshed.NameDiscussionValidate: "DiscussionValidate",
-	loomshed.NameDiscussionBouncer:  "Bouncer",
-	loomshed.NameDiscussionBurler:   "BurlerRound",
-	loomshed.NamePlanWrite:          "PlanWrite",
-	loomshed.NamePlanValidate:       "PlanValidate",
-	loomshed.NamePlanBouncer:        "Bouncer",
-	loomshed.NamePlanBurler:         "BurlerRound",
-	loomshed.NamePlanRevalidate:     "PlanValidate",
-	loomshed.NameBatchifier:         "Batchifier",
-	loomshed.NameWebster:            "Webster",
-	loomshed.NameWebsterBouncer:     "Bouncer",
-	loomshed.NameWebsterBurler:      "BurlerRound",
-	loomshed.NamePublish:            "Publish",
-	loomshed.NameFinalize:           "Finalize",
+	loomshed.NamePreflight:         "Preflight",
+	loomshed.NameLoomPreflight:     "LoomPreflight",
+	loomshed.NameDiscussionWrite:   "DiscussionWrite",
+	loomshed.NameDiscussionBouncer: "Bouncer",
+	loomshed.NameDiscussionBurler:  "BurlerRound",
+	loomshed.NamePlanWrite:         "PlanWrite",
+	loomshed.NamePlanBouncer:       "Bouncer",
+	loomshed.NamePlanBurler:        "BurlerRound",
+	loomshed.NameBatchifier:        "Batchifier",
+	loomshed.NameWebster:           "Webster",
+	loomshed.NameWebsterBouncer:    "Bouncer",
+	loomshed.NameWebsterBurler:     "BurlerRound",
+	loomshed.NamePublish:           "Publish",
+	loomshed.NameFinalize:          "Finalize",
 }
 
 // TestCoverageGuard_EveryLoomRowHasAnEngine asserts three things about loomRowEngines against

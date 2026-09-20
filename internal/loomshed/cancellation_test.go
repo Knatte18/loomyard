@@ -1,15 +1,20 @@
 // cancellation_test.go carries the one test whose subject is this package's own constructors under
 // an already-cancelled context, plus the reduced fixture it drives from. It stays in
 // internal/loomshed rather than moving to internal/loomrecipe alongside the rest of the sequence
-// suite because it calls neither New nor Run: it constructs NewDiscussionValidate, NewPlanValidate,
-// NewBatchifier, NewWebsterProducer, and NewLoomPreflight directly and calls Call on each -- the
-// same criterion keeping batchifier_test.go and planvalidate_test.go in this package.
+// suite because it calls neither New nor Run: it constructs NewBatchifier, NewWebsterProducer, and
+// NewLoomPreflight directly and calls Call on each -- the same criterion keeping batchifier_test.go
+// in this package.
+//
+// Only three of this test's original five producers survive the row-removal batch: the two validate
+// producers this test used to cover, discussionValidate and planValidate, are deleted along with
+// their own rows, and this is the only test anywhere proving the three survivors' real Call wiring
+// returns an error rather than a verdict under an already-cancelled context -- the shared
+// cancellation helpers' own tests exercise those helpers in isolation and never through a producer.
 
 package loomshed
 
 import (
 	"context"
-	"os"
 	"path/filepath"
 	"testing"
 
@@ -17,36 +22,24 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// cancellationFixture carries the six told values TestCancellation_RealProducersReturnErrorNotStuck
+// cancellationFixture carries the three told values TestCancellation_RealProducersReturnErrorNotStuck
 // reads. It is a plain struct rather than Deps: Deps is gone from the moved fixture's return and is
 // deleted outright in a later batch, so it cannot be the carrier here.
 type cancellationFixture struct {
-	AnchorPath         string
-	WorktreeRoot       string
-	DecisionRecordPath string
-	SupportLogPath     string
-	StatusPath         string
-	StatusLockPath     string
+	AnchorPath     string
+	StatusPath     string
+	StatusLockPath string
 }
 
-// buildCancellationFixture reproduces the moved whole-list fixture's on-disk seeding exactly --
-// writeDiscussionFixture into a discussion subdirectory of one t.TempDir(), the plan-validate
-// fixture seed, and the Seed(statusPath, statusLockPath, "fixture-slug", "fixture-parent") call --
-// so this test's behaviour is unchanged by the reduction. It drops only the construction this test
-// does not read: the whole-list Env/ShedPaths pair, the landing passthrough, and the row-1/Webster
-// injection.
+// buildCancellationFixture seeds only what the three surviving producers this test drives actually
+// read: NewBatchifier and NewWebsterProducer both read AnchorPath, and NewLoomPreflight reads the
+// status seed the Seed(statusPath, statusLockPath, "fixture-slug", "fixture-parent") call below
+// produces. The discussion and plan-format fixtures the two removed validate producers used to read
+// are dropped with them.
 func buildCancellationFixture(t *testing.T) cancellationFixture {
 	t.Helper()
 
 	dir := t.TempDir()
-
-	discussionDir := filepath.Join(dir, "discussion")
-	if err := os.MkdirAll(discussionDir, 0o755); err != nil {
-		t.Fatalf("mkdir discussion dir: %v", err)
-	}
-	decisionRecordPath, supportLogPath := writeDiscussionFixture(t, discussionDir, validDecisionRecord, "support log")
-
-	seedPlanValidateFixture(t, dir, true)
 
 	statusPath := filepath.Join(dir, "status.json")
 	statusLockPath := filepath.Join(dir, "status.json.lock")
@@ -55,21 +48,17 @@ func buildCancellationFixture(t *testing.T) cancellationFixture {
 	}
 
 	return cancellationFixture{
-		AnchorPath:         dir,
-		WorktreeRoot:       dir,
-		DecisionRecordPath: decisionRecordPath,
-		SupportLogPath:     supportLogPath,
-		StatusPath:         statusPath,
-		StatusLockPath:     statusLockPath,
+		AnchorPath:     dir,
+		StatusPath:     statusPath,
+		StatusLockPath: statusLockPath,
 	}
 }
 
 // TestCancellation_RealProducersReturnErrorNotStuck asserts the one obligation shedengine cannot
-// enforce for itself: every real producer this task builds -- the discussion validator, the plan
-// validator, the batch gate, the Webster wrapper, and loom's own seed row -- returns a non-nil
-// error rather than shedengine.Stuck when called under an already-cancelled context. A Stuck under
-// a cancelled context is indistinguishable to Shed from a genuine verdict and would silently
-// consume bounce budget for what was actually an operator stop.
+// enforce for itself: every real producer this test drives -- the batch gate, the Webster wrapper,
+// and loom's own seed row -- returns a non-nil error rather than shedengine.Stuck when called under
+// an already-cancelled context. A Stuck under a cancelled context is indistinguishable to Shed from
+// a genuine verdict and would silently consume bounce budget for what was actually an operator stop.
 func TestCancellation_RealProducersReturnErrorNotStuck(t *testing.T) {
 	fx := buildCancellationFixture(t)
 
@@ -82,8 +71,6 @@ func TestCancellation_RealProducersReturnErrorNotStuck(t *testing.T) {
 			Call(context.Context) (shedengine.Outcome, shedengine.OutputPointer, error)
 		}
 	}{
-		{NameDiscussionValidate, NewDiscussionValidate(NameDiscussionValidate, fx.DecisionRecordPath, fx.SupportLogPath)},
-		{NamePlanValidate, NewPlanValidate(NamePlanValidate, fx.AnchorPath, fx.WorktreeRoot, true)},
 		{NameBatchifier, NewBatchifier(NameBatchifier, fx.AnchorPath)},
 		{NameWebster, NewWebsterProducer(NameWebster, fx.AnchorPath, (&fakeWebsterRun{}).run, websterengine.RunDeps{})},
 		{NameLoomPreflight, NewLoomPreflight(NameLoomPreflight, fx.StatusPath, fx.StatusLockPath)},

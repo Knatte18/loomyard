@@ -173,8 +173,8 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 		// driver's direct parent (Detach's Setsid only puts it in a new session; the child
 		// is re-parented away only once THIS process itself exits), so a driver that
 		// finishes before this bootstrap invocation does -- the common case, since a fresh
-		// task's Discussion-Validate has nothing to validate yet and bounces to its budget
-		// within milliseconds -- would otherwise sit as a zombie. A zombie's pid still
+		// task's Preflight and Loom-Preflight gates run in milliseconds and a precondition
+		// failure there halts the whole run just as fast -- would otherwise sit as a zombie. A zombie's pid still
 		// answers kill(pid, 0) as "alive", which is exactly the probe proc.IsAlive uses, so
 		// leaving this unreaped would make the handshake below spin its entire deadline and
 		// falsely refuse a bootstrap whose driver actually completed cleanly.

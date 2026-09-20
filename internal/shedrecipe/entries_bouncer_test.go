@@ -489,6 +489,38 @@ func (f *judgeSeamFakeShuttle) Attach(shuttleengine.Spec) (shuttleengine.Result,
 	return shuttleengine.Result{}, false, nil
 }
 
+// RunGated implements the shared fake contract every shedadapters.Shuttle/burlerengine.Shuttle test
+// fake follows (see the "every test fake evaluates the gate once" decision): delegate to Run's own
+// body, then -- only when gate.Gate is non-nil and the delegated outcome is OutcomeDone -- invoke
+// the closure exactly once, returning its error if non-nil and otherwise stamping a *GateOutcome
+// onto the returned Result.
+func (f *judgeSeamFakeShuttle) RunGated(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (shuttleengine.Result, error) {
+	result, err := f.Run(spec)
+	if err != nil || gate.Gate == nil || result.Outcome != shuttleengine.OutcomeDone {
+		return result, err
+	}
+	gateResult, gerr := gate.Gate()
+	if gerr != nil {
+		return result, gerr
+	}
+	result.Gate = &shuttleengine.GateOutcome{Passed: gateResult.Passed}
+	return result, nil
+}
+
+// AttachGated is Attach's gated twin, following the identical shared fake contract.
+func (f *judgeSeamFakeShuttle) AttachGated(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (shuttleengine.Result, bool, error) {
+	result, found, err := f.Attach(spec)
+	if err != nil || !found || gate.Gate == nil || result.Outcome != shuttleengine.OutcomeDone {
+		return result, found, err
+	}
+	gateResult, gerr := gate.Gate()
+	if gerr != nil {
+		return result, found, gerr
+	}
+	result.Gate = &shuttleengine.GateOutcome{Passed: gateResult.Passed}
+	return result, found, nil
+}
+
 // TestBouncerEntry_CommitSeam covers the two-value resolution of commit_seam, the presence guard
 // requireSeam enforces on a configured-but-missing Env closure, and the recognised-set edit to
 // configRejectUnknown.

@@ -9,7 +9,7 @@
 # Discussion-Review rubric
 
 The subject under review is the discussion artifact pair, `decision-record.md` and `support-log.md`.
-The mechanical section contract over that pair — which sections exist, in which file — is enforced upstream by `Discussion-Validate`, and is not this rubric's subject.
+The mechanical section contract over that pair — which sections exist, in which file — is enforced by this round's own gate over this round's own output, and is not this rubric's subject.
 
 `Discussion-Review` is the LLM producer, not the mechanical one — over-flagging is a judgment failure mode a mechanical producer, which has only checks and never judgment, cannot exhibit.
 

@@ -1,5 +1,5 @@
 // shape_test.go carries the shape-and-identity assertions over New's built list: the literal
-// seventeen-row producer table, the real Publish/Finalize swap, order stability, told-field
+// fourteen-row producer table, the real Publish/Finalize swap, order stability, told-field
 // threading, a missing-Landing-closure construction failure, and the routing-graph guard. It does
 // not assert the recipe's own structure or parsing -- recipe_test.go owns that.
 
@@ -42,15 +42,12 @@ type wantProducerRow struct {
 var wantProducerTable = []wantProducerRow{
 	{loomshed.NamePreflight, "", loomshed.NameLoomPreflight, "", 0, reflect.TypeOf(preflightshed.NewPreflight("", ""))},
 	{loomshed.NameLoomPreflight, "", loomshed.NameDiscussionWrite, "", 0, reflect.TypeOf(loomshed.NewLoomPreflight("", "", ""))},
-	{loomshed.NameDiscussionWrite, "", loomshed.NameDiscussionValidate, "", 0, reflect.TypeOf(loomshed.NewDiscussionWrite("", nil, nil))},
-	{loomshed.NameDiscussionValidate, loomshed.NameDiscussionWrite, loomshed.NameDiscussionBouncer, "", 0, reflect.TypeOf(loomshed.NewDiscussionValidate("", "", ""))},
+	{loomshed.NameDiscussionWrite, "", loomshed.NameDiscussionBouncer, "", 0, reflect.TypeOf(loomshed.NewDiscussionWrite("", nil, nil))},
 	{loomshed.NameDiscussionBouncer, loomshed.NameDiscussionBurler, loomshed.NamePlanWrite, "Discussion-Review", 5, reflect.TypeOf(&shedadapters.Bouncer{})},
 	{loomshed.NameDiscussionBurler, loomshed.NameDiscussionBouncer, loomshed.NameDiscussionBouncer, "Discussion-Review", 5, reflect.TypeOf(&shedadapters.BurlerProducer{})},
-	{loomshed.NamePlanWrite, "", loomshed.NamePlanValidate, "", 0, reflect.TypeOf(loomshed.NewPlanWrite("", nil, nil))},
-	{loomshed.NamePlanValidate, loomshed.NamePlanWrite, loomshed.NamePlanBouncer, "", 0, reflect.TypeOf(loomshed.NewPlanValidate("", "", "", false))},
-	{loomshed.NamePlanBouncer, loomshed.NamePlanBurler, loomshed.NamePlanRevalidate, "Plan-Review", 5, reflect.TypeOf(&shedadapters.Bouncer{})},
+	{loomshed.NamePlanWrite, "", loomshed.NamePlanBouncer, "", 0, reflect.TypeOf(loomshed.NewPlanWrite("", nil, nil))},
+	{loomshed.NamePlanBouncer, loomshed.NamePlanBurler, loomshed.NameBatchifier, "Plan-Review", 5, reflect.TypeOf(&shedadapters.Bouncer{})},
 	{loomshed.NamePlanBurler, loomshed.NamePlanBouncer, loomshed.NamePlanBouncer, "Plan-Review", 5, reflect.TypeOf(&shedadapters.BurlerProducer{})},
-	{loomshed.NamePlanRevalidate, loomshed.NamePlanWrite, loomshed.NameBatchifier, "", 0, reflect.TypeOf(loomshed.NewPlanValidate("", "", "", false))},
 	{loomshed.NameBatchifier, "", loomshed.NameWebster, "", 0, reflect.TypeOf(loomshed.NewBatchifier("", ""))},
 	{loomshed.NameWebster, "", loomshed.NameWebsterBouncer, "", 0, reflect.TypeOf(loomshed.NewWebsterProducer("", "", nil, websterengine.RunDeps{}))},
 	{loomshed.NameWebsterBouncer, loomshed.NameWebsterBurler, loomshed.NamePublish, "Webster-Review", 5, reflect.TypeOf(&shedadapters.Bouncer{})},
@@ -243,8 +240,8 @@ func TestNew_PublishAndFinalizeAreRealProducers(t *testing.T) {
 
 // TestNew_ProducerTableOrderUnchangedByWiring re-asserts TestNew_ProducerTable's own table-order and
 // name coverage, now that the list's order is the recipe's own list order rather than a Go literal's:
-// the seventeen rows stay in their existing table order with their existing names, regardless of
-// what backs rows 16 and 17.
+// the fourteen rows stay in their existing table order with their existing names, regardless of
+// what backs rows 13 and 14.
 func TestNew_ProducerTableOrderUnchangedByWiring(t *testing.T) {
 	env, paths := testEnv(t)
 	shed, err := New(env, paths)
@@ -297,18 +294,17 @@ func TestNew_PassesShedValidation(t *testing.T) {
 	// error (a typo'd OnStuck, a duplicate name, two lock paths naming one file) surfaces as Run
 	// returning a non-nil error before it ever reads the status file. Row 3's fake shuttle
 	// deliberately writes nothing (env.Shuttle is a fakeLoomShuttle{writeOutputs: false}), so
-	// each bounce re-runs a real producer that leaves the record absent, and Discussion-Validate
-	// bounces back to Discussion-Write repeatedly; Discussion-Validate never returns Done, so its
-	// own budget -- inherited from paths.MaxBounces (3), since neither producer sets a MaxBounces
-	// of its own -- is spent entirely on this one producer's episode, and the run blocks once it is
-	// exhausted. That is an ordinary Stuck/blocked outcome, not a validation failure, and is what
-	// this test expects.
+	// Discussion-Write's own gate -- which reads exactly the two files the fake did not write --
+	// fails on its very first (and, per the "every test fake evaluates the gate once" decision,
+	// only) evaluation. Discussion-Write carries no on_stuck, so that single failed gate blocks the
+	// whole run immediately, with no bounce budget in play at all. That is an ordinary
+	// Stuck/blocked outcome, not a validation failure, and is what this test expects.
 	result, err := shed.Run(context.Background())
 	if err != nil {
 		t.Fatalf("Run() error = %v; want nil (no shedengine.validate() failure)", err)
 	}
 	if result.Outcome != shedengine.RunBlocked {
-		t.Errorf("Run() outcome = %q; want %q (Discussion-Validate's own bounce budget exhausted)", result.Outcome, shedengine.RunBlocked)
+		t.Errorf("Run() outcome = %q; want %q (Discussion-Write's own gate failed with no on_stuck to bounce to)", result.Outcome, shedengine.RunBlocked)
 	}
 }
 

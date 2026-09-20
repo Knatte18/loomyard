@@ -48,9 +48,9 @@ func TestRenderStatusLine(t *testing.T) {
 			name: "LastAndWait",
 			st: shedengine.Status{
 				State:    shedengine.StateBlocked,
-				Activity: shedengine.Activity{Now: "Plan-Validate", Last: "Plan-Validate → stuck", Wait: "plan validation failed"},
+				Activity: shedengine.Activity{Now: "Plan-Bouncer", Last: "Plan-Bouncer → stuck", Wait: "plan validation failed"},
 			},
-			want: "loom blocked | now Plan-Validate | last Plan-Validate → stuck | wait plan validation failed",
+			want: "loom blocked | now Plan-Bouncer | last Plan-Bouncer → stuck | wait plan validation failed",
 		},
 	}
 
@@ -80,13 +80,13 @@ func TestPrintStatusLinesOnChange(t *testing.T) {
 		},
 		{
 			name:  "PrintsEveryTransition",
-			polls: []string{"loom running | now Plan-Write", "loom running | now Plan-Write", "loom running | now Plan-Validate", "loom blocked | now Plan-Validate"},
-			want:  []string{"loom running | now Plan-Write", "loom running | now Plan-Validate", "loom blocked | now Plan-Validate"},
+			polls: []string{"loom running | now Plan-Write", "loom running | now Plan-Write", "loom running | now Plan-Bouncer", "loom blocked | now Plan-Bouncer"},
+			want:  []string{"loom running | now Plan-Write", "loom running | now Plan-Bouncer", "loom blocked | now Plan-Bouncer"},
 		},
 		{
 			name:  "ReprintsAfterReturningToAnEarlierLine",
-			polls: []string{"loom running | now Plan-Write", "loom running | now Plan-Validate", "loom running | now Plan-Write"},
-			want:  []string{"loom running | now Plan-Write", "loom running | now Plan-Validate", "loom running | now Plan-Write"},
+			polls: []string{"loom running | now Plan-Write", "loom running | now Plan-Bouncer", "loom running | now Plan-Write"},
+			want:  []string{"loom running | now Plan-Write", "loom running | now Plan-Bouncer", "loom running | now Plan-Write"},
 		},
 		{
 			name:  "TransientUnavailableIsAlsoDeduped",

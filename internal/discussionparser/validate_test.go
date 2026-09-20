@@ -316,8 +316,9 @@ func TestValidate_SupportLogPathIsDirectory(t *testing.T) {
 // A bufio.Scanner stops at the first line over bufio.MaxScanTokenSize (64 KB) and reports it only
 // through scanner.Err(), which was never checked — so one pasted base64 blob or minified snippet,
 // entirely ordinary in an agent-written discussion document, made every heading below it report
-// missing. loomshed's Discussion-Validate row maps that to Stuck and bounces to Discussion-Write,
-// respawning on the same document until the bounce budget escalates to a human.
+// missing. loomshed's Discussion-Write and Discussion-Burler gates map that to a re-prompt against
+// the still-live session, holding the handoff until the gate passes or its attempt budget escalates
+// to a human.
 func TestMissingSections_ASingleHugeLineDoesNotHideEveryHeadingBelowIt(t *testing.T) {
 	t.Parallel()
 

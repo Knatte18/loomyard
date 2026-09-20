@@ -37,6 +37,9 @@ type fakeShuttle struct {
 	fixerContent  string // written to OutputFiles[1] when non-empty
 	result        shuttleengine.Result
 	err           error
+
+	// gateSpec is the GateSpec RunGated last received.
+	gateSpec shuttleengine.GateSpec
 }
 
 func (f *fakeShuttle) Run(spec shuttleengine.Spec) (shuttleengine.Result, error) {
@@ -57,6 +60,28 @@ func (f *fakeShuttle) Run(spec shuttleengine.Spec) (shuttleengine.Result, error)
 		}
 	}
 	return f.result, nil
+}
+
+// RunGated implements the shared fake contract every shedadapters.Shuttle/burlerengine.Shuttle test
+// fake follows (see the "every test fake evaluates the gate once" decision): delegate to Run's own
+// body, then — only when gate.Gate is non-nil and the delegated outcome is OutcomeDone — invoke the
+// closure exactly once, returning its error if non-nil and otherwise stamping a *GateOutcome onto the
+// returned Result. The fake runs no re-prompt loop; there is no pane to send into, and the loop's own
+// coverage lives against the real Wait in batch 1's tests.
+func (f *fakeShuttle) RunGated(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (shuttleengine.Result, error) {
+	f.gateSpec = gate
+
+	result, err := f.Run(spec)
+	if err != nil || gate.Gate == nil || result.Outcome != shuttleengine.OutcomeDone {
+		return result, err
+	}
+
+	gateResult, gerr := gate.Gate()
+	if gerr != nil {
+		return result, gerr
+	}
+	result.Gate = &shuttleengine.GateOutcome{Passed: gateResult.Passed}
+	return result, nil
 }
 
 // newEngineTestProfile builds a minimal valid Profile (relative paths — the
@@ -567,6 +592,107 @@ func TestEngine_Run_PatternDirectiveReachesInstruction1(t *testing.T) {
 				t.Errorf("instruction-1-explore.md contains \"_lyx/PATTERN.md\" = %v; want %v", gotPinned, tt.wantPinned)
 			}
 		})
+	}
+}
+
+// TestEngine_Run_GateFailure proves a round whose gate fails returns a Result with Gate populated
+// and Passed false, Verdict and Findings left empty, Outcome still OutcomeDone, and a nil error —
+// with the review file never read (asserted by leaving no parseable review file on disk and still
+// expecting no error).
+func TestEngine_Run_GateFailure(t *testing.T) {
+	root, p := newEngineTestProfile(t)
+	// No reviewContent/fixerContent: the fake never writes either output file. A gate-failed round
+	// must never read the review file, so this must not surface as a "missing review file" error —
+	// if it does, the gate-failure short-circuit did not fire before the parse step.
+	shuttle := &fakeShuttle{
+		result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
+	}
+	e := newEngineForTest(t, root, shuttle)
+
+	opts := RunOpts{Gate: shuttleengine.GateSpec{
+		Gate: func() (shuttleengine.GateResult, error) {
+			return shuttleengine.GateResult{Passed: false, Findings: "the widget is the wrong color"}, nil
+		},
+	}}
+
+	got, err := e.Run(p, opts)
+	if err != nil {
+		t.Fatalf("Run() = %v; want nil error", err)
+	}
+	if got.Gate == nil || got.Gate.Passed {
+		t.Fatalf("Result.Gate = %+v; want populated with Passed false", got.Gate)
+	}
+	if got.Verdict != "" {
+		t.Errorf("Result.Verdict = %q; want empty", got.Verdict)
+	}
+	if len(got.Findings) != 0 {
+		t.Errorf("Result.Findings = %+v; want none", got.Findings)
+	}
+	if got.Outcome != shuttleengine.OutcomeDone {
+		t.Errorf("Result.Outcome = %q; want %q", got.Outcome, shuttleengine.OutcomeDone)
+	}
+}
+
+// TestEngine_Run_ZeroGateSpec proves a round carrying the zero GateSpec behaves exactly as today,
+// with Result.Gate nil — the guard for the Webster segment's ungated round.
+func TestEngine_Run_ZeroGateSpec(t *testing.T) {
+	root, p := newEngineTestProfile(t)
+	shuttle := &fakeShuttle{
+		reviewContent: approvedReview,
+		fixerContent:  "nothing fixed",
+		result:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
+	}
+	e := newEngineForTest(t, root, shuttle)
+
+	got, err := e.Run(p, RunOpts{})
+	if err != nil {
+		t.Fatalf("Run() = %v; want nil error", err)
+	}
+	if got.Gate != nil {
+		t.Errorf("Result.Gate = %+v; want nil for the zero GateSpec", got.Gate)
+	}
+}
+
+// TestEngine_Run_GateFailureFindingsNameRoundPaths proves a round whose gate fails receives findings
+// text that names both this round's own review path and its own fixer-report path — the per-round
+// repairReportBeforeGate wrapper's whole subject.
+func TestEngine_Run_GateFailureFindingsNameRoundPaths(t *testing.T) {
+	root, p := newEngineTestProfile(t)
+	shuttle := &fakeShuttle{
+		result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
+	}
+	e := newEngineForTest(t, root, shuttle)
+
+	opts := RunOpts{Gate: shuttleengine.GateSpec{
+		Gate: func() (shuttleengine.GateResult, error) {
+			return shuttleengine.GateResult{Passed: false, Findings: "the widget is the wrong color"}, nil
+		},
+	}}
+
+	got, err := e.Run(p, opts)
+	if err != nil {
+		t.Fatalf("Run() = %v; want nil error", err)
+	}
+	if got.Gate == nil || got.Gate.Passed {
+		t.Fatalf("Result.Gate = %+v; want populated with Passed false", got.Gate)
+	}
+
+	// Engine.Run wraps opts.Gate.Gate in repairReportBeforeGate before handing it to RunGated, so
+	// shuttle.gateSpec.Gate is the WRAPPED closure the round actually ran — re-invoking it here (the
+	// told closure is pure) recovers the findings text the round's failing attempt produced.
+	gateResult, gerr := shuttle.gateSpec.Gate()
+	if gerr != nil {
+		t.Fatalf("shuttle.gateSpec.Gate() = %v; want nil error", gerr)
+	}
+	gotFindings := gateResult.Findings
+
+	wantReviewPath := filepath.Join(root, "review.md")
+	wantFixerPath := filepath.Join(root, "fixer-report.md")
+	if !strings.Contains(gotFindings, wantReviewPath) {
+		t.Errorf("gate findings = %q; want it to name the review path %q", gotFindings, wantReviewPath)
+	}
+	if !strings.Contains(gotFindings, wantFixerPath) {
+		t.Errorf("gate findings = %q; want it to name the fixer-report path %q", gotFindings, wantFixerPath)
 	}
 }
 

@@ -14,10 +14,10 @@ they are out of scope, and a finding raised against one is never legitimate.
 
 The format contract is `{{.specs_dir}}/loom/loom-plan-spec.md`, and the Card model it implements is described in `{{.specs_dir}}/loom/loom-plan-card-format.md`.
 This rubric points at both and restates neither.
-The mechanical checks over that contract are already enforced — twenty-seven of them upstream by `Plan-Validate`, while `plan-unapproved` is enforced downstream by `Plan-Revalidate` instead.
+The mechanical checks over that contract are already enforced by this round's own gate over this round's own output — the format-only set, twenty-seven of the twenty-eight checks — while `plan-unapproved` is enforced at no row at all, resting on the review segment's own approve seam failing loudly if ever wired nil.
 
 `Plan-Review` is the LLM producer, not the mechanical one — over-flagging is a judgment failure mode a mechanical producer, which has only checks and never judgment, cannot exhibit.
-Sitting directly downstream of a twenty-eight-check mechanical validator makes this gate's over-flagging surface larger than that of a gate with no validator ahead of it, not smaller.
+Sitting behind a twenty-seven-check mechanical gate over this round's own output makes this gate's over-flagging surface larger than that of a gate with no validator ahead of it, not smaller.
 
 **`support-log.md` is outside this review entirely.**
 It appears in neither the artifact list nor the answer key, and it must not be read or reasoned from.
@@ -27,9 +27,9 @@ It appears in neither the artifact list nor the answer key, and it must not be r
 
 Do not flag any of the following as a finding:
 
-- **Anything `Plan-Validate` or `Plan-Revalidate` already checks.**
-  The twenty-eight check IDs `{{.specs_dir}}/loom/loom-plan-spec.md`'s own validation-checks section lists, `format-unrecognized` through `commit-subject-mismatch`, are enforced deterministically — twenty-seven of the twenty-eight upstream by `Plan-Validate`, while `plan-unapproved` is enforced downstream by `Plan-Revalidate` instead.
-  Re-deriving any of them here is duplicated work whose only possible outcome is disagreement with the parser.
+- **Anything this round's own gate already checks.**
+  The twenty-eight check IDs `{{.specs_dir}}/loom/loom-plan-spec.md`'s own validation-checks section lists, `format-unrecognized` through `commit-subject-mismatch`, are enforced deterministically — twenty-seven of the twenty-eight by this round's own gate over this round's own output, while `plan-unapproved` is enforced at no row at all, resting on the review segment's own approve seam failing loudly if ever wired nil.
+  Re-deriving any of them here is duplicated work whose only possible outcome is disagreement with the gate.
 - **A missing `DependsOn`/`Produces` field, or an incomplete dependency list.**
   Dependency edges are derived, never authored — a card's `Uses` intersected against every other card's target list.
   Plan-time completeness of that intersection is explicitly not provable;
@@ -49,7 +49,7 @@ Do not flag any of the following as a finding:
 - **`Custom` is a last resort.**
   Used only where none of `Create`, `Edit`, `Delete`, `Rename`, `Move`, or `Prosa` genuinely fits, never as a shortcut around correct typing.
   A `Custom` card is exempt from `path-missing` on its own targets and from `prosa-symbol-target` — which under the glyph alphabet means a `Prosa` group may only target file and unit self glyphs, with a member glyph (or anything else that fails to parse as a self glyph) the finding — so a mistyped `Custom` card silently escapes two checks the rest of the plan is held to.
-  It escapes only those two: `bare-symbol-target` and `directory-target` bind a card's flat `Targets`/`Uses` with no group scoping at all, so `Plan-Validate` already blocks a `Custom` card carrying either — do not hunt for one here.
+  It escapes only those two: `bare-symbol-target` and `directory-target` bind a card's flat `Targets`/`Uses` with no group scoping at all, so this round's own gate already blocks a `Custom` card carrying either — do not hunt for one here.
   A `Custom` card whose targets could instead be expressed as a multi-label combination of the other six is a finding — the format's one-or-more-labels grammar means `Custom` is never the only way to name a mixed target list.
 - **Fidelity to the decision record.**
   Every Decision and every Constraint in `_lyx/discussion/decision-record.md` is carried by some card, and no card introduces scope that file does not license.

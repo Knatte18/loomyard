@@ -642,8 +642,9 @@ func TestRun_BudgetDerivedFromPreExistingHistoryAcrossInvocations(t *testing.T) 
 func TestRun_EpisodeResetsOnProducersOwnDone(t *testing.T) {
 	// A producer that bounces, later returns Done, and is then re-entered and bounces again
 	// starts from zero on re-entry -- Stuck entries preceding its own last Done do not count.
-	// This is the loom Discussion-Validate shape that decided episode scoping over
-	// all-time counting, so it gets its own named test rather than a table row.
+	// This is the loom review-segment shape (e.g. Discussion-Bouncer bouncing to
+	// Discussion-Burler and back) that decided episode scoping over all-time counting, so it
+	// gets its own named test rather than a table row.
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 	shed.MaxBounces = 2
 

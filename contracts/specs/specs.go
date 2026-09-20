@@ -17,8 +17,8 @@ import (
 	"github.com/Knatte18/loomyard/manifest/designs"
 )
 
-// LoomPlanSpec is the plan format contract's shipped-default content: the grammar Plan-Validate
-// and Plan-Revalidate parse a written plan against.
+// LoomPlanSpec is the plan format contract's shipped-default content: the grammar Plan-Write's and
+// Plan-Burler's own gates parse a written plan against.
 //
 //go:embed loom-plan-spec.md
 var LoomPlanSpec []byte

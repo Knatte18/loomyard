@@ -1,6 +1,6 @@
 # Loom: the phased orchestrator
 
-> **Status: built, except `Plan-Sweep`.** All seventeen `contracts/recipes/loom-recipe.yaml` rows have real producers — `internal/loomshed`'s `stubProducer` is no longer used by loom's own list — across `internal/loomengine`, `internal/loomcli`, `internal/loomrecipe`, and `internal/loomshed`. The one table row never built is `Plan-Sweep`, which is not a recipe row at all; it has its own roadmap item.
+> **Status: built, except `Plan-Sweep`.** All fourteen `contracts/recipes/loom-recipe.yaml` rows have real producers — `internal/loomshed`'s `stubProducer` is no longer used by loom's own list — across `internal/loomengine`, `internal/loomcli`, `internal/loomrecipe`, and `internal/loomshed`. The one table row never built is `Plan-Sweep`, which is not a recipe row at all; it has its own roadmap item.
 > This banner said "Design — not built" until the 2026-08-29 designs audit, long after the module shipped, while the body below already described the recipe in as-built present tense.
 > Per the [documentation lifecycle](../../docs/overview.md#documentation-lifecycle) this file is now overdue for retirement: its durable parts belong in `overview.md` and the package headers, and reconciling 489 lines of design prose against the as-built module is its own task, not a status-line edit. Until that happens it remains the single design reference for the loom orchestration model, and should be read as design intent that the code may have moved past.
 
@@ -15,8 +15,8 @@ the LLM owns the thinking.
 The orchestrator is the **`loom`** module (`lyx loom start`); the gate is a **review segment** in loom's own producer list — a generic `Bouncer` review-gate producer paired with a `Burler`-round producer, both in `internal/shedadapters` — the iterative review loop, hand-wired once per phase. The `Burler`-round producer composes `burler` (see the `internal/burlerengine` package documentation), the review+fix round worker. The `/ly-*` skill layer shrinks to thin human-facing wrappers over these. The everyday call has a convenience alias: **`lyx start` → `lyx loom start`**. (Naming: `lyx` is the binary, `loom`/`burler` are modules, `ly-*` are the skills — see [overview.md](../../docs/overview.md).)
 
 `loom` = `Shed` (see [shed.md](shed.md), the generic outer phase-FSM: sequencing, resume, crash recovery, pause, the status-file contract) + `loom`'s own ordered producer list, given in full in [the producer table below](#the-phase-machine--a-flat-producer-list-no-predefined-slots).
-That list is recipe-backed: `contracts/recipes/loom-recipe.yaml` names the recipe's seventeen rows and their routing, and `internal/loomrecipe` assembles it into the `[]shedengine.ProducerDef` `Shed` consumes — see `manifest/designs/shed-recipe.md`.
-The recipe carries seventeen rows against the table below's fifteen entries — see the note beneath the table for why the two counts differ and by how much.
+That list is recipe-backed: `contracts/recipes/loom-recipe.yaml` names the recipe's fourteen rows and their routing, and `internal/loomrecipe` assembles it into the `[]shedengine.ProducerDef` `Shed` consumes — see `manifest/designs/shed-recipe.md`.
+The recipe carries fourteen rows against the table below's twelve entries — see the note beneath the table for why the two counts differ and by how much.
 
 ## The phase machine — a flat producer list, no predefined slots
 
@@ -35,36 +35,33 @@ Every row whose `Type` is `LLM` and `Kind` is `simple` is a `SingleLLMProducer` 
 |---|---|---|---|---|---|
 | 1 | `Preflight` | simple | mechanical | git/filesystem state (no format-contract file) | pass/fail — no artifact, a gate signal only |
 | 2 | `Loom-Preflight` | simple | mechanical | loom's own status file → `loom-status-spec.md`'s check-4 validation checklist | pass/fail — no artifact, a gate signal only |
-| 3 | `Discussion-Write` | simple | LLM | — (starting point) | `_lyx/discussion/` (`decision-record.md` + `support-log.md`), shape pinned in the producer's own stencil (`contracts/stencils/loom/loom-template-discussion.md`) |
-| 4 | `Discussion-Validate` | simple | mechanical | `_lyx/discussion/` → [validation checks](#discussion-producer-detail--validation-checks-and-review-rubric) below | pass/fail, also callable standalone as `lyx loom validate-discussion` |
-| 5 | `Discussion-Review` (`Discussion-Bouncer` + `Discussion-Burler`) | bespoke | LLM/review segment | `_lyx/discussion/` (both files) → [review rubric](#discussion-producer-detail--validation-checks-and-review-rubric) below | verdict (APPROVED/stuck) + review file |
-| 6 | `Plan-Sweep` | simple | mechanical | `_lyx/discussion/decision-record.md` (approved) | quarry inventory (internal artifact, not gated) |
-| 7 | `Plan-Write` | simple | LLM | `_lyx/discussion/decision-record.md` (**never** `support-log.md`) + `Plan-Sweep`'s inventory, once `Plan-Sweep` is built for real — its absence today is the normal degraded state the stencil now names outright, not an error | `_lyx/plan/`, shape pinned in `contracts/stencils/loom/loom-template-plan.md` |
-| 8 | `Plan-Validate` | simple | mechanical | `_lyx/plan/` → `loom-plan-spec.md`'s existing hard-fail checks (e.g. `bare-symbol-target`), in the format-only mode that runs before review and so does not demand the approval flag | pass/fail, also callable standalone as `lyx loom validate-plan`; **additionally rewrites `_lyx/plan/` in place**, canonicalizing every `plan:` handle — see [Plan-Validate detail](#plan-validate-detail) |
-| 9 | `Plan-Review` (`Plan-Bouncer` + `Plan-Burler`) | bespoke | LLM/review segment | `_lyx/plan/` (current plan directory) → `_lyx/discussion/decision-record.md` (answer key) | verdict (APPROVED/stuck) + review file |
-| 10 | `Plan-Revalidate` | simple | mechanical | `_lyx/plan/` → `loom-plan-spec.md`'s existing hard-fail checks, re-run because the segment's fixer rounds rewrite the plan after `Plan-Validate` already ran and no row between the segment and `Webster` parses the plan otherwise, in the approval-enforcing mode that confirms the flag `Plan-Bouncer`'s approved settle wrote | pass/fail as a gate signal, plus the same in-place handle canonicalization row 8 performs; catches a fixer-introduced format regression first and the approval flag's presence second |
-| 11 | `Batchifier` | simple | mechanical | `_lyx/plan/` (approved) + `batcher.yaml`'s `active:` key | pass/fail — a fail-fast gate confirming the active batchifier resolves cleanly before `Webster` spawns any LLM session, no artifact — already shipped as `internal/batcher`, "never an LLM's decision" per its own package doc |
-| 12 | `Webster` | bespoke | black box (LLM + mechanical internally) | `_lyx/plan/` (approved); resolves the active batchifier itself, lazily, on every call — never a value handed across from `Batchifier`, since that row writes no artifact | committed diff — `internal/websterengine`'s own per-batch loop is a bespoke, multi-spawn producer, exempt from `Shed`'s atomicity rule by design, and stays opaque to `loom`'s flat list, same "black box loom drives, exactly like a review segment" framing as [below](#webster--a-black-box-loom-drives-the-sibling-of-the-review-segment) |
-| 13 | `Webster-Review` (`Webster-Bouncer` + `Webster-Burler`) | bespoke | LLM/review segment | full diff → plan's card contract | verdict + review file — the full converge-loop gate over the whole diff |
-| 14 | `Publish` | simple | mechanical | approved diff | PR opened, or no-op; not `loom`'s own — a generic `Shed` producer, shared by reference with `Hardener`'s producer list, see [internal/landingshed](../../internal/landingshed/doc.go) |
-| 15 | `Finalize` | bespoke | mechanical | approved diff (+ open PR, if any) | merge-back; not `loom`'s own — a generic `Shed` producer, shared by reference with `Hardener`'s producer list, see [internal/landingshed](../../internal/landingshed/doc.go) |
+| 3 | `Discussion-Write` | simple | LLM | — (starting point) | `_lyx/discussion/` (`decision-record.md` + `support-log.md`), shape pinned in the producer's own stencil (`contracts/stencils/loom/loom-template-discussion.md`); gated by this row's own mechanical gate before handoff — see [validation checks](#discussion-producer-detail--validation-checks-and-review-rubric) below and [the gate](#the-gate) |
+| 4 | `Discussion-Review` (`Discussion-Bouncer` + `Discussion-Burler`) | bespoke | LLM/review segment | `_lyx/discussion/` (both files) → [review rubric](#discussion-producer-detail--validation-checks-and-review-rubric) below | verdict (APPROVED/stuck) + review file; `Discussion-Burler`'s own fix step carries the same mechanical gate as row 3 — see [the gate](#the-gate) |
+| 5 | `Plan-Sweep` | simple | mechanical | `_lyx/discussion/decision-record.md` (approved) | quarry inventory (internal artifact, not gated) |
+| 6 | `Plan-Write` | simple | LLM | `_lyx/discussion/decision-record.md` (**never** `support-log.md`) + `Plan-Sweep`'s inventory, once `Plan-Sweep` is built for real — its absence today is the normal degraded state the stencil now names outright, not an error | `_lyx/plan/`, shape pinned in `contracts/stencils/loom/loom-template-plan.md`; gated by this row's own mechanical gate before handoff — see [Plan gate detail](#plan-gate-detail) below and [the gate](#the-gate) |
+| 7 | `Plan-Review` (`Plan-Bouncer` + `Plan-Burler`) | bespoke | LLM/review segment | `_lyx/plan/` (current plan directory) → `_lyx/discussion/decision-record.md` (answer key) | verdict (APPROVED/stuck) + review file; `Plan-Burler`'s own fix step carries the same mechanical gate as row 6 — see [the gate](#the-gate) |
+| 8 | `Batchifier` | simple | mechanical | `_lyx/plan/` (approved) + `batcher.yaml`'s `active:` key | pass/fail — a fail-fast gate confirming the active batchifier resolves cleanly before `Webster` spawns any LLM session, no artifact — already shipped as `internal/batcher`, "never an LLM's decision" per its own package doc |
+| 9 | `Webster` | bespoke | black box (LLM + mechanical internally) | `_lyx/plan/` (approved); resolves the active batchifier itself, lazily, on every call — never a value handed across from `Batchifier`, since that row writes no artifact | committed diff — `internal/websterengine`'s own per-batch loop is a bespoke, multi-spawn producer, exempt from `Shed`'s atomicity rule by design, and stays opaque to `loom`'s flat list, same "black box loom drives, exactly like a review segment" framing as [below](#webster--a-black-box-loom-drives-the-sibling-of-the-review-segment) |
+| 10 | `Webster-Review` (`Webster-Bouncer` + `Webster-Burler`) | bespoke | LLM/review segment | full diff → plan's card contract | verdict + review file — the full converge-loop gate over the whole diff |
+| 11 | `Publish` | simple | mechanical | approved diff | PR opened, or no-op; not `loom`'s own — a generic `Shed` producer, shared by reference with `Hardener`'s producer list, see [internal/landingshed](../../internal/landingshed/doc.go) |
+| 12 | `Finalize` | bespoke | mechanical | approved diff (+ open PR, if any) | merge-back; not `loom`'s own — a generic `Shed` producer, shared by reference with `Hardener`'s producer list, see [internal/landingshed](../../internal/landingshed/doc.go) |
 
 **The table and the shipped recipe diverge deliberately.**
-The recipe carries seventeen rows against the table's fifteen entries, and the difference has two separate causes, not one: the table carries `Plan-Sweep` (row 6) as its own row, which `contracts/recipes/loom-recipe.yaml` does not,
-while the recipe carries three collapsed segment pairs the table shows as single entries — `Discussion-Bouncer`/`Discussion-Burler` collapsed into row 5's `Discussion-Review`, `Plan-Bouncer`/`Plan-Burler` collapsed into row 9's `Plan-Review`, and `Webster-Bouncer`/`Webster-Burler` collapsed into row 13's `Webster-Review` — the `Kind` column's own black-box framing, not an oversight;
+The recipe carries fourteen rows against the table's twelve entries, and the difference has two separate causes, not one: the table carries `Plan-Sweep` (row 5) as its own row, which `contracts/recipes/loom-recipe.yaml` does not,
+while the recipe carries three collapsed segment pairs the table shows as single entries — `Discussion-Bouncer`/`Discussion-Burler` collapsed into row 4's `Discussion-Review`, `Plan-Bouncer`/`Plan-Burler` collapsed into row 7's `Plan-Review`, and `Webster-Bouncer`/`Webster-Burler` collapsed into row 10's `Webster-Review` — the `Kind` column's own black-box framing, not an oversight;
 see [the gate](#the-gate) below for why each pair stays collapsed to one here.
 `contracts/recipes/loom-recipe.yaml` is the shipped list, authoritative for row names and routing.
-This table is the human-readable design record, not required to track the recipe's row count row-for-row: its own count moves whenever a genuine new row lands, like row 10's `Plan-Revalidate` above, and only a collapsed segment pair leaves it unchanged.
+This table is the human-readable design record, not required to track the recipe's row count row-for-row: its own count moves whenever a genuine row is added or removed — as it did in this task, when the standalone `Discussion-Validate`, `Plan-Validate`, and `Plan-Revalidate` rows were folded into the writer and fixer rows' own gates, taking the recipe from seventeen rows/fifteen table entries down to fourteen rows/twelve table entries — and only a collapsed segment pair leaves it unchanged.
 
 `Preflight` and `Loom-Preflight` are **built**, together giving `loom` the two-row shape.
 Row 1, `Preflight`, is the generic, product-agnostic gate: built as `internal/preflightshed`'s general producer over `internal/preflight.Check`, it validates worktree geometry and at-root (cwd resolution via `internal/lyxcwd`, sibling/Prime lookup via `internal/fabricengine`), the worktree pair's cleanliness, and fabric readiness and sync — warp branch == weft branch, via `warp`'s drift detection.
 Row 1 is reusable verbatim by a second product's producer list, and that reuse is what makes `manifest/designs/hardener.md`'s "its own Preflight" possible.
 Row 2, `Loom-Preflight`, is loom's own: built as `internal/loomengine.CheckSeed` over told paths, it validates that `_lyx/loom/status.json` exists and is a coherent fresh seed (no half-finished prior run).
-On `stuck`, `Shed` bounces to the producer's own explicit `OnStuck` target (e.g. `Plan-Validate`'s stuck route bounces back to `Plan-Write`), which may sit anywhere in the list, or escalates to a human when none is set — never "keep fixing symptoms."
+On `stuck`, `Shed` bounces to the producer's own explicit `OnStuck` target (e.g. `Plan-Bouncer`'s stuck route bounces to `Plan-Burler`), which may sit anywhere in the list, or escalates to a human when none is set — never "keep fixing symptoms."
 The same explicitness now governs the done direction too: `Done` routes via this producer's own `OnDone`, not by list position — see [`shed.md`'s routing and bounce-budget sections](shed.md#the-shed-loop--exact-mechanics) for the full design, not restated here.
 
 **Raddle folds into `Finalize`'s own contract** — not a separate producer, and not a separate step after Webster the way earlier drafts of this doc had it.
-`Finalize` is not `loom`'s own (see rows 13–14 above and [internal/landingshed](../../internal/landingshed/doc.go)), so this fold is a fact about `Finalize` itself, inherited by every `Shed` list that names it — not something `loom` defines.
+`Finalize` is not `loom`'s own (see rows 11–12 above and [internal/landingshed](../../internal/landingshed/doc.go)), so this fold is a fact about `Finalize` itself, inherited by every `Shed` list that names it — not something `loom` defines.
 Raddle-regeneration (git-diff-targeted docs over `git diff <start-SHA>..HEAD`, building heavily on millhouse's `codeguide-update`, committed into the weft via `lyx fabric sync`) is scoped to run as part of the `Finalize` merge, not before it — updating Raddle before the merge is impractical given merge-conflict risk, so it happens as part of the merge itself.
 `Hardener`'s `Tenter` will need the equivalent fold eventually — not designed here.
 
@@ -75,11 +72,11 @@ Review is never a property attached to the producer it reviews — it stays a se
 
 **The phase-machine skeleton is testable against fake phases before real producers are wired in**, the same fake-tested approach the round loop used against a fake `burler`.
 Build order followed from this as a deliberate operator decision, not just a testing technique: every `mechanical` row `loom` itself owns (plus `Webster`) was built for real first, and every `LLM`/review-segment row stayed a stub until then. All of them have since shipped.
-`Publish` and `Finalize` (rows 13–14) sit outside this ordering entirely — they are not `loom`'s to build; `loom: phase-machine scaffolding` stubbed both, then swapped in the real, shared-by-reference producers once `landing: Publish + Finalize producers` landed, on its own schedule (see [internal/landingshed](../../internal/landingshed/doc.go)).
+`Publish` and `Finalize` (rows 11–12) sit outside this ordering entirely — they are not `loom`'s to build; `loom: phase-machine scaffolding` stubbed both, then swapped in the real, shared-by-reference producers once `landing: Publish + Finalize producers` landed, on its own schedule (see [internal/landingshed](../../internal/landingshed/doc.go)).
 The shipped `landing: parent-fabric resolution chain` item completed their construction chain by filling `Env.Landing`, so `Publish`/`Finalize` are now genuinely constructible in a real `lyx loom run` run, not merely implemented.
 The concrete breakdown of `loom`'s own rows — which land in `loom: phase-machine scaffolding` vs. `loom: session bootstrap` vs. the deliberately-last per-producer prompt/rubric tasks (`loom: Discussion-Write producer`, `loom: Discussion-Review producer`, `loom: Plan-Write producer`, `loom: Plan-Review producer` (shipped), `loom: Webster-Review producer` (shipped)), and exactly which rubrics are missing — lives in `manifest/roadmap.md` and the tasks' own wiki briefs, not restated here.
 
-`Discussion`'s mechanical pre-gate and `Preflight`/`Finalize`'s thin-Output shape are both resolved by `Discussion-Validate` (row 4) and `shed.md`'s producer-contract section respectively — see [`shed.md`'s producer contract vs. producer definition](shed.md#producer-contract-vs-producer-definition).
+`Discussion`'s mechanical pre-gate and `Preflight`/`Finalize`'s thin-Output shape are both resolved by `Discussion-Write`'s own gate (see [the gate](#the-gate) below) and `shed.md`'s producer-contract section respectively — see [`shed.md`'s producer contract vs. producer definition](shed.md#producer-contract-vs-producer-definition).
 
 ## Discussion producer detail — validation checks and review rubric
 
@@ -89,9 +86,9 @@ The concrete breakdown of `loom`'s own rows — which land in `loom: phase-machi
 This is the one agent `loom` spawns with an unrestricted, permission-bypassed shell and no scope restriction of its own — `fix-scope: overlay` confines both overlay `Burler` rows to their `Target.Paths` and forbids them git entirely, and the Webster fork reviewers are read-only, while the Discussion writer's contract is "explore the codebase" with no stated boundary.
 The fence names `_lyx/config/` first for a reason: that is the driver's own configuration, read fresh on every `wire()`, so an agent editing it changes how the run that spawned it behaves and how the next one does — including whether the next run is unattended at all.
 It also forbids repairing a broken environment rather than reporting it, because an agent that quietly fixes its own surroundings hides the fault from the operator.
-This section carries the detail that belongs to `Discussion-Validate` and `Discussion-Review` instead, rather than to the Discussion-Write stencil itself: a mechanical validator's checklist and a review rubric are not part of what the *writing* agent needs to read.
+This section carries the detail that belongs to `Discussion-Write`'s own gate and `Discussion-Review` instead, rather than to the Discussion-Write stencil itself: a mechanical validator's checklist and a review rubric are not part of what the *writing* agent needs to read.
 
-### Validation checks (spec for `Discussion-Validate`)
+### Validation checks (spec for `Discussion-Write`'s and `Discussion-Burler`'s own gate)
 
 Per-run checks:
 
@@ -102,8 +99,8 @@ Per-run checks:
 This mechanical producer is **exhaustively defined by the checks listed above** — it has no judgment, and nothing beyond these two checks is "its" to look for.
 
 The same two checks are callable standalone as `lyx loom validate-discussion`.
-The verb and this row call the identical package function, `discussionparser.Validate`, so they can never disagree — see the [Gate Self-Check Parity Invariant](../../CONSTRAINTS.md#gate-self-check-parity-invariant) for the rule itself.
-The verb reports *which* file or heading failed, while the row's `Stuck` deliberately carries an empty pointer.
+The verb and both gated rows' gate closures call the identical package function, `discussionparser.Validate`, so they can never disagree — see the [Gate Self-Check Parity Invariant](../../CONSTRAINTS.md#gate-self-check-parity-invariant) for the rule itself.
+The verb reports *which* file or heading failed. An exhausted gate on `Discussion-Write` halts the run for a human, with the artifact itself as its `Stuck` pointer; an exhausted gate on `Discussion-Burler`'s fix step hands back to `Discussion-Bouncer` with an empty pointer instead, telling the judge there is no round artifact to review — see [the gate](#the-gate) below for both dispositions.
 
 **The `Plan-never-reads-support-log` boundary is not a per-run check.**
 The boundary itself: `Plan-Write`'s declared input set never names `support-log.md`.
@@ -141,24 +138,29 @@ this subsection remains the durable copy.
 - **The writer/reviewer symmetry note.**
   Whatever `Discussion-Write`'s stencil says not to gather, this rubric must say not to flag as missing, or the additive bias reappears even with the writer-side fix in place.
 
-### Plan-Validate detail
+### Plan gate detail
 
-`lyx loom validate-plan` makes the same two leading `planparser` calls this row's `ShedProducer` makes, in the same order — `planparser.PlanDir`, then `planparser.ParsePlan` — and then the same third call, chosen from the identical `planglyph` pair: `planglyph.ValidateFormat` when the row's `require_approved` config key is absent (matched by the verb's default, no `--require-approved` flag), or `planglyph.Validate` when it is `true` (matched by the verb's `--require-approved` flag).
-The verb and the row call the identical `planglyph` functions in each mode, so they can never disagree — see the [Gate Self-Check Parity Invariant](../../CONSTRAINTS.md#gate-self-check-parity-invariant) for the rule itself.
-The parity claim is now that the verb reaches every mode the row set uses: `Plan-Validate`'s format-only mode and `Plan-Revalidate`'s approval-enforcing mode both have a matching verb invocation.
+`lyx loom validate-plan` makes the same two leading `planparser` calls each gated row's gate closure makes, in the same order — `planparser.PlanDir`, then `planparser.ParsePlan` — and then the same third call: `planglyph.ValidateFormat`, matched by the verb's default (no `--require-approved` flag).
+Both plan gate sites — row 6's `Plan-Write` and row 7's `Plan-Burler` fix step — call `ValidateFormat` only, never `planglyph.Validate`: both run strictly before the `Plan-Review` segment's approve seam ever writes the approval flag, so demanding it would fail every fix round.
+The verb's `--require-approved` mode, running the full check set including `plan-unapproved`, has no gate counterpart by design — it is the one place an operator can still reach that check standalone, and its own guarantee rests on the approve seam failing loudly if it is ever wired nil, not on any row re-checking the flag.
+The verb and both gates call the identical `planglyph.ValidateFormat` function, so they can never disagree over what "format-valid" means — see the [Gate Self-Check Parity Invariant](../../CONSTRAINTS.md#gate-self-check-parity-invariant) for the rule itself, including its one documented divergence (an absent plan directory).
 
-**Both rows write, and the table above says so because it is easy to miss.**
-`planglyph.ValidateFormat`/`Validate` canonicalize every `plan:` handle the plan declares — one batched `quarry.Name` call turning each draft spelling into its computed `plan:<expected-glyph>` form — and rewrite every occurrence across the plan's card files in place, via `planparser.RewriteRefs`.
-So a row whose Output column reads "pass/fail" nonetheless leaves `_lyx/plan/` changed, and so do the standalone verbs `lyx loom validate-plan` and `lyx webster validate` despite describing themselves as lints.
+**Both gate sites write, and the table above says so because it is easy to miss.**
+`planglyph.ValidateFormat` canonicalizes every `plan:` handle the plan declares — one batched `quarry.Name` call turning each draft spelling into its computed `plan:<expected-glyph>` form — and rewrites every occurrence across the plan's card files in place, via `planparser.RewriteRefs`.
+So a row whose Output column reads "pass/fail" nonetheless leaves `_lyx/plan/` changed, and so does the standalone verb `lyx loom validate-plan` despite describing itself as a lint.
 The rewrite is deliberate and belongs here rather than in a producer of its own: canonicalization needs the same batched resolve the validation pass already performs, and the alphabet's own rule is that a handle's real spelling is *computed*, never trusted from the planner's draft.
-Row 8's rewrite is captured by the `Plan-Review` segment's own `commit_seam`, which commits the plan directory after it settles;
-row 10's runs after that commit, and is picked up by `Webster`'s first fabric sync, which commits the whole `_lyx` tree.
+`Plan-Write`'s own rewrite is captured by its own already-existing post-Done commit (`loomshed.NewPlanWrite`'s decorator, wired to the same `CommitPlan` closure the recipe's `commit_seam: plan` key also reaches): its gate runs, and any handle rewrite it makes, strictly before that commit fires. `Plan-Burler` carries no commit of its own — it runs `fix-scope: overlay`, which never runs git — so its rewrite instead waits for the `Plan-Review` segment's own `commit_seam`, fired on `Plan-Bouncer`'s approved settle, which commits the plan directory through that same `CommitPlan` closure once it settles.
 
-**Mid-execution the same check set is scoped, and that is `Webster`'s business rather than these rows'.**
+**An exhausted gate's disposition differs by which row it exhausts on, deliberately.**
+`Plan-Write`'s exhausted gate halts the run for a human, with the plan directory itself as its `Stuck` pointer — after three in-session re-prompts with the findings already in hand, a cold respawn that knows nothing about the complaint is strictly worse than stopping and telling someone.
+`Plan-Burler`'s exhausted gate instead hands back to `Plan-Bouncer` with an empty pointer, telling the judge there is no round artifact to review — the same signal the retired `Plan-Revalidate` row's `on_stuck: Plan-Write` edge used to provide, now made the fixer's own gate's business rather than a downstream row's.
+Both budgets are spent in memory inside one wait and reset across an interrupted-and-reinvoked step by design — the budget is not carried across process boundaries, since every gated row is reinvoke-policy and a re-attached session is strictly further along than a fresh one.
+
+**Mid-execution the same check set is scoped, and that is `Webster`'s business rather than these gates'.**
 Once `Webster` starts, every `begin-batch` re-resolves the plan against the current tree before it builds a pack — but through `planglyph.ValidateDispatch`, which restricts the resolve-backed half to cards whose work has not landed yet.
 A plan describes intended change, so a card already built contradicts the tree by design: its `Create` target now exists, its `Delete` target is gone, its `Rename`'s old side no longer resolves.
 Reporting any of those as a plan defect wedges the run, which is exactly what it did until this was scoped.
-Rows 8 and 10 run before any card has been built, so they keep the unscoped whole-plan form.
+Both plan gate sites run before any card has been built, so they keep the unscoped whole-plan form.
 
 ### Plan-Review rubric
 
@@ -172,9 +174,9 @@ The subject under review is the current plan (`_lyx/plan/00-overview.md` and the
 
 Do not flag any of the following as a finding:
 
-- **Anything `Plan-Validate` or `Plan-Revalidate` already checks.**
-  Every check ID `contracts/specs/loom-plan-spec.md`'s own "Validation checks" section lists — see that section for the current, authoritative list rather than a count pinned here, which goes stale on the next check added — is enforced deterministically, all but `plan-unapproved` upstream by `Plan-Validate`, while `plan-unapproved` is enforced downstream by `Plan-Revalidate` instead;
-  re-deriving any of them here is duplicated work whose only possible outcome is disagreement with the parser.
+- **Anything `Plan-Write`'s or `Plan-Burler`'s own gate already checks.**
+  Every check ID `contracts/specs/loom-plan-spec.md`'s own "Validation checks" section lists — see that section for the current, authoritative list rather than a count pinned here, which goes stale on the next check added — is enforced deterministically by those two gates over the round's own output, except `plan-unapproved`, which neither gate checks (both run strictly before the review segment's approve seam ever writes the flag) and stays enforced downstream instead, by the standalone consumers that read an approved plan (`internal/websterengine`, `internal/webstercli`, `internal/batcher`) and by the approve seam itself failing loudly if ever wired nil;
+  re-deriving any of them here is duplicated work whose only possible outcome is disagreement with the gate.
 - **A missing `DependsOn`/`Produces` field, or an incomplete dependency list.**
   Dependency edges are derived, never authored — a card's `Uses` intersected against every other card's target list.
   Plan-time completeness of that intersection is explicitly not provable;
@@ -193,7 +195,7 @@ Also flag:
   A one-line blast-radius conclusion, never a restatement of `Intent`.
 - **`Custom` is a last resort.**
   Used only where none of `Create`, `Edit`, `Delete`, `Rename`, `Move`, or `Prosa` genuinely fits, never as a shortcut around correct typing.
-  A `Custom` card is exempt from `path-missing` on its own targets and from `prosa-symbol-target`, so a mistyped one silently escapes two checks the rest of the plan is held to — and only those two: `bare-symbol-target` and `directory-target` bind a card's flat `Targets`/`Uses` with no group scoping, so `Plan-Validate` blocks them on a `Custom` card like any other.
+  A `Custom` card is exempt from `path-missing` on its own targets and from `prosa-symbol-target`, so a mistyped one silently escapes two checks the rest of the plan is held to — and only those two: `bare-symbol-target` and `directory-target` bind a card's flat `Targets`/`Uses` with no group scoping, so the plan gates block them on a `Custom` card like any other.
   A `Custom` card whose targets could instead be expressed as a multi-label combination of the other six is a finding — the format's one-or-more-labels grammar means `Custom` is never the only way to name a mixed target list.
 - **Fidelity to the decision record.**
   Every Decision and every Constraint in `_lyx/discussion/decision-record.md` is carried by some card, and no card introduces scope that file does not license.
@@ -204,14 +206,14 @@ Also flag:
 **Build order note:** `Plan-Sweep` was not built in `loom: phase-machine scaffolding` — it stayed a stub there, alongside `Plan-Write`, its only consumer.
 Building a real `Plan-Sweep` before `Plan-Write` is real would have nothing to feed.
 Unlike `Plan-Write` (its own split-out `loom: Plan-Write producer` roadmap item, since shipped), `Plan-Sweep` was never built at all — it is not even a recipe row, and is deferred to its own roadmap item, since quarry-backed work is low-priority project-wide right now and this is the only row in the initiative that touches quarry.
-`Discussion-Validate` and `Plan-Validate`, which do land in scaffolding, carry no such dependency.
+`Discussion-Write`'s and `Plan-Write`'s own mechanical gates, which land alongside their rows in scaffolding, carry no such dependency.
 
-`Plan-Sweep` (row 6) is `simple`/`mechanical` like `Discussion-Validate` — no judgment, exhaustively defined by the checks below, not a smaller version of what `Plan-Write` (the LLM) does.
+`Plan-Sweep` (row 5) is `simple`/`mechanical`, in the same vein as `Preflight`/`Loom-Preflight` — no judgment, exhaustively defined by the checks below, not a smaller version of what `Plan-Write` (the LLM) does.
 Its job is grounding, not selection: hand `Plan-Write` real `quarry` lookups for whatever the decision record already named, so the writing agent starts from resolved definitions/references instead of re-grepping blind.
 
 **Deterministic extraction.**
 The repo's own doc convention is the extraction rule: every code identifier, file path, and symbol name in `decision-record.md`'s prose is backtick-quoted, the same convention this doc and every other `manifest/designs/*.md` file already follows.
-`Plan-Sweep` reads `decision-record.md`'s Scope section (the same section-parsing `Discussion-Validate` already does to check presence, now living in `internal/discussionparser`) and collects every backtick-quoted span inside it — nothing outside Scope, and no judgment about which spans "matter."
+`Plan-Sweep` reads `decision-record.md`'s Scope section (the same section-parsing `Discussion-Write`'s own gate already does to check presence, in `internal/discussionparser`) and collects every backtick-quoted span inside it — nothing outside Scope, and no judgment about which spans "matter."
 
 **Resolution, not selection.**
 Each collected span is classified mechanically, by shape, not meaning: a span containing `/` or a `.go`/`.md`-style extension is treated as a path and checked for existence on disk;
@@ -248,8 +250,17 @@ The Discussion and Plan segments fix overlay content and commit it through the l
 The Fabric Git Invariant is the reason the split exists: it reserves every weft commit to the loop owner in Go,
 and it names the agent's own commit-per-fix to the warp repo as the one exception.
 
-**Row 9's approval flag is written on the approved settle, before the commit.**
+**Row 7's approval flag is written on the approved settle, before the commit.**
 `Plan-Bouncer`'s approved settle writes the plan's approval flag through its `Approve` seam immediately before its `commit_seam` fires, so the flag lands inside the same commit that captures the segment's approved plan — never as working-tree dirt applied after the fact.
+
+**A mechanical producer gate holds a row's own handoff until its artifact is valid, and this is the mechanism that replaced the standalone `Discussion-Validate`, `Plan-Validate`, and `Plan-Revalidate` rows.**
+Four gate sites, two validators: `Discussion-Write` and `Discussion-Burler`'s fix step share `discussionparser.Validate`, declared via the `gate: discussion` config key; `Plan-Write` and `Plan-Burler`'s fix step share `planglyph.ValidateFormat`, declared via the `gate: plan` config key.
+Each row also carries a `gate_attempts` key bounding how many times a failed gate re-prompts the still-live session before giving up — three, for all four sites today.
+Unlike the review segment's own black box, a producer gate holds inside one row: the agent believes it is done, the gate runs on the artifact before the handoff is honored, and on failure the row re-prompts the *same* session with the findings rather than ending the turn — see [designs/producer-gates.md](producer-gates.md) for the mechanism's own design record and the three points where the shipped shape narrowed from it.
+An exhausted gate's disposition differs by which kind of row it exhausts on, deliberately: a writer row (`Discussion-Write`, `Plan-Write`) returns ordinary `Stuck` with the artifact itself as its pointer, halting the run for a human — after three in-session re-prompts with the findings already in hand, a cold respawn that knows nothing about the complaint is strictly worse than stopping and telling someone, which is why neither writer row carries an `on_stuck` edge of its own.
+A fixer round (`Discussion-Burler`, `Plan-Burler`) instead returns `Stuck` with an *empty* pointer, handing back to its segment's `Bouncer` — the same signal the retired validate rows' bounce-backs used to give the judge, now the fixer's own gate's business rather than a downstream row's.
+The budget is spent in memory inside one wait, never persisted: it resets across an interrupted-and-reinvoked step by design, since every gated row is reinvoke-policy and a re-attached session is strictly further along than a fresh one, so refusing it fresh attempts on re-entry would halt a run that is making progress.
+**The one thing no removed row ever covered, and the whole reason this mechanism exists:** a fixer round's own output is now checked by the same gate its writer row carries, so a round can no longer hand back an artifact it just made invalid — the standalone rows validated only the writer's output, never a fixer's, which is exactly the gap `Plan-Revalidate`'s existence used to paper over downstream instead of closing at the source.
 
 **The review model's home is `loom.yaml`, not the recipe.**
 `loom.yaml`'s `review:` and `review_timeout_min:` keys are the review segments' model and timeout, validated at load time exactly like the existing `discussion:` and `plan:` keys.
@@ -345,7 +356,7 @@ For the step it was on:
    read it and advance.
    (The agent's process may be long dead — its result survived.
    This is the common case.)
-   This is never a producer-level shortcut answering "do files exist" on its own: inside a run there is an agent to attribute the completion to, while at the producer level a `Discussion-Validate` bounce makes the files-exist question true without any agent having run — the trap the next section resolves.
+   This is never a producer-level shortcut answering "do files exist" on its own: inside a run there is an agent to attribute the completion to, while at the producer level a `Discussion-Bouncer` bounce makes the files-exist question true without any agent having run — the trap the next section resolves.
    **Inside the wait loop this check outranks every negative answer, both deadlines and both retry-exhausted mechanism failures included.** A dead pane, a strand `reed` no longer tracks, a strand whose pane binding it cleared, an expired startup window, an expired run deadline, `reed`'s own liveness probe erroring for `maxStatusRetries` consecutive ticks, and the events file staying unreadable for `maxEventsReadRetries` consecutive ticks are all answers to "has something gone wrong", never to "did this run finish" — so each of the seven consults the file contract first, and each classifies `done` when it is satisfied.
    The two deadlines were the exception until crucible round `opus5-high-r4` reproduced both live: a provider that wrote every declared output file and then left no parseable terminal event behind was recorded as `died` at `startup_timeout_s`, and as `timeout` at the run deadline, after which the next resume archived the finished files and re-ran the step — the exact rework this rule exists to prevent.
    The two retry-exhausted mechanism failures were the remaining exception until crucible round `fable5-high-r5` reproduced the reed-status one live: a run whose every declared output file was on disk, its `reed.json` truncated mid-run (a crash, a full disk, or a `kill -9` during a `reed` write), reached `maxStatusRetries` consecutive `reed.Status` errors and was abandoned with a mechanism error rather than classified `done` — the same rework, one exit-type over. Both caps now route through `finishedDespiteMechanismFailure`, the same file-contract-first shape `classifyDeadlineExpiry` gave the two deadlines.
@@ -386,7 +397,7 @@ and a never-conversed session has nothing to resume). reed's pane-`--resume` is 
 loom's correctness rests on files and live-agent evidence together.
 A dead claude with a finished output file is, to loom, a **done step** — not a problem.
 
-**The crash-versus-bounce question, resolved.** A `Discussion-Validate` bounce re-enters `Discussion-Write` with both discussion files already present on disk, byte-identical to the state a crash mid-interview leaves.
+**The crash-versus-bounce question, resolved.** A `Discussion-Bouncer` bounce re-enters `Discussion-Burler` with the round's target files already present on disk, byte-identical to the state a crash mid-fix leaves.
 The two are told apart by the surviving `run.json`, never by file existence alone: a `"running"` record matching the spec's output files means an agent for this producer genuinely started and never reached a terminal outcome, so it is attached — waited on live if its pane is still up, or harvested as `done` if its file contract is already satisfied (step 2 above);
 anything with no such `"running"` record — including both files present but no matching `run.json` at all — means respawn.
 The bounce is exactly the no-record case: a bounce re-enters its producer only after the prior run reached `OutcomeDone`, at which point `finalize` already removed that run's directory, so no `"running"` `run.json` survives to match — while `Spec.validate` refuses a `Start` whose output file already exists, so a `"running"` record is itself proof the files were written *after* that run began, genuine agent evidence a bounce's mere leftover files never carry.
@@ -403,7 +414,7 @@ Escalating a decode failure at any of the two pre-spawn gates used to stop the b
 
 **Accepted residual.** A crash in the window between a run reaching `done` and Shed persisting that outcome re-runs the completed step from scratch: `Attach` finds nothing live, because `finalize` already ran its cleanup, so the producer archives a finished interview and re-interviews from the top — in interactive mode, the operator answers the whole interview twice.
 This trade is the right direction.
-The only thing that would rescue that window is a producer-level file-existence check, and that check is the trap itself: on a `Discussion-Validate` bounce the files are also present and complete-looking, and treating that as `Done` there ping-pongs the run until its bounce budget blocks it — a frequent hard failure is worse than a narrow one that costs only rework.
+The only thing that would rescue that window is a producer-level file-existence check, and that check is the trap itself: on a `Discussion-Bouncer` bounce the files are also present and complete-looking, and treating that as `Done` there ping-pongs the run until its bounce budget blocks it — a frequent hard failure is worse than a narrow one that costs only rework.
 The deliberate non-fix, should this window ever bite in practice: a marker distinguishing "these files were produced by a run that reached `done`" from "these files are merely present" — a new durable-state contract, not designed here.
 
 **Accepted residual (crash mid-registration).** A crash between `shuttleengine.Runner.Start`'s own `AddStrand` call succeeding — which already creates the live pane and starts its launch command running inside it — and that same `Start` call's `run.json` persisting leaves a genuinely live pane in reed's own strand table with no `run.json` anywhere naming it.

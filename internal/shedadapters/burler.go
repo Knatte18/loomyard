@@ -252,11 +252,19 @@ var _ shedengine.ShedProducer = (*BurlerProducer)(nil)
 // Archive rule: every return in which the round did not produce a usable review archives both
 // round paths first, keyed on that fact rather than on whether the return is an error -- this
 // covers a runner error (regardless of the Result.Outcome it carries), an asking hard error, a
-// second consecutive died/timeout, an unrecognized outcome, and a cancellation detected between
-// attempts. Two carve-outs leave the round's files in place: the success return, and a
-// cancellation detected after the round already completed and parsed -- that return is an error,
-// but its artifacts survive so the next call advances to the following round instead of re-running
-// this one.
+// second consecutive died/timeout, an unrecognized outcome, a gate-failed round, and a
+// cancellation detected between attempts. Two carve-outs leave the round's files in place: the
+// success return, and a cancellation detected after the round already completed and parsed --
+// that return is an error, but its artifacts survive so the next call advances to the following
+// round instead of re-running this one.
+//
+// Gate-failed exit: a done round whose Result.Gate is non-nil and failing maps to Stuck with an
+// EMPTY pointer, archived exactly like every other non-success exit -- the empty pointer is what
+// tells the segment's Bouncer there is no round artifact to judge, the same signal the deleted
+// validate producers used for exactly this meaning (see the "the two producers' output pointers
+// mean different things" decision). It consumes no attempt-1/attempt-2 retry: that retry is for
+// OutcomeDied/OutcomeTimeout, infrastructure faults, while gate exhaustion is a determinate verdict
+// the gate already re-prompted its whole budget over inside the session.
 //
 // No mid-run cancellation bridge is installed, because internal/burlerengine exposes no pause
 // seam: a cancel is observed only once the round reaches a terminal outcome or its own
@@ -362,7 +370,7 @@ func (p *BurlerProducer) Call(ctx context.Context) (shedengine.Outcome, shedengi
 	// against, and the round's own timeout so an attached run's deadline is the round's, not the
 	// shuttle config's shorter default. Role and Round are identity fields Attach never matches on;
 	// they are filled anyway so a logged attach is attributable.
-	if attachedOutcome, attachedPtr, attachedErr, handled := p.probeLiveRound(ctx, round, reviewPath, fixerReportPath, failureExit); handled {
+	if attachedOutcome, attachedPtr, attachedErr, handled := p.probeLiveRound(ctx, round, reviewPath, fixerReportPath, archiveRound, failureExit); handled {
 		return attachedOutcome, attachedPtr, attachedErr
 	}
 
@@ -414,6 +422,21 @@ func (p *BurlerProducer) Call(ctx context.Context) (shedengine.Outcome, shedengi
 
 		switch result.Outcome {
 		case shuttleengine.OutcomeDone:
+			if result.Gate != nil && !result.Gate.Passed {
+				// A failed gate must not consume or trigger the attempt-1/attempt-2 retry: that retry
+				// exists for OutcomeDied/OutcomeTimeout, which are infrastructure, while gate
+				// exhaustion is a determinate verdict the gate already re-prompted its whole budget
+				// over inside the session, and a second full round on the same input would re-spend
+				// an LLM generation to reach the same answer. Archiving is what keeps the hand-back
+				// honest: a gate-failed round's review file must not be left for the Bouncer to judge
+				// -- a Go validator already proved it invalid.
+				archiveRound()
+				if cerr := cancelErr(ctx, p.name, burlerEngineLabel); cerr != nil {
+					return "", shedengine.OutputPointer{}, cerr
+				}
+				logger.Warn("shedadapters: burler round's gate did not pass", "producer", p.name, "engine", burlerEngineLabel, "round", round, "attempts", result.Gate.Attempts, "findingsPath", result.Gate.FindingsPath)
+				return shedengine.Stuck, shedengine.OutputPointer{GateAttempts: gateAttemptsPointer(result.Gate)}, nil
+			}
 			// A genuine success verdict survives cancellation only up to the moment the round
 			// completed and parsed; a cancellation observed after that point still yields an
 			// error (internal/shedengine binds every implementation to surface cancellation as a
@@ -421,7 +444,7 @@ func (p *BurlerProducer) Call(ctx context.Context) (shedengine.Outcome, shedengi
 			if cerr := cancelErr(ctx, p.name, burlerEngineLabel); cerr != nil {
 				return "", shedengine.OutputPointer{}, cerr
 			}
-			return shedengine.Stuck, shedengine.OutputPointer{Path: reviewPath}, nil
+			return shedengine.Stuck, shedengine.OutputPointer{Path: reviewPath, GateAttempts: gateAttemptsPointer(result.Gate)}, nil
 
 		case shuttleengine.OutcomeAsking:
 			return failureExit(fmt.Errorf("shedadapters: %s (%s): round %d attempt %s: shuttle run is asking: %s", p.name, burlerEngineLabel, round, attemptToken, result.LastAssistantMessage))
@@ -455,10 +478,17 @@ func (p *BurlerProducer) Call(ctx context.Context) (shedengine.Outcome, shedengi
 // An attach error is returned bare rather than through failureExit: failureExit archives the round's
 // two paths, and an attach that could not determine whether a run is live is the one situation where
 // archiving is most dangerous -- a live agent may still be mid-write on them.
+//
+// The probe runs through AttachGated with p.opts.Gate, never the plain Attach: an attached Discussion
+// or Plan fix round is gated exactly as a freshly-spawned one is, which is what makes "one GateSpec
+// at every hop" true rather than aspirational -- the same RunOpts field is read at the spawn hop
+// (via the runner's own RunOpts.Gate) and at this resume hop, and no second carrier enters
+// NewBurlerProducer.
 func (p *BurlerProducer) probeLiveRound(
 	ctx context.Context,
 	round int,
 	reviewPath, fixerReportPath string,
+	archiveRound func(),
 	failureExit func(error) (shedengine.Outcome, shedengine.OutputPointer, error),
 ) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
 	spec := shuttleengine.Spec{
@@ -468,7 +498,7 @@ func (p *BurlerProducer) probeLiveRound(
 		Round:       strconv.Itoa(round),
 	}
 
-	result, found, err := p.attach.Attach(spec)
+	result, found, err := p.attach.AttachGated(spec, p.opts.Gate)
 	if err != nil {
 		if cerr := cancelErr(ctx, p.name, burlerEngineLabel); cerr != nil {
 			return "", shedengine.OutputPointer{}, cerr, true
@@ -483,12 +513,24 @@ func (p *BurlerProducer) probeLiveRound(
 
 	switch result.Outcome {
 	case shuttleengine.OutcomeDone:
+		if result.Gate != nil && !result.Gate.Passed {
+			// Identical to the spawn path's own gate-failed branch: this is what makes "one GateSpec
+			// at every hop" true rather than aspirational -- an attached Discussion or Plan fix round
+			// is gated exactly as a freshly-spawned one is, and its failure maps onto the same
+			// empty-pointer Stuck, archived first, never consuming the attempt-1/attempt-2 retry.
+			archiveRound()
+			if cerr := cancelErr(ctx, p.name, burlerEngineLabel); cerr != nil {
+				return "", shedengine.OutputPointer{}, cerr, true
+			}
+			logger.Warn("shedadapters: attached burler round's gate did not pass", "producer", p.name, "engine", burlerEngineLabel, "round", round, "attempts", result.Gate.Attempts, "findingsPath", result.Gate.FindingsPath)
+			return shedengine.Stuck, shedengine.OutputPointer{GateAttempts: gateAttemptsPointer(result.Gate)}, nil, true
+		}
 		// Identical to the spawn path's own success return, including the cancellation rule: a
 		// completed round's artifacts survive, but a cancelled context still errors.
 		if cerr := cancelErr(ctx, p.name, burlerEngineLabel); cerr != nil {
 			return "", shedengine.OutputPointer{}, cerr, true
 		}
-		return shedengine.Stuck, shedengine.OutputPointer{Path: reviewPath}, nil, true
+		return shedengine.Stuck, shedengine.OutputPointer{Path: reviewPath, GateAttempts: gateAttemptsPointer(result.Gate)}, nil, true
 
 	case shuttleengine.OutcomeAsking:
 		outcome, ptr, exitErr := failureExit(fmt.Errorf("shedadapters: %s (%s): round %d attached run is asking: %s", p.name, burlerEngineLabel, round, result.LastAssistantMessage))

@@ -36,10 +36,11 @@ type Config map[string]any
 type Env struct {
 	// Cwd is the caller's told working directory, read by Preflight.
 	Cwd string
-	// AnchorPath is the told anchor path, read by Batchifier, PlanValidate, Webster, Bouncer, and
-	// SingleLLM's anchor_path token.
+	// AnchorPath is the told anchor path, read by Batchifier, Webster, Bouncer, SingleLLM's
+	// anchor_path token, and by the gate resolver's "plan" gate.
 	AnchorPath string
-	// WorktreeRoot is the told worktree root, read by PlanValidate and by SingleLLM's output_files.
+	// WorktreeRoot is the told worktree root, read by SingleLLM's output_files and by the gate
+	// resolver's "plan" gate.
 	WorktreeRoot string
 	// StatusPath is the told status file path, read by LoomPreflight.
 	StatusPath string
@@ -54,9 +55,10 @@ type Env struct {
 	// RunRoot is the root every Config run_subdir resolves against, read by Bouncer and
 	// BurlerRound.
 	RunRoot string
-	// DecisionRecordPath is the told decision record path, read by DiscussionValidate.
+	// DecisionRecordPath is the told decision record path, read by the gate resolver's "discussion"
+	// gate.
 	DecisionRecordPath string
-	// SupportLogPath is the told support log path, read by DiscussionValidate.
+	// SupportLogPath is the told support log path, read by the gate resolver's "discussion" gate.
 	SupportLogPath string
 
 	// ReviewModel, ReviewEffort, ReviewVersion, and ReviewTimeout are run-wide review defaults read

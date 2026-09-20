@@ -70,7 +70,7 @@ The substance the earlier phrasing was reaching for still holds, because the com
 A run's producers anchor every path at the run's own host worktree (the Cwd Resolution Invariant), so **a single recipe can never span two worktrees**.
 Composition across a worktree boundary is by reference: the parent writes the child's seed and reads the child's status file, and nothing else crosses.
 
-This is why the tempting flattening — one long recipe of `Worktree-Create` + all seventeen loom rows + `Worktree-Teardown` — was rejected:
+This is why the tempting flattening — one long recipe of `Worktree-Create` + all fourteen loom rows + `Worktree-Teardown` — was rejected:
 
 - loom's rows resolve `_lyx` paths, spawn tmux strands, and commit fabric pairs *in the child*; running them from prime would mean threading a target-worktree parameter through every producer and seam.
 - loom's status is durable and fabric-synced with the *child's* pair; flattened, a task's progress would stop being a property of the task worktree itself.

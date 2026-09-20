@@ -475,7 +475,7 @@ func checkDirectoryTarget(plan *Plan) []ValidationError {
 // silently drops it before it ever enters the batched Resolve call -- so it never even reaches a
 // glyph-not-found/glyph-ambiguous/glyph-rejected verdict either. The plan would validate 100% clean
 // while carrying a target no execution engine can ever act on, discovered only deep into a batch's
-// own done-check, not at Plan-Validate up front where every other malformed-entry class is caught
+// own done-check, not up front at the plan gate where every other malformed-entry class is caught
 // (crucible round sonnet-xhigh-r8, PG-1).
 func checkGlyphMalformed(plan *Plan) []ValidationError {
 	var findings []ValidationError

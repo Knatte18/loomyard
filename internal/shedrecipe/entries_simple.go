@@ -1,6 +1,6 @@
-// entries_simple.go implements the nine registry entries that take an empty Config and validate
+// entries_simple.go implements the seven registry entries that take an empty Config and validate
 // only the Env fields they read: preflightEntry, publishEntry, finalizeEntry, loomPreflightEntry,
-// batchifierEntry, discussionValidateEntry, planValidateEntry, stubEntry, and websterEntry.
+// batchifierEntry, stubEntry, and websterEntry.
 
 package shedrecipe
 
@@ -94,44 +94,6 @@ func batchifierEntry(name string, cfg Config, env Env) (shedengine.ShedProducer,
 		return nil, err
 	}
 	return loomshed.NewBatchifier(name, env.AnchorPath), nil
-}
-
-// discussionValidateEntry is the Constructor for the "DiscussionValidate" registry row: it
-// validates Env.DecisionRecordPath and Env.SupportLogPath and returns
-// loomshed.NewDiscussionValidate(name, env.DecisionRecordPath, env.SupportLogPath).
-func discussionValidateEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
-	if err := configRejectUnknown(cfg); err != nil {
-		return nil, err
-	}
-	if err := requireAbsRoot("DiscussionValidate", "DecisionRecordPath", env.DecisionRecordPath); err != nil {
-		return nil, err
-	}
-	if err := requireAbsRoot("DiscussionValidate", "SupportLogPath", env.SupportLogPath); err != nil {
-		return nil, err
-	}
-	return loomshed.NewDiscussionValidate(name, env.DecisionRecordPath, env.SupportLogPath), nil
-}
-
-// planValidateEntry is the Constructor for the "PlanValidate" registry row: it reads the optional
-// bool config key "require_approved" (absent means false) and validates Env.AnchorPath and
-// Env.WorktreeRoot, returning loomshed.NewPlanValidate(name, env.AnchorPath, env.WorktreeRoot,
-// requireApproved). The Plan-Validate row leaves this key absent, running before review; the
-// Plan-Revalidate row sets it true, running after the review segment settles.
-func planValidateEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
-	requireApproved, err := configBool(cfg, "require_approved", false)
-	if err != nil {
-		return nil, err
-	}
-	if err := configRejectUnknown(cfg, "require_approved"); err != nil {
-		return nil, err
-	}
-	if err := requireAbsRoot("PlanValidate", "AnchorPath", env.AnchorPath); err != nil {
-		return nil, err
-	}
-	if err := requireAbsRoot("PlanValidate", "WorktreeRoot", env.WorktreeRoot); err != nil {
-		return nil, err
-	}
-	return loomshed.NewPlanValidate(name, env.AnchorPath, env.WorktreeRoot, requireApproved), nil
 }
 
 // stubEntry is the Constructor for the "Stub" registry row: it validates no Env field and returns

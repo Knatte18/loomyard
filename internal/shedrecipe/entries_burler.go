@@ -15,9 +15,17 @@ import (
 )
 
 // burlerRoundEntry is the Constructor for the "BurlerRound" registry row: it validates cfg and env,
-// maps cfg's profile map onto a burlerengine.Profile, joins and creates the run directory this
-// row's segment shares with its Bouncer row, and returns
+// maps cfg's profile map onto a burlerengine.Profile, resolves the row's "gate"/"gate_attempts"
+// Config keys through resolveGateSpec into the RunOpts.Gate it builds, joins and creates the run
+// directory this row's segment shares with its Bouncer row, and returns
 // shedadapters.NewBurlerProducer(name, env.Burler, env.Shuttle, profile, opts, runDir, env.Now).
+//
+// All three burler rows (Discussion-Burler, Plan-Burler, Webster-Burler) share this one
+// constructor, which is why the validator is selected by the "gate" key rather than implied by the
+// constructor: a "gate" on the Webster round fails loud through resolveGateSpec's own closed
+// vocabulary, because no third validator exists to name. The Webster round is deliberately
+// ungated -- there is no mechanical validator over a committed diff, so its RunOpts.Gate stays the
+// zero shuttleengine.GateSpec by simply carrying no "gate" key.
 func burlerRoundEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	runSubdir, err := configString(cfg, "run_subdir", true)
 	if err != nil {
@@ -39,7 +47,11 @@ func burlerRoundEntry(name string, cfg Config, env Env) (shedengine.ShedProducer
 	if err != nil {
 		return nil, err
 	}
-	if err := configRejectUnknown(cfg, "run_subdir", "profile", "model", "effort", "timeout_s"); err != nil {
+	gate, err := resolveGateSpec("BurlerRound", cfg, env)
+	if err != nil {
+		return nil, err
+	}
+	if err := configRejectUnknown(cfg, "run_subdir", "profile", "model", "effort", "timeout_s", "gate", "gate_attempts"); err != nil {
 		return nil, err
 	}
 
@@ -67,6 +79,7 @@ func burlerRoundEntry(name string, cfg Config, env Env) (shedengine.ShedProducer
 		Model:   model,
 		Effort:  effort,
 		Timeout: timeout,
+		Gate:    gate,
 	}
 
 	if err := requireAbsRoot("BurlerRound", "RunRoot", env.RunRoot); err != nil {

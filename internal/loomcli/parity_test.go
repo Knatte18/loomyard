@@ -1,10 +1,11 @@
-// parity_test.go asserts the Gate Self-Check Parity Invariant for both mechanical gates shipped so
-// far: the Discussion-Validate and Plan-Validate producers and their loomcli verbs must reach the
-// same three-way verdict over the identical fixture, because both sides call the identical package
-// function per the shared-implementation-is-the-whole-point Shared Decision.
+// parity_test.go asserts the Gate Self-Check Parity Invariant for the four gate sites the two
+// gate closures cover: NewDiscussionGate against validate-discussion, and NewPlanGate against
+// validate-plan in each of its two flag modes. Both the gate closure and its loomcli verb must
+// reach the same three-way verdict over the identical fixture, because both sides call the
+// identical package function per the shared-implementation-is-the-whole-point Shared Decision.
 //
 // The comparison is three-way, not binary, per the discussion's parity-tests-per-gate decision: the
-// producer's Done/Stuck/error trio and the verb's ok/findings-key trio are each mapped onto one
+// gate closure's Passed/error trio and the verb's ok/findings-key trio are each mapped onto one
 // shared parityVerdict before comparison, so a Stuck-vs-error mismatch is caught rather than
 // collapsed onto a single "fail" side. Both halves take told paths and construct no repository and
 // spawn no process, real hub, or fixture-tree copy, and no test here calls RunCLIIn -- so both stay
@@ -13,7 +14,6 @@ package loomcli
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -21,8 +21,8 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/loomshed"
-	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // parityVerdict is the shared three-valued outcome both the producer side and the CLI side map
@@ -37,14 +37,14 @@ const (
 	verdictError parityVerdict = "error"
 )
 
-// producerVerdict maps a shedengine.ShedProducer's raw outcome/error onto a parityVerdict:
-// shedengine.Done with a nil error is verdictDone; shedengine.Stuck with a nil error is
-// verdictStuck; a non-nil error (regardless of outcome) is verdictError.
-func producerVerdict(outcome shedengine.Outcome, err error) parityVerdict {
+// producerVerdict maps a shuttleengine.Gate closure's raw (GateResult, error) onto a parityVerdict:
+// a non-nil error is verdictError; GateResult.Passed == false is verdictStuck; GateResult.Passed ==
+// true is verdictDone.
+func producerVerdict(result shuttleengine.GateResult, err error) parityVerdict {
 	if err != nil {
 		return verdictError
 	}
-	if outcome == shedengine.Stuck {
+	if !result.Passed {
 		return verdictStuck
 	}
 	return verdictDone
@@ -65,21 +65,21 @@ func cliVerdict(env map[string]any) parityVerdict {
 	return verdictError
 }
 
-// discussionParityCase is one fixture for TestGateParity_DiscussionValidate: build populates dir
-// with whatever the fixture needs and returns the single *loomCLI both the producer and the verb
-// read their paths from, so both halves run over the exact same on-disk fixture. want names the
-// verdict both sides must reach.
+// discussionParityCase is one fixture for TestGateParity_DiscussionGate: build populates dir
+// with whatever the fixture needs and returns the single *loomCLI both the gate closure and the
+// verb read their paths from, so both halves run over the exact same on-disk fixture. want names
+// the verdict both sides must reach.
 type discussionParityCase struct {
 	name  string
 	build func(t *testing.T, dir string) *loomCLI
 	want  parityVerdict
 }
 
-// TestGateParity_DiscussionValidate drives the Discussion-Validate producer and the
-// validate-discussion verb over the same fixture set and asserts the two mapped verdicts agree,
-// covering all three parityVerdict values: a clean fixture (done), a missing-support-log fixture
-// and a missing-heading fixture (stuck), and a decision-record-is-a-directory fixture (error).
-func TestGateParity_DiscussionValidate(t *testing.T) {
+// TestGateParity_DiscussionGate drives NewDiscussionGate and the validate-discussion verb over the
+// same fixture set and asserts the two mapped verdicts agree, covering all three parityVerdict
+// values: a clean fixture (done), a missing-support-log fixture and a missing-heading fixture
+// (stuck), and a decision-record-is-a-directory fixture (error).
+func TestGateParity_DiscussionGate(t *testing.T) {
 	cases := []discussionParityCase{
 		{
 			name: "Clean",
@@ -129,9 +129,9 @@ func TestGateParity_DiscussionValidate(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			c := tc.build(t, t.TempDir())
 
-			producer := loomshed.NewDiscussionValidate("Discussion-Validate", c.env.DecisionRecordPath, c.env.SupportLogPath)
-			outcome, _, err := producer.Call(context.Background())
-			pv := producerVerdict(outcome, err)
+			gate := loomshed.NewDiscussionGate(c.env.DecisionRecordPath, c.env.SupportLogPath)
+			result, err := gate()
+			pv := producerVerdict(result, err)
 
 			var out bytes.Buffer
 			exitCode := clihelp.Execute(c.validateDiscussionCmd(), &out, nil)
@@ -140,8 +140,8 @@ func TestGateParity_DiscussionValidate(t *testing.T) {
 
 			if pv != cv {
 				t.Errorf(
-					"parity mismatch for fixture %q: producer verdict = %q (outcome=%q, err=%v); CLI verdict = %q (exit=%d, raw=%q)",
-					tc.name, pv, outcome, err, cv, exitCode, out.String(),
+					"parity mismatch for fixture %q: gate verdict = %q (result=%+v, err=%v); CLI verdict = %q (exit=%d, raw=%q)",
+					tc.name, pv, result, err, cv, exitCode, out.String(),
 				)
 			}
 			if pv != tc.want {
@@ -252,88 +252,104 @@ func writeGlyphRepoForParityTest(t *testing.T, dir string, files map[string]stri
 	}
 }
 
-// planParityCase is one fixture for TestGateParity_PlanValidate: build populates anchorPath and
-// worktreeRoot as needed and returns the single *loomCLI both the producer and the verb read their
-// paths from, so both halves run over the exact same on-disk fixture. want carries the verdict both
-// sides must reach in each of the two modes, keyed by whether requireApproved is set.
+// planParityCase is one fixture for TestGateParity_PlanGate: build populates anchorPath and
+// worktreeRoot as needed and returns the single *loomCLI both the gate closure and the verb read
+// their paths from, so both halves run over the exact same on-disk fixture. wantGate and wantCLI
+// carry the verdict each side must reach; they agree for every fixture but NoPlanDirectory, the one
+// deliberate, documented divergence (see that case's own comment).
 type planParityCase struct {
-	name              string
-	build             func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI
-	wantFlagAbsent    parityVerdict
-	wantRequireApprov parityVerdict
+	name     string
+	build    func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI
+	wantGate parityVerdict
+	wantCLI  parityVerdict
 }
 
-// TestGateParity_PlanValidate drives the Plan-Validate/Plan-Revalidate producer and the validate-plan
-// verb over the same fixture set, crossed with both modes the two rows share, and asserts the two
-// mapped verdicts agree in each cell. The four fixtures are: a clean approved plan, a clean
-// unapproved plan, a format-invalid plan, and an absent plan directory.
+// TestGateParity_PlanGate drives NewPlanGate and the validate-plan verb, flag-absent mode only, over
+// the same fixture set and asserts the two mapped verdicts agree. The mode cross-product this test
+// used to drive is gone: both plan gate sites (Plan-Write's own gate and Plan-Burler's own gate) run
+// planglyph.ValidateFormat and neither has a --require-approved counterpart -- that flag's own
+// guarantee now rests entirely on the approve seam failing loudly if it is ever wired nil (see
+// approveseam_test.go), not on any row re-checking the flag. validate_test.go covers
+// --require-approved's own CLI behaviour in isolation; this file's subject is parity with a gate,
+// and no gate answers to that flag.
 //
-// The Stuck_Unapproved-turned-Unapproved cell is the load-bearing one: in the flag-absent mode it
-// must expect done, not stuck, because that is exactly what proves the F7 deadlock is gone --
-// planglyph.ValidateFormat never runs the plan-unapproved check, so an unapproved plan is a clean
-// pre-review pass. The same fixture in --require-approved mode still expects stuck, because that
-// mode is what Plan-Revalidate uses to confirm the flag landed after review.
-func TestGateParity_PlanValidate(t *testing.T) {
+// The fixtures are: a clean approved plan, a clean unapproved plan, a format-invalid plan, an absent
+// plan directory, a glyph-not-resolving plan, an informational-only plan, and a quarry-unavailable
+// plan.
+//
+// The Unapproved case is the load-bearing one: it must expect done, not stuck, because that is
+// exactly what proves the F7 deadlock is gone -- planglyph.ValidateFormat never runs the
+// plan-unapproved check, so an unapproved plan is a clean pre-review pass on both sides.
+func TestGateParity_PlanGate(t *testing.T) {
 	cases := []planParityCase{
 		{
 			name: "CleanApproved",
 			build: func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
 				return planFixture(t, anchorPath, worktreeRoot, true)
 			},
-			wantFlagAbsent:    verdictDone,
-			wantRequireApprov: verdictDone,
+			wantGate: verdictDone,
+			wantCLI:  verdictDone,
 		},
 		{
 			name: "Unapproved",
 			build: func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
 				return planFixture(t, anchorPath, worktreeRoot, false)
 			},
-			wantFlagAbsent:    verdictDone,
-			wantRequireApprov: verdictStuck,
+			wantGate: verdictDone,
+			wantCLI:  verdictDone,
 		},
 		{
 			name: "FormatInvalid",
 			build: func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
 				return planFixtureInvalidFormat(t, anchorPath, worktreeRoot)
 			},
-			wantFlagAbsent:    verdictStuck,
-			wantRequireApprov: verdictStuck,
+			wantGate: verdictStuck,
+			wantCLI:  verdictStuck,
 		},
 		{
+			// NoPlanDirectory is the one expected divergence the Gate Self-Check Parity Invariant's
+			// own rewrite carves out: it binds the two sides to the same package FUNCTION, which both
+			// still call here -- planglyph.ValidateFormat -- and the divergence lives strictly in the
+			// ParsePlan pre-step ahead of it, whose disposition the gate deliberately reverses.
+			// NewPlanGate's ParsePlan carve-out (gates.go) routes a missing or malformed overview to
+			// findings (verdictStuck) because its bounce target is the live session that just wrote
+			// the file, holding full context; the verb keeps returning the identical error as a
+			// returned error (verdictError) because a standalone verb has no session to re-prompt.
+			// Both dispositions are reasoned, not accidental, so this case is asserted explicitly
+			// rather than folded into the pv == cv comparison every other fixture uses.
 			name: "NoPlanDirectory",
 			build: func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
 				return &loomCLI{env: shedrecipe.Env{AnchorPath: anchorPath, WorktreeRoot: worktreeRoot}}
 			},
-			wantFlagAbsent:    verdictError,
-			wantRequireApprov: verdictError,
+			wantGate: verdictStuck,
+			wantCLI:  verdictError,
 		},
 		{
 			// GlyphNotResolving covers the resolve-backed half the move onto planglyph introduces: a
 			// Uses: entry naming a unit that exists but a member that does not resolves the blocking
-			// glyph-not-found finding, in both modes, over a real quarry-openable worktreeRoot. The
-			// Create target is its own brand-new, informational-only unit, so the blocking verdict
-			// this case asserts is attributable to the Uses: side alone.
+			// glyph-not-found finding over a real quarry-openable worktreeRoot. The Create target is
+			// its own brand-new, informational-only unit, so the blocking verdict this case asserts is
+			// attributable to the Uses: side alone.
 			name: "GlyphNotResolving",
 			build: func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
 				writeGlyphRepoForParityTest(t, worktreeRoot, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
 				return glyphRepoPlanFixture(t, anchorPath, worktreeRoot, "newpkg2#Baz", "sub#Missing")
 			},
-			wantFlagAbsent:    verdictStuck,
-			wantRequireApprov: verdictStuck,
+			wantGate: verdictStuck,
+			wantCLI:  verdictStuck,
 		},
 		{
 			// InformationalOnly covers the cell that would have caught the bounce loop had it
 			// existed before the move: a Create target introducing a brand-new package produces only
 			// the informational create-new-unit finding, and both sides must read that severity the
-			// same way, reaching done in both modes rather than bouncing on a condition Plan-Write
-			// cannot fix.
+			// same way, reaching done rather than bouncing on a condition Plan-Write cannot fix.
 			name: "InformationalOnly",
 			build: func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
 				writeGlyphRepoForParityTest(t, worktreeRoot, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
 				return glyphRepoPlanFixture(t, anchorPath, worktreeRoot, "newpkg3#Qux", "")
 			},
-			wantFlagAbsent:    verdictDone,
-			wantRequireApprov: verdictDone,
+			wantGate: verdictDone,
+			wantCLI:  verdictDone,
 		},
 		{
 			// QuarryUnavailable points both sides at a worktreeRoot that is not a repository, under
@@ -347,60 +363,41 @@ func TestGateParity_PlanValidate(t *testing.T) {
 				badRoot := filepath.Join(t.TempDir(), "does-not-exist")
 				return glyphRepoPlanFixture(t, anchorPath, badRoot, "sub#Foo", "")
 			},
-			wantFlagAbsent:    verdictError,
-			wantRequireApprov: verdictError,
-		},
-	}
-
-	modes := []struct {
-		name            string
-		requireApproved bool
-		args            []string
-		want            func(tc planParityCase) parityVerdict
-	}{
-		{
-			name:            "FlagAbsent",
-			requireApproved: false,
-			args:            nil,
-			want:            func(tc planParityCase) parityVerdict { return tc.wantFlagAbsent },
-		},
-		{
-			name:            "RequireApproved",
-			requireApproved: true,
-			args:            []string{"--require-approved"},
-			want:            func(tc planParityCase) parityVerdict { return tc.wantRequireApprov },
+			wantGate: verdictError,
+			wantCLI:  verdictError,
 		},
 	}
 
 	for _, tc := range cases {
-		for _, mode := range modes {
-			t.Run(tc.name+"/"+mode.name, func(t *testing.T) {
-				anchorPath := t.TempDir()
-				worktreeRoot := t.TempDir()
-				c := tc.build(t, anchorPath, worktreeRoot)
+		t.Run(tc.name, func(t *testing.T) {
+			anchorPath := t.TempDir()
+			worktreeRoot := t.TempDir()
+			c := tc.build(t, anchorPath, worktreeRoot)
 
-				producer := loomshed.NewPlanValidate("Plan-Validate", c.env.AnchorPath, c.env.WorktreeRoot, mode.requireApproved)
-				outcome, _, err := producer.Call(context.Background())
-				pv := producerVerdict(outcome, err)
+			gate := loomshed.NewPlanGate(c.env.AnchorPath, c.env.WorktreeRoot)
+			result, err := gate()
+			pv := producerVerdict(result, err)
 
-				var out bytes.Buffer
-				exitCode := clihelp.Execute(c.validatePlanCmd(), &out, mode.args)
-				env := decodeSingleEnvelope(t, out.String())
-				cv := cliVerdict(env)
+			var out bytes.Buffer
+			exitCode := clihelp.Execute(c.validatePlanCmd(), &out, nil)
+			env := decodeSingleEnvelope(t, out.String())
+			cv := cliVerdict(env)
 
-				want := mode.want(tc)
-
+			if tc.wantGate == tc.wantCLI {
 				if pv != cv {
 					t.Errorf(
-						"parity mismatch for fixture %q mode %q: producer verdict = %q (outcome=%q, err=%v); CLI verdict = %q (exit=%d, raw=%q)",
-						tc.name, mode.name, pv, outcome, err, cv, exitCode, out.String(),
+						"parity mismatch for fixture %q: gate verdict = %q (result=%+v, err=%v); CLI verdict = %q (exit=%d, raw=%q)",
+						tc.name, pv, result, err, cv, exitCode, out.String(),
 					)
 				}
-				if pv != want {
-					t.Errorf("fixture %q mode %q: producer verdict = %q; want %q", tc.name, mode.name, pv, want)
-				}
-			})
-		}
+			}
+			if pv != tc.wantGate {
+				t.Errorf("fixture %q: gate verdict = %q; want %q", tc.name, pv, tc.wantGate)
+			}
+			if cv != tc.wantCLI {
+				t.Errorf("fixture %q: CLI verdict = %q; want %q", tc.name, cv, tc.wantCLI)
+			}
+		})
 	}
 }
 

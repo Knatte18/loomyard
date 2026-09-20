@@ -21,6 +21,11 @@ const (
 // control-flow decision -- step 4 is an unconditional re-call.
 type OutputPointer struct {
 	Path string // "" = no artifact (gate or terminal producer)
+	// GateAttempts is this call's gate re-prompt count, carried straight through to the
+	// persisted HistoryEntry.GateAttempts (see that field's own doc comment). Nil means this
+	// producer applied no gate to this call; a gated producer sets it regardless of Path,
+	// including on the gate-failed exit whose Path is deliberately empty.
+	GateAttempts *int
 }
 
 // ShedProducer is the seam Shed drives once per iteration: Call runs one producer to a verdict

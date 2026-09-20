@@ -114,6 +114,35 @@ func TestLoadConfig_ModuleArgIsThreadedThrough(t *testing.T) {
 	}
 }
 
+// TestLoadConfig_ClaudeDenyAgentTool_PinsGateNarrowingPrecondition pins the precondition the gate
+// loop's per-attempt done-signal narrowing rests on: the per-attempt done-signal is the next turn
+// boundary and nothing more, and that narrowing holds only because the in-process Agent tool is
+// denied at every gated site. Two other tests in this file already assert
+// Config.ClaudeDenyAgentTool == true against the shipped template as one line item among a dozen
+// parsed defaults, and the overlap with those is deliberate rather than an oversight to dedupe: this
+// test's distinct value is its failure message, which names what the value protects, rather than
+// merely reporting the value is wrong — the same tripwire shape batch 5's own quiescence test takes
+// for the paired half of this precondition (that none of the four gated sites sets
+// Spec.ForkSubagents, which cannot be seen from this package and is pinned there instead).
+func TestLoadConfig_ClaudeDenyAgentTool_PinsGateNarrowingPrecondition(t *testing.T) {
+	tmpDir := t.TempDir()
+	seedLyxConfig(t, tmpDir, "shuttle", shuttleengine.ConfigTemplate())
+
+	cfg, err := shuttleengine.LoadConfig(tmpDir, "shuttle")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !cfg.ClaudeDenyAgentTool {
+		t.Fatal("Config.ClaudeDenyAgentTool = false against the shipped template: flipping this default " +
+			"re-opens the compound-quiescence question this task deliberately declined — a gate could now " +
+			"fire while an async in-process subagent, spawned through the Agent tool, is still working, " +
+			"undermining the narrowing that the per-attempt done-signal is the next turn boundary and " +
+			"nothing more. The decision must be re-opened (see manifest/designs/producer-gates.md), not " +
+			"this test updated.")
+	}
+}
+
 func TestLoadConfig_UninitializedFallsBackToTemplate(t *testing.T) {
 	tmpDir := t.TempDir()
 	// Do NOT create _lyx/ -- LoadConfig must degrade to the embedded template.

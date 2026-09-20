@@ -132,6 +132,65 @@ func TestDiscussionWriteEntry_CallDone(t *testing.T) {
 	}
 }
 
+// TestDiscussionWriteEntry_GateConfig covers the "gate" and "gate_attempts" Config keys
+// discussionWriteEntry resolves through resolveGateSpec: a "gate: discussion" row resolves to the
+// discussion validator, an unrecognised "gate" value fails loud naming both legal values, and a row
+// carrying neither key resolves to the zero shuttleengine.GateSpec -- an ungated producer.
+func TestDiscussionWriteEntry_GateConfig(t *testing.T) {
+	t.Run("GateDiscussionResolvesToDiscussionValidator", func(t *testing.T) {
+		env := newTestEnv(t)
+		gateSpec, err := resolveGateSpec("DiscussionWrite", Config{"gate": "discussion"}, env)
+		if err != nil {
+			t.Fatalf("resolveGateSpec() error = %v; want nil", err)
+		}
+		if gateSpec.Gate == nil {
+			t.Fatal("resolveGateSpec() GateSpec.Gate = nil; want the discussion closure")
+		}
+
+		// Drive the constructed gate rather than comparing func values, which Go cannot compare.
+		// newTestEnv's SupportLogPath is a joined path nobody creates, so the discussion validator
+		// reports it missing -- a finding text no plan-gate failure could ever produce, which is
+		// what proves the discussion closure and not the plan one was resolved.
+		result, err := gateSpec.Gate()
+		if err != nil {
+			t.Fatalf("gateSpec.Gate() error = %v; want nil", err)
+		}
+		if result.Passed {
+			t.Fatal("gateSpec.Gate() Passed = true; want false for a missing support log")
+		}
+		if !strings.Contains(result.Findings, "support log does not exist") {
+			t.Errorf("gateSpec.Gate() Findings = %q; want it to name the missing support log, proving the discussion validator ran", result.Findings)
+		}
+	})
+
+	t.Run("UnrecognisedGateValueFails", func(t *testing.T) {
+		env := newTestEnv(t)
+		_, err := discussionWriteEntry("Row", Config{"gate": "bogus"}, env)
+		if err == nil {
+			t.Fatal("discussionWriteEntry() error = nil; want non-nil for an unrecognised gate value")
+		}
+		assertErrContains(t, err, "gate")
+		assertErrContains(t, err, "discussion")
+		assertErrContains(t, err, "plan")
+	})
+
+	t.Run("NeitherKeyBuildsUngatedProducer", func(t *testing.T) {
+		env := newTestEnv(t)
+		gateSpec, err := resolveGateSpec("DiscussionWrite", Config{}, env)
+		if err != nil {
+			t.Fatalf("resolveGateSpec() error = %v; want nil", err)
+		}
+		// shuttleengine.GateSpec embeds a func field, so it is not comparable with != -- assert its
+		// two fields individually instead.
+		if gateSpec.Gate != nil {
+			t.Errorf("resolveGateSpec() GateSpec.Gate = %v; want nil for a row carrying neither key", gateSpec.Gate)
+		}
+		if gateSpec.Attempts != 0 {
+			t.Errorf("resolveGateSpec() GateSpec.Attempts = %d; want 0 for a row carrying neither key", gateSpec.Attempts)
+		}
+	})
+}
+
 // TestDiscussionWriteEntry_CallAsking asserts an OutcomeAsking shuttle result maps to
 // shedengine.Stuck and leaves the commit closure uninvoked -- the outcome mapping the decorator
 // must preserve untouched.

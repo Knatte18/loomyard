@@ -363,9 +363,12 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// approved settle reaches this same closure through the row's commit_seam: plan config key.
 		// The commit message is deliberately shared between the two callers: it names the artifact
 		// set rather than the producer that last touched it, so a Plan-Write commit and a
-		// Plan-Bouncer commit read identically. This commit fires before Plan-Validate has judged
-		// the plan, and that is intentional and matches the discussion precedent: the commit keeps
-		// the artifact durable, it does not certify it. The pathspec is the whole plan directory via
+		// Plan-Bouncer commit read identically. Both callers fire this closure only after a gate has
+		// already judged the plan: Plan-Write's own gate runs inside its Call, ahead of its own
+		// post-Done commit, and Plan-Burler's own gate runs the same way, ahead of the Plan-Bouncer
+		// approved settle that commits its overlay fix -- and that is intentional and matches the
+		// discussion precedent: the commit keeps the artifact durable, it does not certify it. The
+		// pathspec is the whole plan directory via
 		// planparser.PlanDirRel(), never a hand-built filepath.Join naming the _lyx literal, which
 		// the Lyxdirs Single-Declarer Invariant forbids in production path-construction context.
 		CommitPlan: func() error {

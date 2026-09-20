@@ -4,7 +4,7 @@
 // shedrecipe.Env/shedbuild.ShedPaths pair pointing at it.
 //
 // The helpers this file duplicates rather than imports -- writeDiscussionFixture,
-// validDecisionRecord, seedPlanValidateFixture, fakeWebsterRun, and writeBatcherConfig -- are
+// validDecisionRecord, seedPlanFixture, fakeWebsterRun, and writeBatcherConfig -- are
 // deliberate duplication, not an oversight: they live in files that stay in internal/loomshed, per
 // the duplicate-test-helpers-rather-than-share-them Shared Decision. testLandingDeps already existed
 // in two independent copies (internal/loomshed/fixture_test.go and
@@ -241,7 +241,7 @@ func writeDiscussionFixture(t *testing.T, dir, decisionRecord, supportLog string
 	return decisionRecordPath, supportLogPath
 }
 
-// planFixtureCard is the syntactically complete, one-card plan-format card body seedPlanValidateFixture
+// planFixtureCard is the syntactically complete, one-card plan-format card body seedPlanFixture
 // and fakeLoomShuttle's "plan"-role branch both write, kept as a single package-level constant so the
 // two writers never drift apart. The sole card carries a Create group so path-missing never fires
 // regardless of worktreeRoot's contents — a Create group's targets stay exempt from on-disk existence
@@ -251,7 +251,7 @@ const planFixtureCard = "# Card 1 — first-card\n\n**Create:**\n- `internal/fir
 
 // planFixtureOverview returns the plan-format overview body naming approved in its frontmatter,
 // pointing at the sole card planFixtureCard writes. It is kept alongside planFixtureCard as a
-// single package-level function so seedPlanValidateFixture and fakeLoomShuttle's "plan"-role branch
+// single package-level function so seedPlanFixture and fakeLoomShuttle's "plan"-role branch
 // never drift apart.
 func planFixtureOverview(approved bool) string {
 	return fmt.Sprintf(
@@ -260,10 +260,10 @@ func planFixtureOverview(approved bool) string {
 	)
 }
 
-// seedPlanValidateFixture writes a syntactically complete, one-card plan-format plan under
+// seedPlanFixture writes a syntactically complete, one-card plan-format plan under
 // <anchorPath>/_lyx/plan/, approved or not per approved, via planFixtureCard and
 // planFixtureOverview.
-func seedPlanValidateFixture(t *testing.T, anchorPath string, approved bool) {
+func seedPlanFixture(t *testing.T, anchorPath string, approved bool) {
 	t.Helper()
 
 	planDir := filepath.Join(anchorPath, lyxdirs.LyxDirName, "plan")
@@ -297,9 +297,9 @@ func (f *fakeWebsterRun) run(deps websterengine.RunDeps, _ websterengine.RunOpti
 // spec.Role == "plan" it writes the whole plan-directory fixture -- planFixtureCard and
 // planFixtureOverview(false) via f.planDir -- rather than only spec.OutputFiles, because
 // loomshed.NewPlanWrite's rotation archives every top-level .md file in the plan directory
-// (including the card file seedPlanValidateFixture pre-wrote) before the shuttle runs, so writing
+// (including the card file seedPlanFixture pre-wrote) before the shuttle runs, so writing
 // only the overview would leave the Card Index naming a card file that no longer exists and
-// Plan-Validate would report Stuck and bounce. The overview it writes is unapproved, mirroring the
+// Plan-Write's own gate would fail. The overview it writes is unapproved, mirroring the
 // plan stencil's own "you never self-approve" rule: the real Plan-Write producer can never emit an
 // approved plan, and a fake writer that did would hand the review gate a plan the production writer
 // can never produce -- Plan-Bouncer's approve_seam is what flips the flag, not this row. On
@@ -385,6 +385,42 @@ func (f *fakeLoomShuttle) Attach(spec shuttleengine.Spec) (shuttleengine.Result,
 		return shuttleengine.Result{}, false, nil
 	}
 	return f.attachResult, true, nil
+}
+
+// RunGated and AttachGated implement the shared fake contract every shedadapters.Shuttle/
+// burlerengine.Shuttle test fake follows (see the "every test fake evaluates the gate once"
+// decision): delegate to Run/Attach's own body, then -- only when gate.Gate is non-nil and the
+// delegated outcome is OutcomeDone -- invoke the closure exactly once, returning its error if
+// non-nil and otherwise stamping a *GateOutcome onto the returned Result.
+//
+// This fake's pair matters most among the four downstream fakes this task teaches the gated seam:
+// fakeLoomShuttle is the only one a FULL recipe sequence drives, so it is what makes a gate-failed
+// writer row genuinely halt a loomrecipe run rather than the wiring going silently untested here
+// from batch 4 onward, once a real production caller starts supplying a non-zero GateSpec.
+func (f *fakeLoomShuttle) RunGated(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (shuttleengine.Result, error) {
+	result, err := f.Run(spec)
+	if err != nil || gate.Gate == nil || result.Outcome != shuttleengine.OutcomeDone {
+		return result, err
+	}
+	gateResult, gerr := gate.Gate()
+	if gerr != nil {
+		return result, gerr
+	}
+	result.Gate = &shuttleengine.GateOutcome{Passed: gateResult.Passed}
+	return result, nil
+}
+
+func (f *fakeLoomShuttle) AttachGated(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (shuttleengine.Result, bool, error) {
+	result, found, err := f.Attach(spec)
+	if err != nil || !found || gate.Gate == nil || result.Outcome != shuttleengine.OutcomeDone {
+		return result, found, err
+	}
+	gateResult, gerr := gate.Gate()
+	if gerr != nil {
+		return result, found, gerr
+	}
+	result.Gate = &shuttleengine.GateOutcome{Passed: gateResult.Passed}
+	return result, found, nil
 }
 
 // Run implements shedadapters.Shuttle: on spec.Role == "plan" it rewrites the whole plan directory
@@ -498,22 +534,23 @@ func writeBatcherConfig(t *testing.T, anchorPath, content string) {
 	}
 }
 
-// buildSequenceFixture builds a temp anchor whose on-disk state makes rows 3 (Discussion-Validate),
-// 7 (Plan-Validate), and 9 (Batchifier) -- the three real, non-injectable producers this task builds
-// -- genuinely pass, and returns the anchor path alongside the shedrecipe.Env/shedbuild.ShedPaths
-// pair pointing at it.
+// buildSequenceFixture builds a temp anchor whose on-disk state makes rows 3 (Discussion-Write's own
+// gate), 7 (Plan-Write's own gate), and 9 (Batchifier) -- the three real, non-injectable producers
+// this task builds -- genuinely pass, and returns the anchor path alongside the
+// shedrecipe.Env/shedbuild.ShedPaths pair pointing at it.
 //
-// Discussion-Validate: both discussion files are written, the decision record carrying all seven
-// required H2 sections (writeDiscussionFixture, duplicated above from discussionvalidate_test.go).
-// Plan-Validate: a syntactically complete, unapproved, one-card plan directory that satisfies every
+// Discussion-Write's gate: both discussion files are written, the decision record carrying all
+// seven required H2 sections (writeDiscussionFixture, duplicated above from
+// discussionvalidate_test.go, the removed producer's own test file). Plan-Write's gate: a
+// syntactically complete, unapproved, one-card plan directory that satisfies every
 // planparser.ValidateFormat check, including the ones that stat paths against the worktree root
-// (seedPlanValidateFixture, duplicated above from planvalidate_test.go) -- the same self-authored,
-// single-card, zero-findings shape internal/planparser/testdata/goodplan/00-overview.md and
-// 01-json-flag.md model. Seeded unapproved rather than approved: Plan-Validate's own row runs
-// before the review segment and its absent require_approved key never demands the flag, and an
-// approved seed would misrepresent what the real Plan-Write producer is ever allowed to write.
-// Batchifier: no batcher.yaml is written at all, so batcher.Active resolves the embedded template,
-// which is a Done.
+// (seedPlanFixture, duplicated above from planvalidate_test.go, the other removed producer's own
+// test file) -- the same self-authored, single-card, zero-findings shape
+// internal/planparser/testdata/goodplan/00-overview.md and 01-json-flag.md model. Seeded unapproved
+// rather than approved: both gate sites run planglyph.ValidateFormat, which never demands the
+// approval flag, and an approved seed would misrepresent what the real Plan-Write producer is ever
+// allowed to write. Batchifier: no batcher.yaml is written at all, so batcher.Active resolves the
+// embedded template, which is a Done.
 //
 // The status file is seeded through the production loomshed.Seed, never by hand-writing JSON, so a
 // Seed regression would not pass unnoticed here. Row 1 is not injected here: New builds it from
@@ -538,18 +575,18 @@ func writeBatcherConfig(t *testing.T, anchorPath, content string) {
 // fakeLoomShuttle{writeOutputs: true}, env.DiscussionSpec is a closure returning a Spec whose
 // OutputFiles is the same [decisionRecordPath, supportLogPath] pair this fixture already computes
 // above, and env.CommitDiscussion is a closure recording its invocation count on that same fake.
-// The fake shuttle writing both output files on every Run is what keeps Discussion-Validate
+// The fake shuttle writing both output files on every Run is what keeps Discussion-Write's own gate
 // passing here: shedadapters.archiveStaleOutputs renames the fixture's own pre-written files away
 // on every Call, so without the fake rewriting them the clean sequence run would find both files
 // absent.
 //
 // Row 6 (Plan-Write) is likewise a real shedadapters.SingleLLMProducer behind loomshed's
 // rotate-and-commit decorator. The same fakeLoomShuttle serves this row too: its planDir field is
-// set to the same _lyx/plan expression seedPlanValidateFixture already builds, env.PlanSpec is a
+// set to the same _lyx/plan expression seedPlanFixture already builds, env.PlanSpec is a
 // closure returning a Spec naming Role: "plan" and OutputFiles holding the single overview path,
 // and env.CommitPlan is a closure recording its invocation count on that same fake. The fake's
 // "plan"-role branch rewrites the whole plan directory (see fakeLoomShuttle's own doc comment for
-// why) rather than only the overview, so Plan-Validate still finds a complete, unapproved,
+// why) rather than only the overview, so Plan-Write's own gate still finds a complete, unapproved,
 // zero-findings plan after the decorator's rotation archived the seeded one away -- the real
 // Plan-Write producer can never write it approved, and neither does this fake. env.ApprovePlan is
 // a closure running the real planparser.SetApproved over the same plan directory, wired to
@@ -571,7 +608,7 @@ func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, 
 	// directory before the shuttle runs, so fakeLoomShuttle's "plan"-role branch rewrites the whole
 	// directory rather than only its declared output file -- but leaving it approved here would be
 	// dishonest about what the fixture models.
-	seedPlanValidateFixture(t, dir, false)
+	seedPlanFixture(t, dir, false)
 
 	statusPath := filepath.Join(dir, "status.json")
 	statusLockPath := filepath.Join(dir, "status.json.lock")

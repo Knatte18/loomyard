@@ -21,8 +21,9 @@ import (
 // report as a gate/infrastructure failure rather than as a plan finding so nobody mistakes "quarry
 // broke" for "the plan is wrong".
 //
-// This is the WHOLE-plan form, correct before execution starts (loom's Plan-Validate row and the
-// standalone verbs). Once execution is under way, use ValidateDispatch instead.
+// This is the WHOLE-plan form, correct before execution starts (both plan gate sites -- Plan-Write's
+// and Plan-Burler's own gates -- and the standalone verbs). Once execution is under way, use
+// ValidateDispatch instead.
 func ValidateFormat(plan *planparser.Plan, worktreeRoot string) ([]Finding, error) {
 	findings := convertAll(planparser.ValidateFormat(plan, worktreeRoot))
 	resolveFindings, err := resolvePass(plan, worktreeRoot, nil)

@@ -29,14 +29,11 @@ type wantSequenceEntry struct {
 // BurlerProducer reports every successful round as Stuck by contract, never Done, since its Stuck
 // is a routine hand-off to the Bouncer rather than a real stuck condition), and NameXBouncer again
 // with Done (the judge call, whose fixture-scripted APPROVED verdict is what advances the run past
-// the segment). The Plan-Review segment carries a fourth, trailing entry neither the
-// Discussion-Review nor the Webster-Review segment has a counterpart for: NamePlanRevalidate with
-// Done, the post-segment mechanical re-check, which passes here because the fixture's fake burler
-// leaves the plan format untouched (buildSequenceFixture never sets
-// fakeLoomBurler.injectOrphanCardDir) and Plan-Bouncer's approve_seam has by then written the
-// approval flag Plan-Revalidate's require_approved: true key demands.
+// the segment). With the standalone validate rows gone, the Plan-Review segment no longer carries
+// the trailing post-segment mechanical re-check the other two segments never had a counterpart
+// for either -- all three segments now share the identical three-entry shape.
 // Stuck entries mid-run are therefore not a failure signal here; they are each segment doing its
-// job. The list runs to nineteen entries total.
+// job. The list runs to sixteen entries total.
 //
 // The sequence stops at Publish deliberately: Publish's OnStuck is "" (escalate), so a Stuck verdict
 // blocks the run and Finalize is never invoked. Driving both producers' real merge logic through a
@@ -49,29 +46,26 @@ type wantSequenceEntry struct {
 // current_producer: "Loom-Preflight" alongside a single Preflight Done history entry -- exactly the
 // shape row 2's told expected name and tolerated set accept.
 //
-// Row 3 (Discussion-Write) passes too, now that it is a real shedadapters.SingleLLMProducer behind
-// loomshed's commit decorator rather than a Stub: the fixture's fake shuttle writes both discussion
-// output files and reports Done, so the decorator's injected commit closure fires and
-// Discussion-Validate finds a complete pair.
+// Row 3 (Discussion-Write) passes because the fixture's fake shuttle writes both discussion output
+// files and reports Done, and Discussion-Write's own gate -- run inside that fake's gated method
+// rather than as a separate row below it -- accepts the pair it just wrote; the decorator's
+// injected commit closure then fires on the gate-passed Done.
 //
-// Row 6 (Plan-Write) passes for the same reason: it is now a real shedadapters.SingleLLMProducer
-// behind loomshed's rotate-and-commit decorator, and the fixture's fake shuttle rewrites the whole
-// plan directory on its "plan"-role branch, so Plan-Validate still finds a complete, approved,
-// zero-findings plan after the decorator's rotation archived the seeded one away.
+// Row 6 (Plan-Write) passes for the same reason: the fixture's fake shuttle rewrites the whole plan
+// directory on its "plan"-role branch, and Plan-Write's own gate, run inside that same gated
+// method, still finds a complete, zero-findings plan after the decorator's rotation archived the
+// seeded one away.
 var wantSequenceOrder = []wantSequenceEntry{
 	{loomshed.NamePreflight, shedengine.Done},
 	{loomshed.NameLoomPreflight, shedengine.Done},
 	{loomshed.NameDiscussionWrite, shedengine.Done},
-	{loomshed.NameDiscussionValidate, shedengine.Done},
 	{loomshed.NameDiscussionBouncer, shedengine.Stuck},
 	{loomshed.NameDiscussionBurler, shedengine.Stuck},
 	{loomshed.NameDiscussionBouncer, shedengine.Done},
 	{loomshed.NamePlanWrite, shedengine.Done},
-	{loomshed.NamePlanValidate, shedengine.Done},
 	{loomshed.NamePlanBouncer, shedengine.Stuck},
 	{loomshed.NamePlanBurler, shedengine.Stuck},
 	{loomshed.NamePlanBouncer, shedengine.Done},
-	{loomshed.NamePlanRevalidate, shedengine.Done},
 	{loomshed.NameBatchifier, shedengine.Done},
 	{loomshed.NameWebster, shedengine.Done},
 	{loomshed.NameWebsterBouncer, shedengine.Stuck},
@@ -80,14 +74,16 @@ var wantSequenceOrder = []wantSequenceEntry{
 	{loomshed.NamePublish, shedengine.Stuck},
 }
 
-// TestSequence_FullRunBlocksAtPublish is the task's own verify requirement: the seventeen-row list
+// TestSequence_FullRunBlocksAtPublish is the task's own verify requirement: the fourteen-row list
 // runs Preflight through Publish and blocks on Publish's Stuck verdict, never reaching Finalize --
 // see wantSequenceOrder's own doc comment for why, including for all three review segments' entry
 // shapes. It also asserts the plan is left approved after the run: under the pre-fix code the fake
 // writer self-approved the plan it wrote, which masked Plan-Bouncer's approve_seam ever firing at
 // all -- a nil Env.ApprovePlan, a no-op closure, or a fake writer that started self-approving again
-// would each leave this history list passing for the wrong reason, so the trailing
-// planparser.ParsePlan check is what pins that the seam genuinely ran.
+// would each leave this history list passing for the wrong reason, and with the row-removal batch's
+// deletion of the post-segment mechanical re-check that used to confirm the approval flag survived,
+// the trailing planparser.ParsePlan check below is the ONLY standing guard left anywhere that
+// Plan-Bouncer's approve seam genuinely ran.
 func TestSequence_FullRunBlocksAtPublish(t *testing.T) {
 	_, env, paths := buildSequenceFixture(t)
 
@@ -164,8 +160,9 @@ func TestSequence_FullRunBlocksAtPublish(t *testing.T) {
 
 	// This is the regression proof for F7: parse the fixture's own plan and assert Approved is
 	// true. The fake writer seeds and rewrites the plan unapproved on every "plan"-role Run, so this
-	// can only pass because Plan-Bouncer's approve_seam wrote the flag through env.ApprovePlan
-	// before the run reached Plan-Revalidate.
+	// can only pass because Plan-Bouncer's approve_seam wrote the flag through env.ApprovePlan --
+	// and, with the removed Plan-Revalidate row's own re-check gone, this assertion is the only
+	// thing anywhere that still proves the seam fired at all.
 	plan, err := planparser.ParsePlan(planparser.PlanDir(env.AnchorPath))
 	if err != nil {
 		t.Fatalf("ParsePlan() error = %v; want nil", err)

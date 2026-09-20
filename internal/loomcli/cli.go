@@ -297,7 +297,7 @@ func Command() *cobra.Command {
 		Use:   "loom",
 		Short: "bootstrap and drive one loom task's phase machine for this worktree",
 		Long: `loom drives one task's phase machine over a per-worktree status.json,
-on the generic shed engine. The machine walks seventeen producer rows: a
+on the generic shed engine. The machine walks fourteen producer rows: a
 two-row preflight, then Discussion, Plan, and Webster, each of the three
 followed by its own LLM review segment that loops until it approves or
 escalates, and finally Publish and Finalize. "start" is the bootstrap verb:
@@ -309,8 +309,8 @@ the single-producer primitive an external supervisor drives; "status"
 reports the current phase and, with --watch, tails it, printing a line
 only when the activity changes; "pause" requests a pause at the next
 producer boundary. "validate-discussion" and "validate-plan" are the
-standalone form of the Discussion-Validate and Plan-Validate mechanical
-gates, callable by the writer agent before handoff.
+standalone form of the mechanical gates Discussion-Write's and Plan-Write's
+own rows carry, callable by the writer agent before handoff.
 
 Example:
   lyx loom start
