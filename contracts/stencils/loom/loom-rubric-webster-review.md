@@ -35,8 +35,8 @@ Silently reviewing a guessed range is a worse failure than an honest block.
 
 Do not flag any of the following as a finding:
 
-- **Anything `Plan-Validate` or `Plan-Revalidate` already checks.**
-  The plan's *format* is enforced deterministically upstream and is not this gate's subject.
+- **Anything the plan's own gates already check.**
+  The plan's *format* is enforced deterministically by `Plan-Write`'s and `Plan-Burler`'s own gates and is not this gate's subject.
 - **Findings raised against the plan itself.**
   The plan is the measuring stick and never the subject, exactly as the decision record is for `Plan-Review`.
   A plan-authoring finding cannot be satisfied by changing the diff, which is the only thing this segment can fix.
