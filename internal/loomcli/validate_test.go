@@ -302,8 +302,8 @@ func writeGlyphRepoForCLITest(t *testing.T, files map[string]string) string {
 // TestValidatePlanCmd_InformationalFindingsSurfaceOnSuccess asserts that an informational-only
 // findings set (card 18's create-new-unit, on a Create target introducing a brand-new package)
 // still reports a success envelope, carrying the findings under their own key rather than dropping
-// them, per the severity-decides-the-verdict rule this CLI verb shares with the Plan-Validate
-// producer.
+// them, per the severity-decides-the-verdict rule this CLI verb shares with Plan-Write's and
+// Plan-Burler's own gate.
 func TestValidatePlanCmd_InformationalFindingsSurfaceOnSuccess(t *testing.T) {
 	anchorPath := t.TempDir()
 	worktreeRoot := writeGlyphRepoForCLITest(t, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
@@ -393,7 +393,8 @@ func TestValidatePlanCmd(t *testing.T) {
 		{
 			// Unapproved is the load-bearing case: the default (flag-absent) mode now succeeds --
 			// planglyph.ValidateFormat never runs the plan-unapproved check -- while
-			// --require-approved still reports the plan-unapproved finding, matching Plan-Revalidate.
+			// --require-approved still reports the plan-unapproved finding: the one check no gate
+			// runs, and this flag remains the sole way to reach it.
 			// The findings substring pins the rendered severity too ("[blocking]"), asserting the
 			// blocking-findings case's severity is present in the error envelope, not just the check
 			// name.

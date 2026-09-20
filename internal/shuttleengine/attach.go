@@ -378,10 +378,11 @@ func dispositionCandidate(c attachCandidate, strands []reedengine.StrandStatus, 
 	// whole (expensive) LLM step, the exact rework the crash-recovery contract exists to prevent
 	// (manifest/designs/loom.md, "A dead claude with a finished output file is, to loom, a done step").
 	//
-	// This never fires on a Discussion-Validate bounce, so it does not reopen the crash-versus-bounce
-	// trap that bars a producer-level file-existence check: a bounce re-enters its producer only after
-	// the prior run reached OutcomeDone, at which point finalize already removed that run's directory —
-	// so no "running" run.json survives to match here. Spec.validate refuses a spec whose output file
+	// This never fires on a review-segment bounce (e.g. Discussion-Bouncer bouncing to
+	// Discussion-Burler), so it does not reopen the crash-versus-bounce trap that bars a
+	// producer-level file-existence check: a bounce re-enters its producer only after the prior run
+	// reached OutcomeDone, at which point finalize already removed that run's directory — so no
+	// "running" run.json survives to match here. Spec.validate refuses a spec whose output file
 	// already exists on the Start path, so a "running" run.json is proof the files appeared AFTER this
 	// run began (genuine agent evidence), never the pre-existing files a bounce leaves behind with no
 	// owning run.json at all. Gating on runOutcomeRunning is what keeps the two cases apart: a terminal

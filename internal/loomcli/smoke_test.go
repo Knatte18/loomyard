@@ -18,11 +18,11 @@
 // TestSmokeBootstrap_ConcurrentSpawnHandshakeYieldsOneDriver).
 //
 // A note on driver-liveness timing: loom's own producer table (contracts/recipes/loom-recipe.yaml)
-// now carries seventeen rows, every one backed by a real producer -- no row reports Done
+// now carries fourteen rows, every one backed by a real producer -- no row reports Done
 // unconditionally. A freshly-bootstrapped driver against a pair with no discussion or plan
-// artifacts yet still bounces through Discussion-Write/Discussion-Validate a bounded number of
-// times (shedengine's own default bounce budget) and then blocks, well before reaching any later
-// row -- a lifecycle that can still complete in well under a second. Tests here that
+// artifacts yet still bounces at Discussion-Write's own gate a bounded number of times (its
+// gate_attempts budget) and then blocks, well before reaching any later row -- a lifecycle that can
+// still complete in well under a second. Tests here that
 // assert "a driver process exists" treat that as a best-effort observation (logged, not failed, when
 // the driver has already run to completion by check time) and lean on the STATUS FILE's own history
 // -- durable regardless of whether the driver process itself is still alive -- for the assertions

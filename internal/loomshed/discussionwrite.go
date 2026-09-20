@@ -1,6 +1,6 @@
 // discussionwrite.go implements the DiscussionWrite commit decorator: a thin
 // shedengine.ShedProducer that delegates to a wrapped producer and, on a Done outcome with a nil
-// error, invokes an injected commit closure -- mirroring discussionvalidate.go's own file shape.
+// error, invokes an injected commit closure.
 
 package loomshed
 
@@ -46,13 +46,16 @@ func NewDiscussionWrite(name string, inner shedengine.ShedProducer, commit func(
 //
 // A non-nil commit error maps to a returned error, never to shedengine.Stuck, on both the Done path
 // and the gate-failed Stuck path alike: a git fault is not something re-writing the discussion can
-// fix, the same reasoning discussionvalidate.go already applies to a non-not-exist read failure. The
-// commit fires before Discussion-Validate has judged the output, and that is intentional -- the
-// commit keeps the working tree clean and the artifact durable, it does not certify it. Left alone,
-// a gate-failed Stuck would skip the commit and halt the run with the invalid artifact sitting
-// uncommitted in a dirty weft -- exactly the state this decorator's own recorded rationale exists to
-// prevent -- so committing it here means the human the run just halted for finds the artifact
-// committed and diagnosable.
+// fix, the same reasoning this row's own gate (loomshed.NewDiscussionGate) already applies to a
+// non-not-exist read failure from discussionparser.Validate. The commit fires after this row's own
+// gate has already run: p.inner.Call holds the handoff inside the gate loop until the gate passes or
+// its re-prompt budget is exhausted, so by the time this decorator sees a non-empty pointer the
+// verdict is already settled -- Done because the gate passed, or a gate-failed Stuck because it did
+// not -- and the commit itself keeps the working tree clean and the artifact durable, it does not
+// certify it. Left alone, a gate-failed Stuck would skip the commit and halt the run with the invalid
+// artifact sitting uncommitted in a dirty weft -- exactly the state this decorator's own recorded
+// rationale exists to prevent -- so committing it here means the human the run just halted for finds
+// the artifact committed and diagnosable.
 func (p *discussionWrite) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	outcome, pointer, err := p.inner.Call(ctx)
 	if err != nil || pointer.Path == "" {
