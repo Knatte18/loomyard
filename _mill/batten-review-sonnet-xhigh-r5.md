@@ -252,6 +252,29 @@ worktree, exactly as `run`/`status` do. Confirmed a pure test-coverage
 completeness gap, not a behavior bug. Fix: extend the loop to all four
 verbs to match `WeftPrimeRefusal`'s own completeness.
 
+### F5 (BLOCKING, CONFIRMED live) — taskWorktreeLocation's suggested recovery command corrupts prime's own branch instead of restoring the missing task worktree
+
+See "Scenario: F5" below for the full live reproduction. Summary:
+`internal/battencli/wire.go:55`'s error text for a task worktree missing on
+this machine tells the operator to run `"lyx fabric checkout %s"` to
+restore it. Run from prime (as required), that command instead switches
+**prime itself** onto the task's branch — confirmed live via the command's
+own envelope (`"worktree_switched","target":"r5fx"`, prime's own worktree
+name) and `git branch --show-current` in prime going from `main` to
+`cold-a`. The task worktree remains completely absent, and the command
+reports `"ok":true`. Because every batten seam's `CommitStatus` etc. commit
+onto prime's told `*lyxcwd.Location` (resolved once from cwd, reflecting
+whatever branch prime is currently checked out to, not a named branch),
+leaving prime on the wrong branch risks the NEXT status transition for ANY
+OTHER in-flight slug landing on the wrong branch too — a hub-wide, not
+per-slug, blast radius. Reversible (`lyx fabric checkout main` restored it
+in the live reproduction) but only by an operator who understands fabric
+well enough to notice the tool's own advice was wrong. Fix: correct the
+error text — no `lyx fabric` verb currently restores a worktree pair from
+a surviving branch (this is exactly R1-F9's own accepted "recreate-from-
+branch" gap), so say that honestly instead of naming a command that does
+something else.
+
 (Live-driving scenarios continue below.)
 
 ### Live driving — fixture hub
@@ -487,6 +510,71 @@ ran for real and produced a genuine `decision-record.md`, gated through
 chain. Continuing to watch it to a genuine terminal state; this section
 will be completed with the final outcome (Done, or a natural failure the
 way R3 hit one) before the review report is closed out.
+
+### Scenario: F5 — taskWorktreeLocation's own suggested recovery command corrupts prime's own branch (CONFIRMED live, BLOCKING)
+
+While probing the R1-F9 deferred item, I dangled a branch (`cold-a`) whose
+worktree pair had been removed (via `lyx fabric remove`) while the WARP
+branch itself survived — exactly the state `taskWorktreeLocation`
+(`internal/battencli/wire.go:50-62`) is written to detect and explain.
+Its error text reads: `"... batten does not recreate a pair from its
+branch, so restore it with \"lyx fabric checkout %s\" before resuming"`
+(wire.go:55). I followed that suggested remedy VERBATIM, from PRIME, as an
+operator reading this error would: `lyx fabric checkout cold-a`.
+
+**It did not restore anything.** `lyx fabric checkout <branch>` switches
+the CURRENT worktree (wherever it is invoked from) onto `<branch>` — per
+its own `--help` text, "Switch the warp worktree to `<branch>` and its weft
+sibling to the suffix-paired weft branch." Run from PRIME (exactly where
+every batten verb must run, per the Bookend Invariant), this switched
+**PRIME ITSELF** onto the task's own branch: the envelope's own
+`"mutations":[{"kind":"worktree_switched","target":"r5fx","detail":
+"cold-a"}, {"worktree_switched","target":"r5fx-weft","detail":"cold-a-
+weft"}]` names `r5fx` — the hub's prime warp worktree — as the thing that
+got switched, and `git branch --show-current` in PRIME confirmed it: `main`
+→ `cold-a`. No new sibling worktree was created anywhere (`ls -d
+<hub>/cold-a` still absent) — the original problem (a missing task
+worktree) is completely unaddressed, and the command returns `"ok":true`,
+giving false confidence that "restore" succeeded.
+
+This is dangerous specifically because prime is the hub-wide anchor EVERY
+batten run's `CommitStatus`/`Seed-Child`/`Worktree-Create`/`Worktree-
+Teardown` seam commits onto (`wire.go`'s own `location` — PRIME's
+`*lyxcwd.Location` — resolved once at `wire()` time from cwd, not
+re-resolved per call): with prime silently left on the wrong branch, the
+VERY NEXT status transition for ANY OTHER in-flight slug would commit onto
+whatever branch prime now happens to be checked out to, not `main-weft` —
+a hub-wide, silent divergence risk, not a contained one. I did not
+additionally prove that specific commit-onto-wrong-branch escalation live
+(deliberately, to avoid further corrupting the fixture beyond what was
+needed to establish the core defect), but the structural chain
+(`battenCommitStatusDeps`'s `Commit` closure calls `fabricengine.
+CommitAnchoredPaths` against the told `location`, which resolves paths on
+disk — the currently-checked-out branch content — not a named branch) makes
+it a straightforward, not speculative, consequence.
+
+Recovery: `lyx fabric checkout main` switched prime back cleanly (verified
+live) — so this is not irreversible, but it requires the operator to
+already understand fabric well enough to notice and undo a mutation the
+tool told them would help. Severity: **BLOCKING** — reachable via the
+exact ordinary recovery path this error message exists to guide an
+operator through (a task worktree missing on this machine, R1-F9's own
+accepted "recreate-from-branch" gap), actively wrong rather than merely
+unhelpful, and its blast radius is prime-wide, not scoped to the one slug
+being recovered.
+
+Fix direction: the doc comment two lines above the error
+(`taskWorktreeLocation`'s own "Recreating it is not attempted, since
+fabric's Add refuses a pre-existing branch by design") already knows there
+is no working one-command restore given the current fabric capability set
+(R1-F9's own accepted gap) — the error text should say that honestly
+instead of naming a command that does something else. Replace the
+`"lyx fabric checkout %s"` suggestion with accurate guidance: no `lyx
+fabric` verb currently recreates a worktree pair from a surviving branch;
+the operator must resolve it by hand (e.g., delete the stale branch on both
+sides so a resumed `lyx batten run/step` reaches `Topology.Add` cleanly, or
+manually restore the worktree pair outside lyx's own automation) before
+resuming.
 
 (Live driving continues: this round's own focus points 1/2/4, remaining
 re-confirmation of the CLOSED-AND-VERIFIED list, and the primary drive's
