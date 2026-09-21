@@ -6,8 +6,8 @@ branch `crucible-batten-end-to-end`.
 
 ## Status
 
-REVIEW COMPLETE. 2 findings (F1 LOW, F2 NIT). Proceeding to Job 2 (fix). See `_mill/batten-review-sonnet-xhigh-r3-fixer-report.md` for the
-fix record.
+REVIEW AND FIX COMPLETE. 2 findings (F1 LOW, F2 NIT), both fixed and independently re-verified (hermetic, integration, and a post-fix live
+sanity cycle with the rebuilt binary). See `_mill/batten-review-sonnet-xhigh-r3-fixer-report.md` for the fix record.
 
 ## What was read (not a review; context)
 
