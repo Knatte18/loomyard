@@ -37,7 +37,7 @@ func TestResolveStandalone_SeedsTheSpecsDirectory(t *testing.T) {
 		t.Errorf("ResolveStandalone() SpecsDir = %q; want %q", res.SpecsDir, wantDir)
 	}
 
-	for _, name := range []string{"loom-plan-spec", "loom-plan-card-format"} {
+	for _, name := range []string{"loom-plan-spec"} {
 		path := stencilstore.Path(res.SpecsDir, name)
 		content, err := os.ReadFile(path)
 		if err != nil {
@@ -90,7 +90,7 @@ func TestResolveStandalone_ToldStencilsDirStillPopulatesSpecs(t *testing.T) {
 	if res.SpecsDir != wantDir {
 		t.Errorf("ResolveStandalone() SpecsDir = %q; want %q", res.SpecsDir, wantDir)
 	}
-	for _, name := range []string{"loom-plan-spec", "loom-plan-card-format"} {
+	for _, name := range []string{"loom-plan-spec"} {
 		path := stencilstore.Path(res.SpecsDir, name)
 		if _, err := os.Stat(path); err != nil {
 			t.Errorf("stat %s: %v; want the seeded spec %q to exist even under a told --stencils-dir", path, err, name)

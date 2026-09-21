@@ -1,5 +1,5 @@
 // validate_test.go covers all seventeen of Validate's format-4 checks, each with at least one
-// triggering and one clean case, per manifest/designs/plan-card-format.md's seventeen distinct
+// triggering and one clean case, per contracts/specs/loom-plan-spec.md's distinct
 // ValidationError.Check IDs — sixteen of which ValidateFormat also emits, everything but
 // plan-unapproved.
 // The golden happy-path test reuses the format-4 seven-card golden fixture (testdata/goodplan,
@@ -167,7 +167,7 @@ func TestValidateFormat_NeverReportsApproval(t *testing.T) {
 }
 
 // TestValidate_FormatAndApproval covers format-unrecognized and plan-unapproved together, since
-// both stem from the same overview frontmatter and manifest/designs/plan-card-format.md checks
+// both stem from the same overview frontmatter and contracts/specs/loom-plan-spec.md checks
 // them as a pair.
 func TestValidate_FormatAndApproval(t *testing.T) {
 	t.Parallel()

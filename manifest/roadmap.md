@@ -20,7 +20,7 @@ Committed to eventually — will be done — but not scheduled next.
 No build order is implied between these items.
 
 1. **webster: worktree-per-card parallel execution** — give each DAG-independent group its own `fabric`-spawned worktree, so concurrent cards stop sharing one git index. A speed optimization over an already-correct sequential system.
-   See [designs/plan-card-format.md](designs/plan-card-format.md) and [designs/webster-parallel-execution.md](designs/webster-parallel-execution.md).
+   See [../contracts/specs/loom-plan-spec.md](../contracts/specs/loom-plan-spec.md) and [designs/webster-parallel-execution.md](designs/webster-parallel-execution.md).
 
 1. **VS Code as opt-in per worktree, not spun up by default** — default to CLI/tmux and start VS Code only on request, since the common case is reviewing the final PR rather than watching an agent edit live. Likely shape: a fourth per-worktree launcher variant (see `internal/fabricengine/launchers.go`) that opens VS Code just far enough to `lyx reed attach` — a terminal-launcher convenience, not a standing editor.
 

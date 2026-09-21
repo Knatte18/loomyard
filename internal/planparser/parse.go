@@ -6,7 +6,7 @@
 // Per-card content defects (a missing field, a malformed Rename: bullet) are recorded leniently
 // into the Card model instead, per the lenient-card-parse decision documented in doc.go.
 // The card body grammar itself is format-5's type-label model
-// (manifest/designs/plan-card-format.md): a card's own body carries one or more bold type labels
+// (contracts/specs/loom-plan-spec.md): a card's own body carries one or more bold type labels
 // (Create/Edit/Delete/Rename/Move/Prosa/Custom), each carrying its own target list and
 // contributing its own TargetGroup, Uses:/Intent:/ImpactSummary: are the remaining recognized
 // field labels, and the eight format-3 labels stay recognized but retired — they route into
@@ -344,7 +344,7 @@ func parseCardFile(planDir string, entry cardIndexEntry) (Card, error) {
 }
 
 // Bold-label prefixes for the seven type labels format-5 recognizes as a card's own target-list
-// key (manifest/designs/plan-card-format.md's "Card fields"). The type name is the key — there is
+// key (contracts/specs/loom-plan-spec.md's "Card fields and order"). The type name is the key — there is
 // no separate "Type:" label. A card body carries one or more of these labels, each contributing
 // its own TargetGroup.
 const (

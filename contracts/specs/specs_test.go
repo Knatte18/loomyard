@@ -16,7 +16,7 @@ import (
 // order is the order `lyx stencil list` prints them in, and the names are what
 // stencilstore.RelPath derives the deployed family directory from.
 func TestRegistry_NamesAreStableAndComplete(t *testing.T) {
-	want := []string{"loom-plan-spec", "loom-plan-card-format"}
+	want := []string{"loom-plan-spec"}
 	got := Registry().Names()
 
 	if len(got) != len(want) {
@@ -59,7 +59,6 @@ func TestRegistry_RelPathPlacesBothUnderLoomFamily(t *testing.T) {
 		want string
 	}{
 		{"loom-plan-spec", "loom/loom-plan-spec.md"},
-		{"loom-plan-card-format", "loom/loom-plan-card-format.md"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

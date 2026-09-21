@@ -10,7 +10,7 @@ package planparser
 import "fmt"
 
 // CardType is the type label a card's own body declares — the key of the card's target list
-// (`**Create:**`, `**Edit:**`, and so on) per manifest/designs/plan-card-format.md.
+// (`**Create:**`, `**Edit:**`, and so on) per contracts/specs/loom-plan-spec.md.
 type CardType string
 
 // The recognized format-5 card type labels.

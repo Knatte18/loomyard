@@ -1,10 +1,9 @@
-// specs.go is one of the two Go files //go:embed reaches for the two normative docs deployed
-// alongside stencils: //go:embed reaches only files at or below its own directory and its patterns
-// may not contain "..", and the two travelling documents live in directories with no common
-// ancestor below the repository root, so this package embeds its own doc directly and imports
-// manifest/designs for the other. Beside the embedded var, this file declares the name-to-default
+// specs.go embeds every normative doc deployed alongside stencils and declares the name-to-default
 // registry that internal/stencilstore.Registry consumes, mirroring contracts/stencils/stencils.go's
-// role as the one place a new spec is registered. Registry()'s consumers are the hub root pre-run,
+// role as the one place a new spec is registered. A doc lands in this directory so //go:embed can
+// reach it -- the directive reaches only files at or below its own directory and its patterns may
+// not contain "..", so a travelling doc kept anywhere else would need a second embed site of its
+// own. Registry()'s consumers are the hub root pre-run,
 // internal/cliwire, and internal/stencilcli; no engine imports this package -- an engine reads a
 // deployed spec by path, never through the registry.
 
@@ -14,7 +13,6 @@ import (
 	_ "embed"
 
 	"github.com/Knatte18/loomyard/internal/stencilstore"
-	"github.com/Knatte18/loomyard/manifest/designs"
 )
 
 // LoomPlanSpec is the plan format contract's shipped-default content: the grammar Plan-Write's and
@@ -31,14 +29,10 @@ type registryEntry struct {
 
 // entries is the ordered name-to-default registry: the order specs are listed here is the order
 // `lyx stencil list` prints them in.
-// The registered name loom-plan-card-format is deliberately not its source file's basename
-// (plan-card-format): stencilstore.RelPath derives the family directory from the substring up to
-// the first "-", so a bare plan-card-format would create a lone one-file plan/ family directory.
-// Both docs belong to loom, so both registered names start loom-; only the registered name differs
-// from the source basename, the source file itself is not renamed.
+// A registered name starts with its owning product's name because stencilstore.RelPath derives the
+// family directory from the substring up to the first "-".
 var entries = []registryEntry{
 	{"loom-plan-spec", &LoomPlanSpec},
-	{"loom-plan-card-format", &designs.PlanCardFormat},
 }
 
 // registry implements stencilstore.Registry over entries.

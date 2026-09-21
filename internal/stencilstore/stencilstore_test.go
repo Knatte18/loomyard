@@ -157,7 +157,6 @@ func TestRelPath(t *testing.T) {
 	}{
 		{"loom-template-plan", "loom/loom-template-plan.md"},
 		{"loom-plan-spec", "loom/loom-plan-spec.md"},
-		{"loom-plan-card-format", "loom/loom-plan-card-format.md"},
 		{"solo", "solo.md"},
 	}
 	for _, tt := range tests {

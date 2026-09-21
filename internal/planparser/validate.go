@@ -1,5 +1,5 @@
 // validate.go implements ValidateFormat and Validate, format-5 plan-format's machine check sets
-// (manifest/designs/plan-card-format.md), run in this fixed order.
+// (contracts/specs/loom-plan-spec.md), run in this fixed order.
 // ValidateFormat emits twenty-seven of the following distinct ValidationError.Check IDs, everything
 // but plan-unapproved; Validate emits all twenty-eight: format-unrecognized (checkFormatRecognized),
 // plan-language-unrecognized (checkLanguageRecognized), plan-unapproved (checkApproved),
