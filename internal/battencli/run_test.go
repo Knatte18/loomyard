@@ -309,6 +309,33 @@ func TestPauseCmd_AbsentFileRefuses(t *testing.T) {
 	}
 }
 
+// TestStatusAndPause_ReadADurableStatusWhoseLockDirIsAbsent pins the cold-machine shape: the durable
+// status file is present (it travelled with the pair) while the ephemeral lock directory is not (this
+// machine never stepped the slug). Both read-only verbs must answer from the file rather than fail to
+// open a lock in a directory nothing has created yet.
+func TestStatusAndPause_ReadADurableStatusWhoseLockDirIsAbsent(t *testing.T) {
+	for _, verb := range []string{"status", "pause"} {
+		t.Run(verb, func(t *testing.T) {
+			c := newFakeReceiver(t, nil)
+			writeStatus(t, c, shedengine.Status{
+				CurrentProducer: battenrecipe.NameRunShed,
+				State:           shedengine.StateRunning,
+				History:         []shedengine.HistoryEntry{},
+			})
+			c.shedPaths.StatusLockPath = filepath.Join(filepath.Dir(c.shedPaths.StatusPath), "scratch", "status.json.lock")
+
+			var out bytes.Buffer
+			exitCode := clihelp.Execute(battenVerbCommand(c, verb), &out, []string{c.slug})
+			if exitCode != 0 {
+				t.Fatalf("%s() exit code = %d; want 0; output: %s", verb, exitCode, out.String())
+			}
+			if verb == "status" && !strings.Contains(out.String(), `"found":true`) {
+				t.Errorf("status() output = %q; want the durable status reported as found", out.String())
+			}
+		})
+	}
+}
+
 // TestStatusCmd_RegistersWatchAndIntervalFlags asserts status -- new in this task -- exposes
 // --watch and --interval, the two flags shedverbs' generic status body itself reads.
 func TestStatusCmd_RegistersWatchAndIntervalFlags(t *testing.T) {

@@ -83,8 +83,7 @@ func refuseSelfAddress(runID string, explicit bool) error {
 
 // battenAutoSeedVerbs is the set of verbs that seed a fresh run when no seed exists yet at the
 // addressed run-id. Every other verb requires one and refuses instead: read-only verbs must not
-// create state as a side effect of being asked a question, the same reasoning
-// specFor's EnsureStatusLockDir: false already encodes for batten's status verb.
+// create a run as a side effect of being asked a question.
 func battenAutoSeedVerbs(verb string) bool {
 	switch verb {
 	case "run", "step":
@@ -296,9 +295,12 @@ func (c *battenCLI) specFor(verb string) shedverbs.Spec {
 		StatusPath:     c.shedPaths.StatusPath,
 		LockPath:       c.shedPaths.LockPath,
 		StatusLockPath: c.shedPaths.StatusLockPath,
-		// batten's status and pause are both false here: status is read-only, so creating its
-		// per-slug directory as a side effect of reading it would be a new, unasked-for write.
-		EnsureStatusLockDir: false,
+		// The status file is durable and its lock is ephemeral, so a machine that never stepped
+		// this slug -- a fresh clone, or a hand-seeded run -- has the file and not the lock's
+		// directory. Creating that directory is not a write to the run: it is what lets the
+		// read-only verbs read a status the pair carried here, which is the reason the status is
+		// durable at all.
+		EnsureStatusLockDir: true,
 		StatusLabel:         "batten",
 		DecodeErrPrefix:     "battencli:",
 		RunBusyMessage:      fmt.Sprintf("battencli: another batten run already holds the run lock %q", c.shedPaths.LockPath),
