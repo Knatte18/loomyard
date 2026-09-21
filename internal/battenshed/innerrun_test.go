@@ -22,7 +22,7 @@ type fakeClock struct {
 }
 
 func (c *fakeClock) Now() time.Time { return c.now }
-func (c *fakeClock) Sleep(d time.Duration) {
+func (c *fakeClock) Sleep(ctx context.Context, d time.Duration) {
 	c.sleepCalls++
 }
 
@@ -311,5 +311,41 @@ func TestInnerRun_NilSeamsDefaultToStdlib(t *testing.T) {
 	}
 	if outcome != shedengine.Done {
 		t.Errorf("Call() outcome = %v; want Done", outcome)
+	}
+}
+
+// TestWaitOrCancel_ReturnsImmediatelyOnACancelledContext proves the production sleep value a nil
+// InnerRunDeps.Sleep resolves to does not hold an operator's stop for the whole poll interval.
+//
+// The regression it pins: the still-running arm used a bare time.Sleep, so a context cancelled
+// during the wait was not observed until the full interval had elapsed -- 30 seconds by the batten
+// recipe's own poll_interval_s -- even though Call's cancellation check sits on the very next line.
+//
+// It is deadline-based rather than sleep-based: it asserts the call RETURNS under a generous bound,
+// never that it took some exact duration, so it is deterministic under -count=5.
+func TestWaitOrCancel_ReturnsImmediatelyOnACancelledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	done := make(chan struct{})
+	go func() {
+		waitOrCancel(ctx, time.Hour)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("waitOrCancel did not return on an already-cancelled context; it waited out its own interval")
+	}
+}
+
+// TestWaitOrCancel_WaitsOutAShortIntervalWhenNotCancelled proves the wait is a real wait, not a
+// no-op that happens to satisfy the cancellation test above.
+func TestWaitOrCancel_WaitsOutAShortIntervalWhenNotCancelled(t *testing.T) {
+	start := time.Now()
+	waitOrCancel(context.Background(), 20*time.Millisecond)
+	if elapsed := time.Since(start); elapsed < 20*time.Millisecond {
+		t.Errorf("waitOrCancel(background, 20ms) returned after %s; want at least its own interval", elapsed)
 	}
 }

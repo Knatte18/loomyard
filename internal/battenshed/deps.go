@@ -59,10 +59,15 @@ type InnerRunDeps struct {
 	// Now returns the current time. A nil Now resolves to time.Now in NewInnerRun, so production
 	// code never sets this field; a test holds the clock still by setting it.
 	Now func() time.Time
-	// Sleep pauses for d. A nil Sleep resolves to time.Sleep in NewInnerRun; a test replaces it
-	// with a no-op so the attempt-cap test proves the bound is attempt-counted, not
-	// wall-clock-timed, without spending any real time.
-	Sleep func(d time.Duration)
+	// Sleep pauses for d, returning early when ctx is cancelled. A nil Sleep resolves to
+	// waitOrCancel in NewInnerRun; a test replaces it with a no-op so the attempt-cap test proves
+	// the bound is attempt-counted, not wall-clock-timed, without spending any real time.
+	//
+	// It takes a context rather than being a bare time.Sleep because this is the longest wait the
+	// producer performs and it sits directly in front of a cancellation check: a plain sleep held
+	// an operator's stop for the whole poll interval before the check it was about to fail could
+	// even run.
+	Sleep func(ctx context.Context, d time.Duration)
 }
 
 // SeedChildDeps carries every told value and injected closure NewSeedChild needs, carrying no
