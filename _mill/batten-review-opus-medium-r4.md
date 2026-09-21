@@ -95,6 +95,36 @@ Both refuse, so nothing unsafe happens; the wording is just the weaker of the tw
 
 **Confidence:** CONFIRMED — both messages observed live.
 
+### F5 — batten broke the Driver Choice Single-Site Invariant; its tripwire is RED at HEAD and `CONSTRAINTS.md` asserts the opposite (BLOCKING, CONFIRMED)
+
+**Where:** `internal/battencli/arm.go:123` and `arm.go:126` (`refuseAdoptedSeed`'s two `seed.Driver` reads), against `CONSTRAINTS.md:122-130` and its tripwire `internal/loomcli/bootstrap_test.go:686`.
+
+> Found during this round's Job 2 verification, not during Job 1: the round prompt's own hermetic command covers only the three batten packages plus `cmd/lyx`, and this tripwire lives in `internal/loomcli`. A full `go test ./...` is what surfaces it. Recorded here as a finding and fixed like any other.
+
+**Scenario (reproduced, and present on a clean tree).**
+
+```
+go test -count=1 -run TestDriverChoiceSingleSiteInvariant ./internal/loomcli/...
+--- FAIL: TestDriverChoiceSingleSiteInvariant_OnlyLoomcliReadsTheSeedDriverField
+    bootstrap_test.go:714: found a production reader of shedrun.Seed's Driver field outside
+    internal/loomcli and internal/shedrun: internal/battencli/arm.go:123, internal/battencli/arm.go:126
+```
+
+Verified red with my own working tree stashed, so it is **not** caused by this round's F1 fix. `git log -L` places the cause at `3c11aa679 batten: fix F3/F4 — refuse a seeded run that disagrees with the invocation, instead of adopting it silently` — a fix from an earlier round on this same branch, which introduced `refuseAdoptedSeed` and with it the first `seed.Driver` reader outside `internal/loomcli`. Three rounds have run since without noticing, because none of them ran the repo-wide suite.
+
+Two things are wrong, not one:
+
+1. **The tripwire is red**, so the branch cannot merge on a green build.
+2. **`CONSTRAINTS.md` is now factually false about this very file.** Line 128 lists "batten's own flag validation in `internal/battencli/arm.go`" among the *permitted constant consumers* and states outright that it "[does not read] a written seed's `Driver` field" — which stopped being true at `3c11aa679`. Line 126 also says "no code path gates a refusal on it", and `refuseAdoptedSeed` gates exactly that.
+
+**Which way to resolve it.** Deleting `refuseAdoptedSeed`'s driver comparison would reintroduce the real defect that round found — silently dropping a typed `--driver` against a seeded run. And the comparison is not the failure mode the invariant is written against: its stated rationale is "silent divergence between what a run was seeded as and what it is actually doing — unobservable from either the status file or the envelope", and it explicitly prefers the loud alternative ("a flag validator ... fails loudly at the command line, where a mistake is visible immediately"). `refuseAdoptedSeed` *is* that loud command-line refusal: it compares a value the operator just typed against the recorded one, refuses on the envelope, and selects no spawn and no behaviour.
+
+So the right resolution is the one the tripwire's own failure message prescribes — "review the new site and ... extend this scan's allowlist **deliberately** rather than widen it silently" — paired with correcting the invariant text so the carve-out is stated where the rule lives, not just where the scan runs.
+
+**Fix.** (a) A narrow, path-scoped allowlist entry in `internal/loomcli/bootstrap_test.go` naming `internal/battencli/arm.go` and why; (b) `CONSTRAINTS.md`'s Driver Choice Single-Site Invariant amended to state the carve-out precisely and to stop asserting the false claim about `arm.go`; (c) the repo-wide command added to this campaign's own test list so the next round cannot repeat the miss.
+
+**Confidence:** CONFIRMED — reproduced on a clean tree, cause located by `git log -L`.
+
 ### F4 — the design doc's second shipped residual is written down nowhere in the code (NIT, CONFIRMED)
 
 **Where:** `internal/battenshed/doc.go:15-19`.
