@@ -51,6 +51,14 @@ type battenCLI struct {
 	// childDriverFlag is driverFlag's sibling for --child-driver, the value armSeed writes into the
 	// auto-seeded seed's params.child_driver.
 	childDriverFlag string
+	// driverFlagSet records whether the operator actually typed --driver, as opposed to cobra
+	// filling the field with its StringVar default. The value alone cannot carry the distinction,
+	// since the default is itself a legal driver name. refuseAdoptedSeed (arm.go) consults it so a
+	// flag left at its default never contradicts an already-seeded run, while one the operator typed
+	// and that cannot take effect is refused by name instead of silently dropped.
+	driverFlagSet bool
+	// childDriverFlagSet is driverFlagSet's sibling for --child-driver.
+	childDriverFlagSet bool
 }
 
 // battenVerbTexts carries batten's four shedverbs-driven verbs' Use/Short/Long text.
@@ -201,6 +209,13 @@ func (c *battenCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) e
 
 	ctx := cmd.Context()
 	out := cmd.OutOrStdout()
+
+	// Recorded here rather than in arm, which never sees the *cobra.Command: a flag's VALUE cannot
+	// carry "the operator typed this", because its default is itself a legal driver name. Changed
+	// reports false for a flag the command does not declare at all, so status and pause -- which
+	// declare neither -- are unaffected.
+	c.driverFlagSet = cmd.Flags().Changed("driver")
+	c.childDriverFlagSet = cmd.Flags().Changed("child-driver")
 
 	cwd, err := lyxcwd.CwdFrom(ctx)
 	if err != nil {

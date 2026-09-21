@@ -178,3 +178,96 @@ func TestArmSeed_NoSeedGivesTheListingRefusal_SeedPresentWithNoStatusGivesFoundF
 		t.Fatalf("status.json exists at %q after armSeed alone; want it absent -- that is battenPreRun's own seed-when-absent job, not armSeed's", filepath.Dir(shedrun.StatusFile(loc, "seeded-slug")))
 	}
 }
+
+// TestRefuseAdoptedSeed proves the two ways an already-existing seed can disagree with the
+// invocation that found it, and that an agreeing one is left alone.
+//
+// The regressions this pins, both confirmed live before the fix: a run hand-seeded
+// "lyx shed seed <slug> --recipe loom" was driven by "lyx batten run <slug>" anyway, creating a real
+// task worktree under a recipe the seed does not name; and a --child-driver the operator typed
+// against an already-seeded run was dropped with no message and no surface revealing it.
+func TestRefuseAdoptedSeed(t *testing.T) {
+	battenSeedGoChild := shedrun.Seed{
+		Recipe: shedrun.RecipeBatten,
+		Driver: shedrun.DriverGo,
+		Params: map[string]string{"slug": "some-slug", "child_driver": shedrun.DriverGo},
+	}
+	battenSeedLLMChild := shedrun.Seed{
+		Recipe: shedrun.RecipeBatten,
+		Driver: shedrun.DriverGo,
+		Params: map[string]string{"slug": "some-slug", "child_driver": shedrun.DriverLLM},
+	}
+	battenSeedNoChildParam := shedrun.Seed{Recipe: shedrun.RecipeBatten, Driver: shedrun.DriverGo}
+	loomSeed := shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: shedrun.DriverGo}
+
+	tests := []struct {
+		name            string
+		seed            shedrun.Seed
+		driverFlag      string
+		driverSet       bool
+		childDriverFlag string
+		childDriverSet  bool
+		wantSubstr      string
+	}{
+		{
+			name: "agreeing_batten_seed_with_no_typed_flags_is_left_alone",
+			seed: battenSeedGoChild,
+		},
+		{
+			name:            "defaulted_flags_never_contradict_an_llm_child_run",
+			seed:            battenSeedLLMChild,
+			driverFlag:      shedrun.DriverGo,
+			childDriverFlag: shedrun.DriverGo,
+		},
+		{
+			name:       "a_loom_seed_is_refused_naming_the_verb_that_would_honour_it",
+			seed:       loomSeed,
+			wantSubstr: `already seeded with recipe "loom"`,
+		},
+		{
+			name:       "a_typed_driver_that_cannot_take_effect_is_refused",
+			seed:       battenSeedGoChild,
+			driverFlag: shedrun.DriverLLM,
+			driverSet:  true,
+			wantSubstr: `--driver "llm" cannot change a seeded run's recorded driver`,
+		},
+		{
+			name:            "a_typed_child_driver_that_cannot_take_effect_is_refused",
+			seed:            battenSeedLLMChild,
+			childDriverFlag: shedrun.DriverGo,
+			childDriverSet:  true,
+			wantSubstr:      `already seeded with child driver "llm"`,
+		},
+		{
+			name:            "an_absent_child_driver_param_compares_as_go",
+			seed:            battenSeedNoChildParam,
+			childDriverFlag: shedrun.DriverLLM,
+			childDriverSet:  true,
+			wantSubstr:      `already seeded with child driver "go"`,
+		},
+		{
+			name:            "a_typed_child_driver_that_agrees_is_accepted",
+			seed:            battenSeedLLMChild,
+			childDriverFlag: shedrun.DriverLLM,
+			childDriverSet:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := refuseAdoptedSeed(tt.seed, "some-slug", tt.driverFlag, tt.driverSet, tt.childDriverFlag, tt.childDriverSet)
+			if tt.wantSubstr == "" {
+				if err != nil {
+					t.Fatalf("refuseAdoptedSeed(...) = %v; want nil", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("refuseAdoptedSeed(...) = nil; want a refusal containing %q", tt.wantSubstr)
+			}
+			if !strings.Contains(err.Error(), tt.wantSubstr) {
+				t.Errorf("refuseAdoptedSeed(...) = %q; want it to contain %q", err.Error(), tt.wantSubstr)
+			}
+		})
+	}
+}

@@ -103,9 +103,63 @@ func battenDriver(flagVal string) string {
 	return flagVal
 }
 
-// armSeed gates batten's auto-seed: it reads the seed at runID, does nothing when one already
-// exists, writes a fresh one for "run" and "step" when absent, and refuses every other verb with
-// shedrun.MissingSeedMessage naming "lyx batten run <slug>" as the remedy.
+// refuseAdoptedSeed refuses a seed that already exists at this run-id but does not describe the run
+// the operator is asking batten to drive. A found seed is authoritative -- it is the run's write-once
+// recorded identity and is never overwritten here -- but authoritative is not the same as silently
+// adopted, and these are the two ways an existing seed can disagree with the invocation.
+//
+// The recipe check is the load-bearing one. Nothing else compares a found seed's recipe against
+// batten's own, so a run hand-seeded "lyx shed seed <slug> --recipe loom" and then driven with
+// "lyx batten run <slug>" arms batten's recipe against a run recorded as loom: the same run
+// directory is then driven by two different recipes depending on which verb is typed, and
+// "lyx shed status <slug>" reads batten's own status file through loom's envelope shape. The
+// disagreement is permanent and silent, which is exactly what a write-once identity must not be.
+//
+// The driver checks answer a flag the operator can see has had no effect. Both flags are read only
+// on the absent-seed path below, so once a run is seeded they are dropped without a word and no
+// surface reveals it. Only an EXPLICITLY typed flag is checked: a flag left at its cobra default
+// carries no operator intent to contradict, and refusing on it would make every ordinary resume of
+// an llm-child run fail.
+//
+// childDriverOf resolves the recorded child driver the same way the SeedChild wiring seam does --
+// an absent or empty param means shedrun.DriverGo -- so the comparison is against the value that
+// will actually be used, never against a raw missing key.
+func refuseAdoptedSeed(seed shedrun.Seed, runID string, driverFlag string, driverSet bool, childDriverFlag string, childDriverSet bool) error {
+	if seed.Recipe != shedrun.RecipeBatten {
+		return fmt.Errorf(
+			"battencli: run %q is already seeded with recipe %q, not %q; batten refuses to drive it -- drive it with \"lyx shed run %s\", or delete its seed to re-seed it as a batten run",
+			runID, seed.Recipe, shedrun.RecipeBatten, runID,
+		)
+	}
+	if driverSet && driverFlag != seed.Driver {
+		return fmt.Errorf(
+			"battencli: run %q is already seeded with driver %q; --driver %q cannot change a seeded run's recorded driver",
+			runID, seed.Driver, driverFlag,
+		)
+	}
+	if recorded := childDriverOf(seed); childDriverSet && childDriverFlag != recorded {
+		return fmt.Errorf(
+			"battencli: run %q is already seeded with child driver %q; --child-driver %q cannot change a seeded run's recorded child driver",
+			runID, recorded, childDriverFlag,
+		)
+	}
+	return nil
+}
+
+// childDriverOf returns the child driver seed records, defaulting an absent or empty
+// params.child_driver to shedrun.DriverGo -- the same resolution the SeedChild wiring seam's own
+// ChildDriver closure performs, so a refusal never compares against a value the run would not use.
+func childDriverOf(seed shedrun.Seed) string {
+	if driver, ok := seed.Params["child_driver"]; ok && driver != "" {
+		return driver
+	}
+	return shedrun.DriverGo
+}
+
+// armSeed gates batten's auto-seed: it reads the seed at runID, refuses a found seed that disagrees
+// with this invocation (refuseAdoptedSeed) and otherwise leaves it untouched, writes a fresh one for
+// "run" and "step" when absent, and refuses every other verb with shedrun.MissingSeedMessage naming
+// "lyx batten run <slug>" as the remedy.
 //
 // Prime's seed carries recipe: "batten", never the Board task's own type: the two are different
 // runs' recipes, and a prime seed carrying "loom" would make "lyx shed status <slug>" from prime arm
@@ -125,12 +179,12 @@ func battenDriver(flagVal string) string {
 // The refusal carries no "kind" field, keeping the five-value step refusal-kind vocabulary closed:
 // a missing run is not a sixth kind.
 func (c *battenCLI) armSeed(location *lyxcwd.Location, runID, verb string) error {
-	_, found, err := shedrun.ReadSeed(location, runID)
+	seed, found, err := shedrun.ReadSeed(location, runID)
 	if err != nil {
 		return err
 	}
 	if found {
-		return nil
+		return refuseAdoptedSeed(seed, runID, c.driverFlag, c.driverFlagSet, c.childDriverFlag, c.childDriverFlagSet)
 	}
 
 	if !battenAutoSeedVerbs(verb) {
