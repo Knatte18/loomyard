@@ -33,9 +33,14 @@ implementing  '2026-09-21T14:09:09Z'
 ```yaml
 batches:
   - name: shell-prelude-primitives
-    state: pending
+    state: running
+    implementer_session: c17b1fa4-7351-45af-8c70-f666c5771291
+    start_sha: d9dd9afe99467254535138be3a486ff96c118042
+    verify_baseline_failures: []
   - name: reed-pane-binary-chokepoint
     state: pending
+    verify_baseline_failures: []
   - name: docs-and-sandbox-preconditions
     state: pending
+    verify_baseline_failures: []
 ```
