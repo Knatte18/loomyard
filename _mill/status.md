@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: lyx-bin-pane-path
 branch: lyx-bin-pane-path
-plan: null
+plan: _mill/plan
 parent: main
 task: Spawned agent panes resolve the spawning lyx binary
 task_description: |
@@ -21,4 +21,5 @@ discussion-gap-fix-r3  '2026-09-21T11:22:17Z'
 discussion-gap-fix-r4  '2026-09-21T11:27:18Z'
 discussion-gap-fix-r5  '2026-09-21T11:35:38Z'
 discussed  '2026-09-21T11:35:51Z'
+planning  '2026-09-21T11:49:23Z'
 ```
