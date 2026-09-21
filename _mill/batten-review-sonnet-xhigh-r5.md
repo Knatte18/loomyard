@@ -11,6 +11,42 @@ reading any prior round's `_mill/batten-review-*` material. Prior-round
 context was read only afterward, to re-confirm previously-fixed behavior and
 re-evaluate the two deferred items — never to shape the findings list itself.
 
+## Executive summary
+
+**5 findings: 1 BLOCKING, 1 MEDIUM, 1 LOW, 2 NIT. All 5 fixed in Job 2, all
+green. No deferrals.**
+
+Four rounds in, the structural core of batten (the four-row recipe, the
+Bookend Invariant, teardown ordering, the driver/seed plumbing, the prime
+lock's scope) keeps proving solid under fresh adversarial pressure and a
+now-second genuine real-agent end-to-end drive — this round found nothing
+wrong with any of that. What it found instead, consistent with R4's own
+"real yield comes from expanding scope" observation, sits at the edges:
+- **F5 (BLOCKING)** — the one genuinely dangerous find. A task worktree
+  missing on this machine is a real, expected recovery scenario (R1-F9's
+  own accepted gap), and the error message written to guide an operator
+  through it names a command that, live-reproduced, switches the HUB'S
+  PRIME worktree itself onto the task's branch instead of restoring
+  anything — a hub-wide mutation risk, not a per-slug one, delivered with
+  a false `"ok":true`.
+- **F3 (MEDIUM)** — a real classification inconsistency: a disagreeing
+  hand-seed at `Seed-Child` (the same kind of business-judgment refusal as
+  the two recognized ones sitting right next to it in the same function)
+  surfaces as a hard `StateFailed` with no `stuck_reason`, instead of the
+  `Stuck`/`blocked`-with-a-named-remedy shape its siblings get.
+- **F2 (LOW)** and **F1/F4 (NIT)** — a real but narrow-blast-radius UTF-8
+  truncation bug, a corrupted doc comment inherited via the #017 merge
+  (found by this round's own blast-radius sweep, not previously flagged),
+  and a test-coverage completeness gap.
+
+**Merge-readiness verdict: MERGEABLE**, once this round's own fixes (below)
+are in — which they are, as of this report's own close. No BLOCKING or
+MEDIUM finding was left unfixed; nothing in this round's own adversarial
+pass, including the two full real live-agent drives (one `--child-driver
+llm`, one `--child-driver go` all the way to a genuine terminal state),
+surfaced a correctness defect in the four-row recipe's own core behavior,
+the Bookend Invariant, teardown ordering, or the prime lock's scope.
+
 ## What was tested
 
 ### Static / code reading (Job 1, phase 1)
