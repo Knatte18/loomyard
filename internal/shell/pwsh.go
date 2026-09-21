@@ -38,3 +38,21 @@ func (p pwshShell) WithEnv(key, value, cmd string) string {
 func (p pwshShell) Touch(path string) string {
 	return "New-Item -ItemType File -Force -Path " + p.Quote(path) + " | Out-Null"
 }
+
+// ExportEnv returns a pwsh `$env:key = <quoted value>` statement, session-scoped.
+func (p pwshShell) ExportEnv(key, value string) string {
+	return "$env:" + key + " = " + p.Quote(value)
+}
+
+// PrependPathEntry returns a pwsh `$env:PATH = <quoted dir> + $(if ($env:PATH) { ... })`
+// statement.
+// The `if` has no `else`, so the subexpression yields nothing when $env:PATH is empty or unset
+// and the assignment is the directory alone.
+func (p pwshShell) PrependPathEntry(dir string) string {
+	return "$env:PATH = " + p.Quote(dir) + ` + $(if ($env:PATH) { [IO.Path]::PathSeparator + $env:PATH })`
+}
+
+// Chain joins parts with "; ", dropping empty parts. See chainStatements.
+func (p pwshShell) Chain(parts ...string) string {
+	return chainStatements(parts...)
+}

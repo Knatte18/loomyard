@@ -191,7 +191,8 @@ Provider specifics live ONLY under `internal/shuttleengine/claudeengine`.
 
 ## Shell Mechanics Seam
 
-Pane-shell command strings are built ONLY via `internal/shell` (`Quote`/`Invoke`/`ReadFile`, stdlib-only).
+Pane-shell command strings are built ONLY via `internal/shell`, stdlib-only.
+`Quote`/`Invoke`/`ReadFile` are illustrative of the seam's mechanics, not an exhaustive interface listing.
 
 ## Fabric Vocabulary Invariant
 
