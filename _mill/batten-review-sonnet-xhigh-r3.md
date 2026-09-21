@@ -32,6 +32,26 @@ IN PROGRESS — this file is being built incrementally per the round prompt's "l
   separately is unnecessary against the current `fabric clone`).
   Exit 0, full mutation list logged (worktrees + junctions + board commit + weft config commit).
 
+### Scenario: item 11 — `lyx shed seed <slug> --recipe batten` pre-seeding ahead of batten's own auto-seed
+
+- `lyx shed seed disagreeing-slug --recipe loom --param parent=main` then `lyx batten run disagreeing-slug`:
+  refused (`already seeded with recipe "loom", not "batten"`), seed left untouched (`cat` confirms `recipe: loom` survives),
+  no task worktree created. Matches spec — CONFIRMED non-defect.
+- `lyx shed seed pre-seeded-slug --recipe batten` (agreeing shape), then seeded a real Board task `pre-seeded-slug` (`type: loom`),
+  then `lyx batten step` x2 (Worktree-Create, Seed-Child both `done`): prime's own seed file for the slug is verified byte-identical
+  after both steps (`{"recipe":"batten","driver":"go"}`, never rewritten to add e.g. a `params` key) — the hand-seed stayed authoritative.
+  CONFIRMED non-defect.
+
+### Scenario: item 1 — Batten Bookend Invariant
+
+Drove `lyx batten status/run/step pre-seeded-slug` from inside the just-created task worktree (`$HUB/pre-seeded-slug`): all three refuse,
+naming both worktree names (`"pre-seeded-slug" is not the prime worktree ("warp-fixture" is)`) and telling the operator to re-run from there.
+Drove `status` from the weft sibling (`pre-seeded-slug-weft`), from `_board`, and from prime's OWN weft sibling (`warp-fixture-weft`): all
+three refuse via `fabricengine.RequireWarpWorktree`, naming the specific non-warp checkout kind (weft sibling / `_board` checkout).
+Also confirmed the refusal names the WORKTREE the operator is standing in, not the slug argument they typed (ran `batten status some-other-slug`
+from inside `pre-seeded-slug` — refusal still names `"pre-seeded-slug"`, not `"some-other-slug"`), so the message is never ambiguous about
+which fact it is reporting. CONFIRMED non-defect — all of item 1's required refusals hold.
+
 (remainder appended as scenarios run)
 
 ## Findings (provisional; severity/ordering finalized at the end)
