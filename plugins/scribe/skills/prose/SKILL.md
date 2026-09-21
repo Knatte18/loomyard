@@ -34,6 +34,11 @@ If a sentence adds no new information, cut it.
 State a rule, fact, or conclusion in the one place it belongs.
 Don't repeat it in a summary, a "why this matters" aside, or a closing recap — reference the original instead of restating it.
 
+## Never pin a count
+
+A tally of rows, stages, entries, verbs, or checks is a cross-reference to whatever holds them, so it goes stale the moment one is added — name the source, not the number ("the recipe's rows", never "the recipe's fourteen rows"), write "every module but `selfreportcli`" rather than "thirteen of fourteen", cut a count standing next to the list it counts, and in code derive it (`len(wantTable)`) instead of repeating a literal.
+The one exception is a closed set whose size is the contract — an enum a test pins shut — and even that is stated once, at its definition site.
+
 ## Line breaks
 
 Applies to any multi-line prose written into a file — markdown paragraphs and list items, and multi-line code comments/docstrings alike.

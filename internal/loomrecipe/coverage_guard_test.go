@@ -19,7 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 )
 
-// loomRowEngines maps each of New's fourteen row names to the engine name backing it. The row-name
+// loomRowEngines maps each of New's row names to the engine name backing it. The row-name
 // side is keyed off loomshed's own Name* constants, per the row-name-authority-stays-with-the-go-
 // constants Shared Decision -- loomshed reads two of them for status-seed and resume purposes, so
 // those constants remain the authority even though this package now builds the list. The engine

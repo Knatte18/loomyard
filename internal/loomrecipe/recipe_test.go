@@ -19,9 +19,9 @@ import (
 // TestNew_ShapeMatchesRecipe is internal/shedbuild/equivalence_test.go's assertion loop with its
 // loomshed.New side replaced by wantProducerTable, the package's single authoritative row table
 // (declared in shape_test.go, extended there with a reflect.Type column for exactly this test): it
-// builds the embedded recipe through New from testEnv(t), asserts exactly fourteen rows, and for
-// each row asserts Name, OnDone, OnStuck, Segment, MaxBounces, and the expected concrete Producer
-// type.
+// builds the embedded recipe through New from testEnv(t), asserts the built row count matches that
+// table's own length, and for each row asserts Name, OnDone, OnStuck, Segment, MaxBounces, and the
+// expected concrete Producer type.
 func TestNew_ShapeMatchesRecipe(t *testing.T) {
 	env, paths := testEnv(t)
 	shed, err := New(env, paths)
@@ -29,11 +29,8 @@ func TestNew_ShapeMatchesRecipe(t *testing.T) {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
 
-	if len(shed.Producers) != 14 {
-		t.Fatalf("New() produced %d rows; want 14", len(shed.Producers))
-	}
-	if len(wantProducerTable) != 14 {
-		t.Fatalf("wantProducerTable has %d rows; want 14", len(wantProducerTable))
+	if len(shed.Producers) != len(wantProducerTable) {
+		t.Fatalf("New() produced %d rows; want %d", len(shed.Producers), len(wantProducerTable))
 	}
 
 	for i, want := range wantProducerTable {

@@ -100,7 +100,7 @@ Confine all free text to the `title`/`body` string fields so the JSON stays well
 **Goal:** "You have `lyx` on PATH and nothing else inside this repo.
 Find out what `lyx fabric` can do and report its full command tree."
 
-**Watch:** Does `lyx fabric` list all 19 verbs (`clone`, `add`, `list`, `remove`, `checkout`, `pairs`, `reconcile`, `prune`, `cleanup`, `status`, `commit`, `push`, `pull`, `sync`, `diff`, `unwire`, `merge`, `merge-in`, `merge-stage`)?
+**Watch:** Does `lyx fabric` list all of its verbs (`clone`, `add`, `list`, `remove`, `checkout`, `pairs`, `reconcile`, `prune`, `cleanup`, `status`, `commit`, `push`, `pull`, `sync`, `diff`, `unwire`, `merge`, `merge-in`, `merge-stage`)?
 Does each `--help` explain itself?
 Is each description accurate and useful?
 

@@ -23,7 +23,7 @@ Do not flag any of the following as a finding:
   Rejected alternatives belong in `support-log.md`'s Rejected alternatives section, not in `decision-record.md`;
   their absence from `decision-record.md` is by design, not an omission.
 - **Incomplete call-site or cross-reference enumeration.**
-  That enumeration belongs to the compiler and to `Plan-Sweep`'s mechanical inventory, not to `Discussion-Review`.
+  That enumeration belongs to the compiler and to `Plan-Write`'s own quarry lookups, not to `Discussion-Review`.
 
 ## Also flag
 

@@ -277,7 +277,7 @@ Adding a module is three steps: import the package, add `<module>.Command()` to 
 
 `run(args, out)` is the testable seam: it builds a fresh root, merges stdout and stderr into `out`, and calls `root.ExecuteContext`, returning the process exit code without spawning a binary or trapping `os.Exit`.
 Each module also exposes `RunCLI(out io.Writer, args []string) int` — exactly `return RunCLIIn("", out, args)` — as an in-process test seam that drives a module in isolation without involving the cobra root.
-Thirteen of the fourteen modules also expose `RunCLIIn(cwd string, out io.Writer, args []string) int`: `cwd == ""` delegates to `clihelp.Execute(Command(), out, args)` exactly as `RunCLI` always has, and any other value delegates to `clihelp.ExecuteIn(Command(), cwd, out, args)`, seeding `cwd` into the execution context so the module's handlers read it back via `lyxcwd.CwdFrom(cmd.Context())` instead of the process working directory.
+Every module but one also exposes `RunCLIIn(cwd string, out io.Writer, args []string) int`: `cwd == ""` delegates to `clihelp.Execute(Command(), out, args)` exactly as `RunCLI` always has, and any other value delegates to `clihelp.ExecuteIn(Command(), cwd, out, args)`, seeding `cwd` into the execution context so the module's handlers read it back via `lyxcwd.CwdFrom(cmd.Context())` instead of the process working directory.
 `internal/selfreportcli` is the one seam module without `RunCLIIn`, since it references `lyxcwd` nowhere.
 `clihelp.ExecuteIn`, `clihelp.RunRootCtx`, and `clihelp.WrapRunCtx` are `Execute`/`RunRoot`/`WrapRun`'s context-carrying siblings: they seed an explicit cwd or propagate an existing context into a command's execution instead of relying on the process working directory, letting a handler read it back via `lyxcwd.CwdFrom(cmd.Context())`.
 `cmd/lyx/main.go` uses `RunRoot` unchanged.
@@ -401,7 +401,7 @@ loom              phase machine: drive each phase through a Bouncer gate       [
                                                                                  burler]
 ```
 
-The batten Shed nests loom's: it is its own four-row recipe whose `Run-Shed` row seeds and drives a task's loom run as a child process and polls that run's own persisted status for the verdict, so there are two status files by design — the task's, committed on the task branch, and batten's own, durable under prime's own `_lyx/shed/<slug>/` — each resuming independently.
+The batten Shed nests loom's: it is its own recipe whose `Run-Shed` row seeds and drives a task's loom run as a child process and polls that run's own persisted status for the verdict, so there are two status files by design — the task's, committed on the task branch, and batten's own, durable under prime's own `_lyx/shed/<slug>/` — each resuming independently.
 See the [Batten Bookend Invariant](../CONSTRAINTS.md#batten-bookend-invariant).
 
 **Landing preconditions.** This task's relocation of run state requires no `lifecycle` or `loom` run in flight at landing: no migration reads or moves the old `.lyx/lifecycle/<slug>/`/`_lyx/loom/status.json` layouts, so a run left in flight under either old layout resumes nowhere afterward.

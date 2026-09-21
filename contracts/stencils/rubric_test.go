@@ -58,7 +58,7 @@ func TestLoomRubricDiscussionReview_NamesEveryRequiredItem(t *testing.T) {
 	}{
 		{"missing Notes for the plan writer is not a deficiency", "Notes for the plan writer"},
 		{"missing rejected alternatives is by design", "Rejected alternatives"},
-		{"incomplete cross-reference enumeration belongs to the compiler and Plan-Sweep", "Plan-Sweep"},
+		{"incomplete cross-reference enumeration belongs to the compiler and Plan-Write", "Plan-Write`'s own quarry lookups"},
 		{"relocation and exclusion findings are legitimate", "Relocation and exclusion findings"},
 		{"completeness-before-leanness test", "completeness-before-leanness test"},
 		{"writer/reviewer symmetry note", "writer/reviewer symmetry note"},
