@@ -511,6 +511,16 @@ shut down immediately afterward via `lyx reed down` once resume was
 confirmed, to avoid running a third concurrent real campaign alongside
 `primary2`.
 
+### Scenario: run-lock busy refusal (CONFIRMED, no defect)
+
+Held `<PRIME>/.lyx/shed/lock-b/run.lock` externally via `flock`; both
+`lyx batten run lock-b` and `lyx batten step lock-b` refused, naming the
+exact lock path, `step`'s own envelope additionally carrying `"kind":
+"busy"` (the closed five-value refusal-kind vocabulary). Released after 6s;
+no further action needed to confirm the row itself (a per-slug lock, not
+`PrimeRunLock`; item 6's own scenario is the hub-scoped lock, tested
+separately above).
+
 ### Primary full end-to-end drive — in progress
 
 `primary2` (`type: loom`, `--child-driver go`, Board brief: add a trivial
