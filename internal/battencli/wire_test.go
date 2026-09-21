@@ -295,3 +295,22 @@ func TestTaskWorktreeLocation_AbsentPairIsNamed(t *testing.T) {
 		t.Errorf("taskWorktreeLocation(...) = %q; want the absent-pair case reported on its own terms, not as a resolver failure", err.Error())
 	}
 }
+
+// TestTaskWorktreePresent_AbsentIsAnAnswerNotAnError asserts the create row's idempotency probe
+// answers false with no error for a task worktree that was never created, so a genuinely absent one
+// still reaches fabric's own create rather than short-circuiting the row.
+//
+// The present case needs a real git worktree and so lives at the integration tier
+// (TestBattenIntegration_CreateRow_IsIdempotentAgainstAnAlreadyPresentWorktree); this suite stays
+// untagged and never spawns git.
+func TestTaskWorktreePresent_AbsentIsAnAnswerNotAnError(t *testing.T) {
+	prime := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+
+	present, err := taskWorktreePresent(prime, "never-created")
+	if err != nil {
+		t.Fatalf("taskWorktreePresent(prime, \"never-created\") error = %v; want nil", err)
+	}
+	if present {
+		t.Error("taskWorktreePresent(prime, \"never-created\") = true; want false")
+	}
+}

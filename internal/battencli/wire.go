@@ -61,6 +61,36 @@ func taskWorktreeLocation(prime *lyxcwd.Location, slug string) (*lyxcwd.Location
 	return lyxcwd.ResolveWorktree(worktreePath)
 }
 
+// taskWorktreePresent reports whether the task worktree for slug is already on disk under prime's
+// hub and resolvable as a worktree of its own.
+//
+// Worktree-Create's post-condition is "the task worktree for this slug exists", so a row re-entered
+// against an already-satisfied post-condition must report success rather than asking fabric to
+// create the same worktree twice. The window that makes this reachable is real: a create does
+// seconds of git work, and shedengine persists the row's transition only after the producer
+// returns, so a process killed in between leaves the worktree on disk with nothing recording it.
+// Without this probe the resumed row takes fabric's pre-existing-branch refusal, whose two named
+// remedies -- switching a pair onto the branch, and deleting the branch -- both refuse in exactly
+// that state, leaving the run unresumable by any documented action.
+//
+// It answers false rather than an error when the worktree is absent, so a genuinely absent one
+// still reaches Topology.Add and every real create failure keeps its Stuck disposition. A stat
+// error that is not "absent", and a path that is there but does not resolve as a worktree, are both
+// returned: neither is an answer to the question asked.
+func taskWorktreePresent(prime *lyxcwd.Location, slug string) (bool, error) {
+	worktreePath := fabricengine.WorktreePath(prime, slug)
+	if _, err := os.Stat(worktreePath); err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	if _, err := lyxcwd.ResolveWorktree(worktreePath); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // maxChildOutputInError caps the child output folded into a spawn error, so a misbehaving child
 // cannot push an unbounded string into a status file committed onto prime's own pair.
 const maxChildOutputInError = 2000
@@ -139,6 +169,17 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 		ScratchDir: BattenDir(location, slug),
 		PrimeLock:  primeLock,
 		CreateWorktree: func(ctx context.Context) error {
+			// The already-present probe first, so the row is idempotent against its own
+			// post-condition -- see taskWorktreePresent for the crash window this closes.
+			present, err := taskWorktreePresent(location, slug)
+			if err != nil {
+				return err
+			}
+			if present {
+				logger.Info("battencli: create worktree skipped, the task worktree is already present", "slug", slug)
+				return nil
+			}
+
 			cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(location.HubPath))
 			if err != nil {
 				return err

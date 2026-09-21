@@ -425,6 +425,46 @@ func TestBattenIntegration_RunShedBlocked_LeavesThePairIntact(t *testing.T) {
 	}
 }
 
+// TestBattenIntegration_CreateRow_IsIdempotentAgainstAnAlreadyPresentWorktree proves the create
+// row's own idempotency: a task worktree that already exists satisfies the row's post-condition, so
+// the row must report done and let the run advance rather than asking fabric to create it twice.
+//
+// The state it reconstructs is the one a process killed between Topology.Add succeeding and
+// shedengine persisting the transition leaves behind: the worktree on disk, the status still naming
+// the create row. Without the probe the row takes fabric's pre-existing-branch refusal, whose two
+// named remedies both refuse in exactly this state, leaving the run unresumable.
+func TestBattenIntegration_CreateRow_IsIdempotentAgainstAnAlreadyPresentWorktree(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+	slug := "batten-create-idempotent"
+	seedBoardTask(t, h, slug, "loom")
+	// The pair the killed drive already created, with nothing recording it.
+	hubforge.AddPair(t, h, slug)
+
+	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
+		return shedengine.Status{State: shedengine.StateDone}, true, nil
+	})
+	seedEntryStatus(t, c, battenrecipe.NameWorktreeCreate, shedengine.StateRunning, nil)
+
+	shed, err := battenrecipe.New(c.env, c.shedPaths)
+	if err != nil {
+		t.Fatalf("battenrecipe.New: %v", err)
+	}
+
+	step, err := shed.Step(context.Background())
+	if err != nil {
+		t.Fatalf("Step (Worktree-Create against an already-present worktree): %v", err)
+	}
+	if step.Outcome != shedengine.Done {
+		t.Errorf("Outcome = %q; want %q -- an already-present worktree satisfies the row", step.Outcome, shedengine.Done)
+	}
+	if step.Next != battenrecipe.NameSeedChild {
+		t.Errorf("Next = %q; want %q -- the run must advance rather than halt", step.Next, battenrecipe.NameSeedChild)
+	}
+	if !pathExists(h.PairWarpWorktree(slug)) {
+		t.Errorf("task worktree missing after the idempotent create row: %s", h.PairWarpWorktree(slug))
+	}
+}
+
 // TestBattenIntegration_DirtyPrime_CreateRowBlocksBeforeAnythingCreated dirties a tracked file
 // in the hub's prime worktree, asserting the create row halts blocked before anything is created --
 // this refusal fires on every batten run and is invisible to the unit tests' fakes.
