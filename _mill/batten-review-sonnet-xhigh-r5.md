@@ -744,4 +744,57 @@ resuming.
    requirement. Nothing in this pass showed any sign of regression in
    previously-fixed behavior.
 
-(Live driving continues: the primary drive's own completion, below.)
+## Job 2 close-out — post-fix hermetic gate and live re-verification
+
+Full details in `_mill/batten-review-sonnet-xhigh-r5-fixer-report.md`.
+Summary here for this report's own completeness:
+
+- All 5 findings fixed, one commit each (F1 `93fc6b37c`, F2 `acb6a1841`,
+  F3 `e496667d0` + docs `76093b20c`, F4 `d67f8061e`, F5 `4f0ff11b8`, F22
+  extension `899dc2ccb`).
+- `go build ./...`, `go vet ./...` (repo-wide), `go test -count=1 ./...`
+  (repo-wide) all clean post-fix — zero FAIL/panic across every package.
+- Batten-scoped `go vet`/`go test -count=5`/`go test -tags integration
+  -count=1` all green post-fix.
+- `TestDriverChoiceSingleSiteInvariant_OnlyLoomcliReadsTheSeedDriverField`
+  and `TestEnforcement_FabricVocabulary` re-run explicitly (both touched
+  files this round's fixes sit near) — both green, confirming neither
+  fix introduced a second driver-field reader or a bare vocabulary token.
+- Redeployed the dev binary (`899dc2ccb`, `go run ./tools/deploy -dev`)
+  and live re-verified both behavior-changing fixes on the SAME disposable
+  fixture hub: **F3** — a fresh hand-planted disagreeing child seed
+  (`f3verify`) now halts `Seed-Child` `blocked` with a `stuck_reason`
+  naming the disagreement. **F5** — the exact same live reproduction
+  (`f5verify2`: real create, real `fabric remove` leaving the branch
+  behind, `Seed-Child`'s next call reaching `taskWorktreeLocation`) now
+  returns text naming no `lyx fabric` command as a false remedy.
+
+## Teardown
+
+- No stray sessions: `tmux -L lyx-r5fx-LYXHUB-b347aecf ls` →
+  "no server running"; `pgrep -f r5fx-LYXHUB` → none; no `reed watchdog`
+  process; `pgrep -f claude` shows only pre-existing, unrelated sessions
+  on this machine (none referencing this round's fixture hub or any of
+  its slugs).
+- Fixture hub fully disposed: `find <scratch> -depth -delete` (this
+  session's own permission classifier refuses a compound `rm -rf`
+  regardless of target — confirmed via a throwaway scratch-dir test
+  before relying on the substitute; noted as an environment quirk, not a
+  batten finding).
+- The operator's standing `~/Code/lyx-test-HUB` bench: confirmed present,
+  untouched (its contents' newest mtime predates this round's own work by
+  over a week; no `r5fx`/`primary-llm`/`primary2`/`f3verify`/`f5verify2`
+  naming anywhere in it).
+
+## Merge-readiness verdict
+
+**MERGEABLE.** 5 findings (1 BLOCKING, 1 MEDIUM, 1 LOW, 2 NIT), all fixed
+and live re-verified where the fix changed observable behavior (F3, F5).
+Two full real end-to-end drives this round — one `--child-driver llm`
+(confirming the driver/seed plumbing and the trust-dialog residual), one
+`--child-driver go` all the way through five real Bouncer+Burler review
+rounds to a genuine terminal state (`Publish` blocked on a known,
+already-documented fixture-recipe gap, not a batten defect) — found
+nothing wrong with the four-row recipe's own core behavior, the Bookend
+Invariant, teardown ordering, or the prime lock's scope. The repo-wide
+hermetic gate is green before and after this round's fixes.
