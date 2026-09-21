@@ -199,8 +199,8 @@ func (c *battenCLI) armSeed(location *lyxcwd.Location, runID, verb string) error
 	return shedrun.WriteSeed(location, runID, shedrun.Seed{
 		Recipe: shedrun.RecipeBatten,
 		Driver: driver,
+		// The run-id is the slug; no param repeats it.
 		Params: map[string]string{
-			"slug":         runID,
 			"child_driver": childDriver,
 		},
 	})

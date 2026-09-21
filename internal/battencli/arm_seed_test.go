@@ -40,8 +40,8 @@ func TestArmSeed_RunAndStepSeedBeforeWire(t *testing.T) {
 			if seed.Recipe != shedrun.RecipeBatten {
 				t.Errorf("seed.Recipe = %q; want %q -- prime's own seed, never the Board task's type", seed.Recipe, shedrun.RecipeBatten)
 			}
-			if seed.Params["slug"] != "some-slug" {
-				t.Errorf("seed.Params[\"slug\"] = %q; want %q", seed.Params["slug"], "some-slug")
+			if _, present := seed.Params["slug"]; present {
+				t.Errorf("seed.Params carries %q; the run-id is the slug and nothing reads a copy", "slug")
 			}
 		})
 	}
@@ -186,12 +186,12 @@ func TestRefuseAdoptedSeed(t *testing.T) {
 	battenSeedGoChild := shedrun.Seed{
 		Recipe: shedrun.RecipeBatten,
 		Driver: shedrun.DriverGo,
-		Params: map[string]string{"slug": "some-slug", "child_driver": shedrun.DriverGo},
+		Params: map[string]string{"child_driver": shedrun.DriverGo},
 	}
 	battenSeedLLMChild := shedrun.Seed{
 		Recipe: shedrun.RecipeBatten,
 		Driver: shedrun.DriverGo,
-		Params: map[string]string{"slug": "some-slug", "child_driver": shedrun.DriverLLM},
+		Params: map[string]string{"child_driver": shedrun.DriverLLM},
 	}
 	battenSeedNoChildParam := shedrun.Seed{Recipe: shedrun.RecipeBatten, Driver: shedrun.DriverGo}
 	loomSeed := shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: shedrun.DriverGo}
