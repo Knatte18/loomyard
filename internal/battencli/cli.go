@@ -154,8 +154,8 @@ Shed run over a per-slug status.json. "run" starts or resumes that run for a
 slug; "step" drives it exactly one producer forward; "status" reports its
 current state; "pause" requests a pause at the run's next producer boundary.
 
-All four verbs run from the hub's warp prime worktree only: they refuse when
-invoked from a task worktree, from the weft sibling, or from _board.
+All four verbs run from the hub's prime worktree only: they refuse when invoked
+from a task worktree, from the pair's fabric sibling, or from _board.
 
 Example:
   lyx batten run some-slug

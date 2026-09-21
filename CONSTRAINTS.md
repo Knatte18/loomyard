@@ -234,7 +234,7 @@ A producer that creates or destroys a task worktree never runs from inside that 
 - A teardown row sequences session shutdown before worktree removal, in one producer, never two rows.
 - Enforcement is review discipline with two partial mechanical proxies, not an enforcing test: the invariant constrains which directory a running process is driven from, which has no static shape an AST scan can see.
   `internal/battenshed`'s seam-enforcement scan bars a direct resolver import so the package cannot resolve its way into the managed worktree, and `internal/battencli`'s path-derivation tests pin the status and lock paths to prime's anchor so a relocation under the managed worktree fails there — neither proves the driver's own working directory, which stays a review obligation.
-- "Prime" means the WARP prime: the weft sibling is a repository of its own whose prime is itself, so the name comparison alone admits it, and `battencli`'s pre-run therefore calls `fabricengine.RequireWarpWorktree` ahead of the name check (integration test `TestBattenIntegration_WeftPrimeRefusal`).
+- "Prime" means the WARP prime: the weft sibling is a repository of its own whose prime is itself, so the name comparison alone admits it, and `battencli`'s pre-run therefore calls `fabricengine.RequireDrivableWorktree` — `RequireWarpWorktree` under the vocabulary-neutral name a non-owner may say at all — ahead of the name check (integration test `TestBattenIntegration_WeftPrimeRefusal`).
 
 ## Mutation Record Invariant
 

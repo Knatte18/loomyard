@@ -258,10 +258,10 @@ func (c *battenCLI) arm(cwd string, verb string, args []string) (shedverbs.Spec,
 // wrapper's freshly-constructed one on the "lyx shed" path.
 func (c *battenCLI) armAt(location *lyxcwd.Location, runID string, explicit bool, verb string) (shedverbs.Spec, error) {
 	// Ahead of the prime-name check, because that check asks "is this the prime of the repository
-	// I am standing in" and the weft sibling is a repository of its own with a prime of its own:
-	// from the weft prime the name check passes and both bookend rows would then drive fabric's
-	// topology against the weft repository (see refusal.go).
-	if err := fabricengine.RequireWarpWorktree(location); err != nil {
+	// I am standing in" and the pair's fabric sibling is a repository of its own with a prime of
+	// its own: from that sibling's prime the name check passes and both bookend rows would then
+	// drive fabric's topology against the wrong repository (see refusal.go).
+	if err := fabricengine.RequireDrivableWorktree(location); err != nil {
 		return shedverbs.Spec{}, fmt.Errorf("battencli: this verb runs from the hub's prime worktree only: %w", err)
 	}
 
@@ -385,7 +385,7 @@ func (c *battenCLI) battenPreRun(ctx context.Context) error {
 		switch st.State {
 		case shedengine.StateDone:
 			return fmt.Errorf(
-				"battencli: %q has already completed; delete its run directory %s (a change on the pair's weft) to run it again",
+				"battencli: %q has already completed; delete its run directory %s (a change on the pair's fabric sibling) to run it again",
 				c.slug, shedrun.RunDir(c.location, c.slug),
 			)
 		case shedengine.StateRunning, shedengine.StateBlocked, shedengine.StateFailed, shedengine.StatePaused:
@@ -452,7 +452,7 @@ func (c *battenCLI) battenPreStep(ctx context.Context) (string, error) {
 		switch st.State {
 		case shedengine.StateDone:
 			return shedverbs.KindBootstrap, fmt.Errorf(
-				"battencli: %q has already completed; delete its run directory %s (a change on the pair's weft) to run it again",
+				"battencli: %q has already completed; delete its run directory %s (a change on the pair's fabric sibling) to run it again",
 				c.slug, shedrun.RunDir(c.location, c.slug),
 			)
 		case shedengine.StateRunning, shedengine.StateBlocked, shedengine.StateFailed, shedengine.StatePaused:

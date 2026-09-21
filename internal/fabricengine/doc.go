@@ -497,8 +497,12 @@
 // `Healthy(l)` returns a typed `HealthReason` (drift.go) rather than a string a caller would have to
 // substring-match, so a caller like `preflight.CheckResolved` switches on `HealthReason.Cause`
 // instead of parsing prose.
-// `PushAnchored(l, opts)` and `MergeStateActive(l)` are two further vocabulary-neutral, `l`-in
-// entry points reachable the same way `CommitAnchoredPaths` is. `PushAnchored` is the synchronous,
+// `PushAnchored(l, opts)`, `MergeStateActive(l)` and `RequireDrivableWorktree(l)` are three further
+// vocabulary-neutral, `l`-in entry points reachable the same way `CommitAnchoredPaths` is.
+// `RequireDrivableWorktree` is `RequireWarpWorktree` under a name a non-owner may say at all — the
+// invariant's scan matches the bare token inside an identifier, so the published name is itself the
+// leak, and a caller that must refuse fabric's own checkouts before driving topology has no other
+// way in. `PushAnchored` is the synchronous,
 // rebase-free counterpart to `CommitAnchoredPaths`: a caller is expected to treat its returned
 // `gitrepo.ErrPushRejected` as a human-decidable condition rather than retrying. `MergeStateActive`
 // is the weft-only, git-level mid-merge probe a path-scoped commit must consult before landing —
