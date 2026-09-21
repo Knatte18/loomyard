@@ -211,6 +211,30 @@ showing nothing new and the step returning in 0.038s) to reach the real `Worktre
 - `go test -count=5 ./internal/battenshed/... ./internal/battencli/... ./internal/battenrecipe/... ./cmd/lyx/...` — all `ok`.
 - `go test -tags integration -count=1 ./internal/battencli/...` — `ok` (2.461s).
 
+### Scenario: `--child-driver llm` real drive — F6[R2] re-evaluation (could not reproduce)
+
+Seeded a fresh slug (`llm-child-slug`, safe config from create time) with `lyx batten step llm-child-slug --child-driver llm` through
+Worktree-Create and Seed-Child (child seed correctly recorded `"driver":"llm"`), then stepped Run-Shed for real: the same ~30.18s timing
+as the `go`-arm case (a second, independent live confirmation of item 4's timing precision, now for the llm arm: `Spawn` returns once
+`awaitDriverPane`'s bounded pane-liveness probe confirms the strand is up, never once the campaign finishes).
+Watched the driver strand's own tmux pane directly (`tmux capture-pane`): the ly-drive session launched, read the `ly-drive` skill, ran its
+pre-loop checks, and called `lyx shed step self` in the background -- **no workspace-trust dialog appeared at any point**, on a worktree path
+Claude Code had genuinely never seen before. The step returned a halting envelope (child `state: "blocked"`, `current_producer: "Preflight"`)
+because this minimal fixture's own `.git/info/exclude` only excludes `.lyx`/`_lyx`, not a generic `.scratch/` -- the path the `ly-drive` skill
+itself assumes is always excluded for its own step-envelope bookkeeping, so `Preflight`'s worktree-clean gate saw `.scratch/` untracked and
+blocked with no `on_stuck` target. The ly-drive session diagnosed this correctly and completely on its own, applied its own documented
+"absolute stop rule" on a halting envelope, wrote a full drive report, left every file/git/reed state untouched, and ended cleanly -- a
+well-behaved halt, not a hang.
+**This does NOT reproduce F6[R2]'s finding** (parking forever on Claude Code's own workspace-trust dialog on a never-trusted worktree).
+Recorded honestly as "could not reproduce this round" rather than "fixed" -- a genuinely different environment/session/Claude-Code-version
+detail could still trigger it under other conditions this round did not exercise, and this round's own fixture differs from R2's in ways
+(the `.scratch/` exclude gap above) that were never in play for R2's own finding. Confirms the OTHER half the round asks for regardless: with
+the child genuinely blocked, batten's own boundary behavior is the same honest, non-silent report proven live above for the `go`-arm case
+(the next `batten step`/`run` on this slug would hard-error naming the child's exact blocked state, never silently mask it) -- not
+independently re-run here since it is the identical code path already proven against `greet-task`.
+Cleaned up: killed only `llm-child-slug`'s own tmux session and confirmed no detached driver process existed for it (the `llm` arm has no
+detached-process counterpart to the `go` arm's `lyx loom run`).
+
 (remainder appended as scenarios run)
 
 ## Findings (provisional; severity/ordering finalized at the end)
