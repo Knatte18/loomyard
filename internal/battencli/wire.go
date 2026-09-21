@@ -11,11 +11,13 @@
 package battencli
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/boardengine"
@@ -42,6 +44,32 @@ import (
 // fire.
 func taskWorktreeLocation(prime *lyxcwd.Location, slug string) (*lyxcwd.Location, error) {
 	return lyxcwd.ResolveWorktree(fabricengine.WorktreePath(prime, slug))
+}
+
+// maxChildOutputInError caps how much of a failed child bootstrap's own output is folded into the
+// returned error. The child writes a single JSON envelope, so the cap is never reached in practice;
+// it exists so a child that misbehaves cannot push an unbounded string into a status file that is
+// committed onto prime's own pair.
+const maxChildOutputInError = 2000
+
+// childSpawnError composes the error the Spawn seam returns for a child bootstrap that exited
+// non-zero, folding the child's own captured output into runErr's text.
+//
+// It returns nil for a nil runErr, and runErr unchanged when the child said nothing -- there is no
+// value in appending an empty quote. Output longer than maxChildOutputInError is truncated with an
+// explicit marker, never silently.
+func childSpawnError(runErr error, childOutput string) error {
+	if runErr == nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(childOutput)
+	if trimmed == "" {
+		return runErr
+	}
+	if len(trimmed) > maxChildOutputInError {
+		trimmed = trimmed[:maxChildOutputInError] + " ... (truncated)"
+	}
+	return fmt.Errorf("%w: %s", runErr, trimmed)
 }
 
 // childSeedParams returns the seed params the child's own bootstrap verb will itself write for
@@ -181,10 +209,18 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				// subpath-anchored hub.
 				cmd := exec.Command(exe, "loom", "start", "--no-attach")
 				cmd.Dir = taskLocation.AnchorPath()
+				// The child's own output is captured rather than discarded: it is the ONLY
+				// diagnosis this seam can offer. Without it every child-bootstrap failure -- a
+				// refused seed, an unrecorded parent branch, an unparseable module config, a
+				// provider binary that will not boot -- reaches the operator, and the persisted
+				// status.error, as the identical bare "exit status 1".
+				var childOutput bytes.Buffer
+				cmd.Stdout = &childOutput
+				cmd.Stderr = &childOutput
 				logger.Info("battencli: spawning loom session", "slug", slug, "dir", cmd.Dir)
-				err = cmd.Run()
+				runErr := cmd.Run()
 				logger.Info("battencli: loom session wait complete", "slug", slug, "dir", cmd.Dir)
-				return err
+				return childSpawnError(runErr, childOutput.String())
 			},
 			ReadStatus: func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
 				return state.ReadJSONStrict[shedengine.Status](statusPath, statusLockPath)

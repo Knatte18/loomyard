@@ -9,6 +9,8 @@
 package battencli
 
 import (
+	"errors"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -122,5 +124,77 @@ func TestWire_CommitStatusFilled(t *testing.T) {
 
 	if c.shedPaths.CommitStatus == nil {
 		t.Error("c.shedPaths.CommitStatus = nil; want a non-nil seam")
+	}
+}
+
+// TestChildSpawnError proves the composition that turns a child bootstrap's exit status into a
+// diagnosis: a non-zero exit carries the child's own output into the error text, an exit with no
+// output is passed through unchanged, a nil run error stays nil, and an over-long output is
+// truncated with an explicit marker rather than silently.
+//
+// The regression this pins: before it, every child-bootstrap failure reached the operator and the
+// persisted status.error as the identical bare "exit status 1", because the Spawn seam discarded
+// the child's stdout and stderr.
+func TestChildSpawnError(t *testing.T) {
+	runErr := errors.New("exit status 1")
+	longOutput := strings.Repeat("x", maxChildOutputInError+50)
+
+	tests := []struct {
+		name        string
+		runErr      error
+		childOutput string
+		wantNil     bool
+		wantSubstr  []string
+	}{
+		{
+			name:        "nil_run_error_stays_nil",
+			runErr:      nil,
+			childOutput: `{"ok":true}`,
+			wantNil:     true,
+		},
+		{
+			name:        "output_is_folded_into_the_error",
+			runErr:      runErr,
+			childOutput: `{"error":"shedrun: refusing to overwrite with disagreeing seed","ok":false}`,
+			wantSubstr:  []string{"exit status 1", "disagreeing seed"},
+		},
+		{
+			name:        "silent_child_passes_the_run_error_through",
+			runErr:      runErr,
+			childOutput: "   \n  ",
+			wantSubstr:  []string{"exit status 1"},
+		},
+		{
+			name:        "over_long_output_is_truncated_visibly",
+			runErr:      runErr,
+			childOutput: longOutput,
+			wantSubstr:  []string{"exit status 1", "... (truncated)"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := childSpawnError(tt.runErr, tt.childOutput)
+			if tt.wantNil {
+				if got != nil {
+					t.Fatalf("childSpawnError(nil, %q) = %v; want nil", tt.childOutput, got)
+				}
+				return
+			}
+			if got == nil {
+				t.Fatalf("childSpawnError(%v, ...) = nil; want an error", tt.runErr)
+			}
+			if !errors.Is(got, tt.runErr) {
+				t.Errorf("childSpawnError(...) does not unwrap to the run error; want errors.Is to hold")
+			}
+			for _, want := range tt.wantSubstr {
+				if !strings.Contains(got.Error(), want) {
+					t.Errorf("childSpawnError(...) = %q; want it to contain %q", got.Error(), want)
+				}
+			}
+			if len(got.Error()) > maxChildOutputInError+200 {
+				t.Errorf("childSpawnError(...) produced %d bytes; want the output capped near maxChildOutputInError", len(got.Error()))
+			}
+		})
 	}
 }
