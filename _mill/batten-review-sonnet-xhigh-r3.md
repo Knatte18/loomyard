@@ -6,7 +6,8 @@ branch `crucible-batten-end-to-end`.
 
 ## Status
 
-IN PROGRESS — this file is being built incrementally per the round prompt's "log as you go" rule.
+REVIEW COMPLETE. 2 findings (F1 LOW, F2 NIT). Proceeding to Job 2 (fix). See `_mill/batten-review-sonnet-xhigh-r3-fixer-report.md` for the
+fix record.
 
 ## What was read (not a review; context)
 
@@ -247,16 +248,124 @@ as before pausing. CONFIRMED live: pause/resume works correctly against a real, 
 
 ## Findings (provisional; severity/ordering finalized at the end)
 
-(none recorded yet)
+### F1 [LOW] — `cancelErr` is not actually consulted on every non-`Done` exit path, contradicting `ctx.go`'s own documented contract
+
+`internal/battenshed/ctx.go`'s own doc comment states the contract plainly: "Every non-`Done` exit path in `Call` consults `cancelErr`
+first, replacing its own verdict with this error when the context is cancelled." The actual code does not do this consistently — it is
+checked before every `Stuck`-destined return and before the final `Done` return in all four producers, but is SKIPPED on a specific subset
+of hard-error (`error != nil`) return paths, with no principled reason distinguishing which ones get it. Concretely, missing in:
+- `create.go:57-59` — `primeLock.Acquire()` error.
+- `teardown.go:98-100` — `primeLock.Acquire()` error (identical shape).
+- `seamchild.go:79-81` — `deps.ChildDriver()` error.
+- `seamchild.go:91` — `deps.WriteSeed()`'s non-refusal (mechanism-failure) error, the `return` after the `refused` check's `else` fallthrough.
+- `innerrun.go:92-94` — `deps.ResolveStatus()` error.
+- `innerrun.go:97-99` — `deps.ReadStatus()` error (first call, before any spawn).
+- `innerrun.go:113-115` — `deps.ReadStatus()` error (second call, right after a spawn).
+- `innerrun.go:143` — the `StateBlocked`/`StatePaused`/`StateFailed` halted-child hard error.
+- `innerrun.go:145` — the unrecognized-state hard error.
+
+By contrast, `innerrun.go`'s `Spawn` failure (line 106-108) and its sibling "spawn returned success but no status file" case (line 117-120)
+DO check `cancelErr` before returning — proving the pattern exists and is reachable, just inconsistently applied within the very same
+function, let alone across the package.
+
+**Scenario:** an operator's `Ctrl-C`/parent-deadline cancellation lands in the exact window while one of the un-checked calls above is
+returning its own (unrelated) error — e.g. `PrimeLock.Acquire` genuinely erroring (a lock-file device error) at the same moment the run's
+context is cancelled. The operator sees the raw underlying error text (`"battenshed: ...: acquire prime lock ...: <device error>"`) instead
+of the "context cancelled during run" wrapped message every OTHER exit path in this package promises, and `shedengine.stepLocked`'s own
+`ctx.Err() != nil` branch (which persists `StatePaused` rather than `StateFailed` regardless of the error's own text) still gets the
+distinction right at the STATE level — this is an operator-facing error-text clarity/consistency gap, not a state-correctness bug. CONFIRMED
+by code reading across all four producer files; the race itself is not independently live-demonstrated (the same sub-millisecond timing
+precision limit noted for the Seed-Child commit/push race below applies here too).
+**Fix:** add the missing `cancelErr` check to all nine call sites above, bringing every hard-error return path in line with the
+already-established pattern and with `ctx.go`'s own stated contract.
+
+### F2 [NIT] — `childDriverOf`'s two-line defaulting logic is duplicated rather than shared
+
+`internal/battencli/arm.go`'s `childDriverOf` (lines 138-146) and `internal/battencli/wire.go`'s `SeedChild.ChildDriver` closure (lines
+248-259) both independently implement the identical "`if driver, ok := seed.Params["child_driver"]; ok && driver != "" { return driver };
+return shedrun.DriverGo`" defaulting check — one operating on an already-read `shedrun.Seed`, the other reading the seed itself first. A
+future change to the defaulting rule (e.g. a new sentinel value, or trimming whitespace) applied to one copy and not the other would silently
+diverge the value `refuseAdoptedSeed`'s comparison sees from the value `Seed-Child` actually writes into the child's own seed — exactly the
+kind of drift `mill:code-quality`'s DRY guidance exists to prevent. No live or test-observable defect today; both copies currently agree.
+**Fix:** have `wire.go`'s `ChildDriver` closure call `childDriverOf(seed)` after its own `ReadSeed`, removing the duplicated inline check.
+
+## Deferred items — re-evaluated, not re-litigated
+
+- **R1-F9's recreate-from-branch half** — still blocked on the same fabric capability gap (`Topology.Add` refuses a pre-existing branch by
+  design); confirmed still the shape of the gap via `taskWorktreeLocation`'s own doc comment and refusal text
+  (`internal/battencli/wire.go:37-62`), which still states plainly "Recreating it is not attempted, since fabric's `Add` refuses a
+  pre-existing branch by design." Not rebuilt this round (cross-cutting, a different module's own change).
+- **R1-F6's `step`-mode pacing cost** — re-confirmed live: every `batten step` call against a `Run-Shed` row still blocks for the full
+  `poll_interval_s` (measured 30.042s-30.269s across several live calls this round, matching R2's own 30.0-30.4s measurement). Still
+  accepted; moving pacing out of the producer body is a `shedengine` change, out of this round's scope.
+- **F6[R2]'s llm-driver trust-dialog hang** — attempted to reproduce live this round (see "Scenario: `--child-driver llm` real drive"
+  above): did NOT reproduce. The ly-drive session launched, progressed, and halted cleanly on an unrelated fixture-specific gate
+  (`Preflight` blocked on this minimal fixture's own `.git/info/exclude` not covering `.scratch/`), with no trust dialog at any point on a
+  genuinely never-before-seen worktree path. Recorded honestly as "could not reproduce this round," not as "fixed" — this round's
+  environment/fixture differs from R2's in ways that could plausibly explain either outcome, and a single non-reproduction does not
+  establish the underlying `shuttleengine`/`loomcli` behavior has changed. Still not batten's own bug regardless.
+- **The design doc's two consciously-shipped residuals** (dead-strand detection; auto-teardown of a finished driver's strand/run-dir) —
+  both re-confirmed accurate. The dead-strand residual was directly, live-demonstrated this round (see "Scenario: item 10" above): killing
+  a real child driver process left `Run-Shed` self-bouncing forever against a frozen `state: "running"` child status, with zero detection.
+  `battenshed`'s own package doc (`doc.go`) still states this correctly and needs no wording change.
 
 ## Scope assessment
 
-(pending)
+Plan-vs-shipped, against the recovered design doc (`manifest/designs/seeded-shed.md` at `8ac857ce1~1`):
+- The four-row recipe (`Worktree-Create` → `Seed-Child` → `Run-Shed` → `Worktree-Teardown`), the seed contract, run addressing, the
+  `go`-only-for-batten / `llm`-admissible-for-a-child-with-a-bootstrap-verb driver split, and the two consciously-shipped residuals all
+  match the design doc's own description exactly, live-verified this round (not merely re-read). No gap between plan and shipped code was
+  found: nothing promised-and-missing, nothing shipped-beyond-scope.
+- The design doc's own "optional comfort rows can come later: launching VS Code into the child after seeding" is still absent — correctly:
+  the design doc frames it as optional future work, never a v1 commitment, so its absence is not a gap.
+- Relay-stepping stays absent, correctly (explicitly rejected by the design doc; not suggested here either).
+- The R3-specific residual named in this round's own prompt (single blocking `lyx batten run <slug>` reaching the same terminal state a
+  step-loop reaches) is now closed: live-proven this round, not merely inferred.
 
 ## Docs & operability findings
 
-(pending)
+No inaccuracies found in `docs/overview.md`'s batten entry, `CONSTRAINTS.md`'s Batten Bookend Invariant, or `battenshed`/`battenrecipe`'s own
+package docs — every specific claim checked against live behavior this round matched exactly:
+- The two-status-files nested-Shed design (`docs/overview.md` ~404-408): confirmed live (prime's durable status vs. the child's own,
+  resuming independently).
+- "Every child's weft branch forks from prime's `main-weft`... a child's `_lyx/shed/` also holds frozen copies of other slugs' batten run
+  directories": confirmed live (`llm-child-slug`'s own `_lyx/shed/` listed `contend-slug`, `greet-task`, `kill-race-slug`, `pre-seeded-slug`,
+  `sabotage-target-slug` alongside its own `self`).
+- The Batten Bookend Invariant's exact refusal shape (naming both worktrees, or the weft-sibling/`_board` fabric-vocabulary refusal):
+  confirmed live for every verb from every non-prime location tried.
+- Teardown's "never forces... fabric's own refusal as the `stuck_reason`... operator cleans the child and re-steps, never `--force`": the
+  full live cycle (dirty → blocked naming the cause → clean → re-step → done) matched this description exactly, twice (task worktree dirty,
+  then weft dirty).
+- `Run-Shed`'s "never routes to teardown on failure" claim in the recipe YAML's own header comment: confirmed live against a genuinely
+  failed real child (`Publish` blocked) — the task worktree was left intact, never handed to `Worktree-Teardown`.
+
+One operability observation, not a batten-package finding (see "Operational hazard discovered mid-drive" above): any crucible round (or
+manual operator session) driving a real loom campaign against a freshly-cloned fixture hub inherits `selfreport: true` by default from
+`fabric clone`'s own materialized `loom.yaml`, and `internal/selfreportengine`'s `targetRepo` is hardcoded to `Knatte18/loomyard` — so a
+disposable fixture hub that is not explicitly overridden WILL file real issues against the upstream tracker the moment a real campaign hits
+an anomaly. This round's own cost declaration already names the hazard by text; it materialized for real from an orphaned prior attempt
+found mid-session (issues #257-260, #262, #263), and this round nearly repeated it once more (see the "near-miss" entry above) purely from
+ordinary test-ordering (a slug created before the fixture override commit lands still inherits the risky default). Worth a documentation
+note for future crucible rounds driving batten (or loom) live — e.g. stating explicitly, before any `Worktree-Create`, "commit the fixture's
+`selfreport: false` override before seeding ANY Board task, not just before the one you intend to drive end-to-end" — but this is
+`internal/selfreportengine`/round-process scope, not a `battenshed`/`battenrecipe`/`battencli` code change, so it is not filed as an F-numbered
+finding and not fixed in Job 2.
 
 ## Executive summary
 
-(pending — written last)
+**Merge-readiness verdict: MERGEABLE.** Two findings recorded (F1 LOW, F2 NIT), both real but narrow — neither is a correctness defect
+observable in normal operation; both are fixed below. No BLOCKING or MEDIUM findings. The module's actual behavior, driven live end to end
+multiple times this round including the R3-specific residual (a single blocking `lyx batten run` reaching a real terminal state with no
+external step-loop), matches its own documented contracts precisely everywhere checked.
+
+Top risks / residuals (all pre-existing, all accepted, all re-confirmed accurate — not new):
+- A dead or parked driver strand is invisible to batten until the bounce budget exhausts (live-demonstrated this round).
+- `step`-mode pacing costs a full `poll_interval_s` per call (re-confirmed, ~30s).
+- Cold-machine recreate-from-branch is still not implemented (blocked on a fabric capability that does not exist).
+- F6[R2]'s llm-driver trust-dialog hang could not be reproduced this round on a genuinely fresh worktree — recorded as "not reproduced,"
+  not "resolved."
+
+Severity counts: 1 LOW, 1 NIT, 0 MEDIUM, 0 BLOCKING. A large number of scenarios were independently re-verified as non-defects (documented
+above with CONFIRMED/live evidence) rather than counted as findings, per the round's own "form your own judgment" instruction — most
+notably the full High-yield focus list (items 1-11), all driven live this round with real fixture hubs, real children, and — for the primary
+scenario — a real single blocking `lyx batten run` call running a genuine ~13.5-minute nested loom campaign to a real terminal state.
