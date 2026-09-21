@@ -40,13 +40,10 @@ type PrimeLock struct {
 // inner shed run, resolving and reading its persisted status, and the two seams a test replaces to
 // keep the poll loop out of real time.
 type InnerRunDeps struct {
-	// Spawn starts the inner shed run and blocks until the BOOTSTRAP PROCESS it launched exits --
-	// which is not the inner run's own completion, and deliberately so. The command behind this
-	// seam is the child's own bootstrap verb, which returns once it has launched the child's driver
-	// and confirmed it came up; the child's campaign then continues independently, and the wait for
-	// THAT is the recipe row's own on_stuck self-route, one bounce per poll, not a blocking call
-	// held here. The distinction is load-bearing: were it the inner run's completion, the very first
-	// advancing "lyx batten step" would hang for the length of an entire nested campaign.
+	// Spawn starts the inner shed run and blocks until the bootstrap process it launched exits,
+	// which is not the inner run's own completion:
+	// the bootstrap returns once the child's driver is up, and the wait for the campaign itself is
+	// the recipe row's on_stuck self-route, one bounce per poll.
 	//
 	// InnerRun waits for that bootstrap process rather than detaching, per the Live-Substrate Spawn
 	// Observability invariant. Call invokes Spawn at most once per invocation, and only when its own
@@ -66,14 +63,12 @@ type InnerRunDeps struct {
 	// Now returns the current time. A nil Now resolves to time.Now in NewInnerRun, so production
 	// code never sets this field; a test holds the clock still by setting it.
 	Now func() time.Time
-	// Sleep pauses for d, returning early when ctx is cancelled. A nil Sleep resolves to
-	// waitOrCancel in NewInnerRun; a test replaces it with a no-op so the attempt-cap test proves
-	// the bound is attempt-counted, not wall-clock-timed, without spending any real time.
-	//
-	// It takes a context rather than being a bare time.Sleep because this is the longest wait the
-	// producer performs and it sits directly in front of a cancellation check: a plain sleep held
-	// an operator's stop for the whole poll interval before the check it was about to fail could
-	// even run.
+	// Sleep pauses for d, returning early when ctx is cancelled.
+	// It takes a context because it is the longest wait the producer performs and sits directly in
+	// front of a cancellation check, which an uninterruptible sleep would delay by a whole interval.
+	// A nil Sleep resolves to waitOrCancel in NewInnerRun;
+	// a test replaces it with a no-op so the attempt-cap test proves the bound is attempt-counted
+	// rather than wall-clock-timed.
 	Sleep func(ctx context.Context, d time.Duration)
 }
 

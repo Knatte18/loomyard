@@ -25,12 +25,9 @@ const stuckFileSuffix = "-stuck.md"
 
 // StuckReasonFile returns the path reportStuck writes producer's one-line reason to, under
 // scratchDir.
-//
-// It is exported so the reader and the writer of this file share one declarer of its name. The file
-// is the only durable carrier of a producer-supplied stuck reason -- shedengine persists its own
-// fixed string instead, and the structured log line scrolls away in an unattended run -- so a CLI
-// that wants to report WHY a run is blocked has to read it, and reconstructing the filename at that
-// call site would let a rename here silently stop it being found.
+// It is exported so the file's reader and writer share one declarer of its name: the file is the
+// only durable carrier of a producer-supplied stuck reason, so a CLI reporting why a run is blocked
+// has to read it.
 func StuckReasonFile(scratchDir, producer string) string {
 	return filepath.Join(scratchDir, producer+stuckFileSuffix)
 }

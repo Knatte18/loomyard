@@ -105,27 +105,15 @@ func battenDriver(flagVal string) string {
 	return flagVal
 }
 
-// refuseAdoptedSeed refuses a seed that already exists at this run-id but does not describe the run
-// the operator is asking batten to drive. A found seed is authoritative -- it is the run's write-once
-// recorded identity and is never overwritten here -- but authoritative is not the same as silently
-// adopted, and these are the two ways an existing seed can disagree with the invocation.
+// refuseAdoptedSeed refuses a seed that already exists at runID but does not describe the run the
+// operator asked batten to drive.
+// A found seed is authoritative and is never overwritten here, but authoritative is not the same as
+// silently adopted.
 //
-// The recipe check is the load-bearing one. Nothing else compares a found seed's recipe against
-// batten's own, so a run hand-seeded "lyx shed seed <slug> --recipe loom" and then driven with
-// "lyx batten run <slug>" arms batten's recipe against a run recorded as loom: the same run
-// directory is then driven by two different recipes depending on which verb is typed, and
-// "lyx shed status <slug>" reads batten's own status file through loom's envelope shape. The
-// disagreement is permanent and silent, which is exactly what a write-once identity must not be.
-//
-// The driver checks answer a flag the operator can see has had no effect. Both flags are read only
-// on the absent-seed path below, so once a run is seeded they are dropped without a word and no
-// surface reveals it. Only an EXPLICITLY typed flag is checked: a flag left at its cobra default
-// carries no operator intent to contradict, and refusing on it would make every ordinary resume of
-// an llm-child run fail.
-//
-// childDriverOf resolves the recorded child driver the same way the SeedChild wiring seam does --
-// an absent or empty param means shedrun.DriverGo -- so the comparison is against the value that
-// will actually be used, never against a raw missing key.
+// A non-batten recipe would leave one run directory driven by two recipes, depending on which verb
+// is typed.
+// A driver the operator typed cannot take effect on a seeded run, so it is refused rather than
+// dropped; one left at its cobra default carries no intent to contradict and is ignored.
 func refuseAdoptedSeed(seed shedrun.Seed, runID string, driverFlag string, driverSet bool, childDriverFlag string, childDriverSet bool) error {
 	if seed.Recipe != shedrun.RecipeBatten {
 		return fmt.Errorf(
@@ -149,8 +137,8 @@ func refuseAdoptedSeed(seed shedrun.Seed, runID string, driverFlag string, drive
 }
 
 // childDriverOf returns the child driver seed records, defaulting an absent or empty
-// params.child_driver to shedrun.DriverGo -- the same resolution the SeedChild wiring seam's own
-// ChildDriver closure performs, so a refusal never compares against a value the run would not use.
+// params.child_driver to shedrun.DriverGo -- the resolution the SeedChild wiring seam performs, so a
+// refusal never compares against a value the run would not use.
 func childDriverOf(seed shedrun.Seed) string {
 	if driver, ok := seed.Params["child_driver"]; ok && driver != "" {
 		return driver
@@ -495,29 +483,19 @@ func (c *battenCLI) battenPostRun(ctx context.Context, result shedengine.Result,
 	return map[string]any{"abandonedSession": c.abandonedSession}
 }
 
-// maxStatusHistoryEntries caps how many history entries the status envelope carries.
-//
-// Run-Shed's own still-running self-bounce appends one entry per poll, and the recipe row's budget
-// is max_bounces: 1440, so a child that runs the full twelve-hour watch window leaves well over a
-// thousand identical Run-Shed/stuck entries in the persisted status. Emitting all of them makes the
-// envelope unreadable long before the budget is exhausted, for a run whose interesting history is
-// entirely at its two ends.
-//
-// The cap is generous enough that an ordinary four-row run -- and the hand-written fixture the
-// sandbox suite's own F22 scenario round-trips through this envelope -- is never truncated at all.
+// maxStatusHistoryEntries caps the history entries the status envelope carries.
+// Run-Shed's still-running self-bounce appends one per poll under a 1440-bounce budget, so a full
+// watch window would otherwise bury the two ends that carry the run's meaning.
 const maxStatusHistoryEntries = 20
 
 // battenStatusExtras implements the StatusExtras hook for batten's spec: batten's own
 // found-envelope keys and no others. The generic body supplies current_producer, state, error and
 // activity.
 //
-// It adds two things the generic core cannot know about batten. The history is bounded to the most
-// recent maxStatusHistoryEntries entries, always alongside the true history_length, so a truncated
-// view is never mistaken for a short one. And when the run is blocked, it surfaces the producer's
-// own recorded stuck reason: shedengine persists the fixed string "stuck with no OnStuck target"
-// as status.error for EVERY stuck verdict, so the error field alone tells an operator nothing about
-// what to do -- the real reason is in the file battenshed's reportStuck wrote, and nothing read it
-// back before this.
+// History is bounded to the most recent maxStatusHistoryEntries entries, always alongside the true
+// history_length, so a bounded view is never mistaken for a short one.
+// A blocked run also carries the producer's own recorded stuck reason, since shedengine persists one
+// fixed error string for every stuck verdict and it names no remedy.
 func (c *battenCLI) battenStatusExtras(st shedengine.Status) (map[string]any, error) {
 	history, truncated := recentHistory(st.History)
 	extras := map[string]any{
@@ -533,9 +511,8 @@ func (c *battenCLI) battenStatusExtras(st shedengine.Status) (map[string]any, er
 			extras["stuck_reason"] = reason
 		}
 	}
-	// Reported in every state rather than only at the terminal one: a teardown that abandoned a
-	// session is a fact about the run's outcome, and the operator asking about it is typically doing
-	// so after the run has finished, from a different process than the one that observed it.
+	// Reported in every state: the operator usually asks after the run has finished, from a
+	// different process than the one that observed the shutdown.
 	if session, found := readAbandonedSession(scratchDir); found {
 		extras["abandonedSession"] = session
 	}
@@ -543,12 +520,9 @@ func (c *battenCLI) battenStatusExtras(st shedengine.Status) (map[string]any, er
 }
 
 // readAbandonedSession reads back the record battenshed's teardown row writes when session shutdown
-// had to abandon a session rather than end it cleanly, reporting found == false when there is none.
-//
-// It exists because the value reaches an envelope only through the run verb's own PostRun hook, so
-// a lifecycle driven one "lyx batten step" at a time -- how an external supervisor drives one --
-// never surfaced it at all: shedverbs' step envelope is a deliberately closed ten-key set with no
-// hook that can add to it. Reading the record here gives both drive modes the same fact.
+// abandoned a session rather than ending it cleanly, reporting found == false when there is none.
+// Reading it here is what gives a step-driven lifecycle the same fact a run-driven one gets from
+// the PostRun hook, which shedverbs' closed step envelope has no counterpart for.
 func readAbandonedSession(scratchDir string) (string, bool) {
 	if scratchDir == "" {
 		return "", false
@@ -574,12 +548,9 @@ func recentHistory(history []shedengine.HistoryEntry) (recent []shedengine.Histo
 }
 
 // readStuckReason reads back the one-line reason file battenshed's reportStuck writes for producer
-// under scratchDir, reporting found == false when there is none to read.
-//
-// The path comes from battenshed.StuckReasonFile, the writer's own declarer of that name, so a
-// rename there cannot silently stop this reader finding the file. A missing or unreadable file is
-// simply not reported -- failing to find why something is stuck must never change the answer to
-// whether it is stuck, the same rule reportStuck itself follows on write.
+// under scratchDir, reporting found == false when there is none.
+// A missing or unreadable file is simply not reported: failing to find why something is stuck must
+// never change the answer to whether it is stuck.
 func readStuckReason(scratchDir, producer string) (string, bool) {
 	if scratchDir == "" || producer == "" {
 		return "", false

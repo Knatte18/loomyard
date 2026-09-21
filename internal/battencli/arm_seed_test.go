@@ -179,13 +179,9 @@ func TestArmSeed_NoSeedGivesTheListingRefusal_SeedPresentWithNoStatusGivesFoundF
 	}
 }
 
-// TestRefuseAdoptedSeed proves the two ways an already-existing seed can disagree with the
-// invocation that found it, and that an agreeing one is left alone.
-//
-// The regressions this pins, both confirmed live before the fix: a run hand-seeded
-// "lyx shed seed <slug> --recipe loom" was driven by "lyx batten run <slug>" anyway, creating a real
-// task worktree under a recipe the seed does not name; and a --child-driver the operator typed
-// against an already-seeded run was dropped with no message and no surface revealing it.
+// TestRefuseAdoptedSeed covers the two ways an already-existing seed can disagree with the
+// invocation that found it -- a foreign recipe, and a typed driver flag that cannot take effect --
+// and asserts an agreeing seed is left alone.
 func TestRefuseAdoptedSeed(t *testing.T) {
 	battenSeedGoChild := shedrun.Seed{
 		Recipe: shedrun.RecipeBatten,

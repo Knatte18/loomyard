@@ -4,19 +4,15 @@
 // internal/hubforge through its fabric fixture entry point, per the hubforge Fabric-Fixture
 // Invariant. It stays a white-box "package battencli" test, not an external "_test" package,
 // because most tests here stub Env.InnerRun.Spawn and Env.InnerRun.ReadStatus at the field level
-// after a real wire() call -- a no-op spawn and a read-status answering a chosen state -- so the
-// row routing and the persisted-state branching can be driven without a real child, and that
-// stubbing needs the unexported wire method and the battenCLI receiver.
+// after a real wire() call -- a no-op spawn and a read-status answering a chosen state -- so the row
+// routing and the persisted-state branching can be driven without a real child, and that stubbing
+// needs the unexported wire method and the battenCLI receiver.
 //
-// Be precise about what that leaves uncovered, because an earlier version of this comment was not
-// and two blocking defects lived in the gap it hid. Stubbing those two fields removes the real
-// child bootstrap AND the real status read over the child's own paths -- which is exactly where
-// both defects were. The two tests named
-// TestBattenIntegration_RealReadStatus_OnAFreshPairReportsAbsentRatherThanErroring and
-// TestBattenIntegration_SeedChild_WritesASeedTheChildBootstrapAgreesWith deliberately do NOT stub,
-// and exist to hold those two real seams. Nothing here, by design, spawns a real provider: per the
-// batten crucible cost declaration a real-provider drive belongs in manual, narrated CLI driving,
-// never inside go test.
+// Stubbing those two fields removes the real child bootstrap and the real status read over the
+// child's own paths, so the two tests named RealReadStatus and SeedChild_WritesASeedTheChildBootstrapAgreesWith
+// deliberately do not stub, and hold those seams instead.
+// Nothing here spawns a real provider: per batten's crucible cost declaration that belongs in
+// manual CLI driving, never inside go test.
 //
 // It lives at the integration tier rather than Tier 1 because the prime-name lookup this package's
 // own pre-run refusal performs reaches a real git worktree listing, and getting there at all needs
@@ -156,21 +152,14 @@ func gitShow(t *testing.T, dir, spec string) []byte {
 	return out
 }
 
-// TestBattenIntegration_SeedChild_WritesASeedTheChildBootstrapAgreesWith drives Worktree-Create
-// and Seed-Child for real and then asserts the one property the child's own bootstrap depends on:
-// re-writing the seed the way that bootstrap will must be ACCEPTED by shedrun.WriteSeed, not
-// refused as a disagreement.
+// TestBattenIntegration_SeedChild_WritesASeedTheChildBootstrapAgreesWith drives Worktree-Create and
+// Seed-Child for real, then asserts the property the child's own bootstrap depends on: re-writing
+// the seed the way that bootstrap will must be accepted by shedrun.WriteSeed, not refused as a
+// disagreement.
 //
-// This is the regression test for the defect that made every real Run-Shed spawn fail. Seed-Child
-// wrote {recipe, driver} with no params; loom's bootstrap re-writes its seed on every start
-// carrying params.parent; shedrun.WriteSeed is idempotent only against an AGREEING seed and refuses
-// a disagreeing one outright, so the child's bootstrap refused permanently and Run-Shed died at
-// "exit status 1".
-//
-// It deliberately does not import internal/loomcli to get at loomSeedFor. It reconstructs that
-// seed's shape from the recorded origin instead, which is the same contract stated from batten's
-// own side of the boundary -- and it asserts the recorded parent is what landed in the param, so
-// the shape cannot drift into agreeing with itself while disagreeing with loom.
+// It reconstructs that seed's shape from the recorded origin rather than importing internal/loomcli,
+// and asserts the recorded parent is what landed in the param, so the shape cannot drift into
+// agreeing with itself while disagreeing with loom.
 func TestBattenIntegration_SeedChild_WritesASeedTheChildBootstrapAgreesWith(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	slug := "batten-seed-agrees"
@@ -229,18 +218,11 @@ func TestBattenIntegration_SeedChild_WritesASeedTheChildBootstrapAgreesWith(t *t
 }
 
 // TestBattenIntegration_RealReadStatus_OnAFreshPairReportsAbsentRatherThanErroring drives the two
-// InnerRun seams every other test in this file replaces -- the REAL Env.InnerRun.ResolveStatus and
-// the REAL Env.InnerRun.ReadStatus -- against a freshly created pair that has never run.
+// InnerRun seams every other test in this file replaces -- the real Env.InnerRun.ResolveStatus and
+// Env.InnerRun.ReadStatus -- against a freshly created pair that has never run.
 //
-// It is the regression test for the defect that made Run-Shed's read-before-spawn check fail on
-// every fresh task worktree: the child's status file is durable and its lock is ephemeral, nothing
-// on the Run-Shed path created the ephemeral half, and state.ReadJSONStrict deliberately never
-// creates a lock directory itself -- so the read failed with a bare "no such file or directory"
-// before deps.Spawn was ever reached.
-//
-// The property asserted is the producer's own contract: no status file yet must report
-// found == false with a NIL error, which is what tells innerRunProducer.Call to spawn. Any error
-// here is the bug.
+// It asserts the producer's own contract: no status file yet reports found == false with a nil
+// error, which is what tells innerRunProducer.Call to spawn.
 func TestBattenIntegration_RealReadStatus_OnAFreshPairReportsAbsentRatherThanErroring(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	slug := "batten-real-readstatus"

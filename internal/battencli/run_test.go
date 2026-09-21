@@ -350,13 +350,8 @@ func TestStatusCmd_WatchOverAbsentFileExitsImmediately(t *testing.T) {
 	}
 }
 
-// TestRecentHistory proves the status envelope's history is bounded to the most recent entries and
+// TestRecentHistory asserts the status envelope's history is bounded to the most recent entries and
 // reports whether anything was dropped.
-//
-// The regression it pins: Run-Shed's still-running self-bounce appends one history entry per poll
-// under a max_bounces budget of 1440, so a full twelve-hour watch put well over a thousand identical
-// entries into every "lyx batten status <slug>" envelope, for a run whose interesting history is
-// entirely at its two ends.
 func TestRecentHistory(t *testing.T) {
 	entry := func(n int) shedengine.HistoryEntry {
 		return shedengine.HistoryEntry{Producer: "Run-Shed", Outcome: shedengine.Stuck, Output: fmt.Sprint(n)}
@@ -404,13 +399,8 @@ func TestRecentHistory(t *testing.T) {
 	}
 }
 
-// TestReadStuckReason proves the status verb can recover the producer-supplied reason battenshed
-// wrote, and that it stays silent rather than guessing when there is none.
-//
-// The regression it pins: shedengine persists the fixed string "stuck with no OnStuck target" as
-// status.error for every stuck verdict, so "lyx batten status <slug>" told an operator nothing
-// actionable about a blocked run -- while a real remedy sat in a file batten itself had written,
-// in a directory batten can name.
+// TestReadStuckReason asserts the status verb recovers the producer-supplied reason battenshed
+// wrote, and stays silent rather than guessing when there is none.
 func TestReadStuckReason(t *testing.T) {
 	scratchDir := t.TempDir()
 	const producer = "Worktree-Create"

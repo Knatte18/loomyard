@@ -314,15 +314,9 @@ func TestInnerRun_NilSeamsDefaultToStdlib(t *testing.T) {
 	}
 }
 
-// TestWaitOrCancel_ReturnsImmediatelyOnACancelledContext proves the production sleep value a nil
-// InnerRunDeps.Sleep resolves to does not hold an operator's stop for the whole poll interval.
-//
-// The regression it pins: the still-running arm used a bare time.Sleep, so a context cancelled
-// during the wait was not observed until the full interval had elapsed -- 30 seconds by the batten
-// recipe's own poll_interval_s -- even though Call's cancellation check sits on the very next line.
-//
-// It is deadline-based rather than sleep-based: it asserts the call RETURNS under a generous bound,
-// never that it took some exact duration, so it is deterministic under -count=5.
+// TestWaitOrCancel_ReturnsImmediatelyOnACancelledContext asserts the production sleep value does
+// not hold an operator's stop for the whole poll interval.
+// It is deadline-based rather than duration-based, so it stays deterministic under -count=5.
 func TestWaitOrCancel_ReturnsImmediatelyOnACancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -340,8 +334,8 @@ func TestWaitOrCancel_ReturnsImmediatelyOnACancelledContext(t *testing.T) {
 	}
 }
 
-// TestWaitOrCancel_WaitsOutAShortIntervalWhenNotCancelled proves the wait is a real wait, not a
-// no-op that happens to satisfy the cancellation test above.
+// TestWaitOrCancel_WaitsOutAShortIntervalWhenNotCancelled asserts the wait is a real wait, not a
+// no-op that would satisfy the cancellation test above vacuously.
 func TestWaitOrCancel_WaitsOutAShortIntervalWhenNotCancelled(t *testing.T) {
 	start := time.Now()
 	waitOrCancel(context.Background(), 20*time.Millisecond)

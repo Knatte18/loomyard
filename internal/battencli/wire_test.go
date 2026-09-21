@@ -127,14 +127,9 @@ func TestWire_CommitStatusFilled(t *testing.T) {
 	}
 }
 
-// TestChildSpawnError proves the composition that turns a child bootstrap's exit status into a
-// diagnosis: a non-zero exit carries the child's own output into the error text, an exit with no
-// output is passed through unchanged, a nil run error stays nil, and an over-long output is
-// truncated with an explicit marker rather than silently.
-//
-// The regression this pins: before it, every child-bootstrap failure reached the operator and the
-// persisted status.error as the identical bare "exit status 1", because the Spawn seam discarded
-// the child's stdout and stderr.
+// TestChildSpawnError asserts a child bootstrap's exit status is turned into a diagnosis: a
+// non-zero exit carries the child's own output, a silent child passes the run error through, a nil
+// run error stays nil, and over-long output is truncated with an explicit marker.
 func TestChildSpawnError(t *testing.T) {
 	runErr := errors.New("exit status 1")
 	longOutput := strings.Repeat("x", maxChildOutputInError+50)
@@ -199,14 +194,9 @@ func TestChildSpawnError(t *testing.T) {
 	}
 }
 
-// TestTaskWorktreeLocation_AbsentPairIsNamed proves an unmaterialized task worktree is reported as
-// the state it actually is, naming the run, the expected path, and a remedy.
-//
-// The regression it pins, confirmed live: batten's status file is durable and fabric-synced, so a
-// run resumed on a second machine -- or after a pair was removed by hand -- legitimately reaches
-// every row past Worktree-Create with the pair absent locally. Left to the resolver, that surfaced
-// as "battenshed: Seed-Child: write seed: not a git repository: chdir <path>: no such file or
-// directory", which names neither the run, nor the reason, nor anything the operator can do.
+// TestTaskWorktreeLocation_AbsentPairIsNamed asserts an unmaterialized task worktree is reported on
+// its own terms -- naming the run, the expected path, and a remedy -- rather than as the resolver's
+// generic "not a git repository" failure.
 func TestTaskWorktreeLocation_AbsentPairIsNamed(t *testing.T) {
 	prime := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
 

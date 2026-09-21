@@ -231,13 +231,8 @@ func TestWorktreeTeardown_CancelledContext(t *testing.T) {
 	}
 }
 
-// TestRecordAbandonedSession proves the teardown row's abandoned-session record: written when a
-// session was abandoned, cleared when a later teardown abandoned none, and never escalated into a
-// verdict either way.
-//
-// The regression it pins: the value reaches an envelope only through the run verb's own PostRun
-// hook, so a lifecycle driven one "lyx batten step" at a time -- how an external supervisor drives
-// one -- never surfaced it at all, and the Warn line has scrolled away by the time anyone asks.
+// TestRecordAbandonedSession asserts the teardown row's abandoned-session record is written when a
+// session was abandoned and cleared when a later teardown abandoned none.
 func TestRecordAbandonedSession(t *testing.T) {
 	scratchDir := t.TempDir()
 	path := AbandonedSessionFile(scratchDir)

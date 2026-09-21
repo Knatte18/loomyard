@@ -19,26 +19,18 @@ const abandonedSessionFileName = "abandoned-session"
 
 // AbandonedSessionFile returns the path recordAbandonedSession writes the abandoned session's name
 // to, under scratchDir.
-//
-// It is exported for the same reason StuckReasonFile is: the writer and the reader of this file
-// share one declarer of its name. The value is a fact about how a teardown ended that outlives the
-// process that observed it, and a CLI reporting a finished run's outcome has to read it back.
+// It is exported for the same reason StuckReasonFile is: the file's reader and writer share one
+// declarer of its name.
 func AbandonedSessionFile(scratchDir string) string {
 	return filepath.Join(scratchDir, abandonedSessionFileName)
 }
 
-// recordAbandonedSession logs and durably records that session shutdown abandoned a session rather
-// than ending it cleanly, and clears any stale record when it did not.
-//
-// The record exists because the returned value reaches an envelope only through the run verb's own
-// PostRun hook. A lifecycle driven one "lyx batten step" at a time -- which is how an external
-// supervisor drives one -- never surfaced it at all: shedverbs' step envelope is a deliberately
-// closed ten-key set with no hook that can add to it, and the Warn line below has scrolled away by
-// the time anyone asks. Writing it beside the run's other producer-reported artefacts lets batten's
-// own status verb report it in either drive mode.
-//
-// A write or remove failure is logged rather than escalated, exactly as reportStuck's own writes
-// are: failing to record how a teardown ended must never change whether it succeeded.
+// recordAbandonedSession logs and records that session shutdown abandoned a session rather than
+// ending it cleanly, and clears any stale record when it did not.
+// The record outlives the process that observed it, which is what lets a step-driven lifecycle
+// report the value as well as a run-driven one.
+// A write or remove failure is logged rather than escalated: failing to record how a teardown ended
+// must not change whether it succeeded.
 func recordAbandonedSession(producer, slug, session, scratchDir string) {
 	path := AbandonedSessionFile(scratchDir)
 	if session == "" {
@@ -92,8 +84,7 @@ func NewWorktreeTeardown(name, slug string, deps TeardownDeps, primeLock PrimeLo
 // It then calls deps.Shutdown. A Shutdown error is Stuck naming session shutdown as the failed
 // half, and deps.Remove is not called at all on that path -- abandoning that ordering is the
 // single thing this one-row producer exists to prevent. A non-empty abandonedSession return is
-// logged at Warn naming the slug and the session and recorded under scratchDir
-// (recordAbandonedSession), and does not change the verdict either way.
+// logged and recorded under scratchDir (recordAbandonedSession), and does not change the verdict.
 //
 // It then calls deps.Remove. A Remove error is Stuck naming worktree removal as the failed half
 // and stating that session shutdown already succeeded, so the two halves are distinguishable in

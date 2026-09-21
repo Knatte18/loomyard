@@ -13,12 +13,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// waitOrCancel pauses for d, returning as soon as ctx is cancelled if that happens first. It is the
-// production value a nil InnerRunDeps.Sleep resolves to.
-//
-// A bare time.Sleep here held an operator's stop for the whole poll interval -- 30 seconds by the
-// recipe's own config -- before Call's cancellation check, which sits on the very next line, could
-// run. The timer is stopped on either exit so a cancelled wait leaves nothing behind.
+// waitOrCancel pauses for d, returning as soon as ctx is cancelled if that happens first.
+// It is the production value a nil InnerRunDeps.Sleep resolves to, so an operator's stop is not
+// held for the whole poll interval.
 func waitOrCancel(ctx context.Context, d time.Duration) {
 	timer := time.NewTimer(d)
 	defer timer.Stop()

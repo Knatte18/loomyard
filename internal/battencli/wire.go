@@ -42,19 +42,11 @@ import (
 // sibling-path helper -- and resolves that root through lyxcwd.ResolveWorktree, which applies no
 // cwd gate: the caller here holds a worktree root, not an acting cwd, so the gate would spuriously
 // fire.
-// It probes the worktree's existence before resolving, so an absent pair is reported as the state
-// it actually is rather than as whatever the resolver happens to say about a directory that is not
-// there. That case is not hypothetical and not a corrupt hub: batten's status file is durable and
-// fabric-synced, so a run resumed on a second machine legitimately reaches every row past
-// Worktree-Create with the pair unmaterialized locally, and a pair removed by hand mid-run lands in
-// the same place. Left to the resolver it surfaced as a bare
-// "not a git repository: chdir <path>: no such file or directory", which names neither the run, nor
-// the reason, nor a remedy.
 //
-// Recreating the pair here is deliberately NOT attempted: fabric's own Add refuses a pre-existing
-// branch by design, so materializing a pair from branches that already exist needs a fabric
-// capability batten does not have, and inventing one behind a path resolver would be the wrong
-// place for it regardless.
+// An absent pair is refused by name rather than left to the resolver's generic "not a git
+// repository": batten's status is durable, so a run resumed on another machine reaches every row
+// past Worktree-Create with no pair here.
+// Recreating it is not attempted, since fabric's Add refuses a pre-existing branch by design.
 func taskWorktreeLocation(prime *lyxcwd.Location, slug string) (*lyxcwd.Location, error) {
 	worktreePath := fabricengine.WorktreePath(prime, slug)
 	if _, err := os.Stat(worktreePath); err != nil {
@@ -69,18 +61,14 @@ func taskWorktreeLocation(prime *lyxcwd.Location, slug string) (*lyxcwd.Location
 	return lyxcwd.ResolveWorktree(worktreePath)
 }
 
-// maxChildOutputInError caps how much of a failed child bootstrap's own output is folded into the
-// returned error. The child writes a single JSON envelope, so the cap is never reached in practice;
-// it exists so a child that misbehaves cannot push an unbounded string into a status file that is
-// committed onto prime's own pair.
+// maxChildOutputInError caps the child output folded into a spawn error, so a misbehaving child
+// cannot push an unbounded string into a status file committed onto prime's own pair.
 const maxChildOutputInError = 2000
 
-// childSpawnError composes the error the Spawn seam returns for a child bootstrap that exited
-// non-zero, folding the child's own captured output into runErr's text.
-//
-// It returns nil for a nil runErr, and runErr unchanged when the child said nothing -- there is no
-// value in appending an empty quote. Output longer than maxChildOutputInError is truncated with an
-// explicit marker, never silently.
+// childSpawnError folds a failed child bootstrap's own output into runErr, so the returned error
+// carries the child's diagnosis rather than only its exit status.
+// It returns nil for a nil runErr, runErr unchanged when the child said nothing, and truncates
+// output past maxChildOutputInError with an explicit marker.
 func childSpawnError(runErr error, childOutput string) error {
 	if runErr == nil {
 		return nil
@@ -95,23 +83,15 @@ func childSpawnError(runErr error, childOutput string) error {
 	return fmt.Errorf("%w: %s", runErr, trimmed)
 }
 
-// childSeedParams returns the seed params the child's own bootstrap verb will itself write for
-// recipe, read from childLocation, so the seed Seed-Child writes is one that bootstrap AGREES with
-// rather than one it refuses.
+// childSeedParams returns the seed params recipe's own bootstrap verb will itself write, read from
+// childLocation.
 //
-// The coupling is not optional and not defensive. shedrun.WriteSeed is idempotent only against a
-// seed that agrees on recipe, driver AND params; a disagreeing seed is refused outright with no
-// self-healing. loom's own bootstrap re-writes its seed on every "lyx loom start" carrying
-// params.parent, so a child seeded here without that param makes every subsequent bootstrap in that
-// worktree refuse permanently -- which is exactly what Run-Shed's spawn hit before this existed.
-//
-// Params are per-recipe by definition, so the branch on recipe is the contract, not a special case.
-// Only shedrun.RecipeLoom declares one today; any other recipe seeds no params, which is what its
-// own bootstrap will write.
-//
-// A recorded parent branch that is absent or empty yields no param at all, deliberately: loom's own
-// bootstrap refuses an unrecorded parent with a message naming --parent as the remedy, and that
-// refusal is far more useful to an operator than a seed disagreement manufactured here.
+// shedrun.WriteSeed is idempotent only against a seed agreeing on recipe, driver and params, so a
+// child seeded without a param its own bootstrap writes makes that bootstrap refuse.
+// Params are per-recipe: only loom declares one, params.parent, taken from the pair's recorded
+// origin.
+// An absent or empty recorded parent yields no param, leaving loom's own "pass --parent once"
+// refusal as the one an operator sees.
 func childSeedParams(recipe string, childLocation *lyxcwd.Location) (map[string]string, error) {
 	if recipe != shedrun.RecipeLoom {
 		return nil, nil
@@ -133,12 +113,10 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 	primeLock := battenshed.PrimeLock{
 		Path: primeRunLockPath,
 		Acquire: func() (release func() error, ok bool, err error) {
-			// Both directories are ensured, and the prime lock's own comes first, because it is
-			// the one this closure is about to take a lock in. The per-slug scratch directory is
-			// ensured too because the producers that hold this lock write their stuck-reason files
-			// there. Relying on the slug directory's MkdirAll to create the prime lock's parent as
-			// a side effect of creating a deeper path under it worked only as long as the two
-			// shedrun constructors happened to nest, a coupling neither one states.
+			// The prime lock's own directory first -- it is the one being locked in -- then the
+			// per-slug scratch directory, where the producers holding this lock write their
+			// stuck-reason files. The two shedrun constructors state no relationship, so neither
+			// may be left to the other's MkdirAll.
 			if err := os.MkdirAll(filepath.Dir(primeRunLockPath), 0o755); err != nil {
 				return nil, false, err
 			}
@@ -203,18 +181,10 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			},
 		},
 		InnerRun: battenshed.InnerRunDeps{
-			// ResolveStatus also creates the child's own ephemeral status-lock directory before
-			// returning, because the very next thing its caller does is read through that lock.
-			// The child's status file is durable (_lyx/shed/self/) while its lock is ephemeral
-			// (.lyx/shed/self/), and nothing else creates the ephemeral half on the Run-Shed path:
-			// Worktree-Create creates the pair, and Seed-Child's shedrun.WriteSeed MkdirAlls the
-			// DURABLE run directory only. Without this, Run-Shed's own read-before-spawn check --
-			// the producer's re-entry-safety mechanism -- fails on a bare "no such file or
-			// directory" before deps.Spawn is ever reached, on every freshly created task worktree.
-			// This mirrors battenPreRun's and battenPreStep's identical MkdirAll for PRIME's own
-			// status lock (arm.go); that guard was never carried down to the child's.
-			// Making a told path usable is legal here where deriving one would not be, the same
-			// licence battenshed's own reportStuck takes with its told scratch directory.
+			// ResolveStatus also creates the child's ephemeral status-lock directory, since its
+			// caller reads through that lock next and nothing else on the Run-Shed path creates
+			// it: the child's status file is durable while its lock is not. This mirrors
+			// battenPreRun's own MkdirAll for prime's status lock (arm.go).
 			ResolveStatus: func() (statusPath, statusLockPath string, err error) {
 				taskLocation, err := taskWorktreeLocation(location, slug)
 				if err != nil {
@@ -241,11 +211,8 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				// subpath-anchored hub.
 				cmd := exec.Command(exe, "loom", "start", "--no-attach")
 				cmd.Dir = taskLocation.AnchorPath()
-				// The child's own output is captured rather than discarded: it is the ONLY
-				// diagnosis this seam can offer. Without it every child-bootstrap failure -- a
-				// refused seed, an unrecorded parent branch, an unparseable module config, a
-				// provider binary that will not boot -- reaches the operator, and the persisted
-				// status.error, as the identical bare "exit status 1".
+				// Captured rather than discarded: the child's own envelope is the only
+				// diagnosis this seam can offer for a failed bootstrap.
 				var childOutput bytes.Buffer
 				cmd.Stdout = &childOutput
 				cmd.Stderr = &childOutput
@@ -294,8 +261,8 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			// itself, wrapping a failure in battenshed.ErrUnknownRecipe so seedChildProducer's own
 			// errors.Is check routes it to Stuck rather than a hard error.
 			//
-			// The params it writes come from childSeedParams: a seed missing a param the child's
-			// own bootstrap will write is not a smaller seed, it is a seed that bootstrap refuses.
+			// Params come from childSeedParams: a seed missing one the child's own bootstrap
+			// writes is not a smaller seed, it is a seed that bootstrap refuses.
 			WriteSeed: func(ctx context.Context, recipe, driver string) error {
 				if err := shedrun.ValidateRecipe(recipe); err != nil {
 					return fmt.Errorf("%w: %s", battenshed.ErrUnknownRecipe, err.Error())
