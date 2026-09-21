@@ -125,6 +125,31 @@ So the right resolution is the one the tripwire's own failure message prescribes
 
 **Confidence:** CONFIRMED — reproduced on a clean tree, cause located by `git log -L`.
 
+### F6 — batten leaks fabric vocabulary; a second repo-wide tripwire is RED at HEAD, and two invariants contradict each other (BLOCKING, CONFIRMED)
+
+**Where:** `internal/battencli/arm.go:264` (the `fabricengine.RequireWarpWorktree` call), `arm.go:261-263`, `arm.go:388`, `arm.go:455`, `cli.go:157-158`, `refusal.go:12-16`, against `CONSTRAINTS.md:197-201` (Fabric Vocabulary Invariant) and its tripwire `internal/lyxcwd/enforcement_test.go:924`.
+
+**Scenario (reproduced, and present on a clean tree).**
+
+```
+go test -count=1 -run TestEnforcement_FabricVocabulary ./internal/lyxcwd/...
+--- FAIL: TestEnforcement_FabricVocabulary/tree-scan
+    fabric-vocabulary leak found:
+      internal/battencli/arm.go: bare weft/warp token outside the owner set
+      internal/battencli/cli.go: bare weft/warp token outside the owner set
+      internal/battencli/refusal.go: bare weft/warp token outside the owner set
+```
+
+`internal/battencli` is not in the Fabric Vocabulary Invariant's owner set, and all three of its own package docs say so explicitly ("no identifier, literal, or comment in this package ... may name either side of the pair"). `git log -L` puts the cause on this branch again: `dc9690e71 batten: fix F3 — refuse every batten verb from the weft prime, not only from task worktrees` and `a811c01b7 batten: fix N3 + N4 — group help lists all four verbs`. Same blind spot as F5 — three rounds' hermetic command never ran `./internal/lyxcwd/...`.
+
+**The part that is not just sloppy prose.** Most of the hits are comments and one user-facing string, trivially reworded. One is not: `arm.go:264` calls `fabricengine.RequireWarpWorktree`, and the scan matches the bare token **inside an identifier** (`bareVocabularyToken` is a deliberate substring match, `enforcement_test.go:654`), so the published function name is itself the leak. Meanwhile `CONSTRAINTS.md:237` (Batten Bookend Invariant) **mandates** that exact call: *"`battencli`'s pre-run therefore calls `fabricengine.RequireWarpWorktree` ahead of the name check"*.
+
+So two invariants directly contradict each other, and batten cannot satisfy both as the API stands. The call itself is correct and load-bearing — it is what catches the fabric-sibling case that a name comparison alone admits (verified live, scenario B).
+
+**Fix.** Follow the pattern fabric already established for exactly this problem — `CommitAnchoredPaths`, `PushAnchored`, `Fabric.PushBranch` are all vocabulary-neutral spellings fabric hands to non-owners ("`PushBranch` wrapping `PushWarpRebaseFreeAt` under a vocabulary-neutral name `internal/loomcli` is not permitted to say itself", `fabricengine/doc.go:487`). Add `fabricengine.RequireDrivableWorktree(l)` as `RequireWarpWorktree`'s neutral spelling, call that from `battencli`, reword the remaining comments and the one user-facing string to the pair-neutral wording the package docs require, and correct `CONSTRAINTS.md:237` to name the spelling batten is actually allowed to say. This is additive to fabric and changes no fabric behaviour — it is not fabric correctness work, which stays out of scope.
+
+**Confidence:** CONFIRMED — reproduced on a clean tree, cause located by `git log -L`, and the invariant conflict read out of both constraint texts.
+
 ### F4 — the design doc's second shipped residual is written down nowhere in the code (NIT, CONFIRMED)
 
 **Where:** `internal/battenshed/doc.go:15-19`.
