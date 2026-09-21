@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-shell-prelude-primitives
+phase: approved-reed-pane-binary-chokepoint
 slug: lyx-bin-pane-path
 branch: lyx-bin-pane-path
 plan: _mill/plan
@@ -27,6 +27,7 @@ plan-fix-r1  '2026-09-21T14:08:30Z'
 planned  '2026-09-21T14:08:45Z'
 implementing  '2026-09-21T14:09:09Z'
 approved-shell-prelude-primitives  '2026-09-21T14:18:12Z'
+approved-reed-pane-binary-chokepoint  '2026-09-21T14:24:25Z'
 ```
 
 ## Batches
@@ -40,9 +41,10 @@ batches:
     commit_sha: 283b52c2549675fc3a830b6a53098570eb63bc26
     verify_baseline_failures: []
   - name: reed-pane-binary-chokepoint
-    state: running
+    state: approved
     implementer_session: f9076cf7-795f-4abb-90b4-7d8092d15737
     start_sha: a811f0ddf83152a1f8a5910fdf474b1d9ad215bd
+    commit_sha: 22e34d74d34f8492b0928cf265e42b8ee774418c
     verify_baseline_failures: []
   - name: docs-and-sandbox-preconditions
     state: pending
