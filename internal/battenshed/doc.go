@@ -18,6 +18,10 @@
 // A long-quiet Run-Shed therefore means "possibly dead or parked", not "working", until the row's
 // bounce budget runs out; an operator tells the cases apart by attaching to the child's session.
 //
+// Its counterpart is equally by design: a driver that finishes NORMALLY leaves its strand and its
+// run directory behind. Nothing here tears either down as part of a clean finish -- only the
+// whole-worktree teardown row cleans up, at the very end, by removing the worktree they live in.
+//
 // It declares its own unexported entryErr/cancelErr helpers (ctx.go) and its own reportStuck
 // carrier (stuck.go) for the same deliberate-duplication reason internal/preflightshed/doc.go and
 // internal/landingshed/stuck.go already record: each producer-owning package carries its own copy
