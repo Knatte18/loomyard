@@ -22,7 +22,8 @@ Three things did hold up well under adversarial driving, and are worth saying: t
 The rest of the findings are about batten being unreadable when it fails: a child bootstrap failure reports only `exit status 1` (F2), a blocked run's status verb reports only `stuck with no OnStuck target` while the real reason sits in a file batten itself wrote (F10), and a cold machine dies on a raw `chdir` ENOENT (F9) against an obligation the design doc names explicitly.
 
 **Merge-readiness (pre-fix): NOT MERGEABLE.**
-Counts: 2 BLOCKING, 4 MEDIUM, 5 LOW, 2 NIT, 1 verified-no-defect.
+Counts at review close: 2 BLOCKING (F0, F1), 5 MEDIUM (F2, F3, F9, F10, F12), 5 LOW (F4–F7, F11), 2 NIT (F8, F13), 1 verified-no-defect (F14).
+One further MEDIUM, F15, surfaced while re-driving after the fixes and is recorded in the post-fix addendum at the bottom — final totals are 2 BLOCKING, 6 MEDIUM, 5 LOW, 2 NIT.
 
 ## Scope assessment (design doc vs shipped)
 
