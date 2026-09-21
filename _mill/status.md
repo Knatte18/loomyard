@@ -40,7 +40,9 @@ batches:
     commit_sha: 283b52c2549675fc3a830b6a53098570eb63bc26
     verify_baseline_failures: []
   - name: reed-pane-binary-chokepoint
-    state: pending
+    state: running
+    implementer_session: f9076cf7-795f-4abb-90b4-7d8092d15737
+    start_sha: a811f0ddf83152a1f8a5910fdf474b1d9ad215bd
     verify_baseline_failures: []
   - name: docs-and-sandbox-preconditions
     state: pending
