@@ -145,6 +145,46 @@ func gitShow(t *testing.T, dir, spec string) []byte {
 	return out
 }
 
+// TestBattenIntegration_RealReadStatus_OnAFreshPairReportsAbsentRatherThanErroring drives the two
+// InnerRun seams every other test in this file replaces -- the REAL Env.InnerRun.ResolveStatus and
+// the REAL Env.InnerRun.ReadStatus -- against a freshly created pair that has never run.
+//
+// It is the regression test for the defect that made Run-Shed's read-before-spawn check fail on
+// every fresh task worktree: the child's status file is durable and its lock is ephemeral, nothing
+// on the Run-Shed path created the ephemeral half, and state.ReadJSONStrict deliberately never
+// creates a lock directory itself -- so the read failed with a bare "no such file or directory"
+// before deps.Spawn was ever reached.
+//
+// The property asserted is the producer's own contract: no status file yet must report
+// found == false with a NIL error, which is what tells innerRunProducer.Call to spawn. Any error
+// here is the bug.
+func TestBattenIntegration_RealReadStatus_OnAFreshPairReportsAbsentRatherThanErroring(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+	slug := "batten-real-readstatus"
+	hubforge.AddPair(t, h, slug)
+
+	c := &battenCLI{}
+	if err := c.wire(h.Location, slug); err != nil {
+		t.Fatalf("wire(%s): %v", slug, err)
+	}
+
+	statusPath, statusLockPath, err := c.env.InnerRun.ResolveStatus()
+	if err != nil {
+		t.Fatalf("ResolveStatus on a fresh pair: %v", err)
+	}
+	if !pathExists(filepath.Dir(statusLockPath)) {
+		t.Errorf("ResolveStatus left the child's status-lock directory %s absent; the read that follows it needs one", filepath.Dir(statusLockPath))
+	}
+
+	st, found, err := c.env.InnerRun.ReadStatus(statusPath, statusLockPath)
+	if err != nil {
+		t.Fatalf("ReadStatus on a fresh pair = %v; want a nil error reporting the status file simply absent", err)
+	}
+	if found {
+		t.Errorf("ReadStatus on a fresh pair reported found = true (state %q); want false", st.State)
+	}
+}
+
 // TestBattenIntegration_FourRowRun_SeedsChildCommitsAndTearsDown drives a spawn stub plus a
 // read-status answering StateDone through the whole four-row list one row at a time: Worktree-Create,
 // Seed-Child, Run-Shed, Worktree-Teardown.

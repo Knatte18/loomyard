@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/boardengine"
@@ -111,12 +112,29 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			},
 		},
 		InnerRun: battenshed.InnerRunDeps{
+			// ResolveStatus also creates the child's own ephemeral status-lock directory before
+			// returning, because the very next thing its caller does is read through that lock.
+			// The child's status file is durable (_lyx/shed/self/) while its lock is ephemeral
+			// (.lyx/shed/self/), and nothing else creates the ephemeral half on the Run-Shed path:
+			// Worktree-Create creates the pair, and Seed-Child's shedrun.WriteSeed MkdirAlls the
+			// DURABLE run directory only. Without this, Run-Shed's own read-before-spawn check --
+			// the producer's re-entry-safety mechanism -- fails on a bare "no such file or
+			// directory" before deps.Spawn is ever reached, on every freshly created task worktree.
+			// This mirrors battenPreRun's and battenPreStep's identical MkdirAll for PRIME's own
+			// status lock (arm.go); that guard was never carried down to the child's.
+			// Making a told path usable is legal here where deriving one would not be, the same
+			// licence battenshed's own reportStuck takes with its told scratch directory.
 			ResolveStatus: func() (statusPath, statusLockPath string, err error) {
 				taskLocation, err := taskWorktreeLocation(location, slug)
 				if err != nil {
 					return "", "", err
 				}
-				return shedrun.StatusFile(taskLocation, shedrun.SelfRunID), shedrun.StatusLock(taskLocation, shedrun.SelfRunID), nil
+				statusPath = shedrun.StatusFile(taskLocation, shedrun.SelfRunID)
+				statusLockPath = shedrun.StatusLock(taskLocation, shedrun.SelfRunID)
+				if err := os.MkdirAll(filepath.Dir(statusLockPath), 0o755); err != nil {
+					return "", "", err
+				}
+				return statusPath, statusLockPath, nil
 			},
 			Spawn: func(ctx context.Context) error {
 				taskLocation, err := taskWorktreeLocation(location, slug)
