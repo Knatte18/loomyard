@@ -295,8 +295,9 @@ func TestChildSpawnError_TruncationStaysValidUTF8(t *testing.T) {
 }
 
 // TestTaskWorktreeLocation_AbsentPairIsNamed asserts an unmaterialized task worktree is reported on
-// its own terms -- naming the run, the expected path, and a remedy -- rather than as the resolver's
-// generic "not a git repository" failure.
+// its own terms -- naming the run and the expected path, and pointing at a real remedy rather than a
+// fabric command that would actually mutate prime itself -- rather than as the resolver's generic
+// "not a git repository" failure.
 func TestTaskWorktreeLocation_AbsentPairIsNamed(t *testing.T) {
 	prime := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
 
@@ -304,10 +305,13 @@ func TestTaskWorktreeLocation_AbsentPairIsNamed(t *testing.T) {
 	if err == nil {
 		t.Fatal("taskWorktreeLocation(prime, \"never-created\") = nil error; want a named refusal")
 	}
-	for _, want := range []string{"never-created", "is not present at", "lyx fabric checkout never-created"} {
+	for _, want := range []string{"never-created", "is not present at", "resolve this by hand"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("taskWorktreeLocation(...) = %q; want it to contain %q", err.Error(), want)
 		}
+	}
+	if strings.Contains(err.Error(), "lyx fabric checkout") {
+		t.Errorf("taskWorktreeLocation(...) = %q; want it to never suggest \"lyx fabric checkout\" -- run from prime, that command mutates prime's own branch rather than restoring the missing task worktree", err.Error())
 	}
 	if strings.Contains(err.Error(), "not a git repository") {
 		t.Errorf("taskWorktreeLocation(...) = %q; want the absent-pair case reported on its own terms, not as a resolver failure", err.Error())

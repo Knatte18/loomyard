@@ -46,14 +46,17 @@ import (
 // An absent pair is refused by name rather than left to the resolver's generic "not a git
 // repository": batten's status is durable, so a run resumed on another machine reaches every row
 // past Worktree-Create with no pair here.
-// Recreating it is not attempted, since fabric's Add refuses a pre-existing branch by design.
+// Recreating it is not attempted, since fabric's Add refuses a pre-existing branch by design -- and
+// the refusal below names no fabric command as a substitute: "lyx fabric checkout" switches the
+// CALLER's own worktree onto the named branch, so run from prime, as every batten verb must be, it
+// would mutate prime itself rather than restore anything.
 func taskWorktreeLocation(prime *lyxcwd.Location, slug string) (*lyxcwd.Location, error) {
 	worktreePath := fabricengine.WorktreePath(prime, slug)
 	if _, err := os.Stat(worktreePath); err != nil {
 		if os.IsNotExist(err) {
 			return nil, fmt.Errorf(
-				"battencli: the task worktree for %q is not present at %s; this run's durable status says it was already created, so it is either on another machine or was removed by hand -- batten does not recreate a pair from its branch, so restore it with \"lyx fabric checkout %s\" before resuming",
-				slug, worktreePath, slug,
+				"battencli: the task worktree for %q is not present at %s; this run's durable status says it was already created, so it is either on another machine or was removed by hand -- batten does not recreate a pair from its branch, and no \"lyx fabric\" command currently does either (creating one refuses when its branch already exists): resolve this by hand, deleting the pair's branches so a resumed run reaches a fresh create, or restoring the worktree pair yourself outside lyx's own automation, before resuming",
+				slug, worktreePath,
 			)
 		}
 		return nil, err
