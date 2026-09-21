@@ -112,6 +112,72 @@ distinguishing a dead driver from a slow one. This reproduces `battenshed`'s own
 trace: "A driver strand that dies mid-run... is not detected here, by design." CONFIRMED live. This is one of the design doc's two
 consciously-shipped-as-is residuals (see "Deferred items" section below) -- re-confirmed still accurate, not a new finding.
 
+### PRIMARY SCENARIO: single blocking `lyx batten run greet-task --child-driver go` — full end-to-end, real terminal state (R3's own residual)
+
+Launched (per the round's own "Residual explicitly named for you, R3" instruction) as a single backgrounded, blocking foreground call:
+`nohup lyx batten run greet-task --child-driver go > greet-task-run.log 2>&1 &`, output redirected per `ly-drive`'s own pattern.
+ONE `lyx` process (pid 57105), never re-invoked, never stepped externally.
+
+- The process stayed alive and self-bounced INTERNALLY for its entire ~13.5-minute run (29 history entries, one per 30s poll, `Run-Shed →
+  stuck` repeating) with NO external `lyx batten step` call from me at any point after launch -- this alone is the direct, timed, live proof
+  of the R3 residual: `shed.Run()`'s own internal loop really does drive every Run-Shed self-bounce inside the one blocking call, exactly as
+  `shedverbs/run.go`'s doc comment says, not merely "almost certainly mechanically equivalent" per R2's own inference.
+- The real child (`greet-task`, `--child-driver go`, `haiku[effort=low]`) walked Preflight → Loom-Preflight → Discussion-Write → (discussion
+  review) → Plan-Write → Plan-Bouncer → Batchifier → Webster → Webster-Bouncer (multiple rounds) → **Publish**, where it genuinely BLOCKED
+  (`state: "blocked"`, `current_producer: "Publish"`, `error: "stuck with no OnStuck target"`) -- almost certainly because this fixture's warp
+  remote is a local bare repo with no real GitHub host behind it, so `Publish`'s own PR/push step has nothing to succeed against. This is an
+  environment limitation of the disposable fixture (no real GitHub-hosted repo), not a batten or loom defect -- noted here as what could not
+  be driven all the way to a clean `Done`, and accepted per the round's own scoping ("loom's OWN internal phase-machine correctness... is a
+  different module's scope").
+- This genuinely-blocked child gave a live, unplanned but ideal proof of **item 3**: `innerRunProducer.Call` returned a HARD ERROR (not
+  Stuck) naming the child's exact state/current_producer/error plus the `haltedChildRemedy` text; `shedengine.stepLocked`'s `callErr != nil`
+  arm persisted `state: "failed"` (current_producer left as `"Run-Shed"`, never routed anywhere) and `shed.Run` returned that error to the
+  `run` verb, which wrote an `{"ok":false,...}` envelope and a non-zero exit -- CONFIRMED live, not from the stubbed integration test.
+  **The task worktree (`greet-task`/`greet-task-weft`) is still present on disk after this halt** -- confirmed directly with `ls`, the
+  single load-bearing safety property item 3 exists to protect. Worktree-Teardown was never reached, exactly as the recipe's own header
+  comment says ("the destructive teardown row is unreachable from any failure path").
+- This also gave a live, precisely-timed answer to **item 4**: the FIRST-EVER `InnerRun.Call` for a fresh slug (measured separately on
+  `pre-seeded-slug`, see below) returns in ~30.27s total -- the poll interval, not the campaign's eventual ~13.5-minute duration. If
+  `Spawn` (which runs `loom start --no-attach`) blocked for the whole nested campaign, that very first call would have taken as long as the
+  whole run did. It does not: `Spawn`'s own `cmd.Run()` returns once `loom start --no-attach`'s own handshake confirms the detached `go`
+  driver has taken the run lock (traced in `internal/loomcli/start.go`'s `runDriverSpawnAndWait`/`awaitRunLock`), a few seconds at most, and
+  the remaining ~30s is `InnerRun`'s own `Sleep` call AFTER `Spawn` already returned. CONFIRMED live and by wiring trace together -- "exits"
+  in `InnerRunDeps.Spawn`'s doc comment refers to the bootstrap handshake, never the nested campaign, exactly as documented.
+- Also confirms **item 5** (Seed-Child plumbing): the real child's `_lyx/shed/self/seed.json` ended up `{"recipe":"loom","driver":"go",
+  "params":{"parent":"main"}}` -- the Board task's `type: loom` and prime's own `child_driver` (defaulted go, matching the `run` command's
+  own `--child-driver go`) both landed correctly, and the nested `loom start --no-attach` really did read that seed and drive a REAL loom
+  campaign off it (13.5 minutes of real Discussion/Plan/Webster/Bouncer producer rounds, each spawning real `claude` subprocesses -- observed
+  directly in `ps aux` throughout).
+
+### Scenario: item 8 (sabotage) — raw git commit landed directly on prime's own weft outside fabric's seams, during a live run
+
+While `greet-task`'s single blocking run was active (deep in its Run-Shed watch), on `warp-fixture-weft` (prime's own weft worktree, where
+batten's OWN `_lyx/shed/<slug>/status.json` lives): wrote `_lyx/SABOTAGE-NOTE.md` and committed it directly with raw `git add`/`git commit`
+(bypassing `fabricengine` entirely), landing a foreign commit (`c3dd888`) on top of batten's own most recent commit. Then drove a fresh
+slug's `Worktree-Create` (a genuine new (producer,state) pair, so the no-op-transition skip in `newCommitStatusSeam` could not mask the
+result) with the sabotage commit still present as the current HEAD.
+Result: batten's own scoped-pathspec commit (`fabricengine.CommitAnchoredPaths` → `StageAndCommit` with a positive-only pathspec, per the
+Fabric Git Invariant) landed CLEANLY on top of the sabotage commit with no conflict, no corruption, and no special-casing needed -- the
+scoped-pathspec design is inherently immune to an unrelated foreign commit landing on the same branch, because it only ever touches the
+specific paths it names. CONFIRMED live: not corrupted.
+It is also, structurally, never detected or reported: nothing in `battencli`'s or `battenshed`'s own commit path inspects the branch for
+commits it did not itself make -- there is no "diff against last known HEAD" step anywhere in this path. This is judged NOT a batten-scope
+finding: the mechanism that WOULD have to notice a foreign commit is `fabricengine`'s own commit/push machinery (shared verbatim by loom's
+own equivalent `newCommitStatusSeam` in `internal/loomcli/wiring.go`), a cross-cutting property of the whole Fabric Git Invariant design,
+not something `battenshed`/`battenrecipe`/`battencli` could add on their own without a much larger cross-module change -- explicitly out of
+this round's scope per "fabric's own clone/merge correctness beyond what batten's Worktree-Create/Teardown actually exercise... has its own
+separate crucible lineage." Recorded here as a determined, live answer (not corrupted; not reported; architecturally out of batten's reach),
+not as a new finding to fix.
+
+### Scenario: item 9 (sabotage) — a stray untracked file dropped under `_lyx` mid-run
+
+The same `_lyx/rogue-stray-file.txt` (written alongside the item 8 sabotage above) was checked with `git status --porcelain` after every
+subsequent batten commit across the rest of this session (multiple slugs, multiple transitions, ~20+ minutes of real activity): it stayed
+untracked and was NEVER staged or swept into any commit, at any point -- the scoped, positive-only pathspec is what protects against the
+"stage-all lottery" the round prompt names as one failure mode. It was also never silently dropped -- it remained on disk, untouched, the
+whole time. CONFIRMED live: neither failure mode occurs. As with item 8, there is no explicit report/warning surfaced about the stray file's
+presence, for the identical structural reason (no repo-wide status scan anywhere in this commit path) -- not a batten-scope finding.
+
 (remainder appended as scenarios run)
 
 ## Findings (provisional; severity/ordering finalized at the end)
