@@ -42,8 +42,31 @@ import (
 // sibling-path helper -- and resolves that root through lyxcwd.ResolveWorktree, which applies no
 // cwd gate: the caller here holds a worktree root, not an acting cwd, so the gate would spuriously
 // fire.
+// It probes the worktree's existence before resolving, so an absent pair is reported as the state
+// it actually is rather than as whatever the resolver happens to say about a directory that is not
+// there. That case is not hypothetical and not a corrupt hub: batten's status file is durable and
+// fabric-synced, so a run resumed on a second machine legitimately reaches every row past
+// Worktree-Create with the pair unmaterialized locally, and a pair removed by hand mid-run lands in
+// the same place. Left to the resolver it surfaced as a bare
+// "not a git repository: chdir <path>: no such file or directory", which names neither the run, nor
+// the reason, nor a remedy.
+//
+// Recreating the pair here is deliberately NOT attempted: fabric's own Add refuses a pre-existing
+// branch by design, so materializing a pair from branches that already exist needs a fabric
+// capability batten does not have, and inventing one behind a path resolver would be the wrong
+// place for it regardless.
 func taskWorktreeLocation(prime *lyxcwd.Location, slug string) (*lyxcwd.Location, error) {
-	return lyxcwd.ResolveWorktree(fabricengine.WorktreePath(prime, slug))
+	worktreePath := fabricengine.WorktreePath(prime, slug)
+	if _, err := os.Stat(worktreePath); err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf(
+				"battencli: the task worktree for %q is not present at %s; this run's durable status says it was already created, so it is either on another machine or was removed by hand -- batten does not recreate a pair from its branch, so restore it with \"lyx fabric checkout %s\" before resuming",
+				slug, worktreePath, slug,
+			)
+		}
+		return nil, err
+	}
+	return lyxcwd.ResolveWorktree(worktreePath)
 }
 
 // maxChildOutputInError caps how much of a failed child bootstrap's own output is folded into the

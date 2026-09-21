@@ -198,3 +198,28 @@ func TestChildSpawnError(t *testing.T) {
 		})
 	}
 }
+
+// TestTaskWorktreeLocation_AbsentPairIsNamed proves an unmaterialized task worktree is reported as
+// the state it actually is, naming the run, the expected path, and a remedy.
+//
+// The regression it pins, confirmed live: batten's status file is durable and fabric-synced, so a
+// run resumed on a second machine -- or after a pair was removed by hand -- legitimately reaches
+// every row past Worktree-Create with the pair absent locally. Left to the resolver, that surfaced
+// as "battenshed: Seed-Child: write seed: not a git repository: chdir <path>: no such file or
+// directory", which names neither the run, nor the reason, nor anything the operator can do.
+func TestTaskWorktreeLocation_AbsentPairIsNamed(t *testing.T) {
+	prime := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+
+	_, err := taskWorktreeLocation(prime, "never-created")
+	if err == nil {
+		t.Fatal("taskWorktreeLocation(prime, \"never-created\") = nil error; want a named refusal")
+	}
+	for _, want := range []string{"never-created", "is not present at", "lyx fabric checkout never-created"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("taskWorktreeLocation(...) = %q; want it to contain %q", err.Error(), want)
+		}
+	}
+	if strings.Contains(err.Error(), "not a git repository") {
+		t.Errorf("taskWorktreeLocation(...) = %q; want the absent-pair case reported on its own terms, not as a resolver failure", err.Error())
+	}
+}
