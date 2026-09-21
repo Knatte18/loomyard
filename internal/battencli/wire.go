@@ -244,7 +244,9 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			},
 			// ChildDriver reads the "child_driver" param from prime's own seed -- the seed
 			// card 24's auto-seed writes at this run-id -- defaulting to shedrun.DriverGo when the
-			// seed is absent or the param is absent or empty.
+			// seed is absent or the param is absent or empty. The defaulting itself is childDriverOf
+			// (arm.go), shared with refuseAdoptedSeed's own comparison so the two can never read the
+			// same seed's child driver differently.
 			ChildDriver: func() (string, error) {
 				seed, found, err := shedrun.ReadSeed(location, slug)
 				if err != nil {
@@ -253,10 +255,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				if !found {
 					return shedrun.DriverGo, nil
 				}
-				if driver, ok := seed.Params["child_driver"]; ok && driver != "" {
-					return driver, nil
-				}
-				return shedrun.DriverGo, nil
+				return childDriverOf(seed), nil
 			},
 			// WriteSeed is the only place in the batten path that encodes a seed, per the
 			// seed-encoding-stays-behind-a-seam-in-battenshed Shared Decision. It validates recipe

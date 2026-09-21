@@ -136,8 +136,9 @@ func refuseAdoptedSeed(seed shedrun.Seed, runID string, driverFlag string, drive
 }
 
 // childDriverOf returns the child driver seed records, defaulting an absent or empty
-// params.child_driver to shedrun.DriverGo -- the resolution the SeedChild wiring seam performs, so a
-// refusal never compares against a value the run would not use.
+// params.child_driver to shedrun.DriverGo. wire.go's own SeedChild.ChildDriver closure calls this
+// directly rather than re-implementing the same default, so a refusal here and the value
+// Seed-Child actually writes can never read the same seed's child driver differently.
 func childDriverOf(seed shedrun.Seed) string {
 	if driver, ok := seed.Params["child_driver"]; ok && driver != "" {
 		return driver

@@ -109,6 +109,51 @@ func TestWire_SeedChildClosuresFilled(t *testing.T) {
 	}
 }
 
+// TestWire_ChildDriverDelegatesToChildDriverOf asserts the wired SeedChild.ChildDriver closure
+// reads exactly the value childDriverOf(seed) (arm.go) would compute over the same seed, for both
+// an explicit child_driver param and an absent one -- the property F2 (crucible round
+// sonnet-xhigh-r3) exists to guarantee structurally: refuseAdoptedSeed's own comparison and the
+// value Seed-Child actually writes now share one defaulting implementation, so they cannot drift.
+func TestWire_ChildDriverDelegatesToChildDriverOf(t *testing.T) {
+	tests := []struct {
+		name   string
+		params map[string]string
+		want   string
+	}{
+		{"ExplicitLLM", map[string]string{"child_driver": shedrun.DriverLLM}, shedrun.DriverLLM},
+		{"AbsentParamDefaultsToGo", nil, shedrun.DriverGo},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := &battenCLI{}
+			location := &lyxcwd.Location{
+				RepoName:     "example",
+				HubPath:      t.TempDir(),
+				WorktreeName: "hub-repo",
+				AnchorRel:    ".",
+			}
+			if err := c.wire(location, "some-slug"); err != nil {
+				t.Fatalf("wire() error = %v; want nil", err)
+			}
+			seed := shedrun.Seed{Recipe: shedrun.RecipeBatten, Driver: shedrun.DriverGo, Params: tt.params}
+			if err := shedrun.WriteSeed(location, "some-slug", seed); err != nil {
+				t.Fatalf("shedrun.WriteSeed = %v; want nil", err)
+			}
+
+			got, err := c.env.SeedChild.ChildDriver()
+			if err != nil {
+				t.Fatalf("ChildDriver() error = %v; want nil", err)
+			}
+			if got != tt.want {
+				t.Errorf("ChildDriver() = %q; want %q", got, tt.want)
+			}
+			if want := childDriverOf(seed); got != want {
+				t.Errorf("ChildDriver() = %q; want it to equal childDriverOf(seed) = %q", got, want)
+			}
+		})
+	}
+}
+
 // TestWire_WriteSeedRefusesANonLoomChildBeforeTouchingTheWorktree pins the order inside the wired
 // WriteSeed seam: a registered recipe the task worktree cannot bootstrap is refused with
 // battenshed.ErrUnsupportedChildRecipe before the seam resolves the task worktree at all -- the
