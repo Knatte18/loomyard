@@ -11,6 +11,15 @@
 // fabric-internal side -- write "the task worktree" and "the pair" instead of naming either side
 // by name.
 //
+// Known residual, shipped consciously and unchanged: a driver strand that dies mid-run is not
+// detected, reported, or recovered here. The InnerRun row watches the child's persisted status
+// file, never the driver's own liveness, so a driver that dies before writing another status
+// transition leaves the run looking merely slow rather than failed, until the recipe row's own
+// bounce budget runs out -- twelve hours at the shipped poll interval. An operator watching a long
+// run should read a long-quiet Run-Shed as "possibly dead", not "definitely working", and attach to
+// the child's session to tell the two apart. The child's own bootstrap does probe that its driver
+// pane came up live at launch, which closes the "never started" half but nothing after it.
+//
 // It declares its own unexported entryErr/cancelErr helpers (ctx.go) and its own reportStuck
 // carrier (stuck.go) for the same deliberate-duplication reason internal/preflightshed/doc.go and
 // internal/landingshed/stuck.go already record: each producer-owning package carries its own copy

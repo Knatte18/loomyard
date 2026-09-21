@@ -40,11 +40,18 @@ type PrimeLock struct {
 // inner shed run, resolving and reading its persisted status, and the two seams a test replaces to
 // keep the poll loop out of real time.
 type InnerRunDeps struct {
-	// Spawn starts the inner shed run and blocks until it exits. InnerRun waits for its child
-	// rather than detaching, per the Live-Substrate Spawn Observability invariant. Call invokes
-	// Spawn at most once per invocation, and only when its own read-before-spawn check found no
-	// status file yet -- the child's own status file, not a call count, is what makes a resumed
-	// Call safe against double-spawning.
+	// Spawn starts the inner shed run and blocks until the BOOTSTRAP PROCESS it launched exits --
+	// which is not the inner run's own completion, and deliberately so. The command behind this
+	// seam is the child's own bootstrap verb, which returns once it has launched the child's driver
+	// and confirmed it came up; the child's campaign then continues independently, and the wait for
+	// THAT is the recipe row's own on_stuck self-route, one bounce per poll, not a blocking call
+	// held here. The distinction is load-bearing: were it the inner run's completion, the very first
+	// advancing "lyx batten step" would hang for the length of an entire nested campaign.
+	//
+	// InnerRun waits for that bootstrap process rather than detaching, per the Live-Substrate Spawn
+	// Observability invariant. Call invokes Spawn at most once per invocation, and only when its own
+	// read-before-spawn check found no status file yet -- the child's own status file, not a call
+	// count, is what makes a resumed Call safe against double-spawning.
 	Spawn func(ctx context.Context) error
 	// ResolveStatus resolves the absolute status-file path and its companion lock path for the
 	// task worktree. It is evaluated on Call, never at wiring time: the task worktree this status
