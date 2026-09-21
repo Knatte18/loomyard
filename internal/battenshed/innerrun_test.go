@@ -177,9 +177,14 @@ func TestInnerRun_StuckIsReturnedForRunningAndNoOtherCase(t *testing.T) {
 			_, _, deps := newInnerRunDeps(nil, nil, []statusResult{{status: tt.status, found: true}}, clock)
 
 			producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir)
-			outcome, _, _ := producer.Call(context.Background())
+			outcome, _, err := producer.Call(context.Background())
 			if outcome == shedengine.Stuck {
 				t.Errorf("Call() outcome = Stuck for status %q; want Stuck reserved for the still-running case alone", tt.status.State)
+			}
+			// A halted child is the one outcome the operator has to act on from inside the task
+			// worktree, so the error must say so rather than only name the child's state.
+			if tt.status.State != shedengine.StateDone && (err == nil || !strings.Contains(err.Error(), haltedChildRemedy)) {
+				t.Errorf("Call() error for status %q = %v; want it to carry the halted-child remedy", tt.status.State, err)
 			}
 		})
 	}

@@ -25,6 +25,10 @@ func waitOrCancel(ctx context.Context, d time.Duration) {
 	}
 }
 
+// haltedChildRemedy is the operator instruction every halted-child error carries: the outer run
+// cannot restart the task worktree's own driver, only watch it.
+const haltedChildRemedy = "the task worktree's own run must be resumed from inside that worktree (its recipe's bootstrap verb, e.g. \"lyx loom start\") before this run is resumed; resuming this run alone only resumes the watch"
+
 // innerRunProducer spawns the inner shed run for a task worktree, once, and checks its persisted
 // status once per Call, reporting Stuck while the child is still running so shedengine's own
 // on_stuck self-route re-enters this producer rather than this type looping internally.
@@ -137,7 +141,10 @@ func (p *innerRunProducer) Call(ctx context.Context) (shedengine.Outcome, sheden
 		reportStuck(p.name, reason, p.scratchDir, "slug", p.slug)
 		return shedengine.Stuck, shedengine.OutputPointer{}, nil
 	case shedengine.StateBlocked, shedengine.StatePaused, shedengine.StateFailed:
-		return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: inner shed run reached state %q: error=%q current_producer=%q", p.name, status.State, status.Error, status.CurrentProducer)
+		// The remedy is named here because nothing on the prime side can perform it: this row
+		// spawns only while the task worktree has no status file, and resuming the outer run resumes
+		// the watch, never the child's own driver.
+		return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: inner shed run reached state %q: error=%q current_producer=%q; %s", p.name, status.State, status.Error, status.CurrentProducer, haltedChildRemedy)
 	default:
 		return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: unrecognized status state %q", p.name, status.State)
 	}
