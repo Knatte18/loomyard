@@ -44,6 +44,37 @@ func taskWorktreeLocation(prime *lyxcwd.Location, slug string) (*lyxcwd.Location
 	return lyxcwd.ResolveWorktree(fabricengine.WorktreePath(prime, slug))
 }
 
+// childSeedParams returns the seed params the child's own bootstrap verb will itself write for
+// recipe, read from childLocation, so the seed Seed-Child writes is one that bootstrap AGREES with
+// rather than one it refuses.
+//
+// The coupling is not optional and not defensive. shedrun.WriteSeed is idempotent only against a
+// seed that agrees on recipe, driver AND params; a disagreeing seed is refused outright with no
+// self-healing. loom's own bootstrap re-writes its seed on every "lyx loom start" carrying
+// params.parent, so a child seeded here without that param makes every subsequent bootstrap in that
+// worktree refuse permanently -- which is exactly what Run-Shed's spawn hit before this existed.
+//
+// Params are per-recipe by definition, so the branch on recipe is the contract, not a special case.
+// Only shedrun.RecipeLoom declares one today; any other recipe seeds no params, which is what its
+// own bootstrap will write.
+//
+// A recorded parent branch that is absent or empty yields no param at all, deliberately: loom's own
+// bootstrap refuses an unrecorded parent with a message naming --parent as the remedy, and that
+// refusal is far more useful to an operator than a seed disagreement manufactured here.
+func childSeedParams(recipe string, childLocation *lyxcwd.Location) (map[string]string, error) {
+	if recipe != shedrun.RecipeLoom {
+		return nil, nil
+	}
+	origin, found, err := fabricengine.ReadOrigin(childLocation)
+	if err != nil {
+		return nil, err
+	}
+	if !found || origin.ParentBranch == "" {
+		return nil, nil
+	}
+	return map[string]string{"parent": origin.ParentBranch}, nil
+}
+
 // wire builds and stores the shedrecipe.Env and shedbuild.ShedPaths the run and status verbs
 // need, over the resolved prime location and slug.
 func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
@@ -194,6 +225,9 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			// seed-encoding-stays-behind-a-seam-in-battenshed Shared Decision. It validates recipe
 			// itself, wrapping a failure in battenshed.ErrUnknownRecipe so seedChildProducer's own
 			// errors.Is check routes it to Stuck rather than a hard error.
+			//
+			// The params it writes come from childSeedParams: a seed missing a param the child's
+			// own bootstrap will write is not a smaller seed, it is a seed that bootstrap refuses.
 			WriteSeed: func(ctx context.Context, recipe, driver string) error {
 				if err := shedrun.ValidateRecipe(recipe); err != nil {
 					return fmt.Errorf("%w: %s", battenshed.ErrUnknownRecipe, err.Error())
@@ -202,7 +236,11 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				if err != nil {
 					return err
 				}
-				return shedrun.WriteSeed(childLocation, shedrun.SelfRunID, shedrun.Seed{Recipe: recipe, Driver: driver})
+				params, err := childSeedParams(recipe, childLocation)
+				if err != nil {
+					return err
+				}
+				return shedrun.WriteSeed(childLocation, shedrun.SelfRunID, shedrun.Seed{Recipe: recipe, Driver: driver, Params: params})
 			},
 			// CommitSeed commits the child's own seed onto the child's own fabric pair -- a
 			// one-off write, distinct from CommitStatus below, which commits prime's own batten

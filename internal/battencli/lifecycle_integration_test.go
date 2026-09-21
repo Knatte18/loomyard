@@ -28,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -143,6 +144,78 @@ func gitShow(t *testing.T, dir, spec string) []byte {
 		t.Fatalf("git show %s (in %s): %v", spec, dir, err)
 	}
 	return out
+}
+
+// TestBattenIntegration_SeedChild_WritesASeedTheChildBootstrapAgreesWith drives Worktree-Create
+// and Seed-Child for real and then asserts the one property the child's own bootstrap depends on:
+// re-writing the seed the way that bootstrap will must be ACCEPTED by shedrun.WriteSeed, not
+// refused as a disagreement.
+//
+// This is the regression test for the defect that made every real Run-Shed spawn fail. Seed-Child
+// wrote {recipe, driver} with no params; loom's bootstrap re-writes its seed on every start
+// carrying params.parent; shedrun.WriteSeed is idempotent only against an AGREEING seed and refuses
+// a disagreeing one outright, so the child's bootstrap refused permanently and Run-Shed died at
+// "exit status 1".
+//
+// It deliberately does not import internal/loomcli to get at loomSeedFor. It reconstructs that
+// seed's shape from the recorded origin instead, which is the same contract stated from batten's
+// own side of the boundary -- and it asserts the recorded parent is what landed in the param, so
+// the shape cannot drift into agreeing with itself while disagreeing with loom.
+func TestBattenIntegration_SeedChild_WritesASeedTheChildBootstrapAgreesWith(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+	slug := "batten-seed-agrees"
+	seedBoardTask(t, h, slug, "loom")
+
+	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
+		return shedengine.Status{State: shedengine.StateDone}, true, nil
+	})
+	seedEntryStatus(t, c, battenrecipe.NameWorktreeCreate, shedengine.StateRunning, nil)
+
+	shed, err := battenrecipe.New(c.env, c.shedPaths)
+	if err != nil {
+		t.Fatalf("battenrecipe.New: %v", err)
+	}
+	ctx := context.Background()
+	if _, err := shed.Step(ctx); err != nil {
+		t.Fatalf("Step (Worktree-Create): %v", err)
+	}
+	if _, err := shed.Step(ctx); err != nil {
+		t.Fatalf("Step (Seed-Child): %v", err)
+	}
+
+	childLocation, err := taskWorktreeLocation(h.Location, slug)
+	if err != nil {
+		t.Fatalf("resolve child location: %v", err)
+	}
+	origin, originFound, err := fabricengine.ReadOrigin(childLocation)
+	if err != nil {
+		t.Fatalf("read child origin: %v", err)
+	}
+	if !originFound || origin.ParentBranch == "" {
+		t.Fatalf("child pair has no recorded parent branch; Worktree-Create is expected to record one")
+	}
+
+	seed, seedFound, err := shedrun.ReadSeed(childLocation, shedrun.SelfRunID)
+	if err != nil {
+		t.Fatalf("read child seed: %v", err)
+	}
+	if !seedFound {
+		t.Fatalf("Seed-Child wrote no child seed")
+	}
+	if got := seed.Params["parent"]; got != origin.ParentBranch {
+		t.Errorf("child seed params[parent] = %q; want the recorded parent branch %q", got, origin.ParentBranch)
+	}
+
+	// The load-bearing assertion: this is byte-for-byte what loom's own bootstrap writes on its
+	// first "lyx loom start" in that worktree. It must be a no-op, never a refusal.
+	bootstrapSeed := shedrun.Seed{
+		Recipe: seed.Recipe,
+		Driver: seed.Driver,
+		Params: map[string]string{"parent": origin.ParentBranch},
+	}
+	if err := shedrun.WriteSeed(childLocation, shedrun.SelfRunID, bootstrapSeed); err != nil {
+		t.Fatalf("the child's own bootstrap seed was refused against Seed-Child's seed: %v", err)
+	}
 }
 
 // TestBattenIntegration_RealReadStatus_OnAFreshPairReportsAbsentRatherThanErroring drives the two
