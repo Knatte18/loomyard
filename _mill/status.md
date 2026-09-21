@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: lyx-bin-pane-path
 branch: lyx-bin-pane-path
 plan: _mill/plan
@@ -25,4 +25,17 @@ planning  '2026-09-21T11:49:23Z'
 plan-review-r1  '2026-09-21T12:00:36Z'
 plan-fix-r1  '2026-09-21T14:08:30Z'
 planned  '2026-09-21T14:08:45Z'
+implementing  '2026-09-21T14:09:09Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: shell-prelude-primitives
+    state: pending
+  - name: reed-pane-binary-chokepoint
+    state: pending
+  - name: docs-and-sandbox-preconditions
+    state: pending
 ```
