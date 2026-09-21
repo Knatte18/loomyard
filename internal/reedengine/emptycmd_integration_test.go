@@ -5,11 +5,13 @@
 // setup, tmux-binary resolution, the skip when the multiplexer is absent, and teardown (via this
 // package's shared newColdScratchEngine helper) rather than inventing a second rig.
 //
-// This is the one assumption in _mill/discussion.md's empty-cmd-leaves-the-panes-own-shell
-// decision that no existing code already pins: launchStrandLocked issues
-// `send-keys -t <pane> -l ""` followed by Enter for an empty command, and
-// sendKeysLiteralArg("") returns the empty string, so this test confirms tmux accepts that
-// argument rather than assuming it.
+// This is the one assumption in this task's _mill/discussion.md prelude-is-session-scoped-in-both-dialects
+// decision that no existing code already pins: with the pane-binary prelude in place (panebin.go),
+// an empty-Cmd strand's launchStrandLocked send-keys literal is the composed prelude alone, with no
+// trailing separator and no empty command fragment, rather than the empty string send-keys -l ""
+// this test pinned before the prelude landed. This test confirms a real tmux accepts that payload
+// and leaves the pane live -- the reason the empty-Cmd operator pane now receives a session-scoped
+// statement in both dialects rather than nothing on POSIX.
 
 package reedengine
 
@@ -20,8 +22,8 @@ import (
 )
 
 // TestAddStrand_EmptyCmdLeavesALivePane proves AddStrand accepts Cmd: "" and leaves the resulting
-// pane live: an empty command still launches the pane's own shell, rather than send-keys -l ""
-// being refused or the pane failing to come up.
+// pane live: an empty command still leaves a live pane running the pane's own shell, now with the
+// pane-binary prelude applied to it, rather than that an empty send-keys literal is accepted.
 func TestAddStrand_EmptyCmdLeavesALivePane(t *testing.T) {
 	e := newColdScratchEngine(t)
 
