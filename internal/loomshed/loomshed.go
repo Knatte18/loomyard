@@ -2,7 +2,7 @@
 
 package loomshed
 
-// The fourteen producer names, verbatim per manifest/designs/loom.md's producer table. The name is
+// The producer names, verbatim per contracts/recipes/loom-recipe.yaml's own rows. The name is
 // the durable on-disk identity in current_producer; a later rename breaks resume for any in-flight
 // task, so every row below is built from these constants, never a repeated string literal.
 //

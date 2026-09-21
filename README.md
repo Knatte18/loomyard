@@ -179,7 +179,7 @@ Only three things differ per phase: the rubric, the round's **fix-scope** (`over
 `source` for Webster, where the agent commits each fix to the warp repo itself), and the segment's **commit seam**.
 That split is the Fabric Git Invariant: every weft commit belongs to the loop owner in Go, and the agent's own commit-per-fix to the warp repo is the single named exception.
 
-See [manifest/designs/loom.md](manifest/designs/loom.md) and [manifest/designs/shed.md](manifest/designs/shed.md) for the design record, and the `internal/shedadapters` package documentation for the round-artifact contract the two rows share.
+See the `internal/shedengine`, `internal/shedadapters` and `internal/loomrecipe` package documentation for how the list is built and driven, and `internal/shedadapters` for the round-artifact contract the two rows share.
 
 ## Contracts
 

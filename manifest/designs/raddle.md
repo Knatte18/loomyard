@@ -1,6 +1,6 @@
 # raddle — codeguide's woven-in successor
 
-> **Status: Design partially exists, not scheduled.** Deprioritized — not required to land a first `loom` plan. Raddle-regeneration is folded into `Finalize`'s own contract, not a reserved phase slot of its own (see [loom.md](loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots)). This doc covers the parts of raddle's design settled during the vacation-time discussion, not the whole module.
+> **Status: Design partially exists, not scheduled.** Deprioritized — not required to land a first `loom` plan. Raddle-regeneration is folded into `Finalize`'s own contract, not a reserved phase slot of its own (see `contracts/recipes/loom-recipe.yaml`). This doc covers the parts of raddle's design settled during the vacation-time discussion, not the whole module.
 
 ## What it is
 
@@ -51,7 +51,7 @@ This collapses the two potential runs into one and guarantees the output describ
 If another task's merge landed in parent partway through regeneration, the docs would be stale against the HEAD they're about to be committed onto.
 Same "advance only on confirmed success" discipline the `Warp-SHA` trailer mechanism uses elsewhere in `fabric` for recording a baseline, extended to cover the compute step, not just the write step.
 
-**Decided:** raddle has no reserved phase slot of its own in [loom.md](loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots) — regeneration is folded into `Finalize`'s own contract instead, landed at [shed.md](shed.md) and [loom.md](loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
+**Decided:** raddle has no reserved phase slot of its own in loom's producer list (`contracts/recipes/loom-recipe.yaml`) — regeneration is folded into `Finalize`'s own contract instead, landed in `internal/landingshed`.
 See [internal/landingshed](../../internal/landingshed/doc.go) for Finalize's side of the contract.
 
 ## Staleness tracking, via `fabric`
@@ -82,6 +82,6 @@ Master (and any fork inheriting its context) must treat raddle content as "how t
 ## Related
 
 - [`internal/fabricengine`](../../internal/fabricengine/doc.go) — the `Warp-SHA`/`Snapshot` trailer and `SyncWeft` mechanics this design relies on.
-- [loom.md](loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots) — the flat producer list Raddle has no slot of its own in;
+- `contracts/recipes/loom-recipe.yaml` — the flat producer list Raddle has no slot of its own in;
   regeneration is folded into `Finalize`'s contract instead.
 - The `internal/boardengine` package documentation — `PATTERN.md` (raddle's neighbor in `weft`) mentioned there.

@@ -93,7 +93,7 @@ No build order is implied between these items.
 Cleared 2026-08-25 to keep this file lean — shipped items' history lives in `git log` and each module's own package documentation, not here.
 
 1. **producer gates: mechanical accept-gates on LLM-running producers** — a producer that runs an LLM declares a mechanical gate: a validator whose findings the producer injects back into the still-live session as a re-prompt, holding the handoff until the gate passes (bounded by an explicit attempt counter, then ordinary Stuck); the standalone Discussion-Validate, Plan-Validate, and Plan-Revalidate rows are removed in the same task. Lands before the batten end-to-end crucible campaign (wiki: `crucible-batten-end-to-end`).
-   See [designs/loom.md](designs/loom.md#the-gate) and the `internal/shedengine` and `internal/shedadapters` package documentation.
+   See the `internal/shedengine` and `internal/shedadapters` package documentation.
 
 1. **seeded driver choice: ly-drive strand as the child's driver** — the seed's `driver` field selects who steps a run: the detached Go runner, or a Claude strand running ly-drive in the worktree's own reed session, booted by that run's own recipe bootstrap verb. Loom's `start` is the only bootstrap verb that reads it today, per the new Driver Choice Single-Site Invariant; a recipe with no bootstrap verb of its own cannot be seeded for the `llm` driver until it grows one. No default flips — every run still defaults to `go`.
    See the Driver Choice Single-Site Invariant in `CONSTRAINTS.md`, and `internal/shedrun`'s and `internal/loomcli`'s package documentation.
@@ -143,19 +143,19 @@ Cleared 2026-08-25 to keep this file lean — shipped items' history lives in `g
 1. **Real-Linux validation** — the sandbox suite and every tmux/`/proc` assumption are exercised on real Linux, now the platform everything runs on.
 
 1. **loom: Discussion-Review producer** — replaced the `Discussion-Review` stub with a `Discussion-Bouncer`/`Discussion-Burler` segment.
-   See [designs/loom.md](designs/loom.md#discussion-producer-detail--validation-checks-and-review-rubric).
+   See `contracts/stencils/loom/loom-rubric-discussion-review.md` and `internal/discussionparser`'s package documentation.
 
 1. **loom: Webster-Review producer** — replaced the `Webster-Review` stub row with a `Webster-Bouncer`/`Webster-Burler` segment gating the committed diff.
-   See [designs/loom.md](designs/loom.md#webster-review-rubric).
+   See `contracts/stencils/loom/loom-rubric-webster-review.md`.
 
 1. **loom: interactive Discussion-Write** — flipped `internal/loomcli`'s `wire()` `autonomous` argument from hardcoded `true` to the `discussion_interactive` config key, and solved the resume defect that made autonomous-only the right call so far by giving `shuttleengine` a live-agent-aware `Attach`.
-   See [designs/loom.md](designs/loom.md#crash-recovery--resume-on-output-files-not-live-processes).
+   See the Completion Signal Invariant in `CONSTRAINTS.md` and `internal/shuttleengine`'s `wait.go` file documentation.
 
 1. **loom: `Discussion-Burler` fix-scope corrected to `overlay`** — the `Discussion-Burler` row now runs `fix-scope: overlay` and `Discussion-Bouncer` commits its approved settle through `commit_seam: discussion`, restoring compliance with the Fabric Git Invariant, with a parse-level guard added so the class of violation cannot ship again.
-   See [designs/loom.md](designs/loom.md#the-gate).
+   See the `internal/shedadapters` package documentation.
 
 1. **loom: review segments resolve `_lyx` paths against the wrong root and don't clear their Bouncer run directory on re-entry** — both defects are fixed across all three review segments: the segments' `_lyx` paths now resolve against the anchor path their commit seam already anchored at, and a `Bouncer` re-entered after approving now archives its run directory and re-judges rather than replaying a settled verdict.
-   See [designs/loom.md](designs/loom.md#the-gate).
+   See the `internal/shedadapters` package documentation.
 
 1. **producer-agnostic final-summary artifact** — the read contract is now a producer-agnostic leaf, `internal/summaryparser`, and `landingshed` takes a told path rather than reaching into a producer's own directory; `Finalize`'s squash-merge `MergeOptions.Message` is now wired to the composed title and body.
    See [final-summary-spec.md](../contracts/specs/final-summary-spec.md).

@@ -17,7 +17,7 @@ import (
 // joined equals root or is under root with a separator, so a ".." segment cannot climb out. On
 // success it returns joined.
 //
-// Absolute values are rejected rather than passed through because manifest/designs/shed-recipe.md
+// Absolute values are rejected rather than passed through because contracts/specs/shed-recipe-spec.md
 // bars absolute paths from Config outright, and accepting one would make a non-portable recipe
 // silently work on its author's machine.
 //

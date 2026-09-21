@@ -3,7 +3,7 @@
 This directory holds **`crucible`** — the **manual, human-in-the-loop review method** we used to harden `reed` before merging it to `main`, plus the two prompts that drove it.
 Named separately from the future, automated [`hardener`](../../manifest/designs/hardener.md) module this method is the hand-run prototype of (see below) — `crucible` is what you actually run today;
 `hardener` is what it becomes once Go takes over the orchestrator role.
-The method is **module-agnostic** — it is written down here so the modules built *on top of* reed (`shuttle` — see the `internal/shuttleengine` package documentation, `burler` (see the `internal/burlerengine` package documentation), [`hardener`](../../manifest/designs/hardener.md), [`loom`](../../manifest/designs/loom.md)) can reuse it instead of re-inventing it each time.
+The method is **module-agnostic** — it is written down here so the modules built *on top of* reed (`shuttle` — see the `internal/shuttleengine` package documentation, `burler` (see the `internal/burlerengine` package documentation), [`hardener`](../../manifest/designs/hardener.md), `loom` — see the `internal/loomengine` package documentation) can reuse it instead of re-inventing it each time.
 
 **The files here:**
 - [`orchestrator-prompt.md`](orchestrator-prompt.md) — paste-ready prompt that bootstraps a thread into the **orchestrator** role (drives the loop, spawns rounds, independently verifies).

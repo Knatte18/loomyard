@@ -148,7 +148,7 @@ func WarnIfMarkerAbsent(template []byte, stencilName, directive string) {
 // spawns do not occur today, and a lost note is optional bookkeeping. The case this function closes
 // structurally is sequential re-invocation of the same site, which is guaranteed on any
 // crash-resumed run: Discussion-Write and Plan-Write are each respawned after a crash mid-step (see
-// manifest/designs/loom.md's crash-recovery section) -- a mechanical gate's own re-prompt never
+// the Completion Signal Invariant) -- a mechanical gate's own re-prompt never
 // triggers a second spawn of this kind, since it re-prompts the same live session rather than
 // re-entering the row -- and recoverSpawn is re-runnable for the same batch --
 // internal/websterengine/recoverbatch.go timestamp-archives a stale report on each call for exactly

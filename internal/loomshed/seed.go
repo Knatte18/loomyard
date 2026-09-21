@@ -74,7 +74,7 @@ func Seed(statusPath, statusLockPath, slug, parent string) error {
 		// exactly as the unknown-field shape already did (UpdateJSON's lenient read tolerates an
 		// unknown field, so that shape decodes here and takes the found branch above). Without this
 		// mapping the malformed-JSON shape made `lyx loom start` refuse on the envelope before ever
-		// spawning a driver -- the very state manifest/designs/loom.md's crash-recovery section
+		// spawning a driver -- the very state the Completion Signal Invariant
 		// promises a poisoned status file never presents as ("A poisoned status file must never look
 		// like it belongs to bootstrap's own gate"), reproduced live in crucible round
 		// fable5-high-r5 (F3). `lyx loom run` was already correct, since it never calls Seed.

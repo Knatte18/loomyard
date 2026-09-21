@@ -1,5 +1,5 @@
 // rubric_test.go pins loom-rubric-discussion-review.md's, loom-rubric-plan-review.md's, and
-// loom-rubric-webster-review.md's required content: the six items manifest/designs/loom.md's two
+// loom-rubric-webster-review.md's required content: the six items the rubric's own two
 // "Discussion-Review rubric" subsections require, the eight items its "Plan-Review rubric"
 // subsections require, the nine items loom-rubric-webster-review.md's own sections require, and the
 // one-marker allowlist the two Bouncer stencils' {{.rubric}} interpolation depends on for all three
@@ -44,7 +44,7 @@ func assertRubricMarkersWithinAllowlist(t *testing.T, rubricName string, markers
 }
 
 // TestLoomRubricDiscussionReview_NamesEveryRequiredItem asserts LoomRubricDiscussionReview's bytes
-// contain a distinctive phrase for each of the six items manifest/designs/loom.md's two
+// contain a distinctive phrase for each of the six items the rubric's own two
 // "Discussion-Review rubric" subsections require: three do-not-flag items and three also-flag items.
 // Following internal/burlerengine/template_test.go's TestTemplate_StatesRoundDiscipline as precedent,
 // each assertion is a short, distinctive substring rather than a whole paragraph, so ordinary prose

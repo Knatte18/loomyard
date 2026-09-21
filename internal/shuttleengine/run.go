@@ -297,13 +297,13 @@ func (r *Runner) Start(spec Spec) (*Run, error) {
 	// Start for the same step therefore spawns a genuinely new pane alongside the orphaned one — the
 	// duplicate-agent hazard this package otherwise goes to considerable lengths to prevent
 	// (errStrandNotTracked, errStrandPaneBindingCleared, verdictError, the whole Attach mechanism).
-	// This is NOT the same window as manifest/designs/loom.md's other documented "Accepted residual"
+	// This is NOT the same window as the other documented "Accepted residual"
 	// (a run that already reached a terminal outcome, racing its own finalize persist); this one is
 	// the registration step of a run that has not yet even started waiting. It is not closable by
 	// reordering these two writes: any ordering just relocates the same kind of window between two
 	// independent stores (reed's own persisted state and this package's own run.json) — a
 	// two-phase-commit problem, not a bug in either store on its own. See
-	// manifest/designs/loom.md's "Crash recovery" section for the second Accepted-residual entry
+	// wait.go's own Completion Signal Invariant section for the second Accepted-residual entry
 	// this comment is paired with.
 	state := RunState{
 		RunID:        runID,

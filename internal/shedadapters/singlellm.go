@@ -78,7 +78,7 @@ var _ shedengine.ShedProducer = (*SingleLLMProducer)(nil)
 // NewSingleLLMProducer returns a SingleLLMProducer identified as name, sourcing its Spec from specs
 // and running it through shuttle.
 // A nil now defaults to time.Now -- the archive filename's same-second collision suffix is the only
-// thing under test at this seam, since manifest/designs/shed.md's no-injectable-clock rule governs
+// thing under test at this seam, since the no-injectable-clock rule governs
 // Shed's own history[].at field, not this one.
 //
 // prepareFreshSpawn is the caller's own destructive preparation for a NEW agent -- rotating a stale

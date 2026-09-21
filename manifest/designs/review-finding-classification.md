@@ -42,7 +42,7 @@ But then the right behaviour is to raise it **once, as a design finding about me
 
 ## Concrete proposal
 
-1. **Discussion-Review's rubric** (`loom.md`'s [Discussion producer detail](loom.md#discussion-producer-detail--validation-checks-and-review-rubric) section, once a real `Bouncer` rubric exists to point at it) — define a finding-class vocabulary for discussion review: `design`, `scope`, `decision`, `consistency`.
+1. **Discussion-Review's rubric** (`contracts/stencils/loom/loom-rubric-discussion-review.md`, once a real `Bouncer` rubric exists to point at it) — define a finding-class vocabulary for discussion review: `design`, `scope`, `decision`, `consistency`.
    State that only `design` gates the round loop and only `design` is ever escalated to the operator; the rest auto-resolve.
 2. **`Plan-Review`'s shipped rubric** (`contracts/stencils/loom/loom-rubric-plan-review.md`) — what remains open is layering the same finding-class dimension on top of the now-shipped rubric, with its own catchment unchanged: batching/sequencing/verify-command correctness gates; prose-level nits do not.
 3. **Round-exit condition** — replace a flat round cap with "stop when a round returns zero gating-class findings," keeping the cap as a backstop.
@@ -54,7 +54,7 @@ But then the right behaviour is to raise it **once, as a design finding about me
    Conversely, instructing only the reviewer wastes the writer's own budget on enumeration nobody will use.
    Both sides must state the same boundary, from their own side: the writer's stencil says "do not enumerate X here, that belongs to <stage>"; the reviewer's rubric says "do not flag missing X here, that belongs to <stage>."
    For discussion review in a Go repo, that explicitly includes "complete call-site enumeration belongs to the compiler / a mechanical sweep, not this stage, on both sides."
-   [loom.md](loom.md#discussion-review-rubric--what-to-also-flag-relocation-and-exclusion)'s relocation-and-exclusion rubric subsection is a concrete instance of this same principle.
+   `loom-rubric-discussion-review.md`'s own relocation-and-exclusion section is a concrete instance of this same principle.
 
 ## `scope` splits into two mechanical halves, neither an LLM lens
 

@@ -392,10 +392,9 @@ func docsLinkScan(t *testing.T, repoRoot string, roots []string, allow map[docsL
 // tasks to fix, per _mill/discussion.md's allowlist-is-keyed-and-self-expiring decision. It is keyed
 // by (file, target) and never by line number; every entry names its owning task; and an entry whose
 // key is not matched by any break in a scan is reported by docsLinkScan as deletable.
-// 2 entries from earlier tasks in the chain, not yet resolved.
+// 1 entry from an earlier task in the chain, not yet resolved.
 var docsLinkAllowlist = map[docsLinkKey]string{
 	{File: "docs/overview.md", Target: "../CONSTRAINTS.md#package-naming"}:                         "chain A -> B -> E; E is last owner",
-	{File: "manifest/designs/loom.md", Target: "../../docs/overview.md#hub-geometry-invariants"}:   "chain B -> C -> E; E is last owner",
 }
 
 // TestEnforcement_MarkdownLinks is the permanent guard behind the Markdown Link Integrity invariant:
