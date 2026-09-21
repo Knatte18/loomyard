@@ -45,7 +45,7 @@ and it answers against the current worktree only — it takes no repository-path
 
 **You never spell a glyph — you copy a line verbatim out of a quarry answer.**
 This is the hard rule behind the glyph spelling rules Step 3 spells out below: a bare package-qualified symbol (`pkg.Symbol`) is a hard finding precisely because it is the one spelling that cannot have come verbatim from a quarry answer.
-The four verbs above are the whole of what `lyx quarry` offers you — there is no fifth or sixth verb to ask for.
+The verbs above are the whole of what `lyx quarry` offers you — there is no further verb to ask for.
 
 ## Step 3 — Write the plan into `{{.plan_dir}}`
 

@@ -41,7 +41,7 @@ This does not replace `lyx selfreport create` (shipped) — it adds an automatic
 - The directory's lifecycle is owned by the **shared bootstrap**, not by either driving verb: `seedAndCommitBootstrap` clears it on a genuine first seed and only ensures it on an `ErrSeedExists` re-entry, so `lyx loom start` and `lyx loom step` behave identically.
   It is deliberately not `run`'s job alone — `step` spawns no driver, and a step-driven task would otherwise compose note paths into a directory nothing had created, while a reused worktree would feed an earlier task's leftover notes to the next task's reflection agent.
   Both halves were live defects found in crucible round 1.
-- Default-on versus opt-in per producer or profile: default-on, with one global `loom.yaml` key (`friction`) that is both the model spec and the kill switch, because the feature's value is breadth of coverage and per-row opt-in would mean a Tier 2 key on five different recipe engines whose row names are durable on-disk identities.
+- Default-on versus opt-in per producer or profile: default-on, with one global `loom.yaml` key (`friction`) that is both the model spec and the kill switch, because the feature's value is breadth of coverage and per-row opt-in would mean a Tier 2 key on every recipe engine whose row names are durable on-disk identities.
 - Cross-phase semantic friction: still explicitly deferred, and now recorded as a stated limitation of the shipped design rather than an open question — a Tier 2 note can only ever describe friction inside its own narrow task.
 
 ## Related

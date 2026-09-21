@@ -18,7 +18,7 @@
 // TestSmokeBootstrap_ConcurrentSpawnHandshakeYieldsOneDriver).
 //
 // A note on driver-liveness timing: loom's own producer table (contracts/recipes/loom-recipe.yaml)
-// now carries fourteen rows, every one backed by a real producer -- no row reports Done
+// backs every row with a real producer -- no row reports Done
 // unconditionally. A freshly-bootstrapped driver against a pair with no discussion or plan
 // artifacts yet still bounces at Discussion-Write's own gate a bounded number of times (its
 // gate_attempts budget) and then blocks, well before reaching any later row -- a lifecycle that can

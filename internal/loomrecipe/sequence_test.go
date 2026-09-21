@@ -33,7 +33,7 @@ type wantSequenceEntry struct {
 // the trailing post-segment mechanical re-check the other two segments never had a counterpart
 // for either -- all three segments now share the identical three-entry shape.
 // Stuck entries mid-run are therefore not a failure signal here; they are each segment doing its
-// job. The list runs to sixteen entries total.
+// job.
 //
 // The sequence stops at Publish deliberately: Publish's OnStuck is "" (escalate), so a Stuck verdict
 // blocks the run and Finalize is never invoked. Driving both producers' real merge logic through a
@@ -74,7 +74,7 @@ var wantSequenceOrder = []wantSequenceEntry{
 	{loomshed.NamePublish, shedengine.Stuck},
 }
 
-// TestSequence_FullRunBlocksAtPublish is the task's own verify requirement: the fourteen-row list
+// TestSequence_FullRunBlocksAtPublish is the task's own verify requirement: the built row list
 // runs Preflight through Publish and blocks on Publish's Stuck verdict, never reaching Finalize --
 // see wantSequenceOrder's own doc comment for why, including for all three review segments' entry
 // shapes. It also asserts the plan is left approved after the run: under the pre-fix code the fake

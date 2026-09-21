@@ -267,9 +267,8 @@ A parked, more aggressive parallel-execution idea also exists — see [../../man
 
 ## Validation checks (as implemented by `internal/planparser`)
 
-Machine checks this format is designed to support, in this fixed order, one row per distinct `Check:` ID — twenty-eight rows, twenty-eight IDs.
-This figure counts distinct IDs rather than presentation rows, which resolves the row-count-versus-ID-count divergence the repo's former "14" carried (a 14-row list whose row 1 bundled two distinct IDs).
-The twenty-eight IDs are split across two entry points, `ValidateFormat` and `Validate`: twenty-seven of them are the format-only set `ValidateFormat` runs, and `plan-unapproved` (row 3 below) is additionally checked by `Validate`, the full entry point.
+Machine checks this format is designed to support, in this fixed order, one row per distinct `Check:` ID — never one row per presentation row, so the table below is itself the authoritative list and no count of it is pinned anywhere in prose.
+The IDs are split across two entry points, `ValidateFormat` and `Validate`: every one but `plan-unapproved` (row 3 below) is in the format-only set `ValidateFormat` runs, and `plan-unapproved` is additionally checked by `Validate`, the full entry point.
 The rows below stay in one fixed order regardless of which entry point runs them, and `plan-unapproved` keeps its position-three slot in that order even though it alone belongs to the wider entry point:
 
 1. `format-unrecognized` — `format:` is a recognized version (currently only `5`); else refuse to run.

@@ -82,12 +82,9 @@ No build order is implied between these items.
 1. **fabric: two-sided reset-to-SHA verb** — the post-conclude undo the merge surface deliberately does not ship: `MergeAbort` covers only the uncommitted merge-attempt window, so a landed merge is final at the Fabric layer. Closing it means a reset to a visible warp SHA that resolves the paired weft SHA through the correspondence index and routes both sides through the destruction gate.
    See the `internal/fabricengine` package documentation's merge section.
 
-1. **loom: build `Plan-Sweep` for real** — the one row of loom's design table never built, and not a `loom-recipe.yaml` row at all; deferred because quarry-backed work is low-priority project-wide and this is the only row in the initiative that touches quarry. Full spec already written.
-   See [designs/loom.md](designs/loom.md#plan-sweep-detail--the-quarry-inventory-spec).
-
 1. **finalize: the discrepancy-document conflict shape** — some divergences cannot be expressed as a git conflict at all, so there are no markers to hand a resolving agent; the answer is a precomputed document describing the disagreement instead. Only the ordinary-git-conflict shape shipped (`internal/mergeresolve`), while `PullResult.PatternResidue` already is this shape for the history-rewrite case — design it once, for both, whenever picked up.
 
-1. **shedrecipe: capability-declaration instead of manual seam-threading** — giving a producer a new capability means hand-threading a passthrough `Env` field through three layers, because the Shed Recipe Registry Invariant bars `shedrecipe` from importing the capability's owning package. The idea, not yet designed: let a producer declare what it needs and have the registry wire it — deep, likely touching the invariant itself and all sixteen registry entries.
+1. **shedrecipe: capability-declaration instead of manual seam-threading** — giving a producer a new capability means hand-threading a passthrough `Env` field through three layers, because the Shed Recipe Registry Invariant bars `shedrecipe` from importing the capability's owning package. The idea, not yet designed: let a producer declare what it needs and have the registry wire it — deep, likely touching the invariant itself and every registry entry.
 
 1. **reed: daemon Slack relay** — bidirectional Slack relay per worktree, riding on the now-Done `reed: watchdog daemon`. Low priority, well behind the daemon's own self-heal jobs — split out on purpose so it never blocks or gets conflated with the watchdog work.
 
@@ -163,7 +160,7 @@ Cleared 2026-08-25 to keep this file lean — shipped items' history lives in `g
 1. **producer-agnostic final-summary artifact** — the read contract is now a producer-agnostic leaf, `internal/summaryparser`, and `landingshed` takes a told path rather than reaching into a producer's own directory; `Finalize`'s squash-merge `MergeOptions.Message` is now wired to the composed title and body.
    See [final-summary-spec.md](../contracts/specs/final-summary-spec.md).
 
-1. **self-report Tier 2: per-agent friction notes for unsupervised runs** — every one of the seven prompt-composing agents now gets an optional friction-note directive injected into its prompt, default-on via `loom.yaml`'s `friction` model-spec key, and `internal/loomcli`'s run verb spawns one dedicated reflection agent per run to aggregate whatever notes were written and file them via `lyx selfreport create`.
+1. **self-report Tier 2: per-agent friction notes for unsupervised runs** — every prompt-composing agent now gets an optional friction-note directive injected into its prompt, default-on via `loom.yaml`'s `friction` model-spec key, and `internal/loomcli`'s run verb spawns one dedicated reflection agent per run to aggregate whatever notes were written and file them via `lyx selfreport create`.
    See the `internal/friction` and `internal/frictionengine` package documentation, and [designs/self-report-tier2.md](designs/self-report-tier2.md).
 
 1. **`lyx loom step` + an external supervisor skill** — a new Go verb runs exactly one of `loom`'s next phases (loom still owns all sequencing) and returns; the `/ly:ly-drive` skill drives it in a loop, watching live for anything a mechanical gate wouldn't catch, and handing back to the operator on any non-running state or error envelope. Supersedes `llm-driven-loom-alternative`.

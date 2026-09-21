@@ -1,5 +1,5 @@
 // shape_test.go carries the shape-and-identity assertions over New's built list: the literal
-// fourteen-row producer table, the real Publish/Finalize swap, order stability, told-field
+// producer table, the real Publish/Finalize swap, order stability, told-field
 // threading, a missing-Landing-closure construction failure, and the routing-graph guard. It does
 // not assert the recipe's own structure or parsing -- recipe_test.go owns that.
 
@@ -240,8 +240,8 @@ func TestNew_PublishAndFinalizeAreRealProducers(t *testing.T) {
 
 // TestNew_ProducerTableOrderUnchangedByWiring re-asserts TestNew_ProducerTable's own table-order and
 // name coverage, now that the list's order is the recipe's own list order rather than a Go literal's:
-// the fourteen rows stay in their existing table order with their existing names, regardless of
-// what backs rows 13 and 14.
+// every row stays in its existing table order with its existing name, regardless of what backs the
+// Publish and Finalize rows.
 func TestNew_ProducerTableOrderUnchangedByWiring(t *testing.T) {
 	env, paths := testEnv(t)
 	shed, err := New(env, paths)

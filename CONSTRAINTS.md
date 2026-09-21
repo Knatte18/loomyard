@@ -165,7 +165,7 @@ Every producer prompt and every deployed normative spec is read at call time fro
 
 Every lyx CLI module is a cobra subtree assembled under one root in `cmd/lyx/main.go`.
 
-- Each module exposes `Command() *cobra.Command` and `RunCLI(out io.Writer, args []string) int`; thirteen of fourteen also carry `RunCLIIn(cwd, out, args) int`.
+- Each module exposes `Command() *cobra.Command` and `RunCLI(out io.Writer, args []string) int`; every module but `internal/selfreportcli` also carries `RunCLIIn(cwd, out, args) int`.
 - An alias command may delegate into another module's subtree with no seam function of its own.
 - Non-empty `Short` on every command.
 - Errors are JSON via `internal/output`, one object per line; every `RunE` checks `clihelp.ShouldAbort` first.

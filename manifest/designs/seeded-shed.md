@@ -48,7 +48,7 @@ Drivers are chosen per level and live in their own host worktree's reed session.
 Reed sessions are per-worktree, so an LLM driving a batten run in prime and an LLM driving a loom run in the child can never clutter each other.
 No default flips as part of this task: the driver still defaults to `go` everywhere, including for a task-work run's child.
 The `llm` default this design once expected for task-work runs — the whole point of ly-drive is an intelligence that can fix what a mechanical gate cannot — is left as a config decision for a later pass, once an `llm`-driven run has been watched end to end.
-`go` stays the only driver batten runs use: five mechanical rows with deterministic outcomes, where a failure becomes `Stuck`, a better escalation point than a watching LLM.
+`go` stays the only driver batten runs use: mechanical rows with deterministic outcomes, where a failure becomes `Stuck`, a better escalation point than a watching LLM.
 
 ## The driver choice, as built
 
@@ -70,7 +70,7 @@ The substance the earlier phrasing was reaching for still holds, because the com
 A run's producers anchor every path at the run's own host worktree (the Cwd Resolution Invariant), so **a single recipe can never span two worktrees**.
 Composition across a worktree boundary is by reference: the parent writes the child's seed and reads the child's status file, and nothing else crosses.
 
-This is why the tempting flattening — one long recipe of `Worktree-Create` + all fourteen loom rows + `Worktree-Teardown` — was rejected:
+This is why the tempting flattening — one long recipe of `Worktree-Create` + every loom row + `Worktree-Teardown` — was rejected:
 
 - loom's rows resolve `_lyx` paths, spawn tmux strands, and commit fabric pairs *in the child*; running them from prime would mean threading a target-worktree parameter through every producer and seam.
 - loom's status is durable and fabric-synced with the *child's* pair; flattened, a task's progress would stop being a property of the task worktree itself.

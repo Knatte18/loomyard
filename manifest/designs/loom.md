@@ -1,6 +1,6 @@
 # Loom: the phased orchestrator
 
-> **Status: built, except `Plan-Sweep`.** All fourteen `contracts/recipes/loom-recipe.yaml` rows have real producers — `internal/loomshed`'s `stubProducer` is no longer used by loom's own list — across `internal/loomengine`, `internal/loomcli`, `internal/loomrecipe`, and `internal/loomshed`. The one table row never built is `Plan-Sweep`, which is not a recipe row at all; it has its own roadmap item.
+> **Status: built.** Every `contracts/recipes/loom-recipe.yaml` row has a real producer — `internal/loomshed`'s `stubProducer` is no longer used by loom's own list — across `internal/loomengine`, `internal/loomcli`, `internal/loomrecipe`, and `internal/loomshed`.
 > This banner said "Design — not built" until the 2026-08-29 designs audit, long after the module shipped, while the body below already described the recipe in as-built present tense.
 > Per the [documentation lifecycle](../../docs/overview.md#documentation-lifecycle) this file is now overdue for retirement: its durable parts belong in `overview.md` and the package headers, and reconciling 489 lines of design prose against the as-built module is its own task, not a status-line edit. Until that happens it remains the single design reference for the loom orchestration model, and should be read as design intent that the code may have moved past.
 
@@ -15,8 +15,8 @@ the LLM owns the thinking.
 The orchestrator is the **`loom`** module (`lyx loom start`); the gate is a **review segment** in loom's own producer list — a generic `Bouncer` review-gate producer paired with a `Burler`-round producer, both in `internal/shedadapters` — the iterative review loop, hand-wired once per phase. The `Burler`-round producer composes `burler` (see the `internal/burlerengine` package documentation), the review+fix round worker. The `/ly-*` skill layer shrinks to thin human-facing wrappers over these. The everyday call has a convenience alias: **`lyx start` → `lyx loom start`**. (Naming: `lyx` is the binary, `loom`/`burler` are modules, `ly-*` are the skills — see [overview.md](../../docs/overview.md).)
 
 `loom` = `Shed` (see [shed.md](shed.md), the generic outer phase-FSM: sequencing, resume, crash recovery, pause, the status-file contract) + `loom`'s own ordered producer list, given in full in [the producer table below](#the-phase-machine--a-flat-producer-list-no-predefined-slots).
-That list is recipe-backed: `contracts/recipes/loom-recipe.yaml` names the recipe's fourteen rows and their routing, and `internal/loomrecipe` assembles it into the `[]shedengine.ProducerDef` `Shed` consumes — see `manifest/designs/shed-recipe.md`.
-The recipe carries fourteen rows against the table below's twelve entries — see the note beneath the table for why the two counts differ and by how much.
+That list is recipe-backed: `contracts/recipes/loom-recipe.yaml` names the recipe's rows and their routing, and `internal/loomrecipe` assembles it into the `[]shedengine.ProducerDef` `Shed` consumes — see `manifest/designs/shed-recipe.md`.
+The recipe carries more rows than the table below has entries — see the note beneath the table for why.
 
 ## The phase machine — a flat producer list, no predefined slots
 
@@ -37,21 +37,19 @@ Every row whose `Type` is `LLM` and `Kind` is `simple` is a `SingleLLMProducer` 
 | 2 | `Loom-Preflight` | simple | mechanical | loom's own status file → `loom-status-spec.md`'s check-4 validation checklist | pass/fail — no artifact, a gate signal only |
 | 3 | `Discussion-Write` | simple | LLM | — (starting point) | `_lyx/discussion/` (`decision-record.md` + `support-log.md`), shape pinned in the producer's own stencil (`contracts/stencils/loom/loom-template-discussion.md`); gated by this row's own mechanical gate before handoff — see [validation checks](#discussion-producer-detail--validation-checks-and-review-rubric) below and [the gate](#the-gate) |
 | 4 | `Discussion-Review` (`Discussion-Bouncer` + `Discussion-Burler`) | bespoke | LLM/review segment | `_lyx/discussion/` (both files) → [review rubric](#discussion-producer-detail--validation-checks-and-review-rubric) below | verdict (APPROVED/stuck) + review file; `Discussion-Burler`'s own fix step carries the same mechanical gate as row 3 — see [the gate](#the-gate) |
-| 5 | `Plan-Sweep` | simple | mechanical | `_lyx/discussion/decision-record.md` (approved) | quarry inventory (internal artifact, not gated) |
-| 6 | `Plan-Write` | simple | LLM | `_lyx/discussion/decision-record.md` (**never** `support-log.md`) + `Plan-Sweep`'s inventory, once `Plan-Sweep` is built for real — its absence today is the normal degraded state the stencil now names outright, not an error | `_lyx/plan/`, shape pinned in `contracts/stencils/loom/loom-template-plan.md`; gated by this row's own mechanical gate before handoff — see [Plan gate detail](#plan-gate-detail) below and [the gate](#the-gate) |
-| 7 | `Plan-Review` (`Plan-Bouncer` + `Plan-Burler`) | bespoke | LLM/review segment | `_lyx/plan/` (current plan directory) → `_lyx/discussion/decision-record.md` (answer key) | verdict (APPROVED/stuck) + review file; `Plan-Burler`'s own fix step carries the same mechanical gate as row 6 — see [the gate](#the-gate) |
-| 8 | `Batchifier` | simple | mechanical | `_lyx/plan/` (approved) + `batcher.yaml`'s `active:` key | pass/fail — a fail-fast gate confirming the active batchifier resolves cleanly before `Webster` spawns any LLM session, no artifact — already shipped as `internal/batcher`, "never an LLM's decision" per its own package doc |
-| 9 | `Webster` | bespoke | black box (LLM + mechanical internally) | `_lyx/plan/` (approved); resolves the active batchifier itself, lazily, on every call — never a value handed across from `Batchifier`, since that row writes no artifact | committed diff — `internal/websterengine`'s own per-batch loop is a bespoke, multi-spawn producer, exempt from `Shed`'s atomicity rule by design, and stays opaque to `loom`'s flat list, same "black box loom drives, exactly like a review segment" framing as [below](#webster--a-black-box-loom-drives-the-sibling-of-the-review-segment) |
-| 10 | `Webster-Review` (`Webster-Bouncer` + `Webster-Burler`) | bespoke | LLM/review segment | full diff → plan's card contract | verdict + review file — the full converge-loop gate over the whole diff |
-| 11 | `Publish` | simple | mechanical | approved diff | PR opened, or no-op; not `loom`'s own — a generic `Shed` producer, shared by reference with `Hardener`'s producer list, see [internal/landingshed](../../internal/landingshed/doc.go) |
-| 12 | `Finalize` | bespoke | mechanical | approved diff (+ open PR, if any) | merge-back; not `loom`'s own — a generic `Shed` producer, shared by reference with `Hardener`'s producer list, see [internal/landingshed](../../internal/landingshed/doc.go) |
+| 5 | `Plan-Write` | simple | LLM | `_lyx/discussion/decision-record.md` (**never** `support-log.md`) | `_lyx/plan/`, shape pinned in `contracts/stencils/loom/loom-template-plan.md`; gated by this row's own mechanical gate before handoff — see [Plan gate detail](#plan-gate-detail) below and [the gate](#the-gate) |
+| 6 | `Plan-Review` (`Plan-Bouncer` + `Plan-Burler`) | bespoke | LLM/review segment | `_lyx/plan/` (current plan directory) → `_lyx/discussion/decision-record.md` (answer key) | verdict (APPROVED/stuck) + review file; `Plan-Burler`'s own fix step carries the same mechanical gate as row 5 — see [the gate](#the-gate) |
+| 7 | `Batchifier` | simple | mechanical | `_lyx/plan/` (approved) + `batcher.yaml`'s `active:` key | pass/fail — a fail-fast gate confirming the active batchifier resolves cleanly before `Webster` spawns any LLM session, no artifact — already shipped as `internal/batcher`, "never an LLM's decision" per its own package doc |
+| 8 | `Webster` | bespoke | black box (LLM + mechanical internally) | `_lyx/plan/` (approved); resolves the active batchifier itself, lazily, on every call — never a value handed across from `Batchifier`, since that row writes no artifact | committed diff — `internal/websterengine`'s own per-batch loop is a bespoke, multi-spawn producer, exempt from `Shed`'s atomicity rule by design, and stays opaque to `loom`'s flat list, same "black box loom drives, exactly like a review segment" framing as [below](#webster--a-black-box-loom-drives-the-sibling-of-the-review-segment) |
+| 9 | `Webster-Review` (`Webster-Bouncer` + `Webster-Burler`) | bespoke | LLM/review segment | full diff → plan's card contract | verdict + review file — the full converge-loop gate over the whole diff |
+| 10 | `Publish` | simple | mechanical | approved diff | PR opened, or no-op; not `loom`'s own — a generic `Shed` producer, shared by reference with `Hardener`'s producer list, see [internal/landingshed](../../internal/landingshed/doc.go) |
+| 11 | `Finalize` | bespoke | mechanical | approved diff (+ open PR, if any) | merge-back; not `loom`'s own — a generic `Shed` producer, shared by reference with `Hardener`'s producer list, see [internal/landingshed](../../internal/landingshed/doc.go) |
 
 **The table and the shipped recipe diverge deliberately.**
-The recipe carries fourteen rows against the table's twelve entries, and the difference has two separate causes, not one: the table carries `Plan-Sweep` (row 5) as its own row, which `contracts/recipes/loom-recipe.yaml` does not,
-while the recipe carries three collapsed segment pairs the table shows as single entries — `Discussion-Bouncer`/`Discussion-Burler` collapsed into row 4's `Discussion-Review`, `Plan-Bouncer`/`Plan-Burler` collapsed into row 7's `Plan-Review`, and `Webster-Bouncer`/`Webster-Burler` collapsed into row 10's `Webster-Review` — the `Kind` column's own black-box framing, not an oversight;
+The recipe carries more rows than the table has entries because the table shows each of three collapsed segment pairs as a single entry — `Discussion-Bouncer`/`Discussion-Burler` collapsed into row 4's `Discussion-Review`, `Plan-Bouncer`/`Plan-Burler` collapsed into row 6's `Plan-Review`, and `Webster-Bouncer`/`Webster-Burler` collapsed into row 9's `Webster-Review` — the `Kind` column's own black-box framing, not an oversight;
 see [the gate](#the-gate) below for why each pair stays collapsed to one here.
 `contracts/recipes/loom-recipe.yaml` is the shipped list, authoritative for row names and routing.
-This table is the human-readable design record, not required to track the recipe's row count row-for-row: its own count moves whenever a genuine row is added or removed — as it did in this task, when the standalone `Discussion-Validate`, `Plan-Validate`, and `Plan-Revalidate` rows were folded into the writer and fixer rows' own gates, taking the recipe from seventeen rows/fifteen table entries down to fourteen rows/twelve table entries — and only a collapsed segment pair leaves it unchanged.
+This table is the human-readable design record, not required to track the recipe row-for-row: it moves whenever a genuine row is added or removed — as it did when the standalone `Discussion-Validate`, `Plan-Validate`, and `Plan-Revalidate` rows were folded into the writer and fixer rows' own gates — and only a collapsed segment pair leaves it unchanged.
 
 `Preflight` and `Loom-Preflight` are **built**, together giving `loom` the two-row shape.
 Row 1, `Preflight`, is the generic, product-agnostic gate: built as `internal/preflightshed`'s general producer over `internal/preflight.Check`, it validates worktree geometry and at-root (cwd resolution via `internal/lyxcwd`, sibling/Prime lookup via `internal/fabricengine`), the worktree pair's cleanliness, and fabric readiness and sync — warp branch == weft branch, via `warp`'s drift detection.
@@ -121,7 +119,7 @@ Do not flag any of the following as a finding:
   Rejected alternatives belong in `support-log.md`'s Rejected alternatives section, not in `decision-record.md`;
   their absence from `decision-record.md` is by design, not an omission.
 - **Incomplete call-site or cross-reference enumeration.**
-  That enumeration belongs to the compiler and to `Plan-Sweep`'s mechanical inventory, not to `Discussion-Review`.
+  That enumeration belongs to the compiler and to `Plan-Write`'s own quarry lookups, not to `Discussion-Review`.
 
 ### Discussion-Review rubric — what to also flag (relocation and exclusion)
 
@@ -200,35 +198,6 @@ Also flag:
 - **Fidelity to the decision record.**
   Every Decision and every Constraint in `_lyx/discussion/decision-record.md` is carried by some card, and no card introduces scope that file does not license.
   The decision record is the measuring stick and never the subject — every finding is raised against the plan, never against the decision record.
-
-## Plan-Sweep detail — the quarry-inventory spec
-
-**Build order note:** `Plan-Sweep` was not built in `loom: phase-machine scaffolding` — it stayed a stub there, alongside `Plan-Write`, its only consumer.
-Building a real `Plan-Sweep` before `Plan-Write` is real would have nothing to feed.
-Unlike `Plan-Write` (its own split-out `loom: Plan-Write producer` roadmap item, since shipped), `Plan-Sweep` was never built at all — it is not even a recipe row, and is deferred to its own roadmap item, since quarry-backed work is low-priority project-wide right now and this is the only row in the initiative that touches quarry.
-`Discussion-Write`'s and `Plan-Write`'s own mechanical gates, which land alongside their rows in scaffolding, carry no such dependency.
-
-`Plan-Sweep` (row 5) is `simple`/`mechanical`, in the same vein as `Preflight`/`Loom-Preflight` — no judgment, exhaustively defined by the checks below, not a smaller version of what `Plan-Write` (the LLM) does.
-Its job is grounding, not selection: hand `Plan-Write` real `quarry` lookups for whatever the decision record already named, so the writing agent starts from resolved definitions/references instead of re-grepping blind.
-
-**Deterministic extraction.**
-The repo's own doc convention is the extraction rule: every code identifier, file path, and symbol name in `decision-record.md`'s prose is backtick-quoted, the same convention this doc and every other `manifest/designs/*.md` file already follows.
-`Plan-Sweep` reads `decision-record.md`'s Scope section (the same section-parsing `Discussion-Write`'s own gate already does to check presence, in `internal/discussionparser`) and collects every backtick-quoted span inside it — nothing outside Scope, and no judgment about which spans "matter."
-
-**Resolution, not selection.**
-Each collected span is classified mechanically, by shape, not meaning: a span containing `/` or a `.go`/`.md`-style extension is treated as a path and checked for existence on disk;
-anything else is treated as a symbol name and looked up through `quarry`'s existing symbol lookup, then enumerated via its `References` API.
-A span that resolves to nothing — a prose word that happened to be backtick-quoted, a symbol `quarry` can't find — is silently dropped, never a failure;
-`Plan-Sweep` has no pass/fail outcome of its own (the table's Output column already marks it "not gated").
-
-**No persisted artifact.**
-Unlike `Discussion-Write`'s output, the inventory is never written to `_lyx/plan/` or anywhere else — it costs nothing to recompute (a handful of `quarry` lookups, not an LLM call), so `Shed`'s resume-on-output-files model doesn't apply to it: on resume, `Plan-Sweep` just reruns before `Plan-Write` starts, exactly like the first pass.
-This also means it needs no format-contract doc under `contracts/`; the shape below is `Plan-Write`'s own prompt-assembly concern, not a pinned cross-producer contract.
-
-**Shape handed to `Plan-Write`.**
-A flat list, one entry per resolved span: the original span text, its kind (`path` or `symbol`), and — for a symbol — its definition site(s) plus reference sites from `quarry`'s `References` API.
-Deduplicated and sorted;
-order carries no meaning `Plan-Write` should read into it.
 
 ## The gate
 

@@ -4,6 +4,6 @@
 // DiscussionDecisionRecord/DiscussionSupportLog accessors remain the sole declarers of where
 // `_lyx/discussion/` is, because those accessors take a *lyxcwd.Location, which this stdlib-only
 // leaf may not import.
-// Staying stdlib-only is deliberate: a future Plan-Sweep consumer can reuse this package's section
-// parsing without dragging any geometry resolution in along with it.
+// Staying stdlib-only is deliberate: it keeps this package a Tier 1 leaf any consumer can reuse for
+// section parsing without dragging geometry resolution in along with it.
 package discussionparser
