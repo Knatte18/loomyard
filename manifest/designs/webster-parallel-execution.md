@@ -28,7 +28,7 @@ Grouping granularity (one card vs. several) is orthogonal to safety — the orig
 Not yet a plan: the DAG source exists now that the **Adopt quarry's glyph alphabet as the plan alphabet** item has shipped,
 but it still needs a writeup reconciling this with the still-open questions elsewhere in this doc (typical-plan wave-width evidence, the batchifier/planner change needed to emit groups).
 
-The per-lane mechanics have since been designed elsewhere: [seeded-shed.md](seeded-shed.md)'s batten recipe (create, seed, run, teardown as ordinary producers) and its run-id addressing carry N concurrent lane runs side by side, so a lane is a batten-style run whose child seed names a webster-lane recipe — none of that machinery is this item's to build.
+The per-lane mechanics have since shipped elsewhere: batten's recipe (create, seed, run, teardown as ordinary producers) and its run-id addressing carry N concurrent lane runs side by side, so a lane is a batten-style run whose child seed names a webster-lane recipe — none of that machinery is this item's to build.
 What remains genuinely webster's: the wave scheduler (event-driven, recomputing the ready set on each lane's merge-back — never a continuously maintained DAG), the plan group-filter, and a non-forking webster variant.
 That last one is the real structural change: today's webster runs forks inside the Master session's own context, which binds execution to one session in one worktree;
 a lane needs agents spawned into the lane worktree's own reed session instead, scoped to just that lane's group.

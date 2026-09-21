@@ -138,7 +138,7 @@ func TestLoadConfig_ClaudeDenyAgentTool_PinsGateNarrowingPrecondition(t *testing
 			"re-opens the compound-quiescence question this task deliberately declined — a gate could now " +
 			"fire while an async in-process subagent, spawned through the Agent tool, is still working, " +
 			"undermining the narrowing that the per-attempt done-signal is the next turn boundary and " +
-			"nothing more. The decision must be re-opened (see manifest/designs/producer-gates.md), not " +
+			"nothing more. The narrowing decision must be re-opened deliberately, not " +
 			"this test updated.")
 	}
 }

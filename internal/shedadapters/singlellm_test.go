@@ -921,7 +921,7 @@ func TestSingleLLMProducer_Gate_AttachPathIsGatedToo(t *testing.T) {
 
 // TestSingleLLMProducer_Gate_AttemptsPropagatesOntoOutputPointer proves a non-zero
 // GateOutcome.Attempts (a gate that needed re-prompts before passing) reaches the returned
-// OutputPointer.GateAttempts unchanged, per manifest/designs/producer-gates.md's "recorded in the
+// OutputPointer.GateAttempts unchanged, per the producer-gate contract's "recorded in the
 // row's envelope/history so the status file shows it" requirement -- shedengine's own
 // TestStep_GateAttempts_* tests (internal/shedengine/gateattempts_test.go) cover the persisted
 // side of that chain; this test covers the producer's own half, that it reads result.Gate.Attempts

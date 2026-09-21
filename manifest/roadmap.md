@@ -93,25 +93,25 @@ No build order is implied between these items.
 Cleared 2026-08-25 to keep this file lean — shipped items' history lives in `git log` and each module's own package documentation, not here.
 
 1. **producer gates: mechanical accept-gates on LLM-running producers** — a producer that runs an LLM declares a mechanical gate: a validator whose findings the producer injects back into the still-live session as a re-prompt, holding the handoff until the gate passes (bounded by an explicit attempt counter, then ordinary Stuck); the standalone Discussion-Validate, Plan-Validate, and Plan-Revalidate rows are removed in the same task. Lands before the batten end-to-end crucible campaign (wiki: `crucible-batten-end-to-end`).
-   See [designs/producer-gates.md](designs/producer-gates.md) and [designs/loom.md](designs/loom.md#the-gate).
+   See [designs/loom.md](designs/loom.md#the-gate) and the `internal/shedengine` and `internal/shedadapters` package documentation.
 
 1. **seeded driver choice: ly-drive strand as the child's driver** — the seed's `driver` field selects who steps a run: the detached Go runner, or a Claude strand running ly-drive in the worktree's own reed session, booted by that run's own recipe bootstrap verb. Loom's `start` is the only bootstrap verb that reads it today, per the new Driver Choice Single-Site Invariant; a recipe with no bootstrap verb of its own cannot be seeded for the `llm` driver until it grows one. No default flips — every run still defaults to `go`.
-   See [designs/seeded-shed.md](designs/seeded-shed.md#the-driver-choice-as-built).
+   See the Driver Choice Single-Site Invariant in `CONSTRAINTS.md`, and `internal/shedrun`'s and `internal/loomcli`'s package documentation.
 
 1. **seeded Shed core: run addressing, seed contract, batten** — every Shed run now has a run directory addressed by run-id (durable `_lyx/shed/<run-id>/` holding `seed.json`+`status.json`, ephemeral `.lyx/shed/<run-id>/` holding its locks), defaulting to `self`; `internal/shedrun` owns the run-id vocabulary and the seed contract end to end. A new `Seed-Child` row and the Board's `type` field carry the recipe choice into a task worktree's own inner run. The lifecycle recipe is renamed **batten** (`internal/battenshed`+`internal/battenrecipe`+`internal/battencli`), its `Loom-Run` row becomes the product-neutral, step-friendly `Run-Shed`, and `lyx shed seed`/`lyx batten run|step|status|pause` replace the old `--recipe` flag and `lyx lifecycle` verbs.
-   See [designs/seeded-shed.md](designs/seeded-shed.md).
+   See `internal/shedrun`'s, `internal/battenshed`'s and `internal/battenrecipe`'s package documentation.
 
 1. **generalize `ly-drive` and loom's `start`/`run`/`step` CLI verbs into a Shed-generic watchdog** — the generic `run`/`step`/`status`/`pause` verb bodies now live in `internal/shedverbs`, armed by a new named-recipe `lyx shed` subtree (`internal/shedcli`) alongside loom's and lifecycle's own subtrees; lifecycle gained `pause` and `status --watch` to match. The `ly-drive` skill now drives any recipe through `lyx shed step --recipe <name>`, defaulting to `loom`.
-   See [designs/shed-generic-watchdog.md](designs/shed-generic-watchdog.md).
+   See `internal/shedverbs`'s and `internal/shedcli`'s package documentation.
 
 1. **reed: per-hub daemon reaps orphaned sessions** — the per-hub daemon now checks each live session name's worktree directory every discovery cycle, reaps a session confirmed gone across three consecutive affirmative cycles by capturing its pane process closure and then killing the session by exact target, and refuses to act at all while the hub directory itself does not stat live.
-   See [designs/reed-header-selvage.md](designs/reed-header-selvage.md).
+   See `internal/reedengine`'s package documentation.
 
 1. **reed: born-as-strand for the operator's `loom start` attach** — `lyx loom start`'s terminal handoff now adds an operator-owned Strand before attaching, spawn-then-attach like `reed add` does, and the same verb spawns the per-hub watchdog daemon its session runs on regardless of `--attach`.
    See the `internal/loomcli` and `internal/reedengine` package documentation.
 
 1. **reed: extract Selvage-pane lifecycle out of apply/reconcile/spawn/lifecycle** — Selvage's pane creation, reap-exemption, and split-target lifecycle now lives in one file, `internal/reedengine/selvagepane.go`, with a mechanical AST enforcement test barring it from re-scattering across `apply.go`/`reconcile.go`/`spawn.go`/`lifecycle.go`. See `internal/reedengine`'s package documentation.
-   See [designs/reed-selvage-pane-extraction.md](designs/reed-selvage-pane-extraction.md).
+   See `internal/reedengine`'s `selvagepane.go` and its package documentation.
 
 1. **reed: `AddStrand` and `attach` self-heal a cold worktree instead of requiring `up` first** — both verbs pre-flight through the new `ensureSessionLocked`/`EnsureSession()` seam, which probes session liveness first and only delegates to `upLocked()` when nothing usable is up, so any spawn OR view into a worktree nobody has visited (no VS Code, no manual `up`) just works. `attach` boots via `EnsureSession()` and keeps its existing `Status()` call, in that order, so both the friendly no-session diagnosis and the foreign-session refusal survive unchanged. A warm call against a live session is never routed through `Up()`/`upLocked()`: that path reaches `planReconcile`, which would kill an operator's hand-split pane, and validates config ahead of its already-up early return, which would refuse a healthy `attach` on an unrelated typo. Fully internal to `reedengine` — fabric never needs to know reed exists.
 
@@ -126,10 +126,10 @@ Cleared 2026-08-25 to keep this file lean — shipped items' history lives in `g
    See the `internal/lifecycleshed` and `internal/lifecyclerecipe` package documentation.
 
 1. **Adopt quarry's glyph alphabet as the plan alphabet** — `planparser`/the validator switched a card's symbol declarations from bare names to quarry glyphs, resolved via batched `Resolve`, with placeholder handles (`plan:<expected-glyph>`) for symbols a plan itself creates and mechanical drift detection against the code. Superseded the Someday `quarry-backed plan symbol verification` item.
-   See [designs/quarry-glyph-plan-alphabet.md](designs/quarry-glyph-plan-alphabet.md).
+   See `internal/planparser`'s and `internal/planglyph`'s package documentation, and [GitHub issue #226](https://github.com/Knatte18/loomyard/issues/226) for the full proposal text.
 
 1. **self-report Tier 1: Go-detected structural anomalies** — loom's own status file now records crash-resumes, `stuck` escalations, and repeated review rounds, and files these directly via the shipped `selfreport` primitive, with no LLM call and no session watching needed.
-   See [designs/self-report-tier1.md](designs/self-report-tier1.md).
+   See `internal/loomengine`'s `anomaly.go`/`anomalybody.go` and `internal/loomcli`'s `selfreport.go`.
 
 1. **fabric: surface merge-in-progress in `lyx fabric status`** — `status` now reports a `merge_in_progress` boolean, whether THIS pair has a fabric merge parked.
    See the `internal/fabricengine` package documentation's merge section.
@@ -138,7 +138,7 @@ Cleared 2026-08-25 to keep this file lean — shipped items' history lives in `g
    See `internal/reedengine`'s package documentation.
 
 1. **reed: replace the header pane with a native tmux status-line, a permanent "Selvage" terminal pane, and a detached per-hub watchdog process** — the one header pane's three conflated jobs are split apart: identity content now renders through tmux's own native status-line; a deliberately ordinary shell pane, named **Selvage**, is the always-on, pinned-to-the-bottom control terminal that keeps the session alive and doubles as where you'd run `lyx reed add` and friends directly; and the watchdog daemon moved out of any pane entirely, into its own detached background process scoped one-per-hub (matching the existing tmux-server-per-hub boundary).
-   See [designs/reed-header-selvage.md](designs/reed-header-selvage.md).
+   See `internal/reedengine`'s package documentation.
 
 1. **Real-Linux validation** — the sandbox suite and every tmux/`/proc` assumption are exercised on real Linux, now the platform everything runs on.
 
@@ -161,10 +161,10 @@ Cleared 2026-08-25 to keep this file lean — shipped items' history lives in `g
    See [final-summary-spec.md](../contracts/specs/final-summary-spec.md).
 
 1. **self-report Tier 2: per-agent friction notes for unsupervised runs** — every prompt-composing agent now gets an optional friction-note directive injected into its prompt, default-on via `loom.yaml`'s `friction` model-spec key, and `internal/loomcli`'s run verb spawns one dedicated reflection agent per run to aggregate whatever notes were written and file them via `lyx selfreport create`.
-   See the `internal/friction` and `internal/frictionengine` package documentation, and [designs/self-report-tier2.md](designs/self-report-tier2.md).
+   See the `internal/friction` and `internal/frictionengine` package documentation.
 
 1. **`lyx loom step` + an external supervisor skill** — a new Go verb runs exactly one of `loom`'s next phases (loom still owns all sequencing) and returns; the `/ly:ly-drive` skill drives it in a loop, watching live for anything a mechanical gate wouldn't catch, and handing back to the operator on any non-running state or error envelope. Supersedes `llm-driven-loom-alternative`.
-   See [designs/loom-step.md](designs/loom-step.md).
+   See `internal/loomcli`'s `step.go` and the `/ly:ly-drive` skill.
 
 ## Maintenance
 

@@ -30,14 +30,13 @@
 //
 // # Why the hard-error half of the audit gets no guard
 //
-// manifest/designs/logger-coverage.md also enumerates every outcome-switch hard-error-return site
-// reachable from a lyx command, but that table is document-only, with no guard here or anywhere else.
+// Every outcome-switch hard-error-return site reachable from a lyx command was audited once by hand,
+// but that audit is history, with no guard here or anywhere else.
 // A new unlogged exec.Command is nearly always a real miss, so a file-level check on it has high
 // signal. A new outcome-switch branch, by contrast, may legitimately return normally for the caller to
 // branch on — internal/burlerengine/engine.go's Run does exactly that — so an equivalent file-level
 // check on outcome switches would fire on correct code and train the next author to reach for an
-// allowlist instead of writing correct code. See manifest/designs/logger-coverage.md's "Enforcement
-// asymmetry" section for the full argument.
+// allowlist instead of writing correct code. That asymmetry is why only the spawn half is guarded.
 
 package main
 
