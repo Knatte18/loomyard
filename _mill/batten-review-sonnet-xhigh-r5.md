@@ -537,10 +537,16 @@ far, all for real: `Worktree-Create` → `Seed-Child` → `Run-Shed`'s first
 spawn (real `lyx loom start --no-attach`, `Preflight`/`Loom-Preflight`
 both genuinely `done`) → a REAL Discussion-phase agent (opus, high effort)
 ran for real and produced a genuine `decision-record.md`, gated through
-`Discussion-Bouncer` — no stub, no fixture shortcut anywhere in this
-chain. Continuing to watch it to a genuine terminal state; this section
-will be completed with the final outcome (Done, or a natural failure the
-way R3 hit one) before the review report is closed out.
+`Discussion-Bouncer` (one real Bouncer+Burler review round, `Discussion-
+Burler` genuinely fixing something the `Bouncer` flagged, then re-passing)
+→ a REAL Plan-phase agent ran for real through its own Bouncer+Burler
+round → `Batchifier` `done`, now at `Webster` (the real implementation
+phase) — no stub, no fixture shortcut anywhere in this chain. Also applied
+`require_pr_to_base: []` to the child's own `landing.yaml`, matching R2's
+own precedent for reaching a genuine `Finalize`/`Publish` on a no-network
+fixture hub rather than the known environment-limited failure R3 hit.
+Continuing to watch it to a genuine terminal state; this section is
+completed with the final outcome further down once reached.
 
 ### Scenario: F5 — taskWorktreeLocation's own suggested recovery command corrupts prime's own branch (CONFIRMED live, BLOCKING)
 
@@ -607,6 +613,64 @@ sides so a resumed `lyx batten run/step` reaches `Topology.Add` cleanly, or
 manually restore the worktree pair outside lyx's own automation) before
 resuming.
 
-(Live driving continues: this round's own focus points 1/2/4, remaining
-re-confirmation of the CLOSED-AND-VERIFIED list, and the primary drive's
-own completion.)
+## This round's four specific focus points — closure
+
+1. **Blast-radius sweep on this campaign's own cross-cutting fixes.**
+   Diffed every non-batten file the campaign has ever touched
+   (`git diff --stat 29d9e6a42^..HEAD`, then full diffs on each):
+   `CONSTRAINTS.md`, `internal/fabricengine/{fabric.go,doc.go}`
+   (`RequireDrivableWorktree`), `internal/loomcli/bootstrap_test.go`
+   (`driverFieldReadCarveOuts`), `internal/boardcli/cli.go` (help text
+   only), `internal/shedrecipe/entries_batten{.go,_test.go}` (stale-comment
+   cleanup only), `internal/reedengine/*` + `internal/shell/*` (the #017
+   Pane Binary Resolution merge). Found **F1** (the corrupted
+   `posix.go:13` doc comment, traced to commit `bf0b20038`, arrived via the
+   #017 merge, never previously flagged) this way — the sweep's whole
+   point. Grepped the full campaign diff for stray curly-quote corruption
+   as a cheap correctness smoke check on top of reading every line by eye;
+   no second instance found. No behavioral drift found in any of the
+   swept files beyond F1's own cosmetic defect.
+2. **Adversarial pressure on F5/F6[R4]'s fixes.**
+   Grepped every production call site of `fabricengine.RequireWarpWorktree`
+   repo-wide: the only caller outside `fabricengine` itself is
+   `internal/fabriccli` (an owner-set package per the Fabric Vocabulary
+   Invariant's own carve-out), confirming `internal/battencli`'s exclusive
+   use of the neutral `RequireDrivableWorktree` wrapper is still the sole
+   non-owner path — no second bare caller sitting undetected in a
+   scan-exempt directory. For `driverFieldReadCarveOuts`: read
+   `scanFileForDriverFieldReads`'s own AST-tracking logic
+   (`internal/loomcli/bootstrap_test.go`) — it tracks identifiers assigned
+   from `shedrun.ReadSeed` or typed as `shedrun.Seed`, then flags `.Driver`
+   selector expressions on them. This is a real tripwire, not a
+   completeness proof, exactly as `CONSTRAINTS.md` says of it in so many
+   words: a hypothetical reader that decoded the seed file via raw
+   `encoding/json` into a `map[string]any` and read `m["driver"]` would
+   evade this specific scan (no `.Driver` selector, no `shedrun.Seed`-typed
+   variable) — but that same hypothetical reader would ALSO violate
+   `internal/shedrun`'s own "sole parser of seed.json" claim, a second,
+   independent invariant a reviewer or a different scan would have to miss
+   at the same time. Judged: the tripwire is honest about being a
+   tripwire, appropriately narrow, and not silently over-trusted by
+   anything in this campaign's own material.
+3. **A fresh, real live SUCCESS-arm re-drive on the POST-R4 binary.**
+   Done — see "Primary full end-to-end drive" (below, completed with its
+   final outcome) and the F1[R4] live re-confirmation under "high-yield
+   item 7" above (the exact crash-window state F1[R4] fixed, rebuilt by
+   hand via `lyx fabric add` with no batten status recording it, correctly
+   recognized as idempotent by the POST-R4/F1/F5/F6 binary).
+4. **Standard re-confirmation of the CLOSED-AND-VERIFIED list.**
+   Re-confirmed live, not merely re-read: the Bookend Invariant (item 1,
+   all four verbs, all three wrong vantage points), teardown ordering
+   (item 2, both a stuck-then-cleared cycle and a from-scratch pass),
+   `PrimeRunLock` scope (item 6, both halves), hand-seed authority
+   (item 11), both sabotage scenarios (items 8/9), the halted-child-never-
+   torn-down guarantee (item 3), the driver-choice plumbing (item 5, plus
+   its own trust-dialog residual), R1-F9's fabric-capability gap, and
+   R1-F6's pacing cost. The full repo-wide hermetic gate
+   (`go build`/`go vet ./...`/`go test -count=1 ./...`) reproduced green
+   from cold state at the start of this round (see "Hermetic gate"
+   above) — re-run again at the end of Job 2, per the standing gate's own
+   requirement. Nothing in this pass showed any sign of regression in
+   previously-fixed behavior.
+
+(Live driving continues: the primary drive's own completion, below.)
