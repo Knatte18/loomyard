@@ -41,5 +41,5 @@ Two tiers, same shape as every other mechanical gate in this initiative:
    Because the rule has no "except when load-bearing" carve-out, the check is a clean mechanical target: flag any identifier-shaped token in a doc comment that resolves to a real symbol outside the current type/package (excluding the two exceptions named in `code-quality`'s Comments section — self-reference and stdlib/language contracts).
    No judgment about necessity is required — the rule is absolute, so a hit is always a violation.
 
-Wiring into producer prompts is planned, not yet done: once loom's own producers write code, their stencils are meant to compose in a "Load these skills: ..." section (see `manifest/designs/plan-card-format.md`) naming `code-quality`/`golang-comments`, not leave invocation to model discretion.
+Wiring into producer prompts is planned, not yet done: once loom's own producers write code, their stencils are meant to compose in a "Load these skills: ..." section naming `code-quality`/`golang-comments` — the shape `loom-template-plan.md`'s own Step 0 already uses for the writing skills, not leave invocation to model discretion.
 That wiring is the separate, later roadmap item named above.

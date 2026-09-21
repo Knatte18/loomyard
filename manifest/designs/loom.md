@@ -165,7 +165,7 @@ Both plan gate sites run before any card has been built, so they keep the unscop
 The shipped stencil `contracts/stencils/loom/loom-rubric-plan-review.md` is `Plan-Review`'s own rubric — read by both `Plan-Bouncer` and `Plan-Burler`, the row's two-producer perch.
 This subsection is a doc *about* that stencil, per the Producer Pointer-Rule Invariant, not a second copy it must point at — it is the durable human-readable record the stencil was transcribed from, kept in step with the stencil rather than restated inside it.
 
-The subject under review is the current plan (`_lyx/plan/00-overview.md` and the card files its Card Index names) against `_lyx/discussion/decision-record.md` as the answer key, per the Card model in [plan-card-format.md](plan-card-format.md).
+The subject under review is the current plan (`_lyx/plan/00-overview.md` and the card files its Card Index names) against `_lyx/discussion/decision-record.md` as the answer key, per the Card model in [loom-plan-spec.md](../../contracts/specs/loom-plan-spec.md).
 `support-log.md` is excluded from this review entirely — it appears in neither the artifact list nor the answer key, and `Plan-Write` provably never reads it, so a finding grounded in its content cannot be satisfied except by inventing the missing link.
 
 `Plan-Review` is the LLM producer, not the mechanical one — over-flagging is a judgment failure mode a mechanical producer (which has only checks, never judgment) cannot exhibit.
@@ -180,7 +180,7 @@ Do not flag any of the following as a finding:
   Plan-time completeness of that intersection is explicitly not provable;
   the real gate is the post-merge build and test.
 - **A `Rename`, `Move`, `Prosa`, or `Custom` card carrying no `ImpactSummary`.**
-  It is required for `Edit` and `Delete` only, per the per-type table in [plan-card-format.md](plan-card-format.md).
+  It is required for `Edit` and `Delete` only, per the per-type table in [loom-plan-spec.md](../../contracts/specs/loom-plan-spec.md#card-types).
   For `Rename` the reason is specific: a correctly executed AST-aware rename is binary, with no graded blast radius to summarise.
 
 Also flag:

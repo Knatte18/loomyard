@@ -270,7 +270,7 @@ producers:
           instructions: >
             The plan directory named above is the answer key: the diff's job is to implement the
             cards it carries, and the Card model those cards implement is described in
-            manifest/designs/plan-card-format.md. The mechanical checks over the plan's own format
+            contracts/specs/loom-plan-spec.md. The mechanical checks over the plan's own format
             are already enforced by Plan-Write's and Plan-Burler's own gates over each round's own
             output, so re-deriving them in this round is duplicated work.
         rubric_stencil: loom-rubric-webster-review

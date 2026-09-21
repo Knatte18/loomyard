@@ -36,7 +36,7 @@ func TestSeedStencilsAt_SeedsBothSubtrees(t *testing.T) {
 		t.Fatalf("stat %s after seedStencilsAt: %v; want the seeded stencil to exist", discussionPath, err)
 	}
 
-	specNames := []string{"loom-plan-spec", "loom-plan-card-format"}
+	specNames := []string{"loom-plan-spec"}
 	for _, name := range specNames {
 		path := stencilstore.Path(specsDir, name)
 		onDisk, err := os.ReadFile(path)
@@ -71,7 +71,7 @@ func TestSeedStencilsAt_SecondRunWritesNothing(t *testing.T) {
 	seedStencilsAt(hub.Path, worktree)
 
 	before := map[string][]byte{}
-	specNames := []string{"loom-plan-spec", "loom-plan-card-format"}
+	specNames := []string{"loom-plan-spec"}
 	for _, name := range specNames {
 		path := stencilstore.Path(specsDir, name)
 		content, err := os.ReadFile(path)
@@ -130,7 +130,7 @@ func TestSeedStencilsAt_CommitsTheSpecsSubtree(t *testing.T) {
 	}
 
 	lines := strings.Split(strings.TrimRight(stdout, "\n"), "\n")
-	specNames := []string{"loom-plan-spec", "loom-plan-card-format"}
+	specNames := []string{"loom-plan-spec"}
 	for _, name := range specNames {
 		relPath := stencilstore.RelPath(name)
 		want := filepath.ToSlash(filepath.Join(specsSubtreeRel, relPath))

@@ -13,7 +13,7 @@ Ordinary diff review is the base: read the diff as code, with no checklist suppl
 The two dimensions under `## Also flag` are added on top of that base, never a replacement for it.
 
 The measuring stick is the plan — `_lyx/plan/00-overview.md` and the card files its Card Index names.
-The Card model the plan implements is described in `{{.specs_dir}}/loom/loom-plan-card-format.md`, and the format contract is `{{.specs_dir}}/loom/loom-plan-spec.md`.
+The Card model the plan implements is described in `{{.specs_dir}}/loom/loom-plan-spec.md`, and the format contract is `{{.specs_dir}}/loom/loom-plan-spec.md`.
 This rubric points at both and restates neither.
 
 `Webster-Review` is the LLM producer, not the mechanical one — over-flagging is a judgment failure mode a mechanical producer, which has only checks and never judgment, cannot exhibit.
@@ -51,4 +51,4 @@ Do not flag any of the following as a finding:
   Any new or changed doc comment follows the target repository's own conventions — its own constraints document if it has one, and the conventions the surrounding code already follows.
   This rubric checks compliance with the target repository's own standard, not loomyard's.
 - **Per-card mechanical check.**
-  Confirm every one of the card's own groups' type-specific mechanical checks actually ran and passed, each against that group's own targets, not just the first label's — the AST-script-plus-grep for a `Rename` group, `assert-no-callers` for a `Delete` group, per the per-type table in `{{.specs_dir}}/loom/loom-plan-card-format.md` — not merely that the diff compiles and its tests pass.
+  Confirm every one of the card's own groups' type-specific mechanical checks actually ran and passed, each against that group's own targets, not just the first label's — the AST-script-plus-grep for a `Rename` group, `assert-no-callers` for a `Delete` group, per the per-type table in `{{.specs_dir}}/loom/loom-plan-spec.md` — not merely that the diff compiles and its tests pass.

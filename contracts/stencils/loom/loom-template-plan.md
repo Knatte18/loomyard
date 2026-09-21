@@ -140,7 +140,7 @@ That is the `card-field-overlap` finding — see `{{.specs_dir}}/loom/loom-plan-
 Every `Verify:`/`verify:` value — a card's optional `**Verify:**` and the plan-level `## verify:` section — is one or more runnable shell commands, never prose;
 the plan-level `## verify:` is the single integration check run once at the end of the whole plan.
 A per-card `**Verify:**` is exceptional rather than routine, written only for what a package-scoped automatic test run cannot catch on its own — the plan-level `## verify:` section is the single integration check for the whole plan.
-See `{{.specs_dir}}/loom/loom-plan-card-format.md`'s Verify model section for the tier definitions themselves — this file does not restate them.
+See `{{.specs_dir}}/loom/loom-plan-spec.md`'s verify model section for the tier definitions themselves — this file does not restate them.
 
 ### `## Rename mechanic` — reproduce verbatim when any card is type `Rename`
 

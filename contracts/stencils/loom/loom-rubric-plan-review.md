@@ -12,7 +12,7 @@ The subject under review is the current plan: `_lyx/plan/00-overview.md` and the
 The plan directory may also hold `archive-*/` subdirectories, which are rotations of superseded plans;
 they are out of scope, and a finding raised against one is never legitimate.
 
-The format contract is `{{.specs_dir}}/loom/loom-plan-spec.md`, and the Card model it implements is described in `{{.specs_dir}}/loom/loom-plan-card-format.md`.
+The format contract, and the Card model it implements, are both `{{.specs_dir}}/loom/loom-plan-spec.md`.
 This rubric points at both and restates neither.
 The mechanical checks over that contract are already enforced by this round's own gate over this round's own output — the format-only set, twenty-seven of the twenty-eight checks — while `plan-unapproved` is enforced at no row at all, resting on the review segment's own approve seam failing loudly if ever wired nil.
 
@@ -35,7 +35,7 @@ Do not flag any of the following as a finding:
   Plan-time completeness of that intersection is explicitly not provable;
   the real gate is the post-merge build and test.
 - **A `Rename`, `Move`, `Prosa`, or `Custom` card carrying no `ImpactSummary`.**
-  It is required for `Edit` and `Delete` only, per the per-type table in `{{.specs_dir}}/loom/loom-plan-card-format.md`.
+  It is required for `Edit` and `Delete` only, per the per-type table in `{{.specs_dir}}/loom/loom-plan-spec.md`.
   For `Rename` the reason is specific: a correctly executed AST-aware rename is binary, with no graded blast radius to summarise.
 
 ## Also flag

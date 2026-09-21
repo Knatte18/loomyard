@@ -1,6 +1,6 @@
 # Loom plan-spec — flat card list
 
-> **Status: Contract — pinned.** This doc pins **plan-format**: the flat card-list plan schema `Plan-Write` produces, which webster (`internal/websterengine`, via its sole parser `internal/planparser`) consumes. This is `internal/planparser`'s own as-built contract — the twenty-eight checks below are already implemented, not a future spec — kept as a durable Go-to-Go reference doc under `contracts/specs/`, not deleted on landing. The LLM-facing subset of this format — what `Plan-Write` itself must write — is pinned separately in the producer's own stencil, `contracts/stencils/loom/loom-template-plan.md`, so the agent's prompt never duplicates this file and the two cannot drift from being the same doc.
+> **Status: Contract — pinned.** This doc pins **plan-format**: the flat card-list plan schema `Plan-Write` produces, which webster (`internal/websterengine`, via its sole parser `internal/planparser`) consumes. This is `internal/planparser`'s own as-built contract — every check below is already implemented, not a future spec — kept as a durable Go-to-Go reference doc under `contracts/specs/`, not deleted on landing. The LLM-facing subset of this format — what `Plan-Write` itself must write — is pinned separately in the producer's own stencil, `contracts/stencils/loom/loom-template-plan.md`, so the agent's prompt never duplicates this file and the two cannot drift from being the same doc.
 
 ## Producer and contract
 
@@ -108,6 +108,10 @@ a required field a card omits — every type label (a card must carry at least o
 An entry appearing in both a card's own target list and its own `Uses:` is a contradiction: is it being changed, or only read? — flagged by the `card-field-overlap` check.
 This is strictly **per-card**: across two cards of the same plan, one card's `Create` target followed by a later card's `Edit` of the same target is legitimate sequencing.
 
+There is no `DependsOn`/`Produces` field.
+Dependency edges are derived, never authored: a card's `Uses:` intersected against every other card's target list in the same plan is the dependency graph.
+A symbol no card in the plan touches needs no edge — its state never changes during the plan's execution.
+
 ## Card types
 
 | Type | Target list holds | Mechanical check | `ImpactSummary` | Batchable? |
@@ -130,6 +134,14 @@ A multi-label card composes this table's four columns as follows, one rule per c
 - **`ImpactSummary`** — required whenever any of the card's own groups is `Edit` or `Delete`, and stays exactly one per card even when several of its groups require it: it states the blast radius across every `Edit`/`Delete` group's targets together, never a separate summary per group.
 - **Batchable?** — least permissive wins across the card's own groups: a card is batchable only when every one of its groups says `Yes`, and a single `No` group makes the whole card `No`.
   `Prosa`/`Custom`'s "—" is never a vote in this computation — it neither forces `No` nor grants `Yes`, so a `Prosa`/`Custom` group's presence is transparent to the other groups' own answer.
+
+`Intent` versus `ImpactSummary`: `Intent` is what and why, the card's main content.
+`ImpactSummary` is a separate, hard-capped one-line blast-radius conclusion ("3 callers, all local to the billing package, no cross-module effects") — its own field specifically so it stays terse, since folding it into `Intent` lets it balloon into unbounded reasoning.
+
+**`Rename` requires no `ImpactSummary`, and that is a property of the operation, not an oversight.**
+A correctly executed AST-aware rename is binary — every reference updates and the build passes, or a leftover reference fails the build immediately — so there is no graded blast radius to summarize.
+The blind spot `assert-no-callers` has for `Delete` still applies: string- and reflection-based references (a registry keyed by name) survive a rename without failing the build.
+A rename must also rewrite the target symbol's own leading self-reference in its doc comment, which Go convention opens with the symbol's name; the card's own `old -> new` pair names exactly what changed, so this is safe to do mechanically and is verified by the same grep pass.
 
 ## The shape classifier
 
@@ -248,11 +260,65 @@ and a half-done card is resumed by discarding uncommitted changes and restarting
 
 ## verify model
 
-The three-tier verify model (tier1 automatic package-scoped, tier2 plan-level integration, tier3 rare and explicit-only) is **designed, not implemented** — see `manifest/designs/plan-card-format.md`'s own Verify model section for the full design.
-This spec pins only what exists today: the per-card **`**Verify:**`** field stays the optional, verbatim, rare escape hatch it already was under format 3 — a cheap, targeted check where it is useful, never a required field, never a long hand-maintained list.
-Tier1's automatic package-scoped run is specified only, not implemented, by this task;
-there is no mandatory per-card or per-batch verify gate in the code today.
-The plan-level `## verify:` body section in `00-overview.md` (unchanged in shape from format 3) is the single integration suite run once at the end of the plan.
+The three-tier model below is **designed, not implemented.**
+This spec pins only what exists today: the per-card **`**Verify:**`** field stays the optional, verbatim, rare escape hatch it already was under format 3 — a cheap, targeted check where it is useful.
+There is no mandatory per-card or per-batch verify gate in the code, and the plan-level `## verify:` body section in `00-overview.md` (unchanged in shape from format 3) is the single integration suite run once at the end of the plan.
+
+The three tiers match this repo's own test-tier discipline — `internal/planparser`'s existing `Verify` fields are the V1 precedent this generalizes, not three tiers invented for this format:
+
+- **Tier 1 (per card, automatic, no author action).**
+  Tier 1 tests are fast by construction, per the Test Tier Purity Invariant's own discipline — no cwd resolution, no process spawn — so no known-slow-package carve-out is needed.
+  Scope: `go test`, restricted to the package(s) holding the card's own target symbol(s) plus every package holding a caller found via impact lookup, the same lookup that derives `Uses:`-based dependency edges.
+  Fully mechanical — no author enumerates a file list, which is what made V1-style `verify:` lists grow long in practice.
+- **Tier 2 (plan-level, not per card).**
+  Real git-against-remote tests, built via `internal/hubforge` with real repository creation and a real clone, are genuinely slower; paying that cost once per plan rather than once per card that happens to touch an affected package is the point.
+  It defaults to the plan-level `## verify:` integration suite above, the same gate the Concurrency section's post-merge backstop already assumes.
+  **Deferred, not now:** a batch could eventually own its own tier 2 verify instead of waiting for the whole plan.
+- **Tier 3 (rare, explicit only, never automatic).**
+  Tests that drive a real LLM — expensive in both wall-clock and tokens, and rare to nonexistent in this repo today.
+  Never swept into an automatic per-card or per-plan gate under any circumstance.
+  A card that genuinely needs one is exactly what the optional `Verify:` field is for: an explicit, author-named exception, never something inferred.
+
+The optional per-card `Verify:` field exists for what tier 1's automatic package-scoped run cannot catch on its own — a specific CLI smoke test, a targeted tier 2 scenario, or, rarely, a tier 3 case.
+It stays genuinely exceptional; the default automatic tier 1 run is what most cards rely on, which is what keeps `Verify:` from becoming the long, hand-maintained list it was in millhouse's own equivalent.
+
+## Card granularity
+
+One card per independently reviewable and testable unit, never one card per literal symbol.
+A symbol with no independent meaning or testability apart from another symbol in the same card — a private supporting type, a constructor inseparable from its type — is bundled into that other symbol's card.
+A symbol that is independently testable or reusable gets its own card even when one card happens to be its first consumer.
+
+Removing the last caller of a symbol and deleting the symbol are two cards, not one: a symbol can have N callers, each requiring its own `Edit` card, and only one final `Delete` card once all are gone.
+
+A docstring is never a separate card.
+A symbol's own doc comment is written or updated as part of whichever `Create`/`Edit`/`Rename` card touches that symbol, per `docs/code-comment-conventions.md` — which is the actual rule, Go only for now.
+This format adds one Card-specific requirement on top of it: a `Rename` card's execution must also fix the target symbol's own self-referencing comment opening, per the `Rename` carve-out above.
+`Prosa` is reserved for documentation with no single-symbol owner — design docs, `docs/overview.md`, module-level `doc.go` headers not triggered by a code change, repo-wide comment-convention sweeps.
+
+## Quarry integration — degraded mode is the default, not a fallback
+
+Every mechanical check above works without quarry, and no card type is defined in terms of quarry's presence:
+
+- **Impact and references** — `go doc <pkg> <Symbol>` for existence and definition, `grep -rn` scoped to the right package for call sites, manual read.
+  Quarry replaces this with a symbol-impact query, which must also return each caller's full enclosing function and its own doc comment, not just file:line.
+  Neither the Card format nor `ImpactSummary`'s output shape changes either way.
+- **Rename** — an AST-aware script (`go/ast` + `go/types` for Go, Roslyn's `Renamer` for C#, `rope`/`libcst` for Python; the model picks the library, but the script is never text- or regex-based), then a grep pass confirming zero remaining old-name references and that the symbol's own doc comment was updated.
+  Quarry replaces the script-writing step with a mechanical rename primitive; the grep-verify step stays as the same backstop either way.
+- **Delete** — a grep for zero remaining callers, with the same caveat as `assert-no-callers`: necessary, not sufficient, since interface satisfaction, dispatch-table registration, and prose references are not caught.
+
+When quarry is present it only makes an already-defined mechanical step faster and more reliable — it never changes what a card contains or how it is reviewed.
+
+## Concurrency — worktree-per-card, not concurrent forks in one checkout
+
+The dependency graph derived from target lists against `Uses:` determines what can execute in parallel: two cards with no shared symbol are independent.
+Each independently-executable card or batch runs in its own git worktree, spawned by webster — never as concurrent forks sharing one checkout's git index, for the shared-index-lock race that produces.
+Separate worktrees each hold their own index, so that race does not apply.
+
+Sequencing for cards that DO share a symbol is settled by plan order.
+If card 8 has `Uses: X`, card 5's target list includes `X`, and card 5 precedes card 8, then card 8 depends on X's state after card 5 lands — no further bookkeeping, since a sequentially-ordered plan has exactly one current state of any touched symbol at any point in its sequence.
+
+Dependency-list completeness cannot be proven mechanically at plan time — the same class of gap as `assert-no-callers`, catching what it can see rather than what requires understanding intent.
+The real gate is post-merge: once a concurrently-executed batch's worktrees merge back, `go build ./... && go test ./...` against the merged result is what actually catches a missed dependency, surfacing an incomplete plan-time `Uses:` list as a build or test failure.
 
 ## Deferred / forward-compat
 
@@ -478,4 +544,3 @@ Card 5's `New` side, `plan:internal/boardengine#MapRowJSON`, is a handle rather 
 - [webster-spec.md](webster-spec.md#the-summary-artifact--_lyxwebstersummarymd) and `internal/websterengine`'s package documentation — the module that consumes this format.
 - `contracts/stencils/loom/loom-template-plan.md` — the LLM-facing compact spec `Plan-Write` actually reads; this doc is the Go-parser's own fuller contract, not the agent's prompt.
 - [`internal/fabricengine`](../../internal/fabricengine/doc.go) — `ChangedFilesSince`/`SHAExists` used for contract verification.
-- [manifest/designs/plan-card-format.md](../../manifest/designs/plan-card-format.md) — the design doc this spec's format-4 rewrite implements. Format 5's glyph alphabet is a later, additive rewrite on top of it.
