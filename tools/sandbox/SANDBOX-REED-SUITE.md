@@ -14,6 +14,11 @@ Before starting a session:
    Run `deploy-dev` to build `lyx.exe` into `.dev-bin` as current source.
    The suite resolves `.dev-bin` itself and prepends it to the agent's PATH (the fingerprint header's `Source: dev` line confirms the dev build is under test) -- no PATH setup needed, and production `lyx` stays untouched.
    The deployed binary is a snapshot -- re-deploy after any source change you want to test.
+   Once a pane exists, run these checks:
+   - `command -v lyx` (`where lyx` on Windows) run inside a spawned strand pane names the spawning binary, not the production install.
+   - `LYX_BIN` is set inside that pane and names the same binary.
+   These are live-substrate facts no `go test` can prove, which is why they are pre-condition checks rather than assertions.
+   See `SANDBOX-SHUTTLE-SUITE.md` for the agent-pane half -- this suite's strands run operator-supplied commands and spawn no agent pane, so a `claude`-resolution check has nothing to exercise here.
 2. **Materialize the hub.**
    Run `sandbox/build.cmd` (or `sandbox/build.cmd -reset` to start clean);
    the session cwd is the Hub's Fabric repo root, the same operating model as the main suite.
