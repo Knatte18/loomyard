@@ -543,7 +543,7 @@ Before touching a fresh slug, run `lyx shed seed <a-fresh-slug> --recipe batten`
 
 Say in the report that **no automated test drives a real child bootstrap at all**: the `integration`-tagged end-to-end test walks all four rows against a real hub, but it replaces `Env.InnerRun.Spawn` with a no-op and `Env.InnerRun.ReadStatus` with an in-memory stub, so the loom run itself is exactly the part it does not drive.
 Treat that as a stated gap, not as coverage this scenario is narrower than.
-Two blocking defects lived in precisely that gap until crucible round `opus-high-r1` drove it by hand -- `Run-Shed`'s first status read, and the seed `Seed-Child` writes for the child's own bootstrap -- and both now carry `integration`-tagged regression tests that drive those two real seams (`TestBattenIntegration_RealReadStatus_*`, `TestBattenIntegration_SeedChild_WritesASeedTheChildBootstrapAgreesWith`), while the real-provider drive past them stays a manual exercise by design.
+Two `integration`-tagged tests do drive the unstubbed seams either side of the child's own bootstrap -- `Run-Shed`'s first status read over the child's real paths, and the seed `Seed-Child` writes for that bootstrap to accept -- while the real-provider drive between them stays a manual exercise by design.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
