@@ -498,6 +498,19 @@ unrelated untracked file at all), so there is no dangerous silent failure
 mode here to report on; removed the stray file afterward for fixture
 hygiene.
 
+### Scenario: pause/resume mechanics (CONFIRMED, no defect)
+
+`lyx batten pause lock-c` (a mid-flight slug sitting at `Run-Shed`) set
+`pause_requested: true` on the durable status. The next `lyx batten step
+lock-c` consumed it: persisted `state: "paused"` with `pause_requested`
+cleared back to `false` (the machine, not the requester, clears the flag,
+exactly as documented) and `current_producer` still naming `Run-Shed`
+(the boundary it paused at). A further `step` resumed normally, spawning a
+real child bootstrap for real (`--child-driver` defaulted to `go`) —
+shut down immediately afterward via `lyx reed down` once resume was
+confirmed, to avoid running a third concurrent real campaign alongside
+`primary2`.
+
 ### Primary full end-to-end drive — in progress
 
 `primary2` (`type: loom`, `--child-driver go`, Board brief: add a trivial
