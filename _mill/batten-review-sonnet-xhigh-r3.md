@@ -204,6 +204,13 @@ showing nothing new and the step returning in 0.038s) to reach the real `Worktre
   (idempotent) `Shutdown` and then `Remove` -- PLAUSIBLE-but-traced for the exact sub-microsecond window, CONFIRMED for the property that
   makes it safe.
 
+### Hermetic + integration baseline (pre-fix), all green
+
+- `go build ./...` — clean, no output.
+- `go vet ./internal/battenshed/... ./internal/battencli/... ./internal/battenrecipe/...` — clean.
+- `go test -count=5 ./internal/battenshed/... ./internal/battencli/... ./internal/battenrecipe/... ./cmd/lyx/...` — all `ok`.
+- `go test -tags integration -count=1 ./internal/battencli/...` — `ok` (2.461s).
+
 (remainder appended as scenarios run)
 
 ## Findings (provisional; severity/ordering finalized at the end)
