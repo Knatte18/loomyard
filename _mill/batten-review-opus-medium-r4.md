@@ -2,15 +2,42 @@
 
 > Clean-room round: findings below were formed from the SPEC (`git show 8ac857ce1~1:manifest/designs/seeded-shed.md`), the module code, the docs, and live driving of a disposable fixture hub — before any prior round's review material was opened.
 
-**Status: in progress.** Sections are appended as each scenario returns.
-
 ## Executive summary
 
-_(written last)_
+Round 4 is close to, but not quite, the clean safety pass the round context expected. An independent adversarial pass over the code, the recovered SPEC, the docs, and thirteen live scenarios on a disposable fixture hub re-confirmed **every** high-yield focus item as a non-defect except one, and found four new findings — one of them a real, reproducible resume hole that three prior rounds did not reach.
+
+**Top risk — F1 (MEDIUM, CONFIRMED).** `Worktree-Create` is not idempotent against a task worktree pair that is already on disk. If the driving process dies in the window between `Topology.Add` succeeding and `shedengine` persisting the row's `done` transition — a real window of seconds of git work — the resumed run is **permanently blocked**, and the stuck reason it hands the operator names two remedies that both fail in exactly that state (verified by running both). This is the "cold-machine / mid-operation-failure orphan" case focus item 7 asks about, and it is the one place batten does not report honestly what state it is actually in.
+
+The other three findings are small: an undocumented operational consequence of the (correct) status-commit skip (F2, LOW), a refusal that reports an impossibility as a mere disagreement (F3, NIT), and a shipped residual that the deleted design doc records but no living doc does (F4, NIT).
+
+**Everything else held.** The Batten Bookend Invariant (16/16 refusals from a task worktree and its weft sibling), teardown ordering with each half sabotaged in turn, the halted-child-never-tears-down guarantee across all three halted states, the Board-type → recipe → driver plumbing landing a real `recipe: loom` / `driver: llm` child seed, `PrimeRunLock` serialising two different slugs' creates while never being held during a long `Run-Shed` watch, an authoritative hand-written seed, both sabotage scenarios, pause/resume, the run-lock busy paths, and the cold-machine durable/ephemeral split — all confirmed live, none defective.
+
+**Focus item 4 is now answered precisely** rather than inferred: the first `Run-Shed` step measured 30.33s wall clock, of which the child bootstrap was sub-second and the rest was the producer's own poll sleep. `InnerRunDeps.Spawn` blocks for the bootstrap launch only — `lyx batten step`'s first advancing call cannot hang for a real campaign's length — and `deps.go`'s doc comment is accurate.
+
+**F6[R2] reproduced**, with its trigger finally pinned down: the gate is keyed to the child worktree's *absolute path* in `~/.claude.json`'s `projects` map, not to the worktree's freshness, which is exactly how a reused fixture directory hides it (R3's non-reproduction). Still not batten's bug, still needs its own task. Both operator routes past it were denied by this session's permission classifier, so the success arm was driven with `--child-driver go`, which is driver-agnostic at batten's own boundary.
+
+**Merge-readiness:** ship after F1 is fixed. F1 is not a blocker for the normal single-instance happy path — the merge bar this campaign set — but it is a resume hole an unattended fleet will hit, and it is cheap to close. F2–F4 are documentation and wording.
 
 ## Scope assessment — plan vs shipped
 
-_(written last)_
+Measured against the recovered design doc (`git show 8ac857ce1~1:manifest/designs/seeded-shed.md`).
+
+| Design promise | Shipped | Verdict |
+| --- | --- | --- |
+| Four rows: `Worktree-Create`, `Seed-Child`, `Run-Shed`, `Worktree-Teardown` | `contracts/recipes/batten-recipe.yaml`, names pinned by `battenrecipe/names.go` + its coverage guard | Delivered |
+| `Seed-Child` copies the recipe from the Board task's `type` field, the driver from batten's own seed params | `seamchild.go` + `wire.go`'s `SeedChild` seams; `type` read fresh per `Call`, empty ⇒ `loom` | Delivered, verified live |
+| `Run-Shed` self-routed on `Stuck`, `max_bounces: 1440`, `poll_interval_s: 30`, one poll per bounce rather than one blocking call | exactly that in the recipe; `innerrun.go` checks once per `Call` and never loops | Delivered, verified live (30.33s first step) |
+| Every non-running, non-done child state is a hard error, never a bounce, never routing to teardown | `innerrun.go:148-152`; teardown structurally unreachable from any `on_stuck` | Delivered, verified live for `failed`/`blocked`/`paused` |
+| Teardown sequences session shutdown before worktree removal | `teardown.go:118-136`; `Remove` not called at all on a `Shutdown` failure | Delivered, both halves sabotaged live |
+| Run addressing: durable `_lyx/shed/<run-id>/` for seed+status, ephemeral `.lyx/shed/<run-id>/` for locks | `shedrun/paths.go`; batten forwards only (`paths.go`) | Delivered, verified live on a cold-machine shape |
+| `self` is the default run-id, but meaningless for prime | `refuseSelfAddress` refuses both the omitted-argument and the explicit-`self` case, with different wording | Delivered, verified live |
+| `go` stays the only driver batten runs use; batten grows no bootstrap verb | `BootstrapVerb = ""`, `refuseBattenOwnDriverLLM` | Delivered (F3 is a wording gap on the seeded-run path only) |
+| Rows self-heal machine-local resources a durable status promises but a cold machine lacks | **Partially.** `taskWorktreeLocation` refuses an absent pair by name rather than recreating it (R1-F9's deferred half, blocked on a fabric capability — still accurate). The *opposite* direction, disk ahead of status, is not self-healed at all: **F1** | Gap |
+| Residual (a): a dead driver strand is not detected or recovered | Still true; recorded in `battenshed/doc.go` (widened by R2 to cover an alive-but-parked strand) | Accurately documented |
+| Residual (b): a cleanly finished driver's strand and run directory are not torn down | Still true, re-verified live; **documented nowhere in shipped docs**: **F4** | Gap in the record, not in the behaviour |
+| Relay-stepping rejected | Absent, as intended | Correctly not built |
+
+Nothing shipped beyond scope. No silently-dropped requirement other than the two recorded above.
 
 ## Findings
 
@@ -68,9 +95,47 @@ Both refuse, so nothing unsafe happens; the wording is just the weaker of the tw
 
 **Confidence:** CONFIRMED — both messages observed live.
 
+### F4 — the design doc's second shipped residual is written down nowhere in the code (NIT, CONFIRMED)
+
+**Where:** `internal/battenshed/doc.go:15-19`.
+
+The deleted design doc (`git show 8ac857ce1~1:manifest/designs/seeded-shed.md`) ships **two** named residuals:
+
+1. a driver strand that dies mid-run is not detected, reported, or recovered;
+2. **a driver that finishes normally leaves its strand and its run directory behind** — nothing tears either down as part of a clean finish.
+
+R1 wrote (1) into `battenshed`'s package doc (and R2 widened it to cover an alive-but-parked strand). (2) is in no shipped doc at all — not `doc.go`, not `docs/overview.md`, not `CONSTRAINTS.md` — so with the design doc deleted per this repo's own convention, it survives only in git history. The Documentation Lifecycle exists precisely so a deleted design doc's substance lands in the module docs.
+
+Re-verified live this round: after the child reached `done`, its `loom-status` strand and its `_lyx/shed/self/` run directory both persisted until `Worktree-Teardown`'s `Shutdown`/`Remove` took the whole worktree away. The residual is still accurate as written in the design doc.
+
+**Fix.** One sentence in `battenshed/doc.go` beside residual (1).
+
+**Confidence:** CONFIRMED — both the doc gap and the behaviour verified.
+
 ## Docs & operability findings
 
-_(appended as they are found)_
+Checked `docs/overview.md`'s batten entry claim by claim against the running system. Every claim held:
+
+- "The Board task's `type` must be `loom` or empty ... `Seed-Child` refuses any other registered recipe before writing a seed" — verified live for both a registered-but-unbootstrappable type (`batten`) and an unknown one (`nonsense`); no child seed written, nothing committed on the branch in either case.
+- "A child that halts ... fails `Run-Shed` rather than routing anywhere, and batten cannot restart the child's driver" — verified live for all three halted states.
+- "Teardown ... never forces: anything an agent left uncommitted or untracked in the child ... blocks the row after the session is already down, with fabric's own refusal as the `stuck_reason`" — verified live, exactly as written, including the session being down while the pair survives.
+- "Every child's weft branch forks from prime's `main-weft`, which carries prime's committed `_lyx/shed/<slug>/` run directories, so a child's `_lyx/shed/` also holds frozen copies of other slugs' batten run directories; they are inert" — verified live: the child worktree held six other slugs' run directories, and `lyx shed run|step|status <frozen-slug>` from inside it refused through batten's own prime-only guard.
+- "`status` bounds the history it reports ... alongside the true `history_length` and a `history_truncated` flag" — verified live (`history_truncated: false` while under the cap).
+- "`run` and `step` carry `--driver` ... and `--child-driver` ... an explicitly typed flag that disagrees with an already-seeded run is refused rather than silently dropped" — verified live for both flags.
+
+Two gaps, recorded as findings rather than left as prose notes: **F2** (the `Run-Shed` watch's permanent weft drift and its hub-wide effect on `lyx fabric checkout` is undocumented) and **F4** (the design doc's second shipped residual is undocumented).
+
+`CONSTRAINTS.md`'s Batten Bookend Invariant is accurate, including its own honest note that the mechanical proxies "pin the status and lock paths to prime's anchor ... neither proves the driver's own working directory, which stays a review obligation" — that obligation was discharged live this round (scenario B, 16/16 refusals).
+
+## Re-evaluation of the prior rounds' deferred items
+
+| Item | Verdict this round |
+| --- | --- |
+| **R1-F9's recreate-from-branch half** (status ahead of disk) | Gap still holds. `taskWorktreeLocation` (`wire.go:50-62`) refuses by name and names `lyx fabric checkout <slug>` as the remedy; `Topology.Add` still refuses a pre-existing branch by design. Not built here, per instruction. **But its mirror image — disk ahead of status — is a separate, unblocked defect and is fixed this round (F1).** |
+| **R1-F6's `step`-mode pacing cost** | Still the accepted shape. Measured 30.33s for the first `Run-Shed` step this round, matching R2's 30.0–30.4s and R3's 30.042–30.269s. Moving the pacing out of the producer body remains a `shedengine` change, out of scope. Not a new defect. |
+| **F6[R2]'s llm-driver trust-dialog hang** | **Reproduced** (scenario F), with the trigger pinned to the child worktree's absolute path being absent from `~/.claude.json`'s `projects` map rather than to worktree freshness — which explains R3's non-reproduction on a reused fixture path. Still cross-module, still not batten's to fix, still not filed as its own task. Batten's own boundary behaviour around it is correct and already documented. |
+| **Design residual (a)** — dead/parked driver strand undetected | Still true, still accurately described in `battenshed/doc.go`; live-demonstrated again this round by the parked llm strand. |
+| **Design residual (b)** — a finished driver's strand/run-dir not torn down | Still true, re-verified live — but described in no shipped doc. Recorded as **F4** and fixed. |
 
 ## What was tested
 
@@ -207,4 +272,26 @@ While `lyx batten run add-greeting` was in its `Run-Shed` self-bounce:
 - `flock -n -x <prime>/.lyx/shed/run.lock true` succeeded — **the hub prime lock is free for the whole watch**, so neither another slug's create nor another slug's teardown (which take the same lock) can be blocked by it.
 - A **different** slug's real `Worktree-Create` (`lyx batten step probe-create`) completed in **0.12s** during that watch.
 
-_(more live scenarios appended below as they run)_
+### Live scenario M — pause and resume against a live watch — CONFIRMED NON-DEFECT
+
+`lyx batten pause add-greeting` while `lyx batten run add-greeting` was mid-watch: the run halted at its next producer boundary (`{"halted_producer":"Run-Shed","outcome":"paused"}`, exit 0), prime status `Run-Shed`/`paused`. **The child campaign was untouched** — it advanced from `Discussion-Burler` to `Discussion-Bouncer` during the pause, with a live `bouncer-judge` strand in its own session. A fresh `lyx batten run add-greeting` resumed the watch cleanly from `paused`.
+
+### Live scenario N — run-lock busy paths — CONFIRMED NON-DEFECT
+
+While `lyx batten run add-greeting` held the per-slug run lock:
+
+- a second `lyx batten run add-greeting` → `another batten run already holds the run lock "<prime>/.lyx/shed/add-greeting/run.lock"`
+- `lyx batten step add-greeting` → the same text with `kind: "busy"` on the step envelope (inside the closed five-value vocabulary)
+- `lyx batten status add-greeting` → unaffected
+- a **different** slug's `lyx batten step bad-type` → advanced normally (the run lock is per-slug, not hub-wide)
+
+### Live scenario O — cold-machine shape: ephemeral tree lost, durable tree kept — CONFIRMED NON-DEFECT
+
+Deleted `<prime>/.lyx/shed/bad-type/` entirely (locks, stuck-reason file, commit marker — what a fresh clone on another machine has) while keeping the durable `_lyx/shed/bad-type/`. `lyx batten status`, `pause` and `step` all answered from the durable file, recreating the lock directory as needed rather than failing to open a lock. The producer-supplied `stuck_reason` is legitimately gone with the ephemeral tree, which is what "ephemeral" means.
+
+### What I could NOT verify, and why
+
+- **An `llm`-driven child campaign past its first row.** The seed plumbing and the real provider spawn off `driver: llm` were both proven (scenario F), but the campaign itself parked on Claude Code's workspace-trust dialog, and **both operator routes past it were denied by this session's own permission classifier** — typing into the live pane (`tmux send-keys`) and adding a trust entry to `~/.claude.json`. I did not work around either denial. This is an environment gap, not a batten defect, and the success arm is driver-agnostic at batten's boundary.
+- **Windows path behaviour** anywhere in this stack — unreachable from this Linux host. Not touched, not newly flagged.
+- **fabric's own clone/merge correctness** beyond what `Worktree-Create`/`Worktree-Teardown` exercise — out of scope, fabric has its own crucible lineage.
+- **The N×-concurrent-suite amplifier gate** — explicitly does not apply to batten's live-driving scenario and was never attempted.
