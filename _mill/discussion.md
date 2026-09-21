@@ -27,8 +27,9 @@ The sandbox suite already solves the same problem for its own direct child (`too
 
 - A new pane-environment prelude composed at reed's single strand pane-launch chokepoint (`internal/reedengine`), prepending `filepath.Dir(os.Executable())` to the pane's `PATH` and exporting `LYX_BIN` to the absolute `os.Executable()` path.
 - Three new generic methods on the `internal/shell` `Shell` seam (POSIX + pwsh implementations): an `export KEY=VALUE` statement, a `PATH`-prepend statement, and a statement joiner.
-- A dialect selector in `internal/reedengine` mapping reed's configured pane shell (`e.cfg.Shell`) to a `shell.Shell`, degrading to no-prelude-plus-`Warn` on an unrecognized shell.
-- Passing `e.cfg.Shell` as `split-window`'s trailing command in `launchStrandLocked`, so a strand pane's shell is reed's declared config rather than tmux's ambient `default-shell`.
+- A dialect selector in `internal/reedengine` mapping reed's configured pane shell (`e.cfg.Shell`) to a `shell.Shell`.
+- A `validateToldPaneShell` op-boundary refusal rejecting an empty, unmodelled, or cross-dialect `e.cfg.Shell`, alongside the existing `validateToldTmuxIdentity`.
+- Passing `e.cfg.Shell`, quoted through the dialect's `Quote`, as `split-window`'s trailing command in `launchStrandLocked`, so a strand pane's shell is reed's declared config rather than tmux's ambient `default-shell`.
 - A new `CONSTRAINTS.md` clause recording the invariant, plus an enforcement test in `internal/reedengine` that keeps every pane-launch site routed through the chokepoint.
 - Hermetic unit tests for both shell dialects and for the reed chokepoint composition.
 - Docs in the same commit: `internal/reedengine/doc.go`, `internal/shell/shell.go`, `CONSTRAINTS.md`, `crucible/README.md`, `docs/sandbox-howto.md`, the affected `tools/sandbox/SANDBOX-*.md` pre-condition sections, and the `shell` key comment in `internal/reedengine/template_posix.yaml` / `template_windows.yaml` (which now also declares the strand pane's shell and the prelude dialect).
@@ -41,6 +42,8 @@ The sandbox suite already solves the same problem for its own direct child (`too
 - No `LYX_BIN` export added to the watchdog daemon spawn or the detached `lyx loom run` spawn (see the "Detached spawns stay untouched" Decision).
 - No Selvage-pane or `new-session` first-pane prelude (see the "Chokepoint is the strand launch only" Decision).
 - No new tmux subcommand, flag or capability requirement — `requiredSubcommands` (`internal/reedengine/probe.go`) is unchanged.
+- No change to the two `shell.ForGOOS()` launch-command builders (`internal/shuttleengine/claudeengine/claudeengine.go:102`, `internal/loomcli/sharedbootstrap.go:259`), and no dialect threading through `shuttleengine.ReedOps` or `Engine.Prepare` — the op-boundary refusal makes them same-dialect by construction (see the `one-dialect-per-pane-enforced-at-the-op-boundary` Decision).
+- No quoting fix for Selvage's split or `new-session`'s trailing `e.cfg.Shell` — pre-existing, not widened by this task, and a different fix at each site.
 - No `manifest/roadmap.md` move: this is hardening of a shipped module, not a planned roadmap item.
 
 ## Decisions
@@ -74,7 +77,11 @@ The sandbox suite already solves the same problem for its own direct child (`too
 - Decision: extend the `Shell` interface (`internal/shell/shell.go`) with three methods, implemented in `posix.go` and `pwsh.go`:
   - `ExportEnv(key, value string) string` — a standalone statement exporting `key` into the shell session.
   - `PrependPathEntry(dir string) string` — a standalone statement prepending `dir` to the live `PATH`.
-  - `Chain(parts ...string) string` — joins statements into one `send-keys`-safe single line.
+  - `Chain(parts ...string) string` — joins statements into one `send-keys`-safe single line, separated by `"; "` in both dialects, dropping empty parts so an empty `Cmd` yields no trailing separator.
+    The separator is `;`, never `&&`: the prelude is env decoration, and a shell that rejected it must still run the agent's own launch command rather than leaving a silently empty pane.
+    The `prelude-dialect-comes-from-cfg-shell` Rationale argues from exactly these fail-open semantics.
+    The residual — a failed prelude leaves the pane on the ambient `PATH` — is bounded by the `one-dialect-per-pane-enforced-at-the-op-boundary` refusal, which removes the only realistic way for the prelude to be rejected.
+    `&&` is additionally wrong for pwsh, where it is a 7.0+ pipeline-chain operator with different semantics from POSIX's.
 - Rationale: the `Shell Mechanics Seam` invariant states pane-shell command strings are built ONLY via `internal/shell`, and every one of these emits raw pwsh/POSIX syntax.
   All three are provider- and lyx-agnostic, satisfying the seam's "implementations carry no provider-specific knowledge" rule — the `LYX_BIN` key name and the `.dev-bin` directory are reed's knowledge, passed in as arguments.
   `reedengine` already imports `internal/shell` (`reapply.go`, `windowsize.go`, `watchdog.go`), so no new dependency edge is created.
@@ -94,14 +101,41 @@ The sandbox suite already solves the same problem for its own direct child (`too
 
 - Decision: select the `shell.Shell` implementation from **reed's configured pane shell** (`e.cfg.Shell`), never from `shell.ForGOOS()`.
   Match on the configured value's basename with any executable extension stripped, case-insensitively: `bash`, `sh`, `zsh`, `dash`, `ash`, `ksh` → `shell.Posix()`; `pwsh`, `powershell` → `shell.Pwsh()`.
-  A configured shell matching neither set emits **no prelude at all** and logs a `logger.Warn` naming the configured shell and the strand — the same warn-and-degrade shape as the `executable-error-warns-and-degrades` Decision, for the same reason: emitting the wrong dialect is worse than emitting nothing.
   The dialect selector lives in `internal/reedengine/panebin.go` alongside the rest of the seam, and is a pure function of the config string so it is host-agnostically testable.
+  A configured shell that matches neither set, or that is empty, is **refused at reed's op boundary** — never degraded, never sanitized.
+  See the `one-dialect-per-pane-enforced-at-the-op-boundary` Decision below for the refusal and for why the prelude never has an unrecognized-shell path to degrade down.
 - Rationale: `shell.ForGOOS()` keys on `runtime.GOOS`, but the pane shell is operator-configurable.
   `reed.yaml`'s `shell` key defaults to `${env:LYX_REED_SHELL:-bash}` on POSIX and `${env:LYX_REED_SHELL:-pwsh}` on Windows (`internal/reedengine/template_posix.yaml:2`, `template_windows.yaml:2`), and both template comments actively invite pinning an explicit path.
   With `LYX_REED_SHELL=bash` on Windows, `ForGOOS()` would emit `$env:PATH = …` into bash; because the prelude is `;`-joined ahead of the launch command, the pane would receive a syntax error followed by the agent's own command, and the `PATH` guarantee would fail while the strand still looked launched — the exact silent-mismatch failure class this task exists to eliminate.
+  Deriving from the declared value rather than from `ForGOOS()` also keeps the selector meaningful if the cross-dialect refusal is ever relaxed in favour of threading the dialect to the command builders (see the same Decision's Rejected list).
 - Rejected: `shell.ForGOOS()` — correct only when nobody has overridden `LYX_REED_SHELL`, i.e. exactly the "works until someone forgets" property the brief rejects.
   Also rejected: probing the pane's live shell at runtime (e.g. `display-message -p '#{pane_current_command}'`) — it costs a tmux round trip per launch, races the shell's own startup, and answers with the *foreground* command rather than the shell.
   Also rejected: emitting a dialect-agnostic prelude that both shells accept — no such syntax exists for a `PATH` prepend.
+  Also rejected: warn-and-degrade on an unrecognized shell — see the next Decision; it would drop only the prelude half while `strand-panes-run-the-configured-shell` still put the pane on that same un-modelled shell.
+
+### one-dialect-per-pane-enforced-at-the-op-boundary
+
+- Decision: **one dialect governs a pane, it is declared by `reed.yaml`'s `shell` key, and reed refuses to run when that declaration cannot be honoured.**
+  A new `validateToldPaneShell(cfg)` in `internal/reedengine/panebin.go` is called at the same op boundary `validateToldTmuxIdentity` (`internal/reedengine/server.go:244`) already guards, and refuses three cases with a message naming `LYX_REED_SHELL`, the offending value, and the supported set:
+  1. `e.cfg.Shell` is empty — note `ShellPath()` (`internal/reedengine/lock.go:66`) returns it verbatim and defaults nothing, so an empty value would otherwise reach `split-window` as an empty trailing argument.
+  2. Its basename matches no known dialect (e.g. `fish`, `nu`, `cmd.exe`).
+  3. Its dialect disagrees with `shell.ForGOOS()`'s dialect for this host (e.g. `LYX_REED_SHELL=bash` on Windows).
+- Rationale: this is the coherence rule the whole design turns on, and case 3 is what makes it hold end to end.
+  A strand's `launchCmd` is **not** built by reed — it is built with `shell.ForGOOS()` at `internal/shuttleengine/claudeengine/claudeengine.go:102` and `internal/loomcli/sharedbootstrap.go:259`.
+  Without case 3, `strand-panes-run-the-configured-shell` would put a pane deterministically on bash while the `;`-joined agent command typed into it stayed pwsh syntax, which is strictly worse than today's accident, where tmux's ambient `default-shell` usually happens to agree with `ForGOOS()`.
+  With case 3, the configured shell, the pane's actual shell, the prelude, and every `ForGOOS()`-built launch command are the same dialect by construction, so those two call sites need no change and no dialect threading.
+  Cases 1 and 2 remove the half-degraded pane entirely: there is no unrecognized-shell pane to type a `ForGOOS()`-built line into, because reed never gets that far.
+  Refusal rather than sanitization or degradation is this package's established answer to an unhonourable told value — `validateToldTmuxIdentity`'s own doc comment argues it at length for the session name, and refuses at every op boundary before any tmux round trip.
+  It is also the loud form of a breakage that already exists silently: a `fish` pane today receives a `ForGOOS()`-built POSIX launch line that fish does not accept, and nothing reports it.
+- Deliberate asymmetry with `executable-error-warns-and-degrades`, stated so the two are not read as inconsistent: that Decision degrades because `os.Executable()` failing is a runtime failure of an unrelated primitive on a machine where the fallback `PATH` is the one the pane already had.
+  This one refuses because the pane shell is **configuration**, it is wrong before any pane exists, and every downstream string depends on it.
+- Operator-visible restriction, recorded rather than buried: `LYX_REED_SHELL` may pin a path, but not a cross-dialect or unmodelled shell.
+  A `fish` or `nu` operator gets a refusal naming the supported set instead of a silently broken agent pane.
+- Rejected: threading reed's dialect into the command builders — `shuttleengine.ReedOps` would grow a `PaneShell()` method, `Engine.Prepare`'s signature would grow a `shell.Shell` parameter across the provider seam, and `loomcli.statusStrandCmd` would take it too.
+  That is the right shape *if* cross-dialect pinning must be supported, and this Decision is written so it can be adopted later by relaxing case 3 alone.
+  It is rejected now because nothing asks for a cross-dialect pin, it widens this task across three modules and the `Shuttle Provider-Seam Invariant`'s boundary, and YAGNI applies.
+  Also rejected: narrowing `strand-panes-run-the-configured-shell` back to a commandless split — that returns the pane's shell to ambient `default-shell` and leaves the prelude dialect derived from a value that does not govern the pane.
+  Also rejected: validating in `LoadConfig` — `reedengine` is a **degrading** `LoadOrTemplate` consumer under the `Config Strictness Invariant`, so its config load must keep answering a missing file with the embedded template; the op boundary is where this package already refuses told values it cannot honour.
 
 ### strand-panes-run-the-configured-shell
 
@@ -112,6 +146,10 @@ The sandbox suite already solves the same problem for its own direct child (`too
   Strand panes are the only panes reed creates whose shell is undeclared; this closes the inconsistency rather than adding a rule.
 - Operator-visible change, stated rather than buried: on a POSIX machine whose `$SHELL` is `zsh`, strand panes currently come up as zsh and will come up as `bash` (the `reed.yaml` default) after this change, unless `LYX_REED_SHELL` is set.
   That is the point — the pane shell becomes declared config rather than ambient environment — and it is recorded in `internal/reedengine/doc.go` and in the `reed.yaml` `shell` key's own comment.
+- Spaced shell paths: the trailing argument is passed through the dialect's own `Quote` before it reaches `split-window`, because tmux hands a single trailing shell-command string to `/bin/sh -c` and would word-split `C:\Program Files\PowerShell\7\pwsh.exe` into three arguments.
+  Selvage's split (`splitPaneBelowLocked`, `internal/reedengine/selvagepane.go:352`) and `new-session` (`lifecycle.go:337`) pass the same value unquoted today.
+  Those two are **pre-existing and out of scope** — this task must not widen the exposure to a third site, but retiring it at the other two is a separate change with its own live-substrate test surface, and tmux treats `new-session`'s trailing args as command-plus-arguments rather than as one `sh -c` string, so the two sites are not even the same fix.
+  A sandbox pre-condition line covers the live case (`LYX_REED_SHELL` pinned to a spaced absolute path).
 - Rejected: leaving the split commandless and deriving the dialect from `$SHELL` or from a `pane_current_command` probe — it would make reed's own `shell` config key a lie for the majority of its panes, and keeps the dialect ambient.
   Also rejected: deriving the dialect from `e.cfg.Shell` while leaving the actual pane shell ambient — a knowingly-unsound premise.
 
@@ -286,9 +324,11 @@ Scenarios per dialect:
 - `os.Executable()` error via the injected seam: asserts the launch still proceeds and the command is passed through unchanged, and that a `Warn` is logged — this package already has `logcapture_test.go` for log assertions.
 - A dash-leading composed line still round-trips through `sendKeysLiteralArg`.
 - Dialect selection, as a table test over configured-shell strings: `bash`, `/usr/bin/bash`, `/bin/sh`, `zsh`, `dash`, `ash`, `ksh` → POSIX; `pwsh`, `pwsh.exe`, `PWSH.EXE`, `C:\Program Files\PowerShell\7\pwsh.exe`, `powershell` → pwsh; `fish`, `cmd.exe`, `nu`, and the empty string → unrecognized.
-  The unrecognized case asserts both halves of the degradation: the launch command is passed through with no prelude, and a `Warn` naming the configured shell is logged (`logcapture_test.go` is the existing surface).
-  The mismatch case the review found — `LYX_REED_SHELL=bash` under `runtime.GOOS == "windows"` — is covered by construction, since the selector never reads `runtime.GOOS`; an explicit test asserting the selector is `GOOS`-independent pins that.
-- `split-window` argv now carries `e.cfg.Shell` as its trailing argument: assert it on the fake tmux recorder, and assert Selvage's own split argv (`splitPaneBelowLocked`) is unchanged.
+  An explicit test asserts the selector never reads `runtime.GOOS`, so it is host-independent.
+- `validateToldPaneShell`, as a table test over its three refusal cases plus the accepting case, asserting each refusal's message names `LYX_REED_SHELL`, the offending value, and the supported set.
+  Case 3 (cross-dialect) is the one that needs a host-independent shape: the comparison target is `shell.ForGOOS()`'s dialect for the running host, so the test must derive the expectation the same way rather than hardcoding pwsh or POSIX, and must assert both that a same-dialect value is accepted and that the opposite-dialect value is refused.
+  Also assert the refusal fires at the op boundary — before any tmux round trip — exactly as the existing `validateToldTmuxIdentity` tests do, so a bad configured shell never reaches `split-window`.
+- `split-window` argv now carries `e.cfg.Shell` quoted through the dialect's `Quote` as its trailing argument: assert it on the fake tmux recorder for a plain value and for a spaced absolute path, and assert Selvage's own split argv (`splitPaneBelowLocked`) and `new-session`'s argv are both unchanged.
 
 **Existing tests this change invalidates — update, never replace:**
 
@@ -304,7 +344,12 @@ Record the residual honestly in the file's doc comment, as that package's other 
 
 **Not covered by `go test`, stated as sandbox-suite pre-conditions:**
 the live property "a pane spawned by `.dev-bin/lyx` resolves `lyx` to `.dev-bin/lyx`" is a live-substrate fact.
-Add it as a check line to the reed and shuttle sandbox suite docs (`tools/sandbox/SANDBOX-REED-SUITE.md`, `tools/sandbox/SANDBOX-SHUTTLE-SUITE.md`) — run `where lyx` / `command -v lyx` inside a spawned pane and confirm it names the spawning binary.
+Add these check lines to the reed and shuttle sandbox suite docs (`tools/sandbox/SANDBOX-REED-SUITE.md`, `tools/sandbox/SANDBOX-SHUTTLE-SUITE.md`):
+
+- Run `where lyx` / `command -v lyx` inside a spawned pane and confirm it names the spawning binary.
+- Confirm `LYX_BIN` is set in the pane and names the same binary.
+- Pin `LYX_REED_SHELL` to a **spaced absolute path** (e.g. `C:\Program Files\PowerShell\7\pwsh.exe`) and confirm the strand pane still comes up — this is the live half of the quoted-trailing-argument fix, which no hermetic test can prove.
+- Pin `LYX_REED_SHELL` to an unmodelled shell (`fish`) and confirm reed refuses with a message naming the supported set, rather than launching a broken pane.
 No new Go integration test: `contract_integration_test.go` asserts the tmux wire contract, and this change adds no tmux verb to that contract.
 
 ## Q&A log
@@ -325,3 +370,7 @@ No new Go integration test: `contract_integration_test.go` asserts the tmux wire
 - **Q:** Where does the composition live inside `reedengine`? **A:** [auto-pick] a new dedicated `panebin.go` owning the whole seam, called from `launchStrandLocked`. **Why:** matches the package's existing discipline, where `selvagepane.go` owns the whole Selvage seam and is guarded by its own enforcement test.
 - **Q:** [discussion-review r1 gap, BLOCKING:design] Which `shell.Shell` composes the prelude, and what happens when `LYX_REED_SHELL` pins a shell that contradicts `runtime.GOOS`? **A:** [auto-pick] derive the dialect from `e.cfg.Shell` by basename match, never from `shell.ForGOOS()`; an unrecognized or empty configured shell emits no prelude and logs a `Warn`. **Why:** `ForGOOS()` is correct only until someone overrides `LYX_REED_SHELL`, and a `$env:PATH = …` statement `;`-joined ahead of an agent's command in bash is a syntax error that fails the `PATH` guarantee while the strand still looks launched.
 - **Q:** [discussion-review r1 gap, follow-on] `e.cfg.Shell` governs only the `new-session` first pane and Selvage today — a strand pane runs tmux's ambient `default-shell`. Derive the dialect from config anyway, or make config true? **A:** [auto-pick] make it true — pass `e.cfg.Shell` as `split-window`'s trailing command in `launchStrandLocked`, as Selvage's own split already does. **Why:** deriving a dialect from a value that does not govern the pane would reintroduce the same mismatch one level down; strand panes are the only panes reed creates whose shell is undeclared.
+- **Q:** [discussion-review r2 gap, BLOCKING:design] A strand's `launchCmd` is built with `shell.ForGOOS()` at two call sites, so pinning the pane shell to `e.cfg.Shell` makes the pane deterministically bash while the typed command stays pwsh. Thread the dialect to the command builders, or narrow the pane-shell Decision? **A:** [auto-pick] neither — refuse a cross-dialect `LYX_REED_SHELL` at reed's op boundary, which makes the two `ForGOOS()` sites same-dialect by construction and leaves them unchanged. **Why:** threading would grow `ReedOps` and `Engine.Prepare` across the `Shuttle Provider-Seam Invariant`'s boundary for a configuration nobody asks for; the refusal is one function and can be relaxed later if a cross-dialect pin is ever wanted.
+- **Q:** [discussion-review r2 gap, BLOCKING:design] The unrecognized-shell degrade drops the prelude but still passes that shell to `split-window`, so only half degrades. What is the trailing argument then? **A:** [auto-pick] there is no degrade — an empty or unmodelled `e.cfg.Shell` is refused at the op boundary, so no pane is ever created on an un-modelled shell. **Why:** refusal rather than sanitization is this package's established answer to an unhonourable told value (`validateToldTmuxIdentity`), and it is the loud form of a breakage that already exists silently — a `fish` pane today gets a POSIX launch line fish does not accept, with nothing reporting it.
+- **Q:** [discussion-review r2, NIT:design] Is `Chain`'s separator `;` or `&&`? **A:** [auto-pick] `"; "` in both dialects, fail-open, dropping empty parts. **Why:** the prelude is env decoration and must not be able to suppress the agent's launch; `&&` is additionally a pwsh 7.0+ pipeline-chain operator with different semantics from POSIX's.
+- **Q:** [discussion-review r2, NIT:design] A spaced configured-shell path becomes `split-window`'s trailing shell-command, which tmux word-splits. **A:** [auto-pick] quote it through the dialect's `Quote` at the strand split, leave Selvage's and `new-session`'s unquoted sites as pre-existing and out of scope, and add a sandbox pre-condition line for a spaced `LYX_REED_SHELL`. **Why:** this task must not widen a known hazard to a third site, but the other two are a separate change — tmux treats `new-session`'s trailing args as command-plus-arguments rather than one `sh -c` string, so it is not even the same fix.
