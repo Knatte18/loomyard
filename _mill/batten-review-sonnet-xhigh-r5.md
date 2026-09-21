@@ -92,3 +92,95 @@ leftover state, and its own live-driving deliverable is independent of it.
 
 Recorded as spotted; severity/CONFIRMED-vs-PLAUSIBLE finalized once live
 verification is complete.
+
+### F1 (NIT, CONFIRMED) — corrupted doc comment in internal/shell/posix.go:13
+
+`internal/shell/posix.go:13`:
+```go
+// Quote wraps s in POSIX single quotes, escaping embedded quotes via '\” idiom.
+```
+The closing of the escape idiom is a stray curly close-quote character (`”`,
+U+201D) where the source clearly intends the POSIX `'\''` idiom (visible in
+the function body one line below, and in the identical comment's own
+pre-edit wording: `git log -p` shows the prior text read `... via '\'' idiom.`
+verbatim). Traced to commit `bf0b20038` ("Spawned agent panes resolve the
+spawning lyx binary"), which reached this branch via the F7[R2]/#017 merge
+(`949dffef6`) this campaign's own round-context note references. Confirmed
+by `git diff 29d9e6a42^..HEAD | grep -P '[""'']'` — this is the only
+instance of stray curly-quote corruption anywhere in the campaign's own
+diff. Outside batten's three packages, but squarely inside this round's own
+"blast-radius sweep on this campaign's own cross-cutting fixes" focus point,
+since the file arrived via a merge this campaign's own round history
+records and no round has yet read it byte-for-byte. Fix: restore the
+correct `'\''` text.
+
+### F2 (LOW, PLAUSIBLE pending live/unit confirmation) — child-output truncation in wire.go's childSpawnError can split a multi-byte UTF-8 rune
+
+`internal/battencli/wire.go:110-112` (`childSpawnError`):
+```go
+if len(trimmed) > maxChildOutputInError {
+    trimmed = trimmed[:maxChildOutputInError] + " ... (truncated)"
+}
+```
+`trimmed[:maxChildOutputInError]` is a byte-index slice of a Go string. If
+the child's real stdout/stderr (a real `lyx loom start` bootstrap failure,
+which can legitimately contain non-ASCII — a task title, a file path, a
+Claude response fragment folded into an error) puts a multi-byte UTF-8
+rune's bytes across that boundary, the truncated string ends with an
+invalid partial UTF-8 sequence. `fmt.Errorf("%w: %s", ...)` does not
+validate UTF-8, so the invalid bytes propagate into the returned error's
+`.Error()` text; JSON-encoding it later (`internal/output`) silently
+replaces the broken tail with U+FFFD replacement characters rather than
+erroring, so the practical blast radius is a slightly garbled last few
+characters of a truncated diagnostic, not a crash or data loss elsewhere.
+`TestChildSpawnError` (wire_test.go) exercises truncation only with a pure
+ASCII `strings.Repeat("x", ...)` fixture, so this path is untested against
+non-ASCII input. Fix: truncate on a rune boundary (e.g.
+`strings.ToValidUTF8` after a byte slice, or walk back to the last
+complete rune via `utf8.DecodeLastRuneInString`).
+
+### F3 (severity TBD, PLAUSIBLE pending live confirmation) — a disagreeing child seed at Seed-Child hard-errors instead of routing to Stuck
+
+`internal/battenshed/seamchild.go`'s `childRecipeRefusal` only recognizes
+`ErrUnknownRecipe`/`ErrUnsupportedChildRecipe` as Stuck-worthy business
+refusals; every other `WriteSeed` error is treated as "a path-resolution or
+write failure" and returned as a hard error (per both the package doc
+comment on `SeedChildDeps.WriteSeed`, deps.go:92-97, and the matching
+comment in seamchild.go:54-58). But `internal/battencli/wire.go`'s
+`WriteSeed` closure (wire.go:309-329) calls `shedrun.WriteSeed` directly
+after its own two recipe checks, and `shedrun.WriteSeed`
+(`internal/shedrun/seed.go:172-175`) has a THIRD failure mode neither
+sentinel wraps: an existing child seed that disagrees on recipe, driver, or
+params returns a plain `fmt.Errorf("... refusing to overwrite with
+disagreeing seed ...")`. That is exactly the same *kind* of business
+judgment a human can act on (fix or delete the child's hand-seed, or
+correct the Board type) as the two recognized refusals — not a mechanism
+failure — yet it currently surfaces as a run-halting hard error (shedengine
+`StateFailed`) rather than a `Stuck` verdict with a named remedy.
+Reachability: normally Seed-Child runs once and returns Done, so this path
+is unreachable in the ordinary flow; it is reachable if the child's own
+`self` seed is hand-written or otherwise pre-exists with different values
+before Seed-Child (re)commits its own, which is exactly the sabotage/
+hand-seed shape this round's high-yield items 8/9/11 already ask me to
+drive. Plan: reproduce live via `lyx shed step` against a freshly created
+task worktree, hand-seeding the child's own `_lyx/shed/self/seed.json`
+with a disagreeing value before letting Seed-Child run, and observe the
+actual verdict/envelope. Severity and fix approach (wrap the disagreement
+in a new sentinel, e.g. `ErrDisagreeingChildSeed`, and treat it as Stuck)
+to be finalized after that live scenario.
+
+### F4 (NIT candidate, test-coverage gap) — TestBattenIntegration_NonPrimeRefusal doesn't cover step/pause
+
+`internal/battencli/lifecycle_integration_test.go`'s
+`TestBattenIntegration_NonPrimeRefusal` only drives `run` and `status` from
+a task-worktree cwd (line 566: `for _, verb := range []string{"run",
+"status"} {`), while its sibling `TestBattenIntegration_WeftPrimeRefusal`
+drives all four verbs (`run`, `step`, `status`, `pause`) from the weft
+prime. High-yield focus item 1 asks me to drive all of `run/step/status`
+from inside a freshly-created task worktree live; if `step`/`pause` refuse
+correctly there (expected, since `armAt`'s bookend check runs ahead of the
+verb branch for every verb), this is a test-coverage completeness NIT
+rather than a behavior bug — extend the loop to all four verbs to match
+`WeftPrimeRefusal`'s own completeness. To be confirmed live before fixing.
+
+(Live-driving scenarios continue below.)
