@@ -33,7 +33,7 @@
 // persisted history[] rather than held in memory, as the number of Stuck entries a producer has
 // authored since its own most recent Done entry (all of them, if it has never returned Done), so the
 // count spans invocations, crashes, and human resumes rather than resetting on every new Run call.
-// See manifest/designs/shed.md's own routing and bounce-budget sections for the full design and its
+// See this package's own routing and bounce-budget documentation for the full design and its
 // rationale; this package documentation states the contract, not the argument for it.
 //
 // # Told, never derived

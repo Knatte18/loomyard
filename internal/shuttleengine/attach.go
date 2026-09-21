@@ -151,7 +151,7 @@ func (r *Runner) AttachGated(spec Spec, gate GateSpec) (Result, bool, error) {
 // declared output files before its driver died, with reed's strand table removed under it (the
 // `git clean -xdf` of `.lyx` that sweepOrphansOpportunistic's own doc comment names as a sanctioned
 // operator action), hard-failed the step with "attach: no reed state file" instead of harvesting the
-// finished work — the exact rework manifest/designs/loom.md's crash-recovery step 2 exists to
+// finished work — the exact rework the Completion Signal Invariant exists to
 // prevent, one layer earlier than the six exits already hardened.
 //
 // The runOutcomeRunning gate is what keeps this from reopening the crash-versus-bounce trap, for the
@@ -376,7 +376,8 @@ func dispositionCandidate(c attachCandidate, strands []reedengine.StrandStatus, 
 	// run's own Wait harvest it as OutcomeDone through those same file-contract-first branches, and
 	// finalize then cleans it up; respawning over it instead archives the finished files and re-runs the
 	// whole (expensive) LLM step, the exact rework the crash-recovery contract exists to prevent
-	// (manifest/designs/loom.md, "A dead claude with a finished output file is, to loom, a done step").
+	// (a dead claude with a finished output file is, to loom, a done step -- the Completion Signal
+	// Invariant in CONSTRAINTS.md).
 	//
 	// This never fires on a review-segment bounce (e.g. Discussion-Bouncer bouncing to
 	// Discussion-Burler), so it does not reopen the crash-versus-bounce trap that bars a

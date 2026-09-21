@@ -59,7 +59,7 @@
 // run for this exact output-file set, and if so, wait on it instead of starting a second agent.
 // That question is answered on the persisted RunState.Outcome plus, in a fixed precedence, the run's
 // own file contract and then reed's live-agent evidence — never on output-file existence at the
-// CALLER's level, which is the shortcut manifest/designs/loom.md's own crash-recovery ladder warns
+// CALLER's level, which is the shortcut the Completion Signal Invariant warns
 // against, since a bounce that re-runs a producer over already-present files looks identical to a
 // genuinely finished run from the caller's side. Inside Attach the same file-existence question is
 // safe, and for the reason that ladder gives: it is asked only of a matched run.json still declaring

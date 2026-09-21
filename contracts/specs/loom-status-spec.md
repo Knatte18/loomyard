@@ -2,7 +2,7 @@
 
 > **Status: Contract — pinned.** This doc pins the `_lyx/shed/self/status.json` schema: loom's single source of truth for orchestration state, and the t=0 "seed" a spawn-time lyx command hands off to loom. Durable reference doc — kept, not deleted on landing — the loom analogue of [webster-spec.md](webster-spec.md) and `contracts/stencils/loom/loom-template-plan.md`.
 > This doc's own "seed" — the t=0 contents of the status file described below — is a different artefact from the seeded-shed core's `seed.json` (see `internal/shedrun`'s own package documentation): one is a snapshot of the status shell, the other is a separate, write-once file recording a run's recipe, driver, and parameters.
-> Product-scoped under `loom/` (renamed 2026-08-15 from a bare `_lyx/status.json`), since `Shed` (see [shed.md](../../manifest/designs/shed.md)) is a generic engine more than one product configures — the Someday `Hardener` product needs its own status file too, and a bare path could not serve both.
+> Product-scoped under `loom/` (renamed 2026-08-15 from a bare `_lyx/status.json`), since `Shed` (`internal/shedengine`) is a generic engine more than one product configures — the Someday `Hardener` product needs its own status file too, and a bare path could not serve both.
 
 ## What it is
 

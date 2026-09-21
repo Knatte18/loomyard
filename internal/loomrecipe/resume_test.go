@@ -364,7 +364,7 @@ func TestBounceRouting_BudgetExhaustionBlocks(t *testing.T) {
 }
 
 // TestResume_DiscussionWriteRespawnsRatherThanReportDoneOffFileExistence is one half of the
-// manifest/designs/loom.md "interactive-mode trap" regression pair, retargeted onto the row it was
+// The "interactive-mode trap" regression pair, retargeted onto the row it was
 // always really about now that Discussion-Validate, the bounce that used to reach it, is gone:
 // current_producer is planted directly at Discussion-Write with both discussion artifacts already
 // present and complete on disk -- the identical on-disk shape a crash mid-interview leaves -- and

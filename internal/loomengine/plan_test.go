@@ -328,7 +328,7 @@ func TestPlanSpec_PromptStatesVerifyIsExceptional(t *testing.T) {
 
 // TestPlanSpec_PromptNeverNamesSupportLog proves the composed plan prompt names neither the literal
 // support-log.md filename nor the support log's own absolute path.
-// manifest/designs/loom.md states that the Plan-never-reads-support-log boundary is asserted once,
+// The Plan-never-reads-support-log boundary is asserted once,
 // at build/test time, over Plan-Write's producer definition rather than per run, and that the
 // assertion lands with the real Plan-Write -- this is that assertion.
 // It builds its own layout rather than calling renderedPlanPrompt because it needs the

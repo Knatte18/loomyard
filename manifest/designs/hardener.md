@@ -8,12 +8,12 @@
 
 ## Naming: two things, not one
 
-Two distinct layers, split out once the shared-engine design (the `internal/treadleengine` package documentation, [shed.md](shed.md)) was pinned:
+Two distinct layers, split out once the shared-engine design (the `internal/treadleengine` and `internal/shedengine` package documentation) was pinned:
 
 - **`Tenter`** — the review-loop alone: `Treadle` (the generic round-loop engine — judge, gate, round-spawn, cap, pause, lock) configured with a live-substrate-driving round-runner and a behavior-review profile, instead of a `burlerengine` round + text-review profile.
   The direct structural sibling of loom's own text-review segments.
   Not separately runnable in isolation the simple way a text-review segment is, because behavior-review needs a live sandbox/worktree lifecycle around it.
-- **`Hardener`** — the full, on-demand, autonomous campaign: `Shed` (the generic outer phase-FSM — see [shed.md](shed.md)) wrapping `Tenter`, plus Hardener's own Preflight (sandbox provisioning, live-suite readiness).
+- **`Hardener`** — the full, on-demand, autonomous campaign: `Shed` (the generic outer phase-FSM — see `internal/shedengine`'s package documentation) wrapping `Tenter`, plus Hardener's own Preflight (sandbox provisioning, live-suite readiness).
   This is what gets a worktree spawned for it (via `fabric`) and safe-merges back into parent when done, the same lifecycle `loom` uses, just with `Hardener`'s own producer list carrying `Tenter` where `loom`'s list carries its Discussion, Plan and Webster producers.
 
 `Tenter` is a **behavior-based reviewer**: where a text-review segment reads an artifact, `Tenter` **runs** a live-substrate module, reacts to what it observes, and builds bespoke adversarial scenarios to break it. `Hardener` is a separate, on-demand, **post-loom** campaign — not on the `shuttle → burler → shed → loom` spine — meant to harden a live-substrate module (the archetype: `reed` driving real tmux) before merge.
@@ -97,7 +97,7 @@ do not ask").
 So `Hardener` can run **autonomously, overnight**, with reed + Go handling **auto-compaction** (which, per the insight above, *is* per-round respawn).
 Model rotation across rounds (Opus / Fable / Sonnet) stays as a cheap diversity lens — convergence across *different* models is stronger evidence than N passes from one.
 
-`Hardener`'s own worktree-spawn (via `fabric`) and safe-merge-back-to-parent lifecycle is `Shed`'s job (see [shed.md](shed.md)) — the same `loom`-shared lifecycle described above, with Hardener's own Preflight (below) instead of loom's.
+`Hardener`'s own worktree-spawn (via `fabric`) and safe-merge-back-to-parent lifecycle is `Shed`'s job (see `internal/shedengine`'s package documentation) — the same `loom`-shared lifecycle described above, with Hardener's own Preflight (below) instead of loom's.
 
 ### The sandbox dependency
 
@@ -129,7 +129,7 @@ Whether the round agent literally imports the `burler` package or only follows t
 
 - `internal/treadleengine` package documentation — the generic round-loop engine `Tenter` would configure (as-built;
   module doc deleted per the documentation lifecycle), independent of whether `Tenter`/`Hardener` ever get built.
-- [`shed.md`](shed.md) — the generic outer phase-FSM `Hardener` configures;
+- `internal/shedengine`'s package documentation — the generic outer phase-FSM `Hardener` configures;
   same independence as above.
 - `shuttle` — spawns the round agents and judges `Treadle`/`Tenter` drive.
 - [`internal/stencil`](../../docs/shared-libs/stencil.md) — fills the round-agent / orchestrator prompt templates (shared with `burler` and the review gate).

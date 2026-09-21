@@ -48,7 +48,7 @@
 // agent's output files ARE its return value, so a run that wrote all of them finished, whatever went
 // wrong afterwards. Publishing the first answer as though it were the second records a completed,
 // expensive LLM step as a failure, after which the next resume archives the finished files and
-// re-runs it -- precisely the rework manifest/designs/loom.md's crash-recovery step 1 exists to
+// re-runs it -- precisely the rework the Completion Signal Invariant above exists to
 // prevent.
 //
 // It is named here, rather than left implied by the individual helpers, because it was omitted SIX
@@ -522,7 +522,7 @@ func (run *Run) classifyStartupWindow(startupDeadline time.Time) Outcome {
 // live in crucible round opus5-high-r4 against the real built binary, once per deadline: both of
 // Discussion-Write's declared output files present on disk, events.jsonl never written, and the
 // step recorded as a shed failure — after which the next resume archived the finished files and
-// re-ran the step, which is precisely the rework manifest/designs/loom.md's crash-recovery step 1
+// re-ran the step, which is precisely the rework the Completion Signal Invariant
 // ("inside an attached or started run's own wait loop … the step finished; read it and advance")
 // exists to prevent.
 //
@@ -553,7 +553,7 @@ func (run *Run) classifyDeadlineExpiry(expired Outcome) Outcome {
 // retry-exhausted caps did not, so a run whose agent had written every declared output file but left
 // reed.json corrupt (a crash, a full disk, a kill -9 during a reed write) or events.jsonl
 // unparseable was recorded as a mechanism failure, after which the next resume archived the finished
-// files and re-ran the step -- precisely the rework manifest/designs/loom.md's crash-recovery step 1
+// files and re-ran the step -- precisely the rework the Completion Signal Invariant
 // exists to prevent. Reproduced live in crucible round fable5-high-r5 against the real built binary:
 // a shuttle run whose declared output file was on disk, reed.json truncated mid-run, returned the
 // consecutive-status-failure mechanism error rather than OutcomeDone.

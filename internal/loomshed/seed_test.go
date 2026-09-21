@@ -94,7 +94,7 @@ func TestSeed_RefusesExistingFile(t *testing.T) {
 // is still present, so Seed must refuse it via ErrSeedExists — never overwrite it, and never
 // escalate the decode failure as its own error. Escalating it made `lyx loom start` refuse on the
 // envelope before ever spawning a driver, for the exact "poisoned status file" state
-// manifest/designs/loom.md's crash-recovery section promises never looks like bootstrap's own gate;
+// the Completion Signal Invariant promises never looks like bootstrap's own gate;
 // mapping it to ErrSeedExists lets the bootstrap proceed and defers the decode diagnosis to the
 // driver's own Shed.Run step-1 read gate, exactly as a cleanly-decoding existing file already does.
 //

@@ -32,4 +32,4 @@ Must physically exist in warp's working tree, so a directory junction doesn't ap
 
 - The `internal/boardengine` package documentation and the shipped `PATTERN.md` — establish that `PATTERN.md`, the loomyard-owned `CONSTRAINTS.md`-equivalent, lives in `weft`, which supersedes this task's constraints-hiding half.
 - [`internal/fabricengine`](../../internal/fabricengine/doc.go) — owned the junction re-pointing mechanism the now-superseded constraints-dir half would have reused (`CLAUDE.local.md` uses a symlink, not a junction).
-- [loom.md](loom.md) — the init/session-bootstrap step that would trigger the symlink fallback and `.gitignore` entry for `CLAUDE.local.md`.
+- `internal/loomcli`'s session bootstrap — the init/session-bootstrap step that would trigger the symlink fallback and `.gitignore` entry for `CLAUDE.local.md`.
