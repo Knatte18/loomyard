@@ -7,6 +7,7 @@ package battenshed
 import (
 	"context"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 
@@ -227,5 +228,61 @@ func TestWorktreeTeardown_CancelledContext(t *testing.T) {
 	}
 	if outcome == shedengine.Stuck {
 		t.Error("Call() outcome = Stuck; want a cancelled context to never surface as Stuck")
+	}
+}
+
+// TestRecordAbandonedSession proves the teardown row's abandoned-session record: written when a
+// session was abandoned, cleared when a later teardown abandoned none, and never escalated into a
+// verdict either way.
+//
+// The regression it pins: the value reaches an envelope only through the run verb's own PostRun
+// hook, so a lifecycle driven one "lyx batten step" at a time -- how an external supervisor drives
+// one -- never surfaced it at all, and the Warn line has scrolled away by the time anyone asks.
+func TestRecordAbandonedSession(t *testing.T) {
+	scratchDir := t.TempDir()
+	path := AbandonedSessionFile(scratchDir)
+
+	recordAbandonedSession("Worktree-Teardown", "some-slug", "lyx-some-slug", scratchDir)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read abandoned-session record: %v", err)
+	}
+	if got := strings.TrimSpace(string(data)); got != "lyx-some-slug" {
+		t.Errorf("abandoned-session record = %q; want %q", got, "lyx-some-slug")
+	}
+
+	recordAbandonedSession("Worktree-Teardown", "some-slug", "", scratchDir)
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Errorf("os.Stat(%s) after a teardown that abandoned nothing = %v; want the stale record cleared", path, err)
+	}
+
+	// Clearing an already-absent record is a no-op, never a reported failure.
+	recordAbandonedSession("Worktree-Teardown", "some-slug", "", scratchDir)
+}
+
+// TestTeardown_DoneRunRecordsTheAbandonedSession asserts the record is written from the producer's
+// own Done path, not only by the helper in isolation.
+func TestTeardown_DoneRunRecordsTheAbandonedSession(t *testing.T) {
+	scratchDir := t.TempDir()
+	deps := TeardownDeps{
+		Shutdown: func(ctx context.Context) (string, error) { return "lyx-abandoned", nil },
+		Remove:   func(ctx context.Context) error { return nil },
+	}
+	var released bool
+	producer := NewWorktreeTeardown("Worktree-Teardown", "some-slug", deps, fakePrimeLock("/lock/free/path", true, nil, nil, &released), scratchDir)
+
+	outcome, _, err := producer.Call(context.Background())
+	if err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	if outcome != shedengine.Done {
+		t.Fatalf("Call() outcome = %v; want Done", outcome)
+	}
+	data, err := os.ReadFile(AbandonedSessionFile(scratchDir))
+	if err != nil {
+		t.Fatalf("read abandoned-session record after a Done teardown: %v", err)
+	}
+	if got := strings.TrimSpace(string(data)); got != "lyx-abandoned" {
+		t.Errorf("abandoned-session record = %q; want %q", got, "lyx-abandoned")
 	}
 }

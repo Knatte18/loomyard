@@ -527,12 +527,41 @@ func (c *battenCLI) battenStatusExtras(st shedengine.Status) (map[string]any, er
 		"history_length":    len(st.History),
 		"history_truncated": truncated,
 	}
+	scratchDir := BattenDir(c.location, c.slug)
 	if st.State == shedengine.StateBlocked {
-		if reason, found := readStuckReason(BattenDir(c.location, c.slug), st.CurrentProducer); found {
+		if reason, found := readStuckReason(scratchDir, st.CurrentProducer); found {
 			extras["stuck_reason"] = reason
 		}
 	}
+	// Reported in every state rather than only at the terminal one: a teardown that abandoned a
+	// session is a fact about the run's outcome, and the operator asking about it is typically doing
+	// so after the run has finished, from a different process than the one that observed it.
+	if session, found := readAbandonedSession(scratchDir); found {
+		extras["abandonedSession"] = session
+	}
 	return extras, nil
+}
+
+// readAbandonedSession reads back the record battenshed's teardown row writes when session shutdown
+// had to abandon a session rather than end it cleanly, reporting found == false when there is none.
+//
+// It exists because the value reaches an envelope only through the run verb's own PostRun hook, so
+// a lifecycle driven one "lyx batten step" at a time -- how an external supervisor drives one --
+// never surfaced it at all: shedverbs' step envelope is a deliberately closed ten-key set with no
+// hook that can add to it. Reading the record here gives both drive modes the same fact.
+func readAbandonedSession(scratchDir string) (string, bool) {
+	if scratchDir == "" {
+		return "", false
+	}
+	data, err := os.ReadFile(battenshed.AbandonedSessionFile(scratchDir))
+	if err != nil {
+		return "", false
+	}
+	session := strings.TrimSpace(string(data))
+	if session == "" {
+		return "", false
+	}
+	return session, true
 }
 
 // recentHistory returns the most recent maxStatusHistoryEntries entries of history, reporting
