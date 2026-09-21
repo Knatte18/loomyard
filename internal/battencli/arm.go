@@ -384,8 +384,8 @@ func (c *battenCLI) battenPreRun(ctx context.Context) error {
 		switch st.State {
 		case shedengine.StateDone:
 			return fmt.Errorf(
-				"battencli: %q has already completed; delete %s to run it again",
-				c.slug, BattenDir(c.location, c.slug),
+				"battencli: %q has already completed; delete its run directory %s (a change on the pair's weft) to run it again",
+				c.slug, shedrun.RunDir(c.location, c.slug),
 			)
 		case shedengine.StateRunning, shedengine.StateBlocked, shedengine.StateFailed, shedengine.StatePaused:
 			// Each of these resumes silently from the persisted current producer, with no
@@ -451,8 +451,8 @@ func (c *battenCLI) battenPreStep(ctx context.Context) (string, error) {
 		switch st.State {
 		case shedengine.StateDone:
 			return shedverbs.KindBootstrap, fmt.Errorf(
-				"battencli: %q has already completed; delete %s to run it again",
-				c.slug, BattenDir(c.location, c.slug),
+				"battencli: %q has already completed; delete its run directory %s (a change on the pair's weft) to run it again",
+				c.slug, shedrun.RunDir(c.location, c.slug),
 			)
 		case shedengine.StateRunning, shedengine.StateBlocked, shedengine.StateFailed, shedengine.StatePaused:
 			// Resumes silently, exactly as battenPreRun's own identical switch does.

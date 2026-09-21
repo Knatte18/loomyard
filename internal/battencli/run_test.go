@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
@@ -117,9 +118,10 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 	}
 }
 
-// TestRunCmd_StateDoneRefusesNamingTheBattenDir asserts a StateDone slug refuses on the envelope
-// rather than silently re-running, naming the per-slug directory to delete.
-func TestRunCmd_StateDoneRefusesNamingTheBattenDir(t *testing.T) {
+// TestRunCmd_StateDoneRefusesNamingTheRunDir asserts a StateDone slug refuses on the envelope
+// rather than silently re-running, naming the durable run directory to delete -- the one the
+// status file the refusal gates on lives in, never the ephemeral scratch directory.
+func TestRunCmd_StateDoneRefusesNamingTheRunDir(t *testing.T) {
 	c := newFakeReceiver(t, nil)
 	writeStatus(t, c, shedengine.Status{
 		CurrentProducer: battenrecipe.NameWorktreeTeardown,
@@ -132,9 +134,12 @@ func TestRunCmd_StateDoneRefusesNamingTheBattenDir(t *testing.T) {
 	if exitCode != 1 {
 		t.Fatalf("run() exit code = %d; want 1; output: %s", exitCode, out.String())
 	}
-	wantDir := BattenDir(c.location, c.slug)
+	wantDir := shedrun.RunDir(c.location, c.slug)
 	if !strings.Contains(out.String(), wantDir) {
-		t.Errorf("run() output = %q; want it to name the per-slug directory %q", out.String(), wantDir)
+		t.Errorf("run() output = %q; want it to name the durable run directory %q", out.String(), wantDir)
+	}
+	if strings.Contains(out.String(), BattenDir(c.location, c.slug)) {
+		t.Errorf("run() output = %q; names the ephemeral scratch directory, which is not the gate", out.String())
 	}
 }
 
