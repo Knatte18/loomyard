@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-reed-pane-binary-chokepoint
+phase: approved-docs-and-sandbox-preconditions
 slug: lyx-bin-pane-path
 branch: lyx-bin-pane-path
 plan: _mill/plan
@@ -28,6 +28,7 @@ planned  '2026-09-21T14:08:45Z'
 implementing  '2026-09-21T14:09:09Z'
 approved-shell-prelude-primitives  '2026-09-21T14:18:12Z'
 approved-reed-pane-binary-chokepoint  '2026-09-21T14:24:25Z'
+approved-docs-and-sandbox-preconditions  '2026-09-21T14:26:40Z'
 ```
 
 ## Batches
@@ -47,8 +48,9 @@ batches:
     commit_sha: 22e34d74d34f8492b0928cf265e42b8ee774418c
     verify_baseline_failures: []
   - name: docs-and-sandbox-preconditions
-    state: running
+    state: approved
     implementer_session: 3269a2ce-932d-4d01-943e-dfac5c703af2
     start_sha: 7a4755462c8d0549964623b8c1a430205cedda86
+    commit_sha: 24c0c306d7627602bc57c9812841f3a99a6eba5a
     verify_baseline_failures: []
 ```
