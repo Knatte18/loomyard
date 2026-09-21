@@ -450,3 +450,104 @@ These scenarios are structurally unreachable behind F0/F1 and are driven after t
 - **fabric's own clone/merge correctness** beyond the pair create/remove batten's two bookend rows actually drive.
 - **loom's own internal phase-machine correctness**, except where it corrupts or mis-reports through the status/seed boundary batten depends on — which F1 does, and is why F1 is recorded here rather than deferred to loom.
 - **No `N×`-concurrent smoke-suite amplifier** was attempted, per this round's own cost declaration.
+
+---
+
+# Post-fix addendum
+
+Written after the fixes landed, per the round prompt's instruction to re-run every live scenario.
+Everything below was driven on the same disposable fixture hub, against the redeployed binary.
+
+## F15 — prime's own run seed is never committed (MEDIUM, CONFIRMED live, found post-fix)
+
+`internal/battencli/commitstatus.go:56` (as it stood).
+
+Surfaced while running the sabotage scenarios: `git status` on prime's weft showed `?? _lyx/shed/<slug>/seed.json` for every slug batten had ever run, while `_lyx/shed/<slug>/status.json` was tracked.
+
+The CommitStatus seam committed `shedrun.StatusRel(runID)` and nothing else, so prime's own seed stayed untracked forever.
+
+That contradicts the whole reason the design doc put batten's run state in the durable tree:
+
+> "a worktree recreated on another machine (the mill-resume pattern) must still know what it is running"
+
+A resumed machine gets the status and not the seed, so it can read how far the run came but not what it is running.
+Worse, it is not merely a read failure: `armSeed` finds no seed, takes the auto-seed arm, and re-seeds from flag defaults — so a run seeded `--child-driver llm` comes back as `child_driver: go`, exactly the silent divergence between "what a run was seeded as" and "what it is actually doing" that the Driver Choice Single-Site Invariant exists to prevent.
+
+Fixed by committing the seed alongside the status on every transition, included only when present (a pathspec matching no file is a hard `git add` error, and a Shed driven outside batten's own CLI verbs has no seed).
+Verified live afterwards: `_lyx/shed/goldrun/seed.json` is tracked at HEAD on prime's weft.
+
+## Live re-drive — results
+
+### The path that never worked, now walked end to end
+
+```
+$ lyx batten step goldrun --child-driver llm   → Worktree-Create done
+$ lyx batten step goldrun                      → Seed-Child     done
+  child seed: {"recipe":"loom","driver":"llm","params":{"parent":"main"}}
+  recorded origin: {"parent_branch":"main"}                     ← agrees, so the child bootstrap accepts it
+$ lyx batten step goldrun                       → Run-Shed stuck/running, self-bounced
+```
+
+`Run-Shed` advanced past its spawn for the first time.
+Inside the child, `lyx reed status` reported a live session with two live strands:
+
+```
+{"session":"goldrun","strands":[{"name":"loom-status","live":true},{"name":"loom-driver","live":true}]}
+```
+
+**Focus item 5 fully confirmed.** The Board task's `type: loom` reached the child's own `seed.json` as `recipe: loom`, prime's `params.child_driver: llm` reached it as `driver: llm`, neither silently defaulted, and the nested `ly-drive` loop spawned a real `claude` provider off that value in the child's own reed session.
+
+One environment note, not a batten defect: the provider first stopped at Claude Code's folder-trust prompt, because the disposable hub lives in a directory it has never seen. Answered by hand for this fixture, after which the driver ran for real.
+
+### Focus item 3 — a genuinely blocked child, with a real child
+
+The child later reached `Preflight blocked` (loom's own precondition row — out of batten's scope).
+`Run-Shed` then returned a hard error, not `Stuck`:
+
+```
+{"error":"battenshed: Run-Shed: inner shed run reached state \"blocked\": error=\"stuck with no OnStuck target\" current_producer=\"Preflight\"","kind":"producer"}
+```
+
+and both `goldrun` and `goldrun-weft` were still on disk afterwards. The destructive row stayed unreachable from the failure path.
+
+### Focus item 6 — `PrimeRunLock` scope, both halves
+
+- With `goldrun` mid-`Run-Shed`, a second slug's `Worktree-Create` completed in 0s. A long watch holds no prime lock.
+- Holding `.lyx/shed/run.lock` externally, a third slug's `Worktree-Create` returned `stuck`/`blocked`, its reason naming the lock path, and **no pair was created**. Released, the same create succeeded.
+
+### Focus item 2 — teardown ordering
+
+- With the child's `reed.yaml` made unparseable so `Shutdown` fails: `Worktree-Teardown` returned `stuck`/`blocked`, the reason named session shutdown as the failed half, and **both pair worktrees were still present** — `Remove` was never called.
+- Ordinary teardown: `done`, `continue: false`, and both worktrees gone.
+
+### Focus items 8 and 9 — sabotage, both PASS
+
+- **A raw git commit landed directly on weft outside fabric's seams, mid-run.** batten's tracking was not corrupted: subsequent status commits stacked cleanly on top of the foreign commit, and the run kept advancing.
+- **A stray untracked file dropped under `_lyx` mid-run.** No stage-all lottery: `_lyx/STRAY.txt` was neither swept into a commit nor removed. batten's commits are positive-only pathspecs per the Fabric Git Invariant, so the stray stayed untracked on disk and visible in `git status` — the honest outcome, without needing a report of its own.
+
+### F10 verified live on a genuinely blocked run
+
+```
+$ lyx batten status crashcreate
+state:        blocked
+error:        stuck with no OnStuck target
+stuck_reason: branch "crashcreate" already exists; switch a pair onto it with "lyx fabric checkout crashcreate" ...
+```
+
+### Focus item 10 residuals — re-verified, both still accepted
+
+Unchanged from the scope assessment above. The dead-strand residual is now written down in `battenshed`'s own package doc, which is the part an operator was paying for.
+
+## What could NOT be verified, and why
+
+- **A loom campaign driven to a completed, successful terminal state, followed by an automatic `Run-Shed → Done → Worktree-Teardown`.** The child blocked at loom's own `Preflight` row, which this round's scope places outside batten. The teardown row itself was driven directly instead, both its success and its failure path (focus item 2 above), and `Run-Shed`'s `Done` arm is covered by the integration suite.
+- **Windows path behaviour** anywhere in this stack — unreachable from this Linux host. Not exercised, and not flagged as missing.
+- **The `N×`-concurrent smoke-suite amplifier** — excluded by this round's own cost declaration, never attempted.
+
+## Teardown discipline
+
+- Child reed session shut down, then its tmux server killed, then its `reed watchdog` process killed.
+- `ls /tmp/tmux-1000/` is empty — zero tmux sockets, no default server.
+- `pgrep -af fixhub` returns nothing. The two remaining `claude` processes on the host are the pre-existing ones present before this round began.
+- The disposable fixture hub is fully deleted. Only the small driver scripts remain in this session's scratchpad.
+- `/home/hanf/Code/lyx-test-LYXHUB` does not exist on this host, so the operator's standing bench was never touched. All work happened inside the scratchpad fixture.
