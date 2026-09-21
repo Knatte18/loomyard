@@ -110,6 +110,15 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 	primeLock := battenshed.PrimeLock{
 		Path: primeRunLockPath,
 		Acquire: func() (release func() error, ok bool, err error) {
+			// Both directories are ensured, and the prime lock's own comes first, because it is
+			// the one this closure is about to take a lock in. The per-slug scratch directory is
+			// ensured too because the producers that hold this lock write their stuck-reason files
+			// there. Relying on the slug directory's MkdirAll to create the prime lock's parent as
+			// a side effect of creating a deeper path under it worked only as long as the two
+			// shedrun constructors happened to nest, a coupling neither one states.
+			if err := os.MkdirAll(filepath.Dir(primeRunLockPath), 0o755); err != nil {
+				return nil, false, err
+			}
 			if err := os.MkdirAll(shedrun.ScratchDir(location, slug), 0o755); err != nil {
 				return nil, false, err
 			}
