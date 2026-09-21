@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-review-r1
+phase: plan-fix-r1
 slug: lyx-bin-pane-path
 branch: lyx-bin-pane-path
 plan: _mill/plan
@@ -23,4 +23,5 @@ discussion-gap-fix-r5  '2026-09-21T11:35:38Z'
 discussed  '2026-09-21T11:35:51Z'
 planning  '2026-09-21T11:49:23Z'
 plan-review-r1  '2026-09-21T12:00:36Z'
+plan-fix-r1  '2026-09-21T14:08:30Z'
 ```

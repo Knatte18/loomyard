@@ -29,6 +29,7 @@ Batch-local addition to the overview's Shared Decisions: this batch's tests inje
   - `internal/reedengine/lifecycle.go`
   - `internal/reedengine/state.go`
   - `internal/reedengine/lock.go`
+  - `tools/sandbox/resolve.go`
 - **Edits:**
   - `internal/reedengine/spawn.go`
   - `internal/reedengine/doc.go`

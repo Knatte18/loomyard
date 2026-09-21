@@ -12,7 +12,9 @@ depends-on: []
 ## Batch Scope
 
 This batch extends the `internal/shell` seam with the three generic, provider-agnostic statement builders the reed prelude is composed from: a session-scoped env export, a live-`PATH` prepend, and a single-line statement joiner.
-It is one batch because all three are pure string transforms over the same two dialect implementations, tested the same way, and because nothing outside `internal/shell` changes here — batch 2 is the sole consumer and depends on this batch's interface being final.
+It is one batch because all three are pure string transforms over the same two dialect implementations, tested the same way, and because the only production code that changes is `internal/shell` itself — batch 2 is the sole consumer and depends on this batch's interface being final.
+The one file outside the package that this batch touches is `CONSTRAINTS.md`, whose `## Shell Mechanics Seam` clause enumerates the very interface card 1 grows;
+the enumeration moves with the interface rather than in a later batch, per the repo's same-commit documentation rule.
 The external interface batch 2 consumes is exactly `Shell.ExportEnv`, `Shell.PrependPathEntry` and `Shell.Chain`.
 No batch-local decision differs from the overview's Shared Decisions;
 `chain-separator-is-semicolon` is the one that binds this batch's implementation most directly.
@@ -22,11 +24,13 @@ No batch-local decision differs from the overview's Shared Decisions;
 ### Card 1: Add ExportEnv, PrependPathEntry and Chain to the Shell seam
 
 - **Context:**
-  - `CONSTRAINTS.md`
+  - `internal/shell/shell_test.go`
+  - `internal/shuttleengine/claudeengine/command.go`
 - **Edits:**
   - `internal/shell/shell.go`
   - `internal/shell/posix.go`
   - `internal/shell/pwsh.go`
+  - `CONSTRAINTS.md`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -53,7 +57,16 @@ No batch-local decision differs from the overview's Shared Decisions;
   Update `internal/shell/shell.go`'s file header comment so it names the three added mechanics alongside the quoting, call-operator and prompt-file-read mechanics it already lists.
   Do not change `Quote`, `Invoke`, `ReadFile`, `WithEnv`, `Touch`, `ForGOOS`, `Pwsh` or `Posix` in any way — `WithEnv`'s documented POSIX-vs-pwsh scope asymmetry in particular stays exactly as it is.
   The package keeps importing the standard library only.
+
+  In `CONSTRAINTS.md`, fix the `## Shell Mechanics Seam` invariant's method enumeration, which this card would otherwise leave further out of date.
+  The clause today reads that pane-shell command strings are built ONLY via `internal/shell`, with a parenthetical enumerating the seam as `Quote`/`Invoke`/`ReadFile` plus the stdlib-only constraint.
+  That parenthetical is already incomplete before this card — `WithEnv` and `Touch` are on the interface and absent from it — and adding three more methods widens the gap.
+  Rewrite the parenthetical so it stops claiming to be the full method list: keep the stdlib-only constraint, and state that the named methods are illustrative of the seam's mechanics rather than an exhaustive interface listing, so the clause does not re-stale on the next method added.
+  Change nothing else in that section, and change no other section of the file — the new `## Pane Binary Resolution` clause is card 3's work, in a later batch.
+  Use semantic line breaks for any prose line touched, per the `markdown-semantic-line-breaks` Shared Decision.
 - **Commit:** `feat(shell): add ExportEnv, PrependPathEntry and Chain to the Shell seam`
+
+_`CONSTRAINTS.md` is edited here and again in batch 2's card 3, in disjoint sections: this card touches only the `## Shell Mechanics Seam` parenthetical, card 3 only adds the new `## Pane Binary Resolution` section. Batch 2 depends on batch 1, so the two never run concurrently._
 
 ### Card 2: Cover the three new methods in both dialects
 
@@ -87,5 +100,7 @@ No batch-local decision differs from the overview's Shared Decisions;
 ## Batch Tests
 
 `verify: go test ./internal/shell/` runs `internal/shell/shell_test.go`, the package's only test file, which is where card 2's cases land.
-The scope is exactly this batch's `Edits:` set: `shell.go`, `posix.go` and `pwsh.go` are the package's only production files, and no package outside `internal/shell` changes in this batch, so a wider scope would test nothing this batch can break.
+The scope covers this batch's whole runnable surface: `shell.go`, `posix.go` and `pwsh.go` are the package's only production files, and no other package's code changes in this batch, so a wider scope would test nothing this batch can break.
+`CONSTRAINTS.md`, the batch's fourth `Edits:` entry, is prose with no assertion in any package;
+it is covered by the task-wide `pipeline.done_gate` before the task is marked done.
 The package is pure string transforms with no build tag and no spawn, so the run is sub-second and both dialects are exercised on whatever host runs it.

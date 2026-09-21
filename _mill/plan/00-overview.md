@@ -3,7 +3,7 @@
 ```yaml
 task: "Spawned agent panes resolve the spawning lyx binary"
 slug: "lyx-bin-pane-path"
-approved: false
+approved: true
 started: "20260921-114353"
 parent: "main"
 root: ""
@@ -52,6 +52,18 @@ Batch-local decisions live in each batch file._
 - **Decision:** no batch changes how a strand pane's shell is started. `launchStrandLocked` keeps splitting with no trailing shell-command; the `split-window` argv, `new-session`'s argv, and Selvage's own split are all byte-identical to today.
 - **Rationale:** a commandless `split-window` has tmux start `default-shell` as a login shell, which sources `~/.profile` / `~/.bash_profile`. A trailing shell-command is handed to `/bin/sh -c` and execs a non-login shell that skips them, changing the pane's inherited `PATH`. That pane resolves `claude` by bare name, so a start-mode change would make a task about resolving the right binary stop resolving the agent binary at all.
 - **Applies to:** all batches
+
+### Decision: prelude-is-session-scoped-in-both-dialects
+
+- **Decision:** both dialects emit session-scoped statements — POSIX `export`, pwsh `$env:` — never POSIX's existing command-scoped `KEY=value cmd` form. A pane whose command is empty receives the prelude alone.
+- **Rationale:** the interactive operator strand is added with no command at all. It is a shell a human types `lyx …` into, and therefore one of the panes most likely to run the wrong binary, yet a command-scoped POSIX assignment has nothing to attach to there. Mirroring `WithEnv`'s command-scoped-POSIX / session-scoped-pwsh split would leave a platform-dependent hole in a structural guarantee, on POSIX only. This is why `ExportEnv` is a new method rather than a reuse of `WithEnv`.
+- **Applies to:** shell-prelude-primitives, reed-pane-binary-chokepoint
+
+### Decision: docs-describe-the-landed-mechanism
+
+- **Decision:** the crucible and sandbox docs describe the mechanism as landed — panes resolve the spawning binary, no PATH setup needed — never as an interim prerequisite an operator must satisfy until it lands.
+- **Rationale:** the mechanism lands in this task, so a "until this ships, set PATH yourself" warning would be stale in the very commit that added it and would need removing immediately. The shuttle sandbox suite already uses the matching "no PATH setup needed" phrasing for the launcher's own prepend, so this wording matches a form the repo already uses rather than inventing one.
+- **Applies to:** docs-and-sandbox-preconditions
 
 ### Decision: chain-separator-is-semicolon
 
