@@ -23,6 +23,18 @@ import (
 // producer's own name.
 const stuckFileSuffix = "-stuck.md"
 
+// StuckReasonFile returns the path reportStuck writes producer's one-line reason to, under
+// scratchDir.
+//
+// It is exported so the reader and the writer of this file share one declarer of its name. The file
+// is the only durable carrier of a producer-supplied stuck reason -- shedengine persists its own
+// fixed string instead, and the structured log line scrolls away in an unattended run -- so a CLI
+// that wants to report WHY a run is blocked has to read it, and reconstructing the filename at that
+// call site would let a rename here silently stop it being found.
+func StuckReasonFile(scratchDir, producer string) string {
+	return filepath.Join(scratchDir, producer+stuckFileSuffix)
+}
+
 // reportStuck emits a structured warning through the shared logger carrying at minimum a producer
 // field and a reason field alongside fields' own key-value pairs, and writes a one-line reason file
 // at <scratchDir>/<producer>-stuck.md, overwritten each attempt.
@@ -41,7 +53,7 @@ func reportStuck(producer, reason, scratchDir string, fields ...any) {
 		return
 	}
 
-	path := filepath.Join(scratchDir, producer+stuckFileSuffix)
+	path := StuckReasonFile(scratchDir, producer)
 	if err := os.WriteFile(path, []byte(fmt.Sprintf("%s\n", reason)), 0o644); err != nil {
 		logger.Warn("battenshed: write stuck-reason file failed", "producer", producer, "path", path, "error", err)
 	}

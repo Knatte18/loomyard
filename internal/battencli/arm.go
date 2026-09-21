@@ -29,8 +29,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
+	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -493,14 +495,73 @@ func (c *battenCLI) battenPostRun(ctx context.Context, result shedengine.Result,
 	return map[string]any{"abandonedSession": c.abandonedSession}
 }
 
+// maxStatusHistoryEntries caps how many history entries the status envelope carries.
+//
+// Run-Shed's own still-running self-bounce appends one entry per poll, and the recipe row's budget
+// is max_bounces: 1440, so a child that runs the full twelve-hour watch window leaves well over a
+// thousand identical Run-Shed/stuck entries in the persisted status. Emitting all of them makes the
+// envelope unreadable long before the budget is exhausted, for a run whose interesting history is
+// entirely at its two ends.
+//
+// The cap is generous enough that an ordinary four-row run -- and the hand-written fixture the
+// sandbox suite's own F22 scenario round-trips through this envelope -- is never truncated at all.
+const maxStatusHistoryEntries = 20
+
 // battenStatusExtras implements the StatusExtras hook for batten's spec: batten's own
-// three found-envelope keys and no others. The generic body supplies current_producer, state,
-// error and activity, which together with these three reproduce today's seven-key found-envelope
-// exactly.
+// found-envelope keys and no others. The generic body supplies current_producer, state, error and
+// activity.
+//
+// It adds two things the generic core cannot know about batten. The history is bounded to the most
+// recent maxStatusHistoryEntries entries, always alongside the true history_length, so a truncated
+// view is never mistaken for a short one. And when the run is blocked, it surfaces the producer's
+// own recorded stuck reason: shedengine persists the fixed string "stuck with no OnStuck target"
+// as status.error for EVERY stuck verdict, so the error field alone tells an operator nothing about
+// what to do -- the real reason is in the file battenshed's reportStuck wrote, and nothing read it
+// back before this.
 func (c *battenCLI) battenStatusExtras(st shedengine.Status) (map[string]any, error) {
-	return map[string]any{
-		"found":       true,
-		"status_path": c.shedPaths.StatusPath,
-		"history":     st.History,
-	}, nil
+	history, truncated := recentHistory(st.History)
+	extras := map[string]any{
+		"found":             true,
+		"status_path":       c.shedPaths.StatusPath,
+		"history":           history,
+		"history_length":    len(st.History),
+		"history_truncated": truncated,
+	}
+	if st.State == shedengine.StateBlocked {
+		if reason, found := readStuckReason(BattenDir(c.location, c.slug), st.CurrentProducer); found {
+			extras["stuck_reason"] = reason
+		}
+	}
+	return extras, nil
+}
+
+// recentHistory returns the most recent maxStatusHistoryEntries entries of history, reporting
+// whether anything was dropped. A nil or short history is returned as-is with truncated == false.
+func recentHistory(history []shedengine.HistoryEntry) (recent []shedengine.HistoryEntry, truncated bool) {
+	if len(history) <= maxStatusHistoryEntries {
+		return history, false
+	}
+	return history[len(history)-maxStatusHistoryEntries:], true
+}
+
+// readStuckReason reads back the one-line reason file battenshed's reportStuck writes for producer
+// under scratchDir, reporting found == false when there is none to read.
+//
+// The path comes from battenshed.StuckReasonFile, the writer's own declarer of that name, so a
+// rename there cannot silently stop this reader finding the file. A missing or unreadable file is
+// simply not reported -- failing to find why something is stuck must never change the answer to
+// whether it is stuck, the same rule reportStuck itself follows on write.
+func readStuckReason(scratchDir, producer string) (string, bool) {
+	if scratchDir == "" || producer == "" {
+		return "", false
+	}
+	data, err := os.ReadFile(battenshed.StuckReasonFile(scratchDir, producer))
+	if err != nil {
+		return "", false
+	}
+	reason := strings.TrimSpace(string(data))
+	if reason == "" {
+		return "", false
+	}
+	return reason, true
 }

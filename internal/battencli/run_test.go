@@ -8,6 +8,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -345,5 +347,95 @@ func TestStatusCmd_WatchOverAbsentFileExitsImmediately(t *testing.T) {
 	}
 	if envelope["status_path"] != c.shedPaths.StatusPath {
 		t.Errorf(`status(--watch) envelope["status_path"] = %v; want %q`, envelope["status_path"], c.shedPaths.StatusPath)
+	}
+}
+
+// TestRecentHistory proves the status envelope's history is bounded to the most recent entries and
+// reports whether anything was dropped.
+//
+// The regression it pins: Run-Shed's still-running self-bounce appends one history entry per poll
+// under a max_bounces budget of 1440, so a full twelve-hour watch put well over a thousand identical
+// entries into every "lyx batten status <slug>" envelope, for a run whose interesting history is
+// entirely at its two ends.
+func TestRecentHistory(t *testing.T) {
+	entry := func(n int) shedengine.HistoryEntry {
+		return shedengine.HistoryEntry{Producer: "Run-Shed", Outcome: shedengine.Stuck, Output: fmt.Sprint(n)}
+	}
+	build := func(count int) []shedengine.HistoryEntry {
+		out := make([]shedengine.HistoryEntry, 0, count)
+		for i := 0; i < count; i++ {
+			out = append(out, entry(i))
+		}
+		return out
+	}
+
+	tests := []struct {
+		name          string
+		history       []shedengine.HistoryEntry
+		wantLen       int
+		wantTruncated bool
+		wantLastOut   string
+	}{
+		{name: "nil_history_is_returned_untouched", history: nil, wantLen: 0},
+		{name: "a_short_history_is_returned_whole", history: build(3), wantLen: 3, wantLastOut: "2"},
+		{name: "exactly_at_the_cap_is_not_truncated", history: build(maxStatusHistoryEntries), wantLen: maxStatusHistoryEntries, wantLastOut: fmt.Sprint(maxStatusHistoryEntries - 1)},
+		{
+			name:          "a_full_watch_window_keeps_only_the_most_recent",
+			history:       build(1440),
+			wantLen:       maxStatusHistoryEntries,
+			wantTruncated: true,
+			wantLastOut:   "1439",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, truncated := recentHistory(tt.history)
+			if len(got) != tt.wantLen {
+				t.Errorf("recentHistory(%d entries) returned %d; want %d", len(tt.history), len(got), tt.wantLen)
+			}
+			if truncated != tt.wantTruncated {
+				t.Errorf("recentHistory(%d entries) truncated = %v; want %v", len(tt.history), truncated, tt.wantTruncated)
+			}
+			if tt.wantLastOut != "" && got[len(got)-1].Output != tt.wantLastOut {
+				t.Errorf("recentHistory(...) last entry output = %q; want the most recent entry %q", got[len(got)-1].Output, tt.wantLastOut)
+			}
+		})
+	}
+}
+
+// TestReadStuckReason proves the status verb can recover the producer-supplied reason battenshed
+// wrote, and that it stays silent rather than guessing when there is none.
+//
+// The regression it pins: shedengine persists the fixed string "stuck with no OnStuck target" as
+// status.error for every stuck verdict, so "lyx batten status <slug>" told an operator nothing
+// actionable about a blocked run -- while a real remedy sat in a file batten itself had written,
+// in a directory batten can name.
+func TestReadStuckReason(t *testing.T) {
+	scratchDir := t.TempDir()
+	const producer = "Worktree-Create"
+	const reason = `branch "crashcreate" already exists; switch a pair onto it with "lyx fabric checkout crashcreate"`
+
+	if _, found := readStuckReason(scratchDir, producer); found {
+		t.Fatalf("precondition: readStuckReason found a reason before any was written")
+	}
+
+	if err := os.WriteFile(battenshed.StuckReasonFile(scratchDir, producer), []byte(reason+"\n"), 0o644); err != nil {
+		t.Fatalf("write stuck reason: %v", err)
+	}
+
+	got, found := readStuckReason(scratchDir, producer)
+	if !found {
+		t.Fatalf("readStuckReason(%q, %q) found = false; want the reason battenshed just wrote", scratchDir, producer)
+	}
+	if got != reason {
+		t.Errorf("readStuckReason(...) = %q; want %q", got, reason)
+	}
+
+	if _, found := readStuckReason(scratchDir, "Some-Other-Row"); found {
+		t.Error("readStuckReason reported a reason for a producer that wrote none")
+	}
+	if _, found := readStuckReason("", producer); found {
+		t.Error("readStuckReason reported a reason for an empty scratch directory")
 	}
 }
