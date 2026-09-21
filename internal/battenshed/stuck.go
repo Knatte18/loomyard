@@ -1,4 +1,4 @@
-// stuck.go declares reportStuck, the one helper all three producers in this package route every
+// stuck.go declares reportStuck, the one helper all four producers in this package route every
 // stuck verdict through.
 //
 // The producer seam (shedengine.ShedProducer) returns only a verdict, an output pointer, and an

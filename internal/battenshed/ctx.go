@@ -1,4 +1,4 @@
-// ctx.go implements the two context checks this package's three producers share: entryErr,
+// ctx.go implements the two context checks this package's four producers share: entryErr,
 // consulted before Call starts anything, and cancelErr, consulted by every non-Done exit path.
 // This is battenshed's own copy of preflightshed's and landingshed's identically-shaped
 // helpers -- see doc.go for why the duplication is deliberate.
