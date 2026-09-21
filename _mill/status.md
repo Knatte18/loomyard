@@ -47,6 +47,8 @@ batches:
     commit_sha: 22e34d74d34f8492b0928cf265e42b8ee774418c
     verify_baseline_failures: []
   - name: docs-and-sandbox-preconditions
-    state: pending
+    state: running
+    implementer_session: 3269a2ce-932d-4d01-943e-dfac5c703af2
+    start_sha: 7a4755462c8d0549964623b8c1a430205cedda86
     verify_baseline_failures: []
 ```
