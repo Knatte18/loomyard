@@ -10,7 +10,7 @@ import "strings"
 // posixShell implements Shell for a POSIX shell. It carries no state and is safe to share.
 type posixShell struct{}
 
-// Quote wraps s in POSIX single quotes, escaping embedded quotes via '\'' idiom.
+// Quote wraps s in POSIX single quotes, escaping embedded quotes via '\” idiom.
 func (posixShell) Quote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
@@ -35,4 +35,22 @@ func (p posixShell) WithEnv(key, value, cmd string) string {
 // redirection, so the fragment creates or truncates path without spawning any process.
 func (p posixShell) Touch(path string) string {
 	return ": > " + p.Quote(path)
+}
+
+// ExportEnv returns a POSIX `export key=<quoted value>` statement, session-scoped.
+func (p posixShell) ExportEnv(key, value string) string {
+	return "export " + key + "=" + p.Quote(value)
+}
+
+// PrependPathEntry returns a POSIX `export PATH=<quoted dir>${PATH:+:$PATH}` statement.
+// The `${PATH:+…}` parameter expansion yields nothing when PATH is unset or empty, which is what
+// keeps a trailing `:` — read by POSIX shells as the current directory — from ever being
+// produced.
+func (p posixShell) PrependPathEntry(dir string) string {
+	return "export PATH=" + p.Quote(dir) + `${PATH:+:$PATH}`
+}
+
+// Chain joins parts with "; ", dropping empty parts. See chainStatements.
+func (p posixShell) Chain(parts ...string) string {
+	return chainStatements(parts...)
 }

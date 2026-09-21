@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/shell"
 )
 
 // validateSplitCreatedNewPane returns an error unless paneID is genuinely
@@ -68,6 +69,13 @@ func sendKeysLiteralArg(text string) string {
 // clean failure into a phantom strand Resume would later try to launch. If this window ever needs
 // closing, the right shape is reaping before the strand record is appended to st.Strands, not
 // persisting a partial one from inside this helper.
+//
+// The prelude that resolves this strand pane's `lyx` to the binary that spawned it is owned by
+// panebin.go and composed here, at the one send-keys payload every strand-realizing path funnels
+// through — see composePaneLaunchLine. The split issued below still carries no trailing
+// shell-command argument, so the pane remains tmux's own default-shell started as a login shell
+// (pane-start-mode-is-untouched Shared Decision); the prelude rides the send-keys line typed into
+// that shell afterward, alongside launchCmd, rather than changing how the pane's shell itself starts.
 func (e *Engine) launchStrandLocked(st *ReedState, s *Strand, launchCmd string) error {
 	session := e.SessionName()
 
@@ -125,11 +133,14 @@ func (e *Engine) launchStrandLocked(st *ReedState, s *Strand, launchCmd string) 
 	}
 
 	s.PaneID = paneID
-	// Send the command as a literal string (-l) so tmux never reinterprets
-	// any part of the opaque launchCmd as a key name (e.g. "Enter", "C-c") or
-	// splits it on an embedded ';' — the caller (shuttle) builds arbitrary
-	// PowerShell command chains. A separate Enter then submits it.
-	if err := e.tmux.run("send-keys", "-t", paneID, "-l", sendKeysLiteralArg(launchCmd)); err != nil {
+	// composePaneLaunchLine joins the pane-binary prelude (panebin.go) onto launchCmd, on the same
+	// shell.ForGOOS() dialect the launch command itself was built with, so the two never disagree
+	// about which shell is typed into. Send the composed line as a literal string (-l) so tmux never
+	// reinterprets any part of the opaque payload as a key name (e.g. "Enter", "C-c") or splits it on
+	// an embedded ';' — the caller (shuttle) builds arbitrary PowerShell command chains. A separate
+	// Enter then submits it.
+	composedLine := composePaneLaunchLine(shell.ForGOOS(), launchCmd, s.GUID)
+	if err := e.tmux.run("send-keys", "-t", paneID, "-l", sendKeysLiteralArg(composedLine)); err != nil {
 		return fmt.Errorf("send launch command: %w", err)
 	}
 	if err := e.tmux.run("send-keys", "-t", paneID, "Enter"); err != nil {

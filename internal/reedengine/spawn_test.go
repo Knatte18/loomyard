@@ -2,12 +2,18 @@
 // invoking it directly through the e.tmux.execHook fake) and loadOrInitStateLocked's fresh-worktree
 // bootstrap. Both are pure/hermetic, no live tmux required. The composed live behavior against a real
 // tmux is covered by the smoke tests. planPaneTarget's own table-driven test moved to
-// selvagepane_test.go alongside the function it exercises.
+// selvagepane_test.go alongside the function it exercises. It also pins two regression guards for the
+// pane-binary prelude wiring: that launchStrandLocked's send-keys payload is the composed prelude
+// rather than the bare command, and that the split-window argv it issues still carries no trailing
+// shell-command argument.
 
 package reedengine
 
 import (
+	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/shell"
 )
 
 // TestLaunchStrandLocked_ReapsUntrackedPanesBeforeChoosingASplitTarget pins the reap-before-allocate
@@ -352,5 +358,107 @@ func TestStatus_NeverReportsAStrandLiveOnAPaneAnotherOwnerClaims(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestLaunchStrandLocked_SendsThePreludeAheadOfTheStrandCommand pins that launchStrandLocked's
+// send-keys payload is the composed pane-binary prelude joined onto the strand's command -- not the
+// bare command -- and that the Enter submit still follows as a separate send-keys call.
+func TestLaunchStrandLocked_SendsThePreludeAheadOfTheStrandCommand(t *testing.T) {
+	e := newTestEngine(t)
+
+	const exe = "/opt/lyx/bin/lyx"
+	withInjectedExecutablePath(t, func() (string, error) { return exe, nil })
+
+	const selvagePaneID = "%selvage"
+	live := selvagePaneID + " 0 0 100 20 4321\n"
+
+	var sendKeysCalls [][]string
+	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
+		switch args[0] {
+		case "list-panes":
+			return live, nil
+		case "split-window":
+			return "%new\n", nil
+		case "send-keys":
+			sendKeysCalls = append(sendKeysCalls, append([]string{}, args...))
+			return "", nil
+		default:
+			return "", nil
+		}
+	}
+
+	st := &ReedState{SelvagePaneID: selvagePaneID}
+	st.Strands = append(st.Strands, Strand{GUID: "new"})
+	s := &st.Strands[0]
+
+	const launchCmd = "claude --continue"
+	if err := e.launchStrandLocked(st, s, launchCmd); err != nil {
+		t.Fatalf("launchStrandLocked: %v", err)
+	}
+
+	if len(sendKeysCalls) != 2 {
+		t.Fatalf("send-keys called %d times, want exactly 2 (the literal payload, then Enter): %v", len(sendKeysCalls), sendKeysCalls)
+	}
+
+	wantLiteral := sendKeysLiteralArg(composePaneLaunchLine(shell.ForGOOS(), launchCmd, s.GUID))
+	firstArgs := sendKeysCalls[0]
+	if len(firstArgs) == 0 || firstArgs[len(firstArgs)-1] != wantLiteral {
+		t.Errorf("first send-keys args = %v, want the last argument to be the composed literal payload %q -- not the bare command", firstArgs, wantLiteral)
+	}
+	if strings.Contains(wantLiteral, "\n") {
+		t.Errorf("composed literal payload = %q, want a single line with no newline", wantLiteral)
+	}
+
+	secondArgs := sendKeysCalls[1]
+	if len(secondArgs) == 0 || secondArgs[len(secondArgs)-1] != "Enter" {
+		t.Errorf("second send-keys args = %v, want its last argument to be \"Enter\" (a separate submit)", secondArgs)
+	}
+}
+
+// TestLaunchStrandLocked_SplitWindowCarriesNoTrailingShellCommand is the regression guard for the
+// pane-start-mode-is-untouched Shared Decision, and is the single most load-bearing assertion in this
+// batch: it asserts the split-window argv ends with the -F flag and its #{pane_id} value, so that
+// appending ANY trailing argument fails it -- not merely a specific known-bad value.
+//
+// A trailing shell-command makes tmux hand the pane to /bin/sh -c, which execs a non-login shell that
+// skips ~/.profile / ~/.bash_profile and therefore changes the pane's inherited PATH -- and that pane
+// resolves claude by bare name, so the change would stop the agent binary resolving at all.
+func TestLaunchStrandLocked_SplitWindowCarriesNoTrailingShellCommand(t *testing.T) {
+	e := newTestEngine(t)
+
+	const exe = "/opt/lyx/bin/lyx"
+	withInjectedExecutablePath(t, func() (string, error) { return exe, nil })
+
+	const selvagePaneID = "%selvage"
+	live := selvagePaneID + " 0 0 100 20 4321\n"
+
+	var splitArgs []string
+	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
+		switch args[0] {
+		case "list-panes":
+			return live, nil
+		case "split-window":
+			splitArgs = append([]string{}, args...)
+			return "%new\n", nil
+		default:
+			return "", nil
+		}
+	}
+
+	st := &ReedState{SelvagePaneID: selvagePaneID}
+	st.Strands = append(st.Strands, Strand{GUID: "new"})
+	s := &st.Strands[0]
+
+	if err := e.launchStrandLocked(st, s, "claude --continue"); err != nil {
+		t.Fatalf("launchStrandLocked: %v", err)
+	}
+
+	if len(splitArgs) < 2 {
+		t.Fatalf("split-window argv = %v, too short to check its tail", splitArgs)
+	}
+	last, secondLast := splitArgs[len(splitArgs)-1], splitArgs[len(splitArgs)-2]
+	if secondLast != "-F" || last != "#{pane_id}" {
+		t.Errorf("split-window argv = %v, want it to end with \"-F\" \"#{pane_id}\" and nothing after -- a trailing shell-command argument would make tmux exec a non-login shell that skips the pane's profile", splitArgs)
 	}
 }

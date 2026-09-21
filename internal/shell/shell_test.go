@@ -1,12 +1,15 @@
 // shell_test.go table-tests both pane-shell implementations: argument quoting across plain,
-// space-containing, and quote-containing inputs, and the exact Invoke/ReadFile/ WithEnv output each
-// impl composes.
+// space-containing, and quote-containing inputs, and the exact Invoke/ReadFile/WithEnv/ExportEnv/
+// PrependPathEntry/Chain output each impl composes.
 // The pwsh quoting cases are migrated verbatim from claudeengine's former TestPwshSingleQuote so
 // the coverage moves with the logic it tests.
 
 package shell
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // Compile-time assertions that both dialects satisfy the Shell interface.
 var (
@@ -167,6 +170,142 @@ func TestPosixShell_Touch(t *testing.T) {
 			wantPrefix := ": > "
 			if len(got) < len(wantPrefix) || got[:len(wantPrefix)] != wantPrefix {
 				t.Errorf("Posix().Touch(%q) = %q; want prefix %q", tt.in, got, wantPrefix)
+			}
+		})
+	}
+}
+
+func TestPosixShell_ExportEnv(t *testing.T) {
+	tests := []struct {
+		name  string
+		key   string
+		value string
+		want  string
+	}{
+		{"plain", "LYX_BIN", "/usr/local/bin/lyx", "export LYX_BIN='/usr/local/bin/lyx'"},
+		{"space_and_path_separator", "LYX_BIN", "/usr/local/my bin:more", "export LYX_BIN='/usr/local/my bin:more'"},
+		{"quote", "LYX_BIN", "it's", `export LYX_BIN='it'\''s'`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Posix().ExportEnv(tt.key, tt.value)
+			if got != tt.want {
+				t.Errorf("Posix().ExportEnv(%q, %q) = %q; want %q", tt.key, tt.value, got, tt.want)
+			}
+			wantPrefix := "export " + tt.key + "="
+			if len(got) < len(wantPrefix) || got[:len(wantPrefix)] != wantPrefix {
+				t.Errorf("Posix().ExportEnv(%q, %q) = %q; want it to stand alone with prefix %q and no trailing command fragment", tt.key, tt.value, got, wantPrefix)
+			}
+		})
+	}
+}
+
+func TestPwshShell_ExportEnv(t *testing.T) {
+	tests := []struct {
+		name  string
+		key   string
+		value string
+		want  string
+	}{
+		{"plain", "LYX_BIN", `C:\bin\lyx.exe`, `$env:LYX_BIN = 'C:\bin\lyx.exe'`},
+		{"space_and_path_separator", "LYX_BIN", `C:\my bin;more`, `$env:LYX_BIN = 'C:\my bin;more'`},
+		{"quote", "LYX_BIN", "it's", "$env:LYX_BIN = 'it''s'"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Pwsh().ExportEnv(tt.key, tt.value)
+			if got != tt.want {
+				t.Errorf("Pwsh().ExportEnv(%q, %q) = %q; want %q", tt.key, tt.value, got, tt.want)
+			}
+			wantPrefix := "$env:" + tt.key + " = "
+			if len(got) < len(wantPrefix) || got[:len(wantPrefix)] != wantPrefix {
+				t.Errorf("Pwsh().ExportEnv(%q, %q) = %q; want it to stand alone with prefix %q and no trailing command fragment", tt.key, tt.value, got, wantPrefix)
+			}
+		})
+	}
+}
+
+func TestPosixShell_PrependPathEntry(t *testing.T) {
+	tests := []struct {
+		name string
+		dir  string
+		want string
+	}{
+		{"plain", "/usr/local/bin", `export PATH='/usr/local/bin'${PATH:+:$PATH}`},
+		{"space", "/usr/local/my bin", `export PATH='/usr/local/my bin'${PATH:+:$PATH}`},
+		{"quote", "/usr/local/it's", `export PATH='/usr/local/it'\''s'${PATH:+:$PATH}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Posix().PrependPathEntry(tt.dir)
+			if got != tt.want {
+				t.Errorf("Posix().PrependPathEntry(%q) = %q; want %q", tt.dir, got, tt.want)
+			}
+			if !strings.Contains(got, "$PATH") {
+				t.Errorf("Posix().PrependPathEntry(%q) = %q; want it to reference the live $PATH variable", tt.dir, got)
+			}
+			if !strings.Contains(got, "${PATH:+") {
+				t.Errorf("Posix().PrependPathEntry(%q) = %q; want it to carry the unset-PATH guard ${PATH:+", tt.dir, got)
+			}
+		})
+	}
+}
+
+func TestPwshShell_PrependPathEntry(t *testing.T) {
+	tests := []struct {
+		name string
+		dir  string
+		want string
+	}{
+		{"plain", `C:\bin`, `$env:PATH = 'C:\bin' + $(if ($env:PATH) { [IO.Path]::PathSeparator + $env:PATH })`},
+		{"space", `C:\my bin`, `$env:PATH = 'C:\my bin' + $(if ($env:PATH) { [IO.Path]::PathSeparator + $env:PATH })`},
+		{"quote", `C:\it's`, `$env:PATH = 'C:\it''s' + $(if ($env:PATH) { [IO.Path]::PathSeparator + $env:PATH })`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Pwsh().PrependPathEntry(tt.dir)
+			if got != tt.want {
+				t.Errorf("Pwsh().PrependPathEntry(%q) = %q; want %q", tt.dir, got, tt.want)
+			}
+			if !strings.Contains(got, "$env:PATH") {
+				t.Errorf("Pwsh().PrependPathEntry(%q) = %q; want it to reference the live $env:PATH variable", tt.dir, got)
+			}
+			if !strings.Contains(got, "if ($env:PATH)") {
+				t.Errorf("Pwsh().PrependPathEntry(%q) = %q; want it to carry the unset-PATH guard if ($env:PATH)", tt.dir, got)
+			}
+		})
+	}
+}
+
+func TestShellChain(t *testing.T) {
+	tests := []struct {
+		name  string
+		parts []string
+		want  string
+	}{
+		{"zero_parts", []string{}, ""},
+		{"one_part", []string{"export FOO='bar'"}, "export FOO='bar'"},
+		{"several_parts", []string{"a", "b", "c"}, "a; b; c"},
+		{"mixed_empty_and_nonempty", []string{"", "a", "", "b", ""}, "a; b"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			posixGot := Posix().Chain(tt.parts...)
+			if posixGot != tt.want {
+				t.Errorf("Posix().Chain(%q...) = %q; want %q", tt.parts, posixGot, tt.want)
+			}
+			pwshGot := Pwsh().Chain(tt.parts...)
+			if pwshGot != tt.want {
+				t.Errorf("Pwsh().Chain(%q...) = %q; want %q", tt.parts, pwshGot, tt.want)
+			}
+			if strings.Contains(posixGot, "\n") {
+				t.Errorf("Posix().Chain(%q...) = %q; want no newline", tt.parts, posixGot)
+			}
+			if strings.Contains(pwshGot, "\n") {
+				t.Errorf("Pwsh().Chain(%q...) = %q; want no newline", tt.parts, pwshGot)
+			}
+			if posixGot != pwshGot {
+				t.Errorf("Posix().Chain(%q...) = %q; Pwsh().Chain(%q...) = %q; want them to agree", tt.parts, posixGot, tt.parts, pwshGot)
 			}
 		})
 	}

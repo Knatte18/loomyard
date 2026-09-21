@@ -176,6 +176,13 @@ Reusable rules that bit us and are worth carrying to any module's live driving:
   Live driving runs the **deployed** binary, not your working tree.
   Re-run `deploy-dev.cmd` (`deploy-dev` on POSIX) after **every** source change or you validate a stale binary and draw a false PASS/FAIL.
   When in doubt, re-deploy.
+- **Spawned agent panes run the binary that spawned them.**
+  Reed prepends the spawning binary's directory to every strand pane's `PATH` and exports `LYX_BIN` to its absolute path,
+  so an agent pane's bare `lyx …` resolves to the same build driving the round — no PATH setup needed.
+  For a round agent, the deploy-first footgun above is about the binary the round is *started* from;
+  the panes underneath it inherit that choice rather than falling back to the operator's production install.
+  This closes a real failure: crucible round `fable-high-r2` of batten ran the dev binary in batten and loom while the Discussion/Plan/Webster agents inside the child worktree ran a newer `PATH`-resolved build,
+  which reconciled and committed a rewrite of the child's reed and loom config that the dev binary could then no longer load — and nothing reported the mismatch.
 - **Cost/time is not a reason to skip live driving.**
   A real substrate session (a real implementer/agent doing real work) takes real wall-clock minutes, not seconds — that is a budget fact, not grounds to fall back to code-tracing.
   Reserve "cannot verify headlessly" strictly for a genuine environment gap or an actual human-eyeball need (e.g. a visual `lyx reed attach` confirmation) — never a blanket cost/turn-budget excuse.
