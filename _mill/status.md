@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: lyx-bin-pane-path
 branch: lyx-bin-pane-path
 plan: _mill/plan
@@ -31,6 +31,7 @@ approved-reed-pane-binary-chokepoint  '2026-09-21T14:24:25Z'
 approved-docs-and-sandbox-preconditions  '2026-09-21T14:26:40Z'
 holistic-reviewing  '2026-09-21T14:27:01Z'
 holistic-approved  '2026-09-21T14:30:09Z'
+done  '2026-09-21T14:34:25Z'
 ```
 
 ## Batches
