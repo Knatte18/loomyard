@@ -540,3 +540,34 @@ func TestBattenIntegration_NonPrimeRefusal(t *testing.T) {
 		})
 	}
 }
+
+// TestBattenIntegration_WeftPrimeRefusal pins the other half of the Bookend guard: the weft sibling
+// of the prime is a repository of its own whose prime is itself, so a name comparison alone admits
+// it, and both bookend rows would then drive fabric's topology against the weft repository. Every
+// verb must refuse there before arming anything -- no seed written under the weft prime, nothing
+// created -- and the refusal must say which checkout the operator is standing in.
+func TestBattenIntegration_WeftPrimeRefusal(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+	weftPrimeCwd := h.PrimeWeft()
+
+	for _, verb := range []string{"run", "step", "status", "pause"} {
+		t.Run(verb, func(t *testing.T) {
+			var out bytes.Buffer
+			exitCode := RunCLIIn(weftPrimeCwd, &out, []string{verb, "some-slug"})
+
+			if exitCode != 1 {
+				t.Fatalf("RunCLIIn(%s) from the weft prime exit code = %d; want 1; output: %s", verb, exitCode, out.String())
+			}
+			if !strings.Contains(out.String(), "weft sibling") {
+				t.Errorf("%s refusal = %q; want it to name the weft sibling", verb, out.String())
+			}
+			if !strings.Contains(out.String(), "prime worktree only") {
+				t.Errorf("%s refusal = %q; want the prime-only wording", verb, out.String())
+			}
+		})
+	}
+
+	if pathExists(filepath.Join(weftPrimeCwd, "_lyx", "shed", "some-slug")) {
+		t.Errorf("a run directory was seeded under the weft prime; the refusal must land before the auto-seed")
+	}
+}

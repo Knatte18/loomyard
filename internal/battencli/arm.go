@@ -257,6 +257,14 @@ func (c *battenCLI) arm(cwd string, verb string, args []string) (shedverbs.Spec,
 // is always the same value the caller holds: the pre-run's own c on the "lyx batten" path, the
 // wrapper's freshly-constructed one on the "lyx shed" path.
 func (c *battenCLI) armAt(location *lyxcwd.Location, runID string, explicit bool, verb string) (shedverbs.Spec, error) {
+	// Ahead of the prime-name check, because that check asks "is this the prime of the repository
+	// I am standing in" and the weft sibling is a repository of its own with a prime of its own:
+	// from the weft prime the name check passes and both bookend rows would then drive fabric's
+	// topology against the weft repository (see refusal.go).
+	if err := fabricengine.RequireWarpWorktree(location); err != nil {
+		return shedverbs.Spec{}, fmt.Errorf("battencli: this verb runs from the hub's prime worktree only: %w", err)
+	}
+
 	primeName, primeNameErr := fabricengine.PrimeName(location)
 	if refusalErr := refuseNonPrime(location.WorktreeName, primeName, primeNameErr); refusalErr != nil {
 		return shedverbs.Spec{}, refusalErr
