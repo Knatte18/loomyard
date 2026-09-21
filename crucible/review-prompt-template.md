@@ -192,8 +192,9 @@ Small and low-severity findings are usually the CHEAPEST to fix, not a reason to
 
 ## Fixing — after the review
 - Fix EVERY finding from your review, all severities including NIT (see "How to judge each finding" above for the full rationale) — not just BLOCKING/MEDIUM ones.
-- Load the code-quality guidance (`/code-quality` skill) AND the language-specific skill(s) for this codebase (e.g. `mill:golang-build`/`mill:golang-testing`/`mill:golang-comments` for a Go module — substitute the matching set for whatever language this module is written in) before editing — ALL of the relevant skills, not code-quality alone. (This rule exists because a round agent on shuttle's second round loaded code-quality only and skipped the language-specific skills when it reached this step;
-  the operator caught it live and had to stop the round to redirect it.)
+- Load the code-quality guidance (`/code-quality` skill), the two language-AGNOSTIC skills that govern comment style and prose everywhere in this repo (`mill:code-comments`, `mill:prose`), AND the language-specific skill(s) for this codebase (e.g. `mill:golang-build`/`mill:golang-testing`/`mill:golang-comments` for a Go module — substitute the matching set for whatever language this module is written in) before editing — ALL of the relevant skills, not code-quality alone. (This rule exists because a round agent on shuttle's second round loaded code-quality only and skipped the language-specific skills when it reached this step;
+  the operator caught it live and had to stop the round to redirect it.
+  It was widened to name `mill:code-comments`/`mill:prose` explicitly after a batten campaign round wrote enormous changelog-style doc comments — narrating what a method used to do and what changed, not just its current behavior — because neither language-agnostic skill had been loaded; naming only "code-quality" and "the language-specific skill(s)" left an unnamed gap a round could walk straight into.)
   Prefer surgical edits;
   match existing style and the file-level doc-comment convention.
 - For every bug you fix, add or extend a test that would have caught it.
