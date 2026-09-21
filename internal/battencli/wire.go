@@ -206,6 +206,8 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				if err != nil {
 					return err
 				}
+				// loom's bootstrap verb, not a per-recipe dispatch: the WriteSeed seam below admits
+				// no other child recipe, so the two stay consistent by construction.
 				// Dir is the task worktree's AnchorPath(), never its bare worktree root: the resolver
 				// gates a child's working directory to the anchor, and a bare root fails on any
 				// subpath-anchored hub.
@@ -258,14 +260,22 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			},
 			// WriteSeed is the only place in the batten path that encodes a seed, per the
 			// seed-encoding-stays-behind-a-seam-in-battenshed Shared Decision. It validates recipe
-			// itself, wrapping a failure in battenshed.ErrUnknownRecipe so seedChildProducer's own
-			// errors.Is check routes it to Stuck rather than a hard error.
+			// itself, wrapping an unknown name in battenshed.ErrUnknownRecipe and a known but
+			// unbootstrappable one in battenshed.ErrUnsupportedChildRecipe, so seedChildProducer's
+			// own errors.Is checks route both to Stuck rather than a hard error.
 			//
 			// Params come from childSeedParams: a seed missing one the child's own bootstrap
 			// writes is not a smaller seed, it is a seed that bootstrap refuses.
 			WriteSeed: func(ctx context.Context, recipe, driver string) error {
 				if err := shedrun.ValidateRecipe(recipe); err != nil {
 					return fmt.Errorf("%w: %s", battenshed.ErrUnknownRecipe, err.Error())
+				}
+				// Refused here, ahead of any write, because Spawn above runs loom's bootstrap verb
+				// unconditionally: a child seeded with any other recipe would carry a committed,
+				// pushed seed that its own bootstrap then refuses as a disagreement, reported from
+				// inside the child as a shedrun fault rather than as this choice.
+				if recipe != shedrun.RecipeLoom {
+					return fmt.Errorf("%w: only %q has a bootstrap verb Run-Shed can start in the task worktree, so a Board task's type must be %q or empty; got %q", battenshed.ErrUnsupportedChildRecipe, shedrun.RecipeLoom, shedrun.RecipeLoom, recipe)
 				}
 				childLocation, err := taskWorktreeLocation(location, slug)
 				if err != nil {

@@ -18,6 +18,13 @@ import (
 // path-resolution or write failure) and is a returned hard error instead.
 var ErrUnknownRecipe = errors.New("battenshed: unknown recipe name")
 
+// ErrUnsupportedChildRecipe is the sentinel a SeedChildDeps.WriteSeed closure wraps when recipe is a
+// registered recipe the task worktree's bootstrap cannot run -- InnerRun spawns the one bootstrap verb
+// that exists, loom's. SeedChild routes it to Stuck exactly as ErrUnknownRecipe, before any seed is
+// written or committed, so a Board task typed with such a recipe halts at Seed-Child with the recipe
+// named rather than failing inside the child after a wrong seed has already been pushed.
+var ErrUnsupportedChildRecipe = errors.New("battenshed: recipe cannot be a task worktree's own run")
+
 // PrimeLock carries the told absolute path to a hub-scoped advisory lock plus the injected
 // acquire closure both WorktreeCreate and WorktreeTeardown hold it behind, so the two producers
 // that mutate the hub's worktree registry concurrently with each other never race.
@@ -86,9 +93,10 @@ type SeedChildDeps struct {
 	// inherits prime's driver, never the Board's.
 	ChildDriver func() (string, error)
 	// WriteSeed resolves the child's seed path and encodes recipe and driver into it. An error
-	// wrapping ErrUnknownRecipe means recipe names no recipe the encoder knows, a business
-	// judgment SeedChild routes to Stuck; any other error is a path-resolution or write failure,
-	// mechanism failure SeedChild returns as a hard error.
+	// wrapping ErrUnknownRecipe means recipe names no recipe the encoder knows, and one wrapping
+	// ErrUnsupportedChildRecipe means it names a recipe the task worktree cannot bootstrap; both
+	// are business judgments SeedChild routes to Stuck. Any other error is a path-resolution or
+	// write failure, mechanism failure SeedChild returns as a hard error.
 	WriteSeed func(ctx context.Context, recipe, driver string) error
 	// CommitSeed commits the just-written seed file. A non-nil error is Stuck: it names why a
 	// commit failed, a condition a human can act on.

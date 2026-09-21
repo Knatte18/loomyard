@@ -171,6 +171,31 @@ func TestSeedChild_UnknownRecipeNameIsStuck(t *testing.T) {
 	}
 }
 
+// TestSeedChild_UnsupportedChildRecipeIsStuck pins the second refusal a WriteSeed seam may raise:
+// a registered recipe the task worktree cannot bootstrap lands Stuck, naming the Board type, with
+// no commit and no push attempted.
+func TestSeedChild_UnsupportedChildRecipeIsStuck(t *testing.T) {
+	scratchDir := t.TempDir()
+	writeErr := fmt.Errorf("%w: only loom can", ErrUnsupportedChildRecipe)
+	calls, deps := newSeedChildDeps("batten", nil, "go", nil, writeErr, nil, nil)
+
+	producer := NewSeedChild("seedchild", "myslug", deps, scratchDir)
+	outcome, _, err := producer.Call(context.Background())
+	if err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	if outcome != shedengine.Stuck {
+		t.Fatalf("Call() outcome = %v; want Stuck", outcome)
+	}
+	if calls.commitCalled || calls.pushCalled {
+		t.Errorf("commitCalled=%v pushCalled=%v; want neither -- nothing was written to commit", calls.commitCalled, calls.pushCalled)
+	}
+	reason := readStuckFile(t, scratchDir, "seedchild")
+	if !strings.Contains(reason, `Board task type "batten"`) {
+		t.Errorf("stuck-reason file = %q; want it to name the Board task type", reason)
+	}
+}
+
 func TestSeedChild_WriteSeedFailureNotUnknownRecipeIsReturnedError(t *testing.T) {
 	scratchDir := t.TempDir()
 	writeErr := errors.New("resolve seed path failed")

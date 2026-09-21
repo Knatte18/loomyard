@@ -9,11 +9,14 @@
 package battencli
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 // TestWire_SucceedsForNonexistentTaskWorktree asserts that wire returns no error even though the
@@ -103,6 +106,40 @@ func TestWire_SeedChildClosuresFilled(t *testing.T) {
 				t.Errorf("wire() left this seam nil; want an injected closure present but uncalled")
 			}
 		})
+	}
+}
+
+// TestWire_WriteSeedRefusesANonLoomChildBeforeTouchingTheWorktree pins the order inside the wired
+// WriteSeed seam: a registered recipe the task worktree cannot bootstrap is refused with
+// battenshed.ErrUnsupportedChildRecipe before the seam resolves the task worktree at all -- the
+// location here has no worktree, so a loom recipe reaches the absent-pair refusal instead, which
+// is an os.Stat, never the resolver, so this file stays Tier 1.
+func TestWire_WriteSeedRefusesANonLoomChildBeforeTouchingTheWorktree(t *testing.T) {
+	c := &battenCLI{}
+	location := &lyxcwd.Location{
+		RepoName:     "example",
+		HubPath:      t.TempDir(),
+		WorktreeName: "hub-repo",
+		AnchorRel:    ".",
+	}
+	if err := c.wire(location, "a-slug-with-no-worktree-anywhere"); err != nil {
+		t.Fatalf("wire() error = %v; want nil", err)
+	}
+
+	err := c.env.SeedChild.WriteSeed(context.Background(), shedrun.RecipeBatten, shedrun.DriverGo)
+	if !errors.Is(err, battenshed.ErrUnsupportedChildRecipe) {
+		t.Fatalf("WriteSeed(batten) error = %v; want it to wrap ErrUnsupportedChildRecipe", err)
+	}
+	if !strings.Contains(err.Error(), shedrun.RecipeLoom) {
+		t.Errorf("WriteSeed(batten) error = %q; want it to name the one recipe a child may run", err)
+	}
+
+	err = c.env.SeedChild.WriteSeed(context.Background(), shedrun.RecipeLoom, shedrun.DriverGo)
+	if errors.Is(err, battenshed.ErrUnsupportedChildRecipe) || errors.Is(err, battenshed.ErrUnknownRecipe) {
+		t.Fatalf("WriteSeed(loom) error = %v; want a loom child admitted past the recipe checks", err)
+	}
+	if err == nil || !strings.Contains(err.Error(), "not present") {
+		t.Errorf("WriteSeed(loom) error = %v; want the absent-pair refusal, proving the recipe check ran first", err)
 	}
 }
 
