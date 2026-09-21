@@ -25,6 +25,14 @@ var ErrUnknownRecipe = errors.New("battenshed: unknown recipe name")
 // named rather than failing inside the child after a wrong seed has already been pushed.
 var ErrUnsupportedChildRecipe = errors.New("battenshed: recipe cannot be a task worktree's own run")
 
+// ErrDisagreeingChildSeed is the sentinel a SeedChildDeps.WriteSeed closure wraps when the task
+// worktree's own seed already exists and disagrees with the one Seed-Child is about to write --
+// normally unreachable, since Seed-Child runs once and never revisits a Done row, but reachable
+// against a hand-seeded or otherwise pre-existing child seed. SeedChild routes it to Stuck exactly
+// as the other two WriteSeed sentinels: the same kind of business judgment a human can act on (fix
+// or delete the child's own seed, or correct the Board task's type), not a mechanism failure.
+var ErrDisagreeingChildSeed = errors.New("battenshed: task worktree already seeded with a disagreeing seed")
+
 // PrimeLock carries the told absolute path to a hub-scoped advisory lock plus the injected
 // acquire closure both WorktreeCreate and WorktreeTeardown hold it behind, so the two producers
 // that mutate the hub's worktree registry concurrently with each other never race.
@@ -90,10 +98,11 @@ type SeedChildDeps struct {
 	// inherits prime's driver, never the Board's.
 	ChildDriver func() (string, error)
 	// WriteSeed resolves the child's seed path and encodes recipe and driver into it. An error
-	// wrapping ErrUnknownRecipe means recipe names no recipe the encoder knows, and one wrapping
-	// ErrUnsupportedChildRecipe means it names a recipe the task worktree cannot bootstrap; both
-	// are business judgments SeedChild routes to Stuck. Any other error is a path-resolution or
-	// write failure, mechanism failure SeedChild returns as a hard error.
+	// wrapping ErrUnknownRecipe means recipe names no recipe the encoder knows, one wrapping
+	// ErrUnsupportedChildRecipe means it names a recipe the task worktree cannot bootstrap, and one
+	// wrapping ErrDisagreeingChildSeed means a pre-existing child seed disagrees with the one being
+	// written; all three are business judgments SeedChild routes to Stuck. Any other error is a
+	// path-resolution or write failure, mechanism failure SeedChild returns as a hard error.
 	WriteSeed func(ctx context.Context, recipe, driver string) error
 	// CommitSeed commits the just-written seed file. A non-nil error is Stuck: it names why a
 	// commit failed, a condition a human can act on.

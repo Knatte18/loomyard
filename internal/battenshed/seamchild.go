@@ -50,12 +50,13 @@ func NewSeedChild(name, slug string, deps SeedChildDeps, scratchDir string) shed
 // defaultChildRecipe. It then reads the driver, writes, commits and pushes, in that order.
 //
 // Verdicts: Done on a successful write-and-commit; Stuck on an unreadable Board, a refused recipe
-// (a deps.WriteSeed error wrapping ErrUnknownRecipe or ErrUnsupportedChildRecipe), or a failed
-// commit, each naming which of the three failed in its stuck reason; a hard error on a deps.ChildDriver failure or a
-// deps.WriteSeed failure that does not wrap ErrUnknownRecipe (a path-resolution or write failure),
-// matching innerRunProducer's error-vs-verdict split; and a failed push warns via internal/logger
-// and still returns Done, because an offline machine must not halt a run and the next push on that
-// pair catches the branch up.
+// (a deps.WriteSeed error wrapping ErrUnknownRecipe, ErrUnsupportedChildRecipe, or
+// ErrDisagreeingChildSeed), or a failed commit, each naming which of the four failed in its stuck
+// reason; a hard error on a deps.ChildDriver failure or a deps.WriteSeed failure that wraps none of
+// the three sentinels (a path-resolution or write failure), matching innerRunProducer's
+// error-vs-verdict split; and a failed push warns via internal/logger and still returns Done,
+// because an offline machine must not halt a run and the next push on that pair catches the branch
+// up.
 func (p *seedChildProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, p.name); err != nil {
 		return "", shedengine.OutputPointer{}, err
@@ -116,15 +117,18 @@ func (p *seedChildProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 	return shedengine.Done, shedengine.OutputPointer{}, nil
 }
 
-// childRecipeRefusal reports whether err is one of the two recipe refusals a WriteSeed seam may
-// raise, returning the stuck reason to record for it: an unknown recipe name, or a known recipe the
-// task worktree cannot run as its own. Any other error is mechanism failure and is not a refusal.
+// childRecipeRefusal reports whether err is one of the three refusals a WriteSeed seam may raise,
+// returning the stuck reason to record for it: an unknown recipe name, a known recipe the task
+// worktree cannot run as its own, or a pre-existing child seed that disagrees with the one being
+// written. Any other error is mechanism failure and is not a refusal.
 func childRecipeRefusal(recipe string, err error) (reason string, refused bool) {
 	switch {
 	case errors.Is(err, ErrUnknownRecipe):
 		return fmt.Sprintf("unknown recipe name %q: %s", recipe, err.Error()), true
 	case errors.Is(err, ErrUnsupportedChildRecipe):
 		return fmt.Sprintf("Board task type %q cannot be the task worktree's own run: %s", recipe, err.Error()), true
+	case errors.Is(err, ErrDisagreeingChildSeed):
+		return fmt.Sprintf("the task worktree's own seed already disagrees with recipe %q: %s", recipe, err.Error()), true
 	default:
 		return "", false
 	}

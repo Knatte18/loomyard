@@ -196,6 +196,33 @@ func TestSeedChild_UnsupportedChildRecipeIsStuck(t *testing.T) {
 	}
 }
 
+// TestSeedChild_DisagreeingChildSeedIsStuck pins the third refusal a WriteSeed seam may raise: a
+// pre-existing child seed that disagrees with the one being written lands Stuck, not a hard error --
+// the same business-judgment treatment as the other two WriteSeed refusals, with no commit and no
+// push attempted. Live-reproduced (batten review sonnet-xhigh-r5, finding F3): before this fix, this
+// exact case surfaced as a hard StateFailed with no stuck_reason.
+func TestSeedChild_DisagreeingChildSeedIsStuck(t *testing.T) {
+	scratchDir := t.TempDir()
+	writeErr := fmt.Errorf("%w: run \"self\" is already seeded with a different driver", ErrDisagreeingChildSeed)
+	calls, deps := newSeedChildDeps("loom", nil, "go", nil, writeErr, nil, nil)
+
+	producer := NewSeedChild("seedchild", "myslug", deps, scratchDir)
+	outcome, _, err := producer.Call(context.Background())
+	if err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	if outcome != shedengine.Stuck {
+		t.Fatalf("Call() outcome = %v; want Stuck", outcome)
+	}
+	if calls.commitCalled || calls.pushCalled {
+		t.Errorf("commitCalled=%v pushCalled=%v; want neither -- nothing was written to commit", calls.commitCalled, calls.pushCalled)
+	}
+	reason := readStuckFile(t, scratchDir, "seedchild")
+	if !strings.Contains(reason, "already disagrees") {
+		t.Errorf("stuck-reason file = %q; want it to name the disagreement", reason)
+	}
+}
+
 func TestSeedChild_WriteSeedFailureNotUnknownRecipeIsReturnedError(t *testing.T) {
 	scratchDir := t.TempDir()
 	writeErr := errors.New("resolve seed path failed")

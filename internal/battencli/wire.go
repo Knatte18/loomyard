@@ -13,6 +13,7 @@ package battencli
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -307,8 +308,11 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			// WriteSeed is the only place in the batten path that encodes a seed, per the
 			// seed-encoding-stays-behind-a-seam-in-battenshed Shared Decision. It validates recipe
 			// itself, wrapping an unknown name in battenshed.ErrUnknownRecipe and a known but
-			// unbootstrappable one in battenshed.ErrUnsupportedChildRecipe, so seedChildProducer's
-			// own errors.Is checks route both to Stuck rather than a hard error.
+			// unbootstrappable one in battenshed.ErrUnsupportedChildRecipe; a shedrun.WriteSeed
+			// failure wrapping shedrun.ErrDisagreeingSeed (a pre-existing child seed that disagrees
+			// with the one being written) is re-wrapped in battenshed.ErrDisagreeingChildSeed, this
+			// package's own spelling -- so seedChildProducer's own errors.Is checks route all three
+			// to Stuck rather than a hard error.
 			//
 			// Params come from childSeedParams: a seed missing one the child's own bootstrap
 			// writes is not a smaller seed, it is a seed that bootstrap refuses.
@@ -331,7 +335,13 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				if err != nil {
 					return err
 				}
-				return shedrun.WriteSeed(childLocation, shedrun.SelfRunID, shedrun.Seed{Recipe: recipe, Driver: driver, Params: params})
+				if err := shedrun.WriteSeed(childLocation, shedrun.SelfRunID, shedrun.Seed{Recipe: recipe, Driver: driver, Params: params}); err != nil {
+					if errors.Is(err, shedrun.ErrDisagreeingSeed) {
+						return fmt.Errorf("%w: %s", battenshed.ErrDisagreeingChildSeed, err.Error())
+					}
+					return err
+				}
+				return nil
 			},
 			// CommitSeed commits the child's own seed onto the child's own fabric pair -- a
 			// one-off write, distinct from CommitStatus below, which commits prime's own batten
