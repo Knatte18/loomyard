@@ -88,6 +88,56 @@ leftover state, and its own live-driving deliverable is independent of it.
 
 (Live-driving scenarios continue below as they are run.)
 
+## Scope assessment — plan vs. shipped
+
+Against the recovered design doc (`manifest/designs/seeded-shed.md` at
+`8ac857ce1~1`):
+
+- **Four-row recipe** (`Worktree-Create` → `Seed-Child` → `Run-Shed` →
+  `Worktree-Teardown`), each row's own described behavior: shipped
+  as designed, and now live-verified end to end for the first time in this
+  campaign's history (see the live-driving section).
+- **Run addressing / seed contract** (`_lyx/shed/<run-id>/`, durable
+  `seed.json`+`status.json`, `self` default, `recipe`/`driver`/`params`):
+  shipped as designed; `internal/shedrun` is the sole parser/writer, exactly
+  as specified.
+- **The driver choice, as built** (a recipe's own bootstrap verb is the
+  sole site that reads a recorded seed's driver; batten stays `go`-only for
+  its own rows because it has no bootstrap verb): shipped exactly as
+  designed and enforced by the Driver Choice Single-Site Invariant's own
+  tripwire (re-confirmed this round — see "F5/F6[R4] blast-radius" below).
+- **Two consciously-shipped residuals** (a dead driver strand is not
+  detected/recovered by batten itself; a cleanly finished driver's own
+  strand/run-directory is not torn down except by the whole-worktree
+  teardown row): both re-confirmed still accurate against the current code
+  — `battenshed/doc.go`'s own package doc states both verbatim, matching
+  the design doc's own wording. Judged NOT to warrant promotion to a
+  recorded finding: both are still a deliberate v1 boundary the design doc
+  itself drew, batten's job ends at "watch the child's status file," and
+  nothing this round's live driving surfaced changes that judgment (no
+  evidence either residual causes silent data loss or an unreported
+  failure mode — a dead strand still shows as "stuck watching" via
+  `lyx batten status`, which is the documented, honest signal).
+- **Rejected: relay-stepping**: confirmed NOT reintroduced — `Run-Shed`'s
+  `Spawn` seam (`wire.go:255`) execs `lyx loom start --no-attach` directly,
+  never subprocess-execs `lyx shed step` inside the child.
+- **Explicitly out of scope for v1** (batten growing its own bootstrap verb
+  or `driver: llm` for its OWN producer rows; Windows path behavior):
+  confirmed still out, `BootstrapVerb = ""` and `refuseBattenOwnDriverLLM`
+  enforce the first, and no Windows-specific code path exists in this
+  module to have touched.
+
+No shipped-beyond-scope items found — nothing in `battenshed`/`battencli`/
+`battenrecipe` does more than the design doc describes.
+
+Two items remain deferred by explicit prior-round operator decision, both
+re-confirmed still accurate this round (see "Deferred items" at the end):
+R1-F9's recreate-from-branch half (fabric capability gap, re-confirmed
+live — `lyx fabric add` on a slug whose warp branch survived a prior
+`fabric remove` still refuses exactly as documented, naming both named
+remedies) and R1-F6's step-mode pacing cost (re-confirmed live — the 30s
+poll sleep still elapses once per `step` call, measured at 30.3s).
+
 ## Findings (provisional — filled in during Job 1, ranked at the end)
 
 Recorded as spotted; severity/CONFIRMED-vs-PLAUSIBLE finalized once live
