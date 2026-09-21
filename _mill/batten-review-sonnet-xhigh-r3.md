@@ -78,6 +78,40 @@ issues are left for the operator to triage/close — not touched by this review,
 interrupted run) is a judgment call outside a code-review round's authority.
 **No git state was touched** by this cleanup — only scratch process/directory state outside the loomyard tree.
 
+### Scenario: item 6 — PrimeRunLock scope (two different slugs)
+
+- Held `.lyx/shed/run.lock` (PrimeRunLock) by hand with the `flock` CLI (same gofrs/flock advisory-lock family `internal/lock` uses) for 8s,
+  and concurrently ran `lyx batten step contend-slug` (a brand-new slug's Worktree-Create): refused Stuck, reason names the exact lock path,
+  no task worktree created. Confirms the "two DIFFERENT slugs' create/teardown serialize against each other" half. CONFIRMED live.
+- With `greet-task`'s single blocking `run` deep in its Run-Shed watch (holding `greet-task`'s own PER-SLUG run lock for the whole call, NOT
+  the PrimeRunLock), ran `lyx batten step contend-slug` (its own Worktree-Create): completed in 0.118s, no blocking. Confirms the "one slug's
+  long-running Run-Shed must NOT block another slug's create" half. CONFIRMED live. Item 6 fully verified, no defect.
+
+### Near-miss: a second task worktree (`pre-seeded-slug`) inherited the RISKY default config (opus/high, `selfreport: true`)
+
+`pre-seeded-slug` and `contend-slug` were both created (`Worktree-Create`) BEFORE this round's `loom.yaml` fixture override (haiku/low,
+`selfreport: false`) was committed onto prime's `main-weft`. Per the design ("every child's weft branch forks from prime's `main-weft`"),
+both children's own `_lyx/config/loom.yaml` therefore still carry the un-overridden, real defaults. Spawning `pre-seeded-slug`'s Run-Shed row
+for real (to test item 10 live, below) launched a real `opus[effort=high]` Discussion agent under a config that still has `selfreport: true`
+-- the same hazard already documented above for the orphaned hub, this time self-inflicted by this round's own test ordering (fixture config
+must be committed onto prime BEFORE any slug's `Worktree-Create`, not only before the specific slug being driven end-to-end, since every
+slug's weft branch forks from whatever prime's `main-weft` carries at that slug's own create time).
+**Action taken:** killed only `pre-seeded-slug`'s own tmux session (`tmux -L lyx-warp-fixture-LYXHUB-1aff8922 kill-session -t pre-seeded-slug`)
+and its own detached `loom run` process (verified by `/proc/<pid>/cwd` before killing, since the hub's tmux server and reed watchdog are
+shared across every slug under one hub and must not be touched) -- `greet-task`'s own primary drive was confirmed unaffected throughout
+(same PID, same elapsed-time counter, uninterrupted). `contend-slug`'s and `kill-race-slug`'s own Run-Shed rows were never invoked (no real
+agent spawned for either), so they carried no live risk and were left alone.
+
+### Scenario: item 10 (re-evaluation) — dead driver strand not detected, live
+
+Directly caused by the near-miss above, but turned into a deliberate, useful test once the kill was already in flight: with
+`pre-seeded-slug`'s real detached `loom run` process killed while its own inner status file still read `"current_producer":
+"Discussion-Write","state":"running"`, re-ran `lyx batten step pre-seeded-slug`: Run-Shed reported `"inner shed run still running; sleeping
+30s before the next bounce"` and self-routed again, exactly as if the child were genuinely healthy -- no detection, no escalation, nothing
+distinguishing a dead driver from a slow one. This reproduces `battenshed`'s own package-doc claim verbatim, LIVE rather than only by code
+trace: "A driver strand that dies mid-run... is not detected here, by design." CONFIRMED live. This is one of the design doc's two
+consciously-shipped-as-is residuals (see "Deferred items" section below) -- re-confirmed still accurate, not a new finding.
+
 (remainder appended as scenarios run)
 
 ## Findings (provisional; severity/ordering finalized at the end)
