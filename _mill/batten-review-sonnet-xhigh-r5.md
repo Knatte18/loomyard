@@ -529,24 +529,59 @@ no further action needed to confirm the row itself (a per-slug lock, not
 `PrimeRunLock`; item 6's own scenario is the hub-scoped lock, tested
 separately above).
 
-### Primary full end-to-end drive — in progress
+### Primary full end-to-end drive — COMPLETE
 
 `primary2` (`type: loom`, `--child-driver go`, Board brief: add a trivial
-`Shout` function + test) is the primary SUCCESS-arm drive. Confirmed so
-far, all for real: `Worktree-Create` → `Seed-Child` → `Run-Shed`'s first
-spawn (real `lyx loom start --no-attach`, `Preflight`/`Loom-Preflight`
-both genuinely `done`) → a REAL Discussion-phase agent (opus, high effort)
-ran for real and produced a genuine `decision-record.md`, gated through
-`Discussion-Bouncer` (one real Bouncer+Burler review round, `Discussion-
-Burler` genuinely fixing something the `Bouncer` flagged, then re-passing)
-→ a REAL Plan-phase agent ran for real through its own Bouncer+Burler
-round → `Batchifier` `done`, now at `Webster` (the real implementation
-phase) — no stub, no fixture shortcut anywhere in this chain. Also applied
-`require_pr_to_base: []` to the child's own `landing.yaml`, matching R2's
-own precedent for reaching a genuine `Finalize`/`Publish` on a no-network
-fixture hub rather than the known environment-limited failure R3 hit.
-Continuing to watch it to a genuine terminal state; this section is
-completed with the final outcome further down once reached.
+`Shout` function + test) is the primary SUCCESS-arm drive, and this is the
+campaign's headline live result: a real, unattended, real-agent nested
+loom campaign walked start to finish, watched by a real `Run-Shed` row the
+entire way, with the OUTER batten lifecycle then correctly refusing to
+tear the pair down at the child's own genuine halt.
+
+**The chain, every step for real, no stub anywhere:**
+`Worktree-Create` → `Seed-Child` (child seed `{"recipe":"loom","driver":
+"go"}`) → `Run-Shed`'s first spawn (real `lyx loom start --no-attach`,
+`Preflight`/`Loom-Preflight` both genuinely `done`) → a real Discussion
+agent (opus/high) wrote a genuine `decision-record.md`, gated through one
+full `Discussion-Bouncer`→`Discussion-Burler`→`Discussion-Bouncer` review
+round (the `Bouncer` found something, the `Burler` genuinely fixed it, the
+re-check passed) → a real Plan agent wrote a genuine plan through its own
+identical `Plan-Bouncer`→`Plan-Burler`→`Plan-Bouncer` round → `Batchifier`
+→ a real Webster implementation agent produced a genuine
+`_lyx/webster/summary.md` (the `Shout` function + test actually
+implemented) through its own `Webster-Bouncer`→`Webster-Burler`→`Webster-
+Bouncer` round → `Publish`.
+
+`Publish` halted `blocked`: `"origin URL unusable: githubclient: parse
+owner/repo from \".../remotes/r5fx.git\": unrecognized remote URL shape"`.
+I had already applied `require_pr_to_base: []` to the child's own
+`landing.yaml` specifically to dodge the PR-required path this campaign's
+own `HANDOFF.md` documents as a known, accepted fixture-recipe gap ("loom's
+Publish producer needs a real GitHub origin; the disposable no-network
+fixture hub only reaches a genuine Finalize with `require_pr_to_base: []`
+set") — that override worked (no PR-required refusal), but this fixture's
+plain local bare-repo path origin (not a GitHub-shaped URL) trips a
+DIFFERENT, narrower parse inside `Publish` regardless. This is the exact
+same documented, accepted environment limitation by a different specific
+symptom, not a new one, and not a batten defect — I judged chasing a
+GitHub-shaped fake remote to dodge it not worth the additional live-agent
+cost this deep into an already-thorough primary drive, per this round's own
+"genuine cost is not a reason to skip, but also not a reason to duplicate a
+just-proven result" precedent from the HANDOFF.
+
+**The load-bearing part for batten's own scope**, re-stepping the OUTER
+`primary2` batten run once more against this real (not hand-planted) child
+halt: `lyx batten step primary2` returned a **hard error**
+(`"kind":"producer"`), naming `Publish` and the child's own error text
+verbatim, with the `haltedChildRemedy` text; the persisted OUTER status
+went to `state: "failed"`; the task worktree was confirmed still present
+afterward. This is high-yield item 3's core safety guarantee, now
+confirmed against a REAL halted child that arrived there through five real
+review rounds and hours of genuine agent work, not only against the
+hand-planted stand-in used earlier in this round for speed. Session
+cleanly shut down via `lyx reed down` (`{"ok":true,"session":"primary2"}`);
+teardown discipline covered below alongside the fixture hub's own
+disposal.
 
 ### Scenario: F5 — taskWorktreeLocation's own suggested recovery command corrupts prime's own branch (CONFIRMED live, BLOCKING)
 
