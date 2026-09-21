@@ -74,4 +74,4 @@ Transport and log are two different jobs, and the terminal is bad at the second 
 ## Related
 
 - the shipped `reed: born-as-strand` item — the receive-side prerequisite.
-- [reed-header-selvage.md](reed-header-selvage.md) — the watchdog daemon this may end up riding on.
+- `internal/reedengine`'s package documentation — the shipped watchdog daemon this may end up riding on.

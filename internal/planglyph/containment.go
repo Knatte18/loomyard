@@ -23,9 +23,8 @@ import (
 // It exists because containment is a WRITE hazard: two cards editing overlapping granularity in
 // parallel produce a merge conflict, and two cards reading the same file produce nothing.
 // websterengine.deriveEdges encodes exactly that asymmetry, the sibling syntactic tier
-// (planparser.syntacticContainment) walks c.Targets alone for the same reason, and both this file's
-// own godoc and manifest/designs/quarry-glyph-plan-alphabet.md specify the rule in terms of what a
-// card TARGETS.
+// (planparser.syntacticContainment) walks c.Targets alone for the same reason, and this file's own
+// godoc specifies the rule in terms of what a card TARGETS.
 //
 // resolveContainment used targetCards instead, which also indexes Uses and both Pairs endpoints, so a
 // card that merely READ a file contributed a self entry and a card that merely READ a symbol

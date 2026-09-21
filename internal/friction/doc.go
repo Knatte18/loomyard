@@ -8,7 +8,7 @@
 //
 // # Why the leaf exists
 //
-// Tier 1 (see manifest/designs/self-report-tier1.md) files a GitHub issue only when an agent
+// Tier 1 (see internal/loomengine's anomaly.go) files a GitHub issue only when an agent
 // explicitly decides to, at the end of a session it otherwise judges successful. Tier 2 exists for
 // the run that never reaches that reflective moment at all — an unsupervised agent that gets stuck,
 // times out, or dies mid-task leaves no self-report behind, because self-report is itself a

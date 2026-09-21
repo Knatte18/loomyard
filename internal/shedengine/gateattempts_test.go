@@ -1,6 +1,6 @@
 // gateattempts_test.go covers HistoryEntry.GateAttempts end to end: a producer's OutputPointer
 // reaches Step's persisted HistoryEntry, and the status file on disk actually shows the count, per
-// manifest/designs/producer-gates.md's "recorded in the row's envelope/history so the status file
+// the producer-gate contract's "recorded in the row's envelope/history so the status file
 // shows it" requirement. It reuses newTestShed, seedStatus, readStatus, and commonSeed from
 // testsupport_test.go rather than redeclaring any of them.
 

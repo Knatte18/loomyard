@@ -8,7 +8,7 @@ All worktrees in one tmux window, a column per worktree.
 
 Needs its own name for the per-worktree grouping layer this introduces — it cannot be called "session": that's already tmux's own term, and already 1:1 with a worktree in reed's plumbing today. Also needs a decision on how many columns fit before falling back to tmux windows-as-pages.
 
-Candidate group-layer names surveyed so far and still free: **Heddle, Batten, Bobbin, Sley**. Already taken elsewhere in this codebase: Warp, Weft, Shuttle, Treadle, Shed, Loom, Reed, Strand, Fabric, Quarry, Crucible, and Selvage (claimed by the header-replacement item, see [reed-header-selvage.md](reed-header-selvage.md)).
+Candidate group-layer names surveyed so far and still free: **Heddle, Batten, Bobbin, Sley**. Already taken elsewhere in this codebase: Warp, Weft, Shuttle, Treadle, Shed, Loom, Reed, Strand, Fabric, Quarry, Crucible, and Selvage (claimed by the shipped header-replacement work — see `internal/reedengine`'s `selvagepane.go`).
 
 ## Own-window strand anchoring
 
@@ -22,4 +22,4 @@ tmux's session-groups feature (`new-session -t <existing-session>`) would let ea
 
 ## Related
 
-- [reed-header-selvage.md](reed-header-selvage.md) — claims the "Selvage" name and notes reed has no window support today.
+- `internal/reedengine`'s package documentation — the shipped work that claims the "Selvage" name; reed still has no window support today.
