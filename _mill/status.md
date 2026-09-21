@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-gap-fix-r5
+phase: discussed
 slug: lyx-bin-pane-path
 branch: lyx-bin-pane-path
 plan: null
@@ -20,4 +20,5 @@ discussion-gap-fix-r2  '2026-09-21T11:17:49Z'
 discussion-gap-fix-r3  '2026-09-21T11:22:17Z'
 discussion-gap-fix-r4  '2026-09-21T11:27:18Z'
 discussion-gap-fix-r5  '2026-09-21T11:35:38Z'
+discussed  '2026-09-21T11:35:51Z'
 ```
