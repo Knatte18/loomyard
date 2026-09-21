@@ -552,9 +552,10 @@ func TestBattenIntegration_MidListResume_SkipsTheCompletedCreateRow(t *testing.T
 	}
 }
 
-// TestBattenIntegration_NonPrimeRefusal covers both verbs' non-prime refusal, driven through
+// TestBattenIntegration_NonPrimeRefusal covers all four verbs' non-prime refusal, driven through
 // RunCLIIn with an injected cwd pointing at a real task worktree -- the runtime check standing in
-// for the Bookend invariant's missing enforcing test.
+// for the Bookend invariant's missing enforcing test. Mirrors TestBattenIntegration_WeftPrimeRefusal's
+// own four-verb completeness below.
 func TestBattenIntegration_NonPrimeRefusal(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	taskSlug := "batten-task-cwd"
@@ -563,7 +564,7 @@ func TestBattenIntegration_NonPrimeRefusal(t *testing.T) {
 	taskCwd := h.PairWarpWorktree(taskSlug)
 	primeName := h.Location.WorktreeName
 
-	for _, verb := range []string{"run", "status"} {
+	for _, verb := range []string{"run", "step", "status", "pause"} {
 		t.Run(verb, func(t *testing.T) {
 			var out bytes.Buffer
 			exitCode := RunCLIIn(taskCwd, &out, []string{verb, "some-slug"})
