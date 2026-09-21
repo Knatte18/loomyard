@@ -95,6 +95,51 @@ func TestArmSeed_OwnDriverLLMStillRefuses(t *testing.T) {
 	}
 }
 
+// TestArmSeed_OwnDriverLLMRefusesTheSameWayOnASeededRun asserts a typed --driver llm reads as the
+// impossibility it is on an already-seeded run too, not as a mere disagreement with a recorded
+// value.
+//
+// Before this, refuseAdoptedSeed ran first and answered "--driver \"llm\" cannot change a seeded
+// run's recorded driver" -- true, but it reads as "not now", inviting the operator to delete the
+// seed and re-seed with a value batten can never honour at all.
+func TestArmSeed_OwnDriverLLMRefusesTheSameWayOnASeededRun(t *testing.T) {
+	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+	if err := shedrun.WriteSeed(loc, "some-slug", shedrun.Seed{Recipe: shedrun.RecipeBatten, Driver: shedrun.DriverGo}); err != nil {
+		t.Fatalf("shedrun.WriteSeed = %v; want nil", err)
+	}
+
+	c := &battenCLI{driverFlag: shedrun.DriverLLM, driverFlagSet: true}
+	err := c.armSeed(loc, "some-slug", "run")
+	if err == nil {
+		t.Fatal("armSeed() with driverFlag=llm against a seeded run = nil; want a refusal")
+	}
+	if !strings.Contains(err.Error(), "no bootstrap verb") {
+		t.Errorf("armSeed() error = %q; want it to name the missing bootstrap verb", err.Error())
+	}
+	if strings.Contains(err.Error(), "cannot change a seeded run") {
+		t.Errorf("armSeed() error = %q; want the impossibility, not the seeded-value disagreement", err.Error())
+	}
+}
+
+// TestArmSeed_TypedChildDriverIsValidatedAheadOfTheSeedRead asserts an unknown --child-driver value
+// is named for what it is on a seeded run, rather than being reported as disagreeing with the
+// recorded one.
+func TestArmSeed_TypedChildDriverIsValidatedAheadOfTheSeedRead(t *testing.T) {
+	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+	if err := shedrun.WriteSeed(loc, "some-slug", shedrun.Seed{Recipe: shedrun.RecipeBatten, Driver: shedrun.DriverGo}); err != nil {
+		t.Fatalf("shedrun.WriteSeed = %v; want nil", err)
+	}
+
+	c := &battenCLI{childDriverFlag: "bogus", childDriverFlagSet: true}
+	err := c.armSeed(loc, "some-slug", "run")
+	if err == nil {
+		t.Fatal("armSeed() with childDriverFlag=bogus against a seeded run = nil; want a refusal")
+	}
+	if !strings.Contains(err.Error(), `unknown driver "bogus"`) {
+		t.Errorf("armSeed() error = %q; want it to name the unknown driver value", err.Error())
+	}
+}
+
 // TestRefuseSelfAddress_ArgumentLessRefusesByNameBeforeTheGate asserts an omitted positional
 // argument refuses by name, before the auto-seed gate ever runs, rather than silently taking the
 // self default.

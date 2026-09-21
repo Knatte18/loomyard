@@ -166,9 +166,31 @@ func childDriverOf(seed shedrun.Seed) string {
 // shedrun.ValidateDriver alone and nothing further -- the child's own recipe capability is checked
 // when that child's seed is written (internal/shedcli's writeSeed), not here.
 //
+// A flag the operator actually typed is validated ahead of the seed read, because its verdict does
+// not depend on the seed at all: "llm" is impossible for batten's own driver on every batten run,
+// seeded or not, and reporting it through refuseAdoptedSeed instead would call an impossibility a
+// disagreement -- wording that invites an operator to delete the seed and re-seed with a value
+// batten can never honour. The auto-seed path below still validates in its own right: it validates
+// the value about to be written, which for an untyped flag is cobra's default rather than anything
+// the operator said.
+//
 // The refusal carries no "kind" field, keeping the five-value step refusal-kind vocabulary closed:
 // a missing run is not a sixth kind.
 func (c *battenCLI) armSeed(location *lyxcwd.Location, runID, verb string) error {
+	if c.driverFlagSet {
+		if err := shedrun.ValidateDriver(c.driverFlag); err != nil {
+			return err
+		}
+		if err := refuseBattenOwnDriverLLM(c.driverFlag); err != nil {
+			return err
+		}
+	}
+	if c.childDriverFlagSet {
+		if err := shedrun.ValidateDriver(c.childDriverFlag); err != nil {
+			return err
+		}
+	}
+
 	seed, found, err := shedrun.ReadSeed(location, runID)
 	if err != nil {
 		return err
