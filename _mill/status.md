@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-shell-prelude-primitives
 slug: lyx-bin-pane-path
 branch: lyx-bin-pane-path
 plan: _mill/plan
@@ -26,6 +26,7 @@ plan-review-r1  '2026-09-21T12:00:36Z'
 plan-fix-r1  '2026-09-21T14:08:30Z'
 planned  '2026-09-21T14:08:45Z'
 implementing  '2026-09-21T14:09:09Z'
+approved-shell-prelude-primitives  '2026-09-21T14:18:12Z'
 ```
 
 ## Batches
@@ -33,9 +34,10 @@ implementing  '2026-09-21T14:09:09Z'
 ```yaml
 batches:
   - name: shell-prelude-primitives
-    state: running
+    state: approved
     implementer_session: c17b1fa4-7351-45af-8c70-f666c5771291
     start_sha: d9dd9afe99467254535138be3a486ff96c118042
+    commit_sha: 283b52c2549675fc3a830b6a53098570eb63bc26
     verify_baseline_failures: []
   - name: reed-pane-binary-chokepoint
     state: pending
