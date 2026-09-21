@@ -235,6 +235,14 @@ independently re-run here since it is the identical code path already proven aga
 Cleaned up: killed only `llm-child-slug`'s own tmux session and confirmed no detached driver process existed for it (the `llm` arm has no
 detached-process counterpart to the `go` arm's `lyx loom run`).
 
+### Scenario: `lyx batten pause` live, against an actively self-bouncing run
+
+Used `kill-race-slug` (sitting at `Run-Shed`/running, self-bouncing every 30s against its now-dead inner driver -- see item 10 above):
+`lyx batten pause kill-race-slug` then `lyx batten step kill-race-slug`: the step returned in 0.039s (never waiting out the 30s poll, since
+`shedengine.stepLocked`'s pause check runs BEFORE the producer is ever called) with `state: "paused"`, `producer: ""`, `continue: false`.
+Stepped once more: `pause_requested` correctly cleared back to `false`, state resumed to `"running"`, and the self-bounce continued exactly
+as before pausing. CONFIRMED live: pause/resume works correctly against a real, live, actively-bouncing batten run.
+
 (remainder appended as scenarios run)
 
 ## Findings (provisional; severity/ordering finalized at the end)
