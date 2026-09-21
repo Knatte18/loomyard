@@ -5,33 +5,33 @@ Load skills `mill:conversation` and `mill:prose` before reading the rest of this
 ## Where you are
 
 `/home/hanf/Code/loomyard/wts/loomyard` — the **main** worktree, direct push allowed here per `CLAUDE.md`.
-Clean tree, in sync with `origin/main` at `74ffd5f9f`. No Monitor waits armed, no forks running.
+Clean tree, in sync with `origin/main` at `bf0b20038`. No Monitor waits armed, no forks running.
 
 The user drives design in Norwegian; reply in Norwegian.
 In design discussions, give your assessment and get explicit agreement BEFORE editing or committing.
 
 ## In flight
 
-### `#017 lyx-bin-pane-path` — has a verdict waiting
-
-Worktree `wts/lyx-bin-pane-path`. Started with `mill-start --orch`; `_mill/orch-review.md` is written.
-
-**REQUEST_CHANGES, 2 BLOCKING (1 design, 1 scope), 0 NIT.**
-Lead finding: the discussion specifies both shell dialects but never says which `shell.Shell` composes the prelude.
-The pane's real shell is `e.cfg.Shell`, operator-overridable via `LYX_REED_SHELL`, so a `ForGOOS()`-keyed choice emits pwsh syntax into bash — and `Chain` joins with `;`, so the launch line gets a syntax-error prefix while the PATH guarantee fails silently.
-
-The worker picks the file up and resumes on its own.
-`--orch` waits for `orch-review.md` on discussion-review **round 1 only** — re-running `/orch-review` against this task later does nothing.
-
-### `#015 crucible-batten-end-to-end` — spawned, not started
+### `#015 crucible-batten-end-to-end` — the only active task
 
 Worktree `wts/crucible-batten-end-to-end`.
 Runs as the crucible orchestrator role (`crucible/orchestrator-prompt.md`), not through the mill-start chain — so the `phase: discussing` that `mill-spawn` seeded into `_mill/status.md` drives nothing.
 
-Its wiki brief carries the disposable fixture-hub recipe, the GOPROXY note below, and the queued sabotage ideas.
-Read it through the wiki daemon client.
+R1 and R2 are done and R3 was deliberately held for `lyx-bin-pane-path`, which has now landed, so R3 is unblocked.
+The campaign keeps its own rolling handoff on its branch — read that for round state rather than anything here.
 
-The two tasks are file-wise disjoint; neither blocks the other.
+Its wiki brief carries the disposable fixture-hub recipe, the GOPROXY note below, and the queued sabotage ideas.
+
+## Just landed
+
+`#017 lyx-bin-pane-path` merged as `bf0b20038` (PR #261): every strand pane reed creates now prepends the spawning binary's directory to its `PATH` and exports `LYX_BIN`.
+Marker is `[done]` but `wts/lyx-bin-pane-path` is still on disk — run `/mill-cleanup --apply`.
+
+Three review notes were judged non-blocking at merge and are still open:
+
+- The PR summary claims the prelude also resolves the agent binary (`claude`). It does not — only `lyx`'s own directory is prepended, and the `claude` half is a manual pre-condition check in `SANDBOX-SHUTTLE-SUITE.md`.
+- The new `Pane Binary Resolution` clause pins the dialect to `shell.ForGOOS()`, which is not the pane's real shell when an operator sets `LYX_REED_SHELL`. Pre-existing, and `Chain` joins with `;` so a rejected prelude never kills the launch line — but the assumption is now normative and the clause does not name the override.
+- `Shell Mechanics Seam` was softened in passing (its method list is now "illustrative, not exhaustive") to make room for `ExportEnv`/`PrependPathEntry`/`Chain`.
 
 ## Rules in force
 
@@ -59,5 +59,6 @@ A build failing on `github.com/Knatte18/quarry@v0.2.0` is this environment, neve
 
 - `mill:prose` + `mill:conversation` — load before writing anything.
 - `mill:mill-status` / `mill:mill-inspect` — confirm task state before acting.
-- `mill:orch-review` only if a NEW task is started with `--orch`; this session owns the Monitor wait, and forks only after `discussion.md` exists.
+- `mill:orch-review` only if a NEW task is started with `--orch`; this session owns the Monitor wait, forks only after `discussion.md` exists, and it applies to discussion-review round 1 alone.
+- `mill:mill-cleanup` — `wts/lyx-bin-pane-path` is merged and awaiting teardown.
 - `mill:git-workflow` — `CLAUDE.md` overrides its `--onmain` gate for this worktree.
