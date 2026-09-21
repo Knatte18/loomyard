@@ -4,11 +4,11 @@
 
 ## Executive summary
 
-Round 4 is close to, but not quite, the clean safety pass the round context expected. An independent adversarial pass over the code, the recovered SPEC, the docs, and thirteen live scenarios on a disposable fixture hub re-confirmed **every** high-yield focus item as a non-defect except one, and found four new findings — one of them a real, reproducible resume hole that three prior rounds did not reach.
+Round 4 is **not** the clean safety pass the round context expected. An independent adversarial pass over the code, the recovered SPEC, the docs, and seventeen live scenarios on a disposable fixture hub re-confirmed **every** high-yield focus item as a non-defect except one — and found six findings, including two BLOCKING ones that had been sitting red at HEAD for three rounds.
 
 **Top risk — F1 (MEDIUM, CONFIRMED).** `Worktree-Create` is not idempotent against a task worktree pair that is already on disk. If the driving process dies in the window between `Topology.Add` succeeding and `shedengine` persisting the row's `done` transition — a real window of seconds of git work — the resumed run is **permanently blocked**, and the stuck reason it hands the operator names two remedies that both fail in exactly that state (verified by running both). This is the "cold-machine / mid-operation-failure orphan" case focus item 7 asks about, and it is the one place batten does not report honestly what state it is actually in.
 
-The other three findings are small: an undocumented operational consequence of the (correct) status-commit skip (F2, LOW), a refusal that reports an impossibility as a mere disagreement (F3, NIT), and a shipped residual that the deleted design doc records but no living doc does (F4, NIT).
+The remaining three are small: an undocumented operational consequence of the (correct) status-commit skip (F2, LOW), a refusal that reports an impossibility as a mere disagreement (F3, NIT), and a shipped residual that the deleted design doc records but no living doc does (F4, NIT).
 
 **Everything else held.** The Batten Bookend Invariant (16/16 refusals from a task worktree and its weft sibling), teardown ordering with each half sabotaged in turn, the halted-child-never-tears-down guarantee across all three halted states, the Board-type → recipe → driver plumbing landing a real `recipe: loom` / `driver: llm` child seed, `PrimeRunLock` serialising two different slugs' creates while never being held during a long `Run-Shed` watch, an authoritative hand-written seed, both sabotage scenarios, pause/resume, the run-lock busy paths, and the cold-machine durable/ephemeral split — all confirmed live, none defective.
 
@@ -16,7 +16,9 @@ The other three findings are small: an undocumented operational consequence of t
 
 **F6[R2] reproduced**, with its trigger finally pinned down: the gate is keyed to the child worktree's *absolute path* in `~/.claude.json`'s `projects` map, not to the worktree's freshness, which is exactly how a reused fixture directory hides it (R3's non-reproduction). Still not batten's bug, still needs its own task. Both operator routes past it were denied by this session's permission classifier, so the success arm was driven with `--child-driver go`, which is driver-agnostic at batten's own boundary.
 
-**Merge-readiness:** ship after F1 is fixed. F1 is not a blocker for the normal single-instance happy path — the merge bar this campaign set — but it is a resume hole an unattended fleet will hit, and it is cheap to close. F2–F4 are documentation and wording.
+**Two BLOCKING findings the narrow test command hid.** Running the repo-wide suite — which this campaign's own hermetic command never did — showed **two invariant tripwires already red at HEAD, both caused by batten, both introduced by earlier rounds on this same branch**: the Driver Choice Single-Site Invariant (F5) and the Fabric Vocabulary Invariant (F6). F6 is more than a red test: it is a direct contradiction between two constraints, since the Batten Bookend Invariant mandates a call the Fabric Vocabulary Invariant's scan forbids by name. Neither is a behaviour bug; both blocked a green merge. The single most valuable process change this round produces is adding `go vet ./...` and `go test -count=1 ./...` to the campaign's standing test list.
+
+**Merge-readiness: READY.** All six findings are fixed, each committed on its own with its docs, and `go build ./...`, `go vet ./...`, `go test -count=5` over the batten packages, `go test -tags integration`, and a whole-repo `go test ./...` are all green — the last of which was red before this round. F1's fix was re-proven live on the redeployed binary against the exact state that previously stranded a run.
 
 ## Scope assessment — plan vs shipped
 
@@ -343,6 +345,37 @@ While `lyx batten run add-greeting` held the per-slug run lock:
 ### Live scenario O — cold-machine shape: ephemeral tree lost, durable tree kept — CONFIRMED NON-DEFECT
 
 Deleted `<prime>/.lyx/shed/bad-type/` entirely (locks, stuck-reason file, commit marker — what a fresh clone on another machine has) while keeping the durable `_lyx/shed/bad-type/`. `lyx batten status`, `pause` and `step` all answered from the durable file, recreating the lock directory as needed rather than failing to open a lock. The producer-supplied `stuck_reason` is legitimately gone with the ephemeral tree, which is what "ephemeral" means.
+
+### Live scenario P — THE PRIMARY DRIVE: a real nested loom campaign, start to a genuine terminal state
+
+Board task `add-greeting` (`type: loom`), `lyx batten run add-greeting --child-driver go`, one blocking outer process self-bouncing internally on `Run-Shed`'s `on_stuck` self-route, from 18:44:13 to 19:09:48 — **25½ real minutes, 53 persisted transitions, zero external `step` calls**.
+
+The child's own loom run walked, for real, with real provider strands in its own reed session throughout:
+
+`Preflight → Loom-Preflight → Discussion-Write → Discussion-Bouncer → Discussion-Burler → Discussion-Bouncer → Plan-Write → (plan review) → Batchifier → Webster → Webster-Bouncer → Webster-Burler → … → Publish`
+
+- **Real work landed.** `86ce7ec 1: greeting2-helper` on the child's own branch, `Co-Authored-By: Claude Sonnet 5` — `greeting2()` added to `main.go` and `TestGreeting2` to `main_test.go`, exactly the Board task's brief, and nothing else.
+- **Terminal state:** the child blocked at `Publish` — the same fixture-environment limitation R3 hit (no real GitHub host), not a batten or loom defect.
+- **Batten's boundary behaved exactly as specified:** `Run-Shed → failed` with a hard error naming the child's state, `Error` and `CurrentProducer` (`Publish`) plus `haltedChildRemedy`, outer `state: failed`, and **the task worktree pair was left fully intact**. Focus item 3, proven on a genuine failure rather than a forced one.
+- **Focus item 4's second half proven at scale:** the single `lyx batten run` call never blocked on the campaign; it self-bounced once per 30s for 25½ minutes.
+- **The `history_truncated` doc claim is now live-proven** rather than merely asserted: `lyx batten status` reported `history` of 20 entries alongside `history_length: 53` and `history_truncated: true`.
+
+### Live scenario Q — re-drive against the REDEPLOYED (fixed) binary
+
+`./deploy-dev` rebuilt at `426afb901`, then every scenario re-driven directly:
+
+- **F1 fixed, live.** The `probe-create` run that was permanently `blocked` at `Worktree-Create` with the unusable remedy now steps straight through: `{"outcome":"done","next":"Seed-Child","state":"running"}`, with the worktree pair untouched and clean (`## probe-create...origin/probe-create`). Repeated with prime's `status.json` deleted outright — same result.
+- **F3 fixed, live.** `lyx batten run probe-create --driver llm` (a seeded run) now answers `battencli: batten has no bootstrap verb, so it cannot be driven by an LLM` — byte-identical to the unseeded-run answer. `--child-driver bogus` names the unknown value rather than a disagreement.
+- **F6 fixed, live.** All three refusal surfaces still refuse correctly after the rewording (task worktree, the pair's fabric sibling, `_board`), and the reworded done-slug refusal reads `... (a change on the pair's fabric sibling) to run it again`. The refusal text fabric itself renders still uses fabric's own vocabulary, which fabric is the owner of.
+- **F5 and F6's tripwires green:** `go test -count=1 ./...` passes whole-repo, having been red at HEAD before this round.
+
+### Teardown discipline
+
+- Every reed session this round started was brought down through `lyx reed down` (`add-greeting`, `add-shout`, `bad-type`, `unknown-type`, `probe-create`), after which the fixture hub's own tmux server reported `no server running`.
+- The disposable fixture hub was fully `rm -rf`'d; its stale tmux socket file removed.
+- **Zero stray processes:** `pgrep -x lyx` → none; `pgrep -af bfix-LYXHUB` → none. The three `claude` processes on this host all started at 16:08–16:40, before this round began at 18:35, and have their cwd in other worktrees — the operator's own sessions, untouched.
+- **The operator's standing bench was never touched.** No `lyx-test-LYXHUB` exists under `$HOME/Code` or `$HOME`; the fixture lived only under this session's scratchpad, outside both the loomyard tree and `$HOME/Code`, as the round prompt requires.
+- **No GitHub issue was filed.** `selfreport: false` was committed onto the fixture hub's `main-weft` before any Board task existed, and the nested campaign's own blocked `Publish` therefore filed nothing.
 
 ### What I could NOT verify, and why
 
