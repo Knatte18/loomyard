@@ -178,6 +178,32 @@ untracked and was NEVER staged or swept into any commit, at any point -- the sco
 whole time. CONFIRMED live: neither failure mode occurs. As with item 8, there is no explicit report/warning surfaced about the stray file's
 presence, for the identical structural reason (no repo-wide status scan anywhere in this commit path) -- not a batten-scope finding.
 
+### Scenario: item 2 — teardown ordering, live, including the operator self-heal cycle
+
+Used `contend-slug` (its `Worktree-Create`/`Seed-Child` already real; hand-wrote its child's own `_lyx/shed/self/status.json` to
+`state: "done"` directly, so `InnerRun`'s read-before-spawn check found it immediately with no real agent spawned -- confirmed by `ps aux`
+showing nothing new and the step returning in 0.038s) to reach the real `Worktree-Teardown` row without live-agent cost or risk.
+- Dropped an untracked file directly into the CHILD's own task worktree, then stepped: `Shutdown` succeeded (no real reed session had ever
+  been started for this slug, and `reedengine.Down()` is deliberately idempotent against "no session" -- confirmed by code, `Down`'s own
+  comment: "the session may already be gone, and Down must stay idempotent either way"), `Remove` refused citing fabric's own dirty-worktree
+  text, Stuck naming "worktree removal failed (session shutdown already succeeded)" -- exactly the ordering and wording
+  `worktreeTeardownProducer.Call`'s doc comment promises. The pair was STILL PRESENT afterward, and `battenStatusExtras`'s `stuck_reason` key
+  surfaced full fabric text through the envelope, including its own remedy ("this pair's portal junction and launcher scripts were already
+  torn down before the refusal — run \"lyx fabric reconcile\" to restore them") -- fabric's own partial-mutation disclosure, passed through
+  verbatim and unreworded exactly as `teardown.go`'s own doc comment states it must be.
+- Removed the stray file and re-stepped: this time the CHILD's own WEFT sibling was reported dirty instead (my hand-written status.json had
+  never been committed there, since I bypassed the real loom bootstrap) -- committed it directly (fixture cleanup, not a batten scenario) and
+  stepped once more: `Worktree-Teardown` completed cleanly (`outcome: "done"`), and the whole pair (`contend-slug`/`contend-slug-weft`)
+  was gone from disk. This is the full, live operator self-heal cycle the design promises: dirty → Stuck naming the cause → operator cleans →
+  re-step → Done, with NO force and no state skipped at any point. CONFIRMED live.
+- The literal "kill the process in the few-microsecond window between `Shutdown` returning and `Remove` starting" sub-scenario was not
+  independently reproduced by a live kill (the same practical timing-precision limit as the Seed-Child commit/push race below) -- but is
+  covered by the SAME property just demonstrated live (`Shutdown` is idempotent) plus the structural fact that PRIME's own status.json is
+  only persisted AFTER the whole producer `Call` returns (`shedengine.stepLocked`), so a kill anywhere inside `Call` leaves
+  `current_producer: "Worktree-Teardown", state: "running"` untouched and a resume simply re-enters the row from the top, re-calling the
+  (idempotent) `Shutdown` and then `Remove` -- PLAUSIBLE-but-traced for the exact sub-microsecond window, CONFIRMED for the property that
+  makes it safe.
+
 (remainder appended as scenarios run)
 
 ## Findings (provisional; severity/ordering finalized at the end)
