@@ -90,11 +90,17 @@ func (p *innerRunProducer) Call(ctx context.Context) (shedengine.Outcome, sheden
 
 	statusPath, statusLockPath, err := p.deps.ResolveStatus()
 	if err != nil {
+		if cerr := cancelErr(ctx, p.name); cerr != nil {
+			return "", shedengine.OutputPointer{}, cerr
+		}
 		return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: resolve status path: %w", p.name, err)
 	}
 
 	status, found, err := p.deps.ReadStatus(statusPath, statusLockPath)
 	if err != nil {
+		if cerr := cancelErr(ctx, p.name); cerr != nil {
+			return "", shedengine.OutputPointer{}, cerr
+		}
 		return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: read status: %w", p.name, err)
 	}
 
@@ -111,6 +117,9 @@ func (p *innerRunProducer) Call(ctx context.Context) (shedengine.Outcome, sheden
 
 		status, found, err = p.deps.ReadStatus(statusPath, statusLockPath)
 		if err != nil {
+			if cerr := cancelErr(ctx, p.name); cerr != nil {
+				return "", shedengine.OutputPointer{}, cerr
+			}
 			return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: read status: %w", p.name, err)
 		}
 		if !found {

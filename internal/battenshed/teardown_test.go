@@ -211,6 +211,33 @@ func TestWorktreeTeardown_PrimeLockDispositions(t *testing.T) {
 	})
 }
 
+// TestWorktreeTeardown_CancelledDuringAcquireError mirrors
+// TestWorktreeCreate_CancelledDuringAcquireError (create_test.go): the Acquire-error hard-error
+// path must consult cancelErr before returning, per F1 (crucible round sonnet-xhigh-r3).
+func TestWorktreeTeardown_CancelledDuringAcquireError(t *testing.T) {
+	scratchDir := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	acquireErr := errors.New("flock: device error")
+	lock := PrimeLock{
+		Path: "/lock/path",
+		Acquire: func() (func() error, bool, error) {
+			cancel()
+			return nil, false, acquireErr
+		},
+	}
+
+	rec := &teardownCallRecorder{}
+	producer := NewWorktreeTeardown("teardown", "myslug", rec.deps(nil, "", nil), lock, scratchDir)
+
+	_, _, err := producer.Call(ctx)
+	if err == nil {
+		t.Fatal("Call() error = nil; want the cancelled-context diagnosis")
+	}
+	if !strings.Contains(err.Error(), "context cancelled during run") {
+		t.Errorf("Call() error = %q; want it to carry the cancelled-context diagnosis, not the raw Acquire error", err.Error())
+	}
+}
+
 func TestWorktreeTeardown_CancelledContext(t *testing.T) {
 	scratchDir := t.TempDir()
 	var released bool

@@ -208,6 +208,35 @@ func TestWorktreeCreate_CancelledContext(t *testing.T) {
 	}
 }
 
+// TestWorktreeCreate_CancelledDuringAcquireError asserts the Acquire-error hard-error path
+// consults cancelErr before returning: when ctx is cancelled by the time Acquire itself returns
+// its own error, Call must report the "context cancelled during run" diagnosis, not the raw
+// Acquire error text -- the property F1 (crucible round sonnet-xhigh-r3) found missing here.
+func TestWorktreeCreate_CancelledDuringAcquireError(t *testing.T) {
+	scratchDir := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	acquireErr := errors.New("flock: device error")
+	lock := PrimeLock{
+		Path: "/lock/path",
+		Acquire: func() (func() error, bool, error) {
+			cancel()
+			return nil, false, acquireErr
+		},
+	}
+
+	producer := NewWorktreeCreate("create", "myslug", func(ctx context.Context) error {
+		return nil
+	}, lock, scratchDir)
+
+	_, _, err := producer.Call(ctx)
+	if err == nil {
+		t.Fatal("Call() error = nil; want the cancelled-context diagnosis")
+	}
+	if !strings.Contains(err.Error(), "context cancelled during run") {
+		t.Errorf("Call() error = %q; want it to carry the cancelled-context diagnosis, not the raw Acquire error", err.Error())
+	}
+}
+
 func TestWorktreeCreate_CancelledAfterSuccessfulCreate(t *testing.T) {
 	scratchDir := t.TempDir()
 	var released bool

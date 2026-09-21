@@ -242,6 +242,96 @@ func TestInnerRun_CancelledContext(t *testing.T) {
 	}
 }
 
+// TestInnerRun_CancelledDuringResolveStatusError, TestInnerRun_CancelledDuringFirstReadStatusError
+// and TestInnerRun_CancelledDuringSecondReadStatusError assert the three innerrun.go hard-error
+// paths F1 (crucible round sonnet-xhigh-r3) found missing their cancelErr check now carry the
+// cancelled-context diagnosis rather than the raw underlying error, when ctx is cancelled by the
+// time the failing seam call itself returns.
+func TestInnerRun_CancelledDuringResolveStatusError(t *testing.T) {
+	scratchDir := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	resolveErr := errors.New("resolve failed")
+	deps := InnerRunDeps{
+		Spawn: func(ctx context.Context) error { return nil },
+		ResolveStatus: func() (string, string, error) {
+			cancel()
+			return "", "", resolveErr
+		},
+		ReadStatus: func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
+			return shedengine.Status{}, false, nil
+		},
+		Sleep: (&fakeClock{}).Sleep,
+	}
+
+	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir)
+	_, _, err := producer.Call(ctx)
+	if err == nil {
+		t.Fatal("Call() error = nil; want the cancelled-context diagnosis")
+	}
+	if !strings.Contains(err.Error(), "context cancelled during run") {
+		t.Errorf("Call() error = %q; want it to carry the cancelled-context diagnosis, not the raw ResolveStatus error", err.Error())
+	}
+}
+
+func TestInnerRun_CancelledDuringFirstReadStatusError(t *testing.T) {
+	scratchDir := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	readErr := errors.New("decode failed")
+	deps := InnerRunDeps{
+		Spawn: func(ctx context.Context) error { return nil },
+		ResolveStatus: func() (string, string, error) {
+			return "/status/path", "/status/lock/path", nil
+		},
+		ReadStatus: func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
+			cancel()
+			return shedengine.Status{}, false, readErr
+		},
+		Sleep: (&fakeClock{}).Sleep,
+	}
+
+	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir)
+	_, _, err := producer.Call(ctx)
+	if err == nil {
+		t.Fatal("Call() error = nil; want the cancelled-context diagnosis")
+	}
+	if !strings.Contains(err.Error(), "context cancelled during run") {
+		t.Errorf("Call() error = %q; want it to carry the cancelled-context diagnosis, not the raw ReadStatus error", err.Error())
+	}
+}
+
+func TestInnerRun_CancelledDuringSecondReadStatusError(t *testing.T) {
+	scratchDir := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	readErr := errors.New("decode failed")
+	readCalls := 0
+	deps := InnerRunDeps{
+		Spawn: func(ctx context.Context) error { return nil },
+		ResolveStatus: func() (string, string, error) {
+			return "/status/path", "/status/lock/path", nil
+		},
+		ReadStatus: func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
+			readCalls++
+			if readCalls == 1 {
+				// The pre-spawn read: no status file yet, so Call proceeds to Spawn.
+				return shedengine.Status{}, false, nil
+			}
+			// The post-spawn read: this is the one whose own error path is under test.
+			cancel()
+			return shedengine.Status{}, false, readErr
+		},
+		Sleep: (&fakeClock{}).Sleep,
+	}
+
+	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir)
+	_, _, err := producer.Call(ctx)
+	if err == nil {
+		t.Fatal("Call() error = nil; want the cancelled-context diagnosis")
+	}
+	if !strings.Contains(err.Error(), "context cancelled during run") {
+		t.Errorf("Call() error = %q; want it to carry the cancelled-context diagnosis, not the raw second-read ReadStatus error", err.Error())
+	}
+}
+
 // TestInnerRun_ReentryAgainstExistingStatusDoesNotRespawn is the second load-bearing assertion:
 // once a status file exists, a re-entered Call -- the shape shedengine's on_stuck self-route
 // produces -- must read it without spawning again, which is what makes re-entry safe against a

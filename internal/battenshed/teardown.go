@@ -96,6 +96,9 @@ func (p *worktreeTeardownProducer) Call(ctx context.Context) (shedengine.Outcome
 
 	release, ok, err := p.primeLock.Acquire()
 	if err != nil {
+		if cerr := cancelErr(ctx, p.name); cerr != nil {
+			return "", shedengine.OutputPointer{}, cerr
+		}
 		return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: acquire prime lock %q: %w", p.name, p.primeLock.Path, err)
 	}
 	if !ok {

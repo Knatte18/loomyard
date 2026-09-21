@@ -261,12 +261,17 @@ of hard-error (`error != nil`) return paths, with no principled reason distingui
 - `innerrun.go:92-94` — `deps.ResolveStatus()` error.
 - `innerrun.go:97-99` — `deps.ReadStatus()` error (first call, before any spawn).
 - `innerrun.go:113-115` — `deps.ReadStatus()` error (second call, right after a spawn).
-- `innerrun.go:143` — the `StateBlocked`/`StatePaused`/`StateFailed` halted-child hard error.
-- `innerrun.go:145` — the unrecognized-state hard error.
 
 By contrast, `innerrun.go`'s `Spawn` failure (line 106-108) and its sibling "spawn returned success but no status file" case (line 117-120)
 DO check `cancelErr` before returning — proving the pattern exists and is reachable, just inconsistently applied within the very same
 function, let alone across the package.
+
+(Revised after closer reading, ahead of the fix: `innerrun.go:143` and `:145` — the `StateBlocked`/`StatePaused`/`StateFailed` and
+unrecognized-state hard errors — are NOT genuinely missing the check. Both are reached by a plain `switch status.State` immediately
+following the `cancelErr` check at line 124-126, with no seam call of any kind in between; that check already covers them, and duplicating
+it at each `case` would be dead, unreachable-in-practice code the codebase's own established pattern -- check after a seam call, not
+between arbitrary statement pairs -- does not otherwise do anywhere. Excluded from the fix and from the count below for that reason; `F1`'s
+actual fix touches the seven sites that follow a genuine seam call with no check at all.)
 
 **Scenario:** an operator's `Ctrl-C`/parent-deadline cancellation lands in the exact window while one of the un-checked calls above is
 returning its own (unrelated) error — e.g. `PrimeLock.Acquire` genuinely erroring (a lock-file device error) at the same moment the run's
@@ -276,8 +281,8 @@ of the "context cancelled during run" wrapped message every OTHER exit path in t
 distinction right at the STATE level — this is an operator-facing error-text clarity/consistency gap, not a state-correctness bug. CONFIRMED
 by code reading across all four producer files; the race itself is not independently live-demonstrated (the same sub-millisecond timing
 precision limit noted for the Seed-Child commit/push race below applies here too).
-**Fix:** add the missing `cancelErr` check to all nine call sites above, bringing every hard-error return path in line with the
-already-established pattern and with `ctx.go`'s own stated contract.
+**Fix:** add the missing `cancelErr` check to all seven call sites above, bringing every hard-error return path that follows a genuine seam
+call in line with the already-established pattern, and correct `ctx.go`'s own doc comment to state the precise, now fully-consistent rule.
 
 ### F2 [NIT] — `childDriverOf`'s two-line defaulting logic is duplicated rather than shared
 

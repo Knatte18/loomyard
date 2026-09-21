@@ -278,6 +278,60 @@ func TestSeedChild_ChildDriverFailureIsReturnedError(t *testing.T) {
 	}
 }
 
+// TestSeedChild_CancelledDuringChildDriverError and TestSeedChild_CancelledDuringWriteSeedError
+// assert the two seamchild.go hard-error paths F1 (crucible round sonnet-xhigh-r3) found missing
+// their cancelErr check both now carry the cancelled-context diagnosis rather than the raw
+// underlying error, when ctx is cancelled by the time the failing seam call itself returns.
+func TestSeedChild_CancelledDuringChildDriverError(t *testing.T) {
+	scratchDir := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	driverErr := errors.New("driver read failed")
+	deps := SeedChildDeps{
+		ReadBoardType: func(ctx context.Context) (string, error) { return "batten", nil },
+		ChildDriver: func() (string, error) {
+			cancel()
+			return "", driverErr
+		},
+		WriteSeed:  func(ctx context.Context, recipe, driver string) error { return nil },
+		CommitSeed: func(ctx context.Context) error { return nil },
+		PushSeed:   func(ctx context.Context) error { return nil },
+	}
+
+	producer := NewSeedChild("seedchild", "myslug", deps, scratchDir)
+	_, _, err := producer.Call(ctx)
+	if err == nil {
+		t.Fatal("Call() error = nil; want the cancelled-context diagnosis")
+	}
+	if !strings.Contains(err.Error(), "context cancelled during run") {
+		t.Errorf("Call() error = %q; want it to carry the cancelled-context diagnosis, not the raw ChildDriver error", err.Error())
+	}
+}
+
+func TestSeedChild_CancelledDuringWriteSeedError(t *testing.T) {
+	scratchDir := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	writeErr := errors.New("resolve seed path failed")
+	deps := SeedChildDeps{
+		ReadBoardType: func(ctx context.Context) (string, error) { return "batten", nil },
+		ChildDriver:   func() (string, error) { return "claude", nil },
+		WriteSeed: func(ctx context.Context, recipe, driver string) error {
+			cancel()
+			return writeErr
+		},
+		CommitSeed: func(ctx context.Context) error { return nil },
+		PushSeed:   func(ctx context.Context) error { return nil },
+	}
+
+	producer := NewSeedChild("seedchild", "myslug", deps, scratchDir)
+	_, _, err := producer.Call(ctx)
+	if err == nil {
+		t.Fatal("Call() error = nil; want the cancelled-context diagnosis")
+	}
+	if !strings.Contains(err.Error(), "context cancelled during run") {
+		t.Errorf("Call() error = %q; want it to carry the cancelled-context diagnosis, not the raw WriteSeed error", err.Error())
+	}
+}
+
 func TestSeedChild_CancelledContext(t *testing.T) {
 	scratchDir := t.TempDir()
 	_, deps := newSeedChildDeps("batten", nil, "claude", nil, nil, nil, nil)

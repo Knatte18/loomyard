@@ -77,6 +77,9 @@ func (p *seedChildProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 
 	driver, err := p.deps.ChildDriver()
 	if err != nil {
+		if cerr := cancelErr(ctx, p.name); cerr != nil {
+			return "", shedengine.OutputPointer{}, cerr
+		}
 		return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: read child driver: %w", p.name, err)
 	}
 
@@ -87,6 +90,9 @@ func (p *seedChildProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 			}
 			reportStuck(p.name, reason, p.scratchDir, "slug", p.slug)
 			return shedengine.Stuck, shedengine.OutputPointer{}, nil
+		}
+		if cerr := cancelErr(ctx, p.name); cerr != nil {
+			return "", shedengine.OutputPointer{}, cerr
 		}
 		return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: write seed: %w", p.name, err)
 	}
