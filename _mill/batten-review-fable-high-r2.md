@@ -66,3 +66,25 @@ _(filled after the clean-room pass; prior-round material is read only then)_
 ## What I could NOT verify and why
 
 _(filled at the end)_
+
+### A1 — refusal surface on prime (no worktree created)
+
+From prime (`<hub>/warp`), dev binary by absolute path:
+- `lyx batten status nope` → `{"error":"battencli: no seed found for run \"nope\"; no run is seeded yet. run \"lyx batten run <slug>\" first"}` exit 1. Same for `pause nope`. Nothing written under `_lyx/shed`.
+- `lyx batten run` (no slug) → "no slug given; ... pass the slug" exit 1. `lyx batten step self` → "slug \"self\" is reserved for addressing prime's own run" exit 1.
+All four correct and honest.
+
+### A2 — focus 11: hand-seeded prime run (`lyx shed seed <slug> --recipe batten`)
+
+- `lyx shed seed pre-seeded --recipe batten` → writes `_lyx/shed/pre-seeded/seed.json` `{recipe: batten, driver: go}` (no `params.slug`, unlike batten's own auto-seed — see P-G).
+- `lyx batten run pre-seeded --driver llm` → refused: "already seeded with driver \"go\"; --driver \"llm\" cannot change a seeded run's recorded driver". `--child-driver llm` → refused analogously. Seed byte-identical afterwards. Hand seed treated as authoritative; a disagreeing flag refused rather than adopted. CORRECT.
+- `lyx shed seed wrong-recipe --recipe loom` then `lyx batten run wrong-recipe` → refused: "already seeded with recipe \"loom\", not \"batten\"; batten refuses to drive it -- drive it with \"lyx shed run wrong-recipe\"". CORRECT.
+- **DEFECT (F1)** `lyx batten status pre-seeded` (seed present, status absent — the ONLY state in which the documented `found: false` "determined answer" is reachable, and exactly F22's own hand-seed scenario) → `{"error":"battencli: decode status file .../warp/_lyx/shed/pre-seeded/status.json: acquire read lock: acquire read lock: open .../warp/.lyx/shed/pre-seeded/status.json.lock: no such file or directory"}` exit 1. `lyx shed status pre-seeded` → identical. Root cause: `specFor` sets `EnsureStatusLockDir: false` (`arm.go:293`) so the generic status body never creates the ephemeral lock directory, and `state.ReadJSONStrict` needs the lock file's parent to exist even to report "absent". This also breaks the cold-machine design: a durable status synced to another machine has NO `.lyx/shed/<slug>/` there, so `lyx batten status <slug>` errors on the fresh clone instead of reading the very status file the SPEC made durable for that purpose (to be re-proven below by deleting the scratch dir after a status exists). `pause` shares the flag and the failure.
+
+### A3 — P-B confirmed live: Board `type: batten`
+
+Board task `bad-type` with `"type":"batten"`. `lyx batten step bad-type` ×3 from prime:
+1. `Worktree-Create` → done (0.12 s real). Pair `bad-type`/`bad-type-weft` created.
+2. `Seed-Child` → done. Child `_lyx/shed/self/seed.json` = `{recipe: batten, driver: go}`, committed (`6fe2e36 batten: seed child bad-type`) and pushed onto the child's weft branch.
+3. `Run-Shed` → `{"error":"battenshed: Run-Shed: spawn inner shed run: exit status 1: {\"error\":\"shedrun: run \\\"self\\\" is already seeded with {Recipe:batten Driver:go Params:map[]}; refusing to overwrite with disagreeing seed {Recipe:loom Driver:go Params:map[parent:main]}\",\"ok\":false}","kind":"producer"}`; prime status `state: failed` at `Run-Shed`.
+Outcome as predicted: loud but late (a pair exists and a wrong seed is already committed+pushed) and misattributed (a `shedrun` disagreement raised by `lyx loom start` inside the child, not "batten can only bootstrap a `loom` child"). The `kind: producer` classification also means an ly-drive-style supervisor would retry this once for nothing. **F2 = P-B, severity LOW → raised to MEDIUM** on the strength of the committed-and-pushed wrong seed: recovery needs `lyx fabric remove bad-type`, deleting the branch, and hand-removing prime's durable `_lyx/shed/bad-type/`, none of which the envelope names.
