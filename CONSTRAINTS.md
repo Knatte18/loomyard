@@ -263,6 +263,22 @@ Every code path reachable from a `lyx` command that starts a real OS process log
 - Never re-exec `os.Executable()` under `go test`.
 - A retry loop around a real spawn caps attempt COUNT, not only elapsed time.
 
+## Pane Binary Resolution
+
+A strand pane reed creates resolves `lyx` to the binary that spawned it.
+
+- `panebin.go` owns the seam, and `launchStrandLocked` is its only call site.
+- Every shell token is emitted through `internal/shell`, per the Shell Mechanics Seam.
+- The dialect is `shell.ForGOOS()`, the same selector as the launch command the prelude is joined onto,
+  and reed neither derives a dialect of its own nor changes how a pane's shell is started.
+- Scope is strand panes only, with Selvage's split and the `new-session` first pane exempt by name,
+  and the detached `lyx loom run` and watchdog daemon spawns excluded because both are already
+  spawned from the executable path and neither resolves `lyx` from `PATH`.
+- An unresolvable executable path degrades to a pane with no prelude plus a named `logger.Warn`,
+  never a failed launch.
+- Backed by `internal/reedengine/panebin_enforcement_test.go`, which fails if a `split-window`
+  pane-creation site appears outside the chokepoint and outside the named allowlist.
+
 ## Sandbox Suite Coverage
 
 Every registered lyx module is exercised by the sandbox suite or explicitly excluded with a reason.

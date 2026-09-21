@@ -100,6 +100,17 @@
 // exact rescale this task removes (Shared Decision
 // told-box-wins-live-query-is-the-fallback).
 //
+// Every strand pane reed creates resolves `lyx` to the binary that spawned it, because
+// launchStrandLocked prepends that binary's directory to the pane's PATH and exports LYX_BIN to its
+// absolute path as shell statements riding the same send-keys line the launch command already rode.
+// The composition lives in panebin.go and is reached from the one chokepoint, so the property holds
+// by construction for every present and future AddStrand caller including Resume's replay. The
+// mechanism is a typed shell statement rather than `split-window -e` or `set-environment`, so it
+// prepends onto the pane's live PATH instead of replacing it with a value computed from the lyx
+// process's own environment, it survives the pane shell's profile (which has already run by the time
+// anything is typed), and it needs no multiplexer capability. Selvage's pane and the new-session
+// first pane are out of scope.
+//
 // # Multiplexer contract surface
 //
 // This package assumes its configured binary (psmux on Windows today, tmux
