@@ -99,6 +99,9 @@ const maxChildOutputInError = 2000
 // carries the child's diagnosis rather than only its exit status.
 // It returns nil for a nil runErr, runErr unchanged when the child said nothing, and truncates
 // output past maxChildOutputInError with an explicit marker.
+//
+// The byte slice lands on a rune boundary only by chance, so strings.ToValidUTF8 drops any partial
+// rune it leaves dangling at the cut point rather than embedding invalid UTF-8 into the error text.
 func childSpawnError(runErr error, childOutput string) error {
 	if runErr == nil {
 		return nil
@@ -108,7 +111,7 @@ func childSpawnError(runErr error, childOutput string) error {
 		return runErr
 	}
 	if len(trimmed) > maxChildOutputInError {
-		trimmed = trimmed[:maxChildOutputInError] + " ... (truncated)"
+		trimmed = strings.ToValidUTF8(trimmed[:maxChildOutputInError], "") + " ... (truncated)"
 	}
 	return fmt.Errorf("%w: %s", runErr, trimmed)
 }

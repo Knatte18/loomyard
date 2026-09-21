@@ -13,6 +13,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -273,6 +274,23 @@ func TestChildSpawnError(t *testing.T) {
 				t.Errorf("childSpawnError(...) produced %d bytes; want the output capped near maxChildOutputInError", len(got.Error()))
 			}
 		})
+	}
+}
+
+// TestChildSpawnError_TruncationStaysValidUTF8 pins the truncation boundary against a multi-byte
+// rune straddling it: a naive byte slice at maxChildOutputInError can land mid-rune, embedding an
+// invalid UTF-8 tail into the returned error. The fixture places a 3-byte rune ("€") exactly across
+// that boundary.
+func TestChildSpawnError_TruncationStaysValidUTF8(t *testing.T) {
+	runErr := errors.New("exit status 1")
+	childOutput := strings.Repeat("x", maxChildOutputInError-1) + "€ trailing text after the cut point"
+
+	got := childSpawnError(runErr, childOutput)
+	if got == nil {
+		t.Fatal("childSpawnError(...) = nil; want an error")
+	}
+	if !utf8.ValidString(got.Error()) {
+		t.Errorf("childSpawnError(...) = %q; want valid UTF-8, the truncation boundary split a multi-byte rune", got.Error())
 	}
 }
 
