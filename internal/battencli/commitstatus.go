@@ -15,6 +15,13 @@
 // in a closure variable -- it would start empty every call and the skip would work for `run` mode
 // alone. It lives instead at shedrun.LastCommitMarker(location, runID), read before deciding and
 // rewritten after a successful commit.
+//
+// The skip's own cost, stated here because nothing else in the code says it: shedengine rewrites the
+// run's durable status file on every Run-Shed self-bounce (a history append), and the skip declines
+// to commit every one of them after the first, so the pair carries an uncommitted change at that
+// path for the whole watch -- up to the row's full 12-hour budget. That is the right trade against
+// 1440 identical commits, and it is why an operation requiring a clean pair, such as
+// "lyx fabric checkout", refuses hub-wide while a batten run is watching.
 package battencli
 
 import (
