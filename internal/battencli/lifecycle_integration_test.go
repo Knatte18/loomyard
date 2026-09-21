@@ -3,10 +3,20 @@
 // lifecycle_integration_test.go is the end-to-end suite over a real hub built by
 // internal/hubforge through its fabric fixture entry point, per the hubforge Fabric-Fixture
 // Invariant. It stays a white-box "package battencli" test, not an external "_test" package,
-// because it stubs Env.InnerRun.Spawn and Env.InnerRun.ReadStatus at the field level after a real
-// wire() call -- a no-op spawn and a read-status answering a chosen state -- so the real poll logic
-// (Env.InnerRun.ResolveStatus, the persisted-state branching) is exercised rather than bypassed, and
-// that stubbing needs the unexported wire method and the battenCLI receiver.
+// because most tests here stub Env.InnerRun.Spawn and Env.InnerRun.ReadStatus at the field level
+// after a real wire() call -- a no-op spawn and a read-status answering a chosen state -- so the
+// row routing and the persisted-state branching can be driven without a real child, and that
+// stubbing needs the unexported wire method and the battenCLI receiver.
+//
+// Be precise about what that leaves uncovered, because an earlier version of this comment was not
+// and two blocking defects lived in the gap it hid. Stubbing those two fields removes the real
+// child bootstrap AND the real status read over the child's own paths -- which is exactly where
+// both defects were. The two tests named
+// TestBattenIntegration_RealReadStatus_OnAFreshPairReportsAbsentRatherThanErroring and
+// TestBattenIntegration_SeedChild_WritesASeedTheChildBootstrapAgreesWith deliberately do NOT stub,
+// and exist to hold those two real seams. Nothing here, by design, spawns a real provider: per the
+// batten crucible cost declaration a real-provider drive belongs in manual, narrated CLI driving,
+// never inside go test.
 //
 // It lives at the integration tier rather than Tier 1 because the prime-name lookup this package's
 // own pre-run refusal performs reaches a real git worktree listing, and getting there at all needs

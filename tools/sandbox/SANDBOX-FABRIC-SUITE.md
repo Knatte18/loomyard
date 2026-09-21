@@ -541,7 +541,9 @@ Hold `.lyx/shed/<slug>/run.lock` yourself (any advisory-lock-compatible hold) an
 Run `lyx batten run <slug>`, `lyx batten step <slug>`, and `lyx batten status <slug>` from a task worktree rather than the hub's prime, and confirm each refuses naming both worktree names and telling the operator to re-run it from the prime.
 Before touching a fresh slug, run `lyx shed seed <a-fresh-slug> --recipe batten` by hand and confirm it writes `_lyx/shed/<a-fresh-slug>/seed.json` naming `recipe: batten`; then dirty the prime worktree with an uncommitted edit to a tracked file and run `lyx batten run <a-fresh-slug>`: confirm the create row halts `blocked` rather than `stuck`, the reason surfaces fabric's own dirty-worktree refusal text, no task worktree was created, and batten's own auto-seed step left the hand-written seed untouched rather than treating it as a disagreeing seed.
 
-Say in the report that the full driven path -- a completed create, loom run, and teardown -- is covered by the `integration`-tagged end-to-end test instead, so a sandbox operator does not read this scenario's narrower scope as an oversight.
+Say in the report that **no automated test drives a real child bootstrap at all**: the `integration`-tagged end-to-end test walks all four rows against a real hub, but it replaces `Env.InnerRun.Spawn` with a no-op and `Env.InnerRun.ReadStatus` with an in-memory stub, so the loom run itself is exactly the part it does not drive.
+Treat that as a stated gap, not as coverage this scenario is narrower than.
+Two blocking defects lived in precisely that gap until crucible round `opus-high-r1` drove it by hand -- `Run-Shed`'s first status read, and the seed `Seed-Child` writes for the child's own bootstrap -- and both now carry `integration`-tagged regression tests that drive those two real seams (`TestBattenIntegration_RealReadStatus_*`, `TestBattenIntegration_SeedChild_WritesASeedTheChildBootstrapAgreesWith`), while the real-provider drive past them stays a manual exercise by design.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
