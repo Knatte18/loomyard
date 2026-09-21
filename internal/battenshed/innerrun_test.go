@@ -1,5 +1,5 @@
-// innerrun_test.go covers NewInnerRun's full re-entrant disposition table over a fake ReadStatus, a
-// fake Now, and a fake Sleep that never sleeps -- so the still-running case is provably a single
+// innerrun_test.go covers NewInnerRun's full re-entrant disposition table over a fake ReadStatus
+// and a fake Sleep that never sleeps -- so the still-running case is provably a single
 // Stuck with a single sleep, never a bounded poll loop, in unmeasurable real time.
 
 package battenshed
@@ -14,14 +14,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// fakeClock is a Now/Sleep pair a test can hold still: Now always returns the same instant, and
-// Sleep records calls without ever blocking.
+// fakeClock is a Sleep seam a test can hold still: Sleep records calls without ever blocking.
 type fakeClock struct {
-	now        time.Time
 	sleepCalls int
 }
 
-func (c *fakeClock) Now() time.Time { return c.now }
 func (c *fakeClock) Sleep(ctx context.Context, d time.Duration) {
 	c.sleepCalls++
 }
@@ -53,7 +50,6 @@ func newInnerRunDeps(spawnErr error, resolveErr error, statuses []statusResult, 
 			r := statuses[idx]
 			return r.status, r.found, r.err
 		},
-		Now:   clock.Now,
 		Sleep: clock.Sleep,
 	}
 	return &readCalls, &spawnCalls, deps
@@ -127,7 +123,7 @@ func TestInnerRun_VerdictTable(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			scratchDir := t.TempDir()
-			clock := &fakeClock{now: time.Unix(0, 0)}
+			clock := &fakeClock{}
 			_, _, deps := newInnerRunDeps(nil, nil, tt.statuses, clock)
 
 			producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir)
@@ -173,7 +169,7 @@ func TestInnerRun_StuckIsReturnedForRunningAndNoOtherCase(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			scratchDir := t.TempDir()
-			clock := &fakeClock{now: time.Unix(0, 0)}
+			clock := &fakeClock{}
 			_, _, deps := newInnerRunDeps(nil, nil, []statusResult{{status: tt.status, found: true}}, clock)
 
 			producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir)
@@ -192,7 +188,7 @@ func TestInnerRun_StuckIsReturnedForRunningAndNoOtherCase(t *testing.T) {
 
 func TestInnerRun_SpawnFailureIsReturnedError(t *testing.T) {
 	scratchDir := t.TempDir()
-	clock := &fakeClock{now: time.Unix(0, 0)}
+	clock := &fakeClock{}
 	spawnErr := errors.New("spawn failed")
 	_, spawnCalls, deps := newInnerRunDeps(spawnErr, nil, []statusResult{{found: false}}, clock)
 
@@ -214,7 +210,7 @@ func TestInnerRun_SpawnFailureIsReturnedError(t *testing.T) {
 
 func TestInnerRun_ResolveStatusFailureIsReturnedError(t *testing.T) {
 	scratchDir := t.TempDir()
-	clock := &fakeClock{now: time.Unix(0, 0)}
+	clock := &fakeClock{}
 	resolveErr := errors.New("resolve failed")
 	_, _, deps := newInnerRunDeps(nil, resolveErr, nil, clock)
 
@@ -230,7 +226,7 @@ func TestInnerRun_ResolveStatusFailureIsReturnedError(t *testing.T) {
 
 func TestInnerRun_CancelledContext(t *testing.T) {
 	scratchDir := t.TempDir()
-	clock := &fakeClock{now: time.Unix(0, 0)}
+	clock := &fakeClock{}
 	_, _, deps := newInnerRunDeps(nil, nil, []statusResult{{status: shedengine.Status{State: shedengine.StateDone}, found: true}}, clock)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -252,7 +248,7 @@ func TestInnerRun_CancelledContext(t *testing.T) {
 // double spawn.
 func TestInnerRun_ReentryAgainstExistingStatusDoesNotRespawn(t *testing.T) {
 	scratchDir := t.TempDir()
-	clock := &fakeClock{now: time.Unix(0, 0)}
+	clock := &fakeClock{}
 	_, spawnCalls, deps := newInnerRunDeps(nil, nil, []statusResult{{status: shedengine.Status{State: shedengine.StateRunning}, found: true}}, clock)
 
 	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir)
@@ -273,7 +269,7 @@ func TestInnerRun_ReentryAgainstExistingStatusDoesNotRespawn(t *testing.T) {
 // Call invocations is shedengine's own bounce budget, not a loop inside this producer.
 func TestInnerRun_StillRunningSleepsExactlyOnce(t *testing.T) {
 	scratchDir := t.TempDir()
-	clock := &fakeClock{now: time.Unix(0, 0)}
+	clock := &fakeClock{}
 	_, _, deps := newInnerRunDeps(nil, nil, []statusResult{{status: shedengine.Status{State: shedengine.StateRunning}, found: true}}, clock)
 
 	producer := NewInnerRun("innerrun", "myslug", deps, 5*time.Second, scratchDir)

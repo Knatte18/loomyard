@@ -84,8 +84,8 @@ func worktreeTeardownEntry(name string, cfg Config, env Env) (shedengine.ShedPro
 // key. poll_attempts is retired: the wait budget now lives on the recipe row's own max_bounces,
 // read by shedengine itself, not on a Config key this entry reads, so poll_attempts is rejected as
 // an unrecognised key rather than silently read. It validates Env.Slug, Env.ScratchDir, and
-// Env.InnerRun.Spawn/ResolveStatus/ReadStatus -- and neither Env.InnerRun.Now nor
-// Env.InnerRun.Sleep, whose nil values are legitimate and select the production clock and sleep.
+// Env.InnerRun.Spawn/ResolveStatus/ReadStatus -- and not Env.InnerRun.Sleep, whose nil value is
+// legitimate and selects the production sleep.
 // It returns battenshed.NewInnerRun(name, env.Slug, env.InnerRun,
 // time.Duration(pollIntervalS)*time.Second, env.ScratchDir).
 func innerRunEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {

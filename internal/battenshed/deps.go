@@ -44,8 +44,8 @@ type PrimeLock struct {
 }
 
 // InnerRunDeps carries every told value and injected closure NewInnerRun needs: spawning the
-// inner shed run, resolving and reading its persisted status, and the two seams a test replaces to
-// keep the poll loop out of real time.
+// inner shed run, resolving and reading its persisted status, and the sleep seam a test replaces
+// to keep the poll interval out of real time.
 type InnerRunDeps struct {
 	// Spawn starts the inner shed run and blocks until the bootstrap process it launched exits,
 	// which is not the inner run's own completion:
@@ -67,9 +67,6 @@ type InnerRunDeps struct {
 	// anything else, and again once more after a spawn it triggers -- never in a bounded poll
 	// loop, since the wait across Call invocations is shedengine's own bounce budget.
 	ReadStatus func(statusPath, statusLockPath string) (shedengine.Status, bool, error)
-	// Now returns the current time. A nil Now resolves to time.Now in NewInnerRun, so production
-	// code never sets this field; a test holds the clock still by setting it.
-	Now func() time.Time
 	// Sleep pauses for d, returning early when ctx is cancelled.
 	// It takes a context because it is the longest wait the producer performs and sits directly in
 	// front of a cancellation check, which an uninterruptible sleep would delay by a whole interval.
