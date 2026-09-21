@@ -164,7 +164,7 @@ since the file arrived via a merge this campaign's own round history
 records and no round has yet read it byte-for-byte. Fix: restore the
 correct `'\''` text.
 
-### F2 (LOW, PLAUSIBLE pending live/unit confirmation) — child-output truncation in wire.go's childSpawnError can split a multi-byte UTF-8 rune
+### F2 (LOW, CONFIRMED) — child-output truncation in wire.go's childSpawnError can split a multi-byte UTF-8 rune
 
 `internal/battencli/wire.go:110-112` (`childSpawnError`):
 ```go
@@ -185,9 +185,17 @@ erroring, so the practical blast radius is a slightly garbled last few
 characters of a truncated diagnostic, not a crash or data loss elsewhere.
 `TestChildSpawnError` (wire_test.go) exercises truncation only with a pure
 ASCII `strings.Repeat("x", ...)` fixture, so this path is untested against
-non-ASCII input. Fix: truncate on a rune boundary (e.g.
-`strings.ToValidUTF8` after a byte slice, or walk back to the last
-complete rune via `utf8.DecodeLastRuneInString`).
+non-ASCII input.
+
+**Confirmed** with a standalone repro (not touching any production/test
+file, per the sequencing rule): a 2043-byte string built from
+`maxChildOutputInError-1` `x` bytes followed by `"€ trailing text..."`
+(`€` is 3 bytes, U+20AC) run through the exact `trimmed[:2000]` slice
+produces `..."xx\xe2 .."` — `\xe2` is the lone leading byte of `€`'s
+3-byte encoding, an invalid trailing sequence (`utf8.ValidString` reports
+`false`). `strings.ToValidUTF8(trimmed[:2000], "") + " ... (truncated)"`
+on the same input produces valid UTF-8 with the partial rune cleanly
+dropped. Fix: truncate on a rune boundary via `strings.ToValidUTF8`.
 
 ### F3 (MEDIUM, CONFIRMED live) — a disagreeing child seed at Seed-Child hard-errors instead of routing to Stuck
 
