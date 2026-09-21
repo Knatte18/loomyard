@@ -93,9 +93,10 @@ Example:
 		Short: "report a task worktree's persisted lifecycle status",
 		Long: `status reports a slug's persisted lifecycle status: the current producer, the
 state, the error field, the activity, and the history, plus the resolved
-status path so an operator can find the file. A slug that has never been
-run on this machine is reported as a determined answer on the success
-envelope, not as an error.
+status path so an operator can find the file. A slug with no seed at all
+refuses, listing the seeded run-ids; a seeded slug whose status file is
+absent -- hand-seeded, or never stepped yet -- is reported as a determined
+answer on the success envelope, not as an error.
 
 With --watch, it performs the same read once as a pre-flight, then tails
 the file and never exits, printing a line only when the composed activity
@@ -147,17 +148,18 @@ func Command() *cobra.Command {
 	parent := &cobra.Command{
 		Use:   "batten",
 		Short: "drive one task worktree's whole lifecycle as a single Shed run",
-		Long: `batten drives one task worktree's whole lifecycle -- create, run the loom
-session to a terminal state, and tear down -- as a single Shed run over a
-per-slug status.json. "run" starts or resumes that run for a slug; "status"
-reports its current state; "pause" requests a pause at the run's next
-producer boundary.
+		Long: `batten drives one task worktree's whole lifecycle -- create, seed the task
+worktree's own run, run it to a terminal state, and tear down -- as a single
+Shed run over a per-slug status.json. "run" starts or resumes that run for a
+slug; "step" drives it exactly one producer forward; "status" reports its
+current state; "pause" requests a pause at the run's next producer boundary.
 
-All three verbs run from the hub's prime worktree only: they refuse when
-invoked from a task worktree.
+All four verbs run from the hub's warp prime worktree only: they refuse when
+invoked from a task worktree, from the weft sibling, or from _board.
 
 Example:
   lyx batten run some-slug
+  lyx batten step some-slug
   lyx batten status some-slug
   lyx batten pause some-slug`,
 		// RunE is set so that bare "lyx batten" lists subcommands and "lyx batten bogus"
