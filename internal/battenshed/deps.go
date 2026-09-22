@@ -18,6 +18,21 @@ import (
 // path-resolution or write failure) and is a returned hard error instead.
 var ErrUnknownRecipe = errors.New("battenshed: unknown recipe name")
 
+// ErrUnsupportedChildRecipe is the sentinel a SeedChildDeps.WriteSeed closure wraps when recipe is a
+// registered recipe the task worktree's bootstrap cannot run -- InnerRun spawns the one bootstrap verb
+// that exists, loom's. SeedChild routes it to Stuck exactly as ErrUnknownRecipe, before any seed is
+// written or committed, so a Board task typed with such a recipe halts at Seed-Child with the recipe
+// named rather than failing inside the child after a wrong seed has already been pushed.
+var ErrUnsupportedChildRecipe = errors.New("battenshed: recipe cannot be a task worktree's own run")
+
+// ErrDisagreeingChildSeed is the sentinel a SeedChildDeps.WriteSeed closure wraps when the task
+// worktree's own seed already exists and disagrees with the one Seed-Child is about to write --
+// normally unreachable, since Seed-Child runs once and never revisits a Done row, but reachable
+// against a hand-seeded or otherwise pre-existing child seed. SeedChild routes it to Stuck exactly
+// as the other two WriteSeed sentinels: the same kind of business judgment a human can act on (fix
+// or delete the child's own seed, or correct the Board task's type), not a mechanism failure.
+var ErrDisagreeingChildSeed = errors.New("battenshed: task worktree already seeded with a disagreeing seed")
+
 // PrimeLock carries the told absolute path to a hub-scoped advisory lock plus the injected
 // acquire closure both WorktreeCreate and WorktreeTeardown hold it behind, so the two producers
 // that mutate the hub's worktree registry concurrently with each other never race.
@@ -37,14 +52,18 @@ type PrimeLock struct {
 }
 
 // InnerRunDeps carries every told value and injected closure NewInnerRun needs: spawning the
-// inner shed run, resolving and reading its persisted status, and the two seams a test replaces to
-// keep the poll loop out of real time.
+// inner shed run, resolving and reading its persisted status, and the sleep seam a test replaces
+// to keep the poll interval out of real time.
 type InnerRunDeps struct {
-	// Spawn starts the inner shed run and blocks until it exits. InnerRun waits for its child
-	// rather than detaching, per the Live-Substrate Spawn Observability invariant. Call invokes
-	// Spawn at most once per invocation, and only when its own read-before-spawn check found no
-	// status file yet -- the child's own status file, not a call count, is what makes a resumed
-	// Call safe against double-spawning.
+	// Spawn starts the inner shed run and blocks until the bootstrap process it launched exits,
+	// which is not the inner run's own completion:
+	// the bootstrap returns once the child's driver is up, and the wait for the campaign itself is
+	// the recipe row's on_stuck self-route, one bounce per poll.
+	//
+	// InnerRun waits for that bootstrap process rather than detaching, per the Live-Substrate Spawn
+	// Observability invariant. Call invokes Spawn at most once per invocation, and only when its own
+	// read-before-spawn check found no status file yet -- the child's own status file, not a call
+	// count, is what makes a resumed Call safe against double-spawning.
 	Spawn func(ctx context.Context) error
 	// ResolveStatus resolves the absolute status-file path and its companion lock path for the
 	// task worktree. It is evaluated on Call, never at wiring time: the task worktree this status
@@ -56,13 +75,13 @@ type InnerRunDeps struct {
 	// anything else, and again once more after a spawn it triggers -- never in a bounded poll
 	// loop, since the wait across Call invocations is shedengine's own bounce budget.
 	ReadStatus func(statusPath, statusLockPath string) (shedengine.Status, bool, error)
-	// Now returns the current time. A nil Now resolves to time.Now in NewInnerRun, so production
-	// code never sets this field; a test holds the clock still by setting it.
-	Now func() time.Time
-	// Sleep pauses for d. A nil Sleep resolves to time.Sleep in NewInnerRun; a test replaces it
-	// with a no-op so the attempt-cap test proves the bound is attempt-counted, not
-	// wall-clock-timed, without spending any real time.
-	Sleep func(d time.Duration)
+	// Sleep pauses for d, returning early when ctx is cancelled.
+	// It takes a context because it is the longest wait the producer performs and sits directly in
+	// front of a cancellation check, which an uninterruptible sleep would delay by a whole interval.
+	// A nil Sleep resolves to waitOrCancel in NewInnerRun;
+	// a test replaces it with a no-op so the attempt-cap test proves the bound is attempt-counted
+	// rather than wall-clock-timed.
+	Sleep func(ctx context.Context, d time.Duration)
 }
 
 // SeedChildDeps carries every told value and injected closure NewSeedChild needs, carrying no
@@ -79,9 +98,11 @@ type SeedChildDeps struct {
 	// inherits prime's driver, never the Board's.
 	ChildDriver func() (string, error)
 	// WriteSeed resolves the child's seed path and encodes recipe and driver into it. An error
-	// wrapping ErrUnknownRecipe means recipe names no recipe the encoder knows, a business
-	// judgment SeedChild routes to Stuck; any other error is a path-resolution or write failure,
-	// mechanism failure SeedChild returns as a hard error.
+	// wrapping ErrUnknownRecipe means recipe names no recipe the encoder knows, one wrapping
+	// ErrUnsupportedChildRecipe means it names a recipe the task worktree cannot bootstrap, and one
+	// wrapping ErrDisagreeingChildSeed means a pre-existing child seed disagrees with the one being
+	// written; all three are business judgments SeedChild routes to Stuck. Any other error is a
+	// path-resolution or write failure, mechanism failure SeedChild returns as a hard error.
 	WriteSeed func(ctx context.Context, recipe, driver string) error
 	// CommitSeed commits the just-written seed file. A non-nil error is Stuck: it names why a
 	// commit failed, a condition a human can act on.

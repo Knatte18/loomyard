@@ -145,6 +145,21 @@ func RequireWarpWorktree(l *lyxcwd.Location) error {
 	return nil
 }
 
+// RequireDrivableWorktree is RequireWarpWorktree's fabric-vocabulary-neutral spelling, for a caller
+// outside the Fabric Vocabulary Invariant's owner set -- internal/battencli, whose bookend rows must
+// refuse fabric's own checkouts before driving topology, is the first one.
+//
+// Such a caller cannot name RequireWarpWorktree at all: the invariant's scan matches the bare token
+// inside an identifier, so the published name is itself the leak. This is the same shape
+// CommitAnchoredPaths, PushAnchored and Fabric.PushBranch already take -- fabric owns the word and
+// hands out a spelling that does not carry it.
+//
+// It adds no behaviour of its own: the refusal text a caller renders is RequireWarpWorktree's own,
+// which fabric is entitled to spell in its own vocabulary.
+func RequireDrivableWorktree(l *lyxcwd.Location) error {
+	return RequireWarpWorktree(l)
+}
+
 // WeftLyxDir returns the path to the _lyx directory in l's weft sibling worktree.
 // It is the junction target for lyx weft and the pathspec base for weft operations.
 func WeftLyxDir(l *lyxcwd.Location) string {

@@ -113,6 +113,8 @@ Optional fields:
   "isolated"   bool   — true if the task has no dependencies by design
   "deferred"   bool   — true if the task is deferred
   "status"     string — lifecycle status (e.g. "active", "done")
+  "type"       string — recipe the task's child worktree runs; empty means "loom"
+  "short_name" string — short display label; falls back to the slug
 
 Example:
   lyx board upsert '{"slug":"my-task","title":"My Task","brief":"Short summary"}'`,

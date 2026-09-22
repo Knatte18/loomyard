@@ -3,10 +3,16 @@
 // lifecycle_integration_test.go is the end-to-end suite over a real hub built by
 // internal/hubforge through its fabric fixture entry point, per the hubforge Fabric-Fixture
 // Invariant. It stays a white-box "package battencli" test, not an external "_test" package,
-// because it stubs Env.InnerRun.Spawn and Env.InnerRun.ReadStatus at the field level after a real
-// wire() call -- a no-op spawn and a read-status answering a chosen state -- so the real poll logic
-// (Env.InnerRun.ResolveStatus, the persisted-state branching) is exercised rather than bypassed, and
-// that stubbing needs the unexported wire method and the battenCLI receiver.
+// because most tests here stub Env.InnerRun.Spawn and Env.InnerRun.ReadStatus at the field level
+// after a real wire() call -- a no-op spawn and a read-status answering a chosen state -- so the row
+// routing and the persisted-state branching can be driven without a real child, and that stubbing
+// needs the unexported wire method and the battenCLI receiver.
+//
+// Stubbing those two fields removes the real child bootstrap and the real status read over the
+// child's own paths, so the two tests named RealReadStatus and SeedChild_WritesASeedTheChildBootstrapAgreesWith
+// deliberately do not stub, and hold those seams instead.
+// Nothing here spawns a real provider: per batten's crucible cost declaration that belongs in
+// manual CLI driving, never inside go test.
 //
 // It lives at the integration tier rather than Tier 1 because the prime-name lookup this package's
 // own pre-run refusal performs reaches a real git worktree listing, and getting there at all needs
@@ -28,6 +34,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -143,6 +150,104 @@ func gitShow(t *testing.T, dir, spec string) []byte {
 		t.Fatalf("git show %s (in %s): %v", spec, dir, err)
 	}
 	return out
+}
+
+// TestBattenIntegration_SeedChild_WritesASeedTheChildBootstrapAgreesWith drives Worktree-Create and
+// Seed-Child for real, then asserts the property the child's own bootstrap depends on: re-writing
+// the seed the way that bootstrap will must be accepted by shedrun.WriteSeed, not refused as a
+// disagreement.
+//
+// It reconstructs that seed's shape from the recorded origin rather than importing internal/loomcli,
+// and asserts the recorded parent is what landed in the param, so the shape cannot drift into
+// agreeing with itself while disagreeing with loom.
+func TestBattenIntegration_SeedChild_WritesASeedTheChildBootstrapAgreesWith(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+	slug := "batten-seed-agrees"
+	seedBoardTask(t, h, slug, "loom")
+
+	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
+		return shedengine.Status{State: shedengine.StateDone}, true, nil
+	})
+	seedEntryStatus(t, c, battenrecipe.NameWorktreeCreate, shedengine.StateRunning, nil)
+
+	shed, err := battenrecipe.New(c.env, c.shedPaths)
+	if err != nil {
+		t.Fatalf("battenrecipe.New: %v", err)
+	}
+	ctx := context.Background()
+	if _, err := shed.Step(ctx); err != nil {
+		t.Fatalf("Step (Worktree-Create): %v", err)
+	}
+	if _, err := shed.Step(ctx); err != nil {
+		t.Fatalf("Step (Seed-Child): %v", err)
+	}
+
+	childLocation, err := taskWorktreeLocation(h.Location, slug)
+	if err != nil {
+		t.Fatalf("resolve child location: %v", err)
+	}
+	origin, originFound, err := fabricengine.ReadOrigin(childLocation)
+	if err != nil {
+		t.Fatalf("read child origin: %v", err)
+	}
+	if !originFound || origin.ParentBranch == "" {
+		t.Fatalf("child pair has no recorded parent branch; Worktree-Create is expected to record one")
+	}
+
+	seed, seedFound, err := shedrun.ReadSeed(childLocation, shedrun.SelfRunID)
+	if err != nil {
+		t.Fatalf("read child seed: %v", err)
+	}
+	if !seedFound {
+		t.Fatalf("Seed-Child wrote no child seed")
+	}
+	if got := seed.Params["parent"]; got != origin.ParentBranch {
+		t.Errorf("child seed params[parent] = %q; want the recorded parent branch %q", got, origin.ParentBranch)
+	}
+
+	// The load-bearing assertion: this is byte-for-byte what loom's own bootstrap writes on its
+	// first "lyx loom start" in that worktree. It must be a no-op, never a refusal.
+	bootstrapSeed := shedrun.Seed{
+		Recipe: seed.Recipe,
+		Driver: seed.Driver,
+		Params: map[string]string{"parent": origin.ParentBranch},
+	}
+	if err := shedrun.WriteSeed(childLocation, shedrun.SelfRunID, bootstrapSeed); err != nil {
+		t.Fatalf("the child's own bootstrap seed was refused against Seed-Child's seed: %v", err)
+	}
+}
+
+// TestBattenIntegration_RealReadStatus_OnAFreshPairReportsAbsentRatherThanErroring drives the two
+// InnerRun seams every other test in this file replaces -- the real Env.InnerRun.ResolveStatus and
+// Env.InnerRun.ReadStatus -- against a freshly created pair that has never run.
+//
+// It asserts the producer's own contract: no status file yet reports found == false with a nil
+// error, which is what tells innerRunProducer.Call to spawn.
+func TestBattenIntegration_RealReadStatus_OnAFreshPairReportsAbsentRatherThanErroring(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+	slug := "batten-real-readstatus"
+	hubforge.AddPair(t, h, slug)
+
+	c := &battenCLI{}
+	if err := c.wire(h.Location, slug); err != nil {
+		t.Fatalf("wire(%s): %v", slug, err)
+	}
+
+	statusPath, statusLockPath, err := c.env.InnerRun.ResolveStatus()
+	if err != nil {
+		t.Fatalf("ResolveStatus on a fresh pair: %v", err)
+	}
+	if !pathExists(filepath.Dir(statusLockPath)) {
+		t.Errorf("ResolveStatus left the child's status-lock directory %s absent; the read that follows it needs one", filepath.Dir(statusLockPath))
+	}
+
+	st, found, err := c.env.InnerRun.ReadStatus(statusPath, statusLockPath)
+	if err != nil {
+		t.Fatalf("ReadStatus on a fresh pair = %v; want a nil error reporting the status file simply absent", err)
+	}
+	if found {
+		t.Errorf("ReadStatus on a fresh pair reported found = true (state %q); want false", st.State)
+	}
 }
 
 // TestBattenIntegration_FourRowRun_SeedsChildCommitsAndTearsDown drives a spawn stub plus a
@@ -320,6 +425,46 @@ func TestBattenIntegration_RunShedBlocked_LeavesThePairIntact(t *testing.T) {
 	}
 }
 
+// TestBattenIntegration_CreateRow_IsIdempotentAgainstAnAlreadyPresentWorktree proves the create
+// row's own idempotency: a task worktree that already exists satisfies the row's post-condition, so
+// the row must report done and let the run advance rather than asking fabric to create it twice.
+//
+// The state it reconstructs is the one a process killed between Topology.Add succeeding and
+// shedengine persisting the transition leaves behind: the worktree on disk, the status still naming
+// the create row. Without the probe the row takes fabric's pre-existing-branch refusal, whose two
+// named remedies both refuse in exactly this state, leaving the run unresumable.
+func TestBattenIntegration_CreateRow_IsIdempotentAgainstAnAlreadyPresentWorktree(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+	slug := "batten-create-idempotent"
+	seedBoardTask(t, h, slug, "loom")
+	// The pair the killed drive already created, with nothing recording it.
+	hubforge.AddPair(t, h, slug)
+
+	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
+		return shedengine.Status{State: shedengine.StateDone}, true, nil
+	})
+	seedEntryStatus(t, c, battenrecipe.NameWorktreeCreate, shedengine.StateRunning, nil)
+
+	shed, err := battenrecipe.New(c.env, c.shedPaths)
+	if err != nil {
+		t.Fatalf("battenrecipe.New: %v", err)
+	}
+
+	step, err := shed.Step(context.Background())
+	if err != nil {
+		t.Fatalf("Step (Worktree-Create against an already-present worktree): %v", err)
+	}
+	if step.Outcome != shedengine.Done {
+		t.Errorf("Outcome = %q; want %q -- an already-present worktree satisfies the row", step.Outcome, shedengine.Done)
+	}
+	if step.Next != battenrecipe.NameSeedChild {
+		t.Errorf("Next = %q; want %q -- the run must advance rather than halt", step.Next, battenrecipe.NameSeedChild)
+	}
+	if !pathExists(h.PairWarpWorktree(slug)) {
+		t.Errorf("task worktree missing after the idempotent create row: %s", h.PairWarpWorktree(slug))
+	}
+}
+
 // TestBattenIntegration_DirtyPrime_CreateRowBlocksBeforeAnythingCreated dirties a tracked file
 // in the hub's prime worktree, asserting the create row halts blocked before anything is created --
 // this refusal fires on every batten run and is invisible to the unit tests' fakes.
@@ -407,9 +552,10 @@ func TestBattenIntegration_MidListResume_SkipsTheCompletedCreateRow(t *testing.T
 	}
 }
 
-// TestBattenIntegration_NonPrimeRefusal covers both verbs' non-prime refusal, driven through
+// TestBattenIntegration_NonPrimeRefusal covers all four verbs' non-prime refusal, driven through
 // RunCLIIn with an injected cwd pointing at a real task worktree -- the runtime check standing in
-// for the Bookend invariant's missing enforcing test.
+// for the Bookend invariant's missing enforcing test. Mirrors TestBattenIntegration_WeftPrimeRefusal's
+// own four-verb completeness below.
 func TestBattenIntegration_NonPrimeRefusal(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	taskSlug := "batten-task-cwd"
@@ -418,7 +564,7 @@ func TestBattenIntegration_NonPrimeRefusal(t *testing.T) {
 	taskCwd := h.PairWarpWorktree(taskSlug)
 	primeName := h.Location.WorktreeName
 
-	for _, verb := range []string{"run", "status"} {
+	for _, verb := range []string{"run", "step", "status", "pause"} {
 		t.Run(verb, func(t *testing.T) {
 			var out bytes.Buffer
 			exitCode := RunCLIIn(taskCwd, &out, []string{verb, "some-slug"})
@@ -433,5 +579,36 @@ func TestBattenIntegration_NonPrimeRefusal(t *testing.T) {
 				t.Errorf("%s refusal = %q; want it to name the prime worktree %q", verb, out.String(), primeName)
 			}
 		})
+	}
+}
+
+// TestBattenIntegration_WeftPrimeRefusal pins the other half of the Bookend guard: the weft sibling
+// of the prime is a repository of its own whose prime is itself, so a name comparison alone admits
+// it, and both bookend rows would then drive fabric's topology against the weft repository. Every
+// verb must refuse there before arming anything -- no seed written under the weft prime, nothing
+// created -- and the refusal must say which checkout the operator is standing in.
+func TestBattenIntegration_WeftPrimeRefusal(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+	weftPrimeCwd := h.PrimeWeft()
+
+	for _, verb := range []string{"run", "step", "status", "pause"} {
+		t.Run(verb, func(t *testing.T) {
+			var out bytes.Buffer
+			exitCode := RunCLIIn(weftPrimeCwd, &out, []string{verb, "some-slug"})
+
+			if exitCode != 1 {
+				t.Fatalf("RunCLIIn(%s) from the weft prime exit code = %d; want 1; output: %s", verb, exitCode, out.String())
+			}
+			if !strings.Contains(out.String(), "weft sibling") {
+				t.Errorf("%s refusal = %q; want it to name the weft sibling", verb, out.String())
+			}
+			if !strings.Contains(out.String(), "prime worktree only") {
+				t.Errorf("%s refusal = %q; want the prime-only wording", verb, out.String())
+			}
+		})
+	}
+
+	if pathExists(filepath.Join(weftPrimeCwd, "_lyx", "shed", "some-slug")) {
+		t.Errorf("a run directory was seeded under the weft prime; the refusal must land before the auto-seed")
 	}
 }

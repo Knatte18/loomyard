@@ -7,6 +7,7 @@ package battenshed
 import (
 	"context"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 
@@ -210,6 +211,33 @@ func TestWorktreeTeardown_PrimeLockDispositions(t *testing.T) {
 	})
 }
 
+// TestWorktreeTeardown_CancelledDuringAcquireError mirrors
+// TestWorktreeCreate_CancelledDuringAcquireError (create_test.go): the Acquire-error hard-error
+// path must consult cancelErr before returning, per F1 (crucible round sonnet-xhigh-r3).
+func TestWorktreeTeardown_CancelledDuringAcquireError(t *testing.T) {
+	scratchDir := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	acquireErr := errors.New("flock: device error")
+	lock := PrimeLock{
+		Path: "/lock/path",
+		Acquire: func() (func() error, bool, error) {
+			cancel()
+			return nil, false, acquireErr
+		},
+	}
+
+	rec := &teardownCallRecorder{}
+	producer := NewWorktreeTeardown("teardown", "myslug", rec.deps(nil, "", nil), lock, scratchDir)
+
+	_, _, err := producer.Call(ctx)
+	if err == nil {
+		t.Fatal("Call() error = nil; want the cancelled-context diagnosis")
+	}
+	if !strings.Contains(err.Error(), "context cancelled during run") {
+		t.Errorf("Call() error = %q; want it to carry the cancelled-context diagnosis, not the raw Acquire error", err.Error())
+	}
+}
+
 func TestWorktreeTeardown_CancelledContext(t *testing.T) {
 	scratchDir := t.TempDir()
 	var released bool
@@ -227,5 +255,56 @@ func TestWorktreeTeardown_CancelledContext(t *testing.T) {
 	}
 	if outcome == shedengine.Stuck {
 		t.Error("Call() outcome = Stuck; want a cancelled context to never surface as Stuck")
+	}
+}
+
+// TestRecordAbandonedSession asserts the teardown row's abandoned-session record is written when a
+// session was abandoned and cleared when a later teardown abandoned none.
+func TestRecordAbandonedSession(t *testing.T) {
+	scratchDir := t.TempDir()
+	path := AbandonedSessionFile(scratchDir)
+
+	recordAbandonedSession("Worktree-Teardown", "some-slug", "lyx-some-slug", scratchDir)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read abandoned-session record: %v", err)
+	}
+	if got := strings.TrimSpace(string(data)); got != "lyx-some-slug" {
+		t.Errorf("abandoned-session record = %q; want %q", got, "lyx-some-slug")
+	}
+
+	recordAbandonedSession("Worktree-Teardown", "some-slug", "", scratchDir)
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Errorf("os.Stat(%s) after a teardown that abandoned nothing = %v; want the stale record cleared", path, err)
+	}
+
+	// Clearing an already-absent record is a no-op, never a reported failure.
+	recordAbandonedSession("Worktree-Teardown", "some-slug", "", scratchDir)
+}
+
+// TestTeardown_DoneRunRecordsTheAbandonedSession asserts the record is written from the producer's
+// own Done path, not only by the helper in isolation.
+func TestTeardown_DoneRunRecordsTheAbandonedSession(t *testing.T) {
+	scratchDir := t.TempDir()
+	deps := TeardownDeps{
+		Shutdown: func(ctx context.Context) (string, error) { return "lyx-abandoned", nil },
+		Remove:   func(ctx context.Context) error { return nil },
+	}
+	var released bool
+	producer := NewWorktreeTeardown("Worktree-Teardown", "some-slug", deps, fakePrimeLock("/lock/free/path", true, nil, nil, &released), scratchDir)
+
+	outcome, _, err := producer.Call(context.Background())
+	if err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	if outcome != shedengine.Done {
+		t.Fatalf("Call() outcome = %v; want Done", outcome)
+	}
+	data, err := os.ReadFile(AbandonedSessionFile(scratchDir))
+	if err != nil {
+		t.Fatalf("read abandoned-session record after a Done teardown: %v", err)
+	}
+	if got := strings.TrimSpace(string(data)); got != "lyx-abandoned" {
+		t.Errorf("abandoned-session record = %q; want %q", got, "lyx-abandoned")
 	}
 }

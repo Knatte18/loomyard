@@ -9,6 +9,7 @@ package shedrun
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -17,6 +18,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
+
+// ErrDisagreeingSeed is the sentinel WriteSeed wraps its own refusal in when an existing seed at
+// runID disagrees with the one being written -- a business judgment a caller can route to a
+// recoverable verdict, distinct from a path-resolution or write failure.
+var ErrDisagreeingSeed = errors.New("shedrun: disagreeing seed")
 
 // Seed records a run's chosen recipe, driver, and parameters at seed time: the durable, write-once
 // artefact this package alone parses and writes as seed.json.
@@ -133,8 +139,8 @@ func decodeSeed(data []byte) (Seed, error) {
 // WriteSeed writes seed for runID under l.
 // It validates runID, seed.Recipe, and seed.Driver first, creates RunDir(l, runID), and is idempotent
 // against a byte-identical existing seed -- calling WriteSeed twice with the same seed is a no-op the
-// second time -- while refusing a disagreeing existing seed with a message naming both the existing
-// and the incoming values.
+// second time -- while refusing a disagreeing existing seed with an ErrDisagreeingSeed-wrapped
+// message naming both the existing and the incoming values.
 func WriteSeed(l *lyxcwd.Location, runID string, seed Seed) error {
 	if err := ValidateRunID(runID); err != nil {
 		return err
@@ -172,7 +178,7 @@ func WriteSeed(l *lyxcwd.Location, runID string, seed Seed) error {
 		if existingSeed.Recipe == seed.Recipe && existingSeed.Driver == seed.Driver && paramsEqual(existingSeed.Params, seed.Params) {
 			return nil
 		}
-		return fmt.Errorf("shedrun: run %q is already seeded with %+v; refusing to overwrite with disagreeing seed %+v", runID, existingSeed, seed)
+		return fmt.Errorf("%w: run %q is already seeded with %+v; refusing to overwrite with %+v", ErrDisagreeingSeed, runID, existingSeed, seed)
 	}
 
 	if err := os.WriteFile(path, encoded, 0o644); err != nil {

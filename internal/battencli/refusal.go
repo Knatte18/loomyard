@@ -9,6 +9,13 @@
 // down the very worktree it is running inside of, which is exactly what this package's two bookend
 // rows (create and teardown) must never do.
 //
+// refuseNonPrime is half of the guard. It compares names inside ONE repository, and the prime's own
+// fabric sibling is a repository of its own whose prime is itself, so standing in that sibling the
+// comparison passes while every path fabric would then derive is invented -- a sibling of the
+// sibling. armAt (arm.go) therefore calls fabricengine.RequireDrivableWorktree first, which is the
+// one place fabric's own vocabulary can tell the side batten drives from the sibling and the _board
+// checkout.
+//
 // This is also why refuseNonPrime treats a non-nil primeNameErr as a refusal rather than passing it
 // through unresolved, in deliberate contrast with refusePrimeSlug's own choice: refusePrimeSlug
 // treats an unresolvable prime name as non-fatal because it is one guard among several that still

@@ -10,7 +10,7 @@ import "strings"
 // posixShell implements Shell for a POSIX shell. It carries no state and is safe to share.
 type posixShell struct{}
 
-// Quote wraps s in POSIX single quotes, escaping embedded quotes via '\” idiom.
+// Quote wraps s in POSIX single quotes, escaping embedded quotes via the '\'' idiom.
 func (posixShell) Quote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }

@@ -679,12 +679,28 @@ func scanRepoForDriverFieldReads(t *testing.T, repoRoot string) []driverFieldRea
 	return all
 }
 
+// driverFieldReadCarveOuts are the repo-root-relative production files, outside internal/loomcli
+// and internal/shedrun, that may read a seed's Driver field.
+//
+// Exactly one entry, and it is a deliberate carve-out rather than a widening: internal/battencli's
+// refuseAdoptedSeed compares a --driver value the operator just typed against the one the addressed
+// run is already seeded with, and refuses on the envelope when they disagree. That is the loud,
+// command-line-visible failure the Driver Choice Single-Site Invariant's own rationale prefers, not
+// the silent divergence it is written against -- the comparison selects no spawn, gates no
+// behaviour, and is unreachable from any producer, engine, or generic verb. Dropping it would
+// restore the defect it was added for: silently discarding a typed --driver against a seeded run.
+//
+// Every other new entry needs the same explicit justification here, next to the one it joins.
+var driverFieldReadCarveOuts = map[string]bool{
+	"internal/battencli/arm.go": true,
+}
+
 // TestDriverChoiceSingleSiteInvariant_OnlyLoomcliReadsTheSeedDriverField is the Driver Choice
-// Single-Site Invariant's tripwire: the only production reader of the seed's Driver field outside
+// Single-Site Invariant's tripwire: the only production readers of the seed's Driver field outside
 // internal/shedrun (the field's sole parser/writer) must be internal/loomcli, that recipe's own
-// bootstrap package. Adding a reader anywhere else fails this test and forces a human to confirm the
-// new site really belongs to a recipe's bootstrap verb rather than a producer, a generic verb, or an
-// engine gating a refusal on the recorded value.
+// bootstrap package, and the files named in driverFieldReadCarveOuts. Adding a reader anywhere else
+// fails this test and forces a human to confirm the new site really belongs to a recipe's bootstrap
+// verb rather than a producer, a generic verb, or an engine gating behaviour on the recorded value.
 func TestDriverChoiceSingleSiteInvariant_OnlyLoomcliReadsTheSeedDriverField(t *testing.T) {
 	_, thisFile, _, ok := runtime.Caller(0)
 	if !ok {
@@ -700,6 +716,9 @@ func TestDriverChoiceSingleSiteInvariant_OnlyLoomcliReadsTheSeedDriverField(t *t
 	for _, f := range found {
 		if strings.HasPrefix(f.relPath, "internal/loomcli/") {
 			sawLoomcli = true
+			continue
+		}
+		if driverFieldReadCarveOuts[f.relPath] {
 			continue
 		}
 		outside = append(outside, f)

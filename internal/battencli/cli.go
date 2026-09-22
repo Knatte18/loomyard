@@ -51,6 +51,13 @@ type battenCLI struct {
 	// childDriverFlag is driverFlag's sibling for --child-driver, the value armSeed writes into the
 	// auto-seeded seed's params.child_driver.
 	childDriverFlag string
+	// driverFlagSet records whether the operator typed --driver, rather than cobra filling the
+	// field with its StringVar default.
+	// The value alone cannot carry that distinction, since the default is itself a legal driver
+	// name, and refuseAdoptedSeed (arm.go) needs it to tell an operator's intent from a default.
+	driverFlagSet bool
+	// childDriverFlagSet is driverFlagSet's sibling for --child-driver.
+	childDriverFlagSet bool
 }
 
 // battenVerbTexts carries batten's four shedverbs-driven verbs' Use/Short/Long text.
@@ -86,9 +93,10 @@ Example:
 		Short: "report a task worktree's persisted lifecycle status",
 		Long: `status reports a slug's persisted lifecycle status: the current producer, the
 state, the error field, the activity, and the history, plus the resolved
-status path so an operator can find the file. A slug that has never been
-run on this machine is reported as a determined answer on the success
-envelope, not as an error.
+status path so an operator can find the file. A slug with no seed at all
+refuses, listing the seeded run-ids; a seeded slug whose status file is
+absent -- hand-seeded, or never stepped yet -- is reported as a determined
+answer on the success envelope, not as an error.
 
 With --watch, it performs the same read once as a pre-flight, then tails
 the file and never exits, printing a line only when the composed activity
@@ -140,17 +148,18 @@ func Command() *cobra.Command {
 	parent := &cobra.Command{
 		Use:   "batten",
 		Short: "drive one task worktree's whole lifecycle as a single Shed run",
-		Long: `batten drives one task worktree's whole lifecycle -- create, run the loom
-session to a terminal state, and tear down -- as a single Shed run over a
-per-slug status.json. "run" starts or resumes that run for a slug; "status"
-reports its current state; "pause" requests a pause at the run's next
-producer boundary.
+		Long: `batten drives one task worktree's whole lifecycle -- create, seed the task
+worktree's own run, run it to a terminal state, and tear down -- as a single
+Shed run over a per-slug status.json. "run" starts or resumes that run for a
+slug; "step" drives it exactly one producer forward; "status" reports its
+current state; "pause" requests a pause at the run's next producer boundary.
 
-All three verbs run from the hub's prime worktree only: they refuse when
-invoked from a task worktree.
+All four verbs run from the hub's prime worktree only: they refuse when invoked
+from a task worktree, from the pair's fabric sibling, or from _board.
 
 Example:
   lyx batten run some-slug
+  lyx batten step some-slug
   lyx batten status some-slug
   lyx batten pause some-slug`,
 		// RunE is set so that bare "lyx batten" lists subcommands and "lyx batten bogus"
@@ -201,6 +210,12 @@ func (c *battenCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) e
 
 	ctx := cmd.Context()
 	out := cmd.OutOrStdout()
+
+	// Recorded here because arm never sees the *cobra.Command.
+	// Changed reports false for a flag the command does not declare, so status and pause are
+	// unaffected.
+	c.driverFlagSet = cmd.Flags().Changed("driver")
+	c.childDriverFlagSet = cmd.Flags().Changed("child-driver")
 
 	cwd, err := lyxcwd.CwdFrom(ctx)
 	if err != nil {

@@ -1,4 +1,4 @@
-// stuck.go declares reportStuck, the one helper all three producers in this package route every
+// stuck.go declares reportStuck, the one helper all four producers in this package route every
 // stuck verdict through.
 //
 // The producer seam (shedengine.ShedProducer) returns only a verdict, an output pointer, and an
@@ -23,6 +23,15 @@ import (
 // producer's own name.
 const stuckFileSuffix = "-stuck.md"
 
+// StuckReasonFile returns the path reportStuck writes producer's one-line reason to, under
+// scratchDir.
+// It is exported so the file's reader and writer share one declarer of its name: the file is the
+// only durable carrier of a producer-supplied stuck reason, so a CLI reporting why a run is blocked
+// has to read it.
+func StuckReasonFile(scratchDir, producer string) string {
+	return filepath.Join(scratchDir, producer+stuckFileSuffix)
+}
+
 // reportStuck emits a structured warning through the shared logger carrying at minimum a producer
 // field and a reason field alongside fields' own key-value pairs, and writes a one-line reason file
 // at <scratchDir>/<producer>-stuck.md, overwritten each attempt.
@@ -41,7 +50,7 @@ func reportStuck(producer, reason, scratchDir string, fields ...any) {
 		return
 	}
 
-	path := filepath.Join(scratchDir, producer+stuckFileSuffix)
+	path := StuckReasonFile(scratchDir, producer)
 	if err := os.WriteFile(path, []byte(fmt.Sprintf("%s\n", reason)), 0o644); err != nil {
 		logger.Warn("battenshed: write stuck-reason file failed", "producer", producer, "path", path, "error", err)
 	}
