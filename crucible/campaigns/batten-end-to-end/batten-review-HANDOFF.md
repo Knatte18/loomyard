@@ -2,6 +2,22 @@
 
 > Read this first if you are a fresh orchestrator picking up this campaign — by resume or by a genuinely new session that never saw the prior one. Refreshed after every round's independent verification; commit each refresh (queued while a round is live — see below).
 
+## CLOSED 2026-09-22 — merged to `main` WITHOUT a safety pass
+
+The operator closed this campaign after **five** rounds, deliberately, while it was still producing findings.
+No round ever found nothing, so the method's own stop condition was never met.
+That unfinished half is carried forward as mill-wiki task **#019 `crucible-batten-followup`** — read its proposal before opening any further round.
+
+The reason for closing rather than running R6: the last two rounds' real yield came from looking **outside** batten's own three packages, not from re-reading them.
+R4's two BLOCKING findings were invariant tripwires in `internal/loomcli`/`internal/fabricengine`;
+R5's F1 was in `internal/shell/posix.go`.
+Batten's own surface is converging, and a batten-scoped crucible is the wrong instrument for what kept surfacing.
+Meanwhile the branch had accumulated 116 commits and ~4900 inserted lines against `main`, and task #018's fix lands in `internal/loomcli`/`internal/shuttleengine` — territory this branch touches.
+Merging first was worth more than a sixth round.
+
+This file and the round reports beside it moved here from `_mill/` at merge time, because `mill-merge`'s cleanup commit deletes `_mill/` wholesale.
+Everything below is the campaign record as it stood at close.
+
 ## What this campaign is
 Serial crucible review+fix campaign (`crucible/README.md`, run directly as the crucible orchestrator role per `crucible/orchestrator-prompt.md`) against `batten` — the recently-delivered (PR #254 `5288e0f30` + `1a5622b61`) seeded-Shed lifecycle module (`internal/battenshed` + `internal/battenrecipe` + `internal/battencli`; `lyx batten run|step|status|pause <run-id>`). Batten has never been driven end-to-end with a real driver by any test or prior review — that is this campaign's whole reason for existing. Mill-wiki task: `crucible-batten-end-to-end` (task #015), worktree `/home/hanf/Code/loomyard/wts/crucible-batten-end-to-end`, branch `crucible-batten-end-to-end`. This is NOT a normal mill-start/plan/go task — driven directly as the crucible orchestrator role instead.
 
