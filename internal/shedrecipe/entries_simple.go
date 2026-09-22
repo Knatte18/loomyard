@@ -105,10 +105,18 @@ func stubEntry(name string, cfg Config, _ Env) (shedengine.ShedProducer, error) 
 	return loomshed.NewStub(name), nil
 }
 
-// websterEntry is the Constructor for the "Webster" registry row: it validates Env.AnchorPath,
-// Env.WebsterRun, and exactly four inner fields of Env.WebsterDeps -- Starter, Reed, Engine, and
-// RefMatcher -- and returns
-// loomshed.NewWebsterProducer(name, env.AnchorPath, env.WebsterRun, env.WebsterDeps).
+// websterEntry is the Constructor for the "Webster" registry row: it resolves the row's
+// "gate"/"gate_attempts" Config keys through resolveGateSpec onto RunDeps.Gate, validates
+// Env.AnchorPath, Env.WebsterRun, and exactly four inner fields of Env.WebsterDeps -- Starter,
+// Reed, Engine, and RefMatcher -- and returns
+// loomshed.NewWebsterProducer(name, env.AnchorPath, env.WebsterRun, deps).
+//
+// The gate is resolved here for the same reason the three already-gated rows resolve theirs here:
+// one key means one thing at every gated site, and a reader of the recipe can see which validator
+// guards each row without opening Go. The shipped "Webster" row carries no "gate" key, so
+// resolveGateSpec returns the zero GateSpec and the row runs ungated exactly as before; naming one
+// today fails loud through resolveGateSpec's own closed two-value vocabulary, since no Webster
+// validator exists to name.
 //
 // It checks none of WebsterDeps' other nil-able fields, each for its own reason: Batcher is
 // overwritten by loomshed's own wrapper on every Call, and that wrapper's own field doc says the
@@ -117,7 +125,11 @@ func stubEntry(name string, cfg Config, _ Env) (shedengine.ShedProducer, error) 
 // ShuttleCfg, Roles, Config, and Geom are value and map types whose validation belongs to
 // websterengine.Run, not to this wiring layer.
 func websterEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
-	if err := configRejectUnknown(cfg); err != nil {
+	gate, err := resolveGateSpec("Webster", cfg, env)
+	if err != nil {
+		return nil, err
+	}
+	if err := configRejectUnknown(cfg, "gate", "gate_attempts"); err != nil {
 		return nil, err
 	}
 	if err := requireAbsRoot("Webster", "AnchorPath", env.AnchorPath); err != nil {
@@ -138,5 +150,7 @@ func websterEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 	if err := requireSeam("Webster", "WebsterDeps.RefMatcher", env.WebsterDeps.RefMatcher); err != nil {
 		return nil, err
 	}
-	return loomshed.NewWebsterProducer(name, env.AnchorPath, env.WebsterRun, env.WebsterDeps), nil
+	deps := env.WebsterDeps
+	deps.Gate = gate
+	return loomshed.NewWebsterProducer(name, env.AnchorPath, env.WebsterRun, deps), nil
 }

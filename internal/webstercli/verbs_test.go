@@ -189,7 +189,7 @@ func (e *verbsFakeEngine) ParseEvents(data []byte) ([]shuttleengine.Event, error
 func (e *verbsFakeEngine) Startup(capture string) shuttleengine.StartupState {
 	return shuttleengine.StartupReady
 }
-func (e *verbsFakeEngine) InterruptSequence() []shuttleengine.PaneInput    { return nil }
+func (e *verbsFakeEngine) InterruptSequence() []shuttleengine.PaneInput          { return nil }
 func (e *verbsFakeEngine) TrustDismissSequence(string) []shuttleengine.PaneInput { return nil }
 func (e *verbsFakeEngine) ComposeSend(text string) []shuttleengine.PaneInput {
 	return nil
@@ -215,7 +215,7 @@ type verbsFakeMasterStarter struct {
 	called bool
 }
 
-func (s *verbsFakeMasterStarter) StartMaster(spec shuttleengine.Spec) (websterengine.MasterHandle, error) {
+func (s *verbsFakeMasterStarter) StartMaster(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (websterengine.MasterHandle, error) {
 	s.called = true
 	return nil, fmt.Errorf("verbsFakeMasterStarter: StartMaster must not be reached in this test")
 }
