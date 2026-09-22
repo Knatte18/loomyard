@@ -29,8 +29,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
+	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -81,8 +83,7 @@ func refuseSelfAddress(runID string, explicit bool) error {
 
 // battenAutoSeedVerbs is the set of verbs that seed a fresh run when no seed exists yet at the
 // addressed run-id. Every other verb requires one and refuses instead: read-only verbs must not
-// create state as a side effect of being asked a question, the same reasoning
-// specFor's EnsureStatusLockDir: false already encodes for batten's status verb.
+// create a run as a side effect of being asked a question.
 func battenAutoSeedVerbs(verb string) bool {
 	switch verb {
 	case "run", "step":
@@ -103,9 +104,52 @@ func battenDriver(flagVal string) string {
 	return flagVal
 }
 
-// armSeed gates batten's auto-seed: it reads the seed at runID, does nothing when one already
-// exists, writes a fresh one for "run" and "step" when absent, and refuses every other verb with
-// shedrun.MissingSeedMessage naming "lyx batten run <slug>" as the remedy.
+// refuseAdoptedSeed refuses a seed that already exists at runID but does not describe the run the
+// operator asked batten to drive.
+// A found seed is authoritative and is never overwritten here, but authoritative is not the same as
+// silently adopted.
+//
+// A non-batten recipe would leave one run directory driven by two recipes, depending on which verb
+// is typed.
+// A driver the operator typed cannot take effect on a seeded run, so it is refused rather than
+// dropped; one left at its cobra default carries no intent to contradict and is ignored.
+func refuseAdoptedSeed(seed shedrun.Seed, runID string, driverFlag string, driverSet bool, childDriverFlag string, childDriverSet bool) error {
+	if seed.Recipe != shedrun.RecipeBatten {
+		return fmt.Errorf(
+			"battencli: run %q is already seeded with recipe %q, not %q; batten refuses to drive it -- drive it with \"lyx shed run %s\", or delete its seed to re-seed it as a batten run",
+			runID, seed.Recipe, shedrun.RecipeBatten, runID,
+		)
+	}
+	if driverSet && driverFlag != seed.Driver {
+		return fmt.Errorf(
+			"battencli: run %q is already seeded with driver %q; --driver %q cannot change a seeded run's recorded driver",
+			runID, seed.Driver, driverFlag,
+		)
+	}
+	if recorded := childDriverOf(seed); childDriverSet && childDriverFlag != recorded {
+		return fmt.Errorf(
+			"battencli: run %q is already seeded with child driver %q; --child-driver %q cannot change a seeded run's recorded child driver",
+			runID, recorded, childDriverFlag,
+		)
+	}
+	return nil
+}
+
+// childDriverOf returns the child driver seed records, defaulting an absent or empty
+// params.child_driver to shedrun.DriverGo. wire.go's own SeedChild.ChildDriver closure calls this
+// directly rather than re-implementing the same default, so a refusal here and the value
+// Seed-Child actually writes can never read the same seed's child driver differently.
+func childDriverOf(seed shedrun.Seed) string {
+	if driver, ok := seed.Params["child_driver"]; ok && driver != "" {
+		return driver
+	}
+	return shedrun.DriverGo
+}
+
+// armSeed gates batten's auto-seed: it reads the seed at runID, refuses a found seed that disagrees
+// with this invocation (refuseAdoptedSeed) and otherwise leaves it untouched, writes a fresh one for
+// "run" and "step" when absent, and refuses every other verb with shedrun.MissingSeedMessage naming
+// "lyx batten run <slug>" as the remedy.
 //
 // Prime's seed carries recipe: "batten", never the Board task's own type: the two are different
 // runs' recipes, and a prime seed carrying "loom" would make "lyx shed status <slug>" from prime arm
@@ -122,15 +166,37 @@ func battenDriver(flagVal string) string {
 // shedrun.ValidateDriver alone and nothing further -- the child's own recipe capability is checked
 // when that child's seed is written (internal/shedcli's writeSeed), not here.
 //
+// A flag the operator actually typed is validated ahead of the seed read, because its verdict does
+// not depend on the seed at all: "llm" is impossible for batten's own driver on every batten run,
+// seeded or not, and reporting it through refuseAdoptedSeed instead would call an impossibility a
+// disagreement -- wording that invites an operator to delete the seed and re-seed with a value
+// batten can never honour. The auto-seed path below still validates in its own right: it validates
+// the value about to be written, which for an untyped flag is cobra's default rather than anything
+// the operator said.
+//
 // The refusal carries no "kind" field, keeping the five-value step refusal-kind vocabulary closed:
 // a missing run is not a sixth kind.
 func (c *battenCLI) armSeed(location *lyxcwd.Location, runID, verb string) error {
-	_, found, err := shedrun.ReadSeed(location, runID)
+	if c.driverFlagSet {
+		if err := shedrun.ValidateDriver(c.driverFlag); err != nil {
+			return err
+		}
+		if err := refuseBattenOwnDriverLLM(c.driverFlag); err != nil {
+			return err
+		}
+	}
+	if c.childDriverFlagSet {
+		if err := shedrun.ValidateDriver(c.childDriverFlag); err != nil {
+			return err
+		}
+	}
+
+	seed, found, err := shedrun.ReadSeed(location, runID)
 	if err != nil {
 		return err
 	}
 	if found {
-		return nil
+		return refuseAdoptedSeed(seed, runID, c.driverFlag, c.driverFlagSet, c.childDriverFlag, c.childDriverFlagSet)
 	}
 
 	if !battenAutoSeedVerbs(verb) {
@@ -156,8 +222,8 @@ func (c *battenCLI) armSeed(location *lyxcwd.Location, runID, verb string) error
 	return shedrun.WriteSeed(location, runID, shedrun.Seed{
 		Recipe: shedrun.RecipeBatten,
 		Driver: driver,
+		// The run-id is the slug; no param repeats it.
 		Params: map[string]string{
-			"slug":         runID,
 			"child_driver": childDriver,
 		},
 	})
@@ -213,6 +279,14 @@ func (c *battenCLI) arm(cwd string, verb string, args []string) (shedverbs.Spec,
 // is always the same value the caller holds: the pre-run's own c on the "lyx batten" path, the
 // wrapper's freshly-constructed one on the "lyx shed" path.
 func (c *battenCLI) armAt(location *lyxcwd.Location, runID string, explicit bool, verb string) (shedverbs.Spec, error) {
+	// Ahead of the prime-name check, because that check asks "is this the prime of the repository
+	// I am standing in" and the pair's fabric sibling is a repository of its own with a prime of
+	// its own: from that sibling's prime the name check passes and both bookend rows would then
+	// drive fabric's topology against the wrong repository (see refusal.go).
+	if err := fabricengine.RequireDrivableWorktree(location); err != nil {
+		return shedverbs.Spec{}, fmt.Errorf("battencli: this verb runs from the hub's prime worktree only: %w", err)
+	}
+
 	primeName, primeNameErr := fabricengine.PrimeName(location)
 	if refusalErr := refuseNonPrime(location.WorktreeName, primeName, primeNameErr); refusalErr != nil {
 		return shedverbs.Spec{}, refusalErr
@@ -244,9 +318,12 @@ func (c *battenCLI) specFor(verb string) shedverbs.Spec {
 		StatusPath:     c.shedPaths.StatusPath,
 		LockPath:       c.shedPaths.LockPath,
 		StatusLockPath: c.shedPaths.StatusLockPath,
-		// batten's status and pause are both false here: status is read-only, so creating its
-		// per-slug directory as a side effect of reading it would be a new, unasked-for write.
-		EnsureStatusLockDir: false,
+		// The status file is durable and its lock is ephemeral, so a machine that never stepped
+		// this slug -- a fresh clone, or a hand-seeded run -- has the file and not the lock's
+		// directory. Creating that directory is not a write to the run: it is what lets the
+		// read-only verbs read a status the pair carried here, which is the reason the status is
+		// durable at all.
+		EnsureStatusLockDir: true,
 		StatusLabel:         "batten",
 		DecodeErrPrefix:     "battencli:",
 		RunBusyMessage:      fmt.Sprintf("battencli: another batten run already holds the run lock %q", c.shedPaths.LockPath),
@@ -330,8 +407,8 @@ func (c *battenCLI) battenPreRun(ctx context.Context) error {
 		switch st.State {
 		case shedengine.StateDone:
 			return fmt.Errorf(
-				"battencli: %q has already completed; delete %s to run it again",
-				c.slug, BattenDir(c.location, c.slug),
+				"battencli: %q has already completed; delete its run directory %s (a change on the pair's fabric sibling) to run it again",
+				c.slug, shedrun.RunDir(c.location, c.slug),
 			)
 		case shedengine.StateRunning, shedengine.StateBlocked, shedengine.StateFailed, shedengine.StatePaused:
 			// Each of these resumes silently from the persisted current producer, with no
@@ -397,8 +474,8 @@ func (c *battenCLI) battenPreStep(ctx context.Context) (string, error) {
 		switch st.State {
 		case shedengine.StateDone:
 			return shedverbs.KindBootstrap, fmt.Errorf(
-				"battencli: %q has already completed; delete %s to run it again",
-				c.slug, BattenDir(c.location, c.slug),
+				"battencli: %q has already completed; delete its run directory %s (a change on the pair's fabric sibling) to run it again",
+				c.slug, shedrun.RunDir(c.location, c.slug),
 			)
 		case shedengine.StateRunning, shedengine.StateBlocked, shedengine.StateFailed, shedengine.StatePaused:
 			// Resumes silently, exactly as battenPreRun's own identical switch does.
@@ -439,14 +516,85 @@ func (c *battenCLI) battenPostRun(ctx context.Context, result shedengine.Result,
 	return map[string]any{"abandonedSession": c.abandonedSession}
 }
 
+// maxStatusHistoryEntries caps the history entries the status envelope carries.
+// Run-Shed's still-running self-bounce appends one per poll under a 1440-bounce budget, so a full
+// watch window would otherwise bury the two ends that carry the run's meaning.
+const maxStatusHistoryEntries = 20
+
 // battenStatusExtras implements the StatusExtras hook for batten's spec: batten's own
-// three found-envelope keys and no others. The generic body supplies current_producer, state,
-// error and activity, which together with these three reproduce today's seven-key found-envelope
-// exactly.
+// found-envelope keys and no others. The generic body supplies current_producer, state, error and
+// activity.
+//
+// History is bounded to the most recent maxStatusHistoryEntries entries, always alongside the true
+// history_length, so a bounded view is never mistaken for a short one.
+// A blocked run also carries the producer's own recorded stuck reason, since shedengine persists one
+// fixed error string for every stuck verdict and it names no remedy.
 func (c *battenCLI) battenStatusExtras(st shedengine.Status) (map[string]any, error) {
-	return map[string]any{
-		"found":       true,
-		"status_path": c.shedPaths.StatusPath,
-		"history":     st.History,
-	}, nil
+	history, truncated := recentHistory(st.History)
+	extras := map[string]any{
+		"found":             true,
+		"status_path":       c.shedPaths.StatusPath,
+		"history":           history,
+		"history_length":    len(st.History),
+		"history_truncated": truncated,
+	}
+	scratchDir := BattenDir(c.location, c.slug)
+	if st.State == shedengine.StateBlocked {
+		if reason, found := readStuckReason(scratchDir, st.CurrentProducer); found {
+			extras["stuck_reason"] = reason
+		}
+	}
+	// Reported in every state: the operator usually asks after the run has finished, from a
+	// different process than the one that observed the shutdown.
+	if session, found := readAbandonedSession(scratchDir); found {
+		extras["abandonedSession"] = session
+	}
+	return extras, nil
+}
+
+// readAbandonedSession reads back the record battenshed's teardown row writes when session shutdown
+// abandoned a session rather than ending it cleanly, reporting found == false when there is none.
+// Reading it here is what gives a step-driven lifecycle the same fact a run-driven one gets from
+// the PostRun hook, which shedverbs' closed step envelope has no counterpart for.
+func readAbandonedSession(scratchDir string) (string, bool) {
+	if scratchDir == "" {
+		return "", false
+	}
+	data, err := os.ReadFile(battenshed.AbandonedSessionFile(scratchDir))
+	if err != nil {
+		return "", false
+	}
+	session := strings.TrimSpace(string(data))
+	if session == "" {
+		return "", false
+	}
+	return session, true
+}
+
+// recentHistory returns the most recent maxStatusHistoryEntries entries of history, reporting
+// whether anything was dropped. A nil or short history is returned as-is with truncated == false.
+func recentHistory(history []shedengine.HistoryEntry) (recent []shedengine.HistoryEntry, truncated bool) {
+	if len(history) <= maxStatusHistoryEntries {
+		return history, false
+	}
+	return history[len(history)-maxStatusHistoryEntries:], true
+}
+
+// readStuckReason reads back the one-line reason file battenshed's reportStuck writes for producer
+// under scratchDir, reporting found == false when there is none.
+// A missing or unreadable file is simply not reported: failing to find why something is stuck must
+// never change the answer to whether it is stuck.
+func readStuckReason(scratchDir, producer string) (string, bool) {
+	if scratchDir == "" || producer == "" {
+		return "", false
+	}
+	data, err := os.ReadFile(battenshed.StuckReasonFile(scratchDir, producer))
+	if err != nil {
+		return "", false
+	}
+	reason := strings.TrimSpace(string(data))
+	if reason == "" {
+		return "", false
+	}
+	return reason, true
 }

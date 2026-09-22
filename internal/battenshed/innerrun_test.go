@@ -1,5 +1,5 @@
-// innerrun_test.go covers NewInnerRun's full re-entrant disposition table over a fake ReadStatus, a
-// fake Now, and a fake Sleep that never sleeps -- so the still-running case is provably a single
+// innerrun_test.go covers NewInnerRun's full re-entrant disposition table over a fake ReadStatus
+// and a fake Sleep that never sleeps -- so the still-running case is provably a single
 // Stuck with a single sleep, never a bounded poll loop, in unmeasurable real time.
 
 package battenshed
@@ -14,15 +14,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// fakeClock is a Now/Sleep pair a test can hold still: Now always returns the same instant, and
-// Sleep records calls without ever blocking.
+// fakeClock is a Sleep seam a test can hold still: Sleep records calls without ever blocking.
 type fakeClock struct {
-	now        time.Time
 	sleepCalls int
 }
 
-func (c *fakeClock) Now() time.Time { return c.now }
-func (c *fakeClock) Sleep(d time.Duration) {
+func (c *fakeClock) Sleep(ctx context.Context, d time.Duration) {
 	c.sleepCalls++
 }
 
@@ -53,7 +50,6 @@ func newInnerRunDeps(spawnErr error, resolveErr error, statuses []statusResult, 
 			r := statuses[idx]
 			return r.status, r.found, r.err
 		},
-		Now:   clock.Now,
 		Sleep: clock.Sleep,
 	}
 	return &readCalls, &spawnCalls, deps
@@ -127,7 +123,7 @@ func TestInnerRun_VerdictTable(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			scratchDir := t.TempDir()
-			clock := &fakeClock{now: time.Unix(0, 0)}
+			clock := &fakeClock{}
 			_, _, deps := newInnerRunDeps(nil, nil, tt.statuses, clock)
 
 			producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir)
@@ -173,13 +169,18 @@ func TestInnerRun_StuckIsReturnedForRunningAndNoOtherCase(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			scratchDir := t.TempDir()
-			clock := &fakeClock{now: time.Unix(0, 0)}
+			clock := &fakeClock{}
 			_, _, deps := newInnerRunDeps(nil, nil, []statusResult{{status: tt.status, found: true}}, clock)
 
 			producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir)
-			outcome, _, _ := producer.Call(context.Background())
+			outcome, _, err := producer.Call(context.Background())
 			if outcome == shedengine.Stuck {
 				t.Errorf("Call() outcome = Stuck for status %q; want Stuck reserved for the still-running case alone", tt.status.State)
+			}
+			// A halted child is the one outcome the operator has to act on from inside the task
+			// worktree, so the error must say so rather than only name the child's state.
+			if tt.status.State != shedengine.StateDone && (err == nil || !strings.Contains(err.Error(), haltedChildRemedy)) {
+				t.Errorf("Call() error for status %q = %v; want it to carry the halted-child remedy", tt.status.State, err)
 			}
 		})
 	}
@@ -187,7 +188,7 @@ func TestInnerRun_StuckIsReturnedForRunningAndNoOtherCase(t *testing.T) {
 
 func TestInnerRun_SpawnFailureIsReturnedError(t *testing.T) {
 	scratchDir := t.TempDir()
-	clock := &fakeClock{now: time.Unix(0, 0)}
+	clock := &fakeClock{}
 	spawnErr := errors.New("spawn failed")
 	_, spawnCalls, deps := newInnerRunDeps(spawnErr, nil, []statusResult{{found: false}}, clock)
 
@@ -209,7 +210,7 @@ func TestInnerRun_SpawnFailureIsReturnedError(t *testing.T) {
 
 func TestInnerRun_ResolveStatusFailureIsReturnedError(t *testing.T) {
 	scratchDir := t.TempDir()
-	clock := &fakeClock{now: time.Unix(0, 0)}
+	clock := &fakeClock{}
 	resolveErr := errors.New("resolve failed")
 	_, _, deps := newInnerRunDeps(nil, resolveErr, nil, clock)
 
@@ -225,7 +226,7 @@ func TestInnerRun_ResolveStatusFailureIsReturnedError(t *testing.T) {
 
 func TestInnerRun_CancelledContext(t *testing.T) {
 	scratchDir := t.TempDir()
-	clock := &fakeClock{now: time.Unix(0, 0)}
+	clock := &fakeClock{}
 	_, _, deps := newInnerRunDeps(nil, nil, []statusResult{{status: shedengine.Status{State: shedengine.StateDone}, found: true}}, clock)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -241,13 +242,103 @@ func TestInnerRun_CancelledContext(t *testing.T) {
 	}
 }
 
+// TestInnerRun_CancelledDuringResolveStatusError, TestInnerRun_CancelledDuringFirstReadStatusError
+// and TestInnerRun_CancelledDuringSecondReadStatusError assert the three innerrun.go hard-error
+// paths F1 (crucible round sonnet-xhigh-r3) found missing their cancelErr check now carry the
+// cancelled-context diagnosis rather than the raw underlying error, when ctx is cancelled by the
+// time the failing seam call itself returns.
+func TestInnerRun_CancelledDuringResolveStatusError(t *testing.T) {
+	scratchDir := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	resolveErr := errors.New("resolve failed")
+	deps := InnerRunDeps{
+		Spawn: func(ctx context.Context) error { return nil },
+		ResolveStatus: func() (string, string, error) {
+			cancel()
+			return "", "", resolveErr
+		},
+		ReadStatus: func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
+			return shedengine.Status{}, false, nil
+		},
+		Sleep: (&fakeClock{}).Sleep,
+	}
+
+	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir)
+	_, _, err := producer.Call(ctx)
+	if err == nil {
+		t.Fatal("Call() error = nil; want the cancelled-context diagnosis")
+	}
+	if !strings.Contains(err.Error(), "context cancelled during run") {
+		t.Errorf("Call() error = %q; want it to carry the cancelled-context diagnosis, not the raw ResolveStatus error", err.Error())
+	}
+}
+
+func TestInnerRun_CancelledDuringFirstReadStatusError(t *testing.T) {
+	scratchDir := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	readErr := errors.New("decode failed")
+	deps := InnerRunDeps{
+		Spawn: func(ctx context.Context) error { return nil },
+		ResolveStatus: func() (string, string, error) {
+			return "/status/path", "/status/lock/path", nil
+		},
+		ReadStatus: func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
+			cancel()
+			return shedengine.Status{}, false, readErr
+		},
+		Sleep: (&fakeClock{}).Sleep,
+	}
+
+	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir)
+	_, _, err := producer.Call(ctx)
+	if err == nil {
+		t.Fatal("Call() error = nil; want the cancelled-context diagnosis")
+	}
+	if !strings.Contains(err.Error(), "context cancelled during run") {
+		t.Errorf("Call() error = %q; want it to carry the cancelled-context diagnosis, not the raw ReadStatus error", err.Error())
+	}
+}
+
+func TestInnerRun_CancelledDuringSecondReadStatusError(t *testing.T) {
+	scratchDir := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	readErr := errors.New("decode failed")
+	readCalls := 0
+	deps := InnerRunDeps{
+		Spawn: func(ctx context.Context) error { return nil },
+		ResolveStatus: func() (string, string, error) {
+			return "/status/path", "/status/lock/path", nil
+		},
+		ReadStatus: func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
+			readCalls++
+			if readCalls == 1 {
+				// The pre-spawn read: no status file yet, so Call proceeds to Spawn.
+				return shedengine.Status{}, false, nil
+			}
+			// The post-spawn read: this is the one whose own error path is under test.
+			cancel()
+			return shedengine.Status{}, false, readErr
+		},
+		Sleep: (&fakeClock{}).Sleep,
+	}
+
+	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir)
+	_, _, err := producer.Call(ctx)
+	if err == nil {
+		t.Fatal("Call() error = nil; want the cancelled-context diagnosis")
+	}
+	if !strings.Contains(err.Error(), "context cancelled during run") {
+		t.Errorf("Call() error = %q; want it to carry the cancelled-context diagnosis, not the raw second-read ReadStatus error", err.Error())
+	}
+}
+
 // TestInnerRun_ReentryAgainstExistingStatusDoesNotRespawn is the second load-bearing assertion:
 // once a status file exists, a re-entered Call -- the shape shedengine's on_stuck self-route
 // produces -- must read it without spawning again, which is what makes re-entry safe against a
 // double spawn.
 func TestInnerRun_ReentryAgainstExistingStatusDoesNotRespawn(t *testing.T) {
 	scratchDir := t.TempDir()
-	clock := &fakeClock{now: time.Unix(0, 0)}
+	clock := &fakeClock{}
 	_, spawnCalls, deps := newInnerRunDeps(nil, nil, []statusResult{{status: shedengine.Status{State: shedengine.StateRunning}, found: true}}, clock)
 
 	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir)
@@ -268,7 +359,7 @@ func TestInnerRun_ReentryAgainstExistingStatusDoesNotRespawn(t *testing.T) {
 // Call invocations is shedengine's own bounce budget, not a loop inside this producer.
 func TestInnerRun_StillRunningSleepsExactlyOnce(t *testing.T) {
 	scratchDir := t.TempDir()
-	clock := &fakeClock{now: time.Unix(0, 0)}
+	clock := &fakeClock{}
 	_, _, deps := newInnerRunDeps(nil, nil, []statusResult{{status: shedengine.Status{State: shedengine.StateRunning}, found: true}}, clock)
 
 	producer := NewInnerRun("innerrun", "myslug", deps, 5*time.Second, scratchDir)
@@ -311,5 +402,35 @@ func TestInnerRun_NilSeamsDefaultToStdlib(t *testing.T) {
 	}
 	if outcome != shedengine.Done {
 		t.Errorf("Call() outcome = %v; want Done", outcome)
+	}
+}
+
+// TestWaitOrCancel_ReturnsImmediatelyOnACancelledContext asserts the production sleep value does
+// not hold an operator's stop for the whole poll interval.
+// It is deadline-based rather than duration-based, so it stays deterministic under -count=5.
+func TestWaitOrCancel_ReturnsImmediatelyOnACancelledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	done := make(chan struct{})
+	go func() {
+		waitOrCancel(ctx, time.Hour)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("waitOrCancel did not return on an already-cancelled context; it waited out its own interval")
+	}
+}
+
+// TestWaitOrCancel_WaitsOutAShortIntervalWhenNotCancelled asserts the wait is a real wait, not a
+// no-op that would satisfy the cancellation test above vacuously.
+func TestWaitOrCancel_WaitsOutAShortIntervalWhenNotCancelled(t *testing.T) {
+	start := time.Now()
+	waitOrCancel(context.Background(), 20*time.Millisecond)
+	if elapsed := time.Since(start); elapsed < 20*time.Millisecond {
+		t.Errorf("waitOrCancel(background, 20ms) returned after %s; want at least its own interval", elapsed)
 	}
 }

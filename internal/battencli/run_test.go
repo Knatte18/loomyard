@@ -8,6 +8,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -20,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
@@ -115,9 +118,10 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 	}
 }
 
-// TestRunCmd_StateDoneRefusesNamingTheBattenDir asserts a StateDone slug refuses on the envelope
-// rather than silently re-running, naming the per-slug directory to delete.
-func TestRunCmd_StateDoneRefusesNamingTheBattenDir(t *testing.T) {
+// TestRunCmd_StateDoneRefusesNamingTheRunDir asserts a StateDone slug refuses on the envelope
+// rather than silently re-running, naming the durable run directory to delete -- the one the
+// status file the refusal gates on lives in, never the ephemeral scratch directory.
+func TestRunCmd_StateDoneRefusesNamingTheRunDir(t *testing.T) {
 	c := newFakeReceiver(t, nil)
 	writeStatus(t, c, shedengine.Status{
 		CurrentProducer: battenrecipe.NameWorktreeTeardown,
@@ -130,9 +134,12 @@ func TestRunCmd_StateDoneRefusesNamingTheBattenDir(t *testing.T) {
 	if exitCode != 1 {
 		t.Fatalf("run() exit code = %d; want 1; output: %s", exitCode, out.String())
 	}
-	wantDir := BattenDir(c.location, c.slug)
+	wantDir := shedrun.RunDir(c.location, c.slug)
 	if !strings.Contains(out.String(), wantDir) {
-		t.Errorf("run() output = %q; want it to name the per-slug directory %q", out.String(), wantDir)
+		t.Errorf("run() output = %q; want it to name the durable run directory %q", out.String(), wantDir)
+	}
+	if strings.Contains(out.String(), BattenDir(c.location, c.slug)) {
+		t.Errorf("run() output = %q; names the ephemeral scratch directory, which is not the gate", out.String())
 	}
 }
 
@@ -307,6 +314,33 @@ func TestPauseCmd_AbsentFileRefuses(t *testing.T) {
 	}
 }
 
+// TestStatusAndPause_ReadADurableStatusWhoseLockDirIsAbsent pins the cold-machine shape: the durable
+// status file is present (it travelled with the pair) while the ephemeral lock directory is not (this
+// machine never stepped the slug). Both read-only verbs must answer from the file rather than fail to
+// open a lock in a directory nothing has created yet.
+func TestStatusAndPause_ReadADurableStatusWhoseLockDirIsAbsent(t *testing.T) {
+	for _, verb := range []string{"status", "pause"} {
+		t.Run(verb, func(t *testing.T) {
+			c := newFakeReceiver(t, nil)
+			writeStatus(t, c, shedengine.Status{
+				CurrentProducer: battenrecipe.NameRunShed,
+				State:           shedengine.StateRunning,
+				History:         []shedengine.HistoryEntry{},
+			})
+			c.shedPaths.StatusLockPath = filepath.Join(filepath.Dir(c.shedPaths.StatusPath), "scratch", "status.json.lock")
+
+			var out bytes.Buffer
+			exitCode := clihelp.Execute(battenVerbCommand(c, verb), &out, []string{c.slug})
+			if exitCode != 0 {
+				t.Fatalf("%s() exit code = %d; want 0; output: %s", verb, exitCode, out.String())
+			}
+			if verb == "status" && !strings.Contains(out.String(), `"found":true`) {
+				t.Errorf("status() output = %q; want the durable status reported as found", out.String())
+			}
+		})
+	}
+}
+
 // TestStatusCmd_RegistersWatchAndIntervalFlags asserts status -- new in this task -- exposes
 // --watch and --interval, the two flags shedverbs' generic status body itself reads.
 func TestStatusCmd_RegistersWatchAndIntervalFlags(t *testing.T) {
@@ -345,5 +379,85 @@ func TestStatusCmd_WatchOverAbsentFileExitsImmediately(t *testing.T) {
 	}
 	if envelope["status_path"] != c.shedPaths.StatusPath {
 		t.Errorf(`status(--watch) envelope["status_path"] = %v; want %q`, envelope["status_path"], c.shedPaths.StatusPath)
+	}
+}
+
+// TestRecentHistory asserts the status envelope's history is bounded to the most recent entries and
+// reports whether anything was dropped.
+func TestRecentHistory(t *testing.T) {
+	entry := func(n int) shedengine.HistoryEntry {
+		return shedengine.HistoryEntry{Producer: "Run-Shed", Outcome: shedengine.Stuck, Output: fmt.Sprint(n)}
+	}
+	build := func(count int) []shedengine.HistoryEntry {
+		out := make([]shedengine.HistoryEntry, 0, count)
+		for i := 0; i < count; i++ {
+			out = append(out, entry(i))
+		}
+		return out
+	}
+
+	tests := []struct {
+		name          string
+		history       []shedengine.HistoryEntry
+		wantLen       int
+		wantTruncated bool
+		wantLastOut   string
+	}{
+		{name: "nil_history_is_returned_untouched", history: nil, wantLen: 0},
+		{name: "a_short_history_is_returned_whole", history: build(3), wantLen: 3, wantLastOut: "2"},
+		{name: "exactly_at_the_cap_is_not_truncated", history: build(maxStatusHistoryEntries), wantLen: maxStatusHistoryEntries, wantLastOut: fmt.Sprint(maxStatusHistoryEntries - 1)},
+		{
+			name:          "a_full_watch_window_keeps_only_the_most_recent",
+			history:       build(1440),
+			wantLen:       maxStatusHistoryEntries,
+			wantTruncated: true,
+			wantLastOut:   "1439",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, truncated := recentHistory(tt.history)
+			if len(got) != tt.wantLen {
+				t.Errorf("recentHistory(%d entries) returned %d; want %d", len(tt.history), len(got), tt.wantLen)
+			}
+			if truncated != tt.wantTruncated {
+				t.Errorf("recentHistory(%d entries) truncated = %v; want %v", len(tt.history), truncated, tt.wantTruncated)
+			}
+			if tt.wantLastOut != "" && got[len(got)-1].Output != tt.wantLastOut {
+				t.Errorf("recentHistory(...) last entry output = %q; want the most recent entry %q", got[len(got)-1].Output, tt.wantLastOut)
+			}
+		})
+	}
+}
+
+// TestReadStuckReason asserts the status verb recovers the producer-supplied reason battenshed
+// wrote, and stays silent rather than guessing when there is none.
+func TestReadStuckReason(t *testing.T) {
+	scratchDir := t.TempDir()
+	const producer = "Worktree-Create"
+	const reason = `branch "crashcreate" already exists; switch a pair onto it with "lyx fabric checkout crashcreate"`
+
+	if _, found := readStuckReason(scratchDir, producer); found {
+		t.Fatalf("precondition: readStuckReason found a reason before any was written")
+	}
+
+	if err := os.WriteFile(battenshed.StuckReasonFile(scratchDir, producer), []byte(reason+"\n"), 0o644); err != nil {
+		t.Fatalf("write stuck reason: %v", err)
+	}
+
+	got, found := readStuckReason(scratchDir, producer)
+	if !found {
+		t.Fatalf("readStuckReason(%q, %q) found = false; want the reason battenshed just wrote", scratchDir, producer)
+	}
+	if got != reason {
+		t.Errorf("readStuckReason(...) = %q; want %q", got, reason)
+	}
+
+	if _, found := readStuckReason(scratchDir, "Some-Other-Row"); found {
+		t.Error("readStuckReason reported a reason for a producer that wrote none")
+	}
+	if _, found := readStuckReason("", producer); found {
+		t.Error("readStuckReason reported a reason for an empty scratch directory")
 	}
 }

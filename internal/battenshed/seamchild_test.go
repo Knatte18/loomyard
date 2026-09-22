@@ -171,6 +171,58 @@ func TestSeedChild_UnknownRecipeNameIsStuck(t *testing.T) {
 	}
 }
 
+// TestSeedChild_UnsupportedChildRecipeIsStuck pins the second refusal a WriteSeed seam may raise:
+// a registered recipe the task worktree cannot bootstrap lands Stuck, naming the Board type, with
+// no commit and no push attempted.
+func TestSeedChild_UnsupportedChildRecipeIsStuck(t *testing.T) {
+	scratchDir := t.TempDir()
+	writeErr := fmt.Errorf("%w: only loom can", ErrUnsupportedChildRecipe)
+	calls, deps := newSeedChildDeps("batten", nil, "go", nil, writeErr, nil, nil)
+
+	producer := NewSeedChild("seedchild", "myslug", deps, scratchDir)
+	outcome, _, err := producer.Call(context.Background())
+	if err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	if outcome != shedengine.Stuck {
+		t.Fatalf("Call() outcome = %v; want Stuck", outcome)
+	}
+	if calls.commitCalled || calls.pushCalled {
+		t.Errorf("commitCalled=%v pushCalled=%v; want neither -- nothing was written to commit", calls.commitCalled, calls.pushCalled)
+	}
+	reason := readStuckFile(t, scratchDir, "seedchild")
+	if !strings.Contains(reason, `Board task type "batten"`) {
+		t.Errorf("stuck-reason file = %q; want it to name the Board task type", reason)
+	}
+}
+
+// TestSeedChild_DisagreeingChildSeedIsStuck pins the third refusal a WriteSeed seam may raise: a
+// pre-existing child seed that disagrees with the one being written lands Stuck, not a hard error --
+// the same business-judgment treatment as the other two WriteSeed refusals, with no commit and no
+// push attempted. Live-reproduced (batten review sonnet-xhigh-r5, finding F3): before this fix, this
+// exact case surfaced as a hard StateFailed with no stuck_reason.
+func TestSeedChild_DisagreeingChildSeedIsStuck(t *testing.T) {
+	scratchDir := t.TempDir()
+	writeErr := fmt.Errorf("%w: run \"self\" is already seeded with a different driver", ErrDisagreeingChildSeed)
+	calls, deps := newSeedChildDeps("loom", nil, "go", nil, writeErr, nil, nil)
+
+	producer := NewSeedChild("seedchild", "myslug", deps, scratchDir)
+	outcome, _, err := producer.Call(context.Background())
+	if err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	if outcome != shedengine.Stuck {
+		t.Fatalf("Call() outcome = %v; want Stuck", outcome)
+	}
+	if calls.commitCalled || calls.pushCalled {
+		t.Errorf("commitCalled=%v pushCalled=%v; want neither -- nothing was written to commit", calls.commitCalled, calls.pushCalled)
+	}
+	reason := readStuckFile(t, scratchDir, "seedchild")
+	if !strings.Contains(reason, "already disagrees") {
+		t.Errorf("stuck-reason file = %q; want it to name the disagreement", reason)
+	}
+}
+
 func TestSeedChild_WriteSeedFailureNotUnknownRecipeIsReturnedError(t *testing.T) {
 	scratchDir := t.TempDir()
 	writeErr := errors.New("resolve seed path failed")
@@ -250,6 +302,60 @@ func TestSeedChild_ChildDriverFailureIsReturnedError(t *testing.T) {
 	}
 	if outcome == shedengine.Stuck {
 		t.Error("Call() outcome = Stuck; want a driver-read failure to hard-error, not Stuck")
+	}
+}
+
+// TestSeedChild_CancelledDuringChildDriverError and TestSeedChild_CancelledDuringWriteSeedError
+// assert the two seamchild.go hard-error paths F1 (crucible round sonnet-xhigh-r3) found missing
+// their cancelErr check both now carry the cancelled-context diagnosis rather than the raw
+// underlying error, when ctx is cancelled by the time the failing seam call itself returns.
+func TestSeedChild_CancelledDuringChildDriverError(t *testing.T) {
+	scratchDir := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	driverErr := errors.New("driver read failed")
+	deps := SeedChildDeps{
+		ReadBoardType: func(ctx context.Context) (string, error) { return "batten", nil },
+		ChildDriver: func() (string, error) {
+			cancel()
+			return "", driverErr
+		},
+		WriteSeed:  func(ctx context.Context, recipe, driver string) error { return nil },
+		CommitSeed: func(ctx context.Context) error { return nil },
+		PushSeed:   func(ctx context.Context) error { return nil },
+	}
+
+	producer := NewSeedChild("seedchild", "myslug", deps, scratchDir)
+	_, _, err := producer.Call(ctx)
+	if err == nil {
+		t.Fatal("Call() error = nil; want the cancelled-context diagnosis")
+	}
+	if !strings.Contains(err.Error(), "context cancelled during run") {
+		t.Errorf("Call() error = %q; want it to carry the cancelled-context diagnosis, not the raw ChildDriver error", err.Error())
+	}
+}
+
+func TestSeedChild_CancelledDuringWriteSeedError(t *testing.T) {
+	scratchDir := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	writeErr := errors.New("resolve seed path failed")
+	deps := SeedChildDeps{
+		ReadBoardType: func(ctx context.Context) (string, error) { return "batten", nil },
+		ChildDriver:   func() (string, error) { return "claude", nil },
+		WriteSeed: func(ctx context.Context, recipe, driver string) error {
+			cancel()
+			return writeErr
+		},
+		CommitSeed: func(ctx context.Context) error { return nil },
+		PushSeed:   func(ctx context.Context) error { return nil },
+	}
+
+	producer := NewSeedChild("seedchild", "myslug", deps, scratchDir)
+	_, _, err := producer.Call(ctx)
+	if err == nil {
+		t.Fatal("Call() error = nil; want the cancelled-context diagnosis")
+	}
+	if !strings.Contains(err.Error(), "context cancelled during run") {
+		t.Errorf("Call() error = %q; want it to carry the cancelled-context diagnosis, not the raw WriteSeed error", err.Error())
 	}
 }
 

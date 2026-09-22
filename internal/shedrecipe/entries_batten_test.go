@@ -178,14 +178,10 @@ func TestLifecycleEntries_RejectsUnrecognisedConfigKey(t *testing.T) {
 	}
 }
 
-// TestInnerRunEntry_NilNowAndSleepAreAccepted asserts innerRunEntry does not validate
-// Env.InnerRun.Now or Env.InnerRun.Sleep: their nil values are legitimate and select the production
-// clock and sleep inside battenshed.NewInnerRun.
-func TestInnerRunEntry_NilNowAndSleepAreAccepted(t *testing.T) {
+// TestInnerRunEntry_NilSleepIsAccepted asserts innerRunEntry does not validate Env.InnerRun.Sleep:
+// its nil value is legitimate and selects the production sleep inside battenshed.NewInnerRun.
+func TestInnerRunEntry_NilSleepIsAccepted(t *testing.T) {
 	env := newTestEnv(t)
-	if env.InnerRun.Now != nil {
-		t.Fatalf("newTestEnv(t).InnerRun.Now is non-nil; want nil by default")
-	}
 	if env.InnerRun.Sleep != nil {
 		t.Fatalf("newTestEnv(t).InnerRun.Sleep is non-nil; want nil by default")
 	}

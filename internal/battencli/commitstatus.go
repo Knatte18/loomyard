@@ -15,10 +15,18 @@
 // in a closure variable -- it would start empty every call and the skip would work for `run` mode
 // alone. It lives instead at shedrun.LastCommitMarker(location, runID), read before deciding and
 // rewritten after a successful commit.
+//
+// The skip's own cost, stated here because nothing else in the code says it: shedengine rewrites the
+// run's durable status file on every Run-Shed self-bounce (a history append), and the skip declines
+// to commit every one of them after the first, so the pair carries an uncommitted change at that
+// path for the whole watch -- up to the row's full 12-hour budget. That is the right trade against
+// 1440 identical commits, and it is why an operation requiring a clean pair, such as
+// "lyx fabric checkout", refuses hub-wide while a batten run is watching.
 package battencli
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -41,9 +49,30 @@ type commitStatusDeps struct {
 	Push func() error
 }
 
+// battenRunCommitPaths returns the anchor-relative paths a status transition commits: the run's
+// status file, and its seed whenever one is on disk.
+//
+// Both belong on the pair because a run directory is durable, fabric-synced state -- a status
+// committed without its seed leaves a resumed machine able to read how far the run came but not
+// what it is running, and batten's own auto-seed would then re-seed it from flag defaults.
+// The seed goes in on every transition rather than once at seeding time, for the self-healing
+// reason loom's own bootstrap commit paths record: committing an already-clean tracked path is a
+// no-op, so a seed written by an invocation that crashed before any commit lands on the next one.
+//
+// It is included only when present because a pathspec matching no file is a hard git error, and a
+// Shed driven without batten's own auto-seed -- which every caller outside the CLI verbs is -- has
+// no seed to commit.
+func battenRunCommitPaths(location *lyxcwd.Location, runID string) []string {
+	paths := []string{shedrun.StatusRel(runID)}
+	if _, err := os.Stat(shedrun.SeedFile(location, runID)); err == nil {
+		paths = append(paths, shedrun.SeedRel(runID))
+	}
+	return paths
+}
+
 // battenCommitStatusDeps builds a commitStatusDeps over location and runID, filling each field from
 // fabric: MergeActive from fabricengine.MergeStateActive, Commit from
-// fabricengine.CommitAnchoredPaths scoped to shedrun.StatusRel(runID), and Push from
+// fabricengine.CommitAnchoredPaths scoped to battenRunCommitPaths(location, runID), and Push from
 // fabricengine.PushAnchored.
 func battenCommitStatusDeps(location *lyxcwd.Location, runID string) commitStatusDeps {
 	return commitStatusDeps{
@@ -53,7 +82,7 @@ func battenCommitStatusDeps(location *lyxcwd.Location, runID string) commitStatu
 		// Commit discards the (sha, committed) pair in favour of the error alone, exactly as
 		// loomCommitStatusDeps' own Commit closure does.
 		Commit: func(msg string) error {
-			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, []string{shedrun.StatusRel(runID)}, msg, fabricengine.EnvSyncOptions())
+			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, battenRunCommitPaths(location, runID), msg, fabricengine.EnvSyncOptions())
 			return err
 		},
 		Push: func() error {

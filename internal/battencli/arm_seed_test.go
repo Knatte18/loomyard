@@ -40,8 +40,8 @@ func TestArmSeed_RunAndStepSeedBeforeWire(t *testing.T) {
 			if seed.Recipe != shedrun.RecipeBatten {
 				t.Errorf("seed.Recipe = %q; want %q -- prime's own seed, never the Board task's type", seed.Recipe, shedrun.RecipeBatten)
 			}
-			if seed.Params["slug"] != "some-slug" {
-				t.Errorf("seed.Params[\"slug\"] = %q; want %q", seed.Params["slug"], "some-slug")
+			if _, present := seed.Params["slug"]; present {
+				t.Errorf("seed.Params carries %q; the run-id is the slug and nothing reads a copy", "slug")
 			}
 		})
 	}
@@ -92,6 +92,51 @@ func TestArmSeed_OwnDriverLLMStillRefuses(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "roadmap") {
 		t.Errorf("armSeed() error = %q; want it to no longer name a roadmap item", err.Error())
+	}
+}
+
+// TestArmSeed_OwnDriverLLMRefusesTheSameWayOnASeededRun asserts a typed --driver llm reads as the
+// impossibility it is on an already-seeded run too, not as a mere disagreement with a recorded
+// value.
+//
+// Before this, refuseAdoptedSeed ran first and answered "--driver \"llm\" cannot change a seeded
+// run's recorded driver" -- true, but it reads as "not now", inviting the operator to delete the
+// seed and re-seed with a value batten can never honour at all.
+func TestArmSeed_OwnDriverLLMRefusesTheSameWayOnASeededRun(t *testing.T) {
+	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+	if err := shedrun.WriteSeed(loc, "some-slug", shedrun.Seed{Recipe: shedrun.RecipeBatten, Driver: shedrun.DriverGo}); err != nil {
+		t.Fatalf("shedrun.WriteSeed = %v; want nil", err)
+	}
+
+	c := &battenCLI{driverFlag: shedrun.DriverLLM, driverFlagSet: true}
+	err := c.armSeed(loc, "some-slug", "run")
+	if err == nil {
+		t.Fatal("armSeed() with driverFlag=llm against a seeded run = nil; want a refusal")
+	}
+	if !strings.Contains(err.Error(), "no bootstrap verb") {
+		t.Errorf("armSeed() error = %q; want it to name the missing bootstrap verb", err.Error())
+	}
+	if strings.Contains(err.Error(), "cannot change a seeded run") {
+		t.Errorf("armSeed() error = %q; want the impossibility, not the seeded-value disagreement", err.Error())
+	}
+}
+
+// TestArmSeed_TypedChildDriverIsValidatedAheadOfTheSeedRead asserts an unknown --child-driver value
+// is named for what it is on a seeded run, rather than being reported as disagreeing with the
+// recorded one.
+func TestArmSeed_TypedChildDriverIsValidatedAheadOfTheSeedRead(t *testing.T) {
+	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+	if err := shedrun.WriteSeed(loc, "some-slug", shedrun.Seed{Recipe: shedrun.RecipeBatten, Driver: shedrun.DriverGo}); err != nil {
+		t.Fatalf("shedrun.WriteSeed = %v; want nil", err)
+	}
+
+	c := &battenCLI{childDriverFlag: "bogus", childDriverFlagSet: true}
+	err := c.armSeed(loc, "some-slug", "run")
+	if err == nil {
+		t.Fatal("armSeed() with childDriverFlag=bogus against a seeded run = nil; want a refusal")
+	}
+	if !strings.Contains(err.Error(), `unknown driver "bogus"`) {
+		t.Errorf("armSeed() error = %q; want it to name the unknown driver value", err.Error())
 	}
 }
 
@@ -176,5 +221,94 @@ func TestArmSeed_NoSeedGivesTheListingRefusal_SeedPresentWithNoStatusGivesFoundF
 	}
 	if _, err := os.Stat(shedrun.StatusFile(loc, "seeded-slug")); !os.IsNotExist(err) {
 		t.Fatalf("status.json exists at %q after armSeed alone; want it absent -- that is battenPreRun's own seed-when-absent job, not armSeed's", filepath.Dir(shedrun.StatusFile(loc, "seeded-slug")))
+	}
+}
+
+// TestRefuseAdoptedSeed covers the two ways an already-existing seed can disagree with the
+// invocation that found it -- a foreign recipe, and a typed driver flag that cannot take effect --
+// and asserts an agreeing seed is left alone.
+func TestRefuseAdoptedSeed(t *testing.T) {
+	battenSeedGoChild := shedrun.Seed{
+		Recipe: shedrun.RecipeBatten,
+		Driver: shedrun.DriverGo,
+		Params: map[string]string{"child_driver": shedrun.DriverGo},
+	}
+	battenSeedLLMChild := shedrun.Seed{
+		Recipe: shedrun.RecipeBatten,
+		Driver: shedrun.DriverGo,
+		Params: map[string]string{"child_driver": shedrun.DriverLLM},
+	}
+	battenSeedNoChildParam := shedrun.Seed{Recipe: shedrun.RecipeBatten, Driver: shedrun.DriverGo}
+	loomSeed := shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: shedrun.DriverGo}
+
+	tests := []struct {
+		name            string
+		seed            shedrun.Seed
+		driverFlag      string
+		driverSet       bool
+		childDriverFlag string
+		childDriverSet  bool
+		wantSubstr      string
+	}{
+		{
+			name: "agreeing_batten_seed_with_no_typed_flags_is_left_alone",
+			seed: battenSeedGoChild,
+		},
+		{
+			name:            "defaulted_flags_never_contradict_an_llm_child_run",
+			seed:            battenSeedLLMChild,
+			driverFlag:      shedrun.DriverGo,
+			childDriverFlag: shedrun.DriverGo,
+		},
+		{
+			name:       "a_loom_seed_is_refused_naming_the_verb_that_would_honour_it",
+			seed:       loomSeed,
+			wantSubstr: `already seeded with recipe "loom"`,
+		},
+		{
+			name:       "a_typed_driver_that_cannot_take_effect_is_refused",
+			seed:       battenSeedGoChild,
+			driverFlag: shedrun.DriverLLM,
+			driverSet:  true,
+			wantSubstr: `--driver "llm" cannot change a seeded run's recorded driver`,
+		},
+		{
+			name:            "a_typed_child_driver_that_cannot_take_effect_is_refused",
+			seed:            battenSeedLLMChild,
+			childDriverFlag: shedrun.DriverGo,
+			childDriverSet:  true,
+			wantSubstr:      `already seeded with child driver "llm"`,
+		},
+		{
+			name:            "an_absent_child_driver_param_compares_as_go",
+			seed:            battenSeedNoChildParam,
+			childDriverFlag: shedrun.DriverLLM,
+			childDriverSet:  true,
+			wantSubstr:      `already seeded with child driver "go"`,
+		},
+		{
+			name:            "a_typed_child_driver_that_agrees_is_accepted",
+			seed:            battenSeedLLMChild,
+			childDriverFlag: shedrun.DriverLLM,
+			childDriverSet:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := refuseAdoptedSeed(tt.seed, "some-slug", tt.driverFlag, tt.driverSet, tt.childDriverFlag, tt.childDriverSet)
+			if tt.wantSubstr == "" {
+				if err != nil {
+					t.Fatalf("refuseAdoptedSeed(...) = %v; want nil", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("refuseAdoptedSeed(...) = nil; want a refusal containing %q", tt.wantSubstr)
+			}
+			if !strings.Contains(err.Error(), tt.wantSubstr) {
+				t.Errorf("refuseAdoptedSeed(...) = %q; want it to contain %q", err.Error(), tt.wantSubstr)
+			}
+		})
 	}
 }

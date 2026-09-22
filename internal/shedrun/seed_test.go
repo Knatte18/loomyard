@@ -1,6 +1,7 @@
 package shedrun
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -170,6 +171,9 @@ func TestWriteSeed_RefusesDisagreeingSeed(t *testing.T) {
 	err := WriteSeed(l, "self", second)
 	if err == nil {
 		t.Fatalf("WriteSeed() second disagreeing call error = nil; want refusal")
+	}
+	if !errors.Is(err, ErrDisagreeingSeed) {
+		t.Errorf("WriteSeed() error = %v; want it to wrap ErrDisagreeingSeed, so a caller can route it to a recoverable verdict rather than treating it as a mechanism failure", err)
 	}
 	if !strings.Contains(err.Error(), RecipeLoom) || !strings.Contains(err.Error(), RecipeBatten) {
 		t.Errorf("WriteSeed() error = %q; want it to name both the existing (%q) and incoming (%q) recipe", err.Error(), RecipeLoom, RecipeBatten)

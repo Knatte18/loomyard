@@ -13,6 +13,22 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
+// waitOrCancel pauses for d, returning as soon as ctx is cancelled if that happens first.
+// It is the production value a nil InnerRunDeps.Sleep resolves to, so an operator's stop is not
+// held for the whole poll interval.
+func waitOrCancel(ctx context.Context, d time.Duration) {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+	case <-ctx.Done():
+	}
+}
+
+// haltedChildRemedy is the operator instruction every halted-child error carries: the outer run
+// cannot restart the task worktree's own driver, only watch it.
+const haltedChildRemedy = "the task worktree's own run must be resumed from inside that worktree (its recipe's bootstrap verb, e.g. \"lyx loom start\") before this run is resumed; resuming this run alone only resumes the watch"
+
 // innerRunProducer spawns the inner shed run for a task worktree, once, and checks its persisted
 // status once per Call, reporting Stuck while the child is still running so shedengine's own
 // on_stuck self-route re-enters this producer rather than this type looping internally.
@@ -31,15 +47,11 @@ var _ shedengine.ShedProducer = (*innerRunProducer)(nil)
 // deps.ReadStatus exactly once per Call thereafter. The bounded wait lives on the recipe row's own
 // max_bounces and on_stuck self-route, one shedengine bounce per Call, not inside this producer.
 //
-// A nil deps.Now resolves to time.Now and a nil deps.Sleep resolves to time.Sleep, both resolved
-// once here rather than on every Call, so a test's fake clock and no-op sleep are the only values
-// ever substituted.
+// A nil deps.Sleep resolves to waitOrCancel, once here rather than on every Call, so a test's
+// no-op sleep is the only value ever substituted.
 func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duration, scratchDir string) shedengine.ShedProducer {
-	if deps.Now == nil {
-		deps.Now = time.Now
-	}
 	if deps.Sleep == nil {
-		deps.Sleep = time.Sleep
+		deps.Sleep = waitOrCancel
 	}
 	return &innerRunProducer{
 		name:         name,
@@ -78,11 +90,17 @@ func (p *innerRunProducer) Call(ctx context.Context) (shedengine.Outcome, sheden
 
 	statusPath, statusLockPath, err := p.deps.ResolveStatus()
 	if err != nil {
+		if cerr := cancelErr(ctx, p.name); cerr != nil {
+			return "", shedengine.OutputPointer{}, cerr
+		}
 		return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: resolve status path: %w", p.name, err)
 	}
 
 	status, found, err := p.deps.ReadStatus(statusPath, statusLockPath)
 	if err != nil {
+		if cerr := cancelErr(ctx, p.name); cerr != nil {
+			return "", shedengine.OutputPointer{}, cerr
+		}
 		return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: read status: %w", p.name, err)
 	}
 
@@ -99,6 +117,9 @@ func (p *innerRunProducer) Call(ctx context.Context) (shedengine.Outcome, sheden
 
 		status, found, err = p.deps.ReadStatus(statusPath, statusLockPath)
 		if err != nil {
+			if cerr := cancelErr(ctx, p.name); cerr != nil {
+				return "", shedengine.OutputPointer{}, cerr
+			}
 			return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: read status: %w", p.name, err)
 		}
 		if !found {
@@ -117,7 +138,7 @@ func (p *innerRunProducer) Call(ctx context.Context) (shedengine.Outcome, sheden
 	case shedengine.StateDone:
 		return shedengine.Done, shedengine.OutputPointer{}, nil
 	case shedengine.StateRunning:
-		p.deps.Sleep(p.pollInterval)
+		p.deps.Sleep(ctx, p.pollInterval)
 		if cerr := cancelErr(ctx, p.name); cerr != nil {
 			return "", shedengine.OutputPointer{}, cerr
 		}
@@ -125,7 +146,10 @@ func (p *innerRunProducer) Call(ctx context.Context) (shedengine.Outcome, sheden
 		reportStuck(p.name, reason, p.scratchDir, "slug", p.slug)
 		return shedengine.Stuck, shedengine.OutputPointer{}, nil
 	case shedengine.StateBlocked, shedengine.StatePaused, shedengine.StateFailed:
-		return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: inner shed run reached state %q: error=%q current_producer=%q", p.name, status.State, status.Error, status.CurrentProducer)
+		// The remedy is named here because nothing on the prime side can perform it: this row
+		// spawns only while the task worktree has no status file, and resuming the outer run resumes
+		// the watch, never the child's own driver.
+		return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: inner shed run reached state %q: error=%q current_producer=%q; %s", p.name, status.State, status.Error, status.CurrentProducer, haltedChildRemedy)
 	default:
 		return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: unrecognized status state %q", p.name, status.State)
 	}

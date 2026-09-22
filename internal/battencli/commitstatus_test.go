@@ -12,6 +12,8 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 // TestNewCommitStatusSeam_RepeatedPairCommitsOnce is the disproportionate-weight assertion named in
@@ -348,5 +350,33 @@ func TestNewCommitStatusSeam_MergeActiveSkips(t *testing.T) {
 				t.Error("Push was called; want it skipped while mid-merge")
 			}
 		})
+	}
+}
+
+// TestBattenRunCommitPaths asserts a status transition commits the run's seed alongside its status
+// once one exists, and commits the status alone while none does.
+// A run directory is durable, fabric-synced state: a status committed without its seed leaves a
+// resumed machine able to read how far the run came but not what it is running.
+func TestBattenRunCommitPaths(t *testing.T) {
+	const runID = "some-slug"
+	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+
+	got := battenRunCommitPaths(loc, runID)
+	if len(got) != 1 || got[0] != shedrun.StatusRel(runID) {
+		t.Fatalf("battenRunCommitPaths with no seed on disk = %v; want just %q", got, shedrun.StatusRel(runID))
+	}
+
+	if err := shedrun.WriteSeed(loc, runID, shedrun.Seed{Recipe: shedrun.RecipeBatten, Driver: shedrun.DriverGo}); err != nil {
+		t.Fatalf("write seed: %v", err)
+	}
+	got = battenRunCommitPaths(loc, runID)
+	want := []string{shedrun.StatusRel(runID), shedrun.SeedRel(runID)}
+	if len(got) != len(want) {
+		t.Fatalf("battenRunCommitPaths with a seed on disk = %v; want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("battenRunCommitPaths(...)[%d] = %q; want %q", i, got[i], want[i])
+		}
 	}
 }
