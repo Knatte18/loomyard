@@ -246,6 +246,19 @@ const (
 // On a run.json persistence failure after AddStrand, both the directory and strand are cleaned up
 // to avoid leaking an untracked agent pane.
 func (r *Runner) Start(spec Spec) (*Run, error) {
+	return r.StartGated(spec, GateSpec{})
+}
+
+// StartGated is Start, gated: the returned handle carries gate, so the Wait the caller performs
+// later validates the run through gate.Gate (if non-nil) at its single verdict site in finalize,
+// exactly as RunGated's own blocking form does.
+// It is the seam a caller that must act BETWEEN the start and the block uses — websterengine's Run
+// persists Master's strand guid to state.json before blocking, which is the record the next run's
+// entry-time reclaim reads, so it cannot spend RunGated.
+// Like RunGated and AttachGated it is a deliberate added form beside Start rather than a widening
+// of it, because Start's seam is shared by callers that have no gate and never will (see the
+// "added forms" decision).
+func (r *Runner) StartGated(spec Spec, gate GateSpec) (*Run, error) {
 	if r.toldErr != nil {
 		return nil, r.toldErr
 	}
@@ -343,6 +356,7 @@ func (r *Runner) Start(spec Spec) (*Run, error) {
 		state:    state,
 		clock:    clk,
 		deadline: clk.Now().Add(spec.Timeout),
+		gate:     gate,
 	}, nil
 }
 
@@ -375,11 +389,10 @@ func (r *Runner) Run(spec Spec) (Result, error) {
 // RunGated is a deliberate added form beside Run rather than a widening of it, because Run's shared
 // seam is held by callers that have no gate and never will (see the "added forms" decision).
 func (r *Runner) RunGated(spec Spec, gate GateSpec) (Result, error) {
-	run, err := r.Start(spec)
+	run, err := r.StartGated(spec, gate)
 	if err != nil {
 		return Result{}, err
 	}
-	run.gate = gate
 	return run.Wait()
 }
 
