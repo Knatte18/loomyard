@@ -93,8 +93,15 @@ type MasterHandle interface {
 // MasterStarter is the seam Run spawns Master through, webster's own OrchestratorStarter shape.
 // Production code passes an adapter over *shuttleengine.Runner (webstercli's own starter);
 // tests pass a local fake.
+//
+// A shuttleengine.GateSpec rides beside the Spec: it is the mechanical validator the Master run's
+// own Wait consults before it may finalize, and its zero value (a nil Gate) means ungated, which is
+// what the Webster row supplies today. The seam is widened rather than joined by a second
+// StartMaster form because it has exactly one call site and two production implementors -- an added
+// form would cost every fake a second method with no caller, which is the price shuttleengine's own
+// RunGated/AttachGated pay deliberately for a genuinely shared seam and which buys nothing here.
 type MasterStarter interface {
-	StartMaster(shuttleengine.Spec) (MasterHandle, error)
+	StartMaster(shuttleengine.Spec, shuttleengine.GateSpec) (MasterHandle, error)
 }
 
 // RunDeps carries every seam Run needs for testing.
@@ -118,6 +125,12 @@ type RunDeps struct {
 	Batcher    batcher.Batcher
 	Geom       Geometry
 	RefMatcher RefMatcher
+
+	// Gate is the mechanical validator Master's own shuttle run is held to: Run hands it to
+	// StartMaster beside the Spec, and the run's Wait re-prompts the live Master on a failed verdict
+	// until it passes or the re-prompt budget is exhausted. The zero value means ungated, which is
+	// what every caller supplies until a Webster validator exists.
+	Gate shuttleengine.GateSpec
 
 	// FrictionDir is the told absolute friction directory (see internal/friction), empty when Tier 2
 	// is off. It lives here rather than on Geometry because internal/hubgeom and
@@ -596,7 +609,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		Timeout:       time.Duration(deps.Config.MasterTimeoutMin) * time.Minute,
 	}
 
-	handle, err := deps.Starter.StartMaster(spec)
+	handle, err := deps.Starter.StartMaster(spec, deps.Gate)
 	if err != nil {
 		return RunResult{}, fmt.Errorf("webster: start master: %w", err)
 	}

@@ -1,6 +1,6 @@
-// entries_gate.go implements resolveGateSpec, the shared resolver every gated entry (DiscussionWrite,
-// PlanWrite, BurlerRound) calls to turn its row's "gate"/"gate_attempts" Config keys into a
-// shuttleengine.GateSpec.
+// entries_gate.go implements resolveGateSpec, the shared resolver every gate-capable entry
+// (DiscussionWrite, PlanWrite, BurlerRound, Webster) calls to turn its row's "gate"/"gate_attempts"
+// Config keys into a shuttleengine.GateSpec.
 //
 // The selector is a declared string resolved against Env, exactly as bouncerEntry already resolves
 // "commit_seam"/"approve_seam" against Env.CommitPlan/Env.CommitDiscussion/Env.ApprovePlan.

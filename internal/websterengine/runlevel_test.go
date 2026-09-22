@@ -140,20 +140,22 @@ func (h *runFakeHandle) Wait() (shuttleengine.Result, error) {
 var _ websterengine.MasterHandle = (*runFakeHandle)(nil)
 
 // runFakeStarter is a hermetic websterengine.MasterStarter double: it
-// records every spec StartMaster was called with and hands back the
+// records every spec and gate StartMaster was called with and hands back the
 // caller-scripted handle, or startErr when the caller wants to prove a step
 // never reaches the spawn at all.
 type runFakeStarter struct {
 	mu         sync.Mutex
 	startCalls []shuttleengine.Spec
+	gateCalls  []shuttleengine.GateSpec
 	handle     websterengine.MasterHandle
 	startErr   error
 }
 
-func (s *runFakeStarter) StartMaster(spec shuttleengine.Spec) (websterengine.MasterHandle, error) {
+func (s *runFakeStarter) StartMaster(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (websterengine.MasterHandle, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.startCalls = append(s.startCalls, spec)
+	s.gateCalls = append(s.gateCalls, gate)
 	if s.startErr != nil {
 		return nil, s.startErr
 	}
@@ -1478,5 +1480,65 @@ func TestRun_ValidationErrorAndRebaselineSaveFailure_ReportsBoth(t *testing.T) {
 	}
 	if !errors.Is(err, planglyph.ErrQuarryUnavailable) {
 		t.Errorf("Run() error = %v; want the primary validation failure still classifiable via errors.Is(err, planglyph.ErrQuarryUnavailable) — the re-baseline report must not mask it", err)
+	}
+}
+
+// TestRun_GateReachesStartMaster proves RunDeps.Gate is what Run hands StartMaster beside the Spec:
+// the gate is threaded, never rebuilt or dropped, so a caller that tells webster a validator gets
+// the Master run held to it. The gate closure is never invoked here -- evaluating it is
+// shuttleengine's own Wait's job, and this fixture's Starter is a fake that never reaches it.
+func TestRun_GateReachesStartMaster(t *testing.T) {
+	fx := newRunFixture(t, 1)
+
+	var called bool
+	fx.Deps.Gate = shuttleengine.GateSpec{
+		Gate: func() (shuttleengine.GateResult, error) {
+			called = true
+			return shuttleengine.GateResult{Passed: true}, nil
+		},
+		Attempts: 7,
+	}
+
+	seedMatchingState(t, fx, &websterengine.State{
+		Batches: map[int]*websterengine.BatchState{
+			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done"},
+		},
+	})
+
+	runToDone(t, fx, "master-strand-gate", "master-session-gate", nil, 1)
+
+	if len(fx.Starter.gateCalls) != 1 {
+		t.Fatalf("len(Starter.gateCalls) = %d; want 1", len(fx.Starter.gateCalls))
+	}
+	got := fx.Starter.gateCalls[0]
+	if got.Gate == nil {
+		t.Error("StartMaster received a nil Gate; want the told closure")
+	}
+	if got.Attempts != 7 {
+		t.Errorf("StartMaster received Attempts = %d; want 7", got.Attempts)
+	}
+	if called {
+		t.Error("the gate closure was invoked by Run; want it spent only by shuttle's own Wait")
+	}
+}
+
+// TestRun_ZeroGateReachesStartMasterUngated proves the ungated path is unchanged: a RunDeps that
+// names no gate hands StartMaster the zero GateSpec, which shuttleengine reads as "ungated".
+func TestRun_ZeroGateReachesStartMasterUngated(t *testing.T) {
+	fx := newRunFixture(t, 1)
+
+	seedMatchingState(t, fx, &websterengine.State{
+		Batches: map[int]*websterengine.BatchState{
+			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done"},
+		},
+	})
+
+	runToDone(t, fx, "master-strand-ungated", "master-session-ungated", nil, 1)
+
+	if len(fx.Starter.gateCalls) != 1 {
+		t.Fatalf("len(Starter.gateCalls) = %d; want 1", len(fx.Starter.gateCalls))
+	}
+	if got := fx.Starter.gateCalls[0]; got.Gate != nil || got.Attempts != 0 {
+		t.Errorf("StartMaster received GateSpec{Gate: %v, Attempts: %d}; want the zero value", got.Gate != nil, got.Attempts)
 	}
 }

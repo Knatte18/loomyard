@@ -272,6 +272,42 @@ func TestWebsterEntry_SeamFields(t *testing.T) {
 	})
 }
 
+// TestWebsterEntry_GateKeys covers the "gate"/"gate_attempts" keys websterEntry resolves through
+// resolveGateSpec: an absent "gate" constructs (the shipped row's own ungated shape), a
+// "gate_attempts" with no "gate" is rejected naming both keys, and a named validator is rejected by
+// resolveGateSpec's closed vocabulary, since no Webster validator exists to name.
+func TestWebsterEntry_GateKeys(t *testing.T) {
+	t.Run("AbsentGateConstructs", func(t *testing.T) {
+		producer, err := websterEntry("Webster", Config{}, newTestEnv(t))
+		if err != nil {
+			t.Fatalf("websterEntry() error = %v; want nil", err)
+		}
+		if producer == nil {
+			t.Fatalf("websterEntry() = nil producer; want non-nil")
+		}
+	})
+
+	t.Run("GateAttemptsWithoutGateRejected", func(t *testing.T) {
+		_, err := websterEntry("Webster", Config{"gate_attempts": 3}, newTestEnv(t))
+		if err == nil {
+			t.Fatalf("websterEntry() error = nil; want non-nil for %q with no %q", "gate_attempts", "gate")
+		}
+		if !strings.Contains(err.Error(), "gate_attempts") || !strings.Contains(err.Error(), "Webster") {
+			t.Errorf("websterEntry() error = %v; want it to name both the key and the row", err)
+		}
+	})
+
+	t.Run("UnknownValidatorRejected", func(t *testing.T) {
+		_, err := websterEntry("Webster", Config{"gate": "webster"}, newTestEnv(t))
+		if err == nil {
+			t.Fatalf("websterEntry() error = nil; want non-nil for an unregistered validator name")
+		}
+		if !strings.Contains(err.Error(), "Webster") {
+			t.Errorf("websterEntry() error = %v; want it to name the row", err)
+		}
+	})
+}
+
 // TestPublishEntry_LandingRejected asserts publishEntry surfaces landingshed.NewPublish's own
 // rejection of a zero Deps wrapped with this package's own error-text prefix, not passed through
 // raw.

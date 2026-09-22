@@ -143,8 +143,11 @@ type runnerMasterStarter struct {
 }
 
 // StartMaster implements websterengine.MasterStarter.
-func (s runnerMasterStarter) StartMaster(spec shuttleengine.Spec) (websterengine.MasterHandle, error) {
-	run, err := s.runner.Start(spec)
+//
+// It spends Runner.StartGated rather than Runner.Start so the gate reaches the run before the
+// caller blocks on it; a zero gate makes StartGated behave exactly as Start.
+func (s runnerMasterStarter) StartMaster(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (websterengine.MasterHandle, error) {
+	run, err := s.runner.StartGated(spec, gate)
 	if err != nil {
 		return nil, err
 	}
