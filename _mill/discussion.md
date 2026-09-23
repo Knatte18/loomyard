@@ -58,7 +58,7 @@ An llm-driven child is unusable on any fresh fixture path until this is fixed.
 
 ### Mechanism: an exported startup-await on `*shuttleengine.Run`, reusing `checkLivenessTick`
 
-- Decision: add a method on `*shuttleengine.Run`, working name `AwaitStarted() (bool, error)`, in a new file in `internal/shuttleengine`, for example `startup.go`.
+- Decision: add a method on `*shuttleengine.Run`, working name `AwaitStarted() (bool, error)`, in `internal/shuttleengine/wait.go` (see "Completion Signal tripwire" for why that file).
   It loops `run.checkLivenessTick(&started, startupDeadline)` on `run.clock`.
   The deadline is `cfg.StartupTimeoutS` from now, and each tick sleeps `pollInterval(cfg)`.
   Loom's `driverHandle` interface gains the method; `*shuttleengine.Run` satisfies it directly, as it already does for `StrandGUID`/`RunDir`.
@@ -83,7 +83,18 @@ An llm-driven child is unusable on any fresh fixture path until this is fixed.
 - Decision: the llm arm's readiness signal is now `StartupReady` observed, which is strictly stronger than pane liveness.
   The time budget is shuttle's own `startup_timeout_s` (the same window every producer run gets), replacing loom's 50×100ms constants.
   `lyx loom start` (and `--no-attach`) therefore returns only once the driver's TUI is up and any one-time gate is dismissed.
-  That can take a few seconds longer than today.
+  On a healthy boot that costs a few seconds more than today.
+  On the refusal path the wait before refusing is now up to `startup_timeout_s` (90 by default in `template.yaml`), against today's 5s ceiling.
+- Decision (bootstrap lock): `bootstrapLock` stays held across the widened probe, exactly as it is held across the probe today; it is released on refusal or at step 7.
+  The lock is taken through `lock.AcquireWriteLock`, which blocks with no timeout, so a concurrent `lyx loom start` now waits up to about `startup_timeout_s` instead of about 5s.
+  This is accepted as the correct serialisation of concurrent bootstraps.
+  - The go arm already holds the same lock across its run-lock handshake (`bootstrapHandshakeAttempts` 300 × `bootstrapHandshakePollInterval` 100ms = 30s), so a readiness-length hold is established precedent.
+  - Releasing the lock before the probe would let a second bootstrap read the strand table mid-probe.
+    It would see a live-but-not-ready driver as `driverStrandLive` and attach to a pane still on the dialog.
+    Or, if the first bootstrap's probe then refuses, the second bootstrap would act on a strand whose fate is still being decided.
+  - Release-then-re-acquire would add a window in which step 7 is reached by the wrong process.
+  - The waiter is bounded in practice, because the holder's probe is itself bounded by the startup window plus the tick-count cap.
+- Rejected (lock): releasing `bootstrapLock` before the probe and re-acquiring it afterwards, for the race above.
 - Rationale: it closes the trust-dialog case, and it also closes the "binary booted into a shell that shows no TUI" case that `awaitDriverPane`'s doc comment names as a residual.
   Reusing `startup_timeout_s` avoids a second, loom-owned timeout for the same question.
 - Rejected: keeping the liveness probe and adding the dismissal after it creates two probes with two budgets for one question.
@@ -98,7 +109,8 @@ An llm-driven child is unusable on any fresh fixture path until this is fixed.
     The driver finished, so the bootstrap does not treat that as a boot failure.
   - `OutcomeDied` (the pane died, or the startup window expired with no `StartupReady`) → return `(false, nil)`, and the caller refuses with the existing envelope.
   - A `checkLivenessTick` error (a reed.Status error, `errStrandNotTracked`, or `errStrandPaneBindingCleared`) gets the same consecutive-failure tolerance `Wait` applies (`maxStatusRetries`, reset on a successful tick).
-    After the cap it returns a wrapped error of the same wording family `Wait` uses.
+    At the cap it first returns `(true, nil)` if `allOutputFilesExist` holds.
+    Otherwise it returns a wrapped error of the same wording family `Wait` uses.
 - Decision: `AwaitStarted` never calls `finalize` and never writes a terminal `Outcome` to run.json.
   It is a readiness probe, not a completion verdict: the ly-drive run is never `Wait`ed, and the run directory must keep its `runOutcomeRunning` sentinel.
 - Decision: the loop is bounded by tick COUNT as well as by the deadline, per the Live-Substrate Spawn Observability retry clause.
@@ -119,14 +131,17 @@ An llm-driven child is unusable on any fresh fixture path until this is fixed.
 
 ### Completion Signal tripwire
 
-- Decision: put `AwaitStarted` in its own file.
-  If `internal/shuttleengine/completionsignal_enforcement_test.go`'s AST scans cover the new file (they pin return sites in `wait.go`/`attach.go`), then either:
-  - add the new sites with a justification comment beside each entry, or
-  - confirm the method adds no negative-verdict return site, since it returns a bool.
-
-  Whichever applies, mill-plan must check the scan's file list rather than assume it.
-- Rationale: the tripwire exists to force a human look at new negative-answer exits, and `(false, nil)` is one in spirit.
-  It routes through `classifyStartupWindow`, so it is already guarded.
+- Decision: `AwaitStarted` lives in `wait.go`, beside `checkLivenessTick`, so the existing scan reaches it with no change to `completionSignalScannedFiles` (which is `{"wait.go", "attach.go"}`).
+  Its retry-cap exit returns a wrapped `fmt.Errorf`, and `Errorf` is a `negativeVerdictMarkers` entry.
+  So that exit is a negative-verdict return site the scan will count.
+  Before returning that error, `AwaitStarted` consults `allOutputFilesExist(run.spec.OutputFiles)` and returns `(true, nil)` when the contract is satisfied.
+  That mirrors `Wait`'s `finishedDespiteMechanismFailure`, but it returns a readiness bool, not a finalized `Result`.
+  In `completionsignal_enforcement_test.go`, pin the new `AwaitStarted [Errorf]` return-site entry with its count, and pin the new `allOutputFilesExist` call site in `AwaitStarted`, each with an audit comment beside the entry.
+  The comment says that the probe's mechanism-failure exit is guarded by the file contract, and that it never finalizes an `Outcome`.
+  The `(false, nil)` not-ready exit carries no negative marker, and it is guarded upstream: it is reached only from `checkLivenessTick`/`classifyStartupWindow` returning `OutcomeDied`, both already pinned.
+- Rationale: the scanned-files var's own comment sets the convention ("a future file that grows a third kind of verdict belongs in this list").
+  Keeping the method in `wait.go` needs no list change and keeps the startup-probe logic in one file.
+- Rejected: a separate `startup.go` would sit outside the scan unless the list grew, which adds a file to the tripwire for one method.
 
 ### Reproduction recipe (live verification)
 
@@ -178,7 +193,8 @@ An llm-driven child is unusable on any fresh fixture path until this is fixed.
 
 - **Shuttle Provider-Seam Invariant:** no Claude specifics in `shuttleengine`/loomcli; dismissal stays behind `Engine.TrustDismissSequence`.
 - **Completion Signal Invariant:** every negative answer consults `allOutputFilesExist` first.
-  `AwaitStarted` routes all negatives through `checkLivenessTick`/`classifyStartupWindow` and never finalizes; the tripwire test must be checked (see Decisions).
+  `AwaitStarted` routes all negatives through `checkLivenessTick`/`classifyStartupWindow`, or checks `allOutputFilesExist` before its retry-cap `Errorf`, and it never finalizes.
+  It lives in `wait.go`, and its new return site and guard are pinned in the tripwire test (see Decisions).
 - **Live-Substrate Spawn Observability:** the retry loop caps attempt COUNT, not only time.
   Log the dismissal attempt; `checkLivenessTick` already `Warn`s on failure, so add an `Info`/`Debug` line when a gate is dismissed during the driver's startup only if mill-plan finds no existing log.
   Log readiness in loomcli ("driver strand is ready", replacing "pane is live").
@@ -209,7 +225,8 @@ An llm-driven child is unusable on any fresh fixture path until this is fixed.
   - true gives success;
   - the go-arm handshake is still never consulted on an llm-seeded bootstrap.
   - Remove the `awaitDriverPane` tests.
-- **Completion Signal tripwire:** keep it green; update pinned counts only with written justification.
+- **Completion Signal tripwire:** add the `AwaitStarted [Errorf]` return-site pin and the `allOutputFilesExist` call-site pin, each with its audit comment.
+  Also add a unit case: at the retry cap with the output files present, `AwaitStarted` returns true, not the error.
 - **Live:** the reproduction recipe above, run once post-fix on a fresh path.
   Record the `jq` before/after output and the pane capture in the task's completion notes.
 
