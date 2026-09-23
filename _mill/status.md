@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-shuttle-await-started
 slug: llm-driver-trust-dialog-hang
 branch: llm-driver-trust-dialog-hang
 plan: _mill/plan
@@ -39,6 +39,7 @@ planning  '2026-09-23T08:43:04Z'
 plan-review-r7  '2026-09-23T08:46:25Z'
 planned  '2026-09-23T08:46:34Z'
 implementing  '2026-09-23T08:47:02Z'
+approved-shuttle-await-started  '2026-09-23T08:54:42Z'
 ```
 
 ## Batches
@@ -46,9 +47,10 @@ implementing  '2026-09-23T08:47:02Z'
 ```yaml
 batches:
   - name: shuttle-await-started
-    state: running
+    state: approved
     implementer_session: 2de5b101-6dd0-4fbe-a38f-334e6f1ebf4d
     start_sha: 420047eb00de82fa6e3a839685c9938f45fdc3c6
+    commit_sha: 4903517bc631bf7d07b735b473cd10b72582bd2c
     verify_baseline_failures: []
   - name: loom-llm-arm-readiness
     state: pending
