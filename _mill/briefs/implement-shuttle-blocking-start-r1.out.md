@@ -1,0 +1,13 @@
+{"status":"success","commit_sha":"d44d8a2a2ec4e4fc20eb8417aca2bd1bcd3b6688","session_id":"a6064c6b-e510-4d2b-80e2-a77add496c76","cards_done":[1,2,3,4,5]}
+
+All 5 of 5 cards in batch 01-shuttle-blocking-start are committed and verified.
+
+Summary of work and key files:
+
+- Card 1 (commit a1f4aaf97): internal/shuttleengine/attach.go, attach_test.go, completionsignal_enforcement_test.go — added isTerminalOutcome and routed leftoverThenAgeVerdict through it so an untracked record that already reached a terminal outcome is respawn-eligible regardless of age.
+- Card 2 (commit f5211a6e8): internal/shuttleengine/fakes_test.go, run_test.go — added the readyStart helper scripting a ready startup for Start-path tests, ahead of card 4's blocking Start.
+- Card 3 (commits f474946ec, 46b218123 plan-extend, d44d8a2a2 fix): internal/loomcli/driverlaunch.go, start.go, driverspec.go, start_driver_test.go, smoke_driverstrand_test.go — dropped loom's own driver readiness await (AwaitStarted) in favour of shuttle's blocking Start. Discovered mid-batch that internal/loomcli/integration_driverbootstrap_test.go's stub driver script never rendered a ready marker, so it timed out at startup_timeout_s under the new blocking Start; per the surprise-file protocol I extended card 3's Edits list in the plan first (committed separately), then fixed the stub script to print claudeengine.ReadyFooterFixture before its settle-delay sleep.
+- Card 4 (commit 28d6207d7): internal/shuttleengine/wait.go (new ErrNotStarted sentinel, awaitStartup, abandonStartup, renamed startupTickCap), run.go (new private start method, updated StartGated/RunGated), rundir.go, doc.go, moved awaitstarted_test.go to startup_test.go (full rewrite onto the real Start/StartGated/RunGated flow), run_test.go, completionsignal_enforcement_test.go, CONSTRAINTS.md, docs/reference/claude-trust-dialog-repro.md, docs/overview.md — shuttle now issues a run handle only past the provider's startup gates.
+- Card 5 (commit 12ea65d06): wait.go (seed `started := run.state.Started` alone), run.go (removed the Run.attached field), attach.go, wait_test.go (dropped stale attached: true literals, added TestRun_Wait_StartedRun_SkipsStartupProbe).
+
+Full batch verify passed: `go test ./internal/shuttleengine/... ./internal/loomcli/... ./internal/shuttlecli/... ./internal/shedadapters/...`, `go test -tags integration ./internal/loomcli/`, and `go test -tags smoke -run 'TestSmokeDriverStrand|TestSmokeGate|TestSmokeBurlerRound|TestSmokeSingleLLM' ./internal/loomcli/` all pass. `git status --porcelain --untracked-files=no` is clean at HEAD d44d8a2a2ec4e4fc20eb8417aca2bd1bcd3b6688.
