@@ -55,23 +55,24 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // writeStubDriverScript writes a POSIX shell script standing in for the claude binary this file's
-// spawns launch: it ignores every argument the claude engine's own launch line appends, prints an
-// ASCII ready-marker line, then sleeps for a long, harmless duration. The marker line is required
-// under the readiness signal this file now drives: claudeengine's Startup classifies a capture
-// containing "shortcuts" as StartupReady, and without it AwaitStarted would never observe readiness,
-// so every "loom start --no-attach" below would refuse at startup_timeout_s instead of succeeding. An
-// ASCII marker is used rather than the real footer's "❯" glyph to avoid depending on the pane's own
-// encoding of that character. The script never needs to exit on its own -- this file's own third case
-// kills its pane directly (see the file-level doc comment) -- so the sleep only needs to outlast the
-// whole test, never to be observed finishing.
+// spawns launch: it ignores every argument the claude engine's own launch line appends, prints
+// claudeengine's own ready-marker fixture, then sleeps for a long, harmless duration. The marker
+// line is required under the readiness signal this file now drives: without it AwaitStarted would
+// never observe readiness, so every "loom start --no-attach" below would refuse at
+// startup_timeout_s instead of succeeding. The fixture text, and which of a provider's gates it is
+// or isn't, is claudeengine's own concern (see claudeengine.ReadyFooterFixture) -- this package only
+// needs a realistic stand-in, never the classification details behind it. The script never needs to
+// exit on its own -- this file's own third case kills its pane directly (see the file-level doc
+// comment) -- so the sleep only needs to outlast the whole test, never to be observed finishing.
 func writeStubDriverScript(t *testing.T) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "stub-claude.sh")
-	script := "#!/bin/sh\necho '? for shortcuts'\nsleep 3600\n"
+	script := "#!/bin/sh\necho '" + claudeengine.ReadyFooterFixture + "'\nsleep 3600\n"
 	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
 		t.Fatalf("write stub driver script: %v", err)
 	}

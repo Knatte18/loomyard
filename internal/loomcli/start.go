@@ -235,10 +235,11 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 	// Step 6, llm arm: await the driver run's provider readiness through the handle's
 	// AwaitStarted, in place of the go arm's run-lock handshake -- an ly-drive session
 	// takes the run lock only inside each "lyx shed step" and releases it between steps,
-	// so a handshake on it would either race the Claude boot or observe a free lock between
-	// two perfectly healthy steps. AwaitStarted dismisses a recognized one-time startup gate
-	// (the workspace-trust and bypass-permissions dialogs) that would otherwise park the
-	// session forever on a live pane. Refuse when it reports not-ready, naming the run
+	// so a handshake on it would either race the provider's own boot or observe a free lock
+	// between two perfectly healthy steps. AwaitStarted dismisses any startup gate its
+	// provider requires -- shuttle's engine seam owns which gates exist and how they are
+	// dismissed, loom only waits on the outcome -- that would otherwise park the session
+	// forever on a live pane. Refuse when it reports not-ready, naming the run
 	// directory and strand guid the handle reports -- never the driver log accessor, which
 	// names only the detached go driver's captured output.
 	//
@@ -303,8 +304,8 @@ readiness signal confirms it is up, instead of running step 4 -- skipping
 the terminal handover this way skips the operator's own strand with it. That
 readiness signal is the run lock being taken for the Go driver; for an
 ly-drive driver, it is the driver's provider TUI coming up ready, with any
-one-time startup gate (such as the workspace-trust dialog) dismissed along
-the way, within shuttle's startup_timeout_s. This signal is checked only for
+one-time startup gate its provider requires dismissed along the way (shuttle's
+engine seam owns which gates exist), within shuttle's startup_timeout_s. This signal is checked only for
 a driver this invocation spawns, so an ly-drive strand already live from an
 earlier invocation -- including one left in place by an earlier readiness
 refusal -- is attached to, or returned over with --no-attach, without
