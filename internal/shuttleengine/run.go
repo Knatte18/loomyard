@@ -1,12 +1,13 @@
 // run.go implements the run loop's provider-invariant core: Runner, the per-run Run handle, and
-// Start — the sequence that prepares a run's artifacts, registers its strand with reed, and
-// persists run.json so the CLI's interrupt/send verbs and a later diagnosis pass can find it again.
-// Wait and AwaitStarted (wait.go) and Interrupt/Send round out the Run handle's public surface —
-// AwaitStarted is the startup probe alone, for a caller that never waits.
+// Start — the sequence that prepares a run's artifacts, registers its strand with reed, persists
+// run.json, and blocks through wait.go's awaitStartup before returning, so the CLI's interrupt/send
+// verbs and a later diagnosis pass find a run.json that is already past its startup gates.
+// Wait (wait.go) and Interrupt/Send round out the Run handle's public surface.
 
 package shuttleengine
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -192,9 +193,9 @@ type Result struct {
 	Gate *GateOutcome
 }
 
-// Run is the handle to one in-progress or completed shuttle run, returned by Start.
+// Run is the handle to one in-progress or completed shuttle run, returned by Start once its provider
+// has already passed the startup probe.
 // Wait blocks until the run reaches a terminal outcome;
-// AwaitStarted (wait.go) is the startup probe alone, for a caller that never waits;
 // Interrupt and Send drive the live pane while Wait is blocked (or from another process, via the
 // CLI verbs that resolve a Run from run.json).
 type Run struct {
@@ -209,14 +210,19 @@ type Run struct {
 	deadline time.Time
 	// clock is the time seam for tests.
 	clock clock
-	// attached is set only by Attach, never by Start, and read by Wait's started seed and by
-	// AwaitStarted's identical short-circuit, where it is one of two conditions (paired with state.Started) that must both hold before the startup
-	// probe is skipped: attached alone only means reed still reports the pane's process alive, never
-	// that the provider inside it ever reached StartupReady (see RunState.Started's own doc comment
-	// for why those are different facts). When both hold, re-running the probe against a mid-turn
-	// pane would misclassify a live interview as OutcomeDied, or play the trust-dismiss sequence into
-	// it.
+	// attached is set only by Attach, never by Start, and read by Wait's started seed, where it is
+	// one of two conditions (paired with state.Started) that must both hold before the startup probe
+	// is skipped: attached alone only means reed still reports the pane's process alive, never that
+	// the provider inside it ever reached StartupReady (see RunState.Started's own doc comment for
+	// why those are different facts). When both hold, re-running the probe against a mid-turn pane
+	// would misclassify a live interview as OutcomeDied, or play the trust-dismiss sequence into it.
 	attached bool
+
+	// lastStartupCapture is the last successful pane capture the startup step (checkLivenessTick,
+	// called from awaitStartup or Wait) took, empty until the first successful CapturePane. On a
+	// not-ready teardown (abandonStartup) it is saved to startupCaptureFileName inside the run
+	// directory as the diagnosis artifact a later operator or attach reads.
+	lastStartupCapture string
 
 	// gate is the GateSpec this run was told, zero (a nil Gate) for an ungated run — the same zero
 	// value Run/Attach's own RunGated(spec, GateSpec{})/AttachGated(spec, GateSpec{}) delegation
@@ -240,13 +246,20 @@ const (
 	promptFileName   = "prompt.md"
 	settingsFileName = "settings.json"
 	eventsFileName   = "events.jsonl"
+	// startupCaptureFileName is where abandonStartup saves the last successful pane capture on a
+	// not-ready teardown, so an operator (or a re-run of the recipe in
+	// docs/reference/claude-trust-dialog-repro.md) can see what the provider's pane last showed.
+	startupCaptureFileName = "startup-capture.txt"
 )
 
-// Start prepares one run described by spec and registers it with reed, returning a handle without
-// blocking.
+// Start prepares one run described by spec, registers it with reed, and returns a handle only once
+// the run's provider is past its startup gates.
 // On AddStrand failure the run directory is removed.
 // On a run.json persistence failure after AddStrand, both the directory and strand are cleaned up
 // to avoid leaking an untracked agent pane.
+// A provider that never becomes ready is torn down (strand removed, run dir and its last pane
+// capture kept) and reported as an error wrapping ErrNotStarted — see awaitStartup/abandonStartup
+// (wait.go) for the startup step itself.
 func (r *Runner) Start(spec Spec) (*Run, error) {
 	return r.StartGated(spec, GateSpec{})
 }
@@ -255,17 +268,35 @@ func (r *Runner) Start(spec Spec) (*Run, error) {
 // later validates the run through gate.Gate (if non-nil) at its single verdict site in finalize,
 // exactly as RunGated's own blocking form does.
 // It is the seam a caller that must act BETWEEN the start and the block uses — websterengine's Run
-// persists Master's strand guid to state.json before blocking, which is the record the next run's
-// entry-time reclaim reads, so it cannot spend RunGated.
+// persists Master's strand guid to state.json before blocking, which now includes the startup
+// window, and state.json is the record the next run's entry-time reclaim reads, so it cannot spend
+// RunGated.
 // Like RunGated and AttachGated it is a deliberate added form beside Start rather than a widening
 // of it, because Start's seam is shared by callers that have no gate and never will (see the
 // "added forms" decision).
 func (r *Runner) StartGated(spec Spec, gate GateSpec) (*Run, error) {
+	run, _, err := r.start(spec, gate)
+	if err != nil {
+		return nil, err
+	}
+	return run, nil
+}
+
+// start is StartGated's whole body: it prepares one run, registers it with reed, persists run.json,
+// then blocks on the new *Run's awaitStartup before ever returning it.
+// Every pre-strand failure (told-path validation, spec validation, run-dir creation,
+// engine.Prepare, AddStrand, saveRunState) returns (nil, Result{}, err) exactly as StartGated's body
+// always has. Past that point it calls run.awaitStartup() and returns (nil, result, err) when that
+// did not resolve ready — result and err carry whatever awaitStartup returned, including a
+// not-ready Result.Outcome and an err for which errors.Is(err, ErrNotStarted) holds on a genuine
+// not-ready teardown — or (run, Result{}, nil) once the provider is confirmed past its startup
+// gates.
+func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 	if r.toldErr != nil {
-		return nil, r.toldErr
+		return nil, Result{}, r.toldErr
 	}
 	if err := spec.validate(r.worktreeRoot, r.cfg); err != nil {
-		return nil, err
+		return nil, Result{}, err
 	}
 
 	r.sweepOrphansOpportunistic()
@@ -273,13 +304,13 @@ func (r *Runner) StartGated(spec Spec, gate GateSpec) (*Run, error) {
 	root := runDirRoot(r.cfg, r.anchorPath)
 	runID, runDir, err := createRunDir(root)
 	if err != nil {
-		return nil, fmt.Errorf("shuttle: start run: %w", err)
+		return nil, Result{}, fmt.Errorf("shuttle: start run: %w", err)
 	}
 
 	launch, err := r.engine.Prepare(runDir, spec, r.cfg)
 	if err != nil {
 		_ = os.RemoveAll(runDir)
-		return nil, fmt.Errorf("shuttle: prepare run: %w", err)
+		return nil, Result{}, fmt.Errorf("shuttle: prepare run: %w", err)
 	}
 
 	strand, err := r.reed.AddStrand(reedengine.AddSpec{
@@ -297,7 +328,7 @@ func (r *Runner) StartGated(spec Spec, gate GateSpec) (*Run, error) {
 		// directory this attempt created is cleaned up rather than left as
 		// an unclaimable orphan.
 		_ = os.RemoveAll(runDir)
-		return nil, fmt.Errorf("shuttle: add strand: %w", err)
+		return nil, Result{}, fmt.Errorf("shuttle: add strand: %w", err)
 	}
 
 	// Residual, stated rather than papered over (crucible round sonnet5-xhigh-r3, F2): AddStrand
@@ -320,6 +351,11 @@ func (r *Runner) StartGated(spec Spec, gate GateSpec) (*Run, error) {
 	// two-phase-commit problem, not a bug in either store on its own. See
 	// wait.go's own Completion Signal Invariant section for the second Accepted-residual entry
 	// this comment is paired with.
+	//
+	// The general form of the residual above, stated once here rather than at every caller: a caller
+	// that persists the strand guid only after Start returns now has a crash window as wide as the
+	// startup probe, not merely the window between AddStrand and saveRunState — websterengine's Run
+	// is exactly such a caller (see StartGated's own doc comment).
 	state := RunState{
 		RunID:        runID,
 		StrandGUID:   strand.GUID,
@@ -345,13 +381,13 @@ func (r *Runner) StartGated(spec Spec, gate GateSpec) (*Run, error) {
 			logger.Warn("shuttle: start run: remove strand after save-state failure (non-fatal)", "strandGUID", strand.GUID, "error", rerr)
 		}
 		_ = os.RemoveAll(runDir)
-		return nil, fmt.Errorf("shuttle: save run state: %w", err)
+		return nil, Result{}, fmt.Errorf("shuttle: save run state: %w", err)
 	}
 
 	logger.Info("shuttle: run started", "runDir", runDir, "strandGUID", strand.GUID, "sessionID", launch.SessionID, "role", spec.Role, "round", spec.Round, "forkSubagents", spec.ForkSubagents)
 
 	clk := r.clock
-	return &Run{
+	run := &Run{
 		runner:   r,
 		spec:     spec,
 		runDir:   runDir,
@@ -359,14 +395,20 @@ func (r *Runner) StartGated(spec Spec, gate GateSpec) (*Run, error) {
 		clock:    clk,
 		deadline: clk.Now().Add(spec.Timeout),
 		gate:     gate,
-	}, nil
+	}
+
+	result, err := run.awaitStartup()
+	if err != nil {
+		return nil, result, err
+	}
+	return run, Result{}, nil
 }
 
 // RunDir returns the directory holding this run's artifacts (prompt.md, settings.json, the events
 // file).
 // It is exported because a caller that starts a run and never Waits on it has no other way to name
 // the one directory an operator would look in — loom's llm-driver bootstrap refuses with exactly
-// this path when AwaitStarted reports the provider never came up.
+// this path when Start's own not-ready error reports the provider never came up.
 func (run *Run) RunDir() string {
 	return run.runDir
 }
@@ -381,6 +423,9 @@ func (run *Run) StrandGUID() string {
 
 // Run starts spec and blocks until it reaches a terminal outcome — the Start+Wait convenience for a
 // caller with no need to Interrupt/Send between the two.
+// A not-ready start (the provider never passed its startup gates) is preserved as a terminal
+// Result whose Outcome is OutcomeDied or OutcomeTimeout with a nil error, exactly as a died/timed-out
+// Wait already reports it — see RunGated for the reasoning this shares.
 func (r *Runner) Run(spec Spec) (Result, error) {
 	return r.RunGated(spec, GateSpec{})
 }
@@ -390,10 +435,22 @@ func (r *Runner) Run(spec Spec) (Result, error) {
 // verdict before giving up.
 // RunGated is a deliberate added form beside Run rather than a widening of it, because Run's shared
 // seam is held by callers that have no gate and never will (see the "added forms" decision).
+//
+// A not-ready start is deliberately NOT surfaced as an error here: errors.Is(err, ErrNotStarted)
+// reports (result, nil), where result carries the died/timeout Outcome abandonStartup's teardown
+// already classified, its identity fields, and a zero Gate — preserving RunGated's own OutcomeDied
+// contract that the burler round producer's one-retry ladder depends on
+// (TestBurlerProducer_Call_DiedThenDoneSucceedsWithRetry), so a caller that already branches on
+// Result.Outcome sees the same shape whether the run died at startup or later in Wait's own loop.
+// Any other non-nil err (a startup mechanism failure, or a pre-strand failure from start itself) is
+// returned unchanged, alongside whatever identity result carries.
 func (r *Runner) RunGated(spec Spec, gate GateSpec) (Result, error) {
-	run, err := r.StartGated(spec, gate)
+	run, result, err := r.start(spec, gate)
+	if errors.Is(err, ErrNotStarted) {
+		return result, nil
+	}
 	if err != nil {
-		return Result{}, err
+		return result, err
 	}
 	return run.Wait()
 }

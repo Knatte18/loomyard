@@ -70,8 +70,8 @@ var negativeVerdictMarkers = map[string]bool{
 }
 
 // auditedNegativeVerdictReturns is the audited set of negative-verdict return sites as of the
-// llm-driver-trust-dialog-hang task's shuttle-await-started batch, keyed by "<function> [<markers>]"
-// with the number of such returns in that function as the value.
+// shuttle-start-guarantees-readiness task's shuttle-blocking-start batch, keyed by
+// "<function> [<markers>]" with the number of such returns in that function as the value.
 //
 // Keying on the enclosing function plus the marker set — rather than on file:line — is deliberate:
 // line numbers drift on every edit above them, which would make this test fail for reasons that have
@@ -120,13 +120,22 @@ var negativeVerdictMarkers = map[string]bool{
 //     finalize's own gate check), so neither is itself a negative verdict on whether the run
 //     finished — they are infrastructure faults surfacing after the fact, the same reasoning the
 //     pre-existing fork-audit entry already carried.
-//   - AwaitStarted [Errorf] x3 — the three retry-cap arms mirror Wait's status-cap arms, each sits
-//     behind a direct allOutputFilesExist check, and AwaitStarted never finalizes an Outcome; the
-//     (false, nil) not-ready exit carries no marker and is guarded upstream, reached only when
-//     checkLivenessTick or classifyStartupWindow answers OutcomeDied, both already pinned.
+//   - awaitStartup [Errorf] x3 — the three retry-cap mechanism-failure arms, each sitting behind a
+//     direct allOutputFilesExist check.
+//   - awaitStartup [OutcomeDied] x2 — the checkLivenessTick not-ready answer (case (c) in its own doc
+//     comment) and the tick-cap exhaustion fallback, each reached only past a direct or upstream
+//     allOutputFilesExist check.
+//   - awaitStartup [OutcomeTimeout] x1 — the run-deadline exit, reached only after
+//     classifyDeadlineExpiry has already answered not-done.
+//   - abandonStartup [Errorf] x1 — its own ErrNotStarted-wrapping return, the not-ready teardown's
+//     single finalization site: every caller reaches it only past one of awaitStartup's own three
+//     guarded checks above, never directly.
 var auditedNegativeVerdictReturns = map[string]int{
 	"AttachGated [Errorf]":                            5,
-	"AwaitStarted [Errorf]":                           3,
+	"abandonStartup [Errorf]":                         1,
+	"awaitStartup [Errorf]":                           3,
+	"awaitStartup [OutcomeDied]":                      2,
+	"awaitStartup [OutcomeTimeout]":                   1,
 	"Wait [Errorf]":                                   5,
 	"Wait [OutcomeTimeout]":                           1,
 	"checkLivenessTick [Errorf]":                      1,
@@ -144,15 +153,18 @@ var auditedNegativeVerdictReturns = map[string]int{
 }
 
 // auditedFileContractCallSites is the audited set of allOutputFilesExist call sites as of the
-// llm-driver-trust-dialog-hang task's shuttle-await-started batch, keyed by enclosing function.
+// shuttle-start-guarantees-readiness task's shuttle-blocking-start batch, keyed by enclosing
+// function.
 //
 // Ten sites: the seven rounds 4-6 left audited (wait.go's pollEventsTick, checkLivenessTick x2,
 // classifyDeadlineExpiry, finishedDespiteMechanismFailure; attach.go's dispositionCandidate and
 // leftoverThenAgeVerdict) plus soleFinishedCandidate, added by round opus5-high-r7's F1 for Attach's
-// three reed-state gates, plus AwaitStarted x2, added by the shuttle-await-started batch for its
-// retry-cap guard and its tick-cap answer.
+// three reed-state gates, plus awaitStartup x2 (a rename-and-move of the former AwaitStarted's own
+// two call sites — its retry-cap guard and its tick-cap answer — carried over unchanged by the
+// shuttle-blocking-start batch when the startup step moved from its own method into Start's own
+// blocking call).
 var auditedFileContractCallSites = map[string]int{
-	"AwaitStarted":                    2,
+	"awaitStartup":                    2,
 	"checkLivenessTick":               2,
 	"classifyDeadlineExpiry":          1,
 	"dispositionCandidate":            1,

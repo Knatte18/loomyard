@@ -92,7 +92,8 @@ type RunState struct {
 	// out a freshly restarted run_timeout_min.
 	Outcome string `json:"outcome"`
 	// Started is false when Start first persists this record, and is flipped true and re-persisted
-	// the moment the startup probe in checkLivenessTick, run by Wait or by AwaitStarted, observes the
+	// the moment the startup probe in checkLivenessTick, run from inside Start (the startup step
+	// awaitStartup calls) or from a later Wait for an attached run never marked Started, observes the
 	// provider reach shuttleengine.StartupReady — never by Attach, and never merely from the strand
 	// being reed-live. It exists because "reed
 	// still reports this strand's pane alive" is not the same fact as "the provider inside that pane
