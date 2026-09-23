@@ -23,6 +23,7 @@ Batch-local decision: the go arm's run-lock handshake, `bootstrapLock`'s acquire
 
 - **Context:**
   - `CONSTRAINTS.md`
+  - `internal/loomcli/bootstrap.go`
   - `internal/loomcli/bootstrap_test.go`
 - **Edits:**
   - `internal/loomcli/driverlaunch.go`

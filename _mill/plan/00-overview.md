@@ -46,6 +46,15 @@ Batch-local decisions live in each batch file._
 - **Rationale:** the discussion's "Mechanism" and "Result mapping and bookkeeping" decisions; batch 2's `driverHandle` interface names this exact signature.
 - **Applies to:** all batches
 
+### Decision: AwaitStarted probes at Wait's liveness cadence, not every poll
+
+- **Decision:** `AwaitStarted` sleeps `pollInterval(cfg) × LivenessEveryNPolls` between `checkLivenessTick` calls (5s under the shipped template), not the bare `pollInterval(cfg)` the discussion's Mechanism decision names.
+  The tick cap is computed over that probe interval.
+- **Rationale:** `checkLivenessTick` replays the trust-dismiss sequence on every probe whose capture still shows a gate, so a 500ms probe risks a second Enter landing on the next gate before the provider redraws (plan review round 6).
+  `Wait` already probes at `LivenessEveryNPolls` cadence, the cadence proven live for producers; matching it keeps the discussion's governing intent ("reuse the one classify→dismiss implementation") while dropping an incidental sleep detail that would have made loom's probe ten times more aggressive than every producer's.
+  The cost is up to one extra probe interval of latency before `start` observes readiness.
+- **Applies to:** shuttle-await-started
+
 ### Decision: tests stay untagged and hermetic, except the one smoke file
 
 - **Decision:** every new or changed test in `internal/shuttleengine` and `internal/loomcli` is untagged and uses fakes plus a fake clock, with no real spawn and no `time.Sleep` of 1s or more (Test Tier Purity Invariant).

@@ -35,7 +35,12 @@ No batch-local decision differs from the overview's Shared Decisions.
 - **Requirements:**
   In `internal/shuttleengine/wait.go`, add an unexported helper `awaitStartedTickCap(startupTimeout, interval time.Duration) int` and an exported method `func (run *Run) AwaitStarted() (bool, error)`, both placed directly after `Wait` and before `pollEventsTick`.
 
-  `awaitStartedTickCap` returns the ceiling of `startupTimeout / interval`, plus 1, plus `maxStatusRetries`.
+  Probe cadence: `AwaitStarted` calls `checkLivenessTick` once per probe interval, where the probe interval is `pollInterval(cfg)` times `LivenessEveryNPolls` (floored to 1 exactly as `Wait` floors it), so it probes, and replays any trust-gate dismissal, at the same cadence `Wait` does (every 5s under the shipped template's `poll_interval_ms: 500` and `liveness_every_n_polls: 10`) and never faster.
+  `AwaitStarted` has no events file to poll between probes, so it sleeps the whole probe interval at once rather than ticking at the poll interval.
+  This is deliberate: `checkLivenessTick` replays the trust-dismiss sequence on every probe whose capture still shows a gate, and probing every 500ms would let a capture taken before the provider redraws after the first Enter drive a second key into the next gate, the stray-keypress hazard the capture-driven dismissal exists to prevent; matching `Wait`'s cadence keeps `AwaitStarted` on the one cadence already proven live for producers.
+  State this reasoning in `AwaitStarted`'s doc comment.
+
+  `awaitStartedTickCap` takes the probe interval (not the raw poll interval) and returns the ceiling of `startupTimeout / probeInterval`, plus 1, plus `maxStatusRetries`.
   A negative `startupTimeout` is treated as 0 before the division, so the cap is never below `1 + maxStatusRetries`.
   Its doc comment states that it is the Live-Substrate Spawn Observability retry clause's attempt-COUNT bound: every tick's `reed.Status` and pane capture each run a real tmux process through reed, so the count cap is the clause's required bound (and it also terminates the loop under a clock that never advances), and the `maxStatusRetries` slack keeps a run of tolerated status errors from eating the ticks the window itself needs.
 
@@ -47,7 +52,11 @@ No batch-local decision differs from the overview's Shared Decisions.
   		return true, nil
   	}
   	cfg := run.runner.cfg
-  	interval := pollInterval(cfg)
+  	livenessEvery := cfg.LivenessEveryNPolls
+  	if livenessEvery <= 0 {
+  		livenessEvery = 1
+  	}
+  	interval := pollInterval(cfg) * time.Duration(livenessEvery)
   	startupTimeout := time.Duration(cfg.StartupTimeoutS) * time.Second
   	startupDeadline := run.clock.Now().Add(startupTimeout)
   	maxTicks := awaitStartedTickCap(startupTimeout, interval)
@@ -162,6 +171,7 @@ No batch-local decision differs from the overview's Shared Decisions.
   - the tick-count cap with a `frozenClock`, a live strand, and `StartupPending` forever (`StartupTimeoutS: 1`, `PollIntervalMS: 600`): `(false, nil)`, and the number of `"Status"` entries in `fakeReed.CallLog` equals `awaitStartedTickCap` for that config; a subtest with the output file present returns `(true, nil)` at the cap.
   - an attached run whose `state.Started` is true (the `*Run` literal additionally sets `attached: true`, the one case that departs from the build recipe above): `(true, nil)` with zero `Status` calls.
   - a table-driven test for `awaitStartedTickCap`, including a zero and a negative timeout, both yielding `1 + maxStatusRetries`.
+  - probe cadence matches `Wait`: with `PollIntervalMS: 100`, `LivenessEveryNPolls: 10`, `StartupTimeoutS: 30`, a `fakeClock`, and a script of `StartupPending`, `StartupPending`, `StartupReady`, `AwaitStarted` returns `(true, nil)` after exactly three `"Status"` calls, with the virtual clock advanced by exactly two probe intervals (2 × 100ms × 10 = 2s), never by a bare 100ms step.
 
   In every case other than the ready ones, assert `loadRunState(runDir)` still reports `Outcome == runOutcomeRunning`: `AwaitStarted` never writes a terminal `Outcome`.
   No test sleeps on the real clock.
