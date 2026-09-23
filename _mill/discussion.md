@@ -39,7 +39,16 @@ An llm-driven child is unusable on any fresh fixture path until this is fixed.
   Also the `--no-attach` flag's usage string in `start.go` ("return once the driver has taken the run lock"), which names only the go arm's signal.
   It must cover the llm arm's new signal (the driver's provider TUI ready, with any one-time gate dismissed).
   Also `docs/overview.md`'s `lyx loom start` description, if it names the readiness signal.
-  Also doc comments that describe the probe: `driverSpec`'s comment ("polled through the pane-liveness probe"), `startLLMDriverArm`'s comment, `runDriverSpawnAndWait`'s comment, and the step-6 llm-arm block comment in `start.go`.
+  Also every code comment that names the retired pane-liveness probe or `awaitDriverPane`, in any package.
+  Find them with `grep -rn "pane-liveness probe\|awaitDriverPane\|driverPaneAttempts" internal/`.
+  Today's hits include:
+  - `internal/shuttleengine/run.go`'s `RunDir` doc comment ("batch 4's pane-liveness probe refuses the bootstrap");
+  - `driverSpec`'s comment;
+  - `startLLMDriverArm`'s comment;
+  - `runDriverSpawnAndWait`'s comment;
+  - the step-6 llm-arm block comment in `start.go`.
+
+  The grep, not this list, is the completeness check.
 - The reproduction recipe below, recorded in this discussion and followed as the task's live verification.
 
 **Out:**
@@ -180,7 +189,8 @@ An llm-driven child is unusable on any fresh fixture path until this is fixed.
      Confirm the llm arm ran: `lyx reed status` must list a strand named `driverStrandDisplayName`'s value (the ly-drive driver).
      There must be no detached go runner: the driver log named by `LoomDriverLog` is absent or empty for this run.
   5. Pre-fix expectation (baseline, optional, from a `main` build): `start` returns success, and `tmux capture-pane -p -t <driver pane>` shows the trust dialog ("Yes, I trust this folder") indefinitely.
-  6. Post-fix expectation: `start` returns only after dismissal, the driver pane shows the ly-drive session working, and the step-3 `jq` check now prints `true` (Claude recorded the acceptance).
+  6. Post-fix expectation: `start` returns only after dismissal, the driver pane shows the ly-drive session working, and `jq --arg p "<abs worktree path>" '.projects[$p].hasTrustDialogAccepted' ~/.claude.json` prints `true`.
+     That checks the acceptance field itself, not the entry's presence: Claude Code creates an entry for every launch directory whether or not the gate was accepted.
      A run.json under the driver's run dir carries `started: true`.
   7. Tear the fixture down afterwards (`lyx` teardown / removing the hub dir).
      The `~/.claude.json` entry it leaves is harmless: Claude Code appends an entry for every launch directory anyway.
