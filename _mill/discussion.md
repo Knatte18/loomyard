@@ -33,8 +33,9 @@ A second provider plugs in as its own `Engine`, and no caller changes.
 - `Run.Wait`'s `started` seed changes from `run.attached && run.state.Started` to `run.state.Started`.
 - `internal/loomcli`: remove `driverHandle.AwaitStarted`, the llm-arm "Step 6" await block in `start.go`, and the `bootstrapLock`-held await; a not-ready driver now surfaces as `StartDriver`'s error.
   Update the `start` command's `Long` help text where it describes a strand "left in place by an earlier readiness refusal".
-- `internal/websterengine`: no code change required for the fix itself — `RecoverBatch`'s `Starter.Start` and `Run`'s `StartMaster` inherit the guarantee.
-  Doc comments on `MasterHandle`/`Run` that describe the persist-before-block ordering get the widened-window residual stated (see Decisions).
+- `internal/websterengine` / `internal/webstercli`: no control-flow change — `RecoverBatch`'s `Starter.Start` and `Run`'s `StartMaster` inherit the guarantee.
+  Both spawns run under webster's state-mutation lease, which is now held across the startup window;
+  the lease's own contract wording and the affected doc comments change to state that bounded hold, and both persist-before-block residuals (Master and recovery strand) are stated (see Decisions "Webster's state-mutation lease across the startup window" and "Webster's persist-before-block windows").
 - Tests: shuttleengine start tests replacing `awaitstarted_test.go`, fake adjustments so existing Start/Run tests reach readiness, loomcli test updates, completion-signal tripwire counts.
 - Docs: `docs/reference/claude-trust-dialog-repro.md`, shuttleengine doc comments (`run.go`, `wait.go`, `doc.go`, `rundir.go`'s `Started` comment), `docs/overview.md`'s shuttle row if its wording is affected, `CONSTRAINTS.md` (new bullet, see Decisions).
 
@@ -91,8 +92,10 @@ A second provider plugs in as its own `Engine`, and no caller changes.
   `StartGated` turns a not-ready resolution into the `ErrNotStarted` error; `RunGated` returns `(result, nil)` for it, then calls `Wait` otherwise.
   The finalize path used for the not-ready case must NOT evaluate the gate (the outcome is never `OutcomeDone`) and must record the outcome and log "run finished" as `finalize` does today.
   Whether that reuses `finalize` plus the teardown steps, or a dedicated helper, is a plan choice — but it must still run through the Completion Signal Invariant (see Constraints).
-- Rationale: shed producers (`shedadapters.SingleLLMProducer`, `burlerengine`) map `OutcomeDied` onto their stuck/respawn ladder, while an error is a mechanism failure; converting a startup failure into an error would change their ladder behavior.
-- Rejected: making `RunGated` return the error — silently re-routes every producer's startup failure from its died ladder to its error path.
+- Rationale: the burler round producer (`internal/shedadapters/burler.go`, over `burlerengine`'s `RunGated` call at `internal/burlerengine/engine.go:184`) branches on the outcome: a first `OutcomeDied`/`OutcomeTimeout` attempt is retried once as infrastructure, while a returned `RunGated` error fails the round immediately.
+  Converting a startup failure into an error would silently drop that retry.
+  `shedadapters.SingleLLMProducer` is indifferent — its `mapOutcome` (`internal/shedadapters/singlellm.go:217–222`) turns `OutcomeDied` into a returned error, the same path a `RunGated` error takes — so the plan must not rely on a distinction there.
+- Rejected: making `RunGated` return the error — removes burler's one-retry ladder for startup failures.
 
 ### AwaitStarted removed
 
@@ -117,13 +120,28 @@ A second provider plugs in as its own `Engine`, and no caller changes.
 - Rationale: unchanged wall-clock budget semantics for every caller.
 - Rejected: anchoring the deadline after readiness — silently extends every run's budget by its startup time.
 
-### Webster Master's persist-before-block window
+### Webster's state-mutation lease across the startup window
 
-- Decision: accept that `websterengine.Run` persists `MasterStrand` only after `StartMaster` returns, which now includes the startup window (typically one or two probe intervals — about 5–10 s under the shipped config; at most `startup_timeout_s`, 90 s).
-  A webster process killed inside that window leaves a live Master pane its entry-time reclaim cannot see.
-  State this as an Accepted residual in `MasterHandle`'s doc comment and beside `Start`'s existing AddStrand-to-saveRunState residual comment in `run.go`.
-  A not-ready Master start no longer leaks, because the strand is torn down (previous decision).
-- Rationale: the window already exists (between `AddStrand` and `SaveState`); widening it is bounded, while closing it would need a new pre-readiness callback seam on shuttle's `Spec` that exists only for webster.
+- Decision: accept that webster's state-mutation lease (`websterengine.AcquireStateMutation`, `internal/websterengine/state.go:84–88`) is now held across a spawn's startup window, at both sites that spawn under it:
+  `lyx webster recover-batch` (`internal/webstercli/recoverbatch.go`: lease acquired before `RecoverSpawnOrAttach`, released after `SaveState`) and `websterengine.Run`'s Master spawn (`internal/websterengine/runlevel.go`: lease acquired ~line 408, `StartMaster` ~line 612, released ~line 648).
+  The hold is bounded: typically one or two probe intervals (about 5–10 s under the shipped config), at most `startup_timeout_s` (90 s), after which a not-ready start errors and tears its strand down.
+  Concurrent verbs (`begin-batch`, `record-batch`, `validate`, run entry) block on the lease for that time rather than failing — `lock.AcquireWriteLock` blocks without a timeout.
+  Update the contract wording on `AcquireStateMutation` to say what "never across a long block" means now: a spawn's startup window, bounded by `startup_timeout_s`, is part of the load-mutate-save sequence; an unbounded or poll-length wait (recover-batch's `RecoverAwait`, Master's `Wait`) still never runs under it.
+  Update `internal/webstercli/recoverbatch.go`'s file header and `RecoverSpawnOrAttach`'s doc to match, and add a sentence at the Master spawn site in `runlevel.go`.
+- Rationale: holding the lease across the spawn is what serialises two concurrent `recover-batch` calls for the same batch, so the second one sees the first one's recorded guid and attaches instead of spawning a duplicate recovery strand.
+  `RecoverSpawnOrAttach`'s attach test requires `prior.StrandGUID != ""`, so releasing the lease across the spawn would need a new "spawn in progress" state record with its own attach/timeout semantics, plus a re-acquire-reload-merge after the spawn.
+  That costs far more than a bounded stall of concurrent verbs, which webster already tolerates for every other holder.
+  At run entry no batch forks exist yet, so the Master-site hold stalls nothing in practice.
+- Rejected: reserve an intent record under the lease, spawn with the lease released, re-acquire to persist the guid — needs the in-progress state and attach semantics above, and still leaves the killed-mid-startup residual below.
+
+### Webster's persist-before-block windows
+
+- Decision: accept that webster persists a spawned strand's guid to `state.json` only after the start call returns, which now includes the startup window, at both spawn sites:
+  - `websterengine.Run` persists `MasterStrand` after `StartMaster` returns — a webster process killed inside the startup window leaves a live Master pane its entry-time reclaim cannot see;
+  - `lyx webster recover-batch` persists the recovery `BatchState` (with its `StrandGUID`) after `RecoverSpawnOrAttach` returns — a process killed inside the startup window leaves a live recovery strand that the next `recoverSpawn`'s `prior.StrandGUID` reclaim (`removeStrandIfLive`) cannot see, so the next call spawns a second recovery strand beside it.
+  State each as an Accepted residual: in `MasterHandle`'s doc comment, in `RecoverSpawnOrAttach`'s doc comment, and beside `Start`'s existing AddStrand-to-saveRunState residual comment in `internal/shuttleengine/run.go` (as the general form: a caller that persists the guid after `Start` returns now has a window as wide as the startup probe).
+  A not-ready start no longer leaks at either site, because the strand is torn down (decision "Not-ready start").
+- Rationale: both windows already exist (between `AddStrand` and the caller's own save); widening them is bounded by `startup_timeout_s`, while closing them would need a new pre-readiness callback seam on shuttle's `Spec` that exists only for webster.
 - Rejected: a `Spec.OnRegistered func(guid string) error` hook called after `run.json` persists and before the probe — adds a public seam for one caller, and a callback that can fail mid-start complicates teardown.
 
 ### Loom's llm arm
@@ -159,6 +177,7 @@ A second provider plugs in as its own `Engine`, and no caller changes.
 - `internal/loomcli/driverlaunch.go` (`driverHandle`, `runnerDriverStarter`), `internal/loomcli/start.go` (`startLLMDriverArm` ~line 64–92, llm-arm Step 6 block ~line 236–271, `Long` help ~line 290–320), `internal/loomcli/driverspec.go:45` (comment referencing `Run.AwaitStarted`), `internal/loomcli/start_driver_test.go` (`stubDriverHandle.AwaitStarted`, await-call assertions), `internal/loomcli/smoke_driverstrand_test.go` (tagged smoke test proving readiness against a real reed).
 - `internal/websterengine/runlevel.go:83–106, 612–651` (`MasterHandle`, `StartMaster`, persist then `Wait`), `internal/websterengine/recoverbatch.go:183` (`Starter.Start`, the second latent #018 caller), `internal/websterengine/strand.go:66–70` (`Starter` interface returning `*shuttleengine.Run`).
   Webster maps a non-done Master outcome to an error already, so a Master start error is equivalent at its caller.
+- Webster's state-mutation lease: `internal/websterengine/state.go:84–88` (`AcquireStateMutation` and its "never across a long block" contract), `internal/webstercli/recoverbatch.go` (file header describing the three lease-scoped phases; lease held across `RecoverSpawnOrAttach` + `SaveState`, released before `RecoverAwait`), `internal/websterengine/recoverbatch.go:225–248` (`RecoverSpawnOrAttach`, attach condition `prior.Kind == "recovery" && !prior.Terminal && prior.StrandGUID != ""`), `internal/websterengine/runlevel.go:408–648` (lease held across `StartMaster` and both `SaveState` calls, released before `handle.Wait()`).
 - Production callers of the start family: `burlerengine/engine.go:184` and `shedadapters/singlellm.go:169` (`RunGated`), `loomcli/cli.go:137` and `webstercli/cli.go:150` (`StartGated` via `runnerMasterStarter`), `loomcli/driverlaunch.go:51` and `websterengine/recoverbatch.go:183` (`Start`), `shuttlecli/run.go:139` (`Run`).
 - Shipped config (`internal/shuttleengine/template.yaml`): `poll_interval_ms: 500`, `liveness_every_n_polls: 10`, `startup_timeout_s: 90` — so the probe interval is 5 s and the first probe is immediate.
 
@@ -187,6 +206,7 @@ A second provider plugs in as its own `Engine`, and no caller changes.
   - tick cap terminates under a clock that never advances;
   - probe cadence equals `pollInterval × LivenessEveryNPolls`.
 - **RunGated**: startup failure → `(Result{Outcome: OutcomeDied, …}, nil)`, gate closure never invoked.
+- **shedadapters burler round**: an existing or new test proves a startup-failed first attempt (`OutcomeDied` from the runner seam) still takes the one-retry path — guards the reason `RunGated` keeps `OutcomeDied`.
 - **Wait**: a started run's `Wait` issues no `CapturePane`/`Startup` calls; an attached run with `Started: false` still runs the startup probe and still classifies `OutcomeDied` at the window's end; an attached run with `Started: true` still skips it.
 - **Completion-signal tripwire**: updated counts pass and still fail if a guard is deleted.
 - **Existing shuttleengine suites**: must pass unchanged in intent after the fake/helper adjustment for a ready start.
@@ -200,7 +220,8 @@ A second provider plugs in as its own `Engine`, and no caller changes.
 - **Q:** What happens to a started run whose provider never becomes ready? **A:** [auto-pick] Return `ErrNotStarted`, remove the strand, keep the run dir, save the last capture, persist Outcome `died`. **Why:** a live stuck strand makes loom's next `start` skip readiness and leaks an unreclaimable webster Master; the capture keeps the diagnosis.
 - **Q:** Should `RunGated`/`Run` surface startup failure as an error or keep `OutcomeDied`? **A:** [auto-pick] Keep `(Result{OutcomeDied}, nil)`. **Why:** shed producers route `OutcomeDied` and errors through different ladders.
 - **Q:** Keep `Run.AwaitStarted` public? **A:** [auto-pick] Remove it. **Why:** no caller remains, and the brief asks for removal when unused.
-- **Q:** Close webster Master's widened persist-before-block window with a new callback seam? **A:** [auto-pick] No — accept and document the residual. **Why:** the window already exists, is bounded by `startup_timeout_s`, and a one-caller hook on `Spec` costs more than it closes.
+- **Q:** Close webster's widened persist-before-block windows (Master and recovery strand) with a new callback seam? **A:** [auto-pick] No — accept and document both residuals. **Why:** the windows already exist, are bounded by `startup_timeout_s`, and a one-caller hook on `Spec` costs more than it closes.
+- **Q:** Webster's state-mutation lease is now held across the startup window in `recover-batch` and the Master spawn — restructure to release it across the spawn, or accept the bounded hold? **A:** [auto-pick] Accept the bounded hold and reword `AcquireStateMutation`'s contract. **Why:** the lease across the spawn is what stops two concurrent `recover-batch` calls from spawning duplicate recovery strands, and releasing it would need a new in-progress state record with its own attach semantics.
 - **Q:** What should `Wait` do about startup after the move? **A:** [auto-pick] Seed `started` from `run.state.Started` alone; keep the probe for attached-not-started runs. **Why:** one probe implementation serves both paths, and `Started` is already the persisted "passed the probe" fact.
 - **Q:** Does `spec.Timeout` still include startup time? **A:** [auto-pick] Yes — the deadline is anchored before the startup step. **Why:** unchanged budget semantics for every caller.
-- **Q:** Webster `recover-batch` has the same latent bug — in scope? **A:** [auto-pick] Yes, fixed by inheritance with no webster code change beyond doc comments. **Why:** that is the point of a shuttle-level guarantee.
+- **Q:** Webster `recover-batch` has the same latent bug — in scope? **A:** [auto-pick] Yes, fixed by inheritance with no webster control-flow change, only lease-contract and doc-comment updates. **Why:** that is the point of a shuttle-level guarantee.
