@@ -1,0 +1,206 @@
+# Discussion: Shuttle guarantees a started run is past its startup gates
+
+```yaml
+task: Shuttle guarantees a started run is past its startup gates
+slug: shuttle-start-guarantees-readiness
+status: discussing
+parent: main
+```
+
+## Problem
+
+Shuttle's `Run` contract lets a caller start a run and never pass through the startup probe — provider readiness plus dismissal of any one-time startup gate, driven through `Engine.Startup` and `Engine.TrustDismissSequence`.
+That probe runs only inside `Run.Wait` (via `checkLivenessTick`), so a caller that starts a run and never waits on it skips it.
+That is how `#018 llm-driver-trust-dialog-hang` happened: loom's llm driver arm started the driver run, never called `Wait`, and nothing dismissed Claude Code's workspace-trust dialog, so the child parked forever on a live pane.
+
+PR #267 (commit `292a5a74b`) fixed the symptom by adding `Run.AwaitStarted` and having loom call it.
+That still leaves each caller responsible for remembering, and exploration found a second caller with the same latent bug:
+`websterengine.RecoverBatch` (`internal/websterengine/recoverbatch.go`) starts the recovery strand with `Starter.Start` and then polls the events file and strand liveness through its own `awaitTerminal` loop — it never calls `Wait` or `AwaitStarted`, so a recovery strand whose provider shows a trust gate parks until `RecoveryTimeoutMin`.
+
+Principle (from the task): everything about how a provider is launched and set up belongs to shuttle and its engines.
+Loom, shed, and webster must not need to know a provider has startup gates at all.
+A second provider plugs in as its own `Engine`, and no caller changes.
+
+## Scope
+
+**In:**
+
+- `internal/shuttleengine`: `Runner.StartGated` (and therefore `Start`, `RunGated`, `Run`) runs the startup probe to resolution before returning.
+  A freshly started `*Run` handle is only ever issued past its startup gates.
+- A not-ready start (pane died, or startup window expired without readiness) is torn down and reported as an error from `Start`/`StartGated`;
+  `RunGated`/`Run` keep reporting it as `Result{Outcome: OutcomeDied}` with a nil error, as today.
+- `Run.AwaitStarted` removed from the public surface; its loop becomes the private startup step inside start.
+- `Run.Wait`'s `started` seed changes from `run.attached && run.state.Started` to `run.state.Started`.
+- `internal/loomcli`: remove `driverHandle.AwaitStarted`, the llm-arm "Step 6" await block in `start.go`, and the `bootstrapLock`-held await; a not-ready driver now surfaces as `StartDriver`'s error.
+  Update the `start` command's `Long` help text where it describes a strand "left in place by an earlier readiness refusal".
+- `internal/websterengine`: no code change required for the fix itself — `RecoverBatch`'s `Starter.Start` and `Run`'s `StartMaster` inherit the guarantee.
+  Doc comments on `MasterHandle`/`Run` that describe the persist-before-block ordering get the widened-window residual stated (see Decisions).
+- Tests: shuttleengine start tests replacing `awaitstarted_test.go`, fake adjustments so existing Start/Run tests reach readiness, loomcli test updates, completion-signal tripwire counts.
+- Docs: `docs/reference/claude-trust-dialog-repro.md`, shuttleengine doc comments (`run.go`, `wait.go`, `doc.go`, `rundir.go`'s `Started` comment), `docs/overview.md`'s shuttle row if its wording is affected, `CONSTRAINTS.md` (new bullet, see Decisions).
+
+**Out:**
+
+- `Runner.Attach`/`AttachGated`: unchanged. An attached run whose `run.json` says `Started: true` still skips the probe;
+  one that is not started is still probed inside `Wait`, as today.
+- `Interrupt`/`Send`/`Inject` and `requireReadyAgentPane`: unchanged — they serve CLI verbs acting on a guid from another process.
+- `Engine` interface and `claudeengine`: unchanged. No new provider gate is recognised.
+- Webster's persist-before-block ordering: no new callback/hook seam is added to shuttle (see Decisions).
+- The go-driver arm of loom's bootstrap (`awaitRunLock` handshake): untouched.
+- `manifest/roadmap.md`: this is a hardening fix, not a planned item.
+
+## Decisions
+
+### Readiness is guaranteed by a blocking start
+
+- Decision: `Runner.StartGated` runs the startup probe after persisting `run.json` and before returning the handle.
+  It returns a `*Run` only when the probe resolved ready (provider reached `StartupReady`, with `Started` persisted) or the run's file contract is already satisfied (`allOutputFilesExist`).
+  `Start` delegates to `StartGated` as today, so both carry the guarantee; `RunGated`/`Run` inherit it through their `StartGated` call.
+- Rationale: an error return in Go is the one result a caller cannot silently skip, and a handle that exists only after readiness makes "forgot to await" unrepresentable.
+  Loom's own driver process exits after `start` hands the terminal over, so any asynchronous alternative dies with it.
+- Rejected:
+  - A background goroutine launched by `Start` running the probe — dies when a short-lived caller (loom `start`, webster `recover-batch`'s spawn phase) exits, which is exactly the case that broke.
+  - A separate "ready handle" type issued by a second call — still a call the caller must remember to make.
+  - Keeping `AwaitStarted` public and adding a lint/test that every `Start` caller calls it — enforcement by review, not by contract.
+
+### Not-ready start: error, strand torn down, run dir and last capture kept
+
+- Decision: when the startup step resolves not-ready (the pane is not live, or the startup window expires, both via `checkLivenessTick`/`classifyStartupWindow` — which already consult the file contract first), start:
+  1. writes the last pane capture the probe took (if any) to `startup-capture.txt` in the run directory;
+  2. persists `RunState.Outcome = "died"` (so `Attach` never treats the record as attachable);
+  3. removes the strand via `reed.RemoveStrand(guid, false)` (non-fatal on failure, logged at Warn);
+  4. keeps the run directory;
+  5. logs at Warn with run dir and strand guid;
+  6. returns an error wrapping an exported sentinel `ErrNotStarted`, whose message names the run directory, the strand guid, and that the strand was removed with its last capture saved to `startup-capture.txt`.
+- The startup-capture file name is a new constant beside `promptFileName`/`settingsFileName`/`eventsFileName` in `run.go`.
+- Rationale: a provider that never became ready has done no work worth preserving, and leaving its strand live caused two defects: loom's next `start` resolves the stuck strand as `driverStrandLive`, spawns nothing and "succeeds" without readiness (the accepted residual documented in `start.go`), and webster's `Run` never learns the strand guid of a Master that failed in `StartMaster`, so its entry-time reclaim can never remove it.
+  Reed's add has no upsert semantics, so a lingering strand also collides by name with the respawn.
+  The saved capture replaces "attach to the pane to see what it is stuck on" as the diagnosis channel — it is what diagnosed #018.
+- Rejected: leaving the strand in place (today's `Wait`-path behavior for a startup `OutcomeDied`) — keeps both defects above.
+  Removing the run directory too — loses the diagnosis artifacts; `sweepOrphansOpportunistic` already reclaims it once its strand is gone and it is older than `2 × startup_timeout_s`.
+
+### Startup mechanism failure: error with identity, no teardown
+
+- Decision: when `checkLivenessTick` errors `maxStatusRetries` consecutive times during the startup step and the file contract is unsatisfied, start returns an error in the same wording family `Wait` uses (`errStrandNotTracked`, `errStrandPaneBindingCleared`, or reed-status-failed), naming strand guid and run dir, and performs no teardown and no Outcome write.
+  The error does not wrap `ErrNotStarted`.
+- Rationale: identical to `Wait`'s own reasoning — reed's bookkeeping failing says nothing about the agent, so neither "died" nor a strand removal is justified.
+- Rejected: tearing down on mechanism failure — a `RemoveStrand` against an unanswerable reed would likely fail anyway and could kill a live agent if it succeeded.
+
+### RunGated preserves its OutcomeDied contract
+
+- Decision: split the body of `StartGated` into a private `start(spec, gate)` that returns the handle plus, on a not-ready resolution, the finalized `Result` (`Outcome: OutcomeDied`, identity fields, `RunDir`).
+  `StartGated` turns a not-ready resolution into the `ErrNotStarted` error; `RunGated` returns `(result, nil)` for it, then calls `Wait` otherwise.
+  The finalize path used for the not-ready case must NOT evaluate the gate (the outcome is never `OutcomeDone`) and must record the outcome and log "run finished" as `finalize` does today.
+  Whether that reuses `finalize` plus the teardown steps, or a dedicated helper, is a plan choice — but it must still run through the Completion Signal Invariant (see Constraints).
+- Rationale: shed producers (`shedadapters.SingleLLMProducer`, `burlerengine`) map `OutcomeDied` onto their stuck/respawn ladder, while an error is a mechanism failure; converting a startup failure into an error would change their ladder behavior.
+- Rejected: making `RunGated` return the error — silently re-routes every producer's startup failure from its died ladder to its error path.
+
+### AwaitStarted removed
+
+- Decision: delete `Run.AwaitStarted`.
+  Its loop body (probe cadence `pollInterval × LivenessEveryNPolls`, tick cap `awaitStartedTickCap`, first probe immediate, status-retry handling) moves unchanged into the private startup step; rename `awaitStartedTickCap` to match (e.g. `startupTickCap`).
+  `Run.RunDir()` stays exported (loom logs it; webster uses `FindRun`), with its doc comment updated to drop the AwaitStarted reference.
+- Rationale: no caller remains once start guarantees readiness; the task brief asks for its removal when unused.
+- Rejected: keeping it as a no-op for compatibility — this is an internal package with no external consumers.
+
+### Wait's startup handling after the move
+
+- Decision: `Wait` seeds `started := run.state.Started` (dropping the `run.attached &&` conjunct).
+  A `*Run` from start carries `Started: true` unless it was returned on the satisfied-file-contract branch, where `Wait` re-probing is harmless: its first events or liveness tick classifies `OutcomeDone`.
+  The startup probe code in `checkLivenessTick`/`classifyStartupWindow` stays, now reached only for an attached run whose `run.json` was never marked `Started`.
+  `Wait` still computes its own `startupDeadline` from its entry time for that attached case.
+- Rationale: keeps one probe implementation for both the start and the attach paths; `Started` is already the persisted fact meaning "passed the probe".
+- Rejected: moving the attach-path probe into `AttachGated` too — `Attach` always calls `Wait` itself, so it cannot be skipped, and the change would widen scope for no guarantee gained.
+
+### Run deadline anchoring
+
+- Decision: `run.deadline` stays `clock.Now().Add(spec.Timeout)` computed right after `run.json` is saved, before the startup step, so `spec.Timeout` keeps covering startup plus work.
+- Rationale: unchanged wall-clock budget semantics for every caller.
+- Rejected: anchoring the deadline after readiness — silently extends every run's budget by its startup time.
+
+### Webster Master's persist-before-block window
+
+- Decision: accept that `websterengine.Run` persists `MasterStrand` only after `StartMaster` returns, which now includes the startup window (typically one or two probe intervals — about 5–10 s under the shipped config; at most `startup_timeout_s`, 90 s).
+  A webster process killed inside that window leaves a live Master pane its entry-time reclaim cannot see.
+  State this as an Accepted residual in `MasterHandle`'s doc comment and beside `Start`'s existing AddStrand-to-saveRunState residual comment in `run.go`.
+  A not-ready Master start no longer leaks, because the strand is torn down (previous decision).
+- Rationale: the window already exists (between `AddStrand` and `SaveState`); widening it is bounded, while closing it would need a new pre-readiness callback seam on shuttle's `Spec` that exists only for webster.
+- Rejected: a `Spec.OnRegistered func(guid string) error` hook called after `run.json` persists and before the probe — adds a public seam for one caller, and a callback that can fail mid-start complicates teardown.
+
+### Loom's llm arm
+
+- Decision: `driverHandle` shrinks to `StrandGUID()`/`RunDir()`.
+  `startLLMDriverArm` returns `StartDriver`'s error unchanged; `runDriverSpawnAndWait`'s llm-arm "Step 6" block (the `AwaitStarted` call, its two refusals, and the "driver strand is ready" log) is deleted.
+  The refusal loom prints for a not-ready driver becomes loom's existing error path for a failed `StartDriver`, whose message now comes from shuttle and already names the run dir and strand.
+  Keep the "loom: driver strand is ready" `logger.Info` breadcrumb, moved to right after a successful `StartDriver` (merging with the existing "spawned driver strand" line is acceptable).
+  `bootstrapLock` is still held across `StartDriver`, now including the startup step — the same duration it was held across `AwaitStarted`.
+- Rationale: loom no longer knows about readiness at all, which is the stated principle.
+- Rejected: loom keeping its own post-start check "just in case" — re-creates the per-caller obligation.
+
+### New CONSTRAINTS.md bullet
+
+- Decision: add under `## Shuttle Provider-Seam Invariant`:
+  "A `*Run` issued by `Start`/`StartGated` has already resolved its provider's startup probe; no caller outside `internal/shuttleengine` probes provider readiness or plays startup-gate keys."
+- Rationale: it is a cross-cutting rule for every current and future caller, and CLAUDE.md requires new cross-cutting invariants to land in `CONSTRAINTS.md` in the same commit.
+
+## Technical context
+
+- `internal/shuttleengine/run.go`: `StartGated` (sweep → `createRunDir` → `Engine.Prepare` → `reed.AddStrand` → `saveRunState` → return handle).
+  The startup step goes after `saveRunState` and the `logger.Info("shuttle: run started" …)` line, on the constructed `*Run` (it needs `run.clock`, `run.spec`, `run.state`, `run.runDir`).
+- `internal/shuttleengine/wait.go`: `Wait`, `AwaitStarted` (loop to move), `awaitStartedTickCap`, `checkLivenessTick` (does capture, `Engine.Startup`, `TrustDismissSequence` replay, persists `Started`), `classifyStartupWindow`, `classifyDeadlineExpiry`, `finalize`, `identity`.
+  `checkLivenessTick` currently discards its capture; the teardown's `startup-capture.txt` needs the last capture — the plan must thread it out (e.g. record the last successful capture on the `*Run` or return it).
+- `internal/shuttleengine/attach.go:193–221`: reconstructs `*Run` with `attached: true`; untouched apart from the doc comment on the `attached` field in `run.go` that references `AwaitStarted`.
+- `internal/shuttleengine/rundir.go:94–106`: `RunState.Started` doc comment references `AwaitStarted`.
+- `internal/shuttleengine/completionsignal_enforcement_test.go`: pins negative-verdict return sites and `allOutputFilesExist` call sites per function name (`"AwaitStarted [Errorf]": 3`, `"AwaitStarted": 2`); those entries move to the new function's name and counts are re-audited.
+- `internal/shuttleengine/fakes_test.go`: `fakeEngine.Startup` returns `StartupPending` when `StartupScript` is empty, and `fakeReed.CapturePane` returns `""` when `CaptureQueue` is empty.
+  Every existing `Start`/`Run`/`RunGated` test (about 55 call sites across `run_test.go`, `wait_test.go`, `attach_test.go`, `gate_test.go`, `posix_test.go`) would therefore sit in the startup window after this change.
+  The plan must give those tests a ready startup (e.g. a helper or default that yields `StartupReady` for start, while tests that exercise `Wait`'s own startup window move to the attached-not-started path or to start tests).
+  Also check how those tests configure `StartupTimeoutS` and the clock so a not-ready start cannot hang a test.
+- `internal/shuttleengine/awaitstarted_test.go`: the existing coverage of the probe loop (cadence, tick cap, gate dismissal, status retries, file-contract short-circuit) — port to start-level tests.
+- `internal/loomcli/driverlaunch.go` (`driverHandle`, `runnerDriverStarter`), `internal/loomcli/start.go` (`startLLMDriverArm` ~line 64–92, llm-arm Step 6 block ~line 236–271, `Long` help ~line 290–320), `internal/loomcli/driverspec.go:45` (comment referencing `Run.AwaitStarted`), `internal/loomcli/start_driver_test.go` (`stubDriverHandle.AwaitStarted`, await-call assertions), `internal/loomcli/smoke_driverstrand_test.go` (tagged smoke test proving readiness against a real reed).
+- `internal/websterengine/runlevel.go:83–106, 612–651` (`MasterHandle`, `StartMaster`, persist then `Wait`), `internal/websterengine/recoverbatch.go:183` (`Starter.Start`, the second latent #018 caller), `internal/websterengine/strand.go:66–70` (`Starter` interface returning `*shuttleengine.Run`).
+  Webster maps a non-done Master outcome to an error already, so a Master start error is equivalent at its caller.
+- Production callers of the start family: `burlerengine/engine.go:184` and `shedadapters/singlellm.go:169` (`RunGated`), `loomcli/cli.go:137` and `webstercli/cli.go:150` (`StartGated` via `runnerMasterStarter`), `loomcli/driverlaunch.go:51` and `websterengine/recoverbatch.go:183` (`Start`), `shuttlecli/run.go:139` (`Run`).
+- Shipped config (`internal/shuttleengine/template.yaml`): `poll_interval_ms: 500`, `liveness_every_n_polls: 10`, `startup_timeout_s: 90` — so the probe interval is 5 s and the first probe is immediate.
+
+## Constraints
+
+- **Completion Signal Invariant** (`CONSTRAINTS.md`, `wait.go` doc): the not-ready branch is a negative answer and must consult `allOutputFilesExist` (it does, via `checkLivenessTick`/`classifyStartupWindow`), and the retry-cap and tick-cap exits must consult it directly as `AwaitStarted` does.
+  The tripwire test must be updated to the new function, not deleted.
+- **Shuttle Provider-Seam Invariant**: nothing in the startup step, the teardown, or the capture file names a Claude specific; `shuttleengine` never imports `claudeengine`.
+- **Told-Geometry Invariant**: `shuttleengine` derives no paths; the capture file lives in the told run directory.
+- **Live-Substrate Spawn Observability**: the startup step's teardown is a lifecycle teardown and must be logged (Warn); the existing "dismissed startup gate" Info line stays.
+- **Test Tier Purity**: real reed/tmux use stays in tagged smoke tests; untagged tests use `fakeReed`/`fakeEngine` and loom's stub seams.
+- **CLI/Cobra Invariant**: loom `start`'s help text changes; the help-tree tests must still pass.
+- **Documentation Lifecycle / task-completion rule**: docs and the new `CONSTRAINTS.md` bullet land in the same commit as the behavior change.
+- Markdown in this repo uses semantic line breaks (CLAUDE.md).
+
+## Testing
+
+- **shuttleengine start (TDD candidates)** — port `awaitstarted_test.go` to start-level tests with `fakeReed`/`fakeEngine` and the fake clock:
+  - trust prompt then ready → dismiss sequence played once per gate-showing probe, handle returned, `run.json` `Started: true`;
+  - ready on first probe → no sleep before return;
+  - pane not live → `ErrNotStarted`, strand removed, `run.json` Outcome `died`, run dir kept, `startup-capture.txt` holds the last capture;
+  - window expires while pending → same as above;
+  - capture always erroring until the window expires → `ErrNotStarted`, no capture file (or empty — plan decides, test pins it);
+  - file contract satisfied during startup → handle returned, no teardown;
+  - `maxStatusRetries` consecutive status errors → error naming guid and run dir, not `ErrNotStarted`, no `RemoveStrand`, no Outcome write;
+  - tick cap terminates under a clock that never advances;
+  - probe cadence equals `pollInterval × LivenessEveryNPolls`.
+- **RunGated**: startup failure → `(Result{Outcome: OutcomeDied, …}, nil)`, gate closure never invoked.
+- **Wait**: a started run's `Wait` issues no `CapturePane`/`Startup` calls; an attached run with `Started: false` still runs the startup probe and still classifies `OutcomeDied` at the window's end; an attached run with `Started: true` still skips it.
+- **Completion-signal tripwire**: updated counts pass and still fail if a guard is deleted.
+- **Existing shuttleengine suites**: must pass unchanged in intent after the fake/helper adjustment for a ready start.
+- **loomcli**: `StartDriver` error → bootstrap refuses with shuttle's message and releases `bootstrapLock`; successful start → no further readiness call exists (compile-level, since the method is gone); help-tree test passes with the new `Long` text.
+  The tagged smoke test `smoke_driverstrand_test.go` still proves a real ly-drive strand comes up through `Start` alone.
+- **websterengine**: a `Starter` fake returning an error from `Start` → `RecoverBatch` surfaces it (existing coverage may already hold this; verify rather than duplicate).
+
+## Q&A log
+
+- **Q:** How should shuttle guarantee readiness — blocking start, a readiness-gated handle type, or a background probe? **A:** [auto-pick] Blocking `Start`/`StartGated`. **Why:** the error return is the one result no caller can skip, and short-lived callers (loom `start`) would kill a background probe.
+- **Q:** What happens to a started run whose provider never becomes ready? **A:** [auto-pick] Return `ErrNotStarted`, remove the strand, keep the run dir, save the last capture, persist Outcome `died`. **Why:** a live stuck strand makes loom's next `start` skip readiness and leaks an unreclaimable webster Master; the capture keeps the diagnosis.
+- **Q:** Should `RunGated`/`Run` surface startup failure as an error or keep `OutcomeDied`? **A:** [auto-pick] Keep `(Result{OutcomeDied}, nil)`. **Why:** shed producers route `OutcomeDied` and errors through different ladders.
+- **Q:** Keep `Run.AwaitStarted` public? **A:** [auto-pick] Remove it. **Why:** no caller remains, and the brief asks for removal when unused.
+- **Q:** Close webster Master's widened persist-before-block window with a new callback seam? **A:** [auto-pick] No — accept and document the residual. **Why:** the window already exists, is bounded by `startup_timeout_s`, and a one-caller hook on `Spec` costs more than it closes.
+- **Q:** What should `Wait` do about startup after the move? **A:** [auto-pick] Seed `started` from `run.state.Started` alone; keep the probe for attached-not-started runs. **Why:** one probe implementation serves both paths, and `Started` is already the persisted "passed the probe" fact.
+- **Q:** Does `spec.Timeout` still include startup time? **A:** [auto-pick] Yes — the deadline is anchored before the startup step. **Why:** unchanged budget semantics for every caller.
+- **Q:** Webster `recover-batch` has the same latent bug — in scope? **A:** [auto-pick] Yes, fixed by inheritance with no webster code change beyond doc comments. **Why:** that is the point of a shuttle-level guarantee.
