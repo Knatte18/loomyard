@@ -111,7 +111,8 @@ No batch-local decision differs from the overview's Shared Decisions.
   Reword the header's "Wait is the only place in the run loop that sleeps" sentence so it names `Wait` and `AwaitStarted` as the two places that sleep, both through the clock seam defined here.
 
   In `internal/shuttleengine/run.go`, reword the `RunDir` doc comment's last clause ("batch 4's pane-liveness probe refuses the bootstrap with exactly this path") so it says loom's llm-driver bootstrap refuses with exactly this path when `AwaitStarted` reports the provider never came up.
-  Also in `internal/shuttleengine/run.go`, reword the `Run` struct's `attached` field doc ("read only by Wait's started seed") so it names both readers, `Wait`'s started seed and `AwaitStarted`'s identical short-circuit.
+  Also in `internal/shuttleengine/run.go`, extend the file header's "Wait (wait.go) and Interrupt/Send round out the Run handle's public surface" sentence and the `Run` type doc ("Wait blocks until the run reaches a terminal outcome") so both name `AwaitStarted` (wait.go) as part of the handle's surface: the startup probe alone, for a caller that never waits.
+  Reword the `Run` struct's `attached` field doc ("read only by Wait's started seed") so it names both readers, `Wait`'s started seed and `AwaitStarted`'s identical short-circuit.
   Make no other change to `internal/shuttleengine/run.go`.
 
   In `internal/shuttleengine/rundir.go`, reword the `RunState.Started` field doc ("the moment Wait's own startup probe observes the provider reach shuttleengine.StartupReady") so it says the startup probe in `checkLivenessTick`, run by `Wait` or by `AwaitStarted`, flips it; the rest of that doc comment stays.
