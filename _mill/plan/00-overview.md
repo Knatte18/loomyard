@@ -92,4 +92,5 @@ this section is the input `_plan_validate.py`'s `all-files-touched-mismatch` che
 - `internal/shuttleengine/awaitstarted_test.go`
 - `internal/shuttleengine/completionsignal_enforcement_test.go`
 - `internal/shuttleengine/run.go`
+- `internal/shuttleengine/rundir.go`
 - `internal/shuttleengine/wait.go`

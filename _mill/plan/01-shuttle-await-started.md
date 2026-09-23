@@ -24,10 +24,10 @@ No batch-local decision differs from the overview's Shared Decisions.
 - **Context:**
   - `CONSTRAINTS.md`
   - `internal/shuttleengine/engine.go`
-  - `internal/shuttleengine/rundir.go`
 - **Edits:**
   - `internal/shuttleengine/wait.go`
   - `internal/shuttleengine/run.go`
+  - `internal/shuttleengine/rundir.go`
   - `internal/shuttleengine/completionsignal_enforcement_test.go`
 - **Creates:** none
 - **Deletes:** none
@@ -37,7 +37,7 @@ No batch-local decision differs from the overview's Shared Decisions.
 
   `awaitStartedTickCap` returns the ceiling of `startupTimeout / interval`, plus 1, plus `maxStatusRetries`.
   A negative `startupTimeout` is treated as 0 before the division, so the cap is never below `1 + maxStatusRetries`.
-  Its doc comment states that it is the Live-Substrate Spawn Observability retry clause's attempt-COUNT bound: the probe plays keys and spawns nothing, so the cap is belt-and-braces against a clock that never advances, and the `maxStatusRetries` slack keeps a run of tolerated status errors from eating the ticks the window itself needs.
+  Its doc comment states that it is the Live-Substrate Spawn Observability retry clause's attempt-COUNT bound: every tick's `reed.Status` and pane capture each run a real tmux process through reed, so the count cap is the clause's required bound (and it also terminates the loop under a clock that never advances), and the `maxStatusRetries` slack keeps a run of tolerated status errors from eating the ticks the window itself needs.
 
   `AwaitStarted` has this shape (the implementer may reword log/error text only as noted):
 
@@ -111,7 +111,11 @@ No batch-local decision differs from the overview's Shared Decisions.
   Reword the header's "Wait is the only place in the run loop that sleeps" sentence so it names `Wait` and `AwaitStarted` as the two places that sleep, both through the clock seam defined here.
 
   In `internal/shuttleengine/run.go`, reword the `RunDir` doc comment's last clause ("batch 4's pane-liveness probe refuses the bootstrap with exactly this path") so it says loom's llm-driver bootstrap refuses with exactly this path when `AwaitStarted` reports the provider never came up.
+  Also in `internal/shuttleengine/run.go`, reword the `Run` struct's `attached` field doc ("read only by Wait's started seed") so it names both readers, `Wait`'s started seed and `AwaitStarted`'s identical short-circuit.
   Make no other change to `internal/shuttleengine/run.go`.
+
+  In `internal/shuttleengine/rundir.go`, reword the `RunState.Started` field doc ("the moment Wait's own startup probe observes the provider reach shuttleengine.StartupReady") so it says the startup probe in `checkLivenessTick`, run by `Wait` or by `AwaitStarted`, flips it; the rest of that doc comment stays.
+  Make no other change to `internal/shuttleengine/rundir.go`.
 
   In `internal/shuttleengine/completionsignal_enforcement_test.go`:
   - add `"AwaitStarted [Errorf]": 3` to `auditedNegativeVerdictReturns`, with a justification bullet in that map's doc comment: the three retry-cap arms mirror `Wait`'s status-cap arms, each sits behind a direct `allOutputFilesExist` check, and `AwaitStarted` never finalizes an `Outcome`; the `(false, nil)` not-ready exit carries no marker and is guarded upstream, reached only when `checkLivenessTick` or `classifyStartupWindow` answers `OutcomeDied`, both already pinned;
