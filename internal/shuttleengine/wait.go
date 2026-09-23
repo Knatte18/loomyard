@@ -2,8 +2,10 @@
 // terminal outcome (done/asking/died/timeout), probes the startup window for a trust-dialog
 // dismissal or a fast-failing dead pane, and runs the done-outcome cleanup (strand removal + run
 // dir deletion).
-// Wait is the only place in the run loop that sleeps — the clock seam defined here lets tests
-// replay a whole poll sequence instantly.
+// It also hosts Run.AwaitStarted, the startup probe on its own, for a caller that starts a run and
+// never waits on it.
+// Wait and AwaitStarted are the only two places in the run loop that sleep — both through the clock
+// seam defined here, which lets tests replay a whole poll sequence instantly.
 // A pane that goes not-live (crashed, killed, or exited) is classified done rather than died when
 // every output file already exists — the file contract can be satisfied an instant before the
 // process disappears, racing ahead of its own Stop hook.
@@ -76,6 +78,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"time"
@@ -311,6 +314,118 @@ func (run *Run) Wait() (Result, error) {
 	}
 }
 
+// awaitStartedTickCap returns the maximum number of checkLivenessTick calls AwaitStarted's loop
+// performs, given the probe interval (not the raw poll interval) and the startup window: the
+// ceiling of startupTimeout/probeInterval, plus 1, plus maxStatusRetries.
+//
+// It is the Live-Substrate Spawn Observability retry clause's attempt-COUNT bound: every tick's
+// reed.Status and pane capture each run a real tmux process through reed, so the count cap is the
+// clause's required bound — and it also terminates the loop under a clock that never advances. The
+// maxStatusRetries slack keeps a run of tolerated status errors from eating the ticks the window
+// itself needs.
+//
+// A negative startupTimeout is treated as 0 before the division, so the cap is never below
+// 1 + maxStatusRetries.
+func awaitStartedTickCap(startupTimeout, interval time.Duration) int {
+	if startupTimeout < 0 {
+		startupTimeout = 0
+	}
+	ticks := int(math.Ceil(float64(startupTimeout) / float64(interval)))
+	return ticks + 1 + maxStatusRetries
+}
+
+// AwaitStarted runs the same startup probe Wait runs — checkLivenessTick's liveness check, pane
+// capture, the engine's startup classification, and the engine's trust-dismiss sequence for a
+// recognized one-time gate — on its own, until the provider reaches StartupReady. Like StrandGUID
+// and RunDir, it exists for a caller that starts a run and never Waits on it.
+//
+// The answer it reports is "the provider's input TUI is on screen, with any recognized one-time gate
+// dismissed", never "the provider read its prompt": a ready-then-idle session still reads as ready,
+// and that residual degrades to the caller's own outer watch budget.
+//
+// Result mapping: (true, nil) on StartupReady (with Started persisted to run.json by
+// checkLivenessTick, so a later Attach skips the startup probe) or when the run's file contract is
+// already satisfied; (false, nil) when the pane died or the startup window closed without readiness;
+// a non-nil error only when checkLivenessTick failed maxStatusRetries consecutive times with the
+// file contract unsatisfied, worded in the same family Wait uses.
+//
+// The window is startup_timeout_s verbatim, 0 included: a 0 makes the probe answer on its first tick
+// unless the TUI is already ready, the same fast-fail every producer run's Wait applies under that
+// config, and there is deliberately no floor.
+//
+// AwaitStarted never calls finalize and never writes a terminal Outcome, because it is a readiness
+// probe rather than a completion verdict and the run directory must keep its runOutcomeRunning
+// sentinel.
+//
+// Every negative answer honors the Completion Signal Invariant: the not-ready answer is reached only
+// through checkLivenessTick/classifyStartupWindow, which already consult allOutputFilesExist, and
+// the retry-cap and tick-cap exits below consult it directly.
+//
+// The tick cap (awaitStartedTickCap) bounds the loop by count as well as by the deadline.
+//
+// Probe cadence: AwaitStarted calls checkLivenessTick once per probe interval, where the probe
+// interval is pollInterval(cfg) times LivenessEveryNPolls (floored to 1 exactly as Wait floors it),
+// so it probes, and replays any trust-gate dismissal, at the same cadence Wait does (every 5s under
+// the shipped template's poll_interval_ms: 500 and liveness_every_n_polls: 10) and never faster.
+// AwaitStarted has no events file to poll between probes, so it sleeps the whole probe interval at
+// once rather than ticking at the poll interval. This is deliberate: checkLivenessTick replays the
+// trust-dismiss sequence on every probe whose capture still shows a gate, and probing every 500ms
+// would let a capture taken before the provider redraws after the first Enter drive a second key
+// into the next gate — the stray-keypress hazard the capture-driven dismissal exists to prevent;
+// matching Wait's cadence keeps AwaitStarted on the one cadence already proven live for producers.
+//
+// The run.attached && run.state.Started short-circuit mirrors Wait's own started seed, for
+// consistency, since today's only caller always passes a freshly started run.
+func (run *Run) AwaitStarted() (bool, error) {
+	if run.attached && run.state.Started {
+		return true, nil
+	}
+	cfg := run.runner.cfg
+	livenessEvery := cfg.LivenessEveryNPolls
+	if livenessEvery <= 0 {
+		livenessEvery = 1
+	}
+	interval := pollInterval(cfg) * time.Duration(livenessEvery)
+	startupTimeout := time.Duration(cfg.StartupTimeoutS) * time.Second
+	startupDeadline := run.clock.Now().Add(startupTimeout)
+	maxTicks := awaitStartedTickCap(startupTimeout, interval)
+
+	started := false
+	statusFailures := 0
+	for tick := 0; tick < maxTicks; tick++ {
+		outcome, err := run.checkLivenessTick(&started, startupDeadline)
+		if err != nil {
+			statusFailures++
+			if statusFailures >= maxStatusRetries {
+				if allOutputFilesExist(run.spec.OutputFiles) {
+					return true, nil
+				}
+				switch {
+				case errors.Is(err, errStrandNotTracked):
+					return false, fmt.Errorf("shuttle: startup await: reed did not track strand %q on %d consecutive liveness checks: %w", run.state.StrandGUID, maxStatusRetries, err)
+				case errors.Is(err, errStrandPaneBindingCleared):
+					return false, fmt.Errorf("shuttle: startup await: reed held no pane binding for strand %q on %d consecutive liveness checks: %w", run.state.StrandGUID, maxStatusRetries, err)
+				default:
+					return false, fmt.Errorf("shuttle: startup await: reed status failed %d times consecutively: %w", maxStatusRetries, err)
+				}
+			}
+		} else {
+			statusFailures = 0
+			if started {
+				return true, nil
+			}
+			switch outcome {
+			case OutcomeDone:
+				return true, nil
+			case OutcomeDied:
+				return false, nil
+			}
+		}
+		run.clock.Sleep(interval)
+	}
+	return allOutputFilesExist(run.spec.OutputFiles), nil
+}
+
 // pollEventsTick reads any events.jsonl bytes appended since run.offset and
 // parses them via the engine. run.offset only advances past what it read
 // AFTER ParseEvents succeeds: if ParseEvents errors, the bytes stay
@@ -480,8 +595,13 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Out
 		}
 		return "", nil
 	case StartupTrustPrompt:
-		if err := playInputs(run.runner.reed, run.state.StrandGUID, run.runner.engine.TrustDismissSequence(capture)); err != nil {
+		inputs := run.runner.engine.TrustDismissSequence(capture)
+		if err := playInputs(run.runner.reed, run.state.StrandGUID, inputs); err != nil {
 			logger.Warn("shuttle: dismiss trust prompt (non-fatal)", "strandGUID", run.state.StrandGUID, "error", err)
+		} else if len(inputs) > 0 {
+			// Info, not Debug: a dismissal is a lifecycle event that happens at most once or twice
+			// per run, not a routine polling probe — and Wait's producers gain this line too.
+			logger.Info("shuttle: dismissed startup gate", "strandGUID", run.state.StrandGUID, "inputs", len(inputs))
 		}
 	}
 	// StartupPending and a trust prompt that has not yet cleared are both "still not ready", and

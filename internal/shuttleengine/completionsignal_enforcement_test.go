@@ -70,8 +70,8 @@ var negativeVerdictMarkers = map[string]bool{
 }
 
 // auditedNegativeVerdictReturns is the audited set of negative-verdict return sites as of the
-// producer-gates task's shuttle-gate-loop batch, keyed by "<function> [<markers>]" with the number of
-// such returns in that function as the value.
+// llm-driver-trust-dialog-hang task's shuttle-await-started batch, keyed by "<function> [<markers>]"
+// with the number of such returns in that function as the value.
 //
 // Keying on the enclosing function plus the marker set — rather than on file:line — is deliberate:
 // line numbers drift on every edit above them, which would make this test fail for reasons that have
@@ -118,8 +118,13 @@ var negativeVerdictMarkers = map[string]bool{
 //     finalize's own gate check), so neither is itself a negative verdict on whether the run
 //     finished — they are infrastructure faults surfacing after the fact, the same reasoning the
 //     pre-existing fork-audit entry already carried.
+//   - AwaitStarted [Errorf] x3 — the three retry-cap arms mirror Wait's status-cap arms, each sits
+//     behind a direct allOutputFilesExist check, and AwaitStarted never finalizes an Outcome; the
+//     (false, nil) not-ready exit carries no marker and is guarded upstream, reached only when
+//     checkLivenessTick or classifyStartupWindow answers OutcomeDied, both already pinned.
 var auditedNegativeVerdictReturns = map[string]int{
 	"AttachGated [Errorf]":                            5,
+	"AwaitStarted [Errorf]":                           3,
 	"Wait [Errorf]":                                   5,
 	"Wait [OutcomeTimeout]":                           1,
 	"checkLivenessTick [Errorf]":                      1,
@@ -136,14 +141,16 @@ var auditedNegativeVerdictReturns = map[string]int{
 	"readEventsFrom [Errorf]":                         3,
 }
 
-// auditedFileContractCallSites is the audited set of allOutputFilesExist call sites as of crucible
-// round opus5-high-r7, keyed by enclosing function.
+// auditedFileContractCallSites is the audited set of allOutputFilesExist call sites as of the
+// llm-driver-trust-dialog-hang task's shuttle-await-started batch, keyed by enclosing function.
 //
-// Eight sites: the seven rounds 4-6 left audited (wait.go's pollEventsTick, checkLivenessTick x2,
+// Ten sites: the seven rounds 4-6 left audited (wait.go's pollEventsTick, checkLivenessTick x2,
 // classifyDeadlineExpiry, finishedDespiteMechanismFailure; attach.go's dispositionCandidate and
 // leftoverThenAgeVerdict) plus soleFinishedCandidate, added by round opus5-high-r7's F1 for Attach's
-// three reed-state gates.
+// three reed-state gates, plus AwaitStarted x2, added by the shuttle-await-started batch for its
+// retry-cap guard and its tick-cap answer.
 var auditedFileContractCallSites = map[string]int{
+	"AwaitStarted":                    2,
 	"checkLivenessTick":               2,
 	"classifyDeadlineExpiry":          1,
 	"dispositionCandidate":            1,
