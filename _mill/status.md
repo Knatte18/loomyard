@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: llm-driver-trust-dialog-hang
 branch: llm-driver-trust-dialog-hang
 plan: _mill/plan
@@ -38,4 +38,15 @@ blocked  '2026-09-23T08:40:03Z'
 planning  '2026-09-23T08:43:04Z'
 plan-review-r7  '2026-09-23T08:46:25Z'
 planned  '2026-09-23T08:46:34Z'
+implementing  '2026-09-23T08:47:02Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: shuttle-await-started
+    state: pending
+  - name: loom-llm-arm-readiness
+    state: pending
 ```
