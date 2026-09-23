@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-review-r1
+phase: plan-fix-r1
 slug: llm-driver-trust-dialog-hang
 branch: llm-driver-trust-dialog-hang
 plan: _mill/plan
@@ -24,4 +24,5 @@ discussion-fix-r6  '2026-09-23T08:00:22Z'
 discussed  '2026-09-23T08:00:22Z'
 planning  '2026-09-23T08:05:52Z'
 plan-review-r1  '2026-09-23T08:13:16Z'
+plan-fix-r1  '2026-09-23T08:13:32Z'
 ```

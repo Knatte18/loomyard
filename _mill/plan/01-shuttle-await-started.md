@@ -153,7 +153,7 @@ No batch-local decision differs from the overview's Shared Decisions.
   - the same, with the output file present: `(true, nil)`, not the error.
   - reed never tracking the strand (a status whose strands omit the run's GUID) with no output files: an error for which `errors.Is(err, errStrandNotTracked)` holds.
   - the tick-count cap with a `frozenClock`, a live strand, and `StartupPending` forever (`StartupTimeoutS: 1`, `PollIntervalMS: 600`): `(false, nil)`, and the number of `"Status"` entries in `fakeReed.CallLog` equals `awaitStartedTickCap` for that config; a subtest with the output file present returns `(true, nil)` at the cap.
-  - an attached run whose `state.Started` is true: `(true, nil)` with zero `Status` calls.
+  - an attached run whose `state.Started` is true (the `*Run` literal additionally sets `attached: true`, the one case that departs from the build recipe above): `(true, nil)` with zero `Status` calls.
   - a table-driven test for `awaitStartedTickCap`, including a zero and a negative timeout, both yielding `1 + maxStatusRetries`.
 
   In every case other than the ready ones, assert `loadRunState(runDir)` still reports `Outcome == runOutcomeRunning`: `AwaitStarted` never writes a terminal `Outcome`.
