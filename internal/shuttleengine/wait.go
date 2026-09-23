@@ -376,6 +376,8 @@ func awaitStartedTickCap(startupTimeout, interval time.Duration) int {
 //
 // The run.attached && run.state.Started short-circuit mirrors Wait's own started seed, for
 // consistency, since today's only caller always passes a freshly started run.
+//
+// Manual live-substrate verification recipe: docs/reference/claude-trust-dialog-repro.md.
 func (run *Run) AwaitStarted() (bool, error) {
 	if run.attached && run.state.Started {
 		return true, nil
