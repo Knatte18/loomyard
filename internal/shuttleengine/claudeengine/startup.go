@@ -242,6 +242,14 @@ var gateAcceptNeedles = []string{"trustthisfolder", "yes,itrust", "yes,iaccept",
 // list, the same marker Startup already reads as its ready marker.
 const gateCaretMarker = "❯"
 
+// ReadyFooterFixture is the literal ready-marker footer text a live claude TUI renders, in exactly
+// the form Startup's own "shortcuts" needle (see Startup) matches. A caller outside this package
+// that needs a realistic ready-marker fixture -- for example a stubbed provider binary standing in
+// for claude in a black-box test -- should reference this constant rather than hard-coding claude's
+// footer text or explaining which glyph it draws, so a rewording of claude's ready marker is fixed
+// in one place, owned here.
+const ReadyFooterFixture = "? for shortcuts"
+
 // gateFooterNeedle is the whitespace-stripped, lowercased prefix of the footer claude draws under
 // every one-time gate ("Enter to confirm · Esc to cancel"), and the second of the two pieces of
 // positive evidence Startup accepts that a gate is actually on screen.

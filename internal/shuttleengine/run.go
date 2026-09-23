@@ -1,7 +1,8 @@
 // run.go implements the run loop's provider-invariant core: Runner, the per-run Run handle, and
 // Start — the sequence that prepares a run's artifacts, registers its strand with reed, and
 // persists run.json so the CLI's interrupt/send verbs and a later diagnosis pass can find it again.
-// Wait (wait.go) and Interrupt/Send round out the Run handle's public surface.
+// Wait and AwaitStarted (wait.go) and Interrupt/Send round out the Run handle's public surface —
+// AwaitStarted is the startup probe alone, for a caller that never waits.
 
 package shuttleengine
 
@@ -193,6 +194,7 @@ type Result struct {
 
 // Run is the handle to one in-progress or completed shuttle run, returned by Start.
 // Wait blocks until the run reaches a terminal outcome;
+// AwaitStarted (wait.go) is the startup probe alone, for a caller that never waits;
 // Interrupt and Send drive the live pane while Wait is blocked (or from another process, via the
 // CLI verbs that resolve a Run from run.json).
 type Run struct {
@@ -207,8 +209,8 @@ type Run struct {
 	deadline time.Time
 	// clock is the time seam for tests.
 	clock clock
-	// attached is set only by Attach, never by Start, and read only by Wait's started seed, where it
-	// is one of two conditions (paired with state.Started) that must both hold before the startup
+	// attached is set only by Attach, never by Start, and read by Wait's started seed and by
+	// AwaitStarted's identical short-circuit, where it is one of two conditions (paired with state.Started) that must both hold before the startup
 	// probe is skipped: attached alone only means reed still reports the pane's process alive, never
 	// that the provider inside it ever reached StartupReady (see RunState.Started's own doc comment
 	// for why those are different facts). When both hold, re-running the probe against a mid-turn
@@ -363,8 +365,8 @@ func (r *Runner) StartGated(spec Spec, gate GateSpec) (*Run, error) {
 // RunDir returns the directory holding this run's artifacts (prompt.md, settings.json, the events
 // file).
 // It is exported because a caller that starts a run and never Waits on it has no other way to name
-// the one directory an operator would look in — batch 4's pane-liveness probe refuses the bootstrap
-// with exactly this path.
+// the one directory an operator would look in — loom's llm-driver bootstrap refuses with exactly
+// this path when AwaitStarted reports the provider never came up.
 func (run *Run) RunDir() string {
 	return run.runDir
 }
