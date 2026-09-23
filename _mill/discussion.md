@@ -67,7 +67,7 @@ A second provider plugs in as its own `Engine`, and no caller changes.
 
 - Decision: when the startup step resolves not-ready (the pane is not live, or the startup window expires, both via `checkLivenessTick`/`classifyStartupWindow` — which already consult the file contract first), start:
   1. writes the last successful pane capture the probe took to `startup-capture.txt` in the run directory — the file is absent when no capture ever succeeded, never written empty;
-  2. persists `RunState.Outcome = "died"` (so `Attach` never treats the record as attachable);
+  2. persists the resolved outcome to `RunState.Outcome` — `died`, or `timeout` when `run.deadline` expired first (decision "Run deadline anchoring") — so `Attach` never treats the record as attachable;
   3. removes the strand via `reed.RemoveStrand(guid, false)` (non-fatal on failure, logged at Warn);
   4. keeps the run directory;
   5. logs at Warn with run dir and strand guid;
@@ -92,6 +92,13 @@ A second provider plugs in as its own `Engine`, and no caller changes.
   `StartGated` turns a not-ready resolution into the `ErrNotStarted` error; `RunGated` returns `(result, nil)` for it, then calls `Wait` otherwise.
   The finalize path used for the not-ready case must NOT evaluate the gate (the outcome is never `OutcomeDone`) and must record the outcome and log "run finished" as `finalize` does today.
   Whether that reuses `finalize` plus the teardown steps, or a dedicated helper, is a plan choice — but it must still run through the Completion Signal Invariant (see Constraints) and live where the tripwire scans (see decision "Startup step lives in a tripwire-scanned file").
+  On a startup mechanism failure (decision "Startup mechanism failure"), the private `start` also hands back the run's `identity()` Result (`SessionID`, `StrandGUID`, `RunDir`, empty `Outcome`) beside the error, and `RunGated` returns `(identity, err)` — the same identity-with-error shape `Wait`'s own mechanism-failure exits return today, so a `RunGated` caller loses nothing compared with the failure surfacing from `Wait`.
+  Failures before a strand exists (spec validation, `Prepare`, `AddStrand`, `saveRunState`) keep returning `Result{}` as today.
+  `StartGated` returns `(nil, err)` for both failure kinds; its error message already names strand guid and run dir.
+- Rationale: the burler round producer (`internal/shedadapters/burler.go`, over `burlerengine`'s `RunGated` call at `internal/burlerengine/engine.go:184`) branches on the outcome: a first `OutcomeDied`/`OutcomeTimeout` attempt is retried once as infrastructure, while a returned `RunGated` error fails the round immediately.
+  Converting a startup failure into an error would silently drop that retry.
+  `shedadapters.SingleLLMProducer` is indifferent — its `mapOutcome` (`internal/shedadapters/singlellm.go:217–222`) turns `OutcomeDied` into a returned error, the same path a `RunGated` error takes — so the plan must not rely on a distinction there.
+- Rejected: making `RunGated` return the error — removes burler's one-retry ladder for startup failures.
 
 ### Startup step lives in a tripwire-scanned file
 
@@ -101,10 +108,6 @@ A second provider plugs in as its own `Engine`, and no caller changes.
   If the plan finds `run.go` must construct any negative-verdict marker after all, it adds `run.go` to `completionSignalScannedFiles` and pins those sites in the same change — never leaves a new negative verdict in an unscanned file.
 - Rationale: the tripwire only sees the files it lists; a verdict built in `run.go` would make "the tripwire was updated" pass vacuously.
 - Rejected: adding `run.go` to the scan unconditionally — `run.go` carries many unrelated `Errorf` returns (spec validation, told-path checks, `Send`/`Interrupt`), which would bloat the pinned ledger without guarding a completion verdict.
-- Rationale: the burler round producer (`internal/shedadapters/burler.go`, over `burlerengine`'s `RunGated` call at `internal/burlerengine/engine.go:184`) branches on the outcome: a first `OutcomeDied`/`OutcomeTimeout` attempt is retried once as infrastructure, while a returned `RunGated` error fails the round immediately.
-  Converting a startup failure into an error would silently drop that retry.
-  `shedadapters.SingleLLMProducer` is indifferent — its `mapOutcome` (`internal/shedadapters/singlellm.go:217–222`) turns `OutcomeDied` into a returned error, the same path a `RunGated` error takes — so the plan must not rely on a distinction there.
-- Rejected: making `RunGated` return the error — removes burler's one-retry ladder for startup failures.
 
 ### AwaitStarted removed
 
@@ -128,8 +131,13 @@ A second provider plugs in as its own `Engine`, and no caller changes.
 ### Run deadline anchoring
 
 - Decision: `run.deadline` stays `clock.Now().Add(spec.Timeout)` computed right after `run.json` is saved, before the startup step, so `spec.Timeout` keeps covering startup plus work.
-- Rationale: unchanged wall-clock budget semantics for every caller.
+  The startup step honours it: after each probe, when `run.deadline` has passed and the provider is still not ready, the step resolves not-ready with outcome `classifyDeadlineExpiry(OutcomeTimeout)` — `OutcomeDone` if the file contract is satisfied (the handle is then returned normally), `OutcomeTimeout` otherwise.
+  That order matches `Wait` today, which checks the startup window inside `checkLivenessTick` and then `run.deadline` on the same tick, so a `spec.Timeout` shorter than `startup_timeout_s` (reachable via `lyx shuttle run --timeout`) still ends as `OutcomeTimeout` at `spec.Timeout` rather than `OutcomeDied` at the startup window.
+  A run-deadline not-ready resolution takes the same teardown as any other not-ready one (capture file, Outcome persisted — `timeout` here — strand removed, run dir kept, `ErrNotStarted` from `StartGated`), and `RunGated` returns `(Result{Outcome: OutcomeTimeout, …}, nil)`.
+  The tick cap is computed from the shorter of the two remaining windows, so the count bound still terminates the loop under a clock that never advances.
+- Rationale: unchanged wall-clock budget semantics and unchanged outcome classification for every caller.
 - Rejected: anchoring the deadline after readiness — silently extends every run's budget by its startup time.
+  Ignoring `run.deadline` in the startup step — turns a short-timeout run's `OutcomeTimeout` into `OutcomeDied` after up to `startup_timeout_s`, an observable change.
 
 ### Webster's state-mutation lease across the startup window
 
@@ -233,7 +241,8 @@ A second provider plugs in as its own `Engine`, and no caller changes.
   - `maxStatusRetries` consecutive status errors → error naming guid and run dir, not `ErrNotStarted`, no `RemoveStrand`, no Outcome write;
   - tick cap terminates under a clock that never advances;
   - probe cadence equals `pollInterval × LivenessEveryNPolls`.
-- **RunGated**: startup failure → `(Result{Outcome: OutcomeDied, …}, nil)`, gate closure never invoked.
+- **RunGated**: startup failure → `(Result{Outcome: OutcomeDied, …}, nil)`, gate closure never invoked; startup mechanism failure → `(identity Result, err)` with `SessionID`/`StrandGUID`/`RunDir` populated.
+- **Run deadline during startup**: `spec.Timeout` shorter than the startup window with a never-ready provider → `RunGated` returns `OutcomeTimeout` at `spec.Timeout` (not `OutcomeDied`), `StartGated` returns `ErrNotStarted`, strand torn down, `run.json` Outcome `timeout`; with the file contract satisfied at that point → handle returned / Wait classifies `OutcomeDone`.
 - **shedadapters burler round**: an existing or new test proves a startup-failed first attempt (`OutcomeDied` from the runner seam) still takes the one-retry path — guards the reason `RunGated` keeps `OutcomeDied`.
 - **Wait**: a started run's `Wait` issues no `CapturePane`/`Startup` calls; an attached run with `Started: false` still runs the startup probe and still classifies `OutcomeDied` at the window's end; an attached run with `Started: true` still skips it.
 - **Completion-signal tripwire**: updated counts pass and still fail if a guard is deleted.
@@ -252,6 +261,8 @@ A second provider plugs in as its own `Engine`, and no caller changes.
 - **Q:** Webster's state-mutation lease is now held across the startup window in `recover-batch` and the Master spawn — restructure to release it across the spawn, or accept the bounded hold? **A:** [auto-pick] Accept the bounded hold and reword `AcquireStateMutation`'s contract. **Why:** the lease across the spawn is what stops two concurrent `recover-batch` calls from spawning duplicate recovery strands, and releasing it would need a new in-progress state record with its own attach semantics.
 - **Q:** What should `Wait` do about startup after the move? **A:** [auto-pick] Seed `started` from `run.state.Started` alone; keep the probe for attached-not-started runs. **Why:** one probe implementation serves both paths, and `Started` is already the persisted "passed the probe" fact.
 - **Q:** Does `spec.Timeout` still include startup time? **A:** [auto-pick] Yes — the deadline is anchored before the startup step. **Why:** unchanged budget semantics for every caller.
+- **Q:** Does the startup step honour `run.deadline`, and with which outcome? **A:** [auto-pick] Yes, through `classifyDeadlineExpiry(OutcomeTimeout)`, with the same teardown as any not-ready start. **Why:** matches `Wait`'s per-tick deadline check today, so a short `--timeout` run still reports `timeout`.
+- **Q:** Does `RunGated` keep returning identity fields on a startup mechanism failure? **A:** [auto-pick] Yes — the private `start` hands back `identity()` beside the error. **Why:** that is what `Wait`'s mechanism-failure exits return today.
 - **Q:** Where do the startup step's negative verdicts live, given the completion-signal tripwire scans only `wait.go`/`attach.go`? **A:** [auto-pick] In `wait.go`; `run.go` only passes them through. **Why:** keeps the tripwire's coverage real without pinning `run.go`'s many unrelated `Errorf` returns.
 - **Q:** Stencil and help text promise `recover-batch` blocks at most `poll_wait_s` — reword or leave? **A:** [auto-pick] Reword: a spawning call also waits for the provider to come up. **Why:** Master sizes its own expectations from that stencil claim.
 - **Q:** Loom help after a mechanism-failure start still leaves a live strand — accept? **A:** [auto-pick] Accept and name it in the `Long` help. **Why:** reed being unable to answer is no evidence the driver is stuck, so tearing it down could kill a working one.
