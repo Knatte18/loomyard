@@ -1,7 +1,8 @@
 # Status
 
 ```yaml
-phase: plan-fix-r6
+phase: blocked
+blocked_reason: max-rounds exhausted after 6 rounds, 2 BLOCKINGs remain
 slug: llm-driver-trust-dialog-hang
 branch: llm-driver-trust-dialog-hang
 plan: _mill/plan
@@ -34,4 +35,5 @@ plan-review-r5  '2026-09-23T08:34:13Z'
 plan-fix-r5  '2026-09-23T08:34:13Z'
 plan-review-r6  '2026-09-23T08:40:03Z'
 plan-fix-r6  '2026-09-23T08:40:03Z'
+blocked  '2026-09-23T08:40:03Z'
 ```
