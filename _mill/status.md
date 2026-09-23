@@ -35,7 +35,9 @@ batches:
     commit_sha: d44d8a2a2ec4e4fc20eb8417aca2bd1bcd3b6688
     verify_baseline_failures: []
   - name: webster-startup-window-docs
-    state: pending
+    state: running
+    implementer_session: cd7e2a43-b5e8-4a96-89f2-853d39fee131
+    start_sha: 2b2778301990f4ae146facf367e557fe1a20a7ec
     verify_baseline_failures: []
 ```
 ## Inferred-success log
