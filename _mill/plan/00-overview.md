@@ -3,7 +3,7 @@
 ```yaml
 task: llm-driven child can park forever on Claude Code's own workspace-trust dialog
 slug: llm-driver-trust-dialog-hang
-approved: false
+approved: true
 discussion_sha: f9f8296b7272ac1ef9c6d5a5758b2b1e0341d50c
 started: 20260923-080231
 parent: main

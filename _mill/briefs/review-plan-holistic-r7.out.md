@@ -1,0 +1,15 @@
+MILL_REVIEW_BEGIN
+# Review: llm-driven child can park forever on Claude Code's own workspace-trust dialog — holistic
+
+```yaml
+verdict: APPROVE
+reviewer_model: sonnetxhigh
+reviewed_file: plan/
+date: 2026-09-23
+```
+
+## Verdict
+
+APPROVE
+Source-verified against wait.go, the tripwire scan, loomcli seams and smoke helpers; no defects found.
+MILL_REVIEW_END
