@@ -46,7 +46,11 @@ implementing  '2026-09-23T08:47:02Z'
 ```yaml
 batches:
   - name: shuttle-await-started
-    state: pending
+    state: running
+    implementer_session: 2de5b101-6dd0-4fbe-a38f-334e6f1ebf4d
+    start_sha: 420047eb00de82fa6e3a839685c9938f45fdc3c6
+    verify_baseline_failures: []
   - name: loom-llm-arm-readiness
     state: pending
+    verify_baseline_failures: []
 ```
