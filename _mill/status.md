@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: shuttle-start-guarantees-readiness
 branch: shuttle-start-guarantees-readiness
-plan: null
+plan: _mill/plan
 parent: main
 task: Shuttle guarantees a started run is past its startup gates
 task_description: |
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-09-23T11:24:18Z'
 discussion-fix-r6  '2026-09-23T11:55:04Z'
 discussed  '2026-09-23T11:55:04Z'
+planning  '2026-09-23T12:08:14Z'
 ```
