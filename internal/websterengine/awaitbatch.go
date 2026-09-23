@@ -6,9 +6,9 @@
 // a Master that simply ends its turn "waiting" is classified asking by the shuttle file contract
 // and kills the whole run (found live in round fable-r1).
 // AwaitBatch is that call: a pure, bounded watch on the batch's report path — no state read, no
-// state mutation, no fabric — mirroring recover-batch's re-entrant long-poll idiom (each call blocks
-// at most one wait window; the caller re-calls until the report is present or its fork has finished
-// without one).
+// state mutation, no fabric — mirroring recover-batch's re-entrant long-poll idiom (recover-batch's
+// re-polls each block at most one wait window; the caller re-calls until the report is present or
+// its fork has finished without one).
 
 package websterengine
 

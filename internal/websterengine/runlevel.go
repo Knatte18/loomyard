@@ -81,10 +81,18 @@ func OutcomePath(websterDir string) string {
 }
 
 // MasterHandle is the started-but-not-yet-finished Master spawn Run blocks on: StrandGUID
-// identifies the reed strand Master runs in (available immediately after the start, so Run can
-// persist it to state.json BEFORE blocking — the record the next run's entry-time reclaim reads),
-// and Wait blocks until the spawn reaches a terminal shuttle outcome. *shuttleengine.Run satisfies
-// this structurally.
+// identifies the reed strand Master runs in (available once the start returns, which includes the
+// provider's startup window, so Run can persist it to state.json BEFORE blocking on Wait — the
+// record the next run's entry-time reclaim reads), and Wait blocks until the spawn reaches a
+// terminal shuttle outcome. *shuttleengine.Run satisfies this structurally.
+//
+// Accepted residuals, both from the spawn now including the startup window under the
+// state-mutation lease, and from state.json being persisted only after StartMaster returns:
+// a process killed inside the startup window, or a startup mechanism failure (shuttle could not
+// get a liveness answer from reed maxStatusRetries times), leaves a live Master pane whose
+// MasterStrand was never recorded — invisible to reclaimEntryTimeStrands. A not-ready start no
+// longer leaks (shuttle tears the strand down) unless that teardown's own strand removal fails,
+// which the returned error then states.
 type MasterHandle interface {
 	StrandGUID() string
 	Wait() (shuttleengine.Result, error)
@@ -609,6 +617,9 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		Timeout:       time.Duration(deps.Config.MasterTimeoutMin) * time.Minute,
 	}
 
+	// The state-mutation lease acquired above is held across this call, which now includes the
+	// provider's startup window (bounded by startup_timeout_s) — see AcquireStateMutation's own
+	// contract. At run entry no batch forks exist yet, so the hold stalls nothing in practice.
 	handle, err := deps.Starter.StartMaster(spec, deps.Gate)
 	if err != nil {
 		return RunResult{}, fmt.Errorf("webster: start master: %w", err)
