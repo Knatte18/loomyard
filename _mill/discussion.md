@@ -71,7 +71,11 @@ A second provider plugs in as its own `Engine`, and no caller changes.
   3. removes the strand via `reed.RemoveStrand(guid, false)` (non-fatal on failure, logged at Warn);
   4. keeps the run directory;
   5. logs at Warn with run dir and strand guid;
-  6. returns an error wrapping an exported sentinel `ErrNotStarted`, whose message names the run directory, the strand guid, that the strand was removed, and either that its last capture was saved to `startup-capture.txt` or that no capture was taken.
+  6. returns an error wrapping an exported sentinel `ErrNotStarted`, whose message names the run directory, the strand guid, and either that its last capture was saved to `startup-capture.txt` or that no capture was taken.
+     It states that the strand was removed only when `RemoveStrand` succeeded; when removal failed, it instead says the strand could NOT be removed, carries reed's removal error, and tells the operator to remove it by hand ("lyx reed status"/`remove`).
+- A failed teardown `RemoveStrand` is a second accepted residual beside the startup mechanism failure: the never-ready strand stays live, so loom's next `start` resolves it as `driverStrandLive` and skips readiness, and webster's reclaim cannot see it.
+  It is not escalated to a different error because the not-ready verdict is already decided and the removal failure is reed's own fault, which the message now names.
+  List it everywhere the mechanism-failure residual is listed: loom's `start` `Long` help and `start.go`'s Accepted-residual comment (decision "Loom's llm arm"), and webster's `MasterHandle` and `RecoverSpawnOrAttach` doc comments (decision "Webster's persist-before-block windows").
 - The startup-capture file name is a new constant beside `promptFileName`/`settingsFileName`/`eventsFileName` in `run.go`.
 - Rationale: a provider that never became ready has done no work worth preserving, and leaving its strand live caused two defects: loom's next `start` resolves the stuck strand as `driverStrandLive`, spawns nothing and "succeeds" without readiness (the accepted residual documented in `start.go`), and webster's `Run` never learns the strand guid of a Master that failed in `StartMaster`, so its entry-time reclaim can never remove it.
   Reed's add has no upsert semantics, so a lingering strand also collides by name with the respawn.
@@ -190,7 +194,7 @@ A second provider plugs in as its own `Engine`, and no caller changes.
   - `websterengine.Run` persists `MasterStrand` after `StartMaster` returns — a webster process killed inside the startup window leaves a live Master pane its entry-time reclaim cannot see;
   - `lyx webster recover-batch` persists the recovery `BatchState` (with its `StrandGUID`) after `RecoverSpawnOrAttach` returns — a process killed inside the startup window leaves a live recovery strand that the next `recoverSpawn`'s `prior.StrandGUID` reclaim (`removeStrandIfLive`) cannot see, so the next call spawns a second recovery strand beside it.
   State each as an Accepted residual: in `MasterHandle`'s doc comment, in `RecoverSpawnOrAttach`'s doc comment, and beside `Start`'s existing AddStrand-to-saveRunState residual comment in `internal/shuttleengine/run.go` (as the general form: a caller that persists the guid after `Start` returns now has a window as wide as the startup probe).
-  A not-ready start no longer leaks at either site, because the strand is torn down (decision "Not-ready start").
+  A not-ready start no longer leaks at either site, because the strand is torn down (decision "Not-ready start") — unless that teardown's `RemoveStrand` itself fails, the residual stated there.
   A startup mechanism failure (decision "Startup mechanism failure") still does, at both sites: the start errors with the strand left live and no teardown, and neither webster caller persists a guid before the error returns.
   Today that failure surfaces from `Wait`, after webster has already persisted the guid; now it surfaces from the start call, before.
   The Master strand is then invisible to entry-time reclaim, and the recovery strand to `removeStrandIfLive`, so the next spawn either duplicates it or collides with it by name in reed.
@@ -209,7 +213,7 @@ A second provider plugs in as its own `Engine`, and no caller changes.
   Keep the "loom: driver strand is ready" `logger.Info` breadcrumb, moved to right after a successful `StartDriver` (merging with the existing "spawned driver strand" line is acceptable).
   `bootstrapLock` is still held across `StartDriver`, now including the startup step — the same duration it was held across `AwaitStarted`.
 - `start`'s `Long` help: replace the sentence about "an ly-drive strand already live from an earlier invocation -- including one left in place by an earlier readiness refusal" with wording that says a readiness refusal removes the driver strand, so the next `start` spawns a fresh one.
-  Keep, and name explicitly, the one remaining residual: when the readiness check could not get an answer from reed at all (decision "Startup mechanism failure"), the strand is left in place, and a later `start` that finds it live attaches to it without re-checking readiness.
+  Keep, and name explicitly, the two remaining residuals: when the readiness check could not get an answer from reed at all (decision "Startup mechanism failure"), or when the not-ready teardown could not remove the strand (decision "Not-ready start"), the strand is left in place, and a later `start` that finds it live attaches to it without re-checking readiness.
   Update `start.go`'s "Accepted residual" code comment to the same narrower case.
   This residual is accepted: reed being unable to answer says nothing about the agent, so tearing the strand down could kill a working driver.
 - Rationale: loom no longer knows about readiness at all, which is the stated principle.
@@ -264,6 +268,7 @@ A second provider plugs in as its own `Engine`, and no caller changes.
 - **shuttleengine start (TDD candidates)** — port `awaitstarted_test.go` to start-level tests with `fakeReed`/`fakeEngine` and the fake clock:
   - trust prompt then ready → dismiss sequence played once per gate-showing probe, handle returned, `run.json` `Started: true`;
   - ready on first probe → no sleep before return;
+  - teardown `RemoveStrand` fails → still `ErrNotStarted`, message says the strand could not be removed and names reed's error, run.json Outcome still persisted;
   - pane not live → `ErrNotStarted`, strand removed, `run.json` Outcome `died`, run dir kept, `startup-capture.txt` holds the last capture;
   - window expires while pending → same as above;
   - capture always erroring until the window expires → `ErrNotStarted`, and `startup-capture.txt` is absent (it is written only when at least one capture succeeded), and the error message says no capture was taken rather than naming the file;

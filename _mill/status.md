@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: shuttle-start-guarantees-readiness
 branch: shuttle-start-guarantees-readiness
 plan: null
@@ -15,4 +15,6 @@ task_description: |
 
 ```text
 discussing  '2026-09-23T11:24:18Z'
+discussion-fix-r6  '2026-09-23T11:55:04Z'
+discussed  '2026-09-23T11:55:04Z'
 ```
