@@ -28,7 +28,11 @@ implementing  '2026-09-23T12:15:52Z'
 ```yaml
 batches:
   - name: shuttle-blocking-start
-    state: pending
+    state: running
+    implementer_session: a6064c6b-e510-4d2b-80e2-a77add496c76
+    start_sha: 543fd5bdd6336804bfdd2ee1a4745fb33560cae2
+    verify_baseline_failures: []
   - name: webster-startup-window-docs
     state: pending
+    verify_baseline_failures: []
 ```
