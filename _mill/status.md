@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-review-r1
+phase: planned
 slug: shuttle-start-guarantees-readiness
 branch: shuttle-start-guarantees-readiness
 plan: _mill/plan
@@ -19,4 +19,5 @@ discussion-fix-r6  '2026-09-23T11:55:04Z'
 discussed  '2026-09-23T11:55:04Z'
 planning  '2026-09-23T12:08:14Z'
 plan-review-r1  '2026-09-23T12:14:59Z'
+planned  '2026-09-23T12:15:13Z'
 ```
