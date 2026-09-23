@@ -42,7 +42,8 @@ import (
 // Timeout, KeepPane, and AwaitOperator are left at their zero values deliberately -- a statement that
 // nothing reads them, not a choice about pane retention or deadlines. All three are read only by the
 // wait loop (Run.Wait), which this path never enters: the driver session runs until it stops itself,
-// polled through the pane-liveness probe rather than waited on.
+// awaited only until its provider is ready (Run.AwaitStarted, which reads the runner config's
+// startup_timeout_s, not this spec) and never waited on to completion.
 func driverSpec(prompt string, reportPath string, settings loomengine.DriverSettings) shuttleengine.Spec {
 	return shuttleengine.Spec{
 		Prompt:        prompt,

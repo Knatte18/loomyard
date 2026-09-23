@@ -7,19 +7,22 @@
 package loomcli
 
 import (
-	"time"
-
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // driverHandle is the started driver run's own seam-facing surface: the two identities the bootstrap
-// needs after launch, without depending on *shuttleengine.Run's concrete type.
+// needs after launch, plus the startup await, without depending on *shuttleengine.Run's concrete type.
 type driverHandle interface {
 	// StrandGUID returns the reed strand guid bound to this run.
 	StrandGUID() string
 	// RunDir returns the directory holding this run's artifacts.
 	RunDir() string
+	// AwaitStarted reports whether the run's provider reached readiness: (true, nil) when its TUI
+	// reached ready with any recognized one-time gate dismissed, or its file contract is already
+	// satisfied; (false, nil) when the pane died or the startup window closed without readiness; a
+	// non-nil error when reed's liveness check failed repeatedly.
+	AwaitStarted() (bool, error)
 }
 
 // driverStarter starts the ly-drive session's shuttle run.
@@ -42,7 +45,8 @@ type runnerDriverStarter struct {
 }
 
 // StartDriver implements driverStarter by delegating to the runner's own Start, whose returned
-// *shuttleengine.Run already satisfies driverHandle via its StrandGUID and RunDir accessors.
+// *shuttleengine.Run already satisfies driverHandle via its StrandGUID, RunDir and AwaitStarted
+// methods.
 func (s runnerDriverStarter) StartDriver(spec shuttleengine.Spec) (driverHandle, error) {
 	run, err := s.runner.Start(spec)
 	if err != nil {
@@ -85,56 +89,4 @@ func (p reedDriverPaneProbe) Strands() ([]reedengine.StrandStatus, error) {
 func (p reedDriverPaneProbe) RemoveDriverStrand(guid string) error {
 	_, err := p.remove(guid, false)
 	return err
-}
-
-// driverPanePollInterval and driverPaneAttempts bound awaitDriverPane, declared beside it in the same
-// shape the handshake constants (bootstrapHandshakePollInterval, bootstrapHandshakeAttempts, start.go)
-// carry. The budget is kept short deliberately: this probe answers "did the provider binary boot at
-// all", a question settled in seconds, not the minutes the run-lock handshake allows for a full
-// producer pass.
-const (
-	driverPanePollInterval = 100 * time.Millisecond
-	driverPaneAttempts     = 50
-)
-
-// findStrandByGUID returns the first strand in strands whose GUID exactly matches guid.
-func findStrandByGUID(strands []reedengine.StrandStatus, guid string) (reedengine.StrandStatus, bool) {
-	for _, s := range strands {
-		if s.GUID == guid {
-			return s, true
-		}
-	}
-	return reedengine.StrandStatus{}, false
-}
-
-// awaitDriverPane polls at most attempts times for the just-launched driver strand identified by
-// guid to show up live in the slice strands returns, reporting ready as soon as it is present and
-// live. A strand that is absent or present-but-not-live continues the loop; the seam erroring
-// returns that error immediately; exhausting the attempt budget reports not-ready with a nil error.
-//
-// Cap attempt COUNT, not only elapsed time, per the Live-Substrate Spawn Observability invariant's
-// retry clause. wait is an injected seam, the same four-seam shape awaitRunLock (bootstrap.go)
-// already uses, so a test can drive the whole poll with no wall-clock sleep.
-//
-// This probe closes the common half of "did the provider boot at all" -- binary absent, immediate
-// exit, launch line rejected by the shell -- using reed alone, with no new shuttle API and no change
-// to the wait loop's contract. Starting a run only proves the pane was created and the launch line
-// sent into it, never that the provider inside it booted; this probe is what closes that gap.
-//
-// It does NOT close the case of a provider that boots, takes the pane, and then never reads its
-// prompt: that leaves a live pane and a run that never moves, and this probe reports it ready. That
-// residual degrades to the outer run's watch budget landing in a blocked state, where an operator
-// attaching sees a session sitting idle -- legible in a way a dead pane is not.
-func awaitDriverPane(strands func() ([]reedengine.StrandStatus, error), guid string, wait func(), attempts int) (bool, error) {
-	for i := 0; i < attempts; i++ {
-		list, err := strands()
-		if err != nil {
-			return false, err
-		}
-		if strand, found := findStrandByGUID(list, guid); found && strand.Live {
-			return true, nil
-		}
-		wait()
-	}
-	return false, nil
 }

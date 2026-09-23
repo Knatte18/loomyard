@@ -86,7 +86,7 @@ func TestStartup_Classification(t *testing.T) {
 		},
 		{
 			name:    "ready_shortcuts_footer",
-			capture: "? for shortcuts",
+			capture: ReadyFooterFixture,
 			want:    shuttleengine.StartupReady,
 		},
 		{
@@ -191,6 +191,20 @@ func TestStartup_Classification(t *testing.T) {
 				t.Errorf("Startup(%q) = %v; want %v", tt.capture, got, tt.want)
 			}
 		})
+	}
+}
+
+// TestReadyFooterFixture_ClassifiesReady pins ReadyFooterFixture to Startup's own classification.
+// The constant's own doc comment claims it matches Startup's "shortcuts" needle, but Startup reads
+// that needle directly rather than through the constant, so nothing else in this file ties the two
+// together -- a future rewording of the needle could silently leave the exported fixture stale, and
+// only a caller building a live-substrate fixture from it (e.g. loomcli's driver-strand smoke test,
+// gated behind -tags smoke) would ever notice, and only at that cost. This test is untagged so it
+// runs at Tier 1.
+func TestReadyFooterFixture_ClassifiesReady(t *testing.T) {
+	c := New()
+	if got := c.Startup(ReadyFooterFixture); got != shuttleengine.StartupReady {
+		t.Errorf("Startup(ReadyFooterFixture) = %v; want %v", got, shuttleengine.StartupReady)
 	}
 }
 
