@@ -3,7 +3,7 @@
 ```yaml
 task: Shuttle guarantees a started run is past its startup gates
 slug: shuttle-start-guarantees-readiness
-approved: false
+approved: true
 started: 20260923-120131
 parent: main
 root: ""
