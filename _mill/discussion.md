@@ -35,7 +35,7 @@ A second provider plugs in as its own `Engine`, and no caller changes.
   Update the `start` command's `Long` help text where it describes a strand "left in place by an earlier readiness refusal".
 - `internal/websterengine` / `internal/webstercli`: no control-flow change — `RecoverBatch`'s `Starter.Start` and `Run`'s `StartMaster` inherit the guarantee.
   Both spawns run under webster's state-mutation lease, which is now held across the startup window;
-  the lease's own contract wording and the affected doc comments change to state that bounded hold, and both persist-before-block residuals (Master and recovery strand) are stated (see Decisions "Webster's state-mutation lease across the startup window" and "Webster's persist-before-block windows").
+  the lease's own contract wording and the affected doc comments change to state that bounded hold, the `recover-batch` blocking bound is reworded in the Master stencil, the verb's `Long` help, and `websterengine/doc.go`, and both persist-before-block residuals (Master and recovery strand) are stated (see Decisions "Webster's state-mutation lease across the startup window" and "Webster's persist-before-block windows").
 - Tests: shuttleengine start tests replacing `awaitstarted_test.go`, fake adjustments so existing Start/Run tests reach readiness, loomcli test updates, completion-signal tripwire counts.
 - Docs: `docs/reference/claude-trust-dialog-repro.md`, shuttleengine doc comments (`run.go`, `wait.go`, `doc.go`, `rundir.go`'s `Started` comment), `docs/overview.md`'s shuttle row if its wording is affected, `CONSTRAINTS.md` (new bullet, see Decisions).
 
@@ -66,12 +66,12 @@ A second provider plugs in as its own `Engine`, and no caller changes.
 ### Not-ready start: error, strand torn down, run dir and last capture kept
 
 - Decision: when the startup step resolves not-ready (the pane is not live, or the startup window expires, both via `checkLivenessTick`/`classifyStartupWindow` — which already consult the file contract first), start:
-  1. writes the last pane capture the probe took (if any) to `startup-capture.txt` in the run directory;
+  1. writes the last successful pane capture the probe took to `startup-capture.txt` in the run directory — the file is absent when no capture ever succeeded, never written empty;
   2. persists `RunState.Outcome = "died"` (so `Attach` never treats the record as attachable);
   3. removes the strand via `reed.RemoveStrand(guid, false)` (non-fatal on failure, logged at Warn);
   4. keeps the run directory;
   5. logs at Warn with run dir and strand guid;
-  6. returns an error wrapping an exported sentinel `ErrNotStarted`, whose message names the run directory, the strand guid, and that the strand was removed with its last capture saved to `startup-capture.txt`.
+  6. returns an error wrapping an exported sentinel `ErrNotStarted`, whose message names the run directory, the strand guid, that the strand was removed, and either that its last capture was saved to `startup-capture.txt` or that no capture was taken.
 - The startup-capture file name is a new constant beside `promptFileName`/`settingsFileName`/`eventsFileName` in `run.go`.
 - Rationale: a provider that never became ready has done no work worth preserving, and leaving its strand live caused two defects: loom's next `start` resolves the stuck strand as `driverStrandLive`, spawns nothing and "succeeds" without readiness (the accepted residual documented in `start.go`), and webster's `Run` never learns the strand guid of a Master that failed in `StartMaster`, so its entry-time reclaim can never remove it.
   Reed's add has no upsert semantics, so a lingering strand also collides by name with the respawn.
@@ -91,7 +91,16 @@ A second provider plugs in as its own `Engine`, and no caller changes.
 - Decision: split the body of `StartGated` into a private `start(spec, gate)` that returns the handle plus, on a not-ready resolution, the finalized `Result` (`Outcome: OutcomeDied`, identity fields, `RunDir`).
   `StartGated` turns a not-ready resolution into the `ErrNotStarted` error; `RunGated` returns `(result, nil)` for it, then calls `Wait` otherwise.
   The finalize path used for the not-ready case must NOT evaluate the gate (the outcome is never `OutcomeDone`) and must record the outcome and log "run finished" as `finalize` does today.
-  Whether that reuses `finalize` plus the teardown steps, or a dedicated helper, is a plan choice — but it must still run through the Completion Signal Invariant (see Constraints).
+  Whether that reuses `finalize` plus the teardown steps, or a dedicated helper, is a plan choice — but it must still run through the Completion Signal Invariant (see Constraints) and live where the tripwire scans (see decision "Startup step lives in a tripwire-scanned file").
+
+### Startup step lives in a tripwire-scanned file
+
+- Decision: the startup step (the moved `AwaitStarted` loop), the not-ready teardown, the construction of the not-ready `Result{Outcome: OutcomeDied}`, and the `ErrNotStarted`/mechanism-failure `Errorf` returns all live in `wait.go`, which `completionsignal_enforcement_test.go`'s `completionSignalScannedFiles` (`{"wait.go", "attach.go"}`) already scans.
+  `run.go`'s `StartGated`/`start`/`RunGated` only call that step and pass its `*Run`, `Result` or error through; they construct no negative-verdict marker themselves.
+  The tripwire's pinned counts are re-audited for the new function(s) in `wait.go`.
+  If the plan finds `run.go` must construct any negative-verdict marker after all, it adds `run.go` to `completionSignalScannedFiles` and pins those sites in the same change — never leaves a new negative verdict in an unscanned file.
+- Rationale: the tripwire only sees the files it lists; a verdict built in `run.go` would make "the tripwire was updated" pass vacuously.
+- Rejected: adding `run.go` to the scan unconditionally — `run.go` carries many unrelated `Errorf` returns (spec validation, told-path checks, `Send`/`Interrupt`), which would bloat the pinned ledger without guarding a completion verdict.
 - Rationale: the burler round producer (`internal/shedadapters/burler.go`, over `burlerengine`'s `RunGated` call at `internal/burlerengine/engine.go:184`) branches on the outcome: a first `OutcomeDied`/`OutcomeTimeout` attempt is retried once as infrastructure, while a returned `RunGated` error fails the round immediately.
   Converting a startup failure into an error would silently drop that retry.
   `shedadapters.SingleLLMProducer` is indifferent — its `mapOutcome` (`internal/shedadapters/singlellm.go:217–222`) turns `OutcomeDied` into a returned error, the same path a `RunGated` error takes — so the plan must not rely on a distinction there.
@@ -108,7 +117,9 @@ A second provider plugs in as its own `Engine`, and no caller changes.
 ### Wait's startup handling after the move
 
 - Decision: `Wait` seeds `started := run.state.Started` (dropping the `run.attached &&` conjunct).
-  A `*Run` from start carries `Started: true` unless it was returned on the satisfied-file-contract branch, where `Wait` re-probing is harmless: its first events or liveness tick classifies `OutcomeDone`.
+  A `*Run` from start carries `Started: true` unless it was returned on the satisfied-file-contract branch.
+  There, `Wait` re-probing is harmless but not instant: with `Started: false` and a live strand, `checkLivenessTick` consults the file contract only through `classifyStartupWindow`'s expiry, so `Wait` classifies `OutcomeDone` on an events-tick Done (a turn-end event with every output file present) or, at the latest, when its own startup window expires (`classifyDeadlineExpiry` → `OutcomeDone`).
+  Accepted as is: this branch needs an agent that wrote every output file before its TUI ever classified ready, which is an edge case, and the answer is still correct.
   The startup probe code in `checkLivenessTick`/`classifyStartupWindow` stays, now reached only for an attached run whose `run.json` was never marked `Started`.
   `Wait` still computes its own `startupDeadline` from its entry time for that attached case.
 - Rationale: keeps one probe implementation for both the start and the attach paths; `Started` is already the persisted fact meaning "passed the probe".
@@ -128,6 +139,14 @@ A second provider plugs in as its own `Engine`, and no caller changes.
   Concurrent verbs (`begin-batch`, `record-batch`, `validate`, run entry) block on the lease for that time rather than failing — `lock.AcquireWriteLock` blocks without a timeout.
   Update the contract wording on `AcquireStateMutation` to say what "never across a long block" means now: a spawn's startup window, bounded by `startup_timeout_s`, is part of the load-mutate-save sequence; an unbounded or poll-length wait (recover-batch's `RecoverAwait`, Master's `Wait`) still never runs under it.
   Update `internal/webstercli/recoverbatch.go`'s file header and `RecoverSpawnOrAttach`'s doc to match, and add a sentence at the Master spawn site in `runlevel.go`.
+- A `recover-batch` call that spawns now blocks for the startup window and then up to `--wait`/`poll_wait_s`, because `RecoverAwait`'s budget starts only after `RecoverSpawnOrAttach` returns.
+  A call that attaches to an existing recovery strand is still bounded by `poll_wait_s` alone.
+  Reword every place that states the old bound:
+  - `contracts/stencils/webster/webster-template-master.md` lines ~105 and ~198 ("each call blocks at most `{{.poll_wait_s}}` seconds") — say the call that spawns the recovery strand additionally waits for its provider to come up (normally seconds), and every re-poll after it is bounded by `{{.poll_wait_s}}`.
+    No new template variable is introduced; the startup bound is described, not interpolated.
+  - `recover-batch`'s `Long` help (`internal/webstercli/recoverbatch.go`, "for up to --wait") — same statement.
+  - `internal/websterengine/doc.go` (~line 201, "most poll_wait_s") — same statement.
+  The stencil is an embedded default read from the hub's stencils directory, so hubs with a copied stencil keep the old wording until refreshed; that is harmless, since the old wording only understates one call's duration.
 - Rationale: holding the lease across the spawn is what serialises two concurrent `recover-batch` calls for the same batch, so the second one sees the first one's recorded guid and attaches instead of spawning a duplicate recovery strand.
   `RecoverSpawnOrAttach`'s attach test requires `prior.StrandGUID != ""`, so releasing the lease across the spawn would need a new "spawn in progress" state record with its own attach/timeout semantics, plus a re-acquire-reload-merge after the spawn.
   That costs far more than a bounded stall of concurrent verbs, which webster already tolerates for every other holder.
@@ -151,6 +170,10 @@ A second provider plugs in as its own `Engine`, and no caller changes.
   The refusal loom prints for a not-ready driver becomes loom's existing error path for a failed `StartDriver`, whose message now comes from shuttle and already names the run dir and strand.
   Keep the "loom: driver strand is ready" `logger.Info` breadcrumb, moved to right after a successful `StartDriver` (merging with the existing "spawned driver strand" line is acceptable).
   `bootstrapLock` is still held across `StartDriver`, now including the startup step — the same duration it was held across `AwaitStarted`.
+- `start`'s `Long` help: replace the sentence about "an ly-drive strand already live from an earlier invocation -- including one left in place by an earlier readiness refusal" with wording that says a readiness refusal removes the driver strand, so the next `start` spawns a fresh one.
+  Keep, and name explicitly, the one remaining residual: when the readiness check could not get an answer from reed at all (decision "Startup mechanism failure"), the strand is left in place, and a later `start` that finds it live attaches to it without re-checking readiness.
+  Update `start.go`'s "Accepted residual" code comment to the same narrower case.
+  This residual is accepted: reed being unable to answer says nothing about the agent, so tearing the strand down could kill a working driver.
 - Rationale: loom no longer knows about readiness at all, which is the stated principle.
 - Rejected: loom keeping its own post-start check "just in case" — re-creates the per-caller obligation.
 
@@ -178,7 +201,12 @@ A second provider plugs in as its own `Engine`, and no caller changes.
 - `internal/websterengine/runlevel.go:83–106, 612–651` (`MasterHandle`, `StartMaster`, persist then `Wait`), `internal/websterengine/recoverbatch.go:183` (`Starter.Start`, the second latent #018 caller), `internal/websterengine/strand.go:66–70` (`Starter` interface returning `*shuttleengine.Run`).
   Webster maps a non-done Master outcome to an error already, so a Master start error is equivalent at its caller.
 - Webster's state-mutation lease: `internal/websterengine/state.go:84–88` (`AcquireStateMutation` and its "never across a long block" contract), `internal/webstercli/recoverbatch.go` (file header describing the three lease-scoped phases; lease held across `RecoverSpawnOrAttach` + `SaveState`, released before `RecoverAwait`), `internal/websterengine/recoverbatch.go:225–248` (`RecoverSpawnOrAttach`, attach condition `prior.Kind == "recovery" && !prior.Terminal && prior.StrandGUID != ""`), `internal/websterengine/runlevel.go:408–648` (lease held across `StartMaster` and both `SaveState` calls, released before `handle.Wait()`).
-- Production callers of the start family: `burlerengine/engine.go:184` and `shedadapters/singlellm.go:169` (`RunGated`), `loomcli/cli.go:137` and `webstercli/cli.go:150` (`StartGated` via `runnerMasterStarter`), `loomcli/driverlaunch.go:51` and `websterengine/recoverbatch.go:183` (`Start`), `shuttlecli/run.go:139` (`Run`).
+- Production callers of the start family found by a direct-call search (not guaranteed complete — several route through narrow interface seams that `*shuttleengine.Runner` satisfies structurally):
+  - `StartGated`: `loomcli/cli.go:137` and `webstercli/cli.go:150` (both `runnerMasterStarter`);
+  - `Start`: `loomcli/driverlaunch.go:51`, `websterengine/recoverbatch.go:183` (via `websterengine.Starter`);
+  - `Run`/`RunGated` (directly or via a runner/`Shuttle` interface field): `burlerengine/engine.go:184`, `shedadapters/singlellm.go:169`, `shedadapters/bouncer.go`, `mergeresolve/mergeresolve.go`, `frictionengine/reflect.go`, `treadleengine/targeting.go`, `treadleengine/judge.go`, `shuttlecli/run.go:139`.
+  The plan should enumerate by the interface seams (`grep` for methods named `Run`/`RunGated`/`Start`/`StartGated` on interfaces whose implementation is `*shuttleengine.Runner`) rather than trust this list.
+  Every `Run`/`RunGated` caller keeps its current `OutcomeDied` semantics by construction, since `RunGated`'s contract does not change (decision "RunGated preserves its OutcomeDied contract"); only `Start`/`StartGated` callers see the new error.
 - Shipped config (`internal/shuttleengine/template.yaml`): `poll_interval_ms: 500`, `liveness_every_n_polls: 10`, `startup_timeout_s: 90` — so the probe interval is 5 s and the first probe is immediate.
 
 ## Constraints
@@ -200,7 +228,7 @@ A second provider plugs in as its own `Engine`, and no caller changes.
   - ready on first probe → no sleep before return;
   - pane not live → `ErrNotStarted`, strand removed, `run.json` Outcome `died`, run dir kept, `startup-capture.txt` holds the last capture;
   - window expires while pending → same as above;
-  - capture always erroring until the window expires → `ErrNotStarted`, no capture file (or empty — plan decides, test pins it);
+  - capture always erroring until the window expires → `ErrNotStarted`, and `startup-capture.txt` is absent (it is written only when at least one capture succeeded), and the error message says no capture was taken rather than naming the file;
   - file contract satisfied during startup → handle returned, no teardown;
   - `maxStatusRetries` consecutive status errors → error naming guid and run dir, not `ErrNotStarted`, no `RemoveStrand`, no Outcome write;
   - tick cap terminates under a clock that never advances;
@@ -224,4 +252,7 @@ A second provider plugs in as its own `Engine`, and no caller changes.
 - **Q:** Webster's state-mutation lease is now held across the startup window in `recover-batch` and the Master spawn — restructure to release it across the spawn, or accept the bounded hold? **A:** [auto-pick] Accept the bounded hold and reword `AcquireStateMutation`'s contract. **Why:** the lease across the spawn is what stops two concurrent `recover-batch` calls from spawning duplicate recovery strands, and releasing it would need a new in-progress state record with its own attach semantics.
 - **Q:** What should `Wait` do about startup after the move? **A:** [auto-pick] Seed `started` from `run.state.Started` alone; keep the probe for attached-not-started runs. **Why:** one probe implementation serves both paths, and `Started` is already the persisted "passed the probe" fact.
 - **Q:** Does `spec.Timeout` still include startup time? **A:** [auto-pick] Yes — the deadline is anchored before the startup step. **Why:** unchanged budget semantics for every caller.
+- **Q:** Where do the startup step's negative verdicts live, given the completion-signal tripwire scans only `wait.go`/`attach.go`? **A:** [auto-pick] In `wait.go`; `run.go` only passes them through. **Why:** keeps the tripwire's coverage real without pinning `run.go`'s many unrelated `Errorf` returns.
+- **Q:** Stencil and help text promise `recover-batch` blocks at most `poll_wait_s` — reword or leave? **A:** [auto-pick] Reword: a spawning call also waits for the provider to come up. **Why:** Master sizes its own expectations from that stencil claim.
+- **Q:** Loom help after a mechanism-failure start still leaves a live strand — accept? **A:** [auto-pick] Accept and name it in the `Long` help. **Why:** reed being unable to answer is no evidence the driver is stuck, so tearing it down could kill a working one.
 - **Q:** Webster `recover-batch` has the same latent bug — in scope? **A:** [auto-pick] Yes, fixed by inheritance with no webster control-flow change, only lease-contract and doc-comment updates. **Why:** that is the point of a shuttle-level guarantee.
