@@ -41,7 +41,7 @@ A second provider plugs in as its own `Engine`, and no caller changes.
 
 **Out:**
 
-- `Runner.Attach`/`AttachGated`: unchanged. An attached run whose `run.json` says `Started: true` still skips the probe;
+- `Runner.Attach`/`AttachGated` control flow: unchanged apart from the one `leftoverThenAgeVerdict` rule in decision "Attach treats a torn-down not-ready record as respawn-eligible". An attached run whose `run.json` says `Started: true` still skips the probe;
   one that is not started is still probed inside `Wait`, as today.
 - `Interrupt`/`Send`/`Inject` and `requireReadyAgentPane`: unchanged — they serve CLI verbs acting on a guid from another process.
 - `Engine` interface and `claudeengine`: unchanged. No new provider gate is recognised.
@@ -76,7 +76,23 @@ A second provider plugs in as its own `Engine`, and no caller changes.
 - Rationale: a provider that never became ready has done no work worth preserving, and leaving its strand live caused two defects: loom's next `start` resolves the stuck strand as `driverStrandLive`, spawns nothing and "succeeds" without readiness (the accepted residual documented in `start.go`), and webster's `Run` never learns the strand guid of a Master that failed in `StartMaster`, so its entry-time reclaim can never remove it.
   Reed's add has no upsert semantics, so a lingering strand also collides by name with the respawn.
   The saved capture replaces "attach to the pane to see what it is stuck on" as the diagnosis channel — it is what diagnosed #018.
+- The teardown ignores `Spec.KeepPane`: that knob keeps the pane after an `OutcomeDone` for the caller to inspect (`spec.go`), and a provider that never became ready leaves nothing to inspect beyond the saved capture.
 - Rejected: leaving the strand in place (today's `Wait`-path behavior for a startup `OutcomeDied`) — keeps both defects above.
+
+### Attach treats a torn-down not-ready record as respawn-eligible
+
+- Decision: extend `leftoverThenAgeVerdict` (`internal/shuttleengine/attach.go`), the function `dispositionCandidate` routes an untracked or binding-cleared candidate through.
+  After its existing `allOutputFilesExist` check and before its dir-age check, a candidate whose persisted `RunState.Outcome` is one of the four recognised terminal values (`done`, `asking`, `died`, `timeout`) returns `verdictRespawnEligible`.
+  An empty (legacy) or unrecognised `Outcome` keeps today's age rule unchanged.
+- Rationale: the not-ready teardown keeps the run dir, with a terminal Outcome, and removes the strand, so on the next resume reed no longer tracks the candidate.
+  Today `dispositionCandidate` sends every untracked candidate through `leftoverThenAgeVerdict` without reading its Outcome, and that returns `verdictError` while the dir is younger than `2 × startup_timeout_s` — and the teardown's own writes refresh the dir mtime.
+  Every resume-time `Attach`/`AttachGated` probe on the same output files (burler's `probeLiveRound`, `SingleLLMProducer`, the `bouncer.go` sites) would then hard-error "cannot be confirmed dead or alive" for up to three minutes after a failed start, where today a startup `OutcomeDied` is `verdictRespawnEligible` (its strand is still tracked and live with a terminal Outcome, `attach.go`'s tracked-live branch).
+  A terminal Outcome is written only after the run's own classification (`finalize` or the not-ready teardown), so no agent can still be working behind it.
+  The tracked-live branch already treats a terminal Outcome as respawn-eligible whatever reed says of the pane, so this extends the same rule to the untracked case.
+  Placing the check after `allOutputFilesExist` keeps the Completion Signal Invariant's "consult the file contract first" order, and the tripwire's `attach.go` counts are re-audited.
+- Rejected:
+  - Removing the run dir in the teardown — loses the capture file and the diagnosis artifacts.
+  - Accepting the window — turns every failed start into a hard resume error for minutes.
   Removing the run directory too — loses the diagnosis artifacts; `sweepOrphansOpportunistic` already reclaims it once its strand is gone and it is older than `2 × startup_timeout_s`.
 
 ### Startup mechanism failure: error with identity, no teardown
@@ -88,7 +104,7 @@ A second provider plugs in as its own `Engine`, and no caller changes.
 
 ### RunGated preserves its OutcomeDied contract
 
-- Decision: split the body of `StartGated` into a private `start(spec, gate)` that returns the handle plus, on a not-ready resolution, the finalized `Result` (`Outcome: OutcomeDied`, identity fields, `RunDir`).
+- Decision: split the body of `StartGated` into a private `start(spec, gate)` that returns the handle plus, on a not-ready resolution, the finalized `Result` (`Outcome: OutcomeDied`, or `OutcomeTimeout` on run-deadline expiry — see "Run deadline anchoring"; identity fields; `RunDir`).
   `StartGated` turns a not-ready resolution into the `ErrNotStarted` error; `RunGated` returns `(result, nil)` for it, then calls `Wait` otherwise.
   The finalize path used for the not-ready case must NOT evaluate the gate (the outcome is never `OutcomeDone`) and must record the outcome and log "run finished" as `finalize` does today.
   Whether that reuses `finalize` plus the teardown steps, or a dedicated helper, is a plan choice — but it must still run through the Completion Signal Invariant (see Constraints) and live where the tripwire scans (see decision "Startup step lives in a tripwire-scanned file").
@@ -245,6 +261,8 @@ A second provider plugs in as its own `Engine`, and no caller changes.
 - **Run deadline during startup**: `spec.Timeout` shorter than the startup window with a never-ready provider → `RunGated` returns `OutcomeTimeout` at `spec.Timeout` (not `OutcomeDied`), `StartGated` returns `ErrNotStarted`, strand torn down, `run.json` Outcome `timeout`; with the file contract satisfied at that point → handle returned / Wait classifies `OutcomeDone`.
 - **shedadapters burler round**: an existing or new test proves a startup-failed first attempt (`OutcomeDied` from the runner seam) still takes the one-retry path — guards the reason `RunGated` keeps `OutcomeDied`.
 - **Wait**: a started run's `Wait` issues no `CapturePane`/`Startup` calls; an attached run with `Started: false` still runs the startup probe and still classifies `OutcomeDied` at the window's end; an attached run with `Started: true` still skips it.
+- **Attach after a not-ready start (TDD candidate)**: a failed start (strand removed, dir kept, Outcome `died`/`timeout`, dir younger than `2 × startup_timeout_s`) followed by `Attach`/`AttachGated` on the same output files returns `found == false` with no error (respawn-eligible) — not the "cannot be confirmed dead or alive" error.
+  Existing coverage stays: an untracked `running` candidate younger than the age guard still errors, and an empty-Outcome legacy record keeps the age rule.
 - **Completion-signal tripwire**: updated counts pass and still fail if a guard is deleted.
 - **Existing shuttleengine suites**: must pass unchanged in intent after the fake/helper adjustment for a ready start.
 - **loomcli**: `StartDriver` error → bootstrap refuses with shuttle's message and releases `bootstrapLock`; successful start → no further readiness call exists (compile-level, since the method is gone); help-tree test passes with the new `Long` text.
@@ -254,7 +272,7 @@ A second provider plugs in as its own `Engine`, and no caller changes.
 ## Q&A log
 
 - **Q:** How should shuttle guarantee readiness — blocking start, a readiness-gated handle type, or a background probe? **A:** [auto-pick] Blocking `Start`/`StartGated`. **Why:** the error return is the one result no caller can skip, and short-lived callers (loom `start`) would kill a background probe.
-- **Q:** What happens to a started run whose provider never becomes ready? **A:** [auto-pick] Return `ErrNotStarted`, remove the strand, keep the run dir, save the last capture, persist Outcome `died`. **Why:** a live stuck strand makes loom's next `start` skip readiness and leaks an unreclaimable webster Master; the capture keeps the diagnosis.
+- **Q:** What happens to a started run whose provider never becomes ready? **A:** [auto-pick] Return `ErrNotStarted`, remove the strand (ignoring `KeepPane`), keep the run dir, save the last capture, persist Outcome `died` (or `timeout` on run-deadline expiry). **Why:** a live stuck strand makes loom's next `start` skip readiness and leaks an unreclaimable webster Master; the capture keeps the diagnosis.
 - **Q:** Should `RunGated`/`Run` surface startup failure as an error or keep `OutcomeDied`? **A:** [auto-pick] Keep `(Result{OutcomeDied}, nil)`. **Why:** shed producers route `OutcomeDied` and errors through different ladders.
 - **Q:** Keep `Run.AwaitStarted` public? **A:** [auto-pick] Remove it. **Why:** no caller remains, and the brief asks for removal when unused.
 - **Q:** Close webster's widened persist-before-block windows (Master and recovery strand) with a new callback seam? **A:** [auto-pick] No — accept and document both residuals. **Why:** the windows already exist, are bounded by `startup_timeout_s`, and a one-caller hook on `Spec` costs more than it closes.
@@ -262,6 +280,7 @@ A second provider plugs in as its own `Engine`, and no caller changes.
 - **Q:** What should `Wait` do about startup after the move? **A:** [auto-pick] Seed `started` from `run.state.Started` alone; keep the probe for attached-not-started runs. **Why:** one probe implementation serves both paths, and `Started` is already the persisted "passed the probe" fact.
 - **Q:** Does `spec.Timeout` still include startup time? **A:** [auto-pick] Yes — the deadline is anchored before the startup step. **Why:** unchanged budget semantics for every caller.
 - **Q:** Does the startup step honour `run.deadline`, and with which outcome? **A:** [auto-pick] Yes, through `classifyDeadlineExpiry(OutcomeTimeout)`, with the same teardown as any not-ready start. **Why:** matches `Wait`'s per-tick deadline check today, so a short `--timeout` run still reports `timeout`.
+- **Q:** A not-ready start leaves an untracked run dir, which `Attach` would refuse as "cannot be confirmed dead or alive" for 2 × `startup_timeout_s` — how does it read? **A:** [auto-pick] A terminal persisted Outcome on an untracked or binding-cleared candidate is respawn-eligible, checked after the file contract. **Why:** it matches the tracked-live branch's existing rule and keeps the diagnosis dir.
 - **Q:** Does `RunGated` keep returning identity fields on a startup mechanism failure? **A:** [auto-pick] Yes — the private `start` hands back `identity()` beside the error. **Why:** that is what `Wait`'s mechanism-failure exits return today.
 - **Q:** Where do the startup step's negative verdicts live, given the completion-signal tripwire scans only `wait.go`/`attach.go`? **A:** [auto-pick] In `wait.go`; `run.go` only passes them through. **Why:** keeps the tripwire's coverage real without pinning `run.go`'s many unrelated `Errorf` returns.
 - **Q:** Stencil and help text promise `recover-batch` blocks at most `poll_wait_s` — reword or leave? **A:** [auto-pick] Reword: a spawning call also waits for the provider to come up. **Why:** Master sizes its own expectations from that stencil claim.
