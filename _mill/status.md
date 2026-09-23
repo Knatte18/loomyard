@@ -36,3 +36,9 @@ batches:
     state: pending
     verify_baseline_failures: []
 ```
+
+## Inferred-success log
+
+```text
+'2026-09-23T12:54:48Z'  shuttle-blocking-start  round 1
+```
