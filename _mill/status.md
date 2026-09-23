@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: llm-driver-trust-dialog-hang
 branch: llm-driver-trust-dialog-hang
 plan: _mill/plan
@@ -45,6 +45,7 @@ holistic-reviewing  '2026-09-23T09:01:53Z'
 holistic-fixing  '2026-09-23T09:04:28Z'
 nits-fixed-holistic  '2026-09-23T09:05:59Z'
 holistic-approved  '2026-09-23T09:06:07Z'
+done  '2026-09-23T09:12:16Z'
 ```
 
 ## Batches
