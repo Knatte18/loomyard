@@ -1,0 +1,22 @@
+MILL_REVIEW_BEGIN
+# Review: llm-driven child can park forever on Claude Code's own workspace-trust dialog — holistic
+
+```yaml
+verdict: APPROVE
+reviewer_model: sonnethigh
+reviewed_file: plan/ + source
+date: 2026-09-23
+```
+
+## Findings
+
+### [NIT:consistency] Stale "1 of 6" failure-site comment left unrenumbered
+**Location:** `internal/loomcli/start_driver_test.go:318`
+**Issue:** `TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnDriverSettingsResolutionFailure`'s doc comment still reads "covers failure site 1 of 6", while every other failure-site comment in the same file (sites 2–7) was correctly renumbered to "of 7" per the batch 2 card 3 instruction ("renumber the failure-site doc comments from 'of 6' to 'of 7'").
+**Fix:** Change "1 of 6" to "1 of 7" for consistency with the rest of the file.
+
+## Verdict
+
+APPROVE
+Both batches match their cards, shared decisions, and CONSTRAINTS.md precisely; only a trivial stale comment number was found.
+MILL_REVIEW_END
