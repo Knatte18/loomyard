@@ -371,13 +371,19 @@ func TestAttach_OutputFilesMismatch(t *testing.T) {
 // run, respawn-eligible once it clears the age guard.
 func TestAttach_UntrackedStrand_AgeRule(t *testing.T) {
 	tests := []struct {
-		name      string
-		age       time.Duration
-		wantErr   bool
-		wantFound bool
+		name           string
+		age            time.Duration
+		outcome        string
+		includeOutcome bool
+		wantErr        bool
+		wantFound      bool
 	}{
-		{"younger_than_minAge_errors", 10 * time.Second, true, false},
-		{"older_than_minAge_respawns", 2 * time.Minute, false, false},
+		{"younger_than_minAge_errors", 10 * time.Second, runOutcomeRunning, true, true, false},
+		{"older_than_minAge_respawns", 2 * time.Minute, runOutcomeRunning, true, false, false},
+		// An empty (legacy) Outcome keeps the age rule exactly like the runOutcomeRunning case: it is
+		// neither a terminal Outcome (isTerminalOutcome) nor a satisfied file contract, so a young
+		// directory still cannot be ruled dead.
+		{"empty_outcome_young_dir_errors", 10 * time.Second, "", false, true, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -389,7 +395,7 @@ func TestAttach_UntrackedStrand_AgeRule(t *testing.T) {
 			runner.clock = fc
 
 			outputFile := filepath.Join(runRoot, "out.md") // never written: not the leftover case
-			runDir := seedAttachRun(t, runRoot, "run-1", seedAttachRunOpts{strandGUID: "strand-1", outputFiles: []string{outputFile}, outcome: runOutcomeRunning, includeOutcome: true})
+			runDir := seedAttachRun(t, runRoot, "run-1", seedAttachRunOpts{strandGUID: "strand-1", outputFiles: []string{outputFile}, outcome: tt.outcome, includeOutcome: tt.includeOutcome})
 			setDirAge(t, runDir, fc.Now().Add(-tt.age))
 
 			_, found, err := runner.Attach(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute})
@@ -443,6 +449,62 @@ func TestAttach_BindingClearedStrand_AgeRule(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestAttach_UntrackedTerminalRecord_RespawnEligibleRegardlessOfAge pins the new rule: a candidate
+// whose persisted Outcome already reads a terminal value (done/asking/died/timeout) is respawn-eligible
+// at any directory age, whatever reed says of its pane — parity with dispositionCandidate's own
+// tracked-and-live branch, which already treats a terminal Outcome as respawn-eligible regardless of
+// age. Covers both routes into leftoverThenAgeVerdict: an untracked strand, and a tracked strand with a
+// cleared pane binding.
+func TestAttach_UntrackedTerminalRecord_RespawnEligibleRegardlessOfAge(t *testing.T) {
+	t.Run("Untracked", func(t *testing.T) {
+		for _, outcome := range []string{"done", "asking", "died", "timeout"} {
+			t.Run(outcome, func(t *testing.T) {
+				reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: nil}}}
+				runner, _, dotLyxDir, runRoot := newAttachTestRunner(t, reed, &fakeEngine{}, Config{StartupTimeoutS: 30, RunTimeoutMin: 5})
+				seedPresentReedState(t, dotLyxDir)
+				fc := newFakeClock(time.Now())
+				runner.clock = fc
+
+				outputFile := filepath.Join(runRoot, "out.md") // never written: not the leftover-files case
+				runDir := seedAttachRun(t, runRoot, "run-1", seedAttachRunOpts{strandGUID: "strand-1", outputFiles: []string{outputFile}, outcome: outcome, includeOutcome: true})
+				setDirAge(t, runDir, fc.Now().Add(-2*time.Duration(30)*time.Second)) // younger than 2*StartupTimeoutS
+
+				_, found, err := runner.Attach(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute})
+				if err != nil {
+					t.Fatalf("Attach() error = %v; want nil — a terminal-Outcome record is respawn-eligible regardless of age", err)
+				}
+				if found {
+					t.Errorf("found = true; want false")
+				}
+			})
+		}
+	})
+
+	t.Run("BindingCleared", func(t *testing.T) {
+		for _, outcome := range []string{"done", "asking", "died", "timeout"} {
+			t.Run(outcome, func(t *testing.T) {
+				reed := &fakeReed{StatusQueue: []reedengine.StatusResult{deadStatus("strand-1", "")}}
+				runner, _, dotLyxDir, runRoot := newAttachTestRunner(t, reed, &fakeEngine{}, Config{StartupTimeoutS: 30, RunTimeoutMin: 5})
+				seedPresentReedState(t, dotLyxDir)
+				fc := newFakeClock(time.Now())
+				runner.clock = fc
+
+				outputFile := filepath.Join(runRoot, "out.md")
+				runDir := seedAttachRun(t, runRoot, "run-1", seedAttachRunOpts{strandGUID: "strand-1", outputFiles: []string{outputFile}, outcome: outcome, includeOutcome: true})
+				setDirAge(t, runDir, fc.Now().Add(-2*time.Duration(30)*time.Second))
+
+				_, found, err := runner.Attach(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, Display: render.Display{Anchor: render.AnchorBelowParent}})
+				if err != nil {
+					t.Fatalf("Attach() error = %v; want nil — a terminal-Outcome record is respawn-eligible regardless of age", err)
+				}
+				if found {
+					t.Errorf("found = true; want false")
+				}
+			})
+		}
+	})
 }
 
 // TestAttach_ReedStateGate_AbsentOrUnreadable pins that both an absent and an unreadable reed.json

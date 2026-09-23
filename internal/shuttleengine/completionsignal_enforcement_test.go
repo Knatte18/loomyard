@@ -101,8 +101,10 @@ var negativeVerdictMarkers = map[string]bool{
 //     the confirmed-dead-pane record. Both are reachable only past the function's own top-of-body
 //     contract guard, so each is either a run that ALREADY ended or one whose files are not all
 //     present; neither needs a further check.
-//   - leftoverThenAgeVerdict [verdictRespawnEligible] x2, [verdictError] x1 — the leftover-then-age
-//     rule, whose first line is the contract check.
+//   - leftoverThenAgeVerdict [verdictRespawnEligible] x3, [verdictError] x1 — the leftover-then-age
+//     rule, whose first line is the contract check. The third respawn-eligible return is the terminal-
+//     Outcome check added by the shuttle-blocking-start batch: it sits after the function's file-
+//     contract check, so it is reached only when the output files are not all present.
 //   - AttachGated [Errorf] x5 — a rename of Attach's own unchanged set, not a new site: card 3 moved
 //     Attach's whole body into AttachGated wholesale and added no return of its own. The five are
 //     still the three reed-state gates (each consulting soleFinishedCandidate first) plus the two
@@ -136,7 +138,7 @@ var auditedNegativeVerdictReturns = map[string]int{
 	"dispositionCandidate [verdictRespawnEligible]":   2,
 	"finalize [Errorf]":                               2,
 	"leftoverThenAgeVerdict [verdictError]":           1,
-	"leftoverThenAgeVerdict [verdictRespawnEligible]": 2,
+	"leftoverThenAgeVerdict [verdictRespawnEligible]": 3,
 	"normalizeAttachSpec [Errorf]":                    1,
 	"readEventsFrom [Errorf]":                         3,
 }

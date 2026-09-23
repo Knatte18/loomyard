@@ -441,18 +441,39 @@ func dispositionCandidate(c attachCandidate, strands []reedengine.StrandStatus, 
 
 // leftoverThenAgeVerdict resolves the two candidate answers that are neither confirmed-live nor
 // confirmed-dead (untracked, or tracked with a cleared pane binding): a candidate whose output files
-// all already exist is a leftover from a run that already finished, respawn-eligible at any
-// directory age; otherwise a candidate old enough to rule out a concurrently-starting run
-// (sweepOrphans' own minAge guard) is respawn-eligible; a younger one is an error, since a live agent
-// cannot yet be ruled out.
+// all already exist is a leftover from a run that already finished, respawn-eligible at any directory
+// age; otherwise a candidate whose persisted Outcome already reads a terminal value is respawn-eligible
+// at any age too, for the same reason dispositionCandidate's own tracked-and-live branch already treats
+// a terminal Outcome as respawn-eligible whatever reed says of the pane: an untracked timeout/asking
+// record written by finalize may still have a live pane behind it (finalize cleans up only on
+// OutcomeDone), and respawning beside it adds no hazard class the tracked-live branch does not already
+// accept; otherwise a candidate old enough to rule out a concurrently-starting run (sweepOrphans' own
+// minAge guard) is respawn-eligible; a younger one with an empty (legacy) or unrecognised Outcome keeps
+// the age rule, since a live agent cannot yet be ruled out.
 func leftoverThenAgeVerdict(c attachCandidate, spec Spec, minAge time.Duration, now time.Time) attachVerdict {
 	if allOutputFilesExist(spec.OutputFiles) {
+		return verdictRespawnEligible
+	}
+	if isTerminalOutcome(c.state.Outcome) {
 		return verdictRespawnEligible
 	}
 	if now.Sub(c.dirMtime) >= minAge {
 		return verdictRespawnEligible
 	}
 	return verdictError
+}
+
+// isTerminalOutcome reports whether outcome is one of the four values finalize ever writes to
+// RunState.Outcome: done, asking, died, or timeout. It is false for the empty string (a legacy
+// pre-Outcome-field record, or a run.json Start has not yet finalized), for runOutcomeRunning, and for
+// any value this package does not recognize.
+func isTerminalOutcome(outcome string) bool {
+	switch outcome {
+	case string(OutcomeDone), string(OutcomeAsking), string(OutcomeDied), string(OutcomeTimeout):
+		return true
+	default:
+		return false
+	}
 }
 
 // warnAttachCandidates logs one logger.Warn per candidate naming its run directory and strand guid,
