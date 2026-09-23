@@ -194,6 +194,7 @@ func TestNewDetachedRunner_AcceptsStandaloneShapeAndBothPaneCwdPositions(t *test
 			reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
 			engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd"}}
 			runner := NewDetachedRunner(reed, engine, anchor, worktree, tt.paneCwd, Config{RunTimeoutMin: 5})
+			readyStart(reed, engine)
 
 			if _, err := runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}}); err != nil {
 				t.Errorf("Start() error = %v; want the told-path verdict clean for a disjoint standalone pair with paneCwd %q", err, tt.paneCwd)
@@ -209,6 +210,7 @@ func TestRun_RunDir_ReturnsStartCreatedDirectory(t *testing.T) {
 	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", SessionID: "sess"}}
 	runner, anchorPath, _ := newTestRunner(t, reed, engine)
+	readyStart(reed, engine)
 
 	run, err := runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}})
 	if err != nil {
@@ -232,6 +234,7 @@ func TestRunner_Start_HappyPath_WiresAddSpecVerbatim(t *testing.T) {
 	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "launch-cmd", ResumeCmd: "resume-cmd", SessionID: "session-1"}}
 	runner, _, _ := newTestRunner(t, reed, engine)
+	readyStart(reed, engine)
 
 	spec := Spec{
 		Prompt:      "do the thing",
@@ -282,6 +285,7 @@ func TestRunner_Start_PersistsRunningOutcome(t *testing.T) {
 	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "launch-cmd", SessionID: "session-1"}}
 	runner, _, _ := newTestRunner(t, reed, engine)
+	readyStart(reed, engine)
 
 	run, err := runner.Start(Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}})
 	if err != nil {
@@ -487,6 +491,7 @@ func TestRunner_Start_SweepErrorDoesNotBlockStart(t *testing.T) {
 	}
 
 	runner := NewRunner(reed, engine, anchorPath, worktree, cfg)
+	readyStart(reed, engine)
 	run, err := runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}})
 	if err != nil {
 		t.Fatalf("Start() error: %v, want sweep failure to be non-blocking", err)
@@ -527,6 +532,7 @@ func TestRunner_Start_SweepSkipsEntirelyOnReedStateReadError(t *testing.T) {
 	setDirMTime(t, keptDir, time.Now(), 10*time.Minute)
 
 	runner := NewRunner(reed, engine, anchorPath, worktree, cfg)
+	readyStart(reed, engine)
 	if _, err := runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}}); err != nil {
 		t.Fatalf("Start() error: %v", err)
 	}
@@ -565,6 +571,7 @@ func TestRunner_Start_SweepSkipsEntirelyOnAbsentReedState(t *testing.T) {
 	setDirMTime(t, liveRunDir, time.Now(), 10*time.Minute)
 
 	runner := NewRunner(reed, engine, anchorPath, worktree, cfg)
+	readyStart(reed, engine)
 	if _, err := runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}}); err != nil {
 		t.Fatalf("Start() error: %v", err)
 	}
