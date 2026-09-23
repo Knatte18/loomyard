@@ -60,6 +60,15 @@ An llm-driven child is unusable on any fresh fixture path until this is fixed.
   Also check wrapped comment pairs by eye where a line ends in "pane-liveness" or "pane".
   The list is the completeness contract, and the grep only catches drift.
 - The reproduction recipe below, recorded in this discussion and followed as the task's live verification.
+- `internal/loomcli/smoke_driverstrand_test.go` (smoke-tagged) must be adapted, because the new signal breaks it as written.
+  Its stub provider is `#!/bin/sh\nsleep 3600\n`, which never renders the `❯` ready marker or "shortcuts".
+  So `claudeengine.Startup` classifies its pane `StartupPending` on every tick.
+  Under `shuttleengine.ConfigTemplate()`'s `startup_timeout_s: 90`, the first `loom start --no-attach` then either refuses at 90s or is killed by the test's own 30s `runLoomCLINoFatal` timeout.
+  Disposition:
+  - the stub prints a ready marker line (for example `printf '❯ \n'`) before it sleeps;
+  - `driverShuttleConfig` lowers `startup_timeout_s` to a value well under the 30s per-invocation timeout (for example 10), so a regression surfaces as a refusal envelope rather than a test-harness kill.
+
+  This smoke test then becomes the live-substrate check of the new signal's success path, in addition to its existing one-strand-never-two property.
 
 **Out:**
 
@@ -289,6 +298,8 @@ An llm-driven child is unusable on any fresh fixture path until this is fixed.
   - Remove the `awaitDriverPane` tests.
 - **Completion Signal tripwire:** add the `AwaitStarted [Errorf]` return-site pin and the `allOutputFilesExist` call-site pin, each with its audit comment.
   Also add a unit case: at the retry cap with the output files present, `AwaitStarted` returns true, not the error.
+- **Smoke:** adapt `internal/loomcli/smoke_driverstrand_test.go` per the Scope disposition (the stub prints a ready marker, and `startup_timeout_s` is lowered).
+  It must pass under `-tags smoke`, which proves `AwaitStarted`'s success path against a real reed session.
 - **Live:** the reproduction recipe above, run once post-fix on a fresh path.
   Record the `jq` before/after output and the pane capture in the task's completion notes.
 
