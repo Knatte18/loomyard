@@ -95,7 +95,9 @@ Batch-local decision: the go arm's run-lock handshake, `bootstrapLock`'s acquire
   - change `driverShuttleConfig` to take `t *testing.T` first, and additionally replace `startup_timeout_s: 90` with `startup_timeout_s: 10` in the template text, calling `t.Fatalf` if either replaced substring is absent from the template, so a template drift fails loudly rather than silently leaving the 90s window; update its one call site and its doc comment, which states that the lowered window keeps a readiness regression surfacing as a refusal envelope inside the 30s per-invocation timeout;
   - extend the file header comment with one sentence saying this test now also proves the llm arm's readiness await (`Run.AwaitStarted`) succeeds against a real reed pane.
 
-  The test's three-bootstrap assertions are otherwise unchanged.
+  - capture the exit code `runLoomCLINoFatal` returns for each of the three `loom start --no-attach` invocations (today discarded as `_`) and fail with the captured output unless it is 0: `runLoomCLINoFatal` returns a nil error for a non-zero exit, and a readiness refusal leaves the live strand in place, so without this assertion the strand-count checks would pass on a refusal and the lowered window would turn a readiness regression into a silent pass.
+
+  The test's three-bootstrap strand-count and liveness assertions are otherwise unchanged.
 - **Commit:** `test(loom): drive the driver-strand smoke stub to a ready marker`
 
 ## Batch Tests

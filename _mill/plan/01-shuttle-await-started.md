@@ -108,13 +108,14 @@ No batch-local decision differs from the overview's Shared Decisions.
   An empty `inputs` (an implementation that cannot locate the accepting option) logs nothing.
 
   Extend the file header comment of `internal/shuttleengine/wait.go` with one sentence saying the file also hosts `Run.AwaitStarted`, the startup probe on its own, for a caller that starts a run and never waits on it.
+  Reword the header's "Wait is the only place in the run loop that sleeps" sentence so it names `Wait` and `AwaitStarted` as the two places that sleep, both through the clock seam defined here.
 
   In `internal/shuttleengine/run.go`, reword the `RunDir` doc comment's last clause ("batch 4's pane-liveness probe refuses the bootstrap with exactly this path") so it says loom's llm-driver bootstrap refuses with exactly this path when `AwaitStarted` reports the provider never came up.
   Make no other change to `internal/shuttleengine/run.go`.
 
   In `internal/shuttleengine/completionsignal_enforcement_test.go`:
   - add `"AwaitStarted [Errorf]": 3` to `auditedNegativeVerdictReturns`, with a justification bullet in that map's doc comment: the three retry-cap arms mirror `Wait`'s status-cap arms, each sits behind a direct `allOutputFilesExist` check, and `AwaitStarted` never finalizes an `Outcome`; the `(false, nil)` not-ready exit carries no marker and is guarded upstream, reached only when `checkLivenessTick` or `classifyStartupWindow` answers `OutcomeDied`, both already pinned;
-  - add `"AwaitStarted": 2` to `auditedFileContractCallSites`, with a justification sentence in that map's doc comment naming the retry-cap guard and the tick-cap answer;
+  - add `"AwaitStarted": 2` to `auditedFileContractCallSites`, with a justification sentence in that map's doc comment naming the retry-cap guard and the tick-cap answer, and update that doc comment's opening "Eight sites" tally to ten so it stays true once the two new sites land;
   - update each map's "as of" phrasing to name this task (`llm-driver-trust-dialog-hang`) as the latest audit.
 - **Commit:** `feat(shuttle): add Run.AwaitStarted, the startup probe for a run that is never waited on`
 
@@ -136,6 +137,7 @@ No batch-local decision differs from the overview's Shared Decisions.
   Reuse, without redefining, `fakeReed` and `fakeEngine` from `internal/shuttleengine/fakes_test.go`, and `fakeClock`, `newFakeClock`, `newWaitTestRunner` and `captureLoggerOutput` from `internal/shuttleengine/wait_test.go`.
   Build each `*Run` directly, as `TestRun_Wait_Died_ViaStartupTimeout_TrustDismissRecorded` in `internal/shuttleengine/wait_test.go` does: `runner`, `spec` (with `OutputFiles` naming a file under a `t.TempDir()` run directory), `runDir`, `state` (with `StrandGUID` and `Outcome: runOutcomeRunning`), and `clock`.
   Seed each run directory with `saveRunState(runDir, state)` before calling `AwaitStarted`, so the run.json assertions below have a baseline.
+  Every case that does not name its own `Config` uses `Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30}`, the shape most `internal/shuttleengine/wait_test.go` cases use: a zero `StartupTimeoutS` would close the window after the first `fakeClock` sleep and turn a multi-tick ready path into a `(false, nil)`.
 
   Test-local doubles, declared in this file:
   - a `frozenClock` whose `Now` always returns one fixed time and whose `Sleep` does nothing, with a `var _ clock = (*frozenClock)(nil)` assertion;
