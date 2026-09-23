@@ -39,16 +39,23 @@ An llm-driven child is unusable on any fresh fixture path until this is fixed.
   Also the `--no-attach` flag's usage string in `start.go` ("return once the driver has taken the run lock"), which names only the go arm's signal.
   It must cover the llm arm's new signal (the driver's provider TUI ready, with any one-time gate dismissed).
   Also `docs/overview.md`'s `lyx loom start` description, if it names the readiness signal.
-  Also every code comment that names the retired pane-liveness probe or `awaitDriverPane`, in any package.
-  Find them with `grep -rn "pane-liveness probe\|awaitDriverPane\|driverPaneAttempts" internal/`.
-  Today's hits include:
-  - `internal/shuttleengine/run.go`'s `RunDir` doc comment ("batch 4's pane-liveness probe refuses the bootstrap");
-  - `driverSpec`'s comment;
-  - `startLLMDriverArm`'s comment;
-  - `runDriverSpawnAndWait`'s comment;
-  - the step-6 llm-arm block comment in `start.go`.
+  Also every comment, help string, and log message that describes the llm arm's readiness as pane liveness.
+  The authoritative inventory is this list, verified against source during review:
+  - `internal/shuttleengine/run.go`: the `RunDir` doc comment ("batch 4's pane-liveness probe refuses the bootstrap").
+  - `internal/loomcli/driverspec.go`: `driverSpec`'s comment ("polled through the pane-liveness probe").
+  - `internal/loomcli/start.go`:
+    - `startLLMDriverArm`'s comment ("run the pane-liveness probe", wrapped across two lines);
+    - `runDriverSpawnAndWait`'s comment ("the llm arm's strand launch and pane-liveness probe");
+    - the step-6 llm-arm block comment ("probe the just-launched driver strand's pane for liveness");
+    - the `Long` text ("the strand's own pane coming alive");
+    - the `--no-attach` usage string;
+    - the `logger.Info("loom: driver strand pane is live", …)` line, which becomes a readiness message.
+  - `internal/loomcli/driverlaunch.go`: `awaitDriverPane` and its constants and comments are deleted outright.
+    The file header comment names the `driverPaneProbe` seam, which stays because it still serves the strand read and corpse removal, so the header needs no change.
 
-  The grep, not this list, is the completeness check.
+  As a backstop for hits this list missed, run the wrapping-tolerant grep `grep -rnE "pane-liveness|liveness probe|awaitDriverPane|driverPane(Attempts|PollInterval)|pane (is live|coming alive|for liveness)" internal/ docs/`.
+  Also check wrapped comment pairs by eye where a line ends in "pane-liveness" or "pane".
+  The list is the completeness contract, and the grep only catches drift.
 - The reproduction recipe below, recorded in this discussion and followed as the task's live verification.
 
 **Out:**
@@ -117,9 +124,23 @@ An llm-driven child is unusable on any fresh fixture path until this is fixed.
     The strand is deliberately left for diagnosis (see "Not-ready refusal leaves the strand in place").
     A late-booting driver doing real work is a better outcome than one killed mid-boot.
 - Rejected (lock): releasing `bootstrapLock` before the probe and re-acquiring it afterwards, for the race above.
-- Rationale: it closes the trust-dialog case, and it also closes the "binary booted into a shell that shows no TUI" case that `awaitDriverPane`'s doc comment names as a residual.
+- Rationale: it closes the trust-dialog case.
+  `awaitDriverPane`'s doc comment names its own residual as "a provider that boots, takes the pane, and then never reads its prompt".
+  A modal startup gate is one instance of that residual, and the one this task closes.
+  `StartupReady` does not close the residual in general: a TUI that reaches ready and then never acts on its prompt still reads as ready.
+  Deleting `awaitDriverPane` must not delete that note.
+  `AwaitStarted`'s doc comment carries the narrowed residual forward: the method answers "the provider's input TUI is on screen, with any recognized one-time gate dismissed", never "the provider read its prompt".
+  A ready-then-idle session still degrades to the outer run's watch budget, which is the observability gap this task leaves out of scope.
   Reusing `startup_timeout_s` avoids a second, loom-owned timeout for the same question.
 - Rejected: keeping the liveness probe and adding the dismissal after it creates two probes with two budgets for one question.
+- Decision (`startup_timeout_s: 0`): accepted as-is, with no floor.
+  `config.go` documents 0 as "fast-fails as died".
+  Under the new signal, a config with 0 makes every llm-arm `start` refuse on its first tick unless the TUI is already ready.
+  Today such a config gets a 5s pane-liveness probe.
+  That is consistent: the same 0 already fast-fails every producer run's `Wait` in the same shuttle config, so a host set to 0 cannot run loom on either driver.
+  A loom-only floor would make the llm driver the one shuttle consumer that ignores the documented value.
+  mill-plan adds a sentence to `AwaitStarted`'s doc comment noting that the window is `startup_timeout_s` verbatim, 0 included.
+- Rejected (0 handling): a floor (for example, 5s minimum) inside `AwaitStarted` or in loomcli, because it silently overrides a documented config value for one caller.
 
 ### Result mapping and bookkeeping
 
