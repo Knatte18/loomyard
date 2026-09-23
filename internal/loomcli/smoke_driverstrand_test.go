@@ -34,6 +34,11 @@
 // This package's own testmain_test.go already arms the hermetic git test environment
 // (gitkit.HermeticGitEnv()) for the whole test binary, untagged files included, so this file needs no
 // TestMain of its own.
+//
+// This test also proves the llm arm's readiness await (Run.AwaitStarted) succeeds against a real reed
+// pane: every "loom start --no-attach" below now blocks on that await rather than the retired
+// pane-liveness probe, and its assertions below on the invocation's own exit code catch a readiness
+// regression as a refusal rather than letting it pass silently.
 package loomcli
 
 import (
@@ -54,14 +59,19 @@ import (
 )
 
 // writeStubDriverScript writes a POSIX shell script standing in for the claude binary this file's
-// spawns launch: it ignores every argument the claude engine's own launch line appends and simply
-// sleeps for a long, harmless duration. It never needs to exit on its own -- this file's own third
-// case kills its pane directly (see the file-level doc comment) -- so the sleep only needs to outlast
-// the whole test, never to be observed finishing.
+// spawns launch: it ignores every argument the claude engine's own launch line appends, prints an
+// ASCII ready-marker line, then sleeps for a long, harmless duration. The marker line is required
+// under the readiness signal this file now drives: claudeengine's Startup classifies a capture
+// containing "shortcuts" as StartupReady, and without it AwaitStarted would never observe readiness,
+// so every "loom start --no-attach" below would refuse at startup_timeout_s instead of succeeding. An
+// ASCII marker is used rather than the real footer's "❯" glyph to avoid depending on the pane's own
+// encoding of that character. The script never needs to exit on its own -- this file's own third case
+// kills its pane directly (see the file-level doc comment) -- so the sleep only needs to outlast the
+// whole test, never to be observed finishing.
 func writeStubDriverScript(t *testing.T) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "stub-claude.sh")
-	script := "#!/bin/sh\nsleep 3600\n"
+	script := "#!/bin/sh\necho '? for shortcuts'\nsleep 3600\n"
 	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
 		t.Fatalf("write stub driver script: %v", err)
 	}
@@ -69,12 +79,29 @@ func writeStubDriverScript(t *testing.T) string {
 }
 
 // driverShuttleConfig returns shuttle's shipped config template with the claude key pointed at
-// stubPath. Unlike smoke_test.go's own providerlessShuttleConfig, this file's whole point is proving
-// reed's own strand bookkeeping across a REAL spawned pane, so the provider path must resolve to a
-// real (if stubbed) executable rather than a deliberately-broken one.
-func driverShuttleConfig(stubPath string) string {
+// stubPath and startup_timeout_s lowered from 90 to 10. Unlike smoke_test.go's own
+// providerlessShuttleConfig, this file's whole point is proving reed's own strand bookkeeping across a
+// REAL spawned pane, so the provider path must resolve to a real (if stubbed) executable rather than a
+// deliberately-broken one. The lowered window keeps a readiness regression -- AwaitStarted never
+// observing the ready marker -- surfacing as a refusal envelope inside the 30s per-invocation timeout
+// runLoomCLINoFatal enforces, rather than that timeout itself firing and masking the real failure. Both
+// substring replacements are asserted present before being applied, so a template drift (the shipped
+// claude key or the shipped startup_timeout_s value changing shape) fails loudly here rather than
+// silently leaving the 90s window in place.
+func driverShuttleConfig(t *testing.T, stubPath string) string {
+	t.Helper()
 	cfg := shuttleengine.ConfigTemplate()
-	return strings.Replace(cfg, "claude: ${env:LYX_SHUTTLE_CLAUDE:-}", "claude: "+stubPath, 1)
+	const claudeKey = "claude: ${env:LYX_SHUTTLE_CLAUDE:-}"
+	const timeoutKey = "startup_timeout_s: 90"
+	if !strings.Contains(cfg, claudeKey) {
+		t.Fatalf("shuttle config template drift: %q not found", claudeKey)
+	}
+	if !strings.Contains(cfg, timeoutKey) {
+		t.Fatalf("shuttle config template drift: %q not found", timeoutKey)
+	}
+	cfg = strings.Replace(cfg, claudeKey, "claude: "+stubPath, 1)
+	cfg = strings.Replace(cfg, timeoutKey, "startup_timeout_s: 10", 1)
+	return cfg
 }
 
 // seedLLMDriver writes loc's own self-run seed directly to disk with driver=llm, uncommitted --
@@ -152,7 +179,7 @@ func TestSmokeDriverStrand_ReentrantAcrossThreeBootstraps(t *testing.T) {
 	hubforge.SeedConfig(t, h, map[string]string{
 		"loom":    fastDeadlineLoomConfig(),
 		"reed":    reedengine.ConfigTemplate(),
-		"shuttle": driverShuttleConfig(stubPath),
+		"shuttle": driverShuttleConfig(t, stubPath),
 		"webster": websterengine.ConfigTemplate(),
 	})
 	const slug = "loom-smoke-driver-task"
@@ -169,9 +196,12 @@ func TestSmokeDriverStrand_ReentrantAcrossThreeBootstraps(t *testing.T) {
 	eng := probeReedEngine(t, loc)
 
 	// (1) a first bootstrap leaves exactly one strand under the driver name, live.
-	firstOut, _, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "start", "--no-attach")
+	firstOut, firstExit, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "start", "--no-attach")
 	if err != nil {
 		t.Fatalf("first loom start: %v; output: %s", err, firstOut)
+	}
+	if firstExit != 0 {
+		t.Fatalf("first loom start exited %d; want 0 -- output: %s", firstExit, firstOut)
 	}
 	strand, found := driverStrand(t, eng)
 	if !found || !strand.Live {
@@ -183,9 +213,12 @@ func TestSmokeDriverStrand_ReentrantAcrossThreeBootstraps(t *testing.T) {
 
 	// (2) a second bootstrap while the first driver's pane is still alive must leave exactly one
 	// strand and must not touch the live pane the first bootstrap already spawned.
-	secondOut, _, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "start", "--no-attach")
+	secondOut, secondExit, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "start", "--no-attach")
 	if err != nil {
 		t.Fatalf("second loom start: %v; output: %s", err, secondOut)
+	}
+	if secondExit != 0 {
+		t.Fatalf("second loom start exited %d; want 0 -- output: %s", secondExit, secondOut)
 	}
 	if count := statusStrandCount(t, eng, driverStrandDisplayName); count != 1 {
 		t.Fatalf("driver strands after the second bootstrap = %d; want exactly 1 -- a do-not-spawn verdict must leave reed holding one strand, not two", count)
@@ -211,9 +244,12 @@ func TestSmokeDriverStrand_ReentrantAcrossThreeBootstraps(t *testing.T) {
 	// driverReportPath's own random suffix exists for, since two attempts composing a report path in
 	// the same clock second would otherwise collide and Spec.validate would refuse the second one
 	// outright.
-	thirdOut, _, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "start", "--no-attach")
+	thirdOut, thirdExit, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "start", "--no-attach")
 	if err != nil {
 		t.Fatalf("third loom start: %v; output: %s", err, thirdOut)
+	}
+	if thirdExit != 0 {
+		t.Fatalf("third loom start exited %d; want 0 -- output: %s", thirdExit, thirdOut)
 	}
 	if count := statusStrandCount(t, eng, driverStrandDisplayName); count != 1 {
 		t.Fatalf("driver strands after the third bootstrap = %d; want exactly 1 -- corpse removal must replace the dead entry, never add a second one beside it", count)
