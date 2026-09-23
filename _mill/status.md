@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-loom-llm-arm-readiness
+phase: holistic-reviewing
 slug: llm-driver-trust-dialog-hang
 branch: llm-driver-trust-dialog-hang
 plan: _mill/plan
@@ -41,6 +41,7 @@ planned  '2026-09-23T08:46:34Z'
 implementing  '2026-09-23T08:47:02Z'
 approved-shuttle-await-started  '2026-09-23T08:54:42Z'
 approved-loom-llm-arm-readiness  '2026-09-23T09:01:22Z'
+holistic-reviewing  '2026-09-23T09:01:53Z'
 ```
 
 ## Batches
