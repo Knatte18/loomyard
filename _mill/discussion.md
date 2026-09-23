@@ -52,6 +52,9 @@ An llm-driven child is unusable on any fresh fixture path until this is fixed.
     - the `logger.Info("loom: driver strand pane is live", …)` line, which becomes a readiness message.
   - `internal/loomcli/driverlaunch.go`: `awaitDriverPane` and its constants and comments are deleted outright.
     The file header comment names the `driverPaneProbe` seam, which stays because it still serves the strand read and corpse removal, so the header needs no change.
+    Two seam comments there do change, because `AwaitStarted` joins `driverHandle`:
+    - `driverHandle`'s doc ("the two identities the bootstrap needs after launch") must name the third method, the startup await;
+    - `runnerDriverStarter.StartDriver`'s doc ("satisfies driverHandle via its StrandGUID and RunDir accessors") must name `AwaitStarted` too.
 
   As a backstop for hits this list missed, run the wrapping-tolerant grep `grep -rnE "pane-liveness|liveness probe|awaitDriverPane|driverPane(Attempts|PollInterval)|pane (is live|coming alive|for liveness)" internal/ docs/`.
   Also check wrapped comment pairs by eye where a line ends in "pane-liveness" or "pane".
