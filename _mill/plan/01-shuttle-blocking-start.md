@@ -142,7 +142,6 @@ Batch-local decisions beyond `## Shared Decisions`: none.
   - `internal/shuttleengine/attach_test.go`
   - `internal/shuttleengine/gate_test.go`
   - `internal/shedadapters/burler_test.go`
-  - `internal/shuttlecli/cli_test.go`
   - `internal/loomcli/start.go`
   - `internal/loomcli/driverlaunch.go`
 - **Edits:**
@@ -152,6 +151,7 @@ Batch-local decisions beyond `## Shared Decisions`: none.
   - `internal/shuttleengine/doc.go`
   - `internal/shuttleengine/run_test.go`
   - `internal/shuttleengine/completionsignal_enforcement_test.go`
+  - `internal/shuttlecli/cli_test.go`
   - `CONSTRAINTS.md`
   - `docs/reference/claude-trust-dialog-repro.md`
   - `docs/overview.md`
