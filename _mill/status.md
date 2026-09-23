@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-shuttle-await-started
+phase: approved-loom-llm-arm-readiness
 slug: llm-driver-trust-dialog-hang
 branch: llm-driver-trust-dialog-hang
 plan: _mill/plan
@@ -40,6 +40,7 @@ plan-review-r7  '2026-09-23T08:46:25Z'
 planned  '2026-09-23T08:46:34Z'
 implementing  '2026-09-23T08:47:02Z'
 approved-shuttle-await-started  '2026-09-23T08:54:42Z'
+approved-loom-llm-arm-readiness  '2026-09-23T09:01:22Z'
 ```
 
 ## Batches
@@ -53,8 +54,9 @@ batches:
     commit_sha: 4903517bc631bf7d07b735b473cd10b72582bd2c
     verify_baseline_failures: []
   - name: loom-llm-arm-readiness
-    state: running
+    state: approved
     implementer_session: 43d28c52-6524-44ba-bd9e-432ed4b6afed
     start_sha: 63e44350450554e5072bde6bc88897e1b103b243
+    commit_sha: 1b868e54b441debe08e77058052e67b2e211f2a3
     verify_baseline_failures: []
 ```
