@@ -35,7 +35,10 @@ An llm-driven child is unusable on any fresh fixture path until this is fixed.
 - The same dismissal also covers the bypass-permissions gate, since `claudeengine.Startup` classifies both one-time gates as `StartupTrustPrompt`.
   The driver runs with `--dangerously-skip-permissions` (`Interactive: false`), so a host that never accepted that gate would park the same way.
   This comes for free with the mechanism, not as separate work.
-- Doc updates: the `start` command's `Long` help text ("the strand's own pane coming alive for an ly-drive driver") and `docs/overview.md`'s `lyx loom start` description, if it names the readiness signal.
+- Doc updates: the `start` command's `Long` help text ("the strand's own pane coming alive for an ly-drive driver").
+  Also the `--no-attach` flag's usage string in `start.go` ("return once the driver has taken the run lock"), which names only the go arm's signal.
+  It must cover the llm arm's new signal (the driver's provider TUI ready, with any one-time gate dismissed).
+  Also `docs/overview.md`'s `lyx loom start` description, if it names the readiness signal.
   Also doc comments that describe the probe: `driverSpec`'s comment ("polled through the pane-liveness probe"), `startLLMDriverArm`'s comment, `runDriverSpawnAndWait`'s comment, and the step-6 llm-arm block comment in `start.go`.
 - The reproduction recipe below, recorded in this discussion and followed as the task's live verification.
 
@@ -94,6 +97,16 @@ An llm-driven child is unusable on any fresh fixture path until this is fixed.
     Or, if the first bootstrap's probe then refuses, the second bootstrap would act on a strand whose fate is still being decided.
   - Release-then-re-acquire would add a window in which step 7 is reached by the wrong process.
   - The waiter is bounded in practice, because the holder's probe is itself bounded by the startup window plus the tick-count cap.
+  - There is a second waiter: the driver's own first step.
+    Loom's step pre-run (`internal/loomcli/arm.go`, reached from `lyx shed step --recipe loom`) takes the same `LoomBootstrapLock` with a blocking `AcquireWriteLock`.
+    So the ly-drive session's first `lyx shed step` blocks until `start` finishes its probe and releases the lock.
+    There is no deadlock: the probe waits on the TUI reaching ready, never on a step, and the driver only issues steps after its TUI is up.
+    In the normal case the step's wait is a few seconds, just after readiness is observed.
+  - Refuse-then-proceed, accepted: if `start` refuses because readiness was never observed in the window, it releases the lock and leaves the strand in place.
+    A driver that does boot late then runs its steps normally against a run that `start` reported as not up.
+    This is accepted: the refusal is an honest report about the startup window, not a kill.
+    The strand is deliberately left for diagnosis (see "Not-ready refusal leaves the strand in place").
+    A late-booting driver doing real work is a better outcome than one killed mid-boot.
 - Rejected (lock): releasing `bootstrapLock` before the probe and re-acquiring it afterwards, for the race above.
 - Rationale: it closes the trust-dialog case, and it also closes the "binary booted into a shell that shows no TUI" case that `awaitDriverPane`'s doc comment names as a residual.
   Reusing `startup_timeout_s` avoids a second, loom-owned timeout for the same question.
@@ -115,8 +128,12 @@ An llm-driven child is unusable on any fresh fixture path until this is fixed.
   It is a readiness probe, not a completion verdict: the ly-drive run is never `Wait`ed, and the run directory must keep its `runOutcomeRunning` sentinel.
 - Decision: the loop is bounded by tick COUNT as well as by the deadline, per the Live-Substrate Spawn Observability retry clause.
   The cap is `ceil(startupTimeout / interval) + 1` ticks plus the `maxStatusRetries` slack, whichever formulation mill-plan finds cleanest.
-  After the cap, the answer is `(false, nil)`, routed through `classifyStartupWindow`/`classifyDeadlineExpiry` so the file-contract rule still wins.
   The loop plays keys and spawns nothing, so the count cap is belt-and-braces.
+  At the cap, `AwaitStarted` returns `allOutputFilesExist(run.spec.OutputFiles), nil`: true if the file contract is satisfied, false otherwise.
+  It does not route through `classifyStartupWindow`, which returns `""` when the clock has not advanced, and that is exactly the case the cap exists for.
+  It does not route through `classifyDeadlineExpiry(OutcomeDied)` either, because a `return` naming `OutcomeDied` would add an `AwaitStarted [OutcomeDied]` tripwire key.
+  The bool expression names no negative marker, so the tick-cap exit adds no return-site pin.
+  It does add a second `allOutputFilesExist` call site in `AwaitStarted`, which is pinned alongside the retry-cap one (see "Completion Signal tripwire").
 - Decision: short-circuit on `run.attached && run.state.Started` exactly as `Wait` seeds `started`, returning `(true, nil)` immediately.
   Loom only calls this on a freshly started run, so the branch is for consistency.
 - Rationale: every negative answer keeps honoring the file contract (Completion Signal Invariant), because both reach it through `checkLivenessTick`/`classifyStartupWindow`, which already consult `allOutputFilesExist`.
@@ -136,7 +153,9 @@ An llm-driven child is unusable on any fresh fixture path until this is fixed.
   So that exit is a negative-verdict return site the scan will count.
   Before returning that error, `AwaitStarted` consults `allOutputFilesExist(run.spec.OutputFiles)` and returns `(true, nil)` when the contract is satisfied.
   That mirrors `Wait`'s `finishedDespiteMechanismFailure`, but it returns a readiness bool, not a finalized `Result`.
-  In `completionsignal_enforcement_test.go`, pin the new `AwaitStarted [Errorf]` return-site entry with its count, and pin the new `allOutputFilesExist` call site in `AwaitStarted`, each with an audit comment beside the entry.
+  In `completionsignal_enforcement_test.go`, pin the new `AwaitStarted [Errorf]` return-site entry with its count.
+  Also pin `AwaitStarted`'s `allOutputFilesExist` call sites: two of them, the retry-cap guard and the tick-cap answer.
+  Each pin gets an audit comment beside the entry.
   The comment says that the probe's mechanism-failure exit is guarded by the file contract, and that it never finalizes an `Outcome`.
   The `(false, nil)` not-ready exit carries no negative marker, and it is guarded upstream: it is reached only from `checkLivenessTick`/`classifyStartupWindow` returning `OutcomeDied`, both already pinned.
 - Rationale: the scanned-files var's own comment sets the convention ("a future file that grows a third kind of verdict belongs in this list").
@@ -153,7 +172,13 @@ An llm-driven child is unusable on any fresh fixture path until this is fixed.
      The fixture must not be hand-assembled (hubforge Fabric-Fixture Invariant spirit).
   3. Before launching, prove that the child worktree's absolute path is untrusted: `jq --arg p "<abs worktree path>" '.projects | has($p)' ~/.claude.json` must print `false`.
      If it prints `true`, pick a new timestamp; the run would pass silently and prove nothing, which is how round r3 lost the finding.
-  4. In that worktree, run `lyx shed seed <run-id> --recipe loom --driver llm`, then `lyx loom start --no-attach`.
+  4. In that worktree, run `lyx shed seed self --recipe loom --driver llm --param parent=<recorded parent branch>`, then `lyx loom start --no-attach`.
+     `lyx loom start` reads and writes only the `self` run (`shedrun.SelfRunID`, via `seedAndCommitBootstrap` and `resolveRunID`).
+     `WriteSeed` refuses a seed whose params disagree with `loomSeedFor`'s `{"parent": <parent>}`.
+     So the seed must be at `self`, and it must carry the same parent that `start` resolves.
+     A seed under any other run-id leaves `self` defaulting to the go driver, and the live check would pass without exercising the llm arm, which is the r3 failure mode again.
+     Confirm the llm arm ran: `lyx reed status` must list a strand named `driverStrandDisplayName`'s value (the ly-drive driver).
+     There must be no detached go runner: the driver log named by `LoomDriverLog` is absent or empty for this run.
   5. Pre-fix expectation (baseline, optional, from a `main` build): `start` returns success, and `tmux capture-pane -p -t <driver pane>` shows the trust dialog ("Yes, I trust this folder") indefinitely.
   6. Post-fix expectation: `start` returns only after dismissal, the driver pane shows the ly-drive session working, and the step-3 `jq` check now prints `true` (Claude recorded the acceptance).
      A run.json under the driver's run dir carries `started: true`.
@@ -196,7 +221,10 @@ An llm-driven child is unusable on any fresh fixture path until this is fixed.
   `AwaitStarted` routes all negatives through `checkLivenessTick`/`classifyStartupWindow`, or checks `allOutputFilesExist` before its retry-cap `Errorf`, and it never finalizes.
   It lives in `wait.go`, and its new return site and guard are pinned in the tripwire test (see Decisions).
 - **Live-Substrate Spawn Observability:** the retry loop caps attempt COUNT, not only time.
-  Log the dismissal attempt; `checkLivenessTick` already `Warn`s on failure, so add an `Info`/`Debug` line when a gate is dismissed during the driver's startup only if mill-plan finds no existing log.
+  `checkLivenessTick` logs a dismissal only when playing the keys fails (`Warn`), and nothing when it succeeds.
+  Add a `logger.Info("shuttle: dismissed startup gate", "strandGUID", …, "inputs", len(inputs))` line in `checkLivenessTick`'s `StartupTrustPrompt` branch after a successful play of a non-empty sequence.
+  It is `Info` because a dismissal is a lifecycle event that happens at most once or twice per run.
+  It lands in `checkLivenessTick`, so producers' `Wait` gain it too.
   Log readiness in loomcli ("driver strand is ready", replacing "pane is live").
 - **Test Tier Purity Invariant:** all new tests are untagged and use fakes and fake clocks, with no real spawns or `time.Sleep` ≥ 1s.
 - **Told-Geometry Invariant:** `shuttleengine` stays a bound package; the new method derives no paths.
