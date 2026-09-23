@@ -315,7 +315,7 @@ func assertBootstrapLockReleased(t *testing.T, path string) {
 func noopLockHeld() (bool, error) { return false, nil }
 
 // TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnDriverSettingsResolutionFailure covers failure site
-// 1 of 6: the driver-settings resolution.
+// 1 of 7: the driver-settings resolution.
 func TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnDriverSettingsResolutionFailure(t *testing.T) {
 	starter := &fakeDriverStarter{}
 	probe := &fakeDriverPaneProbeFull{strandsFn: noStrands}
