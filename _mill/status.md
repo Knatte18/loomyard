@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: shuttle-start-guarantees-readiness
 branch: shuttle-start-guarantees-readiness
 plan: _mill/plan
@@ -24,6 +24,7 @@ implementing  '2026-09-23T12:15:52Z'
 approved-shuttle-blocking-start  '2026-09-23T12:55:16Z'
 approved-webster-startup-window-docs  '2026-09-23T13:01:13Z'
 holistic-reviewing  '2026-09-23T13:01:52Z'
+holistic-fixing  '2026-09-23T13:08:28Z'
 ```
 
 ## Batches
