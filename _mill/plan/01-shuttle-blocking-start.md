@@ -94,6 +94,7 @@ Batch-local decisions beyond `## Shared Decisions`: none.
   - `internal/loomcli/driverspec.go`
   - `internal/loomcli/start_driver_test.go`
   - `internal/loomcli/smoke_driverstrand_test.go`
+  - `internal/loomcli/integration_driverbootstrap_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
