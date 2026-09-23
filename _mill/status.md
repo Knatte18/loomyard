@@ -53,6 +53,8 @@ batches:
     commit_sha: 4903517bc631bf7d07b735b473cd10b72582bd2c
     verify_baseline_failures: []
   - name: loom-llm-arm-readiness
-    state: pending
+    state: running
+    implementer_session: 43d28c52-6524-44ba-bd9e-432ed4b6afed
+    start_sha: 63e44350450554e5072bde6bc88897e1b103b243
     verify_baseline_failures: []
 ```
