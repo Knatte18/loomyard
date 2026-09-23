@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -41,14 +42,28 @@ func TestMustUseLLMDriverArm(t *testing.T) {
 	}
 }
 
-// stubDriverHandle is a minimal driverHandle a fakeDriverStarter returns.
+// stubDriverHandle is a minimal driverHandle a fakeDriverStarter returns. ready, awaitErr and
+// awaitCalls configure its AwaitStarted method; existing literals that set only guid/runDir keep
+// compiling, since all three are zero-value-safe (ready false, awaitErr nil, awaitCalls nil).
 type stubDriverHandle struct {
-	guid   string
-	runDir string
+	guid       string
+	runDir     string
+	ready      bool
+	awaitErr   error
+	awaitCalls *int
 }
 
 func (h stubDriverHandle) StrandGUID() string { return h.guid }
 func (h stubDriverHandle) RunDir() string     { return h.runDir }
+
+// AwaitStarted implements driverHandle by returning the stub's configured ready/awaitErr pair,
+// incrementing *awaitCalls first when non-nil so a test can assert how many times it was called.
+func (h stubDriverHandle) AwaitStarted() (bool, error) {
+	if h.awaitCalls != nil {
+		*h.awaitCalls++
+	}
+	return h.ready, h.awaitErr
+}
 
 // fakeDriverStarter records the spec it was started with and returns a canned handle or error.
 type fakeDriverStarter struct {
@@ -234,7 +249,7 @@ func (f *fakeDriverPaneProbeFull) RemoveDriverStrand(guid string) error {
 }
 
 // noStrands is a fakeDriverPaneProbeFull strandsFn returning an empty, error-free slice -- the
-// common "nothing tracked yet" answer most of the six failure-site cases below need for every
+// common "nothing tracked yet" answer most of the seven failure-site cases below need for every
 // consumer except the one under test.
 func noStrands() ([]reedengine.StrandStatus, error) { return nil, nil }
 
@@ -279,7 +294,7 @@ func acquireTestBootstrapLock(t *testing.T, path string) *lock.FileLock {
 // assertBootstrapLockReleased asserts the bootstrap lock at path can be re-acquired -- the only
 // observable proof, from outside the function under test, that it released the lock rather than
 // leaking it. A leaked bootstrap lock wedges every subsequent start in that worktree and is invisible
-// until the second invocation, which is why this assertion exists for each of the six failure sites
+// until the second invocation, which is why this assertion exists for each of the seven failure sites
 // individually rather than being left to review.
 func assertBootstrapLockReleased(t *testing.T, path string) {
 	t.Helper()
@@ -319,7 +334,7 @@ func TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnDriverSettingsResolutionFail
 	assertBootstrapLockReleased(t, bootstrapLockPath)
 }
 
-// TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnStrandReadFailure covers failure site 2 of 6: the
+// TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnStrandReadFailure covers failure site 2 of 7: the
 // strand read.
 func TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnStrandReadFailure(t *testing.T) {
 	wantErr := errors.New("strand read failed")
@@ -339,7 +354,7 @@ func TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnStrandReadFailure(t *testing
 	assertBootstrapLockReleased(t, bootstrapLockPath)
 }
 
-// TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnCorpseRemovalFailure covers failure site 3 of 6: the
+// TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnCorpseRemovalFailure covers failure site 3 of 7: the
 // corpse removal. It also pins that the corpse removal happens before the run start when the strand
 // action is dead: the starter seam must never be reached when the corpse removal itself fails.
 func TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnCorpseRemovalFailure(t *testing.T) {
@@ -366,7 +381,7 @@ func TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnCorpseRemovalFailure(t *test
 	assertBootstrapLockReleased(t, bootstrapLockPath)
 }
 
-// TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnReportDirMkdirFailure covers failure site 4 of 6:
+// TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnReportDirMkdirFailure covers failure site 4 of 7:
 // the report directory's mkdir-all. It forces the failure by pre-creating a plain FILE at the exact
 // path the report's parent directory (shedrun.ScratchDir) must occupy, so os.MkdirAll there fails
 // with "not a directory".
@@ -395,7 +410,7 @@ func TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnReportDirMkdirFailure(t *tes
 	assertBootstrapLockReleased(t, bootstrapLockPath)
 }
 
-// TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnRunStartFailure covers failure site 5 of 6: the run
+// TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnRunStartFailure covers failure site 5 of 7: the run
 // start.
 func TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnRunStartFailure(t *testing.T) {
 	wantErr := errors.New("start failed")
@@ -415,24 +430,54 @@ func TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnRunStartFailure(t *testing.T
 	assertBootstrapLockReleased(t, bootstrapLockPath)
 }
 
-// TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnProbeRefusing covers failure site 6 of 6: the
-// pane-liveness probe refusing. The strand table never reports the started guid live, so the probe
-// exhausts its budget and refuses; this is the slowest of the six cases (its own bounded poll budget,
-// ~5s at this package's driverPaneAttempts/driverPanePollInterval), and deliberately not sped up by a
-// seam of its own, since real elapsed time here is what the production budget actually spends.
-func TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnProbeRefusing(t *testing.T) {
-	starter := &fakeDriverStarter{handle: stubDriverHandle{guid: "g-run", runDir: "/run/dir"}}
+// TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnReadinessRefusing covers failure site 6 of 7: the
+// readiness await reporting not-ready. The handle's AwaitStarted returns (false, nil), which is the
+// pane-died-or-startup-timed-out answer; this no longer spends a real ~5s budget the way the old
+// pane-liveness probe's own bounded poll did, since the handle is a fake under this test's direct
+// control.
+func TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnReadinessRefusing(t *testing.T) {
+	awaitCalls := 0
+	starter := &fakeDriverStarter{handle: stubDriverHandle{guid: "g-run", runDir: "/run/dir", ready: false, awaitCalls: &awaitCalls}}
 	probe := &fakeDriverPaneProbeFull{strandsFn: noStrands}
 	c, bootstrapLockPath := newTestSpawnAndWaitReceiver(t, starter, probe)
 
 	bootstrapLock := acquireTestBootstrapLock(t, bootstrapLockPath)
-	ok := c.runDriverSpawnAndWait(context.Background(), &bytes.Buffer{}, shedrun.DriverLLM, bootstrapLock, noopLockHeld)
+	var out bytes.Buffer
+	ok := c.runDriverSpawnAndWait(context.Background(), &out, shedrun.DriverLLM, bootstrapLock, noopLockHeld)
 
 	if ok {
-		t.Error("runDriverSpawnAndWait() = true; want false (the pane-liveness probe must refuse)")
+		t.Error("runDriverSpawnAndWait() = true; want false (the readiness await must refuse)")
 	}
-	if !starter.called {
-		t.Error("runDriverSpawnAndWait() never reached the starter seam")
+	if awaitCalls != 1 {
+		t.Errorf("AwaitStarted was called %d time(s); want 1", awaitCalls)
+	}
+	for _, want := range []string{"driver strand did not come up", "/run/dir", "g-run"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("envelope output = %q; want it to contain %q", out.String(), want)
+		}
+	}
+	assertBootstrapLockReleased(t, bootstrapLockPath)
+}
+
+// TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnReadinessError covers failure site 7 of 7: the
+// readiness await erroring, which AwaitStarted's own contract reserves for reed's liveness check
+// failing repeatedly -- a case the old pane-liveness probe had no equivalent for, since it never
+// returned an error on its own polling loop.
+func TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnReadinessError(t *testing.T) {
+	wantErr := errors.New("liveness check failed")
+	starter := &fakeDriverStarter{handle: stubDriverHandle{guid: "g-run", runDir: "/run/dir", awaitErr: wantErr}}
+	probe := &fakeDriverPaneProbeFull{strandsFn: noStrands}
+	c, bootstrapLockPath := newTestSpawnAndWaitReceiver(t, starter, probe)
+
+	bootstrapLock := acquireTestBootstrapLock(t, bootstrapLockPath)
+	var out bytes.Buffer
+	ok := c.runDriverSpawnAndWait(context.Background(), &out, shedrun.DriverLLM, bootstrapLock, noopLockHeld)
+
+	if ok {
+		t.Error("runDriverSpawnAndWait() = true; want false (the readiness await must error)")
+	}
+	if !strings.Contains(out.String(), wantErr.Error()) {
+		t.Errorf("envelope output = %q; want it to contain %q", out.String(), wantErr.Error())
 	}
 	assertBootstrapLockReleased(t, bootstrapLockPath)
 }
@@ -444,19 +489,9 @@ func TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnProbeRefusing(t *testing.T) 
 // helper reaching the handshake fails here rather than silently reintroducing the race the handshake
 // decision exists to avoid.
 func TestRunDriverSpawnAndWait_LLMArm_NeverConsultsTheRunLockHandshake(t *testing.T) {
-	starter := &fakeDriverStarter{handle: stubDriverHandle{guid: "g-run", runDir: "/run/dir"}}
-	calls := 0
-	strandsFn := func() ([]reedengine.StrandStatus, error) {
-		calls++
-		if calls == 1 {
-			// The initial pre-launch read: nothing tracked yet.
-			return nil, nil
-		}
-		// Every subsequent read (the pane-liveness probe's own polls) reports the started strand
-		// live immediately.
-		return []reedengine.StrandStatus{{GUID: "g-run", Live: true}}, nil
-	}
-	probe := &fakeDriverPaneProbeFull{strandsFn: strandsFn}
+	awaitCalls := 0
+	starter := &fakeDriverStarter{handle: stubDriverHandle{guid: "g-run", runDir: "/run/dir", ready: true, awaitCalls: &awaitCalls}}
+	probe := &fakeDriverPaneProbeFull{strandsFn: noStrands}
 	c, bootstrapLockPath := newTestSpawnAndWaitReceiver(t, starter, probe)
 
 	lockHeldCalls := 0
@@ -473,6 +508,9 @@ func TestRunDriverSpawnAndWait_LLMArm_NeverConsultsTheRunLockHandshake(t *testin
 	}
 	if lockHeldCalls != 0 {
 		t.Errorf("the go arm's lockHeld seam was consulted %d time(s) on an llm-seeded bootstrap; want 0", lockHeldCalls)
+	}
+	if awaitCalls != 1 {
+		t.Errorf("AwaitStarted was called %d time(s); want 1", awaitCalls)
 	}
 	_ = bootstrapLock.Release()
 }

@@ -60,8 +60,8 @@ func mustUseLLMDriverArm(driver string) bool {
 // parent covers this directory too is a premise this task would otherwise inherit unverified; compose
 // the prompt and the spec; and start the run through the starter seam.
 //
-// It returns the started run's handle so the caller can log the spawn and run the pane-liveness
-// probe against it.
+// It returns the started run's handle so the caller can log the spawn and await the run's readiness
+// through the handle's AwaitStarted.
 func (c *loomCLI) startLLMDriverArm(driverAction driverStrandAction, driverGUID string, runID string) (driverHandle, error) {
 	settings, err := loomengine.ResolveDriver(c.cfg, c.registry)
 	if err != nil {
@@ -96,7 +96,7 @@ func (c *loomCLI) startLLMDriverArm(driverAction driverStrandAction, driverGUID 
 // driver strand table once, decides via mustSpawnDriver whether a spawn is needed, and -- when one
 // is -- branches on driver into the go arm's detached spawn and run-lock handshake (both
 // byte-for-byte unchanged from before this extraction, aside from taking lockHeld as a parameter
-// rather than building it locally) or the llm arm's strand launch and pane-liveness probe.
+// rather than building it locally) or the llm arm's strand launch and readiness await.
 //
 // lockHeld is the go arm's handshake seam, built by the caller over the real run lock in production;
 // a test substitutes a counting fake to prove the handshake is never consulted on an llm-seeded
@@ -232,16 +232,28 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 		}
 	}
 
-	// Step 6, llm arm: probe the just-launched driver strand's pane for liveness, in place
-	// of the go arm's run-lock handshake -- an ly-drive session takes the run lock only
-	// inside each "lyx shed step" and releases it between steps, so a handshake on it would
-	// either race the Claude boot or observe a free lock between two perfectly healthy
-	// steps. Refuse when the probe reports not-ready, naming the run directory and strand
-	// guid the handle reports -- never the driver log accessor, which names only the
-	// detached go driver's captured output.
+	// Step 6, llm arm: await the driver run's provider readiness through the handle's
+	// AwaitStarted, in place of the go arm's run-lock handshake -- an ly-drive session
+	// takes the run lock only inside each "lyx shed step" and releases it between steps,
+	// so a handshake on it would either race the Claude boot or observe a free lock between
+	// two perfectly healthy steps. AwaitStarted dismisses a recognized one-time startup gate
+	// (the workspace-trust and bypass-permissions dialogs) that would otherwise park the
+	// session forever on a live pane. Refuse when it reports not-ready, naming the run
+	// directory and strand guid the handle reports -- never the driver log accessor, which
+	// names only the detached go driver's captured output.
+	//
+	// Accepted residual, per the discussion's out-of-scope decision on already-live driver
+	// strands: a not-ready refusal leaves the strand in place for diagnosis, so if its pane
+	// is still live the next `start` resolves it as driverStrandLive through
+	// resolveDriverStrandAction, spawns nothing, skips this step entirely and succeeds
+	// without re-checking readiness; the operator sees what the pane is stuck on by
+	// attaching, and only a newly spawned driver is awaited.
+	//
+	// bootstrapLock stays held across this await, up to startup_timeout_s, exactly as it was
+	// held across the old probe, and the ly-drive session's own first `lyx shed step` waits
+	// on the same lock until this bootstrap releases it.
 	if mustSpawn && mustUseLLMDriverArm(driver) {
-		wait := func() { time.Sleep(driverPanePollInterval) }
-		ready, err := awaitDriverPane(c.driverPaneProbe.Strands, driverRun.StrandGUID(), wait, driverPaneAttempts)
+		ready, err := driverRun.AwaitStarted()
 		if err != nil {
 			_ = bootstrapLock.Release()
 			clihelp.SetExit(ctx, output.Err(out, err.Error()))
@@ -252,7 +264,7 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 			clihelp.SetExit(ctx, output.Err(out, fmt.Sprintf("loom: driver strand did not come up; see run dir %s (strand %s)", driverRun.RunDir(), driverRun.StrandGUID())))
 			return false
 		}
-		logger.Info("loom: driver strand pane is live", "guid", driverRun.StrandGUID(), "runDir", driverRun.RunDir())
+		logger.Info("loom: driver strand is ready", "guid", driverRun.StrandGUID(), "runDir", driverRun.RunDir())
 	}
 
 	return true
@@ -289,11 +301,16 @@ lives.
 --no-attach performs steps 1 through 3 and returns once the driver's
 readiness signal confirms it is up, instead of running step 4 -- skipping
 the terminal handover this way skips the operator's own strand with it. That
-readiness signal is the run lock being taken for the Go driver, and the
-strand's own pane coming alive for an ly-drive driver -- the documented
-meaning is the same on both paths, perform every bootstrap step, confirm the
-driver is up by that path's own signal, and return without the terminal
-handover.
+readiness signal is the run lock being taken for the Go driver; for an
+ly-drive driver, it is the driver's provider TUI coming up ready, with any
+one-time startup gate (such as the workspace-trust dialog) dismissed along
+the way, within shuttle's startup_timeout_s. This signal is checked only for
+a driver this invocation spawns, so an ly-drive strand already live from an
+earlier invocation -- including one left in place by an earlier readiness
+refusal -- is attached to, or returned over with --no-attach, without
+re-checking readiness. The documented meaning is the same on both paths:
+perform every bootstrap step, confirm the driver is up by that path's own
+signal, and return without the terminal handover.
 
 Example:
   lyx loom start
@@ -449,7 +466,7 @@ Example:
 	}
 
 	cmd.Flags().StringVar(&parentFlag, "parent", "", "write the pair's provenance record once for a worktree created before that record existed; refused when it disagrees with an already-recorded value")
-	cmd.Flags().BoolVar(&noAttachFlag, "no-attach", false, "perform every bootstrap step and return once the driver has taken the run lock, instead of handing the terminal to the session")
+	cmd.Flags().BoolVar(&noAttachFlag, "no-attach", false, "return once a driver this invocation spawns is confirmed up (the Go driver has taken the run lock; an ly-drive driver's provider TUI is ready, with any one-time startup gate dismissed), instead of handing the terminal to the session")
 
 	return cmd
 }
