@@ -1051,11 +1051,11 @@ func TestAttach_OffsetStartsAtZero(t *testing.T) {
 // carries Started: true (a prior Wait already observed StartupReady for it) and whose CapturePane
 // now returns a mid-turn capture (no ready markers) must not classify OutcomeDied after
 // startup_timeout_s, and must not play the trust-dismiss key sequence even when the capture happens
-// to contain a trust-dialog phrase — because the startup probe must never run at all once BOTH
-// attached and the persisted Started are true. Without the seeded started:true, this run.json would
-// decode with Started still at its zero value (false), and the mid-turn capture here would instead
-// correctly re-trigger the startup probe — proving the seed, not just the field's existence, is what
-// this test exercises.
+// to contain a trust-dialog phrase — because the startup probe must never run at all once the
+// persisted Started is true, whatever else is true of the run. Without the seeded started:true, this
+// run.json would decode with Started still at its zero value (false), and the mid-turn capture here
+// would instead correctly re-trigger the startup probe — proving the seed, not just the field's
+// existence, is what this test exercises.
 func TestAttach_StartedSeededTrue(t *testing.T) {
 	reed := &fakeReed{
 		StatusQueue:  []reedengine.StatusResult{liveStatus("strand-1", "%1")},

@@ -210,14 +210,6 @@ type Run struct {
 	deadline time.Time
 	// clock is the time seam for tests.
 	clock clock
-	// attached is set only by Attach, never by Start, and read by Wait's started seed, where it is
-	// one of two conditions (paired with state.Started) that must both hold before the startup probe
-	// is skipped: attached alone only means reed still reports the pane's process alive, never that
-	// the provider inside it ever reached StartupReady (see RunState.Started's own doc comment for
-	// why those are different facts). When both hold, re-running the probe against a mid-turn pane
-	// would misclassify a live interview as OutcomeDied, or play the trust-dismiss sequence into it.
-	attached bool
-
 	// lastStartupCapture is the last successful pane capture the startup step (checkLivenessTick,
 	// called from awaitStartup or Wait) took, empty until the first successful CapturePane. On a
 	// not-ready teardown (abandonStartup) it is saved to startupCaptureFileName inside the run

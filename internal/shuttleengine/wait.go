@@ -198,27 +198,34 @@ func (run *Run) Wait() (Result, error) {
 	startupTimeout := time.Duration(cfg.StartupTimeoutS) * time.Second
 	startupDeadline := run.clock.Now().Add(startupTimeout)
 
-	// started seeds from run.state.Started, persisted the moment the ORIGINAL Start (or a prior
-	// attach) actually observed StartupReady — not from run.attached alone. Attach's own reed reads
-	// are strictly stronger evidence than the capture heuristic below for telling a pane APART FROM
-	// NOTHING, but they cannot tell a booted, mid-turn provider apart from a pane whose launch
-	// command already failed (a live shell sitting at its own prompt after a bad binary path) or
-	// whose driver was killed before its own first liveness tick ever ran: reed reports both "live",
-	// and the run's own run.json still carries the runOutcomeRunning sentinel in every one of those
-	// cases, because nothing ever wrote a terminal Outcome to it. Trusting attachment alone there
-	// skips the startup probe for a run that never passed it, which trades a fast, correctly
-	// classified OutcomeDied at startup_timeout_s for a full run_timeout_min/spec.Timeout wait ending
-	// in a misleading OutcomeTimeout. Started is false for every run.json a pre-this-change binary
-	// wrote too, which is the same safe direction as RunState.Outcome's own compat rule: the probe
-	// runs one extra time rather than being skipped when it should not have been.
-	// Once Started is true the original reasoning still holds: re-running the probe against a pane
-	// that is mid-turn would misclassify a live interview as OutcomeDied one startup_timeout_s after
-	// attach, or worse, play the trust-dismiss key sequence into a live agent's pane if its capture
-	// happens to trip a trust-dialog needle — so a confirmed-ready attach still skips it. The
-	// not-tracked and not-live branches of checkLivenessTick sit above this short-circuit, so an
-	// attached run keeps full liveness coverage regardless of Started — only the startup probe
-	// itself is conditional on it.
-	started := run.attached && run.state.Started
+	// started seeds from run.state.Started alone — for a started run and an attached one alike. A
+	// handle from Start carries Started: true unless it was issued on the satisfied-file-contract
+	// branch, where re-probing is harmless and still classifies OutcomeDone (on an events-tick Done,
+	// or at the latest at Wait's own startup-window expiry through classifyDeadlineExpiry). Reed's own
+	// liveness reads, which an attached run's reconstruction consults before ever reaching Wait, are
+	// strictly stronger evidence than the capture heuristic below for telling a pane APART FROM
+	// NOTHING, but they cannot tell a booted, mid-turn provider apart from a pane whose launch command
+	// already failed (a live shell sitting at its own prompt after a bad binary path) or whose driver
+	// was killed before its own first liveness tick ever ran: reed reports both "live", and the run's
+	// own run.json still carries the runOutcomeRunning sentinel in every one of those cases, because
+	// nothing ever wrote a terminal Outcome to it. That is why liveness alone is never enough on its
+	// own to skip the probe, whether reported by Attach's own reads or by this loop's own
+	// checkLivenessTick: only a persisted Started fact does. Started is false for every run.json a
+	// pre-this-change binary wrote too, which is the same safe direction as RunState.Outcome's own
+	// compat rule: the probe runs one extra time rather than being skipped when it should not have
+	// been.
+	// The probe in checkLivenessTick/classifyStartupWindow is therefore reached from this seed only
+	// for an attached run whose run.json was never marked Started — a killed driver, or a launch whose
+	// binary never existed — and Wait still computes its own startupDeadline from its own entry time
+	// for that case, since the startup window an attach's own awaitStartup never ran belongs to this
+	// Wait call, not to some earlier one. Once Started is true, re-running the probe against a pane
+	// that is mid-turn would misclassify a live interview as OutcomeDied one startup_timeout_s into
+	// this Wait, or worse, play the trust-dismiss key sequence into a live agent's pane if its capture
+	// happens to trip a trust-dialog needle — so a confirmed-ready run, started or attached, skips it.
+	// The not-tracked and not-live branches of checkLivenessTick sit above this short-circuit, so every
+	// run keeps full liveness coverage regardless of Started — only the startup probe itself is
+	// conditional on it.
+	started := run.state.Started
 	eventsFailures := 0
 	statusFailures := 0
 

@@ -187,12 +187,12 @@ func soleFinishedCandidate(candidates []attachCandidate, spec Spec) (attachCandi
 //
 // It is a shared seam rather than inline code because Attach reaches it from two kinds of place: the
 // ordinary one-attachable-match tail, and each of the three reed-gate harvests above. Duplicating
-// the literal at four sites is exactly how one of them would drift — offset, deadline, or attached
-// set differently on the path nobody reads as often.
+// the literal at four sites is exactly how one of them would drift — offset, deadline, or gate set
+// differently on the path nobody reads as often.
 //
-// gate is set on the reconstructed handle alongside attached: true, so a resumed run is gated exactly
-// as a fresh RunGated one is — the gate travels with AttachGated's own caller-told GateSpec, never
-// with anything read off the persisted candidate.
+// gate is set on the reconstructed handle, so a resumed run is gated exactly as a fresh RunGated one
+// is — the gate travels with AttachGated's own caller-told GateSpec, never with anything read off the
+// persisted candidate.
 func (r *Runner) reconstructAndWait(candidate attachCandidate, normalized Spec, gate GateSpec) (Result, bool, error) {
 	run := &Run{
 		runner: r,
@@ -213,12 +213,6 @@ func (r *Runner) reconstructAndWait(candidate attachCandidate, normalized Spec, 
 		// that hit OutcomeTimeout leaves both its strand and its run dir behind, and inheriting
 		// CreatedAt would re-attach and re-time-it-out on every resume forever.
 		deadline: r.clock.Now().Add(normalized.Timeout),
-		// attached is paired with candidate.state.Started inside Wait's own started-seeding (see its
-		// doc comment): Wait only ever skips the startup probe when BOTH are true, since attached
-		// alone means "reed still reports this pane's process alive", never "the provider inside it
-		// ever reached StartupReady" — a killed driver or a bad launch binary both leave a live pane
-		// with Started still false.
-		attached: true,
 		gate:     gate,
 	}
 
