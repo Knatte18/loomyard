@@ -22,6 +22,13 @@ The predecessor's full record (HANDOFF, five rounds' review + fixer reports, pro
 | Round | Tag | Model / effort | State |
 |---|---|---|---|
 | R1 | `opus-medium-r1` | Opus / medium (operator's pick) | DONE, independently verified — NOT a safety pass (1 BLOCKING, 3 MEDIUM, 3 LOW, 2 NIT, all fixed) |
+| R2 | `fable-high-r2` | Fable / high | running (seed `2cb5b4916`) |
+| R3 | `sonnet-xhigh-r3` | Sonnet / xhigh | scheduled |
+| R4 | `opus-medium-r4` | Opus / medium | scheduled |
+
+**Operator's schedule (2026-09-24):** R2 Fable/high, R3 Sonnet/xhigh, R4 Opus/medium, run back to back with verification and re-seed between each.
+**After R4: stop and check in with the operator** ("pust i bakken") — do not spawn R5 or pick its model on your own.
+Open operator questions from after R1 (fabric-rollback task, `ly` plugin, the parked mill-plan/mill-go sessions) were not answered; leave them untouched until the operator raises them.
 
 ## Baseline before R1
 
@@ -73,5 +80,5 @@ Zero stray `lyx`/tmux/reed processes.
 
 ## Exact next action
 
-R1 did not converge. Get the operator's explicit model + effort pick for R2 (unused so far in either campaign: Opus/xhigh, Opus/max, Fable/xhigh, Sonnet/max), then re-seed `_mill/batten-review-prompt.md`'s "Round context" with R1's outcomes as CLOSED-AND-VERIFIED, and commit the re-seed before spawning.
-Suggested R2 focus: R1's yield sat at batten's boundary with loom and fabric, not inside batten. Point R2 at shapes rather than instances: (1) enumerate every loom producer that writes under `_lyx` and whether Go commits it — F4 was one uncommitted directory, so the class is likely not closed; (2) enumerate every batten row's crash-window re-entry (F1, F5, and the predecessor's create-row fix are the same shape three times); (3) adversarial pressure on R1's own fixes, above all F1's spawn marker (machine-local `.lyx` scratch vs. a run resumed on another machine) and F4's commit on a resumed Done.
+R2 (`fable-high-r2`) is running on seed `2cb5b4916`. When it returns: check its report's closing sections, verify, refresh this file, re-seed, and spawn R3 (Sonnet/xhigh) per the schedule above.
+R2's seeded focus (as written into the prompt): R1's yield sat at batten's boundary with loom and fabric, not inside batten. Point R2 at shapes rather than instances: (1) enumerate every loom producer that writes under `_lyx` and whether Go commits it — F4 was one uncommitted directory, so the class is likely not closed; (2) enumerate every batten row's crash-window re-entry (F1, F5, and the predecessor's create-row fix are the same shape three times); (3) adversarial pressure on R1's own fixes, above all F1's spawn marker (machine-local `.lyx` scratch vs. a run resumed on another machine) and F4's commit on a resumed Done.
