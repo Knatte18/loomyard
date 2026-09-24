@@ -174,3 +174,28 @@ func TestWriteSeed_RefusesADisagreeingSeed(t *testing.T) {
 		t.Fatal("writeSeed (disagreeing recipe) = nil; want a refusal")
 	}
 }
+
+// TestWriteSeed_RefusesFabricsOwnCheckouts asserts seed refuses the Board checkout and a pair's
+// other side before writing anything, the same refusal every other shed verb over a batten seed
+// already applies, so a stray seed can never land in a checkout no run is driven from.
+func TestWriteSeed_RefusesFabricsOwnCheckouts(t *testing.T) {
+	tests := []struct {
+		name         string
+		worktreeName string
+	}{
+		{name: "BoardCheckout", worktreeName: "_board"},
+		{name: "PairSibling", worktreeName: "warp-weft"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: tt.worktreeName, AnchorRel: "."}
+			err := writeSeed(loc, "a-run", shedrun.RecipeLoom, "", nil)
+			if err == nil {
+				t.Fatalf("writeSeed(%q) error = nil; want a refusal", tt.worktreeName)
+			}
+			if _, found, readErr := shedrun.ReadSeed(loc, "a-run"); readErr != nil || found {
+				t.Errorf("ReadSeed after a refused writeSeed = found %v, err %v; want no seed written", found, readErr)
+			}
+		})
+	}
+}

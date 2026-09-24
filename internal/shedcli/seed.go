@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -56,6 +57,13 @@ func parseSeedParams(raw []string) (map[string]string, error) {
 // it -- which is what lets seed_test.go drive it directly against a hand-built *lyxcwd.Location,
 // with no real git repository behind it, and stay Tier 1.
 func writeSeed(location *lyxcwd.Location, runID, recipeName, driverFlag string, params map[string]string) error {
+	// Refused first, as every other shed verb over a batten seed already refuses through
+	// battencli's ArmAt: a seed written into one of fabric's own checkouts (the Board checkout or
+	// a pair's other side) lands in a repository no run is ever driven from, where the Board's own
+	// commit, which stages everything in that checkout, would sweep it onto its branch.
+	if err := fabricengine.RequireDrivableWorktree(location); err != nil {
+		return fmt.Errorf("shedcli: seed refuses to write here: %w", err)
+	}
 	if err := shedrun.ValidateRunID(runID); err != nil {
 		return err
 	}
