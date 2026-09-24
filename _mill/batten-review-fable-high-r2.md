@@ -75,3 +75,19 @@ Hermetic baseline at HEAD `647220980`:
 
 - `~/.claude.json` `.projects` had no entry for the child path before launch (946 entries).
 - Launched `drive-fx-typed.sh`: `lyx -v batten step fx-typed` in a loop, stopping when `next != Run-Shed`, i.e. right before `Worktree-Teardown`. First step: `spawning inner shed run status_found=false`, bootstrap returned in 0.23s, child at `Discussion-Write/running`, a `claude … --model sonnet` provider alive in the child's tmux session.
+
+### fx-untyped — Run-Shed re-entry with status `running` and no spawn marker (emulated kill-before-marker)
+
+- Rewound the child's committed status to `Preflight/running`, removed `.lyx/shed/fx-untyped/Run-Shed-spawned`, resumed with `lyx -v batten step fx-untyped`: `spawning inner shed run status_found=true` → real `lyx loom start --no-attach` → a fresh detached driver ran Preflight, blocked again on the dirt (`loom: Preflight -> blocked` committed a second time on the child weft) → Run-Shed hard error, marker rewritten. The re-spawn-on-running-without-marker path is live and idempotent against the real bootstrap.
+
+### fx-untyped — Worktree-Teardown re-entered against a half-torn pair (CONFIRMED finding F-B)
+
+- Removed the dirt, hand-wrote the child's status `done` and committed it; `lyx batten step fx-untyped` → `Run-Shed` `done`, `next: Worktree-Teardown`.
+- Emulated the crash window between fabric's warp-worktree removal and its weft teardown (the exact order `Topology.Remove` runs: portal → launchers → gates → junctions → warp dir → weft): `git -C fxapp worktree remove fx-untyped`, leaving `fx-untyped-weft`, both branches (local + remote), `_portals/fx-untyped`, `_launchers/fx-untyped` and the tmux session `fx-untyped` behind.
+- `lyx -v batten step fx-untyped` → `session shutdown skipped, the task worktree is already gone` → `teardown worktree skipped, the task worktree is already gone` → `outcome: done, state: done`. The run is `done` with `fx-untyped-weft` still on disk, both branches present, the portal/launcher entries present, and the tmux session `fx-untyped` still alive (Shutdown was skipped because reed's config is resolved through the absent warp). `lyx fabric pairs` still lists the half pair; `lyx fabric prune` (dry run) is the fabric verb that exists for exactly this orphan-weft debris.
+- The same state is reachable WITHOUT a crash: fabric's own `Remove` has an error path "warp worktree removed, but weft teardown failed and the weft worktree remains" — the row goes Stuck on it (correct), and the operator's re-step then reports `done` over the leftover.
+
+### fx-typed — pause during the watch
+
+- `lyx batten pause fx-typed` mid-`Run-Shed` → ok; the step loop will show whether the flag is consumed at the next producer boundary.
+- Mid-campaign porcelain sample (child at `Plan-Bouncer`): child warp clean, child weft clean, prime weft `M _lyx/shed/fx-typed/status.json` (the documented uncommitted self-bounce history). Child weft log shows every loom transition and both artifact commits (`discussion artifacts`, `plan artifacts`) landing as Go commits; `.lyx/{burler,logs,loom,reed.json,shed,shuttle}` all ephemeral.
