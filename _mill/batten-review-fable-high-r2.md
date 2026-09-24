@@ -209,6 +209,22 @@ Hermetic baseline at HEAD `647220980`:
 - Windows path behaviour: Linux host.
 - A real SIGKILL inside the ~0.4s `loom start` window: emulated by reconstructing the exact on-disk state (status `running`, no marker) instead; the resumed code path is the same read-before-spawn branch and was driven against the real bootstrap.
 
+## Re-confirmation of the CLOSED-AND-VERIFIED lists (read after the findings above were written)
+
+No regression found. Re-driven live this round: the weft-prime and `_board` refusals for all four verbs (predecessor R2-F3, R4-F6); `Worktree-Create` idempotence against an already-present pair (R4-F1, via the crash-window table and the integration suite); `Worktree-Teardown` idempotence against a fully removed pair (r1-F5, integration suite; the half-torn sibling case is this round's F1, a different state); the spawn marker and re-spawn on `running` without it (r1-F1, driven against the real bootstrap); the Webster run record committed on Done (r1-F4, `loom: webster run record for fx-typed` in the child's weft, both halves clean before teardown); `lyx shed seed` refusing fabric's own checkouts (r1-F7, all three checkout kinds); the disagreeing-child-seed and absent-worktree texts (R5-F3/F5, r1-F3, r1-F6) through their regression tests under `-count=5`; status/pause over a durable status with no ephemeral lock dir (R2-F1) through `TestStatusAndPause_ReadADurableStatusWhoseLockDirIsAbsent` under `-count=5` (a live re-run was attempted and refused by the tool sandbox, not by lyx). Driver Choice and Fabric Vocabulary tripwires (R4-F5/F6, r1-F2) ran green repo-wide after every fix, including the new `battencli.RefuseUnlessPrime` and `fabricengine.PairSiblingRemnant`.
+
+Deferred items re-evaluated:
+
+- Recreating a cold-machine-absent task worktree from its branch: still absent, still honestly reported (`taskWorktreeLocation`); nothing built. The re-run path this round exercised (F2/F4) is the abandon half of that same story, now with a remedy that works.
+- `step`-mode pacing: unchanged; each `lyx batten step` on a running child blocked one 30s interval in the drive log (16 steps for a 4-minute campaign). Still the accepted shape.
+- The two shipped residuals in `battenshed/doc.go`: still accurate; the second gained a sentence naming what teardown ends (F5 docs half).
+- GitHub #263: not touched. No GitHub issue was filed this round (`selfreport: false`, `friction: ""` on every pair; no llm driver ran).
+- Fabric rollback leaving the warp branch behind: hit once (the push-rejected create after deleting only the local branch); cleaned up by hand; not fixed in fabric. F2's remedy text now names the rolled-back create as one of the two ways a leftover branch arises.
+- No `ly` plugin: unchanged; the llm-driven child was not run.
+
 ## Teardown
 
-(filled at the end of the round)
+- Stopped the child-status watcher, confirmed the drive loop had exited, confirmed no `lyx loom|batten|reed|shed` process and no `tmux -L lyx-fxapp-LYXHUB-*` server (reed took the server down with the last session at `fx-typed`'s teardown; the per-hub watchdog exited with it).
+- Deleted the fixture hub and remotes (`scratchpad/fx`) recursively; the session scratchpad keeps only logs and helper scripts.
+- The operator's standing bench (`~/Code/lyx-test-LYXHUB`) does not exist on this host and was never touched; `~/.claude.json` left alone (one `projects` entry for the fixture child path remains, as expected).
+- Final hermetic gates at `944d3cfc6`: `go build ./... && go vet ./... && go test -count=1 ./...` (92 ok), `go test -count=5` over battenshed/battencli/battenrecipe/shedrun/cmd/lyx (ok), `go test -tags integration -count=1 ./internal/battencli/... ./internal/shedcli/...` (ok) — exit 0.
