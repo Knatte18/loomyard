@@ -61,3 +61,9 @@ Both R3 pre-count items were found by R3 itself: the typed-error/call-site wirin
 - **R3's undriven PLAUSIBLE windows (focus 1 expected targets):** `Remove` junction sweep (remove.go ~124-138) with `Shutdown` loading reed config via `reedengine.LoadConfig(taskLocation.AnchorPath(), "reed")` before `Remove` runs — R3's most consequential open item; `Add` steps 14 (junctions + exclude), 15 (`WriteOrigin` + `CommitWeftPaths` — `PairComplete` checks sibling + junction health only, not the origin record's commit), 16-17 (pushes).
 - `remote: true` in teardown deletes the weft branch on the weft origin only (`remove.go` doc: "remote adds no warp-branch deletion of either kind"); a failing remote delete never fails `Remove`. So no PR on the warp branch is at risk. A round reporting that teardown deletes the warp branch remotely has misread.
 - R3 production-side sabotage, all by the orchestrator: every one of R3's five wiring sites fails its test when neutralised (see HANDOFF).
+
+## R4 outcome against the pre-count
+
+The unprefixed branch in the incomplete-pair remedy was found by R4 itself, inside F2 (rated MEDIUM, since the same remedy also failed two other ways from prime).
+The `Remove` junction-sweep window was driven live (R3 window) and is clean: Shutdown's reed config load degrades to its template, so no wedge.
+R4 also found an item the orchestrator had not counted: `PairComplete` ignoring the origin record (F1, BLOCKING) — the pre-count named that window, but not its consequence.

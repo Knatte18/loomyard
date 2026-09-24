@@ -24,7 +24,7 @@ The predecessor's full record (HANDOFF, five rounds' review + fixer reports, pro
 | R1 | `opus-medium-r1` | Opus / medium (operator's pick) | DONE, independently verified — NOT a safety pass (1 BLOCKING, 3 MEDIUM, 3 LOW, 2 NIT, all fixed) |
 | R2 | `fable-high-r2` | Fable / high | DONE, independently verified — NOT a safety pass (0 BLOCKING, 2 MEDIUM, 2 LOW, 1 NIT; 4 fixed, F5 behavioural half deferred to the operator) |
 | R3 | `sonnet-xhigh-r3` | Sonnet / xhigh | DONE, independently verified — NOT a safety pass (2 BLOCKING, 2 MEDIUM, all fixed) |
-| R4 | `opus-medium-r4` | Opus / medium | running (seed: the HANDOFF commit that records this row) |
+| R4 | `opus-medium-r4` | Opus / medium | DONE, independently verified — NOT a safety pass (1 BLOCKING, 2 MEDIUM, 2 NIT, all fixed) |
 
 **Operator's schedule (2026-09-24):** R2 Fable/high, R3 Sonnet/xhigh, R4 Opus/medium, run back to back with verification and re-seed between each.
 **After R4: stop and check in with the operator** ("pust i bakken") — do not spawn R5 or pick its model on your own.
@@ -80,6 +80,25 @@ Zero stray `lyx`/tmux/reed processes.
 - R3's own PLAUSIBLE-and-undriven windows (seeded as R4 focus 1): a SIGKILL in `Remove`'s junction sweep, where Shutdown resolves reed's config through `_lyx` before Remove runs and may wedge the row; `Add` steps 14–17 (junctions/exclude, uncommitted origin record, pushes). The two BLOCKING fixes were not re-driven live by the orchestrator; R4's re-confirmation live-drives create and teardown re-entry.
 - Zero GitHub issues filed (newest still #265). Zero stray `lyx`/`tmux`/`reed` processes. The handback carried the same harness "settings-json" flag as R2's, from the same `~/.claude.json` observation; read as data, no directive in it.
 
+**R4 (`opus-medium-r4`) independently verified 2026-09-24.** Self-reported MERGEABLE — not trusted at face value.
+- Report and fixer report have every closing section (executive summary, focus-1/focus-2 tables, re-confirmation, deferred re-evaluation, teardown; fixer deferred list and verdict).
+- R4 drove every step boundary of `Topology.Add` (A1–A12) and `Topology.Remove` (R1–R8) with throwaway self-SIGKILL builds. Both R4 pre-count items were addressed: the unprefixed remedy branch was found (inside F2, alongside two worse defects in the same remedy), and the `Remove` junction-sweep window was driven live and is clean — reed's config load degrades to its template with `_lyx` gone and `Down` succeeds, so no wedge.
+- Gates reproduced green from cold at `c0c79a33b`: `go build ./...`, `go vet ./...`, `go test -count=1 ./...` (92 `ok`), `go test -count=5` over battenshed/battencli/battenrecipe/shedrun/shedcli/fabricengine/cmd/lyx, `go test -tags integration -count=1` over battencli/shedcli/fabricengine.
+- Sabotage-proven by the orchestrator on the PRODUCTION side, each restored to an empty diff:
+  - **F1** (BLOCKING, `39496b045`, a SIGKILL between junction wiring and `WriteOrigin` left a pair `PairComplete` accepted; Seed-Child then committed a child seed with no `parent`, which the child's bootstrap and loom's own `--parent` remedy both refused — recoverable only by hand-editing a committed file): the origin check in `PairComplete` → `false && …` → `TestBattenIntegration_CreateRow_PairWithoutOriginRecordIsIncomplete` fails. Pinned by the integration suite only; the plain unit run stays green.
+  - **F2** (MEDIUM, `0396b6b76`, the incomplete-pair remedy followed verbatim from prime failed three ways — sibling removal not runnable from prime, portal/launchers not named, unprefixed branch): the call site's `cfg.BranchPrefix+slug` → `slug` → `TestBattenIntegration_CreateRow_IncompletePairRemedyWorksVerbatimOnAPrefixedHub` fails.
+  - **F3** (MEDIUM, `8ccf2692e`, teardown reported done with the pair's other-side branch still present after a kill at remove windows R5/R6, after the prune remedy, or when the remote delete failed; a slug re-run then failed on a non-fast-forward push): (a) the re-entry arm's `RemovePairBranch` call replaced with a zero result → `…Teardown_AlreadyGonePairFinishesItsBranchDeletion` and `…Teardown_FailedRemoteDeletionHaltsResumably` fail; (b) the main arm's `RemoteBranchError` return disabled → `…FailedRemoteDeletionHaltsResumably` fails.
+  - F4, F5 (NIT, `1c2de6cec`, `a93f803fb`): remedy and comment text, read and judged accurate.
+- `RemovePairBranch` deletes `WeftBranchName(prefix+slug)` only — the other side's branch, never the warp branch — consistent with `Remove`'s `remote: true`. It refuses while the sibling worktree is on disk. Consequence accepted: a re-entered teardown now needs the weft origin reachable to reach done; a failure halts resumable.
+- R4 dropped the unit assertion that `Teardown.Remove` is a no-op for an absent worktree (`wire_test.go`), because the re-entry arm now loads fabric config; the integration `TestBattenIntegration_Teardown_AlreadyGonePairWithNoBranchIsDone` covers that path instead.
+- Live headline (from R4's report, not re-driven): two full `--child-driver go` runs reached done unattended, the second on the final source on a hub with `branch_prefix: r4/`, both with clean `git status --porcelain` in both child halves before teardown.
+- Zero GitHub issues filed (newest still #265). Zero stray `lyx`/`tmux`/`reed` processes. The handback carried the same harness "settings-json" flag, this time from two `~/.claude.json` entries for the fixture path; read as data, no directive in it.
+
+## Campaign state after R4
+
+No round has yet been a safety pass: R1 through R4 each found at least one BLOCKING or MEDIUM defect, although the defects have moved outward — from batten's own rows (R1, R2) to fabric's crash windows under batten (R3, R4).
+Every step boundary of `Add` and `Remove` has now been driven under SIGKILL at least once; what remains undriven is a kill *inside* one primitive (mid `git worktree add`, mid `git push`, inside a temp-then-rename), a kill of reed `Down` itself, and Windows.
+
 ## OPEN — needs the operator
 
 - **Two parked mill sessions run against this worktree:** `crucible-batten-followup:plan` (pid 152587, `/mill-plan`) and `crucible-batten-followup:go` (pid 152703, `/mill-go`), started 11:01 alongside the stopped mill-start. The orchestrator decided to kill them; the auto-mode classifier denied the `kill` ("Interfere With Workloads"). Left for the operator (`! kill 152587 152703`); do not retry. The third `claude` process on this task, `:start` (pid 151978), is the orchestrator itself.
@@ -114,5 +133,6 @@ Zero stray `lyx`/tmux/reed processes.
 
 ## Exact next action
 
-R4 (`opus-medium-r4`) is running on the commit that records this line. When it returns: check its report's closing sections, verify (production-side sabotage, and whether it found the R4 pre-count items), refresh this file, commit and push it — then STOP and check in with the operator. Do not re-seed or spawn R5.
-R4's seeded focus (as written into the prompt): (1) drive the SIGKILL windows in `Topology.Remove`/`Add` that R3 left PLAUSIBLE, above all Remove's junction sweep under teardown's Shutdown half; (2) adversarial pressure on R3's fixes — the incomplete-pair remedy followed verbatim (including with a non-empty `branch_prefix`), false "incomplete" verdicts on a healthy pair, what teardown's remote deletion removes and whether anything later needs it, every remedy text added since `d7ab9eca0` followed verbatim from prime; (3) re-confirmation with live re-entry drives; (4) llm gap in one line.
+The operator's four-round schedule is complete and R4 is verified. Waiting for the operator ("pust i bakken"): whether to run R5 (and on which model), and what to do with this branch.
+Do not re-seed or spawn R5 without the operator's word.
+A candidate R5 focus, if asked: adversarial pressure on R4's youngest code (`RemovePairBranch`, the re-entry arm's remote dependency, `PairComplete`'s origin check on a pair created before the origin record existed), plus a kill inside `git push` during `Add`.
