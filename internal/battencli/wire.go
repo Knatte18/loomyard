@@ -71,22 +71,19 @@ func taskWorktreeLocation(prime *lyxcwd.Location, slug string) (*lyxcwd.Location
 // taskWorktreePresent reports whether the task worktree for slug is already on disk under prime's
 // hub and resolvable as a worktree of its own.
 //
-// Worktree-Create's post-condition is "the task worktree for this slug exists", so a row re-entered
-// against an already-satisfied post-condition must report success rather than asking fabric to
-// create the same worktree twice. The window that makes this reachable is real: a create does
-// seconds of git work, and shedengine persists the row's transition only after the producer
-// returns, so a process killed in between leaves the worktree on disk with nothing recording it.
-// Without this probe the resumed row takes fabric's pre-existing-branch refusal, whose two named
-// remedies -- switching a pair onto the branch, and deleting the branch -- both refuse in exactly
-// that state, leaving the run unresumable by any documented action.
+// Worktree-Teardown's two halves use this for their own post-condition, "the task worktree is gone"
+// (see the Teardown field below): a bare directory check is the right question there, since fabric
+// removes the task worktree before its sibling and the mirror-image state (task worktree gone,
+// sibling remaining) is PairSiblingRemnant's own question to answer, not this one's.
 //
-// Worktree-Teardown's two halves use the same probe for the mirror-image post-condition, "the task
-// worktree is gone" (see the Teardown field below).
+// Worktree-Create uses the stronger taskWorktreeComplete instead, not this function: a bare
+// directory check cannot tell a pair Add finished from one a SIGKILL interrupted partway through
+// (see taskWorktreeComplete's own doc comment).
 //
 // It answers false rather than an error when the worktree is absent, so a genuinely absent one
-// still reaches Topology.Add and every real create failure keeps its Stuck disposition. A stat
-// error that is not "absent", and a path that is there but does not resolve as a worktree, are both
-// returned: neither is an answer to the question asked.
+// still reaches Topology.Add or Topology.Remove and every real failure keeps its Stuck disposition.
+// A stat error that is not "absent", and a path that is there but does not resolve as a worktree,
+// are both returned: neither is an answer to the question asked.
 func taskWorktreePresent(prime *lyxcwd.Location, slug string) (bool, error) {
 	worktreePath := fabricengine.WorktreePath(prime, slug)
 	if _, err := os.Stat(worktreePath); err != nil {
@@ -99,6 +96,40 @@ func taskWorktreePresent(prime *lyxcwd.Location, slug string) (bool, error) {
 		return false, err
 	}
 	return true, nil
+}
+
+// taskWorktreeComplete reports whether the task worktree for slug is not just present but fully
+// materialised: Topology.Add's own full post-condition (fabricengine.PairComplete), which
+// taskWorktreePresent's bare directory check cannot tell from a pair Add left half-built.
+//
+// Worktree-Create's post-condition is "the task worktree for this slug exists", so a row re-entered
+// against an already-satisfied post-condition must report success rather than asking fabric to
+// create the same worktree twice. The window is wider than "Add returned but the transition was not
+// yet persisted": Add is a multi-step transaction whose own in-process rollback runs only when Add
+// itself observes an error, never when the process running it is killed instead -- a bare "the
+// worktree directory resolves" check is satisfied by that transaction's very first step alone.
+//
+// present is false only when the worktree does not exist at all -- the genuinely-absent case, which
+// still reaches Topology.Add. incompleteReason is non-empty only when the worktree exists but is not
+// yet a complete pair, worded for this package's own refusal text rather than repeating
+// PairComplete's fabric-vocabulary reason verbatim.
+func taskWorktreeComplete(prime *lyxcwd.Location, slug string) (present, complete bool, incompleteReason string, err error) {
+	present, err = taskWorktreePresent(prime, slug)
+	if err != nil || !present {
+		return present, false, "", err
+	}
+	taskLocation, err := lyxcwd.ResolveWorktree(fabricengine.WorktreePath(prime, slug))
+	if err != nil {
+		return present, false, "", err
+	}
+	complete, _, err = fabricengine.PairComplete(taskLocation)
+	if err != nil {
+		return present, false, "", err
+	}
+	if !complete {
+		return present, false, "its pair is not fully created -- most likely a create interrupted partway through, since the process that ran it was killed rather than erroring, so its own rollback never ran", nil
+	}
+	return present, true, "", nil
 }
 
 // createRefusal rewords the one create refusal whose fabric remedy is wrong from prime, and passes
@@ -203,15 +234,26 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 		ScratchDir: BattenDir(location, slug),
 		PrimeLock:  primeLock,
 		CreateWorktree: func(ctx context.Context) error {
-			// The already-present probe first, so the row is idempotent against its own
-			// post-condition -- see taskWorktreePresent for the crash window this closes.
-			present, err := taskWorktreePresent(location, slug)
+			// The already-complete probe first, so the row is idempotent against its own
+			// post-condition -- see taskWorktreeComplete for the crash window this closes.
+			present, complete, incompleteReason, err := taskWorktreeComplete(location, slug)
 			if err != nil {
 				return err
 			}
-			if present {
+			if complete {
 				logger.Info("battencli: create worktree skipped, the task worktree is already present", "slug", slug)
 				return nil
+			}
+			if present {
+				// A worktree exists but Add never finished it -- see taskWorktreeComplete's own doc
+				// comment. No fabric verb re-creates a pair in this exact state (Add refuses an
+				// existing worktree directory the same way it refuses a leftover branch), so the
+				// remedy is the same shape as the leftover-branch one: clean up the incomplete
+				// worktree by hand, then resume.
+				return fmt.Errorf(
+					"the task worktree for %q exists but %s; remove it by hand (\"git worktree remove --force %s\" from here) and its branch (\"git branch -D %s\"), then resume this run to create it fresh",
+					slug, incompleteReason, fabricengine.WorktreePath(location, slug), slug,
+				)
 			}
 
 			cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(location.HubPath))

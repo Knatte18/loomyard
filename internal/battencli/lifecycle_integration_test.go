@@ -544,6 +544,40 @@ func TestBattenIntegration_CreateRow_LeftoverBranchIsRewordedForPrime(t *testing
 	}
 }
 
+// TestBattenIntegration_CreateRow_IncompletePairRefusesRatherThanSkippingAdd pins
+// taskWorktreeComplete's own fix: a warp worktree a SIGKILL-interrupted Add left behind, with no
+// sibling and no junctions wired, must not be mistaken for a finished create. Reproduces the state a
+// process killed right after Add's own first step leaves -- the warp worktree and branch exist,
+// nothing else does -- by driving the same git command Add's own createGitWorktree issues, rather
+// than stubbing anything: this proves taskWorktreeComplete's real filesystem check, not a fake of
+// it.
+func TestBattenIntegration_CreateRow_IncompletePairRefusesRatherThanSkippingAdd(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+	slug := "batten-incomplete-pair"
+	target := h.PairWarpWorktree(slug)
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "worktree", "add", "-b", slug, target)
+
+	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
+		t.Fatal("ReadStatus must not be called: the create row must refuse before the poll row ever runs")
+		return shedengine.Status{}, false, nil
+	})
+
+	err := c.env.CreateWorktree(context.Background())
+	if err == nil {
+		t.Fatal("CreateWorktree() error = nil; want a refusal naming the incomplete pair, not silent success")
+	}
+	for _, want := range []string{slug, "not fully created", "git worktree remove --force " + target, "git branch -D " + slug} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("CreateWorktree() error = %q; want it to contain %q", err.Error(), want)
+		}
+	}
+	// The refusal must be read-only: no repair attempt, no partial Add left further along than it
+	// started.
+	if pathExists(h.PairWeftSibling(slug)) {
+		t.Errorf("the pair's other-side worktree exists after the refusal; want CreateWorktree to have made no repair attempt")
+	}
+}
+
 // TestBattenIntegration_DirtyPrime_CreateRowBlocksBeforeAnythingCreated dirties a tracked file
 // in the hub's prime worktree, asserting the create row halts blocked before anything is created --
 // this refusal fires on every batten run and is invisible to the unit tests' fakes.

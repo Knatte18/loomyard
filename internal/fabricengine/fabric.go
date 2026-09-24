@@ -178,6 +178,31 @@ func PairSiblingRemnant(l *lyxcwd.Location, slug string) (path string, present b
 	return path, true, nil
 }
 
+// PairComplete reports whether l's pair -- l is the warp worktree's own resolved Location, not the
+// hub's prime -- satisfies Add's own full post-condition: the paired sibling worktree exists and
+// the warp junctions actually resolve into it.
+// It exists for the same vocabulary reason PairSiblingRemnant does, for a caller that must tell a
+// pair Add finished from one a SIGKILL interrupted partway through: Add's own in-process rollback
+// never runs when the process that called it dies instead of Add itself returning an error, so a
+// bare "the warp worktree directory resolves" check cannot draw that line.
+// ok is true only when every check passes; reason names the first one that did not, in fabric's own
+// vocabulary -- not for a non-owner caller to repeat verbatim in its own operator-facing text, the
+// same restraint createRefusal already applies to Add's own errors.
+func PairComplete(l *lyxcwd.Location) (ok bool, reason string, err error) {
+	siblingPath := WeftWorktree(l)
+	if _, statErr := os.Stat(siblingPath); statErr != nil {
+		if os.IsNotExist(statErr) {
+			return false, "the pair's other-side worktree is missing", nil
+		}
+		return false, "", statErr
+	}
+	healthy, unhealthyReason := checkJunctionHealth(l)
+	if !healthy {
+		return false, unhealthyReason, nil
+	}
+	return true, "", nil
+}
+
 // WeftLyxDir returns the path to the _lyx directory in l's weft sibling worktree.
 // It is the junction target for lyx weft and the pathspec base for weft operations.
 func WeftLyxDir(l *lyxcwd.Location) string {
