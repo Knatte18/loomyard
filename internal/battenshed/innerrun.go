@@ -16,8 +16,10 @@ import (
 )
 
 // waitOrCancel pauses for d, returning as soon as ctx is cancelled if that happens first.
-// It is the production value a nil InnerRunDeps.Sleep resolves to, so an operator's stop is not
-// held for the whole poll interval.
+// It is the production value a nil InnerRunDeps.Sleep resolves to, so a caller driving the producer
+// under a cancellable context gets it back promptly. The lyx CLI itself never cancels its context:
+// an operator's Ctrl-C ends the process outright, and "lyx batten pause" is read between rows, so
+// it waits out the current interval.
 func waitOrCancel(ctx context.Context, d time.Duration) {
 	timer := time.NewTimer(d)
 	defer timer.Stop()
