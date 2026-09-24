@@ -11,6 +11,7 @@ package battencli
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -320,6 +321,49 @@ func TestTaskWorktreeLocation_AbsentPairIsNamed(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "not a git repository") {
 		t.Errorf("taskWorktreeLocation(...) = %q; want the absent-pair case reported on its own terms, not as a resolver failure", err.Error())
+	}
+}
+
+// TestCreateRefusal_LeftoverBranchRemedyNeverNamesCheckout asserts the create closure rewords
+// fabric's leftover-branch refusal for a caller standing in prime -- naming the branch and its
+// deletion on both the local and the remote side, and never "lyx fabric checkout", which from prime
+// switches prime itself -- while every other create error passes through unchanged.
+func TestCreateRefusal_LeftoverBranchRemedyNeverNamesCheckout(t *testing.T) {
+	leftover := &fabricengine.ErrBranchExists{Branch: "lyx-some-slug"}
+	other := errors.New("source worktree has uncommitted changes")
+
+	tests := []struct {
+		name        string
+		err         error
+		wantContain []string
+		wantSame    bool
+	}{
+		{"LeftoverBranch", leftover, []string{`"lyx-some-slug"`, "git branch -D lyx-some-slug", "git push origin --delete lyx-some-slug", "lyx fabric cleanup --apply --remote", "resume this run"}, false},
+		{"WrappedLeftoverBranch", fmt.Errorf("create: %w", leftover), []string{"git push origin --delete lyx-some-slug"}, false},
+		{"OtherError", other, []string{other.Error()}, true},
+		{"NilError", nil, nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := createRefusal(tt.err)
+			if tt.wantSame {
+				if got != tt.err {
+					t.Fatalf("createRefusal(%v) = %v; want the same error passed through", tt.err, got)
+				}
+				return
+			}
+			if got == nil {
+				t.Fatal("createRefusal(leftover branch) = nil; want a reworded refusal")
+			}
+			for _, want := range tt.wantContain {
+				if !strings.Contains(got.Error(), want) {
+					t.Errorf("createRefusal(...) = %q; want it to contain %q", got.Error(), want)
+				}
+			}
+			if strings.Contains(got.Error(), "lyx fabric checkout") && !strings.Contains(got.Error(), "never \"lyx fabric checkout\"") {
+				t.Errorf("createRefusal(...) = %q; want it to never suggest \"lyx fabric checkout\" from prime", got.Error())
+			}
+		})
 	}
 }
 

@@ -101,6 +101,27 @@ func taskWorktreePresent(prime *lyxcwd.Location, slug string) (bool, error) {
 	return true, nil
 }
 
+// createRefusal rewords the one create refusal whose fabric remedy is wrong from prime, and passes
+// every other create error through verbatim (fabric's own refusals otherwise name remedies that hold
+// from here, and rewording them would only drop information).
+//
+// fabric words its leftover-branch refusal for a caller inside a pair: "switch a pair onto it with
+// lyx fabric checkout". Every batten verb runs from prime, where that command switches prime's own
+// pair onto the task's branches. The branch is a leftover in the everyday flow -- a torn-down pair
+// keeps its branch and both remote copies, and a rolled-back create keeps the branch it made -- so
+// the remedy named here is the abandon path the absent-worktree refusal already names: delete the
+// leftover locally and on the remote, both sides of the pair, then resume.
+func createRefusal(err error) error {
+	var branchExists *fabricengine.ErrBranchExists
+	if !errors.As(err, &branchExists) {
+		return err
+	}
+	return fmt.Errorf(
+		"branch %q already exists, left behind by an earlier pair for this slug (a torn-down pair keeps its branch and both remote copies, and a rolled-back create keeps the branch it made); delete it locally (\"git branch -D %s\") and on the remote (\"git push origin --delete %s\"), remove the pair's leftover sibling branch the same way (\"lyx fabric cleanup --apply --remote\" removes an orphaned one), then resume this run -- never \"lyx fabric checkout\" from here, which would switch this worktree itself onto that branch",
+		branchExists.Branch, branchExists.Branch, branchExists.Branch,
+	)
+}
+
 // maxChildOutputInError caps the child output folded into a spawn error, so a misbehaving child
 // cannot push an unbounded string into a status file committed onto prime's own pair.
 const maxChildOutputInError = 2000
@@ -200,7 +221,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			top := fabricengine.NewTopology(cfg)
 			res, err := top.Add(location, slug, fabricengine.AddOptions{})
 			logger.Info("battencli: create worktree", "slug", slug, "mutations", res.Mutated())
-			return err
+			return createRefusal(err)
 		},
 		// Both teardown halves are idempotent against their shared post-condition, "the pair is
 		// gone", mirroring CreateWorktree's already-present probe: shedengine persists the row's
