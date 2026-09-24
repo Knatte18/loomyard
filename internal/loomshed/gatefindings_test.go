@@ -197,7 +197,7 @@ func TestWebsterProducer_StuckSurfacesTheBatcherError(t *testing.T) {
 	writeBatcherConfig(t, anchorPath, `active: "no-such-batcher"`+"\n")
 
 	buf := captureGateWarnings(t)
-	producer := NewWebsterProducer("Webster", anchorPath, nil, websterengine.RunDeps{})
+	producer := NewWebsterProducer("Webster", anchorPath, nil, websterengine.RunDeps{}, func() error { return nil })
 
 	outcome, _, err := producer.Call(context.Background())
 	if err != nil {

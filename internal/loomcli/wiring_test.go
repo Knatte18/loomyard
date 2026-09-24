@@ -476,7 +476,8 @@ func TestWire_DiscussionSpecEvaluatesToExpectedShape(t *testing.T) {
 	}
 }
 
-// TestWire_PlanSeamsFilled asserts c.env.PlanSpec and c.env.CommitPlan are each non-nil after wire().
+// TestWire_PlanSeamsFilled asserts c.env.PlanSpec, c.env.CommitPlan and c.env.CommitWebster are each
+// non-nil after wire().
 func TestWire_PlanSeamsFilled(t *testing.T) {
 	t.Parallel()
 
@@ -492,6 +493,9 @@ func TestWire_PlanSeamsFilled(t *testing.T) {
 	}
 	if c.env.CommitPlan == nil {
 		t.Error("c.env.CommitPlan = nil; want a non-nil commit closure")
+	}
+	if c.env.CommitWebster == nil {
+		t.Error("c.env.CommitWebster = nil; want a non-nil commit closure")
 	}
 }
 
