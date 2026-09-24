@@ -25,23 +25,6 @@ The substance the plan has to carry is the seam: `awaitDriverPane` (`internal/lo
 `#019 crucible-batten-followup` — the campaign's safety pass, never achieved.
 Read its brief through the wiki daemon client; its own lesson is that the last two rounds' yield came from looking outside batten's packages.
 
-## The live design thread: a baseline producer and a numerical-drift gate
-
-Agreed in discussion, written down nowhere else, and not yet a `manifest/designs/` doc.
-It belongs there — this section is its only record, and it is lost the next time this file is rewritten without it.
-Motivated by the user's drilling-simulator repo, where numerical drift is what must be caught; [millhouse#1130](https://github.com/Knatte18/millhouse/issues/1130) prompted it by showing that loomyard captures no before-state at all, so it cannot tell a pre-existing failure from one a task caused.
-
-The shape agreed:
-
-- A `Capture-Baseline` producer row, shared by reference the way `preflightshed` and `landingshed` share theirs, placed **right after `Preflight`** so the planner can write against the current numerical signature.
-- The artifact goes in **`.lyx/baseline/`**, never `_lyx`. A numerical baseline is machine-bound by nature (floating point, BLAS, compiler flags), and `.lyx` is the machine-bound, never-tracked tree. Capture before the first edit, recompute after, compare, discard.
-- **Two seams, not one**: `capture` (tree → artifact) and `compare` (before, after → verdict + findings, with per-channel tolerance). An exit-code verdict like `plan.Verify`'s can never express tolerance.
-- Both seams belong to the target repo, never to loomyard. Loomyard owns the row, the seam shapes, and the artifact location.
-- The gate rides `shuttleengine.GateSpec` on the `Webster` row, whose seam exists (`websterEntry` resolves `gate`/`gate_attempts` through `resolveGateSpec`). Registering a validator name in `resolveGateSpec`'s switch is the part not yet built.
-
-Still open: whether the compare runs once at Webster's exit or **per batch**.
-Per batch localizes drift by construction and would make `websterengine`'s `bisect` unnecessary for this class of failure, at the cost of recomputing the signature after every batch.
-
 ## Open findings
 
 **The "added forms, never widened signatures" decision has no definition site.**
