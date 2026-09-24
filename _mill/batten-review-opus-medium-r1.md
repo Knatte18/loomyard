@@ -29,7 +29,18 @@ Suggested fix: record a spawn-confirmed marker in the row's own scratch director
 `internal/loomcli/bootstrap_test.go:694` keys the carve-out on the whole file.
 Its justification names one site (`refuseAdoptedSeed`'s comparison), but any other `<seed>.Driver` read added anywhere in `arm.go` — including one that gates behaviour, which is exactly what the Driver Choice Single-Site Invariant forbids — is skipped by `if driverFieldReadCarveOuts[f.relPath] { continue }`.
 Suggested fix: key the carve-out on file plus enclosing function (`internal/battencli/arm.go` + `refuseAdoptedSeed`) and have the scanner stamp each hit with its enclosing `FuncDecl` name.
-Status: CONFIRMED by reading (demonstration below in What was tested once run).
+Status: CONFIRMED — demonstrated on a `git archive HEAD` copy in the scratchpad (L5).
+
+### F3 — the absent-task-worktree recovery advice is false and, followed verbatim, destructive for no benefit (provisional MEDIUM)
+
+`internal/battencli/wire.go:57` (`taskWorktreeLocation`'s refusal text).
+The advice says "resolve this by hand, deleting the pair's branches so a resumed run reaches a fresh create".
+Deleting branches does not rewind batten's durable status: the resumed run resumes at its persisted `current_producer` (`Run-Shed` here) and hits the identical refusal again, so it never "reaches a fresh create".
+What actually rewinds to a fresh create is deleting prime's batten run directory (`_lyx/shed/<slug>/`), which the message never names; and "the pair's branches" silently means four refs (both local branches AND both `origin` branches `Seed-Child`/`Worktree-Create` pushed), since a re-create with only the locals deleted is refused by fabric's own push ("non-fast-forward" on `<slug>-weft`).
+Meanwhile deleting the branches throws away the task's unmerged work — the destructive half of the advice buys nothing.
+Also the refusal is surfaced as a hard error with `kind: producer`, which ly-drive retries once — harmless (it refuses again) but noted.
+Status: CONFIRMED live (L6).
+Suggested fix: reword to the true recovery: either restore the pair by hand from its branches (non-destructive, work preserved), or abandon this run by deleting prime's run directory (name its path) AND the pair's local and remote branches, after which "lyx batten run <slug>" re-seeds and starts from a fresh create — stating that the second path discards the task's unmerged work.
 
 ## Focus-1 enumeration table
 
@@ -55,6 +66,9 @@ Status: CONFIRMED by reading (demonstration below in What was tested once run).
 - L2 `t2` (type empty) stepped: `lyx batten step t2 --child-driver go` → Worktree-Create done (0.10s); `lyx batten step t2` → Seed-Child done; child seed `{"recipe":"loom","driver":"go","params":{"parent":"main"}}` committed as `batten: seed child t2` on `t2-weft`; prime seed `{"recipe":"batten","driver":"go","params":{"child_driver":"go"}}`. Empty Board type defaulted to `loom` as designed.
 - L3 (F1): `LYX_REED_TMUX=/nonexistent/tmux lyx batten step t2` → `{"error":"battenshed: Run-Shed: spawn inner shed run: exit status 1: {\"error\":\"run -V: fork/exec /nonexistent/tmux: no such file or directory\"...}","kind":"producer"}`; child `status.json` left at `Preflight`/`running`. Then plain `lyx batten step t2` → 30.0s, `outcome: stuck`, "inner shed run still running", no driver process, no tmux session for the fixture. F1 confirmed.
 - L4 focus-2 timing, go child: `lyx -v batten step t3` (3rd step, Run-Shed first Call) logged `spawning loom session` 11:27:49.163 → `loom session wait complete` 11:27:49.639: Spawn blocked 0.48s for a `go` child (the go arm's run-lock handshake). Then `lyx batten run t3` backgrounded to completion (output to scratch `t3-run.out`).
+- L5 (F2 demo): `git archive HEAD | tar -x -C scratch/f2copy`; appended `func illegitimateDriverGate(seed shedrun.Seed) bool { return seed.Driver == shedrun.DriverLLM }` to the copy's `internal/battencli/arm.go`; `go test -run TestDriverChoiceSingleSiteInvariant ./internal/loomcli/` → `ok` (planted gate passes silently). Control: the same function in a new `internal/boguspkg/b.go` → FAIL. The working tree was never touched.
+- L6 (F3): moved `t2` and `t2-weft` out of the hub (simulating "on another machine"); `lyx batten step t2` → hard error (kind `producer`) with the recorded advice. Followed it verbatim: `git worktree prune` (needed first — `git branch -D t2` refuses while git still records the moved worktree), `git -C warp branch -D t2`, `git -C warp-weft branch -D t2-weft`; `lyx batten step t2` → the IDENTICAL refusal at `Run-Shed`; `lyx batten status t2` still `current_producer: Run-Shed`. Only after also deleting prime's `_lyx/shed/t2/` did `lyx batten step t2 --child-driver go` reach `Worktree-Create`, which then blocked: first on my simulation's leftover portal link (artefact of moving dirs, not a defect), then on `push weft branch "t2-weft" failed ... non-fast-forward` because the origin branches `Seed-Child`/create pushed still exist. `t2` is left blocked at create and is not reused (deleting the bare repos' branches was refused by this session's permission gate).
+- L7 PrimeRunLock/dirty-status interplay: while `t3` was watching (prime weft carrying the documented uncommitted `M _lyx/shed/t3/status.json`), `t2`'s Worktree-Create proceeded past fabric's clean-tree checks all the way to the push — a watching slug's uncommitted status does not block another slug's create.
 
 ## Teardown
 
