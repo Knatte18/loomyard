@@ -323,9 +323,9 @@ and the integration test's own `writeSeed(taskLocation, ..., RecipeLoom, ...)` c
 `battencli.RefuseUnlessPrime` for `batten` (prime-only). Live-drove the batten case directly:
 `lyx shed seed <run> --recipe batten` from the weft prime and from `_board` both refuse with the
 same `RefuseUnlessPrime` text already confirmed correct under the Batten Bookend checks below; from
-a task worktree it refuses via the prime-name comparison (proven by the existing integration test,
-`TestWriteSeed_BattenSeedIsRefusedOutsidePrime`, re-read after my own findings were complete — see
-Sweep 5). No live gap found in this rule.
+a task worktree it refuses via the prime-name comparison (already proven by the existing
+integration test read during the wiring-pin sweep above, `TestWriteSeed_BattenSeedIsRefusedOutsidePrime`).
+No live gap found in this rule.
 
 **Batten Bookend refusals, all three non-prime standing points.** Drove `lyx batten status
 typed-loom` from: the weft prime (`warp-weft`) — refused, correctly named "the weft sibling of a
@@ -400,6 +400,74 @@ remote-only orphans (via `git ls-remote`) is a materially larger, network-aware 
 `fabricengine`, and is recorded as **NOT-FIXED-THIS-ROUND** — its own task, not a scoped inline fix,
 though it is the more complete resolution and I record it as a punch-list item below.
 
-(More findings to follow as the remaining sweeps — focus 2's full error-remedy table, focus 5's
-re-confirmation of the CLOSED-AND-VERIFIED list, the youngest fix's `--child-driver llm` check — are
-completed.)
+## Focus-1 table: every step boundary in `Topology.Add`/`Topology.Remove`
+
+Enumerated by reading `internal/fabricengine/add.go`/`remove.go` sequentially (each numbered step
+in the source, cross-checked against `grep -n "rollbackAdd\|^func" internal/fabricengine/add.go`,
+which shows every step from weft-worktree-creation through the final weft push is guarded by
+`rollbackAdd` when `Add` observes its OWN error — the gap this table is about is specifically what
+a SIGKILL bypasses, since a killed process never reaches any of those calls at all). This
+enumeration cannot see: a SIGKILL landing mid-syscall inside a single `git` invocation itself (e.g.
+half-written refs) — out of reach for a Go-level source read, and not distinguished from "the git
+call fully completed" in the table below; nor can it see reed/tmux state, which is Remove's own
+concern only at the Shutdown half of batten's Worktree-Teardown, not Add's.
+
+### `Topology.Add`
+
+| # | Step (add.go) | On-disk state after a SIGKILL landing right after this step | batten's re-entered Worktree-Create row | Verdict |
+|---|---|---|---|---|
+| 0-8 | Validation, dirty check, branch-name compute, existence probes, parent-branch resolve (lines 70-146) | No mutation of any kind — all reads | Re-runs `Add` from scratch, identical to a fresh create | Safe — CONFIRMED (no live drive needed; provably read-only) |
+| 9 | `createGitWorktree` (warp worktree + branch) (149-157) | Warp worktree present, git-registered, on a new local-only (unpushed) branch. No weft worktree, no `_lyx`/`.lyx` junctions, no portal, no launchers, no origin record. | `taskWorktreePresent` → **true** (bare `os.Stat`+`ResolveWorktree`, no pair/junction check) → **skips `Add` entirely, reports Done** | **BLOCKING, CONFIRMED live** (Window A). Seed-Child's `ReadOrigin` hits a non-existent weft repo → hard error → `StateFailed`, permanently wedged. See F-SIGKILL-ADD. |
+| 10 | `InstallPostCheckoutHook` (162-164), non-fatal even on its own failure | Same as step 9 plus maybe a hook file | Same as step 9 | Same as step 9 |
+| 11 | Weft worktree create/adopt (166-187) | Weft worktree now present (a real, valid git repo with its own `_lyx`). Warp side still has no `_lyx`/`.lyx` junction. No portal, no launchers, no origin record. | `taskWorktreePresent` → **true**, skips `Add`, reports Done | **BLOCKING, CONFIRMED live** (Window B, killed just after this step). Seed-Child's `WriteSeed` now succeeds, but `os.MkdirAll` creates a REAL (non-junction) `_lyx` in warp — warp-pristine invariant violated. `CommitSeed` fails opaquely; `lyx fabric reconcile` refuses to repair it, misdiagnosing the directory as user content. See F-SIGKILL-ADD. |
+| 12 | `createPortal` (189-192) | Adds a portal junction on top of step 11's state | Same as step 11 | Same as step 11 (PLAUSIBLE by extension, not independently re-driven — the portal's presence/absence does not change Seed-Child's own path) |
+| 13 | `writeLaunchers` (194-197) | Adds launcher scripts on top of step 12's state | Same as step 11 | Same as step 11 (PLAUSIBLE by extension) |
+| 14 | `RepoWiredNames` + `WireJunctionsWith` (199-213) — wires `_lyx`/`.lyx` and seeds `.git/info/exclude` | A SIGKILL mid-step can leave one junction wired and the other not, or a junction wired but its exclude entry unseeded | `taskWorktreePresent` still doesn't check junction state at all; Done regardless | **PLAUSIBLE, not live-driven** (time-boxed): if `_lyx` ends up wired before the kill, Seed-Child's write lands correctly (no corruption) but an unseeded exclude entry would make the junction show as untracked "dirt" in `git status`, a condition several of fabric's own dirty-worktree gates treat as a hard refusal. Reasoned from `seedLyxJunction`'s/`seedGitExclude`'s own per-junction-then-excludes ordering, not reproduced with a real kill. |
+| 15 | `WriteOrigin` + `CommitWeftPaths` (215-228) | Junctions ARE wired by this point. `origin.json` may be written to disk but its commit interrupted, leaving it as an untracked/uncommitted file in the pair's weft worktree | `taskWorktreePresent` → true, Done. Seed-Child's `ReadOrigin` reads the uncommitted file directly off disk (state.ReadJSON has no commit-awareness) and gets a valid `ParentBranch` | **PLAUSIBLE, not live-driven**: the run itself likely proceeds normally (Seed-Child succeeds, child seed gets its `parent` param), but the origin record stays permanently uncommitted since nothing later in batten's own flow re-commits it — a latent dirty-weft-worktree hazard for a LATER `lyx fabric remove` on this same pair (`refuseDirtyWeftWorktree`'s own no-force gate). Lower severity than 9/11; not independently confirmed. |
+| 16 | Push warp branch (231-235) | Warp branch may be unpushed | Done, proceeds normally otherwise | **PLAUSIBLE, low severity**: the task's own warp work is machine-local until something else pushes it; loom's own later landing/publish flow typically pushes branches as part of its ordinary operation, which would self-heal this in the common case. Not independently confirmed. |
+| 17 | Push weft branch (238-241) | Weft branch may be unpushed | Done, proceeds normally | **PLAUSIBLE, low severity**: batten's own `CommitStatus` seam pushes the pair on every non-no-op transition, which self-heals this within one bounce. Not independently confirmed. |
+
+### `Topology.Remove`
+
+| # | Step (remove.go) | On-disk state after a SIGKILL landing right after this step | batten's re-entered Worktree-Teardown row | Verdict |
+|---|---|---|---|---|
+| 1-5 | Validation, prime-slug refusal, target-exists check, merge-in-progress checks (64-96) | No mutation | Re-enters cleanly | Safe |
+| 6 | `removePortal` + `removeLaunchers` (101-106) | Portal/launcher entries gone; both worktrees still fully present | `taskWorktreePresent` → true; `Shutdown` and `Remove` both re-attempt portal/launcher removal, which is individually idempotent-absent (each helper's own no-op-if-missing contract, per this file's own header comment) | **Safe by reading** — self-healing by construction, consistent with the file's own stated design ("teardown still runs when the worktree directory is already gone"). Not independently re-driven live (time-boxed) but the idempotency is structural, not incidental. |
+| 7 | No-force dirty gates (108-122) | No mutation (refusal path only) | N/A — this is an ordinary refusal, not a crash window | Out of scope for this sweep |
+| 8 | Junction sweep: `scanOnDiskJunctionNames` + `removeWarpJunction` (124-138) | A SIGKILL mid-sweep can leave `_lyx` unwired while `.lyx` still is, or vice versa | `taskWorktreePresent` → true (still resolves; junction state irrelevant to that probe). `Shutdown` calls `reedengine.LoadConfig(taskLocation.AnchorPath(), "reed")`, which reads through the (now possibly-missing) `_lyx` junction | **PLAUSIBLE, not live-driven** (time-boxed): if `_lyx` was the one unwired, `Shutdown`'s own config load plausibly fails, reporting Stuck — and since `Remove` never runs until `Shutdown` succeeds (the Bookend ordering this row exists to enforce), the row could wedge permanently on a state `Remove` itself would happily clean up. This is the single most consequential PLAUSIBLE-not-CONFIRMED gap left by this round's time budget; flagged for a follow-up round's live drive rather than asserted as fact. |
+| 9 | `removeWarpWorktreeDir` (139-141) | Warp worktree possibly partially removed by an interrupted `git worktree remove` | `taskWorktreePresent` → false (once the directory is actually gone) or true (if git left enough behind to still resolve) | **PLAUSIBLE, not live-driven**: ordinary git-worktree-removal atomicity question, not batten-specific; not pursued further given time budget. |
+| 10 | `removeWeftWorktree` (147-155) | Warp side fully gone, weft sibling still on disk — the canonical half-torn pair | `taskWorktreePresent` → false; `PairSiblingRemnant` → true; refuses by name, pointing at `lyx fabric prune --apply` | **CONFIRMED correct, live-driven** (Sweep 4 above, r2 F1). |
+
+## Focus-2 table: every error text batten surfaces, and whether its remedy works from prime
+
+Enumerated by reading every `fmt.Errorf`/`reportStuck` call in `internal/battenshed/*.go` and
+`internal/battencli/{arm,wire,refusal,cli}.go`, plus every error `wire.go`'s closures pass through
+unchanged from `fabricengine`/`shedrun`/`boardengine`/`lyx loom start`. This enumeration cannot see:
+errors from packages batten calls into but that this table did not itself open line-by-line in full
+(`gitrepo`, `reedengine`'s own internals) — those surface only as opaque wrapped text in the two
+CONFIRMED findings above (F-SIGKILL-ADD, F-CLEANUP-REMOTE-ORPHAN), which IS the point being made:
+batten's own pass-through discipline is fine, the texts it passes through are sometimes wrong for
+the state they actually describe.
+
+| Text (site) | Names a remedy? | Remedy | Standing point | Works from there? |
+|---|---|---|---|---|
+| Non-prime refusal (`refusal.go`) | No command, just "re-run from there" | Re-run from prime | Weft prime, `_board`, task worktree | **Yes — CONFIRMED live**, all three standing points |
+| Prime-name-unresolvable refusal (`refusal.go`) | No | — | Anywhere the hub geometry is broken | Not driven (needs a broken hub geometry, out of scope to manufacture) |
+| Self-address refusals (`arm.go` `refuseSelfAddress`) | Yes — "pass the slug" / names the reservation | Type the slug | Prime | **Yes — matches cobra's own arity contract**, verified by reading `cli_test.go`'s arity tests; not independently re-driven live (low-risk, purely textual) |
+| `refuseAdoptedSeed` (driver/recipe disagreement) (`arm.go`) | Yes — "drive it with `lyx shed run`" / "delete its seed to re-seed" | Two alternatives | Prime | Not independently driven live this round (unchanged since earlier rounds, no fix landed on it since `d7ab9eca0`, out of this round's wiring-pin sweep) |
+| `refuseBattenOwnDriverLLM` | N/A (flat impossibility) | — | Prime | **Yes — CONFIRMED live** (`--driver llm` refused) |
+| `taskWorktreeLocation`'s absent-pair refusal (`wire.go`) | Yes — two-branch remedy (restore by hand, or abandon: delete run dir + both branches) | Manual restore or full abandon | Prime | Reasoned correct by reading + the existing `TestTaskWorktreeLocation_AbsentPairIsNamed` unit coverage; not independently re-driven live this round (this exact text did not change since `d7ab9eca0`) |
+| `createRefusal`'s `ErrBranchExists` rewording (`wire.go`) | Yes — delete branch local+remote, `lyx fabric cleanup --apply --remote` for the sibling | Three commands | Prime | **Local+remote warp branch deletion: CONFIRMED works. The `lyx fabric cleanup --apply --remote` step: CONFIRMED DOES NOT WORK** for the common case (F-CLEANUP-REMOTE-ORPHAN) |
+| `PrimeLock` contention (`create.go`/`teardown.go` `reportStuck`) | No command, names the lock path | Wait and resume | Prime | **Yes — CONFIRMED live** via the PrimeRunLock two-slug interleave |
+| `childRecipeRefusal`'s three sentinels (`seamchild.go`) | Two of three name remedies (unsupported recipe names the one legal value; disagreeing seed names delete-or-correct informally, no exact command); unknown recipe just lists valid names | Fix the Board task's type, or fix/delete the child's own seed | Prime | Not independently driven live this round (unchanged text, low risk — these are Board-data-correction remedies, not fabric commands that could be wrong-from-there) |
+| Seed-Child hard errors: `ReadBoardType`/`ChildDriver`/unwrapped `WriteSeed` failures | No | — (mechanism failures by design) | Prime | **The unwrapped `WriteSeed` failure path is exactly where F-SIGKILL-ADD's opaque git error surfaces** — see above |
+| `innerRunProducer`'s halted-child remedy (`innerrun.go` `haltedChildRemedy`) | Yes — "resume from inside that worktree ... e.g. `lyx loom start`" | Attach/resume inside the child | Prime (the text explicitly says go elsewhere) | Reasoned correct by reading; not independently re-driven live this round (would need to manufacture a genuinely blocked/failed/paused child, a larger live scenario than this round's time budget covered — flagged as a gap, not asserted safe) |
+| `worktreeTeardownProducer`'s Shutdown/Remove Stuck reasons (`teardown.go`) | Shutdown: none (names which half failed); Remove: none directly, but the closure's own `PairSiblingRemnant` branch does | `lyx fabric prune --apply` | Prime | **CONFIRMED live** (Sweep 4, half-torn-pair) |
+| `doneSlugRefusal` (`arm.go`) | Yes — delete run dir, delete branches local+remote, `lyx fabric cleanup --apply --remote` | Same three-part remedy as `createRefusal` | Prime | **Delete run dir + local/remote warp branch: CONFIRMED works. `lyx fabric cleanup --apply --remote`: CONFIRMED DOES NOT WORK** — same root cause as `createRefusal`'s case, independently reproduced (F-CLEANUP-REMOTE-ORPHAN) |
+| `PauseAbsentMessage`/`MissingSeedMessage` (`arm.go`/`shedrun`) | Yes — "run `lyx batten run <slug>` first" | Start the run | Prime | **Yes — CONFIRMED live** |
+| Child bootstrap spawn failure (`childSpawnError`, wire.go) | No (folds child's own diagnosis in, no remedy of its own) | — | Prime | Not independently driven live (would need a genuinely failing child bootstrap; unit-tested via `TestChildSpawnError`) |
+| `lyx shed seed`'s fabric-checkout refusal (`shedcli/seed.go`) | No command, states the refusal | Seed from a drivable worktree | Weft prime / task worktree's other side | **Yes — CONFIRMED by the existing `TestWriteSeed_RefusesFabricsOwnCheckouts`** (read during the wiring-pin sweep), consistent with my own live Bookend drives against the same refusal chain |
+| `lyx shed seed`'s batten-prime-only refusal (`shedcli/table.go` → `battencli.RefuseUnlessPrime`) | No command, states the refusal | Seed from prime | Task worktree | **Yes — CONFIRMED by the existing integration test** (`TestWriteSeed_BattenSeedIsRefusedOutsidePrime`, read during the wiring-pin sweep) |
+
+(More findings to follow as focus 5's re-confirmation of the CLOSED-AND-VERIFIED list and the
+typed-loom third-attempt result are completed.)
