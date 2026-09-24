@@ -69,13 +69,68 @@ The routing is right; the lead sentence points the operator at the wrong field.
 Suggested fix: "the task worktree already has its own seed, and it disagrees with the one Seed-Child would write: ...".
 Status: CONFIRMED live.
 
+### F7 — `lyx shed seed` writes a seed into fabric's own checkouts (`_board`, a weft sibling) with no refusal (provisional LOW)
+
+`internal/shedcli/seed.go` (`newSeedCommand` → `writeSeed`).
+Every other `lyx shed` verb for a batten seed reaches `battencli.ArmAt` → `fabricengine.RequireDrivableWorktree` and refuses fabric's own checkouts, but `seed` resolves cwd and writes with no such gate: from `_board`, `lyx shed seed zz --recipe loom` returned ok and left `?? _lyx/shed/` untracked in the Board checkout of `weft:main` (L11), where the next Board write's `Bolt` commit — which stages everything in that repo — would sweep it onto `weft:main`.
+Worse, the "no seed found" refusal `lyx shed status <slug>` prints from a weft sibling tells the operator to run exactly that ("run \"lyx shed seed <slug> --recipe <name>\" first").
+Suggested fix: `seed` calls `fabricengine.RequireDrivableWorktree(location)` before `writeSeed`, the same refusal batten's own verbs apply.
+Status: CONFIRMED live.
+
+### F8 — `battenshed`'s documented residual omits the commonest undetected-driver case: an llm driver that stops ITSELF with the run non-terminal (provisional LOW, docs)
+
+`internal/battenshed/doc.go:15-19`.
+The residual names a driver strand that "dies mid-run" or is "alive but parked". Live (L12), the child's ly-drive session started, found no `ly-drive` skill installed on this host, wrote a `BLOCKED` report to `.lyx/shed/self/drive-report-*.md`, and ended its turn — neither dead nor parked — leaving the child `running` at `Preflight`, which `Run-Shed` reports as "still running" for the whole 12h budget.
+The same shape follows from every ly-drive stop that leaves the run non-terminal: a hand-back on a non-`producer` refusal kind, or the 120-step autonomous cap.
+Suggested fix: extend the residual text to name a driver that stops of its own accord without the run reaching a terminal state (and where its report lands), so an operator reading a long-quiet `Run-Shed` knows to look there.
+Detection itself stays out of scope (design residual).
+Status: CONFIRMED live.
+
+### F9 — `waitOrCancel`/`InnerRunDeps.Sleep` promise that "an operator's stop is not held for the whole poll interval", but no production path ever cancels the context (provisional NIT)
+
+`internal/battenshed/innerrun.go:15-17`, `internal/battenshed/deps.go` (`Sleep` field doc).
+`cmd/lyx/main.go` runs the root on a never-cancelled context and lyx installs no signal handler anywhere; an operator's Ctrl-C terminates the process outright (L13), and `lyx batten pause` sets `pause_requested`, which shedengine reads between rows — it does not interrupt the sleep.
+The cancellation arm is correct and harmless, but the stated rationale describes a production behaviour that does not exist.
+Suggested fix: state the true reason — a caller that embeds the producer with a cancellable context (the tests, any in-process driver) gets a prompt return; a CLI process is simply killed.
+Status: CONFIRMED by reading + L13.
+
 ## Focus-1 enumeration table
 
-(pending)
+Enumeration shell (repo root):
+`git show --format= 36900c6f5 -- internal/shedrun/seed.go internal/fabricengine/fabric.go internal/loomcli/bootstrap_test.go internal/shell/posix.go internal/boardcli/cli.go internal/shedrecipe/entries_batten.go`;
+`grep -rnE '\bWriteSeed\b|ErrDisagreeingSeed|RequireWarpWorktree|RequireDrivableWorktree' --include=*.go .`;
+function-value/closure reach: `grep -rnE 'shedrun\.WriteSeed[^(]|RequireDrivableWorktree[^(]|RequireWarpWorktree[^(]' --include=*.go .` (none) and `grep -rn 'ArmAt' internal/shedcli` (`table.go:56` holds `battencli.ArmAt` as the batten row's `Arm` func value);
+text consumers: `grep -rn -E 'disagreeing seed|already seeded with|refusing to overwrite' --exclude-dir=.git --exclude-dir=_mill .`.
+
+| Changed item | Site | How reached | Behaviour checked | Verdict |
+|---|---|---|---|---|
+| `shedrun.ErrDisagreeingSeed` + reworded message | `shedrun.WriteSeed` | producer | wraps with `%w`; test `seed_test.go:175` | correct |
+| same | `battencli/wire.go:339` SeedChild `WriteSeed` closure (a func value stored in `SeedChildDeps`, called by `seamchild.go:87`) | closure | `errors.Is` → `ErrDisagreeingChildSeed` → Stuck; live L10 (params-only disagreement) | correct routing; wording F6 |
+| same | `battencli/arm.go:222` `armSeed` auto-seed | direct | guarded by a prior `ReadSeed` found-check, so only a concurrent-seed race reaches it; the envelope then carries the new "shedrun: disagreeing seed: ..." text | correct |
+| same | `shedcli/seed.go:76` `writeSeed` (`lyx shed seed`) | direct | error envelope, operator-facing; reword is still self-describing | correct (see focus 4) |
+| same | `loomcli/sharedbootstrap.go:104` `seedAndCommitBootstrap` (`loom start`, `loom step`) | direct; reached from batten via the `Run-Shed` Spawn exec | `start`: error envelope, folded into batten's spawn error by `childSpawnError`; `step`: `bootstrapStageSeed` → `KindUnseeded` (stage-based label, documented in `step.go`; every non-`producer` kind hands back without retry in ly-drive) | correct |
+| same (text) | `battencli/wire_test.go:236` child-output fixture | test | uses a pre-reword spelling ("shedrun: refusing to overwrite with disagreeing seed"); assertion is substring "disagreeing seed", still true of the new text | correct (fixture is arbitrary sample output) |
+| same (text) | `plugins/ly/skills/ly-drive/SKILL.md`, stencils | prose | no string match anywhere | n/a |
+| `fabricengine.RequireDrivableWorktree` | `battencli/arm.go:286` `armAt` | direct, and via `shedcli` table func value `battencli.ArmAt` | live: `lyx batten ...` and `lyx shed status t6` from `warp-weft`/`_board` refuse (L1, L11) | correct |
+| `RequireWarpWorktree` (wrapped) | `fabriccli/fabric.go:471,478` | direct | owner-set directory, allowed | correct |
+| same | `fabricengine/fabric_test.go` | test | owner | correct |
+| same | Fabric Vocabulary scan roots | — | `walkEnforcementRoots(..., []string{"internal","cmd"})`; no caller in `tools/` or elsewhere outside the roots; no non-owner caller hidden by a skipped directory | correct |
+| `driverFieldReadCarveOuts` | `loomcli/bootstrap_test.go:694` | test | file-granular: planted second reader in `arm.go` passes (L5) | F2 |
+| `shell/posix.go` | `posixShell.Quote` doc comment only | 19 `.Quote(` callers | code unchanged | correct |
+| `boardcli/cli.go` | upsert help text (`type`, `short_name`) | help | both fields exist in `boardengine.Task`; `type` round-trips live (t1 upsert echoes `"type":"loom"`) | correct |
+| `shedrecipe/entries_batten.go` | `innerRunEntry` doc comment only | — | matches code (no `Now` field any more) | correct |
+| `CONSTRAINTS.md`, `docs/overview.md`, `SANDBOX-FABRIC-SUITE.md` | docs | — | overview's batten entry re-read against live behaviour: teardown paragraph (F4), "spawns only while the task worktree has no status file" (F1) | see F1/F4 |
 
 ## Focus-2 enumeration table
 
-(pending)
+| Question | Answer | Evidence |
+|---|---|---|
+| How long does Spawn block, `go` child | 0.48s (loom start's step 1 + run-lock handshake) | L4 |
+| How long does Spawn block, `llm` child | 10.5s on a never-trusted path (includes shuttle dismissing the workspace-trust dialog); ~3s on the now-trusted path | L12, L13 |
+| Startup-gate failure / timeout inside `loom start` | `loom start` exits 1 with its envelope; `childSpawnError` folds it into a named hard error at `Run-Shed` (kind `producer`) — honest the FIRST time; every resume thereafter is a false "still running" (F1) | L3 |
+| Cancelled `lyx batten run` during the wait (SIGINT to the process group, 1s into an llm Spawn) | batten and `loom start` both die at once (no signal handling anywhere); the child's status is already seeded `running`; the driver's claude strand survives in the child's own tmux session (it belongs to the child, so not a batten-owned orphan) and ran on; a resume would not re-spawn (F1 path) — if the kill lands before shuttle adds the strand there is no driver at all | L13 |
+| SIGTERM to the batten pid alone | not driven; by reading, `exec.Command` (not `CommandContext`) leaves `loom start` running to completion as an orphan — bounded by its own 30s handshake / `startup_timeout_s` | reading |
+| #018 regression? | no: the fresh-path llm driver was not parked on the trust dialog; `~/.claude.json` gained exactly one entry, `.../fx2/hubs/lwarp-LYXHUB/lwarp` with `hasTrustDialogAccepted: true` (Claude keys a linked worktree by its main worktree path) | L12 |
 
 ## Docs & operability findings
 
@@ -98,6 +153,10 @@ Status: CONFIRMED live.
 - L8 (F4, focus 5 landing path): `lyx batten run t3` (child `go`) ran to exit 0 in ~4.5 min wall: child loom walked Discussion → Plan → Batchifier → Webster → Webster-Review → Publish → Finalize to `done` (`require_pr_to_base: []`), `main` gained `232efff Add // three comment above main`; batten's envelope `{"halted_producer":"Worktree-Teardown","outcome":"blocked"}`, stuck reason "worktree has uncommitted changes; use --force; this pair's portal junction and launcher scripts were already torn down before the refusal". `git status` in `t3`: `?? fx` (agent-built binary); in `t3-weft`: `?? _lyx/webster/outcome.yaml`, `?? _lyx/webster/reports/integration.yaml`, `?? _lyx/webster/summary.md`. `git log -- _lyx/webster` shows only `webster: begin-batch`/`record-batch` commits (state.json + batch report). Removed `fx`; `lyx batten step t3` → blocked again, now "weft worktree has uncommitted changes; run \"lyx fabric sync\"". `lyx fabric sync` in `t3`, `lyx batten step t3` → `done` in 0.1s; hub has no `t3`/`t3-weft`; `ps aux` shows no fixture tmux/lyx/claude process.
 - L9 (F5): Board tasks `t4`..`t7` (type empty). `lyx batten step t5 --child-driver go`, `lyx batten step t5` (create, seed); hand-wrote the child `status.json` as `state: done` so `Run-Shed` reads done without a real child run; `lyx batten step t5` → Run-Shed done; first `lyx fabric remove t5` refused (my hand-written status untracked) → `lyx fabric sync` in `t5`, `lyx fabric remove t5` ok; `lyx batten step t5` → `outcome: stuck`, `state: blocked` at `Worktree-Teardown`, `stuck_reason: "session shutdown failed: battencli: the task worktree for \"t5\" is not present ... deleting the pair's branches so a resumed run reaches a fresh create ..."`.
 - L10 re-entry + disagreeing seed (focus 3a, floor): `t6` create + seed, then hand-set prime's `status.json` back to `Seed-Child`/`running` (the kill-between-commit-and-persist state) → `lyx batten step t6` done, `t6-weft` log unchanged (no double seed commit); set back to `Worktree-Create` → `-v` logs "create worktree skipped, the task worktree is already present", done, no second create. `t7`: after create, hand-wrote and committed a child seed disagreeing ONLY in `params.parent` (`some-other-branch`) → `lyx batten step t7` → `blocked` at `Seed-Child` with the named stuck reason (F6 wording), and the hand seed was left untouched. The only production `WriteSeed` closure calls `shedrun.WriteSeed` directly and `errors.Is`-matches its sentinel, so no wrapped/reworded variant can reach `SeedChild` today; a seed with an unknown key or bad JSON is a hard error ("decode existing seed"), not an adoption.
+- L11 (F7): from `_board`, `lyx shed seed zz --recipe loom` → ok, `?? _lyx/shed/` in the Board checkout (removed by hand afterwards). From `warp-weft`: `lyx shed status t6` → batten's `RequireDrivableWorktree` refusal (ArmAt reached through shedcli's table func value). From `t6-weft`/`t6`: `lyx shed status t6` → "no seed found for run \"t6\"; seeded runs: [self t2 t3 t5]. run \"lyx shed seed t6 --recipe <name>\" first" (the frozen copies the overview documents); from `t6`, `lyx batten step t6` → the Bookend refusal naming both worktrees.
+- L12 (focus 6, F8): second fixture `fx2` (fresh bare `lwarp.git`/`lweft.git`, `.gitignore` for the module binary, same config override committed and pushed before any task). `grep -c fx2 ~/.claude.json` = 0 before. Board `l1` (`type: loom`); hand-seed authority: `lyx shed seed l1 --recipe batten --param child_driver=llm` → prime seed `{"recipe":"batten","driver":"go","params":{"child_driver":"llm"}}`; `lyx -v batten run l1` (no flags) adopted it, and Seed-Child wrote the child seed with `driver: llm`. Spawn 11:35:31.378 → 11:35:41.892 (10.5s). `~/.claude.json` gained `.../lwarp-LYXHUB/lwarp` (`hasTrustDialogAccepted: true`) — trust dismissed, not parked (#018 holds). The driver pane then reported: "The `ly-drive` skill is not in the available skills list ... Status: BLOCKED — nothing was done", wrote `.lyx/shed/self/drive-report-20260924-113531-980d.md`, and idled. Environment gap: `~/.claude/plugins/installed_plugins.json` has no `ly@loomyard` (docs/skills.md's installed set is `ly + craft + golang + raddle`); installing a plugin into the operator's global Claude config is not mine to do, so a genuine llm-driven terminal state could not be reached. Child stayed `running`/`Preflight`; batten kept bouncing "still running". Stopped batten with SIGINT; `lyx reed down` in `l1`.
+- L13 (focus 2 cancellation): `l3` (`--child-driver llm`), `setsid lyx -v batten step l3` (third step = Run-Shed); 1s after "spawning loom session", `kill -INT -- -<pgid>`: both `lyx batten step l3` and its `lyx loom start --no-attach` child gone; child status `Preflight`/`running`; the child session kept panes `%9 bash`, `%10 lyx` (status strand), `%11 claude` (driver, alive, idle at prompt). (A first attempt on `l2` missed its window — Spawn finished in ~3s on the now-trusted path — and sent no signal.) `lyx reed down` in `l2`, `l3`.
+- L14 PrimeRunLock: held `.../warp/.lyx/shed/run.lock` with `flock -x ... sleep 8`; `lyx batten step t4 --child-driver go` → `blocked` at Worktree-Create, `stuck_reason: "prime lock \"...\" is already held ..."`; after release `lyx batten step t4` → done, `t4`/`t4-weft` created.
 - L7 PrimeRunLock/dirty-status interplay: while `t3` was watching (prime weft carrying the documented uncommitted `M _lyx/shed/t3/status.json`), `t2`'s Worktree-Create proceeded past fabric's clean-tree checks all the way to the push — a watching slug's uncommitted status does not block another slug's create.
 
 ## Teardown
