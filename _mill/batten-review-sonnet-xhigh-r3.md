@@ -6,7 +6,9 @@ the round prompt itself (`_mill/batten-review-prompt.md`).
 ## Status
 
 Job 1 (review) COMPLETE. 4 findings (2 BLOCKING, 2 MEDIUM, 0 LOW, 0 NIT), all CONFIRMED live. Job 2
-(fixing) follows in the fixer report, `_mill/batten-review-sonnet-xhigh-r3-fixer-report.md`.
+(fixing) COMPLETE — all 4 fixed, sabotage-proven, live-reverified against the real substrate. See
+`_mill/batten-review-sonnet-xhigh-r3-fixer-report.md` for the fix-by-fix detail and the final
+merge-readiness verdict.
 
 ## What was tested (running log)
 
@@ -612,3 +614,20 @@ the Job 2 fix.
 defects, one of them (F-SIGKILL-ADD) a genuine data-model corruption path in the module's core
 crash-recovery mechanism, squarely in scope and squarely what this round was seeded to find. Not
 mergeable as-is. See the fixer report for the post-fix verdict.
+
+## Teardown
+
+Fixture hub at `/tmp/batten-r3-fixture-<timestamp>` (outside the loomyard tree and `$HOME/Code`,
+never used on this host before this round) fully deleted after Job 2's own final live
+re-verification: `find <scratch> -mindepth 1 -delete` then `rmdir`, confirmed absent from `/tmp`
+afterward. `ps aux | grep -E 'lyx|tmux|reed|claude'` before and after teardown showed only this
+host's pre-existing, untouched standing sessions (identical PIDs at session start and end) — zero
+stray processes belonging to this round's own fixture. The operator's own standing bench
+(`lyx-test-LYXHUB`) does not exist on this host and was never touched. `~/.claude.json` gained one
+`projects` entry, for the fixture's prime worktree path; read to confirm, never modified, per the
+live-substrate cost declaration's own instruction. `--child-driver llm` was not exercised: the `ly`
+plugin is absent on this host (confirmed at the top of this log), an environment gap per the round
+prompt's own focus 6, not a defect.
+
+Job 2's fix-by-fix implementation, verification, and final merge-readiness verdict are in
+`_mill/batten-review-sonnet-xhigh-r3-fixer-report.md`.
