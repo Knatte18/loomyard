@@ -35,6 +35,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -462,6 +463,39 @@ func TestBattenIntegration_CreateRow_IsIdempotentAgainstAnAlreadyPresentWorktree
 	}
 	if !pathExists(h.PairWarpWorktree(slug)) {
 		t.Errorf("task worktree missing after the idempotent create row: %s", h.PairWarpWorktree(slug))
+	}
+}
+
+// TestBattenIntegration_CreateRow_LeftoverBranchIsRewordedForPrime pins createRefusal's own wiring
+// into the CreateWorktree closure: a leftover warp branch from an earlier torn-down pair (or a
+// rolled-back create) must reach the closure's caller worded for an operator standing in prime,
+// never fabric's own raw "lyx fabric checkout" advice, which would switch prime itself onto the
+// task's branch. Calls c.env.CreateWorktree directly, the production closure, rather than
+// createRefusal in isolation, so a future edit that drops the reword call fails here.
+func TestBattenIntegration_CreateRow_LeftoverBranchIsRewordedForPrime(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+	slug := "batten-leftover-branch"
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "branch", slug)
+
+	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
+		t.Fatal("ReadStatus must not be called: the create row must fail before the poll row ever runs")
+		return shedengine.Status{}, false, nil
+	})
+
+	err := c.env.CreateWorktree(context.Background())
+	if err == nil {
+		t.Fatal("CreateWorktree() error = nil; want the leftover-branch refusal")
+	}
+	// The reworded text names "lyx fabric checkout" only inside its own "never do this" warning, not
+	// as a suggested remedy -- the same distinction TestCreateRefusal_LeftoverBranchRemedyNeverNamesCheckout
+	// (wire_test.go) draws for createRefusal in isolation.
+	if strings.Contains(err.Error(), "lyx fabric checkout") && !strings.Contains(err.Error(), `never "lyx fabric checkout"`) {
+		t.Errorf("CreateWorktree() error = %q; want it to never suggest \"lyx fabric checkout\" from prime", err.Error())
+	}
+	for _, want := range []string{slug, "git branch -D " + slug, "resume this run"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("CreateWorktree() error = %q; want it to contain %q", err.Error(), want)
+		}
 	}
 }
 
