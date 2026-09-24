@@ -25,6 +25,35 @@ Clean-room: no `_mill/**/batten-review-*` file other than the prompt was opened 
   Following that text from inside the child (`lyx loom start --parent main --no-attach`) is refused: `shedrun: disagreeing seed ... {Recipe:loom Driver:go Params:map[]}; refusing to overwrite with {... Params:map[parent:main]}`.
   The run cannot reach done without hand-editing the child's committed seed.
 
+### F2 (provisional) — the incomplete-pair remedy does not work when followed verbatim from prime
+
+- Where: `internal/battencli/wire.go` `incompletePairRemedy` and the `CreateWorktree` closure's `present && !complete` arm.
+- Scenario (CONFIRMED live):
+  (a) window A3+ (sibling created): the remedy's `git worktree remove --force <hub>/<slug>-weft` run from prime fails `fatal: ... is not a working tree` — the sibling is a worktree of the other repository; the next resume then refuses with fabric's `weft worktree directory already exists`.
+  (b) windows A4/A5: the remedy never names the portal or the launchers; the next resume refuses `link already exists — remove it first: <hub>/_portals/<slug>`, and that refused create's rollback strands the warp branch (known fabric item), costing a second remedy loop.
+  (c) hub with `branch_prefix: r4/` (fixture B): the remedy names `git branch -D pa1`; the branch is `r4/pa1`, so `error: branch 'pa1' not found`, and the next resume refuses with createRefusal's leftover-branch text.
+- Verified replacement: `lyx fabric remove --force <slug>` from prime removes every Add leftover in one command (portal, launchers, junctions, task worktree, sibling, sibling branch) at A1/A2 (sibling absent, fixture A `ka2`) and A5 (fixture B `pa3`), then `git branch -D <branch_prefix><slug>`; resume reaches Seed-Child.
+
+### F3 (provisional) — Worktree-Teardown reports done while the pair's other-side branch survives, silently
+
+- Where: `internal/battencli/wire.go` `Teardown.Remove` closure — the `!present` "pair already gone" arm, and the success arm, which discards `RemoveResult.RemoteBranchError`/`RemoteSkippedReason` (only `res.Mutated()` is logged).
+- Scenario (CONFIRMED live):
+  R5 (killed after the sibling worktree's removal, before its branch deletion): resume reports done; `ka7-weft` survives locally AND on the remote.
+  R6 (killed after the local branch deletion, before the remote one): resume reports done; `ka12-weft` survives on the remote only — invisible to `lyx fabric cleanup` (local-only enumeration).
+  R4 remedy path (`lyx fabric prune --apply`, as the teardown refusal says): prune removes the sibling worktree only; resume reports done; `ka6-weft` survives locally and on the remote.
+  Failing remote deletion (fixture B, weft `origin` pointed at a missing path during `pa3`'s teardown): done, no mention anywhere; `r4/pa3-weft` stranded on the remote, deleted locally.
+- Consequence (CONFIRMED on `ka12`): following doneSlugRefusal's abandon path verbatim (run directory, `git branch -D`, `git push origin --delete`, `lyx fabric cleanup --apply --remote`), the re-run's create fails `push weft branch "ka12-weft" failed ... [rejected] (non-fast-forward)` with git's own "use git pull" hint, and the refused create's rollback strands the warp branch again.
+
+### F4 (provisional, NIT) — createRefusal and doneSlugRefusal describe a torn-down pair as keeping "both remote copies"
+
+- Where: `internal/battencli/wire.go` `createRefusal` text and doc comment; `internal/battencli/arm.go` `doneSlugRefusal` ("both sides of the pair").
+- Batten's own teardown deletes the other-side branch locally and on the remote (`top.Remove(..., remote: true)`), so a batten-torn-down pair leaves only its task branch, local and remote.
+
+### F5 (provisional, NIT) — stale field comment in shedcli's recipe table
+
+- Where: `internal/shedcli/table.go` `entry.BootstrapVerb` comment: "Nothing reads this field yet in this batch -- that is deliberate, not dead code."
+  `internal/shedcli/seed.go:88` reads it (the `--driver llm` validator).
+
 ## Focus-1 enumeration (SIGKILL windows in Topology.Add / Topology.Remove)
 
 (pending)
@@ -72,6 +101,32 @@ Clean-room: no `_mill/**/batten-review-*` file other than the prompt was opened 
   loom's bootstrap commits the origin record unconditionally (`bootstrapCommitPaths`), so this state self-heals at Run-Shed (traced, `sharedbootstrap.go` step 3).
 - A10 (committed, neither branch pushed) / A11 (warp pushed, sibling not): create done; Seed-Child's `PushSeed` pushed the sibling branch (weft remote shows it after Seed-Child).
 - A12 (both pushed, before return): create done — a healthy re-entered create reports done.
+
+### Remove windows (child status hand-set to `done` and committed in the child's sibling as a harness, then `lyx batten step` to reach Worktree-Teardown; kill with `LYX_R4_KP=Rn`)
+
+- Harness note: the child's own `status.json` was written by hand (`state: done`) and committed on the child's sibling so Run-Shed returns Done without spawning an LLM; this exercises the teardown row only, and the floor drive below covers the real Run-Shed path.
+  `ka3`/`ka4` additionally carried a live reed session (`lyx reed up` + `lyx reed add --name holder --cmd "sleep 86400"` from the child) before their teardown.
+- R1 (`ka1`, after portal removal): resume done; sibling branch deleted local + remote; no leftovers.
+- R2 (`ka3`, after launchers, before the junction sweep; live session): the killed step's Shutdown had already ended the session; resume done, clean.
+- R3 (`ka4`, junctions swept, task worktree still on disk; live session): resume's Shutdown resolves reed's config through the task worktree with `_lyx` gone — reed's config load degrades to its template (Config Strictness: reedengine is degrading) and `Down` succeeds; Remove completes; done, clean.
+- R4 (`ka6`, task worktree removed, sibling on disk): resume blocked with the sibling-remnant refusal naming `lyx fabric prune --apply`; followed verbatim: prune removed the sibling worktree only; resume done — `ka6-weft` left locally and on the remote (F3).
+- R5 (`ka7`, sibling worktree removed, branch not deleted): resume done — `ka7-weft` left locally and on the remote (F3).
+- R6 (`ka12`, local branch deleted, remote not): resume done — `ka12-weft` left on the remote only (F3); the abandon-path re-run then failed on the push (F3 consequence).
+- R7 (`ka9`, remote deleted, before `worktree prune`): resume done, clean.
+- R8 (`ka10`, Remove about to return): resume done, clean.
+- Branch-prefix teardown (fixture B, `pa1`): deletes exactly `r4/pa1-weft` locally and on the remote; `r4/pa1` kept locally and on the remote (Remove never deletes the task branch).
+- Failing remote deletion (fixture B, `pa3`, weft `origin` set to a missing path for the step, restored after): teardown done; only log line is the batten status push warning; `r4/pa3-weft` stranded on the remote (F3).
+
+### Focus-2 remedies on a prefixed hub (fixture B `$S/r4fx-b3p`, `branch_prefix: r4/` committed to `_board/_lyx/config/fabric.yaml`)
+
+- `pa1` killed at A1: remedy names `git branch -D pa1` → `error: branch 'pa1' not found`; resume: createRefusal text naming `r4/pa1` correctly (F2c).
+
+### Floor checks
+
+- PrimeRunLock across two slugs (fixture B): `flock <prime>/.lyx/shed/run.lock sleep 15` held from a shell; `lyx batten step pfull` at Worktree-Create → blocked, stuck reason `prime lock "<hub>/warp/.lyx/shed/run.lock" is already held; another batten producer is creating or tearing down a task worktree`; after release, resume → create done.
+- Batten Bookend refusals (fixture B), `lyx batten status pfull` and `lyx batten run pfull2`:
+  from the task worktree `pfull` → "runs from the hub's prime worktree only; \"pfull\" is not the prime worktree (\"warp\" is)";
+  from the weft prime `warp-weft`, from `pfull-weft`, and from `_board` → refused through `RequireDrivableWorktree` naming the checkout. No seed written anywhere.
 
 ### Hermetic baseline (start of Job 1)
 
