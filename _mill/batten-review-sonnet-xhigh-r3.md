@@ -5,8 +5,8 @@ the round prompt itself (`_mill/batten-review-prompt.md`).
 
 ## Status
 
-IN PROGRESS — Job 1 (review). Findings and test log below are provisional and are being appended
-to as testing proceeds, per the round prompt's "Log as you go" rule.
+Job 1 (review) COMPLETE. 4 findings (2 BLOCKING, 2 MEDIUM, 0 LOW, 0 NIT), all CONFIRMED live. Job 2
+(fixing) follows in the fixer report, `_mill/batten-review-sonnet-xhigh-r3-fixer-report.md`.
 
 ## What was tested (running log)
 
@@ -473,5 +473,142 @@ the state they actually describe.
 | `lyx shed seed`'s fabric-checkout refusal (`shedcli/seed.go`) | No command, states the refusal | Seed from a drivable worktree | Weft prime / task worktree's other side | **Yes — CONFIRMED by the existing `TestWriteSeed_RefusesFabricsOwnCheckouts`** (read during the wiring-pin sweep), consistent with my own live Bookend drives against the same refusal chain |
 | `lyx shed seed`'s batten-prime-only refusal (`shedcli/table.go` → `battencli.RefuseUnlessPrime`) | No command, states the refusal | Seed from prime | Task worktree | **Yes — CONFIRMED by the existing integration test** (`TestWriteSeed_BattenSeedIsRefusedOutsidePrime`, read during the wiring-pin sweep) |
 
-(More findings to follow as focus 5's re-confirmation of the CLOSED-AND-VERIFIED list and the
-typed-loom third-attempt result are completed.)
+## Sweep 5 (focus 5): standard re-confirmation of the CLOSED-AND-VERIFIED list
+
+Read AFTER my own findings above were complete, per the round prompt's clean-room release:
+`_mill/batten-review-HANDOFF.md` (this follow-up campaign) and
+`_mill/batten-end-to-end/batten-review-HANDOFF.md` (the predecessor). Not opened before this point:
+`_mill/batten-review-precount.md`, any `_mill/**/batten-review-*` file other than the prompt.
+
+**Both of this round's headline findings turn out to be exactly this round's seeded focus, already
+half-diagnosed by the orchestrator before I started:**
+- The follow-up HANDOFF's R2 entry states, verbatim: *"Orchestrator-found candidate, not driven
+  (seeded as R3 focus 1): R2's crash-window table says a kill inside `Topology.Add` is rolled back;
+  under SIGKILL the in-process rollback never runs, and `taskWorktreePresent` probes the warp alone,
+  so a re-entered create likely reports Done over a half-created pair — the create-side mirror of
+  F1."* This is F-SIGKILL-ADD, reasoned but not live-driven by the orchestrator; this round supplies
+  the live SIGKILL reproduction (twice, at two different boundaries) and the fix.
+- The same entry also states: *"Orchestrator-found wiring gap in F2 (seeded as R3 focus 3):
+  `fabricengine.Add` returning an untyped error with the same text leaves every test green,
+  `-tags integration` included... The fix works today; nothing stops it being reverted silently."*
+  This is F-WIRING-1, independently reproduced this round via an actual revert-and-test experiment
+  (the orchestrator's note reasoned about it but did not run one).
+
+No CLOSED-AND-VERIFIED item regressed. Spot-checked against this round's own live drives and reads:
+- Follow-up R1's F1 (Run-Shed retries a failed-after-seeded bootstrap): `innerrun.go`'s
+  `spawnConfirmed`/re-spawn logic read in full this round, unchanged since the fix, still exercised
+  by `TestInnerRun_SpawnsUntilASpawnIsConfirmed`/`TestInnerRun_FailedSpawnIsRetriedOnTheNextCall`.
+- Follow-up R1's F3 (absent-worktree advice) / R2's F1 (half-torn-pair refusal) / R2's F4 (done-slug
+  remedy naming the whole abandon path): all three **re-driven live this round** (Sweep 4 above),
+  not merely re-read — no regression, and the done-slug remedy's own incompleteness
+  (F-CLEANUP-REMOTE-ORPHAN) is a genuinely new gap in what the remedy CLAIMS, not a regression of
+  what R2 fixed (R2's own fix scope was the run-directory-and-branches text, which is correct; it
+  never claimed to fix `lyx fabric cleanup`'s own remote-branch enumeration).
+- Follow-up R2's F3 / R1's F7 (shedcli seed location rules): **re-driven live this round**
+  (`lyx shed seed --recipe batten` from all three non-prime standing points), no regression.
+- The GitHub self-report hazard (Tier 1 + Tier 2, the two-incident history in the predecessor's
+  HANDOFF): re-checked this round's own grep sweep found no third path; the fixture hub's
+  `selfreport: false`/`friction: ""` override was verified by grep before the first Board task,
+  per the standing rule. Zero GitHub issues filed this round (not independently checked against the
+  live tracker — no `gh` credential probe performed — but no code path in this round's drives ever
+  reached a `selfreportengine.CreateIssue` call site, and both gate keys were confirmed off).
+
+**Deferred items, re-evaluated:**
+- Cold-machine recreate-from-branch (fabric `Topology.Add` refuses a pre-existing branch by
+  design): still holds, `Add`'s own `ErrBranchExists` check is unchanged.
+- `step`-mode pacing (30s poll sleep, cancellable, still elapses once per `step` call): still holds,
+  `innerRunProducer.Call`'s single `p.deps.Sleep` call per invocation is unchanged.
+- The design doc's two shipped residuals (dead driver strand undetected; a cleanly-finished driver's
+  strand/run-dir torn down only at whole-worktree teardown): re-read `battenshed/doc.go` this round
+  (see the Read phase above) — text is still accurate, no code change of mine touches either
+  residual's own mechanism.
+- GitHub issue #263: not touched, not re-reported.
+- Teardown ending loom's post-run friction reflection: not driven, not re-reported, per the round
+  prompt's own explicit instruction (Tier 2 files real issues) — `battenshed/doc.go`'s existing text
+  on this point was re-read and is unchanged.
+- "No `ly` plugin on this host": re-confirmed at the top of this log (Environment check).
+- "Fabric rollback leaves the warp branch behind": **hit repeatedly this round** (every `Add`
+  rollback after a SIGKILL-induced failure, and the rejected-push retry during the done-slug remedy
+  drive) — each instance logged the same `"rollbackAdd's warp-branch deletion was refused..."`
+  warning and was cleaned up by hand, per the deferred item's own instruction; not re-reported as
+  new, not fixed in fabric.
+
+## Scope assessment
+
+Compared the shipped code against the recovered design doc (`manifest/designs/seeded-shed.md`,
+`git show 8ac857ce1~1`). The implementation matches the design's stated intent closely: the
+Shed-is-the-only-execution-machinery concept, run addressing (`self` default, durable `_lyx/shed/`
+vs ephemeral `.lyx/shed/`), the seed contract (recipe/driver/params, closed vocabularies owned by
+`shedrun`), the Driver Choice Single-Site Invariant (batten stays `go`-only because it has no
+bootstrap verb — confirmed live via `--driver llm` and `lyx shed seed --driver llm` both refusing),
+the one-FSM-per-worktree boundary (batten's own recipe never crosses into the child; composition is
+by seed-write/status-read reference only), the four-row recipe with `Run-Shed`'s durable row identity
+and its self-route/12-hour-budget shape (confirmed against `contracts/recipes/batten-recipe.yaml`
+and live history), and the two consciously-shipped residuals. Relay-stepping is confirmed NOT
+implemented (`Run-Shed`'s `Spawn` execs `lyx loom start --no-attach` directly, never `lyx shed step`
+in the child) — correctly out of scope per the design doc's own rejection.
+
+No scope gap found: the module delivers what the design doc promises. This round's findings are
+CORRECTNESS bugs, not scope gaps, and they live specifically at a question the design doc never
+addresses at all — what a SIGKILL mid-`Add()` (as opposed to an ordinary `Add()` error, which the
+design doc's crash-window reasoning implicitly assumes is the only failure shape) leaves behind, and
+whether the module's own idempotency probes and documented remedies are accurate for that state.
+`docs/overview.md`'s own batten paragraph makes the same implicit assumption explicit: *"the state a
+process killed BETWEEN THE CREATE FINISHING and its transition being persisted leaves behind"* — a
+narrower window than the one this round's SIGKILL sweep actually found reachable (mid-`Add()`
+itself, not just post-return-pre-persist). This doc sentence needs updating in the same commit as
+the Job 2 fix.
+
+## Docs & operability findings
+
+- `docs/overview.md`'s batten paragraph (the "idempotent against its own post-condition" sentence)
+  understates the crash window `taskWorktreePresent` must actually cover — see Scope assessment
+  above. To be corrected in the same commit as the F-SIGKILL-ADD fix.
+- `docs/overview.md`'s leftover-branch paragraph and both `createRefusal`'s/`doneSlugRefusal`'s own
+  shipped text name `lyx fabric cleanup --apply --remote` as the weft-sibling remedy; all three need
+  updating once F-CLEANUP-REMOTE-ORPHAN's fix lands (batten's own `remote: true` teardown makes the
+  text true again for the common case, so the simplest correct fix is likely leaving the text as-is
+  once the code changes rather than rewording it — reassessed at Job 2 time).
+- `tools/sandbox/SANDBOX-FABRIC-SUITE.md`'s F22 scenario text (line ~544) claims following the
+  done-slug remedy "does let the slug run again" — not automatically verified by any Go test (`grep`
+  confirms `sandbox_coverage_test.go` only checks a `**Covers:**` tag's presence, not the scenario's
+  own claims), and this round's live drive shows the claim is false as written for a real git-backed
+  pair. To be revisited once the F-CLEANUP-REMOTE-ORPHAN fix lands (F22's own claim becomes true
+  again, so likely no rewording needed there either — confirmed once the fix is live).
+- No other docs/operability issues found. `CONSTRAINTS.md`'s Batten Bookend Invariant section is
+  accurate against the live-confirmed refusal behavior (Sweep 4). `docs/reference/
+  claude-trust-dialog-repro.md` is a loom-level (not batten) manual repro recipe; read, no batten
+  content, no issue found.
+
+## Executive summary
+
+**4 findings, all fixed in Job 2** (see the fixer report for the fix-by-fix detail):
+
+- **2 BLOCKING**, both CONFIRMED live, both reproducing a real crash-recovery or remedy-completeness
+  gap in the normal operator flow, not a synthetic edge case:
+  - **F-SIGKILL-ADD** — batten's `Worktree-Create` re-entry probe treats "a warp worktree directory
+    resolves" as "fabric's `Add` finished," which is false for most of `Add`'s own multi-step
+    sequence. A SIGKILL landing after the warp worktree is created but before `Add` returns either
+    permanently wedges the run (`StateFailed`, opaque git error, no remedy) or — worse — corrupts
+    the warp-pristine invariant by writing real files into what should be a `_lyx` junction, a state
+    `lyx fabric reconcile` itself refuses to repair with a misleading "predates weft" diagnosis.
+    Reproduced live at two distinct crash boundaries.
+  - **F-CLEANUP-REMOTE-ORPHAN** — both of batten's own "re-run this slug" remedies
+    (`createRefusal`'s leftover-branch text, `doneSlugRefusal`'s done-slug text) name
+    `lyx fabric cleanup --apply --remote` as the way to clean up the task's weft sibling branch; that
+    command's own enumeration is local-branches-only, and batten's own teardown always deletes the
+    weft branch locally while leaving it on the remote — so the command never has anything to find.
+    Reproduced live via BOTH remedy texts, and via the `typed-loom` slug specifically: following
+    every documented step verbatim still leaves the slug unable to re-run (non-fast-forward push
+    rejection with a misleading `git pull` hint) until a manual `git push origin --delete` no
+    documented remedy names.
+- **2 MEDIUM**, both CONFIRMED live via a revert-and-test experiment (this round's focus-3 sweep):
+  `createRefusal`'s (F-WIRING-1) and the disagreeing-child-seed rewrap's (F-WIRING-2) own production
+  call sites in `wire.go` can each be silently reverted with every test, `-tags integration`
+  included, staying green — the fix works today but nothing pins it there.
+- **0 LOW, 0 NIT** this round: no additional issues surfaced at that severity during this sweep.
+
+**Merge-readiness opinion (pre-Job-2):** NOT a safety pass — this round found real, live-reproduced
+defects, one of them (F-SIGKILL-ADD) a genuine data-model corruption path in the module's core
+crash-recovery mechanism, squarely in scope and squarely what this round was seeded to find. Not
+mergeable as-is. See the fixer report for the post-fix verdict.
