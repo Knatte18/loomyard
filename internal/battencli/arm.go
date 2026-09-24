@@ -406,10 +406,7 @@ func (c *battenCLI) battenPreRun(ctx context.Context) error {
 	if found {
 		switch st.State {
 		case shedengine.StateDone:
-			return fmt.Errorf(
-				"battencli: %q has already completed; delete its run directory %s (a change on the pair's fabric sibling) to run it again",
-				c.slug, shedrun.RunDir(c.location, c.slug),
-			)
+			return c.doneSlugRefusal()
 		case shedengine.StateRunning, shedengine.StateBlocked, shedengine.StateFailed, shedengine.StatePaused:
 			// Each of these resumes silently from the persisted current producer, with no
 			// re-seed, no prompt, and no flag: the engine itself already resumes from blocked
@@ -436,6 +433,17 @@ func (c *battenCLI) battenPreRun(ctx context.Context) error {
 			History:         []shedengine.HistoryEntry{},
 		}, nil
 	})
+}
+
+// doneSlugRefusal is the refusal both pre-run hooks return for a slug whose run has already
+// completed, naming the whole abandon path rather than the run directory alone: a torn-down pair
+// keeps its branch and both remote copies, so deleting only the run directory leads straight into
+// the create row's leftover-branch refusal on the re-run.
+func (c *battenCLI) doneSlugRefusal() error {
+	return fmt.Errorf(
+		"battencli: %q has already completed; to run it again, delete its run directory %s (a change on the pair's fabric sibling) and the branches its torn-down pair left behind, local and remote, both sides of the pair (\"lyx fabric cleanup --apply --remote\" removes an orphaned sibling branch)",
+		c.slug, shedrun.RunDir(c.location, c.slug),
+	)
 }
 
 // battenPreStep implements the PreStep hook for batten's spec, modelled on loomcli's own
@@ -473,10 +481,7 @@ func (c *battenCLI) battenPreStep(ctx context.Context) (string, error) {
 	if found {
 		switch st.State {
 		case shedengine.StateDone:
-			return shedverbs.KindBootstrap, fmt.Errorf(
-				"battencli: %q has already completed; delete its run directory %s (a change on the pair's fabric sibling) to run it again",
-				c.slug, shedrun.RunDir(c.location, c.slug),
-			)
+			return shedverbs.KindBootstrap, c.doneSlugRefusal()
 		case shedengine.StateRunning, shedengine.StateBlocked, shedengine.StateFailed, shedengine.StatePaused:
 			// Resumes silently, exactly as battenPreRun's own identical switch does.
 		default:

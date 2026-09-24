@@ -141,6 +141,11 @@ func TestRunCmd_StateDoneRefusesNamingTheRunDir(t *testing.T) {
 	if strings.Contains(out.String(), BattenDir(c.location, c.slug)) {
 		t.Errorf("run() output = %q; names the ephemeral scratch directory, which is not the gate", out.String())
 	}
+	// The same whole-abandon-path remedy the step verb names: the run directory and the branches
+	// the torn-down pair left, local and remote.
+	if !strings.Contains(out.String(), "local and remote") {
+		t.Errorf("run() output = %q; want the remedy to name the leftover branches, local and remote", out.String())
+	}
 }
 
 // TestRunCmd_AbsentStatusFileStartsFresh asserts that no persisted status file at all is a fresh
