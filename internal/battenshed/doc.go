@@ -24,6 +24,9 @@
 // Its counterpart is equally by design: a driver that finishes NORMALLY leaves its strand and its
 // run directory behind. Nothing here tears either down as part of a clean finish -- only the
 // whole-worktree teardown row cleans up, at the very end, by removing the worktree they live in.
+// That teardown follows the child's persisted terminal state, not the driver's exit, so whatever
+// the driver is still doing after its run reached that state -- loom's post-run friction
+// reflection included -- is ended with the session and recorded as an abandoned session.
 //
 // It declares its own unexported entryErr/cancelErr helpers (ctx.go) and its own reportStuck
 // carrier (stuck.go) for the same deliberate-duplication reason internal/preflightshed/doc.go and
