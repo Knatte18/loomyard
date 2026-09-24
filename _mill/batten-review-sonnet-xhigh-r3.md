@@ -310,11 +310,15 @@ remote branch. The failure also triggered `Add`'s own accepted, known rollback l
 `"rollbackAdd's warp-branch deletion was refused by the destructive gate"` — matches the known
 fabric-rollback deferred item, not re-reported as new). Diagnosed and fixed by hand
 (`git push origin --delete typed-loom-weft` directly against the weft sibling, plus a second
-`git branch -D typed-loom` for the rollback's own leftover); a third attempt was launched and is
-IN PROGRESS as of this checkpoint (backgrounded, being watched) — result appended once it lands.
-This is already the second live confirmation of F-CLEANUP-REMOTE-ORPHAN regardless of the third
-attempt's outcome, this time via the done-slug remedy rather than the leftover-branch one — same
-root cause, two remedy texts.
+`git branch -D typed-loom` for the rollback's own leftover); a third attempt was launched
+(backgrounded, watched to completion) and **reached `done`** cleanly at `Worktree-Teardown` (~12
+minutes wall clock for the full discussion → plan → implementation → review → landing/finalize
+cycle a second time). Verified afterward: the `typed-loom` worktree is gone, `git status
+--porcelain` is empty in both warp and weft prime, and zero stray processes remain. This confirms
+the underlying full-lifecycle machinery is sound once the stale-remote-branch obstacle is cleared by
+hand — the defect is squarely in the remedy text's own completeness, not in the rest of the
+lifecycle. This is the second live confirmation of F-CLEANUP-REMOTE-ORPHAN, via the done-slug
+remedy rather than the leftover-branch one — same root cause, two remedy texts.
 
 **`lyx shed seed`'s per-recipe location rule, every checkout kind, both recipes.** `RefuseSeedAt` is
 `nil` for `loom` (seeds wherever its verbs drive, confirmed by
