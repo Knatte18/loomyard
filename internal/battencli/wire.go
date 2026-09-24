@@ -77,6 +77,9 @@ func taskWorktreeLocation(prime *lyxcwd.Location, slug string) (*lyxcwd.Location
 // remedies -- switching a pair onto the branch, and deleting the branch -- both refuse in exactly
 // that state, leaving the run unresumable by any documented action.
 //
+// Worktree-Teardown's two halves use the same probe for the mirror-image post-condition, "the task
+// worktree is gone" (see the Teardown field below).
+//
 // It answers false rather than an error when the worktree is absent, so a genuinely absent one
 // still reaches Topology.Add and every real create failure keeps its Stuck disposition. A stat
 // error that is not "absent", and a path that is there but does not resolve as a worktree, are both
@@ -196,8 +199,23 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			logger.Info("battencli: create worktree", "slug", slug, "mutations", res.Mutated())
 			return err
 		},
+		// Both teardown halves are idempotent against their shared post-condition, "the task
+		// worktree is gone", mirroring CreateWorktree's already-present probe: shedengine persists
+		// the row's transition only after the producer returns, so a process killed right after
+		// Remove succeeded re-enters this row with no pair on disk. Without the probe Shutdown's
+		// own location resolution refuses the absence and the run halts at teardown for good.
+		// An absent pair means its session was shut down by the earlier pass, or its worktree was
+		// removed by hand; either way there is nothing left here for either half to act on.
 		Teardown: battenshed.TeardownDeps{
 			Shutdown: func(ctx context.Context) (abandonedSession string, err error) {
+				present, err := taskWorktreePresent(location, slug)
+				if err != nil {
+					return "", err
+				}
+				if !present {
+					logger.Info("battencli: session shutdown skipped, the task worktree is already gone", "slug", slug)
+					return "", nil
+				}
 				taskLocation, err := taskWorktreeLocation(location, slug)
 				if err != nil {
 					return "", err
@@ -218,6 +236,14 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				return res.AbandonedSession, nil
 			},
 			Remove: func(ctx context.Context) error {
+				present, err := taskWorktreePresent(location, slug)
+				if err != nil {
+					return err
+				}
+				if !present {
+					logger.Info("battencli: teardown worktree skipped, the task worktree is already gone", "slug", slug)
+					return nil
+				}
 				cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(location.HubPath))
 				if err != nil {
 					return err

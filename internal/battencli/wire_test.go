@@ -336,3 +336,31 @@ func TestTaskWorktreePresent_AbsentIsAnAnswerNotAnError(t *testing.T) {
 		t.Error("taskWorktreePresent(prime, \"never-created\") = true; want false")
 	}
 }
+
+// TestWire_TeardownIsIdempotentAgainstAnAlreadyRemovedWorktree asserts both teardown halves treat
+// an absent task worktree as their post-condition already met -- the state a process killed right
+// after Remove succeeded leaves, since shedengine persists the transition only after the producer
+// returns -- rather than refusing the absence and stranding the run at teardown.
+func TestWire_TeardownIsIdempotentAgainstAnAlreadyRemovedWorktree(t *testing.T) {
+	c := &battenCLI{}
+	location := &lyxcwd.Location{
+		RepoName:     "example",
+		HubPath:      t.TempDir(),
+		WorktreeName: "hub-repo",
+		AnchorRel:    ".",
+	}
+	if err := c.wire(location, "already-removed"); err != nil {
+		t.Fatalf("wire() error = %v; want nil", err)
+	}
+
+	abandoned, err := c.env.Teardown.Shutdown(context.Background())
+	if err != nil {
+		t.Errorf("Teardown.Shutdown() error = %v; want nil for an already-removed task worktree", err)
+	}
+	if abandoned != "" {
+		t.Errorf("Teardown.Shutdown() abandoned session = %q; want empty", abandoned)
+	}
+	if err := c.env.Teardown.Remove(context.Background()); err != nil {
+		t.Errorf("Teardown.Remove() error = %v; want nil for an already-removed task worktree", err)
+	}
+}
