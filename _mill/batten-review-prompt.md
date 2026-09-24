@@ -52,48 +52,40 @@ AFTER you have written your own independent findings, you MAY consult `_mill/bat
 1. Scope — does the as-built code deliver what the (recovered) design doc intended? Gaps, over-reach, silently-dropped requirements.
 2. Correctness — bugs, races, error handling, edge cases, in batten AND in the non-batten code its behavior depends on or that its hardening changed. Also docs accuracy and operability.
 
-## This round's focus — outward first (drive these, do not just read them)
-In priority order. Items 1–3 are where this campaign expects its yield.
+## This round's focus — enumerate shapes at batten's boundary (drive these, do not just read them)
+The previous round's findings sat at batten's boundary with loom and fabric, not inside batten's own packages, and several of them were the SAME SHAPE the campaign had already fixed once elsewhere.
+So this round enumerates classes instead of reviewing again. For each sweep, present a table with a row for EVERY site — including the ones you judge correct, with the reason — plus the reproducible shell you enumerated them with and what that enumeration cannot see (seam-routed calls, closures, interfaces, comment-only mentions).
+In priority order:
 
-1. **Blast-radius sweep: non-batten code the batten hardening changed.** Since batten first shipped, its hardening touched these files outside batten's three packages: `internal/shedrun/seed.go` (a new `ErrDisagreeingSeed` sentinel wrapping `WriteSeed`'s refusal, with its message reworded), `internal/fabricengine/fabric.go` (a new `RequireDrivableWorktree` wrapper), `internal/loomcli/bootstrap_test.go` (a carve-out allowlist in the Driver Choice Single-Site tripwire), `internal/shell/posix.go`, `internal/boardcli/cli.go`, `internal/shedrecipe/entries_batten.go`, `CONSTRAINTS.md`, `docs/overview.md`, `tools/sandbox/SANDBOX-FABRIC-SUITE.md`. Find the exact hunks yourself (`git log --format='%h %s' -- <file>` and `git show`).
-   For every changed function or error value: enumerate EVERY caller and every consumer repo-wide — including callers reaching it through a function value, closure, or interface, which a plain grep cannot see — and check each one's behavior, not just that it compiles. Present a table with a row per site, including the ones you judge correct, with the reason, plus the reproducible shell you enumerated them with.
-   A green `go test ./...` proves the invariant scans pass; it does not prove nothing else's behavior changed.
-2. **Blast-radius sweep: #018 landed under batten.** Task #018 (`llm-driver-trust-dialog-hang`, commits `292a5a74b` and `1abf902f1`, now on `main`) changed `internal/loomcli`'s driver launch and made `internal/shuttleengine` guarantee a started run is past its provider's startup gates (the Claude workspace-trust dialog among them). Batten's `Run-Shed` Spawn (`internal/battencli/wire.go`) execs `lyx loom start --no-attach` in the child, and `InnerRunDeps.Spawn`'s contract says it "blocks until it exits". Determine precisely, by reading AND by timing a real drive: how long does Spawn block now for a `go` child and for an `llm` child; what does a startup-gate failure or timeout inside `loom start` look like at batten's boundary (does `Run-Shed` get an honest, named error, or a hang, or a misleading `Stuck`); does a cancelled `lyx batten run` (Ctrl-C / SIGTERM) during that wait leave an orphaned child `claude`/tmux behind?
-3. **Adversarial pressure on the youngest fixes, which no independent round has stressed.**
-   - `Seed-Child` routes a pre-existing, disagreeing child seed to `Stuck` via `battenshed.ErrDisagreeingChildSeed` (matched in `seamchild.go`, wrapped in `battencli/wire.go`). Try to make a disagreeing seed arrive by a path that is NOT recognized (e.g. a wrapped/reworded error, a seed disagreeing only in `params`, a seed present on the branch but not the checkout) and see whether it still hard-errors or, worse, silently adopts.
-   - The recovery advice batten prints when a task worktree is recorded but missing on disk (`battencli/wire.go`'s task-worktree location path). Follow it verbatim from prime, live, and confirm it does what it says and nothing destructive.
-   - The `driverFieldReadCarveOuts` allowlist in `internal/loomcli/bootstrap_test.go`: is it exact (names specific lines/symbols) or loose enough that a second illegitimate reader in the same file would pass silently? Reason it through; demonstrate if you can.
-   - `fabricengine.RequireDrivableWorktree`: grep every `RequireWarpWorktree` call site and check each one's directory against the Fabric Vocabulary scan's owner-set logic by hand; is any non-owner caller currently undetected only because the scan skips its directory?
-4. **`ErrDisagreeingChildSeed` consistency across `WriteSeed` callers.** `shedrun.WriteSeed` has production callers outside batten (`internal/shedcli`, `internal/loomcli`). Decide whether they need an equivalent disagreeing-seed treatment for consistency, or document deliberately — in code comment or doc, at the right site — why not. Either answer is acceptable if argued from the code; inventing a `Stuck` route where there is no Shed row to route to is over-reach.
-5. **Loom's own step and landing path, driven live through batten's child.** `lyx loom step` in the child including at least one interrupted-and-resumed run, and a full walk through `Publish`/`Finalize` on the real substrate (the fixture needs `require_pr_to_base: []` — see Fixture hub). The loom campaign that last hardened these closed without a safety pass; its fixes (`git log --oneline --grep="^loom: fix"`) count as closed — flag regressions only.
-6. **One real `--child-driver llm` drive to a genuine terminal state**, now that #018 has landed, on a fixture path this host has never trusted. If the child's driver still parks on the workspace-trust dialog, that is a REGRESSION of #018's fix: record it as a finding against `internal/loomcli`/`internal/shuttleengine`, and route its fix by size (see "Fixing").
+1. **Sweep: everything a loom child writes under `_lyx` (and `.lyx`) during a campaign, and who commits it.** A successful batten run ends with `Worktree-Teardown`, which refuses a dirty pair — so any file an agent or producer leaves uncommitted in the child's warp or weft is a success-path blocker. Enumerate every producer/row in `contracts/recipes/loom-recipe.yaml` and every file it or the agent it launches writes (webster, planner, discussion, burler/bouncer rounds, landing/Publish/Finalize, friction/self-report notes, driver reports under `.lyx/shed/self/`), and for each: tracked or never-tracked per the Durable-vs-Ephemeral State Invariant, and if tracked, which Go seam commits it and when. Then prove the table live: drive one `--child-driver go` batten run to `done` and run `git status --porcelain` in both halves of the child pair just before teardown.
+2. **Sweep: crash-window re-entry of every batten row, and of the child bootstrap batten spawns.** For each of `Worktree-Create`, `Seed-Child`, `Run-Shed`, `Worktree-Teardown`: list every durable side effect it performs, in order, and for each gap between two side effects (or between the last side effect and the transition being persisted) state what a re-entered Call does. Drive the ones you judge risky by killing the process in that window (SIGKILL, not SIGINT — nothing in lyx handles signals) and resuming with `lyx batten step`.
+3. **Adversarial pressure on the youngest fixes** — find them yourself from `git log --format='%h %s' d7ab9eca0..HEAD` subject lines (bodies only after your findings are written). In particular:
+   - the spawn-confirmation marker `Run-Shed` writes under its scratch directory: what happens when a run is resumed on a different machine (fresh clone of prime, no `.lyx` scratch), or when the marker's scratch directory is removed while the child's driver is alive;
+   - the Webster row's commit of its own run record: a resumed Webster row whose run is already Done, a commit that finds nothing to commit, and a commit that fails;
+   - `lyx shed seed`'s refusal in fabric's own checkouts: every checkout kind fabric creates, including a task pair's own weft half.
+4. **Standard re-confirmation** of the CLOSED-AND-VERIFIED list (read it only after your findings are written) — flag regressions, do not re-litigate.
+5. **One real `--child-driver llm` drive, if the host can run it.** First check `~/.claude/plugins/installed_plugins.json` for `ly@loomyard` (the `ly-drive` skill the llm driver needs). If it is absent, record that as an environment gap in one line and spend no time on it; do not install plugins into the operator's global Claude config.
 
-Then, as a floor rather than the main event, re-drive batten's own invariants live, briefly:
-Batten Bookend (every verb from inside the task worktree and from the weft prime refuses, naming both worktrees);
-teardown ordering (`Shutdown` strictly before `Remove`, no `Remove` after a failed `Shutdown`);
-`Run-Shed` never routing to teardown on a failed/blocked/paused child;
-`PrimeRunLock` scope (two slugs' create/teardown serialize, one slug's long `Run-Shed` blocks nobody);
-a killed driving process between `Worktree-Create` and `Seed-Child`, and between `Seed-Child`'s commit and push, resuming without double-create/double-seed;
-hand-seed authority (`lyx shed seed <slug> --recipe batten` ahead of batten's own auto-seed).
+Then, as a brief floor: Batten Bookend refusals from the task worktree and the weft prime; `Run-Shed` never routing to teardown on a failed/blocked/paused child; `PrimeRunLock` scope across two slugs.
 
 ## Explicitly OUT of scope
 - Batten growing its own bootstrap verb or an `llm` driver option for ITS OWN producer rows — `go`-only by design.
 - "Relay-stepping" (Run-Shed execing `lyx shed step` inside the child) — a rejected alternative in the design doc.
-- loom's own internal phase-machine correctness beyond the boundary batten reads (`State`/`Error`/`CurrentProducer`) and the focus-5 landing path.
+- loom's own internal phase-machine correctness beyond the boundary batten reads (`State`/`Error`/`CurrentProducer`) and what focus 1 needs.
 - Windows path behaviour — unreachable from this Linux host. Say plainly you did not touch it.
 - fabric's own clone/merge correctness beyond creating and removing a worktree pair.
 - Building fabric's recreate-from-existing-branch capability, or moving `step`-mode pacing into `shedengine` (see Deferred items).
 
 ## Round context seeded from prior-round verification
-**Round 1 of the follow-up campaign.** The predecessor campaign ran five rounds, every one found something (the last: 1 BLOCKING, 1 MEDIUM, 1 LOW, 2 NIT), and it closed WITHOUT a safety pass. Do not assume this is one. Earn that conclusion from your own adversarial pass — and if that pass, including the outward focus above, finds nothing, say so plainly: that is a valid, valuable outcome.
+**Round 2 of the follow-up campaign.** Round 1 was NOT a safety pass: 9 findings (1 BLOCKING, 3 MEDIUM, 3 LOW, 2 NIT), all fixed, every behavioural fix independently sabotage-proven by the orchestrator. Do not assume this round is the safety pass either; if your own adversarial pass finds nothing, say so plainly — but earn it.
 
-Everything the predecessor campaign fixed is CLOSED-AND-VERIFIED — every fix was sabotage-proven by its orchestrator. The authoritative list with commit SHAs is in `_mill/batten-end-to-end/batten-review-HANDOFF.md`; read it only AFTER your own findings are written, then re-confirm, flag regressions, do not re-litigate.
+Everything fixed in either campaign is CLOSED-AND-VERIFIED. The authoritative lists are in the two HANDOFF files (`_mill/batten-review-HANDOFF.md` and `_mill/batten-end-to-end/batten-review-HANDOFF.md`); read them only AFTER your own findings are written, then re-confirm, flag regressions, do not re-litigate.
 
-**Merge bar:** correctness in the NORMAL single-instance flow — one slug, driven start to finish, including the SUCCESS terminal state. The generic N×-concurrent-suite gate from `crucible/README.md` does NOT apply to batten's live scenario at all; never attempt it. Two different slugs interleaved (the `PrimeRunLock` check) is an in-scope concurrency check, not that amplifier.
+**Merge bar:** correctness in the NORMAL single-instance flow — one slug, driven start to finish, including the SUCCESS terminal state (`Worktree-Teardown` → `done` with no operator step). The generic N×-concurrent-suite gate from `crucible/README.md` does NOT apply to batten's live scenario at all; never attempt it. Two different slugs interleaved (the `PrimeRunLock` check) is an in-scope concurrency check, not that amplifier.
 
 ## Live-substrate cost declaration (BLOCKING)
 Batten has zero `//go:build smoke` tests, so no `-tags smoke` command in its packages spawns anything, and its own producer rows are structurally `go`-only.
-**However**, your live driving seeds a child with `--child-driver llm` (focus 6), which spawns a real Claude provider inside the child's own reed session. Treat that with LLM-driving discipline:
+**However**, if the host can run it, your live driving seeds a child with `--child-driver llm` (focus 5), which spawns a real Claude provider inside the child's own reed session. Treat that with LLM-driving discipline:
 - Foreground, one drive at a time, never concurrent, never backgrounded-and-abandoned. A long blocking `lyx batten run` may be backgrounded with output redirected to a file ONLY if you then poll it to completion and tear it down yourself.
 - One full `--child-driver llm` drive this round; repeat only if a fix genuinely requires re-proving the whole path. Use `--child-driver go` for everything else.
 - NEVER write an automated tagged test (`smoke`, `integration`, or otherwise) that seeds `--driver llm` and spawns a real provider inside `go test`. Every batten test stubs `InnerRunDeps.Spawn`/`ReadStatus` — keep that pattern for any new regression test.
@@ -113,9 +105,9 @@ If a GitHub issue gets filed anyway, record the issue number in your report imme
 
 ## Fixture hub (build this yourself before live driving)
 A DISPOSABLE hub — never the operator's standing `lyx-test-LYXHUB` bench:
-1. `git init --bare` a warp repo seeded with a minimal Go project (`go.mod` + trivial `main.go`) and a weft repo, in a scratch directory OUTSIDE both the loomyard tree and `$HOME/Code`, at a path this host has never used before (focus 6 needs an untrusted path).
+1. `git init --bare` a warp repo seeded with a minimal Go project (`go.mod` + trivial `main.go`, plus a `.gitignore` for the module's binary) and an EMPTY bare weft repo (clone refuses a weft whose history carries neither `.lyx-anchor` nor an empty tree), in a scratch directory OUTSIDE both the loomyard tree and `$HOME/Code`, at a path this host has never used before (an llm drive needs an untrusted path).
 2. `lyx fabric clone --into <scratch> <weft.git> <warp.git>`.
-3. **Before anything else** — commit the `loom.yaml` override (`selfreport: false`, `friction: ""`, and `require_pr_to_base: []` so a no-network hub can reach `Finalize`) onto prime's weft. Verify all three with `grep`.
+3. **Before anything else** — commit onto prime's weft the `loom.yaml` override (`selfreport: false`, `friction: ""`) and the `landing.yaml` override `require_pr_to_base: []` (that key lives in `landing.yaml`, not `loom.yaml`; it lets a no-network hub reach `Finalize`). Verify all three with `grep`.
 4. Materialize `_board` as a second weft worktree on `weft:main`; your Board task (with `type: loom`, and a second one with `type` empty to prove the default) lives there.
 5. Disposal at teardown: recursive delete of `<scratch>`. No GitHub repos, no network.
 Known fixture limit, not a defect: loom's `Publish` needs a real GitHub origin; without it only `require_pr_to_base: []` reaches `Finalize`. Do not spend time diagnosing that.
@@ -152,6 +144,8 @@ The only other legitimate reason to leave a finding unfixed is an operator decis
 - **`step`-mode pacing.** The 30s poll sleep still elapses once per `lyx batten step` call (cancellable mid-wait). Moving pacing out of the producer body is a `shedengine` change, out of scope. Re-confirm it is still the accepted shape.
 - **The design doc's two consciously-shipped residuals:** batten does not detect or recover a dead driver strand in the child; batten does not tear down a cleanly-finished driver's strand/run-dir except at whole-worktree teardown. Both are documented in `internal/battenshed/doc.go`. Re-check the text is still accurate after any change of yours.
 - **GitHub issue #263** (a `burler` focus-file/rubric-precedence observation filed by an orphaned fixture in the predecessor campaign) — unrelated to batten; do not re-report or act on it.
+- **Fabric rollback leaves the warp branch behind.** When a `Worktree-Create` fails and fabric rolls the pair back, fabric's destructive gate refuses to delete the new warp branch, so the next create for that slug refuses until a manual `git branch -D`. Known, outside batten, awaiting an operator decision on a separate task — if you hit it, note "matches the known fabric-rollback item" and clean up by hand; do not re-report it as new and do not fix it in fabric.
+- **No `ly` plugin on this host.** An llm-driven child's driver halts BLOCKED because the `ly-drive` skill is not installed. Environment gap, not a defect (see focus 5).
 
 ## Fixing — after the review
 - Fix EVERY finding, all severities including NIT (size rule above aside).

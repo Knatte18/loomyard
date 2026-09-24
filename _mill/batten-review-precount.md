@@ -37,3 +37,9 @@ Production files #018 changed: `loomcli/{driverlaunch,driverspec,start}.go`, `sh
 ## Baseline gates
 
 `go build ./...`, `go vet ./...`, `go test -count=1 ./...` green at `b9ebb1ba9` (92 `ok` packages). Zero stray `lyx`/tmux/reed processes before R1.
+
+## R2 pre-count (at `09544378f`, before R2 spawned)
+
+- `contracts/recipes/loom-recipe.yaml`: 14 rows — Preflight, Loom-Preflight, Discussion-Write, Discussion-Bouncer, Discussion-Burler, Plan-Write, Plan-Bouncer, Plan-Burler, Batchifier, Webster, Webster-Bouncer, Webster-Burler, Publish, Finalize. A focus-1 table with fewer than 14 loom rows is truncated.
+- `fabricengine.CommitAnchoredPaths(` production call sites: 10, across `fabriccli/clone.go`, `fabricengine/commitweftpaths.go`, `loomcli/wiring.go`, `loomcli/landingdeps.go`, `loomcli/sharedbootstrap.go`, `battencli/commitstatus.go`, `battencli/wire.go`. Blind spot: commits routed through other fabric helpers (`CommitWeftPaths`, `PushAnchored`, a Bouncer/Burler adapter's own commit decorator) are not counted here.
+- Batten rows for focus 2: 4 (`Worktree-Create`, `Seed-Child`, `Run-Shed`, `Worktree-Teardown`).
