@@ -6,6 +6,7 @@
 package shedcli
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -25,7 +26,9 @@ func TestWriteSeed_SucceedsWithNoSeedPresent(t *testing.T) {
 		t.Fatalf("precondition: ReadSeed = (found=%v, err=%v); want (false, nil)", found, err)
 	}
 
-	if err := writeSeed(loc, "some-slug", "batten", "", nil); err != nil {
+	// loom, not batten: batten's own seed-location rule reaches a git worktree listing, which a
+	// hand-built Location cannot answer and this untagged suite may not spawn.
+	if err := writeSeed(loc, "some-slug", "loom", "", nil); err != nil {
 		t.Fatalf("writeSeed = %v; want nil", err)
 	}
 
@@ -33,8 +36,8 @@ func TestWriteSeed_SucceedsWithNoSeedPresent(t *testing.T) {
 	if err != nil || !found {
 		t.Fatalf("ReadSeed after writeSeed = (found=%v, err=%v); want (true, nil)", found, err)
 	}
-	if seed.Recipe != "batten" {
-		t.Errorf("seed.Recipe = %q; want %q", seed.Recipe, "batten")
+	if seed.Recipe != "loom" {
+		t.Errorf("seed.Recipe = %q; want %q", seed.Recipe, "loom")
 	}
 	if seed.Driver != shedrun.DriverGo {
 		t.Errorf("seed.Driver = %q; want the default %q", seed.Driver, shedrun.DriverGo)
@@ -55,6 +58,39 @@ func TestWriteSeed_UnknownRecipeRefusesWithTheAvailableNames(t *testing.T) {
 			t.Errorf("writeSeed(bogus-recipe) error = %q; want it to name recipe %q", err.Error(), name)
 		}
 	}
+}
+
+// TestWriteSeed_RecipeLocationRuleGatesTheWrite pins the per-recipe location rule as a predicate: a
+// table entry whose RefuseSeedAt refuses leaves no seed behind, and one with a nil rule writes --
+// so the assertion cannot degenerate into "is it spelled batten". The real batten rule (prime only)
+// needs a git worktree listing and is proven at the integration tier.
+func TestWriteSeed_RecipeLocationRuleGatesTheWrite(t *testing.T) {
+	original := recipes
+	t.Cleanup(func() { recipes = original })
+
+	refusal := errors.New("this recipe seeds from prime only")
+	recipes = map[string]entry{
+		shedrun.RecipeBatten: {Arm: original[shedrun.RecipeBatten].Arm, Verbs: original[shedrun.RecipeBatten].Verbs, RefuseSeedAt: func(*lyxcwd.Location) error { return refusal }},
+		shedrun.RecipeLoom:   {Arm: original[shedrun.RecipeLoom].Arm, Verbs: original[shedrun.RecipeLoom].Verbs, BootstrapVerb: "start"},
+	}
+
+	t.Run("RefusingRuleWritesNothing", func(t *testing.T) {
+		loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+		err := writeSeed(loc, "some-slug", shedrun.RecipeBatten, "", nil)
+		if !errors.Is(err, refusal) {
+			t.Fatalf("writeSeed(batten) = %v; want the recipe's own refusal", err)
+		}
+		if _, found, readErr := shedrun.ReadSeed(loc, "some-slug"); readErr != nil || found {
+			t.Errorf("ReadSeed after a refused write = (found=%v, err=%v); want (false, nil): a refused seed must leave nothing behind", found, readErr)
+		}
+	})
+
+	t.Run("NilRuleWrites", func(t *testing.T) {
+		loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+		if err := writeSeed(loc, "some-slug", shedrun.RecipeLoom, "", nil); err != nil {
+			t.Fatalf("writeSeed(loom) = %v; want nil", err)
+		}
+	})
 }
 
 // TestWriteSeed_LLMDriverGatedOnBootstrapVerbCapability pins the capability predicate itself, not
@@ -154,10 +190,10 @@ func TestWriteSeed_IdempotentAgainstAnIdenticalSeed(t *testing.T) {
 	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
 	params := map[string]string{"slug": "some-slug"}
 
-	if err := writeSeed(loc, "some-slug", "batten", shedrun.DriverGo, params); err != nil {
+	if err := writeSeed(loc, "some-slug", "loom", shedrun.DriverGo, params); err != nil {
 		t.Fatalf("writeSeed (first) = %v; want nil", err)
 	}
-	if err := writeSeed(loc, "some-slug", "batten", shedrun.DriverGo, params); err != nil {
+	if err := writeSeed(loc, "some-slug", "loom", shedrun.DriverGo, params); err != nil {
 		t.Fatalf("writeSeed (second, identical) = %v; want nil -- idempotent", err)
 	}
 }
@@ -167,11 +203,11 @@ func TestWriteSeed_IdempotentAgainstAnIdenticalSeed(t *testing.T) {
 func TestWriteSeed_RefusesADisagreeingSeed(t *testing.T) {
 	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
 
-	if err := writeSeed(loc, "some-slug", "batten", shedrun.DriverGo, nil); err != nil {
+	if err := writeSeed(loc, "some-slug", "loom", shedrun.DriverGo, nil); err != nil {
 		t.Fatalf("writeSeed (first) = %v; want nil", err)
 	}
-	if err := writeSeed(loc, "some-slug", "loom", shedrun.DriverGo, nil); err == nil {
-		t.Fatal("writeSeed (disagreeing recipe) = nil; want a refusal")
+	if err := writeSeed(loc, "some-slug", "loom", shedrun.DriverGo, map[string]string{"parent": "main"}); err == nil {
+		t.Fatal("writeSeed (disagreeing params) = nil; want a refusal")
 	}
 }
 

@@ -71,6 +71,13 @@ func writeSeed(location *lyxcwd.Location, runID, recipeName, driverFlag string, 
 	if err != nil {
 		return err
 	}
+	// The recipe's own location rule, after fabric's: a batten seed is drivable from prime alone,
+	// and a seed written where its recipe's verbs refuse is dirt no verb can ever consume.
+	if e.RefuseSeedAt != nil {
+		if err := e.RefuseSeedAt(location); err != nil {
+			return fmt.Errorf("shedcli: seed refuses to write here: %w", err)
+		}
+	}
 	driver := resolveSeedDriver(driverFlag)
 	if err := shedrun.ValidateDriver(driver); err != nil {
 		return err

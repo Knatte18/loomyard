@@ -117,6 +117,18 @@ func TestRecipes_BootstrapVerbMatchesOwningModuleConstant(t *testing.T) {
 	}
 }
 
+// TestRecipes_SeedLocationRuleMatchesTheRecipesOwnVerbs pins which entries carry a seed-location
+// rule: batten's verbs run from prime alone, so its entry must refuse a seed elsewhere, while loom's
+// verbs run in any drivable worktree and its entry carries no rule.
+func TestRecipes_SeedLocationRuleMatchesTheRecipesOwnVerbs(t *testing.T) {
+	if recipes["batten"].RefuseSeedAt == nil {
+		t.Error("recipes[batten].RefuseSeedAt = nil; want battencli's own prime-only guard")
+	}
+	if recipes["loom"].RefuseSeedAt != nil {
+		t.Error("recipes[loom].RefuseSeedAt is set; want nil, loom seeds wherever its verbs drive")
+	}
+}
+
 // TestRecipes_BootstrapVerbHasBothAnEmptyAndANonEmptyEntry asserts the table cannot degenerate to
 // all-empty or all-non-empty: at least one entry must have a non-empty BootstrapVerb and at least one
 // must have an empty one. Every per-entry equality assertion above passes against a table where both

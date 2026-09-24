@@ -33,7 +33,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/battenshed"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -279,16 +278,12 @@ func (c *battenCLI) arm(cwd string, verb string, args []string) (shedverbs.Spec,
 // is always the same value the caller holds: the pre-run's own c on the "lyx batten" path, the
 // wrapper's freshly-constructed one on the "lyx shed" path.
 func (c *battenCLI) armAt(location *lyxcwd.Location, runID string, explicit bool, verb string) (shedverbs.Spec, error) {
-	// Ahead of the prime-name check, because that check asks "is this the prime of the repository
-	// I am standing in" and the pair's fabric sibling is a repository of its own with a prime of
-	// its own: from that sibling's prime the name check passes and both bookend rows would then
-	// drive fabric's topology against the wrong repository (see refusal.go).
-	if err := fabricengine.RequireDrivableWorktree(location); err != nil {
-		return shedverbs.Spec{}, fmt.Errorf("battencli: this verb runs from the hub's prime worktree only: %w", err)
-	}
-
-	primeName, primeNameErr := fabricengine.PrimeName(location)
-	if refusalErr := refuseNonPrime(location.WorktreeName, primeName, primeNameErr); refusalErr != nil {
+	// The drivable-worktree check runs ahead of the prime-name check, because that check asks "is
+	// this the prime of the repository I am standing in" and the pair's fabric sibling is a
+	// repository of its own with a prime of its own: from that sibling's prime the name check
+	// passes and both bookend rows would then drive fabric's topology against the wrong repository
+	// (see refusal.go).
+	if refusalErr := RefuseUnlessPrime(location); refusalErr != nil {
 		return shedverbs.Spec{}, refusalErr
 	}
 
