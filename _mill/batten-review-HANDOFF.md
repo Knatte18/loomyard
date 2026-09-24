@@ -133,6 +133,11 @@ Every step boundary of `Add` and `Remove` has now been driven under SIGKILL at l
 
 ## Exact next action
 
-The operator's four-round schedule is complete and R4 is verified. Waiting for the operator ("pust i bakken"): whether to run R5 (and on which model), and what to do with this branch.
-Do not re-seed or spawn R5 without the operator's word.
-A candidate R5 focus, if asked: adversarial pressure on R4's youngest code (`RemovePairBranch`, the re-entry arm's remote dependency, `PairComplete`'s origin check on a pair created before the origin record existed), plus a kill inside `git push` during `Add`.
+None — the campaign is parked. After R4 the operator chose (2026-09-24) to merge this branch into `main` and log a follow-up crucible instead of running R5.
+Recurring themes across R1–R4 were filed as their own mill-wiki tasks:
+- `fabric-pair-state-after-crash` — every round found batten mis-reading a pair a SIGKILL left partial (R1-F5, R2-F1, R3 F-SIGKILL-ADD, R4-F1, R4-F3); fabric should own the pair-state answer. `fabric-rollback-keeps-warp-branch` and `fabric-cleanup-remote-orphans` now depend on it.
+- `remedy-texts-followed-verbatim` — every round found a remedy that failed or did harm when followed verbatim from prime (R1-F3, R2-F2, R2-F4, R3 F-CLEANUP-REMOTE-ORPHAN, R4-F2, R4-F4).
+- Tests pinning a helper rather than its wiring (post-R2 gap, R3 F-WIRING-1/2) is a review-discipline point for the crucible template, not a code task.
+
+The follow-up campaign is mill-wiki task `crucible-batten-followup-2`, which depends on the two tasks above. It starts from this file.
+Its candidate focus: the new pair-state code and remedies; a kill inside a single primitive (mid `git push`, mid `git worktree add`, inside a temp-then-rename); a kill of reed `Down` itself; Windows if a host is available.
