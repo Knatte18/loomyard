@@ -791,3 +791,41 @@ func TestRecoverSpawn_InheritsTheStuckForksStartSHA(t *testing.T) {
 		t.Errorf("recovery BatchState.StartSHA = %q; want the stuck fork's own %q — the post-batch delta must span the whole bracket, not just the recovery's own share of it", got.StartSHA, bracketStart)
 	}
 }
+
+// erroringStarter is a websterengine.Starter double whose Start always fails wrapping
+// shuttleengine.ErrNotStarted — the not-ready-start error shuttle now returns from Start itself
+// (per the shuttle-start-guarantees-readiness discussion), which recoverFixture's real
+// *shuttleengine.Runner over recoverFakeEngine/recoverFakeReed never reaches on its own, since
+// recoverFakeEngine.Startup always reports StartupReady.
+type erroringStarter struct{}
+
+func (erroringStarter) Start(spec shuttleengine.Spec) (*shuttleengine.Run, error) {
+	return nil, fmt.Errorf("webster test: recovery strand never became ready: %w", shuttleengine.ErrNotStarted)
+}
+
+var _ websterengine.Starter = erroringStarter{}
+
+// TestRecoverSpawnOrAttach_NotReadyStartSurfacesAndRecordsNothing proves a not-ready recovery
+// start (shuttle's Start returning ErrNotStarted after tearing its own strand down) surfaces
+// unchanged from RecoverSpawnOrAttach and records no batch state — the strand shuttle already
+// tore down must never be persisted as this batch's recovery record.
+func TestRecoverSpawnOrAttach_NotReadyStartSurfacesAndRecordsNothing(t *testing.T) {
+	fx := newRecoverFixture(t)
+	fx.Deps.Starter = erroringStarter{}
+	clk := &recoverFakeClock{now: time.Unix(0, 0)}
+
+	bs, spawned, err := websterengine.RecoverSpawnOrAttach(fx.Deps, 1, clk)
+
+	if !errors.Is(err, shuttleengine.ErrNotStarted) {
+		t.Errorf("RecoverSpawnOrAttach() error = %v; want it to wrap shuttleengine.ErrNotStarted", err)
+	}
+	if spawned {
+		t.Error("RecoverSpawnOrAttach() spawned = true; want false on a not-ready start")
+	}
+	if bs != nil {
+		t.Errorf("RecoverSpawnOrAttach() BatchState = %+v; want nil on a not-ready start", bs)
+	}
+	if fx.Deps.State.Batches[1] != nil {
+		t.Errorf("State.Batches[1] = %+v; want nil — a strand shuttle already tore down must record no guid", fx.Deps.State.Batches[1])
+	}
+}

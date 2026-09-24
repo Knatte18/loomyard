@@ -189,6 +189,7 @@ Every code path in `internal/shuttleengine` that finalizes a NEGATIVE answer to 
 Provider specifics live ONLY under `internal/shuttleengine/claudeengine`.
 
 - `shuttleengine`/`reedengine` never reference Claude specifics; `shuttleengine` never imports `claudeengine`.
+- A `*Run` issued by `Start`/`StartGated` has already resolved its provider's startup probe; no caller outside `internal/shuttleengine` probes provider readiness or plays startup-gate keys.
 
 ## Shell Mechanics Seam
 

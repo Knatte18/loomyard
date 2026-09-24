@@ -1,7 +1,8 @@
 # Reproducing the llm-driver trust-dialog hang
 
-Manual, operator-run verification for the fix in `internal/shuttleengine.Run.AwaitStarted`
-and `internal/loomcli`'s llm arm (`runDriverSpawnAndWait`).
+Manual, operator-run verification for the fix in the startup step inside
+`internal/shuttleengine.Runner.StartGated`, and `internal/loomcli`'s llm arm, which starts the
+driver through `StartDriver` and no longer awaits readiness itself.
 Not automated: it launches a real, billed interactive Claude session and mutates the
 operator's own `~/.claude.json`, which puts it outside the Test Tier Purity boundaries any
 `go test` run must stay inside.
@@ -48,6 +49,9 @@ exactly how an earlier reproduction attempt lost the finding.
    That checks the acceptance field itself, not the entry's presence — Claude Code creates an
    entry for every launch directory whether or not the gate was accepted.
    A `run.json` under the driver's run dir carries `started: true`.
+   Had the trust dialog instead never cleared, `start` would refuse with shuttle's `ErrNotStarted`
+   message instead of returning success, and `startup-capture.txt` would be left in the driver's
+   run dir as the diagnosis artifact (the last pane capture taken before the not-ready teardown).
 7. Tear the fixture down afterwards (`lyx` teardown / removing the hub dir).
    The `~/.claude.json` entry it leaves is harmless: Claude Code appends an entry for every
    launch directory anyway.

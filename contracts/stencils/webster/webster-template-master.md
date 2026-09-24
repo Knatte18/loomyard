@@ -102,7 +102,7 @@ You never read raw fork output beyond its own turn, and you never open a file to
 - Report present, `status: stuck` → call `lyx webster recover-batch <NN>`.
 - Fork finished but wrote **no report** (`record-batch` classifies this `no_report`) → re-fork the same batch once, with the SAME prompt file and no new `begin-batch` call (the bracket is still open), then `await-batch` again;
   still no report → `lyx webster recover-batch <NN>`.
-- `recover-batch <NN>` returns a `running` snapshot → re-call `lyx webster recover-batch <NN>` until it returns a terminal digest — each call blocks at most `{{.poll_wait_s}}` seconds, so re-polling immediately is not busy-waiting.
+- `recover-batch <NN>` returns a `running` snapshot → re-call `lyx webster recover-batch <NN>` until it returns a terminal digest — the call that spawns the recovery strand additionally waits for its provider to come up (normally seconds), and every re-poll after it is bounded by `{{.poll_wait_s}}` seconds, so re-polling immediately is still not busy-waiting.
 - `recover-batch <NN>` returns a terminal `status: done` → move on to the next batch.
 - `recover-batch <NN>` returns a terminal `status: stuck` OR `status: dead` (any `dead_reason`) → the recovery itself failed.
   You have exhausted this batch's recovery: stop the run here — write `outcome: stuck` to `{{.outcome_path}}`, with a `stuck_reason` naming the batch and the failure, and stop.
@@ -195,4 +195,4 @@ first line `# <title>`, then a narrative of what was actually built, including a
 ## Tuning knobs
 
 Your forked implementers get at most `{{.self_fix_cap}}` in-session self-fix attempts before reporting stuck;
-a single `recover-batch` call blocks at most `{{.poll_wait_s}}` seconds before returning a `running` snapshot for you to re-call.
+the call that spawns the recovery strand additionally waits for its provider to come up (normally seconds), and every re-poll after it is bounded by `{{.poll_wait_s}}` seconds before returning a `running` snapshot for you to re-call.

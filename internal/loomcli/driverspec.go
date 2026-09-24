@@ -39,11 +39,12 @@ import (
 // focus on every agent pane the run spawns afterwards. Display.ShrinkWhenWaitingOnChild is false: the
 // driver is never itself waiting on a child in the sense that flag models.
 //
-// Timeout, KeepPane, and AwaitOperator are left at their zero values deliberately -- a statement that
-// nothing reads them, not a choice about pane retention or deadlines. All three are read only by the
-// wait loop (Run.Wait), which this path never enters: the driver session runs until it stops itself,
-// awaited only until its provider is ready (Run.AwaitStarted, which reads the runner config's
-// startup_timeout_s, not this spec) and never waited on to completion.
+// Timeout, KeepPane, and AwaitOperator are left at their zero values deliberately. A zero Timeout
+// defaults to run_timeout_min in Spec.validate, and on this path it bounds only shuttle's startup step
+// inside Start -- the startup window itself is startup_timeout_s -- because Wait is never entered: the
+// driver session runs until it stops itself, and this path never waits on it to completion. KeepPane
+// and AwaitOperator are read only by Wait, so leaving them at their zero values is a statement that
+// nothing on this path reads them, not a choice about pane retention or interactive behavior.
 func driverSpec(prompt string, reportPath string, settings loomengine.DriverSettings) shuttleengine.Spec {
 	return shuttleengine.Spec{
 		Prompt:        prompt,

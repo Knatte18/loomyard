@@ -83,8 +83,16 @@ const stateMutateLockName = "mutate.lock"
 // AcquireStateMutation acquires scratchDir's exclusive state-mutation lease, blocking until it is
 // free — every holder's critical section is bounded (a begin-batch, a record-batch persist, a
 // recover-batch spawn or terminal persist), so blocking is always short and never a deadlock risk.
-// Callers hold it across their WHOLE load-mutate-save sequence and Release it as soon as the save
-// lands, never across a long block (recover-batch's bounded poll wait).
+// Callers hold it across their WHOLE load-mutate-save sequence, which at the two sites that spawn
+// under it — recover-batch's spawn (internal/webstercli/recoverbatch.go) and Run's Master spawn
+// (runlevel.go) — now includes the spawned strand's startup window: shuttle guarantees a *Run
+// handle only past its provider's startup gates, bounded by startup_timeout_s (typically one or
+// two probe intervals, about 5–10 s under the shipped config, at most 90 s). A concurrent verb
+// (begin-batch, record-batch, validate, run entry) blocks on the lease for that time rather than
+// failing — this is what serialises two concurrent recover-batch calls for the same batch, so the
+// second sees the first's recorded guid and attaches instead of spawning a duplicate.
+// An unbounded or poll-length wait (recover-batch's RecoverAwait, Master's own Wait) still never
+// runs under it — Release as soon as the save lands, before any such wait begins.
 func AcquireStateMutation(scratchDir string) (*lock.FileLock, error) {
 	if err := os.MkdirAll(scratchDir, 0o755); err != nil {
 		return nil, fmt.Errorf("webster: create webster scratch dir %s: %w", scratchDir, err)

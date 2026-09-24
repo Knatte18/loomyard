@@ -64,7 +64,8 @@ func TurnEnded(eventsPath string, engine shuttleengine.Engine) (bool, error) {
 }
 
 // Starter is the seam a batch's implementer or recovery strand spawns through.
-// Start is deliberately non-blocking.
+// Start blocks until the spawned provider is past its startup gates (shuttle's guarantee) and
+// returns an error when it never became ready; it never waits for the run to finish.
 type Starter interface {
 	Start(shuttleengine.Spec) (*shuttleengine.Run, error)
 }

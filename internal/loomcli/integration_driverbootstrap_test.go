@@ -41,6 +41,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -48,21 +49,25 @@ import (
 // file's one spawn launches. The claude engine's own launch line expands the whole composed prompt
 // into ONE ARGUMENT via shell.ReadFile's "$(cat ...)" idiom rather than piping it over stdin (see
 // internal/shell/posix.go's own ReadFile), so the script reads the prompt from its first positional
-// argument, extracts the drive report path driverPrompt quoted into that text, sleeps settleDelay --
-// giving the caller a window to observe the run in flight before the report exists -- writes a
-// one-line report there, and exits.
+// argument, extracts the drive report path driverPrompt quoted into that text, prints
+// claudeengine's own ready-marker fixture -- shuttle's own startup step now blocks Start until this
+// (or the window closes), so a script that skipped it would make every call here time out at
+// startup_timeout_s instead of returning fast -- then sleeps settleDelay, giving the caller a window
+// to observe the run in flight, past readiness, before the report exists -- writes a one-line report
+// there, and exits.
 func integrationWriteStubDriverScript(t *testing.T, settleDelay time.Duration) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "stub-claude.sh")
 	script := fmt.Sprintf(`#!/bin/sh
 report=$(printf '%%s' "$1" | grep -o '"[^"]*drive-report[^"]*"' | head -1 | tr -d '"')
+echo '%s'
 sleep %s
 if [ -n "$report" ]; then
   mkdir -p "$(dirname "$report")"
   printf 'stub driver report\n' > "$report"
 fi
 exit 0
-`, settleDelay)
+`, claudeengine.ReadyFooterFixture, settleDelay)
 	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
 		t.Fatalf("write stub driver script: %v", err)
 	}
@@ -96,10 +101,11 @@ func waitForDriveReport(t *testing.T, dir string, timeout time.Duration) string 
 
 // TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver drives one end-to-end llm driver
 // launch over a fixture hub built through hubforge, seeded with the llm driver, and asserts three
-// things: the launch call returns well before the stubbed driver's own settle delay elapses, proving
-// it never waited on the driver session itself; the started run's persisted state file exists under
-// the run directory the handle reports; and the drive report the stubbed driver writes and exits
-// lands under the run's ephemeral scratch directory, never its durable one.
+// things: the launch call returns once the stub's ready marker lands and well before its settle
+// delay elapses, proving shuttle's own blocking Start returns past the provider's startup gates
+// rather than waiting on the whole driver session to finish; the started run's persisted state file
+// exists under the run directory the handle reports; and the drive report the stubbed driver writes
+// and exits lands under the run's ephemeral scratch directory, never its durable one.
 func TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver(t *testing.T) {
 	const stubSettleDelay = 2 * time.Second
 	stubPath := integrationWriteStubDriverScript(t, stubSettleDelay)
@@ -143,7 +149,7 @@ func TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver(t *testing.
 	}
 
 	if elapsed >= stubSettleDelay {
-		t.Errorf("startLLMDriverArm took %s; want well under the stub's own %s settle delay -- the launch must return without waiting on the driver session itself", elapsed, stubSettleDelay)
+		t.Errorf("startLLMDriverArm took %s; want well under the stub's own %s settle delay -- Start must return once the provider is ready, not wait on the whole driver session", elapsed, stubSettleDelay)
 	}
 
 	runStatePath := filepath.Join(run.RunDir(), "run.json")
