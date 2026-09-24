@@ -62,8 +62,10 @@ type InnerRunDeps struct {
 	//
 	// InnerRun waits for that bootstrap process rather than detaching, per the Live-Substrate Spawn
 	// Observability invariant. Call invokes Spawn at most once per invocation, and only when its own
-	// read-before-spawn check found no status file yet -- the child's own status file, not a call
-	// count, is what makes a resumed Call safe against double-spawning.
+	// read-before-spawn check found no status file yet, or a running one with no spawn confirmed
+	// under the row's scratch directory. Spawn must therefore be idempotent against a driver that
+	// is already alive: a bootstrap killed after its driver came up but before it returned is
+	// spawned again.
 	Spawn func(ctx context.Context) error
 	// ResolveStatus resolves the absolute status-file path and its companion lock path for the
 	// task worktree. It is evaluated on Call, never at wiring time: the task worktree this status

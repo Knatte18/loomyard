@@ -7,6 +7,7 @@ package battenshed
 import (
 	"context"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -338,6 +339,9 @@ func TestInnerRun_CancelledDuringSecondReadStatusError(t *testing.T) {
 // double spawn.
 func TestInnerRun_ReentryAgainstExistingStatusDoesNotRespawn(t *testing.T) {
 	scratchDir := t.TempDir()
+	if err := os.WriteFile(SpawnConfirmedFile(scratchDir, "innerrun"), []byte("spawned\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	clock := &fakeClock{}
 	_, spawnCalls, deps := newInnerRunDeps(nil, nil, []statusResult{{status: shedengine.Status{State: shedengine.StateRunning}, found: true}}, clock)
 
@@ -350,7 +354,7 @@ func TestInnerRun_ReentryAgainstExistingStatusDoesNotRespawn(t *testing.T) {
 		t.Fatalf("Call() outcome = %v; want Stuck", outcome)
 	}
 	if *spawnCalls != 0 {
-		t.Errorf("spawn calls = %d; want 0 against an existing status file", *spawnCalls)
+		t.Errorf("spawn calls = %d; want 0 against a running status with a confirmed spawn", *spawnCalls)
 	}
 }
 
@@ -432,5 +436,81 @@ func TestWaitOrCancel_WaitsOutAShortIntervalWhenNotCancelled(t *testing.T) {
 	waitOrCancel(context.Background(), 20*time.Millisecond)
 	if elapsed := time.Since(start); elapsed < 20*time.Millisecond {
 		t.Errorf("waitOrCancel(background, 20ms) returned after %s; want at least its own interval", elapsed)
+	}
+}
+
+// TestInnerRun_SpawnsUntilASpawnIsConfirmed pins which child states re-spawn when no spawn has been
+// confirmed on this machine. A child bootstrap seeds a running status before it starts its driver,
+// so a running status alone is no proof the spawn completed: it is spawned (again), and the
+// confirmation is recorded only once Spawn succeeds. A halted or done child is never spawned.
+func TestInnerRun_SpawnsUntilASpawnIsConfirmed(t *testing.T) {
+	running := statusResult{status: shedengine.Status{State: shedengine.StateRunning}, found: true}
+	tests := []struct {
+		name          string
+		status        statusResult
+		confirmed     bool
+		spawnErr      error
+		wantSpawns    int
+		wantConfirmed bool
+	}{
+		{name: "RunningUnconfirmedSpawns", status: running, wantSpawns: 1, wantConfirmed: true},
+		{name: "RunningConfirmedDoesNotSpawn", status: running, confirmed: true, wantSpawns: 0, wantConfirmed: true},
+		{name: "RunningUnconfirmedFailedSpawnRecordsNothing", status: running, spawnErr: errors.New("bootstrap exited 1"), wantSpawns: 1, wantConfirmed: false},
+		{name: "AbsentStatusClearsAStaleConfirmationBeforeSpawning", status: statusResult{found: false}, confirmed: true, spawnErr: errors.New("bootstrap exited 1"), wantSpawns: 1, wantConfirmed: false},
+		{name: "DoneUnconfirmedDoesNotSpawn", status: statusResult{status: shedengine.Status{State: shedengine.StateDone}, found: true}, wantSpawns: 0, wantConfirmed: false},
+		{name: "BlockedUnconfirmedDoesNotSpawn", status: statusResult{status: shedengine.Status{State: shedengine.StateBlocked}, found: true}, wantSpawns: 0, wantConfirmed: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			scratchDir := t.TempDir()
+			marker := SpawnConfirmedFile(scratchDir, "innerrun")
+			if tt.confirmed {
+				if err := os.WriteFile(marker, []byte("spawned\n"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			_, spawnCalls, deps := newInnerRunDeps(tt.spawnErr, nil, []statusResult{tt.status}, &fakeClock{})
+
+			_, _, _ = NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir).Call(context.Background())
+
+			if *spawnCalls != tt.wantSpawns {
+				t.Errorf("spawn calls = %d; want %d", *spawnCalls, tt.wantSpawns)
+			}
+			if got := spawnConfirmed(marker); got != tt.wantConfirmed {
+				t.Errorf("spawn confirmed = %v; want %v", got, tt.wantConfirmed)
+			}
+		})
+	}
+}
+
+// TestInnerRun_FailedSpawnIsRetriedOnTheNextCall walks the live failure shape across two Calls: the
+// bootstrap seeds a running status and then fails, and the resumed Call spawns again rather than
+// watching a driverless child as running.
+func TestInnerRun_FailedSpawnIsRetriedOnTheNextCall(t *testing.T) {
+	scratchDir := t.TempDir()
+	spawnErr := errors.New("bootstrap exited 1")
+	running := statusResult{status: shedengine.Status{State: shedengine.StateRunning}, found: true}
+	_, spawnCalls, deps := newInnerRunDeps(nil, nil, []statusResult{{found: false}, running}, &fakeClock{})
+	failing := deps
+	failing.Spawn = func(ctx context.Context) error {
+		*spawnCalls++
+		return spawnErr
+	}
+
+	if _, _, err := NewInnerRun("innerrun", "myslug", failing, time.Millisecond, scratchDir).Call(context.Background()); !errors.Is(err, spawnErr) {
+		t.Fatalf("first Call() error = %v; want it to wrap %v", err, spawnErr)
+	}
+	outcome, _, err := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir).Call(context.Background())
+	if err != nil {
+		t.Fatalf("second Call() error = %v; want nil", err)
+	}
+	if outcome != shedengine.Stuck {
+		t.Errorf("second Call() outcome = %v; want Stuck (still running)", outcome)
+	}
+	if *spawnCalls != 2 {
+		t.Errorf("spawn calls = %d; want 2 -- the resumed Call must retry the failed spawn", *spawnCalls)
+	}
+	if !spawnConfirmed(SpawnConfirmedFile(scratchDir, "innerrun")) {
+		t.Error("spawn confirmed = false after a successful retry; want true")
 	}
 }
