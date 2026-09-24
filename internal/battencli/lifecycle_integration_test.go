@@ -24,6 +24,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -32,6 +33,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
+	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -215,6 +217,40 @@ func TestBattenIntegration_SeedChild_WritesASeedTheChildBootstrapAgreesWith(t *t
 	}
 	if err := shedrun.WriteSeed(childLocation, shedrun.SelfRunID, bootstrapSeed); err != nil {
 		t.Fatalf("the child's own bootstrap seed was refused against Seed-Child's seed: %v", err)
+	}
+}
+
+// TestBattenIntegration_SeedChild_WriteSeedRewrapsARealDisagreeingChildSeed pins the WriteSeed
+// closure's own rewrap of shedrun.ErrDisagreeingSeed into battenshed.ErrDisagreeingChildSeed
+// (wire.go): plants a real, pre-existing child seed that disagrees with what the closure is about
+// to write, then calls c.env.SeedChild.WriteSeed directly, the production closure, rather than
+// stubbing the sentinel already wrapped -- so a future edit that drops the rewrap fails here rather
+// than only in a test that never reaches the real shedrun.WriteSeed call.
+func TestBattenIntegration_SeedChild_WriteSeedRewrapsARealDisagreeingChildSeed(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+	slug := "batten-seed-disagrees"
+	seedBoardTask(t, h, slug, "loom")
+	hubforge.AddPair(t, h, slug)
+
+	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
+		t.Fatal("ReadStatus must not be called: the disagreement refusal fires before any poll")
+		return shedengine.Status{}, false, nil
+	})
+
+	childLocation, err := taskWorktreeLocation(h.Location, slug)
+	if err != nil {
+		t.Fatalf("resolve child location: %v", err)
+	}
+	// A driver of "llm" disagrees with the "go" driver this test's own ChildDriver seam (below)
+	// resolves to, the same way an operator's hand-seeded or otherwise pre-existing child seed
+	// might.
+	if err := shedrun.WriteSeed(childLocation, shedrun.SelfRunID, shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: shedrun.DriverLLM}); err != nil {
+		t.Fatalf("plant a disagreeing child seed: %v", err)
+	}
+
+	err = c.env.SeedChild.WriteSeed(context.Background(), shedrun.RecipeLoom, shedrun.DriverGo)
+	if !errors.Is(err, battenshed.ErrDisagreeingChildSeed) {
+		t.Fatalf("WriteSeed() error = %v; want it to wrap battenshed.ErrDisagreeingChildSeed", err)
 	}
 }
 
