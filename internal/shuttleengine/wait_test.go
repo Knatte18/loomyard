@@ -943,26 +943,24 @@ func TestRun_Wait_StartupDeadline_BindsEveryNotReadyPath(t *testing.T) {
 	}
 }
 
-// TestRun_Wait_AttachedButNeverStarted_StartupProbeStillRuns is the regression guard for
-// d0e5a0e7b's coverage gap (crucible round sonnet5-xhigh-r3, F1): the started seed
-// (`run.attached && run.state.Started`) must still run the startup probe when a candidate is
-// attached but its persisted RunState.Started is false -- exactly the attached-but-never-actually-
-// started shape a driver killed before its first liveness tick, or a launch against a nonexistent
-// binary, both leave behind.
+// TestRun_Wait_AttachedButNeverStarted_StartupProbeStillRuns pins Wait's seed after the
+// shuttle-blocking-start batch's move: `started := run.state.Started` alone, for a started run and
+// an attached one alike. A run whose persisted RunState.Started is false still runs the startup
+// probe and classifies OutcomeDied at the window's end, whatever an attach's own reed reads said of
+// its pane's liveness -- exactly the attached-but-never-actually-started shape a driver killed
+// before its first liveness tick, or a launch against a nonexistent binary, both leave behind.
 //
-// Before d0e5a0e7b, the seed was `run.attached` alone, so this exact case skipped the startup probe
-// entirely and burned the full run deadline before misclassifying OutcomeTimeout. Reverting the
-// fix here (started := run.attached, dropping the state.Started conjunct) reproduces exactly that:
-// the run deadline (10 minutes, virtual) is what would bind instead of the 1-second startup
-// deadline, so this test's own elapsed-time assertion below fails loudly rather than merely running
-// slower, unlike the pre-existing smoke test this gap escaped (TestSmokeRunStandalone_
+// This is the regression guard for d0e5a0e7b's original coverage gap (crucible round
+// sonnet5-xhigh-r3, F1), carried forward onto the new seed: reverting to a seed that trusts
+// liveness alone (a bygone `run.attached` conjunct, or any other liveness-only shortcut) reproduces
+// exactly that gap, with the run deadline (10 minutes, virtual) binding instead of the 1-second
+// startup deadline, so this test's own elapsed-time assertion below fails loudly rather than merely
+// running slower, unlike the pre-existing smoke test this gap escaped (TestSmokeRunStandalone_
 // AdvancesMachineFromExistingSeed only asserts the final state, never the elapsed time or outcome
 // kind, so the old seed's mismeasurement made it slower, not failing).
 //
-// TestAttach_StartedSeededTrue (attach_test.go) pins the opposite half -- attached AND Started true
-// skips the probe -- but seeds started: true on both the pre- and post-fix code paths, so it cannot
-// distinguish them; this test is deliberately the mirror case a fake engine that never reaches
-// StartupReady, proving the probe actually reruns rather than merely existing.
+// TestRun_Wait_StartedRun_SkipsStartupProbe pins the opposite half -- a persisted Started: true
+// skips the probe, whether the run got there through Start or through Attach.
 func TestRun_Wait_AttachedButNeverStarted_StartupProbeStillRuns(t *testing.T) {
 	runDir := t.TempDir()
 	eventsPath := filepath.Join(runDir, "events.jsonl") // never created
@@ -986,10 +984,6 @@ func TestRun_Wait_AttachedButNeverStarted_StartupProbeStillRuns(t *testing.T) {
 		state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath, Started: false},
 		clock:    fc,
 		deadline: fc.Now().Add(10 * time.Minute),
-		// attached: true is the other half of the pre-fix bug's seed: Attach always sets this,
-		// regardless of the candidate's own Started value, so attached alone must never be
-		// sufficient to skip the probe.
-		attached: true,
 	}
 
 	result, err := run.Wait()
@@ -1116,7 +1110,6 @@ func TestRun_Wait_RunDeadline_SatisfiedFileContractWinsOverTimeout(t *testing.T)
 		state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath, Started: true},
 		clock:    fc,
 		deadline: fc.Now().Add(time.Minute),
-		attached: true,
 	}
 
 	result, err := run.Wait()
@@ -1128,6 +1121,59 @@ func TestRun_Wait_RunDeadline_SatisfiedFileContractWinsOverTimeout(t *testing.T)
 	}
 	if len(engine.StartupCalls) != 0 {
 		t.Errorf("engine.StartupCalls = %v; want none — started was seeded true, so the RUN deadline is what this case measures", engine.StartupCalls)
+	}
+}
+
+// TestRun_Wait_StartedRun_SkipsStartupProbe pins the seed from the other direction: a run obtained
+// from Runner.StartGated over readyStart-scripted fakes has already persisted Started: true through
+// Start's own successful probe, so a later Wait over the same handle must never re-run the startup
+// probe at all -- neither engine.StartupCalls nor the CapturePane count in reed.CallLog may grow past
+// what Start itself already recorded.
+func TestRun_Wait_StartedRun_SkipsStartupProbe(t *testing.T) {
+	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
+	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1"}}
+	readyStart(reed, engine)
+	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30, RunTimeoutMin: 5})
+	fc := newFakeClock(time.Now())
+	runner.clock = fc
+
+	outputFile := filepath.Join(t.TempDir(), "out.md")
+	run, err := runner.StartGated(Spec{Prompt: "x", OutputFiles: []string{outputFile}}, GateSpec{})
+	if err != nil {
+		t.Fatalf("StartGated() error: %v", err)
+	}
+
+	startupCallsAfterStart := len(engine.StartupCalls)
+	captureCallsAfterStart := 0
+	for _, c := range reed.CallLog {
+		if c == "CapturePane" {
+			captureCallsAfterStart++
+		}
+	}
+
+	if err := os.WriteFile(filepath.Join(run.RunDir(), eventsFileName), []byte("STOP:done\n"), 0o644); err != nil {
+		t.Fatalf("seed events: %v", err)
+	}
+	touchOutputFile(t, outputFile)
+
+	result, err := run.Wait()
+	if err != nil {
+		t.Fatalf("Wait() error: %v", err)
+	}
+	if result.Outcome != OutcomeDone {
+		t.Errorf("Outcome = %q; want %q", result.Outcome, OutcomeDone)
+	}
+	if len(engine.StartupCalls) != startupCallsAfterStart {
+		t.Errorf("engine.StartupCalls grew from %d to %d; want unchanged -- Wait must not re-run the startup probe for a started run", startupCallsAfterStart, len(engine.StartupCalls))
+	}
+	captureCallsAfterWait := 0
+	for _, c := range reed.CallLog {
+		if c == "CapturePane" {
+			captureCallsAfterWait++
+		}
+	}
+	if captureCallsAfterWait != captureCallsAfterStart {
+		t.Errorf("CapturePane calls grew from %d to %d; want unchanged", captureCallsAfterStart, captureCallsAfterWait)
 	}
 }
 

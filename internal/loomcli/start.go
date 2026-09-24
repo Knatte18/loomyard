@@ -11,7 +11,6 @@ package loomcli
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -60,8 +59,18 @@ func mustUseLLMDriverArm(driver string) bool {
 // parent covers this directory too is a premise this task would otherwise inherit unverified; compose
 // the prompt and the spec; and start the run through the starter seam.
 //
-// It returns the started run's handle so the caller can log the spawn and await the run's readiness
-// through the handle's AwaitStarted.
+// It returns the started run's handle for the caller to log -- StartDriver already guarantees
+// readiness, so a not-ready driver surfaces as StartDriver's own error, which
+// runDriverSpawnAndWait's existing failed-start refusal path reports with shuttle's own message
+// (naming the run dir and strand).
+//
+// Accepted residual: a readiness refusal removes the driver strand (shuttle's own not-ready teardown),
+// so the next start spawns a fresh one. The strand is left in place only when shuttle's readiness
+// check could not get an answer from reed at all (a startup mechanism failure), or when shuttle's
+// not-ready teardown could not remove the strand, and a later start that finds that strand live
+// resolves it as driverStrandLive and attaches without re-checking readiness. Accepted because reed
+// being unable to answer says nothing about the agent, so tearing the strand down could kill a working
+// driver.
 func (c *loomCLI) startLLMDriverArm(driverAction driverStrandAction, driverGUID string, runID string) (driverHandle, error) {
 	settings, err := loomengine.ResolveDriver(c.cfg, c.registry)
 	if err != nil {
@@ -87,8 +96,10 @@ func (c *loomCLI) startLLMDriverArm(driverAction driverStrandAction, driverGUID 
 		return nil, err
 	}
 	// Per the Live-Substrate Spawn Observability invariant, logged exactly as the go arm's own
-	// detached spawn already is.
-	logger.Info("loom: spawned driver strand", "guid", run.StrandGUID(), "runDir", run.RunDir())
+	// detached spawn already is. StartDriver already guarantees readiness, so this single line
+	// covers both the spawn and the "ready" observation the old AwaitStarted-driven log used to carry
+	// separately.
+	logger.Info("loom: driver strand is ready", "guid", run.StrandGUID(), "runDir", run.RunDir())
 	return run, nil
 }
 
@@ -96,7 +107,8 @@ func (c *loomCLI) startLLMDriverArm(driverAction driverStrandAction, driverGUID 
 // driver strand table once, decides via mustSpawnDriver whether a spawn is needed, and -- when one
 // is -- branches on driver into the go arm's detached spawn and run-lock handshake (both
 // byte-for-byte unchanged from before this extraction, aside from taking lockHeld as a parameter
-// rather than building it locally) or the llm arm's strand launch and readiness await.
+// rather than building it locally) or the llm arm's strand launch, whose StartDriver already blocks
+// through the provider's readiness gates before returning.
 //
 // lockHeld is the go arm's handshake seam, built by the caller over the real run lock in production;
 // a test substitutes a counting fake to prove the handshake is never consulted on an llm-seeded
@@ -132,9 +144,8 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 	mustSpawn := mustSpawnDriver(runLockHeld, driverAction == driverStrandLive)
 
 	var childPID int
-	var driverRun driverHandle
 	if mustSpawn && mustUseLLMDriverArm(driver) {
-		driverRun, err = c.startLLMDriverArm(driverAction, driverGUID, c.runID)
+		_, err = c.startLLMDriverArm(driverAction, driverGUID, c.runID)
 		if err != nil {
 			_ = bootstrapLock.Release()
 			clihelp.SetExit(ctx, output.Err(out, err.Error()))
@@ -232,42 +243,6 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 		}
 	}
 
-	// Step 6, llm arm: await the driver run's provider readiness through the handle's
-	// AwaitStarted, in place of the go arm's run-lock handshake -- an ly-drive session
-	// takes the run lock only inside each "lyx shed step" and releases it between steps,
-	// so a handshake on it would either race the provider's own boot or observe a free lock
-	// between two perfectly healthy steps. AwaitStarted dismisses any startup gate its
-	// provider requires -- shuttle's engine seam owns which gates exist and how they are
-	// dismissed, loom only waits on the outcome -- that would otherwise park the session
-	// forever on a live pane. Refuse when it reports not-ready, naming the run
-	// directory and strand guid the handle reports -- never the driver log accessor, which
-	// names only the detached go driver's captured output.
-	//
-	// Accepted residual, per the discussion's out-of-scope decision on already-live driver
-	// strands: a not-ready refusal leaves the strand in place for diagnosis, so if its pane
-	// is still live the next `start` resolves it as driverStrandLive through
-	// resolveDriverStrandAction, spawns nothing, skips this step entirely and succeeds
-	// without re-checking readiness; the operator sees what the pane is stuck on by
-	// attaching, and only a newly spawned driver is awaited.
-	//
-	// bootstrapLock stays held across this await, up to startup_timeout_s, exactly as it was
-	// held across the old probe, and the ly-drive session's own first `lyx shed step` waits
-	// on the same lock until this bootstrap releases it.
-	if mustSpawn && mustUseLLMDriverArm(driver) {
-		ready, err := driverRun.AwaitStarted()
-		if err != nil {
-			_ = bootstrapLock.Release()
-			clihelp.SetExit(ctx, output.Err(out, err.Error()))
-			return false
-		}
-		if !ready {
-			_ = bootstrapLock.Release()
-			clihelp.SetExit(ctx, output.Err(out, fmt.Sprintf("loom: driver strand did not come up; see run dir %s (strand %s)", driverRun.RunDir(), driverRun.StrandGUID())))
-			return false
-		}
-		logger.Info("loom: driver strand is ready", "guid", driverRun.StrandGUID(), "runDir", driverRun.RunDir())
-	}
-
 	return true
 }
 
@@ -305,11 +280,14 @@ the terminal handover this way skips the operator's own strand with it. That
 readiness signal is the run lock being taken for the Go driver; for an
 ly-drive driver, it is the driver's provider TUI coming up ready, with any
 one-time startup gate its provider requires dismissed along the way (shuttle's
-engine seam owns which gates exist), within shuttle's startup_timeout_s. This signal is checked only for
-a driver this invocation spawns, so an ly-drive strand already live from an
-earlier invocation -- including one left in place by an earlier readiness
-refusal -- is attached to, or returned over with --no-attach, without
-re-checking readiness. The documented meaning is the same on both paths:
+engine seam owns which gates exist), within shuttle's startup_timeout_s. A
+readiness refusal removes the driver strand, so the next start spawns a
+fresh one; the signal is checked only for a driver this invocation spawns,
+and the two cases that can still leave an unready ly-drive strand live --
+shuttle could not get a liveness answer from reed at all, or its teardown
+could not remove the strand -- are attached to, or returned over with
+--no-attach, by a later start without re-checking readiness. The documented
+meaning is the same on both paths:
 perform every bootstrap step, confirm the driver is up by that path's own
 signal, and return without the terminal handover.
 

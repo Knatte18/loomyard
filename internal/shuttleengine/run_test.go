@@ -194,6 +194,7 @@ func TestNewDetachedRunner_AcceptsStandaloneShapeAndBothPaneCwdPositions(t *test
 			reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
 			engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd"}}
 			runner := NewDetachedRunner(reed, engine, anchor, worktree, tt.paneCwd, Config{RunTimeoutMin: 5})
+			readyStart(reed, engine)
 
 			if _, err := runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}}); err != nil {
 				t.Errorf("Start() error = %v; want the told-path verdict clean for a disjoint standalone pair with paneCwd %q", err, tt.paneCwd)
@@ -209,6 +210,7 @@ func TestRun_RunDir_ReturnsStartCreatedDirectory(t *testing.T) {
 	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", SessionID: "sess"}}
 	runner, anchorPath, _ := newTestRunner(t, reed, engine)
+	readyStart(reed, engine)
 
 	run, err := runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}})
 	if err != nil {
@@ -232,6 +234,7 @@ func TestRunner_Start_HappyPath_WiresAddSpecVerbatim(t *testing.T) {
 	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "launch-cmd", ResumeCmd: "resume-cmd", SessionID: "session-1"}}
 	runner, _, _ := newTestRunner(t, reed, engine)
+	readyStart(reed, engine)
 
 	spec := Spec{
 		Prompt:      "do the thing",
@@ -275,6 +278,49 @@ func TestRunner_Start_HappyPath_WiresAddSpecVerbatim(t *testing.T) {
 	}
 }
 
+// TestRunner_Start_ReadyStartProbesExactlyOnce pins that a Start whose readyStart scripting resolves
+// StartupReady on the very first tick issues exactly one Status/CapturePane probe before returning,
+// and persists Started: true -- proving the startup step added in this batch does not linger past
+// the first successful probe.
+func TestRunner_Start_ReadyStartProbesExactlyOnce(t *testing.T) {
+	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
+	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1"}}
+	runner, _, _ := newTestRunner(t, reed, engine)
+	readyStart(reed, engine)
+
+	run, err := runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}})
+	if err != nil {
+		t.Fatalf("Start() error: %v", err)
+	}
+	if run == nil {
+		t.Fatal("Start() returned nil run")
+	}
+
+	statusCalls, captureCalls := 0, 0
+	for _, c := range reed.CallLog {
+		switch c {
+		case "Status":
+			statusCalls++
+		case "CapturePane":
+			captureCalls++
+		}
+	}
+	if statusCalls != 1 {
+		t.Errorf("Status call count = %d; want 1", statusCalls)
+	}
+	if captureCalls != 1 {
+		t.Errorf("CapturePane call count = %d; want 1", captureCalls)
+	}
+
+	rs, found, rerr := loadRunState(run.RunDir())
+	if rerr != nil || !found {
+		t.Fatalf("loadRunState: found=%v err=%v", found, rerr)
+	}
+	if !rs.Started {
+		t.Errorf("loadRunState().Started = false; want true")
+	}
+}
+
 // TestRunner_Start_PersistsRunningOutcome pins that a freshly started run's persisted run.json
 // carries the runOutcomeRunning sentinel, before any classification has happened — the fact on disk
 // that a later Attach (batch 2) relies on to tell a live run from an ended one.
@@ -282,6 +328,7 @@ func TestRunner_Start_PersistsRunningOutcome(t *testing.T) {
 	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "launch-cmd", SessionID: "session-1"}}
 	runner, _, _ := newTestRunner(t, reed, engine)
+	readyStart(reed, engine)
 
 	run, err := runner.Start(Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}})
 	if err != nil {
@@ -487,6 +534,7 @@ func TestRunner_Start_SweepErrorDoesNotBlockStart(t *testing.T) {
 	}
 
 	runner := NewRunner(reed, engine, anchorPath, worktree, cfg)
+	readyStart(reed, engine)
 	run, err := runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}})
 	if err != nil {
 		t.Fatalf("Start() error: %v, want sweep failure to be non-blocking", err)
@@ -527,6 +575,7 @@ func TestRunner_Start_SweepSkipsEntirelyOnReedStateReadError(t *testing.T) {
 	setDirMTime(t, keptDir, time.Now(), 10*time.Minute)
 
 	runner := NewRunner(reed, engine, anchorPath, worktree, cfg)
+	readyStart(reed, engine)
 	if _, err := runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}}); err != nil {
 		t.Fatalf("Start() error: %v", err)
 	}
@@ -565,6 +614,7 @@ func TestRunner_Start_SweepSkipsEntirelyOnAbsentReedState(t *testing.T) {
 	setDirMTime(t, liveRunDir, time.Now(), 10*time.Minute)
 
 	runner := NewRunner(reed, engine, anchorPath, worktree, cfg)
+	readyStart(reed, engine)
 	if _, err := runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}}); err != nil {
 		t.Fatalf("Start() error: %v", err)
 	}

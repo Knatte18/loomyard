@@ -340,3 +340,20 @@ func (e *fakeEngine) AuditForksIncremental(sessionID, workdir string, seenTransc
 // var _ Engine = (*fakeEngine)(nil) is the compile-time proof fakeEngine
 // satisfies the seam it doubles for.
 var _ Engine = (*fakeEngine)(nil)
+
+// readyStart scripts reed and engine so a Start through the pair resolves its startup step ready on
+// the first probe: reed's StatusQueue reports reed.AddStrandResult.GUID live with a non-empty PaneID
+// (only when StatusQueue is empty, so a test that already scripted its own liveness answers is left
+// alone), and engine's StartupScript reports StartupReady (only when StartupScript is empty, for the
+// same reason). Card 4 makes Runner.StartGated probe the pane before returning a handle, which a test
+// built against fakeReed's empty StatusQueue (errStrandNotTracked) and fakeEngine's empty
+// StartupScript (always StartupPending) would otherwise fail, or sit out the whole startup window,
+// even though neither fake value is read by today's non-blocking Start.
+func readyStart(reed *fakeReed, engine *fakeEngine) {
+	if len(reed.StatusQueue) == 0 {
+		reed.StatusQueue = []reedengine.StatusResult{liveStatus(reed.AddStrandResult.GUID, "%1")}
+	}
+	if len(engine.StartupScript) == 0 {
+		engine.StartupScript = []StartupState{StartupReady}
+	}
+}

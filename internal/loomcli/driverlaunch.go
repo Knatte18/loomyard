@@ -12,22 +12,21 @@ import (
 )
 
 // driverHandle is the started driver run's own seam-facing surface: the two identities the bootstrap
-// needs after launch, plus the startup await, without depending on *shuttleengine.Run's concrete type.
+// needs after launch, without depending on *shuttleengine.Run's concrete type. It holds no startup
+// await: shuttle's own Start already blocks through the provider's startup gates before returning a
+// handle at all.
 type driverHandle interface {
 	// StrandGUID returns the reed strand guid bound to this run.
 	StrandGUID() string
 	// RunDir returns the directory holding this run's artifacts.
 	RunDir() string
-	// AwaitStarted reports whether the run's provider reached readiness: (true, nil) when its TUI
-	// reached ready with any recognized one-time gate dismissed, or its file contract is already
-	// satisfied; (false, nil) when the pane died or the startup window closed without readiness; a
-	// non-nil error when reed's liveness check failed repeatedly.
-	AwaitStarted() (bool, error)
 }
 
 // driverStarter starts the ly-drive session's shuttle run.
 type driverStarter interface {
-	// StartDriver starts spec and returns a handle without blocking.
+	// StartDriver returns only once the run's provider is past its startup gates -- shuttle's own
+	// Start blocks through them before returning a handle at all. A provider that never became ready
+	// surfaces as the returned error, wrapping shuttleengine.ErrNotStarted.
 	StartDriver(spec shuttleengine.Spec) (driverHandle, error)
 }
 
@@ -45,8 +44,7 @@ type runnerDriverStarter struct {
 }
 
 // StartDriver implements driverStarter by delegating to the runner's own Start, whose returned
-// *shuttleengine.Run already satisfies driverHandle via its StrandGUID, RunDir and AwaitStarted
-// methods.
+// *shuttleengine.Run already satisfies driverHandle via its StrandGUID and RunDir methods.
 func (s runnerDriverStarter) StartDriver(spec shuttleengine.Spec) (driverHandle, error) {
 	run, err := s.runner.Start(spec)
 	if err != nil {

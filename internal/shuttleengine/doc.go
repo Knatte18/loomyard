@@ -80,4 +80,11 @@
 // run has ended: an absent or unreadable reed state file, and a Status() failure. Both name the run
 // directory and the strand guid in a logged warning, since the operator's only escape from either is
 // out of band, via "lyx reed status".
+//
+// Start/StartGated/Run/RunGated run the startup probe (readiness plus dismissal of any one-time
+// startup gate, through the Engine seam's startup classification and trust-dismiss sequence) before
+// issuing a handle, so no caller outside this package probes readiness or plays gate keys.
+// A not-ready provider is torn down (strand removed, run dir and startup-capture.txt kept, Outcome
+// persisted), reported as ErrNotStarted from StartGated and as OutcomeDied/OutcomeTimeout from
+// RunGated.
 package shuttleengine

@@ -237,9 +237,9 @@ func (e *specCapturingEngine) ParseEvents(data []byte) ([]shuttleengine.Event, e
 func (e *specCapturingEngine) Startup(capture string) shuttleengine.StartupState {
 	return shuttleengine.StartupPending
 }
-func (e *specCapturingEngine) InterruptSequence() []shuttleengine.PaneInput      { return nil }
-func (e *specCapturingEngine) TrustDismissSequence(string) []shuttleengine.PaneInput   { return nil }
-func (e *specCapturingEngine) ComposeSend(text string) []shuttleengine.PaneInput { return nil }
+func (e *specCapturingEngine) InterruptSequence() []shuttleengine.PaneInput          { return nil }
+func (e *specCapturingEngine) TrustDismissSequence(string) []shuttleengine.PaneInput { return nil }
+func (e *specCapturingEngine) ComposeSend(text string) []shuttleengine.PaneInput     { return nil }
 
 // AuditForks is never reached: Prepare always fails before Runner.Start could ever run this spec to
 // a fork-mode done classification.
@@ -369,8 +369,8 @@ func TestRunCLI_Send_ArgValidation(t *testing.T) {
 }
 
 // preparingEngine is a hermetic Engine double that Prepares successfully and never becomes ready,
-// so a Runner built over it reaches Wait — where statusFailingReed's error drives the
-// mechanism-failure path the identity envelope below is about.
+// so a Runner built over it surfaces the mechanism failure from inside its startup step in
+// start() — driven by statusFailingReed's error — the identity envelope below is about.
 type preparingEngine struct{ specCapturingEngine }
 
 func (e *preparingEngine) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {

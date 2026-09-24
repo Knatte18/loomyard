@@ -2,9 +2,11 @@
 // escalation call Master's own prompt makes when a fork reports stuck or never reports at all.
 // It drives websterengine's three lease-scoped phases with a real, wall-clock Clock:
 // RecoverSpawnOrAttach under the state-mutation lease (saved and fabric-committed "...
-// spawn" when this call performed the spawn), RecoverAwait with the lease RELEASED (a single wait
-// blocks up to poll_wait_s -- holding the lease across it would stall every concurrent verb and run
-// entry for minutes, the exact hold AcquireStateMutation's contract forbids), and, on a terminal
+// spawn" when this call performed the spawn) -- the spawn phase under the lease now includes the
+// provider's startup window (bounded by startup_timeout_s) -- RecoverAwait with the lease RELEASED
+// (the wait phase that blocks up to poll_wait_s still runs with the lease released -- holding the
+// lease across it would stall every concurrent verb and run entry for minutes, the exact hold
+// AcquireStateMutation's contract forbids), and, on a terminal
 // digest, PersistRecoveryTerminal into a FRESHLY reloaded state under a re-acquired lease, followed
 // by the "... <status>" terminal fabric commit -- webster's third and fourth fabric-commit points, each
 // now carrying exactly the mutation its label names.
@@ -50,8 +52,10 @@ func (c *websterCLI) recoverBatchCmd() *cobra.Command {
 		Short: "escalate one batch to a cold recovery strand and long-poll it for a terminal digest",
 		Long: `recover-batch <NN> spawns a cold, fresh recovery strand for a batch a fork
 reported stuck (or never reported at all) -- or, on a re-entrant call,
-attaches to the recovery strand a prior call already spawned -- then blocks
-for up to --wait watching it for a terminal classification. A terminal
+attaches to the recovery strand a prior call already spawned. A call that
+spawns the recovery strand first waits for its provider to come up
+(normally seconds), and every call then blocks for up to --wait watching it
+for a terminal classification. A terminal
 call fabric-commits the batch report and state.json and returns the digest
 envelope, exactly like record-batch's own terminal envelope. If --wait
 elapses first it returns {"batch": "NN-<slug>", "status": "running",

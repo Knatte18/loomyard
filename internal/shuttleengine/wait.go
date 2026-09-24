@@ -2,9 +2,9 @@
 // terminal outcome (done/asking/died/timeout), probes the startup window for a trust-dialog
 // dismissal or a fast-failing dead pane, and runs the done-outcome cleanup (strand removal + run
 // dir deletion).
-// It also hosts Run.AwaitStarted, the startup probe on its own, for a caller that starts a run and
-// never waits on it.
-// Wait and AwaitStarted are the only two places in the run loop that sleep — both through the clock
+// It also hosts awaitStartup, the startup probe run.go's own start method calls before issuing a run
+// handle at all, and abandonStartup, its not-ready teardown.
+// Wait and awaitStartup are the only two places in the run loop that sleep — both through the clock
 // seam defined here, which lets tests replay a whole poll sequence instantly.
 // A pane that goes not-live (crashed, killed, or exited) is classified done rather than died when
 // every output file already exists — the file contract can be satisfied an instant before the
@@ -40,7 +40,10 @@
 // OutcomeDied, an OutcomeTimeout, a mechanism-failure error, or a verdictRespawnEligible -- must
 // first consult allOutputFilesExist over the run's OutputFiles, directly or through one of the three
 // helpers that own the check: classifyDeadlineExpiry, finishedDespiteMechanismFailure (both here),
-// or soleFinishedCandidate (attach.go).
+// or soleFinishedCandidate (attach.go). The startup step (awaitStartup, abandonStartup) honours the
+// same rule through the same primitives: its retry-cap and tick-cap exits call allOutputFilesExist
+// directly, its not-ready answer comes through checkLivenessTick/classifyStartupWindow (which already
+// consult it), and its run-deadline exit through classifyDeadlineExpiry.
 //
 // The rule exists because those are two different questions and only one of them is the one being
 // asked. A clock running out, reed no longer tracking a strand, reed's pane binding going stale,
@@ -160,6 +163,11 @@ var errStrandPaneBindingCleared = errors.New(
 		"running: a restored backup, a copied .lyx, or a reed.json older than the session), " +
 		`which says nothing about the agent: its process may still be working in a pane reed can no longer address. Check "lyx reed status"`)
 
+// ErrNotStarted reports that a run's provider never became ready inside its startup window.
+// StartGated wraps it, after tearing the strand down, when awaitStartup's loop resolves not-ready —
+// see abandonStartup for the teardown and the full error text a caller actually sees.
+var ErrNotStarted = errors.New("shuttle: the provider never became ready")
+
 // Wait blocks until run reaches a terminal outcome.
 // Error is reserved for mechanism failures that leave no classifiable outcome.
 // When run.spec.AwaitOperator is true, an OutcomeAsking classification does not count as terminal —
@@ -190,27 +198,34 @@ func (run *Run) Wait() (Result, error) {
 	startupTimeout := time.Duration(cfg.StartupTimeoutS) * time.Second
 	startupDeadline := run.clock.Now().Add(startupTimeout)
 
-	// started seeds from run.state.Started, persisted the moment the ORIGINAL Start (or a prior
-	// attach) actually observed StartupReady — not from run.attached alone. Attach's own reed reads
-	// are strictly stronger evidence than the capture heuristic below for telling a pane APART FROM
-	// NOTHING, but they cannot tell a booted, mid-turn provider apart from a pane whose launch
-	// command already failed (a live shell sitting at its own prompt after a bad binary path) or
-	// whose driver was killed before its own first liveness tick ever ran: reed reports both "live",
-	// and the run's own run.json still carries the runOutcomeRunning sentinel in every one of those
-	// cases, because nothing ever wrote a terminal Outcome to it. Trusting attachment alone there
-	// skips the startup probe for a run that never passed it, which trades a fast, correctly
-	// classified OutcomeDied at startup_timeout_s for a full run_timeout_min/spec.Timeout wait ending
-	// in a misleading OutcomeTimeout. Started is false for every run.json a pre-this-change binary
-	// wrote too, which is the same safe direction as RunState.Outcome's own compat rule: the probe
-	// runs one extra time rather than being skipped when it should not have been.
-	// Once Started is true the original reasoning still holds: re-running the probe against a pane
-	// that is mid-turn would misclassify a live interview as OutcomeDied one startup_timeout_s after
-	// attach, or worse, play the trust-dismiss key sequence into a live agent's pane if its capture
-	// happens to trip a trust-dialog needle — so a confirmed-ready attach still skips it. The
-	// not-tracked and not-live branches of checkLivenessTick sit above this short-circuit, so an
-	// attached run keeps full liveness coverage regardless of Started — only the startup probe
-	// itself is conditional on it.
-	started := run.attached && run.state.Started
+	// started seeds from run.state.Started alone — for a started run and an attached one alike. A
+	// handle from Start carries Started: true unless it was issued on the satisfied-file-contract
+	// branch, where re-probing is harmless and still classifies OutcomeDone (on an events-tick Done,
+	// or at the latest at Wait's own startup-window expiry through classifyDeadlineExpiry). Reed's own
+	// liveness reads, which an attached run's reconstruction consults before ever reaching Wait, are
+	// strictly stronger evidence than the capture heuristic below for telling a pane APART FROM
+	// NOTHING, but they cannot tell a booted, mid-turn provider apart from a pane whose launch command
+	// already failed (a live shell sitting at its own prompt after a bad binary path) or whose driver
+	// was killed before its own first liveness tick ever ran: reed reports both "live", and the run's
+	// own run.json still carries the runOutcomeRunning sentinel in every one of those cases, because
+	// nothing ever wrote a terminal Outcome to it. That is why liveness alone is never enough on its
+	// own to skip the probe, whether reported by Attach's own reads or by this loop's own
+	// checkLivenessTick: only a persisted Started fact does. Started is false for every run.json a
+	// pre-this-change binary wrote too, which is the same safe direction as RunState.Outcome's own
+	// compat rule: the probe runs one extra time rather than being skipped when it should not have
+	// been.
+	// The probe in checkLivenessTick/classifyStartupWindow is therefore reached from this seed only
+	// for an attached run whose run.json was never marked Started — a killed driver, or a launch whose
+	// binary never existed — and Wait still computes its own startupDeadline from its own entry time
+	// for that case, since the startup window an attach's own awaitStartup never ran belongs to this
+	// Wait call, not to some earlier one. Once Started is true, re-running the probe against a pane
+	// that is mid-turn would misclassify a live interview as OutcomeDied one startup_timeout_s into
+	// this Wait, or worse, play the trust-dismiss key sequence into a live agent's pane if its capture
+	// happens to trip a trust-dialog needle — so a confirmed-ready run, started or attached, skips it.
+	// The not-tracked and not-live branches of checkLivenessTick sit above this short-circuit, so every
+	// run keeps full liveness coverage regardless of Started — only the startup probe itself is
+	// conditional on it.
+	started := run.state.Started
 	eventsFailures := 0
 	statusFailures := 0
 
@@ -314,9 +329,9 @@ func (run *Run) Wait() (Result, error) {
 	}
 }
 
-// awaitStartedTickCap returns the maximum number of checkLivenessTick calls AwaitStarted's loop
-// performs, given the probe interval (not the raw poll interval) and the startup window: the
-// ceiling of startupTimeout/probeInterval, plus 1, plus maxStatusRetries.
+// startupTickCap returns the maximum number of checkLivenessTick calls awaitStartup's loop performs,
+// given the probe interval (not the raw poll interval) and the startup window: the ceiling of
+// startupTimeout/probeInterval, plus 1, plus maxStatusRetries.
 //
 // It is the Live-Substrate Spawn Observability retry clause's attempt-COUNT bound: every tick's
 // reed.Status and pane capture each run a real tmux process through reed, so the count cap is the
@@ -326,7 +341,7 @@ func (run *Run) Wait() (Result, error) {
 //
 // A negative startupTimeout is treated as 0 before the division, so the cap is never below
 // 1 + maxStatusRetries.
-func awaitStartedTickCap(startupTimeout, interval time.Duration) int {
+func startupTickCap(startupTimeout, interval time.Duration) int {
 	if startupTimeout < 0 {
 		startupTimeout = 0
 	}
@@ -334,54 +349,54 @@ func awaitStartedTickCap(startupTimeout, interval time.Duration) int {
 	return ticks + 1 + maxStatusRetries
 }
 
-// AwaitStarted runs the same startup probe Wait runs — checkLivenessTick's liveness check, pane
+// awaitStartup runs the same startup probe Wait runs — checkLivenessTick's liveness check, pane
 // capture, the engine's startup classification, and the engine's trust-dismiss sequence for a
-// recognized one-time gate — on its own, until the provider reaches StartupReady. Like StrandGUID
-// and RunDir, it exists for a caller that starts a run and never Waits on it.
+// recognized one-time gate — on its own, until the provider reaches StartupReady or the window (or
+// the run's own deadline, whichever is shorter) closes. run.go's start calls it once, before ever
+// returning a handle: this is what makes a *Run issued by Start/StartGated already past its
+// provider's startup gates.
 //
 // The answer it reports is "the provider's input TUI is on screen, with any recognized one-time gate
 // dismissed", never "the provider read its prompt": a ready-then-idle session still reads as ready,
 // and that residual degrades to the caller's own outer watch budget.
 //
-// Result mapping: (true, nil) on StartupReady (with Started persisted to run.json by
-// checkLivenessTick, so a later Attach skips the startup probe) or when the run's file contract is
-// already satisfied; (false, nil) when the pane died or the startup window closed without readiness;
-// a non-nil error only when checkLivenessTick failed maxStatusRetries consecutive times with the
-// file contract unsatisfied, worded in the same family Wait uses.
+// Return mapping: (Result{}, nil) when the handle may be issued — StartupReady reached (with Started
+// persisted to run.json by checkLivenessTick, so a later Attach skips the startup probe), or the run's
+// file contract already satisfied; (result, err) with errors.Is(err, ErrNotStarted) and a died/timeout
+// Result.Outcome when the pane died, the startup window closed, or the run's own deadline arrived
+// first, all with the teardown abandonStartup performs already done; (run.identity(), err) without
+// ErrNotStarted when checkLivenessTick failed maxStatusRetries consecutive times with the file
+// contract unsatisfied — a startup MECHANISM failure, worded in the same family Wait uses, that tears
+// nothing down because it says nothing about the agent.
 //
-// The window is startup_timeout_s verbatim, 0 included: a 0 makes the probe answer on its first tick
-// unless the TUI is already ready, the same fast-fail every producer run's Wait applies under that
-// config, and there is deliberately no floor.
-//
-// AwaitStarted never calls finalize and never writes a terminal Outcome, because it is a readiness
-// probe rather than a completion verdict and the run directory must keep its runOutcomeRunning
-// sentinel.
+// The window is the shorter of startup_timeout_s and the time left until run.deadline (floored at
+// 0): a run.Timeout shorter than startup_timeout_s must still expire on schedule, classified
+// OutcomeTimeout rather than OutcomeDied, so RunGated's caller sees "the agent was working" rather
+// than "it never started" when its own configured deadline, not the startup window, is what ran out.
+// startup_timeout_s 0 is included, with deliberately no floor: it makes the probe answer on its first
+// tick unless the TUI is already ready, the same fast-fail every producer run's Wait applies under
+// that config.
 //
 // Every negative answer honors the Completion Signal Invariant: the not-ready answer is reached only
-// through checkLivenessTick/classifyStartupWindow, which already consult allOutputFilesExist, and
-// the retry-cap and tick-cap exits below consult it directly.
+// through checkLivenessTick/classifyStartupWindow, which already consult allOutputFilesExist, the
+// run-deadline exit goes through classifyDeadlineExpiry, and the retry-cap and tick-cap exits below
+// consult allOutputFilesExist directly.
 //
-// The tick cap (awaitStartedTickCap) bounds the loop by count as well as by the deadline.
+// The tick cap (startupTickCap) bounds the loop by count as well as by the deadline.
 //
-// Probe cadence: AwaitStarted calls checkLivenessTick once per probe interval, where the probe
+// Probe cadence: awaitStartup calls checkLivenessTick once per probe interval, where the probe
 // interval is pollInterval(cfg) times LivenessEveryNPolls (floored to 1 exactly as Wait floors it),
 // so it probes, and replays any trust-gate dismissal, at the same cadence Wait does (every 5s under
 // the shipped template's poll_interval_ms: 500 and liveness_every_n_polls: 10) and never faster.
-// AwaitStarted has no events file to poll between probes, so it sleeps the whole probe interval at
+// awaitStartup has no events file to poll between probes, so it sleeps the whole probe interval at
 // once rather than ticking at the poll interval. This is deliberate: checkLivenessTick replays the
 // trust-dismiss sequence on every probe whose capture still shows a gate, and probing every 500ms
 // would let a capture taken before the provider redraws after the first Enter drive a second key
 // into the next gate — the stray-keypress hazard the capture-driven dismissal exists to prevent;
-// matching Wait's cadence keeps AwaitStarted on the one cadence already proven live for producers.
-//
-// The run.attached && run.state.Started short-circuit mirrors Wait's own started seed, for
-// consistency, since today's only caller always passes a freshly started run.
+// matching Wait's cadence keeps awaitStartup on the one cadence already proven live for producers.
 //
 // Manual live-substrate verification recipe: docs/reference/claude-trust-dialog-repro.md.
-func (run *Run) AwaitStarted() (bool, error) {
-	if run.attached && run.state.Started {
-		return true, nil
-	}
+func (run *Run) awaitStartup() (Result, error) {
 	cfg := run.runner.cfg
 	livenessEvery := cfg.LivenessEveryNPolls
 	if livenessEvery <= 0 {
@@ -390,7 +405,15 @@ func (run *Run) AwaitStarted() (bool, error) {
 	interval := pollInterval(cfg) * time.Duration(livenessEvery)
 	startupTimeout := time.Duration(cfg.StartupTimeoutS) * time.Second
 	startupDeadline := run.clock.Now().Add(startupTimeout)
-	maxTicks := awaitStartedTickCap(startupTimeout, interval)
+
+	window := startupTimeout
+	if untilDeadline := run.deadline.Sub(run.clock.Now()); untilDeadline < window {
+		window = untilDeadline
+	}
+	if window < 0 {
+		window = 0
+	}
+	maxTicks := startupTickCap(window, interval)
 
 	started := false
 	statusFailures := 0
@@ -400,32 +423,82 @@ func (run *Run) AwaitStarted() (bool, error) {
 			statusFailures++
 			if statusFailures >= maxStatusRetries {
 				if allOutputFilesExist(run.spec.OutputFiles) {
-					return true, nil
+					return Result{}, nil
 				}
 				switch {
 				case errors.Is(err, errStrandNotTracked):
-					return false, fmt.Errorf("shuttle: startup await: reed did not track strand %q on %d consecutive liveness checks: %w", run.state.StrandGUID, maxStatusRetries, err)
+					return run.identity(), fmt.Errorf("shuttle: startup: reed did not track strand %q on %d consecutive liveness checks (run dir %s): %w", run.state.StrandGUID, maxStatusRetries, run.runDir, err)
 				case errors.Is(err, errStrandPaneBindingCleared):
-					return false, fmt.Errorf("shuttle: startup await: reed held no pane binding for strand %q on %d consecutive liveness checks: %w", run.state.StrandGUID, maxStatusRetries, err)
+					return run.identity(), fmt.Errorf("shuttle: startup: reed held no pane binding for strand %q on %d consecutive liveness checks (run dir %s): %w", run.state.StrandGUID, maxStatusRetries, run.runDir, err)
 				default:
-					return false, fmt.Errorf("shuttle: startup await: reed status failed %d times consecutively: %w", maxStatusRetries, err)
+					return run.identity(), fmt.Errorf("shuttle: startup: reed status failed %d times consecutively for strand %q (run dir %s): %w", maxStatusRetries, run.state.StrandGUID, run.runDir, err)
 				}
 			}
 		} else {
 			statusFailures = 0
-			if started {
-				return true, nil
+			if started || outcome == OutcomeDone {
+				return Result{}, nil
 			}
-			switch outcome {
-			case OutcomeDone:
-				return true, nil
-			case OutcomeDied:
-				return false, nil
+			if outcome == OutcomeDied {
+				return run.abandonStartup(OutcomeDied)
 			}
 		}
+
+		if run.clock.Now().After(run.deadline) {
+			if run.classifyDeadlineExpiry(OutcomeTimeout) == OutcomeDone {
+				return Result{}, nil
+			}
+			return run.abandonStartup(OutcomeTimeout)
+		}
+
 		run.clock.Sleep(interval)
 	}
-	return allOutputFilesExist(run.spec.OutputFiles), nil
+
+	if allOutputFilesExist(run.spec.OutputFiles) {
+		return Result{}, nil
+	}
+	return run.abandonStartup(OutcomeDied)
+}
+
+// abandonStartup is awaitStartup's not-ready teardown: the provider never reached StartupReady inside
+// its window, so the strand is torn down and the run's own Outcome is finalized while the run
+// directory and its last pane capture are kept for diagnosis.
+//
+// In order: any capture checkLivenessTick recorded is saved to startupCaptureFileName (a write
+// failure is a Warn, and the returned error then says no capture was saved); run.finalize(outcome, "")
+// persists RunState.Outcome and logs "run finished", skipping the gate and cleanup since outcome is
+// never OutcomeDone here; the strand is removed whatever Spec.KeepPane says — KeepPane governs a
+// COMPLETED run's pane retention, not a startup failure's, and a provider that never came up leaves
+// nothing worth keeping the pane around for; the run directory is left in place either way, so the
+// capture file (and prompt.md/settings.json/events.jsonl) are findable; and a Warn names the run dir,
+// strand guid and outcome, per the Live-Substrate Spawn Observability invariant.
+//
+// The returned error wraps ErrNotStarted and names the run dir, the strand guid, the outcome, whether
+// the capture was saved, and whether the strand removal itself succeeded — carrying reed's own error
+// text and an operator remedy when it did not, since a strand abandonStartup could not remove is the
+// one residual an operator must clear by hand.
+func (run *Run) abandonStartup(outcome Outcome) (Result, error) {
+	captureNote := "no pane capture was saved"
+	if run.lastStartupCapture != "" {
+		capturePath := filepath.Join(run.runDir, startupCaptureFileName)
+		if err := os.WriteFile(capturePath, []byte(run.lastStartupCapture), 0o644); err != nil {
+			logger.Warn("shuttle: startup: save last pane capture failed (non-fatal)", "runDir", run.runDir, "strandGUID", run.state.StrandGUID, "error", err)
+		} else {
+			captureNote = fmt.Sprintf("the last pane capture was saved to %s", startupCaptureFileName)
+		}
+	}
+
+	result, _ := run.finalize(outcome, "")
+
+	removeNote := "the strand was removed"
+	if _, rerr := run.runner.reed.RemoveStrand(run.state.StrandGUID, false); rerr != nil {
+		logger.Warn("shuttle: startup: remove strand after not-ready teardown failed", "strandGUID", run.state.StrandGUID, "error", rerr)
+		removeNote = fmt.Sprintf("the strand could NOT be removed (%v); remove it by hand (\"lyx reed status\" / \"lyx reed remove\")", rerr)
+	}
+
+	logger.Warn("shuttle: provider never became ready; strand torn down", "runDir", run.runDir, "strandGUID", run.state.StrandGUID, "outcome", string(outcome))
+
+	return result, fmt.Errorf("shuttle: start: %w — run dir %s, strand %q, outcome %q; %s; %s", ErrNotStarted, run.runDir, run.state.StrandGUID, string(outcome), captureNote, removeNote)
 }
 
 // pollEventsTick reads any events.jsonl bytes appended since run.offset and
@@ -581,6 +654,10 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Out
 		// so it stays inside the startup window and expires with it — see classifyStartupWindow.
 		return run.classifyStartupWindow(startupDeadline), nil
 	}
+	// Recorded on every successful capture, not just a ready one: abandonStartup's not-ready teardown
+	// saves whatever the last capture showed as a diagnosis artifact, so a still-pending or
+	// still-gated pane's last screen is on disk exactly as a ready one's would be.
+	run.lastStartupCapture = capture
 
 	switch run.runner.engine.Startup(capture) {
 	case StartupReady:

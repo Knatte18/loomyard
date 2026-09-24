@@ -8,14 +8,15 @@
 // Classify/PollUntilTerminal/ TurnEnded/StrandLive), and PersistRecoveryTerminal (the terminal
 // digest merge into a freshly reloaded state).
 // First call spawns and records;
-// every call (the first included) blocks at most one wait window and returns either the terminal
-// digest or a running snapshot;
+// the call that spawns the recovery strand first waits for its provider to come up (normally
+// seconds, bounded by startup_timeout_s), and every call then blocks at most one wait window and
+// returns either the terminal digest or a running snapshot;
 // a caller (webstercli) re-calls until terminal.
 //
 // The three-phase split exists for the state-mutation lease: the caller holds it across
-// spawn-or-attach and across the terminal persist,
-// but NEVER across the bounded wait between them (see AcquireStateMutation's
-// never-across-a-long-block contract).
+// spawn-or-attach — now including the spawn's startup window — and across the terminal persist,
+// but NEVER across the bounded wait between them (see AcquireStateMutation's contract, held across
+// the spawn's startup window but never across a long block).
 // Nothing here touches fabric: the caller fabric-commits state.json after the spawn record and again at
 // terminal persistence, webster's own fabric-commit-boundary discipline.
 
@@ -222,6 +223,20 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 // exists, ATTACH and return it;
 // otherwise SPAWN fresh.
 // Caller persists deps.State via SaveState when spawned is true.
+//
+// Accepted residuals, both from the spawn call now including the provider's startup window under
+// the state-mutation lease, and from state.json being persisted only after that call returns:
+//
+//  1. A process killed inside the startup window leaves a live recovery strand whose guid was
+//     never persisted, so the next call's prior.StrandGUID reclaim (removeStrandIfLive) cannot
+//     see it, and the next spawn runs beside it.
+//  2. A startup mechanism failure (shuttle could not get a liveness answer from reed
+//     maxStatusRetries times) returns an error with the strand left live and no guid persisted,
+//     with the same consequence — accepted because tearing it down could kill a working agent, and
+//     a reed in that state usually fails the next AddStrand too. The error names the strand guid so
+//     an operator can remove it by hand.
+//  3. A not-ready start no longer leaks (shuttle tears the strand down) unless that teardown's own
+//     strand removal fails, which the returned error then states.
 func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *BatchState, spawned bool, err error) {
 	batch, err := findBatch(deps.Batches, batchNumber)
 	if err != nil {

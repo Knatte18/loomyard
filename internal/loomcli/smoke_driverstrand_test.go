@@ -35,10 +35,11 @@
 // (gitkit.HermeticGitEnv()) for the whole test binary, untagged files included, so this file needs no
 // TestMain of its own.
 //
-// This test also proves the llm arm's readiness await (Run.AwaitStarted) succeeds against a real reed
-// pane: every "loom start --no-attach" below now blocks on that await rather than the retired
-// pane-liveness probe, and its assertions below on the invocation's own exit code catch a readiness
-// regression as a refusal rather than letting it pass silently.
+// This test also proves shuttle's own blocking Start succeeds against a real reed pane: every "loom
+// start --no-attach" below now blocks inside StartDriver's call to Start, which returns only once the
+// provider is ready (or reports the run as a refusal, naming shuttle's ErrNotStarted), and its
+// assertions below on the invocation's own exit code catch a readiness regression as that refusal
+// rather than letting it pass silently.
 package loomcli
 
 import (
@@ -62,8 +63,8 @@ import (
 // writeStubDriverScript writes a POSIX shell script standing in for the claude binary this file's
 // spawns launch: it ignores every argument the claude engine's own launch line appends, prints
 // claudeengine's own ready-marker fixture, then sleeps for a long, harmless duration. The marker
-// line is required under the readiness signal this file now drives: without it AwaitStarted would
-// never observe readiness, so every "loom start --no-attach" below would refuse at
+// line is required under the readiness signal this file now drives: without it shuttle's own startup
+// step would never observe readiness, so every "loom start --no-attach" below would refuse at
 // startup_timeout_s instead of succeeding. The fixture text, and which of a provider's gates it is
 // or isn't, is claudeengine's own concern (see claudeengine.ReadyFooterFixture) -- this package only
 // needs a realistic stand-in, never the classification details behind it. The script never needs to
@@ -83,8 +84,8 @@ func writeStubDriverScript(t *testing.T) string {
 // stubPath and startup_timeout_s lowered from 90 to 10. Unlike smoke_test.go's own
 // providerlessShuttleConfig, this file's whole point is proving reed's own strand bookkeeping across a
 // REAL spawned pane, so the provider path must resolve to a real (if stubbed) executable rather than a
-// deliberately-broken one. The lowered window keeps a readiness regression -- AwaitStarted never
-// observing the ready marker -- surfacing as a refusal envelope inside the 30s per-invocation timeout
+// deliberately-broken one. The lowered window keeps a readiness regression -- shuttle's own startup
+// step never observing the ready marker -- surfacing as a refusal envelope inside the 30s per-invocation timeout
 // runLoomCLINoFatal enforces, rather than that timeout itself firing and masking the real failure. Both
 // substring replacements are asserted present before being applied, so a template drift (the shipped
 // claude key or the shipped startup_timeout_s value changing shape) fails loudly here rather than

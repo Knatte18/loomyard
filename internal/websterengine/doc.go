@@ -197,9 +197,10 @@
 // cold-start recovery prompt (RenderRecoveryPrompt) — deliberately distinct
 // from a fork's own thin RenderForkPrompt, since the recovery strand
 // inherits no session context (see the fork-context-hygiene Shared
-// Decision). Every call, including the first, blocks for at
-// most poll_wait_s and returns either a terminal digest or a running
-// snapshot; a re-entrant call finds the strand already recorded in state
+// Decision). The call that spawns the recovery strand first waits for its
+// provider to come up (normally seconds, bounded by startup_timeout_s), and
+// every call then blocks for at most poll_wait_s and returns either a
+// terminal digest or a running snapshot; a re-entrant call finds the strand already recorded in state
 // and skips straight to the bounded wait. This mirrors classify.go's
 // dead/timeout/stuck classification but keeps any single Bash tool call
 // bounded rather than open for the whole recovery timeout.
