@@ -21,12 +21,34 @@ The predecessor's full record (HANDOFF, five rounds' review + fixer reports, pro
 
 | Round | Tag | Model / effort | State |
 |---|---|---|---|
-| R1 | `opus-medium-r1` | Opus / medium (operator's pick) | spawning |
+| R1 | `opus-medium-r1` | Opus / medium (operator's pick) | DONE, independently verified — NOT a safety pass (1 BLOCKING, 3 MEDIUM, 3 LOW, 2 NIT, all fixed) |
 
 ## Baseline before R1
 
 `go build ./...`, `go vet ./...`, `go test -count=1 ./...` green at `b9ebb1ba9` (92 `ok` packages).
 Zero stray `lyx`/tmux/reed processes.
+
+## CLOSED-AND-VERIFIED
+
+**R1 (`opus-medium-r1`) independently verified 2026-09-24.** Self-reported READY — not trusted at face value.
+- Gates reproduced green from cold at `c42984345`: `go build ./...`, `go vet ./...`, `go test -count=1 ./...`, `go test -count=5` over battenshed/battencli/battenrecipe/shedrun/cmd/lyx, `go test -tags integration -count=1 ./internal/battencli/...`.
+- Sabotage-proven by the orchestrator (fix neutralised, test failed at the intended assertion, restored to an empty diff):
+  - **F4** (BLOCKING, `1bd758f2f`, loomshed — Webster row never committed `_lyx/webster/{outcome.yaml,summary.md,reports/integration.yaml}`, so batten's success path always halted `blocked` at `Worktree-Teardown`): replaced `w.commit()` with a nil error → `TestWebsterProducer_CommitsTheRunRecordOnDoneOnly` fails (`commit calls = 0; want 1`). Neighbour check: the new required `CommitWebster` seam has one production `Env` builder that reaches the Webster row (`loomcli/wiring.go`); `battencli/wire.go`'s `Env` never builds it.
+  - **F1** (MEDIUM, `ef703936c`, Run-Shed watched a driverless `running` child for 12h after a bootstrap failed post-seed): removed the running-and-unconfirmed arm → both new `TestInnerRun_*` tests fail (`spawn calls = 0; want 1`, `= 1; want 2`). The fix's load-bearing claim — re-spawn is idempotent against a live driver — checked in `loomcli/start.go:runDriverSpawnAndWait` (`mustSpawnDriver(runLockHeld, driverAction == driverStrandLive)`), so R1's L13 orphaned-but-alive driver is adopted, not doubled.
+  - **F5** (MEDIUM, `993ed9439`, teardown re-entry after its own `Remove` blocked forever): reverse-applied → `TestWire_TeardownIsIdempotentAgainstAnAlreadyRemovedWorktree` fails.
+  - **F3** (MEDIUM, `894f5df7c`, absent-worktree advice false and destructive): reverse-applied → `TestTaskWorktreeLocation_AbsentPairIsNamed` fails.
+  - **F7** (LOW, `af081a157`, `lyx shed seed` wrote into `_board`/weft sibling): reverse-applied → `TestWriteSeed_RefusesFabricsOwnCheckouts` fails on both sub-tests.
+  - **F2** (LOW, `05b2cca3e`, Driver Choice carve-out was file-granular): planted a second `seed.Driver` reader in `battencli/arm.go` → tripwire now fails naming it (R1 showed the same plant passing before the fix).
+  - **F6** (NIT, `0be1f57b4`, stuck reason blamed the recipe for a driver/params disagreement): reverse-applied → `TestSeedChild_DisagreeingChildSeedIsStuck` fails.
+- F8 (LOW, docs, `05b1668f3`) and F9 (NIT, docs, `c901e7257`) read and judged accurate; no changelog-style comments in any touched `.go` file.
+- Live headline (from R1's report, not re-driven): after the fixes, two unattended `lyx batten run` drives (`t8`, and `t9` through F1's retried spawn) reached `Worktree-Teardown` → `done`. #018 held: a never-trusted fixture path had its trust dialog dismissed.
+- Zero GitHub issues filed (newest still #265). Zero stray fixture processes (orchestrator `ps aux`). No harness instruction-shaped flag on the handback.
+
+## OPEN — needs the operator
+
+- **Fabric rollback leaves the warp branch behind** (R1, out of scope, not fixed): when a create fails and fabric rolls back, the destructive gate refuses to delete the warp branch, so the next create refuses until a manual `git branch -D`. Hit twice. Candidate mill-wiki task (Hard Rule 5) — needs the operator's go-ahead.
+- **The llm-driven child has never reached a terminal state in either campaign.** R1's llm driver halted BLOCKED because the `ly` plugin (`ly-drive` skill) is not installed on this host. Environment gap, not a defect; closing it needs the operator to install `ly@loomyard` or accept the gap.
+- **Two mill sessions run against this worktree:** `crucible-batten-followup:plan` (`/mill-plan`) and `crucible-batten-followup:go` (`/mill-go`), started 11:01 alongside the mill-start that the operator stopped. `status.md` is still `phase: discussing`, so they should be parked on their entry gates; the operator decides whether to kill them.
 
 ## What changed since the predecessor closed
 
@@ -51,4 +73,5 @@ Zero stray `lyx`/tmux/reed processes.
 
 ## Exact next action
 
-R1 (`opus-medium-r1`) is being spawned. When it returns: verify its report's closing sections exist, then run the verification protocol and refresh this file.
+R1 did not converge. Get the operator's explicit model + effort pick for R2 (unused so far in either campaign: Opus/xhigh, Opus/max, Fable/xhigh, Sonnet/max), then re-seed `_mill/batten-review-prompt.md`'s "Round context" with R1's outcomes as CLOSED-AND-VERIFIED, and commit the re-seed before spawning.
+Suggested R2 focus: R1's yield sat at batten's boundary with loom and fabric, not inside batten. Point R2 at shapes rather than instances: (1) enumerate every loom producer that writes under `_lyx` and whether Go commits it — F4 was one uncommitted directory, so the class is likely not closed; (2) enumerate every batten row's crash-window re-entry (F1, F5, and the predecessor's create-row fix are the same shape three times); (3) adversarial pressure on R1's own fixes, above all F1's spawn marker (machine-local `.lyx` scratch vs. a run resumed on another machine) and F4's commit on a resumed Done.
