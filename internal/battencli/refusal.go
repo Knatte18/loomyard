@@ -26,7 +26,25 @@
 
 package battencli
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
+)
+
+// RefuseUnlessPrime is the whole prime-only guard as one call: fabric's own drivable-worktree check
+// first, then the prime-name comparison, in that order for the reason armAt gives.
+// It is exported for the one site outside this package that creates batten runs, "lyx shed seed":
+// a batten seed written anywhere but prime is a run no verb can ever drive, so the seeding site
+// applies the same refusal every batten verb applies.
+func RefuseUnlessPrime(location *lyxcwd.Location) error {
+	if err := fabricengine.RequireDrivableWorktree(location); err != nil {
+		return fmt.Errorf("battencli: this verb runs from the hub's prime worktree only: %w", err)
+	}
+	primeName, primeNameErr := fabricengine.PrimeName(location)
+	return refuseNonPrime(location.WorktreeName, primeName, primeNameErr)
+}
 
 // refuseNonPrime returns nil only when primeNameErr is nil and worktreeName equals primeName.
 //

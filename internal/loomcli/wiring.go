@@ -321,6 +321,13 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// WebsterRun, unlike loomshed.Deps.WebsterRun, which shedadapters.NewWebsterProducer
 		// defaulted when left nil.
 		WebsterRun: websterengine.Run,
+		// CommitWebster mirrors CommitPlan below: the pathspec is webster's whole durable
+		// directory, so Master's outcome.yaml and summary.md and the integration report land in
+		// git rather than as untracked dirt that refuses the task worktree's removal.
+		CommitWebster: func() error {
+			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, []string{websterengine.DirRel()}, fmt.Sprintf("loom: webster run record for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
+			return err
+		},
 		// Shuttle is runner, already built above: *shuttleengine.Runner already satisfies
 		// shedadapters.Shuttle, and row 3 (Discussion-Write) reads it now.
 		Shuttle: runner,

@@ -218,8 +218,11 @@ func TestSeedChild_DisagreeingChildSeedIsStuck(t *testing.T) {
 		t.Errorf("commitCalled=%v pushCalled=%v; want neither -- nothing was written to commit", calls.commitCalled, calls.pushCalled)
 	}
 	reason := readStuckFile(t, scratchDir, "seedchild")
-	if !strings.Contains(reason, "already disagrees") {
+	if !strings.Contains(reason, "disagrees with the one Seed-Child would write") {
 		t.Errorf("stuck-reason file = %q; want it to name the disagreement", reason)
+	}
+	if strings.Contains(reason, "disagrees with recipe") {
+		t.Errorf("stuck-reason file = %q; want no claim that the recipe disagrees -- a seed can disagree in its driver or params alone", reason)
 	}
 }
 

@@ -21,6 +21,7 @@ package websterengine
 import (
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -40,6 +41,13 @@ const websterDirName = "webster"
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func Dir(anchorRoot string) string {
 	return filepath.Join(anchorRoot, lyxdirs.LyxDirName, websterDirName)
+}
+
+// DirRel returns Dir's anchor-relative form, `_lyx/webster`, always forward-slashed.
+// It exists so a caller building a fabric commit pathspec never has to name a directory segment
+// websterengine owns.
+func DirRel() string {
+	return path.Join(lyxdirs.LyxDirName, websterDirName)
 }
 
 // ReportsDir returns the path to the directory holding webster's per-batch report files, joined

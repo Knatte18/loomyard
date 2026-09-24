@@ -12,15 +12,21 @@
 // fabric-internal side -- write "the task worktree" and "the pair" instead of naming either side
 // by name.
 //
-// A driver strand that dies mid-run, or that is alive but parked -- a provider waiting on an
-// interactive prompt its launcher never answered -- is not detected here, by design: the InnerRun
-// row watches the child's persisted status file, never the driver's own liveness or progress.
-// A long-quiet Run-Shed therefore means "possibly dead or parked", not "working", until the row's
-// bounce budget runs out; an operator tells the cases apart by attaching to the child's session.
+// A driver strand that dies mid-run, that is alive but parked -- a provider waiting on an
+// interactive prompt its launcher never answered -- or that stops of its own accord with the run
+// still non-terminal -- an llm driver handing back on a refusal it may not retry, exhausting its
+// step cap, or finding its skill unavailable, each leaving its report under the task worktree's
+// .lyx/shed/self/ -- is not detected here, by design: the InnerRun row watches the child's
+// persisted status file, never the driver's own liveness or progress. A long-quiet Run-Shed
+// therefore means "possibly dead, parked or stopped", not "working", until the row's bounce budget
+// runs out; an operator tells the cases apart by attaching to the child's session.
 //
 // Its counterpart is equally by design: a driver that finishes NORMALLY leaves its strand and its
 // run directory behind. Nothing here tears either down as part of a clean finish -- only the
 // whole-worktree teardown row cleans up, at the very end, by removing the worktree they live in.
+// That teardown follows the child's persisted terminal state, not the driver's exit, so whatever
+// the driver is still doing after its run reached that state -- loom's post-run friction
+// reflection included -- is ended with the session and recorded as an abandoned session.
 //
 // It declares its own unexported entryErr/cancelErr helpers (ctx.go) and its own reportStuck
 // carrier (stuck.go) for the same deliberate-duplication reason internal/preflightshed/doc.go and

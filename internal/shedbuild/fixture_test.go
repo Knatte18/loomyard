@@ -204,6 +204,7 @@ func newTestEnv(t *testing.T) shedrecipe.Env {
 		Shuttle:            &fakeShuttle{},
 		Burler:             &fakeBurlerRunner{},
 		WebsterRun:         fakeWebsterRun,
+		CommitWebster:      func() error { return nil },
 		WebsterDeps: websterengine.RunDeps{
 			Starter:    fakeMasterStarter{},
 			Reed:       fakeReedOps{},

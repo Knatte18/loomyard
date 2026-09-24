@@ -31,11 +31,15 @@ type entry struct {
 	Verbs []string
 	// BootstrapVerb answers "may a run seeded for this recipe be driven by an LLM": it is populated
 	// from the owning module's own exported constant (loomcli.BootstrapVerb, battencli.BootstrapVerb),
-	// never a literal, so this field cannot drift from the module that declares the fact. Batch 5's
+	// never a literal, so this field cannot drift from the module that declares the fact. The
 	// "lyx shed seed --driver llm" validator consults it by emptiness rather than by comparing the
-	// recipe name against the literal "loom". Nothing reads this field yet in this batch -- that is
-	// deliberate, not dead code.
+	// recipe name against the literal "loom".
 	BootstrapVerb string
+	// RefuseSeedAt is the recipe's own answer to "may a seed for me be written in this worktree",
+	// consulted by "lyx shed seed" after fabric's drivable-worktree check; nil means any drivable
+	// worktree. It is populated from the owning module's own exported guard, never re-derived
+	// here, so a seed can only ever be written where that recipe's verbs would drive it.
+	RefuseSeedAt func(location *lyxcwd.Location) error
 }
 
 // recipes is the single place every named recipe is declared, mapping each recipe name to the
@@ -56,6 +60,7 @@ var recipes = map[string]entry{
 		Arm:           battencli.ArmAt,
 		Verbs:         []string{"run", "step", "status", "pause"},
 		BootstrapVerb: battencli.BootstrapVerb,
+		RefuseSeedAt:  battencli.RefuseUnlessPrime,
 	},
 }
 

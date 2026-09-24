@@ -1,10 +1,12 @@
 // webster.go implements the lazy Webster wrapper around shedadapters.WebsterProducer: it resolves
-// the active batchifier itself, inside Call, rather than at construction.
+// the active batchifier itself, inside Call, rather than at construction, and commits webster's
+// durable run record once the run reports Done.
 
 package loomshed
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -32,17 +34,19 @@ type websterProducer struct {
 	anchorPath string
 	run        shedadapters.WebsterRunner
 	deps       websterengine.RunDeps
+	commit     func() error
 }
 
 var _ shedengine.ShedProducer = (*websterProducer)(nil)
 
 // NewWebsterProducer returns a websterProducer identified as name, resolving the active batchifier
 // from anchorPath on every Call and driving run with a copy of deps carrying the resolved value.
-// deps.Batcher is left nil by the caller; it is overwritten on every Call regardless. The return
+// deps.Batcher is left nil by the caller; it is overwritten on every Call regardless. commit
+// commits webster's durable run directory and is invoked once the run reports Done. The return
 // type is shedengine.ShedProducer, the seam interface, so the internal/shedrecipe registry can
 // call this constructor from outside this package while websterProducer itself stays unexported.
-func NewWebsterProducer(name, anchorPath string, run shedadapters.WebsterRunner, deps websterengine.RunDeps) shedengine.ShedProducer {
-	return &websterProducer{name: name, anchorPath: anchorPath, run: run, deps: deps}
+func NewWebsterProducer(name, anchorPath string, run shedadapters.WebsterRunner, deps websterengine.RunDeps, commit func() error) shedengine.ShedProducer {
+	return &websterProducer{name: name, anchorPath: anchorPath, run: run, deps: deps, commit: commit}
 }
 
 // Call implements shedengine.ShedProducer: it resolves batcher.Active(w.anchorPath) itself, fills
@@ -76,5 +80,22 @@ func (w *websterProducer) Call(ctx context.Context) (shedengine.Outcome, shedeng
 	deps := w.deps
 	deps.Batcher = active
 
-	return shedadapters.NewWebsterProducer(w.name, w.run, deps).Call(ctx)
+	outcome, pointer, err := shedadapters.NewWebsterProducer(w.name, w.run, deps).Call(ctx)
+	if err != nil || outcome != shedengine.Done {
+		return outcome, pointer, err
+	}
+
+	// Master writes its contract files (outcome.yaml, summary.md) and the integration report into
+	// the durable webster directory, and nothing on webster's own side commits them: per the Fabric
+	// Git Invariant an agent writes into _lyx and Go commits. Left uncommitted they ride through
+	// Publish and Finalize as untracked dirt, which refuses the task worktree's later removal.
+	// A commit failure is a returned error, not Stuck, for the reason the Discussion-Write commit
+	// decorator gives: re-running Webster cannot fix a git fault.
+	if w.commit == nil {
+		return "", shedengine.OutputPointer{}, fmt.Errorf("loomshed: %s: no commit seam wired; webster's run record would never be committed", w.name)
+	}
+	if err := w.commit(); err != nil {
+		return "", shedengine.OutputPointer{}, fmt.Errorf("loomshed: %s: commit webster's run record: %w", w.name, err)
+	}
+	return outcome, pointer, nil
 }

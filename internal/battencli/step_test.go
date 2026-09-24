@@ -108,6 +108,14 @@ func TestBattenPreStep_DoneSlug_KindBootstrap(t *testing.T) {
 	if kind != shedverbs.KindBootstrap {
 		t.Errorf("battenPreStep() kind = %q; want %q", kind, shedverbs.KindBootstrap)
 	}
+	// The remedy must be the whole abandon path: a torn-down pair keeps its task branch locally and
+	// on the remote, so deleting the run directory alone leads straight into the create row's
+	// leftover-branch refusal.
+	for _, want := range []string{"delete its run directory", "task branch", "locally and on the remote", "to run it again"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("battenPreStep() error = %q; want it to contain %q", err.Error(), want)
+		}
+	}
 }
 
 // TestSpecFor_StepBuildShedNonNil asserts c.specFor("step").BuildShed is non-nil, mirroring "run"'s

@@ -7,6 +7,7 @@ import (
 	"go/parser"
 	"go/token"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -535,10 +536,12 @@ func TestResolveStatusStrandAction(t *testing.T) {
 }
 
 // driverFieldRead records one `<seedTypedIdent>.Driver` field read the Driver Choice Single-Site
-// Invariant's scan found, at the file (repo-root-relative, slash-normalized) and line it occurred at.
+// Invariant's scan found, at the file (repo-root-relative, slash-normalized), enclosing top-level
+// function (empty outside any function), and line it occurred at.
 type driverFieldRead struct {
-	relPath string
-	line    int
+	relPath  string
+	function string
+	line     int
 }
 
 // isShedrunSeedTypeExpr reports whether expr is the type expression "shedrun.Seed".
@@ -616,19 +619,27 @@ func scanFileForDriverFieldReads(path string) ([]driverFieldRead, error) {
 		return true
 	})
 
+	// Each hit is stamped with its enclosing top-level declaration's function name, so a carve-out
+	// can name one reading function rather than a whole file.
 	var found []driverFieldRead
-	ast.Inspect(astFile, func(n ast.Node) bool {
-		sel, ok := n.(*ast.SelectorExpr)
-		if !ok || sel.Sel.Name != "Driver" {
-			return true
+	for _, decl := range astFile.Decls {
+		function := ""
+		if fn, ok := decl.(*ast.FuncDecl); ok {
+			function = fn.Name.Name
 		}
-		ident, ok := sel.X.(*ast.Ident)
-		if !ok || !seedTyped[ident.Name] {
+		ast.Inspect(decl, func(n ast.Node) bool {
+			sel, ok := n.(*ast.SelectorExpr)
+			if !ok || sel.Sel.Name != "Driver" {
+				return true
+			}
+			ident, ok := sel.X.(*ast.Ident)
+			if !ok || !seedTyped[ident.Name] {
+				return true
+			}
+			found = append(found, driverFieldRead{function: function, line: fset.Position(sel.Pos()).Line})
 			return true
-		}
-		found = append(found, driverFieldRead{line: fset.Position(sel.Pos()).Line})
-		return true
-	})
+		})
+	}
 	return found, nil
 }
 
@@ -679,8 +690,10 @@ func scanRepoForDriverFieldReads(t *testing.T, repoRoot string) []driverFieldRea
 	return all
 }
 
-// driverFieldReadCarveOuts are the repo-root-relative production files, outside internal/loomcli
-// and internal/shedrun, that may read a seed's Driver field.
+// driverFieldReadCarveOuts are the production functions, outside internal/loomcli and
+// internal/shedrun, that may read a seed's Driver field, each keyed "<repo-root-relative file>:<function>".
+// The key names a function rather than a file, so a second reader added anywhere else in the same
+// file still fails the scan.
 //
 // Exactly one entry, and it is a deliberate carve-out rather than a widening: internal/battencli's
 // refuseAdoptedSeed compares a --driver value the operator just typed against the one the addressed
@@ -692,13 +705,13 @@ func scanRepoForDriverFieldReads(t *testing.T, repoRoot string) []driverFieldRea
 //
 // Every other new entry needs the same explicit justification here, next to the one it joins.
 var driverFieldReadCarveOuts = map[string]bool{
-	"internal/battencli/arm.go": true,
+	"internal/battencli/arm.go:refuseAdoptedSeed": true,
 }
 
 // TestDriverChoiceSingleSiteInvariant_OnlyLoomcliReadsTheSeedDriverField is the Driver Choice
 // Single-Site Invariant's tripwire: the only production readers of the seed's Driver field outside
 // internal/shedrun (the field's sole parser/writer) must be internal/loomcli, that recipe's own
-// bootstrap package, and the files named in driverFieldReadCarveOuts. Adding a reader anywhere else
+// bootstrap package, and the functions named in driverFieldReadCarveOuts. Adding a reader anywhere else
 // fails this test and forces a human to confirm the new site really belongs to a recipe's bootstrap
 // verb rather than a producer, a generic verb, or an engine gating behaviour on the recorded value.
 func TestDriverChoiceSingleSiteInvariant_OnlyLoomcliReadsTheSeedDriverField(t *testing.T) {
@@ -718,7 +731,7 @@ func TestDriverChoiceSingleSiteInvariant_OnlyLoomcliReadsTheSeedDriverField(t *t
 			sawLoomcli = true
 			continue
 		}
-		if driverFieldReadCarveOuts[f.relPath] {
+		if driverFieldReadCarveOuts[f.relPath+":"+f.function] {
 			continue
 		}
 		outside = append(outside, f)
@@ -734,5 +747,35 @@ func TestDriverChoiceSingleSiteInvariant_OnlyLoomcliReadsTheSeedDriverField(t *t
 	}
 	if !sawLoomcli {
 		t.Error("the scan found no driver-field reader inside internal/loomcli at all -- want at least sharedbootstrap.go's resolveSeedDriver to be found; either that site moved or the scan itself has stopped matching real code")
+	}
+}
+
+// TestScanFileForDriverFieldReads_StampsTheEnclosingFunction pins the granularity the carve-out
+// relies on: two readers in one file are told apart by their enclosing function, so a carve-out for
+// one never admits the other.
+func TestScanFileForDriverFieldReads_StampsTheEnclosingFunction(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "two_readers.go")
+	src := `package fixture
+
+import "github.com/Knatte18/loomyard/internal/shedrun"
+
+func allowedReader(seed shedrun.Seed) string { return seed.Driver }
+
+func plantedGate(seed shedrun.Seed) bool { return seed.Driver == shedrun.DriverLLM }
+`
+	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	found, err := scanFileForDriverFieldReads(path)
+	if err != nil {
+		t.Fatalf("scanFileForDriverFieldReads() error = %v; want nil", err)
+	}
+	var functions []string
+	for _, f := range found {
+		functions = append(functions, f.function)
+	}
+	sort.Strings(functions)
+	if got, want := strings.Join(functions, ","), "allowedReader,plantedGate"; got != want {
+		t.Errorf("scanFileForDriverFieldReads() functions = %q; want %q", got, want)
 	}
 }

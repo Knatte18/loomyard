@@ -11,11 +11,14 @@ package battencli
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
 	"strings"
 	"testing"
 	"unicode/utf8"
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
@@ -305,7 +308,7 @@ func TestTaskWorktreeLocation_AbsentPairIsNamed(t *testing.T) {
 	if err == nil {
 		t.Fatal("taskWorktreeLocation(prime, \"never-created\") = nil error; want a named refusal")
 	}
-	for _, want := range []string{"never-created", "is not present at", "resolve this by hand"} {
+	for _, want := range []string{"never-created", "is not present at", "Resolve it by hand", shedrun.RunDir(prime, "never-created"), "local and remote", "discarding any of the task's work"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("taskWorktreeLocation(...) = %q; want it to contain %q", err.Error(), want)
 		}
@@ -313,8 +316,54 @@ func TestTaskWorktreeLocation_AbsentPairIsNamed(t *testing.T) {
 	if strings.Contains(err.Error(), "lyx fabric checkout") {
 		t.Errorf("taskWorktreeLocation(...) = %q; want it to never suggest \"lyx fabric checkout\" -- run from prime, that command mutates prime's own branch rather than restoring the missing task worktree", err.Error())
 	}
+	if strings.Contains(err.Error(), "so a resumed run reaches a fresh create") {
+		t.Errorf("taskWorktreeLocation(...) = %q; want it to never promise that deleting branches alone rewinds the run -- the resumed run re-enters its persisted row, not Worktree-Create", err.Error())
+	}
 	if strings.Contains(err.Error(), "not a git repository") {
 		t.Errorf("taskWorktreeLocation(...) = %q; want the absent-pair case reported on its own terms, not as a resolver failure", err.Error())
+	}
+}
+
+// TestCreateRefusal_LeftoverBranchRemedyNeverNamesCheckout asserts the create closure rewords
+// fabric's leftover-branch refusal for a caller standing in prime -- naming the branch and its
+// deletion on both the local and the remote side, and never "lyx fabric checkout", which from prime
+// switches prime itself -- while every other create error passes through unchanged.
+func TestCreateRefusal_LeftoverBranchRemedyNeverNamesCheckout(t *testing.T) {
+	leftover := &fabricengine.ErrBranchExists{Branch: "lyx-some-slug"}
+	other := errors.New("source worktree has uncommitted changes")
+
+	tests := []struct {
+		name        string
+		err         error
+		wantContain []string
+		wantSame    bool
+	}{
+		{"LeftoverBranch", leftover, []string{`"lyx-some-slug"`, "git branch -D lyx-some-slug", "git push origin --delete lyx-some-slug", "lyx fabric cleanup --apply --remote", "resume this run"}, false},
+		{"WrappedLeftoverBranch", fmt.Errorf("create: %w", leftover), []string{"git push origin --delete lyx-some-slug"}, false},
+		{"OtherError", other, []string{other.Error()}, true},
+		{"NilError", nil, nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := createRefusal(tt.err)
+			if tt.wantSame {
+				if got != tt.err {
+					t.Fatalf("createRefusal(%v) = %v; want the same error passed through", tt.err, got)
+				}
+				return
+			}
+			if got == nil {
+				t.Fatal("createRefusal(leftover branch) = nil; want a reworded refusal")
+			}
+			for _, want := range tt.wantContain {
+				if !strings.Contains(got.Error(), want) {
+					t.Errorf("createRefusal(...) = %q; want it to contain %q", got.Error(), want)
+				}
+			}
+			if strings.Contains(got.Error(), "lyx fabric checkout") && !strings.Contains(got.Error(), "never \"lyx fabric checkout\"") {
+				t.Errorf("createRefusal(...) = %q; want it to never suggest \"lyx fabric checkout\" from prime", got.Error())
+			}
+		})
 	}
 }
 
@@ -335,4 +384,69 @@ func TestTaskWorktreePresent_AbsentIsAnAnswerNotAnError(t *testing.T) {
 	if present {
 		t.Error("taskWorktreePresent(prime, \"never-created\") = true; want false")
 	}
+}
+
+// TestWire_TeardownIsIdempotentAgainstAnAlreadyRemovedWorktree asserts session shutdown treats an
+// absent task worktree as its post-condition already met -- the state a process killed right
+// after Remove succeeded leaves, since shedengine persists the transition only after the producer
+// returns -- rather than refusing the absence and stranding the run at teardown.
+func TestWire_TeardownIsIdempotentAgainstAnAlreadyRemovedWorktree(t *testing.T) {
+	c := &battenCLI{}
+	location := &lyxcwd.Location{
+		RepoName:     "example",
+		HubPath:      t.TempDir(),
+		WorktreeName: "hub-repo",
+		AnchorRel:    ".",
+	}
+	if err := c.wire(location, "already-removed"); err != nil {
+		t.Fatalf("wire() error = %v; want nil", err)
+	}
+
+	abandoned, err := c.env.Teardown.Shutdown(context.Background())
+	if err != nil {
+		t.Errorf("Teardown.Shutdown() error = %v; want nil for an already-removed task worktree", err)
+	}
+	if abandoned != "" {
+		t.Errorf("Teardown.Shutdown() abandoned session = %q; want empty", abandoned)
+	}
+}
+
+// TestWire_TeardownRefusesAHalfTornPair asserts the removal half does not mistake a pair whose
+// task worktree is gone but whose fabric sibling is still on disk -- a removal interrupted between
+// its two halves -- for a pair that is gone: it refuses, naming the leftover and the fabric verb
+// that removes it, rather than reporting the row done over the debris.
+// Session shutdown still skips there, since it has no worktree left to resolve reed's config from.
+func TestWire_TeardownRefusesAHalfTornPair(t *testing.T) {
+	c := &battenCLI{}
+	location := &lyxcwd.Location{
+		RepoName:     "example",
+		HubPath:      t.TempDir(),
+		WorktreeName: "hub-repo",
+		AnchorRel:    ".",
+	}
+	const slug = "half-torn"
+	if err := c.wire(location, slug); err != nil {
+		t.Fatalf("wire() error = %v; want nil", err)
+	}
+	remnant, present, err := fabricengine.PairSiblingRemnant(location, slug)
+	if err != nil || present {
+		t.Fatalf("precondition: PairSiblingRemnant = (present=%v, err=%v); want (false, nil)", present, err)
+	}
+	if err := os.MkdirAll(remnant, 0o755); err != nil {
+		t.Fatalf("create the leftover sibling: %v", err)
+	}
+
+	if _, err := c.env.Teardown.Shutdown(context.Background()); err != nil {
+		t.Errorf("Teardown.Shutdown() error = %v; want nil: no task worktree is left to shut a session down in", err)
+	}
+	err = c.env.Teardown.Remove(context.Background())
+	if err == nil {
+		t.Fatal("Teardown.Remove() = nil; want a refusal naming the leftover sibling, not done over the debris")
+	}
+	for _, want := range []string{slug, remnant, "lyx fabric prune --apply"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("Teardown.Remove() error = %q; want it to contain %q", err.Error(), want)
+		}
+	}
+
 }

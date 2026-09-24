@@ -57,6 +57,7 @@
 package fabricengine
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -345,4 +346,67 @@ func deleteWeftBranchOnRemote(rec *Mutations, l *lyxcwd.Location, branch, branch
 		return
 	}
 	entry.RemoteDeleted = deleted
+}
+
+// PairBranchResult is RemovePairBranch's outcome.
+// It embeds MutationRecord, which carries the mutation record accumulated over the call.
+type PairBranchResult struct {
+	MutationRecord
+	// Branch is the pair's other-side branch the call addressed.
+	Branch string `json:"branch"`
+	// LocalDeleted reports whether the branch was present locally and deleted.
+	LocalDeleted bool `json:"local_deleted"`
+	// RemoteDeleted reports whether a copy on the origin remote was observably removed.
+	RemoteDeleted bool `json:"remote_deleted,omitempty"`
+	// RemoteSkippedReason is non-empty when no remote deletion was attempted, today only because the
+	// repository has no origin remote.
+	RemoteSkippedReason string `json:"remote_skipped_reason,omitempty"`
+}
+
+// RemovePairBranch deletes slug's pair's other-side branch, locally when present and on the origin
+// remote when present there, for a caller whose pair is already removed from disk.
+// It exists for the same vocabulary reason PairSiblingRemnant does: a teardown re-entered after
+// Remove was interrupted past its worktree removals, or whose remote deletion failed, must finish
+// the branch deletion Remove would have done, without naming the branch's side of the pair.
+// It refuses while the pair's other-side worktree is still on disk, since that is Remove's and
+// Prune's to take down. Unlike Remove, a failed remote deletion is a returned error: this call's
+// whole purpose is the deletion, so a caller must be able to retry it.
+func (t *Topology) RemovePairBranch(l *lyxcwd.Location, slug string) (res PairBranchResult, err error) {
+	rec := NewMutations(l.HubPath)
+	defer func() { res.Mutations = rec.Snapshot() }()
+
+	if err := validateWorktreeSlug(slug, t.cfg.Dirs()); err != nil {
+		return PairBranchResult{}, err
+	}
+	if _, present, err := PairSiblingRemnant(l, slug); err != nil {
+		return PairBranchResult{}, err
+	} else if present {
+		return PairBranchResult{}, fmt.Errorf("the pair for %q still has its other-side worktree on disk; remove the pair first", slug)
+	}
+
+	branch := WeftBranchName(t.cfg.BranchPrefix + slug)
+	result := PairBranchResult{Branch: branch}
+	entry := CleanupBranchEntry{Branch: branch}
+
+	if weftBranchExists(l, branch) {
+		if !deleteWeftBranch(rec, l, branch, t.cfg.BranchPrefix, &entry) {
+			return PairBranchResult{}, errors.New(entry.Error)
+		}
+		result.LocalDeleted = true
+	}
+
+	weftRepoRoot, err := WeftRepoRoot(l)
+	if err != nil {
+		return PairBranchResult{}, fmt.Errorf("resolve weft repo root: %w", err)
+	}
+	if _, urlErr := gitrepo.New(weftRepoRoot).RemoteURL(originRemoteName); urlErr != nil {
+		result.RemoteSkippedReason = fmt.Sprintf("no remote deletion attempted: the weft repo has no %q remote configured: %v", originRemoteName, urlErr)
+		return result, nil
+	}
+	deleteWeftBranchOnRemote(rec, l, branch, t.cfg.BranchPrefix, weftRepoRoot, &entry)
+	if entry.RemoteError != "" {
+		return PairBranchResult{}, errors.New(entry.RemoteError)
+	}
+	result.RemoteDeleted = entry.RemoteDeleted
+	return result, nil
 }

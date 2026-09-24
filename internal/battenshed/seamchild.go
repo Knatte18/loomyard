@@ -128,7 +128,7 @@ func childRecipeRefusal(recipe string, err error) (reason string, refused bool) 
 	case errors.Is(err, ErrUnsupportedChildRecipe):
 		return fmt.Sprintf("Board task type %q cannot be the task worktree's own run: %s", recipe, err.Error()), true
 	case errors.Is(err, ErrDisagreeingChildSeed):
-		return fmt.Sprintf("the task worktree's own seed already disagrees with recipe %q: %s", recipe, err.Error()), true
+		return fmt.Sprintf("the task worktree already has its own seed, and it disagrees with the one Seed-Child would write: %s", err.Error()), true
 	default:
 		return "", false
 	}

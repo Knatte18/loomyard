@@ -49,7 +49,7 @@ var wantProducerTable = []wantProducerRow{
 	{loomshed.NamePlanBouncer, loomshed.NamePlanBurler, loomshed.NameBatchifier, "Plan-Review", 5, reflect.TypeOf(&shedadapters.Bouncer{})},
 	{loomshed.NamePlanBurler, loomshed.NamePlanBouncer, loomshed.NamePlanBouncer, "Plan-Review", 5, reflect.TypeOf(&shedadapters.BurlerProducer{})},
 	{loomshed.NameBatchifier, "", loomshed.NameWebster, "", 0, reflect.TypeOf(loomshed.NewBatchifier("", ""))},
-	{loomshed.NameWebster, "", loomshed.NameWebsterBouncer, "", 0, reflect.TypeOf(loomshed.NewWebsterProducer("", "", nil, websterengine.RunDeps{}))},
+	{loomshed.NameWebster, "", loomshed.NameWebsterBouncer, "", 0, reflect.TypeOf(loomshed.NewWebsterProducer("", "", nil, websterengine.RunDeps{}, nil))},
 	{loomshed.NameWebsterBouncer, loomshed.NameWebsterBurler, loomshed.NamePublish, "Webster-Review", 5, reflect.TypeOf(&shedadapters.Bouncer{})},
 	{loomshed.NameWebsterBurler, loomshed.NameWebsterBouncer, loomshed.NameWebsterBouncer, "Webster-Review", 5, reflect.TypeOf(&shedadapters.BurlerProducer{})},
 	{loomshed.NamePublish, "", loomshed.NameFinalize, "", 0, reflect.TypeOf(&landingshed.Publish{})},
@@ -96,6 +96,7 @@ func testEnv(t *testing.T) (shedrecipe.Env, shedbuild.ShedPaths) {
 		DecisionRecordPath: decisionRecordPath,
 		SupportLogPath:     supportLogPath,
 		WebsterRun:         (&fakeWebsterRun{}).run,
+		CommitWebster:      func() error { return nil },
 		WebsterDeps: websterengine.RunDeps{
 			Starter:    fakeMasterStarter{},
 			Reed:       fakeReedOps{},

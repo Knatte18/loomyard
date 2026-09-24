@@ -24,6 +24,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -32,10 +33,13 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
+	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -217,6 +221,40 @@ func TestBattenIntegration_SeedChild_WritesASeedTheChildBootstrapAgreesWith(t *t
 	}
 }
 
+// TestBattenIntegration_SeedChild_WriteSeedRewrapsARealDisagreeingChildSeed pins the WriteSeed
+// closure's own rewrap of shedrun.ErrDisagreeingSeed into battenshed.ErrDisagreeingChildSeed
+// (wire.go): plants a real, pre-existing child seed that disagrees with what the closure is about
+// to write, then calls c.env.SeedChild.WriteSeed directly, the production closure, rather than
+// stubbing the sentinel already wrapped -- so a future edit that drops the rewrap fails here rather
+// than only in a test that never reaches the real shedrun.WriteSeed call.
+func TestBattenIntegration_SeedChild_WriteSeedRewrapsARealDisagreeingChildSeed(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+	slug := "batten-seed-disagrees"
+	seedBoardTask(t, h, slug, "loom")
+	hubforge.AddPair(t, h, slug)
+
+	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
+		t.Fatal("ReadStatus must not be called: the disagreement refusal fires before any poll")
+		return shedengine.Status{}, false, nil
+	})
+
+	childLocation, err := taskWorktreeLocation(h.Location, slug)
+	if err != nil {
+		t.Fatalf("resolve child location: %v", err)
+	}
+	// A driver of "llm" disagrees with the "go" driver this test's own ChildDriver seam (below)
+	// resolves to, the same way an operator's hand-seeded or otherwise pre-existing child seed
+	// might.
+	if err := shedrun.WriteSeed(childLocation, shedrun.SelfRunID, shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: shedrun.DriverLLM}); err != nil {
+		t.Fatalf("plant a disagreeing child seed: %v", err)
+	}
+
+	err = c.env.SeedChild.WriteSeed(context.Background(), shedrun.RecipeLoom, shedrun.DriverGo)
+	if !errors.Is(err, battenshed.ErrDisagreeingChildSeed) {
+		t.Fatalf("WriteSeed() error = %v; want it to wrap battenshed.ErrDisagreeingChildSeed", err)
+	}
+}
+
 // TestBattenIntegration_RealReadStatus_OnAFreshPairReportsAbsentRatherThanErroring drives the two
 // InnerRun seams every other test in this file replaces -- the real Env.InnerRun.ResolveStatus and
 // Env.InnerRun.ReadStatus -- against a freshly created pair that has never run.
@@ -322,6 +360,126 @@ func TestBattenIntegration_FourRowRun_SeedsChildCommitsAndTearsDown(t *testing.T
 	}
 	if pathExists(pairPath) {
 		t.Errorf("pair still exists after Worktree-Teardown: %s", pairPath)
+	}
+
+	// Teardown's own top.Remove call passes remote: true -- a batten-driven teardown is the task's
+	// final removal, and nothing will ever re-adopt its weft branch, so the remote copy must not
+	// linger where "lyx fabric cleanup" (its own enumeration is local-branches-only) can never reach
+	// it. See F-CLEANUP-REMOTE-ORPHAN.
+	weftBranch := fabricengine.WeftBranchName(slug)
+	if err := exec.Command("git", "-C", h.WeftBare, "rev-parse", "--verify", "refs/heads/"+weftBranch).Run(); err == nil {
+		t.Errorf("weft branch %q still present on the remote after teardown; want it deleted alongside the local copy", weftBranch)
+	}
+}
+
+// remoteBranchExists reports whether branch exists in the bare repository at bareDir.
+func remoteBranchExists(bareDir, branch string) bool {
+	return exec.Command("git", "-C", bareDir, "rev-parse", "--verify", "refs/heads/"+branch).Run() == nil
+}
+
+// TestBattenIntegration_Teardown_AlreadyGonePairFinishesItsBranchDeletion re-enters the removal
+// half with both worktrees already gone but the pair's other-side branch left behind -- a removal
+// killed after its worktree removals, before its branch deletions finished -- and asserts the row
+// deletes that branch locally and on the remote rather than reporting done over it.
+// A branch surviving on the remote makes a later create of the slug refuse its push.
+func TestBattenIntegration_Teardown_AlreadyGonePairFinishesItsBranchDeletion(t *testing.T) {
+	tests := []struct {
+		name      string
+		keepLocal bool
+	}{
+		{"LocalAndRemoteLeft", true},
+		{"RemoteOnlyLeft", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := hubforge.NewHub(t, ".")
+			slug := "batten-branch-left"
+			hubforge.AddPair(t, h, slug)
+			weftBranch := fabricengine.WeftBranchName(slug)
+			if !remoteBranchExists(h.WeftBare, weftBranch) {
+				t.Fatalf("precondition: %q not on the remote after the create", weftBranch)
+			}
+			// Both worktrees removed, the remote copy kept -- the state a kill between the local
+			// and remote deletions leaves.
+			if _, err := h.Topology.Remove(h.Location, slug, false, false); err != nil {
+				t.Fatalf("remove the pair without its remote copy: %v", err)
+			}
+			weftRepoRoot, err := fabricengine.WeftRepoRoot(h.Location)
+			if err != nil {
+				t.Fatalf("resolve weft repo root: %v", err)
+			}
+			if tt.keepLocal {
+				gitkit.MustRun(t, weftRepoRoot, "git", "fetch", "origin", weftBranch)
+				gitkit.MustRun(t, weftRepoRoot, "git", "branch", weftBranch, "FETCH_HEAD")
+			}
+
+			c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
+				return shedengine.Status{State: shedengine.StateDone}, true, nil
+			})
+			if err := c.env.Teardown.Remove(context.Background()); err != nil {
+				t.Fatalf("Teardown.Remove() = %v; want nil", err)
+			}
+			if remoteBranchExists(h.WeftBare, weftBranch) {
+				t.Errorf("%q still on the remote after the re-entered teardown; want it deleted", weftBranch)
+			}
+			if exec.Command("git", "-C", weftRepoRoot, "rev-parse", "--verify", "refs/heads/"+weftBranch).Run() == nil {
+				t.Errorf("%q still present locally after the re-entered teardown; want it deleted", weftBranch)
+			}
+		})
+	}
+}
+
+// TestBattenIntegration_Teardown_FailedRemoteDeletionHaltsResumably breaks the weft origin during
+// teardown and asserts the removal half reports the failed remote deletion instead of done, then
+// that a resume once the remote is reachable again finishes it.
+func TestBattenIntegration_Teardown_FailedRemoteDeletionHaltsResumably(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+	slug := "batten-remote-fails"
+	hubforge.AddPair(t, h, slug)
+	weftBranch := fabricengine.WeftBranchName(slug)
+	weftRepoRoot, err := fabricengine.WeftRepoRoot(h.Location)
+	if err != nil {
+		t.Fatalf("resolve weft repo root: %v", err)
+	}
+	gitkit.MustRun(t, weftRepoRoot, "git", "remote", "set-url", "origin", filepath.Join(t.TempDir(), "missing.git"))
+
+	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
+		return shedengine.Status{State: shedengine.StateDone}, true, nil
+	})
+	err = c.env.Teardown.Remove(context.Background())
+	if err == nil {
+		t.Fatal("Teardown.Remove() = nil with an unreachable remote; want the failed remote deletion reported")
+	}
+	if !strings.Contains(err.Error(), "resume this run") {
+		t.Errorf("Teardown.Remove() error = %q; want it to name the resume", err.Error())
+	}
+	if pathExists(h.PairWarpWorktree(slug)) {
+		t.Errorf("task worktree still present; want the pair removed before the remote deletion failed")
+	}
+
+	gitkit.MustRun(t, weftRepoRoot, "git", "remote", "set-url", "origin", h.WeftBare)
+	if err := c.env.Teardown.Remove(context.Background()); err != nil {
+		t.Fatalf("Teardown.Remove() on resume = %v; want nil", err)
+	}
+	if remoteBranchExists(h.WeftBare, weftBranch) {
+		t.Errorf("%q still on the remote after the resumed teardown; want it deleted", weftBranch)
+	}
+}
+
+// TestBattenIntegration_Teardown_AlreadyGonePairWithNoBranchIsDone re-enters the removal half after
+// a removal that finished completely -- the transition just not yet persisted -- and asserts done.
+func TestBattenIntegration_Teardown_AlreadyGonePairWithNoBranchIsDone(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+	slug := "batten-teardown-finished"
+	hubforge.AddPair(t, h, slug)
+	if _, err := h.Topology.Remove(h.Location, slug, false, true); err != nil {
+		t.Fatalf("remove the pair: %v", err)
+	}
+	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
+		return shedengine.Status{State: shedengine.StateDone}, true, nil
+	})
+	if err := c.env.Teardown.Remove(context.Background()); err != nil {
+		t.Errorf("Teardown.Remove() = %v; want nil for a pair already fully removed", err)
 	}
 }
 
@@ -462,6 +620,161 @@ func TestBattenIntegration_CreateRow_IsIdempotentAgainstAnAlreadyPresentWorktree
 	}
 	if !pathExists(h.PairWarpWorktree(slug)) {
 		t.Errorf("task worktree missing after the idempotent create row: %s", h.PairWarpWorktree(slug))
+	}
+}
+
+// TestBattenIntegration_CreateRow_PairWithoutOriginRecordIsIncomplete pins the create row's
+// completeness check against a pair Add wired but never recorded the parent branch of -- a SIGKILL
+// between junction wiring and the origin record's write. Reporting done there seeds the child
+// with no parent param, which the child's own bootstrap refuses on every resume.
+func TestBattenIntegration_CreateRow_PairWithoutOriginRecordIsIncomplete(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+	slug := "batten-create-no-origin"
+	hubforge.AddPair(t, h, slug)
+	if err := os.Remove(fabricengine.OriginRecordPathFor(h.Location, slug)); err != nil {
+		t.Fatalf("remove origin record: %v", err)
+	}
+
+	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
+		t.Fatal("ReadStatus must not be called: the create row must refuse before the poll row ever runs")
+		return shedengine.Status{}, false, nil
+	})
+
+	err := c.env.CreateWorktree(context.Background())
+	if err == nil {
+		t.Fatal("CreateWorktree() error = nil; want the incomplete-pair refusal for a pair with no origin record")
+	}
+	if !strings.Contains(err.Error(), "not fully created") {
+		t.Errorf("CreateWorktree() error = %q; want it to contain %q", err.Error(), "not fully created")
+	}
+}
+
+// TestBattenIntegration_CreateRow_LeftoverBranchIsRewordedForPrime pins createRefusal's own wiring
+// into the CreateWorktree closure: a leftover warp branch from an earlier torn-down pair (or a
+// rolled-back create) must reach the closure's caller worded for an operator standing in prime,
+// never fabric's own raw "lyx fabric checkout" advice, which would switch prime itself onto the
+// task's branch. Calls c.env.CreateWorktree directly, the production closure, rather than
+// createRefusal in isolation, so a future edit that drops the reword call fails here.
+func TestBattenIntegration_CreateRow_LeftoverBranchIsRewordedForPrime(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+	slug := "batten-leftover-branch"
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "branch", slug)
+
+	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
+		t.Fatal("ReadStatus must not be called: the create row must fail before the poll row ever runs")
+		return shedengine.Status{}, false, nil
+	})
+
+	err := c.env.CreateWorktree(context.Background())
+	if err == nil {
+		t.Fatal("CreateWorktree() error = nil; want the leftover-branch refusal")
+	}
+	// The reworded text names "lyx fabric checkout" only inside its own "never do this" warning, not
+	// as a suggested remedy -- the same distinction TestCreateRefusal_LeftoverBranchRemedyNeverNamesCheckout
+	// (wire_test.go) draws for createRefusal in isolation.
+	if strings.Contains(err.Error(), "lyx fabric checkout") && !strings.Contains(err.Error(), `never "lyx fabric checkout"`) {
+		t.Errorf("CreateWorktree() error = %q; want it to never suggest \"lyx fabric checkout\" from prime", err.Error())
+	}
+	for _, want := range []string{slug, "git branch -D " + slug, "resume this run"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("CreateWorktree() error = %q; want it to contain %q", err.Error(), want)
+		}
+	}
+}
+
+// TestBattenIntegration_CreateRow_IncompletePairRefusesRatherThanSkippingAdd pins
+// taskWorktreeComplete's own fix: a warp worktree a SIGKILL-interrupted Add left behind, with no
+// sibling and no junctions wired, must not be mistaken for a finished create. Reproduces the state a
+// process killed right after Add's own first step leaves -- the warp worktree and branch exist,
+// nothing else does -- by driving the same git command Add's own createGitWorktree issues, rather
+// than stubbing anything: this proves taskWorktreeComplete's real filesystem check, not a fake of
+// it.
+func TestBattenIntegration_CreateRow_IncompletePairRefusesRatherThanSkippingAdd(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+	slug := "batten-incomplete-pair"
+	target := h.PairWarpWorktree(slug)
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "worktree", "add", "-b", slug, target)
+
+	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
+		t.Fatal("ReadStatus must not be called: the create row must refuse before the poll row ever runs")
+		return shedengine.Status{}, false, nil
+	})
+
+	err := c.env.CreateWorktree(context.Background())
+	if err == nil {
+		t.Fatal("CreateWorktree() error = nil; want a refusal naming the incomplete pair, not silent success")
+	}
+	for _, want := range []string{slug, "not fully created", "lyx fabric remove --force " + slug, "git branch -D " + slug} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("CreateWorktree() error = %q; want it to contain %q", err.Error(), want)
+		}
+	}
+	// The refusal must be read-only: no repair attempt, no partial Add left further along than it
+	// started.
+	if pathExists(h.PairWeftSibling(slug)) {
+		t.Errorf("the pair's other-side worktree exists after the refusal; want CreateWorktree to have made no repair attempt")
+	}
+}
+
+// TestBattenIntegration_CreateRow_IncompletePairRemedyWorksVerbatimOnAPrefixedHub follows the
+// incomplete-pair remedy exactly as worded, from prime, for a SIGKILL landing after Add created the
+// pair's other side and its portal: the remedy must name the prefixed branch Add created, and doing
+// what it says must leave nothing that makes the resumed create refuse.
+func TestBattenIntegration_CreateRow_IncompletePairRemedyWorksVerbatimOnAPrefixedHub(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+	hubforge.SeedFabricConfig(t, h, "branch_prefix: r4/\npathspec: \"\"\n")
+	slug := "batten-incomplete-prefixed"
+	branch := "r4/" + slug
+	target := h.PairWarpWorktree(slug)
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "worktree", "add", "-b", branch, target)
+
+	// Stands in for Add's own later steps -- the other side's worktree and the portal -- run
+	// directly rather than through Add so the junctions this test needs missing stay missing.
+	weftRepoRoot, err := fabricengine.WeftRepoRoot(h.Location)
+	if err != nil {
+		t.Fatalf("resolve weft repo root: %v", err)
+	}
+	gitkit.MustRun(t, weftRepoRoot, "git", "worktree", "add", "-b", fabricengine.WeftBranchName(branch), h.PairWeftSibling(slug))
+	portal := fabricengine.PortalLink(h.Location, slug)
+	if err := os.MkdirAll(filepath.Dir(portal), 0o755); err != nil {
+		t.Fatalf("mkdir portals: %v", err)
+	}
+	if err := os.Symlink(filepath.Join(target, h.Location.AnchorRel, lyxdirs.LyxDirName), portal); err != nil {
+		t.Fatalf("plant portal: %v", err)
+	}
+
+	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
+		t.Fatal("ReadStatus must not be called by the create row")
+		return shedengine.Status{}, false, nil
+	})
+
+	err = c.env.CreateWorktree(context.Background())
+	if err == nil {
+		t.Fatal("CreateWorktree() error = nil; want the incomplete-pair refusal")
+	}
+	removeCommand := "lyx fabric remove --force " + slug
+	branchCommand := "git branch -D " + branch
+	for _, want := range []string{removeCommand, branchCommand} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("CreateWorktree() error = %q; want it to contain %q", err.Error(), want)
+		}
+	}
+
+	// The remedy, verbatim: the fabric verb's own engine call with --force, then the branch.
+	cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(h.Location.HubPath))
+	if err != nil {
+		t.Fatalf("load fabric config: %v", err)
+	}
+	if _, err := fabricengine.NewTopology(cfg).Remove(h.Location, slug, true, false); err != nil {
+		t.Fatalf("%s: %v", removeCommand, err)
+	}
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "branch", "-D", branch)
+
+	if err := c.env.CreateWorktree(context.Background()); err != nil {
+		t.Fatalf("CreateWorktree() after the remedy = %v; want the fresh create to succeed", err)
+	}
+	if !pathExists(h.PairWeftSibling(slug)) {
+		t.Errorf("the pair's other side is missing after the resumed create: %s", h.PairWeftSibling(slug))
 	}
 }
 
