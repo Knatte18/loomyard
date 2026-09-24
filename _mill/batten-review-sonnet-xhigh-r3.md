@@ -276,6 +276,130 @@ regression matching this round's focus-3 shape exactly. Fix: extend
 a sibling test that writes a real disagreeing seed via `shedrun.WriteSeed` first and then calls
 `c.env.SeedChild.WriteSeed` and asserts `errors.Is(..., battenshed.ErrDisagreeingChildSeed)`.
 
-(More findings to follow as the remaining sweeps — focus 2 error-remedy table, focus 4 adversarial
-pressure on the youngest fixes, focus 5 re-confirmation, the PrimeRunLock/Bookend floor checks — are
+### Sweep 4 (focus 4): adversarial pressure on the youngest fixes
+
+**Half-torn-pair refusal at teardown (r2 F1), followed end to end.** Created a pair directly
+(`lyx fabric add half-torn-test`), hand-seeded a batten status at `Worktree-Teardown`/`running`
+(the durable status format supports resuming mid-graph by design), then simulated a `Remove`
+interrupted between its two halves (`git worktree remove --force` on the warp side only, weft
+sibling left on disk). `lyx batten step half-torn-test` correctly refused, naming
+`lyx fabric prune --apply` as the remedy. Ran it verbatim; `lyx batten step half-torn-test` then
+completed the row (`outcome: done`). **Confirmed correct, no finding.**
+
+**Leftover-branch remedy at create (r2 F2), followed end to end after a real teardown.** Created and
+force-removed a pair (`lyx fabric add`/`fabric remove --force leftover-branch-test`, which leaves
+the warp branch behind by fabric's own design). `lyx batten run leftover-branch-test --child-driver
+go` correctly hit the reworded `createRefusal` text, naming the branch and both its local and remote
+deletion commands plus `lyx fabric cleanup --apply --remote` for the weft sibling. Followed the
+first two verbatim (`git branch -D`, `git push origin --delete`), then ran `lyx fabric cleanup
+--apply --remote` for the weft sibling as the text says — **it silently did nothing for this
+branch**, see F-CLEANUP-REMOTE-ORPHAN below (found via this exact adversarial drive, not
+speculatively).
+
+**Done-slug remedy (r2 F4), followed end to end and the slug re-run to done.** Reused the
+already-completed `typed-loom` from the floor scenario. `lyx batten run typed-loom --child-driver
+go` correctly refused with the done-slug text, naming the run directory and "local and remote"
+branch cleanup, with `lyx fabric cleanup --apply --remote` again named as the weft-sibling remedy.
+Followed the full remedy verbatim (deleted the run directory via a commit on the weft sibling,
+`git branch -D typed-loom`, `git push origin --delete typed-loom`, `lyx fabric cleanup --apply
+--remote`) and re-ran the slug: **Worktree-Create failed** with a raw, unrelated-looking git error
+(`git push -u origin typed-loom-weft ... ! [rejected] ... non-fast-forward`), because the remedy's
+`cleanup --apply --remote` step had, again, silently done nothing for the stale `typed-loom-weft`
+remote branch. The failure also triggered `Add`'s own accepted, known rollback limitation (a fresh
+`typed-loom` warp branch left behind, logged as
+`"rollbackAdd's warp-branch deletion was refused by the destructive gate"` — matches the known
+fabric-rollback deferred item, not re-reported as new). Diagnosed and fixed by hand
+(`git push origin --delete typed-loom-weft` directly against the weft sibling, plus a second
+`git branch -D typed-loom` for the rollback's own leftover); a third attempt was launched and is
+IN PROGRESS as of this checkpoint (backgrounded, being watched) — result appended once it lands.
+This is already the second live confirmation of F-CLEANUP-REMOTE-ORPHAN regardless of the third
+attempt's outcome, this time via the done-slug remedy rather than the leftover-branch one — same
+root cause, two remedy texts.
+
+**`lyx shed seed`'s per-recipe location rule, every checkout kind, both recipes.** `RefuseSeedAt` is
+`nil` for `loom` (seeds wherever its verbs drive, confirmed by
+`internal/shedcli/seed_test.go`'s `TestWriteSeed_RecipeLocationRuleGatesTheWrite`/`NilRuleWrites`
+and the integration test's own `writeSeed(taskLocation, ..., RecipeLoom, ...)` case) and
+`battencli.RefuseUnlessPrime` for `batten` (prime-only). Live-drove the batten case directly:
+`lyx shed seed <run> --recipe batten` from the weft prime and from `_board` both refuse with the
+same `RefuseUnlessPrime` text already confirmed correct under the Batten Bookend checks below; from
+a task worktree it refuses via the prime-name comparison (proven by the existing integration test,
+`TestWriteSeed_BattenSeedIsRefusedOutsidePrime`, re-read after my own findings were complete — see
+Sweep 5). No live gap found in this rule.
+
+**Batten Bookend refusals, all three non-prime standing points.** Drove `lyx batten status
+typed-loom` from: the weft prime (`warp-weft`) — refused, correctly named "the weft sibling of a
+pair, not a warp worktree"; the `_board` checkout — refused, correctly named "the hub's _board
+checkout, not a warp worktree"; and from inside the task worktree itself (`typed-loom`, materialized
+mid-rerun) — refused, correctly named "typed-loom" is not the prime worktree ("warp" is). All three
+texts are accurate and none suggests a wrong-from-there remedy. **Confirmed correct, no finding.**
+
+**`PrimeRunLock` scope across two slugs.** Created two fresh Board tasks (`concurrent-a`,
+`type: "loom"`; `concurrent-b`, `type` omitted) and fired `lyx batten step concurrent-a
+--child-driver go` and `lyx batten step concurrent-b --child-driver go` as two background processes
+started within the same shell command (true OS-level concurrency, not sequential). One
+(`concurrent-a`) won the race and created its worktree; the other (`concurrent-b`) correctly
+detected `PrimeRunLock` contention and reported Stuck naming the lock path, rather than racing fabric
+or corrupting either slug's state. Resuming `concurrent-b` then succeeded. Stepped both through
+Seed-Child and confirmed **zero cross-contamination**: each worktree, branch, and child seed
+belonged to the correct slug. This also doubled as the type-default check: `concurrent-b`'s
+(`type` omitted) child seed came out `{"recipe":"loom", ...}`, byte-identical in shape to
+`concurrent-a`'s explicit `type: "loom"` — **confirmed correct, no finding.** Both slugs abandoned
+via direct `lyx fabric remove --force --remote` (avoiding a second/third real child driver spawn,
+since the full-lifecycle machinery was already proven twice via `typed-loom`); passing `--remote`
+explicitly here DID delete both weft siblings' remote copies cleanly, which is itself supporting
+evidence for F-CLEANUP-REMOTE-ORPHAN's fix direction below (fabric's own `remote` flag works
+correctly when a caller actually passes `true` — batten's own teardown just never does).
+
+**`--driver llm`/`--child-driver llm` flag-level refusals**, both surfaces: `lyx batten run
+some-fresh-slug --driver llm` refuses ("batten has no bootstrap verb"); `lyx shed seed some-slug
+--recipe batten --driver llm` refuses with the shedcli-level wording. Both correct, no remedy
+implied or needed (flat impossibilities). **Confirmed correct, no finding.**
+
+## Findings (continued)
+
+### F-CLEANUP-REMOTE-ORPHAN (BLOCKING, CONFIRMED) — `lyx fabric cleanup --apply --remote`, the remedy both `createRefusal` and `doneSlugRefusal` name for the weft sibling branch, never sees the branch it is supposed to clean up
+
+`internal/battencli/wire.go`'s `Teardown.Remove` closure calls `top.Remove(location, slug, false,
+false)` — always `remote: false`. `fabricengine.Topology.Remove` (`remove.go`) always deletes the
+weft branch LOCALLY regardless of the `remote` flag (only whether it is ALSO deleted on the origin
+remote depends on that flag) — so every batten-driven teardown leaves the task's weft branch
+present on the remote and ALREADY ABSENT locally.
+
+`internal/fabricengine/cleanup.go`'s `Topology.Cleanup` (the implementation behind `lyx fabric
+cleanup`, which BOTH `createRefusal` (wire.go, r2 F2) and `doneSlugRefusal` (arm.go, r2 F4) name as
+the way to remove "an orphaned sibling branch") enumerates ONLY the weft repo's own **local**
+branches (`listWeftBranches` → `git branch --format=...`, no `git ls-remote` or fetch of any kind).
+A weft branch that is already gone locally — which is the state EVERY normal batten teardown leaves
+— is therefore invisible to `lyx fabric cleanup` in every mode, `--apply --remote` included: it is
+never enumerated, so `deleteWeftBranchOnRemote` (which only runs "after `deleteWeftBranch` has
+already returned true for the SAME branch") never even attempts the remote side either.
+
+**Confirmed live, twice, via two different remedy texts** (see Sweep 4 above for full transcripts):
+following `createRefusal`'s remedy for `leftover-branch-test` and `doneSlugRefusal`'s remedy for
+`typed-loom`, `lyx fabric cleanup --apply --remote` reported nothing for either slug's weft branch,
+which remained on the remote. For `typed-loom` this directly caused a SECOND failure on the
+documented "run it again" path: `Worktree-Create`'s own weft-branch push was rejected
+non-fast-forward against the stale remote branch, surfaced as raw git plumbing text with a
+misleading `git pull` hint, plus a fresh leftover-warp-branch from `Add`'s own accepted rollback
+limitation stacking on top. The only working fix in both cases was a manual
+`git push origin --delete <slug>-weft` against the remote directly — an action neither remedy text
+names.
+
+**Fix direction** (scoped to batten's own package, in scope for an inline fix): `Teardown.Remove`
+should pass `remote: true` to `top.Remove` — nothing else in the pair's lifecycle will ever use that
+weft branch again once batten tears the task down, `Remove`'s own doc comment already states a
+remote-deletion failure never fails the call, and the two-slug interleave test above independently
+confirmed `remote: true` deletes cleanly when a caller actually passes it. This does not fix
+`fabricengine.Cleanup`'s own local-only enumeration (a real, separate gap: a weft branch stranded on
+the remote by any OTHER path — a failed push during a `remote: true` teardown, or a hand-run
+`fabric remove --force` with no `--remote` — is still permanently invisible to `lyx fabric
+cleanup`), but it removes the defect from batten's own normal, common-case teardown, which is what
+both remedy texts are actually written to describe. Extending `Cleanup`'s own enumeration to reach
+remote-only orphans (via `git ls-remote`) is a materially larger, network-aware change to
+`fabricengine`, and is recorded as **NOT-FIXED-THIS-ROUND** — its own task, not a scoped inline fix,
+though it is the more complete resolution and I record it as a punch-list item below.
+
+(More findings to follow as the remaining sweeps — focus 2's full error-remedy table, focus 5's
+re-confirmation of the CLOSED-AND-VERIFIED list, the youngest fix's `--child-driver llm` check — are
 completed.)
