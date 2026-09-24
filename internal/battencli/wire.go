@@ -132,22 +132,14 @@ func taskWorktreeComplete(prime *lyxcwd.Location, slug string) (present, complet
 	return present, true, "", nil
 }
 
-// incompletePairRemedy composes the manual-cleanup remedy taskWorktreeComplete's own incomplete
-// case names: the task worktree itself, its pair's other-side leftover when SIGKILL landed late
-// enough in Add for one to exist, and the branch Add created -- in that order, since removing the
-// worktrees first is what lets the branch deletion below ever succeed (git refuses to delete a
-// branch still checked out).
-func incompletePairRemedy(location *lyxcwd.Location, slug string) (string, error) {
-	target := fabricengine.WorktreePath(location, slug)
-	remedy := fmt.Sprintf("\"git worktree remove --force %s\"", target)
-	remnant, remnantPresent, err := fabricengine.PairSiblingRemnant(location, slug)
-	if err != nil {
-		return "", err
-	}
-	if remnantPresent {
-		remedy += fmt.Sprintf(" and \"git worktree remove --force %s\"", remnant)
-	}
-	return fmt.Sprintf("remove it by hand (%s) and its branch (\"git branch -D %s\")", remedy, slug), nil
+// incompletePairRemedy names the manual cleanup for a pair taskWorktreeComplete found incomplete.
+// "lyx fabric remove --force" run from prime removes whatever part of the pair Add got to -- the
+// task worktree, its sibling, their junctions, portal and launcher entries, and the sibling's
+// branch -- in one command, which no pair of plain git commands can do from here: the sibling is a
+// worktree of another repository. The task branch is named with fabric's branch prefix, since
+// Remove never deletes it and Add refuses a leftover one.
+func incompletePairRemedy(slug, branch string) string {
+	return fmt.Sprintf("remove it by hand from here (\"lyx fabric remove --force %s\") and its branch (\"git branch -D %s\")", slug, branch)
 }
 
 // createRefusal rewords the one create refusal whose fabric remedy is wrong from prime, and passes
@@ -252,7 +244,11 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 		ScratchDir: BattenDir(location, slug),
 		PrimeLock:  primeLock,
 		CreateWorktree: func(ctx context.Context) error {
-			// The already-complete probe first, so the row is idempotent against its own
+			cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(location.HubPath))
+			if err != nil {
+				return err
+			}
+			// The already-complete probe before Add, so the row is idempotent against its own
 			// post-condition -- see taskWorktreeComplete for the crash window this closes.
 			present, complete, incompleteReason, err := taskWorktreeComplete(location, slug)
 			if err != nil {
@@ -264,27 +260,14 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			}
 			if present {
 				// A worktree exists but Add never finished it -- see taskWorktreeComplete's own doc
-				// comment. No fabric verb re-creates a pair in this exact state (Add refuses an
-				// existing worktree directory the same way it refuses a leftover branch), so the
-				// remedy is the same shape as the leftover-branch one: clean up the incomplete
-				// worktree by hand, then resume. The remedy names the pair's other-side leftover too
-				// when SIGKILL landed late enough in Add for one to exist -- removing the task
-				// worktree alone would otherwise leave Add's own "directory already exists" refusal
-				// on that other side as the very next obstacle.
-				remedy, remedyErr := incompletePairRemedy(location, slug)
-				if remedyErr != nil {
-					return remedyErr
-				}
+				// comment. Add refuses an existing worktree directory the same way it refuses a
+				// leftover branch, so the remedy is a cleanup followed by a resume.
 				return fmt.Errorf(
 					"the task worktree for %q exists but %s; %s, then resume this run to create it fresh",
-					slug, incompleteReason, remedy,
+					slug, incompleteReason, incompletePairRemedy(slug, cfg.BranchPrefix+slug),
 				)
 			}
 
-			cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(location.HubPath))
-			if err != nil {
-				return err
-			}
 			top := fabricengine.NewTopology(cfg)
 			res, err := top.Add(location, slug, fabricengine.AddOptions{})
 			logger.Info("battencli: create worktree", "slug", slug, "mutations", res.Mutated())

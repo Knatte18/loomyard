@@ -39,6 +39,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -592,7 +593,7 @@ func TestBattenIntegration_CreateRow_IncompletePairRefusesRatherThanSkippingAdd(
 	if err == nil {
 		t.Fatal("CreateWorktree() error = nil; want a refusal naming the incomplete pair, not silent success")
 	}
-	for _, want := range []string{slug, "not fully created", "git worktree remove --force " + target, "git branch -D " + slug} {
+	for _, want := range []string{slug, "not fully created", "lyx fabric remove --force " + slug, "git branch -D " + slug} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("CreateWorktree() error = %q; want it to contain %q", err.Error(), want)
 		}
@@ -604,39 +605,65 @@ func TestBattenIntegration_CreateRow_IncompletePairRefusesRatherThanSkippingAdd(
 	}
 }
 
-// TestBattenIntegration_CreateRow_IncompletePairNamesTheOtherSideLeftoverToo pins the remedy's own
-// completeness for a SIGKILL landing later inside Add: once the pair's other-side worktree already
-// exists but the warp junctions are not yet wired, the remedy must name that worktree's own removal
-// too, not just the task worktree's -- omitting it would leave Add's own "directory already exists"
-// refusal on that other side as the very next obstacle after following the remedy verbatim.
-func TestBattenIntegration_CreateRow_IncompletePairNamesTheOtherSideLeftoverToo(t *testing.T) {
+// TestBattenIntegration_CreateRow_IncompletePairRemedyWorksVerbatimOnAPrefixedHub follows the
+// incomplete-pair remedy exactly as worded, from prime, for a SIGKILL landing after Add created the
+// pair's other side and its portal: the remedy must name the prefixed branch Add created, and doing
+// what it says must leave nothing that makes the resumed create refuse.
+func TestBattenIntegration_CreateRow_IncompletePairRemedyWorksVerbatimOnAPrefixedHub(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
-	slug := "batten-incomplete-pair-both-sides"
+	hubforge.SeedFabricConfig(t, h, "branch_prefix: r4/\npathspec: \"\"\n")
+	slug := "batten-incomplete-prefixed"
+	branch := "r4/" + slug
 	target := h.PairWarpWorktree(slug)
-	gitkit.MustRun(t, h.PrimeWorktree(), "git", "worktree", "add", "-b", slug, target)
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "worktree", "add", "-b", branch, target)
 
-	// Stands in for Add's own weft-side create step (createWeftWorktree), run directly rather than
-	// through Add so the junctions this test needs missing stay missing.
+	// Stands in for Add's own later steps -- the other side's worktree and the portal -- run
+	// directly rather than through Add so the junctions this test needs missing stay missing.
 	weftRepoRoot, err := fabricengine.WeftRepoRoot(h.Location)
 	if err != nil {
 		t.Fatalf("resolve weft repo root: %v", err)
 	}
-	weftTarget := h.PairWeftSibling(slug)
-	gitkit.MustRun(t, weftRepoRoot, "git", "worktree", "add", "-b", fabricengine.WeftBranchName(slug), weftTarget)
+	gitkit.MustRun(t, weftRepoRoot, "git", "worktree", "add", "-b", fabricengine.WeftBranchName(branch), h.PairWeftSibling(slug))
+	portal := fabricengine.PortalLink(h.Location, slug)
+	if err := os.MkdirAll(filepath.Dir(portal), 0o755); err != nil {
+		t.Fatalf("mkdir portals: %v", err)
+	}
+	if err := os.Symlink(filepath.Join(target, h.Location.AnchorRel, lyxdirs.LyxDirName), portal); err != nil {
+		t.Fatalf("plant portal: %v", err)
+	}
 
 	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
-		t.Fatal("ReadStatus must not be called: the create row must refuse before the poll row ever runs")
+		t.Fatal("ReadStatus must not be called by the create row")
 		return shedengine.Status{}, false, nil
 	})
 
 	err = c.env.CreateWorktree(context.Background())
 	if err == nil {
-		t.Fatal("CreateWorktree() error = nil; want a refusal naming the incomplete pair")
+		t.Fatal("CreateWorktree() error = nil; want the incomplete-pair refusal")
 	}
-	for _, want := range []string{slug, "git worktree remove --force " + target, "git worktree remove --force " + weftTarget, "git branch -D " + slug} {
+	removeCommand := "lyx fabric remove --force " + slug
+	branchCommand := "git branch -D " + branch
+	for _, want := range []string{removeCommand, branchCommand} {
 		if !strings.Contains(err.Error(), want) {
-			t.Errorf("CreateWorktree() error = %q; want it to contain %q", err.Error(), want)
+			t.Fatalf("CreateWorktree() error = %q; want it to contain %q", err.Error(), want)
 		}
+	}
+
+	// The remedy, verbatim: the fabric verb's own engine call with --force, then the branch.
+	cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(h.Location.HubPath))
+	if err != nil {
+		t.Fatalf("load fabric config: %v", err)
+	}
+	if _, err := fabricengine.NewTopology(cfg).Remove(h.Location, slug, true, false); err != nil {
+		t.Fatalf("%s: %v", removeCommand, err)
+	}
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "branch", "-D", branch)
+
+	if err := c.env.CreateWorktree(context.Background()); err != nil {
+		t.Fatalf("CreateWorktree() after the remedy = %v; want the fresh create to succeed", err)
+	}
+	if !pathExists(h.PairWeftSibling(slug)) {
+		t.Errorf("the pair's other side is missing after the resumed create: %s", h.PairWeftSibling(slug))
 	}
 }
 
