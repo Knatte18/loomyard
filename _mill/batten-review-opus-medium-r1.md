@@ -16,6 +16,7 @@ Top risks:
 
 Merge-readiness (pre-fix): NOT ready — F4 fails the merge bar outright.
 All nine are scoped fixes; none needs its own task.
+Post-fix (see the fixer report): all nine fixed and re-proven; two further unattended `lyx batten run` drives (`t8`, and `t9` through F1's retried spawn) reached `Worktree-Teardown` → `done` with no operator step.
 
 ## Scope assessment
 
@@ -183,4 +184,10 @@ text consumers: `grep -rn -E 'disagreeing seed|already seeded with|refusing to o
 
 ## Teardown
 
-(pending)
+- Sessions: `lyx reed down` in `l1`, `l2`, `l3` (fx2) and `t4`, `t6`, `t7` (fx); every other slug's session went with its own `Worktree-Teardown` (`t3`, `t5`, `t8`, `t9`). The per-hub `lyx reed watchdog` for `fx` was still alive after its last session went down and was killed by pid; fx2's had already exited. Both tmux sockets reported "no server running" and were removed.
+- Fixture disposal: `rm -r` of `scratchpad/fx` (hub, bare repos, the moved-away dirs) and `scratchpad/fx2`, plus the `f2copy` archive copy and the `notmux` symlink dir.
+- Final `ps aux | grep -E 'lyx|tmux|reed|claude' | grep scratchpad` → 0 processes.
+- Standing `lyx-test-LYXHUB` bench never referenced.
+- GitHub: `gh issue list -R Knatte18/loomyard --state all` newest is #265 (2026-09-21) — nothing filed by this round.
+- `~/.claude.json` (read-only, not edited): gained `.../scratchpad/fx/hubs/warp-LYXHUB/warp` and `.../scratchpad/fx2/hubs/lwarp-LYXHUB/lwarp`, both `hasTrustDialogAccepted: true` — the trust dismissals of the go-driven `t3` agents and the llm driver of `l1` (Claude keys a linked worktree by its main worktree path).
+- Not verified: Windows paths (unreachable from this Linux host, not touched); a genuine llm-driven child terminal state (the `ly` plugin is not installed on this host — environment gap, see L12).
