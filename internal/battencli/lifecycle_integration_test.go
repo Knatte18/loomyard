@@ -578,6 +578,42 @@ func TestBattenIntegration_CreateRow_IncompletePairRefusesRatherThanSkippingAdd(
 	}
 }
 
+// TestBattenIntegration_CreateRow_IncompletePairNamesTheOtherSideLeftoverToo pins the remedy's own
+// completeness for a SIGKILL landing later inside Add: once the pair's other-side worktree already
+// exists but the warp junctions are not yet wired, the remedy must name that worktree's own removal
+// too, not just the task worktree's -- omitting it would leave Add's own "directory already exists"
+// refusal on that other side as the very next obstacle after following the remedy verbatim.
+func TestBattenIntegration_CreateRow_IncompletePairNamesTheOtherSideLeftoverToo(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+	slug := "batten-incomplete-pair-both-sides"
+	target := h.PairWarpWorktree(slug)
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "worktree", "add", "-b", slug, target)
+
+	// Stands in for Add's own weft-side create step (createWeftWorktree), run directly rather than
+	// through Add so the junctions this test needs missing stay missing.
+	weftRepoRoot, err := fabricengine.WeftRepoRoot(h.Location)
+	if err != nil {
+		t.Fatalf("resolve weft repo root: %v", err)
+	}
+	weftTarget := h.PairWeftSibling(slug)
+	gitkit.MustRun(t, weftRepoRoot, "git", "worktree", "add", "-b", fabricengine.WeftBranchName(slug), weftTarget)
+
+	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
+		t.Fatal("ReadStatus must not be called: the create row must refuse before the poll row ever runs")
+		return shedengine.Status{}, false, nil
+	})
+
+	err = c.env.CreateWorktree(context.Background())
+	if err == nil {
+		t.Fatal("CreateWorktree() error = nil; want a refusal naming the incomplete pair")
+	}
+	for _, want := range []string{slug, "git worktree remove --force " + target, "git worktree remove --force " + weftTarget, "git branch -D " + slug} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("CreateWorktree() error = %q; want it to contain %q", err.Error(), want)
+		}
+	}
+}
+
 // TestBattenIntegration_DirtyPrime_CreateRowBlocksBeforeAnythingCreated dirties a tracked file
 // in the hub's prime worktree, asserting the create row halts blocked before anything is created --
 // this refusal fires on every batten run and is invisible to the unit tests' fakes.
