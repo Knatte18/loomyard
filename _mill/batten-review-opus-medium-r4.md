@@ -56,11 +56,56 @@ Clean-room: no `_mill/**/batten-review-*` file other than the prompt was opened 
 
 ## Focus-1 enumeration (SIGKILL windows in Topology.Add / Topology.Remove)
 
-(pending)
+Enumerated from source by reading every mutating call in `Topology.Add` (`internal/fabricengine/add.go`), `WireJunctionsWith` (`junction.go`), `Topology.Remove` (`remove.go`) and `removeWeftWorktree` (`weftwiring.go`), each boundary instrumented as a throwaway `r4kp("<id>")` self-SIGKILL (reverted before any other drive; see What was tested):
+
+```
+grep -n 'rec\.\(Append\|AppendRef\)\|createGitWorktree\|createWeftWorktree\|containedWorktreeAdd\|createPortal\|writeLaunchers\|WireJunctionsWith\|WriteOrigin\|CommitWeftPaths\|"push"\|pushWeftBranch' internal/fabricengine/add.go
+grep -n 'seedLyxJunction\|seedWeftArtifactExcludes\|seedGitExclude' internal/fabricengine/junction.go
+grep -n 'removePortal\|removeLaunchers\|removeWarpJunction\|removeWarpWorktreeDir\|removeWeftWorktree\|removeGitWorktree\|deleteBranch\|deleteRemoteBranch\|worktree", "prune' internal/fabricengine/remove.go internal/fabricengine/weftwiring.go
+```
+
+| Site | State left by the kill | Re-entered row | Reaches done with no hand edit? |
+|---|---|---|---|
+| A1 after warp `worktree add -b` | task worktree + branch only | Worktree-Create refuses, incomplete-pair remedy | Yes, remedy works verbatim (default prefix); prefixed hub: no, F2c |
+| A2 after post-checkout hook | same as A1 | same | same as A1 |
+| A3 after sibling worktree | + sibling worktree + sibling branch | refuses, remedy names sibling | No verbatim: sibling command fails from prime (F2a) |
+| A4 after portal | + portal | refuses | No verbatim: portal unnamed, then rollback strands branch (F2b + known fabric item) |
+| A5 after launchers | + launchers | refuses | same as A4 |
+| A6 after junction links, before sibling artifact excludes | junctions wired, no origin | create **done** | No: F1 (child seed without parent, bootstrap refuses forever) |
+| A7 before `.git/info/exclude` seeding | same | create done | No: F1 (exclude itself harmless: info/exclude is shared per repository) |
+| A8 after wiring, before `WriteOrigin` | same | create done | No: F1 CONFIRMED end to end |
+| A9 origin written, uncommitted | sibling `?? _lyx/fabric/` | create done; seed has parent | Yes: loom bootstrap commits the record (traced) |
+| A10 committed, nothing pushed | branches local only | create done | Yes: Seed-Child's push publishes the sibling branch; task branch pushed by loom's own landing (traced, PLAUSIBLE) |
+| A11 task branch pushed only | sibling branch local only | create done | Yes, as A10 |
+| A12 both pushed, before return | complete | create done | Yes (healthy re-entered create reports done) |
+| R1 after portal removal | launchers + both worktrees | teardown | Yes, clean |
+| R2 after launchers, before junction sweep | both worktrees, junctions | teardown (Shutdown re-runs) | Yes, clean |
+| R3 junctions swept, task worktree present | task worktree without `_lyx` | Shutdown loads reed config through the task worktree with `_lyx` gone: degrades to template, `Down` ok | Yes, clean |
+| R4 task worktree removed, sibling present | sibling + its branch | refuses, names `lyx fabric prune --apply` | Done after prune, but sibling branch stranded local + remote (F3) |
+| R5 sibling removed, branch not deleted | sibling branch local + remote | "pair already gone" → done | Done, branch stranded (F3) |
+| R6 local branch deleted, remote not | sibling branch on remote only | done | Done, remote branch stranded, re-run breaks (F3) |
+| R7 remote deleted, before `worktree prune` | stale registration at most | done | Yes, clean |
+| R8 Remove about to return | nothing | done | Yes, clean (predecessor's F5 re-confirmed) |
+
+What this enumeration cannot see: a kill *inside* one primitive (mid `git worktree add`, between two junctions of the wired set, between two launcher files, inside `state.WriteJSON`'s temp-then-rename, mid `git push`); kills of the Shutdown half (reed `Down`) itself; the Windows junction path (not touched, unreachable from this host).
+The site list is derived by reading; a mutation hidden behind a helper not named in the grep patterns would be missed, which is why each helper's body was also read (`createPortal`, `writeLaunchers`, `seedLyxJunction`, `removeWeftWorktree`).
 
 ## Focus-2 enumeration (youngest fixes)
 
-(pending)
+Youngest fixes from `git log --format='%h %s' d7ab9eca0..HEAD`; operator-facing texts from `git diff d7ab9eca0..HEAD -- internal/ | grep '^+.*fmt.Errorf\|^+.*errors.New'`.
+
+| Text / fix | Followed verbatim from prime? | Result |
+|---|---|---|
+| incomplete-pair refusal (`afb5976eb`, `ac3ba6e3e`) | Yes, A1/A3/A4/A5 and on a `branch_prefix` hub | Fails at A3+ and on prefixed hubs (F2); never fires at A6–A8 (F1) |
+| completeness check vs a COMPLETE pair | A9–A12 re-entries | All report done; no false "incomplete" found. PLAUSIBLE false-incomplete: a pathspec widened between the kill and the resume adds a wired name the old pair lacks (not driven) |
+| teardown deletes the other-side branch on the remote (`a021b016e`) | normal teardown, prefixed hub, broken origin, R4/R5/R6 | Deletes exactly `<prefix><slug>-weft` local + remote; task branch kept local + remote. No origin: skipped. Failing delete: silently done (F3). Landing/PR need only the task branch, which is untouched; a slug re-run needs nothing it deleted, but is broken by what it failed to delete (F3) |
+| createRefusal leftover-branch text (`85bf53198`) | A4 path (`ka4`) | Works; `git push origin --delete` errors harmlessly when the branch was never pushed; wording "both remote copies" stale (F4) |
+| sibling-remnant teardown refusal (`37e4b4788`) | R4 (`ka6`) | Works to done but strands the sibling branch (F3) |
+| doneSlugRefusal abandon path (`d79829eb6`) | `ka12` after R6 | Fails: stranded remote-only sibling branch rejects the new create's push (F3); "both sides" wording stale (F4) |
+| absent-worktree refusal (`894f5df7c`) | `pfull` removed by `lyx fabric remove` at Seed-Child | Abandon path followed verbatim: create done again. Deferred gap re-confirmed |
+| `lyx shed seed` prime-only / drivable-worktree refusal (`af081a157`, `eefd0dc1f`) | read + batten verbs from task worktree, weft prime, `_board`, sibling | Refused, nothing written |
+| Run-Shed spawn retry text (`ef703936c`) | `ka8` | Text accurate (retry does retry), but for F1's state retrying can never succeed |
+| Seed-Child refusals (`0be1f57b4`) | Board types `batten`, `bogus` (fixture B) | Blocked at Seed-Child with the recipe named, before any write |
 
 ## Docs & operability findings
 
