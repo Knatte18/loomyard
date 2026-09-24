@@ -4,26 +4,41 @@ Load skills `mill:prose`, then `mill:conversation`, before reading the rest of t
 
 ## Where you are
 
-`/home/hanf/Code/loomyard/wts/loomyard` — the **main** worktree, direct push allowed here per `CLAUDE.md`.
-Clean tree, in sync with `origin/main` at `e507d96de`.
-No Monitor waits armed, no forks running.
+`/home/knatte/Code/loomyard/wts/loomyard` — the **main** worktree, direct push allowed here per `CLAUDE.md`.
+Clean tree, in sync with `origin/main` at `2c7c0c251`.
+No task worktrees exist, no Monitor waits are armed, no forks are running.
 
 The user drives design in Norwegian; reply in Norwegian.
 In design discussions, give your assessment and get explicit agreement BEFORE editing or committing.
+Orient from `git log` and the wiki daemon client, not from this file alone — it goes stale between sessions.
 
-## In flight: `#018 llm-driver-trust-dialog-hang`
+## Just landed
 
-Worktree `wts/llm-driver-trust-dialog-hang`, phase `discussed`.
-The discussion closed on an APPROVE after six rounds; every round's review and fix is under that worktree's `_mill/reviews/`.
-Next step is `/mill-plan`, run by a session in that worktree — not from here.
+`#018`, `#020`, `#021` and the `#019 crucible-batten-followup` campaign (`93559ad52`) are merged.
+The campaign ran four rounds without a safety pass; its defects moved outward from batten's rows to fabric's crash windows under batten.
+Its record (HANDOFF, round and fixer reports) lives in `_mill/` under the `archive/crucible-batten-followup` tag, never on shared ground — `crucible/campaigns/` was deleted for that reason.
 
-The approach was settled before the discussion started and is recorded in the task's wiki brief under `## Decided approach`.
-The substance the plan has to carry is the seam: `awaitDriverPane` (`internal/loomcli/driverlaunch.go`) is handed only `driverPaneProbe.Strands`, and dismissing the dialog also needs a pane capture, `Engine.Startup` classification, and input playback.
+## Unclaimed backlog, in dependency order
 
-## Unclaimed
+The campaign filed these; read each brief through the wiki daemon client.
 
-`#019 crucible-batten-followup` — the campaign's safety pass, never achieved.
-Read its brief through the wiki daemon client; its own lesson is that the last two rounds' yield came from looking outside batten's packages.
+1. `#025 fabric-pair-state-after-crash` — fabric owns the answer to a killed `Topology.Add`/`Remove`, collapsing batten's hand-combined probes.
+   Likely subsumes `#022 fabric-rollback-keeps-warp-branch`; re-check `#022` after it lands.
+   `#024 fabric-cleanup-remote-orphans` is related and still needs its own fix.
+1. `#026 remedy-texts-followed-verbatim` — structured remedy commands composed from the caller's location, plus a verbatim-from-prime integration test.
+1. `#027 crucible-batten-followup-2` — runs only after `#025` and `#026` land, since both change the code it presses on.
+
+`#023 loom-done-after-friction` is independent: loom persists `done` before Tier 2 friction reflection, so batten's teardown deletes the friction report.
+
+## Pending cleanup on this machine
+
+The user has not yet chosen what to delete; ask before acting.
+A batch delete of branches was refused by the auto-mode permission classifier, so each deletion needs the user's explicit go-ahead.
+
+- Local branches, mostly `mill-checkpoint-*`, whose tips are already in `main` or an `archive/*` tag.
+- Local branches with commits found nowhere else: `backup/fable-high-r2-local-knatte`, `loom-step-supervisor`, `standalone-producers`, `mill-checkpoint-fabric-crucible-hardening`.
+- Stray directories: `<container>/live-r2/` (a disposable August fixture of bare repos) and `wts/_board/` (not a git repo; only deployed stencils and specs).
+- Remote branches of long-merged or abandoned work, listed by `git ls-remote --heads origin`.
 
 ## Open findings
 
@@ -49,11 +64,11 @@ No tombstones — a dropped idea is removed, not recorded as dropped.
 Everything in `.scratch/` is disposable by definition, and the user empties it at will.
 Never put anything there whose loss would matter, and never treat a file vanishing from it as an event worth reporting.
 
-Wiki writes go through the daemon client or `/mill-*` skills only. Reading the wiki's git history is fine — use `git -C /home/hanf/Code/loomyard/wiki`, never `cd` into it.
+Wiki writes go through the daemon client or `/mill-*` skills only. Reading the wiki's git history is fine — use `git -C <container>/wiki`, never `cd` into it.
 
-## Machine note (hanf/WSL2)
+## Machine note (hanf/WSL2 only, not knatte)
 
-`GOPROXY=direct` is set machine-locally and should stay.
+`GOPROXY=direct` is set machine-locally there and should stay.
 The route to `proxy.golang.org` stalls partway through any large object from this network, while github.com serves the same bytes fine; MTU was ruled out.
 `GOPRIVATE` is deliberately empty, since quarry is public.
 A build failing on `github.com/Knatte18/quarry@v0.2.0` is this environment, never a code defect.
@@ -68,7 +83,8 @@ A build failing on `github.com/Knatte18/quarry@v0.2.0` is this environment, neve
 
 - `mill:prose` + `mill:conversation` — load before writing anything.
 - `mill:mill-status` / `mill:mill-inspect` — confirm task state before acting.
-- `mill:mill-spawn` — `#019` needs one; `CLAUDE.md` requires the user's explicit say-so before creating a worktree.
+- `mill:mill-spawn` — for the next backlog task; `CLAUDE.md` requires the user's explicit say-so before creating a worktree.
+- `mill:mill-resume` — to pick up a task whose branch was pushed from another machine; `mill-spawn` would claim a new task instead.
 - `mill:orch-review` — only when the user starts a task with `--orch`; this session owns the Monitor wait and forks only once `discussion.md` exists.
 - `mill:mill-quick` — fits a mechanical, compiler-checked task; `mill-config.yaml` has the `done_gate` it requires. It runs no reviewer, so verify the suite yourself and read the doc comments it wrote.
 - `mill:git-workflow` — `CLAUDE.md` overrides its `--onmain` gate for this worktree.
