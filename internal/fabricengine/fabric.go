@@ -179,8 +179,10 @@ func PairSiblingRemnant(l *lyxcwd.Location, slug string) (path string, present b
 }
 
 // PairComplete reports whether l's pair -- l is the warp worktree's own resolved Location, not the
-// hub's prime -- satisfies Add's own full post-condition: the paired sibling worktree exists and
-// the warp junctions actually resolve into it.
+// hub's prime -- satisfies Add's own full post-condition: the paired sibling worktree exists, the
+// warp junctions actually resolve into it, and the pair's origin record names its parent branch.
+// The origin record is part of that post-condition because Add writes it last before pushing, and a
+// pair missing it makes every later reader of the parent branch refuse.
 // It exists for the same vocabulary reason PairSiblingRemnant does, for a caller that must tell a
 // pair Add finished from one a SIGKILL interrupted partway through: Add's own in-process rollback
 // never runs when the process that called it dies instead of Add itself returning an error, so a
@@ -199,6 +201,13 @@ func PairComplete(l *lyxcwd.Location) (ok bool, reason string, err error) {
 	healthy, unhealthyReason := checkJunctionHealth(l)
 	if !healthy {
 		return false, unhealthyReason, nil
+	}
+	origin, found, err := ReadOrigin(l)
+	if err != nil {
+		return false, "", err
+	}
+	if !found || origin.ParentBranch == "" {
+		return false, "the pair's origin record is missing", nil
 	}
 	return true, "", nil
 }

@@ -511,6 +511,32 @@ func TestBattenIntegration_CreateRow_IsIdempotentAgainstAnAlreadyPresentWorktree
 	}
 }
 
+// TestBattenIntegration_CreateRow_PairWithoutOriginRecordIsIncomplete pins the create row's
+// completeness check against a pair Add wired but never recorded the parent branch of -- a SIGKILL
+// between junction wiring and the origin record's write. Reporting done there seeds the child
+// with no parent param, which the child's own bootstrap refuses on every resume.
+func TestBattenIntegration_CreateRow_PairWithoutOriginRecordIsIncomplete(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+	slug := "batten-create-no-origin"
+	hubforge.AddPair(t, h, slug)
+	if err := os.Remove(fabricengine.OriginRecordPathFor(h.Location, slug)); err != nil {
+		t.Fatalf("remove origin record: %v", err)
+	}
+
+	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
+		t.Fatal("ReadStatus must not be called: the create row must refuse before the poll row ever runs")
+		return shedengine.Status{}, false, nil
+	})
+
+	err := c.env.CreateWorktree(context.Background())
+	if err == nil {
+		t.Fatal("CreateWorktree() error = nil; want the incomplete-pair refusal for a pair with no origin record")
+	}
+	if !strings.Contains(err.Error(), "not fully created") {
+		t.Errorf("CreateWorktree() error = %q; want it to contain %q", err.Error(), "not fully created")
+	}
+}
+
 // TestBattenIntegration_CreateRow_LeftoverBranchIsRewordedForPrime pins createRefusal's own wiring
 // into the CreateWorktree closure: a leftover warp branch from an earlier torn-down pair (or a
 // rolled-back create) must reach the closure's caller worded for an operator standing in prime,
