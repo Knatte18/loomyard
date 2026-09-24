@@ -432,11 +432,11 @@ func (c *battenCLI) battenPreRun(ctx context.Context) error {
 
 // doneSlugRefusal is the refusal both pre-run hooks return for a slug whose run has already
 // completed, naming the whole abandon path rather than the run directory alone: a torn-down pair
-// keeps its branch and both remote copies, so deleting only the run directory leads straight into
-// the create row's leftover-branch refusal on the re-run.
+// keeps its task branch locally and on the remote, so deleting only the run directory leads straight
+// into the create row's leftover-branch refusal on the re-run.
 func (c *battenCLI) doneSlugRefusal() error {
 	return fmt.Errorf(
-		"battencli: %q has already completed; to run it again, delete its run directory %s (a change on the pair's fabric sibling) and the branches its torn-down pair left behind, local and remote, both sides of the pair (\"lyx fabric cleanup --apply --remote\" removes an orphaned sibling branch)",
+		"battencli: %q has already completed; to run it again, delete its run directory %s (a change on the pair's fabric sibling) and the task branch its torn-down pair left behind, locally and on the remote (\"lyx fabric cleanup --apply --remote\" removes any orphaned sibling branch)",
 		c.slug, shedrun.RunDir(c.location, c.slug),
 	)
 }

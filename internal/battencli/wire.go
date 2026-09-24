@@ -149,16 +149,16 @@ func incompletePairRemedy(slug, branch string) string {
 // fabric words its leftover-branch refusal for a caller inside a pair: "switch a pair onto it with
 // lyx fabric checkout". Every batten verb runs from prime, where that command switches prime's own
 // pair onto the task's branches. The branch is a leftover in the everyday flow -- a torn-down pair
-// keeps its branch and both remote copies, and a rolled-back create keeps the branch it made -- so
-// the remedy named here is the abandon path the absent-worktree refusal already names: delete the
-// leftover locally and on the remote, both sides of the pair, then resume.
+// keeps its task branch locally and on the remote, and a rolled-back create keeps the branch it
+// made -- so the remedy named here is the abandon path the absent-worktree refusal already names:
+// delete the leftover locally and on the remote, and any orphaned other-side branch, then resume.
 func createRefusal(err error) error {
 	var branchExists *fabricengine.ErrBranchExists
 	if !errors.As(err, &branchExists) {
 		return err
 	}
 	return fmt.Errorf(
-		"branch %q already exists, left behind by an earlier pair for this slug (a torn-down pair keeps its branch and both remote copies, and a rolled-back create keeps the branch it made); delete it locally (\"git branch -D %s\") and on the remote (\"git push origin --delete %s\"), remove the pair's leftover sibling branch the same way (\"lyx fabric cleanup --apply --remote\" removes an orphaned one), then resume this run -- never \"lyx fabric checkout\" from here, which would switch this worktree itself onto that branch",
+		"branch %q already exists, left behind by an earlier pair for this slug (a torn-down pair keeps its task branch locally and on the remote, and a rolled-back create keeps the branch it made); delete it locally (\"git branch -D %s\") and on the remote (\"git push origin --delete %s\"), remove any leftover of the pair's sibling branch (\"lyx fabric cleanup --apply --remote\" removes an orphaned one), then resume this run -- never \"lyx fabric checkout\" from here, which would switch this worktree itself onto that branch",
 		branchExists.Branch, branchExists.Branch, branchExists.Branch,
 	)
 }
