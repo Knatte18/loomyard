@@ -62,8 +62,10 @@ type InnerRunDeps struct {
 	//
 	// InnerRun waits for that bootstrap process rather than detaching, per the Live-Substrate Spawn
 	// Observability invariant. Call invokes Spawn at most once per invocation, and only when its own
-	// read-before-spawn check found no status file yet -- the child's own status file, not a call
-	// count, is what makes a resumed Call safe against double-spawning.
+	// read-before-spawn check found no status file yet, or a running one with no spawn confirmed
+	// under the row's scratch directory. Spawn must therefore be idempotent against a driver that
+	// is already alive: a bootstrap killed after its driver came up but before it returned is
+	// spawned again.
 	Spawn func(ctx context.Context) error
 	// ResolveStatus resolves the absolute status-file path and its companion lock path for the
 	// task worktree. It is evaluated on Call, never at wiring time: the task worktree this status
@@ -77,7 +79,9 @@ type InnerRunDeps struct {
 	ReadStatus func(statusPath, statusLockPath string) (shedengine.Status, bool, error)
 	// Sleep pauses for d, returning early when ctx is cancelled.
 	// It takes a context because it is the longest wait the producer performs and sits directly in
-	// front of a cancellation check, which an uninterruptible sleep would delay by a whole interval.
+	// front of a cancellation check, which an uninterruptible sleep would delay by a whole interval
+	// for any caller driving the producer under a cancellable context (the lyx CLI's own context is
+	// never cancelled; see waitOrCancel).
 	// A nil Sleep resolves to waitOrCancel in NewInnerRun;
 	// a test replaces it with a no-op so the attempt-cap test proves the bound is attempt-counted
 	// rather than wall-clock-timed.

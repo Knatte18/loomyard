@@ -51,13 +51,16 @@ import (
 // the refusal below names no fabric command as a substitute: "lyx fabric checkout" switches the
 // CALLER's own worktree onto the named branch, so run from prime, as every batten verb must be, it
 // would mutate prime itself rather than restore anything.
+// Deleting the pair's branches alone rewinds nothing: the resumed run re-enters its persisted row,
+// not Worktree-Create, so the abandon path names batten's own run directory as well, and both
+// branch copies, since the ones on the remote make a fresh create's push refuse.
 func taskWorktreeLocation(prime *lyxcwd.Location, slug string) (*lyxcwd.Location, error) {
 	worktreePath := fabricengine.WorktreePath(prime, slug)
 	if _, err := os.Stat(worktreePath); err != nil {
 		if os.IsNotExist(err) {
 			return nil, fmt.Errorf(
-				"battencli: the task worktree for %q is not present at %s; this run's durable status says it was already created, so it is either on another machine or was removed by hand -- batten does not recreate a pair from its branch, and no \"lyx fabric\" command currently does either (creating one refuses when its branch already exists): resolve this by hand, deleting the pair's branches so a resumed run reaches a fresh create, or restoring the worktree pair yourself outside lyx's own automation, before resuming",
-				slug, worktreePath,
+				"battencli: the task worktree for %q is not present at %s; this run's durable status says it was already created, so it is either on another machine or was removed by hand -- batten does not recreate a pair from its branch, and no \"lyx fabric\" command currently does either (creating one refuses when its branch already exists). Resolve it by hand, one of two ways: restore the worktree pair yourself from its branches, outside lyx's own automation, which keeps the task's work, then resume this run; or abandon this run by deleting its run directory %s (a change on the pair's fabric sibling) and the pair's branches, local and remote, after which \"lyx batten run %s\" starts over from a fresh create -- discarding any of the task's work not already merged",
+				slug, worktreePath, shedrun.RunDir(prime, slug), slug,
 			)
 		}
 		return nil, err
@@ -68,19 +71,19 @@ func taskWorktreeLocation(prime *lyxcwd.Location, slug string) (*lyxcwd.Location
 // taskWorktreePresent reports whether the task worktree for slug is already on disk under prime's
 // hub and resolvable as a worktree of its own.
 //
-// Worktree-Create's post-condition is "the task worktree for this slug exists", so a row re-entered
-// against an already-satisfied post-condition must report success rather than asking fabric to
-// create the same worktree twice. The window that makes this reachable is real: a create does
-// seconds of git work, and shedengine persists the row's transition only after the producer
-// returns, so a process killed in between leaves the worktree on disk with nothing recording it.
-// Without this probe the resumed row takes fabric's pre-existing-branch refusal, whose two named
-// remedies -- switching a pair onto the branch, and deleting the branch -- both refuse in exactly
-// that state, leaving the run unresumable by any documented action.
+// Worktree-Teardown's two halves use this for their own post-condition, "the task worktree is gone"
+// (see the Teardown field below): a bare directory check is the right question there, since fabric
+// removes the task worktree before its sibling and the mirror-image state (task worktree gone,
+// sibling remaining) is PairSiblingRemnant's own question to answer, not this one's.
+//
+// Worktree-Create uses the stronger taskWorktreeComplete instead, not this function: a bare
+// directory check cannot tell a pair Add finished from one a SIGKILL interrupted partway through
+// (see taskWorktreeComplete's own doc comment).
 //
 // It answers false rather than an error when the worktree is absent, so a genuinely absent one
-// still reaches Topology.Add and every real create failure keeps its Stuck disposition. A stat
-// error that is not "absent", and a path that is there but does not resolve as a worktree, are both
-// returned: neither is an answer to the question asked.
+// still reaches Topology.Add or Topology.Remove and every real failure keeps its Stuck disposition.
+// A stat error that is not "absent", and a path that is there but does not resolve as a worktree,
+// are both returned: neither is an answer to the question asked.
 func taskWorktreePresent(prime *lyxcwd.Location, slug string) (bool, error) {
 	worktreePath := fabricengine.WorktreePath(prime, slug)
 	if _, err := os.Stat(worktreePath); err != nil {
@@ -93,6 +96,81 @@ func taskWorktreePresent(prime *lyxcwd.Location, slug string) (bool, error) {
 		return false, err
 	}
 	return true, nil
+}
+
+// taskWorktreeComplete reports whether the task worktree for slug is not just present but fully
+// materialised: Topology.Add's own full post-condition (fabricengine.PairComplete), which
+// taskWorktreePresent's bare directory check cannot tell from a pair Add left half-built.
+//
+// Worktree-Create's post-condition is "the task worktree for this slug exists", so a row re-entered
+// against an already-satisfied post-condition must report success rather than asking fabric to
+// create the same worktree twice. The window is wider than "Add returned but the transition was not
+// yet persisted": Add is a multi-step transaction whose own in-process rollback runs only when Add
+// itself observes an error, never when the process running it is killed instead -- a bare "the
+// worktree directory resolves" check is satisfied by that transaction's very first step alone.
+//
+// present is false only when the worktree does not exist at all -- the genuinely-absent case, which
+// still reaches Topology.Add. incompleteReason is non-empty only when the worktree exists but is not
+// yet a complete pair, worded for this package's own refusal text rather than repeating
+// PairComplete's fabric-vocabulary reason verbatim.
+func taskWorktreeComplete(prime *lyxcwd.Location, slug string) (present, complete bool, incompleteReason string, err error) {
+	present, err = taskWorktreePresent(prime, slug)
+	if err != nil || !present {
+		return present, false, "", err
+	}
+	taskLocation, err := lyxcwd.ResolveWorktree(fabricengine.WorktreePath(prime, slug))
+	if err != nil {
+		return present, false, "", err
+	}
+	complete, _, err = fabricengine.PairComplete(taskLocation)
+	if err != nil {
+		return present, false, "", err
+	}
+	if !complete {
+		return present, false, "its pair is not fully created -- most likely a create interrupted partway through, since the process that ran it was killed rather than erroring, so its own rollback never ran", nil
+	}
+	return present, true, "", nil
+}
+
+// incompletePairRemedy names the manual cleanup for a pair taskWorktreeComplete found incomplete.
+// "lyx fabric remove --force" run from prime removes whatever part of the pair Add got to -- the
+// task worktree, its sibling, their junctions, portal and launcher entries, and the sibling's
+// branch -- in one command, which no pair of plain git commands can do from here: the sibling is a
+// worktree of another repository. The task branch is named with fabric's branch prefix, since
+// Remove never deletes it and Add refuses a leftover one.
+func incompletePairRemedy(slug, branch string) string {
+	return fmt.Sprintf("remove it by hand from here (\"lyx fabric remove --force %s\") and its branch (\"git branch -D %s\")", slug, branch)
+}
+
+// createRefusal rewords the one create refusal whose fabric remedy is wrong from prime, and passes
+// every other create error through verbatim (fabric's own refusals otherwise name remedies that hold
+// from here, and rewording them would only drop information).
+//
+// fabric words its leftover-branch refusal for a caller inside a pair: "switch a pair onto it with
+// lyx fabric checkout". Every batten verb runs from prime, where that command switches prime's own
+// pair onto the task's branches. The branch is a leftover in the everyday flow -- a torn-down pair
+// keeps its task branch locally and on the remote, and a rolled-back create keeps the branch it
+// made -- so the remedy named here is the abandon path the absent-worktree refusal already names:
+// delete the leftover locally and on the remote, and any orphaned other-side branch, then resume.
+func createRefusal(err error) error {
+	var branchExists *fabricengine.ErrBranchExists
+	if !errors.As(err, &branchExists) {
+		return err
+	}
+	return fmt.Errorf(
+		"branch %q already exists, left behind by an earlier pair for this slug (a torn-down pair keeps its task branch locally and on the remote, and a rolled-back create keeps the branch it made); delete it locally (\"git branch -D %s\") and on the remote (\"git push origin --delete %s\"), remove any leftover of the pair's sibling branch (\"lyx fabric cleanup --apply --remote\" removes an orphaned one), then resume this run -- never \"lyx fabric checkout\" from here, which would switch this worktree itself onto that branch",
+		branchExists.Branch, branchExists.Branch, branchExists.Branch,
+	)
+}
+
+// taskTopology builds the topology holder over the hub's repo-wide fabric config, which every
+// create and teardown call here reads fresh rather than at wiring time.
+func taskTopology(prime *lyxcwd.Location) (*fabricengine.Topology, error) {
+	cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(prime.HubPath))
+	if err != nil {
+		return nil, err
+	}
+	return fabricengine.NewTopology(cfg), nil
 }
 
 // maxChildOutputInError caps the child output folded into a spawn error, so a misbehaving child
@@ -176,28 +254,58 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 		ScratchDir: BattenDir(location, slug),
 		PrimeLock:  primeLock,
 		CreateWorktree: func(ctx context.Context) error {
-			// The already-present probe first, so the row is idempotent against its own
-			// post-condition -- see taskWorktreePresent for the crash window this closes.
-			present, err := taskWorktreePresent(location, slug)
-			if err != nil {
-				return err
-			}
-			if present {
-				logger.Info("battencli: create worktree skipped, the task worktree is already present", "slug", slug)
-				return nil
-			}
-
 			cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(location.HubPath))
 			if err != nil {
 				return err
 			}
+			// The already-complete probe before Add, so the row is idempotent against its own
+			// post-condition -- see taskWorktreeComplete for the crash window this closes.
+			present, complete, incompleteReason, err := taskWorktreeComplete(location, slug)
+			if err != nil {
+				return err
+			}
+			if complete {
+				logger.Info("battencli: create worktree skipped, the task worktree is already present", "slug", slug)
+				return nil
+			}
+			if present {
+				// A worktree exists but Add never finished it -- see taskWorktreeComplete's own doc
+				// comment. Add refuses an existing worktree directory the same way it refuses a
+				// leftover branch, so the remedy is a cleanup followed by a resume.
+				return fmt.Errorf(
+					"the task worktree for %q exists but %s; %s, then resume this run to create it fresh",
+					slug, incompleteReason, incompletePairRemedy(slug, cfg.BranchPrefix+slug),
+				)
+			}
+
 			top := fabricengine.NewTopology(cfg)
 			res, err := top.Add(location, slug, fabricengine.AddOptions{})
 			logger.Info("battencli: create worktree", "slug", slug, "mutations", res.Mutated())
-			return err
+			return createRefusal(err)
 		},
+		// Both teardown halves are idempotent against their shared post-condition, "the pair is
+		// gone", mirroring CreateWorktree's already-present probe: shedengine persists the row's
+		// transition only after the producer returns, so a process killed right after Remove
+		// succeeded re-enters this row with no pair on disk. Without the probe Shutdown's own
+		// location resolution refuses the absence and the run halts at teardown for good.
+		// The post-condition is the pair's, not the task worktree's alone: fabric removes the task
+		// worktree before its sibling, so a removal interrupted between the two -- or one whose
+		// sibling half failed, which fabric reports and this row records as Stuck -- leaves the
+		// sibling, the portal and launcher entries, and both branches behind with the task worktree
+		// gone. Remove refuses that state by name rather than reporting done over it, and finishes
+		// the pair's other-side branch deletion once both worktrees are gone; Shutdown
+		// still skips it, since reed's config is resolved through the task worktree that is gone,
+		// and the per-hub watchdog reaps a session whose worktree has vanished.
 		Teardown: battenshed.TeardownDeps{
 			Shutdown: func(ctx context.Context) (abandonedSession string, err error) {
+				present, err := taskWorktreePresent(location, slug)
+				if err != nil {
+					return "", err
+				}
+				if !present {
+					logger.Info("battencli: session shutdown skipped, the task worktree is already gone", "slug", slug)
+					return "", nil
+				}
 				taskLocation, err := taskWorktreeLocation(location, slug)
 				if err != nil {
 					return "", err
@@ -218,14 +326,54 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				return res.AbandonedSession, nil
 			},
 			Remove: func(ctx context.Context) error {
-				cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(location.HubPath))
+				present, err := taskWorktreePresent(location, slug)
 				if err != nil {
 					return err
 				}
-				top := fabricengine.NewTopology(cfg)
-				res, err := top.Remove(location, slug, false, false)
-				logger.Info("battencli: teardown worktree", "slug", slug, "mutations", res.Mutated())
-				return err
+				if !present {
+					remnant, remnantPresent, err := fabricengine.PairSiblingRemnant(location, slug)
+					if err != nil {
+						return err
+					}
+					if remnantPresent {
+						return fmt.Errorf(
+							"the task worktree for %q is gone but its pair's fabric sibling is still on disk at %s -- a removal interrupted between its two halves; run \"lyx fabric prune --apply\" from here to remove the sibling with its portal and launcher entries, then resume this run",
+							slug, remnant,
+						)
+					}
+					// The worktrees are gone, but a removal interrupted after them -- or one whose
+					// remote deletion failed -- can still have left the pair's other-side branch,
+					// locally or on the remote, where it makes a later create of this slug refuse.
+					top, err := taskTopology(location)
+					if err != nil {
+						return err
+					}
+					branchRes, err := top.RemovePairBranch(location, slug)
+					if err != nil {
+						return fmt.Errorf("the pair for %q is gone but deleting its other-side branch failed: %w; resume this run to retry the deletion", slug, err)
+					}
+					logger.Info("battencli: teardown finished the pair's branch deletion", "slug", slug, "mutations", branchRes.Mutated(), "remote_skipped_reason", branchRes.RemoteSkippedReason)
+					return nil
+				}
+				// remote: true -- a batten-driven teardown is the task's own final removal, never a
+				// step toward re-adopting the pair, so nothing will ever need the pair's other-side
+				// branch again, and a remote copy left behind makes a later create of this slug
+				// refuse its push.
+				top, err := taskTopology(location)
+				if err != nil {
+					return err
+				}
+				res, err := top.Remove(location, slug, false, true)
+				logger.Info("battencli: teardown worktree", "slug", slug, "mutations", res.Mutated(), "remote_skipped_reason", res.RemoteSkippedReason)
+				if err != nil {
+					return err
+				}
+				// Remove reports a failed remote deletion without failing; it is returned here so the
+				// row halts resumable, and the resumed row's already-gone arm above retries it.
+				if res.RemoteBranchError != "" {
+					return fmt.Errorf("the pair for %q was removed but its other-side branch's remote copy was not deleted: %s; resume this run to retry the deletion", slug, res.RemoteBranchError)
+				}
+				return nil
 			},
 		},
 		InnerRun: battenshed.InnerRunDeps{

@@ -79,7 +79,8 @@ starts a fresh run. Invoked against one already in progress, it resumes
 silently from the persisted current producer -- there is no re-seed flag,
 because every operator-fixable refusal this task raises lands as blocked,
 which is the everyday resume path. A slug already done refuses on the
-envelope, naming the per-slug directory to delete to run it again.
+envelope, naming the per-slug directory and the leftover branches to delete
+to run it again.
 
 The run-id positional is required in practice, even though cobra accepts
 its absence: prime hosts many slug-addressed batten runs, so an omitted

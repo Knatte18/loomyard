@@ -81,6 +81,8 @@ func zeroEnvField(env Env, field string) Env {
 		env.SupportLogPath = ""
 	case "WebsterRun":
 		env.WebsterRun = nil
+	case "CommitWebster":
+		env.CommitWebster = nil
 	case "WebsterDeps.Starter":
 		env.WebsterDeps.Starter = nil
 	case "WebsterDeps.Reed":
@@ -169,7 +171,7 @@ func simpleEntryCases() []simpleEntryCase {
 			registryKey:     "Webster",
 			entry:           websterEntry,
 			buildEnv:        newTestEnv,
-			validatedFields: []string{"AnchorPath", "WebsterRun", "WebsterDeps.Starter", "WebsterDeps.Reed", "WebsterDeps.Engine", "WebsterDeps.RefMatcher"},
+			validatedFields: []string{"AnchorPath", "WebsterRun", "CommitWebster", "WebsterDeps.Starter", "WebsterDeps.Reed", "WebsterDeps.Engine", "WebsterDeps.RefMatcher"},
 			unreadField:     "Cwd",
 		},
 	}

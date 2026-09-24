@@ -72,7 +72,7 @@ func TestCancellation_RealProducersReturnErrorNotStuck(t *testing.T) {
 		}
 	}{
 		{NameBatchifier, NewBatchifier(NameBatchifier, fx.AnchorPath)},
-		{NameWebster, NewWebsterProducer(NameWebster, fx.AnchorPath, (&fakeWebsterRun{}).run, websterengine.RunDeps{})},
+		{NameWebster, NewWebsterProducer(NameWebster, fx.AnchorPath, (&fakeWebsterRun{}).run, websterengine.RunDeps{}, func() error { return nil })},
 		{NameLoomPreflight, NewLoomPreflight(NameLoomPreflight, fx.StatusPath, fx.StatusLockPath)},
 	}
 

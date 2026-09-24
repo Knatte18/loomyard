@@ -39,6 +39,26 @@ type AddResult struct {
 	Pushed bool   `json:"pushed"`
 }
 
+// ErrBranchExists is Add's refusal when the warp branch a slug would create already exists.
+// It is a typed error so a caller standing somewhere the remedy below is wrong for -- the hub's
+// prime, where "lyx fabric checkout" switches prime itself -- can recognise the refusal and word
+// its own.
+// Remove deliberately leaves the warp branch behind (it may carry unmerged work), so
+// remove-then-re-add of the same slug lands here, and the message names the way forward rather
+// than a bare "already exists".
+type ErrBranchExists struct {
+	// Branch is the existing warp branch, prefix included.
+	Branch string
+}
+
+// Error implements the error interface, naming the two ways out for a caller inside a pair.
+func (e *ErrBranchExists) Error() string {
+	return fmt.Sprintf(
+		"branch %q already exists; switch a pair onto it with \"lyx fabric checkout %s\", or delete it first with \"git branch -D %s\" if it is a leftover from a removed pair",
+		e.Branch, e.Branch, e.Branch,
+	)
+}
+
 // Add creates a new paired warp and weft git worktree with the given slug.
 // It validates the slug, creates both worktrees, wires junctions, records and commits the pair's
 // parent-branch provenance, and pushes branches, rolling back all changes on any failure.
@@ -66,14 +86,7 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 	// exist"), recovered via errors.As, while its exec path returns a real error.
 	_, verifyErr := gitexec.Run([]string{"rev-parse", "--verify", "refs/heads/" + warpBranch}, l.WorktreePath())
 	if verifyErr == nil {
-		// Name the way forward: Remove deliberately leaves the warp branch
-		// behind (it may carry unmerged work), so remove-then-re-add of the
-		// same slug lands here — a bare "already exists" gives the operator no
-		// path out of that everyday cycle.
-		return AddResult{}, fmt.Errorf(
-			"branch %q already exists; switch a pair onto it with \"lyx fabric checkout %s\", or delete it first with \"git branch -D %s\" if it is a leftover from a removed pair",
-			warpBranch, warpBranch, warpBranch,
-		)
+		return AddResult{}, &ErrBranchExists{Branch: warpBranch}
 	}
 	var verifyGitErr *gitexec.GitError
 	if !errors.As(verifyErr, &verifyGitErr) {
