@@ -160,6 +160,24 @@ func RequireDrivableWorktree(l *lyxcwd.Location) error {
 	return RequireWarpWorktree(l)
 }
 
+// PairSiblingRemnant reports whether slug's weft worktree is still on disk, and where, for a caller
+// that has already found the slug's warp worktree gone.
+// It exists for the same vocabulary reason RequireDrivableWorktree does: a caller outside the Fabric
+// Vocabulary Invariant's owner set cannot name WeftWorktreePath, yet a teardown row re-entered after
+// Topology.Remove was interrupted between its two halves must tell "the pair is gone" from "only
+// the warp side is gone", because the second is the debris `lyx fabric prune` exists to remove.
+// A stat error other than absence is returned, never folded into false.
+func PairSiblingRemnant(l *lyxcwd.Location, slug string) (path string, present bool, err error) {
+	path = WeftWorktreePath(l, slug)
+	if _, statErr := os.Stat(path); statErr != nil {
+		if os.IsNotExist(statErr) {
+			return path, false, nil
+		}
+		return path, false, statErr
+	}
+	return path, true, nil
+}
+
 // WeftLyxDir returns the path to the _lyx directory in l's weft sibling worktree.
 // It is the junction target for lyx weft and the pathspec base for weft operations.
 func WeftLyxDir(l *lyxcwd.Location) string {

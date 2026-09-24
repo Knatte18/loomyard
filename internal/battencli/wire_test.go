@@ -11,11 +11,13 @@ package battencli
 import (
 	"context"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 	"unicode/utf8"
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
@@ -365,5 +367,51 @@ func TestWire_TeardownIsIdempotentAgainstAnAlreadyRemovedWorktree(t *testing.T) 
 	}
 	if err := c.env.Teardown.Remove(context.Background()); err != nil {
 		t.Errorf("Teardown.Remove() error = %v; want nil for an already-removed task worktree", err)
+	}
+}
+
+// TestWire_TeardownRefusesAHalfTornPair asserts the removal half does not mistake a pair whose
+// task worktree is gone but whose fabric sibling is still on disk -- a removal interrupted between
+// its two halves -- for a pair that is gone: it refuses, naming the leftover and the fabric verb
+// that removes it, rather than reporting the row done over the debris.
+// Session shutdown still skips there, since it has no worktree left to resolve reed's config from.
+func TestWire_TeardownRefusesAHalfTornPair(t *testing.T) {
+	c := &battenCLI{}
+	location := &lyxcwd.Location{
+		RepoName:     "example",
+		HubPath:      t.TempDir(),
+		WorktreeName: "hub-repo",
+		AnchorRel:    ".",
+	}
+	const slug = "half-torn"
+	if err := c.wire(location, slug); err != nil {
+		t.Fatalf("wire() error = %v; want nil", err)
+	}
+	remnant, present, err := fabricengine.PairSiblingRemnant(location, slug)
+	if err != nil || present {
+		t.Fatalf("precondition: PairSiblingRemnant = (present=%v, err=%v); want (false, nil)", present, err)
+	}
+	if err := os.MkdirAll(remnant, 0o755); err != nil {
+		t.Fatalf("create the leftover sibling: %v", err)
+	}
+
+	if _, err := c.env.Teardown.Shutdown(context.Background()); err != nil {
+		t.Errorf("Teardown.Shutdown() error = %v; want nil: no task worktree is left to shut a session down in", err)
+	}
+	err = c.env.Teardown.Remove(context.Background())
+	if err == nil {
+		t.Fatal("Teardown.Remove() = nil; want a refusal naming the leftover sibling, not done over the debris")
+	}
+	for _, want := range []string{slug, remnant, "lyx fabric prune --apply"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("Teardown.Remove() error = %q; want it to contain %q", err.Error(), want)
+		}
+	}
+
+	if err := os.RemoveAll(remnant); err != nil {
+		t.Fatalf("remove the leftover sibling: %v", err)
+	}
+	if err := c.env.Teardown.Remove(context.Background()); err != nil {
+		t.Errorf("Teardown.Remove() after the sibling is gone = %v; want nil", err)
 	}
 }

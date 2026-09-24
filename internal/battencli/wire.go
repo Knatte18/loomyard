@@ -202,13 +202,18 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			logger.Info("battencli: create worktree", "slug", slug, "mutations", res.Mutated())
 			return err
 		},
-		// Both teardown halves are idempotent against their shared post-condition, "the task
-		// worktree is gone", mirroring CreateWorktree's already-present probe: shedengine persists
-		// the row's transition only after the producer returns, so a process killed right after
-		// Remove succeeded re-enters this row with no pair on disk. Without the probe Shutdown's
-		// own location resolution refuses the absence and the run halts at teardown for good.
-		// An absent pair means its session was shut down by the earlier pass, or its worktree was
-		// removed by hand; either way there is nothing left here for either half to act on.
+		// Both teardown halves are idempotent against their shared post-condition, "the pair is
+		// gone", mirroring CreateWorktree's already-present probe: shedengine persists the row's
+		// transition only after the producer returns, so a process killed right after Remove
+		// succeeded re-enters this row with no pair on disk. Without the probe Shutdown's own
+		// location resolution refuses the absence and the run halts at teardown for good.
+		// The post-condition is the pair's, not the task worktree's alone: fabric removes the task
+		// worktree before its sibling, so a removal interrupted between the two -- or one whose
+		// sibling half failed, which fabric reports and this row records as Stuck -- leaves the
+		// sibling, the portal and launcher entries, and both branches behind with the task worktree
+		// gone. Remove refuses that state by name rather than reporting done over it; Shutdown
+		// still skips it, since reed's config is resolved through the task worktree that is gone,
+		// and the per-hub watchdog reaps a session whose worktree has vanished.
 		Teardown: battenshed.TeardownDeps{
 			Shutdown: func(ctx context.Context) (abandonedSession string, err error) {
 				present, err := taskWorktreePresent(location, slug)
@@ -244,7 +249,17 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 					return err
 				}
 				if !present {
-					logger.Info("battencli: teardown worktree skipped, the task worktree is already gone", "slug", slug)
+					remnant, remnantPresent, err := fabricengine.PairSiblingRemnant(location, slug)
+					if err != nil {
+						return err
+					}
+					if remnantPresent {
+						return fmt.Errorf(
+							"the task worktree for %q is gone but its pair's fabric sibling is still on disk at %s -- a removal interrupted between its two halves; run \"lyx fabric prune --apply\" from here to remove the sibling with its portal and launcher entries, then resume this run",
+							slug, remnant,
+						)
+					}
+					logger.Info("battencli: teardown worktree skipped, the pair is already gone", "slug", slug)
 					return nil
 				}
 				cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(location.HubPath))
