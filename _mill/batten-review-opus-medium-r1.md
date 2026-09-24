@@ -5,11 +5,25 @@ Worktree `/home/knatte/Code/loomyard/wts/crucible-batten-followup`, branch `cruc
 
 ## Executive summary
 
-(pending; written once the review is complete)
+Nine findings: 1 BLOCKING, 3 MEDIUM, 3 LOW, 2 NIT.
+The outward-first focus paid off again: the BLOCKING and two of the MEDIUMs live at batten's boundary with loom and fabric, found by driving, not reading.
+
+Top risks:
+1. **F4 (BLOCKING)** — batten's normal single-slug SUCCESS path never finishes unattended: every successful loom child leaves webster's own contract files (`outcome.yaml`, `summary.md`, `reports/integration.yaml`) untracked in its weft, so `Worktree-Teardown` halts `blocked` on fabric's dirty-weft refusal. Root cause is in loom's Webster row, which commits nothing on Done.
+2. **F1 (MEDIUM)** — a child bootstrap that fails after seeding its status (tmux, handshake, startup-gate/not-ready, or a Ctrl-C during the wait) is reported honestly once, then every resume watches a driverless child as "still running" for 12 hours, because `Run-Shed` treats "status file exists" as "spawn happened".
+3. **F5 (MEDIUM)** — `Worktree-Teardown` has the crash-window idempotence gap `Worktree-Create` already closed: re-entered after its own `Remove` succeeded, it blocks forever.
+4. **F3 (MEDIUM)** — the absent-task-worktree advice is false (deleting branches never rewinds the run to a fresh create) and destructive for no benefit.
+
+Merge-readiness (pre-fix): NOT ready — F4 fails the merge bar outright.
+All nine are scoped fixes; none needs its own task.
 
 ## Scope assessment
 
-(pending)
+Against the recovered SPEC (`git show 8ac857ce1~1:manifest/designs/seeded-shed.md`):
+- Delivered as designed: the four rows and their order; `Seed-Child` copying the recipe from the Board `type` (empty ⇒ `loom`, live L2) and the driver from batten's own seed (`params.child_driver`, live L12); `Run-Shed` as a self-routed 1440 × 30s watch that hard-errors on every non-running non-done child state and never routes to teardown (live, L15); `go`-only batten driver; `self` refused in prime; run directories durable under `_lyx/shed/<run-id>/`; hand-seed authority (`lyx shed seed <slug> --recipe batten`) honoured (L12).
+- Promised, not delivered (known, deferred, re-confirmed): the SPEC's "batten's rows must self-heal machine-local resources ... recreate the child worktree from its branch before watching it". Still absent (L6); fabric's `Topology.Add` still refuses an existing branch. The shipped refusal text for it is F3.
+- The SPEC's two residuals are documented in `battenshed/doc.go`; the "dead or parked" one misses the self-stopping driver (F8).
+- No over-reach found: no relay-stepping, no batten bootstrap verb, no llm for batten's own rows.
 
 ## Code findings (provisional, severity ordering finalized at the end)
 
@@ -134,7 +148,11 @@ text consumers: `grep -rn -E 'disagreeing seed|already seeded with|refusing to o
 
 ## Docs & operability findings
 
-(pending)
+- F3, F6, F8, F9 are text/doc findings (listed above with the code findings).
+- `docs/overview.md`'s batten entry claims "`Run-Shed` spawns only while the task worktree has no status file" (true, and the root of F1) and "Teardown ... blocks ... [on] anything an agent left uncommitted" (true, but F4 shows lyx itself leaves such dirt on every success). Both move with F1/F4's fixes.
+- Operability: every `Run-Shed`/`Seed-Child` hard error surfaces with `kind: producer`, the one kind ly-drive retries once. For the absent-worktree refusal and a failed spawn that retry is harmless (it re-refuses; after F1's fix a retried spawn is exactly the right move).
+- Focus 4 (`ErrDisagreeingSeed` across `WriteSeed` callers): no change needed. `shedcli`'s `lyx shed seed` is an operator verb whose error envelope already names both seeds, and `loomcli`'s bootstrap has no Shed row to route a Stuck to — its refusal reaches the operator on `start`'s envelope and on `step`'s `kind: unseeded` (a stage label, documented at `loomcli/step.go`). Batten is the one caller with a row whose verdict can express "human judgment needed", and it does. Inventing a Stuck route elsewhere would be over-reach.
+- Deferred re-evaluation: (1) recreate-from-branch — gap still holds (L6), accepted. (2) `step`-mode pacing — each `lyx batten step` of a running child still takes the full 30s (L3: 30.045s); "cancellable mid-wait" is true only for an in-process ctx (F9); accepted shape. (3) residual texts — see F8. (4) GitHub #263 — not touched.
 
 ## What was tested
 
