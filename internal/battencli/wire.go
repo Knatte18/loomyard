@@ -51,13 +51,16 @@ import (
 // the refusal below names no fabric command as a substitute: "lyx fabric checkout" switches the
 // CALLER's own worktree onto the named branch, so run from prime, as every batten verb must be, it
 // would mutate prime itself rather than restore anything.
+// Deleting the pair's branches alone rewinds nothing: the resumed run re-enters its persisted row,
+// not Worktree-Create, so the abandon path names batten's own run directory as well, and both
+// branch copies, since the ones on the remote make a fresh create's push refuse.
 func taskWorktreeLocation(prime *lyxcwd.Location, slug string) (*lyxcwd.Location, error) {
 	worktreePath := fabricengine.WorktreePath(prime, slug)
 	if _, err := os.Stat(worktreePath); err != nil {
 		if os.IsNotExist(err) {
 			return nil, fmt.Errorf(
-				"battencli: the task worktree for %q is not present at %s; this run's durable status says it was already created, so it is either on another machine or was removed by hand -- batten does not recreate a pair from its branch, and no \"lyx fabric\" command currently does either (creating one refuses when its branch already exists): resolve this by hand, deleting the pair's branches so a resumed run reaches a fresh create, or restoring the worktree pair yourself outside lyx's own automation, before resuming",
-				slug, worktreePath,
+				"battencli: the task worktree for %q is not present at %s; this run's durable status says it was already created, so it is either on another machine or was removed by hand -- batten does not recreate a pair from its branch, and no \"lyx fabric\" command currently does either (creating one refuses when its branch already exists). Resolve it by hand, one of two ways: restore the worktree pair yourself from its branches, outside lyx's own automation, which keeps the task's work, then resume this run; or abandon this run by deleting its run directory %s (a change on the pair's fabric sibling) and the pair's branches, local and remote, after which \"lyx batten run %s\" starts over from a fresh create -- discarding any of the task's work not already merged",
+				slug, worktreePath, shedrun.RunDir(prime, slug), slug,
 			)
 		}
 		return nil, err

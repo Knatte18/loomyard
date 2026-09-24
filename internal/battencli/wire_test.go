@@ -305,13 +305,16 @@ func TestTaskWorktreeLocation_AbsentPairIsNamed(t *testing.T) {
 	if err == nil {
 		t.Fatal("taskWorktreeLocation(prime, \"never-created\") = nil error; want a named refusal")
 	}
-	for _, want := range []string{"never-created", "is not present at", "resolve this by hand"} {
+	for _, want := range []string{"never-created", "is not present at", "Resolve it by hand", shedrun.RunDir(prime, "never-created"), "local and remote", "discarding any of the task's work"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("taskWorktreeLocation(...) = %q; want it to contain %q", err.Error(), want)
 		}
 	}
 	if strings.Contains(err.Error(), "lyx fabric checkout") {
 		t.Errorf("taskWorktreeLocation(...) = %q; want it to never suggest \"lyx fabric checkout\" -- run from prime, that command mutates prime's own branch rather than restoring the missing task worktree", err.Error())
+	}
+	if strings.Contains(err.Error(), "so a resumed run reaches a fresh create") {
+		t.Errorf("taskWorktreeLocation(...) = %q; want it to never promise that deleting branches alone rewinds the run -- the resumed run re-enters its persisted row, not Worktree-Create", err.Error())
 	}
 	if strings.Contains(err.Error(), "not a git repository") {
 		t.Errorf("taskWorktreeLocation(...) = %q; want the absent-pair case reported on its own terms, not as a resolver failure", err.Error())
