@@ -237,4 +237,9 @@ Round 3's two orchestrator-seeded items were both confirmed live: the prefixed-b
 
 ## Teardown
 
-(pending)
+- Every drive ran foreground or was backgrounded to a log and polled to its end; both full runs (`floor` on fixture A, `pfin` on fixture B after the fixes) exited 0 on their own.
+- Final process check: `pgrep -af lyx` empty; no `tmux`/`reed` processes; the fixture tmux sockets under `/tmp/tmux-1000/` answer "no server running" (dead socket files left in place). The `claude` processes listed are other sessions, not this round's.
+- Both fixture hubs deleted: `rm -r $S/r4fx-a7q $S/r4fx-b3p`. The standing `lyx-test-LYXHUB` bench was never touched.
+- The throwaway kill binary `$S/bin/lyx-kp` stays in the scratchpad only; no instrumented source was ever committed or deployed (`.dev-bin/lyx` redeployed from clean source at `a93f803fb`).
+- `~/.claude.json` shows 2 occurrences of the fixture path prefix `r4fx-`, from the go-driven children's own agent sessions; left alone as instructed.
+- GitHub: newest issue on `Knatte18/loomyard` is still #263 — nothing filed.
