@@ -288,7 +288,13 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 					return err
 				}
 				top := fabricengine.NewTopology(cfg)
-				res, err := top.Remove(location, slug, false, false)
+				// remote: true -- a batten-driven teardown is the task's own final removal, never a
+				// step toward re-adopting the pair, so nothing will ever need the pair's other-side
+				// branch again. Topology.Remove always deletes that branch locally regardless of this
+				// flag; without it, the remote copy lingers forever, invisible to "lyx fabric cleanup"
+				// (its own enumeration is local-branches-only), which is exactly what createRefusal's
+				// and doneSlugRefusal's own remedy text both point an operator at.
+				res, err := top.Remove(location, slug, false, true)
 				logger.Info("battencli: teardown worktree", "slug", slug, "mutations", res.Mutated())
 				return err
 			},

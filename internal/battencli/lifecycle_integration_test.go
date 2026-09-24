@@ -360,6 +360,15 @@ func TestBattenIntegration_FourRowRun_SeedsChildCommitsAndTearsDown(t *testing.T
 	if pathExists(pairPath) {
 		t.Errorf("pair still exists after Worktree-Teardown: %s", pairPath)
 	}
+
+	// Teardown's own top.Remove call passes remote: true -- a batten-driven teardown is the task's
+	// final removal, and nothing will ever re-adopt its weft branch, so the remote copy must not
+	// linger where "lyx fabric cleanup" (its own enumeration is local-branches-only) can never reach
+	// it. See F-CLEANUP-REMOTE-ORPHAN.
+	weftBranch := fabricengine.WeftBranchName(slug)
+	if err := exec.Command("git", "-C", h.WeftBare, "rev-parse", "--verify", "refs/heads/"+weftBranch).Run(); err == nil {
+		t.Errorf("weft branch %q still present on the remote after teardown; want it deleted alongside the local copy", weftBranch)
+	}
 }
 
 // TestBattenIntegration_StepDrivenRunShed_ReturnsAfterOnePollInterval proves Run-Shed's step-driven
