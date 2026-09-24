@@ -372,6 +372,117 @@ func TestBattenIntegration_FourRowRun_SeedsChildCommitsAndTearsDown(t *testing.T
 	}
 }
 
+// remoteBranchExists reports whether branch exists in the bare repository at bareDir.
+func remoteBranchExists(bareDir, branch string) bool {
+	return exec.Command("git", "-C", bareDir, "rev-parse", "--verify", "refs/heads/"+branch).Run() == nil
+}
+
+// TestBattenIntegration_Teardown_AlreadyGonePairFinishesItsBranchDeletion re-enters the removal
+// half with both worktrees already gone but the pair's other-side branch left behind -- a removal
+// killed after its worktree removals, before its branch deletions finished -- and asserts the row
+// deletes that branch locally and on the remote rather than reporting done over it.
+// A branch surviving on the remote makes a later create of the slug refuse its push.
+func TestBattenIntegration_Teardown_AlreadyGonePairFinishesItsBranchDeletion(t *testing.T) {
+	tests := []struct {
+		name      string
+		keepLocal bool
+	}{
+		{"LocalAndRemoteLeft", true},
+		{"RemoteOnlyLeft", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := hubforge.NewHub(t, ".")
+			slug := "batten-branch-left"
+			hubforge.AddPair(t, h, slug)
+			weftBranch := fabricengine.WeftBranchName(slug)
+			if !remoteBranchExists(h.WeftBare, weftBranch) {
+				t.Fatalf("precondition: %q not on the remote after the create", weftBranch)
+			}
+			// Both worktrees removed, the remote copy kept -- the state a kill between the local
+			// and remote deletions leaves.
+			if _, err := h.Topology.Remove(h.Location, slug, false, false); err != nil {
+				t.Fatalf("remove the pair without its remote copy: %v", err)
+			}
+			weftRepoRoot, err := fabricengine.WeftRepoRoot(h.Location)
+			if err != nil {
+				t.Fatalf("resolve weft repo root: %v", err)
+			}
+			if tt.keepLocal {
+				gitkit.MustRun(t, weftRepoRoot, "git", "fetch", "origin", weftBranch)
+				gitkit.MustRun(t, weftRepoRoot, "git", "branch", weftBranch, "FETCH_HEAD")
+			}
+
+			c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
+				return shedengine.Status{State: shedengine.StateDone}, true, nil
+			})
+			if err := c.env.Teardown.Remove(context.Background()); err != nil {
+				t.Fatalf("Teardown.Remove() = %v; want nil", err)
+			}
+			if remoteBranchExists(h.WeftBare, weftBranch) {
+				t.Errorf("%q still on the remote after the re-entered teardown; want it deleted", weftBranch)
+			}
+			if exec.Command("git", "-C", weftRepoRoot, "rev-parse", "--verify", "refs/heads/"+weftBranch).Run() == nil {
+				t.Errorf("%q still present locally after the re-entered teardown; want it deleted", weftBranch)
+			}
+		})
+	}
+}
+
+// TestBattenIntegration_Teardown_FailedRemoteDeletionHaltsResumably breaks the weft origin during
+// teardown and asserts the removal half reports the failed remote deletion instead of done, then
+// that a resume once the remote is reachable again finishes it.
+func TestBattenIntegration_Teardown_FailedRemoteDeletionHaltsResumably(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+	slug := "batten-remote-fails"
+	hubforge.AddPair(t, h, slug)
+	weftBranch := fabricengine.WeftBranchName(slug)
+	weftRepoRoot, err := fabricengine.WeftRepoRoot(h.Location)
+	if err != nil {
+		t.Fatalf("resolve weft repo root: %v", err)
+	}
+	gitkit.MustRun(t, weftRepoRoot, "git", "remote", "set-url", "origin", filepath.Join(t.TempDir(), "missing.git"))
+
+	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
+		return shedengine.Status{State: shedengine.StateDone}, true, nil
+	})
+	err = c.env.Teardown.Remove(context.Background())
+	if err == nil {
+		t.Fatal("Teardown.Remove() = nil with an unreachable remote; want the failed remote deletion reported")
+	}
+	if !strings.Contains(err.Error(), "resume this run") {
+		t.Errorf("Teardown.Remove() error = %q; want it to name the resume", err.Error())
+	}
+	if pathExists(h.PairWarpWorktree(slug)) {
+		t.Errorf("task worktree still present; want the pair removed before the remote deletion failed")
+	}
+
+	gitkit.MustRun(t, weftRepoRoot, "git", "remote", "set-url", "origin", h.WeftBare)
+	if err := c.env.Teardown.Remove(context.Background()); err != nil {
+		t.Fatalf("Teardown.Remove() on resume = %v; want nil", err)
+	}
+	if remoteBranchExists(h.WeftBare, weftBranch) {
+		t.Errorf("%q still on the remote after the resumed teardown; want it deleted", weftBranch)
+	}
+}
+
+// TestBattenIntegration_Teardown_AlreadyGonePairWithNoBranchIsDone re-enters the removal half after
+// a removal that finished completely -- the transition just not yet persisted -- and asserts done.
+func TestBattenIntegration_Teardown_AlreadyGonePairWithNoBranchIsDone(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+	slug := "batten-teardown-finished"
+	hubforge.AddPair(t, h, slug)
+	if _, err := h.Topology.Remove(h.Location, slug, false, true); err != nil {
+		t.Fatalf("remove the pair: %v", err)
+	}
+	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
+		return shedengine.Status{State: shedengine.StateDone}, true, nil
+	})
+	if err := c.env.Teardown.Remove(context.Background()); err != nil {
+		t.Errorf("Teardown.Remove() = %v; want nil for a pair already fully removed", err)
+	}
+}
+
 // TestBattenIntegration_StepDrivenRunShed_ReturnsAfterOnePollInterval proves Run-Shed's step-driven
 // re-entrancy: a still-running child yields a re-entrant "lyx batten step" that returns after one
 // poll_interval_s rather than holding for the child's whole duration.

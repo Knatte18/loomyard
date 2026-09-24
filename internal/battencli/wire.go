@@ -163,6 +163,16 @@ func createRefusal(err error) error {
 	)
 }
 
+// taskTopology builds the topology holder over the hub's repo-wide fabric config, which every
+// create and teardown call here reads fresh rather than at wiring time.
+func taskTopology(prime *lyxcwd.Location) (*fabricengine.Topology, error) {
+	cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(prime.HubPath))
+	if err != nil {
+		return nil, err
+	}
+	return fabricengine.NewTopology(cfg), nil
+}
+
 // maxChildOutputInError caps the child output folded into a spawn error, so a misbehaving child
 // cannot push an unbounded string into a status file committed onto prime's own pair.
 const maxChildOutputInError = 2000
@@ -282,7 +292,8 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 		// worktree before its sibling, so a removal interrupted between the two -- or one whose
 		// sibling half failed, which fabric reports and this row records as Stuck -- leaves the
 		// sibling, the portal and launcher entries, and both branches behind with the task worktree
-		// gone. Remove refuses that state by name rather than reporting done over it; Shutdown
+		// gone. Remove refuses that state by name rather than reporting done over it, and finishes
+		// the pair's other-side branch deletion once both worktrees are gone; Shutdown
 		// still skips it, since reed's config is resolved through the task worktree that is gone,
 		// and the per-hub watchdog reaps a session whose worktree has vanished.
 		Teardown: battenshed.TeardownDeps{
@@ -330,23 +341,39 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 							slug, remnant,
 						)
 					}
-					logger.Info("battencli: teardown worktree skipped, the pair is already gone", "slug", slug)
+					// The worktrees are gone, but a removal interrupted after them -- or one whose
+					// remote deletion failed -- can still have left the pair's other-side branch,
+					// locally or on the remote, where it makes a later create of this slug refuse.
+					top, err := taskTopology(location)
+					if err != nil {
+						return err
+					}
+					branchRes, err := top.RemovePairBranch(location, slug)
+					if err != nil {
+						return fmt.Errorf("the pair for %q is gone but deleting its other-side branch failed: %w; resume this run to retry the deletion", slug, err)
+					}
+					logger.Info("battencli: teardown finished the pair's branch deletion", "slug", slug, "mutations", branchRes.Mutated(), "remote_skipped_reason", branchRes.RemoteSkippedReason)
 					return nil
 				}
-				cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(location.HubPath))
+				// remote: true -- a batten-driven teardown is the task's own final removal, never a
+				// step toward re-adopting the pair, so nothing will ever need the pair's other-side
+				// branch again, and a remote copy left behind makes a later create of this slug
+				// refuse its push.
+				top, err := taskTopology(location)
 				if err != nil {
 					return err
 				}
-				top := fabricengine.NewTopology(cfg)
-				// remote: true -- a batten-driven teardown is the task's own final removal, never a
-				// step toward re-adopting the pair, so nothing will ever need the pair's other-side
-				// branch again. Topology.Remove always deletes that branch locally regardless of this
-				// flag; without it, the remote copy lingers forever, invisible to "lyx fabric cleanup"
-				// (its own enumeration is local-branches-only), which is exactly what createRefusal's
-				// and doneSlugRefusal's own remedy text both point an operator at.
 				res, err := top.Remove(location, slug, false, true)
-				logger.Info("battencli: teardown worktree", "slug", slug, "mutations", res.Mutated())
-				return err
+				logger.Info("battencli: teardown worktree", "slug", slug, "mutations", res.Mutated(), "remote_skipped_reason", res.RemoteSkippedReason)
+				if err != nil {
+					return err
+				}
+				// Remove reports a failed remote deletion without failing; it is returned here so the
+				// row halts resumable, and the resumed row's already-gone arm above retries it.
+				if res.RemoteBranchError != "" {
+					return fmt.Errorf("the pair for %q was removed but its other-side branch's remote copy was not deleted: %s; resume this run to retry the deletion", slug, res.RemoteBranchError)
+				}
+				return nil
 			},
 		},
 		InnerRun: battenshed.InnerRunDeps{

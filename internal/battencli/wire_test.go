@@ -386,8 +386,8 @@ func TestTaskWorktreePresent_AbsentIsAnAnswerNotAnError(t *testing.T) {
 	}
 }
 
-// TestWire_TeardownIsIdempotentAgainstAnAlreadyRemovedWorktree asserts both teardown halves treat
-// an absent task worktree as their post-condition already met -- the state a process killed right
+// TestWire_TeardownIsIdempotentAgainstAnAlreadyRemovedWorktree asserts session shutdown treats an
+// absent task worktree as its post-condition already met -- the state a process killed right
 // after Remove succeeded leaves, since shedengine persists the transition only after the producer
 // returns -- rather than refusing the absence and stranding the run at teardown.
 func TestWire_TeardownIsIdempotentAgainstAnAlreadyRemovedWorktree(t *testing.T) {
@@ -408,9 +408,6 @@ func TestWire_TeardownIsIdempotentAgainstAnAlreadyRemovedWorktree(t *testing.T) 
 	}
 	if abandoned != "" {
 		t.Errorf("Teardown.Shutdown() abandoned session = %q; want empty", abandoned)
-	}
-	if err := c.env.Teardown.Remove(context.Background()); err != nil {
-		t.Errorf("Teardown.Remove() error = %v; want nil for an already-removed task worktree", err)
 	}
 }
 
@@ -452,10 +449,4 @@ func TestWire_TeardownRefusesAHalfTornPair(t *testing.T) {
 		}
 	}
 
-	if err := os.RemoveAll(remnant); err != nil {
-		t.Fatalf("remove the leftover sibling: %v", err)
-	}
-	if err := c.env.Teardown.Remove(context.Background()); err != nil {
-		t.Errorf("Teardown.Remove() after the sibling is gone = %v; want nil", err)
-	}
 }
