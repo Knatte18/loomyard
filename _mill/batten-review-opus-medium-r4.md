@@ -135,6 +135,13 @@ Youngest fixes from `git log --format='%h %s' d7ab9eca0..HEAD`; operator-facing 
 - `docs/overview.md`'s batten entry describes `Worktree-Create`'s completeness check as "the task worktree's sibling exists and its junctions are wired" and the leftover-branch refusal with "every torn-down pair keeps its branch and both remote copies". Both need updating alongside F1/F4.
 - Observation, not a finding: every child's sibling branch carries frozen copies of prime's `_lyx/shed/<slug>/` run directories (seen in `ka3-weft`'s log and `pfull/_lyx/shed/`); `docs/overview.md` already documents this as inert.
 
+## Re-confirmation of CLOSED-AND-VERIFIED (read after the findings above were written)
+
+No regression found. Re-driven live against the pre-fix source in Job 1:
+round 3's F-SIGKILL-ADD (A1–A5 refuse rather than report done), F-CLEANUP-REMOTE-ORPHAN (floor and every clean teardown deleted the other-side branch on the remote), round 2's half-torn refusal (R4), round 1's F5 teardown idempotence (R8) and F1 spawn retry (floor's Run-Shed), round 1's F7 / round 2's F3 prime-only `lyx shed seed` and bookend refusals.
+Suites: batten, shedcli and fabricengine integration suites green at the start and end of Job 1.
+Round 3's two orchestrator-seeded items were both confirmed live: the prefixed-branch remedy (F2c) and the undriven Add/Remove windows (F1, F3).
+
 ## Deferred items re-evaluated
 
 - Recreating a cold-machine-absent task worktree: gap still holds (`pfull` removed by `lyx fabric remove` at Seed-Child → the absent-worktree refusal); its abandon path, followed verbatim, reached a fresh create.
