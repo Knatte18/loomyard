@@ -9,6 +9,9 @@ See Maintenance below for how the numbering works.
 
 This section holds what's committed to next.
 
+1. **shed: the LLM driver as a generic stepper and mender** — `ly-drive` drives any seeded run through `lyx shed step` without knowing its recipe, and repairs failures from a trace every step leaves behind, so `lyx` stops having to be perfect against every crash window.
+   See [designs/shed-llm-driver.md](designs/shed-llm-driver.md).
+
 ## Next Up
 
 What comes right after Planned clears — committed and ordered, unlike Someday below.
