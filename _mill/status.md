@@ -60,7 +60,9 @@ batches:
     commit_sha: 8916c53bcec72590103638bf0cfa920994a79d35
     verify_baseline_failures: []
   - name: ly-drive-recipe-blind
-    state: pending
+    state: running
+    implementer_session: 6788047e-5cc4-494e-b07d-2de350de3011
+    start_sha: f15dd3591f58a1a3ab3a0e2d929b8154156648b7
     verify_baseline_failures: ['--- FAIL: TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver (5.40s)',
   "FAIL\tgithub.com/Knatte18/loomyard/internal/loomcli\t5.404s", '--- FAIL: TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver
     (5.41s)', "FAIL\tgithub.com/Knatte18/loomyard/internal/loomcli\t5.412s"]
