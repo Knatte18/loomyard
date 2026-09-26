@@ -40,6 +40,7 @@ One batch because both cards live in `internal/fabricengine` and the detail chan
     `TestMutations_ExtendLogsNothing` (after arming, `Extend` onto a fresh recorder adds no `fabric: mutation` line — build the `other` record before arming the sink, or count lines before and after);
     `TestMutations_NilReceiverLogsNothing` (a nil `*Mutations`'s `Append`/`AppendRef` add no line).
   - These tests spawn nothing (Test Tier Purity).
+  - None of the four calls `t.Parallel()`, unlike every other test in the file; see the overview's `trace-tests-use-sink-override` decision.
 - **Commit:** `feat(fabricengine): write every recorded mutation to the durable trace`
 
 ### Card 4: name side, repository and remote on branch entries

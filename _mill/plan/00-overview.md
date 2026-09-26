@@ -42,7 +42,7 @@ batches:
     name: ly-drive-recipe-blind
     file: 05-ly-drive-recipe-blind.md
     depends-on: [3, 4]
-    verify: go build ./... && go test ./cmd/lyx/ -run 'TestLyDriveSkill|TestHelpTree|TestDriftGuard' && go test ./internal/loomcli/ -run 'TestDriverPrompt|TestStartLLMDriverArm' && go test -tags integration ./internal/loomcli/ -run 'TestIntegrationDriverBootstrap'
+    verify: go build ./... && go test ./cmd/lyx/ -run 'TestLyDriveSkill|TestHelpTree|TestDriftGuard' && go test ./internal/loomcli/ -run 'TestDriverPrompt|TestStartLLMDriverArm' && go test -tags integration ./internal/loomcli/ -run 'TestIntegrationDriverBootstrap' && go test -tags smoke ./internal/loomcli/ -run 'TestSmokeStatusAndPause_OnNeverBootstrappedPairNameTheRemedy' && go test ./internal/shedadapters/ -run 'TestBouncer_ReBounceProbesForALiveSeed'
 ```
 
 ## Shared Decisions
@@ -70,6 +70,8 @@ batches:
 
 - **Decision:** every new test that reads the durable trace arms it with `logger.SetDurableSinkDir(t.TempDir())` and registers `t.Cleanup(func() { logger.SetDurableSinkDir("") })`, then globs `trace-*.log` in that directory.
   No test sets `LYX_TRACE=1`.
+  Such a test never calls `t.Parallel()`, even in a file whose other tests all do (e.g. `internal/fabricengine/mutation_test.go`): the sink's override, path and header are package-level state one test's `SetDurableSinkDir` resets out from under another, the hazard `internal/burlercli/cli_test.go` already documents.
+  Its doc comment says so in one line.
 - **Rationale:** the sink refuses to arm under `testing.Testing()` without an override; the override keeps trace files out of fixtures and the empty reset returns the process to the no-sink state other tests expect.
 - **Applies to:** all batches with Go tests
 
@@ -109,9 +111,11 @@ batches:
 - `internal/loomcli/cli_test.go`
 - `internal/loomcli/driverprompt.go`
 - `internal/loomcli/driverprompt_test.go`
+- `internal/loomcli/smoke_bootstrapwiring_test.go`
 - `internal/loomcli/start.go`
 - `internal/loomcli/status_test.go`
 - `internal/loomcli/step_test.go`
+- `internal/shedadapters/bouncer_seed_test.go`
 - `internal/shedcli/parity_test.go`
 - `internal/shedverbs/doc.go`
 - `internal/shedverbs/seam_enforcement_test.go`

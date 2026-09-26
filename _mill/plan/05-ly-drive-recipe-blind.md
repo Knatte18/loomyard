@@ -5,7 +5,7 @@ task: 'shed: the LLM driver as a generic stepper and mender'
 batch: ly-drive-recipe-blind
 number: 5
 cards: 4
-verify: go build ./... && go test ./cmd/lyx/ -run 'TestLyDriveSkill|TestHelpTree|TestDriftGuard' && go test ./internal/loomcli/ -run 'TestDriverPrompt|TestStartLLMDriverArm' && go test -tags integration ./internal/loomcli/ -run 'TestIntegrationDriverBootstrap'
+verify: go build ./... && go test ./cmd/lyx/ -run 'TestLyDriveSkill|TestHelpTree|TestDriftGuard' && go test ./internal/loomcli/ -run 'TestDriverPrompt|TestStartLLMDriverArm' && go test -tags integration ./internal/loomcli/ -run 'TestIntegrationDriverBootstrap' && go test -tags smoke ./internal/loomcli/ -run 'TestSmokeStatusAndPause_OnNeverBootstrappedPairNameTheRemedy' && go test ./internal/shedadapters/ -run 'TestBouncer_ReBounceProbesForALiveSeed'
 depends-on: [3, 4]
 ```
 
@@ -118,6 +118,8 @@ The last card deletes the design doc and moves the roadmap item, per the Documen
   - `CONSTRAINTS.md`
   - `docs/overview.md`
   - `internal/battenshed/doc.go`
+  - `internal/shedadapters/bouncer_seed_test.go`
+  - `internal/loomcli/smoke_bootstrapwiring_test.go`
   - `manifest/roadmap.md`
 - **Creates:** none
 - **Deletes:**
@@ -130,6 +132,9 @@ The last card deletes the design doc and moves the roadmap item, per the Documen
   - In `docs/overview.md`'s `shed` bullet, add sentences after the `internal/shedcli` sentence: the generic `step` envelope names the durable `trace_file` the invocation wrote plus the run's `friction_dir` and `scratch_dir` (on success and every error), `status` names `trace_dir`, fabric writes every recorded mutation to that trace, and the `ly-drive` skill drives any seeded run through `lyx shed step` recipe-blind, repairing failures from the trace and escalating what it cannot, with an orchestrator session forking one `ly-drive` loop per run.
     Keep the loom and bootstrap bullets' existing `ly-drive` mentions; they stay true.
   - In `internal/battenshed/doc.go`, reword the llm-driver clause "an llm driver handing back on a refusal it may not retry, exhausting its step cap, or finding its skill unavailable" to "an llm driver escalating a failure it cannot repair or finding its skill unavailable"; the rest of the paragraph stays.
+  - In `internal/shedadapters/bouncer_seed_test.go`, reword `TestBouncer_ReBounceProbesForALiveSeed`'s doc comment so it no longer quotes the old skill's "there is no orphan" claim as current text: say the crucible-round-1 reproduction contradicted what the pre-rewrite `ly-drive` skill told operators, and that the rewritten skill makes no such claim; the reproduction facts stay.
+  - In `internal/loomcli/smoke_bootstrapwiring_test.go`, reword `TestSmokeStatusAndPause_OnNeverBootstrappedPairNameTheRemedy`'s doc comment sentence that quotes the skill's "literal first instruction": the `ly-drive` skill's first move is a status read taken as its baseline, and on a brand-new task that read must reach the verb's own remedy rather than a lock-directory error; do not quote a `lyx` command the rewritten skill does not contain.
+    Comment-only; no test logic changes.
   - In `manifest/roadmap.md`, move the Planned item **shed: the LLM driver as a generic stepper and mender** to the top of `## Done`, per the file's own Maintenance rules: one or two sentences, and replace the design-doc link with a pointer to the `ly-drive` skill and the `internal/shedverbs` package documentation (card 13 rewrites `plugins/ly/skills/ly-drive/SKILL.md`, the skill's path to link).
     Leave `## Planned`'s intro sentence with no items.
   - Delete `manifest/designs/shed-llm-driver.md` in the same commit; after deleting, grep `manifest/` and `docs/` for `shed-llm-driver.md` and confirm no link to it remains (Markdown Link Integrity).
@@ -144,4 +149,5 @@ The last card deletes the design doc and moves the roadmap item, per the Documen
 `TestDriverPrompt*` covers the cap removal and the prompt length bound;
 `TestStartLLMDriverArm*` confirm the llm arm still composes its prompt;
 the tagged `TestIntegrationDriverBootstrap*` runs the real llm-driver bootstrap that sends the reworded prompt.
+The smoke case and `TestBouncer_ReBounceProbesForALiveSeed` compile and run the two test files card 15 re-comments.
 The Markdown Link Integrity test runs in the done gate's full suite and covers card 15's roadmap and design-doc edits.

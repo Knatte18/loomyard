@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-review-r1
+phase: plan-fix-r1
 slug: shed-llm-driver
 branch: shed-llm-driver
 plan: _mill/plan
@@ -21,4 +21,5 @@ discussion-fix-r7  '2026-09-26T11:28:10Z'
 discussed  '2026-09-26T11:28:10Z'
 planning  '2026-09-26T11:40:10Z'
 plan-review-r1  '2026-09-26T11:51:35Z'
+plan-fix-r1  '2026-09-26T11:52:30Z'
 ```
