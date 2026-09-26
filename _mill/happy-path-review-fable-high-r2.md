@@ -43,3 +43,16 @@ Scratch root: `$HOME/crucible-happy-path/fable-high-r2/`.
 - `./deploy-dev` → `Deployed lyx @ 4c7fea5db (26223 KB) .../.dev-bin/lyx`.
 - Pre-existing processes: no live tmux server (`/tmp/tmux-1000/*` sockets are all stale), the operator's own `claude` sessions, and the millhouse wiki daemon; nothing of mine yet.
 - `lyx fabric clone --help`, `lyx board upsert --help`, `lyx fabric add --help`, `lyx shed seed --help`, `lyx loom start --help`, `lyx config --help` read; each names its flags and a usable example.
+
+### Log — fixture hub1 and the go-driver run (appended live)
+
+Fixture project: `example.com/tasktool`, packages `task` (domain), `store` (JSON file persistence, imports `task`), `cmd/tasktool` (CLI, imports `store`), each with tests; committed `405ccf6` on `main`, pushed into `hub1/warp.git` (HEAD re-pointed to `refs/heads/main`); `hub1/weft.git` is `git init --bare` with the host default, HEAD `refs/heads/master` (no `init.defaultBranch` on this host) — the F1 shape.
+
+Operator sequence (dev binary `L=.../.dev-bin/lyx`):
+1. `cd $ROOT && $L fabric clone --into $ROOT $ROOT/weft.git $ROOT/warp.git` → ok, hub `$ROOT/warp-LYXHUB`; weft prime on `main-weft`, `_board` on `main` (F1 CONFIRMED sound live, weft bare HEAD was `master`).
+2. `cd $HUB/warp && $L config loom --set selfreport=false --set 'friction='` → ok. `$L config landing --set 'require_pr_to_base=[]'` → ok, file shows `require_pr_to_base: []`. Unrelated `$L config landing --set squash=true` keeps `[]` (F6 CONFIRMED). `$L config reconcile` dry-run reports no added/removed for any module. Weft prime log shows two `weft sync` commits on `main-weft` after the sets, `fabric status` clean.
+3. `cd $HUB/warp && $L board upsert '{"slug":"task-priority",...}'` (brief in the board; see "The task" below) → ok. `$L fabric add task-priority` → ok, pair `task-priority`/`task-priority-weft`, both pushed to the local bares. Task worktree's `_lyx/config/loom.yaml` shows `selfreport: false`, `friction: ""`; `landing.yaml` shows `require_pr_to_base: []` — the override was inherited from `main-weft`.
+4. `cd $HUB/task-priority && $L shed seed self --recipe loom --driver go --param parent=main` → `{"driver":"go","ok":true,"recipe":"loom","run_id":"self"}`; `seed.json` = `{recipe: loom, driver: go, params: {parent: main}}`. `fabric status` shows the seed as an uncommitted weft change (expected: `loom start`'s bootstrap commits it).
+5. `cd $HUB/task-priority && $L loom start --no-attach` → exit 0, **no output at all** (no JSON envelope). Immediately after: `lyx loom status` = `running`, `current_producer: Discussion-Write`, `history_length: 2`; tmux server `lyx-warp-LYXHUB-59652fb8` session `task-priority` up; `lyx reed watchdog`, `lyx loom run` (detached driver), `lyx loom status --watch` (status strand) and the Discussion-Write `claude --model opus --effort high` session are all running. `.lyx/loom/driver.log` exists, 0 bytes so far.
+
+Network check: `selfreport: false` + `friction: ""` in the task's effective `loom.yaml`; `require_pr_to_base: []` so Publish takes the no-pull-request branch (the only `githubclient` caller in landing); the warp remote is `hub1/warp.git`, the weft remote `hub1/weft.git`.
