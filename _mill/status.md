@@ -45,7 +45,9 @@ batches:
     commit_sha: 7c5d87602a3a4e3476d484087267c95587e4a98c
     verify_baseline_failures: []
   - name: loomcli-row-wiring
-    state: pending
+    state: running
+    implementer_session: 3179363c-9c9e-41cb-b0c0-b5503d6cf3c9
+    start_sha: 480e89c252eb08842bf84fd0a523ad3700bdfd9e
     verify_baseline_failures: []
 ```
 ## Inferred-success log
