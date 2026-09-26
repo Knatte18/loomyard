@@ -186,6 +186,13 @@ func (c *loomCLI) specFor(verb string) shedverbs.Spec {
 		},
 	}
 
+	spec.FrictionDir = c.frictionDir
+	// The nil guard keeps the untagged tests that call specFor on a hand-populated receiver with no
+	// location working.
+	if c.location != nil {
+		spec.ScratchDir = shedrun.ScratchDir(c.location, c.runID)
+	}
+
 	// BuildShed is filled per verb, never left generic: step drives c.buildLoomShed, which
 	// already performs the whole fabricengine.Open/CurrentBranch/OriginURL/ReadOrigin/
 	// resolveLandingParent block and the c.env.Landing assignment, while run performs that same
@@ -395,8 +402,8 @@ func (c *loomCLI) loomPostStep(res shedengine.StepResult) {
 	recordStepHandoff(loomengine.LoomStepHandoff(c.location), loomengine.LoomStepHandoffLock(c.location), len(res.History), res.State)
 }
 
-// loomStatusExtras implements the StatusExtras hook for loom's spec: loom's own five status keys,
-// decoded from st.Product only when non-empty, and no others.
+// loomStatusExtras implements the StatusExtras hook for loom's spec: loom's own three status keys
+// (pause_requested, slug, parent), decoded from st.Product only when non-empty, and no others.
 func (c *loomCLI) loomStatusExtras(st shedengine.Status) (map[string]any, error) {
 	var product loomengine.Status
 	if len(st.Product) > 0 {
@@ -407,10 +414,8 @@ func (c *loomCLI) loomStatusExtras(st shedengine.Status) (map[string]any, error)
 		}
 	}
 	return map[string]any{
-		"pause_requested":  st.PauseRequested,
-		"history_length":   len(st.History),
-		"slug":             product.Slug,
-		"parent":           product.Parent,
-		"interrupt_policy": loomshed.InterruptPolicyFor(st.CurrentProducer),
+		"pause_requested": st.PauseRequested,
+		"slug":            product.Slug,
+		"parent":          product.Parent,
 	}, nil
 }
