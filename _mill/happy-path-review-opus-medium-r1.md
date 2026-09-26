@@ -134,3 +134,9 @@ Baseline: worktree HEAD at first deploy `f28403aaf happy-path: crucible seed r1 
   Envelope: `Preflight` `outcome: stuck`, `state: blocked`, trace `preflightshed: preconditions not met ... failures="worktree-clean: uncommitted code changes: ?? .scratch/"`.
   The driver handed back per the skill (`blocked` is never repaired) after 1 step.
   Provisional finding F5 (CONFIRMED, BLOCKING for the llm driver).
+- Operator repair for F5: `echo .scratch/ >> <hub>/warp/.git/info/exclude`; `$L reed remove bfef724d32568a345c16d5f0ae3e4485` (the idle driver strand); `$L loom start --no-attach` → new `loom-driver` strand.
+  The second session also found the skill via `find /`, wrote step files under its own temp dir, and stepped Preflight → … → Webster-Bouncer → `done` at 15:36 (history_length 19).
+- Landing check: prime `main` = `51b4088 Add Mul to calc` on top of `d9f5d85 Add Sub to calc`, `[ahead 2]` of `origin/main`; bare `warp.git` `main` still `seed calc` (F3).
+- Hub after both runs: `$L fabric status` → no changes; `$L fabric pairs` → `main`, `add-sub`, `add-mul` all `in_sync`/`junction_healthy`; no dirty worktree on either side.
+- The second driver session then idled for ~10 minutes in `while pgrep -f 'lyx shed step'` (self-matching) before reporting (F8).
+- Provisional F2 (rollback strands the warp branch) was reclassified as an out-of-scope observation: it is only reachable after another `fabric add` failure and is a documented gate decision.
