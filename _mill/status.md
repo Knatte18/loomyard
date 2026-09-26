@@ -39,7 +39,9 @@ batches:
     commit_sha: 774f2d1676914ffd3b4ce14200bcfdd018c99966
     verify_baseline_failures: []
   - name: fabric-mutation-trace
-    state: pending
+    state: running
+    implementer_session: 18bb6e61-edf0-4ec8-8393-b0ff9ca9d82d
+    start_sha: 6b0826ef505db93379c959b0e8e3429b069429c9
     verify_baseline_failures: []
   - name: shed-envelope-trace
     state: pending
