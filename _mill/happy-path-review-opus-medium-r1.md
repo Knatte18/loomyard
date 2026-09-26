@@ -36,3 +36,12 @@ Baseline: worktree HEAD at first deploy `f28403aaf happy-path: crucible seed r1 
   Provisional finding F1 (weft primary branch derived from the weft bare's own unborn HEAD, not the warp's branch) and F2 (rollback strands the warp branch).
 - Retry `$L fabric add add-sub` → refused `branch "add-sub" already exists; ... delete it first with "git branch -D add-sub"` — the stranded branch blocks the retry.
 - Operator workaround for F1: abandon hub1, build hub2 with the weft bare's HEAD pre-pointed at `main` (`git -C weft.git symbolic-ref HEAD refs/heads/main`) before `fabric clone`.
+
+### Fixture hub 2 — go-driver run (`$HOME/crucible-happy-path/opus-medium-r1/hub2`)
+
+- Same seed; `weft.git` HEAD pre-pointed at `main`; `fabric clone` → weft prime `main-weft`, `_board` on `main`; loom override (`selfreport: false`, `friction: ""`) and landing override (`require_pr_to_base: []`) committed and pushed on `main-weft` before any task.
+- `(cd warp && $L board upsert '{"slug":"add-sub",...}')` → ok.
+- `(cd warp && $L fabric add add-sub)` → ok; pair `add-sub`/`add-sub-weft`, `origin.json` `parent_branch: main`, launcher `_launchers/add-sub/run.sh` = `lyx loom start`.
+  Verified `add-sub-weft/_lyx/config/loom.yaml` carries `selfreport: false`, `friction: ""`, and `landing.yaml` carries `require_pr_to_base: []`.
+- `(cd add-sub && $L shed seed self --recipe loom --driver go --param parent=main)` → `{"driver":"go","ok":true,"recipe":"loom","run_id":"self"}`.
+- `(cd add-sub && $L loom start --no-attach)` → rc 0, no output; weft commits `loom: seed session bootstrap for add-sub`, `Loom-Preflight -> running`, `Discussion-Write -> running`.
