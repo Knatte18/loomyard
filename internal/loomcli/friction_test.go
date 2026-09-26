@@ -1,7 +1,8 @@
 // friction_test.go covers the Tier 2 friction wiring this batch's runCmd/startCmd call sites own: the
 // once-per-task clear-and-create split ensureFrictionDirAfterSeed implements for the shared bootstrap, run's own
 // unconditional ensure, and the reflection-trigger decision shouldReflectFriction/reflectFriction
-// implement for runCmd. Every test here is untagged Tier 1: it spawns no subprocess, drives no
+// implement for runCmd (only RunBlocked with a non-empty directory reflects in loomPostRun; the done
+// path reflects inside the Friction-Reflect row). Every test here is untagged Tier 1: it spawns no subprocess, drives no
 // real git operation, builds no real hub fixture, and contains no time.Sleep at or above one second.
 
 package loomcli
@@ -123,7 +124,8 @@ func TestRunEnsuresAbsentFrictionDir(t *testing.T) {
 // TestShouldReflectFriction covers every combination of the resolved friction directory and the run
 // outcome shouldReflectFriction gates runCmd's reflection call on: RunPaused never triggers it
 // regardless of the directory, an empty directory never triggers it regardless of outcome, and
-// RunDone/RunBlocked both trigger it when the directory is non-empty.
+// only RunBlocked triggers it when the directory is non-empty: RunDone reflects inside the
+// Friction-Reflect row, not in loomPostRun.
 //
 // The non-nil-err path is not exercised here because it is structurally unreachable: runCmd's RunE
 // already returns on a non-nil shed.Run error before this decision is ever consulted, so there is no
@@ -135,7 +137,7 @@ func TestShouldReflectFriction(t *testing.T) {
 		outcome     shedengine.RunOutcome
 		want        bool
 	}{
-		{"Done_DirSet", "/tmp/friction", shedengine.RunDone, true},
+		{"Done_DirSet", "/tmp/friction", shedengine.RunDone, false},
 		{"Blocked_DirSet", "/tmp/friction", shedengine.RunBlocked, true},
 		{"Paused_DirSet", "/tmp/friction", shedengine.RunPaused, false},
 		{"Done_DirEmpty", "", shedengine.RunDone, false},
@@ -167,22 +169,22 @@ func TestReflectFriction_DepsValidationFailureReportsFailed(t *testing.T) {
 		runDeps:     websterengine.RunDeps{Geom: websterengine.Geometry{StencilsDir: "stencils"}},
 	}
 
-	got := c.reflectFriction()
+	got := c.reflectFriction(false)
 
 	if got != frictionengine.StatusFailed {
-		t.Errorf("c.reflectFriction() = %q; want %q", got, frictionengine.StatusFailed)
+		t.Errorf("c.reflectFriction(false) = %q; want %q", got, frictionengine.StatusFailed)
 	}
 	if got == "filed" {
-		t.Error("c.reflectFriction() = \"filed\"; that status must never exist")
+		t.Error("c.reflectFriction(false) = \"filed\"; that status must never exist")
 	}
 }
 
 // TestReflectFriction_SkipsWhenAnotherDriverHoldsTheReflectionLock is the regression guard for the
-// second-driver window Tier 2 opened.
+// blocked path's second-driver window.
 //
-// shedengine.Run releases the run lock on return, and the reflection step fires after that return --
-// so for the whole of the reflection agent's life (friction_timeout_min, thirty minutes in the
-// shipped template) the run lock reads as free and a second "lyx loom start" spawns a second driver.
+// shedengine.Run releases the run lock on return, and the blocked-path reflection fires after that
+// return -- so for the whole of the reflection agent's life (friction_timeout_min, thirty minutes in
+// the shipped template) the run lock reads as free and a second "lyx loom start" spawns a second driver.
 // That second driver is a legitimate resume of a halted run, but its own reflection would archive
 // the friction directory out from under the first one's live agent while both held the same
 // reflection-report.md as a declared output.
@@ -218,8 +220,8 @@ func TestReflectFriction_SkipsWhenAnotherDriverHoldsTheReflectionLock(t *testing
 		runDeps:     websterengine.RunDeps{Geom: websterengine.Geometry{StencilsDir: "stencils"}},
 	}
 
-	if got := c.reflectFriction(); got != frictionengine.StatusSkipped {
-		t.Errorf("c.reflectFriction() with the reflection lock already held = %q; want %q -- a second driver must not reflect over the same notes", got, frictionengine.StatusSkipped)
+	if got := c.reflectFriction(false); got != frictionengine.StatusSkipped {
+		t.Errorf("c.reflectFriction(false) with the reflection lock already held = %q; want %q -- a second driver must not reflect over the same notes", got, frictionengine.StatusSkipped)
 	}
 }
 
@@ -236,10 +238,10 @@ func TestReflectFriction_ReleasesTheLockForTheNextDriver(t *testing.T) {
 		runDeps:     websterengine.RunDeps{Geom: websterengine.Geometry{StencilsDir: "stencils"}},
 	}
 
-	if got := c.reflectFriction(); got != frictionengine.StatusFailed {
-		t.Fatalf("first c.reflectFriction() = %q; want %q", got, frictionengine.StatusFailed)
+	if got := c.reflectFriction(false); got != frictionengine.StatusFailed {
+		t.Fatalf("first c.reflectFriction(false) = %q; want %q", got, frictionengine.StatusFailed)
 	}
-	if got := c.reflectFriction(); got != frictionengine.StatusFailed {
-		t.Errorf("second c.reflectFriction() = %q; want %q -- the first call must have released the reflection lock, not held it for the process's life", got, frictionengine.StatusFailed)
+	if got := c.reflectFriction(false); got != frictionengine.StatusFailed {
+		t.Errorf("second c.reflectFriction(false) = %q; want %q -- the first call must have released the reflection lock, not held it for the process's life", got, frictionengine.StatusFailed)
 	}
 }

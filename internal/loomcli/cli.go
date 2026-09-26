@@ -105,6 +105,14 @@ type loomCLI struct {
 	// reason driverStarter does: *reedengine.Engine is a concrete type and the Test Tier Purity
 	// Invariant bars a real reed call from an untagged file.
 	driverPaneProbe driverPaneProbe
+	// armedVerb is the verb armAt was called with. reflectFrictionRow reads it at call time so the
+	// Friction-Reflect row reflects only under "run", a fact of this invocation rather than the
+	// recorded seed driver, which the Driver Choice Single-Site Invariant bars any code path from
+	// gating behaviour on.
+	armedVerb string
+	// rowFrictionStatus is the status the Friction-Reflect row's closure recorded in this process;
+	// empty when the row did not run here. loomPostRun reports it on RunDone.
+	rowFrictionStatus string
 }
 
 // newLoomCLI is the only place production code may build a *loomCLI: it is what keeps

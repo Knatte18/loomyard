@@ -243,7 +243,7 @@ github.com/Knatte18/loomyard/
 ├── internal/shedcli/             the `lyx shed` subtree: a named-recipe arming table plus the three CLI seams that register it under the lyx root
 ├── internal/landingshed/         landing's two general ShedProducers, Publish and Finalize, shared by reference across producer lists
 ├── internal/mergeresolve/        the merge-in + LLM conflict-resolution engine internal/landingshed's two producers each call
-├── internal/frictionengine/      the aggregation-and-reflection step internal/loomcli's run verb calls once per run
+├── internal/frictionengine/      the aggregation-and-reflection step loom's terminal Friction-Reflect row runs, and loom's run verb runs after a blocked halt
 ├── internal/hubgeom/             the hub-mode told-geometry teller that converts a resolved `lyxcwd.Location` into each engine's geometry struct
 ├── internal/standalonegeom/      the told-mode geometry teller that builds each engine's geometry struct from told absolute path strings
 ├── internal/cliwire/             the shared standalone/hub wiring resolver for the standalone-capable CLIs, the layer that runs after `preflight.ResolveMode` has chosen a mode
