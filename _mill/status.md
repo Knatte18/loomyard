@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-loomcli-row-wiring
+phase: holistic-reviewing
 slug: loom-done-after-friction
 branch: loom-done-after-friction
 plan: _mill/plan
@@ -33,6 +33,7 @@ planned  '2026-09-26T11:54:23Z'
 implementing  '2026-09-26T11:54:33Z'
 approved-friction-reflect-row  '2026-09-26T11:58:21Z'
 approved-loomcli-row-wiring  '2026-09-26T12:02:29Z'
+holistic-reviewing  '2026-09-26T12:02:37Z'
 ```
 
 ## Batches
