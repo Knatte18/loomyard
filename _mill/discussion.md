@@ -36,7 +36,8 @@ the other crash-window findings stay parked as GitHub issues #269, #270, #271 an
 - `internal/shedverbs`: the step body logs its own boundaries at `Info`, and the step envelope (success and every five-kind error) gains `trace_file`, `friction_dir`, `scratch_dir`; the status envelope gains `trace_dir`.
 - `internal/shedverbs/spec.go`: two new told `Spec` fields, `ScratchDir` and `FrictionDir`.
 - `internal/loomcli` and `internal/battencli` fill `ScratchDir` at their one `shedverbs.Spec` construction site each (`arm.go`), so `lyx shed step`, `lyx loom step` and `lyx batten step` all carry it; `internal/loomcli` also fills `FrictionDir`, batten leaves it empty.
-- `internal/landingshed`: its GitHub write calls log at `Info`.
+- `internal/landingshed`: its one GitHub write (`PullRequests.Create` in `publish.go`) logs at `Info`.
+- `internal/shedverbs/status.go`: the generic status core gains `history_length`, `interrupt_policy` and `trace_dir`; loom's and batten's `StatusExtras` drop the keys that moved.
 - The loom driver launch: the step cap is dropped (`AutonomousDriveStepCap`, the prompt sentence, `cmd/lyx/drivercap_test.go`).
 - Docs: `CONSTRAINTS.md` (Shed Verb-Set Invariant allowlist and envelope clause), `docs/overview.md`, `internal/battenshed/doc.go`'s llm-driver paragraph, `internal/shedverbs/step.go`'s kind-disposition comment block, the logger level-policy doc comment, the Fabric Git Invariant's text in `CONSTRAINTS.md` (the reading in `repair-scope`), `lyx loom start`'s `Long` help (`internal/loomcli/start.go`, receiving the launch convention and `$TMUX_PANE` self-check moved out of the skill), and `lyx loom step`'s `Long` help (`internal/loomcli/cli.go` ~233-240).
 - On completion, `manifest/designs/shed-llm-driver.md` is deleted and its `manifest/roadmap.md` Planned item removed, per the rule that `manifest/` holds only unbuilt work.
@@ -99,11 +100,22 @@ the other crash-window findings stay parked as GitHub issues #269, #270, #271 an
 
 ### other-mutations
 
-- Decision: `internal/landingshed`'s GitHub write calls (PR create, merge, and any other API write) log at `Info` after success, naming the PR number and action.
+- Decision: `internal/landingshed`'s one GitHub API write, `PullRequests.Create` in `publish.go`, logs at `Info` after success, naming the PR number.
+  `finalize.go` makes no GitHub call — its merge is `fabricengine.Fabric.Merge`, already recorded through `Mutations`.
   Status-file writes are not logged — the status file already records them.
   Seed writes go through `CommitAnchoredPaths`, so they are covered by `mutations-logged-on-append`.
 - Rationale: outside fabric, GitHub is the one external state a crash can strand with no local record.
 - Rejected: a blanket rule to log every `os.WriteFile` — noise the driver cannot act on.
+
+### status-core-generic
+
+- Decision: every key the skill branches on in a `status` read comes from the generic status body, never a recipe's `StatusExtras`.
+  The generic core in `internal/shedverbs/status.go` gains `history_length` (`len(st.History)`) and `interrupt_policy` (`spec.Hooks.InterruptPolicyFor(st.CurrentProducer)`, `""` when the hook is nil), beside `trace_dir` (Decision `trace-dir-and-trace-id`).
+  Loom's `loomStatusExtras` drops `history_length` and `interrupt_policy`; batten's drops `history_length`.
+  The skill reads `current_producer`, `history_length`, `state` and `interrupt_policy` from `status`, and treats `interrupt_policy: ""` as `handback`, as today.
+- Rationale: the repair-cap key and the interrupted-invocation "run advanced" test are recipe-blind only if every recipe's status envelope carries them; a new recipe cannot omit a key the generic body writes.
+  `InterruptPolicyFor` is already a generic hook the step body uses for `next_interrupt_policy`.
+- Rejected: documenting the skill's dependence on hook-supplied keys — a recipe that omits them silently breaks the cap and the advance test.
 
 ### trace-dir-and-trace-id
 
@@ -113,6 +125,7 @@ the other crash-window findings stay parked as GitHub issues #269, #270, #271 an
   Child `lyx` processes sharing the anchor write their own files with the same id (`trace-<UTC>-<traceid>-<pid>.log`) and the step's pid is unknown after an interrupt, so the driver reads all of them, ordered by the UTC timestamp in the name.
   The same lookup covers the kind-less refusals `internal/shedcli`'s pre-run emits (unseeded run-id, unsupported verb): those envelopes gain no key, and `shedcli`'s pre-run is not touched.
   A child spawned into another worktree (for example batten's `loom start` in a task worktree) writes under that worktree's logs directory; the skill follows the paths the parent trace names.
+- Every envelope the generic `status` body emits carries `trace_dir`: the found envelope, the `found: false` envelope, and each error envelope (decode failure, absent-status refusal, lock-dir failure, `StatusExtras` error, which move from `output.Err` to `output.ErrFields`).
 - Retention: `logger.Sweep` keeps a bounded number of non-live trace files per logs directory and runs on every sink arm, and concurrent forks share a logs directory, so a trace can be swept before a later read.
   The driver therefore reads a step's traces right after the step, and each repair record copies the trace lines it acted on (the mutation entries and the step-boundary lines) rather than only pointing at the file.
   The retention bound itself is not changed.
@@ -242,7 +255,9 @@ the other crash-window findings stay parked as GitHub issues #269, #270, #271 an
   Comments naming ly-drive's retry rule or orphan claim: `internal/battencli/step_test.go:27`, `internal/shedadapters/bouncer_seed_test.go:475`, `internal/loomcli/smoke_bootstrapwiring_test.go:150`, `internal/battenshed/doc.go:15-29` (mentions the step cap).
 - Docs naming the old behaviour: `docs/overview.md` (~335, ~385, ~444), `internal/loomcli/cli.go` step `Long` help (~233-240), `CONSTRAINTS.md` Shed Verb-Set Invariant.
 - The current `SKILL.md` wrongly says loom's friction directory is under the worktree root; it is under `AnchorPath`. The rewrite drops the sentence.
-- GitHub writes: `internal/landingshed/publish.go` and `finalize.go` through `githubclient`.
+- GitHub writes: `internal/landingshed/publish.go`'s `PullRequests.Create` is the only one.
+- Status body: `internal/shedverbs/status.go` builds `core` (`current_producer`, `state`, `error`, `activity`, ~163-168) and merges `Hooks.StatusExtras`; loom's extras (`internal/loomcli/arm.go` ~409-415) carry `history_length` and `interrupt_policy`, batten's (`internal/battencli/arm.go` ~534-540) carry `history_length` only.
+  The `found: false` branch (~144-156) short-circuits before the core, and its comment says it adds no keys; that comment changes with `trace_dir`.
 
 ## Constraints
 
@@ -270,6 +285,8 @@ the other crash-window findings stay parked as GitHub issues #269, #270, #271 an
 - `internal/landingshed`: a successful PR write logs one `Info` record (through the existing fake GitHub seam).
 - `cmd/lyx`: the recipe-blindness tripwire on `SKILL.md`.
 - Integration: an existing integration test that drives a real `lyx shed step` gets one assertion that `trace_file` names an existing file containing the step's boundary records.
+  These tests run in-process through `RunCLIIn`, where the sink refuses to arm under `testing.Testing()`, so the test arms it first with `logger.SetDurableSinkDir` on a test directory (preferred over `LYX_TRACE=1`, which writes into the fixture's own `.lyx/logs`).
+- `internal/shedverbs` status: the found envelope carries `history_length` and `interrupt_policy` from the generic core (`""` with a nil `InterruptPolicyFor`); `trace_dir` appears on the found, `found: false` and error envelopes.
 
 ## Q&A log
 
@@ -281,6 +298,7 @@ the other crash-window findings stay parked as GitHub issues #269, #270, #271 an
 - **Q:** Which non-running envelopes does the driver repair? **A:** [auto-pick] `producer`, `bootstrap`, `unseeded` and interrupted invocations; `busy`, `ownership`, kind-less refusals, `blocked` and `paused` are handed back. **Why:** a gate verdict, a live lock holder or a slug mismatch is not a crash, and pausing a lock holder could stop a sibling driver.
 - **Q:** Does an interrupted `handback` row go down the repair path? **A:** [auto-pick] No — the three interrupt sub-cases stay; `handback`/absent hands back unconditionally. **Why:** a live agent may still be running, and touching its strand restarts it.
 - **Q:** What identifies "the same row" for `repair-cap`? **A:** [auto-pick] `current_producer` + `history_length` from a status read before the first repair. **Why:** error envelopes carry neither field.
+- **Q:** Do `history_length`/`interrupt_policy` stay recipe-supplied `StatusExtras` keys? **A:** [auto-pick] No — both move into the generic status core. **Why:** the skill's cap and advance checks must hold for every recipe.
 - **Q:** How does a fork reach the directory a run requires without the skill naming a recipe? **A:** [auto-pick] The fork prompt names the drive directory; the skill runs each `lyx` call in a subshell `cd`. **Why:** the orchestrator seeded the run there, and the recipe's own refusal covers a wrong directory.
 - **Q:** What may a repair touch? **A:** [auto-pick] `lyx` verbs plus read-only git, with one narrow exception for deleting a branch the failed step's trace shows it created; never status/seed by hand, no force-push. **Why:** Fabric Git Invariant, while keeping the absorbed stranded-branch window (#269) repairable.
 - **Q:** Cap on repeated repairs of the same row? **A:** [auto-pick] Two repairs without the run advancing, then escalate. **Why:** separates a transient crash window from a systematic defect.
