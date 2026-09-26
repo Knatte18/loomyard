@@ -26,6 +26,7 @@ Mint a fresh 16-lowercase-hex `LYX_TRACE_ID` for each invocation and export it i
 Never run a step as a blocking foreground call: a step can block for a whole agent run, longer than any foreground shell call allows.
 Launch it in the background with stdout redirected to `<step-dir>/step-<n>.json`, where `<step-dir>` is a private directory created once per drive with `mktemp -d` and recorded as an absolute path.
 Never put step output under the drive directory, or under the session's cwd when that is the drive directory, as it is for a driver a recipe's bootstrap verb launches: any file there dirties the run's worktree and fails its clean-tree gates.
+Launch one step per background job, and read its envelope and its trace before launching the next; never a loop that runs several steps without the session reading each one in between, since a trace read only after the loop ends may already be swept.
 Wait for that background job's own exit, by its completion notice or by `wait <pid>` in the shell that launched it, then read the envelope from that file.
 Never wait by matching text of any command line (`pgrep -f`, `ps | grep`), whatever the text is: the step's own verb, a wrapper script, the step directory's path.
 The waiting shell's own command line carries the same text, so such a wait never ends.
