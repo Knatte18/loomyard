@@ -46,3 +46,9 @@ batches:
     state: pending
     verify_baseline_failures: []
 ```
+
+## Inferred-success log
+
+```text
+'2026-09-26T11:58:11Z'  friction-reflect-row  round 1
+```
