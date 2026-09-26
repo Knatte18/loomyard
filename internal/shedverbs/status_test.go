@@ -12,7 +12,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/state"
 )
 
 func statusTexts() VerbTexts {
@@ -42,10 +44,16 @@ func TestStatusCmd_AbsentFile_Refuse(t *testing.T) {
 	if env["error"] != spec.AbsentStatus.RefuseMessage {
 		t.Errorf("error = %v; want %q", env["error"], spec.AbsentStatus.RefuseMessage)
 	}
+	if env["found"] != false {
+		t.Errorf("found = %v; want false", env["found"])
+	}
+	if _, ok := env["trace_dir"]; !ok {
+		t.Errorf("envelope missing trace_dir: %v", env)
+	}
 }
 
 // TestStatusCmd_AbsentFile_FoundFalse covers the non-refusing disposition: the success envelope
-// carries exactly the two keys found and status_path, no core key and no extras key.
+// carries exactly the keys found, status_path and trace_dir, no core key and no extras key.
 func TestStatusCmd_AbsentFile_FoundFalse(t *testing.T) {
 	paths := newTestPaths(t)
 	if err := os.MkdirAll(filepath.Dir(paths.StatusLockPath), 0o755); err != nil {
@@ -69,7 +77,7 @@ func TestStatusCmd_AbsentFile_FoundFalse(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d; want 0", code)
 	}
-	wantKeys := map[string]bool{"found": true, "status_path": true, "ok": true}
+	wantKeys := map[string]bool{"found": true, "status_path": true, "trace_dir": true, "ok": true}
 	if len(env) != len(wantKeys) {
 		t.Fatalf("envelope keys = %v; want exactly %v", env, wantKeys)
 	}
@@ -340,5 +348,112 @@ func TestEnsureStatusLockDir_ErrorReusesToldPrefix(t *testing.T) {
 	}
 	if !strings.HasPrefix(err.Error(), "loom: create the status lock's directory ") {
 		t.Errorf("error = %q; want the told prefix", err.Error())
+	}
+}
+
+// seededStatusSpec builds a Spec over a seeded status file whose history holds two entries.
+func seededStatusSpec(t *testing.T, hooks Hooks) *Spec {
+	t.Helper()
+	paths := newTestPaths(t)
+	if err := os.MkdirAll(filepath.Dir(paths.StatusLockPath), 0o755); err != nil {
+		t.Fatalf("mkdir status lock parent: %v", err)
+	}
+	seedStatus(t, paths, "Only")
+	st, _, err := state.ReadJSONStrict[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
+	if err != nil {
+		t.Fatalf("read seeded status: %v", err)
+	}
+	st.History = []shedengine.HistoryEntry{{Producer: "A"}, {Producer: "B"}}
+	if err := state.WriteJSON(paths.StatusPath, paths.StatusLockPath, st); err != nil {
+		t.Fatalf("write status with history: %v", err)
+	}
+	return &Spec{
+		StatusPath:      paths.StatusPath,
+		StatusLockPath:  paths.StatusLockPath,
+		DecodeErrPrefix: "loom:",
+		Hooks:           hooks,
+	}
+}
+
+// TestStatusCmd_FoundEnvelope_GenericCore asserts the found envelope carries history_length,
+// interrupt_policy and trace_dir from the generic core, with an empty policy for a nil hook.
+func TestStatusCmd_FoundEnvelope_GenericCore(t *testing.T) {
+	tests := []struct {
+		name       string
+		hook       func(row string) string
+		wantPolicy string
+	}{
+		{"HookFilled", func(row string) string { return "reinvoke" }, "reinvoke"},
+		{"NilHook", nil, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			spec := seededStatusSpec(t, Hooks{InterruptPolicyFor: tt.hook})
+			env, code := execEnvelope(t, statusCmd(statusTexts(), spec), nil)
+			if code != 0 {
+				t.Fatalf("exit code = %d; want 0", code)
+			}
+			if env["history_length"] != float64(2) {
+				t.Errorf("history_length = %v; want 2", env["history_length"])
+			}
+			if env["interrupt_policy"] != tt.wantPolicy {
+				t.Errorf("interrupt_policy = %v; want %q", env["interrupt_policy"], tt.wantPolicy)
+			}
+			if _, ok := env["trace_dir"]; !ok {
+				t.Errorf("envelope missing trace_dir: %v", env)
+			}
+		})
+	}
+}
+
+// TestStatusCmd_ErrorEnvelopesCarryTraceDirOnly asserts the decode-failure and StatusExtras-error
+// envelopes carry trace_dir and no found key.
+func TestStatusCmd_ErrorEnvelopesCarryTraceDirOnly(t *testing.T) {
+	decode := seededStatusSpec(t, Hooks{})
+	if err := os.WriteFile(decode.StatusPath, []byte("{not json"), 0o644); err != nil {
+		t.Fatalf("corrupt status file: %v", err)
+	}
+	extras := seededStatusSpec(t, Hooks{StatusExtras: func(shedengine.Status) (map[string]any, error) {
+		return nil, errors.New("extras exploded")
+	}})
+
+	tests := []struct {
+		name string
+		spec *Spec
+	}{{"DecodeFailure", decode}, {"StatusExtrasError", extras}}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env, code := execEnvelope(t, statusCmd(statusTexts(), tt.spec), nil)
+			if code != 1 {
+				t.Fatalf("exit code = %d; want 1", code)
+			}
+			if _, ok := env["trace_dir"]; !ok {
+				t.Errorf("envelope missing trace_dir: %v", env)
+			}
+			if _, ok := env["found"]; ok {
+				t.Errorf("error envelope carries found: %v", env)
+			}
+		})
+	}
+}
+
+// TestStatusCmd_TraceDirMatchesOverride asserts trace_dir echoes the sink override without
+// arming the sink. It never runs in parallel: the sink override is package-level state.
+func TestStatusCmd_TraceDirMatchesOverride(t *testing.T) {
+	dir := t.TempDir()
+	logger.SetDurableSinkDir(dir)
+	t.Cleanup(func() { logger.SetDurableSinkDir("") })
+
+	spec := seededStatusSpec(t, Hooks{})
+	env, code := execEnvelope(t, statusCmd(statusTexts(), spec), nil)
+	if code != 0 {
+		t.Fatalf("exit code = %d; want 0", code)
+	}
+	if env["trace_dir"] != dir {
+		t.Errorf("trace_dir = %v; want %q", env["trace_dir"], dir)
+	}
+	traces, _ := filepath.Glob(filepath.Join(dir, "trace-*.log"))
+	if len(traces) != 0 {
+		t.Errorf("trace files in override dir = %v; want none", traces)
 	}
 }

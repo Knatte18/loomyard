@@ -11,6 +11,8 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"strings"
+
+	"github.com/Knatte18/loomyard/internal/logger"
 )
 
 // Kind names the fixed, closed vocabulary of mutation kinds a Mutation entry can carry.
@@ -44,8 +46,10 @@ const (
 	// KindWorktreeCreated records createGitWorktree's `git worktree add`.
 	KindWorktreeCreated Kind = "worktree_created"
 	// KindBranchCreated records a verb success site that created a branch.
+	// Its Detail is "side=<warp|weft> repo=<abs path>".
 	KindBranchCreated Kind = "branch_created"
 	// KindBranchPushed records a verb success site that pushed a branch.
+	// Its Detail is "side=<warp|weft> repo=<abs path> remote=<name>", with remote omitted when unknown.
 	KindBranchPushed Kind = "branch_pushed"
 	// KindCommitCreated records a verb success site that landed a commit.
 	KindCommitCreated Kind = "commit_created"
@@ -106,6 +110,9 @@ type Mutation struct {
 // the Mutations value a result type carries (via MutationRecord.Mutated), never on a recorder
 // pointer — Mutated returns a non-addressable Mutations value, so a pointer receiver would not
 // compile against res.Mutated().Entries()/.Len().
+//
+// Each appended entry is also written to the durable trace sink, so a killed process's trace keeps
+// every mutation up to the last completed one.
 type Mutations struct {
 	// hubRoot is the absolute path Append converts a target against. It may be empty, in which
 	// case Append never converts and records the absolute slashed path.
@@ -134,11 +141,9 @@ func (m *Mutations) Append(kind Kind, target, detail string) {
 	if m == nil {
 		return
 	}
-	m.entries = append(m.entries, Mutation{
-		Kind:   kind,
-		Target: hubRelativeTarget(m.hubRoot, target),
-		Detail: detail,
-	})
+	recorded := hubRelativeTarget(m.hubRoot, target)
+	m.entries = append(m.entries, Mutation{Kind: kind, Target: recorded, Detail: detail})
+	logger.Info("fabric: mutation", "kind", string(kind), "target", recorded, "detail", detail)
 }
 
 // hubRelativeTarget converts target to a hub-relative, filepath.ToSlash'd path when it descends
@@ -158,10 +163,27 @@ func hubRelativeTarget(hubRoot, target string) string {
 	return rel
 }
 
+// refDetail builds the Detail of a branch_created or branch_pushed entry: "side=<side> repo=<repo>",
+// plus " remote=<remote>" when remote is non-empty.
+// side is "warp" or "weft"; repo is made absolute (kept as given on error) and slashed.
+func refDetail(side, repo, remote string) string {
+	if !filepath.IsAbs(repo) {
+		if abs, err := filepath.Abs(repo); err == nil {
+			repo = abs
+		}
+	}
+	detail := "side=" + side + " repo=" + filepath.ToSlash(repo)
+	if remote != "" {
+		detail += " remote=" + remote
+	}
+	return detail
+}
+
 // Extend appends every entry of other to m verbatim, performing no path conversion: other's entries
 // were already converted by whichever Mutations produced them.
 // This is the composition primitive for a verb that calls another recording entry point (Unwire
 // over UnwireJunctions), and for the CLI layer's concatenate-engine-record-then-CLI-entries rule.
+// Extend logs nothing: its entries were already logged when first appended.
 // A nil receiver is safe, and an empty other is a no-op.
 func (m *Mutations) Extend(other Mutations) {
 	if m == nil {
@@ -179,6 +201,7 @@ func (m *Mutations) AppendRef(kind Kind, ref, detail string) {
 		return
 	}
 	m.entries = append(m.entries, Mutation{Kind: kind, Target: ref, Detail: detail})
+	logger.Info("fabric: mutation", "kind", string(kind), "target", ref, "detail", detail)
 }
 
 // Entries returns a copy of the accumulated record, in append order.

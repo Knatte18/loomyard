@@ -274,6 +274,17 @@ driver-log accessor names, never to this command's own output -- an ly-drive
 strand writes no such log, since its own pane is where its output already
 lives.
 
+A worktree opened through "lyx ide spawn"'s generated VS Code task starts
+"lyx reed up", then "lyx reed add --if-absent --cmd claude --name claude
+--focus", then "lyx reed attach", so the operator's own session is the
+strand named "claude" and the panes the run spawns are its siblings. To
+self-check, compare $TMUX_PANE against the tracked strands "lyx reed status"
+reports: tracked is fine; set but untracked means relaunch through that
+chain or proceed without reed supervision; unset is unconfirmed, not
+failed, since psmux on Windows may not export it. A worktree whose
+.vscode/tasks.json predates this convention is upgraded by deleting that
+file and re-running "lyx ide spawn".
+
 --no-attach performs steps 1 through 3 and returns once the driver's
 readiness signal confirms it is up, instead of running step 4 -- skipping
 the terminal handover this way skips the operator's own strand with it. That

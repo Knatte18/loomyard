@@ -154,7 +154,7 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 	}
 	// The `-b warpBranch` argument to the worktree add above means this same call created a branch,
 	// not merely a worktree; a branch is a ref, so it records via AppendRef rather than Append.
-	rec.AppendRef(KindBranchCreated, warpBranch, "")
+	rec.AppendRef(KindBranchCreated, warpBranch, refDetail("warp", l.WorktreePath(), ""))
 
 	// Install the post-checkout hook now that the warp worktree exists.
 	// Hook installation is non-fatal: a failure is logged but does not abort
@@ -232,7 +232,7 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 		_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok)
 		return AddResult{}, fmt.Errorf("push branch %q failed: %w", warpBranch, err)
 	}
-	rec.AppendRef(KindBranchPushed, warpBranch, "")
+	rec.AppendRef(KindBranchPushed, warpBranch, refDetail("warp", l.WorktreePath(), "origin"))
 
 	// (12) Push weft branch
 	if err := pushWeftBranch(rec, l, slug, weftBranch, opts); err != nil {

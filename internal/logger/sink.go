@@ -113,32 +113,17 @@ func ensureDurableSink() bool {
 // level of nesting rather than a sinkOK assignment inside a closure -- the shape that made the
 // unlocked writes easy to miss in the first place.
 func armDurableSinkLocked() bool {
-	dir := sinkDirOverride
-	if dir == "" {
-		if testing.Testing() && os.Getenv("LYX_TRACE") != "1" {
-			return false
-		}
+	dir, worktreeRoot, ok := resolveSinkDirLocked()
+	if !ok {
+		return false
 	}
 
 	armHeader()
-
-	if dir == "" {
-		cwd, err := lyxcwd.Getwd()
-		if err != nil {
-			return false
-		}
-		layout, err := lyxcwd.Resolve(cwd)
-		if err != nil {
-			return false
-		}
-		if !isLyxWorktree(layout) {
-			return false
-		}
-		dir = LogsDir(layout)
-		// header.WorktreeRoot records the worktree root as trace metadata, a
-		// separate concern from where the trace file itself lands (LogsDir is
-		// AnchorPath-anchored), so the two lines below disagree by design.
-		header.WorktreeRoot = layout.WorktreePath()
+	// header.WorktreeRoot records the worktree root as trace metadata, a
+	// separate concern from where the trace file itself lands (LogsDir is
+	// AnchorPath-anchored), so the two disagree by design.
+	if worktreeRoot != "" {
+		header.WorktreeRoot = worktreeRoot
 	}
 
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -169,6 +154,58 @@ func armDurableSinkLocked() bool {
 	sinkPath = path
 	sinkBytesWritten = int64(len(line))
 	return true
+}
+
+// resolveSinkDirLocked resolves the directory the durable sink writes to, plus the worktree root to
+// record in the header, and reports whether a directory could be resolved.
+// Callers hold sinkMu.
+// An override returns an empty worktreeRoot; otherwise the cwd-anchored resolution applies, gated
+// off under `go test` unless LYX_TRACE is "1".
+func resolveSinkDirLocked() (dir, worktreeRoot string, ok bool) {
+	if sinkDirOverride != "" {
+		return sinkDirOverride, "", true
+	}
+	if testing.Testing() && os.Getenv("LYX_TRACE") != "1" {
+		return "", "", false
+	}
+	cwd, err := lyxcwd.Getwd()
+	if err != nil {
+		return "", "", false
+	}
+	layout, err := lyxcwd.Resolve(cwd)
+	if err != nil {
+		return "", "", false
+	}
+	if !isLyxWorktree(layout) {
+		return "", "", false
+	}
+	return LogsDir(layout), layout.WorktreePath(), true
+}
+
+// TraceFile forces the lazy durable sink open and returns the absolute path of this process's trace file.
+// It returns "" when no sink can arm, and the same path on every call within one sink generation.
+func TraceFile() string {
+	if !ensureDurableSink() {
+		return ""
+	}
+	sinkMu.Lock()
+	defer sinkMu.Unlock()
+
+	return sinkPath
+}
+
+// TraceDir returns the directory the durable sink would write to, or "" when none resolves.
+// It lets a caller list trace files by trace id without arming a sink of its own;
+// it never arms the sink, creates anything, or sweeps, so the directory need not exist yet.
+func TraceDir() string {
+	sinkMu.Lock()
+	defer sinkMu.Unlock()
+
+	dir, _, ok := resolveSinkDirLocked()
+	if !ok {
+		return ""
+	}
+	return dir
 }
 
 // isLyxWorktree reports whether layout names a worktree lyx actually owns, by the presence of the

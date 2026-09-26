@@ -185,7 +185,7 @@ func TestStatusCmd_EnvelopeKeySet(t *testing.T) {
 			wantKeys := map[string]bool{
 				"ok": true, "current_producer": true, "state": true, "error": true,
 				"pause_requested": true, "activity": true, "history_length": true,
-				"slug": true, "parent": true, "interrupt_policy": true,
+				"slug": true, "parent": true, "interrupt_policy": true, "trace_dir": true,
 			}
 			for k := range wantKeys {
 				if _, ok := envelope[k]; !ok {

@@ -679,3 +679,42 @@ func TestPublishGitHubErrorReason_ClassifiesDistinctly(t *testing.T) {
 		t.Errorf("classification reasons are not all distinct: token=%q api=%q network=%q", tokenReason, apiReason, networkReason)
 	}
 }
+
+// TestPublish_CreatedPRLogsInfo asserts the one GitHub write lands in the durable trace exactly
+// once, carrying the created pull request's number. It never runs in parallel: the sink override
+// is package-level state.
+func TestPublish_CreatedPRLogsInfo(t *testing.T) {
+	logger.SetDurableSinkDir(t.TempDir())
+	t.Cleanup(func() { logger.SetDurableSinkDir("") })
+
+	deps := newTestDeps(t)
+	writeSummary(t, deps.FinalSummaryPath, "My PR Title", "My PR body.")
+	var order []string
+	deps.PushBranch = func() error { order = append(order, "push"); return nil }
+	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
+	p := &Publish{deps: deps, resolver: res}
+
+	srv := newPublishGitHubServer(t, &order)
+	srv.install(t)
+
+	if _, _, err := p.Call(context.Background()); err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+
+	data, err := os.ReadFile(logger.TraceFile())
+	if err != nil {
+		t.Fatalf("read trace file: %v", err)
+	}
+	var created []string
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.Contains(line, `msg="landingshed: pull request created"`) {
+			created = append(created, line)
+		}
+	}
+	if len(created) != 1 {
+		t.Fatalf("pull request created records = %d; want 1\n%s", len(created), data)
+	}
+	if !strings.Contains(created[0], "number=1") {
+		t.Errorf("record = %q; want number=1", created[0])
+	}
+}

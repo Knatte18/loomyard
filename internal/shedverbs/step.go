@@ -8,6 +8,7 @@ import (
 	"errors"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/spf13/cobra"
@@ -15,11 +16,9 @@ import (
 
 // The closed refusal-kind vocabulary step reports on the envelope's "kind" field. This set is
 // closed at five: StepKinds below lists all of them, and a test asserts the set is exactly this and
-// no larger. The skill's one-retry rule applies to KindProducer alone -- every other kind is handed
-// straight back to the operator with no retry, because none of them can be fixed by running the same
-// command again: KindBusy means a driver already holds the run lock, KindUnseeded and KindOwnership
-// mean the bootstrap needs an operator decision (a --parent flag, or a mismatched worktree), and
-// KindBootstrap covers every other pre-producer failure, none of which a bare re-invocation resolves.
+// no larger.
+// The ly-drive skill (plugins/ly/skills/ly-drive/SKILL.md) is the single place a driver's
+// disposition per kind is stated.
 const (
 	// KindBusy means the run lock is already held by a live driver or another `step` invocation.
 	KindBusy = "busy"
@@ -32,9 +31,7 @@ const (
 	// KindBootstrap means a BuildShed failure, or any other pre-producer setup failure a module's
 	// own PreStep hook classifies as unclassifiable, occurred somewhere before the producer call.
 	KindBootstrap = "bootstrap"
-	// KindProducer means shed.Step's own producer call returned a hard error. This is the one kind
-	// the supervisor skill may retry once, since the status file already records the failure
-	// verbatim and a retry re-calls the same producer from the same persisted state.
+	// KindProducer means shed.Step's own producer call returned a hard error.
 	KindProducer = "producer"
 )
 
@@ -45,8 +42,8 @@ var StepKinds = []string{KindBusy, KindUnseeded, KindOwnership, KindBootstrap, K
 
 // StepEnvelope builds step's success envelope from res -- the StepResult shed.Step returned --
 // alongside nextPolicy (spec.Hooks.InterruptPolicyFor(res.Next), or the empty string when the hook
-// is nil) and statusFile (the shed's own StatusPath). The returned map carries exactly the ten
-// documented keys below; the key set is closed -- a key outside these ten has no test and no
+// is nil) and statusFile (the shed's own StatusPath). The returned map carries exactly the thirteen
+// documented keys below; the key set is closed -- a key outside these thirteen has no test and no
 // documented meaning:
 //
 //   - producer: res.Producer
@@ -59,10 +56,13 @@ var StepKinds = []string{KindBusy, KindUnseeded, KindOwnership, KindBootstrap, K
 //   - history_length: len(res.History)
 //   - next_interrupt_policy: nextPolicy
 //   - status_file: statusFile
+//   - trace_file: loc.TraceFile
+//   - friction_dir: loc.FrictionDir
+//   - scratch_dir: loc.ScratchDir
 //
 // "continue" is derived here, rather than left to the caller, so a thin external supervisor skill
 // never carries its own copy of the State vocabulary -- it only ever branches on this one boolean.
-func StepEnvelope(res shedengine.StepResult, nextPolicy, statusFile string) map[string]any {
+func StepEnvelope(res shedengine.StepResult, nextPolicy, statusFile string, loc StepLocations) map[string]any {
 	return map[string]any{
 		"producer":              res.Producer,
 		"outcome":               string(res.Outcome),
@@ -74,6 +74,28 @@ func StepEnvelope(res shedengine.StepResult, nextPolicy, statusFile string) map[
 		"history_length":        len(res.History),
 		"next_interrupt_policy": nextPolicy,
 		"status_file":           statusFile,
+		"trace_file":            loc.TraceFile,
+		"friction_dir":          loc.FrictionDir,
+		"scratch_dir":           loc.ScratchDir,
+	}
+}
+
+// StepLocations carries the three path keys every step envelope reports: trace_file
+// (TraceFile), friction_dir (FrictionDir) and scratch_dir (ScratchDir).
+// It is one struct so StepEnvelope and the error-envelope helper share a single source.
+type StepLocations struct {
+	TraceFile   string
+	FrictionDir string
+	ScratchDir  string
+}
+
+// stepErrFields builds an error envelope's extra fields: kind plus the three location keys.
+func stepErrFields(kind string, loc StepLocations) map[string]any {
+	return map[string]any{
+		"kind":         kind,
+		"trace_file":   loc.TraceFile,
+		"friction_dir": loc.FrictionDir,
+		"scratch_dir":  loc.ScratchDir,
 	}
 }
 
@@ -89,23 +111,33 @@ func stepCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
 			}
+			logger.Info("shed: step", "status_file", spec.StatusPath)
 			ctx := cmd.Context()
 			out := cmd.OutOrStdout()
 
+			// locations is computed after the Warn so the trace file it names is the one holding it.
+			locations := func() StepLocations {
+				return StepLocations{TraceFile: logger.TraceFile(), FrictionDir: spec.FrictionDir, ScratchDir: spec.ScratchDir}
+			}
+			refuse := func(kind, msg string) {
+				logger.Warn("shed: step refused", "kind", kind, "error", msg)
+				clihelp.SetExit(ctx, output.ErrFields(out, msg, stepErrFields(kind, locations())))
+			}
+
 			if spec.Hooks.PreStep != nil {
 				if kind, err := spec.Hooks.PreStep(ctx); err != nil {
-					clihelp.SetExit(ctx, output.ErrFields(out, err.Error(), map[string]any{"kind": kind}))
+					refuse(kind, err.Error())
 					return nil
 				}
 			}
 
 			if spec.BuildShed == nil {
-				clihelp.SetExit(ctx, output.ErrFields(out, "shedverbs: step: no BuildShed constructor configured", map[string]any{"kind": KindBootstrap}))
+				refuse(KindBootstrap, "shedverbs: step: no BuildShed constructor configured")
 				return nil
 			}
 			shed, err := spec.BuildShed()
 			if err != nil {
-				clihelp.SetExit(ctx, output.ErrFields(out, err.Error(), map[string]any{"kind": KindBootstrap}))
+				refuse(KindBootstrap, err.Error())
 				return nil
 			}
 
@@ -116,12 +148,13 @@ func stepCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 					if spec.StepBusyMessage != "" {
 						msg = spec.StepBusyMessage
 					}
-					clihelp.SetExit(ctx, output.ErrFields(out, msg, map[string]any{"kind": spec.StepBusyKind}))
+					refuse(spec.StepBusyKind, msg)
 					return nil
 				}
-				clihelp.SetExit(ctx, output.ErrFields(out, err.Error(), map[string]any{"kind": KindProducer}))
+				refuse(KindProducer, err.Error())
 				return nil
 			}
+			logger.Info("shed: step done", "producer", res.Producer, "outcome", string(res.Outcome), "state", string(res.State), "next", res.Next, "reason", res.Reason)
 
 			if spec.Hooks.PostStep != nil {
 				spec.Hooks.PostStep(res)
@@ -131,7 +164,7 @@ func stepCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 			if spec.Hooks.InterruptPolicyFor != nil {
 				nextPolicy = spec.Hooks.InterruptPolicyFor(res.Next)
 			}
-			clihelp.SetExit(ctx, output.Ok(out, StepEnvelope(res, nextPolicy, spec.StatusPath)))
+			clihelp.SetExit(ctx, output.Ok(out, StepEnvelope(res, nextPolicy, spec.StatusPath, locations())))
 			return nil
 		},
 	}

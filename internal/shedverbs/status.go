@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -127,31 +128,32 @@ func statusCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 			}
 			ctx := cmd.Context()
 			out := cmd.OutOrStdout()
+			traceDir := logger.TraceDir()
 
 			if spec.EnsureStatusLockDir {
 				if err := ensureStatusLockDir(spec.DecodeErrPrefix, spec.StatusLockPath); err != nil {
-					clihelp.SetExit(ctx, output.Err(out, err.Error()))
+					clihelp.SetExit(ctx, output.ErrFields(out, err.Error(), map[string]any{"trace_dir": traceDir}))
 					return nil
 				}
 			}
 
 			st, found, err := state.ReadJSONStrict[shedengine.Status](spec.StatusPath, spec.StatusLockPath)
 			if err != nil {
-				clihelp.SetExit(ctx, output.Err(out, spec.DecodeErrPrefix+" decode status file "+spec.StatusPath+": "+err.Error()))
+				clihelp.SetExit(ctx, output.ErrFields(out, spec.DecodeErrPrefix+" decode status file "+spec.StatusPath+": "+err.Error(), map[string]any{"trace_dir": traceDir}))
 				return nil
 			}
 			if !found {
-				// This disposition short-circuits before both the generic core and StatusExtras, so
-				// neither contributes a key to an absent-file envelope -- passing a zero
-				// shedengine.Status through StatusExtras is explicitly rejected, because it would add
-				// keys to an envelope that carries neither today.
+				// trace_dir is the one generic key this branch carries: StatusExtras still never
+				// runs against a zero shedengine.Status, and found: false is the one discriminator
+				// both absent dispositions share.
 				if spec.AbsentStatus.Refuse {
-					clihelp.SetExit(ctx, output.Err(out, spec.AbsentStatus.RefuseMessage))
+					clihelp.SetExit(ctx, output.ErrFields(out, spec.AbsentStatus.RefuseMessage, map[string]any{"found": false, "trace_dir": traceDir}))
 					return nil
 				}
 				clihelp.SetExit(ctx, output.Ok(out, map[string]any{
 					"found":       false,
 					"status_path": spec.StatusPath,
+					"trace_dir":   traceDir,
 				}))
 				return nil
 			}
@@ -160,17 +162,24 @@ func statusCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 				runStatusWatch(out, spec, interval)
 			}
 
+			interruptPolicy := ""
+			if spec.Hooks.InterruptPolicyFor != nil {
+				interruptPolicy = spec.Hooks.InterruptPolicyFor(st.CurrentProducer)
+			}
 			core := map[string]any{
 				"current_producer": st.CurrentProducer,
 				"state":            string(st.State),
 				"error":            st.Error,
 				"activity":         st.Activity,
+				"history_length":   len(st.History),
+				"interrupt_policy": interruptPolicy,
+				"trace_dir":        traceDir,
 			}
 			if spec.Hooks.StatusExtras != nil {
 				extras, err := spec.Hooks.StatusExtras(st)
 				if err != nil {
 					// Reported verbatim, with no re-prefixing: the hook owns its whole string.
-					clihelp.SetExit(ctx, output.Err(out, err.Error()))
+					clihelp.SetExit(ctx, output.ErrFields(out, err.Error(), map[string]any{"trace_dir": traceDir}))
 					return nil
 				}
 				for k, v := range extras {

@@ -14,7 +14,9 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/spf13/cobra"
 )
@@ -272,4 +274,40 @@ func TestVerbRefusals(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestSpecFor_ScratchAndFrictionDir asserts specFor tells the generic verbs the run's scratch
+// directory and the friction directory, and tolerates a receiver with no location.
+func TestSpecFor_ScratchAndFrictionDir(t *testing.T) {
+	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+
+	t.Run("ScratchDirFromLocationAndRunID", func(t *testing.T) {
+		c := &loomCLI{location: loc, runID: "self"}
+		if got, want := c.specFor("step").ScratchDir, shedrun.ScratchDir(loc, "self"); got != want {
+			t.Errorf("specFor(step).ScratchDir = %q; want %q", got, want)
+		}
+	})
+
+	tests := []struct {
+		name string
+		dir  string
+	}{
+		{"FrictionDirSet", filepath.Join(t.TempDir(), "friction")},
+		{"FrictionDirEmpty", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := &loomCLI{location: loc, runID: "self", frictionDir: tt.dir}
+			if got := c.specFor("step").FrictionDir; got != tt.dir {
+				t.Errorf("specFor(step).FrictionDir = %q; want %q", got, tt.dir)
+			}
+		})
+	}
+
+	t.Run("NilLocation", func(t *testing.T) {
+		c := &loomCLI{runID: "self"}
+		if got := c.specFor("step").ScratchDir; got != "" {
+			t.Errorf("specFor(step).ScratchDir = %q; want empty for a nil location", got)
+		}
+	})
 }

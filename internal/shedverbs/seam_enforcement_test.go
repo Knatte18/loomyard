@@ -23,8 +23,12 @@ import (
 
 // shedverbsAllowedImports are the only non-stdlib import paths production code in this package may
 // use.
+//
+// logger is admitted for step-boundary logging and for logger.TraceFile/logger.TraceDir, the only
+// path sources admitted into this package, each returning the logger's own sink location verbatim.
 var shedverbsAllowedImports = map[string]bool{
 	"github.com/Knatte18/loomyard/internal/clihelp":    true,
+	"github.com/Knatte18/loomyard/internal/logger":     true,
 	"github.com/Knatte18/loomyard/internal/output":     true,
 	"github.com/Knatte18/loomyard/internal/state":      true,
 	"github.com/Knatte18/loomyard/internal/shedengine": true,

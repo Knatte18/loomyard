@@ -5,4 +5,6 @@
 // the arming module fills. It also imports no <module>cli package, which is what keeps a consuming
 // module's own imports acyclic: internal/shedcli (or any other CLI module wiring shedverbs.Verbs
 // onto its own subtree) can safely import shedverbs, but shedverbs never imports back.
+// The one resolving import it admits is internal/logger, for boundary logging and the two
+// sink-location accessors, per the Shed Verb-Set Invariant.
 package shedverbs

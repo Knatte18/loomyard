@@ -60,11 +60,13 @@ type Hooks struct {
 	// signal and never a third policy word -- a recipe with no policy table therefore yields an
 	// empty next_interrupt_policy.
 	InterruptPolicyFor func(row string) string
-	// StatusExtras lets a module add its own keys onto status's four-key generic core, keyed by the
-	// decoded shedengine.Status. A non-nil error it returns is reported verbatim on the error
-	// envelope with no re-prefixing -- the hook owns its whole string. StatusExtras never runs
-	// against a zero shedengine.Status: the absent-file disposition short-circuits before it, so
-	// neither the generic core nor StatusExtras contributes a key to an absent-file envelope.
+	// StatusExtras lets a module add its own keys onto status's seven-key generic core
+	// (current_producer, state, error, activity, history_length, interrupt_policy, trace_dir),
+	// keyed by the decoded shedengine.Status. A non-nil error it returns is reported verbatim on
+	// the error envelope with no re-prefixing -- the hook owns its whole string. StatusExtras
+	// never runs against a zero shedengine.Status: the absent-file envelope carries only the
+	// generic found/trace_dir (plus status_path on the non-refusing disposition), never an extras
+	// key.
 	StatusExtras func(st shedengine.Status) (map[string]any, error)
 }
 
@@ -97,6 +99,15 @@ type Spec struct {
 	// StatusLockPath is the advisory lock internal/state takes around every status-file read and
 	// write.
 	StatusLockPath string
+	// ScratchDir is the run's ephemeral shed scratch directory (shedrun.ScratchDir of the addressed
+	// run), reported on every step envelope as scratch_dir.
+	// It is never filled from shedrun.RunDir, the run's durable tracked directory, because driver
+	// records written under it must never land in tracked content.
+	// The empty string means the arming module supplied none.
+	ScratchDir string
+	// FrictionDir is the recipe's own agent friction-note directory, reported as friction_dir.
+	// The empty string means the recipe has none or friction is off.
+	FrictionDir string
 	// BuildShed constructs the *shedengine.Shed run and step call, built at arming time rather than
 	// carried as an already-built value: loomcli's own pre-flight assigns c.env.Landing on its way
 	// through, immediately before loomrecipe.New, so a Shed built earlier than that assignment would

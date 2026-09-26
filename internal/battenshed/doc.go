@@ -14,8 +14,8 @@
 //
 // A driver strand that dies mid-run, that is alive but parked -- a provider waiting on an
 // interactive prompt its launcher never answered -- or that stops of its own accord with the run
-// still non-terminal -- an llm driver handing back on a refusal it may not retry, exhausting its
-// step cap, or finding its skill unavailable, each leaving its report under the task worktree's
+// still non-terminal -- an llm driver escalating a failure it cannot repair
+// or finding its skill unavailable, each leaving its report under the task worktree's
 // .lyx/shed/self/ -- is not detected here, by design: the InnerRun row watches the child's
 // persisted status file, never the driver's own liveness or progress. A long-quiet Run-Shed
 // therefore means "possibly dead, parked or stopped", not "working", until the row's bounce budget

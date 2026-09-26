@@ -2,6 +2,6 @@
 
 | Skill | Description |
 | --- | --- |
-| [ly-drive](ly-drive/SKILL.md) | Drive an addressed run (defaulting to self, which arms loom) through a loop over `lyx shed step [<run-id>]`, reading each step's envelope and stopping on any non-running state. Explicit invocation only. |
+| [ly-drive](ly-drive/SKILL.md) | Drive one seeded run through repeated `lyx shed step [<run-id>]`, repairing failures from each step's trace and escalating what it cannot repair. Runs only when an operator, a launch prompt or an orchestrator's fork prompt names it. |
 
-`ly-drive` is explicit-invocation-only and is never started by a model on its own.
+`ly-drive` runs only when an operator, a launch prompt or a fork prompt names it.

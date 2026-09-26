@@ -1,14 +1,12 @@
 package loomcli
 
 import (
-	"strconv"
 	"strings"
 	"testing"
 )
 
 // TestDriverPrompt_NamesRunIDReportPathAndAutonomousMode asserts the prompt names the run-id, the
-// report path verbatim, states autonomous mode, and carries AutonomousDriveStepCap's value
-// interpolated rather than a hard-coded 120.
+// report path verbatim, states autonomous mode, and mentions no step cap.
 func TestDriverPrompt_NamesRunIDReportPathAndAutonomousMode(t *testing.T) {
 	runID := "self"
 	reportPath := "/hub/worktree/.lyx/shed/self/drive-report-20260920-120000-cafe.md"
@@ -24,8 +22,8 @@ func TestDriverPrompt_NamesRunIDReportPathAndAutonomousMode(t *testing.T) {
 	if !strings.Contains(strings.ToLower(got), "autonomous") {
 		t.Errorf("driverPrompt() = %q; want it to state autonomous mode explicitly", got)
 	}
-	if !strings.Contains(got, strconv.Itoa(AutonomousDriveStepCap)) {
-		t.Errorf("driverPrompt() = %q; want it to carry AutonomousDriveStepCap's value (%d) interpolated", got, AutonomousDriveStepCap)
+	if strings.Contains(got, "step cap") {
+		t.Errorf("driverPrompt() = %q; want no mention of a step cap", got)
 	}
 }
 
