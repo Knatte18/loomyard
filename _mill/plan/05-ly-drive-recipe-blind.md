@@ -9,6 +9,11 @@ verify: go build ./... && go test ./cmd/lyx/ -run 'TestLyDriveSkill|TestHelpTree
 depends-on: [3, 4]
 ```
 
+## Prior failure
+
+- r1: `TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver` takes ~5.07s (want <2s); pre-existing on baseline, not caused by this batch. All four cards were already committed.
+- parent guidance: Pre-existing on main. Already fixed on the `loom-done-after-friction` branch (PR #272) by commit `a8136fac9`, which touches only `internal/loomcli/integration_driverbootstrap_test.go`. Run `git fetch origin loom-done-after-friction && git cherry-pick a8136fac9` in this worktree, make no other change for this failure, then re-run the batch verify.
+
 ## Batch Scope
 
 Rewrites `ly-drive` as a recipe-blind driver and mender of `lyx shed step`, drops the loom step cap and its pin test, moves the loom-only launch knowledge into `lyx loom start`'s own help, replaces the cap pin with a recipe-blindness tripwire, and closes the task's documentation lifecycle (CONSTRAINTS, overview, design doc, roadmap).
