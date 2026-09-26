@@ -97,6 +97,15 @@ type Spec struct {
 	// StatusLockPath is the advisory lock internal/state takes around every status-file read and
 	// write.
 	StatusLockPath string
+	// ScratchDir is the run's ephemeral shed scratch directory (shedrun.ScratchDir of the addressed
+	// run), reported on every step envelope as scratch_dir.
+	// It is never filled from shedrun.RunDir, the run's durable tracked directory, because driver
+	// records written under it must never land in tracked content.
+	// The empty string means the arming module supplied none.
+	ScratchDir string
+	// FrictionDir is the recipe's own agent friction-note directory, reported as friction_dir.
+	// The empty string means the recipe has none or friction is off.
+	FrictionDir string
 	// BuildShed constructs the *shedengine.Shed run and step call, built at arming time rather than
 	// carried as an already-built value: loomcli's own pre-flight assigns c.env.Landing on its way
 	// through, immediately before loomrecipe.New, so a Shed built earlier than that assignment would
