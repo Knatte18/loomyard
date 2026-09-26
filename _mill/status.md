@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-friction-reflect-row
+phase: approved-loomcli-row-wiring
 slug: loom-done-after-friction
 branch: loom-done-after-friction
 plan: _mill/plan
@@ -32,6 +32,7 @@ plan-review-r3  '2026-09-26T11:54:12Z'
 planned  '2026-09-26T11:54:23Z'
 implementing  '2026-09-26T11:54:33Z'
 approved-friction-reflect-row  '2026-09-26T11:58:21Z'
+approved-loomcli-row-wiring  '2026-09-26T12:02:29Z'
 ```
 
 ## Batches
@@ -45,9 +46,10 @@ batches:
     commit_sha: 7c5d87602a3a4e3476d484087267c95587e4a98c
     verify_baseline_failures: []
   - name: loomcli-row-wiring
-    state: running
+    state: approved
     implementer_session: 3179363c-9c9e-41cb-b0c0-b5503d6cf3c9
     start_sha: 480e89c252eb08842bf84fd0a523ad3700bdfd9e
+    commit_sha: d9fbb21bb4b0e9d25d727ac39d0521594724c640
     verify_baseline_failures: []
 ```
 ## Inferred-success log
