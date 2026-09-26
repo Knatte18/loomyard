@@ -180,15 +180,17 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 		createCtx, createCancel := context.WithTimeout(ctx, publishGitHubTimeout)
 		defer createCancel()
 
-		if _, _, err := client.PullRequests.Create(createCtx, owner, repo, &github.NewPullRequest{
+		created, _, err := client.PullRequests.Create(createCtx, owner, repo, &github.NewPullRequest{
 			Title: &summary.Title,
 			Body:  &summary.Body,
 			Head:  &p.deps.TaskBranch,
 			Base:  &p.deps.ParentBranch,
-		}); err != nil {
+		})
+		if err != nil {
 			logger.Warn("landingshed: github call failed", "producer", publishName, "action", "create pull request", "owner", owner, "repo", repo, "cause", err)
 			return p.stuckOrCancelled(ctx, publishGitHubErrorReason("create pull request", err))
 		}
+		logger.Info("landingshed: pull request created", "owner", owner, "repo", repo, "number", created.GetNumber())
 
 		// Stuck rather than done: a done verdict would let the run advance to the next row and
 		// merge to the parent seconds after opening the pull request, defeating it entirely.
