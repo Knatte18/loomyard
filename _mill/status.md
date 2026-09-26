@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-logger-trace-accessors
 slug: shed-llm-driver
 branch: shed-llm-driver
 plan: _mill/plan
@@ -25,6 +25,7 @@ plan-fix-r1  '2026-09-26T11:52:30Z'
 plan-review-r2  '2026-09-26T11:59:07Z'
 planned  '2026-09-26T11:59:24Z'
 implementing  '2026-09-26T11:59:38Z'
+approved-logger-trace-accessors  '2026-09-26T12:01:22Z'
 ```
 
 ## Batches
@@ -32,9 +33,10 @@ implementing  '2026-09-26T11:59:38Z'
 ```yaml
 batches:
   - name: logger-trace-accessors
-    state: running
+    state: approved
     implementer_session: 7ce262c5-1a89-44c8-98ed-e8a4a82fb559
     start_sha: 76941ba20f4708ac09cf8966ee28ac5518020359
+    commit_sha: 774f2d1676914ffd3b4ce14200bcfdd018c99966
     verify_baseline_failures: []
   - name: fabric-mutation-trace
     state: pending
@@ -51,7 +53,6 @@ batches:
   "FAIL\tgithub.com/Knatte18/loomyard/internal/loomcli\t5.404s", '--- FAIL: TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver
     (5.41s)', "FAIL\tgithub.com/Knatte18/loomyard/internal/loomcli\t5.412s"]
 ```
-
 ## Inferred-success log
 
 ```text
