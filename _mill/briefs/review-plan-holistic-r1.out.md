@@ -1,0 +1,27 @@
+MILL_REVIEW_BEGIN
+# Review: Loom persists done only after post-run friction reflection — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: sonnetxhigh
+reviewed_file: plan/
+date: 2026-09-26
+```
+
+## Findings
+
+### [BLOCKING:scope] Card 6 omits shedengine/producer.go from Context
+**Location:** batch 2 / card 6 (`internal/loomcli/friction_test.go`, `TestReflectFrictionRow_WaitsOnAHeldReflectionLock`)
+**Issue:** The card's Requirements direct the implementer to write `&shedengine.Shed{Producers: []shedengine.ProducerDef{{Name: loomshed.NameFrictionReflect, Producer: p}}, ...}` from scratch, but `ProducerDef` is declared in `internal/shedengine/producer.go`, which is not listed in card 6's `Context:` or `Edits:`. No file in card 6's actual Context (`run.go`, `arm.go`, `cli.go`, `frictionreflect.go`, `seed.go`, `shed.go`, `status.go`, `state.go`, `lock.go`, `deps.go`, `bootstrap_test.go`) shows a `ProducerDef{...}` literal or names its fields — `shed.go` only references `[]ProducerDef` as a field type. This differs from card 4, where the analogous need (`shed.Producers[i].Producer = fake`) is a field *assignment* already demonstrated verbatim in `resume_test.go` (in card 4's own Context); card 6 needs a fresh literal, including relying on `OnDone`/`OnStuck` zero-values being legal, which only `producer.go`'s own field docs establish.
+**Fix:** Add `internal/shedengine/producer.go` to card 6's `Context:` list.
+
+### [NIT:consistency] Stale "last row" claim outside the plan's own sweep
+**Location:** `internal/landingshed/deps.go` (`Deps.CommitStatus` field doc, not touched by any card)
+**Issue:** The overview's `no-perishable-row-counts` Decision claims its sweep is exhaustive ("The sweep found, beyond the discussion's floor list: ..."), but `deps.go`'s comment — "Without this seam **the last row of a loom run** refuses on the run's own bookkeeping, every time, with no OnStuck target and therefore no recovery but a human" — is a Finalize-is-the-last-row claim in exactly the shape this Decision targets, and it is absent from the enumerated file list. Once Friction-Reflect lands as the new terminal row, this sentence becomes literally false (the actual last row never touches git or refuses on bookkeeping).
+**Fix:** Either add `internal/landingshed/deps.go` to the sweep (reword to name Finalize explicitly rather than "the last row"), or note in the Decision why it is deliberately excluded.
+
+## Verdict
+
+REQUEST_CHANGES
+One Context-completeness gap in card 6 blocks; the sweep-completeness miss is a NIT.
+MILL_REVIEW_END

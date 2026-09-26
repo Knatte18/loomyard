@@ -5,7 +5,7 @@ task: Loom persists done only after post-run friction reflection
 batch: friction-reflect-row
 number: 1
 cards: 4
-verify: go test ./internal/loomshed/... ./internal/shedrecipe/... ./internal/shedbuild/... ./internal/loomrecipe/... ./internal/loomcli/...
+verify: go test ./internal/loomshed/... ./internal/shedrecipe/... ./internal/shedbuild/... ./internal/loomrecipe/... ./internal/loomcli/... ./internal/landingshed/... && go test -tags integration ./internal/landingshed/...
 depends-on: []
 ```
 
@@ -101,6 +101,7 @@ No card here touches loomcli's wiring or `loomPostRun`; see the overview's inter
   - `internal/loomrecipe/fixture_test.go`
   - `internal/loomcli/cli.go`
   - `internal/loomcli/sharedbootstrap_test.go`
+  - `internal/landingshed/deps.go`
   - `plugins/ly/skills/ly-drive/SKILL.md`
 - **Creates:** none
 - **Deletes:** none
@@ -128,6 +129,7 @@ No card here touches loomcli's wiring or `loomPostRun`; see the overview's inter
   - In `internal/loomcli/cli.go`, reword the `loom` parent command's `Long` text: "The machine walks fourteen producer rows: … and finally Publish and Finalize." becomes "The machine walks its producer rows: a two-row preflight, then Discussion, Plan, and Webster, each of the three followed by its own LLM review segment that loops until it approves or escalates, then Publish and Finalize, and last Friction-Reflect, which runs "run"'s Tier 2 friction reflection before the run records done."
     Keep the raw string's existing manual wrapping width, and use the same double-quote style the surrounding text uses for verb names.
   - In `internal/loomcli/sharedbootstrap_test.go`'s `TestBuildLoomShed_OutputShape`, reword the doc comment's "carries all fourteen producer rows" to "carries every producer row", and replace the stale `len(shed.Producers) != 17` assertion with a comparison against `len(loomshed.InterruptPolicies)` (the table `internal/loomrecipe`'s interrupt-policy meta test pins to exactly the assembled rows), adding the `internal/loomshed` import.
+  - In `internal/landingshed/deps.go`, the `Deps.CommitStatus` field doc's "Without this seam the last row of a loom run refuses on the run's own bookkeeping" becomes "Without this seam loom's Finalize row refuses on the run's own bookkeeping"; change nothing else in that file.
   - In `plugins/ly/skills/ly-drive/SKILL.md` § The loop: "Loom's list is fourteen rows, … walks thirty-five steps, rounded up to 40." becomes "Loom's list is fifteen rows, … walks thirty-six steps, rounded up to 40."; "A recipe with a graph shaped differently from loom's fourteen rows" becomes "A recipe with a graph shaped differently from loom's".
     Keep one sentence per line; edit no other part of the skill (its § Self-report stays as is).
 - **Commit:** `feat(loom): persist done only after the Friction-Reflect terminal row`
@@ -163,5 +165,5 @@ No card here touches loomcli's wiring or `loomPostRun`; see the overview's inter
 
 ## Batch Tests
 
-`verify:` runs the untagged suites of every package this batch edits: `internal/loomshed` (card 1's producer test), `internal/shedrecipe` (registry pin, entry table, cross-consumer coverage guard), `internal/shedbuild` (every registered engine builds), `internal/loomrecipe` (shape table, coverage guard, interrupt-policy meta test, routing graph, the new card-4 tests) and `internal/loomcli` (the help-text edit and `sharedbootstrap_test.go`).
+`verify:` runs the untagged suites of every package this batch edits: `internal/loomshed` (card 1's producer test), `internal/shedrecipe` (registry pin, entry table, cross-consumer coverage guard), `internal/shedbuild` (every registered engine builds), `internal/loomrecipe` (shape table, coverage guard, interrupt-policy meta test, routing graph, the new card-4 tests) `internal/loomcli` (the help-text edit and `sharedbootstrap_test.go`), and `internal/landingshed` untagged plus `integration`-tagged (card 3's comment edit in `deps.go`; the tagged suite runs in about a second).
 loomcli's `integration`/`smoke`-tagged tests are not in scope here: this batch changes no loomcli behaviour, only help text and one always-skipping untagged test, and the task-wide `pipeline.done_gate` runs the tagged suites before done.
