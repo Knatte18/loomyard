@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: shed-llm-driver
 branch: shed-llm-driver
 plan: _mill/plan
@@ -34,6 +34,7 @@ holistic-reviewing  '2026-09-26T12:14:38Z'
 holistic-fixing  '2026-09-26T12:15:16Z'
 nits-fixed-holistic  '2026-09-26T12:15:52Z'
 holistic-approved  '2026-09-26T12:15:57Z'
+done  '2026-09-26T12:17:15Z'
 ```
 
 ## Batches
