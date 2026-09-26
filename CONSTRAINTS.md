@@ -214,6 +214,7 @@ Every git op LYX's own code performs, on either weft or warp, goes through `inte
 
 - Weft-internal git and warp↔weft topology both go through `fabricengine` only; read-only verbs (SHA, `status --porcelain`) exempt.
 - The weft commit is Go calling the engine at a round/phase boundary loom controls, never an agent. Agents write into `_lyx` via the junction; Go reads and commits. An agent commits its own code to warp only, never weft.
+- The `ly-drive` skill is not `lyx` code, so this invariant does not bind it; its one raw-git mutation is the stranded-branch exception — deleting a warp branch the failed step's trace proves it created (and, remotely, pushed) — which makes no commit, so the agent-commit clause above does not reach it. Every other repair goes through `lyx` verbs and so through `fabricengine`'s gates.
 - **Board carve-out:** `boardengine`'s writes to `weft:main` may fire from any worktree/session, always through `Bolt`.
 - Every weft-commit caller passes a positive-only file list via `fabricengine.ScopedPathspec`.
 - `structuralNeverCommittedDirs` paths route to a third bucket in `classifyPaths`; `Commit` hard-errors on a non-empty third bucket.
