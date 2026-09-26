@@ -743,3 +743,37 @@ func TestWire_FrictionDirFillsBurlerAndWebster(t *testing.T) {
 		})
 	}
 }
+
+// TestWire_ReflectFrictionIsFilled asserts wire installs the Friction-Reflect row's closure, which
+// the recipe's frictionReflectEntry refuses to build without.
+func TestWire_ReflectFrictionIsFilled(t *testing.T) {
+	t.Parallel()
+
+	loc := hubLocation(t, "warp", ".")
+
+	c := &loomCLI{runID: shedrun.SelfRunID}
+	if err := c.wire(loc, loc.AnchorPath()); err != nil {
+		t.Fatalf("wire() = %v; want nil", err)
+	}
+
+	if c.env.ReflectFriction == nil {
+		t.Error("c.env.ReflectFriction = nil; want c.reflectFrictionRow")
+	}
+}
+
+// TestArmAt_RecordsTheArmingVerb asserts armAt records the verb it was called with, which
+// reflectFrictionRow reads at call time. "start" is not a generic shed verb, so resolveRunID does not
+// demand a seed.
+func TestArmAt_RecordsTheArmingVerb(t *testing.T) {
+	t.Parallel()
+
+	loc := hubLocation(t, "warp", ".")
+
+	c := &loomCLI{}
+	if _, err := c.armAt(loc, "start", nil); err != nil {
+		t.Fatalf("armAt(start) = %v; want nil", err)
+	}
+	if c.armedVerb != "start" {
+		t.Errorf("c.armedVerb = %q; want %q", c.armedVerb, "start")
+	}
+}

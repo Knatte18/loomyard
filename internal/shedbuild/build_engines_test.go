@@ -14,13 +14,13 @@ import (
 )
 
 // engineMinimalConfig maps an engine name to its minimal Config, covering only the three engines
-// that need one. The other fourteen engines take no config at all and are given none in this test,
+// that need one. Every other engine takes no config at all and are given none in this test,
 // since a non-empty config block on any of them is an error from the constructor. All three
-// lifecycle engines join that fourteen: WorktreeCreate and WorktreeTeardown take no Config keys at
+// lifecycle engines join them: WorktreeCreate and WorktreeTeardown take no Config keys at
 // all, and Loom-Run's own two Config keys (poll_interval_s, poll_attempts) both default, so an
 // empty Config block is legal there too.
 //
-// DiscussionWrite and PlanWrite are two of the fourteen: each wraps a single-LLM producer behind
+// DiscussionWrite and PlanWrite are two of them: each wraps a single-LLM producer behind
 // its own commit decorator, but its Spec arrives as an injected Env closure (DiscussionSpec or
 // PlanSpec) rather than as recipe Config, so it has no config keys of its own and its seams are
 // filled by newTestEnv instead.
@@ -44,7 +44,7 @@ func engineMinimalConfig(stencilName, rubricStencilName string) map[string]map[s
 
 // TestBuild_EveryRegisteredEngineBuilds asserts every name shedrecipe.Names() returns builds from
 // a one-row Recipe against a sufficiently filled shedrecipe.Env, driving the assertion off
-// shedrecipe.Names() rather than a local list so a fifteenth registered engine fails this test
+// shedrecipe.Names() rather than a local list so a newly registered engine fails this test
 // until this fixture covers it.
 func TestBuild_EveryRegisteredEngineBuilds(t *testing.T) {
 	env := newTestEnv(t)

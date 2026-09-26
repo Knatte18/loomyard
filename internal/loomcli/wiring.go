@@ -316,6 +316,9 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		DecisionRecordPath: loomengine.DiscussionDecisionRecord(location),
 		SupportLogPath:     loomengine.DiscussionSupportLog(location),
 		WebsterDeps:        runDeps,
+		// ReflectFriction is a method value over the receiver, so frictionDir and armedVerb are read
+		// when the row runs, not when wire runs.
+		ReflectFriction: c.reflectFrictionRow,
 		// WebsterRun is set explicitly to websterengine.Run, per the
 		// env-webster-run-is-filled-explicitly Shared Decision: websterEntry errors on a nil
 		// WebsterRun, unlike loomshed.Deps.WebsterRun, which shedadapters.NewWebsterProducer

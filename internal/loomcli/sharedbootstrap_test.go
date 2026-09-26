@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -204,8 +205,8 @@ func TestBootstrapCommitPaths_IncludesSeedRel(t *testing.T) {
 }
 
 // TestBuildLoomShed_OutputShape asserts the built *shedengine.Shed's StatusPath, LockPath, and
-// StatusLockPath equal the receiver's own c.shedPaths values, and that it carries all fourteen
-// producer rows.
+// StatusLockPath equal the receiver's own c.shedPaths values, and that it carries every
+// producer row.
 //
 // buildLoomShed opens the fabric as its first act (fabricengine.Open), which this untagged suite's
 // receiver -- with no real git repository or weft sibling behind its location -- cannot satisfy. Per
@@ -239,7 +240,7 @@ func TestBuildLoomShed_OutputShape(t *testing.T) {
 	if shed.StatusLockPath != c.shedPaths.StatusLockPath {
 		t.Errorf("shed.StatusLockPath = %q; want %q", shed.StatusLockPath, c.shedPaths.StatusLockPath)
 	}
-	if len(shed.Producers) != 17 {
-		t.Errorf("len(shed.Producers) = %d; want 17", len(shed.Producers))
+	if len(shed.Producers) != len(loomshed.InterruptPolicies) {
+		t.Errorf("len(shed.Producers) = %d; want %d", len(shed.Producers), len(loomshed.InterruptPolicies))
 	}
 }

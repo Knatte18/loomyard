@@ -1,15 +1,18 @@
 // friction_test.go covers the Tier 2 friction wiring this batch's runCmd/startCmd call sites own: the
 // once-per-task clear-and-create split ensureFrictionDirAfterSeed implements for the shared bootstrap, run's own
 // unconditional ensure, and the reflection-trigger decision shouldReflectFriction/reflectFriction
-// implement for runCmd. Every test here is untagged Tier 1: it spawns no subprocess, drives no
+// implement for runCmd (only RunBlocked with a non-empty directory reflects in loomPostRun; the done
+// path reflects inside the Friction-Reflect row). Every test here is untagged Tier 1: it spawns no subprocess, drives no
 // real git operation, builds no real hub fixture, and contains no time.Sleep at or above one second.
 
 package loomcli
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/frictionengine"
@@ -18,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -123,7 +127,8 @@ func TestRunEnsuresAbsentFrictionDir(t *testing.T) {
 // TestShouldReflectFriction covers every combination of the resolved friction directory and the run
 // outcome shouldReflectFriction gates runCmd's reflection call on: RunPaused never triggers it
 // regardless of the directory, an empty directory never triggers it regardless of outcome, and
-// RunDone/RunBlocked both trigger it when the directory is non-empty.
+// only RunBlocked triggers it when the directory is non-empty: RunDone reflects inside the
+// Friction-Reflect row, not in loomPostRun.
 //
 // The non-nil-err path is not exercised here because it is structurally unreachable: runCmd's RunE
 // already returns on a non-nil shed.Run error before this decision is ever consulted, so there is no
@@ -135,7 +140,7 @@ func TestShouldReflectFriction(t *testing.T) {
 		outcome     shedengine.RunOutcome
 		want        bool
 	}{
-		{"Done_DirSet", "/tmp/friction", shedengine.RunDone, true},
+		{"Done_DirSet", "/tmp/friction", shedengine.RunDone, false},
 		{"Blocked_DirSet", "/tmp/friction", shedengine.RunBlocked, true},
 		{"Paused_DirSet", "/tmp/friction", shedengine.RunPaused, false},
 		{"Done_DirEmpty", "", shedengine.RunDone, false},
@@ -167,22 +172,22 @@ func TestReflectFriction_DepsValidationFailureReportsFailed(t *testing.T) {
 		runDeps:     websterengine.RunDeps{Geom: websterengine.Geometry{StencilsDir: "stencils"}},
 	}
 
-	got := c.reflectFriction()
+	got := c.reflectFriction(false)
 
 	if got != frictionengine.StatusFailed {
-		t.Errorf("c.reflectFriction() = %q; want %q", got, frictionengine.StatusFailed)
+		t.Errorf("c.reflectFriction(false) = %q; want %q", got, frictionengine.StatusFailed)
 	}
 	if got == "filed" {
-		t.Error("c.reflectFriction() = \"filed\"; that status must never exist")
+		t.Error("c.reflectFriction(false) = \"filed\"; that status must never exist")
 	}
 }
 
 // TestReflectFriction_SkipsWhenAnotherDriverHoldsTheReflectionLock is the regression guard for the
-// second-driver window Tier 2 opened.
+// blocked path's second-driver window.
 //
-// shedengine.Run releases the run lock on return, and the reflection step fires after that return --
-// so for the whole of the reflection agent's life (friction_timeout_min, thirty minutes in the
-// shipped template) the run lock reads as free and a second "lyx loom start" spawns a second driver.
+// shedengine.Run releases the run lock on return, and the blocked-path reflection fires after that
+// return -- so for the whole of the reflection agent's life (friction_timeout_min, thirty minutes in
+// the shipped template) the run lock reads as free and a second "lyx loom start" spawns a second driver.
 // That second driver is a legitimate resume of a halted run, but its own reflection would archive
 // the friction directory out from under the first one's live agent while both held the same
 // reflection-report.md as a declared output.
@@ -218,8 +223,8 @@ func TestReflectFriction_SkipsWhenAnotherDriverHoldsTheReflectionLock(t *testing
 		runDeps:     websterengine.RunDeps{Geom: websterengine.Geometry{StencilsDir: "stencils"}},
 	}
 
-	if got := c.reflectFriction(); got != frictionengine.StatusSkipped {
-		t.Errorf("c.reflectFriction() with the reflection lock already held = %q; want %q -- a second driver must not reflect over the same notes", got, frictionengine.StatusSkipped)
+	if got := c.reflectFriction(false); got != frictionengine.StatusSkipped {
+		t.Errorf("c.reflectFriction(false) with the reflection lock already held = %q; want %q -- a second driver must not reflect over the same notes", got, frictionengine.StatusSkipped)
 	}
 }
 
@@ -236,10 +241,205 @@ func TestReflectFriction_ReleasesTheLockForTheNextDriver(t *testing.T) {
 		runDeps:     websterengine.RunDeps{Geom: websterengine.Geometry{StencilsDir: "stencils"}},
 	}
 
-	if got := c.reflectFriction(); got != frictionengine.StatusFailed {
-		t.Fatalf("first c.reflectFriction() = %q; want %q", got, frictionengine.StatusFailed)
+	if got := c.reflectFriction(false); got != frictionengine.StatusFailed {
+		t.Fatalf("first c.reflectFriction(false) = %q; want %q", got, frictionengine.StatusFailed)
 	}
-	if got := c.reflectFriction(); got != frictionengine.StatusFailed {
-		t.Errorf("second c.reflectFriction() = %q; want %q -- the first call must have released the reflection lock, not held it for the process's life", got, frictionengine.StatusFailed)
+	if got := c.reflectFriction(false); got != frictionengine.StatusFailed {
+		t.Errorf("second c.reflectFriction(false) = %q; want %q -- the first call must have released the reflection lock, not held it for the process's life", got, frictionengine.StatusFailed)
+	}
+}
+
+// newRelativeFrictionCLI builds a receiver whose relative frictionDir makes frictionengine.Reflect
+// fail Deps validation: StatusFailed proves a reflection was attempted, StatusSkipped that it was not.
+func newRelativeFrictionCLI(t *testing.T, armedVerb string) *loomCLI {
+	t.Helper()
+	return &loomCLI{
+		location:    &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."},
+		frictionDir: "relative-friction-dir",
+		armedVerb:   armedVerb,
+		runDeps:     websterengine.RunDeps{Geom: websterengine.Geometry{StencilsDir: "stencils"}},
+	}
+}
+
+// TestReflectFrictionRow_SkipsWhenTierTwoOff asserts an empty frictionDir never reflects.
+func TestReflectFrictionRow_SkipsWhenTierTwoOff(t *testing.T) {
+	t.Parallel()
+
+	c := newRelativeFrictionCLI(t, "run")
+	c.frictionDir = ""
+
+	if got := c.reflectFrictionRow(); got != frictionengine.StatusSkipped {
+		t.Errorf("reflectFrictionRow() = %q; want %q", got, frictionengine.StatusSkipped)
+	}
+	if c.rowFrictionStatus != frictionengine.StatusSkipped {
+		t.Errorf("rowFrictionStatus = %q; want %q", c.rowFrictionStatus, frictionengine.StatusSkipped)
+	}
+}
+
+// TestReflectFrictionRow_SkipsWhenArmedForStep asserts step never reflects, so the notes stay put for
+// ly-drive's operator-gated filing.
+func TestReflectFrictionRow_SkipsWhenArmedForStep(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	note := filepath.Join(dir, "note.md")
+	if err := os.WriteFile(note, []byte("a note"), 0o644); err != nil {
+		t.Fatalf("WriteFile(%q) = %v; want nil", note, err)
+	}
+	c := newRelativeFrictionCLI(t, "step")
+	c.frictionDir = dir
+
+	if got := c.reflectFrictionRow(); got != frictionengine.StatusSkipped {
+		t.Errorf("reflectFrictionRow() = %q; want %q", got, frictionengine.StatusSkipped)
+	}
+	if _, err := os.Stat(note); err != nil {
+		t.Errorf("Stat(%q) = %v; want the note to survive a step-armed row", note, err)
+	}
+}
+
+// TestReflectFrictionRow_ReflectsWhenArmedForRun asserts run with Tier 2 on attempts the reflection.
+func TestReflectFrictionRow_ReflectsWhenArmedForRun(t *testing.T) {
+	t.Parallel()
+
+	c := newRelativeFrictionCLI(t, "run")
+
+	if got := c.reflectFrictionRow(); got != frictionengine.StatusFailed {
+		t.Errorf("reflectFrictionRow() = %q; want %q", got, frictionengine.StatusFailed)
+	}
+	if c.rowFrictionStatus != frictionengine.StatusFailed {
+		t.Errorf("rowFrictionStatus = %q; want %q", c.rowFrictionStatus, frictionengine.StatusFailed)
+	}
+}
+
+// TestReflectFrictionRow_WaitsOnAHeldReflectionLock asserts the row holds done back while another
+// reflection holds the lock, then completes once it is released.
+func TestReflectFrictionRow_WaitsOnAHeldReflectionLock(t *testing.T) {
+	t.Parallel()
+
+	c := newRelativeFrictionCLI(t, "run")
+
+	dir := t.TempDir()
+	statusPath := filepath.Join(dir, "status.json")
+	statusLockPath := filepath.Join(dir, "status.lock")
+	runLockPath := filepath.Join(dir, "run.lock")
+	if err := loomshed.Seed(statusPath, statusLockPath, "warp", "main"); err != nil {
+		t.Fatalf("Seed() = %v; want nil", err)
+	}
+	err := state.UpdateJSON[shedengine.Status](statusPath, statusLockPath, func(cur shedengine.Status, found bool) (shedengine.Status, error) {
+		cur.CurrentProducer = loomshed.NameFrictionReflect
+		cur.State = shedengine.StateRunning
+		return cur, nil
+	})
+	if err != nil {
+		t.Fatalf("UpdateJSON() = %v; want nil", err)
+	}
+
+	p, err := loomshed.NewFrictionReflect(loomshed.NameFrictionReflect, c.reflectFrictionRow)
+	if err != nil {
+		t.Fatalf("NewFrictionReflect() = %v; want nil", err)
+	}
+	shed := &shedengine.Shed{
+		Producers:      []shedengine.ProducerDef{{Name: loomshed.NameFrictionReflect, Producer: p}},
+		StatusPath:     statusPath,
+		LockPath:       runLockPath,
+		StatusLockPath: statusLockPath,
+	}
+
+	frictionLock := loomengine.LoomFrictionLock(c.location)
+	if err := os.MkdirAll(filepath.Dir(frictionLock), 0o755); err != nil {
+		t.Fatalf("MkdirAll() = %v; want nil", err)
+	}
+	held, acquired, err := lock.TryAcquireWriteLock(frictionLock)
+	if err != nil || !acquired {
+		t.Fatalf("TryAcquireWriteLock(%q) = acquired %v, err %v; want acquired", frictionLock, acquired, err)
+	}
+	released := false
+	t.Cleanup(func() {
+		if !released {
+			_ = held.Release()
+		}
+	})
+
+	type runOutcome struct {
+		result shedengine.Result
+		err    error
+	}
+	done := make(chan runOutcome, 1)
+	go func() {
+		res, err := shed.Run(context.Background())
+		done <- runOutcome{res, err}
+	}()
+
+	select {
+	case got := <-done:
+		t.Fatalf("Run returned %+v while the reflection lock was held; want it to wait", got)
+	case <-time.After(300 * time.Millisecond):
+	}
+	st, _, err := state.ReadJSON[shedengine.Status](statusPath, statusLockPath)
+	if err != nil {
+		t.Fatalf("ReadJSON() = %v; want nil", err)
+	}
+	if st.State != shedengine.StateRunning || st.CurrentProducer != loomshed.NameFrictionReflect {
+		t.Errorf("status = %s at %s while waiting; want running at %s", st.State, st.CurrentProducer, loomshed.NameFrictionReflect)
+	}
+
+	released = true
+	_ = held.Release()
+
+	select {
+	case got := <-done:
+		if got.err != nil {
+			t.Fatalf("Run() error = %v; want nil", got.err)
+		}
+		if got.result.Outcome != shedengine.RunDone {
+			t.Errorf("Run outcome = %q; want %q", got.result.Outcome, shedengine.RunDone)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run did not finish after the reflection lock was released")
+	}
+	st, _, err = state.ReadJSON[shedengine.Status](statusPath, statusLockPath)
+	if err != nil {
+		t.Fatalf("ReadJSON() = %v; want nil", err)
+	}
+	if st.State != shedengine.StateDone {
+		t.Errorf("persisted state = %s; want %s", st.State, shedengine.StateDone)
+	}
+	if c.rowFrictionStatus != frictionengine.StatusFailed {
+		t.Errorf("rowFrictionStatus = %q; want %q", c.rowFrictionStatus, frictionengine.StatusFailed)
+	}
+}
+
+// TestLoomPostRun_DoneReportsTheRowStatusWithoutReflecting asserts RunDone reports what the row
+// recorded and never reflects itself.
+func TestLoomPostRun_DoneReportsTheRowStatusWithoutReflecting(t *testing.T) {
+	t.Parallel()
+
+	c := newRelativeFrictionCLI(t, "run")
+	c.rowFrictionStatus = "reflected"
+	done := shedengine.Result{Outcome: shedengine.RunDone}
+
+	if got := c.loomPostRun(context.Background(), done, nil)["friction"]; got != "reflected" {
+		t.Errorf("friction = %v; want %q", got, "reflected")
+	}
+
+	c.rowFrictionStatus = ""
+	if got := c.loomPostRun(context.Background(), done, nil)["friction"]; got != frictionengine.StatusSkipped {
+		t.Errorf("friction = %v; want %q (a reflection attempt would report %q)", got, frictionengine.StatusSkipped, frictionengine.StatusFailed)
+	}
+}
+
+// TestLoomPostRun_BlockedStillReflects asserts the blocked path keeps its own reflection.
+func TestLoomPostRun_BlockedStillReflects(t *testing.T) {
+	t.Parallel()
+
+	blocked := shedengine.Result{Outcome: shedengine.RunBlocked}
+	c := newRelativeFrictionCLI(t, "run")
+	if got := c.loomPostRun(context.Background(), blocked, nil)["friction"]; got != frictionengine.StatusFailed {
+		t.Errorf("friction = %v; want %q", got, frictionengine.StatusFailed)
+	}
+
+	c.frictionDir = ""
+	if got := c.loomPostRun(context.Background(), blocked, nil)["friction"]; got != frictionengine.StatusSkipped {
+		t.Errorf("friction = %v; want %q", got, frictionengine.StatusSkipped)
 	}
 }

@@ -655,6 +655,7 @@ func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, 
 		SupportLogPath:     supportLogPath,
 		WebsterRun:         (&fakeWebsterRun{}).run,
 		CommitWebster:      func() error { return nil },
+		ReflectFriction:    func() string { return "skipped" },
 		WebsterDeps: websterengine.RunDeps{
 			Starter:    fakeMasterStarter{},
 			Reed:       fakeReedOps{},

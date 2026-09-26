@@ -118,6 +118,12 @@ type Env struct {
 	// entry. It is invoked on the approved branch of that producer's settle, before the commit
 	// seam.
 	ApprovePlan func() error
+	// ReflectFriction is the injected closure the FrictionReflect entry's producer calls once per
+	// Call, returning the reflection's status string. It arrives as a closure, following
+	// CommitWebster/CommitDiscussion/ApprovePlan, because the reflection's dependencies are already
+	// resolved on internal/loomcli's receiver, and building them here would pull friction, lock and
+	// loom-config imports into this Told-Geometry-bound package.
+	ReflectFriction func() string
 
 	// Slug is the run-wide task slug, read by all three batten entries (WorktreeCreate, InnerRun,
 	// WorktreeTeardown) for producer identity and stuck-reason text. It is legal on Env because Env

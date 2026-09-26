@@ -1,4 +1,4 @@
-// loomshed.go declares loom's fourteen durable row names and nothing else.
+// loomshed.go declares loom's durable row names and nothing else.
 
 package loomshed
 
@@ -10,7 +10,7 @@ package loomshed
 // shared by reference with Hardener's own list (see internal/landingshed's own package
 // documentation) -- but the name constants live here regardless, same as every other row, because
 // loom's own producer table names them, and the table is now the recipe's:
-// contracts/recipes/loom-recipe.yaml spells the same fourteen names as yaml strings, these
+// contracts/recipes/loom-recipe.yaml spells the same names as yaml strings, these
 // constants remain the authority, and internal/loomrecipe's coverage guard is what pins the two
 // declarations together by keying its row table off these symbols rather than off string literals.
 //
@@ -32,4 +32,5 @@ const (
 	NameWebsterBurler     = "Webster-Burler"
 	NamePublish           = "Publish"
 	NameFinalize          = "Finalize"
+	NameFrictionReflect   = "Friction-Reflect"
 )

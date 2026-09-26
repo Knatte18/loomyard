@@ -39,6 +39,16 @@ type wantProducerRow struct {
 	producerType reflect.Type
 }
 
+// frictionReflectProducerType returns the dynamic type of the producer loomshed.NewFrictionReflect
+// builds, for the shape table's Friction-Reflect row.
+func frictionReflectProducerType() reflect.Type {
+	p, err := loomshed.NewFrictionReflect("", func() string { return "" })
+	if err != nil {
+		panic(err)
+	}
+	return reflect.TypeOf(p)
+}
+
 var wantProducerTable = []wantProducerRow{
 	{loomshed.NamePreflight, "", loomshed.NameLoomPreflight, "", 0, reflect.TypeOf(preflightshed.NewPreflight("", ""))},
 	{loomshed.NameLoomPreflight, "", loomshed.NameDiscussionWrite, "", 0, reflect.TypeOf(loomshed.NewLoomPreflight("", "", ""))},
@@ -53,7 +63,8 @@ var wantProducerTable = []wantProducerRow{
 	{loomshed.NameWebsterBouncer, loomshed.NameWebsterBurler, loomshed.NamePublish, "Webster-Review", 5, reflect.TypeOf(&shedadapters.Bouncer{})},
 	{loomshed.NameWebsterBurler, loomshed.NameWebsterBouncer, loomshed.NameWebsterBouncer, "Webster-Review", 5, reflect.TypeOf(&shedadapters.BurlerProducer{})},
 	{loomshed.NamePublish, "", loomshed.NameFinalize, "", 0, reflect.TypeOf(&landingshed.Publish{})},
-	{loomshed.NameFinalize, "", "", "", 0, reflect.TypeOf(&landingshed.Finalize{})},
+	{loomshed.NameFinalize, "", loomshed.NameFrictionReflect, "", 0, reflect.TypeOf(&landingshed.Finalize{})},
+	{loomshed.NameFrictionReflect, "", "", "", 0, frictionReflectProducerType()},
 }
 
 // testEnv builds a shedrecipe.Env/shedbuild.ShedPaths pair whose every path field is an absolute
@@ -97,6 +108,7 @@ func testEnv(t *testing.T) (shedrecipe.Env, shedbuild.ShedPaths) {
 		SupportLogPath:     supportLogPath,
 		WebsterRun:         (&fakeWebsterRun{}).run,
 		CommitWebster:      func() error { return nil },
+		ReflectFriction:    func() string { return "skipped" },
 		WebsterDeps: websterengine.RunDeps{
 			Starter:    fakeMasterStarter{},
 			Reed:       fakeReedOps{},
@@ -326,7 +338,7 @@ func TestNew_RoutingGraphIsClean(t *testing.T) {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
 
-	findings := shedcheck.Check(shed.Producers, loomshed.NamePreflight, []string{loomshed.NameFinalize})
+	findings := shedcheck.Check(shed.Producers, loomshed.NamePreflight, []string{loomshed.NameFrictionReflect})
 	for _, f := range findings {
 		t.Errorf("%s", f.String())
 	}

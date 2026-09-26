@@ -40,6 +40,7 @@ var loomRowEngines = map[string]string{
 	loomshed.NameWebsterBurler:     "BurlerRound",
 	loomshed.NamePublish:           "Publish",
 	loomshed.NameFinalize:          "Finalize",
+	loomshed.NameFrictionReflect:   "FrictionReflect",
 }
 
 // TestCoverageGuard_EveryLoomRowHasAnEngine asserts three things about loomRowEngines against

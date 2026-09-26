@@ -1,6 +1,6 @@
-// entries_simple.go implements the seven registry entries that take an empty Config and validate
-// only the Env fields they read: preflightEntry, publishEntry, finalizeEntry, loomPreflightEntry,
-// batchifierEntry, stubEntry, and websterEntry.
+// entries_simple.go implements the registry entries that take an empty Config and validate only the
+// Env fields they read: preflightEntry, publishEntry, finalizeEntry, frictionReflectEntry,
+// loomPreflightEntry, batchifierEntry, stubEntry, and websterEntry.
 
 package shedrecipe
 
@@ -66,6 +66,23 @@ func finalizeEntry(_ string, cfg Config, env Env) (shedengine.ShedProducer, erro
 		return nil, fmt.Errorf("shedrecipe: Finalize: %w", err)
 	}
 	return fz, nil
+}
+
+// frictionReflectEntry is the Constructor for the "FrictionReflect" registry row: it returns
+// loomshed.NewFrictionReflect(name, env.ReflectFriction), wrapping that constructor's own error with
+// this package's error-text prefix.
+//
+// It validates no Env field of its own and inherits loomshed.NewFrictionReflect's nil-closure
+// refusal, the same delegate-to-constructor split publishEntry uses with landingshed.NewPublish.
+func frictionReflectEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
+	if err := configRejectUnknown(cfg); err != nil {
+		return nil, err
+	}
+	p, err := loomshed.NewFrictionReflect(name, env.ReflectFriction)
+	if err != nil {
+		return nil, fmt.Errorf("shedrecipe: FrictionReflect: %w", err)
+	}
+	return p, nil
 }
 
 // loomPreflightEntry is the Constructor for the "LoomPreflight" registry row: it validates
