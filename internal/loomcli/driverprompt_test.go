@@ -25,6 +25,9 @@ func TestDriverPrompt_NamesRunIDReportPathAndAutonomousMode(t *testing.T) {
 	if !strings.Contains(got, "ly plugin") {
 		t.Errorf("driverPrompt() = %q; want it to name the ly plugin the skill ships in", got)
 	}
+	if !strings.Contains(got, "do not search the filesystem") {
+		t.Errorf("driverPrompt() = %q; want it to forbid searching for a copy of a missing skill", got)
+	}
 	if strings.Contains(got, "step cap") {
 		t.Errorf("driverPrompt() = %q; want no mention of a step cap", got)
 	}

@@ -51,6 +51,7 @@ Severity: BLOCKING = run cannot land; MEDIUM = lands only after intervention, or
   No `--help` text names the prerequisite.
 - Run: both driver sessions announced the skill was missing and located it with `find / -iname '*ly-drive*'`; the first read the copy in this crucible worktree, i.e. whichever source tree happened to exist on the machine.
   On a machine without a loomyard checkout the driver has no instructions at all.
+- Addendum (found in the fixer's re-drive, CONFIRMED on hub4): the fresh driver's `find /` picked the stale copy in the long-lived `loomyard` worktree instead of the fixed one, so F5 recurred after its fix — which contract an llm-driven run follows depends on which checkout a filesystem search happens to hit.
 - Fix: make the prerequisite discoverable (the llm-driver `--help` texts name `/plugin install ly@loomyard`), and make the launch prompt point the session at an absolute copy of the skill `lyx` itself materializes, so resolution no longer depends on the plugin cache.
 
 ### F5 — BLOCKING (llm driver) — ly-drive writes its step envelopes under the drive directory, which dirties the task worktree and blocks Preflight (CONFIRMED)
