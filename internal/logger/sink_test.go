@@ -483,3 +483,66 @@ func TestIsLyxWorktree_GatesTheCwdAnchoredFallback(t *testing.T) {
 		}
 	})
 }
+
+func TestTraceFile_NoSinkReturnsEmpty(t *testing.T) {
+	SetDurableSinkDir("")
+	t.Cleanup(func() { SetDurableSinkDir("") })
+
+	if got := TraceFile(); got != "" {
+		t.Errorf("TraceFile() = %q; want empty", got)
+	}
+}
+
+func TestTraceFile_ArmsAndReturnsPath(t *testing.T) {
+	dir := t.TempDir()
+	SetDurableSinkDir(dir)
+	t.Cleanup(func() { SetDurableSinkDir("") })
+
+	got := TraceFile()
+	if filepath.Dir(got) != dir {
+		t.Fatalf("TraceFile() = %q; want a path inside %q", got, dir)
+	}
+	if _, err := os.Stat(got); err != nil {
+		t.Fatalf("os.Stat(%q) = %v; want nil error", got, err)
+	}
+	if line := readSinkFirstLine(t, got); !strings.HasPrefix(line, "command=") {
+		t.Errorf("first line = %q; want header line", line)
+	}
+}
+
+func TestTraceFile_StableAcrossCalls(t *testing.T) {
+	dir := t.TempDir()
+	SetDurableSinkDir(dir)
+	t.Cleanup(func() { SetDurableSinkDir("") })
+
+	first := TraceFile()
+	second := TraceFile()
+	if first != second {
+		t.Errorf("TraceFile() second call = %q; want %q", second, first)
+	}
+	if files := listSinkDirFiles(t, dir); len(files) != 1 {
+		t.Errorf("dir holds %v; want exactly one file", files)
+	}
+}
+
+func TestTraceDir_MatchesOverrideAndCreatesNothing(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "not-yet")
+	SetDurableSinkDir(dir)
+	t.Cleanup(func() { SetDurableSinkDir("") })
+
+	if got := TraceDir(); got != dir {
+		t.Errorf("TraceDir() = %q; want %q", got, dir)
+	}
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Errorf("os.Stat(%q) = %v; want not-exist", dir, err)
+	}
+}
+
+func TestTraceDir_NoSinkReturnsEmpty(t *testing.T) {
+	SetDurableSinkDir("")
+	t.Cleanup(func() { SetDurableSinkDir("") })
+
+	if got := TraceDir(); got != "" {
+		t.Errorf("TraceDir() = %q; want empty", got)
+	}
+}

@@ -41,13 +41,16 @@ package shedcli
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/battencli"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomcli"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -159,18 +162,121 @@ func TestParity_LoomStep_RunLockBusy(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = fl.Release() })
 
+	traceDir := t.TempDir()
+	logger.SetDurableSinkDir(traceDir)
+	t.Cleanup(func() { logger.SetDurableSinkDir("") })
+
+	var moduleOut, shedOut string
 	runBoth(t, "loom step (run lock busy)",
 		func() (int, string) {
 			var out bytes.Buffer
 			code := loomcli.RunCLIIn(cwd, &out, []string{"step"})
-			return code, out.String()
+			moduleOut = out.String()
+			return code, moduleOut
 		},
 		func() (int, string) {
 			var out bytes.Buffer
 			code := RunCLIIn(cwd, &out, []string{"step"})
-			return code, out.String()
+			shedOut = out.String()
+			return code, shedOut
 		},
 	)
+
+	for label, out := range map[string]string{"module path": moduleOut, "shed path": shedOut} {
+		env := decodeEnvelope(t, out)
+		if env["kind"] != "busy" {
+			t.Errorf("%s: kind = %v; want busy", label, env["kind"])
+		}
+		if want := shedrun.ScratchDir(location, shedrun.SelfRunID); env["scratch_dir"] != want {
+			t.Errorf("%s: scratch_dir = %v; want %q", label, env["scratch_dir"], want)
+		}
+		traceFile, _ := env["trace_file"].(string)
+		if traceFile == "" {
+			t.Errorf("%s: trace_file is empty; envelope: %v", label, env)
+			continue
+		}
+		if filepath.Dir(traceFile) != filepath.Clean(traceDir) {
+			t.Errorf("%s: trace_file %q is not inside %q", label, traceFile, traceDir)
+		}
+		content, err := os.ReadFile(traceFile)
+		if err != nil {
+			t.Errorf("%s: read trace_file: %v", label, err)
+			continue
+		}
+		if !strings.Contains(string(content), `msg="shed: step"`) {
+			t.Errorf("%s: trace lacks msg=\"shed: step\":\n%s", label, content)
+		}
+		refused := false
+		for _, line := range strings.Split(string(content), "\n") {
+			if strings.Contains(line, `msg="shed: step refused"`) && strings.Contains(line, "kind=busy") {
+				refused = true
+			}
+		}
+		if !refused {
+			t.Errorf("%s: trace lacks a \"shed: step refused\" line with kind=busy:\n%s", label, content)
+		}
+	}
+}
+
+// TestParity_BattenStep_RunLockBusy drives "lyx batten step <slug>" and "lyx shed step <slug>" over a
+// batten-seeded slug whose run lock is already held, which refuses with kind: busy, and asserts the
+// envelope names the slug's scratch_dir and no friction_dir.
+func TestParity_BattenStep_RunLockBusy(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+	cwd := h.PrimeWorktree()
+	const slug = "parity-batten-step-busy"
+	seedRunForTest(t, cwd, slug, shedrun.RecipeBatten)
+
+	lockPath := battencli.RunLock(h.Location, slug)
+	if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
+		t.Fatalf("MkdirAll(%s): %v", filepath.Dir(lockPath), err)
+	}
+	fl, err := lock.AcquireWriteLock(lockPath)
+	if err != nil {
+		t.Fatalf("AcquireWriteLock(%s): %v", lockPath, err)
+	}
+	t.Cleanup(func() { _ = fl.Release() })
+
+	var moduleOut, shedOut string
+	runBoth(t, "batten step (run lock busy)",
+		func() (int, string) {
+			var out bytes.Buffer
+			code := battencli.RunCLIIn(cwd, &out, []string{"step", slug})
+			moduleOut = out.String()
+			return code, moduleOut
+		},
+		func() (int, string) {
+			var out bytes.Buffer
+			code := RunCLIIn(cwd, &out, []string{"step", slug})
+			shedOut = out.String()
+			return code, shedOut
+		},
+	)
+
+	for label, out := range map[string]string{"module path": moduleOut, "shed path": shedOut} {
+		env := decodeEnvelope(t, out)
+		if env["kind"] != "busy" {
+			t.Errorf("%s: kind = %v; want busy", label, env["kind"])
+		}
+		if want := shedrun.ScratchDir(h.Location, slug); env["scratch_dir"] != want {
+			t.Errorf("%s: scratch_dir = %v; want %q", label, env["scratch_dir"], want)
+		}
+		if got, _ := env["friction_dir"].(string); got != "" {
+			t.Errorf("%s: friction_dir = %q; want empty", label, got)
+		}
+	}
+}
+
+// decodeEnvelope decodes the last non-empty line of out as a JSON object, t.Fatal-ing on failure.
+func decodeEnvelope(t *testing.T, out string) map[string]any {
+	t.Helper()
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	last := lines[len(lines)-1]
+	var env map[string]any
+	if err := json.Unmarshal([]byte(last), &env); err != nil {
+		t.Fatalf("decode envelope %q: %v", last, err)
+	}
+	return env
 }
 
 // TestParity_LoomStatus_Seeded drives "lyx loom status" and "lyx shed status" over a pair seeded at

@@ -173,7 +173,7 @@ func (t *Topology) switchOrForkWeft(rec *Mutations, l *lyxcwd.Location, branch s
 		return false, fmt.Errorf("fork weft branch %q from %q failed: %w", weftBranch, parentWeftBranch, err)
 	}
 	rec.Append(KindWorktreeSwitched, weftWorktree, weftBranch)
-	rec.AppendRef(KindBranchCreated, weftBranch, "")
+	rec.AppendRef(KindBranchCreated, weftBranch, refDetail("weft", weftWorktree, ""))
 
 	return true, nil
 }

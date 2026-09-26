@@ -9,9 +9,6 @@ See Maintenance below for how the numbering works.
 
 This section holds what's committed to next.
 
-1. **shed: the LLM driver as a generic stepper and mender** — `ly-drive` drives any seeded run through `lyx shed step` without knowing its recipe, and repairs failures from a trace every step leaves behind, so `lyx` stops having to be perfect against every crash window.
-   See [designs/shed-llm-driver.md](designs/shed-llm-driver.md).
-
 ## Next Up
 
 What comes right after Planned clears — committed and ordered, unlike Someday below.
@@ -106,6 +103,9 @@ No build order is implied between these items.
 ## Done
 
 Cleared 2026-08-25 to keep this file lean — shipped items' history lives in `git log` and each module's own package documentation, not here.
+
+1. **shed: the LLM driver as a generic stepper and mender** — `ly-drive` drives any seeded run through `lyx shed step` without knowing its recipe, and repairs failures from a trace every step leaves behind, so `lyx` stops having to be perfect against every crash window.
+   See the [`ly-drive` skill](../plugins/ly/skills/ly-drive/SKILL.md) and the `internal/shedverbs` package documentation.
 
 1. **producer gates: mechanical accept-gates on LLM-running producers** — a producer that runs an LLM declares a mechanical gate: a validator whose findings the producer injects back into the still-live session as a re-prompt, holding the handoff until the gate passes (bounded by an explicit attempt counter, then ordinary Stuck); the standalone Discussion-Validate, Plan-Validate, and Plan-Revalidate rows are removed in the same task. Lands before the batten end-to-end crucible campaign (wiki: `crucible-batten-end-to-end`).
    See the `internal/shedengine` and `internal/shedadapters` package documentation.

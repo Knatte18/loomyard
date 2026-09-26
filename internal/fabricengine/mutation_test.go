@@ -7,8 +7,12 @@ package fabricengine
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/logger"
 )
 
 // TestMutations_AppendOrdering covers that three appends come back from Entries() in append order.
@@ -347,5 +351,133 @@ func TestMutations_EntriesAndLen_CallableOnNonAddressableValue(t *testing.T) {
 	}
 	if got := mutationsFromFunc().Entries(); len(got) != 1 {
 		t.Errorf("mutationsFromFunc().Entries() = %d entries; want 1", len(got))
+	}
+}
+
+// armTraceSink arms the durable trace sink in a fresh temp dir and returns a reader for its
+// "fabric: mutation" lines.
+// Tests using it never call t.Parallel: the sink override is package-level state.
+func armTraceSink(t *testing.T) func() []string {
+	t.Helper()
+	dir := t.TempDir()
+	logger.SetDurableSinkDir(dir)
+	t.Cleanup(func() { logger.SetDurableSinkDir("") })
+	return func() []string {
+		t.Helper()
+		files, err := filepath.Glob(filepath.Join(dir, "trace-*.log"))
+		if err != nil {
+			t.Fatalf("Glob error = %v", err)
+		}
+		var lines []string
+		for _, file := range files {
+			data, err := os.ReadFile(file)
+			if err != nil {
+				t.Fatalf("ReadFile(%q) error = %v", file, err)
+			}
+			for _, line := range strings.Split(string(data), "\n") {
+				if strings.Contains(line, `msg="fabric: mutation"`) {
+					lines = append(lines, line)
+				}
+			}
+		}
+		return lines
+	}
+}
+
+// TestMutations_AppendLogsOneRecord covers that one Append writes exactly one trace record with the
+// recorded values; it does not call t.Parallel because the trace sink is package-level state.
+func TestMutations_AppendLogsOneRecord(t *testing.T) {
+	read := armTraceSink(t)
+
+	m := NewMutations("")
+	m.Append(KindDirCreated, "/hub/one", "why")
+
+	lines := read()
+	if len(lines) != 1 {
+		t.Fatalf("trace has %d mutation lines; want 1", len(lines))
+	}
+	for _, want := range []string{"kind=dir_created", "target=/hub/one", "detail=why"} {
+		if !strings.Contains(lines[0], want) {
+			t.Errorf("trace line %q lacks %q", lines[0], want)
+		}
+	}
+}
+
+// TestMutations_AppendRefLogsOneRecord covers that one AppendRef writes exactly one trace record;
+// it does not call t.Parallel because the trace sink is package-level state.
+func TestMutations_AppendRefLogsOneRecord(t *testing.T) {
+	read := armTraceSink(t)
+
+	m := NewMutations("")
+	m.AppendRef(KindBranchCreated, "feature-x", "why")
+
+	lines := read()
+	if len(lines) != 1 {
+		t.Fatalf("trace has %d mutation lines; want 1", len(lines))
+	}
+	for _, want := range []string{"kind=branch_created", "target=feature-x", "detail=why"} {
+		if !strings.Contains(lines[0], want) {
+			t.Errorf("trace line %q lacks %q", lines[0], want)
+		}
+	}
+}
+
+// TestMutations_ExtendLogsNothing covers that Extend adds no trace record; it does not call
+// t.Parallel because the trace sink is package-level state.
+func TestMutations_ExtendLogsNothing(t *testing.T) {
+	other := NewMutations("")
+	other.Append(KindDirCreated, "/hub/one", "")
+	read := armTraceSink(t)
+
+	m := NewMutations("")
+	m.Extend(other.Snapshot())
+
+	if lines := read(); len(lines) != 0 {
+		t.Errorf("Extend wrote %d mutation lines; want 0", len(lines))
+	}
+}
+
+// TestMutations_NilReceiverLogsNothing covers that a nil *Mutations logs nothing; it does not call
+// t.Parallel because the trace sink is package-level state.
+func TestMutations_NilReceiverLogsNothing(t *testing.T) {
+	read := armTraceSink(t)
+
+	var m *Mutations
+	m.Append(KindDirCreated, "/hub/one", "")
+	m.AppendRef(KindBranchCreated, "feature-x", "")
+
+	if lines := read(); len(lines) != 0 {
+		t.Errorf("nil receiver wrote %d mutation lines; want 0", len(lines))
+	}
+}
+
+// TestRefDetail covers refDetail's exact grammar: create without remote, push with remote, and a
+// relative repo made absolute.
+func TestRefDetail(t *testing.T) {
+	t.Parallel()
+
+	abs := filepath.Join(string(filepath.Separator), "hub", "warp")
+	relative, err := filepath.Abs("rel")
+	if err != nil {
+		t.Fatalf("Abs error = %v", err)
+	}
+
+	tests := []struct {
+		name               string
+		side, repo, remote string
+		want               string
+	}{
+		{"create empty remote", "warp", abs, "", "side=warp repo=" + filepath.ToSlash(abs)},
+		{"push with remote", "weft", abs, "origin", "side=weft repo=" + filepath.ToSlash(abs) + " remote=origin"},
+		{"relative repo made absolute", "warp", "rel", "", "side=warp repo=" + filepath.ToSlash(relative)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := refDetail(tt.side, tt.repo, tt.remote); got != tt.want {
+				t.Errorf("refDetail(%q, %q, %q) = %q; want %q", tt.side, tt.repo, tt.remote, got, tt.want)
+			}
+		})
 	}
 }
