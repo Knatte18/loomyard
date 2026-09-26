@@ -33,6 +33,7 @@ the other crash-window findings stay parked as GitHub issues #269, #270, #271 an
 - `plugins/ly/skills/INDEX.md` entry updated to match.
 - `internal/logger`: two new exported accessors (`TraceFile`, `TraceDir`) and an amended level policy.
 - `internal/fabricengine/mutation.go`: every appended entry written to the durable sink at `Info` as it is appended.
+- `internal/fabricengine`: every `branch_created`/`branch_pushed` `AppendRef` call site passes a `detail` naming side, repository path and (for pushes) remote (Decision `repair-scope`); fabric tests that pin those entries' `detail` move with it.
 - `internal/shedverbs`: the step body logs its own boundaries at `Info`, and the step envelope (success and every five-kind error) gains `trace_file`, `friction_dir`, `scratch_dir`; the status envelope gains `trace_dir`.
 - `internal/shedverbs/spec.go`: two new told `Spec` fields, `ScratchDir` and `FrictionDir`.
 - `internal/loomcli` and `internal/battencli` fill `ScratchDir` at their one `shedverbs.Spec` construction site each (`arm.go`), so `lyx shed step`, `lyx loom step` and `lyx batten step` all carry it; `internal/loomcli` also fills `FrictionDir`, batten leaves it empty.
@@ -133,6 +134,8 @@ the other crash-window findings stay parked as GitHub issues #269, #270, #271 an
   Child `lyx` processes sharing the anchor write their own files with the same id (`trace-<UTC>-<traceid>-<pid>.log`) and the step's pid is unknown after an interrupt, so the driver reads all of them, ordered by the UTC timestamp in the name.
   The same lookup covers the kind-less refusals `internal/shedcli`'s pre-run emits (unseeded run-id, unsupported verb): those envelopes gain no key, and `shedcli`'s pre-run is not touched.
   A child spawned into another worktree (for example batten's `loom start` in a task worktree) writes under that worktree's logs directory; the skill follows the paths the parent trace names.
+  `lyx` processes started inside reed strand panes do not share the id: a pane inherits the tmux server's environment, not the caller's.
+  Their traces are reached only through paths the parent trace names (for example a strand's worktree in a spawn line), never by id lookup; this task adds no id propagation into panes.
 - Every envelope the generic `status` body emits carries `trace_dir`: the found envelope, the `found: false` envelope, and each error envelope (decode failure, absent-status refusal, lock-dir failure, `StatusExtras` error, which move from `output.Err` to `output.ErrFields`).
 - The absent-status refusal (`AbsentStatus.Refuse: true`) also carries `found: false`, so both absent dispositions — loom's refusal and batten's `found: false` success — share one generic discriminator.
 - Retention: `logger.Sweep` keeps a bounded number of non-live trace files per logs directory and runs on every sink arm, and concurrent forks share a logs directory, so a trace can be swept before a later read.
@@ -182,6 +185,13 @@ the other crash-window findings stay parked as GitHub issues #269, #270, #271 an
   - In this exception, a trace-proven `branch_created` for exactly that branch in the failed step substitutes for the destruction gate's ownership check: it proves the failed step made the branch, which is what the ownership check approximates by name prefix.
     Containment and dirtiness still hold by construction — the branch was created and left behind by a step that failed before using it, and the driver never force-deletes a branch carrying commits the trace does not attribute to that step (it escalates instead).
   - Both: no `lyx fabric` verb removes the branch.
+  - Warp branches only.
+    A stranded weft branch goes through `lyx fabric cleanup --apply --remote` (coverage list below), never raw git.
+  - Repository and remote come from the entry itself.
+    `AppendRef` records a bare ref with an empty `detail` today (`internal/fabricengine/add.go` ~157/~235, `weftwiring.go` ~133/~152), so this task makes every `branch_created`/`branch_pushed` `AppendRef` call site pass a `detail` naming the side (`warp`/`weft`), the absolute repository path the git command ran in, and, for `branch_pushed`, the remote name — for example `side=warp repo=<abs path> remote=origin`.
+    The plan enumerates the call sites with a grep over `internal/fabricengine`.
+    The driver runs a local delete as `git -C <repo> branch -D <branch>` and a remote delete as `git -C <repo> push <remote> --delete <branch>`, taking both values from the entries.
+    An entry with no such `detail`, a `side` other than `warp`, or a repository path that no longer exists fails the rule, and the driver escalates.
   A `branch_pushed` entry alone never qualifies: `recordPushIfAdvanced` (`internal/fabricengine/weftgit.go` ~287) records it whenever an existing branch is pushed forward, so a step that only pushed commits to a live, pre-existing branch never authorizes deleting it.
   Each such deletion is a repair record like any other.
   The Fabric Git Invariant binds `lyx`'s own code; the driver is a skill, and the only git clause that names agents ("an agent commits its own code to warp only") governs commits, which this exception never makes.
@@ -315,6 +325,7 @@ the other crash-window findings stay parked as GitHub issues #269, #270, #271 an
 - **Q:** Does an interrupted `handback` row go down the repair path? **A:** [auto-pick] No — the three interrupt sub-cases stay; `handback`/absent hands back unconditionally. **Why:** a live agent may still be running, and touching its strand restarts it.
 - **Q:** What identifies "the same row" for `repair-cap`? **A:** [auto-pick] `current_producer` + `history_length` from a status read before the first repair. **Why:** error envelopes carry neither field.
 - **Q:** Do `history_length`/`interrupt_policy` stay recipe-supplied `StatusExtras` keys? **A:** [auto-pick] No — both move into the generic status core. **Why:** the skill's cap and advance checks must hold for every recipe.
+- **Q:** Where does a raw stranded-branch delete run? **A:** [auto-pick] Warp branches only, in the repository and against the remote named by the entry's new `detail`; otherwise escalate. **Why:** a bare ref names neither, and weft branches already have `lyx fabric cleanup`.
 - **Q:** How does the recipe-blind skill take a baseline when there is no status file? **A:** [auto-pick] `found: false` on any status envelope (the refusal gains it) means an empty baseline and cap key `("", 0)`; any other status error hands back. **Why:** loom refuses and batten succeeds on an absent file, and the skill cannot name either.
 - **Q:** How does a fork reach the directory a run requires without the skill naming a recipe? **A:** [auto-pick] The fork prompt names the drive directory; the skill runs each `lyx` call in a subshell `cd`. **Why:** the orchestrator seeded the run there, and the recipe's own refusal covers a wrong directory.
 - **Q:** What may a repair touch? **A:** [auto-pick] `lyx` verbs plus read-only git, with one narrow exception for deleting a branch the failed step's trace shows it created; never status/seed by hand, no force-push. **Why:** Fabric Git Invariant, while keeping the absorbed stranded-branch window (#269) repairable.
