@@ -29,13 +29,16 @@ The chosen fix, fixed by the task brief: loom persists `done` only after its pos
 - A new `NameFrictionReflect = "Friction-Reflect"` constant in `internal/loomshed/loomshed.go`, a producer type for it (in `internal/loomshed`), a `"FrictionReflect"` registry entry in `internal/shedrecipe`, and an interrupt-policy entry in `internal/loomshed/interruptpolicy.go`.
 - A new `shedrecipe.Env` closure field carrying the reflection call, filled by loomcli's `wire` (`internal/loomcli/wiring.go`, the `c.env = shedrecipe.Env{...}` literal).
 - `loomPostRun` stops reflecting on `RunDone` (the row already did it) and keeps reflecting on `RunBlocked`; the run envelope's `friction` key keeps reporting the status.
-- Doc-comment and doc updates wherever the text says reflection runs after `shed.Run` returns on the done path (see Technical context).
+- Doc-comment and doc updates wherever the text says reflection runs after `shed.Run` returns on the done path (see Technical context), and wherever text pins loom's row count or names `Finalize` as the last row, including `plugins/ly/skills/ly-drive/SKILL.md` § The loop (see "Stale row-count and last-row text").
 
 **Out:**
 
 - Any change to `internal/shedengine` (no new hook, no new state).
 - Any change to batten (`internal/battenshed`, `internal/battencli`): its watch contract stays exactly "child `StateDone` means finished".
-- Step-driven runs' reflection behaviour: still none (see "Reflection only when armed for run"), so `plugins/ly/skills/ly-drive/SKILL.md` stays true as written and is not edited.
+- Step-driven runs' reflection behaviour: still none (see "Reflection only when armed for run"), so `plugins/ly/skills/ly-drive/SKILL.md`'s § Self-report stays true and is not edited.
+  Its row-count text is a separate matter and is in scope (see "Stale row-count and last-row text").
+- batten itself: no change.
+  Run-Shed's watch budget (`max_bounces: 1440` × `poll_interval_s: 30`, twelve hours, in `contracts/recipes/batten-recipe.yaml`) now also spans the child's reflection, up to `friction_timeout_min` (thirty minutes in the shipped template) more before `done`; that is well inside the budget, so no batten change is needed.
 - The `RunBlocked` reflection path's behaviour: unchanged, still in `PostRun`, still lock-free after `shed.Run` returns.
   batten treats a blocked child as a hard error and never tears it down, so that path has no race.
 - `frictionengine.Reflect` itself, the friction note directive, and the reflection stencil.
@@ -79,9 +82,18 @@ The chosen fix, fixed by the task brief: loom persists `done` only after its pos
 - Rejected: gating on the recorded seed driver (`go` vs `llm`) — barred by the invariant above.
 - Rejected: reflecting under `step` too and rewriting ly-drive's Self-report section — reverses a deliberate operator gate as a side effect of a bugfix.
 
+### Stale row-count and last-row text
+
+- Decision: every text that pins loom's row count ("fourteen") or names `Finalize` as the recipe's last/terminal row is updated in the same commit, found by method rather than from a hand list: grep the repo (Go comments, cobra help text, yaml comments, skills under `plugins/`, `docs/`, `manifest/designs/`, `contracts/`) for `fourteen`, `14 rows`/`14 producer`, and for `Finalize` in terminal/last-row/ends-the-run phrasing, and fix every hit that describes loom's recipe.
+  Known hits at discussion time, as a floor rather than the list: the recipe yaml header, `internal/loomshed/loomshed.go`, `internal/loomshed/doc.go`, `internal/loomshed/interruptpolicy.go` (twice), `lyx loom`'s user-visible help in `internal/loomcli/cli.go` ("walks fourteen producer rows … and finally Publish and Finalize"), and `plugins/ly/skills/ly-drive/SKILL.md` § The loop.
+  Where a count is not load-bearing, reword it away rather than bump it, per the no-perishable-tally rule; where it is (ly-drive's step-cap arithmetic), re-derive it: one more row makes the three-rounds-per-segment walk thirty-six steps, still under the forty-step cap, so the cap is unchanged and only the arithmetic text moves.
+- Rationale: the reviewer found the hand list incomplete twice over; a grep-driven sweep is the only enumeration that survives.
+  The ly-drive edit is limited to the row-count/cap text this change falsifies, since `shed-llm-driver` (#28) is reworking that skill.
+- Rejected: a hand-maintained list only — already proved incomplete.
+
 ### Blocked outcome keeps today's PostRun reflection
 
-- Decision: `loomPostRun` reflects only on `RunBlocked` (still gated by `shouldReflectFriction`'s non-empty friction directory check).
+- Decision: `loomPostRun` reflects only on `RunBlocked` (still gated by `shouldReflectFriction`'s Tier-2-enabled check, i.e. a non-empty `frictionDir` path string — it does not check whether the directory holds notes; `frictionengine.Reflect` itself returns `skipped` on an empty directory).
   On `RunDone` it no longer calls `reflectFriction`.
 - Rationale: a row cannot fire on a blocked halt, and blocked reflection is unaffected by the bug, since batten never tears down a blocked child.
   A blocked task may never be resumed, so dropping its reflection would lose notes.
@@ -142,7 +154,7 @@ The chosen fix, fixed by the task brief: loom persists `done` only after its pos
 - loom hooks: `internal/loomcli/arm.go` (`loomPostRun`, `specFor`); reflection call and gate: `internal/loomcli/run.go` (`shouldReflectFriction`, `reflectFriction`); receiver fields: `internal/loomcli/cli.go` (`frictionDir`); `Env` filled in `internal/loomcli/wiring.go`.
 - Recipe: `contracts/recipes/loom-recipe.yaml` (embedded by `contracts/recipes/recipes.go`).
   Its header comment counts rows ("fourteen row names") and enumerates the escalate-to-a-human set; the `Finalize` row carries a comment calling its empty `on_done` load-bearing — that comment moves to the new terminal row.
-- Row names: `internal/loomshed/loomshed.go` (its doc also says "fourteen"); interrupt policies: `internal/loomshed/interruptpolicy.go`, with a meta test in `internal/loomrecipe/interruptpolicy_meta_test.go`.
+- Row names: `internal/loomshed/loomshed.go` (row-count text is swept per "Stale row-count and last-row text"); interrupt policies: `internal/loomshed/interruptpolicy.go`, with a meta test in `internal/loomrecipe/interruptpolicy_meta_test.go`.
 - Recipe assembly and guards: `internal/loomrecipe/loomrecipe.go`, `coverage_guard_test.go` (pins yaml names to `loomshed` constants), `shape_test.go`, `sequence_test.go`, `recipe_test.go`, `resume_test.go`.
 - Registry: `internal/shedrecipe/registry.go` (one map literal), `entries_simple.go` (closure-style entries to model on), `Env` in `internal/shedrecipe/recipe.go`.
 - Graph checks: `internal/shedbuild` / `internal/shedcheck` validate `entry`/`terminals` against the built producer list, so `terminals` must name `Friction-Reflect`, not `Finalize`.
@@ -151,8 +163,6 @@ The chosen fix, fixed by the task brief: loom persists `done` only after its pos
 - Comments that describe reflection as running after the run lock is released, to reword so they refer to the blocked path only: `reflectFriction`'s doc (`internal/loomcli/run.go`), `awaitRunLock` / `dispositionForHandshake` (`internal/loomcli/bootstrap.go`), the `halted` closure comment in `internal/loomcli/start.go`, `LoomFrictionLock`'s doc in `internal/loomengine/config.go` ("the reflection fires after that return, so for the whole of the reflection agent's life the run lock reads as free"), and `internal/frictionengine/doc.go`.
   The `awaitRunLockHalted` arm itself stays: a fast blocked halt still reflects lock-free after `shed.Run` returns.
 - `docs/overview.md` describes `internal/frictionengine` as "the aggregation-and-reflection step internal/loomcli's run verb calls once per run"; reword to cover the terminal row plus the blocked path.
-  `contracts/specs/shed-recipe-spec.md` mentions reflection; check it and update if it describes the done-path timing.
-
 ## Constraints
 
 - **Shed Producer-Seam Invariant**: `internal/shedengine` is not modified at all.
@@ -177,7 +187,7 @@ The chosen fix, fixed by the task brief: loom persists `done` only after its pos
 - **Recipe shape/coverage**: update `coverage_guard_test.go`, `shape_test.go`, `sequence_test.go` and any row-count or terminal assertions for the fifteen-row list with `Friction-Reflect` as the sole terminal and `Finalize.on_done: Friction-Reflect`; the interrupt-policy meta test must see the new entry.
 - **Pause at the row (pins the accepted disposition)**: with `pause_requested` set while `Finalize` runs (a fake `Finalize` that sets the flag through the status file), `Run` halts `paused` at `current_producer: Friction-Reflect` with `Finalize`'s Done in history and the reflection closure not called; a following `Run` calls only the row and persists `done`.
 - **Resume**: a status file `done` at `Finalize` (pre-change shape) still short-circuits cleanly; a status file `running` at `Friction-Reflect` resumes by calling only the reflection row.
-- **loomcli (`internal/loomcli/friction_test.go` or neighbour)**: `loomPostRun` on `RunDone` does not call reflection and reports the row-recorded status (or `skipped` when none); on `RunBlocked` with a non-empty friction directory it still reflects; the wiring wrapper returns `skipped` without reflecting when `frictionDir` is empty, and also when the receiver was armed for `step` (with a non-empty friction directory whose notes are left in place), while armed for `run` it reflects.
+- **loomcli (`internal/loomcli/friction_test.go` or neighbour)**: `loomPostRun` on `RunDone` does not call reflection and reports the row-recorded status (or `skipped` when none); on `RunBlocked` with Tier 2 enabled (non-empty `frictionDir`) it still reflects; the wiring wrapper returns `skipped` without reflecting when `frictionDir` is empty, and also when the receiver was armed for `step` (Tier 2 enabled, with notes present that are left in place), while armed for `run` it reflects.
 - Full `go test ./...` (cgo on) must pass.
 
 ## Q&A log
@@ -188,4 +198,5 @@ The chosen fix, fixed by the task brief: loom persists `done` only after its pos
 - **Q:** What does the run envelope's `friction` key report? **A:** [auto-pick] Kept, reporting the row-recorded status on done, the fresh result on blocked, `skipped` otherwise. **Why:** preserves the envelope's shape for existing consumers.
 - **Q:** Should the row reflect under step-driven runs (`llm` driver)? **A:** [auto-pick] No — reflect only when armed for `run`, gated on the arming verb, not the recorded seed driver. **Why:** reflection files public issues, ly-drive deliberately keeps filing behind an operator, and the Driver Choice Single-Site Invariant bars gating on the recorded driver (raised by the round-1 orchestrator review).
 - **Q:** A pause or cancel during `Finalize` now halts `paused` at `Friction-Reflect` on a landed task, which batten treats as a halted child — accept or rule out? **A:** [auto-pick] Accept and document; pin with a test. **Why:** it is an explicit operator stop at an ordinary producer boundary with batten's existing remedy text, and ruling it out needs an engine change or reintroduces the bug (raised by round-2 review).
+- **Q:** How are stale "fourteen rows" / "Finalize is last" texts found? **A:** [auto-pick] A grep-driven sweep across code comments, help text, yaml, skills and docs, with the known hits listed as a floor; ly-drive's step-cap arithmetic is re-derived (36 steps, cap 40 unchanged). **Why:** the hand list proved incomplete (raised by round-3 review).
 - **Q:** How does the row reach loomcli's already-resolved reflection deps? **A:** [auto-pick] One closure field on `shedrecipe.Env`, filled by loomcli's `wire`. **Why:** matches the existing closure fields and keeps feature imports out of Told-Geometry-bound packages.
