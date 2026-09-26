@@ -80,6 +80,13 @@ Severity: BLOCKING = run cannot land; MEDIUM = lands only after intervention, or
 - Run: the second driver waited with `while pgrep -f 'lyx shed step' ...`, which matches its own waiting shell's command line, so after the run reached `done` it sat in a 10-minute timeout before reporting.
 - Fix: name the mechanism — wait on the background job's own completion notice or PID, never a command-line pattern match.
 
+### F9 — MEDIUM — `lyx shed seed --help`'s loom example seeds a param loom's own bootstrap disagrees with, wedging the run (CONFIRMED; found while fixing F4, after the review was committed)
+
+- Where: `internal/shedcli/seed.go` Long example `lyx shed seed some-slug --recipe loom --driver go --param slug=some-slug`; loom's bootstrap (`internal/loomcli/sharedbootstrap.go` `loomSeedFor`) writes run-id `self` with the single param `parent=<recorded parent>`, and `shedrun.WriteSeed` refuses any disagreeing seed.
+- Run (hub3, pair `probe2`): `lyx shed seed self --recipe loom --driver go --param slug=probe2` → ok; `lyx loom start --no-attach` → `shedrun: disagreeing seed: run "self" is already seeded with {... Params:map[slug:probe2]}; refusing to overwrite with {... Params:map[parent:main]}`.
+  `seed` itself also refuses a disagreeing re-seed, so an operator following the help cannot recover through any verb.
+- Fix: the example seeds loom the way its bootstrap does — run-id `self`, `--param parent=<parent branch>` — and the text says loom's seed must match that shape.
+
 ## Out-of-scope observations
 
 - `fabric add` rollback leaves the new warp branch behind (hub1): `rollbackAdd`'s branch delete is refused by the ownership gate under an empty `branch_prefix` (documented in `internal/fabricengine/add.go:346-349`), and the retry is then refused `branch "add-sub" already exists`.
