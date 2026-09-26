@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-ly-drive-recipe-blind
+phase: holistic-reviewing
 slug: shed-llm-driver
 branch: shed-llm-driver
 plan: _mill/plan
@@ -30,6 +30,7 @@ approved-fabric-mutation-trace  '2026-09-26T12:03:11Z'
 approved-shed-envelope-trace  '2026-09-26T12:07:08Z'
 approved-step-entry-point-integration  '2026-09-26T12:08:06Z'
 approved-ly-drive-recipe-blind  '2026-09-26T12:14:29Z'
+holistic-reviewing  '2026-09-26T12:14:38Z'
 ```
 
 ## Batches
