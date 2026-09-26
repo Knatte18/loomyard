@@ -67,9 +67,9 @@ Run a hard cap of **40 steps**.
 Each iteration: invoke a step, read its envelope, read the artifact its `output` field names when that field is non-empty, and continue only while the envelope's `continue` field is true.
 
 40 is a typical-run margin for `loom`, not a mechanical ceiling that holds for every recipe — loom's own ceiling is itself far higher than 40.
-Loom's list is fourteen rows, a review round inside a segment costs two steps, and a run taking three review rounds in each of three segments walks thirty-five steps, rounded up to 40.
+Loom's list is fifteen rows, a review round inside a segment costs two steps, and a run taking three review rounds in each of three segments walks thirty-six steps, rounded up to 40.
 The six review rows carry their own budget of five bounces and the three validator rows bounce at the inherited default of ten, which puts loom's own worst case near a hundred steps — so treat 40 as a sane default to stop and check in at when driving loom, not proof that anything is wrong past it.
-A recipe with a graph shaped differently from loom's fourteen rows would need this cap re-derived from its own arithmetic rather than inheriting loom's; no other recipe's graph is worked out here.
+A recipe with a graph shaped differently from loom's own would need this cap re-derived from its own arithmetic rather than inheriting loom's; no other recipe's graph is worked out here.
 
 On reaching the cap, stop and report to the operator rather than failing anything.
 The driven recipe's own state is untouched by the cap; the operator re-invokes this skill to continue from where the loop left off.

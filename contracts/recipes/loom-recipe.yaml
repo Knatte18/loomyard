@@ -1,5 +1,5 @@
 # loom-recipe.yaml is loom's producer graph. It is embedded into the binary by the sibling
-# recipes.go rather than read from disk. The fourteen row names below are the durable on-disk
+# recipes.go rather than read from disk. The row names below are the durable on-disk
 # identities pinned against internal/loomshed's Name* constants by the coverage guard -- a rename
 # here without a matching constant rename breaks resume for any in-flight task.
 #
@@ -26,6 +26,9 @@
 # cold respawn that knows nothing about the complaint is strictly worse than stopping and telling
 # someone.
 #
+# Friction-Reflect is outside the escalate-to-a-human set: it also carries no on_stuck, but it
+# always returns Done and never Stuck, so the count of eight stays true.
+#
 # An in-flight run parked on one of the three removed rows when this recipe lands is restarted, not
 # migrated: row names are durable on-disk resume identities, and a permanent migration table mapping
 # three retired names onto their successors is carrying cost a pre-release, single-operator system
@@ -41,7 +44,7 @@
 version: 1
 entry: Preflight
 terminals:
-  - Finalize
+  - Friction-Reflect
 
 producers:
   - name: Preflight
@@ -296,6 +299,15 @@ producers:
 
   - name: Finalize
     engine: Finalize
+    # Hands off to the reflection row rather than ending the run.
+    on_done: Friction-Reflect
+
+  # Friction-Reflect runs the Tier 2 friction reflection under the run lock and is the recipe's
+  # sole terminal, so the engine persists state: done only after the reflection returns (batten's
+  # Run-Shed row reads that done as "finished" and tears the worktree down, deleting the friction
+  # notes). It always returns Done, and under step loomcli's closure skips the reflection.
+  - name: Friction-Reflect
+    engine: FrictionReflect
     # on_done is explicitly empty: the empty value is load-bearing and is what ends the whole run
     # quietly, per shedengine.ProducerDef.OnDone's own field doc.
     on_done: ""

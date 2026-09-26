@@ -300,11 +300,12 @@ func Command() *cobra.Command {
 		Use:   "loom",
 		Short: "bootstrap and drive one loom task's phase machine for this worktree",
 		Long: `loom drives one task's phase machine over a per-worktree status.json,
-on the generic shed engine. The machine walks fourteen producer rows: a
+on the generic shed engine. The machine walks its producer rows: a
 two-row preflight, then Discussion, Plan, and Webster, each of the three
 followed by its own LLM review segment that loops until it approves or
-escalates, and finally Publish and Finalize. "start" is the bootstrap verb:
-it seeds the status file, commits the seed, and spawns/attaches the
+escalates, then Publish and Finalize, and last Friction-Reflect, which runs
+"run"'s Tier 2 friction reflection before the run records done. "start" is
+the bootstrap verb: it seeds the status file, commits the seed, and spawns/attaches the
 detached driver session; "run" is the no-tmux escape hatch that runs the
 phase machine in the foreground for debugging and CI; "step" bootstraps
 idempotently and drives exactly one producer, reporting a JSON envelope --

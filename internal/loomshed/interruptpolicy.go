@@ -1,4 +1,4 @@
-// interruptpolicy.go declares the exported table mapping each of loom's fourteen durable row names
+// interruptpolicy.go declares the exported table mapping each of loom's durable row names
 // to the operator-facing action an external supervisor should take when it finds `lyx loom step`
 // interrupted mid-row, and the accessor that reads it.
 
@@ -18,19 +18,24 @@ const (
 	InterruptPolicyHandback = "handback"
 )
 
-// InterruptPolicies maps each of loom's fourteen durable row names (the Name* constants declared
+// InterruptPolicies maps each of loom's durable row names (the Name* constants declared
 // in loomshed.go) to the InterruptPolicyReinvoke/InterruptPolicyHandback action an external
 // supervisor should take after finding that row interrupted. It is keyed by those constants rather
 // than by repeated string literals, because the constants are the durable on-disk identity a rename
 // would otherwise silently desynchronize this table from.
 //
 // Every row maps to InterruptPolicyReinvoke except NameWebster, which maps to
-// InterruptPolicyHandback. On every row but Webster, re-calling current_producer after an
+// InterruptPolicyHandback. On every row but Webster and Friction-Reflect, re-calling current_producer after an
 // interrupted invocation does not double-spawn: internal/shedadapters/doc.go's "Every spawning
 // adapter probes for a live agent first" section records that SingleLLMProducer, Bouncer, and
 // BurlerProducer all call shuttleengine's Attach seam with the step's own OutputFiles and wait on a
 // match before any archive, so a re-invocation reattaches to the live agent rather than spawning a
 // second one.
+//
+// NameFrictionReflect's premise is its own: the table answers only for `lyx loom step`, and armed
+// for step the row spawns nothing (loomcli's closure returns skipped without reflecting), so a
+// re-invocation cannot double-spawn. Reinvoke holds on the contract's own premise rather than
+// through an Attach probe, which frictionengine.Reflect does not have.
 //
 // NameWebster is the exception because WebsterProducer inherits websterengine's own entry-time
 // reclaim, which stops a leftover Master rather than attaching to it (reclaimEntryTimeStrands in
@@ -54,6 +59,7 @@ var InterruptPolicies = map[string]string{
 	NameWebsterBurler:     InterruptPolicyReinvoke,
 	NamePublish:           InterruptPolicyReinvoke,
 	NameFinalize:          InterruptPolicyReinvoke,
+	NameFrictionReflect:   InterruptPolicyReinvoke,
 }
 
 // InterruptPolicyFor returns InterruptPolicies' entry for name, or the empty string when name is
