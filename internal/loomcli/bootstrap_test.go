@@ -14,6 +14,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
+
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shell"
@@ -163,6 +165,22 @@ func TestStartVerb_NoAttachFlag_DefaultsFalse(t *testing.T) {
 	defaultNoAttach := flag.Value.String() == "true"
 	if got := mustAttach(defaultNoAttach); !got {
 		t.Errorf("mustAttach(%v) over the registered default = %v; want true -- an invocation with no flag must still attach", defaultNoAttach, got)
+	}
+}
+
+// TestNoAttachFields_PinsSuccessEnvelope pins the envelope `lyx loom start --no-attach` prints
+// once the driver is up: before it, the verb returned exit 0 with no output at all, so a script
+// could not tell a driver that came up from a silent failure (crucible round fable-high-r2, F2).
+func TestNoAttachFields_PinsSuccessEnvelope(t *testing.T) {
+	got := noAttachFields("llm", "task-priority", "/hub/task-priority/_lyx/shed/self/status.json")
+	want := map[string]any{
+		"attached":    false,
+		"driver":      "llm",
+		"slug":        "task-priority",
+		"status_file": "/hub/task-priority/_lyx/shed/self/status.json",
+	}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("noAttachFields() mismatch (-want +got):\n%s", diff)
 	}
 }
 

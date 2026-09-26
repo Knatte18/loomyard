@@ -304,7 +304,9 @@ could not remove the strand -- are attached to, or returned over with
 --no-attach, by a later start without re-checking readiness. The documented
 meaning is the same on both paths:
 perform every bootstrap step, confirm the driver is up by that path's own
-signal, and return without the terminal handover.
+signal, and return without the terminal handover, printing a success
+envelope ("attached": false, plus the run's driver, slug and status file)
+in place of the handover.
 
 Example:
   lyx loom start
@@ -402,6 +404,10 @@ Example:
 			_ = bootstrapLock.Release()
 
 			if !mustAttach(noAttachFlag) {
+				// A --no-attach invocation skips the JSON-exempt handover tail below, so it
+				// reports its success on the envelope like every other verb: a silent exit 0 is
+				// indistinguishable from a driver that never came up without a follow-up status.
+				output.Ok(out, noAttachFields(driver, slug, c.shedPaths.StatusPath))
 				return nil
 			}
 
