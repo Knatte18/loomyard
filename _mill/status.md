@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: shed-llm-driver
 branch: shed-llm-driver
 plan: _mill/plan
@@ -24,4 +24,21 @@ plan-review-r1  '2026-09-26T11:51:35Z'
 plan-fix-r1  '2026-09-26T11:52:30Z'
 plan-review-r2  '2026-09-26T11:59:07Z'
 planned  '2026-09-26T11:59:24Z'
+implementing  '2026-09-26T11:59:38Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: logger-trace-accessors
+    state: pending
+  - name: fabric-mutation-trace
+    state: pending
+  - name: shed-envelope-trace
+    state: pending
+  - name: step-entry-point-integration
+    state: pending
+  - name: ly-drive-recipe-blind
+    state: pending
 ```
