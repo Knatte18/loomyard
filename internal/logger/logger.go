@@ -124,7 +124,10 @@
 //
 //   - Warn: a notable-but-recoverable failure -- a retry, an unconfirmed
 //     teardown, an error swallowed on a fallback path.
-//   - Info: a real OS-process spawn/teardown lifecycle event.
+//   - Info: a real OS-process spawn/teardown lifecycle event,
+//     one recorded durable state mutation, or a shed step boundary.
+//     The durable sink records Info and above only,
+//     and a mutation or step the trace does not record cannot be repaired from.
 //   - Debug: everything else worth a line.
 //
 // Hard rule: nothing logs at Warn inside a loop body that can iterate more
