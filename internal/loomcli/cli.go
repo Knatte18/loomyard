@@ -235,8 +235,11 @@ and then drives exactly one producer through shedengine.Shed's own Step.
 
 step spawns no detached driver, hands the terminal to nothing, and loops
 over nothing: it is the single-producer primitive an external supervisor
-drives, one invocation at a time, reading the returned envelope's
-"continue" and "next_interrupt_policy" fields to decide what to do next.
+drives, one invocation at a time. The envelope's "continue" and
+"next_interrupt_policy" fields say what to do next; it also names
+"trace_file" (the durable trace this invocation wrote), "friction_dir" and
+"scratch_dir". Every error envelope carries the same three keys beside
+"kind", so a supervisor can read what the step did and repair from it.
 
 An optional run-id positional addresses a run other than this worktree's
 own default ("self"); step refuses when no seed already exists at that
