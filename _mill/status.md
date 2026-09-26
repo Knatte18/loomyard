@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: loom-done-after-friction
 branch: loom-done-after-friction
 plan: _mill/plan
@@ -36,6 +36,7 @@ approved-loomcli-row-wiring  '2026-09-26T12:02:29Z'
 holistic-reviewing  '2026-09-26T12:02:37Z'
 holistic-approved  '2026-09-26T12:03:21Z'
 done  '2026-09-26T12:06:43Z'
+pr-pending  '2026-09-26T12:07:06Z'
 ```
 
 ## Batches
