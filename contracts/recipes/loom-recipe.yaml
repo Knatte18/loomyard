@@ -27,7 +27,7 @@
 # someone.
 #
 # Friction-Reflect is outside the escalate-to-a-human set: it also carries no on_stuck, but it
-# always returns Done and never Stuck, so the count of eight stays true.
+# always returns Done and never Stuck, so it stays outside that set.
 #
 # An in-flight run parked on one of the three removed rows when this recipe lands is restarted, not
 # migrated: row names are durable on-disk resume identities, and a permanent migration table mapping
