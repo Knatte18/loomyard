@@ -37,3 +37,9 @@ Review: `_mill/happy-path-review-opus-medium-r1.md` (committed `db795663f` befor
 - Hub4 (`$HOME/crucible-happy-path/opus-medium-r1/hub4`), dev binary `bc9004f74`, weft bare left on its host-default `master` HEAD (re-verifies F1): clone → weft prime `main-weft`, `_board` on `main`; `lyx config landing --set 'require_pr_to_base=[]'` → ok (F6).
 - go driver, task `add-sub`: `board upsert` → `fabric add add-sub` → `shed seed self --recipe loom --driver go --param parent=main` → `loom start --no-attach` → `done` at 15:55 (history 18), no intervention.
   Bare `warp.git` `main` = `bc9c17f Add Sub to calc` (F3); prime `main...origin/main` in sync.
+- llm driver, task `add-mul` (same hub): driver read the long-lived `loomyard` worktree's stale `SKILL.md` via `find /` and re-hit F5 (Preflight blocked on `.scratch/`) → F4 addendum, fixed in `d4f6a83d8`.
+  Re-deployed; removed the driver strand and `.scratch/`; `loom start --no-attach` → the new driver wrote "The ly plugin from loomyard is not installed. I did not search the filesystem for a copy" and stopped (F4 fix verified).
+  Operator provisioning (stand-in for an installed `ly` plugin): copied this worktree's `SKILL.md` to `add-mul/.claude/skills/ly-drive/`, `.claude/` added to the fixture warp's `.git/info/exclude`.
+  Next driver loaded the skill but handed back on its `blocked` baseline without stepping → F10, fixed in `ff6e654ba`; skill copy refreshed, driver restarted.
+  Run resumed from Preflight to `done` at 16:16 (history 19), step outputs in `/tmp/tmp.*`, worktree clean; bare `warp.git` `main` = `b860ab7 Add Mul to calc` on `bc9c17f Add Sub to calc`.
+- Hub4 after both runs: `fabric status` clean, pairs `main`/`add-sub`/`add-mul` all `in_sync`/`junction_healthy`, prime `main...origin/main` in sync.
