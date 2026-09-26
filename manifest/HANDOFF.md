@@ -18,17 +18,17 @@ Orient from `git log` and the wiki daemon client, not from this file alone — i
 The campaign ran four rounds without a safety pass; its defects moved outward from batten's rows to fabric's crash windows under batten.
 Its record (HANDOFF, round and fixer reports) lives in `_mill/` under the `archive/crucible-batten-followup` tag, never on shared ground — `crucible/campaigns/` was deleted for that reason.
 
-## Unclaimed backlog, in dependency order
+## Direction: stop hardening, start using
 
-The campaign filed these; read each brief through the wiki daemon client.
+Crucible campaigns kept finding crash windows without end, so the user changed course: `lyx` stops trying to be perfect against every crash, and an LLM outer loop repairs instead, the property that has made millhouse useful.
+The design is `manifest/designs/shed-llm-driver.md`: `ly-drive` becomes a recipe-blind driver of `lyx shed step`, every step leaves a trace complete enough to repair from, and a repo-wide orchestrator drives runs through forks.
 
-1. `#025 fabric-pair-state-after-crash` — fabric owns the answer to a killed `Topology.Add`/`Remove`, collapsing batten's hand-combined probes.
-   Likely subsumes `#022 fabric-rollback-keeps-warp-branch`; re-check `#022` after it lands.
-   `#024 fabric-cleanup-remote-orphans` is related and still needs its own fix.
-1. `#026 remedy-texts-followed-verbatim` — structured remedy commands composed from the caller's location, plus a verbatim-from-prime integration test.
-1. `#027 crucible-batten-followup-2` — runs only after `#025` and `#026` land, since both change the code it presses on.
+## Unclaimed backlog
 
-`#023 loom-done-after-friction` is independent: loom persists `done` before Tier 2 friction reflection, so batten's teardown deletes the friction report.
+- `#028 shed-llm-driver` — the design above; it absorbed the fabric crash-state and remedy-text tasks the campaign filed.
+- `#023 loom-done-after-friction` — loom persists `done` before Tier 2 friction reflection, so batten's teardown deletes the friction report. A happy-path bug, independent of the above.
+
+The campaign's other crash-window findings are parked as GitHub issues #269, #270 and #271, to be re-checked once `lyx` is in real use.
 
 ## Pending cleanup on this machine
 
