@@ -26,7 +26,8 @@ Mint a fresh 16-lowercase-hex `LYX_TRACE_ID` for each invocation and export it i
 Never run a step as a blocking foreground call: a step can block for a whole agent run, longer than any foreground shell call allows.
 Launch it in the background with stdout redirected to `<step-dir>/step-<n>.json`, where `<step-dir>` is a private directory created once per drive with `mktemp -d` and recorded as an absolute path.
 Never put step output under the drive directory, or under the session's cwd when that is the drive directory, as it is for a driver `lyx loom start` launches: any file there dirties the run's worktree and fails its clean-tree gates.
-Wait for the process to exit, then read the envelope from that file.
+Wait for that background job's own exit, by its completion notice or its PID, then read the envelope from that file.
+Never wait by matching a command line (`pgrep -f 'lyx shed step'`): the waiting shell's own command line carries the same text, so the wait never ends.
 
 ## Baseline
 
