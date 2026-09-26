@@ -54,4 +54,5 @@ batches:
 
 ```text
 '2026-09-26T11:58:11Z'  friction-reflect-row  round 1
+'2026-09-26T12:02:29Z'  loomcli-row-wiring  round 1
 ```
