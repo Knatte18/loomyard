@@ -79,7 +79,11 @@ the other crash-window findings stay parked as GitHub issues #269, #270, #271 an
 - Decision: admit `internal/logger` into `internal/shedverbs`'s import allowlist (`seam_enforcement_test.go`) and say so in the Shed Verb-Set Invariant.
   The step body logs `Info` at entry (run's `status_file`) and after `shed.Step` returns (producer, outcome, state, next, reason), and `Warn` on each error envelope with its kind.
 - Rationale: one generic site gives every recipe a step boundary in its trace, which is what "every mutating step logs at `Info`" needs — `shedengine` cannot log (Shed Producer-Seam Invariant), and a per-recipe hook would have every recipe repeat the same two lines.
-  The no-resolver clause still holds: `shedverbs` calls no resolver itself; the logger's own sink resolution is the logger's concern, the same reasoning that admitted `logger` into `internal/friction`.
+  `logger.TraceFile` and `logger.TraceDir` are path-returning accessors that resolve the cwd internally (`internal/logger/sink.go` ~126-137), so this admission is wider than `internal/friction`'s, which only logs.
+  The invariant amendment says so explicitly: those two accessors are the only path sources admitted into `shedverbs`, and they are not "deriving" a path in the invariant's sense, because each returns the logger's own sink location — a location the logger alone owns and that `shedverbs` reports verbatim on the envelope, never joins, reads or writes, and never uses to locate run state.
+  Every run-state path (`StatusPath`, `ScratchDir`, `FrictionDir`, …) stays told through `Spec`.
+  `shedverbs` still calls no `lyxcwd` function itself, and the `lyxcwd` import stays denied.
+- Rejected (for the paths): telling `trace_dir`/`trace_file` through `Spec` — the trace file opens lazily and must be read after the step's own logging, so a told value would be a callback wrapping the same accessor, adding indirection without changing who resolves.
 - Rejected: a `Spec.TraceFile func() string` plus `PreStep`/`PostStep` logging per recipe — keeps the allowlist unchanged but duplicates the boundary logging per recipe and leaves the next recipe free to forget it.
 
 ### mutations-logged-on-append
@@ -116,6 +120,10 @@ the other crash-window findings stay parked as GitHub issues #269, #270, #271 an
 - Rationale: the repair-cap key and the interrupted-invocation "run advanced" test are recipe-blind only if every recipe's status envelope carries them; a new recipe cannot omit a key the generic body writes.
   `InterruptPolicyFor` is already a generic hook the step body uses for `next_interrupt_policy`.
 - Rejected: documenting the skill's dependence on hook-supplied keys — a recipe that omits them silently breaks the cap and the advance test.
+- Absent-status baseline rule, stated recipe-blind in the skill: a `status` envelope with `found: false` — success or error — is an empty baseline (`current_producer: ""`, `history_length: 0`), and the driver proceeds to the first step, whose own bootstrap seeds the status file.
+  That empty pair is also a valid `repair-cap` key, so a `kind: unseeded` failure on a run with no status file counts its repairs against `("", 0)`.
+  Any other `status` error envelope (no `found: false`) is handed back, the same as today.
+  The status body writes `found: false` on the absent-status refusal as well (Decision `trace-dir-and-trace-id`), so this rule never names a recipe.
 
 ### trace-dir-and-trace-id
 
@@ -126,6 +134,7 @@ the other crash-window findings stay parked as GitHub issues #269, #270, #271 an
   The same lookup covers the kind-less refusals `internal/shedcli`'s pre-run emits (unseeded run-id, unsupported verb): those envelopes gain no key, and `shedcli`'s pre-run is not touched.
   A child spawned into another worktree (for example batten's `loom start` in a task worktree) writes under that worktree's logs directory; the skill follows the paths the parent trace names.
 - Every envelope the generic `status` body emits carries `trace_dir`: the found envelope, the `found: false` envelope, and each error envelope (decode failure, absent-status refusal, lock-dir failure, `StatusExtras` error, which move from `output.Err` to `output.ErrFields`).
+- The absent-status refusal (`AbsentStatus.Refuse: true`) also carries `found: false`, so both absent dispositions — loom's refusal and batten's `found: false` success — share one generic discriminator.
 - Retention: `logger.Sweep` keeps a bounded number of non-live trace files per logs directory and runs on every sink arm, and concurrent forks share a logs directory, so a trace can be swept before a later read.
   The driver therefore reads a step's traces right after the step, and each repair record copies the trace lines it acted on (the mutation entries and the step-boundary lines) rather than only pointing at the file.
   The retention bound itself is not changed.
@@ -166,7 +175,12 @@ the other crash-window findings stay parked as GitHub issues #269, #270, #271 an
 - Stranded-branch exception: the driver may delete a branch by raw git only under these conditions, read from the failed step's trace and the child traces sharing its id:
   - Local delete (`git branch -D <branch>`): a `fabric: mutation` entry of kind `branch_created` for exactly that branch, and no later `branch_deleted` entry for it.
   - Remote delete (`git push <remote> --delete <branch>`): a `branch_created` entry **and** a `branch_pushed` entry for exactly that branch, and no later `remote_branch_deleted` entry for it.
-    A later local `branch_deleted` does not bar it: `rollbackAdd` deletes the local warp branch (recorded as `branch_deleted`, `internal/fabricengine/destroy.go` ~955) and deliberately leaves the remote copy (`add.go` ~277-281), which is the #269 case this exception exists for.
+    A later local `branch_deleted` does not bar it.
+  - `rollbackAdd`'s behaviour depends on `branch_prefix`, and the exception covers both configurations:
+    with a non-empty prefix it deletes the local warp branch (recorded as `branch_deleted`, `internal/fabricengine/destroy.go` ~955) and deliberately leaves the remote copy (`add.go` ~277-281), so only the remote-delete rule applies;
+    with the default empty prefix `ownedManagedBranch` refuses, the local branch stays with only a `Warn` (`add.go` ~335-353), and both rules apply.
+  - In this exception, a trace-proven `branch_created` for exactly that branch in the failed step substitutes for the destruction gate's ownership check: it proves the failed step made the branch, which is what the ownership check approximates by name prefix.
+    Containment and dirtiness still hold by construction — the branch was created and left behind by a step that failed before using it, and the driver never force-deletes a branch carrying commits the trace does not attribute to that step (it escalates instead).
   - Both: no `lyx fabric` verb removes the branch.
   A `branch_pushed` entry alone never qualifies: `recordPushIfAdvanced` (`internal/fabricengine/weftgit.go` ~287) records it whenever an existing branch is pushed forward, so a step that only pushed commits to a live, pre-existing branch never authorizes deleting it.
   Each such deletion is a repair record like any other.
@@ -263,7 +277,7 @@ the other crash-window findings stay parked as GitHub issues #269, #270, #271 an
 
 ## Constraints
 
-- **Shed Verb-Set Invariant** — the five kinds stay closed; this task amends the allowlist clause to admit `internal/logger` and records that the step envelope carries `trace_file`/`friction_dir`/`scratch_dir`. Same commit.
+- **Shed Verb-Set Invariant** — the five kinds stay closed; this task amends the allowlist clause to admit `internal/logger`, names `logger.TraceFile`/`logger.TraceDir` as the only admitted path sources and why they are not derived paths (Decision `shedverbs-imports-logger`), and records that the step envelope carries `trace_file`/`friction_dir`/`scratch_dir`. Same commit.
 - **Shed Producer-Seam Invariant** — `shedengine` still imports only stdlib, `state`, `lock`; no logging there.
 - **Shed Run-Directory Invariant** — `scratch_dir` comes from `shedrun.ScratchDir`; nothing else names the `shed` segment.
 - **Driver Choice Single-Site Invariant** — nothing new reads the recorded driver field.
@@ -288,7 +302,7 @@ the other crash-window findings stay parked as GitHub issues #269, #270, #271 an
 - `cmd/lyx`: the recipe-blindness tripwire on `SKILL.md`.
 - Integration: an existing integration test that drives a real `lyx shed step` gets one assertion that `trace_file` names an existing file containing the step's boundary records.
   These tests run in-process through `RunCLIIn`, where the sink refuses to arm under `testing.Testing()`, so the test arms it first with `logger.SetDurableSinkDir` on a test directory (preferred over `LYX_TRACE=1`, which writes into the fixture's own `.lyx/logs`).
-- `internal/shedverbs` status: the found envelope carries `history_length` and `interrupt_policy` from the generic core (`""` with a nil `InterruptPolicyFor`); `trace_dir` appears on the found, `found: false` and error envelopes.
+- `internal/shedverbs` status: the found envelope carries `history_length` and `interrupt_policy` from the generic core (`""` with a nil `InterruptPolicyFor`); `trace_dir` appears on the found, `found: false` and error envelopes; the absent-status refusal carries `found: false`, and no other status error does.
 
 ## Q&A log
 
@@ -301,6 +315,7 @@ the other crash-window findings stay parked as GitHub issues #269, #270, #271 an
 - **Q:** Does an interrupted `handback` row go down the repair path? **A:** [auto-pick] No — the three interrupt sub-cases stay; `handback`/absent hands back unconditionally. **Why:** a live agent may still be running, and touching its strand restarts it.
 - **Q:** What identifies "the same row" for `repair-cap`? **A:** [auto-pick] `current_producer` + `history_length` from a status read before the first repair. **Why:** error envelopes carry neither field.
 - **Q:** Do `history_length`/`interrupt_policy` stay recipe-supplied `StatusExtras` keys? **A:** [auto-pick] No — both move into the generic status core. **Why:** the skill's cap and advance checks must hold for every recipe.
+- **Q:** How does the recipe-blind skill take a baseline when there is no status file? **A:** [auto-pick] `found: false` on any status envelope (the refusal gains it) means an empty baseline and cap key `("", 0)`; any other status error hands back. **Why:** loom refuses and batten succeeds on an absent file, and the skill cannot name either.
 - **Q:** How does a fork reach the directory a run requires without the skill naming a recipe? **A:** [auto-pick] The fork prompt names the drive directory; the skill runs each `lyx` call in a subshell `cd`. **Why:** the orchestrator seeded the run there, and the recipe's own refusal covers a wrong directory.
 - **Q:** What may a repair touch? **A:** [auto-pick] `lyx` verbs plus read-only git, with one narrow exception for deleting a branch the failed step's trace shows it created; never status/seed by hand, no force-push. **Why:** Fabric Git Invariant, while keeping the absorbed stranded-branch window (#269) repairable.
 - **Q:** What trace evidence authorizes a raw branch delete? **A:** [auto-pick] `branch_created` always; a remote delete also needs `branch_pushed`; each side is barred only by its own delete kind. **Why:** `branch_pushed` alone is recorded for pushes to live branches, and #269's remote copy survives a local `branch_deleted`.
