@@ -32,13 +32,22 @@ implementing  '2026-09-26T11:59:38Z'
 ```yaml
 batches:
   - name: logger-trace-accessors
-    state: pending
+    state: running
+    implementer_session: 7ce262c5-1a89-44c8-98ed-e8a4a82fb559
+    start_sha: 76941ba20f4708ac09cf8966ee28ac5518020359
+    verify_baseline_failures: []
   - name: fabric-mutation-trace
     state: pending
+    verify_baseline_failures: []
   - name: shed-envelope-trace
     state: pending
+    verify_baseline_failures: []
   - name: step-entry-point-integration
     state: pending
+    verify_baseline_failures: []
   - name: ly-drive-recipe-blind
     state: pending
+    verify_baseline_failures: ['--- FAIL: TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver (5.40s)',
+  "FAIL\tgithub.com/Knatte18/loomyard/internal/loomcli\t5.404s", '--- FAIL: TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver
+    (5.41s)', "FAIL\tgithub.com/Knatte18/loomyard/internal/loomcli\t5.412s"]
 ```
