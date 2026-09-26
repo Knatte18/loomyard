@@ -263,6 +263,8 @@ and a half-done card is resumed by discarding uncommitted changes and restarting
 The three-tier model below is **designed, not implemented.**
 This spec pins only what exists today: the per-card **`**Verify:**`** field stays the optional, verbatim, rare escape hatch it already was under format 3 — a cheap, targeted check where it is useful.
 There is no mandatory per-card or per-batch verify gate in the code, and the plan-level `## verify:` body section in `00-overview.md` (unchanged in shape from format 3) is the single integration suite run once at the end of the plan.
+The section holds one shell command per line;
+the parser chains every non-blank line with ` && ` into the one command line webster runs, so the first failing command fails the whole check.
 
 The three tiers match this repo's own test-tier discipline — `internal/planparser`'s existing `Verify` fields are the V1 precedent this generalizes, not three tiers invented for this format:
 

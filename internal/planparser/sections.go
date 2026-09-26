@@ -50,20 +50,29 @@ func joinSectionBody(section []string) string {
 	return strings.TrimSpace(strings.Join(section, "\n"))
 }
 
-// firstNonEmptyLine returns the first non-blank line of section, trimmed, or "" if section is nil or entirely blank.
-func firstNonEmptyLine(section []string) string {
+// verifyCommandJoiner chains the verify section's command lines into one shell command line,
+// so the first failing command fails the whole check.
+const verifyCommandJoiner = " && "
+
+// joinVerifyCommands returns section's non-blank lines, trimmed, chained with verifyCommandJoiner
+// into the single command line webster runs, or "" if section is nil or entirely blank.
+// The plan stencil tells the planner the section holds one or more commands, one per line;
+// keeping only the first line silently dropped every later one, so a plan whose section read
+// `go vet ./...` then `go test ./...` had its tests skipped by the integration gate.
+func joinVerifyCommands(section []string) string {
+	var commands []string
 	for _, raw := range section {
 		line := strings.TrimSpace(raw)
 		if line != "" {
-			return line
+			commands = append(commands, line)
 		}
 	}
-	return ""
+	return strings.Join(commands, verifyCommandJoiner)
 }
 
 // extractPlanSections populates plan's three plan-level body sections from the overview's body.
 func extractPlanSections(plan *Plan, body string) {
 	plan.SharedDecisions = joinSectionBody(extractSection(body, sharedDecisionsHeading))
 	plan.RenameMechanic = joinSectionBody(extractSection(body, renameMechanicHeading))
-	plan.Verify = firstNonEmptyLine(extractSection(body, planVerifyHeading))
+	plan.Verify = joinVerifyCommands(extractSection(body, planVerifyHeading))
 }
