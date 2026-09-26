@@ -64,4 +64,5 @@ batches:
 ```text
 '2026-09-26T12:01:15Z'  logger-trace-accessors  round 1
 '2026-09-26T12:03:10Z'  fabric-mutation-trace  round 1
+'2026-09-26T12:07:07Z'  shed-envelope-trace  round 1
 ```
