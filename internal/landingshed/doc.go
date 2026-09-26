@@ -19,7 +19,8 @@
 // Finalize always syncs the task branch against the parent through internal/mergeresolve, regardless
 // of which branch Publish took -- the only sync in the no-pull-request case, a second one catching
 // whatever landed in the parent while a pull request sat out for review in the other case -- and then
-// merges the task branch into the parent pair itself. That parent-side merge is this producer's own
+// merges the task branch into the parent pair itself and pushes the parent branch to its upstream, so
+// a landing reaches the remote rather than only the hub's own parent worktree. That parent-side merge is this producer's own
 // merge critical section: the one span a future regeneration step folds into rather than running as a
 // separate step before or after it, because splitting the two would let the parent advance in between
 // the read and the write. Finalize.Call documents which of its own steps is that section; nothing here
