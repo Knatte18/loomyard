@@ -1,44 +1,3 @@
-# happy-path — independent review, round 2 (tag `fable-high-r2`)
-
-Worktree: `/home/knatte/Code/loomyard/wts/crucible-happy-path`, branch `crucible-happy-path`.
-Dev binary: `.dev-bin/lyx` deployed from `4c7fea5db18987ad228d93852bd9172cadd569fd` (`happy-path: crucible re-seed r2`).
-Production baseline: `/home/knatte/go/bin/lyx`.
-Scratch root: `$HOME/crucible-happy-path/fable-high-r2/`.
-
-## Executive summary
-
-(filled in when Job 1 completes)
-
-## 1a — Regression table (prior-round fix commits)
-
-| sha | fix | verdict | evidence |
-|---|---|---|---|
-| `242d46983` | clone names weft primary/_board after the warp prime's branch | (pending) | diff reading: `checkedOutBranch(warpWorktreePath)` reads the warp clone's branch after step 5's `refuseUncheckedOutWarpClone`, so a detached/unborn warp is refused earlier; `suffixWeftPrimaryBranch` keeps the adopt path keyed on `origin/<branch>-weft`. Live: fixture weft bare is created with `git init --bare` on this host (default branch checked below). |
-| `c4f0b1a39`, `3d59b14c6` | ly-drive writes envelopes to a private `mktemp -d` dir | (pending) | diff reading: rule is recipe-blind and names the loom-launched cwd case. Live: llm run transcript. |
-| `5550dd00d` | Finalize pushes the parent branch | (pending) | diff reading: `PushBranch` → `PushWarpRebaseFreeAt` → `gitrepo.PushRebaseFree` runs `git -c push.autoSetupRemote=true push`, so a parent branch with no upstream gets one instead of failing; `SkipPush` honoured. Beyond the happy path: a parent with no remote at all fails the push and the row goes Stuck with "push it by hand" — correct, never a false Done. Live: bare warp `main` after landing. |
-| `efc1f7053`, `d4f6a83d8` | help texts / launch prompt name the `ly` plugin; missing skill stops | (pending) | diff reading: prompt still under the launch-prompt byte cap (test). Live: the driver transcript must show the project-local stand-in skill loaded, no filesystem search. |
-| `f51cb430f` | yamlengine sets/reconciles lists whole | (pending) | diff reading: the only reconciled template list is `landing.require_pr_to_base` (`burler` fans and `models` are `SeedOnly` in `configreg`), so whole-list carry drops nothing a normal upgrade relies on. `collectSequencePaths` does not descend into sequences, matching `sequenceBasePath`'s element grammar. Live: `lyx config landing --set 'require_pr_to_base=[]'` then an unrelated `--set`. |
-| `761dc64a5` | `shed seed --help` loom example | (pending) | to run verbatim on a fixture task worktree then `lyx loom start`. |
-| `ff6e654ba` | ly-drive resumes blocked/paused/failed baseline | (pending) | skill text read; live only if the llm run is ever resumed. |
-| `655bcb6be` | ly-drive names how to wait for a backgrounded step | (pending) | skill text read; live: the driver transcript's wait mechanism. |
-
-## 1b — Fixture and operator sequence
-
-(filled in as the sequence is executed)
-
-## Evidence for the task's three conditions
-
-(per run)
-
-## Findings
-
-(severity-ranked, appended provisionally as spotted)
-
-## Out-of-scope observations
-
-(none yet)
-
-## What was tested
 
 - `./deploy-dev` → `Deployed lyx @ 4c7fea5db (26223 KB) .../.dev-bin/lyx`.
 - Pre-existing processes: no live tmux server (`/tmp/tmux-1000/*` sockets are all stale), the operator's own `claude` sessions, and the millhouse wiki daemon; nothing of mine yet.
@@ -101,3 +60,13 @@ Driver end-of-run (transcript tail): the loop ended at step 18 on `continue:fals
 Condition evidence, llm run: (1) packages `task`, `store`, `cmd/tasktool`, 8 files, tests in every package; (2) `batches_done: 9`, nine card commits; (3) bounce: **none** — first judge verdict APPROVED in all three segments again.
 
 Coverage gap: neither run bounced. With loom's segment shape (Bouncer seed → one Burler round that reviews AND fixes → Bouncer judge), a bounce needs the judge to find the fixer's own output still blocking; both runs' fixers cleared every LOW/NIT finding in-round and the judges approved. Re-driving once (hub3, go driver) with a brief carrying harder traps: cross-process file locking around the read-modify-write with a real concurrent test, plus a journal-backed `undo`.
+
+### Log — hub3, the go-driver re-drive with the harder brief (appended live)
+
+Board task `safe-store` (cross-process `flock` around every mutation with a 20-goroutine concurrent `Add` test; journal-backed `undo`; `go test -race`). Same sequence as hub1 (`--driver go`), `loom start --no-attach` exit 0 with no output.
+Timeline: 18:18 Preflight → Discussion-Write → 18:21:37 Discussion-Bouncer seed → 18:22:17 Burler round 1 (APPROVED, six LOW/NIT fixed) → 18:26:23 judge APPROVED → 18:27:04 Plan-Write (8 cards, `## verify:` = one line `go vet ./... && go test -race ./...`) → 18:29:50 Plan-Bouncer seed → 18:30:30 Plan-Burler round 1 (APPROVED, four findings fixed) → 18:35:17 judge APPROVED → 18:36:17 Webster → 18:40:48 done (`batches_done: 8`, commits `60b7a74..6517414`; `go vet && go test -race` pass at HEAD; integration prompt carries the full one-line verify) → Webster-Bouncer seed → 18:41:56 Webster-Burler round 1 (APPROVED, F1–F5 LOW/NIT, five fix commits `74e9248..ebb4206`) → 18:44:46 judge APPROVED → Publish → Finalize → Friction-Reflect → 18:45:35 `state: done`, `history_length: 18`.
+**Landed: YES** — `hub3/warp.git` `main` = `7a775c8 Concurrency-safe store with undo` over `0e2f16c`, 18 files (`store/{atomic,journal,lock,undo}.go` and tests, `task/{entry,undo}.go` and tests, `cmd/tasktool/process_test.go`); prime clean; `fabric status` clean. No bounce in any segment.
+
+### Survivors at the end of Job 1 (torn down before Job 2's re-drives)
+
+Three tmux servers (`lyx-warp-LYXHUB-59652fb8`, `-cba984e8`, `-55ef1e68`), three `lyx reed watchdog` daemons, and hub2's idle ly-drive `claude` strand (pid 1965494), all identifiable by the scratch path in their args.
