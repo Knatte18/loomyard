@@ -3,7 +3,7 @@
 ```yaml
 task: 'shed: the LLM driver as a generic stepper and mender'
 slug: shed-llm-driver
-approved: false
+approved: true
 started: '20260926-113342'
 parent_branch: main
 root: ""
