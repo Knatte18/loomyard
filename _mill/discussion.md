@@ -16,7 +16,8 @@ batten's Run-Shed row (`internal/battenshed/innerrun.go`, `innerRunProducer.Call
 The next row, Worktree-Teardown, ends the child's reed session and removes the worktree, deleting `.lyx/loom/friction/` while the reflection agent is still working.
 With friction on (the shipped default), every batten-driven task loses its Tier 2 report (crucible-batten-followup finding R2-F5).
 
-A second, related gap: the reflection lives only in the `run` verb's `PostRun` hook, so a step-driven run (`lyx loom step`, the `llm` driver that `manifest/designs/shed-llm-driver.md` makes the direction of travel) never reflects at all.
+A step-driven run (`lyx loom step`, the `llm` driver) never reflects, and that is deliberate, not a gap: the reflection agent files public GitHub issues itself (`contracts/stencils/friction/friction-template-reflection.md`, Step 3), while `plugins/ly/skills/ly-drive/SKILL.md` § Self-report keeps filing behind an operator ("Nothing files automatically while this loop is driving `loom`") and has the driver list `.lyx/loom/friction/` at every stop.
+This task preserves that split.
 
 The chosen fix, fixed by the task brief: loom persists `done` only after its post-run bookkeeping, so batten keeps its contract of watching the status file, not the driver.
 
@@ -34,7 +35,7 @@ The chosen fix, fixed by the task brief: loom persists `done` only after its pos
 
 - Any change to `internal/shedengine` (no new hook, no new state).
 - Any change to batten (`internal/battenshed`, `internal/battencli`): its watch contract stays exactly "child `StateDone` means finished".
-- The Hardener recipe: it shares `Finalize` by reference but gets no reflection row.
+- Step-driven runs' reflection behaviour: still none (see "Reflection only when armed for run"), so `plugins/ly/skills/ly-drive/SKILL.md` stays true as written and is not edited.
 - The `RunBlocked` reflection path's behaviour: unchanged, still in `PostRun`, still lock-free after `shed.Run` returns.
   batten treats a blocked child as a hard error and never tears it down, so that path has no race.
 - `frictionengine.Reflect` itself, the friction note directive, and the reflection stencil.
@@ -50,11 +51,22 @@ The chosen fix, fixed by the task brief: loom persists `done` only after its pos
 - Rationale: it uses the shed machine as it stands, so the "done means finished" ordering falls out of the existing one-persist-per-iteration loop with no engine change.
   A crash mid-reflection resumes at the row alone, never re-running `Finalize`'s landing.
   The run lock stays held for the reflection's whole life, so a second `lyx loom start` sees a busy driver instead of the lock-free window `reflectFriction`'s doc comment describes.
-  A step-driven run (`lyx loom step` / the `llm` driver) reaches the row like any other, which closes the no-reflection-under-step gap.
+  A step-driven run also reaches the row; what the row does there is decided under "Reflection only when armed for run".
 - Rejected: a `shedengine` pre-terminal hook called before persisting `StateDone`.
   It widens a generic engine for one recipe's need, and a crash during the hook leaves `current_producer: Finalize, state: running`, so resume re-runs the landing.
 - Rejected: a product-payload "finalizing" flag batten also reads.
   It changes batten's contract, which the brief rules out.
+
+### Reflection only when armed for run
+
+- Decision: the row reflects only when loomcli's spec was armed for the `run` verb.
+  Armed for `step` (`lyx loom step`, `lyx shed step --recipe loom`), the closure returns `frictionengine.StatusSkipped` without reflecting, and the row returns `Done`, leaving the notes in `.lyx/loom/friction/` for ly-drive's operator-gated flow.
+  loomcli records the arming verb on the receiver in `armAt` (it already switches on `verb` there and in `specFor`), and the `Env` closure reads that field.
+- Rationale: this keeps today's split exactly — `run` reflects and files, `step` leaves filing to the operator ly-drive keeps in the loop — so no autonomous public-issue filing is introduced, and ly-drive's Self-report text (including "`step` never spawns the reflection pass that `run` runs") stays true.
+  `shed-llm-driver` (#28) is already reworking ly-drive's friction handling; changing the filing gate belongs there, not in a bugfix.
+  Gating on the verb, not the seed, matters: the **Driver Choice Single-Site Invariant** forbids any code path from gating behaviour on the *recorded* seed driver, so reading `Seed.Driver` here would violate it, whereas the verb is the invocation's own fact.
+- Rejected: gating on the recorded seed driver (`go` vs `llm`) — barred by the invariant above.
+- Rejected: reflecting under `step` too and rewriting ly-drive's Self-report section — reverses a deliberate operator gate as a side effect of a bugfix.
 
 ### Blocked outcome keeps today's PostRun reflection
 
@@ -78,7 +90,7 @@ The chosen fix, fixed by the task brief: loom persists `done` only after its pos
 
 - Decision: add one closure field to `shedrecipe.Env`, e.g. `ReflectFriction func() string`, returning the `frictionengine` status string.
   loomcli's `wire` fills it with a small wrapper around `c.reflectFriction` that also records the returned status on the receiver.
-  The wrapper returns `frictionengine.StatusSkipped` without calling `reflectFriction` when `c.frictionDir` is empty (Tier 2 off), mirroring `shouldReflectFriction`'s empty-directory gate.
+  The wrapper returns `frictionengine.StatusSkipped` without calling `reflectFriction` when `c.frictionDir` is empty (Tier 2 off, mirroring `shouldReflectFriction`'s empty-directory gate) or when the receiver was armed for a verb other than `run` (see "Reflection only when armed for run").
   Building the row refuses a nil closure at construction time, either in the `"FrictionReflect"` registry entry or in the producer's own constructor, following the split `entries_simple.go` already uses (e.g. `publishEntry` delegates its nil-closure checks to `landingshed.NewPublish`).
 - Rationale: keeps `internal/shedrecipe` and `internal/loomshed` free of any `frictionengine`, `lock` or `loomengine` import for this purpose — the reflection's deps (shuttle runner, stencils dir, registry, config, lock path) are already resolved on loomcli's receiver, and `Env` already carries closures such as `CommitWebster`, `CommitDiscussion` and `ApprovePlan` for the same reason.
   `reflectFriction` itself is reused unchanged, including its non-blocking `LoomFrictionLock`, which still matters because a blocked-path `PostRun` reflection runs lock-free and can overlap a later driver's row.
@@ -98,9 +110,11 @@ The chosen fix, fixed by the task brief: loom persists `done` only after its pos
 
 - Decision: row name `Friction-Reflect`, engine name `FrictionReflect`, interrupt policy `InterruptPolicyReinvoke`.
 - Rationale: follows the recipe's hyphenated row / camel-cased engine convention.
-  Re-invoking is safe: `frictionengine.Reflect` leaves the friction directory in place unless it archived it, and returns `StatusSkipped` on an empty directory, so a re-run after an interrupt either finishes the job or no-ops.
+  Re-invoking is not a guaranteed no-op: the reflection agent files issues before it writes its report, and `frictionengine.Reflect` archives the directory only after that, so an interrupt between a `lyx selfreport create` call and the archive leaves the notes in place and a re-invoked row can file duplicate issues.
+  That window exists identically on today's `PostRun` path, so this task does not widen it.
+  `reinvoke` is still preferred because the common interrupt (before any filing, or after the archive) either finishes the job or no-ops on an empty directory, and a rare duplicate issue is cheaper than stopping a landed run for a human.
 - Rejected: `handback`.
-  There is nothing for a human to do at this row.
+  It halts every interrupted, already-landed run for a human, whose only possible action is to re-run the same reflection.
 
 ### In-flight runs
 
@@ -135,6 +149,7 @@ The chosen fix, fixed by the task brief: loom persists `done` only after its pos
 - **Told-Geometry Invariant**: `shedrecipe` and `loomshed` are bound packages — the new producer and entry derive no path; the friction paths stay resolved inside loomcli behind the closure.
 - **Shed Verb-Set Invariant**: `shedverbs`' run/step bodies are not reimplemented or changed; the step envelope's closed shape is untouched.
 - **Friction Leaf Invariant**: `internal/friction` gains no import.
+- **Driver Choice Single-Site Invariant**: the row's run-versus-step gate reads the arming verb, never the seed's recorded `Driver` field; `internal/loomcli/bootstrap_test.go`'s driver-field-reader tripwire must stay green without a new carve-out.
 - **Batten Bookend Invariant**: batten's teardown sequencing is not touched.
 - **Test Tier Purity Invariant**: tests use injected fakes for the reflection closure, never a real agent or a long sleep.
 - **Documentation Lifecycle** / CLAUDE.md docs rule: doc and comment updates land in the same commit as the behaviour change.
@@ -150,13 +165,14 @@ The chosen fix, fixed by the task brief: loom persists `done` only after its pos
 - **Registry test (`internal/shedrecipe`)**: the `FrictionReflect` constructor refuses a nil closure and builds with one.
 - **Recipe shape/coverage**: update `coverage_guard_test.go`, `shape_test.go`, `sequence_test.go` and any row-count or terminal assertions for the fifteen-row list with `Friction-Reflect` as the sole terminal and `Finalize.on_done: Friction-Reflect`; the interrupt-policy meta test must see the new entry.
 - **Resume**: a status file `done` at `Finalize` (pre-change shape) still short-circuits cleanly; a status file `running` at `Friction-Reflect` resumes by calling only the reflection row.
-- **loomcli (`internal/loomcli/friction_test.go` or neighbour)**: `loomPostRun` on `RunDone` does not call reflection and reports the row-recorded status (or `skipped` when none); on `RunBlocked` with a non-empty friction directory it still reflects; the wiring wrapper returns `skipped` without reflecting when `frictionDir` is empty.
+- **loomcli (`internal/loomcli/friction_test.go` or neighbour)**: `loomPostRun` on `RunDone` does not call reflection and reports the row-recorded status (or `skipped` when none); on `RunBlocked` with a non-empty friction directory it still reflects; the wiring wrapper returns `skipped` without reflecting when `frictionDir` is empty, and also when the receiver was armed for `step` (with a non-empty friction directory whose notes are left in place), while armed for `run` it reflects.
 - Full `go test ./...` (cgo on) must pass.
 
 ## Q&A log
 
-- **Q:** Which mechanism holds `done` back until reflection finishes? **A:** [auto-pick] A new terminal `Friction-Reflect` recipe row after `Finalize`. **Why:** no engine change, crash-resumable at the row without re-running the landing, the run lock stays held, and step-driven runs gain reflection too.
+- **Q:** Which mechanism holds `done` back until reflection finishes? **A:** [auto-pick] A new terminal `Friction-Reflect` recipe row after `Finalize`. **Why:** no engine change, crash-resumable at the row without re-running the landing, and the run lock stays held.
 - **Q:** What happens to reflection on a blocked halt? **A:** [auto-pick] Keep today's `PostRun` reflection for `RunBlocked`. **Why:** a row cannot fire on blocked, batten never tears down a blocked child, and dropping it would lose notes for tasks never resumed.
 - **Q:** What does the row return when reflection fails? **A:** [auto-pick] Always `Done`, failures logged. **Why:** matches `reflectFriction`'s existing rule that a bookkeeping failure must never block or fail a landed run.
 - **Q:** What does the run envelope's `friction` key report? **A:** [auto-pick] Kept, reporting the row-recorded status on done, the fresh result on blocked, `skipped` otherwise. **Why:** preserves the envelope's shape for existing consumers.
+- **Q:** Should the row reflect under step-driven runs (`llm` driver)? **A:** [auto-pick] No — reflect only when armed for `run`, gated on the arming verb, not the recorded seed driver. **Why:** reflection files public issues, ly-drive deliberately keeps filing behind an operator, and the Driver Choice Single-Site Invariant bars gating on the recorded driver (raised by the round-1 orchestrator review).
 - **Q:** How does the row reach loomcli's already-resolved reflection deps? **A:** [auto-pick] One closure field on `shedrecipe.Env`, filled by loomcli's `wire`. **Why:** matches the existing closure fields and keeps feature imports out of Told-Geometry-bound packages.
