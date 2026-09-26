@@ -451,6 +451,38 @@ func TestCloneHub_BoardWorktreeOrphanBranchOnEmptyWeftRemote(t *testing.T) {
 	}
 }
 
+// TestCloneHub_EmptyWeftRemoteWithForeignDefaultBranch asserts that the weft primary and _board are
+// named after the warp prime's branch, not after the empty weft remote's own unborn HEAD: a weft
+// bare created by `git init --bare` on a host whose default branch is "master" must still yield
+// "main-weft" and a _board on "main" for a warp on "main", or `lyx fabric add` can never fork a pair.
+func TestCloneHub_EmptyWeftRemoteWithForeignDefaultBranch(t *testing.T) {
+	fixtures := t.TempDir()
+
+	warpBare := makeBareRemote(t, fixtures, "foreign-head-warp")
+	weftBare := filepath.Join(fixtures, "foreign-head-weft.git")
+	gitkit.MustRun(t, fixtures, "git", "init", "--bare", "-b", "master", weftBare)
+
+	cloneParent := t.TempDir()
+	res, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
+		WeftURL: filepath.ToSlash(weftBare),
+		WarpURL: filepath.ToSlash(warpBare),
+		Subpath: ".",
+	})
+	if err != nil {
+		t.Fatalf("CloneHub() error = %v; want nil", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(res.HubPath) })
+
+	weftPrime := weftname.SiblingPath(res.HubPath, "foreign-head-warp")
+	if got := currentBranch(t, weftPrime); got != "main-weft" {
+		t.Errorf("weft prime branch = %q; want %q", got, "main-weft")
+	}
+	if hasNoCommits(t, weftPrime) {
+		t.Errorf("weft prime at %s has an unborn HEAD; want main-weft born so a pair can fork from it", weftPrime)
+	}
+	assertBoardIsWeftWorktree(t, res.HubPath, weftPrime, "main")
+}
+
 // TestCloneHub_AnchorCreatePath asserts the create path: a first-ever clone with an existing
 // "backend" subdirectory in the warp writes the marker to disk and returns a fully-populated
 // CloneResult naming it.

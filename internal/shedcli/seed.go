@@ -118,14 +118,19 @@ invoked when one does not.
 --recipe is required and validated against the same table every "lyx shed"
 invocation arms through. --driver defaults to "go", unchanged; "llm" is
 accepted for a recipe that has a bootstrap verb, and refused for one that
-does not. --param is repeatable and sets a seed parameter as key=value.
+does not; an llm-driven run's driver session needs the ly-drive skill from
+loomyard's "ly" plugin installed. --param is repeatable and sets a seed
+parameter as key=value.
 
 seed is idempotent against a byte-identical existing seed and refuses a
-disagreeing one.
+disagreeing one. A recipe's own bootstrap verb writes the seed it expects
+and refuses to start over a disagreeing one, so a pre-seed must match it:
+loom's run-id is "self" and its only param is the pair's recorded parent
+branch, "parent".
 
 Example:
   lyx shed seed some-slug --recipe batten
-  lyx shed seed some-slug --recipe loom --driver go --param slug=some-slug`,
+  lyx shed seed self --recipe loom --driver llm --param parent=main`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()

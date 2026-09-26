@@ -551,3 +551,31 @@ func TestSequenceBasePath(t *testing.T) {
 		})
 	}
 }
+
+// TestReconcile_CarriesListsWhole pins that Reconcile keeps an existing list as written, whatever
+// its length, and reports none of its elements as added or removed.
+func TestReconcile_CarriesListsWhole(t *testing.T) {
+	template := []byte("require_pr_to_base: [\"main\"]\nsquash: true\n")
+	tests := []struct {
+		name     string
+		existing string
+		want     string
+	}{
+		{"Emptied", "require_pr_to_base: []\nsquash: true\n", "require_pr_to_base: []"},
+		{"Lengthened", "require_pr_to_base: [a, b]\nsquash: true\n", "require_pr_to_base: [a, b]"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			merged, added, removed, err := Reconcile(template, []byte(tt.existing))
+			if err != nil {
+				t.Fatalf("Reconcile() error = %v; want nil", err)
+			}
+			if !strings.Contains(string(merged), tt.want) {
+				t.Errorf("Reconcile() merged = %q; want it to contain %q", merged, tt.want)
+			}
+			if len(added) != 0 || len(removed) != 0 {
+				t.Errorf("Reconcile() added = %v, removed = %v; want both empty", added, removed)
+			}
+		})
+	}
+}

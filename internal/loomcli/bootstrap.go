@@ -94,6 +94,18 @@ func mustAttach(noAttach bool) bool {
 	return !noAttach
 }
 
+// noAttachFields builds the success envelope `lyx loom start --no-attach` prints once the driver is
+// confirmed up: the run's driver, slug and status file, with "attached": false stating which tail
+// was skipped. It is a pure function so a Tier 1 test can pin the key set.
+func noAttachFields(driver, slug, statusFile string) map[string]any {
+	return map[string]any{
+		"attached":    false,
+		"driver":      driver,
+		"slug":        slug,
+		"status_file": statusFile,
+	}
+}
+
 // awaitRunLockResult is the four-way outcome of awaitRunLock.
 type awaitRunLockResult int
 

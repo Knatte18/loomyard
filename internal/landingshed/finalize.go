@@ -1,5 +1,6 @@
 // finalize.go implements the Finalize producer: it catches the task worktree up with the parent
-// branch, then merges the task branch into the parent pair's own worktree -- reporting only what
+// branch, then merges the task branch into the parent pair's own worktree and pushes the parent
+// branch -- reporting only what
 // the shedengine.ShedProducer seam can carry: a bare verdict, an output pointer nobody persists, and
 // an error.
 //
@@ -31,14 +32,17 @@ import (
 // carry.
 const finalizeName = "Finalize"
 
-// parentMerger is the narrow single-method seam Finalize holds the opened parent pair's handle
-// behind, mirroring the resolver seam's own reasoning: production has exactly one way to obtain it
-// -- deps.OpenParentFabric, adapted by NewFinalize's parentOpener closure -- and the seam exists so
+// parentMerger is the narrow seam Finalize holds the opened parent pair's handle behind, mirroring
+// the resolver seam's own reasoning: production has exactly one way to obtain it --
+// deps.OpenParentFabric, adapted by NewFinalize's parentOpener closure -- and the seam exists so
 // this package's own in-package tests can substitute a fake without a second public construction
 // path anyone outside could reach for by mistake.
 type parentMerger interface {
 	// Merge merges source into the parent pair's own worktree. See fabricengine.Fabric.Merge.
 	Merge(source string, opts fabricengine.MergeOptions) (fabricengine.MergeResult, error)
+	// PushBranch pushes the parent pair's own branch to its upstream. See
+	// fabricengine.Fabric.PushBranch.
+	PushBranch(opts fabricengine.SyncOptions) (fabricengine.PushResult, error)
 }
 
 // The compile-time assertion that *fabricengine.Fabric satisfies parentMerger.
@@ -157,7 +161,7 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 	mergeOpts := fabricengine.MergeOptions{Squash: fz.deps.Config.Squash, Message: summary.CommitMessage()}
 	_, mergeErr := parentHandle.Merge(fz.deps.TaskBranch, mergeOpts)
 	if mergeErr == nil {
-		return shedengine.Done, shedengine.OutputPointer{}, nil
+		return fz.pushParent(ctx, parentHandle)
 	}
 
 	// Step 5: on the merge-in-required error, re-run the resolver in the task worktree and retry
@@ -171,7 +175,7 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 		}
 		_, retryErr := parentHandle.Merge(fz.deps.TaskBranch, mergeOpts)
 		if retryErr == nil {
-			return shedengine.Done, shedengine.OutputPointer{}, nil
+			return fz.pushParent(ctx, parentHandle)
 		}
 		mergeErr = retryErr
 	}
@@ -184,6 +188,19 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 		return fz.stuckOrCancelled(ctx, guardErr.Error())
 	}
 	return fz.stuckOrCancelled(ctx, fmt.Sprintf("parent-side merge failed: %v", mergeErr), "error", mergeErr)
+}
+
+// pushParent publishes the parent branch the merge just landed on to its upstream, so a landing
+// reaches the remote rather than only this hub's parent worktree, and reports Done.
+// A failed push is Stuck, never an error to retry: the merge has already landed locally, so a human
+// pushes (or reconciles a diverged remote) by hand. Deps.PushSkipped suppresses the push, exactly as
+// it does for the task branch.
+func (fz *Finalize) pushParent(ctx context.Context, parentHandle parentMerger) (shedengine.Outcome, shedengine.OutputPointer, error) {
+	if _, err := parentHandle.PushBranch(fabricengine.SyncOptions{SkipPush: fz.deps.PushSkipped}); err != nil {
+		reason := fmt.Sprintf("parent branch %q was merged locally but its push failed: %v; push it by hand", fz.deps.ParentBranch, err)
+		return fz.stuckOrCancelled(ctx, reason, "error", err)
+	}
+	return shedengine.Done, shedengine.OutputPointer{}, nil
 }
 
 // mergeInStep runs the resolver's merge-in against the parent branch from the task worktree. When

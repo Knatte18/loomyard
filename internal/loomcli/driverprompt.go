@@ -7,9 +7,12 @@ package loomcli
 import "fmt"
 
 // driverPrompt composes the ly-drive session's launch prompt: a short pointer, never a copy of the
-// skill. It names the ly-drive skill invocation, the run-id, the report path the session must write
-// at every stop condition, and an explicit statement that this session runs in autonomous mode with
-// no operator to ask.
+// skill. It names the ly-drive skill invocation and the plugin it ships in, the run-id, the report
+// path the session must write at every stop condition, and an explicit statement that this session
+// runs in autonomous mode with no operator to ask.
+// A session without the skill is told to stop rather than search for a copy: a filesystem search
+// finds whichever checkout happens to exist, so the run would follow an arbitrary version of the
+// skill's contract.
 //
 // It is kept short on purpose: the Claude engine caps a prompt at maxLaunchPromptBytes (declared in
 // internal/shuttleengine/claudeengine/command.go, enforced in claudeengine.go), because the whole
@@ -19,7 +22,7 @@ import "fmt"
 // provider specifics under the claude engine package.
 func driverPrompt(runID string, reportPath string) string {
 	return fmt.Sprintf(
-		"Run the ly-drive skill for run-id %q. You are running autonomously, with no operator to ask -- decide and proceed on your own judgment. Write your report to %q at every stop condition (task done, or a failure you cannot repair).",
+		"Run the ly-drive skill (from loomyard's ly plugin) for run-id %q. If that skill is not available to you, do not search the filesystem for a copy, which may be a stale version: write to the report that the ly plugin is not installed and stop. You are running autonomously, with no operator to ask -- decide and proceed on your own judgment. Write your report to %q at every stop condition (task done, or a failure you cannot repair).",
 		runID, reportPath,
 	)
 }

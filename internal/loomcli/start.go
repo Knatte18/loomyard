@@ -274,6 +274,10 @@ driver-log accessor names, never to this command's own output -- an ly-drive
 strand writes no such log, since its own pane is where its output already
 lives.
 
+An ly-drive strand needs the ly-drive skill, which ships in loomyard's "ly"
+plugin: install that plugin for the provider on this machine before starting
+an llm-driven run.
+
 A worktree opened through "lyx ide spawn"'s generated VS Code task starts
 "lyx reed up", then "lyx reed add --if-absent --cmd claude --name claude
 --focus", then "lyx reed attach", so the operator's own session is the
@@ -300,7 +304,9 @@ could not remove the strand -- are attached to, or returned over with
 --no-attach, by a later start without re-checking readiness. The documented
 meaning is the same on both paths:
 perform every bootstrap step, confirm the driver is up by that path's own
-signal, and return without the terminal handover.
+signal, and return without the terminal handover, printing a success
+envelope ("attached": false, plus the run's driver, slug and status file)
+in place of the handover.
 
 Example:
   lyx loom start
@@ -398,6 +404,10 @@ Example:
 			_ = bootstrapLock.Release()
 
 			if !mustAttach(noAttachFlag) {
+				// A --no-attach invocation skips the JSON-exempt handover tail below, so it
+				// reports its success on the envelope like every other verb: a silent exit 0 is
+				// indistinguishable from a driver that never came up without a follow-up status.
+				output.Ok(out, noAttachFields(driver, slug, c.shedPaths.StatusPath))
 				return nil
 			}
 

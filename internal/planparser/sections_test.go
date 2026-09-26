@@ -76,3 +76,47 @@ func TestParsePlan_PlanLevelSections_AbsentAreEmpty(t *testing.T) {
 		t.Errorf("plan.Verify = %q; want empty (section absent)", plan.Verify)
 	}
 }
+
+// TestParsePlan_VerifySection_ChainsEveryLine pins that a multi-line "## verify:" section is
+// carried whole, one command per line chained with " && ", rather than truncated to its first
+// line: the plan stencil tells the planner the section holds one or more commands, and a plan
+// whose section read `go vet ./...` then `go test ./...` had its tests silently skipped by
+// webster's integration gate (crucible round fable-high-r2).
+func TestParsePlan_VerifySection_ChainsEveryLine(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		section string
+		want    string
+	}{
+		{"SingleLine", "go test ./...\n", "go test ./..."},
+		{"TwoLines", "go vet ./...\ngo test ./...\n", "go vet ./... && go test ./..."},
+		{"BlankLinesBetween", "\ngo vet ./...\n\n  go test -race ./...  \n\n", "go vet ./... && go test -race ./..."},
+		{"AlreadyChained", "go vet ./... && go test ./...\n", "go vet ./... && go test ./..."},
+		{"EntirelyBlank", "\n\n", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			overview := "---\nformat: 5\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — only — a card\n\n## verify:\n" + tt.section
+			card := "# Card 1 — only\n\n**Edit:**\n- `a.go`\n**Intent:** placeholder.\n"
+			if err := os.WriteFile(filepath.Join(dir, "00-overview.md"), []byte(overview), 0o644); err != nil {
+				t.Fatalf("write overview fixture: %v", err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "01-only.md"), []byte(card), 0o644); err != nil {
+				t.Fatalf("write card fixture: %v", err)
+			}
+
+			plan, err := planparser.ParsePlan(dir)
+			if err != nil {
+				t.Fatalf("ParsePlan(%q) error = %v; want nil", dir, err)
+			}
+			if plan.Verify != tt.want {
+				t.Errorf("plan.Verify = %q; want %q", plan.Verify, tt.want)
+			}
+		})
+	}
+}

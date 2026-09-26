@@ -82,7 +82,8 @@ type Plan struct {
 	// RenameMechanic is the raw body text of the overview's optional "## Rename mechanic" section.
 	RenameMechanic string
 
-	// Verify is the single command line the overview's optional "## verify:" section carries.
+	// Verify is the overview's optional "## verify:" section as one shell command line:
+	// the section's non-blank lines, in order, chained with " && ".
 	Verify string
 }
 

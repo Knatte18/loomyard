@@ -240,6 +240,8 @@ func buildConfigLong() string {
 		"Use --set key=value (repeatable) to write one or more config values directly,\n" +
 		"bypassing the editor entirely, e.g.\n" +
 		"  lyx config board --set design_prefix=foo- --set readme=Home.md\n" +
+		"A list-valued key takes a YAML flow list and is replaced whole, e.g.\n" +
+		"  lyx config landing --set 'require_pr_to_base=[]'\n" +
 		"Pre-existing config keys not recognized by the current template are\n" +
 		"preserved untouched (never dropped) and reported via a \"preserved\" field\n" +
 		"in the JSON success output; run \"lyx config reconcile\" to actually remove\n" +
