@@ -60,11 +60,13 @@ type Hooks struct {
 	// signal and never a third policy word -- a recipe with no policy table therefore yields an
 	// empty next_interrupt_policy.
 	InterruptPolicyFor func(row string) string
-	// StatusExtras lets a module add its own keys onto status's four-key generic core, keyed by the
-	// decoded shedengine.Status. A non-nil error it returns is reported verbatim on the error
-	// envelope with no re-prefixing -- the hook owns its whole string. StatusExtras never runs
-	// against a zero shedengine.Status: the absent-file disposition short-circuits before it, so
-	// neither the generic core nor StatusExtras contributes a key to an absent-file envelope.
+	// StatusExtras lets a module add its own keys onto status's seven-key generic core
+	// (current_producer, state, error, activity, history_length, interrupt_policy, trace_dir),
+	// keyed by the decoded shedengine.Status. A non-nil error it returns is reported verbatim on
+	// the error envelope with no re-prefixing -- the hook owns its whole string. StatusExtras
+	// never runs against a zero shedengine.Status: the absent-file envelope carries only the
+	// generic found/trace_dir (plus status_path on the non-refusing disposition), never an extras
+	// key.
 	StatusExtras func(st shedengine.Status) (map[string]any, error)
 }
 
