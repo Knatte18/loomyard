@@ -38,7 +38,7 @@ the other crash-window findings stay parked as GitHub issues #269, #270, #271 an
 - `internal/loomcli` and `internal/battencli` fill `ScratchDir` at their one `shedverbs.Spec` construction site each (`arm.go`), so `lyx shed step`, `lyx loom step` and `lyx batten step` all carry it; `internal/loomcli` also fills `FrictionDir`, batten leaves it empty.
 - `internal/landingshed`: its GitHub write calls log at `Info`.
 - The loom driver launch: the step cap is dropped (`AutonomousDriveStepCap`, the prompt sentence, `cmd/lyx/drivercap_test.go`).
-- Docs: `CONSTRAINTS.md` (Shed Verb-Set Invariant allowlist and envelope clause), `docs/overview.md`, `internal/battenshed/doc.go`'s llm-driver paragraph, `internal/shedverbs/step.go`'s one-retry comment, the logger level-policy doc comment.
+- Docs: `CONSTRAINTS.md` (Shed Verb-Set Invariant allowlist and envelope clause), `docs/overview.md`, `internal/battenshed/doc.go`'s llm-driver paragraph, `internal/shedverbs/step.go`'s kind-disposition comment block, the logger level-policy doc comment, the Fabric Git Invariant's text in `CONSTRAINTS.md` (the reading in `repair-scope`), `lyx loom start`'s `Long` help (`internal/loomcli/start.go`, receiving the launch convention and `$TMUX_PANE` self-check moved out of the skill), and `lyx loom step`'s `Long` help (`internal/loomcli/cli.go` ~233-240).
 - On completion, `manifest/designs/shed-llm-driver.md` is deleted and its `manifest/roadmap.md` Planned item removed, per the rule that `manifest/` holds only unbuilt work.
 
 **Out:**
@@ -136,7 +136,12 @@ the other crash-window findings stay parked as GitHub issues #269, #270, #271 an
 ### repair-scope
 
 - Decision: each failure shape has one disposition.
-  - `kind: producer`, `kind: bootstrap`, `kind: unseeded`, and an interrupted invocation: the repair path below, bounded by `repair-cap`.
+  - `kind: producer`, `kind: bootstrap`, `kind: unseeded`: the repair path below, bounded by `repair-cap`.
+  - An interrupted invocation (no parseable envelope) keeps the current skill's three sub-cases, decided on one `lyx shed status` read:
+    the run advanced (`current_producer` or `history_length` changed, or `state` no longer running) → continue from the fresh status;
+    nothing changed and `interrupt_policy: reinvoke` → re-invoke the same row, counting toward `repair-cap`;
+    nothing changed and `interrupt_policy: handback` or absent → hand back unconditionally, because a live agent may still be running and re-invoking restarts it — no repair touches that row's strands.
+    In every sub-case the driver reads the interrupted step's traces (Decision `trace-dir-and-trace-id`) for the report; an error envelope a later step returns goes down the repair path like any other.
   - `kind: busy`: handed back, never repaired — the lock holder may be a live driver strand or a sibling fork, and the driver never pauses, kills or unlocks another driver.
   - `kind: ownership`: handed back — a slug mismatch is an operator decision, not a crash state.
   - Kind-less `shedcli` pre-run refusals (unseeded run-id, unsupported verb): always escalate; the driver never re-seeds and no `lyx` verb fixes either, so it reads their trace for the report only.
@@ -168,10 +173,12 @@ the other crash-window findings stay parked as GitHub issues #269, #270, #271 an
 
 ### repair-cap
 
-- Decision: the one-retry rule for `kind: producer` is replaced by the driver's judgment, bounded by one cap: at most **two** repairs of the same row without the run advancing (same `producer` and `history_length` as the envelope before the first repair).
+- Decision: the one-retry rule for `kind: producer` is replaced by the driver's judgment, bounded by one cap: at most **two** repairs of the same row without the run advancing.
+  The counting key is `current_producer` plus `history_length` from a `lyx shed status` read taken before the first repair — an error envelope carries neither field, and the previous success envelope's `producer` names the row that already ran, not the failing one.
+  A later status read showing the same pair means the run has not advanced; a different pair resets the count.
   On the third failure the driver escalates.
-  The interrupted-invocation branch keeps its existing two-consecutive re-invoke cap and counts toward the same limit.
-  `internal/shedverbs/step.go`'s kind comment drops the one-retry wording and points at the skill.
+  The interrupted-invocation `reinvoke` sub-case counts toward the same limit, replacing its own separate two-consecutive cap.
+  `internal/shedverbs/step.go`'s whole kind-disposition comment block (the one-retry rule and the per-kind "needs an operator decision" claims, which now contradict `kind: unseeded`'s repair disposition) is rewritten: the constants keep their meaning comments, and dispositions are pointed at the skill, stated once there.
 - Rationale: two attempts separate a transient crash window from a systematic defect; shed's bounce budgets already bound normal progress.
 - Rejected: no cap — a repair that re-breaks the same state loops until the step cap that this task removes.
 
@@ -191,7 +198,7 @@ the other crash-window findings stay parked as GitHub issues #269, #270, #271 an
 - Decision: the rewritten `SKILL.md` names no recipe, row, or recipe file path.
   It branches only on the envelope's fields, the policy words, and the five kinds.
   What moves out, per the design's table: the loom step arithmetic, `.lyx/loom/friction/` and loom's self-report paragraph, the cwd paragraph and `lyx loom start` as bootstrap remedy (the recipe's own refusal text now carries it, which the driver reports verbatim), the `$TMUX_PANE` self-check and loom launch convention (moved to `lyx loom start`'s own `Long` help), and any gloss on what `handback` means for a recipe.
-  Step output files go to `.scratch/ly-drive/<run-id>/step-<n>.json`, relative to the driving session's cwd.
+  Step output files go to `.scratch/ly-drive/<run-id>/step-<n>.json` under the driving session's own cwd, resolved to an absolute path before the subshell `cd` (Decision `orchestrator-fork`), so the redirect never lands under the drive directory.
   A new Go tripwire test replaces `drivercap_test.go`: `SKILL.md` contains none of the shipped recipe names (`shedrun.RecipeNames()`) as whole words, case-insensitively (so `loomyard` does not trip it), nor `.lyx/`, `lyx loom` or `lyx batten`.
 - Rationale: the design's core claim is that which recipe runs is a property of the seed alone; a tripwire keeps a later edit from re-teaching the skill a recipe.
 - Rejected: leaving the loom sections as "recipe-specific notes" — the pattern the current skill already shows, which the design removes.
@@ -231,7 +238,7 @@ the other crash-window findings stay parked as GitHub issues #269, #270, #271 an
 - Mutations: `internal/fabricengine/mutation.go` (`Append` ~133, `Extend` ~166, `AppendRef` ~177), nil-safe pointer receivers; `fabricengine` already imports `logger`.
   The Fabric Destruction Chokepoint Invariant's "`rec *Mutations` threaded into `destroy.go` only" is untouched — this changes what the recorder does, not where it is threaded.
 - Loom driver launch: `internal/loomcli/driverprompt.go` (`AutonomousDriveStepCap`, `driverPrompt`), `driverprompt_test.go`, `driverreport.go` (report under `shedrun.ScratchDir`), `start.go` (`startLLMDriverArm`, the `Long` help that receives the moved launch-convention text).
-- Pins to update: `cmd/lyx/drivercap_test.go` (deleted), `internal/shedverbs/step_test.go` (`TestStepEnvelope_KeySetIsExactlyTen`), `internal/loomcli/step_test.go` (~39-64 key list), `internal/loomcli/driverprompt_test.go`.
+- Pins to update: `cmd/lyx/drivercap_test.go` (deleted), `internal/shedverbs/step_test.go` (`TestStepEnvelope_KeySetIsExactlyTen`), `internal/loomcli/step_test.go` (~39-64 key list), `internal/loomcli/status_test.go` (`TestStatusCmd_EnvelopeKeySet`, which pins the status envelope's key set both ways and breaks on `trace_dir`), `internal/loomcli/driverprompt_test.go`.
   Comments naming ly-drive's retry rule or orphan claim: `internal/battencli/step_test.go:27`, `internal/shedadapters/bouncer_seed_test.go:475`, `internal/loomcli/smoke_bootstrapwiring_test.go:150`, `internal/battenshed/doc.go:15-29` (mentions the step cap).
 - Docs naming the old behaviour: `docs/overview.md` (~335, ~385, ~444), `internal/loomcli/cli.go` step `Long` help (~233-240), `CONSTRAINTS.md` Shed Verb-Set Invariant.
 - The current `SKILL.md` wrongly says loom's friction directory is under the worktree root; it is under `AnchorPath`. The rewrite drops the sentence.
@@ -258,7 +265,7 @@ the other crash-window findings stay parked as GitHub issues #269, #270, #271 an
 - `internal/logger` (TDD): `TraceFile` returns `""` with no sink, forces the file open and returns its path with a directory override, and returns the same path on repeat calls; `TraceDir` matches the override and creates no file in it.
 - `internal/fabricengine` (TDD): with a sink override, `Append` and `AppendRef` each write one `fabric: mutation` record carrying kind, target, detail; `Extend` writes none; a nil `*Mutations` writes none.
 - `internal/shedverbs` (TDD): success envelope key set is exactly thirteen; each five-kind error envelope carries `trace_file`, `friction_dir`, `scratch_dir`; `scratch_dir`/`friction_dir` echo the `Spec` fields; step writes an entry and an outcome `Info` record; status envelope carries `trace_dir`; the seam test admits `logger` and still denies `lyxcwd` and `*cli`.
-- `internal/loomcli`: step key-list test moved to thirteen; `FrictionDir` set when friction is enabled and empty when not; `driverPrompt` no longer mentions a cap and stays under its length bound.
+- `internal/loomcli`: step key-list test moved to thirteen; status key-set test gains `trace_dir`; `FrictionDir` set when friction is enabled and empty when not; `driverPrompt` no longer mentions a cap and stays under its length bound.
 - `internal/loomcli` and `internal/battencli`: `ScratchDir` equals `shedrun.ScratchDir` for the addressed run on every step entry point — `lyx shed step`, `lyx loom step`, `lyx batten step` — asserted on the emitted envelope, not only on the `Spec`.
 - `internal/landingshed`: a successful PR write logs one `Info` record (through the existing fake GitHub seam).
 - `cmd/lyx`: the recipe-blindness tripwire on `SKILL.md`.
@@ -272,6 +279,8 @@ the other crash-window findings stay parked as GitHub issues #269, #270, #271 an
 - **Q:** How is an interrupted step's trace found? **A:** [auto-pick] The driver mints `LYX_TRACE_ID` per step; `status` carries `trace_dir`. **Why:** a direct lookup, no timestamp race.
 - **Q:** Shared shed-level friction, or recipe-named? **A:** [auto-pick] Recipe-named `friction_dir` plus shed-owned `scratch_dir` for the driver's repair records. **Why:** no move of loom's friction machinery.
 - **Q:** Which non-running envelopes does the driver repair? **A:** [auto-pick] `producer`, `bootstrap`, `unseeded` and interrupted invocations; `busy`, `ownership`, kind-less refusals, `blocked` and `paused` are handed back. **Why:** a gate verdict, a live lock holder or a slug mismatch is not a crash, and pausing a lock holder could stop a sibling driver.
+- **Q:** Does an interrupted `handback` row go down the repair path? **A:** [auto-pick] No — the three interrupt sub-cases stay; `handback`/absent hands back unconditionally. **Why:** a live agent may still be running, and touching its strand restarts it.
+- **Q:** What identifies "the same row" for `repair-cap`? **A:** [auto-pick] `current_producer` + `history_length` from a status read before the first repair. **Why:** error envelopes carry neither field.
 - **Q:** How does a fork reach the directory a run requires without the skill naming a recipe? **A:** [auto-pick] The fork prompt names the drive directory; the skill runs each `lyx` call in a subshell `cd`. **Why:** the orchestrator seeded the run there, and the recipe's own refusal covers a wrong directory.
 - **Q:** What may a repair touch? **A:** [auto-pick] `lyx` verbs plus read-only git, with one narrow exception for deleting a branch the failed step's trace shows it created; never status/seed by hand, no force-push. **Why:** Fabric Git Invariant, while keeping the absorbed stranded-branch window (#269) repairable.
 - **Q:** Cap on repeated repairs of the same row? **A:** [auto-pick] Two repairs without the run advancing, then escalate. **Why:** separates a transient crash window from a systematic defect.
