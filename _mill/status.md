@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-gap-fix-r4
+phase: discussion-fix-r5
 slug: loom-done-after-friction
 branch: loom-done-after-friction
 plan: null
@@ -20,4 +20,5 @@ discussion-fix-r1  '2026-09-26T11:00:28Z'
 discussion-gap-fix-r2  '2026-09-26T11:03:19Z'
 discussion-gap-fix-r3  '2026-09-26T11:05:55Z'
 discussion-gap-fix-r4  '2026-09-26T11:09:13Z'
+discussion-fix-r5  '2026-09-26T11:10:55Z'
 ```

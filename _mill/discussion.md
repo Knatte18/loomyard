@@ -37,6 +37,9 @@ The chosen fix, fixed by the task brief: loom persists `done` only after its pos
 - Any change to batten (`internal/battenshed`, `internal/battencli`): its watch contract stays exactly "child `StateDone` means finished".
 - Step-driven runs' reflection behaviour: still none (see "Reflection only when armed for run"), so `plugins/ly/skills/ly-drive/SKILL.md`'s § Self-report stays true and is not edited.
   Its row-count text is a separate matter and is in scope (see "Stale row-count and last-row text").
+- batten-driven children seeded with `child_driver: llm` (`internal/battencli/wire.go`'s `ChildDriver`): they are step-driven, so their row skips reflection, `done` persists, and Worktree-Teardown still deletes `.lyx/loom/friction/` and ends the reed session, possibly while ly-drive is listing those notes for its stop report.
+  This exposure is pre-existing (a step-driven child never reflects today, and teardown already follows its `done`), is not widened by this task, and is left out of scope: fixing it means deciding how an `llm`-driven run's operator-gated friction survives teardown, which belongs to `shed-llm-driver` (#28, `manifest/designs/shed-llm-driver.md`), whose open question on shed-level friction locations covers it.
+  This task's fix covers the shipped default `child_driver: go`.
 - batten itself: no change.
   Run-Shed's watch budget (`max_bounces: 1440` × `poll_interval_s: 30`, twelve hours, in `contracts/recipes/batten-recipe.yaml`) now also spans the child's reflection, up to `friction_timeout_min` (thirty minutes in the shipped template) more before `done`; that is well inside the budget, so no batten change is needed.
 - The `RunBlocked` reflection path's behaviour: unchanged, still in `PostRun`, still lock-free after `shed.Run` returns.
@@ -93,6 +96,8 @@ The chosen fix, fixed by the task brief: loom persists `done` only after its pos
   Waiting holds `done` back until every reflection over these notes has finished, and the wait is bounded by the holder's own `friction_timeout_min`; an OS advisory lock is released on process death, so a killed holder never wedges it.
   The original skip rationale ("blocking would hold a driver open for another agent's whole deadline") is the desired behaviour on the row path, where holding the driver is the point.
   No deadlock: the blocked-path holder never waits on anything the row holds (its driver's `shed.Run` has already returned and released the run lock).
+- The wait is not cancellable, and that is accepted: `lock.AcquireWriteLock` takes no context and the `ReflectFriction` closure takes no `ctx`, so Ctrl-C or a parent deadline cannot interrupt the row while it waits; the wait is bounded only by the holder's `friction_timeout_min` (or its process dying, which releases the advisory lock).
+  This matches the reflection itself, which is already non-cancellable (`frictionengine.Reflect` takes no context and runs to its own timeout), so a context-aware acquire would make only half of the row interruptible; an operator stop still takes effect at the next producer boundary, which here means the run simply finishes.
 - Rejected: skipping on the row path and accepting the residual race — leaves the task's own bug reachable through blocked-then-resumed runs.
 - Rejected: routing the row to `Stuck`/blocked while the lock is held — would halt a landed run for a condition that clears on its own.
 
@@ -101,6 +106,7 @@ The chosen fix, fixed by the task brief: loom persists `done` only after its pos
 - Decision: every text that pins loom's row count ("fourteen") or names `Finalize` as the recipe's last/terminal row is updated in the same commit, found by method rather than from a hand list: grep the repo (Go comments, cobra help text, yaml comments, skills under `plugins/`, `docs/`, `manifest/designs/`, `contracts/`) for `fourteen`, `14 rows`/`14 producer`, and for `Finalize` in terminal/last-row/ends-the-run phrasing, and fix every hit that describes loom's recipe.
   Known hits at discussion time, as a floor rather than the list: the recipe yaml header, `internal/loomshed/loomshed.go`, `internal/loomshed/doc.go`, `internal/loomshed/interruptpolicy.go` (twice), `lyx loom`'s user-visible help in `internal/loomcli/cli.go` ("walks fourteen producer rows … and finally Publish and Finalize"), and `plugins/ly/skills/ly-drive/SKILL.md` § The loop.
   Where a count is not load-bearing, reword it away rather than bump it, per the no-perishable-tally rule; where it is (ly-drive's step-cap arithmetic), re-derive it: one more row makes the three-rounds-per-segment walk thirty-six steps, still under the forty-step cap, so the cap is unchanged and only the arithmetic text moves.
+  ly-drive's worst-case figure ("near a hundred steps", SKILL.md § The loop, restated where it derives the autonomous step cap of 120) also gains one step; it was checked and needs no edit, since it is stated as an approximation and 120 keeps its margin over it.
 - Rationale: the reviewer found the hand list incomplete twice over; a grep-driven sweep is the only enumeration that survives.
   The ly-drive edit is limited to the row-count/cap text this change falsifies, since `shed-llm-driver` (#28) is reworking that skill.
 - Rejected: a hand-maintained list only — already proved incomplete.
