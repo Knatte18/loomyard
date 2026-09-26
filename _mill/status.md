@@ -38,7 +38,11 @@ implementing  '2026-09-26T11:54:33Z'
 ```yaml
 batches:
   - name: friction-reflect-row
-    state: pending
+    state: running
+    implementer_session: 17c78ca8-d6b6-45f3-96e2-f78652b48cf7
+    start_sha: 664297aedf1a0b815ab6eeec878e6b4fe136021d
+    verify_baseline_failures: []
   - name: loomcli-row-wiring
     state: pending
+    verify_baseline_failures: []
 ```
