@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/state"
 )
@@ -24,8 +25,8 @@ import (
 // TestBattenPreStep_SeedsAbsentStatus asserts battenPreStep seeds a fresh status file -- current
 // producer Worktree-Create, state running -- when none is persisted yet, before shed.Step ever
 // reads it. Without this, stepLocked's own read gate would hit an absent status and hard-error,
-// which shedverbs/step.go reports as kind: "producer" -- the one kind ly-drive retries, looping a
-// fresh slug's first step forever.
+// which shedverbs/step.go reports as kind: "producer" -- a driver would repair that round after
+// round, so an unseeded first step must not surface as a producer failure.
 func TestBattenPreStep_SeedsAbsentStatus(t *testing.T) {
 	c := newFakeReceiver(t, nil)
 
@@ -146,5 +147,19 @@ func TestStepCmd_FreshSlugNeverSurfacesKindProducer(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), `"ok":true`) {
 		t.Errorf("step() output missing ok:true envelope; got: %q", out.String())
+	}
+}
+
+// TestSpecFor_ScratchDir asserts specFor tells the generic verbs the run's scratch directory and
+// leaves FrictionDir empty, since batten carries no agent friction directory.
+func TestSpecFor_ScratchDir(t *testing.T) {
+	c := newFakeReceiver(t, nil)
+
+	spec := c.specFor("step")
+	if want := shedrun.ScratchDir(c.location, c.slug); spec.ScratchDir != want {
+		t.Errorf("specFor(step).ScratchDir = %q; want %q", spec.ScratchDir, want)
+	}
+	if spec.FrictionDir != "" {
+		t.Errorf("specFor(step).FrictionDir = %q; want empty", spec.FrictionDir)
 	}
 }

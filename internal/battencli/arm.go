@@ -349,6 +349,11 @@ func (c *battenCLI) specFor(verb string) shedverbs.Spec {
 		spec.BuildShed = func() (*shedengine.Shed, error) { return battenrecipe.New(c.env, c.shedPaths) }
 	}
 
+	// Batten carries no agent friction directory, so FrictionDir stays empty.
+	if c.location != nil {
+		spec.ScratchDir = shedrun.ScratchDir(c.location, c.slug)
+	}
+
 	return spec
 }
 
@@ -523,7 +528,8 @@ const maxStatusHistoryEntries = 20
 
 // battenStatusExtras implements the StatusExtras hook for batten's spec: batten's own
 // found-envelope keys and no others. The generic body supplies current_producer, state, error and
-// activity.
+// activity,
+// plus history_length.
 //
 // History is bounded to the most recent maxStatusHistoryEntries entries, always alongside the true
 // history_length, so a bounded view is never mistaken for a short one.
@@ -535,7 +541,6 @@ func (c *battenCLI) battenStatusExtras(st shedengine.Status) (map[string]any, er
 		"found":             true,
 		"status_path":       c.shedPaths.StatusPath,
 		"history":           history,
-		"history_length":    len(st.History),
 		"history_truncated": truncated,
 	}
 	scratchDir := BattenDir(c.location, c.slug)
