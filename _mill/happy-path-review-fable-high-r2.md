@@ -1,3 +1,104 @@
+# happy-path — independent review, round 2 (tag `fable-high-r2`)
+
+Worktree: `/home/knatte/Code/loomyard/wts/crucible-happy-path`, branch `crucible-happy-path`.
+Dev binary: `.dev-bin/lyx` deployed from `4c7fea5db18987ad228d93852bd9172cadd569fd` (`happy-path: crucible re-seed r2`); `git log -1` at first deploy = that commit.
+Production baseline: `/home/knatte/go/bin/lyx`.
+Scratch root: `$HOME/crucible-happy-path/fable-high-r2/` (`hub1` go run, `hub2` llm run, `hub3` go re-drive with a harder brief).
+
+## Executive summary
+
+**Landed: go driver YES (hub1 and hub3), llm driver YES (hub2).**
+Every run went Preflight → Discussion → Plan → Batchifier → Webster → Webster-Review → Publish → Finalize → Friction-Reflect to `state: done` with the change squash-merged onto the fixture warp's `main` in the bare repo, the prime worktree clean and at that commit, and `lyx fabric pairs`/`status` clean afterwards; the llm driver needed no repair and no escalation.
+No blocker was found.
+Top finding (MEDIUM): a multi-line plan-level `## verify:` section is silently truncated to its first line, so the integration gate ran `go vet` only and never the plan's `go test` on both hub1 and hub2 — the run lands, but its last mechanical gate reports OK without having run the tests the plan asked for.
+Three LOW/NIT frictions: `lyx loom start --no-attach` prints no success envelope; the ly-drive wait rule is stated too narrowly (the live driver used another self-matching `pgrep -f` spelling); the ly-drive loop text lets a driver batch many steps into one background job and skip the per-step trace read.
+Coverage gap: **no review segment bounced in any of the three runs** (every first judge verdict was APPROVED, in nine segments); see "Condition 3".
+All nine prior-round fixes are sound; two are only half-exercised (details in the table).
+
+## 1a — Regression table (prior-round fix commits)
+
+| sha | fix | verdict | evidence |
+|---|---|---|---|
+| `242d46983` | clone names the weft primary and `_board` after the warp prime's branch | sound | Diff: `checkedOutBranch(warpWorktreePath, "warp prime")` runs after step 5's `refuseUncheckedOutWarpClone`, so a warp with no branch is refused earlier with its own message; the adopt path still keys on `origin/<branch>-weft`. Live (all three hubs): weft bare created by `git init --bare` on this host has HEAD `refs/heads/master`; clone produced `main-weft` (born, two commits) and `_board` on `main`; `fabric add` forked pairs from it. |
+| `c4f0b1a39`, `3d59b14c6` | ly-drive writes envelopes to a private `mktemp -d` dir | sound | Diff: recipe-blind wording (`TestLyDriveSkill_IsRecipeBlind` passes). Live (hub2 transcript): `D=$(mktemp -d)` → `/tmp/tmp.iSzqIsYDiy`, every `step-N.json` under it; Preflight's clean-tree gate passed on the first step and `fabric status` stayed clean. |
+| `5550dd00d` | Finalize pushes the parent branch after the parent-side merge | sound | Diff: `PushBranch` → `PushWarpRebaseFreeAt` → `gitrepo.PushRebaseFree` = `git -c push.autoSetupRemote=true push`, so a parent branch without an upstream gets one instead of failing; `SkipPush` honoured; a failed push is Stuck with "push it by hand", never a false Done. Live: all three bare warps' `main` carry the squash commit right after Finalize (`2410e42`, `6fb0ac7`, `7a775c8`). Beyond the happy path: a parent with no remote at all fails `git push` → Stuck with the local merge intact, the correct shape. |
+| `efc1f7053`, `d4f6a83d8` | help/launch prompt name the `ly` plugin; a missing skill stops the session | sound | Diff: prompt under the launch-prompt byte cap (its test). Live (hub2): argv of the driver strand carries the new sentence; the transcript's first tool call is `Skill {"skill":"ly-drive"}` against the project-local stand-in and there is no Glob/Grep/find for a SKILL.md anywhere. The "stop if missing" branch was not exercised (the stand-in was present). |
+| `f51cb430f` | yamlengine sets and reconciles config lists whole | sound | Diff: the only reconciled template list is `landing.require_pr_to_base` (`burler` fans and `models` are `SeedOnly` in `internal/configreg`), so whole-list carry drops nothing a normal upgrade relies on; `collectSequencePaths` does not descend into sequences, matching `sequenceBasePath`'s element grammar. Live: `--set 'require_pr_to_base=[]'` wrote `[]`; an unrelated `--set squash=true` kept `[]`; `config reconcile` dry-run reported no added/removed keys for any module; Publish took the no-pull-request branch on all three runs. |
+| `761dc64a5` | `lyx shed seed --help`'s loom example matches the bootstrap's writes | sound | Live (hub2): `lyx shed seed self --recipe loom --driver llm --param parent=main` verbatim, then `lyx loom start --no-attach` accepted the seed and spawned the llm driver; `seed.json` = `{recipe: loom, driver: llm, params: {parent: main}}`. The go form did the same on hub1/hub3. |
+| `ff6e654ba` | ly-drive resumes a `blocked`/`paused`/`failed` baseline | sound, not exercised live | The skill text distinguishes the *baseline* status read from a step envelope's `continue:false`, and `internal/shedengine/run.go:110` confirms a Step on a blocked/failed run re-calls the current producer, so "proceed to the first step, which resumes the run" is true. No run in this round halted, so no driver ever met that baseline. |
+| `655bcb6be` | ly-drive names how to wait for a backgrounded step | half-effective | The rule forbids by example only `pgrep -f 'lyx shed step'`; the hub2 driver waited with `until ! pgrep -f "tmp.iSzqIsYDiy/loop.sh"` (another self-matching pattern) inside a 1-second placeholder Monitor and otherwise leaned on the harness's own completion notice, which the sentence names first — the run was never stalled by it, but the rule as written does not stop the pattern it targets. Finding F3. |
+
+## 1b — Fixture and operator sequence (the deliverable the operator repeats)
+
+Fixture project `example.com/tasktool` (three packages that depend on each other, each with tests): `task` (domain), `store` (JSON-file persistence, imports `task`), `cmd/tasktool` (CLI, imports `store`); committed on `main`, pushed into a `git init --bare` warp whose HEAD is re-pointed to `refs/heads/main`; the weft is an empty `git init --bare` (HEAD `master` on this host).
+
+With `L=<worktree>/.dev-bin/lyx`, `ROOT=<scratch>`, `HUB=$ROOT/warp-LYXHUB`:
+1. `cd $ROOT && $L fabric clone --into $ROOT $ROOT/weft.git $ROOT/warp.git`
+2. `cd $HUB/warp && $L config loom --set selfreport=false --set 'friction='` and `$L config landing --set 'require_pr_to_base=[]'` (both commit and sync onto `main-weft`; verify with `cat $HUB/<slug>/_lyx/config/loom.yaml` after step 3).
+3. `cd $HUB/warp && $L board upsert '{"slug":"<slug>","title":...,"brief":...,"body":"<the brief>"}'` then `$L fabric add <slug>`.
+4. `cd $HUB/<slug> && $L shed seed self --recipe loom --driver go|llm --param parent=main` (the go seed is optional; `loom start` writes it), then `$L loom start --no-attach` (returns exit 0 with no output — F2; confirm with `$L loom status`).
+5. Follow with `$L loom status` (or `--watch`), `$L shed status`, and `<slug>/.lyx/loom/driver.log` (go driver) / the ly-drive pane (llm driver).
+6. After `state: done`: `git -C $ROOT/warp.git log main`, `git -C $HUB/warp status`, `$L fabric pairs`, `$L fabric status` in both worktrees.
+
+llm stand-in for the uninstalled `ly` plugin: copy `plugins/ly/skills/ly-drive/SKILL.md` to `$HUB/<slug>/.claude/skills/ly-drive/SKILL.md` and append `.claude/` to `$HUB/warp/.git/info/exclude` before `loom start`.
+
+Every step above worked as documented; no step of round 1's sequence regressed.
+
+## Evidence for the task's three conditions
+
+| | hub1 (go) | hub2 (llm) | hub3 (go, harder brief) |
+|---|---|---|---|
+| Task | `task-priority`: persisted `Priority` (domain enum, legacy-JSON default, `--priority` on `add`/`list`, ordering) | same brief plus crash-safe atomic `Save`, corrupt-file error → exit 1, `done` on done → exit 1 | `safe-store`: cross-process `flock` around read-modify-write with a 20-goroutine concurrent test, journal-backed `undo` |
+| (1) Files/packages | 8 files, `task`/`store`/`cmd/tasktool`, +578/−23, tests in each | 8 files, same three packages, +589/−25, tests in each | 18 files, same three packages (11 new), tests in each |
+| (2) Batches | `_lyx/webster/outcome.yaml` `batches_done: 6`; six card commits `6ba5b50..a666100`; `reports/01..06-*.yaml` OK | `batches_done: 9`; nine card commits `ecd731f..d0c49ce` | `batches_done: 8`; eight card commits `60b7a74..6517414` |
+| (3) Bounce | none: Discussion, Plan and Webster segments each seed → Burler round 1 (review APPROVED, LOW/NIT only, fixed in-round) → judge `round-1-bouncer-verdict.md` APPROVED | none, same shape in all three segments | none, same shape in all three segments |
+| Landed | `hub1/warp.git` `main` = `2410e42` | `hub2/warp.git` `main` = `6fb0ac7` | `hub3/warp.git` `main` = `7a775c8` |
+
+What a bounce concretely is (from `contracts/recipes/loom-recipe.yaml` and `internal/shedadapters/bouncer.go`): the Bouncer's first call is a *seed* pass (writes `round-1-focus.md`, returns Stuck → Burler); the Burler row reviews and fixes in one round (`round-N-review.md` with its own `verdict:`, `round-N-fixer-report.md`) and always returns Stuck → Bouncer; the Bouncer then *judges* round N (`round-N-bouncer-verdict.md` `APPROVED`/`BLOCKING` + ledger + `round-N+1-focus.md`); `BLOCKING` is the bounce (Stuck → Burler round N+1), `APPROVED` is Done.
+A Bouncer → Burler → Bouncer pass is therefore the minimum path, not a bounce.
+In all nine segments the first judge verdict was `APPROVED`.
+The harder hub3 brief drew only LOW/NIT findings from the webster reviewer (five, all fixed in-round) and an APPROVED judge.
+Plainly: this round produced **no evidence of a bounce under either driver**; with a review-and-fix round ahead of every judge pass, a bounce needs the fixer's own output to still be blocking, and no run's fixer left that behind.
+The bounce path itself (Stuck → Burler round 2) is exercised by `internal/shedadapters`' hermetic tests, not by this round.
+
+## Findings (severity-ranked)
+
+### F1 — MEDIUM — a multi-line plan-level `## verify:` is silently truncated to its first line — CONFIRMED (hub1, hub2)
+
+- `internal/planparser/sections.go:68`: `plan.Verify = firstNonEmptyLine(extractSection(body, planVerifyHeading))`, and `plan.go:85` documents `Verify` as "the single command line".
+- `contracts/stencils/loom/loom-template-plan.md:140` tells the planner the section is "one or more runnable shell commands", and both hub1's and hub2's planners wrote two lines (`go vet ./...`, `go test ./...`).
+- Run scenario: Webster's integration fork prompt (`.lyx/webster/prompts/integration.md:19`, rendered by `websterengine.RenderIntegrationPrompt` from `plan.Verify`) carried `go vet ./...` only; the fork ran only that and reported `status: OK`; webster's `summary.md` (and therefore the squash commit message on `main`) records "it did not run `go test ./...` because its prompt listed only `go vet`". The bisect path (`websterengine/integration.go` `runVerifyCommand(plan.Verify)`) uses the same truncated string. The plan's own gate reports success without running the plan's tests; a test regression across batches would land.
+- Fix: carry every non-empty line of the section, joined with ` && `, so a later command's failure fails the verify; update `Plan.Verify`'s doc, `loom-plan-spec.md`'s verify sentence, and add a planparser test.
+
+### F2 — LOW — `lyx loom start --no-attach` returns exit 0 with no output — CONFIRMED (all three hubs)
+
+- `internal/loomcli/start.go:404`: `if !mustAttach(noAttachFlag) { return nil }` after the driver is confirmed up; nothing is written to `out`.
+- Run scenario: the operator's start step prints nothing; a script cannot tell "driver up" from a silent failure without a follow-up `lyx loom status`. The CLI/Cobra Invariant exempts only the terminal-handover tail from JSON, and `--no-attach` deliberately skips that tail.
+- Fix: emit `{"ok":true,"attached":false,"driver":"<go|llm>","slug":...,"status_file":...}` on the no-attach return; the attach path stays JSON-free as before.
+
+### F3 — LOW — the ly-drive wait rule names one self-matching spelling and the live driver used another — CONFIRMED (hub2 transcript)
+
+- `plugins/ly/skills/ly-drive/SKILL.md` "How to invoke a step": "Never wait by matching a command line (`pgrep -f 'lyx shed step'`)". The hub2 driver ran `until ! pgrep -f "tmp.iSzqIsYDiy/loop.sh" ...` — the same self-match, different text — as a placeholder monitor and then relied on the harness's completion notice.
+- Run scenario: not stalled this time (the completion notice fired), but the rule's example is too narrow to prevent the wait the fix was written for; the round-1 driver idled ten minutes on exactly this.
+- Fix: state the rule as a class, not an example: never wait by matching any text of a command line (`pgrep -f`, `ps | grep`) — the waiting shell's own command line carries the same text; wait on the job's own completion notice, or `wait <pid>` in the shell that launched it.
+
+### F4 — NIT — the ly-drive loop text admits batching many steps into one background job — CONFIRMED (hub2 transcript)
+
+- The hub2 driver wrote `loop.sh` running steps 2..200 in one background job, breaking only when an envelope lacks `continue:true`; the skill's "After every step, read its `trace_file` right away, because traces are swept by retention" was not followed while the loop ran (17 steps, ~24 minutes), and an error envelope mid-loop would have been read only after the loop stopped.
+- Run scenario: no harm on this run (no error envelope); on a run that needs a repair, the trace the repair depends on may already be swept.
+- Fix: one sentence in "How to invoke a step": launch one `lyx shed step` per background job and read its envelope and trace before launching the next; never a loop that runs several steps without the session reading each one.
+
+## Out-of-scope observations (one line repro, one line impact each)
+
+1. `record-batch` warns "fork never returned a final report" for batches whose report file did land (hub1 batches 03–06; webster's `summary.md`). Repro: any webster run where an implementer fork ends its turn on a tool call. Impact: noise in `summary.md` and, through Finalize, in the squash commit message on `main`.
+2. `shedadapters: focus directive names cluster excludes but the template profile has no cluster fan; dropping` (WARN) on every Burler round of every run. Repro: any loom run. Impact: the judge writes an `exclude_lenses` list nobody consumes; WARN noise in traces.
+3. Finalize's squash commit message is webster's whole `summary.md`, "Deviations"/"Integration" paragraphs included (`summary.CommitMessage()`). Repro: any landing. Impact: `main`'s history carries process narration.
+4. The ly-drive `claude` strand stays alive, idle in its pane, after the run is `done` (hub2 pid 1965494 until teardown). Repro: llm run to done with `--no-attach`. Impact: a paid session stays open until the operator closes it; nothing but `status` tells an unattended operator the run finished.
+5. Bounces are structurally rare under loom's segment shape (review+fix round before every judge pass) — a design observation, not a defect; recorded because the round's third condition depends on it.
+6. Harness (not lyx): the driver session's `sleep 100` was blocked by Claude Code's own sleep rule and its first `Monitor` call failed schema validation; both self-corrected. Impact: two wasted turns per drive.
+
+## What was tested
+
 
 - `./deploy-dev` → `Deployed lyx @ 4c7fea5db (26223 KB) .../.dev-bin/lyx`.
 - Pre-existing processes: no live tmux server (`/tmp/tmux-1000/*` sockets are all stale), the operator's own `claude` sessions, and the millhouse wiki daemon; nothing of mine yet.
