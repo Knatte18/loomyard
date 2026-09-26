@@ -1,6 +1,6 @@
 # happy-path review — opus-medium-r1
 
-Status: Job 1 (review) COMPLETE — written before any production or test file was touched.
+Status: Job 1 (review) COMPLETE — written before any production or test file was touched; F9, F10 and the F4/F6 addenda were appended during Job 2 and are marked as such.
 
 ## Executive summary
 

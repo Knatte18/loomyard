@@ -8,29 +8,43 @@ Review: `_mill/happy-path-review-opus-medium-r1.md` (committed `db795663f` befor
 |---|---|---|---|
 | F1 | BLOCKING | `242d46983` | `fabricengine.CloneHub` names the weft primary (`<warp branch>-weft`) and `_board` after the warp prime's checked-out branch, not the weft clone's unborn HEAD. Regression test `TestCloneHub_EmptyWeftRemoteWithForeignDefaultBranch` (integration). |
 | F3 | MEDIUM | `5550dd00d` | `landingshed.Finalize` pushes the parent branch after a successful parent-side merge (`parentMerger.PushBranch`, honouring `PushSkipped`); a failed push is Stuck with a push-by-hand reason. Test `TestFinalize_PushesParentAfterMerge`; `landingshed` doc updated. |
-| F4 | MEDIUM | `efc1f7053` | Partial: `lyx loom start`/`lyx start` and `lyx shed seed` help, and the driver launch prompt, name loomyard's `ly` plugin as the ly-drive skill's source. Provisioning the skill without the plugin: NOT-FIXED-THIS-ROUND (below). |
+| F4 | MEDIUM | `efc1f7053`, `d4f6a83d8` | `lyx loom start`/`lyx start` and `lyx shed seed` help, and the driver launch prompt, name loomyard's `ly` plugin as the ly-drive skill's source; the prompt tells a session without the skill to stop and report the missing plugin instead of searching the filesystem for a possibly stale copy (`TestDriverPrompt` asserts both). Provisioning the skill without the plugin: NOT-FIXED-THIS-ROUND (below). |
 | F5 | BLOCKING | `c4f0b1a39`, `3d59b14c6` | ly-drive writes step envelopes to a private `mktemp -d` directory, never under the drive directory. The follow-up commit keeps the new sentence recipe-blind (`TestLyDriveSkill_IsRecipeBlind`). |
 | F6 | MEDIUM | `f51cb430f` | `yamlengine` carries lists whole through `Reconcile` and `SetValues`, and `--set key=[...]` replaces a list whole (`[]` included). Tests `TestSetValues_ListKeys`, `TestSetValues_ListKeyRejectsNonListValue`, `TestReconcile_CarriesListsWhole`; `lyx config --help` shows the list form. |
 | F8 | NIT | `655bcb6be` | ly-drive says to wait on the background job's own completion or PID, never a command-line pattern match. |
+| F10 | MEDIUM | `ff6e654ba` | ly-drive treats a `blocked`/`paused`/`failed` baseline as the operator's resume and steps, instead of handing back without a step. |
 | F9 | MEDIUM | `761dc64a5` | `lyx shed seed --help` example seeds loom as its bootstrap does (`self`, `--param parent=<branch>`) and says a pre-seed must match. |
 
 ## Not fixed
 
 - **F7** (LOW, NOT-FIXED-THIS-ROUND): a Stuck row with no `on_stuck` reports only `stuck with no OnStuck target`; carrying a producer's reason into `Status.Reason` changes the `shedengine.ShedProducer` seam every producer implements and needs its own design step.
-- **F4 remainder** (NOT-FIXED-THIS-ROUND): `lyx` still cannot make the skill available to a driver session on a machine without the `ly` plugin installed; the session falls back to searching the filesystem.
+- **F4 remainder** (NOT-FIXED-THIS-ROUND): `lyx` still cannot make the skill available to a driver session on a machine without the `ly` plugin installed; such a run now stops loudly at its first driver turn instead of following whatever copy a search finds.
+  On this machine `ly@loomyard` is not installed, so the operator must `/plugin install ly@loomyard` (and re-sync it with `update-plugins.sh` after skill edits) before the real llm-driven runs.
   Shipping the skill bytes with the binary would add a third `//go:embed` registry, which the Stencil Ownership Invariant does not allow without a design decision on where the skill lives.
 
 ## Test commands
 
-(pending)
+- Per fix: `go build ./...`, `go vet` and `go test` on the touched packages, plus `-tags integration` for `fabricengine`, `fabriccli`, `hubforge` (F1) and `landingshed` (F3); `go test ./cmd/lyx/ -run TestLyDriveSkill` for every skill edit.
+- Final: `go build ./...` ok; `go vet ./...` ok; `go test ./...` all ok; `go test -tags integration ./internal/{fabricengine,fabriccli,landingshed,loomcli,shedcli,configcli,configengine,yamlengine}/` all ok.
+- No `smoke`-tagged test was run.
 
 ## Final re-drive
 
-(pending)
+Fresh hub5 (weft bare on host-default `master` HEAD), dev binary `e6aa7c2a9` (source identical to HEAD's last code change `ff6e654ba`), overrides via `lyx config loom --set selfreport=false --set 'friction='` and `lyx config landing --set 'require_pr_to_base=[]'`.
+
+- **llm driver — LANDED.** `add-mul`: `board upsert` → `fabric add` → skill provisioned as a project skill (stand-in for the uninstalled `ly` plugin, `.claude/` excluded) → `shed seed self --recipe loom --driver llm --param parent=main` → `loom start --no-attach` → `done` 16:24 (history 18), 18 steps, no repairs, step envelopes under `/tmp/tmp.*`, worktree clean.
+- **go driver — LANDED.** `add-sub`: `board upsert` → `fabric add` → `loom start --no-attach` (default go seed) → `done` 16:32 (history 18), no intervention.
+- Bare `warp.git` `main`: `45ec43f Add Sub to calc` ← `0d6a242 Add Mul to calc` ← `90f8af0 seed calc`; `calc.go` has `Add`, `Mul`, `Sub`.
+- Hub after both: `fabric status` clean, pairs `main`/`add-mul`/`add-sub` `in_sync`/`junction_healthy`, prime `main...origin/main` in sync.
+- Teardown: `lyx reed down` per worktree, remaining watchdog killed, `$HOME/crucible-happy-path` removed; no `tmux`/`lyx`/`claude` process with a scratch-path cwd or argument remains.
 
 ## Changed files
 
-(pending)
+- `internal/fabricengine/clone.go`, `boardweft.go`, `clone_adopt_test.go` (F1)
+- `internal/landingshed/finalize.go`, `doc.go`, `finalize_test.go` (F3)
+- `internal/loomcli/driverprompt.go`, `driverprompt_test.go`, `start.go`, `internal/shedcli/seed.go` (F4, F9)
+- `internal/yamlengine/reconcile.go`, `set.go`, `reconcile_test.go`, `set_test.go`, `internal/configcli/configcli.go` (F6)
+- `plugins/ly/skills/ly-drive/SKILL.md` (F5, F8, F10)
 
 ### Re-drive log
 
