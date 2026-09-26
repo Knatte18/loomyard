@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-logger-trace-accessors
+phase: approved-fabric-mutation-trace
 slug: shed-llm-driver
 branch: shed-llm-driver
 plan: _mill/plan
@@ -26,6 +26,7 @@ plan-review-r2  '2026-09-26T11:59:07Z'
 planned  '2026-09-26T11:59:24Z'
 implementing  '2026-09-26T11:59:38Z'
 approved-logger-trace-accessors  '2026-09-26T12:01:22Z'
+approved-fabric-mutation-trace  '2026-09-26T12:03:11Z'
 ```
 
 ## Batches
@@ -39,9 +40,10 @@ batches:
     commit_sha: 774f2d1676914ffd3b4ce14200bcfdd018c99966
     verify_baseline_failures: []
   - name: fabric-mutation-trace
-    state: running
+    state: approved
     implementer_session: 18bb6e61-edf0-4ec8-8393-b0ff9ca9d82d
     start_sha: 6b0826ef505db93379c959b0e8e3429b069429c9
+    commit_sha: 0fd2dfd33fa904fe5c1ef0f746a473a8975eb907
     verify_baseline_failures: []
   - name: shed-envelope-trace
     state: pending
