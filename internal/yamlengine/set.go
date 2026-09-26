@@ -11,6 +11,7 @@
 package yamlengine
 
 import (
+	"fmt"
 	"sort"
 
 	"gopkg.in/yaml.v3"
@@ -22,8 +23,8 @@ import (
 const preservedKeyComment = "# preserved (not in current template)"
 
 // KV is a single key=value pair.
-// Key is a dotted leaf key-path;
-// Value is the scalar value.
+// Key is a dotted leaf key-path, or the dotted path of a list-valued key;
+// Value is the scalar value, or for a list key a YAML flow list such as [] or [a, b].
 type KV struct {
 	Key   string
 	Value string
@@ -42,8 +43,10 @@ type SetResult struct {
 }
 
 // SetValues applies pairs to a template-shaped YAML document, preserving comments and key order.
-// If any pairs[i].Key is absent from the template's leaf-key set, SetResult.Unknown is returned
-// non-empty and Merged is nil.
+// If any pairs[i].Key is absent from the template's leaf-key and list-key sets, SetResult.Unknown is
+// returned non-empty and Merged is nil.
+// Existing lists are carried whole, never merged element by element, and a list key's value
+// replaces its list whole; a value that is not a YAML list is an error.
 // Otherwise every pair is applied to the working tree (later pairs for a repeated key win) and the
 // mutated tree is marshalled into SetResult.Merged.
 func SetValues(template, existing []byte, pairs []KV) (SetResult, error) {
@@ -56,8 +59,14 @@ func SetValues(template, existing []byte, pairs []KV) (SetResult, error) {
 	templateLeaves := make(map[string]*yaml.Node)
 	collectLeafPaths(&templateNode, templateLeaves)
 
-	known := make([]string, 0, len(templateLeaves))
+	templateSequences := make(map[string]*yaml.Node)
+	collectSequencePaths(&templateNode, "", templateSequences)
+
+	known := make([]string, 0, len(templateLeaves)+len(templateSequences))
 	for path := range templateLeaves {
+		known = append(known, path)
+	}
+	for path := range templateSequences {
 		known = append(known, path)
 	}
 	sort.Strings(known)
@@ -80,6 +89,9 @@ func SetValues(template, existing []byte, pairs []KV) (SetResult, error) {
 		collectLeafPaths(&existingNode, existingLeaves)
 
 		applyExistingOverrides(templateLeaves, existingLeaves)
+		existingSequences := make(map[string]*yaml.Node)
+		collectSequencePaths(&existingNode, "", existingSequences)
+		applyExistingSequences(templateSequences, existingSequences)
 
 		// Graft any of existing's top-level keys with no counterpart in the
 		// template onto templateNode's root mapping, whole. This is a
@@ -95,7 +107,9 @@ func SetValues(template, existing []byte, pairs []KV) (SetResult, error) {
 	// rather than silently applying a partial write.
 	unknownSet := make(map[string]bool)
 	for _, pair := range pairs {
-		if _, ok := templateLeaves[pair.Key]; !ok {
+		_, isLeaf := templateLeaves[pair.Key]
+		_, isSequence := templateSequences[pair.Key]
+		if !isLeaf && !isSequence {
 			unknownSet[pair.Key] = true
 		}
 	}
@@ -112,6 +126,12 @@ func SetValues(template, existing []byte, pairs []KV) (SetResult, error) {
 	// the working tree always contains every template leaf. Apply pairs in
 	// order so a repeated key's later value wins.
 	for _, pair := range pairs {
+		if sequence, ok := templateSequences[pair.Key]; ok {
+			if err := replaceSequence(sequence, pair); err != nil {
+				return SetResult{}, err
+			}
+			continue
+		}
 		templateLeaves[pair.Key].Value = pair.Value
 	}
 
@@ -121,6 +141,21 @@ func SetValues(template, existing []byte, pairs []KV) (SetResult, error) {
 	}
 
 	return SetResult{Merged: merged, Known: known, Preserved: preserved}, nil
+}
+
+// replaceSequence replaces sequence's elements with pair.Value parsed as a YAML list, so a list key
+// can be set whole, including to the empty list.
+func replaceSequence(sequence *yaml.Node, pair KV) error {
+	var parsed yaml.Node
+	if err := yaml.Unmarshal([]byte(pair.Value), &parsed); err != nil {
+		return fmt.Errorf("value for list key %s: %w", pair.Key, err)
+	}
+	if len(parsed.Content) != 1 || parsed.Content[0].Kind != yaml.SequenceNode {
+		return fmt.Errorf("value for list key %s must be a YAML list such as [] or [a, b], got %q", pair.Key, pair.Value)
+	}
+	sequence.Content = parsed.Content[0].Content
+	sequence.Style = yaml.FlowStyle
+	return nil
 }
 
 // preserveOrphanRootKeys grafts every top-level key in existingNode's root

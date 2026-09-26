@@ -61,12 +61,13 @@ Severity: BLOCKING = run cannot land; MEDIUM = lands only after intervention, or
   Any later clean-tree gate (Finalize's merge guard) would hit the same dirt.
 - Fix: the skill writes step output to a private temp directory outside the drive directory (e.g. created once with `mktemp -d`).
 
-### F6 — LOW — `lyx config <module> --set` cannot set a list-valued key, so the no-PR landing needs an editor (CONFIRMED)
+### F6 — MEDIUM — `lyx config <module> --set` cannot set a list-valued key, and silently resets one, so the no-PR landing needs an editor (CONFIRMED)
 
 - Where: `internal/configengine/set.go:55` via `yamlengine.SetValues`, which only knows the flattened `require_pr_to_base[0]` leaf.
 - Run: `lyx config landing --set 'require_pr_to_base=[]'` → `unknown config key(s): require_pr_to_base`.
   A hub that lands straight to `main` (this repo's own policy) must set this; the only way was `VISUAL=<script> lyx config landing`.
 - Fix: accept a flow-sequence value (`[]`, `[a, b]`) for a key whose template value is a sequence.
+- Addendum (found while fixing, CONFIRMED on hub3): worse than friction — the merge beneath `--set` and `reconcile` works element by element, so after `require_pr_to_base: []` any unrelated `lyx config landing --set squash=true` silently rewrote it to `["main"]`, turning a no-PR hub back into a PR-gated one. Severity raised to MEDIUM.
 
 ### F7 — LOW — a blocked Preflight's status/envelope reason is the generic `stuck with no OnStuck target` (CONFIRMED) — NOT-FIXED-THIS-ROUND
 

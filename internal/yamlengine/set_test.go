@@ -309,3 +309,44 @@ func extractYAMLValue(t *testing.T, data []byte, key string) string {
 	t.Fatalf("key %q not found in merged YAML: %q", key, string(data))
 	return ""
 }
+
+// TestSetValues_ListKeys pins that a list-valued key is carried whole through an unrelated --set and
+// can itself be set whole, including to the empty list: landing.yaml's no-pull-request mode
+// (require_pr_to_base: []) used to be silently reset to the template's ["main"] by any --set.
+func TestSetValues_ListKeys(t *testing.T) {
+	template := []byte("require_pr_to_base: [\"main\"] # bases\nsquash: true\n")
+	tests := []struct {
+		name     string
+		existing string
+		pairs    []KV
+		want     string
+	}{
+		{"EmptiedListSurvivesUnrelatedSet", "require_pr_to_base: []\nsquash: true\n", []KV{{Key: "squash", Value: "false"}}, "require_pr_to_base: []"},
+		{"LengthenedListSurvivesUnrelatedSet", "require_pr_to_base: [a, b]\nsquash: true\n", []KV{{Key: "squash", Value: "false"}}, "require_pr_to_base: [a, b]"},
+		{"SetListEmpty", "", []KV{{Key: "require_pr_to_base", Value: "[]"}}, "require_pr_to_base: []"},
+		{"SetListTwoElements", "", []KV{{Key: "require_pr_to_base", Value: "[main, develop]"}}, "require_pr_to_base: [main, develop]"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := SetValues(template, []byte(tt.existing), tt.pairs)
+			if err != nil {
+				t.Fatalf("SetValues() error = %v; want nil", err)
+			}
+			if len(result.Unknown) != 0 {
+				t.Fatalf("SetValues() Unknown = %v; want none", result.Unknown)
+			}
+			if !strings.Contains(string(result.Merged), tt.want) {
+				t.Errorf("SetValues() Merged = %q; want it to contain %q", result.Merged, tt.want)
+			}
+		})
+	}
+}
+
+// TestSetValues_ListKeyRejectsNonListValue verifies a scalar value for a list key is an error, not a
+// silent overwrite.
+func TestSetValues_ListKeyRejectsNonListValue(t *testing.T) {
+	template := []byte("require_pr_to_base: [\"main\"]\n")
+	if _, err := SetValues(template, nil, []KV{{Key: "require_pr_to_base", Value: "main"}}); err == nil {
+		t.Error("SetValues() error = nil; want an error naming the list key")
+	}
+}

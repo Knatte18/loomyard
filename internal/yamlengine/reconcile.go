@@ -44,25 +44,41 @@ func Reconcile(template, existing []byte) (merged []byte, added, removed []strin
 	existingLeaves := make(map[string]*yaml.Node)
 	collectLeafPaths(&existingNode, existingLeaves)
 
-	// Determine added and removed sets
+	templateSequences := make(map[string]*yaml.Node)
+	collectSequencePaths(&templateNode, "", templateSequences)
+	existingSequences := make(map[string]*yaml.Node)
+	collectSequencePaths(&existingNode, "", existingSequences)
+
+	// Determine added and removed sets. A sequence element is neither added nor removed while its
+	// owning list key is present on both sides: the list is carried whole, whatever its length.
 	added = []string{}
 	for path := range templateLeaves {
-		if _, ok := existingLeaves[path]; !ok {
-			added = append(added, path)
+		if _, ok := existingLeaves[path]; ok {
+			continue
 		}
+		if base, isElement := sequenceBasePath(path); isElement && existingSequences[base] != nil {
+			continue
+		}
+		added = append(added, path)
 	}
 	sort.Strings(added)
 
 	removed = []string{}
 	for path := range existingLeaves {
-		if _, ok := templateLeaves[path]; !ok {
-			removed = append(removed, path)
+		if _, ok := templateLeaves[path]; ok {
+			continue
 		}
+		if base, isElement := sequenceBasePath(path); isElement && templateSequences[base] != nil {
+			continue
+		}
+		removed = append(removed, path)
 	}
 	sort.Strings(removed)
 
-	// Reconcile: overwrite template leaf values with existing values
+	// Reconcile: overwrite template leaf values with existing values, then carry existing lists
+	// whole.
 	applyExistingOverrides(templateLeaves, existingLeaves)
+	applyExistingSequences(templateSequences, existingSequences)
 
 	// Marshal the mutated template back to bytes
 	merged, err = yaml.Marshal(&templateNode)
@@ -196,6 +212,50 @@ func applyExistingOverrides(templateLeaves, existingLeaves map[string]*yaml.Node
 			templateLeaf.Value = existingLeaf.Value
 			templateLeaf.Tag = existingLeaf.Tag
 			templateLeaf.Style = existingLeaf.Style
+		}
+	}
+}
+
+// collectSequencePaths records every sequence-valued mapping key's dotted path and its sequence node
+// in sequences. It does not descend into sequences: an element is never itself a list key.
+func collectSequencePaths(node *yaml.Node, prefix string, sequences map[string]*yaml.Node) {
+	if node == nil {
+		return
+	}
+	switch node.Kind {
+	case yaml.DocumentNode:
+		for _, child := range node.Content {
+			collectSequencePaths(child, prefix, sequences)
+		}
+	case yaml.MappingNode:
+		for i := 0; i+1 < len(node.Content); i += 2 {
+			key := node.Content[i].Value
+			if key == "" {
+				continue
+			}
+			path := key
+			if prefix != "" {
+				path = prefix + "." + key
+			}
+			value := node.Content[i+1]
+			if value.Kind == yaml.SequenceNode {
+				sequences[path] = value
+				continue
+			}
+			collectSequencePaths(value, path, sequences)
+		}
+	}
+}
+
+// applyExistingSequences replaces each template list's elements with the same-path existing list's,
+// whole. A template list is a default, not a minimum length (see MissingKeys): merging element by
+// element re-added the template's own entries to a shortened or emptied list, so any --set or
+// reconcile silently undid landing.yaml's `require_pr_to_base: []`.
+func applyExistingSequences(templateSequences, existingSequences map[string]*yaml.Node) {
+	for path, existingSequence := range existingSequences {
+		if templateSequence, ok := templateSequences[path]; ok {
+			templateSequence.Content = existingSequence.Content
+			templateSequence.Style = existingSequence.Style
 		}
 	}
 }
