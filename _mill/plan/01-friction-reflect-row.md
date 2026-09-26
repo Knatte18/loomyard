@@ -68,6 +68,8 @@ No card here touches loomcli's wiring or `loomPostRun`; see the overview's inter
   - `internal/shedrecipe/entries_simple_test.go`
   - `internal/shedbuild/fixture_test.go`
   - `internal/shedbuild/build_engines_test.go`
+  - `docs/overview.md`
+  - `contracts/specs/shed-recipe-spec.md`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -82,6 +84,11 @@ No card here touches loomcli's wiring or `loomPostRun`; see the overview's inter
   - In `internal/shedrecipe/entries_simple_test.go`, add a `simpleEntryCases` row `{registryKey: "FrictionReflect", entry: frictionReflectEntry, buildEnv: newTestEnv, validatedFields: nil, unreadField: "Cwd"}`, and a new `TestFrictionReflectEntry_NilClosureRejected`: with `env.ReflectFriction = nil`, `frictionReflectEntry("Friction-Reflect", Config{}, env)` returns a non-nil error containing `"FrictionReflect"` and a nil producer.
   - In `internal/shedbuild/fixture_test.go`'s `newTestEnv`, fill `ReflectFriction: func() string { return "skipped" },` so `TestBuild_EveryRegisteredEngineBuilds` builds the new engine.
   - In `internal/shedbuild/build_engines_test.go`, reword `engineMinimalConfig`'s doc comment so it states no engine count ("The other fourteen engines take no config" becomes "Every other engine takes no config"; "join that fourteen" and "two of the fourteen" become "join them" and "two of them"), and reword `TestBuild_EveryRegisteredEngineBuilds`'s "a fifteenth registered engine" to "a newly registered engine".
+  - Reword three more registry tallies this card falsifies, naming the source instead of a count:
+    - `internal/shedrecipe/entries_simple_test.go`'s header "is table-driven over the seven value-only entries" becomes "is table-driven over the value-only entries `simpleEntryCases` lists";
+    - `internal/shedbuild/fixture_test.go`'s `newTestEnv` doc "because two of the sixteen engines need it" becomes "because the Publish and Finalize engines need it" (leave its batten-field sentence as is);
+    - `docs/overview.md`'s Shed recipe paragraph "it registers sixteen engine names" becomes "its `registry` map literal declares every engine name a recipe row may use";
+    - `contracts/specs/shed-recipe-spec.md`'s consumer bullet "already imports `loomshed` for eight of its constructors" becomes "already imports `loomshed` for its loom-specific constructors".
   - `internal/shedrecipe/coverage_guard_test.go`'s `TestCoverageGuard_EveryRegisteredEngineIsReachedOrAllowlisted` fails after this card until card 3 adds the recipe row that reaches `FrictionReflect`; do not add `FrictionReflect` to `coverageGuardAllowedUnreachableEngines`.
 - **Commit:** `feat(shedrecipe): add the ReflectFriction seam and FrictionReflect entry`
 
@@ -130,7 +137,7 @@ No card here touches loomcli's wiring or `loomPostRun`; see the overview's inter
     Keep the raw string's existing manual wrapping width, and use the same double-quote style the surrounding text uses for verb names.
   - In `internal/loomcli/sharedbootstrap_test.go`'s `TestBuildLoomShed_OutputShape`, reword the doc comment's "carries all fourteen producer rows" to "carries every producer row", and replace the stale `len(shed.Producers) != 17` assertion with a comparison against `len(loomshed.InterruptPolicies)` (the table `internal/loomrecipe`'s interrupt-policy meta test pins to exactly the assembled rows), adding the `internal/loomshed` import.
   - In `internal/landingshed/deps.go`, the `Deps.CommitStatus` field doc's "Without this seam the last row of a loom run refuses on the run's own bookkeeping" becomes "Without this seam loom's Finalize row refuses on the run's own bookkeeping"; change nothing else in that file.
-  - In `plugins/ly/skills/ly-drive/SKILL.md` § The loop: "Loom's list is fourteen rows, … walks thirty-five steps, rounded up to 40." becomes "Loom's list is fifteen rows, … walks thirty-six steps, rounded up to 40."; "A recipe with a graph shaped differently from loom's fourteen rows" becomes "A recipe with a graph shaped differently from loom's".
+  - In `plugins/ly/skills/ly-drive/SKILL.md` § The loop: "Loom's list is fourteen rows, … walks thirty-five steps, rounded up to 40." becomes "Loom's list is fifteen rows, … walks thirty-six steps, rounded up to 40."; "A recipe with a graph shaped differently from loom's fourteen rows" becomes "A recipe with a graph shaped differently from loom's own".
     Keep one sentence per line; edit no other part of the skill (its § Self-report stays as is).
 - **Commit:** `feat(loom): persist done only after the Friction-Reflect terminal row`
 

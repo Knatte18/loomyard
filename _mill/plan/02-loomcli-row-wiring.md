@@ -77,6 +77,7 @@ Batch-local decision: the arming verb is stored on the receiver as `armedVerb` a
   - `internal/loomcli/cli.go`
   - `internal/loomshed/frictionreflect.go`
   - `internal/loomshed/seed.go`
+  - `internal/loomengine/config.go`
   - `internal/shedengine/producer.go`
   - `internal/shedengine/shed.go`
   - `internal/shedengine/status.go`

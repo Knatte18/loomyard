@@ -65,7 +65,8 @@ batches:
 ### Decision: no-perishable-row-counts
 
 - **Decision:** text that pins loom's row count or calls `Finalize` the last row is reworded to name the source instead of a number, except ly-drive's step-cap arithmetic (`plugins/ly/skills/ly-drive/SKILL.md` § The loop), where the count is load-bearing and is re-derived: fifteen rows, thirty-six steps, cap 40 unchanged.
-  The sweep found, beyond the discussion's floor list: `internal/loomcli/sharedbootstrap_test.go` (comment "all fourteen" plus a stale `17` assertion in an always-skipping test), `internal/shedrecipe/registry.go`/`registry_test.go` ("sixteen keys"), `internal/shedbuild/build_engines_test.go` ("fourteen engines", "fifteenth"), `internal/shedrecipe/entries_simple.go` ("seven registry entries"), and `internal/landingshed/deps.go` (`Deps.CommitStatus`'s doc calls Finalize "the last row of a loom run").
+  The sweep found, beyond the discussion's floor list: `internal/loomcli/sharedbootstrap_test.go` (comment "all fourteen" plus a stale `17` assertion in an always-skipping test), `internal/shedrecipe/registry.go`/`registry_test.go` ("sixteen keys"), `internal/shedbuild/build_engines_test.go` ("fourteen engines", "fifteenth"), `internal/shedrecipe/entries_simple.go` ("seven registry entries"), `internal/landingshed/deps.go` (`Deps.CommitStatus`'s doc calls Finalize "the last row of a loom run"), `internal/shedrecipe/entries_simple_test.go` ("seven value-only entries"), `internal/shedbuild/fixture_test.go` ("two of the sixteen engines"), `docs/overview.md` ("registers sixteen engine names") and `contracts/specs/shed-recipe-spec.md` ("imports `loomshed` for eight of its constructors").
+  The sweep method: grep `internal`, `docs`, `contracts`, `plugins` and `manifest/designs` for spelled-out and digit counts (fourteen through seventeen, seven, eight) next to engine/entry/row/producer/key/constructor, plus `last row`/`final row`/`terminal` phrasing next to `Finalize`.
   `plugins/scribe/skills/prose/SKILL.md`'s "fourteen rows" is an illustrative example of the rule itself, not a description of loom's recipe, and stays.
   `internal/frictionengine/doc.go` was checked against the discussion's reword list: it never says reflection runs after the run lock is released, so it is not edited.
 - **Rationale:** the discussion's "Stale row-count and last-row text" Decision and the prose rule against perishable tallies.
@@ -90,6 +91,7 @@ batches:
 ## All Files Touched
 
 - `contracts/recipes/loom-recipe.yaml`
+- `contracts/specs/shed-recipe-spec.md`
 - `docs/overview.md`
 - `internal/landingshed/deps.go`
 - `internal/loomcli/arm.go`
