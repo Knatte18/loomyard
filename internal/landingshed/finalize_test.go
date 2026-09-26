@@ -26,6 +26,9 @@ import (
 type recordingParentMerger struct {
 	calls   []mergeCall
 	results []mergeCallResult
+	// pushCalls records every PushBranch call's options; pushErr is returned by each of them.
+	pushCalls []fabricengine.SyncOptions
+	pushErr   error
 }
 
 type mergeCall struct {
@@ -48,6 +51,11 @@ func (m *recordingParentMerger) Merge(source string, opts fabricengine.MergeOpti
 		return fabricengine.MergeResult{}, nil
 	}
 	return m.results[idx].result, m.results[idx].err
+}
+
+func (m *recordingParentMerger) PushBranch(opts fabricengine.SyncOptions) (fabricengine.PushResult, error) {
+	m.pushCalls = append(m.pushCalls, opts)
+	return fabricengine.PushResult{}, m.pushErr
 }
 
 // newFinalizeDeps returns a minimal Deps for a Finalize test, with a well-formed final-summary
@@ -110,6 +118,52 @@ func TestNewFinalize_RejectsEmptyFinalSummaryPath(t *testing.T) {
 }
 
 // --- Call behaviour ---
+
+// TestFinalize_PushesParentAfterMerge pins that a landed merge is pushed to the parent's upstream
+// before Done, honouring Deps.PushSkipped, and that a failed push is Stuck rather than Done.
+func TestFinalize_PushesParentAfterMerge(t *testing.T) {
+	tests := []struct {
+		name        string
+		pushSkipped bool
+		pushErr     error
+		wantOutcome shedengine.Outcome
+	}{
+		{"pushed", false, nil, shedengine.Done},
+		{"push skipped", true, nil, shedengine.Done},
+		{"push failed", false, errors.New("remote rejected"), shedengine.Stuck},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			deps := newFinalizeDeps(t)
+			deps.PushSkipped = tt.pushSkipped
+			res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
+			merger := &recordingParentMerger{
+				results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}},
+				pushErr: tt.pushErr,
+			}
+			fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return merger, nil }}
+
+			outcome, _, err := fz.Call(context.Background())
+			if err != nil {
+				t.Fatalf("Call() error = %v; want nil", err)
+			}
+			if outcome != tt.wantOutcome {
+				t.Errorf("Call() outcome = %q; want %q", outcome, tt.wantOutcome)
+			}
+			if len(merger.pushCalls) != 1 {
+				t.Fatalf("PushBranch calls = %d; want 1", len(merger.pushCalls))
+			}
+			if got := merger.pushCalls[0].SkipPush; got != tt.pushSkipped {
+				t.Errorf("PushBranch SkipPush = %v; want %v", got, tt.pushSkipped)
+			}
+			if tt.pushErr != nil {
+				if got := readFinalizeStuckFile(t, deps.ScratchDir); !strings.Contains(got, "push it by hand") {
+					t.Errorf("stuck file = %q; want it to tell the operator to push by hand", got)
+				}
+			}
+		})
+	}
+}
 
 func TestFinalize_HappyPath_MergeInThenParentMerge(t *testing.T) {
 	deps := newFinalizeDeps(t)
