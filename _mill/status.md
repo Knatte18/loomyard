@@ -51,3 +51,9 @@ batches:
   "FAIL\tgithub.com/Knatte18/loomyard/internal/loomcli\t5.404s", '--- FAIL: TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver
     (5.41s)', "FAIL\tgithub.com/Knatte18/loomyard/internal/loomcli\t5.412s"]
 ```
+
+## Inferred-success log
+
+```text
+'2026-09-26T12:01:15Z'  logger-trace-accessors  round 1
+```
