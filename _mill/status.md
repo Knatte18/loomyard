@@ -46,7 +46,9 @@ batches:
     commit_sha: 0fd2dfd33fa904fe5c1ef0f746a473a8975eb907
     verify_baseline_failures: []
   - name: shed-envelope-trace
-    state: pending
+    state: running
+    implementer_session: 5fcdee84-9500-4d0c-ad4f-78e3c3759ba1
+    start_sha: 2d66886484909f4cdee2cdac8a777fd63348afb3
     verify_baseline_failures: []
   - name: step-entry-point-integration
     state: pending
