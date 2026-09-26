@@ -33,9 +33,9 @@ the other crash-window findings stay parked as GitHub issues #269, #270, #271 an
 - `plugins/ly/skills/INDEX.md` entry updated to match.
 - `internal/logger`: two new exported accessors (`TraceFile`, `TraceDir`) and an amended level policy.
 - `internal/fabricengine/mutation.go`: every appended entry written to the durable sink at `Info` as it is appended.
-- `internal/shedverbs`: the step body logs its own boundaries at `Info`, and the step envelope (success and every five-kind error) gains `trace_file`, `friction_dir`, `run_dir`; the status envelope gains `trace_dir`.
-- `internal/shedverbs/spec.go`: two new told `Spec` fields, `RunDir` and `FrictionDir`.
-- `internal/loomcli` and `internal/battencli` fill `RunDir` at their one `shedverbs.Spec` construction site each (`arm.go`), so `lyx shed step`, `lyx loom step` and `lyx batten step` all carry it; `internal/loomcli` also fills `FrictionDir`, batten leaves it empty.
+- `internal/shedverbs`: the step body logs its own boundaries at `Info`, and the step envelope (success and every five-kind error) gains `trace_file`, `friction_dir`, `scratch_dir`; the status envelope gains `trace_dir`.
+- `internal/shedverbs/spec.go`: two new told `Spec` fields, `ScratchDir` and `FrictionDir`.
+- `internal/loomcli` and `internal/battencli` fill `ScratchDir` at their one `shedverbs.Spec` construction site each (`arm.go`), so `lyx shed step`, `lyx loom step` and `lyx batten step` all carry it; `internal/loomcli` also fills `FrictionDir`, batten leaves it empty.
 - `internal/landingshed`: its GitHub write calls log at `Info`.
 - The loom driver launch: the step cap is dropped (`AutonomousDriveStepCap`, the prompt sentence, `cmd/lyx/drivercap_test.go`).
 - Docs: `CONSTRAINTS.md` (Shed Verb-Set Invariant allowlist and envelope clause), `docs/overview.md`, `internal/battenshed/doc.go`'s llm-driver paragraph, `internal/shedverbs/step.go`'s one-retry comment, the logger level-policy doc comment.
@@ -67,7 +67,7 @@ the other crash-window findings stay parked as GitHub issues #269, #270, #271 an
 
 - Decision: every envelope the generic `step` body emits — the success envelope and each of the five-kind error envelopes — carries `trace_file`: the absolute path of this process's durable trace file, or `""` when no sink is armed.
   `internal/logger` gains `TraceFile() string`, which forces the lazy sink open (the same `ensureDurableSink` path `NotifyExit` uses) and returns its path, `""` when the sink cannot arm.
-  `StepEnvelope`'s closed key set grows from ten to thirteen (`trace_file`, `friction_dir`, `run_dir`), and both key-set tests (`internal/shedverbs/step_test.go`, `internal/loomcli/step_test.go`) move with it.
+  `StepEnvelope`'s closed key set grows from ten to thirteen (`trace_file`, `friction_dir`, `scratch_dir`), and both key-set tests (`internal/shedverbs/step_test.go`, `internal/loomcli/step_test.go`) move with it.
   The five-value refusal-kind vocabulary does not change.
 - Rationale: the driver has to read exactly what the step did without searching; the error envelopes are where it needs the trace most.
   The design's worry that this touches the Shed Verb-Set Invariant is narrower than it looked: that invariant pins the refusal kinds, not the envelope's success keys — the key set is closed by doc comment and test only.
@@ -107,11 +107,15 @@ the other crash-window findings stay parked as GitHub issues #269, #270, #271 an
 
 ### trace-dir-and-trace-id
 
-- Decision: the generic `status` envelope gains `trace_dir` (`logger.TraceDir()`, the directory the sink writes to, resolved the same way as the sink, `""` when unarmed).
+- Decision: the generic `status` envelope gains `trace_dir` (`logger.TraceDir()`).
+  `TraceDir` resolves only: it returns the directory the sink would write to — the override when one is set, else `LogsDir` of the resolved lyx-owned worktree — and `""` wherever the sink would not arm; it never arms the sink or creates a file, so a `status` read leaves no trace file behind.
   The skill mints a fresh 16-hex `LYX_TRACE_ID` for each step invocation (the root pre-run already adopts a valid inherited id through `MintOrAdoptAndExport`), so the trace of an interrupted step — one that wrote no envelope — is the set of files in `trace_dir` whose names carry that id.
   Child `lyx` processes sharing the anchor write their own files with the same id (`trace-<UTC>-<traceid>-<pid>.log`) and the step's pid is unknown after an interrupt, so the driver reads all of them, ordered by the UTC timestamp in the name.
   The same lookup covers the kind-less refusals `internal/shedcli`'s pre-run emits (unseeded run-id, unsupported verb): those envelopes gain no key, and `shedcli`'s pre-run is not touched.
-  Child `lyx` processes a step spawns (for example batten's `loom start` in a task worktree) inherit the same id and write their own files, possibly under another worktree's `.lyx/logs`; the skill follows paths the parent trace names.
+  A child spawned into another worktree (for example batten's `loom start` in a task worktree) writes under that worktree's logs directory; the skill follows the paths the parent trace names.
+- Retention: `logger.Sweep` keeps a bounded number of non-live trace files per logs directory and runs on every sink arm, and concurrent forks share a logs directory, so a trace can be swept before a later read.
+  The driver therefore reads a step's traces right after the step, and each repair record copies the trace lines it acted on (the mutation entries and the step-boundary lines) rather than only pointing at the file.
+  The retention bound itself is not changed.
 - Rationale: an interrupted invocation is the crash-window case this whole design targets, and it is the one case with no envelope to name a trace.
 - Rejected: finding the latest file in the logs directory by timestamp — races any concurrent `lyx` process.
 
@@ -119,21 +123,26 @@ the other crash-window findings stay parked as GitHub issues #269, #270, #271 an
 
 - Decision: two told `Spec` fields surface on every step envelope.
   `FrictionDir` is the recipe's own agent friction-note directory, `""` when the recipe has none or friction is off: loom fills it from its existing `loomengine.LoomFrictionDir` when `loom.yaml` enables friction (the same condition as `internal/loomcli/wiring.go`), batten leaves it empty.
-  `RunDir` is the run's shed scratch directory, `shedrun.ScratchDir(location, runID)`, the sanctioned constructor `internal/loomcli/driverreport.go` already calls.
+  `ScratchDir` (envelope key `scratch_dir`) is the run's ephemeral shed scratch directory under `.lyx`, `shedrun.ScratchDir(location, runID)`, the constructor `internal/loomcli/driverreport.go` already calls.
+  The name mirrors that constructor on purpose: `shedrun.RunDir` is the run's durable, tracked `_lyx` directory, and the field's doc comment says the field is never filled from it, since repair records must never land in tracked content.
   It is filled at each module's single `shedverbs.Spec` construction site (`internal/loomcli/arm.go` ~161, `internal/battencli/arm.go` ~312), which both the module's own subtree (`internal/loomcli/cli.go` ~334, `internal/battencli/cli.go` ~172) and its `ArmAt` reach, so all three step entry points carry it.
-  Filling it in `internal/shedcli` alone was rejected: the module-local `lyx loom step`/`lyx batten step` would then emit `run_dir: ""`.
-  The driver writes its own records under `run_dir`: one repair record per repair under `repairs/`, and its stop report.
-  At every stop it lists `friction_dir` and `run_dir/repairs/` in the report.
+  Filling it in `internal/shedcli` alone was rejected: the module-local `lyx loom step`/`lyx batten step` would then emit `scratch_dir: ""`.
+  The driver writes its own records under `scratch_dir`: one repair record per repair under `repairs/`, and its stop report.
+  At every stop it lists `friction_dir` and `scratch_dir/repairs/` in the report.
 - Rationale: the design moves the friction location out of the skill and onto the envelope.
   Keeping loom's directory where it is avoids moving `frictionengine`'s input; the driver's own repair records are driver artifacts and belong beside its report, which already lands in `shedrun.ScratchDir` (`internal/loomcli/driverreport.go`).
 - Rejected: one shed-level friction directory every recipe shares — it would move loom's friction directory, its lock, archive prefix and first-seed clearing, for no gain the driver needs.
 
 ### repair-scope
 
-- Decision: the driver repairs on error envelopes (all five kinds and the kind-less shed pre-run refusals) and on interrupted invocations.
-  An envelope with `continue: false` is not repaired: `done` stops, and a `blocked` or `paused` state is handed back with its `reason`, because a Go gate concluded a human is needed.
+- Decision: each failure shape has one disposition.
+  - `kind: producer`, `kind: bootstrap`, `kind: unseeded`, and an interrupted invocation: the repair path below, bounded by `repair-cap`.
+  - `kind: busy`: handed back, never repaired — the lock holder may be a live driver strand or a sibling fork, and the driver never pauses, kills or unlocks another driver.
+  - `kind: ownership`: handed back — a slug mismatch is an operator decision, not a crash state.
+  - Kind-less `shedcli` pre-run refusals (unseeded run-id, unsupported verb): always escalate; the driver never re-seeds and no `lyx` verb fixes either, so it reads their trace for the report only.
+  - `continue: false`: not repaired — `done` stops, and a `blocked` or `paused` state is handed back with its `reason`, because a Go gate concluded a human is needed.
   A repair reads `trace_file` (and the child traces it names), identifies the half-finished mutation, and restores a state the next step can proceed from.
-  Repairs act through `lyx`'s own verbs (`lyx fabric …`, `lyx reed …`, `lyx shed pause`) and read-only git for diagnosis;
+  Repairs act through `lyx`'s own verbs (`lyx fabric …`, `lyx reed …` for strands the trace names as the failed step's own) and read-only git for diagnosis; `lyx shed pause` is never a repair verb;
   the driver never edits a status file or `seed.json` by hand, never re-seeds, never force-pushes, and never deletes a branch or worktree the trace does not name as created by the failed step.
   When no `lyx` verb can perform the repair, it escalates, with one narrow exception below.
 - Stranded-branch exception: the driver may run `git branch -D <branch>` (local) or `git push <remote> --delete <branch>` (remote) on a branch only when all three hold:
@@ -190,7 +199,10 @@ the other crash-window findings stay parked as GitHub issues #269, #270, #271 an
 ### orchestrator-fork
 
 - Decision: the skill gains a section on being driven from an orchestrator: the orchestrator session forks one `Agent` per run with a prompt naming the skill and the run-id, and the fork runs the loop and returns the stop report path plus a short summary.
-  The fork runs from the directory the run's recipe requires (for batten, the hub's prime worktree).
+  The fork prompt names a drive directory — the directory the run was seeded from, which the orchestrator knows because it ran `lyx shed seed` there (the run's `seed.json` lives under that directory's anchor).
+  An `Agent` fork inherits the orchestrator's cwd and `lyx shed step` resolves the process cwd, so the skill runs every `lyx` call as `(cd <drive-dir> && lyx …)` in a subshell, leaving the fork's own shell cwd untouched; with no drive directory named, it uses its own cwd.
+  `SKILL.md` names no recipe's directory requirement: a wrong directory surfaces as the recipe's own refusal text, which the driver reports verbatim.
+  The orchestrator-side knowledge (for example that batten runs are seeded in the hub's prime worktree) lives in the orchestrator's own prompt, never in the skill.
   Frontmatter `disable-model-invocation: true` is removed, since a fork and the loom driver strand both invoke the skill as the model; the description says it runs only when an operator or a launch/fork prompt names it, and `INDEX.md` line 7 is reworded to match.
   A fork's lifetime is the orchestrator session's; this is stated as a limit, not solved.
 - Rationale: the design puts the fork in the orchestrator's own `Agent` tool, which keeps the interactive-tmux rule without new Go.
@@ -210,7 +222,7 @@ the other crash-window findings stay parked as GitHub issues #269, #270, #271 an
   Error envelopes go through `output.ErrFields(out, msg, map[string]any{"kind": …})`; the new keys go into that map.
 - `Spec` and `Hooks`: `internal/shedverbs/spec.go`; `Hooks.StatusExtras` exists for the status verb (`status.go` ~169), but `trace_dir` is generic and belongs in the status body itself.
 - `shedverbs`'s allowlist: `internal/shedverbs/seam_enforcement_test.go` (lines ~26-32); `lyxcwd` is denied explicitly and stays denied.
-- Recipe arming: `internal/shedcli/table.go` (`recipes`, `entry.Arm`), resolved once in `resolvePersistentPreRun` (`internal/shedcli/cli.go`), which already holds the `*lyxcwd.Location` and run-id `RunDir` needs.
+- Recipe arming: `internal/shedcli/table.go` (`recipes`, `entry.Arm`), resolved once in `resolvePersistentPreRun` (`internal/shedcli/cli.go`), which already holds the `*lyxcwd.Location` and run-id `ScratchDir` needs.
   Kind-less refusals (unseeded run-id, unsupported verb) are emitted in `shedcli`'s pre-run, above the step body; they stay unchanged, and the skill finds their trace through `trace_dir` and the per-step `LYX_TRACE_ID` (Decision `trace-dir-and-trace-id`).
 - Loom arm: `loomcli.ArmAt`; friction condition at `internal/loomcli/wiring.go` ~265-272; directory at `internal/loomengine/config.go` (`LoomFrictionDir`, which says no other package may construct it — `loomcli` calls it, it does not construct it).
 - Logger: `internal/logger/sink.go` — `sinkPath` (unexported, ~line 82), `ensureDurableSink` (~99), `armDurableSinkLocked`, file name `trace-<UTC>-<traceid>-<pid>.log` (~150), `NotifyExit` (~303); `durableHandler.Enabled` passes `Info`+ only (`logger.go` ~301); the level policy comment is at `logger.go` ~120-133.
@@ -227,11 +239,11 @@ the other crash-window findings stay parked as GitHub issues #269, #270, #271 an
 
 ## Constraints
 
-- **Shed Verb-Set Invariant** — the five kinds stay closed; this task amends the allowlist clause to admit `internal/logger` and records that the step envelope carries `trace_file`/`friction_dir`/`run_dir`. Same commit.
+- **Shed Verb-Set Invariant** — the five kinds stay closed; this task amends the allowlist clause to admit `internal/logger` and records that the step envelope carries `trace_file`/`friction_dir`/`scratch_dir`. Same commit.
 - **Shed Producer-Seam Invariant** — `shedengine` still imports only stdlib, `state`, `lock`; no logging there.
-- **Shed Run-Directory Invariant** — `run_dir` comes from `shedrun.ScratchDir`; nothing else names the `shed` segment.
+- **Shed Run-Directory Invariant** — `scratch_dir` comes from `shedrun.ScratchDir`; nothing else names the `shed` segment.
 - **Driver Choice Single-Site Invariant** — nothing new reads the recorded driver field.
-- **Told-Geometry Invariant** — `RunDir`/`FrictionDir` are told to `shedverbs`; no engine derives them.
+- **Told-Geometry Invariant** — `ScratchDir`/`FrictionDir` are told to `shedverbs`; no engine derives them.
 - **Durable-vs-Ephemeral State Invariant** — traces and repair records stay under `.lyx`.
 - **Mutation Record Invariant** / **Fabric Destruction Chokepoint Invariant** — entry semantics and threading unchanged.
 - **Fabric Git Invariant** — the driver's repairs mutate git through `lyx` verbs, except the narrow stranded-branch exception in `repair-scope`, whose reading this task records in the invariant's text.
@@ -243,11 +255,11 @@ the other crash-window findings stay parked as GitHub issues #269, #270, #271 an
 
 ## Testing
 
-- `internal/logger` (TDD): `TraceFile` returns `""` with no sink, forces the file open and returns its path with a directory override, and returns the same path on repeat calls; `TraceDir` matches the override.
+- `internal/logger` (TDD): `TraceFile` returns `""` with no sink, forces the file open and returns its path with a directory override, and returns the same path on repeat calls; `TraceDir` matches the override and creates no file in it.
 - `internal/fabricengine` (TDD): with a sink override, `Append` and `AppendRef` each write one `fabric: mutation` record carrying kind, target, detail; `Extend` writes none; a nil `*Mutations` writes none.
-- `internal/shedverbs` (TDD): success envelope key set is exactly thirteen; each five-kind error envelope carries `trace_file`, `friction_dir`, `run_dir`; `run_dir`/`friction_dir` echo the `Spec` fields; step writes an entry and an outcome `Info` record; status envelope carries `trace_dir`; the seam test admits `logger` and still denies `lyxcwd` and `*cli`.
+- `internal/shedverbs` (TDD): success envelope key set is exactly thirteen; each five-kind error envelope carries `trace_file`, `friction_dir`, `scratch_dir`; `scratch_dir`/`friction_dir` echo the `Spec` fields; step writes an entry and an outcome `Info` record; status envelope carries `trace_dir`; the seam test admits `logger` and still denies `lyxcwd` and `*cli`.
 - `internal/loomcli`: step key-list test moved to thirteen; `FrictionDir` set when friction is enabled and empty when not; `driverPrompt` no longer mentions a cap and stays under its length bound.
-- `internal/loomcli` and `internal/battencli`: `RunDir` equals `shedrun.ScratchDir` for the addressed run on every step entry point — `lyx shed step`, `lyx loom step`, `lyx batten step` — asserted on the emitted envelope, not only on the `Spec`.
+- `internal/loomcli` and `internal/battencli`: `ScratchDir` equals `shedrun.ScratchDir` for the addressed run on every step entry point — `lyx shed step`, `lyx loom step`, `lyx batten step` — asserted on the emitted envelope, not only on the `Spec`.
 - `internal/landingshed`: a successful PR write logs one `Info` record (through the existing fake GitHub seam).
 - `cmd/lyx`: the recipe-blindness tripwire on `SKILL.md`.
 - Integration: an existing integration test that drives a real `lyx shed step` gets one assertion that `trace_file` names an existing file containing the step's boundary records.
@@ -258,8 +270,9 @@ the other crash-window findings stay parked as GitHub issues #269, #270, #271 an
 - **Q:** How does the trace path reach the envelope when `shedverbs` cannot import `logger`? **A:** [auto-pick] Admit `logger` into `shedverbs` and log step boundaries there. **Why:** one generic site covers every recipe; a hook would be repeated per recipe.
 - **Q:** Does adding envelope keys breach the Shed Verb-Set Invariant? **A:** [auto-pick] No — it pins the refusal kinds; the key set moves to thirteen with both tests. **Why:** the kinds are unchanged.
 - **Q:** How is an interrupted step's trace found? **A:** [auto-pick] The driver mints `LYX_TRACE_ID` per step; `status` carries `trace_dir`. **Why:** a direct lookup, no timestamp race.
-- **Q:** Shared shed-level friction, or recipe-named? **A:** [auto-pick] Recipe-named `friction_dir` plus shed-owned `run_dir` for the driver's repair records. **Why:** no move of loom's friction machinery.
-- **Q:** Which non-running envelopes does the driver repair? **A:** [auto-pick] Error envelopes and interrupted invocations; `blocked`/`paused` are handed back. **Why:** a gate verdict is not a crash.
+- **Q:** Shared shed-level friction, or recipe-named? **A:** [auto-pick] Recipe-named `friction_dir` plus shed-owned `scratch_dir` for the driver's repair records. **Why:** no move of loom's friction machinery.
+- **Q:** Which non-running envelopes does the driver repair? **A:** [auto-pick] `producer`, `bootstrap`, `unseeded` and interrupted invocations; `busy`, `ownership`, kind-less refusals, `blocked` and `paused` are handed back. **Why:** a gate verdict, a live lock holder or a slug mismatch is not a crash, and pausing a lock holder could stop a sibling driver.
+- **Q:** How does a fork reach the directory a run requires without the skill naming a recipe? **A:** [auto-pick] The fork prompt names the drive directory; the skill runs each `lyx` call in a subshell `cd`. **Why:** the orchestrator seeded the run there, and the recipe's own refusal covers a wrong directory.
 - **Q:** What may a repair touch? **A:** [auto-pick] `lyx` verbs plus read-only git, with one narrow exception for deleting a branch the failed step's trace shows it created; never status/seed by hand, no force-push. **Why:** Fabric Git Invariant, while keeping the absorbed stranded-branch window (#269) repairable.
 - **Q:** Cap on repeated repairs of the same row? **A:** [auto-pick] Two repairs without the run advancing, then escalate. **Why:** separates a transient crash window from a systematic defect.
 - **Q:** Keep a step cap? **A:** [auto-pick] Drop it and its pin test. **Why:** the design drops it; bounce budgets and the repair cap bound the loop.
