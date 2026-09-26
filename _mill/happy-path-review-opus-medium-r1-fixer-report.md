@@ -31,3 +31,9 @@ Review: `_mill/happy-path-review-opus-medium-r1.md` (committed `db795663f` befor
 ## Changed files
 
 (pending)
+
+### Re-drive log
+
+- Hub4 (`$HOME/crucible-happy-path/opus-medium-r1/hub4`), dev binary `bc9004f74`, weft bare left on its host-default `master` HEAD (re-verifies F1): clone → weft prime `main-weft`, `_board` on `main`; `lyx config landing --set 'require_pr_to_base=[]'` → ok (F6).
+- go driver, task `add-sub`: `board upsert` → `fabric add add-sub` → `shed seed self --recipe loom --driver go --param parent=main` → `loom start --no-attach` → `done` at 15:55 (history 18), no intervention.
+  Bare `warp.git` `main` = `bc9c17f Add Sub to calc` (F3); prime `main...origin/main` in sync.
