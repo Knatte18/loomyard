@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussion-fix-r1
 slug: shed-llm-driver
 branch: shed-llm-driver
 plan: null
@@ -16,4 +16,5 @@ task_description: |
 
 ```text
 discussing  '2026-09-26T10:40:25Z'
+discussion-fix-r1  '2026-09-26T11:05:17Z'
 ```
