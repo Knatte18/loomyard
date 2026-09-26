@@ -53,7 +53,9 @@ batches:
     commit_sha: 723f27d41648d432f1413812a37f379b66741084
     verify_baseline_failures: []
   - name: step-entry-point-integration
-    state: pending
+    state: running
+    implementer_session: 84393eff-d954-4513-841e-5e525c4c753b
+    start_sha: 623c9c071ac9c361cac3fb75a3c396fea7b5e40b
     verify_baseline_failures: []
   - name: ly-drive-recipe-blind
     state: pending
