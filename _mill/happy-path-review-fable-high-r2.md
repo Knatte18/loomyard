@@ -56,3 +56,8 @@ Operator sequence (dev binary `L=.../.dev-bin/lyx`):
 5. `cd $HUB/task-priority && $L loom start --no-attach` → exit 0, **no output at all** (no JSON envelope). Immediately after: `lyx loom status` = `running`, `current_producer: Discussion-Write`, `history_length: 2`; tmux server `lyx-warp-LYXHUB-59652fb8` session `task-priority` up; `lyx reed watchdog`, `lyx loom run` (detached driver), `lyx loom status --watch` (status strand) and the Discussion-Write `claude --model opus --effort high` session are all running. `.lyx/loom/driver.log` exists, 0 bytes so far.
 
 Network check: `selfreport: false` + `friction: ""` in the task's effective `loom.yaml`; `require_pr_to_base: []` so Publish takes the no-pull-request branch (the only `githubclient` caller in landing); the warp remote is `hub1/warp.git`, the weft remote `hub1/weft.git`.
+
+hub2 (for the llm run, not started until hub1 is terminal) prepared with the same sequence: fresh bares, clone, the two config overrides, the same board task, `fabric add task-priority`; effective config verified in the task worktree; `.claude/skills/ly-drive/SKILL.md` copied from this worktree's `plugins/ly/skills/ly-drive/SKILL.md`; `.claude/` appended to `<hub>/warp/.git/info/exclude` (the pair's common git dir); `lyx fabric status` clean, `git status --ignored` shows `.claude/` as ignored.
+
+Provisional findings so far:
+- P1 (LOW): `lyx loom start --no-attach` returns exit 0 with no output at all on success (`internal/loomcli/start.go:404`, `if !mustAttach(noAttachFlag) { return nil }`), while the CLI/Cobra Invariant admits only the terminal-handover tail as JSON-exempt. An operator or script cannot tell "driver up" from a silent failure without a follow-up `status`. CONFIRMED (hub1).
