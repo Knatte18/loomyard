@@ -5,10 +5,11 @@ This is the **ordered procedure**;
 for the topology, repo layout, and design rationale see [sandbox-hub.md](sandbox-hub.md).
 
 All commands run from the lyx repo root (`C:\Code\loomyard\wts\loomyard` on Windows, the repo root on POSIX) unless stated otherwise.
-The launchers (`deploy.cmd`, `deploy-dev.cmd`, `sandbox/win/build.cmd`, `sandbox/win/core-suite.cmd`, `sandbox/win/reed-suite.cmd`, `sandbox/win/shuttle-suite.cmd`, `sandbox/win/burler-suite.cmd`, `sandbox/win/fetch.cmd`) hardcode this machine's paths: `deploy.cmd`'s deploy target `C:\Code\tools\bin`, Hub parent `C:\Code`. `deploy-dev.cmd` is the exception — it installs into a derived, per-worktree `.dev-bin` directory, never a hardcoded path.
+The sandbox launchers (`sandbox/win/build.cmd`, `sandbox/win/core-suite.cmd`, `sandbox/win/reed-suite.cmd`, `sandbox/win/shuttle-suite.cmd`, `sandbox/win/burler-suite.cmd`, `sandbox/win/fetch.cmd`) hardcode this machine's Hub parent `C:\Code`.
+The deploy launchers hardcode nothing: `deploy.cmd` installs into the machine's own `go env GOBIN` (else `GOPATH\bin`), and `deploy-dev.cmd` into a derived, per-worktree `.dev-bin` directory.
 Each sandbox launcher does exactly one thing (build / one suite / fetch).
 
-> **POSIX equivalents.** Every command below has a `sandbox/posix/*.sh` twin (`build.sh`, `core-suite.sh`, `reed-suite.sh`, `shuttle-suite.sh`, `burler-suite.sh`, `fetch.sh`), same subcommands and flags, `$HOME/Code` standing in for `C:\Code`. `deploy.cmd`/`deploy-dev.cmd` have no POSIX port yet — that is still Windows-only.
+> **POSIX equivalents.** Every command below has a `sandbox/posix/*.sh` twin (`build.sh`, `core-suite.sh`, `reed-suite.sh`, `shuttle-suite.sh`, `burler-suite.sh`, `fetch.sh`), same subcommands and flags, `$HOME/Code` standing in for `C:\Code`. `deploy`/`deploy-dev` are the POSIX twins of `deploy.cmd`/`deploy-dev.cmd`.
 
 **Run every suite launcher in a real, attached interactive terminal** — never backgrounded, detached, or with stdout/stderr redirected.
 The agent session is an interactive `claude` process;
@@ -33,7 +34,8 @@ Always deploy before a run (step 2) — `deploy-dev.cmd` is the fast path since 
 
 1. **Sandbox wiki initialized** — the board repo is the weft repo's GitHub wiki. `lyx-test-weft` must have Wikis enabled and at least one page, or `warp clone` fails and the Hub is torn down.
    See [sandbox-hub.md#prerequisites](sandbox-hub.md#prerequisites).
-2. **`C:\Code\tools\bin` is on PATH (production only)** — that is where `deploy.cmd` installs the production `lyx`.
+2. **The Go bin dir is on PATH (production only)** — `deploy.cmd` installs the production `lyx` into `go env GOBIN`, else `GOPATH\bin`.
+   To install elsewhere, set it once per machine: `go env -w GOBIN=C:\Code\tools\bin`.
    The dev binary in `.dev-bin` does NOT need to be on PATH;
    the suite resolves it directly and threads it to the agent itself.
 
@@ -51,7 +53,7 @@ go test ./...
 ### 2. Deploy a fresh dev `lyx.exe`
 
 Rebuilds `lyx` from the current checkout and installs it into the derived `.dev-bin` directory at the repo root, overwriting the old dev binary.
-This never touches the production `lyx` in `C:\Code\tools\bin` — `deploy-dev.cmd` and `deploy.cmd` are independent targets.
+This never touches the production `lyx` in the Go bin dir — `deploy-dev.cmd` and `deploy.cmd` are independent targets.
 
 ```cmd
 deploy-dev.cmd
@@ -209,7 +211,7 @@ Then groom/spawn as usual.
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `lyx` not found / old behaviour | dev binary in `.dev-bin` is stale, or (prod fallback) `C:\Code\tools\bin` not on PATH | rerun `deploy-dev.cmd`; check the fingerprint header's `Source:` line — `dev` confirms the `.dev-bin` build ran, `prod` means the dev binary was missing and the suite fell back to PATH |
+| `lyx` not found / old behaviour | dev binary in `.dev-bin` is stale, or (prod fallback) the Go bin dir (`go env GOBIN`, else `GOPATH\bin`) not on PATH | rerun `deploy-dev.cmd`; check the fingerprint header's `Source:` line — `dev` confirms the `.dev-bin` build ran, `prod` means the dev binary was missing and the suite fell back to PATH |
 | `warp clone` fails during build | sandbox wiki not initialized | enable Wikis + add a page on `lyx-test-weft`, then `sandbox/win/build.cmd -reset` (`sandbox/posix/build.sh -reset`) |
 | Hub looks corrupt / half-cloned | interrupted earlier run | `sandbox/win/build.cmd -reset` (`sandbox/posix/build.sh -reset`) |
 | `build -reset` fails: "being used by another process" (Windows) / "text file busy" (POSIX) | orphaned tmux from an earlier suite session still holds Hub handles | the launcher now runs `lyx reed down` after reed-backed suites **except the reed watch suite, which never auto-tears-down (see 4d)**; if hit anyway, find the Hub-scoped tmux PIDs by start time (Windows: `Get-Process -Name tmux \| Select Id,StartTime`; POSIX: `ps -o pid,lstart,cmd -C tmux`) and kill only those — never blanket-kill by image name |
