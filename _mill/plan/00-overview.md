@@ -3,7 +3,7 @@
 ```yaml
 task: Loom persists done only after post-run friction reflection
 slug: loom-done-after-friction
-approved: false
+approved: true
 started: 20260926-111835
 parent_branch: main
 root: ""
