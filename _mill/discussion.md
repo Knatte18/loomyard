@@ -163,10 +163,12 @@ the other crash-window findings stay parked as GitHub issues #269, #270, #271 an
   Repairs act through `lyx`'s own verbs (`lyx fabric …`, `lyx reed …` for strands the trace names as the failed step's own) and read-only git for diagnosis; `lyx shed pause` is never a repair verb;
   the driver never edits a status file or `seed.json` by hand, never re-seeds, never force-pushes, and never deletes a branch or worktree the trace does not name as created by the failed step.
   When no `lyx` verb can perform the repair, it escalates, with one narrow exception below.
-- Stranded-branch exception: the driver may run `git branch -D <branch>` (local) or `git push <remote> --delete <branch>` (remote) on a branch only when all three hold:
-  the failed step's trace (or a child trace sharing its id) carries a `fabric: mutation` entry of kind `branch_created` or `branch_pushed` for exactly that branch;
-  no later entry in those traces records it deleted (`branch_deleted`, `remote_branch_deleted`);
-  and no `lyx fabric` verb removes it.
+- Stranded-branch exception: the driver may delete a branch by raw git only under these conditions, read from the failed step's trace and the child traces sharing its id:
+  - Local delete (`git branch -D <branch>`): a `fabric: mutation` entry of kind `branch_created` for exactly that branch, and no later `branch_deleted` entry for it.
+  - Remote delete (`git push <remote> --delete <branch>`): a `branch_created` entry **and** a `branch_pushed` entry for exactly that branch, and no later `remote_branch_deleted` entry for it.
+    A later local `branch_deleted` does not bar it: `rollbackAdd` deletes the local warp branch (recorded as `branch_deleted`, `internal/fabricengine/destroy.go` ~955) and deliberately leaves the remote copy (`add.go` ~277-281), which is the #269 case this exception exists for.
+  - Both: no `lyx fabric` verb removes the branch.
+  A `branch_pushed` entry alone never qualifies: `recordPushIfAdvanced` (`internal/fabricengine/weftgit.go` ~287) records it whenever an existing branch is pushed forward, so a step that only pushed commits to a live, pre-existing branch never authorizes deleting it.
   Each such deletion is a repair record like any other.
   The Fabric Git Invariant binds `lyx`'s own code; the driver is a skill, and the only git clause that names agents ("an agent commits its own code to warp only") governs commits, which this exception never makes.
   This task records that reading in the invariant's text, same commit.
@@ -174,7 +176,7 @@ the other crash-window findings stay parked as GitHub issues #269, #270, #271 an
   - Partial `lyx fabric add` (worktrees created, a later step such as the push failed): `lyx fabric remove <slug>` removes the pair and the weft branch; the warp branch `rollbackAdd` leaves behind (GitHub #269) falls under the stranded-branch exception.
   - Partial `lyx fabric remove`: re-run `lyx fabric remove [--force]`, or `lyx fabric prune --apply` for an orphaned half-pair.
   - Stranded remote weft branch: `lyx fabric cleanup --apply --remote`.
-  - Stranded remote warp branch pushed by the failed step: the stranded-branch exception.
+  - Stranded remote warp branch the failed step created and pushed (including #269's remote copy after `rollbackAdd` deleted the local one): the stranded-branch exception's remote-delete rule.
   - Drifted or broken weft side of a pair: `lyx fabric reconcile`.
   A crash window outside this list escalates by design; that is accepted, and its repair record or escalation still surfaces it as data.
 - Rationale: the Fabric Git Invariant keeps mutating git inside `fabricengine` for `lyx`'s own code; routing repairs through `lyx` verbs keeps the driver inside the same destructive gates.
@@ -301,6 +303,7 @@ the other crash-window findings stay parked as GitHub issues #269, #270, #271 an
 - **Q:** Do `history_length`/`interrupt_policy` stay recipe-supplied `StatusExtras` keys? **A:** [auto-pick] No — both move into the generic status core. **Why:** the skill's cap and advance checks must hold for every recipe.
 - **Q:** How does a fork reach the directory a run requires without the skill naming a recipe? **A:** [auto-pick] The fork prompt names the drive directory; the skill runs each `lyx` call in a subshell `cd`. **Why:** the orchestrator seeded the run there, and the recipe's own refusal covers a wrong directory.
 - **Q:** What may a repair touch? **A:** [auto-pick] `lyx` verbs plus read-only git, with one narrow exception for deleting a branch the failed step's trace shows it created; never status/seed by hand, no force-push. **Why:** Fabric Git Invariant, while keeping the absorbed stranded-branch window (#269) repairable.
+- **Q:** What trace evidence authorizes a raw branch delete? **A:** [auto-pick] `branch_created` always; a remote delete also needs `branch_pushed`; each side is barred only by its own delete kind. **Why:** `branch_pushed` alone is recorded for pushes to live branches, and #269's remote copy survives a local `branch_deleted`.
 - **Q:** Cap on repeated repairs of the same row? **A:** [auto-pick] Two repairs without the run advancing, then escalate. **Why:** separates a transient crash window from a systematic defect.
 - **Q:** Keep a step cap? **A:** [auto-pick] Drop it and its pin test. **Why:** the design drops it; bounce budgets and the repair cap bound the loop.
 - **Q:** Log mutations at which level, and where? **A:** [auto-pick] `Info`, inside `Mutations.Append`/`AppendRef`; amend the level-policy comment. **Why:** only `Info`+ reaches the durable sink.
