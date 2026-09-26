@@ -89,6 +89,12 @@ Severity: BLOCKING = run cannot land; MEDIUM = lands only after intervention, or
   `seed` itself also refuses a disagreeing re-seed, so an operator following the help cannot recover through any verb.
 - Fix: the example seeds loom the way its bootstrap does — run-id `self`, `--param parent=<parent branch>` — and the text says loom's seed must match that shape.
 
+### F10 — MEDIUM — an ly-drive driver will not resume a blocked run, so the llm driver has no resume path (CONFIRMED; found in the fixer's re-drive)
+
+- Where: `plugins/ly/skills/ly-drive/SKILL.md` "Baseline" says only to record the status; "Stopping on a non-running state" (written for step envelopes) was applied by the driver to the baseline read.
+- Run (hub4 `add-mul`, after F5 had blocked Preflight and the cause was removed): `lyx loom start --no-attach` spawned a driver that read `state: blocked` at baseline, ran no step and handed back; the go driver resumes the same state by stepping.
+- Fix: the skill says a `blocked`/`paused`/`failed` baseline is the operator's resume and proceeds to the first step.
+
 ## Out-of-scope observations
 
 - `fabric add` rollback leaves the new warp branch behind (hub1): `rollbackAdd`'s branch delete is refused by the ownership gate under an empty `branch_prefix` (documented in `internal/fabricengine/add.go:346-349`), and the retry is then refused `branch "add-sub" already exists`.

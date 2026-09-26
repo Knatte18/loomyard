@@ -34,6 +34,7 @@ Never wait by matching a command line (`pgrep -f 'lyx shed step'`): the waiting 
 Before the first step, read `lyx shed status [<run-id>]` once and record `current_producer` and `history_length`.
 An envelope with `found: false`, success or error, is an empty baseline `("", 0)`; proceed to the first step, whose own bootstrap seeds the status file.
 Any other status error is handed back.
+A baseline `state` of `blocked`, `paused` or `failed` is not a stop: starting a driver on such a run is how an operator resumes it after resolving the cause, so proceed to the first step, which resumes the run.
 
 ## The loop
 
