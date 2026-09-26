@@ -45,3 +45,8 @@ Baseline: worktree HEAD at first deploy `f28403aaf happy-path: crucible seed r1 
   Verified `add-sub-weft/_lyx/config/loom.yaml` carries `selfreport: false`, `friction: ""`, and `landing.yaml` carries `require_pr_to_base: []`.
 - `(cd add-sub && $L shed seed self --recipe loom --driver go --param parent=main)` → `{"driver":"go","ok":true,"recipe":"loom","run_id":"self"}`.
 - `(cd add-sub && $L loom start --no-attach)` → rc 0, no output; weft commits `loom: seed session bootstrap for add-sub`, `Loom-Preflight -> running`, `Discussion-Write -> running`.
+- Polled `$L loom status` every 20 s: Discussion-Write 15:13 → Discussion-Bouncer/Burler → Plan-Write 15:16 → Plan-Bouncer/Burler → Webster 15:18 → Webster-Bouncer/Burler → `state: done` at Friction-Reflect 15:21 (history_length 18). Driver log tail: `{"friction":"skipped","halted_producer":"Friction-Reflect","outcome":"done"}`; only WARNs are informational plan-gate findings and one dropped cluster-exclude focus directive.
+- Landing check: prime `warp` `main` has `d9f5d85 Add Sub to calc` (squash, `calc.Sub` + `TestSub`), `git status -sb` = `main...origin/main [ahead 1]`.
+  **Bare `warp.git` `main` is still `0258fde seed calc`** — Finalize merged into the local parent pair only and pushed nothing. Provisional finding F3.
+- `lyx fabric status` clean, `lyx fabric pairs` both pairs `in_sync`/`junction_healthy`; board task `add-sub` has no status (not marked done by anything in the loom path).
+- Left running after `done`, by design: the worktree's reed tmux session (`tmux -L lyx-warp-LYXHUB-ccc46d49 ... -s add-sub`) and the per-hub `lyx reed watchdog`.
