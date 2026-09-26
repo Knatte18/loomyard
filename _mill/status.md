@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-shed-envelope-trace
+phase: approved-step-entry-point-integration
 slug: shed-llm-driver
 branch: shed-llm-driver
 plan: _mill/plan
@@ -28,6 +28,7 @@ implementing  '2026-09-26T11:59:38Z'
 approved-logger-trace-accessors  '2026-09-26T12:01:22Z'
 approved-fabric-mutation-trace  '2026-09-26T12:03:11Z'
 approved-shed-envelope-trace  '2026-09-26T12:07:08Z'
+approved-step-entry-point-integration  '2026-09-26T12:08:06Z'
 ```
 
 ## Batches
@@ -53,9 +54,10 @@ batches:
     commit_sha: 723f27d41648d432f1413812a37f379b66741084
     verify_baseline_failures: []
   - name: step-entry-point-integration
-    state: running
+    state: approved
     implementer_session: 84393eff-d954-4513-841e-5e525c4c753b
     start_sha: 623c9c071ac9c361cac3fb75a3c396fea7b5e40b
+    commit_sha: 8916c53bcec72590103638bf0cfa920994a79d35
     verify_baseline_failures: []
   - name: ly-drive-recipe-blind
     state: pending
