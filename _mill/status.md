@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: shed-llm-driver
 branch: shed-llm-driver
 plan: _mill/plan
@@ -31,6 +31,7 @@ approved-shed-envelope-trace  '2026-09-26T12:07:08Z'
 approved-step-entry-point-integration  '2026-09-26T12:08:06Z'
 approved-ly-drive-recipe-blind  '2026-09-26T12:14:29Z'
 holistic-reviewing  '2026-09-26T12:14:38Z'
+holistic-fixing  '2026-09-26T12:15:16Z'
 ```
 
 ## Batches
