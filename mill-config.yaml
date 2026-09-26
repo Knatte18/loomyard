@@ -11,9 +11,7 @@
 # Environment-variable overrides (when set, takes precedence over config file values):
 #   MILL_DISCUSSION_REVIEWER        -> roles.discussion-review.holistic.reviewer
 #   MILL_PLAN_REVIEWER              -> roles.plan-review.holistic.reviewer
-#   MILL_PLAN_BATCH_REVIEWER        -> roles.plan-review.batch.reviewer
 #   MILL_CODE_REVIEWER              -> roles.code-review.holistic.reviewer
-#   MILL_CODE_BATCH_REVIEWER        -> roles.code-review.batch.reviewer
 #   MILL_IMPLEMENTER                -> roles.implementer.model
 #
 # Unknown keys emit a stderr warning at load time; load proceeds.
@@ -147,9 +145,6 @@ roles:
       #   reviewer: null         # override reviewer from agents.yaml; null = disabled
 
   plan-review:
-    batch:
-      rounds: 0
-      reviewer: null
     holistic:
       rounds: 6
       reviewer: sonnetxhigh
@@ -158,9 +153,6 @@ roles:
       #   reviewer: null         # override reviewer from agents.yaml; null = disabled
 
   code-review:
-    batch:
-      rounds: 0
-      reviewer: null
     holistic:
       rounds: 5
       reviewer: sonnethigh
@@ -170,7 +162,6 @@ roles:
       # large_prompt:            # optional: override reviewer for large prompts
       #   threshold_ktok: 100    # switch when estimated tok count >= this (char/4000)
       #   reviewer: null         # override reviewer from agents.yaml; null = disabled
-    diff_scope_threshold: 0.25
 
   implementer:
     self_fix_rounds: 2
