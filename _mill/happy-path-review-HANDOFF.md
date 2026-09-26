@@ -35,6 +35,16 @@ Each round is one review+fix round plus the orchestrator's own verification; a f
   A hand-back whose own text says the re-drive is incomplete is not a finished round: check `git log` and the fixer report's re-drive section before touching any of the round's substrate.
 - Grep for live fixture processes by hub path misses `lyx loom run` (its args carry no path) and orphans whose cwd was deleted; check `/proc/<pid>/cwd` and every `lyx-warp-LYXHUB-*` tmux socket instead.
 
+## Close-out
+
+Operator decision (relayed by `lyx:orch`): the campaign is closed after round 2; there is no round 3.
+Round 1 found 2 BLOCKING and 5 MEDIUM, and neither driver landed unaided.
+Round 2 found 0 BLOCKING and 1 MEDIUM, and both drivers landed a realistic multi-package, multi-batch task with a review bounce and no repairs; every round-1 fix held.
+The next signal comes from real use on loomyard, not another fixture round.
+
+Verdict: merge with residual —
+install the `ly` plugin after this branch merges, F7 stays open, and #275–#278 are filed.
+
 ## Next action
 
-None: report to the operator and `lyx:orch`, and wait. Push/merge is the operator's call.
+None inside this campaign. Push/PR is the operator's separate decision; do not push from this worktree until told.
