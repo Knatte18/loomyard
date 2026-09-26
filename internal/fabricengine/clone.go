@@ -276,14 +276,18 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 	}
 	rec.Append(KindWorktreeCreated, weftPath, "")
 
-	// Step 6b: Rename the weft primary's freshly-cloned branch onto its
-	// WeftBranchName-suffixed pairing, so weft:<branch> is never claimed
-	// directly under fabric's uniform branch scheme. Capture warpBranch (the
-	// branch read before the rename) so step 7's _board worktree-add can reuse
-	// it directly, rather than re-reading git branch --show-current at weftPath
-	// after the rename (which would incorrectly see the suffixed branch).
-	warpBranch, err := suffixWeftPrimaryBranch(weftPath)
+	// Step 6b: Check the weft primary out onto the WeftBranchName-suffixed pairing of the warp
+	// prime's own branch, so weft:<branch> is never claimed directly under fabric's uniform branch
+	// scheme. warpBranch is read from the warp clone, never from the weft clone: `lyx fabric add`
+	// forks every new pair's weft branch from WeftBranchName(<warp branch>), so a weft primary named
+	// after the weft remote's own HEAD (an empty bare created with a different default branch)
+	// leaves a hub on which no pair can ever be created. Step 7's _board worktree-add reuses the
+	// same value.
+	warpBranch, err := checkedOutBranch(warpWorktreePath, "warp prime")
 	if err != nil {
+		return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, err)
+	}
+	if err := suffixWeftPrimaryBranch(weftPath, warpBranch); err != nil {
 		return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, err)
 	}
 
@@ -418,32 +422,29 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 	}, nil
 }
 
-// suffixWeftPrimaryBranch reads the branch checked out at weftPath (the weft
-// primary, immediately after clone) and checks out its WeftBranchName-suffixed
-// pairing, adopt-or-create style. When origin already carries the suffixed
-// branch — a re-clone (fresh machine, `clone --reset`) of a hub that has synced
-// weft history — that remote branch is adopted as a tracking local branch, so
-// the fresh hub inherits the accumulated weft state (its _lyx content) and its
-// first push can rebase-recover through the configured upstream instead of
-// diverging permanently from an untracked fork. Only when the remote has no
-// suffixed branch yet (a genuinely new hub) is the branch created fresh at the
-// current HEAD. Returns an error if the weft primary is on a detached HEAD (no
-// branch to read) or if any git call fails.
-//
-// Returns the warp branch name it read (before the rename) so CloneHub's
-// _board-worktree-add step can reuse it directly — re-reading
-// git branch --show-current at weftPath after this function returns would
-// incorrectly see the already-renamed <warpBranch>-weft, not warpBranch.
-func suffixWeftPrimaryBranch(weftPath string) (warpBranch string, err error) {
-	stdout, err := gitexec.Run([]string{"branch", "--show-current"}, weftPath)
+// checkedOutBranch returns the branch checked out at dir, born or unborn; role names dir in the
+// error. It refuses a detached HEAD, which names no branch to pair with.
+func checkedOutBranch(dir, role string) (string, error) {
+	stdout, err := gitexec.Run([]string{"branch", "--show-current"}, dir)
 	if err != nil {
-		return "", fmt.Errorf("resolve weft primary branch: %w", err)
+		return "", fmt.Errorf("resolve %s branch: %w", role, err)
 	}
-	warpBranch = strings.TrimSpace(stdout)
-	if warpBranch == "" {
-		return "", fmt.Errorf("weft primary at %s is on a detached HEAD after clone; cannot derive its weft branch", weftPath)
+	branch := strings.TrimSpace(stdout)
+	if branch == "" {
+		return "", fmt.Errorf("%s at %s is on a detached HEAD after clone; cannot derive its weft branch", role, dir)
 	}
+	return branch, nil
+}
 
+// suffixWeftPrimaryBranch checks the weft primary at weftPath (immediately after clone) out onto
+// WeftBranchName(warpBranch), adopt-or-create style. When origin already carries the suffixed
+// branch — a re-clone (fresh machine, `clone --reset`) of a hub that has synced weft history — that
+// remote branch is adopted as a tracking local branch, so the fresh hub inherits the accumulated
+// weft state (its _lyx content) and its first push can rebase-recover through the configured
+// upstream instead of diverging permanently from an untracked fork. Only when the remote has no
+// suffixed branch yet (a genuinely new hub) is the branch created fresh at the current HEAD.
+// Returns an error if any git call fails.
+func suffixWeftPrimaryBranch(weftPath, warpBranch string) error {
 	suffixedBranch := WeftBranchName(warpBranch)
 
 	// Adopt path: the remote already carries the suffixed branch (this is a
@@ -455,12 +456,12 @@ func suffixWeftPrimaryBranch(weftPath string) (warpBranch string, err error) {
 	// yet", so it is recovered via errors.As rather than merged into a single
 	// message.
 	remoteRef := "refs/remotes/origin/" + suffixedBranch
-	_, err = gitexec.Run([]string{"rev-parse", "--verify", "--quiet", remoteRef}, weftPath)
+	_, err := gitexec.Run([]string{"rev-parse", "--verify", "--quiet", remoteRef}, weftPath)
 	remoteBranchExists := err == nil
 	if err != nil {
 		var gitErr *gitexec.GitError
 		if !errors.As(err, &gitErr) {
-			return "", fmt.Errorf("check for remote weft primary branch: %w", err)
+			return fmt.Errorf("check for remote weft primary branch: %w", err)
 		}
 	}
 	checkoutArgs := []string{"checkout", "-b", suffixedBranch}
@@ -469,13 +470,10 @@ func suffixWeftPrimaryBranch(weftPath string) (warpBranch string, err error) {
 	}
 
 	if _, err := gitexec.Run(checkoutArgs, weftPath); err != nil {
-		return "", fmt.Errorf("checkout -b %q in weft primary: %w", suffixedBranch, err)
+		return fmt.Errorf("checkout -b %q in weft primary: %w", suffixedBranch, err)
 	}
 
-	if err := bornWeftPrimaryBranch(weftPath, suffixedBranch); err != nil {
-		return "", err
-	}
-	return warpBranch, nil
+	return bornWeftPrimaryBranch(weftPath, suffixedBranch)
 }
 
 // bornWeftPrimaryBranch gives the weft primary's suffixed branch a real commit when the clone left
