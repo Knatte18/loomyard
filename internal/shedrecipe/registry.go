@@ -11,8 +11,7 @@ import (
 // registry is the single place every engine name is declared, mapping each recipe row's engine
 // name to the Constructor that builds it.
 //
-// The table is complete at sixteen keys. Any new entry's coverage is checked in exactly one
-// place: the cross-consumer coverage guard in this package's own external test package.
+// Any new entry's coverage is checked in exactly one place: the cross-consumer coverage guard in this package's own external test package.
 //
 // init() self-registration was rejected: the entries span five packages
 // (internal/shedrecipe, internal/preflightshed, internal/landingshed, internal/loomshed,
@@ -22,6 +21,7 @@ var registry = map[string]Constructor{
 	"Preflight":        preflightEntry,
 	"Publish":          publishEntry,
 	"Finalize":         finalizeEntry,
+	"FrictionReflect":  frictionReflectEntry,
 	"LoomPreflight":    loomPreflightEntry,
 	"Batchifier":       batchifierEntry,
 	"DiscussionWrite":  discussionWriteEntry,

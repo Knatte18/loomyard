@@ -156,6 +156,7 @@ func newTestEnv(t *testing.T) Env {
 		Burler:             &fakeBurlerRunner{},
 		WebsterRun:         fakeWebsterRun,
 		CommitWebster:      func() error { return nil },
+		ReflectFriction:    func() string { return "skipped" },
 		WebsterDeps: websterengine.RunDeps{
 			Starter:    fakeMasterStarter{},
 			Reed:       fakeReedOps{},

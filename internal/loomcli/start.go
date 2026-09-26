@@ -200,8 +200,8 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 		alive := func() bool { return proc.IsAlive(childPID) }
 		// halted reads the machine's own persisted state, which is the only thing that can
 		// still separate "wedged spawn" from "pass finished, driver still doing post-run
-		// bookkeeping" now that the run lock is released before the friction reflection
-		// runs. A read failure, and a status file that is not there at all, both report
+		// bookkeeping" now that a blocked halt's friction reflection runs after the run lock is
+		// released. A read failure, and a status file that is not there at all, both report
 		// false rather than true: neither is evidence the machine halted, so neither may
 		// shortcut the handshake -- the deadline stays the arbiter in that case.
 		halted := func() bool {

@@ -85,7 +85,7 @@ type Deps struct {
 	// product rewrites that file on every producer transition while committing it only once, at
 	// bootstrap, so by the time these two rows run it is a tracked, uncommitted modification --
 	// and fabricengine's merge guard refuses any tracked modification on either side of the pair.
-	// Without this seam the last row of a loom run refuses on the run's own bookkeeping, every
+	// Without this seam loom's Finalize row refuses on the run's own bookkeeping, every
 	// time, with no OnStuck target and therefore no recovery but a human.
 	//
 	// It is a told closure rather than a path this package commits itself for the same reason

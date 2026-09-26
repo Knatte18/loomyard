@@ -123,9 +123,9 @@ const (
 // halted comes last because it is the weakest of the three signals — it says only that the machine
 // is no longer running, which is also true of a status file a wedged driver never touched. It exists
 // because the run lock alone stopped being able to tell "wedged spawn" from "finished, still
-// working": shedengine.Run releases the lock on return, and `lyx loom run` then spends up to
-// friction_timeout_min in the Tier 2 reflection step with the lock free and the process very much
-// alive. Without this signal a fast halt plus any friction note is reported as a wedged spawn and
+// working": shedengine.Run releases the lock on return, and after a blocked halt `lyx loom run`
+// then spends up to friction_timeout_min in the Tier 2 reflection step with the lock free and the
+// process very much alive. Without this signal a fast halt plus any friction note is reported as a wedged spawn and
 // the bootstrap skips its own terminal handover — see dispositionForHandshake.
 //
 // lockHeld, alive, halted, and wait are all injected seams so a test can drive this whole poll with
@@ -173,8 +173,8 @@ const (
 // one place they are not put.
 //
 // awaitRunLockHalted proceeds for exactly the same reason, and covers the case Tier 2 introduced:
-// the driver halted just as fast, but did NOT exit, because `lyx loom run` runs the friction
-// reflection after shedengine.Run has already returned and released the lock. That step spawns a
+// the driver halted just as fast, but did NOT exit, because after a blocked halt `lyx loom run` runs
+// the friction reflection after shedengine.Run has already returned and released the lock. That step spawns a
 // real agent bounded by friction_timeout_min -- thirty minutes in the shipped template -- against a
 // handshake budget of thirty seconds, so the child is alive, the lock is free, and the machine is
 // done. Before this arm existed that combination landed on the refusal below, which turned every

@@ -1,4 +1,4 @@
-// entries_simple_test.go is table-driven over the seven value-only entries: a happy-path table, an
+// entries_simple_test.go is table-driven over the value-only entries simpleEntryCases lists: a happy-path table, an
 // unrecognised-Config-key table, and an under-filled-Env table, plus the entry-specific subtests
 // entries_simple.go's own doc comments call out.
 
@@ -143,6 +143,13 @@ func simpleEntryCases() []simpleEntryCase {
 				env.Landing = validLandingDeps(t)
 				return env
 			},
+			validatedFields: nil,
+			unreadField:     "Cwd",
+		},
+		{
+			registryKey:     "FrictionReflect",
+			entry:           frictionReflectEntry,
+			buildEnv:        newTestEnv,
 			validatedFields: nil,
 			unreadField:     "Cwd",
 		},
@@ -347,5 +354,20 @@ func TestBatchifierEntry_RelativeAnchorPath(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "AnchorPath") {
 		t.Errorf("batchifierEntry() error = %v; want it to name field %q", err, "AnchorPath")
+	}
+}
+
+func TestFrictionReflectEntry_NilClosureRejected(t *testing.T) {
+	env := newTestEnv(t)
+	env.ReflectFriction = nil
+	producer, err := frictionReflectEntry("Friction-Reflect", Config{}, env)
+	if err == nil {
+		t.Fatal("frictionReflectEntry(nil closure) error = nil; want non-nil")
+	}
+	if !strings.Contains(err.Error(), "FrictionReflect") {
+		t.Errorf("frictionReflectEntry(nil closure) error = %v; want it to name %q", err, "FrictionReflect")
+	}
+	if producer != nil {
+		t.Errorf("frictionReflectEntry(nil closure) producer = %v; want nil", producer)
 	}
 }
