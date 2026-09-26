@@ -50,3 +50,16 @@ Baseline: worktree HEAD at first deploy `f28403aaf happy-path: crucible seed r1 
   **Bare `warp.git` `main` is still `0258fde seed calc`** — Finalize merged into the local parent pair only and pushed nothing. Provisional finding F3.
 - `lyx fabric status` clean, `lyx fabric pairs` both pairs `in_sync`/`junction_healthy`; board task `add-sub` has no status (not marked done by anything in the loom path).
 - Left running after `done`, by design: the worktree's reed tmux session (`tmux -L lyx-warp-LYXHUB-ccc46d49 ... -s add-sub`) and the per-hub `lyx reed watchdog`.
+
+### Hub 2 — llm-driver run, second task `add-mul` (also the "hub usable for the next run" check)
+
+- ly-drive resolvability: `~/.claude/plugins/installed_plugins.json` has no `ly@loomyard` (the marketplace lists `ly`, but only `prowler@loomyard` is installed), and `~/.claude/skills` carries no `ly-drive`.
+  Nothing in `lyx` installs, checks or points at the skill.
+- `(cd warp && $L board upsert '{"slug":"add-mul",...}')`, `$L fabric add add-mul` → ok (forked from prime's local `main`, which carries the unpushed Sub landing).
+- `(cd add-mul && $L shed seed self --recipe loom --driver llm --param parent=main)` → ok; `(cd add-mul && $L loom start --no-attach)` → rc 0, strands `loom-status` + `loom-driver`.
+- Driver session transcript (`~/.claude/projects/-home-knatte-crucible-happy-path-opus-medium-r1-hub2-warp-LYXHUB-add-mul/*.jsonl`): the session did not have the skill; its first tool call was `find / -type d -name 'ly-drive*'`, which happened to find this repo's own source trees on this dev machine, and it read `/home/knatte/Code/loomyard/wts/crucible-happy-path/plugins/ly/skills/ly-drive/SKILL.md` from disk.
+  Provisional finding F4 (CONFIRMED).
+- Step 1: the session wrote the step envelope to `add-mul/.scratch/ly-drive/self/step-1.json` — the skill's own prescribed location "under the driving session's own cwd", which for a loom-launched driver IS the drive directory.
+  Envelope: `Preflight` `outcome: stuck`, `state: blocked`, trace `preflightshed: preconditions not met ... failures="worktree-clean: uncommitted code changes: ?? .scratch/"`.
+  The driver handed back per the skill (`blocked` is never repaired) after 1 step.
+  Provisional finding F5 (CONFIRMED, BLOCKING for the llm driver).
