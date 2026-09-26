@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-review-r1
 slug: loom-done-after-friction
 branch: loom-done-after-friction
 plan: _mill/plan
@@ -24,4 +24,5 @@ discussion-fix-r5  '2026-09-26T11:10:55Z'
 discussion-fix-r6  '2026-09-26T11:13:17Z'
 discussed  '2026-09-26T11:13:17Z'
 planning  '2026-09-26T11:23:25Z'
+plan-review-r1  '2026-09-26T11:35:03Z'
 ```
