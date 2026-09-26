@@ -1,0 +1,22 @@
+MILL_REVIEW_BEGIN
+# Review: shed: the LLM driver as a generic stepper and mender — holistic
+
+```yaml
+verdict: APPROVE
+reviewer_model: sonnethigh
+reviewed_file: plan/ + source
+date: 2026-09-26
+```
+
+## Findings
+
+### [NIT:scope] Review depth limited to spot verification
+**Location:** whole change set
+**Issue:** Verified against source: the four trace-record messages and the landingshed record (`internal/shedverbs/step.go`, `internal/fabricengine/mutation.go`, `internal/landingshed/publish.go`); `refDetail` is used at every `KindBranchCreated`/`KindBranchPushed` site (`add.go`, `checkout.go`, `weftwiring.go`, `weftgit.go`); `logger.TraceFile`/`TraceDir`/`SetDurableSinkDir` exist; `StepEnvelope` and `status.go` carry the closed key sets; `SKILL.md` matches the vocabulary verbatim.
+**Fix:** None required; no deviation from Shared Decisions or from CONSTRAINTS was found in the checked paths.
+
+## Verdict
+
+APPROVE
+Sampled cross-batch contracts and shared vocabulary are consistent; no blocking issues found.
+MILL_REVIEW_END
