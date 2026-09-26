@@ -103,7 +103,7 @@ func PushWarpAt(warpPath string, opts SyncOptions) (res PushResult, err error) {
 	if err := repo.PushCoalesced(); err != nil {
 		return PushResult{}, err
 	}
-	recordPushIfAdvanced(rec, repo, hadUnpushed, hadUnpushedErr)
+	recordPushIfAdvanced(rec, repo, "warp", warpPath, hadUnpushed, hadUnpushedErr)
 
 	return PushResult{}, nil
 }
@@ -135,7 +135,7 @@ func PushWarpRebaseFreeAt(warpPath string, opts SyncOptions) (res PushResult, er
 	if err := repo.PushRebaseFree(); err != nil {
 		return PushResult{}, err
 	}
-	recordPushIfAdvanced(rec, repo, hadUnpushed, hadUnpushedErr)
+	recordPushIfAdvanced(rec, repo, "warp", warpPath, hadUnpushed, hadUnpushedErr)
 
 	return PushResult{}, nil
 }

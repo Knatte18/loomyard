@@ -12,6 +12,7 @@ package fabricengine_test
 import (
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -94,13 +95,18 @@ func TestPushAnchored_PushesAndRecordsBranchPush(t *testing.T) {
 
 	entries := res.Mutated().Entries()
 	found := 0
+	var pushed fabricengine.Mutation
 	for _, entry := range entries {
 		if entry.Kind == fabricengine.KindBranchPushed {
 			found++
+			pushed = entry
 		}
 	}
 	if found != 1 {
-		t.Errorf("PushAnchored() record = %+v; want exactly one KindBranchPushed entry, got %d", entries, found)
+		t.Fatalf("PushAnchored() record = %+v; want exactly one KindBranchPushed entry, got %d", entries, found)
+	}
+	if !strings.HasPrefix(pushed.Detail, "side=weft repo=") || !strings.Contains(pushed.Detail, " remote=") {
+		t.Errorf("KindBranchPushed Detail = %q; want prefix %q and a %q part", pushed.Detail, "side=weft repo=", " remote=")
 	}
 }
 

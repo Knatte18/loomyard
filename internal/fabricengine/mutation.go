@@ -46,8 +46,10 @@ const (
 	// KindWorktreeCreated records createGitWorktree's `git worktree add`.
 	KindWorktreeCreated Kind = "worktree_created"
 	// KindBranchCreated records a verb success site that created a branch.
+	// Its Detail is "side=<warp|weft> repo=<abs path>".
 	KindBranchCreated Kind = "branch_created"
 	// KindBranchPushed records a verb success site that pushed a branch.
+	// Its Detail is "side=<warp|weft> repo=<abs path> remote=<name>", with remote omitted when unknown.
 	KindBranchPushed Kind = "branch_pushed"
 	// KindCommitCreated records a verb success site that landed a commit.
 	KindCommitCreated Kind = "commit_created"
@@ -159,6 +161,22 @@ func hubRelativeTarget(hubRoot, target string) string {
 		return filepath.ToSlash(target)
 	}
 	return rel
+}
+
+// refDetail builds the Detail of a branch_created or branch_pushed entry: "side=<side> repo=<repo>",
+// plus " remote=<remote>" when remote is non-empty.
+// side is "warp" or "weft"; repo is made absolute (kept as given on error) and slashed.
+func refDetail(side, repo, remote string) string {
+	if !filepath.IsAbs(repo) {
+		if abs, err := filepath.Abs(repo); err == nil {
+			repo = abs
+		}
+	}
+	detail := "side=" + side + " repo=" + filepath.ToSlash(repo)
+	if remote != "" {
+		detail += " remote=" + remote
+	}
+	return detail
 }
 
 // Extend appends every entry of other to m verbatim, performing no path conversion: other's entries

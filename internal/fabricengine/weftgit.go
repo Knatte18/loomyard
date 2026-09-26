@@ -282,9 +282,10 @@ type PushResult struct {
 // there was nothing to push, and pushRebaseFreeLogged maps a remote rejection to a warning and a nil
 // return, so either would otherwise be recorded as a push that never actually happened — the
 // commission-direction lie this slice exists to kill.
+// The entry's detail names side, repoPath and the branch's configured remote (see refDetail).
 // If either HasUnpushed sample or CurrentBranch errors, nothing is recorded and the error is not
 // propagated: a failure to observe is not a failure to push.
-func recordPushIfAdvanced(rec *Mutations, repo *gitrepo.Repo, hasUnpushedBefore bool, hasUnpushedErr error) {
+func recordPushIfAdvanced(rec *Mutations, repo *gitrepo.Repo, side, repoPath string, hasUnpushedBefore bool, hasUnpushedErr error) {
 	if hasUnpushedErr != nil || !hasUnpushedBefore {
 		return
 	}
@@ -296,7 +297,13 @@ func recordPushIfAdvanced(rec *Mutations, repo *gitrepo.Repo, hasUnpushedBefore 
 	if err != nil {
 		return
 	}
-	rec.AppendRef(KindBranchPushed, branch, "")
+	// The configured remote is read-only evidence for the trace; a failure to observe it leaves the
+	// remote empty rather than failing the record.
+	remote := ""
+	if out, err := gitexec.Run([]string{"config", "--get", "branch." + branch + ".remote"}, repoPath); err == nil {
+		remote = strings.TrimSpace(out)
+	}
+	rec.AppendRef(KindBranchPushed, branch, refDetail(side, repoPath, remote))
 }
 
 // PushWeft pushes unpushed weft commits via PushCoalesced, honoring SkipGit/SkipPush gating.
@@ -312,7 +319,7 @@ func (f *Fabric) PushWeft(opts SyncOptions) (res PushResult, err error) {
 	if err := f.weft.PushCoalesced(); err != nil {
 		return PushResult{}, err
 	}
-	recordPushIfAdvanced(rec, f.weft, hadUnpushed, hadUnpushedErr)
+	recordPushIfAdvanced(rec, f.weft, "weft", f.weftPath, hadUnpushed, hadUnpushedErr)
 
 	return PushResult{}, nil
 }

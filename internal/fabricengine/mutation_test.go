@@ -450,3 +450,34 @@ func TestMutations_NilReceiverLogsNothing(t *testing.T) {
 		t.Errorf("nil receiver wrote %d mutation lines; want 0", len(lines))
 	}
 }
+
+// TestRefDetail covers refDetail's exact grammar: create without remote, push with remote, and a
+// relative repo made absolute.
+func TestRefDetail(t *testing.T) {
+	t.Parallel()
+
+	abs := filepath.Join(string(filepath.Separator), "hub", "warp")
+	relative, err := filepath.Abs("rel")
+	if err != nil {
+		t.Fatalf("Abs error = %v", err)
+	}
+
+	tests := []struct {
+		name               string
+		side, repo, remote string
+		want               string
+	}{
+		{"create empty remote", "warp", abs, "", "side=warp repo=" + filepath.ToSlash(abs)},
+		{"push with remote", "weft", abs, "origin", "side=weft repo=" + filepath.ToSlash(abs) + " remote=origin"},
+		{"relative repo made absolute", "warp", "rel", "", "side=warp repo=" + filepath.ToSlash(relative)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := refDetail(tt.side, tt.repo, tt.remote); got != tt.want {
+				t.Errorf("refDetail(%q, %q, %q) = %q; want %q", tt.side, tt.repo, tt.remote, got, tt.want)
+			}
+		})
+	}
+}

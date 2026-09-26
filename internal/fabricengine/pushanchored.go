@@ -54,7 +54,7 @@ func PushAnchored(l *lyxcwd.Location, opts SyncOptions) (res PushResult, err err
 	if err := repo.PushRebaseFree(); err != nil {
 		return PushResult{}, err
 	}
-	recordPushIfAdvanced(rec, repo, hadUnpushed, hadUnpushedErr)
+	recordPushIfAdvanced(rec, repo, "weft", target, hadUnpushed, hadUnpushedErr)
 
 	return PushResult{}, nil
 }
