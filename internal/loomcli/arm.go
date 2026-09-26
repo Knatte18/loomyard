@@ -138,7 +138,11 @@ func (c *loomCLI) arm(cwd string, verb string, args []string) (shedverbs.Spec, e
 // touched the filesystem at all -- so a refusing run/step writes nothing to disk. cwd is derived as
 // location.AnchorPath() for wireLightweight/wire's own cwd parameter, since cwd is provably equal to
 // AnchorPath() after a successful resolve (see lyxcwd.Location's own doc comment).
+//
+// It records verb on c.armedVerb first, before any refusal, so reflectFrictionRow can tell at call
+// time whether this invocation was armed for "run".
 func (c *loomCLI) armAt(location *lyxcwd.Location, verb string, args []string) (shedverbs.Spec, error) {
+	c.armedVerb = verb
 	if err := c.resolveRunID(location, verb, args); err != nil {
 		return shedverbs.Spec{}, err
 	}
@@ -315,9 +319,13 @@ func (c *loomCLI) loomPreRun(ctx context.Context) error {
 
 // loomPostRun implements the PostRun hook for loom's spec: it fires detectAndFileAnomalies
 // unconditionally -- including on the hard-error arm, which is why PostRun itself runs
-// unconditionally -- and then returns the envelope's "friction" key, valued
-// frictionengine.StatusSkipped when reflection does not fire. The key is returned unconditionally
-// on the success path so it is never silently dropped from a RunPaused envelope.
+// unconditionally -- and then returns the envelope's "friction" key.
+// RunDone never reflects here: the Friction-Reflect row already did, under the run lock and before
+// done persisted, so the key reports c.rowFrictionStatus, or frictionengine.StatusSkipped when the
+// row did not run in this process (the engine's done short-circuit on an already-done status file).
+// RunBlocked still reflects here, after Run has returned, without waiting on a held reflection lock.
+// The key is returned unconditionally on the success path so it is never silently dropped from a
+// RunPaused envelope.
 func (c *loomCLI) loomPostRun(ctx context.Context, result shedengine.Result, runErr error) map[string]any {
 	detectAndFileAnomalies(selfreportDeps{
 		Ctx:            ctx,
@@ -334,8 +342,10 @@ func (c *loomCLI) loomPostRun(ctx context.Context, result shedengine.Result, run
 	})
 
 	frictionStatus := frictionengine.StatusSkipped
-	if shouldReflectFriction(c.frictionDir, result.Outcome) {
-		frictionStatus = c.reflectFriction()
+	if result.Outcome == shedengine.RunDone && c.rowFrictionStatus != "" {
+		frictionStatus = c.rowFrictionStatus
+	} else if shouldReflectFriction(c.frictionDir, result.Outcome) {
+		frictionStatus = c.reflectFriction(false)
 	}
 	return map[string]any{"friction": frictionStatus}
 }
