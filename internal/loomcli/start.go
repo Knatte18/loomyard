@@ -274,6 +274,10 @@ driver-log accessor names, never to this command's own output -- an ly-drive
 strand writes no such log, since its own pane is where its output already
 lives.
 
+An ly-drive strand needs the ly-drive skill, which ships in loomyard's "ly"
+plugin: install that plugin for the provider on this machine before starting
+an llm-driven run.
+
 A worktree opened through "lyx ide spawn"'s generated VS Code task starts
 "lyx reed up", then "lyx reed add --if-absent --cmd claude --name claude
 --focus", then "lyx reed attach", so the operator's own session is the

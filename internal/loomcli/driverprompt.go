@@ -19,7 +19,7 @@ import "fmt"
 // provider specifics under the claude engine package.
 func driverPrompt(runID string, reportPath string) string {
 	return fmt.Sprintf(
-		"Run the ly-drive skill for run-id %q. You are running autonomously, with no operator to ask -- decide and proceed on your own judgment. Write your report to %q at every stop condition (task done, or a failure you cannot repair).",
+		"Run the ly-drive skill (from loomyard's ly plugin) for run-id %q. You are running autonomously, with no operator to ask -- decide and proceed on your own judgment. Write your report to %q at every stop condition (task done, or a failure you cannot repair).",
 		runID, reportPath,
 	)
 }

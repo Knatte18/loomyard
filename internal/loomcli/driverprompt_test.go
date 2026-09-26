@@ -22,6 +22,9 @@ func TestDriverPrompt_NamesRunIDReportPathAndAutonomousMode(t *testing.T) {
 	if !strings.Contains(strings.ToLower(got), "autonomous") {
 		t.Errorf("driverPrompt() = %q; want it to state autonomous mode explicitly", got)
 	}
+	if !strings.Contains(got, "ly plugin") {
+		t.Errorf("driverPrompt() = %q; want it to name the ly plugin the skill ships in", got)
+	}
 	if strings.Contains(got, "step cap") {
 		t.Errorf("driverPrompt() = %q; want no mention of a step cap", got)
 	}

@@ -118,7 +118,9 @@ invoked when one does not.
 --recipe is required and validated against the same table every "lyx shed"
 invocation arms through. --driver defaults to "go", unchanged; "llm" is
 accepted for a recipe that has a bootstrap verb, and refused for one that
-does not. --param is repeatable and sets a seed parameter as key=value.
+does not; an llm-driven run's driver session needs the ly-drive skill from
+loomyard's "ly" plugin installed. --param is repeatable and sets a seed
+parameter as key=value.
 
 seed is idempotent against a byte-identical existing seed and refuses a
 disagreeing one.
