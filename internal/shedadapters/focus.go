@@ -26,6 +26,8 @@ const burlerEngineLabel = "burler"
 type RoundFocus struct {
 	// ExcludeLenses names lenses the next round should skip, carried verbatim from the focus file's
 	// exclude_lenses list.
+	// It can be non-empty only when the writing Bouncer was told ClusterExcludes, since no other
+	// Bouncer is asked for the key.
 	ExcludeLenses []string
 	// Hydrate names absolute paths the next round should hydrate into context. It carries the focus
 	// file's own path, and only when that file actually says something -- see readRoundFocus.
@@ -51,7 +53,7 @@ type RoundFocus struct {
 // the fixer round: BurlerProducer appends Hydrate onto the profile's PriorReviews, so the round
 // reads the directive verbatim alongside the prior rounds' reports. An APPROVED judge still writes a
 // focus file (its third output file is unconditional, so the run classifies complete), and that file
-// carries two empty lists and no prose; hydrating it would hand the next round an empty document
+// carries empty lists (a Bouncer not told ClusterExcludes writes focus alone) and no prose; hydrating it would hand the next round an empty document
 // asserting nothing, so an empty directive stays empty.
 func readRoundFocus(name, runDir string, round int) RoundFocus {
 	path := focusPath(runDir, round)

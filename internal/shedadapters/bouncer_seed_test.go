@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -579,6 +580,7 @@ func TestBouncer_MarkerCompleteness_BothTemplates(t *testing.T) {
 			"round":      "1",
 			"focus_path": "/abs/round-1-focus.md",
 		}
+		maps.Copy(values, focusSchemaMarkers(true))
 		prompt, err := stencil.Fill(stencils.BouncerTemplateSeed, values)
 		if err != nil {
 			t.Fatalf("stencil.Fill(seed template, ...) error = %v; want nil", err)
@@ -606,6 +608,7 @@ func TestBouncer_MarkerCompleteness_BothTemplates(t *testing.T) {
 			"ledger_path":     "/abs/round-1-bouncer-ledger.md",
 			"focus_path":      "/abs/round-2-focus.md",
 		}
+		maps.Copy(values, focusSchemaMarkers(true))
 		if values["previous_ledger"] != "(none)" {
 			t.Fatalf("test setup error: previous_ledger must be the literal (none) for round 1")
 		}
@@ -642,6 +645,7 @@ func TestBouncer_StampLeakRegression_BothTemplates(t *testing.T) {
 			"round":      "1",
 			"focus_path": "/abs/round-1-focus.md",
 		}
+		maps.Copy(values, focusSchemaMarkers(true))
 		prompt, err := stencil.Fill(stencils.BouncerTemplateSeed, values)
 		if err != nil {
 			t.Fatalf("stencil.Fill(seed template, ...) error = %v; want nil", err)
@@ -663,6 +667,7 @@ func TestBouncer_StampLeakRegression_BothTemplates(t *testing.T) {
 			"ledger_path":     "/abs/round-1-bouncer-ledger.md",
 			"focus_path":      "/abs/round-2-focus.md",
 		}
+		maps.Copy(values, focusSchemaMarkers(true))
 		prompt, err := stencil.Fill(stencils.BouncerTemplateJudge, values)
 		if err != nil {
 			t.Fatalf("stencil.Fill(judge template, ...) error = %v; want nil", err)

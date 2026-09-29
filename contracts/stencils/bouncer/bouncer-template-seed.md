@@ -4,9 +4,12 @@
      set -- the call runs as a single clean-room agent told only "read this file and do exactly
      what it says".
      Every marker below is a top-level {{.X}} substitution;
-     stencil.Fill requires all four non-empty and there are no {{if}}/{{range}} conditionals anywhere
-     in this file (a required marker inside a conditional branch would render silently blank when
-     present-but-empty -- see internal/stencil/stencil.go). -->
+     stencil.Fill requires every marker this file names non-empty, and there are no {{if}}/{{range}}
+     conditionals anywhere in this file (a required marker inside a conditional branch would render
+     silently blank when present-but-empty -- see internal/stencil/stencil.go).
+     The focus-schema markers ({{.focus_example_lists}}, {{.focus_list_rules}}) have two variants,
+     rendered by focusSchemaMarkers in internal/shedadapters/bouncerprompt.go:
+     Go holds the variant so this stencil stays conditional-free. -->
 
 # Bouncer — seed pass
 
@@ -35,18 +38,14 @@ Write `{{.focus_path}}` as `---`-delimited YAML frontmatter over optional prose 
 ```
 ---
 round: 1
-exclude_lenses: []
-focus: []
+{{.focus_example_lists}}
 ---
 ```
 
 Frontmatter rules, all strict:
 
 - `round` is a positive integer, here {{.round}}.
-- `exclude_lenses` is a list of strings, possibly empty.
-- `focus` is a list of strings, possibly empty.
-- Both list keys are always present, even when empty -- never omit either key, and never write a
-  scalar where a list is required.
+{{.focus_list_rules}}
 - This format is parsed mechanically, and any deviation from it fails the parse;
   a file the parser rejects is discarded and replaced with an empty-lists fallback.
 

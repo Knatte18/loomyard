@@ -247,7 +247,8 @@ func parseFocus(content []byte) (focusFile, error) {
 // Marshalling the header through yaml.Marshal rather than hand-formatting it is what makes a lens
 // name containing a YAML metacharacter round-trip instead of corrupting the file.
 // Both list fields render as an explicit empty list rather than as null when f's corresponding
-// slice is empty, so the emitted file satisfies parseFocus's always-present-list shape.
+// slice is empty, so renderFocus itself always writes both lists;
+// parseFocus does not require that, and accepts a file with either list key absent.
 func renderFocus(f focusFile) ([]byte, error) {
 	excludeLenses := f.ExcludeLenses
 	if excludeLenses == nil {
