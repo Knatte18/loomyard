@@ -4,14 +4,14 @@
 > It lived under `manifest/designs/` until the 2026-08-29 designs audit, which found it misfiled: `manifest/` holds planned, not-yet-built work, and the [documentation lifecycle](overview.md#documentation-lifecycle) would read an implemented doc there as a deletion candidate.
 > This doc is not that class — it is the standing rationale for a cross-cutting rule this repository's own code still follows, so it moved here rather than being deleted.
 > It is kept, not deleted, and no deletion decision is deferred to a later task.
-> The operative rule lives in the `scribe` plugin's `code-quality` skill (Comments section) and `golang-comments` skill (`plugins/scribe/skills/`), installable via loomyard's own marketplace — that skill is the single source an agent actually loads and follows.
+> The operative rule lives in the shared `scribe` plugin's `code-quality` skill (Comments section) and `golang-comments` skill ([`Knatte18/scribe`](https://github.com/Knatte18/scribe), `plugins/scribe/skills/`) — that skill is the single source an agent actually loads and follows.
 > This document is design rationale — the "why" behind the rule, not the rule text itself, which is restated once below only as context for a reader of this file.
 > No producer-stencil wiring yet: "Load these skills" lines in loom's own producer prompts are planned as a separate, later roadmap item ("loom: Discussion-Write producer"), not this one.
 > C#/Python versions deferred until Go is proven.
 
 ## The rule
 
-See `plugins/scribe/skills/code-quality/SKILL.md`'s Comments section for the operative rule, its two exceptions, and the information-triage list — that skill is what an agent actually loads, so it is the canonical text.
+See the `scribe:code-quality` skill's Comments section (in `Knatte18/scribe`) for the operative rule, its two exceptions, and the information-triage list — that skill is what an agent actually loads, so it is the canonical text.
 Restated here only for a reader of this document: a doc comment states only what the symbol it documents does and why it exists, as a standalone contract — never in terms of, in comparison to, or dependent on any other named symbol.
 
 ## Why this is stronger than a staleness rule
