@@ -21,7 +21,7 @@ func TestWriteSeed_BattenSeedIsRefusedOutsidePrime(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	hubforge.AddPair(t, h, "seed-here")
 
-	if err := writeSeed(h.Location, "some-run", shedrun.RecipeBatten, "", nil); err != nil {
+	if _, err := writeSeed(h.Location, "some-run", shedrun.RecipeBatten, "", nil); err != nil {
 		t.Fatalf("writeSeed(prime, batten) = %v; want nil", err)
 	}
 
@@ -29,7 +29,7 @@ func TestWriteSeed_BattenSeedIsRefusedOutsidePrime(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve task worktree: %v", err)
 	}
-	err = writeSeed(taskLocation, "some-run", shedrun.RecipeBatten, "", nil)
+	_, err = writeSeed(taskLocation, "some-run", shedrun.RecipeBatten, "", nil)
 	if err == nil {
 		t.Fatal("writeSeed(task worktree, batten) = nil; want the prime-only refusal")
 	}
@@ -40,7 +40,7 @@ func TestWriteSeed_BattenSeedIsRefusedOutsidePrime(t *testing.T) {
 		t.Errorf("ReadSeed in the task worktree after the refusal = (found=%v, err=%v); want (false, nil)", found, readErr)
 	}
 
-	if err := writeSeed(taskLocation, "some-run", shedrun.RecipeLoom, "", nil); err != nil {
+	if _, err := writeSeed(taskLocation, "some-run", shedrun.RecipeLoom, "", nil); err != nil {
 		t.Errorf("writeSeed(task worktree, loom) = %v; want nil: loom seeds wherever its verbs drive", err)
 	}
 }
