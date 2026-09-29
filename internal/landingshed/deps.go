@@ -49,9 +49,8 @@ type Deps struct {
 	// through unchanged to the resolver both producers construct. Told by the caller.
 	StencilsDir string
 
-	// ScratchDir is the told absolute scratch directory both producers write their stuck-reason
-	// file into, and the resolver's own report directory. There is deliberately no anchor-path
-	// field: carrying both would be a derived near-duplicate, and deriving the scratch path is
+	// ScratchDir is the told absolute scratch directory, used as the resolver's report directory only. There is deliberately no
+	// anchor-path field: carrying both would be a derived near-duplicate, and deriving the scratch path is
 	// doubly forbidden here, since it would name a reserved directory literal this package may not
 	// declare and compute geometry this package may not compute.
 	ScratchDir string

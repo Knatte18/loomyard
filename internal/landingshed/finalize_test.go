@@ -80,13 +80,13 @@ func newFinalizeDeps(t *testing.T) Deps {
 	}
 }
 
-func readFinalizeStuckFile(t *testing.T, scratchDir string) string {
+// requireFinalizeReason returns the stuck reason carried on ptr, failing the test when it is empty.
+func requireFinalizeReason(t *testing.T, ptr shedengine.OutputPointer) string {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join(scratchDir, finalizeName+stuckFileSuffix))
-	if err != nil {
-		t.Fatalf("read stuck file: %v", err)
+	if ptr.Reason == "" {
+		t.Fatal("OutputPointer.Reason is empty; want the producer's stuck reason")
 	}
-	return string(data)
+	return ptr.Reason
 }
 
 // --- NewFinalize construction ---
@@ -143,7 +143,7 @@ func TestFinalize_PushesParentAfterMerge(t *testing.T) {
 			}
 			fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return merger, nil }}
 
-			outcome, _, err := fz.Call(context.Background())
+			outcome, ptr, err := fz.Call(context.Background())
 			if err != nil {
 				t.Fatalf("Call() error = %v; want nil", err)
 			}
@@ -157,8 +157,8 @@ func TestFinalize_PushesParentAfterMerge(t *testing.T) {
 				t.Errorf("PushBranch SkipPush = %v; want %v", got, tt.pushSkipped)
 			}
 			if tt.pushErr != nil {
-				if got := readFinalizeStuckFile(t, deps.ScratchDir); !strings.Contains(got, "push it by hand") {
-					t.Errorf("stuck file = %q; want it to tell the operator to push by hand", got)
+				if got := requireFinalizeReason(t, ptr); !strings.Contains(got, "push it by hand") {
+					t.Errorf("reason = %q; want it to tell the operator to push by hand", got)
 				}
 			}
 		})
@@ -302,7 +302,7 @@ func TestFinalize_MergeInRequired_RetriesExactlyOnce(t *testing.T) {
 	}}
 	fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return merger, nil }}
 
-	outcome, _, err := fz.Call(context.Background())
+	outcome, ptr, err := fz.Call(context.Background())
 	if err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
 	}
@@ -312,7 +312,7 @@ func TestFinalize_MergeInRequired_RetriesExactlyOnce(t *testing.T) {
 	if len(merger.calls) != 2 {
 		t.Fatalf("parent-side merge calls = %d; want exactly 2 (one attempt, one retry)", len(merger.calls))
 	}
-	readFinalizeStuckFile(t, deps.ScratchDir)
+	requireFinalizeReason(t, ptr)
 }
 
 // TestFinalize_MergeInRequired_RetryCarriesSameComposedMessage asserts step 5's retry reuses the
@@ -355,14 +355,14 @@ func TestFinalize_ParentOpenerError_StuckNamesParentBranch(t *testing.T) {
 	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
 	fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return nil, errors.New("no such worktree") }}
 
-	outcome, _, err := fz.Call(context.Background())
+	outcome, ptr, err := fz.Call(context.Background())
 	if err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
 	}
 	if outcome != shedengine.Stuck {
 		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
 	}
-	got := readFinalizeStuckFile(t, deps.ScratchDir)
+	got := requireFinalizeReason(t, ptr)
 	if !strings.Contains(got, deps.ParentBranch) {
 		t.Errorf("stuck reason %q does not name parent branch %q", got, deps.ParentBranch)
 	}
@@ -375,7 +375,7 @@ func TestFinalize_GuardErrorDirtyWorktree_StuckSurfacesReasonVerbatim(t *testing
 	merger := &recordingParentMerger{results: []mergeCallResult{{err: guardErr}}}
 	fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return merger, nil }}
 
-	outcome, _, err := fz.Call(context.Background())
+	outcome, ptr, err := fz.Call(context.Background())
 	if err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
 	}
@@ -385,7 +385,7 @@ func TestFinalize_GuardErrorDirtyWorktree_StuckSurfacesReasonVerbatim(t *testing
 	if len(merger.calls) != 1 {
 		t.Errorf("parent-side merge calls = %d; want exactly 1 (no retry on a dirty-worktree guard error)", len(merger.calls))
 	}
-	got := readFinalizeStuckFile(t, deps.ScratchDir)
+	got := requireFinalizeReason(t, ptr)
 	if !strings.Contains(got, guardErr.Error()) {
 		t.Errorf("stuck reason %q does not surface the guard error verbatim (%q)", got, guardErr.Error())
 	}
@@ -397,14 +397,14 @@ func TestFinalize_UnrecognizedMergeError_StuckWithErrorSurfaced(t *testing.T) {
 	merger := &recordingParentMerger{results: []mergeCallResult{{err: errors.New("some unrecognized failure")}}}
 	fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return merger, nil }}
 
-	outcome, _, err := fz.Call(context.Background())
+	outcome, ptr, err := fz.Call(context.Background())
 	if err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
 	}
 	if outcome != shedengine.Stuck {
 		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
 	}
-	got := readFinalizeStuckFile(t, deps.ScratchDir)
+	got := requireFinalizeReason(t, ptr)
 	if !strings.Contains(got, "some unrecognized failure") {
 		t.Errorf("stuck reason %q does not surface the underlying error", got)
 	}
@@ -428,28 +428,30 @@ func TestFinalize_MergeInStuck(t *testing.T) {
 	}
 }
 
-// TestFinalize_StuckCausesProduceDifferentReasonFiles pins that two different stuck causes leave
-// different reason-file contents.
-func TestFinalize_StuckCausesProduceDifferentReasonFiles(t *testing.T) {
+// TestFinalize_StuckCausesProduceDifferentReasons pins that two different stuck causes leave
+// different reasons.
+func TestFinalize_StuckCausesProduceDifferentReasons(t *testing.T) {
 	deps1 := newFinalizeDeps(t)
 	res1 := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
 	fz1 := &Finalize{deps: deps1, resolver: res1, parentOpener: func() (parentMerger, error) { return nil, errors.New("no worktree") }}
-	if _, _, err := fz1.Call(context.Background()); err != nil {
+	_, ptr1, err := fz1.Call(context.Background())
+	if err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
 	}
-	reason1 := readFinalizeStuckFile(t, deps1.ScratchDir)
+	reason1 := requireFinalizeReason(t, ptr1)
 
 	deps2 := newFinalizeDeps(t)
 	res2 := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
 	merger2 := &recordingParentMerger{results: []mergeCallResult{{err: errors.New("some other failure")}}}
 	fz2 := &Finalize{deps: deps2, resolver: res2, parentOpener: func() (parentMerger, error) { return merger2, nil }}
-	if _, _, err := fz2.Call(context.Background()); err != nil {
+	_, ptr2, err := fz2.Call(context.Background())
+	if err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
 	}
-	reason2 := readFinalizeStuckFile(t, deps2.ScratchDir)
+	reason2 := requireFinalizeReason(t, ptr2)
 
 	if reason1 == reason2 {
-		t.Errorf("two different stuck causes produced identical reason-file contents: %q", reason1)
+		t.Errorf("two different stuck causes produced identical reasons: %q", reason1)
 	}
 }
 
@@ -467,5 +469,24 @@ func TestFinalize_CancellationAtEntry_SurfacesAsError(t *testing.T) {
 	}
 	if outcome != "" {
 		t.Errorf("Call() outcome = %q; want empty on a cancelled entry", outcome)
+	}
+}
+
+func TestFinalize_StuckWritesNoReasonFile(t *testing.T) {
+	deps := newFinalizeDeps(t)
+	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
+	fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return nil, errors.New("no worktree") }}
+	_, ptr, err := fz.Call(context.Background())
+	if err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	requireFinalizeReason(t, ptr)
+
+	matches, err := filepath.Glob(filepath.Join(deps.ScratchDir, "*-stuck.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 0 {
+		t.Errorf("stuck-reason files = %v; want none", matches)
 	}
 }

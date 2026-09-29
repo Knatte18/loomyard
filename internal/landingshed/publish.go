@@ -1,8 +1,8 @@
 // publish.go implements the Publish producer: when the task's parent branch requires a pull
 // request, it merges the parent's own catch-up into the task worktree, pushes the task branch, and
 // opens or refreshes the pull request against that parent -- reporting only what the
-// shedengine.ShedProducer seam can carry: a bare verdict, an output pointer nobody persists, and an
-// error.
+// shedengine.ShedProducer seam can carry: a verdict, an output pointer whose Reason the engine
+// persists, and an error.
 //
 // Only the externally visible branch is pushed: the pull request is an artifact of the repository
 // the remote service can see. The other side's remote state belongs to the merge step and the
@@ -27,8 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
 
-// publishName is the producer name Publish's log lines, error text, and stuck-reason filename
-// carry.
+// publishName is the producer name Publish's log lines, and error text carry.
 const publishName = "Publish"
 
 // publishGitHubTimeout bounds each of Publish's calls into the GitHub API, so a stalled connection
@@ -194,7 +193,7 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 
 		// Stuck rather than done: a done verdict would let the run advance to the next row and
 		// merge to the parent seconds after opening the pull request, defeating it entirely.
-		return p.stuckOrCancelled(ctx, "pull request created; awaiting review")
+		return p.stuckOrCancelled(ctx, withPRURL("pull request created; awaiting review", created.GetHTMLURL()))
 	}
 
 	pr := prs[0]
@@ -202,7 +201,7 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 	case pr.GetState() == "open":
 		// No second pull request created and no second merge-in. The push at step 5 still ran, so
 		// a resumed call refreshes the pull request with any commits added since.
-		return p.stuckOrCancelled(ctx, fmt.Sprintf("an open pull request already exists against parent branch %q", p.deps.ParentBranch))
+		return p.stuckOrCancelled(ctx, withPRURL(fmt.Sprintf("an open pull request already exists against parent branch %q", p.deps.ParentBranch), pr.GetHTMLURL()))
 	case !pr.GetMergedAt().IsZero():
 		// GitHub's List Pull Requests endpoint -- the query above -- never populates the "merged"
 		// boolean field; that field is only ever set on the single-PR Get endpoint's response. Every
@@ -215,18 +214,27 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 		return shedengine.Done, shedengine.OutputPointer{}, nil
 	default:
 		// Closed and not merged: a human decision to stop, which must never read as proceed.
-		return p.stuckOrCancelled(ctx, "the pull request was closed without being merged")
+		return p.stuckOrCancelled(ctx, withPRURL("the pull request was closed without being merged", pr.GetHTMLURL()))
 	}
 }
 
 // stuckOrCancelled consults cancelErr first -- the point-9 obligation every non-success exit
-// discharges -- and otherwise records reason via reportStuck and returns a bare Stuck verdict.
+// discharges -- and otherwise logs reason via reportStuck and returns Stuck with reason on the output pointer.
 func (p *Publish) stuckOrCancelled(ctx context.Context, reason string, fields ...any) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if cerr := cancelErr(ctx, publishName); cerr != nil {
 		return "", shedengine.OutputPointer{}, cerr
 	}
-	reportStuck(publishName, reason, p.deps.ScratchDir, fields...)
-	return shedengine.Stuck, shedengine.OutputPointer{}, nil
+	reportStuck(publishName, reason, fields...)
+	return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
+}
+
+// withPRURL ends a pull-request-state reason with the pull request's URL, or returns the bare
+// reason when the URL is empty.
+func withPRURL(reason, url string) string {
+	if url == "" {
+		return reason
+	}
+	return reason + ": " + url
 }
 
 // contains reports whether target appears in list.

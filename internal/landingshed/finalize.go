@@ -1,8 +1,8 @@
 // finalize.go implements the Finalize producer: it catches the task worktree up with the parent
 // branch, then merges the task branch into the parent pair's own worktree and pushes the parent
 // branch -- reporting only what
-// the shedengine.ShedProducer seam can carry: a bare verdict, an output pointer nobody persists, and
-// an error.
+// the shedengine.ShedProducer seam can carry: a verdict, an output pointer whose Reason the engine
+// persists, and an error.
 //
 // This producer's merge critical section is the parent-side merge call (step 4 below), and a future
 // regeneration step folds into that same critical section rather than becoming a separate row -- no
@@ -28,8 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
 
-// finalizeName is the producer name Finalize's log lines, error text, and stuck-reason filename
-// carry.
+// finalizeName is the producer name Finalize's log lines, and error text carry.
 const finalizeName = "Finalize"
 
 // parentMerger is the narrow seam Finalize holds the opened parent pair's handle behind, mirroring
@@ -223,11 +222,11 @@ func (fz *Finalize) mergeInStep(ctx context.Context) (shedengine.Outcome, sheden
 }
 
 // stuckOrCancelled consults cancelErr first -- the obligation every non-success exit discharges --
-// and otherwise records reason via reportStuck and returns a bare Stuck verdict.
+// and otherwise logs reason via reportStuck and returns Stuck with reason on the output pointer.
 func (fz *Finalize) stuckOrCancelled(ctx context.Context, reason string, fields ...any) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if cerr := cancelErr(ctx, finalizeName); cerr != nil {
 		return "", shedengine.OutputPointer{}, cerr
 	}
-	reportStuck(finalizeName, reason, fz.deps.ScratchDir, fields...)
-	return shedengine.Stuck, shedengine.OutputPointer{}, nil
+	reportStuck(finalizeName, reason, fields...)
+	return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
 }

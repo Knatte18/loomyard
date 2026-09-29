@@ -165,14 +165,13 @@ func installFailingGitHubClientFactory(t *testing.T, err error) {
 	t.Cleanup(func() { NewGitHubClient = orig })
 }
 
-// readStuckFile reads the reason file Publish's stuck path writes for producer "Publish".
-func readStuckFile(t *testing.T, scratchDir string) string {
+// requireReason returns the stuck reason carried on ptr, failing the test when it is empty.
+func requireReason(t *testing.T, ptr shedengine.OutputPointer) string {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join(scratchDir, publishName+stuckFileSuffix))
-	if err != nil {
-		t.Fatalf("read stuck file: %v", err)
+	if ptr.Reason == "" {
+		t.Fatal("OutputPointer.Reason is empty; want the producer's stuck reason")
 	}
-	return string(data)
+	return ptr.Reason
 }
 
 // --- NewPublish construction ---
@@ -264,7 +263,7 @@ func TestPublish_PushSkipped_PRRequired_StuckBeforeMergeInAndPush(t *testing.T) 
 	res := &recordingResolver{}
 	p := &Publish{deps: deps, resolver: res}
 
-	outcome, _, err := p.Call(context.Background())
+	outcome, ptr, err := p.Call(context.Background())
 	if err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
 	}
@@ -277,7 +276,7 @@ func TestPublish_PushSkipped_PRRequired_StuckBeforeMergeInAndPush(t *testing.T) 
 	if pushed {
 		t.Error("PushBranch was called; want push-skipped to refuse before the push closure")
 	}
-	readStuckFile(t, deps.ScratchDir)
+	requireReason(t, ptr)
 }
 
 func TestPublish_MergeInStuck(t *testing.T) {
@@ -285,7 +284,7 @@ func TestPublish_MergeInStuck(t *testing.T) {
 	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeStuck, Reason: "merge-in could not be resolved"}}
 	p := &Publish{deps: deps, resolver: res}
 
-	outcome, _, err := p.Call(context.Background())
+	outcome, ptr, err := p.Call(context.Background())
 	if err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
 	}
@@ -295,9 +294,9 @@ func TestPublish_MergeInStuck(t *testing.T) {
 	if res.gotSource != deps.ParentBranch {
 		t.Errorf("resolver.Resolve source = %q; want %q", res.gotSource, deps.ParentBranch)
 	}
-	got := readStuckFile(t, deps.ScratchDir)
-	if got != "merge-in could not be resolved\n" {
-		t.Errorf("stuck file = %q; want the resolver's own reason", got)
+	got := requireReason(t, ptr)
+	if got != "merge-in could not be resolved" {
+		t.Errorf("reason = %q; want the resolver's own reason", got)
 	}
 }
 
@@ -307,14 +306,14 @@ func TestPublish_PushFails_NoGitHubCall(t *testing.T) {
 	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
 	p := &Publish{deps: deps, resolver: res}
 
-	outcome, _, err := p.Call(context.Background())
+	outcome, ptr, err := p.Call(context.Background())
 	if err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
 	}
 	if outcome != shedengine.Stuck {
 		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
 	}
-	readStuckFile(t, deps.ScratchDir)
+	requireReason(t, ptr)
 }
 
 func TestPublish_PushRejected_DistinctReason(t *testing.T) {
@@ -322,29 +321,29 @@ func TestPublish_PushRejected_DistinctReason(t *testing.T) {
 	deps.PushBranch = func() error { return gitrepo.ErrPushRejected }
 	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
 	p := &Publish{deps: deps, resolver: res}
-	rejectedReason := runAndReadStuckFile(t, p)
+	rejectedReason := runAndGetReason(t, p)
 
 	deps2 := newTestDeps(t)
 	deps2.PushBranch = func() error { return errors.New("generic failure") }
 	res2 := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
 	p2 := &Publish{deps: deps2, resolver: res2}
-	genericReason := runAndReadStuckFile(t, p2)
+	genericReason := runAndGetReason(t, p2)
 
 	if rejectedReason == genericReason {
 		t.Errorf("rejected-push reason %q equals generic-push-failure reason %q; want distinct", rejectedReason, genericReason)
 	}
 }
 
-func runAndReadStuckFile(t *testing.T, p *Publish) string {
+func runAndGetReason(t *testing.T, p *Publish) string {
 	t.Helper()
-	outcome, _, err := p.Call(context.Background())
+	outcome, ptr, err := p.Call(context.Background())
 	if err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
 	}
 	if outcome != shedengine.Stuck {
 		t.Fatalf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
 	}
-	return readStuckFile(t, p.deps.ScratchDir)
+	return requireReason(t, ptr)
 }
 
 func TestPublish_OriginURLUnusable_NoGitHubCall(t *testing.T) {
@@ -357,14 +356,14 @@ func TestPublish_OriginURLUnusable_NoGitHubCall(t *testing.T) {
 			res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
 			p := &Publish{deps: deps, resolver: res}
 
-			outcome, _, err := p.Call(context.Background())
+			outcome, ptr, err := p.Call(context.Background())
 			if err != nil {
 				t.Fatalf("Call() error = %v; want nil", err)
 			}
 			if outcome != shedengine.Stuck {
 				t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
 			}
-			readStuckFile(t, deps.ScratchDir)
+			requireReason(t, ptr)
 		})
 	}
 }
@@ -381,14 +380,14 @@ func TestPublish_GitHubClientUnavailable_WarnsWithActionAndCause(t *testing.T) {
 	installFailingGitHubClientFactory(t, errors.New("boom"))
 	buf := captureLogOutput(t)
 
-	outcome, _, err := p.Call(context.Background())
+	outcome, ptr, err := p.Call(context.Background())
 	if err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
 	}
 	if outcome != shedengine.Stuck {
 		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
 	}
-	readStuckFile(t, deps.ScratchDir)
+	requireReason(t, ptr)
 
 	logged := buf.String()
 	if !strings.Contains(logged, "WARN") {
@@ -419,14 +418,14 @@ func TestPublish_QueryExistingPRFails_WarnsWithActionOwnerRepoAndCause(t *testin
 	srv.install(t)
 	buf := captureLogOutput(t)
 
-	outcome, _, err := p.Call(context.Background())
+	outcome, ptr, err := p.Call(context.Background())
 	if err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
 	}
 	if outcome != shedengine.Stuck {
 		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
 	}
-	readStuckFile(t, deps.ScratchDir)
+	requireReason(t, ptr)
 
 	logged := buf.String()
 	if !strings.Contains(logged, "WARN") {
@@ -456,14 +455,14 @@ func TestPublish_CreatePRFails_WarnsWithActionOwnerRepoAndCause(t *testing.T) {
 	srv.install(t)
 	buf := captureLogOutput(t)
 
-	outcome, _, err := p.Call(context.Background())
+	outcome, ptr, err := p.Call(context.Background())
 	if err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
 	}
 	if outcome != shedengine.Stuck {
 		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
 	}
-	readStuckFile(t, deps.ScratchDir)
+	requireReason(t, ptr)
 
 	logged := buf.String()
 	if !strings.Contains(logged, "WARN") {
@@ -487,7 +486,7 @@ func TestPublish_NoExistingPR_CreatesAndReportsStuck(t *testing.T) {
 	srv := newPublishGitHubServer(t, &order)
 	srv.install(t)
 
-	outcome, _, err := p.Call(context.Background())
+	outcome, ptr, err := p.Call(context.Background())
 	if err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
 	}
@@ -515,7 +514,7 @@ func TestPublish_NoExistingPR_CreatesAndReportsStuck(t *testing.T) {
 	if got["body"] != "\nMy PR body.\n" {
 		t.Errorf("created PR body = %v; want %q", got["body"], "\nMy PR body.\n")
 	}
-	readStuckFile(t, deps.ScratchDir)
+	requireReason(t, ptr)
 }
 
 func TestPublish_OpenPR_StuckNoCreate(t *testing.T) {
@@ -584,14 +583,14 @@ func TestPublish_ClosedAndUnmergedPR_StuckDistinctFromOpen(t *testing.T) {
 	srv.listBody = `[{"number":7,"state":"closed"}]`
 	srv.install(t)
 
-	outcome, _, err := p.Call(context.Background())
+	outcome, ptr, err := p.Call(context.Background())
 	if err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
 	}
 	if outcome != shedengine.Stuck {
 		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
 	}
-	closedUnmergedReason := readStuckFile(t, deps.ScratchDir)
+	closedUnmergedReason := requireReason(t, ptr)
 
 	// Re-run against an open PR in a fresh scratch dir and compare reason-file contents.
 	deps2 := newTestDeps(t)
@@ -602,10 +601,11 @@ func TestPublish_ClosedAndUnmergedPR_StuckDistinctFromOpen(t *testing.T) {
 	srv2 := newPublishGitHubServer(t, &order2)
 	srv2.listBody = `[{"number":8,"state":"open"}]`
 	srv2.install(t)
-	if _, _, err := p2.Call(context.Background()); err != nil {
+	_, ptr2, err := p2.Call(context.Background())
+	if err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
 	}
-	openReason := readStuckFile(t, deps2.ScratchDir)
+	openReason := requireReason(t, ptr2)
 
 	if closedUnmergedReason == openReason {
 		t.Errorf("closed-unmerged reason %q equals open-PR reason %q; want distinct", closedUnmergedReason, openReason)
@@ -632,22 +632,6 @@ func TestPublish_MissingSummary_FailsLoudlyNoCreate(t *testing.T) {
 	}
 	if len(srv.createdBodies) != 0 {
 		t.Errorf("created pull requests = %d; want 0 on a missing summary", len(srv.createdBodies))
-	}
-}
-
-func TestPublish_ScratchDirAbsent_CreatedOnFirstStuckWrite(t *testing.T) {
-	deps := newTestDeps(t)
-	if _, err := os.Stat(deps.ScratchDir); !os.IsNotExist(err) {
-		t.Fatalf("scratch dir already exists before the test: %v", err)
-	}
-	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeStuck, Reason: "some reason"}}
-	p := &Publish{deps: deps, resolver: res}
-
-	if _, _, err := p.Call(context.Background()); err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if _, err := os.Stat(deps.ScratchDir); err != nil {
-		t.Errorf("scratch dir was not created by the first stuck write: %v", err)
 	}
 }
 
@@ -716,5 +700,70 @@ func TestPublish_CreatedPRLogsInfo(t *testing.T) {
 	}
 	if !strings.Contains(created[0], "number=1") {
 		t.Errorf("record = %q; want number=1", created[0])
+	}
+}
+
+// publishReasonFor runs one Publish against a fake GitHub server with the given list and create
+// bodies and returns the stuck reason it returned.
+func publishReasonFor(t *testing.T, listBody, createBody string) string {
+	t.Helper()
+	deps := newTestDeps(t)
+	deps.PushBranch = func() error { return nil }
+	writeSummary(t, deps.FinalSummaryPath, "My PR Title", "My PR body.")
+	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
+	p := &Publish{deps: deps, resolver: res}
+
+	var order []string
+	srv := newPublishGitHubServer(t, &order)
+	srv.listBody = listBody
+	if createBody != "" {
+		srv.createBody = createBody
+	}
+	srv.install(t)
+	return runAndGetReason(t, p)
+}
+
+func TestPublish_PRStateReasons_EndWithURL(t *testing.T) {
+	const url = "https://github.com/owner/repo/pull/7"
+	tests := []struct {
+		name       string
+		listBody   string
+		createBody string
+		want       string
+	}{
+		{"created", "[]", `{"number":7,"state":"open","html_url":"` + url + `"}`, "pull request created; awaiting review: " + url},
+		{"already open", `[{"number":7,"state":"open","html_url":"` + url + `"}]`, "", "an open pull request already exists against parent branch \"main\": " + url},
+		{"closed unmerged", `[{"number":7,"state":"closed","html_url":"` + url + `"}]`, "", "the pull request was closed without being merged: " + url},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := publishReasonFor(t, tt.listBody, tt.createBody)
+			if got != tt.want {
+				t.Errorf("reason = %q; want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPublish_PRStateReason_NoURL_IsBareText(t *testing.T) {
+	got := publishReasonFor(t, "[]", `{"number":7,"state":"open"}`)
+	if got != "pull request created; awaiting review" {
+		t.Errorf("reason = %q; want the bare text with no suffix", got)
+	}
+}
+
+func TestPublish_StuckWritesNoReasonFile(t *testing.T) {
+	deps := newTestDeps(t)
+	deps.PushBranch = func() error { return errors.New("boom") }
+	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
+	p := &Publish{deps: deps, resolver: res}
+	runAndGetReason(t, p)
+
+	matches, err := filepath.Glob(filepath.Join(deps.ScratchDir, "*-stuck.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 0 {
+		t.Errorf("stuck-reason files = %v; want none", matches)
 	}
 }
