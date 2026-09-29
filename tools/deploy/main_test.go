@@ -1,8 +1,9 @@
-// main_test.go covers resolveDest, the destination-directory resolution logic for the -dev / -dest
-// flags, plus a source-level guard that the -ldflags -X path in run() still names a variable that
-// actually exists at internal/buildinfo.
-// Tests are Go-native and Tier-1 pure: no go build / go env spawns, so the goBinDir() fallback
-// (which shells out to `go env`) is intentionally left uncovered here.
+// main_test.go covers the production deploy's pieces — the dirty-tree refusal, the marketplace
+// parse, the plugin mirror, and the stray-binary report — plus -dev's destination and a
+// source-level guard that the -ldflags -X path in run() still names a variable that actually exists
+// at internal/buildinfo.
+// Tests spawn no git, go build, or go env; the mirror test works in t.TempDir, so goBinDir() and
+// the git-driven listing in syncPlugins are intentionally left uncovered here.
 
 package main
 
@@ -19,14 +20,6 @@ import (
 	"github.com/Knatte18/loomyard/tools/internal/devbin"
 )
 
-// TestResolveDest_DevAndDestMutuallyExclusive verifies -dev and -dest are mutually exclusive.
-func TestResolveDest_DevAndDestMutuallyExclusive(t *testing.T) {
-	_, err := resolveDest(true, "/x")
-	if err == nil {
-		t.Error("resolveDest(true, \"/x\") = nil error; want mutual-exclusion error")
-	}
-}
-
 // TestResolveDest_DevUsesDerivedDevBinDir verifies -dev resolves to devbin.Dir().
 func TestResolveDest_DevUsesDerivedDevBinDir(t *testing.T) {
 	want, err := devbin.Dir()
@@ -34,25 +27,105 @@ func TestResolveDest_DevUsesDerivedDevBinDir(t *testing.T) {
 		t.Fatalf("devbin.Dir() error: %v", err)
 	}
 
-	got, err := resolveDest(true, "")
+	got, err := resolveDest(true)
 	if err != nil {
-		t.Fatalf("resolveDest(true, \"\") error: %v", err)
+		t.Fatalf("resolveDest(true) error: %v", err)
 	}
 	if got != want {
-		t.Errorf("resolveDest(true, \"\") = %q; want %q", got, want)
+		t.Errorf("resolveDest(true) = %q; want %q", got, want)
 	}
 }
 
-// TestResolveDest_DestPassedThrough verifies non-empty -dest is returned verbatim.
-func TestResolveDest_DestPassedThrough(t *testing.T) {
-	want := "/some/dir"
-
-	got, err := resolveDest(false, want)
-	if err != nil {
-		t.Fatalf("resolveDest(false, %q) error: %v", want, err)
+// TestDirtyError_RefusesAnyChange verifies production refuses a tree git reports any change in,
+// and accepts a clean one.
+func TestDirtyError_RefusesAnyChange(t *testing.T) {
+	if err := dirtyError(""); err != nil {
+		t.Errorf("dirtyError(\"\") = %v; want nil for a clean tree", err)
 	}
-	if got != want {
-		t.Errorf("resolveDest(false, %q) = %q; want %q", want, got, want)
+	for _, porcelain := range []string{" M tools/deploy/main.go", "?? new.go"} {
+		if err := dirtyError(porcelain); err == nil {
+			t.Errorf("dirtyError(%q) = nil; want a refusal", porcelain)
+		}
+	}
+}
+
+// TestParseMarketplace_ReadsPluginEntries verifies the fields the plugin sync depends on.
+func TestParseMarketplace_ReadsPluginEntries(t *testing.T) {
+	m, err := parseMarketplace([]byte(`{"name":"loomyard","plugins":[{"name":"ly","version":"1.0.0","source":"./plugins/ly"}]}`))
+	if err != nil {
+		t.Fatalf("parseMarketplace error: %v", err)
+	}
+	if m.Name != "loomyard" || len(m.Plugins) != 1 || m.Plugins[0].Source != "./plugins/ly" || m.Plugins[0].Version != "1.0.0" {
+		t.Errorf("parseMarketplace = %+v; want loomyard with one ly@1.0.0 entry sourced at ./plugins/ly", m)
+	}
+	if _, err := parseMarketplace([]byte(`{"plugins":[]}`)); err == nil {
+		t.Error("parseMarketplace without a name = nil error; want an error")
+	}
+}
+
+// TestMirrorFiles_ReplacesTargetWithExactlyTheListedFiles verifies the mirror copies the listed
+// files with their mode, drops files outside the plugin, and removes whatever the cache held
+// before (a stale built binary included).
+func TestMirrorFiles_ReplacesTargetWithExactlyTheListedFiles(t *testing.T) {
+	root := t.TempDir()
+	write := func(rel string, mode os.FileMode) {
+		p := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(rel), mode); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("plugins/ly/SKILL.md", 0o644)
+	write("plugins/ly/bin/run.sh", 0o755)
+	write("plugins/other/x.md", 0o644)
+
+	target := filepath.Join(t.TempDir(), "ly", "1.0.0")
+	if err := os.MkdirAll(filepath.Join(target, "bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(target, "bin", "stale"), []byte("old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	files := []string{"plugins/ly/SKILL.md", "plugins/ly/bin/run.sh", "plugins/other/x.md"}
+	if err := mirrorFiles(root, "plugins/ly", files, target); err != nil {
+		t.Fatalf("mirrorFiles error: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(target, "bin", "stale")); !os.IsNotExist(err) {
+		t.Errorf("stale cache file survived the mirror (stat err %v)", err)
+	}
+	if _, err := os.Stat(filepath.Join(target, "x.md")); !os.IsNotExist(err) {
+		t.Errorf("a file outside the plugin's source was mirrored (stat err %v)", err)
+	}
+	if got, err := os.ReadFile(filepath.Join(target, "SKILL.md")); err != nil || string(got) != "plugins/ly/SKILL.md" {
+		t.Errorf("SKILL.md = %q, %v; want the source content", got, err)
+	}
+	info, err := os.Stat(filepath.Join(target, "bin", "run.sh"))
+	if err != nil {
+		t.Fatalf("bin/run.sh not mirrored: %v", err)
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm()&0o100 == 0 {
+		t.Errorf("bin/run.sh mode = %v; want the executable bit preserved", info.Mode().Perm())
+	}
+}
+
+// TestOtherBinaries_ReportsEveryCopyOutsideTheDestDir verifies a second lyx on PATH is reported
+// whether it sits before or after the production dir, and the production dir itself never is.
+func TestOtherBinaries_ReportsEveryCopyOutsideTheDestDir(t *testing.T) {
+	present := map[string]bool{
+		filepath.Join("/a", "lyx"):      true,
+		filepath.Join("/go/bin", "lyx"): true,
+		filepath.Join("/c", "lyx"):      true,
+	}
+	exists := func(p string) bool { return present[p] }
+
+	got := otherBinaries([]string{"/a", "/go/bin", "/b", "/c", "/go/bin/"}, "/go/bin", "lyx", exists)
+	want := []string{filepath.Join("/a", "lyx"), filepath.Join("/c", "lyx")}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("otherBinaries = %v; want %v", got, want)
 	}
 }
 

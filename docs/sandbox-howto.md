@@ -6,10 +6,10 @@ for the topology, repo layout, and design rationale see [sandbox-hub.md](sandbox
 
 All commands run from the lyx repo root (`C:\Code\loomyard\wts\loomyard` on Windows, the repo root on POSIX) unless stated otherwise.
 The sandbox launchers (`sandbox/win/build.cmd`, `sandbox/win/core-suite.cmd`, `sandbox/win/reed-suite.cmd`, `sandbox/win/shuttle-suite.cmd`, `sandbox/win/burler-suite.cmd`, `sandbox/win/fetch.cmd`) hardcode this machine's Hub parent `C:\Code`.
-The deploy launchers hardcode nothing: `deploy.cmd` installs into the machine's own `go env GOBIN` (else `GOPATH\bin`), and `deploy-dev.cmd` into a derived, per-worktree `.dev-bin` directory.
+The deploy launchers hardcode nothing: `update-plugins.cmd` puts production `lyx` into the machine's own `go env GOBIN` (else `GOPATH\bin`), and `deploy-dev.cmd` a dev build into a derived, per-worktree `.dev-bin` directory.
 Each sandbox launcher does exactly one thing (build / one suite / fetch).
 
-> **POSIX equivalents.** Every command below has a `sandbox/posix/*.sh` twin (`build.sh`, `core-suite.sh`, `reed-suite.sh`, `shuttle-suite.sh`, `burler-suite.sh`, `fetch.sh`), same subcommands and flags, `$HOME/Code` standing in for `C:\Code`. `deploy`/`deploy-dev` are the POSIX twins of `deploy.cmd`/`deploy-dev.cmd`.
+> **POSIX equivalents.** Every command below has a `sandbox/posix/*.sh` twin (`build.sh`, `core-suite.sh`, `reed-suite.sh`, `shuttle-suite.sh`, `burler-suite.sh`, `fetch.sh`), same subcommands and flags, `$HOME/Code` standing in for `C:\Code`. `update-plugins.sh`/`deploy-dev` are the POSIX twins of `update-plugins.cmd`/`deploy-dev.cmd`.
 
 **Run every suite launcher in a real, attached interactive terminal** — never backgrounded, detached, or with stdout/stderr redirected.
 The agent session is an interactive `claude` process;
@@ -34,7 +34,7 @@ Always deploy before a run (step 2) — `deploy-dev.cmd` is the fast path since 
 
 1. **Sandbox wiki initialized** — the board repo is the weft repo's GitHub wiki. `lyx-test-weft` must have Wikis enabled and at least one page, or `warp clone` fails and the Hub is torn down.
    See [sandbox-hub.md#prerequisites](sandbox-hub.md#prerequisites).
-2. **The Go bin dir is on PATH (production only)** — `deploy.cmd` installs the production `lyx` into `go env GOBIN`, else `GOPATH\bin`.
+2. **The Go bin dir is on PATH (production only)** — `update-plugins.cmd` installs the production `lyx` into `go env GOBIN`, else `GOPATH\bin`.
    To install elsewhere, set it once per machine: `go env -w GOBIN=C:\Code\tools\bin`.
    The dev binary in `.dev-bin` does NOT need to be on PATH;
    the suite resolves it directly and threads it to the agent itself.
@@ -53,7 +53,7 @@ go test ./...
 ### 2. Deploy a fresh dev `lyx.exe`
 
 Rebuilds `lyx` from the current checkout and installs it into the derived `.dev-bin` directory at the repo root, overwriting the old dev binary.
-This never touches the production `lyx` in the Go bin dir — `deploy-dev.cmd` and `deploy.cmd` are independent targets.
+This never touches the production `lyx` in the Go bin dir — `deploy-dev.cmd` and `update-plugins.cmd` are independent targets.
 
 ```cmd
 deploy-dev.cmd

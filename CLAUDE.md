@@ -16,6 +16,13 @@ Record any new cross-cutting invariant there, same commit.
 `CGO_ENABLED` already defaults to `1` for a native build when a C compiler is on `PATH`, so nothing needs setting on an ordinary developer machine;
 `go env -w CGO_ENABLED=1` pins it per-user but is machine-local and does not install a compiler.
 
+## Production lyx and plugins: one route, operator-triggered
+
+`update-plugins.sh` (`update-plugins.cmd` on Windows) is the only route to production: from a clean tree it mirrors the installed loomyard plugins into the Claude Code plugin cache and builds `lyx` into the Go bin dir (`go env GOBIN`, else `GOPATH/bin`).
+Code on `main` is not in production until the operator runs it; never run it unasked, and never install `lyx` anywhere else.
+Internal tests use the dev build instead: `./deploy-dev` (`deploy-dev.cmd`) builds the working tree into `.dev-bin` and never touches production.
+There is no versioning: the plugins stay at `1.0.0`, and running the script is the release.
+
 ## Persistent notes go in git, not file-memory
 
 This project is worked in short-lived mill **worktrees** torn down on merge — the file-based `memory/` store is per-worktree and vanishes with it.
