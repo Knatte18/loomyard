@@ -809,6 +809,6 @@ func TestBouncerEntry_ClusterExcludes(t *testing.T) {
 		cfg["cluster_exclude"] = true
 
 		_, err := bouncerEntry("review-bounce", cfg, env)
-		assertErrContains(t, err, "cluster_exclude")
+		assertErrContains(t, err, `unrecognized config key "cluster_exclude"`)
 	})
 }
