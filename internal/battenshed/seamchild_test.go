@@ -139,14 +139,14 @@ func TestSeedChild_UnreadableBoardIsStuck(t *testing.T) {
 	_, deps := newSeedChildDeps("", boardErr, "claude", nil, nil, nil, nil)
 
 	producer := NewSeedChild("seedchild", "myslug", deps, scratchDir)
-	outcome, _, err := producer.Call(context.Background())
+	outcome, ptr, err := producer.Call(context.Background())
 	if err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
 	}
 	if outcome != shedengine.Stuck {
 		t.Fatalf("Call() outcome = %v; want Stuck", outcome)
 	}
-	reason := readStuckFile(t, scratchDir, "seedchild")
+	reason := readStuckFile(t, scratchDir, "seedchild", ptr)
 	if !strings.Contains(reason, "Board") {
 		t.Errorf("stuck-reason file = %q; want it to name the Board read failure", reason)
 	}
@@ -158,14 +158,14 @@ func TestSeedChild_UnknownRecipeNameIsStuck(t *testing.T) {
 	_, deps := newSeedChildDeps("bogus", nil, "claude", nil, writeErr, nil, nil)
 
 	producer := NewSeedChild("seedchild", "myslug", deps, scratchDir)
-	outcome, _, err := producer.Call(context.Background())
+	outcome, ptr, err := producer.Call(context.Background())
 	if err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
 	}
 	if outcome != shedengine.Stuck {
 		t.Fatalf("Call() outcome = %v; want Stuck", outcome)
 	}
-	reason := readStuckFile(t, scratchDir, "seedchild")
+	reason := readStuckFile(t, scratchDir, "seedchild", ptr)
 	if !strings.Contains(reason, "unknown recipe") {
 		t.Errorf("stuck-reason file = %q; want it to name the unknown recipe", reason)
 	}
@@ -180,7 +180,7 @@ func TestSeedChild_UnsupportedChildRecipeIsStuck(t *testing.T) {
 	calls, deps := newSeedChildDeps("batten", nil, "go", nil, writeErr, nil, nil)
 
 	producer := NewSeedChild("seedchild", "myslug", deps, scratchDir)
-	outcome, _, err := producer.Call(context.Background())
+	outcome, ptr, err := producer.Call(context.Background())
 	if err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
 	}
@@ -190,7 +190,7 @@ func TestSeedChild_UnsupportedChildRecipeIsStuck(t *testing.T) {
 	if calls.commitCalled || calls.pushCalled {
 		t.Errorf("commitCalled=%v pushCalled=%v; want neither -- nothing was written to commit", calls.commitCalled, calls.pushCalled)
 	}
-	reason := readStuckFile(t, scratchDir, "seedchild")
+	reason := readStuckFile(t, scratchDir, "seedchild", ptr)
 	if !strings.Contains(reason, `Board task type "batten"`) {
 		t.Errorf("stuck-reason file = %q; want it to name the Board task type", reason)
 	}
@@ -207,7 +207,7 @@ func TestSeedChild_DisagreeingChildSeedIsStuck(t *testing.T) {
 	calls, deps := newSeedChildDeps("loom", nil, "go", nil, writeErr, nil, nil)
 
 	producer := NewSeedChild("seedchild", "myslug", deps, scratchDir)
-	outcome, _, err := producer.Call(context.Background())
+	outcome, ptr, err := producer.Call(context.Background())
 	if err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
 	}
@@ -217,7 +217,7 @@ func TestSeedChild_DisagreeingChildSeedIsStuck(t *testing.T) {
 	if calls.commitCalled || calls.pushCalled {
 		t.Errorf("commitCalled=%v pushCalled=%v; want neither -- nothing was written to commit", calls.commitCalled, calls.pushCalled)
 	}
-	reason := readStuckFile(t, scratchDir, "seedchild")
+	reason := readStuckFile(t, scratchDir, "seedchild", ptr)
 	if !strings.Contains(reason, "disagrees with the one Seed-Child would write") {
 		t.Errorf("stuck-reason file = %q; want it to name the disagreement", reason)
 	}
@@ -250,7 +250,7 @@ func TestSeedChild_FailedCommitIsStuck(t *testing.T) {
 	calls, deps := newSeedChildDeps("batten", nil, "claude", nil, nil, commitErr, nil)
 
 	producer := NewSeedChild("seedchild", "myslug", deps, scratchDir)
-	outcome, _, err := producer.Call(context.Background())
+	outcome, ptr, err := producer.Call(context.Background())
 	if err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
 	}
@@ -260,7 +260,7 @@ func TestSeedChild_FailedCommitIsStuck(t *testing.T) {
 	if calls.pushCalled {
 		t.Error("PushSeed was called after a failed commit; want it skipped")
 	}
-	reason := readStuckFile(t, scratchDir, "seedchild")
+	reason := readStuckFile(t, scratchDir, "seedchild", ptr)
 	if !strings.Contains(reason, "commit") {
 		t.Errorf("stuck-reason file = %q; want it to name the commit failure", reason)
 	}

@@ -69,7 +69,7 @@ func (p *seedChildProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 		}
 		reason := fmt.Sprintf("read Board task type failed: %s", err.Error())
 		reportStuck(p.name, reason, p.scratchDir, "slug", p.slug)
-		return shedengine.Stuck, shedengine.OutputPointer{}, nil
+		return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
 	}
 	recipe := boardType
 	if recipe == "" {
@@ -90,7 +90,7 @@ func (p *seedChildProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 				return "", shedengine.OutputPointer{}, cerr
 			}
 			reportStuck(p.name, reason, p.scratchDir, "slug", p.slug)
-			return shedengine.Stuck, shedengine.OutputPointer{}, nil
+			return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
 		}
 		if cerr := cancelErr(ctx, p.name); cerr != nil {
 			return "", shedengine.OutputPointer{}, cerr
@@ -104,7 +104,7 @@ func (p *seedChildProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 		}
 		reason := fmt.Sprintf("commit seed failed: %s", err.Error())
 		reportStuck(p.name, reason, p.scratchDir, "slug", p.slug)
-		return shedengine.Stuck, shedengine.OutputPointer{}, nil
+		return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
 	}
 
 	if err := p.deps.PushSeed(ctx); err != nil {
