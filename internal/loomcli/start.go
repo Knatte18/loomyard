@@ -42,9 +42,9 @@ const (
 // mustUseLLMDriverArm reports whether step 5 must take the llm arm's strand launch rather than the
 // go arm's detached spawn, from the run's recorded driver.
 //
-// Per the seed contract an absent driver value already defaults to the go driver on read, so this is
-// a two-value switch with the go driver as both the default and the zero-config answer -- any value
-// other than shedrun.DriverLLM, empty included, selects the go arm.
+// An unseeded run is seeded with the llm driver (resolveSeedDriver), while a seed file with no driver
+// value still reads as the go driver, so this is a two-value switch -- any value other than
+// shedrun.DriverLLM, empty included, selects the go arm.
 func mustUseLLMDriverArm(driver string) bool {
 	return driver == shedrun.DriverLLM
 }

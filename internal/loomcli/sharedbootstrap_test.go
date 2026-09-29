@@ -135,7 +135,7 @@ func TestLoomSeedFor_WriteSeedIsIdempotent(t *testing.T) {
 }
 
 // TestResolveSeedDriver covers resolveSeedDriver's read-through: an unseeded worktree defaults to the
-// go driver, an already-go seed is preserved, and -- the case this card exists for -- an
+// llm driver, an already-go seed is preserved, and -- the case this card exists for -- an
 // already-llm seed is preserved rather than overwritten with the go driver. That last row is what
 // fails against the shipped version, which hard-coded the go driver into every write regardless of
 // what a run was already seeded as.
@@ -146,7 +146,7 @@ func TestResolveSeedDriver(t *testing.T) {
 		found    bool
 		want     string
 	}{
-		{"Unseeded_DefaultsToGo", shedrun.Seed{}, false, shedrun.DriverGo},
+		{"Unseeded_DefaultsToLLM", shedrun.Seed{}, false, shedrun.DriverLLM},
 		{"AlreadySeededGo_Preserved", shedrun.Seed{Driver: shedrun.DriverGo}, true, shedrun.DriverGo},
 		{"AlreadySeededLLM_Preserved", shedrun.Seed{Driver: shedrun.DriverLLM}, true, shedrun.DriverLLM},
 	}
