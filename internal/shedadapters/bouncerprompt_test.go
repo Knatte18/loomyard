@@ -5,6 +5,7 @@ package shedadapters
 
 import (
 	"context"
+	"fmt"
 	"maps"
 	"os"
 	"strings"
@@ -66,7 +67,7 @@ func TestFocusSchemaMarkers_BothStencilsBothModes(t *testing.T) {
 			"Seed":  {stencils.BouncerTemplateSeed, seedBase},
 			"Judge": {stencils.BouncerTemplateJudge, judgeBase},
 		} {
-			t.Run(name, func(t *testing.T) {
+			t.Run(fmt.Sprintf("%s_ClusterExcludes=%t", name, clusterExcludes), func(t *testing.T) {
 				values := maps.Clone(tc.base)
 				maps.Copy(values, focusSchemaMarkers(clusterExcludes))
 				prompt, err := stencil.Fill(tc.template, values)
@@ -81,7 +82,7 @@ func TestFocusSchemaMarkers_BothStencilsBothModes(t *testing.T) {
 
 func TestBouncer_ClusterExcludesReachesSeedAndJudgePrompts(t *testing.T) {
 	for _, clusterExcludes := range []bool{false, true} {
-		t.Run("Seed", func(t *testing.T) {
+		t.Run(fmt.Sprintf("Seed_ClusterExcludes=%t", clusterExcludes), func(t *testing.T) {
 			shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 			cfg := testBouncerConfig(t)
 			cfg.Shuttle = shuttle
@@ -100,7 +101,7 @@ func TestBouncer_ClusterExcludesReachesSeedAndJudgePrompts(t *testing.T) {
 			assertExcludeLensesText(t, shuttle.gotSpec.Prompt, clusterExcludes)
 		})
 
-		t.Run("Judge", func(t *testing.T) {
+		t.Run(fmt.Sprintf("Judge_ClusterExcludes=%t", clusterExcludes), func(t *testing.T) {
 			shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 			cfg := testBouncerConfig(t)
 			cfg.Shuttle = shuttle
