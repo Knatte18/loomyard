@@ -76,7 +76,9 @@ func (p *WebsterProducer) Call(ctx context.Context) (shedengine.Outcome, shedeng
 	if err != nil {
 		var askingErr *websterengine.MasterAskingError
 		if errors.Is(err, websterengine.ErrMasterAsking) {
+			reason := "webster master is asking a question"
 			if errors.As(err, &askingErr) {
+				reason = fmt.Sprintf("webster master is asking a question; session %s, run dir %s", askingErr.SessionID, askingErr.RunDir)
 				logger.Warn("shedadapters: webster master is asking a question", "producer", p.name, "engine", websterEngineLabel, "message", askingErr.Message, "sessionID", askingErr.SessionID, "runDir", askingErr.RunDir)
 			} else {
 				logger.Warn("shedadapters: webster master is asking a question", "producer", p.name, "engine", websterEngineLabel)
@@ -84,7 +86,7 @@ func (p *WebsterProducer) Call(ctx context.Context) (shedengine.Outcome, shedeng
 			if cerr := cancelErr(ctx, p.name, websterEngineLabel); cerr != nil {
 				return "", shedengine.OutputPointer{}, cerr
 			}
-			return shedengine.Stuck, shedengine.OutputPointer{}, nil
+			return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
 		}
 
 		if cerr := cancelErr(ctx, p.name, websterEngineLabel); cerr != nil {
@@ -105,7 +107,7 @@ func (p *WebsterProducer) Call(ctx context.Context) (shedengine.Outcome, shedeng
 			return "", shedengine.OutputPointer{}, cerr
 		}
 		logger.Warn("shedadapters: webster run is stuck", "producer", p.name, "engine", websterEngineLabel, "stuckReason", result.StuckReason, "batchesDone", result.BatchesDone)
-		return shedengine.Stuck, shedengine.OutputPointer{}, nil
+		return shedengine.Stuck, shedengine.OutputPointer{Reason: result.StuckReason}, nil
 
 	case websterOutcomePaused:
 		if cerr := cancelErr(ctx, p.name, websterEngineLabel); cerr != nil {

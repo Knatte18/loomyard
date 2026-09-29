@@ -232,7 +232,7 @@ func TestBouncer_Clear_NonTriggeringCasesLeaveRunDirUntouched(t *testing.T) {
 		if outcome != shedengine.Stuck {
 			t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
 		}
-		if ptr != (shedengine.OutputPointer{}) {
+		if ptr.Path != "" || ptr.GateAttempts != nil {
 			t.Errorf("Call() pointer = %+v; want empty", ptr)
 		}
 		if _, err := os.Stat(verdictPath(cfg.RunDir, 1)); err != nil {
@@ -256,7 +256,7 @@ func TestBouncer_Clear_NonTriggeringCasesLeaveRunDirUntouched(t *testing.T) {
 		if outcome != shedengine.Stuck {
 			t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
 		}
-		if ptr != (shedengine.OutputPointer{}) {
+		if ptr.Path != "" || ptr.GateAttempts != nil {
 			t.Errorf("Call() pointer = %+v; want empty", ptr)
 		}
 		if shuttle.called {
@@ -335,7 +335,7 @@ func TestBouncer_Clear_ArchiveFailureDegradesToStuck(t *testing.T) {
 	if outcome != shedengine.Stuck {
 		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
 	}
-	if ptr != (shedengine.OutputPointer{}) {
+	if ptr.Path != "" || ptr.GateAttempts != nil {
 		t.Errorf("Call() pointer = %+v; want empty", ptr)
 	}
 	if shuttle.called {

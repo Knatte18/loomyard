@@ -71,8 +71,8 @@ func TestWebsterProducer_OutcomeStuck(t *testing.T) {
 	if outcome != shedengine.Stuck {
 		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
 	}
-	if ptr != (shedengine.OutputPointer{}) {
-		t.Errorf("Call() pointer = %+v; want empty", ptr)
+	if ptr.Path != "" || ptr.Reason != "cards ran out" {
+		t.Errorf("Call() pointer = %+v; want empty Path and Reason %q", ptr, "cards ran out")
 	}
 }
 
@@ -119,8 +119,14 @@ func TestWebsterProducer_MasterAskingError(t *testing.T) {
 	if outcome != shedengine.Stuck {
 		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
 	}
-	if ptr != (shedengine.OutputPointer{}) {
-		t.Errorf("Call() pointer = %+v; want empty", ptr)
+	if ptr.Path != "" {
+		t.Errorf("Call() pointer.Path = %q; want empty", ptr.Path)
+	}
+	if !strings.Contains(ptr.Reason, "sess-1") || !strings.Contains(ptr.Reason, "/tmp/run") {
+		t.Errorf("Call() Reason = %q; want it to name the session and run dir", ptr.Reason)
+	}
+	if strings.Contains(ptr.Reason, "which model?") {
+		t.Errorf("Call() Reason %q contains the master's message", ptr.Reason)
 	}
 }
 

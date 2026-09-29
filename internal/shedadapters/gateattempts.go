@@ -3,7 +3,17 @@
 
 package shedadapters
 
-import "github.com/Knatte18/loomyard/internal/shuttleengine"
+import (
+	"fmt"
+
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
+)
+
+// gateFailedReason is the one-line Stuck reason for a gate that did not pass, shared by both gated
+// producers so the wording never diverges.
+func gateFailedReason(gate *shuttleengine.GateOutcome) string {
+	return fmt.Sprintf("gate did not pass after %d attempts; findings: %s", gate.Attempts, gate.FindingsPath)
+}
 
 // gateAttemptsPointer returns a pointer to gate.Attempts, or nil when gate itself is nil (the
 // producer applied no gate to this call). Read shedengine.OutputPointer.GateAttempts's own doc

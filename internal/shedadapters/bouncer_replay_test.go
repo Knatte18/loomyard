@@ -325,7 +325,7 @@ func TestBouncer_PointerDiscipline(t *testing.T) {
 		if outcome != shedengine.Stuck {
 			t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
 		}
-		if ptr != (shedengine.OutputPointer{}) {
+		if ptr.Path != "" || ptr.GateAttempts != nil {
 			t.Errorf("Call() pointer = %+v; want empty", ptr)
 		}
 	})
@@ -344,7 +344,7 @@ func TestBouncer_PointerDiscipline(t *testing.T) {
 		if outcome != shedengine.Stuck {
 			t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
 		}
-		if ptr != (shedengine.OutputPointer{}) {
+		if ptr.Path != "" || ptr.GateAttempts != nil {
 			t.Errorf("Call() pointer = %+v; want empty", ptr)
 		}
 	})

@@ -290,7 +290,7 @@ func (b *Bouncer) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 			if cerr := cancelErr(ctx, b.cfg.Name, bouncerEngineLabel); cerr != nil {
 				return "", shedengine.OutputPointer{}, cerr
 			}
-			return shedengine.Stuck, shedengine.OutputPointer{}, nil
+			return shedengine.Stuck, shedengine.OutputPointer{Reason: "bouncer segment already seeded; round producer returned no report"}, nil
 		}
 		return b.seedCall(ctx)
 	}
@@ -380,14 +380,14 @@ func (b *Bouncer) awaitLiveSeed() (bool, error) {
 
 // degrade is every judge-call infrastructure failure's single exit: it consults cancelErr first
 // and returns that error when non-nil, otherwise logs args via logger.Warn and returns
-// shedengine.Stuck with an empty pointer and a nil error. None of degrade's callers ever return
-// shedengine.Done.
+// shedengine.Stuck with an empty Path, msg as the Reason, and a nil error. None of degrade's callers
+// ever return shedengine.Done.
 func (b *Bouncer) degrade(ctx context.Context, msg string, args ...any) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if cerr := cancelErr(ctx, b.cfg.Name, bouncerEngineLabel); cerr != nil {
 		return "", shedengine.OutputPointer{}, cerr
 	}
 	logger.Warn(msg, args...)
-	return shedengine.Stuck, shedengine.OutputPointer{}, nil
+	return shedengine.Stuck, shedengine.OutputPointer{Reason: msg}, nil
 }
 
 // ensureFocus guarantees round's focus file exists and parses by the time it returns. When the

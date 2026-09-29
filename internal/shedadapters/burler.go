@@ -259,8 +259,8 @@ var _ shedengine.ShedProducer = (*BurlerProducer)(nil)
 // round instead of re-running this one.
 //
 // Gate-failed exit: a done round whose Result.Gate is non-nil and failing maps to Stuck with an
-// EMPTY pointer, archived exactly like every other non-success exit -- the empty pointer is what
-// tells the segment's Bouncer there is no round artifact to judge, the same signal the deleted
+// an empty Path (the cause rides on Reason), archived exactly like every other non-success exit --
+// the empty Path is what tells the segment's Bouncer there is no round artifact to judge, the same signal the deleted
 // validate producers used for exactly this meaning (see the "the two producers' output pointers
 // mean different things" decision). It consumes no attempt-1/attempt-2 retry: that retry is for
 // OutcomeDied/OutcomeTimeout, infrastructure faults, while gate exhaustion is a determinate verdict
@@ -304,7 +304,7 @@ func (p *BurlerProducer) Call(ctx context.Context) (shedengine.Outcome, shedengi
 				return "", shedengine.OutputPointer{}, cerr
 			}
 			logger.Warn("shedadapters: burler round producer reached with the highest complete round unjudged; handing back for judgment instead of running a fresh round", "producer", p.name, "engine", burlerEngineLabel, "round", highest)
-			return shedengine.Stuck, shedengine.OutputPointer{Path: roundReviewPath(p.runDir, highest)}, nil
+			return shedengine.Stuck, shedengine.OutputPointer{Path: roundReviewPath(p.runDir, highest), Reason: fmt.Sprintf("round %d is complete but unjudged; handing back for judgment", highest)}, nil
 		}
 	}
 
@@ -437,7 +437,7 @@ func (p *BurlerProducer) Call(ctx context.Context) (shedengine.Outcome, shedengi
 					return "", shedengine.OutputPointer{}, cerr
 				}
 				logger.Warn("shedadapters: burler round's gate did not pass", "producer", p.name, "engine", burlerEngineLabel, "round", round, "attempts", result.Gate.Attempts, "findingsPath", result.Gate.FindingsPath)
-				return shedengine.Stuck, shedengine.OutputPointer{GateAttempts: gateAttemptsPointer(result.Gate)}, nil
+				return shedengine.Stuck, shedengine.OutputPointer{GateAttempts: gateAttemptsPointer(result.Gate), Reason: gateFailedReason(result.Gate)}, nil
 			}
 			// A genuine success verdict survives cancellation only up to the moment the round
 			// completed and parsed; a cancellation observed after that point still yields an
@@ -519,13 +519,13 @@ func (p *BurlerProducer) probeLiveRound(
 			// Identical to the spawn path's own gate-failed branch: this is what makes "one GateSpec
 			// at every hop" true rather than aspirational -- an attached Discussion or Plan fix round
 			// is gated exactly as a freshly-spawned one is, and its failure maps onto the same
-			// empty-pointer Stuck, archived first, never consuming the attempt-1/attempt-2 retry.
+			// empty-Path Stuck, archived first, never consuming the attempt-1/attempt-2 retry.
 			archiveRound()
 			if cerr := cancelErr(ctx, p.name, burlerEngineLabel); cerr != nil {
 				return "", shedengine.OutputPointer{}, cerr, true
 			}
 			logger.Warn("shedadapters: attached burler round's gate did not pass", "producer", p.name, "engine", burlerEngineLabel, "round", round, "attempts", result.Gate.Attempts, "findingsPath", result.Gate.FindingsPath)
-			return shedengine.Stuck, shedengine.OutputPointer{GateAttempts: gateAttemptsPointer(result.Gate)}, nil, true
+			return shedengine.Stuck, shedengine.OutputPointer{GateAttempts: gateAttemptsPointer(result.Gate), Reason: gateFailedReason(result.Gate)}, nil, true
 		}
 		// Identical to the spawn path's own success return, including the cancellation rule: a
 		// completed round's artifacts survive, but a cancelled context still errors.

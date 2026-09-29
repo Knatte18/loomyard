@@ -150,18 +150,36 @@ func TestSingleLLMProducer_OutcomeDone(t *testing.T) {
 func TestSingleLLMProducer_OutcomeAsking(t *testing.T) {
 	dir := t.TempDir()
 	spec := shuttleengine.Spec{Prompt: "ask", OutputFiles: []string{filepath.Join(dir, "out.md")}}
-	shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking, LastAssistantMessage: "what next?"}}
-	p := NewSingleLLMProducer("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil)
+	tests := []struct {
+		name       string
+		result     shuttleengine.Result
+		wantReason string
+	}{
+		{"WithSessionID", shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking, LastAssistantMessage: "what next?", SessionID: "sess-9", RunDir: "/tmp/run"}, "agent is asking a question; session sess-9"},
+		{"EmptySessionIDNamesRunDir", shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking, LastAssistantMessage: "what next?", RunDir: "/tmp/run"}, "agent is asking a question; run dir /tmp/run"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			shuttle := &fakeShuttle{result: tt.result}
+			p := NewSingleLLMProducer("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil)
 
-	outcome, ptr, err := p.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-	}
-	if ptr != (shedengine.OutputPointer{}) {
-		t.Errorf("Call() pointer = %+v; want empty", ptr)
+			outcome, ptr, err := p.Call(context.Background())
+			if err != nil {
+				t.Fatalf("Call() error = %v; want nil", err)
+			}
+			if outcome != shedengine.Stuck {
+				t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
+			}
+			if ptr.Path != "" || ptr.GateAttempts != nil {
+				t.Errorf("Call() pointer = %+v; want empty Path and no GateAttempts", ptr)
+			}
+			if ptr.Reason != tt.wantReason {
+				t.Errorf("Call() Reason = %q; want %q", ptr.Reason, tt.wantReason)
+			}
+			if strings.Contains(ptr.Reason, "what next?") {
+				t.Errorf("Call() Reason %q contains the agent's message", ptr.Reason)
+			}
+		})
 	}
 }
 
@@ -610,8 +628,8 @@ func TestSingleLLMProducer_AttachedOutcomeAsking(t *testing.T) {
 	if outcome != shedengine.Stuck {
 		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
 	}
-	if ptr != (shedengine.OutputPointer{}) {
-		t.Errorf("Call() pointer = %+v; want empty", ptr)
+	if ptr.Path != "" || ptr.Reason != "agent is asking a question; run dir " {
+		t.Errorf("Call() pointer = %+v; want empty Path and the asking Reason", ptr)
 	}
 }
 
@@ -869,6 +887,12 @@ func TestSingleLLMProducer_Gate_FailedGateReachesStuckWithArtifactPointer(t *tes
 	if ptr.GateAttempts == nil || *ptr.GateAttempts != 0 {
 		t.Errorf("Call() pointer.GateAttempts = %v; want pointer to 0 (fakeShuttle's default attempt count)", ptr.GateAttempts)
 	}
+	if want := "gate did not pass after 0 attempts; findings: "; ptr.Reason != want {
+		t.Errorf("Call() Reason = %q; want %q (attempt count and findings path)", ptr.Reason, want)
+	}
+	if strings.HasPrefix(ptr.Reason, "agent is asking") {
+		t.Errorf("Call() Reason %q is the asking reason; want the gate-failed one", ptr.Reason)
+	}
 }
 
 // TestSingleLLMProducer_Gate_AskingKeepsEmptyPointer proves a gated producer's OutcomeAsking still
@@ -891,8 +915,8 @@ func TestSingleLLMProducer_Gate_AskingKeepsEmptyPointer(t *testing.T) {
 	if outcome != shedengine.Stuck {
 		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
 	}
-	if ptr != (shedengine.OutputPointer{}) {
-		t.Errorf("Call() pointer = %+v; want empty", ptr)
+	if ptr.Path != "" || ptr.GateAttempts != nil || ptr.Reason != "agent is asking a question; run dir " {
+		t.Errorf("Call() pointer = %+v; want empty Path, no GateAttempts, and the asking Reason", ptr)
 	}
 }
 
