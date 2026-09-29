@@ -214,10 +214,13 @@ See [docs/sandbox-howto.md](docs/sandbox-howto.md) for the runbook.
 
 ## Plugins
 
-`plugins/` ships two Claude Code plugins from this marketplace (`.claude-plugin/marketplace.json`), each its own Go module or skill set:
+`plugins/` holds this marketplace's Claude Code plugins (`.claude-plugin/marketplace.json`), each its own Go module or skill set:
 
 - **prowler** — fetch blocked, restricted, or JS-rendered web pages and output readable markdown, plus cross-repo code search.
-- **scribe** — code-writing conventions: quality, comments, testing, and Go mechanics.
+- **ly** — the operator surface over lyx's shed verbs: `ly-drive`, the recipe-blind driver of `lyx shed step`.
+
+The writing and code conventions every lyx agent loads (`scribe:prose`, `scribe:testing`, and the rest) come from the shared [`Knatte18/scribe`](https://github.com/Knatte18/scribe) plugin, used by millhouse too.
+Install it once per machine: `/plugin marketplace add Knatte18/scribe`, then `/plugin install scribe@scribe`.
 
 `tools/` holds the repo's own dev tools (`deploy`, the sandbox driver, and the `mdreflow`/`godocreflow`/`wordswap` text-mechanics sweepers).
 
