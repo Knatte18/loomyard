@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: llm-default-driver
 branch: llm-default-driver
 plan: null
@@ -18,4 +18,5 @@ task_description: |
 discussing  '2026-09-29T14:04:56Z'
 implementing  '2026-09-29T14:08:05Z'
 done  '2026-09-29T14:12:43Z'
+pr-pending  '2026-09-29T14:18:35Z'
 ```
