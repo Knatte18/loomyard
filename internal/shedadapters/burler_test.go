@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -616,6 +617,46 @@ func TestBurlerProducer_Call_ProfileCarriesDerivedFields(t *testing.T) {
 	}
 	if !stringSlicesEqual(got.ClusterExclude, []string{"lensA"}) {
 		t.Errorf("ClusterExclude = %v; want %v", got.ClusterExclude, []string{"lensA"})
+	}
+}
+
+func TestBurlerProducer_Call_ClusterExcludeDropWarning(t *testing.T) {
+	const dropWarning = "shedadapters: focus file names cluster excludes but this round's profile has no cluster fan; dropping them"
+
+	// Raw frontmatter rather than writeFocusFile: renderFocus always writes both list keys, and the
+	// first case needs the file a judge not told ClusterExcludes writes, with focus alone.
+	// wantHydrated proves that file parsed: a rejected file would also produce no drop WARN.
+	tests := []struct {
+		name         string
+		focus        string
+		wantWarning  bool
+		wantHydrated bool
+	}{
+		{"NoExcludeLensesKey", "---\nround: 2\nfocus:\n  - look at the seam\n---\n", false, true},
+		{"ExcludesOnFanlessProfile", "---\nround: 2\nexclude_lenses:\n  - lensA\nfocus: []\n---\n", true, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			buf := captureLogOutput(t)
+			runDir := t.TempDir()
+			writeJudgedRound(t, runDir, 1)
+			writeFocusFileRaw(t, runDir, 2, tt.focus)
+			runner := &fakeBurlerRunner{results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
+			p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
+
+			if _, _, err := p.Call(context.Background()); err != nil {
+				t.Fatalf("Call() error = %v; want nil", err)
+			}
+			if got := runner.gotProfiles[0].ClusterExclude; got != nil {
+				t.Errorf("ClusterExclude = %v; want nil on a fan-less profile", got)
+			}
+			if hydrated := slices.Contains(runner.gotProfiles[0].PriorReviews, focusPath(runDir, 2)); hydrated != tt.wantHydrated {
+				t.Errorf("focus file hydrated = %v; want %v; PriorReviews = %v", hydrated, tt.wantHydrated, runner.gotProfiles[0].PriorReviews)
+			}
+			if has := strings.Contains(buf.String(), dropWarning); has != tt.wantWarning {
+				t.Errorf("log contains drop warning = %v; want %v; log:\n%s", has, tt.wantWarning, buf.String())
+			}
+		})
 	}
 }
 

@@ -334,10 +334,12 @@ func (p *BurlerProducer) Call(ctx context.Context) (shedengine.Outcome, shedengi
 	if p.profile.ClusterFan != "" {
 		profile.ClusterExclude = focus.ExcludeLenses
 	} else if len(focus.ExcludeLenses) > 0 {
-		// A well-formed but unusable directive must never become a validate hard error
-		// downstream -- the fan is authoritative config, the focus file is an advisory,
-		// LLM-authored directive.
-		logger.Warn("shedadapters: focus directive names cluster excludes but the template profile has no cluster fan; dropping", "producer", p.name, "engine", burlerEngineLabel, "round", round)
+		// The Bouncer only asks for excludes when its own cluster_excludes key says this round
+		// has a fan, so this branch fires only on a breach: a judge writing exclude_lenses
+		// unprompted, or a recipe whose Bouncer and BurlerRound rows disagree. That is why it
+		// stays a WARN, and it never becomes a validate hard error downstream -- the fan is
+		// authoritative config, the focus file is an advisory, LLM-authored directive.
+		logger.Warn("shedadapters: focus file names cluster excludes but this round's profile has no cluster fan; dropping them", "producer", p.name, "engine", burlerEngineLabel, "round", round, "lenses", focus.ExcludeLenses)
 	}
 
 	// archiveRound renames both of this round's own paths to stamped siblings, logging (but never

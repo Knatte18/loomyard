@@ -16,7 +16,9 @@ import (
 // and creates the run directory a segment's Bouncer and BurlerRound rows share, resolves
 // artifact_paths against env.AnchorPath, resolves the optional commit_seam key to one of
 // env.CommitPlan or env.CommitDiscussion, resolves the optional approve_seam key to
-// env.ApprovePlan and nothing else, and returns shedadapters.NewBouncer(cfg).
+// env.ApprovePlan and nothing else, reads the optional boolean cluster_excludes key (default false)
+// telling the judge whether its partner round has a cluster fan, and returns
+// shedadapters.NewBouncer(cfg).
 func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	runSubdir, err := configString(cfg, "run_subdir", true)
 	if err != nil {
@@ -50,6 +52,10 @@ func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 	if err != nil {
 		return nil, err
 	}
+	clusterExcludes, err := configBool(cfg, "cluster_excludes", false)
+	if err != nil {
+		return nil, err
+	}
 	// A row setting model/effort/version overrides the Env value; a row omitting it takes the Env
 	// value; both absent leaves the provider default. An empty Config value and an absent key are
 	// the same thing here -- configString with required false returns "" for both -- and that is
@@ -66,7 +72,7 @@ func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 	// There is deliberately no "report_name" key: BouncerConfig.ReportName is pinned below, not
 	// recipe-authorable, so a "report_name" entry in cfg is rejected here as unrecognised rather
 	// than silently ignored.
-	if err := configRejectUnknown(cfg, "run_subdir", "artifact_paths", "rubric_stencil", "model", "effort", "version", "commit_seam", "approve_seam"); err != nil {
+	if err := configRejectUnknown(cfg, "run_subdir", "artifact_paths", "rubric_stencil", "model", "effort", "version", "commit_seam", "approve_seam", "cluster_excludes"); err != nil {
 		return nil, err
 	}
 
@@ -161,17 +167,18 @@ func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 		// finds the current round by statting that same name, so any other value resolves the
 		// round to 0 forever and the Bouncer re-seeds every call until its bounce budget is spent,
 		// with no error anywhere.
-		ReportName:    func(round int) string { return fmt.Sprintf("round-%d-review.md", round) },
-		StencilsDir:   env.StencilsDir,
-		SpecsDir:      env.SpecsDir,
-		RubricStencil: rubricStencil,
-		Model:         model,
-		Effort:        effort,
-		Version:       version,
-		Shuttle:       env.Shuttle,
-		Approve:       approve,
-		Commit:        commit,
-		Now:           env.Now,
+		ReportName:      func(round int) string { return fmt.Sprintf("round-%d-review.md", round) },
+		StencilsDir:     env.StencilsDir,
+		SpecsDir:        env.SpecsDir,
+		RubricStencil:   rubricStencil,
+		Model:           model,
+		Effort:          effort,
+		Version:         version,
+		ClusterExcludes: clusterExcludes,
+		Shuttle:         env.Shuttle,
+		Approve:         approve,
+		Commit:          commit,
+		Now:             env.Now,
 	}
 
 	// NewBouncer's own eager rubric-stencil probe is what makes a mistyped rubric_stencil fail here,
