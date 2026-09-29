@@ -49,6 +49,28 @@ func TestDirtyError_RefusesAnyChange(t *testing.T) {
 	}
 }
 
+// TestProdAdvanceError_OnlyPushedForwardMoves verifies production accepts only pushed work that
+// moves prod forward (or creates it), and refuses unpushed HEADs and anything rewinding prod.
+func TestProdAdvanceError_OnlyPushedForwardMoves(t *testing.T) {
+	cases := []struct {
+		name                           string
+		onWork, prodExists, prodBehind bool
+		wantErr                        bool
+	}{
+		{"first deploy creates prod", true, false, false, false},
+		{"prod moves forward", true, true, true, false},
+		{"prod already at HEAD", true, true, true, false},
+		{"HEAD not pushed", false, true, true, true},
+		{"prod ahead of or diverged from HEAD", true, true, false, true},
+	}
+	for _, c := range cases {
+		err := prodAdvanceError("abc", c.onWork, c.prodExists, c.prodBehind)
+		if (err != nil) != c.wantErr {
+			t.Errorf("%s: prodAdvanceError = %v; want error %v", c.name, err, c.wantErr)
+		}
+	}
+}
+
 // TestParseMarketplace_ReadsPluginEntries verifies the fields the plugin sync depends on.
 func TestParseMarketplace_ReadsPluginEntries(t *testing.T) {
 	m, err := parseMarketplace([]byte(`{"name":"loomyard","plugins":[{"name":"ly","version":"1.0.0","source":"./plugins/ly"}]}`))
