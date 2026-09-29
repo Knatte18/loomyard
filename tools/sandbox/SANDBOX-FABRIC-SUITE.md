@@ -12,7 +12,7 @@ Like the other suites, the value is a Claude session driving `lyx fabric` by han
 Before starting a session:
 
 1. **Deploy a fresh binary.**
-   Run `deploy.cmd` so `lyx.exe` on PATH is current source.
+   Run `deploy-dev.cmd` so the dev `lyx.exe` in `.dev-bin` is current source.
    The deployed binary is a snapshot -- re-deploy after any source change you want to test.
 2. **Materialize the hub.**
    Run `sandbox/build.cmd` (or `sandbox/build.cmd -reset` to start clean) -- the same operating model as the main and per-module suites, which this suite now shares rather than materializing its own dedicated hub.

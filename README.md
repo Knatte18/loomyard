@@ -197,8 +197,9 @@ go build ./cmd/lyx        # build the lyx binary
 go test ./...             # run the full suite (structural invariants included)
 ```
 
-`./deploy` (`deploy.cmd` on Windows) builds and installs `lyx` onto PATH;
-`./deploy-dev` targets a derived `.dev-bin` instead, so a dev build never overwrites the production install.
+`./update-plugins.sh` (`update-plugins.cmd` on Windows) is the only route to production: from a clean tree it mirrors the installed loomyard plugins into the Claude Code plugin cache and builds `lyx` into the Go bin dir (`go env GOBIN`, else `GOPATH/bin`).
+Nothing on `main` is in production until it runs.
+`./deploy-dev` builds the working tree into a derived `.dev-bin` for internal tests, and never touches production.
 
 To start a hub, run `lyx fabric clone <weft-url> [<warp-url>]` — it clones both repos, wires the junctions, materializes every module's config, and creates `_board`, in one call.
 Then `lyx fabric add <slug>` for a task worktree, and `lyx start` inside it.
