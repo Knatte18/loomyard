@@ -37,8 +37,8 @@ func TestComposeActivity(t *testing.T) {
 			currentProducer: "Plan-Write",
 			history:         []HistoryEntry{{Producer: "Plan-Write", Outcome: Stuck, Output: "", At: "2026-08-15T09:00:00Z"}},
 			state:           StateBlocked,
-			errText:         "bounce budget exhausted",
-			want:            Activity{Now: "Plan-Write", Last: "Plan-Write → stuck", Wait: "bounce budget exhausted"},
+			errText:         ReasonBounceBudgetExhausted,
+			want:            Activity{Now: "Plan-Write", Last: "Plan-Write → stuck", Wait: ReasonBounceBudgetExhausted},
 		},
 		{
 			name:            "Wait populated for StateFailed",

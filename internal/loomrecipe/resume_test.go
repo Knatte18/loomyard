@@ -282,8 +282,8 @@ func TestBounceRouting_EmptyTargetBlocksInstead(t *testing.T) {
 	if result.HaltedProducer != loomshed.NameBatchifier {
 		t.Errorf("Run() HaltedProducer = %q; want %q", result.HaltedProducer, loomshed.NameBatchifier)
 	}
-	if result.Reason != "stuck with no OnStuck target" {
-		t.Errorf("Run() Reason = %q; want %q", result.Reason, "stuck with no OnStuck target")
+	if result.Reason != shedengine.ReasonNoOnStuckTarget {
+		t.Errorf("Run() Reason = %q; want %q", result.Reason, shedengine.ReasonNoOnStuckTarget)
 	}
 }
 
@@ -345,8 +345,8 @@ func TestBounceRouting_BudgetExhaustionBlocks(t *testing.T) {
 	if result.HaltedProducer != loomshed.NameDiscussionBouncer {
 		t.Errorf("Run() HaltedProducer = %q; want %q", result.HaltedProducer, loomshed.NameDiscussionBouncer)
 	}
-	if result.Reason != "bounce budget exhausted" {
-		t.Errorf("Run() Reason = %q; want %q", result.Reason, "bounce budget exhausted")
+	if result.Reason != shedengine.ReasonBounceBudgetExhausted {
+		t.Errorf("Run() Reason = %q; want %q", result.Reason, shedengine.ReasonBounceBudgetExhausted)
 	}
 
 	// The blocking Stuck entry is itself appended to history before the inner switch decides
