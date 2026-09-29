@@ -18,7 +18,8 @@ Record any new cross-cutting invariant there, same commit.
 
 ## Production lyx and plugins: one route, operator-triggered
 
-`update-plugins.sh` (`update-plugins.cmd` on Windows) is the only route to production: from a clean tree it mirrors the installed loomyard plugins into the Claude Code plugin cache and builds `lyx` into the Go bin dir (`go env GOBIN`, else `GOPATH/bin`).
+`update-plugins.sh` (`update-plugins.cmd` on Windows) is the only route to production: from a clean tree whose HEAD is pushed to `origin/main`, it mirrors the installed loomyard plugins into the Claude Code plugin cache, builds `lyx` into the Go bin dir (`go env GOBIN`, else `GOPATH/bin`), and moves the `prod` branch forward to that commit.
+`main` is the working branch; `prod` names what is in production, and only the script moves it — never commit to or push `prod` by hand.
 Code on `main` is not in production until the operator runs it; never run it unasked, and never install `lyx` anywhere else.
 Internal tests use the dev build instead: `./deploy-dev` (`deploy-dev.cmd`) builds the working tree into `.dev-bin` and never touches production.
 There is no versioning: the plugins stay at `1.0.0`, and running the script is the release.

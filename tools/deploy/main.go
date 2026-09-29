@@ -1,10 +1,11 @@
 // Command deploy is the only route by which lyx and the loomyard plugins are installed.
 //
 // Production is the default and is what update-plugins.sh / update-plugins.cmd run: it puts the
-// checked-out, committed code into production in one step. It refuses a dirty working tree, mirrors
-// every installed loomyard plugin's git-tracked files into the Claude Code plugin cache, and builds
-// lyx into the Go bin dir (`go env GOBIN`, else GOPATH/bin). Nothing reaches production except
-// through this step.
+// checked-out, committed code into production in one step. It refuses a dirty working tree or a
+// HEAD that is not pushed to origin/main, mirrors every installed loomyard plugin's git-tracked
+// files into the Claude Code plugin cache, builds lyx into the Go bin dir (`go env GOBIN`, else
+// GOPATH/bin), and then moves the `prod` branch forward to the deployed commit. Nothing reaches
+// production except through this step.
 //
 // -dev (deploy-dev / deploy-dev.cmd) builds the working tree as-is into <repoRoot>/.dev-bin (see
 // tools/internal/devbin) for internal tests, and touches nothing else.
@@ -45,12 +46,16 @@ func run(dev bool) error {
 		return err
 	}
 
+	var head string
 	if !dev {
 		porcelain, err := gitOut(root, "status", "--porcelain")
 		if err != nil {
 			return fmt.Errorf("git status: %w", err)
 		}
 		if err := dirtyError(porcelain); err != nil {
+			return err
+		}
+		if head, err = prodGate(root); err != nil {
 			return err
 		}
 		if err := syncPlugins(root); err != nil {
@@ -97,6 +102,13 @@ func run(dev bool) error {
 	if dev {
 		return nil
 	}
+	// The prod pointer moves only after everything above succeeded, so it never names a commit
+	// that did not actually reach production.
+	if _, err := gitOut(root, "push", "origin", head+":refs/heads/"+prodBranch); err != nil {
+		return fmt.Errorf("deployed, but moving %s to %s failed: %w", prodBranch, head, err)
+	}
+	fmt.Printf("Moved %s -> %s\n", prodBranch, head)
+
 	pathDirs := filepath.SplitList(os.Getenv("PATH"))
 	if !onPath(pathDirs, destDir) {
 		fmt.Printf("  WARNING: %s is not on PATH - add it so 'lyx' resolves globally.\n", destDir)
@@ -121,6 +133,48 @@ func dirtyError(porcelain string) error {
 		return nil
 	}
 	return fmt.Errorf("working tree is dirty; commit or stash before deploying to production:\n%s", porcelain)
+}
+
+// workBranch is where all work lands; prodBranch is the pointer a production deploy moves to the
+// commit it deployed, so `git log -1 prod` always names what is in production.
+const (
+	workBranch = "main"
+	prodBranch = "prod"
+)
+
+// prodGate fetches origin and returns HEAD's full SHA when HEAD may go to production: it must be
+// pushed work (on origin's workBranch), and prodBranch, when it exists, must be its ancestor, so
+// production history only ever moves forward.
+func prodGate(root string) (string, error) {
+	if _, err := gitOut(root, "fetch", "--quiet", "origin"); err != nil {
+		return "", fmt.Errorf("git fetch origin: %w", err)
+	}
+	head, err := gitOut(root, "rev-parse", "HEAD")
+	if err != nil {
+		return "", fmt.Errorf("git rev-parse HEAD: %w", err)
+	}
+	onWork := isAncestor(root, head, "origin/"+workBranch)
+	_, prodErr := gitOut(root, "rev-parse", "--verify", "--quiet", "origin/"+prodBranch)
+	prodExists := prodErr == nil
+	prodBehind := prodExists && isAncestor(root, "origin/"+prodBranch, head)
+	return head, prodAdvanceError(head, onWork, prodExists, prodBehind)
+}
+
+// prodAdvanceError is prodGate's decision, separated from the git calls that feed it.
+func prodAdvanceError(head string, onWork, prodExists, prodBehind bool) error {
+	if !onWork {
+		return fmt.Errorf("HEAD %s is not on origin/%s; push it to %s before deploying to production", head, workBranch, workBranch)
+	}
+	if prodExists && !prodBehind {
+		return fmt.Errorf("origin/%s is not an ancestor of HEAD %s; production only moves forward -- revert on %s and deploy that instead", prodBranch, head, workBranch)
+	}
+	return nil
+}
+
+func isAncestor(root, ancestor, descendant string) bool {
+	cmd := exec.Command("git", "merge-base", "--is-ancestor", ancestor, descendant)
+	cmd.Dir = root
+	return cmd.Run() == nil
 }
 
 // resolveDest picks the install directory: .dev-bin for dev, the Go bin dir for production.
