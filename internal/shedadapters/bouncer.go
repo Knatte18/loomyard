@@ -8,6 +8,7 @@ package shedadapters
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -78,6 +79,11 @@ type BouncerConfig struct {
 	// Now is the injected clock resolving only the archive filename's same-second collision
 	// suffix.
 	Now func() time.Time
+	// ClusterExcludes is a told value: true exactly when the BurlerRound row this Bouncer's OnStuck
+	// names runs a cluster fan the judge's exclude_lenses can trim.
+	// Only then do the seed and judge prompts ask for exclude_lenses; the zero value asks for focus
+	// alone.
+	ClusterExcludes bool
 }
 
 // Bouncer is the shedadapters adapter implementing the generic review-gate producer: it composes
@@ -525,12 +531,14 @@ func (b *Bouncer) runSeedSpawn(focusPathValue string) error {
 		return nil
 	}
 
-	prompt, err := stencil.Fill(seedTemplate, map[string]string{
+	seedValues := map[string]string{
 		"rubric":     rubric,
 		"artifacts":  strings.Join(b.cfg.ArtifactPaths, "\n"),
 		"round":      "1",
 		"focus_path": focusPathValue,
-	})
+	}
+	maps.Copy(seedValues, focusSchemaMarkers(b.cfg.ClusterExcludes))
+	prompt, err := stencil.Fill(seedTemplate, seedValues)
 	if err != nil {
 		logger.Warn("shedadapters: bouncer seed prompt fill failed", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", 1, "cause", err)
 		return nil
@@ -622,7 +630,7 @@ func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, she
 	// shedengine.Done unreachable.
 	outputs := judgeOutputs(b.cfg.RunDir, n)
 
-	prompt, err := stencil.Fill(judgeTemplate, map[string]string{
+	judgeValues := map[string]string{
 		"rubric":          rubric,
 		"artifacts":       strings.Join(b.cfg.ArtifactPaths, "\n"),
 		"round":           strconv.Itoa(n),
@@ -632,7 +640,9 @@ func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, she
 		"verdict_path":    outputs[0],
 		"ledger_path":     outputs[1],
 		"focus_path":      outputs[2],
-	})
+	}
+	maps.Copy(judgeValues, focusSchemaMarkers(b.cfg.ClusterExcludes))
+	prompt, err := stencil.Fill(judgeTemplate, judgeValues)
 	if err != nil {
 		return b.degrade(ctx, "shedadapters: bouncer judge prompt fill failed", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", err)
 	}

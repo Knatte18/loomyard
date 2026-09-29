@@ -114,6 +114,9 @@
 // through that same pair. The two sides once disagreed -- the writer emitted this .md file while the
 // reader opened a round-<N>-focus.json and strictly decoded JSON -- which silently emptied the
 // directive on every production read, so the agreement is pinned here rather than left implicit.
+// A Bouncer asks for exclude_lenses only when told ClusterExcludes, meaning its round runs a cluster
+// fan the excludes can trim; otherwise its prompts request focus alone, so the key may be absent
+// from a judge-written file.
 // Its exclude_lenses reach the round's ClusterExclude; the file itself is hydrated into the round's
 // prior-review context whenever it carries a directive at all, which is how the judge's targeting
 // reaches the fixer.

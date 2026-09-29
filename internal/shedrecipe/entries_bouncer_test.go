@@ -746,3 +746,69 @@ func TestBouncerEntry_ApproveSeam(t *testing.T) {
 		assertErrContains(t, err, "approve-seam")
 	})
 }
+
+// TestBouncerEntry_ClusterExcludes covers the optional cluster_excludes key: its default, both
+// boolean values observed through the judge prompt a Call renders, the type check, and the
+// allowlist entry that admits exactly this spelling.
+func TestBouncerEntry_ClusterExcludes(t *testing.T) {
+	judgePrompt := func(t *testing.T, cfgValue any, set bool) string {
+		t.Helper()
+		env := newTestEnv(t)
+		shuttle := &judgeSeamFakeShuttle{}
+		env.Shuttle = shuttle
+		writeStencil(t, env.StencilsDir, "bouncer-template-judge", "rules:\n{{.focus_list_rules}}\n")
+		cfg := minimalBouncerConfig(t, env)
+		if set {
+			cfg["cluster_excludes"] = cfgValue
+		}
+		layoutBouncerRound1Report(t, env)
+
+		producer, err := bouncerEntry("review-bounce", cfg, env)
+		if err != nil {
+			t.Fatalf("bouncerEntry() error = %v; want nil", err)
+		}
+		if _, _, err := producer.Call(context.Background()); err != nil {
+			t.Fatalf("Call() error = %v; want nil", err)
+		}
+		if len(shuttle.specs) != 1 {
+			t.Fatalf("recorded specs = %d; want 1", len(shuttle.specs))
+		}
+		return shuttle.specs[0].Prompt
+	}
+
+	t.Run("AbsentOmitsExcludeLenses", func(t *testing.T) {
+		if p := judgePrompt(t, nil, false); strings.Contains(p, "exclude_lenses") {
+			t.Errorf("prompt mentions exclude_lenses with the key absent:\n%s", p)
+		}
+	})
+
+	t.Run("TrueRendersExcludeLenses", func(t *testing.T) {
+		if p := judgePrompt(t, true, true); !strings.Contains(p, "exclude_lenses") {
+			t.Errorf("prompt lacks exclude_lenses with cluster_excludes true:\n%s", p)
+		}
+	})
+
+	t.Run("FalseOmitsExcludeLenses", func(t *testing.T) {
+		if p := judgePrompt(t, false, true); strings.Contains(p, "exclude_lenses") {
+			t.Errorf("prompt mentions exclude_lenses with cluster_excludes false:\n%s", p)
+		}
+	})
+
+	t.Run("NonBooleanIsConstructionError", func(t *testing.T) {
+		env := newTestEnv(t)
+		cfg := minimalBouncerConfig(t, env)
+		cfg["cluster_excludes"] = "yes"
+
+		_, err := bouncerEntry("review-bounce", cfg, env)
+		assertErrContains(t, err, "cluster_excludes")
+	})
+
+	t.Run("MisspelledKeyIsUnrecognised", func(t *testing.T) {
+		env := newTestEnv(t)
+		cfg := minimalBouncerConfig(t, env)
+		cfg["cluster_exclude"] = true
+
+		_, err := bouncerEntry("review-bounce", cfg, env)
+		assertErrContains(t, err, `unrecognized config key "cluster_exclude"`)
+	})
+}

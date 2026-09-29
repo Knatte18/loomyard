@@ -341,6 +341,11 @@ func TestParseFocusSpecific(t *testing.T) {
 			wantOK:  true,
 		},
 		{
+			name:    "absent exclude_lenses key legal",
+			content: "---\nround: 1\nfocus: []\n---\n",
+			wantOK:  true,
+		},
+		{
 			name:    "zero round rejected",
 			content: "---\nround: 0\nexclude_lenses: []\nfocus: []\n---\n",
 			wantErr: "round must be a positive integer",
@@ -365,6 +370,9 @@ func TestParseFocusSpecific(t *testing.T) {
 				}
 				if ff.ExcludeLenses == nil || ff.Focus == nil {
 					t.Fatalf("ExcludeLenses and Focus must both be non-nil even when empty")
+				}
+				if len(ff.ExcludeLenses) != 0 || len(ff.Focus) != 0 {
+					t.Fatalf("ExcludeLenses and Focus must both be empty, got %v and %v", ff.ExcludeLenses, ff.Focus)
 				}
 				return
 			}
