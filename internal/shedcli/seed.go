@@ -18,13 +18,18 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// resolveSeedDriver returns flagVal, defaulting to shedrun.DriverGo when flagVal is empty --
-// mirroring battencli's own battenDriver helper.
-func resolveSeedDriver(flagVal string) string {
-	if flagVal == "" {
-		return shedrun.DriverGo
+// resolveSeedDriver returns flagVal, defaulting an empty flagVal to shedrun.DriverLLM when the
+// recipe has a bootstrap verb to boot an ly-drive session and to shedrun.DriverGo when it does not,
+// since an llm-driven run is how runs are meant to be driven but a recipe without a bootstrap verb
+// cannot honour it.
+func resolveSeedDriver(flagVal string, hasBootstrapVerb bool) string {
+	if flagVal != "" {
+		return flagVal
 	}
-	return flagVal
+	if hasBootstrapVerb {
+		return shedrun.DriverLLM
+	}
+	return shedrun.DriverGo
 }
 
 // parseSeedParams parses raw, each entry a "key=value" pair, into a map. It refuses an entry with
@@ -52,47 +57,50 @@ func parseSeedParams(raw []string) (map[string]string, error) {
 
 // writeSeed is seed's whole resolution-free body: it validates runID, looks recipeName up through
 // this package's own table (lookup) so a seed can only ever name an armable recipe, resolves and
-// validates the driver, and calls shedrun.WriteSeed. It performs no lyxcwd.Resolve and no cwd read
+// validates the driver, and calls shedrun.WriteSeed, returning the driver it recorded. It performs no lyxcwd.Resolve and no cwd read
 // of its own -- location is already resolved, told rather than derived, by whichever caller holds
 // it -- which is what lets seed_test.go drive it directly against a hand-built *lyxcwd.Location,
 // with no real git repository behind it, and stay Tier 1.
-func writeSeed(location *lyxcwd.Location, runID, recipeName, driverFlag string, params map[string]string) error {
+func writeSeed(location *lyxcwd.Location, runID, recipeName, driverFlag string, params map[string]string) (string, error) {
 	// Refused first, as every other shed verb over a batten seed already refuses through
 	// battencli's ArmAt: a seed written into one of fabric's own checkouts (the Board checkout or
 	// a pair's other side) lands in a repository no run is ever driven from, where the Board's own
 	// commit, which stages everything in that checkout, would sweep it onto its branch.
 	if err := fabricengine.RequireDrivableWorktree(location); err != nil {
-		return fmt.Errorf("shedcli: seed refuses to write here: %w", err)
+		return "", fmt.Errorf("shedcli: seed refuses to write here: %w", err)
 	}
 	if err := shedrun.ValidateRunID(runID); err != nil {
-		return err
+		return "", err
 	}
 	e, err := lookup(recipeName)
 	if err != nil {
-		return err
+		return "", err
 	}
 	// The recipe's own location rule, after fabric's: a batten seed is drivable from prime alone,
 	// and a seed written where its recipe's verbs refuse is dirt no verb can ever consume.
 	if e.RefuseSeedAt != nil {
 		if err := e.RefuseSeedAt(location); err != nil {
-			return fmt.Errorf("shedcli: seed refuses to write here: %w", err)
+			return "", fmt.Errorf("shedcli: seed refuses to write here: %w", err)
 		}
 	}
-	driver := resolveSeedDriver(driverFlag)
+	driver := resolveSeedDriver(driverFlag, e.BootstrapVerb != "")
 	if err := shedrun.ValidateDriver(driver); err != nil {
-		return err
+		return "", err
 	}
 	// The capability check is reached only for a legal driver value: an operator who typed a
 	// misspelling gets the vocabulary error above, not a capability error about a recipe that
 	// would have accepted the value they meant.
 	if driver == shedrun.DriverLLM && e.BootstrapVerb == "" {
-		return fmt.Errorf("shedcli: recipe %q has no bootstrap verb, so it cannot be driven by an LLM", recipeName)
+		return "", fmt.Errorf("shedcli: recipe %q has no bootstrap verb, so it cannot be driven by an LLM", recipeName)
 	}
-	return shedrun.WriteSeed(location, runID, shedrun.Seed{
+	if err := shedrun.WriteSeed(location, runID, shedrun.Seed{
 		Recipe: recipeName,
 		Driver: driver,
 		Params: params,
-	})
+	}); err != nil {
+		return "", err
+	}
+	return driver, nil
 }
 
 // newSeedCommand builds "lyx shed seed <run-id> --recipe <name> [--driver <name>] [--param k=v]".
@@ -116,10 +124,11 @@ sequence is predicated on a seed already existing -- "seed" is the command
 invoked when one does not.
 
 --recipe is required and validated against the same table every "lyx shed"
-invocation arms through. --driver defaults to "go", unchanged; "llm" is
-accepted for a recipe that has a bootstrap verb, and refused for one that
-does not; an llm-driven run's driver session needs the ly-drive skill from
-loomyard's "ly" plugin installed. --param is repeatable and sets a seed
+invocation arms through. --driver defaults to "llm" for a recipe that has
+a bootstrap verb and to "go" for one that does not; an explicit "llm" is
+refused for a recipe with no bootstrap verb, and "go" stays selectable for
+every recipe. An llm-driven run's driver session needs the ly-drive skill
+from loomyard's "ly" plugin installed. --param is repeatable and sets a seed
 parameter as key=value.
 
 seed is idempotent against a byte-identical existing seed and refuses a
@@ -130,7 +139,8 @@ branch, "parent".
 
 Example:
   lyx shed seed some-slug --recipe batten
-  lyx shed seed self --recipe loom --driver llm --param parent=main`,
+  lyx shed seed self --recipe loom --param parent=main
+  lyx shed seed self --recipe loom --driver go --param parent=main`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -161,7 +171,8 @@ Example:
 				return nil
 			}
 
-			if err := writeSeed(location, runID, recipeFlag, driverFlag, params); err != nil {
+			driver, err := writeSeed(location, runID, recipeFlag, driverFlag, params)
+			if err != nil {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
@@ -169,7 +180,7 @@ Example:
 			clihelp.SetExit(ctx, output.Ok(out, map[string]any{
 				"run_id": runID,
 				"recipe": recipeFlag,
-				"driver": resolveSeedDriver(driverFlag),
+				"driver": driver,
 			}))
 			return nil
 		},
@@ -179,7 +190,9 @@ Example:
 	// MarkFlagRequired's own error surfaces through RunRootCtx's cobra-error wrapping as a JSON
 	// envelope, exactly as every other cobra-level validation failure does on this tree.
 	_ = cmd.MarkFlagRequired("recipe")
-	cmd.Flags().StringVar(&driverFlag, "driver", shedrun.DriverGo, `the driver this run's child uses; "llm" is refused for a recipe with no bootstrap verb`)
+	// Empty by default rather than a named driver, because the default depends on the recipe --
+	// resolveSeedDriver picks it once --recipe is known.
+	cmd.Flags().StringVar(&driverFlag, "driver", "", `the driver this run's child uses (default "llm", or "go" for a recipe with no bootstrap verb); "llm" is refused for a recipe with no bootstrap verb`)
 	cmd.Flags().StringArrayVar(&paramFlags, "param", nil, "a seed parameter as key=value (repeatable)")
 
 	return cmd

@@ -32,9 +32,9 @@ exactly how an earlier reproduction attempt lost the finding.
    `lyx loom start` reads and writes only the `self` run (`shedrun.SelfRunID`, via
    `seedAndCommitBootstrap` and `resolveRunID`).
    `WriteSeed` refuses a seed whose params disagree with `loomSeedFor`'s `{"parent": <parent>}`,
-   so the seed must be at `self`, and it must carry the same parent that `start` resolves — a
-   seed under any other run-id leaves `self` defaulting to the go driver, and the live check
-   would pass without exercising the llm arm.
+   so the seed must be at `self`, and it must carry the same parent that `start` resolves.
+   An unseeded `start` records the llm driver on its own, so the explicit seed only pins the
+   driver against a changed default.
    Confirm the llm arm ran: `lyx reed status` must list a strand named
    `driverStrandDisplayName`'s value (the ly-drive driver).
    There must be no detached go runner: the driver log named by `LoomDriverLog` is absent or

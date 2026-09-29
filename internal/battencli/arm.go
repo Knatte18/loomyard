@@ -93,12 +93,22 @@ func battenAutoSeedVerbs(verb string) bool {
 }
 
 // battenDriver returns flagVal, defaulting to shedrun.DriverGo when flagVal is empty -- the shape
-// both --driver and --child-driver take when arm_seed_test.go drives armSeed directly against a
-// zero-value receiver, and the shape "lyx batten run"/"lyx batten step" take once cli.go's own
-// StringVar default ("go") has already filled the field.
+// --driver takes when arm_seed_test.go drives armSeed directly against a zero-value receiver, and the
+// shape "lyx batten run"/"lyx batten step" take once cli.go's own StringVar default ("go") has
+// already filled the field. Batten has no bootstrap verb, so go is its only drivable default.
 func battenDriver(flagVal string) string {
 	if flagVal == "" {
 		return shedrun.DriverGo
+	}
+	return flagVal
+}
+
+// battenChildDriver is battenDriver's sibling for --child-driver, defaulting an empty flagVal to
+// shedrun.DriverLLM instead: the child is always a loom run, whose bootstrap verb boots an ly-drive
+// session, and an llm-driven run is how runs are meant to be driven.
+func battenChildDriver(flagVal string) string {
+	if flagVal == "" {
+		return shedrun.DriverLLM
 	}
 	return flagVal
 }
@@ -213,7 +223,7 @@ func (c *battenCLI) armSeed(location *lyxcwd.Location, runID, verb string) error
 	if err := refuseBattenOwnDriverLLM(driver); err != nil {
 		return err
 	}
-	childDriver := battenDriver(c.childDriverFlag)
+	childDriver := battenChildDriver(c.childDriverFlag)
 	if err := shedrun.ValidateDriver(childDriver); err != nil {
 		return err
 	}

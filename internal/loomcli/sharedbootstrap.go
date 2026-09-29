@@ -62,7 +62,8 @@ const (
 //
 // The effective driver is read from any already-recorded seed -- never chosen by this function and
 // never taken from a flag, since this command declares no driver flag of its own -- falling back to
-// shedrun.DriverGo only when no seed exists yet. Without this read-through, a run already seeded for
+// shedrun.DriverLLM only when no seed exists yet; an operator who wants the go driver pre-seeds it
+// with "lyx shed seed self --recipe loom --driver go". Without this read-through, a run already seeded for
 // the llm driver would be refused here: WriteSeed rejects a disagreeing existing seed, and this step
 // used to hard-code the go driver into every write, making the llm arm unreachable regardless of what
 // a run was seeded as.
@@ -157,15 +158,16 @@ func (c *loomCLI) seedAndCommitBootstrap(slug, parentFlag string) (string, strin
 }
 
 // resolveSeedDriver reads the effective driver seedAndCommitBootstrap's step 1b must write: the
-// already-recorded seed's own Driver when one exists, falling back to shedrun.DriverGo only when no
-// seed has been written yet. It is a pure function, factored out so a Tier 1 test can pin the three
+// already-recorded seed's own Driver when one exists, falling back to shedrun.DriverLLM only when no
+// seed has been written yet -- loom has a bootstrap verb, so an unseeded run takes the llm driver,
+// the same default "lyx shed seed" gives a recipe with one. It is a pure function, factored out so a Tier 1 test can pin the three
 // cases -- unseeded, already-go, already-llm -- with no real fabric behind it.
 //
 // This is the read, not a choice: the driver is never chosen here, only preserved. Choosing a
 // different driver mid-run is not this function's job and has no call site that would ask it to.
 func resolveSeedDriver(existing shedrun.Seed, found bool) string {
 	if !found {
-		return shedrun.DriverGo
+		return shedrun.DriverLLM
 	}
 	return existing.Driver
 }

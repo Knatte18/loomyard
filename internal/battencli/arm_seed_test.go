@@ -43,6 +43,14 @@ func TestArmSeed_RunAndStepSeedBeforeWire(t *testing.T) {
 			if _, present := seed.Params["slug"]; present {
 				t.Errorf("seed.Params carries %q; the run-id is the slug and nothing reads a copy", "slug")
 			}
+			// Unset flags: batten's own driver defaults to go, since batten has no bootstrap verb,
+			// while the loom child's defaults to llm.
+			if seed.Driver != shedrun.DriverGo {
+				t.Errorf("seed.Driver = %q; want the default %q", seed.Driver, shedrun.DriverGo)
+			}
+			if got := seed.Params["child_driver"]; got != shedrun.DriverLLM {
+				t.Errorf("seed.Params[child_driver] = %q; want the default %q", got, shedrun.DriverLLM)
+			}
 		})
 	}
 }

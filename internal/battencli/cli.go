@@ -49,7 +49,8 @@ type battenCLI struct {
 	// resolves that to shedrun.DriverGo.
 	driverFlag string
 	// childDriverFlag is driverFlag's sibling for --child-driver, the value armSeed writes into the
-	// auto-seeded seed's params.child_driver.
+	// auto-seeded seed's params.child_driver. Empty means "unset"; battenChildDriver (arm.go)
+	// resolves that to shedrun.DriverLLM.
 	childDriverFlag string
 	// driverFlagSet records whether the operator typed --driver, rather than cobra filling the
 	// field with its StringVar default.
@@ -187,9 +188,9 @@ Example:
 	// "llm" -- the child's own recipe capability is checked when that child's seed is written, not
 	// here.
 	runVerb.Flags().StringVar(&c.driverFlag, "driver", shedrun.DriverGo, "the run's own driver (batten has no bootstrap verb, so \"llm\" is refused)")
-	runVerb.Flags().StringVar(&c.childDriverFlag, "child-driver", shedrun.DriverGo, "the driver the task worktree's own inner run uses")
+	runVerb.Flags().StringVar(&c.childDriverFlag, "child-driver", shedrun.DriverLLM, "the driver the task worktree's own inner run uses")
 	stepVerb.Flags().StringVar(&c.driverFlag, "driver", shedrun.DriverGo, "the run's own driver (batten has no bootstrap verb, so \"llm\" is refused)")
-	stepVerb.Flags().StringVar(&c.childDriverFlag, "child-driver", shedrun.DriverGo, "the driver the task worktree's own inner run uses")
+	stepVerb.Flags().StringVar(&c.childDriverFlag, "child-driver", shedrun.DriverLLM, "the driver the task worktree's own inner run uses")
 
 	parent.AddCommand(runVerb, stepVerb, statusVerb, pauseVerb)
 
