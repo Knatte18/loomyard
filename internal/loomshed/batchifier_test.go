@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
@@ -45,12 +46,15 @@ func TestBatchifier_Call(t *testing.T) {
 		writeBatcherConfig(t, anchorPath, `active: "no-such-batcher"`+"\n")
 
 		b := NewBatchifier("Batchifier", anchorPath)
-		outcome, _, err := b.Call(context.Background())
+		outcome, pointer, err := b.Call(context.Background())
 		if err != nil {
 			t.Fatalf("Call() error = %v; want nil", err)
 		}
 		if outcome != shedengine.Stuck {
 			t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
+		}
+		if !strings.HasPrefix(pointer.Reason, batchifierReasonPrefix) || pointer.Reason == batchifierReasonPrefix {
+			t.Errorf("Call() Reason = %q; want a non-empty cause after %q", pointer.Reason, batchifierReasonPrefix)
 		}
 	})
 
@@ -113,4 +117,26 @@ func TestBatchifier_Call(t *testing.T) {
 			t.Errorf("Call(cancelled) outcome = %q; want no verdict alongside a cancellation error", outcome)
 		}
 	})
+}
+
+// batchifierReasonPrefix is the fixed lead of a Batchifier Stuck's Reason; the cause follows it.
+const batchifierReasonPrefix = "active batchifier did not resolve: "
+
+// TestBatchifier_DistinctCausesYieldDistinctReasons pins that the reason carries the error text,
+// so a malformed config and an unknown name are told apart.
+func TestBatchifier_DistinctCausesYieldDistinctReasons(t *testing.T) {
+	reasonFor := func(content string) string {
+		anchorPath := t.TempDir()
+		writeBatcherConfig(t, anchorPath, content)
+		_, pointer, err := NewBatchifier("Batchifier", anchorPath).Call(context.Background())
+		if err != nil {
+			t.Fatalf("Call() error = %v; want nil", err)
+		}
+		return pointer.Reason
+	}
+	malformed := reasonFor("active: [not valid yaml\n")
+	unknown := reasonFor(`active: "no-such-batcher"` + "\n")
+	if malformed == unknown {
+		t.Errorf("malformed and unknown-name configs both gave Reason %q; want distinct reasons", malformed)
+	}
 }

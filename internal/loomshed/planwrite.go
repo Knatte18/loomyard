@@ -61,7 +61,7 @@ func NewPlanWrite(name string, inner shedengine.ShedProducer, commit func() erro
 // with a non-empty pointer -- and the returned triple is (outcome, pointer, nil) rather than being
 // forced to Done.
 //
-// shuttleengine.OutcomeAsking keeps returning Stuck with an empty pointer and is therefore still not
+// shuttleengine.OutcomeAsking keeps returning Stuck with an empty Path and its cause on Reason, and is therefore still not
 // committed, correctly: an asking run has not satisfied its file contract, so there is nothing to
 // commit.
 //
