@@ -619,6 +619,39 @@ func TestBurlerProducer_Call_ProfileCarriesDerivedFields(t *testing.T) {
 	}
 }
 
+func TestBurlerProducer_Call_ClusterExcludeDropWarning(t *testing.T) {
+	const dropWarning = "shedadapters: focus file names cluster excludes but this round's profile has no cluster fan; dropping them"
+
+	tests := []struct {
+		name        string
+		focus       focusFile
+		wantWarning bool
+	}{
+		{"NoExcludeLensesKey", focusFile{Round: 2, Focus: []string{"look at the seam"}}, false},
+		{"ExcludesOnFanlessProfile", focusFile{Round: 2, ExcludeLenses: []string{"lensA"}}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			buf := captureLogOutput(t)
+			runDir := t.TempDir()
+			writeJudgedRound(t, runDir, 1)
+			writeFocusFile(t, runDir, 2, tt.focus)
+			runner := &fakeBurlerRunner{results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
+			p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
+
+			if _, _, err := p.Call(context.Background()); err != nil {
+				t.Fatalf("Call() error = %v; want nil", err)
+			}
+			if got := runner.gotProfiles[0].ClusterExclude; got != nil {
+				t.Errorf("ClusterExclude = %v; want nil on a fan-less profile", got)
+			}
+			if has := strings.Contains(buf.String(), dropWarning); has != tt.wantWarning {
+				t.Errorf("log contains drop warning = %v; want %v; log:\n%s", has, tt.wantWarning, buf.String())
+			}
+		})
+	}
+}
+
 func TestBurlerProducer_Call_RunOptsCarriesRoundToken(t *testing.T) {
 	runDir := t.TempDir()
 	writeJudgedRound(t, runDir, 4)
