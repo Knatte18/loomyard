@@ -3,12 +3,9 @@
      the agent's entire instruction set -- the call runs as a single clean-room agent told only "read
      this file and do exactly what it says".
      Every marker below is a top-level {{.X}} substitution;
-     stencil.Fill requires every marker this file names non-empty, and there are no {{if}}/{{range}}
-     conditionals anywhere in this file (a required marker inside a conditional branch would render
-     silently blank when present-but-empty -- see internal/stencil/stencil.go).
-     The focus-schema markers ({{.focus_example_lists}}, {{.focus_list_rules}},
-     {{.approved_focus_lists}}) have two variants, rendered by focusSchemaMarkers in
-     internal/shedadapters/bouncerprompt.go:
+     stencil.Fill requires every marker this file names non-empty,
+     and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty -- see internal/stencil/stencil.go).
+     The focus-schema markers ({{.focus_example_lists}}, {{.focus_list_rules}}, {{.approved_focus_lists}}) have two variants, rendered by focusSchemaMarkers in internal/shedadapters/bouncerprompt.go:
      Go holds the variant so this stencil stays conditional-free.
      {{.round}} and {{.next_round}} are deliberately DIFFERENT markers, not a typo: the ledger file
      (`{{.ledger_path}}`, built from ledgerPath(runDir, round)) records the round being judged, while
@@ -118,8 +115,7 @@ Frontmatter rules, all strict:
 
 Below the closing `---`, prose rationale is optional.
 
-An `APPROVED` verdict still writes `{{.focus_path}}`, with {{.approved_focus_lists}},
-because the run is classified complete only when every declared output file exists -- a
-judge that writes two of three files has its approval discarded.
+An `APPROVED` verdict still writes `{{.focus_path}}`, with {{.approved_focus_lists}}, because the run is classified complete only when every declared output file exists --
+a judge that writes two of three files has its approval discarded.
 
 Write EXACTLY THREE files this call: `{{.verdict_path}}`, `{{.ledger_path}}`, and `{{.focus_path}}`.

@@ -29,8 +29,8 @@ func focusSchemaMarkers(clusterExcludes bool) map[string]string {
 	return map[string]string{
 		"focus_example_lists": "focus: []",
 		"focus_list_rules": "- `focus` is a list of strings, possibly empty.\n" +
-			"- The `focus` key is always present, even when empty -- never omit it, and never write a\n" +
-			"  scalar where a list is required.",
+			"- The `focus` key is always present, even when empty --\n" +
+			"  never omit it, and never write a scalar where a list is required.",
 		"approved_focus_lists": "an empty `focus`",
 	}
 }

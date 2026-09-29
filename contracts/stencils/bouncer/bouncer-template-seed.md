@@ -4,11 +4,9 @@
      set -- the call runs as a single clean-room agent told only "read this file and do exactly
      what it says".
      Every marker below is a top-level {{.X}} substitution;
-     stencil.Fill requires every marker this file names non-empty, and there are no {{if}}/{{range}}
-     conditionals anywhere in this file (a required marker inside a conditional branch would render
-     silently blank when present-but-empty -- see internal/stencil/stencil.go).
-     The focus-schema markers ({{.focus_example_lists}}, {{.focus_list_rules}}) have two variants,
-     rendered by focusSchemaMarkers in internal/shedadapters/bouncerprompt.go:
+     stencil.Fill requires every marker this file names non-empty,
+     and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty -- see internal/stencil/stencil.go).
+     The focus-schema markers ({{.focus_example_lists}}, {{.focus_list_rules}}) have two variants, rendered by focusSchemaMarkers in internal/shedadapters/bouncerprompt.go:
      Go holds the variant so this stencil stays conditional-free. -->
 
 # Bouncer — seed pass
