@@ -172,7 +172,7 @@ func TestDetectAnomalies(t *testing.T) {
 			final: func() shedengine.Status {
 				f := baseFinal()
 				f.State = shedengine.StateBlocked
-				f.Error = errorTextEscalation
+				f.Error = shedengine.ReasonNoOnStuckTarget
 				return f
 			}(),
 			product: baseProduct(),
@@ -188,14 +188,14 @@ func TestDetectAnomalies(t *testing.T) {
 			final: func() shedengine.Status {
 				f := baseFinal()
 				f.State = shedengine.StateBlocked
-				f.Error = errorTextBudgetExhausted
+				f.Error = shedengine.ReasonBounceBudgetExhausted
 				return f
 			}(),
 			product: baseProduct(),
 			want:    []AnomalyKind{AnomalyBudgetExhausted},
 		},
 		{
-			name: "BlockedOtherErrorText_None",
+			name: "BlockedProducerReason_Escalation",
 			entry: func() EntryObservation {
 				e := baseEntry()
 				e.State = shedengine.StateBlocked
@@ -204,11 +204,27 @@ func TestDetectAnomalies(t *testing.T) {
 			final: func() shedengine.Status {
 				f := baseFinal()
 				f.State = shedengine.StateBlocked
-				f.Error = "some other reason"
+				f.Error = "pull request review is still pending: https://github.com/o/r/pull/1"
 				return f
 			}(),
 			product: baseProduct(),
-			want:    nil,
+			want:    []AnomalyKind{AnomalyEscalation},
+		},
+		{
+			name: "BlockedGenericFallback_Escalation",
+			entry: func() EntryObservation {
+				e := baseEntry()
+				e.State = shedengine.StateBlocked
+				return e
+			}(),
+			final: func() shedengine.Status {
+				f := baseFinal()
+				f.State = shedengine.StateBlocked
+				f.Error = shedengine.ReasonNoOnStuckTarget
+				return f
+			}(),
+			product: baseProduct(),
+			want:    []AnomalyKind{AnomalyEscalation},
 		},
 		{
 			name: "FailedArbitraryError_ProducerHardFailure",
@@ -312,7 +328,7 @@ func TestTitleStability_HaltKindSurvivesResumeAppend(t *testing.T) {
 	first := shedengine.Status{
 		CurrentProducer: "Discussion-Review",
 		State:           shedengine.StateBlocked,
-		Error:           errorTextEscalation,
+		Error:           shedengine.ReasonNoOnStuckTarget,
 		History: []shedengine.HistoryEntry{
 			{Producer: "Discussion-Review", Outcome: shedengine.Stuck, At: "2026-07-17T10:01:30Z"},
 		},
@@ -320,7 +336,7 @@ func TestTitleStability_HaltKindSurvivesResumeAppend(t *testing.T) {
 	resumed := shedengine.Status{
 		CurrentProducer: "Discussion-Review",
 		State:           shedengine.StateBlocked,
-		Error:           errorTextEscalation,
+		Error:           shedengine.ReasonNoOnStuckTarget,
 		History: append(append([]shedengine.HistoryEntry{}, first.History...), shedengine.HistoryEntry{
 			Producer: "Discussion-Review", Outcome: shedengine.Stuck, At: "2026-07-17T10:05:00Z",
 		}),
@@ -346,12 +362,12 @@ func TestTitleDistinctness_HaltKind(t *testing.T) {
 	atProducerA := shedengine.Status{
 		CurrentProducer: "Discussion-Review",
 		State:           shedengine.StateBlocked,
-		Error:           errorTextEscalation,
+		Error:           shedengine.ReasonNoOnStuckTarget,
 	}
 	atProducerB := shedengine.Status{
 		CurrentProducer: "Plan-Review",
 		State:           shedengine.StateBlocked,
-		Error:           errorTextEscalation,
+		Error:           shedengine.ReasonNoOnStuckTarget,
 	}
 	aAnomalies := DetectAnomalies(EntryObservation{}, atProducerA, product, nil)
 	bAnomalies := DetectAnomalies(EntryObservation{}, atProducerB, product, nil)
@@ -362,12 +378,12 @@ func TestTitleDistinctness_HaltKind(t *testing.T) {
 	noPriorDone := shedengine.Status{
 		CurrentProducer: "Discussion-Review",
 		State:           shedengine.StateBlocked,
-		Error:           errorTextEscalation,
+		Error:           shedengine.ReasonNoOnStuckTarget,
 	}
 	onePriorDone := shedengine.Status{
 		CurrentProducer: "Discussion-Review",
 		State:           shedengine.StateBlocked,
-		Error:           errorTextEscalation,
+		Error:           shedengine.ReasonNoOnStuckTarget,
 		History: []shedengine.HistoryEntry{
 			{Producer: "Discussion-Review", Outcome: shedengine.Done, At: "2026-07-17T09:00:00Z"},
 		},

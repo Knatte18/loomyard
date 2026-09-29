@@ -85,13 +85,6 @@ type Anomaly struct {
 	LedgerStatus    string
 }
 
-// The two exact error literals shedengine.Run's outcome == Stuck arm sets verbatim -- a blocked
-// state carrying any other error text matches neither.
-const (
-	errorTextEscalation      = "stuck with no OnStuck target"
-	errorTextBudgetExhausted = "bounce budget exhausted"
-)
-
 // recurringFindingThreshold is the minimum Rounds length an open ledger entry must carry to be
 // reported. It is three, not the five every review segment's own max_bounces carries, because the
 // Bouncer's own seed call permanently consumes one unit of that budget -- firing at three reports
@@ -160,15 +153,17 @@ func DetectAnomalies(entry EntryObservation, final shedengine.Status, product St
 
 // detectHaltAnomaly evaluates the three halt-kind triggers (escalation, budget-exhausted,
 // producer-hard-failure) against final, all read straight off it. At most one fires, since the
-// three triggers partition final.State: blocked with one of the two exact error literals,
-// blocked with any other text matching neither, or failed matching on state alone.
+// three triggers partition final.State: blocked with shedengine.ReasonBounceBudgetExhausted,
+// blocked with anything else, or failed matching on state alone. shedengine persists
+// StateBlocked from exactly two arms, so "blocked and not budget-exhausted" is exactly the
+// escalation arm, and the partition never depends on text a producer controls.
 func detectHaltAnomaly(final shedengine.Status, product Status) (Anomaly, bool) {
 	var kind AnomalyKind
 	switch {
-	case final.State == shedengine.StateBlocked && final.Error == errorTextEscalation:
-		kind = AnomalyEscalation
-	case final.State == shedengine.StateBlocked && final.Error == errorTextBudgetExhausted:
+	case final.State == shedengine.StateBlocked && final.Error == shedengine.ReasonBounceBudgetExhausted:
 		kind = AnomalyBudgetExhausted
+	case final.State == shedengine.StateBlocked:
+		kind = AnomalyEscalation
 	case final.State == shedengine.StateFailed:
 		kind = AnomalyProducerFailure
 	default:
