@@ -53,8 +53,9 @@ type RoundFocus struct {
 // the fixer round: BurlerProducer appends Hydrate onto the profile's PriorReviews, so the round
 // reads the directive verbatim alongside the prior rounds' reports. An APPROVED judge still writes a
 // focus file (its third output file is unconditional, so the run classifies complete), and that file
-// carries empty lists (a Bouncer not told ClusterExcludes writes focus alone) and no prose; hydrating it would hand the next round an empty document
-// asserting nothing, so an empty directive stays empty.
+// carries empty lists (a Bouncer not told ClusterExcludes writes focus alone) and no prose;
+// hydrating it would hand the next round an empty document asserting nothing, so an empty
+// directive stays empty.
 func readRoundFocus(name, runDir string, round int) RoundFocus {
 	path := focusPath(runDir, round)
 
