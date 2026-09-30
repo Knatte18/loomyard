@@ -53,6 +53,12 @@
 // so the moved-onto segment starts with a fresh bounce budget.
 // A goto whose target is missing from the producer list ends no episode.
 //
+// Goto only moves a halted run back.
+// It refuses a running run, because the run lock is free between a step-driven driver's steps and nothing else tells a live driver from a crashed one.
+// The reference row is the row current_producer names, or, when that names no row, the producer of the latest history entry that does, whose routed row (OnDone after done, OnStuck after stuck) is admitted too.
+// A target is admitted when it sits at or before the reference row in the producer list; an awaiting run admits only rows strictly before it, since moving onto or past a hand-off would bypass it.
+// Every refusal leaves the status file unchanged.
+//
 // Two stops name goto as their way forward in a trailing `way forward:` clause:
 // the missing-producer refusal, which lists every valid producer name, and the budget-exhausted reason, whose ReasonBounceBudgetExhausted stays its exact prefix.
 // Every refusal's way forward is tabulated in contracts/specs/refusal-spec.md, which this documentation links rather than restates.

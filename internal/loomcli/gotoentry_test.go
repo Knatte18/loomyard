@@ -34,8 +34,8 @@ func TestObserveEntry_GotoIsNotACrashResume(t *testing.T) {
 		LockPath:       runLockPath,
 		StatusLockPath: statusLockPath,
 		Producers: []shedengine.ProducerDef{
-			{Name: "Loom-Preflight"},
 			{Name: "Discussion-Write"},
+			{Name: "Loom-Preflight"},
 		},
 		Target: "Discussion-Write",
 	}); err != nil {

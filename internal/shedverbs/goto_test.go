@@ -44,14 +44,14 @@ func seedBlocked(t *testing.T, paths testPaths, current string) {
 // TestGotoCmd_MovesBlockedRunOntoRow asserts a blocked run lands paused on the target and the file is updated.
 func TestGotoCmd_MovesBlockedRunOntoRow(t *testing.T) {
 	paths := newTestPaths(t)
-	seedBlocked(t, paths, "A")
+	seedBlocked(t, paths, "B")
 
-	env, code := execEnvelope(t, gotoCmd(gotoTexts(), gotoSpec(paths)), []string{"--to", "B"})
+	env, code := execEnvelope(t, gotoCmd(gotoTexts(), gotoSpec(paths)), []string{"--to", "A"})
 	if code != 0 {
 		t.Fatalf("exit code = %d; want 0 (env %v)", code, env)
 	}
-	if env["current_producer"] != "B" || env["state"] != "paused" {
-		t.Errorf("envelope current_producer/state = %v/%v; want B/paused", env["current_producer"], env["state"])
+	if env["current_producer"] != "A" || env["state"] != "paused" {
+		t.Errorf("envelope current_producer/state = %v/%v; want A/paused", env["current_producer"], env["state"])
 	}
 	if env["run_id"] != "run-1" || env["status_file"] != paths.StatusPath {
 		t.Errorf("envelope run_id/status_file = %v/%v", env["run_id"], env["status_file"])
@@ -61,8 +61,8 @@ func TestGotoCmd_MovesBlockedRunOntoRow(t *testing.T) {
 	if err != nil || !found {
 		t.Fatalf("re-read status: found=%v err=%v", found, err)
 	}
-	if st.CurrentProducer != "B" || st.State != shedengine.StatePaused {
-		t.Errorf("status = %s/%s; want B/paused", st.CurrentProducer, st.State)
+	if st.CurrentProducer != "A" || st.State != shedengine.StatePaused {
+		t.Errorf("status = %s/%s; want A/paused", st.CurrentProducer, st.State)
 	}
 }
 
@@ -78,7 +78,7 @@ func TestGotoCmd_RefusesMissingOrUnknownTarget(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			paths := newTestPaths(t)
-			seedBlocked(t, paths, "A")
+			seedBlocked(t, paths, "B")
 
 			env, code := execEnvelope(t, gotoCmd(gotoTexts(), gotoSpec(paths)), tt.args)
 			if code != 1 {
@@ -95,14 +95,14 @@ func TestGotoCmd_RefusesMissingOrUnknownTarget(t *testing.T) {
 // TestGotoCmd_RefusesHeldRunLock asserts a held run lock names lyx shed pause.
 func TestGotoCmd_RefusesHeldRunLock(t *testing.T) {
 	paths := newTestPaths(t)
-	seedBlocked(t, paths, "A")
+	seedBlocked(t, paths, "B")
 	held, locked, err := lock.TryAcquireWriteLock(paths.LockPath)
 	if err != nil || !locked {
 		t.Fatalf("acquire run lock: locked=%v err=%v", locked, err)
 	}
 	defer held.Release()
 
-	env, code := execEnvelope(t, gotoCmd(gotoTexts(), gotoSpec(paths)), []string{"--to", "B"})
+	env, code := execEnvelope(t, gotoCmd(gotoTexts(), gotoSpec(paths)), []string{"--to", "A"})
 	if code != 1 {
 		t.Fatalf("exit code = %d; want 1", code)
 	}
