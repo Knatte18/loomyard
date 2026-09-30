@@ -106,27 +106,39 @@ func TestWebsterProducer_UnrecognizedOutcome(t *testing.T) {
 // --- Error mapping table ---
 
 func TestWebsterProducer_MasterAskingError(t *testing.T) {
-	dir := t.TempDir()
-	deps := websterengine.RunDeps{Geom: websterengine.Geometry{WebsterDir: dir}}
-	askingErr := &websterengine.MasterAskingError{SessionID: "sess-1", RunDir: "/tmp/run", Message: "which model?"}
-	fake := &fakeWebsterRunner{err: askingErr}
-	p := NewWebsterProducer("loom", fake.run, deps)
+	tests := []struct {
+		name       string
+		askingErr  *websterengine.MasterAskingError
+		wantReason string
+	}{
+		{"SessionAndRunDir", &websterengine.MasterAskingError{SessionID: "sess-1", RunDir: "/tmp/run", Message: "which model?"}, "webster master is asking a question; session sess-1, run dir /tmp/run"},
+		{"EmptySessionIDNamesRunDir", &websterengine.MasterAskingError{RunDir: "/tmp/run", Message: "which model?"}, "webster master is asking a question; run dir /tmp/run"},
+		{"NeitherIsBareText", &websterengine.MasterAskingError{Message: "which model?"}, "webster master is asking a question"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			deps := websterengine.RunDeps{Geom: websterengine.Geometry{WebsterDir: dir}}
+			fake := &fakeWebsterRunner{err: tt.askingErr}
+			p := NewWebsterProducer("loom", fake.run, deps)
 
-	outcome, ptr, err := p.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil (asking maps to Stuck)", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-	}
-	if ptr.Path != "" {
-		t.Errorf("Call() pointer.Path = %q; want empty", ptr.Path)
-	}
-	if !strings.Contains(ptr.Reason, "sess-1") || !strings.Contains(ptr.Reason, "/tmp/run") {
-		t.Errorf("Call() Reason = %q; want it to name the session and run dir", ptr.Reason)
-	}
-	if strings.Contains(ptr.Reason, "which model?") {
-		t.Errorf("Call() Reason %q contains the master's message", ptr.Reason)
+			outcome, ptr, err := p.Call(context.Background())
+			if err != nil {
+				t.Fatalf("Call() error = %v; want nil (asking maps to Stuck)", err)
+			}
+			if outcome != shedengine.Stuck {
+				t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
+			}
+			if ptr.Path != "" {
+				t.Errorf("Call() pointer.Path = %q; want empty", ptr.Path)
+			}
+			if ptr.Reason != tt.wantReason {
+				t.Errorf("Call() Reason = %q; want %q", ptr.Reason, tt.wantReason)
+			}
+			if strings.Contains(ptr.Reason, "which model?") {
+				t.Errorf("Call() Reason %q contains the master's message", ptr.Reason)
+			}
+		})
 	}
 }
 
