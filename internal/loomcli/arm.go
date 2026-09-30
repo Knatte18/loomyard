@@ -387,8 +387,7 @@ func (c *loomCLI) loomPreStep(ctx context.Context) (string, error) {
 	if err := os.MkdirAll(filepath.Dir(c.shedPaths.LockPath), 0o755); err != nil {
 		return shedverbs.KindBootstrap, err
 	}
-	// Without this early probe, step would seed, commit, bring up reed
-	// against a task a live driver owns.
+	// Without this early probe, step would seed, commit and bring up reed against a task a live driver owns.
 	probe, runLockFree, err := lock.TryAcquireWriteLock(c.shedPaths.LockPath)
 	if err != nil {
 		return shedverbs.KindBootstrap, err
