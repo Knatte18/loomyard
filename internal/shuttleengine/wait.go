@@ -522,7 +522,11 @@ func (run *Run) abandonStartup(outcome Outcome) (Result, error) {
 // in-progress tool-call signal the engine surfaces (see claudeengine's
 // ParseEvents for the concrete provider mapping) classify as a real-time
 // asking the instant the tool call opens, exactly like today's turn-end
-// asking case. Returns
+// asking case. The one Kind this function does read is EventWaiting: when
+// every output file exists the run is done whatever the last event was, and
+// otherwise a batch ending in EventWaiting is still running (the session is
+// waiting on its own background work), so it returns outcome == "" with the
+// offset already advanced. Returns
 // outcome == "" when there is nothing new to classify yet.
 func (run *Run) pollEventsTick() (Outcome, string, error) {
 	data, newOffset, err := readEventsFrom(run.state.EventsPath, run.offset)
@@ -548,6 +552,9 @@ func (run *Run) pollEventsTick() (Outcome, string, error) {
 	last := events[len(events)-1]
 	if allOutputFilesExist(run.spec.OutputFiles) {
 		return OutcomeDone, "", nil
+	}
+	if last.Kind == EventWaiting {
+		return "", "", nil
 	}
 	return OutcomeAsking, last.Message, nil
 }
