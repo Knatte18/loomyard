@@ -314,3 +314,78 @@ func TestTriage_RerunSpawnErrorIsReturned(t *testing.T) {
 		t.Fatal("err = nil; want the spawn error")
 	}
 }
+
+func TestTriageWarnings(t *testing.T) {
+	flaky := IntegrationTriage{Flaky: []string{"p.A", "p.B"}}
+	pre := IntegrationTriage{PreExisting: []string{"p.C"}, BaselineSHA: "abc"}
+	both := IntegrationTriage{Flaky: flaky.Flaky, PreExisting: pre.PreExisting, BaselineSHA: "abc", Regressions: []string{"p.R"}}
+	cases := []struct {
+		name string
+		in   IntegrationTriage
+		want []string
+	}{
+		{"flaky only", flaky, []string{"integration verify: flaky failures passed or vanished on rerun: p.A, p.B"}},
+		{"pre-existing only", pre, []string{"integration verify: pre-existing failures also fail at baseline abc: p.C"}},
+		{"both", both, []string{
+			"integration verify: flaky failures passed or vanished on rerun: p.A, p.B",
+			"integration verify: pre-existing failures also fail at baseline abc: p.C",
+		}},
+		{"neither", IntegrationTriage{Regressions: []string{"p.R"}}, nil},
+	}
+	for _, c := range cases {
+		if got := triageWarnings(c.in); !reflect.DeepEqual(got, c.want) {
+			t.Errorf("%s: got %q; want %q", c.name, got, c.want)
+		}
+	}
+}
+
+func TestTriageStuckReason(t *testing.T) {
+	regs := []IntegrationFailure{{ID: "p.A"}, {ID: "p.B"}}
+	want := "integration verify regressed: p.A, p.B (offending card: 3-foo)"
+	if got := triageStuckReason(regs, "3-foo"); got != want {
+		t.Errorf("got %q; want %q", got, want)
+	}
+	want = "integration verify regressed: p.A, p.B (offending card not localized)"
+	if got := triageStuckReason(regs, "unknown"); got != want {
+		t.Errorf("got %q; want %q", got, want)
+	}
+}
+
+func TestWriteTriageFrictionNote(t *testing.T) {
+	t.Run("content", func(t *testing.T) {
+		dir := filepath.Join(t.TempDir(), "friction")
+		tr := IntegrationTriage{Flaky: []string{"p.A"}, PreExisting: []string{"p.B", "p.C"}}
+		if err := writeTriageFrictionNote(dir, tr); err != nil {
+			t.Fatal(err)
+		}
+		got, err := os.ReadFile(filepath.Join(dir, "webster-verify-triage.md"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := "Integration-suite triage: non-regression verify failures\n\n" +
+			"These identities failed the first verify run and passed or vanished on rerun (flaky):\n\n- p.A\n\n" +
+			"These identities also fail at the plan's starting commit (pre-existing):\n\n- p.B\n- p.C\n\n"
+		if string(got) != want {
+			t.Errorf("note = %q; want %q", got, want)
+		}
+	})
+	t.Run("empty dir", func(t *testing.T) {
+		cwd := t.TempDir()
+		t.Chdir(cwd)
+		if err := writeTriageFrictionNote("", IntegrationTriage{Flaky: []string{"p.A"}}); err != nil {
+			t.Fatal(err)
+		}
+		if entries, _ := os.ReadDir(cwd); len(entries) != 0 {
+			t.Errorf("wrote %d entries; want none", len(entries))
+		}
+	})
+	t.Run("regression only", func(t *testing.T) {
+		dir := filepath.Join(t.TempDir(), "friction")
+		if err := writeTriageFrictionNote(dir, IntegrationTriage{Regressions: []string{"p.R"}}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.Stat(dir); !os.IsNotExist(err) {
+			t.Errorf("friction dir exists (err = %v); want nothing written", err)
+		}
+	})
+}

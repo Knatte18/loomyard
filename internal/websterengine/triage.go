@@ -8,6 +8,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
+
+	"github.com/Knatte18/loomyard/internal/friction"
 )
 
 // baselineUnavailableWarning states why every head failure was classified a regression.
@@ -134,6 +137,66 @@ func runAtBaseline(run verifyRunner, repo FabricBisector, sha, verifyCmd, worktr
 		return verifyRun{}, fmt.Errorf("webster: triage: checkout baseline %s: %w", sha, err)
 	}
 	return run(verifyCmd, worktree, logPath)
+}
+
+// triageWarnings returns one warning per non-empty non-regression category, flaky then
+// pre-existing, each naming its identities.
+// It returns nil when t has neither.
+func triageWarnings(t IntegrationTriage) []string {
+	var warnings []string
+	if len(t.Flaky) > 0 {
+		warnings = append(warnings, "integration verify: flaky failures passed or vanished on rerun: "+strings.Join(t.Flaky, ", "))
+	}
+	if len(t.PreExisting) > 0 {
+		warnings = append(warnings, "integration verify: pre-existing failures also fail at baseline "+t.BaselineSHA+": "+strings.Join(t.PreExisting, ", "))
+	}
+	return warnings
+}
+
+// triageStuckReason builds the RunResult.StuckReason for a run demoted by a regression.
+// It names every regressing identity and the localized card, or states the card was not
+// localized when offendingCard is "unknown".
+func triageStuckReason(regressions []IntegrationFailure, offendingCard string) string {
+	reason := "integration verify regressed: " + strings.Join(failureIDs(regressions), ", ")
+	if offendingCard == "unknown" {
+		return reason + " (offending card not localized)"
+	}
+	return reason + " (offending card: " + offendingCard + ")"
+}
+
+// writeTriageFrictionNote records the flaky and pre-existing identities as a friction note, since
+// a pre-existing failure is environment trouble the hub collects from friction notes.
+// It is a no-op when frictionDir is empty or both non-regression lists are empty.
+func writeTriageFrictionNote(frictionDir string, t IntegrationTriage) error {
+	if frictionDir == "" || (len(t.Flaky) == 0 && len(t.PreExisting) == 0) {
+		return nil
+	}
+	friction.EnsureDir(frictionDir)
+	path := friction.NotePath(frictionDir, "webster-verify-triage")
+	if path == "" {
+		return nil
+	}
+
+	var b strings.Builder
+	b.WriteString("Integration-suite triage: non-regression verify failures\n\n")
+	if len(t.Flaky) > 0 {
+		b.WriteString("These identities failed the first verify run and passed or vanished on rerun (flaky):\n\n")
+		for _, id := range t.Flaky {
+			b.WriteString("- " + id + "\n")
+		}
+		b.WriteString("\n")
+	}
+	if len(t.PreExisting) > 0 {
+		b.WriteString("These identities also fail at the plan's starting commit (pre-existing):\n\n")
+		for _, id := range t.PreExisting {
+			b.WriteString("- " + id + "\n")
+		}
+		b.WriteString("\n")
+	}
+	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
+		return fmt.Errorf("webster: triage: write friction note %s: %w", path, err)
+	}
+	return nil
 }
 
 // failureIDs returns the ids of fs in order.
