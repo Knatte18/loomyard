@@ -188,6 +188,22 @@ func createRefusal(err error) error {
 	)
 }
 
+// teardownRefusal rewords the teardown refusal for uncommitted run records, and passes every other
+// error through unchanged.
+//
+// fabric's own refusal for a dirty pair sibling leaves --force as the way out, and --force would
+// discard exactly the records this task exists to keep. The records are uncommitted when a driver
+// ended before its end-of-session commit, so the remedy named here commits them first.
+func teardownRefusal(err error, slug, taskAnchor string) error {
+	if !errors.Is(err, fabricengine.ErrPairSiblingDirty) {
+		return err
+	}
+	return fmt.Errorf(
+		"the task worktree's run records are uncommitted, most likely because a driver ended before its end-of-session commit; run \"lyx loom commit-records\" in %s to commit them, then resume this run with \"lyx batten run %s\"",
+		taskAnchor, slug,
+	)
+}
+
 // taskTopology builds the topology holder over the hub's repo-wide fabric config, which every
 // create and teardown call here reads fresh rather than at wiring time.
 func taskTopology(prime *lyxcwd.Location) (*fabricengine.Topology, error) {
@@ -377,7 +393,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 					if err != nil {
 						return fmt.Errorf("the pair for %q is gone but deleting its other-side branch failed: %w; resume this run to retry the deletion", slug, err)
 					}
-					logger.Info("battencli: teardown finished the pair's branch deletion", "slug", slug, "mutations", branchRes.Mutated(), "remote_skipped_reason", branchRes.RemoteSkippedReason)
+					logger.Info("battencli: teardown finished the pair's branch deletion", "slug", slug, "mutations", branchRes.Mutated(), "remote_skipped_reason", branchRes.RemoteSkippedReason, "archive_tag", branchRes.ArchiveTag, "archive_skipped_reason", branchRes.ArchiveSkippedReason)
 					return nil
 				}
 				// remote: true -- a batten-driven teardown is the task's own final removal, never a
@@ -388,10 +404,14 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				if err != nil {
 					return err
 				}
-				res, err := top.Remove(location, slug, false, true)
-				logger.Info("battencli: teardown worktree", "slug", slug, "mutations", res.Mutated(), "remote_skipped_reason", res.RemoteSkippedReason)
+				taskLocation, err := taskWorktreeLocation(location, slug)
 				if err != nil {
 					return err
+				}
+				res, err := top.Remove(location, slug, false, true)
+				logger.Info("battencli: teardown worktree", "slug", slug, "mutations", res.Mutated(), "remote_skipped_reason", res.RemoteSkippedReason, "archive_tag", res.ArchiveTag, "archive_skipped_reason", res.ArchiveSkippedReason)
+				if err != nil {
+					return teardownRefusal(err, slug, taskLocation.AnchorPath())
 				}
 				// Remove reports a failed remote deletion without failing; it is returned here so the
 				// row halts resumable, and the resumed row's already-gone arm above retries it.

@@ -413,6 +413,32 @@ func TestCreateRefusal_LeftoverBranchRemedyNeverNamesCheckout(t *testing.T) {
 	}
 }
 
+// TestTeardownRefusal_RecordsRemedyNamesCommitRecordsNeverForce asserts an uncommitted-run-records
+// refusal is reworded to batten's own recovery -- commit the records in the task anchor, then
+// resume -- and never names --force, while every other teardown error passes through unchanged.
+func TestTeardownRefusal_RecordsRemedyNamesCommitRecordsNeverForce(t *testing.T) {
+	const anchor = "/work/wts/some-slug"
+	dirty := fmt.Errorf("remove: %w", fabricengine.ErrPairSiblingDirty)
+
+	got := teardownRefusal(dirty, "some-slug", anchor)
+	if got == nil {
+		t.Fatal("teardownRefusal(sibling dirty) = nil; want a reworded refusal")
+	}
+	for _, want := range []string{"lyx loom commit-records", anchor, "lyx batten run some-slug"} {
+		if !strings.Contains(got.Error(), want) {
+			t.Errorf("teardownRefusal(sibling dirty) = %q; want it to contain %q", got.Error(), want)
+		}
+	}
+	if strings.Contains(got.Error(), "--force") {
+		t.Errorf("teardownRefusal(sibling dirty) = %q; want it to never name --force", got.Error())
+	}
+
+	other := errors.New("the task worktree has uncommitted changes")
+	if got := teardownRefusal(other, "some-slug", anchor); got != other {
+		t.Errorf("teardownRefusal(other) = %v; want the same error passed through", got)
+	}
+}
+
 // TestTaskWorktreePresent_AbsentIsAnAnswerNotAnError asserts the create row's idempotency probe
 // answers false with no error for a task worktree that was never created, so a genuinely absent one
 // still reaches fabric's own create rather than short-circuiting the row.
