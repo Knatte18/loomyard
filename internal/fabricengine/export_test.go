@@ -153,6 +153,24 @@ func CheckRemoteBranchRequestForTest(l *lyxcwd.Location, repoDir, remote, branch
 	return checkRemoteBranchRequest(req)
 }
 
+// DeleteArchivedWeftBranchForTest drives deleteRemoteBranch with the pair-weft ownership and
+// archived-on-remote dirtiness kinds and a fresh recorder, returning the recorder's snapshot, for
+// package fabricengine_test integration tests that cannot build a remoteBranchRequest themselves.
+func DeleteArchivedWeftBranchForTest(l *lyxcwd.Location, repoDir, warpBranch, branch, archiveTag, leaseSHA string) (Mutations, error) {
+	req := remoteBranchRequest{
+		what:      "test delete archived weft branch",
+		repoDir:   repoDir,
+		remote:    originRemoteName,
+		branch:    branch,
+		ownership: ownedPairWeftBranch(l, warpBranch),
+		dirtiness: dirtyArchivedOnRemote(archiveTag),
+		leaseSHA:  leaseSHA,
+	}
+	rec := NewMutations("")
+	_, err := deleteRemoteBranch(rec, req)
+	return rec.Snapshot(), err
+}
+
 // --- weft-fixture migration shim (fabricengine in-package weft batch) ---
 //
 // The functions and types below serve the nine package fabricengine_test files this batch relocates

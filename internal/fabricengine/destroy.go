@@ -254,6 +254,9 @@ type remoteBranchRequest struct {
 	ownership branchOwnership
 	// dirtiness declares which dirtiness probe the pipeline runs against branch.
 	dirtiness branchDirtiness
+	// leaseSHA is the remote tip the caller observed; when non-empty the deletion succeeds only while
+	// the remote branch still sits there. Empty keeps the unleased, idempotent path.
+	leaseSHA string
 	// force is reserved: every remoteBranchRequest construction in this package hardcodes it false
 	// today, exactly as branchRequest's own force field does, for the same reason — no call site's own
 	// gate currently answers to it.
@@ -356,6 +359,7 @@ const (
 	branchOwnershipUnset branchOwnershipKind = iota
 	branchOwnershipManaged
 	branchOwnershipPairWarp
+	branchOwnershipPairWeft
 )
 
 // branchOwnership declares which of the closed set of ownership kinds a branchRequest's branch must
@@ -364,7 +368,8 @@ type branchOwnership struct {
 	kind         branchOwnershipKind
 	location     *lyxcwd.Location
 	branchPrefix string
-	// warpBranch and parentBranch serve ownedPairWarpBranch only.
+	// warpBranch serves ownedPairWarpBranch and ownedPairWeftBranch; parentBranch serves
+	// ownedPairWarpBranch only.
 	warpBranch   string
 	parentBranch string
 }
@@ -377,6 +382,15 @@ type branchOwnership struct {
 // question belongs to the dirtiness step. An empty warpBranch matches nothing.
 func ownedPairWarpBranch(warpBranch, parentBranch string) branchOwnership {
 	return branchOwnership{kind: branchOwnershipPairWarp, warpBranch: warpBranch, parentBranch: parentBranch}
+}
+
+// ownedPairWeftBranch declares branch as owned when it is exactly WeftBranchName(warpBranch), is
+// accepted by WeftWarpSlug, and is not l's primary weft branch.
+// It deliberately has no checked-out test: at Add's step 12 the same-named local branch is the
+// replacement, checked out at the new weft worktree, which is exactly what ownedManagedBranch refuses.
+// An empty warpBranch matches nothing.
+func ownedPairWeftBranch(l *lyxcwd.Location, warpBranch string) branchOwnership {
+	return branchOwnership{kind: branchOwnershipPairWeft, location: l, warpBranch: warpBranch}
 }
 
 // ownedManagedBranch declares branch as owned when it is one fabric's own scheme constructs (accepted
@@ -438,6 +452,7 @@ const (
 	branchDirtinessUnset branchDirtinessKind = iota
 	branchDirtinessCheckedOutBranch
 	branchDirtinessUnlandedWork
+	branchDirtinessArchivedOnRemote
 )
 
 // branchDirtiness declares which dirtiness probe the pipeline runs against a branchRequest's branch.
@@ -446,6 +461,17 @@ type branchDirtiness struct {
 	kind branchDirtinessKind
 	// parentBranch serves dirtyUnlandedWork only; empty when the pair has no origin record.
 	parentBranch string
+	// archiveTag serves dirtyArchivedOnRemote only: the archive/<slug>/* tag the pre-flight proved
+	// covers the remote tip.
+	archiveTag string
+}
+
+// dirtyArchivedOnRemote declares that the remote branch's tip is covered by archiveTag, an
+// archive/<slug>/* tag the caller's pre-flight proved reaches it, so deleting it loses no work.
+// It answers a remote question only: checkRemoteBranchRequest accepts it, checkBranchRequest refuses
+// it, and an empty archiveTag is refused as covered by no archive tag.
+func dirtyArchivedOnRemote(archiveTag string) branchDirtiness {
+	return branchDirtiness{kind: branchDirtinessArchivedOnRemote, archiveTag: archiveTag}
 }
 
 // dirtyUnlandedWork declares that the pipeline's dirtiness step refuses a branch whose work would be
@@ -617,6 +643,8 @@ func resolveBranchOwnership(own branchOwnership, branch string) (ok bool, reason
 		return resolveManagedBranch(own.location, own.branchPrefix, branch)
 	case branchOwnershipPairWarp:
 		return resolvePairWarpBranch(own.warpBranch, own.parentBranch, branch)
+	case branchOwnershipPairWeft:
+		return resolvePairWeftBranch(own.location, own.warpBranch, branch)
 	default:
 		return false, "no ownership kind declared"
 	}
@@ -630,6 +658,26 @@ func resolvePairWarpBranch(warpBranch, parentBranch, branch string) (bool, strin
 	}
 	if parentBranch != "" && warpBranch == parentBranch {
 		return false, fmt.Sprintf("%s is the branch the pair lands on", branch)
+	}
+	return true, ""
+}
+
+// resolvePairWeftBranch implements ownedPairWeftBranch's predicate: the two pure name checks run
+// first, so a mismatched name refuses without spawning git, then branch must not be l's primary weft
+// branch, failing closed when the primary cannot be read.
+func resolvePairWeftBranch(l *lyxcwd.Location, warpBranch, branch string) (bool, string) {
+	if warpBranch == "" || branch != WeftBranchName(warpBranch) {
+		return false, fmt.Sprintf("%s is not the pair's own weft branch for %q", branch, warpBranch)
+	}
+	if _, ok := WeftWarpSlug(branch); !ok {
+		return false, fmt.Sprintf("%s is not a name fabric's own scheme constructs", branch)
+	}
+	primary, err := primaryWeftBranch(l)
+	if err != nil {
+		return false, fmt.Sprintf("cannot determine the repo's primary weft branch: %v", err)
+	}
+	if branch == primary {
+		return false, fmt.Sprintf("%s is the repo's primary weft branch", branch)
 	}
 	return true, ""
 }
@@ -779,6 +827,9 @@ func checkBranchRequest(req branchRequest) error {
 // The unlanded-work kind additionally refuses a branch carrying commits no other ref holds and the
 // parent does not already contain; see checkUnlandedWork.
 func checkBranchDirtiness(req branchRequest) error {
+	if req.dirtiness.kind == branchDirtinessArchivedOnRemote {
+		return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.branch, Reason: "archived-on-remote dirtiness answers a remote question; a local branch delete has no remote tip to prove"}
+	}
 	if req.dirtiness.kind == branchDirtinessUnlandedWork {
 		return checkUnlandedWork(req)
 	}
@@ -866,6 +917,16 @@ func checkRemoteBranchRequest(req remoteBranchRequest) error {
 
 	if ok, reason := resolveBranchOwnership(req.ownership, req.branch); !ok {
 		return &destructiveRefusal{Check: CheckOwnership, What: req.what, Target: req.branch, Reason: reason}
+	}
+
+	if req.dirtiness.kind == branchDirtinessArchivedOnRemote {
+		if req.dirtiness.archiveTag == "" {
+			return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.branch, Reason: "the remote tip is covered by no archive tag"}
+		}
+		if req.leaseSHA == "" {
+			return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.branch, Reason: "no lease SHA: the archive-coverage proof holds only for the tip it was computed against"}
+		}
+		return nil
 	}
 
 	return checkedOutBranchDirtiness(req.ownership.location, req.what, req.branch)
@@ -1052,6 +1113,7 @@ func deleteBranch(rec *Mutations, req branchRequest) error {
 // pipeline, then calls gitrepo.New(req.repoDir).DeleteRemoteBranch(req.remote, req.branch).
 // It returns the (deleted, err) pair through unchanged, wrapping nothing — every call site builds its
 // own message from it, exactly as deleteBranch and removeGitWorktree already do.
+// A non-empty req.leaseSHA routes through DeleteRemoteBranchLeased instead, recording only on success.
 // It appends KindRemoteBranchDeleted to rec via AppendRef, not Append, only when err is nil AND
 // deleted is true: a remote ref is a ref, not a path, so it carries no hub-relative conversion, and
 // the append happens only on an observed deletion — never on deleted == false, which is the
@@ -1059,6 +1121,14 @@ func deleteBranch(rec *Mutations, req branchRequest) error {
 func deleteRemoteBranch(rec *Mutations, req remoteBranchRequest) (deleted bool, err error) {
 	if checkErr := checkRemoteBranchRequest(req); checkErr != nil {
 		return false, checkErr
+	}
+
+	if req.leaseSHA != "" {
+		if err = gitrepo.New(req.repoDir).DeleteRemoteBranchLeased(req.remote, req.branch, req.leaseSHA); err != nil {
+			return false, err
+		}
+		rec.AppendRef(KindRemoteBranchDeleted, req.branch, req.remote)
+		return true, nil
 	}
 
 	deleted, err = gitrepo.New(req.repoDir).DeleteRemoteBranch(req.remote, req.branch)
