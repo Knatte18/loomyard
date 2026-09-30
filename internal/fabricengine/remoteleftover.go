@@ -1,8 +1,8 @@
 // remoteleftover.go holds Add's read-only pre-flight probes of both origins.
-// A branch a removed pair left on the warp or weft origin is either proven replaceable or refused
-// before Add's first mutation, so the refusal never arrives mid-Add as a rejected push.
-// Every probe is read-only git through gitexec; the one fetch (the weft archive probe) writes
-// FETCH_HEAD only and creates no branch, remote-tracking ref or tag.
+// A branch a removed pair left on the warp or weft origin is either proven replaceable or refused before Add's first mutation,
+// so the refusal never arrives mid-Add as a rejected push.
+// Every probe is read-only git through gitexec;
+// the one fetch (the weft archive probe) writes FETCH_HEAD only and creates no branch, remote-tracking ref or tag.
 
 package fabricengine
 
