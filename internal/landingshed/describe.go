@@ -7,13 +7,42 @@ package landingshed
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
+	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
+
+// NewDescriptionGate returns the Describe row's gate closure: a shuttleengine.Gate that runs
+// summaryparser.ValidateDescription over descriptionPath, the same function
+// `lyx loom validate-description` calls (Gate Self-Check Parity Invariant).
+// A returned error passes through with the zero GateResult; no findings is a pass; findings are a
+// failed result whose Findings joins each Finding's Error() with "; ", preceded by a logger.Warn
+// because that line is the only durable record of why a description was refused.
+func NewDescriptionGate(descriptionPath string) shuttleengine.Gate {
+	return func() (shuttleengine.GateResult, error) {
+		findings, err := summaryparser.ValidateDescription(descriptionPath)
+		if err != nil {
+			return shuttleengine.GateResult{}, err
+		}
+		if len(findings) == 0 {
+			return shuttleengine.GateResult{Passed: true}, nil
+		}
+
+		parts := make([]string, len(findings))
+		for i, f := range findings {
+			parts[i] = f.Error()
+		}
+		formatted := strings.Join(parts, "; ")
+		logger.Warn("landingshed: description gate failed validation", "gate", "Describe-Gate", "description", descriptionPath, "findings", formatted)
+		return shuttleengine.GateResult{Passed: false, Findings: formatted}, nil
+	}
+}
 
 // describeStencilName is the registered name of the Describe prompt.
 const describeStencilName = "landing-template-describe"

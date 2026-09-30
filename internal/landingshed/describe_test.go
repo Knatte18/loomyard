@@ -96,3 +96,39 @@ func TestDescribeSpec_UnparsableModelSpecIsError(t *testing.T) {
 		t.Errorf("DescribeSpec with unparsable describe = _, %v; want an error naming the describe model-spec", err)
 	}
 }
+
+func TestNewDescriptionGate(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, content string) string {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+			t.Fatalf("WriteFile(%q) = %v; want nil", p, err)
+		}
+		return p
+	}
+
+	tests := []struct {
+		name       string
+		path       string
+		wantPassed bool
+		wantInFind string
+	}{
+		{"valid", write("ok.md", "# A title\n\nA body.\n"), true, ""},
+		{"co-author trailer", write("trailer.md", "# A title\n\nBody.\n\nCo-Authored-By: X <x@y.z>\n"), false, "co-authored-by-trailer"},
+		{"missing file", filepath.Join(dir, "absent.md"), false, "missing-file"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			res, err := NewDescriptionGate(tt.path)()
+			if err != nil {
+				t.Fatalf("gate error = %v; want nil", err)
+			}
+			if res.Passed != tt.wantPassed {
+				t.Errorf("Passed = %v; want %v (findings %q)", res.Passed, tt.wantPassed, res.Findings)
+			}
+			if !strings.Contains(res.Findings, tt.wantInFind) {
+				t.Errorf("Findings = %q; want it to contain %q", res.Findings, tt.wantInFind)
+			}
+		})
+	}
+}
