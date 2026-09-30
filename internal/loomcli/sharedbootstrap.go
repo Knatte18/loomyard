@@ -2,9 +2,10 @@
 // Every helper here is lock-agnostic: none acquires or releases loomengine.LoomBootstrapLock,
 // because the lock's position differs between the two calling verbs -- `start` acquires it later than
 // its own seed/verify/commit block and holds it across the strand work, the driver spawn, and the
-// run-lock handshake, while `step` spawns no driver and runs no handshake, so it wraps the strand
-// block alone and releases before calling the producer. Each verb wraps its own lock window around
-// these calls; no helper here may assume either window.
+// run-lock handshake, while `step` spawns no driver and runs no handshake, so it wraps reed Up
+// alone and releases before calling the producer. ensureStatusStrand is `start`'s alone: `step`
+// touches no strand. Each verb wraps its own lock window around these calls; no helper here may
+// assume either window.
 
 package loomcli
 

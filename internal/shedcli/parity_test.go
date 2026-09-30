@@ -29,7 +29,7 @@
 // no parity case here may reach reed, tmux, an LLM producer, or shed.Run/shed.Step's own producer
 // call. run's arm is a hub with no loom status file, refusing at the very first statement in loom's
 // PreRun; step's arm is a hub whose run lock is already held, refusing at the early run-lock probe
-// above seedAndCommitBootstrap and ensureStatusStrand; status and pause are read-only and never
+// above seedAndCommitBootstrap and reed Up; status and pause are read-only and never
 // reach the substrate on any path, so they are driven against a seeded status file to exercise the
 // success envelope; and batten's run is driven against a slug whose persisted status is
 // StateDone, which refuses inside batten's own PreRun before BuildShed is ever called. That bound
@@ -141,7 +141,7 @@ func TestParity_LoomRun_NoStatusFile(t *testing.T) {
 
 // TestParity_LoomStep_RunLockBusy drives "lyx loom step" and "lyx shed step" over a pair seeded at
 // "self" for loom whose run lock is already held, which refuses at the early run-lock probe with
-// kind: busy -- above seedAndCommitBootstrap and above ensureStatusStrand.
+// kind: busy -- above seedAndCommitBootstrap and above reed Up.
 func TestParity_LoomStep_RunLockBusy(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	hubforge.AddPair(t, h, "parity-step")
