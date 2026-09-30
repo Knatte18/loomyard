@@ -450,6 +450,20 @@ func (f *fakeLoomShuttle) Run(spec shuttleengine.Spec) (shuttleengine.Result, er
 		return shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil
 	}
 
+	if spec.Role == "describe" {
+		// A valid change description: a "# title" heading and a non-empty body, no trailer line,
+		// so the description gate passes.
+		for _, path := range spec.OutputFiles {
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				return shuttleengine.Result{}, fmt.Errorf("fakeLoomShuttle: mkdir %s: %w", filepath.Dir(path), err)
+			}
+			if err := os.WriteFile(path, []byte("# Fixture change\n\nFixture description body.\n"), 0o644); err != nil {
+				return shuttleengine.Result{}, fmt.Errorf("fakeLoomShuttle: write description %s: %w", path, err)
+			}
+		}
+		return shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil
+	}
+
 	if spec.Role == "bouncer-judge" {
 		f.bouncerJudgeCalls++
 		return f.runBouncerJudge(spec)
@@ -626,6 +640,7 @@ func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, 
 	}
 
 	planDir := filepath.Join(dir, lyxdirs.LyxDirName, "plan")
+	descriptionPath := filepath.Join(dir, lyxdirs.LyxDirName, "landing", "summary.md")
 
 	loomShuttle := &fakeLoomShuttle{
 		writeOutputs:          true,
@@ -681,6 +696,16 @@ func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, 
 			loomShuttle.commitDiscussionCalls++
 			return nil
 		},
+		DescriptionPath: descriptionPath,
+		DescribeSpec: func() (shuttleengine.Spec, error) {
+			return shuttleengine.Spec{
+				Prompt:      "describe prompt",
+				OutputFiles: []string{descriptionPath},
+				Interactive: false,
+				Role:        "describe",
+			}, nil
+		},
+		CommitDescription: func() error { return nil },
 		PlanSpec: func() (shuttleengine.Spec, error) {
 			return shuttleengine.Spec{
 				Prompt:      "plan prompt",

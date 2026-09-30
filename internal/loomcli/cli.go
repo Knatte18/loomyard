@@ -218,7 +218,7 @@ var loomVerbTexts = shedverbs.VerbTexts{
 no terminal handover. It is the escape hatch for debugging and CI.
 
 run is NOT tmux-free. Every LLM row underneath it -- Discussion-Write,
-Plan-Write, and all three review segments -- spawns its agent through
+Plan-Write, Describe, and all three review segments -- spawns its agent through
 shuttle into a reed pane, so a live tmux session is required. run
 ensures that session itself, exactly as "lyx loom start" does, rather than
 failing several producers deep once a row first tries to add a strand.
@@ -314,7 +314,7 @@ func Command() *cobra.Command {
 on the generic shed engine. The machine walks its producer rows: a
 two-row preflight, then Discussion, Plan, and Webster, each of the three
 followed by its own LLM review segment that loops until it approves or
-escalates, then Publish and Finalize, and last Friction-Reflect, which runs
+escalates, then Describe, which writes the change description, then Publish and Finalize, and last Friction-Reflect, which runs
 "run"'s Tier 2 friction reflection before the run records done. "start" is
 the bootstrap verb: it seeds the status file, commits the seed, and spawns/attaches the
 detached driver session; "run" is the no-tmux escape hatch that runs the

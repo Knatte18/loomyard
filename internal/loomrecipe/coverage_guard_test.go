@@ -38,6 +38,7 @@ var loomRowEngines = map[string]string{
 	loomshed.NameWebster:           "Webster",
 	loomshed.NameWebsterBouncer:    "Bouncer",
 	loomshed.NameWebsterBurler:     "BurlerRound",
+	loomshed.NameDescribe:          "Describe",
 	loomshed.NamePublish:           "Publish",
 	loomshed.NameFinalize:          "Finalize",
 	loomshed.NameFrictionReflect:   "FrictionReflect",
