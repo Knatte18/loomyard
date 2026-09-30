@@ -132,16 +132,12 @@ func orchestratorMarkerValues() map[string]string {
 	}
 }
 
-// instruction1MarkerValues returns a values map with every one of
-// instruction 1's four required top-level markers set to a non-empty
-// placeholder, plus pattern_directive and friction_directive — the two
-// optional markers, filled via stencil.FillOptional — set to a placeholder
-// too, so tests can delete one key at a time to prove stencil.FillOptional's
-// per-marker error.
+// instruction1MarkerValues returns a values map with every one of instruction 1's four required top-level markers set to a non-empty placeholder, plus pattern_directive, friction_directive and focus_directive — the three optional markers, filled via stencil.FillOptional — set to a placeholder too, so tests can delete one key at a time to prove stencil.FillOptional's per-marker error.
 func instruction1MarkerValues() map[string]string {
 	return map[string]string{
 		"pattern_directive":  "## Constraints — do this before you judge or change anything\n\n- Read _lyx/PATTERN.md.",
 		"friction_directive": "## Friction note — optional, only if something went wrong",
+		"focus_directive":    "## Focus directive for this round",
 		"target":             "target placeholder",
 		"fasit":              "fasit placeholder",
 		"rubric":             "rubric placeholder",
@@ -171,13 +167,9 @@ func instruction3MarkerValues() map[string]string {
 	}
 }
 
-// TestTemplate_FillsWithAllMarkers asserts each of the four embedded assets fills through stencil
-// when supplied its own full marker set (required markers plus, for instruction 1, the optional
-// pattern_directive and friction_directive), and fails — naming the marker — when any single
-// REQUIRED marker for that asset is absent.
-// pattern_directive and friction_directive are deliberately excluded from instruction 1's deletion
-// sweep: they are the two optional markers across all four assets, so deleting either must not
-// error.
+// TestTemplate_FillsWithAllMarkers asserts each of the four embedded assets fills through stencil when supplied its own full marker set (required markers plus, for instruction 1, the optional pattern_directive, friction_directive and focus_directive), and fails — naming the marker — when any single REQUIRED marker for that asset is absent.
+// pattern_directive, friction_directive and focus_directive are deliberately excluded from instruction 1's deletion sweep:
+// they are the optional markers across all four assets, so deleting any of them must not error.
 func TestTemplate_FillsWithAllMarkers(t *testing.T) {
 	tests := []struct {
 		name            string
@@ -196,7 +188,7 @@ func TestTemplate_FillsWithAllMarkers(t *testing.T) {
 			name:            "instruction 1 (explore)",
 			template:        stencils.BurlerStep1Explore,
 			values:          instruction1MarkerValues(),
-			optional:        []string{"pattern_directive", "friction_directive"},
+			optional:        []string{"pattern_directive", "friction_directive", "focus_directive"},
 			requiredMarkers: []string{"target", "fasit", "rubric", "tool_use_rules"},
 		},
 		{
@@ -254,7 +246,7 @@ func TestTemplate_PatternDirectiveOptional(t *testing.T) {
 	t.Run("empty pattern_directive renders cleanly", func(t *testing.T) {
 		values := instruction1MarkerValues()
 		values["pattern_directive"] = ""
-		got, err := stencil.FillOptional(stencils.BurlerStep1Explore, values, []string{"pattern_directive"})
+		got, err := stencil.FillOptional(stencils.BurlerStep1Explore, values, []string{"pattern_directive", "focus_directive"})
 		if err != nil {
 			t.Fatalf("stencil.FillOptional() = %v; want nil", err)
 		}
@@ -272,7 +264,7 @@ func TestTemplate_PatternDirectiveOptional(t *testing.T) {
 
 	t.Run("non-empty pattern_directive precedes the first work instruction", func(t *testing.T) {
 		values := instruction1MarkerValues()
-		got, err := stencil.FillOptional(stencils.BurlerStep1Explore, values, []string{"pattern_directive"})
+		got, err := stencil.FillOptional(stencils.BurlerStep1Explore, values, []string{"pattern_directive", "focus_directive"})
 		if err != nil {
 			t.Fatalf("stencil.FillOptional() = %v; want nil", err)
 		}
@@ -296,7 +288,7 @@ func TestTemplate_FrictionDirectiveOptional(t *testing.T) {
 	t.Run("empty friction_directive renders cleanly", func(t *testing.T) {
 		values := instruction1MarkerValues()
 		values["friction_directive"] = ""
-		got, err := stencil.FillOptional(stencils.BurlerStep1Explore, values, []string{"pattern_directive", "friction_directive"})
+		got, err := stencil.FillOptional(stencils.BurlerStep1Explore, values, []string{"pattern_directive", "friction_directive", "focus_directive"})
 		if err != nil {
 			t.Fatalf("stencil.FillOptional() = %v; want nil", err)
 		}
@@ -308,7 +300,7 @@ func TestTemplate_FrictionDirectiveOptional(t *testing.T) {
 
 	t.Run("non-empty friction_directive precedes the first work instruction", func(t *testing.T) {
 		values := instruction1MarkerValues()
-		got, err := stencil.FillOptional(stencils.BurlerStep1Explore, values, []string{"pattern_directive", "friction_directive"})
+		got, err := stencil.FillOptional(stencils.BurlerStep1Explore, values, []string{"pattern_directive", "friction_directive", "focus_directive"})
 		if err != nil {
 			t.Fatalf("stencil.FillOptional() = %v; want nil", err)
 		}
@@ -323,8 +315,44 @@ func TestTemplate_FrictionDirectiveOptional(t *testing.T) {
 	t.Run("marker-free template still fills while a directive value is supplied", func(t *testing.T) {
 		markerFree := strings.ReplaceAll(string(stencils.BurlerStep1Explore), "{{.friction_directive}}", "")
 		values := instruction1MarkerValues()
-		if _, err := stencil.FillOptional([]byte(markerFree), values, []string{"pattern_directive", "friction_directive"}); err != nil {
+		if _, err := stencil.FillOptional([]byte(markerFree), values, []string{"pattern_directive", "friction_directive", "focus_directive"}); err != nil {
 			t.Fatalf("stencil.FillOptional() on a marker-free template = %v; want nil", err)
+		}
+	})
+}
+
+// TestTemplate_FocusDirectiveOptional asserts focus_directive behaves as an optional marker on instruction 1, mirroring its two siblings:
+// an empty value renders cleanly, and a non-empty value places the directive block ahead of the first work instruction.
+func TestTemplate_FocusDirectiveOptional(t *testing.T) {
+	optional := []string{"pattern_directive", "friction_directive", "focus_directive"}
+
+	t.Run("empty focus_directive renders cleanly", func(t *testing.T) {
+		values := instruction1MarkerValues()
+		values["focus_directive"] = ""
+		got, err := stencil.FillOptional(stencils.BurlerStep1Explore, values, optional)
+		if err != nil {
+			t.Fatalf("stencil.FillOptional() = %v; want nil", err)
+		}
+		text := string(got)
+		if strings.Contains(text, "{{") {
+			t.Errorf("rendered output contains leftover {{: %q", text)
+		}
+		if strings.Contains(text, "## Focus directive") {
+			t.Errorf("rendered output contains an orphan focus heading: %q", text)
+		}
+	})
+
+	t.Run("non-empty focus_directive precedes the first work instruction", func(t *testing.T) {
+		values := instruction1MarkerValues()
+		got, err := stencil.FillOptional(stencils.BurlerStep1Explore, values, optional)
+		if err != nil {
+			t.Fatalf("stencil.FillOptional() = %v; want nil", err)
+		}
+		text := string(got)
+		directiveIdx := strings.Index(text, values["focus_directive"])
+		workIdx := strings.Index(text, "## What to review (the target)")
+		if directiveIdx == -1 || workIdx == -1 || directiveIdx >= workIdx {
+			t.Errorf("focus_directive (idx %d) does not precede the first work instruction (idx %d)", directiveIdx, workIdx)
 		}
 	})
 }

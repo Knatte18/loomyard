@@ -65,6 +65,7 @@ func TestRefScannerMatches(t *testing.T) {
 		{"a fabric-named file is not a lyx fabric invocation", "cat fabric-notes.md", false},
 		{"lyx board is not a fabric reference", "lyx board list", false},
 		{"lyx.exe board is not a fabric reference either", "lyx.exe board list", false},
+		{"a docs grep for the fabric verb is not a fabric reference", `grep -n "fabric remove\|lyx fabric.*remove" docs/overview.md`, false},
 	}
 
 	for _, tt := range tests {

@@ -1,7 +1,4 @@
-// prompt.go composes the burler round prompt: it reads the four round prompts from stencilsDir at
-// call time via stencilstore.Read — the orchestrator plus three instruction files — each with only
-// its own marker subset, and returns the orchestrator string plus the three rendered (path, content)
-// instruction pairs the caller (Engine.Run) writes to disk.
+// prompt.go composes the burler round prompt: it reads the four round prompts from stencilsDir at call time via stencilstore.Read — the orchestrator plus three instruction files, and the focus directive block when the round carries one — each with only its own marker subset, and returns the orchestrator string plus the three rendered (path, content) instruction pairs the caller (Engine.Run) writes to disk.
 // composePrompt is called only after (*Profile).validate has run, so every path field it reads is
 // already a cleaned absolute path and p.clusterLenses (when ClusterFan was set) is already
 // resolved.
@@ -62,15 +59,20 @@ func composePrompt(stencilsDir string, p *Profile, patternDirective, frictionDir
 		return "", nil, err
 	}
 	friction.WarnIfMarkerAbsent(instruction1Template, "burler-step-1-explore", frictionDirective)
+	focusDirective, err := focusDirectiveBlock(stencilsDir, p.FocusDirective)
+	if err != nil {
+		return "", nil, err
+	}
 	instruction1Values := map[string]string{
 		"pattern_directive": patternDirective,
 		friction.MarkerName: frictionDirective,
+		"focus_directive":   focusDirective,
 		"target":            formatFileSet(p.Target),
 		"fasit":             formatFileSet(p.Fasit),
 		"rubric":            p.Rubric,
 		"tool_use_rules":    toolUseRules(p.ToolUse),
 	}
-	instruction1, err := stencil.FillOptional(instruction1Template, instruction1Values, []string{"pattern_directive", friction.MarkerName})
+	instruction1, err := stencil.FillOptional(instruction1Template, instruction1Values, []string{"pattern_directive", friction.MarkerName, "focus_directive"})
 	if err != nil {
 		return "", nil, fmt.Errorf("burler: compose prompt: %w", err)
 	}
@@ -109,6 +111,24 @@ func composePrompt(stencilsDir string, p *Profile, patternDirective, frictionDir
 		{Path: inst3Path, Content: string(instruction3)},
 	}
 	return string(orchestrator), files, nil
+}
+
+// focusDirectiveBlock renders the focus-directive stencil for focusPath, the value injected as the explore step's optional focus_directive marker.
+// An empty focusPath returns "" without reading anything:
+// the round has no directive, and the marker renders as nothing.
+func focusDirectiveBlock(stencilsDir, focusPath string) (string, error) {
+	if focusPath == "" {
+		return "", nil
+	}
+	template, err := stencilstore.Read(stencilsDir, "burler-focus-directive")
+	if err != nil {
+		return "", err
+	}
+	block, err := stencil.Fill(template, map[string]string{"focus_path": focusPath})
+	if err != nil {
+		return "", fmt.Errorf("burler: compose prompt: %w", err)
+	}
+	return string(block), nil
 }
 
 // formatFileSet renders a FileSet as the template expects: one

@@ -3,59 +3,70 @@ Load skills `scribe:prose`, then `scribe:conversation`, before reading the rest 
 # Handoff — loomyard on lyx
 
 The operator drives in Norwegian; reply in Norwegian.
-In design discussions, give an assessment and get explicit agreement before editing or committing.
+This session is the hub orchestrator ("lyxhub:orch"), sitting in the hub prime `~/Code/loomyard-LYXHUB/loomyard` on `main`.
 This file is updated only when the operator asks.
 
-## Where work happens now
+## How the operator wants this run
 
-loomyard is developed **through lyx**, from the lyx hub `~/Code/loomyard-LYXHUB/` (warp `Knatte18/loomyard`, weft `Knatte18/loomyard-weft`, private).
-The orchestrator session sits in the hub prime `~/Code/loomyard-LYXHUB/loomyard` (on `main`), not in the mill worktree `~/Code/loomyard/wts/loomyard`, which is now only a fallback for when lyx itself is stuck.
-Both are the same GitHub repo; the mill wiki is empty and no longer used for this work — tasks live on the lyx board (`lyx board list`).
+- **You are the hub: act.**
+  Routine loop steps (board upsert, fabric add, loom start, review, approve, land, deploy, cleanup, recording findings on the board) are done without asking.
+  Ask only for real choices: which task next, design decisions, anything the operator has not agreed to.
+- **Always give the reed command** whenever a run is started or reported: `cd ~/Code/loomyard-LYXHUB/<slug> && lyx reed attach` (detach `Ctrl+b d`).
+- **Watch runs silently.**
+  Use one background `until`-loop per run on `<hub>/<slug>/_lyx/shed/self/status.json` that exits when `state` leaves `running`; no per-producer Monitor events.
+- **Findings go on the board**, never as GitHub issues (all loomyard issues are closed with pointers to the board).
+  Extend an existing task's or note's `body` (`lyx board upsert` / `lyx board notes upsert`, which merge fields); create new notes freely, but new tasks only when the operator agrees.
+  Findings that belong to another repo (e.g. quarry) go to that repo's issues; its orchestrator session (`quarry:orch`) can be messaged directly.
+- In design discussions, give an assessment and get explicit agreement before editing or committing.
 
-Run loop, per task:
+## Run loop, per task
 
-1. `lyx board upsert` the task (brief = the triaged issues it covers), then `lyx fabric add <slug>`.
-2. Start it headless yourself: `cd <hub>/<slug> && lyx loom start --no-attach` — `llm` is the default driver, so this spawns an ly-drive strand that drives the whole run.
-   The operator watches with `cd <hub>/<slug> && lyx reed attach` (detach: `Ctrl+b d`).
-3. The run ends blocked at Publish with a PR (landing is PR mode). Review it, squash-merge with a clean message (never the Webster narrative), then tell the ly-drive session to re-step; it goes through Finalize to `done`.
-4. Deploy from the hub prime: `git pull`, then `./update-plugins.sh` (see CLAUDE.md "Production lyx and plugins") — it moves `prod`.
-5. Clean up: `lyx board set-status '{"slug":"<slug>","status":"done"}'` (#275), `lyx fabric remove --remote <slug>`, then `git branch -d <slug>` in the prime (#293 leaves it).
+1. `lyx board upsert` the task, `lyx fabric add <slug>`, then `cd <hub>/<slug> && lyx loom start --no-attach` (spawns the ly-drive strand).
+2. The run stops at Publish with a PR, reported as `blocked` (the operator dislikes that word for a ready PR; the fix is in `operator-surface`).
+   Review the PR with a background general-purpose subagent (build/vet/test, correctness, deploy impact); relay findings.
+3. Land: in the task worktree run `lyx loom approve`, then SendMessage the ly-drive session (name from `ListAgents`, e.g. `<slug>-xx`) to re-step.
+   Finalize squash-merges locally with one `Co-Authored-By`, closes the PR and sets the board task `done`.
+4. Deploy from the prime: `git pull`, `./update-plugins.sh`, then `lyx config reconcile` (preview) / `--apply`; commit reconciled config in `~/Code/loomyard-LYXHUB/loomyard-weft` (`main-weft`, local only).
+5. Read the pair's `.lyx/loom/friction/` and `.lyx/shed/self/drive-report-*.md`, record findings, then `lyx fabric remove --remote <slug>` (it now deletes the local warp branch too).
 
-Messages to ly-drive sessions (SendMessage, name from ListAgents) are held for the operator's approval because those sessions run in bypass mode; tell the operator to approve in that pane.
-Worker review-round-cap asks get `approve` immediately.
+Messages to ly-drive sessions are held until the operator approves them in that pane (bypass mode) — say so when sending.
+Never type into agent panes during a run: a reply there gets classified as "asking" and blocks the run (see `operator-surface` below).
+Grey text in a pane's prompt line is a Claude Code suggestion, not operator input.
+To look at panes: `tmux -S /tmp/tmux-1000/lyx-loomyard-LYXHUB-40e21604 capture-pane -p -t <pane>`; pane ids from `lyx reed status` in the worktree.
 
 ## In flight
 
-- **`stuck-reason-in-status`** (#283): `done`, PR #296 squash-merged as `e29b9de5a`. Not yet deployed; deploy (step 4), then clean up (step 5).
-  Its driver reported a hiccup worth an issue, not yet filed: Webster's Master ended its turn while waiting on its integration fork via Monitor; shuttle classified that as "asking" (`cleanedUp=false`) and the row blocked while the session kept working, and the next step killed and respawned the live strand instead of attaching. Details in `<hub>/stuck-reason-in-status/.lyx/shed/self/drive-report-20260930-095507-5c34.md` (read it before `fabric remove` deletes the pair).
-- **`integration-verify-fence`** (#285): `done`, PR #294 merged and deployed. Only cleanup remains (step 5 above).
-- Leftover local warp branches in the hub prime from removed pairs (#293): `board-done-on-landing`, `burler-exclude-warn`, `loom-start-layout`, `stencil-drift-remedy` — `git branch -d` each.
-- Production: `prod` = `db68c5b8a`; `main` is ahead.
+- **`operator-surface`** is running, last seen in Webster (28 cards, one per batch).
+  ly-drive session `operator-surface-bb`.
+  Its scope is the board task body; its plan is in `<hub>/operator-surface/_lyx/plan/`.
+  Until it lands, a re-step after an "asking" stop spawns a fresh strand instead of attaching (#297); if that happens, remove the stale strand with `lyx reed remove <guid>` and tell the new session what already exists.
+  It was planned against `main` before `d619100af`; expect Publish's merge of `main` to touch the review-path change.
+- **Deploy is pending and blocked on `operator-surface`.**
+  `prod` = `9c9afaa97`; `main` = `d619100af` (burler-review) is not deployed.
+  `d619100af` moves review rounds from `.lyx/loom/reviews/` to `_lyx/reviews/`; deploying while `operator-surface` is mid-review makes its Bouncer find no report and stick.
+  Deploy once `operator-surface` has landed, then both changes go out together.
+- After `operator-surface` lands: the operator was offered `quarry-cli-answers` or `focus-marker-warn` as the next small task; no answer yet.
 
-## Next: triage
+## Open, not yet recorded anywhere
 
-Agreed with the operator: findings are filed as issues; triage groups issues into tasks (never one issue per task); the reader of the issues does the grouping.
-Three board tasks to create, replacing the stale board entries `board-done-on-landing` and `stencil-drift-remedy`:
-
-- **Landing:** #275, #276, #289, #292, #293.
-- **Operator surface:** #295, #277, #286, plus three findings not yet filed as issues:
-  - a deploy does not upgrade running sessions (`lyx loom start` finds the existing status strand via `IfAbsent` and keeps its old display);
-  - layout rule: every pane but the bottom-most collapses to a fixed configurable minimum (3 rows), the bottom-most takes the rest, adding a pane moves nothing above it (`3+20` → `3+3+17`), Selvage excluded;
-  - ly-drive reporting: name the run by slug, never `self`; give the run's own history position, not ly-drive's step counter; say when a reported state is from before it acted. Also `_lyx/shed/self/` should be named by slug, with `self` only an alias.
-- **Review (Burler):** #287, #282, #263, plus one finding not yet filed: the 100-column comment width, and how a leading tab counts toward it, is written down nowhere, so a width finding costs a whole review round (friction note `burler-webster-r2.md` from `stuck-reason-in-status`).
-
-Leave parked: #269, #270, #271, #274. #281 is an auto-filed anomaly already resolved — close it. #227/#228 are older ideas.
+- Tests leak tmux sockets: `/tmp/tmux-1000/` holds hundreds of `lyx-Test…`, `lyx-contract-…`, `lyx-warp-bare-…` sockets.
+- Stencil board copies warn "drifted from worktree source" on every hub command; `operator-surface` (#286) changes the remedy text, but the drift itself should be checked after deploy.
+- Warp branches of removed pairs remain on origin (recorded in note `fabric-branch-hygiene`; do not delete them by hand).
 
 ## Open design points
 
-- **Opening a task in VS Code, one operation:** extend `lyx ide spawn <slug>` to create the pair when missing (ide depends on fabric, never the reverse; fabric must not call ide), and generate a VS Code task that runs `lyx reed attach` on folder open (`runOptions.runOn: folderOpen`; the operator's settings already allow automatic tasks). Not `lyx loom start` — that starts a run. Not yet filed.
-- **`main-weft` is never pushed** and never advances on landing; either lazy by design or a weft-side landing gap. Uninvestigated.
-- **Shared conventions:** `Knatte18/scribe` (local `~/Code/scribe`) is the one source; version frozen at `1.1.0`, deploy edits with its own `./update-plugins.sh`, never bump. The operator's `~/.claude/CLAUDE.md` still carries the old sed wording that lets agents read awk as fine for edits.
-- **Agent context baseline** is ~47k tokens per spawned agent, mostly Claude Code's own tool definitions; this motivates the Someday item "shuttle `Spec`: generic tools-restriction" (currently marked unmotivated).
+- **Replace `manifest/` with the board's Manifest section** — the operator wants it eventually, but the Millhouse fallback track (`~/Code/loomyard/wts/loomyard`) still reads `manifest/`.
+  Proposed a board note conditioned on retiring the mill track; not answered, not recorded.
+  Until then, Someday lives in `manifest/roadmap.md` and board notes point there (as `kick-start-pack` does).
+- **`main-weft` is never pushed** and never advances on landing; lazy by design or a weft-side landing gap. Uninvestigated.
+- **Opening a task in VS Code, one operation:** extend `lyx ide spawn <slug>` to create the pair when missing (ide depends on fabric, never the reverse) and generate a VS Code task running `lyx reed attach` on folder open. Not recorded.
+- **Shared conventions:** `Knatte18/scribe` (local `~/Code/scribe`) is the one source; version frozen at `1.1.0`, deploy with its own `./update-plugins.sh`, never bump.
+  The operator's `~/.claude/CLAUDE.md` still carries sed wording that reads as allowing awk for edits.
+- **Agent context baseline** is ~47k tokens per spawned agent, mostly Claude Code's own tool definitions; motivates the Someday item "shuttle `Spec`: generic tools-restriction".
 
 ## Suggested skills
 
 - `scribe:prose`, `scribe:conversation` — before writing anything.
-- `scribe:handoff` — for the next handoff.
-- `ly:ly-drive` — only to read what the driver does; the orchestrator never runs it itself.
 - `mill:git-workflow` — for commits in the hub prime.
+- `ly:ly-drive` — only to understand what the driver does; the orchestrator never runs it.
+- `scribe:handoff` — for the next handoff.

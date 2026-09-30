@@ -5,7 +5,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -499,7 +498,7 @@ func TestBurlerProducer_Hydration(t *testing.T) {
 		}
 	})
 
-	t.Run("FocusFileWithADirectiveIsHydratedAfterDerivedEntries", func(t *testing.T) {
+	t.Run("FocusFileWithADirectiveReachesFocusDirectiveNotPriorReviews", func(t *testing.T) {
 		runDir := t.TempDir()
 		writeJudgedRound(t, runDir, 1)
 		writeFocusFile(t, runDir, 2, focusFile{Round: 2, Focus: []string{"look at the relocation candidate"}})
@@ -509,30 +508,47 @@ func TestBurlerProducer_Hydration(t *testing.T) {
 		if _, _, err := p.Call(context.Background()); err != nil {
 			t.Fatalf("Call() error = %v; want nil", err)
 		}
-		// The hydrated entry is the focus file itself: that is how the judge's directive reaches the
-		// fixer round, and it is the delivery that was silently absent while the reader looked for a
-		// round-<N>-focus.json the writer never produced.
-		wantReviews := []string{roundReviewPath(runDir, 1), focusPath(runDir, 2)}
-		if !stringSlicesEqual(runner.gotProfiles[0].PriorReviews, wantReviews) {
-			t.Errorf("PriorReviews = %v; want %v (focus file appended after derived entries)", runner.gotProfiles[0].PriorReviews, wantReviews)
-		}
-	})
-
-	t.Run("FocusFileWithNoDirectiveIsNotHydrated", func(t *testing.T) {
-		runDir := t.TempDir()
-		writeJudgedRound(t, runDir, 1)
-		writeFocusFile(t, runDir, 2, focusFile{Round: 2, ExcludeLenses: []string{}, Focus: []string{}})
-		runner := &fakeBurlerRunner{results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
-		p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
-
-		if _, _, err := p.Call(context.Background()); err != nil {
-			t.Fatalf("Call() error = %v; want nil", err)
-		}
 		wantReviews := []string{roundReviewPath(runDir, 1)}
 		if !stringSlicesEqual(runner.gotProfiles[0].PriorReviews, wantReviews) {
-			t.Errorf("PriorReviews = %v; want %v (an APPROVED judge's empty focus file asserts nothing and is not handed to the round)", runner.gotProfiles[0].PriorReviews, wantReviews)
+			t.Errorf("PriorReviews = %v; want %v (derived prior-round entries only)", runner.gotProfiles[0].PriorReviews, wantReviews)
+		}
+		if got, want := runner.gotProfiles[0].FocusDirective, focusPath(runDir, 2); got != want {
+			t.Errorf("FocusDirective = %q; want %q", got, want)
 		}
 	})
+
+	noDirective := []struct {
+		name  string
+		setup func(t *testing.T, runDir string)
+	}{
+		{"FocusFileWithNoDirectiveLeavesFocusDirectiveEmpty", func(t *testing.T, runDir string) {
+			writeFocusFile(t, runDir, 2, focusFile{Round: 2, ExcludeLenses: []string{}, Focus: []string{}})
+		}},
+		{"AbsentFocusFileLeavesFocusDirectiveEmpty", func(t *testing.T, runDir string) {}},
+		{"MalformedFocusFileLeavesFocusDirectiveEmpty", func(t *testing.T, runDir string) {
+			writeFocusFileRaw(t, runDir, 2, "not a focus file")
+		}},
+	}
+	for _, tt := range noDirective {
+		t.Run(tt.name, func(t *testing.T) {
+			runDir := t.TempDir()
+			writeJudgedRound(t, runDir, 1)
+			tt.setup(t, runDir)
+			runner := &fakeBurlerRunner{results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
+			p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
+
+			if _, _, err := p.Call(context.Background()); err != nil {
+				t.Fatalf("Call() error = %v; want nil", err)
+			}
+			if got := runner.gotProfiles[0].FocusDirective; got != "" {
+				t.Errorf("FocusDirective = %q; want empty", got)
+			}
+			wantReviews := []string{roundReviewPath(runDir, 1)}
+			if !stringSlicesEqual(runner.gotProfiles[0].PriorReviews, wantReviews) {
+				t.Errorf("PriorReviews = %v; want %v (no focus path)", runner.gotProfiles[0].PriorReviews, wantReviews)
+			}
+		})
+	}
 }
 
 // --- Stale pre-existing round files ---
@@ -656,8 +672,8 @@ func TestBurlerProducer_Call_ClusterExcludeDropWarning(t *testing.T) {
 			if got := runner.gotProfiles[0].ClusterExclude; got != nil {
 				t.Errorf("ClusterExclude = %v; want nil on a fan-less profile", got)
 			}
-			if hydrated := slices.Contains(runner.gotProfiles[0].PriorReviews, focusPath(runDir, 2)); hydrated != tt.wantHydrated {
-				t.Errorf("focus file hydrated = %v; want %v; PriorReviews = %v", hydrated, tt.wantHydrated, runner.gotProfiles[0].PriorReviews)
+			if delivered := runner.gotProfiles[0].FocusDirective == focusPath(runDir, 2); delivered != tt.wantHydrated {
+				t.Errorf("focus file delivered = %v; want %v; FocusDirective = %q", delivered, tt.wantHydrated, runner.gotProfiles[0].FocusDirective)
 			}
 			if has := strings.Contains(buf.String(), dropWarning); has != tt.wantWarning {
 				t.Errorf("log contains drop warning = %v; want %v; log:\n%s", has, tt.wantWarning, buf.String())

@@ -1,8 +1,8 @@
 // review_test.go — untagged Tier-1 unit tests for ResolveReview and LoomReviewsDir.
 // ResolveReview's tests mirror discussion_test.go's shape: pure Go over an in-memory Config and a
 // temp-dir modelspec registry, no live hub, reed, or network involved.
-// LoomReviewsDir's test mirrors discussionpath_test.go's shape: pure path arithmetic over a
-// hand-built lyxcwd.Location.
+// LoomReviewsDir's test mirrors discussionpath_test.go's shape: pure path arithmetic over a hand-built lyxcwd.Location;
+// the accessor is durable, rooted under _lyx.
 
 package loomengine
 
@@ -62,9 +62,15 @@ func TestResolveReview_MalformedSpec(t *testing.T) {
 	}
 }
 
-// TestLoomReviewsDir verifies LoomReviewsDir's returned path is AnchorPath-anchored, sits under the
-// ephemeral .lyx tree rather than the durable one, and mirrors the loom subdirectory LoomScratchDir
-// already names.
+// TestLoomReviewsDirRel verifies LoomReviewsDirRel's exact relative value under the durable tree.
+func TestLoomReviewsDirRel(t *testing.T) {
+	want := filepath.Join(lyxdirs.LyxDirName, "reviews")
+	if got := LoomReviewsDirRel(); got != want {
+		t.Errorf("LoomReviewsDirRel() = %q; want %q", got, want)
+	}
+}
+
+// TestLoomReviewsDir verifies LoomReviewsDir's returned path is AnchorPath-anchored, sits under the durable _lyx tree rather than the ephemeral one, and equals the anchor joined with its Rel form.
 func TestLoomReviewsDir(t *testing.T) {
 	l := &lyxcwd.Location{
 		HubPath:      filepath.Join("home", "user", "repo-LYXHUB"),
@@ -74,12 +80,12 @@ func TestLoomReviewsDir(t *testing.T) {
 		AnchorRel: filepath.Join("sub", "dir"),
 	}
 
-	want := filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, "loom", "reviews")
+	want := filepath.Join(l.AnchorPath(), lyxdirs.LyxDirName, "reviews")
 	if got := LoomReviewsDir(l); got != want {
 		t.Errorf("LoomReviewsDir() = %q; want %q", got, want)
 	}
 
-	if got := LoomReviewsDir(l); filepath.Dir(got) != LoomScratchDir(l) {
-		t.Errorf("LoomReviewsDir() = %q; want its parent to equal LoomScratchDir() = %q", got, LoomScratchDir(l))
+	if got, rel := LoomReviewsDir(l), filepath.Join(l.AnchorPath(), LoomReviewsDirRel()); got != rel {
+		t.Errorf("LoomReviewsDir() = %q; want it to equal %q", got, rel)
 	}
 }

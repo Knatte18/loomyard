@@ -266,6 +266,17 @@ Every inline markdown link in a `.md` file under `manifest/` or `docs/` resolves
 
 One review+fix round: review written to disk before any target file is touched; every finding fixed, all severities; no self-grading; commit-per-fix on warp source, never push.
 
+## Comment Line-Break Convention
+
+Go comments, doc and inline alike, use semantic line breaks.
+Enforcement is review discipline, not a test.
+
+- One sentence per line, with a further break at an independent-clause boundary, per the operator's shared `scribe:prose` and `scribe:golang-comments` rules.
+- There is no column limit, so a leading tab's width never matters.
+- Existing fixed-column-wrapped comments are legacy, not a convention to match.
+- A line-width finding is never legitimate, and untouched lines are never rewrapped:
+  the rule governs new and changed comments only.
+
 ## Live-Substrate Spawn Observability
 
 Every code path reachable from a `lyx` command that starts a real OS process logs its spawn via `internal/logger`, and logs its teardown wherever it waits for one — `Info` for a lifecycle spawn, `Debug` for a spawn inside a polling probe.
