@@ -29,9 +29,9 @@ var CodeLauncher = vscode.Launch
 // A failure to resolve the prime's name is logged and degrades to the bare-folder path.
 func Spawn(l *lyxcwd.Location, slug string) error {
 	worktreeDir := fabricengine.WorktreePath(l, slug)
-	// A prime-resolution failure degrades to an empty prime name (PickColor
-	// then skips the prime-skip step) rather than failing the spawn — a wrong
-	// title-bar color is cosmetic, not worth aborting over.
+	// A prime-resolution failure is logged and degrades rather than failing the spawn:
+	// PickColor skips its prime-skip step, and even the prime opens as a bare folder.
+	// A wrong title-bar color or a missing hub workspace is not worth aborting over.
 	primeName, primeErr := fabricengine.PrimeName(l)
 	if primeErr != nil {
 		logger.Warn("resolve prime name; opening the bare folder", "slug", slug, "error", primeErr)
