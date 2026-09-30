@@ -143,9 +143,9 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 		return p.stuckOrCancelled(ctx, mergeResult.Reason)
 	}
 
-	// Step 4a: verify the merged tree before anything leaves the worktree. A merge can compile
-	// cleanly and still break tests, and only a no-op merge leaves the tree the plan-level verify
-	// already passed.
+	// Step 4a: verify the merged tree before anything leaves the worktree.
+	// A merge can compile cleanly and still break tests,
+	// and only a no-op merge leaves the tree the plan-level verify already passed.
 	reason, err := p.gate.check(ctx, publishName, p.deps.ParentBranch, !mergeResult.AlreadyUpToDate)
 	if err != nil {
 		if cerr := cancelErr(ctx, publishName); cerr != nil {
