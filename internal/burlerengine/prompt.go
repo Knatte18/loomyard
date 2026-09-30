@@ -137,7 +137,7 @@ func focusDirectiveBlock(stencilsDir, focusPath string) (string, error) {
 }
 
 // focusMarkerName is the marker the explore stencil carries for the focus directive block.
-// It is the one name both composePrompt's value map and warnIfFocusMarkerAbsent's literal derive from, so they cannot drift apart.
+// composePrompt's value-map key, its FillOptional optional-names entry, and warnIfFocusMarkerAbsent's literal all derive from it, so they cannot drift apart.
 const focusMarkerName = "focus_directive"
 
 // warnIfFocusMarkerAbsent logs a Warn when a round computed a focus directive but the explore stencil carries no marker to render it into.
