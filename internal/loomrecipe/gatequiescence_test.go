@@ -45,12 +45,13 @@ func TestNoGatedRowAuthorizesForkSubagents(t *testing.T) {
 		gatedRowFound = true
 
 		switch row.Engine {
-		case "DiscussionWrite", "PlanWrite", "Describe":
+		case "DiscussionWrite", "PlanWrite", "Describe", "PRRework":
 			// A writer row's spec comes from internal/loomengine's DiscussionSpec/PlanSpec or
 			// landingshed.DescribeSpec, none of which sets Spec.ForkSubagents anywhere in its own
 			// construction -- the zero value (false) is what every writer spec carries by
 			// construction, so a writer row identified by engine name alone is what this case
 			// attests to.
+			// PRRework is a writer row too: loomengine.ReworkSpec mirrors PlanSpec and sets no ForkSubagents either.
 			continue
 		case "BurlerRound":
 			profile, ok := row.Config["profile"].(map[string]any)
@@ -62,7 +63,7 @@ func TestNoGatedRowAuthorizesForkSubagents(t *testing.T) {
 				t.Errorf("row %q (engine %q): profile[\"cluster-fan\"] = %v; want absent or empty on a gated burler row -- %s", row.Name, row.Engine, clusterFan, gateQuiescenceFailureMessage)
 			}
 		default:
-			t.Errorf("row %q: carries a \"gate\" config key with engine %q, neither a writer engine (DiscussionWrite/PlanWrite/Describe) nor BurlerRound -- %s", row.Name, row.Engine, gateQuiescenceFailureMessage)
+			t.Errorf("row %q: carries a \"gate\" config key with engine %q, neither a writer engine (DiscussionWrite/PlanWrite/Describe/PRRework) nor BurlerRound -- %s", row.Name, row.Engine, gateQuiescenceFailureMessage)
 		}
 	}
 

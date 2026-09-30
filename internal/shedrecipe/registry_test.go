@@ -94,6 +94,8 @@ func TestRegistry_ShipsExpectedEntries(t *testing.T) {
 		"FrictionReflect",
 		"InnerRun",
 		"LoomPreflight",
+		"PRGate",
+		"PRRework",
 		"PlanWrite",
 		"Preflight",
 		"Publish",
