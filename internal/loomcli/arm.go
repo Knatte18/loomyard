@@ -83,7 +83,8 @@ func genericShedVerb(verb string) bool {
 // Tier 1 despite arm itself needing lyxcwd.Resolve's real git spawn.
 func (c *loomCLI) resolveRunID(location *lyxcwd.Location, verb string, args []string) error {
 	runID := shedrun.SelfRunID
-	if len(args) > 0 {
+	// reject's one positional argument is its review file, never a run-id.
+	if len(args) > 0 && verb != "reject" {
 		runID = args[0]
 	}
 	c.runID = runID

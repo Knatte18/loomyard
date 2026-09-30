@@ -59,6 +59,19 @@ func TestResolveRunID_NonGenericVerbsNeverRefuse(t *testing.T) {
 	}
 }
 
+// TestResolveRunID_RejectReviewFileIsNotARunID asserts reject's positional review file leaves the run-id at self.
+func TestResolveRunID_RejectReviewFileIsNotARunID(t *testing.T) {
+	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+	c := &loomCLI{}
+
+	if err := c.resolveRunID(loc, "reject", []string{"review.md"}); err != nil {
+		t.Fatalf("resolveRunID(reject) = %v; want nil", err)
+	}
+	if c.runID != shedrun.SelfRunID {
+		t.Errorf("runID = %q; want %q -- the review file is not a run-id", c.runID, shedrun.SelfRunID)
+	}
+}
+
 // TestResolveRunID_RefusalNamesEveryExistingRunID asserts the refusal's text lists every run-id
 // shedrun.List finds, sorted, when the addressed run-id itself has no seed.
 func TestResolveRunID_RefusalNamesEveryExistingRunID(t *testing.T) {
