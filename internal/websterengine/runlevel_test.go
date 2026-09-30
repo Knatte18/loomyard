@@ -1734,3 +1734,39 @@ func TestRun_ZeroGateReachesStartMasterUngated(t *testing.T) {
 		t.Errorf("StartMaster received GateSpec{Gate: %v, Attempts: %d}; want the zero value", got.Gate != nil, got.Attempts)
 	}
 }
+
+// TestRun_Regression20260930_BegunUnrecordedBatchResumes pins the 2026-09-30 wedge: state records
+// batch 1 begun but not terminal, with its Create target already committed, and Run must pass the
+// entry validation and reach the Master spawn with no create-already-exists refusal.
+func TestRun_Regression20260930_BegunUnrecordedBatchResumes(t *testing.T) {
+	fx := newRunFixture(t, 2)
+	commitFile(t, fx.Worktree, "internal/batch1/new.go", "package batch1\n\nfunc Landed() {}\n", "card 1 landed")
+
+	seedMatchingState(t, fx, &websterengine.State{
+		RunGUID: "resume-run",
+		Batches: map[int]*websterengine.BatchState{
+			1: {Slug: "batch1", Kind: "fork", StartSHA: "0123456789abcdef0123456789abcdef01234567"},
+		},
+	})
+
+	wantSessionID := "master-session-begun"
+	fx.Starter.handle = &runFakeHandle{
+		strandGUID: "master-strand-begun",
+		result: shuttleengine.Result{
+			Outcome:              shuttleengine.OutcomeAsking,
+			SessionID:            wantSessionID,
+			RunDir:               "/run/dir/begun",
+			LastAssistantMessage: "resumed and asking",
+		},
+	}
+	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-begun", wantSessionID)
+
+	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	var target *websterengine.MasterAskingError
+	if !errors.As(err, &target) {
+		t.Fatalf("Run() error = %v; want a *MasterAskingError — a begun, unrecorded batch must resume to the Master spawn", err)
+	}
+	if fx.Starter.callCount() != 1 {
+		t.Errorf("Starter.callCount() = %d; want 1", fx.Starter.callCount())
+	}
+}

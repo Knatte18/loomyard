@@ -938,3 +938,39 @@ func TestBeginBatch_NilStateIsRefusedNotPanicked(t *testing.T) {
 		t.Errorf("websterengine.BeginBatch(nil State) error = %v; want it to name BeginDeps.State", err)
 	}
 }
+
+// TestBeginBatch_Regression20260930_ReBeginOfBegunUnrecordedBatch pins the 2026-09-30 wedge: a
+// batch begun but not yet recorded, whose own Create target has already landed, is re-begun
+// (the master_asking resume path) and must neither be refused as create-already-exists nor lose
+// the StartSHA its first begin recorded.
+func TestBeginBatch_Regression20260930_ReBeginOfBegunUnrecordedBatch(t *testing.T) {
+	fx := newBeginFixture(t)
+	commitFile(t, fx.Worktree, "sub/a.go", "package sub\n\nfunc Built() {}\n", "batch 1's own work")
+
+	built := planparser.Card{
+		Number:         1,
+		Slug:           "json-flag",
+		Type:           planparser.CardTypeCreate,
+		TypeLabelCount: 1,
+		HasType:        true,
+		HasIntent:      true,
+		Intent:         "placeholder intent",
+		TargetGroups:   []planparser.TargetGroup{{Type: planparser.CardTypeCreate, Refs: []string{"sub#Built"}}},
+		Targets:        []string{"sub#Built"},
+	}
+	fx.Deps.Plan.Cards = []planparser.Card{built}
+	fx.Deps.Batches = []batcher.Batch{{Cards: []planparser.Card{built}}}
+
+	const recordedStart = "0123456789abcdef0123456789abcdef01234567"
+	fx.Deps.State.Batches = map[int]*websterengine.BatchState{
+		1: {Slug: "json-flag", Kind: "fork", StartSHA: recordedStart},
+	}
+
+	result, err := websterengine.BeginBatch(fx.Deps, 1)
+	if err != nil {
+		t.Fatalf("BeginBatch(1) error = %v; want nil — a begun, unrecorded batch must re-begin past its own landed Create target", err)
+	}
+	if result.StartSHA != recordedStart || fx.Deps.State.Batches[1].StartSHA != recordedStart {
+		t.Errorf("StartSHA = %q (record %q); want the first begin's %q kept", result.StartSHA, fx.Deps.State.Batches[1].StartSHA, recordedStart)
+	}
+}
