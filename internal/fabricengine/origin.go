@@ -5,6 +5,7 @@
 package fabricengine
 
 import (
+	"os"
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -78,6 +79,34 @@ func ReadOrigin(l *lyxcwd.Location) (Origin, bool, error) {
 		return Origin{}, false, err
 	}
 	return state.ReadJSON[Origin](OriginRecordPath(l), lockPath)
+}
+
+// ReadOriginFor reads the origin record of slug's worktree pair, for a caller that is not running
+// from that pair — Remove runs from another worktree, where ReadOrigin would read the caller's own.
+// A false second return means there is no record to read and is not an error.
+// That includes a pair whose weft worktree is already gone: the reader then answers without touching
+// disk, since reaching the lock through ensureWeftLockDirAt would MkdirAll a stray directory at a weft
+// path a half-present pair has already lost.
+func ReadOriginFor(l *lyxcwd.Location, slug string) (Origin, bool, error) {
+	weftPath := WeftWorktreePath(l, slug)
+	if _, err := os.Stat(weftPath); err != nil {
+		if os.IsNotExist(err) {
+			return Origin{}, false, nil
+		}
+		return Origin{}, false, err
+	}
+	path := OriginRecordPathFor(l, slug)
+	if _, err := os.Stat(path); err != nil {
+		if os.IsNotExist(err) {
+			return Origin{}, false, nil
+		}
+		return Origin{}, false, err
+	}
+	lockPath, err := originLockPath(weftPath)
+	if err != nil {
+		return Origin{}, false, err
+	}
+	return state.ReadJSON[Origin](path, lockPath)
 }
 
 // WriteOrigin writes the origin record o for slug's worktree pair, then records KindFileWritten in
