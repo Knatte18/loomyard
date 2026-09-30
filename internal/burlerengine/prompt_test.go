@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/contracts/stencils"
+	"github.com/Knatte18/loomyard/internal/logger"
 )
 
 // newTestStencilsDir builds a t.TempDir() seeded with burler's five stencils plus the three pattern-directive stencils, copied byte-for-byte from the stencils package's embedded defaults, and returns the directory to pass as stencilsDir.
@@ -457,5 +458,48 @@ func requireNotContains(t *testing.T, text, needle string) {
 	t.Helper()
 	if strings.Contains(text, needle) {
 		t.Errorf("output unexpectedly contains %q", needle)
+	}
+}
+
+// TestWarnIfFocusMarkerAbsent covers the helper directly:
+// it logs nothing for an empty focus block or a template carrying the marker, and exactly one line naming the stencil and the marker literal otherwise.
+// The logger output is process-global, so the test never runs in parallel.
+func TestWarnIfFocusMarkerAbsent(t *testing.T) {
+	const stencilName = "burler-step-1-explore"
+	tests := []struct {
+		name      string
+		template  string
+		block     string
+		wantLines int
+	}{
+		{name: "empty block, marker absent", template: "no marker here", block: "", wantLines: 0},
+		{name: "block, marker present", template: "has {{.focus_directive}} here", block: "focus text", wantLines: 0},
+		{name: "block, marker absent", template: "no marker here", block: "focus text", wantLines: 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			logger.SetOutput(&buf)
+			t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+
+			warnIfFocusMarkerAbsent([]byte(tt.template), stencilName, tt.block)
+
+			out := strings.TrimSpace(buf.String())
+			got := 0
+			if out != "" {
+				got = len(strings.Split(out, "\n"))
+			}
+			if got != tt.wantLines {
+				t.Fatalf("logged %d lines; want %d; output: %q", got, tt.wantLines, out)
+			}
+			if tt.wantLines == 1 {
+				if !strings.Contains(out, stencilName) {
+					t.Errorf("line %q does not name stencil %q", out, stencilName)
+				}
+				if !strings.Contains(out, "{{.focus_directive}}") {
+					t.Errorf("line %q does not name the marker literal", out)
+				}
+			}
+		})
 	}
 }

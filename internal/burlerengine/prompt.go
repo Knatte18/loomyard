@@ -11,11 +11,13 @@
 package burlerengine
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/friction"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
@@ -129,6 +131,26 @@ func focusDirectiveBlock(stencilsDir, focusPath string) (string, error) {
 		return "", fmt.Errorf("burler: compose prompt: %w", err)
 	}
 	return string(block), nil
+}
+
+// focusMarkerName is the marker the explore stencil carries for the focus directive block.
+// It is the one name both composePrompt's value map and warnIfFocusMarkerAbsent's literal derive from, so they cannot drift apart.
+const focusMarkerName = "focus_directive"
+
+// warnIfFocusMarkerAbsent logs a Warn when a round computed a focus directive but the explore stencil carries no marker to render it into.
+// focusBlock is the rendered output of focusDirectiveBlock, not the focus path:
+// an empty block means the round has no directive, so there is nothing to lose and nothing to warn about.
+// Otherwise, when template does not contain the marker literal, it logs the stencil and marker and points the operator at "lyx stencil diff" and "lyx stencil sync".
+// It never errors, and the round proceeds without the focus text.
+func warnIfFocusMarkerAbsent(template []byte, stencilName, focusBlock string) {
+	if focusBlock == "" {
+		return
+	}
+	literal := "{{." + focusMarkerName + "}}"
+	if bytes.Contains(template, []byte(literal)) {
+		return
+	}
+	logger.Warn("burler: stencil is missing the focus directive marker; a computed directive will render as nothing -- see \"lyx stencil diff\" and \"lyx stencil sync\"", "stencil", stencilName, "marker", literal)
 }
 
 // formatFileSet renders a FileSet as the template expects: one
