@@ -108,8 +108,7 @@ func TestMutateGitExclude_ReportsWhetherContentChanged(t *testing.T) {
 	}
 }
 
-// TestExcludeAnchoredDir_AppendsAnchoredLineOnce pins the exact bytes written and the idempotent
-// second call.
+// TestExcludeAnchoredDir_AppendsAnchoredLineOnce pins the exact bytes written and the idempotent second call.
 func TestExcludeAnchoredDir_AppendsAnchoredLineOnce(t *testing.T) {
 	repoDir := newGitRepoForExcludeTest(t)
 	excludePath := seedExclude(t, repoDir, operatorExcludePattern+"\n")
@@ -141,8 +140,7 @@ func TestExcludeAnchoredDir_AppendsAnchoredLineOnce(t *testing.T) {
 	}
 }
 
-// TestExcludeAnchoredDir_AnchorsToSubpath pins that the entry covers only the anchor's own
-// directory.
+// TestExcludeAnchoredDir_AnchorsToSubpath pins that the entry covers only the anchor's own directory.
 func TestExcludeAnchoredDir_AnchorsToSubpath(t *testing.T) {
 	repoDir := newGitRepoForExcludeTest(t)
 	seedExclude(t, repoDir, "")
