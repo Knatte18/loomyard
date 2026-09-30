@@ -214,9 +214,12 @@ func (p *SingleLLMProducer) mapOutcome(ctx context.Context, spec shuttleengine.S
 		}
 		logger.Warn("shedadapters: shuttle run is asking", "producer", p.name, "engine", singleLLMEngineLabel, "lastAssistantMessage", result.LastAssistantMessage, "sessionID", result.SessionID, "strandGUID", result.StrandGUID, "runDir", result.RunDir)
 		// A fixed summary, never the agent's own message: that would bury the strand line.
-		reason := "agent is asking a question; session " + result.SessionID
-		if result.SessionID == "" {
-			reason = "agent is asking a question; run dir " + result.RunDir
+		reason := "agent is asking a question"
+		switch {
+		case result.SessionID != "":
+			reason += "; session " + result.SessionID
+		case result.RunDir != "":
+			reason += "; run dir " + result.RunDir
 		}
 		return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
 

@@ -157,6 +157,7 @@ func TestSingleLLMProducer_OutcomeAsking(t *testing.T) {
 	}{
 		{"WithSessionID", shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking, LastAssistantMessage: "what next?", SessionID: "sess-9", RunDir: "/tmp/run"}, "agent is asking a question; session sess-9"},
 		{"EmptySessionIDNamesRunDir", shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking, LastAssistantMessage: "what next?", RunDir: "/tmp/run"}, "agent is asking a question; run dir /tmp/run"},
+		{"NeitherIsBareText", shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking, LastAssistantMessage: "what next?"}, "agent is asking a question"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -628,7 +629,7 @@ func TestSingleLLMProducer_AttachedOutcomeAsking(t *testing.T) {
 	if outcome != shedengine.Stuck {
 		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
 	}
-	if ptr.Path != "" || ptr.Reason != "agent is asking a question; run dir " {
+	if ptr.Path != "" || ptr.Reason != "agent is asking a question" {
 		t.Errorf("Call() pointer = %+v; want empty Path and the asking Reason", ptr)
 	}
 }
@@ -915,7 +916,7 @@ func TestSingleLLMProducer_Gate_AskingKeepsEmptyPointer(t *testing.T) {
 	if outcome != shedengine.Stuck {
 		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
 	}
-	if ptr.Path != "" || ptr.GateAttempts != nil || ptr.Reason != "agent is asking a question; run dir " {
+	if ptr.Path != "" || ptr.GateAttempts != nil || ptr.Reason != "agent is asking a question" {
 		t.Errorf("Call() pointer = %+v; want empty Path, no GateAttempts, and the asking Reason", ptr)
 	}
 }
