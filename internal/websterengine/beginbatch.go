@@ -136,6 +136,29 @@ func completedCards(batches []batcher.Batch, st *State, exclude int) []planparse
 	return done
 }
 
+// begunCards returns every card belonging to a batch that begin-batch has recorded, terminal or not,
+// in batches' own order.
+//
+// It scopes run-entry validation on a resume: a batch begun but never recorded (its record-batch
+// refused, or the run died between the fork's commit and the record) may already have landed its
+// work, so its Create targets can legitimately exist; validating it as unstarted reported them as
+// create-already-exists and refused the very resume that would record the batch.
+// Master re-drives such a batch through record-batch or recover-batch, which apply their own checks.
+func begunCards(batches []batcher.Batch, st *State) []planparser.Card {
+	if st == nil {
+		return nil
+	}
+
+	var begun []planparser.Card
+	for _, b := range batches {
+		number, _ := batchIdentity(b)
+		if bs, ok := st.Batches[number]; ok && bs != nil {
+			begun = append(begun, b.Cards...)
+		}
+	}
+	return begun
+}
+
 // findBatch returns the batcher.Batch in batches whose identity matches number.
 func findBatch(batches []batcher.Batch, number int) (batcher.Batch, error) {
 	for _, b := range batches {
