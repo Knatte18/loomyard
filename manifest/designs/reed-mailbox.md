@@ -37,7 +37,7 @@ Creel v1 reserves the grammar only; no connector ships with it.
   The per-hub daemon's tick adds the safety net: compare each tracked pane's actual title against the strand name, rewrite on divergence, and log that it happened — reconcile, same as the rest of reed's repair machinery.
   And the hard rule that makes display drift harmless rather than merely unlikely: **delivery never resolves through a pane title** — routing is always name → state → guid, so a stale title can mislead an eye but never a message; a send to a name the state doesn't know refuses with the list of names that exist (the same refuse-with-list idiom shed's run addressing uses), which itself surfaces the drift.
   A listing verb (`lyx reed list`: name, guid, session/worktree, pane-id, actual pane title, alive/dormant, drift flagged) doubles as the address directory and the diagnostic for exactly this concern.
-  "Every pane has a name" is then nearly free: everything reed spawns is a strand (the shipped born-as-strand item makes even the operator's attach pane one), every strand has a name, every name mirrors to its title; panes outside reed are outside the system and never routed to.
+  "Every pane has a name" is then nearly free: everything reed spawns is a strand (the operator's terminal is Selvage, which is not a strand and so not addressable), every strand has a name, every name mirrors to its title; panes outside reed are outside the system and never routed to.
 - **Rename is a relaunch.**
   Env is frozen at process start, so the name is a birth attribute set at `AddStrand` and never mutated in place — renaming a role means tearing down and respawning its strand.
 - **Well-known role names make addresses guessable.**
