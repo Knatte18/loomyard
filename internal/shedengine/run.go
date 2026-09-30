@@ -437,7 +437,7 @@ func nowRFC3339() string {
 // rather than special-cased: the engine records the verdict a producer actually returned, and
 // state: "failed" halts the run, so every continuation past it is a fresh human-initiated act.
 // A Stuck entry whose BudgetExempt is true is skipped and never counted.
-// A Goto entry also ends the episode when its target (the entry's Producer) shares def.Segment,
+// An OutcomeGoto entry also ends the episode when its target (the entry's Producer) shares def.Segment,
 // or is def itself when def.Segment is empty, so a goto into a segment gives every row of that
 // segment a fresh budget.
 // producers resolves a target's segment; a target no longer in the list ends no episode.
@@ -446,7 +446,7 @@ func episodeStuckCount(history []HistoryEntry, def ProducerDef, producers []Prod
 	count := 0
 	for i := len(history) - 1; i >= 0; i-- {
 		entry := history[i]
-		if entry.Outcome == Goto {
+		if entry.Outcome == OutcomeGoto {
 			if gotoEndsEpisode(entry.Producer, def, producers) {
 				return count
 			}

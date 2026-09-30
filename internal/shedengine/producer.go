@@ -19,10 +19,11 @@ const (
 	Awaiting Outcome = "awaiting"
 )
 
-// Goto is a history-only Outcome, written by `lyx shed goto` and never returned by a producer.
+// OutcomeGoto is a history-only Outcome, written by `lyx shed goto` and never returned by a producer.
 // A producer returning it is unrecognised, as any value outside the three verdicts is.
 // A goto entry ends the bounce-budget episode of every row sharing its target's Segment.
-const Goto Outcome = "goto"
+// It is not named Goto because the Goto function owns that name.
+const OutcomeGoto Outcome = "goto"
 
 // OutputPointer names a producer's artifact for a human to read.
 // Shed never introspects Path's contents, never validates it, and never stats it to make a

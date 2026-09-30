@@ -1,0 +1,154 @@
+package shedengine
+
+import (
+	"context"
+	"errors"
+	"reflect"
+	"strings"
+	"testing"
+
+	"github.com/Knatte18/loomyard/internal/lock"
+)
+
+func gotoRequest(shed *Shed, target string) GotoRequest {
+	return GotoRequest{
+		StatusPath:     shed.StatusPath,
+		LockPath:       shed.LockPath,
+		StatusLockPath: shed.StatusLockPath,
+		Producers:      shed.Producers,
+		Target:         target,
+	}
+}
+
+func gotoShed(t *testing.T) (*Shed, *funcProducer, *funcProducer) {
+	t.Helper()
+	shed, _, _, _ := newTestShed(t)
+	a := fixedOutcomeProducer(Done, "")
+	b := fixedOutcomeProducer(Done, "")
+	shed.Producers = []ProducerDef{{Name: "A", Producer: a}, {Name: "B", Producer: b}}
+	return shed, a, b
+}
+
+func TestGoto_MovesBlockedRunToTarget(t *testing.T) {
+	shed, _, _ := gotoShed(t)
+	seed := commonSeed("A")
+	seed.State = StateBlocked
+	seed.Error = "stuck on A"
+	seed.Transient = "network"
+	seed.PauseRequested = true
+	seedStatus(t, shed.StatusPath, shed.StatusLockPath, seed)
+
+	returned, err := Goto(gotoRequest(shed, "B"))
+	if err != nil {
+		t.Fatalf("Goto(...) = _, %v; want nil error", err)
+	}
+
+	got := readStatus(t, shed.StatusPath, shed.StatusLockPath)
+	if !reflect.DeepEqual(returned, got) {
+		t.Errorf("returned Status = %+v; want the written file %+v", returned, got)
+	}
+	if got.CurrentProducer != "B" || got.State != StatePaused {
+		t.Errorf("CurrentProducer, State = %q, %q; want B, paused", got.CurrentProducer, got.State)
+	}
+	if got.Error != "" || got.Transient != "" || got.PauseRequested {
+		t.Errorf("Error, Transient, PauseRequested = %q, %q, %v; want all cleared", got.Error, got.Transient, got.PauseRequested)
+	}
+	if len(got.History) != 1 || got.History[0].Producer != "B" || got.History[0].Outcome != OutcomeGoto {
+		t.Fatalf("History = %+v; want one goto entry for B", got.History)
+	}
+	assertRFC3339UTC(t, got.History[0].At)
+	if got.Activity.Now != "B" || got.Activity.Last != "B → goto" {
+		t.Errorf("Activity = %+v; want Now B, Last %q", got.Activity, "B → goto")
+	}
+}
+
+func TestGoto_RunLockHeldRefusesAndLeavesFile(t *testing.T) {
+	shed, _, _ := gotoShed(t)
+	seed := commonSeed("A")
+	seed.State = StateBlocked
+	seedStatus(t, shed.StatusPath, shed.StatusLockPath, seed)
+	before := readStatus(t, shed.StatusPath, shed.StatusLockPath)
+
+	// The lock parent is normally made by Goto itself, so make it here before holding the lock.
+	if _, err := Goto(gotoRequest(shed, "nope")); err == nil {
+		t.Fatal("Goto with an unknown target succeeded; want error")
+	}
+	held, locked, err := lock.TryAcquireWriteLock(shed.LockPath)
+	if err != nil || !locked {
+		t.Fatalf("TryAcquireWriteLock = _, %v, %v; want acquired", locked, err)
+	}
+	defer held.Release()
+
+	_, err = Goto(gotoRequest(shed, "B"))
+	if !errors.Is(err, ErrShedBusy) {
+		t.Fatalf("Goto(...) error = %v; want ErrShedBusy", err)
+	}
+	for _, want := range []string{"lyx shed pause", "lyx shed status"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not name %q", err, want)
+		}
+	}
+	if after := readStatus(t, shed.StatusPath, shed.StatusLockPath); !reflect.DeepEqual(before, after) {
+		t.Errorf("status file changed on a busy refusal: %+v -> %+v", before, after)
+	}
+}
+
+func TestGoto_UnknownTargetListsValidNames(t *testing.T) {
+	shed, _, _ := gotoShed(t)
+	seed := commonSeed("A")
+	seed.State = StateBlocked
+	seedStatus(t, shed.StatusPath, shed.StatusLockPath, seed)
+	before := readStatus(t, shed.StatusPath, shed.StatusLockPath)
+
+	_, err := Goto(gotoRequest(shed, "Z"))
+	if err == nil {
+		t.Fatal("Goto(...) = nil error; want a refusal")
+	}
+	if !strings.Contains(err.Error(), "A, B") {
+		t.Errorf("error %q does not list the valid names in list order", err)
+	}
+	if after := readStatus(t, shed.StatusPath, shed.StatusLockPath); !reflect.DeepEqual(before, after) {
+		t.Errorf("status file changed on an unknown-target refusal")
+	}
+}
+
+func TestGoto_DoneRunRefusedNamingNewSeed(t *testing.T) {
+	shed, _, _ := gotoShed(t)
+	seed := commonSeed("B")
+	seed.State = StateDone
+	seedStatus(t, shed.StatusPath, shed.StatusLockPath, seed)
+	before := readStatus(t, shed.StatusPath, shed.StatusLockPath)
+
+	_, err := Goto(gotoRequest(shed, "A"))
+	if err == nil {
+		t.Fatal("Goto(...) = nil error; want a refusal")
+	}
+	if !strings.Contains(err.Error(), "seed a new run") {
+		t.Errorf("error %q does not name seeding a new run", err)
+	}
+	if after := readStatus(t, shed.StatusPath, shed.StatusLockPath); !reflect.DeepEqual(before, after) {
+		t.Errorf("status file changed on a done refusal")
+	}
+}
+
+func TestGoto_StepResumesAtTarget(t *testing.T) {
+	shed, a, b := gotoShed(t)
+	seed := commonSeed("A")
+	seed.State = StateBlocked
+	seed.Error = "stuck on A"
+	seedStatus(t, shed.StatusPath, shed.StatusLockPath, seed)
+
+	if _, err := Goto(gotoRequest(shed, "B")); err != nil {
+		t.Fatalf("Goto(...) = _, %v; want nil error", err)
+	}
+	res, err := shed.Step(context.Background())
+	if err != nil {
+		t.Fatalf("Step(...) = _, %v; want nil error", err)
+	}
+	if a.calls != 0 || b.calls != 1 {
+		t.Errorf("calls A, B = %d, %d; want 0, 1 -- the step must resume at the goto target", a.calls, b.calls)
+	}
+	if res.State != StateDone {
+		t.Errorf("Step State = %q; want done", res.State)
+	}
+}
