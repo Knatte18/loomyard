@@ -468,9 +468,28 @@ func TestMasterTemplate_ForbidsLyxGitModelAndNamedSubagents(t *testing.T) {
 	requireContains(t, text, "{{.plan_dir}}` holds the plan")
 	requireContains(t, text, "Read and write them all as ordinary files")
 	requireContains(t, text, "You never run git against `_lyx` or the plan directory; they are committed for you.")
-	requireContains(t, text, "## A policy violation ends your run as stuck")
-	requireContains(t, text, "NEVER work around a violation")
-	requireContains(t, text, "The audit is")
+	requireContains(t, text, "## Audit findings: policy warns, correctness fails the batch")
+	requireContains(t, text, "Still never work around an audit")
+	requireContains(t, text, "never write outside your two contract files")
+	for _, removed := range []string{"## A policy violation ends your run as stuck", "once a violation exists", "## A card-not-done refusal ends your run as stuck", `"card_not_done"`} {
+		if strings.Contains(text, removed) {
+			t.Errorf("master template still carries the removed text %q", removed)
+		}
+	}
+}
+
+// TestMasterTemplate_TeachesBatchFailedAndReportArchivedRungs asserts the master template names the
+// `failed` progress rung and the `batch_failed` and `report_archived` ladder rungs with the verb each
+// one takes, so a run recovers in-session instead of ending stuck.
+func TestMasterTemplate_TeachesBatchFailedAndReportArchivedRungs(t *testing.T) {
+	text := string(mustMasterTemplate(t, newTestStencilsDir(t)))
+
+	requireContains(t, text, "- `failed` → webster rejected that batch's report")
+	requireContains(t, text, `"batch_failed": true`)
+	requireContains(t, text, `"report_archived": true`)
+	requireContains(t, text, "call `lyx webster recover-batch <NN>`, then follow the recover-batch rungs")
+	requireContains(t, text, "call `lyx webster begin-batch <NN>` and re-fork that batch")
+	requireContains(t, text, "`lyx webster rebaseline`")
 }
 
 // TestMasterTemplate_StatesPlanDriftRefusalEndsRunAsStuck asserts the embedded master template's
