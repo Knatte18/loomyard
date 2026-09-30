@@ -32,7 +32,8 @@ their mechanics are documented there per the [doc-lifecycle convention](../overv
 - `internal/logger` — thin log/slog wrapper (Debug/Info/Warn), silent by default;
   `-v`/`-vv` wires to it in `cmd/lyx/main.go`, and `LYX_LOG_LEVEL`/`LYX_LOG_FILE` env vars activate it for entry points (e.g. `go test`) that bypass CLI flag parsing;
   every line also carries a process trace ID (`TraceID()`, exported via `LYX_TRACE_ID` so a spawned child continues its parent's trace) and, for callers holding one, an explicit-parent diagnostic span (`StartSpan`/`Child`/`End`) stamping `trace=`/`span=`;
-  independent of stderr verbosity, every Info+ record also lands in a durable, `AnchorPath()`-anchored sink (`.lyx/logs`, opened, appended to and closed per record rather than held open, retained by age and count, capped at 8 MiB per file), which under `go test` requires the `LYX_TRACE=1` opt-in (alongside `LYX_LOG_LEVEL`/`LYX_LOG_FILE`) to activate
+  independent of stderr verbosity, every Info+ record also lands in a durable, `AnchorPath()`-anchored sink (`.lyx/logs`, opened, appended to and closed per record rather than held open, swept at exit by trace group and last activity, bounds from `logger.yaml`, capped at 8 MiB per file), which under `go test` requires the `LYX_TRACE=1` opt-in (alongside `LYX_LOG_LEVEL`/`LYX_LOG_FILE`) to activate
+- `internal/loggerconfig` — the `logger.yaml` loader for the trace-retention bounds, kept out of `internal/logger` to avoid the `configengine` import cycle; `cmd/lyx`'s exit hook loads it only after the sink has armed
 - `internal/proc` — cross-OS child-process window-hide (`HideWindow`) and detached-spawn (`Detach`) primitives
 - `internal/state` — generic locked typed JSON I/O
 - `internal/modelspec` — model-spec parser + models.yaml registry loader;
