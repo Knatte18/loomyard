@@ -333,3 +333,69 @@ func TestCommitStatusSeam_Real_ArchiveRenameCommitsAdditionAndDeletion(t *testin
 		t.Errorf("weft HEAD = %q; want the original deleted", got)
 	}
 }
+
+// writeRecordFile writes content at path, creating its directory.
+func writeRecordFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestCommitStatusSeam_Real_CommitsFrictionAndDriveReports asserts a friction note and a drive report written before a transition land in the weft HEAD commit and leave both directories clean.
+func TestCommitStatusSeam_Real_CommitsFrictionAndDriveReports(t *testing.T) {
+	seam, location, weftSibling := realSeamFixture(t)
+	writeRecordFile(t, filepath.Join(loomengine.LoomFrictionDir(location), "note.md"), "friction\n")
+	writeRecordFile(t, filepath.Join(shedrun.DriveReportsDir(location, shedrun.SelfRunID), "report.md"), "report\n")
+
+	if err := seam("Plan-Write", "running"); err != nil {
+		t.Fatalf("seam error = %v; want nil", err)
+	}
+
+	got := mustGitOut(t, weftSibling, "show", "--name-only", "--format=", "HEAD")
+	for _, want := range []string{
+		filepath.ToSlash(filepath.Join(loomengine.LoomDurableDirRel(), "friction", "note.md")),
+		filepath.ToSlash(filepath.Join(shedrun.DriveReportsRel(location, shedrun.SelfRunID), "report.md")),
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("weft HEAD touched %q; want it to include %q", got, want)
+		}
+	}
+	for _, dir := range []string{loomengine.LoomDurableDirRel(), shedrun.DriveReportsRel(location, shedrun.SelfRunID)} {
+		if st := mustGitOut(t, weftSibling, "status", "--porcelain", "--", filepath.ToSlash(dir)); st != "" {
+			t.Errorf("weft status under %s = %q; want clean", dir, st)
+		}
+	}
+}
+
+// TestCommitStatusSeam_Real_FrictionArchiveRenameCommitsAdditionAndDeletion asserts a committed friction directory renamed to a timestamped sibling is recorded as both an addition and a deletion, leaving the loom durable directory clean.
+func TestCommitStatusSeam_Real_FrictionArchiveRenameCommitsAdditionAndDeletion(t *testing.T) {
+	seam, location, weftSibling := realSeamFixture(t)
+	writeRecordFile(t, filepath.Join(loomengine.LoomFrictionDir(location), "note.md"), "friction\n")
+	if err := seam("Plan-Write", "running"); err != nil {
+		t.Fatalf("first seam error = %v; want nil", err)
+	}
+
+	archive := filepath.Join(loomengine.LoomDurableDir(location), "friction-20260101T000000")
+	if err := os.Rename(loomengine.LoomFrictionDir(location), archive); err != nil {
+		t.Fatal(err)
+	}
+	if err := seam("Plan-Write", "done"); err != nil {
+		t.Fatalf("second seam error = %v; want nil", err)
+	}
+
+	got := mustGitOut(t, weftSibling, "show", "--no-renames", "--name-status", "--format=", "HEAD")
+	prefix := filepath.ToSlash(loomengine.LoomDurableDirRel()) + "/"
+	if !strings.Contains(got, "A\t"+prefix+"friction-20260101T000000/note.md") {
+		t.Errorf("weft HEAD = %q; want the archive sibling added", got)
+	}
+	if !strings.Contains(got, "D\t"+prefix+"friction/note.md") {
+		t.Errorf("weft HEAD = %q; want the old friction path deleted", got)
+	}
+	if st := mustGitOut(t, weftSibling, "status", "--porcelain", "--", filepath.ToSlash(loomengine.LoomDurableDirRel())); st != "" {
+		t.Errorf("weft status under the loom durable directory = %q; want clean", st)
+	}
+}

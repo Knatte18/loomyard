@@ -22,8 +22,7 @@ import (
 type Kind string
 
 // The fixed set of mutation kinds fabric records.
-// Eight are auto-recorded by the destruction gate (destroy.go); the remaining eleven are
-// hand-recorded at their success sites, since no chokepoint covers them.
+// Eight are auto-recorded by the destruction gate (destroy.go); the remaining twelve are hand-recorded at their success sites, since no chokepoint covers them.
 const (
 	// KindPathRemoved records removePath's deletion of a single path or a directory tree.
 	KindPathRemoved Kind = "path_removed"
@@ -83,6 +82,9 @@ const (
 	// KindMergeCommitted records a merge verb's conclude-commit landing on one side; Detail is the
 	// new SHA.
 	KindMergeCommitted Kind = "merge_committed"
+	// KindTagPushed records archiveWeftTip's push of an archive tag to the weft origin, recorded only after the push observably succeeded.
+	// Its Target is the weft repo root and its Detail is the tag name.
+	KindTagPushed Kind = "tag_pushed"
 )
 
 // Mutation is one flat entry in a Mutations record, naming one primitive that observably changed

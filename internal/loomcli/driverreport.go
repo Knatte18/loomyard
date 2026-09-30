@@ -19,9 +19,7 @@ import (
 // separators that would sort out of chronological order.
 const driverReportTimestampLayout = "20060102-150405"
 
-// driverReportPath composes the path to one ly-drive attempt's drive report, under the run's
-// ephemeral scratch directory: shedrun.ScratchDir(l, runID) joined with
-// "drive-report-<compact-timestamp>-<4-hex>.md".
+// driverReportPath composes the path to one ly-drive attempt's drive report, under the run's durable drive-reports directory: shedrun.DriveReportsDir(l, runID) joined with "drive-report-<compact-timestamp>-<4-hex>.md".
 //
 // now and rand are injected seams rather than read directly, so this composer stays pure and a test
 // can drive it with no real clock and no real entropy source. Both halves of the suffix are
@@ -32,12 +30,11 @@ const driverReportTimestampLayout = "20060102-150405"
 // is not hypothetical, since corpse removal plus a fresh start inside one second is exactly what
 // batch 7's instantly-exiting stub pane produces.
 //
-// The directory is composed through shedrun.ScratchDir and never by spelling ".lyx" or "shed" in
-// this package: the Lyxdirs Single-Declarer Invariant and the Shed Run-Directory Invariant both make
-// that a shedrun obligation, and ScratchDir is the shipped accessor for exactly this placement.
+// The directory is durable, so the reports can be committed and survive teardown.
+// It is composed through shedrun.DriveReportsDir and never by spelling "_lyx" or "shed" in this package: the Lyxdirs Single-Declarer Invariant and the Shed Run-Directory Invariant both make that a shedrun obligation.
 func driverReportPath(l *lyxcwd.Location, runID string, now func() time.Time, rand func() string) string {
 	filename := fmt.Sprintf("drive-report-%s-%s.md", now().Format(driverReportTimestampLayout), rand())
-	return filepath.Join(shedrun.ScratchDir(l, runID), filename)
+	return filepath.Join(shedrun.DriveReportsDir(l, runID), filename)
 }
 
 // newDriverReportRand returns the production random source driverReportPath's rand seam consumes: a

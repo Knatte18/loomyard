@@ -60,6 +60,9 @@ type HistoryEntry struct {
 	// its value is 0 (a gate that passed on the first try), since 0 is a meaningful, distinct
 	// verdict from "ungated" and collapsing the two would silently lose it.
 	GateAttempts *int `json:"gate_attempts,omitempty"`
+	// BudgetExempt is true on a Stuck entry the producer marked as not counted against the bounce budget.
+	// A status file written before the field existed decodes as false and counts as before.
+	BudgetExempt bool `json:"budget_exempt,omitempty"`
 }
 
 // Status is the whole status file.

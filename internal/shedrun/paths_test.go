@@ -111,6 +111,35 @@ func TestStatusRel(t *testing.T) {
 	}
 }
 
+func TestDriveReportsDir(t *testing.T) {
+	l := syntheticLocation(t)
+	got := DriveReportsDir(l, "self")
+	want := filepath.Join(RunDir(l, "self"), "drive-reports")
+	if got != want {
+		t.Errorf("DriveReportsDir(l, %q) = %q; want %q", "self", got, want)
+	}
+}
+
+func TestDriveReportsRel(t *testing.T) {
+	anchored := syntheticLocation(t)
+	anchored.AnchorRel = "sub"
+	for name, l := range map[string]*lyxcwd.Location{
+		"unanchored": syntheticLocation(t),
+		"anchored":   anchored,
+	} {
+		t.Run(name, func(t *testing.T) {
+			got := DriveReportsRel(l, "self")
+			want, err := filepath.Rel(l.AnchorPath(), DriveReportsDir(l, "self"))
+			if err != nil {
+				t.Fatalf("filepath.Rel: %v", err)
+			}
+			if got != want {
+				t.Errorf("DriveReportsRel = %q; want %q", got, want)
+			}
+		})
+	}
+}
+
 func TestPrimeRunLock(t *testing.T) {
 	l := syntheticLocation(t)
 	got := PrimeRunLock(l)
