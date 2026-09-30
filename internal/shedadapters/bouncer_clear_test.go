@@ -233,7 +233,7 @@ func TestBouncer_Clear_NonTriggeringCasesLeaveRunDirUntouched(t *testing.T) {
 			t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
 		}
 		if ptr.Path != "" || ptr.GateAttempts != nil {
-			t.Errorf("Call() pointer = %+v; want empty", ptr)
+			t.Errorf("Call() pointer = %+v; want empty Path and no GateAttempts", ptr)
 		}
 		if _, err := os.Stat(verdictPath(cfg.RunDir, 1)); err != nil {
 			t.Errorf("round 1's verdict file was removed even though round 2 -- not round 1 -- is the resolved round: %v", err)
@@ -257,7 +257,7 @@ func TestBouncer_Clear_NonTriggeringCasesLeaveRunDirUntouched(t *testing.T) {
 			t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
 		}
 		if ptr.Path != "" || ptr.GateAttempts != nil {
-			t.Errorf("Call() pointer = %+v; want empty", ptr)
+			t.Errorf("Call() pointer = %+v; want empty Path and no GateAttempts", ptr)
 		}
 		if shuttle.called {
 			t.Error("Call() invoked the shuttle seam on a re-bounce; want it never called")
@@ -336,7 +336,7 @@ func TestBouncer_Clear_ArchiveFailureDegradesToStuck(t *testing.T) {
 		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
 	}
 	if ptr.Path != "" || ptr.GateAttempts != nil {
-		t.Errorf("Call() pointer = %+v; want empty", ptr)
+		t.Errorf("Call() pointer = %+v; want empty Path and no GateAttempts", ptr)
 	}
 	if shuttle.called {
 		t.Error("Call() invoked the shuttle seam after a failed clear; want it never reached")
