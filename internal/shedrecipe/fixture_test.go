@@ -192,6 +192,10 @@ func newTestEnv(t *testing.T) Env {
 			ReadStatus: func(string, string) (shedengine.Status, bool, error) {
 				return shedengine.Status{}, false, nil
 			},
+			ReadApproval: func() (battenshed.ChildApproval, bool, error) {
+				return battenshed.ChildApproval{}, false, nil
+			},
+			DriverAlive: func(context.Context) (bool, error) { return false, nil },
 		},
 		Teardown: battenshed.TeardownDeps{
 			Shutdown: func(context.Context) (string, error) { return "", nil },

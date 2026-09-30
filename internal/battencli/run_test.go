@@ -69,6 +69,10 @@ func newFakeReceiver(t *testing.T, shutdown func(ctx context.Context) (string, e
 			ReadStatus: func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
 				return shedengine.Status{State: shedengine.StateDone}, true, nil
 			},
+			ReadApproval: func() (battenshed.ChildApproval, bool, error) {
+				return battenshed.ChildApproval{}, false, nil
+			},
+			DriverAlive: func(context.Context) (bool, error) { return false, nil },
 		},
 		// SeedChild is filled with trivial no-op fakes -- never invoked by any case in this file,
 		// since every one of them resumes from a status file already past Worktree-Create -- so the

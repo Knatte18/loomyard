@@ -85,6 +85,17 @@ const (
 	staleSocketGrace   = 5 * time.Second
 )
 
+// ErrNoSession is the sentinel a no-session refusal wraps.
+// It is exported for one reason: a caller outside reed that reads Status as a liveness probe maps an absent session to "not live" rather than to a read failure.
+var ErrNoSession = errors.New("reed: no session")
+
+// noSessionError carries noSessionMessage's text as its visible message while unwrapping to ErrNoSession.
+type noSessionError struct{ msg string }
+
+func (e noSessionError) Error() string { return e.msg }
+
+func (e noSessionError) Unwrap() error { return ErrNoSession }
+
 // serverLogPruneKeep keeps 2 pre-existing logs; newest 3 total (2 + fresh boot).
 const serverLogPruneKeep = 2
 
@@ -776,6 +787,12 @@ func (e *Engine) Down() (DownResult, error) {
 			return fmt.Errorf("delete state: %w", err)
 		}
 
+		// With reed.json gone nothing can relaunch a strand, so no launch script has a strand left to belong to.
+		// Best-effort: Down stays idempotent.
+		if err := os.RemoveAll(launchScriptDir(e.stateDir())); err != nil {
+			logger.Warn("reed: could not delete launch script directory", "path", launchScriptDir(e.stateDir()), "err", err)
+		}
+
 		result = DownResult{Session: e.SessionName(), AbandonedSession: abandoned}
 		return nil
 	})
@@ -1020,7 +1037,7 @@ func (e *Engine) requireSessionLocked() error {
 	}
 	// An ABSENT file is readable-and-empty, not unreadable: a brand-new worktree has no reed.json
 	// and must still get the plain "run lyx reed up" text.
-	return errors.New(noSessionMessage(strandCount, loadErr == nil))
+	return noSessionError{msg: noSessionMessage(strandCount, loadErr == nil)}
 }
 
 // Status reports this session's tracked strands and their live/dead state by cross-referencing the
