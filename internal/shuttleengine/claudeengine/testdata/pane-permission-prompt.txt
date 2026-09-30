@@ -1,0 +1,12 @@
+● Bash(rm -rf build)
+
+────────────────────────────────────────────────────────────────
+ Bash command
+
+   rm -rf build
+
+ Do you want to proceed?
+ ❯ 1. Yes
+   2. Yes, and do not ask again for rm commands
+   3. No, and tell Claude what to do differently (esc)
+

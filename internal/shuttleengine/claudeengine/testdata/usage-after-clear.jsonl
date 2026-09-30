@@ -1,0 +1,2 @@
+{"type":"user","message":{"role":"user","content":"resume"}}
+{"type":"assistant","isSidechain":false,"message":{"role":"assistant","usage":{"input_tokens":2,"cache_creation_input_tokens":30,"cache_read_input_tokens":400,"output_tokens":3}}}
