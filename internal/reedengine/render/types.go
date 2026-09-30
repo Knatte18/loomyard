@@ -1,5 +1,6 @@
 // types.go defines the closed display vocabulary render exposes to its caller: the Anchor kinds a
-// strand may declare, the per-strand Display settings, and the plain Strand/Box/Params value types.
+// strand may declare, the per-strand Display settings (anchor, focus, shrink, fixed row budget),
+// and the plain Strand/Box/Params value types.
 // This file carries no logic — it is the vocabulary the policy layer (policy.go, height.go,
 // focus.go) and the mechanics layer (layout.go, checksum.go) are built from.
 
@@ -51,6 +52,14 @@ type Display struct {
 	// stay full height. When false the strand stays a co-equal full pane
 	// even while a descendant is present.
 	ShrinkWhenWaitingOnChild bool `json:"shrinkWhenWaitingOnChild"`
+	// FixedRows, when positive, gives this strand exactly that many rows
+	// whether or not it has a descendant, treated like a collapsed strip
+	// everywhere else in the height policy. Zero means no fixed height, so
+	// every existing reed.json record decodes to zero and lays out as
+	// before. The stack's active (bottom-most) strand ignores it and stays
+	// a full pane, and it wins over ShrinkWhenWaitingOnChild when both
+	// apply.
+	FixedRows int `json:"fixedRows"`
 }
 
 // Strand is the layout-facing projection of an engine strand: only the fields Rules needs to place

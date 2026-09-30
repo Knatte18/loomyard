@@ -110,8 +110,8 @@ func TestComposePaneLaunchLine_PreludeThenCommand(t *testing.T) {
 	}
 }
 
-// TestComposePaneLaunchLine_EmptyCmdEmitsThePreludeAlone drives the empty-command case: the shape the
-// interactive operator strand produces, since that strand is added with no command at all.
+// TestComposePaneLaunchLine_EmptyCmdEmitsThePreludeAlone drives the empty-command case: the shape a
+// strand added with no command produces (for example `lyx reed add` without `--cmd`).
 func TestComposePaneLaunchLine_EmptyCmdEmitsThePreludeAlone(t *testing.T) {
 	const exe = "/opt/lyx/bin/lyx"
 	withInjectedExecutablePath(t, func() (string, error) { return exe, nil })

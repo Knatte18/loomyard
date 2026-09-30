@@ -20,48 +20,33 @@ import (
 // duplicating it.
 const statusStrandDisplayName = "loom-status"
 
-// operatorStrandDisplayName is the operator's own strand's stable identity, pinned for the same
-// three reasons statusStrandDisplayName is: it is the --if-absent match key operatorStrandAddSpec's
-// IfAbsent option matches against, it is the name an operator sees for their own pane in
-// `lyx reed status`, and it must stay byte-stable across versions -- reed's add has no upsert
-// semantics, so a re-run under a changed literal would stack a second pane instead of matching the
-// first.
-const operatorStrandDisplayName = "loom-operator"
+// statusStrandFixedRows is the status strand's fixed row budget. `lyx loom status --watch` appends
+// one line per activity change and leaves the cursor on a fresh empty row, so 3 rows show the
+// current activity plus the previous one. It is a constant, not a config key.
+const statusStrandFixedRows = 3
 
-// driverStrandDisplayName is the ly-drive session's own strand's stable identity, pinned for the
-// same reason statusStrandDisplayName and operatorStrandDisplayName are: reed's add has no upsert
-// semantics, so a second add under this same display name would append a second pane rather than
-// replace the first. Every add and every lookup must use this exact constant, or a re-entrant
-// bootstrap stacks a second driver pane instead of matching the one already running.
-const driverStrandDisplayName = "loom-driver"
-
-// operatorStrandAddSpec builds the operator strand's reedengine.AddSpec: a below-parent pane that
-// reuses an already-present entry rather than duplicating it, takes no focus, and never collapses.
-//
-// Four choices are non-default and each is pinned deliberately. Cmd is left at its zero value
-// because a Strand's Cmd is typed into an already-running shell via send-keys, not passed as a
-// trailing split-window argument -- naming a shell here would nest one shell inside another and make
-// `lyx reed resume` stack a third; the pane instead runs whatever shell tmux gives a freshly split
-// pane. IfAbsent is true because `lyx loom start` is explicitly re-entrant and the engine already
-// implements the needed no-op / relaunch-dead / fall-through-to-add behaviour, so this must not
-// repeat resolveStatusStrandAction's older manual keep/replace/add dance. Focus is false because
-// Display.Focus is persisted on the strand and re-evaluated on every subsequent AddStrand, so a true
-// value would re-capture focus on every agent-pane spawn for the rest of the run -- the operator
-// still lands in their own pane at cold bootstrap for free, via the bottom-most default.
-// ShrinkWhenWaitingOnChild is false as a declaration of intent rather than a rendering change: the
-// flag is inert for a parentless, childless strand, and setting it true would accidentally encode
-// that the operator's own pane may collapse to a one-row strip.
-func operatorStrandAddSpec() reedengine.AddSpec {
+// statusStrandAddSpec builds the status strand's reedengine.AddSpec for the given pane command: a
+// below-parent pane carrying the statusStrandFixedRows budget. ShrinkWhenWaitingOnChild stays true
+// but is inert, because the fixed budget wins over the shrink rule. IfAbsent stays false because
+// ensureStatusStrand does its own keep/replace/add dance.
+func statusStrandAddSpec(cmd string) reedengine.AddSpec {
 	return reedengine.AddSpec{
-		NameOverride: operatorStrandDisplayName,
-		IfAbsent:     true,
+		NameOverride: statusStrandDisplayName,
+		Cmd:          cmd,
 		Display: render.Display{
 			Anchor:                   render.AnchorBelowParent,
-			Focus:                    false,
-			ShrinkWhenWaitingOnChild: false,
+			ShrinkWhenWaitingOnChild: true,
+			FixedRows:                statusStrandFixedRows,
 		},
 	}
 }
+
+// driverStrandDisplayName is the ly-drive session's own strand's stable identity, pinned for the
+// same reason statusStrandDisplayName is: reed's add has no upsert semantics, so a second add under
+// this same display name would append a second pane rather than replace the first. Every add and
+// every lookup must use this exact constant, or a re-entrant bootstrap stacks a second driver pane
+// instead of matching the one already running.
+const driverStrandDisplayName = "loom-driver"
 
 // mustSpawnDriver reports whether the bootstrap must spawn a new driver, from the run lock's held
 // state AND whether a live driver strand already exists.

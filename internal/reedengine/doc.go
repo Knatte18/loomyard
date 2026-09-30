@@ -414,9 +414,9 @@
 //     from 1 row to 6 across a 76-to-90-row client resize, and to 16 across
 //     a further 90-to-120 one.
 //     The answer is a window-resized window hook holding one
-//     "resize-pane -y" array entry per fixed-height pane — the Selvage band
-//     and every collapsed strip — installed by reed and executed by the
-//     tmux server itself, refreshed on every successful apply
+//     "resize-pane -y" array entry per fixed-height pane — the Selvage band,
+//     every collapsed strip and every fixed-budget strand — installed by reed
+//     and executed by the tmux server itself, refreshed on every successful apply
 //     (applyLayoutLocked) and again in AttachArgv's pre-flight, with the
 //     pinned heights coming from render.FixedHeightPins: the heights render
 //     actually placed the cells at, after clampBandHeight and

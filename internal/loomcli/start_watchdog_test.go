@@ -6,7 +6,7 @@
 // here. The call sits after c.ensureStatusStrand() must return nil, and that helper calls
 // c.reed.Up() and c.reed.Status() on a concrete *reedengine.Engine, which cannot run without a live
 // tmux server -- so no offline test in this package can reach the call site through the real RunE at
-// all. Card 15's smoke tier (internal/loomcli/smoke_operatorstrand_test.go) asserts the gate position
+// all. The smoke tier (internal/loomcli/smoke_starttail_test.go) asserts the gate position
 // against a real session instead.
 
 package loomcli

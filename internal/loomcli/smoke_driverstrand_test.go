@@ -17,11 +17,10 @@
 // Every strand's own launch line is typed into an already-running plain shell pane via tmux send-keys
 // (reedengine's own launchStrandLocked, spawn.go), not run as the split-window's own trailing
 // command, so the stub provider process finishing its own work leaves the pane's shell alive and the
-// pane itself reported live indefinitely -- exactly the same reason the operator-strand smoke suite
-// simulates a dead pane by killing tmux outright rather than waiting on a spawned command to exit (see
-// smoke_operatorstrand_test.go's own TestSmokeOperatorStrand_RelaunchesAfterReedServerRestart). This
-// file's own third case follows that same shape at the single-pane grain: it kills the driver's own
-// pane directly via "tmux kill-pane", never by waiting for the stub script to finish on its own.
+// pane itself reported live indefinitely -- so a dead pane can only be simulated by killing tmux
+// outright rather than by waiting on a spawned command to exit. This file's own third case does that
+// at the single-pane grain: it kills the driver's own pane directly via "tmux kill-pane", never by
+// waiting for the stub script to finish on its own.
 //
 // The provider binary behind every one of this file's spawns is a stubbed shell script, never a real
 // `claude`: per this batch's own scope note, exercising the real thing spawns a live, billed Claude
@@ -134,7 +133,7 @@ func seedLLMDriver(t *testing.T, loc *lyxcwd.Location) {
 
 // driverStrand returns the tracked strand named driverStrandDisplayName from eng's own Status(), and
 // whether one was found -- the same findStatusStrand helper bootstrap.go already exports within this
-// package, applied to the driver strand's own name instead of the status or operator strand's.
+// package, applied to the driver strand's own name instead of the status strand's.
 func driverStrand(t *testing.T, eng *reedengine.Engine) (reedengine.StrandStatus, bool) {
 	t.Helper()
 	status, err := eng.Status()

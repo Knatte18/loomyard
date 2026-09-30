@@ -43,7 +43,7 @@ Creel v1 reserves the grammar only; no connector ships with it.
   Setting it once at spawn is not enough, because a Claude session's name is reset after a compact, so a long-running agent silently loses it mid-run.
   So the per-hub daemon's tick owns it as it owns the title: read each tracked agent strand's current session name, and when it differs from the strand name, restore it (e.g. `/rename <strand name>` sent into the pane at idle, the same idle-only delivery rule as mail), logging the repair.
   The strand name stays the single source of truth; the session name, like the pane title, is a mirror reed keeps in sync, never a key anything resolves through.
-  "Every pane has a name" is then nearly free: everything reed spawns is a strand (the shipped born-as-strand item makes even the operator's attach pane one), every strand has a name, every name mirrors to its title; panes outside reed are outside the system and never routed to.
+  "Every pane has a name" is then nearly free: everything reed spawns is a strand (the operator's terminal is Selvage, which is not a strand and so not addressable), every strand has a name, every name mirrors to its title; panes outside reed are outside the system and never routed to.
 - **Rename is a relaunch.**
   Env is frozen at process start, so the name is a birth attribute set at `AddStrand` and never mutated in place — renaming a role means tearing down and respawning its strand.
 - **Well-known role names make addresses guessable.**

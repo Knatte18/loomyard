@@ -251,3 +251,104 @@ func TestIsAncestorAndBuildStackBodyIntegration(t *testing.T) {
 		t.Errorf("layout string = %q, want checksum then comma then body", full)
 	}
 }
+
+// fixedStrand returns a live below-parent strand with the given fixed row budget.
+func fixedStrand(guid, parent, pane string, fixed int, shrink bool) Strand {
+	return Strand{GUID: guid, Parent: parent, PaneID: pane, Live: true,
+		Display: Display{Anchor: AnchorBelowParent, FixedRows: fixed, ShrinkWhenWaitingOnChild: shrink}}
+}
+
+func TestStackHeightsFixedRowsBudget(t *testing.T) {
+	tests := []struct {
+		name    string
+		stack   []Strand
+		boxH    int
+		strip   int
+		want    []int
+		wantPin []bool
+	}{
+		{
+			name:    "FixedAboveOneFull",
+			stack:   []Strand{fixedStrand("a", "", "%1", 3, false), fixedStrand("b", "a", "%2", 0, false)},
+			boxH:    20,
+			strip:   2,
+			want:    []int{3, 20 - 3 - 1},
+			wantPin: []bool{true, false},
+		},
+		{
+			name: "FixedAboveSeveralFullRemainderToBottom",
+			stack: []Strand{
+				fixedStrand("a", "", "%1", 3, false),
+				fixedStrand("b", "a", "%2", 0, false),
+				fixedStrand("c", "a", "%3", 0, false),
+			},
+			boxH:    20,
+			strip:   2,
+			want:    []int{3, 7, 8}, // usable 18 - 3 = 15 -> 7 each, remainder 1 to the bottom
+			wantPin: []bool{true, false, false},
+		},
+		{
+			name:    "FixedWinsOverShrinkCollapse",
+			stack:   []Strand{fixedStrand("a", "", "%1", 3, true), fixedStrand("b", "a", "%2", 0, false)},
+			boxH:    20,
+			strip:   2,
+			want:    []int{3, 16},
+			wantPin: []bool{true, false},
+		},
+		{
+			name:    "LoneFixedFillsBox",
+			stack:   []Strand{fixedStrand("a", "", "%1", 3, false)},
+			boxH:    20,
+			strip:   2,
+			want:    []int{20},
+			wantPin: []bool{false},
+		},
+		{
+			name:    "FixedAtBottomIsAFullPane",
+			stack:   []Strand{fixedStrand("a", "", "%1", 0, false), fixedStrand("b", "a", "%2", 3, false)},
+			boxH:    20,
+			strip:   2,
+			want:    []int{9, 10},
+			wantPin: []bool{false, false},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := stackHeights(tt.stack, Box{W: 100, H: tt.boxH}, Params{CollapsedStripRows: tt.strip, MinFullRows: 3})
+			sum := len(got) - 1
+			for i, pl := range got {
+				if pl.height != tt.want[i] {
+					t.Errorf("height[%d] = %d, want %d (all: %+v)", i, pl.height, tt.want[i], got)
+				}
+				if pl.strip != tt.wantPin[i] {
+					t.Errorf("strip[%d] = %v, want %v", i, pl.strip, tt.wantPin[i])
+				}
+				sum += pl.height
+			}
+			if sum != tt.boxH {
+				t.Errorf("heights plus dividers = %d, want box %d", sum, tt.boxH)
+			}
+		})
+	}
+}
+
+func TestStackHeightsFixedRowsTooShortWindowReclaimsFixedFirst(t *testing.T) {
+	stack := []Strand{
+		fixedStrand("a", "", "%1", 6, false),
+		fixedStrand("b", "a", "%2", 0, false),
+		fixedStrand("c", "b", "%3", 0, false),
+	}
+	// usable = 8 - 2 = 6; fixed 6 leaves 0 for two full panes -> both borrow 1, reclaimed from the fixed strand.
+	got := stackHeights(stack, Box{W: 100, H: 8}, Params{CollapsedStripRows: 2, MinFullRows: 3})
+	want := []int{4, 1, 1}
+	sum := 2
+	for i, pl := range got {
+		if pl.height != want[i] {
+			t.Errorf("height[%d] = %d, want %d (all: %+v)", i, pl.height, want[i], got)
+		}
+		sum += pl.height
+	}
+	if sum != 8 {
+		t.Errorf("heights plus dividers = %d, want 8", sum)
+	}
+}
