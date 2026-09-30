@@ -432,7 +432,9 @@ User-facing modules each get one `lyx <module>` namespace:
   the running watch is budgeted at 12 hours, while an awaiting wait is not bounded.
   That is deliberate (the alternative is 1440 identical commits), and it has one operator-visible consequence worth knowing: `lyx fabric checkout` refuses hub-wide while a batten run is watching, because it requires a clean pair.
   `status` bounds the history it reports to the most recent entries, alongside the true `history_length` and a `history_truncated` flag — the running watch appends one entry per poll, bounded by its 1440-bounce budget, while a budget-exempt wait (an awaiting hand-off, the driver-exit grace) folds consecutive identical polls into one entry carrying `repeats` and `last_at`,
-  so such a wait neither grows the history nor advances `history_length` — and surfaces the blocked run's own producer-supplied `stuck_reason`, kept for the `Run-Shed` block through the budget arm, whose persisted `error` stays the fixed budget literal (the other rows carry no `on_stuck`, so their own reason is the persisted `error`), plus the teardown row's `abandonedSession` — recorded by the producer rather than only returned, so a `step`-driven lifecycle reports it as well as a `run`-driven one.
+  so such a wait neither grows the history nor advances `history_length` — and surfaces the blocked run's own producer-supplied `stuck_reason`, kept for the `Run-Shed` block through the budget arm, whose persisted `error` stays the fixed budget literal (the other rows carry no `on_stuck`,
+  so their own reason is the persisted `error`), plus the teardown row's `abandonedSession` — recorded by the producer rather than only returned,
+  so a `step`-driven lifecycle reports it as well as a `run`-driven one.
   ✅ Implemented. See the `internal/battenshed` and `internal/battenrecipe` package documentation.
 
 The cross-OS spawn primitive **proc**, and the generic outer phase-FSM **shed**, are the two remaining internal (non-CLI) layers — proc the base of the stack, shed the generic engine `loom` configures rather than a stack layer of its own;
