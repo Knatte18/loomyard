@@ -80,7 +80,8 @@ func approvalIdentity(a ChildApproval) string {
 }
 
 // approvalActedContent renders the approval-acted marker: the identity line, then the child's history length in decimal.
-// The length rides beside the identity, never inside it, so identity comparison alone decides whether an approval is new.
+// The length rides beside the identity, never inside it,
+// so identity comparison alone decides whether an approval is new.
 func approvalActedContent(identity string, historyLen int) string {
 	return identity + strconv.Itoa(historyLen) + "\n"
 }
