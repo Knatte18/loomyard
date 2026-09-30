@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
@@ -30,6 +31,37 @@ func fakePrimeLock(path string, ok bool, acquireErr error, releaseErr error, rel
 				*released = true
 				return releaseErr
 			}, true, nil
+		},
+		Sleep: func(context.Context, time.Duration) {},
+	}
+}
+
+// waitingPrimeLock builds a PrimeLock that reports contention for the first contendedPolls Acquire
+// calls (forever when contendedPolls is negative), then acquires.
+// laterErr, when non-nil, is returned as the Acquire error on the attempt after the first contended one.
+// sleeps counts Sleep calls, and onSleep, when non-nil, runs inside each of them.
+func waitingPrimeLock(path string, contendedPolls int, laterErr error, released *bool, sleeps *int, onSleep func()) PrimeLock {
+	attempts := 0
+	return PrimeLock{
+		Path: path,
+		Acquire: func() (func() error, bool, error) {
+			attempts++
+			if laterErr != nil && attempts > 1 {
+				return nil, false, laterErr
+			}
+			if contendedPolls < 0 || attempts <= contendedPolls {
+				return nil, false, nil
+			}
+			return func() error {
+				*released = true
+				return nil
+			}, true, nil
+		},
+		Sleep: func(context.Context, time.Duration) {
+			*sleeps++
+			if onSleep != nil {
+				onSleep()
+			}
 		},
 	}
 }
@@ -260,5 +292,117 @@ func TestWorktreeCreate_CancelledAfterSuccessfulCreate(t *testing.T) {
 	}
 	if !released {
 		t.Error("release was not invoked on the cancelled-context path")
+	}
+}
+
+func TestWorktreeCreate_WaitsForContendedLockThenCreates(t *testing.T) {
+	scratchDir := t.TempDir()
+	var released bool
+	var sleeps int
+	lock := waitingPrimeLock("/lock/path", 3, nil, &released, &sleeps, nil)
+
+	called := false
+	producer := NewWorktreeCreate("create", "myslug", func(ctx context.Context) error {
+		called = true
+		return nil
+	}, lock, scratchDir)
+
+	outcome, _, err := producer.Call(context.Background())
+	if err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	if outcome != shedengine.Done {
+		t.Errorf("Call() outcome = %v; want Done", outcome)
+	}
+	if !called {
+		t.Error("createWorktree was not called after the lock freed")
+	}
+	if sleeps != 3 {
+		t.Errorf("sleeps = %d; want 3", sleeps)
+	}
+	if !released {
+		t.Error("release was not invoked after the wait")
+	}
+}
+
+func TestWorktreeCreate_LockStillHeldPastBoundIsStuck(t *testing.T) {
+	scratchDir := t.TempDir()
+	var released bool
+	var sleeps int
+	lock := waitingPrimeLock("/lock/contended/path", -1, nil, &released, &sleeps, nil)
+
+	called := false
+	producer := NewWorktreeCreate("create", "myslug", func(ctx context.Context) error {
+		called = true
+		return nil
+	}, lock, scratchDir)
+
+	outcome, ptr, err := producer.Call(context.Background())
+	if err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	if outcome != shedengine.Stuck {
+		t.Errorf("Call() outcome = %v; want Stuck", outcome)
+	}
+	if called {
+		t.Error("createWorktree was called although the lock was never acquired")
+	}
+	if want := int(primeLockWaitBound / primeLockPollInterval); sleeps != want {
+		t.Errorf("sleeps = %d; want %d", sleeps, want)
+	}
+	reason := readStuckFile(t, scratchDir, "create", ptr)
+	if !strings.Contains(reason, "/lock/contended/path") || !strings.Contains(reason, "after waiting 10m0s") {
+		t.Errorf("stuck-reason file = %q; want it to name the lock path and the wait", reason)
+	}
+}
+
+func TestWorktreeCreate_CancelledDuringLockWait(t *testing.T) {
+	scratchDir := t.TempDir()
+	var released bool
+	var sleeps int
+	ctx, cancel := context.WithCancel(context.Background())
+	lock := waitingPrimeLock("/lock/path", -1, nil, &released, &sleeps, cancel)
+
+	called := false
+	producer := NewWorktreeCreate("create", "myslug", func(ctx context.Context) error {
+		called = true
+		return nil
+	}, lock, scratchDir)
+
+	outcome, _, err := producer.Call(ctx)
+	if err == nil {
+		t.Fatal("Call() error = nil; want the cancelled-during-run error")
+	}
+	if outcome == shedengine.Stuck {
+		t.Error("Call() outcome = Stuck; want a cancelled wait to never surface as Stuck")
+	}
+	if !errors.Is(err, context.Canceled) || !strings.Contains(err.Error(), "context cancelled during run") {
+		t.Errorf("Call() error = %v; want the cancelled-during-run diagnosis", err)
+	}
+	if called {
+		t.Error("createWorktree was called after cancellation")
+	}
+}
+
+func TestWorktreeCreate_AcquireErrorOnLaterAttempt(t *testing.T) {
+	scratchDir := t.TempDir()
+	var released bool
+	var sleeps int
+	acquireErr := errors.New("flock: device error")
+	lock := waitingPrimeLock("/lock/path", -1, acquireErr, &released, &sleeps, nil)
+
+	producer := NewWorktreeCreate("create", "myslug", func(ctx context.Context) error {
+		return nil
+	}, lock, scratchDir)
+
+	outcome, _, err := producer.Call(context.Background())
+	if err == nil || !errors.Is(err, acquireErr) {
+		t.Fatalf("Call() error = %v; want it to wrap %v", err, acquireErr)
+	}
+	if outcome == shedengine.Stuck {
+		t.Error("Call() outcome = Stuck; want a hard error")
+	}
+	if sleeps != 1 {
+		t.Errorf("sleeps = %d; want 1", sleeps)
 	}
 }

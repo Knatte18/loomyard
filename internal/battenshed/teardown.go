@@ -76,8 +76,8 @@ func NewWorktreeTeardown(name, slug string, deps TeardownDeps, primeLock PrimeLo
 }
 
 // Call implements shedengine.ShedProducer. It acquires the prime lock exactly as
-// worktreeCreateProducer.Call does -- an Acquire error is a returned hard error, ok == false is
-// Stuck naming primeLock.Path, and the release closure is deferred so it runs on every exit path
+// worktreeCreateProducer.Call does -- a contended lock is waited for (bounded and cancellable), an Acquire error is a returned hard error, a bound spent is
+// Stuck naming primeLock.Path and the wait, and the release closure is deferred so it runs on every exit path
 // including every Stuck one, with a release error logged at Warn rather than replacing the
 // verdict.
 //
@@ -94,18 +94,11 @@ func (p *worktreeTeardownProducer) Call(ctx context.Context) (shedengine.Outcome
 		return "", shedengine.OutputPointer{}, err
 	}
 
-	release, ok, err := p.primeLock.Acquire()
+	release, reason, err := acquirePrimeLock(ctx, p.name, p.slug, p.primeLock)
 	if err != nil {
-		if cerr := cancelErr(ctx, p.name); cerr != nil {
-			return "", shedengine.OutputPointer{}, cerr
-		}
-		return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: acquire prime lock %q: %w", p.name, p.primeLock.Path, err)
+		return "", shedengine.OutputPointer{}, err
 	}
-	if !ok {
-		if cerr := cancelErr(ctx, p.name); cerr != nil {
-			return "", shedengine.OutputPointer{}, cerr
-		}
-		reason := fmt.Sprintf("prime lock %q is already held; another batten producer is creating or tearing down a task worktree", p.primeLock.Path)
+	if release == nil {
 		reportStuck(p.name, reason, p.scratchDir, "slug", p.slug)
 		return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
 	}
