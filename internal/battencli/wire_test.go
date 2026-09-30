@@ -425,7 +425,7 @@ func TestTeardownRefusal_RecordsRemedyNamesCommitRecordsNeverForce(t *testing.T)
 	if got == nil {
 		t.Fatal("teardownRefusal(sibling dirty) = nil; want a reworded refusal")
 	}
-	for _, want := range []string{"lyx loom commit-records", anchor, "lyx batten run some-slug"} {
+	for _, want := range []string{"lyx loom commit-records", anchor, "lyx batten run some-slug", "not a run record", "commit or remove that content by hand"} {
 		if !strings.Contains(got.Error(), want) {
 			t.Errorf("teardownRefusal(sibling dirty) = %q; want it to contain %q", got.Error(), want)
 		}

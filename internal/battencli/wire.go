@@ -191,14 +191,13 @@ func createRefusal(err error) error {
 	)
 }
 
-// teardownRefusal rewords the teardown refusal for uncommitted run records, names the resume for a
-// failed archive of the run records, and passes every other error through unchanged.
+// teardownRefusal rewords the teardown refusal for an uncommitted change in the pair's sibling, names the resume for a failed archive of the run records, and passes every other error through unchanged.
 //
-// fabric's own refusal for a dirty pair sibling leaves --force as the way out, and --force would
-// discard exactly the records this task exists to keep. The records are uncommitted when a driver
-// ended before its end-of-session commit, so the remedy named here commits them first.
-// A failed archive runs before any teardown mutation, so the pair is still whole and a plain resume
-// retries it once the remote is reachable.
+// fabric's own refusal for a dirty pair sibling leaves --force as the way out, and --force would discard exactly the records this task exists to keep.
+// The records are uncommitted when a driver ended before its end-of-session commit, so the remedy named here commits them first.
+// fabric's refusal covers any uncommitted content in the sibling, not only the paths "lyx loom commit-records" stages;
+// the remedy therefore also names what to do when a resume after that commit refuses again.
+// A failed archive runs before any teardown mutation, so the pair is still whole and a plain resume retries it once the remote is reachable.
 func teardownRefusal(err error, slug, taskAnchor string) error {
 	if errors.Is(err, fabricengine.ErrArchiveFailed) {
 		return fmt.Errorf("the pair for %q was left in place because archiving its run records to the remote failed: %w; make the remote reachable, then resume this run with \"lyx batten run %s\"", slug, err, slug)
@@ -207,8 +206,8 @@ func teardownRefusal(err error, slug, taskAnchor string) error {
 		return err
 	}
 	return fmt.Errorf(
-		"the task worktree's run records are uncommitted, most likely because a driver ended before its end-of-session commit; run \"lyx loom commit-records\" in %s to commit them, then resume this run with \"lyx batten run %s\"",
-		taskAnchor, slug,
+		"the task worktree's run records are uncommitted, most likely because a driver ended before its end-of-session commit; run \"lyx loom commit-records\" in %s to commit them, then resume this run with \"lyx batten run %s\". If the resumed teardown refuses again with this reason, what is still uncommitted is not a run record: inspect the pair from %s, commit or remove that content by hand, then resume again",
+		taskAnchor, slug, taskAnchor,
 	)
 }
 
