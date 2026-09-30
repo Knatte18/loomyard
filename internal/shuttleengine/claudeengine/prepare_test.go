@@ -152,9 +152,7 @@ func TestPrepare_ForkSubagentsThreadsIntoLaunchCmd(t *testing.T) {
 	}
 }
 
-// TestPrepare_AppendSystemPromptMatchesDenyNotice proves that for every combination of the deny
-// inputs, Launch.Cmd and Launch.ResumeCmd both carry --append-system-prompt if and only if
-// buildDenyNotice is non-empty, and carry its sentences.
+// TestPrepare_AppendSystemPromptMatchesDenyNotice proves that for every combination of the deny inputs, Launch.Cmd and Launch.ResumeCmd both carry --append-system-prompt if and only if buildDenyNotice is non-empty, and carry its sentences.
 func TestPrepare_AppendSystemPromptMatchesDenyNotice(t *testing.T) {
 	for _, denyAgent := range []bool{false, true} {
 		for _, denyAsk := range []bool{false, true} {
