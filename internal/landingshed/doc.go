@@ -7,17 +7,18 @@
 // approval record that `lyx loom approve` writes, before any sync: an open pull request whose number
 // and head SHA match both the record and the task branch's local HEAD returns Done with no merge-in
 // and no push, a mismatch is Stuck, and a merged pull request is Done and a closed one Stuck whatever
-// the record says. Without an approval, Publish syncs the task branch against the parent through
-// internal/mergeresolve, verifies the merged tree, pushes it, and opens or refreshes a pull request whose title and body come
-// from the change description (the file the Describe row writes, one source shared with the landing
-// commit). Publish never returns Done once an unapproved pull request is open -- it returns Awaiting,
+// the record says.
+// Without an approval, Publish syncs the task branch against the parent through internal/mergeresolve, verifies the merged tree, pushes it,
+// and opens or refreshes a pull request whose title and body come from the change description
+// (the file the Describe row writes, one source shared with the landing commit).
+// Publish never returns Done once an unapproved pull request is open -- it returns Awaiting,
 // the planned hand-off to the reviewer, instead, deliberately: a Done verdict there would let the
 // driving engine advance straight to Finalize and merge to the parent seconds after the pull request
 // went up, defeating the pull request entirely. Progress past an open pull request is
 // `lyx loom approve` followed by `lyx loom start`.
 //
-// After the merge-in, a merge that changed the task tree, or a pending-verify marker left by an
-// earlier unverified merge, runs the told verify command before the push.
+// After the merge-in, a merge that changed the task tree, or a pending-verify marker left by an earlier unverified merge,
+// runs the told verify command before the push.
 // A failure is Stuck with the merge commit kept for the operator to fix forward,
 // and a missing command logs a warning and proceeds.
 //
@@ -32,8 +33,7 @@
 // merges the task branch into the parent pair itself.
 // Each catch-up merge-in runs the same post-merge verify gate as Publish before the parent-side merge,
 // and a failure is Stuck with the parent branch untouched.
-// The landing commit carries the change
-// description and exactly one Co-Authored-By trailer, appended from landing.yaml's co_authored_by.
+// The landing commit carries the change description and exactly one Co-Authored-By trailer, appended from landing.yaml's co_authored_by.
 // After the parent-side merge and before the push, Finalize marks the board task done; after a
 // successful push it closes the open pull request with a comment naming the landing commit. A parent
 // that already holds the task's work makes Finalize idempotent: it takes the already-landed path
