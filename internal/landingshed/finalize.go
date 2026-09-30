@@ -22,7 +22,11 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/go-github/v75/github"
+
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/githubclient"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
@@ -42,6 +46,8 @@ type parentMerger interface {
 	// PushBranch pushes the parent pair's own branch to its upstream. See
 	// fabricengine.Fabric.PushBranch.
 	PushBranch(opts fabricengine.SyncOptions) (fabricengine.PushResult, error)
+	// HeadSHA reads the parent pair's own current head commit. See fabricengine.Fabric.HeadSHA.
+	HeadSHA() (string, error)
 }
 
 // The compile-time assertion that *fabricengine.Fabric satisfies parentMerger.
@@ -194,12 +200,70 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 // A failed push is Stuck, never an error to retry: the merge has already landed locally, so a human
 // pushes (or reconciles a diverged remote) by hand. Deps.PushSkipped suppresses the push, exactly as
 // it does for the task branch.
+//
+// After a successful push into a parent that requires a pull request, the task's pull request is
+// closed best-effort (closePullRequest): the landing has already happened and is irreversible.
 func (fz *Finalize) pushParent(ctx context.Context, parentHandle parentMerger) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if _, err := parentHandle.PushBranch(fabricengine.SyncOptions{SkipPush: fz.deps.PushSkipped}); err != nil {
 		reason := fmt.Sprintf("parent branch %q was merged locally but its push failed: %v; push it by hand", fz.deps.ParentBranch, err)
 		return fz.stuckOrCancelled(ctx, reason, "error", err)
 	}
+	if !fz.deps.PushSkipped && contains(fz.deps.Config.RequirePRToBase, fz.deps.ParentBranch) {
+		fz.closePullRequest(ctx, parentHandle)
+	}
 	return shedengine.Done, shedengine.OutputPointer{}, nil
+}
+
+// closePullRequest closes the task branch's still-open pull request against the parent branch,
+// after commenting the landing commit's SHA on it, so the inspection-only pull request does not
+// linger as open after its work landed. Every failure is a logged warning and nothing more: the
+// landing is the irreversible part and has already happened. A pull request that is already closed
+// or merged is left alone.
+func (fz *Finalize) closePullRequest(ctx context.Context, parentHandle parentMerger) {
+	warn := func(action string, err error) {
+		logger.Warn("landingshed: close pull request failed", "producer", finalizeName, "action", action, "cause", err)
+	}
+
+	sha, err := parentHandle.HeadSHA()
+	if err != nil {
+		warn("read parent head", err)
+		return
+	}
+	owner, repo, err := githubclient.ParseOwnerRepo(fz.deps.OriginURL)
+	if err != nil {
+		warn("resolve origin URL", err)
+		return
+	}
+	client, err := NewGitHubClient()
+	if err != nil {
+		warn("new github client", err)
+		return
+	}
+	pr, err := FindPullRequest(ctx, client, owner, repo, fz.deps.TaskBranch, fz.deps.ParentBranch)
+	if err != nil {
+		warn("query pull request", err)
+		return
+	}
+	if pr == nil || pr.GetState() != "open" {
+		return
+	}
+
+	commentCtx, commentCancel := context.WithTimeout(ctx, publishGitHubTimeout)
+	defer commentCancel()
+	body := fmt.Sprintf("Landed on `%s` as %s.", fz.deps.ParentBranch, sha)
+	if _, _, err := client.Issues.CreateComment(commentCtx, owner, repo, pr.GetNumber(), &github.IssueComment{Body: &body}); err != nil {
+		warn("comment on pull request", err)
+		return
+	}
+
+	closeCtx, closeCancel := context.WithTimeout(ctx, publishGitHubTimeout)
+	defer closeCancel()
+	closed := "closed"
+	if _, _, err := client.PullRequests.Edit(closeCtx, owner, repo, pr.GetNumber(), &github.PullRequest{State: &closed}); err != nil {
+		warn("close pull request", err)
+		return
+	}
+	logger.Info("landingshed: pull request closed after landing", "owner", owner, "repo", repo, "number", pr.GetNumber())
 }
 
 // mergeInStep runs the resolver's merge-in against the parent branch from the task worktree. When

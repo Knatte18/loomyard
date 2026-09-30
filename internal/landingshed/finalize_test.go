@@ -7,11 +7,17 @@ package landingshed
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/google/go-github/v75/github"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
@@ -29,6 +35,9 @@ type recordingParentMerger struct {
 	// pushCalls records every PushBranch call's options; pushErr is returned by each of them.
 	pushCalls []fabricengine.SyncOptions
 	pushErr   error
+	// headSHA and headErr script HeadSHA's return.
+	headSHA string
+	headErr error
 }
 
 type mergeCall struct {
@@ -57,6 +66,8 @@ func (m *recordingParentMerger) PushBranch(opts fabricengine.SyncOptions) (fabri
 	m.pushCalls = append(m.pushCalls, opts)
 	return fabricengine.PushResult{}, m.pushErr
 }
+
+func (m *recordingParentMerger) HeadSHA() (string, error) { return m.headSHA, m.headErr }
 
 // newFinalizeDeps returns a minimal Deps for a Finalize test, with a well-formed final-summary
 // artifact already written at DescriptionPath -- Call's own top-of-Call parse (see finalize.go's
@@ -493,5 +504,133 @@ func TestFinalize_StuckWritesNoReasonFile(t *testing.T) {
 	}
 	if len(matches) != 0 {
 		t.Errorf("stuck-reason files = %v; want none", matches)
+	}
+}
+
+// --- Closing the pull request after landing ---
+
+// closeServer records every request the GitHub fake receives as "METHOD path" plus decoded body.
+type closeServer struct {
+	requests []string
+	bodies   []map[string]any
+	listBody string
+	// failClose makes the PATCH (close) call answer 500.
+	failClose bool
+}
+
+func installCloseServer(t *testing.T, s *closeServer) {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.requests = append(s.requests, r.Method+" "+r.URL.Path)
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		s.bodies = append(s.bodies, body)
+		switch r.Method {
+		case http.MethodGet:
+			_, _ = w.Write([]byte(s.listBody))
+		case http.MethodPost:
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"id":1}`))
+		case http.MethodPatch:
+			if s.failClose {
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = w.Write([]byte(`{"message":"boom"}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"number":7,"state":"closed"}`))
+		}
+	}))
+	t.Cleanup(srv.Close)
+	client := github.NewClient(nil).WithAuthToken("test-token")
+	parsed, err := url.Parse(srv.URL + "/")
+	if err != nil {
+		t.Fatalf("url.Parse: %v", err)
+	}
+	client.BaseURL = parsed
+	orig := NewGitHubClient
+	NewGitHubClient = func() (*github.Client, error) { return client, nil }
+	t.Cleanup(func() { NewGitHubClient = orig })
+}
+
+func runCloseFinalize(t *testing.T, deps Deps) shedengine.Outcome {
+	t.Helper()
+	deps.OriginURL = "https://github.com/acme/widgets.git"
+	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
+	merger := &recordingParentMerger{
+		results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}},
+		headSHA: "abc123landed",
+	}
+	fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return merger, nil }}
+	outcome, _, err := fz.Call(context.Background())
+	if err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	return outcome
+}
+
+func TestFinalize_ClosesOpenPullRequestAfterLanding(t *testing.T) {
+	s := &closeServer{listBody: `[{"number":7,"state":"open"}]`}
+	installCloseServer(t, s)
+
+	if outcome := runCloseFinalize(t, newFinalizeDeps(t)); outcome != shedengine.Done {
+		t.Fatalf("outcome = %q; want Done", outcome)
+	}
+
+	want := []string{"GET /repos/acme/widgets/pulls", "POST /repos/acme/widgets/issues/7/comments", "PATCH /repos/acme/widgets/pulls/7"}
+	if strings.Join(s.requests, "|") != strings.Join(want, "|") {
+		t.Fatalf("requests = %v; want %v", s.requests, want)
+	}
+	comment, _ := s.bodies[1]["body"].(string)
+	if !strings.Contains(comment, "abc123landed") || !strings.Contains(comment, "main") {
+		t.Errorf("comment = %q; want it to name the landing SHA and parent branch", comment)
+	}
+	if got := s.bodies[2]["state"]; got != "closed" {
+		t.Errorf("close state = %v; want closed", got)
+	}
+}
+
+func TestFinalize_LeavesNonOpenPullRequestAlone(t *testing.T) {
+	s := &closeServer{listBody: `[{"number":7,"state":"closed"}]`}
+	installCloseServer(t, s)
+
+	if outcome := runCloseFinalize(t, newFinalizeDeps(t)); outcome != shedengine.Done {
+		t.Fatalf("outcome = %q; want Done", outcome)
+	}
+	if len(s.requests) != 1 {
+		t.Errorf("requests = %v; want only the lookup", s.requests)
+	}
+}
+
+func TestFinalize_CloseFailureStillDone(t *testing.T) {
+	s := &closeServer{listBody: `[{"number":7,"state":"open"}]`, failClose: true}
+	installCloseServer(t, s)
+
+	if outcome := runCloseFinalize(t, newFinalizeDeps(t)); outcome != shedengine.Done {
+		t.Fatalf("outcome = %q; want Done despite the failed close", outcome)
+	}
+}
+
+func TestFinalize_NoGitHubCallWhenNotRequiredOrPushSkipped(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*Deps)
+	}{
+		{"parent not in require_pr_to_base", func(d *Deps) { d.Config.RequirePRToBase = []string{"other"} }},
+		{"push skipped", func(d *Deps) { d.PushSkipped = true }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &closeServer{listBody: `[{"number":7,"state":"open"}]`}
+			installCloseServer(t, s)
+			deps := newFinalizeDeps(t)
+			tt.mutate(&deps)
+
+			if outcome := runCloseFinalize(t, deps); outcome != shedengine.Done {
+				t.Fatalf("outcome = %q; want Done", outcome)
+			}
+			if len(s.requests) != 0 {
+				t.Errorf("requests = %v; want none", s.requests)
+			}
+		})
 	}
 }
