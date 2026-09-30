@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -120,6 +121,34 @@ func (c *loomCLI) runHaltedAtHandBack() (shedengine.State, error) {
 	return "", nil
 }
 
+// refuseOverUnfinishedMerge probes the pair's merge state and reports whether start may proceed.
+// On a refusal or a probe error it releases bootstrapLock, records the envelope and returns false,
+// leaving the park marker on disk.
+func (c *loomCLI) refuseOverUnfinishedMerge(ctx context.Context, out io.Writer, bootstrapLock *lock.FileLock) bool {
+	st, err := c.midMerge(c.location)
+	if err != nil {
+		_ = bootstrapLock.Release()
+		clihelp.SetExit(ctx, output.Err(out, err.Error()))
+		return false
+	}
+	var msg string
+	switch st.Kind {
+	case fabricengine.MidMergeNone:
+		return true
+	case fabricengine.MidMergeParked:
+		msg = `loom: a fabric merge is in progress in this worktree; resolve each listed path, mark it resolved with "lyx fabric merge-stage <path>...", then run "lyx fabric merge --continue" (or "lyx fabric merge --abort" to discard the merge), then re-run "lyx loom start"`
+	default:
+		msg = `loom: a git merge, cherry-pick or squash that fabric did not start is in progress in this worktree; conclude or abort it with git, then re-run "lyx loom start"`
+	}
+	conflicts := st.Conflicts
+	if conflicts == nil {
+		conflicts = []string{}
+	}
+	_ = bootstrapLock.Release()
+	clihelp.SetExit(ctx, output.ErrFields(out, msg, map[string]any{"kind": shedrun.StartMergeInProgressKind, "conflicts": conflicts}))
+	return false
+}
+
 // runDriverSpawnAndWait performs steps 5 and 6 of the bootstrap: it probes the run lock and the
 // driver strand table once, decides via mustSpawnDriver whether a spawn is needed, and -- when one
 // is -- branches on driver into the go arm's detached spawn and run-lock handshake (both
@@ -132,6 +161,12 @@ func (c *loomCLI) runHaltedAtHandBack() (shedengine.State, error) {
 // so it spawns nothing and resumes that driver through resumeParkedDriver instead.
 // A live strand with no marker over a run halted at a hand-back is refused with the shedrun.StartNotParkedKind kind, since that driver has not parked yet;
 // over a running run it is a no-op, since the driver is working.
+//
+// Before the stale-marker removal, the resume line or any spawn it probes the pair's merge state,
+// but only when this invocation would put a driver to work: mustSpawn, or a live strand with the
+// park marker present.
+// An unfinished merge is refused with the shedrun.StartMergeInProgressKind kind;
+// a live strand with no marker is never probed, so a working driver is attached to as before.
 //
 // lockHeld is the go arm's handshake seam, built by the caller over the real run lock in production;
 // a test substitutes a counting fake to prove the handshake is never consulted on an llm-seeded
@@ -170,6 +205,16 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 	// A spawn first removes a stale marker;
 	// a live strand with the marker is a parked driver, resumed with one typed line.
 	markerPath := shedrun.ParkMarker(c.location, shedrun.ResolveRunID(c.location, c.runID))
+	_, markerStatErr := os.Stat(markerPath)
+	parkedLive := !mustSpawn && driverAction == driverStrandLive && markerStatErr == nil
+
+	// A spawn or a resume puts a driver to work, so both refuse over an unfinished merge;
+	// a live strand without a marker is working (or still parking) and is left alone.
+	if mustSpawn || parkedLive {
+		if !c.refuseOverUnfinishedMerge(ctx, out, bootstrapLock) {
+			return false
+		}
+	}
 	if mustSpawn {
 		if err := os.Remove(markerPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 			_ = bootstrapLock.Release()
@@ -177,7 +222,7 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 			return false
 		}
 	} else if driverAction == driverStrandLive {
-		if _, statErr := os.Stat(markerPath); statErr == nil {
+		if parkedLive {
 			if err := c.resumeParkedDriver(driverGUID); err != nil {
 				_ = bootstrapLock.Release()
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
@@ -337,7 +382,11 @@ func (c *loomCLI) startCmd() *cobra.Command {
      paused or failed) that has not written its park marker yet is still
      writing its stop report, so start refuses with the kind
      "driver_not_parked" and is retried a few seconds later, while a live
-     driver over a running run is left working
+     driver over a running run is left working; before spawning or resuming
+     a driver, start refuses with the kind "merge_in_progress" when the
+     worktree carries an unfinished merge, naming the conflicted paths and the
+     remedy (the fabric verbs for a fabric merge, git for one fabric did not
+     start), while a live driver that is working is left alone
   4. hand the terminal over, by where the command runs: attach to the
      session when $TMUX is unset; when $TMUX names reed's own tmux server,
      print the success envelope if this terminal is already in the task's
