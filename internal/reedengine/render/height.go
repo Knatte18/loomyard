@@ -1,8 +1,6 @@
-// height.go implements the derived height policy: within the below-parent stack, a shrink:true
-// ancestor collapses to a compact strip once it has a present descendant, a strand carrying a
-// positive Display.FixedRows takes exactly that many rows (the active/bottom strand excepted), and
-// the active/bottom pane plus every remaining full strand split the remaining rows equally
-// (remainder to the active pane).
+// height.go implements the derived height policy for the below-parent stack, one rule for every strand:
+// each strand except the bottom-most takes exactly Params.CollapsedRows rows, and the bottom-most
+// takes every remaining row.
 // When the window is too short to satisfy that natural policy, a strict-priority clamp reclaims
 // rows so every pane still gets a positive height.
 
@@ -44,10 +42,9 @@ func clampBandHeight(bandRows, windowRows, minStackRows int) int {
 }
 
 // stackHeights computes a height for every strand in stack within box.
-// Shrink:true ancestors collapse to a strip height and strands with a positive
-// Display.FixedRows take that budget (never the active strand, which stays a
-// full pane); full panes split the remainder equally (with the remainder to
-// the active pane), and clampToFit reclaims rows if any would be non-positive.
+// Every strand except the last (the bottom-most, which orderStack places by insertion) is a collapsed
+// placement taking p.CollapsedRows rows; the last takes every remaining row.
+// clampToFit reclaims rows if any would be non-positive.
 func stackHeights(stack []Strand, box Box, p Params) []placement {
 	n := len(stack)
 	if n == 0 {
@@ -56,75 +53,37 @@ func stackHeights(stack []Strand, box Box, p Params) []placement {
 
 	dividers := n - 1
 	usable := box.H - dividers
-	activeIdx := n - 1 // orderStack places the deepest/active strand last
+	bottomIdx := n - 1 // orderStack places the most recently inserted strand last
 
-	stripRows := p.CollapsedStripRows
-	if stripRows < 1 {
-		stripRows = 1
-	}
-
-	// isStrip marks every absolute-budget placement; budget holds its rows.
-	// A fixed budget wins over the shrink rule, and the active strand never
-	// takes one, so every non-empty stack keeps at least one full pane.
-	isStrip := make([]bool, n)
-	budget := make([]int, n)
-	numStrips := 0
-	stripDemand := 0
-	for i, s := range stack {
-		switch {
-		case i != activeIdx && s.Display.FixedRows > 0:
-			isStrip[i] = true
-			budget[i] = s.Display.FixedRows
-		case isAncestor(s, stack) && s.Display.ShrinkWhenWaitingOnChild:
-			isStrip[i] = true
-			budget[i] = stripRows
-		}
-		if isStrip[i] {
-			numStrips++
-			stripDemand += budget[i]
-		}
-	}
-	numFull := n - numStrips
-	fullRemaining := usable - stripDemand
-
-	var fullBase, fullRemainder int
-	if numFull > 0 {
-		fullBase = fullRemaining / numFull
-		fullRemainder = fullRemaining % numFull
+	collapsedRows := p.CollapsedRows
+	if collapsedRows < 1 {
+		collapsedRows = 1
 	}
 
 	heights := make([]int, n)
+	isCollapsed := make([]bool, n)
 	for i := range stack {
-		if isStrip[i] {
-			heights[i] = budget[i]
-		} else {
-			heights[i] = fullBase
+		if i == bottomIdx {
+			continue
 		}
+		isCollapsed[i] = true
+		heights[i] = collapsedRows
 	}
-	// The remainder always goes to the active/bottom pane, never split
-	// arbitrarily across full panes — this is what makes the split
-	// deterministic when usable/numFull does not divide evenly.
-	heights[activeIdx] += fullRemainder
+	heights[bottomIdx] = usable - collapsedRows*(n-1)
 
-	heights = clampToFit(heights, isStrip, activeIdx, p)
+	heights = clampToFit(heights, isCollapsed, bottomIdx)
 
 	placements := make([]placement, n)
 	for i, s := range stack {
-		placements[i] = placement{id: s.PaneID, height: heights[i], strip: isStrip[i]}
+		placements[i] = placement{id: s.PaneID, height: heights[i], strip: isCollapsed[i]}
 	}
 	return placements
 }
 
 // clampToFit repairs any non-positive height left by stackHeights' natural
-// split, reclaiming rows from donors in strict priority order: absolute-budget
-// placements (collapsed strips and fixed budgets) first, then non-active full
-// panes, then the active pane itself, all floored at 1.
-func clampToFit(heights []int, isStrip []bool, activeIdx int, p Params) []int {
-	minFull := p.MinFullRows
-	if minFull < 1 {
-		minFull = 1
-	}
-
+// split, reclaiming rows from donors in strict priority order: collapsed
+// placements first, then the bottom-most pane itself, all floored at 1.
+func clampToFit(heights []int, isCollapsed []bool, bottomIdx int) []int {
 	// Bring every non-positive pane up to 1 row, tracking how many rows
 	// this borrows so the priority passes below can give them back from
 	// elsewhere and keep the total exactly conserved.
@@ -139,53 +98,35 @@ func clampToFit(heights []int, isStrip []bool, activeIdx int, p Params) []int {
 		return heights
 	}
 
-	reclaim := func(floor int, skip func(i int) bool) {
-		for i := range heights {
-			if borrowed == 0 {
-				return
-			}
-			if skip(i) {
-				continue
-			}
-			give := heights[i] - floor
-			if give <= 0 {
-				continue
-			}
-			if give > borrowed {
-				give = borrowed
-			}
-			heights[i] -= give
-			borrowed -= give
+	// Priority 1: collapsed placements shrink toward 1 row.
+	for i := range heights {
+		if borrowed == 0 {
+			return heights
 		}
+		if !isCollapsed[i] {
+			continue
+		}
+		give := heights[i] - 1
+		if give <= 0 {
+			continue
+		}
+		if give > borrowed {
+			give = borrowed
+		}
+		heights[i] -= give
+		borrowed -= give
 	}
-
-	// Priority 1: absolute-budget placements shrink toward 1 row.
-	reclaim(1, func(i int) bool { return !isStrip[i] })
 	if borrowed == 0 {
 		return heights
 	}
 
-	// Priority 2: full panes other than the active one shrink toward
-	// MinFullRows.
-	reclaim(minFull, func(i int) bool { return isStrip[i] || i == activeIdx })
-	if borrowed == 0 {
-		return heights
-	}
-
-	// Priority 3: every remaining donor (excluding the active pane)
-	// clamps all the way to 1 row.
-	reclaim(1, func(i int) bool { return i == activeIdx })
-	if borrowed == 0 {
-		return heights
-	}
-
-	// Last resort: the active pane itself absorbs whatever is still
+	// Last resort: the bottom-most pane itself absorbs whatever is still
 	// owed. If the window is shorter than the pane count even this
-	// cannot fully repay the debt, but the active pane is still floored
+	// cannot fully repay the debt, but the bottom pane is still floored
 	// at 1 row so no height is ever non-positive.
-	heights[activeIdx] -= borrowed
-	if heights[activeIdx] < 1 {
-		heights[activeIdx] = 1
+	heights[bottomIdx] -= borrowed
+	if heights[bottomIdx] < 1 {
+		heights[bottomIdx] = 1
 	}
 	return heights
 }

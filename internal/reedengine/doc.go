@@ -85,6 +85,17 @@
 // selvagepane_enforcement_test.go is the mechanical check keeping them
 // there.
 //
+// The layout rule: the below-parent stack is ordered by insertion, the persisted strand-table
+// order, and its height is decided by position alone.
+// Every strand except the bottom-most gets exactly collapsed_rows rows, and the bottom-most gets
+// every remaining row, so a new strand is the bottom-most, nothing above it moves except the previous
+// bottom-most (which collapses), and removing the bottom-most makes the one above it bottom-most, which
+// expands.
+// No per-strand setting sizes a strand, and the parent chain plays no part in the order.
+// A window too short for the natural split reclaims rows from the collapsed placements first, then
+// from the bottom-most, and every pane keeps a positive height.
+// The Selvage band sits outside the stack with its own selvage.height_rows.
+//
 // The live-geometry rule: the render box a layout is computed against is no
 // longer the config-pinned Width/Height. planLayout (apply.go) is always
 // TOLD its box as an explicit render.Box parameter and queries nothing of
@@ -393,9 +404,9 @@
 //     layout string whose dimensions disagree with the live window (exit 0)
 //     and silently rescales it proportionally — measured live on tmux 3.6, a
 //     "220x50" string applied to a "100x30" window turned a 3-row collapsed
-//     strip (3 was the then-default; it is 6 today) into 1 row — so every
+//     placement into 1 row — so every
 //     absolute row budget reed computes (Selvage.HeightRows,
-//     CollapsedStripRows, MinFullRows) is scaled by live_height/string_height
+//     CollapsedRows, MinFullRows) is scaled by live_height/string_height
 //     unless the string is sized to the live window. This is why
 //     applyLayoutLocked always plans against liveBoxLocked's live box rather
 //     than the configured one. The detached counterpart is the opposite
@@ -415,7 +426,7 @@
 //     a further 90-to-120 one.
 //     The answer is a window-resized window hook holding one
 //     "resize-pane -y" array entry per fixed-height pane — the Selvage band,
-//     every collapsed strip and every fixed-budget strand — installed by reed
+//     every collapsed placement — installed by reed
 //     and executed by the tmux server itself, refreshed on every successful apply
 //     (applyLayoutLocked) and again in AttachArgv's pre-flight, with the
 //     pinned heights coming from render.FixedHeightPins: the heights render
@@ -453,7 +464,7 @@
 //     state.go documents, which deletes reed.json while the session keeps
 //     running untracked only until the next mutating verb reaps it — the
 //     surviving array is a benefit, still holding the live Selvage and
-//     strips at the budgets reed last
+//     collapsed placements at the budgets reed last
 //     computed for them.
 //     Since the signal entry rides the same array, the same rule decides it:
 //     a session that has never reached an install keeps no touch entry and

@@ -247,7 +247,7 @@ Covered headlessly by `TestSmokeRemoveReapsRemovedPaneChildProcesses`.
 
 **Goal:** "Build a busy below-parent-only session -- a parent strand, a child under it, then a second child under the parent -- and confirm every strand still has its own live pane."
 
-**Watch:** After all three `add`s, `lyx reed status` reports all three strands `live: true`, and `tmux -L <socket> list-panes` (controlled exception) shows exactly three panes with sane geometry: the parent shrunk to a `collapsed_strip_rows` strip once a child exists, and the deepest child dominant (the tallest, bottom-most pane).
+**Watch:** After all three `add`s, `lyx reed status` reports all three strands `live: true`, and `tmux -L <socket> list-panes` (controlled exception) shows exactly three panes with sane geometry: the parent shrunk to `collapsed_rows` once a child exists, and the deepest child dominant (the tallest, bottom-most pane).
 A pane count below three, an empty pane list,
 or a strand that flips to `live: false` after the next verb means a split/apply silently destroyed panes -- that is a `FAIL`, not cosmetics.
 
@@ -326,7 +326,7 @@ treat this scenario as `OK` when that coverage holds and no sibling worktree is 
 **Goal:** "Add a below-parent *root* 'mother' strand running a plain, non-TUI status-line placeholder command (no `--anchor top` anywhere), confirm it renders full height while it has no live child, then add a Claude Code child under it via `--parent` and confirm the mother collapses to a compact strip while the child takes the bulk of the window."
 
 **Watch:** With only the mother strand live, `lyx reed status` reports it `live: true` and `tmux -L <socket> list-panes` (controlled exception) shows its pane at full box height -- a childless below-parent mother rendering full-height is intended (not a bug to file).
-After `lyx reed add --parent <mother-guid> --cmd claude ...` adds the Claude Code child, both strands read `live: true`, the mother's pane collapses to `collapsed_strip_rows`,
+After `lyx reed add --parent <mother-guid> --cmd claude ...` adds the Claude Code child, both strands read `live: true`, the mother's pane collapses to `collapsed_rows`,
 and the child's pane gets the rest of the window.
 Confirm the mother's plain-text status line stays legible at the collapsed height -- this is the scenario the removed `TopBandRows` band-height override existed to protect against box-drawing-TUI corruption at a fixed 1-row band;
 a plain-text line has no such corruption risk.

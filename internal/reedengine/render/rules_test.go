@@ -1,5 +1,5 @@
 // rules_test.go golden-tests the composed Rules entry point: the below-parent stack ordered by
-// parent chain, hidden-strand exclusion, empty/single-strand/parent-child edges, the
+// insertion, hidden-strand exclusion, empty/single-strand/parent-child edges, the
 // checksum-prefix invariant, the own-window rejection error, pane-order resequencing to physical
 // pane position, and the Selvage bottom-band enumeration (Params.Selvage).
 // It also pins the two layout regimes a real (as opposed to config-pinned) terminal box makes
@@ -16,20 +16,20 @@ import (
 )
 
 // belowParentChain returns a root->mid->active three-level parent chain,
-// all AnchorBelowParent and live, with distinct pane ids. root stays full
-// (shrink:false) even though it is mid's ancestor; mid collapses
-// (shrink:true) since it is blocked waiting on active. This is the fixture
-// the golden below-parent and mixed-set cases build on.
+// all AnchorBelowParent and live, with distinct pane ids, in insertion order.
+// The two above the bottom-most collapse to collapsed_rows and active takes
+// the rest. This is the fixture the golden below-parent and mixed-set cases
+// build on.
 func belowParentChain() []Strand {
 	return []Strand{
-		{GUID: "root", Parent: "", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorBelowParent, ShrinkWhenWaitingOnChild: false}},
-		{GUID: "mid", Parent: "root", PaneID: "%2", Live: true, Display: Display{Anchor: AnchorBelowParent, ShrinkWhenWaitingOnChild: true}},
+		{GUID: "root", Parent: "", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorBelowParent}},
+		{GUID: "mid", Parent: "root", PaneID: "%2", Live: true, Display: Display{Anchor: AnchorBelowParent}},
 		{GUID: "active", Parent: "mid", PaneID: "%3", Live: true, Display: Display{Anchor: AnchorBelowParent}},
 	}
 }
 
 func TestRulesGolden(t *testing.T) {
-	params := Params{CollapsedStripRows: 2, MinFullRows: 3}
+	params := Params{CollapsedRows: 2, MinFullRows: 3}
 
 	tests := []struct {
 		name      string
@@ -40,10 +40,10 @@ func TestRulesGolden(t *testing.T) {
 		wantFocus string
 	}{
 		{
-			name:      "BelowParentFormsBottomDominantStackOrderedByParentChain",
+			name:      "BelowParentFormsBottomDominantStackOrderedByInsertion",
 			strands:   belowParentChain(),
 			box:       Box{X: 0, Y: 0, W: 100, H: 21}, // usable = 21 - 2 dividers = 19
-			wantBody:  "100x21,0,0[100x8,0,0,1,100x2,0,9,2,100x9,0,12,3]",
+			wantBody:  "100x21,0,0[100x2,0,0,1,100x2,0,3,2,100x15,0,6,3]",
 			wantFocus: "%3", // bottom-most/active default
 		},
 		{
@@ -52,7 +52,7 @@ func TestRulesGolden(t *testing.T) {
 				Strand{GUID: "h", PaneID: "%99", Live: true, Display: Display{Anchor: AnchorHidden}},
 			),
 			box:       Box{X: 0, Y: 0, W: 100, H: 21},
-			wantBody:  "100x21,0,0[100x8,0,0,1,100x2,0,9,2,100x9,0,12,3]", // identical to the no-hidden case
+			wantBody:  "100x21,0,0[100x2,0,0,1,100x2,0,3,2,100x15,0,6,3]", // identical to the no-hidden case
 			wantFocus: "%3",
 		},
 		{
@@ -75,14 +75,14 @@ func TestRulesGolden(t *testing.T) {
 			// The loom shape endorsed by discussion decision
 			// childless-full-height-is-acceptable's counterpart: a
 			// below-parent root parent with a single below-parent child
-			// collapses the parent to CollapsedStripRows once the child is
+			// collapses the parent to CollapsedRows once the child is
 			// present, and the child takes the remainder. The height-layer
 			// form of this is height_test.go's
-			// TestStackHeightsActiveStrictlyTallestWithSingleAncestor; this
+			// TestStackHeightsTwoStrandsGetCollapsedPlusRest; this
 			// case only proves the same shape survives through Rules.
 			name: "BelowParentRootChildCollapsesRootToStripChildTakesRemainder",
 			strands: []Strand{
-				{GUID: "parent", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorBelowParent, ShrinkWhenWaitingOnChild: true}},
+				{GUID: "parent", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorBelowParent}},
 				{GUID: "child", Parent: "parent", PaneID: "%2", Live: true, Display: Display{Anchor: AnchorBelowParent}},
 			},
 			box:       Box{X: 0, Y: 0, W: 100, H: 15},
@@ -94,28 +94,26 @@ func TestRulesGolden(t *testing.T) {
 			// box a pinned config used to always hand Rules — a box this
 			// short means clampBandHeight/clampToFit now govern the common
 			// case rather than almost never firing. This row's box has room
-			// for the Selvage band, its one-row divider, the collapsed strip
-			// at CollapsedStripRows, and both full panes above MinFullRows,
-			// so no clamp fires: band=2 (unclamped: floor=3, maxBand=
-			// box.H-1-3=20, 2<=20), stack region {Y:0,H:21}, usable=21-2
-			// dividers=19, stripDemand=2 (mid collapses), fullRemaining=17
-			// split 8/9 between root and active (remainder to active); the
-			// band cell lands last, at Y=box.H-2=22.
+			// for the Selvage band, its one-row divider, and the two collapsed
+			// placements at CollapsedRows, so no clamp fires: band=2
+			// (unclamped: floor=3, maxBand=box.H-1-3=20, 2<=20), stack region
+			// {Y:0,H:21}, usable=21-2 dividers=19, root and mid collapse to 2
+			// and active takes the remaining 15; the band cell lands last, at
+			// Y=box.H-2=22.
 			name:      "SelvagePresentBudgetSatisfyingPreservesConfiguredSelvageAndStripHeights",
 			strands:   belowParentChain(),
 			box:       Box{X: 0, Y: 0, W: 100, H: 24},
 			selvage:   Selvage{PaneID: "%h", HeightRows: 2},
-			wantBody:  "100x24,0,0[100x8,0,0,1,100x2,0,9,2,100x9,0,12,3,100x2,0,22,h]",
+			wantBody:  "100x24,0,0[100x2,0,0,1,100x2,0,3,2,100x15,0,6,3,100x2,0,22,h]",
 			wantFocus: "%3",
 		},
 		{
 			// The same strand fixture against a box too short for those
 			// budgets: band=2 stays unclamped (floor=3, maxBand=
 			// box.H-1-3=4, 2<=4), stack region {Y:0,H:5}, usable=5-2
-			// dividers=3, stripDemand=2 (mid), fullRemaining=1 split 0/1
-			// between root and active (remainder to active) — root's natural
-			// 0 borrows 1 row via clampToFit's priority-1 reclaim, which the
-			// strip (mid) repays by shrinking from its natural 2 down to 1,
+			// dividers=3, root and mid demand 2 each so active's natural
+			// -1 borrows 2 rows via clampToFit's priority-1 reclaim, which
+			// the collapsed placements repay by shrinking from 2 down to 1,
 			// leaving every stack cell at exactly 1 row; the band cell lands
 			// last, at Y=box.H-2=6.
 			name:      "SelvagePresentClampedRowNoCellEverNonPositive",
@@ -178,7 +176,7 @@ var cellHeightPattern = regexp.MustCompile(`\d+x(\d+),`)
 // future reader should not read an over-sum in some OTHER fixture as a defect this test would have
 // caught.
 func TestRulesClampedRowNeverEmitsANonPositiveCellHeight(t *testing.T) {
-	params := Params{CollapsedStripRows: 2, MinFullRows: 3, Selvage: Selvage{PaneID: "%h", HeightRows: 2}}
+	params := Params{CollapsedRows: 2, MinFullRows: 3, Selvage: Selvage{PaneID: "%h", HeightRows: 2}}
 	box := Box{X: 0, Y: 0, W: 100, H: 8}
 
 	layout, _, err := Rules(belowParentChain(), box, params, nil)
@@ -202,7 +200,7 @@ func TestRulesOwnWindowReturnsError(t *testing.T) {
 		{GUID: "a", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorOwnWindow}},
 	}
 	box := Box{X: 0, Y: 0, W: 100, H: 20}
-	p := Params{CollapsedStripRows: 2, MinFullRows: 3}
+	p := Params{CollapsedRows: 2, MinFullRows: 3}
 
 	layout, focus, err := Rules(strands, box, p, nil)
 	if err == nil {
@@ -220,7 +218,7 @@ func TestRulesFocusPrefersDeclaredFocusStrandOverDefault(t *testing.T) {
 	strands[0].Display.Focus = true
 
 	box := Box{X: 0, Y: 0, W: 100, H: 21}
-	p := Params{CollapsedStripRows: 2, MinFullRows: 3}
+	p := Params{CollapsedRows: 2, MinFullRows: 3}
 
 	_, focus, err := Rules(strands, box, p, nil)
 	if err != nil {
@@ -234,7 +232,7 @@ func TestRulesFocusPrefersDeclaredFocusStrandOverDefault(t *testing.T) {
 func TestRulesIsPureRepeatedCallsMatch(t *testing.T) {
 	strands := belowParentChain()
 	box := Box{X: 0, Y: 0, W: 100, H: 21}
-	p := Params{CollapsedStripRows: 2, MinFullRows: 3}
+	p := Params{CollapsedRows: 2, MinFullRows: 3}
 
 	layout1, focus1, err1 := Rules(strands, box, p, nil)
 	layout2, focus2, err2 := Rules(strands, box, p, nil)
@@ -259,17 +257,17 @@ func TestRulesPaneOrderResequencesCellsToPhysicalOrder(t *testing.T) {
 		{GUID: "child", Parent: "root", PaneID: "%20", Live: true, Display: Display{Anchor: AnchorBelowParent}},
 	}
 	box := Box{X: 0, Y: 0, W: 100, H: 20}
-	p := Params{CollapsedStripRows: 2, MinFullRows: 3}
+	p := Params{CollapsedRows: 2, MinFullRows: 3}
 
 	// Physical order inverted vs table order: %20 (child) sits on top.
 	layout, focus, err := Rules(strands, box, p, []string{"%20", "%10"})
 	if err != nil {
 		t.Fatalf("Rules() unexpected error: %v", err)
 	}
-	// child keeps its intended remainder-bearing height (10) but is emitted
-	// first (at y=0); root keeps its intended base height (9) but lands at
+	// child keeps its intended bottom-most height (17) but is emitted
+	// first (at y=0); root keeps its collapsed height (2) but lands at
 	// the bottom.
-	wantBody := "100x20,0,0[100x10,0,0,20,100x9,0,11,10]"
+	wantBody := "100x20,0,0[100x17,0,0,20,100x2,0,18,10]"
 	if want := layoutChecksum(wantBody) + "," + wantBody; layout != want {
 		t.Errorf("Rules() layout = %q, want %q", layout, want)
 	}
@@ -287,9 +285,9 @@ func TestRulesPaneOrderResequencesCellsToPhysicalOrder(t *testing.T) {
 // set.
 func TestRulesSelvageBandEnumeratesEveryStrandCellPlusSelvage(t *testing.T) {
 	params := Params{
-		CollapsedStripRows: 2,
-		MinFullRows:        3,
-		Selvage:            Selvage{PaneID: "%h", HeightRows: 3},
+		CollapsedRows: 2,
+		MinFullRows:   3,
+		Selvage:       Selvage{PaneID: "%h", HeightRows: 3},
 	}
 	box := Box{X: 0, Y: 0, W: 100, H: 21}
 
@@ -301,11 +299,10 @@ func TestRulesSelvageBandEnumeratesEveryStrandCellPlusSelvage(t *testing.T) {
 	// bandHeight=3 (unclamped: with the Selvage band's own one-row divider
 	// budget subtracted first (box.H-1=20), MinFullRows=3 leaves 17 rows for
 	// the stack, well above the natural split's needs). The stack region is
-	// {X:0,Y:0,W:100,H:17}: usable=17-2 dividers=15, stripDemand=2 (mid
-	// collapses to CollapsedStripRows), fullRemaining=13 split 6/7 between
-	// root and active (remainder to active). The Selvage cell lands last, at
-	// Y=box.H-3=18.
-	wantBody := "100x21,0,0[100x6,0,0,1,100x2,0,7,2,100x7,0,10,3,100x3,0,18,h]"
+	// {X:0,Y:0,W:100,H:17}: usable=17-2 dividers=15, root and mid collapse to
+	// CollapsedRows (2 each) and active takes the remaining 11. The Selvage
+	// cell lands last, at Y=box.H-3=18.
+	wantBody := "100x21,0,0[100x2,0,0,1,100x2,0,3,2,100x11,0,6,3,100x3,0,18,h]"
 	if want := wrapLayout(wantBody); layout != want {
 		t.Errorf("Rules() with Selvage layout = %q, want %q", layout, want)
 	}
@@ -325,7 +322,7 @@ func TestRulesSelvageBandEnumeratesEveryStrandCellPlusSelvage(t *testing.T) {
 // but Rules is a pure function whose contract must hold for any caller.
 func TestRulesSelvageWithNoPlacedStrandClaimsWholeBoxAsSoleCell(t *testing.T) {
 	box := Box{X: 0, Y: 0, W: 100, H: 21}
-	p := Params{CollapsedStripRows: 2, MinFullRows: 3, Selvage: Selvage{PaneID: "%h", HeightRows: 3}}
+	p := Params{CollapsedRows: 2, MinFullRows: 3, Selvage: Selvage{PaneID: "%h", HeightRows: 3}}
 
 	// nil strands and an all-filtered stack (a hidden strand) must both
 	// produce the sole-band shape.
@@ -353,13 +350,33 @@ func TestRulesNoSelvagePreservesPreSelvageBehavior(t *testing.T) {
 	strands := belowParentChain()
 	box := Box{X: 0, Y: 0, W: 100, H: 21}
 
-	withZeroSelvage, focus1, err1 := Rules(strands, box, Params{CollapsedStripRows: 2, MinFullRows: 3, Selvage: Selvage{}}, nil)
-	without, focus2, err2 := Rules(strands, box, Params{CollapsedStripRows: 2, MinFullRows: 3}, nil)
+	withZeroSelvage, focus1, err1 := Rules(strands, box, Params{CollapsedRows: 2, MinFullRows: 3, Selvage: Selvage{}}, nil)
+	without, focus2, err2 := Rules(strands, box, Params{CollapsedRows: 2, MinFullRows: 3}, nil)
 	if err1 != nil || err2 != nil {
 		t.Fatalf("Rules() unexpected errors: %v, %v", err1, err2)
 	}
 	if withZeroSelvage != without || focus1 != focus2 {
 		t.Errorf("Rules() with zero-value Selvage = (%q,%q), want identical to omitting Selvage entirely (%q,%q)", withZeroSelvage, focus1, without, focus2)
+	}
+}
+
+// TestRulesOrdersTheStackByInsertionNotParentChain pins that the strand-table order alone decides
+// which strand is bottom-most: a child listed before its parent collapses, and the parent takes the
+// remainder and the focus.
+func TestRulesOrdersTheStackByInsertionNotParentChain(t *testing.T) {
+	strands := []Strand{
+		{GUID: "child", Parent: "parent", PaneID: "%2", Live: true, Display: Display{Anchor: AnchorBelowParent}},
+		{GUID: "parent", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorBelowParent}},
+	}
+	layout, focus, err := Rules(strands, Box{X: 0, Y: 0, W: 100, H: 15}, Params{CollapsedRows: 2, MinFullRows: 3}, nil)
+	if err != nil {
+		t.Fatalf("Rules() unexpected error: %v", err)
+	}
+	if want := wrapLayout("100x15,0,0[100x2,0,0,2,100x12,0,3,1]"); layout != want {
+		t.Errorf("Rules() layout = %q, want %q", layout, want)
+	}
+	if focus != "%1" {
+		t.Errorf("Rules() focus = %q, want %%1 (the bottom-most by insertion)", focus)
 	}
 }
 
@@ -369,7 +386,7 @@ func TestRulesPaneOrderUnknownIDsKeepIntendedTailOrder(t *testing.T) {
 		{GUID: "child", Parent: "root", PaneID: "%20", Live: true, Display: Display{Anchor: AnchorBelowParent}},
 	}
 	box := Box{X: 0, Y: 0, W: 100, H: 20}
-	p := Params{CollapsedStripRows: 2, MinFullRows: 3}
+	p := Params{CollapsedRows: 2, MinFullRows: 3}
 
 	// paneOrder naming only a pane render never placed: the intended order
 	// survives at the tail, identical to the nil-paneOrder shape.
@@ -447,7 +464,7 @@ func TestRules_NeverEmitsOnePaneNumberTwice(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			params := Params{CollapsedStripRows: 2, MinFullRows: 3, Selvage: Selvage{PaneID: tt.selvagePaneID, HeightRows: 1}}
+			params := Params{CollapsedRows: 2, MinFullRows: 3, Selvage: Selvage{PaneID: tt.selvagePaneID, HeightRows: 1}}
 			layout, _, err := Rules(tt.strands, box, params, nil)
 			if err != nil {
 				t.Fatalf("Rules() error = %v; want nil", err)
@@ -466,7 +483,7 @@ func TestRules_NeverEmitsOnePaneNumberTwice(t *testing.T) {
 // own pane, and among strands the earlier table entry wins.
 func TestRules_KeepsTheFirstOwnerWhenPaneCellsCollide(t *testing.T) {
 	box := Box{X: 0, Y: 0, W: 100, H: 40}
-	params := Params{CollapsedStripRows: 2, MinFullRows: 3, Selvage: Selvage{PaneID: "%1", HeightRows: 1}}
+	params := Params{CollapsedRows: 2, MinFullRows: 3, Selvage: Selvage{PaneID: "%1", HeightRows: 1}}
 
 	strands := []Strand{
 		{GUID: "first", PaneID: "%2", Live: true, Display: Display{Anchor: AnchorBelowParent}},

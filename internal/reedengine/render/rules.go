@@ -27,8 +27,7 @@ type cellPlan struct {
 	// stackBox is the region the strand stack is laid out within, above the
 	// Selvage band and its one-row divider when hasBand is true.
 	stackBox Box
-	// ordered is the below-parent stack, filtered and ordered by parent-chain
-	// depth.
+	// ordered is the below-parent stack, filtered and ordered by insertion.
 	ordered []Strand
 	// placements is ordered's per-strand height assignment from stackHeights.
 	placements []placement
@@ -45,8 +44,8 @@ func planCells(strands []Strand, box Box, p Params) (cellPlan, error) {
 		}
 	}
 
-	// Repair any corrupt cyclic parent table before depth-based ordering,
-	// so a bad persisted record can never hang layout.
+	// Repair any corrupt cyclic parent table, so a bad persisted record can
+	// never hang layout.
 	fixed := breakCycles(strands)
 	stack := removeDuplicatePaneCells(partitionByAnchor(fixed), p.Selvage.PaneID)
 	ordered := orderStack(stack)
@@ -119,10 +118,9 @@ func Rules(strands []Strand, box Box, p Params, paneOrder []string) (layout stri
 }
 
 // Pin is one pane whose height is an absolute row budget rather than "whatever is left" — the
-// Selvage band, a collapsed strip, or a fixed-budget strand. Height is the height Rules actually
-// placed the cell at, after clampBandHeight/clampToFit — never the raw configured budget
-// (p.Selvage.HeightRows, p.CollapsedStripRows, or Display.FixedRows read directly), since any of
-// them can yield rows under a too-short window.
+// Selvage band or a collapsed placement. Height is the height Rules actually placed the cell at,
+// after clampBandHeight/clampToFit — never the raw configured budget (p.Selvage.HeightRows or
+// p.CollapsedRows read directly), since either can yield rows under a too-short window.
 type Pin struct {
 	// PaneID is the tmux pane id this pin applies to.
 	PaneID string
@@ -131,7 +129,7 @@ type Pin struct {
 }
 
 // FixedHeightPins reports the panes whose heights are absolute row budgets — the Selvage band and
-// every collapsed strip and fixed-budget strand — at the heights Rules actually placed them at for
+// every collapsed placement — at the heights Rules actually placed them at for
 // the identical (strands, box, p) inputs. It shares Rules' own policy composition (planCells) so the
 // two can never disagree about a placed height.
 //
@@ -143,8 +141,8 @@ type Pin struct {
 // otherwise nothing to report, it returns nil. A caller must treat a nil return as "nothing is
 // pinned", never as "no opinion" — the disposition is exactly as authoritative as a non-nil one.
 //
-// The Selvage band pin, when present, is always first in the returned slice, ahead of every strip
-// pin — hook-array index is fire order, not screen position, so the band pin keeps index 0 even
+// The Selvage band pin, when present, is always first in the returned slice, ahead of every
+// collapsed pin — hook-array index is fire order, not screen position, so the band pin keeps index 0 even
 // though the band itself renders at the bottom of the window.
 func FixedHeightPins(strands []Strand, box Box, p Params) []Pin {
 	plan, err := planCells(strands, box, p)

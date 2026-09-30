@@ -783,9 +783,9 @@ func TestStatusStrandAddSpec(t *testing.T) {
 }
 
 // TestStatusStrandAddSpecPinnedByRender ties the spec to render's layout: stacked above a driver
-// strand the status strand is pinned at exactly its budget, and alone it is the active strand and
-// is not pinned. Both strands are parentless, as the bootstrap adds them, so the shrink rule never
-// applies and only FixedRows can pin the band.
+// strand the status strand is the collapsed placement and is pinned at collapsed_rows, and alone it
+// is the bottom-most strand and is not pinned. Both strands are parentless, as the bootstrap adds
+// them; the layout rule sizes them by insertion position alone.
 func TestStatusStrandAddSpecPinnedByRender(t *testing.T) {
 	status := render.Strand{GUID: "s", Display: statusStrandAddSpec("x").Display, PaneID: "%1", Live: true}
 	driver := render.Strand{
@@ -795,10 +795,10 @@ func TestStatusStrandAddSpecPinnedByRender(t *testing.T) {
 		Live:    true,
 	}
 	box := render.Box{W: 200, H: 50}
-	params := render.Params{CollapsedStripRows: 2, MinFullRows: 3}
+	params := render.Params{CollapsedRows: 2, MinFullRows: 3}
 
 	pins := render.FixedHeightPins([]render.Strand{status, driver}, box, params)
-	want := []render.Pin{{PaneID: "%1", Height: statusStrandFixedRows}}
+	want := []render.Pin{{PaneID: "%1", Height: params.CollapsedRows}}
 	if diff := cmp.Diff(want, pins); diff != "" {
 		t.Errorf("pins mismatch (-want +got):\n%s", diff)
 	}

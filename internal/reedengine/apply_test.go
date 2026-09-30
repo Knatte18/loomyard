@@ -19,7 +19,7 @@ import (
 func TestPlanLayout_MatchesRenderRulesForCanonicalStrandTable(t *testing.T) {
 	e := newTestEngine(t)
 	e.cfg.Width, e.cfg.Height = 100, 21
-	e.cfg.CollapsedStripRows, e.cfg.MinFullRows = 2, 3
+	e.cfg.CollapsedRows, e.cfg.MinFullRows = 2, 3
 
 	// The same root->mid->active below-parent chain rules_test.go's
 	// belowParentChain fixture uses: root stays full, mid collapses
@@ -35,7 +35,7 @@ func TestPlanLayout_MatchesRenderRulesForCanonicalStrandTable(t *testing.T) {
 		{GUID: "root", PaneID: "%1", Live: true, Display: render.Display{Anchor: render.AnchorBelowParent, ShrinkWhenWaitingOnChild: false}},
 		{GUID: "mid", Parent: "root", PaneID: "%2", Live: true, Display: render.Display{Anchor: render.AnchorBelowParent, ShrinkWhenWaitingOnChild: true}},
 		{GUID: "active", Parent: "mid", PaneID: "%3", Live: true, Display: render.Display{Anchor: render.AnchorBelowParent}},
-	}, render.Box{X: 0, Y: 0, W: 100, H: 21}, render.Params{CollapsedStripRows: 2, MinFullRows: 3}, nil)
+	}, render.Box{X: 0, Y: 0, W: 100, H: 21}, render.Params{CollapsedRows: 2, MinFullRows: 3}, nil)
 	if err != nil {
 		t.Fatalf("render.Rules() unexpected error: %v", err)
 	}
@@ -55,7 +55,7 @@ func TestPlanLayout_MatchesRenderRulesForCanonicalStrandTable(t *testing.T) {
 func TestPlanLayout_HiddenStrandExcludedFromPlacement(t *testing.T) {
 	e := newTestEngine(t)
 	e.cfg.Width, e.cfg.Height = 80, 12
-	e.cfg.CollapsedStripRows, e.cfg.MinFullRows = 2, 3
+	e.cfg.CollapsedRows, e.cfg.MinFullRows = 2, 3
 
 	st := &ReedState{Strands: []Strand{
 		{GUID: "only", PaneID: "%7", Display: render.Display{Anchor: render.AnchorBelowParent}},
@@ -70,7 +70,7 @@ func TestPlanLayout_HiddenStrandExcludedFromPlacement(t *testing.T) {
 	wantLayout, wantFocus, err := render.Rules([]render.Strand{
 		{GUID: "only", PaneID: "%7", Live: true, Display: render.Display{Anchor: render.AnchorBelowParent}},
 		{GUID: "hid", PaneID: "%8", Live: true, Display: render.Display{Anchor: render.AnchorHidden}},
-	}, render.Box{X: 0, Y: 0, W: 80, H: 12}, render.Params{CollapsedStripRows: 2, MinFullRows: 3}, nil)
+	}, render.Box{X: 0, Y: 0, W: 80, H: 12}, render.Params{CollapsedRows: 2, MinFullRows: 3}, nil)
 	if err != nil {
 		t.Fatalf("render.Rules() unexpected error: %v", err)
 	}
@@ -84,7 +84,7 @@ func TestPlanLayout_HiddenStrandExcludedFromPlacement(t *testing.T) {
 func TestPlanLayout_StaleSelvagePaneIDNeverEmittedAsLayoutCell(t *testing.T) {
 	e := newTestEngine(t)
 	e.cfg.Width, e.cfg.Height = 100, 21
-	e.cfg.CollapsedStripRows, e.cfg.MinFullRows = 2, 3
+	e.cfg.CollapsedRows, e.cfg.MinFullRows = 2, 3
 	e.cfg.Selvage.HeightRows = 1
 
 	strands := []Strand{
@@ -106,7 +106,7 @@ func TestPlanLayout_StaleSelvagePaneIDNeverEmittedAsLayoutCell(t *testing.T) {
 	}
 	wantLayout, wantFocus, err := render.Rules(renderStrands,
 		render.Box{X: 0, Y: 0, W: 100, H: 21},
-		render.Params{CollapsedStripRows: 2, MinFullRows: 3},
+		render.Params{CollapsedRows: 2, MinFullRows: 3},
 		[]string{"%1", "%2"})
 	if err != nil {
 		t.Fatalf("render.Rules() unexpected error: %v", err)
@@ -124,7 +124,7 @@ func TestPlanLayout_StaleSelvagePaneIDNeverEmittedAsLayoutCell(t *testing.T) {
 	}
 	wantLayout, _, err = render.Rules(renderStrands,
 		render.Box{X: 0, Y: 0, W: 100, H: 21},
-		render.Params{CollapsedStripRows: 2, MinFullRows: 3, Selvage: render.Selvage{PaneID: "%9", HeightRows: 1}},
+		render.Params{CollapsedRows: 2, MinFullRows: 3, Selvage: render.Selvage{PaneID: "%9", HeightRows: 1}},
 		[]string{"%9", "%1", "%2"})
 	if err != nil {
 		t.Fatalf("render.Rules() with Selvage unexpected error: %v", err)
@@ -140,7 +140,7 @@ func TestPlanLayout_StaleSelvagePaneIDNeverEmittedAsLayoutCell(t *testing.T) {
 func TestPlanLayout_UsesTheToldBoxAndIssuesNoQuery(t *testing.T) {
 	e := newTestEngine(t)
 	e.cfg.Width, e.cfg.Height = 999, 111
-	e.cfg.CollapsedStripRows, e.cfg.MinFullRows = 2, 3
+	e.cfg.CollapsedRows, e.cfg.MinFullRows = 2, 3
 
 	hookCalled := false
 	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
@@ -164,7 +164,7 @@ func TestPlanLayout_UsesTheToldBoxAndIssuesNoQuery(t *testing.T) {
 
 	wantLayout, _, err := render.Rules([]render.Strand{
 		{GUID: "only", PaneID: "%7", Live: true, Display: render.Display{Anchor: render.AnchorBelowParent}},
-	}, toldBox, render.Params{CollapsedStripRows: 2, MinFullRows: 3}, []string{"%7"})
+	}, toldBox, render.Params{CollapsedRows: 2, MinFullRows: 3}, []string{"%7"})
 	if err != nil {
 		t.Fatalf("render.Rules() unexpected error: %v", err)
 	}
@@ -502,7 +502,7 @@ func newApplyRecordingHook(rec *applyHookRecorder) func(capture bool, args ...st
 func TestApplyLayoutLocked_InstallsResizePinsAfterSelectLayout(t *testing.T) {
 	e := newTestEngine(t)
 	e.cfg.Width, e.cfg.Height = 100, 21
-	e.cfg.CollapsedStripRows, e.cfg.MinFullRows = 2, 3
+	e.cfg.CollapsedRows, e.cfg.MinFullRows = 2, 3
 	e.cfg.Selvage.HeightRows = 1
 
 	rec := &applyHookRecorder{}
@@ -550,8 +550,8 @@ func TestApplyLayoutLocked_InstallsResizePinsAfterSelectLayout(t *testing.T) {
 }
 
 // TestApplyLayoutLocked_ZeroPinsStillIssuesTheClear pins the-clear-is-unconditional-including-zero-pins:
-// an apply whose plan yields zero pins — a SelvagePaneID absent from the live set, no strip strand
-// present — still issues the clear, and issues no resize-pane entry behind it.
+// an apply whose plan yields zero pins — a SelvagePaneID absent from the live set, a lone strand
+// with nothing collapsed — still issues the clear, and issues no resize-pane entry behind it.
 // The two subtests separate the two opinions a zero-pin rebuild carries: "nothing is pinned" is
 // unconditional, while the watchdog's touch entry rides watchdog on/off, so a watchdog: on session
 // with nothing to pin still gets told about a resize.
@@ -560,7 +560,7 @@ func TestApplyLayoutLocked_ZeroPinsStillIssuesTheClear(t *testing.T) {
 		t.Helper()
 		e := newTestEngine(t)
 		e.cfg.Width, e.cfg.Height = 100, 21
-		e.cfg.CollapsedStripRows, e.cfg.MinFullRows = 2, 3
+		e.cfg.CollapsedRows, e.cfg.MinFullRows = 2, 3
 		e.cfg.Selvage.HeightRows = 1
 		e.cfg.Watchdog = watchdog
 
@@ -571,9 +571,10 @@ func TestApplyLayoutLocked_ZeroPinsStillIssuesTheClear(t *testing.T) {
 			SelvagePaneID: "%9", // absent from live below, so the mapping blanks it
 			Strands: []Strand{
 				{GUID: "root", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}},
-				{GUID: "child", Parent: "root", PaneID: "%2", Display: render.Display{Anchor: render.AnchorBelowParent}},
 			},
 		}
+		// %2 is a foreign pane no strand owns: a lone strand is the bottom-most, so it
+		// collapses nothing and the plan yields zero pins.
 		live := []LivePane{{ID: "%1", Top: 0}, {ID: "%2", Top: 11}}
 
 		if err := e.applyLayoutLocked(st, live); err != nil {
@@ -660,7 +661,7 @@ func TestApplyLayoutLocked_GuardSkipIssuesNoSetHookCall(t *testing.T) {
 func TestApplyLayoutLocked_SetHookErrorDoesNotFailApply(t *testing.T) {
 	e := newTestEngine(t)
 	e.cfg.Width, e.cfg.Height = 100, 21
-	e.cfg.CollapsedStripRows, e.cfg.MinFullRows = 2, 3
+	e.cfg.CollapsedRows, e.cfg.MinFullRows = 2, 3
 
 	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
 		if args[0] == "set-hook" {

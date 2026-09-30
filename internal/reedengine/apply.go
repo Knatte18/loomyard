@@ -85,9 +85,9 @@ func (e *Engine) toRenderInputs(st *ReedState, live []LivePane) renderInputs {
 	return renderInputs{
 		strands: strands,
 		params: render.Params{
-			CollapsedStripRows: e.cfg.CollapsedStripRows,
-			MinFullRows:        e.cfg.MinFullRows,
-			Selvage:            e.selvageRenderParams(st, presentIDs),
+			CollapsedRows: e.cfg.CollapsedRows,
+			MinFullRows:   e.cfg.MinFullRows,
+			Selvage:       e.selvageRenderParams(st, presentIDs),
 		},
 		paneOrder: paneIDsByTop(live),
 	}
@@ -111,7 +111,7 @@ func (e *Engine) planLayout(st *ReedState, live []LivePane, box render.Box) (lay
 }
 
 // fixedHeightPins reports the panes whose heights are absolute row budgets — the Selvage band and
-// every collapsed strip — for st's current strand table against live, within box. It calls
+// every collapsed placement — for st's current strand table against live, within box. It calls
 // toRenderInputs and queries nothing of its own: box is told to it by the caller exactly as
 // planLayout is, and it must always be called with the same st, live and box triple the layout for
 // that same call was planned from, so the pins it returns never disagree with what was actually laid
@@ -194,7 +194,7 @@ type applyResult struct {
 //
 // select-layout with a layout string whose dimensions disagree with the live
 // window exits 0 and silently rescales the layout proportionally, so every
-// absolute row budget reed computes (Selvage.HeightRows, CollapsedStripRows,
+// absolute row budget reed computes (Selvage.HeightRows, CollapsedRows,
 // MinFullRows) was being scaled by live_height/cfg.Height on any window that
 // is not exactly cfg.Height rows tall — this is why the box passed to
 // planLayout below is always the live one, not the configured one.
