@@ -8,8 +8,7 @@
 // geometry awareness of its own; the caller (Engine.Run) computes the directive, the stencils
 // directory, and the three paths.
 //
-// composePrompt warns, without failing, when the explore stencil lacks the friction or the focus directive marker
-// while a directive was computed for it.
+// composePrompt warns, without failing, when the explore stencil lacks the friction or the focus directive marker while a directive was computed for it.
 
 package burlerengine
 
