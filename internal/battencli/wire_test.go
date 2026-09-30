@@ -439,7 +439,7 @@ func TestTeardownRefusal_RecordsRemedyNamesCommitRecordsNeverForce(t *testing.T)
 	if !errors.Is(got, fabricengine.ErrArchiveFailed) {
 		t.Errorf("teardownRefusal(archive failed) = %v; want it to still wrap ErrArchiveFailed", got)
 	}
-	for _, want := range []string{"left in place", "push refused", "lyx batten run some-slug"} {
+	for _, want := range []string{"left in place", "push refused", "fix the failure named here", "lyx batten run some-slug"} {
 		if !strings.Contains(got.Error(), want) {
 			t.Errorf("teardownRefusal(archive failed) = %q; want it to contain %q", got.Error(), want)
 		}

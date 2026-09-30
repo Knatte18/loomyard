@@ -197,10 +197,11 @@ func createRefusal(err error) error {
 // The records are uncommitted when a driver ended before its end-of-session commit, so the remedy named here commits them first.
 // fabric's refusal covers any uncommitted content in the sibling, not only the paths "lyx loom commit-records" stages;
 // the remedy therefore also names what to do when a resume after that commit refuses again.
-// A failed archive runs before any teardown mutation, so the pair is still whole and a plain resume retries it once the remote is reachable.
+// A failed archive runs before any teardown mutation, so the pair is still whole and a plain resume retries it once the failure is fixed.
+// That failure is most often an unreachable remote, but not always, so the remedy points at the wrapped cause rather than naming one.
 func teardownRefusal(err error, slug, taskAnchor string) error {
 	if errors.Is(err, fabricengine.ErrArchiveFailed) {
-		return fmt.Errorf("the pair for %q was left in place because archiving its run records to the remote failed: %w; make the remote reachable, then resume this run with \"lyx batten run %s\"", slug, err, slug)
+		return fmt.Errorf("the pair for %q was left in place because archiving its run records to the remote failed: %w; fix the failure named here (most often an unreachable remote), then resume this run with \"lyx batten run %s\"", slug, err, slug)
 	}
 	if !errors.Is(err, fabricengine.ErrPairSiblingDirty) {
 		return err
