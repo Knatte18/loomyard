@@ -967,8 +967,7 @@ func TestRun_DoneWithUnrecordedBatchIsHardError(t *testing.T) {
 	}
 }
 
-// auditDoneHandle builds a done Master handle whose onWait writes outcome.yaml (batchesDone batches) and a valid summary.md,
-// with audit as the whole-session fork audit.
+// auditDoneHandle builds a done Master handle whose onWait writes outcome.yaml (batchesDone batches) and a valid summary.md, with audit as the whole-session fork audit.
 func auditDoneHandle(t *testing.T, fx *runFixture, session string, batchesDone int, audit shuttleengine.ForkAudit, extra func()) *runFakeHandle {
 	t.Helper()
 	return &runFakeHandle{
@@ -994,8 +993,7 @@ func auditDoneHandle(t *testing.T, fx *runFixture, session string, batchesDone i
 	}
 }
 
-// TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck proves the run-exit audit demotes a done outcome to stuck
-// on an undispositioned correctness finding — a Master write into a tracked file — naming the path and the git way forward,
+// TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck proves the run-exit audit demotes a done outcome to stuck on an undispositioned correctness finding — a Master write into a tracked file — naming the path and the git way forward,
 // and that once the file is restored with git a re-run with a clean audit ends done.
 func TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck(t *testing.T) {
 	fx := newRunFixture(t, 1)
@@ -1038,9 +1036,8 @@ func TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck(t *testing.T) {
 	}
 }
 
-// TestRun_DoneWithNamedSpawnAlreadyDispositionedAddsNoWarning proves a finding an earlier record-batch already warned on
-// is dropped by the run-exit audit: the run ends done, no second warning is recorded, and summary.md carries the
-// batch-level warning exactly once under "## Audit warnings".
+// TestRun_DoneWithNamedSpawnAlreadyDispositionedAddsNoWarning proves a finding an earlier record-batch already warned on is dropped by the run-exit audit:
+// the run ends done, no second warning is recorded, and summary.md carries the batch-level warning exactly once under "## Audit warnings".
 func TestRun_DoneWithNamedSpawnAlreadyDispositionedAddsNoWarning(t *testing.T) {
 	const session = "master-session-spawn"
 	fx := newRunFixture(t, 3)
@@ -1091,9 +1088,7 @@ func TestRun_DoneWithNamedSpawnAlreadyDispositionedAddsNoWarning(t *testing.T) {
 	}
 }
 
-// TestRun_DoneWithFabricReferenceInIntegrationForkWarns proves a policy finding in the integration fork's transcript
-// leaves the run done, records one run-level warning in state.json, returns it on RunResult.Warnings,
-// and lists it in summary.md's "Audit warnings" section.
+// TestRun_DoneWithFabricReferenceInIntegrationForkWarns proves a policy finding in the integration fork's transcript leaves the run done, records one run-level warning in state.json, returns it on RunResult.Warnings, and lists it in summary.md's "Audit warnings" section.
 func TestRun_DoneWithFabricReferenceInIntegrationForkWarns(t *testing.T) {
 	const session = "master-session-fabric"
 	fx := newRunFixture(t, 1)
@@ -1744,9 +1739,8 @@ func TestRun_ZeroGateReachesStartMasterUngated(t *testing.T) {
 	}
 }
 
-// TestRun_Regression20260930_BegunUnrecordedBatchResumes pins the 2026-09-30 wedge: state records
-// batch 1 begun but not terminal, with its Create target already committed, and Run must pass the
-// entry validation and reach the Master spawn with no create-already-exists refusal.
+// TestRun_Regression20260930_BegunUnrecordedBatchResumes pins the 2026-09-30 wedge: state records batch 1 begun but not terminal, with its Create target already committed,
+// and Run must pass the entry validation and reach the Master spawn with no create-already-exists refusal.
 func TestRun_Regression20260930_BegunUnrecordedBatchResumes(t *testing.T) {
 	fx := newRunFixture(t, 2)
 	commitFile(t, fx.Worktree, "internal/batch1/new.go", "package batch1\n\nfunc Landed() {}\n", "card 1 landed")
@@ -1780,8 +1774,7 @@ func TestRun_Regression20260930_BegunUnrecordedBatchResumes(t *testing.T) {
 	}
 }
 
-// requireWayForward fails unless err carries the trailing "way forward:" clause and every want
-// fragment after it, so each reaching test matches the message the way the refusal table does.
+// requireWayForward fails unless err carries the trailing "way forward:" clause and every want fragment after it, so each reaching test matches the message the way the refusal table does.
 func requireWayForward(t *testing.T, err error, wants ...string) {
 	t.Helper()
 	if err == nil {
@@ -1799,8 +1792,7 @@ func requireWayForward(t *testing.T, err error, wants ...string) {
 	}
 }
 
-// askingMaster scripts fx's Starter with a Master that ends its turn asking, the cheapest way for a
-// re-run to prove it got past every refusal gate and reached the spawn.
+// askingMaster scripts fx's Starter with a Master that ends its turn asking, the cheapest way for a re-run to prove it got past every refusal gate and reached the spawn.
 func askingMaster(t *testing.T, fx *runFixture, label string) {
 	t.Helper()
 	fx.Starter.startErr = nil
@@ -1826,8 +1818,7 @@ func requireReachedMaster(t *testing.T, fx *runFixture, err error) {
 	}
 }
 
-// rebaselineOnDisk is what the rebaseline verb does: parse the edited plan, re-derive its
-// batches, restamp the recorded fingerprint and save.
+// rebaselineOnDisk is what the rebaseline verb does: parse the edited plan, re-derive its batches, restamp the recorded fingerprint and save.
 func rebaselineOnDisk(t *testing.T, fx *runFixture) {
 	t.Helper()
 	plan, err := planparser.ParsePlan(fx.PlanDir)
@@ -1905,8 +1896,8 @@ func TestRun_WayForward_ValidationRefusal(t *testing.T) {
 	_, err = websterengine.Run(fx.Deps, websterengine.RunOptions{})
 	requireWayForward(t, err, "fix the named cards", "lyx webster rebaseline", "lyx webster run")
 
-	// The refused run already recorded the edited plan; fixing the card is a further edit, so the
-	// next run refuses it as foreign until the operator rebaselines, which the message names.
+	// The refused run already recorded the edited plan;
+	// fixing the card is a further edit, so the next run refuses it as foreign until the operator rebaselines, which the message names.
 	if err := os.WriteFile(cardPath, original, 0o644); err != nil {
 		t.Fatalf("fix card: %v", err)
 	}
@@ -1973,9 +1964,7 @@ func TestRun_WayForward_MasterEndedEarly(t *testing.T) {
 	}
 }
 
-// TestRun_WayForward_RunExitRefusals reaches each run-exit refusal over a done Master, asserts its
-// way forward, then takes it (the state a re-driven batch leaves, a finished summary, an audit that
-// completed) and proves the re-run ends done.
+// TestRun_WayForward_RunExitRefusals reaches each run-exit refusal over a done Master, asserts its way forward, then takes it (the state a re-driven batch leaves, a finished summary, an audit that completed) and proves the re-run ends done.
 func TestRun_WayForward_RunExitRefusals(t *testing.T) {
 	const session = "master-session-exit"
 	const strand = "master-strand-exit"
@@ -2085,8 +2074,7 @@ func TestRun_WayForward_RunExitRefusals(t *testing.T) {
 	}
 }
 
-// TestRun_WayForward_MissingIntegrationReport reaches the done-without-integration-report refusal
-// and proves a re-run whose integration fork reports finishes.
+// TestRun_WayForward_MissingIntegrationReport reaches the done-without-integration-report refusal and proves a re-run whose integration fork reports finishes.
 func TestRun_WayForward_MissingIntegrationReport(t *testing.T) {
 	fx := newRunFixture(t, 1)
 	appendIntegrationVerify(t, fx.PlanDir, "true")

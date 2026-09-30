@@ -138,9 +138,8 @@ func TestCheckSeed_ProductDoesNotDecodeAsLoomStatus(t *testing.T) {
 	}
 }
 
-// TestCheckSeed_OutOfVocabularyOutcomeNamesWayForward writes the status file a broken adapter
-// leaves behind (Shed records its outcome verbatim), asserts the failure ends in the seed-a-new-run
-// way forward, and takes it: a fresh seed is coherent.
+// TestCheckSeed_OutOfVocabularyOutcomeNamesWayForward writes the status file a broken adapter leaves behind (Shed records its outcome verbatim), asserts the failure ends in the seed-a-new-run way forward, and takes it:
+// a fresh seed is coherent.
 func TestCheckSeed_OutOfVocabularyOutcomeNamesWayForward(t *testing.T) {
 	dir := t.TempDir()
 	statusPath := filepath.Join(dir, "status.json")

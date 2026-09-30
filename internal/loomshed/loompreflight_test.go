@@ -150,9 +150,9 @@ func TestLoomPreflight_Call_StuckReasonNamesTheFailures(t *testing.T) {
 	}
 }
 
-// TestLoomPreflight_Call_HalfFinishedStuckNamesGoto pins the way forward on the half-finished
-// refusal: a run moved onto Loom-Preflight over a history that has already passed it is Stuck with
-// a reason naming goto, and taking that goto makes Discussion-Write the current producer.
+// TestLoomPreflight_Call_HalfFinishedStuckNamesGoto pins the way forward on the half-finished refusal:
+// a run moved onto Loom-Preflight over a history that has already passed it is Stuck with a reason naming goto,
+// and taking that goto makes Discussion-Write the current producer.
 func TestLoomPreflight_Call_HalfFinishedStuckNamesGoto(t *testing.T) {
 	dir := t.TempDir()
 	statusPath := filepath.Join(dir, "status.json")

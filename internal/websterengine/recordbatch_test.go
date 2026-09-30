@@ -199,8 +199,8 @@ func validReport(headSHA string) string {
 
 // TestRecordBatch_NoBeginRecord proves the bracket-discipline check: a record call with no matching
 // BatchState entry never consults the audit.
-// A report present is archived and the batch re-driven through begin-batch, so begin-batch's
-// pre-existing-report refusal no longer fires; with no report the error still names begin-batch.
+// A report present is archived and the batch re-driven through begin-batch, so begin-batch's pre-existing-report refusal no longer fires;
+// with no report the error still names begin-batch.
 func TestRecordBatch_NoBeginRecord(t *testing.T) {
 	t.Run("report present is archived", func(t *testing.T) {
 		fx := newRecordFixture(t, nil)
@@ -314,8 +314,7 @@ func TestRecordBatch_AuditsBracketOpeningSession(t *testing.T) {
 }
 
 // TestRecordBatch_ZeroNewTranscriptsArchivesReport proves the unfakeable-report rule:
-// zero new transcripts through the whole settle window never records the report, REGARDLESS of a
-// batch-report file already sitting on disk — a report with no fork behind it means Master wrote it itself.
+// zero new transcripts through the whole settle window never records the report, REGARDLESS of a batch-report file already sitting on disk — a report with no fork behind it means Master wrote it itself.
 // The report is archived, the batch record stays begun, and begin-batch re-drives it.
 func TestRecordBatch_ZeroNewTranscriptsArchivesReport(t *testing.T) {
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{{}})
@@ -550,8 +549,8 @@ func TestRecordBatch_MultipleNewTranscriptsWarnsNeverErrors(t *testing.T) {
 	}
 }
 
-// TestRecordBatch_ParentWriteOutsideWorktreeWarns proves a parent write outside the worktree is a
-// policy finding: the batch records done with one recorded warning naming the write.
+// TestRecordBatch_ParentWriteOutsideWorktreeWarns proves a parent write outside the worktree is a policy finding:
+// the batch records done with one recorded warning naming the write.
 func TestRecordBatch_ParentWriteOutsideWorktreeWarns(t *testing.T) {
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
 		{
@@ -619,8 +618,7 @@ func archivedReports(t *testing.T, reportsDir string) []string {
 	return archived
 }
 
-// TestRecordBatch_ForkFabricReferenceWarnsWhenVerifyPasses proves a policy finding with an OK report
-// and a passing card verify records the batch done with exactly one recorded warning.
+// TestRecordBatch_ForkFabricReferenceWarnsWhenVerifyPasses proves a policy finding with an OK report and a passing card verify records the batch done with exactly one recorded warning.
 func TestRecordBatch_ForkFabricReferenceWarnsWhenVerifyPasses(t *testing.T) {
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{forkFabricRefAudit()})
 	fx.Deps.RefMatcher = fabricMatcher{}
@@ -648,8 +646,8 @@ func TestRecordBatch_ForkFabricReferenceWarnsWhenVerifyPasses(t *testing.T) {
 	}
 }
 
-// TestRecordBatch_RetryNeverDuplicatesWarning proves a finding first seen on a no-report call is
-// warned once: the later OK report re-runs the verify and records done without a second warning.
+// TestRecordBatch_RetryNeverDuplicatesWarning proves a finding first seen on a no-report call is warned once:
+// the later OK report re-runs the verify and records done without a second warning.
 func TestRecordBatch_RetryNeverDuplicatesWarning(t *testing.T) {
 	audit := shuttleengine.ForkAudit{
 		Forks:              []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}},
@@ -692,8 +690,8 @@ func TestRecordBatch_RetryNeverDuplicatesWarning(t *testing.T) {
 	}
 }
 
-// TestRecordBatch_RetryFailingVerifyFailsNamingEarlierWarning proves the same flow with a failing
-// verify fails the batch, and the earlier recorded warning is among the reasons.
+// TestRecordBatch_RetryFailingVerifyFailsNamingEarlierWarning proves the same flow with a failing verify fails the batch,
+// and the earlier recorded warning is among the reasons.
 func TestRecordBatch_RetryFailingVerifyFailsNamingEarlierWarning(t *testing.T) {
 	audit := shuttleengine.ForkAudit{
 		Forks:              []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}},
@@ -727,8 +725,7 @@ func TestRecordBatch_RetryFailingVerifyFailsNamingEarlierWarning(t *testing.T) {
 	}
 }
 
-// TestRecordBatch_CorrectnessParentFindingNoReportFailsBatch proves a parent write to a tracked file
-// fails the batch with no report at all, archiving nothing and naming the path in the reasons.
+// TestRecordBatch_CorrectnessParentFindingNoReportFailsBatch proves a parent write to a tracked file fails the batch with no report at all, archiving nothing and naming the path in the reasons.
 func TestRecordBatch_CorrectnessParentFindingNoReportFailsBatch(t *testing.T) {
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{{
 		Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}},
@@ -755,8 +752,7 @@ func TestRecordBatch_CorrectnessParentFindingNoReportFailsBatch(t *testing.T) {
 	}
 }
 
-// TestRecordBatch_CorrectnessFindingFailedReportFailsBatch proves a correctness finding fails the
-// batch even over a FAILED report, and archives that report.
+// TestRecordBatch_CorrectnessFindingFailedReportFailsBatch proves a correctness finding fails the batch even over a FAILED report, and archives that report.
 func TestRecordBatch_CorrectnessFindingFailedReportFailsBatch(t *testing.T) {
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{{
 		Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}},
@@ -773,8 +769,8 @@ func TestRecordBatch_CorrectnessFindingFailedReportFailsBatch(t *testing.T) {
 	}
 }
 
-// TestRecordBatch_PolicyFindingFailingVerifySameCallFailsBatch proves step 7's first trigger: a fork
-// fabric-reference on an OK report whose card verify exits 1 fails the batch on the same call.
+// TestRecordBatch_PolicyFindingFailingVerifySameCallFailsBatch proves step 7's first trigger:
+// a fork fabric-reference on an OK report whose card verify exits 1 fails the batch on the same call.
 func TestRecordBatch_PolicyFindingFailingVerifySameCallFailsBatch(t *testing.T) {
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{forkFabricRefAudit()})
 	fx.Deps.RefMatcher = fabricMatcher{}
@@ -796,9 +792,8 @@ func TestRecordBatch_PolicyFindingFailingVerifySameCallFailsBatch(t *testing.T) 
 	}
 }
 
-// TestRecordBatch_NamedSpawnWarnsOnceAcrossBatches proves a whole-session parent finding is
-// dispositioned by the first record-batch that reports it: the next batch in the same session
-// records done with no refusal and no repeated warning.
+// TestRecordBatch_NamedSpawnWarnsOnceAcrossBatches proves a whole-session parent finding is dispositioned by the first record-batch that reports it:
+// the next batch in the same session records done with no refusal and no repeated warning.
 func TestRecordBatch_NamedSpawnWarnsOnceAcrossBatches(t *testing.T) {
 	f1 := shuttleengine.ForkReport{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}
 	f2 := shuttleengine.ForkReport{TranscriptPath: "subagents/f2.jsonl", ReportReturned: true}
@@ -835,8 +830,7 @@ func TestRecordBatch_NamedSpawnWarnsOnceAcrossBatches(t *testing.T) {
 	}
 }
 
-// TestRecordBatch_ParentWriteToRunStateFailsBatch proves a Master write to the run's state.json is a
-// correctness finding that fails the batch, naming the path.
+// TestRecordBatch_ParentWriteToRunStateFailsBatch proves a Master write to the run's state.json is a correctness finding that fails the batch, naming the path.
 func TestRecordBatch_ParentWriteToRunStateFailsBatch(t *testing.T) {
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{{
 		Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}},
@@ -855,8 +849,7 @@ func TestRecordBatch_ParentWriteToRunStateFailsBatch(t *testing.T) {
 	}
 }
 
-// TestRecordBatch_ForkContractWriteFailsBatch proves a fork writing a Master contract file fails the
-// batch and archives its report.
+// TestRecordBatch_ForkContractWriteFailsBatch proves a fork writing a Master contract file fails the batch and archives its report.
 func TestRecordBatch_ForkContractWriteFailsBatch(t *testing.T) {
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{{
 		Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}},
@@ -873,9 +866,8 @@ func TestRecordBatch_ForkContractWriteFailsBatch(t *testing.T) {
 	}
 }
 
-// TestRecordBatch_Regression20260930_ForkAuditFalsePositive pins the 2026-09-30 incident: a
-// fabric-reference finding on an otherwise clean batch records done with a warning instead of
-// refusing every retry.
+// TestRecordBatch_Regression20260930_ForkAuditFalsePositive pins the 2026-09-30 incident:
+// a fabric-reference finding on an otherwise clean batch records done with a warning instead of refusing every retry.
 func TestRecordBatch_Regression20260930_ForkAuditFalsePositive(t *testing.T) {
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{forkFabricRefAudit()})
 	fx.Deps.RefMatcher = fabricMatcher{}
@@ -962,11 +954,7 @@ func TestRecordBatch_WayForward_UnknownBatch(t *testing.T) {
 	}
 }
 
-// TestRecordBatch_MissingSessionTranscriptArchivesReport proves the TRUE cross-machine resume
-// failure — the bracket-opening session's transcript file does not exist on this machine at all, so
-// the audit read itself fails with fs.ErrNotExist — archives the report, keeps the batch begun, and
-// explains the machine-local transcripts with the begin-batch way forward (found live in crucible
-// round fable-r3).
+// TestRecordBatch_MissingSessionTranscriptArchivesReport proves the TRUE cross-machine resume failure — the bracket-opening session's transcript file does not exist on this machine at all, so the audit read itself fails with fs.ErrNotExist — archives the report, keeps the batch begun, and explains the machine-local transcripts with the begin-batch way forward (found live in crucible round fable-r3).
 // errors.Is must still see the underlying fs.ErrNotExist.
 func TestRecordBatch_MissingSessionTranscriptArchivesReport(t *testing.T) {
 	fx := newRecordFixture(t, nil)
@@ -994,8 +982,7 @@ func TestRecordBatch_MissingSessionTranscriptArchivesReport(t *testing.T) {
 }
 
 // TestRecordBatch_DoneChecksBlockOnUnresolvedCreate proves card 33's wiring as card 10 reshaped it:
-// a Create target that still does not resolve against the worktree's actual post-card tree fails the
-// batch terminally with its findings as reasons and the report archived.
+// a Create target that still does not resolve against the worktree's actual post-card tree fails the batch terminally with its findings as reasons and the report archived.
 func TestRecordBatch_DoneChecksBlockOnUnresolvedCreate(t *testing.T) {
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
 		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},

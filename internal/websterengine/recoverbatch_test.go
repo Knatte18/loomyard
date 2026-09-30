@@ -830,9 +830,8 @@ func TestRecoverBatch_UnrecordedOrTerminalBatchSpawnsFresh(t *testing.T) {
 // recovered that way never bound its plan: handles and every later card kept referencing an unbound
 // handle for the rest of the plan's life.
 //
-// Here the recovery reports done over a Create card whose target never appeared in the tree. The
-// mechanical pass must refuse it and take the batch terminal failed with its report archived,
-// exactly as record-batch does, so the next recover-batch spawns a fresh strand.
+// Here the recovery reports done over a Create card whose target never appeared in the tree.
+// The mechanical pass must refuse it and take the batch terminal failed with its report archived, exactly as record-batch does, so the next recover-batch spawns a fresh strand.
 func TestRecoverBatch_TerminalRunsTheSamePostBatchChecksAsRecordBatch(t *testing.T) {
 	fx := newRecoverFixture(t)
 	clk := &recoverFakeClock{now: time.Unix(0, 0)}
@@ -897,9 +896,8 @@ func failedRecord(reasons ...string) *websterengine.BatchState {
 	}
 }
 
-// TestRecoverSpawnOrAttach_FailedBatchSpawnsWithFailureDigest proves recover-batch works from a
-// failed batch for every reason class: no refusal, and the rendered prompt carries every reason
-// and suspect path.
+// TestRecoverSpawnOrAttach_FailedBatchSpawnsWithFailureDigest proves recover-batch works from a failed batch for every reason class:
+// no refusal, and the rendered prompt carries every reason and suspect path.
 func TestRecoverSpawnOrAttach_FailedBatchSpawnsWithFailureDigest(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -932,8 +930,7 @@ func TestRecoverSpawnOrAttach_FailedBatchSpawnsWithFailureDigest(t *testing.T) {
 	}
 }
 
-// TestRecoverSpawnOrAttach_FailedBatchArchivesLateReport proves an OK report a still-running fork
-// writes after the batch failed is archived rather than refused, so no refusal ring re-forms.
+// TestRecoverSpawnOrAttach_FailedBatchArchivesLateReport proves an OK report a still-running fork writes after the batch failed is archived rather than refused, so no refusal ring re-forms.
 func TestRecoverSpawnOrAttach_FailedBatchArchivesLateReport(t *testing.T) {
 	fx := newRecoverFixture(t)
 	fx.Deps.State.Batches[1] = failedRecord("fork wrote the report contract file")
@@ -1035,8 +1032,8 @@ func TestRecoverSpawnOrAttach_NotReadyStartSurfacesAndRecordsNothing(t *testing.
 	}
 }
 
-// TestRecoverSpawnOrAttach_WayForward_StartFailureIsTransient proves a failed recovery-strand start
-// names the re-run, and that re-running the verb once the provider answers spawns the strand.
+// TestRecoverSpawnOrAttach_WayForward_StartFailureIsTransient proves a failed recovery-strand start names the re-run,
+// and that re-running the verb once the provider answers spawns the strand.
 func TestRecoverSpawnOrAttach_WayForward_StartFailureIsTransient(t *testing.T) {
 	fx := newRecoverFixture(t)
 	realStarter := fx.Deps.Starter
@@ -1055,8 +1052,8 @@ func TestRecoverSpawnOrAttach_WayForward_StartFailureIsTransient(t *testing.T) {
 	}
 }
 
-// TestPersistRecoveryTerminal_WayForward_NoRecordedState proves a batch whose record vanished
-// underneath the recovery wait names the recover-batch re-run, and that re-running spawns afresh.
+// TestPersistRecoveryTerminal_WayForward_NoRecordedState proves a batch whose record vanished underneath the recovery wait names the recover-batch re-run,
+// and that re-running spawns afresh.
 func TestPersistRecoveryTerminal_WayForward_NoRecordedState(t *testing.T) {
 	fx := newRecoverFixture(t)
 	clk := &recoverFakeClock{now: time.Unix(0, 0)}
@@ -1071,8 +1068,8 @@ func TestPersistRecoveryTerminal_WayForward_NoRecordedState(t *testing.T) {
 	}
 }
 
-// TestRecoverSpawnOrAttach_WayForward_MalformedReport proves the way forward record-batch names for
-// a malformed report: recover-batch archives it and spawns a recovery strand.
+// TestRecoverSpawnOrAttach_WayForward_MalformedReport proves the way forward record-batch names for a malformed report:
+// recover-batch archives it and spawns a recovery strand.
 func TestRecoverSpawnOrAttach_WayForward_MalformedReport(t *testing.T) {
 	fx := newRecoverFixture(t)
 	writeRecoverReport(t, fx.ReportsDir, "status: bogus\nhead_sha: deadbeef\n")
@@ -1087,10 +1084,8 @@ func TestRecoverSpawnOrAttach_WayForward_MalformedReport(t *testing.T) {
 	}
 }
 
-// TestRecoverBatch_WayForward_DoneReportRecordsInstead proves the OK-report refusal names record-batch
-// and that the report it leaves in place is exactly what record-batch consumes: once the operator
-// takes the way forward by removing the prior record's obstruction (here a terminal dead prior, the
-// state after which the report is late), recover-batch proceeds and archives it.
+// TestRecoverBatch_WayForward_DoneReportRecordsInstead proves the OK-report refusal names record-batch and that the report it leaves in place is exactly what record-batch consumes:
+// once the operator takes the way forward by removing the prior record's obstruction (here a terminal dead prior, the state after which the report is late), recover-batch proceeds and archives it.
 func TestRecoverBatch_WayForward_DoneReportRecordsInstead(t *testing.T) {
 	fx := newRecoverFixture(t)
 	writeRecoverReport(t, fx.ReportsDir, "status: OK\nhead_sha: deadbeef\n")

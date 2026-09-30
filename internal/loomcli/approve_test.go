@@ -118,8 +118,7 @@ func TestApproveVerb_Refusals(t *testing.T) {
 			if len(*written) != 0 {
 				t.Errorf("wrote %d approvals on a refusal; want none", len(*written))
 			}
-			// Taking the way forward (the run halts at Publish, the PR opens, the HEAD syncs, the
-			// transient clears) leaves a state the same verb accepts.
+			// Taking the way forward (the run halts at Publish, the PR opens, the HEAD syncs, the transient clears) leaves a state the same verb accepts.
 			fixed, _ := approveFixture()
 			fixed.writeApproval = d.writeApproval
 			out.Reset()

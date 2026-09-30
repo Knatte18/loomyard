@@ -27,9 +27,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// TestGateRows_StopsNameAWayForward pins the trailing way-forward clause on the gate rows' stops
-// and takes each one: the commit-seam failures and the batchifier fault are transient or
-// operator-fixable, so the same row proceeds once the named fix is made.
+// TestGateRows_StopsNameAWayForward pins the trailing way-forward clause on the gate rows' stops and takes each one:
+// the commit-seam failures and the batchifier fault are transient or operator-fixable, so the same row proceeds once the named fix is made.
 func TestGateRows_StopsNameAWayForward(t *testing.T) {
 	commitFault := errors.New("index.lock exists")
 	for _, tt := range []struct {

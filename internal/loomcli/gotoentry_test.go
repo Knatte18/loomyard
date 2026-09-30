@@ -8,9 +8,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// TestObserveEntry_GotoIsNotACrashResume pins that a run moved by shedengine.Goto reads as an
-// ordinary resume: goto writes paused, never running, so with the run lock free the entry
-// observation carries no crash-resume signature.
+// TestObserveEntry_GotoIsNotACrashResume pins that a run moved by shedengine.Goto reads as an ordinary resume:
+// goto writes paused, never running, so with the run lock free the entry observation carries no crash-resume signature.
 func TestObserveEntry_GotoIsNotACrashResume(t *testing.T) {
 	dir := t.TempDir()
 	statusPath := filepath.Join(dir, "status.json")

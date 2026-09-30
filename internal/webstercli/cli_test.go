@@ -691,8 +691,7 @@ var singleFlagEnvelope = regexp.MustCompile(`map\[string\]any\{"([a-z_]+)": true
 // emitted {"card_not_done": true} on an ErrCardNotDone refusal, but the Master stencil's failure
 // ladder carried no rung for it, so Master fell through to generic error handling on a refusal with
 // a specific meaning and a specific disposition.
-// record-batch's own flags today are batch_failed and report_archived, which ride in multi-field
-// envelopes (with batch, and warnings on the first) and so are outside this regexp's shape;
+// record-batch's own flags today are batch_failed and report_archived, which ride in multi-field envelopes (with batch, and warnings on the first) and so are outside this regexp's shape;
 // the master stencil's ladder names both all the same.
 //
 // The flag set is read out of this package's own source rather than pinned as a list, because a

@@ -570,8 +570,7 @@ func TestClassifyAttribution(t *testing.T) {
 				if !errors.Is(err, tt.wantErr) {
 					t.Errorf("ClassifyAttribution() error = %v; want %v", err, tt.wantErr)
 				}
-				// A cross-machine resume of the report-landed crash window reproduces
-				// this error with no forgery, so its message keeps the diagnosis;
+				// A cross-machine resume of the report-landed crash window reproduces this error with no forgery, so its message keeps the diagnosis;
 				// RecordBatch adds the begin-batch way forward.
 				if !strings.Contains(err.Error(), "machine-local") {
 					t.Errorf("ClassifyAttribution() error %q does not name the machine-local transcript caveat", err)

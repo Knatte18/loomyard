@@ -656,8 +656,7 @@ func TestRecordBatchCmd_Envelope(t *testing.T) {
 	}
 }
 
-// TestRecordBatchCmd_FailedBatchEnvelope proves a fork writing a Master contract file exits non-zero
-// with batch_failed, names recover-batch, and leaves the batch terminal failed in state.json.
+// TestRecordBatchCmd_FailedBatchEnvelope proves a fork writing a Master contract file exits non-zero with batch_failed, names recover-batch, and leaves the batch terminal failed in state.json.
 func TestRecordBatchCmd_FailedBatchEnvelope(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
@@ -700,8 +699,7 @@ func TestRecordBatchCmd_FailedBatchEnvelope(t *testing.T) {
 	}
 }
 
-// TestRecordBatchCmd_ReportArchivedEnvelope proves a report with no begin record is archived, the
-// call exits non-zero with report_archived, and the report is gone from its live path.
+// TestRecordBatchCmd_ReportArchivedEnvelope proves a report with no begin record is archived, the call exits non-zero with report_archived, and the report is gone from its live path.
 func TestRecordBatchCmd_ReportArchivedEnvelope(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
@@ -1045,8 +1043,8 @@ func TestPersistPlanFingerprintRebaseline(t *testing.T) {
 	})
 }
 
-// seedTwoCardPlan rewrites fx's plan as two cards: card 1 "only" and card 2 "second" with the given
-// intent text, so a later edit to card 2 changes the plan fingerprint without touching card 1.
+// seedTwoCardPlan rewrites fx's plan as two cards: card 1 "only" and card 2 "second" with the given intent text,
+// so a later edit to card 2 changes the plan fingerprint without touching card 1.
 func seedTwoCardPlan(t *testing.T, planDir, secondIntent string) {
 	t.Helper()
 	overview := "---\nformat: 5\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n" +
@@ -1200,8 +1198,7 @@ func TestFabricSyncWayForward_NextSyncCommitsSavedState(t *testing.T) {
 	}
 }
 
-// failingFabricOpen is an openFabric that cannot reach the fabric repo, so fabricSync errors exactly
-// where a failed weft commit would.
+// failingFabricOpen is an openFabric that cannot reach the fabric repo, so fabricSync errors exactly where a failed weft commit would.
 func failingFabricOpen() (*fabricengine.Fabric, error) {
 	return nil, fmt.Errorf("weft commit failed (injected)")
 }
@@ -1304,8 +1301,8 @@ func TestRecoverBatchCmd_FabricSyncAndReedBootWayForward(t *testing.T) {
 	}
 }
 
-// TestBracketVerbs_NoRunInProgressWayForward reaches the "no run in progress" refusal on each bracket
-// verb, then takes its way forward: once the run's state exists the same verb proceeds.
+// TestBracketVerbs_NoRunInProgressWayForward reaches the "no run in progress" refusal on each bracket verb, then takes its way forward:
+// once the run's state exists the same verb proceeds.
 func TestBracketVerbs_NoRunInProgressWayForward(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)

@@ -596,8 +596,7 @@ func TestBeginBatch_RecordsCardSet(t *testing.T) {
 	}
 }
 
-// TestBeginBatch_ReBeginKeepsAuditWarnings proves a re-begin carries the prior record's recorded audit warnings onto the fresh record,
-// since their identities stay dispositioned and no later call records them again.
+// TestBeginBatch_ReBeginKeepsAuditWarnings proves a re-begin carries the prior record's recorded audit warnings onto the fresh record, since their identities stay dispositioned and no later call records them again.
 func TestBeginBatch_ReBeginKeepsAuditWarnings(t *testing.T) {
 	fx := newBeginFixture(t)
 	fx.Deps.State.AssertedModel = "master-model" // skip the injector
@@ -939,10 +938,8 @@ func TestBeginBatch_NilStateIsRefusedNotPanicked(t *testing.T) {
 	}
 }
 
-// TestBeginBatch_Regression20260930_ReBeginOfBegunUnrecordedBatch pins the 2026-09-30 wedge: a
-// batch begun but not yet recorded, whose own Create target has already landed, is re-begun
-// (the master_asking resume path) and must neither be refused as create-already-exists nor lose
-// the StartSHA its first begin recorded.
+// TestBeginBatch_Regression20260930_ReBeginOfBegunUnrecordedBatch pins the 2026-09-30 wedge:
+// a batch begun but not yet recorded, whose own Create target has already landed, is re-begun (the master_asking resume path) and must neither be refused as create-already-exists nor lose the StartSHA its first begin recorded.
 func TestBeginBatch_Regression20260930_ReBeginOfBegunUnrecordedBatch(t *testing.T) {
 	fx := newBeginFixture(t)
 	commitFile(t, fx.Worktree, "sub/a.go", "package sub\n\nfunc Built() {}\n", "batch 1's own work")
@@ -975,8 +972,8 @@ func TestBeginBatch_Regression20260930_ReBeginOfBegunUnrecordedBatch(t *testing.
 	}
 }
 
-// TestBeginBatch_WayForward_UnknownBatch proves a batch number outside the plan names
-// `lyx webster status`, and that naming one of the run's batches then begins it.
+// TestBeginBatch_WayForward_UnknownBatch proves a batch number outside the plan names `lyx webster status`,
+// and that naming one of the run's batches then begins it.
 func TestBeginBatch_WayForward_UnknownBatch(t *testing.T) {
 	fx := newBeginFixture(t)
 
@@ -990,8 +987,8 @@ func TestBeginBatch_WayForward_UnknownBatch(t *testing.T) {
 	}
 }
 
-// TestBeginBatch_WayForward_ModelSwitchFailureIsTransient proves a failed model-switch injection
-// names the begin-batch re-run, and that the re-run succeeds once the injection does.
+// TestBeginBatch_WayForward_ModelSwitchFailureIsTransient proves a failed model-switch injection names the begin-batch re-run,
+// and that the re-run succeeds once the injection does.
 func TestBeginBatch_WayForward_ModelSwitchFailureIsTransient(t *testing.T) {
 	fx := newBeginFixture(t)
 	fx.Injector.err = errors.New("pane did not take the keys")
@@ -1007,8 +1004,7 @@ func TestBeginBatch_WayForward_ModelSwitchFailureIsTransient(t *testing.T) {
 	}
 }
 
-// TestBeginBatch_WayForward_ReportExistsIsRecorded proves the report-exists refusal names record-batch
-// and leaves the report in place for it.
+// TestBeginBatch_WayForward_ReportExistsIsRecorded proves the report-exists refusal names record-batch and leaves the report in place for it.
 func TestBeginBatch_WayForward_ReportExistsIsRecorded(t *testing.T) {
 	fx := newBeginFixture(t)
 	reportPath := filepath.Join(fx.Deps.Geom.ReportsDir, websterengine.ReportFileName(1, "json-flag"))

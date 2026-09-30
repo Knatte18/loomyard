@@ -1,7 +1,6 @@
 //go:build integration
 
-// rebaseline_test.go exercises Rebaseline (Tier 2), reusing the begin fixture for the foreign-edit
-// scenario and building bare RebaselineDeps for the card-set refusals.
+// rebaseline_test.go exercises Rebaseline (Tier 2), reusing the begin fixture for the foreign-edit scenario and building bare RebaselineDeps for the card-set refusals.
 package websterengine_test
 
 import (

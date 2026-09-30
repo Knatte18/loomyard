@@ -1,6 +1,6 @@
 // wayforward_test.go covers wayForward's per-check mapping over in-memory Reports.
-// The rows reached from a real hub (a dirty warp, a weft off its paired branch) belong to the
-// integration suite; this file stays offline.
+// The rows reached from a real hub (a dirty warp, a weft off its paired branch) belong to the integration suite;
+// this file stays offline.
 
 package preflightshed
 

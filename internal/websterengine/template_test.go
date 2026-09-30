@@ -478,9 +478,7 @@ func TestMasterTemplate_ForbidsLyxGitModelAndNamedSubagents(t *testing.T) {
 	}
 }
 
-// TestMasterTemplate_TeachesBatchFailedAndReportArchivedRungs asserts the master template names the
-// `failed` progress rung and the `batch_failed` and `report_archived` ladder rungs with the verb each
-// one takes, so a run recovers in-session instead of ending stuck.
+// TestMasterTemplate_TeachesBatchFailedAndReportArchivedRungs asserts the master template names the `failed` progress rung and the `batch_failed` and `report_archived` ladder rungs with the verb each one takes, so a run recovers in-session instead of ending stuck.
 func TestMasterTemplate_TeachesBatchFailedAndReportArchivedRungs(t *testing.T) {
 	text := string(mustMasterTemplate(t, newTestStencilsDir(t)))
 
@@ -1050,8 +1048,7 @@ func TestRenderRecoveryPrompt_StatesSpecsDir(t *testing.T) {
 	}
 }
 
-// TestRenderRecoveryPrompt_FailureDigest asserts a non-empty failure digest renders verbatim and an
-// empty one renders "none", with no literal marker surviving either way.
+// TestRenderRecoveryPrompt_FailureDigest asserts a non-empty failure digest renders verbatim and an empty one renders "none", with no literal marker surviving either way.
 func TestRenderRecoveryPrompt_FailureDigest(t *testing.T) {
 	card := cardWithSourcePath(1, "alpha", "add the flag")
 	batch := batcher.Batch{Cards: []planparser.Card{card}}
