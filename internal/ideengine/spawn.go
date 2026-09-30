@@ -44,7 +44,7 @@ func Spawn(l *lyxcwd.Location, slug string) error {
 	lyxPath, _ := os.Executable()
 	claudePath, _ := exec.LookPath("claude")
 
-	if err := vscode.WriteConfig(worktreeDir, l.AnchorRel, slug, color, lyxPath, claudePath); err != nil {
+	if err := vscode.WriteConfig(worktreeDir, l.AnchorRel, slug, color, lyxPath, claudePath, vscode.TaskChainInteractive); err != nil {
 		return err
 	}
 
