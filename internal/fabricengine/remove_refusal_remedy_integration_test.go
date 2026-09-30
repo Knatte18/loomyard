@@ -1,12 +1,9 @@
 //go:build integration
 
-// remove_refusal_remedy_integration_test.go pins that a no-force Remove refusal — a dirty worktree or
-// a failed status probe — leaves the pair and the weft origin untouched: no portal or launcher is
-// torn down, no mutation is recorded, and no archive tag is pushed.
+// remove_refusal_remedy_integration_test.go pins that a no-force Remove refusal — a dirty worktree or a failed status probe — leaves the pair and the weft origin untouched: no portal or launcher is torn down, no mutation is recorded, and no archive tag is pushed.
 //
-// Remove runs every refusal before its archive and the archive before every removal (remove.go's
-// header states the order), so an operator told to commit or pass --force has lost nothing and the
-// refusal needs no repair pointer.
+// Remove runs every refusal before its archive and the archive before every removal (remove.go's header states the order),
+// so an operator told to commit or pass --force has lost nothing and the refusal needs no repair pointer.
 //
 // Package fabricengine_test to reuse newFabricFixture from
 // reconcile_stale_registration_test.go; shares the single TestMain in testmain_test.go.
@@ -24,8 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
-// TestRemove_DirtyRefusalLeavesPairIntact builds a real pair, dirties its warp worktree, and asserts
-// the no-force refusal tears nothing down, records nothing, and pushes no archive tag.
+// TestRemove_DirtyRefusalLeavesPairIntact builds a real pair, dirties its warp worktree, and asserts the no-force refusal tears nothing down, records nothing, and pushes no archive tag.
 func TestRemove_DirtyRefusalLeavesPairIntact(t *testing.T) {
 	t.Parallel()
 
@@ -71,8 +67,7 @@ func TestRemove_DirtyRefusalLeavesPairIntact(t *testing.T) {
 	assertNoArchiveTag(t, fixture.WeftBare, weftRoot)
 }
 
-// TestRemove_WarpStatusProbeFailurePushesNoTag breaks the warp worktree's gitfile so the status probe
-// fails, and asserts the refusal pushes no archive tag and tears nothing down.
+// TestRemove_WarpStatusProbeFailurePushesNoTag breaks the warp worktree's gitfile so the status probe fails, and asserts the refusal pushes no archive tag and tears nothing down.
 func TestRemove_WarpStatusProbeFailurePushesNoTag(t *testing.T) {
 	t.Parallel()
 
