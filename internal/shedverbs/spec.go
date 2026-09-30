@@ -80,6 +80,7 @@ type VerbTexts struct {
 	Step   VerbText
 	Status VerbText
 	Pause  VerbText
+	Goto   VerbText
 }
 
 // VerbText is one verb's cobra Use/Short/Long triple.
