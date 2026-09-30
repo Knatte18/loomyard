@@ -93,17 +93,14 @@ func mutateGitExclude(repoDir string, rewrite func(content string) (string, erro
 	return excludePath, true, nil
 }
 
-// ExcludeAnchoredDir makes git ignore the directory dirName at the anchor subpath anchorRel of the
-// repository checked out at worktreeDir, and returns the exclude file's resolved path and whether it
-// wrote anything.
-// It first asks `git check-ignore` whether the directory is already ignored — by a tracked
-// `.gitignore`, the operator's global excludes or any other source — and writes nothing when it is.
-// Otherwise it appends `/<anchorRel>/<dirName>/` to the shared `info/exclude` through
-// mutateGitExclude, so the write holds the same lock and atomic replace as every `lyx fabric` verb.
-// The leading slash anchors the entry to this anchor's own directory, where a bare name would match
-// at any depth; the trailing slash is kept because dirName is a real directory, not a junction.
-// git reports a directory holding tracked content as not ignored even when a rule covers it, so the
-// caller must not reach this function in that case.
+// ExcludeAnchoredDir makes git ignore the directory dirName at the anchor subpath anchorRel of the repository checked out at worktreeDir,
+// and returns the exclude file's resolved path and whether it wrote anything.
+// It first asks `git check-ignore` whether the directory is already ignored — by a tracked `.gitignore`, the operator's global excludes or any other source — and writes nothing when it is.
+// Otherwise it appends `/<anchorRel>/<dirName>/` to the shared `info/exclude` through mutateGitExclude, so the write holds the same lock and atomic replace as every `lyx fabric` verb.
+// The leading slash anchors the entry to this anchor's own directory, where a bare name would match at any depth;
+// the trailing slash is kept because dirName is a real directory, not a junction.
+// git reports a directory holding tracked content as not ignored even when a rule covers it,
+// so the caller must not reach this function in that case.
 // It takes no *Mutations recorder: it is not a fabric CLI verb.
 func ExcludeAnchoredDir(worktreeDir, anchorRel, dirName string) (excludePath string, changed bool, err error) {
 	relDir := dirName
