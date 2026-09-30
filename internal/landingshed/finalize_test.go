@@ -76,6 +76,7 @@ func newFinalizeDeps(t *testing.T) Deps {
 			Squash:             true,
 			Conflict:           "sonnet",
 			ConflictTimeoutMin: 30,
+			CoAuthoredBy:       "Test Author <test@example.com>",
 		},
 	}
 }
@@ -226,8 +227,12 @@ func TestFinalize_MergeOptionsCarriesComposedMessage(t *testing.T) {
 				t.Fatalf("parent-side merge calls = %d; want 1", len(merger.calls))
 			}
 			got := merger.calls[0].opts
-			if got.Message != summary.CommitMessage() {
-				t.Errorf("MergeOptions.Message = %q; want %q", got.Message, summary.CommitMessage())
+			want := summary.LandingMessage(deps.Config.CoAuthoredBy)
+			if got.Message != want {
+				t.Errorf("MergeOptions.Message = %q; want %q", got.Message, want)
+			}
+			if trailer := "Co-Authored-By: " + deps.Config.CoAuthoredBy; !strings.HasSuffix(got.Message, trailer) {
+				t.Errorf("MergeOptions.Message = %q; want suffix %q", got.Message, trailer)
 			}
 			if got.Squash != tt.squash {
 				t.Errorf("MergeOptions.Squash = %v; want %v", got.Squash, tt.squash)
@@ -341,7 +346,7 @@ func TestFinalize_MergeInRequired_RetryCarriesSameComposedMessage(t *testing.T) 
 	if len(merger.calls) != 2 {
 		t.Fatalf("parent-side merge calls = %d; want exactly 2 (one attempt, one retry)", len(merger.calls))
 	}
-	want := summary.CommitMessage()
+	want := summary.LandingMessage(deps.Config.CoAuthoredBy)
 	if merger.calls[0].opts.Message != want {
 		t.Errorf("first attempt MergeOptions.Message = %q; want %q", merger.calls[0].opts.Message, want)
 	}

@@ -191,6 +191,7 @@ func TestFinalize_ResolvesConflictAndSquashMergesIntoParent(t *testing.T) {
 			Squash:             true,
 			Conflict:           "claude:test-model",
 			ConflictTimeoutMin: 1,
+			CoAuthoredBy:       "Test Author <test@example.com>",
 		},
 	}
 
@@ -239,6 +240,22 @@ func TestFinalize_ResolvesConflictAndSquashMergesIntoParent(t *testing.T) {
 	warpHEAD := currentSHALanding(t, parentWarp)
 	if got := gitParentCountLanding(t, parentWarp, warpHEAD); got != 1 {
 		t.Errorf("parent warp HEAD %s has %d parents; want exactly 1 (a squash commit)", warpHEAD, got)
+	}
+
+	// The landing commit's subject is the description title, its body is the description body, and
+	// exactly one Co-Authored-By trailer carries the configured value.
+	msgCmd := exec.Command("git", "log", "-1", "--format=%B")
+	msgCmd.Dir = parentWarp
+	msgOut, err := msgCmd.Output()
+	if err != nil {
+		t.Fatalf("git log -1 --format=%%B in %s: %v", parentWarp, err)
+	}
+	wantMsg := "A landing title\n\nA landing body.\n\nCo-Authored-By: Test Author <test@example.com>"
+	if got := strings.TrimSpace(string(msgOut)); got != wantMsg {
+		t.Errorf("landing commit message = %q; want %q", got, wantMsg)
+	}
+	if n := strings.Count(string(msgOut), "Co-Authored-By:"); n != 1 {
+		t.Errorf("landing commit carries %d Co-Authored-By lines; want exactly 1", n)
 	}
 
 	// No merge record is left behind on either pair. fabricengine's own MergeRecordExistsForTest is

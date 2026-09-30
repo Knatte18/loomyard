@@ -157,7 +157,7 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 	// Step 4: the parent-side merge, this producer's own merge critical section. Message is set
 	// whether or not Config.Squash is true -- it is the conclude-commit message for both merge
 	// shapes, so gating it on Squash would leave the non-squash landing commit with an unset message.
-	mergeOpts := fabricengine.MergeOptions{Squash: fz.deps.Config.Squash, Message: summary.CommitMessage()}
+	mergeOpts := fabricengine.MergeOptions{Squash: fz.deps.Config.Squash, Message: summary.LandingMessage(fz.deps.Config.CoAuthoredBy)}
 	_, mergeErr := parentHandle.Merge(fz.deps.TaskBranch, mergeOpts)
 	if mergeErr == nil {
 		return fz.pushParent(ctx, parentHandle)
