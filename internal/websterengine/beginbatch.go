@@ -136,6 +136,29 @@ func completedCards(batches []batcher.Batch, st *State, exclude int) []planparse
 	return done
 }
 
+// begunCards returns every card belonging to a batch that begin-batch has recorded, terminal or not,
+// in batches' own order.
+//
+// It scopes run-entry validation on a resume: a batch begun but never recorded (its record-batch
+// refused, or the run died between the fork's commit and the record) may already have landed its
+// work, so its Create targets can legitimately exist; validating it as unstarted reported them as
+// create-already-exists and refused the very resume that would record the batch.
+// Master re-drives such a batch through record-batch or recover-batch, which apply their own checks.
+func begunCards(batches []batcher.Batch, st *State) []planparser.Card {
+	if st == nil {
+		return nil
+	}
+
+	var begun []planparser.Card
+	for _, b := range batches {
+		number, _ := batchIdentity(b)
+		if bs, ok := st.Batches[number]; ok && bs != nil {
+			begun = append(begun, b.Cards...)
+		}
+	}
+	return begun
+}
+
 // findBatch returns the batcher.Batch in batches whose identity matches number.
 func findBatch(batches []batcher.Batch, number int) (batcher.Batch, error) {
 	for _, b := range batches {
@@ -232,7 +255,10 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	// dispatching a pack built on a re-resolve that failed is strictly worse than not dispatching.
 	// Scoped to the cards still to be built: a card already built contradicts the tree by design, and
 	// re-resolving it reports the plan working correctly as a blocking defect.
-	resolveFindings, resolveErr := planglyph.ValidateDispatch(deps.Plan, deps.Geom.WorktreeRoot, completedCards(deps.Batches, deps.State, 0))
+	// begunCards, not completedCards: the batch record is written further down, so on a first begin
+	// this batch is still validated, while a re-begin of a batch whose earlier fork already landed its
+	// work (see begunCards) is not refused for it.
+	resolveFindings, resolveErr := planglyph.ValidateDispatch(deps.Plan, deps.Geom.WorktreeRoot, begunCards(deps.Batches, deps.State))
 	// ValidateDispatch's resolve pass canonicalizes handles, which rewrites the plan on disk, and it
 	// then keeps going: the status, Create-inversion and containment passes all run after the
 	// rewrite, so "rewrote the plan" and "reported a blocking finding" co-occur routinely, and the
