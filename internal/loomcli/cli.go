@@ -334,7 +334,7 @@ standalone form of the mechanical gates Discussion-Write's and Plan-Write's
 own rows carry, callable by the writer agent before handoff, and
 "validate-description" does the same for the Describe row's change description.
 "approve" records the operator's approval of the open pull request for a run
-blocked at Publish; "lyx loom start" then lands it. "commit-records" commits and
+awaiting or blocked at PR-Gate, removing any pending rejection; "lyx loom start" then lands it. "commit-records" commits and
 pushes the run's records (status, reviews, friction notes, drive reports); the
 ly-drive end-of-session command runs it after the driver writes its stop report.
 
