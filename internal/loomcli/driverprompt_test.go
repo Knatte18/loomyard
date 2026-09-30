@@ -33,6 +33,24 @@ func TestDriverPrompt_NamesRunIDReportPathAndAutonomousMode(t *testing.T) {
 	}
 }
 
+// TestDriverPrompt_NamesSlugRunIDAndExactTeardownCommand asserts the prompt addresses the run by its
+// slug and ends with the exact end-of-session command, spelled out literally so a drifted strand
+// name or flag fails here.
+func TestDriverPrompt_NamesSlugRunIDAndExactTeardownCommand(t *testing.T) {
+	got := driverPrompt("operator-surface", "/hub/wt/.lyx/shed/operator-surface/drive-report-x.md")
+
+	if !strings.Contains(got, `"operator-surface"`) {
+		t.Errorf("driverPrompt() = %q; want it to name the slug run-id", got)
+	}
+	const want = "lyx reed remove --name loom-driver --detach"
+	if !strings.Contains(got, want) {
+		t.Errorf("driverPrompt() = %q; want it to name the teardown command %q", got, want)
+	}
+	if !strings.HasSuffix(got, want) {
+		t.Errorf("driverPrompt() = %q; want the teardown command to be the prompt's last words", got)
+	}
+}
+
 // TestDriverPrompt_StaysWellUnderLaunchPromptCap is a bound check, not an exact-length pin: the
 // prompt must stay well under the Claude engine's maxLaunchPromptBytes for a realistic run-id and
 // report path, since a prompt that grew into a copy of the skill would fail only at launch, after a

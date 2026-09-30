@@ -83,12 +83,15 @@ func (c *loomCLI) startLLMDriverArm(driverAction driverStrandAction, driverGUID 
 		}
 	}
 
-	reportPath := driverReportPath(c.location, runID, time.Now, newDriverReportRand())
+	// The session addresses its run by slug, never the literal "self": the prompt and the report path
+	// both carry the resolved run-id.
+	resolvedRunID := shedrun.ResolveRunID(c.location, runID)
+	reportPath := driverReportPath(c.location, resolvedRunID, time.Now, newDriverReportRand())
 	if err := os.MkdirAll(filepath.Dir(reportPath), 0o755); err != nil {
 		return nil, err
 	}
 
-	prompt := driverPrompt(runID, reportPath)
+	prompt := driverPrompt(resolvedRunID, reportPath)
 	spec := driverSpec(prompt, reportPath, settings)
 
 	run, err := c.driverStarter.StartDriver(spec)
