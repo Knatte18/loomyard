@@ -33,7 +33,8 @@ const steerAskUserQuestionDeny = "you cannot open an interactive dialog here. If
 // It refuses `lyx webster` commands inside forks (detected by top-level agent_id in the payload). Must contain no single/double quote or backslash (checked at init).
 const steerWebsterForkDeny = "lyx webster verbs belong to the Master session, never a fork. You are an implementer fork: do your batch work and write your report, and do NOT run any lyx webster command (not await-batch, not anything) — polling for the report you must write only deadlocks the run. This call is refused."
 
-// noticeAgentDeny announces the Agent deny in a non-fork run; it must hold for every session that receives it.
+// noticeAgentDeny announces the Agent deny in a non-fork run;
+// it must hold for every session that receives it.
 const noticeAgentDeny = "The Agent tool is unavailable in this session: do all exploration and work in this session, with no subagents."
 
 // noticeAgentForkDeny announces the Agent deny in a fork run, where forks inherit this system prompt too.

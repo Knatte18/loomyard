@@ -12,7 +12,8 @@ import (
 )
 
 // PriorPlanBlock renders the "loom-template-prior-plan" stencil from stencilsDir, naming archiveDir as the directory the earlier plan was moved into and listing movedFiles as one backtick-wrapped bullet per file.
-// Both markers are required, so an empty archiveDir or an empty movedFiles fails with the unfilled-marker error.
+// Both markers are required,
+// so an empty archiveDir or an empty movedFiles fails with the unfilled-marker error.
 // It writes nothing to disk and derives no path.
 func PriorPlanBlock(stencilsDir, archiveDir string, movedFiles []string) (string, error) {
 	template, err := stencilstore.Read(stencilsDir, "loom-template-prior-plan")

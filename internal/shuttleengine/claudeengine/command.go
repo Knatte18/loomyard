@@ -74,7 +74,9 @@ const forkSubagentEnvKey = "CLAUDE_CODE_FORK_SUBAGENT"
 
 // buildLaunchCmd composes the pane-shell line that starts a fresh claude session.
 // It reads the prompt via sh.ReadFile, quotes all interpolated values, and appends --effort/--model only when non-empty.
-// When notice is non-empty it rides the line as --append-system-prompt, so the session is told which tools are denied; an empty notice leaves the line unchanged.
+// When notice is non-empty it rides the line as --append-system-prompt,
+// so the session is told which tools are denied;
+// an empty notice leaves the line unchanged.
 // When forkSubagents is true, it wraps the line via sh.WithEnv to enable fork subagent type.
 func buildLaunchCmd(sh shell.Shell, bin, promptPath, settingsPath, sessionID, model, effort, notice string, interactive, forkSubagents bool) string {
 	cmd := sh.Invoke(bin) + " " + sh.ReadFile(promptPath) +

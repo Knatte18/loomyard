@@ -116,9 +116,11 @@ func (p *planWrite) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 // The closure's string result is the prompt amendment SingleLLMProducer appends to the respawned session's prompt: empty when nothing moved, otherwise a blank line followed by loomengine.PriorPlanBlock naming the archive directory and the moved files,
 // so the new session knows where the prior plan went.
 // stencilsDir is told by the caller and holds the loom-template-prior-plan stencil.
-// The block is rendered before any file moves, and a render failure is returned as the closure's error,
+// The block is rendered before any file moves,
+// and a render failure is returned as the closure's error,
 // so the producer aborts before spawning a session that would silently rewrite the plan.
-// The plan stays in place on that failure, so the next attempt renders the block again rather than finding nothing to announce.
+// The plan stays in place on that failure,
+// so the next attempt renders the block again rather than finding nothing to announce.
 func NewPlanDirRotator(anchorPath, stencilsDir string, now func() time.Time) func() (string, error) {
 	if now == nil {
 		now = time.Now
