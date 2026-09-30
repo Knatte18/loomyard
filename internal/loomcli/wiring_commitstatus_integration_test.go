@@ -114,7 +114,7 @@ func headSHA(t *testing.T, dir string) string {
 // real pair: the seam lands a real weft commit carrying the status file under the transition's own
 // message, and leaves nothing unpushed.
 func TestCommitStatusSeam_Real_OrdinaryPathCommitsAndPushes(t *testing.T) {
-	seam, _, weftSibling := realSeamFixture(t)
+	seam, location, weftSibling := realSeamFixture(t)
 	before := headSHA(t, weftSibling)
 
 	if err := seam("Discussion-Write", "running"); err != nil {
@@ -283,12 +283,12 @@ func TestCommitStatusSeam_Real_CommitsTheRoundRecord(t *testing.T) {
 
 // TestCommitStatusSeam_Real_NoReviewsDirTouchesOnlyStatus asserts a run with no reviews directory commits the status file alone.
 func TestCommitStatusSeam_Real_NoReviewsDirTouchesOnlyStatus(t *testing.T) {
-	seam, _, weftSibling := realSeamFixture(t)
+	seam, location, weftSibling := realSeamFixture(t)
 
 	if err := seam("Discussion-Write", "running"); err != nil {
 		t.Fatalf("seam error = %v; want nil", err)
 	}
-	if got := mustGitOut(t, weftSibling, "show", "--name-only", "--format=", "HEAD"); got != filepath.ToSlash(shedrun.StatusRel(shedrun.SelfRunID)) {
+	if got := mustGitOut(t, weftSibling, "show", "--name-only", "--format=", "HEAD"); got != filepath.ToSlash(shedrun.StatusRel(location, shedrun.SelfRunID)) {
 		t.Errorf("weft HEAD touched %q; want only the status file", got)
 	}
 }
@@ -303,7 +303,7 @@ func TestCommitStatusSeam_Real_EmptyReviewsSegmentTouchesOnlyStatus(t *testing.T
 	if err := seam("Discussion-Write", "running"); err != nil {
 		t.Fatalf("seam error = %v; want nil", err)
 	}
-	if got := mustGitOut(t, weftSibling, "show", "--name-only", "--format=", "HEAD"); got != filepath.ToSlash(shedrun.StatusRel(shedrun.SelfRunID)) {
+	if got := mustGitOut(t, weftSibling, "show", "--name-only", "--format=", "HEAD"); got != filepath.ToSlash(shedrun.StatusRel(location, shedrun.SelfRunID)) {
 		t.Errorf("weft HEAD touched %q; want only the status file", got)
 	}
 }
