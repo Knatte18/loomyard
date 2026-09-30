@@ -555,7 +555,8 @@ func (s *Shed) persist(nextCurrentProducer string, nextState State, nextError st
 }
 
 // recordedVerdict reports whether a write carrying next recorded a verdict against the file's current history:
-// the history got longer, or it kept its length while the last entry's Repeats changed, which is a fold.
+// the history got longer,
+// or it kept its length while the last entry's Repeats changed, which is a fold.
 func recordedVerdict(cur, next []HistoryEntry) bool {
 	if len(next) > len(cur) {
 		return true
