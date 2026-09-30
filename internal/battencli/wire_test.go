@@ -70,7 +70,7 @@ func TestWire_LazySeams(t *testing.T) {
 		{"SpawnDirectory", c.env.InnerRun.Spawn != nil},
 		{"TeardownShutdown", c.env.Teardown.Shutdown != nil},
 		{"TeardownRemove", c.env.Teardown.Remove != nil},
-		{"ReadApproval", c.env.InnerRun.ReadApproval != nil},
+		{"ReadDecision", c.env.InnerRun.ReadDecision != nil},
 		{"DriverAlive", c.env.InnerRun.DriverAlive != nil},
 	}
 	for _, tt := range tests {

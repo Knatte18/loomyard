@@ -272,8 +272,8 @@ func newTestEnv(t *testing.T) shedrecipe.Env {
 			ReadStatus: func(string, string) (shedengine.Status, bool, error) {
 				return shedengine.Status{}, false, nil
 			},
-			ReadApproval: func() (battenshed.ChildApproval, bool, error) {
-				return battenshed.ChildApproval{}, false, nil
+			ReadDecision: func() (battenshed.ChildDecision, bool, error) {
+				return battenshed.ChildDecision{}, false, nil
 			},
 			DriverAlive: func(context.Context) (bool, error) { return false, nil },
 		},

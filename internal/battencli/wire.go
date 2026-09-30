@@ -447,17 +447,25 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			},
 		},
 		InnerRun: battenshed.InnerRunDeps{
-			// ReadApproval and DriverAlive resolve the task worktree on Call like every seam here, never at wiring time.
-			ReadApproval: func() (battenshed.ChildApproval, bool, error) {
+			// ReadDecision and DriverAlive resolve the task worktree on Call like every seam here, never at wiring time.
+			ReadDecision: func() (battenshed.ChildDecision, bool, error) {
 				taskLocation, err := taskWorktreeLocation(location, slug)
 				if err != nil {
-					return battenshed.ChildApproval{}, false, err
+					return battenshed.ChildDecision{}, false, err
 				}
+				// approve and reject each remove the other's record first, so at most one is present; the approval wins when both are, matching the gate's own precedence.
 				a, found, err := landingshed.ReadApproval(loomengine.LoomApprovalPath(taskLocation))
-				if err != nil || !found {
-					return battenshed.ChildApproval{}, false, err
+				if err != nil {
+					return battenshed.ChildDecision{}, false, err
 				}
-				return battenshed.ChildApproval{ApprovedAt: a.ApprovedAt, HeadSHA: a.HeadSHA}, true, nil
+				if found {
+					return battenshed.ChildDecision{Kind: battenshed.DecisionApprove, At: a.ApprovedAt, HeadSHA: a.HeadSHA}, true, nil
+				}
+				r, found, err := landingshed.ReadRejection(loomengine.LoomRejectionPath(taskLocation))
+				if err != nil || !found {
+					return battenshed.ChildDecision{}, false, err
+				}
+				return battenshed.ChildDecision{Kind: battenshed.DecisionReject, At: r.RejectedAt, HeadSHA: r.HeadSHA}, true, nil
 			},
 			DriverAlive: func(ctx context.Context) (bool, error) {
 				present, err := taskWorktreePresent(location, slug)
