@@ -28,11 +28,13 @@ import (
 	"github.com/google/go-github/v75/github"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/githubclient"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedtransient"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
 
@@ -413,7 +415,7 @@ func TestPublish_QueryExistingPRFails_WarnsWithActionOwnerRepoAndCause(t *testin
 	p := &Publish{deps: deps, resolver: res}
 
 	srv := newPublishGitHubServer(t, &order)
-	srv.listStatus = http.StatusInternalServerError
+	srv.listStatus = http.StatusUnprocessableEntity
 	srv.listBody = `{"message":"server exploded"}`
 	srv.install(t)
 	buf := captureLogOutput(t)
@@ -450,7 +452,7 @@ func TestPublish_CreatePRFails_WarnsWithActionOwnerRepoAndCause(t *testing.T) {
 	p := &Publish{deps: deps, resolver: res}
 
 	srv := newPublishGitHubServer(t, &order)
-	srv.createStatus = http.StatusInternalServerError
+	srv.createStatus = http.StatusUnprocessableEntity
 	srv.createBody = `{"message":"server exploded"}`
 	srv.install(t)
 	buf := captureLogOutput(t)
@@ -943,5 +945,156 @@ func TestPublish_TaskHeadError_ReturnedError(t *testing.T) {
 	fx := newApprovalFixture(t, `[{"number":7,"state":"open","head":{"sha":"aaa"}}]`, &Approval{PRNumber: 7, HeadSHA: "aaa", ApprovedAt: "2026-01-01T00:00:00Z"}, errors.New("git broke"))
 	if _, _, err := fx.p.Call(context.Background()); err == nil {
 		t.Fatal("Call() error = nil; want the TaskHead error")
+	}
+}
+
+// --- transient failures are errors, not verdicts ---
+
+// transportPushErr is the error a push returns when the remote is unreachable: a *gitexec.GitError
+// whose stderr shedtransient classifies as git-transport.
+func transportPushErr() error {
+	return fmt.Errorf("gitrepo: git push: %w", &gitexec.GitError{
+		Args:     []string{"-c", "push.autoSetupRemote=true", "push"},
+		ExitCode: 128,
+		Stderr:   "fatal: unable to access '...': Failed to connect to 127.0.0.1 port 1",
+	})
+}
+
+func TestPublish_TransportPushFailure_ReturnsClassifiedErrorNoGitHubCall(t *testing.T) {
+	deps := newTestDeps(t)
+	var order []string
+	deps.PushBranch = func() error { return transportPushErr() }
+	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
+	p := &Publish{deps: deps, resolver: res}
+	srv := newPublishGitHubServer(t, &order)
+	srv.install(t)
+
+	_, _, err := p.Call(context.Background())
+	if err == nil {
+		t.Fatal("Call() error = nil; want a transient error")
+	}
+	if got := shedtransient.Class(err); got != shedengine.TransientGitTransport {
+		t.Errorf("Class(err) = %q; want %q", got, shedengine.TransientGitTransport)
+	}
+	if len(order) != 0 {
+		t.Errorf("GitHub calls = %v; want none", order)
+	}
+}
+
+func TestPublish_TransportPushFailure_CancelledContextIsCancellationNotTransient(t *testing.T) {
+	deps := newTestDeps(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	deps.PushBranch = func() error { cancel(); return transportPushErr() }
+	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
+	p := &Publish{deps: deps, resolver: res}
+
+	_, _, err := p.Call(ctx)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Call() error = %v; want it to wrap context.Canceled", err)
+	}
+	if got := shedtransient.Class(err); got != "" {
+		t.Errorf("Class(err) = %q; want empty", got)
+	}
+}
+
+func TestPublish_GitHubTransientFailures_ReturnClassifiedErrorAndWarn(t *testing.T) {
+	tests := []struct {
+		name  string
+		setup func(s *publishGitHubServer)
+	}{
+		{"query 503", func(s *publishGitHubServer) {
+			s.listStatus = http.StatusServiceUnavailable
+			s.listBody = `{"message":"unavailable"}`
+		}},
+		{"create 502", func(s *publishGitHubServer) {
+			s.createStatus = http.StatusBadGateway
+			s.createBody = `{"message":"bad gateway"}`
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			deps := newTestDeps(t)
+			writeSummary(t, deps.DescriptionPath, "Title", "Body.")
+			var order []string
+			deps.PushBranch = func() error { order = append(order, "push"); return nil }
+			res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
+			p := &Publish{deps: deps, resolver: res}
+			srv := newPublishGitHubServer(t, &order)
+			tt.setup(srv)
+			srv.install(t)
+			buf := captureLogOutput(t)
+
+			_, _, err := p.Call(context.Background())
+			if err == nil {
+				t.Fatal("Call() error = nil; want a transient error")
+			}
+			if got := shedtransient.Class(err); got != shedengine.TransientGitHubAPI {
+				t.Errorf("Class(err) = %q; want %q", got, shedengine.TransientGitHubAPI)
+			}
+			logged := buf.String()
+			for _, field := range []string{"WARN", "action=", "owner=", "repo=", "cause="} {
+				if !strings.Contains(logged, field) {
+					t.Errorf("log output = %q; want %s", logged, field)
+				}
+			}
+		})
+	}
+}
+
+// TestPublish_ApprovalQuery_TransientIsErrorBeforeSync pins checkApproval's split: a 503 on the
+// approval-time pull-request query is an error that runs no merge-in and no push, and a 422 keeps
+// the Stuck verdict.
+func TestPublish_ApprovalQuery_TransientIsErrorBeforeSync(t *testing.T) {
+	tests := []struct {
+		name      string
+		status    int
+		wantClass shedengine.TransientClass
+	}{
+		{"503 is an error", http.StatusServiceUnavailable, shedengine.TransientGitHubAPI},
+		{"422 stays Stuck", http.StatusUnprocessableEntity, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			deps := newTestDeps(t)
+			deps.ApprovalPath = filepath.Join(t.TempDir(), "approval.json")
+			if err := WriteApproval(deps.ApprovalPath, Approval{PRNumber: 7, HeadSHA: "aaa", ApprovedAt: "2026-01-01T00:00:00Z"}); err != nil {
+				t.Fatalf("WriteApproval: %v", err)
+			}
+			deps.TaskHead = func() (string, error) { return "aaa", nil }
+			var order []string
+			deps.PushBranch = func() error { order = append(order, "push"); return nil }
+			res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
+			p := &Publish{deps: deps, resolver: res}
+			srv := newPublishGitHubServer(t, &order)
+			srv.listStatus = tt.status
+			srv.listBody = `{"message":"nope"}`
+			srv.install(t)
+			buf := captureLogOutput(t)
+
+			outcome, _, err := p.Call(context.Background())
+			if !strings.Contains(buf.String(), "action=\"query existing pull request\"") {
+				t.Errorf("log output = %q; want the warn line", buf.String())
+			}
+			if res.called {
+				t.Error("resolver was called; want no merge-in")
+			}
+			for _, o := range order {
+				if o == "push" {
+					t.Error("push was called; want none")
+				}
+			}
+			if tt.wantClass == "" {
+				if err != nil || outcome != shedengine.Stuck {
+					t.Errorf("Call() = %q, %v; want Stuck, nil", outcome, err)
+				}
+				return
+			}
+			if got := shedtransient.Class(err); got != tt.wantClass {
+				t.Errorf("Class(err) = %q; want %q (err = %v)", got, tt.wantClass, err)
+			}
+			if err != nil && !strings.Contains(err.Error(), "query existing pull request for the approval") {
+				t.Errorf("err = %v; want the approval action text", err)
+			}
+		})
 	}
 }

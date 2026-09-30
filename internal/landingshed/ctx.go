@@ -10,6 +10,8 @@ package landingshed
 import (
 	"context"
 	"fmt"
+
+	"github.com/Knatte18/loomyard/internal/shedtransient"
 )
 
 // entryErr returns nil when ctx is not yet cancelled, and otherwise a wrapped error naming name
@@ -32,4 +34,19 @@ func cancelErr(ctx context.Context, name string) error {
 		return nil
 	}
 	return fmt.Errorf("landingshed: %s: context cancelled during run: %w", name, ctx.Err())
+}
+
+// transientFailure decides whether a failed remote call ends the call as a hard error. It consults
+// cancelErr first, like every non-Done exit, and returns that error when ctx is cancelled. Otherwise
+// it returns err wrapped as `landingshed: <name>: <action>: %w` when shedtransient.Class marks it
+// transient, so the Shed classifier persists `failed` and the driver re-steps once. It returns nil
+// for every other failure, which the caller keeps as a Stuck verdict for a human.
+func transientFailure(ctx context.Context, name, action string, err error) error {
+	if cerr := cancelErr(ctx, name); cerr != nil {
+		return cerr
+	}
+	if shedtransient.Class(err) == "" {
+		return nil
+	}
+	return fmt.Errorf("landingshed: %s: %s: %w", name, action, err)
 }

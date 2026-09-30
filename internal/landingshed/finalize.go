@@ -218,14 +218,19 @@ func (fz *Finalize) markTaskDone() {
 
 // pushParent publishes the parent branch the merge just landed on to its upstream, so a landing
 // reaches the remote rather than only this hub's parent worktree, and reports Done.
-// A failed push is Stuck, never an error to retry: the merge has already landed locally, so a human
-// pushes (or reconciles a diverged remote) by hand. Deps.PushSkipped suppresses the push, exactly as
+// A transient push failure (shedtransient.Class non-empty) is returned as an error, so the driver
+// re-steps once; the re-step's parent-side Merge reports AlreadyUpToDate and goes straight to the
+// push. Any other failed push is Stuck: the merge has already landed locally, so a human pushes (or
+// reconciles a diverged remote) by hand. Deps.PushSkipped suppresses the push, exactly as
 // it does for the task branch.
 //
 // After a successful push into a parent that requires a pull request, the task's pull request is
 // closed best-effort (closePullRequest): the landing has already happened and is irreversible.
 func (fz *Finalize) pushParent(ctx context.Context, parentHandle parentMerger) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if _, err := parentHandle.PushBranch(fabricengine.SyncOptions{SkipPush: fz.deps.PushSkipped}); err != nil {
+		if terr := transientFailure(ctx, finalizeName, "push parent branch", err); terr != nil {
+			return "", shedengine.OutputPointer{}, terr
+		}
 		reason := fmt.Sprintf("parent branch %q was merged locally but its push failed: %v; push it by hand", fz.deps.ParentBranch, err)
 		return fz.stuckOrCancelled(ctx, reason, "error", err)
 	}

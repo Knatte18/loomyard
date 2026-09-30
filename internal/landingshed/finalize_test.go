@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedtransient"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
 
@@ -782,5 +783,25 @@ func TestFinalize_MarkTaskDone_NilIsAbsent(t *testing.T) {
 	outcome, _, err := fz.Call(context.Background())
 	if err != nil || outcome != shedengine.Done {
 		t.Fatalf("Call() = (%q, %v); want (Done, nil)", outcome, err)
+	}
+}
+
+// TestFinalize_TransportPushFailure_ReturnsClassifiedError pins that a parent push failing on
+// transport is an error the Shed classifier marks, while a plain push error keeps its Stuck verdict.
+func TestFinalize_TransportPushFailure_ReturnsClassifiedError(t *testing.T) {
+	deps := newFinalizeDeps(t)
+	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
+	merger := &recordingParentMerger{
+		results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}},
+		pushErr: transportPushErr(),
+	}
+	fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return merger, nil }}
+
+	_, _, err := fz.Call(context.Background())
+	if err == nil {
+		t.Fatal("Call() error = nil; want a transient error")
+	}
+	if got := shedtransient.Class(err); got != shedengine.TransientGitTransport {
+		t.Errorf("Class(err) = %q; want %q", got, shedengine.TransientGitTransport)
 	}
 }
