@@ -13,8 +13,8 @@
 //
 // PlanSpec is a pure composer, exactly like DiscussionSpec: it does not stat the decision record,
 // does not stat or create `_lyx/plan/`, and does not spawn anything.
-// Verifying the input exists and rotating a stale `_lyx/plan/` before a re-run are the future loom
-// phase machine's responsibility.
+// Rotating a stale `_lyx/plan/` before a re-run is owned by `loomshed.NewPlanDirRotator`, run as the
+// Plan-Write producer's fresh-spawn preparation; verifying the input exists stays outside PlanSpec.
 
 package loomengine
 

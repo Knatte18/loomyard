@@ -71,10 +71,11 @@ func nilFabricOpener() (*fabricengine.Fabric, error) {
 	return nil, nil
 }
 
-// seedBouncerStencils writes the five stencils a live Discussion-Review, Plan-Review, or
+// seedBouncerStencils writes the six stencils a live Plan-Write, Discussion-Review, Plan-Review, or
 // Webster-Review segment reads at dir, keyed by stencilstore.Path(dir, name): the two generic
 // bouncer templates (bouncer-template-seed, bouncer-template-judge) and all three segments' rubrics
-// (loom-rubric-discussion-review, loom-rubric-plan-review, loom-rubric-webster-review), each seeded
+// (loom-rubric-discussion-review, loom-rubric-plan-review, loom-rubric-webster-review) plus
+// loom-template-prior-plan, which the Plan-Write rotator renders once it moves a seeded plan, each seeded
 // from its real embedded contracts/stencils bytes rather than dummy content. shedadapters.NewBouncer
 // probes the rubric eagerly at construction, and seedCall/judgeCall read the two templates at call
 // time and degrade to Stuck when either is unreadable, so dummy templates would make
@@ -89,6 +90,7 @@ func seedBouncerStencils(t *testing.T, dir string) {
 		"loom-rubric-discussion-review": stencils.LoomRubricDiscussionReview,
 		"loom-rubric-plan-review":       stencils.LoomRubricPlanReview,
 		"loom-rubric-webster-review":    stencils.LoomRubricWebsterReview,
+		"loom-template-prior-plan":      stencils.LoomTemplatePriorPlan,
 	}
 	for name, content := range seeds {
 		path := stencilstore.Path(dir, name)

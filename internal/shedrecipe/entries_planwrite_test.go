@@ -7,10 +7,12 @@ package shedrecipe
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -68,6 +70,18 @@ func TestPlanWriteEntry_ConstructionFailures(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "PlanWrite") || !strings.Contains(err.Error(), "AnchorPath") {
 			t.Errorf("planWriteEntry() error = %v; want it to name entry %q and field %q", err, "PlanWrite", "AnchorPath")
+		}
+	})
+
+	t.Run("EmptyStencilsDir", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.StencilsDir = ""
+		_, err := planWriteEntry("Row", Config{}, env)
+		if err == nil {
+			t.Fatalf("planWriteEntry() error = nil; want non-nil when Env.StencilsDir is empty")
+		}
+		if !strings.Contains(err.Error(), "PlanWrite") || !strings.Contains(err.Error(), "StencilsDir") {
+			t.Errorf("planWriteEntry() error = %v; want it to name entry %q and field %q", err, "PlanWrite", "StencilsDir")
 		}
 	})
 
@@ -142,6 +156,53 @@ func TestPlanWriteEntry_CallDone(t *testing.T) {
 	}
 	if commitCalls != 1 {
 		t.Errorf("commit closure invoked %d times; want exactly 1", commitCalls)
+	}
+}
+
+// TestPlanWriteEntry_CallAppendsPriorPlanBlock seeds a stale plan file under env.AnchorPath and a
+// minimal prior-plan stencil into env.StencilsDir, then asserts one Call hands the shuttle a spec
+// whose prompt is the composed prompt followed by the rendered block.
+func TestPlanWriteEntry_CallAppendsPriorPlanBlock(t *testing.T) {
+	env := newTestEnv(t)
+	writeStencil(t, env.StencilsDir, "loom-template-prior-plan", "PRIOR {{.archive_dir}}\n{{.moved_files}}\n")
+
+	planDir := planparser.PlanDir(env.AnchorPath)
+	if err := os.MkdirAll(planDir, 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", planDir, err)
+	}
+	if err := os.WriteFile(filepath.Join(planDir, "00-overview.md"), []byte("stale"), 0o644); err != nil {
+		t.Fatalf("write stale plan: %v", err)
+	}
+
+	env.PlanSpec = func() (shuttleengine.Spec, error) {
+		return shuttleengine.Spec{
+			Prompt:      "plan prompt",
+			OutputFiles: []string{filepath.Join(planDir, "00-overview.md")},
+		}, nil
+	}
+	env.CommitPlan = func() error { return nil }
+
+	producer, err := planWriteEntry("Row", Config{}, env)
+	if err != nil {
+		t.Fatalf("planWriteEntry() error = %v; want nil", err)
+	}
+	fake := env.Shuttle.(*fakeShuttle)
+	fake.result = shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
+
+	if _, _, err := producer.Call(context.Background()); err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	if len(fake.specs) != 1 {
+		t.Fatalf("fake.specs has %d entries; want 1", len(fake.specs))
+	}
+	prompt := fake.specs[0].Prompt
+	if !strings.HasPrefix(prompt, "plan prompt\n") {
+		t.Errorf("prompt = %q; want it to start with the composed prompt", prompt)
+	}
+	for _, want := range []string{"PRIOR " + planDir, "`00-overview.md`"} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("prompt = %q; want it to contain %q", prompt, want)
+		}
 	}
 }
 

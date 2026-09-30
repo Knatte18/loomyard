@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
@@ -113,34 +114,49 @@ func (p *planWrite) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 // is a no-op with a nil error and creates nothing.
 //
 // The closure's string result is the prompt amendment SingleLLMProducer appends to the respawned
-// session's prompt; it is always empty for now.
-func NewPlanDirRotator(anchorPath string, now func() time.Time) func() (string, error) {
+// session's prompt: empty when nothing moved, otherwise a blank line followed by
+// loomengine.PriorPlanBlock naming the archive directory and the moved files, so the new session
+// knows where the prior plan went. stencilsDir is told by the caller and holds the
+// loom-template-prior-plan stencil. A render failure is returned as the closure's error, so the
+// producer aborts before spawning a session that would silently rewrite the plan.
+func NewPlanDirRotator(anchorPath, stencilsDir string, now func() time.Time) func() (string, error) {
 	if now == nil {
 		now = time.Now
 	}
 	return func() (string, error) {
-		if err := rotateStalePlanDir(anchorPath, now); err != nil {
+		archiveDir, moved, err := rotateStalePlanDir(anchorPath, now)
+		if err != nil {
 			return "", fmt.Errorf("loomshed: rotate stale plan directory: %w", err)
 		}
-		return "", nil
+		if archiveDir == "" {
+			return "", nil
+		}
+		block, err := loomengine.PriorPlanBlock(stencilsDir, archiveDir, moved)
+		if err != nil {
+			return "", fmt.Errorf("loomshed: render prior-plan block: %w", err)
+		}
+		return "\n" + block, nil
 	}
 }
 
 // rotateStalePlanDir archives every top-level ".md" file currently in the plan directory resolved
 // from anchorPath into a fresh archive-<stamp>[-N] subdirectory, leaving any other entry (a
 // directory, or a non-.md file) in place.
+// It returns the archive directory it created and the names of the files it moved.
+// It returns an empty directory and no names, creating nothing, when nothing moved
+// (absent plan directory, or no top-level .md file).
 // It resolves the plan directory via planparser.PlanDir(anchorPath) -- never by naming the "_lyx"
 // literal, which the Lyxdirs Single-Declarer Invariant forbids in production path-construction
 // context.
-func rotateStalePlanDir(anchorPath string, now func() time.Time) error {
+func rotateStalePlanDir(anchorPath string, now func() time.Time) (string, []string, error) {
 	planDir := planparser.PlanDir(anchorPath)
 
 	entries, err := os.ReadDir(planDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil
+			return "", nil, nil
 		}
-		return err
+		return "", nil, err
 	}
 
 	var staleFiles []string
@@ -154,24 +170,24 @@ func rotateStalePlanDir(anchorPath string, now func() time.Time) error {
 		staleFiles = append(staleFiles, e.Name())
 	}
 	if len(staleFiles) == 0 {
-		return nil
+		return "", nil, nil
 	}
 
 	stamp := now().UTC().Format(archiveTimestampFormat)
 	archiveDir, err := firstFreePlanArchivePath(planDir, stamp)
 	if err != nil {
-		return err
+		return "", nil, err
 	}
 
 	if err := os.MkdirAll(archiveDir, 0o755); err != nil {
-		return err
+		return "", nil, err
 	}
 	for _, name := range staleFiles {
 		if err := os.Rename(filepath.Join(planDir, name), filepath.Join(archiveDir, name)); err != nil {
-			return err
+			return "", nil, err
 		}
 	}
-	return nil
+	return archiveDir, staleFiles, nil
 }
 
 // firstFreePlanArchivePath returns the first archive directory path under planDir, built via
