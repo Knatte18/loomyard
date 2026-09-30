@@ -351,7 +351,7 @@ Example:
 
 	cmd.AddCommand(statusCmd, commitCmd, pushCmd, pullCmd, syncCmd, diffCmd)
 
-	addMergeVerbs(cmd, func() *fabricengine.Fabric { return fab })
+	addMergeVerbs(cmd, func() *fabricengine.Fabric { return fab }, func() *lyxcwd.Location { return l })
 }
 
 // changeEntriesMap flattens a []fabricengine.ChangeEntry into the map shape

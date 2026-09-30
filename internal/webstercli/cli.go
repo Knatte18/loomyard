@@ -114,6 +114,9 @@ type websterCLI struct {
 	// the pre-run in the three healthy-but-unwired locations that run validate and status today,
 	// which never reach the integration bisect.
 	openFabric func() (*fabricengine.Fabric, error)
+	// parentBranch lazily reads the pair's recorded parent branch from fabric's origin record, for record-batch's and recover-batch's clean-parent-merge rule.
+	// It is a closure for the same reason openFabric is, and stays nil in standalone, where no merge commit is accepted.
+	parentBranch websterengine.ParentBranchFunc
 
 	// batcher is the load-time-resolved, config-selected batchifier.
 	batcher batcher.Batcher

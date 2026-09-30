@@ -228,7 +228,7 @@ func TestErrConflictsWithRecord_ConflictEnvelopeShape(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var out bytes.Buffer
-			exitCode := errConflictsWithRecord(&out, tt.rec, tt.conflicts)
+			exitCode := errConflictsWithRecord(&out, tt.rec, tt.conflicts, nil)
 			if exitCode != 1 {
 				t.Errorf("errConflictsWithRecord() = %d; want 1", exitCode)
 			}
@@ -271,7 +271,7 @@ func TestErrConflictsWithRecord_ConflictEnvelopeShape(t *testing.T) {
 // "conflicts" are always exactly its own derivation.
 func TestErrConflictsWithRecord_ReservedKeysAreAlwaysTheHelperOwnValues(t *testing.T) {
 	var out bytes.Buffer
-	exitCode := errConflictsWithRecord(&out, populatedMutations("/hub"), []string{"conflict.txt"})
+	exitCode := errConflictsWithRecord(&out, populatedMutations("/hub"), []string{"conflict.txt"}, nil)
 	if exitCode != 1 {
 		t.Errorf("errConflictsWithRecord() = %d; want 1", exitCode)
 	}

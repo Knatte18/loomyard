@@ -101,16 +101,17 @@ Example:
 			}
 
 			deps := websterengine.RecordDeps{
-				Batches:     batches,
-				State:       st,
-				Config:      c.cfg,
-				Engine:      c.engine,
-				Geom:        c.geom,
-				RefMatcher:  c.refMatcher,
-				OutcomePath: websterengine.OutcomePath(c.geom.WebsterDir),
-				SummaryPath: summaryparser.Path(c.geom.WebsterDir),
-				Sleeper:     realSleeper{},
-				Plan:        plan,
+				Batches:      batches,
+				State:        st,
+				Config:       c.cfg,
+				Engine:       c.engine,
+				Geom:         c.geom,
+				RefMatcher:   c.refMatcher,
+				OutcomePath:  websterengine.OutcomePath(c.geom.WebsterDir),
+				SummaryPath:  summaryparser.Path(c.geom.WebsterDir),
+				Sleeper:      realSleeper{},
+				Plan:         plan,
+				ParentBranch: c.parentBranch,
 			}
 
 			fingerprintBefore := st.PlanFingerprint

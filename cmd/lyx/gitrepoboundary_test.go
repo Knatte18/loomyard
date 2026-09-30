@@ -83,6 +83,7 @@ var gitrepoPinnedRunBoundMethods = map[string]bool{
 	"ConflictedFiles":          true,
 	"MergeHeadPresent":         true,
 	"MergeHeads":               true,
+	"MergeTree":                true,
 	"MergeFFOnly":              true,
 	"StageResolved":            true,
 }
