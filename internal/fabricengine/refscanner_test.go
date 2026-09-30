@@ -51,6 +51,11 @@ func TestRefScanner_Matches(t *testing.T) {
 		{"echoed prose is text", `echo "run lyx fabric sync later"`, false},
 		{"invocation after a quoted argument", `grep -q "x" f.txt && lyx fabric sync`, true},
 		{"quoted weft path still matches", `cat "/hub/master-builder-weft/_lyx/plan.md"`, true},
+		{"quoted sibling weft path matches", `ls "/hub/other-weft/_lyx"`, true},
+		{"bare unquoted sibling name matches", "git -C other-weft status", true},
+		{"weft-suffixed string literal is text", `echo "archive-happy-weft"`, false},
+		{"heredoc body is content", "cat > x_test.go <<'EOF'\n\tconst branch = \"archive-happy-weft\"\n\t// lyx fabric sync\n\tp := main-weft\nEOF\ngo test ./x", false},
+		{"command after a heredoc is still checked", "cat > x.txt <<EOF\nhello\nEOF\nlyx fabric sync", true},
 	}
 
 	for _, tt := range tests {
