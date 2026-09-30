@@ -499,8 +499,8 @@ func effectiveMaxBounces(def ProducerDef, shedMax int) int {
 // consumePause is true, also writes pause_requested false; otherwise pause_requested is left
 // exactly as re-read. persist never touches product.
 //
-// routedTo is the row a Stuck verdict was just routed to, and the empty string for every other
-// write; it selects the "<producer> → bounced to <routedTo>" wording of activity.last.
+// routedTo is the row a Stuck verdict was just routed to, and the empty string for every other write;
+// it selects the "<producer> → bounced to <routedTo>" wording of activity.last.
 // A persist that appends or folds a history entry recomposes activity.last,
 // and only one that records no verdict (the pause writes and the step-3b resume write) carries the file's existing activity.last forward, read inside the mutate,
 // so a pause right after a bounce keeps the bounce wording and a resume after a halt keeps "<producer> → stuck".
