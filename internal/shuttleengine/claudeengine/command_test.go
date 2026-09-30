@@ -262,6 +262,31 @@ func TestBuildLaunchCmd(t *testing.T) {
 			want:          `CLAUDE_CODE_FORK_SUBAGENT='1' 'claude' "$(cat '/run/prompt.md')" --session-id 'abc-123' --settings '/run/settings.json' --dangerously-skip-permissions`,
 		},
 		{
+			// A real assembled notice, whose ':' and ';' must stay inside the one quoted argument,
+			// riding inside the fork-mode env wrap rather than after it.
+			name:          "fork_mode_real_notice_pwsh",
+			bin:           "claude",
+			promptPath:    `C:\run\prompt.md`,
+			settingsPath:  `C:\run\settings.json`,
+			sessionID:     "abc-123",
+			notice:        noticeAgentForkDeny + " " + noticeAskUserQuestionDeny,
+			interactive:   false,
+			forkSubagents: true,
+			want:          `$env:CLAUDE_CODE_FORK_SUBAGENT = '1'; & 'claude' (Get-Content -Raw 'C:\run\prompt.md') --session-id 'abc-123' --settings 'C:\run\settings.json' --dangerously-skip-permissions --append-system-prompt '` + noticeAgentForkDeny + " " + noticeAskUserQuestionDeny + `'`,
+		},
+		{
+			name:          "fork_mode_real_notice_posix",
+			sh:            shell.Posix(),
+			bin:           "claude",
+			promptPath:    "/run/prompt.md",
+			settingsPath:  "/run/settings.json",
+			sessionID:     "abc-123",
+			notice:        noticeAgentForkDeny + " " + noticeAskUserQuestionDeny,
+			interactive:   false,
+			forkSubagents: true,
+			want:          `CLAUDE_CODE_FORK_SUBAGENT='1' 'claude' "$(cat '/run/prompt.md')" --session-id 'abc-123' --settings '/run/settings.json' --dangerously-skip-permissions --append-system-prompt '` + noticeAgentForkDeny + " " + noticeAskUserQuestionDeny + `'`,
+		},
+		{
 			// Fork mode off: the line is unchanged from today's shape — no
 			// env prefix at all.
 			name:          "fork_mode_off",
@@ -399,5 +424,19 @@ func TestBuildResumeCmd(t *testing.T) {
 				t.Errorf("buildResumeCmd(...) = %q; contains a newline, but the command is typed via a single send-keys call", got)
 			}
 		})
+	}
+}
+
+// TestBuildResumeCmd_NoticePosix pins the posix resume line carrying a real assembled notice inside the fork-mode env wrap.
+func TestBuildResumeCmd_NoticePosix(t *testing.T) {
+	notice := noticeAgentForkDeny + " " + noticeAskUserQuestionDeny
+	want := `CLAUDE_CODE_FORK_SUBAGENT='1' 'claude' --resume 'abc-123' --settings '/run/settings.json' --dangerously-skip-permissions --append-system-prompt '` + notice + `'`
+
+	got := buildResumeCmd(shell.Posix(), "claude", "/run/settings.json", "abc-123", "", "", notice, false, true)
+	if got != want {
+		t.Errorf("buildResumeCmd(...) = %q; want %q", got, want)
+	}
+	if strings.ContainsAny(got, "\r\n") {
+		t.Errorf("buildResumeCmd(...) = %q; contains a newline, but the command is typed via a single send-keys call", got)
 	}
 }
