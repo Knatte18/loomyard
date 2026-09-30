@@ -3,12 +3,7 @@
 // the shared Slug/ScratchDir/seam validation, plus innerRunEntry's own poll_interval_s config
 // coverage and seedChildEntry's own dedicated table below.
 //
-// Every seam the four batten entries validate -- CreateWorktree, PrimeLock.Acquire,
-// Teardown.Shutdown, Teardown.Remove, InnerRun.Spawn, InnerRun.ResolveStatus, InnerRun.ReadStatus,
-// and the five SeedChild closures -- is a concrete func type, not an interface, so there is no
-// separate typed-nil-interface case to exercise beyond the plain-nil case requireSeam handles for a
-// reflect.Func value: a nil func value passed as any already reports Kind() == reflect.Func with
-// IsNil() true, the same detection path a typed-nil interface takes.
+// Every seam the four batten entries validate -- CreateWorktree, PrimeLock.Acquire, Teardown.Shutdown, Teardown.Remove, InnerRun.Spawn, InnerRun.ResolveStatus, InnerRun.ReadStatus, InnerRun.ReadApproval, InnerRun.DriverAlive, and the five SeedChild closures -- is a concrete func type, not an interface, so there is no separate typed-nil-interface case to exercise beyond the plain-nil case requireSeam handles for a reflect.Func value: a nil func value passed as any already reports Kind() == reflect.Func with IsNil() true, the same detection path a typed-nil interface takes.
 
 package shedrecipe
 
@@ -82,6 +77,8 @@ func lifecycleEntryCases() []lifecycleEntryCase {
 				{"InnerRun.Spawn", func(env Env) Env { env.InnerRun.Spawn = nil; return env }},
 				{"InnerRun.ResolveStatus", func(env Env) Env { env.InnerRun.ResolveStatus = nil; return env }},
 				{"InnerRun.ReadStatus", func(env Env) Env { env.InnerRun.ReadStatus = nil; return env }},
+				{"InnerRun.ReadApproval", func(env Env) Env { env.InnerRun.ReadApproval = nil; return env }},
+				{"InnerRun.DriverAlive", func(env Env) Env { env.InnerRun.DriverAlive = nil; return env }},
 			},
 		},
 	}
@@ -194,6 +191,22 @@ func TestInnerRunEntry_NilSleepIsAccepted(t *testing.T) {
 	}
 }
 
+// TestInnerRunEntry_NilNowIsAccepted asserts innerRunEntry does not validate Env.InnerRun.Now:
+// its nil value is legitimate and selects the production clock inside battenshed.NewInnerRun.
+func TestInnerRunEntry_NilNowIsAccepted(t *testing.T) {
+	env := newTestEnv(t)
+	if env.InnerRun.Now != nil {
+		t.Fatalf("newTestEnv(t).InnerRun.Now is non-nil; want nil by default")
+	}
+	producer, err := innerRunEntry("InnerRun", Config{}, env)
+	if err != nil {
+		t.Fatalf("innerRunEntry() error = %v; want nil", err)
+	}
+	if producer == nil {
+		t.Fatalf("innerRunEntry() = nil producer; want non-nil")
+	}
+}
+
 // TestInnerRunEntry_PollConfigKeys covers innerRunEntry's poll_interval_s config key: absent
 // resolves to defaultInnerRunPollIntervalS, an explicit value builds successfully, a negative value
 // is rejected naming the key, and the retired poll_attempts key is now rejected as unrecognised
@@ -236,6 +249,33 @@ func TestInnerRunEntry_PollConfigKeys(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "poll_attempts") {
 			t.Errorf("innerRunEntry() error = %v; want it to name the offending key %q", err, "poll_attempts")
+		}
+	})
+}
+
+// TestInnerRunEntry_DriverExitGraceKey covers innerRunEntry's driver_exit_grace_s config key: absent resolves to defaultInnerRunDriverExitGraceS, an explicit value builds successfully, and a negative value is rejected naming the key.
+func TestInnerRunEntry_DriverExitGraceKey(t *testing.T) {
+	t.Run("DefaultIsNineHundred", func(t *testing.T) {
+		if defaultInnerRunDriverExitGraceS != 900 {
+			t.Errorf("defaultInnerRunDriverExitGraceS = %d; want 900", defaultInnerRunDriverExitGraceS)
+		}
+		producer, err := innerRunEntry("InnerRun", Config{}, newTestEnv(t))
+		if err != nil || producer == nil {
+			t.Fatalf("innerRunEntry() = %v, %v; want a producer", producer, err)
+		}
+	})
+
+	t.Run("ExplicitValue", func(t *testing.T) {
+		producer, err := innerRunEntry("InnerRun", Config{"driver_exit_grace_s": 60}, newTestEnv(t))
+		if err != nil || producer == nil {
+			t.Fatalf("innerRunEntry() = %v, %v; want a producer", producer, err)
+		}
+	})
+
+	t.Run("NegativeIsRejected", func(t *testing.T) {
+		_, err := innerRunEntry("InnerRun", Config{"driver_exit_grace_s": -1}, newTestEnv(t))
+		if err == nil || !strings.Contains(err.Error(), "driver_exit_grace_s") {
+			t.Errorf("innerRunEntry() error = %v; want it to name %q", err, "driver_exit_grace_s")
 		}
 	})
 }

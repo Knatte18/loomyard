@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/contracts/stencils"
+	"github.com/Knatte18/loomyard/internal/logger"
 )
 
 // newTestStencilsDir builds a t.TempDir() seeded with burler's five stencils plus the three pattern-directive stencils, copied byte-for-byte from the stencils package's embedded defaults, and returns the directory to pass as stencilsDir.
@@ -150,6 +151,61 @@ func TestComposePrompt_FocusDirective(t *testing.T) {
 		}
 		if strings.Contains(got, "{{") || strings.Contains(got, "<no value>") {
 			t.Errorf("instruction 1 contains marker residue: %q", got)
+		}
+	})
+
+	// The warning subtests swap the process-global logger output, so none runs in parallel.
+	focusWarningLines := func(out string) []string {
+		var lines []string
+		for _, line := range strings.Split(out, "\n") {
+			if strings.Contains(line, "{{.focus_directive}}") {
+				lines = append(lines, line)
+			}
+		}
+		return lines
+	}
+	composeCapturing := func(t *testing.T, markerFree, withDirective bool) string {
+		t.Helper()
+		dir := newTestStencilsDir(t)
+		if markerFree {
+			stripped := bytes.ReplaceAll(stencils.BurlerStep1Explore, []byte("{{.focus_directive}}"), nil)
+			if err := os.WriteFile(filepath.Join(dir, "burler", "burler-step-1-explore.md"), stripped, 0o644); err != nil {
+				t.Fatalf("WriteFile(marker-free burler-step-1-explore.md) = %v; want nil", err)
+			}
+		}
+		p := newComposableProfile(t)
+		if withDirective {
+			p.FocusDirective = filepath.Join(t.TempDir(), "focus.md")
+			if err := os.WriteFile(p.FocusDirective, []byte("look at the seam"), 0o644); err != nil {
+				t.Fatalf("WriteFile(focus) = %v; want nil", err)
+			}
+		}
+		var buf bytes.Buffer
+		logger.SetOutput(&buf)
+		t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+		if _, _, err := composePrompt(dir, &p, "", "", testInst1Path, testInst2Path, testInst3Path); err != nil {
+			t.Fatalf("composePrompt() = %v; want nil error", err)
+		}
+		return buf.String()
+	}
+
+	t.Run("warns when marker absent", func(t *testing.T) {
+		lines := focusWarningLines(composeCapturing(t, true, true))
+		if len(lines) != 1 {
+			t.Fatalf("focus-marker warning lines = %d; want 1: %q", len(lines), lines)
+		}
+		requireContains(t, lines[0], "burler-step-1-explore")
+	})
+
+	t.Run("no warning with shipped stencil", func(t *testing.T) {
+		if lines := focusWarningLines(composeCapturing(t, false, true)); len(lines) != 0 {
+			t.Errorf("focus-marker warning lines = %q; want none", lines)
+		}
+	})
+
+	t.Run("no warning without directive", func(t *testing.T) {
+		if lines := focusWarningLines(composeCapturing(t, true, false)); len(lines) != 0 {
+			t.Errorf("focus-marker warning lines = %q; want none", lines)
 		}
 	})
 }
@@ -457,5 +513,48 @@ func requireNotContains(t *testing.T, text, needle string) {
 	t.Helper()
 	if strings.Contains(text, needle) {
 		t.Errorf("output unexpectedly contains %q", needle)
+	}
+}
+
+// TestWarnIfFocusMarkerAbsent covers the helper directly:
+// it logs nothing for an empty focus block or a template carrying the marker, and exactly one line naming the stencil and the marker literal otherwise.
+// The logger output is process-global, so the test never runs in parallel.
+func TestWarnIfFocusMarkerAbsent(t *testing.T) {
+	const stencilName = "burler-step-1-explore"
+	tests := []struct {
+		name      string
+		template  string
+		block     string
+		wantLines int
+	}{
+		{name: "empty block, marker absent", template: "no marker here", block: "", wantLines: 0},
+		{name: "block, marker present", template: "has {{.focus_directive}} here", block: "focus text", wantLines: 0},
+		{name: "block, marker absent", template: "no marker here", block: "focus text", wantLines: 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			logger.SetOutput(&buf)
+			t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+
+			warnIfFocusMarkerAbsent([]byte(tt.template), stencilName, tt.block)
+
+			out := strings.TrimSpace(buf.String())
+			got := 0
+			if out != "" {
+				got = len(strings.Split(out, "\n"))
+			}
+			if got != tt.wantLines {
+				t.Fatalf("logged %d lines; want %d; output: %q", got, tt.wantLines, out)
+			}
+			if tt.wantLines == 1 {
+				if !strings.Contains(out, stencilName) {
+					t.Errorf("line %q does not name stencil %q", out, stencilName)
+				}
+				if !strings.Contains(out, "{{.focus_directive}}") {
+					t.Errorf("line %q does not name the marker literal", out)
+				}
+			}
+		})
 	}
 }

@@ -8,6 +8,7 @@
 package loomcli
 
 import (
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shell"
@@ -33,12 +34,9 @@ func statusStrandAddSpec(cmd string) reedengine.AddSpec {
 	}
 }
 
-// driverStrandDisplayName is the ly-drive session's own strand's stable identity, pinned for the
-// same reason statusStrandDisplayName is: reed's add has no upsert semantics, so a second add under
-// this same display name would append a second pane rather than replace the first. Every add and
-// every lookup must use this exact constant, or a re-entrant bootstrap stacks a second driver pane
-// instead of matching the one already running.
-const driverStrandDisplayName = "loom-driver"
+// driverStrandDisplayName is the ly-drive session's own strand's stable identity.
+// The value is declared once, as loomengine.LoomDriverStrandName, which carries the reason it must never vary.
+const driverStrandDisplayName = loomengine.LoomDriverStrandName
 
 // mustSpawnDriver reports whether the bootstrap must spawn a new driver, from the run lock's held
 // state AND whether a live driver strand already exists.

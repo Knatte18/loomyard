@@ -24,8 +24,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
@@ -34,6 +36,27 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
 )
+
+// driverAliveFrom answers whether the child's driver strand is live, over an injected status reader so its answers are testable without tmux.
+// An absent task worktree is false without reading status, and so is an absent reed session -- no session means no driver -- while every other status error is returned unchanged.
+func driverAliveFrom(present bool, status func() (reedengine.StatusResult, error)) (bool, error) {
+	if !present {
+		return false, nil
+	}
+	res, err := status()
+	if errors.Is(err, reedengine.ErrNoSession) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	for _, s := range res.Strands {
+		if s.Name == loomengine.LoomDriverStrandName && s.Live {
+			return true, nil
+		}
+	}
+	return false, nil
+}
 
 // taskWorktreeLocation resolves the managed task worktree's own *lyxcwd.Location, for slug, from
 // the prime *lyxcwd.Location. It is the shared body every lazily-resolved seam below calls, so a
@@ -133,13 +156,11 @@ func taskWorktreeComplete(prime *lyxcwd.Location, slug string) (present, complet
 }
 
 // incompletePairRemedy names the manual cleanup for a pair taskWorktreeComplete found incomplete.
-// "lyx fabric remove --force" run from prime removes whatever part of the pair Add got to -- the
-// task worktree, its sibling, their junctions, portal and launcher entries, and the sibling's
-// branch -- in one command, which no pair of plain git commands can do from here: the sibling is a
-// worktree of another repository. The task branch is named with fabric's branch prefix, since
-// Remove never deletes it and Add refuses a leftover one.
+// "lyx fabric remove --force" run from prime removes whatever part of the pair Add got to -- the task worktree, its sibling, their junctions, portal and launcher entries, and the sibling's branch -- in one command, which no pair of plain git commands can do from here: the sibling is a worktree of another repository.
+// Remove also deletes the task branch when its work is already on another ref -- always so for a create interrupted before any work -- and keeps it otherwise, so the branch deletion is named as conditional on the branch surviving the removal: an unconditional "git branch -D" fails on the branch Remove already deleted.
+// The task branch is named with fabric's branch prefix, since Add refuses a leftover one.
 func incompletePairRemedy(slug, branch string) string {
-	return fmt.Sprintf("remove it by hand from here (\"lyx fabric remove --force %s\") and its branch (\"git branch -D %s\")", slug, branch)
+	return fmt.Sprintf("remove it by hand from here (\"lyx fabric remove --force %s\"), then, only if its branch %s is still present afterwards, delete that branch too (\"git branch -D %s\")", slug, branch, branch)
 }
 
 // createRefusal rewords the one create refusal whose fabric remedy is wrong from prime, and passes
@@ -160,6 +181,27 @@ func createRefusal(err error) error {
 	return fmt.Errorf(
 		"branch %q already exists, left behind by an earlier pair for this slug (a torn-down pair keeps its task branch locally and on the remote, and a rolled-back create keeps the branch it made); delete it locally (\"git branch -D %s\") and on the remote (\"git push origin --delete %s\"), remove any leftover of the pair's sibling branch (\"lyx fabric cleanup --apply --remote\" removes an orphaned one), then resume this run -- never \"lyx fabric checkout\" from here, which would switch this worktree itself onto that branch",
 		branchExists.Branch, branchExists.Branch, branchExists.Branch,
+	)
+}
+
+// teardownRefusal rewords the teardown refusal for an uncommitted change in the pair's sibling, names the resume for a failed archive of the run records, and passes every other error through unchanged.
+//
+// fabric's own refusal for a dirty pair sibling leaves --force as the way out, and --force would discard exactly the records this task exists to keep.
+// The records are uncommitted when a driver ended before its end-of-session commit, so the remedy named here commits them first.
+// fabric's refusal covers any uncommitted content in the sibling, not only the paths "lyx loom commit-records" stages;
+// the remedy therefore also names what to do when a resume after that commit refuses again.
+// A failed archive runs before any teardown mutation, so the pair is still whole and a plain resume retries it once the failure is fixed.
+// That failure is most often an unreachable remote, but not always, so the remedy points at the wrapped cause rather than naming one.
+func teardownRefusal(err error, slug, taskAnchor string) error {
+	if errors.Is(err, fabricengine.ErrArchiveFailed) {
+		return fmt.Errorf("the pair for %q was left in place because archiving its run records to the remote failed: %w; fix the failure named here (most often an unreachable remote), then resume this run with \"lyx batten run %s\"", slug, err, slug)
+	}
+	if !errors.Is(err, fabricengine.ErrPairSiblingDirty) {
+		return err
+	}
+	return fmt.Errorf(
+		"the task worktree's run records are uncommitted, most likely because a driver ended before its end-of-session commit; run \"lyx loom commit-records\" in %s to commit them, then resume this run with \"lyx batten run %s\". If the resumed teardown refuses again with this reason, what is still uncommitted is not a run record: inspect the pair from %s, commit or remove that content by hand, then resume again",
+		taskAnchor, slug, taskAnchor,
 	)
 }
 
@@ -352,7 +394,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 					if err != nil {
 						return fmt.Errorf("the pair for %q is gone but deleting its other-side branch failed: %w; resume this run to retry the deletion", slug, err)
 					}
-					logger.Info("battencli: teardown finished the pair's branch deletion", "slug", slug, "mutations", branchRes.Mutated(), "remote_skipped_reason", branchRes.RemoteSkippedReason)
+					logger.Info("battencli: teardown finished the pair's branch deletion", "slug", slug, "mutations", branchRes.Mutated(), "remote_skipped_reason", branchRes.RemoteSkippedReason, "archive_tag", branchRes.ArchiveTag, "archive_skipped_reason", branchRes.ArchiveSkippedReason)
 					return nil
 				}
 				// remote: true -- a batten-driven teardown is the task's own final removal, never a
@@ -363,10 +405,14 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				if err != nil {
 					return err
 				}
-				res, err := top.Remove(location, slug, false, true)
-				logger.Info("battencli: teardown worktree", "slug", slug, "mutations", res.Mutated(), "remote_skipped_reason", res.RemoteSkippedReason)
+				taskLocation, err := taskWorktreeLocation(location, slug)
 				if err != nil {
 					return err
+				}
+				res, err := top.Remove(location, slug, false, true)
+				logger.Info("battencli: teardown worktree", "slug", slug, "mutations", res.Mutated(), "remote_skipped_reason", res.RemoteSkippedReason, "archive_tag", res.ArchiveTag, "archive_skipped_reason", res.ArchiveSkippedReason)
+				if err != nil {
+					return teardownRefusal(err, slug, taskLocation.AnchorPath())
 				}
 				// Remove reports a failed remote deletion without failing; it is returned here so the
 				// row halts resumable, and the resumed row's already-gone arm above retries it.
@@ -377,6 +423,35 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			},
 		},
 		InnerRun: battenshed.InnerRunDeps{
+			// ReadApproval and DriverAlive resolve the task worktree on Call like every seam here, never at wiring time.
+			ReadApproval: func() (battenshed.ChildApproval, bool, error) {
+				taskLocation, err := taskWorktreeLocation(location, slug)
+				if err != nil {
+					return battenshed.ChildApproval{}, false, err
+				}
+				a, found, err := landingshed.ReadApproval(loomengine.LoomApprovalPath(taskLocation))
+				if err != nil || !found {
+					return battenshed.ChildApproval{}, false, err
+				}
+				return battenshed.ChildApproval{ApprovedAt: a.ApprovedAt, HeadSHA: a.HeadSHA}, true, nil
+			},
+			DriverAlive: func(ctx context.Context) (bool, error) {
+				present, err := taskWorktreePresent(location, slug)
+				if err != nil {
+					return false, err
+				}
+				return driverAliveFrom(present, func() (reedengine.StatusResult, error) {
+					taskLocation, err := taskWorktreeLocation(location, slug)
+					if err != nil {
+						return reedengine.StatusResult{}, err
+					}
+					reedCfg, err := reedengine.LoadConfig(taskLocation.AnchorPath(), "reed")
+					if err != nil {
+						return reedengine.StatusResult{}, err
+					}
+					return reedengine.New(reedCfg, hubgeom.ReedGeometry(taskLocation)).Status()
+				})
+			},
 			// ResolveStatus also creates the child's ephemeral status-lock directory, since its
 			// caller reads through that lock next and nothing else on the Run-Shed path creates
 			// it: the child's status file is durable while its lock is not. This mirrors

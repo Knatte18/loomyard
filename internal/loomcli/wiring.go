@@ -48,7 +48,10 @@ type commitStatusDeps struct {
 	Push func() error
 }
 
-// statusCommitPathspec returns the fabric-sibling pathspec one status commit stages: shedrun.StatusRel(location, runID) alone, plus loomengine.LoomReviewsDirRel() when the reviews directory holds at least one non-directory entry anywhere beneath it.
+// statusCommitPathspec returns the fabric-sibling pathspec one status commit stages: shedrun.StatusRel(location, runID), plus each of loomengine.LoomReviewsDirRel(), loomengine.LoomDurableDirRel() and shedrun.DriveReportsRel(location, runID) when its directory holds at least one non-directory entry anywhere beneath it.
+// The loom durable directory is staged whole rather than its friction directory alone:
+// staging the parent carries the friction directory, every timestamped archive sibling, and a reflection rename's removal of the old path in one entry,
+// where a friction-only entry would miss the removal once the directory is renamed away.
 // Existence alone is not enough: shedrecipe's Bouncer and BurlerRound entries os.MkdirAll every review row's run directory at recipe build time,
 // so from a run's first transition the reviews root exists holding only empty segment directories.
 // `git add -- <dir>` accepts an empty directory,
@@ -59,14 +62,20 @@ type commitStatusDeps struct {
 // and a transition whose commit was skipped mid-merge is caught up by the next one.
 func statusCommitPathspec(location *lyxcwd.Location, runID string) []string {
 	paths := []string{shedrun.StatusRel(location, runID)}
-	if reviewsHoldFile(loomengine.LoomReviewsDir(location)) {
+	if holdsFile(loomengine.LoomReviewsDir(location)) {
 		paths = append(paths, loomengine.LoomReviewsDirRel())
+	}
+	if holdsFile(loomengine.LoomDurableDir(location)) {
+		paths = append(paths, loomengine.LoomDurableDirRel())
+	}
+	if holdsFile(shedrun.DriveReportsDir(location, runID)) {
+		paths = append(paths, shedrun.DriveReportsRel(location, runID))
 	}
 	return paths
 }
 
-// reviewsHoldFile reports whether dir is a directory holding at least one non-directory entry anywhere beneath it, stopping the walk at the first such entry.
-func reviewsHoldFile(dir string) bool {
+// holdsFile reports whether dir is a directory holding at least one non-directory entry anywhere beneath it, stopping the walk at the first such entry.
+func holdsFile(dir string) bool {
 	info, err := os.Stat(dir)
 	if err != nil || !info.IsDir() {
 		return false
@@ -86,7 +95,7 @@ func reviewsHoldFile(dir string) bool {
 	return found
 }
 
-// loomCommitStatusDeps builds a commitStatusDeps over location and runID, filling each field from fabric: MergeActive from fabricengine.MergeStateActive, Commit from fabricengine.CommitAnchoredPaths scoped to statusCommitPathspec (the status file, plus the review round record when one exists), and Push from fabricengine.PushAnchored.
+// loomCommitStatusDeps builds a commitStatusDeps over location and runID, filling each field from fabric: MergeActive from fabricengine.MergeStateActive, Commit from fabricengine.CommitAnchoredPaths scoped to statusCommitPathspec (the status file, plus the review round record, the loom durable directory and the drive reports when each holds a file), and Push from fabricengine.PushAnchored.
 func loomCommitStatusDeps(location *lyxcwd.Location, runID string) commitStatusDeps {
 	return commitStatusDeps{
 		MergeActive: func() (bool, error) {
