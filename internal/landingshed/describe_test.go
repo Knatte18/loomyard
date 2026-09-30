@@ -39,14 +39,17 @@ func newDescribeInputs(t *testing.T) DescribeInputs {
 
 func TestDescribeSpec_ComposesSpec(t *testing.T) {
 	in := newDescribeInputs(t)
-	cfg := Config{Describe: "claude:sonnet", DescribeTimeoutMin: 7}
+	cfg := Config{Describe: "claude:sonnet[effort=high]", DescribeTimeoutMin: 7}
 
 	spec, err := DescribeSpec(in, cfg, modelspec.Registry{})
 	if err != nil {
 		t.Fatalf("DescribeSpec = _, %v; want nil error", err)
 	}
-	if spec.Model == "" {
-		t.Errorf("spec.Model = %q; want non-empty", spec.Model)
+	if spec.Model != "sonnet" {
+		t.Errorf("spec.Model = %q; want %q", spec.Model, "sonnet")
+	}
+	if spec.Effort != "high" {
+		t.Errorf("spec.Effort = %q; want %q", spec.Effort, "high")
 	}
 	if spec.Role != "describe" {
 		t.Errorf("spec.Role = %q; want %q", spec.Role, "describe")
