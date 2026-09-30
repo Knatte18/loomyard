@@ -366,6 +366,21 @@ func TestValidatePlanCmd_RequireApprovedFlagRegistered(t *testing.T) {
 	}
 }
 
+// TestValidatePlanCmd_ReworkAndRequireApprovedAreExclusive asserts the two mode flags together are refused with an error envelope rather than one silently winning.
+func TestValidatePlanCmd_ReworkAndRequireApprovedAreExclusive(t *testing.T) {
+	c := planFixture(t, t.TempDir(), t.TempDir(), true)
+
+	var out bytes.Buffer
+	exitCode := clihelp.Execute(c.validatePlanCmd(), &out, []string{"--rework", "--require-approved"})
+	if exitCode != 1 {
+		t.Fatalf("exit code = %d; want 1 (output: %q)", exitCode, out.String())
+	}
+	env := decodeSingleEnvelope(t, out.String())
+	if errMsg, _ := env["error"].(string); !strings.Contains(errMsg, "mutually exclusive") {
+		t.Errorf("envelope error = %q; want it to name the exclusive flags", errMsg)
+	}
+}
+
 func TestValidatePlanCmd(t *testing.T) {
 	tests := []struct {
 		name             string

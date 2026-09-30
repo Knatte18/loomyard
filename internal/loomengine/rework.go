@@ -10,6 +10,7 @@ package loomengine
 
 import (
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/friction"
@@ -37,8 +38,9 @@ type reworkPaths struct {
 }
 
 // composeReworkPrompt builds the rework prompt by reading the "loom-template-rework" stencil from stencilsDir and filling it.
+// nextCard is the number the first appended card takes.
 // Only pattern_directive and the friction marker are optional; specs_dir and every path marker fail composition when empty.
-func composeReworkPrompt(stencilsDir, specsDir string, p reworkPaths, patternDirective, frictionDirective string) ([]byte, error) {
+func composeReworkPrompt(stencilsDir, specsDir string, p reworkPaths, nextCard int, patternDirective, frictionDirective string) ([]byte, error) {
 	template, err := stencilstore.Read(stencilsDir, reworkStencilName)
 	if err != nil {
 		return nil, err
@@ -53,6 +55,7 @@ func composeReworkPrompt(stencilsDir, specsDir string, p reworkPaths, patternDir
 		"decision_record_path": p.decisionRecord,
 		"coverage_path":        p.coverage,
 		"plan_stencil_path":    p.planStencil,
+		"next_card_number":     strconv.Itoa(nextCard),
 		"specs_dir":            specsDir,
 		"pattern_directive":    patternDirective,
 		friction.MarkerName:    frictionDirective,
@@ -67,8 +70,10 @@ func composeReworkPrompt(stencilsDir, specsDir string, p reworkPaths, patternDir
 
 // ReworkSpec builds the shuttleengine.Spec for one PR-Rework agent run.
 // stencilsDir and specsDir are told, never derived: this package is bound by the Told-Geometry Invariant.
+// nextCard is the number the session's first appended card takes, one past the highest card committed at HEAD;
+// it is told as a value because the session cannot read the committed plan from the worktree it runs in.
 // The plan role's model-spec and PlanTimeoutMin are reused.
-func ReworkSpec(layout *lyxcwd.Location, stencilsDir, specsDir string, cfg Config, reg modelspec.Registry) (shuttleengine.Spec, error) {
+func ReworkSpec(layout *lyxcwd.Location, stencilsDir, specsDir string, cfg Config, reg modelspec.Registry, nextCard int) (shuttleengine.Spec, error) {
 	spec, err := modelspec.Parse(cfg.Plan)
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("loom: ReworkSpec: plan role model-spec: %w", err)
@@ -104,7 +109,7 @@ func ReworkSpec(layout *lyxcwd.Location, stencilsDir, specsDir string, cfg Confi
 		frictionDirective = ""
 	}
 
-	prompt, err := composeReworkPrompt(stencilsDir, specsDir, paths, directive, frictionDirective)
+	prompt, err := composeReworkPrompt(stencilsDir, specsDir, paths, nextCard, directive, frictionDirective)
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("loom: ReworkSpec: %w", err)
 	}

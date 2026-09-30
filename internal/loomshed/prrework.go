@@ -64,6 +64,13 @@ type roundRecord struct {
 	RejectedAt string `json:"rejected_at"`
 }
 
+// rejectionIdentity names one rejection by the head it rejected and the time it was recorded.
+// The head alone is not enough: a round that appends cards but lands no code leaves the head unchanged,
+// so the operator's next rejection shares it and must still reach a session of its own.
+func rejectionIdentity(headSHA, rejectedAt string) string {
+	return headSHA + "@" + rejectedAt
+}
+
 // prRework decorates inner, the gated rework session, with the Go-owned steps around it.
 // It is a distinct type so the recipe shape test can tell the row apart.
 type prRework struct {
@@ -94,7 +101,7 @@ func (p *prRework) Call(ctx context.Context) (shedengine.Outcome, shedengine.Out
 		return stuck(fmt.Sprintf("read the pending rejection: %v; fix it or run %s again", err, reworkRejectCommand))
 	}
 
-	committed, err := p.committedRoundHeads()
+	committed, err := p.committedRejections()
 	if err != nil {
 		return "", shedengine.OutputPointer{}, err
 	}
@@ -107,7 +114,7 @@ func (p *prRework) Call(ctx context.Context) (shedengine.Outcome, shedengine.Out
 		return p.finish(false)
 	}
 
-	if committed[pending.HeadSHA] {
+	if committed[rejectionIdentity(pending.HeadSHA, pending.RejectedAt)] {
 		return p.finish(true)
 	}
 
@@ -193,13 +200,13 @@ func (p *prRework) roundNumbers() ([]int, error) {
 	return nums, nil
 }
 
-// committedRoundHeads returns the set of head_sha values recorded by rounds committed at HEAD.
-func (p *prRework) committedRoundHeads() (map[string]bool, error) {
+// committedRejections returns the identities of the rejections recorded by rounds committed at HEAD.
+func (p *prRework) committedRejections() (map[string]bool, error) {
 	nums, err := p.roundNumbers()
 	if err != nil {
 		return nil, err
 	}
-	heads := make(map[string]bool)
+	identities := make(map[string]bool)
 	for _, n := range nums {
 		rel := path.Join(p.deps.ReworkDirRel, reworkRoundPrefix+strconv.Itoa(n), reworkRecordFile)
 		data, ok, err := p.deps.ReadCommitted(rel)
@@ -213,16 +220,18 @@ func (p *prRework) committedRoundHeads() (map[string]bool, error) {
 		if err := json.Unmarshal(data, &rec); err != nil {
 			return nil, fmt.Errorf("loomshed: %s: decode committed %s: %w", p.name, rel, err)
 		}
-		heads[rec.HeadSHA] = true
+		identities[rejectionIdentity(rec.HeadSHA, rec.RejectedAt)] = true
 	}
-	return heads, nil
+	return identities, nil
 }
 
-// appendOnlyViolation compares the plan committed at HEAD with the working tree and returns the joined violations, or "" when the working tree is the base plus appended cards.
-func (p *prRework) appendOnlyViolation() (string, error) {
-	base, err := planparser.ParsePlanFrom(p.deps.PlanDir, func(name string) ([]byte, error) {
+// ParseCommittedPlan parses the plan at planDir as committed at HEAD, reading every plan file through readCommitted, which takes an anchor-relative path.
+// It is the baseline a rework round extends: every card it carries was planned, built and committed before the round began.
+// A plan file absent at HEAD is an error wrapping fs.ErrNotExist.
+func ParseCommittedPlan(planDir string, readCommitted func(anchorRel string) ([]byte, bool, error)) (*planparser.Plan, error) {
+	return planparser.ParsePlanFrom(planDir, func(name string) ([]byte, error) {
 		rel := path.Join(planparser.PlanDirRel(), name)
-		data, ok, err := p.deps.ReadCommitted(rel)
+		data, ok, err := readCommitted(rel)
 		if err != nil {
 			return nil, err
 		}
@@ -231,6 +240,25 @@ func (p *prRework) appendOnlyViolation() (string, error) {
 		}
 		return data, nil
 	})
+}
+
+// NextReworkCardNumber returns the number a rework round's first appended card takes: one past the highest card of the plan committed at HEAD.
+// Its arguments are ParseCommittedPlan's.
+func NextReworkCardNumber(planDir string, readCommitted func(anchorRel string) ([]byte, bool, error)) (int, error) {
+	committed, err := ParseCommittedPlan(planDir, readCommitted)
+	if err != nil {
+		return 0, err
+	}
+	highest := 0
+	for _, c := range committed.Cards {
+		highest = max(highest, c.Number)
+	}
+	return highest + 1, nil
+}
+
+// appendOnlyViolation compares the plan committed at HEAD with the working tree and returns the joined violations, or "" when the working tree is the base plus appended cards.
+func (p *prRework) appendOnlyViolation() (string, error) {
+	base, err := ParseCommittedPlan(p.deps.PlanDir, p.deps.ReadCommitted)
 	if err != nil {
 		return "", fmt.Errorf("loomshed: %s: parse the committed plan: %w", p.name, err)
 	}
@@ -252,7 +280,7 @@ func stuckReasonParse(err error) string {
 
 // writeRound writes the round directory for pending: findings.md, record.json and coverage.md copied from coveragePath.
 func (p *prRework) writeRound(pending PendingRejection, coveragePath string) error {
-	n, err := p.roundFor(pending.HeadSHA)
+	n, err := p.roundFor(rejectionIdentity(pending.HeadSHA, pending.RejectedAt))
 	if err != nil {
 		return err
 	}
@@ -285,8 +313,8 @@ func (p *prRework) writeRound(pending PendingRejection, coveragePath string) err
 	return nil
 }
 
-// roundFor returns the working-tree round whose record.json already carries headSHA (a crash before the commit), else the highest round plus one.
-func (p *prRework) roundFor(headSHA string) (int, error) {
+// roundFor returns the working-tree round whose record.json already records the rejection named by identity (a crash before the commit), else the highest round plus one.
+func (p *prRework) roundFor(identity string) (int, error) {
 	nums, err := p.roundNumbers()
 	if err != nil {
 		return 0, err
@@ -301,7 +329,7 @@ func (p *prRework) roundFor(headSHA string) (int, error) {
 			continue
 		}
 		var rec roundRecord
-		if json.Unmarshal(data, &rec) == nil && rec.HeadSHA == headSHA {
+		if json.Unmarshal(data, &rec) == nil && rejectionIdentity(rec.HeadSHA, rec.RejectedAt) == identity {
 			return n, nil
 		}
 	}

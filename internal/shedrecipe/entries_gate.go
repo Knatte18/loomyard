@@ -1,5 +1,5 @@
 // entries_gate.go implements resolveGateSpec, the shared resolver every gate-capable entry
-// (DiscussionWrite, PlanWrite, Describe, BurlerRound, Webster) calls to turn its row's
+// (DiscussionWrite, PlanWrite, Describe, BurlerRound, Webster, PRRework) calls to turn its row's
 // "gate"/"gate_attempts" Config keys into a shuttleengine.GateSpec.
 //
 // The selector is a declared string resolved against Env, exactly as bouncerEntry already resolves
@@ -21,12 +21,14 @@ import (
 // resolveGateSpec is the single place the "gate" and "gate_attempts" Config keys are read and
 // turned into a shuttleengine.GateSpec, shared by every gated entry.
 //
-// "gate" is an optional string read via configString, resolved against a closed three-value
+// "gate" is an optional string read via configString, resolved against a closed four-value
 // vocabulary: "discussion" requires env.DecisionRecordPath and env.SupportLogPath to pass
 // requireAbsRoot and returns loomshed.NewDiscussionGate over them; "plan" requires
-// env.AnchorPath and env.WorktreeRoot and returns loomshed.NewPlanGate over them; "description"
+// env.AnchorPath and env.WorktreeRoot and returns loomshed.NewPlanGate over them; "rework-plan"
+// requires the same two roots plus a non-nil env.Rework.ReadCommitted and returns
+// loomshed.NewReworkPlanGate over them; "description"
 // requires env.DescriptionPath to pass requireAbsRoot and returns landingshed.NewDescriptionGate
-// over it; any other non-empty value is an error naming the key and all three legal values. An
+// over it; any other non-empty value is an error naming the key and all four legal values. An
 // absent "gate" returns the zero GateSpec, which is what every ungated row carries by saying
 // nothing.
 //
@@ -76,13 +78,24 @@ func resolveGateSpec(entry string, cfg Config, env Env) (shuttleengine.GateSpec,
 			return shuttleengine.GateSpec{}, err
 		}
 		closure = loomshed.NewPlanGate(env.AnchorPath, env.WorktreeRoot)
+	case "rework-plan":
+		if err := requireAbsRoot(entry, "AnchorPath", env.AnchorPath); err != nil {
+			return shuttleengine.GateSpec{}, err
+		}
+		if err := requireAbsRoot(entry, "WorktreeRoot", env.WorktreeRoot); err != nil {
+			return shuttleengine.GateSpec{}, err
+		}
+		if err := requireSeam(entry, "Rework.ReadCommitted", env.Rework.ReadCommitted); err != nil {
+			return shuttleengine.GateSpec{}, err
+		}
+		closure = loomshed.NewReworkPlanGate(env.AnchorPath, env.WorktreeRoot, env.Rework.ReadCommitted)
 	case "description":
 		if err := requireAbsRoot(entry, "DescriptionPath", env.DescriptionPath); err != nil {
 			return shuttleengine.GateSpec{}, err
 		}
 		closure = landingshed.NewDescriptionGate(env.DescriptionPath)
 	default:
-		return shuttleengine.GateSpec{}, fmt.Errorf("shedrecipe: %s: config key %q must be %q, %q or %q, got %q", entry, "gate", "discussion", "plan", "description", gate)
+		return shuttleengine.GateSpec{}, fmt.Errorf("shedrecipe: %s: config key %q must be %q, %q, %q or %q, got %q", entry, "gate", "discussion", "plan", "rework-plan", "description", gate)
 	}
 
 	return shuttleengine.GateSpec{Gate: closure, Attempts: attempts}, nil

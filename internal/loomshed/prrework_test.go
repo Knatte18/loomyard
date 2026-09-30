@@ -18,10 +18,11 @@ import (
 )
 
 const (
-	reworkTestHead     = "abc123"
-	reworkTestFindings = "the findings text\n"
-	reworkTestCard1    = "# Card 1 — first-card\n\n**Create:**\n- `internal/firstcard/new.go`\n\n**Intent:** placeholder card.\n"
-	reworkTestCard2    = "# Card 2 — second-card\n\n**Create:**\n- `internal/secondcard/new.go`\n\n**Intent:** appended card.\n"
+	reworkTestHead       = "abc123"
+	reworkTestRejectedAt = "2026-09-30T10:00:00Z"
+	reworkTestFindings   = "the findings text\n"
+	reworkTestCard1      = "# Card 1 — first-card\n\n**Create:**\n- `internal/firstcard/new.go`\n\n**Intent:** placeholder card.\n"
+	reworkTestCard2      = "# Card 2 — second-card\n\n**Create:**\n- `internal/secondcard/new.go`\n\n**Intent:** appended card.\n"
 )
 
 func reworkOverview(approved bool, framing string, cards ...string) string {
@@ -61,7 +62,7 @@ func newReworkFixture(t *testing.T) *reworkFixture {
 		planDir:   planparser.PlanDir(anchor),
 		reworkDir: filepath.Join(anchor, "rework"),
 		committed: map[string][]byte{},
-		pending:   &PendingRejection{PRNumber: 7, HeadSHA: reworkTestHead, RejectedAt: "2026-09-30T10:00:00Z", Findings: reworkTestFindings},
+		pending:   &PendingRejection{PRNumber: 7, HeadSHA: reworkTestHead, RejectedAt: reworkTestRejectedAt, Findings: reworkTestFindings},
 		coverage:  filepath.Join(anchor, "coverage-out.md"),
 	}
 	f.writePlan(true, "Framing.", map[string]string{"01-first-card.md": reworkTestCard1}, "first-card")
@@ -97,14 +98,14 @@ func (f *reworkFixture) appendCard() {
 	f.writePlan(true, "Framing.", map[string]string{"01-first-card.md": reworkTestCard1, "02-second-card.md": reworkTestCard2}, "first-card", "second-card")
 }
 
-// commitRound records round n as committed at HEAD for head.
-func (f *reworkFixture) commitRound(n int, head string) {
+// commitRound records round n as committed at HEAD for the rejection of head at rejectedAt.
+func (f *reworkFixture) commitRound(n int, head, rejectedAt string) {
 	f.t.Helper()
 	dir := filepath.Join(f.reworkDir, fmt.Sprintf("round-%d", n))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		f.t.Fatal(err)
 	}
-	data, _ := json.Marshal(roundRecord{PRNumber: 7, HeadSHA: head, RejectedAt: "2026-09-30T10:00:00Z"})
+	data, _ := json.Marshal(roundRecord{PRNumber: 7, HeadSHA: head, RejectedAt: rejectedAt})
 	if err := os.WriteFile(filepath.Join(dir, "record.json"), data, 0o644); err != nil {
 		f.t.Fatal(err)
 	}
@@ -212,7 +213,7 @@ func TestPRRework_AppendedCardDone(t *testing.T) {
 
 func TestPRRework_ReentryAfterCommit(t *testing.T) {
 	f := newReworkFixture(t)
-	f.commitRound(1, reworkTestHead)
+	f.commitRound(1, reworkTestHead, reworkTestRejectedAt)
 	outcome, _, err := f.producer().Call(context.Background())
 	if err != nil || outcome != shedengine.Done {
 		t.Fatalf("got %v, %v; want Done", outcome, err)
@@ -223,6 +224,35 @@ func TestPRRework_ReentryAfterCommit(t *testing.T) {
 	entries, _ := os.ReadDir(f.reworkDir)
 	if len(entries) != 1 {
 		t.Errorf("round directories = %d; want 1", len(entries))
+	}
+}
+
+// TestPRRework_SecondRejectionAtSameHeadRuns covers a round that landed no code: the operator's next rejection shares its head, and it still gets a session and a round of its own.
+func TestPRRework_SecondRejectionAtSameHeadRuns(t *testing.T) {
+	const secondRejectedAt = "2026-09-30T11:00:00Z"
+	f := newReworkFixture(t)
+	f.commitRound(1, reworkTestHead, reworkTestRejectedAt)
+	f.pending.RejectedAt = secondRejectedAt
+	f.onInner = f.appendCard
+
+	outcome, _, err := f.producer().Call(context.Background())
+	if err != nil || outcome != shedengine.Done {
+		t.Fatalf("got %v, %v; want Done", outcome, err)
+	}
+	if f.innerCalls != 1 || f.commits != 1 || f.cleared != 1 {
+		t.Errorf("inner=%d commits=%d cleared=%d; want 1 each", f.innerCalls, f.commits, f.cleared)
+	}
+	data, err := os.ReadFile(filepath.Join(f.reworkDir, "round-2", "record.json"))
+	if err != nil {
+		t.Fatalf("round-2 record: %v", err)
+	}
+	var rec roundRecord
+	if err := json.Unmarshal(data, &rec); err != nil || rec.HeadSHA != reworkTestHead || rec.RejectedAt != secondRejectedAt {
+		t.Errorf("round-2 record.json = %s, %v; want head %s rejected at %s", data, err, reworkTestHead, secondRejectedAt)
+	}
+	findings, err := os.ReadFile(filepath.Join(f.reworkDir, "round-2", "findings.md"))
+	if err != nil || string(findings) != reworkTestFindings {
+		t.Errorf("round-2 findings.md = %q, %v; want %q", findings, err, reworkTestFindings)
 	}
 }
 
@@ -262,7 +292,7 @@ func TestPRRework_AbsentRecordNoRound(t *testing.T) {
 func TestPRRework_AbsentRecordWithCommittedRound(t *testing.T) {
 	f := newReworkFixture(t)
 	f.pending = nil
-	f.commitRound(1, reworkTestHead)
+	f.commitRound(1, reworkTestHead, reworkTestRejectedAt)
 	outcome, _, err := f.producer().Call(context.Background())
 	if err != nil || outcome != shedengine.Done {
 		t.Fatalf("got %v, %v; want Done", outcome, err)
@@ -278,6 +308,20 @@ func TestPRRework_MalformedRecordStuck(t *testing.T) {
 	outcome, ptr, err := f.producer().Call(context.Background())
 	if err != nil || outcome != shedengine.Stuck || !strings.Contains(ptr.Reason, "bad json") {
 		t.Fatalf("got %v, %q, %v", outcome, ptr.Reason, err)
+	}
+}
+
+func TestNextReworkCardNumber(t *testing.T) {
+	f := newReworkFixture(t)
+	// The working tree's leftover second card is not committed, so it does not move the number.
+	f.appendCard()
+	reader := func(rel string) ([]byte, bool, error) {
+		data, ok := f.committed[rel]
+		return data, ok, nil
+	}
+	got, err := NextReworkCardNumber(f.planDir, reader)
+	if err != nil || got != 2 {
+		t.Errorf("NextReworkCardNumber() = %d, %v; want 2, nil", got, err)
 	}
 }
 

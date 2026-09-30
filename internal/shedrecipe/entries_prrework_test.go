@@ -80,6 +80,26 @@ func TestPRReworkEntry_Config(t *testing.T) {
 		assertErrContains(t, err, "bogus_key")
 	})
 
+	t.Run("ReworkPlanGate", func(t *testing.T) {
+		gateSpec, err := resolveGateSpec("PRRework", Config{"gate": "rework-plan", "gate_attempts": 3}, reworkTestEnv(t))
+		if err != nil {
+			t.Fatalf("resolveGateSpec() error = %v; want nil", err)
+		}
+		if gateSpec.Gate == nil || gateSpec.Attempts != 3 {
+			t.Errorf("resolveGateSpec() = %+v; want the rework plan closure with 3 attempts", gateSpec)
+		}
+	})
+
+	t.Run("ReworkPlanGateWithoutReadCommitted", func(t *testing.T) {
+		env := reworkTestEnv(t)
+		env.Rework.ReadCommitted = nil
+		_, err := resolveGateSpec("PRRework", Config{"gate": "rework-plan"}, env)
+		if err == nil {
+			t.Fatalf("resolveGateSpec() error = nil; want non-nil for a rework-plan gate with no ReadCommitted seam")
+		}
+		assertErrContains(t, err, "Rework.ReadCommitted")
+	})
+
 	t.Run("GateAttemptsWithoutGate", func(t *testing.T) {
 		_, err := prReworkEntry("Row", Config{"gate_attempts": 3}, reworkTestEnv(t))
 		if err == nil {

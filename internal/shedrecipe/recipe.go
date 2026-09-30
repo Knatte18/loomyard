@@ -87,8 +87,9 @@ type Env struct {
 	// WebsterDeps is the already-resolved websterengine.RunDeps value passed through to
 	// shedadapters.NewWebsterProducer.
 	WebsterDeps websterengine.RunDeps
-	// CommitWebster is the injected closure that commits webster's durable run directory, invoked
-	// by the Webster entry's producer once the run reports Done.
+	// CommitWebster is the injected closure that commits webster's durable run directory and the
+	// plan directory whose cards the run rewrote, invoked by the Webster entry's producer once the
+	// run reports Done.
 	CommitWebster func() error
 	// Landing is a whole-struct passthrough handed to landingshed.NewPublish/NewFinalize
 	// unchanged, rather than flattened, because landingshed.Deps already carries fifteen fields

@@ -207,7 +207,8 @@ func newCommitStatusSeam(deps commitStatusDeps) func(producer, state string) err
 }
 
 // wireLightweight builds the minimum the verbUsesLightweightWiring set needs onto c: location, cwd,
-// the two status-file paths, and (for the validate verbs) the c.env path fields they read. It loads
+// the two status-file paths, and (for the validate verbs) the c.env path fields they read plus the
+// committed-file seam validate-plan --rework reads. It loads
 // no module config, constructs no engine, and can fail only if loomengine's own path accessors do,
 // which they cannot.
 //
@@ -257,6 +258,15 @@ func (c *loomCLI) wireLightweight(location *lyxcwd.Location, cwd string) {
 	c.env.DecisionRecordPath = loomengine.DiscussionDecisionRecord(location)
 	c.env.SupportLogPath = loomengine.DiscussionSupportLog(location)
 	c.env.DescriptionPath = summaryparser.Path(loomengine.LandingDir(location))
+	c.env.Rework.ReadCommitted = committedAnchoredReader(location)
+}
+
+// committedAnchoredReader returns the seam that reads an anchor-relative file as committed at HEAD for location, with found false when HEAD has no such file.
+// Building it opens nothing: the fabric is read on each call.
+func committedAnchoredReader(location *lyxcwd.Location) func(anchorRel string) ([]byte, bool, error) {
+	return func(anchorRel string) ([]byte, bool, error) {
+		return fabricengine.CommittedAnchoredFile(location, anchorRel)
+	}
 }
 
 // wire builds the whole engine stack onto c from location and cwd: every module config anchored at
@@ -382,8 +392,12 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// CommitWebster mirrors CommitPlan below: the pathspec is webster's whole durable
 		// directory, so Master's outcome.yaml and summary.md and the integration report land in
 		// git rather than as untracked dirt that refuses the task worktree's removal.
+		// The plan directory rides along because webster rewrites card files during the run
+		// (handle binding, handle canonicalization);
+		// PR-Rework's append-only check compares against the plan at HEAD, so a rewrite left
+		// uncommitted would read as the rework session editing a card it never touched.
 		CommitWebster: func() error {
-			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, []string{websterengine.DirRel()}, fmt.Sprintf("loom: webster run record for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
+			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, []string{websterengine.DirRel(), planparser.PlanDirRel()}, fmt.Sprintf("loom: webster run record for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
 			return err
 		},
 		// Shuttle is runner, already built above: *shuttleengine.Runner already satisfies
@@ -480,17 +494,22 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 			return planparser.SetApproved(planparser.PlanDir(location.AnchorPath()))
 		},
 		// ReworkSpec is evaluated per Call like PlanSpec above, so the stencil is read at call time.
+		// The first new card's number is read from the plan committed at HEAD here and told to the
+		// session as a value: the session runs in the task worktree, where the plan's _lyx junction
+		// is excluded from git and so cannot be read at HEAD.
 		ReworkSpec: func() (shuttleengine.Spec, error) {
-			return loomengine.ReworkSpec(location, websterGeom.StencilsDir, websterGeom.SpecsDir, loomCfg, registry)
+			nextCard, err := loomshed.NextReworkCardNumber(planparser.PlanDir(anchorPath), committedAnchoredReader(location))
+			if err != nil {
+				return shuttleengine.Spec{}, fmt.Errorf("loom: rework: number the first new card: %w", err)
+			}
+			return loomengine.ReworkSpec(location, websterGeom.StencilsDir, websterGeom.SpecsDir, loomCfg, registry, nextCard)
 		},
 		// Rework opens nothing at wire time: every closure reads or writes on demand, since wire() also runs for status/pause.
 		Rework: loomshed.PRReworkDeps{
-			PlanDir:      planparser.PlanDir(anchorPath),
-			ReworkDir:    loomengine.LoomReworkDir(location),
-			ReworkDirRel: loomengine.LoomReworkDirRel(),
-			ReadCommitted: func(anchorRel string) ([]byte, bool, error) {
-				return fabricengine.CommittedAnchoredFile(location, anchorRel)
-			},
+			PlanDir:       planparser.PlanDir(anchorPath),
+			ReworkDir:     loomengine.LoomReworkDir(location),
+			ReworkDirRel:  loomengine.LoomReworkDirRel(),
+			ReadCommitted: committedAnchoredReader(location),
 			ReadRejection: func() (loomshed.PendingRejection, bool, error) {
 				r, found, err := landingshed.ReadRejection(loomengine.LoomRejectionPath(location))
 				if err != nil || !found {

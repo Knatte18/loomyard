@@ -1,6 +1,6 @@
 // gates_test.go covers NewDiscussionGate and NewPlanGate's own outcome mapping, the ParsePlan error
-// split that is the subtlest rule in the task, and the fail-closed severity predicate both gates key
-// their pass/fail split on.
+// split that is the subtlest rule in the task, the fail-closed severity predicate both gates key
+// their pass/fail split on, and NewReworkPlanGate's scoping to the cards a rework round appended.
 //
 // It reuses three fixture helpers -- validDecisionRecord, writeDiscussionFixture, and
 // seedPlanFormatFixture -- that used to live alongside the two removed validate producers'
@@ -15,13 +15,16 @@ package loomshed
 
 import (
 	"errors"
+	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/planglyph"
+	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
 func TestNewDiscussionGate(t *testing.T) {
@@ -354,4 +357,99 @@ func TestHasBlockingFinding_AgainstTheGate(t *testing.T) {
 			}
 		})
 	}
+}
+
+// seedReworkGlyphPlan writes a two-card language: go plan under anchorPath whose first card creates sub#Foo, already built in the worktree,
+// and whose appended second card creates newpkg#Bar and, when secondUses is non-empty, also uses secondUses.
+// It returns the plan committed at HEAD before the rework round, keyed by anchor-relative path: the overview and the first card alone.
+func seedReworkGlyphPlan(t *testing.T, anchorPath, secondUses string) map[string][]byte {
+	t.Helper()
+	planDir := planparser.PlanDir(anchorPath)
+	if err := os.MkdirAll(planDir, 0o755); err != nil {
+		t.Fatalf("mkdir plan dir: %v", err)
+	}
+	overview := func(index string) string {
+		return "---\nformat: 5\napproved: true\nlanguage: go\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n" + index
+	}
+	firstIndex := "1 — first-card — placeholder card 1\n"
+	firstCard := "# Card 1 — first-card\n\n**Create:**\n- `sub#Foo`\n\n**Intent:** placeholder card.\n"
+	usesBlock := ""
+	if secondUses != "" {
+		usesBlock = fmt.Sprintf("\n**Uses:**\n- `%s`\n", secondUses)
+	}
+	secondCard := fmt.Sprintf("# Card 2 — second-card\n\n**Create:**\n- `newpkg#Bar`\n%s\n**Intent:** appended card.\n", usesBlock)
+
+	files := map[string]string{
+		"00-overview.md":    overview(firstIndex + "2 — second-card — placeholder card 2\n"),
+		"01-first-card.md":  firstCard,
+		"02-second-card.md": secondCard,
+	}
+	for name, body := range files {
+		if err := os.WriteFile(filepath.Join(planDir, name), []byte(body), 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+	return map[string][]byte{
+		path.Join(planparser.PlanDirRel(), "00-overview.md"):   []byte(overview(firstIndex)),
+		path.Join(planparser.PlanDirRel(), "01-first-card.md"): []byte(firstCard),
+	}
+}
+
+// committedReader returns a ReadCommitted seam over committed.
+func committedReader(committed map[string][]byte) func(string) ([]byte, bool, error) {
+	return func(rel string) ([]byte, bool, error) {
+		data, ok := committed[rel]
+		return data, ok, nil
+	}
+}
+
+func TestNewReworkPlanGate(t *testing.T) {
+	builtRepo := map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"}
+
+	t.Run("BuiltCardIsNotRechecked", func(t *testing.T) {
+		anchorPath := t.TempDir()
+		worktreeRoot := writeGlyphRepoFixture(t, builtRepo)
+		committed := seedReworkGlyphPlan(t, anchorPath, "")
+
+		// The whole-plan gate re-resolves card 1 against the tree it already changed and fails on it.
+		if result, err := NewPlanGate(anchorPath, worktreeRoot)(); err != nil || result.Passed || !strings.Contains(result.Findings, "create-already-exists") {
+			t.Fatalf("NewPlanGate() = %+v, %v; want a create-already-exists failure proving the fixture's first card is built", result, err)
+		}
+
+		result, err := NewReworkPlanGate(anchorPath, worktreeRoot, committedReader(committed))()
+		if err != nil {
+			t.Fatalf("gate() error = %v; want nil", err)
+		}
+		if !result.Passed {
+			t.Errorf("gate() = %+v; want a pass, since only the appended card is checked", result)
+		}
+	})
+
+	t.Run("AppendedCardIsChecked", func(t *testing.T) {
+		anchorPath := t.TempDir()
+		worktreeRoot := writeGlyphRepoFixture(t, builtRepo)
+		committed := seedReworkGlyphPlan(t, anchorPath, "sub#Missing")
+
+		result, err := NewReworkPlanGate(anchorPath, worktreeRoot, committedReader(committed))()
+		if err != nil {
+			t.Fatalf("gate() error = %v; want nil", err)
+		}
+		if result.Passed || !strings.Contains(result.Findings, "glyph-not-found") {
+			t.Errorf("gate() = %+v; want a glyph-not-found failure on the appended card", result)
+		}
+		if strings.Contains(result.Findings, "create-already-exists") {
+			t.Errorf("gate() Findings = %q; want the built card left unchecked", result.Findings)
+		}
+	})
+
+	t.Run("NoCommittedPlanReturnsAnError", func(t *testing.T) {
+		anchorPath := t.TempDir()
+		worktreeRoot := writeGlyphRepoFixture(t, builtRepo)
+		seedReworkGlyphPlan(t, anchorPath, "")
+
+		result, err := NewReworkPlanGate(anchorPath, worktreeRoot, committedReader(nil))()
+		if err == nil {
+			t.Fatalf("gate() = %+v, nil; want an error when HEAD carries no plan", result)
+		}
+	})
 }

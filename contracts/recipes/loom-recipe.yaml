@@ -336,7 +336,9 @@ producers:
     config:
       # gate holds this row's handoff until the artifact is mechanically valid, re-prompting the
       # live session up to gate_attempts times, so a failure never reaches the row below.
-      gate: plan
+      # rework-plan checks only the cards absent from the plan committed at HEAD: every earlier
+      # card has already landed, and re-resolving one against the tree it changed always fails.
+      gate: rework-plan
       gate_attempts: 3
 
   - name: Finalize

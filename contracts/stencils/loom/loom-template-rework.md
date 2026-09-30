@@ -43,12 +43,12 @@ Also read `CONSTRAINTS.md` at the repo root if present, and follow existing patt
 
 Write one or more new cards into `{{.plan_dir}}`, and their Card Index lines into `{{.overview_path}}`.
 
-- Number the new cards after the highest card committed at HEAD, with no gap.
-  Read that number from git, for example with `git show HEAD:<overview path relative to the repo root>`, not from the working tree.
-  A card file in `{{.plan_dir}}` that is absent at HEAD is a leftover of an interrupted attempt of this same round, and you own it: reuse or overwrite it.
+- Number the new cards from {{.next_card_number}} upward, with no gap.
+  {{.next_card_number}} is one past the highest card committed before this round began, so take it as given rather than deriving it from the working tree.
+  A card numbered {{.next_card_number}} or higher already in `{{.plan_dir}}` is a leftover of an interrupted attempt of this same round, and you own it: reuse or overwrite it.
 - Change nothing else.
   Leave every existing card file untouched, every frontmatter key untouched (the `approved:` flag included) and every plan-level section untouched.
-  Go compares the result against the plan committed at HEAD after your session, and any other change rejects the round.
+  Go compares the result against the plan as it stood before this round after your session, and any other change rejects the round.
 - Cover every finding with at least one new card.
   Several findings may share one card.
   A round with no new card is rejected, so never answer a finding with a coverage entry alone.
@@ -58,9 +58,11 @@ Write one or more new cards into `{{.plan_dir}}`, and their Card Index lines int
 Run the mechanical gate against what you wrote:
 
 ```bash
-lyx loom validate-plan
+lyx loom validate-plan --rework
 ```
 
+The `--rework` flag checks only your new cards: every earlier card has already been built, so checking it against the current code would report its own completed work as a defect.
+Use this form, not the plain `lyx loom validate-plan` the plan stencil names.
 It exits 0 on a clean gate and 1 otherwise, with its findings under the failure envelope's `findings` key.
 Fix whatever it reports, then re-run it until it exits 0.
 

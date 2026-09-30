@@ -336,7 +336,8 @@ reports the current phase and, with --watch, tails it, printing a line
 only when the activity changes; "pause" requests a pause at the next
 producer boundary. "validate-discussion" and "validate-plan" are the
 standalone form of the mechanical gates Discussion-Write's and Plan-Write's
-own rows carry, callable by the writer agent before handoff, and
+own rows carry, callable by the writer agent before handoff ("validate-plan
+--rework" is PR-Rework's), and
 "validate-description" does the same for the Describe row's change description.
 "approve" records the operator's approval of the open pull request for a run
 awaiting or blocked at PR-Gate, removing any pending rejection; "lyx loom start" then lands it.

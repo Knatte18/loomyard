@@ -30,7 +30,7 @@ func newReworkStencilsDir(t *testing.T) string {
 	return dir
 }
 
-// TestReworkSpec verifies the field mapping, that every marker renders its told path, and that the plan role's model-spec and timeout are reused.
+// TestReworkSpec verifies the field mapping, that every marker renders its told path or value, and that the plan role's model-spec and timeout are reused.
 func TestReworkSpec(t *testing.T) {
 	worktreeRoot := filepath.Join("home", "user", "repo")
 	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}
@@ -43,7 +43,7 @@ func TestReworkSpec(t *testing.T) {
 
 	stencilsDir := newReworkStencilsDir(t)
 	specsDir := newTestSpecsDir(t)
-	spec, err := ReworkSpec(layout, stencilsDir, specsDir, cfg, reg)
+	spec, err := ReworkSpec(layout, stencilsDir, specsDir, cfg, reg, 4)
 	if err != nil {
 		t.Fatalf("ReworkSpec(...) = _, %v; want nil error", err)
 	}
@@ -82,6 +82,12 @@ func TestReworkSpec(t *testing.T) {
 			t.Errorf("ReworkSpec(...).Prompt does not contain %q", want)
 		}
 	}
+	if !strings.Contains(spec.Prompt, "Number the new cards from 4 upward") {
+		t.Error("ReworkSpec(...).Prompt does not number the new cards from the told card number 4")
+	}
+	if !strings.Contains(spec.Prompt, "lyx loom validate-plan --rework") {
+		t.Error("ReworkSpec(...).Prompt does not name the rework-scoped self-check")
+	}
 	if strings.Contains(spec.Prompt, "{{") {
 		t.Error("ReworkSpec(...).Prompt contains a leftover \"{{\" marker; want every marker filled")
 	}
@@ -98,7 +104,7 @@ func TestReworkSpec_MissingStencil(t *testing.T) {
 		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 	}
 
-	if _, err := ReworkSpec(layout, newTestStencilsDir(t), newTestSpecsDir(t), cfg, reg); err == nil {
+	if _, err := ReworkSpec(layout, newTestStencilsDir(t), newTestSpecsDir(t), cfg, reg, 4); err == nil {
 		t.Error("ReworkSpec(...) with no rework stencil = nil error; want an error")
 	}
 }
