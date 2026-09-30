@@ -26,11 +26,10 @@ func newGlyphsCmd(root func() string) *cobra.Command {
 the flat index a plan's Create/Rename/Delete targets copy their glyph spellings
 out of, verbatim.
 
-With --text, glyphs emits quarry's own text view instead, one line per symbol
-("<file>:<start>-<end> <kind> <id>", followed by "[incomplete] <path>" lines when present).
-Use it before any line filter such as grep: a line carries one whole symbol, so the filter
-drops symbols rather than single JSON fields. The glyph to copy from a line is its last field,
-the id.
+With --text, glyphs emits quarry's own text view instead, one line per symbol ("<file>:<start>-<end> <kind> <id>", followed by "[incomplete] <path>" lines when present).
+Use it before any line filter such as grep: a line carries one whole symbol,
+so the filter drops symbols rather than single JSON fields.
+The glyph to copy from a line is its last field, the id.
 
 Examples:
   lyx quarry glyphs internal/planglyph
