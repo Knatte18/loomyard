@@ -1169,6 +1169,37 @@ func TestRebaselineCmd_FabricSyncFailureWayForward(t *testing.T) {
 	}
 }
 
+// TestFabricSyncWayForward_NextSyncCommitsSavedState takes the fabric-sync refusals' way forward against a real hub.
+// Each refusal leaves its state saved under `_lyx` with nothing committed, and the next bracket verb's own sync is this same fabricSync call over the scoped `_lyx` pathspec,
+// so a sync after the failed one commits the state that the failure left behind.
+// The per-verb tests below reach each refusal through a failing opener, which needs no hub.
+func TestFabricSyncWayForward_NextSyncCommitsSavedState(t *testing.T) {
+	t.Setenv("WEFT_SKIP_GIT", "")
+	h := hubforge.NewHub(t, ".")
+	geom := hubgeom.WebsterGeometry(h.Location)
+	st := &websterengine.State{PlanFingerprint: "fp", Batches: map[int]*websterengine.BatchState{1: {Slug: "only", Kind: "fork"}}}
+	if err := websterengine.SaveState(geom.WebsterDir, geom.ScratchDir, st); err != nil {
+		t.Fatalf("SaveState() error = %v", err)
+	}
+
+	if _, err := fabricSync(failingFabricOpen, h.Location.AnchorRel, "begin-batch 01-only"); err == nil {
+		t.Fatal("fabricSync with a failing opener = nil error; want the refusal's cause")
+	}
+
+	open := func() (*fabricengine.Fabric, error) { return fabricengine.Open(h.Location) }
+	committed, err := fabricSync(open, h.Location.AnchorRel, "record-batch 01-only done")
+	if err != nil || !committed {
+		t.Fatalf("fabricSync after the failure = %v, %v; want the saved state committed", committed, err)
+	}
+	names, err := gitexec.Run([]string{"log", "-1", "--name-only", "--format="}, h.PrimeWeft())
+	if err != nil {
+		t.Fatalf("git log in the weft: %v", err)
+	}
+	if !strings.Contains(names, "webster/state.json") {
+		t.Errorf("weft HEAD commits %q; want it to carry the saved webster/state.json", names)
+	}
+}
+
 // failingFabricOpen is an openFabric that cannot reach the fabric repo, so fabricSync errors exactly
 // where a failed weft commit would.
 func failingFabricOpen() (*fabricengine.Fabric, error) {
@@ -1187,8 +1218,9 @@ func wantWayForward(t *testing.T, got, substr string) {
 	}
 }
 
-// TestBeginBatchCmd_FabricSyncFailureWayForward reaches begin-batch's fabric-sync refusal, checks the
-// state was saved locally anyway, and takes the way forward: the next bracket verb's sync succeeds.
+// TestBeginBatchCmd_FabricSyncFailureWayForward reaches begin-batch's fabric-sync refusal and checks the state was saved locally anyway.
+// It then re-runs the verb with no fabric opener, which skips the sync, to show the verb proceeds past the saved state;
+// TestFabricSyncWayForward_NextSyncCommitsSavedState is the proof that a working sync commits it.
 func TestBeginBatchCmd_FabricSyncFailureWayForward(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "")
 	fx := newVerbsFixture(t)
@@ -1241,8 +1273,9 @@ func TestRecordBatchCmd_FabricSyncFailureWayForward(t *testing.T) {
 	}
 }
 
-// TestRecoverBatchCmd_FabricSyncAndReedBootWayForward reaches recover-batch's reed-boot refusal and
-// its spawn-time fabric-sync refusal, taking the way forward each time.
+// TestRecoverBatchCmd_FabricSyncAndReedBootWayForward reaches recover-batch's reed-boot refusal and its spawn-time fabric-sync refusal, checking each names its way forward.
+// The final re-run has no fabric opener, which skips the sync, so it shows the verb proceeds;
+// TestFabricSyncWayForward_NextSyncCommitsSavedState is the proof that a working sync commits the saved state.
 func TestRecoverBatchCmd_FabricSyncAndReedBootWayForward(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "")
 	fx := newVerbsFixture(t)
