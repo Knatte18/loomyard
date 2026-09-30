@@ -200,7 +200,8 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 			// there is nothing to record -- the same reasoning the cancellation branch below
 			// already applies, and the reason this is a skip rather than a placeholder value:
 			// history[].outcome is a persisted enum whose whole vocabulary is done, stuck and
-			// awaiting, and there is no fourth spelling for "the call did not get that far".
+			// awaiting, plus the history-only goto that no producer returns, and there is no
+			// further spelling for "the call did not get that far".
 			//
 			// Writing the empty string there was not free. It is out of vocabulary on disk, so
 			// internal/loomengine's own seed-coherence check rejects it -- an ordinary hard
@@ -279,7 +280,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		// The count argument is st.History, the slice read at step 1, and never
 		// nextHistory: a post-append read shifts the boundary by one and would look
 		// like an off-by-one bug rather than the semantic change it would actually be.
-		case !output.BudgetExempt && episodeStuckCount(st.History, def.Name) >= effectiveMaxBounces(def, s.MaxBounces):
+		case !output.BudgetExempt && episodeStuckCount(st.History, def, s.Producers) >= effectiveMaxBounces(def, s.MaxBounces):
 			// The boundary is pinned exactly, restated per-producer: a budget of three
 			// performs three bounce-backs and blocks on the fourth Stuck.
 			reason := ReasonBounceBudgetExhausted
@@ -436,10 +437,21 @@ func nowRFC3339() string {
 // rather than special-cased: the engine records the verdict a producer actually returned, and
 // state: "failed" halts the run, so every continuation past it is a fresh human-initiated act.
 // A Stuck entry whose BudgetExempt is true is skipped and never counted.
-func episodeStuckCount(history []HistoryEntry, name string) int {
+// A Goto entry also ends the episode when its target (the entry's Producer) shares def.Segment,
+// or is def itself when def.Segment is empty, so a goto into a segment gives every row of that
+// segment a fresh budget.
+// producers resolves a target's segment; a target no longer in the list ends no episode.
+func episodeStuckCount(history []HistoryEntry, def ProducerDef, producers []ProducerDef) int {
+	name := def.Name
 	count := 0
 	for i := len(history) - 1; i >= 0; i-- {
 		entry := history[i]
+		if entry.Outcome == Goto {
+			if gotoEndsEpisode(entry.Producer, def, producers) {
+				return count
+			}
+			continue
+		}
 		if entry.Producer != name {
 			continue
 		}
@@ -451,6 +463,19 @@ func episodeStuckCount(history []HistoryEntry, name string) int {
 		}
 	}
 	return count
+}
+
+// gotoEndsEpisode reports whether a goto naming target ends def's bounce-budget episode.
+func gotoEndsEpisode(target string, def ProducerDef, producers []ProducerDef) bool {
+	if def.Segment == "" {
+		return target == def.Name
+	}
+	for _, p := range producers {
+		if p.Name == target {
+			return p.Segment == def.Segment
+		}
+	}
+	return false
 }
 
 // effectiveMaxBounces resolves def's own bounce budget, inheriting at two levels: def.MaxBounces

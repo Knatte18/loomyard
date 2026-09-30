@@ -122,7 +122,7 @@ func TestHistoryEntry_MissingBudgetExemptDecodesAndCounts(t *testing.T) {
 	if e.BudgetExempt {
 		t.Errorf("BudgetExempt = true; want false when the field is absent")
 	}
-	if got := episodeStuckCount([]HistoryEntry{e}, "Wait"); got != 1 {
+	if got := episodeStuckCount([]HistoryEntry{e}, ProducerDef{Name: "Wait"}, nil); got != 1 {
 		t.Errorf("episodeStuckCount = %d; want 1", got)
 	}
 	b, err := json.Marshal(e)
