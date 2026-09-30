@@ -306,14 +306,22 @@ func (p *innerRunProducer) callDone(ctx context.Context) (shedengine.Outcome, sh
 	now := p.deps.Now()
 
 	raw, err := os.ReadFile(markerPath)
+	if err != nil && !os.IsNotExist(err) {
+		return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: read done-seen marker: %w", p.name, err)
+	}
 	var firstSeen time.Time
-	switch {
-	case err == nil:
-		firstSeen, err = time.Parse(time.RFC3339, strings.TrimSpace(string(raw)))
-		if err != nil {
-			return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: parse done-seen marker: %w", p.name, err)
+	fresh := err != nil
+	if !fresh {
+		var parseErr error
+		firstSeen, parseErr = time.Parse(time.RFC3339, strings.TrimSpace(string(raw)))
+		if parseErr != nil {
+			// A marker that reads but does not parse (a write torn by a killed process) restarts the
+			// grace rather than failing every Call: no resume could clear it, and it only bounds a wait.
+			logger.Warn("battenshed: unparseable done-seen marker; restarting the driver-exit grace", "producer", p.name, "slug", p.slug, "path", markerPath, "error", parseErr)
+			fresh = true
 		}
-	case os.IsNotExist(err):
+	}
+	if fresh {
 		firstSeen = now
 		if err := os.MkdirAll(p.scratchDir, 0o755); err != nil {
 			return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: create scratch directory for done-seen marker: %w", p.name, err)
@@ -321,8 +329,6 @@ func (p *innerRunProducer) callDone(ctx context.Context) (shedengine.Outcome, sh
 		if err := os.WriteFile(markerPath, []byte(now.Format(time.RFC3339)+"\n"), 0o644); err != nil {
 			return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: write done-seen marker: %w", p.name, err)
 		}
-	default:
-		return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: read done-seen marker: %w", p.name, err)
 	}
 
 	finish := func() (shedengine.Outcome, shedengine.OutputPointer, error) {

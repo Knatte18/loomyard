@@ -218,6 +218,35 @@ func TestInnerRun_DoneFinishesPastGraceWithLiveDriverAndWarns(t *testing.T) {
 	}
 }
 
+func TestInnerRun_UnparseableDoneSeenMarkerRestartsTheGrace(t *testing.T) {
+	scratchDir := t.TempDir()
+	clock := &fakeClock{}
+	_, _, deps := newInnerRunDeps(nil, nil, doneStatus(), clock)
+	deps.DriverAlive = func(ctx context.Context) (bool, error) { return true, nil }
+	markerPath := doneSeenFile(scratchDir, "innerrun")
+	if err := os.WriteFile(markerPath, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
+
+	outcome, _, err := producer.Call(context.Background())
+	if err != nil || outcome != shedengine.Stuck {
+		t.Fatalf("Call() over an empty marker = %v %v; want an exempt Stuck, not a hard error", outcome, err)
+	}
+	raw, err := os.ReadFile(markerPath)
+	if err != nil {
+		t.Fatalf("read done-seen marker: %v", err)
+	}
+	if got, want := strings.TrimSpace(string(raw)), clock.Now().Format(time.RFC3339); got != want {
+		t.Errorf("done-seen marker = %q; want it rewritten with the current time %q", got, want)
+	}
+
+	clock.advance(testGrace)
+	if outcome, _, err := producer.Call(context.Background()); err != nil || outcome != shedengine.Done {
+		t.Errorf("Call() a full grace later = %v %v; want Done", outcome, err)
+	}
+}
+
 func TestInnerRun_StaleDoneSeenMarkerIsClearedWhileRunning(t *testing.T) {
 	scratchDir := t.TempDir()
 	clock := &fakeClock{}
