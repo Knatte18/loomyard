@@ -15,7 +15,7 @@ import (
 
 // Template defaults, which the accessors floor a non-positive value back to.
 const (
-	defaultThresholdTokens = 150000
+	defaultThresholdTokens = 400000
 	defaultIdleGraceS      = 30
 	defaultHandoffTimeoutS = 600
 	defaultPollIntervalMS  = 2000

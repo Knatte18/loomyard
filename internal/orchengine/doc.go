@@ -52,6 +52,7 @@
 //   - Session.SessionIdle reports an empty input box with no turn running.
 //
 // A context reading that cannot be taken is unknown and never triggers a cycle by itself.
+// The template threshold is 400000 tokens, sized for a session with a context window of about one million tokens.
 //
 // # The four-phase cycle
 //

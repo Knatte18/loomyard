@@ -35,8 +35,8 @@ func TestLoadConfig_TemplateResolvesWithNoFile(t *testing.T) {
 	if cfg.Model != "" || cfg.Effort != "" {
 		t.Errorf("Model/Effort = %q/%q, want empty", cfg.Model, cfg.Effort)
 	}
-	if got := cfg.Threshold(); got != 150000 {
-		t.Errorf("Threshold() = %d, want 150000", got)
+	if got := cfg.Threshold(); got != 400000 {
+		t.Errorf("Threshold() = %d, want 400000", got)
 	}
 	if got := cfg.IdleGrace(); got != 30*time.Second {
 		t.Errorf("IdleGrace() = %v, want 30s", got)
@@ -86,8 +86,8 @@ func TestLoadConfig_InvalidFileErrors(t *testing.T) {
 func TestConfig_AccessorsFloorNonPositive(t *testing.T) {
 	for _, v := range []int{0, -1} {
 		cfg := orchengine.Config{ThresholdTokens: v, IdleGraceS: v, HandoffTimeoutS: v, PollIntervalMS: v}
-		if got := cfg.Threshold(); got != 150000 {
-			t.Errorf("Threshold() with %d = %d, want 150000", v, got)
+		if got := cfg.Threshold(); got != 400000 {
+			t.Errorf("Threshold() with %d = %d, want 400000", v, got)
 		}
 		if got := cfg.IdleGrace(); got != 30*time.Second {
 			t.Errorf("IdleGrace() with %d = %v, want 30s", v, got)
