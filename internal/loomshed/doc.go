@@ -4,8 +4,7 @@
 // it. It takes told absolute paths and has no direct production import of internal/lyxcwd -- see
 // the Told-Geometry Invariant in CONSTRAINTS.md.
 //
-// The Plan-Write rotation archives the prior plan and appends a prior-plan block naming that archive
-// to the respawned session's prompt.
+// The Plan-Write rotation archives the prior plan and appends a prior-plan block naming that archive to the respawned session's prompt.
 //
 // It declares its own unexported cancellation helpers (entryErr/cancelErr in ctx.go) rather than
 // reusing internal/shedadapters' identically-shaped, unexported ones: shedadapters' versions are
