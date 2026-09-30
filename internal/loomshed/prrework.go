@@ -30,7 +30,7 @@ const (
 )
 
 // PendingRejection is this package's own view of the operator's pending rejection record.
-// The caller fills it from landingshed.ReadRejection, the way battenshed.ChildApproval is filled,
+// The caller fills it from landingshed.ReadRejection, the way battenshed.ChildDecision is filled,
 // so internal/landingshed stays off this package's import allowlist.
 type PendingRejection struct {
 	PRNumber   int
