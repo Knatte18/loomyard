@@ -47,7 +47,7 @@ Examples:
 				return nil
 			}
 
-			data := []byte(nil)
+			var data []byte
 			if text {
 				data = []byte(quarry.RenderGlyphsText(answer))
 			} else {
