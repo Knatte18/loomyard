@@ -31,7 +31,8 @@ const websterInFlightWarning = "Webster is mid-run in this worktree: `lyx webste
 	"but integration bisect over earlier card SHAs will run on pre-merge trees"
 
 // websterInFlightWarnings returns the merge-in warning list for the worktree at l.
-// It is nil when no run is in flight; a RunInFlight error degrades to nil plus a logged warning, never a failure.
+// It is nil when no run is in flight;
+// a RunInFlight error degrades to nil plus a logged warning, never a failure.
 func websterInFlightWarnings(l *lyxcwd.Location) []string {
 	inFlight, err := websterengine.RunInFlight(l.AnchorPath())
 	if err != nil {
@@ -95,8 +96,7 @@ func setMergeExit(cmd *cobra.Command, out io.Writer, res fabricengine.MergeResul
 // registered every command, so a value parameter here would capture that local's nil zero value and
 // every merge verb would nil-panic. Each RunE body calls fabric() after PersistentPreRunE has run.
 //
-// loc is a getter for the same reason: it returns the *lyxcwd.Location PersistentPreRunE resolved,
-// which merge-in reads to ask whether a Webster run is in flight in this worktree.
+// loc is a getter for the same reason: it returns the *lyxcwd.Location PersistentPreRunE resolved, which merge-in reads to ask whether a Webster run is in flight in this worktree.
 func addMergeVerbs(cmd *cobra.Command, fabric func() *fabricengine.Fabric, loc func() *lyxcwd.Location) {
 	mergeInCmd := &cobra.Command{
 		Use:   "merge-in <branch>",
