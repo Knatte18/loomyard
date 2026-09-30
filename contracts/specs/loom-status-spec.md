@@ -40,7 +40,7 @@ A fresh seed carries `current_producer: "Preflight"`, `state: "running"`, empty 
 {
   "current_producer": "Preflight",             // Shed-owned: which producer this run is at
   "state": "running",                          // Shed-owned: running | paused | done | blocked | awaiting | failed
-  "error": "",                                 // Shed-owned: human-readable detail for a failed/blocked/awaiting halt (awaiting is the planned PR-review hand-off at Publish); a blocked halt carries the producer's own stuck reason (the generic "stuck with no OnStuck target" when it supplied none) or the fixed "bounce budget exhausted"
+  "error": "",                                 // Shed-owned: human-readable detail for a failed/blocked/awaiting halt (awaiting is the planned PR-review hand-off at PR-Gate); a blocked halt carries the producer's own stuck reason (the generic "stuck with no OnStuck target" when it supplied none) or the fixed "bounce budget exhausted"
   "pause_requested": false,                    // shared write-to-clear: set true by an outside actor, cleared by Shed
   "activity": {"now": "...", "last": "...", "wait": "..."}, // Shed-owned, mechanically composed
   "history": [                                 // Shed-owned: one entry per producer call
