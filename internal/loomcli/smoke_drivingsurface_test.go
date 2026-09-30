@@ -24,9 +24,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// stepSmokeTimeout bounds one step invocation; a step spawns no driver, so it returns once its
-// producer's bounded launch failure has been classified.
-const stepSmokeTimeout = 60 * time.Second
+// verbSmokeTimeout bounds one step or `start --no-attach` invocation.
+// The providerless shuttle config makes a step's producer launch and a start's llm driver launch fail within seconds,
+// and a failed reed Up refuses before either.
+const verbSmokeTimeout = 60 * time.Second
 
 func TestSmokeStep_AddsNoStatusStrandOnEitherDriver(t *testing.T) {
 	tmuxBinaryPath(t)
@@ -47,7 +48,7 @@ func TestSmokeStep_AddsNoStatusStrandOnEitherDriver(t *testing.T) {
 				registerBootstrapTeardown(t, loc, worktree)
 				seed(t, loc)
 
-				out, _, err := runLoomCLINoFatal(exe, worktree, stepSmokeTimeout, args...)
+				out, _, err := runLoomCLINoFatal(exe, worktree, verbSmokeTimeout, args...)
 				if err != nil {
 					t.Fatalf("lyx %s: %v; output: %s", verb, err, out)
 				}
@@ -80,7 +81,7 @@ func TestSmokeStep_LeavesAPreexistingStatusStrandUntouched(t *testing.T) {
 		t.Fatalf("add status strand: %v", err)
 	}
 
-	out, _, err := runLoomCLINoFatal(exe, worktree, stepSmokeTimeout, "loom", "step")
+	out, _, err := runLoomCLINoFatal(exe, worktree, verbSmokeTimeout, "loom", "step")
 	if err != nil {
 		t.Fatalf("lyx loom step: %v; output: %s", err, out)
 	}
@@ -140,7 +141,7 @@ func TestSmokeStep_FailedReedUpRefusesWithBootstrapKind(t *testing.T) {
 	exe := buildLyxBinary(t)
 	_, worktree := newBadReedUpFixture(t, seedGoDriverRun)
 
-	out, exit, err := runLoomCLINoFatal(exe, worktree, stepSmokeTimeout, "loom", "step")
+	out, exit, err := runLoomCLINoFatal(exe, worktree, verbSmokeTimeout, "loom", "step")
 	if err != nil {
 		t.Fatalf("lyx loom step: %v; output: %s", err, out)
 	}
@@ -182,7 +183,7 @@ func TestSmokeStart_LLMRunRemovesEveryStatusStrand(t *testing.T) {
 		t.Fatalf("status strands before start = %d; want 2", count)
 	}
 
-	out, _, err := runLoomCLINoFatal(exe, worktree, stepSmokeTimeout, "loom", "start", "--no-attach")
+	out, _, err := runLoomCLINoFatal(exe, worktree, verbSmokeTimeout, "loom", "start", "--no-attach")
 	if err != nil {
 		t.Fatalf("lyx loom start --no-attach: %v; output: %s", err, out)
 	}
@@ -205,7 +206,7 @@ func TestSmokeStart_FailedReedUpRefusesOnEitherDriver(t *testing.T) {
 		t.Run(driver, func(t *testing.T) {
 			loc, worktree := newBadReedUpFixture(t, seed)
 
-			out, exit, err := runLoomCLINoFatal(exe, worktree, stepSmokeTimeout, "loom", "start", "--no-attach")
+			out, exit, err := runLoomCLINoFatal(exe, worktree, verbSmokeTimeout, "loom", "start", "--no-attach")
 			if err != nil {
 				t.Fatalf("lyx loom start --no-attach: %v; output: %s", err, out)
 			}
