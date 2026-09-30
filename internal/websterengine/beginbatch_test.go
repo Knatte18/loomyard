@@ -573,6 +573,25 @@ func TestBeginBatch_ReBeginKeepsStartSHA(t *testing.T) {
 	}
 }
 
+// TestBeginBatch_ReBeginKeepsAuditWarnings proves a re-begin carries the prior record's recorded audit warnings onto the fresh record,
+// since their identities stay dispositioned and no later call records them again.
+func TestBeginBatch_ReBeginKeepsAuditWarnings(t *testing.T) {
+	fx := newBeginFixture(t)
+	fx.Deps.State.AssertedModel = "master-model" // skip the injector
+	w := websterengine.AuditWarning{Identity: "s/parent:named-spawn:1", Class: "named-spawn", Detail: "spawned x"}
+	fx.Deps.State.Batches = map[int]*websterengine.BatchState{
+		1: {Slug: "json-flag", Kind: "fork", AuditWarnings: []websterengine.AuditWarning{w}},
+	}
+
+	if _, err := websterengine.BeginBatch(fx.Deps, 1); err != nil {
+		t.Fatalf("BeginBatch(1) error = %v; want nil", err)
+	}
+	got := fx.Deps.State.Batches[1].AuditWarnings
+	if len(got) != 1 || got[0] != w {
+		t.Errorf("Batches[1].AuditWarnings = %v; want [%v]", got, w)
+	}
+}
+
 // TestBeginBatch_ReBeginEmptyStartSHARecordsHead proves a prior record without a StartSHA gets the current head, as a first begin does.
 func TestBeginBatch_ReBeginEmptyStartSHARecordsHead(t *testing.T) {
 	fx := newBeginFixture(t)

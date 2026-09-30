@@ -398,15 +398,22 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	// A re-begin keeps the StartSHA the batch was first recorded with: the captured head may already sit past commits an earlier fork landed,
 	// and the recorded start must name the base of the whole bracket (recover-batch applies the same inheritance to a recovery record).
 	startSHA := head
-	if prior := deps.State.Batches[number]; prior != nil && prior.StartSHA != "" {
+	prior := deps.State.Batches[number]
+	if prior != nil && prior.StartSHA != "" {
 		startSHA = prior.StartSHA
+	}
+	// Recorded warnings carry over too: their identities stay dispositioned, so no later call would record them again.
+	var priorWarnings []AuditWarning
+	if prior != nil {
+		priorWarnings = prior.AuditWarnings
 	}
 
 	deps.State.Batches[number] = &BatchState{
-		Slug:      slug,
-		StartSHA:  startSHA,
-		Kind:      "fork",
-		SpawnedAt: time.Now().UTC().Format(time.RFC3339),
+		Slug:          slug,
+		StartSHA:      startSHA,
+		Kind:          "fork",
+		AuditWarnings: priorWarnings,
+		SpawnedAt:     time.Now().UTC().Format(time.RFC3339),
 		// Stamp the opening Master session so the run-exit audit cross-check
 		// can scope its begun-batch count to the session whose forks the
 		// whole-session audit actually covers.

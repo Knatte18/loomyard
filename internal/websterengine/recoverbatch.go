@@ -210,9 +210,17 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 		start = prior.StartSHA
 	}
 
+	// Recorded audit warnings carry over as well: their identities stay dispositioned in
+	// State.AuditDispositions (the once-per-identity rule), so no later call would record them again.
+	var priorWarnings []AuditWarning
+	if prior != nil {
+		priorWarnings = prior.AuditWarnings
+	}
+
 	return &BatchState{
 		Slug:          slug,
 		StartSHA:      start,
+		AuditWarnings: priorWarnings,
 		Kind:          "recovery",
 		SpawnedAt:     clk.Now().UTC().Format(time.RFC3339),
 		StrandGUID:    run.StrandGUID(),
