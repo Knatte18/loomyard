@@ -50,6 +50,17 @@ func (p posixShell) PrependPathEntry(dir string) string {
 	return "export PATH=" + p.Quote(dir) + `${PATH:+:$PATH}`
 }
 
+// Source returns the POSIX `. <quoted path>` statement, which runs the file's statements in the
+// current shell's own scope.
+func (p posixShell) Source(path string) string {
+	return ". " + p.Quote(path)
+}
+
+// ScriptExt returns ".sh".
+func (posixShell) ScriptExt() string {
+	return ".sh"
+}
+
 // Chain joins parts with "; ", dropping empty parts. See chainStatements.
 func (p posixShell) Chain(parts ...string) string {
 	return chainStatements(parts...)
