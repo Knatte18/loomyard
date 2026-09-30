@@ -43,8 +43,10 @@ func newVerifyGate(deps Deps) verifyGate {
 //
 // It returns a non-empty Stuck reason when the verify fails,
 // a non-nil error for an infrastructure fault or a cancellation, and ("", nil) when the producer may proceed.
-// The pending marker is written before the command runs and removed only on a pass,
-// so a failed or interrupted verify keeps the next run's gate armed.
+// When the tree changed, the pending marker is written before anything else can fail,
+// and a failure to write it halts the producer with an error.
+// The marker is removed on a pass or when no verify command is configured,
+// so a failed or interrupted verify, or a failed command read, keeps the next run's gate armed.
 func (g verifyGate) check(ctx context.Context, producer, parentBranch string, treeChanged bool) (string, error) {
 	if g.command == nil {
 		return "", nil
@@ -61,6 +63,15 @@ func (g verifyGate) check(ctx context.Context, producer, parentBranch string, tr
 		return "", nil
 	}
 
+	if treeChanged {
+		if err := os.MkdirAll(filepath.Dir(g.pendingPath), 0o755); err != nil {
+			return "", fmt.Errorf("landingshed: %s: create verify pending marker directory: %w", producer, err)
+		}
+		if err := os.WriteFile(g.pendingPath, []byte(parentBranch), 0o644); err != nil {
+			return "", fmt.Errorf("landingshed: %s: write verify pending marker %s: %w", producer, g.pendingPath, err)
+		}
+	}
+
 	command, err := g.command()
 	if err != nil {
 		return "", fmt.Errorf("landingshed: %s: read verify command: %w", producer, err)
@@ -71,16 +82,10 @@ func (g verifyGate) check(ctx context.Context, producer, parentBranch string, tr
 			args = append(args, "pendingMarker", g.pendingPath)
 		}
 		logger.Warn("landingshed: post-merge verify skipped because no verify command is configured", args...)
+		if err := os.Remove(g.pendingPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return "", fmt.Errorf("landingshed: %s: remove verify pending marker %s: %w", producer, g.pendingPath, err)
+		}
 		return "", nil
-	}
-
-	if treeChanged {
-		if err := os.MkdirAll(filepath.Dir(g.pendingPath), 0o755); err != nil {
-			return "", fmt.Errorf("landingshed: %s: create verify pending marker directory: %w", producer, err)
-		}
-		if err := os.WriteFile(g.pendingPath, []byte(parentBranch), 0o644); err != nil {
-			return "", fmt.Errorf("landingshed: %s: write verify pending marker %s: %w", producer, g.pendingPath, err)
-		}
 	}
 
 	if err := os.MkdirAll(filepath.Dir(g.outputPath), 0o755); err != nil {

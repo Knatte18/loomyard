@@ -185,9 +185,25 @@ func TestVerifyGate_EmptyCommand(t *testing.T) {
 		if got := strings.Contains(logged, f.marker); got != withMarker {
 			t.Fatalf("withMarker=%v: marker path in log = %v", withMarker, got)
 		}
-		if f.markerExists(t) != withMarker {
-			t.Fatalf("withMarker=%v: marker presence changed", withMarker)
+		if f.markerExists(t) {
+			t.Fatalf("withMarker=%v: marker still present after an empty-command skip", withMarker)
 		}
+	}
+}
+
+func TestVerifyGate_EmptyCommandNoChangeMarkerPresent(t *testing.T) {
+	captureLogOutput(t)
+	f := newGateFixture(t, "", nil)
+	f.seedMarker(t)
+	reason, err := f.gate.check(context.Background(), "Finalize", "main", false)
+	if reason != "" || err != nil {
+		t.Fatalf("got (%q, %v), want (\"\", nil)", reason, err)
+	}
+	if f.fake.calls != 0 {
+		t.Fatal("runner called")
+	}
+	if f.markerExists(t) {
+		t.Fatal("marker still present after an empty-command skip")
 	}
 }
 
@@ -216,6 +232,27 @@ func TestVerifyGate_ClosureError(t *testing.T) {
 	if f.fake.calls != 0 {
 		t.Fatal("runner called")
 	}
+	if !f.markerExists(t) {
+		t.Fatal("marker missing after a command read error on a changed tree")
+	}
+}
+
+func TestVerifyGate_ClosureErrorThenResumeRunsVerify(t *testing.T) {
+	f := newGateFixture(t, "", errors.New("plan unreadable"))
+	if _, err := f.gate.check(context.Background(), "Publish", "main", true); err == nil {
+		t.Fatal("first check: want a command read error")
+	}
+	f.gate.command = func() (string, error) { return "go test ./...", nil }
+	reason, err := f.gate.check(context.Background(), "Publish", "main", false)
+	if reason != "" || err != nil {
+		t.Fatalf("resume check: got (%q, %v), want (\"\", nil)", reason, err)
+	}
+	if f.fake.calls != 1 || f.fake.command != "go test ./..." {
+		t.Fatalf("resume check: runner calls=%d command=%q, want 1 and %q", f.fake.calls, f.fake.command, "go test ./...")
+	}
+	if f.markerExists(t) {
+		t.Fatal("marker still present after the resumed verify passed")
+	}
 }
 
 func TestVerifyGate_MarkerWriteFailure(t *testing.T) {
@@ -229,8 +266,8 @@ func TestVerifyGate_MarkerWriteFailure(t *testing.T) {
 	if reason != "" || err == nil {
 		t.Fatalf("got (%q, %v), want an error", reason, err)
 	}
-	if f.fake.calls != 0 {
-		t.Fatal("runner called")
+	if f.fake.calls != 0 || f.closureCalls != 0 {
+		t.Fatalf("runner calls=%d closure calls=%d, want 0 and 0", f.fake.calls, f.closureCalls)
 	}
 }
 

@@ -174,8 +174,8 @@ func TestPublishVerify_EmptyCommand(t *testing.T) {
 		if err != nil || outcome != shedengine.Awaiting {
 			t.Fatalf("Call() = %q, %v; want Awaiting, nil", outcome, err)
 		}
-		if !fx.pushed || !fx.gate.markerExists(t) {
-			t.Errorf("pushed=%v marker=%v; want true, true", fx.pushed, fx.gate.markerExists(t))
+		if !fx.pushed || fx.gate.markerExists(t) || fx.gate.fake.calls != 0 {
+			t.Errorf("pushed=%v marker=%v calls=%d; want true, false, 0", fx.pushed, fx.gate.markerExists(t), fx.gate.fake.calls)
 		}
 		logged := buf.String()
 		if !strings.Contains(logged, "WARN") || !strings.Contains(logged, fx.gate.marker) {
