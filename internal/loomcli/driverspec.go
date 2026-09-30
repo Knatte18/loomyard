@@ -13,8 +13,7 @@ import (
 // driverSpec composes the shuttleengine.Spec the ly-drive session launches from, from an already-
 // composed prompt, an already-composed report path, and the resolved driver-role settings.
 //
-// Every non-default field is pinned here with its own reason, in the shape operatorStrandAddSpec's
-// own doc comment already carries -- the standard this package holds.
+// Every non-default field is pinned here with its own reason -- the standard this package holds.
 //
 // Prompt is the argument verbatim. OutputFiles is a single-entry slice holding reportPath: the file
 // contract Spec enforces treats a run's output file as its return value, and this run has exactly
@@ -34,9 +33,9 @@ import (
 //
 // Display.Anchor is below-parent and must never be hidden: the driver is the session an operator
 // attaches to watch, and a hidden pane would make a run that may last hours legible only through its
-// log file. Display.Focus is false for the reason operatorStrandAddSpec pins it false -- the flag is
-// persisted on the strand and re-evaluated on every subsequent add, so a true value would re-capture
-// focus on every agent pane the run spawns afterwards. Display.ShrinkWhenWaitingOnChild is false: the
+// log file. Display.Focus is false because the flag is persisted on the
+// strand and re-evaluated on every subsequent add, so a true value would re-capture focus on every
+// agent pane the run spawns afterwards. Display.ShrinkWhenWaitingOnChild is false: the
 // driver is never itself waiting on a child in the sense that flag models.
 //
 // Timeout, KeepPane, and AwaitOperator are left at their zero values deliberately. A zero Timeout
