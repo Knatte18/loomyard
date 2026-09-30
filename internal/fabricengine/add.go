@@ -23,6 +23,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
+// addBeforeWeftReplaceHook, when non-nil, runs at step 12 just before an archived leftover weft branch is replaced.
+// It is nil in production; only a non-parallel test sets it, through SetAddBeforeWeftReplaceHookForTest.
+var addBeforeWeftReplaceHook func()
+
 // AddOptions controls optional behaviour for Add.
 // It is an alias of SyncOptions (same SkipGit/SkipPush field shape as warp's own AddOptions) rather
 // than a distinct type, so Add can pass opts straight through to pushWeftBranch, which already
@@ -150,12 +154,14 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 
 	// Probe both origins for a leftover branch from a removed pair before the first mutation, so
 	// an unreplaceable one is refused here rather than rejected at step 11 or 12's push.
-	// The weft answer is held for the archived-leftover replacement; until then it proceeds to the push.
+	// The weft answer is carried to step 12, where an archived leftover is replaced just before the push.
+	var weftOld weftLeftover
 	if !opts.SkipPush && !opts.SkipGit {
 		if err := probeWarpLeftover(l, warpBranch); err != nil {
 			return AddResult{}, err
 		}
-		if _, err := probeWeftLeftover(l, slug, weftBranch, weftBranchAlreadyExists); err != nil {
+		weftOld, err = probeWeftLeftover(l, slug, weftBranch, weftBranchAlreadyExists)
+		if err != nil {
 			return AddResult{}, err
 		}
 	}
@@ -248,7 +254,32 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 	}
 	rec.AppendRef(KindBranchPushed, warpBranch, refDetail("warp", l.WorktreePath(), "origin"))
 
-	// (12) Push weft branch
+	// (12) Replace an archived leftover of the weft branch on origin, then push the weft branch.
+	// The lease pins the deletion to the tip the pre-flight proved archived, so a branch that moved since is refused.
+	if weftOld.tip != "" {
+		if addBeforeWeftReplaceHook != nil {
+			addBeforeWeftReplaceHook()
+		}
+		weftRepoRoot, rootErr := WeftRepoRoot(l)
+		if rootErr != nil {
+			_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok)
+			return AddResult{}, fmt.Errorf("resolve weft repo root: %w", rootErr)
+		}
+		_, delErr := deleteRemoteBranch(rec, remoteBranchRequest{
+			what:      "replace archived leftover weft branch on origin",
+			repoDir:   weftRepoRoot,
+			remote:    originRemoteName,
+			branch:    weftBranch,
+			ownership: ownedPairWeftBranch(l, warpBranch),
+			dirtiness: dirtyArchivedOnRemote(weftOld.tag),
+			leaseSHA:  weftOld.tip,
+			force:     false,
+		})
+		if delErr != nil {
+			_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok)
+			return AddResult{}, fmt.Errorf("replace leftover weft branch %q on origin: %w", weftBranch, delErr)
+		}
+	}
 	if err := pushWeftBranch(rec, l, slug, weftBranch, opts); err != nil {
 		_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok)
 		return AddResult{}, err
@@ -274,6 +305,8 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 // left behind rather than risk deleting the operator's work. That refusal is logged, not swallowed
 // (this function's return is discarded by every caller), so the leftover branch is visible in the
 // trace; recovery is the "already exists" remedy Add's own re-add error already names.
+// Rollback never restores a remote weft branch Add's step 12 replaced:
+// its content stays reachable from the archive tag, and recreating it would re-block the next retry.
 // rec is Add's own recorder, threaded through to all six gate-bound calls this function reaches
 // (its own removeGitWorktree and deleteBranch, plus removeWeftWorktree, removeWarpJunction,
 // removePortal and removeLaunchers), so a rollback's own destructions land in the same record as

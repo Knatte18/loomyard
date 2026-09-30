@@ -231,3 +231,127 @@ func TestAdd_SkipPushSkipsLeftoverProbes(t *testing.T) {
 		t.Errorf("origin warp branch moved %s -> %s", warpBefore, got)
 	}
 }
+
+// commitInWeft writes file into the pair's weft worktree and commits it, leaving the commit unpushed.
+func commitInWeft(t *testing.T, f fabricFixture, slug, file string) {
+	t.Helper()
+
+	wt := fabricengine.WeftWorktreePath(f.Layout, slug)
+	if err := os.WriteFile(wt+"/"+file, []byte(file+"\n"), 0o644); err != nil {
+		t.Fatalf("write %s: %v", file, err)
+	}
+	mustGit(wt, "add", file)
+	mustGit(wt, "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "--quiet", "-m", "extra weft work")
+}
+
+// requireArchiveCovers asserts an archive/<slug>/* tag on the weft bare targets oldTip or a descendant of it.
+func requireArchiveCovers(t *testing.T, weftBare, slug, oldTip string) {
+	t.Helper()
+
+	out, err := gitexec.Run([]string{"for-each-ref", "--format=%(refname)", "refs/tags/archive/" + slug + "/"}, weftBare)
+	if err != nil {
+		t.Fatalf("list archive tags: %v", err)
+	}
+	for _, ref := range strings.Fields(out) {
+		if _, err := gitexec.Run([]string{"merge-base", "--is-ancestor", oldTip, ref}, weftBare); err == nil {
+			return
+		}
+	}
+	t.Errorf("no archive/%s/* tag covers old tip %s (tags: %q)", slug, oldTip, out)
+}
+
+// TestAdd_DivergedArchivedWeftLeftoverReplaced covers a pushed weft commit that the re-created weft branch does not descend from.
+func TestAdd_DivergedArchivedWeftLeftoverReplaced(t *testing.T) {
+	t.Parallel()
+
+	const slug = "leftover-diverged"
+	weftBranch := fabricengine.WeftBranchName(slug)
+	f := newFabricFixture(t)
+	topology := fabricengine.NewTopology(fabricengine.Config{})
+	if _, err := topology.Add(f.Layout, slug, fabricengine.AddOptions{}); err != nil {
+		t.Fatalf("setup Add: %v", err)
+	}
+	commitInWeft(t, f, slug, "extra.txt")
+	mustGit(fabricengine.WeftWorktreePath(f.Layout, slug), "push", "--quiet", "origin", weftBranch)
+	oldTip := weftBareTip(t, f.WeftBare, weftBranch)
+	if _, err := topology.Remove(f.Layout, slug, false, false); err != nil {
+		t.Fatalf("setup Remove: %v", err)
+	}
+
+	res, err := topology.Add(f.Layout, slug, fabricengine.AddOptions{})
+	if err != nil {
+		t.Fatalf("re-Add: %v", err)
+	}
+	newTip := mustGitHeadSHA(t, fabricengine.WeftWorktreePath(f.Layout, slug))
+	if got := weftBareTip(t, f.WeftBare, weftBranch); got != newTip {
+		t.Errorf("origin weft branch = %s; want new local weft tip %s", got, newTip)
+	}
+	requireArchiveCovers(t, f.WeftBare, slug, oldTip)
+
+	deleted, pushed := -1, -1
+	for i, m := range res.Mutations.Entries() {
+		switch {
+		case m.Kind == fabricengine.KindRemoteBranchDeleted && m.Target == weftBranch:
+			deleted = i
+		case m.Kind == fabricengine.KindBranchPushed && m.Target == weftBranch:
+			pushed = i
+		}
+	}
+	if deleted < 0 || pushed < 0 || deleted > pushed {
+		t.Errorf("record order: remote_branch_deleted at %d, weft branch_pushed at %d; want deleted before pushed", deleted, pushed)
+	}
+}
+
+// TestAdd_ArchivedAncestorWeftLeftoverReplaced covers an archive tag on an unpushed commit that is a strict descendant of origin's weft tip.
+func TestAdd_ArchivedAncestorWeftLeftoverReplaced(t *testing.T) {
+	t.Parallel()
+
+	const slug = "leftover-ancestor"
+	weftBranch := fabricengine.WeftBranchName(slug)
+	f := newFabricFixture(t)
+	topology := fabricengine.NewTopology(fabricengine.Config{})
+	if _, err := topology.Add(f.Layout, slug, fabricengine.AddOptions{}); err != nil {
+		t.Fatalf("setup Add: %v", err)
+	}
+	oldTip := weftBareTip(t, f.WeftBare, weftBranch)
+	commitInWeft(t, f, slug, "unpushed.txt")
+	if _, err := topology.Remove(f.Layout, slug, false, false); err != nil {
+		t.Fatalf("setup Remove: %v", err)
+	}
+	requireArchiveCovers(t, f.WeftBare, slug, oldTip)
+
+	if _, err := topology.Add(f.Layout, slug, fabricengine.AddOptions{}); err != nil {
+		t.Fatalf("re-Add: %v", err)
+	}
+	newTip := mustGitHeadSHA(t, fabricengine.WeftWorktreePath(f.Layout, slug))
+	if got := weftBareTip(t, f.WeftBare, weftBranch); got != newTip {
+		t.Errorf("origin weft branch = %s; want new local weft tip %s", got, newTip)
+	}
+}
+
+// TestAdd_WeftReplaceLeaseRaceRefused covers origin's weft branch moving between the pre-flight and the replacement.
+// It sets a package hook, so it must not run in parallel.
+func TestAdd_WeftReplaceLeaseRaceRefused(t *testing.T) {
+	const slug = "leftover-race"
+	weftBranch := fabricengine.WeftBranchName(slug)
+	f := removedPair(t, slug)
+
+	fabricengine.SetAddBeforeWeftReplaceHookForTest(t, func() {
+		pushCommitToOrigin(t, f.WeftBare, weftBranch)
+	})
+
+	topology := fabricengine.NewTopology(fabricengine.Config{})
+	_, err := topology.Add(f.Layout, slug, fabricengine.AddOptions{})
+	if err == nil {
+		t.Fatalf("Add succeeded; want a lease failure")
+	}
+	if !strings.Contains(err.Error(), weftBranch) {
+		t.Errorf("message %q does not name branch %q", err.Error(), weftBranch)
+	}
+	if _, statErr := os.Lstat(fabricengine.WeftWorktreePath(f.Layout, slug)); !os.IsNotExist(statErr) {
+		t.Errorf("weft worktree remains after the refused Add (stat err = %v)", statErr)
+	}
+	if got := weftBareTip(t, f.WeftBare, weftBranch); got == "" {
+		t.Errorf("origin weft branch %q was deleted despite the moved tip", weftBranch)
+	}
+}
