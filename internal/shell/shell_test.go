@@ -1,6 +1,6 @@
 // shell_test.go table-tests both pane-shell implementations: argument quoting across plain,
 // space-containing, and quote-containing inputs, and the exact Invoke/ReadFile/WithEnv/ExportEnv/
-// PrependPathEntry/Chain output each impl composes.
+// PrependPathEntry/Chain/Source/ScriptExt output each impl composes.
 // The pwsh quoting cases are migrated verbatim from claudeengine's former TestPwshSingleQuote so
 // the coverage moves with the logic it tests.
 
@@ -319,5 +319,63 @@ func TestForGOOS(t *testing.T) {
 	got := sh.Quote("it's")
 	if got != Pwsh().Quote("it's") && got != Posix().Quote("it's") {
 		t.Errorf("ForGOOS().Quote(%q) = %q; want either the pwsh or posix form", "it's", got)
+	}
+}
+
+func TestPosixShell_Source(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"plain", "/a/launch.sh", ". '/a/launch.sh'"},
+		{"space", "/a b/launch.sh", ". '/a b/launch.sh'"},
+		{"single_quote", "/a/it's.sh", `. '/a/it'\''s.sh'`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Posix().Source(tt.in)
+			if got != tt.want {
+				t.Errorf("Posix().Source(%q) = %q; want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPwshShell_Source(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"plain", `C:\a\launch.ps1`, `. ([scriptblock]::Create((Get-Content -Raw 'C:\a\launch.ps1')))`},
+		{"space", `C:\a b\launch.ps1`, `. ([scriptblock]::Create((Get-Content -Raw 'C:\a b\launch.ps1')))`},
+		{"single_quote", `C:\a\it's.ps1`, `. ([scriptblock]::Create((Get-Content -Raw 'C:\a\it''s.ps1')))`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Pwsh().Source(tt.in)
+			if got != tt.want {
+				t.Errorf("Pwsh().Source(%q) = %q; want %q", tt.in, got, tt.want)
+			}
+			if viaReadFile := ". ([scriptblock]::Create(" + Pwsh().ReadFile(tt.in) + "))"; got != viaReadFile {
+				t.Errorf("Pwsh().Source(%q) = %q; want the script-block form over ReadFile %q", tt.in, got, viaReadFile)
+			}
+			if strings.HasPrefix(got, ". '") {
+				t.Errorf("Pwsh().Source(%q) = %q; must not dot-source the file path", tt.in, got)
+			}
+		})
+	}
+}
+
+func TestPosixShell_ScriptExt(t *testing.T) {
+	if got, want := Posix().ScriptExt(), ".sh"; got != want {
+		t.Errorf("Posix().ScriptExt() = %q; want %q", got, want)
+	}
+}
+
+func TestPwshShell_ScriptExt(t *testing.T) {
+	if got, want := Pwsh().ScriptExt(), ".ps1"; got != want {
+		t.Errorf("Pwsh().ScriptExt() = %q; want %q", got, want)
 	}
 }

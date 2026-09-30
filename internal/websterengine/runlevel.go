@@ -570,6 +570,12 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	if err != nil {
 		return RunResult{}, fmt.Errorf("webster: resolve integration report path: %w", err)
 	}
+	// A report left by an earlier run describes an earlier head: Master would read it as this run's
+	// verdict and end stuck again without respawning the integration fork, so a run resumed after a
+	// fix could never re-verify. Every run starts without one.
+	if err := os.Remove(integrationReportPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return RunResult{}, fmt.Errorf("webster: remove stale integration report %s: %w", integrationReportPath, err)
+	}
 
 	integrationPromptPath := ""
 	if ShouldRunIntegration(plan) {
