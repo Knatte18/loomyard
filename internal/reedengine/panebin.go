@@ -3,8 +3,9 @@
 // onto a strand's launch command. The composition lives in this one file, reached from the one
 // chokepoint (launchStrandLocked in spawn.go), so the property "every strand pane resolves lyx to its
 // spawning binary" holds by construction rather than by every strand-realizing call site remembering
-// to apply it. The file also owns the per-strand launch script the composed line is written to, so the
-// pane types a short source statement instead of the full line.
+// to apply it.
+// The file also owns the per-strand launch script the composed line is written to,
+// so the pane types a short source statement instead of the full line.
 
 package reedengine
 
@@ -38,13 +39,11 @@ func paneBinPrelude(sh shell.Shell, exe string) string {
 	return sh.Chain(sh.PrependPathEntry(filepath.Dir(exe)), sh.ExportEnv(lyxBinEnvKey, exe))
 }
 
-// composePaneLaunchLine returns the launch script's content: the pane-binary prelude followed by
-// launchCmd, on sh's dialect. launchStrandLocked writes it through stageLaunchScript and types only
-// the source statement. It reads the running process's own path via
-// executablePath; on error it logs a named logger.Warn and returns launchCmd unchanged, so the pane
-// launches with no prelude rather than failing the strand launch (executable-error-warns-and-degrades
-// Shared Decision). Because Chain drops empty parts, an empty launchCmd yields the prelude alone with
-// no trailing separator and no empty command fragment.
+// composePaneLaunchLine returns the launch script's content: the pane-binary prelude followed by launchCmd, on sh's dialect.
+// launchStrandLocked writes it through stageLaunchScript and types only the source statement.
+// It reads the running process's own path via executablePath;
+// on error it logs a named logger.Warn and returns launchCmd unchanged, so the pane launches with no prelude rather than failing the strand launch (executable-error-warns-and-degrades Shared Decision).
+// Because Chain drops empty parts, an empty launchCmd yields the prelude alone with no trailing separator and no empty command fragment.
 func composePaneLaunchLine(sh shell.Shell, launchCmd, strandGUID string) string {
 	exe, err := executablePath()
 	if err != nil {
@@ -54,15 +53,13 @@ func composePaneLaunchLine(sh shell.Shell, launchCmd, strandGUID string) string 
 	return sh.Chain(paneBinPrelude(sh, exe), launchCmd)
 }
 
-// launchScriptReedSegment and launchScriptLaunchSegment are reed's own relative subpath under the
-// state dir for per-strand launch scripts.
+// launchScriptReedSegment and launchScriptLaunchSegment are reed's own relative subpath under the state dir for per-strand launch scripts.
 const (
 	launchScriptReedSegment   = "reed"
 	launchScriptLaunchSegment = "launch"
 )
 
-// launchScriptDir returns the directory holding per-strand launch scripts under stateDir, the value
-// Engine.stateDir returns.
+// launchScriptDir returns the directory holding per-strand launch scripts under stateDir, the value Engine.stateDir returns.
 func launchScriptDir(stateDir string) string {
 	return filepath.Join(stateDir, launchScriptReedSegment, launchScriptLaunchSegment)
 }
@@ -72,9 +69,9 @@ func launchScriptPath(sh shell.Shell, stateDir, strandGUID string) string {
 	return filepath.Join(launchScriptDir(stateDir), strandGUID+sh.ScriptExt())
 }
 
-// stageLaunchScript writes composedLine plus a trailing newline to the strand's launch script and
-// returns sh's source statement for it, the send-keys payload. On any write error it logs a named
-// logger.Warn and returns composedLine unchanged, so a cosmetic feature never fails a strand launch.
+// stageLaunchScript writes composedLine plus a trailing newline to the strand's launch script and returns sh's source statement for it, the send-keys payload.
+// On any write error it logs a named logger.Warn and returns composedLine unchanged,
+// so a cosmetic feature never fails a strand launch.
 func stageLaunchScript(sh shell.Shell, stateDir, strandGUID, composedLine string) string {
 	path := launchScriptPath(sh, stateDir, strandGUID)
 	if err := writeLaunchScript(path, composedLine+"\n"); err != nil {
@@ -84,9 +81,9 @@ func stageLaunchScript(sh shell.Shell, stateDir, strandGUID, composedLine string
 	return sh.Source(path)
 }
 
-// removeLaunchScripts deletes the launch script of every GUID in guids. Deletion is best-effort: a
-// missing file is silent, and any other error is a logger.Warn, never returned, so a cosmetic file
-// never fails the removal that triggered it.
+// removeLaunchScripts deletes the launch script of every GUID in guids.
+// Deletion is best-effort: a missing file is silent,
+// and any other error is a logger.Warn, never returned, so a cosmetic file never fails the removal that triggered it.
 func removeLaunchScripts(sh shell.Shell, stateDir string, guids []string) {
 	for _, guid := range guids {
 		path := launchScriptPath(sh, stateDir, guid)
@@ -96,9 +93,9 @@ func removeLaunchScripts(sh shell.Shell, stateDir string, guids []string) {
 	}
 }
 
-// writeLaunchScript atomically writes content to path with mode 0o644. The file is sourced, never
-// executed, so it carries no exec bit. fsx.AtomicWriteBytes is not reused because its temp file
-// keeps mode 0o600.
+// writeLaunchScript atomically writes content to path with mode 0o644.
+// The file is sourced, never executed, so it carries no exec bit.
+// fsx.AtomicWriteBytes is not reused because its temp file keeps mode 0o600.
 func writeLaunchScript(path, content string) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
