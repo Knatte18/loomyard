@@ -331,6 +331,7 @@ func PersistRecoveryTerminal(deps RecoverDeps, st *State, batchNumber int, diges
 	warnings, err = postBatchChecks(postBatchInputs{
 		Plan:      deps.Plan,
 		State:     st,
+		Batch:     bs,
 		Geom:      deps.Geom,
 		Cards:     batch.Cards,
 		Completed: completedCards(deps.Batches, st, batchNumber),

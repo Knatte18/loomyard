@@ -285,7 +285,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 		}
 	}
 	if len(blocking) > 0 {
-		return nil, fmt.Errorf("%w: %s", ErrPlanDrifted, strings.Join(blocking, "; "))
+		return nil, fmt.Errorf("%w: %s; way forward: edit the plan so the named cards match the tree, run \"lyx webster rebaseline\", then begin-batch %02d again", ErrPlanDrifted, strings.Join(blocking, "; "), batchNumber)
 	}
 
 	batch, err := findBatch(deps.Batches, batchNumber)

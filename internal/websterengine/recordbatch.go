@@ -55,8 +55,9 @@ func (e *ReportArchivedError) Unwrap() []error { return []error{ErrReportArchive
 
 // ErrCardNotDone is the sentinel RecordBatch returns when card 33's DoneChecks report a blocking
 // finding against the just-completed batch's own cards — a Create target that still does not
-// resolve, or a Delete target that still does — meaning the batch is not done and no terminal
-// digest is persisted. webster's own sentinel, per the webster-owns-its-own-domain-types decision.
+// resolve, or a Delete target that still does — meaning the batch is not done.
+// RecordBatch converts it into a failed batch (see failBatch) with the findings as its reasons.
+// webster's own sentinel, per the webster-owns-its-own-domain-types decision.
 var ErrCardNotDone = errors.New("webster: record-batch's done-checks reported a blocking finding")
 
 // RecordDeps carries every seam RecordBatch needs, so a test can fake each one independently:
@@ -335,6 +336,7 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	postWarnings, err := postBatchChecks(postBatchInputs{
 		Plan:      deps.Plan,
 		State:     deps.State,
+		Batch:     bs,
 		Geom:      deps.Geom,
 		Cards:     batch.Cards,
 		Completed: completedCards(deps.Batches, deps.State, batchNumber),
@@ -344,7 +346,25 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	})
 	warnings = append(warnings, postWarnings...)
 	if err != nil {
-		return nil, err
+		if !errors.Is(err, ErrCardNotDone) {
+			return nil, err
+		}
+		// The findings concern this batch's own cards, so it fails on its merits.
+		reasons := strings.Split(strings.TrimPrefix(err.Error(), ErrCardNotDone.Error()+": "), "; ")
+		bfe, ferr := failBatch(failBatchInput{
+			State:      deps.State,
+			Batch:      bs,
+			Number:     number,
+			Slug:       slug,
+			ReportsDir: deps.Geom.ReportsDir,
+			HeadSHA:    report.HeadSHA,
+			Reasons:    reasons,
+			Now:        time.Now,
+		})
+		if ferr != nil {
+			return nil, ferr
+		}
+		return &RecordResult{Digest: bs.Digest, Failed: true, Warnings: warnings}, bfe
 	}
 
 	digest := distill(report)
@@ -402,10 +422,12 @@ func failFromFindings(deps RecordDeps, bs *BatchState, number int, slug, headSHA
 // Cards are the completed batch's own cards;
 // Completed names every card whose work landed BEFORE this batch, so drift detection can scope itself to the plan's remaining work;
 // StartSHA is the bracket record's captured start SHA and HeadSHA the reconciled report head;
-// Label names the batch in warnings.
+// Label names the batch in warnings;
+// Batch is the record being finished, which later-card drift warnings are recorded onto.
 type postBatchInputs struct {
 	Plan      *planparser.Plan
 	State     *State
+	Batch     *BatchState
 	Geom      Geometry
 	Cards     []planparser.Card
 	Completed []planparser.Card
@@ -426,8 +448,10 @@ type postBatchInputs struct {
 // every later card kept referencing an unbound plan: handle for the rest of the plan's life —
 // invisible to drift detection too, since its reference index keys on the ref as the card spells it.
 //
-// Blocking findings are returned as an ErrCardNotDone-wrapped error; informational ones ride out on
-// warnings, which are returned alongside any error so a caller never loses them.
+// Findings about the batch's own cards (done-checks, blocking bind findings) are returned as an
+// ErrCardNotDone-wrapped error.
+// Drift findings concern later cards, so they become `later card:` warnings recorded once on in.Batch;
+// informational findings ride out on warnings too, which are returned alongside any error so a caller never loses them.
 func postBatchChecks(in postBatchInputs) (warnings []string, err error) {
 	// A card's completion has a mechanical verdict: a Create target that still does not resolve,
 	// or a Delete target that still does, blocks — neither is a judgment call. This runs its own
@@ -520,18 +544,21 @@ func postBatchChecks(in postBatchInputs) (warnings []string, err error) {
 	// informational by construction — drift.go's own contract is that the rename-versus-genuine-delete
 	// decision is the reviewer's, never the pipeline's. Failing the batch on it would destroy the very
 	// tier it belongs to, since a finding that kills the batch never reaches a reviewer at all.
-	// So the split here mirrors BeginBatch's own: blocking fails, informational rides out on warnings
-	// exactly as ScopeGuard's findings already do.
-	var driftBlocking []string
+	// So the split here is by whose card the finding concerns: a blocking finding is about a later
+	// card, so it is recorded as a "later card:" warning rather than failing this batch, and an
+	// informational one rides out on warnings exactly as ScopeGuard's findings already do.
 	for _, f := range driftFindings {
-		if f.Severity == planglyph.SeverityBlocking {
-			driftBlocking = append(driftBlocking, f.Error())
+		if f.Severity != planglyph.SeverityBlocking {
+			warnings = append(warnings, f.Error())
 			continue
 		}
-		warnings = append(warnings, f.Error())
-	}
-	if len(driftBlocking) > 0 {
-		return warnings, fmt.Errorf("%w: %s", ErrCardNotDone, strings.Join(driftBlocking, "; "))
+		// Drift runs over the pending plan, which already excludes this batch's cards, so a blocking
+		// finding concerns a card still to be built: it warns here, recorded once in the batch's
+		// state, and refuses at that card's own begin-batch.
+		detail := "later card: " + f.Error()
+		if text, added := recordBatchWarning(in.State, in.Batch, "later-card-drift:"+f.Error(), "later-card-drift", detail); added {
+			warnings = append(warnings, text)
+		}
 	}
 
 	// No third restamp: the two above already cover every rewrite this pass can perform, and each

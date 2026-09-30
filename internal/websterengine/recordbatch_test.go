@@ -964,9 +964,9 @@ func TestRecordBatch_MissingSessionTranscriptArchivesReport(t *testing.T) {
 	}
 }
 
-// TestRecordBatch_DoneChecksBlockOnUnresolvedCreate proves card 33's wiring: a Create target that
-// still does not resolve against the worktree's actual post-card tree returns ErrCardNotDone and
-// persists no terminal digest.
+// TestRecordBatch_DoneChecksBlockOnUnresolvedCreate proves card 33's wiring as card 10 reshaped it:
+// a Create target that still does not resolve against the worktree's actual post-card tree fails the
+// batch terminally with its findings as reasons and the report archived.
 func TestRecordBatch_DoneChecksBlockOnUnresolvedCreate(t *testing.T) {
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
 		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
@@ -976,12 +976,22 @@ func TestRecordBatch_DoneChecksBlockOnUnresolvedCreate(t *testing.T) {
 		{Type: planparser.CardTypeCreate, Refs: []string{"internal/foo#NeverLanded"}},
 	}
 
-	_, err := websterengine.RecordBatch(fx.Deps, 1)
-	if !errors.Is(err, websterengine.ErrCardNotDone) {
-		t.Fatalf("RecordBatch() error = %v; want errors.Is(err, ErrCardNotDone)", err)
+	result, err := websterengine.RecordBatch(fx.Deps, 1)
+	if !errors.Is(err, websterengine.ErrBatchFailed) {
+		t.Fatalf("RecordBatch() error = %v; want errors.Is(err, ErrBatchFailed)", err)
 	}
-	if bs := fx.Deps.State.Batches[1]; bs.Terminal {
-		t.Error("BatchState.Terminal = true; want false — a not-done card must not persist a terminal digest")
+	if result == nil || !result.Failed {
+		t.Fatalf("RecordBatch() result = %+v; want Failed", result)
+	}
+	bs := fx.Deps.State.Batches[1]
+	if !bs.Terminal || bs.Status != websterengine.DigestStatusFailed {
+		t.Errorf("BatchState = terminal %v status %q; want terminal failed", bs.Terminal, bs.Status)
+	}
+	if bs.Digest == nil || !strings.Contains(strings.Join(bs.Digest.Reasons, "; "), "NeverLanded") {
+		t.Errorf("digest = %+v; want the done-check finding in its reasons", bs.Digest)
+	}
+	if _, statErr := os.Stat(filepath.Join(fx.ReportsDir, websterengine.ReportFileName(1, "json-flag"))); !os.IsNotExist(statErr) {
+		t.Errorf("report still at its live path (stat err %v); want it archived", statErr)
 	}
 }
 
@@ -1128,12 +1138,30 @@ func TestRecordBatch_DriftBlocksOnDeletedStillReferenced(t *testing.T) {
 	writeReport(t, fx.ReportsDir, validReport(headSHA))
 	addPendingCard(fx, []string{"internal/foo#WillGoAway"})
 
-	_, err := websterengine.RecordBatch(fx.Deps, 1)
-	if !errors.Is(err, websterengine.ErrCardNotDone) {
-		t.Fatalf("RecordBatch() error = %v; want errors.Is(err, ErrCardNotDone)", err)
+	result, err := websterengine.RecordBatch(fx.Deps, 1)
+	if err != nil {
+		t.Fatalf("RecordBatch() error = %v; want nil — drift about a later card warns, it does not fail this batch", err)
 	}
-	if bs := fx.Deps.State.Batches[1]; bs.Terminal {
-		t.Error("BatchState.Terminal = true; want false — a plan-references-deleted-symbol finding must not persist a terminal digest")
+	if result.Digest == nil || result.Digest.Status != websterengine.DigestStatusDone {
+		t.Fatalf("RecordBatch() digest = %+v; want a terminal done digest", result.Digest)
+	}
+	var inWarnings int
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "later card:") && strings.Contains(w, "WillGoAway") {
+			inWarnings++
+		}
+	}
+	if inWarnings != 1 {
+		t.Errorf("RecordResult.Warnings = %v; want exactly one later card: warning", result.Warnings)
+	}
+	var recorded int
+	for _, w := range fx.Deps.State.Batches[1].AuditWarnings {
+		if w.Class == "later-card-drift" {
+			recorded++
+		}
+	}
+	if recorded != 1 {
+		t.Errorf("BatchState.AuditWarnings = %+v; want exactly one later-card-drift entry", fx.Deps.State.Batches[1].AuditWarnings)
 	}
 }
 
@@ -1297,9 +1325,8 @@ func TestRecordBatch_RestampsFingerprintEvenWhenDriftBlocks(t *testing.T) {
 	writeReport(t, fx.ReportsDir, validReport(headSHA))
 	addPendingCard(fx, []string{"internal/foo#WillMove", "internal/foo#WillGoAway"})
 
-	_, err := websterengine.RecordBatch(fx.Deps, 1)
-	if !errors.Is(err, websterengine.ErrCardNotDone) {
-		t.Fatalf("RecordBatch() error = %v; want errors.Is(err, ErrCardNotDone) — the deleted-and-still-referenced symbol must block", err)
+	if _, err := websterengine.RecordBatch(fx.Deps, 1); err != nil {
+		t.Fatalf("RecordBatch() error = %v; want nil — the deleted-and-still-referenced symbol warns about a later card", err)
 	}
 
 	repaired, readErr := os.ReadFile(filepath.Join(planDir, "02-pending.md"))
