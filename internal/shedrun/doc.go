@@ -13,6 +13,8 @@
 // When _lyx/shed/<slug>/ is absent and _lyx/shed/self/ exists, both spellings join the legacy "self"
 // directory, so a run started before the rename keeps working with no on-disk migration.
 //
+// RunsRootRel names the anchor-relative run-records root, because fabricengine's Add drops everything under it from a freshly forked pair.
+//
 // Every constructor in this package is a plain filepath.Join onto a told *lyxcwd.Location's
 // AnchorPath(), per the Cwd Resolution Invariant: the package resolves no cwd of its own and spawns
 // no git.

@@ -308,3 +308,77 @@ func TestTeardown_DoneRunRecordsTheAbandonedSession(t *testing.T) {
 		t.Errorf("abandoned-session record = %q; want %q", got, "lyx-abandoned")
 	}
 }
+
+func TestWorktreeTeardown_WaitsForContendedLockThenTearsDown(t *testing.T) {
+	scratchDir := t.TempDir()
+	var released bool
+	var sleeps int
+	lock := waitingPrimeLock("/lock/path", 2, nil, &released, &sleeps, nil)
+	rec := &teardownCallRecorder{}
+	producer := NewWorktreeTeardown("teardown", "myslug", rec.deps(nil, "", nil), lock, scratchDir)
+
+	outcome, _, err := producer.Call(context.Background())
+	if err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	if outcome != shedengine.Done {
+		t.Errorf("Call() outcome = %v; want Done", outcome)
+	}
+	if len(rec.calls) != 2 || rec.calls[0] != "shutdown" || rec.calls[1] != "remove" {
+		t.Errorf("call order = %v; want [shutdown remove]", rec.calls)
+	}
+	if sleeps != 2 {
+		t.Errorf("sleeps = %d; want 2", sleeps)
+	}
+	if !released {
+		t.Error("release was not invoked after the wait")
+	}
+}
+
+func TestWorktreeTeardown_LockStillHeldPastBoundIsStuck(t *testing.T) {
+	scratchDir := t.TempDir()
+	var released bool
+	var sleeps int
+	lock := waitingPrimeLock("/lock/contended/path", -1, nil, &released, &sleeps, nil)
+	rec := &teardownCallRecorder{}
+	producer := NewWorktreeTeardown("teardown", "myslug", rec.deps(nil, "", nil), lock, scratchDir)
+
+	outcome, ptr, err := producer.Call(context.Background())
+	if err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	if outcome != shedengine.Stuck {
+		t.Errorf("Call() outcome = %v; want Stuck", outcome)
+	}
+	if len(rec.calls) != 0 {
+		t.Errorf("calls = %v; want neither Shutdown nor Remove", rec.calls)
+	}
+	reason := readStuckFile(t, scratchDir, "teardown", ptr)
+	if !strings.Contains(reason, "/lock/contended/path") || !strings.Contains(reason, "after waiting 10m0s") {
+		t.Errorf("stuck-reason file = %q; want it to name the lock path and the wait", reason)
+	}
+}
+
+func TestWorktreeTeardown_CancelledDuringLockWait(t *testing.T) {
+	scratchDir := t.TempDir()
+	var released bool
+	var sleeps int
+	ctx, cancel := context.WithCancel(context.Background())
+	lock := waitingPrimeLock("/lock/path", -1, nil, &released, &sleeps, cancel)
+	rec := &teardownCallRecorder{}
+	producer := NewWorktreeTeardown("teardown", "myslug", rec.deps(nil, "", nil), lock, scratchDir)
+
+	outcome, _, err := producer.Call(ctx)
+	if err == nil {
+		t.Fatal("Call() error = nil; want the cancelled-during-run error")
+	}
+	if outcome == shedengine.Stuck {
+		t.Error("Call() outcome = Stuck; want a cancelled wait to never surface as Stuck")
+	}
+	if !errors.Is(err, context.Canceled) || !strings.Contains(err.Error(), "context cancelled during run") {
+		t.Errorf("Call() error = %v; want the cancelled-during-run diagnosis", err)
+	}
+	if len(rec.calls) != 0 {
+		t.Errorf("calls = %v; want none after cancellation", rec.calls)
+	}
+}

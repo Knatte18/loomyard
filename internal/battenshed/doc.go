@@ -20,6 +20,9 @@
 // whole-worktree teardown row cleans up, at the very end, by removing the worktree they live in.
 // The done arm does wait for the driver strand, up to the driver-exit grace window, so the driver can finish its stop report (loom's post-run friction reflection included); a driver still alive past the window is ended by the teardown's session shutdown and recorded as an abandoned session.
 //
+// The two producers that hold the hub's prime lock, Worktree-Create and Worktree-Teardown, wait for a contended lock instead of halting on the first try:
+// they poll it every two seconds for up to ten minutes, stop at once when the context is cancelled, and return Stuck only when the bound is spent (primelockwait.go).
+//
 // It declares its own unexported entryErr/cancelErr helpers (ctx.go) and its own reportStuck
 // carrier (stuck.go) for the same deliberate-duplication reason internal/preflightshed/doc.go and
 // internal/landingshed/stuck.go already record: each producer-owning package carries its own copy

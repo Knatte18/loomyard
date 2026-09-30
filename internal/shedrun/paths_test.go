@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
 // syntheticLocation returns a *lyxcwd.Location anchored at a t.TempDir()-rooted worktree, with no
@@ -126,6 +127,23 @@ func TestStatusRel(t *testing.T) {
 	want := filepath.Join("_lyx", "shed", l.WorktreeName, "status.json")
 	if got != want {
 		t.Errorf("StatusRel(%q) = %q; want %q", "self", got, want)
+	}
+}
+
+func TestRunsRootRel(t *testing.T) {
+	l := syntheticLocation(t)
+	root := RunsRootRel()
+	if want := filepath.Join(lyxdirs.LyxDirName, "shed"); root != want {
+		t.Errorf("RunsRootRel() = %q; want %q", root, want)
+	}
+	prefix := root + string(filepath.Separator)
+	for name, got := range map[string]string{
+		"SeedRel":   SeedRel(l, "x"),
+		"StatusRel": StatusRel(l, "x"),
+	} {
+		if !strings.HasPrefix(got, prefix) {
+			t.Errorf("%s(l, %q) = %q; want it strictly under %q", name, "x", got, root)
+		}
 	}
 }
 

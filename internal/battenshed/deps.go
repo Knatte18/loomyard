@@ -41,11 +41,11 @@ var ErrChildNotParked = errors.New("battenshed: the task worktree's driver has n
 // acquire closure both WorktreeCreate and WorktreeTeardown hold it behind, so the two producers
 // that mutate the hub's worktree registry concurrently with each other never race.
 //
-// Acquire mirrors lock.TryAcquireWriteLock's own contract: a (nil, false, nil) return means the
-// lock is already held by someone else -- contention, not an error -- while a non-nil err means
-// acquisition itself failed. The lock file this package acquires carries no holder record, so a
-// contention stuck reason can name Path and nothing else: there is no way to say who is holding
-// it.
+// Acquire mirrors lock.TryAcquireWriteLock's own contract and stays non-blocking: a (nil, false, nil) return means the lock is already held by someone else -- contention, not an error --
+// while a non-nil err means acquisition itself failed.
+// The producers wait out contention themselves, polling Acquire through Sleep for a bounded time (see acquirePrimeLock).
+// The lock file this package acquires carries no holder record, so a contention stuck reason can name Path and nothing else:
+// there is no way to say who is holding it.
 type PrimeLock struct {
 	// Path is the told absolute lock-file path, named in a contention stuck reason.
 	Path string
@@ -53,6 +53,9 @@ type PrimeLock struct {
 	// lock is held elsewhere right now. A non-nil release, when returned, must be called exactly
 	// once by the caller to release the lock.
 	Acquire func() (release func() error, ok bool, err error)
+	// Sleep is the injected pause between two Acquire attempts while the lock is contended; a test replaces it to keep the wait out of real time.
+	// A nil Sleep resolves to waitOrCancel, which is the production value.
+	Sleep func(ctx context.Context, d time.Duration)
 }
 
 // The two operator decisions a ChildDecision can carry.

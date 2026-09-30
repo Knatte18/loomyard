@@ -479,6 +479,12 @@
 // A rollback never restores the deleted branch: its content is reachable from the archive tag.
 // No remote warp branch is ever deleted, and `SkipPush`/`SkipGit` skip every probe and the replacement.
 //
+// `Add` also drops the parent's shed run records from a pair it forks (forkrecords.go).
+// A weft branch forked from its parent would otherwise carry every committed run directory, including one for the child's own slug, and the child's `Seed-Child` would refuse a disagreeing seed.
+// The fork is `worktree add --no-checkout`, followed by a write-out of the index without the `shedrun.RunsRootRel()` tree, so no run record ever reaches the new worktree's disk and nothing is deleted (an index-only removal after a full checkout would leave the files `shedrun` reads).
+// The pair's first weft commit, the origin record's, stages the root's deletions when the fork point tracked anything there.
+// The adopt path drops nothing, because an existing branch's run records are its own, and `Reconcile`'s dormant-weft creation keeps the plain fork since it makes no commit to carry a drop.
+//
 // # The one-repo illusion at the public API boundary
 //
 // fabric exists to sell one illusion to every other package: a developer, an agent, and every lyx
