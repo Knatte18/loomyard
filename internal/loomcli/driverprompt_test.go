@@ -46,8 +46,28 @@ func TestDriverPrompt_NamesSlugRunIDAndExactTeardownCommand(t *testing.T) {
 	if !strings.Contains(got, want) {
 		t.Errorf("driverPrompt() = %q; want it to name the teardown command %q", got, want)
 	}
-	if !strings.HasSuffix(got, want) {
-		t.Errorf("driverPrompt() = %q; want the teardown command to be the prompt's last words", got)
+	if n := strings.Count(got, driverTeardownCommand); n != 1 {
+		t.Errorf("driverPrompt() = %q; teardown command appears %d times, want exactly once", got, n)
+	}
+}
+
+// TestDriverPrompt_TiesTeardownToDoneAndBusyAndParksElsewhere asserts the teardown command sits between the done/busy condition and the parking sentence.
+// That keeps a done child's driver exiting before batten's teardown, and every other stop parking.
+// It also asserts the parking sentence names the records-commit command, which the recipe-blind skill runs at a park.
+func TestDriverPrompt_TiesTeardownToDoneAndBusyAndParksElsewhere(t *testing.T) {
+	got := driverPrompt("run", "/hub/wt/report.md")
+
+	done := strings.Index(got, "the run is done, or a step is refused as busy")
+	teardown := strings.Index(got, driverTeardownCommand)
+	park := strings.Index(got, "At every other stop, park")
+	if done < 0 || teardown < 0 || park < 0 || done >= teardown || teardown >= park {
+		t.Fatalf("driverPrompt() = %q; want done/busy condition, then the teardown command, then parking for every other stop", got)
+	}
+	if !strings.Contains(got, "leave this session open") {
+		t.Errorf("driverPrompt() = %q; want it to leave the session open when parking", got)
+	}
+	if !strings.Contains(got[park:], driverRecordsCommand) {
+		t.Errorf("driverPrompt() = %q; want the parking sentence to name the records-commit command %q", got, driverRecordsCommand)
 	}
 }
 

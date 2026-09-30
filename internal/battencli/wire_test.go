@@ -285,6 +285,12 @@ func TestChildSpawnError(t *testing.T) {
 			wantSubstr:  []string{"exit status 1", "disagreeing seed"},
 		},
 		{
+			name:        "not_parked_refusal_stays_a_run_error",
+			runErr:      runErr,
+			childOutput: `{"error":"loom: the driver has not parked yet","kind":"` + shedrun.StartNotParkedKind + `","ok":false}`,
+			wantSubstr:  []string{"exit status 1", "not parked yet"},
+		},
+		{
 			name:        "silent_child_passes_the_run_error_through",
 			runErr:      runErr,
 			childOutput: "   \n  ",
@@ -322,6 +328,24 @@ func TestChildSpawnError(t *testing.T) {
 				t.Errorf("childSpawnError(...) produced %d bytes; want the output capped near maxChildOutputInError", len(got.Error()))
 			}
 		})
+	}
+}
+
+// TestChildSpawnError_NotParkedRefusalWrapsTheSentinel pins that only the start refusal of kind shedrun.StartNotParkedKind reaches InnerRun as battenshed.ErrChildNotParked.
+func TestChildSpawnError_NotParkedRefusalWrapsTheSentinel(t *testing.T) {
+	runErr := errors.New("exit status 1")
+	notParked := "log noise\n" + `{"error":"loom: the driver has not parked yet","kind":"` + shedrun.StartNotParkedKind + `","ok":false}` + "\n"
+	if got := childSpawnError(runErr, notParked); !errors.Is(got, battenshed.ErrChildNotParked) || !errors.Is(got, runErr) {
+		t.Errorf("childSpawnError(not-parked refusal) = %v; want it to wrap both ErrChildNotParked and the run error", got)
+	}
+	for _, other := range []string{
+		`{"error":"loom: some other refusal","ok":false}`,
+		`{"error":"x","kind":"busy","ok":false}`,
+		`not json ` + shedrun.StartNotParkedKind,
+	} {
+		if got := childSpawnError(runErr, other); errors.Is(got, battenshed.ErrChildNotParked) {
+			t.Errorf("childSpawnError(%q) = %v; want no ErrChildNotParked", other, got)
+		}
 	}
 }
 

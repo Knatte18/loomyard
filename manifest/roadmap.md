@@ -107,6 +107,10 @@ No build order is implied between these items.
 
 Cleared 2026-08-25 to keep this file lean — shipped items' history lives in `git log` and each module's own package documentation, not here.
 
+1. **orch: hub orchestrator strand with automatic context cycling** — `lyx orch start` hosts the hub orchestrator as an interactive Claude session in a reed strand of the prime worktree, and a detached watcher cycles it before its context fills: the session writes a handoff, is cleared, and is resumed from that handoff, never cleared without one.
+   Shuttle gained a provider-invariant session surface (`SessionCycler`) that claudeengine implements.
+   See the `internal/orchengine` package documentation.
+
 1. **shed: the LLM driver as a generic stepper and mender** — `ly-drive` drives any seeded run through `lyx shed step` without knowing its recipe, and repairs failures from a trace every step leaves behind, so `lyx` stops having to be perfect against every crash window.
    See the [`ly-drive` skill](../plugins/ly/skills/ly-drive/SKILL.md) and the `internal/shedverbs` package documentation.
 

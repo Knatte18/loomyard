@@ -13,6 +13,7 @@ package battencli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -224,6 +225,7 @@ const maxChildOutputInError = 2000
 // carries the child's diagnosis rather than only its exit status.
 // It returns nil for a nil runErr, runErr unchanged when the child said nothing, and truncates
 // output past maxChildOutputInError with an explicit marker.
+// An output carrying the not-parked refusal (childNotParked) also wraps battenshed.ErrChildNotParked, so InnerRun retries rather than failing.
 //
 // The byte slice lands on a rune boundary only by chance, so strings.ToValidUTF8 drops any partial
 // rune it leaves dangling at the cut point rather than embedding invalid UTF-8 into the error text.
@@ -235,10 +237,32 @@ func childSpawnError(runErr error, childOutput string) error {
 	if trimmed == "" {
 		return runErr
 	}
+	notParked := childNotParked(trimmed)
 	if len(trimmed) > maxChildOutputInError {
 		trimmed = strings.ToValidUTF8(trimmed[:maxChildOutputInError], "") + " ... (truncated)"
 	}
+	if notParked {
+		return fmt.Errorf("%w: %w: %s", battenshed.ErrChildNotParked, runErr, trimmed)
+	}
 	return fmt.Errorf("%w: %s", runErr, trimmed)
+}
+
+// childNotParked reports whether a child bootstrap's output carries the refusal envelope whose "kind" is shedrun.StartNotParkedKind.
+// Each output line is tried as an envelope, since the child's stdout and stderr share one buffer.
+func childNotParked(childOutput string) bool {
+	for line := range strings.Lines(childOutput) {
+		var envelope struct {
+			OK   bool   `json:"ok"`
+			Kind string `json:"kind"`
+		}
+		if json.Unmarshal([]byte(line), &envelope) != nil {
+			continue
+		}
+		if !envelope.OK && envelope.Kind == shedrun.StartNotParkedKind {
+			return true
+		}
+	}
+	return false
 }
 
 // childSeedParams returns the seed params recipe's own bootstrap verb will itself write, read from

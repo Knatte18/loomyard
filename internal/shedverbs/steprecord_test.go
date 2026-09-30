@@ -192,6 +192,37 @@ func TestStatusCmd_LastStep(t *testing.T) {
 	}
 }
 
+// TestLastStepOf_BuildIdentity has a recorder write its identity,
+// and checks lastStepOf reports it back with binary_changed false for the same running identity and true for a different known one;
+// a hand-written record without identity fields never reports a change.
+func TestLastStepOf_BuildIdentity(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "steps")
+	built := BuildIdentity{Revision: "abc", Modified: true}
+	newStepRecorder(dir, "aaaa", built).begin()
+
+	same := lastStepOf(dir, built)
+	if same == nil || same.VCSRevision != "abc" || !same.VCSModified || same.BinaryChanged {
+		t.Errorf("same identity: last step = %+v; want abc/modified, binary_changed false", same)
+	}
+	other := lastStepOf(dir, BuildIdentity{Revision: "def"})
+	if other == nil || other.VCSRevision != "abc" || !other.BinaryChanged {
+		t.Errorf("different identity: last step = %+v; want binary_changed true", other)
+	}
+
+	legacy := filepath.Join(t.TempDir(), "steps")
+	if err := os.MkdirAll(legacy, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	data := `{"trace_id":"bbbb","pid":1,"started_at":"2026-01-01T00:00:00Z"}`
+	if err := os.WriteFile(filepath.Join(legacy, "bbbb.inflight.json"), []byte(data), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	old := lastStepOf(legacy, built)
+	if old == nil || old.VCSRevision != "" || old.BinaryChanged {
+		t.Errorf("legacy record: last step = %+v; want unknown identity, binary_changed false", old)
+	}
+}
+
 // TestStepRecords_NothingUnderStatusTree runs a step with the status file under one temp tree and
 // StepsDir under another, and asserts nothing new appears beside the status file.
 func TestStepRecords_NothingUnderStatusTree(t *testing.T) {

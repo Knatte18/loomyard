@@ -930,6 +930,8 @@ func TestRun_InterruptAndSend_RefuseDeadOrUntrackedStrand(t *testing.T) {
 			}
 			if err := run.Send("still there?"); err == nil {
 				t.Error("Send() = nil error, want liveness refusal")
+			} else if errors.Is(err, ErrPaneNotReady) {
+				t.Errorf("Send() error = %v, must not wrap ErrPaneNotReady", err)
 			}
 			if len(reed.SendKeyCalls) != 0 || len(reed.SendTextCalls) != 0 {
 				t.Errorf("keys reached the pane despite refusal: SendKey=%+v SendText=%+v", reed.SendKeyCalls, reed.SendTextCalls)
@@ -958,6 +960,8 @@ func TestRun_InterruptAndSend_RefuseAgentlessShellPane(t *testing.T) {
 	}
 	if err := run.Send("echo poked"); err == nil || !strings.Contains(err.Error(), "no input-ready provider TUI") {
 		t.Errorf("Send() error = %v, want the no-ready-TUI refusal", err)
+	} else if !errors.Is(err, ErrPaneNotReady) {
+		t.Errorf("Send() error = %v, want it to wrap ErrPaneNotReady", err)
 	}
 	// The refusal must own BOTH readings of a non-Ready capture — a provider
 	// still starting up and one that exited behind a surviving shell — since

@@ -7,6 +7,7 @@ package shedbuild
 import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
+	"github.com/Knatte18/loomyard/internal/shedtransient"
 )
 
 // ShedPaths carries the five told values shedengine.Shed itself reads and no shedrecipe.Env
@@ -70,5 +71,6 @@ func NewShed(recipe []byte, env shedrecipe.Env, paths ShedPaths) (*shedengine.Sh
 		StatusLockPath: paths.StatusLockPath,
 		MaxBounces:     paths.MaxBounces,
 		CommitStatus:   paths.CommitStatus,
+		Transient:      shedtransient.Class,
 	}, nil
 }

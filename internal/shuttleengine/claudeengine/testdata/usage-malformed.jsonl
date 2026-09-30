@@ -1,0 +1,5 @@
+not json at all
+{"type":"assistant","message":
+{"type":"user","message":{"role":"user","content":"hi"}}
+{"type":"system","subtype":"init"}
+{"type":"assistant","isSidechain":false,"message":{"role":"assistant"}}

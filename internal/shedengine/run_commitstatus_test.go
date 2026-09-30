@@ -204,13 +204,17 @@ func TestRun_PersistFailureOnAFailedTerminalSurfacesBothErrors(t *testing.T) {
 		wantHaltMsg string
 	}{
 		{
-			name:        "ProducerError",
-			producer:    &funcProducer{fn: func(ctx context.Context) (Outcome, OutputPointer, error) { return "", OutputPointer{}, errors.New("plan agent died") }},
+			name: "ProducerError",
+			producer: &funcProducer{fn: func(ctx context.Context) (Outcome, OutputPointer, error) {
+				return "", OutputPointer{}, errors.New("plan agent died")
+			}},
 			wantHaltMsg: "plan agent died",
 		},
 		{
-			name:        "UnrecognisedOutcome",
-			producer:    &funcProducer{fn: func(ctx context.Context) (Outcome, OutputPointer, error) { return Outcome("approved"), OutputPointer{}, nil }},
+			name: "UnrecognisedOutcome",
+			producer: &funcProducer{fn: func(ctx context.Context) (Outcome, OutputPointer, error) {
+				return Outcome("approved"), OutputPointer{}, nil
+			}},
 			wantHaltMsg: "unrecognised outcome",
 		},
 	}
