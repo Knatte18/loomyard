@@ -84,7 +84,7 @@ type StepResult struct {
 	Next string
 	// State is the State this step persisted alongside Next.
 	State State
-	// Reason is populated only alongside StateBlocked.
+	// Reason is populated only alongside StateBlocked and StateAwaiting.
 	Reason string
 	// History is the full persisted history as it stands when this step returns, not only the
 	// entry (if any) this step appended.
@@ -139,9 +139,9 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 	if st.State == StateDone {
 		return StepResult{Next: st.CurrentProducer, State: StateDone, History: st.History}, nil
 	}
-	// StateBlocked and StateFailed deliberately do not short-circuit -- the loop proceeds
-	// and re-calls current_producer, which is how a human resumes after fixing whatever
-	// caused the halt.
+	// StateBlocked, StateFailed and StateAwaiting deliberately do not short-circuit -- the loop
+	// proceeds and re-calls current_producer, which is how a human resumes after fixing whatever
+	// caused the halt or finishing the hand-off.
 
 	// Step 2, the lookup. Not found is a hard error that changes nothing on disk: Shed
 	// never guesses, neither restarting from the first producer nor advancing to the
@@ -288,6 +288,17 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 			return StepResult{Producer: def.Name, Outcome: outcome, Output: output.Path, Next: def.OnStuck, State: StateRunning, History: nextHistory}, nil
 		}
 
+	case outcome == Awaiting:
+		// The planned hand-off halt: never routed (neither OnStuck nor OnDone is read), never
+		// counted against the bounce budget, and current_producer stays put so the next step
+		// re-calls the same producer through step 3b's resume write.
+		nextHistory := appendHistory()
+		reason := stuckReason(output.Reason)
+		if err := s.persist(st.CurrentProducer, StateAwaiting, reason, nextHistory, false); err != nil {
+			return StepResult{}, err
+		}
+		return StepResult{Producer: def.Name, Outcome: outcome, Output: output.Path, Next: st.CurrentProducer, State: StateAwaiting, Reason: reason, History: nextHistory}, nil
+
 	case outcome == Done:
 		nextHistory := appendHistory()
 		if def.OnDone == "" {
@@ -311,7 +322,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		return StepResult{Producer: def.Name, Outcome: outcome, Output: output.Path, Next: def.OnDone, State: StateRunning, History: nextHistory}, nil
 
 	default:
-		// An Outcome that is neither Done nor Stuck, returned with a nil error, is an
+		// An Outcome that is none of Done, Stuck or Awaiting, returned with a nil error, is an
 		// engine-level failure: Outcome is a string type and therefore open, so the
 		// routing would otherwise have an undefined fourth case, and coercing an unknown
 		// value to Stuck would consume bounce budget for a broken adapter while coercing
@@ -327,8 +338,8 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 }
 
 // Run walks the whole six-step loop in one call, from wherever the status file's current_producer
-// currently sits, until it hits a stopping condition: pause/cancellation, blocked, done, or an
-// error.
+// currently sits, until it hits a stopping condition: pause/cancellation, blocked, awaiting, done,
+// or an error.
 // Result is meaningless unless the returned error is nil -- every hard-error path below returns an
 // unpopulated Result alongside its error, and a caller must check error before reading Outcome.
 // The producer list itself carries zero routing meaning once Done routes by OnDone: it is
@@ -360,7 +371,7 @@ func (s *Shed) Run(ctx context.Context) (Result, error) {
 			continue
 		}
 		// RunOutcome(res.State) is a conversion, not a lookup table, because shed.go pins
-		// RunOutcome's three string values as deliberately identical to State's three clean-exit
+		// RunOutcome's four string values as deliberately identical to State's four clean-exit
 		// values; StateRunning never reaches this line (it continues above) and StateFailed only
 		// ever arrives alongside a non-nil error, already returned above.
 		//

@@ -9,7 +9,7 @@ import "fmt"
 // history, st, and errText.
 // Now is currentProducer verbatim. Last is the empty string when history is empty, and otherwise
 // the most recent entry composed as exactly "<producer> → <outcome>". Wait is errText when st is
-// StateBlocked or StateFailed, and the empty string for every other state.
+// StateBlocked, StateFailed or StateAwaiting, and the empty string for every other state.
 //
 // The Last format is pinned to an exact string rather than left to judgment because a test
 // asserts this field; an unpinned "formatted for a human" cannot be asserted, only approximated.
@@ -21,7 +21,7 @@ func composeActivity(currentProducer string, history []HistoryEntry, st State, e
 	}
 
 	wait := ""
-	if st == StateBlocked || st == StateFailed {
+	if st == StateBlocked || st == StateFailed || st == StateAwaiting {
 		wait = errText
 	}
 
