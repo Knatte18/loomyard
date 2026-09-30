@@ -591,6 +591,57 @@ func sessionReapRoots(live []LivePane) []int {
 	return pids
 }
 
+// killStrandPanes kills the removed strands' panes and returns the process ids the caller must reap
+// (reapPaneChildren) once the layout has been repaired.
+//
+// Snapshot the doomed panes' process subtrees BEFORE kill-pane, while
+// the panes still exist to be listed and their pids are guaranteed
+// un-reused (the processes are still running).
+// The same enumeration narrows the kill list to panes that really belong to THIS
+// session, so a stale or copied reed.json can never make this remove destroy a sibling
+// worktree's pane on the shared per-hub server (paneIDsInSession, R5 review finding
+// R5-F4). It is free: this call site already had to list panes for the reap snapshot.
+// A failed enumeration kills nothing rather than falling back to the unchecked list —
+// list-panes exits non-zero precisely when the session is gone, in which case the panes
+// are gone with it and there is nothing this remove still needs to destroy.
+//
+// Kill the removed strands' panes explicitly rather than relying on
+// select-layout to reap panes missing from the layout string: psmux
+// reaps the extra panes as a side effect, and tmux does NOT reject a
+// mismatched layout either — it accepts a cell/pane count mismatch
+// with exit 0 and assigns cells positionally (observed live,
+// tmux 3.6), so neither backend reaps deterministically enough to
+// lean on. Best-effort: a pane may already be dead or gone. What
+// killing a session's LAST pane does next is BINARY-DEPENDENT, not
+// universal: on psmux, remain-on-exit corpses it as pane_dead=1
+// (exit 0), keeping the session alive; on tmux, killing a session's
+// true last pane DESTROYS the session (and, if it was the server's
+// only session, the server exits) — the reconcile tail after it then
+// fails its listPanes call against the now-gone session. RemoveStrand
+// handles both outcomes by re-probing hasSession and swallowing
+// that failure as an expected success only when the session is
+// confirmed gone (the tmux case); on psmux the reconcile tail simply
+// re-enumerates and re-applies — a strand's pane is now always a
+// fresh split, so a corpse is never reused.
+func (e *Engine) killStrandPanes(paneIDs []string) []int {
+	var reapPIDs []int
+	var killPaneIDs []string
+	if len(paneIDs) > 0 {
+		live, err := e.tmux.listPanes(e.SessionName())
+		if err != nil {
+			logger.Warn("reed: could not enumerate panes before removing a strand, killing none",
+				"socket", e.Socket(), "session", e.SessionName(), "err", err)
+		} else {
+			killPaneIDs = paneIDsInSession(paneIDs, live)
+			reapPIDs = e.descendantClosurePIDs(alivePanePIDs(killPaneIDs, live))
+		}
+	}
+	for _, id := range killPaneIDs {
+		_ = e.tmux.run("kill-pane", "-t", id)
+	}
+	return reapPIDs
+}
+
 // RemoveStrand removes guid and, when it has descendants, cascades the removal through its whole
 // subtree (recursive must be true for a non-leaf, or the call errors instead of silently deleting
 // descendants), then reconciles and re-applies the layout.
@@ -621,50 +672,7 @@ func (e *Engine) RemoveStrand(guid string, recursive bool) (Removed, error) {
 			return err
 		}
 
-		// Snapshot the doomed panes' process subtrees BEFORE kill-pane, while
-		// the panes still exist to be listed and their pids are guaranteed
-		// un-reused (the processes are still running).
-		// The same enumeration narrows the kill list to panes that really belong to THIS
-		// session, so a stale or copied reed.json can never make this remove destroy a sibling
-		// worktree's pane on the shared per-hub server (paneIDsInSession, R5 review finding
-		// R5-F4). It is free: this call site already had to list panes for the reap snapshot.
-		// A failed enumeration kills nothing rather than falling back to the unchecked list —
-		// list-panes exits non-zero precisely when the session is gone, in which case the panes
-		// are gone with it and there is nothing this remove still needs to destroy.
-		var reapPIDs []int
-		var killPaneIDs []string
-		if len(paneIDs) > 0 {
-			live, err := e.tmux.listPanes(e.SessionName())
-			if err != nil {
-				logger.Warn("reed: could not enumerate panes before removing a strand, killing none",
-					"socket", e.Socket(), "session", e.SessionName(), "err", err)
-			} else {
-				killPaneIDs = paneIDsInSession(paneIDs, live)
-				reapPIDs = e.descendantClosurePIDs(alivePanePIDs(killPaneIDs, live))
-			}
-		}
-
-		// Kill the removed strands' panes explicitly rather than relying on
-		// select-layout to reap panes missing from the layout string: psmux
-		// reaps the extra panes as a side effect, and tmux does NOT reject a
-		// mismatched layout either — it accepts a cell/pane count mismatch
-		// with exit 0 and assigns cells positionally (observed live,
-		// tmux 3.6), so neither backend reaps deterministically enough to
-		// lean on. Best-effort: a pane may already be dead or gone. What
-		// killing a session's LAST pane does next is BINARY-DEPENDENT, not
-		// universal: on psmux, remain-on-exit corpses it as pane_dead=1
-		// (exit 0), keeping the session alive; on tmux, killing a session's
-		// true last pane DESTROYS the session (and, if it was the server's
-		// only session, the server exits) — the reconcile tail below then
-		// fails its listPanes call against the now-gone session. RemoveStrand
-		// below handles both outcomes by re-probing hasSession and swallowing
-		// that failure as an expected success only when the session is
-		// confirmed gone (the tmux case); on psmux the reconcile tail simply
-		// re-enumerates and re-applies — a strand's pane is now always a
-		// fresh split, so a corpse is never reused.
-		for _, id := range killPaneIDs {
-			_ = e.tmux.run("kill-pane", "-t", id)
-		}
+		reapPIDs := e.killStrandPanes(paneIDs)
 
 		// Reap after the layout repair, so the surviving panes re-tile
 		// immediately and only the return is gated on the async pane teardown
