@@ -7,6 +7,7 @@ package websterengine
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 )
@@ -66,10 +67,10 @@ func failBatch(in failBatchInput) (*BatchFailedError, error) {
 	}
 
 	for _, t := range in.NewTranscripts {
-		if !containsString(in.State.SeenForkTranscripts, t) {
+		if !slices.Contains(in.State.SeenForkTranscripts, t) {
 			in.State.SeenForkTranscripts = append(in.State.SeenForkTranscripts, t)
 		}
-		if !containsString(in.Batch.ForkTranscripts, t) {
+		if !slices.Contains(in.Batch.ForkTranscripts, t) {
 			in.Batch.ForkTranscripts = append(in.Batch.ForkTranscripts, t)
 		}
 	}
@@ -97,14 +98,4 @@ func failBatch(in failBatchInput) (*BatchFailedError, error) {
 		SuspectPaths:   in.SuspectPaths,
 		ArchivedReport: archived,
 	}, nil
-}
-
-// containsString reports whether s is in list.
-func containsString(list []string, s string) bool {
-	for _, x := range list {
-		if x == s {
-			return true
-		}
-	}
-	return false
 }

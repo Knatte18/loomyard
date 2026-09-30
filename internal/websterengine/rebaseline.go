@@ -1,3 +1,6 @@
+// rebaseline.go implements Rebaseline, the engine half of `lyx webster rebaseline`:
+// it accepts a mid-run plan edit as the run's plan while every begun batch keeps its recorded card set.
+
 package websterengine
 
 import (
