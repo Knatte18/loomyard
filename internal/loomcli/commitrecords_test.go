@@ -54,6 +54,15 @@ func TestCommitRecordsVerb_ErrorEnvelopes(t *testing.T) {
 			if !strings.Contains(out.String(), tt.want) {
 				t.Errorf("output = %s; want it to contain %q", out.String(), tt.want)
 			}
+			if !strings.Contains(out.String(), "way forward: ") {
+				t.Errorf("output = %s; want a way forward", out.String())
+			}
+			// The failure was transient: the re-run the message names succeeds.
+			deps, _, _ = stubRecordsDeps(false, nil, nil, nil)
+			out.Reset()
+			if code := commitRecordsVerb(&out, deps); code != 0 {
+				t.Errorf("re-run exit = %d; want 0; output %s", code, out.String())
+			}
 		})
 	}
 }

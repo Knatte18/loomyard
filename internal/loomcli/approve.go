@@ -56,35 +56,35 @@ func approveVerb(ctx context.Context, out io.Writer, d approveDeps) int {
 	}
 	halted := st.State == shedengine.StateAwaiting || st.State == shedengine.StateBlocked
 	if !halted || st.CurrentProducer != loomshed.NamePublish {
-		return output.Err(out, fmt.Sprintf("loom: approve: the run is not awaiting or blocked at %s (state %q, producer %q); approval applies only to a run awaiting or blocked at %s", loomshed.NamePublish, st.State, st.CurrentProducer, loomshed.NamePublish))
+		return output.Err(out, fmt.Sprintf("loom: approve: the run is not awaiting or blocked at %s (state %q, producer %q); approval applies only to a run awaiting or blocked at %s; way forward: lyx loom status shows where the run is, approve once it halts at %s", loomshed.NamePublish, st.State, st.CurrentProducer, loomshed.NamePublish, loomshed.NamePublish))
 	}
 
 	taskBranch, parentBranch, originURL, err := d.branches()
 	if err != nil {
-		return output.Err(out, "loom: approve: resolve branches: "+err.Error())
+		return output.Err(out, "loom: approve: resolve branches: "+err.Error()+"; way forward: transient, re-run lyx loom approve")
 	}
 	owner, repo, err := githubclient.ParseOwnerRepo(originURL)
 	if err != nil {
-		return output.Err(out, "loom: approve: origin URL unusable: "+err.Error())
+		return output.Err(out, "loom: approve: origin URL unusable: "+err.Error()+"; way forward: transient, re-run lyx loom approve")
 	}
 	pr, err := d.findPR(ctx, owner, repo, taskBranch, parentBranch)
 	if err != nil {
-		return output.Err(out, "loom: approve: look up the pull request: "+err.Error())
+		return output.Err(out, "loom: approve: look up the pull request: "+err.Error()+"; way forward: transient, re-run lyx loom approve")
 	}
 	if pr == nil {
-		return output.Err(out, fmt.Sprintf("loom: approve: no pull request from %s to %s in %s/%s", taskBranch, parentBranch, owner, repo))
+		return output.Err(out, fmt.Sprintf("loom: approve: no pull request from %s to %s in %s/%s; way forward: lyx loom step opens it at Publish", taskBranch, parentBranch, owner, repo))
 	}
 	if pr.GetState() != "open" || !pr.GetMergedAt().IsZero() {
-		return output.Err(out, fmt.Sprintf("loom: approve: pull request #%d is not open (%s)", pr.GetNumber(), pr.GetHTMLURL()))
+		return output.Err(out, fmt.Sprintf("loom: approve: pull request #%d is not open (%s); way forward: lyx loom step opens a new one at Publish", pr.GetNumber(), pr.GetHTMLURL()))
 	}
 
 	local, err := d.headSHA()
 	if err != nil {
-		return output.Err(out, "loom: approve: read the task HEAD: "+err.Error())
+		return output.Err(out, "loom: approve: read the task HEAD: "+err.Error()+"; way forward: transient, re-run lyx loom approve")
 	}
 	remote := pr.GetHead().GetSHA()
 	if local != remote {
-		return output.Err(out, fmt.Sprintf("loom: approve: local task HEAD %s differs from the pull request's head %s; push or sync first", local, remote))
+		return output.Err(out, fmt.Sprintf("loom: approve: local task HEAD %s differs from the pull request's head %s; way forward: push or sync the task branch (lyx fabric push), then re-run lyx loom approve", local, remote))
 	}
 
 	rec := landingshed.Approval{

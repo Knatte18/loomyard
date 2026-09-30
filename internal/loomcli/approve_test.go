@@ -112,8 +112,22 @@ func TestApproveVerb_Refusals(t *testing.T) {
 			if !strings.Contains(out.String(), tt.wantMsg) {
 				t.Errorf("output %q does not contain %q", out.String(), tt.wantMsg)
 			}
+			if !strings.Contains(out.String(), "way forward: ") {
+				t.Errorf("output %q names no way forward", out.String())
+			}
 			if len(*written) != 0 {
 				t.Errorf("wrote %d approvals on a refusal; want none", len(*written))
+			}
+			// Taking the way forward (the run halts at Publish, the PR opens, the HEAD syncs, the
+			// transient clears) leaves a state the same verb accepts.
+			fixed, _ := approveFixture()
+			fixed.writeApproval = d.writeApproval
+			out.Reset()
+			if code := approveVerb(context.Background(), &out, fixed); code != 0 {
+				t.Fatalf("re-run after the way forward: exit = %d; want 0; out = %s", code, out.String())
+			}
+			if len(*written) != 1 {
+				t.Errorf("wrote %d approvals after the way forward; want 1", len(*written))
 			}
 		})
 	}
