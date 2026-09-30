@@ -577,3 +577,7 @@ func MergeStatePathForTest(f *Fabric) (string, error) {
 func ResetMergeSidesForTest(f *Fabric, rec *Mutations, warpSHA string) error {
 	return f.resetMergeSides(rec, warpSHA)
 }
+
+// ArchiveWeftTipForTest re-exports archiveWeftTip, which has no verb caller yet, for
+// archive_integration_test.go to drive directly.
+var ArchiveWeftTipForTest = archiveWeftTip
