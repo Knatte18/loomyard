@@ -30,10 +30,6 @@ import (
 var coverageGuardAllowedUnreachableEngines = map[string]bool{
 	"SingleLLM": true,
 	"Stub":      true,
-	// PRGate and PRRework are reached by no recipe until card 11 (loom-recipe-review-rows) routes
-	// Publish through them; that card removes both entries.
-	"PRGate":   true,
-	"PRRework": true,
 }
 
 // TestCoverageGuard_EveryRegisteredEngineIsReachedOrAllowlisted asserts every name in

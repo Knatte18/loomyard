@@ -20,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -477,6 +478,37 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// path converge.
 		ApprovePlan: func() error {
 			return planparser.SetApproved(planparser.PlanDir(location.AnchorPath()))
+		},
+		// ReworkSpec is evaluated per Call like PlanSpec above, so the stencil is read at call time.
+		ReworkSpec: func() (shuttleengine.Spec, error) {
+			return loomengine.ReworkSpec(location, websterGeom.StencilsDir, websterGeom.SpecsDir, loomCfg, registry)
+		},
+		// Rework opens nothing at wire time: every closure reads or writes on demand, since wire() also
+		// runs for status/pause.
+		Rework: loomshed.PRReworkDeps{
+			PlanDir:      planparser.PlanDir(anchorPath),
+			ReworkDir:    loomengine.LoomReworkDir(location),
+			ReworkDirRel: loomengine.LoomReworkDirRel(),
+			ReadCommitted: func(anchorRel string) ([]byte, bool, error) {
+				return fabricengine.CommittedAnchoredFile(location, anchorRel)
+			},
+			ReadRejection: func() (loomshed.PendingRejection, bool, error) {
+				r, found, err := landingshed.ReadRejection(loomengine.LoomRejectionPath(location))
+				if err != nil || !found {
+					return loomshed.PendingRejection{}, found, err
+				}
+				return loomshed.PendingRejection{PRNumber: r.PRNumber, HeadSHA: r.HeadSHA, RejectedAt: r.RejectedAt, Findings: r.Findings}, true, nil
+			},
+			ClearRejection: func() error {
+				return landingshed.RemoveRecord(loomengine.LoomRejectionPath(location))
+			},
+			Commit: func() error {
+				_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, []string{planparser.PlanDirRel(), loomengine.LoomReworkDirRel()}, fmt.Sprintf("loom: rework round for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
+				return err
+			},
+			Rebaseline: func() error {
+				return websterengine.RebaselinePlanFingerprint(websterGeom)
+			},
 		},
 		// StencilsDir, SpecsDir, RunRoot, Burler, and Now are filled for both review segments --
 		// Discussion-Bouncer/Discussion-Burler and Plan-Bouncer/Plan-Burler alike. StencilsDir and

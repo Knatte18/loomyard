@@ -168,7 +168,32 @@ func testLandingDeps(dir string) landingshed.Deps {
 		OpenFabric:       nilFabricOpener,
 		OpenParentFabric: nilFabricOpener,
 		Shuttle:          fakeMergeShuttle{},
+		ApprovalPath:     filepath.Join(dir, "landing-scratch", "approval.json"),
+		RejectionPath:    filepath.Join(dir, "landing-scratch", "rejection.json"),
+		TaskHead:         func() (string, error) { return "task-head", nil },
 	}
+}
+
+// testReworkDeps returns a loomshed.PRReworkDeps whose every seam is a no-op fake and whose two
+// directories are absolute paths under dir, so the PRRework entry constructs.
+func testReworkDeps(dir string) loomshed.PRReworkDeps {
+	return loomshed.PRReworkDeps{
+		PlanDir:       filepath.Join(dir, lyxdirs.LyxDirName, "plan"),
+		ReworkDir:     filepath.Join(dir, lyxdirs.LyxDirName, "loom", "rework"),
+		ReworkDirRel:  filepath.Join(lyxdirs.LyxDirName, "loom", "rework"),
+		ReadCommitted: func(string) ([]byte, bool, error) { return nil, false, nil },
+		ReadRejection: func() (loomshed.PendingRejection, bool, error) {
+			return loomshed.PendingRejection{}, false, nil
+		},
+		ClearRejection: func() error { return nil },
+		Commit:         func() error { return nil },
+		Rebaseline:     func() error { return nil },
+	}
+}
+
+// testReworkSpec is a non-writing rework Spec factory for the same fixtures.
+func testReworkSpec() (shuttleengine.Spec, error) {
+	return shuttleengine.Spec{Prompt: "rework prompt", Role: "rework"}, nil
 }
 
 // fakeMasterStarter, fakeReedOps, fakeShuttleEngine, and fakeRefMatcher satisfy
@@ -715,6 +740,8 @@ func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, 
 			loomShuttle.commitPlanCalls++
 			return nil
 		},
+		ReworkSpec: testReworkSpec,
+		Rework:     testReworkDeps(dir),
 		// ApprovePlan is a closure running the real planparser.SetApproved over this fixture's own
 		// plan directory, not a fake that merely records the call: the seam under test is the write
 		// itself, and a fake that only recorded invocation would let a broken writer pass.
