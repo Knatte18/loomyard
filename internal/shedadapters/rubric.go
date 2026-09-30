@@ -11,7 +11,7 @@ import (
 )
 
 // ReadRubric reads the rubric stencil name from stencilsDir, strips its stamp banner, fills it as
-// its own single-marker template with specsDir, and returns the filled result.
+// its own template with specsDir and stencilsDir, and returns the filled result.
 //
 // The strip is about value semantics, not about protecting Fill. stencil.Fill already strips a
 // leading banner from the template it parses, but never from a marker value -- and a rubric's
@@ -22,9 +22,9 @@ import (
 // The strip happens before the fill, not after: Fill strips its own template internally, so
 // stripping afterwards would be too late to keep the banner out of the returned value.
 //
-// specs_dir is a required marker here -- plain Fill, never FillOptional. A rubric that carries
-// {{.specs_dir}} and is handed an empty value must error rather than render a blank path, because a
-// blank path is precisely the dead reference this task removes. A rubric that carries no marker at
+// specs_dir and stencils_dir are required markers here -- plain Fill, never FillOptional. A rubric
+// that carries {{.specs_dir}} or {{.stencils_dir}} and is handed an empty value must error rather
+// than render a blank path, because a blank path is precisely the dead reference this task removes. A rubric that carries no marker at
 // all renders unchanged, so this helper is safe to route every stencil-sourced rubric through from
 // the moment it exists.
 //
@@ -38,7 +38,7 @@ func ReadRubric(stencilsDir, name, specsDir string) (string, error) {
 		return "", fmt.Errorf("shedadapters: read rubric %q: %w", name, err)
 	}
 	stripped := stencil.StripLeadingComment(string(raw))
-	filled, err := stencil.Fill([]byte(stripped), map[string]string{"specs_dir": specsDir})
+	filled, err := stencil.Fill([]byte(stripped), map[string]string{"specs_dir": specsDir, "stencils_dir": stencilsDir})
 	if err != nil {
 		return "", fmt.Errorf("shedadapters: read rubric %q: %w", name, err)
 	}
