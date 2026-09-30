@@ -42,13 +42,12 @@ func NewWorktreeCreate(name, slug string, createWorktree func(context.Context) e
 // holding it, and releases it on every exit path -- including every Stuck one -- before returning.
 //
 // A contended lock is waited for, polling every primeLockPollInterval for up to primeLockWaitBound (see acquirePrimeLock), so overlapping batten runs take turns.
-// An Acquire error at any attempt is a returned hard error: the lock mechanism itself failed, which is not a
-// producer verdict. A context cancelled during the wait returns the cancelled-during-run error.
-// The bound spent with the lock still held is Stuck, with a reason naming primeLock.Path
-// and the wait -- never a holder identity, which the lock file carries no record of and so cannot
-// report. A createWorktree error is Stuck with that error's own text passed through verbatim and
-// unreworded: fabric's own refusals (the dirty-driving-worktree probe and the pre-existing-branch
-// refusal) already name their own remedies, and reworking that text would only drop information.
+// An Acquire error at any attempt is a returned hard error: the lock mechanism itself failed, which is not a producer verdict.
+// A context cancelled during the wait returns the cancelled-during-run error.
+// The bound spent with the lock still held is Stuck, with a reason naming primeLock.Path and the wait -- never a holder identity, which the lock file carries no record of and so cannot report.
+// A createWorktree error is Stuck with that error's own text passed through verbatim and unreworded:
+// fabric's own refusals (the dirty-driving-worktree probe and the pre-existing-branch refusal) already name their own remedies,
+// and reworking that text would only drop information.
 func (p *worktreeCreateProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, p.name); err != nil {
 		return "", shedengine.OutputPointer{}, err

@@ -4,9 +4,8 @@
 // the records never reach the new worktree's disk, the pair's first weft commit records their deletion,
 // and the adopt path, the parent branch and Add's rollback are untouched by the drop.
 //
-// Package fabricengine_test to reuse hubforge.NewHub and the add_rollback_adopt_test.go helpers
-// (shaOf, mustWeftRepoRoot, branchExistsAt) and origin_integration_test.go's (gitRevListCount);
-// shares the single TestMain in testmain_test.go.
+// Package fabricengine_test to reuse hubforge.NewHub and the add_rollback_adopt_test.go helpers (shaOf, mustWeftRepoRoot, branchExistsAt) and origin_integration_test.go's (gitRevListCount);
+// it shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
 

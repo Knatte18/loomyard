@@ -123,8 +123,7 @@ func DriveReportsRel(l *lyxcwd.Location, runID string) string {
 	return filepath.Join(lyxdirs.LyxDirName, shedDirName, runSegment(l, runID), driveReportsDirName)
 }
 
-// RunsRootRel returns the worktree-anchor-relative path of the run-records root: the join of
-// lyxdirs.LyxDirName and shedDirName, the directory every run's RunDir sits under.
+// RunsRootRel returns the worktree-anchor-relative path of the run-records root: the join of lyxdirs.LyxDirName and shedDirName, the directory every run's RunDir sits under.
 // It takes no *lyxcwd.Location, because the root carries no run-id and so needs none of runSegment's alias resolution.
 // It exists so fabricengine's Add can drop the whole run-records tree from a freshly forked pair without naming the shed segment itself.
 // The path is anchor-relative, the same shape SeedRel and StatusRel return, suitable as a fabricengine commit's relPaths.

@@ -36,8 +36,7 @@ func fakePrimeLock(path string, ok bool, acquireErr error, releaseErr error, rel
 	}
 }
 
-// waitingPrimeLock builds a PrimeLock that reports contention for the first contendedPolls Acquire
-// calls (forever when contendedPolls is negative), then acquires.
+// waitingPrimeLock builds a PrimeLock that reports contention for the first contendedPolls Acquire calls (forever when contendedPolls is negative), then acquires.
 // laterErr, when non-nil, is returned as the Acquire error on the attempt after the first contended one.
 // sleeps counts Sleep calls, and onSleep, when non-nil, runs inside each of them.
 func waitingPrimeLock(path string, contendedPolls int, laterErr error, released *bool, sleeps *int, onSleep func()) PrimeLock {

@@ -68,9 +68,8 @@ func (e *ErrBranchExists) Error() string {
 // Add creates a new paired warp and weft git worktree with the given slug.
 // It validates the slug, creates both worktrees, wires junctions, records and commits the pair's
 // parent-branch provenance, and pushes branches, rolling back all changes on any failure.
-// A newly forked weft branch does not inherit the parent's shed run records: the fork is no-checkout, so the
-// run-records root never reaches the new worktree's disk, and the pair's first weft commit (the origin record's)
-// also records the root's deletion.
+// A newly forked weft branch does not inherit the parent's shed run records: the fork is no-checkout, so the run-records root never reaches the new worktree's disk,
+// and the pair's first weft commit (the origin record's) also records the root's deletion.
 // An adopted, already-existing weft branch keeps its own run records.
 func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res AddResult, err error) {
 	rec := NewMutations(l.HubPath)
@@ -205,8 +204,8 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 			return AddResult{}, fmt.Errorf("adopt weft worktree for branch %q failed: %w", weftBranch, err)
 		}
 	} else {
-		// Create: fork from the parent's weft branch without checking the run-records root out, so the
-		// pair never inherits another run's seed or status; step 10c commits the root's deletion.
+		// Create: fork from the parent's weft branch without checking the run-records root out, so the pair never inherits another run's seed or status;
+		// step 10c commits the root's deletion.
 		// The adopt path above drops nothing: an existing branch's own records are its own.
 		var err error
 		runRecordsTracked, err = createWeftWorktreeDroppingRuns(rec, l, slug, weftBranch, parentWeftBranch)
@@ -252,8 +251,8 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 	// The commit's sha and committed returns are not read here: CommitWeftPaths records the
 	// KindCommitCreated entry itself, at its own success site, per the
 	// origin-record-records-both-its-write-and-its-commit decision.
-	// The run-records root joins the commit's paths only when the fork tracked it: git add on an
-	// untracked, absent root is a hard pathspec error, which a hub with no run records must not hit.
+	// The run-records root joins the commit's paths only when the fork tracked it:
+	// git add on an untracked, absent root is a hard pathspec error, which a hub with no run records must not hit.
 	commitPaths := []string{OriginRecordRel()}
 	if runRecordsTracked {
 		commitPaths = append(commitPaths, shedrun.RunsRootRel())

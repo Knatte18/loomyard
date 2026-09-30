@@ -41,12 +41,11 @@ var ErrChildNotParked = errors.New("battenshed: the task worktree's driver has n
 // acquire closure both WorktreeCreate and WorktreeTeardown hold it behind, so the two producers
 // that mutate the hub's worktree registry concurrently with each other never race.
 //
-// Acquire mirrors lock.TryAcquireWriteLock's own contract and stays non-blocking: a (nil, false, nil) return means the
-// lock is already held by someone else -- contention, not an error -- while a non-nil err means
-// acquisition itself failed.
-// The producers wait out contention themselves, polling Acquire through Sleep for a bounded time (see acquirePrimeLock). The lock file this package acquires carries no holder record, so a
-// contention stuck reason can name Path and nothing else: there is no way to say who is holding
-// it.
+// Acquire mirrors lock.TryAcquireWriteLock's own contract and stays non-blocking: a (nil, false, nil) return means the lock is already held by someone else -- contention, not an error --
+// while a non-nil err means acquisition itself failed.
+// The producers wait out contention themselves, polling Acquire through Sleep for a bounded time (see acquirePrimeLock).
+// The lock file this package acquires carries no holder record, so a contention stuck reason can name Path and nothing else:
+// there is no way to say who is holding it.
 type PrimeLock struct {
 	// Path is the told absolute lock-file path, named in a contention stuck reason.
 	Path string

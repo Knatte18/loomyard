@@ -1,7 +1,6 @@
 // forkrecords.go forks a new pair's weft branch without the parent's shed run records.
 //
-// A weft branch forked from its parent inherits every committed run directory the parent carries,
-// including a run record for the child's own slug, which makes the child's seed refuse a disagreeing one.
+// A weft branch forked from its parent inherits every committed run directory the parent carries, including a run record for the child's own slug, which makes the child's seed refuse a disagreeing one.
 // createWeftWorktreeDroppingRuns stops the inheritance at its source: it never writes the run-records root to the new worktree's disk,
 // and Add's first weft commit records the root's deletion.
 
@@ -16,8 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// createWeftWorktreeDroppingRuns creates a new weft worktree on branch, forking from startPoint like createWeftWorktree,
-// but leaving the run-records root (shedrun.RunsRootRel under l's anchor) out of the working tree.
+// createWeftWorktreeDroppingRuns creates a new weft worktree on branch, forking from startPoint like createWeftWorktree but leaving the run-records root (shedrun.RunsRootRel under l's anchor) out of the working tree.
 // It reports whether startPoint tracks anything under that root, which is what tells the caller its first commit has deletions to stage.
 //
 // The fork is `worktree add --no-checkout`, so nothing is written yet, and the same two mutations createWeftWorktree records are recorded right after it succeeds.

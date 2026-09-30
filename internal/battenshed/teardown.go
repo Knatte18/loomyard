@@ -75,11 +75,9 @@ func NewWorktreeTeardown(name, slug string, deps TeardownDeps, primeLock PrimeLo
 	}
 }
 
-// Call implements shedengine.ShedProducer. It acquires the prime lock exactly as
-// worktreeCreateProducer.Call does -- a contended lock is waited for (bounded and cancellable), an Acquire error is a returned hard error, a bound spent is
-// Stuck naming primeLock.Path and the wait, and the release closure is deferred so it runs on every exit path
-// including every Stuck one, with a release error logged at Warn rather than replacing the
-// verdict.
+// Call implements shedengine.ShedProducer.
+// It acquires the prime lock exactly as worktreeCreateProducer.Call does -- a contended lock is waited for (bounded and cancellable), an Acquire error is a returned hard error, a bound spent is Stuck naming primeLock.Path and the wait,
+// and the release closure is deferred so it runs on every exit path including every Stuck one, with a release error logged at Warn rather than replacing the verdict.
 //
 // It then calls deps.Shutdown. A Shutdown error is Stuck naming session shutdown as the failed
 // half, and deps.Remove is not called at all on that path -- abandoning that ordering is the
