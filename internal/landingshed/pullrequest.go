@@ -10,9 +10,9 @@ import (
 )
 
 // FindPullRequest returns the newest pull request from head to base in owner/repo, whatever its
-// state, or nil with a nil error when none exists. It is the one lookup Publish, Finalize and
-// `lyx loom approve` share, so all three resolve "the PR from the task branch to the parent"
-// identically. The query runs under publishGitHubTimeout, and a GitHub error is returned as-is.
+// state, or nil with a nil error when none exists, so every landing step resolves "the pull request
+// from the task branch to the parent" the same way. The query is bounded by the landing GitHub
+// timeout, and a GitHub error is returned as-is.
 func FindPullRequest(ctx context.Context, client *github.Client, owner, repo, head, base string) (*github.PullRequest, error) {
 	queryCtx, cancel := context.WithTimeout(ctx, publishGitHubTimeout)
 	defer cancel()

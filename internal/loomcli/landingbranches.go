@@ -8,10 +8,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
-// landingBranches resolves the task branch and the branch it lands on, over an already-opened
-// fabric handle: CurrentBranch, then ReadOrigin, then resolveLandingParent. It is the one home of
-// that sequence, so Publish's route, Describe's and approve's cannot drift apart. It takes the
-// handle rather than opening one so a caller that already holds the fabric never opens it twice.
+// landingBranches resolves the task branch (the handle's current branch) and the branch it lands on
+// (the pair's recorded parent), over an already-opened fabric handle. It is the one home of that
+// resolution, so no landing path can drift from another. It takes the handle rather than opening
+// one so a caller that already holds the fabric never opens it twice.
 func landingBranches(handle *fabricengine.Fabric, location *lyxcwd.Location) (taskBranch, parentBranch string, err error) {
 	taskBranch, err = handle.CurrentBranch()
 	if err != nil {
