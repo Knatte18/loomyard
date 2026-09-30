@@ -33,6 +33,11 @@ var LoomTemplateDiscussion []byte
 //go:embed loom/loom-template-plan.md
 var LoomTemplatePlan []byte
 
+// LoomTemplateRework is the loom PR-Rework producer's shipped-default autonomous prompt.
+//
+//go:embed loom/loom-template-rework.md
+var LoomTemplateRework []byte
+
 // LoomRubricDiscussionReview is the Discussion-Review rubric, read by both rows of the
 // Discussion-Review perch.
 //
@@ -208,6 +213,7 @@ var entries = []registryEntry{
 	{"landing-template-describe", &LandingTemplateDescribe},
 	{"loom-template-discussion", &LoomTemplateDiscussion},
 	{"loom-template-plan", &LoomTemplatePlan},
+	{"loom-template-rework", &LoomTemplateRework},
 	{"loom-rubric-discussion-review", &LoomRubricDiscussionReview},
 	{"loom-rubric-plan-review", &LoomRubricPlanReview},
 	{"loom-rubric-webster-review", &LoomRubricWebsterReview},
