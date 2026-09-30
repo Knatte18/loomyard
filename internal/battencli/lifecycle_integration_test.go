@@ -74,6 +74,7 @@ producers:
     max_bounces: 1440
     config:
       poll_interval_s: 1
+      driver_exit_grace_s: 900
 
   - name: Worktree-Teardown
     engine: WorktreeTeardown

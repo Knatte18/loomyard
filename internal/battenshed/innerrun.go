@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -45,9 +46,32 @@ func SpawnConfirmedFile(scratchDir, producer string) string {
 // cannot restart the task worktree's own driver, only watch it.
 const haltedChildRemedy = "the task worktree's own run must be resumed from inside that worktree (its recipe's bootstrap verb, e.g. \"lyx loom start\") before this run is resumed; resuming this run alone only resumes the watch"
 
-// awaitingChildRemedy is the hand-off instruction an awaiting child's error carries: the child
-// waits on a pull-request approval that only the operator can give from inside the task worktree.
-const awaitingChildRemedy = "the child is awaiting a human hand-off: approve its pull request (\"lyx loom approve\" inside the task worktree), then resume the child (\"lyx loom start\" there), then resume this run"
+// approvalActedFileSuffix is the fixed suffix of the marker recording the approval identity the
+// producer last resumed the child on, joined onto the producer's own name.
+const approvalActedFileSuffix = "-approval-acted"
+
+// doneSeenFileSuffix is the fixed suffix of the marker recording when the producer first saw the
+// child done, joined onto the producer's own name.
+const doneSeenFileSuffix = "-done-seen"
+
+// approvalActedFile returns the path of the marker holding the approval identity already resumed on.
+func approvalActedFile(scratchDir, producer string) string {
+	return filepath.Join(scratchDir, producer+approvalActedFileSuffix)
+}
+
+// doneSeenFile returns the path of the marker holding the RFC 3339 time the child was first seen done.
+func doneSeenFile(scratchDir, producer string) string {
+	return filepath.Join(scratchDir, producer+doneSeenFileSuffix)
+}
+
+// approvalIdentity renders an approval as the line the approval-acted marker holds.
+func approvalIdentity(a ChildApproval) string {
+	return a.ApprovedAt + " " + a.HeadSHA + "\n"
+}
+
+// awaitingHandOff is the operator instruction an awaiting child's wait carries: the child waits on
+// a pull-request approval that only the operator can give from inside the task worktree.
+const awaitingHandOff = "run \"lyx loom approve\" in the task worktree; this run then resumes the child itself"
 
 // innerRunProducer spawns the inner shed run for a task worktree, once, and checks its persisted
 // status once per Call, reporting Stuck while the child is still running so shedengine's own
@@ -58,6 +82,8 @@ type innerRunProducer struct {
 	deps         InnerRunDeps
 	pollInterval time.Duration
 	scratchDir   string
+	// driverExitGrace bounds how long a done child's live driver strand is waited for.
+	driverExitGrace time.Duration
 }
 
 var _ shedengine.ShedProducer = (*innerRunProducer)(nil)
@@ -67,9 +93,12 @@ var _ shedengine.ShedProducer = (*innerRunProducer)(nil)
 // deps.ReadStatus exactly once per Call thereafter. The bounded wait lives on the recipe row's own
 // max_bounces and on_stuck self-route, one shedengine bounce per Call, not inside this producer.
 //
+// driverExitGrace bounds the wait for a done child's driver strand to end before the row returns
+// Done anyway.
+//
 // A nil deps.Sleep resolves to waitOrCancel, and a nil deps.Now to time.Now, once here rather than
 // on every Call, so a test's no-op sleep and fixed clock are the only values ever substituted.
-func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duration, scratchDir string) shedengine.ShedProducer {
+func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duration, scratchDir string, driverExitGrace time.Duration) shedengine.ShedProducer {
 	if deps.Sleep == nil {
 		deps.Sleep = waitOrCancel
 	}
@@ -82,6 +111,8 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 		deps:         deps,
 		pollInterval: pollInterval,
 		scratchDir:   scratchDir,
+
+		driverExitGrace: driverExitGrace,
 	}
 }
 
@@ -101,14 +132,31 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 // Spawn Observability lines around deps.Spawn), then one more read;
 // deps.Spawn returning an error is a hard error, not Stuck, since a failed spawn is mechanism
 // failure, not an ordinary wait, and the next Call retries it; still no status file after a
-// successful spawn is a hard error
-// naming the spawn that returned success without producing one; a resolved status with
-// StateDone is Done; StateRunning sleeps p.pollInterval and returns Stuck, the sole Stuck arm --
-// ProducerDef.OnStuck is a static per-producer value, so every Stuck this row ever returns routes
-// back to the same self-route target, and a second arm returning Stuck for a genuinely stuck child
-// would burn the whole bounce budget in a tight loop before ever reaching StateBlocked;
-// StateBlocked, StatePaused or StateFailed is a hard error whose message carries the child's State,
-// Error and CurrentProducer; any other value is a hard error naming the unrecognised state.
+// successful spawn is a hard error naming the spawn that returned success without producing one.
+// Any Call that finds the child in a state other than done first removes a leftover done-seen
+// marker, so a marker from an earlier run of the same slug never shortens a later wait.
+// Then by state:
+//   - running sleeps p.pollInterval and returns a counted Stuck;
+//   - awaiting with no approval record sleeps and returns a budget-exempt Stuck naming the hand-off;
+//   - awaiting with an approval not yet acted on spawns the child's driver again (the child's own
+//     bootstrap resumes an approved run), records the approval in the approval-acted marker only once
+//     the spawn succeeded, then sleeps and returns a budget-exempt Stuck;
+//   - awaiting with an approval already acted on does not spawn, and sleeps and returns a
+//     budget-exempt Stuck naming the recovery of approving again;
+//   - done records the first-sight time in the done-seen marker and returns Done once the driver
+//     strand is gone or driverExitGrace has elapsed since first sight, and otherwise sleeps and
+//     returns a budget-exempt Stuck, the wait for the driver to finish its stop report;
+//   - blocked, paused or failed is a hard error whose message carries the child's State, Error and
+//     CurrentProducer;
+//   - any other value is a hard error naming the unrecognised state.
+//
+// The self-route's "sole Stuck arm" reasoning still holds in the sense it exists for:
+// ProducerDef.OnStuck is a static per-producer value, so every Stuck this row returns routes back
+// to the same self-route target, which is safe only while every Stuck is a timed wait and never a
+// genuinely stuck child, which would burn the bounce budget in a tight loop before reaching a halt.
+// Every arm above that returns Stuck is such a wait, and a halted child is always a hard error.
+// Only the running arm is counted against the row's bounce budget; the waits on a human and on the
+// driver are exempt, the latter bounded by driverExitGrace instead.
 //
 // A ResolveStatus error and a ReadStatus error are both returned hard errors, not verdicts: the
 // task worktree is required to exist by the time this row runs, and a status file that exists but
@@ -169,9 +217,15 @@ func (p *innerRunProducer) Call(ctx context.Context) (shedengine.Outcome, sheden
 		return "", shedengine.OutputPointer{}, cerr
 	}
 
+	if status.State != shedengine.StateDone {
+		if err := os.Remove(doneSeenFile(p.scratchDir, p.name)); err != nil && !os.IsNotExist(err) {
+			return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: clear stale done-seen marker: %w", p.name, err)
+		}
+	}
+
 	switch status.State {
 	case shedengine.StateDone:
-		return shedengine.Done, shedengine.OutputPointer{}, nil
+		return p.callDone(ctx)
 	case shedengine.StateRunning:
 		p.deps.Sleep(ctx, p.pollInterval)
 		if cerr := cancelErr(ctx, p.name); cerr != nil {
@@ -181,9 +235,7 @@ func (p *innerRunProducer) Call(ctx context.Context) (shedengine.Outcome, sheden
 		reportStuck(p.name, reason, p.scratchDir, "slug", p.slug)
 		return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
 	case shedengine.StateAwaiting:
-		// A planned hand-off, not a fault: the child waits on a human, so the remedy names the
-		// approval step before the resume.
-		return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: inner shed run reached state %q: error=%q current_producer=%q; %s", p.name, status.State, status.Error, status.CurrentProducer, awaitingChildRemedy)
+		return p.callAwaiting(ctx, status)
 	case shedengine.StateBlocked, shedengine.StatePaused, shedengine.StateFailed:
 		// The remedy is named here because nothing on the prime side can perform it: this row never
 		// spawns against a halted child, and resuming the outer run resumes the watch, never the
@@ -192,6 +244,111 @@ func (p *innerRunProducer) Call(ctx context.Context) (shedengine.Outcome, sheden
 	default:
 		return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: unrecognized status state %q", p.name, status.State)
 	}
+}
+
+// exemptWait sleeps one poll interval and returns a budget-exempt Stuck carrying reason.
+func (p *innerRunProducer) exemptWait(ctx context.Context, reason string) (shedengine.Outcome, shedengine.OutputPointer, error) {
+	p.deps.Sleep(ctx, p.pollInterval)
+	if cerr := cancelErr(ctx, p.name); cerr != nil {
+		return "", shedengine.OutputPointer{}, cerr
+	}
+	reportStuck(p.name, reason, p.scratchDir, "slug", p.slug)
+	return shedengine.Stuck, shedengine.OutputPointer{Reason: reason, BudgetExempt: true}, nil
+}
+
+// callAwaiting handles a child halted at a human hand-off: it waits for an approval, resumes the
+// child once per approval, and otherwise waits, always with a budget-exempt Stuck.
+func (p *innerRunProducer) callAwaiting(ctx context.Context, status shedengine.Status) (shedengine.Outcome, shedengine.OutputPointer, error) {
+	approval, found, err := p.deps.ReadApproval()
+	if err != nil {
+		if cerr := cancelErr(ctx, p.name); cerr != nil {
+			return "", shedengine.OutputPointer{}, cerr
+		}
+		return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: read approval: %w", p.name, err)
+	}
+	if !found {
+		return p.exemptWait(ctx, fmt.Sprintf("inner shed run is awaiting a human hand-off (%s); %s", status.Error, awaitingHandOff))
+	}
+
+	markerPath := approvalActedFile(p.scratchDir, p.name)
+	identity := approvalIdentity(approval)
+	acted, err := os.ReadFile(markerPath)
+	if err != nil && !os.IsNotExist(err) {
+		return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: read approval-acted marker: %w", p.name, err)
+	}
+	if err == nil && string(acted) == identity {
+		return p.exemptWait(ctx, fmt.Sprintf("the approval at %s was already acted on and the child is awaiting again; re-run \"lyx loom approve\" in the task worktree, which records a new approval and resumes the child once more", approval.ApprovedAt))
+	}
+
+	logger.Info("battenshed: resuming approved inner shed run", "producer", p.name, "slug", p.slug, "approved_at", approval.ApprovedAt)
+	spawnErr := p.deps.Spawn(ctx)
+	logger.Info("battenshed: inner shed run wait complete", "producer", p.name, "slug", p.slug)
+	if spawnErr != nil {
+		if cerr := cancelErr(ctx, p.name); cerr != nil {
+			return "", shedengine.OutputPointer{}, cerr
+		}
+		return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: resume approved inner shed run (resuming this run retries the spawn): %w", p.name, spawnErr)
+	}
+	recordSpawnConfirmed(p.name, p.slug, p.scratchDir, SpawnConfirmedFile(p.scratchDir, p.name))
+	if err := os.MkdirAll(p.scratchDir, 0o755); err != nil {
+		return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: create scratch directory for approval-acted marker: %w", p.name, err)
+	}
+	if err := os.WriteFile(markerPath, []byte(identity), 0o644); err != nil {
+		return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: write approval-acted marker: %w", p.name, err)
+	}
+	return p.exemptWait(ctx, fmt.Sprintf("the approval at %s was acted on: the approved child was resumed; watching it", approval.ApprovedAt))
+}
+
+// callDone handles a done child: it returns Done once the driver strand has ended or the grace
+// window counted from first sight has elapsed, and otherwise waits with a budget-exempt Stuck.
+func (p *innerRunProducer) callDone(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
+	markerPath := doneSeenFile(p.scratchDir, p.name)
+	now := p.deps.Now()
+
+	raw, err := os.ReadFile(markerPath)
+	var firstSeen time.Time
+	switch {
+	case err == nil:
+		firstSeen, err = time.Parse(time.RFC3339, strings.TrimSpace(string(raw)))
+		if err != nil {
+			return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: parse done-seen marker: %w", p.name, err)
+		}
+	case os.IsNotExist(err):
+		firstSeen = now
+		if err := os.MkdirAll(p.scratchDir, 0o755); err != nil {
+			return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: create scratch directory for done-seen marker: %w", p.name, err)
+		}
+		if err := os.WriteFile(markerPath, []byte(now.Format(time.RFC3339)+"\n"), 0o644); err != nil {
+			return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: write done-seen marker: %w", p.name, err)
+		}
+	default:
+		return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: read done-seen marker: %w", p.name, err)
+	}
+
+	finish := func() (shedengine.Outcome, shedengine.OutputPointer, error) {
+		if err := os.Remove(markerPath); err != nil && !os.IsNotExist(err) {
+			return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: remove done-seen marker: %w", p.name, err)
+		}
+		return shedengine.Done, shedengine.OutputPointer{}, nil
+	}
+
+	alive, err := p.deps.DriverAlive(ctx)
+	if err != nil {
+		if cerr := cancelErr(ctx, p.name); cerr != nil {
+			return "", shedengine.OutputPointer{}, cerr
+		}
+		logger.Warn("battenshed: driver liveness read failed; treating the driver as live", "producer", p.name, "slug", p.slug, "error", err)
+		alive = true
+	}
+	if !alive {
+		return finish()
+	}
+	elapsed := now.Sub(firstSeen)
+	if elapsed >= p.driverExitGrace {
+		logger.Warn("battenshed: driver still live after the exit grace; finishing anyway", "producer", p.name, "slug", p.slug, "grace", p.driverExitGrace, "elapsed", elapsed)
+		return finish()
+	}
+	return p.exemptWait(ctx, fmt.Sprintf("inner shed run is done; waiting for its driver to finish its stop report (%s of %s grace elapsed)", elapsed.Round(time.Second), p.driverExitGrace))
 }
 
 // spawnConfirmed reports whether the spawn-confirmation marker at path exists. Any stat failure

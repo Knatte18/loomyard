@@ -259,6 +259,35 @@ func TestInnerRunEntry_PollConfigKeys(t *testing.T) {
 	})
 }
 
+// TestInnerRunEntry_DriverExitGraceKey covers innerRunEntry's driver_exit_grace_s config key: absent
+// resolves to defaultInnerRunDriverExitGraceS, an explicit value builds successfully, and a negative
+// value is rejected naming the key.
+func TestInnerRunEntry_DriverExitGraceKey(t *testing.T) {
+	t.Run("DefaultIsNineHundred", func(t *testing.T) {
+		if defaultInnerRunDriverExitGraceS != 900 {
+			t.Errorf("defaultInnerRunDriverExitGraceS = %d; want 900", defaultInnerRunDriverExitGraceS)
+		}
+		producer, err := innerRunEntry("InnerRun", Config{}, newTestEnv(t))
+		if err != nil || producer == nil {
+			t.Fatalf("innerRunEntry() = %v, %v; want a producer", producer, err)
+		}
+	})
+
+	t.Run("ExplicitValue", func(t *testing.T) {
+		producer, err := innerRunEntry("InnerRun", Config{"driver_exit_grace_s": 60}, newTestEnv(t))
+		if err != nil || producer == nil {
+			t.Fatalf("innerRunEntry() = %v, %v; want a producer", producer, err)
+		}
+	})
+
+	t.Run("NegativeIsRejected", func(t *testing.T) {
+		_, err := innerRunEntry("InnerRun", Config{"driver_exit_grace_s": -1}, newTestEnv(t))
+		if err == nil || !strings.Contains(err.Error(), "driver_exit_grace_s") {
+			t.Errorf("innerRunEntry() error = %v; want it to name %q", err, "driver_exit_grace_s")
+		}
+	})
+}
+
 // seedChildLifecycleCase, unlike lifecycleEntryCases' shared table, cannot reuse newTestEnv
 // directly -- seedChildEntry needs Env.SeedChild filled, which newTestEnv leaves zero on purpose --
 // so seedChildEntry gets its own dedicated table here, matching the shared table's shape field for

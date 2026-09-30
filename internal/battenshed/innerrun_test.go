@@ -19,7 +19,22 @@ import (
 // fakeClock is a Sleep seam a test can hold still: Sleep records calls without ever blocking.
 type fakeClock struct {
 	sleepCalls int
+	now        time.Time
 }
+
+// testGrace is the driver-exit grace every test producer is built with unless it says otherwise.
+const testGrace = 10 * time.Minute
+
+// Now is the fake clock's fixed time, moved only by advance.
+func (c *fakeClock) Now() time.Time {
+	if c.now.IsZero() {
+		c.now = time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	}
+	return c.now
+}
+
+// advance moves the fake clock forward by d.
+func (c *fakeClock) advance(d time.Duration) { c.now = c.Now().Add(d) }
 
 func (c *fakeClock) Sleep(ctx context.Context, d time.Duration) {
 	c.sleepCalls++
@@ -52,7 +67,10 @@ func newInnerRunDeps(spawnErr error, resolveErr error, statuses []statusResult, 
 			r := statuses[idx]
 			return r.status, r.found, r.err
 		},
-		Sleep: clock.Sleep,
+		Sleep:        clock.Sleep,
+		Now:          clock.Now,
+		ReadApproval: func() (ChildApproval, bool, error) { return ChildApproval{}, false, nil },
+		DriverAlive:  func(ctx context.Context) (bool, error) { return false, nil },
 	}
 	return &readCalls, &spawnCalls, deps
 }
@@ -128,7 +146,7 @@ func TestInnerRun_VerdictTable(t *testing.T) {
 			clock := &fakeClock{}
 			_, _, deps := newInnerRunDeps(nil, nil, tt.statuses, clock)
 
-			producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir)
+			producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
 			outcome, ptr, err := producer.Call(context.Background())
 
 			if tt.wantErr {
@@ -162,12 +180,11 @@ func TestInnerRun_VerdictTable(t *testing.T) {
 	}
 }
 
-// TestInnerRun_StuckIsReturnedForRunningAndNoOtherCase is the load-bearing assertion the static
-// self-route depends on: every non-running verdict this producer can reach -- Done, or any of the
-// three hard-error states -- must never itself be Stuck, since ProducerDef.OnStuck is a static
-// per-producer value and once non-empty routes every Stuck from this row back to itself with no
-// per-verdict distinction possible.
-func TestInnerRun_StuckIsReturnedForRunningAndNoOtherCase(t *testing.T) {
+// TestInnerRun_HaltedAndDoneNeverStuck is the load-bearing assertion the static self-route depends
+// on: a halted child, and a done child whose driver is gone, must never itself be Stuck, since
+// ProducerDef.OnStuck is a static per-producer value and routes every Stuck from this row back to
+// itself with no per-verdict distinction possible. Every Stuck this row returns is a timed wait.
+func TestInnerRun_HaltedAndDoneNeverStuck(t *testing.T) {
 	tests := []struct {
 		name   string
 		status shedengine.Status
@@ -183,10 +200,10 @@ func TestInnerRun_StuckIsReturnedForRunningAndNoOtherCase(t *testing.T) {
 			clock := &fakeClock{}
 			_, _, deps := newInnerRunDeps(nil, nil, []statusResult{{status: tt.status, found: true}}, clock)
 
-			producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir)
+			producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
 			outcome, _, err := producer.Call(context.Background())
 			if outcome == shedengine.Stuck {
-				t.Errorf("Call() outcome = Stuck for status %q; want Stuck reserved for the still-running case alone", tt.status.State)
+				t.Errorf("Call() outcome = Stuck for status %q; want a halted or finished child never Stuck", tt.status.State)
 			}
 			// A halted child is the one outcome the operator has to act on from inside the task
 			// worktree, so the error must say so rather than only name the child's state.
@@ -203,7 +220,7 @@ func TestInnerRun_SpawnFailureIsReturnedError(t *testing.T) {
 	spawnErr := errors.New("spawn failed")
 	_, spawnCalls, deps := newInnerRunDeps(spawnErr, nil, []statusResult{{found: false}}, clock)
 
-	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir)
+	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
 	outcome, _, err := producer.Call(context.Background())
 	if err == nil {
 		t.Fatal("Call() error = nil; want a returned error")
@@ -225,7 +242,7 @@ func TestInnerRun_ResolveStatusFailureIsReturnedError(t *testing.T) {
 	resolveErr := errors.New("resolve failed")
 	_, _, deps := newInnerRunDeps(nil, resolveErr, nil, clock)
 
-	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir)
+	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
 	_, _, err := producer.Call(context.Background())
 	if err == nil {
 		t.Fatal("Call() error = nil; want a returned error")
@@ -243,7 +260,7 @@ func TestInnerRun_CancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir)
+	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
 	outcome, _, err := producer.Call(ctx)
 	if err == nil {
 		t.Fatal("Call() error = nil; want a non-nil error for a cancelled context")
@@ -274,7 +291,7 @@ func TestInnerRun_CancelledDuringResolveStatusError(t *testing.T) {
 		Sleep: (&fakeClock{}).Sleep,
 	}
 
-	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir)
+	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
 	_, _, err := producer.Call(ctx)
 	if err == nil {
 		t.Fatal("Call() error = nil; want the cancelled-context diagnosis")
@@ -300,7 +317,7 @@ func TestInnerRun_CancelledDuringFirstReadStatusError(t *testing.T) {
 		Sleep: (&fakeClock{}).Sleep,
 	}
 
-	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir)
+	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
 	_, _, err := producer.Call(ctx)
 	if err == nil {
 		t.Fatal("Call() error = nil; want the cancelled-context diagnosis")
@@ -333,7 +350,7 @@ func TestInnerRun_CancelledDuringSecondReadStatusError(t *testing.T) {
 		Sleep: (&fakeClock{}).Sleep,
 	}
 
-	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir)
+	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
 	_, _, err := producer.Call(ctx)
 	if err == nil {
 		t.Fatal("Call() error = nil; want the cancelled-context diagnosis")
@@ -355,7 +372,7 @@ func TestInnerRun_ReentryAgainstExistingStatusDoesNotRespawn(t *testing.T) {
 	clock := &fakeClock{}
 	_, spawnCalls, deps := newInnerRunDeps(nil, nil, []statusResult{{status: shedengine.Status{State: shedengine.StateRunning}, found: true}}, clock)
 
-	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir)
+	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
 	outcome, _, err := producer.Call(context.Background())
 	if err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
@@ -376,7 +393,7 @@ func TestInnerRun_StillRunningSleepsExactlyOnce(t *testing.T) {
 	clock := &fakeClock{}
 	_, _, deps := newInnerRunDeps(nil, nil, []statusResult{{status: shedengine.Status{State: shedengine.StateRunning}, found: true}}, clock)
 
-	producer := NewInnerRun("innerrun", "myslug", deps, 5*time.Second, scratchDir)
+	producer := NewInnerRun("innerrun", "myslug", deps, 5*time.Second, scratchDir, testGrace)
 
 	start := time.Now()
 	outcome, _, err := producer.Call(context.Background())
@@ -408,8 +425,10 @@ func TestInnerRun_NilSeamsDefaultToStdlib(t *testing.T) {
 		ReadStatus: func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
 			return shedengine.Status{State: shedengine.StateDone}, true, nil
 		},
+		ReadApproval: func() (ChildApproval, bool, error) { return ChildApproval{}, false, nil },
+		DriverAlive:  func(ctx context.Context) (bool, error) { return false, nil },
 	}
-	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir)
+	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
 	outcome, _, err := producer.Call(context.Background())
 	if err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
@@ -481,7 +500,7 @@ func TestInnerRun_SpawnsUntilASpawnIsConfirmed(t *testing.T) {
 			}
 			_, spawnCalls, deps := newInnerRunDeps(tt.spawnErr, nil, []statusResult{tt.status}, &fakeClock{})
 
-			_, _, _ = NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir).Call(context.Background())
+			_, _, _ = NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace).Call(context.Background())
 
 			if *spawnCalls != tt.wantSpawns {
 				t.Errorf("spawn calls = %d; want %d", *spawnCalls, tt.wantSpawns)
@@ -507,10 +526,10 @@ func TestInnerRun_FailedSpawnIsRetriedOnTheNextCall(t *testing.T) {
 		return spawnErr
 	}
 
-	if _, _, err := NewInnerRun("innerrun", "myslug", failing, time.Millisecond, scratchDir).Call(context.Background()); !errors.Is(err, spawnErr) {
+	if _, _, err := NewInnerRun("innerrun", "myslug", failing, time.Millisecond, scratchDir, testGrace).Call(context.Background()); !errors.Is(err, spawnErr) {
 		t.Fatalf("first Call() error = %v; want it to wrap %v", err, spawnErr)
 	}
-	outcome, _, err := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir).Call(context.Background())
+	outcome, _, err := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace).Call(context.Background())
 	if err != nil {
 		t.Fatalf("second Call() error = %v; want nil", err)
 	}
