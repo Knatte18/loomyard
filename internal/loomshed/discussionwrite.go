@@ -40,9 +40,9 @@ func NewDiscussionWrite(name string, inner shedengine.ShedProducer, commit func(
 // with a non-empty pointer -- and the returned triple is (outcome, pointer, nil) rather than being
 // forced to Done.
 //
-// shuttleengine.OutcomeAsking keeps returning Stuck with an empty Path and its cause on Reason, and is therefore still not
-// committed, correctly: an asking run has not satisfied its file contract, so there is nothing to
-// commit.
+// shuttleengine.OutcomeAsking keeps returning Stuck with an empty Path and its cause on Reason,
+// and is therefore still not committed, correctly: an asking run has not satisfied its file
+// contract, so there is nothing to commit.
 //
 // A non-nil commit error maps to a returned error, never to shedengine.Stuck, on both the Done path
 // and the gate-failed Stuck path alike: a git fault is not something re-writing the discussion can

@@ -56,10 +56,10 @@ func NewLoomPreflight(name, statusPath, statusLockPath string) shedengine.ShedPr
 // Call implements shedengine.ShedProducer: it invokes loomengine.CheckSeed(p.statusPath,
 // p.statusLockPath, NameLoomPreflight, []string{NamePreflight, NameLoomPreflight}) and maps its
 // result -- a Report with OK true to shedengine.Done with an empty pointer, a Report with OK false
-// to shedengine.Stuck with an empty Path and the cause on Reason, and a non-nil error to a returned error. That mapping
-// is the whole producer -- CheckSeed reports a determined verdict rather than erroring on anything
-// short of an infra failure, so its OK false is a verdict to route and its error is an undetermined
-// failure to escalate.
+// to shedengine.Stuck with an empty Path and the cause on Reason, and a non-nil error to a returned
+// error. That mapping is the whole producer -- CheckSeed reports a determined verdict rather than
+// erroring on anything short of an infra failure, so its OK false is a verdict to route and its
+// error is an undetermined failure to escalate.
 //
 // NameLoomPreflight and NamePreflight are passed as the expected name and the tolerated history set
 // directly, never p.name -- see the told-names-never-come-from-the-producer-name-field Shared

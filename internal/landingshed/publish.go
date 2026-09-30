@@ -219,7 +219,8 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 }
 
 // stuckOrCancelled consults cancelErr first -- the point-9 obligation every non-success exit
-// discharges -- and otherwise logs reason via reportStuck and returns Stuck with reason on the output pointer.
+// discharges -- and otherwise logs reason via reportStuck and returns Stuck with reason on the
+// output pointer.
 func (p *Publish) stuckOrCancelled(ctx context.Context, reason string, fields ...any) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if cerr := cancelErr(ctx, publishName); cerr != nil {
 		return "", shedengine.OutputPointer{}, cerr

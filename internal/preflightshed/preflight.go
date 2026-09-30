@@ -45,11 +45,11 @@ func NewPreflight(name, cwd string) shedengine.ShedProducer {
 
 // Call implements shedengine.ShedProducer: it invokes preflight.Check(p.cwd) and maps its result --
 // a Report with OK true to shedengine.Done with an empty pointer, a Report with OK false to
-// shedengine.Stuck with an empty Path and the failures on Reason, and a non-nil error to a returned error. That mapping is
-// the whole producer -- Check reports a determined verdict rather than erroring on anything short
-// of an infra failure, so its OK false is a verdict to route and its error is an undetermined
-// failure to escalate. The resolved *lyxcwd.Location Check also returns is discarded: this package
-// never touches the resolved location.
+// shedengine.Stuck with an empty Path and the failures on Reason, and a non-nil error to a returned
+// error. That mapping is the whole producer -- Check reports a determined verdict rather than
+// erroring on anything short of an infra failure, so its OK false is a verdict to route and its
+// error is an undetermined failure to escalate. The resolved *lyxcwd.Location Check also returns is
+// discarded: this package never touches the resolved location.
 func (p *preflightProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, p.name); err != nil {
 		return "", shedengine.OutputPointer{}, err
