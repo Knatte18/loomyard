@@ -7,6 +7,9 @@
 // instruction paths as plain string parameters rather than the engine's Geometry, so it never gains
 // geometry awareness of its own; the caller (Engine.Run) computes the directive, the stencils
 // directory, and the three paths.
+//
+// composePrompt warns, without failing, when the explore stencil lacks the friction or the focus directive marker
+// while a directive was computed for it.
 
 package burlerengine
 
@@ -65,16 +68,17 @@ func composePrompt(stencilsDir string, p *Profile, patternDirective, frictionDir
 	if err != nil {
 		return "", nil, err
 	}
+	warnIfFocusMarkerAbsent(instruction1Template, "burler-step-1-explore", focusDirective)
 	instruction1Values := map[string]string{
 		"pattern_directive": patternDirective,
 		friction.MarkerName: frictionDirective,
-		"focus_directive":   focusDirective,
+		focusMarkerName:     focusDirective,
 		"target":            formatFileSet(p.Target),
 		"fasit":             formatFileSet(p.Fasit),
 		"rubric":            p.Rubric,
 		"tool_use_rules":    toolUseRules(p.ToolUse),
 	}
-	instruction1, err := stencil.FillOptional(instruction1Template, instruction1Values, []string{"pattern_directive", friction.MarkerName, "focus_directive"})
+	instruction1, err := stencil.FillOptional(instruction1Template, instruction1Values, []string{"pattern_directive", friction.MarkerName, focusMarkerName})
 	if err != nil {
 		return "", nil, fmt.Errorf("burler: compose prompt: %w", err)
 	}

@@ -153,6 +153,61 @@ func TestComposePrompt_FocusDirective(t *testing.T) {
 			t.Errorf("instruction 1 contains marker residue: %q", got)
 		}
 	})
+
+	// The warning subtests swap the process-global logger output, so none runs in parallel.
+	focusWarningLines := func(out string) []string {
+		var lines []string
+		for _, line := range strings.Split(out, "\n") {
+			if strings.Contains(line, "{{.focus_directive}}") {
+				lines = append(lines, line)
+			}
+		}
+		return lines
+	}
+	composeCapturing := func(t *testing.T, markerFree, withDirective bool) string {
+		t.Helper()
+		dir := newTestStencilsDir(t)
+		if markerFree {
+			stripped := bytes.ReplaceAll(stencils.BurlerStep1Explore, []byte("{{.focus_directive}}"), nil)
+			if err := os.WriteFile(filepath.Join(dir, "burler", "burler-step-1-explore.md"), stripped, 0o644); err != nil {
+				t.Fatalf("WriteFile(marker-free burler-step-1-explore.md) = %v; want nil", err)
+			}
+		}
+		p := newComposableProfile(t)
+		if withDirective {
+			p.FocusDirective = filepath.Join(t.TempDir(), "focus.md")
+			if err := os.WriteFile(p.FocusDirective, []byte("look at the seam"), 0o644); err != nil {
+				t.Fatalf("WriteFile(focus) = %v; want nil", err)
+			}
+		}
+		var buf bytes.Buffer
+		logger.SetOutput(&buf)
+		t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+		if _, _, err := composePrompt(dir, &p, "", "", testInst1Path, testInst2Path, testInst3Path); err != nil {
+			t.Fatalf("composePrompt() = %v; want nil error", err)
+		}
+		return buf.String()
+	}
+
+	t.Run("warns when marker absent", func(t *testing.T) {
+		lines := focusWarningLines(composeCapturing(t, true, true))
+		if len(lines) != 1 {
+			t.Fatalf("focus-marker warning lines = %d; want 1: %q", len(lines), lines)
+		}
+		requireContains(t, lines[0], "burler-step-1-explore")
+	})
+
+	t.Run("no warning with shipped stencil", func(t *testing.T) {
+		if lines := focusWarningLines(composeCapturing(t, false, true)); len(lines) != 0 {
+			t.Errorf("focus-marker warning lines = %q; want none", lines)
+		}
+	})
+
+	t.Run("no warning without directive", func(t *testing.T) {
+		if lines := focusWarningLines(composeCapturing(t, true, false)); len(lines) != 0 {
+			t.Errorf("focus-marker warning lines = %q; want none", lines)
+		}
+	})
 }
 
 // TestComposePrompt_FillsAllMarkers proves a minimal valid profile composes cleanly through stencil
