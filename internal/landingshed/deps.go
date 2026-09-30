@@ -99,14 +99,16 @@ type Deps struct {
 	// every-field-populated drift guard is what keeps it filled.
 	CommitStatus func() error
 
-	// ApprovalPath is the operator-approval record's path, and TaskHead returns the task branch's
-	// local HEAD SHA. Publish consults the record, when one exists, before any sync, and lands the
-	// pull request as approved only if the pull request, the record and TaskHead all agree.
+	// ApprovalPath and RejectionPath are the operator's two decision records' paths, and TaskHead
+	// returns the task branch's local HEAD SHA. The PR gate, not Publish, reads both records and
+	// TaskHead, and lands or bounces the pull request only if the pull request, a record and
+	// TaskHead all agree.
 	//
-	// Both follow CommitStatus's nil-or-empty-is-absent convention: absent means approvals are not
-	// consulted. internal/loomcli's landingDeps fills both, and its drift guard keeps them filled.
-	ApprovalPath string
-	TaskHead     func() (string, error)
+	// The gate's constructor refuses empty paths and a nil TaskHead. internal/loomcli's
+	// landingDeps fills all three, and its drift guard keeps them filled.
+	ApprovalPath  string
+	RejectionPath string
+	TaskHead      func() (string, error)
 
 	// MarkTaskDone marks the task's board entry done. Finalize calls it once the parent-side merge
 	// has landed, before the parent push, and only logs a failure: the change is on the parent
