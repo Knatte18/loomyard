@@ -1,6 +1,6 @@
 // entries_gate.go implements resolveGateSpec, the shared resolver every gate-capable entry
-// (DiscussionWrite, PlanWrite, Describe, BurlerRound, Webster) calls to turn its row's "gate"/"gate_attempts"
-// Config keys into a shuttleengine.GateSpec.
+// (DiscussionWrite, PlanWrite, Describe, BurlerRound, Webster) calls to turn its row's
+// "gate"/"gate_attempts" Config keys into a shuttleengine.GateSpec.
 //
 // The selector is a declared string resolved against Env, exactly as bouncerEntry already resolves
 // "commit_seam"/"approve_seam" against Env.CommitPlan/Env.CommitDiscussion/Env.ApprovePlan.
@@ -26,8 +26,9 @@ import (
 // requireAbsRoot and returns loomshed.NewDiscussionGate over them; "plan" requires
 // env.AnchorPath and env.WorktreeRoot and returns loomshed.NewPlanGate over them; "description"
 // requires env.DescriptionPath to pass requireAbsRoot and returns landingshed.NewDescriptionGate
-// over it; any other non-empty value is an error naming the key and all three legal values. An absent "gate" returns the
-// zero GateSpec, which is what every ungated row carries by saying nothing.
+// over it; any other non-empty value is an error naming the key and all three legal values. An
+// absent "gate" returns the zero GateSpec, which is what every ungated row carries by saying
+// nothing.
 //
 // "gate_attempts" is an optional int read via configInt. A "gate_attempts" present with no "gate"
 // is an error naming both keys, never a silently-ignored key: it is unambiguously an author

@@ -54,7 +54,8 @@ import (
 
 // genericShedVerb reports whether verb is one of the four verbs shedverbs.Verbs drives -- run,
 // step, status, pause -- as opposed to loom's own hand-written verbs (start,
-// validate-discussion, validate-plan, validate-description, approve), which never reach arm's seed-presence check below.
+// validate-discussion, validate-plan, validate-description, approve), which never reach arm's
+// seed-presence check below.
 func genericShedVerb(verb string) bool {
 	switch verb {
 	case "run", "step", "status", "pause":

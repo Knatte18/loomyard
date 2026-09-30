@@ -23,10 +23,11 @@ import (
 const gateQuiescenceFailureMessage = "re-opens the compound-quiescence question this task deliberately declined -- turn-idle alone would no longer mean the agent is finished; the decision must be re-opened, not this test"
 
 // TestNoGatedRowAuthorizesForkSubagents parses the real embedded recipe and asserts every row
-// carrying a "gate" config key either is a writer row (engine DiscussionWrite, PlanWrite or Describe) --
-// whose spec factory (internal/loomengine's DiscussionSpec/PlanSpec, or landingshed.DescribeSpec) never sets
-// shuttleengine.Spec.ForkSubagents at all -- or is a burler row (engine BurlerRound) carrying no
-// "cluster-fan" key in its profile: sub-map, since burlerengine.Engine.Run sets
+// carrying a "gate" config key either is a writer row (engine DiscussionWrite, PlanWrite or
+// Describe) -- whose spec factory (internal/loomengine's DiscussionSpec/PlanSpec, or
+// landingshed.DescribeSpec) never sets shuttleengine.Spec.ForkSubagents at all -- or is a burler
+// row (engine BurlerRound) carrying no "cluster-fan" key in its profile: sub-map, since
+// burlerengine.Engine.Run sets
 // shuttleengine.Spec.ForkSubagents from p.ClusterFan != "" and from nothing else, so an absent fan
 // is what keeps a gated round's spec unforked.
 func TestNoGatedRowAuthorizesForkSubagents(t *testing.T) {
@@ -45,10 +46,11 @@ func TestNoGatedRowAuthorizesForkSubagents(t *testing.T) {
 
 		switch row.Engine {
 		case "DiscussionWrite", "PlanWrite", "Describe":
-			// A writer row's spec comes from internal/loomengine's DiscussionSpec/PlanSpec or landingshed.DescribeSpec, none
-			// of which sets Spec.ForkSubagents anywhere in its own construction -- the zero value
-			// (false) is what every writer spec carries by construction, so a writer row identified
-			// by engine name alone is what this case attests to.
+			// A writer row's spec comes from internal/loomengine's DiscussionSpec/PlanSpec or
+			// landingshed.DescribeSpec, none of which sets Spec.ForkSubagents anywhere in its own
+			// construction -- the zero value (false) is what every writer spec carries by
+			// construction, so a writer row identified by engine name alone is what this case
+			// attests to.
 			continue
 		case "BurlerRound":
 			profile, ok := row.Config["profile"].(map[string]any)
