@@ -1,5 +1,4 @@
-// launch.go holds the two judgments `lyx orch start` makes: which branch to take, and which
-// prompt to launch the session with.
+// launch.go holds the two judgments `lyx orch start` makes: which branch to take, and which prompt to launch the session with.
 // Both are pure so the verb is assembly over them.
 
 package orchengine
@@ -26,8 +25,7 @@ const (
 )
 
 // DecideStart maps the strand and watcher liveness pair onto a StartAction.
-// A dead or absent strand relaunches whatever the watcher's state,
-// since a relaunched session needs a watcher bound to it anyway.
+// A dead or absent strand relaunches whatever the watcher's state, since a relaunched session needs a watcher bound to it anyway.
 func DecideStart(strandLive, watcherLive bool) StartAction {
 	switch {
 	case !strandLive:
@@ -39,8 +37,7 @@ func DecideStart(strandLive, watcherLive bool) StartAction {
 	}
 }
 
-// ChooseStartPrompt picks the launch prompt: the resume stencil pointed at handoffFlag,
-// else at s.LastHandoff when it exists, else the start stencil.
+// ChooseStartPrompt picks the launch prompt: the resume stencil pointed at handoffFlag, else at s.LastHandoff when it exists, else the start stencil.
 // A handoffFlag naming a missing file is an error, since a silent fallback would resume from the wrong context.
 // Only LastHandoff is consulted, never PendingHandoff, so a partial handoff an aborted cycle left is never chosen.
 func ChooseStartPrompt(stencilsDir, handoffFlag string, s State, exists func(string) bool) (prompt, source string, err error) {

@@ -1,8 +1,6 @@
 // config.go — configuration for the orch module.
 //
-// Defines the Config type mirroring orch.yaml's keys and LoadConfig, which uses
-// internal/configengine.LoadOrTemplate with ConfigTemplate() to resolve the orch config file,
-// degrading to the embedded template on proven absence;
+// Defines the Config type mirroring orch.yaml's keys and LoadConfig, which uses internal/configengine.LoadOrTemplate with ConfigTemplate() to resolve the orch config file, degrading to the embedded template on proven absence;
 // orch never reads config files or knows their on-disk layout itself.
 
 package orchengine
@@ -52,8 +50,7 @@ func LoadConfig(baseDir, module string) (Config, error) {
 	return cfg, nil
 }
 
-// Threshold returns the context-token count that triggers a cycle,
-// flooring a non-positive value to the template default so a zero can never cycle on every turn.
+// Threshold returns the context-token count that triggers a cycle, flooring a non-positive value to the template default so a zero can never cycle on every turn.
 func (c Config) Threshold() int {
 	if c.ThresholdTokens <= 0 {
 		return defaultThresholdTokens
@@ -61,8 +58,7 @@ func (c Config) Threshold() int {
 	return c.ThresholdTokens
 }
 
-// IdleGrace returns how long the session must stay idle after its newest event,
-// flooring a non-positive value to the template default.
+// IdleGrace returns how long the session must stay idle after its newest event, flooring a non-positive value to the template default.
 func (c Config) IdleGrace() time.Duration {
 	if c.IdleGraceS <= 0 {
 		return defaultIdleGraceS * time.Second
@@ -70,8 +66,7 @@ func (c Config) IdleGrace() time.Duration {
 	return time.Duration(c.IdleGraceS) * time.Second
 }
 
-// HandoffTimeout returns how long the session gets to write its handoff,
-// flooring a non-positive value to the template default.
+// HandoffTimeout returns how long the session gets to write its handoff, flooring a non-positive value to the template default.
 func (c Config) HandoffTimeout() time.Duration {
 	if c.HandoffTimeoutS <= 0 {
 		return defaultHandoffTimeoutS * time.Second
@@ -79,8 +74,7 @@ func (c Config) HandoffTimeout() time.Duration {
 	return time.Duration(c.HandoffTimeoutS) * time.Second
 }
 
-// PollInterval returns the watcher's tick interval,
-// flooring a non-positive value to the template default so a zero can never busy-spin.
+// PollInterval returns the watcher's tick interval, flooring a non-positive value to the template default so a zero can never busy-spin.
 func (c Config) PollInterval() time.Duration {
 	if c.PollIntervalMS <= 0 {
 		return defaultPollIntervalMS * time.Millisecond

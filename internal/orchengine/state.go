@@ -1,7 +1,6 @@
 // state.go — the orch module's persisted state, told paths and cycle request.
 //
-// State is the record the cycle state machine persists before each side effect,
-// which `status` reports and a restarted watcher resumes from.
+// State is the record the cycle state machine persists before each side effect, which `status` reports and a restarted watcher resumes from.
 // Every path is told through Paths and derived nowhere here (Told-Geometry Invariant).
 
 package orchengine

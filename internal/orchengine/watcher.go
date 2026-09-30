@@ -1,11 +1,8 @@
-// watcher.go — the watcher's decision core: one poll of the idle check and the persisted
-// four-phase cycle (idle, handoff-requested, clearing, resuming).
+// watcher.go — the watcher's decision core: one poll of the idle check and the persisted four-phase cycle (idle, handoff-requested, clearing, resuming).
 //
-// Every provider and reed interaction goes through the Session seam, so the whole state machine
-// runs against a fake in untagged unit tests.
+// Every provider and reed interaction goes through the Session seam, so the whole state machine runs against a fake in untagged unit tests.
 // The watcher saves State before every side effect, and a restarted watcher resumes from it:
-// a non-idle phase's injection is treated as unconfirmed until a turn end proves it landed
-// or a passing idle probe shows it did not, and then it is sent again.
+// a non-idle phase's injection is treated as unconfirmed until a turn end proves it landed or a passing idle probe shows it did not, and then it is sent again.
 
 package orchengine
 
@@ -58,8 +55,7 @@ type Watcher struct {
 	seen phaseEvents // What the current non-idle phase has read so far.
 }
 
-// phaseEvents records the events read in the current non-idle phase,
-// which the cursor has moved past and a later tick must still know.
+// phaseEvents records the events read in the current non-idle phase, which the cursor has moved past and a later tick must still know.
 type phaseEvents struct {
 	turnEnd      bool
 	firstTurnEnd shuttleengine.Event
@@ -158,8 +154,8 @@ func (w *Watcher) Tick() (done bool, err error) {
 }
 
 // initCursor sets the read cursor from st on the watcher's first tick for a strand.
-// A phase belonging to another strand is reset to idle, and a same-strand phase's injection is
-// marked unconfirmed so the landed check runs again.
+// A phase belonging to another strand is reset to idle,
+// and a same-strand phase's injection is marked unconfirmed so the landed check runs again.
 func (w *Watcher) initCursor(st State) (State, error) {
 	w.started, w.strand = true, st.Strand
 	w.newest, w.seen = nil, phaseEvents{}
@@ -296,8 +292,7 @@ func handoffWritten(path string) (bool, error) {
 	return info.Size() > 0, nil
 }
 
-// startClearing renders the resume prompt first, so the text the cleared session needs is known
-// good before /clear runs, then persists clearing and types /clear.
+// startClearing renders the resume prompt first, so the text the cleared session needs is known good before /clear runs, then persists clearing and types /clear.
 func (w *Watcher) startClearing(st State, now time.Time) error {
 	resume, err := RenderResumePrompt(w.stencilsDir, st.PendingHandoff)
 	if err != nil {

@@ -1,10 +1,8 @@
-// Package orchengine is the engine behind `lyx orch`: the hub orchestrator hosted as an interactive
-// shuttle run in the prime worktree's reed session, cycled before its context fills.
+// Package orchengine is the engine behind `lyx orch`: the hub orchestrator hosted as an interactive shuttle run in the prime worktree's reed session, cycled before its context fills.
 //
 // The orchestrator is one long-lived Claude session that outlives any single context window.
 // A detached watcher reads each turn end's context usage from the provider transcript.
-// When usage crosses the configured threshold and the session is idle, the watcher has the session
-// write a handoff, clears it, and resumes it from that handoff.
+// When usage crosses the configured threshold and the session is idle, the watcher has the session write a handoff, clears it, and resumes it from that handoff.
 // A session is never cleared without a written handoff.
 //
 // # Verbs, and where they run
@@ -12,17 +10,14 @@
 // `lyx orch` runs from the hub's prime worktree only; every verb refuses elsewhere.
 //
 //   - start: the idempotent bootstrap.
-//     It leaves one live orchestrator strand and one watcher bound to it, then hands the terminal
-//     over to reed's attach.
+//     It leaves one live orchestrator strand and one watcher bound to it, then hands the terminal over to reed's attach.
 //   - status: reports the strand, the watcher and the persisted cycle state.
-//   - cycle: writes the cycle request, which makes the watcher cycle at its next idle moment
-//     regardless of the token count.
+//   - cycle: writes the cycle request, which makes the watcher cycle at its next idle moment regardless of the token count.
 //   - stop: removes the orchestrator strand; the watcher notices and exits on its own.
 //   - watch: the hidden daemon verb `start` spawns detached; it is not an operator verb.
 //
 // The verbs, the reed and shuttle wiring, and the strand-identity rules live in internal/orchcli.
-// This package holds what sits behind the seam: the config, the stencil renders, the persisted
-// state, `start`'s two decisions, and the watcher.
+// This package holds what sits behind the seam: the config, the stencil renders, the persisted state, `start`'s two decisions, and the watcher.
 // It is told every path through Paths and derives none (Told-Geometry Invariant).
 //
 // # Start prompt order
@@ -44,15 +39,12 @@
 // Watcher.Run polls at the configured interval, calling Tick once per poll.
 // It holds watch.lock for its whole life, so at most one watcher runs per prime;
 // a second one exits with ErrWatcherRunning.
-// The consecutive tick-error count is capped, and the watcher exits with its reason recorded in
-// State.WatcherExit once the cap is reached.
-// Every provider and reed interaction goes through the Session seam, so the state machine runs
-// against a fake in unit tests.
+// The consecutive tick-error count is capped, and the watcher exits with its reason recorded in State.WatcherExit once the cap is reached.
+// Every provider and reed interaction goes through the Session seam, so the state machine runs against a fake in unit tests.
 //
 // # Idle rules
 //
-// In phase idle the watcher acts only when the context reading is at or over the threshold, or a
-// cycle was requested, and only when all of these hold:
+// In phase idle the watcher acts only when the context reading is at or over the threshold, or a cycle was requested, and only when all of these hold:
 //
 //   - The newest event it has read is a turn end.
 //   - That event was first read at least the idle grace ago.
@@ -66,28 +58,21 @@
 // The persisted phases are idle, handoff-requested, clearing and resuming.
 // The watcher saves State before every side effect, so a restarted watcher resumes from it.
 //
-//   - handoff-requested: the handoff instruction is sent, naming a new timestamped file under
-//     handoffs/.
+//   - handoff-requested: the handoff instruction is sent, naming a new timestamped file under handoffs/.
 //     The phase ends the moment the file exists and is non-empty and a turn end has been seen.
-//   - clearing: the resume prompt is rendered first, so a stencil failure aborts before anything is
-//     cleared.
+//   - clearing: the resume prompt is rendered first, so a stencil failure aborts before anything is cleared.
 //     Then `/clear` is typed, and the phase waits for the pane to show an idle input box.
-//   - resuming: the resume prompt is sent verbatim, and the phase ends at the resumed session's
-//     first turn end, whose context reading becomes the new one.
+//   - resuming: the resume prompt is sent verbatim, and the phase ends at the resumed session's first turn end, whose context reading becomes the new one.
 //   - idle: every return, completed or aborted, persists the events position read through.
 //
-// Restart rules: a non-idle phase's injection is unconfirmed until a turn end proves it landed or a
-// passing idle probe shows it did not, and it is then sent again.
+// Restart rules: a non-idle phase's injection is unconfirmed until a turn end proves it landed or a passing idle probe shows it did not, and it is then sent again.
 // A phase belonging to another strand is reset to idle.
-// A phase that exceeds the handoff timeout, or a session that asks a question during the handoff,
-// aborts back to idle with LastAbortReason set.
-// The guarantee holds through every restart: nothing before the handoff file is written and seen
-// can reach `/clear`, and LastHandoff moves only when a cycle passes that gate.
+// A phase that exceeds the handoff timeout, or a session that asks a question during the handoff, aborts back to idle with LastAbortReason set.
+// The guarantee holds through every restart: nothing before the handoff file is written and seen can reach `/clear`, and LastHandoff moves only when a cycle passes that gate.
 //
 // # The .lyx/orch/ layout
 //
-// Everything orch writes lives under the prime's `<anchor>/.lyx/orch/`, declared once in
-// internal/orchcli/paths.go:
+// Everything orch writes lives under the prime's `<anchor>/.lyx/orch/`, declared once in internal/orchcli/paths.go:
 //
 //   - state.json and state.json.lock: the persisted State and its lock.
 //   - watch.lock: held for the watcher's life.
@@ -96,33 +81,27 @@
 //   - watch.log: the detached watcher's stdout and stderr.
 //   - handoffs/: one timestamped handoff file per cycle, all kept.
 //   - session-*.never: one sentinel per launch, an output file nothing ever writes.
-//     A shuttle Spec needs an output file to validate, and the watcher, not shuttle's Wait, owns the
-//     session's lifetime.
+//     A shuttle Spec needs an output file to validate, and the watcher, not shuttle's Wait, owns the session's lifetime.
 //
 // # Migrating from an operator's own terminal session
 //
-// In the running terminal session, run `/scribe:handoff` and note the file it writes, then exit
-// that session.
+// In the running terminal session, run `/scribe:handoff` and note the file it writes, then exit that session.
 // Then run `lyx orch start --handoff <that file>` from the prime.
 // The new orchestrator strand starts from that handoff instead of the start stencil.
 //
 // # Residuals
 //
-//   - The idle probe fails closed on anything it cannot read as an empty box, including Claude's
-//     greyed prompt suggestion, so a session showing one is never cycled until it is cleared.
+//   - The idle probe fails closed on anything it cannot read as an empty box, including Claude's greyed prompt suggestion, so a session showing one is never cycled until it is cleared.
 //   - A SendMessage landing between the handoff turn's end and `/clear` is lost from context.
-//   - The transcript and Stop-payload shapes are Claude Code internals, so usage degrades to
-//     unknown rather than failing.
+//   - The transcript and Stop-payload shapes are Claude Code internals, so usage degrades to unknown rather than failing.
 //   - A threshold above the auto-compaction point lets Claude Code compact first.
-//   - reed's resume path replays the launch's `--resume <session-id>`, which names the pre-clear
-//     session once a cycle has run, so a reed server rebirth resumes the older context.
+//   - reed's resume path replays the launch's `--resume <session-id>`, which names the pre-clear session once a cycle has run, so a reed server rebirth resumes the older context.
 //     `lyx orch stop` plus `lyx orch start` relaunches from the last completed handoff instead.
 //
 // # Open risks
 //
 // Two questions are settled only by a real session.
-// `TestSmokeOrch_OneFullCycle` in internal/orchcli logs an observation for each, but has not been
-// run against a live Claude Code install, so both remain unverified, pending a smoke run:
+// `TestSmokeOrch_OneFullCycle` in internal/orchcli logs an observation for each, but has not been run against a live Claude Code install, so both remain unverified, pending a smoke run:
 //
 //   - Whether a background task survives `/clear`: unverified, pending a smoke run.
 //   - Whether a `SendMessage` address stays stable across `/clear`: unverified, pending a smoke run.

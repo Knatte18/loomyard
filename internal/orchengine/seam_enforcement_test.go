@@ -1,6 +1,4 @@
-// seam_enforcement_test.go enforces this package's Told-Geometry Invariant membership and its
-// Shuttle Provider-Seam Invariant: production code in internal/orchengine takes every absolute
-// path it operates on from its caller, resolves no geometry, and never reaches provider specifics.
+// seam_enforcement_test.go enforces this package's Told-Geometry Invariant membership and its Shuttle Provider-Seam Invariant: production code in internal/orchengine takes every absolute path it operates on from its caller, resolves no geometry, and never reaches provider specifics.
 //
 // The allowlist is a membership list rather than a bare denylist, mirroring internal/battenshed:
 // it catches the excluded imports and anything else that would drag them in.
@@ -17,8 +15,7 @@ import (
 	"testing"
 )
 
-// orchengineAllowedImports are the only non-stdlib import paths production code in this package
-// may use.
+// orchengineAllowedImports are the only non-stdlib import paths production code in this package may use.
 var orchengineAllowedImports = map[string]bool{
 	"github.com/Knatte18/loomyard/internal/configengine":  true,
 	"github.com/Knatte18/loomyard/internal/shuttleengine": true,
@@ -37,9 +34,8 @@ const (
 	orchengineDeniedClaudeImport = "github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 )
 
-// TestSeamInvariants_AllowlistOnly verifies that every non-test .go file in this package imports
-// only stdlib or an entry in orchengineAllowedImports, and separately names the two denied imports
-// so a violation reports the rule it breaks.
+// TestSeamInvariants_AllowlistOnly verifies that every non-test .go file in this package imports only stdlib or an entry in orchengineAllowedImports,
+// and it separately names the two denied imports so a violation reports the rule it breaks.
 func TestSeamInvariants_AllowlistOnly(t *testing.T) {
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {

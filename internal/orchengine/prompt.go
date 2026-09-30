@@ -1,10 +1,7 @@
-// prompt.go renders the three orch stencils (orch-template-start, orch-template-handoff,
-// orch-template-resume).
-// Each is read from a told stencils directory at call time via stencilstore.Read, per the Stencil
-// Ownership Invariant, and filled with stencil.Fill, which drops the leading comment.
-// The handoff and resume renders are typed into the session through shuttle's Send, which refuses
-// multi-line text, so each must render to one line; an operator override that breaks that fails
-// here, naming the stencil to fix.
+// prompt.go renders the three orch stencils (orch-template-start, orch-template-handoff, orch-template-resume).
+// Each is read from a told stencils directory at call time via stencilstore.Read, per the Stencil Ownership Invariant, and filled with stencil.Fill, which drops the leading comment.
+// The handoff and resume renders are typed into the session through shuttle's Send, which refuses multi-line text, so each must render to one line;
+// an operator override that breaks that fails here, naming the stencil to fix.
 
 package orchengine
 

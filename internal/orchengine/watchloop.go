@@ -1,5 +1,4 @@
-// watchloop.go — the watcher daemon's loop: single-instance per prime, polling Tick until the
-// strand is gone, the context is cancelled, or ticks keep failing.
+// watchloop.go — the watcher daemon's loop: single-instance per prime, polling Tick until the strand is gone, the context is cancelled, or ticks keep failing.
 
 package orchengine
 
@@ -19,8 +18,7 @@ const (
 	// At the default two-second poll interval it gives about a minute of failures.
 	maxConsecutiveTickErrors = 30
 
-	// watchLockAttempts and watchLockRetryInterval bound how long Run waits for a watch lock that
-	// WatcherLive holds for the instant of its probe.
+	// watchLockAttempts and watchLockRetryInterval bound how long Run waits for a watch lock that WatcherLive holds for the instant of its probe.
 	watchLockAttempts      = 5
 	watchLockRetryInterval = 200 * time.Millisecond
 )
@@ -74,8 +72,7 @@ func (w *Watcher) recordExit(reason string) error {
 	return SaveState(w.paths, st)
 }
 
-// Run holds the watch lock and calls Tick every PollInterval until Tick reports done, ctx is
-// cancelled, or the cap on consecutive tick errors is reached.
+// Run holds the watch lock and calls Tick every PollInterval until Tick reports done, ctx is cancelled, or the cap on consecutive tick errors is reached.
 // It returns ErrWatcherRunning when another watcher holds the lock through every retry.
 func (w *Watcher) Run(ctx context.Context, sleep func(time.Duration)) error {
 	if err := os.MkdirAll(w.paths.Dir, 0o755); err != nil {
