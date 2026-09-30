@@ -167,6 +167,14 @@ func TestExcludeAnchoredDir_AlreadyIgnoredWritesNothing(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(repoDir, ".gitignore"), []byte(".vscode/\n"), 0o644); err != nil {
 		t.Fatalf("write .gitignore: %v", err)
 	}
+	for _, args := range [][]string{
+		{"add", "--", ".gitignore"},
+		{"-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-m", "ignore .vscode"},
+	} {
+		if _, stderr, exitCode, err := gitexec.RunGit(args, repoDir); err != nil || exitCode != 0 {
+			t.Fatalf("git %v: err=%v exit=%d stderr=%s", args, err, exitCode, stderr)
+		}
+	}
 	excludePath, err := resolveGitExcludePath(repoDir)
 	if err != nil {
 		t.Fatalf("resolveGitExcludePath = %v", err)
