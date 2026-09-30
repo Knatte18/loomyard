@@ -67,9 +67,9 @@ func New(env shedrecipe.Env, paths shedbuild.ShedPaths) (*shedengine.Shed, error
 	return shed, nil
 }
 
-// Routing projects recipes.LoomRecipe's routing without building any engine, so a caller that
-// never builds a Shed (the status verb) can compute progress. It wraps shedbuild.RoutingOf,
-// prefixing a non-nil error with "loomrecipe: " as New does. Routing.MaxBounces is left 0.
+// Routing projects the embedded loom recipe's routing without building any engine, so a caller
+// that never builds a Shed (the status verb) can compute progress. A parse error is returned
+// prefixed with "loomrecipe: ". Routing.MaxBounces is left 0.
 func Routing() (shedengine.Routing, error) {
 	routing, err := shedbuild.RoutingOf(recipes.LoomRecipe)
 	if err != nil {

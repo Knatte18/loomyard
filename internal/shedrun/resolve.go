@@ -14,8 +14,8 @@ import (
 
 // ResolveRunID returns the run's identity: SelfRunID maps to l.WorktreeName unconditionally, and any
 // other run-id passes through unchanged.
-// It is the identity every envelope and prompt reports, kept apart from the directory segment paths
-// join, which runSegment answers.
+// It is the identity every envelope and prompt reports, never the directory segment a run's paths
+// join, which can differ from it under the legacy fallback.
 // It validates nothing: ValidateRunID still gates the result at every caller.
 func ResolveRunID(l *lyxcwd.Location, runID string) string {
 	if runID == SelfRunID {
@@ -25,9 +25,10 @@ func ResolveRunID(l *lyxcwd.Location, runID string) string {
 }
 
 // runSegment returns the directory segment a run's paths join under l.
-// It is ResolveRunID's answer, except under the legacy fallback: when _lyx/shed/<slug>/ is absent
-// under l.AnchorPath() and _lyx/shed/self/ exists, both SelfRunID and the slug join the "self"
-// segment, so a run started before the slug rename keeps working with no on-disk migration.
+// It is the run's identity (the worktree slug for SelfRunID, any other run-id unchanged), except
+// under the legacy fallback: when _lyx/shed/<slug>/ is absent under l.AnchorPath() and
+// _lyx/shed/self/ exists, both SelfRunID and the slug join the "self" segment, so a run started
+// before the slug rename keeps working with no on-disk migration.
 // The fallback only reads the filesystem and never creates or moves a directory.
 func runSegment(l *lyxcwd.Location, runID string) string {
 	resolved := ResolveRunID(l, runID)

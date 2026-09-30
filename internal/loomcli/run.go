@@ -20,8 +20,8 @@ import (
 // shouldReflectFriction reports whether loomPostRun should fire the friction reflection step: a
 // non-empty friction directory and an outcome of shedengine.RunBlocked. The done path reflects
 // inside the terminal Friction-Reflect row instead.
-// An shedengine.RunAwaiting halt is a planned hand-off to the operator, not a stall, so it runs no
-// friction reflection.
+// An awaiting halt is a planned hand-off to the operator, not a stall, so it runs no friction
+// reflection.
 // It is the pure decision the reflection call site gates on, factored out so a test can drive every
 // outcome without a real Shed.
 func shouldReflectFriction(frictionDir string, outcome shedengine.RunOutcome) bool {

@@ -296,9 +296,9 @@ func (p *Publish) stuckOrCancelled(ctx context.Context, reason string, fields ..
 	return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
 }
 
-// awaitingOrCancelled is stuckOrCancelled's sibling for the planned human hand-off: it consults
-// cancelErr first, then logs reason as an awaiting halt and returns Awaiting with reason on the
-// output pointer.
+// awaitingOrCancelled ends a Publish call at the planned human hand-off: a cancelled context
+// returns the cancellation error, and otherwise it logs reason as an awaiting halt and returns
+// Awaiting with reason on the output pointer.
 func (p *Publish) awaitingOrCancelled(ctx context.Context, reason string) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if cerr := cancelErr(ctx, publishName); cerr != nil {
 		return "", shedengine.OutputPointer{}, cerr
