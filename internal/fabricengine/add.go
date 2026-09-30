@@ -20,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 // addBeforeWeftReplaceHook, when non-nil, runs at step 12 just before an archived leftover weft branch is replaced.
@@ -67,6 +68,10 @@ func (e *ErrBranchExists) Error() string {
 // Add creates a new paired warp and weft git worktree with the given slug.
 // It validates the slug, creates both worktrees, wires junctions, records and commits the pair's
 // parent-branch provenance, and pushes branches, rolling back all changes on any failure.
+// A newly forked weft branch does not inherit the parent's shed run records: the fork is no-checkout, so the
+// run-records root never reaches the new worktree's disk, and the pair's first weft commit (the origin record's)
+// also records the root's deletion.
+// An adopted, already-existing weft branch keeps its own run records.
 func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res AddResult, err error) {
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
@@ -183,6 +188,8 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 	}
 
 	weftPath := WeftWorktreePath(l, slug)
+	// runRecordsTracked is whether the fork point tracked run records that step 8 dropped from the new worktree.
+	var runRecordsTracked bool
 	if weftBranchAlreadyExists {
 		weftRepoRoot, weftRepoRootErr := WeftRepoRoot(l)
 		if weftRepoRootErr != nil {
@@ -198,8 +205,12 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 			return AddResult{}, fmt.Errorf("adopt weft worktree for branch %q failed: %w", weftBranch, err)
 		}
 	} else {
-		// Create: git worktree add -b <weftBranch> <path> <parentWeftBranch> (fork from parent's weft branch)
-		if err := createWeftWorktree(rec, l, slug, weftBranch, parentWeftBranch); err != nil {
+		// Create: fork from the parent's weft branch without checking the run-records root out, so the
+		// pair never inherits another run's seed or status; step 10c commits the root's deletion.
+		// The adopt path above drops nothing: an existing branch's own records are its own.
+		var err error
+		runRecordsTracked, err = createWeftWorktreeDroppingRuns(rec, l, slug, weftBranch, parentWeftBranch)
+		if err != nil {
 			_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok)
 			return AddResult{}, err
 		}
@@ -241,7 +252,13 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 	// The commit's sha and committed returns are not read here: CommitWeftPaths records the
 	// KindCommitCreated entry itself, at its own success site, per the
 	// origin-record-records-both-its-write-and-its-commit decision.
-	if _, _, err := CommitWeftPaths(rec, weftPath, l.AnchorRel, []string{OriginRecordRel()}, "fabric: record parent branch for "+slug, opts); err != nil {
+	// The run-records root joins the commit's paths only when the fork tracked it: git add on an
+	// untracked, absent root is a hard pathspec error, which a hub with no run records must not hit.
+	commitPaths := []string{OriginRecordRel()}
+	if runRecordsTracked {
+		commitPaths = append(commitPaths, shedrun.RunsRootRel())
+	}
+	if _, _, err := CommitWeftPaths(rec, weftPath, l.AnchorRel, commitPaths, "fabric: record parent branch for "+slug, opts); err != nil {
 		_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok)
 		return AddResult{}, fmt.Errorf("commit parent branch record: %w", err)
 	}
