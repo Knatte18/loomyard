@@ -150,6 +150,9 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		warnings = append(warnings, warning)
 	}
 
+	// forkWarnings are held back and appended only on the no-report path: once the report file
+	// exists, the report is the fork's contract and "never returned a final report" is false noise.
+	var forkWarnings []string
 	var violations []error
 	for _, v := range CheckParent(audit, deps.OutcomePath, deps.SummaryPath, deps.Geom.WorktreeRoot, deps.RefMatcher) {
 		violations = append(violations, v)
@@ -177,7 +180,7 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	reportPath := filepath.Join(deps.Geom.ReportsDir, ReportFileName(number, slug))
 	if _, statErr := os.Stat(reportPath); statErr != nil {
 		if os.IsNotExist(statErr) {
-			return &RecordResult{NoReport: true, Warnings: warnings}, nil
+			return &RecordResult{NoReport: true, Warnings: append(warnings, forkWarnings...)}, nil
 		}
 		return nil, fmt.Errorf("webster: stat batch report %s: %w", reportPath, statErr)
 	}
