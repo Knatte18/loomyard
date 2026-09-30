@@ -598,6 +598,46 @@ func TestFinalize_ClosesOpenPullRequestAfterLanding(t *testing.T) {
 	}
 }
 
+// TestFinalize_AlreadyUpToDateMergeProceedsAsLanded pins the already-landed path: a merge that
+// reports AlreadyUpToDate (nothing committed, no error) still marks the task done, pushes, and
+// closes the PR naming the head the parent reports.
+func TestFinalize_AlreadyUpToDateMergeProceedsAsLanded(t *testing.T) {
+	s := &closeServer{listBody: `[{"number":7,"state":"open"}]`}
+	installCloseServer(t, s)
+
+	deps := newFinalizeDeps(t)
+	deps.OriginURL = "https://github.com/acme/widgets.git"
+	markedDone := 0
+	deps.MarkTaskDone = func() error { markedDone++; return nil }
+	merger := &recordingParentMerger{
+		results: []mergeCallResult{{result: fabricengine.MergeResult{AlreadyUpToDate: true}}},
+		headSHA: "parentheadsha",
+	}
+	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
+	fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return merger, nil }}
+
+	outcome, _, err := fz.Call(context.Background())
+	if err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	if outcome != shedengine.Done {
+		t.Fatalf("outcome = %q; want Done", outcome)
+	}
+	if markedDone != 1 {
+		t.Errorf("MarkTaskDone called %d time(s); want 1", markedDone)
+	}
+	if len(merger.pushCalls) != 1 {
+		t.Errorf("PushBranch called %d time(s); want 1", len(merger.pushCalls))
+	}
+	if len(s.bodies) < 2 {
+		t.Fatalf("requests = %v; want lookup, comment and close", s.requests)
+	}
+	comment, _ := s.bodies[1]["body"].(string)
+	if !strings.Contains(comment, "parentheadsha") {
+		t.Errorf("comment = %q; want it to name the head SHA the parent reports", comment)
+	}
+}
+
 func TestFinalize_LeavesNonOpenPullRequestAlone(t *testing.T) {
 	s := &closeServer{listBody: `[{"number":7,"state":"closed"}]`}
 	installCloseServer(t, s)

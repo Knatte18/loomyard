@@ -120,6 +120,13 @@ func NewFinalize(deps Deps) (*Finalize, error) {
 }
 
 // Call runs one Finalize iteration.
+//
+// Finalize is idempotent over an already-landed parent: when the parent already contains the task's
+// changes -- an operator squash-merged the pull request on GitHub, or an earlier Finalize landed and
+// failed later -- the empty squash is classified as already-up-to-date, so Fabric.Merge commits
+// nothing and returns no error. Finalize then proceeds exactly as for a fresh landing: the board
+// task is marked done, the push is a no-op, the pull request is closed naming the parent's current
+// head, and the verdict is Done.
 func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, finalizeName); err != nil {
 		return "", shedengine.OutputPointer{}, err
