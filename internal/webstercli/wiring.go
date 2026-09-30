@@ -199,6 +199,16 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetD
 	// validate and status today, neither of which ever reaches the integration bisect.
 	c.refMatcher = fabricengine.NewRefScanner(loc)
 	c.openFabric = func() (*fabricengine.Fabric, error) { return fabricengine.Open(loc) }
+	c.parentBranch = func() (string, error) {
+		origin, found, err := fabricengine.ReadOrigin(loc)
+		if err != nil {
+			return "", err
+		}
+		if !found {
+			return "", fmt.Errorf("the pair has no fabric origin record")
+		}
+		return origin.ParentBranch, nil
+	}
 	c.batcher = activeBatcher
 	return nil
 }
@@ -303,6 +313,7 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag str
 	// would panic or stat-fail if ever called.
 	c.refMatcher = websterengine.NeverMatches{}
 	c.openFabric = nil
+	c.parentBranch = nil
 	c.batcher = activeBatcher
 	return nil
 }

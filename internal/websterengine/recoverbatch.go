@@ -68,6 +68,10 @@ type RecoverDeps struct {
 	// internal/standalonegeom are the Told-Geometry Invariant's only Geometry-struct constructors and
 	// this value needs no geometry derivation.
 	FrictionDir string
+
+	// ParentBranch names the run's parent branch for the head cross-check's clean-parent-merge rule;
+	// nil (standalone mode) accepts no merge commit between the report's head_sha and HEAD.
+	ParentBranch ParentBranchFunc
 }
 
 // RecoverResult is what one RecoverAwait call hands back: Digest (nil while Running), Running (true if wait elapsed non-terminal), ElapsedS (since spawn), and Warnings (non-fatal substrate-cleanup failures, plus the moved-HEAD notice when only merge commits sit between the report's head_sha and the worktree's HEAD).
@@ -410,7 +414,7 @@ func awaitTerminal(deps RecoverDeps, batch batcher.Batch, bs *BatchState, wait t
 
 	// Cross-check report's head_sha against worktree's actual HEAD under RecordBatch's merge-only rule.
 	if digest.HeadSHA != "" {
-		moved, err := reconcileReportHead(deps.Geom.WorktreeRoot, digest.HeadSHA, fmt.Sprintf("recovery report for batch %02d-%s", number, slug))
+		moved, err := reconcileReportHead(deps.Geom.WorktreeRoot, digest.HeadSHA, fmt.Sprintf("recovery report for batch %02d-%s", number, slug), deps.ParentBranch)
 		if err != nil {
 			return nil, err
 		}

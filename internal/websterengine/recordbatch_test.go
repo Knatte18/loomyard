@@ -81,7 +81,7 @@ func (e *recordFakeEngine) ParseEvents(data []byte) ([]shuttleengine.Event, erro
 func (e *recordFakeEngine) Startup(capture string) shuttleengine.StartupState {
 	return shuttleengine.StartupReady
 }
-func (e *recordFakeEngine) InterruptSequence() []shuttleengine.PaneInput    { return nil }
+func (e *recordFakeEngine) InterruptSequence() []shuttleengine.PaneInput          { return nil }
 func (e *recordFakeEngine) TrustDismissSequence(string) []shuttleengine.PaneInput { return nil }
 func (e *recordFakeEngine) ComposeSend(text string) []shuttleengine.PaneInput {
 	return nil
@@ -935,11 +935,19 @@ func TestRecordBatch_NilStateIsRefusedNotPanicked(t *testing.T) {
 	}
 }
 
-// parentMerge simulates a parent merge-in: it branches side off startSHA, commits one file there (name=content), returns to the original branch and merges side with --no-ff, returning the merge commit's SHA.
+// recordParentBranch is the parent branch parentMergeFixture's run merges from.
+const recordParentBranch = "parent1"
+
+// parentMerge simulates a parent merge-in: it checks out side (branching it off startSHA when it does not exist yet), commits one file there (name=content),
+// returns to the original branch and merges side with --no-ff, returning the merge commit's SHA.
 func parentMerge(t *testing.T, fx *recordFixture, side, name, content string) string {
 	t.Helper()
 	base := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "--abbrev-ref", "HEAD"))
-	mustGit(t, fx.Worktree, "checkout", "-b", side, fx.StartSHA)
+	if _, _, exitCode, err := gitexec.RunGit([]string{"rev-parse", "--verify", "--quiet", "refs/heads/" + side}, fx.Worktree); err == nil && exitCode == 0 {
+		mustGit(t, fx.Worktree, "checkout", side)
+	} else {
+		mustGit(t, fx.Worktree, "checkout", "-b", side, fx.StartSHA)
+	}
 	commitFile(t, fx.Worktree, name, content, side+" commit")
 	mustGit(t, fx.Worktree, "checkout", base)
 	mustGit(t, fx.Worktree, "merge", "--no-ff", "-m", "merge "+side, side)
@@ -963,6 +971,7 @@ func parentMergeFixture(t *testing.T) *recordFixture {
 		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
 	})
 	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
+	fx.Deps.ParentBranch = func() (string, error) { return recordParentBranch, nil }
 	return fx
 }
 
@@ -1006,7 +1015,7 @@ func TestRecordBatch_ParentMergeAfterForkCommit(t *testing.T) {
 func TestRecordBatch_TwoParentMergesAfterForkCommit(t *testing.T) {
 	fx := parentMergeFixture(t)
 	m1 := parentMerge(t, fx, "parent1", "parent1.txt", "p1")
-	m2 := parentMerge(t, fx, "parent2", "parent2.txt", "p2")
+	m2 := parentMerge(t, fx, "parent1", "parent2.txt", "p2")
 
 	result, err := websterengine.RecordBatch(fx.Deps, 1)
 	if err != nil {
@@ -1083,8 +1092,36 @@ func TestRecordBatch_NonMergeMovementRefused(t *testing.T) {
 	}
 }
 
+// TestRecordBatch_EvilParentMergeRefused proves a parent merge carrying an extra edit is refused, leaving the batch open,
+// so content outside the audited StartSHA..head_sha delta can never ride in on a merge commit.
+func TestRecordBatch_EvilParentMergeRefused(t *testing.T) {
+	fx := parentMergeFixture(t)
+	base := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "--abbrev-ref", "HEAD"))
+	mustGit(t, fx.Worktree, "checkout", "-b", recordParentBranch, fx.StartSHA)
+	commitFile(t, fx.Worktree, "parent1.txt", "p1", "parent1 commit")
+	mustGit(t, fx.Worktree, "checkout", base)
+	mustGit(t, fx.Worktree, "merge", "--no-ff", "--no-commit", recordParentBranch)
+	if err := os.WriteFile(filepath.Join(fx.Worktree, "smuggled.txt"), []byte("unaudited"), 0o644); err != nil {
+		t.Fatalf("write smuggled file: %v", err)
+	}
+	mustGit(t, fx.Worktree, "add", "smuggled.txt")
+	mustGit(t, fx.Worktree, "commit", "--no-edit")
+
+	_, err := websterengine.RecordBatch(fx.Deps, 1)
+	if err == nil {
+		t.Fatal("RecordBatch() error = nil; want a refusal")
+	}
+	for _, want := range []string{fx.HeadSHA, "carries changes beyond a clean merge", "remedy:"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q missing %q", err.Error(), want)
+		}
+	}
+	assertBatchOpen(t, fx)
+}
+
 // TestRecordBatch_MergeInProgressRefusedThenSucceeds proves a conflicting parent merge left in progress refuses record-batch,
-// and that the same call succeeds once the merge is concluded.
+// that concluding it by hand is still refused because a conflict resolution is not a clean parent merge,
+// and that the same call succeeds once HEAD is moved back to the report's head_sha as the refusal's remedy says.
 func TestRecordBatch_MergeInProgressRefusedThenSucceeds(t *testing.T) {
 	fx := parentMergeFixture(t)
 	restore := snapshotRecordState(fx)
@@ -1112,6 +1149,19 @@ func TestRecordBatch_MergeInProgressRefusedThenSucceeds(t *testing.T) {
 	mustGit(t, fx.Worktree, "add", "internal/foo/impl.go")
 	mustGit(t, fx.Worktree, "commit", "--no-edit")
 
+	restore()
+	_, err = websterengine.RecordBatch(fx.Deps, 1)
+	if err == nil {
+		t.Fatal("RecordBatch() after a hand-resolved merge: error = nil; want a refusal")
+	}
+	for _, want := range []string{"do not merge cleanly", "remedy:"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q missing %q", err.Error(), want)
+		}
+	}
+	assertBatchOpen(t, fx)
+
+	mustGit(t, fx.Worktree, "reset", "--hard", fx.HeadSHA)
 	restore()
 	if _, err := websterengine.RecordBatch(fx.Deps, 1); err != nil {
 		t.Fatalf("retry RecordBatch() error = %v; want nil", err)

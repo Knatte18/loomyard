@@ -59,12 +59,13 @@ func TestParentMergeBetweenForkCommitAndRecordBatch(t *testing.T) {
 		Engine: &recordFakeEngine{scripted: []shuttleengine.ForkAudit{
 			{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
 		}},
-		Geom:        deps.Geom,
-		RefMatcher:  websterengine.NeverMatches{},
-		OutcomePath: filepath.Join(contractDir, "outcome.yaml"),
-		SummaryPath: filepath.Join(contractDir, "summary.md"),
-		Sleeper:     &recordFakeSleeper{},
-		Plan:        &recordPlan,
+		Geom:         deps.Geom,
+		RefMatcher:   websterengine.NeverMatches{},
+		OutcomePath:  filepath.Join(contractDir, "outcome.yaml"),
+		SummaryPath:  filepath.Join(contractDir, "summary.md"),
+		Sleeper:      &recordFakeSleeper{},
+		Plan:         &recordPlan,
+		ParentBranch: func() (string, error) { return "parent-side", nil },
 	}
 
 	result, err := websterengine.RecordBatch(recordDeps, 1)

@@ -2,6 +2,7 @@
 // composes: MergeStart (normal and squash) with four-way outcome classification, MergeConclude,
 // ConflictedFiles, MergeHeadPresent, HeadDetached, the fast-forward-only MergeFFOnly advance, and
 // the general ref->SHA resolver ResolveSHA.
+// CommitTree and the side-effect-free MergeTree let a caller check that a merge commit's tree is exactly the clean merge of its parents.
 
 package gitrepo
 
@@ -357,4 +358,52 @@ func (r *Repo) ResolveSHA(ref string) (string, error) {
 		return "", fmt.Errorf("gitrepo: resolve %s in %s: %w", ref, r.path, err)
 	}
 	return hash.String(), nil
+}
+
+// CommitTree returns the tree SHA sha's commit records.
+// Returns ErrInvalidSHA when sha is not a valid hex object name, mirroring CommitParents.
+// This is a go-git read of on-disk state, so it stays off the gitrepo Client Boundary Invariant's pinned CLI list.
+func (r *Repo) CommitTree(sha string) (string, error) {
+	if !validSHA(sha) {
+		return "", ErrInvalidSHA
+	}
+
+	repo, err := r.goGit()
+	if err != nil {
+		return "", err
+	}
+
+	commit, err := lookupObjectRetrying(r, repo, func() (*object.Commit, error) {
+		return repo.CommitObject(plumbing.NewHash(sha))
+	})
+	if err != nil {
+		return "", fmt.Errorf("gitrepo: read commit %s in %s: %w", sha, r.path, err)
+	}
+	return commit.TreeHash.String(), nil
+}
+
+// MergeTree computes the merge of ours and theirs without touching the index or working tree, via `git merge-tree --write-tree`.
+// It returns the resulting tree SHA and clean=true when the merge has no conflicts;
+// a conflicted merge returns clean=false with an empty tree, since a conflicted tree carries markers no commit should be compared against.
+// ours and theirs are validated before reaching git, returning ErrInvalidSHA.
+// It is CLI-bound because go-git has no merge machinery, so it sits on the gitrepo Client Boundary Invariant's pinned list.
+func (r *Repo) MergeTree(ours, theirs string) (tree string, clean bool, err error) {
+	if !validSHA(ours) || !validSHA(theirs) {
+		return "", false, ErrInvalidSHA
+	}
+
+	stdout, err := r.runChecked("merge-tree", "--write-tree", "--no-messages", ours, theirs)
+	var gitErr *gitexec.GitError
+	switch {
+	case err == nil:
+		tree = strings.TrimSpace(strings.SplitN(stdout, "\n", 2)[0])
+		if !validSHA(tree) {
+			return "", false, fmt.Errorf("gitrepo: merge-tree %s %s in %s: unexpected output %q", ours, theirs, r.path, stdout)
+		}
+		return tree, true, nil
+	case errors.As(err, &gitErr) && gitErr.ExitCode == 1:
+		return "", false, nil
+	default:
+		return "", false, fmt.Errorf("gitrepo: merge-tree %s %s in %s: %w", ours, theirs, r.path, err)
+	}
 }

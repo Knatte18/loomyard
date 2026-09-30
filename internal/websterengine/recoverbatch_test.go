@@ -576,6 +576,7 @@ func TestRecoverBatch_ParentMergeAfterReportHead(t *testing.T) {
 	fx := newRecoverFixture(t)
 	clk := &recoverFakeClock{now: time.Unix(0, 0)}
 	head := recoverAtReportHead(t, fx, clk)
+	fx.Deps.ParentBranch = func() (string, error) { return "parent1", nil }
 
 	mustGit(t, fx.Worktree, "checkout", "-b", "parent1", head)
 	commitFile(t, fx.Worktree, "parent1.txt", "p1", "parent1 commit")

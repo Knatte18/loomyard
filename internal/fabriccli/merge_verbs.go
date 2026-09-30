@@ -27,8 +27,8 @@ import (
 )
 
 // websterInFlightWarning is the one warning merge-in reports while a Webster run is mid-flight in this worktree.
-const websterInFlightWarning = "Webster is mid-run in this worktree: `lyx webster record-batch` tolerates a parent merge commit " +
-	"after a fork's commit but refuses a fast-forward past it, " +
+const websterInFlightWarning = "Webster is mid-run in this worktree: `lyx webster record-batch` tolerates a clean parent merge commit " +
+	"after a fork's commit but refuses a fast-forward past it and a merge whose conflicts were resolved by hand, " +
 	"and integration bisect over earlier card SHAs will run on pre-merge trees"
 
 // websterInFlightWarnings returns the merge-in warning list for the worktree at l.
@@ -137,9 +137,10 @@ merge-in resolves conflicts in this worktree, merge does not.
 While a Webster run is in flight in this worktree (its state file exists and its
 outcome is absent, paused or stuck), a merge-in that moved HEAD, or that
 conflicted, adds a "warnings" array to its envelope. The merge itself always
-proceeds: "lyx webster record-batch" tolerates a parent merge commit after a
-fork's commit but refuses a fast-forward past it, and integration bisect over
-earlier card SHAs runs on pre-merge trees.
+proceeds: "lyx webster record-batch" tolerates a clean parent merge commit
+after a fork's commit but refuses a fast-forward past it and a merge whose
+conflicts were resolved by hand, and integration bisect over earlier card SHAs
+runs on pre-merge trees.
 An already-up-to-date merge-in and a hard failure carry no "warnings" key.
 
 Example:

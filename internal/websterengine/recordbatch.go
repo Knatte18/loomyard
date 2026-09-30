@@ -68,6 +68,9 @@ type RecordDeps struct {
 	// carried none before this field: deps.Geom.PlanDir reaches the directory but nothing reached
 	// the plan itself.
 	Plan *planparser.Plan
+	// ParentBranch names the run's parent branch for the head cross-check's clean-parent-merge rule;
+	// nil (standalone mode) accepts no merge commit between the report's head_sha and HEAD.
+	ParentBranch ParentBranchFunc
 }
 
 // RecordResult is what one successful RecordBatch call hands back to its caller
@@ -200,7 +203,7 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	}
 
 	// Cross-check report's head_sha against the worktree's actual HEAD, tolerating a parent merge-in.
-	moved, err := reconcileReportHead(deps.Geom.WorktreeRoot, report.HeadSHA, "batch report "+reportPath)
+	moved, err := reconcileReportHead(deps.Geom.WorktreeRoot, report.HeadSHA, "batch report "+reportPath, deps.ParentBranch)
 	if err != nil {
 		return nil, err
 	}

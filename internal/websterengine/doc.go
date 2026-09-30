@@ -79,12 +79,16 @@
 //
 // record-batch and recover-batch apply one merge-only rule when they cross-check the consumed report's `head_sha` against the worktree's HEAD,
 // so a parent merge-in landing between a fork's commit and the report's consumption cannot wedge the run.
-// HEAD is accepted when it equals `head_sha` or sits above it by merge commits alone on the first-parent chain.
+// HEAD is accepted when it equals `head_sha` or sits above it by clean parent merges alone on the first-parent chain:
+// each walked commit has exactly two parents, its second parent is reachable from the parent branch in fabric's origin record, and its tree equals the conflict-free merge of the two.
+// An evil merge, a hand-resolved conflict, a merge of any other branch, an octopus, or any merge in standalone mode (no parent branch) is refused,
+// because the audited delta ends at `head_sha` and such a merge's own content would bypass it.
 // The batch is recorded at the report's `head_sha` (CardSHAs and the delta's end), while the done-checks and drift detection read the merged tree as it stands,
 // and a warning names the walked merge SHAs.
 // Any non-merge movement — a plain commit, a fast-forward onto non-merge commits — is refused,
 // and so is any call made while a git merge is in progress, leaving the batch non-terminal and retryable.
 // Known limit: the integration stage's bisect over earlier CardSHAs runs on pre-merge trees.
+// Known limit: bisect and triage attribute a regression introduced by a mid-run parent merge to the first card after the merge.
 //
 // # every terminal batch runs the same mechanical pass
 //
