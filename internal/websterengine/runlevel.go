@@ -350,6 +350,9 @@ func countBegunForkBatches(st *State, sessionID string) int {
 // Master spawn to outcome.
 // ErrRunBusy and ErrFingerprintMismatch are exported sentinels;
 // non-done shuttle outcomes return *Master*Error types.
+// A done outcome passes through the run-exit audit: policy findings nobody dispositioned become run-level warnings on RunResult.Warnings,
+// and an undispositioned correctness finding demotes the outcome to stuck, the same way a regression in the integration stage does.
+// Once the integration stage has run, every recorded audit warning is appended to summary.md's "Audit warnings" section when that file exists.
 func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	if err := os.MkdirAll(deps.Geom.WebsterDir, 0o755); err != nil {
 		return RunResult{}, fmt.Errorf("webster: create webster dir %s: %w", deps.Geom.WebsterDir, err)
@@ -729,6 +732,11 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 			runResult.Outcome = outcomeStuck
 			runResult.StuckReason = stuckReason
 		}
+		// Every warning recorded this run, at record-batch or at run exit, reaches summary.md once,
+		// whatever the outcome; a missing summary on a non-done outcome skips the section.
+		if err := appendRecordedAuditWarnings(deps, batches, summaryPath); err != nil {
+			return RunResult{}, err
+		}
 		return runResult, nil
 
 	case shuttleengine.OutcomeAsking:
@@ -754,6 +762,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 // best-effort otherwise), every-batch-terminal-done and run-exit audit
 // cross-checks (done outcomes only), and pause-flag clear for non-paused
 // terminals.
+// The run-exit audit's warnings ride RunResult.Warnings, and its stuck reason demotes a done outcome to outcomeStuck.
 func mapMasterDone(deps RunDeps, batches []batcher.Batch, outcomePath, summaryPath string, result shuttleengine.Result) (RunResult, error) {
 	outcome, err := parseOutcome(outcomePath)
 	if err != nil {
@@ -761,6 +770,7 @@ func mapMasterDone(deps RunDeps, batches []batcher.Batch, outcomePath, summaryPa
 	}
 
 	var summaryTitle string
+	var auditWarnings []string
 	if outcome.Outcome == outcomeDone {
 		// Required: a done run with a missing or malformed summary.md is a
 		// hard error, never guessed — the artifact is the future
@@ -780,8 +790,16 @@ func mapMasterDone(deps RunDeps, batches []batcher.Batch, outcomePath, summaryPa
 			return RunResult{}, err
 		}
 
-		if err := runExitAuditCrossCheck(deps, outcomePath, summaryPath, result); err != nil {
+		var auditStuck string
+		auditWarnings, auditStuck, err = runExitAuditCrossCheck(deps, outcomePath, summaryPath, result)
+		if err != nil {
 			return RunResult{}, err
+		}
+		// An undispositioned correctness finding demotes Master's done to stuck;
+		// outcome.yaml is never rewritten.
+		if auditStuck != "" {
+			outcome.Outcome = outcomeStuck
+			outcome.StuckReason = auditStuck
 		}
 	} else if summary, err := summaryparser.Parse(summaryPath); err == nil {
 		// summary.md's content is optional on stuck/paused: best-effort
@@ -801,6 +819,7 @@ func mapMasterDone(deps RunDeps, batches []batcher.Batch, outcomePath, summaryPa
 		StuckReason:  outcome.StuckReason,
 		BatchesDone:  outcome.BatchesDone,
 		SummaryTitle: summaryTitle,
+		Warnings:     auditWarnings,
 	}, nil
 }
 
@@ -866,42 +885,120 @@ func verifyEveryBatchDone(websterDir, scratchDir string, batches []batcher.Batch
 // recorded with Kind: "fork" under THIS Master session (see
 // countBegunForkBatches — a prior crashed session's batches are outside the
 // current session's audit by construction) — a shortfall means a batch was
-// recorded without its fork surviving audit. Every violation is a hard
-// error carried on the run's own error; the outcome file stays on disk for
-// diagnosis (Run never removes it).
-func runExitAuditCrossCheck(deps RunDeps, outcomePath, summaryPath string, result shuttleengine.Result) error {
+// recorded without its fork surviving audit; both stay errors.
+//
+// Findings are then dispositioned like record-batch's: every identity the ledger already holds is dropped,
+// because the whole-session parent audit repeats every finding an earlier record-batch warned on or failed a batch for.
+// A policy finding nobody dispositioned is recorded as a run-level warning (saved to state.json before the lease is released) and its text is returned in warnings.
+// A correctness finding nobody dispositioned yields stuckReason, which names each suspect path and the git way forward;
+// it is deliberately not dispositioned, since the next run's fresh Master session carries none of it.
+// The outcome file stays on disk for diagnosis (Run never removes it).
+func runExitAuditCrossCheck(deps RunDeps, outcomePath, summaryPath string, result shuttleengine.Result) (warnings []string, stuckReason string, err error) {
 	if result.ForkAudit == nil {
-		return fmt.Errorf("webster: run reached outcome: done on a fork-authorized master spawn but its whole-session fork audit did not complete (nil ForkAudit) — this is fail-loud, never skipped")
+		return nil, "", fmt.Errorf("webster: run reached outcome: done on a fork-authorized master spawn but its whole-session fork audit did not complete (nil ForkAudit) — this is fail-loud, never skipped")
 	}
+
+	mutateLock, err := AcquireStateMutation(deps.Geom.ScratchDir)
+	if err != nil {
+		return nil, "", err
+	}
+	defer func() { _ = mutateLock.Release() }()
 
 	// Reload state fresh: begin-batch/record-batch mutated and persisted it
 	// repeatedly across Master's whole run, so the in-memory copy captured
 	// before Master ever spawned is stale by run-exit.
 	st, err := LoadState(deps.Geom.WebsterDir, deps.Geom.ScratchDir)
 	if err != nil {
-		return err
+		return nil, "", err
+	}
+	if st == nil {
+		return nil, "", fmt.Errorf("webster: run-exit audit cross-check: no state.json to disposition findings against")
 	}
 
-	var violations []error
-	for _, v := range CheckParent(*result.ForkAudit, outcomePath, summaryPath, deps.Geom.WorktreeRoot, deps.RefMatcher) {
-		violations = append(violations, v)
-	}
+	var candidates []AuditViolation
+	candidates = append(candidates, CheckParent(*result.ForkAudit, outcomePath, summaryPath, deps.Geom.WorktreeRoot, deps.RefMatcher)...)
 	for _, f := range result.ForkAudit.Forks {
-		for _, v := range CheckFork(f, outcomePath, summaryPath, deps.Geom.WorktreeRoot, deps.RefMatcher) {
-			violations = append(violations, v)
-		}
+		candidates = append(candidates, CheckFork(f, outcomePath, summaryPath, deps.Geom.WorktreeRoot, deps.RefMatcher)...)
 	}
-	if len(violations) > 0 {
-		return errors.Join(violations...)
+
+	// Classification is the only fallible step and runs before any mutation.
+	var policy, correctness []classifiedFinding
+	for _, v := range candidates {
+		id := findingIdentity(result.SessionID, v)
+		if isDispositioned(st, id) {
+			continue
+		}
+		severity, err := ClassifyViolation(v, deps.Geom)
+		if err != nil {
+			return nil, "", err
+		}
+		cf := classifiedFinding{ID: id, Violation: v}
+		if severity == AuditSeverityCorrectness {
+			correctness = append(correctness, cf)
+		} else {
+			policy = append(policy, cf)
+		}
 	}
 
 	begun := countBegunForkBatches(st, result.SessionID)
 	audited := len(result.ForkAudit.Forks)
 	if audited < begun {
-		return fmt.Errorf("webster: run-exit audit cross-check: %d audited fork transcript(s) is fewer than %d begun fork batch(es) — a batch was recorded without its fork surviving audit", audited, begun)
+		return nil, "", fmt.Errorf("webster: run-exit audit cross-check: %d audited fork transcript(s) is fewer than %d begun fork batch(es) — a batch was recorded without its fork surviving audit", audited, begun)
 	}
 
-	return nil
+	for _, cf := range policy {
+		if text, added := recordRunWarning(st, cf.ID, string(cf.Violation.Class), cf.Violation.Detail); added {
+			warnings = append(warnings, text)
+		}
+	}
+	if len(warnings) > 0 {
+		if err := SaveState(deps.Geom.WebsterDir, deps.Geom.ScratchDir, st); err != nil {
+			return nil, "", err
+		}
+	}
+
+	if len(correctness) > 0 {
+		details := make([]string, len(correctness))
+		var paths []string
+		seen := map[string]bool{}
+		for i, cf := range correctness {
+			details[i] = cf.Violation.Detail
+			if p := cf.Violation.Path; p != "" && !seen[p] {
+				seen[p] = true
+				paths = append(paths, p)
+			}
+		}
+		pathList := "none named"
+		if len(paths) > 0 {
+			pathList = strings.Join(paths, ", ")
+		}
+		stuckReason = fmt.Sprintf("run-exit audit found %d correctness finding(s): %s; suspect paths: %s; way forward: revert or re-derive the named paths on the warp with git, then re-step the Webster row (lyx webster run)", len(correctness), strings.Join(details, "; "), pathList)
+	}
+
+	return warnings, stuckReason, nil
+}
+
+// appendRecordedAuditWarnings reloads state and appends every recorded audit warning to summary.md as its "Audit warnings" section.
+// It is a no-op when nothing was recorded or summary.md does not exist.
+func appendRecordedAuditWarnings(deps RunDeps, batches []batcher.Batch, summaryPath string) error {
+	st, err := LoadState(deps.Geom.WebsterDir, deps.Geom.ScratchDir)
+	if err != nil {
+		return err
+	}
+	if st == nil {
+		return nil
+	}
+	recorded := RecordedAuditWarnings(st, batches)
+	if len(recorded) == 0 {
+		return nil
+	}
+	if _, err := os.Stat(summaryPath); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("webster: stat summary %s: %w", summaryPath, err)
+	}
+	return AppendAuditWarnings(deps.Geom.WebsterDir, recorded)
 }
 
 // runIntegrationStage drives the plan-level integration-suite stage after

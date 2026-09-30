@@ -958,53 +958,179 @@ func TestRun_DoneWithUnrecordedBatchIsHardError(t *testing.T) {
 	}
 }
 
-// TestRun_DoneWithParentWriteViolationIsHardError proves the run-exit audit cross-check's
-// CheckParent pass fires on a done outcome: a parent write outside the two contract files is a hard
-// error carried on the run's own error, even though the outcome/summary files themselves are
-// well-formed.
-func TestRun_DoneWithParentWriteViolationIsHardError(t *testing.T) {
-	fx := newRunFixture(t, 1)
+// auditDoneHandle builds a done Master handle whose onWait writes outcome.yaml (batchesDone batches) and a valid summary.md,
+// with audit as the whole-session fork audit.
+func auditDoneHandle(t *testing.T, fx *runFixture, session string, batchesDone int, audit shuttleengine.ForkAudit, extra func()) *runFakeHandle {
+	t.Helper()
+	return &runFakeHandle{
+		strandGUID: "master-strand-audit",
+		result: shuttleengine.Result{
+			Outcome:   shuttleengine.OutcomeDone,
+			SessionID: session,
+			RunDir:    "/run/dir/audit",
+			ForkAudit: &audit,
+		},
+		onWait: func() {
+			if extra != nil {
+				extra()
+			}
+			outcome := fmt.Sprintf("outcome: done\nstuck_reason: null\nbatches_done: %d\n", batchesDone)
+			if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "outcome.yaml"), []byte(outcome), 0o644); err != nil {
+				t.Fatalf("write outcome.yaml: %v", err)
+			}
+			if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "summary.md"), []byte("# Shipped\n\nAll good.\n"), 0o644); err != nil {
+				t.Fatalf("write summary.md: %v", err)
+			}
+		},
+	}
+}
 
-	// Seed batch 1 as terminal done (recorded under the run's own Master
-	// session) so the run reaches the whole-session audit cross-check rather
-	// than tripping the every-batch-done gate first.
+// TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck proves the run-exit audit demotes a done outcome to stuck
+// on an undispositioned correctness finding — a Master write into a tracked file — naming the path and the git way forward,
+// and that once the file is restored with git a re-run with a clean audit ends done.
+func TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck(t *testing.T) {
+	fx := newRunFixture(t, 1)
 	seedMatchingState(t, fx, &websterengine.State{
 		Batches: map[int]*websterengine.BatchState{
 			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", SessionID: "master-session-violation"},
 		},
 	})
+	tracked := filepath.Join(fx.Worktree, "base.txt")
+	forks := []shuttleengine.ForkReport{{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true}}
 
-	handle := &runFakeHandle{
-		strandGUID: "master-strand-violation",
-		result: shuttleengine.Result{
-			Outcome:   shuttleengine.OutcomeDone,
-			SessionID: "master-session-violation",
-			RunDir:    "/run/dir/violation",
-			ForkAudit: &shuttleengine.ForkAudit{
-				ParentWrites: []string{"/somewhere/else/hand-written-report.yaml"},
-				Forks: []shuttleengine.ForkReport{
-					{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true},
-				},
-			},
-		},
-		onWait: func() {
-			if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "outcome.yaml"), []byte("outcome: done\nstuck_reason: null\nbatches_done: 1\n"), 0o644); err != nil {
-				t.Fatalf("write outcome.yaml: %v", err)
+	fx.Starter.handle = auditDoneHandle(t, fx, "master-session-violation", 1,
+		shuttleengine.ForkAudit{ParentWrites: []string{tracked}, Forks: forks},
+		func() {
+			if err := os.WriteFile(tracked, []byte("hand-edited by master"), 0o644); err != nil {
+				t.Fatalf("edit tracked file: %v", err)
 			}
-			if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "summary.md"), []byte("# Shipped batch1\n"), 0o644); err != nil {
-				t.Fatalf("write summary.md: %v", err)
-			}
-		},
-	}
-	fx.Starter.handle = handle
-	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-violation", "master-session-violation")
+		})
+	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-audit", "master-session-violation")
 
-	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
-	if err == nil {
-		t.Fatalf("Run() error = nil; want a hard error for a parent-write violation")
+	result, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	if err != nil {
+		t.Fatalf("Run() error = %v; want nil (a correctness finding demotes, it is not an error)", err)
 	}
-	if !strings.Contains(err.Error(), "parent-write") {
-		t.Errorf("Run() error = %q; want it to name the parent-write violation", err.Error())
+	if result.Outcome != "stuck" {
+		t.Fatalf("RunResult.Outcome = %q; want %q", result.Outcome, "stuck")
+	}
+	if !strings.Contains(result.StuckReason, tracked) || !strings.Contains(result.StuckReason, "git") {
+		t.Errorf("StuckReason = %q; want it to name %s and the git way forward", result.StuckReason, tracked)
+	}
+
+	mustGit(t, fx.Worktree, "checkout", "--", "base.txt")
+	fx.Starter.handle = auditDoneHandle(t, fx, "master-session-violation", 1, shuttleengine.ForkAudit{Forks: forks}, nil)
+	result, err = websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	if err != nil {
+		t.Fatalf("second Run() error = %v; want nil", err)
+	}
+	if result.Outcome != "done" {
+		t.Errorf("second RunResult.Outcome = %q; want %q after the file was restored", result.Outcome, "done")
+	}
+}
+
+// TestRun_DoneWithNamedSpawnAlreadyDispositionedAddsNoWarning proves a finding an earlier record-batch already warned on
+// is dropped by the run-exit audit: the run ends done, no second warning is recorded, and summary.md carries the
+// batch-level warning exactly once under "## Audit warnings".
+func TestRun_DoneWithNamedSpawnAlreadyDispositionedAddsNoWarning(t *testing.T) {
+	const session = "master-session-spawn"
+	fx := newRunFixture(t, 3)
+	id := session + "/parent:named-spawn:1"
+	seedMatchingState(t, fx, &websterengine.State{
+		AuditDispositions: map[string]string{id: "warned"},
+		Batches: map[int]*websterengine.BatchState{
+			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", SessionID: session},
+			2: {Slug: "batch2", Kind: "fork", Terminal: true, Status: "done", SessionID: session,
+				AuditWarnings: []websterengine.AuditWarning{{Identity: id, Class: "named-spawn", Detail: "master spawned a named agent"}}},
+			3: {Slug: "batch3", Kind: "fork", Terminal: true, Status: "done", SessionID: session},
+		},
+	})
+	forks := []shuttleengine.ForkReport{
+		{TranscriptPath: "/transcripts/f1.jsonl", ReportReturned: true},
+		{TranscriptPath: "/transcripts/f2.jsonl", ReportReturned: true},
+		{TranscriptPath: "/transcripts/f3.jsonl", ReportReturned: true},
+	}
+	fx.Starter.handle = auditDoneHandle(t, fx, session, 3, shuttleengine.ForkAudit{NamedSpawns: 1, Forks: forks}, nil)
+	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-audit", session)
+
+	result, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	if err != nil {
+		t.Fatalf("Run() error = %v; want nil", err)
+	}
+	if result.Outcome != "done" {
+		t.Fatalf("RunResult.Outcome = %q; want %q", result.Outcome, "done")
+	}
+	if warningsContain(result.Warnings, "named-spawn") {
+		t.Errorf("Warnings = %v; want no second named-spawn warning", result.Warnings)
+	}
+	st, err := websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
+	if err != nil {
+		t.Fatalf("LoadState() error = %v", err)
+	}
+	if len(st.AuditWarnings) != 0 {
+		t.Errorf("run-level AuditWarnings = %v; want none", st.AuditWarnings)
+	}
+	summary, err := os.ReadFile(filepath.Join(fx.Deps.Geom.WebsterDir, "summary.md"))
+	if err != nil {
+		t.Fatalf("read summary.md: %v", err)
+	}
+	if n := strings.Count(string(summary), "## Audit warnings"); n != 1 {
+		t.Errorf("summary.md carries %d Audit warnings section(s); want 1:\n%s", n, summary)
+	}
+	if n := strings.Count(string(summary), "master spawned a named agent"); n != 1 {
+		t.Errorf("summary.md carries the batch 2 warning %d times; want once:\n%s", n, summary)
+	}
+}
+
+// TestRun_DoneWithFabricReferenceInIntegrationForkWarns proves a policy finding in the integration fork's transcript
+// leaves the run done, records one run-level warning in state.json, returns it on RunResult.Warnings,
+// and lists it in summary.md's "Audit warnings" section.
+func TestRun_DoneWithFabricReferenceInIntegrationForkWarns(t *testing.T) {
+	const session = "master-session-fabric"
+	fx := newRunFixture(t, 1)
+	fx.Deps.RefMatcher = fabricMatcher{}
+	appendIntegrationVerify(t, fx.PlanDir, "true")
+	seedMatchingState(t, fx, &websterengine.State{
+		Batches: map[int]*websterengine.BatchState{
+			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", SessionID: session, CardSHAs: []string{"deadbeef"}},
+		},
+	})
+	forks := []shuttleengine.ForkReport{
+		{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true},
+		{TranscriptPath: "/transcripts/integration.jsonl", ReportReturned: true, BashCommands: []string{"lyx FABRICREF sync"}},
+	}
+	fx.Starter.handle = auditDoneHandle(t, fx, session, 1, shuttleengine.ForkAudit{Forks: forks}, func() {
+		head := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+		report := "status: OK\nhead_sha: " + head + "\ndeviations: []\n"
+		if err := os.WriteFile(websterengine.IntegrationReportPath(fx.Deps.Geom.ReportsDir), []byte(report), 0o644); err != nil {
+			t.Fatalf("write integration report: %v", err)
+		}
+	})
+	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-audit", session)
+
+	result, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	if err != nil {
+		t.Fatalf("Run() error = %v; want nil", err)
+	}
+	if result.Outcome != "done" {
+		t.Fatalf("RunResult.Outcome = %q; want %q", result.Outcome, "done")
+	}
+	if !warningsContain(result.Warnings, "audit warning (fabric-reference)") {
+		t.Errorf("Warnings = %v; want the fabric-reference warning", result.Warnings)
+	}
+	st, err := websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
+	if err != nil {
+		t.Fatalf("LoadState() error = %v", err)
+	}
+	if len(st.AuditWarnings) != 1 {
+		t.Fatalf("run-level AuditWarnings = %v; want exactly one", st.AuditWarnings)
+	}
+	summary, err := os.ReadFile(filepath.Join(fx.Deps.Geom.WebsterDir, "summary.md"))
+	if err != nil {
+		t.Fatalf("read summary.md: %v", err)
+	}
+	if !strings.Contains(string(summary), "## Audit warnings") || !strings.Contains(string(summary), "fabric-reference") {
+		t.Errorf("summary.md = %q; want an Audit warnings section naming the fabric-reference finding", summary)
 	}
 }
 
