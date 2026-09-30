@@ -201,12 +201,9 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 	// re-calls it and appends a duplicate history entry -- defeating the exact
 	// crash-safety property step 5 exists to provide.
 	//
-	// Appended to a copy of the history read at step 1, never mutating the read slice in
-	// place. An outcome the producer never reached is the one case that appends nothing at
-	// all -- see the skip below.
+	// Appended or folded (see appendOrFold) on a copy of the history read at step 1, never mutating the read slice in place.
+	// An outcome the producer never reached is the one case that records nothing at all -- see the skip below.
 	appendHistory := func() []HistoryEntry {
-		next := make([]HistoryEntry, len(st.History), len(st.History)+1)
-		copy(next, st.History)
 		if outcome == "" {
 			// A producer that returned an error and no outcome at all reached no verdict, so
 			// there is nothing to record -- the same reasoning the cancellation branch below
@@ -227,9 +224,10 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 			// A non-empty outcome outside the vocabulary is a different case and is still
 			// recorded verbatim, because there the value IS the diagnosis -- it is what the
 			// broken adapter actually returned.
-			return next
+			// Copied onto a non-nil slice so an empty history stays [] on disk rather than null.
+			return append(make([]HistoryEntry, 0, len(st.History)), st.History...)
 		}
-		return append(next, HistoryEntry{
+		return appendOrFold(st.History, HistoryEntry{
 			Producer:     def.Name,
 			Outcome:      outcome,
 			Output:       output.Path,
@@ -493,6 +491,35 @@ func gotoEndsEpisode(target string, def ProducerDef, producers []ProducerDef) bo
 	return false
 }
 
+// appendOrFold returns a fresh copy of history with entry recorded: folded into the last element when both are budget-exempt Stucks with the same Producer, Output, and GateAttempts, else appended unchanged.
+// A fold keeps the last element's At, increments its Repeats, and sets its LastAt to entry.At;
+// the last element's own Repeats/LastAt never take part in the match.
+// It never writes through history's backing array.
+func appendOrFold(history []HistoryEntry, entry HistoryEntry) []HistoryEntry {
+	next := make([]HistoryEntry, len(history), len(history)+1)
+	copy(next, history)
+	if n := len(next); n > 0 && foldsInto(next[n-1], entry) {
+		next[n-1].Repeats++
+		next[n-1].LastAt = entry.At
+		return next
+	}
+	return append(next, entry)
+}
+
+// foldsInto reports whether entry is identical to last for folding: both budget-exempt Stucks with equal Producer, Output, and GateAttempts value.
+func foldsInto(last, entry HistoryEntry) bool {
+	if entry.Outcome != Stuck || !entry.BudgetExempt || last.Outcome != Stuck || !last.BudgetExempt {
+		return false
+	}
+	if last.Producer != entry.Producer || last.Output != entry.Output {
+		return false
+	}
+	if (last.GateAttempts == nil) != (entry.GateAttempts == nil) {
+		return false
+	}
+	return last.GateAttempts == nil || *last.GateAttempts == *entry.GateAttempts
+}
+
 // effectiveMaxBounces resolves def's own bounce budget, inheriting at two levels: def.MaxBounces
 // when it is greater than zero, else shedMax when that is greater than zero, else
 // defaultMaxBounces. A zero value never means "no bounces allowed" at either level.
@@ -512,11 +539,11 @@ func effectiveMaxBounces(def ProducerDef, shedMax int) int {
 // consumePause is true, also writes pause_requested false; otherwise pause_requested is left
 // exactly as re-read. persist never touches product.
 //
-// routedTo is the row a Stuck verdict was just routed to, and the empty string for every other
-// write; it selects the "<producer> → bounced to <routedTo>" wording of activity.last. A persist
-// that appends no history entry (the pause writes and the step-3b resume write) carries the file's
-// existing activity.last forward, read inside the mutate, so a pause right after a bounce keeps the
-// bounce wording and a resume after a halt keeps "<producer> → stuck".
+// routedTo is the row a Stuck verdict was just routed to, and the empty string for every other write;
+// it selects the "<producer> → bounced to <routedTo>" wording of activity.last.
+// A persist that appends or folds a history entry recomposes activity.last,
+// and only one that records no verdict (the pause writes and the step-3b resume write) carries the file's existing activity.last forward, read inside the mutate,
+// so a pause right after a bounce keeps the bounce wording and a resume after a halt keeps "<producer> → stuck".
 //
 // The merge exists rather than a whole-file rewrite from an in-memory copy because Shed is not the
 // status file's only writer: a pause requested during a long producer call, and an external
@@ -559,13 +586,25 @@ func effectiveMaxBounces(def ProducerDef, shedMax int) int {
 // deliberately blind to a call whose history or error changed while producer and state did not.
 // That blindness is safe there because the only transition it ever skips is Run-Shed's own
 // still-running self-bounce (internal/battenrecipe.NameRunShed's on_stuck route back to itself):
-// error is empty by construction on that transition, since it is a Stuck verdict rather than a
-// hard error, and the accumulated history is committed whole by the next transition that does
-// change producer or state.
+// error is empty by construction on that transition, since it is a Stuck verdict rather than a hard error,
+// and the history it leaves behind (appended or folded) is committed whole by the next transition that does change producer or state.
 //
 // persist writes an empty transient class; the producer-error arm alone calls persistTransient.
 func (s *Shed) persist(nextCurrentProducer string, nextState State, nextError string, nextHistory []HistoryEntry, consumePause bool, routedTo string) error {
 	return s.persistTransient(nextCurrentProducer, nextState, nextError, nextHistory, consumePause, routedTo, "")
+}
+
+// recordedVerdict reports whether a write carrying next recorded a verdict against the file's current history:
+// the history got longer,
+// or it kept its length while the last entry's Repeats changed, which is a fold.
+func recordedVerdict(cur, next []HistoryEntry) bool {
+	if len(next) > len(cur) {
+		return true
+	}
+	if len(next) == 0 || len(next) != len(cur) {
+		return false
+	}
+	return next[len(next)-1].Repeats != cur[len(cur)-1].Repeats
 }
 
 // persistTransient is persist with the transient class the write records.
@@ -576,14 +615,14 @@ func (s *Shed) persistTransient(nextCurrentProducer string, nextState State, nex
 			return Status{}, fmt.Errorf("shedengine: status file %q vanished mid-run; Shed refuses to create one", s.StatusPath)
 		}
 		prevLast := cur.Activity.Last
-		appended := len(nextHistory) > len(cur.History)
+		recorded := recordedVerdict(cur.History, nextHistory)
 		cur.CurrentProducer = nextCurrentProducer
 		cur.State = nextState
 		cur.Error = nextError
 		cur.Transient = string(transient)
 		cur.History = nextHistory
 		cur.Activity = composeActivity(nextCurrentProducer, nextHistory, nextState, nextError, routedTo)
-		if !appended {
+		if !recorded {
 			cur.Activity.Last = prevLast
 		}
 		if consumePause {

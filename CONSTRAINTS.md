@@ -149,6 +149,8 @@ The transient mark is declared only in `internal/shedengine`, and its class set 
 - `self` is an alias only `shedrun.ResolveRunID` interprets: it maps to the told location's worktree slug (`l.WorktreeName`), and a run's directory is named by that slug.
   The one exception is a read-only legacy fallback in `shedrun`'s directory-segment resolution: when `_lyx/shed/<slug>/` is absent and `_lyx/shed/self/` exists, both spellings join `self`, so a run started before the rename keeps working with no on-disk migration.
   No other package resolves `self`, and none joins `SelfRunID` onto a path itself.
+- A freshly forked weft branch never carries its parent's shed run records:
+  `fabricengine.Add` drops the root `shedrun.RunsRootRel` names in the pair's first weft commit, and the adopt path drops nothing.
 
 ## Driver Choice Single-Site Invariant
 
@@ -392,7 +394,7 @@ In production code, `internal/summaryparser` is the sole declarer of the final-s
 
 A mechanical gate's **closure** and its CLI self-check verb call the same package function for every mode.
 
-- Discussion-Write's and Discussion-Burler's gates ↔ `validate-discussion`: `discussionparser.Validate`. Plan-Write's and Plan-Burler's gates ↔ `validate-plan`: `planglyph.ValidateFormat`. Describe's gate ↔ `validate-description`: `summaryparser.ValidateDescription`.
+- Discussion-Write's and Discussion-Burler's gates ↔ `validate-discussion`: `discussionparser.Validate`. Plan-Write's and Plan-Burler's gates ↔ `validate-plan`: `planglyph.ValidateFormat`. PR-Rework's gate ↔ `validate-plan --rework`: `loomshed.ValidateReworkPlan`. Describe's gate ↔ `validate-description`: `summaryparser.ValidateDescription`.
 - The verb's `--require-approved` mode, running the full check set, has no recipe counterpart by design: both plan gate sites run strictly before the Plan-Review segment's approve seam writes the approval flag, so demanding it would fail every fix round, and the flag's guarantee rests on that seam failing loudly instead — never on a row re-checking it.
 - Adding a mechanical gate means adding its verb and its parity check in the same task.
 - Moving a gate from a standalone row into a producer's own closure changed *where* the call sits, never the property this invariant binds, which is why the invariant survives the move rather than retiring with the rows.

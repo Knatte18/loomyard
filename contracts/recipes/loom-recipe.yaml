@@ -31,6 +31,12 @@
 # migrated: Webster-Bouncer's on_done now names Describe rather than Publish, and the operator can
 # simply re-run.
 #
+# Publish still escalates: its failures are merge, verify and push faults nothing in the list
+# produces. PR-Gate bounces to PR-Rework, the row that produces the diff it guards. PR-Rework joins
+# the writer rows whose Stuck halts for a human. The gate's episode Stuck count never resets between
+# rounds, so the budget is five rejection rounds per task. Rework cards skip Plan-Review because the
+# findings are operator-authored.
+#
 # Friction-Reflect is outside the escalate-to-a-human set: it also carries no on_stuck, but it
 # always returns Done and never Stuck, so it stays outside that set.
 #
@@ -309,7 +315,31 @@ producers:
 
   - name: Publish
     engine: Publish
+    on_done: PR-Gate
+
+  # PR-Gate owns every review decision on the pull request Publish opened: it returns Done on an
+  # approval or a merge, Awaiting while the operator has not decided, and Stuck only for a matching
+  # rejection, which bounces to the rework row that produces the diff it guards.
+  - name: PR-Gate
+    engine: PRGate
+    segment: PR-Review
+    max_bounces: 5
+    on_stuck: PR-Rework
     on_done: Finalize
+
+  # PR-Rework appends cards for the operator's findings and hands back to Webster, so the main line
+  # re-runs through review, describe, publish and the gate. Its Stuck halts the run for a human.
+  - name: PR-Rework
+    engine: PRRework
+    segment: PR-Review
+    on_done: Webster
+    config:
+      # gate holds this row's handoff until the artifact is mechanically valid, re-prompting the
+      # live session up to gate_attempts times, so a failure never reaches the row below.
+      # rework-plan checks only the cards absent from the plan committed at HEAD: every earlier
+      # card has already landed, and re-resolving one against the tree it changed always fails.
+      gate: rework-plan
+      gate_attempts: 3
 
   - name: Finalize
     engine: Finalize

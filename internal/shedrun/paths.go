@@ -1,4 +1,4 @@
-// paths.go declares the shed run-directory path constructors: the durable paths under _lyx (the run directory, its seed and status files, and the drive-reports directory), the ephemeral paths under .lyx (including the driver park marker), the anchor-relative paths for fabric commit pathspecs, and one hub-scoped ephemeral lock that sits one level above any single run-id.
+// paths.go declares the shed run-directory path constructors: the durable paths under _lyx (the run directory, its seed and status files, and the drive-reports directory), the ephemeral paths under .lyx (including the driver park marker), the anchor-relative paths for fabric commit pathspecs (including the run-records root), and one hub-scoped ephemeral lock that sits one level above any single run-id.
 // Every constructor is a plain filepath.Join onto the given *lyxcwd.Location's AnchorPath(), per the Cwd Resolution Invariant -- none of them calls os.Getwd or any git command.
 
 package shedrun
@@ -29,6 +29,11 @@ const ParkMarkerFileName = "driver-parked"
 // That refusal is retryable: the driver is still writing its stop report and committing its records, and parks within seconds.
 // It is exported so battencli recognises the refusal by this one declared value rather than by its message text.
 const StartNotParkedKind = "driver_not_parked"
+
+// StartMergeInProgressKind is the envelope "kind" of the `lyx loom start` refusal for a start that would spawn or resume a driver over a pair carrying an unfinished merge.
+// That refusal is NOT retryable: the operator must resolve, conclude or abort the merge first.
+// It is exported so an unattended caller tells it apart from the retryable StartNotParkedKind by this one declared value rather than by message text.
+const StartMergeInProgressKind = "merge_in_progress"
 
 // RunDir returns the path to the durable, fabric-synced directory holding a single run's
 // seed.json and status.json: the given *lyxcwd.Location's AnchorPath() joined with
@@ -116,6 +121,14 @@ func DriveReportsDir(l *lyxcwd.Location, runID string) string {
 // It exists so a caller building a fabric commit pathspec never has to name a segment shedrun owns.
 func DriveReportsRel(l *lyxcwd.Location, runID string) string {
 	return filepath.Join(lyxdirs.LyxDirName, shedDirName, runSegment(l, runID), driveReportsDirName)
+}
+
+// RunsRootRel returns the worktree-anchor-relative path of the run-records root: the join of lyxdirs.LyxDirName and shedDirName, the directory every run's RunDir sits under.
+// It takes no *lyxcwd.Location, because the root carries no run-id and so needs none of runSegment's alias resolution.
+// It exists so fabricengine's Add can drop the whole run-records tree from a freshly forked pair without naming the shed segment itself.
+// The path is anchor-relative, the same shape SeedRel and StatusRel return, suitable as a fabricengine commit's relPaths.
+func RunsRootRel() string {
+	return filepath.Join(lyxdirs.LyxDirName, shedDirName)
 }
 
 // PrimeRunLock returns the path to the hub-scoped ephemeral advisory lock that sits one level above

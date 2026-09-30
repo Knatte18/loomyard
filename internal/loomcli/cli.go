@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -79,6 +80,9 @@ type loomCLI struct {
 	// awaitRunLock's own four injected seams (bootstrap.go) and this file's own doc comment
 	// principle that the verb body is assembly over judgment already under test.
 	spawnWatchdog func(hubPath, tmuxPath, shellPath string, suppress bool)
+	// midMerge is the seam through which start reads the pair's merge state before spawning or resuming a driver.
+	// The Test Tier Purity Invariant bars an untagged test from building a real mid-merge pair, so a test substitutes a canned state or error.
+	midMerge func(*lyxcwd.Location) (fabricengine.MidMergeState, error)
 	// spec is the shedverbs.Spec the pre-run fills in place (arm.go) and the four shedverbs
 	// verbs read at run time. It is always non-nil after newLoomCLI, so Command() can hand the
 	// same pointer to shedverbs.Verbs before the pre-run has ever run.
@@ -133,6 +137,7 @@ func newLoomCLI() *loomCLI {
 	return &loomCLI{
 		suppressWatchdogSpawn: testing.Testing(),
 		spawnWatchdog:         reedengine.SpawnWatchdog,
+		midMerge:              fabricengine.MidMerge,
 		spec:                  &shedverbs.Spec{},
 	}
 }
@@ -203,7 +208,7 @@ func (c *loomCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) err
 // "step" is deliberately excluded from this set for that same reason: it drives a producer through shedengine.Shed's own Step, so it needs the full wire() and its early config refusal exactly as "start" and "run" do.
 func verbUsesLightweightWiring(name string) bool {
 	switch name {
-	case "status", "pause", "goto", "validate-discussion", "validate-plan", "validate-description", "approve", "commit-records":
+	case "status", "pause", "goto", "validate-discussion", "validate-plan", "validate-description", "approve", "reject", "commit-records":
 		return true
 	default:
 		return false
@@ -348,10 +353,14 @@ only when the activity changes; "pause" requests a pause at the next
 producer boundary; "goto" moves a halted run onto a named row, paused, with a
 fresh segment budget. "validate-discussion" and "validate-plan" are the
 standalone form of the mechanical gates Discussion-Write's and Plan-Write's
-own rows carry, callable by the writer agent before handoff, and
+own rows carry, callable by the writer agent before handoff ("validate-plan
+--rework" is PR-Rework's), and
 "validate-description" does the same for the Describe row's change description.
 "approve" records the operator's approval of the open pull request for a run
-blocked at Publish; "lyx loom start" then lands it. "commit-records" commits and
+awaiting or blocked at PR-Gate, removing any pending rejection; "lyx loom start" then lands it.
+"reject <review-file>" records the operator's rejection with the findings in that file, for a run
+awaiting or blocked at PR-Gate or blocked at PR-Rework, removing any approval; "lyx loom start" then
+sends the findings to PR-Rework. "commit-records" commits and
 pushes the run's records (status, reviews, friction notes, drive reports); the
 ly-drive end-of-session command runs it after the driver writes its stop report.
 
@@ -367,6 +376,7 @@ Example:
   lyx loom validate-plan
   lyx loom validate-description
   lyx loom approve
+  lyx loom reject review.md
   lyx loom commit-records`,
 		// RunE is set so that bare "lyx loom" lists subcommands and "lyx
 		// loom bogus" emits a JSON error envelope instead of falling
@@ -389,7 +399,7 @@ Example:
 	pauseVerb.Args = cobra.MaximumNArgs(1)
 	gotoVerb.Args = cobra.MaximumNArgs(1)
 
-	parent.AddCommand(c.startCmd(), runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb, c.validateDiscussionCmd(), c.validatePlanCmd(), c.validateDescriptionCmd(), c.approveCmd(), c.commitRecordsCmd())
+	parent.AddCommand(c.startCmd(), runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb, c.validateDiscussionCmd(), c.validatePlanCmd(), c.validateDescriptionCmd(), c.approveCmd(), c.rejectCmd(), c.commitRecordsCmd())
 
 	return parent
 }

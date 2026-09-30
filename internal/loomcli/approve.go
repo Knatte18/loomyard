@@ -1,6 +1,6 @@
-// approve.go implements the `approve` loom verb: the operator's recorded approval of the task's
-// open pull request. It writes the approval record Publish honours on its next run, and never
-// resumes the run itself, so a supervisor driving `lyx loom step` is never raced.
+// approve.go implements the `approve` loom verb: the operator's recorded approval of the task's open pull request.
+// It writes the approval record the PR-Gate row honours on its next run, removing any pending rejection first so the latest decision wins,
+// and never resumes the run itself, so a supervisor driving `lyx loom step` is never raced.
 //
 // The cobra shell is thin over approveVerb, which takes every side effect as an injected closure so
 // the refusal table is testable without git or network.
@@ -38,6 +38,8 @@ type approveDeps struct {
 	findPR func(ctx context.Context, owner, repo, head, base string) (*github.PullRequest, error)
 	// headSHA reads the local task HEAD.
 	headSHA func() (string, error)
+	// removeRejection deletes any pending rejection record; an absent record is success.
+	removeRejection func() error
 	// writeApproval records the approval, replacing any earlier one.
 	writeApproval func(landingshed.Approval) error
 	// now supplies the approval time.
@@ -55,8 +57,8 @@ func approveVerb(ctx context.Context, out io.Writer, d approveDeps) int {
 		return output.Err(out, `loom: approve: no status file; run "lyx loom start" first to bootstrap this task`)
 	}
 	halted := st.State == shedengine.StateAwaiting || st.State == shedengine.StateBlocked
-	if !halted || st.CurrentProducer != loomshed.NamePublish {
-		return output.Err(out, fmt.Sprintf("loom: approve: the run is not awaiting or blocked at %s (state %q, producer %q); approval applies only to a run awaiting or blocked at %s; way forward: lyx loom status shows where the run is, approve once it halts at %s", loomshed.NamePublish, st.State, st.CurrentProducer, loomshed.NamePublish, loomshed.NamePublish))
+	if !halted || st.CurrentProducer != loomshed.NamePRGate {
+		return output.Err(out, fmt.Sprintf("loom: approve: the run is not awaiting or blocked at %s (state %q, producer %q); approval applies only to a run awaiting or blocked at %s; way forward: lyx loom status shows where the run is, approve once it halts at %s", loomshed.NamePRGate, st.State, st.CurrentProducer, loomshed.NamePRGate, loomshed.NamePRGate))
 	}
 
 	taskBranch, parentBranch, originURL, err := d.branches()
@@ -92,6 +94,9 @@ func approveVerb(ctx context.Context, out io.Writer, d approveDeps) int {
 		HeadSHA:    remote,
 		ApprovedAt: d.now().UTC().Format(time.RFC3339),
 	}
+	if err := d.removeRejection(); err != nil {
+		return output.Err(out, "loom: approve: remove the pending rejection: "+err.Error())
+	}
 	if err := d.writeApproval(rec); err != nil {
 		return output.Err(out, "loom: approve: record the approval: "+err.Error())
 	}
@@ -108,9 +113,9 @@ func approveVerb(ctx context.Context, out io.Writer, d approveDeps) int {
 func (c *loomCLI) approveCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "approve",
-		Short: "record approval of the task's open pull request so the next lyx loom start lands it",
+		Short: "record approval of the task's open pull request at the PR-Gate row so the next lyx loom start lands it",
 		Long: `approve records the operator's approval of the task's open pull request,
-for a run awaiting or blocked at Publish. It refuses unless the run is awaiting or blocked at Publish,
+for a run awaiting or blocked at PR-Gate, and removes any pending rejection. It refuses unless the run is awaiting or blocked at PR-Gate,
 the pull request is open, and the local task HEAD equals the pull request's
 head commit. It writes the approval record and never resumes the run; run
 "lyx loom start" afterwards to land it.
@@ -173,6 +178,9 @@ Example:
 						return "", err
 					}
 					return f.HeadSHA()
+				},
+				removeRejection: func() error {
+					return landingshed.RemoveRecord(loomengine.LoomRejectionPath(location))
 				},
 				writeApproval: func(a landingshed.Approval) error {
 					return landingshed.WriteApproval(loomengine.LoomApprovalPath(location), a)

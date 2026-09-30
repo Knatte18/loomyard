@@ -1,8 +1,7 @@
 //go:build integration
 
-// mutation_record_integration_test.go asserts the mutation record survives the two headline
-// mutated-then-errored paths at the engine boundary: a Remove that destroys the portal and launchers
-// before its own dirty pre-flight refuses, and an Add that fails partway and runs rollbackAdd.
+// mutation_record_integration_test.go asserts the mutation record at the engine boundary: a Remove refused for a dirty worktree records nothing,
+// and an Add that fails partway and runs rollbackAdd is the mutated-then-errored case.
 // Both are read through res.Mutated().Entries(), exercising the exported surface a CLI or this
 // package's own live-state harness consumer actually has.
 //
@@ -21,13 +20,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 )
 
-// TestMutationRecord_RemoveDirtyWarpRefusalCarriesThePortalAndLauncherDeletions covers the pre-flight
-// ordering defect this slice exists to police: remove.go runs removePortal and removeLaunchers BEFORE
-// its dirty pre-flight, so a correctly-refusing Remove has already destroyed both by the time it
-// returns an error. The returned record must still name both deletions, and the pre-flight's own
-// error is a bare fmt.Errorf, never a *destructiveRefusal — RefusalOf(err) must report false, asserted
-// as an absence, not a set of contents.
-func TestMutationRecord_RemoveDirtyWarpRefusalCarriesThePortalAndLauncherDeletions(t *testing.T) {
+// TestMutationRecord_RemoveDirtyWarpRefusalRecordsNothing covers the ordering this slice polices: remove.go runs its dirty pre-flight before its archive and every teardown, so a correctly-refusing Remove has mutated nothing and its record is empty.
+// The pre-flight's own error is a bare fmt.Errorf, never a *destructiveRefusal — RefusalOf(err) must report false, asserted as an absence, not a set of contents.
+func TestMutationRecord_RemoveDirtyWarpRefusalRecordsNothing(t *testing.T) {
 	t.Parallel()
 
 	const slug = "dirty-warp-remove"
@@ -55,21 +50,8 @@ func TestMutationRecord_RemoveDirtyWarpRefusalCarriesThePortalAndLauncherDeletio
 		t.Errorf("RefusalOf(err) reported true; want false — the dirty pre-flight returns a bare error, never a *destructiveRefusal")
 	}
 
-	entries := res.Mutated().Entries()
-	var sawLinkRemoved, sawPathRemoved bool
-	for _, entry := range entries {
-		switch entry.Kind {
-		case fabricengine.KindLinkRemoved:
-			sawLinkRemoved = true
-		case fabricengine.KindPathRemoved:
-			sawPathRemoved = true
-		}
-	}
-	if !sawLinkRemoved {
-		t.Errorf("record %+v has no %s entry; want the portal removePortal already performed", entries, fabricengine.KindLinkRemoved)
-	}
-	if !sawPathRemoved {
-		t.Errorf("record %+v has no %s entry; want the launcher teardown removeLaunchers already performed", entries, fabricengine.KindPathRemoved)
+	if n := res.Mutated().Len(); n != 0 {
+		t.Errorf("refused Remove recorded %d mutations (%+v); want 0", n, res.Mutated().Entries())
 	}
 }
 

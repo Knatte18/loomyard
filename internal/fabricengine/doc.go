@@ -468,7 +468,7 @@
 // included, reported as success.
 // The hub's prime worktree is refused by name before any teardown begins, since it is the warp
 // repository rather than a pair.
-// After its refusals and before its first mutation, `Remove` archives the pair's weft tip:
+// After its refusals — the no-force dirtiness checks and their status probes among them — and before its first mutation, `Remove` archives the pair's weft tip:
 // `archiveWeftTip` pushes an `archive/<slug>/<tip>` tag to the weft origin, so the run records on the weft branch stay reachable once the branch is deleted.
 // A failed archive returns its error with the worktrees, portal, launchers and both branches still in place, so a plain re-run retries it; `force` and `remote` never skip it, and a weft repo with no origin proceeds with `ArchiveSkippedReason` set.
 //
@@ -478,6 +478,12 @@
 // A replaceable weft leftover is deleted at step 12, immediately before the weft push, through the destructive gate with a lease on the probed tip, so a branch that moved since the probe is refused and `Add` rolls back.
 // A rollback never restores the deleted branch: its content is reachable from the archive tag.
 // No remote warp branch is ever deleted, and `SkipPush`/`SkipGit` skip every probe and the replacement.
+//
+// `Add` also drops the parent's shed run records from a pair it forks (forkrecords.go).
+// A weft branch forked from its parent would otherwise carry every committed run directory, including one for the child's own slug, and the child's `Seed-Child` would refuse a disagreeing seed.
+// The fork is `worktree add --no-checkout`, followed by a write-out of the index without the `shedrun.RunsRootRel()` tree, so no run record ever reaches the new worktree's disk and nothing is deleted (an index-only removal after a full checkout would leave the files `shedrun` reads).
+// The pair's first weft commit, the origin record's, stages the root's deletions when the fork point tracked anything there.
+// The adopt path drops nothing, because an existing branch's run records are its own, and `Reconcile`'s dormant-weft creation keeps the plain fork since it makes no commit to carry a drop.
 //
 // # The one-repo illusion at the public API boundary
 //
@@ -507,8 +513,9 @@
 // `Healthy(l)` returns a typed `HealthReason` (drift.go) rather than a string a caller would have to
 // substring-match, so a caller like `preflight.CheckResolved` switches on `HealthReason.Cause`
 // instead of parsing prose.
-// `PushAnchored(l, opts)`, `MergeStateActive(l)` and `RequireDrivableWorktree(l)` are three further
-// vocabulary-neutral, `l`-in entry points reachable the same way `CommitAnchoredPaths` is.
+// `PushAnchored(l, opts)`, `MergeStateActive(l)`, `MidMerge(l)` and `RequireDrivableWorktree(l)` are further vocabulary-neutral, `l`-in entry points reachable the same way `CommitAnchoredPaths` is.
+// `MidMerge(l)` answers whether the pair carries an unfinished merge and which paths are still conflicted,
+// and `lyx loom start` consults it before putting a driver to work.
 // `RequireDrivableWorktree` is `RequireWarpWorktree` under a name a non-owner may say at all — the
 // invariant's scan matches the bare token inside an identifier, so the published name is itself the
 // leak, and a caller that must refuse fabric's own checkouts before driving topology has no other

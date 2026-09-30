@@ -1,13 +1,14 @@
-// gates.go implements this package's two gate closures: NewDiscussionGate and NewPlanGate.
-// Both are the gate half of the Gate Self-Check Parity Invariant -- each calls the identical package
-// function its CLI self-check verb does (discussionparser.Validate and planglyph.ValidateFormat,
-// respectively), so the operator's own self-check verb and the automated gate can never disagree
+// gates.go implements this package's three gate closures: NewDiscussionGate, NewPlanGate and NewReworkPlanGate.
+// Each is the gate half of the Gate Self-Check Parity Invariant -- each calls the identical package
+// function its CLI self-check verb does (discussionparser.Validate, planglyph.ValidateFormat and
+// ValidateReworkPlan, respectively), so the operator's own self-check verb and the automated gate can never disagree
 // about what "valid" means.
 
 package loomshed
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"strings"
 
@@ -140,6 +141,38 @@ func NewDiscussionGate(decisionRecordPath, supportLogPath string) shuttleengine.
 // planglyph.Severity is an open string type, so testing not-informational rather than
 // equals-blocking is what keeps an unrecognized or zero-valued severity from silently passing.
 func NewPlanGate(anchorPath, worktreeRoot string) shuttleengine.Gate {
+	return planGate("Plan-Gate", anchorPath, func(plan *planparser.Plan) ([]planglyph.Finding, error) {
+		return planglyph.ValidateFormat(plan, worktreeRoot)
+	})
+}
+
+// NewReworkPlanGate returns the PR-Rework row's gate closure: a shuttleengine.Gate that parses the plan under anchorPath and checks it with ValidateReworkPlan,
+// so only the cards the rework session appended are held to the plan-format checks.
+// readCommitted returns an anchor-relative file as committed at HEAD, with found false when HEAD has no such file.
+//
+// Parse failures, the blocking-versus-informational split and the logging follow the plan gate's contract.
+// A plan that cannot be read as committed at HEAD is a returned error, never a finding: the rework session cannot fix a missing baseline.
+func NewReworkPlanGate(anchorPath, worktreeRoot string, readCommitted func(anchorRel string) ([]byte, bool, error)) shuttleengine.Gate {
+	return planGate("Rework-Plan-Gate", anchorPath, func(plan *planparser.Plan) ([]planglyph.Finding, error) {
+		return ValidateReworkPlan(plan, worktreeRoot, readCommitted)
+	})
+}
+
+// ValidateReworkPlan checks plan with every card of the plan committed at HEAD treated as already built,
+// so the check set covers only the cards a rework round appended.
+// The committed cards have landed by the time a pull request is rejected, and re-resolving one against the tree it changed reports the plan working as designed as a blocking defect.
+// readCommitted returns an anchor-relative file as committed at HEAD, with found false when HEAD has no such file.
+// A plan that cannot be read as committed at HEAD is a returned error.
+func ValidateReworkPlan(plan *planparser.Plan, worktreeRoot string, readCommitted func(anchorRel string) ([]byte, bool, error)) ([]planglyph.Finding, error) {
+	committed, err := ParseCommittedPlan(plan.Dir, readCommitted)
+	if err != nil {
+		return nil, fmt.Errorf("read the plan committed at HEAD: %w", err)
+	}
+	return planglyph.ValidateDispatch(plan, worktreeRoot, committed.Cards)
+}
+
+// planGate builds a plan gate closure named gateName in its log lines: it parses the plan under anchorPath, runs validate over it, and maps the result onto the gate contract.
+func planGate(gateName, anchorPath string, validate func(*planparser.Plan) ([]planglyph.Finding, error)) shuttleengine.Gate {
 	return func() (shuttleengine.GateResult, error) {
 		planDir := planparser.PlanDir(anchorPath)
 		plan, err := planparser.ParsePlan(planDir)
@@ -150,18 +183,18 @@ func NewPlanGate(anchorPath, worktreeRoot string) shuttleengine.Gate {
 			return shuttleengine.GateResult{Passed: false, Findings: err.Error()}, nil
 		}
 
-		findings, err := planglyph.ValidateFormat(plan, worktreeRoot)
+		findings, err := validate(plan)
 		if err != nil {
 			return shuttleengine.GateResult{}, err
 		}
 
 		if !hasBlockingFinding(findings) {
-			logger.Warn("loomshed: plan gate surfaced informational findings", "gate", "Plan-Gate", "planDir", planDir, "findings", formatPlanFindings(findings))
+			logger.Warn("loomshed: plan gate surfaced informational findings", "gate", gateName, "planDir", planDir, "findings", formatPlanFindings(findings))
 			return shuttleengine.GateResult{Passed: true}, nil
 		}
 
 		formatted := formatPlanFindings(findings)
-		logger.Warn("loomshed: plan gate failed validation", "gate", "Plan-Gate", "planDir", planDir, "findings", formatted)
+		logger.Warn("loomshed: plan gate failed validation", "gate", gateName, "planDir", planDir, "findings", formatted)
 		return shuttleengine.GateResult{Passed: false, Findings: formatted}, nil
 	}
 }

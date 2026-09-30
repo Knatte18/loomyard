@@ -72,7 +72,8 @@ func landingDeps(
 			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), l, []string{shedrun.StatusRel(l, shedrun.SelfRunID)}, fmt.Sprintf("loom: status checkpoint for %s", seedSlug(l.WorktreeName)), fabricengine.EnvSyncOptions())
 			return err
 		},
-		ApprovalPath: loomengine.LoomApprovalPath(l),
+		ApprovalPath:  loomengine.LoomApprovalPath(l),
+		RejectionPath: loomengine.LoomRejectionPath(l),
 		TaskHead: func() (string, error) {
 			f, err := fabricengine.Open(l)
 			if err != nil {

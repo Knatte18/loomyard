@@ -21,7 +21,7 @@ func approveFixture() (approveDeps, *[]landingshed.Approval) {
 	var written []landingshed.Approval
 	d := approveDeps{
 		readStatus: func() (shedengine.Status, bool, error) {
-			return shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: loomshed.NamePublish}, true, nil
+			return shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: loomshed.NamePRGate}, true, nil
 		},
 		branches: func() (string, string, string, error) {
 			return "task", "main", "https://github.com/acme/widgets.git", nil
@@ -34,7 +34,8 @@ func approveFixture() (approveDeps, *[]landingshed.Approval) {
 				Head:    &github.PullRequestBranch{SHA: github.Ptr("abc123")},
 			}, nil
 		},
-		headSHA: func() (string, error) { return "abc123", nil },
+		headSHA:         func() (string, error) { return "abc123", nil },
+		removeRejection: func() error { return nil },
 		writeApproval: func(a landingshed.Approval) error {
 			written = append(written, a)
 			return nil
@@ -54,7 +55,7 @@ func TestApproveVerb_Refusals(t *testing.T) {
 			name: "NotBlocked",
 			mutate: func(d *approveDeps) {
 				d.readStatus = func() (shedengine.Status, bool, error) {
-					return shedengine.Status{State: shedengine.StateRunning, CurrentProducer: loomshed.NamePublish}, true, nil
+					return shedengine.Status{State: shedengine.StateRunning, CurrentProducer: loomshed.NamePRGate}, true, nil
 				}
 			},
 			wantMsg: "not awaiting or blocked",
@@ -151,5 +152,34 @@ func TestApproveVerb_Success(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "pull/7") {
 		t.Errorf("envelope %q does not name the PR URL", out.String())
+	}
+}
+
+func TestApproveVerb_RemovesRejectionBeforeWritingApproval(t *testing.T) {
+	d, _ := approveFixture()
+	var calls []string
+	d.removeRejection = func() error { calls = append(calls, "remove"); return nil }
+	d.writeApproval = func(landingshed.Approval) error { calls = append(calls, "write"); return nil }
+	var out bytes.Buffer
+	if code := approveVerb(context.Background(), &out, d); code != 0 {
+		t.Fatalf("exit = %d; want 0; out = %s", code, out.String())
+	}
+	if strings.Join(calls, ",") != "remove,write" {
+		t.Errorf("call order = %v; want remove then write", calls)
+	}
+}
+
+func TestApproveVerb_RemoveRejectionFailureWritesNoApproval(t *testing.T) {
+	d, written := approveFixture()
+	d.removeRejection = func() error { return errors.New("disk full") }
+	var out bytes.Buffer
+	if code := approveVerb(context.Background(), &out, d); code != 1 {
+		t.Fatalf("exit = %d; want 1; out = %s", code, out.String())
+	}
+	if strings.Count(out.String(), "\n") != 1 || !strings.Contains(out.String(), "disk full") {
+		t.Errorf("output %q; want one error envelope naming the failure", out.String())
+	}
+	if len(*written) != 0 {
+		t.Errorf("wrote %d approvals; want none", len(*written))
 	}
 }

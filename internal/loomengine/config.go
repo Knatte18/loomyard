@@ -38,6 +38,18 @@ const landingDirName = "landing"
 // loomengine is this segment's sole declarer.
 const loomApprovalFileName = "approval.json"
 
+// loomRejectionFileName is the filename of the pending rejection record within LoomScratchDir.
+// loomengine is this segment's sole declarer.
+const loomRejectionFileName = "rejection.json"
+
+// loomReworkCoverageFileName is the filename of the rework agent's finding-to-card coverage map within LoomScratchDir.
+// loomengine is this segment's sole declarer.
+const loomReworkCoverageFileName = "rework-coverage.md"
+
+// reworkDirName is the relative-path segment loomengine joins onto LoomDurableDir to form the directory holding one round-<N> directory per rejection round.
+// loomengine is this segment's sole declarer.
+const reworkDirName = "rework"
+
 // loomVerifyPendingFileName is the filename of the pending-verify marker within LoomScratchDir.
 // loomengine is this segment's sole declarer.
 const loomVerifyPendingFileName = "verify-pending"
@@ -203,6 +215,36 @@ func LoomScratchDir(l *lyxcwd.Location) string {
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func LoomApprovalPath(l *lyxcwd.Location) string {
 	return filepath.Join(LoomScratchDir(l), loomApprovalFileName)
+}
+
+// LoomRejectionPath returns the path to the pending rejection record `lyx loom reject` writes for this worktree.
+// It is built on LoomScratchDir rather than re-joining the .lyx literal, and is ephemeral:
+// the record is never tracked, per the Durable-vs-Ephemeral State Invariant.
+// Per the Cwd Resolution Invariant, no other package may construct this path.
+func LoomRejectionPath(l *lyxcwd.Location) string {
+	return filepath.Join(LoomScratchDir(l), loomRejectionFileName)
+}
+
+// LoomReworkCoveragePath returns the path to the rework agent's completion file, which maps each finding to the new cards covering it.
+// It is built on LoomScratchDir rather than re-joining the .lyx literal, and is ephemeral:
+// the file is never tracked, per the Durable-vs-Ephemeral State Invariant.
+// Per the Cwd Resolution Invariant, no other package may construct this path.
+func LoomReworkCoveragePath(l *lyxcwd.Location) string {
+	return filepath.Join(LoomScratchDir(l), loomReworkCoverageFileName)
+}
+
+// LoomReworkDirRel returns the worktree-anchor-relative form of LoomReworkDir's path: the join of LoomDurableDirRel and reworkDirName.
+// It exists so a caller building a fabric commit pathspec never has to name a directory segment loomengine owns.
+func LoomReworkDirRel() string {
+	return filepath.Join(LoomDurableDirRel(), reworkDirName)
+}
+
+// LoomReworkDir returns the root holding one round-<N> directory per rejection round for this worktree.
+// It is durable: each round's findings, record and coverage map are tracked run content committed with the appended cards.
+// It is built on LoomDurableDirRel rather than re-joining the durable literal a second time.
+// Per the Cwd Resolution Invariant, no other package may construct this path.
+func LoomReworkDir(l *lyxcwd.Location) string {
+	return filepath.Join(l.AnchorPath(), LoomReworkDirRel())
 }
 
 // LoomVerifyPendingPath returns the path to the pending-verify marker for this worktree.

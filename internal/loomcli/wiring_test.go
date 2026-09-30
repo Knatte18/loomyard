@@ -712,6 +712,10 @@ func TestWireLightweight_FillsThePathsWithoutLoadingAnyConfig(t *testing.T) {
 	if c.env.SupportLogPath != loomengine.DiscussionSupportLog(location) {
 		t.Errorf("env.SupportLogPath = %q; want %q", c.env.SupportLogPath, loomengine.DiscussionSupportLog(location))
 	}
+	// validate-plan --rework reads the plan committed at HEAD through this seam.
+	if c.env.Rework.ReadCommitted == nil {
+		t.Error("env.Rework.ReadCommitted = nil; want the committed-file seam validate-plan --rework reads")
+	}
 	// Nothing that a module config would have filled may be populated: that is what proves no load
 	// happened rather than merely that none failed.
 	if c.reed != nil {

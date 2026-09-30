@@ -5,7 +5,6 @@ package battenshed
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -42,29 +41,23 @@ func NewWorktreeCreate(name, slug string, createWorktree func(context.Context) e
 // Call implements shedengine.ShedProducer. It acquires the prime lock, calls createWorktree while
 // holding it, and releases it on every exit path -- including every Stuck one -- before returning.
 //
-// An Acquire error is a returned hard error: the lock mechanism itself failed, which is not a
-// producer verdict. Acquire reporting ok == false is Stuck, with a reason naming primeLock.Path
-// and the slug -- never a holder identity, which the lock file carries no record of and so cannot
-// report. A createWorktree error is Stuck with that error's own text passed through verbatim and
-// unreworded: fabric's own refusals (the dirty-driving-worktree probe and the pre-existing-branch
-// refusal) already name their own remedies, and reworking that text would only drop information.
+// A contended lock is waited for, polling every primeLockPollInterval for up to primeLockWaitBound (see acquirePrimeLock), so overlapping batten runs take turns.
+// An Acquire error at any attempt is a returned hard error: the lock mechanism itself failed, which is not a producer verdict.
+// A context cancelled during the wait returns the cancelled-during-run error.
+// The bound spent with the lock still held is Stuck, with a reason naming primeLock.Path and the wait -- never a holder identity, which the lock file carries no record of and so cannot report.
+// A createWorktree error is Stuck with that error's own text passed through verbatim and unreworded:
+// fabric's own refusals (the dirty-driving-worktree probe and the pre-existing-branch refusal) already name their own remedies,
+// and reworking that text would only drop information.
 func (p *worktreeCreateProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, p.name); err != nil {
 		return "", shedengine.OutputPointer{}, err
 	}
 
-	release, ok, err := p.primeLock.Acquire()
+	release, reason, err := acquirePrimeLock(ctx, p.name, p.slug, p.primeLock)
 	if err != nil {
-		if cerr := cancelErr(ctx, p.name); cerr != nil {
-			return "", shedengine.OutputPointer{}, cerr
-		}
-		return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: acquire prime lock %q: %w", p.name, p.primeLock.Path, err)
+		return "", shedengine.OutputPointer{}, err
 	}
-	if !ok {
-		if cerr := cancelErr(ctx, p.name); cerr != nil {
-			return "", shedengine.OutputPointer{}, cerr
-		}
-		reason := fmt.Sprintf("prime lock %q is already held; another batten producer is creating or tearing down a task worktree", p.primeLock.Path)
+	if release == nil {
 		reportStuck(p.name, reason, p.scratchDir, "slug", p.slug)
 		return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
 	}

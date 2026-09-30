@@ -25,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/ideengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -447,17 +448,26 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			},
 		},
 		InnerRun: battenshed.InnerRunDeps{
-			// ReadApproval and DriverAlive resolve the task worktree on Call like every seam here, never at wiring time.
-			ReadApproval: func() (battenshed.ChildApproval, bool, error) {
+			// ReadDecision and DriverAlive resolve the task worktree on Call like every seam here, never at wiring time.
+			ReadDecision: func() (battenshed.ChildDecision, bool, error) {
 				taskLocation, err := taskWorktreeLocation(location, slug)
 				if err != nil {
-					return battenshed.ChildApproval{}, false, err
+					return battenshed.ChildDecision{}, false, err
 				}
+				// approve and reject each remove the other's record first, so both are present only when the two verbs race.
+				// The approval wins then, as it does in the gate when both records match the pull request.
 				a, found, err := landingshed.ReadApproval(loomengine.LoomApprovalPath(taskLocation))
-				if err != nil || !found {
-					return battenshed.ChildApproval{}, false, err
+				if err != nil {
+					return battenshed.ChildDecision{}, false, err
 				}
-				return battenshed.ChildApproval{ApprovedAt: a.ApprovedAt, HeadSHA: a.HeadSHA}, true, nil
+				if found {
+					return battenshed.ChildDecision{Kind: battenshed.DecisionApprove, At: a.ApprovedAt, HeadSHA: a.HeadSHA}, true, nil
+				}
+				r, found, err := landingshed.ReadRejection(loomengine.LoomRejectionPath(taskLocation))
+				if err != nil || !found {
+					return battenshed.ChildDecision{}, false, err
+				}
+				return battenshed.ChildDecision{Kind: battenshed.DecisionReject, At: r.RejectedAt, HeadSHA: r.HeadSHA}, true, nil
 			},
 			DriverAlive: func(ctx context.Context) (bool, error) {
 				present, err := taskWorktreePresent(location, slug)
@@ -520,6 +530,13 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			},
 			ReadStatus: func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
 				return state.ReadJSONStrict[shedengine.Status](statusPath, statusLockPath)
+			},
+			// OpenIDE confirms the pair first so an absent one is named in the warning, then hands the prime location to the driven open.
+			OpenIDE: func(ctx context.Context) error {
+				if _, err := taskWorktreeLocation(location, slug); err != nil {
+					return err
+				}
+				return ideengine.SpawnDriven(location, slug)
 			},
 		},
 		SeedChild: battenshed.SeedChildDeps{
