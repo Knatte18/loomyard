@@ -113,12 +113,12 @@ func (p *planWrite) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 // directory inside a new one. An absent plan directory, or one with no top-level .md file to move,
 // is a no-op with a nil error and creates nothing.
 //
-// The closure's string result is the prompt amendment SingleLLMProducer appends to the respawned
-// session's prompt: empty when nothing moved, otherwise a blank line followed by
-// loomengine.PriorPlanBlock naming the archive directory and the moved files, so the new session
-// knows where the prior plan went. stencilsDir is told by the caller and holds the
-// loom-template-prior-plan stencil. A render failure is returned as the closure's error, so the
-// producer aborts before spawning a session that would silently rewrite the plan.
+// The closure's string result is the prompt amendment SingleLLMProducer appends to the respawned session's prompt:
+// empty when nothing moved, otherwise a blank line followed by loomengine.PriorPlanBlock naming the archive directory and the moved files,
+// so the new session knows where the prior plan went.
+// stencilsDir is told by the caller and holds the loom-template-prior-plan stencil.
+// A render failure is returned as the closure's error,
+// so the producer aborts before spawning a session that would silently rewrite the plan.
 func NewPlanDirRotator(anchorPath, stencilsDir string, now func() time.Time) func() (string, error) {
 	if now == nil {
 		now = time.Now
@@ -143,8 +143,7 @@ func NewPlanDirRotator(anchorPath, stencilsDir string, now func() time.Time) fun
 // from anchorPath into a fresh archive-<stamp>[-N] subdirectory, leaving any other entry (a
 // directory, or a non-.md file) in place.
 // It returns the archive directory it created and the names of the files it moved.
-// It returns an empty directory and no names, creating nothing, when nothing moved
-// (absent plan directory, or no top-level .md file).
+// It returns an empty directory and no names, creating nothing, when nothing moved (absent plan directory, or no top-level .md file).
 // It resolves the plan directory via planparser.PlanDir(anchorPath) -- never by naming the "_lyx"
 // literal, which the Lyxdirs Single-Declarer Invariant forbids in production path-construction
 // context.
