@@ -199,7 +199,7 @@ func (c *loomCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) err
 // "start" and "run" do.
 func verbUsesLightweightWiring(name string) bool {
 	switch name {
-	case "status", "pause", "validate-discussion", "validate-plan":
+	case "status", "pause", "validate-discussion", "validate-plan", "validate-description":
 		return true
 	default:
 		return false
@@ -325,7 +325,8 @@ reports the current phase and, with --watch, tails it, printing a line
 only when the activity changes; "pause" requests a pause at the next
 producer boundary. "validate-discussion" and "validate-plan" are the
 standalone form of the mechanical gates Discussion-Write's and Plan-Write's
-own rows carry, callable by the writer agent before handoff.
+own rows carry, callable by the writer agent before handoff, and
+"validate-description" does the same for the Describe row's change description.
 
 Example:
   lyx loom start
@@ -335,7 +336,8 @@ Example:
   lyx loom status --watch
   lyx loom pause
   lyx loom validate-discussion
-  lyx loom validate-plan`,
+  lyx loom validate-plan
+  lyx loom validate-description`,
 		// RunE is set so that bare "lyx loom" lists subcommands and "lyx
 		// loom bogus" emits a JSON error envelope instead of falling
 		// through to cobra's plain-text help.
@@ -357,7 +359,7 @@ Example:
 	statusVerb.Args = cobra.MaximumNArgs(1)
 	pauseVerb.Args = cobra.MaximumNArgs(1)
 
-	parent.AddCommand(c.startCmd(), runVerb, stepVerb, statusVerb, pauseVerb, c.validateDiscussionCmd(), c.validatePlanCmd())
+	parent.AddCommand(c.startCmd(), runVerb, stepVerb, statusVerb, pauseVerb, c.validateDiscussionCmd(), c.validatePlanCmd(), c.validateDescriptionCmd())
 
 	return parent
 }

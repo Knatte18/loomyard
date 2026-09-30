@@ -517,3 +517,55 @@ func envelopeContains(v any, substr string) bool {
 	}
 	return false
 }
+
+// descriptionFixture writes content as summary.md under dir and returns a *loomCLI wired only with
+// the DescriptionPath validateDescriptionCmd's RunE reads.
+func descriptionFixture(t *testing.T, dir, content string) *loomCLI {
+	t.Helper()
+
+	path := filepath.Join(dir, "summary.md")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write description: %v", err)
+	}
+	return &loomCLI{env: shedrecipe.Env{DescriptionPath: path}}
+}
+
+func TestValidateDescriptionCmd(t *testing.T) {
+	t.Run("Clean", func(t *testing.T) {
+		c := descriptionFixture(t, t.TempDir(), "# Title\n\nbody\n")
+
+		var out bytes.Buffer
+		exitCode := clihelp.Execute(c.validateDescriptionCmd(), &out, nil)
+		if exitCode != 0 {
+			t.Errorf("exit code = %d; want 0 (output: %q)", exitCode, out.String())
+		}
+		env := decodeSingleEnvelope(t, out.String())
+		if ok, _ := env["ok"].(bool); !ok {
+			t.Errorf("envelope ok = %v; want true", env["ok"])
+		}
+		if got, _ := env["description"].(string); got != c.env.DescriptionPath {
+			t.Errorf("envelope description = %q; want %q", got, c.env.DescriptionPath)
+		}
+	})
+
+	t.Run("Findings_CoAuthoredBy", func(t *testing.T) {
+		c := descriptionFixture(t, t.TempDir(), "# Title\n\nbody\n\nCo-Authored-By: X <x@y>\n")
+
+		var out bytes.Buffer
+		exitCode := clihelp.Execute(c.validateDescriptionCmd(), &out, nil)
+		if exitCode != 1 {
+			t.Errorf("exit code = %d; want 1 (output: %q)", exitCode, out.String())
+		}
+		env := decodeSingleEnvelope(t, out.String())
+		if ok, _ := env["ok"].(bool); ok {
+			t.Errorf("envelope ok = true; want false")
+		}
+		findings, has := env["findings"]
+		if !has {
+			t.Fatalf("envelope has no findings key: %v", env)
+		}
+		if !envelopeContains(findings, "Co-Authored-By") && !strings.Contains(out.String(), "Co-Authored-By") {
+			t.Errorf("envelope does not mention Co-Authored-By: %v", env)
+		}
+	})
+}

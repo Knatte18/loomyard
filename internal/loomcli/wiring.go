@@ -25,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -195,13 +196,14 @@ func (c *loomCLI) wireLightweight(location *lyxcwd.Location, cwd string) {
 		CommitStatus:   newCommitStatusSeam(loomCommitStatusDeps(location, c.runID)),
 	}
 	// c.env is otherwise left at its zero value deliberately: status/pause read nothing from it, and
-	// filling only the four fields validate-discussion/validate-plan actually read (rather than the
+	// filling only the five fields the validate verbs actually read (rather than the
 	// whole of wire()'s c.env assembly) is what keeps this path from re-acquiring the eight-config
 	// load it exists to avoid.
 	c.env.AnchorPath = location.AnchorPath()
 	c.env.WorktreeRoot = location.WorktreePath()
 	c.env.DecisionRecordPath = loomengine.DiscussionDecisionRecord(location)
 	c.env.SupportLogPath = loomengine.DiscussionSupportLog(location)
+	c.env.DescriptionPath = summaryparser.Path(loomengine.LandingDir(location))
 }
 
 // wire builds the whole engine stack onto c from location and cwd: every module config anchored at

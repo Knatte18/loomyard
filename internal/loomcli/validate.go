@@ -15,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/spf13/cobra"
 )
 
@@ -66,6 +67,47 @@ Example:
 			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{
 				"decision_record": c.env.DecisionRecordPath,
 				"support_log":     c.env.SupportLogPath,
+			}))
+			return nil
+		},
+	}
+}
+
+// validateDescriptionCmd builds the `validate-description` subcommand: the standalone form of the
+// check the Describe row's own gate runs, callable by the Describe agent before handoff.
+func (c *loomCLI) validateDescriptionCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "validate-description",
+		Short: "run the check the Describe row's own gate runs standalone against the current change description",
+		Long: `validate-description runs summaryparser.ValidateDescription against the
+current worktree's change description -- the identical check the Describe
+row's own gate runs -- and reports the result as one JSON envelope. It takes
+no arguments and no flags; it always checks the worktree's own description.
+It sits beside validate-discussion and validate-plan.
+
+Example:
+  lyx loom validate-description`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if clihelp.ShouldAbort(cmd.Context()) {
+				return nil
+			}
+			out := cmd.OutOrStdout()
+
+			findings, err := summaryparser.ValidateDescription(c.env.DescriptionPath)
+			if err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, "loom: validate change description "+c.env.DescriptionPath+": "+err.Error()))
+				return nil
+			}
+			if len(findings) > 0 {
+				clihelp.SetExit(cmd.Context(), output.ErrFields(out, "loom: change description is not yet valid", map[string]any{
+					"findings": renderFindings(findings),
+				}))
+				return nil
+			}
+
+			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{
+				"description": c.env.DescriptionPath,
 			}))
 			return nil
 		},
