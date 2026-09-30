@@ -14,6 +14,7 @@
 package websterengine
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -163,32 +164,84 @@ func checkoutAndVerify(repo FabricBisector, sha, verifyCmd, worktree string) (bo
 	if err := repo.CheckoutDetached(sha); err != nil {
 		return false, fmt.Errorf("webster: bisect: checkout %s: %w", sha, err)
 	}
-	return runVerifyCommand(verifyCmd, worktree)
+	run, err := runVerifyCapture(verifyCmd, worktree, "")
+	if err != nil {
+		return false, err
+	}
+	return run.Passed, nil
 }
 
-// runVerifyCommand runs verifyCmd in-process via os/exec. A non-zero exit is
-// a failed verify (false, nil); a spawn failure propagates as a real error.
-func runVerifyCommand(verifyCmd, worktree string) (bool, error) {
+// verifyRun is one verify-command run: whether it exited zero, and its combined stdout+stderr.
+type verifyRun struct {
+	Passed bool
+	Output string
+}
+
+// verifyRunner is the seam triage and bisect run the verify command through, so their untagged
+// tests can inject a fake; runVerifyCapture satisfies it.
+type verifyRunner func(verifyCmd, worktree, logPath string) (verifyRun, error)
+
+// verifyLogDirName is the subdirectory of webster's scratch dir holding the verify logs.
+const verifyLogDirName = "verify"
+
+// IntegrationLogPath returns the integration fork's verify log path inside scratchDir.
+// It lives under webster's .lyx scratch dir, never under _lyx (Durable-vs-Ephemeral State Invariant).
+func IntegrationLogPath(scratchDir string) string {
+	return filepath.Join(scratchDir, verifyLogDirName, "integration.log")
+}
+
+// rerunLogPath returns the triage rerun's verify log path inside scratchDir.
+func rerunLogPath(scratchDir string) string {
+	return filepath.Join(scratchDir, verifyLogDirName, "rerun.log")
+}
+
+// baselineLogPath returns the triage baseline run's verify log path inside scratchDir.
+func baselineLogPath(scratchDir string) string {
+	return filepath.Join(scratchDir, verifyLogDirName, "baseline.log")
+}
+
+// runVerifyCapture runs verifyCmd in-process via os/exec, capturing combined stdout and stderr.
+// A non-zero exit is a failed verify (Passed false, nil error); a spawn failure propagates as a real
+// error.
+// A non-empty logPath also receives the output, its parent directory created; a failed log write is
+// returned as an error, since a triage decision must never rest on a log that silently was not
+// written.
+func runVerifyCapture(verifyCmd, worktree, logPath string) (verifyRun, error) {
 	shell, flag := "sh", "-c"
 	if runtime.GOOS == "windows" {
 		shell, flag = "cmd", "/C"
 	}
 
+	var out bytes.Buffer
 	cmd := exec.Command(shell, flag, verifyCmd)
 	cmd.Dir = worktree
+	cmd.Stdout = &out
+	cmd.Stderr = &out
 	logger.Info("websterengine: spawning verify command", "shell", shell, "verifyCmd", verifyCmd, "worktree", worktree)
+	passed := true
 	if err := cmd.Run(); err != nil {
 		// *exec.ExitError is a failed verify (expected); other errors propagate.
 		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
-			logger.Info("websterengine: verify command exited", "verifyCmd", verifyCmd, "worktree", worktree, "exitCode", exitErr.ExitCode())
-			return false, nil
+		if !errors.As(err, &exitErr) {
+			logger.Warn("websterengine: verify command failed to spawn", "verifyCmd", verifyCmd, "worktree", worktree, "cause", err)
+			return verifyRun{}, fmt.Errorf("webster: run verify command %q: %w", verifyCmd, err)
 		}
-		logger.Warn("websterengine: verify command failed to spawn", "verifyCmd", verifyCmd, "worktree", worktree, "cause", err)
-		return false, fmt.Errorf("webster: bisect: run verify command %q: %w", verifyCmd, err)
+		logger.Info("websterengine: verify command exited", "verifyCmd", verifyCmd, "worktree", worktree, "exitCode", exitErr.ExitCode())
+		passed = false
+	} else {
+		logger.Info("websterengine: verify command exited", "verifyCmd", verifyCmd, "worktree", worktree, "exitCode", 0)
 	}
-	logger.Info("websterengine: verify command exited", "verifyCmd", verifyCmd, "worktree", worktree, "exitCode", 0)
-	return true, nil
+
+	run := verifyRun{Passed: passed, Output: out.String()}
+	if logPath != "" {
+		if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
+			return verifyRun{}, fmt.Errorf("webster: create verify log dir for %s: %w", logPath, err)
+		}
+		if err := os.WriteFile(logPath, out.Bytes(), 0o644); err != nil {
+			return verifyRun{}, fmt.Errorf("webster: write verify log %s: %w", logPath, err)
+		}
+	}
+	return run, nil
 }
 
 // RecordIntegrationFailure marks a terminal, non-successful record for the integration stage into
