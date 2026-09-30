@@ -161,11 +161,8 @@ func TestReconcileReportHead_ReportHeadIsMergeCommit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error = %v; want nil", err)
 	}
-	if !strings.Contains(warning, merge2) {
-		t.Errorf("warning %q missing second merge %s", warning, merge2)
-	}
-	if strings.Contains(warning, "("+report) || strings.Contains(warning, ", "+report+",") {
-		t.Errorf("warning %q lists the report head as a walked merge", warning)
+	if !strings.Contains(warning, "("+merge2+")") {
+		t.Errorf("warning %q; want the walked merges to be exactly (%s), without the report head", warning, merge2)
 	}
 }
 
@@ -210,10 +207,16 @@ func TestReconcileReportHead_Refusals(t *testing.T) {
 		report := gitwrapCommitFile(t, dir, "a.txt", "one", "first")
 		gitwrapMergeSide(t, dir, "side1")
 		gitwrapCommitFile(t, dir, "b.txt", "two", "second")
-		gitwrapMergeSide(t, dir, "side2")
+		head, _ := gitwrapMergeSide(t, dir, "side2")
 
-		if _, err := reconcileReportHead(dir, report, "batch report x"); err == nil {
+		_, err := reconcileReportHead(dir, report, "batch report x")
+		if err == nil {
 			t.Fatal("error = nil; want refusal")
+		}
+		for _, want := range []string{"does not match the worktree's actual HEAD", report, head, "only merge commits"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("error %q missing %q", err, want)
+			}
 		}
 	})
 
