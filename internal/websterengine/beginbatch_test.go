@@ -547,6 +547,52 @@ func TestBeginBatch_StateUpdated(t *testing.T) {
 	}
 }
 
+// TestBeginBatch_ReBeginKeepsStartSHA proves a re-begin over a non-terminal fork record that
+// carries a StartSHA keeps it in both the record and the result, though the worktree head has
+// moved past it (the earlier fork landed a commit).
+func TestBeginBatch_ReBeginKeepsStartSHA(t *testing.T) {
+	fx := newBeginFixture(t)
+	fx.Deps.State.AssertedModel = "master-model" // skip the injector
+	original := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	fx.Deps.State.Batches = map[int]*websterengine.BatchState{
+		1: {Slug: "json-flag", Kind: "fork", StartSHA: original},
+	}
+	moved := commitFile(t, fx.Worktree, "fork.txt", "fork", "earlier fork commit")
+	if moved == original {
+		t.Fatal("worktree head did not move past the recorded StartSHA")
+	}
+
+	result, err := websterengine.BeginBatch(fx.Deps, 1)
+	if err != nil {
+		t.Fatalf("BeginBatch(1) error = %v; want nil", err)
+	}
+	if result.StartSHA != original {
+		t.Errorf("result.StartSHA = %q; want the kept %q", result.StartSHA, original)
+	}
+	if got := fx.Deps.State.Batches[1].StartSHA; got != original {
+		t.Errorf("Batches[1].StartSHA = %q; want the kept %q", got, original)
+	}
+}
+
+// TestBeginBatch_ReBeginEmptyStartSHARecordsHead proves a prior record without a StartSHA gets the
+// current head, as a first begin does.
+func TestBeginBatch_ReBeginEmptyStartSHARecordsHead(t *testing.T) {
+	fx := newBeginFixture(t)
+	fx.Deps.State.AssertedModel = "master-model" // skip the injector
+	fx.Deps.State.Batches = map[int]*websterengine.BatchState{
+		1: {Slug: "json-flag", Kind: "fork"},
+	}
+	head := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+
+	result, err := websterengine.BeginBatch(fx.Deps, 1)
+	if err != nil {
+		t.Fatalf("BeginBatch(1) error = %v; want nil", err)
+	}
+	if result.StartSHA != head || fx.Deps.State.Batches[1].StartSHA != head {
+		t.Errorf("StartSHA result=%q record=%q; want current head %q", result.StartSHA, fx.Deps.State.Batches[1].StartSHA, head)
+	}
+}
+
 // TestBeginBatch_CreatesReportsDir proves BeginBatch creates a missing reports dir itself: the fork
 // writes its report there with whatever tool it likes — a plain shell redirect included, which
 // never creates missing parents — and only the --fresh archive path recreated the dir before
