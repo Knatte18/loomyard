@@ -48,7 +48,7 @@ func fixedOutcomeProducer(outcome Outcome, outputPath string) *funcProducer {
 // deliberately left uncreated, so the ordinary test path exercises Run's own MkdirAll.
 // Returns the Shed (with no Producers set -- callers fill that in) and the three paths, so a
 // test can seed, inspect, and corrupt them.
-func newTestShed(t *testing.T) (shed *Shed, statusPath, lockPath, statusLockPath string) {
+func newTestShed(t testing.TB) (shed *Shed, statusPath, lockPath, statusLockPath string) {
 	t.Helper()
 
 	root := t.TempDir()
@@ -76,7 +76,7 @@ func newTestShed(t *testing.T) (shed *Shed, statusPath, lockPath, statusLockPath
 // external-writer-lock-contract decision -- is already expected to ensure its own lock path is
 // usable before writing; state.WriteJSON creates statusPath's parent but not statusLockPath's, so
 // this helper creates the latter itself rather than pushing that bookkeeping onto every call site.
-func seedStatus(t *testing.T, statusPath, statusLockPath string, want Status) {
+func seedStatus(t testing.TB, statusPath, statusLockPath string, want Status) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(statusLockPath), 0o755); err != nil {
 		t.Fatalf("seedStatus: create status lock parent dir: %v", err)

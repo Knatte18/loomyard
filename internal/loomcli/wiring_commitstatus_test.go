@@ -338,3 +338,72 @@ func TestStatusCommitPathspec(t *testing.T) {
 		})
 	}
 }
+
+// TestStatusCommitPathspec_RunRecords asserts the loom durable directory and the drive-reports directory each appear exactly when they hold a file at any depth,
+// including only a timestamped archive sibling, and are omitted when absent, empty, or holding only empty subdirectories.
+func TestStatusCommitPathspec_RunRecords(t *testing.T) {
+	t.Parallel()
+
+	writeFile := func(t *testing.T, path string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("x\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tests := []struct {
+		name      string
+		setup     func(t *testing.T, loc *lyxcwd.Location)
+		wantLoom  bool
+		wantDrive bool
+	}{
+		{"absent", func(t *testing.T, loc *lyxcwd.Location) {}, false, false},
+		{"empty directories", func(t *testing.T, loc *lyxcwd.Location) {
+			for _, d := range []string{loomengine.LoomDurableDir(loc), shedrun.DriveReportsDir(loc, shedrun.SelfRunID)} {
+				if err := os.MkdirAll(d, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}, false, false},
+		{"only empty subdirectories", func(t *testing.T, loc *lyxcwd.Location) {
+			for _, d := range []string{loomengine.LoomFrictionDir(loc), filepath.Join(shedrun.DriveReportsDir(loc, shedrun.SelfRunID), "sub")} {
+				if err := os.MkdirAll(d, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}, false, false},
+		{"friction note", func(t *testing.T, loc *lyxcwd.Location) {
+			writeFile(t, filepath.Join(loomengine.LoomFrictionDir(loc), "note.md"))
+		}, true, false},
+		{"only an archive sibling", func(t *testing.T, loc *lyxcwd.Location) {
+			writeFile(t, filepath.Join(loomengine.LoomDurableDir(loc), "friction-20260101T000000", "note.md"))
+		}, true, false},
+		{"drive report", func(t *testing.T, loc *lyxcwd.Location) {
+			writeFile(t, filepath.Join(shedrun.DriveReportsDir(loc, shedrun.SelfRunID), "report.md"))
+		}, false, true},
+		{"both", func(t *testing.T, loc *lyxcwd.Location) {
+			writeFile(t, filepath.Join(loomengine.LoomFrictionDir(loc), "note.md"))
+			writeFile(t, filepath.Join(shedrun.DriveReportsDir(loc, shedrun.SelfRunID), "report.md"))
+		}, true, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			location := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+			tt.setup(t, location)
+			want := []string{shedrun.StatusRel(location, shedrun.SelfRunID)}
+			if tt.wantLoom {
+				want = append(want, loomengine.LoomDurableDirRel())
+			}
+			if tt.wantDrive {
+				want = append(want, shedrun.DriveReportsRel(location, shedrun.SelfRunID))
+			}
+			got := statusCommitPathspec(location, shedrun.SelfRunID)
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("statusCommitPathspec() = %v; want %v", got, want)
+			}
+		})
+	}
+}

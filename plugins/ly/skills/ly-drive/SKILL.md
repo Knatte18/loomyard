@@ -128,6 +128,8 @@ Write the stop report under `scratch_dir` too, or to the path a launch prompt na
 At every stop the report lists `friction_dir` and `<scratch_dir>/repairs/`.
 Every report names the run by the envelope's `run_id` and gives its position as `history_length` plus `progress` (`step` of `steps`, and `name`).
 It never cites the driver's own step count.
+A launch prompt from the orchestrator names a report path under the run's durable drive-reports directory.
+Its end-of-session command commits the stop report and the friction notes through the orchestrator's own records-commit verb before ending the session, so this skill itself still makes no commits.
 When the launch prompt names an end-of-session command, run it as the last act, after writing the stop report.
 
 ## Self-report

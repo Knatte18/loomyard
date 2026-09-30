@@ -23,6 +23,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
+// ErrPairSiblingDirty is the sentinel Remove's no-force refusal wraps when the pair's other worktree carries uncommitted changes.
+// It is worded without naming either side of the pair so callers outside the fabric vocabulary owner set can match it with errors.Is and offer their own remedy.
+var ErrPairSiblingDirty = errors.New("the pair's sibling worktree has uncommitted changes")
+
+// siblingDirtyRefusal carries the refusal text unchanged while unwrapping to ErrPairSiblingDirty.
+type siblingDirtyRefusal struct{ msg string }
+
+func (e siblingDirtyRefusal) Error() string { return e.msg }
+
+func (e siblingDirtyRefusal) Unwrap() error { return ErrPairSiblingDirty }
+
 // RemoveResult contains the result of successfully removing a worktree pair.
 // It embeds MutationRecord, which carries the mutation record accumulated over the call.
 type RemoveResult struct {
@@ -45,6 +56,11 @@ type RemoveResult struct {
 	// WarpBranchKeptReason is non-empty when the warp branch was left in place, naming why: the
 	// destructive gate's refusal, or a failure to delete it. A kept branch is not a failure of Remove.
 	WarpBranchKeptReason string `json:"warp_branch_kept_reason,omitempty"`
+	// ArchiveTag names the archive/<slug>/<tip> tag pushed to the weft origin before the teardown;
+	// empty when none was pushed.
+	ArchiveTag string `json:"archive_tag,omitempty"`
+	// ArchiveSkippedReason is non-empty when no archive was attempted — today only a weft repo with no origin remote configured.
+	ArchiveSkippedReason string `json:"archive_skipped_reason,omitempty"`
 }
 
 // Remove removes a paired warp and weft git worktree with all associated artifacts.
@@ -56,8 +72,11 @@ type RemoveResult struct {
 // It refuses the hub's prime worktree outright too: the prime is the warp repository itself, not a
 // pair this verb can tear down, and git's own refusal to remove a main working tree is not a
 // licence to delete the clone.
-// Portal and launcher cleanup run after those checks but before the git removal, so they still run
-// when the worktree directory is already gone.
+// After those refusals and before its first mutation, Remove archives the pair's weft tip — an archive/<slug>/<tip> tag pushed to the weft origin (archiveWeftTip) — so the run records on the branch outlive its deletion.
+// A failed archive returns its error with everything still in place, so a plain re-run retries it.
+// The archive runs whatever remote says, since it protects the local branch's commits as much as the remote copy, and force does not skip it: force answers dirtiness only.
+// A weft repo with no origin proceeds, with ArchiveSkippedReason set on the result.
+// Portal and launcher cleanup run after the archive but before the git removal, so they still run when the worktree directory is already gone.
 // remote gates whether the pair's weft branch, once deleted locally, is also deleted on the weft
 // repo's origin remote; a remote deletion failure never makes Remove return a non-nil error.
 // Once both worktrees are removed, Remove deletes the local warp branch (BranchPrefix + slug) through
@@ -115,6 +134,14 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force, remote bool) (
 		return RemoveResult{}, &ErrMergeInProgress{}
 	}
 
+	// Archive the weft tip before the first mutation: a failed archive leaves the worktrees, portal, launchers and both branches untouched, so a plain re-run retries it.
+	// force answers dirtiness only, so it never skips this step.
+	archiveTag, archiveSkippedReason, err := archiveWeftTip(rec, l, slug, weftBranch)
+	if err != nil {
+		return RemoveResult{}, err
+	}
+	archivedEntries := rec.Len()
+
 	// removePortal and removeLaunchers are best-effort: an operational failure is discarded exactly as
 	// before, but a gate refusal must surface rather than vanish at the verb the slice's worst defect
 	// came from.
@@ -128,16 +155,16 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force, remote bool) (
 	if !force {
 		dirty, _, err := worktreeDirty(scopeAll, target)
 		if err != nil {
-			return RemoveResult{}, nameStrandedPortalTeardown(rec, fmt.Errorf("check warp worktree status: %w", err))
+			return RemoveResult{}, nameStrandedPortalTeardown(rec, archivedEntries, fmt.Errorf("check warp worktree status: %w", err))
 		}
 		if dirty {
-			return RemoveResult{}, nameStrandedPortalTeardown(rec, fmt.Errorf("worktree has uncommitted changes; use --force"))
+			return RemoveResult{}, nameStrandedPortalTeardown(rec, archivedEntries, fmt.Errorf("worktree has uncommitted changes; use --force"))
 		}
 	}
 
 	if !force {
 		if err := refuseDirtyWeftWorktree(WeftWorktreePath(l, slug)); err != nil {
-			return RemoveResult{}, nameStrandedPortalTeardown(rec, err)
+			return RemoveResult{}, nameStrandedPortalTeardown(rec, archivedEntries, err)
 		}
 	}
 
@@ -185,6 +212,8 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force, remote bool) (
 		RemoteSkippedReason:  teardown.remoteSkippedReason,
 		WarpBranchDeleted:    warpDeleted,
 		WarpBranchKeptReason: warpKeptReason,
+		ArchiveTag:           archiveTag,
+		ArchiveSkippedReason: archiveSkippedReason,
 	}, nil
 }
 
@@ -242,10 +271,12 @@ func deleteWarpBranch(rec *Mutations, l *lyxcwd.Location, warpBranch, parentBran
 // The remedy is appended only when something was actually recorded, so a refusal that stranded
 // nothing — the ordinary case once a first refused attempt has already torn the portal down — does
 // not tell the operator to repair a hub that is intact.
-func nameStrandedPortalTeardown(rec *Mutations, refusal error) error {
+//
+// priorEntries is the record's length before the portal teardown began: the archive step's own tag_pushed entry precedes it and strands nothing.
+func nameStrandedPortalTeardown(rec *Mutations, priorEntries int, refusal error) error {
 	// Len has a value receiver, so a nil recorder would panic on the auto-dereference rather than
 	// answering zero. Remove always constructs one, but this helper must not depend on that.
-	if rec == nil || rec.Len() == 0 {
+	if rec == nil || rec.Len() <= priorEntries {
 		return refusal
 	}
 	return fmt.Errorf(
@@ -271,7 +302,7 @@ func refuseDirtyWeftWorktree(weftTarget string) error {
 		return fmt.Errorf("check weft worktree status: %w", err)
 	}
 	if dirty {
-		return fmt.Errorf("weft worktree has uncommitted changes; run \"lyx fabric sync\" or use --force")
+		return siblingDirtyRefusal{"weft worktree has uncommitted changes; run \"lyx fabric sync\" or use --force"}
 	}
 	return nil
 }

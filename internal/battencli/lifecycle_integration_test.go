@@ -74,6 +74,7 @@ producers:
     max_bounces: 1440
     config:
       poll_interval_s: 1
+      driver_exit_grace_s: 900
 
   - name: Worktree-Teardown
     engine: WorktreeTeardown
@@ -429,12 +430,69 @@ func TestBattenIntegration_Teardown_AlreadyGonePairFinishesItsBranchDeletion(t *
 	}
 }
 
-// TestBattenIntegration_Teardown_FailedRemoteDeletionHaltsResumably breaks the weft origin during
-// teardown and asserts the removal half reports the failed remote deletion instead of done, then
-// that a resume once the remote is reachable again finishes it.
+// refuseRemoteBranchDeletions installs a pre-receive hook on the bare repo at bareDir that rejects every branch deletion while accepting every other update, so a teardown's archive-tag push lands but its remote branch deletion fails.
+// The returned func removes the hook.
+func refuseRemoteBranchDeletions(t *testing.T, bareDir string) func() {
+	t.Helper()
+	hook := filepath.Join(bareDir, "hooks", "pre-receive")
+	script := "#!/bin/sh\nwhile read old new ref; do\n  case \"$new\" in\n    *[!0]*) ;;\n    *) echo \"deletion of $ref refused\" >&2; exit 1 ;;\n  esac\ndone\nexit 0\n"
+	if err := os.MkdirAll(filepath.Dir(hook), 0o755); err != nil {
+		t.Fatalf("create hooks dir: %v", err)
+	}
+	if err := os.WriteFile(hook, []byte(script), 0o755); err != nil {
+		t.Fatalf("write pre-receive hook: %v", err)
+	}
+	return func() {
+		if err := os.Remove(hook); err != nil {
+			t.Fatalf("remove pre-receive hook: %v", err)
+		}
+	}
+}
+
+// remoteArchiveTagExists reports whether any archive/<slug>/ tag is present on the bare repo at bareDir.
+func remoteArchiveTagExists(bareDir, slug string) bool {
+	out, err := exec.Command("git", "-C", bareDir, "for-each-ref", "--format=%(refname)", "refs/tags/archive/"+slug+"/").Output()
+	return err == nil && strings.TrimSpace(string(out)) != ""
+}
+
+// TestBattenIntegration_Teardown_FailedRemoteDeletionHaltsResumably makes the weft origin refuse branch deletions during teardown and asserts the removal half archives the records, removes the pair and reports the failed remote deletion instead of done, then that a resume once the remote accepts the deletion finishes it.
 func TestBattenIntegration_Teardown_FailedRemoteDeletionHaltsResumably(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	slug := "batten-remote-fails"
+	hubforge.AddPair(t, h, slug)
+	weftBranch := fabricengine.WeftBranchName(slug)
+	restore := refuseRemoteBranchDeletions(t, h.WeftBare)
+
+	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
+		return shedengine.Status{State: shedengine.StateDone}, true, nil
+	})
+	err := c.env.Teardown.Remove(context.Background())
+	if err == nil {
+		t.Fatal("Teardown.Remove() = nil with a remote refusing the deletion; want the failed remote deletion reported")
+	}
+	if !strings.Contains(err.Error(), "resume this run") {
+		t.Errorf("Teardown.Remove() error = %q; want it to name the resume", err.Error())
+	}
+	if pathExists(h.PairWarpWorktree(slug)) {
+		t.Errorf("task worktree still present; want the pair removed before the remote deletion failed")
+	}
+	if !remoteArchiveTagExists(h.WeftBare, slug) {
+		t.Errorf("no archive/%s/ tag on the remote; want the records archived before the pair was removed", slug)
+	}
+
+	restore()
+	if err := c.env.Teardown.Remove(context.Background()); err != nil {
+		t.Fatalf("Teardown.Remove() on resume = %v; want nil", err)
+	}
+	if remoteBranchExists(h.WeftBare, weftBranch) {
+		t.Errorf("%q still on the remote after the resumed teardown; want it deleted", weftBranch)
+	}
+}
+
+// TestBattenIntegration_Teardown_UnreachableRemoteHaltsBeforeRemovalResumably breaks the weft origin before teardown and asserts the removal half halts on the failed archive with the pair still in place and the resume named, then that a resume once the remote is reachable again archives the records and finishes the teardown.
+func TestBattenIntegration_Teardown_UnreachableRemoteHaltsBeforeRemovalResumably(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+	slug := "batten-remote-unreachable"
 	hubforge.AddPair(t, h, slug)
 	weftBranch := fabricengine.WeftBranchName(slug)
 	weftRepoRoot, err := fabricengine.WeftRepoRoot(h.Location)
@@ -448,18 +506,27 @@ func TestBattenIntegration_Teardown_FailedRemoteDeletionHaltsResumably(t *testin
 	})
 	err = c.env.Teardown.Remove(context.Background())
 	if err == nil {
-		t.Fatal("Teardown.Remove() = nil with an unreachable remote; want the failed remote deletion reported")
+		t.Fatal("Teardown.Remove() = nil with an unreachable remote; want the failed archive reported")
 	}
-	if !strings.Contains(err.Error(), "resume this run") {
+	if !errors.Is(err, fabricengine.ErrArchiveFailed) {
+		t.Errorf("Teardown.Remove() error = %v; want it to wrap fabricengine.ErrArchiveFailed", err)
+	}
+	if !strings.Contains(err.Error(), "lyx batten run "+slug) {
 		t.Errorf("Teardown.Remove() error = %q; want it to name the resume", err.Error())
 	}
-	if pathExists(h.PairWarpWorktree(slug)) {
-		t.Errorf("task worktree still present; want the pair removed before the remote deletion failed")
+	if !pathExists(h.PairWarpWorktree(slug)) {
+		t.Errorf("task worktree removed; want the pair left in place when the archive fails")
 	}
 
 	gitkit.MustRun(t, weftRepoRoot, "git", "remote", "set-url", "origin", h.WeftBare)
 	if err := c.env.Teardown.Remove(context.Background()); err != nil {
 		t.Fatalf("Teardown.Remove() on resume = %v; want nil", err)
+	}
+	if pathExists(h.PairWarpWorktree(slug)) {
+		t.Errorf("task worktree still present after the resumed teardown; want it removed")
+	}
+	if !remoteArchiveTagExists(h.WeftBare, slug) {
+		t.Errorf("no archive/%s/ tag on the remote after the resumed teardown; want the records archived", slug)
 	}
 	if remoteBranchExists(h.WeftBare, weftBranch) {
 		t.Errorf("%q still on the remote after the resumed teardown; want it deleted", weftBranch)
@@ -760,7 +827,7 @@ func TestBattenIntegration_CreateRow_IncompletePairRemedyWorksVerbatimOnAPrefixe
 		}
 	}
 
-	// The remedy, verbatim: the fabric verb's own engine call with --force, then the branch.
+	// The remedy, verbatim: the fabric verb's own engine call with --force, then the branch, only if it survived the removal.
 	cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(h.Location.HubPath))
 	if err != nil {
 		t.Fatalf("load fabric config: %v", err)
@@ -768,7 +835,12 @@ func TestBattenIntegration_CreateRow_IncompletePairRemedyWorksVerbatimOnAPrefixe
 	if _, err := fabricengine.NewTopology(cfg).Remove(h.Location, slug, true, false); err != nil {
 		t.Fatalf("%s: %v", removeCommand, err)
 	}
-	gitkit.MustRun(t, h.PrimeWorktree(), "git", "branch", "-D", branch)
+	if exec.Command("git", "-C", h.PrimeWorktree(), "rev-parse", "--verify", "--quiet", "refs/heads/"+branch).Run() == nil {
+		gitkit.MustRun(t, h.PrimeWorktree(), "git", "branch", "-D", branch)
+	}
+	if exec.Command("git", "-C", h.PrimeWorktree(), "rev-parse", "--verify", "--quiet", "refs/heads/"+branch).Run() == nil {
+		t.Fatalf("%q still present after the remedy; want it gone", branch)
+	}
 
 	if err := c.env.CreateWorktree(context.Background()); err != nil {
 		t.Fatalf("CreateWorktree() after the remedy = %v; want the fresh create to succeed", err)

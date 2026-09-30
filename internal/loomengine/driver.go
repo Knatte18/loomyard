@@ -13,6 +13,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/modelspec"
 )
 
+// LoomDriverStrandName is the ly-drive session's own strand's stable identity.
+// It is pinned because reed's add has no upsert semantics, so a second add under this same display name would append a second pane rather than replace the first.
+// Every add and every lookup must use this exact constant, or a re-entrant bootstrap stacks a second driver pane instead of matching the one already running.
+// It lives here rather than in loomcli so batten can look the driver up without importing another CLI package.
+const LoomDriverStrandName = "loom-driver"
+
 // DriverSettings is the driver role's resolved model settings, threaded onto the ly-drive session's
 // launch spec.
 type DriverSettings struct {

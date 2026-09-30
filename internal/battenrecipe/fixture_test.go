@@ -37,6 +37,10 @@ func testEnv(t *testing.T) (shedrecipe.Env, shedbuild.ShedPaths) {
 			ReadStatus: func(string, string) (shedengine.Status, bool, error) {
 				return shedengine.Status{}, false, nil
 			},
+			ReadApproval: func() (battenshed.ChildApproval, bool, error) {
+				return battenshed.ChildApproval{}, false, nil
+			},
+			DriverAlive: func(context.Context) (bool, error) { return false, nil },
 		},
 		SeedChild: battenshed.SeedChildDeps{
 			ReadBoardType: func(context.Context) (string, error) { return "loom", nil },

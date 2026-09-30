@@ -19,7 +19,9 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
@@ -68,11 +70,53 @@ func TestWire_LazySeams(t *testing.T) {
 		{"SpawnDirectory", c.env.InnerRun.Spawn != nil},
 		{"TeardownShutdown", c.env.Teardown.Shutdown != nil},
 		{"TeardownRemove", c.env.Teardown.Remove != nil},
+		{"ReadApproval", c.env.InnerRun.ReadApproval != nil},
+		{"DriverAlive", c.env.InnerRun.DriverAlive != nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if !tt.present {
 				t.Errorf("wire() left this seam nil; want an injected closure present but uncalled")
+			}
+		})
+	}
+}
+
+// TestDriverAliveFrom covers driverAliveFrom's answers without tmux: an absent task worktree is false without reading status, an absent reed session is false with no error, any other status error is returned, and only a live loom-driver strand is true.
+func TestDriverAliveFrom(t *testing.T) {
+	boom := errors.New("boom")
+	status := func(res reedengine.StatusResult, err error) func() (reedengine.StatusResult, error) {
+		return func() (reedengine.StatusResult, error) { return res, err }
+	}
+	strands := func(ss ...reedengine.StrandStatus) reedengine.StatusResult {
+		return reedengine.StatusResult{Strands: ss}
+	}
+	tests := []struct {
+		name    string
+		present bool
+		status  func() (reedengine.StatusResult, error)
+		want    bool
+		wantErr error
+	}{
+		{"WorktreeAbsentSkipsStatus", false, func() (reedengine.StatusResult, error) {
+			t.Error("status read although the task worktree is absent")
+			return reedengine.StatusResult{}, nil
+		}, false, nil},
+		{"NoSessionIsNotLive", true, status(reedengine.StatusResult{}, fmt.Errorf("wrapped: %w", reedengine.ErrNoSession)), false, nil},
+		{"OtherErrorReturned", true, status(reedengine.StatusResult{}, boom), false, boom},
+		{"LiveDriver", true, status(strands(reedengine.StrandStatus{Name: loomengine.LoomDriverStrandName, Live: true}), nil), true, nil},
+		{"DeadDriver", true, status(strands(reedengine.StrandStatus{Name: loomengine.LoomDriverStrandName}), nil), false, nil},
+		{"OtherStrandLiveOnly", true, status(strands(reedengine.StrandStatus{Name: "other", Live: true}), nil), false, nil},
+		{"NoStrands", true, status(reedengine.StatusResult{}, nil), false, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := driverAliveFrom(tt.present, tt.status)
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("driverAliveFrom() error = %v; want %v", err, tt.wantErr)
+			}
+			if got != tt.want {
+				t.Errorf("driverAliveFrom() = %v; want %v", got, tt.want)
 			}
 		})
 	}
@@ -364,6 +408,44 @@ func TestCreateRefusal_LeftoverBranchRemedyNeverNamesCheckout(t *testing.T) {
 				t.Errorf("createRefusal(...) = %q; want it to never suggest \"lyx fabric checkout\" from prime", got.Error())
 			}
 		})
+	}
+}
+
+// TestTeardownRefusal_RecordsRemedyNamesCommitRecordsNeverForce asserts an uncommitted-run-records refusal is reworded to batten's own recovery -- commit the records in the task anchor, then resume -- and never names --force, that a failed archive names the resume, and that every other teardown error passes through unchanged.
+func TestTeardownRefusal_RecordsRemedyNamesCommitRecordsNeverForce(t *testing.T) {
+	const anchor = "/work/wts/some-slug"
+	dirty := fmt.Errorf("remove: %w", fabricengine.ErrPairSiblingDirty)
+
+	got := teardownRefusal(dirty, "some-slug", anchor)
+	if got == nil {
+		t.Fatal("teardownRefusal(sibling dirty) = nil; want a reworded refusal")
+	}
+	for _, want := range []string{"lyx loom commit-records", anchor, "lyx batten run some-slug", "not a run record", "commit or remove that content by hand"} {
+		if !strings.Contains(got.Error(), want) {
+			t.Errorf("teardownRefusal(sibling dirty) = %q; want it to contain %q", got.Error(), want)
+		}
+	}
+	if strings.Contains(got.Error(), "--force") {
+		t.Errorf("teardownRefusal(sibling dirty) = %q; want it to never name --force", got.Error())
+	}
+
+	archiveFailed := fmt.Errorf("%w: push refused", fabricengine.ErrArchiveFailed)
+	got = teardownRefusal(archiveFailed, "some-slug", anchor)
+	if !errors.Is(got, fabricengine.ErrArchiveFailed) {
+		t.Errorf("teardownRefusal(archive failed) = %v; want it to still wrap ErrArchiveFailed", got)
+	}
+	for _, want := range []string{"left in place", "push refused", "fix the failure named here", "lyx batten run some-slug"} {
+		if !strings.Contains(got.Error(), want) {
+			t.Errorf("teardownRefusal(archive failed) = %q; want it to contain %q", got.Error(), want)
+		}
+	}
+	if strings.Contains(got.Error(), "--force") {
+		t.Errorf("teardownRefusal(archive failed) = %q; want it to never name --force", got.Error())
+	}
+
+	other := errors.New("the task worktree has uncommitted changes")
+	if got := teardownRefusal(other, "some-slug", anchor); got != other {
+		t.Errorf("teardownRefusal(other) = %v; want the same error passed through", got)
 	}
 }
 

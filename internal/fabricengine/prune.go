@@ -19,6 +19,8 @@
 // This is the same rule removeWarpWorktreeDir applies on the warp side, and it exists for the same
 // reason: `git worktree remove` refusing a path is not licence to delete it.
 //
+// Prune removes weft worktrees only and deletes no weft branch — orphaned branches are left for Cleanup — so it needs no archiveWeftTip step; the archive belongs to the verbs that delete a branch.
+//
 // The verdict is computed identically in both modes, so a dry run's Protected and Unowned flags
 // match exactly what the same flags plus --apply would do.
 
