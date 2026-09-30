@@ -108,6 +108,9 @@ You never read raw fork output beyond its own turn, and you never open a file to
 - `recover-batch <NN>` returns a terminal `status: stuck` OR `status: dead` (any `dead_reason`) → the recovery itself failed.
   You have exhausted this batch's recovery: stop the run here — write `outcome: stuck` to `{{.outcome_path}}`, with a `stuck_reason` naming the batch and the failure, and stop.
   Do NOT re-fork it, do NOT begin the next batch (batch N+1 assumes N is committed).
+- `recover-batch <NN>` refuses with `{"batch_failed": true}` → the recovery strand said done but webster's checks rejected its work, so the recovery itself failed.
+  Treat it exactly like a terminal `stuck` or `dead` recovery: write `outcome: stuck` to `{{.outcome_path}}`, with a `stuck_reason` quoting the refusal's message, and stop.
+  Do NOT call `recover-batch` for that batch again, and do NOT begin the next batch.
 - `record-batch` refuses with `{"batch_failed": true}` → the batch is already terminal-failed and its report archived: call `lyx webster recover-batch <NN>`, then follow the recover-batch rungs above.
 - `record-batch` refuses with `{"report_archived": true}` → the report could not be attributed and was archived: call `lyx webster begin-batch <NN>` and re-fork that batch from its fresh prompt.
 - `begin-batch <NN>` refuses because the batch **already has a report** (a resumed run found a crashed session's leftover) → do NOT fork;

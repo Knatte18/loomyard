@@ -488,6 +488,9 @@ func TestMasterTemplate_TeachesBatchFailedAndReportArchivedRungs(t *testing.T) {
 	requireContains(t, text, `"batch_failed": true`)
 	requireContains(t, text, `"report_archived": true`)
 	requireContains(t, text, "call `lyx webster recover-batch <NN>`, then follow the recover-batch rungs")
+	// recover-batch's own batch_failed is a failed recovery, a terminal rung, never another recover-batch.
+	requireContains(t, text, "- `recover-batch <NN>` refuses with `{\"batch_failed\": true}` → the recovery strand said done but webster's checks rejected its work")
+	requireContains(t, text, "Do NOT call `recover-batch` for that batch again")
 	requireContains(t, text, "call `lyx webster begin-batch <NN>` and re-fork that batch")
 	requireContains(t, text, "`lyx webster rebaseline`")
 }
