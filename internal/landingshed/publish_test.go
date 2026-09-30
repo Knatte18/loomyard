@@ -64,18 +64,18 @@ func (r *recordingResolver) Resolve(ctx context.Context, source string) (mergere
 }
 
 // newTestDeps returns a minimal Deps with sane defaults for a Publish test: a base-branch list
-// requiring a pull request, a told FinalSummaryPath pointing at a directory with no summary.md yet,
+// requiring a pull request, a told DescriptionPath pointing at a directory with no summary.md yet,
 // and a scratch dir under t.TempDir().
 func newTestDeps(t *testing.T) Deps {
 	t.Helper()
 	return Deps{
-		WorktreeRoot:     t.TempDir(),
-		TaskBranch:       "task-branch",
-		ParentBranch:     "main",
-		FinalSummaryPath: summaryparser.Path(t.TempDir()),
-		StencilsDir:      t.TempDir(),
-		ScratchDir:       filepath.Join(t.TempDir(), "scratch"),
-		OriginURL:        "https://github.com/acme/proj.git",
+		WorktreeRoot:    t.TempDir(),
+		TaskBranch:      "task-branch",
+		ParentBranch:    "main",
+		DescriptionPath: summaryparser.Path(t.TempDir()),
+		StencilsDir:     t.TempDir(),
+		ScratchDir:      filepath.Join(t.TempDir(), "scratch"),
+		OriginURL:       "https://github.com/acme/proj.git",
 		Config: Config{
 			RequirePRToBase:    []string{"main"},
 			Squash:             true,
@@ -192,13 +192,13 @@ func TestNewPublish_RejectsNilPushBranch(t *testing.T) {
 	}
 }
 
-func TestNewPublish_RejectsEmptyFinalSummaryPath(t *testing.T) {
+func TestNewPublish_RejectsEmptyDescriptionPath(t *testing.T) {
 	deps := newTestDeps(t)
 	deps.OpenFabric = func() (*fabricengine.Fabric, error) { return nil, nil }
 	deps.PushBranch = func() error { return nil }
-	deps.FinalSummaryPath = ""
+	deps.DescriptionPath = ""
 	if _, err := NewPublish(deps); err == nil {
-		t.Fatal("NewPublish() error = nil; want an error naming Deps.FinalSummaryPath")
+		t.Fatal("NewPublish() error = nil; want an error naming Deps.DescriptionPath")
 	}
 }
 
@@ -443,7 +443,7 @@ func TestPublish_QueryExistingPRFails_WarnsWithActionOwnerRepoAndCause(t *testin
 // site's own logger.Warn line must carry action, owner, repo, and cause.
 func TestPublish_CreatePRFails_WarnsWithActionOwnerRepoAndCause(t *testing.T) {
 	deps := newTestDeps(t)
-	writeSummary(t, deps.FinalSummaryPath, "My PR Title", "My PR body.")
+	writeSummary(t, deps.DescriptionPath, "My PR Title", "My PR body.")
 	var order []string
 	deps.PushBranch = func() error { order = append(order, "push"); return nil }
 	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
@@ -477,7 +477,7 @@ func TestPublish_CreatePRFails_WarnsWithActionOwnerRepoAndCause(t *testing.T) {
 
 func TestPublish_NoExistingPR_CreatesAndReportsStuck(t *testing.T) {
 	deps := newTestDeps(t)
-	writeSummary(t, deps.FinalSummaryPath, "My PR Title", "My PR body.")
+	writeSummary(t, deps.DescriptionPath, "My PR Title", "My PR body.")
 	var order []string
 	deps.PushBranch = func() error { order = append(order, "push"); return nil }
 	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
@@ -625,7 +625,7 @@ func TestPublish_MissingSummary_FailsLoudlyNoCreate(t *testing.T) {
 
 	outcome, _, err := p.Call(context.Background())
 	if err == nil {
-		t.Fatal("Call() error = nil; want an error for a missing summary artifact")
+		t.Fatal("Call() error = nil; want an error for a missing change description")
 	}
 	if outcome != "" {
 		t.Errorf("Call() outcome = %q; want empty on a hard error", outcome)
@@ -672,7 +672,7 @@ func TestPublish_CreatedPRLogsInfo(t *testing.T) {
 	t.Cleanup(func() { logger.SetDurableSinkDir("") })
 
 	deps := newTestDeps(t)
-	writeSummary(t, deps.FinalSummaryPath, "My PR Title", "My PR body.")
+	writeSummary(t, deps.DescriptionPath, "My PR Title", "My PR body.")
 	var order []string
 	deps.PushBranch = func() error { order = append(order, "push"); return nil }
 	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
@@ -709,7 +709,7 @@ func publishReasonFor(t *testing.T, listBody, createBody string) string {
 	t.Helper()
 	deps := newTestDeps(t)
 	deps.PushBranch = func() error { return nil }
-	writeSummary(t, deps.FinalSummaryPath, "My PR Title", "My PR body.")
+	writeSummary(t, deps.DescriptionPath, "My PR Title", "My PR body.")
 	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
 	p := &Publish{deps: deps, resolver: res}
 
@@ -731,8 +731,8 @@ func TestPublish_PRStateReasons_EndWithURL(t *testing.T) {
 		createBody string
 		want       string
 	}{
-		{"created", "[]", `{"number":7,"state":"open","html_url":"` + url + `"}`, "pull request created; awaiting review: " + url},
-		{"already open", `[{"number":7,"state":"open","html_url":"` + url + `"}]`, "", "an open pull request already exists against parent branch \"main\": " + url},
+		{"created", "[]", `{"number":7,"state":"open","html_url":"` + url + `"}`, "pull request created; awaiting review, then run `lyx loom approve` and `lyx loom start`: " + url},
+		{"already open", `[{"number":7,"state":"open","html_url":"` + url + `"}]`, "", "an open pull request already exists against parent branch \"main\"; run `lyx loom approve` and `lyx loom start` once it is reviewed: " + url},
 		{"closed unmerged", `[{"number":7,"state":"closed","html_url":"` + url + `"}]`, "", "the pull request was closed without being merged: " + url},
 	}
 	for _, tt := range tests {
@@ -747,7 +747,7 @@ func TestPublish_PRStateReasons_EndWithURL(t *testing.T) {
 
 func TestPublish_PRStateReason_NoURL_IsBareText(t *testing.T) {
 	got := publishReasonFor(t, "[]", `{"number":7,"state":"open"}`)
-	if got != "pull request created; awaiting review" {
+	if got != "pull request created; awaiting review, then run `lyx loom approve` and `lyx loom start`" {
 		t.Errorf("reason = %q; want the bare text with no suffix", got)
 	}
 }
@@ -765,5 +765,183 @@ func TestPublish_StuckWritesNoReasonFile(t *testing.T) {
 	}
 	if len(matches) != 0 {
 		t.Errorf("stuck-reason files = %v; want none", matches)
+	}
+}
+
+func TestFindPullRequest_QueryParametersAndEmptyList(t *testing.T) {
+	var got url.Values
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.URL.Query()
+		_, _ = w.Write([]byte("[]"))
+	}))
+	t.Cleanup(srv.Close)
+
+	client := github.NewClient(nil).WithAuthToken("test-token")
+	parsed, err := url.Parse(srv.URL + "/")
+	if err != nil {
+		t.Fatalf("url.Parse: %v", err)
+	}
+	client.BaseURL = parsed
+
+	pr, err := FindPullRequest(context.Background(), client, "o", "r", "task", "parent")
+	if err != nil {
+		t.Fatalf("FindPullRequest: %v", err)
+	}
+	if pr != nil {
+		t.Errorf("pr = %v, want nil for an empty list", pr)
+	}
+	want := map[string]string{"state": "all", "head": "o:task", "base": "parent", "sort": "created", "direction": "desc"}
+	for k, v := range want {
+		if got.Get(k) != v {
+			t.Errorf("query %s = %q, want %q", k, got.Get(k), v)
+		}
+	}
+}
+
+// approvalFixture is a Publish over a written approval record, a fake GitHub server answering the
+// list query with listBody, and a resolver and push that record whether they were called.
+type approvalFixture struct {
+	p        *Publish
+	res      *recordingResolver
+	order    []string
+	taskHead string
+}
+
+func newApprovalFixture(t *testing.T, listBody string, approval *Approval, taskHeadErr error) *approvalFixture {
+	t.Helper()
+	fx := &approvalFixture{taskHead: "aaa"}
+	deps := newTestDeps(t)
+	deps.ApprovalPath = filepath.Join(t.TempDir(), "approval.json")
+	if approval != nil {
+		if err := WriteApproval(deps.ApprovalPath, *approval); err != nil {
+			t.Fatalf("WriteApproval: %v", err)
+		}
+	}
+	deps.TaskHead = func() (string, error) { return fx.taskHead, taskHeadErr }
+	deps.PushBranch = func() error { fx.order = append(fx.order, "push"); return nil }
+	fx.res = &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
+	fx.p = &Publish{deps: deps, resolver: fx.res}
+	srv := newPublishGitHubServer(t, &fx.order)
+	srv.listBody = listBody
+	srv.install(t)
+	return fx
+}
+
+func TestPublish_MatchingApproval_DoneWithoutSync(t *testing.T) {
+	fx := newApprovalFixture(t, `[{"number":7,"state":"open","head":{"sha":"aaa"}}]`, &Approval{PRNumber: 7, HeadSHA: "aaa", ApprovedAt: "2026-01-01T00:00:00Z"}, nil)
+	outcome, _, err := fx.p.Call(context.Background())
+	if err != nil || outcome != shedengine.Done {
+		t.Fatalf("Call() = %q, %v; want Done, nil", outcome, err)
+	}
+	if fx.res.called {
+		t.Error("resolver was called; want no merge-in")
+	}
+	for _, o := range fx.order {
+		if o == "push" {
+			t.Error("push was called; want none")
+		}
+	}
+}
+
+// TestPublish_NilTaskHead_ApprovalIgnored pins the nil-is-absent seam: without TaskHead the record
+// is not consulted, so a matching approval takes the ordinary open-PR path instead.
+func TestPublish_NilTaskHead_ApprovalIgnored(t *testing.T) {
+	fx := newApprovalFixture(t, `[{"number":7,"state":"open","head":{"sha":"aaa"}}]`, &Approval{PRNumber: 7, HeadSHA: "aaa", ApprovedAt: "2026-01-01T00:00:00Z"}, nil)
+	fx.p.deps.TaskHead = nil
+	outcome, ptr, err := fx.p.Call(context.Background())
+	if err != nil || outcome != shedengine.Stuck {
+		t.Fatalf("Call() = %q, %v; want Stuck, nil", outcome, err)
+	}
+	if !strings.Contains(ptr.Reason, "already exists") {
+		t.Errorf("reason %q; want the ordinary already-open reason", ptr.Reason)
+	}
+	if !fx.res.called {
+		t.Error("resolver was not called; want the ordinary merge-in")
+	}
+}
+
+func TestPublish_MismatchedApproval_StuckNamesSHAs(t *testing.T) {
+	fx := newApprovalFixture(t, `[{"number":7,"state":"open","head":{"sha":"bbb"}}]`, &Approval{PRNumber: 7, HeadSHA: "aaa", ApprovedAt: "2026-01-01T00:00:00Z"}, nil)
+	outcome, ptr, err := fx.p.Call(context.Background())
+	if err != nil || outcome != shedengine.Stuck {
+		t.Fatalf("Call() = %q, %v; want Stuck, nil", outcome, err)
+	}
+	for _, want := range []string{"aaa", "bbb", "lyx loom approve"} {
+		if !strings.Contains(ptr.Reason, want) {
+			t.Errorf("reason %q lacks %q", ptr.Reason, want)
+		}
+	}
+	if fx.res.called {
+		t.Error("resolver was called; want no merge-in")
+	}
+}
+
+func TestPublish_MismatchedApproval_ReasonNamesEachDifference(t *testing.T) {
+	tests := []struct {
+		name, listBody, taskHead, want string
+	}{
+		{"local head", `[{"number":7,"state":"open","head":{"sha":"aaa"}}]`, "ccc", "local task head is now ccc"},
+		{"pr number", `[{"number":8,"state":"open","head":{"sha":"aaa"}}]`, "aaa", "open pull request is now #8"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fx := newApprovalFixture(t, tt.listBody, &Approval{PRNumber: 7, HeadSHA: "aaa", ApprovedAt: "2026-01-01T00:00:00Z"}, nil)
+			fx.taskHead = tt.taskHead
+			outcome, ptr, err := fx.p.Call(context.Background())
+			if err != nil || outcome != shedengine.Stuck {
+				t.Fatalf("Call() = %q, %v; want Stuck, nil", outcome, err)
+			}
+			if !strings.Contains(ptr.Reason, tt.want) {
+				t.Errorf("reason %q lacks %q", ptr.Reason, tt.want)
+			}
+		})
+	}
+}
+
+func TestPublish_ApprovalOverMergedPR_Done(t *testing.T) {
+	fx := newApprovalFixture(t, `[{"number":7,"state":"closed","merged_at":"2026-01-01T00:00:00Z","head":{"sha":"zzz"}}]`, &Approval{PRNumber: 7, HeadSHA: "aaa", ApprovedAt: "2026-01-01T00:00:00Z"}, nil)
+	outcome, _, err := fx.p.Call(context.Background())
+	if err != nil || outcome != shedengine.Done {
+		t.Fatalf("Call() = %q, %v; want Done, nil", outcome, err)
+	}
+}
+
+func TestPublish_ApprovalOverClosedPR_ClosedStuck(t *testing.T) {
+	fx := newApprovalFixture(t, `[{"number":7,"state":"closed","head":{"sha":"aaa"}}]`, &Approval{PRNumber: 7, HeadSHA: "aaa", ApprovedAt: "2026-01-01T00:00:00Z"}, nil)
+	outcome, ptr, err := fx.p.Call(context.Background())
+	if err != nil || outcome != shedengine.Stuck {
+		t.Fatalf("Call() = %q, %v; want Stuck, nil", outcome, err)
+	}
+	if !strings.Contains(ptr.Reason, "closed without being merged") {
+		t.Errorf("reason = %q; want the closed reason", ptr.Reason)
+	}
+}
+
+func TestPublish_NoApproval_MergedPRStillDone(t *testing.T) {
+	fx := newApprovalFixture(t, `[{"number":7,"state":"closed","merged_at":"2026-01-01T00:00:00Z"}]`, nil, nil)
+	outcome, _, err := fx.p.Call(context.Background())
+	if err != nil || outcome != shedengine.Done {
+		t.Fatalf("Call() = %q, %v; want Done, nil", outcome, err)
+	}
+}
+
+func TestPublish_MalformedApproval_StuckNamesFile(t *testing.T) {
+	fx := newApprovalFixture(t, "[]", nil, nil)
+	if err := os.WriteFile(fx.p.deps.ApprovalPath, []byte("{"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	outcome, ptr, err := fx.p.Call(context.Background())
+	if err != nil || outcome != shedengine.Stuck {
+		t.Fatalf("Call() = %q, %v; want Stuck, nil", outcome, err)
+	}
+	if !strings.Contains(ptr.Reason, fx.p.deps.ApprovalPath) || !strings.Contains(ptr.Reason, "lyx loom approve") {
+		t.Errorf("reason = %q; want the file and the verb named", ptr.Reason)
+	}
+}
+
+func TestPublish_TaskHeadError_ReturnedError(t *testing.T) {
+	fx := newApprovalFixture(t, `[{"number":7,"state":"open","head":{"sha":"aaa"}}]`, &Approval{PRNumber: 7, HeadSHA: "aaa", ApprovedAt: "2026-01-01T00:00:00Z"}, errors.New("git broke"))
+	if _, _, err := fx.p.Call(context.Background()); err == nil {
+		t.Fatal("Call() error = nil; want the TaskHead error")
 	}
 }

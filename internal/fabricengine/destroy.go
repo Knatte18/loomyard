@@ -217,7 +217,8 @@ type pathRequest struct {
 type branchRequest struct {
 	// what names the act being attempted, for the refusal message.
 	what string
-	// repoDir is the weft repo the branch lives in — not a path being destroyed.
+	// repoDir is the repository holding the branch — the weft repository for every existing site, the
+	// warp repository for the pair's warp branch — not a path being destroyed.
 	repoDir string
 	// branch is the branch name the executor will delete.
 	branch string
@@ -354,6 +355,7 @@ const (
 	// branchOwnershipUnset is the zero value: an omitted declaration, always refused.
 	branchOwnershipUnset branchOwnershipKind = iota
 	branchOwnershipManaged
+	branchOwnershipPairWarp
 )
 
 // branchOwnership declares which of the closed set of ownership kinds a branchRequest's branch must
@@ -362,6 +364,19 @@ type branchOwnership struct {
 	kind         branchOwnershipKind
 	location     *lyxcwd.Location
 	branchPrefix string
+	// warpBranch and parentBranch serve ownedPairWarpBranch only.
+	warpBranch   string
+	parentBranch string
+}
+
+// ownedPairWarpBranch declares branch as owned when it is exactly warpBranch — the pair's own
+// BranchPrefix + slug — and warpBranch is not parentBranch, the branch the pair lands on.
+// ownedManagedBranch cannot serve a warp branch: under the default empty branch_prefix the warp branch
+// is the bare slug, which it accepts only when weft-suffixed, and its primary-branch and checked-out
+// predicates read the weft side only. This kind consults no weft-side predicate; the checked-out
+// question belongs to the dirtiness step. An empty warpBranch matches nothing.
+func ownedPairWarpBranch(warpBranch, parentBranch string) branchOwnership {
+	return branchOwnership{kind: branchOwnershipPairWarp, warpBranch: warpBranch, parentBranch: parentBranch}
 }
 
 // ownedManagedBranch declares branch as owned when it is one fabric's own scheme constructs (accepted
@@ -422,12 +437,22 @@ const (
 	// branchDirtinessUnset is the zero value: an omitted declaration, always refused.
 	branchDirtinessUnset branchDirtinessKind = iota
 	branchDirtinessCheckedOutBranch
+	branchDirtinessUnlandedWork
 )
 
 // branchDirtiness declares which dirtiness probe the pipeline runs against a branchRequest's branch.
 // The zero value is invalid and is refused by the pipeline before any check runs.
 type branchDirtiness struct {
 	kind branchDirtinessKind
+	// parentBranch serves dirtyUnlandedWork only; empty when the pair has no origin record.
+	parentBranch string
+}
+
+// dirtyUnlandedWork declares that the pipeline's dirtiness step refuses a branch whose work would be
+// lost: it must not be checked out, and every commit on it must be reachable from another ref or
+// already landed on parentBranch (empty when the pair has no origin record). See checkUnlandedWork.
+func dirtyUnlandedWork(parentBranch string) branchDirtiness {
+	return branchDirtiness{kind: branchDirtinessUnlandedWork, parentBranch: parentBranch}
 }
 
 // dirtyCheckedOutBranch declares that the pipeline's dirtiness step asks whether branch is checked
@@ -590,9 +615,23 @@ func resolveBranchOwnership(own branchOwnership, branch string) (ok bool, reason
 	switch own.kind {
 	case branchOwnershipManaged:
 		return resolveManagedBranch(own.location, own.branchPrefix, branch)
+	case branchOwnershipPairWarp:
+		return resolvePairWarpBranch(own.warpBranch, own.parentBranch, branch)
 	default:
 		return false, "no ownership kind declared"
 	}
+}
+
+// resolvePairWarpBranch implements ownedPairWarpBranch's predicate: branch must be exactly warpBranch,
+// and warpBranch must not be parentBranch.
+func resolvePairWarpBranch(warpBranch, parentBranch, branch string) (bool, string) {
+	if warpBranch == "" || branch != warpBranch {
+		return false, fmt.Sprintf("%s is not the pair's own warp branch %q", branch, warpBranch)
+	}
+	if parentBranch != "" && warpBranch == parentBranch {
+		return false, fmt.Sprintf("%s is the branch the pair lands on", branch)
+	}
+	return true, ""
 }
 
 // resolveManagedBranch implements ownedManagedBranch's predicate: branch must be one fabric's own
@@ -736,8 +775,60 @@ func checkBranchRequest(req branchRequest) error {
 // check. No branch-deletion call site's own gate currently answers to force in practice: every
 // branchRequest construction in this package hardcodes force: false, and Cleanup's own force
 // parameter is likewise reserved and consulted by no gate (see cleanup.go).
+//
+// The unlanded-work kind additionally refuses a branch carrying commits no other ref holds and the
+// parent does not already contain; see checkUnlandedWork.
 func checkBranchDirtiness(req branchRequest) error {
+	if req.dirtiness.kind == branchDirtinessUnlandedWork {
+		return checkUnlandedWork(req)
+	}
 	return checkedOutBranchDirtiness(req.ownership.location, req.what, req.branch)
+}
+
+// checkUnlandedWork is dirtyUnlandedWork's probe, all read-only git run from req.repoDir. In order:
+// the branch must not be checked out; it passes when every commit on it is reachable from another
+// local branch, a remote-tracking ref or a tag; otherwise, with a parent, it passes when merging it
+// into the parent changes nothing (git merge-tree yields the parent tip's own tree, a conflict counting
+// as a change); otherwise it is refused, naming the count of commits held by no other ref and the hand
+// remedy. req.force is never consulted.
+func checkUnlandedWork(req branchRequest) error {
+	refuse := func(reason string) error {
+		return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.branch, Reason: reason}
+	}
+
+	out, err := gitexec.Run([]string{"branch", "--format=%(refname:short)\x1f%(worktreepath)"}, req.repoDir)
+	if err != nil {
+		return refuse(fmt.Sprintf("list branches failed: %v", err))
+	}
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		name, worktreePath, _ := strings.Cut(strings.TrimSpace(line), "\x1f")
+		if name == req.branch && strings.TrimSpace(worktreePath) != "" {
+			return refuse(fmt.Sprintf("branch is checked out at %s", strings.TrimSpace(worktreePath)))
+		}
+	}
+
+	ref := "refs/heads/" + req.branch
+	out, err = gitexec.Run([]string{"rev-list", "--count", ref, "--not", "--exclude=" + ref, "--glob=refs/heads/*", "--remotes", "--tags"}, req.repoDir)
+	if err != nil {
+		return refuse(fmt.Sprintf("cannot count commits reachable from no other ref: %v", err))
+	}
+	count := strings.TrimSpace(out)
+	if count == "0" {
+		return nil
+	}
+
+	if parent := req.dirtiness.parentBranch; parent != "" {
+		merged, mergeErr := gitexec.Run([]string{"merge-tree", "--write-tree", parent, ref}, req.repoDir)
+		parentTree, treeErr := gitexec.Run([]string{"rev-parse", parent + "^{tree}"}, req.repoDir)
+		if mergeErr == nil && treeErr == nil {
+			mergedTree, _, _ := strings.Cut(strings.TrimSpace(merged), "\n")
+			if mergedTree != "" && mergedTree == strings.TrimSpace(parentTree) {
+				return nil
+			}
+		}
+	}
+
+	return refuse(fmt.Sprintf("%s commit(s) on this branch are reachable from no other ref and not landed on the parent; if the work is disposable, delete it by hand with: git branch -D %s", count, req.branch))
 }
 
 // checkedOutBranchDirtiness is the checked-out-at-a-worktree dirtiness probe both branchRequest (via

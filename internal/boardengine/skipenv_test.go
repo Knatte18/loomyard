@@ -1,14 +1,12 @@
-// skipenv_internal_test.go — white-box unit tests for applySkipEnv.
+// skipenv_test.go — unit tests for ApplySkipEnv.
 //
 // Tests the env→cfg resolution helper that folds BOARD_SKIP_* environment variables into the Config
 // struct at the CLI entry point.
 
-package boardcli
+package boardengine
 
 import (
 	"testing"
-
-	"github.com/Knatte18/loomyard/internal/boardengine"
 )
 
 func TestApplySkipEnv(t *testing.T) {
@@ -99,11 +97,11 @@ func TestApplySkipEnv(t *testing.T) {
 				t.Setenv("BOARD_SKIP_PUSH", "")
 			}
 
-			cfg := boardengine.Config{
+			cfg := Config{
 				SkipGit:  tt.cfgSkipGit,
 				SkipPush: tt.cfgSkipPush,
 			}
-			result := applySkipEnv(cfg)
+			result := ApplySkipEnv(cfg)
 
 			if result.SkipGit != tt.wantSkipGit {
 				t.Errorf("SkipGit = %v, want %v", result.SkipGit, tt.wantSkipGit)

@@ -22,8 +22,10 @@
 //
 // arm also resolves the run-id every one of loom's four generic verbs addresses -- args[0] when
 // present, shedrun.SelfRunID otherwise -- and, for those four verbs alone, refuses when no seed
-// exists at that run-id. "lyx loom start" is not a generic verb and never reaches this check: it is
-// the one site that writes a seed, per the batch's loom's-run-and-step-do-not-auto-seed decision.
+// exists at that run-id. Loom's hand-written verbs -- start, validate-discussion, validate-plan,
+// validate-description and approve -- are not generic verbs and never reach this check; "lyx loom
+// start" is the one site that writes a seed, per the batch's loom's-run-and-step-do-not-auto-seed
+// decision.
 // See genericShedVerb's own doc comment for the exact four-verb set.
 
 package loomcli
@@ -52,7 +54,8 @@ import (
 
 // genericShedVerb reports whether verb is one of the four verbs shedverbs.Verbs drives -- run,
 // step, status, pause -- as opposed to loom's own hand-written verbs (start,
-// validate-discussion, validate-plan), which never reach arm's seed-presence check below.
+// validate-discussion, validate-plan, validate-description, approve), which never reach arm's
+// seed-presence check below.
 func genericShedVerb(verb string) bool {
 	switch verb {
 	case "run", "step", "status", "pause":
@@ -217,8 +220,9 @@ func (c *loomCLI) specFor(verb string) shedverbs.Spec {
 // receiver via newLoomCLI and returns c.arm(cwd, verb, args), resolving cwd itself. A package-level
 // Arm alone could not serve resolvePersistentPreRun, because that pre-run must wire its own c:
 // start.go reads thirteen receiver fields and validate.go reads four more, so arming a throwaway
-// receiver and assigning only *c.spec would break start, validate-discussion and validate-plan,
-// none of which is a shedverbs verb and none of which reads c.spec.
+// receiver and assigning only *c.spec would break start, validate-discussion, validate-plan,
+// validate-description and approve, none of which is a shedverbs verb and none of which reads
+// c.spec.
 func Arm(cwd string, verb string, args []string) (shedverbs.Spec, error) {
 	c := newLoomCLI()
 	return c.arm(cwd, verb, args)
@@ -272,7 +276,7 @@ func (c *loomCLI) loomPreRun(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	taskBranch, err := handle.CurrentBranch()
+	taskBranch, parentBranch, err := landingBranches(handle, c.location)
 	if err != nil {
 		return err
 	}
@@ -282,14 +286,6 @@ func (c *loomCLI) loomPreRun(ctx context.Context) error {
 		// when a pull request is actually required, so an unusable origin URL passes through as
 		// an empty string rather than refusing run itself.
 		originURL = ""
-	}
-	recorded, found, err := fabricengine.ReadOrigin(c.location)
-	if err != nil {
-		return err
-	}
-	parentBranch, err := resolveLandingParent(recorded, found, taskBranch)
-	if err != nil {
-		return err
 	}
 	syncOpts := fabricengine.EnvSyncOptions()
 	pushBranch := func() error {

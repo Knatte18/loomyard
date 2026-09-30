@@ -24,7 +24,8 @@ type Config struct {
 	Path         string `yaml:"-"`
 	Readme       string `yaml:"readme"`
 	DesignPrefix string `yaml:"design_prefix"`
-	// SkipGit and SkipPush are populated from BOARD_SKIP_* env at the CLI entry.
+	// SkipGit and SkipPush are populated from BOARD_SKIP_* env at the CLI entry;
+	// ApplySkipEnv is the fold every CLI entry calls.
 	SkipGit  bool
 	SkipPush bool
 }

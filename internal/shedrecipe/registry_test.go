@@ -3,6 +3,7 @@
 package shedrecipe
 
 import (
+	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
@@ -87,6 +88,7 @@ func TestRegistry_ShipsExpectedEntries(t *testing.T) {
 		"Batchifier",
 		"Bouncer",
 		"BurlerRound",
+		"Describe",
 		"DiscussionWrite",
 		"Finalize",
 		"FrictionReflect",
@@ -111,5 +113,24 @@ func TestRegistry_ShipsExpectedEntries(t *testing.T) {
 		if got[i] != name {
 			t.Errorf("Names()[%d] = %q, want %q", i, got[i], name)
 		}
+	}
+}
+
+func TestRegistry_DescribeAndDescriptionGate(t *testing.T) {
+	if _, err := Lookup("Describe"); err != nil {
+		t.Fatalf("Lookup(%q) error = %v; want nil", "Describe", err)
+	}
+	env := newTestEnv(t)
+	env.DescriptionPath = filepath.Join(t.TempDir(), "summary.md")
+	spec, err := resolveGateSpec("Describe", Config{"gate": "description"}, env)
+	if err != nil {
+		t.Fatalf("resolveGateSpec(description) error = %v; want nil", err)
+	}
+	if spec.Gate == nil {
+		t.Errorf("resolveGateSpec(description) Gate = nil; want the description gate")
+	}
+	_, err = resolveGateSpec("Describe", Config{"gate": "bogus"}, env)
+	if err == nil || !strings.Contains(err.Error(), "description") {
+		t.Errorf("resolveGateSpec(bogus) error = %v; want it to name the description value", err)
 	}
 }

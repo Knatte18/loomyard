@@ -27,6 +27,13 @@ func (f *Fabric) CurrentBranch() (string, error) {
 	return f.warp.CurrentBranch()
 }
 
+// HeadSHA returns the full commit SHA the warp checkout's HEAD currently points at.
+// It is a thin, read-only delegation to gitrepo.Repo.CurrentSHA on f.warp,
+// so a caller reads a commit without naming a fabric side.
+func (f *Fabric) HeadSHA() (string, error) {
+	return f.warp.CurrentSHA()
+}
+
 // ResetHard has moved to destroy.go, where it becomes the gated executor for the ResetHard
 // primitive — see that file's own doc comment. It is not a thin delegation like its neighbours
 // above: there is exactly one correct ownership/dirtiness declaration for "reset this Fabric's warp

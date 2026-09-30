@@ -6,6 +6,7 @@
 package summaryparser
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -19,6 +20,13 @@ const FileName = "summary.md"
 func Path(dir string) string {
 	return filepath.Join(dir, FileName)
 }
+
+// Sentinels for Parse's three validation failures, wrapped with %w so callers classify structurally.
+var (
+	errEmptyFile  = errors.New("summary file is empty")
+	errNoHeading  = errors.New("first non-blank line is not a heading")
+	errEmptyTitle = errors.New("title heading has an empty title")
+)
 
 // Summary is a producer's final-action prose artifact: Title from the "# <title>" heading, Body the
 // remaining lines verbatim.
@@ -38,7 +46,7 @@ func Parse(path string) (*Summary, error) {
 	}
 
 	if strings.TrimSpace(string(data)) == "" {
-		return nil, fmt.Errorf("summaryparser: summary file %s is empty", path)
+		return nil, fmt.Errorf("summaryparser: summary file %s is empty: %w", path, errEmptyFile)
 	}
 
 	// The non-empty check above guarantees at least one line is non-blank,
@@ -51,11 +59,11 @@ func Parse(path string) (*Summary, error) {
 
 	heading := strings.TrimSpace(lines[headingIdx])
 	if !strings.HasPrefix(heading, "# ") {
-		return nil, fmt.Errorf("summaryparser: summary file %s: first non-blank line %q is not a %q heading", path, heading, "# <title>")
+		return nil, fmt.Errorf("summaryparser: summary file %s: first non-blank line %q is not a %q heading: %w", path, heading, "# <title>", errNoHeading)
 	}
 	title := strings.TrimSpace(strings.TrimPrefix(heading, "# "))
 	if title == "" {
-		return nil, fmt.Errorf("summaryparser: summary file %s: title heading has an empty title", path)
+		return nil, fmt.Errorf("summaryparser: summary file %s: title heading has an empty title: %w", path, errEmptyTitle)
 	}
 
 	body := strings.Join(lines[headingIdx+1:], "\n")
@@ -74,4 +82,11 @@ func (s *Summary) CommitMessage() string {
 		return s.Title
 	}
 	return s.Title + "\n\n" + strings.TrimLeft(s.Body, " \t\r\n")
+}
+
+// LandingMessage composes the landing commit message: CommitMessage's title/blank/body, a blank
+// line, then exactly one Co-Authored-By trailer naming coAuthoredBy.
+// It never inspects the body for an existing trailer; the description gate guarantees there is none.
+func (s *Summary) LandingMessage(coAuthoredBy string) string {
+	return s.CommitMessage() + "\n\nCo-Authored-By: " + coAuthoredBy
 }

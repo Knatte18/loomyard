@@ -413,6 +413,54 @@ func TestRecordBatch_OneNewTranscriptNoReport_RetrySeesExactlyOneNew(t *testing.
 	}
 }
 
+// TestRecordBatch_ReportPresentDropsNeverReturnedWarning proves the report file is the fork's
+// contract: a fork whose transcript never ended on a final report but whose report file landed
+// draws no "never returned a final report" warning.
+func TestRecordBatch_ReportPresentDropsNeverReturnedWarning(t *testing.T) {
+	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
+		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: false}}},
+	})
+	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
+
+	result, err := websterengine.RecordBatch(fx.Deps, 1)
+	if err != nil {
+		t.Fatalf("RecordBatch() error = %v; want nil", err)
+	}
+	if result.NoReport {
+		t.Fatal("RecordResult.NoReport = true; want false (report file present)")
+	}
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "never returned a final report") {
+			t.Errorf("Warnings = %v; want no \"never returned a final report\" warning with the report present", result.Warnings)
+		}
+	}
+}
+
+// TestRecordBatch_NoReportKeepsNeverReturnedWarning proves the warning still fires on the
+// no-report path, where it explains why Master must re-fork.
+func TestRecordBatch_NoReportKeepsNeverReturnedWarning(t *testing.T) {
+	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
+		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: false}}},
+	})
+
+	result, err := websterengine.RecordBatch(fx.Deps, 1)
+	if err != nil {
+		t.Fatalf("RecordBatch() error = %v; want nil", err)
+	}
+	if !result.NoReport {
+		t.Fatal("RecordResult.NoReport = false; want true (no report file)")
+	}
+	found := false
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "never returned a final report") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("Warnings = %v; want the \"never returned a final report\" warning on the no-report path", result.Warnings)
+	}
+}
+
 // TestRecordBatch_MultipleNewTranscriptsWarnsNeverErrors proves more than one new transcript in a
 // single call is a warning only, never a hard error — legitimate retry behavior (a fork's Agent
 // call errored mid-flight followed by a direct re-fork, with no intervening record-batch call).

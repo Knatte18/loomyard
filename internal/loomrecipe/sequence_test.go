@@ -71,6 +71,7 @@ var wantSequenceOrder = []wantSequenceEntry{
 	{loomshed.NameWebsterBouncer, shedengine.Stuck},
 	{loomshed.NameWebsterBurler, shedengine.Stuck},
 	{loomshed.NameWebsterBouncer, shedengine.Done},
+	{loomshed.NameDescribe, shedengine.Done},
 	{loomshed.NamePublish, shedengine.Stuck},
 }
 

@@ -45,7 +45,7 @@ func validLandingDeps(t *testing.T) landingshed.Deps {
 		WorktreeRoot:     dir,
 		TaskBranch:       "task-branch",
 		ParentBranch:     "fixture-parent",
-		FinalSummaryPath: summaryparser.Path(dir),
+		DescriptionPath:  summaryparser.Path(dir),
 		StencilsDir:      dir,
 		ScratchDir:       dir,
 		OriginURL:        "https://example.invalid/fixture/fixture.git",

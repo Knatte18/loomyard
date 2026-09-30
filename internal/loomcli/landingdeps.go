@@ -8,6 +8,7 @@ package loomcli
 import (
 	"fmt"
 
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -37,15 +38,15 @@ func landingDeps(
 	cfg landingshed.Config,
 ) landingshed.Deps {
 	return landingshed.Deps{
-		WorktreeRoot:     l.WorktreePath(),
-		TaskBranch:       taskBranch,
-		ParentBranch:     parentBranch,
-		FinalSummaryPath: summaryparser.Path(geom.WebsterDir),
-		StencilsDir:      geom.StencilsDir,
-		ScratchDir:       loomengine.LoomScratchDir(l),
-		OriginURL:        originURL,
-		PushSkipped:      pushSkipped,
-		PushBranch:       pushBranch,
+		WorktreeRoot:    l.WorktreePath(),
+		TaskBranch:      taskBranch,
+		ParentBranch:    parentBranch,
+		DescriptionPath: summaryparser.Path(loomengine.LandingDir(l)),
+		StencilsDir:     geom.StencilsDir,
+		ScratchDir:      loomengine.LoomScratchDir(l),
+		OriginURL:       originURL,
+		PushSkipped:     pushSkipped,
+		PushBranch:      pushBranch,
 		OpenFabric: func() (*fabricengine.Fabric, error) {
 			return fabricengine.Open(l)
 		},
@@ -69,6 +70,28 @@ func landingDeps(
 		CommitStatus: func() error {
 			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), l, []string{shedrun.StatusRel(shedrun.SelfRunID)}, fmt.Sprintf("loom: status checkpoint for %s", seedSlug(l.WorktreeName)), fabricengine.EnvSyncOptions())
 			return err
+		},
+		ApprovalPath: loomengine.LoomApprovalPath(l),
+		TaskHead: func() (string, error) {
+			f, err := fabricengine.Open(l)
+			if err != nil {
+				return "", err
+			}
+			return f.HeadSHA()
+		},
+		// MarkTaskDone marks this worktree's board task done once its work has landed. It loads the
+		// board config the way boardcli does, but points Path at the hub's board rather than a
+		// per-worktree link (Hub Containment), and applies boardengine.ApplySkipEnv so render and
+		// sync behave as they do for `lyx board`. landingshed itself names no board path.
+		MarkTaskDone: func() error {
+			bc, err := boardengine.LoadConfig(l.AnchorPath(), "board")
+			if err != nil {
+				return err
+			}
+			bc.Path = fabricengine.BoardDir(l.HubPath)
+			bc = boardengine.ApplySkipEnv(bc)
+			done := "done"
+			return boardengine.New(bc).SetStatus(seedSlug(l.WorktreeName), &done)
 		},
 		Shuttle:  runner,
 		Registry: registry,

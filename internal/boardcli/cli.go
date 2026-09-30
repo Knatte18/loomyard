@@ -15,7 +15,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"os"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
@@ -91,7 +90,7 @@ moves an entry from one to the other.`,
 			cfg.Path = fabricengine.BoardDir(layout.HubPath)
 		}
 
-		cfg = applySkipEnv(cfg)
+		cfg = boardengine.ApplySkipEnv(cfg)
 		b = boardengine.New(cfg)
 		return nil
 	}
@@ -1096,15 +1095,4 @@ func outputListBrief(out io.Writer, tasks []boardengine.BriefTask) int {
 // outputListFull writes {"ok":true,"tasks":[...]} with full Task objects with exit code 0.
 func outputListFull(out io.Writer, tasks []boardengine.Task) int {
 	return output.Ok(out, map[string]any{"tasks": tasks})
-}
-
-// applySkipEnv folds BOARD_SKIP_* environment variables into cfg.
-func applySkipEnv(cfg boardengine.Config) boardengine.Config {
-	if os.Getenv("BOARD_SKIP_GIT") == "1" {
-		cfg.SkipGit = true
-	}
-	if os.Getenv("BOARD_SKIP_PUSH") == "1" {
-		cfg.SkipPush = true
-	}
-	return cfg
 }

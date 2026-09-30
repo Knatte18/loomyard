@@ -39,12 +39,12 @@ type Deps struct {
 	// base branch, and the branch Finalize's merge-in and parent-side merge both target. Told by
 	// the caller.
 	ParentBranch string
-	// FinalSummaryPath is the told absolute path to the final-summary artifact itself -- not a
+	// DescriptionPath is the told absolute path to the change description itself -- not a
 	// directory, and not a producer's directory. The caller resolves it, so neither producer in
 	// this package knows which producer wrote the file. Do not add a second field alongside it;
 	// carrying both would be the derived near-duplicate ScratchDir's own comment already argues
 	// against.
-	FinalSummaryPath string
+	DescriptionPath string
 	// StencilsDir is the absolute directory the conflict-resolution stencil is read from, passed
 	// through unchanged to the resolver both producers construct. Told by the caller.
 	StencilsDir string
@@ -98,6 +98,25 @@ type Deps struct {
 	// product that has one fills it; internal/loomcli's landingDeps does, and its own
 	// every-field-populated drift guard is what keeps it filled.
 	CommitStatus func() error
+
+	// ApprovalPath is the operator-approval record's path, and TaskHead returns the task branch's
+	// local HEAD SHA. Publish consults the record, when one exists, before any sync, and lands the
+	// pull request as approved only if the pull request, the record and TaskHead all agree.
+	//
+	// Both follow CommitStatus's nil-or-empty-is-absent convention: absent means approvals are not
+	// consulted. internal/loomcli's landingDeps fills both, and its drift guard keeps them filled.
+	ApprovalPath string
+	TaskHead     func() (string, error)
+
+	// MarkTaskDone marks the task's board entry done. Finalize calls it once the parent-side merge
+	// has landed, before the parent push, and only logs a failure: the change is on the parent
+	// whatever the board says. landingshed names no board path, so the board wiring lives in the
+	// closure.
+	//
+	// Nil means "no board to update", following CommitStatus's nil-is-absent convention; a missing
+	// seam fails safe by leaving the board untouched. internal/loomcli's landingDeps fills it, and
+	// its drift guard keeps it filled.
+	MarkTaskDone func() error
 
 	// Shuttle is the session-runner seam, told exactly the way every existing session-driving
 	// constructor in this tree takes its own. The resolver's constructor rejects a nil value for

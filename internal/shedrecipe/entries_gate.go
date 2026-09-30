@@ -1,6 +1,6 @@
 // entries_gate.go implements resolveGateSpec, the shared resolver every gate-capable entry
-// (DiscussionWrite, PlanWrite, BurlerRound, Webster) calls to turn its row's "gate"/"gate_attempts"
-// Config keys into a shuttleengine.GateSpec.
+// (DiscussionWrite, PlanWrite, Describe, BurlerRound, Webster) calls to turn its row's
+// "gate"/"gate_attempts" Config keys into a shuttleengine.GateSpec.
 //
 // The selector is a declared string resolved against Env, exactly as bouncerEntry already resolves
 // "commit_seam"/"approve_seam" against Env.CommitPlan/Env.CommitDiscussion/Env.ApprovePlan.
@@ -13,6 +13,7 @@ package shedrecipe
 import (
 	"fmt"
 
+	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -20,12 +21,14 @@ import (
 // resolveGateSpec is the single place the "gate" and "gate_attempts" Config keys are read and
 // turned into a shuttleengine.GateSpec, shared by every gated entry.
 //
-// "gate" is an optional string read via configString, resolved against a closed two-value
+// "gate" is an optional string read via configString, resolved against a closed three-value
 // vocabulary: "discussion" requires env.DecisionRecordPath and env.SupportLogPath to pass
 // requireAbsRoot and returns loomshed.NewDiscussionGate over them; "plan" requires
-// env.AnchorPath and env.WorktreeRoot and returns loomshed.NewPlanGate over them; any other
-// non-empty value is an error naming the key and both legal values. An absent "gate" returns the
-// zero GateSpec, which is what every ungated row carries by saying nothing.
+// env.AnchorPath and env.WorktreeRoot and returns loomshed.NewPlanGate over them; "description"
+// requires env.DescriptionPath to pass requireAbsRoot and returns landingshed.NewDescriptionGate
+// over it; any other non-empty value is an error naming the key and all three legal values. An
+// absent "gate" returns the zero GateSpec, which is what every ungated row carries by saying
+// nothing.
 //
 // "gate_attempts" is an optional int read via configInt. A "gate_attempts" present with no "gate"
 // is an error naming both keys, never a silently-ignored key: it is unambiguously an author
@@ -73,8 +76,13 @@ func resolveGateSpec(entry string, cfg Config, env Env) (shuttleengine.GateSpec,
 			return shuttleengine.GateSpec{}, err
 		}
 		closure = loomshed.NewPlanGate(env.AnchorPath, env.WorktreeRoot)
+	case "description":
+		if err := requireAbsRoot(entry, "DescriptionPath", env.DescriptionPath); err != nil {
+			return shuttleengine.GateSpec{}, err
+		}
+		closure = landingshed.NewDescriptionGate(env.DescriptionPath)
 	default:
-		return shuttleengine.GateSpec{}, fmt.Errorf("shedrecipe: %s: config key %q must be %q or %q, got %q", entry, "gate", "discussion", "plan", gate)
+		return shuttleengine.GateSpec{}, fmt.Errorf("shedrecipe: %s: config key %q must be %q, %q or %q, got %q", entry, "gate", "discussion", "plan", "description", gate)
 	}
 
 	return shuttleengine.GateSpec{Gate: closure, Attempts: attempts}, nil

@@ -2,6 +2,9 @@
 // target-exists checks, so a refused slug never loses another pair's launchers, and the teardown
 // still runs when the worktree dir itself is already gone.
 // The weft branch it removes is WeftBranchName(warpBranch).
+// After both worktrees are gone it also deletes the pair's local warp branch, but only when the
+// destructive gate proves no work is lost: every commit is on another ref or already landed on the
+// pair's recorded parent — see deleteWarpBranch. A branch that fails the gate is kept with a reason.
 // Its link sweep is anchored and ownership-filtered — see the sweep's own comment for why reading
 // the worktree root and trusting link-ness alone was wrong on both hub geometries.
 // It never deletes a directory git declined to remove unless that directory is a registered LINKED
@@ -37,6 +40,11 @@ type RemoveResult struct {
 	// RemoteSkippedReason carries a once-per-verb reason no remote deletion was attempted at all —
 	// today only a weft repo with no origin remote configured.
 	RemoteSkippedReason string `json:"remote_skipped_reason,omitempty"`
+	// WarpBranchDeleted reports whether the pair's local warp branch was deleted after the teardown.
+	WarpBranchDeleted bool `json:"warp_branch_deleted"`
+	// WarpBranchKeptReason is non-empty when the warp branch was left in place, naming why: the
+	// destructive gate's refusal, or a failure to delete it. A kept branch is not a failure of Remove.
+	WarpBranchKeptReason string `json:"warp_branch_kept_reason,omitempty"`
 }
 
 // Remove removes a paired warp and weft git worktree with all associated artifacts.
@@ -51,9 +59,13 @@ type RemoveResult struct {
 // Portal and launcher cleanup run after those checks but before the git removal, so they still run
 // when the worktree directory is already gone.
 // remote gates whether the pair's weft branch, once deleted locally, is also deleted on the weft
-// repo's origin remote; a remote deletion failure never makes Remove return a non-nil error. Remove
-// still never deletes warpBranch — it is computed only to derive weftBranch and to check
-// merge-source in-flight — and remote adds no warp-branch deletion of either kind.
+// repo's origin remote; a remote deletion failure never makes Remove return a non-nil error.
+// Once both worktrees are removed, Remove deletes the local warp branch (BranchPrefix + slug) through
+// the destructive gate, which refuses unless the branch's work is on another ref or landed on the
+// parent recorded in the pair's origin record; a refusal fills WarpBranchKeptReason and Remove still
+// succeeds. force never answers that check, and remote adds no warp-branch deletion of either kind.
+// The recorded parent is read before any teardown, since the record lives in the weft worktree the
+// teardown deletes.
 func (t *Topology) Remove(l *lyxcwd.Location, slug string, force, remote bool) (res RemoveResult, err error) {
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
@@ -72,6 +84,14 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force, remote bool) (
 	target := WorktreePath(l, slug)
 	if _, err := os.Stat(target); os.IsNotExist(err) {
 		return RemoveResult{}, fmt.Errorf("worktree %q not found", target)
+	}
+
+	// Read the recorded parent now: the record lives in the weft worktree the teardown deletes. A
+	// missing or unreadable record leaves parentBranch empty, which asks the gate for the stricter
+	// reachability check alone.
+	parentBranch := ""
+	if origin, found, originErr := ReadOriginFor(l, slug); originErr == nil && found {
+		parentBranch = origin.ParentBranch
 	}
 
 	// Refuse before any teardown for the named pair: a mid-merge pair is not force's to override —
@@ -154,14 +174,54 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force, remote bool) (
 		}
 	}
 
+	warpDeleted, warpKeptReason := deleteWarpBranch(rec, l, warpBranch, parentBranch)
+
 	return RemoveResult{
-		Slug:                slug,
-		Path:                target,
-		LinksRemoved:        linksRemoved,
-		RemoteBranchDeleted: teardown.remoteBranchDeleted,
-		RemoteBranchError:   teardown.remoteBranchError,
-		RemoteSkippedReason: teardown.remoteSkippedReason,
+		Slug:                 slug,
+		Path:                 target,
+		LinksRemoved:         linksRemoved,
+		RemoteBranchDeleted:  teardown.remoteBranchDeleted,
+		RemoteBranchError:    teardown.remoteBranchError,
+		RemoteSkippedReason:  teardown.remoteSkippedReason,
+		WarpBranchDeleted:    warpDeleted,
+		WarpBranchKeptReason: warpKeptReason,
 	}, nil
+}
+
+// deleteWarpBranch deletes warpBranch from the warp repository through the destructive gate, which
+// declares it the pair's own warp branch (never ownedManagedBranch, which refuses a bare-slug branch
+// under the default empty branch_prefix) and refuses unless its work is on another ref or landed on
+// parentBranch. It reports whether the branch was deleted, else the reason it was kept.
+// An already-absent branch is neither: there is nothing to delete and nothing to explain.
+// Every refusal and failure is a kept reason rather than an error, because both worktrees are already
+// gone by the time it runs.
+func deleteWarpBranch(rec *Mutations, l *lyxcwd.Location, warpBranch, parentBranch string) (deleted bool, keptReason string) {
+	repoDir := l.WorktreePath()
+	if _, err := gitexec.Run([]string{"rev-parse", "--verify", "--quiet", "refs/heads/" + warpBranch}, repoDir); err != nil {
+		// rev-parse --verify --quiet exits 1, and only 1, for a ref that does not exist.
+		var gitErr *gitexec.GitError
+		if errors.As(err, &gitErr) && gitErr.ExitCode == 1 {
+			return false, ""
+		}
+		return false, fmt.Sprintf("look up warp branch %s: %v", warpBranch, err)
+	}
+
+	err := deleteBranch(rec, branchRequest{
+		what:      "delete warp branch",
+		repoDir:   repoDir,
+		branch:    warpBranch,
+		ownership: ownedPairWarpBranch(warpBranch, parentBranch),
+		dirtiness: dirtyUnlandedWork(parentBranch),
+		force:     false,
+	})
+	if err == nil {
+		return true, ""
+	}
+	var refusal *destructiveRefusal
+	if errors.As(err, &refusal) {
+		return false, refusal.Reason
+	}
+	return false, fmt.Sprintf("delete warp branch %s: %v", warpBranch, err)
 }
 
 // nameStrandedPortalTeardown appends the reconcile remedy to refusal when Remove's portal and
