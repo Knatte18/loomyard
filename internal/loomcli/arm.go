@@ -368,9 +368,12 @@ func (c *loomCLI) loomPostRun(ctx context.Context, result shedengine.Result, run
 	return map[string]any{"friction": frictionStatus}
 }
 
-// loomPreStep implements the PreStep hook for loom's spec: the early run-lock probe, then step's
-// bootstrap, then the status-strand ensure -- today's stepCmd body, in today's order, each
-// returned error paired with its refusal kind.
+// loomPreStep implements the PreStep hook for loom's spec: the early run-lock probe, then step's bootstrap, then reed Up -- today's stepCmd body, in today's order, each returned error paired with its refusal kind.
+//
+// Up stays because the producers under step spawn agents into reed panes.
+// Step never adds or removes the status strand:
+// removal needs the driver, which step must not read,
+// and an unconditional removal would strip the band from a halted go run an operator steps by hand.
 func (c *loomCLI) loomPreStep(ctx context.Context) (string, error) {
 	// The MkdirAll is part of the probe rather than an accident of ordering: the run lock lives
 	// in the ephemeral tree, internal/lock opens with O_CREATE but never creates a parent, and
@@ -382,8 +385,7 @@ func (c *loomCLI) loomPreStep(ctx context.Context) (string, error) {
 	if err := os.MkdirAll(filepath.Dir(c.shedPaths.LockPath), 0o755); err != nil {
 		return shedverbs.KindBootstrap, err
 	}
-	// Without this early probe, step would seed, commit, bring up reed, and churn the status
-	// strand against a task a live driver owns.
+	// Without this early probe, step would seed, commit and bring up reed against a task a live driver owns.
 	probe, runLockFree, err := lock.TryAcquireWriteLock(c.shedPaths.LockPath)
 	if err != nil {
 		return shedverbs.KindBootstrap, err
@@ -410,7 +412,7 @@ func (c *loomCLI) loomPreStep(ctx context.Context) (string, error) {
 	if err != nil {
 		return shedverbs.KindBootstrap, err
 	}
-	if err := c.ensureStatusStrand(); err != nil {
+	if _, err := c.reed.Up(); err != nil {
 		_ = bootstrapLock.Release()
 		return shedverbs.KindBootstrap, err
 	}

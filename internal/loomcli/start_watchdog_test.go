@@ -3,11 +3,11 @@
 // substituted for the seam so the assertion needs no real process.
 //
 // The call's gate position -- that it fires even under --no-attach -- is deliberately NOT asserted
-// here. The call sits after c.ensureStatusStrand() must return nil, and that helper calls
-// c.reed.Up() and c.reed.Status() on a concrete *reedengine.Engine, which cannot run without a live
-// tmux server -- so no offline test in this package can reach the call site through the real RunE at
-// all. The smoke tier (internal/loomcli/smoke_starttail_test.go) asserts the gate position
-// against a real session instead.
+// here.
+// The call sits after c.reed.Up() and the strand branch that follows it, and both must succeed first.
+// c.reed.Up() and the branch's c.reed.Status() run on a concrete *reedengine.Engine, which cannot work without a live tmux server,
+// so no offline test in this package can reach the call site through the real RunE at all.
+// The smoke tier (internal/loomcli/smoke_starttail_test.go) asserts the gate position against a real session instead.
 
 package loomcli
 

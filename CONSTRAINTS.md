@@ -131,7 +131,7 @@ Every value in `internal/shedrecipe`'s registry constructs a `shedengine.ShedPro
 
 ## Driver Choice Single-Site Invariant
 
-A *recorded* seed driver value is read in exactly one place per recipe, that recipe's own bootstrap verb, and the branch on it selects a spawn and nothing else.
+A *recorded* seed driver value is read in exactly one place per recipe, that recipe's own bootstrap verb, and the branch on it selects the run's driving surface — which driver spawns and whether the session carries the loom status strand — and nothing else.
 
 - No producer, no generic verb and no engine reads the recorded value, and no code path gates *behaviour* on it.
 - One carve-out, and only this shape: a CLI verb may compare a driver value the operator **just typed** against the addressed run's recorded one and refuse on the envelope when they disagree — `internal/battencli`'s `refuseAdoptedSeed`. It selects no spawn and changes no behaviour, and it is the loud command-line failure this invariant's own rationale prefers over silently discarding the typed flag. A refusal decided by the recorded value alone, with nothing typed to compare it against, is not this shape and stays barred.

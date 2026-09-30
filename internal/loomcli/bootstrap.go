@@ -8,6 +8,7 @@
 package loomcli
 
 import (
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
@@ -227,6 +228,29 @@ func findStatusStrand(strands []reedengine.StrandStatus, name string) (reedengin
 		}
 	}
 	return reedengine.StrandStatus{}, false
+}
+
+// removeStatusStrands removes every strand named statusStrandDisplayName, for the llm arm, where the ly-drive strand is the driving surface and the status band is not wanted.
+// It removes every match rather than the first, because an older build may have left a duplicate.
+// Removal is never recursive: reed refuses a non-recursive removal of a strand with children and removes nothing,
+// so a status strand with anything parented beneath it stays up instead of cascading through strands this call never meant to touch.
+// It never fails its caller: a failed status read or removal logs a warning and carries on,
+// because a leftover band costs the operator screen rows, not the run
+// (the same stance ensureStatusStrand takes on a failed ReplaceStrand).
+func removeStatusStrands(status func() (reedengine.StatusResult, error), remove func(guid string, recursive bool) (reedengine.Removed, error)) {
+	st, err := status()
+	if err != nil {
+		logger.Warn("loomcli: could not read the strand table to remove the status strand; leaving any in place", "cause", err)
+		return
+	}
+	for _, s := range st.Strands {
+		if s.Name != statusStrandDisplayName {
+			continue
+		}
+		if _, err := remove(s.GUID, false); err != nil {
+			logger.Warn("loomcli: could not remove a status strand; leaving it up", "guid", s.GUID, "cause", err)
+		}
+	}
 }
 
 // statusStrandAction is what the bootstrap must do about the status strand.

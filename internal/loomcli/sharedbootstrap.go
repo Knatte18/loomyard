@@ -1,10 +1,11 @@
 // sharedbootstrap.go holds the blocks `start` and `step` share.
-// Every helper here is lock-agnostic: none acquires or releases loomengine.LoomBootstrapLock,
-// because the lock's position differs between the two calling verbs -- `start` acquires it later than
-// its own seed/verify/commit block and holds it across the strand work, the driver spawn, and the
-// run-lock handshake, while `step` spawns no driver and runs no handshake, so it wraps the strand
-// block alone and releases before calling the producer. Each verb wraps its own lock window around
-// these calls; no helper here may assume either window.
+// Every helper here is lock-agnostic: none acquires or releases loomengine.LoomBootstrapLock, because the lock's position differs between the two calling verbs.
+// `start` acquires it later than its own seed/verify/commit block and holds it across the strand work, the driver spawn, and the run-lock handshake,
+// while `step` spawns no driver and runs no handshake,
+// so it wraps reed Up alone and releases before calling the producer.
+// ensureStatusStrand is `start`'s alone: `step` touches no strand.
+// Each verb wraps its own lock window around these calls;
+// no helper here may assume either window.
 
 package loomcli
 
@@ -222,18 +223,16 @@ func ensureFrictionDirAfterSeed(frictionDir string, seedErr error) {
 	friction.EnsureDir(frictionDir)
 }
 
-// ensureStatusStrand ensures the worktree's tmux session is up and its status strand exists --
-// today's step-4 strand work from start.go's RunE, held here verbatim and in today's order, starting
-// after the bootstrap-lock acquisition and ending before the run-lock probe.
+// ensureStatusStrand is the go arm's status-strand work: it keeps, replaces or adds the worktree's status strand.
+// The caller has already brought reed up,
+// and only `start` calls it.
+// It runs after the bootstrap-lock acquisition and ends before the run-lock probe.
 //
 // It returns the first error encountered, unwrapped, and nil on success. It must not acquire or
 // release the bootstrap lock and must not call bootstrapLock.Release() -- the caller owns that
 // entirely, since the lock's position differs between the two calling verbs (see this file's own
 // header comment).
 func (c *loomCLI) ensureStatusStrand() error {
-	if _, err := c.reed.Up(); err != nil {
-		return err
-	}
 	statusResult, err := c.reed.Status()
 	if err != nil {
 		return err

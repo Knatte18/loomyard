@@ -542,6 +542,7 @@ func TestSmokeBootstrap_BringsUpSessionStrandAndDriver(t *testing.T) {
 	exe := buildLyxBinary(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
 	registerBootstrapTeardown(t, loc, worktree)
+	seedGoDriverRun(t, loc)
 
 	// The overall envelope is not asserted here: a fast-finishing driver (loom's own bounded bounce
 	// loop can finish inside a single poll gap) can make the handshake itself report a refusal even
@@ -583,6 +584,7 @@ func TestSmokeBootstrap_SecondInvocationDoesNotSpawnASecondDriver(t *testing.T) 
 	exe := buildLyxBinary(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
 	registerBootstrapTeardown(t, loc, worktree)
+	seedGoDriverRun(t, loc)
 
 	// Neither invocation's overall envelope is asserted ok:true here, for the same fast-driver-race
 	// reason the file-level doc comment states -- what this case actually guards is that the
@@ -627,6 +629,7 @@ func TestSmokeRunStandalone_AdvancesMachineFromExistingSeed(t *testing.T) {
 	exe := buildLyxBinary(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
 	registerBootstrapTeardown(t, loc, worktree)
+	seedGoDriverRun(t, loc)
 
 	stdout, _, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "start")
 	if err != nil {
@@ -824,6 +827,7 @@ func TestSmokeBootstrap_MalformedStatusProceedsToHandoverAndLogsWhy(t *testing.T
 	exe := buildLyxBinary(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
 	registerBootstrapTeardown(t, loc, worktree)
+	seedGoDriverRun(t, loc)
 
 	firstOut, _, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "start")
 	if err != nil {
@@ -1016,6 +1020,7 @@ func TestSmokeBootstrap_ConcurrentSpawnHandshakeYieldsOneDriver(t *testing.T) {
 	exe := buildLyxBinary(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
 	registerBootstrapTeardown(t, loc, worktree)
+	seedGoDriverRun(t, loc)
 
 	// A background sampler polls the live driver-pid count for the whole duration both "loom start"
 	// invocations are in flight, tracking the maximum ever observed -- a post-hoc single check after
@@ -1095,6 +1100,7 @@ func TestSmokeBootstrap_DiedDriverProceedsToHandoverAndLogsWhy(t *testing.T) {
 	exe := buildLyxBinary(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
 	registerBootstrapTeardown(t, loc, worktree)
+	seedGoDriverRun(t, loc)
 
 	firstOut, _, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "start")
 	if err != nil {
