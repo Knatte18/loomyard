@@ -10,8 +10,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// TestDriveSkill_NamesParkMarker pins the ly-drive skill to the Go-declared park marker
-// filename, so renaming either side without the other fails.
+// TestDriveSkill_NamesParkMarker pins the ly-drive skill to the Go-declared park marker filename, so renaming either side without the other fails.
 func TestDriveSkill_NamesParkMarker(t *testing.T) {
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {

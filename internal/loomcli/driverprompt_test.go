@@ -51,8 +51,8 @@ func TestDriverPrompt_NamesSlugRunIDAndExactTeardownCommand(t *testing.T) {
 	}
 }
 
-// TestDriverPrompt_TiesTeardownToDoneAndBusyAndParksElsewhere asserts the teardown command sits between the done/busy condition and the parking sentence,
-// so a done child's driver still exits before batten's teardown and every other stop parks.
+// TestDriverPrompt_TiesTeardownToDoneAndBusyAndParksElsewhere asserts the teardown command sits between the done/busy condition and the parking sentence.
+// That keeps a done child's driver exiting before batten's teardown, and every other stop parking.
 // It also asserts the parking sentence names the records-commit command, which the recipe-blind skill runs at a park.
 func TestDriverPrompt_TiesTeardownToDoneAndBusyAndParksElsewhere(t *testing.T) {
 	got := driverPrompt("run", "/hub/wt/report.md")

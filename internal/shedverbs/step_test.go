@@ -401,9 +401,8 @@ func TestStepCmd_ErrorEnvelopesCarryLocations(t *testing.T) {
 	}
 }
 
-// TestStepCmd_ErrorEnvelopesCarryTransientClass covers a PreStep, a BuildShed and a producer failure
-// each carrying its transient class on the envelope while the kind is unchanged, and the busy
-// refusal reporting an empty class even when the classifier would mark its error.
+// TestStepCmd_ErrorEnvelopesCarryTransientClass covers a PreStep, a BuildShed and a producer failure each carrying its transient class on the envelope while the kind is unchanged.
+// It also covers the busy refusal reporting an empty class even when the classifier would mark its error.
 func TestStepCmd_ErrorEnvelopesCarryTransientClass(t *testing.T) {
 	paths := newTestPaths(t)
 	seedStatus(t, paths, "Bad")

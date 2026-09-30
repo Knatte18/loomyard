@@ -364,8 +364,7 @@ func TestEngine_Run_NonDoneOutcomes(t *testing.T) {
 	}
 }
 
-// TestEngine_Run_NotStartedPassthrough proves a shuttle result reporting NotStarted surfaces on the
-// round's Result.
+// TestEngine_Run_NotStartedPassthrough proves a shuttle result reporting NotStarted surfaces on the round's Result.
 func TestEngine_Run_NotStartedPassthrough(t *testing.T) {
 	root, p := newEngineTestProfile(t)
 	shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDied, NotStarted: true}}

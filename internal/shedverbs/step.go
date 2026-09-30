@@ -98,9 +98,9 @@ type StepLocations struct {
 	RunID       string
 }
 
-// stepErrFields builds an error envelope's extra fields: kind, transient (the class name
-// shedengine.TransientOf reports for the failure, or the empty string when it is not transient;
-// not a sixth kind) and the five location keys.
+// stepErrFields builds an error envelope's extra fields: kind, transient and the five location keys.
+// transient is the class name shedengine.TransientOf reports for the failure, or the empty string when it is not transient;
+// it is a key, not a sixth kind.
 func stepErrFields(kind, transient string, loc StepLocations) map[string]any {
 	return map[string]any{
 		"kind":         kind,

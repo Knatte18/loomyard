@@ -36,11 +36,11 @@ func cancelErr(ctx context.Context, name string) error {
 	return fmt.Errorf("landingshed: %s: context cancelled during run: %w", name, ctx.Err())
 }
 
-// transientFailure decides whether a failed remote call ends the call as a hard error. It consults
-// cancelErr first, like every non-Done exit, and returns that error when ctx is cancelled. Otherwise
-// it returns err wrapped as `landingshed: <name>: <action>: %w` when shedtransient.Class marks it
-// transient, so the Shed classifier persists `failed` and the driver re-steps once. It returns nil
-// for every other failure, which the caller keeps as a Stuck verdict for a human.
+// transientFailure decides whether a failed remote call ends the call as a hard error.
+// It consults cancelErr first, like every non-Done exit, and returns that error when ctx is cancelled.
+// Otherwise it returns err wrapped as `landingshed: <name>: <action>: %w` when shedtransient.Class marks it transient,
+// so the Shed classifier persists `failed` and the driver re-steps once.
+// It returns nil for every other failure, which the caller keeps as a Stuck verdict for a human.
 func transientFailure(ctx context.Context, name, action string, err error) error {
 	if cerr := cancelErr(ctx, name); cerr != nil {
 		return cerr

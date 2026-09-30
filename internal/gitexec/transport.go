@@ -27,12 +27,9 @@ var transportPhrases = []string{
 	"failed to connect to",
 }
 
-// IsTransportFailure reports whether err's chain holds a *GitError for a remote operation
-// (push, fetch, ls-remote or clone) that failed to reach the remote.
-// A rejected push, an authentication failure, a missing ref, a local command and an error
-// with no *GitError in its chain are not transport failures.
-// A stderr message in a format not listed in transportPhrases falls back to "not transient",
-// which is today's behaviour.
+// IsTransportFailure reports whether err's chain holds a *GitError for a remote operation (push, fetch, ls-remote or clone) that failed to reach the remote.
+// A rejected push, an authentication failure, a missing ref, a local command and an error with no *GitError in its chain are not transport failures.
+// A stderr message in a format not listed in transportPhrases falls back to "not transient", which is today's behaviour.
 func IsTransportFailure(err error) bool {
 	var gitErr *GitError
 	if !errors.As(err, &gitErr) {

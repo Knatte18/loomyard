@@ -229,8 +229,8 @@ func TestSingleLLMProducer_OutcomeDiedAndTimeout(t *testing.T) {
 	}
 }
 
-// TestSingleLLMProducer_NotStartedWrapsErrNotStarted pins that a died outcome the shuttle reports as
-// never-ready wraps ErrNotStarted, and an ordinary died outcome does not.
+// TestSingleLLMProducer_NotStartedWrapsErrNotStarted pins that a died outcome the shuttle reports as never-ready wraps ErrNotStarted,
+// and an ordinary died outcome does not.
 func TestSingleLLMProducer_NotStartedWrapsErrNotStarted(t *testing.T) {
 	for _, notStarted := range []bool{true, false} {
 		dir := t.TempDir()

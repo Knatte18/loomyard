@@ -1,5 +1,4 @@
-// driverresume.go implements the resume branch of `lyx loom start`: typing the one resume line into
-// a parked ly-drive driver's pane instead of spawning a fresh driver.
+// driverresume.go implements the resume branch of `lyx loom start`: typing the one resume line into a parked ly-drive driver's pane instead of spawning a fresh driver.
 
 package loomcli
 
@@ -15,22 +14,19 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// driverResumeSendAttempts and driverResumeSendInterval bound the wait for a parked driver's pane to
-// be input-ready: about a minute in all. The attempt count is the cap, not elapsed time, so a fake
-// wait in a test cannot loop forever.
+// driverResumeSendAttempts and driverResumeSendInterval bound the wait for a parked driver's pane to be input-ready: about a minute in all.
+// The attempt count is the cap, not elapsed time, so a fake wait in a test cannot loop forever.
 const (
 	driverResumeSendAttempts = 20
 	driverResumeSendInterval = 3 * time.Second
 )
 
-// resumeParkedDriver resumes the live, parked driver strand guid by typing driverResumeLine into its
-// pane, then removes the park marker.
+// resumeParkedDriver resumes the live, parked driver strand guid by typing driverResumeLine into its pane, then removes the park marker.
 //
-// Only a not-ready pane (shuttleengine.ErrPaneNotReady) is waited on and retried. Any other Send
-// error ends the loop at once: Send already replays its own keystrokes internally, and a "never
-// appeared" verification failure can follow a delivery the pane hid, so re-sending could type the
-// line into the driver twice. A failure leaves the marker in place, so the retry is a second
-// `lyx loom start`.
+// Only a not-ready pane (shuttleengine.ErrPaneNotReady) is waited on and retried.
+// Any other Send error ends the loop at once: Send already replays its own keystrokes internally,
+// and a "never appeared" verification failure can follow a delivery the pane hid, so re-sending could type the line into the driver twice.
+// A failure leaves the marker in place, so the retry is a second `lyx loom start`.
 func (c *loomCLI) resumeParkedDriver(guid string) error {
 	runID := shedrun.ResolveRunID(c.location, c.runID)
 	reportPath := driverReportPath(c.location, runID, time.Now, newDriverReportRand())

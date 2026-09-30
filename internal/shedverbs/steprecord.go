@@ -26,8 +26,8 @@ const (
 )
 
 // inflightRecord is the content of a `<trace_id>.inflight.json` file.
-// It also carries the build identity of the lyx that ran the step; a record written before those
-// fields existed decodes as an unknown identity.
+// It also carries the build identity of the lyx that ran the step;
+// a record written before those fields existed decodes as an unknown identity.
 type inflightRecord struct {
 	TraceID   string    `json:"trace_id"`
 	PID       int       `json:"pid"`
@@ -36,9 +36,9 @@ type inflightRecord struct {
 }
 
 // LastStep is the status envelope's last_step value: the most recent step record's trace id,
-// whether its envelope file exists, and that file's path once it does. It also carries the build
-// identity recorded for that step, and binary_changed: true when the running lyx is a different
-// known build. An undecodable record reports an unknown identity and binary_changed false.
+// whether its envelope file exists, and that file's path once it does.
+// It also carries the build identity recorded for that step, and binary_changed: true when the running lyx is a different known build.
+// An undecodable record reports an unknown identity and binary_changed false.
 type LastStep struct {
 	TraceID       string `json:"trace_id"`
 	Finished      bool   `json:"finished"`
@@ -57,8 +57,8 @@ type stepRecorder struct {
 	buf     bytes.Buffer
 }
 
-// newStepRecorder returns a recorder for traceID under dir that records build as the step's build
-// identity; an empty dir or trace id disables it.
+// newStepRecorder returns a recorder for traceID under dir that records build as the step's build identity;
+// an empty dir or trace id disables it.
 func newStepRecorder(dir, traceID string, build BuildIdentity) *stepRecorder {
 	if dir == "" || traceID == "" {
 		return &stepRecorder{}
@@ -68,8 +68,7 @@ func newStepRecorder(dir, traceID string, build BuildIdentity) *stepRecorder {
 
 func (r *stepRecorder) enabled() bool { return r.dir != "" }
 
-// begin writes the in-flight record: the trace id, this process's pid, the start time and the
-// build identity.
+// begin writes the in-flight record: the trace id, this process's pid, the start time and the build identity.
 func (r *stepRecorder) begin() {
 	if !r.enabled() {
 		return
@@ -105,8 +104,8 @@ func (r *stepRecorder) finish() {
 }
 
 // lastStepOf reads dir for the most recent in-flight record and reports it, or nil when dir is
-// empty, unreadable or holds none. running is the build identity of the calling lyx, compared with
-// the chosen record's recorded one to set binary_changed.
+// empty, unreadable or holds none.
+// running is the build identity of the calling lyx, compared with the chosen record's recorded one to set binary_changed.
 func lastStepOf(dir string, running BuildIdentity) *LastStep {
 	if dir == "" {
 		return nil

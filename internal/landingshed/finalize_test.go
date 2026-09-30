@@ -786,8 +786,7 @@ func TestFinalize_MarkTaskDone_NilIsAbsent(t *testing.T) {
 	}
 }
 
-// TestFinalize_TransportPushFailure_ReturnsClassifiedError pins that a parent push failing on
-// transport is an error the Shed classifier marks, while a plain push error keeps its Stuck verdict.
+// TestFinalize_TransportPushFailure_ReturnsClassifiedError pins that a parent push failing on transport is an error the Shed classifier marks, while a plain push error keeps its Stuck verdict.
 func TestFinalize_TransportPushFailure_ReturnsClassifiedError(t *testing.T) {
 	deps := newFinalizeDeps(t)
 	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}

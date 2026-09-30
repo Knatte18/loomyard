@@ -78,8 +78,7 @@ func LastCommitMarker(l *lyxcwd.Location, runID string) string {
 	return filepath.Join(ScratchDir(l, runID), "last-commit")
 }
 
-// ParkMarker returns the path to the ephemeral driver park marker, ParkMarkerFileName under
-// ScratchDir(l, runID), so it sits in the directory the step envelope reports as scratch_dir.
+// ParkMarker returns the path to the ephemeral driver park marker, ParkMarkerFileName under ScratchDir(l, runID), so it sits in the directory the step envelope reports as scratch_dir.
 func ParkMarker(l *lyxcwd.Location, runID string) string {
 	return filepath.Join(ScratchDir(l, runID), ParkMarkerFileName)
 }

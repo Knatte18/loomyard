@@ -22,8 +22,7 @@ func statusTexts() VerbTexts {
 	return VerbTexts{Status: VerbText{Use: "status", Short: "status of the fake shed"}}
 }
 
-// TestStatusCmd_LastStepCarriesBuildIdentity checks last_step carries the identity keys, with
-// binary_changed false since a test binary is unstamped.
+// TestStatusCmd_LastStepCarriesBuildIdentity checks last_step carries the identity keys, with binary_changed false since a test binary is unstamped.
 func TestStatusCmd_LastStepCarriesBuildIdentity(t *testing.T) {
 	stepsDir := filepath.Join(t.TempDir(), "steps")
 	spec := seededStatusSpec(t, Hooks{})

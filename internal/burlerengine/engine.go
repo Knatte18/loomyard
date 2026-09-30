@@ -84,8 +84,8 @@ type Result struct {
 	// Gate is a 1:1 passthrough of shuttleengine.Result.Gate, exactly as RunDir and ForkAudit
 	// already are. nil means the round ran ungated.
 	Gate *shuttleengine.GateOutcome
-	// NotStarted is a 1:1 passthrough of shuttleengine.Result.NotStarted: true when the round's
-	// provider never came up, so a producer can tell that from an agent that died mid-run.
+	// NotStarted is a 1:1 passthrough of shuttleengine.Result.NotStarted: true when the round's provider never came up,
+	// so a producer can tell that from an agent that died mid-run.
 	NotStarted bool
 }
 

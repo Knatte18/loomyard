@@ -373,9 +373,9 @@ func (c *loomCLI) loomPostRun(ctx context.Context, result shedengine.Result, run
 // bootstrap, then the status-strand ensure -- today's stepCmd body, in today's order, each
 // returned error paired with its refusal kind.
 //
-// Every returned error passes through shedtransient.Mark, the bootstrap boundary of the Transient
-// Stop Invariant. No bootstrap sub-step makes a remote call today (the seed-and-commit stage
-// commits without pushing), so the mark is inert now and held in place for a future remote one.
+// Every returned error passes through shedtransient.Mark, the bootstrap boundary of the Transient Stop Invariant.
+// No bootstrap sub-step makes a remote call today (the seed-and-commit stage commits without pushing),
+// so the mark is inert now and held in place for a future remote one.
 func (c *loomCLI) loomPreStep(ctx context.Context) (string, error) {
 	kind, err := c.loomPreStepUnmarked(ctx)
 	return kind, shedtransient.Mark(err)

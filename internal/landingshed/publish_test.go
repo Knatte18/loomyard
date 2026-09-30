@@ -950,8 +950,7 @@ func TestPublish_TaskHeadError_ReturnedError(t *testing.T) {
 
 // --- transient failures are errors, not verdicts ---
 
-// transportPushErr is the error a push returns when the remote is unreachable: a *gitexec.GitError
-// whose stderr shedtransient classifies as git-transport.
+// transportPushErr is the error a push returns when the remote is unreachable: a *gitexec.GitError whose stderr shedtransient classifies as git-transport.
 func transportPushErr() error {
 	return fmt.Errorf("gitrepo: git push: %w", &gitexec.GitError{
 		Args:     []string{"-c", "push.autoSetupRemote=true", "push"},
@@ -1041,9 +1040,8 @@ func TestPublish_GitHubTransientFailures_ReturnClassifiedErrorAndWarn(t *testing
 	}
 }
 
-// TestPublish_ApprovalQuery_TransientIsErrorBeforeSync pins checkApproval's split: a 503 on the
-// approval-time pull-request query is an error that runs no merge-in and no push, and a 422 keeps
-// the Stuck verdict.
+// TestPublish_ApprovalQuery_TransientIsErrorBeforeSync pins checkApproval's split: a 503 on the approval-time pull-request query is an error that runs no merge-in and no push,
+// and a 422 keeps the Stuck verdict.
 func TestPublish_ApprovalQuery_TransientIsErrorBeforeSync(t *testing.T) {
 	tests := []struct {
 		name      string

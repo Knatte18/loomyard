@@ -1,6 +1,5 @@
-// seam_enforcement_test.go enforces this package's import allowlist: production code in
-// internal/shedtransient may import only the stdlib and the four packages whose classifications
-// it translates, so shedengine stays stdlib-only and no leaf package ever imports shedengine.
+// seam_enforcement_test.go enforces this package's import allowlist: production code in internal/shedtransient may import only the stdlib and the four packages whose classifications it translates,
+// so shedengine stays stdlib-only and no leaf package ever imports shedengine.
 
 package shedtransient
 

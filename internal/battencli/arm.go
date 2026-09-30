@@ -495,9 +495,8 @@ func (c *battenCLI) doneSlugRefusal() error {
 // seeded-status-belongs-to-another-slug check, which has no batten analogue -- and
 // shedverbs.KindProducer is shed.Step's own to emit, never this hook's.
 //
-// Every returned error passes through shedtransient.Mark, the bootstrap boundary of the Transient
-// Stop Invariant. No sub-step here reaches a remote, so the mark is inert today and held in place
-// for a future remote one.
+// Every returned error passes through shedtransient.Mark, the bootstrap boundary of the Transient Stop Invariant.
+// No sub-step here reaches a remote, so the mark is inert today and held in place for a future remote one.
 func (c *battenCLI) battenPreStep(ctx context.Context) (string, error) {
 	kind, err := c.battenPreStepUnmarked(ctx)
 	return kind, shedtransient.Mark(err)

@@ -13,8 +13,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// fakeDriverSender records SendDriver calls and answers from errs in order; once errs is exhausted it
-// answers nil, unless repeatErr is set, which it then answers forever.
+// fakeDriverSender records SendDriver calls and answers from errs in order;
+// once errs is exhausted it answers nil, unless repeatErr is set, which it then answers forever.
 type fakeDriverSender struct {
 	texts     []string
 	errs      []error

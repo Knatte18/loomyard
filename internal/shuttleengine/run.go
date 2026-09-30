@@ -191,10 +191,9 @@ type Result struct {
 	// gated run whose closure could not run at all (an infrastructure error) also leaves this nil, with
 	// the error itself returned alongside Result instead.
 	Gate *GateOutcome
-	// NotStarted is true only on RunGated's not-ready branch, where the provider never came up and
-	// errors.Is(err, ErrNotStarted) held; it is false on every other return, including a died or
-	// timeout outcome reached in Wait. RunGated folds that branch into (result, nil), so this field
-	// is how a caller tells a never-ready start from an agent that died mid-run.
+	// NotStarted is true only on RunGated's not-ready branch, where the provider never came up and errors.Is(err, ErrNotStarted) held;
+	// it is false on every other return, including a died or timeout outcome reached in Wait.
+	// RunGated folds that branch into (result, nil), so this field is how a caller tells a never-ready start from an agent that died mid-run.
 	NotStarted bool
 }
 
@@ -612,10 +611,9 @@ const (
 	agentPaneProbeInterval = 250 * time.Millisecond
 )
 
-// ErrPaneNotReady marks requireReadyAgentPane's not-ready refusal: the strand's pane was captured
-// but shows no input-ready provider. A caller waiting for a booting provider matches it with
-// errors.Is instead of matching message text; the capture-failure refusal and every other Send
-// error do not wrap it.
+// ErrPaneNotReady marks requireReadyAgentPane's not-ready refusal: the strand's pane was captured but shows no input-ready provider.
+// A caller waiting for a booting provider matches it with errors.Is instead of matching message text;
+// the capture-failure refusal and every other Send error do not wrap it.
 var ErrPaneNotReady = errors.New("shuttle: the strand's pane shows no input-ready provider")
 
 // requireReadyAgentPane fails unless guid's strand has a live pane and the
@@ -651,8 +649,7 @@ func requireReadyAgentPane(reed ReedOps, engine Engine, guid string) error {
 	return paneNotReadyError{msg: fmt.Sprintf("shuttle: strand %q's pane shows no input-ready provider TUI — either the provider is still starting up (retry once it is ready), or its process exited (launch failure or crash) while the pane's shell stayed alive, in which case keys would be executed by the shell instead of reaching an agent", guid)}
 }
 
-// paneNotReadyError carries the not-ready refusal's full wording while satisfying
-// errors.Is(err, ErrPaneNotReady), so the message stays exactly as operators and tests know it.
+// paneNotReadyError carries the not-ready refusal's full wording while satisfying errors.Is(err, ErrPaneNotReady), so the message stays exactly as operators and tests know it.
 type paneNotReadyError struct{ msg string }
 
 func (e paneNotReadyError) Error() string { return e.msg }

@@ -150,9 +150,9 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 	driverAction, driverGUID := resolveDriverStrandAction(strands)
 	mustSpawn := mustSpawnDriver(runLockHeld, driverAction == driverStrandLive)
 
-	// The resume branch reads only strand liveness and the park marker, never the seed's driver value
-	// a second time (Driver Choice Single-Site Invariant). A spawn first removes a stale marker; a
-	// live strand with the marker is a parked driver, resumed with one typed line.
+	// The resume branch reads only strand liveness and the park marker, never the seed's driver value a second time (Driver Choice Single-Site Invariant).
+	// A spawn first removes a stale marker;
+	// a live strand with the marker is a parked driver, resumed with one typed line.
 	markerPath := shedrun.ParkMarker(c.location, shedrun.ResolveRunID(c.location, c.runID))
 	if mustSpawn {
 		if err := os.Remove(markerPath); err != nil && !errors.Is(err, os.ErrNotExist) {

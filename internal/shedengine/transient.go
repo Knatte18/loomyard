@@ -1,7 +1,6 @@
-// transient.go declares the transient mark: a class a producer boundary attaches to an error
-// so a caller can tell an infrastructure failure a single re-step may clear from every other stop.
-// The mark is stdlib-only on purpose (Shed Producer-Seam Invariant); the classifier that decides
-// which failure gets which class is told to Shed, never imported here.
+// transient.go declares the transient mark: a class a producer boundary attaches to an error so a caller can tell an infrastructure failure a single re-step may clear from every other stop.
+// The mark is stdlib-only on purpose (Shed Producer-Seam Invariant);
+// the classifier that decides which failure gets which class is told to Shed, never imported here.
 
 package shedengine
 

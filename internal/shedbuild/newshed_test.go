@@ -119,8 +119,7 @@ producers: []
 	}
 }
 
-// TestNewShed_TransientClassifier asserts the assembled Shed classifies a never-ready agent start
-// as agent-start and a plain error as not transient.
+// TestNewShed_TransientClassifier asserts the assembled Shed classifies a never-ready agent start as agent-start and a plain error as not transient.
 func TestNewShed_TransientClassifier(t *testing.T) {
 	const recipeYAML = `
 version: 1

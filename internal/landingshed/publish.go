@@ -92,14 +92,13 @@ func NewPublish(deps Deps) (*Publish, error) {
 
 // Call runs one Publish iteration.
 //
-// A failed task-branch push, pull-request query or pull-request create is split by
-// shedtransient.Class: a transient failure is returned as an error, so the driver re-steps once
-// (a re-step re-queries before creating, so nothing is duplicated), and anything else is a Stuck
-// verdict for a human. Out of scope: Finalize's pull-request close calls only warn; batten's
-// Worktree-Create row keeps a failed fabricengine.Add push as Stuck, because Add's rollback keeps
-// the branch it made and an immediate re-step would stop again; the status-commit and Seed-Child
-// pushes only warn; batten's Worktree-Teardown returns a failed remote branch deletion as an
-// unmarked error, since fabricengine.RemoveResult reports it as text with no chain to classify.
+// A failed task-branch push, pull-request query or pull-request create is split by shedtransient.Class:
+// a transient failure is returned as an error, so the driver re-steps once (a re-step re-queries before creating, so nothing is duplicated),
+// and anything else is a Stuck verdict for a human.
+// Out of scope: Finalize's pull-request close calls only warn;
+// batten's Worktree-Create row keeps a failed fabricengine.Add push as Stuck, because Add's rollback keeps the branch it made and an immediate re-step would stop again;
+// the status-commit and Seed-Child pushes only warn;
+// batten's Worktree-Teardown returns a failed remote branch deletion as an unmarked error, since fabricengine.RemoveResult reports it as text with no chain to classify.
 func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, publishName); err != nil {
 		return "", shedengine.OutputPointer{}, err
@@ -243,9 +242,9 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 // The approval never outranks a merged or closed pull request: `lyx loom approve` refuses without
 // an open one, so a stale record there could never be replaced.
 //
-// A transient failure of the pull-request query is returned as an error with decided true, so Call
-// returns it before any merge-in or push and the driver re-steps once; any other query failure is
-// a Stuck verdict for a human.
+// A transient failure of the pull-request query is returned as an error with decided true,
+// so Call returns it before any merge-in or push and the driver re-steps once;
+// any other query failure is a Stuck verdict for a human.
 func (p *Publish) checkApproval(ctx context.Context) (outcome shedengine.Outcome, ptr shedengine.OutputPointer, decided bool, err error) {
 	approval, found, err := ReadApproval(p.deps.ApprovalPath)
 	if err != nil {
@@ -312,8 +311,8 @@ func (p *Publish) checkApproval(ctx context.Context) (outcome shedengine.Outcome
 
 // stuckOrCancelled consults cancelErr first -- the point-9 obligation every non-success exit
 // discharges -- and otherwise logs reason via reportStuck and returns Stuck with reason on the
-// output pointer. Callers that can see a transient remote failure return it as an error first
-// (transientFailure), so a verdict here is always one for a human.
+// output pointer.
+// Callers that can see a transient remote failure return it as an error first (transientFailure), so a verdict here is always one for a human.
 func (p *Publish) stuckOrCancelled(ctx context.Context, reason string, fields ...any) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if cerr := cancelErr(ctx, publishName); cerr != nil {
 		return "", shedengine.OutputPointer{}, cerr

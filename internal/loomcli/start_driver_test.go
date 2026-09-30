@@ -497,8 +497,7 @@ func parkedStrands(live bool) func() ([]reedengine.StrandStatus, error) {
 	}
 }
 
-// newResumeBranchReceiver builds a runDriverSpawnAndWait receiver carrying a sender, a counting wait
-// and a park marker on disk.
+// newResumeBranchReceiver builds a runDriverSpawnAndWait receiver carrying a sender, a counting wait and a park marker on disk.
 func newResumeBranchReceiver(t *testing.T, starter driverStarter, probe driverPaneProbe, sender *fakeDriverSender) (*loomCLI, string, string) {
 	t.Helper()
 	c, bootstrapLockPath := newTestSpawnAndWaitReceiver(t, starter, probe)

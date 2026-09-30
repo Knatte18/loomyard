@@ -192,8 +192,8 @@ func TestStatusCmd_LastStep(t *testing.T) {
 	}
 }
 
-// TestLastStepOf_BuildIdentity has a recorder write its identity, and checks lastStepOf reports it
-// back with binary_changed false for the same running identity and true for a different known one;
+// TestLastStepOf_BuildIdentity has a recorder write its identity,
+// and checks lastStepOf reports it back with binary_changed false for the same running identity and true for a different known one;
 // a hand-written record without identity fields never reports a change.
 func TestLastStepOf_BuildIdentity(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "steps")

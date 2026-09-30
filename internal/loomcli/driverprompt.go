@@ -9,15 +9,14 @@ import "fmt"
 // driverPrompt composes the ly-drive session's launch prompt: a short pointer, never a copy of the
 // skill. It names the ly-drive skill invocation and the plugin it ships in, the run-id, the report
 // path the session must write at every stop condition, and an explicit statement that this session
-// runs in autonomous mode with no operator to ask. At a done run or a busy refusal, as its last act
-// after writing its stop report, the session runs driverTeardownCommand to end its own strand; at
-// every other stop it parks as the skill's parking section describes, leaving the session open for
-// `lyx loom start` to resume by typing one line. The park and the command ride this loom-launched
-// prompt alone, so a session launched without it (an orchestrator fork, an operator-launched ly-drive)
-// never parks and stays open.
-// The teardown at done is what keeps batten's half of the end-to-end criterion: batten's Inner-Run
-// row, on a done child, waits for the driver strand to end before it returns Done and teardown runs
-// (callDone), and that command is what ends the strand.
+// runs in autonomous mode with no operator to ask.
+// At a done run or a busy refusal, as its last act after writing its stop report, the session runs driverTeardownCommand to end its own strand;
+// at every other stop it parks as the skill's parking section describes, leaving the session open for `lyx loom start` to resume by typing one line.
+// The park and the command ride this loom-launched prompt alone,
+// so a session launched without it (an orchestrator fork, an operator-launched ly-drive) never parks and stays open.
+// The teardown at done is what keeps batten's half of the end-to-end criterion:
+// batten's Inner-Run row, on a done child, waits for the driver strand to end before it returns Done and teardown runs (callDone),
+// and that command is what ends the strand.
 // A session without the skill is told to stop rather than search for a copy: a filesystem search
 // finds whichever checkout happens to exist, so the run would follow an arbitrary version of the
 // skill's contract.

@@ -1,5 +1,4 @@
-// buildidentity_test.go covers binaryChanged's table: it is true only for two known builds that
-// differ in revision or modified flag.
+// buildidentity_test.go covers binaryChanged's table: it is true only for two known builds that differ in revision or modified flag.
 
 package shedverbs
 
