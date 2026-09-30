@@ -876,6 +876,28 @@ func TestPublish_MismatchedApproval_StuckNamesSHAs(t *testing.T) {
 	}
 }
 
+func TestPublish_MismatchedApproval_ReasonNamesEachDifference(t *testing.T) {
+	tests := []struct {
+		name, listBody, taskHead, want string
+	}{
+		{"local head", `[{"number":7,"state":"open","head":{"sha":"aaa"}}]`, "ccc", "local task head is now ccc"},
+		{"pr number", `[{"number":8,"state":"open","head":{"sha":"aaa"}}]`, "aaa", "open pull request is now #8"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fx := newApprovalFixture(t, tt.listBody, &Approval{PRNumber: 7, HeadSHA: "aaa", ApprovedAt: "2026-01-01T00:00:00Z"}, nil)
+			fx.taskHead = tt.taskHead
+			outcome, ptr, err := fx.p.Call(context.Background())
+			if err != nil || outcome != shedengine.Stuck {
+				t.Fatalf("Call() = %q, %v; want Stuck, nil", outcome, err)
+			}
+			if !strings.Contains(ptr.Reason, tt.want) {
+				t.Errorf("reason %q lacks %q", ptr.Reason, tt.want)
+			}
+		})
+	}
+}
+
 func TestPublish_ApprovalOverMergedPR_Done(t *testing.T) {
 	fx := newApprovalFixture(t, `[{"number":7,"state":"closed","merged_at":"2026-01-01T00:00:00Z","head":{"sha":"zzz"}}]`, &Approval{PRNumber: 7, HeadSHA: "aaa", ApprovedAt: "2026-01-01T00:00:00Z"}, nil)
 	outcome, _, err := fx.p.Call(context.Background())

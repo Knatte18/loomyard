@@ -271,11 +271,16 @@ func (p *Publish) checkApproval(ctx context.Context) (outcome shedengine.Outcome
 		return shedengine.Done, shedengine.OutputPointer{}, true, nil
 	}
 
-	differs := head
-	if head == approval.HeadSHA {
-		differs = taskHead
+	var mismatch string
+	switch {
+	case head != approval.HeadSHA:
+		mismatch = fmt.Sprintf("the pull request head is now %s", head)
+	case taskHead != approval.HeadSHA:
+		mismatch = fmt.Sprintf("the local task head is now %s", taskHead)
+	default:
+		mismatch = fmt.Sprintf("the open pull request is now #%d", pr.GetNumber())
 	}
-	reason := fmt.Sprintf("the approval of pull request #%d at %s no longer matches (now %s, pull request #%d); inspect the pull request and re-run `lyx loom approve`", approval.PRNumber, approval.HeadSHA, differs, pr.GetNumber())
+	reason := fmt.Sprintf("the approval of pull request #%d at %s no longer matches: %s; inspect the pull request and re-run `lyx loom approve`", approval.PRNumber, approval.HeadSHA, mismatch)
 	outcome, ptr, err = p.stuckOrCancelled(ctx, withPRURL(reason, pr.GetHTMLURL()))
 	return outcome, ptr, true, err
 }
