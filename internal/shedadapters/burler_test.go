@@ -1131,6 +1131,25 @@ func TestBurlerProducer_Call_ArchiveOnExit(t *testing.T) {
 		assertUnchangedRoundOnRerun(t, runDir)
 	})
 
+	t.Run("TwoConsecutiveDiedWrapsErrNotStartedOnlyWhenNotStarted", func(t *testing.T) {
+		for _, notStarted := range []bool{true, false} {
+			runDir := t.TempDir()
+			runner := &fakeBurlerRunner{results: []burlerengine.Result{
+				{Outcome: shuttleengine.OutcomeDied, SessionID: "s1", NotStarted: notStarted},
+				{Outcome: shuttleengine.OutcomeDied, SessionID: "s2", NotStarted: notStarted},
+			}}
+			p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
+
+			_, _, err := p.Call(context.Background())
+			if err == nil {
+				t.Fatalf("NotStarted=%v: Call() error = nil; want non-nil", notStarted)
+			}
+			if got := errors.Is(err, shuttleengine.ErrNotStarted); got != notStarted {
+				t.Errorf("NotStarted=%v: errors.Is(err, ErrNotStarted) = %v; want %v", notStarted, got, notStarted)
+			}
+		}
+	})
+
 	t.Run("AskingHardError", func(t *testing.T) {
 		runDir := t.TempDir()
 		runner := &fakeBurlerRunner{results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeAsking}}}

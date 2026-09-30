@@ -30,6 +30,14 @@ type driverStarter interface {
 	StartDriver(spec shuttleengine.Spec) (driverHandle, error)
 }
 
+// driverSender types one line into a live driver strand's pane.
+type driverSender interface {
+	// SendDriver types text as the strand's next turn and verifies it arrived.
+	// A pane whose provider is not input-ready is refused with an error wrapping shuttleengine.ErrPaneNotReady;
+	// any other error may follow a delivery the pane hid, so a caller must not blindly re-send after it.
+	SendDriver(guid, text string) error
+}
+
 // driverPaneProbe reads and removes driver strands.
 type driverPaneProbe interface {
 	// Strands returns this session's tracked strands and their live/dead state.
@@ -51,6 +59,11 @@ func (s runnerDriverStarter) StartDriver(spec shuttleengine.Spec) (driverHandle,
 		return nil, err
 	}
 	return run, nil
+}
+
+// SendDriver implements driverSender through the runner's Send, which verifies delivery and refuses a pane whose provider is not input-ready.
+func (s runnerDriverStarter) SendDriver(guid, text string) error {
+	return s.runner.Send(guid, text)
 }
 
 // reedDriverPaneProbe adapts *reedengine.Engine to driverPaneProbe.

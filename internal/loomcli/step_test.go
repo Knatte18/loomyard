@@ -322,6 +322,9 @@ func TestStepCmd_BusyRefusal_BeforeBootstrap(t *testing.T) {
 	if !strings.Contains(out.String(), `"kind":"busy"`) {
 		t.Errorf("stepCmd() output missing kind:busy; got: %q", out.String())
 	}
+	if !strings.Contains(out.String(), `"transient":""`) {
+		t.Errorf("stepCmd() output missing transient:\"\"; got: %q", out.String())
+	}
 	if !strings.Contains(out.String(), "lyx loom pause") {
 		t.Errorf("stepCmd() output missing the lyx loom pause remedy; got: %q", out.String())
 	}

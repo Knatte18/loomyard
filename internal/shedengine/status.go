@@ -72,12 +72,15 @@ type HistoryEntry struct {
 // only by an outside actor and written false only by Shed, exactly once, in the persist that
 // records StatePaused; Product is external-writer-owned and only ever carried through.
 type Status struct {
-	CurrentProducer string         `json:"current_producer"`
-	State           State          `json:"state"`
-	Error           string         `json:"error"`
-	PauseRequested  bool           `json:"pause_requested"`
-	Activity        Activity       `json:"activity"`
-	History         []HistoryEntry `json:"history"`
+	CurrentProducer string `json:"current_producer"`
+	State           State  `json:"state"`
+	Error           string `json:"error"`
+	// Transient is the TransientClass of the failure that put the run in StateFailed, empty on every other write.
+	// A status file written before the field existed decodes as empty.
+	Transient      string         `json:"transient,omitempty"`
+	PauseRequested bool           `json:"pause_requested"`
+	Activity       Activity       `json:"activity"`
+	History        []HistoryEntry `json:"history"`
 	// Product is an opaque product-owned payload Shed round-trips verbatim and never inspects,
 	// validates, or interprets. It carries no compatibility claim for loom's own schema.
 	Product json.RawMessage `json:"product,omitempty"`

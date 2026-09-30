@@ -2,6 +2,7 @@ package shedrun
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -90,6 +91,23 @@ func TestLastCommitMarker(t *testing.T) {
 	want := filepath.Join(ScratchDir(l, "self"), "last-commit")
 	if got != want {
 		t.Errorf("LastCommitMarker(l, %q) = %q; want %q", "self", got, want)
+	}
+}
+
+func TestParkMarker(t *testing.T) {
+	l := syntheticLocation(t)
+	for _, runID := range []string{"worktree", "self"} {
+		t.Run(runID, func(t *testing.T) {
+			got := ParkMarker(l, runID)
+			want := filepath.Join(ScratchDir(l, runID), ParkMarkerFileName)
+			if got != want {
+				t.Errorf("ParkMarker(l, %q) = %q; want %q", runID, got, want)
+			}
+			rel, err := filepath.Rel(filepath.Join(l.AnchorPath(), ".lyx"), got)
+			if err != nil || strings.HasPrefix(rel, "..") {
+				t.Errorf("ParkMarker(l, %q) = %q; want it under the .lyx tree", runID, got)
+			}
+		})
 	}
 }
 

@@ -32,6 +32,7 @@ var landingshedAllowedImports = map[string]bool{
 	"github.com/Knatte18/loomyard/internal/configengine":  true,
 	"github.com/Knatte18/loomyard/internal/logger":        true,
 	"github.com/Knatte18/loomyard/internal/shedengine":    true,
+	"github.com/Knatte18/loomyard/internal/shedtransient": true, // classifies a failed remote call as a transient hard error
 	"github.com/Knatte18/loomyard/internal/githubclient":  true,
 	"github.com/Knatte18/loomyard/internal/gitrepo":       true,
 	"github.com/Knatte18/loomyard/internal/summaryparser": true,

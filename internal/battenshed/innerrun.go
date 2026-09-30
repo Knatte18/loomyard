@@ -6,6 +6,7 @@ package battenshed
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -131,6 +132,7 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 //   - running sleeps p.pollInterval and returns a counted Stuck;
 //   - awaiting with no approval record sleeps and returns a budget-exempt Stuck naming the hand-off;
 //   - awaiting with an approval not yet acted on spawns the child's driver again (the child's own bootstrap resumes an approved run), records the approval in the approval-acted marker only once the spawn succeeded, then sleeps and returns a budget-exempt Stuck;
+//     a spawn refused with ErrChildNotParked records nothing and sleeps and returns a budget-exempt Stuck, so the next poll retries the resume;
 //   - awaiting with an approval already acted on does not spawn, and sleeps and returns a budget-exempt Stuck naming the recovery of approving again;
 //   - done records the first-sight time in the done-seen marker and returns Done once the driver strand is gone or driverExitGrace has elapsed since first sight, and otherwise sleeps and returns a budget-exempt Stuck, the wait for the driver to finish its stop report;
 //   - blocked, paused or failed is a hard error whose message carries the child's State, Error and CurrentProducer;
@@ -268,6 +270,11 @@ func (p *innerRunProducer) callAwaiting(ctx context.Context, status shedengine.S
 	if spawnErr != nil {
 		if cerr := cancelErr(ctx, p.name); cerr != nil {
 			return "", shedengine.OutputPointer{}, cerr
+		}
+		if errors.Is(spawnErr, ErrChildNotParked) {
+			// The child's driver is between its stop and its park, so the approval stays unacted and the next poll resumes it.
+			logger.Info("battenshed: child driver has not parked yet; retrying the resume on the next poll", "producer", p.name, "slug", p.slug, "error", spawnErr)
+			return p.exemptWait(ctx, fmt.Sprintf("the approval at %s is not acted on yet: the child's driver has not parked; retrying the resume on the next poll", approval.ApprovedAt))
 		}
 		return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: resume approved inner shed run (resuming this run retries the spawn): %w", p.name, spawnErr)
 	}

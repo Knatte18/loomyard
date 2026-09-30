@@ -457,6 +457,9 @@ func (p *BurlerProducer) Call(ctx context.Context) (shedengine.Outcome, shedengi
 				priorToken = attemptToken
 				continue
 			}
+			if result.NotStarted {
+				return failureExit(fmt.Errorf("shedadapters: %s (%s): round %d: two consecutive died/timeout outcomes (attempt %s outcome %s session %s run dir %s; attempt %s outcome %s session %s run dir %s): %w", p.name, burlerEngineLabel, round, priorToken, priorResult.Outcome, priorResult.SessionID, priorResult.RunDir, attemptToken, result.Outcome, result.SessionID, result.RunDir, shuttleengine.ErrNotStarted))
+			}
 			return failureExit(fmt.Errorf("shedadapters: %s (%s): round %d: two consecutive died/timeout outcomes (attempt %s outcome %s session %s run dir %s; attempt %s outcome %s session %s run dir %s)", p.name, burlerEngineLabel, round, priorToken, priorResult.Outcome, priorResult.SessionID, priorResult.RunDir, attemptToken, result.Outcome, result.SessionID, result.RunDir))
 
 		default:

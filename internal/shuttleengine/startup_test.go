@@ -729,6 +729,9 @@ func TestStartup_RunGated_NotReady(t *testing.T) {
 	if gateCalls != 0 {
 		t.Errorf("gate closure called %d time(s); want 0", gateCalls)
 	}
+	if !result.NotStarted {
+		t.Errorf("RunGated() NotStarted = false; want true on a not-ready start")
+	}
 }
 
 // TestStartup_RunGated_MechanismFailure pins RunGated's mapping for a startup mechanism failure
@@ -753,6 +756,9 @@ func TestStartup_RunGated_MechanismFailure(t *testing.T) {
 	}
 	if result.Outcome != "" {
 		t.Errorf("RunGated() Outcome = %q; want empty (no classification was ever reached)", result.Outcome)
+	}
+	if result.NotStarted {
+		t.Errorf("RunGated() NotStarted = true; want false for a mechanism failure")
 	}
 	if result.StrandGUID != "strand-1" || result.RunDir == "" || result.SessionID == "" {
 		t.Errorf("RunGated() result = %+v; want StrandGUID/RunDir/SessionID all populated", result)

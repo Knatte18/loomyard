@@ -1,4 +1,4 @@
-// paths.go declares the shed run-directory path constructors: the durable paths under _lyx (the run directory, its seed and status files, and the drive-reports directory), the ephemeral paths under .lyx, the anchor-relative paths for fabric commit pathspecs, and one hub-scoped ephemeral lock that sits one level above any single run-id.
+// paths.go declares the shed run-directory path constructors: the durable paths under _lyx (the run directory, its seed and status files, and the drive-reports directory), the ephemeral paths under .lyx (including the driver park marker), the anchor-relative paths for fabric commit pathspecs, and one hub-scoped ephemeral lock that sits one level above any single run-id.
 // Every constructor is a plain filepath.Join onto the given *lyxcwd.Location's AnchorPath(), per the Cwd Resolution Invariant -- none of them calls os.Getwd or any git command.
 
 package shedrun
@@ -17,6 +17,18 @@ const shedDirName = "shed"
 
 // driveReportsDirName is the segment under a run's directory that holds its drive reports.
 const driveReportsDirName = "drive-reports"
+
+// ParkMarkerFileName is the filename of the driver park marker, whose path ParkMarker returns.
+// It is exported because the ly-drive skill names the same filename, and a loomcli test pins the two together.
+// The file's content is the path of the stop report the driver parked on.
+// A loom-launched ly-drive driver writes it at a hand-back and removes it before a self-initiated re-step;
+// `lyx loom start` removes it when it resumes the driver, or before it spawns a fresh one.
+const ParkMarkerFileName = "driver-parked"
+
+// StartNotParkedKind is the envelope "kind" of the `lyx loom start` refusal for a live driver whose run has halted at a hand-back but whose park marker is not written yet.
+// That refusal is retryable: the driver is still writing its stop report and committing its records, and parks within seconds.
+// It is exported so battencli recognises the refusal by this one declared value rather than by its message text.
+const StartNotParkedKind = "driver_not_parked"
 
 // RunDir returns the path to the durable, fabric-synced directory holding a single run's
 // seed.json and status.json: the given *lyxcwd.Location's AnchorPath() joined with
@@ -69,6 +81,11 @@ func StatusLock(l *lyxcwd.Location, runID string) string {
 // fabric sync observed, under ScratchDir(l, runID).
 func LastCommitMarker(l *lyxcwd.Location, runID string) string {
 	return filepath.Join(ScratchDir(l, runID), "last-commit")
+}
+
+// ParkMarker returns the path to the ephemeral driver park marker, ParkMarkerFileName under ScratchDir(l, runID), so it sits in the directory the step envelope reports as scratch_dir.
+func ParkMarker(l *lyxcwd.Location, runID string) string {
+	return filepath.Join(ScratchDir(l, runID), ParkMarkerFileName)
 }
 
 // SeedRel returns the worktree-anchor-relative form of SeedFile's path: the join of

@@ -33,6 +33,10 @@ var ErrUnsupportedChildRecipe = errors.New("battenshed: recipe cannot be a task 
 // or delete the child's own seed, or correct the Board task's type), not a mechanism failure.
 var ErrDisagreeingChildSeed = errors.New("battenshed: task worktree already seeded with a disagreeing seed")
 
+// ErrChildNotParked is the sentinel an InnerRunDeps.Spawn closure wraps when the child's bootstrap refused because its live driver has halted the run at a hand-back but not parked yet.
+// InnerRun treats it as a retryable wait on the approval-resume path: it records nothing and spawns again on its next poll.
+var ErrChildNotParked = errors.New("battenshed: the task worktree's driver has not parked yet")
+
 // PrimeLock carries the told absolute path to a hub-scoped advisory lock plus the injected
 // acquire closure both WorktreeCreate and WorktreeTeardown hold it behind, so the two producers
 // that mutate the hub's worktree registry concurrently with each other never race.
@@ -75,6 +79,8 @@ type InnerRunDeps struct {
 	// under the row's scratch directory. Spawn must therefore be idempotent against a driver that
 	// is already alive: a bootstrap killed after its driver came up but before it returned is
 	// spawned again.
+	//
+	// A bootstrap refused because the child's live driver has not parked yet returns an error wrapping ErrChildNotParked.
 	Spawn func(ctx context.Context) error
 	// ResolveStatus resolves the absolute status-file path and its companion lock path for the
 	// task worktree. It is evaluated on Call, never at wiring time: the task worktree this status

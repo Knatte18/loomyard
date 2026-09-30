@@ -54,7 +54,8 @@ and nothing is repaired.
 
 ## Error envelopes
 
-An error envelope carries `kind`, one of five values, plus `trace_file`, `friction_dir` and `scratch_dir`.
+An error envelope carries `kind`, one of five values, plus `trace_file`, `friction_dir`, `scratch_dir` and `transient`.
+`transient` is a class name, or empty when the failure is not transient; the driver reads that key and never matches error text.
 
 - `producer`, `bootstrap`, `unseeded`: go down the repair path, under the repair cap.
 - `busy`: hand back.
@@ -62,6 +63,57 @@ An error envelope carries `kind`, one of five values, plus `trace_file`, `fricti
 - `ownership`: hand back; a slug mismatch is an operator decision, not a crash state.
 - No `kind` (an unseeded run-id, an unsupported verb): always escalate with the refusal text verbatim, after reading its trace for the report.
   The driver never re-seeds, and no `lyx` verb fixes either.
+
+## Automatic re-steps
+
+The driver makes exactly two kinds of automatic re-step, a closed list.
+Each has its own budget, separate from the repair cap.
+
+- **Transient re-step**: an error envelope with a non-empty `transient` gets one immediate re-step, with no repair action and no wait.
+  Record `current_producer` from a status read first; if that re-step stops again at the same `current_producer`, for any reason, hand back.
+- **Binary-change re-step**: when `lyx shed status`'s `last_step.binary_changed` is true, re-step once.
+  It is checked at the stop itself, and again each time the binary watch fires while parked.
+  Eligible stops:
+  - `blocked`;
+  - a `producer`, `bootstrap` or `unseeded` error the driver escalated (repair cap exhausted or nothing to repair);
+  - a transient stop whose own re-step failed.
+
+  Never eligible: `awaiting`, `paused`, `busy`, `ownership`, a no-kind refusal, and an interrupted invocation under `interrupt_policy: handback`.
+  `awaiting` and `paused` are never auto-resumed, by either re-step.
+- **Clean-tree guard**: skip the binary-change re-step, and stay parked, when `git -C <warp> status --porcelain` in the task's code worktree (the warp) lists any uncommitted change.
+  The driver's own stop reports, repair records and park marker never count: they live in the weft, which the warp reaches only through its `_lyx` and `.lyx` links, and the warp's git excludes both links, so porcelain there never lists them.
+  A skipped re-step is not retried when the tree turns clean; it waits for the next binary change or a resume.
+
+Before any self-initiated re-step, remove the park marker.
+
+## Parking
+
+Only a session whose launch prompt says to park does so.
+Orchestrator forks and operator-launched sessions keep their stop behaviour and get the transient re-step and the stop-time binary-change re-step only.
+
+At a hand-back, a parking driver does four things, in order:
+
+1. writes its stop report;
+2. runs the records-commit command the launch prompt names;
+3. writes `<scratch_dir>/driver-parked` holding the stop report's path (the park marker, named `driver-parked`);
+4. starts the binary watch as a background job when the stop is binary-change eligible.
+
+It then ends its turn with the session open.
+At `done` and at `busy` it runs the launch prompt's end-of-session command instead, as today.
+On every wake (a resume line, a background job's exit, a context compaction), the marker on disk is the truth of whether the driver is parked.
+
+## Binary watch
+
+The watch is a background shell loop that resolves the `lyx` executable once, checks its modification time about once a minute, and exits when it changes.
+It never runs a long-lived `lyx` process, which would block a deploy's overwrite on Windows.
+When it exits, read `lyx shed status` once, and re-step only if `binary_changed` is true and the clean-tree guard passes; otherwise re-arm the watch.
+A watch job that ends by the harness timeout is re-armed, never read as a resume.
+
+## Resume
+
+A resume line names a report path.
+On it, stop the driver's own watch job, remove the marker if still present, take a fresh baseline, reset the repair and re-step budgets, and write every later stop report of this attempt to that path.
+A resume line that arrives while a step job is in flight starts no second step; its report path and budget reset apply to the next stop.
 
 ## Interrupted invocations
 
@@ -118,6 +170,7 @@ Each deletion is a repair record like any other.
 Make at most two repairs of the same row without the run advancing.
 The key is `(current_producer, history_length)` from a status read taken before the first repair, because an error envelope carries neither field.
 A different pair resets the count, and the third failure escalates.
+The automatic re-step budgets are separate from this cap and do not count toward it.
 The `reinvoke` sub-case counts toward the cap.
 `("", 0)` is a valid key for a run with no status file.
 
@@ -129,8 +182,15 @@ At every stop the report lists `friction_dir` and `<scratch_dir>/repairs/`.
 Every report names the run by the envelope's `run_id` and gives its position as `history_length` plus `progress` (`step` of `steps`, and `name`).
 It never cites the driver's own step count.
 A launch prompt from the orchestrator names a report path under the run's durable drive-reports directory.
+Each automatic re-step writes a record under `<scratch_dir>/repairs/` holding:
+
+- the stop;
+- the field that justified it: the `transient` class, or the build identity `last_step` recorded before the re-step and the one it records after;
+- the action and the outcome.
+
+After a self-initiated re-step, the next stop rewrites the same report file to cover the whole attempt, listing every automatic re-step since the attempt began.
 Its end-of-session command commits the stop report and the friction notes through the orchestrator's own records-commit verb before ending the session, so this skill itself still makes no commits.
-When the launch prompt names an end-of-session command, run it as the last act, after writing the stop report.
+When the launch prompt names an end-of-session command, run it as the last act, after writing the stop report: the teardown command at `done` or `busy`, and at a park the records-commit command (step 2 of parking), with the session then left open.
 
 ## Self-report
 

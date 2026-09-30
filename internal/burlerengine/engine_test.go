@@ -364,6 +364,21 @@ func TestEngine_Run_NonDoneOutcomes(t *testing.T) {
 	}
 }
 
+// TestEngine_Run_NotStartedPassthrough proves a shuttle result reporting NotStarted surfaces on the round's Result.
+func TestEngine_Run_NotStartedPassthrough(t *testing.T) {
+	root, p := newEngineTestProfile(t)
+	shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDied, NotStarted: true}}
+	e := newEngineForTest(t, root, shuttle)
+
+	got, err := e.Run(p, RunOpts{})
+	if err != nil {
+		t.Fatalf("Run() = %v; want nil error", err)
+	}
+	if !got.NotStarted {
+		t.Errorf("Result.NotStarted = false; want true")
+	}
+}
+
 // TestEngine_Run_DoneBlockingVerdict proves a done run whose review file carries a valid BLOCKING
 // verdict parses into VerdictBlocking with its findings,
 // and that the shuttle RunDir passes through even on a done outcome.
