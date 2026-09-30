@@ -199,8 +199,8 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 			// A producer that returned an error and no outcome at all reached no verdict, so
 			// there is nothing to record -- the same reasoning the cancellation branch below
 			// already applies, and the reason this is a skip rather than a placeholder value:
-			// history[].outcome is a persisted enum whose whole vocabulary is done and stuck,
-			// and there is no third spelling for "the call did not get that far".
+			// history[].outcome is a persisted enum whose whole vocabulary is done, stuck and
+			// awaiting, and there is no fourth spelling for "the call did not get that far".
 			//
 			// Writing the empty string there was not free. It is out of vocabulary on disk, so
 			// internal/loomengine's own seed-coherence check rejects it -- an ordinary hard

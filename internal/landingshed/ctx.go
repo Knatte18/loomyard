@@ -2,8 +2,8 @@
 // consulted before a producer's Call starts anything, and cancelErr, consulted by every non-success
 // exit path. This is landingshed's own copy of loomshed's identically-shaped helpers -- see doc.go
 // for why the duplication is deliberate: every real producer written here honours the two
-// obligations Shed cannot enforce -- return exactly Done or Stuck, and surface context cancellation
-// as a non-nil error, never as Stuck -- with its own copies.
+// obligations Shed cannot enforce -- return exactly Done, Stuck or Awaiting, and surface context
+// cancellation as a non-nil error, never as Stuck -- with its own copies.
 
 package landingshed
 
