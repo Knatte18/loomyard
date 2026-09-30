@@ -1,7 +1,8 @@
 //go:build smoke
 
-// smoke_drivingsurface_test.go pins the one live-substrate property behind a run's driving surface
-// on the step side: "lyx loom step" and "lyx shed step" bring reed up and never add, replace or
+// smoke_drivingsurface_test.go pins the live-substrate properties behind a run's driving surface.
+// On the start side, an llm-seeded start removes every status strand and a failed reed Up refuses
+// before any spawn. On the step side: "lyx loom step" and "lyx shed step" bring reed up and never add, replace or
 // remove a status strand, whatever driver the run was seeded with. ensureStatusStrand's branches are
 // pinned at Tier 1 through resolveStatusStrandAction; what only a real tmux server can show is that
 // a step leaves reed's strand table without a status strand, and leaves a pre-existing one alone.
@@ -99,9 +100,10 @@ func TestSmokeStep_LeavesAPreexistingStatusStrandUntouched(t *testing.T) {
 	}
 }
 
-func TestSmokeStep_FailedReedUpRefusesWithBootstrapKind(t *testing.T) {
-	exe := buildLyxBinary(t)
-
+// newBadReedUpFixture builds a hub whose reed config carries an invalid mouse value, so reed Up
+// fails, and returns the resolved location and the worktree path, seeded by seed.
+func newBadReedUpFixture(t *testing.T, seed func(*testing.T, *lyxcwd.Location)) (*lyxcwd.Location, string) {
+	t.Helper()
 	reedCfg := reedengine.ConfigTemplate()
 	var lines []string
 	replaced := false
@@ -130,7 +132,13 @@ func TestSmokeStep_FailedReedUpRefusesWithBootstrapKind(t *testing.T) {
 	if err != nil {
 		t.Fatalf("lyxcwd.Resolve(%s): %v", worktree, err)
 	}
-	seedGoDriverRun(t, loc)
+	seed(t, loc)
+	return loc, worktree
+}
+
+func TestSmokeStep_FailedReedUpRefusesWithBootstrapKind(t *testing.T) {
+	exe := buildLyxBinary(t)
+	_, worktree := newBadReedUpFixture(t, seedGoDriverRun)
 
 	out, exit, err := runLoomCLINoFatal(exe, worktree, stepSmokeTimeout, "loom", "step")
 	if err != nil {
@@ -148,5 +156,71 @@ func TestSmokeStep_FailedReedUpRefusesWithBootstrapKind(t *testing.T) {
 	}
 	if env == nil || env["kind"] != "bootstrap" {
 		t.Errorf("envelope kind = %v; want \"bootstrap\"; output: %s", env["kind"], out)
+	}
+}
+
+// TestSmokeStart_LLMRunRemovesEveryStatusStrand pins that an llm-seeded start removes every status
+// strand the session holds, duplicates included. The providerless shuttle config makes the driver
+// launch fail, which the test ignores: the removal runs before the driver spawn.
+func TestSmokeStart_LLMRunRemovesEveryStatusStrand(t *testing.T) {
+	tmuxBinaryPath(t)
+	exe := buildLyxBinary(t)
+	_, loc, worktree, _ := newWiredPairFixture(t)
+	registerBootstrapTeardown(t, loc, worktree)
+	seedLLMDriver(t, loc)
+
+	eng := probeReedEngine(t, loc)
+	if _, err := eng.Up(); err != nil {
+		t.Fatalf("reed up: %v", err)
+	}
+	for i := 0; i < 2; i++ {
+		if _, err := eng.AddStrand(statusStrandAddSpec("sleep 3600")); err != nil {
+			t.Fatalf("add status strand %d: %v", i, err)
+		}
+	}
+	if count := statusStrandCount(t, eng, statusStrandDisplayName); count != 2 {
+		t.Fatalf("status strands before start = %d; want 2", count)
+	}
+
+	out, _, err := runLoomCLINoFatal(exe, worktree, stepSmokeTimeout, "loom", "start", "--no-attach")
+	if err != nil {
+		t.Fatalf("lyx loom start --no-attach: %v; output: %s", err, out)
+	}
+
+	if count := statusStrandCount(t, eng, statusStrandDisplayName); count != 0 {
+		t.Errorf("status strands after an llm-seeded start = %d; want 0; output: %s", count, out)
+	}
+}
+
+// TestSmokeStart_FailedReedUpRefusesOnEitherDriver pins that a failed reed Up refuses start before
+// the watchdog and driver spawn on both arms. It needs no tmux.
+func TestSmokeStart_FailedReedUpRefusesOnEitherDriver(t *testing.T) {
+	exe := buildLyxBinary(t)
+
+	seeders := map[string]func(*testing.T, *lyxcwd.Location){
+		"go":  seedGoDriverRun,
+		"llm": seedLLMDriver,
+	}
+	for driver, seed := range seeders {
+		t.Run(driver, func(t *testing.T) {
+			loc, worktree := newBadReedUpFixture(t, seed)
+
+			out, exit, err := runLoomCLINoFatal(exe, worktree, stepSmokeTimeout, "loom", "start", "--no-attach")
+			if err != nil {
+				t.Fatalf("lyx loom start --no-attach: %v; output: %s", err, out)
+			}
+			if exit != 1 {
+				t.Fatalf("lyx loom start exit = %d; want 1; output: %s", exit, out)
+			}
+			if !strings.Contains(out, `"ok":false`) {
+				t.Errorf("start envelope is not ok:false; output: %s", out)
+			}
+			if pids := findWatchdogPIDs(loc.HubPath); len(pids) != 0 {
+				t.Errorf("watchdog pids after a failed reed Up = %v; want none", pids)
+			}
+			if pids := findDriverPIDs(worktree); len(pids) != 0 {
+				t.Errorf("driver pids after a failed reed Up = %v; want none", pids)
+			}
+		})
 	}
 }

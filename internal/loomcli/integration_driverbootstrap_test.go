@@ -19,8 +19,8 @@
 //
 // This drives the llm arm's own launch machinery (startLLMDriverArm) directly over a *loomCLI wired
 // through wire() -- the same production wiring "loom start" itself uses -- rather than through the
-// full cobra RunE: "loom start" also spawns the status strand's own watcher pane via os.Executable(),
-// which under go test resolves to this very test binary and would recursively re-run the whole suite
+// full cobra RunE: "loom start" on a go-driven run also spawns the status strand's own watcher pane via
+// os.Executable(), which under go test resolves to this very test binary and would recursively re-run the whole suite
 // inside that pane, exactly the hazard the Live-Substrate Spawn Observability invariant's "never
 // re-exec os.Executable() under go test" clause and this package's own smoke suite (see its header)
 // both exist to avoid. wire() itself spawns no process and resolves no cwd, so it carries none of that
