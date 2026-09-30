@@ -10,6 +10,7 @@ package fabricengine_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -74,6 +75,22 @@ func TestWriteHubWorkspace(t *testing.T) {
 				t.Fatalf("file bytes = %q, want %q", got, second)
 			}
 		})
+	}
+}
+
+// TestWriteHubWorkspace_ReadErrorFailsWithReadCause plants a directory at the workspace file path and asserts the write fails with the read cause.
+func TestWriteHubWorkspace_ReadErrorFailsWithReadCause(t *testing.T) {
+	t.Parallel()
+
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	if err := os.MkdirAll(fabricengine.HubWorkspacePath(l, "prime"), 0o755); err != nil {
+		t.Fatalf("plant directory: %v", err)
+	}
+
+	_, err := fabricengine.WriteHubWorkspace(l, "prime", []byte("{}\n"))
+	if err == nil || !strings.Contains(err.Error(), "read workspace file") {
+		t.Fatalf("WriteHubWorkspace error = %v; want the read cause", err)
 	}
 }
 
