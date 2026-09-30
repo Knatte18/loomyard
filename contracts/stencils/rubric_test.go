@@ -103,6 +103,7 @@ func TestLoomRubricPlanReview_NamesEveryRequiredItem(t *testing.T) {
 		{"Custom is a last resort", "is a last resort"},
 		{"fidelity to the decision record at its anchor-relative path", "_lyx/discussion/decision-record.md"},
 		{"writer/reviewer symmetry note", "writer/reviewer symmetry note"},
+		{"verify coverage of every targeted package", "does not run is a finding against the plan"},
 		{"anything this round's own gate already checks, through commit-subject-mismatch", "commit-subject-mismatch"},
 		{"dependency edges are derived, never authored", "Dependency edges are derived, never authored"},
 		{"Rename carries no ImpactSummary because there is no graded blast radius", "no graded blast radius to summarise"},
