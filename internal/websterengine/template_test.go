@@ -1151,8 +1151,7 @@ func TestRenderIntegrationPrompt_InjectsVerifyText(t *testing.T) {
 	}
 	text := string(got)
 	requireContains(t, text, plan.Verify)
-	requireContains(t, text, "/scratch/verify/integration.log")
-	requireContains(t, text, "2>&1")
+	requireContains(t, text, "> '/scratch/verify/integration.log' 2>&1")
 	requireNotContains(t, text, "## Shared Decisions")
 }
 

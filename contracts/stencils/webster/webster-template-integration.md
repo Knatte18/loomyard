@@ -29,10 +29,10 @@ Your only actions this turn are: run the command below at `{{.worktree_root}}`, 
 ```
 
 Run this command, exactly as written, from `{{.worktree_root}}`, with its combined stdout and stderr redirected to `{{.verify_log_path}}`.
-Group the whole command so the redirect covers every link of an `&&` chain, for example:
+Group the whole command so the redirect covers every link of an `&&` chain, and single-quote the log path so spaces or backslashes in it survive the shell, for example:
 
 ```
-( <the verify command above> ) > {{.verify_log_path}} 2>&1
+( <the verify command above> ) > '{{.verify_log_path}}' 2>&1
 ```
 
 Do not modify the command itself, do not substitute an equivalent command, and do not attempt to fix a failure yourself — you implement NO cards and make NO commit of any kind, ever, in this session.
