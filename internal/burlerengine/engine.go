@@ -201,7 +201,7 @@ func (e *Engine) Run(p Profile, opts RunOpts) (Result, error) {
 		NotStarted:           shuttleResult.NotStarted,
 	}
 
-	if result.Outcome !=shuttleengine.OutcomeDone {
+	if result.Outcome != shuttleengine.OutcomeDone {
 		// asking/died/timeout are normal loop events, not errors — the
 		// caller branches on Outcome (and, for asking, LastAssistantMessage
 		// above). Verdict stays empty: there is no review file to trust yet.
