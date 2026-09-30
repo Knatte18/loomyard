@@ -5,7 +5,7 @@
 // The first two cases drive checkRemoteBranchRequest through CheckRemoteBranchRequestForTest (export_test.go) and pin refusals the real call sites cannot reach.
 // The rest are executor-level cases driven through DeleteArchivedWeftBranchForTest: a pair's weft branch, still checked out at its weft worktree, is deleted from origin under a lease, and every refusal or stale lease leaves origin untouched.
 //
-// Package fabricengine_test: building either case needs a real hub via hubforge.NewHub, but an
+// Package fabricengine_test: building every case needs a real hub via hubforge.NewHub, but an
 // internal fabricengine test file cannot import internal/hubforge without closing an import cycle
 // (hubforge -> fabriccli -> fabricengine). Shares the single TestMain in testmain_test.go.
 
