@@ -1,8 +1,7 @@
 // spawn.go implements `ide spawn`: it assigns a title-bar color, generates the worktree's .vscode/
 // config when absent, and launches VS Code.
 // A task slug opens its bare folder.
-// The prime instead opens a lyx-generated hub workspace (prime, _board, _portals) under
-// <hub>/_launchers/<AnchorRel>, regenerated on every prime spawn.
+// The prime instead opens a lyx-generated hub workspace (prime, _board, _portals) under <hub>/_launchers/<AnchorRel>, regenerated on every prime spawn.
 
 package ideengine
 
@@ -25,9 +24,8 @@ var CodeLauncher = vscode.Launch
 
 // Spawn generates a worktree's .vscode/ config (if absent) and launches VS Code.
 // A task slug launches its bare folder <hub>/<slug>/<AnchorRel> and writes no workspace file.
-// When slug names the prime, Spawn writes the hub workspace file, whose settings carry the prime's
-// .vscode/settings.json, and launches that file instead; every error on that path is returned
-// wrapped with its step, never degraded to the bare folder.
+// When slug names the prime, Spawn writes the hub workspace file, whose settings carry the prime's .vscode/settings.json, and launches that file instead;
+// every error on that path is returned wrapped with its step, never degraded to the bare folder.
 // A failure to resolve the prime's name is logged and degrades to the bare-folder path.
 func Spawn(l *lyxcwd.Location, slug string) error {
 	worktreeDir := fabricengine.WorktreePath(l, slug)
