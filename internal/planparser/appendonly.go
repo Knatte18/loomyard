@@ -1,7 +1,6 @@
-// appendonly.go compares a base plan and an extended plan for the append-only rule the rework row
-// enforces: the extended plan is the base plus one or more appended cards, and nothing else changed.
-// It works over planparser's own parsed model, so a whitespace-only reflow the parser normalizes
-// away is not a violation.
+// appendonly.go compares a base plan and an extended plan for the append-only rule the rework row enforces:
+// the extended plan is the base plus one or more appended cards, and nothing else changed.
+// It works over planparser's own parsed model, so a whitespace-only reflow the parser normalizes away is not a violation.
 
 package planparser
 
@@ -10,10 +9,8 @@ import (
 	"reflect"
 )
 
-// CheckAppendOnly returns one human-readable violation per breach of the append-only rule, and nil
-// when extended is base plus one or more appended cards.
-// It checks the frontmatter fields, the plan-level sections, every pre-existing card by position,
-// and that at least one card was appended.
+// CheckAppendOnly returns one human-readable violation per breach of the append-only rule, and nil when extended is base plus one or more appended cards.
+// It checks the frontmatter fields, the plan-level sections, every pre-existing card by position, and that at least one card was appended.
 // Card numbering after the base cards is ValidateFormat's concern and is not re-checked here.
 func CheckAppendOnly(base, extended *Plan) []string {
 	var violations []string

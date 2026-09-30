@@ -174,8 +174,7 @@ func testLandingDeps(dir string) landingshed.Deps {
 	}
 }
 
-// testReworkDeps returns a loomshed.PRReworkDeps whose every seam is a no-op fake and whose two
-// directories are absolute paths under dir, so the PRRework entry constructs.
+// testReworkDeps returns a loomshed.PRReworkDeps whose every seam is a no-op fake and whose two directories are absolute paths under dir, so the PRRework entry constructs.
 func testReworkDeps(dir string) loomshed.PRReworkDeps {
 	return loomshed.PRReworkDeps{
 		PlanDir:       filepath.Join(dir, lyxdirs.LyxDirName, "plan"),

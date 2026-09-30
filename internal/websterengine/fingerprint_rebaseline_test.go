@@ -1,7 +1,7 @@
 //go:build integration
 
-// fingerprint_rebaseline_test.go exercises RebaselinePlanFingerprint (Tier 2): it builds on
-// runlevel_test.go's run fixture, which is backed by a real scratch git repo.
+// fingerprint_rebaseline_test.go exercises RebaselinePlanFingerprint (Tier 2):
+// it builds on runlevel_test.go's run fixture, which is backed by a real scratch git repo.
 
 package websterengine_test
 
@@ -13,9 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// TestRebaselinePlanFingerprint_RestampsStaleFingerprintKeepingBatches proves an existing
-// state.json with a stale fingerprint is restamped to the plan's current digest and its batch
-// records survive untouched.
+// TestRebaselinePlanFingerprint_RestampsStaleFingerprintKeepingBatches proves an existing state.json with a stale fingerprint is restamped to the plan's current digest and its batch records survive untouched.
 func TestRebaselinePlanFingerprint_RestampsStaleFingerprintKeepingBatches(t *testing.T) {
 	fx := newRunFixture(t, 2)
 	geom := fx.Deps.Geom
@@ -59,8 +57,7 @@ func TestRebaselinePlanFingerprint_RestampsStaleFingerprintKeepingBatches(t *tes
 	}
 }
 
-// TestRebaselinePlanFingerprint_AbsentStateStaysAbsent proves that with no state.json the call is
-// a no-op: no error, and no state file is created.
+// TestRebaselinePlanFingerprint_AbsentStateStaysAbsent proves that with no state.json the call is a no-op: no error, and no state file is created.
 func TestRebaselinePlanFingerprint_AbsentStateStaysAbsent(t *testing.T) {
 	fx := newRunFixture(t, 1)
 	geom := fx.Deps.Geom

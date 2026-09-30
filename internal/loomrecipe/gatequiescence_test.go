@@ -50,8 +50,8 @@ func TestNoGatedRowAuthorizesForkSubagents(t *testing.T) {
 			// landingshed.DescribeSpec, none of which sets Spec.ForkSubagents anywhere in its own
 			// construction -- the zero value (false) is what every writer spec carries by
 			// construction, so a writer row identified by engine name alone is what this case
-			// attests to. PRRework is a writer row too: loomengine.ReworkSpec mirrors PlanSpec and
-			// sets no ForkSubagents either.
+			// attests to.
+			// PRRework is a writer row too: loomengine.ReworkSpec mirrors PlanSpec and sets no ForkSubagents either.
 			continue
 		case "BurlerRound":
 			profile, ok := row.Config["profile"].(map[string]any)

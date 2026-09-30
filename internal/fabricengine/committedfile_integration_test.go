@@ -1,8 +1,7 @@
 //go:build integration
 
 // committedfile_integration_test.go covers CommittedAnchoredFile against a wired hub fixture:
-// the committed bytes come back despite a later working-tree edit, and a path never committed
-// reports found == false.
+// the committed bytes come back despite a later working-tree edit, and a path never committed reports found == false.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
@@ -16,8 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 )
 
-// TestCommittedAnchoredFile_ReturnsCommittedBytes commits an anchored file, edits the working-tree
-// copy, and asserts the committed bytes come back.
+// TestCommittedAnchoredFile_ReturnsCommittedBytes commits an anchored file, edits the working-tree copy, and asserts the committed bytes come back.
 func TestCommittedAnchoredFile_ReturnsCommittedBytes(t *testing.T) {
 	t.Parallel()
 

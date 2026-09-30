@@ -1,6 +1,5 @@
-// entries_prrework.go implements prReworkEntry, the Constructor for the "PRRework" registry row: it
-// wraps a gated shedadapters.SingleLLMProducer in loomshed.NewPRRework's append-only-check and
-// round-record decorator, so it lives in its own file like planWriteEntry.
+// entries_prrework.go implements prReworkEntry, the Constructor for the "PRRework" registry row:
+// it wraps a gated shedadapters.SingleLLMProducer in loomshed.NewPRRework's append-only-check and round-record decorator, so it lives in its own file like planWriteEntry.
 
 package shedrecipe
 
@@ -10,13 +9,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// prReworkEntry is the Constructor for the "PRRework" registry row: it resolves the row's
-// "gate"/"gate_attempts" Config keys through resolveGateSpec, validates Env.ReworkSpec,
-// Env.Shuttle, every seam of Env.Rework, and the absolute Env.Rework.PlanDir and
-// Env.Rework.ReworkDir, then builds a gated SingleLLMProducer behind loomshed.NewPRRework.
+// prReworkEntry is the Constructor for the "PRRework" registry row:
+// it resolves the row's "gate"/"gate_attempts" Config keys through resolveGateSpec, validates Env.ReworkSpec, Env.Shuttle, every seam of Env.Rework, and the absolute Env.Rework.PlanDir and Env.Rework.ReworkDir, then builds a gated SingleLLMProducer behind loomshed.NewPRRework.
 //
-// No fresh-spawn preparation is passed: the adapter already archives a stale coverage file on a
-// fresh spawn, and nothing else may be moved out from under the plan.
+// No fresh-spawn preparation is passed: the adapter already archives a stale coverage file on a fresh spawn,
+// and nothing else may be moved out from under the plan.
 //
 // The Spec arrives as an injected shedadapters.SpecSource for the reason planWriteEntry gives.
 func prReworkEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {

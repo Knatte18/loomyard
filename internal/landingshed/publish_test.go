@@ -95,9 +95,7 @@ func writeSummary(t *testing.T, path, title, body string) {
 	}
 }
 
-// publishGitHubServer is a scripted httptest server standing in for the GitHub API: it answers a
-// pull-request list query, a create call and an edit call, appending "list"/"create"/"edit" to order (shared
-// with the push closure's own "push" append) so a test can assert relative call ordering.
+// publishGitHubServer is a scripted httptest server standing in for the GitHub API: it answers a pull-request list query, a create call and an edit call, appending "list"/"create"/"edit" to order (shared with the push closure's own "push" append) so a test can assert relative call ordering.
 type publishGitHubServer struct {
 	server *httptest.Server
 	order  *[]string
@@ -528,8 +526,7 @@ func TestPublish_NoExistingPR_CreatesAndReportsDone(t *testing.T) {
 	}
 }
 
-// openPRPublish runs Publish against a server listing one open pull request with the given title
-// and body, and a change description of "New Title" / "New body.".
+// openPRPublish runs Publish against a server listing one open pull request with the given title and body, and a change description of "New Title" / "New body.".
 func openPRPublish(t *testing.T, prTitle, prBody string) (shedengine.Outcome, error, *publishGitHubServer) {
 	t.Helper()
 	deps := newTestDeps(t)

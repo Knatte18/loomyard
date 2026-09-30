@@ -1,7 +1,5 @@
-// prrework.go implements the PR-Rework row's producer: it wraps the gated rework session and does
-// everything Go owns around it -- the append-only check of the plan the session extended, the round
-// record committed beside the appended cards, the plan-fingerprint re-baseline, and the removal of
-// the pending rejection.
+// prrework.go implements the PR-Rework row's producer: it wraps the gated rework session and does everything Go owns around it.
+// That is the append-only check of the plan the session extended, the round record committed beside the appended cards, the plan-fingerprint re-baseline, and the removal of the pending rejection.
 
 package loomshed
 
@@ -82,8 +80,7 @@ func NewPRRework(name string, inner shedengine.ShedProducer, deps PRReworkDeps) 
 }
 
 // Call implements shedengine.ShedProducer.
-// A Commit, Rebaseline or ClearRejection failure is a returned error, never Stuck,
-// for the reason planWrite.Call gives: re-running the session cannot fix a git or filesystem fault.
+// A Commit, Rebaseline or ClearRejection failure is a returned error, never Stuck, for the reason planWrite.Call gives: re-running the session cannot fix a git or filesystem fault.
 func (p *prRework) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, p.name); err != nil {
 		return "", shedengine.OutputPointer{}, err
@@ -221,8 +218,7 @@ func (p *prRework) committedRoundHeads() (map[string]bool, error) {
 	return heads, nil
 }
 
-// appendOnlyViolation compares the plan committed at HEAD with the working tree and returns the
-// joined violations, or "" when the working tree is the base plus appended cards.
+// appendOnlyViolation compares the plan committed at HEAD with the working tree and returns the joined violations, or "" when the working tree is the base plus appended cards.
 func (p *prRework) appendOnlyViolation() (string, error) {
 	base, err := planparser.ParsePlanFrom(p.deps.PlanDir, func(name string) ([]byte, error) {
 		rel := path.Join(planparser.PlanDirRel(), name)
@@ -289,8 +285,7 @@ func (p *prRework) writeRound(pending PendingRejection, coveragePath string) err
 	return nil
 }
 
-// roundFor returns the working-tree round whose record.json already carries headSHA (a crash before
-// the commit), else the highest round plus one.
+// roundFor returns the working-tree round whose record.json already carries headSHA (a crash before the commit), else the highest round plus one.
 func (p *prRework) roundFor(headSHA string) (int, error) {
 	nums, err := p.roundNumbers()
 	if err != nil {

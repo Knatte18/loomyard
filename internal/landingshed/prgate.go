@@ -1,7 +1,5 @@
-// prgate.go implements the PR-Gate producer: the one row that owns every review decision after
-// Publish has opened or refreshed the pull request.
-// It reads the pull request and the operator's two decision records and lands the run, holds it
-// awaiting a decision, or bounces the findings to the rework row.
+// prgate.go implements the PR-Gate producer: the one row that owns every review decision after Publish has opened or refreshed the pull request.
+// It reads the pull request and the operator's two decision records and lands the run, holds it awaiting a decision, or bounces the findings to the rework row.
 
 package landingshed
 

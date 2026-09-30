@@ -137,14 +137,11 @@ type Env struct {
 	// loom-config imports into this Told-Geometry-bound package.
 	ReflectFriction func() string
 	// ReworkSpec is the injected shedadapters.SpecSource the PRRework entry evaluates once per Call.
-	// It arrives as a closure rather than as recipe Config because building the Spec needs a
-	// *lyxcwd.Location, which the Shed Recipe Registry Invariant bars this package from importing
-	// directly; internal/loomcli's wire() is what supplies it.
+	// It arrives as a closure rather than as recipe Config because building the Spec needs a *lyxcwd.Location, which the Shed Recipe Registry Invariant bars this package from importing directly;
+	// internal/loomcli's wire() is what supplies it.
 	ReworkSpec shedadapters.SpecSource
-	// Rework is a whole-struct passthrough to loomshed.NewPRRework, following Env.Landing's own
-	// precedent: the producer has behaviour of its own -- the append-only check, the round record,
-	// the re-baseline and the rejection removal -- that per-seam fakes must be able to substitute
-	// individually.
+	// Rework is a whole-struct passthrough to loomshed.NewPRRework, following Env.Landing's own precedent:
+	// the producer has behaviour of its own -- the append-only check, the round record, the re-baseline and the rejection removal -- that per-seam fakes must be able to substitute individually.
 	Rework loomshed.PRReworkDeps
 
 	// Slug is the run-wide task slug, read by all three batten entries (WorktreeCreate, InnerRun,

@@ -47,14 +47,12 @@ func publishEntry(_ string, cfg Config, env Env) (shedengine.ShedProducer, error
 	return p, nil
 }
 
-// prGateEntry is the Constructor for the "PRGate" registry row: publishEntry's twin over
-// landingshed.NewPRGate(env.Landing).
+// prGateEntry is the Constructor for the "PRGate" registry row: publishEntry's twin over landingshed.NewPRGate(env.Landing).
 //
-// name is deliberately discarded, for the same reason as publishEntry: landingshed.Deps carries no
-// name field, and the gate's own identity is a package constant.
+// name is deliberately discarded, for the same reason as publishEntry:
+// landingshed.Deps carries no name field, and the gate's own identity is a package constant.
 //
-// It validates no Env field of its own: landingshed.NewPRGate already rejects an empty
-// ApprovalPath, an empty RejectionPath and a nil TaskHead.
+// It validates no Env field of its own: landingshed.NewPRGate already rejects an empty ApprovalPath, an empty RejectionPath and a nil TaskHead.
 func prGateEntry(_ string, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	if err := configRejectUnknown(cfg); err != nil {
 		return nil, err

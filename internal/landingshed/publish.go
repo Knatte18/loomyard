@@ -1,9 +1,5 @@
-// publish.go implements the Publish producer: when the task's parent branch requires a pull
-// request, it merges the parent's own catch-up into the task worktree, pushes the task branch, and
-// opens or refreshes the pull request (title and body included) against that parent, then returns Done
-// because the PR-Gate producer that follows owns the review wait -- reporting only what the
-// shedengine.ShedProducer seam can carry: a verdict, an output pointer whose Reason the engine
-// persists, and an error.
+// publish.go implements the Publish producer: when the task's parent branch requires a pull request, it merges the parent's own catch-up into the task worktree, pushes the task branch, and opens or refreshes the pull request (title and body included) against that parent, then returns Done because the PR-Gate producer that follows owns the review wait.
+// It reports only what the shedengine.ShedProducer seam can carry: a verdict, an output pointer whose Reason the engine persists, and an error.
 //
 // Only the externally visible branch is pushed: the pull request is an artifact of the repository
 // the remote service can see. The other side's remote state belongs to the merge step and the
@@ -226,9 +222,10 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 
 	switch {
 	case pr.GetState() == "open":
-		// No second pull request created and no second merge-in. The push at step 5 still ran, so
-		// the pull request already carries any commits added since; its title and body are refreshed
-		// from the change description. Done is safe: the next row is the PR-Gate.
+		// No second pull request created and no second merge-in.
+		// The push at step 5 still ran, so the pull request already carries any commits added since;
+		// its title and body are refreshed from the change description.
+		// Done is safe: the next row is the PR-Gate.
 		return p.refreshPullRequest(ctx, client, owner, repo, pr)
 	case !pr.GetMergedAt().IsZero():
 		// GitHub's List Pull Requests endpoint -- the query above -- never populates the "merged"
@@ -246,11 +243,10 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 	}
 }
 
-// refreshPullRequest brings an open pull request's title and body in line with the change
-// description, editing only when either differs, and returns Done.
+// refreshPullRequest brings an open pull request's title and body in line with the change description, editing only when either differs, and returns Done.
 //
-// An edit failure takes the same split as the create call: a transient failure is returned as an
-// error so the driver re-steps once, and anything else is a Stuck verdict for a human.
+// An edit failure takes the same split as the create call: a transient failure is returned as an error so the driver re-steps once,
+// and anything else is a Stuck verdict for a human.
 func (p *Publish) refreshPullRequest(ctx context.Context, client *github.Client, owner, repo string, pr *github.PullRequest) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	summary, err := summaryparser.Parse(p.deps.DescriptionPath)
 	if err != nil {

@@ -11,8 +11,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
-// appendOnlyOverview renders a plan overview with the given frontmatter approval flag, framing
-// paragraph, verify command and card count; each card i is `i — cN — card N`.
+// appendOnlyOverview renders a plan overview with the given frontmatter approval flag, framing paragraph, verify command and card count;
+// each card i is `i — cN — card N`.
 func appendOnlyOverview(approved bool, framing, verify string, cards int) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "---\nformat: 5\napproved: %t\n---\n\n# Plan: rework\n\n%s\n\n## Card Index\n\n", approved, framing)

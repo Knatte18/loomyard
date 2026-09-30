@@ -1,7 +1,7 @@
 // approval.go — the operator-approval record.
 //
-// `lyx loom approve` writes the record and the PR gate reads it, both through Approval, so the format
-// lives in the package that reads it. The path is always told; this package derives none.
+// `lyx loom approve` writes the record and the PR gate reads it, both through Approval, so the format lives in the package that reads it.
+// The path is always told; this package derives none.
 
 package landingshed
 
@@ -24,14 +24,13 @@ type Approval struct {
 	ApprovedAt string `json:"approved_at"`
 }
 
-// WriteApproval writes a to path, creating the parent directory and replacing any earlier record
-// atomically, so a reader never sees a partial file.
+// WriteApproval writes a to path, creating the parent directory and replacing any earlier record atomically, so a reader never sees a partial file.
 func WriteApproval(path string, a Approval) error {
 	return writeRecordAtomic(path, "approval", a)
 }
 
-// writeRecordAtomic encodes v as JSON and writes it to path through a temp file in the same
-// directory and a rename, creating the parent directory; kind names the record in error messages.
+// writeRecordAtomic encodes v as JSON and writes it to path through a temp file in the same directory and a rename, creating the parent directory;
+// kind names the record in error messages.
 func writeRecordAtomic(path, kind string, v any) error {
 	data, err := json.Marshal(v)
 	if err != nil {

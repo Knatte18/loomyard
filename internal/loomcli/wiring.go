@@ -483,8 +483,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		ReworkSpec: func() (shuttleengine.Spec, error) {
 			return loomengine.ReworkSpec(location, websterGeom.StencilsDir, websterGeom.SpecsDir, loomCfg, registry)
 		},
-		// Rework opens nothing at wire time: every closure reads or writes on demand, since wire() also
-		// runs for status/pause.
+		// Rework opens nothing at wire time: every closure reads or writes on demand, since wire() also runs for status/pause.
 		Rework: loomshed.PRReworkDeps{
 			PlanDir:      planparser.PlanDir(anchorPath),
 			ReworkDir:    loomengine.LoomReworkDir(location),

@@ -1,7 +1,7 @@
 // rejection.go — the operator-rejection record.
 //
-// `lyx loom reject` writes the record and the PR gate reads it, both through Rejection, beside the
-// approval record. The path is always told; this package derives none.
+// `lyx loom reject` writes the record and the PR gate reads it, both through Rejection, beside the approval record.
+// The path is always told; this package derives none.
 
 package landingshed
 
@@ -26,13 +26,13 @@ type Rejection struct {
 	Findings string `json:"findings"`
 }
 
-// WriteRejection writes r to path, creating the parent directory and replacing any earlier record
-// atomically, so a reader never sees a partial file.
+// WriteRejection writes r to path, creating the parent directory and replacing any earlier record atomically, so a reader never sees a partial file.
 func WriteRejection(path string, r Rejection) error {
 	return writeRecordAtomic(path, "rejection", r)
 }
 
-// ReadRejection reads the record at path. An absent file returns found == false with a nil error;
+// ReadRejection reads the record at path.
+// An absent file returns found == false with a nil error;
 // unreadable or undecodable content, or a record missing any field, is an error.
 // Blank findings count as missing.
 func ReadRejection(path string) (Rejection, bool, error) {

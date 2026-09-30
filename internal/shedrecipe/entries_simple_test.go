@@ -57,8 +57,7 @@ func validLandingDeps(t *testing.T) landingshed.Deps {
 	}
 }
 
-// validGateDeps is validLandingDeps with the three fields landingshed.NewPRGate additionally
-// requires: both decision-record paths and a TaskHead closure.
+// validGateDeps is validLandingDeps with the three fields landingshed.NewPRGate additionally requires: both decision-record paths and a TaskHead closure.
 func validGateDeps(t *testing.T) landingshed.Deps {
 	t.Helper()
 	deps := validLandingDeps(t)
@@ -354,8 +353,7 @@ func TestPublishEntry_LandingRejected(t *testing.T) {
 	}
 }
 
-// TestPRGateEntry covers prGateEntry's construction: it builds a *landingshed.PRGate from a full
-// Env.Landing, and wraps the constructor's refusal of a nil TaskHead with this package's prefix.
+// TestPRGateEntry covers prGateEntry's construction: it builds a *landingshed.PRGate from a full Env.Landing, and wraps the constructor's refusal of a nil TaskHead with this package's prefix.
 func TestPRGateEntry(t *testing.T) {
 	t.Run("BuildsPRGate", func(t *testing.T) {
 		env := newTestEnv(t)

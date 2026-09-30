@@ -1609,12 +1609,10 @@ func TestRun_ZeroGateReachesStartMasterUngated(t *testing.T) {
 	}
 }
 
-// TestRun_ResumesOverExtendedPlanAfterRebaseline proves the rework row's acceptance criterion: a
-// finished two-card run whose plan gains a third card, re-baselined by RebaselinePlanFingerprint,
-// is resumed by Run with no ErrFingerprintMismatch.
-// The finished run's outcome, summary and integration report are cleared before Master spawns,
-// the Master prompt carries batches 1-2 as complete and only batch 3 as pending, and the
-// integration prompt is written because the plan carries a "## verify:" section.
+// TestRun_ResumesOverExtendedPlanAfterRebaseline proves the rework row's acceptance criterion:
+// a finished two-card run whose plan gains a third card, re-baselined by RebaselinePlanFingerprint, is resumed by Run with no ErrFingerprintMismatch.
+// The finished run's outcome, summary and integration report are cleared before Master spawns, the Master prompt carries batches 1-2 as complete and only batch 3 as pending,
+// and the integration prompt is written because the plan carries a "## verify:" section.
 func TestRun_ResumesOverExtendedPlanAfterRebaseline(t *testing.T) {
 	fx := newRunFixture(t, 2)
 	appendIntegrationVerify(t, fx.PlanDir, "go test ./...")

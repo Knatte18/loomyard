@@ -1,5 +1,4 @@
-// entries_prrework_test.go covers prReworkEntry: its construction-time validation over Config, the
-// injected ReworkSpec and Shuttle, every Env.Rework seam and its two told directories.
+// entries_prrework_test.go covers prReworkEntry: its construction-time validation over Config, the injected ReworkSpec and Shuttle, every Env.Rework seam and its two told directories.
 
 package shedrecipe
 

@@ -101,18 +101,13 @@ func restampAndSaveFingerprint(geom Geometry, st *State) error {
 	return SaveState(geom.WebsterDir, geom.ScratchDir, st)
 }
 
-// RebaselinePlanFingerprint restamps the recorded plan fingerprint to the plan's current digest,
-// for a caller outside this package that has just rewritten the plan on disk.
+// RebaselinePlanFingerprint restamps the recorded plan fingerprint to the plan's current digest, for a caller outside this package that has just rewritten the plan on disk.
 //
 // It serves one rule: every sanctioned plan rewrite is re-baselined immediately by its writer.
-// Without it the next run entry sees a plan that differs from the recorded fingerprint and refuses
-// with ErrFingerprintMismatch, whose advised recourse (a fresh run) would discard the batch
-// records the rewrite meant to keep.
+// Without it the next run entry sees a plan that differs from the recorded fingerprint and refuses with ErrFingerprintMismatch, whose advised recourse (a fresh run) would discard the batch records the rewrite meant to keep.
 //
-// It runs outside Run, so it takes the state-mutation lease itself and holds it across LoadState,
-// the restamp and SaveState, releasing it before returning.
-// A nil state means no webster run has started, so there is no recorded fingerprint to desync and
-// the call is a no-op.
+// It runs outside Run, so it takes the state-mutation lease itself and holds it across LoadState, the restamp and SaveState, releasing it before returning.
+// A nil state means no webster run has started, so there is no recorded fingerprint to desync and the call is a no-op.
 func RebaselinePlanFingerprint(geom Geometry) error {
 	lease, err := AcquireStateMutation(geom.ScratchDir)
 	if err != nil {

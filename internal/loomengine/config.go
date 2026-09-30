@@ -225,8 +225,7 @@ func LoomRejectionPath(l *lyxcwd.Location) string {
 	return filepath.Join(LoomScratchDir(l), loomRejectionFileName)
 }
 
-// LoomReworkCoveragePath returns the path to the rework agent's completion file,
-// which maps each finding to the new cards covering it.
+// LoomReworkCoveragePath returns the path to the rework agent's completion file, which maps each finding to the new cards covering it.
 // It is built on LoomScratchDir rather than re-joining the .lyx literal, and is ephemeral:
 // the file is never tracked, per the Durable-vs-Ephemeral State Invariant.
 // Per the Cwd Resolution Invariant, no other package may construct this path.

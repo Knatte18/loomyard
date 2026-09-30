@@ -1,5 +1,4 @@
-// prrework_test.go exercises the PR-Rework row's producer at Tier 1: a fake inner session that edits
-// the working-tree plan, fake record seams, and an in-memory ReadCommitted over a map.
+// prrework_test.go exercises the PR-Rework row's producer at Tier 1: a fake inner session that edits the working-tree plan, fake record seams, and an in-memory ReadCommitted over a map.
 
 package loomshed
 

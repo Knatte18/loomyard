@@ -1,5 +1,4 @@
-// prgate_test.go covers PRGate against a fake GitHub server swapped in through NewGitHubClient,
-// row by row through the decision table.
+// prgate_test.go covers PRGate against a fake GitHub server swapped in through NewGitHubClient, row by row through the decision table.
 
 package landingshed
 

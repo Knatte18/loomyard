@@ -205,9 +205,7 @@ func TestRecipeEngines_ReportsExactlyLoomsOwnEngineSet(t *testing.T) {
 	}
 }
 
-// TestRecipe_PublishRoutesThroughPRGate pins the review fix-back routing: Publish hands to the
-// gate, the gate lands on Finalize or bounces to the rework row, the rework row re-enters Webster,
-// both rows share segment PR-Review, and the main line still ends at Friction-Reflect.
+// TestRecipe_PublishRoutesThroughPRGate pins the review fix-back routing: Publish hands to the gate, the gate lands on Finalize or bounces to the rework row, the rework row re-enters Webster, both rows share segment PR-Review, and the main line still ends at Friction-Reflect.
 func TestRecipe_PublishRoutesThroughPRGate(t *testing.T) {
 	env, paths := testEnv(t)
 	shed, err := New(env, paths)

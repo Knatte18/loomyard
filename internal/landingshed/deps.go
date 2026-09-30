@@ -99,13 +99,12 @@ type Deps struct {
 	// every-field-populated drift guard is what keeps it filled.
 	CommitStatus func() error
 
-	// ApprovalPath and RejectionPath are the operator's two decision records' paths, and TaskHead
-	// returns the task branch's local HEAD SHA. The PR gate, not Publish, reads both records and
-	// TaskHead, and lands or bounces the pull request only if the pull request, a record and
-	// TaskHead all agree.
+	// ApprovalPath and RejectionPath are the operator's two decision records' paths,
+	// and TaskHead returns the task branch's local HEAD SHA.
+	// The PR gate, not Publish, reads both records and TaskHead, and lands or bounces the pull request only if the pull request, a record and TaskHead all agree.
 	//
-	// The gate's constructor refuses empty paths and a nil TaskHead. internal/loomcli's
-	// landingDeps fills all three, and its drift guard keeps them filled.
+	// The gate's constructor refuses empty paths and a nil TaskHead.
+	// internal/loomcli's landingDeps fills all three, and its drift guard keeps them filled.
 	ApprovalPath  string
 	RejectionPath string
 	TaskHead      func() (string, error)

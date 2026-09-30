@@ -1,5 +1,4 @@
-// rework.go implements ReworkSpec, the PR-Rework producer's Spec factory, and its
-// composeReworkPrompt prompt composer.
+// rework.go implements ReworkSpec, the PR-Rework producer's Spec factory, and its composeReworkPrompt prompt composer.
 // Like PlanSpec, the rework agent is a prompt/profile fed to shuttle.Run, one shuttle.Run producing one artifact.
 // It turns the pending rejection's findings into cards appended to the existing plan, and writes the coverage file last as its completion signal.
 // Rework is planning, so it reuses the plan role's model-spec and timeout rather than carrying config keys of its own.
@@ -37,8 +36,7 @@ type reworkPaths struct {
 	planStencil    string
 }
 
-// composeReworkPrompt builds the rework prompt by reading the "loom-template-rework" stencil from
-// stencilsDir and filling it.
+// composeReworkPrompt builds the rework prompt by reading the "loom-template-rework" stencil from stencilsDir and filling it.
 // Only pattern_directive and the friction marker are optional; specs_dir and every path marker fail composition when empty.
 func composeReworkPrompt(stencilsDir, specsDir string, p reworkPaths, patternDirective, frictionDirective string) ([]byte, error) {
 	template, err := stencilstore.Read(stencilsDir, reworkStencilName)
@@ -101,8 +99,7 @@ func ReworkSpec(layout *lyxcwd.Location, stencilsDir, specsDir string, cfg Confi
 	notePath := friction.NotePath(frictionDir, "PR-Rework")
 	frictionDirective, err := friction.Directive(notePath, stencilsDir, friction.RoleImplementer)
 	if err != nil {
-		// A friction.Directive error is swallowed, never returned: it is optional bookkeeping, so a
-		// transient stencil read failure must never fail the rework spawn.
+		// A friction.Directive error is swallowed, never returned: it is optional bookkeeping, so a transient stencil read failure must never fail the rework spawn.
 		logger.Warn("loom: friction directive failed, continuing without one", "role", "rework", "stencil", reworkStencilName, "error", err)
 		frictionDirective = ""
 	}

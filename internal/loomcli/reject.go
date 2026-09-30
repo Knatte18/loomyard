@@ -1,10 +1,8 @@
-// reject.go implements the `reject` loom verb: the operator's recorded rejection of the task's open
-// pull request, with the review findings read from a file. It writes the rejection record the PR-Gate
-// row honours on its next run, removing any approval first so the latest decision wins, and never
-// resumes the run itself, so a supervisor driving `lyx loom step` is never raced.
+// reject.go implements the `reject` loom verb: the operator's recorded rejection of the task's open pull request, with the review findings read from a file.
+// It writes the rejection record the PR-Gate row honours on its next run, removing any approval first so the latest decision wins,
+// and never resumes the run itself, so a supervisor driving `lyx loom step` is never raced.
 //
-// The cobra shell is thin over rejectVerb, which takes every side effect as an injected closure so
-// the refusal table is testable without git or network.
+// The cobra shell is thin over rejectVerb, which takes every side effect as an injected closure so the refusal table is testable without git or network.
 
 package loomcli
 

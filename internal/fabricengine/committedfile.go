@@ -1,6 +1,5 @@
 // committedfile.go implements CommittedAnchoredFile, the read-only twin of CommitAnchoredPaths:
-// it reads one anchored file as committed at HEAD without the caller naming the side of the pair
-// that holds it.
+// it reads one anchored file as committed at HEAD without the caller naming the side of the pair that holds it.
 
 package fabricengine
 
@@ -13,11 +12,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
-// CommittedAnchoredFile returns relPath's contents as committed at HEAD, unaffected by any
-// uncommitted edit to the working-tree copy.
+// CommittedAnchoredFile returns relPath's contents as committed at HEAD, unaffected by any uncommitted edit to the working-tree copy.
 //
-// relPath is anchor-relative, the shape LoomReworkDirRel and planparser.PlanDirRel return, so a
-// caller never joins AnchorRel itself or names the side of the pair that holds the file.
+// relPath is anchor-relative, the shape LoomReworkDirRel and planparser.PlanDirRel return, so a caller never joins AnchorRel itself or names the side of the pair that holds the file.
 // The commit target resolves from l exactly as CommitAnchoredPaths resolves it.
 //
 // found is false with a nil error when the path is absent at HEAD or HEAD is unborn;

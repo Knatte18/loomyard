@@ -30,8 +30,7 @@ func newReworkStencilsDir(t *testing.T) string {
 	return dir
 }
 
-// TestReworkSpec verifies the field mapping, that every marker renders its told path, and that the
-// plan role's model-spec and timeout are reused.
+// TestReworkSpec verifies the field mapping, that every marker renders its told path, and that the plan role's model-spec and timeout are reused.
 func TestReworkSpec(t *testing.T) {
 	worktreeRoot := filepath.Join("home", "user", "repo")
 	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}
@@ -88,8 +87,7 @@ func TestReworkSpec(t *testing.T) {
 	}
 }
 
-// TestReworkSpec_MissingStencil verifies a stencils directory without the rework stencil fails
-// composition rather than producing an empty prompt.
+// TestReworkSpec_MissingStencil verifies a stencils directory without the rework stencil fails composition rather than producing an empty prompt.
 func TestReworkSpec_MissingStencil(t *testing.T) {
 	worktreeRoot := filepath.Join("home", "user", "repo")
 	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}

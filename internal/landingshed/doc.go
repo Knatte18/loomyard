@@ -1,11 +1,9 @@
-// Package landingshed owns landing's two general producers, Publish and Finalize, which any
-// producer list may name -- neither is special-cased by the engine that drives them.
+// Package landingshed owns landing's three general producers, Publish, PR-Gate and Finalize, which any producer list may name -- none is special-cased by the engine that drives them.
 //
 // Publish checks the configured require_pr_to_base list (see LoadConfig) against the task's own
 // parent branch. When the parent is absent from that list, Publish is a no-op: Done immediately, no
-// merge-in, no push, no GitHub call. When the parent is present, Publish syncs the task branch against the parent through internal/mergeresolve, verifies the merged tree, pushes it,
-// and opens the pull request, or refreshes an open one's title and body, from the change description
-// (the file the Describe row writes, one source shared with the landing commit), then returns Done.
+// merge-in, no push, no GitHub call.
+// When the parent is present, Publish syncs the task branch against the parent through internal/mergeresolve, verifies the merged tree, pushes it, and opens the pull request, or refreshes an open one's title and body, from the change description (the file the Describe row writes, one source shared with the landing commit), then returns Done.
 // The PR-Gate producer in this package then owns approval, rejection and the wait for the reviewer;
 // PRGate.Call documents its decision table.
 //
