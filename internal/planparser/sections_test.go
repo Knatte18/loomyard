@@ -82,6 +82,7 @@ func TestParsePlan_PlanLevelSections_AbsentAreEmpty(t *testing.T) {
 // line: the plan stencil tells the planner the section holds one or more commands, and a plan
 // whose section read `go vet ./...` then `go test ./...` had its tests silently skipped by
 // webster's integration gate (crucible round fable-high-r2).
+// The fence and comment rows pin that code-fence lines and full-line "#" comments are skipped rather than chained (issue #285).
 func TestParsePlan_VerifySection_ChainsEveryLine(t *testing.T) {
 	t.Parallel()
 
@@ -95,6 +96,14 @@ func TestParsePlan_VerifySection_ChainsEveryLine(t *testing.T) {
 		{"BlankLinesBetween", "\ngo vet ./...\n\n  go test -race ./...  \n\n", "go vet ./... && go test -race ./..."},
 		{"AlreadyChained", "go vet ./... && go test ./...\n", "go vet ./... && go test ./..."},
 		{"EntirelyBlank", "\n\n", ""},
+		{"FenceWithInfoString", "```bash\ngo vet ./...\ngo test ./...\n```\n", "go vet ./... && go test ./..."},
+		{"PlainBacktickFence", "```\ngo vet ./...\ngo test ./...\n```\n", "go vet ./... && go test ./..."},
+		{"TildeFence", "~~~\ngo vet ./...\ngo test ./...\n~~~\n", "go vet ./... && go test ./..."},
+		{"TildeFenceWithInfoString", "~~~sh\ngo vet ./...\ngo test ./...\n~~~\n", "go vet ./... && go test ./..."},
+		{"LongerFence", "````\ngo vet ./...\ngo test ./...\n````\n", "go vet ./... && go test ./..."},
+		{"IndentedFence", "  ```bash\n  go vet ./...\n  go test ./...\n  ```\n", "go vet ./... && go test ./..."},
+		{"FenceOnly", "```bash\n```\n", ""},
+		{"CommentLines", "# build\n```bash\n# compile\ngo build ./...\n```\ngo test ./...\n", "go build ./... && go test ./..."},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
