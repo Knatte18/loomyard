@@ -259,10 +259,10 @@ var _ shedengine.ShedProducer = (*BurlerProducer)(nil)
 // round instead of re-running this one.
 //
 // Gate-failed exit: a done round whose Result.Gate is non-nil and failing maps to Stuck with an
-// an empty Path (the cause rides on Reason), archived exactly like every other non-success exit --
-// the empty Path is what tells the segment's Bouncer there is no round artifact to judge, the same signal the deleted
-// validate producers used for exactly this meaning (see the "the two producers' output pointers
-// mean different things" decision). It consumes no attempt-1/attempt-2 retry: that retry is for
+// empty Path (the cause rides on Reason), archived exactly like every other non-success exit --
+// the empty Path is what tells the segment's Bouncer there is no round artifact to judge, the
+// same signal the deleted validate producers used for exactly this meaning (see the "the two
+// producers' output pointers mean different things" decision). It consumes no attempt-1/attempt-2 retry: that retry is for
 // OutcomeDied/OutcomeTimeout, infrastructure faults, while gate exhaustion is a determinate verdict
 // the gate already re-prompted its whole budget over inside the session.
 //
