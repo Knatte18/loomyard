@@ -3,11 +3,14 @@
 package ideengine
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
@@ -15,27 +18,40 @@ func TestSpawn(t *testing.T) {
 	tests := []struct {
 		name         string
 		relpath      string
+		slug         string
 		checkClobber bool
 	}{
 		{
 			name:         "TestSpawnGeneratesConfig",
 			relpath:      ".",
+			slug:         "child",
 			checkClobber: false,
 		},
 		{
 			name:         "TestSpawnCallsCodeLauncher",
 			relpath:      "subdir",
+			slug:         "child",
 			checkClobber: false,
 		},
 		{
 			name:         "TestSpawnDoesNotClobber",
 			relpath:      ".",
+			slug:         "child",
 			checkClobber: true,
+		},
+		{
+			// The prime's name cannot be detected without git, so the operator asking for
+			// main still gets the bare folder.
+			name:         "TestSpawnPrimeSlugDegradesWhenDetectionFails",
+			relpath:      "subdir",
+			slug:         "main",
+			checkClobber: false,
 		},
 	}
 
 	originalLauncher := CodeLauncher
 	defer func() { CodeLauncher = originalLauncher }()
+	defer logger.SetOutput(os.Stderr)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -58,22 +74,34 @@ func TestSpawn(t *testing.T) {
 				return nil
 			}
 
-			err := Spawn(layout, "child")
+			var logged bytes.Buffer
+			logger.SetOutput(&logged)
+
+			err := Spawn(layout, tt.slug)
 			if err != nil {
 				t.Fatalf("Spawn failed: %v", err)
 			}
 
-			settingsPath := filepath.Join(childWorktreePath, tt.relpath, ".vscode", "settings.json")
+			logLine := logged.String()
+			if !strings.Contains(logLine, "level=WARN") || !strings.Contains(logLine, "slug="+tt.slug) || !strings.Contains(logLine, "resolve main worktree") {
+				t.Errorf("logged output = %q; want a warn line carrying slug %q and the PrimeName cause", logLine, tt.slug)
+			}
+			if _, err := os.Stat(filepath.Join(container, "_launchers")); !os.IsNotExist(err) {
+				t.Errorf("_launchers exists under the hub (stat err = %v); want none", err)
+			}
+
+			worktreePath := filepath.Join(container, tt.slug)
+			settingsPath := filepath.Join(worktreePath, tt.relpath, ".vscode", "settings.json")
 			if _, err := os.Stat(settingsPath); err != nil {
 				t.Fatalf("settings.json not created: %v", err)
 			}
 
-			tasksPath := filepath.Join(childWorktreePath, tt.relpath, ".vscode", "tasks.json")
+			tasksPath := filepath.Join(worktreePath, tt.relpath, ".vscode", "tasks.json")
 			if _, err := os.Stat(tasksPath); err != nil {
 				t.Fatalf("tasks.json not created: %v", err)
 			}
 
-			expectedDir := filepath.Join(childWorktreePath, tt.relpath)
+			expectedDir := filepath.Join(worktreePath, tt.relpath)
 			if launchedDir != expectedDir {
 				t.Errorf("CodeLauncher called with %q; want %q", launchedDir, expectedDir)
 			}
@@ -86,7 +114,7 @@ func TestSpawn(t *testing.T) {
 					t.Fatalf("failed to read settings.json after first Spawn: %v", err)
 				}
 
-				if err := Spawn(layout, "child"); err != nil {
+				if err := Spawn(layout, tt.slug); err != nil {
 					t.Fatalf("second Spawn failed: %v", err)
 				}
 

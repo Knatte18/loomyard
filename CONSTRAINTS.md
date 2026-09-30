@@ -54,6 +54,7 @@ Every never-tracked file lives under `.lyx`, at the mirrored subpath of the `_ly
 No hub-level container is ever junctioned into a worktree. `_board`, `_portals`, `_launchers` are reachable from the hub only.
 
 - `_portals`/`_launchers` links point hub-inward only; a per-worktree link to either is banned.
+- The prime's `.code-workspace` lives under `_launchers` only, references hub-inward folders only, and is never written into a worktree.
 
 ## Hub Suffix Invariant
 
