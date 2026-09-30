@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/loggerconfig"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 )
 
@@ -124,6 +125,42 @@ func TestReconcileAll_ApplyCreatesFiles(t *testing.T) {
 	}
 	if contains(string(content), "path:") {
 		t.Error("board.yaml still contains path: key after apply; should have been removed (not in template)")
+	}
+}
+
+// TestReconcileAll_SeedsLoggerYAML pins that reconcile seeds logger.yaml from the template when the
+// file is absent.
+func TestReconcileAll_SeedsLoggerYAML(t *testing.T) {
+	tmpDir := t.TempDir()
+	if err := os.MkdirAll(configengine.ConfigDir(tmpDir), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	results, err := ReconcileAll(tmpDir, true)
+	if err != nil {
+		t.Fatalf("ReconcileAll(true): %v", err)
+	}
+
+	var loggerResult *Result
+	for i := range results {
+		if results[i].Module == "logger" {
+			loggerResult = &results[i]
+			break
+		}
+	}
+	if loggerResult == nil {
+		t.Fatal("logger result not found")
+	}
+	if !loggerResult.Applied {
+		t.Error("logger.Applied is false; want true (absent file should be seeded)")
+	}
+
+	content, err := os.ReadFile(configengine.ConfigFile(tmpDir, "logger"))
+	if err != nil {
+		t.Fatalf("read logger.yaml: %v", err)
+	}
+	if string(content) != loggerconfig.ConfigTemplate() {
+		t.Errorf("logger.yaml = %q; want the template %q", content, loggerconfig.ConfigTemplate())
 	}
 }
 
