@@ -27,7 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
 
-// publishName is the producer name Publish's log lines, and error text carry.
+// publishName is the producer name Publish's log lines and error text carry.
 const publishName = "Publish"
 
 // publishGitHubTimeout bounds each of Publish's calls into the GitHub API, so a stalled connection

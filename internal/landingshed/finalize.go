@@ -28,7 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
 
-// finalizeName is the producer name Finalize's log lines, and error text carry.
+// finalizeName is the producer name Finalize's log lines and error text carry.
 const finalizeName = "Finalize"
 
 // parentMerger is the narrow seam Finalize holds the opened parent pair's handle behind, mirroring
