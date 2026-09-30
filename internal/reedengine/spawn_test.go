@@ -2,17 +2,19 @@
 // invoking it directly through the e.tmux.execHook fake) and loadOrInitStateLocked's fresh-worktree
 // bootstrap. Both are pure/hermetic, no live tmux required. The composed live behavior against a real
 // tmux is covered by the smoke tests. planPaneTarget's own table-driven test moved to
-// selvagepane_test.go alongside the function it exercises. It also pins two regression guards for the
-// pane-binary prelude wiring: that launchStrandLocked's send-keys payload is the composed prelude
-// rather than the bare command, and that the split-window argv it issues still carries no trailing
-// shell-command argument.
+// selvagepane_test.go alongside the function it exercises.
+// It also pins two regression guards for the pane-binary prelude wiring: that launchStrandLocked's send-keys payload is the launch script's source statement and the script holds the composed prelude rather than the bare command, and that the split-window argv it issues still carries no trailing shell-command argument.
 
 package reedengine
 
 import (
+	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shell"
 )
 
@@ -361,19 +363,10 @@ func TestStatus_NeverReportsAStrandLiveOnAPaneAnotherOwnerClaims(t *testing.T) {
 	}
 }
 
-// TestLaunchStrandLocked_SendsThePreludeAheadOfTheStrandCommand pins that launchStrandLocked's
-// send-keys payload is the composed pane-binary prelude joined onto the strand's command -- not the
-// bare command -- and that the Enter submit still follows as a separate send-keys call.
-func TestLaunchStrandLocked_SendsThePreludeAheadOfTheStrandCommand(t *testing.T) {
-	e := newTestEngine(t)
-
-	const exe = "/opt/lyx/bin/lyx"
-	withInjectedExecutablePath(t, func() (string, error) { return exe, nil })
-
-	const selvagePaneID = "%selvage"
-	live := selvagePaneID + " 0 0 100 20 4321\n"
-
-	var sendKeysCalls [][]string
+// launchFake installs an e.tmux.execHook that reports one live Selvage pane, answers split-window with a fresh pane id, and records every send-keys call.
+// onEnter, when non-nil, runs at the Enter submit, the last step of launchStrandLocked.
+func launchFake(e *Engine, sendKeysCalls *[][]string, onEnter func()) {
+	live := "%selvage 0 0 100 20 4321\n"
 	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
 		switch args[0] {
 		case "list-panes":
@@ -381,14 +374,60 @@ func TestLaunchStrandLocked_SendsThePreludeAheadOfTheStrandCommand(t *testing.T)
 		case "split-window":
 			return "%new\n", nil
 		case "send-keys":
-			sendKeysCalls = append(sendKeysCalls, append([]string{}, args...))
-			return "", nil
-		default:
-			return "", nil
+			*sendKeysCalls = append(*sendKeysCalls, append([]string{}, args...))
+			if onEnter != nil && args[len(args)-1] == "Enter" {
+				onEnter()
+			}
 		}
+		return "", nil
 	}
+}
 
-	st := &ReedState{SelvagePaneID: selvagePaneID}
+// readLaunchScript returns the content of strandGUID's launch script.
+func readLaunchScript(t *testing.T, e *Engine, strandGUID string) string {
+	t.Helper()
+	data, err := os.ReadFile(launchScriptPath(shell.ForGOOS(), e.stateDir(), strandGUID))
+	if err != nil {
+		t.Fatalf("read launch script: %v", err)
+	}
+	return string(data)
+}
+
+// assertLaunchDirEmpty fails when the launch directory holds any file.
+func assertLaunchDirEmpty(t *testing.T, e *Engine) {
+	t.Helper()
+	entries, err := os.ReadDir(launchScriptDir(e.stateDir()))
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatalf("ReadDir launch dir: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("launch dir holds %d file(s), want none", len(entries))
+	}
+}
+
+// breakSaveState replaces reed.json with a non-empty directory, so SaveState's rename onto it fails.
+func breakSaveState(t *testing.T, e *Engine) {
+	t.Helper()
+	path := filepath.Join(e.stateDir(), reedStateFileName)
+	if err := os.RemoveAll(path); err != nil {
+		t.Fatalf("RemoveAll reed.json: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(path, "blocker"), 0o755); err != nil {
+		t.Fatalf("MkdirAll blocker: %v", err)
+	}
+}
+
+// TestLaunchStrandLocked_SendsThePreludeAheadOfTheStrandCommand pins that launchStrandLocked types the source statement for the strand's launch script, that the script holds the composed pane-binary prelude joined onto the strand's command -- not the bare command -- and that the Enter submit still follows as a separate send-keys call.
+func TestLaunchStrandLocked_SendsThePreludeAheadOfTheStrandCommand(t *testing.T) {
+	e := newTestEngine(t)
+
+	const exe = "/opt/lyx/bin/lyx"
+	withInjectedExecutablePath(t, func() (string, error) { return exe, nil })
+
+	var sendKeysCalls [][]string
+	launchFake(e, &sendKeysCalls, nil)
+
+	st := &ReedState{SelvagePaneID: "%selvage"}
 	st.Strands = append(st.Strands, Strand{GUID: "new"})
 	s := &st.Strands[0]
 
@@ -401,19 +440,159 @@ func TestLaunchStrandLocked_SendsThePreludeAheadOfTheStrandCommand(t *testing.T)
 		t.Fatalf("send-keys called %d times, want exactly 2 (the literal payload, then Enter): %v", len(sendKeysCalls), sendKeysCalls)
 	}
 
-	wantLiteral := sendKeysLiteralArg(composePaneLaunchLine(shell.ForGOOS(), launchCmd, s.GUID))
+	sh := shell.ForGOOS()
+	path := filepath.Join(e.stateDir(), "reed", "launch", s.GUID+sh.ScriptExt())
+	wantLiteral := sendKeysLiteralArg(sh.Source(path))
 	firstArgs := sendKeysCalls[0]
 	if len(firstArgs) == 0 || firstArgs[len(firstArgs)-1] != wantLiteral {
-		t.Errorf("first send-keys args = %v, want the last argument to be the composed literal payload %q -- not the bare command", firstArgs, wantLiteral)
+		t.Errorf("first send-keys args = %v, want the last argument to be the source statement %q", firstArgs, wantLiteral)
 	}
 	if strings.Contains(wantLiteral, "\n") {
-		t.Errorf("composed literal payload = %q, want a single line with no newline", wantLiteral)
+		t.Errorf("source statement payload = %q, want a single line with no newline", wantLiteral)
+	}
+	if got, want := readLaunchScript(t, e, s.GUID), composePaneLaunchLine(sh, launchCmd, s.GUID)+"\n"; got != want {
+		t.Errorf("launch script = %q, want the composed line %q", got, want)
 	}
 
 	secondArgs := sendKeysCalls[1]
 	if len(secondArgs) == 0 || secondArgs[len(secondArgs)-1] != "Enter" {
 		t.Errorf("second send-keys args = %v, want its last argument to be \"Enter\" (a separate submit)", secondArgs)
 	}
+}
+
+// TestLaunchStrandLocked_RelaunchRegeneratesTheScript pins that a second launch with a different command leaves the script holding the second composed line.
+func TestLaunchStrandLocked_RelaunchRegeneratesTheScript(t *testing.T) {
+	e := newTestEngine(t)
+	withInjectedExecutablePath(t, func() (string, error) { return "/opt/lyx/bin/lyx", nil })
+	var calls [][]string
+	launchFake(e, &calls, nil)
+
+	st := &ReedState{SelvagePaneID: "%selvage", Strands: []Strand{{GUID: "new"}}}
+	s := &st.Strands[0]
+	for _, cmd := range []string{"first cmd", "second cmd"} {
+		if err := e.launchStrandLocked(st, s, cmd); err != nil {
+			t.Fatalf("launchStrandLocked(%q): %v", cmd, err)
+		}
+	}
+	if got, want := readLaunchScript(t, e, "new"), composePaneLaunchLine(shell.ForGOOS(), "second cmd", "new")+"\n"; got != want {
+		t.Errorf("launch script = %q, want %q", got, want)
+	}
+}
+
+// TestLaunchStrandLocked_ScriptWithoutPreludeWhenExecutableUnresolvable pins that an unresolvable executable path leaves the launch command alone in the script.
+func TestLaunchStrandLocked_ScriptWithoutPreludeWhenExecutableUnresolvable(t *testing.T) {
+	e := newTestEngine(t)
+	withInjectedExecutablePath(t, func() (string, error) { return "", errors.New("no exe") })
+	var calls [][]string
+	launchFake(e, &calls, nil)
+
+	st := &ReedState{SelvagePaneID: "%selvage", Strands: []Strand{{GUID: "new"}}}
+	if err := e.launchStrandLocked(st, &st.Strands[0], "claude"); err != nil {
+		t.Fatalf("launchStrandLocked: %v", err)
+	}
+	if got := readLaunchScript(t, e, "new"); got != "claude\n" {
+		t.Errorf("launch script = %q, want the bare command", got)
+	}
+}
+
+// TestLaunchStrandLocked_EmptyCommandWritesThePreludeAlone pins that an empty launch command writes the prelude plus a newline, with no trailing separator.
+func TestLaunchStrandLocked_EmptyCommandWritesThePreludeAlone(t *testing.T) {
+	e := newTestEngine(t)
+	const exe = "/opt/lyx/bin/lyx"
+	withInjectedExecutablePath(t, func() (string, error) { return exe, nil })
+	var calls [][]string
+	launchFake(e, &calls, nil)
+
+	st := &ReedState{SelvagePaneID: "%selvage", Strands: []Strand{{GUID: "new"}}}
+	if err := e.launchStrandLocked(st, &st.Strands[0], ""); err != nil {
+		t.Fatalf("launchStrandLocked: %v", err)
+	}
+	if got, want := readLaunchScript(t, e, "new"), paneBinPrelude(shell.ForGOOS(), exe)+"\n"; got != want {
+		t.Errorf("launch script = %q, want the prelude alone %q", got, want)
+	}
+}
+
+// TestLaunchStrandLocked_WriteFailureSendsTheFullLine pins the degrade path: a regular file where the launch directory's parent belongs makes the payload the composed line,
+// and the warning names the strand GUID.
+func TestLaunchStrandLocked_WriteFailureSendsTheFullLine(t *testing.T) {
+	e := newTestEngine(t)
+	withInjectedExecutablePath(t, func() (string, error) { return "/opt/lyx/bin/lyx", nil })
+	var calls [][]string
+	launchFake(e, &calls, nil)
+	if err := os.MkdirAll(e.stateDir(), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(e.stateDir(), "reed"), []byte("x"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	buf := captureLogOutput(t)
+
+	st := &ReedState{SelvagePaneID: "%selvage", Strands: []Strand{{GUID: "guid-w"}}}
+	const launchCmd = "claude"
+	if err := e.launchStrandLocked(st, &st.Strands[0], launchCmd); err != nil {
+		t.Fatalf("launchStrandLocked: %v", err)
+	}
+	want := sendKeysLiteralArg(composePaneLaunchLine(shell.ForGOOS(), launchCmd, "guid-w"))
+	if first := calls[0]; first[len(first)-1] != want {
+		t.Errorf("first send-keys args = %v, want the full composed line %q", first, want)
+	}
+	if !strings.Contains(buf.String(), "guid-w") {
+		t.Errorf("log %q does not name the strand GUID", buf.String())
+	}
+}
+
+// TestAddStrandLocked_FailedSendLeavesNoScript pins that a launch whose literal send-keys fails deletes the script it already wrote.
+func TestAddStrandLocked_FailedSendLeavesNoScript(t *testing.T) {
+	e := newTestEngine(t)
+	withInjectedExecutablePath(t, func() (string, error) { return "/opt/lyx/bin/lyx", nil })
+	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
+		switch args[0] {
+		case "list-panes":
+			return "%selvage 0 0 100 20 4321\n", nil
+		case "split-window":
+			return "%new\n", nil
+		case "send-keys":
+			if len(args) > 3 && args[3] == "-l" {
+				return "", errors.New("send failed")
+			}
+		}
+		return "", nil
+	}
+
+	st := &ReedState{SelvagePaneID: "%selvage"}
+	if _, err := e.addStrandLocked(st, AddSpec{Role: "worker", NameOverride: "n", Cmd: "claude"}); err == nil {
+		t.Fatalf("addStrandLocked: want an error")
+	}
+	assertLaunchDirEmpty(t, e)
+}
+
+// TestAddStrand_PersistFailureLeavesNoScript pins that a SaveState failure right after the launch deletes the never-persisted strand's script.
+func TestAddStrand_PersistFailureLeavesNoScript(t *testing.T) {
+	e := newTestEngine(t)
+	withInjectedExecutablePath(t, func() (string, error) { return "/opt/lyx/bin/lyx", nil })
+	var calls [][]string
+	launchFake(e, &calls, func() { breakSaveState(t, e) })
+
+	if _, err := e.AddStrand(AddSpec{Role: "worker", NameOverride: "n", Cmd: "claude"}); err == nil {
+		t.Fatalf("AddStrand: want the persist error")
+	}
+	assertLaunchDirEmpty(t, e)
+}
+
+// TestReplaceStrand_PersistFailureLeavesNoScriptForTheNewStrand pins that when every SaveState fails, ReplaceStrand returns an error and the new strand's script is deleted.
+func TestReplaceStrand_PersistFailureLeavesNoScriptForTheNewStrand(t *testing.T) {
+	e := newTestEngine(t)
+	withInjectedExecutablePath(t, func() (string, error) { return "/opt/lyx/bin/lyx", nil })
+	if err := SaveState(e.stateDir(), &ReedState{Strands: []Strand{{GUID: "old", Display: render.Display{Anchor: render.AnchorHidden}}}}); err != nil {
+		t.Fatalf("SaveState: %v", err)
+	}
+	var calls [][]string
+	launchFake(e, &calls, func() { breakSaveState(t, e) })
+
+	if _, err := e.ReplaceStrand("old", AddSpec{Role: "worker", NameOverride: "n", Cmd: "claude"}); err == nil {
+		t.Fatalf("ReplaceStrand: want an error")
+	}
+	assertLaunchDirEmpty(t, e)
 }
 
 // TestLaunchStrandLocked_SplitWindowCarriesNoTrailingShellCommand is the regression guard for the

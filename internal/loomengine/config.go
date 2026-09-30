@@ -38,6 +38,14 @@ const landingDirName = "landing"
 // loomengine is this segment's sole declarer.
 const loomApprovalFileName = "approval.json"
 
+// loomVerifyPendingFileName is the filename of the pending-verify marker within LoomScratchDir.
+// loomengine is this segment's sole declarer.
+const loomVerifyPendingFileName = "verify-pending"
+
+// loomVerifyOutputFileName is the filename of the post-merge verify command's combined output within LoomScratchDir.
+// loomengine is this segment's sole declarer.
+const loomVerifyOutputFileName = "verify-output.log"
+
 // loomDirName is the relative-path segment loomengine joins onto lyxdirs.LyxDirName or
 // lyxdirs.DotLyxDirName to scope every loom-owned path that is not part of the shed run directory
 // under its own subdirectory, distinct from the other products (e.g. Someday Hardener) that also
@@ -60,8 +68,7 @@ const loomSelfreportFiledLockFileName = "selfreport-filed.json.lock"
 // loomengine is this segment's sole declarer.
 const reviewsDirName = "reviews"
 
-// frictionDirName is the relative-path segment loomengine joins onto LoomScratchDir to form the
-// Tier 2 friction leaf's scratch directory.
+// frictionDirName is the relative-path segment loomengine joins onto LoomDurableDir to form the Tier 2 friction leaf's directory, and onto LoomScratchDir (with a .lock suffix) for its lock.
 // loomengine is this segment's sole declarer.
 const frictionDirName = "friction"
 
@@ -198,6 +205,24 @@ func LoomApprovalPath(l *lyxcwd.Location) string {
 	return filepath.Join(LoomScratchDir(l), loomApprovalFileName)
 }
 
+// LoomVerifyPendingPath returns the path to the pending-verify marker for this worktree.
+// The landing producers write it after a parent merge-in and clear it once the post-merge verify passes.
+// It is built on LoomScratchDir rather than re-joining the .lyx literal,
+// and is ephemeral: the marker is never tracked, per the Durable-vs-Ephemeral State Invariant.
+// Per the Cwd Resolution Invariant, no other package may construct this path.
+func LoomVerifyPendingPath(l *lyxcwd.Location) string {
+	return filepath.Join(LoomScratchDir(l), loomVerifyPendingFileName)
+}
+
+// LoomVerifyOutputPath returns the path the post-merge verify command's combined output is written to.
+// The landing producers are its consumer.
+// It is built on LoomScratchDir rather than re-joining the .lyx literal,
+// and is ephemeral: the file is never tracked, per the Durable-vs-Ephemeral State Invariant.
+// Per the Cwd Resolution Invariant, no other package may construct this path.
+func LoomVerifyOutputPath(l *lyxcwd.Location) string {
+	return filepath.Join(LoomScratchDir(l), loomVerifyOutputFileName)
+}
+
 // LoomReviewsDirRel returns the worktree-anchor-relative form of LoomReviewsDir's path: the join of lyxdirs.LyxDirName and reviewsDirName.
 // It exists so a caller building a fabric commit pathspec never has to name a directory segment loomengine owns.
 func LoomReviewsDirRel() string {
@@ -212,15 +237,26 @@ func LoomReviewsDir(l *lyxcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), LoomReviewsDirRel())
 }
 
-// LoomFrictionDir returns the path to the Tier 2 friction leaf's scratch directory for this
-// worktree: the per-agent friction notes an unsupervised run's producers append to.
-// Friction notes are never-tracked ephemera consumed within the run and discarded, which is why they live under the ephemeral tree, rather than the durable one.
-// It is built on LoomScratchDir rather than re-joining l.AnchorPath(), lyxdirs.DotLyxDirName, and loomDirName a second time:
-// the Lyxdirs Single-Declarer Invariant forbids a hand-built join naming the .lyx literal a second time in production path construction,
-// and LoomScratchDir is already the accessor that names it once.
+// LoomDurableDirRel returns the worktree-anchor-relative form of LoomDurableDir's path: the join of lyxdirs.LyxDirName and loomDirName.
+// Everything under this directory is tracked run content committed by loom's per-transition status commit.
+func LoomDurableDirRel() string {
+	return filepath.Join(lyxdirs.LyxDirName, loomDirName)
+}
+
+// LoomDurableDir returns loom's durable run directory for this worktree: LoomDurableDirRel joined onto l.AnchorPath().
+// It is the durable counterpart of LoomScratchDir.
+// Everything under this directory is tracked run content committed by loom's per-transition status commit.
+// Per the Cwd Resolution Invariant, no other package may construct this path.
+func LoomDurableDir(l *lyxcwd.Location) string {
+	return filepath.Join(l.AnchorPath(), LoomDurableDirRel())
+}
+
+// LoomFrictionDir returns the path to the Tier 2 friction leaf's directory for this worktree: the per-agent friction notes an unsupervised run's producers append to.
+// The notes are run records, so they live under the durable tree and are committed with the run.
+// It is built on LoomDurableDir rather than re-joining l.AnchorPath() and the durable literal a second time.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func LoomFrictionDir(l *lyxcwd.Location) string {
-	return filepath.Join(LoomScratchDir(l), frictionDirName)
+	return filepath.Join(LoomDurableDir(l), frictionDirName)
 }
 
 // LoomFrictionArchivePrefix returns the absolute path prefix a timestamped archive sibling of
@@ -244,10 +280,10 @@ func LoomFrictionArchivePrefix(l *lyxcwd.Location) string {
 // That second driver is legitimate -- it is an operator resuming a halted run -- but its own
 // reflection (the row's) would then archive the friction directory out from under the first one's
 // agent, and both would have declared the same reflection-report.md as an output.
-// The lock file is a sibling of the friction directory rather than a file inside it, because the
-// directory itself is renamed away by the archive step while the lock is still held.
+// The lock file is not inside the friction directory, because the directory itself is renamed away by the archive step while the lock is still held.
+// It sits at the mirrored ephemeral subpath of the durable friction directory, under LoomScratchDir.
 func LoomFrictionLock(l *lyxcwd.Location) string {
-	return LoomFrictionDir(l) + ".lock"
+	return filepath.Join(LoomScratchDir(l), frictionDirName+".lock")
 }
 
 // Config represents the resolved loom.yaml configuration: role model-specs and timeout knobs.

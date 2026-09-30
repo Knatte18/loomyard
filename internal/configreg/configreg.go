@@ -11,6 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
+	"github.com/Knatte18/loomyard/internal/loggerconfig"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/orchengine"
@@ -46,6 +47,7 @@ func Modules() []Module {
 		{Name: "burler", Template: burlerengine.ConfigTemplate, SeedOnly: true},
 		{Name: "fabric", Template: fabricengine.ConfigTemplate},
 		{Name: "landing", Template: landingshed.ConfigTemplate},
+		{Name: "logger", Template: loggerconfig.ConfigTemplate},
 		{Name: "loom", Template: loomengine.ConfigTemplate},
 		{Name: "models", Template: modelspec.ConfigTemplate, SeedOnly: true},
 		{Name: "orch", Template: orchengine.ConfigTemplate},

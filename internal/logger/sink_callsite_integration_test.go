@@ -85,6 +85,17 @@ func TestDurableSink_CwdFallbackArmsInALyxOwnedWorktree(t *testing.T) {
 
 	logger.Info("sink_callsite_integration_test: lyx-owned-worktree probe")
 
+	// The cwd-anchored arm reports not redirected, the logs directory, and the repo as its anchor.
+	want := logger.SinkArmState{
+		Armed:      true,
+		Redirected: false,
+		Dir:        filepath.Join(repo, lyxdirs.DotLyxDirName, "logs"),
+		AnchorPath: repo,
+	}
+	if got := logger.CurrentSinkArmState(); got != want {
+		t.Errorf("CurrentSinkArmState() = %+v; want %+v", got, want)
+	}
+
 	matches, err := filepath.Glob(filepath.Join(repo, lyxdirs.DotLyxDirName, "logs", "trace-*.log"))
 	if err != nil {
 		t.Fatalf("Glob() error = %v", err)
