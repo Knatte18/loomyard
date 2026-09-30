@@ -154,19 +154,31 @@ func TestInnerRun_OpenErrorIsWarnedNotEscalated(t *testing.T) {
 		return outcome, ptr, buf.String(), scratchDir
 	}
 
-	wantOutcome, wantPtr, _, _ := run(nil)
+	warnLines := func(logs string) []string {
+		var lines []string
+		for _, line := range strings.Split(logs, "\n") {
+			if strings.Contains(line, "level=WARN") {
+				lines = append(lines, line)
+			}
+		}
+		return lines
+	}
+
+	wantOutcome, wantPtr, successLogs, _ := run(nil)
 	outcome, ptr, logs, scratchDir := run(errors.New("code not found"))
 	if outcome != wantOutcome || ptr.Reason != wantPtr.Reason || ptr.BudgetExempt != wantPtr.BudgetExempt {
 		t.Errorf("Call() = %v %+v; want the success case's %v %+v", outcome, ptr, wantOutcome, wantPtr)
 	}
-	var warnLines []string
-	for _, line := range strings.Split(logs, "\n") {
-		if strings.Contains(line, "WARN") && strings.Contains(line, "open IDE") {
-			warnLines = append(warnLines, line)
+	// The running arm's own stuck warning appears in both runs, so the failed open must add exactly one warning line to the success case's.
+	successWarns, failWarns := warnLines(successLogs), warnLines(logs)
+	var errWarns []string
+	for _, line := range failWarns {
+		if strings.Contains(line, "code not found") {
+			errWarns = append(errWarns, line)
 		}
 	}
-	if len(warnLines) != 1 || !strings.Contains(warnLines[0], "myslug") || !strings.Contains(warnLines[0], "code not found") {
-		t.Errorf("warning lines = %q; want exactly one naming the slug and the error", warnLines)
+	if len(failWarns) != len(successWarns)+1 || len(errWarns) != 1 || !strings.Contains(errWarns[0], "myslug") {
+		t.Errorf("warning lines = %q, success case's = %q; want exactly one more, naming the slug and the error", failWarns, successWarns)
 	}
 	if _, err := os.Stat(ideOpenedFile(scratchDir, "innerrun")); err != nil {
 		t.Errorf("ide-opened marker: %v; want it written after a failed open", err)
