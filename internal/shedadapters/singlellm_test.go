@@ -974,8 +974,8 @@ func TestSingleLLMProducer_Gate_AttemptsPropagatesOntoOutputPointer(t *testing.T
 	}
 }
 
-// TestSingleLLMProducer_PrepareFreshSpawnErrorNeitherArchivesNorSpawns pins the failure posture: a
-// preparation that cannot complete is a returned error, and nothing downstream of it runs.
+// TestSingleLLMProducer_PrepareFreshSpawnErrorNeitherArchivesNorSpawns pins the failure posture: a preparation that cannot complete is a returned error,
+// and nothing downstream of it runs.
 func TestSingleLLMProducer_PrepareFreshSpawnErrorNeitherArchivesNorSpawns(t *testing.T) {
 	dir := t.TempDir()
 	output := filepath.Join(dir, "00-overview.md")
@@ -1005,8 +1005,7 @@ func TestSingleLLMProducer_PrepareFreshSpawnErrorNeitherArchivesNorSpawns(t *tes
 	}
 }
 
-// TestSingleLLMProducer_PrepareFreshSpawnAmendment pins the amendment seam: the text a preparation
-// returns is appended to the prompt of the respawned run's spec, and to no other spec.
+// TestSingleLLMProducer_PrepareFreshSpawnAmendment pins the amendment seam: the text a preparation returns is appended to the prompt of the respawned run's spec, and to no other spec.
 func TestSingleLLMProducer_PrepareFreshSpawnAmendment(t *testing.T) {
 	const composed = "plan"
 	newSpec := func(t *testing.T) shuttleengine.Spec {
