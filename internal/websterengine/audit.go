@@ -363,14 +363,14 @@ func ForkWarnings(f shuttleengine.ForkReport) []string {
 // A report file existing alongside zero new transcripts does NOT save the batch from this error: a
 // report with no fork behind it means Master wrote it itself, which is exactly the defect this
 // check exists to catch (pinned check order: transcript count is decided BEFORE report presence).
-// The message names the operator recourse because this error is one leg of a three-verb refusal
-// circle with no in-band exit: with a report on disk but no fork transcript, begin-batch refuses
-// (report exists), record-batch errors here, and recover-batch refuses an OK report — a state a
-// forged report produces, but ALSO a legitimate cross-machine resume of the
-// report-landed-before-record-batch crash window, since fork transcripts live under the
-// machine-local ~/.claude projects dir while state.json and reports are fabric-synced (found live in
-// crucible round fable-r1).
-var ErrNoForkTranscripts = errors.New("zero new fork transcripts since the previous batch boundary — the batch was never forked (or its transcript is not on this machine: fork transcripts are machine-local, so a crash window resumed on a different machine cannot re-attribute its report; an operator resolves that by moving the batch's report file out of the reports dir and re-driving the batch)")
+// A report on disk with no fork transcript is a state a forged report produces, but ALSO a
+// legitimate cross-machine resume of the report-landed-before-record-batch crash window, since fork
+// transcripts live under the machine-local ~/.claude projects dir while state.json and reports are
+// fabric-synced (found live in crucible round fable-r1).
+// RecordBatch does not leave the batch wedged on it: it archives the report, keeps the batch
+// record begun, and returns a *ReportArchivedError whose way forward is `begin-batch`, which
+// re-drives the batch with the report path free.
+var ErrNoForkTranscripts = errors.New("zero new fork transcripts since the previous batch boundary — the batch was never forked (or its transcript is not on this machine: fork transcripts are machine-local, so a crash window resumed on a different machine cannot re-attribute its report)")
 
 // DefaultSettleWindow is SettleRetry's recommended total wait budget before its caller gives up and
 // treats a zero-transcript result as final: a few seconds is enough slack for Claude Code to flush

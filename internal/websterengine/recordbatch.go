@@ -26,12 +26,32 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// ErrNoBeginRecord is the sentinel RecordBatch returns when deps.State.Batches[batchNumber] is
-// absent or already Terminal — a record call with no matching (or already-consumed) begin-batch
-// record.
+// ErrNoBeginRecord is the cause RecordBatch reports when deps.State.Batches[batchNumber] is
+// absent — a record call with no matching begin-batch record.
 // This is the bracket-discipline fail-loud check: a fork's own report, however legitimate it looks,
 // is never trusted without Go's own record that begin-batch actually opened this batch first.
 var ErrNoBeginRecord = errors.New("webster: record-batch called with no begin-batch record for this batch")
+
+// ErrReportArchived is the sentinel a *ReportArchivedError unwraps to.
+var ErrReportArchived = errors.New("webster: report archived")
+
+// ReportArchivedError reports a batch report record-batch could not attribute to a fork of its bracket.
+// The report is archived, so `begin-batch` no longer refuses over it, and the batch is re-driven through that verb.
+// Cause is the attribution failure (ErrNoBeginRecord, ErrNoForkTranscripts, or a missing transcript directory).
+type ReportArchivedError struct {
+	Number     int
+	Batch      string
+	ArchivedTo string
+	Cause      error
+}
+
+// Error states why the report could not be attributed, where it was archived, and the way forward.
+func (e *ReportArchivedError) Error() string {
+	return fmt.Sprintf("webster: batch %s's report could not be attributed: %v; report archived to %s; way forward: lyx webster begin-batch %02d re-drives the batch", e.Batch, e.Cause, e.ArchivedTo, e.Number)
+}
+
+// Unwrap returns ErrReportArchived and Cause, so errors.Is matches either.
+func (e *ReportArchivedError) Unwrap() []error { return []error{ErrReportArchived, e.Cause} }
 
 // ErrCardNotDone is the sentinel RecordBatch returns when card 33's DoneChecks report a blocking
 // finding against the just-completed batch's own cards — a Create target that still does not
@@ -83,12 +103,34 @@ type RecordDeps struct {
 // NoReport reports whether the batch-report file was still absent this call (the batch stays
 // non-terminal and State.CurrentBatch stays unchanged — Master's ladder re-forks once);
 // Warnings carries every non-fatal fork-audit-policy warning observed this call (a multi-new-transcript notice, a fork that never returned a final report, a dirty worktree after the batch's own commits, a moved-HEAD notice when a parent merge-in landed after the fork's commit, or a recorded policy audit warning), never treated as a failure;
-// Failed is set when the batch was taken terminal-failed on its audit findings, with Digest the failed digest.
+// Failed is set when the batch was taken terminal-failed on its audit findings, with Digest the failed digest;
+// ArchivedReport is the path an unattributable report was archived to, returned alongside a *ReportArchivedError so the caller's fabric sync can commit it.
 type RecordResult struct {
-	Digest   *Digest
-	NoReport bool
-	Failed   bool
-	Warnings []string
+	Digest         *Digest
+	NoReport       bool
+	Failed         bool
+	ArchivedReport string
+	Warnings       []string
+}
+
+// archiveUnattributable archives batch number's report, when one exists, and returns the error a record-batch
+// attribution refusal ends with: a *ReportArchivedError when a report was archived,
+// otherwise cause wrapped with the same begin-batch way forward.
+// The batch record is left as it is.
+func archiveUnattributable(deps RecordDeps, number int, slug string, cause error) (*RecordResult, error) {
+	archived, err := archiveStaleReport(deps.Geom.ReportsDir, number, slug, time.Now)
+	if err != nil {
+		return nil, err
+	}
+	if archived == "" {
+		return nil, fmt.Errorf("%w; way forward: lyx webster begin-batch %02d re-drives the batch", cause, number)
+	}
+	return &RecordResult{ArchivedReport: archived}, &ReportArchivedError{
+		Number:     number,
+		Batch:      fmt.Sprintf("%02d-%s", number, slug),
+		ArchivedTo: archived,
+		Cause:      cause,
+	}
 }
 
 // RecordBatch drives one record-batch call: the bracket-discipline check, incremental fork audit,
@@ -114,8 +156,20 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	}
 
 	bs, ok := deps.State.Batches[batchNumber]
-	if !ok || bs == nil || bs.Terminal {
-		return nil, ErrNoBeginRecord
+	if !ok || bs == nil {
+		batch, err := findBatch(deps.Batches, batchNumber)
+		if err != nil {
+			return nil, err
+		}
+		number, slug := batchIdentity(batch)
+		return archiveUnattributable(deps, number, slug, ErrNoBeginRecord)
+	}
+	if bs.Terminal {
+		way := fmt.Sprintf("lyx webster recover-batch %02d", batchNumber)
+		if bs.Status == DigestStatusDone {
+			way = "continue with the next batch"
+		}
+		return nil, fmt.Errorf("webster: batch %02d is already terminal (%s), so record-batch has nothing to record; way forward: %s", batchNumber, bs.Status, way)
 	}
 
 	// Recovery batches are consumed by recover-batch, not record-batch.
@@ -146,7 +200,7 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		// Session transcripts are machine-local, so a cross-machine resume
 		// fails here with the documented operator recourse.
 		if errors.Is(err, fs.ErrNotExist) {
-			return nil, fmt.Errorf("webster: no transcript exists on this machine for the session that opened batch %02d-%s's bracket (%s): %w — session transcripts are machine-local, so a crash window resumed on a different machine cannot re-attribute its report; an operator resolves that by moving the batch's report file out of the reports dir and re-driving the batch", number, slug, bs.SessionID, err)
+			return archiveUnattributable(deps, number, slug, fmt.Errorf("no transcript exists on this machine for the session that opened batch %02d-%s's bracket (%s): %w — session transcripts are machine-local, so a crash window resumed on a different machine cannot re-attribute its report", number, slug, bs.SessionID, err))
 		}
 		return nil, err
 	}
@@ -154,7 +208,7 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	// Check transcripts before report presence so a fake (unfakeable) report is caught.
 	warning, err := ClassifyAttribution(newReports)
 	if err != nil {
-		return nil, err
+		return archiveUnattributable(deps, number, slug, err)
 	}
 
 	var warnings []string

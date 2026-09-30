@@ -198,10 +198,35 @@ func validReport(headSHA string) string {
 }
 
 // TestRecordBatch_NoBeginRecord proves the bracket-discipline check: a record call with no matching
-// BatchState entry,
-// or one already Terminal, is refused with ErrNoBeginRecord before the audit is ever consulted.
+// BatchState entry never consults the audit.
+// A report present is archived and the batch re-driven through begin-batch, so begin-batch's
+// pre-existing-report refusal no longer fires; with no report the error still names begin-batch.
 func TestRecordBatch_NoBeginRecord(t *testing.T) {
-	t.Run("absent BatchState", func(t *testing.T) {
+	t.Run("report present is archived", func(t *testing.T) {
+		fx := newRecordFixture(t, nil)
+		fx.Deps.State.Batches = map[int]*websterengine.BatchState{}
+		writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
+
+		result, err := websterengine.RecordBatch(fx.Deps, 1)
+		if !errors.Is(err, websterengine.ErrReportArchived) || !errors.Is(err, websterengine.ErrNoBeginRecord) {
+			t.Fatalf("RecordBatch() error = %v; want ErrReportArchived wrapping ErrNoBeginRecord", err)
+		}
+		if !strings.Contains(err.Error(), "lyx webster begin-batch 01") {
+			t.Errorf("RecordBatch() error = %q; want it to name `lyx webster begin-batch 01`", err.Error())
+		}
+		if fx.Engine.callCount != 0 {
+			t.Errorf("Engine was reached (%d calls) with no begin record; want zero", fx.Engine.callCount)
+		}
+		archived := archivedReports(t, fx.ReportsDir)
+		if len(archived) != 1 || result == nil || result.ArchivedReport == "" {
+			t.Errorf("archived reports = %v, result = %+v; want one archived report surfaced on the result", archived, result)
+		}
+		if _, statErr := os.Stat(filepath.Join(fx.ReportsDir, websterengine.ReportFileName(1, "json-flag"))); !os.IsNotExist(statErr) {
+			t.Errorf("report path still occupied (stat err = %v); want it free for begin-batch", statErr)
+		}
+	})
+
+	t.Run("no report names begin-batch", func(t *testing.T) {
 		fx := newRecordFixture(t, nil)
 		fx.Deps.State.Batches = map[int]*websterengine.BatchState{}
 
@@ -209,18 +234,37 @@ func TestRecordBatch_NoBeginRecord(t *testing.T) {
 		if !errors.Is(err, websterengine.ErrNoBeginRecord) {
 			t.Fatalf("RecordBatch() error = %v; want errors.Is(err, ErrNoBeginRecord)", err)
 		}
-		if fx.Engine.callCount != 0 {
-			t.Errorf("Engine was reached (%d calls) with no begin record; want zero", fx.Engine.callCount)
+		if !strings.Contains(err.Error(), "lyx webster begin-batch 01") {
+			t.Errorf("RecordBatch() error = %q; want it to name `lyx webster begin-batch 01`", err.Error())
 		}
 	})
 
-	t.Run("already Terminal BatchState", func(t *testing.T) {
+	t.Run("terminal done refuses and leaves the report", func(t *testing.T) {
 		fx := newRecordFixture(t, nil)
 		fx.Deps.State.Batches[1].Terminal = true
+		fx.Deps.State.Batches[1].Status = websterengine.DigestStatusDone
+		writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
 
 		_, err := websterengine.RecordBatch(fx.Deps, 1)
-		if !errors.Is(err, websterengine.ErrNoBeginRecord) {
-			t.Fatalf("RecordBatch() error = %v; want errors.Is(err, ErrNoBeginRecord)", err)
+		if err == nil || !strings.Contains(err.Error(), "next batch") {
+			t.Fatalf("RecordBatch() error = %v; want a refusal naming the next batch", err)
+		}
+		if errors.Is(err, websterengine.ErrNoBeginRecord) {
+			t.Errorf("RecordBatch() error = %v; a terminal batch must not share ErrNoBeginRecord", err)
+		}
+		if got := archivedReports(t, fx.ReportsDir); len(got) != 0 {
+			t.Errorf("archived reports = %v; want none — the report stays in place", got)
+		}
+	})
+
+	t.Run("terminal failed names recover-batch", func(t *testing.T) {
+		fx := newRecordFixture(t, nil)
+		fx.Deps.State.Batches[1].Terminal = true
+		fx.Deps.State.Batches[1].Status = websterengine.DigestStatusFailed
+
+		_, err := websterengine.RecordBatch(fx.Deps, 1)
+		if err == nil || !strings.Contains(err.Error(), "lyx webster recover-batch 01") {
+			t.Fatalf("RecordBatch() error = %v; want a refusal naming recover-batch", err)
 		}
 	})
 }
@@ -269,19 +313,33 @@ func TestRecordBatch_AuditsBracketOpeningSession(t *testing.T) {
 	}
 }
 
-// TestRecordBatch_ZeroNewTranscriptsHardErrorsEvenWithReport proves the unfakeable-report rule:
-// zero new transcripts through the whole settle window is a hard error REGARDLESS of a batch-report
-// file already sitting on disk — a report with no fork behind it means Master wrote it itself.
-func TestRecordBatch_ZeroNewTranscriptsHardErrorsEvenWithReport(t *testing.T) {
+// TestRecordBatch_ZeroNewTranscriptsArchivesReport proves the unfakeable-report rule:
+// zero new transcripts through the whole settle window never records the report, REGARDLESS of a
+// batch-report file already sitting on disk — a report with no fork behind it means Master wrote it itself.
+// The report is archived, the batch record stays begun, and begin-batch re-drives it.
+func TestRecordBatch_ZeroNewTranscriptsArchivesReport(t *testing.T) {
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{{}})
 	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
 
-	_, err := websterengine.RecordBatch(fx.Deps, 1)
-	if !errors.Is(err, websterengine.ErrNoForkTranscripts) {
-		t.Fatalf("RecordBatch() error = %v; want errors.Is(err, ErrNoForkTranscripts)", err)
+	result, err := websterengine.RecordBatch(fx.Deps, 1)
+	if !errors.Is(err, websterengine.ErrReportArchived) || !errors.Is(err, websterengine.ErrNoForkTranscripts) {
+		t.Fatalf("RecordBatch() error = %v; want ErrReportArchived wrapping ErrNoForkTranscripts", err)
+	}
+	if !strings.Contains(err.Error(), "lyx webster begin-batch 01") {
+		t.Errorf("RecordBatch() error = %q; want it to name `lyx webster begin-batch 01`", err.Error())
 	}
 	if len(fx.Sleeper.slept) == 0 {
 		t.Errorf("Sleeper.slept is empty; want the settle window's retry ticks recorded")
+	}
+	if got := archivedReports(t, fx.ReportsDir); len(got) != 1 || result == nil || result.ArchivedReport == "" {
+		t.Errorf("archived reports = %v, result = %+v; want one archived report surfaced on the result", got, result)
+	}
+	bs := fx.Deps.State.Batches[1]
+	if bs.Terminal || bs.StartSHA != fx.StartSHA {
+		t.Errorf("BatchState = %+v; want it still begun, non-terminal, with StartSHA %q kept", bs, fx.StartSHA)
+	}
+	if _, statErr := os.Stat(filepath.Join(fx.ReportsDir, websterengine.ReportFileName(1, "json-flag"))); !os.IsNotExist(statErr) {
+		t.Errorf("report path still occupied (stat err = %v); want it free for begin-batch", statErr)
 	}
 }
 
@@ -826,8 +884,8 @@ func TestRecordBatch_Regression20260930_ForkAuditFalsePositive(t *testing.T) {
 	for attempt := 1; attempt <= 2; attempt++ {
 		result, err := websterengine.RecordBatch(fx.Deps, 1)
 		if attempt == 2 {
-			if !errors.Is(err, websterengine.ErrNoBeginRecord) {
-				t.Fatalf("second RecordBatch() error = %v; want ErrNoBeginRecord (already terminal)", err)
+			if err == nil || !strings.Contains(err.Error(), "already terminal") {
+				t.Fatalf("second RecordBatch() error = %v; want a refusal naming the batch already terminal", err)
 			}
 			break
 		}
@@ -875,28 +933,34 @@ func TestRecordBatch_MalformedReportYAMLErrors(t *testing.T) {
 	}
 }
 
-// TestRecordBatch_MissingSessionTranscriptNamesRecourse proves the TRUE cross-machine resume
+// TestRecordBatch_MissingSessionTranscriptArchivesReport proves the TRUE cross-machine resume
 // failure — the bracket-opening session's transcript file does not exist on this machine at all, so
-// the audit read itself fails with fs.ErrNotExist — is wrapped with the machine-local-transcripts
-// explanation and the move-the-report-aside operator recourse, instead of surfacing a bare "no such
-// file or directory" (found live in crucible round fable-r3).
+// the audit read itself fails with fs.ErrNotExist — archives the report, keeps the batch begun, and
+// explains the machine-local transcripts with the begin-batch way forward (found live in crucible
+// round fable-r3).
 // errors.Is must still see the underlying fs.ErrNotExist.
-func TestRecordBatch_MissingSessionTranscriptNamesRecourse(t *testing.T) {
+func TestRecordBatch_MissingSessionTranscriptArchivesReport(t *testing.T) {
 	fx := newRecordFixture(t, nil)
 	fx.Engine.auditErr = fmt.Errorf("claudeengine: read parent transcript %q: %w", "/nope/session.jsonl", fs.ErrNotExist)
 	writeReport(t, fx.ReportsDir, "status: OK\nhead_sha: "+fx.HeadSHA+"\n")
 
-	_, err := websterengine.RecordBatch(fx.Deps, 1)
-	if err == nil {
-		t.Fatal("RecordBatch() error = nil; want the wrapped missing-transcript error")
+	result, err := websterengine.RecordBatch(fx.Deps, 1)
+	if !errors.Is(err, websterengine.ErrReportArchived) {
+		t.Fatalf("RecordBatch() error = %v; want ErrReportArchived", err)
 	}
 	if !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("RecordBatch() error = %v; want errors.Is(err, fs.ErrNotExist) preserved through the wrap", err)
 	}
-	for _, needle := range []string{"machine-local", "moving the batch's report file", "session-1"} {
+	for _, needle := range []string{"machine-local", "lyx webster begin-batch 01", "session-1"} {
 		if !strings.Contains(err.Error(), needle) {
 			t.Errorf("RecordBatch() error = %q; want it to contain %q", err.Error(), needle)
 		}
+	}
+	if got := archivedReports(t, fx.ReportsDir); len(got) != 1 || result == nil || result.ArchivedReport == "" {
+		t.Errorf("archived reports = %v, result = %+v; want one archived report surfaced on the result", got, result)
+	}
+	if bs := fx.Deps.State.Batches[1]; bs.Terminal || bs.StartSHA != fx.StartSHA {
+		t.Errorf("BatchState = %+v; want it still begun, non-terminal, with StartSHA %q kept", bs, fx.StartSHA)
 	}
 }
 

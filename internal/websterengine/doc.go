@@ -280,9 +280,9 @@
 // machine only: fork transcripts live under the machine-local ~/.claude
 // projects directory, while state.json and the reports are fabric-synced —
 // a different machine sees the report with no transcript behind it, which
-// record-batch refuses exactly as it refuses a forged report
-// (ErrNoForkTranscripts names the operator recourse: move the orphan
-// report aside and re-drive the batch).
+// record-batch treats exactly as it treats a forged report:
+// it archives the report and returns a *ReportArchivedError naming
+// `lyx webster begin-batch`, which re-drives the batch.
 //
 // # Integration-suite fork + in-process bisect + terminal escalation
 //
