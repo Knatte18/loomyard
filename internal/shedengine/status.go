@@ -48,6 +48,8 @@ type Activity struct {
 }
 
 // HistoryEntry is one producer call's durable record, and the element type of Result.History.
+// A budget-exempt Stuck folds into an immediately preceding identical exempt Stuck rather than appending,
+// so one entry can stand for a run of consecutive calls.
 type HistoryEntry struct {
 	Producer string  `json:"producer"`
 	Outcome  Outcome `json:"outcome"`
@@ -63,6 +65,11 @@ type HistoryEntry struct {
 	// BudgetExempt is true on a Stuck entry the producer marked as not counted against the bounce budget.
 	// A status file written before the field existed decodes as false and counts as before.
 	BudgetExempt bool `json:"budget_exempt,omitempty"`
+	// Repeats is the number of further identical calls folded into this entry, zero when none.
+	Repeats int `json:"repeats,omitempty"`
+	// LastAt is the RFC 3339 UTC time of the most recent folded call, empty when none;
+	// At keeps the first call's time.
+	LastAt string `json:"last_at,omitempty"`
 }
 
 // Status is the whole status file.
