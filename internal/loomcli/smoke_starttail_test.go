@@ -21,8 +21,8 @@ import (
 )
 
 // an attached `lyx loom start` leaves no strand named "loom-operator" and exactly one status
-// strand. The smoke run has no TTY, so the attach itself fails after the tail ran; the strand table
-// is what is asserted. The literal is spelled inline as a guard against the removed operator strand
+// strand. The smoke run has no TTY, so the attach itself exits non-zero after the tail ran; the
+// strand table is what is asserted. The literal is spelled inline as a guard against the removed operator strand
 // coming back: Selvage is the operator's terminal, not a strand.
 func TestSmokeStart_AttachTailAddsNoOperatorStrand(t *testing.T) {
 	tmuxBinaryPath(t)
@@ -30,8 +30,12 @@ func TestSmokeStart_AttachTailAddsNoOperatorStrand(t *testing.T) {
 	_, loc, worktree, _ := newWiredPairFixture(t)
 	registerBootstrapTeardown(t, loc, worktree)
 
-	// The attach fails without a TTY, so the error is expected and only the strand table is read.
-	_, _, _ = runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "start")
+	// Without a TTY the attach exits non-zero, which surfaces only as the ignored exit code; err is
+	// set only on a timeout or a failed launch, and either means the tail may never have run.
+	stdout, _, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "start")
+	if err != nil {
+		t.Fatalf("loom start: %v; output: %s", err, stdout)
+	}
 
 	eng := probeReedEngine(t, loc)
 	if count := statusStrandCount(t, eng, "loom-operator"); count != 0 {
