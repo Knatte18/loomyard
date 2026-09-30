@@ -118,20 +118,20 @@ type Deps struct {
 	// its drift guard keeps it filled.
 	MarkTaskDone func() error
 
-	// VerifyCommand returns the verify command line the post-merge verify gate runs in the task
-	// worktree. It is read each time the gate runs rather than once at construction, because the
-	// caller builds Deps before the command's source exists on a fresh run.
+	// VerifyCommand returns the verify command line the post-merge verify gate runs in the task worktree.
+	// It is read each time the gate runs rather than once at construction,
+	// because the caller builds Deps before the command's source exists on a fresh run.
 	//
-	// Nil means "no verify wiring", following CommitStatus's nil-is-absent convention: the gate never
-	// runs and nothing is logged. An empty returned string means the source carries no verify
-	// command, which skips the gate with a warning.
+	// Nil means "no verify wiring", following CommitStatus's nil-is-absent convention:
+	// the gate never runs and nothing is logged.
+	// An empty returned string means the source carries no verify command, which skips the gate with a warning.
 	VerifyCommand func() (string, error)
-	// VerifyPendingPath is the told path of the pending-verify marker: present while a merge-in has
-	// changed the task tree and the verify has not yet passed. Told, never derived, per the
-	// Told-Geometry Invariant.
+	// VerifyPendingPath is the told path of the pending-verify marker:
+	// present while a merge-in has changed the task tree and the verify has not yet passed.
+	// Told, never derived, per the Told-Geometry Invariant.
 	VerifyPendingPath string
-	// VerifyOutputPath is the told path the verify command's combined output is written to,
-	// overwritten on each run. Told, never derived, per the Told-Geometry Invariant.
+	// VerifyOutputPath is the told path the verify command's combined output is written to, overwritten on each run.
+	// Told, never derived, per the Told-Geometry Invariant.
 	VerifyOutputPath string
 
 	// Shuttle is the session-runner seam, told exactly the way every existing session-driving
