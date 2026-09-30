@@ -31,6 +31,30 @@ Nothing to report.
 			wantFindings: nil,
 		},
 		{
+			name: "happy blocking with focus departures section",
+			content: `---
+verdict: BLOCKING
+findings:
+  - id: F1
+    severity: BLOCKING
+    location: file.go:7
+    summary: unchecked error
+---
+
+### [BLOCKING] unchecked error
+
+**Location:** file.go:7
+
+## Focus departures
+
+- "only look at file.go": also read util.go because the error originates there.
+`,
+			wantVerdict: VerdictBlocking,
+			wantFindings: []Finding{
+				{ID: "F1", Severity: SeverityBlocking, Location: "file.go:7", Summary: "unchecked error"},
+			},
+		},
+		{
 			name: "happy approved nit only findings",
 			content: `---
 verdict: APPROVED

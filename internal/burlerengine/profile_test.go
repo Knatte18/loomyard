@@ -239,6 +239,21 @@ func TestProfile_Validate(t *testing.T) {
 			errSubstr: "exceeding the maximum",
 		},
 		{
+			name: "focusdirective nonexistent",
+			mutate: func(root string, p *Profile) {
+				p.FocusDirective = "no-such-focus.md"
+			},
+			wantErr:   true,
+			errSubstr: "profile.FocusDirective",
+		},
+		{
+			name: "focusdirective existing",
+			mutate: func(root string, p *Profile) {
+				writeFixtureFile(t, root, "focus.md", "focus")
+				p.FocusDirective = "focus.md"
+			},
+		},
+		{
 			name: "reviewpath empty",
 			mutate: func(root string, p *Profile) {
 				p.ReviewPath = ""
@@ -327,6 +342,8 @@ func TestProfile_Validate_ResolvesPathsInPlace(t *testing.T) {
 	// both branches of resolvePath run inside a single field.
 	absoluteFasit := filepath.Join(root, "fasit.txt")
 	p.Fasit.Paths = []string{"fasit.txt", absoluteFasit}
+	writeFixtureFile(t, root, "focus.md", "focus")
+	p.FocusDirective = "focus.md"
 
 	if err := p.validate(root, Config{}); err != nil {
 		t.Fatalf("validate() = %v; want nil", err)
@@ -350,6 +367,11 @@ func TestProfile_Validate_ResolvesPathsInPlace(t *testing.T) {
 	wantPriorFixers := []string{filepath.Join(root, "prior-fixer.md")}
 	if diffStrings(p.PriorFixerReports, wantPriorFixers) {
 		t.Errorf("PriorFixerReports = %v; want %v", p.PriorFixerReports, wantPriorFixers)
+	}
+
+	wantFocus := filepath.Join(root, "focus.md")
+	if p.FocusDirective != wantFocus {
+		t.Errorf("FocusDirective = %q; want %q", p.FocusDirective, wantFocus)
 	}
 
 	wantReviewPath := filepath.Join(root, "review.md")

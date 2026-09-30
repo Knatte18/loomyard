@@ -8,10 +8,13 @@
      and friction_directive is the sixth: both are optional, both filled via stencil.FillOptional, and
      both render as nothing when their respective feature is inactive (PATTERN for pattern_directive,
      Tier 2 for friction_directive).
-     They stay at the top level, before the first work heading, so their optional-blank semantics hold. -->
+     focus_directive is the seventh marker, optional, filled via stencil.FillOptional, and renders
+     nothing when the round has no directive.
+     All three stay at the top level, before the first work heading, so their optional-blank semantics hold. -->
 
 {{.pattern_directive}}
 {{.friction_directive}}
+{{.focus_directive}}
 ## What to review (the target)
 
 {{.target}}

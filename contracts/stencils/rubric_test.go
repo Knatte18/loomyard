@@ -1,13 +1,6 @@
-// rubric_test.go pins loom-rubric-discussion-review.md's, loom-rubric-plan-review.md's, and
-// loom-rubric-webster-review.md's required content: the six items the rubric's own two
-// "Discussion-Review rubric" subsections require, the eight items its "Plan-Review rubric"
-// subsections require, the nine items loom-rubric-webster-review.md's own sections require, and the
-// one-marker allowlist the two Bouncer stencils' {{.rubric}} interpolation depends on for all three
-// rubrics: a rubric may carry the specs_dir marker and nothing else -- the old no-marker-at-all rule
-// relaxed to the same shape rather than deleted, because a second marker is still invisible to the
-// fill at the value-interpolation site and must still fail loudly. It additionally pins that
-// specs_dir renders successfully through the production render helper, and that every stencil
-// carrying a normative citation actually declares the literal {{.specs_dir}} marker.
+// rubric_test.go pins loom-rubric-discussion-review.md's, loom-rubric-plan-review.md's, and loom-rubric-webster-review.md's required content: the do-not-flag and also-flag items of the Discussion-Review rubric, the do-not-flag, also-flag and support-log items of the Plan-Review rubric, the diff-review, range, do-not-flag and also-flag items of loom-rubric-webster-review.md, and the two-marker allowlist the two Bouncer stencils' {{.rubric}} interpolation depends on for all three rubrics:
+// a rubric may carry the specs_dir and stencils_dir markers and nothing else -- the old no-marker-at-all rule relaxed to the same shape rather than deleted, because a third marker is still invisible to the fill at the value-interpolation site and must still fail loudly.
+// It additionally pins that the markers render successfully through the production render helper, that both review rubrics name their writer's deployed stencil path, and that every stencil carrying a normative citation actually declares the literal {{.specs_dir}} marker.
 // It also pins the one property that matters across all four friction directive stencils: each
 // states that writing the note is optional and that an absent note is normal.
 
@@ -24,13 +17,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
-// rubricMarkerAllowlist is the complete set of top-level stencil markers a rubric may carry: only
-// specs_dir, which internal/shedadapters.ReadRubric fills as the rubric's own single-marker template
-// at read time. A marker outside this set would sit inside the marker VALUE the Bouncer and Burler
-// prompts interpolate the rubric as, invisible to the fill's required-marker check at the template
-// actually being executed, so it must fail here exactly as loudly as the old no-marker-at-all rule
-// made it fail.
-var rubricMarkerAllowlist = map[string]bool{"specs_dir": true}
+// rubricMarkerAllowlist is the complete set of top-level stencil markers a rubric may carry: only specs_dir and stencils_dir, which internal/shedadapters.ReadRubric fills as the rubric's own template at read time.
+// A marker outside this set would sit inside the marker VALUE the Bouncer and Burler prompts interpolate the rubric as, invisible to the fill's required-marker check at the template actually being executed, so it must fail here exactly as loudly as the old no-marker-at-all rule made it fail.
+var rubricMarkerAllowlist = map[string]bool{"specs_dir": true, "stencils_dir": true}
 
 // assertRubricMarkersWithinAllowlist fails when markers contains any name outside
 // rubricMarkerAllowlist.
@@ -38,14 +27,12 @@ func assertRubricMarkersWithinAllowlist(t *testing.T, rubricName string, markers
 	t.Helper()
 	for _, marker := range markers {
 		if !rubricMarkerAllowlist[marker] {
-			t.Errorf("%s carries the top-level marker %q, which is outside the one-marker allowlist %v", rubricName, marker, rubricMarkerAllowlist)
+			t.Errorf("%s carries the top-level marker %q, which is outside the marker allowlist %v", rubricName, marker, rubricMarkerAllowlist)
 		}
 	}
 }
 
-// TestLoomRubricDiscussionReview_NamesEveryRequiredItem asserts LoomRubricDiscussionReview's bytes
-// contain a distinctive phrase for each of the six items the rubric's own two
-// "Discussion-Review rubric" subsections require: three do-not-flag items and three also-flag items.
+// TestLoomRubricDiscussionReview_NamesEveryRequiredItem asserts LoomRubricDiscussionReview's bytes contain a distinctive phrase for each item the rubric's own two "Discussion-Review rubric" subsections require: the do-not-flag items and the also-flag items.
 // Following internal/burlerengine/template_test.go's TestTemplate_StatesRoundDiscipline as precedent,
 // each assertion is a short, distinctive substring rather than a whole paragraph, so ordinary prose
 // edits do not break this test.
@@ -73,10 +60,7 @@ func TestLoomRubricDiscussionReview_NamesEveryRequiredItem(t *testing.T) {
 	}
 }
 
-// TestLoomRubricDiscussionReview_MarkersWithinAllowlist asserts LoomRubricDiscussionReview's
-// top-level marker set is a subset of rubricMarkerAllowlist. This rubric gains no marker in this
-// task, but its allowed set is the same as the other two rubrics' -- an asymmetric rule across the
-// three is how the next author loses the invariant.
+// TestLoomRubricDiscussionReview_MarkersWithinAllowlist asserts LoomRubricDiscussionReview's top-level marker set is a subset of rubricMarkerAllowlist, the same allowed set as the other two rubrics' -- an asymmetric rule across the three is how the next author loses the invariant.
 func TestLoomRubricDiscussionReview_MarkersWithinAllowlist(t *testing.T) {
 	markers, err := stencil.TopLevelMarkers(LoomRubricDiscussionReview)
 	if err != nil {
@@ -85,9 +69,7 @@ func TestLoomRubricDiscussionReview_MarkersWithinAllowlist(t *testing.T) {
 	assertRubricMarkersWithinAllowlist(t, "LoomRubricDiscussionReview", markers)
 }
 
-// TestLoomRubricPlanReview_NamesEveryRequiredItem asserts LoomRubricPlanReview's bytes contain a
-// distinctive phrase for each of the eight items required: the four "Also flag" items, the three
-// "Do not flag" items, and the named support-log exclusion.
+// TestLoomRubricPlanReview_NamesEveryRequiredItem asserts LoomRubricPlanReview's bytes contain a distinctive phrase for each item required: the "Also flag" items, the "Do not flag" items, and the named support-log exclusion.
 // Following TestLoomRubricDiscussionReview_NamesEveryRequiredItem as precedent, each assertion is a
 // short, distinctive substring rather than a whole paragraph, so ordinary prose edits do not break
 // this test.
@@ -102,6 +84,8 @@ func TestLoomRubricPlanReview_NamesEveryRequiredItem(t *testing.T) {
 		{"ImpactSummary carries a real blast-radius conclusion", "blast-radius conclusion"},
 		{"Custom is a last resort", "is a last resort"},
 		{"fidelity to the decision record at its anchor-relative path", "_lyx/discussion/decision-record.md"},
+		{"writer/reviewer symmetry note", "writer/reviewer symmetry note"},
+		{"verify coverage of every targeted package", "does not run is a finding against the plan"},
 		{"anything this round's own gate already checks, through commit-subject-mismatch", "commit-subject-mismatch"},
 		{"dependency edges are derived, never authored", "Dependency edges are derived, never authored"},
 		{"Rename carries no ImpactSummary because there is no graded blast radius", "no graded blast radius to summarise"},
@@ -128,9 +112,7 @@ func TestLoomRubricPlanReview_MarkersWithinAllowlist(t *testing.T) {
 	assertRubricMarkersWithinAllowlist(t, "LoomRubricPlanReview", markers)
 }
 
-// TestLoomRubricWebsterReview_NamesEveryRequiredItem asserts LoomRubricWebsterReview's bytes contain
-// a distinctive phrase for each of the nine items required: the diff-review base statement, the two
-// review-range derivation steps, the four "Do not flag" items, and the two "Also flag" items.
+// TestLoomRubricWebsterReview_NamesEveryRequiredItem asserts LoomRubricWebsterReview's bytes contain a distinctive phrase for each item required: the diff-review base statement, the review-range derivation steps, the "Do not flag" items, and the "Also flag" items.
 // Following TestLoomRubricDiscussionReview_NamesEveryRequiredItem as precedent, each assertion is a
 // short, distinctive substring rather than a whole paragraph, so ordinary prose edits do not break
 // this test.
@@ -147,8 +129,10 @@ func TestLoomRubricWebsterReview_NamesEveryRequiredItem(t *testing.T) {
 		{"anything the plan's own gates already check", "Plan-Write`'s and `Plan-Burler`'s own gates"},
 		{"the plan is the measuring stick and never the subject", "measuring stick and never the subject"},
 		{"a missing ImpactSummary belongs to Plan-Review", "Both belong to "},
-		{"this segment's own round artifacts are never the subject", ".lyx/loom/reviews/webster/"},
+		{"this segment's own round artifacts are never the subject", "_lyx/reviews/webster/"},
 		{"comment-convention compliance checks the target repository's own conventions", "target repository's own conventions"},
+		{"a written rule outranks a convention inferred from surrounding code", "outranks a convention inferred from the surrounding code"},
+		{"a line width is never inferred from surrounding code", "A line width is never inferred from the surrounding code"},
 		{"per-card mechanical check names assert-no-callers for a Delete card", "assert-no-callers"},
 	}
 
@@ -200,6 +184,41 @@ func TestLoomRubrics_ParseUnderTheRenderHelper(t *testing.T) {
 
 			if _, err := shedadapters.ReadRubric(dir, tt.name, "/abs/specs/dir"); err != nil {
 				t.Errorf("shedadapters.ReadRubric(%q, %q) = _, %v; want nil error", dir, tt.name, err)
+			}
+		})
+	}
+}
+
+// TestLoomRubrics_NameTheWriterStencil asserts each review rubric, rendered through internal/shedadapters.ReadRubric, names its writer stencil's deployed path as the registry lays it out, so the named path is pinned to stencilstore.Path rather than to a hand-typed string.
+// The comparison is slash-normalised because the rubric text joins with "/" while the rendered prefix uses the OS separator.
+func TestLoomRubrics_NameTheWriterStencil(t *testing.T) {
+	tests := []struct {
+		name   string
+		def    []byte
+		writer string
+	}{
+		{"loom-rubric-discussion-review", LoomRubricDiscussionReview, "loom-template-discussion"},
+		{"loom-rubric-plan-review", LoomRubricPlanReview, "loom-template-plan"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := stencilstore.Path(dir, tt.name)
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				t.Fatalf("os.MkdirAll(%q) = %v; want nil error", filepath.Dir(path), err)
+			}
+			if err := os.WriteFile(path, tt.def, 0o644); err != nil {
+				t.Fatalf("os.WriteFile(%q) = %v; want nil error", path, err)
+			}
+
+			got, err := shedadapters.ReadRubric(dir, tt.name, "/abs/specs/dir")
+			if err != nil {
+				t.Fatalf("shedadapters.ReadRubric(%q, %q) = _, %v; want nil error", dir, tt.name, err)
+			}
+			want := filepath.ToSlash(stencilstore.Path(dir, tt.writer))
+			if !strings.Contains(filepath.ToSlash(got), want) {
+				t.Errorf("rendered %s does not contain the writer stencil path %q", tt.name, want)
 			}
 		})
 	}
