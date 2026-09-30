@@ -380,8 +380,8 @@ func (b *Bouncer) awaitLiveSeed() (bool, error) {
 
 // degrade is every judge-call infrastructure failure's single exit: it consults cancelErr first
 // and returns that error when non-nil, otherwise logs args via logger.Warn and returns
-// shedengine.Stuck with an empty Path, msg as the Reason, and a nil error. None of degrade's callers
-// ever return shedengine.Done.
+// shedengine.Stuck with an empty Path, msg as the Reason, and a nil error. None of degrade's
+// callers ever return shedengine.Done.
 func (b *Bouncer) degrade(ctx context.Context, msg string, args ...any) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if cerr := cancelErr(ctx, b.cfg.Name, bouncerEngineLabel); cerr != nil {
 		return "", shedengine.OutputPointer{}, cerr
