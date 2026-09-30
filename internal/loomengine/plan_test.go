@@ -266,10 +266,7 @@ func TestPlanSpec_PromptStatesSkillLoads(t *testing.T) {
 	}
 }
 
-// TestPlanSpec_PromptStatesQuarryLookups verifies the prompt points the agent at the lyx quarry
-// verb group for every glyph lookup (including the `glyphs --text` line-per-symbol form), states
-// the copied-verbatim hard rule, and never mentions the two pipeline-internal verbs the planner
-// must not ask for.
+// TestPlanSpec_PromptStatesQuarryLookups verifies the prompt points the agent at the lyx quarry verb group for every glyph lookup (including the `glyphs --text` line-per-symbol form), states the copied-verbatim hard rule, and never mentions the two pipeline-internal verbs the planner must not ask for.
 func TestPlanSpec_PromptStatesQuarryLookups(t *testing.T) {
 	prompt := renderedPlanPrompt(t)
 
