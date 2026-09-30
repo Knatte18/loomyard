@@ -270,3 +270,16 @@ func TestArmFromSeed_RefusalPrecedence(t *testing.T) {
 		})
 	}
 }
+
+// TestShedVerbTexts_GotoAdmissionRuleOnlyOnGoto pins that the goto admission sentence sits on goto's help alone.
+func TestShedVerbTexts_GotoAdmissionRuleOnlyOnGoto(t *testing.T) {
+	const rule = "goto moves a halted run only back"
+	if !strings.Contains(shedVerbTexts.Goto.Long, rule) {
+		t.Errorf("goto Long does not state the admission rule %q", rule)
+	}
+	for name, long := range map[string]string{"run": shedVerbTexts.Run.Long, "step": shedVerbTexts.Step.Long, "status": shedVerbTexts.Status.Long, "pause": shedVerbTexts.Pause.Long} {
+		if strings.Contains(long, rule) {
+			t.Errorf("%s Long carries goto's admission rule", name)
+		}
+	}
+}
