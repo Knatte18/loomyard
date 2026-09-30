@@ -361,10 +361,9 @@ Example:
 			// Still part of step 4, not a step of its own: this call reports nothing on the
 			// envelope, so it earns no "// Step N:" marker, and giving it one would leave a reader
 			// wondering why the numbering appears to skip something. Three placement facts matter
-			// here. First, it sits outside this RunE's own mustAttach gate below -- the
-			// daemon is per-hub and reconciles a session
-			// that exists on every invocation, --no-attach included, where the detached driver
-			// still spawns agent strands that need reconciling. Second, it is called here rather
+			// here. First, it sits outside this RunE's own mustAttach gate below -- the daemon is
+			// per-hub and reconciles a session that exists on every invocation, --no-attach
+			// included, where the detached driver still spawns agent strands that need reconciling. Second, it is called here rather
 			// than from inside ensureStatusStrand, because that helper lives in
 			// sharedbootstrap.go and `lyx loom step` calls it too, and widening the watchdog spawn
 			// onto `step` is out of this task's scope. Third, it stays inside the region where the

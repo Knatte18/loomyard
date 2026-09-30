@@ -33,10 +33,10 @@ import (
 //
 // Display.Anchor is below-parent and must never be hidden: the driver is the session an operator
 // attaches to watch, and a hidden pane would make a run that may last hours legible only through its
-// log file. Display.Focus is false because the flag is persisted on the
-// strand and re-evaluated on every subsequent add, so a true value would re-capture focus on every
-// agent pane the run spawns afterwards. Display.ShrinkWhenWaitingOnChild is false: the
-// driver is never itself waiting on a child in the sense that flag models.
+// log file. Display.Focus is false because the flag is persisted on the strand and re-evaluated on
+// every subsequent add, so a true value would re-capture focus on every agent pane the run spawns
+// afterwards. Display.ShrinkWhenWaitingOnChild is false: the driver is never itself waiting on a
+// child in the sense that flag models.
 //
 // Timeout, KeepPane, and AwaitOperator are left at their zero values deliberately. A zero Timeout
 // defaults to run_timeout_min in Spec.validate, and on this path it bounds only shuttle's startup step
