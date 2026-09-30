@@ -435,6 +435,12 @@ func TestLandingAndApprovalAccessors(t *testing.T) {
 	if got, want := LoomApprovalPath(l), filepath.Join(l.AnchorPath(), ".lyx", "loom", "approval.json"); got != want {
 		t.Errorf("LoomApprovalPath() = %q; want %q", got, want)
 	}
+	if got, want := LoomVerifyPendingPath(l), filepath.Join(l.AnchorPath(), ".lyx", "loom", "verify-pending"); got != want {
+		t.Errorf("LoomVerifyPendingPath() = %q; want %q", got, want)
+	}
+	if got, want := LoomVerifyOutputPath(l), filepath.Join(l.AnchorPath(), ".lyx", "loom", "verify-output.log"); got != want {
+		t.Errorf("LoomVerifyOutputPath() = %q; want %q", got, want)
+	}
 }
 
 // TestLoomScratchDir_DiffersFromShedrunScratchDir proves LoomScratchDir and
