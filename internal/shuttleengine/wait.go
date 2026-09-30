@@ -883,6 +883,14 @@ func (run *Run) finalize(outcome Outcome, message string) (Result, error) {
 	}
 
 	run.state.Outcome = string(outcome)
+	// An asking classification records how much of the events file it consumed, so a later Attach can
+	// tell a strand that kept working past the ask (events grew) from one still parked on it.
+	// Every other outcome clears it: the offset is meaningful only beside an asking Outcome.
+	run.state.AskingOffset = nil
+	if outcome == OutcomeAsking {
+		consumed := run.offset
+		run.state.AskingOffset = &consumed
+	}
 	if err := saveRunState(run.runDir, run.state); err != nil {
 		logger.Warn("shuttle: persist run outcome failed (non-fatal)", "runDir", run.runDir, "strandGUID", run.state.StrandGUID, "outcome", string(outcome), "error", err)
 	}
