@@ -14,14 +14,27 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitignore"
 )
 
-// WriteConfig generates VS Code configuration files in a worktree, only if they don't already exist
-// (never clobbering operator edits).
+// TaskChain selects which folderOpen task chain WriteConfig generates.
+type TaskChain int
+
+const (
+	// TaskChainInteractive is the operator-facing chain: reed up, reed add claude, reed attach.
+	TaskChainInteractive TaskChain = iota
+	// TaskChainAttachOnly is the driven pair's chain: a single reed attach task.
+	TaskChainAttachOnly
+)
+
+// WriteConfig generates VS Code configuration files in a worktree.
+// With TaskChainInteractive, settings.json and tasks.json are each written only if they don't already exist (never clobbering operator edits), and ".vscode/" is added to .gitignore.
+// With TaskChainAttachOnly, settings.json keeps the write-only-when-absent rule, but tasks.json is always written, overwriting any existing file, and holds a single folderOpen "reed attach" task;
+// .gitignore is not touched (the caller keeps .vscode/ out of git through info/exclude).
 // lyxPath and claudePath are the resolved absolute binary paths stamped into the generated
 // folderOpen launch chain; WriteConfig owns the bare-name fallback for either one: an empty
 // lyxPath becomes "lyx" and an empty claudePath becomes "claude", so a resolution failure upstream
 // still produces a runnable (PATH-dependent) task file rather than a broken one.
+// claudePath is unused by TaskChainAttachOnly.
 // Returns an error if I/O fails (but not if files already exist).
-func WriteConfig(worktreeDir, relpath, slug, color, lyxPath, claudePath string) error {
+func WriteConfig(worktreeDir, relpath, slug, color, lyxPath, claudePath string, chain TaskChain) error {
 	if lyxPath == "" {
 		lyxPath = "lyx"
 	}
@@ -65,6 +78,9 @@ func WriteConfig(worktreeDir, relpath, slug, color, lyxPath, claudePath string) 
 	}
 
 	tasksPath := filepath.Join(vscodePath, "tasks.json")
+	if chain == TaskChainAttachOnly {
+		return writeAttachOnlyTasks(tasksPath, lyxPath)
+	}
 	if _, err := os.Stat(tasksPath); err == nil {
 	} else if os.IsNotExist(err) {
 		// dependsOrder: "sequence" is relied on for ordering alone. VS Code's runner has
@@ -142,4 +158,33 @@ func WriteConfig(worktreeDir, relpath, slug, color, lyxPath, claudePath string) 
 
 	_, err := gitignore.Ensure(dir, ".vscode/")
 	return err
+}
+
+// writeAttachOnlyTasks writes the single-task folderOpen chain, overwriting any existing file.
+func writeAttachOnlyTasks(tasksPath, lyxPath string) error {
+	tasks := map[string]any{
+		"version": "2.0.0",
+		"tasks": []map[string]any{
+			{
+				"label":   "reed attach",
+				"type":    "shell",
+				"command": lyxPath,
+				"args":    []string{"reed", "attach"},
+				"presentation": map[string]any{
+					"reveal": "always",
+					"panel":  "new",
+					"echo":   true,
+					"focus":  true,
+				},
+				"runOptions": map[string]any{
+					"runOn": "folderOpen",
+				},
+			},
+		},
+	}
+	data, err := json.MarshalIndent(tasks, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(tasksPath, data, 0o644)
 }

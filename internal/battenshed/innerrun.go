@@ -53,6 +53,14 @@ const approvalActedFileSuffix = "-approval-acted"
 // doneSeenFileSuffix is the fixed suffix of the marker recording when the producer first saw the child done, joined onto the producer's own name.
 const doneSeenFileSuffix = "-done-seen"
 
+// ideOpenedFileSuffix is the fixed suffix of the marker recording that the producer already opened the IDE this run, joined onto the producer's own name.
+const ideOpenedFileSuffix = "-ide-opened"
+
+// ideOpenedFile returns the path of the once-marker written after the IDE open was attempted.
+func ideOpenedFile(scratchDir, producer string) string {
+	return filepath.Join(scratchDir, producer+ideOpenedFileSuffix)
+}
+
 // approvalActedFile returns the path of the marker holding the approval identity already resumed on.
 func approvalActedFile(scratchDir, producer string) string {
 	return filepath.Join(scratchDir, producer+approvalActedFileSuffix)
@@ -101,6 +109,9 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 	if deps.Now == nil {
 		deps.Now = time.Now
 	}
+	if deps.OpenIDE == nil {
+		deps.OpenIDE = func(context.Context) error { return nil }
+	}
 	return &innerRunProducer{
 		name:         name,
 		slug:         slug,
@@ -127,6 +138,8 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 // The full disposition table, evaluated top to bottom: a spawn as above (logging both Live-Substrate
 // Spawn Observability lines around deps.Spawn), then one more read;
 // deps.Spawn returning an error is a hard error, not Stuck, since a failed spawn is mechanism failure, not an ordinary wait, and the next Call retries it; still no status file after a successful spawn is a hard error naming the spawn that returned success without producing one.
+// After a successful spawn, whether here or in the approved-resume arm, Call opens the operator's IDE through deps.OpenIDE once per run: a once-marker under scratchDir (ideOpenedFile) gates it, a fresh child (no status file) clears the marker first, and an open error is only warned about, never changing the row's outcome.
+// A failed spawn returns before the open.
 // Any Call that finds the child in a state other than done first removes a leftover done-seen marker, so a marker from an earlier run of the same slug never shortens a later wait.
 // Then by state:
 //   - running sleeps p.pollInterval and returns a counted Stuck;
@@ -172,6 +185,11 @@ func (p *innerRunProducer) Call(ctx context.Context) (shedengine.Outcome, sheden
 		if err := os.Remove(confirmedPath); err != nil && !os.IsNotExist(err) {
 			return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: clear spawn confirmation: %w", p.name, err)
 		}
+		if !found {
+			if err := os.Remove(ideOpenedFile(p.scratchDir, p.name)); err != nil && !os.IsNotExist(err) {
+				return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: clear ide-opened marker: %w", p.name, err)
+			}
+		}
 		logger.Info("battenshed: spawning inner shed run", "producer", p.name, "slug", p.slug, "status_found", found)
 		spawnErr := p.deps.Spawn(ctx)
 		logger.Info("battenshed: inner shed run wait complete", "producer", p.name, "slug", p.slug)
@@ -182,6 +200,7 @@ func (p *innerRunProducer) Call(ctx context.Context) (shedengine.Outcome, sheden
 			return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: spawn inner shed run (resuming this run retries the spawn): %w", p.name, spawnErr)
 		}
 		recordSpawnConfirmed(p.name, p.slug, p.scratchDir, confirmedPath)
+		p.openIDEOnce(ctx)
 
 		status, found, err = p.deps.ReadStatus(statusPath, statusLockPath)
 		if err != nil {
@@ -279,6 +298,7 @@ func (p *innerRunProducer) callAwaiting(ctx context.Context, status shedengine.S
 		return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: resume approved inner shed run (resuming this run retries the spawn): %w", p.name, spawnErr)
 	}
 	recordSpawnConfirmed(p.name, p.slug, p.scratchDir, SpawnConfirmedFile(p.scratchDir, p.name))
+	p.openIDEOnce(ctx)
 	if err := os.MkdirAll(p.scratchDir, 0o755); err != nil {
 		return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: create scratch directory for approval-acted marker: %w", p.name, err)
 	}
@@ -342,6 +362,26 @@ func (p *innerRunProducer) callDone(ctx context.Context) (shedengine.Outcome, sh
 		return finish()
 	}
 	return p.exemptWait(ctx, fmt.Sprintf("inner shed run is done; waiting for its driver to finish its stop report (%s of %s grace elapsed)", elapsed.Round(time.Second), p.driverExitGrace))
+}
+
+// openIDEOnce opens the operator's IDE through deps.OpenIDE unless the once-marker already exists.
+// An open error is logged rather than escalated, and the marker is written whatever the outcome, so a failed open is not retried;
+// a marker write failure is logged too, since a lost marker costs only one extra open.
+func (p *innerRunProducer) openIDEOnce(ctx context.Context) {
+	markerPath := ideOpenedFile(p.scratchDir, p.name)
+	if _, err := os.Stat(markerPath); err == nil {
+		return
+	}
+	if err := p.deps.OpenIDE(ctx); err != nil {
+		logger.Warn("battenshed: open IDE failed", "producer", p.name, "slug", p.slug, "error", err)
+	}
+	if err := os.MkdirAll(p.scratchDir, 0o755); err != nil {
+		logger.Warn("battenshed: create scratch directory for ide-opened marker failed", "producer", p.name, "slug", p.slug, "scratchDir", p.scratchDir, "error", err)
+		return
+	}
+	if err := os.WriteFile(markerPath, []byte("opened\n"), 0o644); err != nil {
+		logger.Warn("battenshed: write ide-opened marker failed", "producer", p.name, "slug", p.slug, "path", markerPath, "error", err)
+	}
 }
 
 // spawnConfirmed reports whether the spawn-confirmation marker at path exists. Any stat failure
