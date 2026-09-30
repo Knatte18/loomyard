@@ -100,6 +100,9 @@ No build order is implied between these items.
    A middle option: gate once, and localize by making the predicate of Webster's integration-stage `bisect` pluggable, at log₂(N) captures — though bisect assumes monotone drift.
    Also open: a baseline tree whose capture itself fails should be recorded, not halt the run.
 
+1. **Kick-start pack: pre-resolved glyph spans in agent prompts** — before an implementer or reviewer session starts, Go resolves the plan's glyphs through quarry to file, span and signature, and injects them with a read-them-in-parallel instruction, so the agent starts from pinned spans instead of a locate-by-grep phase. Measured in quarry: median turns 18 → 10, cost $0.43 → $0.30.
+   See [GitHub issue #227](https://github.com/Knatte18/loomyard/issues/227) (implementer) and [#228](https://github.com/Knatte18/loomyard/issues/228) (plan and code reviewers).
+
 ## Done
 
 Cleared 2026-08-25 to keep this file lean — shipped items' history lives in `git log` and each module's own package documentation, not here.
