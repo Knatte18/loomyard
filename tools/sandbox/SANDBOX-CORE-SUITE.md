@@ -274,7 +274,9 @@ copying a glyph out of `glyphs`' own output rather than typing one by hand."
 **Watch:** Does `lyx quarry toc <a package directory>` render a well-formed JSON table-of-contents answer for that directory?
 Does `lyx quarry glyphs <that same directory>` render a flat, non-empty glyph index -- a `symbols` list with an `id` on each entry?
 Copy one entry's `id` value verbatim from that output, rather than typing a spelling by hand.
+Does `lyx quarry glyphs --text <that same directory>` print one line per symbol, each ending in the symbol's id, so that dropping lines containing `_test.go` removes exactly the test-file symbols?
 Does `lyx quarry resolve <that copied glyph>` report it `found`?
+Does `lyx quarry resolve <the copied glyph> <a made-up glyph>` print two answers in argument order, the second with `status` `not_found`, and exit non-zero without any `{"ok":false}` envelope?
 Pick a type glyph from the same index (or a directory glyph, if none of the package's exported symbols are a type) and does `lyx quarry expand <that glyph>` report its head plus its members?
 Do all four commands run against the sandbox's own worktree with no repository-path flag, and does each answer read as quarry's own rendering rather than something reshaped or filtered?
 

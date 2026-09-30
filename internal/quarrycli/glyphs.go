@@ -16,7 +16,8 @@ import (
 // newGlyphsCmd returns the "glyphs" subcommand, reading the resolved repository root through root
 // at call time.
 func newGlyphsCmd(root func() string) *cobra.Command {
-	return &cobra.Command{
+	var text bool
+	cmd := &cobra.Command{
 		Use:   "glyphs <dir>",
 		Short: "List every glyph under a repository-relative directory, flat and depth-first",
 		Long: `glyphs answers a glyphs query for dir -- a repository-relative directory path, with
@@ -25,8 +26,14 @@ func newGlyphsCmd(root func() string) *cobra.Command {
 the flat index a plan's Create/Rename/Delete targets copy their glyph spellings
 out of, verbatim.
 
-Example:
-  lyx quarry glyphs internal/planglyph`,
+With --text, glyphs emits quarry's own text view instead, one line per symbol ("<file>:<start>-<end> <kind> <id>", followed by "[incomplete] <path>" lines when present).
+Use it before any line filter such as grep: a line carries one whole symbol,
+so the filter drops symbols rather than single JSON fields.
+The glyph to copy from a line is its last field, the id.
+
+Examples:
+  lyx quarry glyphs internal/planglyph
+  lyx quarry glyphs --text internal/planglyph | grep -v _test.go`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
@@ -40,10 +47,15 @@ Example:
 				return nil
 			}
 
-			data, err := quarry.RenderGlyphsJSON(answer)
-			if err != nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
-				return nil
+			var data []byte
+			if text {
+				data = []byte(quarry.RenderGlyphsText(answer))
+			} else {
+				data, err = quarry.RenderGlyphsJSON(answer)
+				if err != nil {
+					clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+					return nil
+				}
 			}
 			if _, err := out.Write(data); err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
@@ -51,4 +63,6 @@ Example:
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&text, "text", false, "emit quarry's one-line-per-symbol text view instead of JSON")
+	return cmd
 }
