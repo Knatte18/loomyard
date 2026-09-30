@@ -385,11 +385,28 @@ func TestNewPlanDirRotator(t *testing.T) {
 		}
 	})
 
-	t.Run("MissingStencilWithPriorFilesIsAnError", func(t *testing.T) {
-		anchorPath, _ := setupPlanDir(t, "00-overview.md")
+	t.Run("MissingStencilWithPriorFilesIsAnErrorAndMovesNothing", func(t *testing.T) {
+		anchorPath, planDir := setupPlanDir(t, "00-overview.md")
 
 		if _, err := NewPlanDirRotator(anchorPath, t.TempDir(), fixedPlanClock)(); err == nil {
 			t.Fatalf("rotate() error = nil; want a render error when the stencil is missing")
+		}
+		// The render runs before any move, so the failed attempt leaves the plan where a retry
+		// finds it again -- otherwise the retry would rotate nothing and announce nothing.
+		entries, err := os.ReadDir(planDir)
+		if err != nil {
+			t.Fatalf("ReadDir(%q) error = %v", planDir, err)
+		}
+		if len(entries) != 1 || entries[0].Name() != "00-overview.md" {
+			t.Errorf("plan directory entries after a failed render = %v; want only 00-overview.md, with no archive directory", entries)
+		}
+
+		amendment, err := NewPlanDirRotator(anchorPath, seedPriorPlanStencils(t), fixedPlanClock)()
+		if err != nil {
+			t.Fatalf("retry rotate() error = %v; want nil", err)
+		}
+		if !strings.Contains(amendment, "00-overview.md") {
+			t.Errorf("retry amendment = %q; want it to announce 00-overview.md", amendment)
 		}
 	})
 
