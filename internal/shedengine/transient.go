@@ -17,8 +17,8 @@ const (
 	// TransientGitTransport is a git network or transport failure: the remote was unreachable or the connection dropped mid-operation.
 	// A non-fast-forward rejection or an auth failure never qualifies.
 	TransientGitTransport TransientClass = "git-transport"
-	// TransientGitHubAPI is a GitHub API failure that a retry can clear: a network error, a 5xx, or a rate limit.
-	// A 4xx that names a bad request, a missing resource or bad credentials never qualifies.
+	// TransientGitHubAPI is a GitHub API failure that a retry can clear: a network error, a 5xx, or a timeout.
+	// A 4xx that names a bad request, a missing resource or bad credentials never qualifies, and neither does a rate limit, since an immediate retry hits the same limit.
 	TransientGitHubAPI TransientClass = "github-api"
 	// TransientAgentStart is an agent session that never became ready.
 	// An agent that started and then died or timed out never qualifies.
