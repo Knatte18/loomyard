@@ -889,15 +889,7 @@ func runRemoveWithFlag(ctx context.Context, out io.Writer, args []string, force,
 		return errWithRecord(out, r.Mutated(), err)
 	}
 
-	// New RemoveResult fields must be added to this map explicitly — it is hand-built, not reflected.
-	fields := map[string]any{
-		"slug":                  r.Slug,
-		"path":                  r.Path,
-		"links_removed":         r.LinksRemoved,
-		"remote_branch_deleted": r.RemoteBranchDeleted,
-		"remote_branch_error":   r.RemoteBranchError,
-		"remote_skipped_reason": r.RemoteSkippedReason,
-	}
+	fields := removeFields(r)
 
 	// Keyed on RemoteBranchError alone — never on RemoteSkippedReason — so that a missing origin
 	// produces exit 0 here exactly as it does from cleanup, and the identical configuration state
@@ -913,6 +905,25 @@ func runRemoveWithFlag(ctx context.Context, out io.Writer, args []string, force,
 		return errWithRecordFields(out, r.Mutated(), synthesised, fields)
 	}
 	return okWithRecord(out, r.Mutated(), fields)
+}
+
+// removeFields builds the envelope fields for a remove result.
+// New RemoveResult fields must be added here explicitly — the map is hand-built, not reflected.
+// warp_branch_kept_reason appears only when the warp branch was kept for a stated reason.
+func removeFields(r fabricengine.RemoveResult) map[string]any {
+	fields := map[string]any{
+		"slug":                  r.Slug,
+		"path":                  r.Path,
+		"links_removed":         r.LinksRemoved,
+		"remote_branch_deleted": r.RemoteBranchDeleted,
+		"remote_branch_error":   r.RemoteBranchError,
+		"remote_skipped_reason": r.RemoteSkippedReason,
+		"warp_branch_deleted":   r.WarpBranchDeleted,
+	}
+	if r.WarpBranchKeptReason != "" {
+		fields["warp_branch_kept_reason"] = r.WarpBranchKeptReason
+	}
+	return fields
 }
 
 // addOptionsFromEnv returns the AddOptions for a CLI-driven `lyx fabric add`,
