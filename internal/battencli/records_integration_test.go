@@ -140,8 +140,12 @@ func TestBattenIntegration_AwaitingApprovalResumeDoneTeardown_ArchivesTheRunReco
 		t.Errorf("spawns after done = %d; want 1 (the same approval must not spawn again)", spawns)
 	}
 
-	if _, err := shed.Step(ctx); err != nil {
+	step, err = shed.Step(ctx)
+	if err != nil {
 		t.Fatalf("Step (Worktree-Teardown): %v", err)
+	}
+	if step.Producer != battenrecipe.NameWorktreeTeardown || step.Outcome != shedengine.Done || step.State != shedengine.StateDone {
+		t.Errorf("teardown step = producer %q outcome %q state %q; want %q done with the run done", step.Producer, step.Outcome, step.State, battenrecipe.NameWorktreeTeardown)
 	}
 	if pathExists(h.PairWarpWorktree(slug)) || pathExists(h.PairWeftSibling(slug)) {
 		t.Errorf("the task pair still exists after Worktree-Teardown")
