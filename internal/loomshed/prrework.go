@@ -154,7 +154,8 @@ func (p *prRework) checkSeams() error {
 	return nil
 }
 
-// finish is steps 6: re-baseline, then (when clear) remove the pending record, then Done.
+// finish runs step 6: re-baseline, then (when clear) remove the pending record, then Done.
+// The absent-record crash path calls it with clear false, since that record is already gone.
 func (p *prRework) finish(clear bool) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := p.deps.Rebaseline(); err != nil {
 		return "", shedengine.OutputPointer{}, fmt.Errorf("loomshed: %s: re-baseline plan fingerprint: %w", p.name, err)
