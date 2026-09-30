@@ -106,6 +106,10 @@ type InnerRunDeps struct {
 	// Now is the clock the driver-exit grace reads.
 	// A nil Now resolves to time.Now in NewInnerRun, the same way a nil Sleep resolves to waitOrCancel; a test replaces it to keep the grace out of real time.
 	Now func() time.Time
+	// OpenIDE opens an editor on the task worktree with the child's session attached.
+	// Call invokes it at most once per run, after a spawn that returned success; its error is only warned about and never changes the row's outcome.
+	// A nil OpenIDE resolves to a no-op returning nil in NewInnerRun, the same way a nil Sleep and Now resolve.
+	OpenIDE func(ctx context.Context) error
 }
 
 // SeedChildDeps carries every told value and injected closure NewSeedChild needs, carrying no
