@@ -1,6 +1,6 @@
 // validate.go implements the `validate-discussion`, `validate-plan` and `validate-description` loom
 // verbs: standalone, zero-argument callers of the identical package functions the Discussion,
-// Plan and Describe rows' own gates call, per the shared-implementation-is-the-whole-point Shared
+// Plan, PR-Rework and Describe rows' own gates call, per the shared-implementation-is-the-whole-point Shared
 // Decision. No verb re-implements or re-derives any check; each maps its package's result onto the
 // envelope-and-exit-contract Shared Decision.
 
@@ -11,6 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
+	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -130,35 +131,47 @@ func planFindingsHaveBlocking(findings []planglyph.Finding) bool {
 }
 
 // validatePlanCmd builds the `validate-plan` subcommand: the standalone form of the checks
-// Plan-Write's and Plan-Burler's own gate runs, plus the plan-unapproved approval check no gate
-// runs at all, callable by the writer agent before handoff.
+// Plan-Write's, Plan-Burler's and PR-Rework's own gates run, plus the plan-unapproved approval
+// check no gate runs at all, callable by the writer agent before handoff.
 func (c *loomCLI) validatePlanCmd() *cobra.Command {
-	var requireApproved bool
+	var requireApproved, rework bool
 
 	cmd := &cobra.Command{
 		Use:   "validate-plan",
-		Short: "run the checks Plan-Write's and Plan-Burler's own gate runs standalone against the current plan",
+		Short: "run the checks Plan-Write's, Plan-Burler's or PR-Rework's own gate runs standalone against the current plan",
 		Long: `validate-plan parses the current worktree's plan and checks it in one of
-two modes. With no flags, it runs planglyph.ValidateFormat -- the same
+three modes. With no flags, it runs planglyph.ValidateFormat -- the same
 format-only check set Plan-Write's and Plan-Burler's own gate runs before
 handoff, and the mode the plan writer calls before handoff. With
 --require-approved, it runs planglyph.Validate -- the same format-only set
 plus the plan-unapproved approval check, which no gate runs at all: this
 flag is the one place an operator can still reach that check standalone,
 since its own guarantee otherwise rests on the review segment's approve
-seam failing loudly if it is ever wired nil. Either way it reports the
-result as one JSON envelope, carrying any informational findings under
-their own envelope key even on the success path. It takes no arguments.
+seam failing loudly if it is ever wired nil. With --rework, it runs the
+check set PR-Rework's own gate runs: the format-only set scoped to the
+cards absent from the plan committed at HEAD, since every committed card
+has already been built and re-resolving it against the tree it changed
+reports the plan working as designed as a defect -- the mode the rework
+session calls before handoff. The two flags are mutually exclusive. Every
+mode reports the result as one JSON envelope, carrying any informational
+findings under their own envelope key even on the success path. It takes
+no arguments.
 
 Example:
   lyx loom validate-plan
-  lyx loom validate-plan --require-approved`,
+  lyx loom validate-plan --require-approved
+  lyx loom validate-plan --rework`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
 			}
 			out := cmd.OutOrStdout()
+
+			if requireApproved && rework {
+				clihelp.SetExit(cmd.Context(), output.Err(out, "loom: validate-plan: --require-approved and --rework are mutually exclusive"))
+				return nil
+			}
 
 			planDir := planparser.PlanDir(c.env.AnchorPath)
 			plan, err := planparser.ParsePlan(planDir)
@@ -168,9 +181,12 @@ Example:
 			}
 
 			var findings []planglyph.Finding
-			if requireApproved {
+			switch {
+			case requireApproved:
 				findings, err = planglyph.Validate(plan, c.env.WorktreeRoot)
-			} else {
+			case rework:
+				findings, err = loomshed.ValidateReworkPlan(plan, c.env.WorktreeRoot, c.env.Rework.ReadCommitted)
+			default:
 				findings, err = planglyph.ValidateFormat(plan, c.env.WorktreeRoot)
 			}
 			if err != nil {
@@ -210,6 +226,7 @@ Example:
 	}
 
 	cmd.Flags().BoolVar(&requireApproved, "require-approved", false, "also run the plan-unapproved approval check, the one check no gate runs -- this flag is the sole way to reach it standalone")
+	cmd.Flags().BoolVar(&rework, "rework", false, "check only the cards absent from the plan committed at HEAD, as PR-Rework's own gate does")
 
 	return cmd
 }

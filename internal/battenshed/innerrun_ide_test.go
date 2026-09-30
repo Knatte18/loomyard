@@ -25,8 +25,8 @@ func absentThenRunning() []statusResult {
 func approvedDeps(t *testing.T, spawnErr error) (*int, InnerRunDeps) {
 	t.Helper()
 	_, spawnCalls, deps := newInnerRunDeps(spawnErr, nil, awaitingStatus(), &fakeClock{})
-	deps.ReadApproval = func() (ChildApproval, bool, error) {
-		return ChildApproval{ApprovedAt: "2026-01-01T10:00:00Z", HeadSHA: "abc"}, true, nil
+	deps.ReadDecision = func() (ChildDecision, bool, error) {
+		return ChildDecision{Kind: DecisionApprove, At: "2026-01-01T10:00:00Z", HeadSHA: "abc"}, true, nil
 	}
 	return spawnCalls, deps
 }

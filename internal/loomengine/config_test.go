@@ -435,6 +435,18 @@ func TestLandingAndApprovalAccessors(t *testing.T) {
 	if got, want := LoomApprovalPath(l), filepath.Join(l.AnchorPath(), ".lyx", "loom", "approval.json"); got != want {
 		t.Errorf("LoomApprovalPath() = %q; want %q", got, want)
 	}
+	if got, want := LoomRejectionPath(l), filepath.Join(l.AnchorPath(), ".lyx", "loom", "rejection.json"); got != want {
+		t.Errorf("LoomRejectionPath() = %q; want %q", got, want)
+	}
+	if got, want := LoomReworkCoveragePath(l), filepath.Join(l.AnchorPath(), ".lyx", "loom", "rework-coverage.md"); got != want {
+		t.Errorf("LoomReworkCoveragePath() = %q; want %q", got, want)
+	}
+	if got, want := LoomReworkDirRel(), filepath.Join("_lyx", "loom", "rework"); got != want {
+		t.Errorf("LoomReworkDirRel() = %q; want %q", got, want)
+	}
+	if got, want := LoomReworkDir(l), filepath.Join(l.AnchorPath(), "_lyx", "loom", "rework"); got != want {
+		t.Errorf("LoomReworkDir() = %q; want %q", got, want)
+	}
 	if got, want := LoomVerifyPendingPath(l), filepath.Join(l.AnchorPath(), ".lyx", "loom", "verify-pending"); got != want {
 		t.Errorf("LoomVerifyPendingPath() = %q; want %q", got, want)
 	}

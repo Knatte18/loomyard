@@ -69,8 +69,8 @@ func newFakeReceiver(t *testing.T, shutdown func(ctx context.Context) (string, e
 			ReadStatus: func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
 				return shedengine.Status{State: shedengine.StateDone}, true, nil
 			},
-			ReadApproval: func() (battenshed.ChildApproval, bool, error) {
-				return battenshed.ChildApproval{}, false, nil
+			ReadDecision: func() (battenshed.ChildDecision, bool, error) {
+				return battenshed.ChildDecision{}, false, nil
 			},
 			DriverAlive: func(context.Context) (bool, error) { return false, nil },
 		},

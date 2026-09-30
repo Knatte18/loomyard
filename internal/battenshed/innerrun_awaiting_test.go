@@ -1,4 +1,4 @@
-// innerrun_awaiting_test.go covers the inner-run watch's awaiting hand-off, the resume once per approval, the halted-state remedies, and the done arm's wait for the driver strand.
+// innerrun_awaiting_test.go covers the inner-run watch's awaiting hand-off, the resume once per decision, the halted-state remedies, and the done arm's wait for the driver strand.
 
 package battenshed
 
@@ -71,8 +71,8 @@ func TestInnerRun_AwaitingResumesOncePerApproval(t *testing.T) {
 	scratchDir := t.TempDir()
 	clock := &fakeClock{}
 	_, spawnCalls, deps := newInnerRunDeps(nil, nil, []statusResult{awaitingStatusWithHistory(4)}, clock)
-	approval := ChildApproval{ApprovedAt: "2026-01-01T10:00:00Z", HeadSHA: "abc"}
-	deps.ReadApproval = func() (ChildApproval, bool, error) { return approval, true, nil }
+	approval := ChildDecision{Kind: DecisionApprove, At: "2026-01-01T10:00:00Z", HeadSHA: "abc"}
+	deps.ReadDecision = func() (ChildDecision, bool, error) { return approval, true, nil }
 	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
 
 	outcome, ptr, err := producer.Call(context.Background())
@@ -85,12 +85,12 @@ func TestInnerRun_AwaitingResumesOncePerApproval(t *testing.T) {
 	if !strings.Contains(ptr.Reason, "resumed") {
 		t.Errorf("Reason = %q; want it to say the child was resumed", ptr.Reason)
 	}
-	raw, err := os.ReadFile(approvalActedFile(scratchDir, "innerrun"))
+	raw, err := os.ReadFile(decisionActedFile(scratchDir, "innerrun"))
 	if err != nil {
-		t.Fatalf("approval-acted marker: %v; want it written", err)
+		t.Fatalf("decision-acted marker: %v; want it written", err)
 	}
-	if want := approvalIdentity(approval) + "4\n"; string(raw) != want {
-		t.Errorf("approval-acted marker = %q; want %q", raw, want)
+	if want := decisionIdentity(approval) + "4\n"; string(raw) != want {
+		t.Errorf("decision-acted marker = %q; want %q", raw, want)
 	}
 
 	outcome, ptr, err = producer.Call(context.Background())
@@ -100,7 +100,7 @@ func TestInnerRun_AwaitingResumesOncePerApproval(t *testing.T) {
 	if *spawnCalls != 1 {
 		t.Errorf("Spawn calls = %d after the same approval; want still 1", *spawnCalls)
 	}
-	for _, want := range []string{"has not re-stepped yet", approval.ApprovedAt, "lyx loom start", "pane"} {
+	for _, want := range []string{"has not re-stepped yet", approval.At, "lyx loom start", "pane"} {
 		if !strings.Contains(ptr.Reason, want) {
 			t.Errorf("Reason = %q; want substring %q", ptr.Reason, want)
 		}
@@ -109,7 +109,7 @@ func TestInnerRun_AwaitingResumesOncePerApproval(t *testing.T) {
 		t.Errorf("Reason = %q; want no re-approve hint while the resume is pending", ptr.Reason)
 	}
 
-	approval = ChildApproval{ApprovedAt: "2026-01-01T11:00:00Z", HeadSHA: "def"}
+	approval = ChildDecision{Kind: DecisionApprove, At: "2026-01-01T11:00:00Z", HeadSHA: "def"}
 	if _, _, err := producer.Call(context.Background()); err != nil {
 		t.Fatalf("third Call() error = %v", err)
 	}
@@ -123,8 +123,8 @@ func TestInnerRun_AwaitingAgainAfterResumeGetsReapproveHint(t *testing.T) {
 	clock := &fakeClock{}
 	statuses := []statusResult{awaitingStatusWithHistory(4), awaitingStatusWithHistory(5)}
 	_, spawnCalls, deps := newInnerRunDeps(nil, nil, statuses, clock)
-	approval := ChildApproval{ApprovedAt: "2026-01-01T10:00:00Z", HeadSHA: "abc"}
-	deps.ReadApproval = func() (ChildApproval, bool, error) { return approval, true, nil }
+	approval := ChildDecision{Kind: DecisionApprove, At: "2026-01-01T10:00:00Z", HeadSHA: "abc"}
+	deps.ReadDecision = func() (ChildDecision, bool, error) { return approval, true, nil }
 	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
 
 	if _, _, err := producer.Call(context.Background()); err != nil {
@@ -137,7 +137,7 @@ func TestInnerRun_AwaitingAgainAfterResumeGetsReapproveHint(t *testing.T) {
 	if *spawnCalls != 1 {
 		t.Errorf("Spawn calls = %d; want still 1", *spawnCalls)
 	}
-	for _, want := range []string{"already acted on", approval.ApprovedAt, "lyx loom approve"} {
+	for _, want := range []string{"already acted on", approval.At, "lyx loom approve"} {
 		if !strings.Contains(ptr.Reason, want) {
 			t.Errorf("Reason = %q; want substring %q", ptr.Reason, want)
 		}
@@ -148,9 +148,9 @@ func TestInnerRun_AwaitingOldLayoutMarkerGetsReapproveHint(t *testing.T) {
 	scratchDir := t.TempDir()
 	clock := &fakeClock{}
 	_, spawnCalls, deps := newInnerRunDeps(nil, nil, []statusResult{awaitingStatusWithHistory(4)}, clock)
-	approval := ChildApproval{ApprovedAt: "2026-01-01T10:00:00Z", HeadSHA: "abc"}
-	deps.ReadApproval = func() (ChildApproval, bool, error) { return approval, true, nil }
-	if err := os.WriteFile(approvalActedFile(scratchDir, "innerrun"), []byte(approvalIdentity(approval)), 0o644); err != nil {
+	approval := ChildDecision{Kind: DecisionApprove, At: "2026-01-01T10:00:00Z", HeadSHA: "abc"}
+	deps.ReadDecision = func() (ChildDecision, bool, error) { return approval, true, nil }
+	if err := os.WriteFile(decisionActedFile(scratchDir, "innerrun"), []byte(decisionIdentity(approval)), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -166,13 +166,50 @@ func TestInnerRun_AwaitingOldLayoutMarkerGetsReapproveHint(t *testing.T) {
 	}
 }
 
+func TestInnerRun_AwaitingResumesOnARejectionOnceAndAgainOnASameSecondApproval(t *testing.T) {
+	scratchDir := t.TempDir()
+	clock := &fakeClock{}
+	statuses := []statusResult{awaitingStatusWithHistory(4), awaitingStatusWithHistory(5)}
+	_, spawnCalls, deps := newInnerRunDeps(nil, nil, statuses, clock)
+	decision := ChildDecision{Kind: DecisionReject, At: "2026-01-01T10:00:00Z", HeadSHA: "abc"}
+	deps.ReadDecision = func() (ChildDecision, bool, error) { return decision, true, nil }
+	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
+
+	if outcome, ptr, err := producer.Call(context.Background()); err != nil || outcome != shedengine.Stuck || !ptr.BudgetExempt {
+		t.Fatalf("first Call() = %v %+v %v; want an exempt Stuck", outcome, ptr, err)
+	}
+	if *spawnCalls != 1 {
+		t.Fatalf("Spawn calls = %d after a rejection; want 1", *spawnCalls)
+	}
+	_, ptr, err := producer.Call(context.Background())
+	if err != nil {
+		t.Fatalf("second Call() error = %v", err)
+	}
+	if *spawnCalls != 1 {
+		t.Errorf("Spawn calls = %d after the same rejection; want still 1", *spawnCalls)
+	}
+	for _, want := range []string{"already acted on", "reject", decision.At} {
+		if !strings.Contains(ptr.Reason, want) {
+			t.Errorf("Reason = %q; want substring %q", ptr.Reason, want)
+		}
+	}
+
+	decision.Kind = DecisionApprove
+	if _, _, err := producer.Call(context.Background()); err != nil {
+		t.Fatalf("third Call() error = %v", err)
+	}
+	if *spawnCalls != 2 {
+		t.Errorf("Spawn calls = %d after an approval at the same head and second; want 2", *spawnCalls)
+	}
+}
+
 func TestInnerRun_AwaitingSpawnErrorWritesNoMarkerAndRetries(t *testing.T) {
 	scratchDir := t.TempDir()
 	clock := &fakeClock{}
 	spawnErr := errors.New("bootstrap exited 1")
 	_, spawnCalls, deps := newInnerRunDeps(nil, nil, awaitingStatus(), clock)
-	deps.ReadApproval = func() (ChildApproval, bool, error) {
-		return ChildApproval{ApprovedAt: "2026-01-01T10:00:00Z", HeadSHA: "abc"}, true, nil
+	deps.ReadDecision = func() (ChildDecision, bool, error) {
+		return ChildDecision{Kind: DecisionApprove, At: "2026-01-01T10:00:00Z", HeadSHA: "abc"}, true, nil
 	}
 	failing := deps
 	failing.Spawn = func(ctx context.Context) error {
@@ -184,8 +221,8 @@ func TestInnerRun_AwaitingSpawnErrorWritesNoMarkerAndRetries(t *testing.T) {
 	if !errors.Is(err, spawnErr) {
 		t.Fatalf("first Call() error = %v; want it to wrap %v", err, spawnErr)
 	}
-	if _, statErr := os.Stat(approvalActedFile(scratchDir, "innerrun")); !os.IsNotExist(statErr) {
-		t.Errorf("approval-acted marker stat = %v; want absent after a failed spawn", statErr)
+	if _, statErr := os.Stat(decisionActedFile(scratchDir, "innerrun")); !os.IsNotExist(statErr) {
+		t.Errorf("decision-acted marker stat = %v; want absent after a failed spawn", statErr)
 	}
 	outcome, _, err := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace).Call(context.Background())
 	if err != nil || outcome != shedengine.Stuck {
@@ -200,8 +237,8 @@ func TestInnerRun_AwaitingNotParkedRetriesWithoutMarkerThenResumes(t *testing.T)
 	scratchDir := t.TempDir()
 	clock := &fakeClock{}
 	_, _, deps := newInnerRunDeps(nil, nil, awaitingStatus(), clock)
-	deps.ReadApproval = func() (ChildApproval, bool, error) {
-		return ChildApproval{ApprovedAt: "2026-01-01T10:00:00Z", HeadSHA: "abc"}, true, nil
+	deps.ReadDecision = func() (ChildDecision, bool, error) {
+		return ChildDecision{Kind: DecisionApprove, At: "2026-01-01T10:00:00Z", HeadSHA: "abc"}, true, nil
 	}
 	// The child's driver parks after the second spawn attempt: the fake refuses until then.
 	spawnCalls := 0
@@ -222,8 +259,8 @@ func TestInnerRun_AwaitingNotParkedRetriesWithoutMarkerThenResumes(t *testing.T)
 		if !strings.Contains(ptr.Reason, "not parked") {
 			t.Errorf("Call() %d Reason = %q; want it to name the unparked driver", i, ptr.Reason)
 		}
-		if _, statErr := os.Stat(approvalActedFile(scratchDir, "innerrun")); !os.IsNotExist(statErr) {
-			t.Fatalf("Call() %d: approval-acted marker stat = %v; want absent while the driver has not parked", i, statErr)
+		if _, statErr := os.Stat(decisionActedFile(scratchDir, "innerrun")); !os.IsNotExist(statErr) {
+			t.Fatalf("Call() %d: decision-acted marker stat = %v; want absent while the driver has not parked", i, statErr)
 		}
 	}
 
@@ -234,16 +271,16 @@ func TestInnerRun_AwaitingNotParkedRetriesWithoutMarkerThenResumes(t *testing.T)
 	if spawnCalls != 3 {
 		t.Errorf("Spawn calls = %d; want 3", spawnCalls)
 	}
-	if _, statErr := os.Stat(approvalActedFile(scratchDir, "innerrun")); statErr != nil {
-		t.Errorf("approval-acted marker: %v; want it written once the resume succeeded", statErr)
+	if _, statErr := os.Stat(decisionActedFile(scratchDir, "innerrun")); statErr != nil {
+		t.Errorf("decision-acted marker: %v; want it written once the resume succeeded", statErr)
 	}
 }
 
-func TestInnerRun_ReadApprovalErrorIsHardError(t *testing.T) {
+func TestInnerRun_ReadDecisionErrorIsHardError(t *testing.T) {
 	clock := &fakeClock{}
-	readErr := errors.New("approval unreadable")
+	readErr := errors.New("decision unreadable")
 	_, _, deps := newInnerRunDeps(nil, nil, awaitingStatus(), clock)
-	deps.ReadApproval = func() (ChildApproval, bool, error) { return ChildApproval{}, false, readErr }
+	deps.ReadDecision = func() (ChildDecision, bool, error) { return ChildDecision{}, false, readErr }
 
 	_, _, err := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, t.TempDir(), testGrace).Call(context.Background())
 	if !errors.Is(err, readErr) {

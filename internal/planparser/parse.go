@@ -15,7 +15,9 @@
 package planparser
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -101,11 +103,20 @@ var cardIndexLineRe = regexp.MustCompile(`^(\d+)\s+(?:—|-{1,2})\s+(\S+)\s+(?:�
 // ParsePlan reads the plan directory and returns the fully parsed Plan.
 // It returns wrapped errors prefixed "planparser:" for every distinct failure mode.
 func ParsePlan(planDir string) (*Plan, error) {
+	return ParsePlanFrom(planDir, func(name string) ([]byte, error) {
+		return os.ReadFile(filepath.Join(planDir, name))
+	})
+}
+
+// ParsePlanFrom parses a plan whose top-level files are supplied by read instead of the working tree.
+// read returns the contents of the named plan file (00-overview.md, NN-<slug>.md), and an error wrapping fs.ErrNotExist when the file is absent.
+// Plan.Dir is planDir, as in ParsePlan.
+func ParsePlanFrom(planDir string, read func(name string) ([]byte, error)) (*Plan, error) {
 	overviewPath := filepath.Join(planDir, overviewFileName)
 
-	data, err := os.ReadFile(overviewPath)
+	data, err := read(overviewFileName)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			return nil, fmt.Errorf("planparser: plan overview not found: %s", overviewPath)
 		}
 		return nil, fmt.Errorf("planparser: read plan overview %s: %w", overviewPath, err)
@@ -149,7 +160,7 @@ func ParsePlan(planDir string) (*Plan, error) {
 
 	cards := make([]Card, 0, len(entries))
 	for _, entry := range entries {
-		card, err := parseCardFile(planDir, entry)
+		card, err := parseCardFile(planDir, entry, read)
 		if err != nil {
 			return nil, err
 		}
@@ -304,7 +315,7 @@ func cardFileName(number int, slug string) string {
 var cardHeadingRe = regexp.MustCompile(`^#\s+Card\s+(\d+)\s*(?:—|-{1,2})\s*(.*)$`)
 
 // parseCardFile reads planDir's card file for entry and parses its title heading, seeding the returned Card with Card Index fields.
-func parseCardFile(planDir string, entry cardIndexEntry) (Card, error) {
+func parseCardFile(planDir string, entry cardIndexEntry, read func(name string) ([]byte, error)) (Card, error) {
 	fileName := cardFileName(entry.Number, entry.Slug)
 
 	card := Card{
@@ -316,9 +327,9 @@ func parseCardFile(planDir string, entry cardIndexEntry) (Card, error) {
 	}
 
 	filePath := filepath.Join(planDir, fileName)
-	data, err := os.ReadFile(filePath)
+	data, err := read(fileName)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			return Card{}, fmt.Errorf("planparser: card file not found: %s", filePath)
 		}
 		return Card{}, fmt.Errorf("planparser: read card file %s: %w", filePath, err)

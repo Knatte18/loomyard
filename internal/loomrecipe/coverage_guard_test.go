@@ -40,6 +40,8 @@ var loomRowEngines = map[string]string{
 	loomshed.NameWebsterBurler:     "BurlerRound",
 	loomshed.NameDescribe:          "Describe",
 	loomshed.NamePublish:           "Publish",
+	loomshed.NamePRGate:            "PRGate",
+	loomshed.NamePRRework:          "PRRework",
 	loomshed.NameFinalize:          "Finalize",
 	loomshed.NameFrictionReflect:   "FrictionReflect",
 }

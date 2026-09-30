@@ -6,6 +6,7 @@ package shedrecipe
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -54,6 +55,16 @@ func validLandingDeps(t *testing.T) landingshed.Deps {
 		OpenParentFabric: nilFabricOpener,
 		Shuttle:          fakeLandingShuttle{},
 	}
+}
+
+// validGateDeps is validLandingDeps with the three fields landingshed.NewPRGate additionally requires: both decision-record paths and a TaskHead closure.
+func validGateDeps(t *testing.T) landingshed.Deps {
+	t.Helper()
+	deps := validLandingDeps(t)
+	deps.ApprovalPath = filepath.Join(deps.ScratchDir, "approval.json")
+	deps.RejectionPath = filepath.Join(deps.ScratchDir, "rejection.json")
+	deps.TaskHead = func() (string, error) { return "head", nil }
+	return deps
 }
 
 // zeroEnvField returns a copy of env with the named field set to its Go zero value.
@@ -130,6 +141,17 @@ func simpleEntryCases() []simpleEntryCase {
 			buildEnv: func(t *testing.T) Env {
 				env := newTestEnv(t)
 				env.Landing = validLandingDeps(t)
+				return env
+			},
+			validatedFields: nil,
+			unreadField:     "Cwd",
+		},
+		{
+			registryKey: "PRGate",
+			entry:       prGateEntry,
+			buildEnv: func(t *testing.T) Env {
+				env := newTestEnv(t)
+				env.Landing = validGateDeps(t)
 				return env
 			},
 			validatedFields: nil,
@@ -329,6 +351,34 @@ func TestPublishEntry_LandingRejected(t *testing.T) {
 	if !strings.HasPrefix(err.Error(), "shedrecipe: Publish: ") {
 		t.Errorf("publishEntry() error = %v; want it to carry this package's own %q prefix, not a raw pass-through", err, "shedrecipe: Publish: ")
 	}
+}
+
+// TestPRGateEntry covers prGateEntry's construction: it builds a *landingshed.PRGate from a full Env.Landing, and wraps the constructor's refusal of a nil TaskHead with this package's prefix.
+func TestPRGateEntry(t *testing.T) {
+	t.Run("BuildsPRGate", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.Landing = validGateDeps(t)
+		producer, err := prGateEntry("row-name", Config{}, env)
+		if err != nil {
+			t.Fatalf("prGateEntry() error = %v; want nil", err)
+		}
+		if _, ok := producer.(*landingshed.PRGate); !ok {
+			t.Errorf("prGateEntry() = %T; want *landingshed.PRGate", producer)
+		}
+	})
+
+	t.Run("NilTaskHead", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.Landing = validGateDeps(t)
+		env.Landing.TaskHead = nil
+		_, err := prGateEntry("row-name", Config{}, env)
+		if err == nil {
+			t.Fatalf("prGateEntry() error = nil; want non-nil for a nil TaskHead")
+		}
+		if !strings.HasPrefix(err.Error(), "shedrecipe: PRGate: ") {
+			t.Errorf("prGateEntry() error = %v; want the %q prefix", err, "shedrecipe: PRGate: ")
+		}
+	})
 }
 
 // TestFinalizeEntry_LandingRejected is publishEntry's failure-path twin over finalizeEntry.

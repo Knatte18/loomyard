@@ -3,7 +3,7 @@
 // the shared Slug/ScratchDir/seam validation, plus innerRunEntry's own poll_interval_s config
 // coverage and seedChildEntry's own dedicated table below.
 //
-// Every seam the four batten entries validate -- CreateWorktree, PrimeLock.Acquire, Teardown.Shutdown, Teardown.Remove, InnerRun.Spawn, InnerRun.ResolveStatus, InnerRun.ReadStatus, InnerRun.ReadApproval, InnerRun.DriverAlive, and the five SeedChild closures -- is a concrete func type, not an interface, so there is no separate typed-nil-interface case to exercise beyond the plain-nil case requireSeam handles for a reflect.Func value: a nil func value passed as any already reports Kind() == reflect.Func with IsNil() true, the same detection path a typed-nil interface takes.
+// Every seam the four batten entries validate -- CreateWorktree, PrimeLock.Acquire, Teardown.Shutdown, Teardown.Remove, InnerRun.Spawn, InnerRun.ResolveStatus, InnerRun.ReadStatus, InnerRun.ReadDecision, InnerRun.DriverAlive, and the five SeedChild closures -- is a concrete func type, not an interface, so there is no separate typed-nil-interface case to exercise beyond the plain-nil case requireSeam handles for a reflect.Func value: a nil func value passed as any already reports Kind() == reflect.Func with IsNil() true, the same detection path a typed-nil interface takes.
 
 package shedrecipe
 
@@ -77,7 +77,7 @@ func lifecycleEntryCases() []lifecycleEntryCase {
 				{"InnerRun.Spawn", func(env Env) Env { env.InnerRun.Spawn = nil; return env }},
 				{"InnerRun.ResolveStatus", func(env Env) Env { env.InnerRun.ResolveStatus = nil; return env }},
 				{"InnerRun.ReadStatus", func(env Env) Env { env.InnerRun.ReadStatus = nil; return env }},
-				{"InnerRun.ReadApproval", func(env Env) Env { env.InnerRun.ReadApproval = nil; return env }},
+				{"InnerRun.ReadDecision", func(env Env) Env { env.InnerRun.ReadDecision = nil; return env }},
 				{"InnerRun.DriverAlive", func(env Env) Env { env.InnerRun.DriverAlive = nil; return env }},
 			},
 		},

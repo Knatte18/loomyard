@@ -36,7 +36,7 @@ The waiting shell's own command line carries the same text, so such a wait never
 Before the first step, read `lyx shed status [<run-id>]` once and record `current_producer` and `history_length`.
 An envelope with `found: false`, success or error, is an empty baseline `("", 0)`; proceed to the first step, whose own bootstrap seeds the status file.
 Any other status error is handed back.
-A baseline `state` of `blocked`, `awaiting`, `paused` or `failed` is not a stop: starting a driver on such a run is how an operator resumes it after resolving the cause (for `awaiting`, after approving), so proceed to the first step, which resumes the run.
+A baseline `state` of `blocked`, `awaiting`, `paused` or `failed` is not a stop: starting a driver on such a run is how an operator resumes it after resolving the cause (for `awaiting`, after approving or rejecting), so proceed to the first step, which resumes the run.
 Label that read as taken before the driver acted, for example "before step: blocked at Publish".
 
 ## The loop
@@ -51,6 +51,8 @@ On `continue: false`, `state: done` stops the loop.
 `blocked` and `paused` are handed back with the envelope's `reason` and are never repaired: a Go gate concluded a human is needed.
 `awaiting` is handed back the same way, as a planned hand-off with the envelope's `reason`: the run waits on a person by design, so the report words it as a hand-off and never as a failure,
 and nothing is repaired.
+A run halted at the gate re-runs only the gate on resume,
+so a fix committed by hand outside the run is pushed by the operator before `approve`, or goes through `reject` instead.
 
 ## Error envelopes
 

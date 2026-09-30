@@ -69,7 +69,7 @@ func newInnerRunDeps(spawnErr error, resolveErr error, statuses []statusResult, 
 		},
 		Sleep:        clock.Sleep,
 		Now:          clock.Now,
-		ReadApproval: func() (ChildApproval, bool, error) { return ChildApproval{}, false, nil },
+		ReadDecision: func() (ChildDecision, bool, error) { return ChildDecision{}, false, nil },
 		DriverAlive:  func(ctx context.Context) (bool, error) { return false, nil },
 	}
 	return &readCalls, &spawnCalls, deps
@@ -423,7 +423,7 @@ func TestInnerRun_NilSeamsDefaultToStdlib(t *testing.T) {
 		ReadStatus: func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
 			return shedengine.Status{State: shedengine.StateDone}, true, nil
 		},
-		ReadApproval: func() (ChildApproval, bool, error) { return ChildApproval{}, false, nil },
+		ReadDecision: func() (ChildDecision, bool, error) { return ChildDecision{}, false, nil },
 		DriverAlive:  func(ctx context.Context) (bool, error) { return false, nil },
 	}
 	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)

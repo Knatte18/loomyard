@@ -8,8 +8,10 @@ package planparser_test
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -237,6 +239,51 @@ func TestParsePlan_CardFile_NotFound(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "card file not found") {
 		t.Errorf("ParsePlan() error = %q; want card-file-not-found substring", err.Error())
+	}
+}
+
+// mapReader returns a ParsePlanFrom reader over an in-memory file map, wrapping fs.ErrNotExist for absent names.
+func mapReader(files map[string]string) func(string) ([]byte, error) {
+	return func(name string) ([]byte, error) {
+		content, ok := files[name]
+		if !ok {
+			return nil, fmt.Errorf("read %s: %w", name, fs.ErrNotExist)
+		}
+		return []byte(content), nil
+	}
+}
+
+func TestParsePlanFrom_MatchesParsePlan(t *testing.T) {
+	t.Parallel()
+
+	files := map[string]string{
+		"00-overview.md": minimalOverview,
+		"01-only.md":     minimalCardFile(1, "only", "a.go"),
+	}
+	dir := writePlanFiles(t, files)
+
+	want, err := planparser.ParsePlan(dir)
+	if err != nil {
+		t.Fatalf("ParsePlan(%q) error = %v; want nil", dir, err)
+	}
+	got, err := planparser.ParsePlanFrom(dir, mapReader(files))
+	if err != nil {
+		t.Fatalf("ParsePlanFrom() error = %v; want nil", err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("ParsePlanFrom() = %+v; want %+v", got, want)
+	}
+}
+
+func TestParsePlanFrom_CardFileNotFound(t *testing.T) {
+	t.Parallel()
+
+	_, err := planparser.ParsePlanFrom("plan", mapReader(map[string]string{"00-overview.md": minimalOverview}))
+	if err == nil {
+		t.Fatal("ParsePlanFrom() error = nil; want card-file-not-found error")
+	}
+	if !strings.Contains(err.Error(), "card file not found") {
+		t.Errorf("ParsePlanFrom() error = %q; want card-file-not-found substring", err.Error())
 	}
 }
 
