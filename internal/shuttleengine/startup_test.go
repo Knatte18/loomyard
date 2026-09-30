@@ -765,7 +765,7 @@ func TestStartup_RunGated_MechanismFailure(t *testing.T) {
 	}
 }
 
-// TestStartup_RunDeadlineShorterThanWindow_NeverReadypins the run-deadline-anchoring decision: a
+// TestStartup_RunDeadlineShorterThanWindow_NeverReady pins the run-deadline-anchoring decision: a
 // Spec.Timeout far shorter than startup_timeout_s must still expire the run on its OWN schedule,
 // classified OutcomeTimeout, never OutcomeDied from the (much longer) startup window.
 func TestStartup_RunDeadlineShorterThanWindow_NeverReady(t *testing.T) {
