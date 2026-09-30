@@ -420,6 +420,24 @@ func TestMasterTemplate_QuotesDigestFieldsAndNoOthers(t *testing.T) {
 	}
 }
 
+// TestMasterTemplate_DoneCheckSectionTeachesLaterCardWarning asserts the done-check section no
+// longer lists a deleted-symbol reference as a batch_failed done-check, since postBatchChecks now
+// records it as a later-card warning, and that the section carries the later-card warning sentence.
+func TestMasterTemplate_DoneCheckSectionTeachesLaterCardWarning(t *testing.T) {
+	text := string(mustMasterTemplate(t, newTestStencilsDir(t)))
+
+	const heading = "## A done-check failure arrives as `batch_failed`"
+	_, rest, ok := strings.Cut(text, heading)
+	if !ok {
+		t.Fatalf("master template has no %q section", heading)
+	}
+	section, _, _ := strings.Cut(rest, "\n## ")
+
+	requireNotContains(t, section, "a symbol this batch deleted that the remaining plan still references")
+	requireContains(t, section, "A finding about a later card (drift, or a symbol this batch deleted that a later card still references) comes back on the envelope's `warnings` and the batch still records;")
+	requireContains(t, section, "that later card's own `begin-batch` refuses it, naming \"edit the plan, then `lyx webster rebaseline`\".")
+}
+
 // TestMasterTemplate_QuotesOutcomeSchemaKeys asserts the master template's outcome-file bullet list
 // names exactly the three outcome.yaml schema keys, immediately followed by the literal yaml block
 // spelling out their values, and separately names summary_path's own "# <title>" first-line rule.
