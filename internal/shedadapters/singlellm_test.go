@@ -803,11 +803,11 @@ func TestSingleLLMProducer_PrepareFreshSpawnRunsOnlyOnTheRespawnPath(t *testing.
 			}
 
 			prepared := 0
-			prepare := func() error {
+			prepare := func() (string, error) {
 				prepared++
 				// Stand in for the real rotation: move the output file out from under whatever is
 				// writing it. On the attach path this must never happen.
-				return os.Rename(output, filepath.Join(dir, "rotated-away.md"))
+				return "", os.Rename(output, filepath.Join(dir, "rotated-away.md"))
 			}
 			p := NewSingleLLMProducer("Plan-Write", specSource(spec, nil), shuttle, fixedClock(time.Now()), prepare)
 
@@ -835,8 +835,6 @@ func TestSingleLLMProducer_PrepareFreshSpawnRunsOnlyOnTheRespawnPath(t *testing.
 	}
 }
 
-// TestSingleLLMProducer_PrepareFreshSpawnErrorNeitherArchivesNorSpawns pins the failure posture: a
-// preparation that cannot complete is a returned error, and nothing downstream of it runs.
 // --- Gate ---
 
 func TestSingleLLMProducer_Gate_PassingGateReachesDone(t *testing.T) {
@@ -976,6 +974,8 @@ func TestSingleLLMProducer_Gate_AttemptsPropagatesOntoOutputPointer(t *testing.T
 	}
 }
 
+// TestSingleLLMProducer_PrepareFreshSpawnErrorNeitherArchivesNorSpawns pins the failure posture: a
+// preparation that cannot complete is a returned error, and nothing downstream of it runs.
 func TestSingleLLMProducer_PrepareFreshSpawnErrorNeitherArchivesNorSpawns(t *testing.T) {
 	dir := t.TempDir()
 	output := filepath.Join(dir, "00-overview.md")
@@ -985,7 +985,7 @@ func TestSingleLLMProducer_PrepareFreshSpawnErrorNeitherArchivesNorSpawns(t *tes
 	spec := shuttleengine.Spec{Prompt: "plan", OutputFiles: []string{output}}
 	shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 	prepareErr := errors.New("rotation failed")
-	p := NewSingleLLMProducer("Plan-Write", specSource(spec, nil), shuttle, fixedClock(time.Now()), func() error { return prepareErr })
+	p := NewSingleLLMProducer("Plan-Write", specSource(spec, nil), shuttle, fixedClock(time.Now()), func() (string, error) { return "", prepareErr })
 
 	outcome, ptr, err := p.Call(context.Background())
 	if !errors.Is(err, prepareErr) {
@@ -1003,4 +1003,74 @@ func TestSingleLLMProducer_PrepareFreshSpawnErrorNeitherArchivesNorSpawns(t *tes
 	if data, readErr := os.ReadFile(output); readErr != nil || string(data) != "stale" {
 		t.Errorf("output file = %q (err %v); want it left unarchived at its original path", string(data), readErr)
 	}
+}
+
+// TestSingleLLMProducer_PrepareFreshSpawnAmendment pins the amendment seam: the text a preparation
+// returns is appended to the prompt of the respawned run's spec, and to no other spec.
+func TestSingleLLMProducer_PrepareFreshSpawnAmendment(t *testing.T) {
+	const composed = "plan"
+	newSpec := func(t *testing.T) shuttleengine.Spec {
+		return shuttleengine.Spec{Prompt: composed, OutputFiles: []string{filepath.Join(t.TempDir(), "00-overview.md")}}
+	}
+	done := shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
+
+	t.Run("RespawnAppendsAmendmentAndPreparesOnce", func(t *testing.T) {
+		shuttle := &fakeShuttle{result: done}
+		prepared := 0
+		prepare := func() (string, error) {
+			prepared++
+			return "\n\nprior plan here", nil
+		}
+		p := NewSingleLLMProducer("Plan-Write", specSource(newSpec(t), nil), shuttle, fixedClock(time.Now()), prepare)
+
+		if _, _, err := p.Call(context.Background()); err != nil {
+			t.Fatalf("Call() error = %v; want nil", err)
+		}
+		if prepared != 1 {
+			t.Errorf("preparation ran %d time(s); want 1", prepared)
+		}
+		if want := composed + "\n\nprior plan here"; shuttle.gotSpec.Prompt != want {
+			t.Errorf("RunGated spec.Prompt = %q; want %q", shuttle.gotSpec.Prompt, want)
+		}
+		if shuttle.gotAttachSpec.Prompt != composed {
+			t.Errorf("AttachGated spec.Prompt = %q; want the composed prompt %q", shuttle.gotAttachSpec.Prompt, composed)
+		}
+	})
+
+	t.Run("AttachFoundNeverPreparesAndKeepsComposedPrompt", func(t *testing.T) {
+		shuttle := &fakeShuttle{attachFound: true, attachResult: done}
+		prepared := 0
+		prepare := func() (string, error) {
+			prepared++
+			return "amendment", nil
+		}
+		p := NewSingleLLMProducer("Plan-Write", specSource(newSpec(t), nil), shuttle, fixedClock(time.Now()), prepare)
+
+		if _, _, err := p.Call(context.Background()); err != nil {
+			t.Fatalf("Call() error = %v; want nil", err)
+		}
+		if prepared != 0 {
+			t.Errorf("preparation ran %d time(s) on the attach branch; want 0", prepared)
+		}
+		if shuttle.gotAttachSpec.Prompt != composed {
+			t.Errorf("AttachGated spec.Prompt = %q; want %q", shuttle.gotAttachSpec.Prompt, composed)
+		}
+	})
+
+	t.Run("NilAndEmptyAmendmentLeavePromptByteIdentical", func(t *testing.T) {
+		empty := func() (string, error) { return "", nil }
+		for name, prepare := range map[string]func() (string, error){"Nil": nil, "Empty": empty} {
+			t.Run(name, func(t *testing.T) {
+				shuttle := &fakeShuttle{result: done}
+				p := NewSingleLLMProducer("Plan-Write", specSource(newSpec(t), nil), shuttle, fixedClock(time.Now()), prepare)
+
+				if _, _, err := p.Call(context.Background()); err != nil {
+					t.Fatalf("Call() error = %v; want nil", err)
+				}
+				if shuttle.gotSpec.Prompt != composed {
+					t.Errorf("RunGated spec.Prompt = %q; want %q", shuttle.gotSpec.Prompt, composed)
+				}
+			})
+		}
+	})
 }

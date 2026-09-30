@@ -69,7 +69,7 @@ type SingleLLMProducer struct {
 	specs             SpecSource
 	shuttle           Shuttle
 	now               func() time.Time
-	prepareFreshSpawn func() error
+	prepareFreshSpawn func() (string, error)
 	gate              shuttleengine.GateSpec
 }
 
@@ -86,6 +86,10 @@ var _ shedengine.ShedProducer = (*SingleLLMProducer)(nil)
 // there is no live agent and before this producer archives anything, and never on the attach branch.
 // Nil is the absent value and means "nothing to prepare", which is what every row but Plan-Write
 // passes.
+// The string it returns is an amendment appended verbatim to the end of the composed prompt handed
+// to the new agent's run, so the preparation can tell the fresh session what it just did (where it
+// moved the stale files, say). An empty amendment leaves the prompt byte-identical. Returning text
+// rather than receiving the spec makes the amendment append-only by construction.
 //
 // The seam exists rather than leaving such preparation to a decorator wrapping this producer,
 // because a decorator necessarily runs BEFORE Call and therefore before the probe -- which is
@@ -94,7 +98,7 @@ var _ shedengine.ShedProducer = (*SingleLLMProducer)(nil)
 // (including 00-overview.md, the spec's sole declared output file) on every Call, so a resume that
 // then attached to a live plan agent left that agent's completion unobservable -- Wait polls for
 // bare existence at the spec's paths -- and the finished plan timed out into a hard run failure.
-func NewSingleLLMProducer(name string, specs SpecSource, shuttle Shuttle, now func() time.Time, prepareFreshSpawn func() error) *SingleLLMProducer {
+func NewSingleLLMProducer(name string, specs SpecSource, shuttle Shuttle, now func() time.Time, prepareFreshSpawn func() (string, error)) *SingleLLMProducer {
 	return NewSingleLLMProducerGated(name, specs, shuttle, now, prepareFreshSpawn, shuttleengine.GateSpec{})
 }
 
@@ -104,7 +108,7 @@ func NewSingleLLMProducer(name string, specs SpecSource, shuttle Shuttle, now fu
 // rather than a widening of it, per the "added forms, never widened signatures" decision -- the
 // generic SingleLLM registry row, the smoke harness, and roughly thirty existing test call sites
 // have no gate and never will.
-func NewSingleLLMProducerGated(name string, specs SpecSource, shuttle Shuttle, now func() time.Time, prepareFreshSpawn func() error, gate shuttleengine.GateSpec) *SingleLLMProducer {
+func NewSingleLLMProducerGated(name string, specs SpecSource, shuttle Shuttle, now func() time.Time, prepareFreshSpawn func() (string, error), gate shuttleengine.GateSpec) *SingleLLMProducer {
 	if now == nil {
 		now = time.Now
 	}
@@ -115,6 +119,8 @@ func NewSingleLLMProducerGated(name string, specs SpecSource, shuttle Shuttle, n
 // still-live matching run, and either map that run's outcome onto shedengine's contract directly or
 // -- when nothing is found -- archive any stale output files, run the shuttle seam once, and map its
 // outcome the same way.
+// On the respawn branch only, the preparation's returned amendment is appended to the prompt of the
+// spec passed to RunGated; the attach branch never runs the preparation and passes the spec as composed.
 func (p *SingleLLMProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, p.name, singleLLMEngineLabel); err != nil {
 		return "", shedengine.OutputPointer{}, err
@@ -157,9 +163,13 @@ func (p *SingleLLMProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 	// does is the same class of act as the archive below, and doing it earlier would break a live
 	// agent's file contract exactly as archiving early would.
 	if p.prepareFreshSpawn != nil {
-		if err := p.prepareFreshSpawn(); err != nil {
+		amendment, err := p.prepareFreshSpawn()
+		if err != nil {
 			return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): prepare fresh spawn: %w", p.name, singleLLMEngineLabel, err)
 		}
+		// Only the spec handed to RunGated carries the amendment; the attach probe above already saw
+		// the spec as composed, and mapOutcome reads only its OutputFiles.
+		spec.Prompt += amendment
 	}
 
 	if err := archiveStaleOutputs(spec.OutputFiles, p.now); err != nil {

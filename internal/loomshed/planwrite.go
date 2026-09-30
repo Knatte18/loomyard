@@ -111,15 +111,18 @@ func (p *planWrite) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 // Only files move, never directories, so a second rotation can never nest a previous archive
 // directory inside a new one. An absent plan directory, or one with no top-level .md file to move,
 // is a no-op with a nil error and creates nothing.
-func NewPlanDirRotator(anchorPath string, now func() time.Time) func() error {
+//
+// The closure's string result is the prompt amendment SingleLLMProducer appends to the respawned
+// session's prompt; it is always empty for now.
+func NewPlanDirRotator(anchorPath string, now func() time.Time) func() (string, error) {
 	if now == nil {
 		now = time.Now
 	}
-	return func() error {
+	return func() (string, error) {
 		if err := rotateStalePlanDir(anchorPath, now); err != nil {
-			return fmt.Errorf("loomshed: rotate stale plan directory: %w", err)
+			return "", fmt.Errorf("loomshed: rotate stale plan directory: %w", err)
 		}
-		return nil
+		return "", nil
 	}
 }
 

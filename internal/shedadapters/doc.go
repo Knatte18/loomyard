@@ -29,7 +29,9 @@
 //     only DiscussionWrite.
 //     A caller's own destructive preparation for a fresh agent -- rotating a stale output directory
 //     aside, say -- rides the constructor's prepareFreshSpawn seam and runs on that not-found branch,
-//     between the probe and the archive. It deliberately cannot be a decorator wrapping this
+//     between the probe and the archive. The text it returns is appended verbatim to the prompt of
+//     the spec handed to the fresh run (and to no other spec), so the new session can be told what
+//     the preparation did; an empty amendment changes nothing. It deliberately cannot be a decorator wrapping this
 //     producer: a decorator runs before Call and therefore before the probe, which is the same
 //     archive-before-probe hazard stated above, reintroduced one layer up.
 //   - WebsterProducer: Webster's own "done" outcome maps to Done, reporting Webster's summary path
