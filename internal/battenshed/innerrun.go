@@ -48,7 +48,8 @@ func SpawnConfirmedFile(scratchDir, producer string) string {
 // cannot restart the task worktree's own driver, only watch it.
 const haltedChildRemedy = "the task worktree's own run must be resumed from inside that worktree (its recipe's bootstrap verb, e.g. \"lyx loom start\") before this run is resumed; resuming this run alone only resumes the watch"
 
-// approvalActedFileSuffix is the fixed suffix of the marker recording the approval identity the producer last resumed the child on, joined onto the producer's own name.
+// approvalActedFileSuffix is the fixed suffix of the marker recording the approval identity the producer last resumed the child on, followed by the child's history length at that resume, joined onto the producer's own name.
+// A one-line marker reads as the old layout.
 const approvalActedFileSuffix = "-approval-acted"
 
 // doneSeenFileSuffix is the fixed suffix of the marker recording when the producer first saw the child done, joined onto the producer's own name.
@@ -62,7 +63,7 @@ func ideOpenedFile(scratchDir, producer string) string {
 	return filepath.Join(scratchDir, producer+ideOpenedFileSuffix)
 }
 
-// approvalActedFile returns the path of the marker holding the approval identity already resumed on.
+// approvalActedFile returns the path of the marker holding the approval identity already resumed on and the child's history length at that resume; a one-line marker reads as the old layout.
 func approvalActedFile(scratchDir, producer string) string {
 	return filepath.Join(scratchDir, producer+approvalActedFileSuffix)
 }
@@ -168,7 +169,8 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 //   - awaiting with no approval record sleeps and returns a budget-exempt Stuck naming the hand-off;
 //   - awaiting with an approval not yet acted on spawns the child's driver again (the child's own bootstrap resumes an approved run), records the approval in the approval-acted marker only once the spawn succeeded, then sleeps and returns a budget-exempt Stuck;
 //     a spawn refused with ErrChildNotParked records nothing and sleeps and returns a budget-exempt Stuck, so the next poll retries the resume;
-//   - awaiting with an approval already acted on does not spawn, and sleeps and returns a budget-exempt Stuck naming the recovery of approving again;
+//   - awaiting with an approval already acted on and the child's history length unchanged since that resume does not spawn, and sleeps and returns a budget-exempt Stuck saying the resume was delivered and the child's driver has not re-stepped yet;
+//   - awaiting with an approval already acted on and the child's history longer (or an old-layout marker) does not spawn, and sleeps and returns a budget-exempt Stuck naming the recovery of approving again;
 //   - done records the first-sight time in the done-seen marker and returns Done once the driver strand is gone or driverExitGrace has elapsed since first sight, and otherwise sleeps and returns a budget-exempt Stuck, the wait for the driver to finish its stop report;
 //   - blocked, paused or failed is a hard error whose message carries the child's State, Error and CurrentProducer;
 //   - any other value is a hard error naming the unrecognised state.
@@ -283,6 +285,9 @@ func (p *innerRunProducer) exemptWait(ctx context.Context, reason string) (shede
 }
 
 // callAwaiting handles a child halted at a human hand-off: it waits for an approval, resumes the child once per approval, and otherwise waits, always with a budget-exempt Stuck.
+// An approval already acted on has two outcomes, told apart by the child's history length against the length the marker recorded at the resume:
+// an equal length means the resume was delivered and the child's driver has not re-stepped yet, and any other length (or an old-layout marker) means the child is awaiting again and gets the re-approve hint.
+// The length is a clock-free discriminator because a re-await appends at least the child's own Awaiting entry, which the history fold never folds onto.
 func (p *innerRunProducer) callAwaiting(ctx context.Context, status shedengine.Status) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	approval, found, err := p.deps.ReadApproval()
 	if err != nil {
@@ -301,8 +306,14 @@ func (p *innerRunProducer) callAwaiting(ctx context.Context, status shedengine.S
 	if err != nil && !os.IsNotExist(err) {
 		return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: read approval-acted marker: %w", p.name, err)
 	}
-	if err == nil && string(acted) == identity {
-		return p.exemptWait(ctx, fmt.Sprintf("the approval at %s was already acted on and the child is awaiting again; re-run \"lyx loom approve\" in the task worktree, which records a new approval and resumes the child once more", approval.ApprovedAt))
+	if err == nil {
+		actedIdentity, actedLen, hasLen := parseApprovalActed(string(acted))
+		if actedIdentity == identity {
+			if hasLen && len(status.History) == actedLen {
+				return p.exemptWait(ctx, fmt.Sprintf("the approval at %s was acted on and the resume was delivered, but the child's driver has not re-stepped yet; if this persists, inspect a live driver in its pane, or run \"lyx loom start\" in the task worktree if the driver has ended", approval.ApprovedAt))
+			}
+			return p.exemptWait(ctx, fmt.Sprintf("the approval at %s was already acted on and the child is awaiting again; re-run \"lyx loom approve\" in the task worktree, which records a new approval and resumes the child once more", approval.ApprovedAt))
+		}
 	}
 
 	logger.Info("battenshed: resuming approved inner shed run", "producer", p.name, "slug", p.slug, "approved_at", approval.ApprovedAt)
@@ -324,7 +335,7 @@ func (p *innerRunProducer) callAwaiting(ctx context.Context, status shedengine.S
 	if err := os.MkdirAll(p.scratchDir, 0o755); err != nil {
 		return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: create scratch directory for approval-acted marker: %w", p.name, err)
 	}
-	if err := os.WriteFile(markerPath, []byte(identity), 0o644); err != nil {
+	if err := os.WriteFile(markerPath, []byte(approvalActedContent(identity, len(status.History))), 0o644); err != nil {
 		return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: write approval-acted marker: %w", p.name, err)
 	}
 	return p.exemptWait(ctx, fmt.Sprintf("the approval at %s was acted on: the approved child was resumed; watching it", approval.ApprovedAt))
