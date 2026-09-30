@@ -5,6 +5,7 @@ package loomshed
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -87,7 +88,16 @@ func (p *loomPreflightProducer) Call(ctx context.Context) (shedengine.Outcome, s
 		// row's reason, which reaches the persisted error and activity.wait, and also logged.
 		failures := formatSeedFailures(report)
 		logger.Warn("loomshed: seed is not a coherent fresh start", "producer", p.name, "statusPath", p.statusPath, "failures", failures)
-		return shedengine.Stuck, shedengine.OutputPointer{Reason: "seed is not a coherent fresh start: " + failures}, nil
+		reason := "seed is not a coherent fresh start: " + failures
+		for _, f := range report.Failures {
+			if f.Check == loomengine.CheckHalfFinished {
+				// Discussion-Write is the row Loom-Preflight's on_done names in the recipe,
+				// so goto there resumes the run past this row.
+				reason += fmt.Sprintf("; way forward: \"lyx loom goto --to %s\" resumes the run past %s, or seed a new run", NameDiscussionWrite, NameLoomPreflight)
+				break
+			}
+		}
+		return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
 	}
 
 	return shedengine.Done, shedengine.OutputPointer{}, nil

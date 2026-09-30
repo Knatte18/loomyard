@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -146,5 +147,68 @@ func TestLoomPreflight_Call_StuckReasonNamesTheFailures(t *testing.T) {
 	}
 	if got1 == got2 {
 		t.Errorf("two different seed failures gave the same Reason %q", got1)
+	}
+}
+
+// TestLoomPreflight_Call_HalfFinishedStuckNamesGoto pins the way forward on the half-finished
+// refusal: a run moved onto Loom-Preflight over a history that has already passed it is Stuck with
+// a reason naming goto, and taking that goto makes Discussion-Write the current producer.
+func TestLoomPreflight_Call_HalfFinishedStuckNamesGoto(t *testing.T) {
+	dir := t.TempDir()
+	statusPath := filepath.Join(dir, "status.json")
+	statusLockPath := filepath.Join(dir, "status.json.lock")
+	runLockPath := filepath.Join(dir, "run.lock")
+
+	product, err := json.Marshal(loomengine.Status{Slug: "fixture-slug", Parent: "fixture-parent"})
+	if err != nil {
+		t.Fatalf("marshal product: %v", err)
+	}
+	if err := state.WriteJSON(statusPath, statusLockPath, shedengine.Status{
+		CurrentProducer: NameDiscussionWrite,
+		State:           shedengine.StateBlocked,
+		History: []shedengine.HistoryEntry{
+			{Producer: NamePreflight, Outcome: shedengine.Done, At: "2026-07-17T10:01:30Z"},
+			{Producer: NameLoomPreflight, Outcome: shedengine.Done, At: "2026-07-17T10:01:31Z"},
+			{Producer: NameDiscussionWrite, Outcome: shedengine.Done, At: "2026-07-17T10:01:32Z"},
+		},
+		Product: product,
+	}); err != nil {
+		t.Fatalf("state.WriteJSON(...) = %v", err)
+	}
+
+	producers := []shedengine.ProducerDef{{Name: NameLoomPreflight}, {Name: NameDiscussionWrite}}
+	gotoTo := func(target string) {
+		t.Helper()
+		if _, err := shedengine.Goto(shedengine.GotoRequest{
+			StatusPath:     statusPath,
+			LockPath:       runLockPath,
+			StatusLockPath: statusLockPath,
+			Producers:      producers,
+			Target:         target,
+		}); err != nil {
+			t.Fatalf("shedengine.Goto(%q) = %v", target, err)
+		}
+	}
+
+	gotoTo(NameLoomPreflight)
+	outcome, pointer, err := NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath).Call(context.Background())
+	if err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	if outcome != shedengine.Stuck {
+		t.Fatalf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
+	}
+	want := "lyx loom goto --to " + NameDiscussionWrite
+	if !strings.Contains(pointer.Reason, want) {
+		t.Errorf("Reason = %q; want it to contain %q", pointer.Reason, want)
+	}
+
+	gotoTo(NameDiscussionWrite)
+	st, found, err := state.ReadJSONStrict[shedengine.Status](statusPath, statusLockPath)
+	if err != nil || !found {
+		t.Fatalf("ReadJSONStrict() = found %v, err %v", found, err)
+	}
+	if st.CurrentProducer != NameDiscussionWrite {
+		t.Errorf("CurrentProducer = %q; want %q after taking the way forward", st.CurrentProducer, NameDiscussionWrite)
 	}
 }
