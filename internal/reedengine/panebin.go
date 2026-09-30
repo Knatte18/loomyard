@@ -3,7 +3,8 @@
 // onto a strand's launch command. The composition lives in this one file, reached from the one
 // chokepoint (launchStrandLocked in spawn.go), so the property "every strand pane resolves lyx to its
 // spawning binary" holds by construction rather than by every strand-realizing call site remembering
-// to apply it.
+// to apply it. The file also owns the per-strand launch script the composed line is written to, so the
+// pane types a short source statement instead of the full line.
 
 package reedengine
 
@@ -50,4 +51,70 @@ func composePaneLaunchLine(sh shell.Shell, launchCmd, strandGUID string) string 
 		return launchCmd
 	}
 	return sh.Chain(paneBinPrelude(sh, exe), launchCmd)
+}
+
+// launchScriptReedSegment and launchScriptLaunchSegment are reed's own relative subpath under the
+// state dir for per-strand launch scripts.
+const (
+	launchScriptReedSegment   = "reed"
+	launchScriptLaunchSegment = "launch"
+)
+
+// launchScriptDir returns the directory holding per-strand launch scripts under stateDir, the value
+// Engine.stateDir returns.
+func launchScriptDir(stateDir string) string {
+	return filepath.Join(stateDir, launchScriptReedSegment, launchScriptLaunchSegment)
+}
+
+// launchScriptPath returns the launch script path for strandGUID on sh's dialect.
+func launchScriptPath(sh shell.Shell, stateDir, strandGUID string) string {
+	return filepath.Join(launchScriptDir(stateDir), strandGUID+sh.ScriptExt())
+}
+
+// stageLaunchScript writes composedLine plus a trailing newline to the strand's launch script and
+// returns sh's source statement for it, the send-keys payload. On any write error it logs a named
+// logger.Warn and returns composedLine unchanged, so a cosmetic feature never fails a strand launch.
+func stageLaunchScript(sh shell.Shell, stateDir, strandGUID, composedLine string) string {
+	path := launchScriptPath(sh, stateDir, strandGUID)
+	if err := writeLaunchScript(path, composedLine+"\n"); err != nil {
+		logger.Warn("reed: could not write launch script, sending the full launch line", "strand", strandGUID, "path", path, "err", err)
+		return composedLine
+	}
+	return sh.Source(path)
+}
+
+// writeLaunchScript atomically writes content to path with mode 0o644. The file is sourced, never
+// executed, so it carries no exec bit. fsx.AtomicWriteBytes is not reused because its temp file
+// keeps mode 0o600.
+func writeLaunchScript(path, content string) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(dir, filepath.Base(path)+".tmp*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	fail := func(err error) error {
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
+		return err
+	}
+	if _, err := tmp.WriteString(content); err != nil {
+		return fail(err)
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmpName)
+		return err
+	}
+	if err := os.Chmod(tmpName, 0o644); err != nil {
+		_ = os.Remove(tmpName)
+		return err
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		_ = os.Remove(tmpName)
+		return err
+	}
+	return nil
 }

@@ -3,13 +3,15 @@
 // spawned. Every case injects the executable path by overriding executablePath and restoring it via
 // t.Cleanup -- under go test the live os.Executable() value is the test binary's path, which
 // CONSTRAINTS.md's Live-Substrate Spawn Observability clause bars re-exec'ing, so no case here reads
-// it.
+// it. The stageLaunchScript cases at the end cover the per-strand launch script file.
 
 package reedengine
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -181,5 +183,101 @@ func TestComposePaneLaunchLine_DashLeadingLineStillRoundTripsThroughSendKeysLite
 	want := " " + composed
 	if got != want {
 		t.Errorf("sendKeysLiteralArg(%q) = %q, want %q (a single leading space, since tmux parses a '-'-leading literal argument as flags)", composed, got, want)
+	}
+}
+
+// launchScriptDialects lists both dialects for the stageLaunchScript cases.
+func launchScriptDialects() []shell.Shell {
+	return []shell.Shell{shell.Posix(), shell.Pwsh()}
+}
+
+// TestStageLaunchScript_WritesLineAndReturnsSource checks payload and file content per dialect.
+func TestStageLaunchScript_WritesLineAndReturnsSource(t *testing.T) {
+	for _, sh := range launchScriptDialects() {
+		stateDir := t.TempDir()
+		path := filepath.Join(stateDir, "reed", "launch", "guid-1"+sh.ScriptExt())
+		got := stageLaunchScript(sh, stateDir, "guid-1", "echo hi")
+		if want := sh.Source(path); got != want {
+			t.Errorf("payload = %q, want %q", got, want)
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(data) != "echo hi\n" {
+			t.Errorf("content = %q", data)
+		}
+	}
+}
+
+// TestStageLaunchScript_RegenerateReplacesContent checks a second call replaces without leftovers.
+func TestStageLaunchScript_RegenerateReplacesContent(t *testing.T) {
+	sh := shell.Posix()
+	stateDir := t.TempDir()
+	stageLaunchScript(sh, stateDir, "g", "one")
+	stageLaunchScript(sh, stateDir, "g", "two")
+	entries, err := os.ReadDir(launchScriptDir(stateDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("launch dir holds %d entries, want 1", len(entries))
+	}
+	data, _ := os.ReadFile(launchScriptPath(sh, stateDir, "g"))
+	if string(data) != "two\n" {
+		t.Errorf("content = %q", data)
+	}
+}
+
+// TestStageLaunchScript_FileMode checks the script carries 0o644 on non-Windows hosts.
+func TestStageLaunchScript_FileMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("permission bits are not meaningful on Windows")
+	}
+	sh := shell.Posix()
+	stateDir := t.TempDir()
+	stageLaunchScript(sh, stateDir, "g", "x")
+	info, err := os.Stat(launchScriptPath(sh, stateDir, "g"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o644 {
+		t.Errorf("mode = %o, want 644", info.Mode().Perm())
+	}
+}
+
+// TestStageLaunchScript_EmptyLine checks an empty line still writes a newline-only script.
+func TestStageLaunchScript_EmptyLine(t *testing.T) {
+	sh := shell.Posix()
+	stateDir := t.TempDir()
+	got := stageLaunchScript(sh, stateDir, "g", "")
+	path := launchScriptPath(sh, stateDir, "g")
+	if got != sh.Source(path) {
+		t.Errorf("payload = %q", got)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "\n" {
+		t.Errorf("content = %q", data)
+	}
+}
+
+// TestStageLaunchScript_WriteFailureDegrades checks an unwritable directory returns the line and warns.
+func TestStageLaunchScript_WriteFailureDegrades(t *testing.T) {
+	sh := shell.Posix()
+	stateDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(stateDir, "reed"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	buf := captureLogOutput(t)
+	got := stageLaunchScript(sh, stateDir, "strand-x", "echo hi")
+	if got != "echo hi" {
+		t.Errorf("payload = %q, want the composed line", got)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "strand-x") || !strings.Contains(out, launchScriptPath(sh, stateDir, "strand-x")) {
+		t.Errorf("log %q does not name the strand and path", out)
 	}
 }
