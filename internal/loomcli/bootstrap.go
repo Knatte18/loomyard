@@ -242,7 +242,7 @@ func findStatusStrand(strands []reedengine.StrandStatus, name string) (reedengin
 func removeStatusStrands(status func() (reedengine.StatusResult, error), remove func(guid string, recursive bool) (reedengine.Removed, error)) {
 	st, err := status()
 	if err != nil {
-		logger.Warn("read strand table to remove status strand: %v", err)
+		logger.Warn("loomcli: could not read the strand table to remove the status strand; leaving any in place", "cause", err)
 		return
 	}
 	for _, s := range st.Strands {
@@ -250,7 +250,7 @@ func removeStatusStrands(status func() (reedengine.StatusResult, error), remove 
 			continue
 		}
 		if _, err := remove(s.GUID, false); err != nil {
-			logger.Warn("remove status strand %s: %v", s.GUID, err)
+			logger.Warn("loomcli: could not remove a status strand; leaving it up", "guid", s.GUID, "cause", err)
 		}
 	}
 }
