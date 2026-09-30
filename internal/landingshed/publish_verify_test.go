@@ -1,5 +1,5 @@
-// publish_verify_test.go covers the post-merge verify gate as Publish.Call wires it between the
-// parent merge-in and the push, against a fake runner and the package's fake resolver.
+// publish_verify_test.go covers the post-merge verify gate as Publish.Call wires it between the parent merge-in and the push,
+// against a fake runner and the package's fake resolver.
 
 package landingshed
 
@@ -18,8 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// publishVerifyFixture is a Publish over a real gate with a fake runner, a fake resolver and a
-// push closure that records whether it ran.
+// publishVerifyFixture is a Publish over a real gate with a fake runner, a fake resolver and a push closure that records whether it ran.
 type publishVerifyFixture struct {
 	p       *Publish
 	gate    *gateFixture

@@ -1,7 +1,7 @@
 //go:build integration
 
-// verifygate_integration_test.go drives newVerifyGate's real shared runner with echo-and-exit
-// commands and checks the output file holds the command's output on both a pass and a fail.
+// verifygate_integration_test.go drives newVerifyGate's real shared runner with echo-and-exit commands,
+// and checks the output file holds the command's output on both a pass and a fail.
 
 package landingshed
 

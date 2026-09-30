@@ -1,5 +1,5 @@
-// finalize_verify_test.go covers the post-merge verify gate as Finalize.mergeInStep wires it after
-// every parent merge-in, against a fake runner, a scripted resolver and the package's fake merger.
+// finalize_verify_test.go covers the post-merge verify gate as Finalize.mergeInStep wires it after every parent merge-in,
+// against a fake runner, a scripted resolver and the package's fake merger.
 
 package landingshed
 
@@ -131,8 +131,8 @@ func TestFinalizeVerify_UpToDateWithMarkerPass(t *testing.T) {
 	}
 }
 
-// TestFinalizeVerify_RetryMergeInRunsGateAgain pins that the merge-in-required retry's second
-// merge-in is verified too: the first verify passes, the second fails, and nothing lands.
+// TestFinalizeVerify_RetryMergeInRunsGateAgain pins that the merge-in-required retry's second merge-in is verified too:
+// the first verify passes, the second fails, and nothing lands.
 func TestFinalizeVerify_RetryMergeInRunsGateAgain(t *testing.T) {
 	res := &scriptedResolver{results: []mergeresolve.Result{resolved(false), resolved(false)}}
 	fx := newFinalizeVerifyFixture(t, res, mergeCallResult{err: &fabricengine.ErrMergeInRequired{}})

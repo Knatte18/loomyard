@@ -1,6 +1,6 @@
 // landingdeps_verify_test.go covers the three verify fields landingDeps tells landingshed:
-// the VerifyCommand closure reads the plan at call time, and the two scratch paths match loomengine's
-// accessors. It only writes files under t.TempDir(), so it stays Tier 1.
+// the VerifyCommand closure reads the plan at call time, and the two scratch paths match loomengine's accessors.
+// It only writes files under t.TempDir(), so it stays Tier 1.
 
 package loomcli
 
