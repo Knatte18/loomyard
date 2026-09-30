@@ -172,14 +172,11 @@ type RunOptions struct {
 // RunResult is what one successful Run call hands back: the parsed outcome.yaml's judgment
 // (Outcome/StuckReason/BatchesDone) plus the summary.md's title.
 type RunResult struct {
-	// Outcome is one of webster's own outcomeDone, outcomeStuck, or
-	// outcomePaused values (outcome.go), taken verbatim from the parsed
-	// outcome.yaml — except that the integration stage demotes a done to
-	// outcomeStuck when its triage finds a regression.
+	// Outcome is one of webster's own outcomeDone, outcomeStuck, or outcomePaused values (outcome.go),
+	// taken verbatim from the parsed outcome.yaml — except that the integration stage demotes a done to outcomeStuck when its triage finds a regression.
 	Outcome string
-	// StuckReason is the parsed outcome.yaml's stuck_reason, verbatim — except
-	// for a done demoted by the integration stage, whose reason names the
-	// regressing identities and the localized card.
+	// StuckReason is the parsed outcome.yaml's stuck_reason, verbatim — except for a done demoted by the integration stage,
+	// whose reason names the regressing identities and the localized card.
 	StuckReason string
 	// BatchesDone is the parsed outcome.yaml's batches_done, verbatim.
 	BatchesDone int
@@ -190,11 +187,8 @@ type RunResult struct {
 	// itself missing or malformed, which is not an error on those two
 	// outcomes).
 	SummaryTitle string
-	// Warnings carries every non-fatal observation the integration stage
-	// accumulated this run — never a failure. Mirrors RecordResult.Warnings'
-	// shape and contract: the integration stage's triage notices (flaky and
-	// pre-existing failures, an unavailable baseline) and a nil OpenBisector's
-	// unlocalized-failure notice.
+	// Warnings carries every non-fatal observation the integration stage accumulated this run — never a failure.
+	// Mirrors RecordResult.Warnings' shape and contract: the integration stage's triage notices (flaky and pre-existing failures, an unavailable baseline) and a nil OpenBisector's unlocalized-failure notice.
 	Warnings []string
 	// Cycles carries every non-trivial strongly-connected component
 	// SequenceBatches condensed for this run — always informational, never
@@ -713,12 +707,10 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		// or stuck for this plan.
 		warnings, stuckReason, err := runIntegrationStage(deps, plan, batches, runResult.Outcome)
 		if err != nil {
-			// The error paths that remain are a done outcome with no integration report and an
-			// infrastructure failure in triage, localization, or recording. runIntegrationStage
-			// can return warnings ALONGSIDE the latter, and every error return here reports the
-			// zero RunResult, so those warnings reach no envelope. They are logged instead
-			// rather than dropped: the triage and "could not be localized" notices explain the
-			// state the failed stage left behind.
+			// The error paths that remain are a done outcome with no integration report and an infrastructure failure in triage, localization, or recording.
+			// runIntegrationStage can return warnings ALONGSIDE the latter,
+			// and every error return here reports the zero RunResult, so those warnings reach no envelope.
+			// They are logged instead rather than dropped: the triage and "could not be localized" notices explain the state the failed stage left behind.
 			for _, w := range warnings {
 				logger.Warn("websterengine: integration stage warning", "warning", w)
 			}
@@ -918,26 +910,17 @@ func runExitAuditCrossCheck(deps RunDeps, outcomePath, summaryPath string, resul
 // bracket instruction, so the report is normally already on disk by the
 // time Run reaches this call; the bounded await here is a defensive
 // re-confirmation, mirroring the run-exit audit's own backstop posture).
-// On a FAILED report it triages the failure regardless of Master's own outcome: it reruns the
-// verify once at head, compares the remaining failures against the plan's starting commit, and
-// records the classification (flaky, pre-existing, or regression) and the failing identities in
-// the integration report.
-// Only a regression is escalated: the in-process SHA-bisect runs over the regressing identities
-// across every batch's own accumulated BatchState.CardSHAs, the reserved -1 record and the
-// summary.md section are written, and the returned stuck reason is non-empty so Run demotes a
-// Master done to stuck.
-// A flaky or pre-existing verdict leaves Master's outcome untouched and is recorded as warnings,
-// a summary.md triage section, and a friction note.
-// The returned error is reserved for infrastructure failures and the missing-report-under-done
-// inconsistency.
-// When deps.OpenBisector is nil, this mode has no fabric repo to bisect against: the localization
-// path (BisectAndEscalate/bisect) is bypassed entirely — never pushed down into those functions —
-// and a regression records an unlocalized "unknown"/"unknown" failure instead, with the returned
-// warning explaining why; triage itself then has no baseline to compare against either.
-// This bypass is deliberate: bisect's own empty-SHA fallback is unreachable
-// here because card SHAs accumulate normally, a single accumulated SHA would make it record a real
-// SHA under a "cannot localize" claim, and two or more reach repo.CurrentBranch(), which nil-pointer
-// panics on a nil bisector.
+// On a FAILED report it triages the failure regardless of Master's own outcome: it reruns the verify once at head, compares the remaining failures against the plan's starting commit,
+// and records the classification (flaky, pre-existing, or regression) and the failing identities in the integration report.
+// Only a regression is escalated: the in-process SHA-bisect runs over the regressing identities across every batch's own accumulated BatchState.CardSHAs, the reserved -1 record and the summary.md section are written,
+// and the returned stuck reason is non-empty so Run demotes a Master done to stuck.
+// A flaky or pre-existing verdict leaves Master's outcome untouched and is recorded as warnings, a summary.md triage section, and a friction note.
+// The returned error is reserved for infrastructure failures and the missing-report-under-done inconsistency.
+// When deps.OpenBisector is nil, this mode has no fabric repo to bisect against: the localization path (BisectAndEscalate/bisect) is bypassed entirely — never pushed down into those functions —
+// and a regression records an unlocalized "unknown"/"unknown" failure instead, with the returned warning explaining why;
+// triage itself then has no baseline to compare against either.
+// This bypass is deliberate: bisect's own empty-SHA fallback is unreachable here because card SHAs accumulate normally, a single accumulated SHA would make it record a real SHA under a "cannot localize" claim,
+// and two or more reach repo.CurrentBranch(), which nil-pointer panics on a nil bisector.
 func runIntegrationStage(deps RunDeps, plan *planparser.Plan, batches []batcher.Batch, masterOutcome string) (warnings []string, stuckReason string, err error) {
 	if !ShouldRunIntegration(plan) {
 		return nil, "", nil
@@ -982,17 +965,14 @@ func runIntegrationStage(deps RunDeps, plan *planparser.Plan, batches []batcher.
 		return nil, "", nil
 	}
 
-	// This stage runs in three phases, split exactly the way recover-batch splits its own, and for
-	// the same reason: the triage rerun, the baseline run and the localization in the middle run
-	// the plan's whole "## verify:" command several times — minutes to tens of minutes — and
-	// AcquireStateMutation's contract forbids holding the lease across a long block. Holding it
-	// there stalled every concurrent bracket verb behind an unbounded blocking acquire, with no
-	// timeout and no diagnostic.
+	// This stage runs in three phases, split exactly the way recover-batch splits its own, and for the same reason:
+	// the triage rerun, the baseline run and the localization in the middle run the plan's whole "## verify:" command several times — minutes to tens of minutes —
+	// and AcquireStateMutation's contract forbids holding the lease across a long block.
+	// Holding it there stalled every concurrent bracket verb behind an unbounded blocking acquire, with no timeout and no diagnostic.
 	//
-	// Phase 1, unleased: read the card SHAs the search runs over and the baseline commit. LoadState
-	// is a plain read, and a fresh one is required — begin-batch/record-batch mutated and persisted
-	// state repeatedly across Master's whole run, so the copy captured before Master ever spawned
-	// is long stale.
+	// Phase 1, unleased: read the card SHAs the search runs over and the baseline commit.
+	// LoadState is a plain read, and a fresh one is required — begin-batch/record-batch mutated and persisted state repeatedly across Master's whole run,
+	// so the copy captured before Master ever spawned is long stale.
 	st, err := LoadState(deps.Geom.WebsterDir, deps.Geom.ScratchDir)
 	if err != nil {
 		return nil, "", err
@@ -1001,8 +981,8 @@ func runIntegrationStage(deps RunDeps, plan *planparser.Plan, batches []batcher.
 		return nil, "", fmt.Errorf("webster: integration stage: no state.json to escalate against")
 	}
 	shas, labels := accumulatedCardSHAs(batches, st)
-	// The baseline is the HEAD before the first batch began; recover-batch inherits StartSHA and a
-	// begin-batch re-begin keeps it, so it survives every retry.
+	// The baseline is the HEAD before the first batch began;
+	// recover-batch inherits StartSHA and a begin-batch re-begin keeps it, so it survives every retry.
 	baseline := ""
 	if len(batches) > 0 {
 		first, _ := batchIdentity(batches[0])
@@ -1011,10 +991,9 @@ func runIntegrationStage(deps RunDeps, plan *planparser.Plan, batches []batcher.
 		}
 	}
 
-	// Phase 2, unleased: triage, then localize the offending card of a regression. "unknown" for
-	// both is the honest answer when there is no fabric repo to bisect against, and the bypass
-	// lives at this call site rather than inside LocalizeIntegrationFailure so a nil bisector is
-	// never handed to it — see RunDeps.OpenBisector's own doc comment.
+	// Phase 2, unleased: triage, then localize the offending card of a regression.
+	// "unknown" for both is the honest answer when there is no fabric repo to bisect against,
+	// and the bypass lives at this call site rather than inside LocalizeIntegrationFailure so a nil bisector is never handed to it — see RunDeps.OpenBisector's own doc comment.
 	var bisector FabricBisector
 	if deps.OpenBisector != nil {
 		bisector, err = deps.OpenBisector()
@@ -1042,8 +1021,8 @@ func runIntegrationStage(deps RunDeps, plan *planparser.Plan, batches []batcher.
 		}
 	}
 
-	// Phase 3, leased: record the result against a state reloaded fresh under the lease, since the
-	// unleased work above gave every concurrent verb room to persist its own mutations.
+	// Phase 3, leased: record the result against a state reloaded fresh under the lease,
+	// since the unleased work above gave every concurrent verb room to persist its own mutations.
 	regressing := failuresByID(outcome.Failures, outcome.Triage.Regressions)
 	if err := recordTriageResult(deps, reportPath, outcome, regressing, offendingCard, offendingSHA); err != nil {
 		return warnings, "", err
@@ -1056,10 +1035,8 @@ func runIntegrationStage(deps RunDeps, plan *planparser.Plan, batches []batcher.
 	return warnings, triageStuckReason(regressing, offendingCard), nil
 }
 
-// recordTriageResult is runIntegrationStage's leased phase: it reloads the integration report and
-// writes the triage's failures and classification into it, then either escalates a regression (the
-// reserved -1 record and the summary.md section) or records a non-regression (the summary.md
-// triage section and the friction note, with no state record).
+// recordTriageResult is runIntegrationStage's leased phase: it reloads the integration report and writes the triage's failures and classification into it,
+// then either escalates a regression (the reserved -1 record and the summary.md section) or records a non-regression (the summary.md triage section and the friction note, with no state record).
 // The lease is released on return, so the caller's logging runs outside it.
 func recordTriageResult(deps RunDeps, reportPath string, outcome triageOutcome, regressing []IntegrationFailure, offendingCard, offendingSHA string) error {
 	mutateLock, err := AcquireStateMutation(deps.Geom.ScratchDir)

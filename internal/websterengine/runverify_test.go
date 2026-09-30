@@ -1,8 +1,6 @@
 //go:build integration
 
-// runverify_test.go exercises runVerifyCapture's outcomes -- a non-zero exit (a failed
-// verify, which is expected), a spawn failure (a genuine error), and output capture with the optional
-// log file -- asserting that the two teardown paths log differently.
+// runverify_test.go exercises runVerifyCapture's outcomes -- a non-zero exit (a failed verify, which is expected), a spawn failure (a genuine error), and output capture with the optional log file -- asserting that the two teardown paths log differently.
 // It carries the integration tag because it spawns real processes and reuses the package's hermetic
 // TestMain (testmain_test.go) for free.
 
@@ -32,9 +30,7 @@ func runverifyCapture(t *testing.T) *bytes.Buffer {
 	return &buf
 }
 
-// TestRunVerifyCapture covers the non-zero-exit path (expect Passed false, nil error and a captured
-// INFO teardown line carrying exitCode), the spawn-failure path (expect a non-nil error and a
-// captured WARN line carrying cause), and output capture with and without a log path.
+// TestRunVerifyCapture covers the non-zero-exit path (expect Passed false, nil error and a captured INFO teardown line carrying exitCode), the spawn-failure path (expect a non-nil error and a captured WARN line carrying cause), and output capture with and without a log path.
 func TestRunVerifyCapture(t *testing.T) {
 	t.Run("NonZeroExit", func(t *testing.T) {
 		buf := runverifyCapture(t)

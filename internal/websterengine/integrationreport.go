@@ -59,8 +59,7 @@ type IntegrationTriage struct {
 	Regressions []string `yaml:"regressions,omitempty"`
 }
 
-// IntegrationReport is the integration fork's report: the fork-written Status, HeadSHA and
-// Deviations, plus the Go-written optional Failures and Triage.
+// IntegrationReport is the integration fork's report: the fork-written Status, HeadSHA and Deviations, plus the Go-written optional Failures and Triage.
 type IntegrationReport struct {
 	Status     string               `yaml:"status"`
 	HeadSHA    string               `yaml:"head_sha"`
@@ -69,8 +68,7 @@ type IntegrationReport struct {
 	Triage     *IntegrationTriage   `yaml:"triage,omitempty"`
 }
 
-// ParseIntegrationReport reads and strictly decodes the integration report at path, then applies
-// the same status and head_sha validation as ParseReport.
+// ParseIntegrationReport reads and strictly decodes the integration report at path, then applies the same status and head_sha validation as ParseReport.
 // A fork-only report (no failures, no triage) parses cleanly.
 func ParseIntegrationReport(path string) (*IntegrationReport, error) {
 	data, err := os.ReadFile(path)

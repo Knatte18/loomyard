@@ -409,8 +409,8 @@ func TestIntegrationStage_MissingReport_DoneOutcomeFailsLoud(t *testing.T) {
 	}
 }
 
-// countingBisector wraps a FabricBisector and counts its detached checkouts, so a test can tell
-// whether triage's baseline run or the localizing bisect ever moved the worktree.
+// countingBisector wraps a FabricBisector and counts its detached checkouts,
+// so a test can tell whether triage's baseline run or the localizing bisect ever moved the worktree.
 type countingBisector struct {
 	websterengine.FabricBisector
 	checkouts int
@@ -421,11 +421,10 @@ func (c *countingBisector) CheckoutDetached(sha string) error {
 	return c.FabricBisector.CheckoutDetached(sha)
 }
 
-// seedVerifyScripts commits the three verify scripts the triage tests run, so they exist at every
-// SHA the run checks out.
-// verify.sh fails with a go test-shaped TestBad failure whenever bad.marker exists; always.sh
-// always fails with a TestAlways failure; dirty.sh does the same after dirtying the tree with an
-// untracked file and an uncommitted change to the tracked base.txt.
+// seedVerifyScripts commits the three verify scripts the triage tests run, so they exist at every SHA the run checks out.
+// verify.sh fails with a go test-shaped TestBad failure whenever bad.marker exists;
+// always.sh always fails with a TestAlways failure;
+// dirty.sh does the same after dirtying the tree with an untracked file and an uncommitted change to the tracked base.txt.
 func seedVerifyScripts(t *testing.T, worktree string) {
 	t.Helper()
 	failure := func(test string) string {
@@ -448,8 +447,7 @@ type failedSuite struct {
 	forkLog string
 }
 
-// runFailedSuite seeds fx's state from s, scripts Master and the integration fork from onWait,
-// and returns Run's result.
+// runFailedSuite seeds fx's state from s, scripts Master and the integration fork from onWait, and returns Run's result.
 func runFailedSuite(t *testing.T, fx *runFixture, s failedSuite) (websterengine.RunResult, error) {
 	t.Helper()
 	n := len(s.batches)
@@ -540,9 +538,8 @@ func assertOnBranch(t *testing.T, fx *runFixture, branch string) {
 
 const flakyForkLog = "--- FAIL: TestFlaky (0.00s)\n    flaky_test.go:1: intermittent boom\nFAIL\nFAIL\texample/pkg\t0.01s\n"
 
-// TestIntegrationStage_Flaky_DoneKeepsDone proves a verify that fails once and passes on rerun
-// under Master done ends done: the report, summary, warnings and friction note record the flaky
-// identity, nothing is bisected, and no escalation record exists.
+// TestIntegrationStage_Flaky_DoneKeepsDone proves a verify that fails once and passes on rerun under Master done ends done:
+// the report, summary, warnings and friction note record the flaky identity, nothing is bisected, and no escalation record exists.
 func TestIntegrationStage_Flaky_DoneKeepsDone(t *testing.T) {
 	fx := newRunFixture(t, 1)
 	appendIntegrationVerify(t, fx.PlanDir, "true")
@@ -586,8 +583,7 @@ func TestIntegrationStage_Flaky_DoneKeepsDone(t *testing.T) {
 	}
 }
 
-// TestIntegrationStage_Flaky_NoFrictionNoteWithoutDir proves the friction note is absent when
-// FrictionDir is empty.
+// TestIntegrationStage_Flaky_NoFrictionNoteWithoutDir proves the friction note is absent when FrictionDir is empty.
 func TestIntegrationStage_Flaky_NoFrictionNoteWithoutDir(t *testing.T) {
 	fx := newRunFixture(t, 1)
 	appendIntegrationVerify(t, fx.PlanDir, "true")
@@ -604,8 +600,8 @@ func TestIntegrationStage_Flaky_NoFrictionNoteWithoutDir(t *testing.T) {
 	}
 }
 
-// TestIntegrationStage_Flaky_FrictionNoteFailureKeepsDone proves an unwritable friction dir does not
-// fail the run: the note is best-effort, and the report and summary still record the flaky verdict.
+// TestIntegrationStage_Flaky_FrictionNoteFailureKeepsDone proves an unwritable friction dir does not fail the run:
+// the note is best-effort, and the report and summary still record the flaky verdict.
 func TestIntegrationStage_Flaky_FrictionNoteFailureKeepsDone(t *testing.T) {
 	fx := newRunFixture(t, 1)
 	appendIntegrationVerify(t, fx.PlanDir, "true")
@@ -634,9 +630,8 @@ func TestIntegrationStage_Flaky_FrictionNoteFailureKeepsDone(t *testing.T) {
 	}
 }
 
-// TestIntegrationStage_PreExisting_DoneKeepsDone proves a failure present at both head and the
-// plan's starting commit ends done with a pre-existing verdict, and only the baseline run checks
-// anything out.
+// TestIntegrationStage_PreExisting_DoneKeepsDone proves a failure present at both head and the plan's starting commit ends done with a pre-existing verdict,
+// and only the baseline run checks anything out.
 func TestIntegrationStage_PreExisting_DoneKeepsDone(t *testing.T) {
 	fx := newRunFixture(t, 1)
 	appendIntegrationVerify(t, fx.PlanDir, "sh always.sh")
@@ -677,9 +672,7 @@ func TestIntegrationStage_PreExisting_DoneKeepsDone(t *testing.T) {
 	assertOnBranch(t, fx, branch)
 }
 
-// TestIntegrationStage_Regression_DemotesDone proves a failure at head that passes at the starting
-// commit demotes Master's done to stuck, localizes the card, writes the -1 record, and puts the
-// failing test and its tail in summary.md.
+// TestIntegrationStage_Regression_DemotesDone proves a failure at head that passes at the starting commit demotes Master's done to stuck, localizes the card, writes the -1 record, and puts the failing test and its tail in summary.md.
 func TestIntegrationStage_Regression_DemotesDone(t *testing.T) {
 	fx := newRunFixture(t, 3)
 	appendIntegrationVerify(t, fx.PlanDir, "sh verify.sh")
@@ -722,9 +715,8 @@ func TestIntegrationStage_Regression_DemotesDone(t *testing.T) {
 	assertOnBranch(t, fx, branch)
 }
 
-// TestIntegrationStage_MasterStuck_KeepsStuckAndGetsTriage proves a Master stuck over a FAILED
-// report with a flaky verdict stays stuck with its own reason, and the report and summary still
-// carry the triage.
+// TestIntegrationStage_MasterStuck_KeepsStuckAndGetsTriage proves a Master stuck over a FAILED report with a flaky verdict stays stuck with its own reason,
+// and the report and summary still carry the triage.
 func TestIntegrationStage_MasterStuck_KeepsStuckAndGetsTriage(t *testing.T) {
 	fx := newRunFixture(t, 1)
 	appendIntegrationVerify(t, fx.PlanDir, "true")
@@ -747,9 +739,8 @@ func TestIntegrationStage_MasterStuck_KeepsStuckAndGetsTriage(t *testing.T) {
 	}
 }
 
-// TestIntegrationStage_BaselineIsBatchOneStartSHA proves the baseline is the HEAD before batch 1
-// began, not the commit before its last card: batch 1 holds two commits and the first breaks a test,
-// so the test is a regression.
+// TestIntegrationStage_BaselineIsBatchOneStartSHA proves the baseline is the HEAD before batch 1 began, not the commit before its last card:
+// batch 1 holds two commits and the first breaks a test, so the test is a regression.
 func TestIntegrationStage_BaselineIsBatchOneStartSHA(t *testing.T) {
 	fx := newRunFixture(t, 2)
 	appendIntegrationVerify(t, fx.PlanDir, "sh verify.sh")
@@ -776,9 +767,7 @@ func TestIntegrationStage_BaselineIsBatchOneStartSHA(t *testing.T) {
 	}
 }
 
-// TestIntegrationStage_DirtyBaselineRunRestoresBranch proves the worktree is back on its branch
-// after a baseline verify that leaves an untracked file and an uncommitted change to a tracked file
-// that is identical at baseline and head.
+// TestIntegrationStage_DirtyBaselineRunRestoresBranch proves the worktree is back on its branch after a baseline verify that leaves an untracked file and an uncommitted change to a tracked file that is identical at baseline and head.
 func TestIntegrationStage_DirtyBaselineRunRestoresBranch(t *testing.T) {
 	fx := newRunFixture(t, 1)
 	appendIntegrationVerify(t, fx.PlanDir, "sh dirty.sh")
@@ -798,8 +787,7 @@ func TestIntegrationStage_DirtyBaselineRunRestoresBranch(t *testing.T) {
 	assertOnBranch(t, fx, branch)
 }
 
-// TestIntegrationStage_MissingForkLogDoesNotError proves a missing fork log is not an error and the
-// identities come from the rerun.
+// TestIntegrationStage_MissingForkLogDoesNotError proves a missing fork log is not an error and the identities come from the rerun.
 func TestIntegrationStage_MissingForkLogDoesNotError(t *testing.T) {
 	fx := newRunFixture(t, 1)
 	appendIntegrationVerify(t, fx.PlanDir, "sh always.sh")

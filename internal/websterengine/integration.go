@@ -102,9 +102,10 @@ const integrationBatchKey = -1
 // A single-element shas is not special-cased: it is verified like any other
 // last sha, and only blamed when it actually fails.
 //
-// The pass predicate at each sha is bisectPassed over regressions: with no regressing identities
-// (or an opaque one) it is the command's exit code, otherwise none of the regressing identities may
-// fail there, so a failure already present at every sha never makes bisect blame the first card.
+// The pass predicate at each sha is bisectPassed over regressions.
+// With no regressing identities (or an opaque one) it is the command's exit code;
+// otherwise none of the regressing identities may fail there,
+// so a failure already present at every sha never makes bisect blame the first card.
 func bisect(repo FabricBisector, shas []string, verifyCmd string, worktree string, regressions []string, runner verifyRunner) (offendingIndex int, err error) {
 	if len(shas) == 0 {
 		return -1, nil
@@ -162,8 +163,7 @@ func bisect(repo FabricBisector, shas []string, verifyCmd string, worktree strin
 	return lo, nil
 }
 
-// checkoutAndVerify checks out sha detached, then runs verifyCmd through runner, reporting whether
-// the bisect pass predicate holds there.
+// checkoutAndVerify checks out sha detached, then runs verifyCmd through runner, reporting whether the bisect pass predicate holds there.
 func checkoutAndVerify(repo FabricBisector, sha, verifyCmd, worktree string, regressions []string, runner verifyRunner) (bool, error) {
 	if err := repo.CheckoutDetached(sha); err != nil {
 		return false, fmt.Errorf("webster: bisect: checkout %s: %w", sha, err)
@@ -175,8 +175,7 @@ func checkoutAndVerify(repo FabricBisector, sha, verifyCmd, worktree string, reg
 	return bisectPassed(run, regressions), nil
 }
 
-// bisectPassed is the bisect pass predicate over one run: none of the regressing identities appears
-// in the run's failure set.
+// bisectPassed is the bisect pass predicate over one run: none of the regressing identities appears in the run's failure set.
 // An identity that is absent, never ran, or surfaces only as its package identity counts as passing.
 // Empty regressions, or one containing opaqueFailureID, fall back to the command's exit code.
 func bisectPassed(run verifyRun, regressions []string) bool {
@@ -206,8 +205,9 @@ type verifyRun struct {
 	Output string
 }
 
-// verifyRunner is the seam triage and bisect run the verify command through, so their untagged
-// tests can inject a fake; runVerifyCapture satisfies it.
+// verifyRunner is the seam triage and bisect run the verify command through,
+// so their untagged tests can inject a fake;
+// runVerifyCapture satisfies it.
 type verifyRunner func(verifyCmd, worktree, logPath string) (verifyRun, error)
 
 // verifyLogDirName is the subdirectory of webster's scratch dir holding the verify logs.
@@ -230,11 +230,10 @@ func baselineLogPath(scratchDir string) string {
 }
 
 // runVerifyCapture runs verifyCmd in-process via os/exec, capturing combined stdout and stderr.
-// A non-zero exit is a failed verify (Passed false, nil error); a spawn failure propagates as a real
-// error.
-// A non-empty logPath also receives the output, its parent directory created; a failed log write is
-// returned as an error, since a triage decision must never rest on a log that silently was not
-// written.
+// A non-zero exit is a failed verify (Passed false, nil error);
+// a spawn failure propagates as a real error.
+// A non-empty logPath also receives the output, its parent directory created;
+// a failed log write is returned as an error, since a triage decision must never rest on a log that silently was not written.
 func runVerifyCapture(verifyCmd, worktree, logPath string) (verifyRun, error) {
 	shell, flag := "sh", "-c"
 	if runtime.GOOS == "windows" {
@@ -325,8 +324,8 @@ func bisectAndEscalate(repo FabricBisector, shas, labels []string, verifyCmd, wo
 // It returns the localized card label and SHA, or "unknown" for both when the search localizes
 // nothing.
 //
-// regressions are the identities the pass predicate tracks (see bisect); nil or opaque means the
-// command's exit code.
+// regressions are the identities the pass predicate tracks (see bisect);
+// nil or opaque means the command's exit code.
 func LocalizeIntegrationFailure(repo FabricBisector, shas, labels []string, verifyCmd, worktree string, regressions []string) (offendingCard, offendingSHA string, err error) {
 	return localizeIntegrationFailure(repo, shas, labels, verifyCmd, worktree, regressions, runVerifyCapture)
 }

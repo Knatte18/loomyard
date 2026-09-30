@@ -1,6 +1,6 @@
 // triage.go classifies a red integration verify as flaky, pre-existing, or a regression.
-// It runs the verify command through the verifyRunner seam and touches no state, report, or
-// summary file, so the integration stage can call it with no state-mutation lease held.
+// It runs the verify command through the verifyRunner seam and touches no state, report, or summary file,
+// so the integration stage can call it with no state-mutation lease held.
 
 package websterengine
 
@@ -16,8 +16,7 @@ import (
 // baselineUnavailableWarning states why every head failure was classified a regression.
 const baselineUnavailableWarning = "triage: baseline comparison unavailable (no repository handle or no baseline SHA); every failure is treated as a regression"
 
-// triageOutcome is triageIntegrationFailure's result: the failures to record, the triage
-// classification, and the warnings the stage surfaces.
+// triageOutcome is triageIntegrationFailure's result: the failures to record, the triage classification, and the warnings the stage surfaces.
 type triageOutcome struct {
 	Failures []IntegrationFailure
 	Triage   IntegrationTriage
@@ -25,10 +24,10 @@ type triageOutcome struct {
 }
 
 // triageIntegrationFailure classifies the integration fork's red verify run.
-// firstLogPath is the first run's captured log; a missing or unreadable log leaves the first
-// run's failure set unknown rather than failing the triage.
-// It reruns verifyCmd once at the unchanged head, and on a red rerun compares each failing
-// identity against baselineSHA.
+// firstLogPath is the first run's captured log;
+// a missing or unreadable log leaves the first run's failure set unknown rather than failing the triage.
+// It reruns verifyCmd once at the unchanged head,
+// and on a red rerun it compares each failing identity against baselineSHA.
 // A non-member of the baseline failure set is a regression: triage never excuses an unproven failure.
 // A spawn error from run and a checkout error are returned as errors.
 func triageIntegrationFailure(run verifyRunner, repo FabricBisector, baselineSHA, verifyCmd, worktree, scratchDir, firstLogPath string) (triageOutcome, error) {
@@ -114,8 +113,7 @@ func triageIntegrationFailure(run verifyRunner, repo FabricBisector, baselineSHA
 	return out, nil
 }
 
-// runAtBaseline checks out sha detached, runs verifyCmd through run, and restores the original
-// branch afterwards even when the run errored.
+// runAtBaseline checks out sha detached, runs verifyCmd through run, and restores the original branch afterwards even when the run errored.
 // A failed restore is joined onto any run error, never dropped.
 func runAtBaseline(run verifyRunner, repo FabricBisector, sha, verifyCmd, worktree, logPath string) (result verifyRun, err error) {
 	branch, err := repo.CurrentBranch()
@@ -139,8 +137,7 @@ func runAtBaseline(run verifyRunner, repo FabricBisector, sha, verifyCmd, worktr
 	return run(verifyCmd, worktree, logPath)
 }
 
-// triageWarnings returns one warning per non-empty non-regression category, flaky then
-// pre-existing, each naming its identities.
+// triageWarnings returns one warning per non-empty non-regression category, flaky then pre-existing, each naming its identities.
 // It returns nil when t has neither.
 func triageWarnings(t IntegrationTriage) []string {
 	var warnings []string
@@ -154,8 +151,7 @@ func triageWarnings(t IntegrationTriage) []string {
 }
 
 // triageStuckReason builds the RunResult.StuckReason for a run demoted by a regression.
-// It names every regressing identity and the localized card, or states the card was not
-// localized when offendingCard is "unknown".
+// It names every regressing identity and the localized card, or states the card was not localized when offendingCard is "unknown".
 func triageStuckReason(regressions []IntegrationFailure, offendingCard string) string {
 	reason := "integration verify regressed: " + strings.Join(failureIDs(regressions), ", ")
 	if offendingCard == "unknown" {
@@ -164,8 +160,8 @@ func triageStuckReason(regressions []IntegrationFailure, offendingCard string) s
 	return reason + " (offending card: " + offendingCard + ")"
 }
 
-// writeTriageFrictionNote records the flaky and pre-existing identities as a friction note, since
-// a pre-existing failure is environment trouble the hub collects from friction notes.
+// writeTriageFrictionNote records the flaky and pre-existing identities as a friction note,
+// since a pre-existing failure is environment trouble the hub collects from friction notes.
 // It is a no-op when frictionDir is empty or both non-regression lists are empty.
 func writeTriageFrictionNote(frictionDir string, t IntegrationTriage) error {
 	if frictionDir == "" || (len(t.Flaky) == 0 && len(t.PreExisting) == 0) {

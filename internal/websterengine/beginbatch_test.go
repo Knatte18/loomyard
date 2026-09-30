@@ -547,9 +547,8 @@ func TestBeginBatch_StateUpdated(t *testing.T) {
 	}
 }
 
-// TestBeginBatch_ReBeginKeepsStartSHA proves a re-begin over a non-terminal fork record that
-// carries a StartSHA keeps it in both the record and the result, though the worktree head has
-// moved past it (the earlier fork landed a commit).
+// TestBeginBatch_ReBeginKeepsStartSHA proves a re-begin over a non-terminal fork record that carries a StartSHA keeps it in both the record and the result,
+// though the worktree head has moved past it (the earlier fork landed a commit).
 func TestBeginBatch_ReBeginKeepsStartSHA(t *testing.T) {
 	fx := newBeginFixture(t)
 	fx.Deps.State.AssertedModel = "master-model" // skip the injector
@@ -574,8 +573,7 @@ func TestBeginBatch_ReBeginKeepsStartSHA(t *testing.T) {
 	}
 }
 
-// TestBeginBatch_ReBeginEmptyStartSHARecordsHead proves a prior record without a StartSHA gets the
-// current head, as a first begin does.
+// TestBeginBatch_ReBeginEmptyStartSHARecordsHead proves a prior record without a StartSHA gets the current head, as a first begin does.
 func TestBeginBatch_ReBeginEmptyStartSHARecordsHead(t *testing.T) {
 	fx := newBeginFixture(t)
 	fx.Deps.State.AssertedModel = "master-model" // skip the injector

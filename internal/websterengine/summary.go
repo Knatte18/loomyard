@@ -50,8 +50,8 @@ func ArchiveStaleSummary(websterDir string, now func() time.Time) (archivedTo st
 // AppendIntegrationFailure appends a section naming the integration bisect's localized finding to
 // the final-summary artifact.
 // Master's final-action rule guarantees the artifact exists before this runs.
-// A non-empty regressions list adds each regressing identity with its output tail in a fenced
-// block; nil regressions leave the section as the localized-card sentence alone.
+// A non-empty regressions list adds each regressing identity with its output tail in a fenced block;
+// nil regressions leave the section as the localized-card sentence alone.
 func AppendIntegrationFailure(websterDir, offendingCard, offendingSHA string, regressions []IntegrationFailure) error {
 	var b strings.Builder
 	fmt.Fprintf(&b, "\n\n## Integration suite failed\n\nThe plan-level `## verify:` suite failed. SHA-bisect localized the failure to card `%s` (commit `%s`).\n", offendingCard, offendingSHA)
@@ -64,8 +64,8 @@ func AppendIntegrationFailure(websterDir, offendingCard, offendingSHA string, re
 	return appendToSummary(websterDir, "integration failure", b.String())
 }
 
-// AppendIntegrationTriage appends a section listing the failures webster's triage did not
-// attribute to this run, by identity only; the tails stay in the integration report.
+// AppendIntegrationTriage appends a section listing the failures webster's triage did not attribute to this run, by identity only;
+// the tails stay in the integration report.
 // It is a no-op when both lists are empty.
 func AppendIntegrationTriage(websterDir string, flaky, preExisting []string) error {
 	if len(flaky) == 0 && len(preExisting) == 0 {

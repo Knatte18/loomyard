@@ -486,9 +486,7 @@ func TestMasterTemplate_StatesPlanDriftRefusalEndsRunAsStuck(t *testing.T) {
 	requireContains(t, text, "do not retry the verb")
 }
 
-// TestMasterTemplate_IntegrationFailedBranchEndsDone asserts the integration-suite stage's
-// `status: FAILED` branch tells Master to finish with `outcome: done` (webster triages the report
-// after the session) and no longer tells it `outcome: stuck` for that branch.
+// TestMasterTemplate_IntegrationFailedBranchEndsDone asserts the integration-suite stage's `status: FAILED` branch tells Master to finish with `outcome: done` (webster triages the report after the session) and no longer tells it `outcome: stuck` for that branch.
 func TestMasterTemplate_IntegrationFailedBranchEndsDone(t *testing.T) {
 	text := string(mustMasterTemplate(t, newTestStencilsDir(t)))
 
@@ -1155,8 +1153,7 @@ func TestRenderIntegrationPrompt_InjectsVerifyText(t *testing.T) {
 	requireNotContains(t, text, "## Shared Decisions")
 }
 
-// TestRenderIntegrationPrompt_EmptyLogPathErrors asserts RenderIntegrationPrompt refuses an empty
-// log path, exactly as it refuses an empty verify.
+// TestRenderIntegrationPrompt_EmptyLogPathErrors asserts RenderIntegrationPrompt refuses an empty log path, exactly as it refuses an empty verify.
 func TestRenderIntegrationPrompt_EmptyLogPathErrors(t *testing.T) {
 	plan := &planparser.Plan{Verify: "go build ./..."}
 

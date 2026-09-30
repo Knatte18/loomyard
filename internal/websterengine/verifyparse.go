@@ -7,8 +7,7 @@ import (
 	"strings"
 )
 
-// opaqueFailureID is the id of the single identity reported when a red verify run
-// yields nothing parseable: a failing go vet, go build, or non-Go command.
+// opaqueFailureID is the id of the single identity reported when a red verify run yields nothing parseable: a failing go vet, go build, or non-Go command.
 const opaqueFailureID = "verify-command"
 
 // failureTailMaxLines caps every IntegrationFailure.Tail.
@@ -19,8 +18,7 @@ const (
 	failPkgPrefix    = "FAIL\t"
 )
 
-// parseVerifyFailures returns the failure identities in output, in first-seen order and
-// deduplicated by id.
+// parseVerifyFailures returns the failure identities in output, in first-seen order and deduplicated by id.
 // It returns nil when passed is true.
 // Test identities are "<package>.<TopLevelTest>", package identities are "<package>",
 // and when neither is found one opaque identity (opaqueFailureID) carries the output tail.

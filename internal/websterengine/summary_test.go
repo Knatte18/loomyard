@@ -141,8 +141,7 @@ func readSummaryFile(t *testing.T, dir string) string {
 
 const failedSectionHead = "\n\n## Integration suite failed\n\nThe plan-level `## verify:` suite failed. SHA-bisect localized the failure to card `03-c` (commit `abc123`).\n"
 
-// TestAppendIntegrationFailure_RegressionsListedWithTails asserts each regressing identity is
-// appended with its tail in a fenced block after the localized-card sentence.
+// TestAppendIntegrationFailure_RegressionsListedWithTails asserts each regressing identity is appended with its tail in a fenced block after the localized-card sentence.
 func TestAppendIntegrationFailure_RegressionsListedWithTails(t *testing.T) {
 	dir := t.TempDir()
 	writeSummaryFile(t, summaryparser.Path(dir), "# S\n")

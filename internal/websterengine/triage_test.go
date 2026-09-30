@@ -1,5 +1,5 @@
-// triage_test.go drives triageIntegrationFailure through a fake verifyRunner whose output depends on
-// the fake bisector's current checkout, so classification is tested without spawning a process.
+// triage_test.go drives triageIntegrationFailure through a fake verifyRunner whose output depends on the fake bisector's current checkout,
+// so classification is tested without spawning a process.
 
 package websterengine
 

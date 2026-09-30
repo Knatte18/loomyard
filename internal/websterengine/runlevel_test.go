@@ -1152,8 +1152,8 @@ func TestRun_PausedOutcomeLeavesPauseFlagIntact(t *testing.T) {
 // standalone-mode explanation.
 func TestRun_NilOpenBisectorRecordsUnlocalizedIntegrationFailure(t *testing.T) {
 	fx := newRunFixture(t, 2)
-	// The verify fails on rerun, so triage classifies a regression; with no bisector there is no
-	// baseline either.
+	// The verify fails on rerun, so triage classifies a regression;
+	// with no bisector there is no baseline either.
 	appendIntegrationVerify(t, fx.PlanDir, "false")
 	fx.Deps.OpenBisector = nil
 
@@ -1250,8 +1250,8 @@ func TestRun_NilOpenBisectorRecordsUnlocalizedIntegrationFailure(t *testing.T) {
 	}
 }
 
-// TestRun_NilOpenBisectorFlakyVerifyKeepsDone proves a nil-bisector run whose verify passes on
-// rerun is classified flaky: Master's done stands and the flaky warning is the only warning.
+// TestRun_NilOpenBisectorFlakyVerifyKeepsDone proves a nil-bisector run whose verify passes on rerun is classified flaky:
+// Master's done stands and the flaky warning is the only warning.
 func TestRun_NilOpenBisectorFlakyVerifyKeepsDone(t *testing.T) {
 	fx := newRunFixture(t, 1)
 	appendIntegrationVerify(t, fx.PlanDir, "true")

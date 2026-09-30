@@ -1,5 +1,5 @@
-// bisect_test.go drives bisect's identity-based pass predicate through a fake FabricBisector and a
-// fake verifyRunner keyed by the checked-out SHA, so localization is tested without spawning a process.
+// bisect_test.go drives bisect's identity-based pass predicate through a fake FabricBisector and a fake verifyRunner keyed by the checked-out SHA,
+// so localization is tested without spawning a process.
 
 package websterengine
 

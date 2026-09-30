@@ -1,5 +1,4 @@
-// integrationreport_test.go covers IntegrationReport's round trip, its fork-only shape, its strict
-// decode and validation, and that the batch Report shape stays strict.
+// integrationreport_test.go covers IntegrationReport's round trip, its fork-only shape, its strict decode and validation, and that the batch Report shape stays strict.
 
 package websterengine_test
 
