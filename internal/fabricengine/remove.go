@@ -1,6 +1,8 @@
-// remove.go implements Remove: it tears down the portal and launchers after the slug and
-// target-exists checks, so a refused slug never loses another pair's launchers, and the teardown
-// still runs when the worktree dir itself is already gone.
+// remove.go implements Remove: every refusal — slug, prime, target-exists, merge-in-progress and the
+// no-force dirtiness checks with their status probes — runs first and leaves the hub and the weft
+// origin untouched.
+// Then the weft tip is archived, and only then are the portal and launchers torn down, so a refused
+// call never loses a launcher or pushes a tag that misses uncommitted records.
 // The weft branch it removes is WeftBranchName(warpBranch).
 // After both worktrees are gone it also deletes the pair's local warp branch, but only when the
 // destructive gate proves no work is lost: every commit is on another ref or already landed on the
@@ -72,11 +74,13 @@ type RemoveResult struct {
 // It refuses the hub's prime worktree outright too: the prime is the warp repository itself, not a
 // pair this verb can tear down, and git's own refusal to remove a main working tree is not a
 // licence to delete the clone.
-// After those refusals and before its first mutation, Remove archives the pair's weft tip — an archive/<slug>/<tip> tag pushed to the weft origin (archiveWeftTip) — so the run records on the branch outlive its deletion.
+// Its no-force dirtiness checks, status probes included, are refusals like the rest: a refusal leaves the hub and the weft origin untouched, with no tag pushed and nothing torn down.
+// After every refusal and before its first mutation, Remove archives the pair's weft tip — an archive/<slug>/<tip> tag pushed to the weft origin (archiveWeftTip) — so the run records on the branch outlive its deletion.
 // A failed archive returns its error with everything still in place, so a plain re-run retries it.
+// A failure after the archive leaves the tag in place for the re-run to reuse.
 // The archive runs whatever remote says, since it protects the local branch's commits as much as the remote copy, and force does not skip it: force answers dirtiness only.
 // A weft repo with no origin proceeds, with ArchiveSkippedReason set on the result.
-// Portal and launcher cleanup run after the archive but before the git removal, so they still run when the worktree directory is already gone.
+// Portal and launcher cleanup run after the archive but before the git removal.
 // remote gates whether the pair's weft branch, once deleted locally, is also deleted on the weft
 // repo's origin remote; a remote deletion failure never makes Remove return a non-nil error.
 // Once both worktrees are removed, Remove deletes the local warp branch (BranchPrefix + slug) through
@@ -134,13 +138,30 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force, remote bool) (
 		return RemoveResult{}, &ErrMergeInProgress{}
 	}
 
-	// Archive the weft tip before the first mutation: a failed archive leaves the worktrees, portal, launchers and both branches untouched, so a plain re-run retries it.
+	// The dirtiness checks are refusals too, so they precede the archive: a refused call pushes no tag and tears nothing down.
+	// force answers these two checks only.
+	if !force {
+		dirty, _, err := worktreeDirty(scopeAll, target)
+		if err != nil {
+			return RemoveResult{}, fmt.Errorf("check warp worktree status: %w", err)
+		}
+		if dirty {
+			return RemoveResult{}, fmt.Errorf("worktree has uncommitted changes; use --force")
+		}
+	}
+
+	if !force {
+		if err := refuseDirtyWeftWorktree(WeftWorktreePath(l, slug)); err != nil {
+			return RemoveResult{}, err
+		}
+	}
+
+	// Archive the weft tip after every refusal and before the first mutation: a failed archive leaves the worktrees, portal, launchers and both branches untouched, so a plain re-run retries it.
 	// force answers dirtiness only, so it never skips this step.
 	archiveTag, archiveSkippedReason, err := archiveWeftTip(rec, l, slug, weftBranch)
 	if err != nil {
 		return RemoveResult{}, err
 	}
-	archivedEntries := rec.Len()
 
 	// removePortal and removeLaunchers are best-effort: an operational failure is discarded exactly as
 	// before, but a gate refusal must surface rather than vanish at the verb the slice's worst defect
@@ -150,22 +171,6 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force, remote bool) (
 	}
 	if err := surfaceRefusal(removeLaunchers(rec, l, slug)); err != nil {
 		return RemoveResult{}, err
-	}
-
-	if !force {
-		dirty, _, err := worktreeDirty(scopeAll, target)
-		if err != nil {
-			return RemoveResult{}, nameStrandedPortalTeardown(rec, archivedEntries, fmt.Errorf("check warp worktree status: %w", err))
-		}
-		if dirty {
-			return RemoveResult{}, nameStrandedPortalTeardown(rec, archivedEntries, fmt.Errorf("worktree has uncommitted changes; use --force"))
-		}
-	}
-
-	if !force {
-		if err := refuseDirtyWeftWorktree(WeftWorktreePath(l, slug)); err != nil {
-			return RemoveResult{}, nameStrandedPortalTeardown(rec, archivedEntries, err)
-		}
 	}
 
 	// Sweep the ANCHORED directory, and only the links fabric itself created there.
@@ -251,37 +256,6 @@ func deleteWarpBranch(rec *Mutations, l *lyxcwd.Location, warpBranch, parentBran
 		return false, refusal.Reason
 	}
 	return false, fmt.Sprintf("delete warp branch %s: %v", warpBranch, err)
-}
-
-// nameStrandedPortalTeardown appends the reconcile remedy to refusal when Remove's portal and
-// launcher teardown has already recorded a mutation, and returns refusal unchanged otherwise.
-//
-// Remove tears the portal and launchers down before the no-force dirtiness gates, deliberately: the
-// teardown must still run when the worktree directory is already gone (see this file's header).
-// The consequence is that an operator who is REFUSED — told to commit their work or pass --force —
-// has nonetheless already lost that pair's portal junction and launcher scripts by the time they
-// read the message.
-// The loss is fully self-healing, since `lyx fabric reconcile` re-wires both and reports
-// ReconcileActionPortalRestored for the pair, and the mutation record already carries the entries on
-// the failure path with partial=true. What was missing is the last step: the operator has no reason
-// to suspect their launchers just vanished, and no reason to reach for reconcile.
-// Naming it in the refusal itself closes that gap without reordering the teardown, whose position
-// this file's header justifies on its own grounds.
-//
-// The remedy is appended only when something was actually recorded, so a refusal that stranded
-// nothing — the ordinary case once a first refused attempt has already torn the portal down — does
-// not tell the operator to repair a hub that is intact.
-//
-// priorEntries is the record's length before the portal teardown began: the archive step's own tag_pushed entry precedes it and strands nothing.
-func nameStrandedPortalTeardown(rec *Mutations, priorEntries int, refusal error) error {
-	// Len has a value receiver, so a nil recorder would panic on the auto-dereference rather than
-	// answering zero. Remove always constructs one, but this helper must not depend on that.
-	if rec == nil || rec.Len() <= priorEntries {
-		return refusal
-	}
-	return fmt.Errorf(
-		"%w; this pair's portal junction and launcher scripts were already torn down before the refusal — run \"lyx fabric reconcile\" to restore them",
-		refusal)
 }
 
 // refuseDirtyWeftWorktree returns an error when the weft worktree at weftTarget carries
