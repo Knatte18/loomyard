@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
@@ -274,12 +273,20 @@ func fabricReferenceDetail(cmd, rule string) string {
 }
 
 var (
-	commandSeparator = regexp.MustCompile(`&&|\|\||;|\|`)
-	harmlessRedirect = regexp.MustCompile(`\d*>&\d+|\d*>>?\s*/dev/null`)
-
 	readOnlyGit    = stringSet("status", "log", "show", "diff", "rev-parse", "ls-files", "ls-tree", "cat-file", "grep", "blame", "describe", "for-each-ref", "show-ref", "merge-base")
 	readOnlyFabric = stringSet("status", "diff", "list", "pairs")
 	mutatingTools  = stringSet("rm", "mv", "cp", "touch", "truncate", "tee", "ln")
+
+	// gitValueOptions are git's global options whose value may follow as a separate word.
+	gitValueOptions = stringSet("-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env", "--super-prefix")
+	// shellKeywords are words that open or join a compound command and run nothing themselves.
+	shellKeywords = stringSet("{", "}", "!", "if", "then", "else", "elif", "do", "while", "until")
+	// commandWrappers run the command that follows their own options.
+	commandWrappers = stringSet("sudo", "env", "nice", "nohup", "command", "exec", "time")
+	// xargsValueOptions are xargs options whose value follows as a separate word.
+	xargsValueOptions = stringSet("-I", "-n", "-P", "-d", "-E", "-L", "-s", "-a")
+	// harmlessRedirectTargets are output redirect targets that change no file.
+	harmlessRedirectTargets = stringSet("/dev/null", "/dev/stdout", "/dev/stderr")
 )
 
 func stringSet(words ...string) map[string]bool {
@@ -291,25 +298,250 @@ func stringSet(words ...string) map[string]bool {
 }
 
 // mutatingCommand reports whether the Bash command cmd can change files.
-// It splits cmd into segments at `&&`, `||`, `;` and `|`, and is true when any segment runs git with a subcommand outside the read-only set,
-// runs `lyx fabric` with a verb outside the read-only set (`prune` and `cleanup` only with `--apply`),
-// runs rm, mv, cp, touch, truncate, tee or ln, runs sed or perl with `-i`, or carries an output redirect other than descriptor duplication or `> /dev/null`.
+// It splits cmd into simple commands, quote-aware, at `&&`, `||`, `;`, `|`, a lone `&`, a newline and a parenthesis,
+// and also reads each `$(...)` or backtick substitution as a command of its own.
+// It is true when any simple command carries an output redirect other than descriptor duplication or one to /dev/null, /dev/stdout or /dev/stderr,
+// or when mutatingSegment's per-program rules find it can change files.
 // Every other command is read-only.
 func mutatingCommand(cmd string) bool {
-	for _, segment := range commandSeparator.Split(cmd, -1) {
-		if strings.Contains(harmlessRedirect.ReplaceAllString(segment, " "), ">") {
+	segments, substitutions := splitShell(cmd)
+	for _, inner := range substitutions {
+		if mutatingCommand(inner) {
 			return true
 		}
-		if mutatingSegment(strings.Fields(segment)) {
+	}
+	for _, s := range segments {
+		if s.writes || mutatingSegment(s.words) {
 			return true
 		}
 	}
 	return false
 }
 
-// mutatingSegment applies mutatingCommand's per-program rules to one segment's words.
+// shellSegment is one simple command of a Bash command line.
+type shellSegment struct {
+	// words are the command's words with quotes and escapes removed, redirects and their targets left out.
+	words []string
+	// writes is true when the command carries an output redirect onto a file.
+	writes bool
+}
+
+// splitShell splits cmd into its simple commands and returns, separately, the body of every `$(...)` and backtick substitution it carries.
+// It honours single and double quotes, backslash escapes, `#` comments and here-document bodies,
+// so an operator character inside a quoted argument neither splits the command nor reads as a redirect.
+func splitShell(cmd string) (segments []shellSegment, substitutions []string) {
+	var (
+		seg        shellSegment
+		word       strings.Builder
+		inWord     bool
+		quoted     bool
+		pending    byte // 'w' write-redirect target, 'd' dup-redirect target, 'r' input target, 'h' here-document delimiter
+		heredocs   []string
+		quote      byte
+		n          = len(cmd)
+		flushWord  func()
+		endSegment func()
+	)
+	flushWord = func() {
+		if !inWord {
+			return
+		}
+		w := word.String()
+		word.Reset()
+		inWord, quoted = false, false
+		switch pending {
+		case 'w':
+			if !harmlessRedirectTargets[w] {
+				seg.writes = true
+			}
+		case 'd':
+			if w != "-" && strings.Trim(w, "0123456789") != "" && !harmlessRedirectTargets[w] {
+				seg.writes = true
+			}
+		case 'h':
+			heredocs = append(heredocs, w)
+		case 'r':
+		default:
+			seg.words = append(seg.words, w)
+		}
+		pending = 0
+	}
+	endSegment = func() {
+		flushWord()
+		pending = 0
+		if len(seg.words) > 0 || seg.writes {
+			segments = append(segments, seg)
+		}
+		seg = shellSegment{}
+	}
+	// substitution returns the body of the substitution opening at cmd[start:] and the index of its closing character.
+	substitution := func(start int) (string, int) {
+		if cmd[start] == '`' {
+			for j := start + 1; j < n; j++ {
+				if cmd[j] == '\\' {
+					j++
+					continue
+				}
+				if cmd[j] == '`' {
+					return cmd[start+1 : j], j
+				}
+			}
+			return cmd[start+1:], n - 1
+		}
+		depth := 0
+		var inner byte
+		for j := start + 1; j < n; j++ {
+			c := cmd[j]
+			switch {
+			case inner != 0:
+				if c == inner {
+					inner = 0
+				}
+			case c == '\'' || c == '"':
+				inner = c
+			case c == '(':
+				depth++
+			case c == ')':
+				depth--
+				if depth == 0 {
+					return cmd[start+2 : j], j
+				}
+			}
+		}
+		return cmd[start+2:], n - 1
+	}
+
+	for i := 0; i < n; i++ {
+		c := cmd[i]
+		if quote == '\'' {
+			if c == '\'' {
+				quote = 0
+			} else {
+				word.WriteByte(c)
+			}
+			continue
+		}
+		if quote == '"' {
+			switch {
+			case c == '"':
+				quote = 0
+			case c == '\\' && i+1 < n:
+				i++
+				word.WriteByte(cmd[i])
+			case c == '`' || (c == '$' && i+1 < n && cmd[i+1] == '('):
+				body, end := substitution(i)
+				substitutions = append(substitutions, body)
+				i = end
+			default:
+				word.WriteByte(c)
+			}
+			continue
+		}
+		switch {
+		case c == '\'' || c == '"':
+			quote = c
+			inWord, quoted = true, true
+		case c == '\\' && i+1 < n:
+			i++
+			if cmd[i] != '\n' {
+				word.WriteByte(cmd[i])
+				inWord = true
+			}
+		case c == '`' || (c == '$' && i+1 < n && cmd[i+1] == '('):
+			body, end := substitution(i)
+			substitutions = append(substitutions, body)
+			inWord = true
+			i = end
+		case c == '#' && !inWord:
+			for i+1 < n && cmd[i+1] != '\n' {
+				i++
+			}
+		case c == ' ' || c == '\t':
+			flushWord()
+		case c == '\n':
+			endSegment()
+			for _, delim := range heredocs {
+				for i+1 < n {
+					end := strings.IndexByte(cmd[i+1:], '\n')
+					line := cmd[i+1:]
+					if end >= 0 {
+						line = cmd[i+1 : i+1+end]
+						i += end + 1
+					} else {
+						i = n
+					}
+					if strings.TrimLeft(line, "\t") == delim {
+						break
+					}
+				}
+			}
+			heredocs = nil
+		case c == ';' || c == '(' || c == ')':
+			endSegment()
+		case c == '|':
+			endSegment()
+			if i+1 < n && (cmd[i+1] == '|' || cmd[i+1] == '&') {
+				i++
+			}
+		case c == '&':
+			if i+1 < n && cmd[i+1] == '>' {
+				continue
+			}
+			endSegment()
+			if i+1 < n && cmd[i+1] == '&' {
+				i++
+			}
+		case c == '>':
+			if inWord && !quoted && strings.Trim(word.String(), "0123456789") == "" {
+				word.Reset()
+				inWord = false
+			}
+			flushWord()
+			pending = 'w'
+			if i+1 < n && (cmd[i+1] == '>' || cmd[i+1] == '|') {
+				i++
+			} else if i+1 < n && cmd[i+1] == '&' {
+				i++
+				pending = 'd'
+			}
+		case c == '<':
+			if inWord && !quoted && strings.Trim(word.String(), "0123456789") == "" {
+				word.Reset()
+				inWord = false
+			}
+			flushWord()
+			pending = 'r'
+			switch {
+			case strings.HasPrefix(cmd[i:], "<<<"):
+				i += 2
+			case strings.HasPrefix(cmd[i:], "<<-"):
+				i += 2
+				pending = 'h'
+			case strings.HasPrefix(cmd[i:], "<<"):
+				i++
+				pending = 'h'
+			case strings.HasPrefix(cmd[i:], "<>"):
+				i++
+				pending = 'w'
+			case strings.HasPrefix(cmd[i:], "<&"):
+				i++
+			}
+		default:
+			word.WriteByte(c)
+			inWord = true
+		}
+	}
+	endSegment()
+	return segments, substitutions
+}
+
+// mutatingSegment applies mutatingCommand's per-program rules to one simple command's words.
+// It is true when the command runs git with a subcommand outside the read-only set,
+// runs `lyx fabric` with a verb outside the read-only set (`prune` and `cleanup` only with `--apply`),
+// runs rm, mv, cp, touch, truncate, tee or ln, or runs sed or perl in place.
+// A wrapper (sudo, env, xargs, a `bash -c` script, `find -exec`) is judged by the command it runs, and `find -delete` changes files.
 func mutatingSegment(words []string) bool {
-	for len(words) > 0 && strings.Contains(words[0], "=") && !strings.HasPrefix(words[0], "-") {
+	for len(words) > 0 && (shellKeywords[words[0]] || (strings.Contains(words[0], "=") && !strings.HasPrefix(words[0], "-"))) {
 		words = words[1:]
 	}
 	if len(words) == 0 {
@@ -318,10 +550,56 @@ func mutatingSegment(words []string) bool {
 	prog := filepath.Base(words[0])
 	args := words[1:]
 	switch {
+	case commandWrappers[prog]:
+		for len(args) > 0 && strings.HasPrefix(args[0], "-") {
+			args = args[1:]
+		}
+		return mutatingSegment(args)
+	case prog == "timeout":
+		for len(args) > 0 && strings.HasPrefix(args[0], "-") {
+			args = args[1:]
+		}
+		if len(args) == 0 {
+			return false
+		}
+		return mutatingSegment(args[1:])
+	case prog == "xargs":
+		for len(args) > 0 && strings.HasPrefix(args[0], "-") {
+			if xargsValueOptions[args[0]] {
+				args = args[1:]
+			}
+			if len(args) > 0 {
+				args = args[1:]
+			}
+		}
+		return mutatingSegment(args)
+	case prog == "bash" || prog == "sh" || prog == "zsh" || prog == "dash":
+		for i, a := range args {
+			if strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "--") && strings.Contains(a, "c") && i+1 < len(args) {
+				return mutatingCommand(args[i+1])
+			}
+		}
+		return false
+	case prog == "find":
+		for i, a := range args {
+			switch a {
+			case "-delete":
+				return true
+			case "-exec", "-execdir", "-ok", "-okdir":
+				end := i + 1
+				for end < len(args) && args[end] != ";" && args[end] != "+" {
+					end++
+				}
+				if mutatingSegment(args[i+1 : end]) {
+					return true
+				}
+			}
+		}
+		return false
 	case prog == "git":
 		for i := 0; i < len(args); i++ {
 			switch {
-			case args[i] == "-C" || args[i] == "-c":
+			case gitValueOptions[args[i]]:
 				i++
 			case strings.HasPrefix(args[i], "-"):
 			default:
@@ -345,13 +623,36 @@ func mutatingSegment(words []string) bool {
 		return !readOnlyFabric[verb]
 	case mutatingTools[prog]:
 		return true
-	case prog == "sed" || prog == "perl":
-		for _, a := range args {
-			if strings.HasPrefix(a, "--in-place") {
+	case prog == "sed":
+		return editsInPlace(args, "efl", "")
+	case prog == "perl":
+		return editsInPlace(args, "eEMmIFxdD", "l0C")
+	}
+	return false
+}
+
+// editsInPlace reports whether args carry an in-place flag: `--in-place`, or an `i` in a short-option cluster.
+// An `i` counts only before the cluster's first letter in valueLetters, since the rest of the cluster is that option's value,
+// and a letter in digitLetters skips the digits that follow it.
+func editsInPlace(args []string, valueLetters, digitLetters string) bool {
+	for _, a := range args {
+		if strings.HasPrefix(a, "--in-place") {
+			return true
+		}
+		if !strings.HasPrefix(a, "-") || strings.HasPrefix(a, "--") {
+			continue
+		}
+	cluster:
+		for j := 1; j < len(a); j++ {
+			switch letter := a[j]; {
+			case letter == 'i':
 				return true
-			}
-			if strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "--") && strings.Contains(a, "i") {
-				return true
+			case strings.IndexByte(valueLetters, letter) >= 0:
+				break cluster
+			case strings.IndexByte(digitLetters, letter) >= 0:
+				for j+1 < len(a) && a[j+1] >= '0' && a[j+1] <= '9' {
+					j++
+				}
 			}
 		}
 	}
