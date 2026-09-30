@@ -50,7 +50,7 @@ func MidMerge(l *lyxcwd.Location) (MidMergeState, error) {
 	}
 	r, err := f.readForeignProbes()
 	if err != nil {
-		return MidMergeState{}, err
+		return MidMergeState{}, fmt.Errorf("fabricengine: mid-merge probe: read git merge state: %w", err)
 	}
 
 	state := MidMergeState{Kind: MidMergeNone, Conflicts: []string{}}
