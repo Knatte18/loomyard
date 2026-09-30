@@ -23,7 +23,7 @@ A wrong directory surfaces as the recipe's own refusal text, which the driver re
 ## How to invoke a step
 
 Run `lyx shed step <run-id>` as one background job.
-Mint no `LYX_TRACE_ID`, create no `mktemp` step directory and add no redirects: `lyx shed step` mints its own trace id and keeps its own record of each invocation under the run's scratch directory, outside the worktree.
+Mint no `LYX_TRACE_ID`, create no `mktemp` step directory and add no redirects: `lyx shed step` mints its own trace id and keeps its own record of each invocation under the run's untracked `.lyx` scratch directory, so the records never dirty the worktree.
 Never run a step as a blocking foreground call: a step can block for a whole agent run, longer than any foreground shell call allows.
 Launch one step per background job, and read its envelope and its trace before launching the next; never a loop that runs several steps without the session reading each one in between, since a trace read only after the loop ends may already be swept.
 Wait for that background job's own exit, by its completion notice or by `wait <pid>` in the shell that launched it, then read the envelope from the job's own output.
