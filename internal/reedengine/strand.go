@@ -14,6 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/shell"
 )
 
 // AddSpec carries the caller-supplied inputs AddStrand needs to build a new Strand.
@@ -273,6 +274,8 @@ func (e *Engine) addStrandLocked(st *ReedState, spec AddSpec) (Strand, error) {
 
 	if needsLaunchOnAdd(spec.Display) {
 		if err := e.launchStrandLocked(st, strand, strand.Cmd); err != nil {
+			// The record is never persisted, so a script the launch already wrote has no owner.
+			removeLaunchScripts(shell.ForGOOS(), e.stateDir(), []string{guid})
 			return Strand{}, fmt.Errorf("launch strand: %w", err)
 		}
 	}
@@ -312,6 +315,7 @@ func (e *Engine) updateStrandLocked(st *ReedState, guid string, display render.D
 // removeStrandLocked removes guid, rejecting non-leaf strands without
 // recursive, and cascading descendants. It returns pane ids of every
 // removed strand that held a live binding.
+// It also deletes the launch script of every removed strand, so surviving strands keep theirs.
 func (e *Engine) removeStrandLocked(st *ReedState, guid string, recursive bool) (Removed, []string, error) {
 	if _, ok := strandByGUID(st.Strands, guid); !ok {
 		return Removed{}, nil, fmt.Errorf("unknown strand %q", guid)
@@ -340,6 +344,7 @@ func (e *Engine) removeStrandLocked(st *ReedState, guid string, recursive bool) 
 		remaining = append(remaining, s)
 	}
 	st.Strands = remaining
+	removeLaunchScripts(shell.ForGOOS(), e.stateDir(), toRemove)
 
 	return removed, paneIDs, nil
 }
@@ -472,6 +477,7 @@ func (e *Engine) AddStrand(spec AddSpec) (Strand, error) {
 		// pane never becomes an untracked orphan the next select-layout would
 		// silently reap.
 		if err := SaveState(e.stateDir(), st); err != nil {
+			removeLaunchScripts(shell.ForGOOS(), e.stateDir(), []string{strand.GUID})
 			return fmt.Errorf("persist strand: %w", err)
 		}
 

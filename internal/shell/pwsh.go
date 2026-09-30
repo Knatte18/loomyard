@@ -52,6 +52,19 @@ func (p pwshShell) PrependPathEntry(dir string) string {
 	return "$env:PATH = " + p.Quote(dir) + ` + $(if ($env:PATH) { [IO.Path]::PathSeparator + $env:PATH })`
 }
 
+// Source returns a pwsh dot-source of a script block built from the file's text, `. ([scriptblock]::Create((Get-Content -Raw <quoted path>)))`.
+// It is never a dot-source of the file path itself: evaluating text runs no script file,
+// so no ExecutionPolicy (Restricted, AllSigned, Windows PowerShell 5.1's client default) can refuse it,
+// and a refused launch line would fail the strand launch.
+func (p pwshShell) Source(path string) string {
+	return ". ([scriptblock]::Create(" + p.ReadFile(path) + "))"
+}
+
+// ScriptExt returns ".ps1".
+func (pwshShell) ScriptExt() string {
+	return ".ps1"
+}
+
 // Chain joins parts with "; ", dropping empty parts. See chainStatements.
 func (p pwshShell) Chain(parts ...string) string {
 	return chainStatements(parts...)
