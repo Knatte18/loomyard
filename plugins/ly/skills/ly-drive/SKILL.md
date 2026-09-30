@@ -49,7 +49,8 @@ After every step, read its `trace_file` right away, because traces are swept by 
 
 On `continue: false`, `state: done` stops the loop.
 `blocked` and `paused` are handed back with the envelope's `reason` and are never repaired: a Go gate concluded a human is needed.
-`awaiting` is handed back the same way, as a planned hand-off with the envelope's `reason`: the run waits on a person by design, so the report words it as a hand-off and never as a failure, and nothing is repaired.
+`awaiting` is handed back the same way, as a planned hand-off with the envelope's `reason`: the run waits on a person by design, so the report words it as a hand-off and never as a failure,
+and nothing is repaired.
 
 ## Error envelopes
 

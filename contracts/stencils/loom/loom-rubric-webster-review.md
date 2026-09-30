@@ -25,7 +25,8 @@ This section is the single definition of the review range;
 nothing else states it.
 
 1. Read `_lyx/shed/<slug>/status.json` and take `product.parent`, the branch this run started from.
-   `<slug>` is this worktree's own directory name; a run started before the rename keeps its status at `_lyx/shed/self/status.json`, so read that path when `_lyx/shed/<slug>/` does not exist.
+   `<slug>` is this worktree's own directory name;
+   a run started before the rename keeps its status at `_lyx/shed/self/status.json`, so read that path when `_lyx/shed/<slug>/` does not exist.
 2. Review `git diff $(git merge-base <product.parent> HEAD)..HEAD` — every commit the current branch introduces over that merge base.
 
 Both steps are read-only.

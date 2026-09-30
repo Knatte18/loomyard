@@ -337,7 +337,8 @@ User-facing modules each get one `lyx <module>` namespace:
   On a terminal `status` renders a human view instead, and `--json` forces the envelope there; `--watch --json` is refused.
   The envelope carries `run_id`, `progress` (the main-line position and bounce count over the recipe's producer graph) and `last_step` (the record `lyx shed step` keeps under `.lyx`).
   A routed `stuck` reads as `bounced to <row>` in `activity.last`.
-  The run directory is named by the worktree slug (`_lyx/shed/<slug>/`), with `self` kept as an alias that resolves to it, and a legacy `_lyx/shed/self/` still resolves.
+  The run directory is named by the worktree slug (`_lyx/shed/<slug>/`), with `self` kept as an alias that resolves to it,
+  and a legacy `_lyx/shed/self/` still resolves.
   `pause` requests a pause at the next producer boundary.
   `validate-discussion` runs the same checks Discussion-Write's and Discussion-Burler's own gates run, standalone, exiting 0 on a clean gate and 1 otherwise, with findings in the failure envelope so a writer agent can self-check before handing off.
   `validate-plan` runs the same checks Plan-Write's and Plan-Burler's own gates run, standalone, with the same exit-code and findings-envelope contract, over the current worktree's plan instead of its discussion.
@@ -457,7 +458,9 @@ See the [Told-Geometry Invariant](../CONSTRAINTS.md#told-geometry-invariant) for
   loom's prompt templates are expected to reuse the same `Render` compose later.
   See the `internal/tokenvocab` package documentation.
 - **the bootstrap** — `lyx loom start` (alias `lyx start`) brings up the worktree's tmux session, adds the `lyx loom status` strand (replaced in its slot when the live one was launched from a different `lyx` build), spawns the per-hub watchdog daemon (best-effort), and spawns the driver the run's own seed selects: the Go driver **detached** (via `proc`, no TTY), or a Claude strand running ly-drive in this same reed session for the `llm` driver.
-  It then hands over by `$TMUX`: outside tmux it attaches, inside reed's own server it switches the client to the task's session (or returns the envelope when already there), and inside another tmux server it returns the envelope with a hint; `--no-attach` always returns the envelope.
+  It then hands over by `$TMUX`: outside tmux it attaches, inside reed's own server it switches the client to the task's session (or returns the envelope when already there),
+  and inside another tmux server it returns the envelope with a hint;
+  `--no-attach` always returns the envelope.
   Selvage is the operator's terminal, not a strand.
   A Go-driven loom run runs in the background;
   the reed view takes the foreground.
