@@ -72,7 +72,8 @@ type RecoverDeps struct {
 
 // RecoverResult is what one RecoverAwait call hands back: Digest (nil while Running), Running (true
 // if wait elapsed non-terminal), ElapsedS (since spawn), and Warnings (non-fatal substrate-cleanup
-// failures).
+// failures, plus the moved-HEAD notice when only merge commits sit between the report's head_sha and
+// the worktree's HEAD).
 type RecoverResult struct {
 	Digest   *Digest
 	Running  bool
@@ -307,8 +308,9 @@ func PersistRecoveryTerminal(deps RecoverDeps, st *State, batchNumber int, diges
 	number, slug := batchIdentity(batch)
 
 	// The recovery strand's own report carries the head it committed at, already parsed into the
-	// digest. It is the same value record-batch cross-checks against the worktree's real HEAD, so
-	// the pass below is fed the same pair of SHAs on either path.
+	// digest. Both verbs reconcile that head against the worktree's HEAD under the merge-only rule and
+	// record the batch at the report's head, so the pass below is fed the same pair of SHAs on either
+	// path.
 	head := digest.HeadSHA
 	if head == "" {
 		head, err = headSHA(deps.Geom.WorktreeRoot)
@@ -403,18 +405,24 @@ func awaitTerminal(deps RecoverDeps, batch batcher.Batch, bs *BatchState, wait t
 		return &RecoverResult{Running: true, ElapsedS: elapsedS}, nil
 	}
 
-	// Cross-check report's head_sha against worktree's actual HEAD like RecordBatch does.
-	if digest.HeadSHA != "" {
-		actualHead, err := headSHA(deps.Geom.WorktreeRoot)
-		if err != nil {
-			return nil, err
-		}
-		if actualHead != digest.HeadSHA {
-			return nil, fmt.Errorf("webster: recovery report for batch %02d-%s: head_sha %q does not match the worktree's actual HEAD %q", number, slug, digest.HeadSHA, actualHead)
-		}
+	// A merge in progress leaves the batch non-terminal and retryable, like RecordBatch.
+	if err := refuseMidMerge(deps.Geom.WorktreeRoot); err != nil {
+		return nil, err
 	}
 
 	var warnings []string
+
+	// Cross-check report's head_sha against worktree's actual HEAD under RecordBatch's merge-only rule.
+	if digest.HeadSHA != "" {
+		moved, err := reconcileReportHead(deps.Geom.WorktreeRoot, digest.HeadSHA, fmt.Sprintf("recovery report for batch %02d-%s", number, slug))
+		if err != nil {
+			return nil, err
+		}
+		if moved != "" {
+			warnings = append(warnings, moved)
+		}
+	}
+
 	removeStrand := func() {
 		if err := removeStrandIfLive(deps.Reed, bs.StrandGUID); err != nil {
 			warnings = append(warnings, fmt.Sprintf("recover-batch: remove strand %s: %v", bs.StrandGUID, err))

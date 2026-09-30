@@ -77,9 +77,11 @@
 // from its cards' own gates, mirroring the plan-format card model
 // directly.
 //
-// record-batch cross-checks the report's `head_sha` against the worktree's
-// HEAD with a merge-only rule, so a parent merge-in landing between a fork's
-// commit and record-batch cannot wedge the run: HEAD is accepted when it
+// record-batch and recover-batch both cross-check the consumed report's
+// `head_sha` against the worktree's HEAD with a merge-only rule, so a parent
+// merge-in landing between a fork's commit and the report's consumption
+// cannot wedge the run; recover-batch follows the same acceptance, recording,
+// warning and refusal rules as record-batch: HEAD is accepted when it
 // equals `head_sha` or sits above it by merge commits alone on the
 // first-parent chain.
 // The batch is recorded at the report's `head_sha` (CardSHAs and the delta's

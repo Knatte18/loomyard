@@ -26,6 +26,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -550,6 +551,113 @@ func TestRecoverBatch_ReportHeadSHAMismatchIsHardError(t *testing.T) {
 	// a corrected report or an operator to resolve.
 	if bs := fx.Deps.State.Batches[1]; bs.Terminal {
 		t.Errorf("BatchState.Terminal = true; want false after a refused report")
+	}
+}
+
+// recoverAtReportHead spawns the recovery strand, then seeds a done report at the worktree's
+// current HEAD and returns that head.
+func recoverAtReportHead(t *testing.T, fx *recoverFixture, clk *recoverFakeClock) string {
+	t.Helper()
+	first, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk)
+	if err != nil {
+		t.Fatalf("RecoverBatch() first call error = %v; want nil", err)
+	}
+	if !first.Running {
+		t.Fatalf("first call = %+v; want Running=true", first)
+	}
+	head := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	writeRecoverReport(t, fx.ReportsDir, "status: OK\nhead_sha: "+head+"\n")
+	return head
+}
+
+// TestRecoverBatch_ParentMergeAfterReportHead proves recover-batch follows record-batch's merge-only
+// head rule: a --no-ff parent merge landing after the recovery report's head is accepted, the batch
+// is recorded at the report's head, and the moved-HEAD notice names the merge.
+func TestRecoverBatch_ParentMergeAfterReportHead(t *testing.T) {
+	fx := newRecoverFixture(t)
+	clk := &recoverFakeClock{now: time.Unix(0, 0)}
+	head := recoverAtReportHead(t, fx, clk)
+
+	mustGit(t, fx.Worktree, "checkout", "-b", "parent1", head)
+	commitFile(t, fx.Worktree, "parent1.txt", "p1", "parent1 commit")
+	mustGit(t, fx.Worktree, "checkout", "-")
+	mustGit(t, fx.Worktree, "merge", "--no-ff", "-m", "merge parent1", "parent1")
+	merge := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+
+	result, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk)
+	if err != nil {
+		t.Fatalf("RecoverBatch() error = %v; want nil", err)
+	}
+	if result.Digest == nil || result.Digest.Status != websterengine.DigestStatusDone {
+		t.Fatalf("Digest = %+v; want a done digest", result.Digest)
+	}
+	bs := fx.Deps.State.Batches[1]
+	if !bs.Terminal {
+		t.Error("BatchState.Terminal = false; want true")
+	}
+	if len(bs.CardSHAs) != 1 || bs.CardSHAs[0] != head {
+		t.Errorf("BatchState.CardSHAs = %v; want [%s]", bs.CardSHAs, head)
+	}
+	found := false
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "only merge commits") && strings.Contains(w, merge) {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("Warnings = %v; want the moved-HEAD notice naming merge %s", result.Warnings, merge)
+	}
+}
+
+// TestRecoverBatch_NonMergeCommitAfterReportHeadRefused proves a plain commit on top of the report's
+// head is refused with both SHAs and the merge-only rule, leaving the batch non-terminal.
+func TestRecoverBatch_NonMergeCommitAfterReportHeadRefused(t *testing.T) {
+	fx := newRecoverFixture(t)
+	clk := &recoverFakeClock{now: time.Unix(0, 0)}
+	head := recoverAtReportHead(t, fx, clk)
+
+	commitFile(t, fx.Worktree, "extra.txt", "x", "extra commit")
+	newHead := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+
+	_, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk)
+	if err == nil {
+		t.Fatal("RecoverBatch() error = nil; want a refusal")
+	}
+	for _, want := range []string{head, newHead, "only merge commits"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q missing %q", err.Error(), want)
+		}
+	}
+	if fx.Deps.State.Batches[1].Terminal {
+		t.Error("BatchState.Terminal = true; want false after a refusal")
+	}
+}
+
+// TestRecoverBatch_MergeInProgressRefused proves a conflicting merge left in progress refuses
+// recover-batch with the merge --continue/--abort pointer, leaving the batch non-terminal.
+func TestRecoverBatch_MergeInProgressRefused(t *testing.T) {
+	fx := newRecoverFixture(t)
+	clk := &recoverFakeClock{now: time.Unix(0, 0)}
+	head := recoverAtReportHead(t, fx, clk)
+
+	base := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "--abbrev-ref", "HEAD"))
+	mustGit(t, fx.Worktree, "checkout", "-b", "parent1", head)
+	commitFile(t, fx.Worktree, "base.txt", "parent side", "parent side edit")
+	mustGit(t, fx.Worktree, "checkout", base)
+	commitFile(t, fx.Worktree, "base.txt", "our side", "our side edit")
+	if _, _, exitCode, err := gitexec.RunGit([]string{"merge", "--no-ff", "-m", "merge parent1", "parent1"}, fx.Worktree); err != nil || exitCode == 0 {
+		t.Fatalf("conflicting merge: exit=%d err=%v; want a conflict", exitCode, err)
+	}
+
+	_, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk)
+	if err == nil {
+		t.Fatal("RecoverBatch() error = nil; want a refusal while a merge is in progress")
+	}
+	if !strings.Contains(err.Error(), "merge --continue") || !strings.Contains(err.Error(), "merge --abort") {
+		t.Errorf("error %q; want the merge --continue/--abort pointer", err.Error())
+	}
+	if fx.Deps.State.Batches[1].Terminal {
+		t.Error("BatchState.Terminal = true; want false after a refusal")
 	}
 }
 
