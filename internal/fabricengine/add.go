@@ -6,6 +6,8 @@
 // it only when it can prove the branch is fabric's (a non-empty branch_prefix, or a -weft weft
 // branch), so under the default empty prefix the bare-slug warp branch is left behind — see
 // rollbackAdd for why, and the "already exists" remedy Add's own re-add error names for the recovery.
+// A leftover remote branch from a removed pair is resolved at pre-flight, before the first mutation:
+// proven replaceable or refused with an ErrRemoteLeftover (see remoteleftover.go).
 // The weft side always uses the suffixed branch produced by WeftBranchName.
 
 package fabricengine
@@ -145,6 +147,18 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 	}
 	parentBranch := strings.TrimSpace(headStdout)
 	parentWeftBranch := WeftBranchName(parentBranch)
+
+	// Probe both origins for a leftover branch from a removed pair before the first mutation, so
+	// an unreplaceable one is refused here rather than rejected at step 11 or 12's push.
+	// The weft answer is held for the archived-leftover replacement; until then it proceeds to the push.
+	if !opts.SkipPush && !opts.SkipGit {
+		if err := probeWarpLeftover(l, warpBranch); err != nil {
+			return AddResult{}, err
+		}
+		if _, err := probeWeftLeftover(l, slug, weftBranch, weftBranchAlreadyExists); err != nil {
+			return AddResult{}, err
+		}
+	}
 
 	warpTok, err := createGitWorktree(rec, l.WorktreePath(), l.HubPath, target, func(worktreePath string) []string {
 		return []string{"worktree", "add", "-b", warpBranch, worktreePath}

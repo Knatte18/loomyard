@@ -280,7 +280,7 @@ func TestAddRollback_AdoptedPathPreservesOriginRecordCommit(t *testing.T) {
 	// post-wiring failure shape.
 	gitkit.MustRun(t, l.WorktreePath(), "git", "remote", "set-url", "origin", filepath.Join(t.TempDir(), "no-such-remote"))
 
-	if _, err := h.Topology.Add(l, slug, fabricengine.AddOptions{}); err == nil {
+	if _, err := h.Topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err == nil {
 		t.Fatalf("Add(%q) should have failed (broken origin remote)", slug)
 	}
 

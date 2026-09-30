@@ -95,7 +95,7 @@ func TestMutationRecord_AddRollbackOrdersCreationBeforeItsOwnDestruction(t *test
 		filepath.Join(t.TempDir(), "no-such-remote.git"))
 
 	topology := fabricengine.NewTopology(fabricengine.Config{})
-	res, err := topology.Add(l, slug, fabricengine.AddOptions{})
+	res, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true})
 	if err == nil {
 		t.Fatalf("Add(%q) = nil error; want the broken-origin push failure", slug)
 	}

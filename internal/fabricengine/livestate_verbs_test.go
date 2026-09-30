@@ -502,7 +502,7 @@ func addCase() VerbCase {
 		},
 		Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabricengine.Mutations, error) {
 			tb.Helper()
-			res, err := h.Topology.Add(h.Location, f.Slug, fabricengine.AddOptions{})
+			res, err := h.Topology.Add(h.Location, f.Slug, fabricengine.AddOptions{SkipPush: true})
 			return res.Mutated(), err
 		},
 		Expect: func(state string) Expectation {
