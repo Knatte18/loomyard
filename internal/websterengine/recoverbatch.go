@@ -70,10 +70,7 @@ type RecoverDeps struct {
 	FrictionDir string
 }
 
-// RecoverResult is what one RecoverAwait call hands back: Digest (nil while Running), Running (true
-// if wait elapsed non-terminal), ElapsedS (since spawn), and Warnings (non-fatal substrate-cleanup
-// failures, plus the moved-HEAD notice when only merge commits sit between the report's head_sha and
-// the worktree's HEAD).
+// RecoverResult is what one RecoverAwait call hands back: Digest (nil while Running), Running (true if wait elapsed non-terminal), ElapsedS (since spawn), and Warnings (non-fatal substrate-cleanup failures, plus the moved-HEAD notice when only merge commits sit between the report's head_sha and the worktree's HEAD).
 type RecoverResult struct {
 	Digest   *Digest
 	Running  bool
@@ -307,10 +304,9 @@ func PersistRecoveryTerminal(deps RecoverDeps, st *State, batchNumber int, diges
 	}
 	number, slug := batchIdentity(batch)
 
-	// The recovery strand's own report carries the head it committed at, already parsed into the
-	// digest. Both verbs reconcile that head against the worktree's HEAD under the merge-only rule and
-	// record the batch at the report's head, so the pass below is fed the same pair of SHAs on either
-	// path.
+	// The recovery strand's own report carries the head it committed at, already parsed into the digest.
+	// Both verbs reconcile that head against the worktree's HEAD under the merge-only rule and record the batch at the report's head,
+	// so the pass below is fed the same pair of SHAs on either path.
 	head := digest.HeadSHA
 	if head == "" {
 		head, err = headSHA(deps.Geom.WorktreeRoot)

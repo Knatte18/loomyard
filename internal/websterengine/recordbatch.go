@@ -75,10 +75,7 @@ type RecordDeps struct {
 // a terminal classification (nil when NoReport is true);
 // NoReport reports whether the batch-report file was still absent this call (the batch stays
 // non-terminal and State.CurrentBatch stays unchanged — Master's ladder re-forks once);
-// Warnings carries every non-fatal fork-audit-policy warning observed this call (a
-// multi-new-transcript notice, a fork that never returned a final report, a dirty worktree after
-// the batch's own commits, or a moved-HEAD notice when a parent merge-in landed after the fork's
-// commit), never treated as a failure.
+// Warnings carries every non-fatal fork-audit-policy warning observed this call (a multi-new-transcript notice, a fork that never returned a final report, a dirty worktree after the batch's own commits, or a moved-HEAD notice when a parent merge-in landed after the fork's commit), never treated as a failure.
 type RecordResult struct {
 	Digest   *Digest
 	NoReport bool
@@ -239,10 +236,10 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 }
 
 // postBatchInputs carries everything the shared post-batch mechanical pass needs.
-// Cards are the completed batch's own cards; Completed names every card whose work landed BEFORE
-// this batch, so drift detection can scope itself to the plan's remaining work; StartSHA is the
-// bracket record's captured start SHA and HeadSHA the reconciled report head; Label names the batch
-// in warnings.
+// Cards are the completed batch's own cards;
+// Completed names every card whose work landed BEFORE this batch, so drift detection can scope itself to the plan's remaining work;
+// StartSHA is the bracket record's captured start SHA and HeadSHA the reconciled report head;
+// Label names the batch in warnings.
 type postBatchInputs struct {
 	Plan      *planparser.Plan
 	State     *State
@@ -284,10 +281,9 @@ func postBatchChecks(in postBatchInputs) (warnings []string, err error) {
 		return nil, fmt.Errorf("%w: %s", ErrCardNotDone, strings.Join(doneChecks, "; "))
 	}
 
-	// The batch's single delta call: BindHandles, ScopeGuard and DetectDrift all consume this one
-	// quarry.GitDeltaAnswer rather than each spawning their own. HeadSHA is the reconciled report
-	// head, already cross-checked against the worktree's real HEAD by the caller — that cross-check
-	// is why the delta can be trusted here and nowhere earlier.
+	// The batch's single delta call: BindHandles, ScopeGuard and DetectDrift all consume this one quarry.GitDeltaAnswer rather than each spawning their own.
+	// HeadSHA is the reconciled report head, already cross-checked against the worktree's real HEAD by the caller —
+	// that cross-check is why the delta can be trusted here and nowhere earlier.
 	// A DeltaGit infrastructure error does not abort the sequence: the scope guard degrades to an
 	// informational notice on this same deltaErr, while the done-checks above ran on their own
 	// Resolve and are unaffected. delta itself is the zero value on error, so BindHandles correctly
