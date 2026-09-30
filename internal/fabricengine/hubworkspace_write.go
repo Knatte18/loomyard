@@ -24,7 +24,7 @@ func WriteHubWorkspace(l *lyxcwd.Location, primeName string, content []byte) (bo
 	}
 	defer root.Close()
 
-	portalsRel, err := hubRel(l.HubPath, filepath.Join(l.HubPath, portalsDirName, l.AnchorRel))
+	portalsRel, err := hubRel(l.HubPath, filepath.Join(PortalsDir(l), l.AnchorRel))
 	if err != nil {
 		return false, err
 	}

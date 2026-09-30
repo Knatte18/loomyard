@@ -31,7 +31,7 @@ func HubWorkspaceFolders(l *lyxcwd.Location, primeName string) ([]HubWorkspaceFo
 	targets := []HubWorkspaceFolder{
 		{Name: primeName, Path: filepath.Join(l.HubPath, primeName, l.AnchorRel)},
 		{Name: BoardDirName, Path: BoardDir(l.HubPath)},
-		{Name: portalsDirName, Path: filepath.Join(l.HubPath, portalsDirName, l.AnchorRel)},
+		{Name: portalsDirName, Path: filepath.Join(PortalsDir(l), l.AnchorRel)},
 	}
 	for i, f := range targets {
 		rel, err := filepath.Rel(fileDir, f.Path)
