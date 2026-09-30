@@ -500,11 +500,10 @@ func effectiveMaxBounces(def ProducerDef, shedMax int) int {
 // exactly as re-read. persist never touches product.
 //
 // routedTo is the row a Stuck verdict was just routed to, and the empty string for every other
-// write; it selects the "<producer> → bounced to <routedTo>" wording of activity.last. A persist
-// that appends or folds a history entry recomposes activity.last, and only one that records no
-// verdict (the pause writes and the step-3b resume write) carries the file's existing
-// activity.last forward, read inside the mutate, so a pause right after a bounce keeps the
-// bounce wording and a resume after a halt keeps "<producer> → stuck".
+// write; it selects the "<producer> → bounced to <routedTo>" wording of activity.last.
+// A persist that appends or folds a history entry recomposes activity.last,
+// and only one that records no verdict (the pause writes and the step-3b resume write) carries the file's existing activity.last forward, read inside the mutate,
+// so a pause right after a bounce keeps the bounce wording and a resume after a halt keeps "<producer> → stuck".
 //
 // The merge exists rather than a whole-file rewrite from an in-memory copy because Shed is not the
 // status file's only writer: a pause requested during a long producer call, and an external
@@ -547,9 +546,8 @@ func effectiveMaxBounces(def ProducerDef, shedMax int) int {
 // deliberately blind to a call whose history or error changed while producer and state did not.
 // That blindness is safe there because the only transition it ever skips is Run-Shed's own
 // still-running self-bounce (internal/battenrecipe.NameRunShed's on_stuck route back to itself):
-// error is empty by construction on that transition, since it is a Stuck verdict rather than a
-// hard error, and the history it leaves behind (appended or folded) is committed whole by the
-// next transition that does change producer or state.
+// error is empty by construction on that transition, since it is a Stuck verdict rather than a hard error,
+// and the history it leaves behind (appended or folded) is committed whole by the next transition that does change producer or state.
 //
 // persist writes an empty transient class; the producer-error arm alone calls persistTransient.
 func (s *Shed) persist(nextCurrentProducer string, nextState State, nextError string, nextHistory []HistoryEntry, consumePause bool, routedTo string) error {
