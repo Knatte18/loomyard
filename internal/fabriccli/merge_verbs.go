@@ -19,9 +19,31 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/websterengine"
 	"github.com/spf13/cobra"
 )
+
+// websterInFlightWarning is the one warning merge-in reports while a Webster run is mid-flight in this worktree.
+const websterInFlightWarning = "Webster is mid-run in this worktree: `lyx webster record-batch` tolerates this parent merge, " +
+	"but integration bisect over earlier card SHAs will run on pre-merge trees"
+
+// websterInFlightWarnings returns the merge-in warning list for the worktree at l.
+// It is nil when no run is in flight; a RunInFlight error degrades to nil plus a logged warning, never a failure.
+func websterInFlightWarnings(l *lyxcwd.Location) []string {
+	inFlight, err := websterengine.RunInFlight(l.AnchorPath())
+	if err != nil {
+		logger.Warn("fabriccli: merge-in: webster in-flight check failed, emitting no warning", "error", err)
+		return nil
+	}
+	if !inFlight {
+		return nil
+	}
+	logger.Warn("fabriccli: merge-in: merged the parent while a Webster run is in flight")
+	return []string{websterInFlightWarning}
+}
 
 // setMergeExit maps a merge lifecycle verb's (res, err) pair onto the shared envelope shape — error
 // (errWithRecord), conflicts (errConflictsWithRecord), otherwise ok (okWithRecord with committed and
@@ -30,7 +52,10 @@ import (
 // this one dispatch, per the card 16 "one envelope mapping, shared by all modes" requirement.
 // continue and abort never populate res.Conflicts, so the conflicts branch is a no-op for them, not a
 // behavior change.
-func setMergeExit(cmd *cobra.Command, out io.Writer, res fabricengine.MergeResult, err error) {
+//
+// warnings rides the ok and conflict envelopes only, under a "warnings" key present only when non-empty;
+// a hard failure never carries it.
+func setMergeExit(cmd *cobra.Command, out io.Writer, res fabricengine.MergeResult, err error, warnings []string) {
 	if err != nil {
 		// A failing verb that nevertheless knows which paths are still conflicted reports them under
 		// "unresolved", never under "conflicts". The two are different claims and only one of them is
@@ -51,13 +76,17 @@ func setMergeExit(cmd *cobra.Command, out io.Writer, res fabricengine.MergeResul
 		return
 	}
 	if len(res.Conflicts) > 0 {
-		clihelp.SetExit(cmd.Context(), errConflictsWithRecord(out, res.Mutated(), res.Conflicts))
+		clihelp.SetExit(cmd.Context(), errConflictsWithRecord(out, res.Mutated(), res.Conflicts, warnings))
 		return
 	}
-	clihelp.SetExit(cmd.Context(), okWithRecord(out, res.Mutated(), map[string]any{
+	fields := map[string]any{
 		"committed":          res.Committed,
 		"already_up_to_date": res.AlreadyUpToDate,
-	}))
+	}
+	if len(warnings) > 0 {
+		fields["warnings"] = warnings
+	}
+	clihelp.SetExit(cmd.Context(), okWithRecord(out, res.Mutated(), fields))
 }
 
 // addMergeVerbs registers the "merge", "merge-in" and "merge-stage" subcommands on cmd.
@@ -65,7 +94,10 @@ func setMergeExit(cmd *cobra.Command, out io.Writer, res fabricengine.MergeResul
 // resolved *fabricengine.Fabric handle to a local at run time, after cobra has already built and
 // registered every command, so a value parameter here would capture that local's nil zero value and
 // every merge verb would nil-panic. Each RunE body calls fabric() after PersistentPreRunE has run.
-func addMergeVerbs(cmd *cobra.Command, fabric func() *fabricengine.Fabric) {
+//
+// loc is a getter for the same reason: it returns the *lyxcwd.Location PersistentPreRunE resolved,
+// which merge-in reads to ask whether a Webster run is in flight in this worktree.
+func addMergeVerbs(cmd *cobra.Command, fabric func() *fabricengine.Fabric, loc func() *lyxcwd.Location) {
 	mergeInCmd := &cobra.Command{
 		Use:   "merge-in <branch>",
 		Args:  cobra.ExactArgs(1),
@@ -101,6 +133,13 @@ separate key, so the discriminator above keeps working. This lifecycle is shared
 verbs continue and abort the same way — but the two verbs are not symmetric:
 merge-in resolves conflicts in this worktree, merge does not.
 
+While a Webster run is in flight in this worktree (its state file exists and its
+outcome is absent, paused or stuck), a merge-in that moved HEAD, or that
+conflicted, adds a "warnings" array to its envelope. The merge itself always
+proceeds: "lyx webster record-batch" tolerates a parent merge after a fork's
+commit, but integration bisect over earlier card SHAs runs on pre-merge trees.
+An already-up-to-date merge-in and a hard failure carry no "warnings" key.
+
 Example:
   lyx fabric merge-in my-task
   lyx fabric merge-stage _lyx/raddle/notes.md src/app.txt
@@ -111,7 +150,11 @@ Example:
 			}
 			out := cmd.OutOrStdout()
 			res, err := fabric().MergeIn(args[0])
-			setMergeExit(cmd, out, res, err)
+			var warnings []string
+			if err == nil && (!res.AlreadyUpToDate || len(res.Conflicts) > 0) {
+				warnings = websterInFlightWarnings(loc())
+			}
+			setMergeExit(cmd, out, res, err, warnings)
 			return nil
 		},
 	}
@@ -187,15 +230,15 @@ Example:
 			switch {
 			case continueFlag:
 				res, err := fabric().MergeContinue(message)
-				setMergeExit(cmd, out, res, err)
+				setMergeExit(cmd, out, res, err, nil)
 				return nil
 			case abortFlag:
 				res, err := fabric().MergeAbort()
-				setMergeExit(cmd, out, res, err)
+				setMergeExit(cmd, out, res, err, nil)
 				return nil
 			default:
 				res, err := fabric().Merge(args[0], fabricengine.MergeOptions{Squash: squash, Message: message})
-				setMergeExit(cmd, out, res, err)
+				setMergeExit(cmd, out, res, err, nil)
 				return nil
 			}
 		},
