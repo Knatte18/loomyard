@@ -454,9 +454,12 @@ func TestDispositionForHandshake(t *testing.T) {
 // worktree saw the stale "loom-status" entry, reported "already there", and left the operator with
 // no status read-out at all.
 func TestResolveStatusStrandAction(t *testing.T) {
+	cur := buildIdentity{Path: "/bin/lyx", Size: 10, ModTime: 100}
+	matching := &statusSidecar{GUID: "g0", Build: cur}
 	tests := []struct {
 		name     string
 		strands  []reedengine.StrandStatus
+		sidecar  *statusSidecar
 		want     statusStrandAction
 		wantGUID string
 	}{
@@ -473,18 +476,21 @@ func TestResolveStatusStrandAction(t *testing.T) {
 		{
 			name:     "LiveStatusStrand",
 			strands:  []reedengine.StrandStatus{{GUID: "g0", Name: statusStrandDisplayName, PaneID: "%0", Live: true}},
+			sidecar:  matching,
 			want:     statusStrandKeep,
 			wantGUID: "g0",
 		},
 		{
 			name:     "DeadEntryWithClearedPaneBinding",
 			strands:  []reedengine.StrandStatus{{GUID: "g0", Name: statusStrandDisplayName, PaneID: "", Live: false}},
+			sidecar:  matching,
 			want:     statusStrandReplace,
 			wantGUID: "g0",
 		},
 		{
 			name:     "DeadEntryWithADeadPane",
 			strands:  []reedengine.StrandStatus{{GUID: "g0", Name: statusStrandDisplayName, PaneID: "%0", Live: false}},
+			sidecar:  matching,
 			want:     statusStrandReplace,
 			wantGUID: "g0",
 		},
@@ -494,14 +500,35 @@ func TestResolveStatusStrandAction(t *testing.T) {
 				{GUID: "g1", Name: "plan::g1", PaneID: "%3", Live: true},
 				{GUID: "g0", Name: statusStrandDisplayName, PaneID: "%0", Live: true},
 			},
+			sidecar:  matching,
 			want:     statusStrandKeep,
+			wantGUID: "g0",
+		},
+		{
+			name:     "LiveStrandDifferentBuildReplaces",
+			strands:  []reedengine.StrandStatus{{GUID: "g0", Name: statusStrandDisplayName, PaneID: "%0", Live: true}},
+			sidecar:  &statusSidecar{GUID: "g0", Build: buildIdentity{Path: "/bin/lyx", Size: 11, ModTime: 100}},
+			want:     statusStrandReplace,
+			wantGUID: "g0",
+		},
+		{
+			name:     "LiveStrandNoSidecarReplaces",
+			strands:  []reedengine.StrandStatus{{GUID: "g0", Name: statusStrandDisplayName, PaneID: "%0", Live: true}},
+			want:     statusStrandReplace,
+			wantGUID: "g0",
+		},
+		{
+			name:     "LiveStrandSidecarNamesOtherGUIDReplaces",
+			strands:  []reedengine.StrandStatus{{GUID: "g0", Name: statusStrandDisplayName, PaneID: "%0", Live: true}},
+			sidecar:  &statusSidecar{GUID: "other", Build: cur},
+			want:     statusStrandReplace,
 			wantGUID: "g0",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, gotGUID := resolveStatusStrandAction(tt.strands)
+			got, gotGUID := resolveStatusStrandAction(tt.strands, tt.sidecar, cur)
 			if got != tt.want {
 				t.Errorf("resolveStatusStrandAction(%+v) action = %v; want %v", tt.strands, got, tt.want)
 			}

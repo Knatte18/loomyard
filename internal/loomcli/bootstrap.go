@@ -219,12 +219,16 @@ const (
 // A dead entry is replaced rather than simply added over, because reed's add has no upsert
 // semantics: a second add under the same display name appends a second pane instead of replacing the
 // first, which is the very reason statusStrandDisplayName is a pinned constant.
-func resolveStatusStrandAction(strands []reedengine.StrandStatus) (statusStrandAction, string) {
+//
+// A live strand is kept only when the recorded sidecar names its GUID and equals the current build
+// identity; a missing, unreadable or otherwise-mismatched sidecar means the strand may run a
+// different lyx build, so it is replaced.
+func resolveStatusStrandAction(strands []reedengine.StrandStatus, sidecar *statusSidecar, current buildIdentity) (statusStrandAction, string) {
 	strand, found := findStatusStrand(strands, statusStrandDisplayName)
 	switch {
 	case !found:
 		return statusStrandAdd, ""
-	case strand.Live:
+	case strand.Live && sidecar != nil && sidecar.GUID == strand.GUID && sidecar.Build == current:
 		return statusStrandKeep, strand.GUID
 	default:
 		return statusStrandReplace, strand.GUID

@@ -20,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shell"
@@ -237,27 +238,40 @@ func (c *loomCLI) ensureStatusStrand() error {
 	if err != nil {
 		return err
 	}
-	strandAction, staleGUID := resolveStatusStrandAction(statusResult.Strands)
-	if strandAction == statusStrandReplace {
-		// A tracked-but-dead entry must be removed before adding, because reed's add has no upsert
-		// semantics and would otherwise leave two strands under one display name. A removal failure
-		// is not fatal to the bootstrap: it costs the operator the status pane for this run, not the
-		// run itself.
-		if _, err := c.reed.RemoveStrand(staleGUID, false); err != nil {
-			logger.Warn("loom: could not remove a dead status strand; the status pane will be missing this run", "guid", staleGUID, "cause", err)
-			strandAction = statusStrandKeep
-		} else {
-			strandAction = statusStrandAdd
-		}
+	build, buildErr := currentBuildIdentity()
+	if buildErr != nil {
+		// Without an identity nothing can be proven current, so a live strand is replaced.
+		logger.Warn("loom: could not identify the running lyx build; a live status strand will be replaced", "cause", buildErr)
 	}
-	if strandAction == statusStrandAdd {
-		exe, err := os.Executable()
+	sidecarPath := statusSidecarPath(c.location)
+	strandAction, staleGUID := resolveStatusStrandAction(statusResult.Strands, readStatusSidecar(sidecarPath), build)
+	if strandAction == statusStrandKeep {
+		return nil
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	addSpec := statusStrandAddSpec(statusStrandCmd(shell.ForGOOS(), exe))
+	var strand reedengine.Strand
+	if strandAction == statusStrandReplace {
+		// A replace goes through ReplaceStrand so the status strand keeps its top slot. A failure is
+		// not fatal to the bootstrap: it costs the operator the status pane for this run, not the
+		// run itself.
+		strand, err = c.reed.ReplaceStrand(staleGUID, addSpec)
+		if err != nil {
+			logger.Warn("loom: could not replace the status strand; the status pane will be missing this run", "guid", staleGUID, "cause", err)
+			return nil
+		}
+	} else {
+		strand, err = c.reed.AddStrand(addSpec)
 		if err != nil {
 			return err
 		}
-		addSpec := statusStrandAddSpec(statusStrandCmd(shell.ForGOOS(), exe))
-		if _, err := c.reed.AddStrand(addSpec); err != nil {
-			return err
+	}
+	if buildErr == nil {
+		if err := writeStatusSidecar(sidecarPath, strand.GUID, build); err != nil {
+			logger.Warn("loom: could not record the status strand's build; the next start will replace it", "cause", err)
 		}
 	}
 	return nil
