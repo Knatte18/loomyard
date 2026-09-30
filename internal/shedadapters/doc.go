@@ -119,19 +119,16 @@
 // A Bouncer asks for exclude_lenses only when told ClusterExcludes, meaning its round runs a cluster
 // fan the excludes can trim; otherwise its prompts request focus alone, so the key may be absent
 // from a judge-written file.
-// Its exclude_lenses reach the round's ClusterExclude; the file itself reaches the round profile's
-// focus-directive field whenever it carries a directive at all, and the explore step reads it there,
-// which is how the judge's targeting reaches the fixer.
-// The told run directory's whole content and every timestamped archive the adapters write --
-// per-file siblings inside the run directory and whole-generation siblings of the run directory
-// beside it (archiveRunDir) alike -- are durable record the wiring layer commits, so the adapters
-// write nothing there that is not meant for git.
+// Its exclude_lenses reach the round's ClusterExclude;
+// the file itself reaches the round profile's focus-directive field whenever it carries a directive at all,
+// and the explore step reads it there, which is how the judge's targeting reaches the fixer.
 // Reading that file is fail-safe end to end, degrading to "no directive" with a warning rather than
 // erroring, including at application time when a well-formed directive cannot be honoured.
 // A segment that has already approved and is entered again does not replay that approval: its
 // Bouncer archives the whole generation aside and re-judges from a fresh round 1 instead. Both rows'
 // artifacts move together in that archive, because BurlerProducer would otherwise resume at round
 // N+1, hydrating from a generation the Bouncer had already discarded.
+// The told run directory's whole content and every timestamped archive the adapters write -- per-file siblings inside the run directory and whole-generation siblings of the run directory beside it (archiveRunDir) alike -- are durable record the wiring layer commits, so the adapters write nothing there that is not meant for git.
 //
 // # Shared cancellation rule
 //

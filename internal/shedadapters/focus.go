@@ -29,9 +29,8 @@ type RoundFocus struct {
 	// It can be non-empty only when the writing Bouncer was told ClusterExcludes, since no other
 	// Bouncer is asked for the key.
 	ExcludeLenses []string
-	// DirectivePath is the focus file's own path when that file actually says something -- see
-	// readRoundFocus -- and empty otherwise. It reaches the round's profile as FocusDirective, which
-	// the explore step reads before findings are formed, outside the prior-rounds clean-room rule.
+	// DirectivePath is the focus file's own path when that file actually says something -- see readRoundFocus -- and empty otherwise.
+	// It reaches the round's profile as FocusDirective, which the explore step reads before findings are formed, outside the prior-rounds clean-room rule.
 	DirectivePath string
 }
 
@@ -49,14 +48,12 @@ type RoundFocus struct {
 // It is fail-safe end to end and never returns an error: an absent file, a read failure, or a file
 // parseFocus rejects each yields the zero RoundFocus after a logger.Warn.
 //
-// DirectivePath carries the focus file's own path, and carries it only when the file has a directive
-// to deliver -- a non-empty focus list or non-empty prose. That is how the judge's targeting reaches
-// the round: BurlerProducer sets it as the profile's FocusDirective, which the explore step reads
-// before findings are formed, so PriorReviews carries earlier rounds' reports only. An APPROVED judge still writes a
-// focus file (its third output file is unconditional, so the run classifies complete), and that file
-// carries empty lists (a Bouncer not told ClusterExcludes writes focus alone) and no prose;
-// delivering it would hand the next round an empty document asserting nothing, so an empty
-// directive stays empty.
+// DirectivePath carries the focus file's own path, and carries it only when the file has a directive to deliver -- a non-empty focus list or non-empty prose.
+// That is how the judge's targeting reaches the round:
+// BurlerProducer sets it as the profile's FocusDirective, which the explore step reads before findings are formed, so PriorReviews carries earlier rounds' reports only.
+// An APPROVED judge still writes a focus file (its third output file is unconditional, so the run classifies complete),
+// and that file carries empty lists (a Bouncer not told ClusterExcludes writes focus alone) and no prose;
+// delivering it would hand the next round an empty document asserting nothing, so an empty directive stays empty.
 func readRoundFocus(name, runDir string, round int) RoundFocus {
 	path := focusPath(runDir, round)
 

@@ -70,8 +70,7 @@ var BurlerStep2Review []byte
 //go:embed burler/burler-step-3-fix.md
 var BurlerStep3Fix []byte
 
-// BurlerFocusDirective is burler's shipped-default focus-directive block: the text a round's focus
-// file reaches the explore step through, filled with the file's path.
+// BurlerFocusDirective is burler's shipped-default focus-directive block: the text a round's focus file reaches the explore step through, filled with the file's path.
 //
 //go:embed burler/burler-focus-directive.md
 var BurlerFocusDirective []byte

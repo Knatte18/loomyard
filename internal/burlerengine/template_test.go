@@ -132,12 +132,7 @@ func orchestratorMarkerValues() map[string]string {
 	}
 }
 
-// instruction1MarkerValues returns a values map with every one of
-// instruction 1's four required top-level markers set to a non-empty
-// placeholder, plus pattern_directive, friction_directive and focus_directive — the three
-// optional markers, filled via stencil.FillOptional — set to a placeholder
-// too, so tests can delete one key at a time to prove stencil.FillOptional's
-// per-marker error.
+// instruction1MarkerValues returns a values map with every one of instruction 1's four required top-level markers set to a non-empty placeholder, plus pattern_directive, friction_directive and focus_directive — the three optional markers, filled via stencil.FillOptional — set to a placeholder too, so tests can delete one key at a time to prove stencil.FillOptional's per-marker error.
 func instruction1MarkerValues() map[string]string {
 	return map[string]string{
 		"pattern_directive":  "## Constraints — do this before you judge or change anything\n\n- Read _lyx/PATTERN.md.",
@@ -172,13 +167,9 @@ func instruction3MarkerValues() map[string]string {
 	}
 }
 
-// TestTemplate_FillsWithAllMarkers asserts each of the four embedded assets fills through stencil
-// when supplied its own full marker set (required markers plus, for instruction 1, the optional
-// pattern_directive, friction_directive and focus_directive), and fails — naming the marker — when any single
-// REQUIRED marker for that asset is absent.
-// pattern_directive, friction_directive and focus_directive are deliberately excluded from
-// instruction 1's deletion sweep: they are the optional markers across all four assets, so deleting
-// any of them must not error.
+// TestTemplate_FillsWithAllMarkers asserts each of the four embedded assets fills through stencil when supplied its own full marker set (required markers plus, for instruction 1, the optional pattern_directive, friction_directive and focus_directive), and fails — naming the marker — when any single REQUIRED marker for that asset is absent.
+// pattern_directive, friction_directive and focus_directive are deliberately excluded from instruction 1's deletion sweep:
+// they are the optional markers across all four assets, so deleting any of them must not error.
 func TestTemplate_FillsWithAllMarkers(t *testing.T) {
 	tests := []struct {
 		name            string
@@ -330,9 +321,8 @@ func TestTemplate_FrictionDirectiveOptional(t *testing.T) {
 	})
 }
 
-// TestTemplate_FocusDirectiveOptional asserts focus_directive behaves as an optional marker on
-// instruction 1, mirroring its two siblings: an empty value renders cleanly, and a non-empty value
-// places the directive block ahead of the first work instruction.
+// TestTemplate_FocusDirectiveOptional asserts focus_directive behaves as an optional marker on instruction 1, mirroring its two siblings:
+// an empty value renders cleanly, and a non-empty value places the directive block ahead of the first work instruction.
 func TestTemplate_FocusDirectiveOptional(t *testing.T) {
 	optional := []string{"pattern_directive", "friction_directive", "focus_directive"}
 

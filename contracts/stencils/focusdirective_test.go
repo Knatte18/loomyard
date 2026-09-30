@@ -1,5 +1,4 @@
-// focusdirective_test.go pins burler-focus-directive.md's marker set and the four rules of its
-// rubric-over-directive precedence statement, as substring pins in rubric_test.go's shape.
+// focusdirective_test.go pins burler-focus-directive.md's marker set and the four rules of its rubric-over-directive precedence statement, as substring pins in rubric_test.go's shape.
 
 package stencils
 

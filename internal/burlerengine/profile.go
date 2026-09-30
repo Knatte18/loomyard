@@ -48,9 +48,8 @@ type Profile struct {
 	FixerReportPath   string
 	PriorReviews      []string
 	PriorFixerReports []string
-	// FocusDirective is an optional path to this round's focus directive file, kept apart from
-	// PriorReviews. It is steering input the reviewer reads before forming findings, and is never
-	// subject to the prior-rounds clean-room rule.
+	// FocusDirective is an optional path to this round's focus directive file, kept apart from PriorReviews.
+	// It is steering input the reviewer reads before forming findings, and is never subject to the prior-rounds clean-room rule.
 	FocusDirective string
 }
 

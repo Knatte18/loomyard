@@ -1,8 +1,8 @@
 // review_test.go — untagged Tier-1 unit tests for ResolveReview and LoomReviewsDir.
 // ResolveReview's tests mirror discussion_test.go's shape: pure Go over an in-memory Config and a
 // temp-dir modelspec registry, no live hub, reed, or network involved.
-// LoomReviewsDir's test mirrors discussionpath_test.go's shape: pure path arithmetic over a
-// hand-built lyxcwd.Location; the accessor is durable, rooted under _lyx.
+// LoomReviewsDir's test mirrors discussionpath_test.go's shape: pure path arithmetic over a hand-built lyxcwd.Location;
+// the accessor is durable, rooted under _lyx.
 
 package loomengine
 
@@ -70,8 +70,7 @@ func TestLoomReviewsDirRel(t *testing.T) {
 	}
 }
 
-// TestLoomReviewsDir verifies LoomReviewsDir's returned path is AnchorPath-anchored, sits under the
-// durable _lyx tree rather than the ephemeral one, and equals the anchor joined with its Rel form.
+// TestLoomReviewsDir verifies LoomReviewsDir's returned path is AnchorPath-anchored, sits under the durable _lyx tree rather than the ephemeral one, and equals the anchor joined with its Rel form.
 func TestLoomReviewsDir(t *testing.T) {
 	l := &lyxcwd.Location{
 		HubPath:      filepath.Join("home", "user", "repo-LYXHUB"),

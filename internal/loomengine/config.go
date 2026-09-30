@@ -56,8 +56,7 @@ const loomSelfreportFiledFileName = "selfreport-filed.json"
 // loomengine is this segment's sole declarer.
 const loomSelfreportFiledLockFileName = "selfreport-filed.json.lock"
 
-// reviewsDirName is the relative-path segment loomengine joins onto lyxdirs.LyxDirName to form the
-// review segments' durable run root.
+// reviewsDirName is the relative-path segment loomengine joins onto lyxdirs.LyxDirName to form the review segments' durable run root.
 // loomengine is this segment's sole declarer.
 const reviewsDirName = "reviews"
 
@@ -199,19 +198,15 @@ func LoomApprovalPath(l *lyxcwd.Location) string {
 	return filepath.Join(LoomScratchDir(l), loomApprovalFileName)
 }
 
-// LoomReviewsDirRel returns the worktree-anchor-relative form of LoomReviewsDir's path: the join of
-// lyxdirs.LyxDirName and reviewsDirName.
-// It exists so a caller building a fabric commit pathspec never has to name a directory segment
-// loomengine owns.
+// LoomReviewsDirRel returns the worktree-anchor-relative form of LoomReviewsDir's path: the join of lyxdirs.LyxDirName and reviewsDirName.
+// It exists so a caller building a fabric commit pathspec never has to name a directory segment loomengine owns.
 func LoomReviewsDirRel() string {
 	return filepath.Join(lyxdirs.LyxDirName, reviewsDirName)
 }
 
 // LoomReviewsDir returns the path to the root every review segment's `run_subdir` resolves
 // against for this worktree -- the value shedrecipe.Env.RunRoot takes.
-// It is durable: everything the round producer and the Bouncer write here -- reports, verdicts,
-// ledgers, focus files, and their timestamped archive siblings -- is tracked content committed by
-// loom's per-transition status commit.
+// It is durable: everything the round producer and the Bouncer write here -- reports, verdicts, ledgers, focus files, and their timestamped archive siblings -- is tracked content committed by loom's per-transition status commit.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func LoomReviewsDir(l *lyxcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), LoomReviewsDirRel())
@@ -219,11 +214,9 @@ func LoomReviewsDir(l *lyxcwd.Location) string {
 
 // LoomFrictionDir returns the path to the Tier 2 friction leaf's scratch directory for this
 // worktree: the per-agent friction notes an unsupervised run's producers append to.
-// Friction notes are never-tracked ephemera consumed within the run and discarded, which is why
-// they live under the ephemeral tree, rather than the durable one.
-// It is built on LoomScratchDir rather than re-joining l.AnchorPath(), lyxdirs.DotLyxDirName, and
-// loomDirName a second time: the Lyxdirs Single-Declarer Invariant
-// forbids a hand-built join naming the .lyx literal a second time in production path construction,
+// Friction notes are never-tracked ephemera consumed within the run and discarded, which is why they live under the ephemeral tree, rather than the durable one.
+// It is built on LoomScratchDir rather than re-joining l.AnchorPath(), lyxdirs.DotLyxDirName, and loomDirName a second time:
+// the Lyxdirs Single-Declarer Invariant forbids a hand-built join naming the .lyx literal a second time in production path construction,
 // and LoomScratchDir is already the accessor that names it once.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func LoomFrictionDir(l *lyxcwd.Location) string {

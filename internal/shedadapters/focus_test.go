@@ -12,9 +12,7 @@ import (
 	"time"
 )
 
-// assertFocus compares got against the wanted ExcludeLenses contents and DirectivePath, treating a nil slice
-// and an empty slice as equal -- readRoundFocus's choice between the two in any given branch is an
-// implementation detail, not part of its contract.
+// assertFocus compares got against the wanted ExcludeLenses contents and DirectivePath, treating a nil slice and an empty slice as equal -- readRoundFocus's choice between the two in any given branch is an implementation detail, not part of its contract.
 func assertFocus(t *testing.T, got RoundFocus, wantExclude []string, wantDirective string) {
 	t.Helper()
 	if !stringSlicesEqual(got.ExcludeLenses, wantExclude) {
@@ -80,9 +78,8 @@ func TestReadRoundFocus_ReadsTheFileTheBouncerWrites(t *testing.T) {
 	assertFocus(t, got, []string{"lensA", "lensB"}, path)
 }
 
-// TestReadRoundFocus_DirectivePathOnlyWhenTheFileSaysSomething pins that an APPROVED judge's mandatory
-// but empty focus file carries no directive path: handing the next round a document that asserts nothing is
-// noise, not targeting.
+// TestReadRoundFocus_DirectivePathOnlyWhenTheFileSaysSomething pins that an APPROVED judge's mandatory but empty focus file carries no directive path:
+// handing the next round a document that asserts nothing is noise, not targeting.
 func TestReadRoundFocus_DirectivePathOnlyWhenTheFileSaysSomething(t *testing.T) {
 	tests := []struct {
 		name         string

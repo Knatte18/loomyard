@@ -71,8 +71,7 @@ type BurlerProducer struct {
 
 // NewBurlerProducer returns a BurlerProducer identified as name, driving profile through runner
 // under opts, with round artifacts under runDir.
-// profile is a template whose ReviewPath, FixerReportPath, FocusDirective, PriorReviews,
-// PriorFixerReports, and ClusterExclude fields are overwritten per round;
+// profile is a template whose ReviewPath, FixerReportPath, FocusDirective, PriorReviews, PriorFixerReports, and ClusterExclude fields are overwritten per round;
 // opts is a template whose Round field is overwritten per attempt.
 // A nil now defaults to time.Now, and the injected clock resolves only the archive filename's
 // same-second collision suffix.
@@ -320,11 +319,10 @@ func (p *BurlerProducer) Call(ctx context.Context) (shedengine.Outcome, shedengi
 		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): resolve hydration: %w", p.name, burlerEngineLabel, err)
 	}
 
-	// A fresh copy of the stored template, built per round: every round must carry its own
-	// ReviewPath, FixerReportPath, FocusDirective, PriorReviews, PriorFixerReports, and ClusterExclude values, and
-	// a reused copy would leak the previous round's values into the next one. The stored template
-	// itself is never mutated -- every slice field set below is a freshly allocated slice, never an
-	// in-place append onto p.profile's own backing array.
+	// A fresh copy of the stored template, built per round:
+	// every round must carry its own ReviewPath, FixerReportPath, FocusDirective, PriorReviews, PriorFixerReports, and ClusterExclude values,
+	// and a reused copy would leak the previous round's values into the next one.
+	// The stored template itself is never mutated -- every slice field set below is a freshly allocated slice, never an in-place append onto p.profile's own backing array.
 	profile := p.profile
 	profile.ReviewPath = reviewPath
 	profile.FocusDirective = focus.DirectivePath

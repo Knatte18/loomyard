@@ -257,8 +257,7 @@ func writeReviewFile(t *testing.T, location *lyxcwd.Location, rel, content strin
 	}
 }
 
-// TestCommitStatusSeam_Real_CommitsTheRoundRecord asserts a round's files written before a
-// transition land in the weft HEAD commit and leave the reviews directory clean.
+// TestCommitStatusSeam_Real_CommitsTheRoundRecord asserts a round's files written before a transition land in the weft HEAD commit and leave the reviews directory clean.
 func TestCommitStatusSeam_Real_CommitsTheRoundRecord(t *testing.T) {
 	seam, location, weftSibling := realSeamFixture(t)
 	files := []string{"plan/round-1-review.md", "plan/round-1-fixer-report.md", "plan/round-1-focus.md"}
@@ -282,8 +281,7 @@ func TestCommitStatusSeam_Real_CommitsTheRoundRecord(t *testing.T) {
 	}
 }
 
-// TestCommitStatusSeam_Real_NoReviewsDirTouchesOnlyStatus asserts a run with no reviews directory
-// commits the status file alone.
+// TestCommitStatusSeam_Real_NoReviewsDirTouchesOnlyStatus asserts a run with no reviews directory commits the status file alone.
 func TestCommitStatusSeam_Real_NoReviewsDirTouchesOnlyStatus(t *testing.T) {
 	seam, _, weftSibling := realSeamFixture(t)
 
@@ -295,8 +293,7 @@ func TestCommitStatusSeam_Real_NoReviewsDirTouchesOnlyStatus(t *testing.T) {
 	}
 }
 
-// TestCommitStatusSeam_Real_EmptyReviewsSegmentTouchesOnlyStatus asserts the recipe-build state —
-// the reviews root holding only an empty segment directory — neither errors nor widens the commit.
+// TestCommitStatusSeam_Real_EmptyReviewsSegmentTouchesOnlyStatus asserts the recipe-build state — the reviews root holding only an empty segment directory — neither errors nor widens the commit.
 func TestCommitStatusSeam_Real_EmptyReviewsSegmentTouchesOnlyStatus(t *testing.T) {
 	seam, location, weftSibling := realSeamFixture(t)
 	if err := os.MkdirAll(filepath.Join(loomengine.LoomReviewsDir(location), "plan"), 0o755); err != nil {
@@ -311,8 +308,7 @@ func TestCommitStatusSeam_Real_EmptyReviewsSegmentTouchesOnlyStatus(t *testing.T
 	}
 }
 
-// TestCommitStatusSeam_Real_ArchiveRenameCommitsAdditionAndDeletion asserts a committed round file
-// renamed to a timestamped sibling is recorded as both an addition and a deletion by the next commit.
+// TestCommitStatusSeam_Real_ArchiveRenameCommitsAdditionAndDeletion asserts a committed round file renamed to a timestamped sibling is recorded as both an addition and a deletion by the next commit.
 func TestCommitStatusSeam_Real_ArchiveRenameCommitsAdditionAndDeletion(t *testing.T) {
 	seam, location, weftSibling := realSeamFixture(t)
 	writeReviewFile(t, location, "plan/round-1-review.md", "record\n")

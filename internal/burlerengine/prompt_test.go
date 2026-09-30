@@ -18,9 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/contracts/stencils"
 )
 
-// newTestStencilsDir builds a t.TempDir() seeded with burler's five stencils plus the three
-// pattern-directive stencils, copied byte-for-byte from the stencils package's embedded defaults, and
-// returns the directory to pass as stencilsDir.
+// newTestStencilsDir builds a t.TempDir() seeded with burler's five stencils plus the three pattern-directive stencils, copied byte-for-byte from the stencils package's embedded defaults, and returns the directory to pass as stencilsDir.
 func newTestStencilsDir(t *testing.T) string {
 	t.Helper()
 
@@ -116,9 +114,8 @@ func combinedPrompt(orchestrator string, files []instructionFile) string {
 	return strings.Join(parts, "\n")
 }
 
-// TestComposePrompt_FocusDirective proves a round's focus file reaches instruction 1 through its own
-// channel, with the precedence rule, and never reaches instruction 2's prior-rounds block; and that a
-// round without a directive renders no focus text and no marker residue.
+// TestComposePrompt_FocusDirective proves a round's focus file reaches instruction 1 through its own channel, with the precedence rule, and never reaches instruction 2's prior-rounds block;
+// and that a round without a directive renders no focus text and no marker residue.
 func TestComposePrompt_FocusDirective(t *testing.T) {
 	stencilsDir := newTestStencilsDir(t)
 

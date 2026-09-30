@@ -288,9 +288,8 @@ func TestWire_CommitStatusFilled(t *testing.T) {
 	}
 }
 
-// TestStatusCommitPathspec asserts the pathspec names the reviews directory only when it holds a
-// file: the empty segment directories recipe build creates would make the commit's pathspec match
-// nothing and fail.
+// TestStatusCommitPathspec asserts the pathspec names the reviews directory only when it holds a file:
+// the empty segment directories recipe build creates would make the commit's pathspec match nothing and fail.
 func TestStatusCommitPathspec(t *testing.T) {
 	t.Parallel()
 

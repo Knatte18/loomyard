@@ -10,8 +10,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
-// ReadRubric reads the rubric stencil name from stencilsDir, strips its stamp banner, fills it as
-// its own template with specsDir and stencilsDir, and returns the filled result.
+// ReadRubric reads the rubric stencil name from stencilsDir, strips its stamp banner, fills it as its own template with specsDir and stencilsDir, and returns the filled result.
 //
 // The strip is about value semantics, not about protecting Fill. stencil.Fill already strips a
 // leading banner from the template it parses, but never from a marker value -- and a rubric's
@@ -22,11 +21,9 @@ import (
 // The strip happens before the fill, not after: Fill strips its own template internally, so
 // stripping afterwards would be too late to keep the banner out of the returned value.
 //
-// specs_dir and stencils_dir are required markers here -- plain Fill, never FillOptional. A rubric
-// that carries {{.specs_dir}} or {{.stencils_dir}} and is handed an empty value must error rather
-// than render a blank path, because a blank path is precisely the dead reference this task removes. A rubric that carries no marker at
-// all renders unchanged, so this helper is safe to route every stencil-sourced rubric through from
-// the moment it exists.
+// specs_dir and stencils_dir are required markers here -- plain Fill, never FillOptional.
+// A rubric that carries {{.specs_dir}} or {{.stencils_dir}} and is handed an empty value must error rather than render a blank path, because a blank path is precisely the dead reference this task removes.
+// A rubric that carries no marker at all renders unchanged, so this helper is safe to route every stencil-sourced rubric through from the moment it exists.
 //
 // This helper is for stencil-sourced rubrics only. A literal rubric string -- author-written prose
 // reaching a producer through a config key rather than through the stencil store -- never goes

@@ -149,8 +149,8 @@ func TestReadRubric_SubstitutesBothMarkers(t *testing.T) {
 }
 
 func TestReadRubric_EmptyStencilsDirIsAnError(t *testing.T) {
-	// An empty stencilsDir makes the read cwd-relative, so the fixture lives in the cwd; without
-	// that the read fails and the test would pass without ever reaching the fill.
+	// An empty stencilsDir makes the read cwd-relative, so the fixture lives in the cwd;
+	// without that the read fails and the test would pass without ever reaching the fill.
 	t.Chdir(t.TempDir())
 	writeStampedRubric(t, "", "bouncer-rubric-test", "# Rubric\n\nSee {{.stencils_dir}}.\n")
 
