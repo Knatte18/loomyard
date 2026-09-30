@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/summaryparser"
@@ -49,18 +50,57 @@ func ArchiveStaleSummary(websterDir string, now func() time.Time) (archivedTo st
 // AppendIntegrationFailure appends a section naming the integration bisect's localized finding to
 // the final-summary artifact.
 // Master's final-action rule guarantees the artifact exists before this runs.
-func AppendIntegrationFailure(websterDir, offendingCard, offendingSHA string) error {
+// A non-empty regressions list adds each regressing identity with its output tail in a fenced
+// block; nil regressions leave the section as the localized-card sentence alone.
+func AppendIntegrationFailure(websterDir, offendingCard, offendingSHA string, regressions []IntegrationFailure) error {
+	var b strings.Builder
+	fmt.Fprintf(&b, "\n\n## Integration suite failed\n\nThe plan-level `## verify:` suite failed. SHA-bisect localized the failure to card `%s` (commit `%s`).\n", offendingCard, offendingSHA)
+	if len(regressions) > 0 {
+		b.WriteString("\nRegressing failures:\n")
+		for _, r := range regressions {
+			fmt.Fprintf(&b, "\n### `%s`\n\n```\n%s\n```\n", r.ID, strings.TrimRight(r.Tail, "\n"))
+		}
+	}
+	return appendToSummary(websterDir, "integration failure", b.String())
+}
+
+// AppendIntegrationTriage appends a section listing the failures webster's triage did not
+// attribute to this run, by identity only; the tails stay in the integration report.
+// It is a no-op when both lists are empty.
+func AppendIntegrationTriage(websterDir string, flaky, preExisting []string) error {
+	if len(flaky) == 0 && len(preExisting) == 0 {
+		return nil
+	}
+	var b strings.Builder
+	b.WriteString("\n\n## Integration suite triage\n\nThe plan-level `## verify:` suite failed, but webster's triage did not attribute the failure to this run.\n")
+	writeTriageList(&b, "Flaky (passed on rerun)", flaky)
+	writeTriageList(&b, "Pre-existing (already failing at the plan's starting commit)", preExisting)
+	return appendToSummary(websterDir, "integration triage", b.String())
+}
+
+// writeTriageList writes one titled sub-list of identities, or nothing when ids is empty.
+func writeTriageList(b *strings.Builder, title string, ids []string) {
+	if len(ids) == 0 {
+		return
+	}
+	fmt.Fprintf(b, "\n%s:\n\n", title)
+	for _, id := range ids {
+		fmt.Fprintf(b, "- `%s`\n", id)
+	}
+}
+
+// appendToSummary appends section to the final-summary artifact; what names the section in errors.
+func appendToSummary(websterDir, what, section string) error {
 	path := summaryparser.Path(websterDir)
-	section := fmt.Sprintf("\n\n## Integration suite failed\n\nThe plan-level `## verify:` suite failed. SHA-bisect localized the failure to card `%s` (commit `%s`).\n", offendingCard, offendingSHA)
 
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
-		return fmt.Errorf("webster: append integration failure to summary file %s: %w", path, err)
+		return fmt.Errorf("webster: append %s to summary file %s: %w", what, path, err)
 	}
 	defer f.Close()
 
 	if _, err := f.WriteString(section); err != nil {
-		return fmt.Errorf("webster: append integration failure to summary file %s: %w", path, err)
+		return fmt.Errorf("webster: append %s to summary file %s: %w", what, path, err)
 	}
 	return nil
 }

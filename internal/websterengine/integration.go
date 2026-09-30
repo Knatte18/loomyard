@@ -312,7 +312,7 @@ func bisectAndEscalate(repo FabricBisector, shas, labels []string, verifyCmd, wo
 	}
 
 	RecordIntegrationFailure(st, offendingCard, offendingSHA)
-	return AppendIntegrationFailure(websterDir, offendingCard, offendingSHA)
+	return AppendIntegrationFailure(websterDir, offendingCard, offendingSHA, nil)
 }
 
 // LocalizeIntegrationFailure is BisectAndEscalate's search half, split out because it touches no

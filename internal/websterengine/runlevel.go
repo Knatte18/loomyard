@@ -1018,7 +1018,7 @@ func runIntegrationStage(deps RunDeps, plan *planparser.Plan, batches []batcher.
 	}
 
 	RecordIntegrationFailure(st, offendingCard, offendingSHA)
-	if err := AppendIntegrationFailure(deps.Geom.WebsterDir, offendingCard, offendingSHA); err != nil {
+	if err := AppendIntegrationFailure(deps.Geom.WebsterDir, offendingCard, offendingSHA, nil); err != nil {
 		return warnings, err
 	}
 
