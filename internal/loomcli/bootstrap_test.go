@@ -774,12 +774,6 @@ func TestStatusStrandAddSpec(t *testing.T) {
 	if got.Display.Focus {
 		t.Error("Display.Focus = true; want false")
 	}
-	if !got.Display.ShrinkWhenWaitingOnChild {
-		t.Error("Display.ShrinkWhenWaitingOnChild = false; want true")
-	}
-	if got.Display.FixedRows != statusStrandFixedRows {
-		t.Errorf("Display.FixedRows = %d; want %d", got.Display.FixedRows, statusStrandFixedRows)
-	}
 }
 
 // TestStatusStrandAddSpecPinnedByRender ties the spec to render's layout: stacked above a driver

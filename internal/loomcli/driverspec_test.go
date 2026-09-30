@@ -84,11 +84,6 @@ func TestDriverSpec(t *testing.T) {
 			t.Error("driverSpec().Display.Focus = true; want false -- Focus is persisted and re-evaluated on every later AddStrand")
 		}
 	})
-	t.Run("Display_ShrinkWhenWaitingOnChild", func(t *testing.T) {
-		if got.Display.ShrinkWhenWaitingOnChild {
-			t.Error("driverSpec().Display.ShrinkWhenWaitingOnChild = true; want false")
-		}
-	})
 	// Timeout, KeepPane, and AwaitOperator: nothing reads these on the driver path -- the wait loop
 	// is never entered -- so this pins the zero value as a statement that nothing consumes it, not a
 	// pane-retention or deadline decision.

@@ -35,8 +35,7 @@ import (
 // attaches to watch, and a hidden pane would make a run that may last hours legible only through its
 // log file. Display.Focus is false because the flag is persisted on the strand and re-evaluated on
 // every subsequent add, so a true value would re-capture focus on every agent pane the run spawns
-// afterwards. Display.ShrinkWhenWaitingOnChild is false: the driver is never itself waiting on a
-// child in the sense that flag models.
+// afterwards.
 //
 // Timeout, KeepPane, and AwaitOperator are left at their zero values deliberately. A zero Timeout
 // defaults to run_timeout_min in Spec.validate, and on this path it bounds only shuttle's startup step
@@ -58,9 +57,8 @@ func driverSpec(prompt string, reportPath string, settings loomengine.DriverSett
 		Round:         "",
 		Parent:        "",
 		Display: render.Display{
-			Anchor:                   render.AnchorBelowParent,
-			Focus:                    false,
-			ShrinkWhenWaitingOnChild: false,
+			Anchor: render.AnchorBelowParent,
+			Focus:  false,
 		},
 	}
 }

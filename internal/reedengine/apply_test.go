@@ -25,15 +25,15 @@ func TestPlanLayout_MatchesRenderRulesForCanonicalStrandTable(t *testing.T) {
 	// belowParentChain fixture uses: root stays full, mid collapses
 	// (blocked waiting on active), active is bottom/focused.
 	st := &ReedState{Strands: []Strand{
-		{GUID: "root", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent, ShrinkWhenWaitingOnChild: false}},
-		{GUID: "mid", Parent: "root", PaneID: "%2", Display: render.Display{Anchor: render.AnchorBelowParent, ShrinkWhenWaitingOnChild: true}},
+		{GUID: "root", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}},
+		{GUID: "mid", Parent: "root", PaneID: "%2", Display: render.Display{Anchor: render.AnchorBelowParent}},
 		{GUID: "active", Parent: "mid", PaneID: "%3", Display: render.Display{Anchor: render.AnchorBelowParent}},
 	}}
 	live := []LivePane{{ID: "%1"}, {ID: "%2"}, {ID: "%3"}}
 
 	wantLayout, wantFocus, err := render.Rules([]render.Strand{
-		{GUID: "root", PaneID: "%1", Live: true, Display: render.Display{Anchor: render.AnchorBelowParent, ShrinkWhenWaitingOnChild: false}},
-		{GUID: "mid", Parent: "root", PaneID: "%2", Live: true, Display: render.Display{Anchor: render.AnchorBelowParent, ShrinkWhenWaitingOnChild: true}},
+		{GUID: "root", PaneID: "%1", Live: true, Display: render.Display{Anchor: render.AnchorBelowParent}},
+		{GUID: "mid", Parent: "root", PaneID: "%2", Live: true, Display: render.Display{Anchor: render.AnchorBelowParent}},
 		{GUID: "active", Parent: "mid", PaneID: "%3", Live: true, Display: render.Display{Anchor: render.AnchorBelowParent}},
 	}, render.Box{X: 0, Y: 0, W: 100, H: 21}, render.Params{CollapsedRows: 2, MinFullRows: 3}, nil)
 	if err != nil {
@@ -511,7 +511,7 @@ func TestApplyLayoutLocked_InstallsResizePinsAfterSelectLayout(t *testing.T) {
 	st := &ReedState{
 		SelvagePaneID: "%9",
 		Strands: []Strand{
-			{GUID: "root", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent, ShrinkWhenWaitingOnChild: true}},
+			{GUID: "root", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}},
 			{GUID: "child", Parent: "root", PaneID: "%2", Display: render.Display{Anchor: render.AnchorBelowParent, Focus: true}},
 		},
 	}

@@ -45,12 +45,6 @@ type Display struct {
 	// focus. At most one strand is expected to set Focus; if several do,
 	// render breaks the tie by picking the bottom-most.
 	Focus bool `json:"focus"`
-	// ShrinkWhenWaitingOnChild is no longer read by the height policy: the
-	// stack's one rule sizes every strand by position alone.
-	ShrinkWhenWaitingOnChild bool `json:"shrinkWhenWaitingOnChild"`
-	// FixedRows is no longer read by the height policy: the stack's one
-	// rule sizes every strand by position alone.
-	FixedRows int `json:"fixedRows"`
 }
 
 // Strand is the layout-facing projection of an engine strand: only the fields Rules needs to place
@@ -62,7 +56,7 @@ type Strand struct {
 	GUID string
 	// Parent is the parent strand's GUID, or "" for a root strand.
 	Parent string
-	// Display carries this strand's placement, focus, and shrink settings.
+	// Display carries this strand's placement and focus settings.
 	Display Display
 	// PaneID is the tmux pane id (e.g. "%5") this strand currently owns.
 	// A strand with an empty PaneID owns no pane and is excluded from the
