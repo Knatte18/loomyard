@@ -843,6 +843,23 @@ func TestPublish_MatchingApproval_DoneWithoutSync(t *testing.T) {
 	}
 }
 
+// TestPublish_NilTaskHead_ApprovalIgnored pins the nil-is-absent seam: without TaskHead the record
+// is not consulted, so a matching approval takes the ordinary open-PR path instead.
+func TestPublish_NilTaskHead_ApprovalIgnored(t *testing.T) {
+	fx := newApprovalFixture(t, `[{"number":7,"state":"open","head":{"sha":"aaa"}}]`, &Approval{PRNumber: 7, HeadSHA: "aaa", ApprovedAt: "2026-01-01T00:00:00Z"}, nil)
+	fx.p.deps.TaskHead = nil
+	outcome, ptr, err := fx.p.Call(context.Background())
+	if err != nil || outcome != shedengine.Stuck {
+		t.Fatalf("Call() = %q, %v; want Stuck, nil", outcome, err)
+	}
+	if !strings.Contains(ptr.Reason, "already exists") {
+		t.Errorf("reason %q; want the ordinary already-open reason", ptr.Reason)
+	}
+	if !fx.res.called {
+		t.Error("resolver was not called; want the ordinary merge-in")
+	}
+}
+
 func TestPublish_MismatchedApproval_StuckNamesSHAs(t *testing.T) {
 	fx := newApprovalFixture(t, `[{"number":7,"state":"open","head":{"sha":"bbb"}}]`, &Approval{PRNumber: 7, HeadSHA: "aaa", ApprovedAt: "2026-01-01T00:00:00Z"}, nil)
 	outcome, ptr, err := fx.p.Call(context.Background())

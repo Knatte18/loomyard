@@ -112,7 +112,7 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 	// Step 3a: an operator approval recorded by `lyx loom approve` may land the pull request
 	// without a GitHub merge. It is consulted before any sync, so an approved run neither merges
 	// in nor pushes; Finalize syncs with the parent anyway.
-	if p.deps.ApprovalPath != "" {
+	if p.deps.ApprovalPath != "" && p.deps.TaskHead != nil {
 		outcome, ptr, decided, err := p.checkApproval(ctx)
 		if decided || err != nil {
 			return outcome, ptr, err
@@ -263,12 +263,9 @@ func (p *Publish) checkApproval(ctx context.Context) (outcome shedengine.Outcome
 	}
 
 	head := pr.GetHead().GetSHA()
-	taskHead := ""
-	if p.deps.TaskHead != nil {
-		taskHead, err = p.deps.TaskHead()
-		if err != nil {
-			return "", shedengine.OutputPointer{}, true, fmt.Errorf("landingshed: %s: read task branch head: %w", publishName, err)
-		}
+	taskHead, err := p.deps.TaskHead()
+	if err != nil {
+		return "", shedengine.OutputPointer{}, true, fmt.Errorf("landingshed: %s: read task branch head: %w", publishName, err)
 	}
 	if pr.GetNumber() == approval.PRNumber && head == approval.HeadSHA && taskHead == approval.HeadSHA {
 		return shedengine.Done, shedengine.OutputPointer{}, true, nil
