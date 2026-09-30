@@ -262,8 +262,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 			want:          `CLAUDE_CODE_FORK_SUBAGENT='1' 'claude' "$(cat '/run/prompt.md')" --session-id 'abc-123' --settings '/run/settings.json' --dangerously-skip-permissions`,
 		},
 		{
-			// A real assembled notice, whose ':' and ';' must stay inside the one quoted argument,
-			// riding inside the fork-mode env wrap rather than after it.
+			// A real assembled notice, whose ':' and ';' must stay inside the one quoted argument, riding inside the fork-mode env wrap rather than after it.
 			name:          "fork_mode_real_notice_pwsh",
 			bin:           "claude",
 			promptPath:    `C:\run\prompt.md`,
