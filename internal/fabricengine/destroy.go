@@ -254,8 +254,9 @@ type remoteBranchRequest struct {
 	ownership branchOwnership
 	// dirtiness declares which dirtiness probe the pipeline runs against branch.
 	dirtiness branchDirtiness
-	// leaseSHA is the remote tip the caller observed; when non-empty the deletion succeeds only while
-	// the remote branch still sits there. Empty keeps the unleased, idempotent path.
+	// leaseSHA is the remote tip the caller observed;
+	// when non-empty the deletion succeeds only while the remote branch still sits there.
+	// Empty keeps the unleased, idempotent path.
 	leaseSHA string
 	// force is reserved: every remoteBranchRequest construction in this package hardcodes it false
 	// today, exactly as branchRequest's own force field does, for the same reason — no call site's own
@@ -368,8 +369,8 @@ type branchOwnership struct {
 	kind         branchOwnershipKind
 	location     *lyxcwd.Location
 	branchPrefix string
-	// warpBranch serves ownedPairWarpBranch and ownedPairWeftBranch; parentBranch serves
-	// ownedPairWarpBranch only.
+	// warpBranch serves ownedPairWarpBranch and ownedPairWeftBranch;
+	// parentBranch serves ownedPairWarpBranch only.
 	warpBranch   string
 	parentBranch string
 }
@@ -384,10 +385,9 @@ func ownedPairWarpBranch(warpBranch, parentBranch string) branchOwnership {
 	return branchOwnership{kind: branchOwnershipPairWarp, warpBranch: warpBranch, parentBranch: parentBranch}
 }
 
-// ownedPairWeftBranch declares branch as owned when it is exactly WeftBranchName(warpBranch), is
-// accepted by WeftWarpSlug, and is not l's primary weft branch.
-// It deliberately has no checked-out test: at Add's step 12 the same-named local branch is the
-// replacement, checked out at the new weft worktree, which is exactly what ownedManagedBranch refuses.
+// ownedPairWeftBranch declares branch as owned when it is exactly WeftBranchName(warpBranch), is accepted by WeftWarpSlug, and is not l's primary weft branch.
+// It deliberately has no checked-out test:
+// at Add's step 12 the same-named local branch is the replacement, checked out at the new weft worktree, which is exactly what ownedManagedBranch refuses.
 // An empty warpBranch matches nothing.
 func ownedPairWeftBranch(l *lyxcwd.Location, warpBranch string) branchOwnership {
 	return branchOwnership{kind: branchOwnershipPairWeft, location: l, warpBranch: warpBranch}
@@ -461,15 +461,14 @@ type branchDirtiness struct {
 	kind branchDirtinessKind
 	// parentBranch serves dirtyUnlandedWork only; empty when the pair has no origin record.
 	parentBranch string
-	// archiveTag serves dirtyArchivedOnRemote only: the archive/<slug>/* tag the pre-flight proved
-	// covers the remote tip.
+	// archiveTag serves dirtyArchivedOnRemote only: the archive/<slug>/* tag the pre-flight proved covers the remote tip.
 	archiveTag string
 }
 
-// dirtyArchivedOnRemote declares that the remote branch's tip is covered by archiveTag, an
-// archive/<slug>/* tag the caller's pre-flight proved reaches it, so deleting it loses no work.
-// It answers a remote question only: checkRemoteBranchRequest accepts it, checkBranchRequest refuses
-// it, and an empty archiveTag is refused as covered by no archive tag.
+// dirtyArchivedOnRemote declares that the remote branch's tip is covered by archiveTag, an archive/<slug>/* tag the caller's pre-flight proved reaches it,
+// so deleting it loses no work.
+// It answers a remote question only: checkRemoteBranchRequest accepts it, checkBranchRequest refuses it,
+// and an empty archiveTag is refused as covered by no archive tag.
 func dirtyArchivedOnRemote(archiveTag string) branchDirtiness {
 	return branchDirtiness{kind: branchDirtinessArchivedOnRemote, archiveTag: archiveTag}
 }
@@ -662,9 +661,9 @@ func resolvePairWarpBranch(warpBranch, parentBranch, branch string) (bool, strin
 	return true, ""
 }
 
-// resolvePairWeftBranch implements ownedPairWeftBranch's predicate: the two pure name checks run
-// first, so a mismatched name refuses without spawning git, then branch must not be l's primary weft
-// branch, failing closed when the primary cannot be read.
+// resolvePairWeftBranch implements ownedPairWeftBranch's predicate.
+// The two pure name checks run first, so a mismatched name refuses without spawning git;
+// then branch must not be l's primary weft branch, failing closed when the primary cannot be read.
 func resolvePairWeftBranch(l *lyxcwd.Location, warpBranch, branch string) (bool, string) {
 	if warpBranch == "" || branch != WeftBranchName(warpBranch) {
 		return false, fmt.Sprintf("%s is not the pair's own weft branch for %q", branch, warpBranch)
