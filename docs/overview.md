@@ -444,7 +444,8 @@ See the [Told-Geometry Invariant](../CONSTRAINTS.md#told-geometry-invariant) for
   loom's prompt templates are expected to reuse the same `Render` compose later.
   See the `internal/tokenvocab` package documentation.
 - **the bootstrap** — `lyx loom start` (alias `lyx start`) brings up the worktree's tmux session, adds the `lyx loom status` strand (a fixed 3-row top band, `statusStrandFixedRows`, which fills the stack region while it is the only stack strand), spawns the per-hub watchdog daemon (best-effort), and spawns the driver the run's own seed selects: the Go driver **detached** (via `proc`, no TTY), or a Claude strand running ly-drive in this same reed session for the `llm` driver.
-  Either way it then attaches the terminal to the session; Selvage is the operator's terminal, not a strand. A Go-driven loom run runs in the background;
+  Either way it then attaches the terminal to the session; Selvage is the operator's terminal, not a strand.
+  A Go-driven loom run runs in the background;
   the reed view takes the foreground.
   A `.lyx/lyxrun.cmd` launcher makes it one click.
 - `reed`, `shuttle`, and `loom` each get a user-facing `lyx <module>` CLI (`lyx shuttle run|interrupt|send` lets an operator or another process drive one agent standalone, before loom exists); `burler` is composed by loom's own review segments (`lyx burler run` is a debug-only wrapper, not a product verb), and `proc` alone stays an internal library with no CLI of its own.
