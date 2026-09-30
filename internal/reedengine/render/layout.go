@@ -21,8 +21,8 @@ type placement struct {
 	id     string
 	height int
 	// strip reports whether this cell's height came from an absolute row
-	// budget (a collapsed strip or a fixed budget, post-clamp) rather than
-	// from the equal-split of whatever rows were left. buildStackBody must
+	// budget (a collapsed placement, post-clamp) rather than being the
+	// bottom-most cell that takes whatever rows were left. buildStackBody must
 	// not read it — it exists for FixedHeightPins (rules.go) to identify
 	// which placements to report.
 	strip bool

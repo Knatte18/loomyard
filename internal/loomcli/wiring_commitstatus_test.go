@@ -293,20 +293,17 @@ func TestWire_CommitStatusFilled(t *testing.T) {
 func TestStatusCommitPathspec(t *testing.T) {
 	t.Parallel()
 
-	statusRel := shedrun.StatusRel(shedrun.SelfRunID)
-	withReviews := []string{statusRel, loomengine.LoomReviewsDirRel()}
-
 	tests := []struct {
-		name  string
-		setup func(t *testing.T, reviews string)
-		want  []string
+		name        string
+		setup       func(t *testing.T, reviews string)
+		wantReviews bool
 	}{
-		{"absent", func(t *testing.T, reviews string) {}, []string{statusRel}},
+		{"absent", func(t *testing.T, reviews string) {}, false},
 		{"only empty segment directories", func(t *testing.T, reviews string) {
 			if err := os.MkdirAll(filepath.Join(reviews, "plan"), 0o755); err != nil {
 				t.Fatal(err)
 			}
-		}, []string{statusRel}},
+		}, false},
 		{"file in a segment directory", func(t *testing.T, reviews string) {
 			seg := filepath.Join(reviews, "plan")
 			if err := os.MkdirAll(seg, 0o755); err != nil {
@@ -315,7 +312,7 @@ func TestStatusCommitPathspec(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(seg, "round-1-review.md"), []byte("x\n"), 0o644); err != nil {
 				t.Fatal(err)
 			}
-		}, withReviews},
+		}, true},
 		{"regular file at the reviews path", func(t *testing.T, reviews string) {
 			if err := os.MkdirAll(filepath.Dir(reviews), 0o755); err != nil {
 				t.Fatal(err)
@@ -323,16 +320,20 @@ func TestStatusCommitPathspec(t *testing.T) {
 			if err := os.WriteFile(reviews, []byte("x\n"), 0o644); err != nil {
 				t.Fatal(err)
 			}
-		}, []string{statusRel}},
+		}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			location := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
 			tt.setup(t, loomengine.LoomReviewsDir(location))
+			want := []string{shedrun.StatusRel(location, shedrun.SelfRunID)}
+			if tt.wantReviews {
+				want = append(want, loomengine.LoomReviewsDirRel())
+			}
 			got := statusCommitPathspec(location, shedrun.SelfRunID)
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("statusCommitPathspec() = %v; want %v", got, tt.want)
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("statusCommitPathspec() = %v; want %v", got, want)
 			}
 		})
 	}

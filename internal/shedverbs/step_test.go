@@ -1,4 +1,4 @@
-// step_test.go covers the generic step body's thirteen-key envelope closure, the five-kind closed
+// step_test.go covers the generic step body's sixteen-key envelope closure, the five-kind closed
 // vocabulary, PreStep's kind threading, and PostStep's success-only, before-the-envelope ordering.
 
 package shedverbs
@@ -21,9 +21,9 @@ func stepTexts() VerbTexts {
 	return VerbTexts{Step: VerbText{Use: "step", Short: "step the fake shed"}}
 }
 
-// TestStepEnvelope_KeySetIsExactlyThirteen mirrors internal/loomcli/step_test.go's own closure test:
-// the envelope's key set is exactly the thirteen documented keys and no larger.
-func TestStepEnvelope_KeySetIsExactlyThirteen(t *testing.T) {
+// TestStepEnvelope_KeySetIsExactlySixteen mirrors internal/loomcli/step_test.go's own closure test:
+// the envelope's key set is exactly the sixteen documented keys and no larger.
+func TestStepEnvelope_KeySetIsExactlySixteen(t *testing.T) {
 	res := shedengine.StepResult{
 		Producer: "P",
 		Outcome:  shedengine.Done,
@@ -33,12 +33,13 @@ func TestStepEnvelope_KeySetIsExactlyThirteen(t *testing.T) {
 		Reason:   "",
 		History:  []shedengine.HistoryEntry{{Producer: "P", Outcome: shedengine.Done}},
 	}
-	env := StepEnvelope(res, "policy", "/status.json", StepLocations{})
+	env := StepEnvelope(res, "policy", "/status.json", StepLocations{}, nil)
 
 	wantKeys := map[string]bool{
 		"producer": true, "outcome": true, "output": true, "next": true, "state": true,
 		"reason": true, "continue": true, "history_length": true, "next_interrupt_policy": true,
 		"status_file": true, "trace_file": true, "friction_dir": true, "scratch_dir": true,
+		"trace_id": true, "run_id": true, "progress": true,
 	}
 	if len(env) != len(wantKeys) {
 		t.Fatalf("StepEnvelope key count = %d; want %d (%v)", len(env), len(wantKeys), env)
@@ -63,7 +64,7 @@ func TestStepEnvelope_ContinueDerivedFromState(t *testing.T) {
 		{shedengine.StateFailed, false},
 	}
 	for _, tt := range tests {
-		env := StepEnvelope(shedengine.StepResult{State: tt.state}, "", "", StepLocations{})
+		env := StepEnvelope(shedengine.StepResult{State: tt.state}, "", "", StepLocations{}, nil)
 		if env["continue"] != tt.want {
 			t.Errorf("state %q: continue = %v; want %v", tt.state, env["continue"], tt.want)
 		}
@@ -357,6 +358,7 @@ func TestStepCmd_ErrorEnvelopesCarryLocations(t *testing.T) {
 			spec := tt.spec()
 			spec.ScratchDir = "/scratch"
 			spec.FrictionDir = "/friction"
+			spec.RunID = "my-slug"
 
 			env, code := execEnvelope(t, stepCmd(stepTexts(), spec), nil)
 			if code != 1 {
@@ -373,6 +375,12 @@ func TestStepCmd_ErrorEnvelopesCarryLocations(t *testing.T) {
 			}
 			if _, ok := env["trace_file"]; !ok {
 				t.Errorf("envelope missing trace_file: %v", env)
+			}
+			if env["run_id"] != "my-slug" {
+				t.Errorf("run_id = %v; want my-slug", env["run_id"])
+			}
+			if env["trace_id"] != logger.TraceID() {
+				t.Errorf("trace_id = %v; want %q", env["trace_id"], logger.TraceID())
 			}
 		})
 	}
@@ -401,6 +409,66 @@ func TestStepCmd_SuccessEnvelopeEchoesLocations(t *testing.T) {
 	if env["trace_file"] != "" {
 		t.Errorf("trace_file = %v; want empty with no sink armed", env["trace_file"])
 	}
+}
+
+// TestStepCmd_SuccessEnvelopeCarriesIdentityAndProgress asserts the success envelope carries the
+// told run_id, the process trace id, and progress matching ProgressAt(res.Next), and reports a null
+// progress for an unarmed Routing.
+func TestStepCmd_SuccessEnvelopeCarriesIdentityAndProgress(t *testing.T) {
+	routing := shedengine.Routing{
+		Entry: "A",
+		Producers: []shedengine.ProducerDef{
+			{Name: "A", OnDone: "B"},
+			{Name: "B"},
+		},
+	}
+	build := func(paths testPaths) func() (*shedengine.Shed, error) {
+		return func() (*shedengine.Shed, error) {
+			return newFakeShed(paths, []shedengine.ProducerDef{
+				{Name: "A", Producer: stubRow("A").Producer, OnDone: "B"},
+				stubRow("B"),
+			}), nil
+		}
+	}
+
+	t.Run("Armed", func(t *testing.T) {
+		paths := newTestPaths(t)
+		seedStatus(t, paths, "A")
+		spec := &Spec{RunID: "my-slug", Routing: routing, BuildShed: build(paths)}
+
+		env, code := execEnvelope(t, stepCmd(stepTexts(), spec), nil)
+		if code != 0 {
+			t.Fatalf("exit code = %d; want 0 (%v)", code, env)
+		}
+		if env["run_id"] != "my-slug" {
+			t.Errorf("run_id = %v; want my-slug", env["run_id"])
+		}
+		if env["trace_id"] != logger.TraceID() {
+			t.Errorf("trace_id = %v; want %q", env["trace_id"], logger.TraceID())
+		}
+		want := routing.ProgressAt("B")
+		got, ok := env["progress"].(map[string]any)
+		if !ok {
+			t.Fatalf("progress = %v; want an object", env["progress"])
+		}
+		if got["step"] != float64(want.Step) || got["steps"] != float64(want.Steps) || got["name"] != want.Name {
+			t.Errorf("progress = %v; want %+v", got, want)
+		}
+	})
+
+	t.Run("Unarmed", func(t *testing.T) {
+		paths := newTestPaths(t)
+		seedStatus(t, paths, "A")
+		spec := &Spec{BuildShed: build(paths)}
+
+		env, code := execEnvelope(t, stepCmd(stepTexts(), spec), nil)
+		if code != 0 {
+			t.Fatalf("exit code = %d; want 0 (%v)", code, env)
+		}
+		if v, ok := env["progress"]; !ok || v != nil {
+			t.Errorf("progress = %v (present=%v); want null", v, ok)
+		}
+	})
 }
 
 // TestStepCmd_TraceFileHoldsBoundaryRecords arms the durable sink and asserts trace_file names a

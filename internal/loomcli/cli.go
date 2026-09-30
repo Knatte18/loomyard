@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
+	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -92,6 +93,9 @@ type loomCLI struct {
 	// read it back to build every shedrun.* path, in place of a hardcoded shedrun.SelfRunID, so a
 	// later card and batch 7's addressing surface can read it too.
 	runID string
+	// routing is the recipe's producer-graph projection armAt loads (loadRouting) and specFor copies
+	// onto the Spec; zero on a hand-populated receiver, which reports no progress.
+	routing shedengine.Routing
 	// entryObservation carries loomPreRun's entry observation forward to loomPostRun, since
 	// PreRun returns no envelope map of its own.
 	entryObservation loomengine.EntryObservation

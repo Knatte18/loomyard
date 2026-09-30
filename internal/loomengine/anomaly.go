@@ -107,8 +107,8 @@ const recurringFindingThreshold = 3
 // drive of every task. A clean step handoff is that exclusion's sibling one row further along: a
 // completed `lyx loom step` also leaves state running with a live history and no lock held, so
 // without its marker every operator handing a supervised task to a driver would file a spurious
-// crash-resume (crucible round 2, R2-F1). A paused, blocked, or failed entry state is an ordinary
-// human resume, not a crash.
+// crash-resume (crucible round 2, R2-F1). A paused, blocked, failed, or awaiting entry state is an
+// ordinary human resume, not a crash.
 func DetectCrashResume(entry EntryObservation) (Anomaly, bool) {
 	if !entry.Observed || entry.RunLockHeld || entry.State != shedengine.StateRunning || entry.HistoryLength <= 0 || entry.CleanStepHandoff {
 		return Anomaly{}, false

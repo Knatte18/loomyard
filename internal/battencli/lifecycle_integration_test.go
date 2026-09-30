@@ -292,7 +292,7 @@ func TestBattenIntegration_RealReadStatus_OnAFreshPairReportsAbsentRatherThanErr
 // read-status answering StateDone through the whole four-row list one row at a time: Worktree-Create,
 // Seed-Child, Run-Shed, Worktree-Teardown.
 // It asserts the pair exists on disk after the create row, that the child's own
-// _lyx/shed/self/seed.json exists after the seed row, names the Board task's own "type" as its
+// _lyx/shed/<slug>/seed.json exists after the seed row, names the Board task's own "type" as its
 // recipe, and is committed (not merely written) on the child's own weft pair, and that the pair is
 // gone after the teardown row.
 func TestBattenIntegration_FourRowRun_SeedsChildCommitsAndTearsDown(t *testing.T) {
@@ -342,7 +342,7 @@ func TestBattenIntegration_FourRowRun_SeedsChildCommitsAndTearsDown(t *testing.T
 	}
 
 	weftPath := h.PairWeftSibling(slug)
-	seedRel := filepath.ToSlash(shedrun.SeedRel(shedrun.SelfRunID))
+	seedRel := filepath.ToSlash(shedrun.SeedRel(childLocation, shedrun.SelfRunID))
 	committedData := gitShow(t, weftPath, "HEAD:"+seedRel)
 	if !bytes.Equal(committedData, seedData) {
 		t.Errorf("committed seed at HEAD:%s = %q; want it to match the working-tree seed %q", seedRel, committedData, seedData)

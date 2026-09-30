@@ -3,6 +3,8 @@
 // appends one JSON line the instant an AskUserQuestion tool call opens;
 // this file turns that raw byte stream into the shuttleengine.Events the run loop classifies
 // outcomes from.
+// A Stop line whose turn ended with background work outstanding becomes EventWaiting rather than
+// EventStop; background.go decides that from the Stop payload and the transcript it points at.
 // All Claude payload-shape knowledge (hook_event_name, tool_name, tool_input, the literal
 // AskUserQuestion tool name) lives only in this file, per the provider-seam containment decision.
 package claudeengine
@@ -14,8 +16,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// ParseEvents parses events.jsonl into Events: Stop lines become EventStop,
-// PreToolUse+AskUserQuestion lines become EventAsk.
+// ParseEvents parses events.jsonl into Events: Stop lines become EventStop (EventWaiting when
+// background work is outstanding), PreToolUse+AskUserQuestion lines become EventAsk.
 // It is lenient: malformed or unrecognized lines are skipped, since the file may still be growing
 // during the run.
 func (c *Claude) ParseEvents(data []byte) ([]shuttleengine.Event, error) {
@@ -40,8 +42,12 @@ func (c *Claude) ParseEvents(data []byte) ([]shuttleengine.Event, error) {
 		switch eventName {
 		case "Stop":
 			lastMessage, _ := fields["last_assistant_message"].(string)
+			kind := shuttleengine.EventStop
+			if hasOutstandingBackgroundWork(fields) {
+				kind = shuttleengine.EventWaiting
+			}
 			events = append(events, shuttleengine.Event{
-				Kind:    shuttleengine.EventStop,
+				Kind:    kind,
 				Message: lastMessage,
 				Raw:     []byte(line),
 			})

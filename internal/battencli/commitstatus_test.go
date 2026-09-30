@@ -362,15 +362,15 @@ func TestBattenRunCommitPaths(t *testing.T) {
 	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
 
 	got := battenRunCommitPaths(loc, runID)
-	if len(got) != 1 || got[0] != shedrun.StatusRel(runID) {
-		t.Fatalf("battenRunCommitPaths with no seed on disk = %v; want just %q", got, shedrun.StatusRel(runID))
+	if len(got) != 1 || got[0] != shedrun.StatusRel(loc, runID) {
+		t.Fatalf("battenRunCommitPaths with no seed on disk = %v; want just %q", got, shedrun.StatusRel(loc, runID))
 	}
 
 	if err := shedrun.WriteSeed(loc, runID, shedrun.Seed{Recipe: shedrun.RecipeBatten, Driver: shedrun.DriverGo}); err != nil {
 		t.Fatalf("write seed: %v", err)
 	}
 	got = battenRunCommitPaths(loc, runID)
-	want := []string{shedrun.StatusRel(runID), shedrun.SeedRel(runID)}
+	want := []string{shedrun.StatusRel(loc, runID), shedrun.SeedRel(loc, runID)}
 	if len(got) != len(want) {
 		t.Fatalf("battenRunCommitPaths with a seed on disk = %v; want %v", got, want)
 	}

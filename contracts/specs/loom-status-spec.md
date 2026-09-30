@@ -1,12 +1,12 @@
 # Loom status spec — loom's spawn/handover status file
 
-> **Status: Contract — pinned.** This doc pins the `_lyx/shed/self/status.json` schema: loom's single source of truth for orchestration state, and the t=0 "seed" a spawn-time lyx command hands off to loom. Durable reference doc — kept, not deleted on landing — the loom analogue of [webster-spec.md](webster-spec.md) and `contracts/stencils/loom/loom-template-plan.md`.
+> **Status: Contract — pinned.** This doc pins the `_lyx/shed/<slug>/status.json` schema (`self` resolves to the worktree's slug): loom's single source of truth for orchestration state, and the t=0 "seed" a spawn-time lyx command hands off to loom. Durable reference doc — kept, not deleted on landing — the loom analogue of [webster-spec.md](webster-spec.md) and `contracts/stencils/loom/loom-template-plan.md`.
 > This doc's own "seed" — the t=0 contents of the status file described below — is a different artefact from the seeded-shed core's `seed.json` (see `internal/shedrun`'s own package documentation): one is a snapshot of the status shell, the other is a separate, write-once file recording a run's recipe, driver, and parameters.
 > Product-scoped under `loom/` (renamed 2026-08-15 from a bare `_lyx/status.json`), since `Shed` (`internal/shedengine`) is a generic engine more than one product configures — the Someday `Hardener` product needs its own status file too, and a bare path could not serve both.
 
 ## What it is
 
-`_lyx/shed/self/status.json` is `shedengine.Status` (see `internal/shedengine`'s own package documentation for the shell's field semantics — `current_producer`, `state`, `error`, `pause_requested`, `activity`, `history`) plus loom's own `product` payload: `slug`, `parent`, and `start_sha`.
+`_lyx/shed/<slug>/status.json` is `shedengine.Status` (see `internal/shedengine`'s own package documentation for the shell's field semantics — `current_producer`, `state`, `error`, `pause_requested`, `activity`, `history`) plus loom's own `product` payload: `slug`, `parent`, and `start_sha`.
 `lyx loom run` (via `Shed.Run`) rewrites the shell on every step — that loop belongs to the driver verb `lyx loom start` spawns detached, never to `lyx loom start` itself;
 its t=0 "seed" — the handoff instant a task is spawned and given to loom — is written once, by `lyx loom start`'s own first invocation, before that spawn happens (see [The seed / handover](#the-seed--handover) below).
 
@@ -17,12 +17,12 @@ Its path resolves via `internal/shedrun.StatusFile`, joined onto `internal/lyxcw
 
 The file is **JSON via the existing `internal/state` primitive** (`WriteJSON[T]`/ `ReadJSON[T]`: locked, atomic, typed) — the same mechanism `webster` uses for its own `_lyx/webster/state.json`.
 
-`_lyx/shed/self/status.json` is machine-written, machine-read orchestration state, not something a human is expected to hand-edit, and `lyx loom status --watch` pretty-prints it for humans — so the on-disk file need not be hand-readable.
+`_lyx/shed/<slug>/status.json` is machine-written, machine-read orchestration state, not something a human is expected to hand-edit, and `lyx loom status --watch` pretty-prints it for humans — so the on-disk file need not be hand-readable.
 Reusing `internal/state` gives locking and atomic writes for free and keeps one state primitive across modules, rather than a second one-off for loom.
 
 ## The seed / handover
 
-The **seed** is the t=0 contents of `_lyx/shed/self/status.json` at the instant a task is spawned and handed to loom — not a separate file or a separate schema, just the initial snapshot of the same file loom then keeps rewriting.
+The **seed** is the t=0 contents of `_lyx/shed/<slug>/status.json` at the instant a task is spawned and handed to loom — not a separate file or a separate schema, just the initial snapshot of the same file loom then keeps rewriting.
 
 It is written by **`lyx loom start`**, the session bootstrap, at its own first invocation — the mill-spawn analogue, but Go, never an agent.
 That binding is now pinned: `lyx loom start` seeds the file itself when it is absent, tolerating a re-run's already-seeded case rather than re-seeding it, and commits the seed weft-side before it spawns the detached driver.
@@ -39,8 +39,8 @@ A fresh seed carries `current_producer: "Preflight"`, `state: "running"`, empty 
 ```jsonc
 {
   "current_producer": "Preflight",             // Shed-owned: which producer this run is at
-  "state": "running",                          // Shed-owned: running | paused | done | blocked | failed
-  "error": "",                                 // Shed-owned: human-readable detail for a failed/blocked halt; a blocked halt carries the producer's own stuck reason (the generic "stuck with no OnStuck target" when it supplied none) or the fixed "bounce budget exhausted"
+  "state": "running",                          // Shed-owned: running | paused | done | blocked | awaiting | failed
+  "error": "",                                 // Shed-owned: human-readable detail for a failed/blocked/awaiting halt (awaiting is the planned PR-review hand-off at Publish); a blocked halt carries the producer's own stuck reason (the generic "stuck with no OnStuck target" when it supplied none) or the fixed "bounce budget exhausted"
   "pause_requested": false,                    // shared write-to-clear: set true by an outside actor, cleared by Shed
   "activity": {"now": "...", "last": "...", "wait": "..."}, // Shed-owned, mechanically composed
   "history": [                                 // Shed-owned: one entry per producer call
@@ -82,10 +82,10 @@ Spec for check 4, loom's own precondition layered over `Shed`'s shell (`internal
 
 - `product.slug` and `product.parent` are mandatory: an empty string counts as absent.
 - `shed.current_producer` must equal `"Loom-Preflight"` — that is what `Shed` persists before calling row 2, since `Run` writes the next row's name into `current_producer` and appends the finished row's history entry before making the call.
-- `shed.state` must be one of `Shed`'s five legal values and must not be `"done"`, a finished run.
+- `shed.state` must be one of `Shed`'s six legal values and must not be `"done"`, a finished run.
 - `shed.error` is tolerated at any value, including non-empty — it is the previous halt's reason a human resumes after reading.
 - `shed.activity` is never validated — `Shed` recomposes it mechanically on every persist.
-- Every `shed.history[].outcome` must be `"done"` or `"stuck"`, and every `shed.history[].at` must be RFC3339 UTC.
+- Every `shed.history[].outcome` must be `"done"`, `"stuck"` or `"awaiting"`, and every `shed.history[].at` must be RFC3339 UTC.
 - **Fresh-start check:** a `shed.history[]` entry naming any producer other than `"Preflight"` or `"Loom-Preflight"` is a half-finished failure; entries naming either of those two are tolerated, since `Shed.Run` appends a history entry before persisting `state: "blocked"` on every `Stuck` route including the `OnStuck: ""` escalation, so a `Stuck` at either row 1 or row 2 leaves one matching entry behind and a resumable blocked run must not fail this check forever.
 - A non-null `product.start_sha`, or `shed.pause_requested: true`, is also a half-finished failure — the task has already advanced past the point the two Preflight rows are meant to gate.
 - A `product` that fails to decode as loom's own shape is a `seed-incoherent` verdict, not an infra error.

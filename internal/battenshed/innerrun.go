@@ -45,6 +45,10 @@ func SpawnConfirmedFile(scratchDir, producer string) string {
 // cannot restart the task worktree's own driver, only watch it.
 const haltedChildRemedy = "the task worktree's own run must be resumed from inside that worktree (its recipe's bootstrap verb, e.g. \"lyx loom start\") before this run is resumed; resuming this run alone only resumes the watch"
 
+// awaitingChildRemedy is the hand-off instruction an awaiting child's error carries: the child
+// waits on a pull-request approval that only the operator can give from inside the task worktree.
+const awaitingChildRemedy = "the child is awaiting a human hand-off: approve its pull request (\"lyx loom approve\" inside the task worktree), then resume the child (\"lyx loom start\" there), then resume this run"
+
 // innerRunProducer spawns the inner shed run for a task worktree, once, and checks its persisted
 // status once per Call, reporting Stuck while the child is still running so shedengine's own
 // on_stuck self-route re-enters this producer rather than this type looping internally.
@@ -173,6 +177,10 @@ func (p *innerRunProducer) Call(ctx context.Context) (shedengine.Outcome, sheden
 		reason := fmt.Sprintf("inner shed run still running; sleeping %s before the next bounce", p.pollInterval)
 		reportStuck(p.name, reason, p.scratchDir, "slug", p.slug)
 		return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
+	case shedengine.StateAwaiting:
+		// A planned hand-off, not a fault: the child waits on a human, so the remedy names the
+		// approval step before the resume.
+		return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: inner shed run reached state %q: error=%q current_producer=%q; %s", p.name, status.State, status.Error, status.CurrentProducer, awaitingChildRemedy)
 	case shedengine.StateBlocked, shedengine.StatePaused, shedengine.StateFailed:
 		// The remedy is named here because nothing on the prime side can perform it: this row never
 		// spawns against a halted child, and resuming the outer run resumes the watch, never the

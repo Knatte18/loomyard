@@ -60,8 +60,9 @@ type Hooks struct {
 	// signal and never a third policy word -- a recipe with no policy table therefore yields an
 	// empty next_interrupt_policy.
 	InterruptPolicyFor func(row string) string
-	// StatusExtras lets a module add its own keys onto status's seven-key generic core
-	// (current_producer, state, error, activity, history_length, interrupt_policy, trace_dir),
+	// StatusExtras lets a module add its own keys onto status's ten-key generic core
+	// (current_producer, state, error, activity, history_length, interrupt_policy, trace_dir,
+	// run_id, progress, last_step),
 	// keyed by the decoded shedengine.Status. A non-nil error it returns is reported verbatim on
 	// the error envelope with no re-prefixing -- the hook owns its whole string. StatusExtras
 	// never runs against a zero shedengine.Status: the absent-file envelope carries only the
@@ -99,12 +100,24 @@ type Spec struct {
 	// StatusLockPath is the advisory lock internal/state takes around every status-file read and
 	// write.
 	StatusLockPath string
+	// RunID is the resolved run-id the arming module addressed, reported as run_id on the status and
+	// every step envelope. The empty string means the arming module supplied none.
+	RunID string
+	// Routing is the told projection of the recipe's producer graph that the envelopes' progress key
+	// is derived from. The zero value (no producers) means no progress is known, and progress is
+	// then reported as null.
+	Routing shedengine.Routing
 	// ScratchDir is the run's ephemeral shed scratch directory (shedrun.ScratchDir of the addressed
 	// run), reported on every step envelope as scratch_dir.
 	// It is never filled from shedrun.RunDir, the run's durable tracked directory, because driver
 	// records written under it must never land in tracked content.
 	// The empty string means the arming module supplied none.
 	ScratchDir string
+	// StepsDir is the ephemeral directory step keeps its per-invocation records in (shedrun.StepsDir
+	// of the addressed run): an in-flight record before the producer call and the printed envelope
+	// after it, and status reads the newest one as last_step.
+	// It is told, never derived here; the empty string means no records are kept.
+	StepsDir string
 	// FrictionDir is the recipe's own agent friction-note directory, reported as friction_dir.
 	// The empty string means the recipe has none or friction is off.
 	FrictionDir string

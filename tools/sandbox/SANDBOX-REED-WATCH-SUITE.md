@@ -167,7 +167,7 @@ compact strip in real time while the child takes the bulk of the window."
 
 **Watch:** `lyx reed add --parent <W1-guid> --cmd <a plain long-running command>` -- both strands
 read `live: true` in `status`, and the operator watches, in the attach window, the parent's pane
-shrink to `collapsed_strip_rows` as the split happens, with the child's pane taking the rest of
+shrink to `collapsed_rows` as the split happens, with the child's pane taking the rest of
 the window.
 A parent that does not visibly shrink, a child pane that never appears, or either strand flipping
 to `live: false` is a `FAIL`.

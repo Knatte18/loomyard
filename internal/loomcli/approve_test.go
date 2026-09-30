@@ -57,7 +57,7 @@ func TestApproveVerb_Refusals(t *testing.T) {
 					return shedengine.Status{State: shedengine.StateRunning, CurrentProducer: loomshed.NamePublish}, true, nil
 				}
 			},
-			wantMsg: "not blocked",
+			wantMsg: "not awaiting or blocked",
 		},
 		{
 			name: "BlockedAtOtherProducer",
@@ -66,7 +66,7 @@ func TestApproveVerb_Refusals(t *testing.T) {
 					return shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: loomshed.NameFinalize}, true, nil
 				}
 			},
-			wantMsg: "not blocked",
+			wantMsg: "not awaiting or blocked",
 		},
 		{
 			name: "NoPullRequest",

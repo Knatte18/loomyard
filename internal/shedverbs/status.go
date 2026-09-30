@@ -115,7 +115,7 @@ func runStatusWatch(out io.Writer, spec *Spec, interval time.Duration) {
 // statusCmd builds the generic `status` subcommand, registering the two flags -- --watch and
 // --interval -- the generic body itself reads and no others.
 func statusCmd(texts VerbTexts, spec *Spec) *cobra.Command {
-	var watch bool
+	var watch, asJSON bool
 	var interval time.Duration
 
 	cmd := &cobra.Command{
@@ -129,6 +129,11 @@ func statusCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 			ctx := cmd.Context()
 			out := cmd.OutOrStdout()
 			traceDir := logger.TraceDir()
+
+			if watch && asJSON {
+				clihelp.SetExit(ctx, output.ErrFields(out, "--watch renders a live line, not JSON; drop --json, or drop --watch for the JSON envelope", map[string]any{"trace_dir": traceDir}))
+				return nil
+			}
 
 			if spec.EnsureStatusLockDir {
 				if err := ensureStatusLockDir(spec.DecodeErrPrefix, spec.StatusLockPath); err != nil {
@@ -174,6 +179,9 @@ func statusCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 				"history_length":   len(st.History),
 				"interrupt_policy": interruptPolicy,
 				"trace_dir":        traceDir,
+				"run_id":           spec.RunID,
+				"progress":         progressOf(spec.Routing, st.CurrentProducer),
+				"last_step":        lastStepOf(spec.StepsDir),
 			}
 			if spec.Hooks.StatusExtras != nil {
 				extras, err := spec.Hooks.StatusExtras(st)
@@ -186,11 +194,16 @@ func statusCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 					core[k] = v
 				}
 			}
+			if !asJSON && writerIsTerminal(out) {
+				fmt.Fprint(out, RenderStatusHuman(spec.StatusLabel, spec.RunID, st, spec.Routing))
+				return nil
+			}
 			clihelp.SetExit(ctx, output.Ok(out, core))
 			return nil
 		},
 	}
 
+	cmd.Flags().BoolVar(&asJSON, "json", false, "print the JSON envelope even on a terminal, where the one-shot status otherwise prints a human view; refused with --watch")
 	cmd.Flags().BoolVar(&watch, "watch", false, "tail the status file, printing a line only when the activity changes, instead of emitting a single JSON envelope")
 	cmd.Flags().DurationVar(&interval, "interval", time.Second, "poll interval for --watch; exists so a test can drive the poll fast without a real wall-clock wait")
 

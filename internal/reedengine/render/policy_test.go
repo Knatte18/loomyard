@@ -1,4 +1,4 @@
-// policy_test.go tests the anchor dispatch, deterministic stack ordering, and cycle-safe traversal
+// policy_test.go tests the anchor dispatch, insertion-order stack ordering, and cycle-safe traversal
 // in policy.go.
 
 package render
@@ -41,36 +41,23 @@ func TestPartitionByAnchor(t *testing.T) {
 }
 
 func TestOrderStackSiblingInsertionOrder(t *testing.T) {
-	// b and c both parent under a and must keep their relative input
-	// order; d is a second root and must not interleave between them.
+	// The parent chain plays no part: a child inserted before its parent stays
+	// before it, and every strand keeps its input position.
 	strands := []Strand{
+		{GUID: "c", Parent: "a"},
 		{GUID: "a", Parent: ""},
 		{GUID: "d", Parent: ""},
-		{GUID: "c", Parent: "a"},
 		{GUID: "b", Parent: "a"},
 	}
 	ordered := orderStack(strands)
 
-	depthOf := func(guid string) int {
-		for i, s := range ordered {
-			if s.GUID == guid {
-				return i
-			}
+	if len(ordered) != len(strands) {
+		t.Fatalf("orderStack returned %d strands, want %d", len(ordered), len(strands))
+	}
+	for i, s := range strands {
+		if ordered[i].GUID != s.GUID {
+			t.Errorf("ordered[%d] = %q, want %q (insertion order)", i, ordered[i].GUID, s.GUID)
 		}
-		t.Fatalf("guid %q not found in ordered result", guid)
-		return -1
-	}
-
-	if depthOf("a") >= depthOf("c") {
-		t.Errorf("root a must precede its child c")
-	}
-	if depthOf("a") >= depthOf("b") {
-		t.Errorf("root a must precede its child b")
-	}
-	// c was inserted before b in the input, and both share parent a, so c
-	// must stay before b in the output.
-	if depthOf("c") >= depthOf("b") {
-		t.Errorf("siblings c, b must preserve insertion order (c before b)")
 	}
 }
 

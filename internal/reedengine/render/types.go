@@ -1,5 +1,5 @@
 // types.go defines the closed display vocabulary render exposes to its caller: the Anchor kinds a
-// strand may declare, the per-strand Display settings (anchor, focus, shrink, fixed row budget),
+// strand may declare, the per-strand Display settings (anchor and focus),
 // and the plain Strand/Box/Params value types.
 // This file carries no logic — it is the vocabulary the policy layer (policy.go, height.go,
 // focus.go) and the mechanics layer (layout.go, checksum.go) are built from.
@@ -23,8 +23,7 @@ package render
 type Anchor string
 
 const (
-	// AnchorBelowParent places a strand in the vertically stacked region, ordered by parent-chain
-	// depth.
+	// AnchorBelowParent places a strand in the vertically stacked region, ordered by insertion.
 	AnchorBelowParent Anchor = "below-parent"
 	// AnchorOwnWindow is declared in the vocabulary but deferred in v1: Rules rejects any strand
 	// carrying it with an error.
@@ -46,20 +45,6 @@ type Display struct {
 	// focus. At most one strand is expected to set Focus; if several do,
 	// render breaks the tie by picking the bottom-most.
 	Focus bool `json:"focus"`
-	// ShrinkWhenWaitingOnChild, when true, lets this strand collapse to a
-	// compact strip once one of its descendants is present in the layout
-	// — the ancestor is blocked waiting on that child, so it need not
-	// stay full height. When false the strand stays a co-equal full pane
-	// even while a descendant is present.
-	ShrinkWhenWaitingOnChild bool `json:"shrinkWhenWaitingOnChild"`
-	// FixedRows, when positive, gives this strand exactly that many rows
-	// whether or not it has a descendant, treated like a collapsed strip
-	// everywhere else in the height policy. Zero means no fixed height, so
-	// every existing reed.json record decodes to zero and lays out as
-	// before. The stack's active (bottom-most) strand ignores it and stays
-	// a full pane, and it wins over ShrinkWhenWaitingOnChild when both
-	// apply.
-	FixedRows int `json:"fixedRows"`
 }
 
 // Strand is the layout-facing projection of an engine strand: only the fields Rules needs to place
@@ -71,7 +56,7 @@ type Strand struct {
 	GUID string
 	// Parent is the parent strand's GUID, or "" for a root strand.
 	Parent string
-	// Display carries this strand's placement, focus, and shrink settings.
+	// Display carries this strand's placement and focus settings.
 	Display Display
 	// PaneID is the tmux pane id (e.g. "%5") this strand currently owns.
 	// A strand with an empty PaneID owns no pane and is excluded from the
@@ -103,13 +88,12 @@ type Selvage struct {
 // Params carries the tunable height-policy knobs the engine loads from reed.yaml, keeping render
 // itself config-agnostic.
 type Params struct {
-	// CollapsedStripRows is the height a shrink:true ancestor collapses to
-	// once it has a descendant present in the layout.
-	CollapsedStripRows int
-	// MinFullRows is the floor height the clamp rule tries to preserve for
-	// a full (non-collapsed) pane when the window is too short to satisfy
-	// every strand's natural height. clampBandHeight also uses this as
-	// the strand-stack region's floor when the Selvage band is present.
+	// CollapsedRows is the height every below-parent strand except the
+	// bottom-most takes; the bottom-most takes every remaining row.
+	CollapsedRows int
+	// MinFullRows is the floor clampBandHeight preserves for the
+	// strand-stack region when the Selvage band is present and the window
+	// is too short to fit both.
 	MinFullRows int
 	// Selvage carries the always-on operator console pane's placement, if
 	// any. A zero-value Selvage (empty PaneID) means no band is rendered.

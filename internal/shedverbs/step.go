@@ -42,9 +42,9 @@ var StepKinds = []string{KindBusy, KindUnseeded, KindOwnership, KindBootstrap, K
 
 // StepEnvelope builds step's success envelope from res -- the StepResult shed.Step returned --
 // alongside nextPolicy (spec.Hooks.InterruptPolicyFor(res.Next), or the empty string when the hook
-// is nil) and statusFile (the shed's own StatusPath). The returned map carries exactly the thirteen
-// documented keys below; the key set is closed -- a key outside these thirteen has no test and no
-// documented meaning:
+// is nil), statusFile (the shed's own StatusPath) and progress (the recipe progress for res.Next, or
+// nil when none is known). The returned map carries exactly the sixteen documented keys below; the
+// key set is closed -- a key outside these sixteen has no test and no documented meaning:
 //
 //   - producer: res.Producer
 //   - outcome: string(res.Outcome)
@@ -59,10 +59,13 @@ var StepKinds = []string{KindBusy, KindUnseeded, KindOwnership, KindBootstrap, K
 //   - trace_file: loc.TraceFile
 //   - friction_dir: loc.FrictionDir
 //   - scratch_dir: loc.ScratchDir
+//   - trace_id: loc.TraceID
+//   - run_id: loc.RunID
+//   - progress: progress
 //
 // "continue" is derived here, rather than left to the caller, so a thin external supervisor skill
 // never carries its own copy of the State vocabulary -- it only ever branches on this one boolean.
-func StepEnvelope(res shedengine.StepResult, nextPolicy, statusFile string, loc StepLocations) map[string]any {
+func StepEnvelope(res shedengine.StepResult, nextPolicy, statusFile string, loc StepLocations, progress *shedengine.Progress) map[string]any {
 	return map[string]any{
 		"producer":              res.Producer,
 		"outcome":               string(res.Outcome),
@@ -77,26 +80,43 @@ func StepEnvelope(res shedengine.StepResult, nextPolicy, statusFile string, loc 
 		"trace_file":            loc.TraceFile,
 		"friction_dir":          loc.FrictionDir,
 		"scratch_dir":           loc.ScratchDir,
+		"trace_id":              loc.TraceID,
+		"run_id":                loc.RunID,
+		"progress":              progress,
 	}
 }
 
-// StepLocations carries the three path keys every step envelope reports: trace_file
-// (TraceFile), friction_dir (FrictionDir) and scratch_dir (ScratchDir).
+// StepLocations carries the keys every step envelope, success or error, reports: trace_file
+// (TraceFile), friction_dir (FrictionDir), scratch_dir (ScratchDir), trace_id (TraceID) and run_id
+// (RunID).
 // It is one struct so StepEnvelope and the error-envelope helper share a single source.
 type StepLocations struct {
 	TraceFile   string
 	FrictionDir string
 	ScratchDir  string
+	TraceID     string
+	RunID       string
 }
 
-// stepErrFields builds an error envelope's extra fields: kind plus the three location keys.
+// stepErrFields builds an error envelope's extra fields: kind plus the five location keys.
 func stepErrFields(kind string, loc StepLocations) map[string]any {
 	return map[string]any{
 		"kind":         kind,
 		"trace_file":   loc.TraceFile,
 		"friction_dir": loc.FrictionDir,
 		"scratch_dir":  loc.ScratchDir,
+		"trace_id":     loc.TraceID,
+		"run_id":       loc.RunID,
 	}
+}
+
+// progressOf reports routing's progress at current, or nil when routing carries no producers.
+func progressOf(routing shedengine.Routing, current string) *shedengine.Progress {
+	if len(routing.Producers) == 0 {
+		return nil
+	}
+	p := routing.ProgressAt(current)
+	return &p
 }
 
 // stepCmd builds the generic `step` subcommand: the single-producer primitive an external
@@ -113,11 +133,17 @@ func stepCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 			}
 			logger.Info("shed: step", "status_file", spec.StatusPath)
 			ctx := cmd.Context()
-			out := cmd.OutOrStdout()
+
+			// The in-flight record is written before anything can refuse, and the envelope the body
+			// prints, success or refusal, is teed into its own record when the body returns.
+			rec := newStepRecorder(spec.StepsDir, logger.TraceID())
+			rec.begin()
+			defer rec.finish()
+			out := rec.tee(cmd.OutOrStdout())
 
 			// locations is computed after the Warn so the trace file it names is the one holding it.
 			locations := func() StepLocations {
-				return StepLocations{TraceFile: logger.TraceFile(), FrictionDir: spec.FrictionDir, ScratchDir: spec.ScratchDir}
+				return StepLocations{TraceFile: logger.TraceFile(), FrictionDir: spec.FrictionDir, ScratchDir: spec.ScratchDir, TraceID: logger.TraceID(), RunID: spec.RunID}
 			}
 			refuse := func(kind, msg string) {
 				logger.Warn("shed: step refused", "kind", kind, "error", msg)
@@ -164,7 +190,7 @@ func stepCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 			if spec.Hooks.InterruptPolicyFor != nil {
 				nextPolicy = spec.Hooks.InterruptPolicyFor(res.Next)
 			}
-			clihelp.SetExit(ctx, output.Ok(out, StepEnvelope(res, nextPolicy, spec.StatusPath, locations())))
+			clihelp.SetExit(ctx, output.Ok(out, StepEnvelope(res, nextPolicy, spec.StatusPath, locations(), progressOf(spec.Routing, res.Next))))
 			return nil
 		},
 	}

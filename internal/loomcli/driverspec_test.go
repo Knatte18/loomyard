@@ -10,7 +10,7 @@ import (
 // TestDriverSpec pins driverSpec's whole output shape, each field as its own named assertion.
 func TestDriverSpec(t *testing.T) {
 	prompt := "run the ly-drive skill"
-	reportPath := "/hub/wt/.lyx/shed/self/drive-report-20260920-120000-cafe.md"
+	reportPath := "/hub/wt/.lyx/shed/wt/drive-report-20260920-120000-cafe.md"
 	settings := loomengine.DriverSettings{
 		Model:   "claude-resolved-model-id",
 		Effort:  "high",
@@ -82,11 +82,6 @@ func TestDriverSpec(t *testing.T) {
 	t.Run("Display_Focus", func(t *testing.T) {
 		if got.Display.Focus {
 			t.Error("driverSpec().Display.Focus = true; want false -- Focus is persisted and re-evaluated on every later AddStrand")
-		}
-	})
-	t.Run("Display_ShrinkWhenWaitingOnChild", func(t *testing.T) {
-		if got.Display.ShrinkWhenWaitingOnChild {
-			t.Error("driverSpec().Display.ShrinkWhenWaitingOnChild = true; want false")
 		}
 	})
 	// Timeout, KeepPane, and AwaitOperator: nothing reads these on the driver path -- the wait loop

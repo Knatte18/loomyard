@@ -122,8 +122,8 @@ func startInPTY(t *testing.T, argv []string, cols, rows int) *attachGeometryPTY 
 }
 
 // setupAttachGeometryFixture boots a fresh integration engine and adds two strands — a
-// ShrinkWhenWaitingOnChild parent and its child — so the session carries a Selvage pane, a collapsed
-// strip, and a full pane simultaneously: the three-cell shape every case below lays out against.
+// parent and its child, in that insertion order — so the session carries a Selvage pane, a collapsed
+// pane, and a bottom-most pane simultaneously: the three-cell shape every case below lays out against.
 func setupAttachGeometryFixture(t *testing.T) *Engine {
 	t.Helper()
 
@@ -134,7 +134,7 @@ func setupAttachGeometryFixture(t *testing.T) *Engine {
 
 	parent, err := e.AddStrand(AddSpec{
 		Cmd:     "sleep 300",
-		Display: render.Display{Anchor: render.AnchorBelowParent, ShrinkWhenWaitingOnChild: true},
+		Display: render.Display{Anchor: render.AnchorBelowParent},
 	})
 	if err != nil {
 		t.Fatalf("AddStrand(parent): %v", err)
@@ -228,7 +228,7 @@ func TestAttachGeometry_ExactLayoutAndRowBudgets(t *testing.T) {
 		t.Fatalf("LoadState = (%+v, %v), want a readable state", st, err)
 	}
 	if len(st.Strands) != 2 {
-		t.Fatalf("st.Strands = %+v, want exactly 2 (the shrink-when-waiting parent and its child)", st.Strands)
+		t.Fatalf("st.Strands = %+v, want exactly 2 (the collapsed parent and its child)", st.Strands)
 	}
 	parentPaneID := st.Strands[0].PaneID
 	selvagePaneID := st.SelvagePaneID
@@ -247,8 +247,8 @@ func TestAttachGeometry_ExactLayoutAndRowBudgets(t *testing.T) {
 			}
 		case parentPaneID:
 			sawParent = true
-			if p.Height != e.cfg.CollapsedStripRows {
-				t.Errorf("collapsed parent pane %s height = %d, want %d (cfg.CollapsedStripRows)", p.ID, p.Height, e.cfg.CollapsedStripRows)
+			if p.Height != e.cfg.CollapsedRows {
+				t.Errorf("collapsed parent pane %s height = %d, want %d (cfg.CollapsedRows)", p.ID, p.Height, e.cfg.CollapsedRows)
 			}
 		}
 	}
@@ -347,7 +347,7 @@ func TestAttachGeometry_StaleLayoutRaceIsSafe(t *testing.T) {
 }
 
 // assertAttachGeometryRowBudgets asserts selvagePaneID and parentPaneID are, respectively, at
-// e.cfg.Selvage.HeightRows and e.cfg.CollapsedStripRows in the live pane set, failing with step
+// e.cfg.Selvage.HeightRows and e.cfg.CollapsedRows in the live pane set, failing with step
 // prefixed onto every message so a caller checking the same budgets at two points in one test can
 // tell which point failed.
 func assertAttachGeometryRowBudgets(t *testing.T, e *Engine, selvagePaneID, parentPaneID, step string) {
@@ -366,8 +366,8 @@ func assertAttachGeometryRowBudgets(t *testing.T, e *Engine, selvagePaneID, pare
 			}
 		case parentPaneID:
 			sawParent = true
-			if p.Height != e.cfg.CollapsedStripRows {
-				t.Errorf("(%s) collapsed parent pane %s height = %d, want %d (cfg.CollapsedStripRows)", step, p.ID, p.Height, e.cfg.CollapsedStripRows)
+			if p.Height != e.cfg.CollapsedRows {
+				t.Errorf("(%s) collapsed parent pane %s height = %d, want %d (cfg.CollapsedRows)", step, p.ID, p.Height, e.cfg.CollapsedRows)
 			}
 		}
 	}
@@ -405,7 +405,7 @@ func TestAttachGeometry_ResizeAfterAttachHoldsRowBudgets(t *testing.T) {
 		t.Fatalf("LoadState = (%+v, %v), want a readable state", st, err)
 	}
 	if len(st.Strands) != 2 {
-		t.Fatalf("st.Strands = %+v, want exactly 2 (the shrink-when-waiting parent and its child)", st.Strands)
+		t.Fatalf("st.Strands = %+v, want exactly 2 (the collapsed parent and its child)", st.Strands)
 	}
 	parentPaneID := st.Strands[0].PaneID
 	selvagePaneID := st.SelvagePaneID
@@ -497,7 +497,7 @@ func TestAttachGeometry_DeadStripPinDoesNotBreakSelvagePin(t *testing.T) {
 		t.Fatalf("LoadState = (%+v, %v), want a readable state", st, err)
 	}
 	if len(st.Strands) != 2 {
-		t.Fatalf("st.Strands = %+v, want exactly 2 (the shrink-when-waiting parent and its child)", st.Strands)
+		t.Fatalf("st.Strands = %+v, want exactly 2 (the collapsed parent and its child)", st.Strands)
 	}
 	selvagePaneID := st.SelvagePaneID
 	parentPaneID := st.Strands[0].PaneID

@@ -41,9 +41,8 @@ func TestSaveState_ThenLoadState_RoundTrips(t *testing.T) {
 				SessionID: "abc",
 				PaneID:    "%1",
 				Display: render.Display{
-					Anchor:                   render.AnchorBelowParent,
-					Focus:                    true,
-					ShrinkWhenWaitingOnChild: false,
+					Anchor: render.AnchorBelowParent,
+					Focus:  true,
 				},
 			},
 			{
@@ -54,9 +53,7 @@ func TestSaveState_ThenLoadState_RoundTrips(t *testing.T) {
 				Cmd:      "claude --session-id def",
 				PaneID:   "%2",
 				Display: render.Display{
-					Anchor:                   render.AnchorBelowParent,
-					ShrinkWhenWaitingOnChild: true,
-				},
+					Anchor: render.AnchorBelowParent},
 			},
 		},
 	}
