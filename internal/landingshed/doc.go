@@ -3,13 +3,17 @@
 //
 // Publish checks the configured require_pr_to_base list (see LoadConfig) against the task's own
 // parent branch. When the parent is absent from that list, Publish is a no-op: Done immediately, no
-// merge-in, no push, no GitHub call. When the parent is present, Publish syncs the task branch against
-// the parent through internal/mergeresolve, pushes it, and opens or refreshes a pull request from a
-// change description. Publish never returns Done once a pull request is open --
-// it returns Stuck instead, deliberately: a Done verdict there would let the driving engine advance
-// straight to Finalize and merge to the parent seconds after the pull request went up, defeating the
-// pull request entirely. Progress past an open pull request is out of this package's view: a human
-// resumes it through a separate, not-yet-built, out-of-band CLI flow.
+// merge-in, no push, no GitHub call. When the parent is present, Publish first consults the operator
+// approval record that `lyx loom approve` writes, before any sync: an open pull request whose number
+// and head SHA match both the record and the task branch's local HEAD returns Done with no merge-in
+// and no push, a mismatch is Stuck, and a merged pull request is Done and a closed one Stuck whatever
+// the record says. Without an approval, Publish syncs the task branch against the parent through
+// internal/mergeresolve, pushes it, and opens or refreshes a pull request whose title and body come
+// from the change description (the file the Describe row writes, one source shared with the landing
+// commit). Publish never returns Done once an unapproved pull request is open -- it returns Stuck
+// instead, deliberately: a Done verdict there would let the driving engine advance straight to
+// Finalize and merge to the parent seconds after the pull request went up, defeating the pull request
+// entirely. Progress past an open pull request is `lyx loom approve` followed by `lyx loom start`.
 //
 // require_pr_to_base is a list of base-branch names, not a bool, because whether a pull request is
 // needed depends on which parent branch a task targets -- a per-task runtime fact no static profile
@@ -19,8 +23,13 @@
 // Finalize always syncs the task branch against the parent through internal/mergeresolve, regardless
 // of which branch Publish took -- the only sync in the no-pull-request case, a second one catching
 // whatever landed in the parent while a pull request sat out for review in the other case -- and then
-// merges the task branch into the parent pair itself and pushes the parent branch to its upstream, so
-// a landing reaches the remote rather than only the hub's own parent worktree. That parent-side merge is this producer's own
+// merges the task branch into the parent pair itself. The landing commit carries the change
+// description and exactly one Co-Authored-By trailer, appended from landing.yaml's co_authored_by.
+// After the parent-side merge and before the push, Finalize marks the board task done; after a
+// successful push it closes the open pull request with a comment naming the landing commit. A parent
+// that already holds the task's work makes Finalize idempotent: it takes the already-landed path
+// rather than merging again. The parent branch is pushed to its upstream, so a landing reaches the
+// remote rather than only the hub's own parent worktree. That parent-side merge is this producer's own
 // merge critical section: the one span a future regeneration step folds into rather than running as a
 // separate step before or after it, because splitting the two would let the parent advance in between
 // the read and the write. Finalize.Call documents which of its own steps is that section; nothing here

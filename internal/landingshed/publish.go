@@ -109,6 +109,16 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 		return p.stuckOrCancelled(ctx, fmt.Sprintf("push skipped; a pull request is required against parent branch %q", p.deps.ParentBranch))
 	}
 
+	// Step 3a: an operator approval recorded by `lyx loom approve` may land the pull request
+	// without a GitHub merge. It is consulted before any sync, so an approved run neither merges
+	// in nor pushes; Finalize syncs with the parent anyway.
+	if p.deps.ApprovalPath != "" {
+		outcome, ptr, decided, err := p.checkApproval(ctx)
+		if decided || err != nil {
+			return outcome, ptr, err
+		}
+	}
+
 	// Step 3b: commit the product's own status file before the merge below, for the reason
 	// Finalize's own identical step states: Shed rewrites that file on every transition and
 	// commits it only at bootstrap, and fabricengine's merge guard refuses any tracked
@@ -184,14 +194,14 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 
 		// Stuck rather than done: a done verdict would let the run advance to the next row and
 		// merge to the parent seconds after opening the pull request, defeating it entirely.
-		return p.stuckOrCancelled(ctx, withPRURL("pull request created; awaiting review", created.GetHTMLURL()))
+		return p.stuckOrCancelled(ctx, withPRURL("pull request created; awaiting review, then run `lyx loom approve` and `lyx loom start`", created.GetHTMLURL()))
 	}
 
 	switch {
 	case pr.GetState() == "open":
 		// No second pull request created and no second merge-in. The push at step 5 still ran, so
 		// a resumed call refreshes the pull request with any commits added since.
-		return p.stuckOrCancelled(ctx, withPRURL(fmt.Sprintf("an open pull request already exists against parent branch %q", p.deps.ParentBranch), pr.GetHTMLURL()))
+		return p.stuckOrCancelled(ctx, withPRURL(fmt.Sprintf("an open pull request already exists against parent branch %q; run `lyx loom approve` and `lyx loom start` once it is reviewed", p.deps.ParentBranch), pr.GetHTMLURL()))
 	case !pr.GetMergedAt().IsZero():
 		// GitHub's List Pull Requests endpoint -- the query above -- never populates the "merged"
 		// boolean field; that field is only ever set on the single-PR Get endpoint's response. Every
@@ -206,6 +216,71 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 		// Closed and not merged: a human decision to stop, which must never read as proceed.
 		return p.stuckOrCancelled(ctx, withPRURL("the pull request was closed without being merged", pr.GetHTMLURL()))
 	}
+}
+
+// checkApproval applies the operator-approval record, when one exists, to the task branch's pull
+// request. decided reports whether it produced the final verdict; when false, and with a nil
+// error, Publish continues with its ordinary flow (no record, or no pull request yet).
+//
+// The approval never outranks a merged or closed pull request: `lyx loom approve` refuses without
+// an open one, so a stale record there could never be replaced.
+func (p *Publish) checkApproval(ctx context.Context) (outcome shedengine.Outcome, ptr shedengine.OutputPointer, decided bool, err error) {
+	approval, found, err := ReadApproval(p.deps.ApprovalPath)
+	if err != nil {
+		outcome, ptr, err = p.stuckOrCancelled(ctx, fmt.Sprintf("the approval record %s is unreadable or malformed (%v); run `lyx loom approve` to overwrite it", p.deps.ApprovalPath, err))
+		return outcome, ptr, true, err
+	}
+	if !found {
+		return "", shedengine.OutputPointer{}, false, nil
+	}
+
+	owner, repo, err := githubclient.ParseOwnerRepo(p.deps.OriginURL)
+	if err != nil {
+		outcome, ptr, err = p.stuckOrCancelled(ctx, fmt.Sprintf("origin URL unusable: %v", err), "error", err)
+		return outcome, ptr, true, err
+	}
+	client, err := NewGitHubClient()
+	if err != nil {
+		logger.Warn("landingshed: github call failed", "producer", publishName, "action", "new github client", "cause", err)
+		outcome, ptr, err = p.stuckOrCancelled(ctx, fmt.Sprintf("github client unavailable: %v", err), "error", err)
+		return outcome, ptr, true, err
+	}
+	pr, err := FindPullRequest(ctx, client, owner, repo, p.deps.TaskBranch, p.deps.ParentBranch)
+	if err != nil {
+		logger.Warn("landingshed: github call failed", "producer", publishName, "action", "query existing pull request", "owner", owner, "repo", repo, "cause", err)
+		outcome, ptr, err = p.stuckOrCancelled(ctx, publishGitHubErrorReason("query existing pull request", err))
+		return outcome, ptr, true, err
+	}
+
+	switch {
+	case pr == nil:
+		return "", shedengine.OutputPointer{}, false, nil
+	case !pr.GetMergedAt().IsZero():
+		return shedengine.Done, shedengine.OutputPointer{}, true, nil
+	case pr.GetState() != "open":
+		outcome, ptr, err = p.stuckOrCancelled(ctx, withPRURL("the pull request was closed without being merged", pr.GetHTMLURL()))
+		return outcome, ptr, true, err
+	}
+
+	head := pr.GetHead().GetSHA()
+	taskHead := ""
+	if p.deps.TaskHead != nil {
+		taskHead, err = p.deps.TaskHead()
+		if err != nil {
+			return "", shedengine.OutputPointer{}, true, fmt.Errorf("landingshed: %s: read task branch head: %w", publishName, err)
+		}
+	}
+	if pr.GetNumber() == approval.PRNumber && head == approval.HeadSHA && taskHead == approval.HeadSHA {
+		return shedengine.Done, shedengine.OutputPointer{}, true, nil
+	}
+
+	differs := head
+	if head == approval.HeadSHA {
+		differs = taskHead
+	}
+	reason := fmt.Sprintf("the approval of pull request #%d at %s no longer matches (now %s, pull request #%d); inspect the pull request and re-run `lyx loom approve`", approval.PRNumber, approval.HeadSHA, differs, pr.GetNumber())
+	outcome, ptr, err = p.stuckOrCancelled(ctx, withPRURL(reason, pr.GetHTMLURL()))
+	return outcome, ptr, true, err
 }
 
 // stuckOrCancelled consults cancelErr first -- the point-9 obligation every non-success exit

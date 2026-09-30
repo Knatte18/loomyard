@@ -70,6 +70,14 @@ func landingDeps(
 			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), l, []string{shedrun.StatusRel(shedrun.SelfRunID)}, fmt.Sprintf("loom: status checkpoint for %s", seedSlug(l.WorktreeName)), fabricengine.EnvSyncOptions())
 			return err
 		},
+		ApprovalPath: loomengine.LoomApprovalPath(l),
+		TaskHead: func() (string, error) {
+			f, err := fabricengine.Open(l)
+			if err != nil {
+				return "", err
+			}
+			return f.HeadSHA()
+		},
 		Shuttle:  runner,
 		Registry: registry,
 		Config:   cfg,

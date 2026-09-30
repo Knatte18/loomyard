@@ -99,6 +99,15 @@ type Deps struct {
 	// every-field-populated drift guard is what keeps it filled.
 	CommitStatus func() error
 
+	// ApprovalPath is the operator-approval record's path, and TaskHead returns the task branch's
+	// local HEAD SHA. Publish consults the record, when one exists, before any sync, and lands the
+	// pull request as approved only if the pull request, the record and TaskHead all agree.
+	//
+	// Both follow CommitStatus's nil-or-empty-is-absent convention: absent means approvals are not
+	// consulted. internal/loomcli's landingDeps fills both, and its drift guard keeps them filled.
+	ApprovalPath string
+	TaskHead     func() (string, error)
+
 	// Shuttle is the session-runner seam, told exactly the way every existing session-driving
 	// constructor in this tree takes its own. The resolver's constructor rejects a nil value for
 	// it, so without this field neither producer could build a resolver at all, and the conflict

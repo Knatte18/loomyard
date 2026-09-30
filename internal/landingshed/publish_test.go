@@ -731,8 +731,8 @@ func TestPublish_PRStateReasons_EndWithURL(t *testing.T) {
 		createBody string
 		want       string
 	}{
-		{"created", "[]", `{"number":7,"state":"open","html_url":"` + url + `"}`, "pull request created; awaiting review: " + url},
-		{"already open", `[{"number":7,"state":"open","html_url":"` + url + `"}]`, "", "an open pull request already exists against parent branch \"main\": " + url},
+		{"created", "[]", `{"number":7,"state":"open","html_url":"` + url + `"}`, "pull request created; awaiting review, then run `lyx loom approve` and `lyx loom start`: " + url},
+		{"already open", `[{"number":7,"state":"open","html_url":"` + url + `"}]`, "", "an open pull request already exists against parent branch \"main\"; run `lyx loom approve` and `lyx loom start` once it is reviewed: " + url},
 		{"closed unmerged", `[{"number":7,"state":"closed","html_url":"` + url + `"}]`, "", "the pull request was closed without being merged: " + url},
 	}
 	for _, tt := range tests {
@@ -747,7 +747,7 @@ func TestPublish_PRStateReasons_EndWithURL(t *testing.T) {
 
 func TestPublish_PRStateReason_NoURL_IsBareText(t *testing.T) {
 	got := publishReasonFor(t, "[]", `{"number":7,"state":"open"}`)
-	if got != "pull request created; awaiting review" {
+	if got != "pull request created; awaiting review, then run `lyx loom approve` and `lyx loom start`" {
 		t.Errorf("reason = %q; want the bare text with no suffix", got)
 	}
 }
@@ -795,5 +795,114 @@ func TestFindPullRequest_QueryParametersAndEmptyList(t *testing.T) {
 		if got.Get(k) != v {
 			t.Errorf("query %s = %q, want %q", k, got.Get(k), v)
 		}
+	}
+}
+
+// approvalFixture is a Publish over a written approval record, a fake GitHub server answering the
+// list query with listBody, and a resolver and push that record whether they were called.
+type approvalFixture struct {
+	p        *Publish
+	res      *recordingResolver
+	order    []string
+	taskHead string
+}
+
+func newApprovalFixture(t *testing.T, listBody string, approval *Approval, taskHeadErr error) *approvalFixture {
+	t.Helper()
+	fx := &approvalFixture{taskHead: "aaa"}
+	deps := newTestDeps(t)
+	deps.ApprovalPath = filepath.Join(t.TempDir(), "approval.json")
+	if approval != nil {
+		if err := WriteApproval(deps.ApprovalPath, *approval); err != nil {
+			t.Fatalf("WriteApproval: %v", err)
+		}
+	}
+	deps.TaskHead = func() (string, error) { return fx.taskHead, taskHeadErr }
+	deps.PushBranch = func() error { fx.order = append(fx.order, "push"); return nil }
+	fx.res = &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
+	fx.p = &Publish{deps: deps, resolver: fx.res}
+	srv := newPublishGitHubServer(t, &fx.order)
+	srv.listBody = listBody
+	srv.install(t)
+	return fx
+}
+
+func TestPublish_MatchingApproval_DoneWithoutSync(t *testing.T) {
+	fx := newApprovalFixture(t, `[{"number":7,"state":"open","head":{"sha":"aaa"}}]`, &Approval{PRNumber: 7, HeadSHA: "aaa", ApprovedAt: "2026-01-01T00:00:00Z"}, nil)
+	outcome, _, err := fx.p.Call(context.Background())
+	if err != nil || outcome != shedengine.Done {
+		t.Fatalf("Call() = %q, %v; want Done, nil", outcome, err)
+	}
+	if fx.res.called {
+		t.Error("resolver was called; want no merge-in")
+	}
+	for _, o := range fx.order {
+		if o == "push" {
+			t.Error("push was called; want none")
+		}
+	}
+}
+
+func TestPublish_MismatchedApproval_StuckNamesSHAs(t *testing.T) {
+	fx := newApprovalFixture(t, `[{"number":7,"state":"open","head":{"sha":"bbb"}}]`, &Approval{PRNumber: 7, HeadSHA: "aaa", ApprovedAt: "2026-01-01T00:00:00Z"}, nil)
+	outcome, ptr, err := fx.p.Call(context.Background())
+	if err != nil || outcome != shedengine.Stuck {
+		t.Fatalf("Call() = %q, %v; want Stuck, nil", outcome, err)
+	}
+	for _, want := range []string{"aaa", "bbb", "lyx loom approve"} {
+		if !strings.Contains(ptr.Reason, want) {
+			t.Errorf("reason %q lacks %q", ptr.Reason, want)
+		}
+	}
+	if fx.res.called {
+		t.Error("resolver was called; want no merge-in")
+	}
+}
+
+func TestPublish_ApprovalOverMergedPR_Done(t *testing.T) {
+	fx := newApprovalFixture(t, `[{"number":7,"state":"closed","merged_at":"2026-01-01T00:00:00Z","head":{"sha":"zzz"}}]`, &Approval{PRNumber: 7, HeadSHA: "aaa", ApprovedAt: "2026-01-01T00:00:00Z"}, nil)
+	outcome, _, err := fx.p.Call(context.Background())
+	if err != nil || outcome != shedengine.Done {
+		t.Fatalf("Call() = %q, %v; want Done, nil", outcome, err)
+	}
+}
+
+func TestPublish_ApprovalOverClosedPR_ClosedStuck(t *testing.T) {
+	fx := newApprovalFixture(t, `[{"number":7,"state":"closed","head":{"sha":"aaa"}}]`, &Approval{PRNumber: 7, HeadSHA: "aaa", ApprovedAt: "2026-01-01T00:00:00Z"}, nil)
+	outcome, ptr, err := fx.p.Call(context.Background())
+	if err != nil || outcome != shedengine.Stuck {
+		t.Fatalf("Call() = %q, %v; want Stuck, nil", outcome, err)
+	}
+	if !strings.Contains(ptr.Reason, "closed without being merged") {
+		t.Errorf("reason = %q; want the closed reason", ptr.Reason)
+	}
+}
+
+func TestPublish_NoApproval_MergedPRStillDone(t *testing.T) {
+	fx := newApprovalFixture(t, `[{"number":7,"state":"closed","merged_at":"2026-01-01T00:00:00Z"}]`, nil, nil)
+	outcome, _, err := fx.p.Call(context.Background())
+	if err != nil || outcome != shedengine.Done {
+		t.Fatalf("Call() = %q, %v; want Done, nil", outcome, err)
+	}
+}
+
+func TestPublish_MalformedApproval_StuckNamesFile(t *testing.T) {
+	fx := newApprovalFixture(t, "[]", nil, nil)
+	if err := os.WriteFile(fx.p.deps.ApprovalPath, []byte("{"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	outcome, ptr, err := fx.p.Call(context.Background())
+	if err != nil || outcome != shedengine.Stuck {
+		t.Fatalf("Call() = %q, %v; want Stuck, nil", outcome, err)
+	}
+	if !strings.Contains(ptr.Reason, fx.p.deps.ApprovalPath) || !strings.Contains(ptr.Reason, "lyx loom approve") {
+		t.Errorf("reason = %q; want the file and the verb named", ptr.Reason)
+	}
+}
+
+func TestPublish_TaskHeadError_ReturnedError(t *testing.T) {
+	fx := newApprovalFixture(t, `[{"number":7,"state":"open","head":{"sha":"aaa"}}]`, &Approval{PRNumber: 7, HeadSHA: "aaa", ApprovedAt: "2026-01-01T00:00:00Z"}, errors.New("git broke"))
+	if _, _, err := fx.p.Call(context.Background()); err == nil {
+		t.Fatal("Call() error = nil; want the TaskHead error")
 	}
 }
