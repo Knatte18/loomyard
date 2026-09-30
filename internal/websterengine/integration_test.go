@@ -292,7 +292,7 @@ func TestBisectAndEscalate_EmptySHAsDegradesGracefully(t *testing.T) {
 	}
 
 	st := &websterengine.State{}
-	if err := websterengine.BisectAndEscalate(nil, nil, nil, "true", "/unused", websterDir, st); err != nil {
+	if err := websterengine.BisectAndEscalate(nil, nil, nil, "true", "/unused", websterDir, st, nil); err != nil {
 		t.Fatalf("BisectAndEscalate() with empty shas error = %v; want nil (graceful degrade, not a hard error)", err)
 	}
 
@@ -518,7 +518,7 @@ func TestBisectAndEscalate_UnattributableFailureBlamesNoCard(t *testing.T) {
 	shas := []string{sha1, sha2, sha3}
 	labels := []string{"01-batch1", "02-batch2", "03-batch3"}
 	// "true" passes at every SHA, so no recorded card SHA implicates itself.
-	if err := websterengine.BisectAndEscalate(gitrepo.New(worktree), shas, labels, "true", worktree, websterDir, st); err != nil {
+	if err := websterengine.BisectAndEscalate(gitrepo.New(worktree), shas, labels, "true", worktree, websterDir, st, nil); err != nil {
 		t.Fatalf("BisectAndEscalate() error = %v; want nil", err)
 	}
 

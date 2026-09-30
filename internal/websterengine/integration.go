@@ -102,7 +102,11 @@ const integrationBatchKey = -1
 // naming a card the evidence does not implicate.
 // A single-element shas is not special-cased: it is verified like any other
 // last sha, and only blamed when it actually fails.
-func bisect(repo FabricBisector, shas []string, verifyCmd string, worktree string) (offendingIndex int, err error) {
+//
+// The pass predicate at each sha is bisectPassed over regressions: with no regressing identities
+// (or an opaque one) it is the command's exit code, otherwise none of the regressing identities may
+// fail there, so a failure already present at every sha never makes bisect blame the first card.
+func bisect(repo FabricBisector, shas []string, verifyCmd string, worktree string, regressions []string, runner verifyRunner) (offendingIndex int, err error) {
 	if len(shas) == 0 {
 		return -1, nil
 	}
@@ -134,7 +138,7 @@ func bisect(repo FabricBisector, shas []string, verifyCmd string, worktree strin
 	// An integration failure is frequently not attributable to any recorded card SHA at all: it can
 	// come from the tree state after the last card, from an environment change, or from the verify
 	// command itself. Reporting no offending index is the honest answer there.
-	lastPassed, verErr := checkoutAndVerify(repo, shas[len(shas)-1], verifyCmd, worktree)
+	lastPassed, verErr := checkoutAndVerify(repo, shas[len(shas)-1], verifyCmd, worktree, regressions, runner)
 	if verErr != nil {
 		return 0, verErr
 	}
@@ -146,7 +150,7 @@ func bisect(repo FabricBisector, shas []string, verifyCmd string, worktree strin
 	lo, hi := 0, len(shas)-1
 	for lo < hi {
 		mid := (lo + hi) / 2
-		passed, verErr := checkoutAndVerify(repo, shas[mid], verifyCmd, worktree)
+		passed, verErr := checkoutAndVerify(repo, shas[mid], verifyCmd, worktree, regressions, runner)
 		if verErr != nil {
 			return 0, verErr
 		}
@@ -159,16 +163,42 @@ func bisect(repo FabricBisector, shas []string, verifyCmd string, worktree strin
 	return lo, nil
 }
 
-// checkoutAndVerify checks out sha detached, then runs verifyCmd in-process, reporting pass/fail.
-func checkoutAndVerify(repo FabricBisector, sha, verifyCmd, worktree string) (bool, error) {
+// checkoutAndVerify checks out sha detached, then runs verifyCmd through runner, reporting whether
+// the bisect pass predicate holds there.
+func checkoutAndVerify(repo FabricBisector, sha, verifyCmd, worktree string, regressions []string, runner verifyRunner) (bool, error) {
 	if err := repo.CheckoutDetached(sha); err != nil {
 		return false, fmt.Errorf("webster: bisect: checkout %s: %w", sha, err)
 	}
-	run, err := runVerifyCapture(verifyCmd, worktree, "")
+	run, err := runner(verifyCmd, worktree, "")
 	if err != nil {
 		return false, err
 	}
-	return run.Passed, nil
+	return bisectPassed(run, regressions), nil
+}
+
+// bisectPassed is the bisect pass predicate over one run: none of the regressing identities appears
+// in the run's failure set.
+// An identity that is absent, never ran, or surfaces only as its package identity counts as passing.
+// Empty regressions, or one containing opaqueFailureID, fall back to the command's exit code.
+func bisectPassed(run verifyRun, regressions []string) bool {
+	if len(regressions) == 0 {
+		return run.Passed
+	}
+	for _, id := range regressions {
+		if id == opaqueFailureID {
+			return run.Passed
+		}
+	}
+	failing := map[string]bool{}
+	for _, f := range parseVerifyFailures(run.Output, run.Passed) {
+		failing[f.ID] = true
+	}
+	for _, id := range regressions {
+		if failing[id] {
+			return false
+		}
+	}
+	return true
 }
 
 // verifyRun is one verify-command run: whether it exited zero, and its combined stdout+stderr.
@@ -270,8 +300,13 @@ func RecordIntegrationFailure(st *State, offendingCard, offendingSHA string) {
 // shas, or a run whose last recorded SHA still passes, meaning no recorded card SHA implicates
 // itself and naming one would put a card the evidence does not implicate into the PR text.
 // Caller persists via SaveState.
-func BisectAndEscalate(repo FabricBisector, shas, labels []string, verifyCmd, worktree, websterDir string, st *State) error {
-	offendingCard, offendingSHA, err := LocalizeIntegrationFailure(repo, shas, labels, verifyCmd, worktree)
+func BisectAndEscalate(repo FabricBisector, shas, labels []string, verifyCmd, worktree, websterDir string, st *State, regressions []string) error {
+	return bisectAndEscalate(repo, shas, labels, verifyCmd, worktree, websterDir, st, regressions, runVerifyCapture)
+}
+
+// bisectAndEscalate is BisectAndEscalate with the verify runner injected.
+func bisectAndEscalate(repo FabricBisector, shas, labels []string, verifyCmd, worktree, websterDir string, st *State, regressions []string, runner verifyRunner) error {
+	offendingCard, offendingSHA, err := localizeIntegrationFailure(repo, shas, labels, verifyCmd, worktree, regressions, runner)
 	if err != nil {
 		return err
 	}
@@ -290,8 +325,16 @@ func BisectAndEscalate(repo FabricBisector, shas, labels []string, verifyCmd, wo
 //
 // It returns the localized card label and SHA, or "unknown" for both when the search localizes
 // nothing.
-func LocalizeIntegrationFailure(repo FabricBisector, shas, labels []string, verifyCmd, worktree string) (offendingCard, offendingSHA string, err error) {
-	idx, err := bisect(repo, shas, verifyCmd, worktree)
+//
+// regressions are the identities the pass predicate tracks (see bisect); nil or opaque means the
+// command's exit code.
+func LocalizeIntegrationFailure(repo FabricBisector, shas, labels []string, verifyCmd, worktree string, regressions []string) (offendingCard, offendingSHA string, err error) {
+	return localizeIntegrationFailure(repo, shas, labels, verifyCmd, worktree, regressions, runVerifyCapture)
+}
+
+// localizeIntegrationFailure is LocalizeIntegrationFailure with the verify runner injected.
+func localizeIntegrationFailure(repo FabricBisector, shas, labels []string, verifyCmd, worktree string, regressions []string, runner verifyRunner) (offendingCard, offendingSHA string, err error) {
+	idx, err := bisect(repo, shas, verifyCmd, worktree, regressions, runner)
 	if err != nil {
 		return "", "", err
 	}

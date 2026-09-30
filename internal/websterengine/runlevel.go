@@ -995,7 +995,7 @@ func runIntegrationStage(deps RunDeps, plan *planparser.Plan, batches []batcher.
 			return nil, err
 		}
 		shas, labels := accumulatedCardSHAs(batches, st)
-		offendingCard, offendingSHA, err = LocalizeIntegrationFailure(bisector, shas, labels, plan.Verify, deps.Geom.WorktreeRoot)
+		offendingCard, offendingSHA, err = LocalizeIntegrationFailure(bisector, shas, labels, plan.Verify, deps.Geom.WorktreeRoot, nil)
 		if err != nil {
 			return warnings, err
 		}
