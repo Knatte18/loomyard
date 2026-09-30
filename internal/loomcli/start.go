@@ -113,6 +113,10 @@ func (c *loomCLI) startLLMDriverArm(driverAction driverStrandAction, driverGUID 
 // rather than building it locally) or the llm arm's strand launch, whose StartDriver already blocks
 // through the provider's readiness gates before returning.
 //
+// Before any spawn it removes a stale park marker (shedrun.ParkMarker).
+// When no spawn is needed and the driver strand is live with the marker present, the driver is parked,
+// so it spawns nothing and resumes that driver through resumeParkedDriver instead.
+//
 // lockHeld is the go arm's handshake seam, built by the caller over the real run lock in production;
 // a test substitutes a counting fake to prove the handshake is never consulted on an llm-seeded
 // bootstrap -- the assertion this batch's own scope note names.
