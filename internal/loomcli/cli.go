@@ -104,6 +104,12 @@ type loomCLI struct {
 	// Test Tier Purity Invariant bars a real spawn from an untagged file and *shuttleengine.Runner is
 	// a concrete type.
 	driverStarter driverStarter
+	// driverSender is the seam through which `start` types the resume line into a parked, live driver's pane, wrapping the same *shuttleengine.Runner driverStarter does.
+	driverSender driverSender
+	// driverResumeWait is the pause between resume send attempts;
+	// a test substitutes a counting fake so no real sleep happens.
+	// A nil value means no pause.
+	driverResumeWait func()
 	// driverPaneProbe is the seam through which the llm arm reads and removes driver strands,
 	// wrapping the same *reedengine.Engine c.reed already carries. The seam exists for the same
 	// reason driverStarter does: *reedengine.Engine is a concrete type and the Test Tier Purity
@@ -245,7 +251,9 @@ drives, one invocation at a time. The envelope's "continue" and
 "next_interrupt_policy" fields say what to do next; it also names
 "trace_file" (the durable trace this invocation wrote), "friction_dir" and
 "scratch_dir". Every error envelope carries the same three keys beside
-"kind", so a supervisor can read what the step did and repair from it.
+"kind", and also "transient": the transient class name, or empty when the
+failure is not transient, so a supervisor can read what the step did and
+repair from it.
 
 An optional run-id positional addresses a run other than this worktree's
 own default ("self"); step refuses when no seed already exists at that

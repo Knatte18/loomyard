@@ -5,9 +5,14 @@
 package shedbuild
 
 import (
+	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // TestNewShed_FieldCompleteAssembly asserts NewShed returns a *shedengine.Shed whose Producers
@@ -111,5 +116,30 @@ producers: []
 	}
 	if strings.Contains(err.Error(), "shedbuild: shedbuild:") {
 		t.Errorf("NewShed(recipeYAML) error = %q; carries a double shedbuild: prefix, violating the single-prefix rule", err.Error())
+	}
+}
+
+// TestNewShed_TransientClassifier asserts the assembled Shed classifies a never-ready agent start as agent-start and a plain error as not transient.
+func TestNewShed_TransientClassifier(t *testing.T) {
+	const recipeYAML = `
+version: 1
+entry: row1
+terminals: [row1]
+producers:
+  - name: row1
+    engine: Stub
+`
+	shed, err := NewShed([]byte(recipeYAML), newTestEnv(t), ShedPaths{})
+	if err != nil {
+		t.Fatalf("NewShed() = _, %v; want nil", err)
+	}
+	if shed.Transient == nil {
+		t.Fatal("shed.Transient = nil; want the shedtransient classifier")
+	}
+	if got := shed.Transient(fmt.Errorf("start: %w", shuttleengine.ErrNotStarted)); got != shedengine.TransientAgentStart {
+		t.Errorf("Transient(ErrNotStarted-wrapping) = %q; want %q", got, shedengine.TransientAgentStart)
+	}
+	if got := shed.Transient(errors.New("plain")); got != "" {
+		t.Errorf("Transient(plain error) = %q; want empty", got)
 	}
 }

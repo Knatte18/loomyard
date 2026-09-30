@@ -113,10 +113,20 @@ Every value in `internal/shedrecipe`'s registry constructs a `shedengine.ShedPro
   Enforced by `internal/shedverbs/seam_enforcement_test.go`.
 - The `lyx shed` recipe table lives in `internal/shedcli` alone, as one map literal reached through accessors, with every name armed by exactly one arming function and no `init()` self-registration. Enforced by `internal/shedcli/table_test.go`.
 - The `step` refusal-kind vocabulary stays closed at its five values.
-  The step envelope's key set (closed by doc comment and test, not by this invariant) carries `trace_file`, `friction_dir`, `scratch_dir`, `trace_id` and `run_id` on the success and every error envelope, and the status envelope carries `trace_dir` on every envelope.
+  The step envelope's key set (closed by doc comment and test, not by this invariant) carries `trace_file`, `friction_dir`, `scratch_dir`, `trace_id` and `run_id` on the success and every error envelope, every error envelope also carries `transient` (the transient class name, or empty; it is a key, not a sixth kind), and the status envelope carries `trace_dir` on every envelope.
   Enforced by `internal/shedverbs/step_test.go`.
 - `internal/shedverbs` is not itself a CLI module and is not counted in the CLI/Cobra Invariant's tally at all — it exposes no `Command()`/`RunCLI` seam, only the `Verbs(texts, spec)` constructor the three subtrees build from.
 - Neither `shedverbs` nor `shedcli` is added to the Told-Geometry Invariant's bound-packages list: that list binds engines, both sit above that layer. `shedverbs` keeps this invariant's own no-resolver clause verbatim as its no-derived-paths obligation, enforced by `internal/shedverbs/seam_enforcement_test.go`. `internal/shedcli` is carved out of that clause by name, the one site in this pair that resolves: `resolvePersistentPreRun` must read a seed before it knows which recipe to arm, a seed read is a path read, and a path read needs an anchor, so `shedcli` calls `lyxcwd.Resolve` and builds seed paths from the result. Its narrower obligation is that every path it touches comes from an `internal/shedrun` constructor and none is derived locally — `shedcli` still declares no path segment of its own, it just resolves the anchor those `shedrun` constructors need.
+
+## Transient Stop Invariant
+
+The transient mark is declared only in `internal/shedengine`, and its class set is closed at the declaration (the set is named there, not restated here).
+
+- A lower-level package exposes its own classification, and `internal/shedtransient` alone translates it into the mark.
+- The mark is set only at a producer boundary (the `Shed.Transient` classifier `shedbuild.NewShed` tells) or a step bootstrap boundary (a `PreStep` hook).
+- A producer returns a failure `shedtransient.Class` classifies as a hard error rather than a verdict, so it reaches that classifier.
+- A gate verdict (`blocked`, `awaiting`, `paused`) never carries the mark.
+- Rationale: a mark added at a new site changes what the ly-drive driver re-steps without a human deciding.
 
 ## Shed Run-Directory Invariant
 

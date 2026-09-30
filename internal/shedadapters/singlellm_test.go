@@ -229,6 +229,26 @@ func TestSingleLLMProducer_OutcomeDiedAndTimeout(t *testing.T) {
 	}
 }
 
+// TestSingleLLMProducer_NotStartedWrapsErrNotStarted pins that a died outcome the shuttle reports as never-ready wraps ErrNotStarted,
+// and an ordinary died outcome does not.
+func TestSingleLLMProducer_NotStartedWrapsErrNotStarted(t *testing.T) {
+	for _, notStarted := range []bool{true, false} {
+		dir := t.TempDir()
+		spec := shuttleengine.Spec{Prompt: "run", OutputFiles: []string{filepath.Join(dir, "out.md")}}
+		shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDied, RunDir: dir, NotStarted: notStarted}}
+		p := NewSingleLLMProducer("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil)
+		captureLogOutput(t)
+
+		_, _, err := p.Call(context.Background())
+		if err == nil {
+			t.Fatalf("NotStarted=%v: Call() error = nil; want non-nil", notStarted)
+		}
+		if got := errors.Is(err, shuttleengine.ErrNotStarted); got != notStarted {
+			t.Errorf("NotStarted=%v: errors.Is(err, ErrNotStarted) = %v; want %v (err %q)", notStarted, got, notStarted, err)
+		}
+	}
+}
+
 // TestSingleLLMProducer_CancelledDuringRun_DiedOutcomeEmitsNoWarn pins the ordering the
 // died/timeout and default branches share with the cancellation guard: a cancelled context still
 // returns the cancellation error, and the log line before the fmt.Errorf return must never fire on

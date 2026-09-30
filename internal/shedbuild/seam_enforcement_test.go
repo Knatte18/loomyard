@@ -28,6 +28,8 @@ var shedbuildAllowedImports = map[string]bool{
 	"github.com/Knatte18/loomyard/internal/shedrecipe": true,
 	"github.com/Knatte18/loomyard/internal/shedengine": true,
 	"github.com/Knatte18/loomyard/internal/shedcheck":  true,
+	// shedtransient supplies the Shed.Transient classifier NewShed tells (Transient Stop Invariant).
+	"github.com/Knatte18/loomyard/internal/shedtransient": true,
 }
 
 // shedbuildDeniedLyxcwdImport is the exact import path the Told-Geometry Invariant excludes from

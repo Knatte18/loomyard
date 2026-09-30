@@ -22,6 +22,28 @@ func statusTexts() VerbTexts {
 	return VerbTexts{Status: VerbText{Use: "status", Short: "status of the fake shed"}}
 }
 
+// TestStatusCmd_LastStepCarriesBuildIdentity checks last_step carries the identity keys, with binary_changed false since a test binary is unstamped.
+func TestStatusCmd_LastStepCarriesBuildIdentity(t *testing.T) {
+	stepsDir := filepath.Join(t.TempDir(), "steps")
+	spec := seededStatusSpec(t, Hooks{})
+	spec.StepsDir = stepsDir
+	newStepRecorder(stepsDir, "aaaa", BuildIdentity{Revision: "abc"}).begin()
+
+	env, code := execEnvelope(t, statusCmd(statusTexts(), spec), nil)
+	if code != 0 {
+		t.Fatalf("exit code = %d; want 0", code)
+	}
+	last, _ := env["last_step"].(map[string]any)
+	for _, key := range []string{"vcs_revision", "vcs_modified", "binary_changed"} {
+		if _, ok := last[key]; !ok {
+			t.Errorf("last_step lacks %q: %v", key, last)
+		}
+	}
+	if last["binary_changed"] != false {
+		t.Errorf("binary_changed = %v; want false for an unstamped test binary", last["binary_changed"])
+	}
+}
+
 // TestStatusCmd_AbsentFile_Refuse covers the refusing disposition: the told message lands on the
 // error envelope. The status-lock path's parent already exists, matching the state both shipped
 // consumers are in whenever this disposition actually fires.
