@@ -78,8 +78,12 @@ func TestBattenIntegration_SeedChild_IgnoresPrimesCommittedBattenRecords(t *test
 		t.Fatalf("battenrecipe.New: %v", err)
 	}
 	ctx := context.Background()
-	if _, err := shed.Step(ctx); err != nil {
+	create, err := shed.Step(ctx)
+	if err != nil {
 		t.Fatalf("Step (Worktree-Create): %v", err)
+	}
+	if create.Outcome != shedengine.Done {
+		t.Fatalf("Worktree-Create outcome = %q (%s); want done", create.Outcome, create.Reason)
 	}
 	step, err := shed.Step(ctx)
 	if err != nil {
