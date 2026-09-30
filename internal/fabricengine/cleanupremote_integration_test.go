@@ -224,9 +224,8 @@ func TestCleanup_ProtectedEntryUntouchedOnRemote(t *testing.T) {
 	}
 }
 
-// TestCleanup_RemoteFailureIsNonFatal covers case 6: a remote deletion failure leaves the verb
-// returning a nil error, the local branch deleted, and RemoteError populated. Induced by pointing
-// the weft repo's origin at a filesystem path that no longer exists, so no network is needed.
+// TestCleanup_RemoteFailureIsNonFatal covers case 6: a remote deletion failure leaves the verb returning a nil error, the local branch deleted, and RemoteError populated.
+// Induced by making the bare origin refuse ref deletions, so the archive tag push still succeeds ahead of the failing branch deletion and no network is needed.
 func TestCleanup_RemoteFailureIsNonFatal(t *testing.T) {
 	t.Parallel()
 
@@ -236,7 +235,8 @@ func TestCleanup_RemoteFailureIsNonFatal(t *testing.T) {
 	weftRoot := mustWeftRepoRoot(t, l)
 
 	mustCreateOrphanWeftBranch(t, weftRoot, branch)
-	mustBreakOrigin(t, weftRoot)
+	mustPushBranch(t, weftRoot, branch)
+	gitkit.MustRun(t, fixture.WeftBare, "git", "config", "receive.denyDeletes", "true")
 
 	topology := fabricengine.NewTopology(fabricengine.Config{})
 	res, err := topology.Cleanup(l, true, false, true)

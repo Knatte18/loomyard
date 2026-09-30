@@ -222,6 +222,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 			Output:       output.Path,
 			At:           nowRFC3339(),
 			GateAttempts: output.GateAttempts,
+			BudgetExempt: outcome == Stuck && output.BudgetExempt,
 		})
 	}
 
@@ -270,10 +271,11 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 				return StepResult{}, err
 			}
 			return StepResult{Producer: def.Name, Outcome: outcome, Output: output.Path, Next: st.CurrentProducer, State: StateBlocked, Reason: reason, History: nextHistory}, nil
+		// An exempt Stuck skips the budget comparison below: after N counted Stucks the count already reads N, so comparing would block the first exempt one.
 		// The count argument is st.History, the slice read at step 1, and never
 		// nextHistory: a post-append read shifts the boundary by one and would look
 		// like an off-by-one bug rather than the semantic change it would actually be.
-		case episodeStuckCount(st.History, def.Name) >= effectiveMaxBounces(def, s.MaxBounces):
+		case !output.BudgetExempt && episodeStuckCount(st.History, def.Name) >= effectiveMaxBounces(def, s.MaxBounces):
 			// The boundary is pinned exactly, restated per-producer: a budget of three
 			// performs three bounce-backs and blocks on the fourth Stuck.
 			reason := ReasonBounceBudgetExhausted
@@ -429,6 +431,7 @@ func nowRFC3339() string {
 // A done entry written by the hard-failure arm also terminates the scan, and that is accepted
 // rather than special-cased: the engine records the verdict a producer actually returned, and
 // state: "failed" halts the run, so every continuation past it is a fresh human-initiated act.
+// A Stuck entry whose BudgetExempt is true is skipped and never counted.
 func episodeStuckCount(history []HistoryEntry, name string) int {
 	count := 0
 	for i := len(history) - 1; i >= 0; i-- {
@@ -439,7 +442,7 @@ func episodeStuckCount(history []HistoryEntry, name string) int {
 		if entry.Outcome == Done {
 			return count
 		}
-		if entry.Outcome == Stuck {
+		if entry.Outcome == Stuck && !entry.BudgetExempt {
 			count++
 		}
 	}
