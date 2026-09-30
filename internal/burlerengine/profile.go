@@ -48,6 +48,10 @@ type Profile struct {
 	FixerReportPath   string
 	PriorReviews      []string
 	PriorFixerReports []string
+	// FocusDirective is an optional path to this round's focus directive file, kept apart from
+	// PriorReviews. It is steering input the reviewer reads before forming findings, and is never
+	// subject to the prior-rounds clean-room rule.
+	FocusDirective string
 }
 
 // RunOpts carries run-tuning knobs kept off Profile.
@@ -81,6 +85,7 @@ func (p *Profile) validate(worktreeRoot string, cfg Config) error {
 	p.Fasit.Paths = resolvePaths(worktreeRoot, p.Fasit.Paths)
 	p.PriorReviews = resolvePaths(worktreeRoot, p.PriorReviews)
 	p.PriorFixerReports = resolvePaths(worktreeRoot, p.PriorFixerReports)
+	p.FocusDirective = resolvePath(worktreeRoot, p.FocusDirective)
 	p.ReviewPath = resolvePath(worktreeRoot, p.ReviewPath)
 	p.FixerReportPath = resolvePath(worktreeRoot, p.FixerReportPath)
 
@@ -104,6 +109,11 @@ func (p *Profile) validate(worktreeRoot string, cfg Config) error {
 	}
 	if err := requireExistingPaths("PriorFixerReports", p.PriorFixerReports); err != nil {
 		return err
+	}
+	if p.FocusDirective != "" {
+		if err := requireExistingPaths("FocusDirective", []string{p.FocusDirective}); err != nil {
+			return err
+		}
 	}
 
 	if strings.TrimSpace(p.Rubric) == "" {

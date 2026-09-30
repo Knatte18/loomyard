@@ -70,6 +70,12 @@ var BurlerStep2Review []byte
 //go:embed burler/burler-step-3-fix.md
 var BurlerStep3Fix []byte
 
+// BurlerFocusDirective is burler's shipped-default focus-directive block: the text a round's focus
+// file reaches the explore step through, filled with the file's path.
+//
+//go:embed burler/burler-focus-directive.md
+var BurlerFocusDirective []byte
+
 // BouncerTemplateSeed is the Bouncer's shipped-default seed prompt: the focus-setting pass that
 // runs before any round has been reviewed.
 //
@@ -190,6 +196,7 @@ var entries = []registryEntry{
 	{"burler-step-1-explore", &BurlerStep1Explore},
 	{"burler-step-2-review", &BurlerStep2Review},
 	{"burler-step-3-fix", &BurlerStep3Fix},
+	{"burler-focus-directive", &BurlerFocusDirective},
 	{"bouncer-template-seed", &BouncerTemplateSeed},
 	{"bouncer-template-judge", &BouncerTemplateJudge},
 	{"treadle-template-judge-circling", &TreadleTemplateJudgeCircling},
