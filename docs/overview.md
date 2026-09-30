@@ -116,8 +116,9 @@ lyx organizes overlay artifacts (configuration, task state, raddle docs, and the
   ├── _board/                       (weft:main worktree; the task store)
   │     └── .lyx/                   (hub-wide machine-local scratch; a real dir, never a junction)
   ├── _portals/<anchor>/<slug>      (junction into <slug>'s _lyx; anchor-mirrored)
-  └── _launchers/<anchor>/<slug>    (per-worktree launcher scripts; anchor-mirrored)
-        _launchers/<anchor>/<prime>.code-workspace   (the prime's hub workspace; lyx-owned)
+  └── _launchers/<anchor>/          (anchor-mirrored)
+        ├── <slug>                  (per-worktree launcher scripts)
+        └── <prime>.code-workspace  (the prime's hub workspace; lyx-owned)
 ```
 
 `_board`, `_portals`, and `_launchers` are hub geometry, so none of them can be claimed as a worktree slug
