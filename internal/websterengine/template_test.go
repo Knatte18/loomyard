@@ -486,6 +486,23 @@ func TestMasterTemplate_StatesPlanDriftRefusalEndsRunAsStuck(t *testing.T) {
 	requireContains(t, text, "do not retry the verb")
 }
 
+// TestMasterTemplate_IntegrationFailedBranchEndsDone asserts the integration-suite stage's
+// `status: FAILED` branch tells Master to finish with `outcome: done` (webster triages the report
+// after the session) and no longer tells it `outcome: stuck` for that branch.
+func TestMasterTemplate_IntegrationFailedBranchEndsDone(t *testing.T) {
+	text := string(mustMasterTemplate(t, newTestStencilsDir(t)))
+
+	_, after, ok := strings.Cut(text, "- `status: FAILED` →")
+	if !ok {
+		t.Fatalf("master template has no integration `status: FAILED` branch")
+	}
+	branch, _, _ := strings.Cut(after, "\n\n")
+	requireContains(t, branch, "`outcome: done`")
+	if strings.Contains(branch, "outcome: stuck") {
+		t.Errorf("FAILED branch still instructs outcome: stuck:\n%s", branch)
+	}
+}
+
 // TestMasterTemplate_GroundsHarnessRealityAgainstInjectionRefusal asserts the master template's
 // bytes carry the harness-grounding statements that preempt the observed live spawn-killer (round
 // fable-r1, crucible): on current Claude Code, a freshly spawned Master classified the injected
