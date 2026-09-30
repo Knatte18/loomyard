@@ -43,6 +43,7 @@ type commitStatusDeps struct {
 	// mid-merge at the git level.
 	MergeActive func() (bool, error)
 	// Commit commits loom's own status file with msg.
+	// When the reviews directory holds a file, the same commit also carries the review round record.
 	Commit func(msg string) error
 	// Push pushes the fabric sibling worktree's unpushed commits.
 	Push func() error
