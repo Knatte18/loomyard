@@ -576,7 +576,19 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	integrationPromptPath := ""
 	if ShouldRunIntegration(plan) {
 		integrationNotePath := friction.NotePath(deps.FrictionDir, "webster-integration")
-		integrationPrompt, err := RenderIntegrationPrompt(plan, integrationReportPath, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, integrationNotePath)
+		integrationLogPath, err := filepath.Abs(IntegrationLogPath(deps.Geom.ScratchDir))
+		if err != nil {
+			return RunResult{}, fmt.Errorf("webster: resolve integration log path: %w", err)
+		}
+		// Remove any prior log so a log present at triage time was written by this run's fork.
+		if err := os.Remove(integrationLogPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return RunResult{}, fmt.Errorf("webster: remove stale integration log %s: %w", integrationLogPath, err)
+		}
+		// The fork's shell redirect cannot create the log's parent directory.
+		if err := os.MkdirAll(filepath.Dir(integrationLogPath), 0o755); err != nil {
+			return RunResult{}, fmt.Errorf("webster: create verify log dir: %w", err)
+		}
+		integrationPrompt, err := RenderIntegrationPrompt(plan, integrationReportPath, integrationLogPath, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, integrationNotePath)
 		if err != nil {
 			return RunResult{}, err
 		}

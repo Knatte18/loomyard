@@ -2,8 +2,8 @@
      dedicated, final plan-level verification fork (plan-format).
      It is filled by RenderIntegrationPrompt (render.go) via internal/stencil and written to a prompt file under _lyx/webster/prompts/;
      Master's own Agent-tool fork call is exactly the same "Read this file and follow it exactly: <this file's own path>" idiom used for a batch's own fork prompt.
-     Three markers below are required top-level {{.X}} substitutions;
-     stencil.FillOptional requires all three non-empty.
+     Four markers below are required top-level {{.X}} substitutions;
+     stencil.FillOptional requires all four non-empty.
      {{.friction_directive}} is the one optional marker (filled via stencil.FillOptional), rendering as nothing when Tier 2 is off.
      There are no {{if}}/{{range}} conditionals anywhere in this file. -->
 
@@ -28,10 +28,17 @@ Your only actions this turn are: run the command below at `{{.worktree_root}}`, 
 {{.verify}}
 ```
 
-Run this command, exactly as written, from `{{.worktree_root}}`.
-Do not modify it, do not substitute an equivalent command, and do not attempt to fix a failure yourself — you implement NO cards and make NO commit of any kind, ever, in this session.
-A non-zero exit is a `FAILED` report;
+Run this command, exactly as written, from `{{.worktree_root}}`, with its combined stdout and stderr redirected to `{{.verify_log_path}}`.
+Group the whole command so the redirect covers every link of an `&&` chain, for example:
+
+```
+( <the verify command above> ) > {{.verify_log_path}} 2>&1
+```
+
+Do not modify the command itself, do not substitute an equivalent command, and do not attempt to fix a failure yourself — you implement NO cards and make NO commit of any kind, ever, in this session.
+Take `status` from the grouped command's exit code: a non-zero exit is a `FAILED` report;
 a zero exit is an `OK` report.
+You never list the failures yourself and you never edit the log — Go reads it after you finish.
 
 ## Your final action: the minimal integration report
 
