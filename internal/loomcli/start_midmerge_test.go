@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -106,7 +107,7 @@ func TestRunDriverSpawnAndWait_MidMerge_SpawnRefusals(t *testing.T) {
 			c.midMerge = fake.probe
 			marker := shedrun.ParkMarker(c.location, shedrun.ResolveRunID(c.location, c.runID))
 			if tc.staleMark {
-				if err := os.MkdirAll(dirOf(marker), 0o755); err != nil {
+				if err := os.MkdirAll(filepath.Dir(marker), 0o755); err != nil {
 					t.Fatal(err)
 				}
 				if err := os.WriteFile(marker, nil, 0o644); err != nil {
@@ -142,11 +143,6 @@ func TestRunDriverSpawnAndWait_MidMerge_SpawnRefusals(t *testing.T) {
 			assertBootstrapLockReleased(t, lockPath)
 		})
 	}
-}
-
-func dirOf(p string) string {
-	i := strings.LastIndexAny(p, `/\`)
-	return p[:i]
 }
 
 func TestRunDriverSpawnAndWait_MidMerge_ParkedLiveDriverRefused(t *testing.T) {
