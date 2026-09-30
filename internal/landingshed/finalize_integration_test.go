@@ -181,7 +181,7 @@ func TestFinalize_ResolvesConflictAndSquashMergesIntoParent(t *testing.T) {
 		WorktreeRoot:     taskWarp,
 		TaskBranch:       "task",
 		ParentBranch:     "parent",
-		FinalSummaryPath: seedFinalSummary(t),
+		DescriptionPath:  seedFinalSummary(t),
 		StencilsDir:      seedConflictStencil(t),
 		ScratchDir:       scratchDir,
 		OpenFabric:       func() (*fabricengine.Fabric, error) { return openFabricAtLanding(t, taskWarp), nil },
@@ -191,6 +191,7 @@ func TestFinalize_ResolvesConflictAndSquashMergesIntoParent(t *testing.T) {
 			Squash:             true,
 			Conflict:           "claude:test-model",
 			ConflictTimeoutMin: 1,
+			CoAuthoredBy:       "Test Author <test@example.com>",
 		},
 	}
 
@@ -241,6 +242,22 @@ func TestFinalize_ResolvesConflictAndSquashMergesIntoParent(t *testing.T) {
 		t.Errorf("parent warp HEAD %s has %d parents; want exactly 1 (a squash commit)", warpHEAD, got)
 	}
 
+	// The landing commit's subject is the description title, its body is the description body, and
+	// exactly one Co-Authored-By trailer carries the configured value.
+	msgCmd := exec.Command("git", "log", "-1", "--format=%B")
+	msgCmd.Dir = parentWarp
+	msgOut, err := msgCmd.Output()
+	if err != nil {
+		t.Fatalf("git log -1 --format=%%B in %s: %v", parentWarp, err)
+	}
+	wantMsg := "A landing title\n\nA landing body.\n\nCo-Authored-By: Test Author <test@example.com>"
+	if got := strings.TrimSpace(string(msgOut)); got != wantMsg {
+		t.Errorf("landing commit message = %q; want %q", got, wantMsg)
+	}
+	if n := strings.Count(string(msgOut), "Co-Authored-By:"); n != 1 {
+		t.Errorf("landing commit carries %d Co-Authored-By lines; want exactly 1", n)
+	}
+
 	// No merge record is left behind on either pair. fabricengine's own MergeRecordExistsForTest is
 	// a test-only export reachable only from fabricengine's own test binary, so this package checks
 	// the same fact through the public MergeInProgress accessor instead.
@@ -251,5 +268,60 @@ func TestFinalize_ResolvesConflictAndSquashMergesIntoParent(t *testing.T) {
 	parentHandle := openFabricAtLanding(t, parentWarp)
 	if inProgress, err := parentHandle.MergeInProgress(); err != nil || inProgress {
 		t.Errorf("parent pair MergeInProgress() = (%v, %v); want (false, nil)", inProgress, err)
+	}
+}
+
+// TestFinalize_AlreadyLandedParentIsIdempotent lands a task once, then calls Finalize again on the
+// same pair, and asserts the second call is Done with no second landing commit. A fresh Finalize
+// over a parent that already carries the task's squashed diff behaves the same way.
+func TestFinalize_AlreadyLandedParentIsIdempotent(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+
+	hubforge.AddPair(t, h, "task")
+	hubforge.AddPair(t, h, "parent")
+
+	taskWarp := h.PairWarpWorktree("task")
+	parentWarp := h.PairWarpWorktree("parent")
+
+	commitOnCurrentBranchLanding(t, taskWarp, "feature.txt", "task feature\n", "task: add feature.txt")
+
+	newFinalize := func() *landingshed.Finalize {
+		deps := landingshed.Deps{
+			WorktreeRoot:     taskWarp,
+			TaskBranch:       "task",
+			ParentBranch:     "parent",
+			DescriptionPath:  seedFinalSummary(t),
+			StencilsDir:      seedConflictStencil(t),
+			ScratchDir:       filepath.Join(t.TempDir(), "scratch"),
+			OpenFabric:       func() (*fabricengine.Fabric, error) { return openFabricAtLanding(t, taskWarp), nil },
+			OpenParentFabric: func() (*fabricengine.Fabric, error) { return openFabricAtLanding(t, parentWarp), nil },
+			Shuttle:          &fakeResolutionShuttle{worktreeRoot: taskWarp},
+			Config: landingshed.Config{
+				Squash:             true,
+				Conflict:           "claude:test-model",
+				ConflictTimeoutMin: 1,
+				CoAuthoredBy:       "Test Author <test@example.com>",
+			},
+		}
+		fz, err := landingshed.NewFinalize(deps)
+		if err != nil {
+			t.Fatalf("NewFinalize() error = %v; want nil", err)
+		}
+		return fz
+	}
+
+	outcome, _, err := newFinalize().Call(context.Background())
+	if err != nil || outcome != shedengine.Done {
+		t.Fatalf("first Call() = (%q, %v); want (Done, nil)", outcome, err)
+	}
+	headAfterFirst := currentSHALanding(t, parentWarp)
+
+	// A second Finalize over the now already-landed parent.
+	outcome, _, err = newFinalize().Call(context.Background())
+	if err != nil || outcome != shedengine.Done {
+		t.Fatalf("second Call() = (%q, %v); want (Done, nil)", outcome, err)
+	}
+	if got := currentSHALanding(t, parentWarp); got != headAfterFirst {
+		t.Errorf("parent warp HEAD = %q after second Finalize; want unchanged %q (no second landing commit)", got, headAfterFirst)
 	}
 }

@@ -10,9 +10,10 @@
 # that can fix any of the five.
 #
 # Those five are not the whole escalate-to-a-human set, and the difference matters when auditing
-# routing from this header. Three PRODUCER rows also carry no on_stuck -- Discussion-Write,
-# Plan-Write, and Webster -- so eight rows in total escalate rather than bounce, exactly as many as
-# before: both writer rows were already members of this set, only their reachability changed. They
+# routing from this header. Four PRODUCER rows also carry no on_stuck -- Discussion-Write,
+# Plan-Write, Webster, and Describe -- so nine rows in total escalate rather than bounce: the
+# first two writer rows were already members of this set, only their reachability changed, and
+# Describe is the newest member, a writer row whose exhausted gate halts the run for a human. They
 # are omitted from the sentence above because its subject is gates, not because their Stuck is any
 # softer: it halts the whole run identically. Discussion-Write's Stuck now has two reachable paths --
 # the asking one, where shedadapters.SingleLLMProducer maps a shuttleengine.OutcomeAsking onto
@@ -25,6 +26,10 @@
 # either writer row, because after three in-session re-prompts with the findings already in hand, a
 # cold respawn that knows nothing about the complaint is strictly worse than stopping and telling
 # someone.
+#
+# An in-flight run parked past Webster-Bouncer when the Describe row lands is restarted, not
+# migrated: Webster-Bouncer's on_done now names Describe rather than Publish, and the operator can
+# simply re-run.
 #
 # Friction-Reflect is outside the escalate-to-a-human set: it also carries no on_stuck, but it
 # always returns Done and never Stuck, so it stays outside that set.
@@ -216,7 +221,7 @@ producers:
     segment: Webster-Review
     max_bounces: 5
     on_stuck: Webster-Burler
-    on_done: Publish
+    on_done: Describe
     config:
       run_subdir: webster
       # The subject under review is the committed diff, which artifact_paths cannot name at all:
@@ -292,6 +297,15 @@ producers:
         # a fan the forks could not reach a subject that exists only through git. Single reviewer,
         # matching both shipped segments.
       # No model/effort/timeout_s key, for the same Env fallback reason as Webster-Bouncer.
+
+  - name: Describe
+    engine: Describe
+    on_done: Publish
+    config:
+      # gate holds this row's handoff until the artifact is mechanically valid, re-prompting the
+      # live session up to gate_attempts times, so a failure never reaches the row below.
+      gate: description
+      gate_attempts: 3
 
   - name: Publish
     engine: Publish

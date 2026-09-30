@@ -24,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
 
 // seedLoomConfig creates <anchorPath>/_lyx/config/loom.yaml with the embedded template's contents --
@@ -406,6 +407,29 @@ func TestWire_DiscussionSeamsFilled(t *testing.T) {
 	}
 	if c.env.Shuttle != c.runner {
 		t.Errorf("c.env.Shuttle = %v; want the same *shuttleengine.Runner value as c.runner = %v", c.env.Shuttle, c.runner)
+	}
+}
+
+// TestWire_DescribeSeamsFilled asserts wire() fills the three Env fields the Describe entry reads,
+// and that DescriptionPath equals the accessor expression.
+func TestWire_DescribeSeamsFilled(t *testing.T) {
+	t.Parallel()
+
+	loc := hubLocation(t, "warp", ".")
+
+	c := &loomCLI{runID: shedrun.SelfRunID}
+	if err := c.wire(loc, loc.AnchorPath()); err != nil {
+		t.Fatalf("wire() = %v; want nil", err)
+	}
+
+	if want := summaryparser.Path(loomengine.LandingDir(loc)); c.env.DescriptionPath != want {
+		t.Errorf("c.env.DescriptionPath = %q; want %q", c.env.DescriptionPath, want)
+	}
+	if c.env.DescribeSpec == nil {
+		t.Error("c.env.DescribeSpec = nil; want a non-nil shedadapters.SpecSource")
+	}
+	if c.env.CommitDescription == nil {
+		t.Error("c.env.CommitDescription = nil; want a non-nil commit closure")
 	}
 }
 

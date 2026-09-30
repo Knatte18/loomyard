@@ -31,6 +31,12 @@ type Config struct {
 	Conflict string `yaml:"conflict"`
 	// ConflictTimeoutMin is the conflict-resolution session's wall-clock budget in minutes.
 	ConflictTimeoutMin int `yaml:"conflict_timeout_min"`
+	// Describe is the model-spec string selecting the model the Describe row's session runs under.
+	Describe string `yaml:"describe"`
+	// DescribeTimeoutMin is the Describe session's wall-clock budget in minutes.
+	DescribeTimeoutMin int `yaml:"describe_timeout_min"`
+	// CoAuthoredBy is the value of the landing commit's single Co-Authored-By trailer.
+	CoAuthoredBy string `yaml:"co_authored_by"`
 }
 
 // LoadConfig loads and unmarshals configuration for the landing module.
@@ -51,6 +57,13 @@ func LoadConfig(baseDir, module string) (Config, error) {
 
 	if _, err := modelspec.Parse(cfg.Conflict); err != nil {
 		return Config{}, fmt.Errorf("landing config key %q: %w", "conflict", err)
+	}
+
+	if _, err := modelspec.Parse(cfg.Describe); err != nil {
+		return Config{}, fmt.Errorf("landing config key %q: %w", "describe", err)
+	}
+	if strings.TrimSpace(cfg.CoAuthoredBy) == "" {
+		return Config{}, fmt.Errorf("landing config key %q: must not be empty", "co_authored_by")
 	}
 
 	return cfg, nil

@@ -562,6 +562,51 @@ func TestGate_ZeroValueDeclarationsAreRefusals(t *testing.T) {
 		assertRefusalCheck(t, err, CheckDirtiness)
 	})
 
+	// The next four subtests cover the pair-warp ownership kind and the unlanded-work dirtiness kind;
+	// each refuses before any git spawn.
+
+	t.Run("PairWarpBranchZeroDirtiness", func(t *testing.T) {
+		req := branchRequest{
+			what:      "test",
+			repoDir:   t.TempDir(),
+			branch:    "task",
+			ownership: ownedPairWarpBranch("task", "main"),
+		}
+		assertRefusalCheck(t, checkBranchRequest(req), CheckDirtiness)
+	})
+
+	t.Run("UnlandedWorkZeroOwnership", func(t *testing.T) {
+		req := branchRequest{
+			what:      "test",
+			repoDir:   t.TempDir(),
+			branch:    "task",
+			dirtiness: dirtyUnlandedWork("main"),
+		}
+		assertRefusalCheck(t, checkBranchRequest(req), CheckOwnership)
+	})
+
+	t.Run("PairWarpBranchOtherNameRefused", func(t *testing.T) {
+		req := branchRequest{
+			what:      "test",
+			repoDir:   t.TempDir(),
+			branch:    "other",
+			ownership: ownedPairWarpBranch("task", "main"),
+			dirtiness: dirtyUnlandedWork("main"),
+		}
+		assertRefusalCheck(t, checkBranchRequest(req), CheckOwnership)
+	})
+
+	t.Run("PairWarpBranchEqualToParentRefused", func(t *testing.T) {
+		req := branchRequest{
+			what:      "test",
+			repoDir:   t.TempDir(),
+			branch:    "main",
+			ownership: ownedPairWarpBranch("main", "main"),
+			dirtiness: dirtyUnlandedWork("main"),
+		}
+		assertRefusalCheck(t, checkBranchRequest(req), CheckOwnership)
+	})
+
 	// The three subtests below cover remoteBranchRequest/checkRemoteBranchRequest, mirroring the
 	// branchRequest cases above exactly.
 

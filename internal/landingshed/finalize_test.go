@@ -7,11 +7,17 @@ package landingshed
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/google/go-github/v75/github"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
@@ -29,6 +35,12 @@ type recordingParentMerger struct {
 	// pushCalls records every PushBranch call's options; pushErr is returned by each of them.
 	pushCalls []fabricengine.SyncOptions
 	pushErr   error
+	// headSHA and headErr script HeadSHA's return.
+	headSHA string
+	headErr error
+	// order, when non-nil, receives "merge" and "push" as those calls happen, so a test can
+	// assert their order against other seams that append to the same slice.
+	order *[]string
 }
 
 type mergeCall struct {
@@ -44,6 +56,9 @@ type mergeCallResult struct {
 func (m *recordingParentMerger) Merge(source string, opts fabricengine.MergeOptions) (fabricengine.MergeResult, error) {
 	idx := len(m.calls)
 	m.calls = append(m.calls, mergeCall{source: source, opts: opts})
+	if m.order != nil {
+		*m.order = append(*m.order, "merge")
+	}
 	if idx >= len(m.results) {
 		idx = len(m.results) - 1
 	}
@@ -55,27 +70,33 @@ func (m *recordingParentMerger) Merge(source string, opts fabricengine.MergeOpti
 
 func (m *recordingParentMerger) PushBranch(opts fabricengine.SyncOptions) (fabricengine.PushResult, error) {
 	m.pushCalls = append(m.pushCalls, opts)
+	if m.order != nil {
+		*m.order = append(*m.order, "push")
+	}
 	return fabricengine.PushResult{}, m.pushErr
 }
 
+func (m *recordingParentMerger) HeadSHA() (string, error) { return m.headSHA, m.headErr }
+
 // newFinalizeDeps returns a minimal Deps for a Finalize test, with a well-formed final-summary
-// artifact already written at FinalSummaryPath -- Call's own top-of-Call parse (see finalize.go's
+// artifact already written at DescriptionPath -- Call's own top-of-Call parse (see finalize.go's
 // step 1a) requires one to exist for every test that does not override this field itself.
 func newFinalizeDeps(t *testing.T) Deps {
 	t.Helper()
 	summaryPath := summaryparser.Path(t.TempDir())
 	writeSummary(t, summaryPath, "A landing title", "A landing body.")
 	return Deps{
-		WorktreeRoot:     t.TempDir(),
-		TaskBranch:       "task-branch",
-		ParentBranch:     "main",
-		FinalSummaryPath: summaryPath,
-		ScratchDir:       filepath.Join(t.TempDir(), "scratch"),
+		WorktreeRoot:    t.TempDir(),
+		TaskBranch:      "task-branch",
+		ParentBranch:    "main",
+		DescriptionPath: summaryPath,
+		ScratchDir:      filepath.Join(t.TempDir(), "scratch"),
 		Config: Config{
 			RequirePRToBase:    []string{"main"},
 			Squash:             true,
 			Conflict:           "sonnet",
 			ConflictTimeoutMin: 30,
+			CoAuthoredBy:       "Test Author <test@example.com>",
 		},
 	}
 }
@@ -107,13 +128,13 @@ func TestNewFinalize_RejectsNilOpenParentFabric(t *testing.T) {
 	}
 }
 
-func TestNewFinalize_RejectsEmptyFinalSummaryPath(t *testing.T) {
+func TestNewFinalize_RejectsEmptyDescriptionPath(t *testing.T) {
 	deps := newFinalizeDeps(t)
 	deps.OpenFabric = func() (*fabricengine.Fabric, error) { return nil, nil }
 	deps.OpenParentFabric = func() (*fabricengine.Fabric, error) { return nil, nil }
-	deps.FinalSummaryPath = ""
+	deps.DescriptionPath = ""
 	if _, err := NewFinalize(deps); err == nil {
-		t.Fatal("NewFinalize() error = nil; want an error naming Deps.FinalSummaryPath")
+		t.Fatal("NewFinalize() error = nil; want an error naming Deps.DescriptionPath")
 	}
 }
 
@@ -207,7 +228,7 @@ func TestFinalize_MergeOptionsCarriesComposedMessage(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			deps := newFinalizeDeps(t)
 			deps.Config.Squash = tt.squash
-			summary, err := summaryparser.Parse(deps.FinalSummaryPath)
+			summary, err := summaryparser.Parse(deps.DescriptionPath)
 			if err != nil {
 				t.Fatalf("summaryparser.Parse() error = %v; want nil", err)
 			}
@@ -226,8 +247,12 @@ func TestFinalize_MergeOptionsCarriesComposedMessage(t *testing.T) {
 				t.Fatalf("parent-side merge calls = %d; want 1", len(merger.calls))
 			}
 			got := merger.calls[0].opts
-			if got.Message != summary.CommitMessage() {
-				t.Errorf("MergeOptions.Message = %q; want %q", got.Message, summary.CommitMessage())
+			want := summary.LandingMessage(deps.Config.CoAuthoredBy)
+			if got.Message != want {
+				t.Errorf("MergeOptions.Message = %q; want %q", got.Message, want)
+			}
+			if trailer := "Co-Authored-By: " + deps.Config.CoAuthoredBy; !strings.HasSuffix(got.Message, trailer) {
+				t.Errorf("MergeOptions.Message = %q; want suffix %q", got.Message, trailer)
 			}
 			if got.Squash != tt.squash {
 				t.Errorf("MergeOptions.Squash = %v; want %v", got.Squash, tt.squash)
@@ -241,7 +266,7 @@ func TestFinalize_MergeOptionsCarriesComposedMessage(t *testing.T) {
 // proving the top-of-Call parse runs before either.
 func TestFinalize_MissingSummaryArtifact_ErrorBeforeMergeOrCommit(t *testing.T) {
 	deps := newFinalizeDeps(t)
-	deps.FinalSummaryPath = filepath.Join(t.TempDir(), "summary.md")
+	deps.DescriptionPath = filepath.Join(t.TempDir(), "summary.md")
 	committed := false
 	deps.CommitStatus = func() error { committed = true; return nil }
 	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
@@ -250,7 +275,7 @@ func TestFinalize_MissingSummaryArtifact_ErrorBeforeMergeOrCommit(t *testing.T) 
 
 	outcome, _, err := fz.Call(context.Background())
 	if err == nil {
-		t.Fatal("Call() error = nil; want an error for a missing summary artifact")
+		t.Fatal("Call() error = nil; want an error for a missing change description")
 	}
 	if outcome != "" {
 		t.Errorf("Call() outcome = %q; want empty on a hard error", outcome)
@@ -268,8 +293,8 @@ func TestFinalize_MissingSummaryArtifact_ErrorBeforeMergeOrCommit(t *testing.T) 
 // but fails Parse's own validation rather than being absent.
 func TestFinalize_MalformedSummaryArtifact_ErrorBeforeMergeOrCommit(t *testing.T) {
 	deps := newFinalizeDeps(t)
-	deps.FinalSummaryPath = filepath.Join(t.TempDir(), "summary.md")
-	if err := os.WriteFile(deps.FinalSummaryPath, []byte("not a heading\n"), 0o644); err != nil {
+	deps.DescriptionPath = filepath.Join(t.TempDir(), "summary.md")
+	if err := os.WriteFile(deps.DescriptionPath, []byte("not a heading\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(malformed summary): %v", err)
 	}
 	committed := false
@@ -280,7 +305,7 @@ func TestFinalize_MalformedSummaryArtifact_ErrorBeforeMergeOrCommit(t *testing.T
 
 	outcome, _, err := fz.Call(context.Background())
 	if err == nil {
-		t.Fatal("Call() error = nil; want an error for a malformed summary artifact")
+		t.Fatal("Call() error = nil; want an error for a malformed change description")
 	}
 	if outcome != "" {
 		t.Errorf("Call() outcome = %q; want empty on a hard error", outcome)
@@ -320,7 +345,7 @@ func TestFinalize_MergeInRequired_RetriesExactlyOnce(t *testing.T) {
 // composed message -- no second assignment happens between the first attempt and the retry.
 func TestFinalize_MergeInRequired_RetryCarriesSameComposedMessage(t *testing.T) {
 	deps := newFinalizeDeps(t)
-	summary, err := summaryparser.Parse(deps.FinalSummaryPath)
+	summary, err := summaryparser.Parse(deps.DescriptionPath)
 	if err != nil {
 		t.Fatalf("summaryparser.Parse() error = %v; want nil", err)
 	}
@@ -341,7 +366,7 @@ func TestFinalize_MergeInRequired_RetryCarriesSameComposedMessage(t *testing.T) 
 	if len(merger.calls) != 2 {
 		t.Fatalf("parent-side merge calls = %d; want exactly 2 (one attempt, one retry)", len(merger.calls))
 	}
-	want := summary.CommitMessage()
+	want := summary.LandingMessage(deps.Config.CoAuthoredBy)
 	if merger.calls[0].opts.Message != want {
 		t.Errorf("first attempt MergeOptions.Message = %q; want %q", merger.calls[0].opts.Message, want)
 	}
@@ -488,5 +513,274 @@ func TestFinalize_StuckWritesNoReasonFile(t *testing.T) {
 	}
 	if len(matches) != 0 {
 		t.Errorf("stuck-reason files = %v; want none", matches)
+	}
+}
+
+// --- Closing the pull request after landing ---
+
+// closeServer records every request the GitHub fake receives as "METHOD path" plus decoded body.
+type closeServer struct {
+	requests []string
+	bodies   []map[string]any
+	listBody string
+	// failClose makes the PATCH (close) call answer 500.
+	failClose bool
+}
+
+func installCloseServer(t *testing.T, s *closeServer) {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.requests = append(s.requests, r.Method+" "+r.URL.Path)
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		s.bodies = append(s.bodies, body)
+		switch r.Method {
+		case http.MethodGet:
+			_, _ = w.Write([]byte(s.listBody))
+		case http.MethodPost:
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"id":1}`))
+		case http.MethodPatch:
+			if s.failClose {
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = w.Write([]byte(`{"message":"boom"}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"number":7,"state":"closed"}`))
+		}
+	}))
+	t.Cleanup(srv.Close)
+	client := github.NewClient(nil).WithAuthToken("test-token")
+	parsed, err := url.Parse(srv.URL + "/")
+	if err != nil {
+		t.Fatalf("url.Parse: %v", err)
+	}
+	client.BaseURL = parsed
+	orig := NewGitHubClient
+	NewGitHubClient = func() (*github.Client, error) { return client, nil }
+	t.Cleanup(func() { NewGitHubClient = orig })
+}
+
+func runCloseFinalize(t *testing.T, deps Deps) shedengine.Outcome {
+	t.Helper()
+	deps.OriginURL = "https://github.com/acme/widgets.git"
+	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
+	merger := &recordingParentMerger{
+		results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}},
+		headSHA: "abc123landed",
+	}
+	fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return merger, nil }}
+	outcome, _, err := fz.Call(context.Background())
+	if err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	return outcome
+}
+
+func TestFinalize_ClosesOpenPullRequestAfterLanding(t *testing.T) {
+	s := &closeServer{listBody: `[{"number":7,"state":"open"}]`}
+	installCloseServer(t, s)
+
+	if outcome := runCloseFinalize(t, newFinalizeDeps(t)); outcome != shedengine.Done {
+		t.Fatalf("outcome = %q; want Done", outcome)
+	}
+
+	want := []string{"GET /repos/acme/widgets/pulls", "POST /repos/acme/widgets/issues/7/comments", "PATCH /repos/acme/widgets/pulls/7"}
+	if strings.Join(s.requests, "|") != strings.Join(want, "|") {
+		t.Fatalf("requests = %v; want %v", s.requests, want)
+	}
+	comment, _ := s.bodies[1]["body"].(string)
+	if !strings.Contains(comment, "abc123landed") || !strings.Contains(comment, "main") {
+		t.Errorf("comment = %q; want it to name the landing SHA and parent branch", comment)
+	}
+	if got := s.bodies[2]["state"]; got != "closed" {
+		t.Errorf("close state = %v; want closed", got)
+	}
+}
+
+// TestFinalize_AlreadyUpToDateMergeProceedsAsLanded pins the already-landed path: a merge that
+// reports AlreadyUpToDate (nothing committed, no error) still marks the task done, pushes, and
+// closes the PR naming the head the parent reports.
+func TestFinalize_AlreadyUpToDateMergeProceedsAsLanded(t *testing.T) {
+	s := &closeServer{listBody: `[{"number":7,"state":"open"}]`}
+	installCloseServer(t, s)
+
+	deps := newFinalizeDeps(t)
+	deps.OriginURL = "https://github.com/acme/widgets.git"
+	markedDone := 0
+	deps.MarkTaskDone = func() error { markedDone++; return nil }
+	merger := &recordingParentMerger{
+		results: []mergeCallResult{{result: fabricengine.MergeResult{AlreadyUpToDate: true}}},
+		headSHA: "parentheadsha",
+	}
+	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
+	fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return merger, nil }}
+
+	outcome, _, err := fz.Call(context.Background())
+	if err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	if outcome != shedengine.Done {
+		t.Fatalf("outcome = %q; want Done", outcome)
+	}
+	if markedDone != 1 {
+		t.Errorf("MarkTaskDone called %d time(s); want 1", markedDone)
+	}
+	if len(merger.pushCalls) != 1 {
+		t.Errorf("PushBranch called %d time(s); want 1", len(merger.pushCalls))
+	}
+	if len(s.bodies) < 2 {
+		t.Fatalf("requests = %v; want lookup, comment and close", s.requests)
+	}
+	comment, _ := s.bodies[1]["body"].(string)
+	if !strings.Contains(comment, "parentheadsha") {
+		t.Errorf("comment = %q; want it to name the head SHA the parent reports", comment)
+	}
+}
+
+func TestFinalize_LeavesNonOpenPullRequestAlone(t *testing.T) {
+	s := &closeServer{listBody: `[{"number":7,"state":"closed"}]`}
+	installCloseServer(t, s)
+
+	if outcome := runCloseFinalize(t, newFinalizeDeps(t)); outcome != shedengine.Done {
+		t.Fatalf("outcome = %q; want Done", outcome)
+	}
+	if len(s.requests) != 1 {
+		t.Errorf("requests = %v; want only the lookup", s.requests)
+	}
+}
+
+func TestFinalize_CloseFailureStillDone(t *testing.T) {
+	s := &closeServer{listBody: `[{"number":7,"state":"open"}]`, failClose: true}
+	installCloseServer(t, s)
+
+	if outcome := runCloseFinalize(t, newFinalizeDeps(t)); outcome != shedengine.Done {
+		t.Fatalf("outcome = %q; want Done despite the failed close", outcome)
+	}
+}
+
+func TestFinalize_NoGitHubCallWhenNotRequiredOrPushSkipped(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*Deps)
+	}{
+		{"parent not in require_pr_to_base", func(d *Deps) { d.Config.RequirePRToBase = []string{"other"} }},
+		{"push skipped", func(d *Deps) { d.PushSkipped = true }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &closeServer{listBody: `[{"number":7,"state":"open"}]`}
+			installCloseServer(t, s)
+			deps := newFinalizeDeps(t)
+			tt.mutate(&deps)
+
+			if outcome := runCloseFinalize(t, deps); outcome != shedengine.Done {
+				t.Fatalf("outcome = %q; want Done", outcome)
+			}
+			if len(s.requests) != 0 {
+				t.Errorf("requests = %v; want none", s.requests)
+			}
+		})
+	}
+}
+
+// --- MarkTaskDone ---
+
+// TestFinalize_MarkTaskDone_OrderAndVerdict pins where the board seam sits relative to the merge
+// and the push, and that neither a failing push nor a failing seam changes what it is called for.
+func TestFinalize_MarkTaskDone_OrderAndVerdict(t *testing.T) {
+	tests := []struct {
+		name        string
+		pushErr     error
+		markErr     error
+		wantOutcome shedengine.Outcome
+	}{
+		{"merge, mark, push", nil, nil, shedengine.Done},
+		{"failing push still marks", errors.New("remote rejected"), nil, shedengine.Stuck},
+		{"erroring closure still Done", nil, errors.New("board unavailable"), shedengine.Done},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var order []string
+			deps := newFinalizeDeps(t)
+			deps.MarkTaskDone = func() error {
+				order = append(order, "mark")
+				return tt.markErr
+			}
+			res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
+			merger := &recordingParentMerger{
+				results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}},
+				pushErr: tt.pushErr,
+				order:   &order,
+			}
+			fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return merger, nil }}
+
+			outcome, _, err := fz.Call(context.Background())
+			if err != nil {
+				t.Fatalf("Call() error = %v; want nil", err)
+			}
+			if outcome != tt.wantOutcome {
+				t.Errorf("Call() outcome = %q; want %q", outcome, tt.wantOutcome)
+			}
+			if got, want := strings.Join(order, ","), "merge,mark,push"; got != want {
+				t.Errorf("call order = %q; want %q", got, want)
+			}
+		})
+	}
+}
+
+// TestFinalize_MarkTaskDone_CalledAfterMergeInRetry asserts the seam runs once, after the retried
+// parent-side merge that finally lands, not after the failed first attempt.
+func TestFinalize_MarkTaskDone_CalledAfterMergeInRetry(t *testing.T) {
+	var order []string
+	deps := newFinalizeDeps(t)
+	deps.MarkTaskDone = func() error { order = append(order, "mark"); return nil }
+	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
+	merger := &recordingParentMerger{
+		results: []mergeCallResult{
+			{err: &fabricengine.ErrMergeInRequired{}},
+			{result: fabricengine.MergeResult{Committed: true}},
+		},
+		order: &order,
+	}
+	fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return merger, nil }}
+
+	outcome, _, err := fz.Call(context.Background())
+	if err != nil || outcome != shedengine.Done {
+		t.Fatalf("Call() = (%q, %v); want (Done, nil)", outcome, err)
+	}
+	if got, want := strings.Join(order, ","), "merge,merge,mark,push"; got != want {
+		t.Errorf("call order = %q; want %q", got, want)
+	}
+}
+
+// TestFinalize_MarkTaskDone_NotCalledOnFailedMerge asserts a merge that never lands never marks the
+// task done, and that a nil seam is simply skipped.
+func TestFinalize_MarkTaskDone_NotCalledOnFailedMerge(t *testing.T) {
+	called := false
+	deps := newFinalizeDeps(t)
+	deps.MarkTaskDone = func() error { called = true; return nil }
+	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
+	merger := &recordingParentMerger{results: []mergeCallResult{{err: errors.New("boom")}}}
+	fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return merger, nil }}
+
+	outcome, _, err := fz.Call(context.Background())
+	if err != nil || outcome != shedengine.Stuck {
+		t.Fatalf("Call() = (%q, %v); want (Stuck, nil)", outcome, err)
+	}
+	if called {
+		t.Error("MarkTaskDone was called after a failed parent-side merge; want it never called")
+	}
+}
+
+func TestFinalize_MarkTaskDone_NilIsAbsent(t *testing.T) {
+	deps := newFinalizeDeps(t)
+	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
+	merger := &recordingParentMerger{results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}}
+	fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return merger, nil }}
+
+	outcome, _, err := fz.Call(context.Background())
+	if err != nil || outcome != shedengine.Done {
+		t.Fatalf("Call() = (%q, %v); want (Done, nil)", outcome, err)
 	}
 }

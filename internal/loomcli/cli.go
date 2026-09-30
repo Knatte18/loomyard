@@ -187,19 +187,21 @@ func (c *loomCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) err
 // resolved location, the two status-file paths, and a handful of cheap path accessors -- no module
 // config, no engine, no producer.
 //
-// The set is the two read-only status verbs (status, pause) plus the two standalone format
-// self-checks (validate-discussion, validate-plan), which read only c.env's path fields and never a
-// loaded config -- crucible round sonnet5-xhigh-r8's F2 extended the set from the original two after
-// finding the writer agents' own stencil-mandated pre-handoff self-check failed on an unrelated
-// module's broken config, the identical hazard that got status/pause this lightweight path in the
-// first place (see wireLightweight's own doc comment for that history). Every other verb builds or
+// The set is the two read-only status verbs (status, pause), the three standalone format
+// self-checks (validate-discussion, validate-plan, validate-description), which read only c.env's
+// path fields and never a loaded config, and approve, which reads the status file, the fabric and
+// GitHub but builds no producer and so needs no module config either. Crucible round
+// sonnet5-xhigh-r8's F2 extended the set from the original two after finding the writer agents'
+// own stencil-mandated pre-handoff self-check failed on an unrelated module's broken config, the
+// identical hazard that got status/pause this lightweight path in the first place (see
+// wireLightweight's own doc comment for that history). Every other verb builds or
 // drives producers and keeps the full wire(), including its early config refusal. "step" is
 // deliberately excluded from this set for that same reason: it drives a producer through
 // shedengine.Shed's own Step, so it needs the full wire() and its early config refusal exactly as
 // "start" and "run" do.
 func verbUsesLightweightWiring(name string) bool {
 	switch name {
-	case "status", "pause", "validate-discussion", "validate-plan":
+	case "status", "pause", "validate-discussion", "validate-plan", "validate-description", "approve":
 		return true
 	default:
 		return false
@@ -218,7 +220,7 @@ var loomVerbTexts = shedverbs.VerbTexts{
 no terminal handover. It is the escape hatch for debugging and CI.
 
 run is NOT tmux-free. Every LLM row underneath it -- Discussion-Write,
-Plan-Write, and all three review segments -- spawns its agent through
+Plan-Write, Describe, and all three review segments -- spawns its agent through
 shuttle into a reed pane, so a live tmux session is required. run
 ensures that session itself, exactly as "lyx loom start" does, rather than
 failing several producers deep once a row first tries to add a strand.
@@ -314,7 +316,7 @@ func Command() *cobra.Command {
 on the generic shed engine. The machine walks its producer rows: a
 two-row preflight, then Discussion, Plan, and Webster, each of the three
 followed by its own LLM review segment that loops until it approves or
-escalates, then Publish and Finalize, and last Friction-Reflect, which runs
+escalates, then Describe, which writes the change description, then Publish and Finalize, and last Friction-Reflect, which runs
 "run"'s Tier 2 friction reflection before the run records done. "start" is
 the bootstrap verb: it seeds the status file, commits the seed, and spawns/attaches the
 detached driver session; "run" is the no-tmux escape hatch that runs the
@@ -325,7 +327,10 @@ reports the current phase and, with --watch, tails it, printing a line
 only when the activity changes; "pause" requests a pause at the next
 producer boundary. "validate-discussion" and "validate-plan" are the
 standalone form of the mechanical gates Discussion-Write's and Plan-Write's
-own rows carry, callable by the writer agent before handoff.
+own rows carry, callable by the writer agent before handoff, and
+"validate-description" does the same for the Describe row's change description.
+"approve" records the operator's approval of the open pull request for a run
+blocked at Publish; "lyx loom start" then lands it.
 
 Example:
   lyx loom start
@@ -335,7 +340,9 @@ Example:
   lyx loom status --watch
   lyx loom pause
   lyx loom validate-discussion
-  lyx loom validate-plan`,
+  lyx loom validate-plan
+  lyx loom validate-description
+  lyx loom approve`,
 		// RunE is set so that bare "lyx loom" lists subcommands and "lyx
 		// loom bogus" emits a JSON error envelope instead of falling
 		// through to cobra's plain-text help.
@@ -357,7 +364,7 @@ Example:
 	statusVerb.Args = cobra.MaximumNArgs(1)
 	pauseVerb.Args = cobra.MaximumNArgs(1)
 
-	parent.AddCommand(c.startCmd(), runVerb, stepVerb, statusVerb, pauseVerb, c.validateDiscussionCmd(), c.validatePlanCmd())
+	parent.AddCommand(c.startCmd(), runVerb, stepVerb, statusVerb, pauseVerb, c.validateDiscussionCmd(), c.validatePlanCmd(), c.validateDescriptionCmd(), c.approveCmd())
 
 	return parent
 }

@@ -202,7 +202,11 @@ are all refused — the same set "lyx fabric add" refuses. When git itself
 declines to remove the worktree, fabric reports git's own reason and deletes
 nothing unless the target is a registered linked worktree of this repo.
 
-The pair's weft branch is deleted locally as before. Use --remote to
+The pair's weft branch is deleted locally as before. The pair's local task
+(warp) branch is deleted too when its work is pushed or landed on the parent
+branch recorded when the pair was added; otherwise it is kept, with the reason
+in warp_branch_kept_reason, and the command still exits 0. --force never
+overrides that check. Use --remote to
 additionally delete its copy on the weft remote — an irreversible action,
 visible to every other clone. A weft repo with no origin remote configured
 reports the reason in remote_skipped_reason and still exits 0. A failed

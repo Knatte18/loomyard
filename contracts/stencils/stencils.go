@@ -18,6 +18,11 @@ import (
 //go:embed landing/landing-template-conflict.md
 var LandingTemplateConflict []byte
 
+// LandingTemplateDescribe is the landing Describe producer's shipped-default prompt.
+//
+//go:embed landing/landing-template-describe.md
+var LandingTemplateDescribe []byte
+
 // LoomTemplateDiscussion is the loom Discussion producer's shipped-default interview prompt.
 //
 //go:embed loom/loom-template-discussion.md
@@ -175,6 +180,7 @@ type registryEntry struct {
 // `lyx stencil list` prints them in.
 var entries = []registryEntry{
 	{"landing-template-conflict", &LandingTemplateConflict},
+	{"landing-template-describe", &LandingTemplateDescribe},
 	{"loom-template-discussion", &LoomTemplateDiscussion},
 	{"loom-template-plan", &LoomTemplatePlan},
 	{"loom-rubric-discussion-review", &LoomRubricDiscussionReview},

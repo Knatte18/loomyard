@@ -60,8 +60,9 @@ var wantProducerTable = []wantProducerRow{
 	{loomshed.NamePlanBurler, loomshed.NamePlanBouncer, loomshed.NamePlanBouncer, "Plan-Review", 5, reflect.TypeOf(&shedadapters.BurlerProducer{})},
 	{loomshed.NameBatchifier, "", loomshed.NameWebster, "", 0, reflect.TypeOf(loomshed.NewBatchifier("", ""))},
 	{loomshed.NameWebster, "", loomshed.NameWebsterBouncer, "", 0, reflect.TypeOf(loomshed.NewWebsterProducer("", "", nil, websterengine.RunDeps{}, nil))},
-	{loomshed.NameWebsterBouncer, loomshed.NameWebsterBurler, loomshed.NamePublish, "Webster-Review", 5, reflect.TypeOf(&shedadapters.Bouncer{})},
+	{loomshed.NameWebsterBouncer, loomshed.NameWebsterBurler, loomshed.NameDescribe, "Webster-Review", 5, reflect.TypeOf(&shedadapters.Bouncer{})},
 	{loomshed.NameWebsterBurler, loomshed.NameWebsterBouncer, loomshed.NameWebsterBouncer, "Webster-Review", 5, reflect.TypeOf(&shedadapters.BurlerProducer{})},
+	{loomshed.NameDescribe, "", loomshed.NamePublish, "", 0, reflect.TypeOf(loomshed.NewDiscussionWrite("", nil, nil))},
 	{loomshed.NamePublish, "", loomshed.NameFinalize, "", 0, reflect.TypeOf(&landingshed.Publish{})},
 	{loomshed.NameFinalize, "", loomshed.NameFrictionReflect, "", 0, reflect.TypeOf(&landingshed.Finalize{})},
 	{loomshed.NameFrictionReflect, "", "", "", 0, frictionReflectProducerType()},
@@ -131,6 +132,11 @@ func testEnv(t *testing.T) (shedrecipe.Env, shedbuild.ShedPaths) {
 			}, nil
 		},
 		CommitDiscussion: func() error { return nil },
+		DescriptionPath:  filepath.Join(dir, "landing", "summary.md"),
+		DescribeSpec: func() (shuttleengine.Spec, error) {
+			return shuttleengine.Spec{Prompt: "describe prompt", Role: "describe"}, nil
+		},
+		CommitDescription: func() error { return nil },
 		PlanSpec: func() (shuttleengine.Spec, error) {
 			return shuttleengine.Spec{
 				Prompt:      "plan prompt",

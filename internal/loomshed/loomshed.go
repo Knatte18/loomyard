@@ -30,6 +30,7 @@ const (
 	NameWebster           = "Webster"
 	NameWebsterBouncer    = "Webster-Bouncer"
 	NameWebsterBurler     = "Webster-Burler"
+	NameDescribe          = "Describe"
 	NamePublish           = "Publish"
 	NameFinalize          = "Finalize"
 	NameFrictionReflect   = "Friction-Reflect"

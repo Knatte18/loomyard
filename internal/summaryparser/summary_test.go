@@ -5,6 +5,7 @@
 package summaryparser_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -178,6 +179,32 @@ func TestCommitMessage(t *testing.T) {
 			got := s.CommitMessage()
 			if got != tt.want {
 				t.Errorf("CommitMessage() = %q; want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestParse_FailuresMatchSentinels asserts each Parse validation failure wraps its own sentinel.
+func TestParse_FailuresMatchSentinels(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    error
+	}{
+		{"empty", "  \n", summaryparser.ErrEmptyFileForTest},
+		{"no heading", "text\n", summaryparser.ErrNoHeadingForTest},
+		// A blank title trims to a bare "#", so Parse reports it as a missing heading; the
+		// empty-title sentinel guards the branch Parse's own trimming makes unreachable today.
+		{"bare hash", "# \n", summaryparser.ErrNoHeadingForTest},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "summary.md")
+			if err := os.WriteFile(path, []byte(tt.content), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := summaryparser.Parse(path); !errors.Is(err, tt.want) {
+				t.Errorf("Parse() error = %v; want errors.Is %v", err, tt.want)
 			}
 		})
 	}

@@ -57,6 +57,7 @@ var InterruptPolicies = map[string]string{
 	NameWebster:           InterruptPolicyHandback,
 	NameWebsterBouncer:    InterruptPolicyReinvoke,
 	NameWebsterBurler:     InterruptPolicyReinvoke,
+	NameDescribe:          InterruptPolicyReinvoke,
 	NamePublish:           InterruptPolicyReinvoke,
 	NameFinalize:          InterruptPolicyReinvoke,
 	NameFrictionReflect:   InterruptPolicyReinvoke,

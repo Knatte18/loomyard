@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -427,6 +428,66 @@ func TestGenericVerbs_AcceptOptionalRunIDPositional(t *testing.T) {
 			}
 			if err := cmd.Args(cmd, []string{"a-run-id", "extra"}); err == nil {
 				t.Errorf("%s.Args(cmd, [%q, %q]) = nil; want a refusal (two positionals)", name, "a-run-id", "extra")
+			}
+		})
+	}
+}
+
+// TestGateParity_DescriptionGate drives landingshed.NewDescriptionGate and the validate-description
+// verb over the same fixture set and asserts the two mapped verdicts agree: a well-formed file
+// (done), a file with a Co-Authored-By line (stuck), and a directory at the description path, a
+// read failure other than not-exist (error).
+func TestGateParity_DescriptionGate(t *testing.T) {
+	cases := []discussionParityCase{
+		{
+			name: "Clean",
+			build: func(t *testing.T, dir string) *loomCLI {
+				return descriptionFixture(t, dir, "# Title\n\nbody\n")
+			},
+			want: verdictDone,
+		},
+		{
+			name: "Stuck_CoAuthoredBy",
+			build: func(t *testing.T, dir string) *loomCLI {
+				return descriptionFixture(t, dir, "# Title\n\nbody\n\nCo-Authored-By: X <x@y>\n")
+			},
+			want: verdictStuck,
+		},
+		{
+			name: "Error_DescriptionIsDirectory",
+			build: func(t *testing.T, dir string) *loomCLI {
+				c := descriptionFixture(t, dir, "# Title\n\nbody\n")
+				if err := os.Remove(c.env.DescriptionPath); err != nil {
+					t.Fatalf("remove description: %v", err)
+				}
+				if err := os.Mkdir(c.env.DescriptionPath, 0o755); err != nil {
+					t.Fatalf("mkdir description: %v", err)
+				}
+				return c
+			},
+			want: verdictError,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := tc.build(t, t.TempDir())
+
+			result, err := landingshed.NewDescriptionGate(c.env.DescriptionPath)()
+			pv := producerVerdict(result, err)
+
+			var out bytes.Buffer
+			exitCode := clihelp.Execute(c.validateDescriptionCmd(), &out, nil)
+			cv := cliVerdict(decodeSingleEnvelope(t, out.String()))
+
+			if pv != cv {
+				t.Errorf(
+					"parity mismatch for fixture %q: gate verdict = %q (result=%+v, err=%v); CLI verdict = %q (exit=%d, raw=%q)",
+					tc.name, pv, result, err, cv, exitCode, out.String(),
+				)
+			}
+			if pv != tc.want {
+				t.Errorf("fixture %q: producer verdict = %q; want %q", tc.name, pv, tc.want)
 			}
 		})
 	}

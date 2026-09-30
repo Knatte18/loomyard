@@ -60,6 +60,9 @@ type Env struct {
 	DecisionRecordPath string
 	// SupportLogPath is the told support log path, read by the gate resolver's "discussion" gate.
 	SupportLogPath string
+	// DescriptionPath is the told absolute path of the change description, read by the gate
+	// resolver's "description" gate.
+	DescriptionPath string
 
 	// ReviewModel, ReviewEffort, ReviewVersion, and ReviewTimeout are run-wide review defaults read
 	// by the Bouncer and BurlerRound entries: each is used only when the corresponding per-row
@@ -103,6 +106,14 @@ type Env struct {
 	// CommitDiscussion is the injected closure that commits the discussion output directory,
 	// invoked by the DiscussionWrite entry's commit decorator on a Done outcome.
 	CommitDiscussion func() error
+	// DescribeSpec is the injected shedadapters.SpecSource the Describe entry evaluates once per
+	// Call. It arrives as a closure rather than as recipe Config because building the Spec needs a
+	// *lyxcwd.Location, which the Shed Recipe Registry Invariant bars this package from importing
+	// directly; internal/loomcli's wire() is what supplies it.
+	DescribeSpec shedadapters.SpecSource
+	// CommitDescription is the injected closure that commits the change description's directory,
+	// invoked by the Describe entry's commit decorator on a Done outcome.
+	CommitDescription func() error
 	// PlanSpec is the injected shedadapters.SpecSource the PlanWrite entry evaluates once per Call.
 	// It arrives as a closure rather than as recipe Config because building the Spec needs a
 	// *lyxcwd.Location, which the Shed Recipe Registry Invariant bars this package from importing

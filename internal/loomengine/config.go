@@ -29,6 +29,15 @@ import (
 // loomengine is this segment's sole declarer.
 const discussionDirName = "discussion"
 
+// landingDirName is the relative-path segment loomengine joins onto lyxdirs.LyxDirName to form the
+// directory holding the landing change description.
+// loomengine is this segment's sole declarer.
+const landingDirName = "landing"
+
+// loomApprovalFileName is the filename of the operator approval record within LoomScratchDir.
+// loomengine is this segment's sole declarer.
+const loomApprovalFileName = "approval.json"
+
 // loomDirName is the relative-path segment loomengine joins onto lyxdirs.LyxDirName or
 // lyxdirs.DotLyxDirName to scope every loom-owned path that is not part of the shed run directory
 // under its own subdirectory, distinct from the other products (e.g. Someday Hardener) that also
@@ -71,6 +80,22 @@ func DiscussionDirRel() string {
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func DiscussionDir(l *lyxcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), DiscussionDirRel())
+}
+
+// LandingDirRel returns the worktree-anchor-relative form of LandingDir's path: the join of
+// lyxdirs.LyxDirName and landingDirName.
+// It exists so a caller building a fabric commit pathspec never has to name a directory segment
+// loomengine owns.
+func LandingDirRel() string {
+	return filepath.Join(lyxdirs.LyxDirName, landingDirName)
+}
+
+// LandingDir returns the path to the directory holding the landing change description for this
+// worktree; the description file itself is summaryparser.Path of this directory.
+// It is AnchorPath-anchored.
+// Per the Cwd Resolution Invariant, no other package may construct this path.
+func LandingDir(l *lyxcwd.Location) string {
+	return filepath.Join(l.AnchorPath(), LandingDirRel())
 }
 
 // DiscussionDecisionRecord returns the path to the distilled decision record that is the Plan
@@ -164,6 +189,14 @@ func LoomStepHandoffLock(l *lyxcwd.Location) string {
 // declares.
 func LoomScratchDir(l *lyxcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, loomDirName)
+}
+
+// LoomApprovalPath returns the path to the operator approval record for this worktree.
+// It is built on LoomScratchDir rather than re-joining the .lyx literal, and is ephemeral: the
+// record is never tracked, per the Durable-vs-Ephemeral State Invariant.
+// Per the Cwd Resolution Invariant, no other package may construct this path.
+func LoomApprovalPath(l *lyxcwd.Location) string {
+	return filepath.Join(LoomScratchDir(l), loomApprovalFileName)
 }
 
 // LoomReviewsDir returns the path to the root every review segment's `run_subdir` resolves

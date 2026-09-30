@@ -128,16 +128,16 @@ func TestPublish_MergesInCleanlyBeforeCreatingPullRequest(t *testing.T) {
 
 	var pushed bool
 	deps := landingshed.Deps{
-		WorktreeRoot:     taskWorktree,
-		TaskBranch:       "task-branch",
-		ParentBranch:     "main",
-		FinalSummaryPath: finalSummaryPath,
-		StencilsDir:      t.TempDir(),
-		ScratchDir:       filepath.Join(t.TempDir(), "scratch"),
-		OriginURL:        "https://github.com/acme/proj.git",
-		PushBranch:       func() error { pushed = true; return nil },
-		OpenFabric:       func() (*fabricengine.Fabric, error) { return openFabricAtLanding(t, taskWorktree), nil },
-		Shuttle:          failingShuttle{t: t},
+		WorktreeRoot:    taskWorktree,
+		TaskBranch:      "task-branch",
+		ParentBranch:    "main",
+		DescriptionPath: finalSummaryPath,
+		StencilsDir:     t.TempDir(),
+		ScratchDir:      filepath.Join(t.TempDir(), "scratch"),
+		OriginURL:       "https://github.com/acme/proj.git",
+		PushBranch:      func() error { pushed = true; return nil },
+		OpenFabric:      func() (*fabricengine.Fabric, error) { return openFabricAtLanding(t, taskWorktree), nil },
+		Shuttle:         failingShuttle{t: t},
 		Config: landingshed.Config{
 			RequirePRToBase:    []string{"main"},
 			Conflict:           "claude:test-model",

@@ -148,7 +148,7 @@ func testLandingDeps(dir string) landingshed.Deps {
 		WorktreeRoot:     dir,
 		TaskBranch:       "task-branch",
 		ParentBranch:     "fixture-parent",
-		FinalSummaryPath: summaryparser.Path(dir),
+		DescriptionPath:  summaryparser.Path(dir),
 		StencilsDir:      dir,
 		ScratchDir:       filepath.Join(dir, "landing-scratch"),
 		OriginURL:        "https://example.invalid/fixture/fixture.git",
@@ -227,10 +227,19 @@ func newTestEnv(t *testing.T) shedrecipe.Env {
 				Interactive: false,
 			}, nil
 		},
-		CommitPlan: func() error { return nil },
-		Landing:    testLandingDeps(mustMkdir("landing")),
-		Slug:       "test-slug",
-		ScratchDir: mustMkdir("scratch"),
+		CommitPlan:      func() error { return nil },
+		DescriptionPath: filepath.Join(dir, "description.md"),
+		DescribeSpec: func() (shuttleengine.Spec, error) {
+			return shuttleengine.Spec{
+				Prompt:      "test describe prompt",
+				OutputFiles: []string{filepath.Join(dir, "description.md")},
+				Interactive: false,
+			}, nil
+		},
+		CommitDescription: func() error { return nil },
+		Landing:           testLandingDeps(mustMkdir("landing")),
+		Slug:              "test-slug",
+		ScratchDir:        mustMkdir("scratch"),
 		CreateWorktree: func(context.Context) error {
 			return nil
 		},

@@ -418,6 +418,25 @@ func TestLoomScratchDir_MirrorsDriverLogAndBootstrapLockParent(t *testing.T) {
 	}
 }
 
+// TestLandingAndApprovalAccessors pins the landing directory, its commit-pathspec form and the
+// approval record path for a hand-built location.
+func TestLandingAndApprovalAccessors(t *testing.T) {
+	l := &lyxcwd.Location{
+		HubPath:      filepath.Join("home", "user", "repo-LYXHUB"),
+		WorktreeName: "repo",
+	}
+
+	if got, want := LandingDirRel(), filepath.Join("_lyx", "landing"); got != want {
+		t.Errorf("LandingDirRel() = %q; want %q", got, want)
+	}
+	if got, want := LandingDir(l), filepath.Join(l.AnchorPath(), "_lyx", "landing"); got != want {
+		t.Errorf("LandingDir() = %q; want %q", got, want)
+	}
+	if got, want := LoomApprovalPath(l), filepath.Join(l.AnchorPath(), ".lyx", "loom", "approval.json"); got != want {
+		t.Errorf("LoomApprovalPath() = %q; want %q", got, want)
+	}
+}
+
 // TestLoomScratchDir_DiffersFromShedrunScratchDir proves LoomScratchDir and
 // shedrun.ScratchDir(l, shedrun.SelfRunID) are distinct directories for the same location, per the
 // overview's loomDirName-survives-the-status-relocation decision: the "loom" segment still backs a
