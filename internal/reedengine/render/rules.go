@@ -119,9 +119,9 @@ func Rules(strands []Strand, box Box, p Params, paneOrder []string) (layout stri
 }
 
 // Pin is one pane whose height is an absolute row budget rather than "whatever is left" — the
-// Selvage band or a collapsed strip. Height is the height Rules actually placed the cell at, after
+// Selvage band, a collapsed strip, or a fixed-budget strand. Height is the height Rules actually placed the cell at, after
 // clampBandHeight/clampToFit — never the raw configured budget (p.Selvage.HeightRows or
-// p.CollapsedStripRows read directly), since either can yield rows under a too-short window.
+// p.CollapsedStripRows or Display.FixedRows read directly), since either can yield rows under a too-short window.
 type Pin struct {
 	// PaneID is the tmux pane id this pin applies to.
 	PaneID string
@@ -130,7 +130,7 @@ type Pin struct {
 }
 
 // FixedHeightPins reports the panes whose heights are absolute row budgets — the Selvage band and
-// every collapsed strip — at the heights Rules actually placed them at for the identical
+// every collapsed strip and fixed-budget strand — at the heights Rules actually placed them at for the identical
 // (strands, box, p) inputs. It shares Rules' own policy composition (planCells) so the two can never
 // disagree about a placed height.
 //

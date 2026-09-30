@@ -433,7 +433,7 @@ See the [Told-Geometry Invariant](../CONSTRAINTS.md#told-geometry-invariant) for
 - **reed is three things, and it is built** — an **overlay** over tmux, **strand bookkeeping** (a strand = one tracked process: a metadata record with a `guid`, `name`, worktree slug, parent, and a *generic* display spec),
   and a **render** sub-package (`internal/reedengine/render`, `layout = Rules(strands, box)`).
   Callers hand reed `{cmd, name, display}` where `display` is generic (anchor / focus / shrinkWhenWaitingOnChild;
-  height is derived, not caller-set) — never a domain `type`, so reed never learns what a "phase" or "cluster" is.
+  height is derived, not caller-set, apart from an optional fixed row budget) — never a domain `type`, so reed never learns what a "phase" or "cluster" is.
   Earlier drafts split the model and view into separate `shed`/`glance` modules;
   with one terminal per worktree they fold cleanly into `internal/reedengine` + `internal/reedengine/render`.
   See the `internal/reedengine` package documentation.
