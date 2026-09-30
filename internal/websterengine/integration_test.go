@@ -604,6 +604,36 @@ func TestIntegrationStage_Flaky_NoFrictionNoteWithoutDir(t *testing.T) {
 	}
 }
 
+// TestIntegrationStage_Flaky_FrictionNoteFailureKeepsDone proves an unwritable friction dir does not
+// fail the run: the note is best-effort, and the report and summary still record the flaky verdict.
+func TestIntegrationStage_Flaky_FrictionNoteFailureKeepsDone(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	appendIntegrationVerify(t, fx.PlanDir, "true")
+	// A regular file where the friction dir should be makes every note write fail.
+	blocker := filepath.Join(t.TempDir(), "not-a-dir")
+	if err := os.WriteFile(blocker, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fx.Deps.FrictionDir = blocker
+
+	start := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	sha1 := commitFile(t, fx.Worktree, "card1.txt", "one", "card1")
+
+	result, err := runFailedSuite(t, fx, failedSuite{batches: [][]string{{sha1}}, startSHA: start, masterOutcome: "done", forkLog: flakyForkLog})
+	if err != nil {
+		t.Fatalf("Run() error = %v; want nil (a failed friction note is not a run failure)", err)
+	}
+	if result.Outcome != "done" {
+		t.Errorf("Outcome = %q; want done", result.Outcome)
+	}
+	if report := integrationReportOf(t, fx); report.Triage == nil || report.Triage.Verdict != websterengine.TriageVerdictFlaky {
+		t.Errorf("report triage = %+v; want verdict flaky", report.Triage)
+	}
+	if !strings.Contains(summaryOf(t, fx), "## Integration suite triage") {
+		t.Errorf("summary.md carries no triage section; got:\n%s", summaryOf(t, fx))
+	}
+}
+
 // TestIntegrationStage_PreExisting_DoneKeepsDone proves a failure present at both head and the
 // plan's starting commit ends done with a pre-existing verdict, and only the baseline run checks
 // anything out.

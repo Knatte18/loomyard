@@ -1095,8 +1095,10 @@ func recordTriageResult(deps RunDeps, reportPath string, outcome triageOutcome, 
 		if err := AppendIntegrationTriage(deps.Geom.WebsterDir, outcome.Triage.Flaky, outcome.Triage.PreExisting); err != nil {
 			return err
 		}
+		// The friction note is best-effort, like the rest of the friction plumbing:
+		// the report and summary section already carry the verdict, so a failed note must not fail the run.
 		if err := writeTriageFrictionNote(deps.FrictionDir, outcome.Triage); err != nil {
-			return err
+			logger.Warn("websterengine: triage friction note not written", "cause", err)
 		}
 	}
 
