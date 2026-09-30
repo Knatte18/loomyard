@@ -30,6 +30,11 @@ const ParkMarkerFileName = "driver-parked"
 // It is exported so battencli recognises the refusal by this one declared value rather than by its message text.
 const StartNotParkedKind = "driver_not_parked"
 
+// StartMergeInProgressKind is the envelope "kind" of the `lyx loom start` refusal for a start that would spawn or resume a driver over a pair carrying an unfinished merge.
+// That refusal is NOT retryable: the operator must resolve, conclude or abort the merge first.
+// It is exported so an unattended caller tells it apart from the retryable StartNotParkedKind by this one declared value rather than by message text.
+const StartMergeInProgressKind = "merge_in_progress"
+
 // RunDir returns the path to the durable, fabric-synced directory holding a single run's
 // seed.json and status.json: the given *lyxcwd.Location's AnchorPath() joined with
 // lyxdirs.LyxDirName, shedDirName, and the run's directory segment (runSegment: the worktree slug
