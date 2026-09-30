@@ -272,7 +272,7 @@ func (c *loomCLI) loomPreRun(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	taskBranch, err := handle.CurrentBranch()
+	taskBranch, parentBranch, err := landingBranches(handle, c.location)
 	if err != nil {
 		return err
 	}
@@ -282,14 +282,6 @@ func (c *loomCLI) loomPreRun(ctx context.Context) error {
 		// when a pull request is actually required, so an unusable origin URL passes through as
 		// an empty string rather than refusing run itself.
 		originURL = ""
-	}
-	recorded, found, err := fabricengine.ReadOrigin(c.location)
-	if err != nil {
-		return err
-	}
-	parentBranch, err := resolveLandingParent(recorded, found, taskBranch)
-	if err != nil {
-		return err
 	}
 	syncOpts := fabricengine.EnvSyncOptions()
 	pushBranch := func() error {

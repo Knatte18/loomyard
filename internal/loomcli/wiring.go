@@ -25,8 +25,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
+	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -356,6 +356,37 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// the row's commit_seam: discussion config key.
 		CommitDiscussion: func() error {
 			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, []string{loomengine.DiscussionDirRel()}, fmt.Sprintf("loom: discussion artifacts for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
+			return err
+		},
+		// DescriptionPath is the change description Describe writes and its gate and the landing
+		// rows read.
+		DescriptionPath: summaryparser.Path(loomengine.LandingDir(location)),
+		// DescribeSpec is evaluated per Call, so the stencil is read at call time. It opens the
+		// fabric lazily: wire() also runs for status/pause, where opening the fabric must not
+		// happen (the OpenBisector hazard above).
+		DescribeSpec: func() (shuttleengine.Spec, error) {
+			handle, err := fabricengine.Open(location)
+			if err != nil {
+				return shuttleengine.Spec{}, err
+			}
+			taskBranch, parentBranch, err := landingBranches(handle, location)
+			if err != nil {
+				return shuttleengine.Spec{}, err
+			}
+			return landingshed.DescribeSpec(landingshed.DescribeInputs{
+				StencilsDir:        websterGeom.StencilsDir,
+				DecisionRecordPath: loomengine.DiscussionDecisionRecord(location),
+				RunRecordPath:      summaryparser.Path(websterGeom.WebsterDir),
+				DescriptionPath:    summaryparser.Path(loomengine.LandingDir(location)),
+				TaskBranch:         taskBranch,
+				ParentBranch:       parentBranch,
+				Slug:               seedSlug(location.WorktreeName),
+			}, landingCfg, registry)
+		},
+		// CommitDescription mirrors CommitDiscussion, including its discard of (sha, committed),
+		// which makes a repeat commit over an unchanged directory a no-op.
+		CommitDescription: func() error {
+			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, []string{loomengine.LandingDirRel()}, fmt.Sprintf("loom: change description for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
 			return err
 		},
 		// PlanSpec is evaluated per Call, not resolved here, so the stencil is read at call time --
