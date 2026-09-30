@@ -149,7 +149,7 @@ Example:
 			// unowned goroutine in an exiting process.
 			if c.reedUp != nil {
 				if err := c.reedUp(cmd.Context(), false); err != nil {
-					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: bring up the standalone reed session: %v; way forward: transient, re-run `lyx webster recover-batch %s`", err, batchName)))
+					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: bring up the standalone reed session: %v; way forward: transient, re-run `lyx webster recover-batch %02d`", err, batchNumber)))
 					return nil
 				}
 			}
@@ -225,7 +225,7 @@ Example:
 				}()
 				fresh, err := websterengine.LoadState(c.geom.WebsterDir, c.geom.ScratchDir)
 				if err == nil && fresh == nil {
-					err = fmt.Errorf("webster: state.json disappeared during the recovery wait for batch %s; way forward: re-run `lyx webster recover-batch %s`", batchName, batchName)
+					err = fmt.Errorf("webster: state.json disappeared during the recovery wait for batch %s; way forward: re-run `lyx webster recover-batch %02d`", batchName, batchNumber)
 				}
 				var fingerprintBefore string
 				var postWarnings []string

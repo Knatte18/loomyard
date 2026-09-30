@@ -1229,7 +1229,8 @@ func TestRecoverBatchCmd_FabricSyncAndReedBootWayForward(t *testing.T) {
 	if code := clihelp.Execute(fx.CLI.recoverBatchCmd(), &out, []string{"1", "--wait", "1ns"}); code == 0 {
 		t.Fatalf("recover-batch 1 with a failing reed boot = 0; want non-zero, output: %s", out.String())
 	}
-	wantWayForward(t, out.String(), "recover-batch")
+	// The named command must be one the verb parses: a bare batch number, never NN-<slug>.
+	wantWayForward(t, out.String(), "re-run `lyx webster recover-batch 01`")
 
 	fx.CLI.reedUp = nil
 	fx.CLI.openFabric = failingFabricOpen
