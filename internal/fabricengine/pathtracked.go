@@ -10,8 +10,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 )
 
-// PathTracked reports whether relPath (slash-separated, relative to worktreeDir) is in the index
-// of the repository checked out at worktreeDir.
+// PathTracked reports whether relPath (slash-separated, relative to worktreeDir) is in the index of the repository checked out at worktreeDir.
 // The answer is index-only: an untracked file present on disk and an absent path both report false.
 func PathTracked(worktreeDir, relPath string) (bool, error) {
 	stdout, err := gitexec.Run([]string{"ls-files", "--", relPath}, worktreeDir)
