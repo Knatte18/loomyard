@@ -2,7 +2,7 @@
      the Plan-Bouncer row interpolates it as bouncer-template-seed.md's and
      bouncer-template-judge.md's rubric marker value, and the Plan-Burler row interpolates it the
      same way into internal/burlerengine's own round prompt.
-     It is a marker VALUE, never a template -- it carries no top-level stencil markers of its own, and
+     It is a marker VALUE, never a template -- its only markers are the ones ReadRubric fills, and
      internal/stencil's StripLeadingComment removes this leading comment before either consumer ever
      sees it. -->
 
@@ -55,3 +55,6 @@ Do not flag any of the following as a finding:
   Every Decision and every Constraint in `_lyx/discussion/decision-record.md` is carried by some card, and no card introduces scope that file does not license.
   That path is anchor-relative: it resolves from this session's own working directory, and it is deliberately not the absolute form the artifact list uses.
   The decision record is the measuring stick and never the subject — every finding is raised against the plan, never against the decision record.
+- **The writer/reviewer symmetry note.**
+  The plan writer's own stencil is `{{.stencils_dir}}/loom/loom-template-plan.md`.
+  Whatever it says not to write, this rubric must not flag as missing.
