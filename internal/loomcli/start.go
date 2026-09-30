@@ -122,8 +122,7 @@ func (c *loomCLI) runHaltedAtHandBack() (shedengine.State, error) {
 }
 
 // refuseOverUnfinishedMerge probes the pair's merge state and reports whether start may proceed.
-// On a refusal or a probe error it releases bootstrapLock, records the envelope and returns false,
-// leaving the park marker on disk.
+// On a refusal or a probe error it releases bootstrapLock, records the envelope and returns false, leaving the park marker on disk.
 func (c *loomCLI) refuseOverUnfinishedMerge(ctx context.Context, out io.Writer, bootstrapLock *lock.FileLock) bool {
 	st, err := c.midMerge(c.location)
 	if err != nil {
@@ -162,9 +161,7 @@ func (c *loomCLI) refuseOverUnfinishedMerge(ctx context.Context, out io.Writer, 
 // A live strand with no marker over a run halted at a hand-back is refused with the shedrun.StartNotParkedKind kind, since that driver has not parked yet;
 // over a running run it is a no-op, since the driver is working.
 //
-// Before the stale-marker removal, the resume line or any spawn it probes the pair's merge state,
-// but only when this invocation would put a driver to work: mustSpawn, or a live strand with the
-// park marker present.
+// Before the stale-marker removal, the resume line or any spawn it probes the pair's merge state, but only when this invocation would put a driver to work: mustSpawn, or a live strand with the park marker present.
 // An unfinished merge is refused with the shedrun.StartMergeInProgressKind kind;
 // a live strand with no marker is never probed, so a working driver is attached to as before.
 //

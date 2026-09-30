@@ -159,9 +159,7 @@ func TestRunCLI_UnknownSubcommand_NoGitRepoNeeded(t *testing.T) {
 	}
 }
 
-// TestNewLoomCLI_SetsInjectedSeams pins newLoomCLI's own fields, since neither Command() nor
-// StartAliasCommand() exposes the receiver each constructs and neither may grow an accessor purely
-// for a test.
+// TestNewLoomCLI_SetsInjectedSeams pins newLoomCLI's own fields, since neither Command() nor StartAliasCommand() exposes the receiver each constructs and neither may grow an accessor purely for a test.
 func TestNewLoomCLI_SetsInjectedSeams(t *testing.T) {
 	c := newLoomCLI()
 
@@ -183,9 +181,7 @@ func TestNewLoomCLI_SetsInjectedSeams(t *testing.T) {
 // (TestProductionFiles_NeverReferenceHubWatchdogMechanism) for a boundary property that has no other
 // static form.
 //
-// Together with TestNewLoomCLI_SetsInjectedSeams above, this is what would have caught the alias
-// gotcha newLoomCLI now designs out: that test proves the fields are set, this one proves both
-// constructors go through the place that sets them.
+// Together with TestNewLoomCLI_SetsInjectedSeams above, this is what would have caught the alias gotcha newLoomCLI now designs out: that test proves the fields are set, this one proves both constructors go through the place that sets them.
 func TestProductionFiles_LoomCLILiteralOnlyInFactory(t *testing.T) {
 	matches, err := filepath.Glob("*.go")
 	if err != nil {

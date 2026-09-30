@@ -80,9 +80,8 @@ type loomCLI struct {
 	// awaitRunLock's own four injected seams (bootstrap.go) and this file's own doc comment
 	// principle that the verb body is assembly over judgment already under test.
 	spawnWatchdog func(hubPath, tmuxPath, shellPath string, suppress bool)
-	// midMerge is the seam through which start reads the pair's merge state before spawning or
-	// resuming a driver. The Test Tier Purity Invariant bars an untagged test from building a real
-	// mid-merge pair, so a test substitutes a canned state or error.
+	// midMerge is the seam through which start reads the pair's merge state before spawning or resuming a driver.
+	// The Test Tier Purity Invariant bars an untagged test from building a real mid-merge pair, so a test substitutes a canned state or error.
 	midMerge func(*lyxcwd.Location) (fabricengine.MidMergeState, error)
 	// spec is the shedverbs.Spec the pre-run fills in place (arm.go) and the four shedverbs
 	// verbs read at run time. It is always non-nil after newLoomCLI, so Command() can hand the

@@ -247,8 +247,7 @@ func mergeSourceInFlight(l *lyxcwd.Location, warpBranch string) (bool, error) {
 	return false, nil
 }
 
-// foreignProbeReadings holds the four raw git-level readings foreignMergeStatePresent combines:
-// whether MERGE_HEAD is live on each side, and each side's conflicted-path list.
+// foreignProbeReadings holds the four raw git-level readings foreignMergeStatePresent combines: whether MERGE_HEAD is live on each side, and each side's conflicted-path list.
 type foreignProbeReadings struct {
 	warpMergeHead  bool
 	warpConflicted []string
