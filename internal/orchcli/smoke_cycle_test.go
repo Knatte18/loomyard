@@ -16,6 +16,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -83,6 +84,52 @@ func latestTranscript(t *testing.T, eventsPath string) string {
 		}
 	}
 	return latest
+}
+
+const (
+	// smokeBackgroundSleepS is the background task's sleep, long enough that its completion notification arrives after `/clear` even when the handoff turn is slow.
+	smokeBackgroundSleepS = 120
+	// smokeNotificationMargin is how long past the sleep's end the notification observation waits before reading.
+	smokeNotificationMargin = 20 * time.Second
+	// smokeAddressPrefix marks the one answer line an address turn asks the session for.
+	smokeAddressPrefix = "AGENT-ADDRESS:"
+)
+
+// lastTurnEnd returns the message of the newest turn end in the run's events file, or "" when there is none.
+func lastTurnEnd(eventsPath string) string {
+	data, err := os.ReadFile(eventsPath)
+	if err != nil {
+		return ""
+	}
+	events, err := claudeengine.New().ParseEvents(data)
+	if err != nil {
+		return ""
+	}
+	message := ""
+	for _, ev := range events {
+		if ev.Kind == shuttleengine.EventStop || ev.Kind == shuttleengine.EventWaiting {
+			message = ev.Message
+		}
+	}
+	return message
+}
+
+// askAgentAddress sends a turn asking the session for its own SendMessage address as ListAgents shows it, waits for that turn to end,
+// and returns the answer, or "" when the turn ended without the marked line.
+func askAgentAddress(t *testing.T, reed *reedengine.Engine, guid, eventsPath string) string {
+	t.Helper()
+	before := turnEnds(eventsPath)
+	prompt := "Call the ListAgents tool, then reply with exactly one line of the form `" + smokeAddressPrefix + " <the name ListAgents shows for this session>` and end your turn."
+	if err := reed.SendText(guid, prompt, true); err != nil {
+		t.Fatalf("send address turn: %v", err)
+	}
+	waitFor(t, 180, "the address turn to end", func() bool { return turnEnds(eventsPath) > before })
+	for _, line := range strings.Split(lastTurnEnd(eventsPath), "\n") {
+		if _, answer, found := strings.Cut(line, smokeAddressPrefix); found {
+			return strings.Trim(strings.TrimSpace(answer), "`")
+		}
+	}
+	return ""
 }
 
 // turnEnds counts the turn ends (Stop or Waiting) the run's events file holds so far, 0 while it is unreadable.
@@ -191,11 +238,14 @@ poll_interval_ms: 500
 
 	// (3) one turn that starts a short background task, then wait for its turn end.
 	// The start prompt's turn end already names the transcript, so only a turn-end count past it proves the background-task turn ended.
+	// The pre-cycle address is asked first, so its turn does not delay the cycle past the background task's sleep.
 	waitFor(t, 120, "the start prompt's turn to end", func() bool { return turnEnds(run.EventsPath) > 0 })
+	addressBefore := askAgentAddress(t, reed, guid, run.EventsPath)
 	turnEndsBefore := turnEnds(run.EventsPath)
-	if err := reed.SendText(guid, "Start a background shell task with `sleep 40; echo BGDONE` (run_in_background), then end your turn immediately without waiting for it.", true); err != nil {
+	if err := reed.SendText(guid, fmt.Sprintf("Start a background shell task with `sleep %d; echo BGDONE` (run_in_background), then end your turn immediately without waiting for it.", smokeBackgroundSleepS), true); err != nil {
 		t.Fatalf("send background-task turn: %v", err)
 	}
+	backgroundDue := time.Now().Add(smokeBackgroundSleepS * time.Second)
 	waitFor(t, 180, "the background-task turn to end", func() bool {
 		return turnEnds(run.EventsPath) > turnEndsBefore && smokeStatusIdle(t, reed, guid)
 	})
@@ -243,8 +293,18 @@ poll_interval_ms: 500
 	}
 
 	// Observations that never fail the test.
-	t.Logf("background task notification reached the resumed session: %v", strings.Contains(pane, "BGDONE"))
-	t.Logf("SendMessage address stability across /clear: not machine-checked; inspect the pane below for the ListAgents output\n%s", pane)
+	// The background task's notification cannot arrive before its sleep ends, so the observation waits past that deadline first;
+	// the address turn after it also gives a pending notification a turn to be delivered on.
+	if wait := time.Until(backgroundDue.Add(smokeNotificationMargin)); wait > 0 {
+		time.Sleep(wait)
+	}
+	addressAfter := askAgentAddress(t, reed, guid, run.EventsPath)
+	resumedTranscript, _ := os.ReadFile(latestTranscript(t, run.EventsPath))
+	finalPane, _ := reed.CapturePane(guid)
+	t.Logf("background task notification reached the resumed session: transcript=%v pane=%v",
+		bytes.Contains(resumedTranscript, []byte("BGDONE")), strings.Contains(finalPane, "BGDONE"))
+	t.Logf("SendMessage address across /clear: before=%q after=%q stable=%v",
+		addressBefore, addressAfter, addressBefore != "" && addressBefore == addressAfter)
 
 	stopped = true
 	if out, code := smokeRun(t, exe, prime, 30*time.Second, "orch", "stop"); code != 0 {
