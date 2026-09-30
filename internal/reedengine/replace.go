@@ -56,7 +56,13 @@ func (e *Engine) ReplaceStrand(guid string, spec AddSpec) (Strand, error) {
 		logger.Info("reed: replacing strand", "socket", e.Socket(), "session", e.SessionName(),
 			"guid", guid, "removed", removed.Strands)
 
+		// A failed add can leave its unlaunched strand appended to the table; cut it back off so the
+		// reconcile tail below persists the removal alone.
+		beforeAdd := len(st.Strands)
 		strand, addErr := e.addStrandLocked(st, spec)
+		if addErr != nil {
+			st.Strands = st.Strands[:beforeAdd]
+		}
 		if addErr == nil {
 			st.Strands = moveStrandTo(st.Strands, strand.GUID, slot)
 			if err := SaveState(e.stateDir(), st); err != nil {
