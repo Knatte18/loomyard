@@ -1,9 +1,8 @@
-// integration.go implements the plan-level integration-suite stage: the skip-check
-// (ShouldRunIntegration), the single dedicated integration fork's own await/report plumbing
-// (AwaitIntegration/RunIntegration, reusing AwaitBatch's own bounded long-poll idiom over a fixed,
-// non-batch report path, and webster's own ParseReport for the fork's OK/FAILED), and the
-// in-process SHA-bisect + escalation path a FAILED report triggers (bisect,
-// RecordIntegrationFailure, BisectAndEscalate).
+// integration.go implements the plan-level integration-suite stage's plumbing.
+// It holds the skip-check (ShouldRunIntegration) and the single dedicated integration fork's await plumbing (AwaitIntegration, reusing AwaitBatch's own bounded long-poll idiom over a fixed, non-batch report path).
+// It also holds the verify runner seam and its log paths (runVerifyCapture, IntegrationLogPath),
+// and the in-process SHA-bisect + escalation path a triaged regression triggers (bisect, RecordIntegrationFailure, BisectAndEscalate);
+// the report itself is parsed by ParseIntegrationReport and triaged in triage.go.
 // The integration fork itself is spawned the same way a batch's own implementer is — Master's own
 // in-session Agent-tool fork call, per webster-template-master.md's own integration-fork bracket
 // instruction — so this file never spawns anything;
@@ -14,10 +13,10 @@
 package websterengine
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -26,13 +25,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/verifyrun"
 )
 
-// FabricBisector is the git surface in-process bisect drives: capture branch, checkout SHA detached,
-// restore branch.
+// FabricBisector is the git surface in-process bisect and triage drive: capture branch, checkout SHA detached,
+// restore branch, and the ancestry probe triage orders the batches' start commits with.
 // Satisfied by *gitrepo.Repo and *fabricengine.Fabric.
 type FabricBisector interface {
 	CurrentBranch() (string, error)
 	CheckoutDetached(sha string) error
 	RestoreBranch(ref string) error
+	IsAncestor(sha, ref string) (bool, error)
 }
 
 // IntegrationReportFileName is the integration fork's own fixed report file name inside a webster
@@ -101,7 +101,12 @@ const integrationBatchKey = -1
 // naming a card the evidence does not implicate.
 // A single-element shas is not special-cased: it is verified like any other
 // last sha, and only blamed when it actually fails.
-func bisect(repo FabricBisector, shas []string, verifyCmd string, worktree string) (offendingIndex int, err error) {
+//
+// The pass predicate at each sha is bisectPassed over regressions.
+// With no regressing identities (or an opaque one) it is the command's exit code;
+// otherwise none of the regressing identities may fail there,
+// so a failure already present at every sha never makes bisect blame the first card.
+func bisect(repo FabricBisector, shas []string, verifyCmd string, worktree string, regressions []string, runner verifyRunner) (offendingIndex int, err error) {
 	if len(shas) == 0 {
 		return -1, nil
 	}
@@ -133,7 +138,7 @@ func bisect(repo FabricBisector, shas []string, verifyCmd string, worktree strin
 	// An integration failure is frequently not attributable to any recorded card SHA at all: it can
 	// come from the tree state after the last card, from an environment change, or from the verify
 	// command itself. Reporting no offending index is the honest answer there.
-	lastPassed, verErr := checkoutAndVerify(repo, shas[len(shas)-1], verifyCmd, worktree)
+	lastPassed, verErr := checkoutAndVerify(repo, shas[len(shas)-1], verifyCmd, worktree, regressions, runner)
 	if verErr != nil {
 		return 0, verErr
 	}
@@ -145,7 +150,7 @@ func bisect(repo FabricBisector, shas []string, verifyCmd string, worktree strin
 	lo, hi := 0, len(shas)-1
 	for lo < hi {
 		mid := (lo + hi) / 2
-		passed, verErr := checkoutAndVerify(repo, shas[mid], verifyCmd, worktree)
+		passed, verErr := checkoutAndVerify(repo, shas[mid], verifyCmd, worktree, regressions, runner)
 		if verErr != nil {
 			return 0, verErr
 		}
@@ -158,22 +163,94 @@ func bisect(repo FabricBisector, shas []string, verifyCmd string, worktree strin
 	return lo, nil
 }
 
-// checkoutAndVerify checks out sha detached, then runs verifyCmd in-process, reporting pass/fail.
-func checkoutAndVerify(repo FabricBisector, sha, verifyCmd, worktree string) (bool, error) {
+// checkoutAndVerify checks out sha detached, then runs verifyCmd through runner, reporting whether the bisect pass predicate holds there.
+func checkoutAndVerify(repo FabricBisector, sha, verifyCmd, worktree string, regressions []string, runner verifyRunner) (bool, error) {
 	if err := repo.CheckoutDetached(sha); err != nil {
 		return false, fmt.Errorf("webster: bisect: checkout %s: %w", sha, err)
 	}
-	return runVerifyCommand(verifyCmd, worktree)
+	run, err := runner(verifyCmd, worktree, "")
+	if err != nil {
+		return false, err
+	}
+	return bisectPassed(run, regressions), nil
 }
 
-// runVerifyCommand runs verifyCmd in worktree through the shared verifyrun runner.
-// A non-zero exit is a failed verify (false, nil); a spawn failure propagates as a real error.
-func runVerifyCommand(verifyCmd, worktree string) (bool, error) {
-	exitCode, err := verifyrun.Run(context.Background(), verifyCmd, worktree, io.Discard)
-	if err != nil {
-		return false, fmt.Errorf("webster: bisect: run verify command %q: %w", verifyCmd, err)
+// bisectPassed is the bisect pass predicate over one run: none of the regressing identities appears in the run's failure set.
+// An identity that is absent, never ran, or surfaces only as its package identity counts as passing.
+// Empty regressions, or one containing opaqueFailureID, fall back to the command's exit code.
+func bisectPassed(run verifyRun, regressions []string) bool {
+	if len(regressions) == 0 {
+		return run.Passed
 	}
-	return exitCode == 0, nil
+	for _, id := range regressions {
+		if id == opaqueFailureID {
+			return run.Passed
+		}
+	}
+	failing := map[string]bool{}
+	for _, f := range parseVerifyFailures(run.Output, run.Passed) {
+		failing[f.ID] = true
+	}
+	for _, id := range regressions {
+		if failing[id] {
+			return false
+		}
+	}
+	return true
+}
+
+// verifyRun is one verify-command run: whether it exited zero, and its combined stdout+stderr.
+type verifyRun struct {
+	Passed bool
+	Output string
+}
+
+// verifyRunner is the seam triage and bisect run the verify command through,
+// so their untagged tests can inject a fake;
+// runVerifyCapture satisfies it.
+type verifyRunner func(verifyCmd, worktree, logPath string) (verifyRun, error)
+
+// verifyLogDirName is the subdirectory of webster's scratch dir holding the verify logs.
+const verifyLogDirName = "verify"
+
+// IntegrationLogPath returns the integration fork's verify log path inside scratchDir.
+// It lives under webster's .lyx scratch dir, never under _lyx (Durable-vs-Ephemeral State Invariant).
+func IntegrationLogPath(scratchDir string) string {
+	return filepath.Join(scratchDir, verifyLogDirName, "integration.log")
+}
+
+// rerunLogPath returns the triage rerun's verify log path inside scratchDir.
+func rerunLogPath(scratchDir string) string {
+	return filepath.Join(scratchDir, verifyLogDirName, "rerun.log")
+}
+
+// baselineLogPath returns the triage baseline run's verify log path inside scratchDir.
+func baselineLogPath(scratchDir string) string {
+	return filepath.Join(scratchDir, verifyLogDirName, "baseline.log")
+}
+
+// runVerifyCapture runs verifyCmd in worktree through the shared verifyrun runner, capturing combined stdout and stderr.
+// A non-zero exit is a failed verify (Passed false, nil error);
+// a spawn failure propagates as a real error.
+// A non-empty logPath also receives the output, its parent directory created;
+// a failed log write is returned as an error, since a triage decision must never rest on a log that silently was not written.
+func runVerifyCapture(verifyCmd, worktree, logPath string) (verifyRun, error) {
+	var out bytes.Buffer
+	exitCode, err := verifyrun.Run(context.Background(), verifyCmd, worktree, &out)
+	if err != nil {
+		return verifyRun{}, fmt.Errorf("webster: run verify command %q: %w", verifyCmd, err)
+	}
+
+	run := verifyRun{Passed: exitCode == 0, Output: out.String()}
+	if logPath != "" {
+		if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
+			return verifyRun{}, fmt.Errorf("webster: create verify log dir for %s: %w", logPath, err)
+		}
+		if err := os.WriteFile(logPath, out.Bytes(), 0o644); err != nil {
+			return verifyRun{}, fmt.Errorf("webster: write verify log %s: %w", logPath, err)
+		}
+	}
+	return run, nil
 }
 
 // RecordIntegrationFailure marks a terminal, non-successful record for the integration stage into
@@ -202,14 +279,19 @@ func RecordIntegrationFailure(st *State, offendingCard, offendingSHA string) {
 // shas, or a run whose last recorded SHA still passes, meaning no recorded card SHA implicates
 // itself and naming one would put a card the evidence does not implicate into the PR text.
 // Caller persists via SaveState.
-func BisectAndEscalate(repo FabricBisector, shas, labels []string, verifyCmd, worktree, websterDir string, st *State) error {
-	offendingCard, offendingSHA, err := LocalizeIntegrationFailure(repo, shas, labels, verifyCmd, worktree)
+func BisectAndEscalate(repo FabricBisector, shas, labels []string, verifyCmd, worktree, websterDir string, st *State, regressions []string) error {
+	return bisectAndEscalate(repo, shas, labels, verifyCmd, worktree, websterDir, st, regressions, runVerifyCapture)
+}
+
+// bisectAndEscalate is BisectAndEscalate with the verify runner injected.
+func bisectAndEscalate(repo FabricBisector, shas, labels []string, verifyCmd, worktree, websterDir string, st *State, regressions []string, runner verifyRunner) error {
+	offendingCard, offendingSHA, err := localizeIntegrationFailure(repo, shas, labels, verifyCmd, worktree, regressions, runner)
 	if err != nil {
 		return err
 	}
 
 	RecordIntegrationFailure(st, offendingCard, offendingSHA)
-	return AppendIntegrationFailure(websterDir, offendingCard, offendingSHA)
+	return AppendIntegrationFailure(websterDir, offendingCard, offendingSHA, nil)
 }
 
 // LocalizeIntegrationFailure is BisectAndEscalate's search half, split out because it touches no
@@ -222,8 +304,16 @@ func BisectAndEscalate(repo FabricBisector, shas, labels []string, verifyCmd, wo
 //
 // It returns the localized card label and SHA, or "unknown" for both when the search localizes
 // nothing.
-func LocalizeIntegrationFailure(repo FabricBisector, shas, labels []string, verifyCmd, worktree string) (offendingCard, offendingSHA string, err error) {
-	idx, err := bisect(repo, shas, verifyCmd, worktree)
+//
+// regressions are the identities the pass predicate tracks (see bisect);
+// nil or opaque means the command's exit code.
+func LocalizeIntegrationFailure(repo FabricBisector, shas, labels []string, verifyCmd, worktree string, regressions []string) (offendingCard, offendingSHA string, err error) {
+	return localizeIntegrationFailure(repo, shas, labels, verifyCmd, worktree, regressions, runVerifyCapture)
+}
+
+// localizeIntegrationFailure is LocalizeIntegrationFailure with the verify runner injected.
+func localizeIntegrationFailure(repo FabricBisector, shas, labels []string, verifyCmd, worktree string, regressions []string, runner verifyRunner) (offendingCard, offendingSHA string, err error) {
+	idx, err := bisect(repo, shas, verifyCmd, worktree, regressions, runner)
 	if err != nil {
 		return "", "", err
 	}
