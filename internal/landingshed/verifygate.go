@@ -1,6 +1,6 @@
-// verifygate.go declares the post-merge verify gate both landing producers run after their parent
-// merge-in: it runs the plan's verify command in the task worktree and reports a failure as a
-// Stuck reason, so nothing leaves the worktree on a merged tree that does not verify.
+// verifygate.go declares the post-merge verify gate both landing producers run after their parent merge-in:
+// it runs the plan's verify command in the task worktree and reports a failure as a Stuck reason,
+// so nothing leaves the worktree on a merged tree that does not verify.
 
 package landingshed
 
@@ -41,8 +41,8 @@ func newVerifyGate(deps Deps) verifyGate {
 // check runs the gate for producer after a merge of parentBranch.
 // treeChanged is whether the merge changed the task tree.
 //
-// It returns a non-empty Stuck reason when the verify fails, a non-nil error for an infrastructure
-// fault or a cancellation, and ("", nil) when the producer may proceed.
+// It returns a non-empty Stuck reason when the verify fails,
+// a non-nil error for an infrastructure fault or a cancellation, and ("", nil) when the producer may proceed.
 // The pending marker is written before the command runs and removed only on a pass,
 // so a failed or interrupted verify keeps the next run's gate armed.
 func (g verifyGate) check(ctx context.Context, producer, parentBranch string, treeChanged bool) (string, error) {
