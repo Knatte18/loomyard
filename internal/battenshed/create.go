@@ -66,7 +66,7 @@ func (p *worktreeCreateProducer) Call(ctx context.Context) (shedengine.Outcome, 
 		}
 		reason := fmt.Sprintf("prime lock %q is already held; another batten producer is creating or tearing down a task worktree", p.primeLock.Path)
 		reportStuck(p.name, reason, p.scratchDir, "slug", p.slug)
-		return shedengine.Stuck, shedengine.OutputPointer{}, nil
+		return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
 	}
 	defer func() {
 		if rerr := release(); rerr != nil {
@@ -79,7 +79,7 @@ func (p *worktreeCreateProducer) Call(ctx context.Context) (shedengine.Outcome, 
 			return "", shedengine.OutputPointer{}, cerr
 		}
 		reportStuck(p.name, err.Error(), p.scratchDir, "slug", p.slug)
-		return shedengine.Stuck, shedengine.OutputPointer{}, nil
+		return shedengine.Stuck, shedengine.OutputPointer{Reason: err.Error()}, nil
 	}
 
 	if cerr := cancelErr(ctx, p.name); cerr != nil {

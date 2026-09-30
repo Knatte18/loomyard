@@ -228,8 +228,8 @@ func TestBouncer_JudgeCall_AttachErrorDegradesWithoutSpawning(t *testing.T) {
 	if outcome != shedengine.Stuck {
 		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
 	}
-	if ptr != (shedengine.OutputPointer{}) {
-		t.Errorf("Call() pointer = %+v; want empty", ptr)
+	if ptr.Path != "" || ptr.GateAttempts != nil {
+		t.Errorf("Call() pointer = %+v; want empty Path and no GateAttempts", ptr)
 	}
 	if attach.called {
 		t.Error("Run was called after a failed probe; want no spawn when liveness could not be determined")
@@ -333,8 +333,8 @@ func TestBouncer_EntryProbe_AttachErrorNeitherClearsNorSettles(t *testing.T) {
 	if outcome != shedengine.Stuck {
 		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
 	}
-	if ptr != (shedengine.OutputPointer{}) {
-		t.Errorf("Call() pointer = %+v; want empty", ptr)
+	if ptr.Path != "" || ptr.GateAttempts != nil {
+		t.Errorf("Call() pointer = %+v; want empty Path and no GateAttempts", ptr)
 	}
 	if attach.called {
 		t.Error("Run was called after a failed probe; want no spawn when liveness could not be determined")

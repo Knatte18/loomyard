@@ -172,7 +172,7 @@ func (p *innerRunProducer) Call(ctx context.Context) (shedengine.Outcome, sheden
 		}
 		reason := fmt.Sprintf("inner shed run still running; sleeping %s before the next bounce", p.pollInterval)
 		reportStuck(p.name, reason, p.scratchDir, "slug", p.slug)
-		return shedengine.Stuck, shedengine.OutputPointer{}, nil
+		return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
 	case shedengine.StateBlocked, shedengine.StatePaused, shedengine.StateFailed:
 		// The remedy is named here because nothing on the prime side can perform it: this row never
 		// spawns against a halted child, and resuming the outer run resumes the watch, never the

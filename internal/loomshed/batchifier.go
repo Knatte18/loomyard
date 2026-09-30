@@ -21,6 +21,10 @@ type batchifier struct {
 
 var _ shedengine.ShedProducer = (*batchifier)(nil)
 
+// batchifierReasonPrefix leads the Stuck reason of every row that gates on batcher.Active -- the
+// Batchifier row and the Webster row -- so both word the fault identically; the error text follows.
+const batchifierReasonPrefix = "active batchifier did not resolve: "
+
 // NewBatchifier returns a batchifier identified as name, gating batcher.Active(anchorPath). The
 // return type is shedengine.ShedProducer, the seam interface, so the internal/shedrecipe registry
 // can call this constructor from outside this package while batchifier itself stays unexported.
@@ -47,12 +51,12 @@ func (b *batchifier) Call(ctx context.Context) (shedengine.Outcome, shedengine.O
 			return "", shedengine.OutputPointer{}, cerr
 		}
 		// Surfaced rather than discarded, for the same reason Loom-Preflight and the two validators
-		// surface theirs: this row carries no OnStuck, so its Stuck halts the run for a human who
-		// would otherwise be told only Shed's generic "stuck with no OnStuck target". The
-		// conflation of unknown-name, malformed-YAML, and I/O failure into one bare error is exactly
-		// why the error text itself is the only thing that can tell them apart.
+		// surface theirs: this row carries no OnStuck, so its Stuck halts the run for a human. The
+		// cause is returned as the row's reason, which reaches the persisted error and activity.wait,
+		// and also logged. The conflation of unknown-name, malformed-YAML, and I/O failure into one
+		// bare error is exactly why the error text itself is the only thing that can tell them apart.
 		logger.Warn("loomshed: active batchifier did not resolve", "producer", b.name, "anchorPath", b.anchorPath, "cause", err)
-		return shedengine.Stuck, shedengine.OutputPointer{}, nil
+		return shedengine.Stuck, shedengine.OutputPointer{Reason: batchifierReasonPrefix + err.Error()}, nil
 	}
 
 	return shedengine.Done, shedengine.OutputPointer{}, nil

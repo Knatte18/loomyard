@@ -40,7 +40,7 @@ A fresh seed carries `current_producer: "Preflight"`, `state: "running"`, empty 
 {
   "current_producer": "Preflight",             // Shed-owned: which producer this run is at
   "state": "running",                          // Shed-owned: running | paused | done | blocked | failed
-  "error": "",                                 // Shed-owned: human-readable detail for a failed/blocked halt
+  "error": "",                                 // Shed-owned: human-readable detail for a failed/blocked halt; a blocked halt carries the producer's own stuck reason (the generic "stuck with no OnStuck target" when it supplied none) or the fixed "bounce budget exhausted"
   "pause_requested": false,                    // shared write-to-clear: set true by an outside actor, cleared by Shed
   "activity": {"now": "...", "last": "...", "wait": "..."}, // Shed-owned, mechanically composed
   "history": [                                 // Shed-owned: one entry per producer call
@@ -118,9 +118,9 @@ A realistic **mid-run** instance of the same file, later in the same task's life
 {
   "current_producer": "Webster",
   "state": "blocked",
-  "error": "stuck with no OnStuck target",
+  "error": "batch 3 still fails its tests after two fix rounds",
   "pause_requested": false,
-  "activity": {"now": "Webster", "last": "Webster → stuck", "wait": "stuck with no OnStuck target"},
+  "activity": {"now": "Webster", "last": "Webster → stuck", "wait": "batch 3 still fails its tests after two fix rounds"},
   "history": [
     {"producer": "Preflight", "outcome": "done", "output": "", "at": "2026-07-17T10:01:30Z"},
     {"producer": "Discussion-Write", "outcome": "done", "output": "_lyx/discussion/decision-record.md", "at": "2026-07-17T10:22:14Z"},

@@ -213,3 +213,34 @@ func TestDiscussionWrite_NilCommitSeamIsANamedError(t *testing.T) {
 		})
 	}
 }
+
+// TestDiscussionWrite_PassesStuckReasonThrough pins that the decorator returns the wrapped
+// producer's Reason unchanged, both for the asking shape (empty Path, nothing committed) and the
+// gate-failed shape (non-empty Path, committed).
+func TestDiscussionWrite_PassesStuckReasonThrough(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		path string
+	}{
+		{"EmptyPathAskingShape", ""},
+		{"NonEmptyPathGateFailedShape", "decision-record.md"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			inner := &fakeInnerProducer{
+				outcome: shedengine.Stuck,
+				pointer: shedengine.OutputPointer{Path: tt.path, Reason: "the inner cause"},
+			}
+			p := NewDiscussionWrite("Discussion-Write", inner, (&commitRecorder{}).Commit)
+			outcome, pointer, err := p.Call(context.Background())
+			if err != nil {
+				t.Fatalf("Call() error = %v; want nil", err)
+			}
+			if outcome != shedengine.Stuck {
+				t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
+			}
+			if pointer.Reason != "the inner cause" {
+				t.Errorf("Call() Reason = %q; want %q", pointer.Reason, "the inner cause")
+			}
+		})
+	}
+}

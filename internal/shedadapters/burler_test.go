@@ -238,6 +238,9 @@ func TestBurlerProducer_RoundScan(t *testing.T) {
 		if want := roundReviewPath(runDir, 1); ptr.Path != want {
 			t.Errorf("Call() pointer = %q; want %q (the review still owed a verdict)", ptr.Path, want)
 		}
+		if want := "round 1 is complete but unjudged; handing back for judgment"; ptr.Reason != want {
+			t.Errorf("Call() Reason = %q; want %q", ptr.Reason, want)
+		}
 		if runner.calls != 0 {
 			t.Errorf("runner.Run calls = %d; want 0 -- a fresh round is a real LLM session spent on a review nobody judged", runner.calls)
 		}
@@ -587,6 +590,9 @@ func TestBurlerProducer_Call_DoneReturnsStuckNeverDone(t *testing.T) {
 			wantPath := roundReviewPath(runDir, 1)
 			if ptr.Path != wantPath {
 				t.Errorf("Call() pointer = %q; want %q", ptr.Path, wantPath)
+			}
+			if ptr.Reason != "" {
+				t.Errorf("Call() Reason = %q; want empty -- a successful round's Stuck is a routine hand-off with no cause", ptr.Reason)
 			}
 		})
 	}
@@ -986,6 +992,9 @@ func TestBurlerProducer_Gate_FailedGateMapsToStuckWithEmptyPointer(t *testing.T)
 	if ptr.GateAttempts == nil || *ptr.GateAttempts != 0 {
 		t.Errorf("Call() pointer.GateAttempts = %v; want pointer to 0", ptr.GateAttempts)
 	}
+	if want := "gate did not pass after 0 attempts; findings: /kept/gate-findings.md"; ptr.Reason != want {
+		t.Errorf("Call() Reason = %q; want %q", ptr.Reason, want)
+	}
 	if _, statErr := os.Stat(reviewPath); !os.IsNotExist(statErr) {
 		t.Error("gate-failed round's review file was not archived away")
 	}
@@ -1050,6 +1059,9 @@ func TestBurlerProducer_Gate_ProbeLiveRoundPassesGateAndMapsFailedGateIdenticall
 	}
 	if ptr.GateAttempts == nil || *ptr.GateAttempts != 0 {
 		t.Errorf("Call() pointer.GateAttempts = %v; want pointer to 0", ptr.GateAttempts)
+	}
+	if want := "gate did not pass after 0 attempts; findings: "; ptr.Reason != want {
+		t.Errorf("Call() Reason = %q; want %q", ptr.Reason, want)
 	}
 	if attach.gotAttachGateSpec.Gate == nil {
 		t.Error("probeLiveRound did not pass p.opts.Gate into AttachGated -- this reopens the resume gate hole")

@@ -443,8 +443,8 @@ func TestBouncer_ReBounce(t *testing.T) {
 	if outcome != shedengine.Stuck {
 		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
 	}
-	if ptr != (shedengine.OutputPointer{}) {
-		t.Errorf("Call() pointer = %+v; want empty", ptr)
+	if ptr.Path != "" || ptr.GateAttempts != nil {
+		t.Errorf("Call() pointer = %+v; want empty Path and no GateAttempts", ptr)
 	}
 	if shuttle.called {
 		t.Error("Call() invoked the shuttle seam on a re-bounce; want it never called")
@@ -525,8 +525,11 @@ func TestBouncer_ReBounceProbesForALiveSeed(t *testing.T) {
 			if outcome != shedengine.Stuck {
 				t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
 			}
-			if ptr != (shedengine.OutputPointer{}) {
-				t.Errorf("Call() pointer = %+v; want empty", ptr)
+			if ptr.Path != "" {
+				t.Errorf("Call() pointer.Path = %q; want empty", ptr.Path)
+			}
+			if want := "bouncer segment already seeded; round producer returned no report"; ptr.Reason != want {
+				t.Errorf("Call() Reason = %q; want %q", ptr.Reason, want)
 			}
 			got, err := os.ReadFile(focusPath(cfg.RunDir, 1))
 			if err != nil {
@@ -561,8 +564,11 @@ func TestBouncer_ReBounceDegradesOnAnUndeterminableProbe(t *testing.T) {
 	if outcome != shedengine.Stuck {
 		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
 	}
-	if ptr != (shedengine.OutputPointer{}) {
-		t.Errorf("Call() pointer = %+v; want empty", ptr)
+	if ptr.Path != "" {
+		t.Errorf("Call() pointer.Path = %q; want empty", ptr.Path)
+	}
+	if want := "shedadapters: bouncer re-bounce seed attach probe failed"; ptr.Reason != want {
+		t.Errorf("Call() Reason = %q; want the degrade message %q", ptr.Reason, want)
 	}
 	if shuttle.called {
 		t.Error("Call() spawned through the shuttle seam after a failed probe; want no spawn")

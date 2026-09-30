@@ -24,6 +24,9 @@
 // entry's position in Producers.
 // A Stuck outcome routes via OnStuck: "" escalates to a human (state: "blocked"), and a non-empty
 // value bounces back to the Name it names, forward or backward, budget permitting.
+// The OnStuck "" escalation persists the producer's own OutputPointer.Reason as the blocked halt's
+// error (one line, falling back to ReasonNoOnStuckTarget when empty); budget exhaustion persists
+// ReasonBounceBudgetExhausted regardless of the producer's Reason.
 // A Done outcome routes via OnDone the same way: "" finishes the whole run from any list position
 // (state: "done"), and a non-empty value jumps to the Name it names with no positional fallback of
 // any kind -- an omitted OnDone is indistinguishable from an intended terminal one and ends the run

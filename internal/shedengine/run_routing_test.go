@@ -196,7 +196,7 @@ func TestRun_StuckWithNoTarget(t *testing.T) {
 		t.Errorf("persisted State = %q; want %q", got.State, StateBlocked)
 	}
 
-	const wantReason = "stuck with no OnStuck target"
+	const wantReason = ReasonNoOnStuckTarget
 	if result.Reason != wantReason {
 		t.Errorf("Result.Reason = %q; want %q", result.Reason, wantReason)
 	}
@@ -240,7 +240,7 @@ func TestRun_BounceBudgetExhaustion(t *testing.T) {
 	}
 
 	got := readStatus(t, statusPath, statusLockPath)
-	const wantReason = "bounce budget exhausted"
+	const wantReason = ReasonBounceBudgetExhausted
 	if result.Reason != wantReason {
 		t.Errorf("Result.Reason = %q; want %q", result.Reason, wantReason)
 	}
@@ -892,5 +892,26 @@ func TestRun_BlockPathArithmetic(t *testing.T) {
 	}
 	if a.calls <= callsAfterRun2+1 {
 		t.Errorf("a.calls after Run 3 = %d; want more than %d -- a budget raised above the current count must proceed past an immediate block", a.calls, callsAfterRun2+1)
+	}
+}
+
+func TestRun_StuckReasonReachesResult(t *testing.T) {
+	shed, statusPath, _, statusLockPath := newTestShed(t)
+	shed.Producers = []ProducerDef{{Name: "A", Producer: &funcProducer{
+		fn: func(context.Context) (Outcome, OutputPointer, error) {
+			return Stuck, OutputPointer{Reason: "x"}, nil
+		},
+	}}}
+	seedStatus(t, statusPath, statusLockPath, commonSeed("A"))
+
+	result, err := shed.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run(...) = _, %v; want nil error", err)
+	}
+	if result.Reason != "x" {
+		t.Errorf("Result.Reason = %q; want %q", result.Reason, "x")
+	}
+	if got := readStatus(t, statusPath, statusLockPath); got.Error != "x" {
+		t.Errorf("persisted Error = %q; want %q", got.Error, "x")
 	}
 }

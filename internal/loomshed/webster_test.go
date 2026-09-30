@@ -3,6 +3,7 @@ package loomshed
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
@@ -32,12 +33,15 @@ func TestWebsterProducer_Call(t *testing.T) {
 
 		fake := &fakeWebsterRun{}
 		p := NewWebsterProducer("Webster", anchorPath, fake.run, websterengine.RunDeps{}, func() error { return nil })
-		outcome, _, err := p.Call(context.Background())
+		outcome, pointer, err := p.Call(context.Background())
 		if err != nil {
 			t.Fatalf("Call() error = %v; want nil", err)
 		}
 		if outcome != shedengine.Stuck {
 			t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
+		}
+		if !strings.HasPrefix(pointer.Reason, batchifierReasonPrefix) {
+			t.Errorf("Call() Reason = %q; want the batchifier prefix", pointer.Reason)
 		}
 		if len(fake.receivedDeps) != 0 {
 			t.Errorf("fake runner was called %d time(s); want 0 -- a batcher.Active error must never reach run", len(fake.receivedDeps))
@@ -162,5 +166,27 @@ func TestWebsterProducer_CommitsTheRunRecordOnDoneOnly(t *testing.T) {
 				t.Errorf("commit calls = %d; want %d", commits, tt.wantCommits)
 			}
 		})
+	}
+}
+
+// TestWebsterProducer_PassesStuckReasonThrough pins the pass-through from
+// shedadapters.WebsterProducer: a stuck run's StuckReason arrives as the returned Reason.
+func TestWebsterProducer_PassesStuckReasonThrough(t *testing.T) {
+	anchorPath := t.TempDir()
+	writeBatcherConfig(t, anchorPath, `active: "identity"`+"\n")
+
+	run := func(websterengine.RunDeps, websterengine.RunOptions) (websterengine.RunResult, error) {
+		return websterengine.RunResult{Outcome: "stuck", StuckReason: "batch 03 exhausted recovery"}, nil
+	}
+	p := NewWebsterProducer("Webster", anchorPath, run, websterengine.RunDeps{}, func() error { return nil })
+	outcome, pointer, err := p.Call(context.Background())
+	if err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	if outcome != shedengine.Stuck {
+		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
+	}
+	if pointer.Reason != "batch 03 exhausted recovery" {
+		t.Errorf("Call() Reason = %q; want the run's StuckReason", pointer.Reason)
 	}
 }
