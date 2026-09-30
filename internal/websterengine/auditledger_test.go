@@ -120,3 +120,27 @@ func TestAuditLedger_StateRoundTrip(t *testing.T) {
 		t.Errorf("legacy state decoded ledger fields non-nil: %+v", old)
 	}
 }
+
+func TestAcceptPendingAudit_RecordsAcceptedAndClears(t *testing.T) {
+	t.Parallel()
+	st := &State{PendingAuditFindings: []PendingAuditFinding{
+		{ID: "s1/parent:parent-write:1", Class: "parent-write", Detail: "d1", Paths: []string{"a.txt"}},
+		{ID: "s1/parent:named-spawn:1", Class: "named-spawn", Detail: "d2"},
+	}}
+
+	got := AcceptPendingAudit(st)
+	if len(got) != 2 {
+		t.Fatalf("AcceptPendingAudit returned %d findings; want 2", len(got))
+	}
+	for _, f := range got {
+		if st.AuditDispositions[f.ID] != dispositionAccepted {
+			t.Errorf("disposition of %q = %q; want %q", f.ID, st.AuditDispositions[f.ID], dispositionAccepted)
+		}
+	}
+	if len(st.PendingAuditFindings) != 0 {
+		t.Errorf("PendingAuditFindings = %v; want empty", st.PendingAuditFindings)
+	}
+	if again := AcceptPendingAudit(st); len(again) != 0 {
+		t.Errorf("second AcceptPendingAudit returned %v; want nothing", again)
+	}
+}

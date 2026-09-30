@@ -994,7 +994,7 @@ func auditDoneHandle(t *testing.T, fx *runFixture, session string, batchesDone i
 }
 
 // TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck proves the run-exit audit demotes a done outcome to stuck on an undispositioned correctness finding — a Master write into a tracked file — naming the path and the git way forward,
-// and that once the file is restored with git a re-run with a clean audit ends done.
+// that the finding stays pending and refuses a bare re-run, and that once the file is restored with git and the finding accepted a re-run with a clean audit ends done.
 func TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck(t *testing.T) {
 	fx := newRunFixture(t, 1)
 	seedMatchingState(t, fx, &websterengine.State{
@@ -1025,14 +1025,49 @@ func TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck(t *testing.T) {
 		t.Errorf("StuckReason = %q; want it to name %s and the git way forward", result.StuckReason, tracked)
 	}
 
+	if !strings.Contains(result.StuckReason, "lyx webster accept-audit") {
+		t.Errorf("StuckReason = %q; want it to name lyx webster accept-audit", result.StuckReason)
+	}
+	st, err := websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
+	if err != nil {
+		t.Fatalf("LoadState() error = %v", err)
+	}
+	if len(st.PendingAuditFindings) != 1 || len(st.PendingAuditFindings[0].Paths) != 1 || st.PendingAuditFindings[0].Paths[0] != tracked {
+		t.Fatalf("PendingAuditFindings = %+v; want one finding naming %s", st.PendingAuditFindings, tracked)
+	}
+
+	// A bare re-step without accepting is refused and spawns no Master.
+	before := fx.Starter.callCount()
+	_, err = websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	if !errors.Is(err, websterengine.ErrPendingAuditFindings) {
+		t.Fatalf("second Run() error = %v; want ErrPendingAuditFindings", err)
+	}
+	if !strings.Contains(err.Error(), tracked) || !strings.Contains(err.Error(), "lyx webster accept-audit") {
+		t.Errorf("second Run() error = %q; want it to name %s and lyx webster accept-audit", err, tracked)
+	}
+	if got := fx.Starter.callCount(); got != before {
+		t.Errorf("Starter calls = %d after the refused Run; want %d", got, before)
+	}
+
 	mustGit(t, fx.Worktree, "checkout", "--", "base.txt")
+	websterengine.AcceptPendingAudit(st)
+	if err := websterengine.SaveState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir, st); err != nil {
+		t.Fatalf("SaveState() error = %v", err)
+	}
 	fx.Starter.handle = auditDoneHandle(t, fx, "master-session-violation", 1, shuttleengine.ForkAudit{Forks: forks}, nil)
 	result, err = websterengine.Run(fx.Deps, websterengine.RunOptions{})
 	if err != nil {
-		t.Fatalf("second Run() error = %v; want nil", err)
+		t.Fatalf("third Run() error = %v; want nil", err)
 	}
 	if result.Outcome != "done" {
-		t.Errorf("second RunResult.Outcome = %q; want %q after the file was restored", result.Outcome, "done")
+		t.Errorf("third RunResult.Outcome = %q; want %q after the file was restored and the finding accepted", result.Outcome, "done")
+	}
+	st, err = websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
+	if err != nil {
+		t.Fatalf("LoadState() error = %v", err)
+	}
+	if len(st.PendingAuditFindings) != 0 {
+		t.Errorf("PendingAuditFindings = %+v; want none", st.PendingAuditFindings)
 	}
 }
 

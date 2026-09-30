@@ -159,6 +159,21 @@ type State struct {
 	AuditDispositions map[string]string `json:"auditDispositions,omitempty"`
 	// AuditWarnings is the run-level list of warnings recorded at run exit, each added once per identity.
 	AuditWarnings []AuditWarning `json:"auditWarnings,omitempty"`
+	// PendingAuditFindings are the run-exit correctness findings nobody has accepted yet.
+	// Run entry refuses while any is pending; AcceptPendingAudit clears them.
+	PendingAuditFindings []PendingAuditFinding `json:"pendingAuditFindings,omitempty"`
+}
+
+// PendingAuditFinding is one run-exit correctness finding that stays pending until accepted.
+type PendingAuditFinding struct {
+	// ID is the finding's ledger identity (findingIdentity).
+	ID string `json:"id"`
+	// Class is the finding's class name.
+	Class string `json:"class"`
+	// Detail is the human-readable detail.
+	Detail string `json:"detail"`
+	// Paths are the suspect paths, empty for a pathless finding.
+	Paths []string `json:"paths,omitempty"`
 }
 
 // BatchState is one batch's own persisted run record.

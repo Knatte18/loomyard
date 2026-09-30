@@ -490,6 +490,10 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		}
 	}
 
+	if len(st.PendingAuditFindings) > 0 {
+		return RunResult{}, pendingAuditFindingsError(st.PendingAuditFindings)
+	}
+
 	// Validation runs HERE — after the state phase settles — rather than at entry, because its
 	// resolve-backed half must be scoped to the cards whose work has NOT landed yet: re-validating
 	// the whole plan on a resume reported every completed Create/Delete/Rename card as a blocking
@@ -898,7 +902,7 @@ func verifyEveryBatchDone(websterDir, scratchDir string, batches []batcher.Batch
 // Findings are then dispositioned like record-batch's: every identity the ledger already holds is dropped, because the whole-session parent audit repeats every finding an earlier record-batch warned on or failed a batch for.
 // A policy finding nobody dispositioned is recorded as a run-level warning (saved to state.json before the lease is released) and its text is returned in warnings.
 // A correctness finding nobody dispositioned yields stuckReason, which names each suspect path and the git way forward;
-// it is deliberately not dispositioned, since the next run's fresh Master session carries none of it.
+// it is recorded in State.PendingAuditFindings, not dispositioned, and blocks run entry until AcceptPendingAudit clears it.
 // The outcome file stays on disk for diagnosis (Run never removes it).
 func runExitAuditCrossCheck(deps RunDeps, outcomePath, summaryPath string, result shuttleengine.Result) (warnings []string, stuckReason string, err error) {
 	if result.ForkAudit == nil {
@@ -970,19 +974,63 @@ func runExitAuditCrossCheck(deps RunDeps, outcomePath, summaryPath string, resul
 		seen := map[string]bool{}
 		for i, cf := range correctness {
 			details[i] = cf.Violation.Detail
-			if p := cf.Violation.Path; p != "" && !seen[p] {
-				seen[p] = true
-				paths = append(paths, p)
+			pending := PendingAuditFinding{ID: cf.ID, Class: string(cf.Violation.Class), Detail: cf.Violation.Detail}
+			if p := cf.Violation.Path; p != "" {
+				pending.Paths = []string{p}
+				if !seen[p] {
+					seen[p] = true
+					paths = append(paths, p)
+				}
 			}
+			if !hasPendingFinding(st, cf.ID) {
+				st.PendingAuditFindings = append(st.PendingAuditFindings, pending)
+			}
+		}
+		if err := SaveState(deps.Geom.WebsterDir, deps.Geom.ScratchDir, st); err != nil {
+			return nil, "", err
 		}
 		pathList := "none named"
 		if len(paths) > 0 {
 			pathList = strings.Join(paths, ", ")
 		}
-		stuckReason = fmt.Sprintf("run-exit audit found %d correctness finding(s): %s; suspect paths: %s; way forward: revert or re-derive the named paths in the task worktree with git, then re-step the Webster row (lyx webster run)", len(correctness), strings.Join(details, "; "), pathList)
+		stuckReason = fmt.Sprintf("run-exit audit found %d correctness finding(s): %s; suspect paths: %s; way forward: revert or re-derive the named paths in the task worktree with git, then run \"lyx webster accept-audit\" and re-step the Webster row (lyx webster run)", len(correctness), strings.Join(details, "; "), pathList)
 	}
 
 	return warnings, stuckReason, nil
+}
+
+// hasPendingFinding reports whether st already carries a pending finding with identity id.
+func hasPendingFinding(st *State, id string) bool {
+	for _, f := range st.PendingAuditFindings {
+		if f.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+// ErrPendingAuditFindings is the sentinel Run returns while run-exit correctness findings are pending.
+var ErrPendingAuditFindings = errors.New("webster: correctness findings from an earlier run exit are pending")
+
+// pendingAuditFindingsError wraps ErrPendingAuditFindings with the pending details and suspect paths.
+func pendingAuditFindingsError(pending []PendingAuditFinding) error {
+	details := make([]string, len(pending))
+	var paths []string
+	seen := map[string]bool{}
+	for i, f := range pending {
+		details[i] = f.Detail
+		for _, p := range f.Paths {
+			if !seen[p] {
+				seen[p] = true
+				paths = append(paths, p)
+			}
+		}
+	}
+	pathList := "none named"
+	if len(paths) > 0 {
+		pathList = strings.Join(paths, ", ")
+	}
+	return fmt.Errorf("%w: %d correctness finding(s) from an earlier run exit are pending: %s; suspect paths: %s; way forward: revert or re-derive the named paths in the task worktree with git, then run \"lyx webster accept-audit\"", ErrPendingAuditFindings, len(pending), strings.Join(details, "; "), pathList)
 }
 
 // appendRecordedAuditWarnings reloads state and appends every recorded audit warning to summary.md as its "Audit warnings" section.

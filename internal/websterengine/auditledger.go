@@ -26,6 +26,8 @@ type AuditWarning struct {
 const (
 	dispositionWarned = "warned"
 	dispositionFailed = "failed"
+	// dispositionAccepted marks a run-exit correctness finding the operator accepted through AcceptPendingAudit.
+	dispositionAccepted = "accepted"
 )
 
 // findingIdentity returns v's ledger identity.
@@ -79,6 +81,17 @@ func recordRunWarning(st *State, id, class, detail string) (text string, added b
 // recordFailedFinding records id as failed, so the finding that failed a batch never refuses a second time.
 func recordFailedFinding(st *State, id string) {
 	markDisposition(st, id, dispositionFailed)
+}
+
+// AcceptPendingAudit records every pending finding's identity as accepted, clears st.PendingAuditFindings and returns what it accepted.
+// It never saves; the caller holds the state-mutation lease and saves.
+func AcceptPendingAudit(st *State) []PendingAuditFinding {
+	accepted := st.PendingAuditFindings
+	for _, f := range accepted {
+		markDisposition(st, f.ID, dispositionAccepted)
+	}
+	st.PendingAuditFindings = nil
+	return accepted
 }
 
 // auditWarningText renders w as its envelope line.
