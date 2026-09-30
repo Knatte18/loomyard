@@ -109,17 +109,15 @@ func TestRemove_RemoteFailureLeavesPartialTeardownGuaranteesIntact(t *testing.T)
 
 	mustBreakOrigin(t, weftRoot)
 
-	res, err := topology.Remove(l, slug, false, true)
-	if err != nil {
-		t.Fatalf("Remove(%q, remote=true) error = %v; want nil — a remote failure is non-fatal", slug, err)
-	}
-	if res.RemoteBranchError == "" {
-		t.Errorf("RemoteBranchError is empty; want a reason naming the remote deletion failure")
+	// The archive step pushes to the same origin before any teardown, so an unreachable origin now
+	// fails Remove there, ahead of the remote deletion, with the pair still intact.
+	if _, err := topology.Remove(l, slug, false, true); err == nil {
+		t.Fatalf("Remove(%q, remote=true) = nil error; want the archive push failure against the unreachable origin", slug)
 	}
 
 	weftTarget := fabricengine.WeftWorktreePath(l, slug)
-	if _, statErr := os.Stat(weftTarget); statErr == nil {
-		t.Errorf("weft worktree still exists at %s; want the local teardown to have completed despite the remote failure", weftTarget)
+	if _, statErr := os.Stat(weftTarget); statErr != nil {
+		t.Errorf("weft worktree missing at %s; want the pair left intact by the failed archive: %v", weftTarget, statErr)
 	}
 }
 

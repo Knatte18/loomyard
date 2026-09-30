@@ -223,6 +223,7 @@ Every git op LYX's own code performs, on either weft or warp, goes through `inte
 - `structuralNeverCommittedDirs` paths route to a third bucket in `classifyPaths`; `Commit` hard-errors on a non-empty third bucket.
 - Junction exclusion is `.git/info/exclude` on both sides, mutated only via `fabricengine.mutateGitExclude`, never a tracked `.gitignore`.
 - `Unwire` removes warp junctions/exclude entries only — weft-side `_lyx`/`.lyx` content always preserved.
+- Every teardown of an existing pair's weft branch (`Remove`, `RemovePairBranch`, `Cleanup`) first pushes an `archive/<slug>/<tip>` tag to the weft origin, so the run records stay reachable; a rolled-back `Add` is excepted, and `force` never skips it.
 
 ## Fabric Destruction Chokepoint Invariant
 
