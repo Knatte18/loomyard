@@ -655,6 +655,58 @@ func TestGate_ZeroValueDeclarationsAreRefusals(t *testing.T) {
 		err := checkRemoteBranchRequest(req)
 		assertRefusalCheck(t, err, CheckOwnership)
 	})
+
+	// The four subtests below cover the pair-weft ownership kind and the archived-on-remote dirtiness kind.
+	// A hand-built Location is safe: every case refuses before primaryWeftBranch runs.
+
+	t.Run("RemoteBranchArchivedDirtinessZeroOwnership", func(t *testing.T) {
+		req := remoteBranchRequest{
+			what:      "test",
+			repoDir:   t.TempDir(),
+			remote:    originRemoteName,
+			branch:    "task-weft",
+			dirtiness: dirtyArchivedOnRemote("archive/task/abc"),
+			leaseSHA:  "abc",
+		}
+		assertRefusalCheck(t, checkRemoteBranchRequest(req), CheckOwnership)
+	})
+
+	t.Run("RemoteBranchPairWeftZeroDirtiness", func(t *testing.T) {
+		l := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "prime"}
+		req := remoteBranchRequest{
+			what:      "test",
+			repoDir:   t.TempDir(),
+			remote:    originRemoteName,
+			branch:    "task-weft",
+			ownership: ownedPairWeftBranch(l, "task"),
+		}
+		assertRefusalCheck(t, checkRemoteBranchRequest(req), CheckDirtiness)
+	})
+
+	t.Run("RemoteBranchPairWeftOtherBranchRefused", func(t *testing.T) {
+		l := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "prime"}
+		req := remoteBranchRequest{
+			what:      "test",
+			repoDir:   t.TempDir(),
+			remote:    originRemoteName,
+			branch:    "other-weft",
+			ownership: ownedPairWeftBranch(l, "task"),
+			dirtiness: dirtyArchivedOnRemote("archive/task/abc"),
+			leaseSHA:  "abc",
+		}
+		assertRefusalCheck(t, checkRemoteBranchRequest(req), CheckOwnership)
+	})
+
+	t.Run("BranchRequestArchivedDirtinessRefused", func(t *testing.T) {
+		req := branchRequest{
+			what:      "test",
+			repoDir:   t.TempDir(),
+			branch:    "task",
+			ownership: ownedPairWarpBranch("task", "main"),
+			dirtiness: dirtyArchivedOnRemote("archive/task/abc"),
+		}
+		assertRefusalCheck(t, checkBranchRequest(req), CheckDirtiness)
+	})
 }
 
 // TestGate_AbsentTargetIsNoOp proves an absent target is a no-op success, for every ownership kind,

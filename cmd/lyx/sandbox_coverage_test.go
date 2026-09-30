@@ -30,6 +30,7 @@ var excludedModules = map[string]string{
 	"selfreport": "create files a real GitHub issue",
 	"start":      "alias of loom's own bootstrap verb; covered by the loom module's scenario",
 	"shed":       "armed re-exposure of loom's and batten's own verbs; covered by those two modules' own scenarios",
+	"orch":       "spawns a long-lived interactive Claude session and a detached watcher in the hub prime; exercised by internal/orchcli's smoke test instead",
 }
 
 // TestSandboxCoverage_AllModulesCoveredOrExcluded asserts every module is covered or excluded.

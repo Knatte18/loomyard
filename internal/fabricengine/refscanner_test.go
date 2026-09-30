@@ -60,6 +60,8 @@ func TestRefScanner_Matches(t *testing.T) {
 		{"bare slug merely containing the suffix is text", "git -C fabric-readd-weft-push status", false},
 		{"weft twin of a suffix-containing slug matches", "cd /hub/fabric-readd-weft-push-weft/_lyx && ls", true},
 		{"weft name ending the command matches", "ls /hub/other-weft", true},
+		{"escaped alternation in a quoted grep is text", `grep -n "weftBranch\s*[:=]\|WeftSuffix\|-weft" x_test.go`, false},
+		{"windows sibling weft path matches", `dir C:\hub\other-weft\_lyx`, true},
 	}
 
 	for _, tt := range tests {

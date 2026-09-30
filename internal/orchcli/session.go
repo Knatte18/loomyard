@@ -1,0 +1,56 @@
+// session.go declares runnerSession, the production adapter that satisfies orchengine.Session over the receiver's shuttle Runner and reed strand seam.
+
+package orchcli
+
+import (
+	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/orchengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
+)
+
+// runnerSession adapts a *shuttleengine.Runner and a strandOps to orchengine.Session.
+type runnerSession struct {
+	runner  *shuttleengine.Runner
+	strands strandOps
+}
+
+var _ orchengine.Session = runnerSession{}
+
+// StrandAlive reports whether reed tracks guid with a live pane.
+func (s runnerSession) StrandAlive(guid string) (bool, error) {
+	logger.Debug("orch: strand liveness probe", "strandGUID", guid)
+	strands, err := s.strands.Strands()
+	if err != nil {
+		return false, err
+	}
+	strand, tracked := trackedStrand(strands, guid)
+	return tracked && strand.Live, nil
+}
+
+// ReadEvents delegates to Runner.ReadEvents.
+func (s runnerSession) ReadEvents(guid string, offset int64) ([]shuttleengine.Event, int64, error) {
+	return s.runner.ReadEvents(guid, offset)
+}
+
+// ContextTokens delegates to Runner.ContextTokens.
+func (s runnerSession) ContextTokens(turnEnd shuttleengine.Event) (int, bool, error) {
+	return s.runner.ContextTokens(turnEnd)
+}
+
+// SessionIdle delegates to Runner.SessionIdle, which captures the pane through tmux.
+func (s runnerSession) SessionIdle(guid string) (bool, error) {
+	logger.Debug("orch: session idle probe", "strandGUID", guid)
+	return s.runner.SessionIdle(guid)
+}
+
+// Send delegates to Runner.Send, which types into the pane through tmux.
+func (s runnerSession) Send(guid, text string) error {
+	logger.Debug("orch: send to session", "strandGUID", guid)
+	return s.runner.Send(guid, text)
+}
+
+// ClearSession delegates to Runner.ClearSession, which types into the pane through tmux.
+func (s runnerSession) ClearSession(guid string) error {
+	logger.Debug("orch: clear session", "strandGUID", guid)
+	return s.runner.ClearSession(guid)
+}
