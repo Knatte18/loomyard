@@ -135,6 +135,21 @@ var WebsterPrefixRecovery []byte
 //go:embed webster/webster-body-implementer.md
 var WebsterBodyImplementer []byte
 
+// OrchTemplateStart is orch's shipped-default fresh-launch prompt.
+//
+//go:embed orch/orch-template-start.md
+var OrchTemplateStart []byte
+
+// OrchTemplateHandoff is orch's shipped-default one-line handoff instruction.
+//
+//go:embed orch/orch-template-handoff.md
+var OrchTemplateHandoff []byte
+
+// OrchTemplateResume is orch's shipped-default one-line resume prompt.
+//
+//go:embed orch/orch-template-resume.md
+var OrchTemplateResume []byte
+
 // PatternDirectiveImplementer is the shipped-default PATTERN directive for RoleImplementer.
 //
 //go:embed pattern/pattern-directive-implementer.md
@@ -207,6 +222,9 @@ var entries = []registryEntry{
 	{"webster-prefix-fork", &WebsterPrefixFork},
 	{"webster-prefix-recovery", &WebsterPrefixRecovery},
 	{"webster-body-implementer", &WebsterBodyImplementer},
+	{"orch-template-start", &OrchTemplateStart},
+	{"orch-template-handoff", &OrchTemplateHandoff},
+	{"orch-template-resume", &OrchTemplateResume},
 	{"pattern-directive-implementer", &PatternDirectiveImplementer},
 	{"pattern-directive-review-fix", &PatternDirectiveReviewFix},
 	{"pattern-directive-orchestrator", &PatternDirectiveOrchestrator},
