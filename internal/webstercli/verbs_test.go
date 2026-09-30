@@ -1145,6 +1145,30 @@ func TestRebaselineCmd_RefusesRemovedCard(t *testing.T) {
 	}
 }
 
+// TestRebaselineCmd_FabricSyncFailureWayForward reaches rebaseline's fabric-sync refusal and checks it names the same way forward as the bracket verbs' sync refusals.
+// The restamped state is saved locally before the sync, which is what that way forward commits.
+func TestRebaselineCmd_FabricSyncFailureWayForward(t *testing.T) {
+	t.Setenv("WEFT_SKIP_GIT", "")
+	fx := newVerbsFixture(t)
+	seedTwoCardPlan(t, fx.CLI.geom.PlanDir, "second card.")
+	fx.initState(t, "master-model")
+	seedTwoCardPlan(t, fx.CLI.geom.PlanDir, "second card, edited mid-run.")
+	fx.CLI.openFabric = failingFabricOpen
+
+	var out strings.Builder
+	if code := clihelp.Execute(fx.CLI.rebaselineCmd(), &out, nil); code == 0 {
+		t.Fatalf("rebaseline with a failing sync = 0; want non-zero, output: %s", out.String())
+	}
+	wantWayForward(t, out.String(), "lyx fabric commit")
+	loaded, err := websterengine.LoadState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir)
+	if err != nil || loaded == nil {
+		t.Fatalf("LoadState() = %v, %v; want the saved state", loaded, err)
+	}
+	if want := testPlanFingerprint(t, fx.CLI.geom.PlanDir); loaded.PlanFingerprint != want {
+		t.Errorf("PlanFingerprint = %q; want the restamped %q saved despite the sync failure", loaded.PlanFingerprint, want)
+	}
+}
+
 // failingFabricOpen is an openFabric that cannot reach the fabric repo, so fabricSync errors exactly
 // where a failed weft commit would.
 func failingFabricOpen() (*fabricengine.Fabric, error) {
