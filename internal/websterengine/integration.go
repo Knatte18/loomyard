@@ -14,16 +14,15 @@ package websterengine
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/verifyrun"
 )
 
 // FabricBisector is the git surface in-process bisect and triage drive: capture branch, checkout SHA detached,
@@ -230,38 +229,19 @@ func baselineLogPath(scratchDir string) string {
 	return filepath.Join(scratchDir, verifyLogDirName, "baseline.log")
 }
 
-// runVerifyCapture runs verifyCmd in-process via os/exec, capturing combined stdout and stderr.
+// runVerifyCapture runs verifyCmd in worktree through the shared verifyrun runner, capturing combined stdout and stderr.
 // A non-zero exit is a failed verify (Passed false, nil error);
 // a spawn failure propagates as a real error.
 // A non-empty logPath also receives the output, its parent directory created;
 // a failed log write is returned as an error, since a triage decision must never rest on a log that silently was not written.
 func runVerifyCapture(verifyCmd, worktree, logPath string) (verifyRun, error) {
-	shell, flag := "sh", "-c"
-	if runtime.GOOS == "windows" {
-		shell, flag = "cmd", "/C"
-	}
-
 	var out bytes.Buffer
-	cmd := exec.Command(shell, flag, verifyCmd)
-	cmd.Dir = worktree
-	cmd.Stdout = &out
-	cmd.Stderr = &out
-	logger.Info("websterengine: spawning verify command", "shell", shell, "verifyCmd", verifyCmd, "worktree", worktree)
-	passed := true
-	if err := cmd.Run(); err != nil {
-		// *exec.ExitError is a failed verify (expected); other errors propagate.
-		var exitErr *exec.ExitError
-		if !errors.As(err, &exitErr) {
-			logger.Warn("websterengine: verify command failed to spawn", "verifyCmd", verifyCmd, "worktree", worktree, "cause", err)
-			return verifyRun{}, fmt.Errorf("webster: run verify command %q: %w", verifyCmd, err)
-		}
-		logger.Info("websterengine: verify command exited", "verifyCmd", verifyCmd, "worktree", worktree, "exitCode", exitErr.ExitCode())
-		passed = false
-	} else {
-		logger.Info("websterengine: verify command exited", "verifyCmd", verifyCmd, "worktree", worktree, "exitCode", 0)
+	exitCode, err := verifyrun.Run(context.Background(), verifyCmd, worktree, &out)
+	if err != nil {
+		return verifyRun{}, fmt.Errorf("webster: run verify command %q: %w", verifyCmd, err)
 	}
 
-	run := verifyRun{Passed: passed, Output: out.String()}
+	run := verifyRun{Passed: exitCode == 0, Output: out.String()}
 	if logPath != "" {
 		if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
 			return verifyRun{}, fmt.Errorf("webster: create verify log dir for %s: %w", logPath, err)
