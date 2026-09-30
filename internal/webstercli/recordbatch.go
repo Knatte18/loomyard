@@ -6,6 +6,9 @@
 // fabric-ownership decision): state.json and the batch report, once RecordBatch either lands a
 // terminal digest or advances transcript attribution on a no_report retry -- both mutate
 // deps.State, so both are durable before Master's next tool call.
+// Two refusals persist as well: a *BatchFailedError saves the whole mutated state and commits it
+// ("record-batch NN failed"), and a *ReportArchivedError commits the archive move
+// ("record-batch NN report-archived"), each before the error envelope is emitted.
 package webstercli
 
 import (
@@ -52,6 +55,13 @@ verbatim (the pinned terse field set Master reads) plus any non-fatal
 warnings. If the report has not landed yet, record-batch returns
 {"no_report": true, "batch": "NN-<slug>"} and exits 0 -- a ladder signal,
 not an error; Master re-forks once and calls record-batch again.
+A batch rejected on its merits exits non-zero with {"batch_failed": true,
+"batch": "NN-<slug>", "warnings": [...]} after its terminal failed state
+and archived report are saved and committed; the error names
+"lyx webster recover-batch NN". A report that cannot be attributed to a
+fork of this bracket is archived and committed, and the call exits non-zero
+with {"report_archived": true, "batch": "NN-<slug>"}; the error names
+"lyx webster begin-batch NN", which re-drives the batch.
 
 Example:
   lyx webster record-batch 3`,
@@ -117,6 +127,52 @@ Example:
 			fingerprintBefore := st.PlanFingerprint
 
 			result, err := websterengine.RecordBatch(deps, batchNumber)
+			if errors.Is(err, websterengine.ErrBatchFailed) {
+				// The batch went terminal failed and its report was archived: every mutation on st is
+				// the point, so the whole state is saved, not just the fingerprint re-baseline.
+				batchName := fmt.Sprintf("%02d-%s", batchNumber, st.Batches[batchNumber].Slug)
+				saveErr := websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, st)
+				_ = mutateLock.Release()
+				mutateHeld = false
+				if saveErr != nil {
+					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("%s; additionally, persisting the failed batch failed: %v", err.Error(), saveErr)))
+					return nil
+				}
+				msg := err.Error()
+				if _, syncErr := fabricSync(c.openFabric, c.anchorRel, fmt.Sprintf("record-batch %s failed", batchName)); syncErr != nil {
+					msg = fmt.Sprintf("%s; additionally, the fabric sync failed: %v", msg, syncErr)
+				}
+				var resultWarnings []string
+				if result != nil {
+					resultWarnings = result.Warnings
+				}
+				clihelp.SetExit(cmd.Context(), output.ErrFields(out, msg, map[string]any{
+					"batch_failed": true,
+					"batch":        batchName,
+					"warnings":     ownerlessRunWarnings(c.geom.ScratchDir, resultWarnings),
+				}))
+				return nil
+			}
+			if errors.Is(err, websterengine.ErrReportArchived) {
+				// Nothing in state changed; the archive move is what the fabric sync commits.
+				// The begin record may be absent, so the name comes from the error, not from st.
+				batchName := fmt.Sprintf("%02d", batchNumber)
+				var archivedErr *websterengine.ReportArchivedError
+				if errors.As(err, &archivedErr) {
+					batchName = archivedErr.Batch
+				}
+				_ = mutateLock.Release()
+				mutateHeld = false
+				msg := err.Error()
+				if _, syncErr := fabricSync(c.openFabric, c.anchorRel, fmt.Sprintf("record-batch %s report-archived", batchName)); syncErr != nil {
+					msg = fmt.Sprintf("%s; additionally, the fabric sync failed: %v", msg, syncErr)
+				}
+				clihelp.SetExit(cmd.Context(), output.ErrFields(out, msg, map[string]any{
+					"report_archived": true,
+					"batch":           batchName,
+				}))
+				return nil
+			}
 			if err != nil {
 				// RecordBatch re-baselines st's plan fingerprint the moment BindHandles or
 				// DetectDrift's exact-tier repair rewrites the plan on disk, which can happen on a
@@ -126,10 +182,6 @@ Example:
 				mutateHeld = false
 				if saveErr != nil {
 					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("%s; additionally, persisting the plan-fingerprint re-baseline this call had already earned failed: %v", err.Error(), saveErr)))
-					return nil
-				}
-				if errors.Is(err, websterengine.ErrCardNotDone) {
-					clihelp.SetExit(cmd.Context(), output.ErrFields(out, err.Error(), map[string]any{"card_not_done": true}))
 					return nil
 				}
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))

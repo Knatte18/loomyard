@@ -655,6 +655,77 @@ func TestRecordBatchCmd_Envelope(t *testing.T) {
 	}
 }
 
+// TestRecordBatchCmd_FailedBatchEnvelope proves a fork writing a Master contract file exits non-zero
+// with batch_failed, names recover-batch, and leaves the batch terminal failed in state.json.
+func TestRecordBatchCmd_FailedBatchEnvelope(t *testing.T) {
+	t.Setenv("WEFT_SKIP_GIT", "1")
+	fx := newVerbsFixture(t)
+	st := fx.initState(t, "master-model")
+	startSHA := commitFile(t, fx.CLI.geom.WorktreeRoot, "internal/only/new.go", "package only\n", "01.1: add impl")
+	st.Batches[1] = &websterengine.BatchState{Slug: "only", StartSHA: startSHA, Kind: "fork"}
+	st.CurrentBatch = 1
+	if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, st); err != nil {
+		t.Fatalf("SaveState() error = %v", err)
+	}
+	fx.Engine.auditForks = shuttleengine.ForkAudit{
+		Forks: []shuttleengine.ForkReport{{
+			TranscriptPath: "subagents/fork1.jsonl",
+			ReportReturned: true,
+			WritePaths:     []string{websterengine.OutcomePath(fx.CLI.geom.WebsterDir)},
+		}},
+	}
+	writeBatchReport(t, fx.CLI.geom.ReportsDir, startSHA)
+
+	var out strings.Builder
+	exitCode := clihelp.Execute(fx.CLI.recordBatchCmd(), &out, []string{"1"})
+
+	if exitCode == 0 {
+		t.Fatalf("record-batch 1 = 0; want non-zero, output: %s", out.String())
+	}
+	got := out.String()
+	for _, want := range []string{`"batch_failed":true`, `"batch":"01-only"`, `lyx webster recover-batch`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("output missing %q; got %q", want, got)
+		}
+	}
+
+	loaded, err := websterengine.LoadState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir)
+	if err != nil || loaded == nil {
+		t.Fatalf("LoadState() after record-batch = %v, %v; want a state, nil", loaded, err)
+	}
+	bs := loaded.Batches[1]
+	if !bs.Terminal || bs.Digest == nil || bs.Digest.Status != websterengine.DigestStatusFailed {
+		t.Errorf("loaded.Batches[1] = %+v; want terminal with a failed digest", bs)
+	}
+}
+
+// TestRecordBatchCmd_ReportArchivedEnvelope proves a report with no begin record is archived, the
+// call exits non-zero with report_archived, and the report is gone from its live path.
+func TestRecordBatchCmd_ReportArchivedEnvelope(t *testing.T) {
+	t.Setenv("WEFT_SKIP_GIT", "1")
+	fx := newVerbsFixture(t)
+	fx.initState(t, "master-model")
+	startSHA := commitFile(t, fx.CLI.geom.WorktreeRoot, "internal/only/new.go", "package only\n", "01.1: add impl")
+	writeBatchReport(t, fx.CLI.geom.ReportsDir, startSHA)
+
+	var out strings.Builder
+	exitCode := clihelp.Execute(fx.CLI.recordBatchCmd(), &out, []string{"1"})
+
+	if exitCode == 0 {
+		t.Fatalf("record-batch 1 = 0; want non-zero, output: %s", out.String())
+	}
+	got := out.String()
+	for _, want := range []string{`"report_archived":true`, `"batch":"01-only"`, `lyx webster begin-batch`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("output missing %q; got %q", want, got)
+		}
+	}
+	live := filepath.Join(fx.CLI.geom.ReportsDir, websterengine.ReportFileName(1, "only"))
+	if _, err := os.Stat(live); !os.IsNotExist(err) {
+		t.Errorf("stat %s = %v; want the report gone from the live path", live, err)
+	}
+}
+
 // TestRecoverBatchCmd_RunningThenTerminal drives recover-batch across two calls against the same
 // batch: the first call performs the spawn and returns a running snapshot (the strand has no report
 // yet), proving the running envelope touches neither status nor digest fields;
