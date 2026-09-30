@@ -822,19 +822,20 @@ func TestRemoveStatusStrands(t *testing.T) {
 		return out
 	}
 	tests := []struct {
-		name       string
-		strands    []reedengine.StrandStatus
-		statusErr  error
-		failGUIDs  map[string]bool
-		wantRemove []string
-		wantWarns  int
-		wantInLog  string
+		name         string
+		strands      []reedengine.StrandStatus
+		statusErr    error
+		failGUIDs    map[string]bool
+		wantRemove   []string
+		wantWarns    int
+		wantInLog    string
+		wantNotInLog string
 	}{
 		{name: "none named", strands: strands("a", "ly-drive", "b", "other")},
 		{name: "one among others", strands: strands("a", "ly-drive", "b", "loom-status", "c", "loom-status-extra"), wantRemove: []string{"b"}},
 		{name: "two named", strands: strands("a", "loom-status", "b", "x", "c", "loom-status"), wantRemove: []string{"a", "c"}},
-		{name: "status fails", strands: strands("a", "loom-status"), statusErr: errors.New("boom"), wantWarns: 1},
-		{name: "first remove fails", strands: strands("a", "loom-status", "b", "loom-status"), failGUIDs: map[string]bool{"a": true}, wantRemove: []string{"a", "b"}, wantWarns: 1, wantInLog: "a"},
+		{name: "status fails", strands: strands("a", "loom-status"), statusErr: errors.New("boom"), wantWarns: 1, wantInLog: "cause=boom"},
+		{name: "first remove fails", strands: strands("guid-a", "loom-status", "guid-b", "loom-status"), failGUIDs: map[string]bool{"guid-a": true}, wantRemove: []string{"guid-a", "guid-b"}, wantWarns: 1, wantInLog: "guid=guid-a", wantNotInLog: "guid-b"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -864,7 +865,10 @@ func TestRemoveStatusStrands(t *testing.T) {
 				t.Errorf("warning lines = %d; want %d; log: %q", got, tt.wantWarns, buf.String())
 			}
 			if tt.wantInLog != "" && !strings.Contains(buf.String(), tt.wantInLog) {
-				t.Errorf("log %q does not name guid %q", buf.String(), tt.wantInLog)
+				t.Errorf("log %q does not contain %q", buf.String(), tt.wantInLog)
+			}
+			if tt.wantNotInLog != "" && strings.Contains(buf.String(), tt.wantNotInLog) {
+				t.Errorf("log %q names %q, which was removed without error", buf.String(), tt.wantNotInLog)
 			}
 		})
 	}
