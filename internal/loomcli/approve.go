@@ -179,6 +179,9 @@ Example:
 					}
 					return f.HeadSHA()
 				},
+				removeRejection: func() error {
+					return landingshed.RemoveRecord(loomengine.LoomRejectionPath(location))
+				},
 				writeApproval: func(a landingshed.Approval) error {
 					return landingshed.WriteApproval(loomengine.LoomApprovalPath(location), a)
 				},
