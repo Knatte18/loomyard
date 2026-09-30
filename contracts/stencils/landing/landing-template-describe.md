@@ -39,4 +39,4 @@ Naming a module is fine when the change touches it.
 - Write no `Co-Authored-By` line — the landing step appends its own trailer.
 - Never commit, and never run any git command that changes the repository.
 - Before ending your turn, run `lyx loom validate-description` and fix every finding it reports.
-  Writing the description is the last thing you do in this session.
+  A clean `validate-description` run is the last thing you do in this session.
