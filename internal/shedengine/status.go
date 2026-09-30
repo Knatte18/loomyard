@@ -67,7 +67,8 @@ type HistoryEntry struct {
 	BudgetExempt bool `json:"budget_exempt,omitempty"`
 	// Repeats is the number of further identical calls folded into this entry, zero when none.
 	Repeats int `json:"repeats,omitempty"`
-	// LastAt is the RFC 3339 UTC time of the most recent folded call, empty when none; At keeps the first call's time.
+	// LastAt is the RFC 3339 UTC time of the most recent folded call, empty when none;
+	// At keeps the first call's time.
 	LastAt string `json:"last_at,omitempty"`
 }
 
