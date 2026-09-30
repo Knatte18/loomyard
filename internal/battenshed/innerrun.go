@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -74,6 +75,27 @@ func doneSeenFile(scratchDir, producer string) string {
 // approvalIdentity renders an approval as the line the approval-acted marker holds.
 func approvalIdentity(a ChildApproval) string {
 	return a.ApprovedAt + " " + a.HeadSHA + "\n"
+}
+
+// approvalActedContent renders the approval-acted marker: the identity line, then the child's history length in decimal.
+// The length rides beside the identity, never inside it, so identity comparison alone decides whether an approval is new.
+func approvalActedContent(identity string, historyLen int) string {
+	return identity + strconv.Itoa(historyLen) + "\n"
+}
+
+// parseApprovalActed splits a marker into its identity line (through the first newline) and the recorded history length.
+// hasLen is false for the one-line old layout, an unparseable or negative length (a torn write), and input with no newline, which is returned whole as identity so it never matches a real identity line.
+func parseApprovalActed(raw string) (identity string, historyLen int, hasLen bool) {
+	i := strings.IndexByte(raw, '\n')
+	if i < 0 {
+		return raw, 0, false
+	}
+	identity = raw[:i+1]
+	n, err := strconv.Atoi(strings.TrimSpace(raw[i+1:]))
+	if err != nil || n < 0 {
+		return identity, 0, false
+	}
+	return identity, n, true
 }
 
 // awaitingHandOff is the operator instruction an awaiting child's wait carries: the child waits on a pull-request approval that only the operator can give from inside the task worktree.
