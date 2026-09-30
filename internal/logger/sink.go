@@ -130,7 +130,7 @@ func armDurableSinkLocked() bool {
 		return false
 	}
 
-	_ = Sweep(dir)
+	_ = Sweep(dir, DefaultRetentionBounds())
 
 	filename := fmt.Sprintf("trace-%s-%s-%d.log",
 		time.Now().UTC().Format(traceFileTimestampLayout),

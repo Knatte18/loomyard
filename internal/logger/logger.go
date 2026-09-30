@@ -56,11 +56,15 @@
 // growing it further.
 //
 // A background-free sweep (retention.go's Sweep, run once per sink open)
-// keeps the logs directory bounded: files older than 14 days are deleted,
-// then only the newest 50 (by filename timestamp) of what remains are kept.
-// A file whose PID belongs to a currently-running process (including the
-// sweeping process itself) is never deleted and never counts toward the
-// newest-50 bound, regardless of age.
+// keeps the logs directory bounded.
+// Files are grouped by trace ID, and a group's activity time is the newest
+// mtime among its files, so a long-running step that keeps writing stays
+// recent however long ago its file was named.
+// Groups with no activity for 14 days are deleted whole,
+// then only the 200 most recently active of what remains are kept.
+// A group holding a file whose PID belongs to a currently-running process
+// (including the sweeping process itself) is never deleted and never counts
+// toward the 200-trace bound, regardless of age.
 //
 // # Activation outside the lyx CLI
 //
