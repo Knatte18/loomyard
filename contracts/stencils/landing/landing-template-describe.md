@@ -19,6 +19,7 @@ Read only these sources, and use read-only git for the diff:
 - The diff of the task branch `{{.task_branch}}` against its merge base with the parent branch `{{.parent_branch}}` — for example `git diff $(git merge-base {{.parent_branch}} {{.task_branch}}) {{.task_branch}}`.
 - The run record, `{{.run_record_path}}`, only as a source of manual-check items.
   When it carries an `## Integration suite failed` section, carry that failure into your description as an item for the reviewer to check.
+  When it carries an `## Integration suite triage` section, carry it into your description as an item for the reviewer to check too, naming the flaky and pre-existing identities it lists.
 
 ## What to write
 

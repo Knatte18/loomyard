@@ -41,7 +41,9 @@ The format and validation it shares are pinned producer-agnostically in [final-s
 It is required and fail-loud only when `outcome: done`, and follows the same archive-never-refuse discipline as every other stale artifact.
 A long-lived Master session is the only party with full oversight of what actually shipped, which is why it writes the run record.
 
-A `summary.md` may additionally carry an appended `## Integration suite failed` section naming the bisect-localized offending card and its commit SHA — `internal/websterengine`'s `AppendIntegrationFailure` writes it as the document half of an integration-failure escalation, and it reaches the PR reviewer because the `Describe` stencil carries it into the change description as a check item, not because Publish passes `summary.md` through.
+A `summary.md` may additionally carry an appended `## Integration suite failed` section naming the bisect-localized offending card and its commit SHA, and also listing the regressing identities with their output tails — `internal/websterengine`'s `AppendIntegrationFailure` writes it as the document half of an integration-failure escalation.
+A failing suite that triage classifies as flaky or pre-existing only, with no regression, instead appends an `## Integration suite triage` section listing those identities (`AppendIntegrationTriage`) and the run keeps its outcome.
+Either section reaches the PR reviewer because the `Describe` stencil carries it into the change description as a check item, not because Publish passes `summary.md` through.
 The bisect mechanism that produces it stays webster-internal and is not described here.
 
 ## See also
