@@ -132,9 +132,8 @@ func (r *Repo) DeleteRemoteBranch(remote, branch string) (deleted bool, err erro
 	return false, fmt.Errorf("gitrepo: git push --delete: %w", err)
 }
 
-// DeleteRemoteBranchLeased deletes branch on the named remote via
-// `git push --force-with-lease=refs/heads/<branch>:<expectSHA> --delete`, succeeding only while the
-// remote branch still sits at expectSHA.
+// DeleteRemoteBranchLeased deletes branch on the named remote via `git push --force-with-lease=refs/heads/<branch>:<expectSHA> --delete`,
+// succeeding only while the remote branch still sits at expectSHA.
 // expectSHA must be a valid hex object name, or ErrInvalidSHA is returned before any git spawn.
 // Unlike DeleteRemoteBranch, an already-absent remote ref is not an idempotent success:
 // the lease names a SHA the caller saw, so a branch that moved or vanished since is a failed lease.
