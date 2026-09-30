@@ -68,12 +68,13 @@ func (c *reedCLI) spawnDetachedRemove(guid string, recursive bool) error {
 		args = append(args, "--recursive")
 	}
 	cmd := exec.Command(exe, args...)
-	// The worktree, never the hub: the strand verbs resolve from a git worktree root. A child that
-	// exits once the removal is done cannot pin the worktree's deletion the way the watchdog could.
-	cmd.Dir = c.worktreePath
+	// The worktree's anchor, never the hub: the strand verbs resolve from a cwd that must equal the
+	// anchor. A child that exits once the removal is done cannot pin the worktree's deletion the way
+	// the watchdog could.
+	cmd.Dir = c.anchorPath
 	proc.Detach(cmd)
 
-	logger.Info("reed: spawning detached remove", "exe", exe, "guid", guid, "dir", c.worktreePath, "wait_pid", os.Getpid())
+	logger.Info("reed: spawning detached remove", "exe", exe, "guid", guid, "dir", c.anchorPath, "wait_pid", os.Getpid())
 	if err := cmd.Start(); err != nil { // no Wait: detached, so the spawn is the only lifecycle line
 		logger.Warn("reed: detached remove spawn failed", "exe", exe, "guid", guid, "err", err)
 		return fmt.Errorf("spawn detached remove: %w", err)
