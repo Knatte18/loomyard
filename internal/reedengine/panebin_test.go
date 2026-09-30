@@ -3,7 +3,8 @@
 // spawned. Every case injects the executable path by overriding executablePath and restoring it via
 // t.Cleanup -- under go test the live os.Executable() value is the test binary's path, which
 // CONSTRAINTS.md's Live-Substrate Spawn Observability clause bars re-exec'ing, so no case here reads
-// it. The stageLaunchScript cases at the end cover the per-strand launch script file.
+// it.
+// The stageLaunchScript cases at the end cover the per-strand launch script file.
 
 package reedengine
 

@@ -2,10 +2,8 @@
 // invoking it directly through the e.tmux.execHook fake) and loadOrInitStateLocked's fresh-worktree
 // bootstrap. Both are pure/hermetic, no live tmux required. The composed live behavior against a real
 // tmux is covered by the smoke tests. planPaneTarget's own table-driven test moved to
-// selvagepane_test.go alongside the function it exercises. It also pins two regression guards for the
-// pane-binary prelude wiring: that launchStrandLocked's send-keys payload is the launch script's source statement
-// and the script holds the composed prelude rather than the bare command, and that the split-window argv it issues still carries no trailing
-// shell-command argument.
+// selvagepane_test.go alongside the function it exercises.
+// It also pins two regression guards for the pane-binary prelude wiring: that launchStrandLocked's send-keys payload is the launch script's source statement and the script holds the composed prelude rather than the bare command, and that the split-window argv it issues still carries no trailing shell-command argument.
 
 package reedengine
 
@@ -365,9 +363,8 @@ func TestStatus_NeverReportsAStrandLiveOnAPaneAnotherOwnerClaims(t *testing.T) {
 	}
 }
 
-// launchFake installs an e.tmux.execHook that reports one live Selvage pane, answers split-window
-// with a fresh pane id, and records every send-keys call. onEnter, when non-nil, runs at the Enter
-// submit, the last step of launchStrandLocked.
+// launchFake installs an e.tmux.execHook that reports one live Selvage pane, answers split-window with a fresh pane id, and records every send-keys call.
+// onEnter, when non-nil, runs at the Enter submit, the last step of launchStrandLocked.
 func launchFake(e *Engine, sendKeysCalls *[][]string, onEnter func()) {
 	live := "%selvage 0 0 100 20 4321\n"
 	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
@@ -420,10 +417,7 @@ func breakSaveState(t *testing.T, e *Engine) {
 	}
 }
 
-// TestLaunchStrandLocked_SendsThePreludeAheadOfTheStrandCommand pins that launchStrandLocked types
-// the source statement for the strand's launch script, that the script holds the composed
-// pane-binary prelude joined onto the strand's command -- not the bare command -- and that the Enter
-// submit still follows as a separate send-keys call.
+// TestLaunchStrandLocked_SendsThePreludeAheadOfTheStrandCommand pins that launchStrandLocked types the source statement for the strand's launch script, that the script holds the composed pane-binary prelude joined onto the strand's command -- not the bare command -- and that the Enter submit still follows as a separate send-keys call.
 func TestLaunchStrandLocked_SendsThePreludeAheadOfTheStrandCommand(t *testing.T) {
 	e := newTestEngine(t)
 
@@ -466,8 +460,7 @@ func TestLaunchStrandLocked_SendsThePreludeAheadOfTheStrandCommand(t *testing.T)
 	}
 }
 
-// TestLaunchStrandLocked_RelaunchRegeneratesTheScript pins that a second launch with a different
-// command leaves the script holding the second composed line.
+// TestLaunchStrandLocked_RelaunchRegeneratesTheScript pins that a second launch with a different command leaves the script holding the second composed line.
 func TestLaunchStrandLocked_RelaunchRegeneratesTheScript(t *testing.T) {
 	e := newTestEngine(t)
 	withInjectedExecutablePath(t, func() (string, error) { return "/opt/lyx/bin/lyx", nil })
@@ -486,8 +479,7 @@ func TestLaunchStrandLocked_RelaunchRegeneratesTheScript(t *testing.T) {
 	}
 }
 
-// TestLaunchStrandLocked_ScriptWithoutPreludeWhenExecutableUnresolvable pins that an unresolvable
-// executable path leaves the launch command alone in the script.
+// TestLaunchStrandLocked_ScriptWithoutPreludeWhenExecutableUnresolvable pins that an unresolvable executable path leaves the launch command alone in the script.
 func TestLaunchStrandLocked_ScriptWithoutPreludeWhenExecutableUnresolvable(t *testing.T) {
 	e := newTestEngine(t)
 	withInjectedExecutablePath(t, func() (string, error) { return "", errors.New("no exe") })
@@ -503,8 +495,7 @@ func TestLaunchStrandLocked_ScriptWithoutPreludeWhenExecutableUnresolvable(t *te
 	}
 }
 
-// TestLaunchStrandLocked_EmptyCommandWritesThePreludeAlone pins that an empty launch command writes
-// the prelude plus a newline, with no trailing separator.
+// TestLaunchStrandLocked_EmptyCommandWritesThePreludeAlone pins that an empty launch command writes the prelude plus a newline, with no trailing separator.
 func TestLaunchStrandLocked_EmptyCommandWritesThePreludeAlone(t *testing.T) {
 	e := newTestEngine(t)
 	const exe = "/opt/lyx/bin/lyx"
@@ -521,9 +512,8 @@ func TestLaunchStrandLocked_EmptyCommandWritesThePreludeAlone(t *testing.T) {
 	}
 }
 
-// TestLaunchStrandLocked_WriteFailureSendsTheFullLine pins the degrade path: a regular file where
-// the launch directory's parent belongs makes the payload the composed line, and the warning names
-// the strand GUID.
+// TestLaunchStrandLocked_WriteFailureSendsTheFullLine pins the degrade path: a regular file where the launch directory's parent belongs makes the payload the composed line,
+// and the warning names the strand GUID.
 func TestLaunchStrandLocked_WriteFailureSendsTheFullLine(t *testing.T) {
 	e := newTestEngine(t)
 	withInjectedExecutablePath(t, func() (string, error) { return "/opt/lyx/bin/lyx", nil })
@@ -551,8 +541,7 @@ func TestLaunchStrandLocked_WriteFailureSendsTheFullLine(t *testing.T) {
 	}
 }
 
-// TestAddStrandLocked_FailedSendLeavesNoScript pins that a launch whose literal send-keys fails
-// deletes the script it already wrote.
+// TestAddStrandLocked_FailedSendLeavesNoScript pins that a launch whose literal send-keys fails deletes the script it already wrote.
 func TestAddStrandLocked_FailedSendLeavesNoScript(t *testing.T) {
 	e := newTestEngine(t)
 	withInjectedExecutablePath(t, func() (string, error) { return "/opt/lyx/bin/lyx", nil })
@@ -577,8 +566,7 @@ func TestAddStrandLocked_FailedSendLeavesNoScript(t *testing.T) {
 	assertLaunchDirEmpty(t, e)
 }
 
-// TestAddStrand_PersistFailureLeavesNoScript pins that a SaveState failure right after the launch
-// deletes the never-persisted strand's script.
+// TestAddStrand_PersistFailureLeavesNoScript pins that a SaveState failure right after the launch deletes the never-persisted strand's script.
 func TestAddStrand_PersistFailureLeavesNoScript(t *testing.T) {
 	e := newTestEngine(t)
 	withInjectedExecutablePath(t, func() (string, error) { return "/opt/lyx/bin/lyx", nil })
@@ -591,8 +579,7 @@ func TestAddStrand_PersistFailureLeavesNoScript(t *testing.T) {
 	assertLaunchDirEmpty(t, e)
 }
 
-// TestReplaceStrand_PersistFailureLeavesNoScriptForTheNewStrand pins that when every SaveState
-// fails, ReplaceStrand returns an error and the new strand's script is deleted.
+// TestReplaceStrand_PersistFailureLeavesNoScriptForTheNewStrand pins that when every SaveState fails, ReplaceStrand returns an error and the new strand's script is deleted.
 func TestReplaceStrand_PersistFailureLeavesNoScriptForTheNewStrand(t *testing.T) {
 	e := newTestEngine(t)
 	withInjectedExecutablePath(t, func() (string, error) { return "/opt/lyx/bin/lyx", nil })

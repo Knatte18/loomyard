@@ -1,5 +1,4 @@
-// launchscript_cleanup_test.go proves every path that forgets a strand also deletes its launch
-// script, and that no path deletes a script whose strand survives.
+// launchscript_cleanup_test.go proves every path that forgets a strand also deletes its launch script, and that no path deletes a script whose strand survives.
 
 package reedengine
 
@@ -42,8 +41,7 @@ func assertScriptPresence(t *testing.T, path string, want bool) {
 	}
 }
 
-// newCleanupEngine returns a test engine whose tmux fake reports a live session and no pane
-// output, with st saved as its state.
+// newCleanupEngine returns a test engine whose tmux fake reports a live session and no pane output, with st saved as its state.
 func newCleanupEngine(t *testing.T, st *ReedState) *Engine {
 	t.Helper()
 	e := newTestEngine(t)

@@ -1,10 +1,9 @@
 //go:build integration && !windows
 
-// launchscript_integration_test.go proves against a real tmux that sourcing a strand's launch script
-// runs the same statements in the pane shell's own scope that typing them did. The unit tests around
-// panebin.go and spawn.go pin strings and files; only a live pane shell can show that the command
-// ran and that the prelude's exports outlive it. The test reads the command's side effects, never
-// pane text, so nothing matches pane output against the launch line's content.
+// launchscript_integration_test.go proves against a real tmux that sourcing a strand's launch script runs the same statements in the pane shell's own scope that typing them did.
+// The unit tests around panebin.go and spawn.go pin strings and files;
+// only a live pane shell can show that the command ran and that the prelude's exports outlive it.
+// The test reads the command's side effects, never pane text, so nothing matches pane output against the launch line's content.
 
 package reedengine
 
@@ -28,9 +27,7 @@ func readTrimmed(path string) string {
 	return string(b)
 }
 
-// TestLaunchScript_SourcedScriptRunsInThePaneShellScope adds a strand whose command writes a marker
-// file, then checks the script's content, the command's effect, and that LYX_BIN and PATH still
-// carry the prelude's values in the pane shell after the command returned.
+// TestLaunchScript_SourcedScriptRunsInThePaneShellScope adds a strand whose command writes a marker file, then checks the script's content, the command's effect, and that LYX_BIN and PATH still carry the prelude's values in the pane shell after the command returned.
 func TestLaunchScript_SourcedScriptRunsInThePaneShellScope(t *testing.T) {
 	e := newColdScratchEngine(t)
 
