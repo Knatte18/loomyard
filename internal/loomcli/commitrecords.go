@@ -8,9 +8,12 @@ package loomcli
 
 import (
 	"io"
+	"os"
+	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/spf13/cobra"
 )
 
@@ -41,9 +44,20 @@ func commitRecordsVerb(out io.Writer, d commitStatusDeps) int {
 	return output.Ok(out, map[string]any{"committed": true})
 }
 
+// writeParkMarker writes the driver park marker at markerPath, holding reportPath, creating its directory.
+// The marker is what `lyx loom start` reads to resume a parked driver by typing into its pane,
+// so writing it from Go, not leaving it to the driving agent, keeps a park from silently stalling the run.
+func writeParkMarker(markerPath, reportPath string) error {
+	if err := os.MkdirAll(filepath.Dir(markerPath), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(markerPath, []byte(reportPath), 0o644)
+}
+
 // commitRecordsCmd builds the `commit-records` subcommand.
 func (c *loomCLI) commitRecordsCmd() *cobra.Command {
-	return &cobra.Command{
+	var park string
+	cmd := &cobra.Command{
 		Use:   "commit-records",
 		Short: "commit and push the run's records: status, reviews, friction notes and drive reports",
 		Long: `commit-records commits and pushes the run's records: the status file, the review
@@ -53,15 +67,31 @@ driver writes its stop report. It is safe to run by hand in a task worktree befo
 resuming a batten run whose teardown refused uncommitted run records. A tree with nothing
 to commit succeeds without adding a commit.
 
+With --park <report>, a parking driver's command: after the commit, whatever its
+outcome, it writes the driver park marker holding the stop report's path, which
+lyx loom start needs to resume the parked session.
+
 Example:
-  lyx loom commit-records`,
+  lyx loom commit-records
+  lyx loom commit-records --park _lyx/shed/<slug>/drive-reports/<report>.md`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
 			}
-			clihelp.SetExit(cmd.Context(), commitRecordsVerb(cmd.OutOrStdout(), loomCommitStatusDeps(c.location, c.runID)))
+			code := commitRecordsVerb(cmd.OutOrStdout(), loomCommitStatusDeps(c.location, c.runID))
+			if park != "" {
+				// The session parks whatever the commit's outcome, so the marker is written on every path;
+				// a failed write is the one thing that would stall the run, so it fails the verb.
+				marker := shedrun.ParkMarker(c.location, shedrun.ResolveRunID(c.location, c.runID))
+				if err := writeParkMarker(marker, park); err != nil {
+					code = output.Err(cmd.OutOrStdout(), "loom: commit-records: write park marker "+marker+": "+err.Error())
+				}
+			}
+			clihelp.SetExit(cmd.Context(), code)
 			return nil
 		},
 	}
+	cmd.Flags().StringVar(&park, "park", "", "after committing, write the driver park marker holding this stop report path")
+	return cmd
 }

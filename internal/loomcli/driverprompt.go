@@ -29,14 +29,20 @@ import "fmt"
 // provider specifics under the claude engine package.
 func driverPrompt(runID string, reportPath string) string {
 	return fmt.Sprintf(
-		"Run the ly-drive skill (from loomyard's ly plugin) for run-id %q. If that skill is not available to you, do not search the filesystem for a copy, which may be a stale version: write to the report that the ly plugin is not installed and stop. You are running autonomously, with no operator to ask -- decide and proceed on your own judgment. Write your report to %q at every stop condition. When the run is done, or a step is refused as busy, then after writing it, as your very last act, commit the run records and end your own session by running: %s . At every other stop, park as the skill describes, its records-commit command being: %s , and leave this session open; lyx loom start resumes it by typing one line.",
-		runID, reportPath, driverTeardownCommand, driverRecordsCommand,
+		"Run the ly-drive skill (from loomyard's ly plugin) for run-id %q. If that skill is not available to you, do not search the filesystem for a copy, which may be a stale version: write to the report that the ly plugin is not installed and stop. You are running autonomously, with no operator to ask -- decide and proceed on your own judgment. Write your report to %q at every stop condition. When the run is done, or a step is refused as busy, then after writing it, as your very last act, commit the run records and end your own session by running: %s . At every other stop, park as the skill describes (park command: %s ) and leave this session open for lyx loom start to resume.",
+		runID, reportPath, driverTeardownCommand, driverParkCommand(reportPath),
 	)
 }
 
-// driverRecordsCommand commits the run records; a parking driver runs it alone, and driverTeardownCommand runs it first.
-// The prompt names it so the ly-drive skill can stay recipe-blind.
+// driverRecordsCommand commits the run records; driverTeardownCommand runs it first, and driverParkCommand extends it.
 const driverRecordsCommand = "lyx loom commit-records"
+
+// driverParkCommand is the command a parking driver runs after its stop report: it commits the run records and writes the park marker holding reportPath.
+// The marker is written by Go rather than by the agent, since a driver that skipped writing it left `lyx loom start` refusing to resume.
+// The prompt names it so the ly-drive skill can stay recipe-blind.
+func driverParkCommand(reportPath string) string {
+	return fmt.Sprintf("%s --park %q", driverRecordsCommand, reportPath)
+}
 
 // driverTeardownCommand is the end-of-session command a loom-launched driver runs after its stop report.
 // It commits the run records first, then removes the driver's own strand.

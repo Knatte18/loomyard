@@ -1,6 +1,8 @@
 package loomcli
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -53,7 +55,7 @@ func TestDriverPrompt_NamesSlugRunIDAndExactTeardownCommand(t *testing.T) {
 
 // TestDriverPrompt_TiesTeardownToDoneAndBusyAndParksElsewhere asserts the teardown command sits between the done/busy condition and the parking sentence.
 // That keeps a done child's driver exiting before batten's teardown, and every other stop parking.
-// It also asserts the parking sentence names the records-commit command, which the recipe-blind skill runs at a park.
+// It also asserts the parking sentence names the park command, with the report path, which the recipe-blind skill runs at a park.
 func TestDriverPrompt_TiesTeardownToDoneAndBusyAndParksElsewhere(t *testing.T) {
 	got := driverPrompt("run", "/hub/wt/report.md")
 
@@ -66,8 +68,24 @@ func TestDriverPrompt_TiesTeardownToDoneAndBusyAndParksElsewhere(t *testing.T) {
 	if !strings.Contains(got, "leave this session open") {
 		t.Errorf("driverPrompt() = %q; want it to leave the session open when parking", got)
 	}
-	if !strings.Contains(got[park:], driverRecordsCommand) {
-		t.Errorf("driverPrompt() = %q; want the parking sentence to name the records-commit command %q", got, driverRecordsCommand)
+	want := `lyx loom commit-records --park "/hub/wt/report.md"`
+	if !strings.Contains(got[park:], want) {
+		t.Errorf("driverPrompt() = %q; want the parking sentence to name the park command %q", got, want)
+	}
+}
+
+// TestWriteParkMarker_CreatesDirAndHoldsReportPath asserts the marker is written under a not-yet-existing directory and holds the report path.
+func TestWriteParkMarker_CreatesDirAndHoldsReportPath(t *testing.T) {
+	marker := filepath.Join(t.TempDir(), "shed", "run", "driver-parked")
+	if err := writeParkMarker(marker, "/hub/wt/report.md"); err != nil {
+		t.Fatalf("writeParkMarker() error = %v; want nil", err)
+	}
+	got, err := os.ReadFile(marker)
+	if err != nil {
+		t.Fatalf("read marker: %v", err)
+	}
+	if string(got) != "/hub/wt/report.md" {
+		t.Errorf("marker = %q; want %q", got, "/hub/wt/report.md")
 	}
 }
 
@@ -99,7 +117,9 @@ func TestDriverPrompt_StaysWellUnderLaunchPromptCap(t *testing.T) {
 	// 30000 mirrors claudeengine's maxLaunchPromptBytes; this package must not import
 	// internal/shuttleengine/claudeengine (provider specifics stay there per the Shuttle
 	// Provider-Seam Invariant), so the bound is restated here rather than imported.
-	const wellUnderLaunchPromptCap = 1000
+	// The report path appears twice (report target and park command), so the bound leaves room for a long one;
+	// a copied-in skill runs to several kilobytes and still fails it.
+	const wellUnderLaunchPromptCap = 1500
 	if len(got) >= wellUnderLaunchPromptCap {
 		t.Errorf("driverPrompt() length = %d; want well under %d (the launch prompt cap is 30000)", len(got), wellUnderLaunchPromptCap)
 	}
