@@ -21,7 +21,7 @@ An engine is handed the absolute paths it operates on and derives none of its ow
 - Three tiers: `lyxcwd.Resolve` → `preflight.Check` (fabric wired/synced/clean) → `loomengine.CheckSeed`.
 - A producer needs none of the tiers; an orchestrator needs tier 3; a standalone CLI probes tier 1 via `preflight.ResolveMode` only.
 - `internal/hubgeom`/`internal/standalonegeom` are the only `Geometry`-struct constructors.
-- Bound packages: `internal/tokenvocab`, `pattern`, `buildinfo`, `standalonestate`, `shedengine`, `treadleengine`, `loomshed`, `landingshed`, `mergeresolve`, `shedrecipe`, `shedbuild`, `loomrecipe`, `planparser`, `planglyph`, `configengine`, `shuttleengine`, `reedengine`, `burlerengine`, `websterengine`, `cliwire`, `battenshed`, `battenrecipe`.
+- Bound packages: `internal/tokenvocab`, `pattern`, `buildinfo`, `standalonestate`, `shedengine`, `treadleengine`, `loomshed`, `landingshed`, `mergeresolve`, `shedrecipe`, `shedbuild`, `loomrecipe`, `planparser`, `planglyph`, `configengine`, `shuttleengine`, `reedengine`, `burlerengine`, `websterengine`, `cliwire`, `battenshed`, `battenrecipe`, `orchengine`.
 - A `shuttleengine` runner whose anchor is deliberately outside its worktree root is constructed only through `shuttleengine.NewDetachedRunner`, only from a standalone CLI's own wiring, and `NewRunner`'s containment assertion is never relaxed to accommodate it.
 
 ## Cliwire Sole-Wiring Invariant
@@ -180,7 +180,7 @@ Every lyx CLI module is a cobra subtree assembled under one root in `cmd/lyx/mai
 - An alias command may delegate into another module's subtree with no seam function of its own.
 - Non-empty `Short` on every command.
 - Errors are JSON via `internal/output`, one object per line; every `RunE` checks `clihelp.ShouldAbort` first.
-- Interactive-handoff exception, narrow and per-command: `reedengine` `attach`/`watchdog`, `lyx loom status --watch`, `lyx loom start`/`lyx start`, `lyx shed status --watch`, `lyx batten status --watch`, and the `status` verbs' terminal rendering.
+- Interactive-handoff exception, narrow and per-command: `reedengine` `attach`/`watchdog`, `lyx loom status --watch`, `lyx loom start`/`lyx start`, `lyx orch start`, `lyx shed status --watch`, `lyx batten status --watch`, and the `status` verbs' terminal rendering.
 - Package naming: `<module>cli` imports `<module>engine`; engine never imports cli/cobra. Deviations: `stencilcli` → `internal/stencilstore`; `quarrycli` → `internal/planglyph`; `battencli` → `internal/battenshed`, `internal/battenrecipe` (no engine package of its own); `shedcli` → `internal/shedverbs`, `internal/loomcli`, `internal/battencli` (no engine package of its own).
 
 ## Completion Signal Invariant
@@ -389,7 +389,7 @@ An instruction file never duplicates or paraphrases another producer's format-co
 
 `internal/configengine` offers `Load` (strict) and `LoadOrTemplate` (degrades to embedded template) — a caller adopts exactly one.
 
-- Degrading: `{shuttleengine, reedengine, websterengine, batcher}`. Strict: `{fabricengine, boardengine, loomengine, landingshed}`.
+- Degrading: `{shuttleengine, reedengine, websterengine, batcher, orchengine}`. Strict: `{fabricengine, boardengine, loomengine, landingshed}`.
 - A template list is a default, not a minimum length.
 
 ## GitHub Auth Invariant
