@@ -312,7 +312,27 @@ func (c *battenCLI) armAt(location *lyxcwd.Location, runID string, explicit bool
 		return shedverbs.Spec{}, err
 	}
 
+	if err := c.loadRouting(); err != nil {
+		return shedverbs.Spec{}, err
+	}
+
 	return c.specFor(verb), nil
+}
+
+// loadRouting projects batten's recipe routing onto c.routing, with MaxBounces taken from
+// c.shedPaths so status reports the same bounce budget the engine enforces. It runs after wiring,
+// which is what fills c.shedPaths, and is the one place the routing can return an error; specFor
+// only copies it.
+func (c *battenCLI) loadRouting() error {
+	routing, err := battenrecipe.Routing()
+	if err != nil {
+		return err
+	}
+
+	routing.MaxBounces = c.shedPaths.MaxBounces
+	c.routing = routing
+
+	return nil
 }
 
 // specFor fills a Spec from c's already-wired fields, performing no resolution, no wire call, and
@@ -362,7 +382,10 @@ func (c *battenCLI) specFor(verb string) shedverbs.Spec {
 	// Batten carries no agent friction directory, so FrictionDir stays empty.
 	if c.location != nil {
 		spec.ScratchDir = shedrun.ScratchDir(c.location, c.slug)
+		spec.StepsDir = shedrun.StepsDir(c.location, c.slug)
+		spec.RunID = shedrun.ResolveRunID(c.location, c.slug)
 	}
+	spec.Routing = c.routing
 
 	return spec
 }
