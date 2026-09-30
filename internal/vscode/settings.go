@@ -10,8 +10,7 @@ import (
 	"path/filepath"
 )
 
-// ReadSettings returns the bytes of <dir>/.vscode/settings.json,
-// the file WriteConfig writes under its own dir.
+// ReadSettings returns the bytes of <dir>/.vscode/settings.json, the file WriteConfig writes under its own dir.
 // A missing file returns nil, nil, which BuildWorkspace turns into {};
 // any other read error is returned wrapped with the path.
 func ReadSettings(dir string) ([]byte, error) {

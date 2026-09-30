@@ -1,7 +1,6 @@
 //go:build integration
 
-// hubworkspace_integration_test.go drives WriteHubWorkspace against real hubs from hubforge.NewHub,
-// at the root anchor and at a nested one.
+// hubworkspace_integration_test.go drives WriteHubWorkspace against real hubs from hubforge.NewHub, at the root anchor and at a nested one.
 //
 // Package fabricengine_test shares the single TestMain in testmain_test.go.
 
@@ -94,8 +93,7 @@ func TestWriteHubWorkspace_ReadErrorFailsWithReadCause(t *testing.T) {
 	}
 }
 
-// TestWriteHubWorkspace_RefusesEscapingLaunchersSymlink plants _launchers as a symlink out of the hub
-// and asserts the write fails with nothing landing at the symlink's target.
+// TestWriteHubWorkspace_RefusesEscapingLaunchersSymlink plants _launchers as a symlink out of the hub and asserts the write fails with nothing landing at the symlink's target.
 func TestWriteHubWorkspace_RefusesEscapingLaunchersSymlink(t *testing.T) {
 	t.Parallel()
 

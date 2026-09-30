@@ -6,8 +6,7 @@ import (
 	"testing"
 )
 
-// TestHubWorkspacePathAndFolders pins the workspace file path and folder geometry
-// for a root anchor and a nested one.
+// TestHubWorkspacePathAndFolders pins the workspace file path and folder geometry for a root anchor and a nested one.
 func TestHubWorkspacePathAndFolders(t *testing.T) {
 	t.Parallel()
 

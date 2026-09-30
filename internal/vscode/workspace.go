@@ -17,8 +17,7 @@ type WorkspaceFolder struct {
 
 var utf8BOM = []byte{0xEF, 0xBB, 0xBF}
 
-// BuildWorkspace returns the bytes of a .code-workspace file listing folders in order,
-// with settings spliced verbatim as the value of the "settings" key.
+// BuildWorkspace returns the bytes of a .code-workspace file listing folders in order, with settings spliced verbatim as the value of the "settings" key.
 // A leading BOM is stripped and trailing whitespace trimmed from settings first;
 // settings holding no JSON value (empty, whitespace, or only comments) become {}.
 // The only error is the folder encoding's.

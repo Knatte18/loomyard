@@ -25,8 +25,7 @@ func HubWorkspacePath(l *lyxcwd.Location, primeName string) string {
 
 // HubWorkspaceFolders returns the workspace file's folders in order: the prime, _board, then _portals.
 // Each Path is relative to the workspace file's directory and slash-separated.
-// A filepath.Rel error propagates rather than collapsing to an empty path,
-// because a wrong path written into the file is worse than a failed write.
+// A filepath.Rel error propagates rather than collapsing to an empty path, because a wrong path written into the file is worse than a failed write.
 func HubWorkspaceFolders(l *lyxcwd.Location, primeName string) ([]HubWorkspaceFolder, error) {
 	fileDir := filepath.Dir(HubWorkspacePath(l, primeName))
 	targets := []HubWorkspaceFolder{

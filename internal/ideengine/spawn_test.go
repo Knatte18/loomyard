@@ -40,8 +40,8 @@ func TestSpawn(t *testing.T) {
 			checkClobber: true,
 		},
 		{
-			// The prime's name cannot be detected without git, so the operator asking for
-			// main still gets the bare folder.
+			// The prime's name cannot be detected without git,
+			// so the operator asking for main still gets the bare folder.
 			name:         "TestSpawnPrimeSlugDegradesWhenDetectionFails",
 			relpath:      "subdir",
 			slug:         "main",
