@@ -452,8 +452,7 @@ func episodeStuckCount(history []HistoryEntry, name string) int {
 	return count
 }
 
-// appendOrFold returns a fresh copy of history with entry recorded: folded into the last element when both are budget-exempt Stucks
-// with the same Producer, Output, and GateAttempts, else appended unchanged.
+// appendOrFold returns a fresh copy of history with entry recorded: folded into the last element when both are budget-exempt Stucks with the same Producer, Output, and GateAttempts, else appended unchanged.
 // A fold keeps the last element's At, increments its Repeats, and sets its LastAt to entry.At;
 // the last element's own Repeats/LastAt never take part in the match.
 // It never writes through history's backing array.
