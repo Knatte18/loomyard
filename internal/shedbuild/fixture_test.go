@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
+	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -156,6 +157,9 @@ func testLandingDeps(dir string) landingshed.Deps {
 		OpenFabric:       nilFabricOpener,
 		OpenParentFabric: nilFabricOpener,
 		Shuttle:          fakeMergeShuttle{},
+		ApprovalPath:     filepath.Join(dir, "approval.json"),
+		RejectionPath:    filepath.Join(dir, "rejection.json"),
+		TaskHead:         func() (string, error) { return "head", nil },
 	}
 }
 
@@ -238,8 +242,25 @@ func newTestEnv(t *testing.T) shedrecipe.Env {
 		},
 		CommitDescription: func() error { return nil },
 		Landing:           testLandingDeps(mustMkdir("landing")),
-		Slug:              "test-slug",
-		ScratchDir:        mustMkdir("scratch"),
+		ReworkSpec: func() (shuttleengine.Spec, error) {
+			return shuttleengine.Spec{
+				Prompt:      "test rework prompt",
+				OutputFiles: []string{filepath.Join(dir, "rework-coverage.md")},
+				Interactive: false,
+			}, nil
+		},
+		Rework: loomshed.PRReworkDeps{
+			PlanDir:        mustMkdir("rework-plan"),
+			ReworkDir:      mustMkdir("rework-rounds"),
+			ReworkDirRel:   "_lyx/loom/rework",
+			ReadCommitted:  func(string) ([]byte, bool, error) { return nil, false, nil },
+			ReadRejection:  func() (loomshed.PendingRejection, bool, error) { return loomshed.PendingRejection{}, false, nil },
+			ClearRejection: func() error { return nil },
+			Commit:         func() error { return nil },
+			Rebaseline:     func() error { return nil },
+		},
+		Slug:       "test-slug",
+		ScratchDir: mustMkdir("scratch"),
 		CreateWorktree: func(context.Context) error {
 			return nil
 		},
