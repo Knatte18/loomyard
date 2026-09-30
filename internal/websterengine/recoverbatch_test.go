@@ -230,7 +230,7 @@ func newRecoverFixture(t *testing.T) *recoverFixture {
 			// post-batch mechanical pass record-batch does, which re-baselines the plan
 			// fingerprint over this directory. No card in this fixture declares a handle, so
 			// nothing is ever written into it.
-			PlanDir: t.TempDir(),
+			PlanDir: seedPlanDir(t),
 		},
 	}
 
@@ -991,6 +991,9 @@ func TestRecoverSpawn_RecordsCardSet(t *testing.T) {
 	got := fx.Deps.State.Batches[1].Cards
 	if want := []string{"01-json-flag"}; !slices.Equal(got, want) {
 		t.Errorf("recovery BatchState.Cards = %v; want %v", got, want)
+	}
+	if hashes := fx.Deps.State.Batches[1].CardHashes; len(hashes) != 1 || hashes["01-json-flag"] == "" {
+		t.Errorf("recovery BatchState.CardHashes = %v; want one hash for 01-json-flag", hashes)
 	}
 }
 

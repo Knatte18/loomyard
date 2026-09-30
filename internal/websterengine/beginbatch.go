@@ -297,6 +297,11 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	}
 	number, slug := batchIdentity(batch)
 
+	cardHashes, err := batchCardHashes(batch, deps.Plan.Dir)
+	if err != nil {
+		return nil, fmt.Errorf("%w; way forward: transient, re-run `lyx webster begin-batch %d`", err, batchNumber)
+	}
+
 	// The fork writes its report here with whatever tool it likes — a plain
 	// shell redirect included, which unlike an agent Write tool never creates
 	// missing parents. Only the --fresh archive path recreated this dir
@@ -414,6 +419,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	deps.State.Batches[number] = &BatchState{
 		Slug:          slug,
 		Cards:         batchCardIDs(batch),
+		CardHashes:    cardHashes,
 		StartSHA:      startSHA,
 		Kind:          "fork",
 		AuditWarnings: priorWarnings,

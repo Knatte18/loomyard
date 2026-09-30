@@ -19,6 +19,8 @@
 package websterengine
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path"
@@ -166,6 +168,10 @@ type BatchState struct {
 	// Cards is the batch's card set as begun: one NN-<slug> entry per card, in the batch's card order.
 	// A record written before the field existed has none, and reads as the single card NN-<Slug> the identity batcher produced.
 	Cards []string `json:"cards,omitempty"`
+	// CardHashes is the hex SHA-256 of each card file's bytes at begin, keyed by the same NN-<slug> id Cards holds.
+	// Rebaseline compares it so a begun card whose body changed while its file name stayed is refused.
+	// A record written before the field existed has none, and Rebaseline compares only its ids.
+	CardHashes map[string]string `json:"cardHashes,omitempty"`
 	// StartSHA is the repo HEAD immediately before this batch's implementer
 	// first forked — the durable base-commit record a resume, an operator
 	// diagnosis, and the post-batch delta all read. A recovery batch inherits
@@ -272,6 +278,27 @@ func SaveState(websterDir, scratchDir string, st *State) error {
 		return fmt.Errorf("webster: save state %s: %w", path, err)
 	}
 	return nil
+}
+
+// batchCardHashes returns the hex SHA-256 of each card file of b, keyed by the card's NN-<slug> id.
+// A card's file is read from planDir under the file name its SourcePath carries, else NN-<slug>.md.
+func batchCardHashes(b batcher.Batch, planDir string) (map[string]string, error) {
+	hashes := make(map[string]string, len(b.Cards))
+	for _, c := range b.Cards {
+		id := fmt.Sprintf("%02d-%s", c.Number, c.Slug)
+		name := id + ".md"
+		if c.SourcePath != "" {
+			name = filepath.Base(c.SourcePath)
+		}
+		path := filepath.Join(planDir, name)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("webster: read card file %s: %w", path, err)
+		}
+		sum := sha256.Sum256(data)
+		hashes[id] = hex.EncodeToString(sum[:])
+	}
+	return hashes, nil
 }
 
 // batchCardIDs returns one NN-<slug> entry per card of b, in the batch's card order.

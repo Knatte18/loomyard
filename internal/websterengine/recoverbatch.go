@@ -151,6 +151,11 @@ func failureDigestBlock(prior *BatchState) string {
 func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prevDigest string, clk Clock) (*BatchState, error) {
 	number, slug := batchIdentity(batch)
 
+	cardHashes, err := batchCardHashes(batch, deps.Geom.PlanDir)
+	if err != nil {
+		return nil, fmt.Errorf("%w; way forward: transient, re-run `lyx webster recover-batch %d`", err, number)
+	}
+
 	if err := refuseRecoveringDoneReport(deps.Geom.ReportsDir, number, slug, prior); err != nil {
 		return nil, err
 	}
@@ -235,6 +240,7 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 	return &BatchState{
 		Slug:          slug,
 		Cards:         batchCardIDs(batch),
+		CardHashes:    cardHashes,
 		StartSHA:      start,
 		AuditWarnings: priorWarnings,
 		Kind:          "recovery",

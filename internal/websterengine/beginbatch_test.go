@@ -93,8 +93,15 @@ func commitFile(t *testing.T, dir, name, content, message string) string {
 func seedPlanDir(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "00-overview.md"), []byte("# plan\n"), 0o644); err != nil {
-		t.Fatalf("seed plan dir: %v", err)
+	for name, body := range map[string]string{
+		"00-overview.md": "---\nformat: 5\napproved: true\nlanguage: go\n---\n\n# plan\n\n## Card Index\n\n" +
+			"1 — json-flag — add the json flag\n2 — list-tests — list the tests\n",
+		"01-json-flag.md":  "# Card 1 — json-flag\n\n**Prosa:**\n- `base.txt`\n\n**Intent:** placeholder card.\n",
+		"02-list-tests.md": "# Card 2 — list-tests\n\n**Prosa:**\n- `base.txt`\n\n**Intent:** placeholder card.\n",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatalf("seed plan dir: %v", err)
+		}
 	}
 	return dir
 }
@@ -244,7 +251,10 @@ func newBeginFixture(t *testing.T) *beginFixture {
 	planDir := seedPlanDir(t)
 	fp := mustFingerprint(t, planDir)
 
-	plan := &planparser.Plan{Dir: planDir, Format: 5}
+	plan, err := planparser.ParsePlan(planDir)
+	if err != nil {
+		t.Fatalf("ParsePlan(%q): %v", planDir, err)
+	}
 	batches := []batcher.Batch{
 		beginCard(1, "json-flag"),
 		beginCard(2, "list-tests"),
@@ -776,6 +786,7 @@ func TestBeginBatch_ReResolvesPlanAtDispatch(t *testing.T) {
 	t.Run("informational-only findings dispatch normally with the advisory carried on the result", func(t *testing.T) {
 		fx := newBeginFixture(t)
 		// A Create target naming a brand-new unit is the informational create-new-unit finding.
+		second := fx.Deps.Plan.Cards[1]
 		fx.Deps.Plan.Cards = []planparser.Card{
 			{
 				Number:         1,
@@ -788,6 +799,7 @@ func TestBeginBatch_ReResolvesPlanAtDispatch(t *testing.T) {
 				TargetGroups:   []planparser.TargetGroup{{Type: planparser.CardTypeCreate, Refs: []string{"brandnew#Thing"}}},
 				Targets:        []string{"brandnew#Thing"},
 			},
+			second,
 		}
 
 		result, err := websterengine.BeginBatch(fx.Deps, 1)
@@ -955,7 +967,7 @@ func TestBeginBatch_Regression20260930_ReBeginOfBegunUnrecordedBatch(t *testing.
 		TargetGroups:   []planparser.TargetGroup{{Type: planparser.CardTypeCreate, Refs: []string{"sub#Built"}}},
 		Targets:        []string{"sub#Built"},
 	}
-	fx.Deps.Plan.Cards = []planparser.Card{built}
+	fx.Deps.Plan.Cards = []planparser.Card{built, fx.Deps.Plan.Cards[1]}
 	fx.Deps.Batches = []batcher.Batch{{Cards: []planparser.Card{built}}}
 
 	const recordedStart = "0123456789abcdef0123456789abcdef01234567"

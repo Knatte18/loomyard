@@ -142,6 +142,8 @@
 // `lyx webster rebaseline` (Rebaseline) accepts the on-disk plan as the new baseline without dropping any batch record, provided the edited plan's batch of each recorded number still holds exactly the cards that record names.
 // The fingerprint refusals in begin-batch and run name it.
 // Each batch record carries the card set it was begun with (BatchState.Cards) so that check has something to compare against.
+// It also carries each card file's content hash (BatchState.CardHashes), so a begun card whose body changed while its file name stayed is refused too, not only a changed id;
+// a record written before the hashes existed compares ids only.
 //
 // # audit findings: correctness fails the batch, policy warns once
 //

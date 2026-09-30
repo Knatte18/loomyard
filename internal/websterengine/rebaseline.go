@@ -36,7 +36,8 @@ type RebaselineResult struct {
 }
 
 // Rebaseline accepts the on-disk plan as the run's plan without discarding any batch record.
-// It refuses, wrapping ErrRebaselineCardSetChanged, when a begun batch's card set differs from the card set the edited plan's batch of that number now holds, or the plan no longer has that number.
+// It refuses, wrapping ErrRebaselineCardSetChanged, when a begun batch's card set differs from the card set the edited plan's batch of that number now holds, or the plan no longer has that number,
+// or when a begun card's file content differs from the hash recorded at begin (a record without hashes compares ids only).
 // Otherwise it restamps State.PlanFingerprint and leaves every other field untouched.
 // It never saves; the caller holds the state-mutation lease and saves, as for the bracket verbs.
 func Rebaseline(deps RebaselineDeps) (*RebaselineResult, error) {
@@ -48,9 +49,11 @@ func Rebaseline(deps RebaselineDeps) (*RebaselineResult, error) {
 	}
 
 	current := make(map[int][]string, len(deps.Batches))
+	currentCards := make(map[int][]planparser.Card, len(deps.Batches))
 	for _, b := range deps.Batches {
 		n, _ := batchIdentity(b)
 		current[n] = batchCardIDs(b)
+		currentCards[n] = b.Cards
 	}
 
 	numbers := make([]int, 0, len(deps.State.Batches))
@@ -75,6 +78,18 @@ func Rebaseline(deps RebaselineDeps) (*RebaselineResult, error) {
 		}
 		now, ok := current[n]
 		if ok && slices.Equal(recorded, now) {
+			if len(bs.CardHashes) == 0 {
+				continue
+			}
+			got, err := batchCardHashes(batcher.Batch{Cards: currentCards[n]}, deps.Plan.Dir)
+			if err != nil {
+				return nil, fmt.Errorf("%w; way forward: transient, re-run `lyx webster rebaseline`", err)
+			}
+			for _, id := range recorded {
+				if want, hashed := bs.CardHashes[id]; hashed && got[id] != want {
+					changed = append(changed, fmt.Sprintf("batch %d card %s changed since it was begun", n, id))
+				}
+			}
 			continue
 		}
 		nowText := "no longer in the plan"

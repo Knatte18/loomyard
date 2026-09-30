@@ -20,7 +20,8 @@ func (c *websterCLI) rebaselineCmd() *cobra.Command {
 		Long: `rebaseline accepts the plan on disk as the run's plan after a mid-run edit,
 keeping every batch record.
 It refuses, leaving state.json untouched, when the edit changes the cards of a
-batch the run already begun, or removes such a batch; the way forward then is
+batch the run already begun (a begun card's content counts, not only its id),
+or removes such a batch; the way forward then is
 to restore those cards, or to reset the branch to the run's start commit and
 run "lyx webster run --fresh".
 On success the envelope carries previous_fingerprint, plan_fingerprint and
