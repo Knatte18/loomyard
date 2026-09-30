@@ -19,8 +19,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
 // planInnerProducer is a caller-settable shedengine.ShedProducer stand-in recording its call count.
@@ -236,12 +238,33 @@ func TestPlanWrite_Call(t *testing.T) {
 	})
 }
 
+// seedPriorPlanStencils writes the real embedded loom-template-prior-plan stencil into a temp stencils directory and returns that directory.
+func seedPriorPlanStencils(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	path := stencilstore.Path(dir, "loom-template-prior-plan")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir stencil dir: %v", err)
+	}
+	if err := os.WriteFile(path, stencils.LoomTemplatePriorPlan, 0o644); err != nil {
+		t.Fatalf("write stencil: %v", err)
+	}
+	return dir
+}
+
 func TestNewPlanDirRotator(t *testing.T) {
 	t.Run("MovesEveryTopLevelMDFilePreservingContent", func(t *testing.T) {
 		anchorPath, planDir := setupPlanDir(t, "00-overview.md", "01-card-one.md")
 
-		if err := NewPlanDirRotator(anchorPath, fixedPlanClock)(); err != nil {
+		if amendment, err := NewPlanDirRotator(anchorPath, seedPriorPlanStencils(t), fixedPlanClock)(); err != nil {
 			t.Fatalf("rotate() error = %v; want nil", err)
+		} else {
+			archiveDir := filepath.Join(planparser.PlanDir(anchorPath), planparser.ArchiveDirName(fixedPlanClock().UTC().Format(archiveTimestampFormat), ""))
+			for _, want := range []string{archiveDir, "00-overview.md", "01-card-one.md"} {
+				if !strings.Contains(amendment, want) {
+					t.Errorf("rotate() amendment = %q; want it to contain %q", amendment, want)
+				}
+			}
 		}
 
 		archiveDir := filepath.Join(planDir, planparser.ArchiveDirName(fixedPlanClock().UTC().Format(archiveTimestampFormat), ""))
@@ -269,8 +292,10 @@ func TestNewPlanDirRotator(t *testing.T) {
 			t.Fatalf("WriteFile error = %v", err)
 		}
 
-		if err := NewPlanDirRotator(anchorPath, fixedPlanClock)(); err != nil {
+		if amendment, err := NewPlanDirRotator(anchorPath, seedPriorPlanStencils(t), fixedPlanClock)(); err != nil {
 			t.Fatalf("rotate() error = %v; want nil", err)
+		} else if amendment == "" {
+			t.Errorf("rotate() amendment is empty; want the prior-plan block")
 		}
 
 		if _, err := os.Stat(oldArchive); err != nil {
@@ -285,8 +310,10 @@ func TestNewPlanDirRotator(t *testing.T) {
 		anchorPath := t.TempDir()
 		planDir := planparser.PlanDir(anchorPath)
 
-		if err := NewPlanDirRotator(anchorPath, fixedPlanClock)(); err != nil {
+		if amendment, err := NewPlanDirRotator(anchorPath, seedPriorPlanStencils(t), fixedPlanClock)(); err != nil {
 			t.Fatalf("rotate() error = %v; want nil", err)
+		} else if amendment != "" {
+			t.Errorf("rotate() amendment = %q; want empty", amendment)
 		}
 		if _, err := os.Stat(planDir); !os.IsNotExist(err) {
 			t.Errorf("plan directory %q was created by rotation over an absent directory", planDir)
@@ -296,8 +323,10 @@ func TestNewPlanDirRotator(t *testing.T) {
 	t.Run("EmptyPlanDirectoryCreatesNoArchiveDirectory", func(t *testing.T) {
 		anchorPath, planDir := setupPlanDir(t)
 
-		if err := NewPlanDirRotator(anchorPath, fixedPlanClock)(); err != nil {
+		if amendment, err := NewPlanDirRotator(anchorPath, seedPriorPlanStencils(t), fixedPlanClock)(); err != nil {
 			t.Fatalf("rotate() error = %v; want nil", err)
+		} else if amendment != "" {
+			t.Errorf("rotate() amendment = %q; want empty", amendment)
 		}
 
 		entries, err := os.ReadDir(planDir)
@@ -311,15 +340,15 @@ func TestNewPlanDirRotator(t *testing.T) {
 
 	t.Run("TwoRotationsUnderPinnedClockProduceStampThenStampDash1", func(t *testing.T) {
 		anchorPath, planDir := setupPlanDir(t, "00-overview.md")
-		rotate := NewPlanDirRotator(anchorPath, fixedPlanClock)
+		rotate := NewPlanDirRotator(anchorPath, seedPriorPlanStencils(t), fixedPlanClock)
 
-		if err := rotate(); err != nil {
+		if _, err := rotate(); err != nil {
 			t.Fatalf("first rotate() error = %v; want nil", err)
 		}
 		if err := os.WriteFile(filepath.Join(planDir, "00-overview.md"), []byte("second"), 0o644); err != nil {
 			t.Fatalf("WriteFile error = %v", err)
 		}
-		if err := rotate(); err != nil {
+		if _, err := rotate(); err != nil {
 			t.Fatalf("second rotate() error = %v; want nil", err)
 		}
 
@@ -331,6 +360,52 @@ func TestNewPlanDirRotator(t *testing.T) {
 		}
 		if _, err := os.Stat(second); err != nil {
 			t.Errorf("Stat(%q) error = %v; want the second rotation's archive directory to exist", second, err)
+		}
+	})
+
+	t.Run("SameSecondCollisionNamesTheSuffixedDirectory", func(t *testing.T) {
+		anchorPath, planDir := setupPlanDir(t, "00-overview.md")
+		stamp := fixedPlanClock().UTC().Format(archiveTimestampFormat)
+		colliding := filepath.Join(planDir, planparser.ArchiveDirName(stamp, ""))
+		if err := os.MkdirAll(colliding, 0o755); err != nil {
+			t.Fatalf("MkdirAll(%q) error = %v", colliding, err)
+		}
+
+		amendment, err := NewPlanDirRotator(anchorPath, seedPriorPlanStencils(t), fixedPlanClock)()
+		if err != nil {
+			t.Fatalf("rotate() error = %v; want nil", err)
+		}
+		suffixed := filepath.Join(planDir, planparser.ArchiveDirName(stamp, "-1"))
+		if !strings.Contains(amendment, suffixed) {
+			t.Errorf("amendment = %q; want it to name %q", amendment, suffixed)
+		}
+		if strings.Contains(strings.ReplaceAll(amendment, suffixed, ""), colliding) {
+			t.Errorf("amendment = %q; must not name the colliding directory %q", amendment, colliding)
+		}
+	})
+
+	t.Run("MissingStencilWithPriorFilesIsAnErrorAndMovesNothing", func(t *testing.T) {
+		anchorPath, planDir := setupPlanDir(t, "00-overview.md")
+
+		if _, err := NewPlanDirRotator(anchorPath, t.TempDir(), fixedPlanClock)(); err == nil {
+			t.Fatalf("rotate() error = nil; want a render error when the stencil is missing")
+		}
+		// The render runs before any move,
+		// so the failed attempt leaves the plan where a retry finds it again -- otherwise the retry would rotate nothing and announce nothing.
+		entries, err := os.ReadDir(planDir)
+		if err != nil {
+			t.Fatalf("ReadDir(%q) error = %v", planDir, err)
+		}
+		if len(entries) != 1 || entries[0].Name() != "00-overview.md" {
+			t.Errorf("plan directory entries after a failed render = %v; want only 00-overview.md, with no archive directory", entries)
+		}
+
+		amendment, err := NewPlanDirRotator(anchorPath, seedPriorPlanStencils(t), fixedPlanClock)()
+		if err != nil {
+			t.Fatalf("retry rotate() error = %v; want nil", err)
+		}
+		if !strings.Contains(amendment, "00-overview.md") {
+			t.Errorf("retry amendment = %q; want it to announce 00-overview.md", amendment)
 		}
 	})
 
@@ -346,7 +421,7 @@ func TestNewPlanDirRotator(t *testing.T) {
 			t.Fatalf("WriteFile(%q) error = %v", planDir, err)
 		}
 
-		err := NewPlanDirRotator(anchorPath, fixedPlanClock)()
+		_, err := NewPlanDirRotator(anchorPath, seedPriorPlanStencils(t), fixedPlanClock)()
 		if err == nil {
 			t.Fatalf("rotate() error = nil; want a non-nil rotation error")
 		}
@@ -358,7 +433,7 @@ func TestNewPlanDirRotator(t *testing.T) {
 	t.Run("NilNowDefaultsToTimeNowAndStillRotates", func(t *testing.T) {
 		anchorPath, planDir := setupPlanDir(t, "00-overview.md")
 
-		if err := NewPlanDirRotator(anchorPath, nil)(); err != nil {
+		if _, err := NewPlanDirRotator(anchorPath, seedPriorPlanStencils(t), nil)(); err != nil {
 			t.Fatalf("rotate() error = %v; want nil", err)
 		}
 

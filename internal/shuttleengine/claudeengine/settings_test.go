@@ -436,3 +436,64 @@ func TestPrepare_WritesArtifactsAndReturnsConsistentLaunch(t *testing.T) {
 		t.Errorf("Launch.ResumeCmd = %q; must never use --continue (ambiguous under concurrent runs)", launch.ResumeCmd)
 	}
 }
+
+func TestBuildDenyNotice_MatchesInstalledDenies(t *testing.T) {
+	for _, agentDeny := range []bool{false, true} {
+		for _, askUserDeny := range []bool{false, true} {
+			for _, interactive := range []bool{false, true} {
+				for _, fork := range []bool{false, true} {
+					cfg := shuttleengine.Config{ClaudeDenyAgentTool: agentDeny, ClaudeDenyAskUserQuestion: askUserDeny}
+					data, err := buildSettings("/c/run/events.jsonl", interactive, cfg, fork)
+					if err != nil {
+						t.Fatalf("buildSettings() error: %v", err)
+					}
+					wantAgent, wantAsk := false, false
+					for _, e := range hooksFor(parseSettings(t, data), "PreToolUse") {
+						entry, _ := e.(map[string]any)
+						switch entry["matcher"] {
+						case "Agent":
+							wantAgent = true
+						case "AskUserQuestion":
+							hooks, _ := entry["hooks"].([]any)
+							cmd, _ := hooks[0].(map[string]any)
+							command, _ := cmd["command"].(string)
+							wantAsk = strings.Contains(command, "permissionDecision")
+						}
+					}
+					notice := buildDenyNotice(interactive, cfg, fork)
+					hasAgent := strings.Contains(notice, noticeAgentDeny) || strings.Contains(notice, noticeAgentForkDeny)
+					if hasAgent != wantAgent {
+						t.Errorf("agent=%v ask=%v interactive=%v fork=%v: notice has Agent sentence = %v; want %v", agentDeny, askUserDeny, interactive, fork, hasAgent, wantAgent)
+					}
+					if got := strings.Contains(notice, noticeAskUserQuestionDeny); got != wantAsk {
+						t.Errorf("agent=%v ask=%v interactive=%v fork=%v: notice has AskUserQuestion sentence = %v; want %v", agentDeny, askUserDeny, interactive, fork, got, wantAsk)
+					}
+					if (notice == "") != (!wantAgent && !wantAsk) {
+						t.Errorf("agent=%v ask=%v interactive=%v fork=%v: notice = %q; want empty exactly when no deny installed", agentDeny, askUserDeny, interactive, fork, notice)
+					}
+					if strings.ContainsAny(notice, noticeTextForbiddenChars) {
+						t.Errorf("notice contains a forbidden character: %q", notice)
+					}
+					if strings.Contains(notice, "lyx"+" webster") {
+						t.Errorf("notice mentions the webster verbs: %q", notice)
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestBuildDenyNotice_SentenceContent(t *testing.T) {
+	cfg := shuttleengine.Config{ClaudeDenyAgentTool: true, ClaudeDenyAskUserQuestion: true}
+	forkNotice := buildDenyNotice(false, cfg, true)
+	if !strings.Contains(forkNotice, "fork subagents") || !strings.Contains(forkNotice, "never spawns further subagents") {
+		t.Errorf("fork notice = %q; want it to name fork subagents as permitted and forbid a fork spawning more", forkNotice)
+	}
+	nonFork := buildDenyNotice(false, cfg, false)
+	if !strings.Contains(nonFork, "The Agent tool is unavailable") {
+		t.Errorf("non-fork notice = %q; want the Agent tool named unavailable", nonFork)
+	}
+	if !strings.Contains(nonFork, "final message") {
+		t.Errorf("notice = %q; want the AskUserQuestion final-message channel", nonFork)
+	}
+}

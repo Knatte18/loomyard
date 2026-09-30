@@ -98,11 +98,12 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 	}
 
 	bin := claudeBinary(cfg)
+	notice := buildDenyNotice(spec.Interactive, cfg, spec.ForkSubagents)
 	// sh selects pane-shell mechanics per OS (pwsh on Windows, posix elsewhere).
 	sh := shell.ForGOOS()
 	return shuttleengine.Launch{
-		Cmd:       buildLaunchCmd(sh, bin, promptPath, settingsPath, sessionID, resolvedModel, spec.Effort, spec.Interactive, spec.ForkSubagents),
-		ResumeCmd: buildResumeCmd(sh, bin, settingsPath, sessionID, resolvedModel, spec.Effort, spec.Interactive, spec.ForkSubagents),
+		Cmd:       buildLaunchCmd(sh, bin, promptPath, settingsPath, sessionID, resolvedModel, spec.Effort, notice, spec.Interactive, spec.ForkSubagents),
+		ResumeCmd: buildResumeCmd(sh, bin, settingsPath, sessionID, resolvedModel, spec.Effort, notice, spec.Interactive, spec.ForkSubagents),
 		SessionID: sessionID,
 	}, nil
 }
