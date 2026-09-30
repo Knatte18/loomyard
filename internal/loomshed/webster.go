@@ -75,7 +75,7 @@ func (w *websterProducer) Call(ctx context.Context) (shedengine.Outcome, shedeng
 		// guess without being told. The cause is returned as the row's reason, which reaches the
 		// persisted error and activity.wait, and also logged.
 		logger.Warn("loomshed: active batchifier did not resolve", "producer", w.name, "anchorPath", w.anchorPath, "cause", err)
-		return shedengine.Stuck, shedengine.OutputPointer{Reason: "active batchifier did not resolve: " + err.Error()}, nil
+		return shedengine.Stuck, shedengine.OutputPointer{Reason: batchifierReasonPrefix + err.Error()}, nil
 	}
 
 	deps := w.deps

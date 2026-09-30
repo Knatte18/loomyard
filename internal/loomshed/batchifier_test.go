@@ -119,9 +119,6 @@ func TestBatchifier_Call(t *testing.T) {
 	})
 }
 
-// batchifierReasonPrefix is the fixed lead of a Batchifier Stuck's Reason; the cause follows it.
-const batchifierReasonPrefix = "active batchifier did not resolve: "
-
 // TestBatchifier_DistinctCausesYieldDistinctReasons pins that the reason carries the error text,
 // so a malformed config and an unknown name are told apart.
 func TestBatchifier_DistinctCausesYieldDistinctReasons(t *testing.T) {

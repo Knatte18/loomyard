@@ -40,7 +40,7 @@ func TestWebsterProducer_Call(t *testing.T) {
 		if outcome != shedengine.Stuck {
 			t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
 		}
-		if !strings.HasPrefix(pointer.Reason, "active batchifier did not resolve: ") {
+		if !strings.HasPrefix(pointer.Reason, batchifierReasonPrefix) {
 			t.Errorf("Call() Reason = %q; want the batchifier prefix", pointer.Reason)
 		}
 		if len(fake.receivedDeps) != 0 {
