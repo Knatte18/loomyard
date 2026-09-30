@@ -49,6 +49,7 @@ The verbs above are the whole of what `lyx quarry` offers you — there is no fu
 
 ## Step 3 — Write the plan into `{{.plan_dir}}`
 
+When this prompt ends with a `Prior plan` section, read that section and act on it before writing anything in this step.
 Create `{{.plan_dir}}` first if it does not already exist.
 Write one `00-overview.md` plus one `NN-<card-slug>.md` per card, following this **compact plan-format** spec.
 
