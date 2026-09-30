@@ -366,11 +366,42 @@ func TestStep_ErrShedBusy(t *testing.T) {
 	if !locked {
 		t.Fatalf("TryAcquireWriteLock(...) locked = false; want true")
 	}
-	defer held.Release()
 
 	_, err = shed.Step(context.Background())
 	if !errors.Is(err, ErrShedBusy) {
-		t.Errorf("Step(...) error = %v; want errors.Is(err, ErrShedBusy)", err)
+		t.Fatalf("Step(...) error = %v; want errors.Is(err, ErrShedBusy)", err)
+	}
+	if !strings.Contains(err.Error(), "way forward:") || !strings.Contains(err.Error(), "lyx shed pause") || !strings.Contains(err.Error(), "lyx shed status") {
+		t.Errorf("Step(...) error = %q; want a way forward naming lyx shed pause and lyx shed status", err.Error())
+	}
+	if _, err := shed.Run(context.Background()); !errors.Is(err, ErrShedBusy) || !strings.Contains(err.Error(), "way forward: \"lyx shed pause\"") {
+		t.Errorf("Run(...) error = %v; want ErrShedBusy carrying the same way forward", err)
+	}
+
+	// The way forward taken: the holder releases, and the refused call succeeds.
+	statusPath := shed.StatusPath
+	held.Release()
+	seedStatus(t, statusPath, shed.StatusLockPath, commonSeed("A"))
+	if _, err := shed.Step(context.Background()); err != nil {
+		t.Errorf("Step(...) after the lock was released = %v; want nil", err)
+	}
+}
+
+func TestStep_MissingStatusFileNamesSeeding(t *testing.T) {
+	shed, statusPath, _, statusLockPath := newTestShed(t)
+	shed.Producers = []ProducerDef{{Name: "A", Producer: fixedOutcomeProducer(Done, "")}}
+
+	_, err := shed.Step(context.Background())
+	if err == nil {
+		t.Fatal("Step(...) with no status file = nil; want a refusal")
+	}
+	if !strings.Contains(err.Error(), "way forward:") || !strings.Contains(err.Error(), "lyx shed seed") {
+		t.Errorf("Step(...) error = %q; want a way forward naming the bootstrap verb and lyx shed seed", err.Error())
+	}
+
+	seedStatus(t, statusPath, statusLockPath, commonSeed("A"))
+	if _, err := shed.Step(context.Background()); err != nil {
+		t.Errorf("Step(...) after seeding = %v; want nil", err)
 	}
 }
 

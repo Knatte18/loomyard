@@ -55,6 +55,9 @@ func parseSeedParams(raw []string) (map[string]string, error) {
 	return params, nil
 }
 
+// seedHereWayForward is the trailing clause on both "refuses to write here" wraps.
+const seedHereWayForward = "way forward: run \"lyx shed seed\" from the worktree the recipe drives, which the cause names"
+
 // writeSeed is seed's whole resolution-free body: it validates runID, looks recipeName up through
 // this package's own table (lookup) so a seed can only ever name an armable recipe, resolves and
 // validates the driver, and calls shedrun.WriteSeed, returning the driver it recorded. It performs no lyxcwd.Resolve and no cwd read
@@ -67,7 +70,7 @@ func writeSeed(location *lyxcwd.Location, runID, recipeName, driverFlag string, 
 	// a pair's other side) lands in a repository no run is ever driven from, where the Board's own
 	// commit, which stages everything in that checkout, would sweep it onto its branch.
 	if err := fabricengine.RequireDrivableWorktree(location); err != nil {
-		return "", fmt.Errorf("shedcli: seed refuses to write here: %w", err)
+		return "", fmt.Errorf("shedcli: seed refuses to write here: %w; %s", err, seedHereWayForward)
 	}
 	if err := shedrun.ValidateRunID(runID); err != nil {
 		return "", err
@@ -80,7 +83,7 @@ func writeSeed(location *lyxcwd.Location, runID, recipeName, driverFlag string, 
 	// and a seed written where its recipe's verbs refuse is dirt no verb can ever consume.
 	if e.RefuseSeedAt != nil {
 		if err := e.RefuseSeedAt(location); err != nil {
-			return "", fmt.Errorf("shedcli: seed refuses to write here: %w", err)
+			return "", fmt.Errorf("shedcli: seed refuses to write here: %w; %s", err, seedHereWayForward)
 		}
 	}
 	driver := resolveSeedDriver(driverFlag, e.BootstrapVerb != "")
@@ -91,7 +94,7 @@ func writeSeed(location *lyxcwd.Location, runID, recipeName, driverFlag string, 
 	// misspelling gets the vocabulary error above, not a capability error about a recipe that
 	// would have accepted the value they meant.
 	if driver == shedrun.DriverLLM && e.BootstrapVerb == "" {
-		return "", fmt.Errorf("shedcli: recipe %q has no bootstrap verb, so it cannot be driven by an LLM", recipeName)
+		return "", fmt.Errorf("shedcli: recipe %q has no bootstrap verb, so it cannot be driven by an LLM; way forward: re-run with \"--driver go\"", recipeName)
 	}
 	if err := shedrun.WriteSeed(location, runID, shedrun.Seed{
 		Recipe: recipeName,

@@ -115,6 +115,9 @@ func (s *Shed) preflight() error {
 	return nil
 }
 
+// busyWayForward is the trailing clause Run and Step put on an ErrShedBusy wrap.
+const busyWayForward = "way forward: \"lyx shed pause\" asks the live driver to stop at its next producer boundary; check the holder with \"lyx shed status\", then retry"
+
 // stepLocked runs exactly one iteration of the six-step loop and reports it as a StepResult.
 // It assumes the run lock is already held by the caller and never acquires or releases it itself
 // -- Run holds it for the whole loop, and Step holds it for this one call alone.
@@ -126,7 +129,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		return StepResult{}, fmt.Errorf("shedengine: read status file %q: %w", s.StatusPath, err)
 	}
 	if !found {
-		return StepResult{}, fmt.Errorf("shedengine: status file %q does not exist; Shed never seeds one", s.StatusPath)
+		return StepResult{}, fmt.Errorf("shedengine: status file %q does not exist; Shed never seeds one; way forward: seed the run through its recipe's bootstrap verb, or \"lyx shed seed\" for a recipe without one", s.StatusPath)
 	}
 	if !st.State.valid() {
 		return StepResult{}, fmt.Errorf("shedengine: status file %q carries an invalid state %q", s.StatusPath, st.State)
@@ -375,7 +378,7 @@ func (s *Shed) Run(ctx context.Context) (Result, error) {
 		return Result{}, fmt.Errorf("shedengine: acquire run lock %q: %w", s.LockPath, err)
 	}
 	if !locked {
-		return Result{}, fmt.Errorf("%w: %q", ErrShedBusy, s.LockPath)
+		return Result{}, fmt.Errorf("%w: %q; %s", ErrShedBusy, s.LockPath, busyWayForward)
 	}
 	defer runLock.Release()
 
@@ -423,7 +426,7 @@ func (s *Shed) Step(ctx context.Context) (StepResult, error) {
 		return StepResult{}, fmt.Errorf("shedengine: acquire run lock %q: %w", s.LockPath, err)
 	}
 	if !locked {
-		return StepResult{}, fmt.Errorf("%w: %q", ErrShedBusy, s.LockPath)
+		return StepResult{}, fmt.Errorf("%w: %q; %s", ErrShedBusy, s.LockPath, busyWayForward)
 	}
 	defer runLock.Release()
 
