@@ -207,8 +207,8 @@ func LoomApprovalPath(l *lyxcwd.Location) string {
 
 // LoomVerifyPendingPath returns the path to the pending-verify marker for this worktree.
 // The landing producers write it after a parent merge-in and clear it once the post-merge verify passes.
-// It is built on LoomScratchDir rather than re-joining the .lyx literal, and is ephemeral: the
-// marker is never tracked, per the Durable-vs-Ephemeral State Invariant.
+// It is built on LoomScratchDir rather than re-joining the .lyx literal,
+// and is ephemeral: the marker is never tracked, per the Durable-vs-Ephemeral State Invariant.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func LoomVerifyPendingPath(l *lyxcwd.Location) string {
 	return filepath.Join(LoomScratchDir(l), loomVerifyPendingFileName)
@@ -216,8 +216,8 @@ func LoomVerifyPendingPath(l *lyxcwd.Location) string {
 
 // LoomVerifyOutputPath returns the path the post-merge verify command's combined output is written to.
 // The landing producers are its consumer.
-// It is built on LoomScratchDir rather than re-joining the .lyx literal, and is ephemeral: the
-// file is never tracked, per the Durable-vs-Ephemeral State Invariant.
+// It is built on LoomScratchDir rather than re-joining the .lyx literal,
+// and is ephemeral: the file is never tracked, per the Durable-vs-Ephemeral State Invariant.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func LoomVerifyOutputPath(l *lyxcwd.Location) string {
 	return filepath.Join(LoomScratchDir(l), loomVerifyOutputFileName)
