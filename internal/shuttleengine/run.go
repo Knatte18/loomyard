@@ -191,6 +191,11 @@ type Result struct {
 	// gated run whose closure could not run at all (an infrastructure error) also leaves this nil, with
 	// the error itself returned alongside Result instead.
 	Gate *GateOutcome
+	// NotStarted is true only on RunGated's not-ready branch, where the provider never came up and
+	// errors.Is(err, ErrNotStarted) held; it is false on every other return, including a died or
+	// timeout outcome reached in Wait. RunGated folds that branch into (result, nil), so this field
+	// is how a caller tells a never-ready start from an agent that died mid-run.
+	NotStarted bool
 }
 
 // Run is the handle to one in-progress or completed shuttle run, returned by Start once its provider
@@ -439,6 +444,7 @@ func (r *Runner) Run(spec Spec) (Result, error) {
 func (r *Runner) RunGated(spec Spec, gate GateSpec) (Result, error) {
 	run, result, err := r.start(spec, gate)
 	if errors.Is(err, ErrNotStarted) {
+		result.NotStarted = true
 		return result, nil
 	}
 	if err != nil {

@@ -228,6 +228,9 @@ func (p *SingleLLMProducer) mapOutcome(ctx context.Context, spec shuttleengine.S
 			return "", shedengine.OutputPointer{}, cerr
 		}
 		logger.Warn("shedadapters: shuttle run died or timed out", "producer", p.name, "engine", singleLLMEngineLabel, "sessionID", result.SessionID, "strandGUID", result.StrandGUID, "runDir", result.RunDir, "outcome", result.Outcome)
+		if result.NotStarted {
+			return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): shuttle run outcome %s: %w", p.name, singleLLMEngineLabel, result.Outcome, shuttleengine.ErrNotStarted)
+		}
 		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): shuttle run outcome %s", p.name, singleLLMEngineLabel, result.Outcome)
 
 	default:
