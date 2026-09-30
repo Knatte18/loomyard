@@ -282,26 +282,32 @@ func TestRunCLIIn_GlyphsText_TestFileFilter(t *testing.T) {
 		t.Fatalf("RunCLIIn(glyphs --text sub) = %d; want 0; output: %s", exitCode, out.String())
 	}
 
+	// A line's id is its last field, so the lines are selected by id, never by substring.
+	lineByID := map[string][]string{}
 	var kept []string
 	for _, line := range strings.Split(strings.TrimSuffix(out.String(), "\n"), "\n") {
-		isTestFile := strings.Contains(line, "_test.go")
-		switch {
-		case strings.Contains(line, "Check"):
-			if !isTestFile {
-				t.Errorf("line for the test-file function lacks _test.go: %q", line)
-			}
-		case strings.Contains(line, "Prod"):
-			if isTestFile {
-				t.Errorf("line for the non-test function contains _test.go: %q", line)
-			}
+		fields := strings.Fields(line)
+		if len(fields) > 0 {
+			id := fields[len(fields)-1]
+			lineByID[id] = append(lineByID[id], line)
 		}
-		if !isTestFile {
+		if !strings.Contains(line, "_test.go") {
 			kept = append(kept, line)
 		}
 	}
 
-	if len(kept) != 1 || !strings.Contains(kept[0], "Prod") {
-		t.Errorf("lines left after dropping _test.go = %q; want exactly the Prod symbol line", kept)
+	checkLines, prodLines := lineByID["sub#Check"], lineByID["sub#Prod"]
+	if len(checkLines) != 1 || len(prodLines) != 1 {
+		t.Fatalf("got %d sub#Check and %d sub#Prod lines; want exactly one each; output: %q", len(checkLines), len(prodLines), out.String())
+	}
+	if !strings.Contains(checkLines[0], "_test.go") {
+		t.Errorf("line for the test-file function lacks _test.go: %q", checkLines[0])
+	}
+	if strings.Contains(prodLines[0], "_test.go") {
+		t.Errorf("line for the non-test function contains _test.go: %q", prodLines[0])
+	}
+	if len(kept) != 1 || kept[0] != prodLines[0] {
+		t.Errorf("lines left after dropping _test.go = %q; want exactly the sub#Prod line %q", kept, prodLines[0])
 	}
 }
 
