@@ -102,6 +102,21 @@ func TestRebaseline_RefusesChangedCardSet(t *testing.T) {
 	}
 }
 
+// TestRebaseline_RefusalWithoutStartSHANamesNoBlankCommit pins the refusal text when no record carries a StartSHA:
+// it still names the run's start commit, with no empty SHA slot.
+func TestRebaseline_RefusalWithoutStartSHANamesNoBlankCommit(t *testing.T) {
+	rec := doneBatchOne()
+	rec.StartSHA = ""
+	deps := rebaselineDeps(t, []batcher.Batch{beginCard(2, "list-tests")}, map[int]*websterengine.BatchState{1: rec})
+	_, err := websterengine.Rebaseline(deps)
+	if !errors.Is(err, websterengine.ErrRebaselineCardSetChanged) {
+		t.Fatalf("Rebaseline() error = %v; want errors.Is(err, ErrRebaselineCardSetChanged)", err)
+	}
+	if !strings.Contains(err.Error(), "reset the branch to the run's start commit with git") {
+		t.Errorf("error %q; want the start commit named without a blank SHA", err.Error())
+	}
+}
+
 func TestRebaseline_LegacyRecordWithoutCardsAccepted(t *testing.T) {
 	legacy := doneBatchOne()
 	legacy.Cards = nil

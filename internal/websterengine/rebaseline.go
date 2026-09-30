@@ -83,7 +83,11 @@ func Rebaseline(deps RebaselineDeps) (*RebaselineResult, error) {
 		changed = append(changed, fmt.Sprintf("batch %d recorded [%s], plan now %s", n, strings.Join(recorded, ", "), nowText))
 	}
 	if len(changed) > 0 {
-		return nil, fmt.Errorf("%w: %s; way forward: restore those cards in the plan, or reset the branch to the run's start commit %s with git and run \"lyx webster run --fresh\"", ErrRebaselineCardSetChanged, strings.Join(changed, "; "), startSHA)
+		startCommit := "the run's start commit"
+		if startSHA != "" {
+			startCommit += " " + startSHA
+		}
+		return nil, fmt.Errorf("%w: %s; way forward: restore those cards in the plan, or reset the branch to %s with git and run \"lyx webster run --fresh\"", ErrRebaselineCardSetChanged, strings.Join(changed, "; "), startCommit)
 	}
 
 	previous := deps.State.PlanFingerprint
