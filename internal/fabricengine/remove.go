@@ -1,8 +1,6 @@
-// remove.go implements Remove: every refusal — slug, prime, target-exists, merge-in-progress and the
-// no-force dirtiness checks with their status probes — runs first and leaves the hub and the weft
-// origin untouched.
-// Then the weft tip is archived, and only then are the portal and launchers torn down, so a refused
-// call never loses a launcher or pushes a tag that misses uncommitted records.
+// remove.go implements Remove: every refusal — slug, prime, target-exists, merge-in-progress and the no-force dirtiness checks with their status probes — runs first and leaves the hub and the weft origin untouched.
+// Then the weft tip is archived,
+// and only then are the portal and launchers torn down, so a refused call never loses a launcher or pushes a tag that misses uncommitted records.
 // The weft branch it removes is WeftBranchName(warpBranch).
 // After both worktrees are gone it also deletes the pair's local warp branch, but only when the
 // destructive gate proves no work is lost: every commit is on another ref or already landed on the
