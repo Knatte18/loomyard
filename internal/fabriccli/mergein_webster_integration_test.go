@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabriccli"
@@ -67,8 +68,11 @@ func assertOneWebsterWarning(t *testing.T, envelope map[string]any) {
 	if !ok || len(warnings) != 1 {
 		t.Fatalf("warnings = %v; want exactly one entry", raw)
 	}
-	if s, _ := warnings[0].(string); s == "" {
-		t.Errorf("warnings[0] = %v; want a non-empty string", warnings[0])
+	s, _ := warnings[0].(string)
+	for _, want := range []string{"Webster is mid-run in this worktree", "lyx webster record-batch", "pre-merge trees"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("warnings[0] = %q; want it to contain %q", s, want)
+		}
 	}
 }
 
