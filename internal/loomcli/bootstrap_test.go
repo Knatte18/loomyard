@@ -784,12 +784,12 @@ func TestStatusStrandAddSpec(t *testing.T) {
 
 // TestStatusStrandAddSpecPinnedByRender ties the spec to render's layout: stacked above a driver
 // strand the status strand is pinned at exactly its budget, and alone it is the active strand and
-// is not pinned.
+// is not pinned. Both strands are parentless, as the bootstrap adds them, so the shrink rule never
+// applies and only FixedRows can pin the band.
 func TestStatusStrandAddSpecPinnedByRender(t *testing.T) {
 	status := render.Strand{GUID: "s", Display: statusStrandAddSpec("x").Display, PaneID: "%1", Live: true}
 	driver := render.Strand{
 		GUID:    "d",
-		Parent:  "s",
 		Display: driverSpec("p", "r", loomengine.DriverSettings{}).Display,
 		PaneID:  "%2",
 		Live:    true,
