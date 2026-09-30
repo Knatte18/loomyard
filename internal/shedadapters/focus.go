@@ -29,9 +29,10 @@ type RoundFocus struct {
 	// It can be non-empty only when the writing Bouncer was told ClusterExcludes, since no other
 	// Bouncer is asked for the key.
 	ExcludeLenses []string
-	// Hydrate names absolute paths the next round should hydrate into context. It carries the focus
-	// file's own path, and only when that file actually says something -- see readRoundFocus.
-	Hydrate []string
+	// DirectivePath is the focus file's own path when that file actually says something -- see
+	// readRoundFocus -- and empty otherwise. It reaches the round's profile as FocusDirective, which
+	// the explore step reads before findings are formed, outside the prior-rounds clean-room rule.
+	DirectivePath string
 }
 
 // readRoundFocus reads round's focus file in runDir and returns the RoundFocus it names,
@@ -48,13 +49,13 @@ type RoundFocus struct {
 // It is fail-safe end to end and never returns an error: an absent file, a read failure, or a file
 // parseFocus rejects each yields the zero RoundFocus after a logger.Warn.
 //
-// Hydrate carries the focus file's own path, and carries it only when the file has a directive to
-// deliver -- a non-empty focus list or non-empty prose. That is how the judge's targeting reaches
-// the fixer round: BurlerProducer appends Hydrate onto the profile's PriorReviews, so the round
-// reads the directive verbatim alongside the prior rounds' reports. An APPROVED judge still writes a
+// DirectivePath carries the focus file's own path, and carries it only when the file has a directive
+// to deliver -- a non-empty focus list or non-empty prose. That is how the judge's targeting reaches
+// the round: BurlerProducer sets it as the profile's FocusDirective, which the explore step reads
+// before findings are formed, so PriorReviews carries earlier rounds' reports only. An APPROVED judge still writes a
 // focus file (its third output file is unconditional, so the run classifies complete), and that file
 // carries empty lists (a Bouncer not told ClusterExcludes writes focus alone) and no prose;
-// hydrating it would hand the next round an empty document asserting nothing, so an empty
+// delivering it would hand the next round an empty document asserting nothing, so an empty
 // directive stays empty.
 func readRoundFocus(name, runDir string, round int) RoundFocus {
 	path := focusPath(runDir, round)
@@ -85,7 +86,7 @@ func readRoundFocus(name, runDir string, round int) RoundFocus {
 
 	focus := RoundFocus{ExcludeLenses: parsed.ExcludeLenses}
 	if len(parsed.Focus) > 0 || parsed.Prose != "" {
-		focus.Hydrate = []string{path}
+		focus.DirectivePath = path
 	}
 	return focus
 }

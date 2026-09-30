@@ -12,16 +12,16 @@ import (
 	"time"
 )
 
-// assertFocus compares got against the wanted ExcludeLenses/Hydrate contents, treating a nil slice
+// assertFocus compares got against the wanted ExcludeLenses contents and DirectivePath, treating a nil slice
 // and an empty slice as equal -- readRoundFocus's choice between the two in any given branch is an
 // implementation detail, not part of its contract.
-func assertFocus(t *testing.T, got RoundFocus, wantExclude, wantHydrate []string) {
+func assertFocus(t *testing.T, got RoundFocus, wantExclude []string, wantDirective string) {
 	t.Helper()
 	if !stringSlicesEqual(got.ExcludeLenses, wantExclude) {
 		t.Errorf("readRoundFocus() ExcludeLenses = %v; want %v", got.ExcludeLenses, wantExclude)
 	}
-	if !stringSlicesEqual(got.Hydrate, wantHydrate) {
-		t.Errorf("readRoundFocus() Hydrate = %v; want %v", got.Hydrate, wantHydrate)
+	if got.DirectivePath != wantDirective {
+		t.Errorf("readRoundFocus() DirectivePath = %q; want %q", got.DirectivePath, wantDirective)
 	}
 }
 
@@ -77,13 +77,13 @@ func TestReadRoundFocus_ReadsTheFileTheBouncerWrites(t *testing.T) {
 
 	got := readRoundFocus("bouncer", dir, 3)
 
-	assertFocus(t, got, []string{"lensA", "lensB"}, []string{path})
+	assertFocus(t, got, []string{"lensA", "lensB"}, path)
 }
 
-// TestReadRoundFocus_HydratesOnlyWhenTheFileSaysSomething pins that an APPROVED judge's mandatory
-// but empty focus file is not hydrated: handing the next round a document that asserts nothing is
+// TestReadRoundFocus_DirectivePathOnlyWhenTheFileSaysSomething pins that an APPROVED judge's mandatory
+// but empty focus file carries no directive path: handing the next round a document that asserts nothing is
 // noise, not targeting.
-func TestReadRoundFocus_HydratesOnlyWhenTheFileSaysSomething(t *testing.T) {
+func TestReadRoundFocus_DirectivePathOnlyWhenTheFileSaysSomething(t *testing.T) {
 	tests := []struct {
 		name         string
 		file         focusFile
@@ -123,11 +123,11 @@ func TestReadRoundFocus_HydratesOnlyWhenTheFileSaysSomething(t *testing.T) {
 
 			got := readRoundFocus("bouncer", dir, 1)
 
-			wantHydrate := []string{}
+			wantDirective := ""
 			if tt.wantHydrated {
-				wantHydrate = []string{path}
+				wantDirective = path
 			}
-			assertFocus(t, got, tt.wantExclude, wantHydrate)
+			assertFocus(t, got, tt.wantExclude, wantDirective)
 		})
 	}
 }
@@ -137,7 +137,7 @@ func TestReadRoundFocus_HydratesOnlyWhenTheFileSaysSomething(t *testing.T) {
 func TestReadRoundFocus_DegradesToTheZeroDirective(t *testing.T) {
 	t.Run("AbsentFile", func(t *testing.T) {
 		got := readRoundFocus("bouncer", t.TempDir(), 1)
-		assertFocus(t, got, []string{}, []string{})
+		assertFocus(t, got, []string{}, "")
 	})
 
 	t.Run("UnreadableFile", func(t *testing.T) {
@@ -148,35 +148,35 @@ func TestReadRoundFocus_DegradesToTheZeroDirective(t *testing.T) {
 			t.Fatalf("Mkdir: %v", err)
 		}
 		got := readRoundFocus("bouncer", dir, 1)
-		assertFocus(t, got, []string{}, []string{})
+		assertFocus(t, got, []string{}, "")
 	})
 
 	t.Run("NoFrontmatter", func(t *testing.T) {
 		dir := t.TempDir()
 		writeFocusFileRaw(t, dir, 1, "just prose, no delimiters\n")
 		got := readRoundFocus("bouncer", dir, 1)
-		assertFocus(t, got, []string{}, []string{})
+		assertFocus(t, got, []string{}, "")
 	})
 
 	t.Run("UnclosedFrontmatter", func(t *testing.T) {
 		dir := t.TempDir()
 		writeFocusFileRaw(t, dir, 1, "---\nround: 1\nfocus: []\n")
 		got := readRoundFocus("bouncer", dir, 1)
-		assertFocus(t, got, []string{}, []string{})
+		assertFocus(t, got, []string{}, "")
 	})
 
 	t.Run("NonPositiveRound", func(t *testing.T) {
 		dir := t.TempDir()
 		writeFocusFileRaw(t, dir, 1, "---\nround: 0\nexclude_lenses: []\nfocus: []\n---\n")
 		got := readRoundFocus("bouncer", dir, 1)
-		assertFocus(t, got, []string{}, []string{})
+		assertFocus(t, got, []string{}, "")
 	})
 
 	t.Run("ScalarWhereAListIsRequired", func(t *testing.T) {
 		dir := t.TempDir()
 		writeFocusFileRaw(t, dir, 1, "---\nround: 1\nexclude_lenses: lensA\nfocus: []\n---\n")
 		got := readRoundFocus("bouncer", dir, 1)
-		assertFocus(t, got, []string{}, []string{})
+		assertFocus(t, got, []string{}, "")
 	})
 }
 
@@ -187,10 +187,10 @@ func TestReadRoundFocus_ResolvesFilenameByTargetRound(t *testing.T) {
 	path := writeFocusFile(t, dir, 3, focusFile{Round: 3, ExcludeLenses: []string{"lensA"}, Focus: []string{"a directive"}})
 
 	found := readRoundFocus("bouncer", dir, 3)
-	assertFocus(t, found, []string{"lensA"}, []string{path})
+	assertFocus(t, found, []string{"lensA"}, path)
 
 	notFound := readRoundFocus("bouncer", dir, 4)
-	assertFocus(t, notFound, []string{}, []string{})
+	assertFocus(t, notFound, []string{}, "")
 }
 
 // TestReadRoundFocus_ReadsWhatTheBouncerSeedPassLeavesBehind closes the loop against the Bouncer's
@@ -203,7 +203,7 @@ func TestReadRoundFocus_ReadsWhatTheBouncerSeedPassLeavesBehind(t *testing.T) {
 	bouncer.ensureFocus(1)
 
 	got := readRoundFocus("Discussion-Bouncer", dir, 1)
-	assertFocus(t, got, []string{}, []string{})
+	assertFocus(t, got, []string{}, "")
 
 	if _, err := os.Stat(focusPath(dir, 1)); err != nil {
 		t.Fatalf("ensureFocus(1) left no file at %s: %v", focusPath(dir, 1), err)
@@ -223,7 +223,7 @@ func TestReadRoundFocus_FrontmatterRoundMustMatchItsOwnFilename(t *testing.T) {
 	path := writeFocusFile(t, dir, 3, focusFile{Round: 1, ExcludeLenses: []string{"lensA"}, Focus: []string{"a directive"}})
 
 	got := readRoundFocus("bouncer", dir, 3)
-	assertFocus(t, got, []string{}, []string{})
+	assertFocus(t, got, []string{}, "")
 
 	// Sanity: the file genuinely exists and genuinely parses on its own -- the empty result above is
 	// the round-mismatch check firing, not some other failure swallowing it silently.
