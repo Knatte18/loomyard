@@ -325,10 +325,10 @@ failed, since psmux on Windows may not export it. A worktree whose
 file and re-running "lyx ide spawn".
 
 --no-attach is for unattended callers (scripts, agents): it wins over every
-handover above. For a parked ly-drive driver it returns once the delivery of
-the resume line is verified. It performs steps 1 through 3 and returns once the driver's
-readiness signal confirms it is up, instead of running step 4. That
-readiness signal is the run lock being taken for the Go driver; for an
+handover above. It performs steps 1 through 3 and returns once the driver's
+readiness signal confirms it is up, instead of running step 4; for a parked
+ly-drive driver it returns once the delivery of the resume line is verified.
+That readiness signal is the run lock being taken for the Go driver; for an
 ly-drive driver, it is the driver's provider TUI coming up ready, with any
 one-time startup gate its provider requires dismissed along the way (shuttle's
 engine seam owns which gates exist), within shuttle's startup_timeout_s. A
