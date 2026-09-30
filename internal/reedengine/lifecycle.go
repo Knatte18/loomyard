@@ -776,6 +776,12 @@ func (e *Engine) Down() (DownResult, error) {
 			return fmt.Errorf("delete state: %w", err)
 		}
 
+		// With reed.json gone nothing can relaunch a strand, so no launch script has a strand left to
+		// belong to. Best-effort: Down stays idempotent.
+		if err := os.RemoveAll(launchScriptDir(e.stateDir())); err != nil {
+			logger.Warn("reed: could not delete launch script directory", "path", launchScriptDir(e.stateDir()), "err", err)
+		}
+
 		result = DownResult{Session: e.SessionName(), AbandonedSession: abandoned}
 		return nil
 	})

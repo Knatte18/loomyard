@@ -83,6 +83,18 @@ func stageLaunchScript(sh shell.Shell, stateDir, strandGUID, composedLine string
 	return sh.Source(path)
 }
 
+// removeLaunchScripts deletes the launch script of every GUID in guids. Deletion is best-effort: a
+// missing file is silent, and any other error is a logger.Warn, never returned, so a cosmetic file
+// never fails the removal that triggered it.
+func removeLaunchScripts(sh shell.Shell, stateDir string, guids []string) {
+	for _, guid := range guids {
+		path := launchScriptPath(sh, stateDir, guid)
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			logger.Warn("reed: could not delete launch script", "strand", guid, "path", path, "err", err)
+		}
+	}
+}
+
 // writeLaunchScript atomically writes content to path with mode 0o644. The file is sourced, never
 // executed, so it carries no exec bit. fsx.AtomicWriteBytes is not reused because its temp file
 // keeps mode 0o600.

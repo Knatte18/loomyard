@@ -14,6 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/shell"
 )
 
 // AddSpec carries the caller-supplied inputs AddStrand needs to build a new Strand.
@@ -311,7 +312,8 @@ func (e *Engine) updateStrandLocked(st *ReedState, guid string, display render.D
 
 // removeStrandLocked removes guid, rejecting non-leaf strands without
 // recursive, and cascading descendants. It returns pane ids of every
-// removed strand that held a live binding.
+// removed strand that held a live binding. It also deletes the launch script of every removed
+// strand, so surviving strands keep theirs.
 func (e *Engine) removeStrandLocked(st *ReedState, guid string, recursive bool) (Removed, []string, error) {
 	if _, ok := strandByGUID(st.Strands, guid); !ok {
 		return Removed{}, nil, fmt.Errorf("unknown strand %q", guid)
@@ -340,6 +342,7 @@ func (e *Engine) removeStrandLocked(st *ReedState, guid string, recursive bool) 
 		remaining = append(remaining, s)
 	}
 	st.Strands = remaining
+	removeLaunchScripts(shell.ForGOOS(), e.stateDir(), toRemove)
 
 	return removed, paneIDs, nil
 }
