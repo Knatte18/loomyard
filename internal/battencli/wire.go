@@ -453,7 +453,8 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				if err != nil {
 					return battenshed.ChildDecision{}, false, err
 				}
-				// approve and reject each remove the other's record first, so at most one is present; the approval wins when both are, matching the gate's own precedence.
+				// approve and reject each remove the other's record first, so both are present only when the two verbs race.
+				// The approval wins then, as it does in the gate when both records match the pull request.
 				a, found, err := landingshed.ReadApproval(loomengine.LoomApprovalPath(taskLocation))
 				if err != nil {
 					return battenshed.ChildDecision{}, false, err
