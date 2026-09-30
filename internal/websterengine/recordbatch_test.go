@@ -980,8 +980,8 @@ func assertBatchOpen(t *testing.T, fx *recordFixture) {
 // the batch is recorded at the report's own head_sha.
 func TestRecordBatch_ParentMergeAfterForkCommit(t *testing.T) {
 	fx := parentMergeFixture(t)
+	// The merge commit is both the new HEAD and the one walked merge.
 	merge := parentMerge(t, fx, "parent1", "parent1.txt", "p1")
-	newHead := merge
 
 	result, err := websterengine.RecordBatch(fx.Deps, 1)
 	if err != nil {
@@ -996,7 +996,7 @@ func TestRecordBatch_ParentMergeAfterForkCommit(t *testing.T) {
 	if len(result.Warnings) != 1 {
 		t.Fatalf("Warnings = %v; want exactly one", result.Warnings)
 	}
-	for _, want := range []string{fx.HeadSHA, merge, newHead} {
+	for _, want := range []string{fx.HeadSHA, "HEAD \"" + merge + "\"", "(" + merge + ")"} {
 		if !strings.Contains(result.Warnings[0], want) {
 			t.Errorf("warning %q missing %q", result.Warnings[0], want)
 		}
