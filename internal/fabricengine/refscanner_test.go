@@ -1,7 +1,8 @@
 // refscanner_test.go covers RefScanner.Matches against the three cases websterengine's
 // audit_test.go exercises today for its own weftReferencePattern (a command containing the sibling
 // worktree path, a command containing a -weft sibling name, and a lyx fabric/weft/warp invocation),
-// plus a clean command that must not match. The *lyxcwd.Location is built synthetically, the way
+// plus a clean command that must not match, and the command-position rule: an invocation after a
+// shell separator still matches, while the same words inside a quoted search pattern do not. The *lyxcwd.Location is built synthetically, the way
 // websterengine/audit_test.go's fakeLayout helper does, so no git fixture is needed.
 
 package fabricengine_test
@@ -39,6 +40,17 @@ func TestRefScanner_Matches(t *testing.T) {
 		{"lyx weft invocation", "lyx weft sync", true},
 		{"lyx warp invocation", "lyx warp checkout feature", true},
 		{"clean command does not match", "git commit -am wip", false},
+		{"invocation after a separator", "cd /hub/master-builder && lyx fabric sync", true},
+		{"invocation in a pipeline", "echo y | lyx fabric remove x", true},
+		{"invocation in a command substitution", "out=$(lyx fabric status)", true},
+		{"invocation behind a directory prefix", "/usr/local/bin/lyx fabric push", true},
+		{"invocation behind an env assignment", "LYX_DEBUG=1 lyx fabric commit", true},
+		{"invocation behind a command wrapper", "env lyx fabric sync", true},
+		{"quoted search pattern is text", `grep -n "fabric remove\|lyx fabric.*remove" docs/overview.md`, false},
+		{"single-quoted search pattern is text", `rg 'lyx warp checkout' docs`, false},
+		{"echoed prose is text", `echo "run lyx fabric sync later"`, false},
+		{"invocation after a quoted argument", `grep -q "x" f.txt && lyx fabric sync`, true},
+		{"quoted weft path still matches", `cat "/hub/master-builder-weft/_lyx/plan.md"`, true},
 	}
 
 	for _, tt := range tests {
