@@ -656,8 +656,8 @@ func TestGate_ZeroValueDeclarationsAreRefusals(t *testing.T) {
 		assertRefusalCheck(t, err, CheckOwnership)
 	})
 
-	// The four subtests below cover the pair-weft ownership kind and the archived-on-remote
-	// dirtiness kind. A hand-built Location is safe: every case refuses before primaryWeftBranch runs.
+	// The four subtests below cover the pair-weft ownership kind and the archived-on-remote dirtiness kind.
+	// A hand-built Location is safe: every case refuses before primaryWeftBranch runs.
 
 	t.Run("RemoteBranchArchivedDirtinessZeroOwnership", func(t *testing.T) {
 		req := remoteBranchRequest{

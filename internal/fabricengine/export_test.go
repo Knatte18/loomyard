@@ -153,9 +153,8 @@ func CheckRemoteBranchRequestForTest(l *lyxcwd.Location, repoDir, remote, branch
 	return checkRemoteBranchRequest(req)
 }
 
-// DeleteArchivedWeftBranchForTest drives deleteRemoteBranch with the pair-weft ownership and
-// archived-on-remote dirtiness kinds and a fresh recorder, returning the recorder's snapshot, for
-// package fabricengine_test integration tests that cannot build a remoteBranchRequest themselves.
+// DeleteArchivedWeftBranchForTest drives deleteRemoteBranch with the pair-weft ownership and archived-on-remote dirtiness kinds and a fresh recorder, returning the recorder's snapshot.
+// It serves package fabricengine_test integration tests that cannot build a remoteBranchRequest themselves.
 func DeleteArchivedWeftBranchForTest(l *lyxcwd.Location, repoDir, warpBranch, branch, archiveTag, leaseSHA string) (Mutations, error) {
 	req := remoteBranchRequest{
 		what:      "test delete archived weft branch",

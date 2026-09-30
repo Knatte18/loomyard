@@ -132,8 +132,7 @@ func TestDeleteRemoteBranch_UnreachableRemote_ReturnsError(t *testing.T) {
 	}
 }
 
-// pushFeatureBranch creates branch in the clone with one commit, pushes it to origin, and returns
-// the pushed tip SHA.
+// pushFeatureBranch creates branch in the clone with one commit, pushes it to origin, and returns the pushed tip SHA.
 func pushFeatureBranch(t *testing.T, clonePath, branch string) string {
 	t.Helper()
 
@@ -163,8 +162,7 @@ func remoteHeads(t *testing.T, container, bareRemote string) string {
 	return out
 }
 
-// TestDeleteRemoteBranchLeased_LeaseAtTip_Deletes asserts a lease at the remote's current tip
-// deletes the branch.
+// TestDeleteRemoteBranchLeased_LeaseAtTip_Deletes asserts a lease at the remote's current tip deletes the branch.
 func TestDeleteRemoteBranchLeased_LeaseAtTip_Deletes(t *testing.T) {
 	container := t.TempDir()
 	bareRemote := newBareRemote(t, container)
@@ -187,8 +185,7 @@ func TestDeleteRemoteBranchLeased_LeaseAtTip_Deletes(t *testing.T) {
 	}
 }
 
-// TestDeleteRemoteBranchLeased_StaleLease_ErrorsAndKeepsBranch asserts a lease whose SHA the
-// remote branch has since moved past fails and leaves the branch at its advanced tip.
+// TestDeleteRemoteBranchLeased_StaleLease_ErrorsAndKeepsBranch asserts a lease whose SHA the remote branch has since moved past fails and leaves the branch at its advanced tip.
 func TestDeleteRemoteBranchLeased_StaleLease_ErrorsAndKeepsBranch(t *testing.T) {
 	container := t.TempDir()
 	bareRemote := newBareRemote(t, container)
@@ -224,8 +221,7 @@ func TestDeleteRemoteBranchLeased_StaleLease_ErrorsAndKeepsBranch(t *testing.T) 
 	}
 }
 
-// TestDeleteRemoteBranchLeased_AbsentBranch_ReturnsError asserts an absent remote branch is a
-// failed lease, not an idempotent success.
+// TestDeleteRemoteBranchLeased_AbsentBranch_ReturnsError asserts an absent remote branch is a failed lease, not an idempotent success.
 func TestDeleteRemoteBranchLeased_AbsentBranch_ReturnsError(t *testing.T) {
 	container := t.TempDir()
 	bareRemote := newBareRemote(t, container)
@@ -243,8 +239,7 @@ func TestDeleteRemoteBranchLeased_AbsentBranch_ReturnsError(t *testing.T) {
 	}
 }
 
-// TestDeleteRemoteBranchLeased_MalformedSHA_ReturnsErrInvalidSHA asserts a malformed expectSHA is
-// rejected before the remote is touched.
+// TestDeleteRemoteBranchLeased_MalformedSHA_ReturnsErrInvalidSHA asserts a malformed expectSHA is rejected before the remote is touched.
 func TestDeleteRemoteBranchLeased_MalformedSHA_ReturnsErrInvalidSHA(t *testing.T) {
 	container := t.TempDir()
 	bareRemote := newBareRemote(t, container)

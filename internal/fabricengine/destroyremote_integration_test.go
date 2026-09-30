@@ -81,8 +81,7 @@ func weftBareTip(t *testing.T, weftBare, branch string) string {
 	return strings.TrimSpace(out)
 }
 
-// archivedDeleteFixture builds a hub with a pushed pair and returns the hub, its weft repo root, the
-// pair's weft branch and the branch's tip on origin.
+// archivedDeleteFixture builds a hub with a pushed pair and returns the hub, its weft repo root, the pair's weft branch and the branch's tip on origin.
 func archivedDeleteFixture(t *testing.T, slug string) (*hubforge.Hub, string, string, string) {
 	t.Helper()
 
@@ -100,8 +99,8 @@ func archivedDeleteFixture(t *testing.T, slug string) (*hubforge.Hub, string, st
 	return h, weftRoot, branch, tip
 }
 
-// TestDeleteArchivedWeftBranch_CheckedOutBranchDeleted proves the pair's own weft branch, checked out
-// at its weft worktree, is deleted from origin under a valid tag and a lease at the tip, and records one entry.
+// TestDeleteArchivedWeftBranch_CheckedOutBranchDeleted proves the pair's own weft branch, checked out at its weft worktree, is deleted from origin under a valid tag and a lease at the tip,
+// and it records one entry.
 func TestDeleteArchivedWeftBranch_CheckedOutBranchDeleted(t *testing.T) {
 	t.Parallel()
 
@@ -170,8 +169,7 @@ func TestDeleteArchivedWeftBranch_EmptyLeaseRefused(t *testing.T) {
 	}
 }
 
-// TestDeleteArchivedWeftBranch_StaleLeaseFailsAndKeepsTip proves a lease behind an advanced origin
-// fails without a gate refusal, records nothing, and leaves the advanced tip.
+// TestDeleteArchivedWeftBranch_StaleLeaseFailsAndKeepsTip proves a lease behind an advanced origin fails without a gate refusal, records nothing, and leaves the advanced tip.
 func TestDeleteArchivedWeftBranch_StaleLeaseFailsAndKeepsTip(t *testing.T) {
 	t.Parallel()
 

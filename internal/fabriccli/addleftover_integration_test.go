@@ -1,8 +1,7 @@
 //go:build integration
 
-// addleftover_integration_test.go covers `lyx fabric add`'s envelope when a leftover remote weft
-// branch from a plain remove blocks the re-add: a pre-flight failure, so a bare error carrying
-// neither `mutations` nor `partial`.
+// addleftover_integration_test.go covers `lyx fabric add`'s envelope when a leftover remote weft branch from a plain remove blocks the re-add:
+// a pre-flight failure, so a bare error carrying neither `mutations` nor `partial`.
 //
 // Package fabriccli_test, sharing the single TestMain in testmain_test.go.
 
@@ -21,8 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
-// TestRunCLI_AddLeftoverWeftIsBarePreflightError re-adds a removed slug whose remote weft branch has
-// moved on, and expects a bare error envelope naming the branch.
+// TestRunCLI_AddLeftoverWeftIsBarePreflightError re-adds a removed slug whose remote weft branch has moved on, and expects a bare error envelope naming the branch.
 func TestRunCLI_AddLeftoverWeftIsBarePreflightError(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	const slug = "leftover-slug"
