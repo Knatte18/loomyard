@@ -8,6 +8,7 @@
 // guard), denying AskUserQuestion in autonomous runs (where there is no operator present to answer
 // it), and recording — never denying — a live AskUserQuestion call in interactive runs so the run
 // loop can classify it as a real-time asking signal instead of waiting for the timeout.
+// buildDenyNotice, built beside those hooks so the two cannot drift, is the one-line system-prompt notice announcing each installed deny to the session.
 
 package claudeengine
 
@@ -31,6 +32,15 @@ const steerAskUserQuestionDeny = "you cannot open an interactive dialog here. If
 // steerWebsterForkDeny guards against fork-context deadlock: a fork inherits Master's await-batch loop and polling it would livelock the run.
 // It refuses `lyx webster` commands inside forks (detected by top-level agent_id in the payload). Must contain no single/double quote or backslash (checked at init).
 const steerWebsterForkDeny = "lyx webster verbs belong to the Master session, never a fork. You are an implementer fork: do your batch work and write your report, and do NOT run any lyx webster command (not await-batch, not anything) — polling for the report you must write only deadlocks the run. This call is refused."
+
+// noticeAgentDeny announces the Agent deny in a non-fork run; it must hold for every session that receives it.
+const noticeAgentDeny = "The Agent tool is unavailable in this session: do all exploration and work in this session, with no subagents."
+
+// noticeAgentForkDeny announces the Agent deny in a fork run, where forks inherit this system prompt too.
+const noticeAgentForkDeny = "The Agent tool accepts only fork subagents and refuses every other subagent type; a fork does its own work and never spawns further subagents."
+
+// noticeAskUserQuestionDeny announces the AskUserQuestion deny in an autonomous run.
+const noticeAskUserQuestionDeny = "AskUserQuestion is unavailable: when blocked or needing operator input, state the question as your final message and end your turn without writing the result file."
 
 // hookCommand is one Claude Code hook invocation, run under git-bash on Windows.
 type hookCommand struct {
@@ -72,6 +82,30 @@ func denyJSON(steer string) string {
 	)
 }
 
+// denyInstalls reports which standing denies a run installs: the Agent deny, and the AskUserQuestion deny.
+// buildSettings and buildDenyNotice both read it, so the hooks and their announcement cannot drift.
+// An interactive run's AskUserQuestion hook only records, never denies, so it reports no AskUserQuestion deny.
+func denyInstalls(interactive bool, cfg shuttleengine.Config) (agentDeny, askUserDeny bool) {
+	return cfg.ClaudeDenyAgentTool, !interactive && cfg.ClaudeDenyAskUserQuestion
+}
+
+// buildDenyNotice returns the one-line system-prompt notice announcing each deny buildSettings installs under the same inputs, or "" when it installs none.
+func buildDenyNotice(interactive bool, cfg shuttleengine.Config, forkSubagents bool) string {
+	agentDeny, askUserDeny := denyInstalls(interactive, cfg)
+	var sentences []string
+	if agentDeny {
+		if forkSubagents {
+			sentences = append(sentences, noticeAgentForkDeny)
+		} else {
+			sentences = append(sentences, noticeAgentDeny)
+		}
+	}
+	if askUserDeny {
+		sentences = append(sentences, noticeAskUserQuestionDeny)
+	}
+	return strings.Join(sentences, " ")
+}
+
 // buildSettings marshals settings.json: a Stop hook appending turn-end events to eventsPathPosix, and PreToolUse guardrails per cfg and interactive.
 // eventsPathPosix must be a git-bash POSIX path (from shuttleengine.PosixPath); it's embedded via shQuote to escape any apostrophes.
 // Agent-tool and AskUserQuestion denies are controlled by cfg; forkSubagents narrows the Agent deny to non-fork subagent types and adds a webster-verb guard.
@@ -87,7 +121,8 @@ func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.C
 		},
 	}
 
-	if cfg.ClaudeDenyAgentTool {
+	agentDeny, askUserDeny := denyInstalls(interactive, cfg)
+	if agentDeny {
 		if forkSubagents {
 			// Grep the payload for a fork subagent_type; a match exits 0 allowing the call, no
 			// match echoes the deny JSON. Whether the fork carried a name is deliberately NOT
@@ -121,7 +156,7 @@ func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.C
 			Matcher: "AskUserQuestion",
 			Hooks:   []hookCommand{{Type: "command", Command: stopCmd}},
 		})
-	} else if cfg.ClaudeDenyAskUserQuestion {
+	} else if askUserDeny {
 		doc.Hooks.PreToolUse = append(doc.Hooks.PreToolUse, hookEntry{
 			Matcher: "AskUserQuestion",
 			Hooks:   []hookCommand{{Type: "command", Command: "echo '" + denyJSON(steerAskUserQuestionDeny) + "'"}},
@@ -138,11 +173,19 @@ func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.C
 // steerTextForbiddenChars are characters that would corrupt steer constants in JSON or shell quoting layers (checked at init).
 const steerTextForbiddenChars = `'"\`
 
+// noticeTextForbiddenChars extends steerTextForbiddenChars with line breaks, since the assembled notice rides one command-line argument that reed types with tmux send-keys.
+const noticeTextForbiddenChars = steerTextForbiddenChars + "\n\r"
+
 // init panics if any steer constant contains a forbidden character (checked at package load).
 func init() {
 	for _, steer := range []string{steerAgentDeny, steerAskUserQuestionDeny, steerAgentNonForkDeny, steerWebsterForkDeny} {
 		if strings.ContainsAny(steer, steerTextForbiddenChars) {
 			panic(fmt.Sprintf("claudeengine: steer text contains a forbidden character (one of %q), which would break the JSON payload or the echo hook command: %q", steerTextForbiddenChars, steer))
+		}
+	}
+	for _, notice := range []string{noticeAgentDeny, noticeAgentForkDeny, noticeAskUserQuestionDeny} {
+		if strings.ContainsAny(notice, noticeTextForbiddenChars) {
+			panic(fmt.Sprintf("claudeengine: notice text contains a forbidden character (one of %q), which would break the one-line launch argument: %q", noticeTextForbiddenChars, notice))
 		}
 	}
 }
