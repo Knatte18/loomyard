@@ -37,11 +37,67 @@ func TestParseVerifyFailures(t *testing.T) {
 			},
 		},
 		{
-			name: "subtests collapse to top-level test",
+			name: "each failing subtest is its own identity",
 			output: "--- FAIL: TestA (0.00s)\n    --- FAIL: TestA/one (0.00s)\n        x\n    --- FAIL: TestA/two (0.00s)\n        y\n" +
 				"FAIL\nFAIL\tpkg/a\t0.1s\n",
 			want: []IntegrationFailure{
-				{ID: "pkg/a.TestA", Kind: FailureKindTest, Tail: "    --- FAIL: TestA/one (0.00s)\n        x\n    --- FAIL: TestA/two (0.00s)\n        y"},
+				{ID: "pkg/a.TestA/one", Kind: FailureKindTest, Tail: "        x"},
+				{ID: "pkg/a.TestA/two", Kind: FailureKindTest, Tail: "        y"},
+			},
+		},
+		{
+			name: "nested subtests yield the deepest failing name",
+			output: "--- FAIL: TestA (0.00s)\n    --- FAIL: TestA/one (0.00s)\n        --- FAIL: TestA/one/deep (0.00s)\n            z\n" +
+				"--- FAIL: TestB (0.00s)\n    b_test.go:2: own failure\n" +
+				"FAIL\nFAIL\tpkg/a\t0.1s\n",
+			want: []IntegrationFailure{
+				{ID: "pkg/a.TestA/one/deep", Kind: FailureKindTest, Tail: "            z"},
+				{ID: "pkg/a.TestB", Kind: FailureKindTest, Tail: "    b_test.go:2: own failure"},
+			},
+		},
+		{
+			name: "verbose output nests subtest headers the same way",
+			output: "=== RUN   TestA\n=== RUN   TestA/one\n    a_test.go:5: boom\n--- FAIL: TestA (0.00s)\n    --- FAIL: TestA/one (0.00s)\n" +
+				"FAIL\nFAIL\tpkg/a\t0.1s\n",
+			want: []IntegrationFailure{
+				{ID: "pkg/a.TestA/one", Kind: FailureKindTest, Tail: ""},
+			},
+		},
+		{
+			name:   "subtest header at the wrong depth is log output",
+			output: "--- FAIL: TestA (0.00s)\n    a_test.go:3: sub output:\n        --- FAIL: TestA/phantom (0.00s)\n" + "FAIL\nFAIL\tpkg/a\t0.1s\n",
+			want: []IntegrationFailure{
+				{ID: "pkg/a.TestA", Kind: FailureKindTest, Tail: "    a_test.go:3: sub output:\n        --- FAIL: TestA/phantom (0.00s)"},
+			},
+		},
+		{
+			name:   "panic after a failing test adds a package identity",
+			output: "--- FAIL: TestA (0.00s)\npanic: boom [recovered]\n\tpanic: boom\n\ngoroutine 7 [running]:\nFAIL\tpkg/a\t0.01s\n",
+			want: []IntegrationFailure{
+				{ID: "pkg/a.TestA", Kind: FailureKindTest, Tail: ""},
+				{ID: "pkg/a", Kind: FailureKindPackage, Tail: "--- FAIL: TestA (0.00s)\npanic: boom [recovered]\n\tpanic: boom\n\ngoroutine 7 [running]:\nFAIL\tpkg/a\t0.01s"},
+			},
+		},
+		{
+			name:   "timeout is a package identity",
+			output: "ok  \tpkg/b\t0.1s\npanic: test timed out after 10m0s\n\trunning tests:\n\t\tTestSlow (10m0s)\nFAIL\tpkg/a\t600.0s\n",
+			want: []IntegrationFailure{
+				{ID: "pkg/a", Kind: FailureKindPackage, Tail: "panic: test timed out after 10m0s\n\trunning tests:\n\t\tTestSlow (10m0s)\nFAIL\tpkg/a\t600.0s"},
+			},
+		},
+		{
+			name:   "failing tests without the binary's FAIL summary add a package identity",
+			output: "--- FAIL: TestA (0.00s)\n    a_test.go:5: boom\nexit status 1\nFAIL\tpkg/a\t0.01s\n",
+			want: []IntegrationFailure{
+				{ID: "pkg/a.TestA", Kind: FailureKindTest, Tail: "    a_test.go:5: boom"},
+				{ID: "pkg/a", Kind: FailureKindPackage, Tail: "--- FAIL: TestA (0.00s)\n    a_test.go:5: boom\nexit status 1\nFAIL\tpkg/a\t0.01s"},
+			},
+		},
+		{
+			name:   "TestMain failure with every test passing is a package identity",
+			output: "PASS\nteardown failed\nFAIL\tpkg/a\t0.01s\n",
+			want: []IntegrationFailure{
+				{ID: "pkg/a", Kind: FailureKindPackage, Tail: "PASS\nteardown failed\nFAIL\tpkg/a\t0.01s"},
 			},
 		},
 		{

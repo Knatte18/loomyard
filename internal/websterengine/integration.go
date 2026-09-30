@@ -26,13 +26,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
-// FabricBisector is the git surface in-process bisect drives: capture branch, checkout SHA detached,
-// restore branch.
+// FabricBisector is the git surface in-process bisect and triage drive: capture branch, checkout SHA detached,
+// restore branch, and the ancestry probe triage orders the batches' start commits with.
 // Satisfied by *gitrepo.Repo and *fabricengine.Fabric.
 type FabricBisector interface {
 	CurrentBranch() (string, error)
 	CheckoutDetached(sha string) error
 	RestoreBranch(ref string) error
+	IsAncestor(sha, ref string) (bool, error)
 }
 
 // IntegrationReportFileName is the integration fork's own fixed report file name inside a webster

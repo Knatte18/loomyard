@@ -916,7 +916,7 @@ func runExitAuditCrossCheck(deps RunDeps, outcomePath, summaryPath string, resul
 // bracket instruction, so the report is normally already on disk by the
 // time Run reaches this call; the bounded await here is a defensive
 // re-confirmation, mirroring the run-exit audit's own backstop posture).
-// On a FAILED report it triages the failure regardless of Master's own outcome: it reruns the verify once at head, compares the remaining failures against the plan's starting commit,
+// On a FAILED report it triages the failure regardless of Master's own outcome: it reruns the verify once at head, compares the remaining failures against the earliest batch start commit,
 // and records the classification (flaky, pre-existing, or regression) and the failing identities in the integration report.
 // Only a regression is escalated: the in-process SHA-bisect runs over the regressing identities across every batch's own accumulated BatchState.CardSHAs, the reserved -1 record and the summary.md section are written,
 // and the returned stuck reason is non-empty so Run demotes a Master done to stuck.
@@ -987,15 +987,10 @@ func runIntegrationStage(deps RunDeps, plan *planparser.Plan, batches []batcher.
 		return nil, "", fmt.Errorf("webster: integration stage: no state.json to escalate against")
 	}
 	shas, labels := accumulatedCardSHAs(batches, st)
-	// The baseline is the HEAD before the first batch began;
-	// recover-batch inherits StartSHA and a begin-batch re-begin keeps it, so it survives every retry.
-	baseline := ""
-	if len(batches) > 0 {
-		first, _ := batchIdentity(batches[0])
-		if bs := st.Batches[first]; bs != nil {
-			baseline = bs.StartSHA
-		}
-	}
+	// Triage's baseline is the earliest of every batch's start commit, not the first batch's:
+	// begin-batch does not enforce execution order, so a later batch may have begun, and landed, first.
+	// recover-batch inherits StartSHA and a begin-batch re-begin keeps it, so each survives every retry.
+	startSHAs := batchStartSHAs(batches, st)
 
 	// Phase 2, unleased: triage, then localize the offending card of a regression.
 	// "unknown" for both is the honest answer when there is no fabric repo to bisect against,
@@ -1007,7 +1002,7 @@ func runIntegrationStage(deps RunDeps, plan *planparser.Plan, batches []batcher.
 			return nil, "", err
 		}
 	}
-	outcome, err := triageIntegrationFailure(runVerifyCapture, bisector, baseline, plan.Verify, deps.Geom.WorktreeRoot, deps.Geom.ScratchDir, IntegrationLogPath(deps.Geom.ScratchDir))
+	outcome, err := triageIntegrationFailure(runVerifyCapture, bisector, startSHAs, plan.Verify, deps.Geom.WorktreeRoot, deps.Geom.ScratchDir, IntegrationLogPath(deps.Geom.ScratchDir))
 	if err != nil {
 		return nil, "", err
 	}
@@ -1123,4 +1118,17 @@ func accumulatedCardSHAs(batches []batcher.Batch, st *State) (shas, labels []str
 		}
 	}
 	return shas, labels
+}
+
+// batchStartSHAs returns every batch's recorded non-empty StartSHA, in batches order.
+// A batch with no record or no StartSHA contributes nothing.
+func batchStartSHAs(batches []batcher.Batch, st *State) []string {
+	var starts []string
+	for _, b := range batches {
+		number, _ := batchIdentity(b)
+		if bs := st.Batches[number]; bs != nil && bs.StartSHA != "" {
+			starts = append(starts, bs.StartSHA)
+		}
+	}
+	return starts
 }

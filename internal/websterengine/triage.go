@@ -14,7 +14,15 @@ import (
 )
 
 // baselineUnavailableWarning states why every head failure was classified a regression.
-const baselineUnavailableWarning = "triage: baseline comparison unavailable (no repository handle or no baseline SHA); every failure is treated as a regression"
+const baselineUnavailableWarning = "triage: baseline comparison unavailable (no repository handle or no batch start commit); every failure is treated as a regression"
+
+// verifyChainMarker is echoed before the verify chain's last step on the triage rerun:
+// its presence in the output proves every earlier step passed, so the chain's red exit came from its last step and no step was skipped.
+const verifyChainMarker = "lyx-webster-triage-last-step-reached"
+
+// verifyChainUnsafeChars are the sh and cmd characters that can mask a step's exit status, run past a failing step, or hide an "&&" from a plain split:
+// separators, pipes, single ampersands (background, redirection, cmd's unconditional chain), subshells and substitutions, negation, comments, quotes, and escapes.
+const verifyChainUnsafeChars = ";|&()`'\"\\!#^\n\r"
 
 // triageOutcome is triageIntegrationFailure's result: the failures to record, the triage classification, and the warnings the stage surfaces.
 type triageOutcome struct {
@@ -27,10 +35,14 @@ type triageOutcome struct {
 // firstLogPath is the first run's captured log;
 // a missing or unreadable log leaves the first run's failure set unknown rather than failing the triage.
 // It reruns verifyCmd once at the unchanged head,
-// and on a red rerun it compares each failing identity against baselineSHA.
-// A non-member of the baseline failure set is a regression: triage never excuses an unproven failure.
+// and on a red rerun it compares each failing test identity against the earliest of startSHAs, the batches' recorded start commits.
+// A failure is excused as pre-existing only when all of these hold, and is a regression otherwise, so triage never excuses an unproven failure:
+// it is a test identity (a package or opaque identity is never excused),
+// the verify command is a plain "&&" chain whose rerun reached its last step (so no step failed unseen or went unrun),
+// the start commits lie on one line of history,
+// and the same identity fails at the earliest of them.
 // A spawn error from run and a checkout error are returned as errors.
-func triageIntegrationFailure(run verifyRunner, repo FabricBisector, baselineSHA, verifyCmd, worktree, scratchDir, firstLogPath string) (triageOutcome, error) {
+func triageIntegrationFailure(run verifyRunner, repo FabricBisector, startSHAs []string, verifyCmd, worktree, scratchDir, firstLogPath string) (triageOutcome, error) {
 	var first []IntegrationFailure
 	firstKnown := false
 	if log, err := os.ReadFile(firstLogPath); err == nil {
@@ -38,7 +50,11 @@ func triageIntegrationFailure(run verifyRunner, repo FabricBisector, baselineSHA
 		firstKnown = true
 	}
 
-	rerun, err := run(verifyCmd, worktree, rerunLogPath(scratchDir))
+	rerunCmd, chainReason := instrumentVerifyChain(verifyCmd)
+	if chainReason != "" {
+		rerunCmd = verifyCmd
+	}
+	rerun, err := run(rerunCmd, worktree, rerunLogPath(scratchDir))
 	if err != nil {
 		return triageOutcome{}, err
 	}
@@ -81,11 +97,18 @@ func triageIntegrationFailure(run verifyRunner, repo FabricBisector, baselineSHA
 		},
 	}
 
-	if repo == nil || baselineSHA == "" {
-		out.Triage.Verdict = TriageVerdictRegression
-		out.Triage.Regressions = failureIDs(head)
-		out.Warnings = []string{baselineUnavailableWarning}
-		return out, nil
+	if repo == nil || len(startSHAs) == 0 {
+		return classifyAllAsRegressions(out, head, baselineUnavailableWarning), nil
+	}
+	if chainReason != "" {
+		return classifyAllAsRegressions(out, head, "triage: "+chainReason+"; every failure is treated as a regression"), nil
+	}
+	if rerunCmd != verifyCmd && !lastStepReached(rerun.Output) {
+		return classifyAllAsRegressions(out, head, "triage: the verify chain stopped before its last step, so the steps after the failing one never ran; every failure is treated as a regression"), nil
+	}
+	baselineSHA, err := earliestCommit(repo, startSHAs)
+	if err != nil {
+		return classifyAllAsRegressions(out, head, "triage: no single earliest batch start commit ("+err.Error()+"); every failure is treated as a regression"), nil
 	}
 
 	baseline, err := runAtBaseline(run, repo, baselineSHA, verifyCmd, worktree, baselineLogPath(scratchDir))
@@ -99,7 +122,7 @@ func triageIntegrationFailure(run verifyRunner, repo FabricBisector, baselineSHA
 		baselineIDs[f.ID] = true
 	}
 	for _, f := range head {
-		if f.Kind != FailureKindOpaque && baselineIDs[f.ID] {
+		if f.Kind == FailureKindTest && baselineIDs[f.ID] {
 			out.Triage.PreExisting = append(out.Triage.PreExisting, f.ID)
 		} else {
 			out.Triage.Regressions = append(out.Triage.Regressions, f.ID)
@@ -111,6 +134,78 @@ func triageIntegrationFailure(run verifyRunner, repo FabricBisector, baselineSHA
 		out.Triage.Verdict = TriageVerdictPreExisting
 	}
 	return out, nil
+}
+
+// classifyAllAsRegressions returns out with every head identity a regression and warning recorded,
+// the fail-closed answer whenever no failure can be proven pre-existing.
+func classifyAllAsRegressions(out triageOutcome, head []IntegrationFailure, warning string) triageOutcome {
+	out.Triage.Verdict = TriageVerdictRegression
+	out.Triage.Regressions = failureIDs(head)
+	out.Warnings = []string{warning}
+	return out
+}
+
+// instrumentVerifyChain returns verifyCmd with verifyChainMarker echoed before its last "&&" step, leaving a single-step command unchanged.
+// It returns instead a non-empty reason when a red exit of verifyCmd cannot be attributed to the go test failures its last step prints:
+// a step carries a verifyChainUnsafeChars character, a step is empty, or a step runs with -failfast, which leaves the tests after a failing one unrun.
+func instrumentVerifyChain(verifyCmd string) (instrumented, reason string) {
+	steps := strings.Split(verifyCmd, "&&")
+	for _, step := range steps {
+		if strings.TrimSpace(step) == "" {
+			return "", "the verify command has an empty && step"
+		}
+		if strings.ContainsAny(step, verifyChainUnsafeChars) {
+			return "", "the verify command is not a plain && chain, so a failing step can be masked or run past"
+		}
+		for _, arg := range strings.Fields(step) {
+			if strings.HasPrefix(arg, "-") && strings.Contains(arg, "failfast") {
+				return "", "the verify command runs with -failfast, so a failing test leaves the tests after it unrun"
+			}
+		}
+	}
+	if len(steps) == 1 {
+		return verifyCmd, ""
+	}
+	last := len(steps) - 1
+	return strings.Join(steps[:last], "&&") + "&& echo " + verifyChainMarker + " &&" + steps[last], ""
+}
+
+// lastStepReached reports whether output carries verifyChainMarker on a line of its own.
+func lastStepReached(output string) bool {
+	for _, line := range strings.Split(output, "\n") {
+		if strings.TrimSpace(line) == verifyChainMarker {
+			return true
+		}
+	}
+	return false
+}
+
+// earliestCommit returns the member of shas that is an ancestor of every other member, the earliest in history.
+// It returns an error when two members lie on diverging lines of history or an ancestry probe fails,
+// since no member can then be proven to predate every batch's work.
+func earliestCommit(repo FabricBisector, shas []string) (string, error) {
+	earliest := shas[0]
+	for _, sha := range shas[1:] {
+		if sha == earliest {
+			continue
+		}
+		before, err := repo.IsAncestor(earliest, sha)
+		if err != nil {
+			return "", err
+		}
+		if before {
+			continue
+		}
+		after, err := repo.IsAncestor(sha, earliest)
+		if err != nil {
+			return "", err
+		}
+		if !after {
+			return "", fmt.Errorf("%s and %s lie on diverging lines of history", earliest, sha)
+		}
+		earliest = sha
+	}
+	return earliest, nil
 }
 
 // runAtBaseline checks out sha detached, runs verifyCmd through run, and restores the original branch afterwards even when the run errored.

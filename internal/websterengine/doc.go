@@ -293,6 +293,15 @@
 // so Go can name every failing test and its output tail (parseVerifyFailures) without trusting the fork's own account.
 // On a FAILED integration report, webster reruns the verify once at head and compares the remaining failures against the plan's starting commit,
 // classifying each failing identity flaky (the rerun passes), pre-existing (it also fails at the baseline), or regression.
+// The baseline is the earliest of the batches' recorded start commits by ancestry, since begin-batch does not enforce execution order;
+// start commits with no single earliest member leave nothing excused as pre-existing.
+// A test identity is the deepest failing test or subtest path go test prints, so a failing TestX/a at baseline never excuses a new TestX/b.
+// Triage excuses only what it can attribute to a named test: a package identity (a build or setup failure, a panic or timeout, a TestMain failure, a test binary that exited before reporting) or an opaque one is never pre-existing,
+// though it is still flaky when the rerun passes cleanly.
+// For the same reason the verify command must be a plain "&&" chain whose rerun reached its last step (a marker echoed before that step proves it),
+// and must not run with -failfast;
+// otherwise a non-test step's failure, or a step left unrun behind a pre-existing failure, could hide behind it, and every failure is a regression.
+// A step that runs go test inside a script is outside this reach: its own non-test failures surface only as the step's exit status.
 // The report carries the result in its optional failures and triage fields.
 // A regression demotes a Master outcome: done to stuck;
 // flaky and pre-existing failures keep the outcome and are recorded as RunResult warnings, an "## Integration suite triage" section in summary.md (AppendIntegrationTriage), and a friction note.

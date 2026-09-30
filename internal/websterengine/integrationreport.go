@@ -55,7 +55,7 @@ type IntegrationTriage struct {
 	Flaky []string `yaml:"flaky,omitempty"`
 	// PreExisting lists identities that also fail at the baseline.
 	PreExisting []string `yaml:"pre_existing,omitempty"`
-	// Regressions lists identities that fail at head and not at the baseline.
+	// Regressions lists identities that fail at head and were not proven to fail at the baseline.
 	Regressions []string `yaml:"regressions,omitempty"`
 }
 

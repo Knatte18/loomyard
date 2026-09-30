@@ -441,6 +441,8 @@ type failedSuite struct {
 	batches [][]string
 	// startSHA is batch 1's recorded StartSHA.
 	startSHA string
+	// laterStartSHAs maps a batch number above 1 to its recorded StartSHA; unlisted batches record none.
+	laterStartSHAs map[int]string
 	// masterOutcome is "done" or "stuck".
 	masterOutcome string
 	// forkLog is the fork's captured first-run log; empty writes none.
@@ -461,6 +463,9 @@ func runFailedSuite(t *testing.T, fx *runFixture, s failedSuite) (websterengine.
 		forks = append(forks, shuttleengine.ForkReport{TranscriptPath: fmt.Sprintf("/transcripts/fork%d.jsonl", i+1), ReportReturned: true})
 	}
 	st.Batches[1].StartSHA = s.startSHA
+	for number, sha := range s.laterStartSHAs {
+		st.Batches[number].StartSHA = sha
+	}
 	seedMatchingState(t, fx, st)
 
 	head := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
@@ -764,6 +769,34 @@ func TestIntegrationStage_BaselineIsBatchOneStartSHA(t *testing.T) {
 	report := integrationReportOf(t, fx)
 	if report.Triage == nil || report.Triage.Verdict != websterengine.TriageVerdictRegression || report.Triage.BaselineSHA != start {
 		t.Errorf("report triage = %+v; want a regression against baseline %s", report.Triage, start)
+	}
+}
+
+// TestIntegrationStage_BaselineIsEarliestStartSHA proves the baseline is the earliest batch start commit even when batch 2 began before batch 1:
+// batch 2's commit breaks a test and batch 1 began on top of it, so batch 1's own start commit already fails that test,
+// yet the failure is a regression against batch 2's earlier start commit.
+func TestIntegrationStage_BaselineIsEarliestStartSHA(t *testing.T) {
+	fx := newRunFixture(t, 2)
+	appendIntegrationVerify(t, fx.PlanDir, "sh verify.sh")
+	seedVerifyScripts(t, fx.Worktree)
+
+	start := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	c2 := commitFile(t, fx.Worktree, "bad.marker", "bad", "batch 2, begun first, breaks a test")
+	c1 := commitFile(t, fx.Worktree, "card1.txt", "one", "batch 1, begun on top of batch 2")
+
+	result, err := runFailedSuite(t, fx, failedSuite{
+		batches: [][]string{{c1}, {c2}}, startSHA: c2, laterStartSHAs: map[int]string{2: start}, masterOutcome: "done",
+		forkLog: "--- FAIL: TestBad (0.00s)\n    x_test.go:1: TestBad failed\nFAIL\nFAIL\texample/pkg\t0.01s\n",
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v; want nil", err)
+	}
+	if result.Outcome != "stuck" {
+		t.Errorf("Outcome = %q; want stuck (TestBad passes at the earliest start commit)", result.Outcome)
+	}
+	report := integrationReportOf(t, fx)
+	if report.Triage == nil || report.Triage.Verdict != websterengine.TriageVerdictRegression || report.Triage.BaselineSHA != start {
+		t.Errorf("report triage = %+v; want a regression against the earliest start commit %s", report.Triage, start)
 	}
 }
 

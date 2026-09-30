@@ -13,6 +13,7 @@ import (
 )
 
 // triageFakeRepo records checkouts and restores and tracks the current checkout ("" is the branch head).
+// ancestors holds every {sha, ref} pair IsAncestor answers true for; any other distinct pair answers false.
 type triageFakeRepo struct {
 	branch      string
 	current     string
@@ -20,6 +21,8 @@ type triageFakeRepo struct {
 	restores    []string
 	restoreErr  error
 	checkoutErr error
+	ancestors   map[[2]string]bool
+	ancestorErr error
 }
 
 func (r *triageFakeRepo) CurrentBranch() (string, error) { return r.branch, nil }
@@ -39,11 +42,19 @@ func (r *triageFakeRepo) RestoreBranch(ref string) error {
 	return r.restoreErr
 }
 
-// failOutput renders go test output failing the named top-level tests in pkg.
+func (r *triageFakeRepo) IsAncestor(sha, ref string) (bool, error) {
+	if r.ancestorErr != nil {
+		return false, r.ancestorErr
+	}
+	return sha == ref || r.ancestors[[2]string{sha, ref}], nil
+}
+
+// failOutput renders go test output failing the named tests in pkg, each at its subtest nesting depth.
 func failOutput(pkg string, tests ...string) string {
 	var b strings.Builder
 	for _, name := range tests {
-		b.WriteString("--- FAIL: " + name + " (0.00s)\n    x_test.go:1: boom " + name + "\n")
+		indent := strings.Repeat("    ", strings.Count(name, "/"))
+		b.WriteString(indent + "--- FAIL: " + name + " (0.00s)\n" + indent + "    x_test.go:1: boom " + name + "\n")
 	}
 	b.WriteString("FAIL\nFAIL\t" + pkg + "\t0.01s\n")
 	return b.String()
@@ -55,6 +66,8 @@ type triageRig struct {
 	byCheckout map[string]verifyRun
 	runErr     map[string]error
 	logPaths   []string
+	cmds       []string
+	verifyCmd  string
 	scratch    string
 	firstLog   string
 }
@@ -65,6 +78,7 @@ func newTriageRig(t *testing.T, firstLog string, head, baseline verifyRun) *tria
 		repo:       &triageFakeRepo{branch: "main"},
 		byCheckout: map[string]verifyRun{"": head, "base": baseline},
 		runErr:     map[string]error{},
+		verifyCmd:  "verify",
 		scratch:    t.TempDir(),
 	}
 	rig.firstLog = filepath.Join(rig.scratch, "first.log")
@@ -78,14 +92,16 @@ func newTriageRig(t *testing.T, firstLog string, head, baseline verifyRun) *tria
 
 func (r *triageRig) run(cmd, worktree, logPath string) (verifyRun, error) {
 	r.logPaths = append(r.logPaths, logPath)
+	r.cmds = append(r.cmds, cmd)
 	if err := r.runErr[r.repo.current]; err != nil {
 		return verifyRun{}, err
 	}
 	return r.byCheckout[r.repo.current], nil
 }
 
-func (r *triageRig) triage(repo FabricBisector, baseline string) (triageOutcome, error) {
-	return triageIntegrationFailure(r.run, repo, baseline, "verify", "wt", r.scratch, r.firstLog)
+// triage runs triageIntegrationFailure with startSHAs as the batches' recorded start commits.
+func (r *triageRig) triage(repo FabricBisector, startSHAs ...string) (triageOutcome, error) {
+	return triageIntegrationFailure(r.run, repo, startSHAs, r.verifyCmd, "wt", r.scratch, r.firstLog)
 }
 
 func red(out string) verifyRun { return verifyRun{Passed: false, Output: out} }
@@ -231,10 +247,10 @@ func TestTriage_NilRepo(t *testing.T) {
 	})
 }
 
-func TestTriage_EmptyBaselineSHABehavesLikeNilRepo(t *testing.T) {
+func TestTriage_NoStartSHAsBehavesLikeNilRepo(t *testing.T) {
 	o := failOutput("p/a", "TestA")
 	rig := newTriageRig(t, o, red(o), red(o))
-	out, err := rig.triage(rig.repo, "")
+	out, err := rig.triage(rig.repo)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -312,6 +328,249 @@ func TestTriage_RerunSpawnErrorIsReturned(t *testing.T) {
 	rig.runErr[""] = errors.New("cannot spawn")
 	if _, err := rig.triage(rig.repo, "base"); err == nil {
 		t.Fatal("err = nil; want the spawn error")
+	}
+}
+
+// TestTriage_BaselineIsEarliestStartSHA proves the baseline is the start commit every other start commit descends from,
+// not the first one listed: a later batch that began first recorded the earliest start commit.
+func TestTriage_BaselineIsEarliestStartSHA(t *testing.T) {
+	o := failOutput("p/a", "TestA")
+	rig := newTriageRig(t, o, red(o), red(o))
+	rig.repo.ancestors = map[[2]string]bool{{"base", "late"}: true}
+	out, err := rig.triage(rig.repo, "late", "base")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Triage.BaselineSHA != "base" || !reflect.DeepEqual(rig.repo.checkouts, []string{"base"}) {
+		t.Errorf("BaselineSHA = %q, checkouts = %v; want the earliest start commit base", out.Triage.BaselineSHA, rig.repo.checkouts)
+	}
+	if out.Triage.Verdict != TriageVerdictPreExisting {
+		t.Errorf("verdict = %q; want pre-existing", out.Triage.Verdict)
+	}
+}
+
+// TestTriage_UnorderedStartSHAsFailClosed proves start commits with no single earliest member, or an ancestry probe that errors,
+// skip the baseline run and classify every failure a regression with a warning.
+func TestTriage_UnorderedStartSHAsFailClosed(t *testing.T) {
+	tests := []struct {
+		name        string
+		ancestorErr error
+	}{
+		{"diverging start commits", nil},
+		{"ancestry probe error", errors.New("merge-base failed")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			o := failOutput("p/a", "TestA")
+			rig := newTriageRig(t, o, red(o), red(o))
+			rig.repo.ancestorErr = tt.ancestorErr
+			out, err := rig.triage(rig.repo, "left", "right")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if out.Triage.Verdict != TriageVerdictRegression || !reflect.DeepEqual(out.Triage.Regressions, []string{"p/a.TestA"}) {
+				t.Errorf("triage = %+v; want every failure a regression", out.Triage)
+			}
+			if len(out.Warnings) != 1 || !strings.Contains(out.Warnings[0], "no single earliest batch start commit") {
+				t.Errorf("Warnings = %q; want the earliest-start-commit warning", out.Warnings)
+			}
+			if len(rig.repo.checkouts) != 0 || out.Triage.BaselineSHA != "" {
+				t.Errorf("checkouts = %v, BaselineSHA = %q; want no baseline run", rig.repo.checkouts, out.Triage.BaselineSHA)
+			}
+		})
+	}
+}
+
+func TestEarliestCommit(t *testing.T) {
+	// a <- b <- c is one line of history; x diverges from it.
+	ancestors := map[[2]string]bool{{"a", "b"}: true, {"a", "c"}: true, {"b", "c"}: true}
+	tests := []struct {
+		name    string
+		shas    []string
+		want    string
+		wantErr bool
+	}{
+		{"single", []string{"b"}, "b", false},
+		{"in order", []string{"a", "b", "c"}, "a", false},
+		{"reversed", []string{"c", "b", "a"}, "a", false},
+		{"earliest in the middle", []string{"c", "a", "b"}, "a", false},
+		{"duplicates", []string{"b", "b", "c"}, "b", false},
+		{"diverging", []string{"b", "x"}, "", true},
+		{"diverging after a match", []string{"c", "a", "x"}, "", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := earliestCommit(&triageFakeRepo{ancestors: ancestors}, tt.shas)
+			if (err != nil) != tt.wantErr || got != tt.want {
+				t.Errorf("earliestCommit(%v) = %q, %v; want %q, error %v", tt.shas, got, err, tt.want, tt.wantErr)
+			}
+		})
+	}
+}
+
+// TestTriage_SiblingSubtestIsRegression proves a failing subtest is not excused by a different subtest of the same test failing at baseline.
+func TestTriage_SiblingSubtestIsRegression(t *testing.T) {
+	head := failOutput("p/a", "TestX", "TestX/b")
+	rig := newTriageRig(t, head, red(head), red(failOutput("p/a", "TestX", "TestX/a")))
+	out, err := rig.triage(rig.repo, "base")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Triage.Verdict != TriageVerdictRegression || !reflect.DeepEqual(out.Triage.Regressions, []string{"p/a.TestX/b"}) {
+		t.Errorf("triage = %+v; want regression p/a.TestX/b", out.Triage)
+	}
+}
+
+// TestTriage_PackageIdentityIsNeverPreExisting proves a package identity failing identically at baseline is still a regression,
+// alongside a test identity that is excused.
+func TestTriage_PackageIdentityIsNeverPreExisting(t *testing.T) {
+	tests := []struct {
+		name   string
+		output string
+		want   IntegrationTriage
+	}{
+		{
+			name:   "build failure",
+			output: "# p/b\np/b/b.go:3: undefined: x\nFAIL\tp/b [build failed]\n" + failOutput("p/a", "TestA"),
+			want:   IntegrationTriage{PreExisting: []string{"p/a.TestA"}, Regressions: []string{"p/b"}},
+		},
+		{
+			name:   "panic after a failing test",
+			output: "--- FAIL: TestA (0.00s)\npanic: boom [recovered]\n\ngoroutine 7 [running]:\nFAIL\tp/a\t0.01s\n",
+			want:   IntegrationTriage{PreExisting: []string{"p/a.TestA"}, Regressions: []string{"p/a"}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rig := newTriageRig(t, tt.output, red(tt.output), red(tt.output))
+			out, err := rig.triage(rig.repo, "base")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if out.Triage.Verdict != TriageVerdictRegression ||
+				!reflect.DeepEqual(out.Triage.PreExisting, tt.want.PreExisting) || !reflect.DeepEqual(out.Triage.Regressions, tt.want.Regressions) {
+				t.Errorf("triage = %+v; want regression with pre-existing %v and regressions %v", out.Triage, tt.want.PreExisting, tt.want.Regressions)
+			}
+		})
+	}
+}
+
+// TestTriage_PackageIdentityGreenRerunIsFlaky proves a package identity is still excused as flaky when the rerun passes cleanly.
+func TestTriage_PackageIdentityGreenRerunIsFlaky(t *testing.T) {
+	rig := newTriageRig(t, "# p/b\np/b/b.go:3: undefined: x\nFAIL\tp/b [build failed]\n", green, green)
+	out, err := rig.triage(rig.repo, "base")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Triage.Verdict != TriageVerdictFlaky || !reflect.DeepEqual(out.Triage.Flaky, []string{"p/b"}) {
+		t.Errorf("triage = %+v; want flaky p/b", out.Triage)
+	}
+}
+
+// TestTriage_UnprovableVerifyChainFailsClosed proves a verify command whose red exit a non-test step could explain skips the baseline run:
+// the rerun runs the command unchanged, and every failure is a regression with a warning.
+func TestTriage_UnprovableVerifyChainFailsClosed(t *testing.T) {
+	tests := []struct {
+		name      string
+		verifyCmd string
+	}{
+		{"semicolon masks the vet exit", "go vet ./... ; go test ./..."},
+		{"pipe masks the test exit", "go test ./... | tee log"},
+		{"or masks the vet exit", "go vet ./... || go test ./..."},
+		{"failfast leaves tests unrun", "go test -failfast ./..."},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			o := failOutput("p/a", "TestA")
+			rig := newTriageRig(t, o, red(o), red(o))
+			rig.verifyCmd = tt.verifyCmd
+			out, err := rig.triage(rig.repo, "base")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if out.Triage.Verdict != TriageVerdictRegression || !reflect.DeepEqual(out.Triage.Regressions, []string{"p/a.TestA"}) {
+				t.Errorf("triage = %+v; want every failure a regression", out.Triage)
+			}
+			if len(out.Warnings) != 1 || !strings.Contains(out.Warnings[0], "every failure is treated as a regression") {
+				t.Errorf("Warnings = %q; want one fail-closed warning", out.Warnings)
+			}
+			if len(rig.repo.checkouts) != 0 || !reflect.DeepEqual(rig.cmds, []string{tt.verifyCmd}) {
+				t.Errorf("checkouts = %v, cmds = %q; want only the unchanged rerun", rig.repo.checkouts, rig.cmds)
+			}
+		})
+	}
+}
+
+// TestTriage_VerifyChainStoppedBeforeLastStepFailsClosed proves a pre-existing failure in an early && step is not excused:
+// the chain stopped there, so its later steps never ran at head.
+func TestTriage_VerifyChainStoppedBeforeLastStepFailsClosed(t *testing.T) {
+	o := failOutput("p/a", "TestA")
+	rig := newTriageRig(t, o, red(o), red(o))
+	rig.verifyCmd = "go test ./a/... && go test ./b/..."
+	out, err := rig.triage(rig.repo, "base")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Triage.Verdict != TriageVerdictRegression || len(out.Triage.PreExisting) != 0 {
+		t.Errorf("triage = %+v; want every failure a regression", out.Triage)
+	}
+	if len(out.Warnings) != 1 || !strings.Contains(out.Warnings[0], "stopped before its last step") {
+		t.Errorf("Warnings = %q; want the stopped-chain warning", out.Warnings)
+	}
+	if len(rig.repo.checkouts) != 0 {
+		t.Errorf("checkouts = %v; want no baseline run", rig.repo.checkouts)
+	}
+}
+
+// TestTriage_VerifyChainReachingLastStepComparesBaseline proves a red && chain whose rerun reached its last step is compared against the baseline:
+// the rerun runs the marker-instrumented chain, and the baseline runs the command unchanged.
+func TestTriage_VerifyChainReachingLastStepComparesBaseline(t *testing.T) {
+	o := failOutput("p/a", "TestA")
+	rig := newTriageRig(t, o, red(verifyChainMarker+"\n"+o), red(o))
+	rig.verifyCmd = "go vet ./... && go test ./..."
+	out, err := rig.triage(rig.repo, "base")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Triage.Verdict != TriageVerdictPreExisting || !reflect.DeepEqual(out.Triage.PreExisting, []string{"p/a.TestA"}) {
+		t.Errorf("triage = %+v; want pre-existing p/a.TestA", out.Triage)
+	}
+	want := []string{"go vet ./... && echo " + verifyChainMarker + " && go test ./...", rig.verifyCmd}
+	if !reflect.DeepEqual(rig.cmds, want) {
+		t.Errorf("cmds = %q; want %q", rig.cmds, want)
+	}
+}
+
+func TestInstrumentVerifyChain(t *testing.T) {
+	tests := []struct {
+		name       string
+		verifyCmd  string
+		want       string
+		wantReason bool
+	}{
+		{"single step is unchanged", "go test ./...", "go test ./...", false},
+		{"marker precedes the last step", "go vet ./... && go build ./... && go test ./...", "go vet ./... && go build ./... && echo " + verifyChainMarker + " && go test ./...", false},
+		{"semicolon", "go vet ./...; go test ./...", "", true},
+		{"pipe", "go test ./... | tee out", "", true},
+		{"or", "go vet ./... || true", "", true},
+		{"background ampersand", "go vet ./... & go test ./...", "", true},
+		{"stderr redirect", "go test ./... 2>&1", "", true},
+		{"subshell", "(go test ./...)", "", true},
+		{"command substitution", "go test $(go list ./...)", "", true},
+		{"quoted ampersands", "go test -run 'A&&B' ./...", "", true},
+		{"negation", "! go test ./...", "", true},
+		{"inline comment", "go test ./... # all", "", true},
+		{"empty step", "go vet ./... && && go test ./...", "", true},
+		{"failfast flag", "go test -failfast ./...", "", true},
+		{"failfast with value", "go test -failfast=true ./...", "", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, reason := instrumentVerifyChain(tt.verifyCmd)
+			if got != tt.want || (reason != "") != tt.wantReason {
+				t.Errorf("instrumentVerifyChain(%q) = %q, %q; want %q, reason %v", tt.verifyCmd, got, reason, tt.want, tt.wantReason)
+			}
+		})
 	}
 }
 
