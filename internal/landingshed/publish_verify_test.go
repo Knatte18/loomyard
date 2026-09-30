@@ -60,8 +60,8 @@ func failOnGitHubClient(t *testing.T) {
 func TestPublishVerify_TreeChangedPass(t *testing.T) {
 	fx := newPublishVerifyFixture(t, "go test ./...", false)
 	outcome, _, err := fx.call(t)
-	if err != nil || outcome != shedengine.Awaiting {
-		t.Fatalf("Call() = %q, %v; want Awaiting, nil", outcome, err)
+	if err != nil || outcome != shedengine.Done {
+		t.Fatalf("Call() = %q, %v; want Done, nil", outcome, err)
 	}
 	if !fx.pushed {
 		t.Error("push did not run")
@@ -101,8 +101,8 @@ func TestPublishVerify_TreeChangedFail(t *testing.T) {
 func TestPublishVerify_UpToDateNoMarker(t *testing.T) {
 	fx := newPublishVerifyFixture(t, "go test ./...", true)
 	outcome, _, err := fx.call(t)
-	if err != nil || outcome != shedengine.Awaiting {
-		t.Fatalf("Call() = %q, %v; want Awaiting, nil", outcome, err)
+	if err != nil || outcome != shedengine.Done {
+		t.Fatalf("Call() = %q, %v; want Done, nil", outcome, err)
 	}
 	if fx.gate.fake.calls != 0 {
 		t.Errorf("runner called %d times; want 0", fx.gate.fake.calls)
@@ -117,8 +117,8 @@ func TestPublishVerify_UpToDateWithMarker(t *testing.T) {
 		fx := newPublishVerifyFixture(t, "go test ./...", true)
 		fx.gate.seedMarker(t)
 		outcome, _, err := fx.call(t)
-		if err != nil || outcome != shedengine.Awaiting {
-			t.Fatalf("Call() = %q, %v; want Awaiting, nil", outcome, err)
+		if err != nil || outcome != shedengine.Done {
+			t.Fatalf("Call() = %q, %v; want Done, nil", outcome, err)
 		}
 		if fx.gate.fake.calls != 1 || !fx.pushed || fx.gate.markerExists(t) {
 			t.Errorf("calls=%d pushed=%v marker=%v; want 1, true, false", fx.gate.fake.calls, fx.pushed, fx.gate.markerExists(t))
@@ -156,8 +156,8 @@ func TestPublishVerify_EmptyCommand(t *testing.T) {
 		fx := newPublishVerifyFixture(t, "", false)
 		buf := captureLogOutput(t)
 		outcome, _, err := fx.call(t)
-		if err != nil || outcome != shedengine.Awaiting {
-			t.Fatalf("Call() = %q, %v; want Awaiting, nil", outcome, err)
+		if err != nil || outcome != shedengine.Done {
+			t.Fatalf("Call() = %q, %v; want Done, nil", outcome, err)
 		}
 		if !fx.pushed || fx.gate.markerExists(t) || fx.gate.fake.calls != 0 {
 			t.Errorf("pushed=%v marker=%v calls=%d; want true, false, 0", fx.pushed, fx.gate.markerExists(t), fx.gate.fake.calls)
@@ -171,8 +171,8 @@ func TestPublishVerify_EmptyCommand(t *testing.T) {
 		fx.gate.seedMarker(t)
 		buf := captureLogOutput(t)
 		outcome, _, err := fx.call(t)
-		if err != nil || outcome != shedengine.Awaiting {
-			t.Fatalf("Call() = %q, %v; want Awaiting, nil", outcome, err)
+		if err != nil || outcome != shedengine.Done {
+			t.Fatalf("Call() = %q, %v; want Done, nil", outcome, err)
 		}
 		if !fx.pushed || fx.gate.markerExists(t) || fx.gate.fake.calls != 0 {
 			t.Errorf("pushed=%v marker=%v calls=%d; want true, false, 0", fx.pushed, fx.gate.markerExists(t), fx.gate.fake.calls)
@@ -251,18 +251,5 @@ func TestPublishVerify_NoPRRequiredRunsNoVerify(t *testing.T) {
 	}
 	if fx.gate.fake.calls != 0 {
 		t.Errorf("runner called %d times; want 0", fx.gate.fake.calls)
-	}
-}
-
-func TestPublishVerify_ApprovalPathRunsNoVerify(t *testing.T) {
-	fx := newApprovalFixture(t, `[{"number":7,"state":"open","head":{"sha":"aaa"}}]`, &Approval{PRNumber: 7, HeadSHA: "aaa", ApprovedAt: "2026-01-01T00:00:00Z"}, nil)
-	gate := newGateFixture(t, "go test ./...", nil)
-	fx.p.gate = gate.gate
-	outcome, _, err := fx.p.Call(context.Background())
-	if err != nil || outcome != shedengine.Done {
-		t.Fatalf("Call() = %q, %v; want Done, nil", outcome, err)
-	}
-	if gate.fake.calls != 0 {
-		t.Errorf("runner called %d times; want 0", gate.fake.calls)
 	}
 }

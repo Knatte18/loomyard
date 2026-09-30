@@ -96,7 +96,7 @@ func writeSummary(t *testing.T, path, title, body string) {
 }
 
 // publishGitHubServer is a scripted httptest server standing in for the GitHub API: it answers a
-// pull-request list query and a pull-request create call, appending "list"/"create" to order (shared
+// pull-request list query, a create call and an edit call, appending "list"/"create"/"edit" to order (shared
 // with the push closure's own "push" append) so a test can assert relative call ordering.
 type publishGitHubServer struct {
 	server *httptest.Server
@@ -108,11 +108,15 @@ type publishGitHubServer struct {
 	createStatus  int
 	createBody    string
 	createdBodies []map[string]any
+
+	editStatus   int
+	editBody     string
+	editedBodies []map[string]any
 }
 
 func newPublishGitHubServer(t *testing.T, order *[]string) *publishGitHubServer {
 	t.Helper()
-	s := &publishGitHubServer{order: order, listStatus: http.StatusOK, listBody: "[]", createStatus: http.StatusCreated}
+	s := &publishGitHubServer{order: order, listStatus: http.StatusOK, listBody: "[]", createStatus: http.StatusCreated, editStatus: http.StatusOK, editBody: `{"number":7,"state":"open"}`}
 	s.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
@@ -125,6 +129,12 @@ func newPublishGitHubServer(t *testing.T, order *[]string) *publishGitHubServer 
 			s.createdBodies = append(s.createdBodies, raw)
 			w.WriteHeader(s.createStatus)
 			_, _ = w.Write([]byte(s.createBody))
+		case http.MethodPatch:
+			*order = append(*order, "edit")
+			raw, _ := jsonDecodeBody(r)
+			s.editedBodies = append(s.editedBodies, raw)
+			w.WriteHeader(s.editStatus)
+			_, _ = w.Write([]byte(s.editBody))
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
@@ -342,8 +352,8 @@ func runAndGetReason(t *testing.T, p *Publish) string {
 	if err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
 	}
-	if outcome != shedengine.Stuck && outcome != shedengine.Awaiting {
-		t.Fatalf("Call() outcome = %q; want %q or %q", outcome, shedengine.Stuck, shedengine.Awaiting)
+	if outcome != shedengine.Stuck {
+		t.Fatalf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
 	}
 	return requireReason(t, ptr)
 }
@@ -477,7 +487,7 @@ func TestPublish_CreatePRFails_WarnsWithActionOwnerRepoAndCause(t *testing.T) {
 	}
 }
 
-func TestPublish_NoExistingPR_CreatesAndReportsAwaiting(t *testing.T) {
+func TestPublish_NoExistingPR_CreatesAndReportsDone(t *testing.T) {
 	deps := newTestDeps(t)
 	writeSummary(t, deps.DescriptionPath, "My PR Title", "My PR body.")
 	var order []string
@@ -488,12 +498,12 @@ func TestPublish_NoExistingPR_CreatesAndReportsAwaiting(t *testing.T) {
 	srv := newPublishGitHubServer(t, &order)
 	srv.install(t)
 
-	outcome, ptr, err := p.Call(context.Background())
+	outcome, _, err := p.Call(context.Background())
 	if err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
 	}
-	if outcome != shedengine.Awaiting {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Awaiting)
+	if outcome != shedengine.Done {
+		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Done)
 	}
 
 	wantOrder := []string{"push", "list", "create"}
@@ -516,11 +526,14 @@ func TestPublish_NoExistingPR_CreatesAndReportsAwaiting(t *testing.T) {
 	if got["body"] != "\nMy PR body.\n" {
 		t.Errorf("created PR body = %v; want %q", got["body"], "\nMy PR body.\n")
 	}
-	requireReason(t, ptr)
 }
 
-func TestPublish_OpenPR_AwaitingNoCreate(t *testing.T) {
+// openPRPublish runs Publish against a server listing one open pull request with the given title
+// and body, and a change description of "New Title" / "New body.".
+func openPRPublish(t *testing.T, prTitle, prBody string) (shedengine.Outcome, error, *publishGitHubServer) {
+	t.Helper()
 	deps := newTestDeps(t)
+	writeSummary(t, deps.DescriptionPath, "New Title", "New body.")
 	var order []string
 	deps.PushBranch = func() error { order = append(order, "push"); return nil }
 	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
@@ -530,18 +543,79 @@ func TestPublish_OpenPR_AwaitingNoCreate(t *testing.T) {
 	// No "merged"/"merged_at" key at all: the real List Pull Requests endpoint never sets "merged"
 	// on an open PR and reports "merged_at": null (crucible round 3, F-R3-1) -- an absent key decodes
 	// to the same nil field either way.
-	srv.listBody = `[{"number":7,"state":"open"}]`
+	list, err := json.Marshal([]map[string]any{{"number": 7, "state": "open", "title": prTitle, "body": prBody}})
+	if err != nil {
+		t.Fatalf("marshal list body: %v", err)
+	}
+	srv.listBody = string(list)
 	srv.install(t)
 
 	outcome, _, err := p.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Awaiting {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Awaiting)
+	return outcome, err, srv
+}
+
+func TestPublish_OpenPR_DifferingDescription_EditsAndDone(t *testing.T) {
+	outcome, err, srv := openPRPublish(t, "Old Title", "Old body.")
+	if err != nil || outcome != shedengine.Done {
+		t.Fatalf("Call() = %q, %v; want Done, nil", outcome, err)
 	}
 	if len(srv.createdBodies) != 0 {
 		t.Errorf("created pull requests = %d; want 0 (an open PR already exists)", len(srv.createdBodies))
+	}
+	if len(srv.editedBodies) != 1 {
+		t.Fatalf("edit requests = %d; want 1", len(srv.editedBodies))
+	}
+	got := srv.editedBodies[0]
+	if got["title"] != "New Title" || got["body"] != "\nNew body.\n" {
+		t.Errorf("edit request = %v; want the new title and body", got)
+	}
+}
+
+func TestPublish_OpenPR_MatchingDescription_NoEditAndDone(t *testing.T) {
+	outcome, err, srv := openPRPublish(t, "New Title", "\nNew body.\n")
+	if err != nil || outcome != shedengine.Done {
+		t.Fatalf("Call() = %q, %v; want Done, nil", outcome, err)
+	}
+	if len(srv.createdBodies) != 0 || len(srv.editedBodies) != 0 {
+		t.Errorf("created = %d, edited = %d; want 0 and 0", len(srv.createdBodies), len(srv.editedBodies))
+	}
+}
+
+func TestPublish_OpenPR_EditFailure_TransientErrorOrStuck(t *testing.T) {
+	tests := []struct {
+		name      string
+		status    int
+		wantClass shedengine.TransientClass
+	}{
+		{"502 is an error", http.StatusBadGateway, shedengine.TransientGitHubAPI},
+		{"422 stays Stuck", http.StatusUnprocessableEntity, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			deps := newTestDeps(t)
+			writeSummary(t, deps.DescriptionPath, "New Title", "New body.")
+			var order []string
+			deps.PushBranch = func() error { order = append(order, "push"); return nil }
+			res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
+			p := &Publish{deps: deps, resolver: res}
+			srv := newPublishGitHubServer(t, &order)
+			srv.listBody = `[{"number":7,"state":"open","title":"Old","body":"Old"}]`
+			srv.editStatus = tt.status
+			srv.editBody = `{"message":"nope"}`
+			srv.install(t)
+
+			outcome, ptr, err := p.Call(context.Background())
+			if tt.wantClass == "" {
+				if err != nil || outcome != shedengine.Stuck {
+					t.Fatalf("Call() = %q, %v; want Stuck, nil", outcome, err)
+				}
+				requireReason(t, ptr)
+				return
+			}
+			if got := shedtransient.Class(err); got != tt.wantClass {
+				t.Errorf("Class(err) = %q; want %q (err = %v)", got, tt.wantClass, err)
+			}
+		})
 	}
 }
 
@@ -572,7 +646,7 @@ func TestPublish_ClosedAndMergedPR_Done(t *testing.T) {
 	}
 }
 
-func TestPublish_ClosedAndUnmergedPR_StuckDistinctFromOpen(t *testing.T) {
+func TestPublish_ClosedAndUnmergedPR_StuckNamesClosure(t *testing.T) {
 	deps := newTestDeps(t)
 	deps.PushBranch = func() error { return nil }
 	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
@@ -594,23 +668,8 @@ func TestPublish_ClosedAndUnmergedPR_StuckDistinctFromOpen(t *testing.T) {
 	}
 	closedUnmergedReason := requireReason(t, ptr)
 
-	// Re-run against an open PR and compare the returned reasons.
-	deps2 := newTestDeps(t)
-	deps2.PushBranch = func() error { return nil }
-	res2 := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
-	p2 := &Publish{deps: deps2, resolver: res2}
-	var order2 []string
-	srv2 := newPublishGitHubServer(t, &order2)
-	srv2.listBody = `[{"number":8,"state":"open"}]`
-	srv2.install(t)
-	_, ptr2, err := p2.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	openReason := requireReason(t, ptr2)
-
-	if closedUnmergedReason == openReason {
-		t.Errorf("closed-unmerged reason %q equals open-PR reason %q; want distinct", closedUnmergedReason, openReason)
+	if !strings.Contains(closedUnmergedReason, "closed without being merged") {
+		t.Errorf("closed-unmerged reason %q; want it to say the pull request was closed without being merged", closedUnmergedReason)
 	}
 }
 
@@ -733,8 +792,6 @@ func TestPublish_PRStateReasons_EndWithURL(t *testing.T) {
 		createBody string
 		want       string
 	}{
-		{"created", "[]", `{"number":7,"state":"open","html_url":"` + url + `"}`, "pull request created; awaiting review, then run `lyx loom approve` and `lyx loom start`: " + url},
-		{"already open", `[{"number":7,"state":"open","html_url":"` + url + `"}]`, "", "an open pull request already exists against parent branch \"main\"; run `lyx loom approve` and `lyx loom start` once it is reviewed: " + url},
 		{"closed unmerged", `[{"number":7,"state":"closed","html_url":"` + url + `"}]`, "", "the pull request was closed without being merged: " + url},
 	}
 	for _, tt := range tests {
@@ -748,8 +805,8 @@ func TestPublish_PRStateReasons_EndWithURL(t *testing.T) {
 }
 
 func TestPublish_PRStateReason_NoURL_IsBareText(t *testing.T) {
-	got := publishReasonFor(t, "[]", `{"number":7,"state":"open"}`)
-	if got != "pull request created; awaiting review, then run `lyx loom approve` and `lyx loom start`" {
+	got := publishReasonFor(t, `[{"number":7,"state":"closed"}]`, "")
+	if got != "the pull request was closed without being merged" {
 		t.Errorf("reason = %q; want the bare text with no suffix", got)
 	}
 }
@@ -797,154 +854,6 @@ func TestFindPullRequest_QueryParametersAndEmptyList(t *testing.T) {
 		if got.Get(k) != v {
 			t.Errorf("query %s = %q, want %q", k, got.Get(k), v)
 		}
-	}
-}
-
-// approvalFixture is a Publish over a written approval record, a fake GitHub server answering the
-// list query with listBody, and a resolver and push that record whether they were called.
-type approvalFixture struct {
-	p        *Publish
-	res      *recordingResolver
-	order    []string
-	taskHead string
-}
-
-func newApprovalFixture(t *testing.T, listBody string, approval *Approval, taskHeadErr error) *approvalFixture {
-	t.Helper()
-	fx := &approvalFixture{taskHead: "aaa"}
-	deps := newTestDeps(t)
-	deps.ApprovalPath = filepath.Join(t.TempDir(), "approval.json")
-	if approval != nil {
-		if err := WriteApproval(deps.ApprovalPath, *approval); err != nil {
-			t.Fatalf("WriteApproval: %v", err)
-		}
-	}
-	deps.TaskHead = func() (string, error) { return fx.taskHead, taskHeadErr }
-	deps.PushBranch = func() error { fx.order = append(fx.order, "push"); return nil }
-	fx.res = &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
-	fx.p = &Publish{deps: deps, resolver: fx.res}
-	srv := newPublishGitHubServer(t, &fx.order)
-	srv.listBody = listBody
-	srv.install(t)
-	return fx
-}
-
-func TestPublish_MatchingApproval_DoneWithoutSync(t *testing.T) {
-	fx := newApprovalFixture(t, `[{"number":7,"state":"open","head":{"sha":"aaa"}}]`, &Approval{PRNumber: 7, HeadSHA: "aaa", ApprovedAt: "2026-01-01T00:00:00Z"}, nil)
-	outcome, _, err := fx.p.Call(context.Background())
-	if err != nil || outcome != shedengine.Done {
-		t.Fatalf("Call() = %q, %v; want Done, nil", outcome, err)
-	}
-	if fx.res.called {
-		t.Error("resolver was called; want no merge-in")
-	}
-	for _, o := range fx.order {
-		if o == "push" {
-			t.Error("push was called; want none")
-		}
-	}
-}
-
-// TestPublish_NilTaskHead_ApprovalIgnored pins the nil-is-absent seam: without TaskHead the record
-// is not consulted, so a matching approval takes the ordinary open-PR path instead.
-func TestPublish_NilTaskHead_ApprovalIgnored(t *testing.T) {
-	fx := newApprovalFixture(t, `[{"number":7,"state":"open","head":{"sha":"aaa"}}]`, &Approval{PRNumber: 7, HeadSHA: "aaa", ApprovedAt: "2026-01-01T00:00:00Z"}, nil)
-	fx.p.deps.TaskHead = nil
-	outcome, ptr, err := fx.p.Call(context.Background())
-	if err != nil || outcome != shedengine.Awaiting {
-		t.Fatalf("Call() = %q, %v; want Awaiting, nil", outcome, err)
-	}
-	if !strings.Contains(ptr.Reason, "already exists") {
-		t.Errorf("reason %q; want the ordinary already-open reason", ptr.Reason)
-	}
-	if !fx.res.called {
-		t.Error("resolver was not called; want the ordinary merge-in")
-	}
-}
-
-func TestPublish_MismatchedApproval_StuckNamesSHAs(t *testing.T) {
-	fx := newApprovalFixture(t, `[{"number":7,"state":"open","head":{"sha":"bbb"}}]`, &Approval{PRNumber: 7, HeadSHA: "aaa", ApprovedAt: "2026-01-01T00:00:00Z"}, nil)
-	outcome, ptr, err := fx.p.Call(context.Background())
-	if err != nil || outcome != shedengine.Stuck {
-		t.Fatalf("Call() = %q, %v; want Stuck, nil", outcome, err)
-	}
-	for _, want := range []string{"aaa", "bbb", "lyx loom approve"} {
-		if !strings.Contains(ptr.Reason, want) {
-			t.Errorf("reason %q lacks %q", ptr.Reason, want)
-		}
-	}
-	if fx.res.called {
-		t.Error("resolver was called; want no merge-in")
-	}
-}
-
-func TestPublish_MismatchedApproval_ReasonNamesEachDifference(t *testing.T) {
-	tests := []struct {
-		name, listBody, taskHead, want string
-	}{
-		{"local head", `[{"number":7,"state":"open","head":{"sha":"aaa"}}]`, "ccc", "local task head is now ccc"},
-		{"pr number", `[{"number":8,"state":"open","head":{"sha":"aaa"}}]`, "aaa", "open pull request is now #8"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			fx := newApprovalFixture(t, tt.listBody, &Approval{PRNumber: 7, HeadSHA: "aaa", ApprovedAt: "2026-01-01T00:00:00Z"}, nil)
-			fx.taskHead = tt.taskHead
-			outcome, ptr, err := fx.p.Call(context.Background())
-			if err != nil || outcome != shedengine.Stuck {
-				t.Fatalf("Call() = %q, %v; want Stuck, nil", outcome, err)
-			}
-			if !strings.Contains(ptr.Reason, tt.want) {
-				t.Errorf("reason %q lacks %q", ptr.Reason, tt.want)
-			}
-		})
-	}
-}
-
-func TestPublish_ApprovalOverMergedPR_Done(t *testing.T) {
-	fx := newApprovalFixture(t, `[{"number":7,"state":"closed","merged_at":"2026-01-01T00:00:00Z","head":{"sha":"zzz"}}]`, &Approval{PRNumber: 7, HeadSHA: "aaa", ApprovedAt: "2026-01-01T00:00:00Z"}, nil)
-	outcome, _, err := fx.p.Call(context.Background())
-	if err != nil || outcome != shedengine.Done {
-		t.Fatalf("Call() = %q, %v; want Done, nil", outcome, err)
-	}
-}
-
-func TestPublish_ApprovalOverClosedPR_ClosedStuck(t *testing.T) {
-	fx := newApprovalFixture(t, `[{"number":7,"state":"closed","head":{"sha":"aaa"}}]`, &Approval{PRNumber: 7, HeadSHA: "aaa", ApprovedAt: "2026-01-01T00:00:00Z"}, nil)
-	outcome, ptr, err := fx.p.Call(context.Background())
-	if err != nil || outcome != shedengine.Stuck {
-		t.Fatalf("Call() = %q, %v; want Stuck, nil", outcome, err)
-	}
-	if !strings.Contains(ptr.Reason, "closed without being merged") {
-		t.Errorf("reason = %q; want the closed reason", ptr.Reason)
-	}
-}
-
-func TestPublish_NoApproval_MergedPRStillDone(t *testing.T) {
-	fx := newApprovalFixture(t, `[{"number":7,"state":"closed","merged_at":"2026-01-01T00:00:00Z"}]`, nil, nil)
-	outcome, _, err := fx.p.Call(context.Background())
-	if err != nil || outcome != shedengine.Done {
-		t.Fatalf("Call() = %q, %v; want Done, nil", outcome, err)
-	}
-}
-
-func TestPublish_MalformedApproval_StuckNamesFile(t *testing.T) {
-	fx := newApprovalFixture(t, "[]", nil, nil)
-	if err := os.WriteFile(fx.p.deps.ApprovalPath, []byte("{"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	outcome, ptr, err := fx.p.Call(context.Background())
-	if err != nil || outcome != shedengine.Stuck {
-		t.Fatalf("Call() = %q, %v; want Stuck, nil", outcome, err)
-	}
-	if !strings.Contains(ptr.Reason, fx.p.deps.ApprovalPath) || !strings.Contains(ptr.Reason, "lyx loom approve") {
-		t.Errorf("reason = %q; want the file and the verb named", ptr.Reason)
-	}
-}
-
-func TestPublish_TaskHeadError_ReturnedError(t *testing.T) {
-	fx := newApprovalFixture(t, `[{"number":7,"state":"open","head":{"sha":"aaa"}}]`, &Approval{PRNumber: 7, HeadSHA: "aaa", ApprovedAt: "2026-01-01T00:00:00Z"}, errors.New("git broke"))
-	if _, _, err := fx.p.Call(context.Background()); err == nil {
-		t.Fatal("Call() error = nil; want the TaskHead error")
 	}
 }
 
@@ -1035,63 +944,6 @@ func TestPublish_GitHubTransientFailures_ReturnClassifiedErrorAndWarn(t *testing
 				if !strings.Contains(logged, field) {
 					t.Errorf("log output = %q; want %s", logged, field)
 				}
-			}
-		})
-	}
-}
-
-// TestPublish_ApprovalQuery_TransientIsErrorBeforeSync pins checkApproval's split: a 503 on the approval-time pull-request query is an error that runs no merge-in and no push,
-// and a 422 keeps the Stuck verdict.
-func TestPublish_ApprovalQuery_TransientIsErrorBeforeSync(t *testing.T) {
-	tests := []struct {
-		name      string
-		status    int
-		wantClass shedengine.TransientClass
-	}{
-		{"503 is an error", http.StatusServiceUnavailable, shedengine.TransientGitHubAPI},
-		{"422 stays Stuck", http.StatusUnprocessableEntity, ""},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			deps := newTestDeps(t)
-			deps.ApprovalPath = filepath.Join(t.TempDir(), "approval.json")
-			if err := WriteApproval(deps.ApprovalPath, Approval{PRNumber: 7, HeadSHA: "aaa", ApprovedAt: "2026-01-01T00:00:00Z"}); err != nil {
-				t.Fatalf("WriteApproval: %v", err)
-			}
-			deps.TaskHead = func() (string, error) { return "aaa", nil }
-			var order []string
-			deps.PushBranch = func() error { order = append(order, "push"); return nil }
-			res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
-			p := &Publish{deps: deps, resolver: res}
-			srv := newPublishGitHubServer(t, &order)
-			srv.listStatus = tt.status
-			srv.listBody = `{"message":"nope"}`
-			srv.install(t)
-			buf := captureLogOutput(t)
-
-			outcome, _, err := p.Call(context.Background())
-			if !strings.Contains(buf.String(), "action=\"query existing pull request\"") {
-				t.Errorf("log output = %q; want the warn line", buf.String())
-			}
-			if res.called {
-				t.Error("resolver was called; want no merge-in")
-			}
-			for _, o := range order {
-				if o == "push" {
-					t.Error("push was called; want none")
-				}
-			}
-			if tt.wantClass == "" {
-				if err != nil || outcome != shedengine.Stuck {
-					t.Errorf("Call() = %q, %v; want Stuck, nil", outcome, err)
-				}
-				return
-			}
-			if got := shedtransient.Class(err); got != tt.wantClass {
-				t.Errorf("Class(err) = %q; want %q (err = %v)", got, tt.wantClass, err)
-			}
-			if err != nil && !strings.Contains(err.Error(), "query existing pull request for the approval") {
-				t.Errorf("err = %v; want the approval action text", err)
 			}
 		})
 	}
