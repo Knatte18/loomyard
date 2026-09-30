@@ -106,25 +106,25 @@ func writeLaunchScript(path, content string) error {
 		return err
 	}
 	tmpName := tmp.Name()
-	fail := func(err error) error {
+	renamed := false
+	defer func() {
+		if !renamed {
+			_ = os.Remove(tmpName)
+		}
+	}()
+	if _, err := tmp.WriteString(content); err != nil {
 		_ = tmp.Close()
-		_ = os.Remove(tmpName)
 		return err
 	}
-	if _, err := tmp.WriteString(content); err != nil {
-		return fail(err)
-	}
 	if err := tmp.Close(); err != nil {
-		_ = os.Remove(tmpName)
 		return err
 	}
 	if err := os.Chmod(tmpName, 0o644); err != nil {
-		_ = os.Remove(tmpName)
 		return err
 	}
 	if err := os.Rename(tmpName, path); err != nil {
-		_ = os.Remove(tmpName)
 		return err
 	}
+	renamed = true
 	return nil
 }
