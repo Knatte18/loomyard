@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -124,6 +125,49 @@ func TestInnerRun_AwaitingSpawnErrorWritesNoMarkerAndRetries(t *testing.T) {
 	}
 	if *spawnCalls != 2 {
 		t.Errorf("Spawn calls = %d; want 2 -- the next Call retries the spawn", *spawnCalls)
+	}
+}
+
+func TestInnerRun_AwaitingNotParkedRetriesWithoutMarkerThenResumes(t *testing.T) {
+	scratchDir := t.TempDir()
+	clock := &fakeClock{}
+	_, _, deps := newInnerRunDeps(nil, nil, awaitingStatus(), clock)
+	deps.ReadApproval = func() (ChildApproval, bool, error) {
+		return ChildApproval{ApprovedAt: "2026-01-01T10:00:00Z", HeadSHA: "abc"}, true, nil
+	}
+	// The child's driver parks after the second spawn attempt: the fake refuses until then.
+	spawnCalls := 0
+	deps.Spawn = func(ctx context.Context) error {
+		spawnCalls++
+		if spawnCalls <= 2 {
+			return fmt.Errorf("%w: exit status 1", ErrChildNotParked)
+		}
+		return nil
+	}
+	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
+
+	for i := 1; i <= 2; i++ {
+		outcome, ptr, err := producer.Call(context.Background())
+		if err != nil || outcome != shedengine.Stuck || !ptr.BudgetExempt {
+			t.Fatalf("Call() %d = %v %+v %v; want an exempt Stuck", i, outcome, ptr, err)
+		}
+		if !strings.Contains(ptr.Reason, "not parked") {
+			t.Errorf("Call() %d Reason = %q; want it to name the unparked driver", i, ptr.Reason)
+		}
+		if _, statErr := os.Stat(approvalActedFile(scratchDir, "innerrun")); !os.IsNotExist(statErr) {
+			t.Fatalf("Call() %d: approval-acted marker stat = %v; want absent while the driver has not parked", i, statErr)
+		}
+	}
+
+	outcome, ptr, err := producer.Call(context.Background())
+	if err != nil || outcome != shedengine.Stuck || !strings.Contains(ptr.Reason, "resumed") {
+		t.Fatalf("third Call() = %v %+v %v; want the resume", outcome, ptr, err)
+	}
+	if spawnCalls != 3 {
+		t.Errorf("Spawn calls = %d; want 3", spawnCalls)
+	}
+	if _, statErr := os.Stat(approvalActedFile(scratchDir, "innerrun")); statErr != nil {
+		t.Errorf("approval-acted marker: %v; want it written once the resume succeeded", statErr)
 	}
 }
 

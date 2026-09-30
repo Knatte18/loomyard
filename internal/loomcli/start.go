@@ -103,6 +103,23 @@ func (c *loomCLI) startLLMDriverArm(driverAction driverStrandAction, driverGUID 
 	return run, nil
 }
 
+// runHaltedAtHandBack returns the run's persisted state when it is one a parking driver parks at (awaiting, blocked, paused or failed), and "" otherwise.
+// An absent status file returns "": nothing says the run halted.
+func (c *loomCLI) runHaltedAtHandBack() (shedengine.State, error) {
+	st, found, err := state.ReadJSONStrict[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
+	if err != nil {
+		return "", err
+	}
+	if !found {
+		return "", nil
+	}
+	switch st.State {
+	case shedengine.StateAwaiting, shedengine.StateBlocked, shedengine.StatePaused, shedengine.StateFailed:
+		return st.State, nil
+	}
+	return "", nil
+}
+
 // runDriverSpawnAndWait performs steps 5 and 6 of the bootstrap: it probes the run lock and the
 // driver strand table once, decides via mustSpawnDriver whether a spawn is needed, and -- when one
 // is -- branches on driver into the go arm's detached spawn and run-lock handshake (both
@@ -113,6 +130,8 @@ func (c *loomCLI) startLLMDriverArm(driverAction driverStrandAction, driverGUID 
 // Before any spawn it removes a stale park marker (shedrun.ParkMarker).
 // When no spawn is needed and the driver strand is live with the marker present, the driver is parked,
 // so it spawns nothing and resumes that driver through resumeParkedDriver instead.
+// A live strand with no marker over a run halted at a hand-back is refused with the shedrun.StartNotParkedKind kind, since that driver has not parked yet;
+// over a running run it is a no-op, since the driver is working.
 //
 // lockHeld is the go arm's handshake seam, built by the caller over the real run lock in production;
 // a test substitutes a counting fake to prove the handshake is never consulted on an llm-seeded
@@ -162,6 +181,21 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 			if err := c.resumeParkedDriver(driverGUID); err != nil {
 				_ = bootstrapLock.Release()
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
+				return false
+			}
+		} else {
+			// No marker: a running run's driver is working, so there is nothing to do.
+			// A run halted at a hand-back means the driver is between its stop and its park, and a silent success here would resume nothing.
+			handBack, err := c.runHaltedAtHandBack()
+			if err != nil {
+				_ = bootstrapLock.Release()
+				clihelp.SetExit(ctx, output.Err(out, err.Error()))
+				return false
+			}
+			if handBack != "" {
+				_ = bootstrapLock.Release()
+				msg := "loom: the driver has not parked yet (the run is " + string(handBack) + " and its driver is still writing its stop report and committing its records); retry `lyx loom start` in a few seconds"
+				clihelp.SetExit(ctx, output.ErrFields(out, msg, map[string]any{"kind": shedrun.StartNotParkedKind}))
 				return false
 			}
 		}
@@ -298,7 +332,12 @@ func (c *loomCLI) startCmd() *cobra.Command {
      seed's recorded choice, never a flag on this command; a live ly-drive
      driver that parked at a hand-back is resumed by typing one line into its
      pane, and start refuses after a bounded wait when that pane is not
-     ready, leaving the driver parked
+     ready, since the driver may be busy having resumed on its own; a live
+     ly-drive driver over a run halted at a hand-back (awaiting, blocked,
+     paused or failed) that has not written its park marker yet is still
+     writing its stop report, so start refuses with the kind
+     "driver_not_parked" and is retried a few seconds later, while a live
+     driver over a running run is left working
   4. hand the terminal over, by where the command runs: attach to the
      session when $TMUX is unset; when $TMUX names reed's own tmux server,
      print the success envelope if this terminal is already in the task's

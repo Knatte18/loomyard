@@ -3,6 +3,7 @@ package loomcli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -15,8 +16,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
+	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/state"
 )
 
 // TestMustUseLLMDriverArm asserts the go driver value and an empty driver value both select the
@@ -282,7 +285,11 @@ func newTestSpawnAndWaitReceiver(t *testing.T, starter driverStarter, probe driv
 		registry:        modelspec.Registry{},
 		driverStarter:   starter,
 		driverPaneProbe: probe,
-		shedPaths:       shedbuild.ShedPaths{LockPath: filepath.Join(runLockDir, "run.lock")},
+		shedPaths: shedbuild.ShedPaths{
+			LockPath:       filepath.Join(runLockDir, "run.lock"),
+			StatusPath:     filepath.Join(runLockDir, "status.json"),
+			StatusLockPath: filepath.Join(runLockDir, "status.json.lock"),
+		},
 	}
 	bootstrapLockPath := filepath.Join(dir, "bootstrap.lock")
 	return c, bootstrapLockPath
@@ -556,6 +563,78 @@ func TestRunDriverSpawnAndWait_LiveDriverWithoutMarkerSendsNothing(t *testing.T)
 	}
 	if len(sender.texts) != 0 || starter.called {
 		t.Errorf("sent %d line(s), starter called = %v; want neither", len(sender.texts), starter.called)
+	}
+	_ = bootstrapLock.Release()
+}
+
+// writeTestRunState persists a status file in state st at the receiver's status path.
+func writeTestRunState(t *testing.T, c *loomCLI, st shedengine.State) {
+	t.Helper()
+	if err := state.WriteJSON(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, shedengine.Status{State: st}); err != nil {
+		t.Fatalf("write status: %v", err)
+	}
+}
+
+func TestRunDriverSpawnAndWait_LiveUnparkedDriverAtHandBackRefusesRetryably(t *testing.T) {
+	for _, st := range []shedengine.State{shedengine.StateAwaiting, shedengine.StateBlocked, shedengine.StatePaused, shedengine.StateFailed} {
+		t.Run(string(st), func(t *testing.T) {
+			starter := &fakeDriverStarter{}
+			sender := &fakeDriverSender{}
+			c, lockPath, marker := newResumeBranchReceiver(t, starter, &fakeDriverPaneProbeFull{strandsFn: parkedStrands(true)}, sender)
+			if err := os.Remove(marker); err != nil {
+				t.Fatalf("remove marker: %v", err)
+			}
+			writeTestRunState(t, c, st)
+
+			var out bytes.Buffer
+			bootstrapLock := acquireTestBootstrapLock(t, lockPath)
+			ok := c.runDriverSpawnAndWait(context.Background(), &out, shedrun.DriverLLM, bootstrapLock, noopLockHeld)
+
+			if ok {
+				t.Fatal("runDriverSpawnAndWait() = true; want a refusal while the driver has not parked")
+			}
+			var envelope struct {
+				OK    bool   `json:"ok"`
+				Kind  string `json:"kind"`
+				Error string `json:"error"`
+			}
+			if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
+				t.Fatalf("envelope %q: %v", out.String(), err)
+			}
+			if envelope.OK || envelope.Kind != shedrun.StartNotParkedKind {
+				t.Errorf("envelope = %+v; want ok=false kind=%q", envelope, shedrun.StartNotParkedKind)
+			}
+			for _, want := range []string{"not parked yet", "lyx loom start"} {
+				if !strings.Contains(envelope.Error, want) {
+					t.Errorf("error = %q; want substring %q", envelope.Error, want)
+				}
+			}
+			if len(sender.texts) != 0 || starter.called {
+				t.Errorf("sent %d line(s), starter called = %v; want neither", len(sender.texts), starter.called)
+			}
+			assertBootstrapLockReleased(t, lockPath)
+		})
+	}
+}
+
+func TestRunDriverSpawnAndWait_LiveDriverOverRunningRunIsANoOp(t *testing.T) {
+	starter := &fakeDriverStarter{}
+	sender := &fakeDriverSender{}
+	c, lockPath, marker := newResumeBranchReceiver(t, starter, &fakeDriverPaneProbeFull{strandsFn: parkedStrands(true)}, sender)
+	if err := os.Remove(marker); err != nil {
+		t.Fatalf("remove marker: %v", err)
+	}
+	writeTestRunState(t, c, shedengine.StateRunning)
+
+	var out bytes.Buffer
+	bootstrapLock := acquireTestBootstrapLock(t, lockPath)
+	ok := c.runDriverSpawnAndWait(context.Background(), &out, shedrun.DriverLLM, bootstrapLock, noopLockHeld)
+
+	if !ok {
+		t.Fatalf("runDriverSpawnAndWait() = false; want true (output %q)", out.String())
+	}
+	if out.Len() != 0 || len(sender.texts) != 0 || starter.called {
+		t.Errorf("output %q, sent %d line(s), starter called = %v; want none", out.String(), len(sender.texts), starter.called)
 	}
 	_ = bootstrapLock.Release()
 }

@@ -25,6 +25,11 @@ const driveReportsDirName = "drive-reports"
 // `lyx loom start` removes it when it resumes the driver, or before it spawns a fresh one.
 const ParkMarkerFileName = "driver-parked"
 
+// StartNotParkedKind is the envelope "kind" of the `lyx loom start` refusal for a live driver whose run has halted at a hand-back but whose park marker is not written yet.
+// That refusal is retryable: the driver is still writing its stop report and committing its records, and parks within seconds.
+// It is exported so battencli recognises the refusal by this one declared value rather than by its message text.
+const StartNotParkedKind = "driver_not_parked"
+
 // RunDir returns the path to the durable, fabric-synced directory holding a single run's
 // seed.json and status.json: the given *lyxcwd.Location's AnchorPath() joined with
 // lyxdirs.LyxDirName, shedDirName, and the run's directory segment (runSegment: the worktree slug

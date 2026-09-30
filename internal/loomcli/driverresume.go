@@ -50,7 +50,7 @@ func (c *loomCLI) resumeParkedDriver(guid string) error {
 	}
 	if sendErr != nil {
 		logger.Warn("loom: could not resume the parked driver", "guid", guid, "attempts", attempts, "err", sendErr)
-		return fmt.Errorf("loom: could not resume the parked driver after %d attempt(s): %w; run \"lyx loom start\" again once the driver's pane is ready", attempts, sendErr)
+		return fmt.Errorf("loom: could not deliver the resume line to the driver after %d attempt(s): %w; the driver may have resumed on its own (a re-step it starts itself removes the park marker), so check the run's status with \"lyx loom status\", and run \"lyx loom start\" again if it is still halted", attempts, sendErr)
 	}
 
 	if err := os.Remove(shedrun.ParkMarker(c.location, runID)); err != nil && !errors.Is(err, os.ErrNotExist) {
