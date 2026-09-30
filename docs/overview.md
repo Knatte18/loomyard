@@ -443,7 +443,7 @@ See the [Told-Geometry Invariant](../CONSTRAINTS.md#told-geometry-invariant) for
 - **`tokenvocab` is a shared leaf, not a stack layer** — `internal/tokenvocab` (the three-token registry + the `Render` compose over `internal/stencil`) sits beside `stencil` and `modelspec` as a general-purpose leaf the stack's modules consume, not a stage of the proc→reed→shuttle→burler→shed→loom chain itself. reed's status-line pipeline consumes it today;
   loom's prompt templates are expected to reuse the same `Render` compose later.
   See the `internal/tokenvocab` package documentation.
-- **the bootstrap** — `lyx loom start` (alias `lyx start`) brings up the worktree's tmux session, adds the `lyx loom status` strand (a 1-line top pane), spawns the per-hub watchdog daemon (best-effort), and spawns the driver the run's own seed selects: the Go driver **detached** (via `proc`, no TTY), or a Claude strand running ly-drive in this same reed session for the `llm` driver.
+- **the bootstrap** — `lyx loom start` (alias `lyx start`) brings up the worktree's tmux session, adds the `lyx loom status` strand (a fixed 3-row top band, `statusStrandFixedRows`, which fills the stack region while it is the only stack strand), spawns the per-hub watchdog daemon (best-effort), and spawns the driver the run's own seed selects: the Go driver **detached** (via `proc`, no TTY), or a Claude strand running ly-drive in this same reed session for the `llm` driver.
   Either way it then adds the operator's own strand and attaches the terminal to the session. A Go-driven loom run runs in the background;
   the reed view takes the foreground.
   A `.lyx/lyxrun.cmd` launcher makes it one click.
