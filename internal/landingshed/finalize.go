@@ -77,8 +77,8 @@ func NewFinalize(deps Deps) (*Finalize, error) {
 	if deps.OpenParentFabric == nil {
 		return nil, fmt.Errorf("landingshed: NewFinalize: Deps.OpenParentFabric must not be nil")
 	}
-	if deps.FinalSummaryPath == "" {
-		return nil, fmt.Errorf("landingshed: NewFinalize: Deps.FinalSummaryPath must not be empty")
+	if deps.DescriptionPath == "" {
+		return nil, fmt.Errorf("landingshed: NewFinalize: Deps.DescriptionPath must not be empty")
 	}
 
 	fabricHandle, err := deps.OpenFabric()
@@ -123,9 +123,9 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 	// parent-side mutation, so a missing or malformed artifact returns an error and the run never
 	// half-lands. This is never Stuck and never a silent fallback to an unset MergeOptions.Message --
 	// the composed message below is load-bearing for step 4's conclude commit.
-	summary, err := summaryparser.Parse(fz.deps.FinalSummaryPath)
+	summary, err := summaryparser.Parse(fz.deps.DescriptionPath)
 	if err != nil {
-		return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: parse summary artifact: %w", finalizeName, err)
+		return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: parse change description: %w", finalizeName, err)
 	}
 
 	// Step 1b: commit the product's own status file, so the pair carries no tracked modification

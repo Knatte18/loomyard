@@ -64,18 +64,18 @@ func (r *recordingResolver) Resolve(ctx context.Context, source string) (mergere
 }
 
 // newTestDeps returns a minimal Deps with sane defaults for a Publish test: a base-branch list
-// requiring a pull request, a told FinalSummaryPath pointing at a directory with no summary.md yet,
+// requiring a pull request, a told DescriptionPath pointing at a directory with no summary.md yet,
 // and a scratch dir under t.TempDir().
 func newTestDeps(t *testing.T) Deps {
 	t.Helper()
 	return Deps{
-		WorktreeRoot:     t.TempDir(),
-		TaskBranch:       "task-branch",
-		ParentBranch:     "main",
-		FinalSummaryPath: summaryparser.Path(t.TempDir()),
-		StencilsDir:      t.TempDir(),
-		ScratchDir:       filepath.Join(t.TempDir(), "scratch"),
-		OriginURL:        "https://github.com/acme/proj.git",
+		WorktreeRoot:    t.TempDir(),
+		TaskBranch:      "task-branch",
+		ParentBranch:    "main",
+		DescriptionPath: summaryparser.Path(t.TempDir()),
+		StencilsDir:     t.TempDir(),
+		ScratchDir:      filepath.Join(t.TempDir(), "scratch"),
+		OriginURL:       "https://github.com/acme/proj.git",
 		Config: Config{
 			RequirePRToBase:    []string{"main"},
 			Squash:             true,
@@ -192,13 +192,13 @@ func TestNewPublish_RejectsNilPushBranch(t *testing.T) {
 	}
 }
 
-func TestNewPublish_RejectsEmptyFinalSummaryPath(t *testing.T) {
+func TestNewPublish_RejectsEmptyDescriptionPath(t *testing.T) {
 	deps := newTestDeps(t)
 	deps.OpenFabric = func() (*fabricengine.Fabric, error) { return nil, nil }
 	deps.PushBranch = func() error { return nil }
-	deps.FinalSummaryPath = ""
+	deps.DescriptionPath = ""
 	if _, err := NewPublish(deps); err == nil {
-		t.Fatal("NewPublish() error = nil; want an error naming Deps.FinalSummaryPath")
+		t.Fatal("NewPublish() error = nil; want an error naming Deps.DescriptionPath")
 	}
 }
 
@@ -443,7 +443,7 @@ func TestPublish_QueryExistingPRFails_WarnsWithActionOwnerRepoAndCause(t *testin
 // site's own logger.Warn line must carry action, owner, repo, and cause.
 func TestPublish_CreatePRFails_WarnsWithActionOwnerRepoAndCause(t *testing.T) {
 	deps := newTestDeps(t)
-	writeSummary(t, deps.FinalSummaryPath, "My PR Title", "My PR body.")
+	writeSummary(t, deps.DescriptionPath, "My PR Title", "My PR body.")
 	var order []string
 	deps.PushBranch = func() error { order = append(order, "push"); return nil }
 	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
@@ -477,7 +477,7 @@ func TestPublish_CreatePRFails_WarnsWithActionOwnerRepoAndCause(t *testing.T) {
 
 func TestPublish_NoExistingPR_CreatesAndReportsStuck(t *testing.T) {
 	deps := newTestDeps(t)
-	writeSummary(t, deps.FinalSummaryPath, "My PR Title", "My PR body.")
+	writeSummary(t, deps.DescriptionPath, "My PR Title", "My PR body.")
 	var order []string
 	deps.PushBranch = func() error { order = append(order, "push"); return nil }
 	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
@@ -625,7 +625,7 @@ func TestPublish_MissingSummary_FailsLoudlyNoCreate(t *testing.T) {
 
 	outcome, _, err := p.Call(context.Background())
 	if err == nil {
-		t.Fatal("Call() error = nil; want an error for a missing summary artifact")
+		t.Fatal("Call() error = nil; want an error for a missing change description")
 	}
 	if outcome != "" {
 		t.Errorf("Call() outcome = %q; want empty on a hard error", outcome)
@@ -672,7 +672,7 @@ func TestPublish_CreatedPRLogsInfo(t *testing.T) {
 	t.Cleanup(func() { logger.SetDurableSinkDir("") })
 
 	deps := newTestDeps(t)
-	writeSummary(t, deps.FinalSummaryPath, "My PR Title", "My PR body.")
+	writeSummary(t, deps.DescriptionPath, "My PR Title", "My PR body.")
 	var order []string
 	deps.PushBranch = func() error { order = append(order, "push"); return nil }
 	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
@@ -709,7 +709,7 @@ func publishReasonFor(t *testing.T, listBody, createBody string) string {
 	t.Helper()
 	deps := newTestDeps(t)
 	deps.PushBranch = func() error { return nil }
-	writeSummary(t, deps.FinalSummaryPath, "My PR Title", "My PR body.")
+	writeSummary(t, deps.DescriptionPath, "My PR Title", "My PR body.")
 	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
 	p := &Publish{deps: deps, resolver: res}
 

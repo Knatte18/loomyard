@@ -36,11 +36,12 @@ The file is strictly decoded — unknown fields are rejected — and follows arc
 
 ## The summary artifact — `_lyx/webster/summary.md`
 
-The artifact's format, validation, and consumers are pinned producer-agnostically in [final-summary-spec.md](final-summary-spec.md); this section states only webster's own writer-side additions.
+webster's `summary.md` is the run record: it no longer reaches landing directly, since landing reads the change description loom's `Describe` row writes instead.
+The format and validation it shares are pinned producer-agnostically in [final-summary-spec.md](final-summary-spec.md); this section states only webster's own writer-side additions.
 It is required and fail-loud only when `outcome: done`, and follows the same archive-never-refuse discipline as every other stale artifact.
-See [final-summary-spec.md](final-summary-spec.md) for both of its consumers, because a long-lived Master session is the only party with full oversight of what actually shipped.
+A long-lived Master session is the only party with full oversight of what actually shipped, which is why it writes the run record.
 
-A `summary.md` may additionally carry an appended `## Integration suite failed` section naming the bisect-localized offending card and its commit SHA — `internal/websterengine`'s `AppendIntegrationFailure` writes it as the document half of an integration-failure escalation, and it reaches the consumer because Publish passes the parsed body, appended section included, as the pull request's own body field.
+A `summary.md` may additionally carry an appended `## Integration suite failed` section naming the bisect-localized offending card and its commit SHA — `internal/websterengine`'s `AppendIntegrationFailure` writes it as the document half of an integration-failure escalation, and it reaches the PR reviewer because the `Describe` stencil carries it into the change description as a check item, not because Publish passes `summary.md` through.
 The bisect mechanism that produces it stays webster-internal and is not described here.
 
 ## See also

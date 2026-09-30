@@ -59,18 +59,18 @@ func (m *recordingParentMerger) PushBranch(opts fabricengine.SyncOptions) (fabri
 }
 
 // newFinalizeDeps returns a minimal Deps for a Finalize test, with a well-formed final-summary
-// artifact already written at FinalSummaryPath -- Call's own top-of-Call parse (see finalize.go's
+// artifact already written at DescriptionPath -- Call's own top-of-Call parse (see finalize.go's
 // step 1a) requires one to exist for every test that does not override this field itself.
 func newFinalizeDeps(t *testing.T) Deps {
 	t.Helper()
 	summaryPath := summaryparser.Path(t.TempDir())
 	writeSummary(t, summaryPath, "A landing title", "A landing body.")
 	return Deps{
-		WorktreeRoot:     t.TempDir(),
-		TaskBranch:       "task-branch",
-		ParentBranch:     "main",
-		FinalSummaryPath: summaryPath,
-		ScratchDir:       filepath.Join(t.TempDir(), "scratch"),
+		WorktreeRoot:    t.TempDir(),
+		TaskBranch:      "task-branch",
+		ParentBranch:    "main",
+		DescriptionPath: summaryPath,
+		ScratchDir:      filepath.Join(t.TempDir(), "scratch"),
 		Config: Config{
 			RequirePRToBase:    []string{"main"},
 			Squash:             true,
@@ -107,13 +107,13 @@ func TestNewFinalize_RejectsNilOpenParentFabric(t *testing.T) {
 	}
 }
 
-func TestNewFinalize_RejectsEmptyFinalSummaryPath(t *testing.T) {
+func TestNewFinalize_RejectsEmptyDescriptionPath(t *testing.T) {
 	deps := newFinalizeDeps(t)
 	deps.OpenFabric = func() (*fabricengine.Fabric, error) { return nil, nil }
 	deps.OpenParentFabric = func() (*fabricengine.Fabric, error) { return nil, nil }
-	deps.FinalSummaryPath = ""
+	deps.DescriptionPath = ""
 	if _, err := NewFinalize(deps); err == nil {
-		t.Fatal("NewFinalize() error = nil; want an error naming Deps.FinalSummaryPath")
+		t.Fatal("NewFinalize() error = nil; want an error naming Deps.DescriptionPath")
 	}
 }
 
@@ -207,7 +207,7 @@ func TestFinalize_MergeOptionsCarriesComposedMessage(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			deps := newFinalizeDeps(t)
 			deps.Config.Squash = tt.squash
-			summary, err := summaryparser.Parse(deps.FinalSummaryPath)
+			summary, err := summaryparser.Parse(deps.DescriptionPath)
 			if err != nil {
 				t.Fatalf("summaryparser.Parse() error = %v; want nil", err)
 			}
@@ -241,7 +241,7 @@ func TestFinalize_MergeOptionsCarriesComposedMessage(t *testing.T) {
 // proving the top-of-Call parse runs before either.
 func TestFinalize_MissingSummaryArtifact_ErrorBeforeMergeOrCommit(t *testing.T) {
 	deps := newFinalizeDeps(t)
-	deps.FinalSummaryPath = filepath.Join(t.TempDir(), "summary.md")
+	deps.DescriptionPath = filepath.Join(t.TempDir(), "summary.md")
 	committed := false
 	deps.CommitStatus = func() error { committed = true; return nil }
 	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
@@ -250,7 +250,7 @@ func TestFinalize_MissingSummaryArtifact_ErrorBeforeMergeOrCommit(t *testing.T) 
 
 	outcome, _, err := fz.Call(context.Background())
 	if err == nil {
-		t.Fatal("Call() error = nil; want an error for a missing summary artifact")
+		t.Fatal("Call() error = nil; want an error for a missing change description")
 	}
 	if outcome != "" {
 		t.Errorf("Call() outcome = %q; want empty on a hard error", outcome)
@@ -268,8 +268,8 @@ func TestFinalize_MissingSummaryArtifact_ErrorBeforeMergeOrCommit(t *testing.T) 
 // but fails Parse's own validation rather than being absent.
 func TestFinalize_MalformedSummaryArtifact_ErrorBeforeMergeOrCommit(t *testing.T) {
 	deps := newFinalizeDeps(t)
-	deps.FinalSummaryPath = filepath.Join(t.TempDir(), "summary.md")
-	if err := os.WriteFile(deps.FinalSummaryPath, []byte("not a heading\n"), 0o644); err != nil {
+	deps.DescriptionPath = filepath.Join(t.TempDir(), "summary.md")
+	if err := os.WriteFile(deps.DescriptionPath, []byte("not a heading\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(malformed summary): %v", err)
 	}
 	committed := false
@@ -280,7 +280,7 @@ func TestFinalize_MalformedSummaryArtifact_ErrorBeforeMergeOrCommit(t *testing.T
 
 	outcome, _, err := fz.Call(context.Background())
 	if err == nil {
-		t.Fatal("Call() error = nil; want an error for a malformed summary artifact")
+		t.Fatal("Call() error = nil; want an error for a malformed change description")
 	}
 	if outcome != "" {
 		t.Errorf("Call() outcome = %q; want empty on a hard error", outcome)
@@ -320,7 +320,7 @@ func TestFinalize_MergeInRequired_RetriesExactlyOnce(t *testing.T) {
 // composed message -- no second assignment happens between the first attempt and the retry.
 func TestFinalize_MergeInRequired_RetryCarriesSameComposedMessage(t *testing.T) {
 	deps := newFinalizeDeps(t)
-	summary, err := summaryparser.Parse(deps.FinalSummaryPath)
+	summary, err := summaryparser.Parse(deps.DescriptionPath)
 	if err != nil {
 		t.Fatalf("summaryparser.Parse() error = %v; want nil", err)
 	}

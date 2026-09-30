@@ -5,7 +5,7 @@
 // parent branch. When the parent is absent from that list, Publish is a no-op: Done immediately, no
 // merge-in, no push, no GitHub call. When the parent is present, Publish syncs the task branch against
 // the parent through internal/mergeresolve, pushes it, and opens or refreshes a pull request from a
-// verbatim-dumped Webster summary artifact. Publish never returns Done once a pull request is open --
+// change description. Publish never returns Done once a pull request is open --
 // it returns Stuck instead, deliberately: a Done verdict there would let the driving engine advance
 // straight to Finalize and merge to the parent seconds after the pull request went up, defeating the
 // pull request entirely. Progress past an open pull request is out of this package's view: a human

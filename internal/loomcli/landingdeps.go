@@ -37,15 +37,15 @@ func landingDeps(
 	cfg landingshed.Config,
 ) landingshed.Deps {
 	return landingshed.Deps{
-		WorktreeRoot:     l.WorktreePath(),
-		TaskBranch:       taskBranch,
-		ParentBranch:     parentBranch,
-		FinalSummaryPath: summaryparser.Path(geom.WebsterDir),
-		StencilsDir:      geom.StencilsDir,
-		ScratchDir:       loomengine.LoomScratchDir(l),
-		OriginURL:        originURL,
-		PushSkipped:      pushSkipped,
-		PushBranch:       pushBranch,
+		WorktreeRoot:    l.WorktreePath(),
+		TaskBranch:      taskBranch,
+		ParentBranch:    parentBranch,
+		DescriptionPath: summaryparser.Path(loomengine.LandingDir(l)),
+		StencilsDir:     geom.StencilsDir,
+		ScratchDir:      loomengine.LoomScratchDir(l),
+		OriginURL:       originURL,
+		PushSkipped:     pushSkipped,
+		PushBranch:      pushBranch,
 		OpenFabric: func() (*fabricengine.Fabric, error) {
 			return fabricengine.Open(l)
 		},

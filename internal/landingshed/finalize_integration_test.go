@@ -181,7 +181,7 @@ func TestFinalize_ResolvesConflictAndSquashMergesIntoParent(t *testing.T) {
 		WorktreeRoot:     taskWarp,
 		TaskBranch:       "task",
 		ParentBranch:     "parent",
-		FinalSummaryPath: seedFinalSummary(t),
+		DescriptionPath:  seedFinalSummary(t),
 		StencilsDir:      seedConflictStencil(t),
 		ScratchDir:       scratchDir,
 		OpenFabric:       func() (*fabricengine.Fabric, error) { return openFabricAtLanding(t, taskWarp), nil },

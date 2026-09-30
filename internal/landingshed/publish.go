@@ -64,8 +64,8 @@ func NewPublish(deps Deps) (*Publish, error) {
 	if deps.PushBranch == nil {
 		return nil, fmt.Errorf("landingshed: NewPublish: Deps.PushBranch must not be nil")
 	}
-	if deps.FinalSummaryPath == "" {
-		return nil, fmt.Errorf("landingshed: NewPublish: Deps.FinalSummaryPath must not be empty")
+	if deps.DescriptionPath == "" {
+		return nil, fmt.Errorf("landingshed: NewPublish: Deps.DescriptionPath must not be empty")
 	}
 
 	fabricHandle, err := deps.OpenFabric()
@@ -171,9 +171,9 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 
 	// Step 8: branch on what the query found.
 	if len(prs) == 0 {
-		summary, err := summaryparser.Parse(p.deps.FinalSummaryPath)
+		summary, err := summaryparser.Parse(p.deps.DescriptionPath)
 		if err != nil {
-			return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: parse summary artifact: %w", publishName, err)
+			return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: parse change description: %w", publishName, err)
 		}
 
 		createCtx, createCancel := context.WithTimeout(ctx, publishGitHubTimeout)

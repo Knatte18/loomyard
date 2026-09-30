@@ -163,7 +163,7 @@ func testLandingDeps(dir string) landingshed.Deps {
 		WorktreeRoot:     dir,
 		TaskBranch:       "task-branch",
 		ParentBranch:     "fixture-parent",
-		FinalSummaryPath: summaryparser.Path(dir),
+		DescriptionPath:  summaryparser.Path(dir),
 		StencilsDir:      dir,
 		ScratchDir:       filepath.Join(dir, "landing-scratch"),
 		OriginURL:        "https://example.invalid/fixture/fixture.git",
