@@ -63,6 +63,11 @@ type orchCLI struct {
 	strands     strandOps
 	paths       orchengine.Paths
 	stencilsDir string
+
+	reed         *reedengine.Engine
+	reedUp       func() error
+	starter      sessionStarter
+	spawnWatcher func() error
 }
 
 // orchShuttleConfig returns cfg with the Agent-tool deny cleared and nothing else changed:
@@ -139,11 +144,15 @@ Every verb runs from the hub's prime worktree only.`,
 			c.strands = newReedStrandOps(reed)
 			c.paths = orchPaths(location)
 			c.stencilsDir = fabricengine.StencilsDir(location.HubPath)
+			c.reed = reed
+			c.reedUp = func() error { _, err := reed.Up(); return err }
+			c.starter = runnerSessionStarter{runner: c.runner}
+			c.spawnWatcher = c.spawnWatcherProcess
 			return nil
 		},
 	}
 
-	parent.AddCommand(c.statusCmd(), c.cycleCmd(), c.stopCmd(), c.watchCmd())
+	parent.AddCommand(c.startCmd(), c.statusCmd(), c.cycleCmd(), c.stopCmd(), c.watchCmd())
 	return parent
 }
 

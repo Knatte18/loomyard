@@ -131,7 +131,7 @@ func TestHelpTree_VerbModuleSubcommands(t *testing.T) {
 		{
 			name:     "orch",
 			module:   "orch",
-			wantSubs: []string{"status", "cycle", "stop"},
+			wantSubs: []string{"start", "status", "cycle", "stop"},
 		},
 	}
 
