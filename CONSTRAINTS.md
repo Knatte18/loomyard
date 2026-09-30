@@ -124,6 +124,9 @@ Every value in `internal/shedrecipe`'s registry constructs a `shedengine.ShedPro
 - No other production file names the `shed` segment or the `seed.json` filename in path-construction context.
 - No other package decodes or encodes the `Seed` struct.
 - A run-id is validated as a single path segment (`ValidateRunID`) before being joined onto any anchor.
+- `self` is an alias only `shedrun.ResolveRunID` interprets: it maps to the told location's worktree slug (`l.WorktreeName`), and a run's directory is named by that slug.
+  The one exception is a read-only legacy fallback in `shedrun`'s directory-segment resolution: when `_lyx/shed/<slug>/` is absent and `_lyx/shed/self/` exists, both spellings join `self`, so a run started before the rename keeps working with no on-disk migration.
+  No other package resolves `self`, and none joins `SelfRunID` onto a path itself.
 
 ## Driver Choice Single-Site Invariant
 

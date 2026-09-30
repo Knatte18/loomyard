@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/loomshed"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shell"
@@ -145,7 +146,7 @@ func (c *loomCLI) seedAndCommitBootstrap(slug, parentFlag string) (string, strin
 	// record's own comment already gives: WriteSeed above is idempotent, so a prior invocation that
 	// wrote the seed to disk but crashed before this step committed it self-heals on the very next
 	// call.
-	commitPaths := bootstrapCommitPaths()
+	commitPaths := bootstrapCommitPaths(c.location)
 	commitRec := fabricengine.NewMutations("")
 	commitMsg := fmt.Sprintf("loom: seed session bootstrap for %s", slug)
 	if _, _, err := fabricengine.CommitAnchoredPaths(commitRec, c.location, commitPaths, commitMsg, fabricengine.EnvSyncOptions()); err != nil {
@@ -189,8 +190,8 @@ func loomSeedFor(parent string, driver string) shedrun.Seed {
 // commits unconditionally: the status file, the seed, and the origin record. It is a pure
 // function, factored out for the same reason loomSeedFor is -- so a Tier 1 test can pin the
 // pathspec's exact shape without a real fabric behind it.
-func bootstrapCommitPaths() []string {
-	return []string{shedrun.StatusRel(shedrun.SelfRunID), shedrun.SeedRel(shedrun.SelfRunID), fabricengine.OriginRecordRel()}
+func bootstrapCommitPaths(location *lyxcwd.Location) []string {
+	return []string{shedrun.StatusRel(location, shedrun.SelfRunID), shedrun.SeedRel(location, shedrun.SelfRunID), fabricengine.OriginRecordRel()}
 }
 
 // ensureFrictionDirAfterSeed performs the once-per-task clear-and-create split immediately after

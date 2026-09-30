@@ -127,8 +127,8 @@ func TestCommitStatusSeam_Real_OrdinaryPathCommitsAndPushes(t *testing.T) {
 	if got := mustGitOut(t, weftSibling, "log", "-1", "--format=%s"); got != "loom: Discussion-Write -> running" {
 		t.Errorf("weft HEAD subject = %q; want %q", got, "loom: Discussion-Write -> running")
 	}
-	if got := mustGitOut(t, weftSibling, "show", "--name-only", "--format=", "HEAD"); !strings.Contains(got, shedrun.StatusRel(shedrun.SelfRunID)) {
-		t.Errorf("weft HEAD touched %q; want it to include %q", got, shedrun.StatusRel(shedrun.SelfRunID))
+	if got := mustGitOut(t, weftSibling, "show", "--name-only", "--format=", "HEAD"); !strings.Contains(got, shedrun.StatusRel(location, shedrun.SelfRunID)) {
+		t.Errorf("weft HEAD touched %q; want it to include %q", got, shedrun.StatusRel(location, shedrun.SelfRunID))
 	}
 	if got := mustGitOut(t, weftSibling, "log", "--oneline", "@{u}..HEAD"); got != "" {
 		t.Errorf("unpushed weft commits after the seam = %q; want none — the seam pushes synchronously", got)

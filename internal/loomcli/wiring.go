@@ -46,7 +46,7 @@ type commitStatusDeps struct {
 
 // loomCommitStatusDeps builds a commitStatusDeps over location and runID, filling each field from
 // fabric: MergeActive from fabricengine.MergeStateActive, Commit from
-// fabricengine.CommitAnchoredPaths scoped to shedrun.StatusRel(runID), and Push from
+// fabricengine.CommitAnchoredPaths scoped to shedrun.StatusRel(location, runID), and Push from
 // fabricengine.PushAnchored.
 func loomCommitStatusDeps(location *lyxcwd.Location, runID string) commitStatusDeps {
 	return commitStatusDeps{
@@ -57,7 +57,7 @@ func loomCommitStatusDeps(location *lyxcwd.Location, runID string) commitStatusD
 		// landingdeps.go's own CommitStatus closure does -- which is what makes a second call over
 		// an already-clean tracked path a no-op rather than a failure.
 		Commit: func(msg string) error {
-			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, []string{shedrun.StatusRel(runID)}, msg, fabricengine.EnvSyncOptions())
+			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, []string{shedrun.StatusRel(location, runID)}, msg, fabricengine.EnvSyncOptions())
 			return err
 		},
 		Push: func() error {

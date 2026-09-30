@@ -459,7 +459,7 @@ func seedAndCommitStatus(t *testing.T, loc *lyxcwd.Location, slug string) {
 		t.Fatalf("loomshed.Seed: %v", err)
 	}
 	rec := fabricengine.NewMutations("")
-	if _, _, err := fabricengine.CommitWeftPaths(rec, fabricengine.WeftWorktree(loc), loc.AnchorRel, []string{shedrun.StatusRel(shedrun.SelfRunID)}, "smoke: seed status", fabricengine.EnvSyncOptions()); err != nil {
+	if _, _, err := fabricengine.CommitWeftPaths(rec, fabricengine.WeftWorktree(loc), loc.AnchorRel, []string{shedrun.StatusRel(loc, shedrun.SelfRunID)}, "smoke: seed status", fabricengine.EnvSyncOptions()); err != nil {
 		t.Fatalf("commit seed: %v", err)
 	}
 }
@@ -494,7 +494,7 @@ func poisonStatusFile(t *testing.T, loc *lyxcwd.Location) {
 	}
 
 	rec := fabricengine.NewMutations("")
-	if _, _, err := fabricengine.CommitWeftPaths(rec, fabricengine.WeftWorktree(loc), loc.AnchorRel, []string{shedrun.StatusRel(shedrun.SelfRunID)}, "smoke: poison status file for driver-failure rig", fabricengine.EnvSyncOptions()); err != nil {
+	if _, _, err := fabricengine.CommitWeftPaths(rec, fabricengine.WeftWorktree(loc), loc.AnchorRel, []string{shedrun.StatusRel(loc, shedrun.SelfRunID)}, "smoke: poison status file for driver-failure rig", fabricengine.EnvSyncOptions()); err != nil {
 		t.Fatalf("commit poisoned status: %v", err)
 	}
 }
@@ -513,7 +513,7 @@ func poisonStatusFileMalformed(t *testing.T, loc *lyxcwd.Location) {
 		t.Fatalf("write malformed status: %v", err)
 	}
 	rec := fabricengine.NewMutations("")
-	if _, _, err := fabricengine.CommitWeftPaths(rec, fabricengine.WeftWorktree(loc), loc.AnchorRel, []string{shedrun.StatusRel(shedrun.SelfRunID)}, "smoke: malformed status file for driver-failure rig", fabricengine.EnvSyncOptions()); err != nil {
+	if _, _, err := fabricengine.CommitWeftPaths(rec, fabricengine.WeftWorktree(loc), loc.AnchorRel, []string{shedrun.StatusRel(loc, shedrun.SelfRunID)}, "smoke: malformed status file for driver-failure rig", fabricengine.EnvSyncOptions()); err != nil {
 		t.Fatalf("commit malformed status: %v", err)
 	}
 }
@@ -918,7 +918,7 @@ func TestSmokeBootstrap_CleanlinessOrderingAfterSeedCommit(t *testing.T) {
 	if afterCount != beforeCount+1 {
 		t.Errorf("weft commit count = %d; want exactly %d (the single seed commit)", afterCount, beforeCount+1)
 	}
-	wantFiles := []string{shedrun.StatusRel(shedrun.SelfRunID)}
+	wantFiles := []string{shedrun.StatusRel(loc, shedrun.SelfRunID)}
 	if changed := weftHeadChangedFiles(t, weftDir); !slices.Equal(changed, wantFiles) {
 		t.Errorf("weft HEAD changed files = %v; want exactly %v", changed, wantFiles)
 	}

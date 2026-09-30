@@ -24,7 +24,7 @@ func syntheticLocation(t *testing.T) *lyxcwd.Location {
 func TestRunDir(t *testing.T) {
 	l := syntheticLocation(t)
 	got := RunDir(l, "self")
-	want := filepath.Join(l.AnchorPath(), "_lyx", "shed", "self")
+	want := filepath.Join(l.AnchorPath(), "_lyx", "shed", l.WorktreeName)
 	if got != want {
 		t.Errorf("RunDir(l, %q) = %q; want %q", "self", got, want)
 	}
@@ -51,7 +51,7 @@ func TestStatusFile(t *testing.T) {
 func TestScratchDir(t *testing.T) {
 	l := syntheticLocation(t)
 	got := ScratchDir(l, "self")
-	want := filepath.Join(l.AnchorPath(), ".lyx", "shed", "self")
+	want := filepath.Join(l.AnchorPath(), ".lyx", "shed", l.WorktreeName)
 	if got != want {
 		t.Errorf("ScratchDir(l, %q) = %q; want %q", "self", got, want)
 	}
@@ -85,16 +85,18 @@ func TestLastCommitMarker(t *testing.T) {
 }
 
 func TestSeedRel(t *testing.T) {
-	got := SeedRel("self")
-	want := filepath.Join("_lyx", "shed", "self", "seed.json")
+	l := syntheticLocation(t)
+	got := SeedRel(l, "self")
+	want := filepath.Join("_lyx", "shed", l.WorktreeName, "seed.json")
 	if got != want {
 		t.Errorf("SeedRel(%q) = %q; want %q", "self", got, want)
 	}
 }
 
 func TestStatusRel(t *testing.T) {
-	got := StatusRel("self")
-	want := filepath.Join("_lyx", "shed", "self", "status.json")
+	l := syntheticLocation(t)
+	got := StatusRel(l, "self")
+	want := filepath.Join("_lyx", "shed", l.WorktreeName, "status.json")
 	if got != want {
 		t.Errorf("StatusRel(%q) = %q; want %q", "self", got, want)
 	}

@@ -8,6 +8,11 @@
 // package's seed.json is a different concern from either of those and this package does not touch
 // either of them.
 //
+// The literal "self" is an alias for the worktree's own slug: ResolveRunID maps it to the told
+// location's WorktreeName, and a run's directory is named by that slug.
+// When _lyx/shed/<slug>/ is absent and _lyx/shed/self/ exists, both spellings join the legacy "self"
+// directory, so a run started before the rename keeps working with no on-disk migration.
+//
 // Every constructor in this package is a plain filepath.Join onto a told *lyxcwd.Location's
 // AnchorPath(), per the Cwd Resolution Invariant: the package resolves no cwd of its own and spawns
 // no git.

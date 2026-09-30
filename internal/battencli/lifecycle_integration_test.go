@@ -342,7 +342,7 @@ func TestBattenIntegration_FourRowRun_SeedsChildCommitsAndTearsDown(t *testing.T
 	}
 
 	weftPath := h.PairWeftSibling(slug)
-	seedRel := filepath.ToSlash(shedrun.SeedRel(shedrun.SelfRunID))
+	seedRel := filepath.ToSlash(shedrun.SeedRel(childLocation, shedrun.SelfRunID))
 	committedData := gitShow(t, weftPath, "HEAD:"+seedRel)
 	if !bytes.Equal(committedData, seedData) {
 		t.Errorf("committed seed at HEAD:%s = %q; want it to match the working-tree seed %q", seedRel, committedData, seedData)
