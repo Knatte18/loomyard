@@ -157,7 +157,7 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 	// The weft answer is carried to step 12, where an archived leftover is replaced just before the push.
 	var weftOld weftLeftover
 	if !opts.SkipPush && !opts.SkipGit {
-		if err := probeWarpLeftover(l, warpBranch); err != nil {
+		if err := probeWarpLeftover(l, slug, warpBranch); err != nil {
 			return AddResult{}, err
 		}
 		weftOld, err = probeWeftLeftover(l, slug, weftBranch, weftBranchAlreadyExists)

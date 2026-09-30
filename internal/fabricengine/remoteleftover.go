@@ -130,7 +130,7 @@ func probeWeftLeftover(l *lyxcwd.Location, slug, weftBranch string, localExists 
 // probeWarpLeftover inspects the warp origin for a leftover warpBranch, run in the warp worktree.
 // It returns nil when the branch is absent or its tip equals or is an ancestor of the HEAD the new branch forks from.
 // It never fetches.
-func probeWarpLeftover(l *lyxcwd.Location, warpBranch string) error {
+func probeWarpLeftover(l *lyxcwd.Location, slug, warpBranch string) error {
 	dir := l.WorktreePath()
 	tip, err := remoteHeadTip(dir, warpBranch)
 	if err != nil {
@@ -146,7 +146,7 @@ func probeWarpLeftover(l *lyxcwd.Location, warpBranch string) error {
 	if ok {
 		return nil
 	}
-	return &ErrRemoteLeftover{Branch: warpBranch, RemoteTip: tip, kind: leftoverDivergedWarp}
+	return &ErrRemoteLeftover{Slug: slug, Branch: warpBranch, RemoteTip: tip, kind: leftoverDivergedWarp}
 }
 
 // remoteHeadTip returns the SHA of branch on originRemoteName as seen from dir, or "" when it is absent.

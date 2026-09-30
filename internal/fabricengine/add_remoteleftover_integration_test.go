@@ -174,7 +174,9 @@ func TestAdd_WarpLeftoverRefusedAtPreflight(t *testing.T) {
 	if err == nil {
 		t.Fatalf("Add succeeded; want a leftover refusal")
 	}
-	requireRemoteLeftover(t, err, slug)
+	if leftover := requireRemoteLeftover(t, err, slug); leftover.Slug != slug {
+		t.Errorf("ErrRemoteLeftover.Slug = %q; want %q", leftover.Slug, slug)
+	}
 	if branchExistsAt(t, f.Hub, slug) {
 		t.Errorf("local warp branch %q exists after a refused Add", slug)
 	}
