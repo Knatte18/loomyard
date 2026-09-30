@@ -52,24 +52,11 @@ func TestRun_NonZeroExit(t *testing.T) {
 		}
 	})
 	t.Run("Discard", func(t *testing.T) {
-		code, err := Run(context.Background(), "exit 3", t.TempDir(), discard{})
+		code, err := Run(context.Background(), "exit 3", t.TempDir(), io.Discard)
 		if err != nil || code != 3 {
 			t.Fatalf("Run = (%d, %v); want (3, nil)", code, err)
 		}
 	})
-}
-
-// discard is io.Discard by value, so the test also covers the general writer path;
-// the io.Discard special case is covered below.
-type discard struct{}
-
-func (discard) Write(p []byte) (int, error) { return len(p), nil }
-
-func TestRun_IoDiscard(t *testing.T) {
-	code, err := Run(context.Background(), "exit 3", t.TempDir(), ioDiscard())
-	if err != nil || code != 3 {
-		t.Fatalf("Run = (%d, %v); want (3, nil)", code, err)
-	}
 }
 
 func TestRun_WorkingDirectory(t *testing.T) {
@@ -128,5 +115,3 @@ func TestRun_Cancellation(t *testing.T) {
 		t.Errorf("log = %q; a cancellation must not warn", buf.String())
 	}
 }
-
-func ioDiscard() io.Writer { return io.Discard }
