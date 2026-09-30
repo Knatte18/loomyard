@@ -43,6 +43,21 @@
 // See this package's own routing and bounce-budget documentation for the full design and its
 // rationale; this package documentation states the contract, not the argument for it.
 //
+// # goto: a history-only outcome that moves a halted run
+//
+// Goto moves a halted run onto a named row and appends an entry whose outcome is OutcomeGoto.
+// That outcome is history-only: no producer returns it, and it is never a Call verdict.
+// The entry leaves the run paused, never running, so the next Run reads as an ordinary resume.
+// It also sets an episode boundary for the target's segment:
+// episodeStuckCount stops counting Stuck entries at a goto whose target shares the producer's Segment
+// (or is the producer itself when it has no Segment), so the moved-onto segment starts with a fresh bounce budget.
+// A goto whose target is missing from the producer list ends no episode.
+//
+// Two stops name goto as their way forward in a trailing `way forward:` clause:
+// the missing-producer refusal, which lists every valid producer name,
+// and the budget-exhausted reason, whose ReasonBounceBudgetExhausted stays its exact prefix.
+// Every refusal's way forward is tabulated in contracts/specs/refusal-spec.md, which this documentation links rather than restates.
+//
 // # Told, never derived
 //
 // Shed is told StatusPath, LockPath, and StatusLockPath and derives none of them; it resolves no cwd
