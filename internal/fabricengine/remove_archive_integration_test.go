@@ -1,14 +1,10 @@
 //go:build integration
 
-// remove_archive_integration_test.go covers Remove's archive step: before any mutation it tags the
-// pair's weft tip under archive/<slug>/ and pushes the tag to the weft origin, so the run records
-// committed on that branch outlive the branch itself.
-// It covers the tag's landing and its resumed reuse, the fail-closed shape of an unreachable origin,
-// the fact that neither force nor remote=false skips the step, the no-origin skip, and that a
-// rolled-back Add never archives.
+// remove_archive_integration_test.go covers Remove's archive step: before any mutation it tags the pair's weft tip under archive/<slug>/ and pushes the tag to the weft origin, so the run records committed on that branch outlive the branch itself.
+// It covers the tag's landing and its resumed reuse, the fail-closed shape of an unreachable origin, the fact that neither force nor remote=false skips the step, the no-origin skip, and that a rolled-back Add never archives.
 //
-// Every hub is built through hubforge.NewHub via newFabricFixture, with the hub's WeftBare as the
-// weft origin. Package fabricengine_test; shares the single TestMain in testmain_test.go.
+// Every hub is built through hubforge.NewHub via newFabricFixture, with the hub's WeftBare as the weft origin.
+// Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -54,8 +50,7 @@ func archiveTagsAt(t *testing.T, repoRoot string) []string {
 	return strings.Fields(out)
 }
 
-// TestRemove_ArchivesWeftTipBeforeTeardown covers the happy path: the tag on the origin points at the
-// tip carrying the committed _lyx file, and the result names it.
+// TestRemove_ArchivesWeftTipBeforeTeardown covers the happy path: the tag on the origin points at the tip carrying the committed _lyx file, and the result names it.
 func TestRemove_ArchivesWeftTipBeforeTeardown(t *testing.T) {
 	t.Parallel()
 
@@ -84,8 +79,7 @@ func TestRemove_ArchivesWeftTipBeforeTeardown(t *testing.T) {
 	}
 }
 
-// TestRemove_ResumedRemoveReusesArchiveTag covers a Remove refused after the archive and re-run on
-// the same tip: the second run finds its own tag and succeeds with the same name.
+// TestRemove_ResumedRemoveReusesArchiveTag covers a Remove refused after the archive and re-run on the same tip: the second run finds its own tag and succeeds with the same name.
 func TestRemove_ResumedRemoveReusesArchiveTag(t *testing.T) {
 	t.Parallel()
 
@@ -122,8 +116,7 @@ func TestRemove_ResumedRemoveReusesArchiveTag(t *testing.T) {
 	}
 }
 
-// TestRemove_UnreachableOriginFailsClosed covers an unreachable origin: Remove errors and leaves both
-// worktrees, the portal, the launchers and both branches in place.
+// TestRemove_UnreachableOriginFailsClosed covers an unreachable origin: Remove errors and leaves both worktrees, the portal, the launchers and both branches in place.
 func TestRemove_UnreachableOriginFailsClosed(t *testing.T) {
 	t.Parallel()
 
@@ -185,8 +178,7 @@ func TestRemove_ForceStillArchives(t *testing.T) {
 	}
 }
 
-// TestRemove_RemoteFalseStillPushesArchiveTag covers remote=false: the branch deletion stays local,
-// but the archive tag is still pushed.
+// TestRemove_RemoteFalseStillPushesArchiveTag covers remote=false: the branch deletion stays local, but the archive tag is still pushed.
 func TestRemove_RemoteFalseStillPushesArchiveTag(t *testing.T) {
 	t.Parallel()
 
@@ -212,8 +204,7 @@ func TestRemove_RemoteFalseStillPushesArchiveTag(t *testing.T) {
 	}
 }
 
-// TestRemove_NoOriginSkipsArchiveAndCompletes covers a weft repo with no origin: the removal
-// completes and the result carries the skip reason.
+// TestRemove_NoOriginSkipsArchiveAndCompletes covers a weft repo with no origin: the removal completes and the result carries the skip reason.
 func TestRemove_NoOriginSkipsArchiveAndCompletes(t *testing.T) {
 	t.Parallel()
 
@@ -239,8 +230,7 @@ func TestRemove_NoOriginSkipsArchiveAndCompletes(t *testing.T) {
 	}
 }
 
-// TestAddRollback_LeavesNoArchiveTag covers a rolled-back Add: it removes the weft branch it just
-// created without archiving, so no archive/ tag appears locally or on the origin.
+// TestAddRollback_LeavesNoArchiveTag covers a rolled-back Add: it removes the weft branch it just created without archiving, so no archive/ tag appears locally or on the origin.
 func TestAddRollback_LeavesNoArchiveTag(t *testing.T) {
 	t.Parallel()
 

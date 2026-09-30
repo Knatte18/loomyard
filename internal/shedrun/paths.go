@@ -1,9 +1,5 @@
-// paths.go declares the shed run-directory path constructors: the durable paths under _lyx (the run
-// directory, its seed and status files, and the drive-reports directory), the ephemeral paths under
-// .lyx, the anchor-relative paths for fabric commit pathspecs, and one hub-scoped ephemeral lock
-// that sits one level above any single run-id. Every constructor is a
-// plain filepath.Join onto the given *lyxcwd.Location's AnchorPath(), per the Cwd Resolution
-// Invariant -- none of them calls os.Getwd or any git command.
+// paths.go declares the shed run-directory path constructors: the durable paths under _lyx (the run directory, its seed and status files, and the drive-reports directory), the ephemeral paths under .lyx, the anchor-relative paths for fabric commit pathspecs, and one hub-scoped ephemeral lock that sits one level above any single run-id.
+// Every constructor is a plain filepath.Join onto the given *lyxcwd.Location's AnchorPath(), per the Cwd Resolution Invariant -- none of them calls os.Getwd or any git command.
 
 package shedrun
 
@@ -99,8 +95,7 @@ func DriveReportsDir(l *lyxcwd.Location, runID string) string {
 	return filepath.Join(RunDir(l, runID), driveReportsDirName)
 }
 
-// DriveReportsRel returns the worktree-anchor-relative form of DriveReportsDir's path: the join of
-// lyxdirs.LyxDirName, shedDirName, the run's directory segment under l, and driveReportsDirName.
+// DriveReportsRel returns the worktree-anchor-relative form of DriveReportsDir's path: the join of lyxdirs.LyxDirName, shedDirName, the run's directory segment under l, and driveReportsDirName.
 // It exists so a caller building a fabric commit pathspec never has to name a segment shedrun owns.
 func DriveReportsRel(l *lyxcwd.Location, runID string) string {
 	return filepath.Join(lyxdirs.LyxDirName, shedDirName, runSegment(l, runID), driveReportsDirName)

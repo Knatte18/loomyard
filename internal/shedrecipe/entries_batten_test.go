@@ -3,13 +3,7 @@
 // the shared Slug/ScratchDir/seam validation, plus innerRunEntry's own poll_interval_s config
 // coverage and seedChildEntry's own dedicated table below.
 //
-// Every seam the four batten entries validate -- CreateWorktree, PrimeLock.Acquire,
-// Teardown.Shutdown, Teardown.Remove, InnerRun.Spawn, InnerRun.ResolveStatus, InnerRun.ReadStatus,
-// InnerRun.ReadApproval, InnerRun.DriverAlive,
-// and the five SeedChild closures -- is a concrete func type, not an interface, so there is no
-// separate typed-nil-interface case to exercise beyond the plain-nil case requireSeam handles for a
-// reflect.Func value: a nil func value passed as any already reports Kind() == reflect.Func with
-// IsNil() true, the same detection path a typed-nil interface takes.
+// Every seam the four batten entries validate -- CreateWorktree, PrimeLock.Acquire, Teardown.Shutdown, Teardown.Remove, InnerRun.Spawn, InnerRun.ResolveStatus, InnerRun.ReadStatus, InnerRun.ReadApproval, InnerRun.DriverAlive, and the five SeedChild closures -- is a concrete func type, not an interface, so there is no separate typed-nil-interface case to exercise beyond the plain-nil case requireSeam handles for a reflect.Func value: a nil func value passed as any already reports Kind() == reflect.Func with IsNil() true, the same detection path a typed-nil interface takes.
 
 package shedrecipe
 
@@ -259,9 +253,7 @@ func TestInnerRunEntry_PollConfigKeys(t *testing.T) {
 	})
 }
 
-// TestInnerRunEntry_DriverExitGraceKey covers innerRunEntry's driver_exit_grace_s config key: absent
-// resolves to defaultInnerRunDriverExitGraceS, an explicit value builds successfully, and a negative
-// value is rejected naming the key.
+// TestInnerRunEntry_DriverExitGraceKey covers innerRunEntry's driver_exit_grace_s config key: absent resolves to defaultInnerRunDriverExitGraceS, an explicit value builds successfully, and a negative value is rejected naming the key.
 func TestInnerRunEntry_DriverExitGraceKey(t *testing.T) {
 	t.Run("DefaultIsNineHundred", func(t *testing.T) {
 		if defaultInnerRunDriverExitGraceS != 900 {

@@ -1,5 +1,4 @@
-// friction_test.go — untagged Tier-1 unit tests for LoomDurableDir, LoomFrictionDir,
-// LoomFrictionArchivePrefix and LoomFrictionLock.
+// friction_test.go — untagged Tier-1 unit tests for LoomDurableDir, LoomFrictionDir, LoomFrictionArchivePrefix and LoomFrictionLock.
 // Mirrors review_test.go's TestLoomReviewsDir shape: pure path arithmetic over a hand-built
 // lyxcwd.Location, no live hub, reed, or network involved.
 
@@ -14,8 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
-// subpathLocation returns a Location whose AnchorRel differs from "." to prove the accessors follow
-// the anchored subpath, not the bare worktree root.
+// subpathLocation returns a Location whose AnchorRel differs from "." to prove the accessors follow the anchored subpath, not the bare worktree root.
 func subpathLocation() *lyxcwd.Location {
 	return &lyxcwd.Location{
 		HubPath:      filepath.Join("home", "user", "repo-LYXHUB"),
@@ -24,8 +22,7 @@ func subpathLocation() *lyxcwd.Location {
 	}
 }
 
-// TestLoomDurableDir verifies LoomDurableDir sits under the durable _lyx tree at the anchor and that
-// LoomDurableDirRel is its anchor-relative suffix.
+// TestLoomDurableDir verifies LoomDurableDir sits under the durable _lyx tree at the anchor and that LoomDurableDirRel is its anchor-relative suffix.
 func TestLoomDurableDir(t *testing.T) {
 	l := subpathLocation()
 
@@ -41,8 +38,7 @@ func TestLoomDurableDir(t *testing.T) {
 	}
 }
 
-// TestLoomFrictionDir verifies LoomFrictionDir sits under the durable _lyx/loom tree, with its
-// parent equal to LoomDurableDir.
+// TestLoomFrictionDir verifies LoomFrictionDir sits under the durable _lyx/loom tree, with its parent equal to LoomDurableDir.
 func TestLoomFrictionDir(t *testing.T) {
 	l := subpathLocation()
 
@@ -67,8 +63,7 @@ func TestLoomFrictionArchivePrefix(t *testing.T) {
 	}
 }
 
-// TestLoomFrictionLock verifies the reflection lock stays ephemeral: under .lyx/loom, with its
-// parent equal to LoomScratchDir.
+// TestLoomFrictionLock verifies the reflection lock stays ephemeral: under .lyx/loom, with its parent equal to LoomScratchDir.
 func TestLoomFrictionLock(t *testing.T) {
 	l := subpathLocation()
 

@@ -180,10 +180,8 @@ func TestInnerRun_VerdictTable(t *testing.T) {
 	}
 }
 
-// TestInnerRun_HaltedAndDoneNeverStuck is the load-bearing assertion the static self-route depends
-// on: a halted child, and a done child whose driver is gone, must never itself be Stuck, since
-// ProducerDef.OnStuck is a static per-producer value and routes every Stuck from this row back to
-// itself with no per-verdict distinction possible. Every Stuck this row returns is a timed wait.
+// TestInnerRun_HaltedAndDoneNeverStuck is the load-bearing assertion the static self-route depends on: a halted child, and a done child whose driver is gone, must never itself be Stuck, since ProducerDef.OnStuck is a static per-producer value and routes every Stuck from this row back to itself with no per-verdict distinction possible.
+// Every Stuck this row returns is a timed wait.
 func TestInnerRun_HaltedAndDoneNeverStuck(t *testing.T) {
 	tests := []struct {
 		name   string

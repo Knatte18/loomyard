@@ -82,9 +82,7 @@ func TestWire_LazySeams(t *testing.T) {
 	}
 }
 
-// TestDriverAliveFrom covers driverAliveFrom's answers without tmux: an absent task worktree is
-// false without reading status, an absent reed session is false with no error, any other status
-// error is returned, and only a live loom-driver strand is true.
+// TestDriverAliveFrom covers driverAliveFrom's answers without tmux: an absent task worktree is false without reading status, an absent reed session is false with no error, any other status error is returned, and only a live loom-driver strand is true.
 func TestDriverAliveFrom(t *testing.T) {
 	boom := errors.New("boom")
 	status := func(res reedengine.StatusResult, err error) func() (reedengine.StatusResult, error) {
@@ -413,10 +411,7 @@ func TestCreateRefusal_LeftoverBranchRemedyNeverNamesCheckout(t *testing.T) {
 	}
 }
 
-// TestTeardownRefusal_RecordsRemedyNamesCommitRecordsNeverForce asserts an uncommitted-run-records
-// refusal is reworded to batten's own recovery -- commit the records in the task anchor, then
-// resume -- and never names --force, that a failed archive names the resume, and that every other
-// teardown error passes through unchanged.
+// TestTeardownRefusal_RecordsRemedyNamesCommitRecordsNeverForce asserts an uncommitted-run-records refusal is reworded to batten's own recovery -- commit the records in the task anchor, then resume -- and never names --force, that a failed archive names the resume, and that every other teardown error passes through unchanged.
 func TestTeardownRefusal_RecordsRemedyNamesCommitRecordsNeverForce(t *testing.T) {
 	const anchor = "/work/wts/some-slug"
 	dirty := fmt.Errorf("remove: %w", fabricengine.ErrPairSiblingDirty)

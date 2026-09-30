@@ -271,8 +271,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 				return StepResult{}, err
 			}
 			return StepResult{Producer: def.Name, Outcome: outcome, Output: output.Path, Next: st.CurrentProducer, State: StateBlocked, Reason: reason, History: nextHistory}, nil
-		// An exempt Stuck skips the budget comparison below: after N counted Stucks the count
-		// already reads N, so comparing would block the first exempt one.
+		// An exempt Stuck skips the budget comparison below: after N counted Stucks the count already reads N, so comparing would block the first exempt one.
 		// The count argument is st.History, the slice read at step 1, and never
 		// nextHistory: a post-append read shifts the boundary by one and would look
 		// like an off-by-one bug rather than the semantic change it would actually be.

@@ -1,5 +1,4 @@
-// budgetexempt_test.go covers the budget-exempt Stuck verdict: an exempt Stuck routes like any
-// Stuck but is neither counted toward, nor blocked by, its row's bounce budget.
+// budgetexempt_test.go covers the budget-exempt Stuck verdict: an exempt Stuck routes like any Stuck but is neither counted toward, nor blocked by, its row's bounce budget.
 
 package shedengine
 
@@ -10,9 +9,8 @@ import (
 	"testing"
 )
 
-// scriptedStuckShed wires a single self-bouncing row "Wait" with the given budget, whose producer
-// returns Stuck on every call with BudgetExempt taken in order from exempt (the last value
-// repeats). It returns the Shed and its status paths.
+// scriptedStuckShed wires a single self-bouncing row "Wait" with the given budget, whose producer returns Stuck on every call with BudgetExempt taken in order from exempt (the last value repeats).
+// It returns the Shed and its status paths.
 func scriptedStuckShed(t *testing.T, maxBounces int, exempt []bool) (shed *Shed, statusPath, statusLockPath string) {
 	t.Helper()
 	shed, statusPath, _, statusLockPath = newTestShed(t)
@@ -49,8 +47,7 @@ func TestStep_ExemptStuckRoutesAndPersistsFlag(t *testing.T) {
 
 func TestStep_ExemptStuckInterleavedWithinBudget(t *testing.T) {
 	const n = 2
-	// Two counted Stucks stay within budget however many exempt ones interleave; the next counted
-	// one (the (N+1)th) blocks.
+	// Two counted Stucks stay within budget however many exempt ones interleave; the next counted one (the (N+1)th) blocks.
 	script := []bool{true, false, true, true, false, true, true, false}
 	shed, statusPath, statusLockPath := scriptedStuckShed(t, n, script)
 
@@ -78,8 +75,7 @@ func TestStep_ExemptStuckInterleavedWithinBudget(t *testing.T) {
 
 func TestStep_ExemptStuckAfterBudgetFullySpent(t *testing.T) {
 	const n = 2
-	// N counted Stucks (all allowed), then an exempt one that must still route, then a counted one
-	// that blocks.
+	// N counted Stucks (all allowed), then an exempt one that must still route, then a counted one that blocks.
 	shed, _, _ := scriptedStuckShed(t, n, []bool{false, false, true, false})
 
 	for i := 0; i < 3; i++ {
@@ -158,8 +154,7 @@ func TestStep_NonStuckOutcomeIgnoresBudgetExempt(t *testing.T) {
 	}
 }
 
-// BenchmarkStep_LongHistory steps a self-bouncing row over a 5000-entry history, measuring the
-// per-step cost of rewriting a long status file on every exempt bounce.
+// BenchmarkStep_LongHistory steps a self-bouncing row over a 5000-entry history, measuring the per-step cost of rewriting a long status file on every exempt bounce.
 func BenchmarkStep_LongHistory(b *testing.B) {
 	shed, statusPath, _, statusLockPath := newTestShed(b)
 	shed.Producers = []ProducerDef{{

@@ -91,9 +91,8 @@ type CleanupBranchEntry struct {
 	// RemoteError is non-empty when the remote deletion was attempted and did not succeed. Its text
 	// always names the layer that said no — the gate's own refusal, or the remote deletion itself.
 	RemoteError string `json:"remote_error,omitempty"`
-	// ArchiveTag names the archive/<slug>/<tip> tag pushed to the weft origin before this branch was
-	// deleted; empty on a dry run, when no origin is configured, and when the archive failed. An
-	// archive failure sets Error and leaves the branch, local and remote, in place.
+	// ArchiveTag names the archive/<slug>/<tip> tag pushed to the weft origin before this branch was deleted; empty on a dry run, when no origin is configured, and when the archive failed.
+	// An archive failure sets Error and leaves the branch, local and remote, in place.
 	ArchiveTag string `json:"archive_tag,omitempty"`
 }
 
@@ -109,9 +108,8 @@ type CleanupResult struct {
 	// because RemoteError is the field the CLI switches its exit code on and a missing origin must
 	// exit 0.
 	RemoteSkippedReason string `json:"remote_skipped_reason,omitempty"`
-	// ArchiveSkippedReason carries a once-per-verb reason no archive tag was pushed — today only a
-	// weft repo with no origin remote, which makes every branch's archive skip; the branches are then
-	// deleted as usual. It is set from the first skip and never makes the verb exit non-zero.
+	// ArchiveSkippedReason carries a once-per-verb reason no archive tag was pushed — today only a weft repo with no origin remote, which makes every branch's archive skip; the branches are then deleted as usual.
+	// It is set from the first skip and never makes the verb exit non-zero.
 	ArchiveSkippedReason string `json:"archive_skipped_reason,omitempty"`
 }
 
@@ -124,9 +122,7 @@ type CleanupResult struct {
 // remote gates whether an orphan weft branch actually deleted locally is also deleted on the weft
 // repo's origin remote; see this file's header for the flag matrix. A remote deletion failure never
 // makes Cleanup return a non-nil error — it is recorded on the entry and the sweep continues.
-// Under apply, each orphan branch's tip is archived (archiveWeftTip) before the branch is deleted,
-// whatever remote says; an archive failure fills the entry's Error and keeps the branch, local and
-// remote, without aborting the sweep.
+// Under apply, each orphan branch's tip is archived (archiveWeftTip) before the branch is deleted, whatever remote says; an archive failure fills the entry's Error and keeps the branch, local and remote, without aborting the sweep.
 func (t *Topology) Cleanup(l *lyxcwd.Location, apply, force, remote bool) (res CleanupResult, err error) {
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
@@ -385,18 +381,15 @@ type PairBranchResult struct {
 	// RemoteSkippedReason is non-empty when no remote deletion was attempted, today only because the
 	// repository has no origin remote.
 	RemoteSkippedReason string `json:"remote_skipped_reason,omitempty"`
-	// ArchiveTag names the archive/<slug>/<tip> tag pushed to the weft origin before the branch was
-	// deleted; empty when nothing was archived.
+	// ArchiveTag names the archive/<slug>/<tip> tag pushed to the weft origin before the branch was deleted; empty when nothing was archived.
 	ArchiveTag string `json:"archive_tag,omitempty"`
-	// ArchiveSkippedReason is non-empty when no archive was attempted — today only a weft repo with
-	// no origin remote.
+	// ArchiveSkippedReason is non-empty when no archive was attempted — today only a weft repo with no origin remote.
 	ArchiveSkippedReason string `json:"archive_skipped_reason,omitempty"`
 }
 
 // RemovePairBranch deletes slug's pair's other-side branch, locally when present and on the origin
 // remote when present there, for a caller whose pair is already removed from disk.
-// Before its first deletion it archives the branch's tip (archiveWeftTip), from origin's copy when
-// only that remains; an archive error is returned with the branch untouched, so a caller can retry.
+// Before its first deletion it archives the branch's tip (archiveWeftTip), from origin's copy when only that remains; an archive error is returned with the branch untouched, so a caller can retry.
 // It exists for the same vocabulary reason PairSiblingRemnant does: a teardown re-entered after
 // Remove was interrupted past its worktree removals, or whose remote deletion failed, must finish
 // the branch deletion Remove would have done, without naming the branch's side of the pair.
@@ -420,8 +413,7 @@ func (t *Topology) RemovePairBranch(l *lyxcwd.Location, slug string) (res PairBr
 	result := PairBranchResult{Branch: branch}
 	entry := CleanupBranchEntry{Branch: branch}
 
-	// Archive before the first deletion, local or remote: the helper falls back to origin's copy when
-	// only that remains, and a failed archive leaves the branch in place for a retry.
+	// Archive before the first deletion, local or remote: the helper falls back to origin's copy when only that remains, and a failed archive leaves the branch in place for a retry.
 	archiveTag, archiveSkippedReason, err := archiveWeftTip(rec, l, slug, branch)
 	if err != nil {
 		return PairBranchResult{}, err

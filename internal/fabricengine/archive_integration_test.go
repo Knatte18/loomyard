@@ -1,11 +1,9 @@
 //go:build integration
 
-// archive_integration_test.go covers archiveWeftTip: the archive tag lands on the weft origin at the
-// branch tip, the call is idempotent on an unchanged tip, and each degraded shape — no origin, an
-// unreachable origin, a branch only on origin, a clashing tag — answers as the helper documents.
+// archive_integration_test.go covers archiveWeftTip: the archive tag lands on the weft origin at the branch tip, the call is idempotent on an unchanged tip, and each degraded shape — no origin, an unreachable origin, a branch only on origin, a clashing tag — answers as the helper documents.
 //
-// Every hub is built through hubforge.NewHub via newFabricFixture, with the hub's WeftBare as the
-// weft origin. Package fabricengine_test; shares the single TestMain in testmain_test.go.
+// Every hub is built through hubforge.NewHub via newFabricFixture, with the hub's WeftBare as the weft origin.
+// Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -51,8 +49,7 @@ func countKind(rec *fabricengine.Mutations, kind fabricengine.Kind) int {
 	return n
 }
 
-// TestArchiveWeftTip_TagsAndPushesTip covers the happy path and idempotence: the tag exists on the
-// origin at the tip, and a second call on the same tip succeeds with the same tag.
+// TestArchiveWeftTip_TagsAndPushesTip covers the happy path and idempotence: the tag exists on the origin at the tip, and a second call on the same tip succeeds with the same tag.
 func TestArchiveWeftTip_TagsAndPushesTip(t *testing.T) {
 	t.Parallel()
 
@@ -151,8 +148,7 @@ func TestArchiveWeftTip_UnreachableOriginErrors(t *testing.T) {
 	}
 }
 
-// TestArchiveWeftTip_OriginOnlyBranch covers a branch present only on origin: it is archived from
-// the fetched tip.
+// TestArchiveWeftTip_OriginOnlyBranch covers a branch present only on origin: it is archived from the fetched tip.
 func TestArchiveWeftTip_OriginOnlyBranch(t *testing.T) {
 	t.Parallel()
 
@@ -194,8 +190,7 @@ func TestArchiveWeftTip_MissingBranchIsNoop(t *testing.T) {
 	}
 }
 
-// TestArchiveWeftTip_ClashingTagErrors covers a tag of the archive name already present at another
-// commit: an error, and nothing pushed.
+// TestArchiveWeftTip_ClashingTagErrors covers a tag of the archive name already present at another commit: an error, and nothing pushed.
 func TestArchiveWeftTip_ClashingTagErrors(t *testing.T) {
 	t.Parallel()
 

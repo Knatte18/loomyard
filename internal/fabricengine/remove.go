@@ -23,10 +23,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
-// ErrPairSiblingDirty is the sentinel Remove's no-force refusal wraps when the pair's other worktree
-// carries uncommitted changes.
-// It is worded without naming either side of the pair so callers outside the fabric vocabulary
-// owner set can match it with errors.Is and offer their own remedy.
+// ErrPairSiblingDirty is the sentinel Remove's no-force refusal wraps when the pair's other worktree carries uncommitted changes.
+// It is worded without naming either side of the pair so callers outside the fabric vocabulary owner set can match it with errors.Is and offer their own remedy.
 var ErrPairSiblingDirty = errors.New("the pair's sibling worktree has uncommitted changes")
 
 // siblingDirtyRefusal carries the refusal text unchanged while unwrapping to ErrPairSiblingDirty.
@@ -61,8 +59,7 @@ type RemoveResult struct {
 	// ArchiveTag names the archive/<slug>/<tip> tag pushed to the weft origin before the teardown;
 	// empty when none was pushed.
 	ArchiveTag string `json:"archive_tag,omitempty"`
-	// ArchiveSkippedReason is non-empty when no archive was attempted — today only a weft repo with
-	// no origin remote configured.
+	// ArchiveSkippedReason is non-empty when no archive was attempted — today only a weft repo with no origin remote configured.
 	ArchiveSkippedReason string `json:"archive_skipped_reason,omitempty"`
 }
 
@@ -75,14 +72,11 @@ type RemoveResult struct {
 // It refuses the hub's prime worktree outright too: the prime is the warp repository itself, not a
 // pair this verb can tear down, and git's own refusal to remove a main working tree is not a
 // licence to delete the clone.
-// After those refusals and before its first mutation, Remove archives the pair's weft tip — an
-// archive/<slug>/<tip> tag pushed to the weft origin (archiveWeftTip) — so the run records on the
-// branch outlive its deletion. A failed archive returns its error with everything still in place,
-// so a plain re-run retries it. The archive runs whatever remote says, since it protects the local
-// branch's commits as much as the remote copy, and force does not skip it: force answers dirtiness
-// only. A weft repo with no origin proceeds, with ArchiveSkippedReason set on the result.
-// Portal and launcher cleanup run after the archive but before the git removal, so they still run
-// when the worktree directory is already gone.
+// After those refusals and before its first mutation, Remove archives the pair's weft tip — an archive/<slug>/<tip> tag pushed to the weft origin (archiveWeftTip) — so the run records on the branch outlive its deletion.
+// A failed archive returns its error with everything still in place, so a plain re-run retries it.
+// The archive runs whatever remote says, since it protects the local branch's commits as much as the remote copy, and force does not skip it: force answers dirtiness only.
+// A weft repo with no origin proceeds, with ArchiveSkippedReason set on the result.
+// Portal and launcher cleanup run after the archive but before the git removal, so they still run when the worktree directory is already gone.
 // remote gates whether the pair's weft branch, once deleted locally, is also deleted on the weft
 // repo's origin remote; a remote deletion failure never makes Remove return a non-nil error.
 // Once both worktrees are removed, Remove deletes the local warp branch (BranchPrefix + slug) through
@@ -140,9 +134,8 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force, remote bool) (
 		return RemoveResult{}, &ErrMergeInProgress{}
 	}
 
-	// Archive the weft tip before the first mutation: a failed archive leaves the worktrees, portal,
-	// launchers and both branches untouched, so a plain re-run retries it. force answers dirtiness
-	// only, so it never skips this step.
+	// Archive the weft tip before the first mutation: a failed archive leaves the worktrees, portal, launchers and both branches untouched, so a plain re-run retries it.
+	// force answers dirtiness only, so it never skips this step.
 	archiveTag, archiveSkippedReason, err := archiveWeftTip(rec, l, slug, weftBranch)
 	if err != nil {
 		return RemoveResult{}, err
@@ -279,8 +272,7 @@ func deleteWarpBranch(rec *Mutations, l *lyxcwd.Location, warpBranch, parentBran
 // nothing — the ordinary case once a first refused attempt has already torn the portal down — does
 // not tell the operator to repair a hub that is intact.
 //
-// priorEntries is the record's length before the portal teardown began: the archive step's own
-// tag_pushed entry precedes it and strands nothing.
+// priorEntries is the record's length before the portal teardown began: the archive step's own tag_pushed entry precedes it and strands nothing.
 func nameStrandedPortalTeardown(rec *Mutations, priorEntries int, refusal error) error {
 	// Len has a value receiver, so a nil recorder would panic on the auto-dereference rather than
 	// answering zero. Remove always constructs one, but this helper must not depend on that.

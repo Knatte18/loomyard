@@ -51,9 +51,7 @@ func TestDriverPrompt_NamesSlugRunIDAndExactTeardownCommand(t *testing.T) {
 	}
 }
 
-// TestDriverTeardownCommand_CommitsRecordsBeforeRemovingStrandJoinedBySemicolon asserts the records
-// commit precedes the strand removal and the two are joined by `;`, so a failed commit still ends
-// the session.
+// TestDriverTeardownCommand_CommitsRecordsBeforeRemovingStrandJoinedBySemicolon asserts the records commit precedes the strand removal and the two are joined by `;`, so a failed commit still ends the session.
 func TestDriverTeardownCommand_CommitsRecordsBeforeRemovingStrandJoinedBySemicolon(t *testing.T) {
 	commit := strings.Index(driverTeardownCommand, "lyx loom commit-records")
 	remove := strings.Index(driverTeardownCommand, "lyx reed remove")

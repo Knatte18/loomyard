@@ -29,8 +29,8 @@ func driverPrompt(runID string, reportPath string) string {
 	)
 }
 
-// driverTeardownCommand is the end-of-session command a loom-launched driver runs after its stop
-// report. It commits the run records first, then removes the driver's own strand.
+// driverTeardownCommand is the end-of-session command a loom-launched driver runs after its stop report.
+// It commits the run records first, then removes the driver's own strand.
 // The two are joined with `;` rather than `&&` so the strand removal runs even when the commit fails:
 // a driver that stayed open on a failed commit would leave its strand alive for a run that has finished.
 // It is built from driverStrandDisplayName so the name cannot drift from the strand's own.

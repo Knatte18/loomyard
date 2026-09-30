@@ -1,11 +1,9 @@
 //go:build integration
 
-// pairbranch_archive_integration_test.go covers the archive step of the two verbs that delete an
-// existing pair's weft branch besides Remove: RemovePairBranch and Cleanup's apply loop each tag the
-// branch tip under archive/<slug>/ and push the tag to the weft origin before deleting the branch.
+// pairbranch_archive_integration_test.go covers the archive step of the two verbs that delete an existing pair's weft branch besides Remove: RemovePairBranch and Cleanup's apply loop each tag the branch tip under archive/<slug>/ and push the tag to the weft origin before deleting the branch.
 //
-// Every hub is built through hubforge.NewHub via newFabricFixture, with the hub's WeftBare as the
-// weft origin. Package fabricengine_test; shares the single TestMain in testmain_test.go.
+// Every hub is built through hubforge.NewHub via newFabricFixture, with the hub's WeftBare as the weft origin.
+// Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -34,8 +32,7 @@ func wantArchiveTag(slug, tip string) string {
 	return "archive/" + slug + "/" + tip[:12]
 }
 
-// TestRemovePairBranch_ArchivesTipBeforeDeleting covers the happy path: the tag lands on the origin
-// at the branch tip and the branch is then deleted locally and on the origin.
+// TestRemovePairBranch_ArchivesTipBeforeDeleting covers the happy path: the tag lands on the origin at the branch tip and the branch is then deleted locally and on the origin.
 func TestRemovePairBranch_ArchivesTipBeforeDeleting(t *testing.T) {
 	t.Parallel()
 
@@ -68,8 +65,7 @@ func TestRemovePairBranch_ArchivesTipBeforeDeleting(t *testing.T) {
 	}
 }
 
-// TestRemovePairBranch_ArchivesFromOriginWhenOnlyOriginCopyRemains covers the already-gone arm: the
-// local branch is deleted, so the tag is made from the origin's copy.
+// TestRemovePairBranch_ArchivesFromOriginWhenOnlyOriginCopyRemains covers the already-gone arm: the local branch is deleted, so the tag is made from the origin's copy.
 func TestRemovePairBranch_ArchivesFromOriginWhenOnlyOriginCopyRemains(t *testing.T) {
 	t.Parallel()
 
@@ -100,8 +96,7 @@ func TestRemovePairBranch_ArchivesFromOriginWhenOnlyOriginCopyRemains(t *testing
 	}
 }
 
-// TestRemovePairBranch_UnreachableOriginErrorsAndKeepsBranch covers the fail-closed shape: with the
-// origin unreachable the call returns an error and the branch is still present.
+// TestRemovePairBranch_UnreachableOriginErrorsAndKeepsBranch covers the fail-closed shape: with the origin unreachable the call returns an error and the branch is still present.
 func TestRemovePairBranch_UnreachableOriginErrorsAndKeepsBranch(t *testing.T) {
 	t.Parallel()
 
@@ -121,8 +116,7 @@ func TestRemovePairBranch_UnreachableOriginErrorsAndKeepsBranch(t *testing.T) {
 	}
 }
 
-// TestCleanup_ApplyArchivesEachOrphanBeforeDeleting covers Cleanup's apply loop: every orphan weft
-// branch is tagged on the origin at its tip and then deleted.
+// TestCleanup_ApplyArchivesEachOrphanBeforeDeleting covers Cleanup's apply loop: every orphan weft branch is tagged on the origin at its tip and then deleted.
 func TestCleanup_ApplyArchivesEachOrphanBeforeDeleting(t *testing.T) {
 	t.Parallel()
 
@@ -161,8 +155,7 @@ func TestCleanup_ApplyArchivesEachOrphanBeforeDeleting(t *testing.T) {
 	}
 }
 
-// TestCleanup_ArchiveFailureKeepsBranchAndContinuesSweep covers a failed archive: the entry carries
-// the error, the branch stays, and Cleanup itself still returns no error.
+// TestCleanup_ArchiveFailureKeepsBranchAndContinuesSweep covers a failed archive: the entry carries the error, the branch stays, and Cleanup itself still returns no error.
 func TestCleanup_ArchiveFailureKeepsBranchAndContinuesSweep(t *testing.T) {
 	t.Parallel()
 
@@ -187,8 +180,7 @@ func TestCleanup_ArchiveFailureKeepsBranchAndContinuesSweep(t *testing.T) {
 	}
 }
 
-// TestCleanup_NoOriginDeletesAndReportsArchiveSkip covers a weft repo with no origin: the orphan is
-// deleted as before and the result reports the skipped archive once.
+// TestCleanup_NoOriginDeletesAndReportsArchiveSkip covers a weft repo with no origin: the orphan is deleted as before and the result reports the skipped archive once.
 func TestCleanup_NoOriginDeletesAndReportsArchiveSkip(t *testing.T) {
 	t.Parallel()
 

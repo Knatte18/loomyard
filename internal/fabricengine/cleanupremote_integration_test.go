@@ -224,10 +224,8 @@ func TestCleanup_ProtectedEntryUntouchedOnRemote(t *testing.T) {
 	}
 }
 
-// TestCleanup_RemoteFailureIsNonFatal covers case 6: a remote deletion failure leaves the verb
-// returning a nil error, the local branch deleted, and RemoteError populated. Induced by making the
-// bare origin refuse ref deletions, so the archive tag push still succeeds ahead of the failing
-// branch deletion and no network is needed.
+// TestCleanup_RemoteFailureIsNonFatal covers case 6: a remote deletion failure leaves the verb returning a nil error, the local branch deleted, and RemoteError populated.
+// Induced by making the bare origin refuse ref deletions, so the archive tag push still succeeds ahead of the failing branch deletion and no network is needed.
 func TestCleanup_RemoteFailureIsNonFatal(t *testing.T) {
 	t.Parallel()
 

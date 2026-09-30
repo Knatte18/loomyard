@@ -105,13 +105,7 @@ func waitForDriveReport(t *testing.T, dir string, timeout time.Duration) string 
 	}
 }
 
-// TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver drives one end-to-end llm driver
-// launch over a fixture hub built through hubforge, seeded with the llm driver, and asserts three
-// things: the launch call returns once the stub's ready marker lands and well before its settle
-// delay elapses, proving shuttle's own blocking Start returns past the provider's startup gates
-// rather than waiting on the whole driver session to finish; the started run's persisted state file
-// exists under the run directory the handle reports; and the drive report the stubbed driver writes
-// and exits lands under the run's durable drive-reports directory, never its ephemeral scratch one.
+// TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver drives one end-to-end llm driver launch over a fixture hub built through hubforge, seeded with the llm driver, and asserts three things: the launch call returns once the stub's ready marker lands and well before its settle delay elapses, proving shuttle's own blocking Start returns past the provider's startup gates rather than waiting on the whole driver session to finish; the started run's persisted state file exists under the run directory the handle reports; and the drive report the stubbed driver writes and exits lands under the run's durable drive-reports directory, never its ephemeral scratch one.
 func TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver(t *testing.T) {
 	const stubSettleDelay = 2 * time.Second
 	stubPath := integrationWriteStubDriverScript(t, stubSettleDelay)

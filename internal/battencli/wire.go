@@ -37,10 +37,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// driverAliveFrom answers whether the child's driver strand is live, over an injected status reader
-// so its answers are testable without tmux.
-// An absent task worktree is false without reading status, and so is an absent reed session -- no
-// session means no driver -- while every other status error is returned unchanged.
+// driverAliveFrom answers whether the child's driver strand is live, over an injected status reader so its answers are testable without tmux.
+// An absent task worktree is false without reading status, and so is an absent reed session -- no session means no driver -- while every other status error is returned unchanged.
 func driverAliveFrom(present bool, status func() (reedengine.StatusResult, error)) (bool, error) {
 	if !present {
 		return false, nil
@@ -158,14 +156,9 @@ func taskWorktreeComplete(prime *lyxcwd.Location, slug string) (present, complet
 }
 
 // incompletePairRemedy names the manual cleanup for a pair taskWorktreeComplete found incomplete.
-// "lyx fabric remove --force" run from prime removes whatever part of the pair Add got to -- the
-// task worktree, its sibling, their junctions, portal and launcher entries, and the sibling's
-// branch -- in one command, which no pair of plain git commands can do from here: the sibling is a
-// worktree of another repository. Remove also deletes the task branch when its work is already on
-// another ref -- always so for a create interrupted before any work -- and keeps it otherwise, so
-// the branch deletion is named as conditional on the branch surviving the removal: an unconditional
-// "git branch -D" fails on the branch Remove already deleted. The task branch is named with fabric's
-// branch prefix, since Add refuses a leftover one.
+// "lyx fabric remove --force" run from prime removes whatever part of the pair Add got to -- the task worktree, its sibling, their junctions, portal and launcher entries, and the sibling's branch -- in one command, which no pair of plain git commands can do from here: the sibling is a worktree of another repository.
+// Remove also deletes the task branch when its work is already on another ref -- always so for a create interrupted before any work -- and keeps it otherwise, so the branch deletion is named as conditional on the branch surviving the removal: an unconditional "git branch -D" fails on the branch Remove already deleted.
+// The task branch is named with fabric's branch prefix, since Add refuses a leftover one.
 func incompletePairRemedy(slug, branch string) string {
 	return fmt.Sprintf("remove it by hand from here (\"lyx fabric remove --force %s\"), then, only if its branch %s is still present afterwards, delete that branch too (\"git branch -D %s\")", slug, branch, branch)
 }
@@ -430,8 +423,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			},
 		},
 		InnerRun: battenshed.InnerRunDeps{
-			// ReadApproval and DriverAlive resolve the task worktree on Call like every seam here,
-			// never at wiring time.
+			// ReadApproval and DriverAlive resolve the task worktree on Call like every seam here, never at wiring time.
 			ReadApproval: func() (battenshed.ChildApproval, bool, error) {
 				taskLocation, err := taskWorktreeLocation(location, slug)
 				if err != nil {

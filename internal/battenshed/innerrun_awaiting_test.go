@@ -1,5 +1,4 @@
-// innerrun_awaiting_test.go covers the inner-run watch's awaiting hand-off, the resume once per
-// approval, the halted-state remedies, and the done arm's wait for the driver strand.
+// innerrun_awaiting_test.go covers the inner-run watch's awaiting hand-off, the resume once per approval, the halted-state remedies, and the done arm's wait for the driver strand.
 
 package battenshed
 
@@ -276,9 +275,7 @@ func TestInnerRun_StaleDoneSeenMarkerIsClearedWhileRunning(t *testing.T) {
 	}
 }
 
-// newRunShed drives producer as a self-routing "Run-Shed" row through a real shedengine.Shed whose
-// persisted history already carries counted Stuck entries, with the same bounce budget, so
-// the row's budget is fully spent before the first Step.
+// newRunShed drives producer as a self-routing "Run-Shed" row through a real shedengine.Shed whose persisted history already carries counted Stuck entries, with the same bounce budget, so the row's budget is fully spent before the first Step.
 func newRunShed(t *testing.T, producer shedengine.ShedProducer, counted int) *shedengine.Shed {
 	t.Helper()
 	root := t.TempDir()

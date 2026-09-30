@@ -1,11 +1,8 @@
-// commitrecords.go implements the `commit-records` loom verb: it commits and pushes the run's records
-// from Go when the driver stops.
+// commitrecords.go implements the `commit-records` loom verb: it commits and pushes the run's records from Go when the driver stops.
 // The driver writes its stop report after its last `lyx shed step`, so no transition commit can capture it,
-// and the Fabric Git Invariant forbids the agent committing it itself: the agent triggers this verb,
-// and the verb commits through fabricengine.
+// and the Fabric Git Invariant forbids the agent committing it itself: the agent triggers this verb, and the verb commits through fabricengine.
 //
-// The cobra shell is thin over commitRecordsVerb, which takes the three fabric calls as commitStatusDeps
-// so the disposition table is testable without git.
+// The cobra shell is thin over commitRecordsVerb, which takes the three fabric calls as commitStatusDeps so the disposition table is testable without git.
 
 package loomcli
 

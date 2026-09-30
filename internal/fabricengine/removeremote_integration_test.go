@@ -109,8 +109,7 @@ func TestRemove_RemoteFailureLeavesPartialTeardownGuaranteesIntact(t *testing.T)
 
 	mustBreakOrigin(t, weftRoot)
 
-	// The archive step pushes to the same origin before any teardown, so an unreachable origin now
-	// fails Remove there, ahead of the remote deletion, with the pair still intact.
+	// The archive step pushes to the same origin before any teardown, so an unreachable origin now fails Remove there, ahead of the remote deletion, with the pair still intact.
 	if _, err := topology.Remove(l, slug, false, true); err == nil {
 		t.Fatalf("Remove(%q, remote=true) = nil error; want the archive push failure against the unreachable origin", slug)
 	}

@@ -36,8 +36,7 @@ func TestDriverReportPath_FrozenClock_TwoCallsProduceDifferentPaths(t *testing.T
 	}
 }
 
-// TestDriverReportPath_LandsUnderDriveReportsDir asserts the composed path lands directly under the
-// run's durable drive-reports directory, composed through shedrun.DriveReportsDir.
+// TestDriverReportPath_LandsUnderDriveReportsDir asserts the composed path lands directly under the run's durable drive-reports directory, composed through shedrun.DriveReportsDir.
 func TestDriverReportPath_LandsUnderDriveReportsDir(t *testing.T) {
 	l := &lyxcwd.Location{}
 	now := func() time.Time { return time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC) }

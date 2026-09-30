@@ -1,15 +1,9 @@
 //go:build integration
 
-// records_integration_test.go is the end-to-end check that batten's hand-off keeps the run's
-// records: a child that goes awaiting, is approved, is resumed by batten, reaches done and is torn
-// down leaves its friction notes and drive report reachable from the archive tag on the weft origin.
+// records_integration_test.go is the end-to-end check that batten's hand-off keeps the run's records: a child that goes awaiting, is approved, is resumed by batten, reaches done and is torn down leaves its friction notes and drive report reachable from the archive tag on the weft origin.
 //
-// It stays a white-box "package battencli" test for the same reason lifecycle_integration_test.go
-// does: it stubs InnerRun's seams at the field level after a real wire() call.
-// The Spawn stub's own commit stands in for the child's transition commit and "lyx loom
-// commit-records"; battencli cannot reach loomcli's unexported commit seam, so the real records
-// pathspec is proved by loomcli's own integration tests, and this test proves the rest of the
-// chain, from a committed weft tip to an archive tag on the weft origin through batten's teardown.
+// It stays a white-box "package battencli" test for the same reason lifecycle_integration_test.go does: it stubs InnerRun's seams at the field level after a real wire() call.
+// The Spawn stub's own commit stands in for the child's transition commit and "lyx loom commit-records"; battencli cannot reach loomcli's unexported commit seam, so the real records pathspec is proved by loomcli's own integration tests, and this test proves the rest of the chain, from a committed weft tip to an archive tag on the weft origin through batten's teardown.
 // No real provider or driver is spawned.
 
 package battencli

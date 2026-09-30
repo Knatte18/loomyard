@@ -430,9 +430,8 @@ func TestBattenIntegration_Teardown_AlreadyGonePairFinishesItsBranchDeletion(t *
 	}
 }
 
-// refuseRemoteBranchDeletions installs a pre-receive hook on the bare repo at bareDir that rejects
-// every branch deletion while accepting every other update, so a teardown's archive-tag push lands
-// but its remote branch deletion fails. The returned func removes the hook.
+// refuseRemoteBranchDeletions installs a pre-receive hook on the bare repo at bareDir that rejects every branch deletion while accepting every other update, so a teardown's archive-tag push lands but its remote branch deletion fails.
+// The returned func removes the hook.
 func refuseRemoteBranchDeletions(t *testing.T, bareDir string) func() {
 	t.Helper()
 	hook := filepath.Join(bareDir, "hooks", "pre-receive")
@@ -450,17 +449,13 @@ func refuseRemoteBranchDeletions(t *testing.T, bareDir string) func() {
 	}
 }
 
-// remoteArchiveTagExists reports whether any archive/<slug>/ tag is present on the bare repo at
-// bareDir.
+// remoteArchiveTagExists reports whether any archive/<slug>/ tag is present on the bare repo at bareDir.
 func remoteArchiveTagExists(bareDir, slug string) bool {
 	out, err := exec.Command("git", "-C", bareDir, "for-each-ref", "--format=%(refname)", "refs/tags/archive/"+slug+"/").Output()
 	return err == nil && strings.TrimSpace(string(out)) != ""
 }
 
-// TestBattenIntegration_Teardown_FailedRemoteDeletionHaltsResumably makes the weft origin refuse
-// branch deletions during teardown and asserts the removal half archives the records, removes the
-// pair and reports the failed remote deletion instead of done, then that a resume once the remote
-// accepts the deletion finishes it.
+// TestBattenIntegration_Teardown_FailedRemoteDeletionHaltsResumably makes the weft origin refuse branch deletions during teardown and asserts the removal half archives the records, removes the pair and reports the failed remote deletion instead of done, then that a resume once the remote accepts the deletion finishes it.
 func TestBattenIntegration_Teardown_FailedRemoteDeletionHaltsResumably(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	slug := "batten-remote-fails"
@@ -494,10 +489,7 @@ func TestBattenIntegration_Teardown_FailedRemoteDeletionHaltsResumably(t *testin
 	}
 }
 
-// TestBattenIntegration_Teardown_UnreachableRemoteHaltsBeforeRemovalResumably breaks the weft origin
-// before teardown and asserts the removal half halts on the failed archive with the pair still in
-// place and the resume named, then that a resume once the remote is reachable again archives the
-// records and finishes the teardown.
+// TestBattenIntegration_Teardown_UnreachableRemoteHaltsBeforeRemovalResumably breaks the weft origin before teardown and asserts the removal half halts on the failed archive with the pair still in place and the resume named, then that a resume once the remote is reachable again archives the records and finishes the teardown.
 func TestBattenIntegration_Teardown_UnreachableRemoteHaltsBeforeRemovalResumably(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	slug := "batten-remote-unreachable"
@@ -835,8 +827,7 @@ func TestBattenIntegration_CreateRow_IncompletePairRemedyWorksVerbatimOnAPrefixe
 		}
 	}
 
-	// The remedy, verbatim: the fabric verb's own engine call with --force, then the branch, only if
-	// it survived the removal.
+	// The remedy, verbatim: the fabric verb's own engine call with --force, then the branch, only if it survived the removal.
 	cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(h.Location.HubPath))
 	if err != nil {
 		t.Fatalf("load fabric config: %v", err)

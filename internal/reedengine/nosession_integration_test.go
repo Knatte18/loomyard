@@ -1,9 +1,7 @@
 //go:build integration
 
-// nosession_integration_test.go pins that Status on a worktree whose session was never started returns
-// an error satisfying errors.Is(err, ErrNoSession), so a caller outside reed can read Status as a
-// liveness probe. It needs a real multiplexer server to answer has-session, so it sits with the
-// integration tier alongside ensuresession_integration_test.go.
+// nosession_integration_test.go pins that Status on a worktree whose session was never started returns an error satisfying errors.Is(err, ErrNoSession), so a caller outside reed can read Status as a liveness probe.
+// It needs a real multiplexer server to answer has-session, so it sits with the integration tier alongside ensuresession_integration_test.go.
 
 package reedengine
 
