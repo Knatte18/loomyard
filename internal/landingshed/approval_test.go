@@ -1,3 +1,6 @@
+// approval_test.go — untagged Tier-1 unit tests for WriteApproval and ReadApproval over a
+// t.TempDir() record.
+
 package landingshed
 
 import (

@@ -1,7 +1,8 @@
-// describe.go implements DescribeSpec, the pure composer that turns the Describe row's told values
-// into a shuttleengine.Spec: the stencil, the model resolved from landing.yaml's describe key, and
-// the one description file the session is expected to write. It follows mergeresolve's
-// buildConflictSpec resolution shape and derives no path of its own (Told-Geometry Invariant).
+// describe.go implements the Describe row's two halves: DescribeSpec, the pure composer that turns
+// the row's told values into a shuttleengine.Spec (the stencil, the model resolved from
+// landing.yaml's describe key, and the one description file the session writes), and
+// NewDescriptionGate, the mechanical gate over that file. Neither derives a path of its own
+// (Told-Geometry Invariant).
 
 package landingshed
 

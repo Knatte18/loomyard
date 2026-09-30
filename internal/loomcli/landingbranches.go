@@ -1,3 +1,6 @@
+// landingbranches.go resolves the task branch and the parent branch it lands on, the one branch
+// resolution every landing-facing loom path shares.
+
 package loomcli
 
 import (

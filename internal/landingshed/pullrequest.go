@@ -1,3 +1,5 @@
+// pullrequest.go implements the lookup of the pull request from a task branch to its parent.
+
 package landingshed
 
 import (
