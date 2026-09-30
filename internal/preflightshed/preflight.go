@@ -41,15 +41,15 @@ func wayForward(report preflight.Report) string {
 	for _, f := range report.Failures {
 		switch f.Check {
 		case preflight.CheckWorktreeClean:
-			add("commit or stash the warp's changes with git, and commit the weft's _lyx changes with `lyx fabric commit`, then re-step")
+			add("commit or stash the code changes with git, and commit the _lyx changes with `lyx fabric commit`, then re-step")
 		case preflight.CheckFabricSync:
-			add("`lyx fabric checkout` re-checks out the current warp branch and re-syncs the weft side, then re-step")
+			add("`lyx fabric checkout` re-checks out the current branch and re-syncs the _lyx side, then re-step")
 		case preflight.CheckFabricReady, preflight.CheckJunction:
 			// An unreadable fabric.yaml is a config decode error reconcile cannot repair.
 			if strings.Contains(f.Reason, "cannot load fabric.yaml") {
 				continue
 			}
-			add("`lyx fabric reconcile` recreates a missing weft worktree and re-points broken junctions, then re-step")
+			add("`lyx fabric reconcile` recreates a missing _lyx worktree and re-points broken junctions, then re-step")
 		}
 	}
 	if len(steps) == 0 {

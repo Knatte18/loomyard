@@ -980,7 +980,7 @@ func runExitAuditCrossCheck(deps RunDeps, outcomePath, summaryPath string, resul
 		if len(paths) > 0 {
 			pathList = strings.Join(paths, ", ")
 		}
-		stuckReason = fmt.Sprintf("run-exit audit found %d correctness finding(s): %s; suspect paths: %s; way forward: revert or re-derive the named paths on the warp with git, then re-step the Webster row (lyx webster run)", len(correctness), strings.Join(details, "; "), pathList)
+		stuckReason = fmt.Sprintf("run-exit audit found %d correctness finding(s): %s; suspect paths: %s; way forward: revert or re-derive the named paths in the task worktree with git, then re-step the Webster row (lyx webster run)", len(correctness), strings.Join(details, "; "), pathList)
 	}
 
 	return warnings, stuckReason, nil
