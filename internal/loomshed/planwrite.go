@@ -134,7 +134,7 @@ func NewPlanDirRotator(anchorPath, stencilsDir string, now func() time.Time) fun
 		}
 		block, err := loomengine.PriorPlanBlock(stencilsDir, archiveDir, staleFiles)
 		if err != nil {
-			return "", fmt.Errorf("loomshed: render prior-plan block: %w", err)
+			return "", fmt.Errorf("loomshed: announce prior plan: %w", err)
 		}
 		if err := rotateStalePlanDir(planDir, archiveDir, staleFiles); err != nil {
 			return "", fmt.Errorf("loomshed: rotate stale plan directory: %w", err)
