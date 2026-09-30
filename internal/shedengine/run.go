@@ -164,9 +164,9 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		return StepResult{Next: st.CurrentProducer, State: StatePaused, History: st.History}, nil
 	}
 
-	// Step 3b, the resume write. A run resumed from paused, blocked, or failed reaches this
-	// point about to call a producer, while the status file still says paused, blocked, or
-	// failed -- and for every LLM row that is minutes, during which the file, the status strand,
+	// Step 3b, the resume write. A run resumed from paused, blocked, failed, or awaiting reaches
+	// this point about to call a producer, while the status file still says that halt state
+	// -- and for every LLM row that is minutes, during which the file, the status strand,
 	// and "lyx loom status" all describe a run that is in fact already spawning. The stale
 	// error text goes with it: Activity.Wait is composed from it, so the pane would otherwise
 	// keep asserting a specific failure reason the loop is at that moment retrying past.
