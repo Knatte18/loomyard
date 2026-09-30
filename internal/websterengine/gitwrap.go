@@ -78,8 +78,9 @@ func reconcileReportHead(worktree, reportHead, subject string, parentBranch Pare
 		}
 		if len(parents) < 2 {
 			return "", fmt.Errorf("webster: %s: head_sha %q does not match the worktree's actual HEAD %q; "+
-				"only merge commits, such as a parent merge-in, may sit between a fork's reported head and HEAD",
-				subject, reportHead, head)
+				"only merge commits, such as a parent merge-in, may sit between a fork's reported head and HEAD; "+
+				"way forward: move HEAD back to the report's head_sha %s with git, then re-run this verb",
+				subject, reportHead, head, reportHead)
 		}
 		// The parent tips are resolved once, on the first merge the walk meets.
 		if parentTips == nil {

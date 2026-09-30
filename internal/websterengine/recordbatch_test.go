@@ -1533,7 +1533,7 @@ func TestRecordBatch_NonMergeMovementRefused(t *testing.T) {
 			if err == nil {
 				t.Fatal("RecordBatch() error = nil; want a refusal")
 			}
-			for _, want := range []string{fx.HeadSHA, newHead, "only merge commits"} {
+			for _, want := range []string{fx.HeadSHA, newHead, "only merge commits", "way forward: move HEAD back to the report's head_sha " + fx.HeadSHA} {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("error %q missing %q", err.Error(), want)
 				}
