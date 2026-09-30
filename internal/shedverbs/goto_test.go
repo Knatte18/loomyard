@@ -66,7 +66,7 @@ func TestGotoCmd_MovesBlockedRunOntoRow(t *testing.T) {
 	}
 }
 
-// TestGotoCmd_RefusesMissingOrUnknownTarget asserts both refusals list the valid producer names.
+// TestGotoCmd_RefusesMissingOrUnknownTarget asserts both refusals end in a way forward listing the valid producer names.
 func TestGotoCmd_RefusesMissingOrUnknownTarget(t *testing.T) {
 	tests := []struct {
 		name string
@@ -85,8 +85,8 @@ func TestGotoCmd_RefusesMissingOrUnknownTarget(t *testing.T) {
 				t.Fatalf("exit code = %d; want 1", code)
 			}
 			msg, _ := env["error"].(string)
-			if !strings.Contains(msg, "A, B") {
-				t.Errorf("error %q does not list the valid names %q", msg, "A, B")
+			if !strings.Contains(msg, "way forward: re-run goto with --to naming one of: A, B") {
+				t.Errorf("error %q does not end in a way forward listing the valid names %q", msg, "A, B")
 			}
 		})
 	}

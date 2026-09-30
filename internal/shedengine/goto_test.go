@@ -104,11 +104,37 @@ func TestGoto_UnknownTargetListsValidNames(t *testing.T) {
 	if err == nil {
 		t.Fatal("Goto(...) = nil error; want a refusal")
 	}
-	if !strings.Contains(err.Error(), "A, B") {
-		t.Errorf("error %q does not list the valid names in list order", err)
+	if !strings.Contains(err.Error(), "way forward: re-run goto with --to naming one of: A, B") {
+		t.Errorf("error %q does not end in a way forward listing the valid names in list order", err)
 	}
 	if after := readStatus(t, shed.StatusPath, shed.StatusLockPath); !reflect.DeepEqual(before, after) {
 		t.Errorf("status file changed on an unknown-target refusal")
+	}
+
+	// Taking the way forward: a name from the list moves the run.
+	if _, err := Goto(gotoRequest(shed, "B")); err != nil {
+		t.Errorf("Goto to a listed name = %v; want nil", err)
+	}
+}
+
+// TestGoto_MissingStatusFileNamesSeeding pins goto's missing-status refusal to step's way forward:
+// Shed never seeds a status file, so the run is seeded, after which goto moves it.
+func TestGoto_MissingStatusFileNamesSeeding(t *testing.T) {
+	shed, _, _ := gotoShed(t)
+
+	_, err := Goto(gotoRequest(shed, "B"))
+	if err == nil {
+		t.Fatal("Goto(...) over a missing status file = nil error; want a refusal")
+	}
+	if !strings.Contains(err.Error(), missingStatusWayForward) {
+		t.Errorf("error %q does not name seeding the run as its way forward", err)
+	}
+
+	seed := commonSeed("A")
+	seed.State = StateBlocked
+	seedStatus(t, shed.StatusPath, shed.StatusLockPath, seed)
+	if _, err := Goto(gotoRequest(shed, "B")); err != nil {
+		t.Errorf("Goto(...) once the run is seeded = %v; want nil", err)
 	}
 }
 

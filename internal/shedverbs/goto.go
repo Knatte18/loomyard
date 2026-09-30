@@ -33,7 +33,7 @@ func gotoCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 				for i, def := range spec.Routing.Producers {
 					names[i] = def.Name
 				}
-				clihelp.SetExit(ctx, output.Err(out, fmt.Sprintf("goto requires --to <producer>; valid targets: %s", strings.Join(names, ", "))))
+				clihelp.SetExit(ctx, output.Err(out, fmt.Sprintf("goto requires --to <producer>; way forward: re-run goto with --to naming one of: %s", strings.Join(names, ", "))))
 				return nil
 			}
 

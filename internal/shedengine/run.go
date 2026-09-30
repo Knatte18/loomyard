@@ -115,8 +115,11 @@ func (s *Shed) preflight() error {
 	return nil
 }
 
-// busyWayForward is the trailing clause Run and Step put on an ErrShedBusy wrap.
+// busyWayForward is the trailing clause Run, Step and Goto put on an ErrShedBusy wrap.
 const busyWayForward = "way forward: \"lyx shed pause\" asks the live driver to stop at its next producer boundary; check the holder with \"lyx shed status\", then retry"
+
+// missingStatusWayForward is the trailing clause Step and Goto put on a missing-status-file refusal.
+const missingStatusWayForward = "way forward: seed the run through its recipe's bootstrap verb, or \"lyx shed seed\" for a recipe without one"
 
 // stepLocked runs exactly one iteration of the six-step loop and reports it as a StepResult.
 // It assumes the run lock is already held by the caller and never acquires or releases it itself
@@ -129,7 +132,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		return StepResult{}, fmt.Errorf("shedengine: read status file %q: %w", s.StatusPath, err)
 	}
 	if !found {
-		return StepResult{}, fmt.Errorf("shedengine: status file %q does not exist; Shed never seeds one; way forward: seed the run through its recipe's bootstrap verb, or \"lyx shed seed\" for a recipe without one", s.StatusPath)
+		return StepResult{}, fmt.Errorf("shedengine: status file %q does not exist; Shed never seeds one; %s", s.StatusPath, missingStatusWayForward)
 	}
 	if !st.State.valid() {
 		return StepResult{}, fmt.Errorf("shedengine: status file %q carries an invalid state %q", s.StatusPath, st.State)

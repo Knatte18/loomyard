@@ -43,7 +43,7 @@ func Goto(req GotoRequest) (Status, error) {
 		return Status{}, fmt.Errorf("shedengine: acquire run lock %q: %w", req.LockPath, err)
 	}
 	if !locked {
-		return Status{}, fmt.Errorf("%w: %q; way forward: \"lyx shed pause\" asks the live driver to stop at its next producer boundary; check the holder with \"lyx shed status\", then retry", ErrShedBusy, req.LockPath)
+		return Status{}, fmt.Errorf("%w: %q; %s", ErrShedBusy, req.LockPath, busyWayForward)
 	}
 	defer runLock.Release()
 
@@ -52,7 +52,7 @@ func Goto(req GotoRequest) (Status, error) {
 		return Status{}, fmt.Errorf("shedengine: read status file %q: %w", req.StatusPath, err)
 	}
 	if !found {
-		return Status{}, fmt.Errorf("shedengine: status file %q does not exist; Shed never seeds one", req.StatusPath)
+		return Status{}, fmt.Errorf("shedengine: status file %q does not exist; Shed never seeds one; %s", req.StatusPath, missingStatusWayForward)
 	}
 	if !st.State.valid() {
 		return Status{}, fmt.Errorf("shedengine: status file %q carries an invalid state %q", req.StatusPath, st.State)
@@ -65,7 +65,7 @@ func Goto(req GotoRequest) (Status, error) {
 		for i, def := range req.Producers {
 			names[i] = def.Name
 		}
-		return Status{}, fmt.Errorf("shedengine: goto target %q names no producer in the list; valid targets: %s", req.Target, strings.Join(names, ", "))
+		return Status{}, fmt.Errorf("shedengine: goto target %q names no producer in the list; way forward: re-run goto with --to naming one of: %s", req.Target, strings.Join(names, ", "))
 	}
 
 	var written Status
