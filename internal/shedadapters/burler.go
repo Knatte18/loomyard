@@ -262,9 +262,10 @@ var _ shedengine.ShedProducer = (*BurlerProducer)(nil)
 // empty Path (the cause rides on Reason), archived exactly like every other non-success exit --
 // the empty Path is what tells the segment's Bouncer there is no round artifact to judge, the
 // same signal the deleted validate producers used for exactly this meaning (see the "the two
-// producers' output pointers mean different things" decision). It consumes no attempt-1/attempt-2 retry: that retry is for
-// OutcomeDied/OutcomeTimeout, infrastructure faults, while gate exhaustion is a determinate verdict
-// the gate already re-prompted its whole budget over inside the session.
+// producers' output pointers mean different things" decision). It consumes no
+// attempt-1/attempt-2 retry: that retry is for OutcomeDied/OutcomeTimeout, infrastructure faults,
+// while gate exhaustion is a determinate verdict the gate already re-prompted its whole budget over
+// inside the session.
 //
 // No mid-run cancellation bridge is installed, because internal/burlerengine exposes no pause
 // seam: a cancel is observed only once the round reaches a terminal outcome or its own
