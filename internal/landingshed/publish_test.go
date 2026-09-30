@@ -767,3 +767,33 @@ func TestPublish_StuckWritesNoReasonFile(t *testing.T) {
 		t.Errorf("stuck-reason files = %v; want none", matches)
 	}
 }
+
+func TestFindPullRequest_QueryParametersAndEmptyList(t *testing.T) {
+	var got url.Values
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.URL.Query()
+		_, _ = w.Write([]byte("[]"))
+	}))
+	t.Cleanup(srv.Close)
+
+	client := github.NewClient(nil).WithAuthToken("test-token")
+	parsed, err := url.Parse(srv.URL + "/")
+	if err != nil {
+		t.Fatalf("url.Parse: %v", err)
+	}
+	client.BaseURL = parsed
+
+	pr, err := FindPullRequest(context.Background(), client, "o", "r", "task", "parent")
+	if err != nil {
+		t.Fatalf("FindPullRequest: %v", err)
+	}
+	if pr != nil {
+		t.Errorf("pr = %v, want nil for an empty list", pr)
+	}
+	want := map[string]string{"state": "all", "head": "o:task", "base": "parent", "sort": "created", "direction": "desc"}
+	for k, v := range want {
+		if got.Get(k) != v {
+			t.Errorf("query %s = %q, want %q", k, got.Get(k), v)
+		}
+	}
+}

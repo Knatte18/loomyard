@@ -154,23 +154,14 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 		return p.stuckOrCancelled(ctx, fmt.Sprintf("github client unavailable: %v", err), "error", err)
 	}
 
-	queryCtx, cancel := context.WithTimeout(ctx, publishGitHubTimeout)
-	defer cancel()
-
-	prs, _, err := client.PullRequests.List(queryCtx, owner, repo, &github.PullRequestListOptions{
-		State:     "all",
-		Head:      fmt.Sprintf("%s:%s", owner, p.deps.TaskBranch),
-		Base:      p.deps.ParentBranch,
-		Sort:      "created",
-		Direction: "desc",
-	})
+	pr, err := FindPullRequest(ctx, client, owner, repo, p.deps.TaskBranch, p.deps.ParentBranch)
 	if err != nil {
 		logger.Warn("landingshed: github call failed", "producer", publishName, "action", "query existing pull request", "owner", owner, "repo", repo, "cause", err)
 		return p.stuckOrCancelled(ctx, publishGitHubErrorReason("query existing pull request", err))
 	}
 
 	// Step 8: branch on what the query found.
-	if len(prs) == 0 {
+	if pr == nil {
 		summary, err := summaryparser.Parse(p.deps.DescriptionPath)
 		if err != nil {
 			return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: parse change description: %w", publishName, err)
@@ -196,7 +187,6 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 		return p.stuckOrCancelled(ctx, withPRURL("pull request created; awaiting review", created.GetHTMLURL()))
 	}
 
-	pr := prs[0]
 	switch {
 	case pr.GetState() == "open":
 		// No second pull request created and no second merge-in. The push at step 5 still ran, so
