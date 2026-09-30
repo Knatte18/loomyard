@@ -245,7 +245,9 @@ drives, one invocation at a time. The envelope's "continue" and
 "next_interrupt_policy" fields say what to do next; it also names
 "trace_file" (the durable trace this invocation wrote), "friction_dir" and
 "scratch_dir". Every error envelope carries the same three keys beside
-"kind", so a supervisor can read what the step did and repair from it.
+"kind", and also "transient": the transient class name, or empty when the
+failure is not transient, so a supervisor can read what the step did and
+repair from it.
 
 An optional run-id positional addresses a run other than this worktree's
 own default ("self"); step refuses when no seed already exists at that

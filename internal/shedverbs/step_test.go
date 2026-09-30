@@ -382,6 +382,82 @@ func TestStepCmd_ErrorEnvelopesCarryLocations(t *testing.T) {
 			if env["trace_id"] != logger.TraceID() {
 				t.Errorf("trace_id = %v; want %q", env["trace_id"], logger.TraceID())
 			}
+			if v, ok := env["transient"]; !ok || v != "" {
+				t.Errorf("transient = %v (present=%v); want present and empty", v, ok)
+			}
+			wantKeys := map[string]bool{
+				"ok": true, "error": true, "kind": true, "transient": true, "trace_file": true,
+				"friction_dir": true, "scratch_dir": true, "trace_id": true, "run_id": true,
+			}
+			if len(env) != len(wantKeys) {
+				t.Errorf("error envelope key count = %d; want %d (%v)", len(env), len(wantKeys), env)
+			}
+			for k := range env {
+				if !wantKeys[k] {
+					t.Errorf("error envelope has unexpected key %q", k)
+				}
+			}
+		})
+	}
+}
+
+// TestStepCmd_ErrorEnvelopesCarryTransientClass covers a PreStep, a BuildShed and a producer failure
+// each carrying its transient class on the envelope while the kind is unchanged, and the busy
+// refusal reporting an empty class even when the classifier would mark its error.
+func TestStepCmd_ErrorEnvelopesCarryTransientClass(t *testing.T) {
+	paths := newTestPaths(t)
+	seedStatus(t, paths, "Bad")
+
+	tests := []struct {
+		name          string
+		spec          func() *Spec
+		wantKind      string
+		wantTransient string
+	}{
+		{"PreStep", func() *Spec {
+			return &Spec{Hooks: Hooks{PreStep: func(ctx context.Context) (string, error) {
+				return KindUnseeded, shedengine.MarkTransient(shedengine.TransientGitTransport, errors.New("push"))
+			}}}
+		}, KindUnseeded, string(shedengine.TransientGitTransport)},
+		{"BuildShed", func() *Spec {
+			return &Spec{BuildShed: func() (*shedengine.Shed, error) {
+				return nil, shedengine.MarkTransient(shedengine.TransientAgentStart, errors.New("start"))
+			}}
+		}, KindBootstrap, string(shedengine.TransientAgentStart)},
+		{"Producer", func() *Spec {
+			return &Spec{BuildShed: func() (*shedengine.Shed, error) {
+				shed := newFakeShed(paths, []shedengine.ProducerDef{erroringRow("Bad", errors.New("api"))})
+				shed.Transient = func(error) shedengine.TransientClass { return shedengine.TransientGitHubAPI }
+				return shed, nil
+			}}
+		}, KindProducer, string(shedengine.TransientGitHubAPI)},
+		{"Busy", func() *Spec {
+			return &Spec{StepBusyKind: KindBusy, BuildShed: func() (*shedengine.Shed, error) {
+				shed := newFakeShed(paths, []shedengine.ProducerDef{stubRow("Bad")})
+				shed.Transient = func(error) shedengine.TransientClass { return shedengine.TransientGitHubAPI }
+				return shed, nil
+			}}
+		}, KindBusy, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.name == "Busy" {
+				held, locked, err := lock.TryAcquireWriteLock(paths.LockPath)
+				if err != nil || !locked {
+					t.Fatalf("acquire run lock: locked=%v err=%v", locked, err)
+				}
+				defer held.Release()
+			}
+			env, code := execEnvelope(t, stepCmd(stepTexts(), tt.spec()), nil)
+			if code != 1 {
+				t.Fatalf("exit code = %d; want 1", code)
+			}
+			if env["kind"] != tt.wantKind {
+				t.Errorf("kind = %v; want %q", env["kind"], tt.wantKind)
+			}
+			if env["transient"] != tt.wantTransient {
+				t.Errorf("transient = %v; want %q", env["transient"], tt.wantTransient)
+			}
 		})
 	}
 }

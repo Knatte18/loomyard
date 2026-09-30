@@ -98,10 +98,13 @@ type StepLocations struct {
 	RunID       string
 }
 
-// stepErrFields builds an error envelope's extra fields: kind plus the five location keys.
-func stepErrFields(kind string, loc StepLocations) map[string]any {
+// stepErrFields builds an error envelope's extra fields: kind, transient (the class name
+// shedengine.TransientOf reports for the failure, or the empty string when it is not transient;
+// not a sixth kind) and the five location keys.
+func stepErrFields(kind, transient string, loc StepLocations) map[string]any {
 	return map[string]any{
 		"kind":         kind,
+		"transient":    transient,
 		"trace_file":   loc.TraceFile,
 		"friction_dir": loc.FrictionDir,
 		"scratch_dir":  loc.ScratchDir,
@@ -145,25 +148,25 @@ func stepCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 			locations := func() StepLocations {
 				return StepLocations{TraceFile: logger.TraceFile(), FrictionDir: spec.FrictionDir, ScratchDir: spec.ScratchDir, TraceID: logger.TraceID(), RunID: spec.RunID}
 			}
-			refuse := func(kind, msg string) {
-				logger.Warn("shed: step refused", "kind", kind, "error", msg)
-				clihelp.SetExit(ctx, output.ErrFields(out, msg, stepErrFields(kind, locations())))
+			refuse := func(kind, transient, msg string) {
+				logger.Warn("shed: step refused", "kind", kind, "transient", transient, "error", msg)
+				clihelp.SetExit(ctx, output.ErrFields(out, msg, stepErrFields(kind, transient, locations())))
 			}
 
 			if spec.Hooks.PreStep != nil {
 				if kind, err := spec.Hooks.PreStep(ctx); err != nil {
-					refuse(kind, err.Error())
+					refuse(kind, string(shedengine.TransientOf(err)), err.Error())
 					return nil
 				}
 			}
 
 			if spec.BuildShed == nil {
-				refuse(KindBootstrap, "shedverbs: step: no BuildShed constructor configured")
+				refuse(KindBootstrap, "", "shedverbs: step: no BuildShed constructor configured")
 				return nil
 			}
 			shed, err := spec.BuildShed()
 			if err != nil {
-				refuse(KindBootstrap, err.Error())
+				refuse(KindBootstrap, string(shedengine.TransientOf(err)), err.Error())
 				return nil
 			}
 
@@ -174,10 +177,10 @@ func stepCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 					if spec.StepBusyMessage != "" {
 						msg = spec.StepBusyMessage
 					}
-					refuse(spec.StepBusyKind, msg)
+					refuse(spec.StepBusyKind, "", msg)
 					return nil
 				}
-				refuse(KindProducer, err.Error())
+				refuse(KindProducer, string(shedengine.TransientOf(err)), err.Error())
 				return nil
 			}
 			logger.Info("shed: step done", "producer", res.Producer, "outcome", string(res.Outcome), "state", string(res.State), "next", res.Next, "reason", res.Reason)
