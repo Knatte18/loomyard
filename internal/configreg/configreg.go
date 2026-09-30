@@ -13,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -47,6 +48,7 @@ func Modules() []Module {
 		{Name: "landing", Template: landingshed.ConfigTemplate},
 		{Name: "loom", Template: loomengine.ConfigTemplate},
 		{Name: "models", Template: modelspec.ConfigTemplate, SeedOnly: true},
+		{Name: "orch", Template: orchengine.ConfigTemplate},
 		{Name: "reed", Template: reedengine.ConfigTemplate},
 		{Name: "shuttle", Template: shuttleengine.ConfigTemplate},
 		{Name: "webster", Template: websterengine.ConfigTemplate},

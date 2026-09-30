@@ -1,0 +1,89 @@
+// config.go — configuration for the orch module.
+//
+// Defines the Config type mirroring orch.yaml's keys and LoadConfig, which uses
+// internal/configengine.LoadOrTemplate with ConfigTemplate() to resolve the orch config file,
+// degrading to the embedded template on proven absence;
+// orch never reads config files or knows their on-disk layout itself.
+
+package orchengine
+
+import (
+	"fmt"
+	"time"
+
+	"github.com/Knatte18/loomyard/internal/configengine"
+	"gopkg.in/yaml.v3"
+)
+
+// Template defaults, which the accessors floor a non-positive value back to.
+const (
+	defaultThresholdTokens = 150000
+	defaultIdleGraceS      = 30
+	defaultHandoffTimeoutS = 600
+	defaultPollIntervalMS  = 2000
+)
+
+// Config represents the resolved orch.yaml configuration.
+// Read the numeric knobs through their accessors, which floor a non-positive value.
+type Config struct {
+	Model  string `yaml:"model"`  // Model alias; empty is the provider default.
+	Effort string `yaml:"effort"` // Effort level in shuttle's engine vocabulary; empty is the provider default.
+
+	ThresholdTokens int `yaml:"threshold_tokens"`  // Context tokens at which the watcher cycles the session.
+	IdleGraceS      int `yaml:"idle_grace_s"`      // Seconds idle after the newest event before acting.
+	HandoffTimeoutS int `yaml:"handoff_timeout_s"` // Seconds the session gets to write its handoff.
+	PollIntervalMS  int `yaml:"poll_interval_ms"`  // Watcher tick interval in milliseconds.
+}
+
+// LoadConfig loads and unmarshals orch module configuration.
+// An absent <baseDir>/_lyx/ directory or an absent config file resolves the embedded template;
+// a config file that exists but is invalid still errors.
+func LoadConfig(baseDir, module string) (Config, error) {
+	resolved, err := configengine.LoadOrTemplate(baseDir, module, []byte(ConfigTemplate()))
+	if err != nil {
+		return Config{}, err
+	}
+
+	var cfg Config
+	if err := yaml.Unmarshal(resolved, &cfg); err != nil {
+		return Config{}, fmt.Errorf("unmarshal orch config: %w", err)
+	}
+
+	return cfg, nil
+}
+
+// Threshold returns the context-token count that triggers a cycle,
+// flooring a non-positive value to the template default so a zero can never cycle on every turn.
+func (c Config) Threshold() int {
+	if c.ThresholdTokens <= 0 {
+		return defaultThresholdTokens
+	}
+	return c.ThresholdTokens
+}
+
+// IdleGrace returns how long the session must stay idle after its newest event,
+// flooring a non-positive value to the template default.
+func (c Config) IdleGrace() time.Duration {
+	if c.IdleGraceS <= 0 {
+		return defaultIdleGraceS * time.Second
+	}
+	return time.Duration(c.IdleGraceS) * time.Second
+}
+
+// HandoffTimeout returns how long the session gets to write its handoff,
+// flooring a non-positive value to the template default.
+func (c Config) HandoffTimeout() time.Duration {
+	if c.HandoffTimeoutS <= 0 {
+		return defaultHandoffTimeoutS * time.Second
+	}
+	return time.Duration(c.HandoffTimeoutS) * time.Second
+}
+
+// PollInterval returns the watcher's tick interval,
+// flooring a non-positive value to the template default so a zero can never busy-spin.
+func (c Config) PollInterval() time.Duration {
+	if c.PollIntervalMS <= 0 {
+		return defaultPollIntervalMS * time.Millisecond
+	}
+	return time.Duration(c.PollIntervalMS) * time.Millisecond
+}
