@@ -468,7 +468,7 @@
 // included, reported as success.
 // The hub's prime worktree is refused by name before any teardown begins, since it is the warp
 // repository rather than a pair.
-// After its refusals and before its first mutation, `Remove` archives the pair's weft tip:
+// After its refusals — the no-force dirtiness checks and their status probes among them — and before its first mutation, `Remove` archives the pair's weft tip:
 // `archiveWeftTip` pushes an `archive/<slug>/<tip>` tag to the weft origin, so the run records on the weft branch stay reachable once the branch is deleted.
 // A failed archive returns its error with the worktrees, portal, launchers and both branches still in place, so a plain re-run retries it; `force` and `remote` never skip it, and a weft repo with no origin proceeds with `ArchiveSkippedReason` set.
 //

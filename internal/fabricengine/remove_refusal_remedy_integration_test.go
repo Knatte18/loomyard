@@ -1,14 +1,9 @@
 //go:build integration
 
-// remove_refusal_remedy_integration_test.go pins the remedy pointer Remove's no-force refusals carry
-// when their own portal and launcher teardown has already run.
+// remove_refusal_remedy_integration_test.go pins that a no-force Remove refusal — a dirty worktree or a failed status probe — leaves the pair and the weft origin untouched: no portal or launcher is torn down, no mutation is recorded, and no archive tag is pushed.
 //
-// Remove tears the portal and launchers down before the no-force dirtiness gates, deliberately, so
-// the teardown still runs when the worktree directory is already gone (remove.go's header states the
-// rule). The cost is that a REFUSED remove — the operator was told to commit or pass --force — has
-// nonetheless already destroyed that pair's portal junction and launcher scripts. That loss is
-// self-healing via `lyx fabric reconcile`, and the mutation record already reports it with
-// partial=true, but an operator reading only the refusal has no reason to suspect it happened.
+// Remove runs every refusal before its archive and the archive before every removal (remove.go's header states the order),
+// so an operator told to commit or pass --force has lost nothing and the refusal needs no repair pointer.
 //
 // Package fabricengine_test to reuse newFabricFixture from
 // reconcile_stale_registration_test.go; shares the single TestMain in testmain_test.go.
@@ -23,29 +18,21 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
-// TestRemove_RefusalNamesStrandedPortalTeardown builds a real pair, dirties its warp worktree, and
-// asserts the no-force refusal both reports the teardown it already performed and names the
-// reconcile remedy — and that reconcile genuinely restores what was torn down.
-func TestRemove_RefusalNamesStrandedPortalTeardown(t *testing.T) {
+// TestRemove_DirtyRefusalLeavesPairIntact builds a real pair, dirties its warp worktree, and asserts the no-force refusal tears nothing down, records nothing, and pushes no archive tag.
+func TestRemove_DirtyRefusalLeavesPairIntact(t *testing.T) {
 	t.Parallel()
 
-	const slug = "remove-refusal-remedy"
+	const slug = "remove-refusal-intact"
 	fixture := newFabricFixture(t)
 	l := fixture.Layout
+	weftRoot := mustWeftRepoRoot(t, l)
 	topology := fabricengine.NewTopology(fabricengine.Config{})
 
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
 		t.Fatalf("setup Add: %v", err)
-	}
-
-	portalPath := filepath.Join(l.HubPath, "_portals", slug)
-	launcherDir := filepath.Join(l.HubPath, "_launchers", slug)
-	for _, path := range []string{portalPath, launcherDir} {
-		if _, err := os.Lstat(path); err != nil {
-			t.Fatalf("precondition: Add must have created %s; Lstat err = %v", path, err)
-		}
 	}
 
 	// An uncommitted TRACKED change is what makes the no-force gate refuse. It must be tracked:
@@ -70,29 +57,84 @@ func TestRemove_RefusalNamesStrandedPortalTeardown(t *testing.T) {
 	if !strings.Contains(msg, "uncommitted changes") {
 		t.Errorf("refusal must still say why it refused; got:\n%s", msg)
 	}
-	if !strings.Contains(msg, "lyx fabric reconcile") {
-		t.Errorf("refusal does not name the reconcile remedy for the portal/launcher teardown it already performed; an operator has no reason to suspect the loss:\n%s", msg)
+	if strings.Contains(msg, "lyx fabric reconcile") {
+		t.Errorf("refusal names the retired reconcile remedy; nothing was torn down:\n%s", msg)
+	}
+	if n := res.Mutated().Len(); n != 0 {
+		t.Errorf("refusal recorded %d mutations; want 0", n)
+	}
+	assertPairIntact(t, l, slug)
+	assertNoArchiveTag(t, fixture.WeftBare, weftRoot)
+}
+
+// TestRemove_WarpStatusProbeFailurePushesNoTag breaks the warp worktree's gitfile so the status probe fails, and asserts the refusal pushes no archive tag and tears nothing down.
+func TestRemove_WarpStatusProbeFailurePushesNoTag(t *testing.T) {
+	t.Parallel()
+
+	const slug = "remove-probe-failure"
+	fixture := newFabricFixture(t)
+	l := fixture.Layout
+	weftRoot := mustWeftRepoRoot(t, l)
+	topology := fabricengine.NewTopology(fabricengine.Config{})
+
+	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
+		t.Fatalf("setup Add: %v", err)
 	}
 
-	// The record must agree with the message: this refusal really did strand a teardown.
-	if res.Mutated().Len() == 0 {
-		t.Fatalf("refusal recorded no mutations, so the remedy pointer would be claiming a loss that did not happen")
+	gitFile := filepath.Join(fabricengine.WorktreePath(l, slug), ".git")
+	missing := filepath.Join(l.HubPath, "no-such-gitdir")
+	if err := os.WriteFile(gitFile, []byte("gitdir: "+filepath.ToSlash(missing)+"\n"), 0o644); err != nil {
+		t.Fatalf("overwrite %s: %v", gitFile, err)
 	}
 
-	// The stranding the message describes is real, not hypothetical.
-	for _, path := range []string{portalPath, launcherDir} {
-		if _, statErr := os.Lstat(path); !os.IsNotExist(statErr) {
-			t.Errorf("expected %s to have been torn down before the refusal; Lstat err = %v", path, statErr)
+	_, err := topology.Remove(l, slug, false, false)
+	if err == nil {
+		t.Fatalf("Remove with a failing status probe returned nil error; want a refusal")
+	}
+	if !strings.Contains(err.Error(), "check warp worktree status") {
+		t.Errorf("error does not name the failed probe:\n%s", err.Error())
+	}
+	assertNoArchiveTag(t, fixture.WeftBare, weftRoot)
+	for _, p := range []string{
+		fabricengine.PortalLink(l, slug),
+		fabricengine.LauncherDir(l, slug),
+		fabricengine.WeftWorktreePath(l, slug),
+	} {
+		if _, statErr := os.Lstat(p); statErr != nil {
+			t.Errorf("%s missing after a refused Remove: %v", p, statErr)
 		}
 	}
+}
 
-	// And the remedy the message names actually works — otherwise the pointer is worse than silence.
-	if _, reconcileErr := topology.Reconcile(l); reconcileErr != nil {
-		t.Fatalf("Reconcile (the remedy the refusal names) failed: %v", reconcileErr)
+// assertPairIntact fails unless the pair's portal, launchers, both worktrees and both branches exist.
+func assertPairIntact(t *testing.T, l *lyxcwd.Location, slug string) {
+	t.Helper()
+
+	for _, p := range []string{
+		fabricengine.PortalLink(l, slug),
+		fabricengine.LauncherDir(l, slug),
+		fabricengine.WorktreePath(l, slug),
+		fabricengine.WeftWorktreePath(l, slug),
+	} {
+		if _, err := os.Lstat(p); err != nil {
+			t.Errorf("%s missing after a refused Remove: %v", p, err)
+		}
 	}
-	for _, path := range []string{portalPath, launcherDir} {
-		if _, statErr := os.Lstat(path); statErr != nil {
-			t.Errorf("Reconcile did not restore %s; the remedy named in the refusal must be sufficient: %v", path, statErr)
+	if !branchExistsAt(t, l.WorktreePath(), slug) {
+		t.Errorf("warp branch gone after a refused Remove")
+	}
+	if !branchExistsAt(t, mustWeftRepoRoot(t, l), fabricengine.WeftBranchName(slug)) {
+		t.Errorf("weft branch gone after a refused Remove")
+	}
+}
+
+// assertNoArchiveTag fails when any archive/ tag exists in either repo.
+func assertNoArchiveTag(t *testing.T, repoRoots ...string) {
+	t.Helper()
+
+	for _, root := range repoRoots {
+		if tags := archiveTagsAt(t, root); len(tags) != 0 {
+			t.Errorf("archive tags in %s after a refused Remove = %v; want none", root, tags)
 		}
 	}
 }
@@ -136,51 +178,5 @@ func TestRemove_StatusFailureNamesPathAndCommandOnce(t *testing.T) {
 	}
 	if !strings.Contains(msg, "not a git repository") {
 		t.Errorf("error dropped git's own stderr, the only actionable part:\n%s", msg)
-	}
-}
-
-// TestRemove_RefusalWithNothingStrandedOmitsRemedy pins the other direction: a refusal that tore
-// nothing down must not tell the operator to repair a hub that is intact. A second refused attempt
-// is the ordinary way to reach this state — the first attempt already removed the portal and
-// launchers, so the second records nothing.
-func TestRemove_RefusalWithNothingStrandedOmitsRemedy(t *testing.T) {
-	t.Parallel()
-
-	const slug = "remove-refusal-no-remedy"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	topology := fabricengine.NewTopology(fabricengine.Config{})
-
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add: %v", err)
-	}
-
-	warpPath := fabricengine.WorktreePath(l, slug)
-	tracked := filepath.Join(warpPath, "tracked.md")
-	if err := os.WriteFile(tracked, []byte("committed\n"), 0o644); err != nil {
-		t.Fatalf("write %s: %v", tracked, err)
-	}
-	gitkit.MustRun(t, warpPath, "git", "add", "tracked.md")
-	gitkit.MustRun(t, warpPath, "git", "commit", "-m", "seed tracked file")
-	if err := os.WriteFile(tracked, []byte("committed\nuncommitted\n"), 0o644); err != nil {
-		t.Fatalf("dirty %s: %v", tracked, err)
-	}
-
-	if _, err := topology.Remove(l, slug, false, false); err == nil {
-		t.Fatalf("first Remove(force=false) returned nil error; want a refusal")
-	}
-
-	res, err := topology.Remove(l, slug, false, false)
-	if err == nil {
-		t.Fatalf("second Remove(force=false) returned nil error; want a refusal")
-	}
-	// The archive step re-pushes its tag on every attempt and records that; it strands nothing.
-	for _, entry := range res.Mutated().Entries() {
-		if entry.Kind != fabricengine.KindTagPushed {
-			t.Fatalf("precondition: the second refusal must record nothing beyond the archive tag (the first already tore the portal down); got %+v", entry)
-		}
-	}
-	if strings.Contains(err.Error(), "lyx fabric reconcile") {
-		t.Errorf("a refusal that stranded nothing must not point at a repair; got:\n%s", err.Error())
 	}
 }

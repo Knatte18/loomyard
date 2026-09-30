@@ -356,29 +356,6 @@ func slugPermittedRoots(slug string) []string {
 	return roots
 }
 
-// portalAndLauncherPermittedRoots returns slug's portal-link and launcher-dir hub-relative roots,
-// unioned across both anchors, for the one tranche-1 refusal that is not side-effect-free: a dirty
-// Remove has already destroyed these two before its own dirty pre-flight ever runs (remove.go:61-76).
-// Each leaf's own anchor-level parent is included too, matching slugPermittedRoots' own reasoning:
-// pruneEmptyAncestors removes an anchor-level parent left empty by the leaf's own removal (e.g.
-// "_portals/backend" once "_portals/backend/<slug>" is the only entry there and is gone), so the
-// parent itself is also a legitimate part of this partial teardown, not an unpermitted change.
-func portalAndLauncherPermittedRoots(slug string) []string {
-	var roots []string
-	for _, anchor := range []string{".", "backend"} {
-		loc := &lyxcwd.Location{WorktreeName: slug, AnchorRel: anchor}
-		portal := fabricengine.PortalLink(loc, slug)
-		launcher := fabricengine.LauncherDir(loc, slug)
-		roots = append(roots,
-			filepath.ToSlash(portal),
-			filepath.ToSlash(launcher),
-			filepath.ToSlash(filepath.Dir(portal)),
-			filepath.ToSlash(filepath.Dir(launcher)),
-		)
-	}
-	return roots
-}
-
 // escapeRelName returns a "../"-prefixed junction name carrying exactly enough ".." segments to walk
 // all the way out of the hub once joined onto WorktreePath(l,slug)/anchorRel — one to cancel the slug
 // segment itself, plus one more per anchorRel path segment (anchorRel "." contributes none).
@@ -584,10 +561,7 @@ func mustGitRemoteURL(tb testing.TB, dir string) string {
 }
 
 // removeCase builds Topology.Remove's VerbCase.
-// Its dirty-refusal cells declare PortalLink and LauncherDir as permitted roots, because
-// remove.go:61-66 runs removePortal and removeLaunchers BEFORE the dirty pre-flight at :68-76, so a
-// correctly-refusing cell has already destroyed them — the one tranche-1 refusal that is not
-// side-effect-free (see doc.go's record of it).
+// Its dirty-refusal cells declare no permitted roots: Remove runs both no-force dirtiness checks before its archive and every teardown, so a correctly-refusing cell changes nothing.
 func removeCase() VerbCase {
 	return VerbCase{
 		Name: "Remove",
@@ -618,16 +592,14 @@ func removeCase() VerbCase {
 		Expect: func(state string) Expectation {
 			switch state {
 			case "dirtyWarpTracked", "dirtyWarpUntracked", "dirtyWeftTracked", "dirtyWeftUntracked", "bothDirty":
-				// remove.go:61-66 runs removePortal and removeLaunchers BEFORE the dirty pre-flight
-				// at :68-76, so a correctly-refusing cell has already destroyed them — the one
-				// tranche-1 refusal that is not side-effect-free.
+				// Remove runs both no-force dirtiness checks before its archive and every teardown,
+				// so a refused cell leaves the portal, launchers and warp worktree in place.
 				return Expectation{
-					Kind:           KindRefusedBefore,
-					Substring:      "uncommitted changes",
-					PermittedRoots: portalAndLauncherPermittedRoots("verb-remove-owner"),
+					Kind:      KindRefusedBefore,
+					Substring: "uncommitted changes",
 					Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
-						assertGone(tb, h.PairPortalLink(f.Slug))
-						assertGone(tb, h.PairLauncherDir(f.Slug))
+						assertExists(tb, h.PairPortalLink(f.Slug))
+						assertExists(tb, h.PairLauncherDir(f.Slug))
 						assertExists(tb, h.PairWarpWorktree(f.Slug))
 					},
 				}

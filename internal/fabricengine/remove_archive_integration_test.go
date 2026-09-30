@@ -1,7 +1,7 @@
 //go:build integration
 
-// remove_archive_integration_test.go covers Remove's archive step: before any mutation it tags the pair's weft tip under archive/<slug>/ and pushes the tag to the weft origin, so the run records committed on that branch outlive the branch itself.
-// It covers the tag's landing and its resumed reuse, the fail-closed shape of an unreachable origin, the fact that neither force nor remote=false skips the step, the no-origin skip, and that a rolled-back Add never archives.
+// remove_archive_integration_test.go covers Remove's archive step: after every refusal and before any mutation it tags the pair's weft tip under archive/<slug>/ and pushes the tag to the weft origin, so the run records committed on that branch outlive the branch itself.
+// It covers the tag's landing, its reuse when the same-tip tag is already on the origin, the refuse-then-resume flow for a dirty weft worktree, the fail-closed shape of an unreachable origin, the fact that neither force nor remote=false skips the step, the no-origin skip, and that a rolled-back Add never archives.
 //
 // Every hub is built through hubforge.NewHub via newFabricFixture, with the hub's WeftBare as the weft origin.
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
@@ -9,6 +9,7 @@
 package fabricengine_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -79,40 +80,115 @@ func TestRemove_ArchivesWeftTipBeforeTeardown(t *testing.T) {
 	}
 }
 
-// TestRemove_ResumedRemoveReusesArchiveTag covers a Remove refused after the archive and re-run on the same tip: the second run finds its own tag and succeeds with the same name.
-func TestRemove_ResumedRemoveReusesArchiveTag(t *testing.T) {
+// TestRemove_ReusesSameTipArchiveTag covers archiveWeftTip's reuse path: an archive tag for the same tip already on the origin, as a teardown that failed after the archive leaves it, is reused rather than pushed again.
+func TestRemove_ReusesSameTipArchiveTag(t *testing.T) {
 	t.Parallel()
 
-	const slug = "remove-archive-resume"
+	const slug = "remove-archive-reuse"
 	fixture := newFabricFixture(t)
 	l := fixture.Layout
+	weftRoot := mustWeftRepoRoot(t, l)
 	topology := fabricengine.NewTopology(fabricengine.Config{})
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{}); err != nil {
 		t.Fatalf("setup Add(%q): %v", slug, err)
 	}
 	tip := commitLyxFileInWeft(t, fabricengine.WeftWorktreePath(l, slug))
 
-	// An untracked warp file refuses the non-force Remove after the archive already ran.
-	dirt := filepath.Join(fabricengine.WorktreePath(l, slug), "uncommitted.txt")
-	if err := os.WriteFile(dirt, []byte("dirt\n"), 0o644); err != nil {
-		t.Fatalf("dirty the warp worktree: %v", err)
-	}
-	first, err := topology.Remove(l, slug, false, false)
-	if err == nil {
-		t.Fatalf("first Remove = nil error; want the dirty refusal")
-	}
+	// Plant the state an earlier archive leaves: a lightweight tag at the tip, as archiveWeftTip itself creates, pushed to the origin.
 	wantTag := "archive/" + slug + "/" + tip[:12]
-	if got := tagTargetAt(t, fixture.WeftBare, wantTag); got != tip {
-		t.Fatalf("origin tag %s points at %q after the refused Remove; want %s", wantTag, got, tip)
-	}
-	_ = first
+	gitkit.MustRun(t, weftRoot, "git", "tag", wantTag, tip)
+	gitkit.MustRun(t, weftRoot, "git", "push", "origin", "refs/tags/"+wantTag)
 
-	res, err := topology.Remove(l, slug, true, false)
+	res, err := topology.Remove(l, slug, false, false)
 	if err != nil {
-		t.Fatalf("resumed Remove error = %v", err)
+		t.Fatalf("Remove error = %v", err)
 	}
 	if res.ArchiveTag != wantTag {
-		t.Errorf("resumed ArchiveTag = %q; want the reused %q", res.ArchiveTag, wantTag)
+		t.Errorf("ArchiveTag = %q; want the reused %q", res.ArchiveTag, wantTag)
+	}
+	if got := tagTargetAt(t, fixture.WeftBare, wantTag); got != tip {
+		t.Errorf("origin tag %s points at %q; want %s", wantTag, got, tip)
+	}
+	if tags := archiveTagsAt(t, fixture.WeftBare); len(tags) != 1 || tags[0] != wantTag {
+		t.Errorf("origin archive tags = %v; want exactly [%s]", tags, wantTag)
+	}
+}
+
+// TestRemove_WeftDirtyRefusalPushesNoTagAndResumeArchivesOnce covers the refuse-then-resume flow: a no-force Remove refused for a dirty weft worktree pushes no tag and tears nothing down, and the re-run after committing the records archives the post-commit tip once.
+func TestRemove_WeftDirtyRefusalPushesNoTagAndResumeArchivesOnce(t *testing.T) {
+	t.Parallel()
+
+	const slug = "remove-archive-weft-dirty"
+	fixture := newFabricFixture(t)
+	l := fixture.Layout
+	weftRoot := mustWeftRepoRoot(t, l)
+	topology := fabricengine.NewTopology(fabricengine.Config{})
+	if _, err := topology.Add(l, slug, fabricengine.AddOptions{}); err != nil {
+		t.Fatalf("setup Add(%q): %v", slug, err)
+	}
+
+	weftWorktree := fabricengine.WeftWorktreePath(l, slug)
+	dir := filepath.Join(weftWorktree, "_lyx")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", dir, err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "record.txt"), []byte("run record\n"), 0o644); err != nil {
+		t.Fatalf("write record: %v", err)
+	}
+
+	res, err := topology.Remove(l, slug, false, false)
+	if err == nil {
+		t.Fatalf("Remove on a dirty weft worktree = nil error; want the refusal")
+	}
+	if !errors.Is(err, fabricengine.ErrPairSiblingDirty) {
+		t.Errorf("error = %v; want it to wrap ErrPairSiblingDirty", err)
+	}
+	if strings.Contains(err.Error(), "lyx fabric reconcile") {
+		t.Errorf("refusal names the retired reconcile remedy:\n%s", err.Error())
+	}
+	if tags := archiveTagsAt(t, fixture.WeftBare); len(tags) != 0 {
+		t.Errorf("origin archive tags after a refused Remove = %v; want none", tags)
+	}
+	if tags := archiveTagsAt(t, weftRoot); len(tags) != 0 {
+		t.Errorf("local archive tags after a refused Remove = %v; want none", tags)
+	}
+	if n := res.Mutated().Len(); n != 0 {
+		t.Errorf("refused Remove recorded %d mutations; want 0", n)
+	}
+	for _, p := range []string{
+		fabricengine.PortalLink(l, slug),
+		fabricengine.LauncherDir(l, slug),
+		fabricengine.WorktreePath(l, slug),
+		weftWorktree,
+	} {
+		if _, statErr := os.Lstat(p); statErr != nil {
+			t.Errorf("%s missing after a refused Remove: %v", p, statErr)
+		}
+	}
+	if !branchExistsAt(t, l.WorktreePath(), slug) {
+		t.Errorf("warp branch gone after a refused Remove")
+	}
+	if !branchExistsAt(t, weftRoot, fabricengine.WeftBranchName(slug)) {
+		t.Errorf("weft branch gone after a refused Remove")
+	}
+
+	gitkit.MustRun(t, weftWorktree, "git", "add", "-f", "_lyx/record.txt")
+	gitkit.MustRun(t, weftWorktree, "git", "commit", "-m", "record")
+	out, err := gitexec.Run([]string{"rev-parse", "HEAD"}, weftWorktree)
+	if err != nil {
+		t.Fatalf("rev-parse HEAD in %s: %v", weftWorktree, err)
+	}
+	tip := strings.TrimSpace(out)
+
+	if _, err := topology.Remove(l, slug, false, false); err != nil {
+		t.Fatalf("resumed Remove error = %v", err)
+	}
+	wantTag := "archive/" + slug + "/" + tip[:12]
+	if tags := archiveTagsAt(t, fixture.WeftBare); len(tags) != 1 || tags[0] != wantTag {
+		t.Errorf("origin archive tags = %v; want exactly [%s]", tags, wantTag)
+	}
+	if got := tagTargetAt(t, fixture.WeftBare, wantTag); got != tip {
+		t.Errorf("origin tag %s points at %q; want the post-commit tip %s", wantTag, got, tip)
 	}
 }
 
