@@ -1,5 +1,6 @@
 // types.go defines the closed display vocabulary render exposes to its caller: the Anchor kinds a
-// strand may declare, the per-strand Display settings (anchor, focus, shrink, fixed row budget), and the plain Strand/Box/Params value types.
+// strand may declare, the per-strand Display settings (anchor, focus, shrink, fixed row budget),
+// and the plain Strand/Box/Params value types.
 // This file carries no logic — it is the vocabulary the policy layer (policy.go, height.go,
 // focus.go) and the mechanics layer (layout.go, checksum.go) are built from.
 
