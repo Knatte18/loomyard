@@ -1608,3 +1608,102 @@ func TestRun_ZeroGateReachesStartMasterUngated(t *testing.T) {
 		t.Errorf("StartMaster received GateSpec{Gate: %v, Attempts: %d}; want the zero value", got.Gate != nil, got.Attempts)
 	}
 }
+
+// TestRun_ResumesOverExtendedPlanAfterRebaseline proves the rework row's acceptance criterion: a
+// finished two-card run whose plan gains a third card, re-baselined by RebaselinePlanFingerprint,
+// is resumed by Run with no ErrFingerprintMismatch.
+// The finished run's outcome, summary and integration report are cleared before Master spawns,
+// the Master prompt carries batches 1-2 as complete and only batch 3 as pending, and the
+// integration prompt is written because the plan carries a "## verify:" section.
+func TestRun_ResumesOverExtendedPlanAfterRebaseline(t *testing.T) {
+	fx := newRunFixture(t, 2)
+	appendIntegrationVerify(t, fx.PlanDir, "go test ./...")
+	geom := fx.Deps.Geom
+
+	seedMatchingState(t, fx, &websterengine.State{
+		Batches: map[int]*websterengine.BatchState{
+			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done"},
+			2: {Slug: "batch2", Kind: "fork", Terminal: true, Status: "done"},
+		},
+	})
+
+	for _, dir := range []string{geom.WebsterDir, geom.ReportsDir} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", dir, err)
+		}
+	}
+	outcomePath := filepath.Join(geom.WebsterDir, "outcome.yaml")
+	summaryPath := filepath.Join(geom.WebsterDir, "summary.md")
+	reportPath := websterengine.IntegrationReportPath(geom.ReportsDir)
+	for path, body := range map[string]string{
+		outcomePath: "outcome: done\nstuck_reason: null\nbatches_done: 2\n",
+		summaryPath: "# Finished\n\nTwo cards.\n",
+		reportPath:  "status: OK\n",
+	} {
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatalf("seed %s: %v", path, err)
+		}
+	}
+
+	// Append card 3 the way the rework row does: a card file plus its Card Index line.
+	overview := filepath.Join(fx.PlanDir, "00-overview.md")
+	data, err := os.ReadFile(overview)
+	if err != nil {
+		t.Fatalf("read overview: %v", err)
+	}
+	const lastIndexLine = "2 — batch2 — placeholder card 2\n"
+	body := string(data)
+	if !strings.Contains(body, lastIndexLine) {
+		t.Fatalf("overview fixture carries no %q index line", lastIndexLine)
+	}
+	body = strings.Replace(body, lastIndexLine, lastIndexLine+"3 — batch3 — placeholder card 3\n", 1)
+	if err := os.WriteFile(overview, []byte(body), 0o644); err != nil {
+		t.Fatalf("write overview: %v", err)
+	}
+	card3 := "# Card 3 — batch3\n\n**Create:**\n- `internal/batch3/new.go`\n\n**Intent:** placeholder card.\n"
+	if err := os.WriteFile(filepath.Join(fx.PlanDir, "03-batch3.md"), []byte(card3), 0o644); err != nil {
+		t.Fatalf("write card 3: %v", err)
+	}
+
+	if err := websterengine.RebaselinePlanFingerprint(geom); err != nil {
+		t.Fatalf("RebaselinePlanFingerprint() error = %v", err)
+	}
+
+	fx.Starter.handle = &runFakeHandle{strandGUID: "master-strand-rework", waitErr: fmt.Errorf("stop after spawn")}
+	_, err = websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	if errors.Is(err, websterengine.ErrFingerprintMismatch) {
+		t.Fatalf("Run() error = %v; want no ErrFingerprintMismatch after the re-baseline", err)
+	}
+	if fx.Starter.callCount() != 1 {
+		t.Fatalf("Starter.callCount() = %d; want Master spawned once (Run error: %v)", fx.Starter.callCount(), err)
+	}
+
+	for _, path := range []string{outcomePath, summaryPath, reportPath} {
+		if _, statErr := os.Stat(path); !os.IsNotExist(statErr) {
+			t.Errorf("stale %s still present; want it archived or removed before Master spawns", filepath.Base(path))
+		}
+	}
+	if archived, _ := filepath.Glob(filepath.Join(geom.WebsterDir, "outcome-*.yaml")); len(archived) != 1 {
+		t.Errorf("archived outcome glob = %v; want exactly 1", archived)
+	}
+	if archived, _ := filepath.Glob(filepath.Join(geom.WebsterDir, "summary-*.md")); len(archived) != 1 {
+		t.Errorf("archived summary glob = %v; want exactly 1", archived)
+	}
+
+	prompt := fx.Starter.startCalls[0].Prompt
+	for _, want := range []string{"01-batch1: done", "02-batch2: done"} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("Master prompt lacks %q as complete", want)
+		}
+	}
+	if strings.Contains(prompt, "03-batch3: ") {
+		t.Errorf("Master prompt lists batch 3 as reported; want it pending")
+	}
+	if !strings.Contains(prompt, "03 — batch3") {
+		t.Errorf("Master prompt batch index lacks batch 3")
+	}
+
+	if _, statErr := os.Stat(filepath.Join(geom.PromptsDir, "integration.md")); statErr != nil {
+		t.Errorf("integration prompt not written: %v", statErr)
+	}
+}
