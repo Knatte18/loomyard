@@ -486,6 +486,43 @@ func TestWatcher_AbortedHandoffNoRetryUntilLaterTurnEnd(t *testing.T) {
 	}
 }
 
+func TestWatcher_EveryAbortReturnPersistsCursor(t *testing.T) {
+	tests := []struct {
+		name  string
+		abort func(e *watchEnv)
+	}{
+		{"ask during the handoff", func(e *watchEnv) {
+			e.s.events = append(e.s.events, stop("chatter"), ask("which?"))
+			e.tick()
+		}},
+		{"handoff timeout", func(e *watchEnv) {
+			e.s.events = append(e.s.events, stop("handoff"))
+			e.clock.advance(101 * time.Second)
+			e.tick()
+		}},
+		{"resume render failure", func(e *watchEnv) {
+			breakStencil(e.t, e.stDir, resumeStencilName)
+			e.writeHandoff()
+			e.s.events = append(e.s.events, stop("handoff"))
+			e.tick()
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newWatchEnv(t)
+			e.injectHandoff()
+			tt.abort(e)
+			st := e.state()
+			if st.Phase != PhaseIdle || st.LastAbortReason == "" {
+				t.Fatalf("state = %+v", st)
+			}
+			if st.LastInjectionOffset != int64(len(e.s.events)) {
+				t.Errorf("LastInjectionOffset = %d, want %d", st.LastInjectionOffset, len(e.s.events))
+			}
+		})
+	}
+}
+
 func TestWatcher_RestartInIdleAfterResumeTimeoutStartsNoCycle(t *testing.T) {
 	e := newWatchEnv(t)
 	e.reachResuming()
