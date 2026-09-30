@@ -1,5 +1,5 @@
 // wayforward_test.go covers wayForward's per-check mapping over in-memory Reports.
-// The rows reached from a real hub (a dirty warp, a weft off its paired branch) belong to the integration suite;
+// The rows reached from a real hub (a dirty task worktree, a `_lyx` checkout off its paired branch) belong to the integration suite;
 // this file stays offline.
 
 package preflightshed
@@ -19,7 +19,7 @@ func TestWayForward(t *testing.T) {
 	}{
 		{"WorktreeClean", preflight.Failure{Check: preflight.CheckWorktreeClean, Reason: "dirty"}, "lyx fabric commit"},
 		{"FabricSync", preflight.Failure{Check: preflight.CheckFabricSync, Reason: "off branch"}, "lyx fabric checkout"},
-		{"FabricReady", preflight.Failure{Check: preflight.CheckFabricReady, Reason: "no weft"}, "lyx fabric reconcile"},
+		{"FabricReady", preflight.Failure{Check: preflight.CheckFabricReady, Reason: "no _lyx worktree"}, "lyx fabric reconcile"},
 		{"Junction", preflight.Failure{Check: preflight.CheckJunction, Reason: "broken link"}, "lyx fabric reconcile"},
 		{"JunctionConfigLoad", preflight.Failure{Check: preflight.CheckJunction, Reason: "junction check unavailable: cannot load fabric.yaml: bad"}, ""},
 		{"Geometry", preflight.Failure{Check: preflight.CheckGeometry, Reason: "no repo"}, ""},

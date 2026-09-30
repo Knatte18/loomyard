@@ -33,11 +33,11 @@ func TestClassifyViolation(t *testing.T) {
 
 	// A second fixture whose _lyx is a link to a sibling directory, written through the link's target.
 	linkRoot := gitwrapNewScratchRepo(t)
-	weft := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(weft, "webster"), 0o755); err != nil {
+	lyxTarget := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(lyxTarget, "webster"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := fslink.CreateDirLink(filepath.Join(linkRoot, "_lyx"), weft); err != nil {
+	if err := fslink.CreateDirLink(filepath.Join(linkRoot, "_lyx"), lyxTarget); err != nil {
 		t.Fatal(err)
 	}
 	linkGeom := Geometry{
@@ -73,7 +73,7 @@ func TestClassifyViolation(t *testing.T) {
 		{"report", AuditViolation{Class: ClassParentWrite, Path: filepath.Join(root, "_lyx", "webster", "reports", "01-a.yaml")}, geom, AuditSeverityCorrectness},
 		{"plan file", AuditViolation{Class: ClassParentWrite, Path: filepath.Join(root, "_lyx", "plan", "00-overview.md")}, geom, AuditSeverityCorrectness},
 		{"outside worktree", AuditViolation{Class: ClassParentWrite, Path: filepath.Join(outside, "f.txt")}, geom, AuditSeverityPolicy},
-		{"through link target", AuditViolation{Class: ClassParentWrite, Path: filepath.Join(weft, "webster", "state.json")}, linkGeom, AuditSeverityCorrectness},
+		{"through link target", AuditViolation{Class: ClassParentWrite, Path: filepath.Join(lyxTarget, "webster", "state.json")}, linkGeom, AuditSeverityCorrectness},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

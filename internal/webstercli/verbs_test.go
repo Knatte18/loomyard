@@ -1189,18 +1189,18 @@ func TestFabricSyncWayForward_NextSyncCommitsSavedState(t *testing.T) {
 	if err != nil || !committed {
 		t.Fatalf("fabricSync after the failure = %v, %v; want the saved state committed", committed, err)
 	}
-	names, err := gitexec.Run([]string{"log", "-1", "--name-only", "--format="}, h.PrimeWeft())
+	names, err := gitexec.Run([]string{"log", "-1", "--name-only", "--format="}, filepath.Join(h.PrimeWorktree(), h.Location.AnchorRel, "_lyx"))
 	if err != nil {
-		t.Fatalf("git log in the weft: %v", err)
+		t.Fatalf("git log in the _lyx repository: %v", err)
 	}
 	if !strings.Contains(names, "webster/state.json") {
-		t.Errorf("weft HEAD commits %q; want it to carry the saved webster/state.json", names)
+		t.Errorf("the _lyx repository HEAD commits %q; want it to carry the saved webster/state.json", names)
 	}
 }
 
-// failingFabricOpen is an openFabric that cannot reach the fabric repo, so fabricSync errors exactly where a failed weft commit would.
+// failingFabricOpen is an openFabric that cannot reach the fabric repo, so fabricSync errors exactly where a failed fabric commit would.
 func failingFabricOpen() (*fabricengine.Fabric, error) {
-	return nil, fmt.Errorf("weft commit failed (injected)")
+	return nil, fmt.Errorf("fabric commit failed (injected)")
 }
 
 // wantWayForward fails unless got carries the trailing way-forward clause and names substr in it.
