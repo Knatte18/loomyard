@@ -453,6 +453,36 @@ func episodeStuckCount(history []HistoryEntry, name string) int {
 	return count
 }
 
+// appendOrFold returns a fresh copy of history with entry recorded: folded into the last element when both are budget-exempt Stucks
+// with the same Producer, Output, and GateAttempts, else appended unchanged.
+// A fold keeps the last element's At, increments its Repeats, and sets its LastAt to entry.At;
+// the last element's own Repeats/LastAt never take part in the match.
+// It never writes through history's backing array.
+func appendOrFold(history []HistoryEntry, entry HistoryEntry) []HistoryEntry {
+	next := make([]HistoryEntry, len(history), len(history)+1)
+	copy(next, history)
+	if n := len(next); n > 0 && foldsInto(next[n-1], entry) {
+		next[n-1].Repeats++
+		next[n-1].LastAt = entry.At
+		return next
+	}
+	return append(next, entry)
+}
+
+// foldsInto reports whether entry is identical to last for folding: both budget-exempt Stucks with equal Producer, Output, and GateAttempts value.
+func foldsInto(last, entry HistoryEntry) bool {
+	if entry.Outcome != Stuck || !entry.BudgetExempt || last.Outcome != Stuck || !last.BudgetExempt {
+		return false
+	}
+	if last.Producer != entry.Producer || last.Output != entry.Output {
+		return false
+	}
+	if (last.GateAttempts == nil) != (entry.GateAttempts == nil) {
+		return false
+	}
+	return last.GateAttempts == nil || *last.GateAttempts == *entry.GateAttempts
+}
+
 // effectiveMaxBounces resolves def's own bounce budget, inheriting at two levels: def.MaxBounces
 // when it is greater than zero, else shedMax when that is greater than zero, else
 // defaultMaxBounces. A zero value never means "no bounces allowed" at either level.
