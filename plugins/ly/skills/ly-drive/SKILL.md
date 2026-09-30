@@ -146,6 +146,10 @@ Repairs act through `lyx`'s own verbs, plus read-only git for diagnosis:
 Never: `lyx shed pause` as a repair, hand-edit a status file or `seed.json`, re-seed, force-push, or delete a branch or worktree the trace does not name as created by the failed step.
 A crash window outside this list, or one no `lyx` verb can repair, escalates by design.
 
+Prefer not to merge the parent into a task worktree while its Webster phase is in flight;
+when a parent fix is needed mid-run, `lyx fabric merge-in` is survivable and will warn.
+Only a clean merge survives: a conflicted merge-in, once resolved, is refused by record-batch until HEAD returns to the batch report's `head_sha`.
+
 Traces can be swept before a later read, so each repair record copies the trace lines it acted on.
 
 ## Stranded-branch exception

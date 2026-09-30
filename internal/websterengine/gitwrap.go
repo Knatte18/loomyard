@@ -1,6 +1,8 @@
 // gitwrap.go implements webster's own git-query helpers over internal/gitrepo: headSHA captures a
 // batch's start-SHA and the report cross-check's actual HEAD, and dirty is the half-done-work
 // signal.
+// refuseMidMerge and reconcileReportHead are the read-only probes record-batch and recover-batch share:
+// the first refuses while a git merge is in progress, the second accepts a HEAD that is only clean parent merges past the report's head_sha.
 // Per the Shared Decision git-verification-via-gitrepo, every helper here goes through gitrepo.Repo
 // except dirty, which gitrepo exposes no porcelain/status method for and so wraps gitexec.Run
 // directly — the one carved-out exception the decision names.
@@ -23,6 +25,149 @@ func headSHA(worktree string) (string, error) {
 		return "", fmt.Errorf("websterengine: head sha in %s: %w", worktree, err)
 	}
 	return sha, nil
+}
+
+// refuseMidMerge returns an error when worktree has a git merge in progress, and nil otherwise.
+// It asks git whether MERGE_HEAD resolves rather than statting a file, because a linked worktree keeps MERGE_HEAD in its per-worktree git dir.
+func refuseMidMerge(worktree string) error {
+	present, err := gitrepo.New(worktree).MergeHeadPresent()
+	if err != nil {
+		return fmt.Errorf("websterengine: probe merge in progress in %s: %w", worktree, err)
+	}
+	if present {
+		return fmt.Errorf("webster: worktree %s has a git merge in progress; conclude it first "+
+			"(`lyx fabric merge --continue` / `lyx fabric merge --abort` in a hub, "+
+			"`git merge --continue` / `git merge --abort` for a standalone run)", worktree)
+	}
+	return nil
+}
+
+// ParentBranchFunc names the branch the run merges its parent in from, resolved only when a merge commit needs checking.
+// A nil ParentBranchFunc means the run has no parent branch, so no merge commit is ever accepted.
+type ParentBranchFunc func() (string, error)
+
+// reconcileReportHead cross-checks a report's head_sha against worktree's actual HEAD, tolerating clean parent merges only.
+// HEAD equal to reportHead is the unchanged fast path and returns an empty warning.
+// Otherwise it walks HEAD's first-parent chain, comparing each commit with reportHead BEFORE looking at its parents —
+// so a reportHead that is itself a merge commit is accepted, not stepped past.
+// A commit that is not reportHead must be a clean parent merge to be walked over:
+// exactly two parents, the second reachable from parentBranch's local or origin tip, and a tree equal to the conflict-free merge of the two.
+// A non-merge commit, the root, or a merge failing any check ends the walk in refusal, and so does any error while checking.
+// The rule keeps the audit sound: the batch is recorded at reportHead, so content a merge adds beyond a clean parent merge would bypass the audited delta.
+// On acceptance the warning names subject, both heads and every walked merge SHA in walk order.
+func reconcileReportHead(worktree, reportHead, subject string, parentBranch ParentBranchFunc) (warning string, err error) {
+	head, err := headSHA(worktree)
+	if err != nil {
+		return "", err
+	}
+	if head == reportHead {
+		return "", nil
+	}
+
+	repo := gitrepo.New(worktree)
+	var merges []string
+	var parentTips []string
+	for cur := head; ; {
+		if cur == reportHead {
+			return fmt.Sprintf("webster: %s: head_sha %q differs from the worktree's HEAD %q; only merge commits (%s) sit between them, so the batch is recorded at the report's head_sha %q",
+				subject, reportHead, head, strings.Join(merges, ", "), reportHead), nil
+		}
+		parents, err := repo.CommitParents(cur)
+		if err != nil {
+			return "", fmt.Errorf("websterengine: walk first-parent chain from %s in %s: %w", head, worktree, err)
+		}
+		if len(parents) < 2 {
+			return "", fmt.Errorf("webster: %s: head_sha %q does not match the worktree's actual HEAD %q; "+
+				"only merge commits, such as a parent merge-in, may sit between a fork's reported head and HEAD",
+				subject, reportHead, head)
+		}
+		// The parent tips are resolved once, on the first merge the walk meets.
+		if parentTips == nil {
+			if parentTips, err = resolveParentTips(repo, parentBranch); err != nil {
+				return "", parentMergeRefusal(subject, reportHead, head, cur, err.Error())
+			}
+		}
+		if reason := parentMergeRejection(repo, cur, parents, parentTips); reason != "" {
+			return "", parentMergeRefusal(subject, reportHead, head, cur, reason)
+		}
+		merges = append(merges, cur)
+		cur = parents[0]
+	}
+}
+
+// resolveParentTips resolves the run's parent branch to every tip a parent merge-in may have merged from:
+// the local branch and its origin remote-tracking ref, whichever exist, mirroring fabric merge-in's own source resolution.
+// A nil parentBranch, an empty branch name, or a branch with neither ref resolving is an error, so no merge is accepted.
+func resolveParentTips(repo *gitrepo.Repo, parentBranch ParentBranchFunc) ([]string, error) {
+	if parentBranch == nil {
+		return nil, fmt.Errorf("the run has no known parent branch")
+	}
+	branch, err := parentBranch()
+	if err != nil {
+		return nil, fmt.Errorf("resolve the run's parent branch: %v", err)
+	}
+	if branch == "" {
+		return nil, fmt.Errorf("the run has no known parent branch")
+	}
+	var tips []string
+	for _, ref := range []string{branch, "origin/" + branch} {
+		if sha, err := repo.ResolveSHA(ref); err == nil {
+			tips = append(tips, sha)
+		}
+	}
+	if len(tips) == 0 {
+		return nil, fmt.Errorf("the run's parent branch %q resolves neither locally nor on origin", branch)
+	}
+	return tips, nil
+}
+
+// parentMergeRejection returns why merge commit sha does not qualify as a clean parent merge, or "" when it does.
+// It qualifies only when it has exactly two parents, its second parent is reachable from one of parentTips,
+// and its tree equals the conflict-free merge of its two parents.
+// The first parent needs no check here: the caller's walk steps to parents[0] itself.
+// Any git error is itself a rejection, so the check fails closed.
+func parentMergeRejection(repo *gitrepo.Repo, sha string, parents, parentTips []string) string {
+	if len(parents) != 2 {
+		return fmt.Sprintf("it has %d parents, and only a two-parent merge qualifies", len(parents))
+	}
+	onParent := false
+	for _, tip := range parentTips {
+		ok, err := repo.IsAncestor(parents[1], tip)
+		if err != nil {
+			return fmt.Sprintf("checking its merged-in parent %s against the parent branch failed: %v", parents[1], err)
+		}
+		if ok {
+			onParent = true
+			break
+		}
+	}
+	if !onParent {
+		return fmt.Sprintf("it merged %s, which is not on the run's parent branch", parents[1])
+	}
+	cleanTree, clean, err := repo.MergeTree(parents[0], parents[1])
+	if err != nil {
+		return fmt.Sprintf("computing the clean merge of its parents failed: %v", err)
+	}
+	if !clean {
+		return "its parents do not merge cleanly, so it carries a hand-made conflict resolution"
+	}
+	tree, err := repo.CommitTree(sha)
+	if err != nil {
+		return fmt.Sprintf("reading its tree failed: %v", err)
+	}
+	if tree != cleanTree {
+		return "its tree differs from the clean merge of its parents, so it carries changes beyond a clean merge"
+	}
+	return ""
+}
+
+// parentMergeRefusal builds the head_sha mismatch refusal for a walked merge commit that is not a clean parent merge.
+func parentMergeRefusal(subject, reportHead, head, merge, reason string) error {
+	return fmt.Errorf("webster: %s: head_sha %q does not match the worktree's actual HEAD %q; "+
+		"only merge commits that cleanly merge the run's parent branch may sit between a fork's reported head and HEAD, "+
+		"and merge commit %s does not qualify: %s; "+
+		"remedy: move HEAD back to the report's head_sha %s, re-run this verb, and redo the parent merge-in after the batch is recorded",
+		subject, reportHead, head, merge, reason, reportHead)
 }
 
 // dirty reports whether worktree has any uncommitted or untracked changes.

@@ -81,11 +81,16 @@ func errWithRecordFields(w io.Writer, rec fabricengine.Mutations, err error, fie
 // on the git index, so an operator (or agent) following an error text that skipped merge-stage
 // edited the files, ran --continue, and looped on "unresolved conflicts remain" forever — and for a
 // conflict under a wired junction name plain `git add` cannot substitute at all.
-func errConflictsWithRecord(w io.Writer, rec fabricengine.Mutations, conflicts []string) int {
+//
+// warnings adds a "warnings" string array only when non-empty, so a nil or empty slice leaves the envelope unchanged.
+func errConflictsWithRecord(w io.Writer, rec fabricengine.Mutations, conflicts []string, warnings []string) int {
 	fields := map[string]any{
 		"mutations": rec.Entries(),
 		"partial":   false,
 		"conflicts": conflicts,
+	}
+	if len(warnings) > 0 {
+		fields["warnings"] = warnings
 	}
 	return output.ErrFields(w, `merge produced conflicts; resolve each listed path, mark it resolved with "lyx fabric merge-stage <path>...", then run "lyx fabric merge --continue"`, fields)
 }
