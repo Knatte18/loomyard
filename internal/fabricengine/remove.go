@@ -198,7 +198,12 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force, remote bool) (
 func deleteWarpBranch(rec *Mutations, l *lyxcwd.Location, warpBranch, parentBranch string) (deleted bool, keptReason string) {
 	repoDir := l.WorktreePath()
 	if _, err := gitexec.Run([]string{"rev-parse", "--verify", "--quiet", "refs/heads/" + warpBranch}, repoDir); err != nil {
-		return false, ""
+		// rev-parse --verify --quiet exits 1, and only 1, for a ref that does not exist.
+		var gitErr *gitexec.GitError
+		if errors.As(err, &gitErr) && gitErr.ExitCode == 1 {
+			return false, ""
+		}
+		return false, fmt.Sprintf("look up warp branch %s: %v", warpBranch, err)
 	}
 
 	err := deleteBranch(rec, branchRequest{
