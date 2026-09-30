@@ -24,8 +24,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
@@ -34,6 +36,29 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
 )
+
+// driverAliveFrom answers whether the child's driver strand is live, over an injected status reader
+// so its answers are testable without tmux.
+// An absent task worktree is false without reading status, and so is an absent reed session -- no
+// session means no driver -- while every other status error is returned unchanged.
+func driverAliveFrom(present bool, status func() (reedengine.StatusResult, error)) (bool, error) {
+	if !present {
+		return false, nil
+	}
+	res, err := status()
+	if errors.Is(err, reedengine.ErrNoSession) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	for _, s := range res.Strands {
+		if s.Name == loomengine.LoomDriverStrandName && s.Live {
+			return true, nil
+		}
+	}
+	return false, nil
+}
 
 // taskWorktreeLocation resolves the managed task worktree's own *lyxcwd.Location, for slug, from
 // the prime *lyxcwd.Location. It is the shared body every lazily-resolved seam below calls, so a
@@ -377,6 +402,36 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			},
 		},
 		InnerRun: battenshed.InnerRunDeps{
+			// ReadApproval and DriverAlive resolve the task worktree on Call like every seam here,
+			// never at wiring time.
+			ReadApproval: func() (battenshed.ChildApproval, bool, error) {
+				taskLocation, err := taskWorktreeLocation(location, slug)
+				if err != nil {
+					return battenshed.ChildApproval{}, false, err
+				}
+				a, found, err := landingshed.ReadApproval(loomengine.LoomApprovalPath(taskLocation))
+				if err != nil || !found {
+					return battenshed.ChildApproval{}, false, err
+				}
+				return battenshed.ChildApproval{ApprovedAt: a.ApprovedAt, HeadSHA: a.HeadSHA}, true, nil
+			},
+			DriverAlive: func(ctx context.Context) (bool, error) {
+				present, err := taskWorktreePresent(location, slug)
+				if err != nil {
+					return false, err
+				}
+				return driverAliveFrom(present, func() (reedengine.StatusResult, error) {
+					taskLocation, err := taskWorktreeLocation(location, slug)
+					if err != nil {
+						return reedengine.StatusResult{}, err
+					}
+					reedCfg, err := reedengine.LoadConfig(taskLocation.AnchorPath(), "reed")
+					if err != nil {
+						return reedengine.StatusResult{}, err
+					}
+					return reedengine.New(reedCfg, hubgeom.ReedGeometry(taskLocation)).Status()
+				})
+			},
 			// ResolveStatus also creates the child's ephemeral status-lock directory, since its
 			// caller reads through that lock next and nothing else on the Run-Shed path creates
 			// it: the child's status file is durable while its lock is not. This mirrors

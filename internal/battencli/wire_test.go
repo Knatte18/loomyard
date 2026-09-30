@@ -19,7 +19,9 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
@@ -68,11 +70,55 @@ func TestWire_LazySeams(t *testing.T) {
 		{"SpawnDirectory", c.env.InnerRun.Spawn != nil},
 		{"TeardownShutdown", c.env.Teardown.Shutdown != nil},
 		{"TeardownRemove", c.env.Teardown.Remove != nil},
+		{"ReadApproval", c.env.InnerRun.ReadApproval != nil},
+		{"DriverAlive", c.env.InnerRun.DriverAlive != nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if !tt.present {
 				t.Errorf("wire() left this seam nil; want an injected closure present but uncalled")
+			}
+		})
+	}
+}
+
+// TestDriverAliveFrom covers driverAliveFrom's answers without tmux: an absent task worktree is
+// false without reading status, an absent reed session is false with no error, any other status
+// error is returned, and only a live loom-driver strand is true.
+func TestDriverAliveFrom(t *testing.T) {
+	boom := errors.New("boom")
+	status := func(res reedengine.StatusResult, err error) func() (reedengine.StatusResult, error) {
+		return func() (reedengine.StatusResult, error) { return res, err }
+	}
+	strands := func(ss ...reedengine.StrandStatus) reedengine.StatusResult {
+		return reedengine.StatusResult{Strands: ss}
+	}
+	tests := []struct {
+		name    string
+		present bool
+		status  func() (reedengine.StatusResult, error)
+		want    bool
+		wantErr error
+	}{
+		{"WorktreeAbsentSkipsStatus", false, func() (reedengine.StatusResult, error) {
+			t.Error("status read although the task worktree is absent")
+			return reedengine.StatusResult{}, nil
+		}, false, nil},
+		{"NoSessionIsNotLive", true, status(reedengine.StatusResult{}, fmt.Errorf("wrapped: %w", reedengine.ErrNoSession)), false, nil},
+		{"OtherErrorReturned", true, status(reedengine.StatusResult{}, boom), false, boom},
+		{"LiveDriver", true, status(strands(reedengine.StrandStatus{Name: loomengine.LoomDriverStrandName, Live: true}), nil), true, nil},
+		{"DeadDriver", true, status(strands(reedengine.StrandStatus{Name: loomengine.LoomDriverStrandName}), nil), false, nil},
+		{"OtherStrandLiveOnly", true, status(strands(reedengine.StrandStatus{Name: "other", Live: true}), nil), false, nil},
+		{"NoStrands", true, status(reedengine.StatusResult{}, nil), false, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := driverAliveFrom(tt.present, tt.status)
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("driverAliveFrom() error = %v; want %v", err, tt.wantErr)
+			}
+			if got != tt.want {
+				t.Errorf("driverAliveFrom() = %v; want %v", got, tt.want)
 			}
 		})
 	}

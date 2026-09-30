@@ -51,6 +51,17 @@ type PrimeLock struct {
 	Acquire func() (release func() error, ok bool, err error)
 }
 
+// ChildApproval is the identity of one operator approval of the child's pull request: the time it
+// was given and the head commit it covered.
+// Two approvals with the same values are the same approval, so a caller compares them to tell a
+// fresh approval from one it has already acted on.
+type ChildApproval struct {
+	// ApprovedAt is the approval time, RFC 3339 UTC.
+	ApprovedAt string
+	// HeadSHA is the head commit the operator approved.
+	HeadSHA string
+}
+
 // InnerRunDeps carries every told value and injected closure NewInnerRun needs: spawning the
 // inner shed run, resolving and reading its persisted status, and the sleep seam a test replaces
 // to keep the poll interval out of real time.
@@ -86,6 +97,22 @@ type InnerRunDeps struct {
 	// a test replaces it with a no-op so the attempt-cap test proves the bound is attempt-counted
 	// rather than wall-clock-timed.
 	Sleep func(ctx context.Context, d time.Duration)
+	// ReadApproval reads the operator approval record the child's own run wrote, reporting
+	// found == false when no approval record exists.
+	// Call invokes it while the child is awaiting approval, to tell a fresh approval from one it has
+	// already resumed on.
+	// It is resolved on Call, never at wiring time, since the task worktree holding the record does
+	// not exist until WorktreeCreate has run.
+	ReadApproval func() (ChildApproval, bool, error)
+	// DriverAlive reports whether the child's driver strand is live.
+	// Call invokes it once the child is done, to wait for the driver to finish its stop report
+	// before the pair is torn down.
+	// It is resolved on Call, never at wiring time, for the same reason as ReadApproval.
+	DriverAlive func(ctx context.Context) (bool, error)
+	// Now is the clock the driver-exit grace reads.
+	// A nil Now resolves to time.Now in NewInnerRun, the same way a nil Sleep resolves to
+	// waitOrCancel; a test replaces it to keep the grace out of real time.
+	Now func() time.Time
 }
 
 // SeedChildDeps carries every told value and injected closure NewSeedChild needs, carrying no

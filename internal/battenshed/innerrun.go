@@ -67,11 +67,14 @@ var _ shedengine.ShedProducer = (*innerRunProducer)(nil)
 // deps.ReadStatus exactly once per Call thereafter. The bounded wait lives on the recipe row's own
 // max_bounces and on_stuck self-route, one shedengine bounce per Call, not inside this producer.
 //
-// A nil deps.Sleep resolves to waitOrCancel, once here rather than on every Call, so a test's
-// no-op sleep is the only value ever substituted.
+// A nil deps.Sleep resolves to waitOrCancel, and a nil deps.Now to time.Now, once here rather than
+// on every Call, so a test's no-op sleep and fixed clock are the only values ever substituted.
 func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duration, scratchDir string) shedengine.ShedProducer {
 	if deps.Sleep == nil {
 		deps.Sleep = waitOrCancel
+	}
+	if deps.Now == nil {
+		deps.Now = time.Now
 	}
 	return &innerRunProducer{
 		name:         name,
