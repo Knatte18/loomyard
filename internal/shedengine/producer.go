@@ -34,6 +34,10 @@ type OutputPointer struct {
 	// error, and on an Awaiting verdict, persisting it as the awaiting halt's error; every other
 	// arm ignores it. The empty value means "none supplied".
 	Reason string
+	// BudgetExempt marks a Stuck verdict as not counted against its row's bounce budget, for a
+	// producer whose Stuck is a wait with its own bound.
+	// Shed reads it only on a Stuck verdict and ignores it on every other outcome.
+	BudgetExempt bool
 }
 
 // ShedProducer is the seam Shed drives once per iteration: Call runs one producer to a verdict
