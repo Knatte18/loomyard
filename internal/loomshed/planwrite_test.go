@@ -238,8 +238,7 @@ func TestPlanWrite_Call(t *testing.T) {
 	})
 }
 
-// seedPriorPlanStencils writes the real embedded loom-template-prior-plan stencil into a temp
-// stencils directory and returns that directory.
+// seedPriorPlanStencils writes the real embedded loom-template-prior-plan stencil into a temp stencils directory and returns that directory.
 func seedPriorPlanStencils(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -391,8 +390,8 @@ func TestNewPlanDirRotator(t *testing.T) {
 		if _, err := NewPlanDirRotator(anchorPath, t.TempDir(), fixedPlanClock)(); err == nil {
 			t.Fatalf("rotate() error = nil; want a render error when the stencil is missing")
 		}
-		// The render runs before any move, so the failed attempt leaves the plan where a retry
-		// finds it again -- otherwise the retry would rotate nothing and announce nothing.
+		// The render runs before any move,
+		// so the failed attempt leaves the plan where a retry finds it again -- otherwise the retry would rotate nothing and announce nothing.
 		entries, err := os.ReadDir(planDir)
 		if err != nil {
 			t.Fatalf("ReadDir(%q) error = %v", planDir, err)
