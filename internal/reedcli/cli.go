@@ -35,6 +35,11 @@ type reedCLI struct {
 	// already told.
 	hubPath string
 
+	// worktreePath is the invoking worktree's own root (Location.WorktreePath()), which the
+	// detached `remove --name --detach` child runs in: reed's strand verbs resolve their session,
+	// socket and reed.json from a git worktree root, and the hub is not one.
+	worktreePath string
+
 	// suppressWatchdogSpawn, when true, makes ensureWatchdogSpawned a no-op. It is initialised from
 	// testing.Testing() in Command(): re-exec'ing os.Executable() from a test binary runs the whole
 	// suite recursively, the same hazard and the same shape as the Engine.suppressHeaderLaunch field
@@ -113,6 +118,7 @@ rather than booting substrate it cannot reach.`,
 			reedGeom := hubgeom.ReedGeometry(location)
 			c.eng = reedengine.New(cfg, reedGeom)
 			c.hubPath = location.HubPath
+			c.worktreePath = location.WorktreePath()
 			return nil
 		},
 	}
