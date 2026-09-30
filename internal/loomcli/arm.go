@@ -22,8 +22,10 @@
 //
 // arm also resolves the run-id every one of loom's four generic verbs addresses -- args[0] when
 // present, shedrun.SelfRunID otherwise -- and, for those four verbs alone, refuses when no seed
-// exists at that run-id. "lyx loom start" is not a generic verb and never reaches this check: it is
-// the one site that writes a seed, per the batch's loom's-run-and-step-do-not-auto-seed decision.
+// exists at that run-id. Loom's hand-written verbs -- start, validate-discussion, validate-plan,
+// validate-description and approve -- are not generic verbs and never reach this check; "lyx loom
+// start" is the one site that writes a seed, per the batch's loom's-run-and-step-do-not-auto-seed
+// decision.
 // See genericShedVerb's own doc comment for the exact four-verb set.
 
 package loomcli
@@ -52,7 +54,7 @@ import (
 
 // genericShedVerb reports whether verb is one of the four verbs shedverbs.Verbs drives -- run,
 // step, status, pause -- as opposed to loom's own hand-written verbs (start,
-// validate-discussion, validate-plan), which never reach arm's seed-presence check below.
+// validate-discussion, validate-plan, validate-description, approve), which never reach arm's seed-presence check below.
 func genericShedVerb(verb string) bool {
 	switch verb {
 	case "run", "step", "status", "pause":

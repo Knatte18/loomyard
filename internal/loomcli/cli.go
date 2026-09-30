@@ -188,7 +188,7 @@ func (c *loomCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) err
 // config, no engine, no producer.
 //
 // The set is the two read-only status verbs (status, pause) plus the two standalone format
-// self-checks (validate-discussion, validate-plan), which read only c.env's path fields and never a
+// self-checks (validate-discussion, validate-plan), validate-description and approve, which read only c.env's path fields and never a
 // loaded config -- crucible round sonnet5-xhigh-r8's F2 extended the set from the original two after
 // finding the writer agents' own stencil-mandated pre-handoff self-check failed on an unrelated
 // module's broken config, the identical hazard that got status/pause this lightweight path in the
@@ -199,7 +199,7 @@ func (c *loomCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) err
 // "start" and "run" do.
 func verbUsesLightweightWiring(name string) bool {
 	switch name {
-	case "status", "pause", "validate-discussion", "validate-plan", "validate-description":
+	case "status", "pause", "validate-discussion", "validate-plan", "validate-description", "approve":
 		return true
 	default:
 		return false
@@ -327,6 +327,8 @@ producer boundary. "validate-discussion" and "validate-plan" are the
 standalone form of the mechanical gates Discussion-Write's and Plan-Write's
 own rows carry, callable by the writer agent before handoff, and
 "validate-description" does the same for the Describe row's change description.
+"approve" records the operator's approval of the open pull request for a run
+blocked at Publish; "lyx loom start" then lands it.
 
 Example:
   lyx loom start
@@ -337,7 +339,8 @@ Example:
   lyx loom pause
   lyx loom validate-discussion
   lyx loom validate-plan
-  lyx loom validate-description`,
+  lyx loom validate-description
+  lyx loom approve`,
 		// RunE is set so that bare "lyx loom" lists subcommands and "lyx
 		// loom bogus" emits a JSON error envelope instead of falling
 		// through to cobra's plain-text help.
@@ -359,7 +362,7 @@ Example:
 	statusVerb.Args = cobra.MaximumNArgs(1)
 	pauseVerb.Args = cobra.MaximumNArgs(1)
 
-	parent.AddCommand(c.startCmd(), runVerb, stepVerb, statusVerb, pauseVerb, c.validateDiscussionCmd(), c.validatePlanCmd(), c.validateDescriptionCmd())
+	parent.AddCommand(c.startCmd(), runVerb, stepVerb, statusVerb, pauseVerb, c.validateDiscussionCmd(), c.validatePlanCmd(), c.validateDescriptionCmd(), c.approveCmd())
 
 	return parent
 }
