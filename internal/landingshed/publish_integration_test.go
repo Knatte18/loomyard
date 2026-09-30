@@ -154,10 +154,10 @@ func TestPublish_MergesInCleanlyBeforeCreatingPullRequest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
 	}
-	// Stuck, not Done: a pull request awaiting human review is the correct terminal verdict right
-	// after a successful create call, per Publish's own design.
-	if outcome != shedengine.Stuck {
-		t.Fatalf("Call() outcome = %q; want %q (pull request created; awaiting review)", outcome, shedengine.Stuck)
+	// Awaiting, not Done or Stuck: a pull request awaiting human review is the planned hand-off
+	// right after a successful create call, per Publish's own design.
+	if outcome != shedengine.Awaiting {
+		t.Fatalf("Call() outcome = %q; want %q (pull request created; awaiting review)", outcome, shedengine.Awaiting)
 	}
 	if !pushed {
 		t.Error("push closure never called; want the task branch pushed before the create call")

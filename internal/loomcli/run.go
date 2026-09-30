@@ -98,9 +98,7 @@ func (c *loomCLI) reflectFriction(wait bool) string {
 // reflectFrictionRow is the shedrecipe.Env.ReflectFriction closure wire installs. Its status is
 // frictionengine.StatusSkipped unless Tier 2 is on and this invocation was armed for "run", in which
 // case it is reflectFriction(true); it records the status on c.rowFrictionStatus and returns it.
-// Under step ("lyx loom step", "lyx shed step --recipe loom") it never reflects, so the notes stay in
-// .lyx/loom/friction/ for ly-drive's operator-gated filing, because the reflection agent files public
-// issues itself.
+// Under step ("lyx loom step", "lyx shed step --recipe loom") it never reflects, so the notes stay in _lyx/loom/friction/ for ly-drive's operator-gated filing, because the reflection agent files public issues itself.
 func (c *loomCLI) reflectFrictionRow() string {
 	status := frictionengine.StatusSkipped
 	if c.frictionDir != "" && c.armedVerb == "run" {

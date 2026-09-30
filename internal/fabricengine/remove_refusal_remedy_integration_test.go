@@ -174,8 +174,11 @@ func TestRemove_RefusalWithNothingStrandedOmitsRemedy(t *testing.T) {
 	if err == nil {
 		t.Fatalf("second Remove(force=false) returned nil error; want a refusal")
 	}
-	if res.Mutated().Len() != 0 {
-		t.Fatalf("precondition: the second refusal must record nothing (the first already tore the portal down); got %d entries", res.Mutated().Len())
+	// The archive step re-pushes its tag on every attempt and records that; it strands nothing.
+	for _, entry := range res.Mutated().Entries() {
+		if entry.Kind != fabricengine.KindTagPushed {
+			t.Fatalf("precondition: the second refusal must record nothing beyond the archive tag (the first already tore the portal down); got %+v", entry)
+		}
 	}
 	if strings.Contains(err.Error(), "lyx fabric reconcile") {
 		t.Errorf("a refusal that stranded nothing must not point at a repair; got:\n%s", err.Error())
