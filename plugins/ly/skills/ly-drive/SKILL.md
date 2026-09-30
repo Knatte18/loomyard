@@ -187,11 +187,12 @@ A refusal's message ends in a `way forward:` clause, and `contracts/specs/refusa
 When a stop report quotes a refusal, it looks the refusal text up in that table and names the way forward beside it, so the operator reads a next step rather than a diagnosis alone.
 A refusal the table does not list is reported verbatim with no way forward added.
 
-Two stops name `lyx shed goto --to <producer>` as their way forward:
+Two stops name `lyx shed goto <run-id> --to <producer>` as their way forward:
 
 - a `current_producer` that is no longer in the recipe;
 - an exhausted bounce budget.
 
+`goto` only moves a halted run back, to a row at or before its current row, so the driver never reports a forward goto as a way forward.
 The driver reports `goto` as the way forward and never runs it: it is an operator and orchestrator verb, and a run moved by the driver itself would hide the decision from the person who owns it.
 
 ## Repair records and the stop report

@@ -9,7 +9,7 @@ A refusal has a way forward when its message names one of these:
 
 1. a `lyx` verb that makes progress from the refused state;
 2. a transition the run takes by itself: a re-step, the next Master retry, a failure ladder rung;
-3. a plain `git` command on the warp worktree, when no `lyx` verb covers it.
+3. a plain `git` command in the task worktree, when no `lyx` verb covers it.
 
 Hand-editing a lyx-owned state file (`state.json`, `status.json`, `seed.json`, report files) never counts, and neither does a code fix plus a deploy.
 Waiting for a lock holder counts when the message names how to see the holder (`status`).
@@ -32,16 +32,16 @@ Raw I/O failures (`stat`, `mkdir`, `write`) form one grouped transient row per s
 ## webster
 
 A validation verb's findings envelope (`lyx webster validate`) is that verb's verdict on the plan, not a refusal, so it has no row here.
-The audit rows below follow the fork-audit severity split: a fork-contract write, and a parent write into the warp's tracked tree or under the run's `_lyx`, are correctness; every other finding is policy.
+The audit rows below follow the fork-audit severity split: a fork-contract write, a parent write into the task worktree's tracked content or under the run's `_lyx`, and a fabric reference whose command can change files, are correctness; every other finding is policy.
 A finding is dispositioned once per run, by the first `record-batch` or run-exit audit that reports it.
 
 | Refusal | Trigger | Class | Way forward |
 |---|---|---|---|
 | unknown batch | a batch verb names a number the plan's execution batches do not contain | correctness halt | `lyx webster status` lists the run's batches, name one of those |
 | plan drifted | begin-batch's re-resolution of the plan against the tree finds a blocking defect | correctness halt | edit the plan so the named cards match the tree, run `lyx webster rebaseline`, then begin-batch again |
-| rebaseline card set changed | `lyx webster rebaseline` finds a begun batch's cards removed or changed | correctness halt | restore those cards in the plan, or reset the branch to the run's start commit with git and run `lyx webster run --fresh` |
+| rebaseline card set changed | `lyx webster rebaseline` finds a begun batch's cards removed or regrouped, or a begun card whose content changed | correctness halt | restore those cards in the plan, or reset the branch to the run's start commit with git and run `lyx webster run --fresh` |
 | plan fingerprint mismatch | begin-batch or run sees a plan edited since the run recorded it | correctness halt | if the edit keeps every begun batch's cards, run `lyx webster rebaseline` to accept it, otherwise reset the branch to the run's start commit and run `lyx webster run --fresh` |
-| no run in progress | a bracket verb or `rebaseline` runs before `lyx webster run` has created state.json | correctness halt | run `lyx webster run` first |
+| no run in progress | a bracket verb, `rebaseline` or `accept-audit` runs before `lyx webster run` has created state.json | correctness halt | run `lyx webster run` first |
 | model switch injection failed | begin-batch cannot assert the batch's model | transient | transient, re-run `lyx webster begin-batch NN` |
 | report already present | begin-batch finds a report for the batch it would open | correctness halt | `lyx webster record-batch NN` consumes it (`lyx webster recover-batch NN` for a recovery batch), and a stuck batch escalates via `lyx webster recover-batch NN` |
 | report malformed | record-batch cannot decode the batch's report | correctness halt | `lyx webster recover-batch NN` archives the malformed report and re-drives the batch |
@@ -52,9 +52,10 @@ A finding is dispositioned once per run, by the first `record-batch` or run-exit
 | HEAD moved past the report | a non-merge commit sits between the report's `head_sha` and HEAD | correctness halt | move HEAD back to the report's `head_sha` with git, then re-run the verb |
 | unqualified merge after the report | a merge commit between the report's `head_sha` and HEAD is not a clean merge of the run's parent branch | correctness halt | move HEAD back to the report's `head_sha`, re-run the verb, and redo the parent merge-in after the batch is recorded |
 | audit: fork-contract-write | a fork's transcript wrote one of the run's two contract files | correctness halt | `lyx webster recover-batch NN`; the batch fails with its report archived |
-| audit: parent-write, tracked or `_lyx` | Master wrote into the worktree's tracked content or under the run's `_lyx` | correctness halt | `lyx webster recover-batch NN` at record-batch; at run exit, revert or re-derive the named paths in the task worktree with git, then re-step the Webster row (lyx webster run) |
-| audit: parent-write, elsewhere | Master wrote a path outside the worktree, or a git-ignored warp path outside `_lyx` | policy guard | warn and record once, after the card verify commands re-run and pass; a failing verify makes the finding correctness |
-| audit: fabric-reference | a fork or Master ran a fabric-referencing command | policy guard | warn and record once; no action needed |
+| audit: parent-write, tracked or `_lyx` | Master wrote into the worktree's tracked content or under the run's `_lyx` | correctness halt | `lyx webster recover-batch NN` at record-batch; at run exit, revert or re-derive the named paths in the task worktree with git, then `lyx webster accept-audit`, then re-step the Webster row (lyx webster run) |
+| audit: parent-write, elsewhere | Master wrote a path outside the worktree, or a git-ignored path in the task worktree outside `_lyx` | policy guard | warn and record once, after the card verify commands re-run and pass; a failing verify makes the finding correctness |
+| audit: fabric-reference, mutating | a fork or Master ran a fabric-referencing command that can change files | correctness halt | `lyx webster recover-batch NN` at record-batch; at run exit, revert or re-derive the named paths in the task worktree with git, then `lyx webster accept-audit`, then re-step the Webster row (lyx webster run) |
+| audit: fabric-reference, read-only | a fork or Master ran a fabric-referencing command that cannot change files | policy guard | warn and record once; no action needed |
 | audit: named-spawn | Master spawned a named subagent | policy guard | warn and record once; no action needed |
 | audit: nested-agent | a fork attempted an Agent call | policy guard | warn and record once; no action needed |
 | card not done | the batch's own done-checks find declared work missing | correctness halt | `lyx webster recover-batch NN`; the batch fails with its report archived |
@@ -73,7 +74,8 @@ A finding is dispositioned once per run, by the first `record-batch` or run-exit
 | Master ended early | Master asks instead of finishing, its pane dies or it times out | correctness halt | re-run `lyx webster run` (re-step the Webster row); a fresh Master resumes from state.json |
 | outcome malformed | `outcome.yaml` is malformed or stale at run exit | correctness halt | re-run `lyx webster run`; the stale file is archived and a fresh Master writes a new one |
 | run-exit check failed | Master reports done but summary.md is missing or malformed, a batch lacks a done record, the fork audit is missing or short, or the integration report never landed | correctness halt | re-run `lyx webster run`; a fresh Master resumes from state.json and re-drives every batch without a done record |
-| run-exit audit correctness | Master reports done over an undispositioned correctness finding | correctness halt | revert or re-derive the named paths in the task worktree with git, then re-step the Webster row (lyx webster run); done is demoted to stuck |
+| run-exit audit correctness | Master reports done over an undispositioned correctness finding | correctness halt | revert or re-derive the named paths in the task worktree with git, then `lyx webster accept-audit`, then re-step the Webster row (lyx webster run); done is demoted to stuck |
+| pending audit findings | run entry finds correctness findings from an earlier run exit still pending | correctness halt | revert or re-derive the named paths in the task worktree with git, then `lyx webster accept-audit`, then re-step the Webster row (lyx webster run) |
 | Webster row paused out of band | the Webster row's run ends paused with no pause loom requested | transient | re-step the Webster row, since lyx webster run clears the pause and resumes |
 | fabric sync failed | a bracket verb, `run` or `rebaseline` cannot commit its state to the fabric | transient | the state is saved locally; `lyx fabric commit` commits it, or the next bracket verb's own sync carries it |
 | re-baseline persist failed, bracket verb | begin-batch or record-batch cannot persist the plan-fingerprint re-baseline | transient | re-run the same verb; the re-baseline is recomputed from the plan on disk |
@@ -88,10 +90,12 @@ A finding is dispositioned once per run, by the first `record-batch` or run-exit
 |---|---|---|---|
 | shed busy | another driver holds the run lock, at `run`, `step` or `goto` | transient | `lyx shed pause` asks the live driver to stop at its next producer boundary; check the holder with `lyx shed status`, then retry |
 | seed missing | a verb addresses a run-id with no seed | correctness halt | run `lyx shed seed <run-id> --recipe <name>` first |
-| status file missing | `step` or `goto` finds no status file; Shed never seeds one | correctness halt | seed the run through its recipe's bootstrap verb, or `lyx shed seed` for a recipe without one |
-| current producer missing | the status file's `current_producer` names no row in the list | correctness halt | `lyx shed goto --to <producer>` moves the run onto a row that exists |
-| bounce budget exhausted | a segment's bounce budget runs out and the run halts Stuck | correctness halt | `lyx shed goto --to <row>` gives the segment or row a fresh budget |
+| status file missing | `step` or `goto` finds no status file; Shed never seeds one | correctness halt | the recipe's own, as the message names it: `lyx loom start` for loom, `lyx batten run <slug>` for batten, `lyx shed seed` otherwise |
+| current producer missing | the status file's `current_producer` names no row in the list | correctness halt | `lyx shed goto <run-id> --to <row>` moves the run onto a row that exists |
+| bounce budget exhausted | a segment's bounce budget runs out and the run halts Stuck | correctness halt | `lyx shed goto <run-id> --to <row>` gives the segment or row a fresh budget |
 | goto on a done run | `goto` names a run whose status is done | correctness halt | seed a new run |
+| goto on a running run | `goto` names a run whose status is running | correctness halt | `lyx shed pause <run-id>`, then `lyx shed step <run-id>` leaves it paused, then re-run goto |
+| goto target past the current row | `goto` names a row after the run's current row, or a target the awaiting narrowing excludes | correctness halt | re-run goto with `--to` naming one of the rows the message lists |
 | goto target unknown | `goto` has no `--to`, or the target names no producer | correctness halt | re-run goto with `--to` naming one of the producers the message lists |
 | status watch as JSON | `status` is given both `--watch` and `--json` | correctness halt | drop `--json`, or drop `--watch` for the JSON envelope |
 | seed disagrees | `seed` finds the run-id already seeded with different values | correctness halt | keep the existing seed and drive it (`lyx shed status <run-id>` shows it), or address a different run-id |
@@ -110,17 +114,17 @@ The `validate-*` verbs' findings envelopes are each verb's verdict on its artifa
 |---|---|---|---|
 | seed missing | a loom verb addresses a run-id with no seed | correctness halt | run "lyx loom start" first to bootstrap this task |
 | status file missing | `lyx loom status` or `lyx loom approve` finds no status file | correctness halt | run "lyx loom start" first to bootstrap this task |
-| approve: not at Publish | `lyx loom approve` runs while the run is not awaiting or blocked at Publish | correctness halt | `lyx loom status` shows where the run is; approve once it halts at Publish |
-| approve: no pull request | no pull request from the task branch to its parent exists | correctness halt | `lyx loom step` opens it at Publish |
-| approve: pull request not open | the pull request is closed or merged | correctness halt | `lyx loom step` opens a new one at Publish |
-| approve: HEAD differs | the local task HEAD differs from the pull request's head | correctness halt | push or sync the task branch (`lyx fabric push`), then re-run `lyx loom approve` |
+| approve: not at PR-Gate | `lyx loom approve` runs while the run is not awaiting or blocked at PR-Gate | correctness halt | `lyx loom status` shows where the run is; approve once it halts at PR-Gate |
+| approve: no pull request | no pull request from the task branch to its parent exists | correctness halt | `lyx loom goto --to Publish` moves the run back to Publish, then `lyx loom step` opens it |
+| approve: pull request not open | the pull request is closed or merged | correctness halt | `lyx loom goto --to Publish` moves the run back to Publish, then `lyx loom step` opens a new one |
+| approve: HEAD differs | the local task HEAD differs from the pull request's head | correctness halt | `git push` or `git pull` the task branch, then re-run `lyx loom approve` |
 | approve: lookup failed | branch resolution, the origin URL, the pull request lookup or the HEAD read fails | transient | transient, re-run `lyx loom approve` |
 | commit-records: probe or commit failed | the merge-state probe or the commit fails | transient | transient, re-run `lyx loom commit-records` |
 | commit-records: not pushed | the commit landed locally but the push failed | transient | `lyx fabric push` pushes the landed commit, or re-run `lyx loom commit-records` |
 | commit-records: park marker failed | the park marker cannot be written | transient | transient, re-run `lyx loom commit-records --park <park>` |
 | start: driver took no lock | the detached driver exits without taking the run lock | transient | `lyx loom start`; the message names the driver log |
 | start: driver not parked | the run is halted at a hand-back and its driver is still writing its stop report and committing its records | transient | retry `lyx loom start` in a few seconds |
-| Loom-Preflight half-finished | the preflight finds a half-finished run | correctness halt | `lyx loom goto --to Discussion-Write` resumes the run past Loom-Preflight, or seed a new run |
+| Loom-Preflight half-finished | the preflight finds a half-finished run | correctness halt | seed a new run, or `lyx loom goto --to Loom-Preflight` to accept the run as a deliberate re-entry, which then passes the check |
 | preflight preconditions unmet | the worktree is dirty, fabric is unsynced or a junction is broken | correctness halt | per failed check: commit or stash the code changes with git, and commit the _lyx changes with `lyx fabric commit`, then re-step; `lyx fabric checkout` re-checks out the current branch and re-syncs the _lyx side, then re-step; `lyx fabric reconcile` recreates a missing _lyx worktree and re-points broken junctions, then re-step |
 | invalid history outcome | the status file's history carries an outcome the coherence check does not know | correctness halt | seed a new run |
 | batcher misconfigured | `batcher.yaml`'s `active:` key names no batchifier | correctness halt | fix `batcher.yaml`'s `active:` key, then re-step |
