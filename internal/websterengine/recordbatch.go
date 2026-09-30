@@ -161,7 +161,7 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		for _, v := range CheckFork(f, deps.OutcomePath, deps.SummaryPath, deps.Geom.WorktreeRoot, deps.RefMatcher) {
 			violations = append(violations, v)
 		}
-		warnings = append(warnings, ForkWarnings(f)...)
+		forkWarnings = append(forkWarnings, ForkWarnings(f)...)
 	}
 	if len(violations) > 0 {
 		return nil, errors.Join(violations...)
