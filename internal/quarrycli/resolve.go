@@ -5,7 +5,6 @@ package quarrycli
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -23,10 +22,12 @@ func newResolveCmd(root func() string) *cobra.Command {
 		Use:   "resolve <glyph>...",
 		Short: "Check whether one or more copied glyph spellings name something real",
 		Long: `resolve resolves one or more glyphs, positionally, in one call against the current
-worktree, and emits quarry's own JSON rendering for each found or multipart target,
-unchanged. A target that is not found, ambiguous, or rejected by the grammar
-fails the whole invocation with a JSON error envelope and a non-zero exit,
-rather than being mixed in among the found results.
+worktree, and answers each glyph separately with quarry's own JSON rendering,
+unchanged, in argument order.
+A glyph that is not found, ambiguous, or rejected by the grammar gets its own answer
+(carrying "status", or "error" and "reason" for a grammar rejection) and makes the exit non-zero,
+but every answer is still printed.
+The {"ok":false,...} envelope appears only when quarry could not answer at all.
 
 Example:
   lyx quarry resolve internal/planglyph#Validate internal/planglyph#Repo`,
@@ -43,30 +44,28 @@ Example:
 				return nil
 			}
 
-			var rejected []string
-			for _, r := range results {
-				switch r.Status {
-				case quarry.StatusFound, quarry.StatusMultipart:
-					continue
-				default:
-					rejected = append(rejected, describeRejectedResolve(r))
-				}
-			}
-			if len(rejected) > 0 {
-				clihelp.SetExit(cmd.Context(), output.Err(out, strings.Join(rejected, "; ")))
-				return nil
-			}
-
+			rendered := make([][]byte, 0, len(results))
+			negative := false
 			for _, r := range results {
 				data, err := quarry.RenderResolveJSON(r)
 				if err != nil {
 					clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 					return nil
 				}
+				rendered = append(rendered, data)
+				if r.Rejected() || (r.Status != quarry.StatusFound && r.Status != quarry.StatusMultipart) {
+					negative = true
+				}
+			}
+
+			for _, data := range rendered {
 				if _, err := out.Write(data); err != nil {
 					clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 					return nil
 				}
+			}
+			if negative {
+				clihelp.SetExit(cmd.Context(), 1)
 			}
 			return nil
 		},
