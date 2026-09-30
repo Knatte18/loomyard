@@ -1,6 +1,6 @@
 // approval.go — the operator-approval record.
 //
-// `lyx loom approve` writes the record and Publish reads it, both through Approval, so the format
+// `lyx loom approve` writes the record and the PR gate reads it, both through Approval, so the format
 // lives in the package that reads it. The path is always told; this package derives none.
 
 package landingshed
@@ -25,33 +25,39 @@ type Approval struct {
 }
 
 // WriteApproval writes a to path, creating the parent directory and replacing any earlier record
-// atomically (temp file in the same directory, then rename), so a reader never sees a partial file.
+// atomically, so a reader never sees a partial file.
 func WriteApproval(path string, a Approval) error {
-	data, err := json.Marshal(a)
+	return writeRecordAtomic(path, "approval", a)
+}
+
+// writeRecordAtomic encodes v as JSON and writes it to path through a temp file in the same
+// directory and a rename, creating the parent directory; kind names the record in error messages.
+func writeRecordAtomic(path, kind string, v any) error {
+	data, err := json.Marshal(v)
 	if err != nil {
-		return fmt.Errorf("landingshed: encode approval: %w", err)
+		return fmt.Errorf("landingshed: encode %s: %w", kind, err)
 	}
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("landingshed: create approval directory: %w", err)
+		return fmt.Errorf("landingshed: create %s directory: %w", kind, err)
 	}
-	tmp, err := os.CreateTemp(dir, ".approval-*.tmp")
+	tmp, err := os.CreateTemp(dir, "."+kind+"-*.tmp")
 	if err != nil {
-		return fmt.Errorf("landingshed: create approval temp file: %w", err)
+		return fmt.Errorf("landingshed: create %s temp file: %w", kind, err)
 	}
 	tmpName := tmp.Name()
 	if _, err := tmp.Write(data); err != nil {
 		tmp.Close()
 		os.Remove(tmpName)
-		return fmt.Errorf("landingshed: write approval: %w", err)
+		return fmt.Errorf("landingshed: write %s: %w", kind, err)
 	}
 	if err := tmp.Close(); err != nil {
 		os.Remove(tmpName)
-		return fmt.Errorf("landingshed: close approval temp file: %w", err)
+		return fmt.Errorf("landingshed: close %s temp file: %w", kind, err)
 	}
 	if err := os.Rename(tmpName, path); err != nil {
 		os.Remove(tmpName)
-		return fmt.Errorf("landingshed: replace approval: %w", err)
+		return fmt.Errorf("landingshed: replace %s: %w", kind, err)
 	}
 	return nil
 }
