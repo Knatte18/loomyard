@@ -344,6 +344,59 @@ func TestNotifyExit_NonZeroCodeOpensSinkWithHeaderOnly(t *testing.T) {
 	}
 }
 
+func TestCurrentSinkArmState_NotArmedBeforeAnyRecordAndCreatesNothing(t *testing.T) {
+	dir := t.TempDir()
+	SetDurableSinkDir(dir)
+
+	got := CurrentSinkArmState()
+
+	if got.Armed {
+		t.Errorf("CurrentSinkArmState().Armed = true; want false before any record")
+	}
+	if files := listSinkDirFiles(t, dir); len(files) != 0 {
+		t.Errorf("listSinkDirFiles(dir) = %v; want empty (the query must not arm the sink)", files)
+	}
+}
+
+func TestCurrentSinkArmState_ArmedAfterInfoRecord(t *testing.T) {
+	dir := t.TempDir()
+	SetDurableSinkDir(dir)
+
+	Info("arm state probe")
+
+	want := SinkArmState{Armed: true, Redirected: true, Dir: dir, AnchorPath: ""}
+	if got := CurrentSinkArmState(); got != want {
+		t.Errorf("CurrentSinkArmState() = %+v; want %+v", got, want)
+	}
+}
+
+func TestCurrentSinkArmState_ArmedAfterNotifyExitNonZero(t *testing.T) {
+	dir := t.TempDir()
+	SetDurableSinkDir(dir)
+
+	NotifyExit(1)
+
+	want := SinkArmState{Armed: true, Redirected: true, Dir: dir, AnchorPath: ""}
+	if got := CurrentSinkArmState(); got != want {
+		t.Errorf("CurrentSinkArmState() = %+v; want %+v", got, want)
+	}
+}
+
+func TestCurrentSinkArmState_RedirectAfterArmReportsNotArmed(t *testing.T) {
+	first := t.TempDir()
+	SetDurableSinkDir(first)
+	Info("arm state probe")
+	if !CurrentSinkArmState().Armed {
+		t.Fatalf("CurrentSinkArmState().Armed = false; want true after an Info record")
+	}
+
+	SetDurableSinkDir(t.TempDir())
+
+	if got := CurrentSinkArmState(); got.Armed {
+		t.Errorf("CurrentSinkArmState() = %+v; want Armed false after a redirect until the next arm", got)
+	}
+}
+
 func countMarkerLines(data []byte) int {
 	count := 0
 	for _, line := range strings.Split(string(data), "\n") {
