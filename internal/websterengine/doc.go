@@ -77,6 +77,20 @@
 // from its cards' own gates, mirroring the plan-format card model
 // directly.
 //
+// record-batch cross-checks the report's `head_sha` against the worktree's
+// HEAD with a merge-only rule, so a parent merge-in landing between a fork's
+// commit and record-batch cannot wedge the run: HEAD is accepted when it
+// equals `head_sha` or sits above it by merge commits alone on the
+// first-parent chain.
+// The batch is recorded at the report's `head_sha` (CardSHAs and the delta's
+// end), while the done-checks and drift detection read the merged tree as it
+// stands, and a warning names the walked merge SHAs.
+// Any non-merge movement — a plain commit, a fast-forward onto non-merge
+// commits — is refused, and so is any call made while a git merge is in
+// progress, leaving the batch non-terminal and retryable.
+// Known limit: the integration stage's bisect over earlier CardSHAs runs on
+// pre-merge trees.
+//
 // # every terminal batch runs the same mechanical pass
 //
 // A batch reaches terminal down one of two paths — record-batch after an

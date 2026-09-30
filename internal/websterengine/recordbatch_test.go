@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -931,5 +932,194 @@ func TestRecordBatch_NilStateIsRefusedNotPanicked(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "State is nil") {
 		t.Errorf("websterengine.RecordBatch(nil State) error = %v; want it to name RecordDeps.State", err)
+	}
+}
+
+// parentMerge simulates a parent merge-in: it branches side off startSHA, commits one file there
+// (name=content), returns to the original branch and merges side with --no-ff, returning the merge
+// commit's SHA.
+func parentMerge(t *testing.T, fx *recordFixture, side, name, content string) string {
+	t.Helper()
+	base := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "--abbrev-ref", "HEAD"))
+	mustGit(t, fx.Worktree, "checkout", "-b", side, fx.StartSHA)
+	commitFile(t, fx.Worktree, name, content, side+" commit")
+	mustGit(t, fx.Worktree, "checkout", base)
+	mustGit(t, fx.Worktree, "merge", "--no-ff", "-m", "merge "+side, side)
+	return strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+}
+
+// snapshotRecordState captures the fork-transcript bookkeeping RecordBatch mutates before it can
+// refuse, and returns a restore func: the CLI never persists a refused call's state, so a retry
+// runs against the state as it stood before that call.
+func snapshotRecordState(fx *recordFixture) (restore func()) {
+	seen := append([]string(nil), fx.Deps.State.SeenForkTranscripts...)
+	forks := append([]string(nil), fx.Deps.State.Batches[1].ForkTranscripts...)
+	return func() {
+		fx.Deps.State.SeenForkTranscripts = append([]string(nil), seen...)
+		fx.Deps.State.Batches[1].ForkTranscripts = append([]string(nil), forks...)
+	}
+}
+
+func parentMergeFixture(t *testing.T) *recordFixture {
+	t.Helper()
+	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
+		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
+	})
+	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
+	return fx
+}
+
+func assertBatchOpen(t *testing.T, fx *recordFixture) {
+	t.Helper()
+	if fx.Deps.State.Batches[1].Terminal {
+		t.Error("batch is terminal; want it left non-terminal")
+	}
+	if fx.Deps.State.CurrentBatch != 1 {
+		t.Errorf("CurrentBatch = %d; want 1 (unchanged)", fx.Deps.State.CurrentBatch)
+	}
+}
+
+// TestRecordBatch_ParentMergeAfterForkCommit proves a parent merge-in landing after the fork's
+// commit no longer wedges record-batch: the batch is recorded at the report's own head_sha.
+func TestRecordBatch_ParentMergeAfterForkCommit(t *testing.T) {
+	fx := parentMergeFixture(t)
+	merge := parentMerge(t, fx, "parent1", "parent1.txt", "p1")
+	newHead := merge
+
+	result, err := websterengine.RecordBatch(fx.Deps, 1)
+	if err != nil {
+		t.Fatalf("RecordBatch() error = %v; want nil", err)
+	}
+	if result.Digest == nil || !fx.Deps.State.Batches[1].Terminal {
+		t.Fatalf("RecordBatch() digest = %+v; want a terminal batch", result.Digest)
+	}
+	if got := fx.Deps.State.Batches[1].CardSHAs; len(got) != 1 || got[0] != fx.HeadSHA {
+		t.Errorf("CardSHAs = %v; want [%s]", got, fx.HeadSHA)
+	}
+	if len(result.Warnings) != 1 {
+		t.Fatalf("Warnings = %v; want exactly one", result.Warnings)
+	}
+	for _, want := range []string{fx.HeadSHA, merge, newHead} {
+		if !strings.Contains(result.Warnings[0], want) {
+			t.Errorf("warning %q missing %q", result.Warnings[0], want)
+		}
+	}
+}
+
+func TestRecordBatch_TwoParentMergesAfterForkCommit(t *testing.T) {
+	fx := parentMergeFixture(t)
+	m1 := parentMerge(t, fx, "parent1", "parent1.txt", "p1")
+	m2 := parentMerge(t, fx, "parent2", "parent2.txt", "p2")
+
+	result, err := websterengine.RecordBatch(fx.Deps, 1)
+	if err != nil {
+		t.Fatalf("RecordBatch() error = %v; want nil", err)
+	}
+	if !fx.Deps.State.Batches[1].Terminal {
+		t.Fatal("batch is not terminal")
+	}
+	if len(result.Warnings) != 1 {
+		t.Fatalf("Warnings = %v; want exactly one", result.Warnings)
+	}
+	for _, want := range []string{m1, m2} {
+		if !strings.Contains(result.Warnings[0], want) {
+			t.Errorf("warning %q missing merge %q", result.Warnings[0], want)
+		}
+	}
+}
+
+// TestRecordBatch_ParentMergeSymbolsAreNotTheBatchsOwn proves the delta is the fork's own
+// StartSHA..head_sha range: a symbol the parent side brought in raises no scope, drift or bind finding.
+func TestRecordBatch_ParentMergeSymbolsAreNotTheBatchsOwn(t *testing.T) {
+	fx := parentMergeFixture(t)
+	fx.Deps.Plan.Cards[0].Targets = []string{"unrelated/thing#Nothing"}
+	parentMerge(t, fx, "parent1", "internal/parent/p.go", "package parent\n\nfunc FromParent() {}\n")
+
+	result, err := websterengine.RecordBatch(fx.Deps, 1)
+	if err != nil {
+		t.Fatalf("RecordBatch() error = %v; want nil", err)
+	}
+	if len(result.Warnings) != 1 || !strings.Contains(result.Warnings[0], "only merge commits") {
+		t.Errorf("Warnings = %v; want only the moved-HEAD warning", result.Warnings)
+	}
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "FromParent") || strings.Contains(w, "scope-outside-plan") {
+			t.Errorf("warning %q names the parent side's symbol", w)
+		}
+	}
+}
+
+func TestRecordBatch_NonMergeMovementRefused(t *testing.T) {
+	cases := map[string]func(t *testing.T, fx *recordFixture){
+		"non-merge commit alone": func(t *testing.T, fx *recordFixture) {
+			commitFile(t, fx.Worktree, "extra.txt", "x", "extra commit")
+		},
+		"non-merge commit after a merge": func(t *testing.T, fx *recordFixture) {
+			parentMerge(t, fx, "parent1", "parent1.txt", "p1")
+			commitFile(t, fx.Worktree, "extra.txt", "x", "extra commit")
+		},
+		"fast-forward onto non-merge commits": func(t *testing.T, fx *recordFixture) {
+			base := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "--abbrev-ref", "HEAD"))
+			mustGit(t, fx.Worktree, "checkout", "-b", "ffside")
+			commitFile(t, fx.Worktree, "ff.txt", "ff", "ff commit")
+			mustGit(t, fx.Worktree, "checkout", base)
+			mustGit(t, fx.Worktree, "merge", "--ff-only", "ffside")
+		},
+	}
+	for name, move := range cases {
+		t.Run(name, func(t *testing.T) {
+			fx := parentMergeFixture(t)
+			move(t, fx)
+			newHead := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+
+			_, err := websterengine.RecordBatch(fx.Deps, 1)
+			if err == nil {
+				t.Fatal("RecordBatch() error = nil; want a refusal")
+			}
+			for _, want := range []string{fx.HeadSHA, newHead, "only merge commits"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q missing %q", err.Error(), want)
+				}
+			}
+			assertBatchOpen(t, fx)
+		})
+	}
+}
+
+// TestRecordBatch_MergeInProgressRefusedThenSucceeds proves a conflicting parent merge left in
+// progress refuses record-batch, and that the same call succeeds once the merge is concluded.
+func TestRecordBatch_MergeInProgressRefusedThenSucceeds(t *testing.T) {
+	fx := parentMergeFixture(t)
+	restore := snapshotRecordState(fx)
+
+	base := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "--abbrev-ref", "HEAD"))
+	mustGit(t, fx.Worktree, "checkout", "-b", "parent1", fx.StartSHA)
+	commitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\n// parent side\n", "parent side impl")
+	mustGit(t, fx.Worktree, "checkout", base)
+	if _, _, exitCode, err := gitexec.RunGit([]string{"merge", "--no-ff", "-m", "merge parent1", "parent1"}, fx.Worktree); err != nil || exitCode == 0 {
+		t.Fatalf("conflicting merge: exit=%d err=%v; want a conflict", exitCode, err)
+	}
+
+	_, err := websterengine.RecordBatch(fx.Deps, 1)
+	if err == nil {
+		t.Fatal("RecordBatch() error = nil; want a refusal while a merge is in progress")
+	}
+	if !strings.Contains(err.Error(), "merge --continue") || !strings.Contains(err.Error(), "merge --abort") {
+		t.Errorf("error %q; want the merge --continue/--abort pointer", err.Error())
+	}
+	assertBatchOpen(t, fx)
+
+	if err := os.WriteFile(filepath.Join(fx.Worktree, "internal/foo/impl.go"), []byte("package foo\n"), 0o644); err != nil {
+		t.Fatalf("resolve conflict: %v", err)
+	}
+	mustGit(t, fx.Worktree, "add", "internal/foo/impl.go")
+	mustGit(t, fx.Worktree, "commit", "--no-edit")
+
+	restore()
+	if _, err := websterengine.RecordBatch(fx.Deps, 1); err != nil {
+		t.Fatalf("retry RecordBatch() error = %v; want nil", err)
+	}
+	if got := fx.Deps.State.Batches[1].CardSHAs; len(got) != 1 || got[0] != fx.HeadSHA {
+		t.Errorf("CardSHAs = %v; want [%s]", got, fx.HeadSHA)
 	}
 }

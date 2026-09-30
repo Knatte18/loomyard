@@ -76,8 +76,9 @@ type RecordDeps struct {
 // NoReport reports whether the batch-report file was still absent this call (the batch stays
 // non-terminal and State.CurrentBatch stays unchanged — Master's ladder re-forks once);
 // Warnings carries every non-fatal fork-audit-policy warning observed this call (a
-// multi-new-transcript notice, a fork that never returned a final report, or a dirty worktree after
-// the batch's own commits), never treated as a failure.
+// multi-new-transcript notice, a fork that never returned a final report, a dirty worktree after
+// the batch's own commits, or a moved-HEAD notice when a parent merge-in landed after the fork's
+// commit), never treated as a failure.
 type RecordResult struct {
 	Digest   *Digest
 	NoReport bool
@@ -190,19 +191,24 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		return nil, err
 	}
 
+	// A merge in progress leaves the batch non-terminal and retryable.
+	if err := refuseMidMerge(deps.Geom.WorktreeRoot); err != nil {
+		return nil, err
+	}
+
 	if isDirty, err := dirty(deps.Geom.WorktreeRoot); err != nil {
 		return nil, err
 	} else if isDirty {
 		warnings = append(warnings, fmt.Sprintf("worktree is dirty after batch %s's own commits (uncommitted or untracked changes remain)", polledID))
 	}
 
-	// Cross-check report's head_sha against the worktree's actual HEAD.
-	actualHead, err := headSHA(deps.Geom.WorktreeRoot)
+	// Cross-check report's head_sha against the worktree's actual HEAD, tolerating a parent merge-in.
+	moved, err := reconcileReportHead(deps.Geom.WorktreeRoot, report.HeadSHA, "batch report "+reportPath)
 	if err != nil {
 		return nil, err
 	}
-	if actualHead != report.HeadSHA {
-		return nil, fmt.Errorf("webster: batch report %s: head_sha %q does not match the worktree's actual HEAD %q", reportPath, report.HeadSHA, actualHead)
+	if moved != "" {
+		warnings = append(warnings, moved)
 	}
 
 	postWarnings, err := postBatchChecks(postBatchInputs{
@@ -212,7 +218,7 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		Cards:     batch.Cards,
 		Completed: completedCards(deps.Batches, deps.State, batchNumber),
 		StartSHA:  bs.StartSHA,
-		HeadSHA:   actualHead,
+		HeadSHA:   report.HeadSHA,
 		Label:     polledID,
 	})
 	warnings = append(warnings, postWarnings...)
@@ -224,7 +230,7 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	digest.Batch = polledID
 
 	bs.Digest = &digest
-	bs.CardSHAs = []string{actualHead}
+	bs.CardSHAs = []string{report.HeadSHA}
 	bs.Terminal = true
 	bs.Status = digest.Status
 	deps.State.CurrentBatch = 0
@@ -235,7 +241,7 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 // postBatchInputs carries everything the shared post-batch mechanical pass needs.
 // Cards are the completed batch's own cards; Completed names every card whose work landed BEFORE
 // this batch, so drift detection can scope itself to the plan's remaining work; StartSHA is the
-// bracket record's captured start SHA and HeadSHA the already-verified head; Label names the batch
+// bracket record's captured start SHA and HeadSHA the reconciled report head; Label names the batch
 // in warnings.
 type postBatchInputs struct {
 	Plan      *planparser.Plan
@@ -279,9 +285,9 @@ func postBatchChecks(in postBatchInputs) (warnings []string, err error) {
 	}
 
 	// The batch's single delta call: BindHandles, ScopeGuard and DetectDrift all consume this one
-	// quarry.GitDeltaAnswer rather than each spawning their own. HeadSHA is already cross-checked
-	// against the worktree's real HEAD by the caller — that cross-check is why the delta can be
-	// trusted here and nowhere earlier.
+	// quarry.GitDeltaAnswer rather than each spawning their own. HeadSHA is the reconciled report
+	// head, already cross-checked against the worktree's real HEAD by the caller — that cross-check
+	// is why the delta can be trusted here and nowhere earlier.
 	// A DeltaGit infrastructure error does not abort the sequence: the scope guard degrades to an
 	// informational notice on this same deltaErr, while the done-checks above ran on their own
 	// Resolve and are unaffected. delta itself is the zero value on error, so BindHandles correctly
