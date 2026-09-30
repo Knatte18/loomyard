@@ -81,9 +81,8 @@ func (e *Engine) ReplaceStrand(guid string, spec AddSpec) (Strand, error) {
 		// the removal is persisted and the dying subtree is never left holding the worktree.
 		_, applyErr := e.reconcileApplyPersistLocked(st)
 		reapPaneChildren(reapPIDs, reapExitTimeout)
-		// The tail's reconcileApplyPersistLocked ends in SaveState, so a nil applyErr means the new
-		// strand's record was persisted after all and its launch script stays.
-		// Otherwise the record was never persisted, so its script is deleted.
+		// reconcileApplyPersistLocked ends in SaveState, so a nil applyErr means the new strand's record was persisted after all and its launch script stays.
+		// When the post-add save failed and the tail failed too, no save carrying the new strand ever succeeded, so its script is deleted.
 		if postAddSaveFailed && applyErr != nil {
 			removeLaunchScripts(shell.ForGOOS(), e.stateDir(), []string{strand.GUID})
 		}
