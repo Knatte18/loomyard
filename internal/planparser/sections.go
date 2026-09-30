@@ -55,7 +55,12 @@ func joinSectionBody(section []string) string {
 const verifyCommandJoiner = " && "
 
 // joinVerifyCommands returns section's non-blank lines, trimmed, chained with verifyCommandJoiner
-// into the single command line webster runs, or "" if section is nil or entirely blank.
+// into the single command line webster runs, or "" if section is nil or holds only blank, fence, and comment lines.
+// Two kinds of line are skipped, judged on the trimmed line: a markdown code-fence line (starts with
+// "```" or "~~~", so info strings, longer fences, and indented fences need no open/close tracking),
+// and a full-line shell comment (starts with "#").
+// A chained fence marker is a shell syntax error at every commit, and a chained comment turns every
+// later command into comment text, a silent false pass.
 // The plan stencil tells the planner the section holds one or more commands, one per line;
 // keeping only the first line silently dropped every later one, so a plan whose section read
 // `go vet ./...` then `go test ./...` had its tests skipped by the integration gate.
@@ -63,9 +68,10 @@ func joinVerifyCommands(section []string) string {
 	var commands []string
 	for _, raw := range section {
 		line := strings.TrimSpace(raw)
-		if line != "" {
-			commands = append(commands, line)
+		if line == "" || strings.HasPrefix(line, "```") || strings.HasPrefix(line, "~~~") || strings.HasPrefix(line, "#") {
+			continue
 		}
+		commands = append(commands, line)
 	}
 	return strings.Join(commands, verifyCommandJoiner)
 }
