@@ -53,4 +53,4 @@ deviations: []
 ```
 
 `status` is `OK` when the command above exited zero, `FAILED` otherwise. `head_sha` is your worktree's current HEAD commit SHA — capture it with `git rev-parse HEAD` as your very last read before writing the report;
-it must be UNCHANGED from the SHA Master forked you at, since you make no commit. `deviations` is always empty — you touch no file in this repo beyond reading it to run the command above.
+it must be UNCHANGED from the SHA Master forked you at, since you make no commit. `deviations` is always empty — you edit no file in this repo beyond the verify log your redirect writes.
