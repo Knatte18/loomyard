@@ -266,6 +266,11 @@ There is no mandatory per-card or per-batch verify gate in the code, and the pla
 The section holds one shell command per line;
 the parser skips code-fence lines and full-line `#` comments, then chains every remaining non-blank line with ` && ` into the one command line webster runs, so the first failing command fails the whole check.
 
+Landing is the verify line's second consumer.
+After a parent merge-in that changed the task tree, the `Publish` and `Finalize` landing producers run the same chained command in the task worktree,
+and halt Stuck on failure before anything is pushed or landed,
+so the section must cover what a parent merge can break.
+
 The three tiers match this repo's own test-tier discipline — `internal/planparser`'s existing `Verify` fields are the V1 precedent this generalizes, not three tiers invented for this format:
 
 - **Tier 1 (per card, automatic, no author action).**

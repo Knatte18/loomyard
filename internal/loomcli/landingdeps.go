@@ -14,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
@@ -93,8 +94,22 @@ func landingDeps(
 			done := "done"
 			return boardengine.New(bc).SetStatus(seedSlug(l.WorktreeName), &done)
 		},
-		Shuttle:  runner,
-		Registry: registry,
-		Config:   cfg,
+		// VerifyCommand reads the plan's verify command each time it is called, never at construction:
+		// landingDeps runs at bootstrap, before the plan exists on a fresh run,
+		// so a value captured here would be empty and the gate would silently skip.
+		// A read or parse error is returned, not mapped to an empty command;
+		// only a parsed plan with no "## verify:" section yields "".
+		VerifyCommand: func() (string, error) {
+			plan, err := planparser.ParsePlan(planparser.PlanDir(l.AnchorPath()))
+			if err != nil {
+				return "", fmt.Errorf("loom: read plan verify command: %w", err)
+			}
+			return plan.Verify, nil
+		},
+		VerifyPendingPath: loomengine.LoomVerifyPendingPath(l),
+		VerifyOutputPath:  loomengine.LoomVerifyOutputPath(l),
+		Shuttle:           runner,
+		Registry:          registry,
+		Config:            cfg,
 	}
 }

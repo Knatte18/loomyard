@@ -63,6 +63,9 @@ type Finalize struct {
 	// constructor it wraps stat-checks a layout that may not be wired yet, so opening eagerly
 	// would fail before the run's own preflight has confirmed anything is wired.
 	parentOpener func() (parentMerger, error)
+	// gate is the post-merge verify gate every catch-up merge-in is followed by.
+	// A zero value carries no command, so struct-literal tests run without a gate.
+	gate verifyGate
 }
 
 var _ shedengine.ShedProducer = (*Finalize)(nil)
@@ -109,6 +112,7 @@ func NewFinalize(deps Deps) (*Finalize, error) {
 	return &Finalize{
 		deps:     deps,
 		resolver: res,
+		gate:     newVerifyGate(deps),
 		parentOpener: func() (parentMerger, error) {
 			h, err := deps.OpenParentFabric()
 			if err != nil {
@@ -291,6 +295,10 @@ func (fz *Finalize) closePullRequest(ctx context.Context, parentHandle parentMer
 // the merge-in produced no stuck verdict and no error, it reports done=false so Call proceeds to the
 // parent-side merge; otherwise it reports done=true along with the outcome/output/error Call should
 // return immediately.
+//
+// After a non-stuck merge-in it runs the post-merge verify gate,
+// so every merge-in, the first and the retry after the parent moved again, is verified before the parent-side merge.
+// A gate failure returns before the parent opener, the parent-side merge, the board update, the push and the pull-request close.
 func (fz *Finalize) mergeInStep(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
 	result, err := fz.resolver.Resolve(ctx, fz.deps.ParentBranch)
 	if err != nil {
@@ -301,6 +309,17 @@ func (fz *Finalize) mergeInStep(ctx context.Context) (shedengine.Outcome, sheden
 	}
 	if result.Outcome == mergeresolve.OutcomeStuck {
 		outcome, out, err := fz.stuckOrCancelled(ctx, result.Reason)
+		return outcome, out, err, true
+	}
+	reason, err := fz.gate.check(ctx, finalizeName, fz.deps.ParentBranch, !result.AlreadyUpToDate)
+	if err != nil {
+		if cerr := cancelErr(ctx, finalizeName); cerr != nil {
+			return "", shedengine.OutputPointer{}, cerr, true
+		}
+		return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: %w", finalizeName, err), true
+	}
+	if reason != "" {
+		outcome, out, err := fz.stuckOrCancelled(ctx, reason)
 		return outcome, out, err, true
 	}
 	return "", shedengine.OutputPointer{}, nil, false
