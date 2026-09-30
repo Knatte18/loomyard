@@ -1,7 +1,7 @@
 // verbs_test.go covers the four verbs' own answer-path behaviour against a fixture repository
 // built under t.TempDir(): RunCLIIn's exit code and parseable-JSON contract on success, resolve's
-// per-glyph answers (one document per glyph, exit 1 on any negative answer), and a golden assertion that glyphs'
-// output is byte-identical to the facade's own rendering of the same answer. All four reach
+// per-glyph answers (one document per glyph, exit 1 on any negative answer), and golden assertions that glyphs'
+// JSON and --text output are each byte-identical to the facade's own rendering of the same answer. All four reach
 // quarry.TOC, Glyphs, Resolve and Expand -- file readers, none of which spawns a process -- so
 // this file stays untagged and tier1-pure.
 
@@ -229,5 +229,118 @@ func TestRunCLIIn_Glyphs_GoldenAgainstFacade(t *testing.T) {
 
 	if !bytes.Equal(out.Bytes(), wantBytes) {
 		t.Errorf("RunCLIIn(glyphs sub) output = %q; want byte-identical to facade rendering %q", out.String(), string(wantBytes))
+	}
+}
+
+// TestRunCLIIn_GlyphsText_GoldenAgainstFacade asserts glyphs --text emits exactly the facade's
+// own RenderGlyphsText rendering of the same answer, and exits 0.
+func TestRunCLIIn_GlyphsText_GoldenAgainstFacade(t *testing.T) {
+	root := writeFixtureRepo(t, map[string]string{
+		"sub/a.go": "package sub\n\nfunc Foo() {}\n\nfunc Bar() {}\n",
+	})
+
+	var out bytes.Buffer
+	exitCode := RunCLIIn(root, &out, []string{"glyphs", "--text", "sub"})
+	if exitCode != 0 {
+		t.Fatalf("RunCLIIn(glyphs --text sub) = %d; want 0; output: %s", exitCode, out.String())
+	}
+
+	repo, err := quarry.Open(root)
+	if err != nil {
+		t.Fatalf("quarry.Open(%q) failed: %v", root, err)
+	}
+	answer, err := repo.Glyphs("sub")
+	if err != nil {
+		t.Fatalf("repo.Glyphs(%q) failed: %v", "sub", err)
+	}
+	want := quarry.RenderGlyphsText(answer)
+
+	if out.String() != want {
+		t.Errorf("RunCLIIn(glyphs --text sub) output = %q; want byte-identical to facade rendering %q", out.String(), want)
+	}
+}
+
+// TestRunCLIIn_GlyphsText_EmptyAnswer asserts a directory with no symbols and no incomplete
+// files makes glyphs --text write nothing and exit 0.
+func TestRunCLIIn_GlyphsText_EmptyAnswer(t *testing.T) {
+	root := writeFixtureRepo(t, map[string]string{"docs/notes.txt": "just prose\n"})
+
+	var out bytes.Buffer
+	exitCode := RunCLIIn(root, &out, []string{"glyphs", "--text", "docs"})
+	if exitCode != 0 {
+		t.Fatalf("RunCLIIn(glyphs --text docs) = %d; want 0; output: %s", exitCode, out.String())
+	}
+	if out.Len() != 0 {
+		t.Errorf("RunCLIIn(glyphs --text docs) wrote %q; want zero bytes", out.String())
+	}
+}
+
+// TestRunCLIIn_GlyphsText_TestFileFilter asserts a line filter on _test.go drops exactly the
+// test-file symbol lines, because each symbol is one line carrying its own file path.
+func TestRunCLIIn_GlyphsText_TestFileFilter(t *testing.T) {
+	root := writeFixtureRepo(t, map[string]string{
+		"sub/a.go":      "package sub\n\nfunc Prod() {}\n",
+		"sub/a_test.go": "package sub\n\nfunc Check() {}\n",
+	})
+
+	var out bytes.Buffer
+	exitCode := RunCLIIn(root, &out, []string{"glyphs", "--text", "sub"})
+	if exitCode != 0 {
+		t.Fatalf("RunCLIIn(glyphs --text sub) = %d; want 0; output: %s", exitCode, out.String())
+	}
+
+	var kept []string
+	for _, line := range strings.Split(strings.TrimSuffix(out.String(), "\n"), "\n") {
+		isTestFile := strings.Contains(line, "_test.go")
+		switch {
+		case strings.Contains(line, "Check"):
+			if !isTestFile {
+				t.Errorf("line for the test-file function lacks _test.go: %q", line)
+			}
+		case strings.Contains(line, "Prod"):
+			if isTestFile {
+				t.Errorf("line for the non-test function contains _test.go: %q", line)
+			}
+		}
+		if !isTestFile {
+			kept = append(kept, line)
+		}
+	}
+
+	if len(kept) != 1 || !strings.Contains(kept[0], "Prod") {
+		t.Errorf("lines left after dropping _test.go = %q; want exactly the Prod symbol line", kept)
+	}
+}
+
+// TestRunCLIIn_GlyphsText_MissingDir asserts a failing query under --text still emits the JSON
+// error envelope and exits non-zero.
+func TestRunCLIIn_GlyphsText_MissingDir(t *testing.T) {
+	root := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n"})
+
+	var out bytes.Buffer
+	exitCode := RunCLIIn(root, &out, []string{"glyphs", "--text", "missing"})
+	if exitCode == 0 {
+		t.Fatalf("RunCLIIn(glyphs --text missing) = 0; want non-zero; output: %s", out.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
+		t.Fatalf("output is not a JSON document: %v; got: %q", err, out.String())
+	}
+	if payload["ok"] != false {
+		t.Errorf("ok = %v; want false", payload["ok"])
+	}
+	if _, has := payload["error"]; !has {
+		t.Errorf("payload lacks an error key; got: %v", payload)
+	}
+}
+
+// TestRunCLIIn_TOC_RejectsTextFlag asserts --text is glyphs-only: the other verbs reject it.
+func TestRunCLIIn_TOC_RejectsTextFlag(t *testing.T) {
+	root := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n"})
+
+	var out bytes.Buffer
+	if exitCode := RunCLIIn(root, &out, []string{"toc", "--text", "sub"}); exitCode == 0 {
+		t.Errorf("RunCLIIn(toc --text sub) = 0; want non-zero; output: %s", out.String())
 	}
 }
