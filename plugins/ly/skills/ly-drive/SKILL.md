@@ -94,7 +94,7 @@ Orchestrator forks and operator-launched sessions keep their stop behaviour and 
 At a hand-back, a parking driver does four things, in order:
 
 1. writes its stop report;
-2. runs `lyx loom commit-records`;
+2. runs the records-commit command the launch prompt names;
 3. writes `<scratch_dir>/driver-parked` holding the stop report's path (the park marker, named `driver-parked`);
 4. starts the binary watch as a background job when the stop is binary-change eligible.
 
@@ -190,7 +190,7 @@ Each automatic re-step writes a record under `<scratch_dir>/repairs/` holding:
 
 After a self-initiated re-step, the next stop rewrites the same report file to cover the whole attempt, listing every automatic re-step since the attempt began.
 Its end-of-session command commits the stop report and the friction notes through the orchestrator's own records-commit verb before ending the session, so this skill itself still makes no commits.
-When the launch prompt names an end-of-session command, run it as the last act, after writing the stop report: the teardown command at `done` or `busy`, and at a park `lyx loom commit-records` (step 2 of parking), with the session then left open.
+When the launch prompt names an end-of-session command, run it as the last act, after writing the stop report: the teardown command at `done` or `busy`, and at a park the records-commit command (step 2 of parking), with the session then left open.
 
 ## Self-report
 

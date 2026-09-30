@@ -30,14 +30,18 @@ import "fmt"
 // provider specifics under the claude engine package.
 func driverPrompt(runID string, reportPath string) string {
 	return fmt.Sprintf(
-		"Run the ly-drive skill (from loomyard's ly plugin) for run-id %q. If that skill is not available to you, do not search the filesystem for a copy, which may be a stale version: write to the report that the ly plugin is not installed and stop. You are running autonomously, with no operator to ask -- decide and proceed on your own judgment. Write your report to %q at every stop condition. When the run is done, or a step is refused as busy, then after writing it, as your very last act, commit the run records and end your own session by running: %s . At every other stop, park as the skill describes and leave this session open; lyx loom start resumes it by typing one line.",
-		runID, reportPath, driverTeardownCommand,
+		"Run the ly-drive skill (from loomyard's ly plugin) for run-id %q. If that skill is not available to you, do not search the filesystem for a copy, which may be a stale version: write to the report that the ly plugin is not installed and stop. You are running autonomously, with no operator to ask -- decide and proceed on your own judgment. Write your report to %q at every stop condition. When the run is done, or a step is refused as busy, then after writing it, as your very last act, commit the run records and end your own session by running: %s . At every other stop, park as the skill describes, its records-commit command being: %s , and leave this session open; lyx loom start resumes it by typing one line.",
+		runID, reportPath, driverTeardownCommand, driverRecordsCommand,
 	)
 }
+
+// driverRecordsCommand commits the run records; a parking driver runs it alone, and driverTeardownCommand runs it first.
+// The prompt names it so the ly-drive skill can stay recipe-blind.
+const driverRecordsCommand = "lyx loom commit-records"
 
 // driverTeardownCommand is the end-of-session command a loom-launched driver runs after its stop report.
 // It commits the run records first, then removes the driver's own strand.
 // The two are joined with `;` rather than `&&` so the strand removal runs even when the commit fails:
 // a driver that stayed open on a failed commit would leave its strand alive for a run that has finished.
 // It is built from driverStrandDisplayName so the name cannot drift from the strand's own.
-const driverTeardownCommand = "lyx loom commit-records; lyx reed remove --name " + driverStrandDisplayName + " --detach"
+const driverTeardownCommand = driverRecordsCommand + "; lyx reed remove --name " + driverStrandDisplayName + " --detach"
