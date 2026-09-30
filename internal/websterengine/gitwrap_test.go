@@ -1,9 +1,7 @@
 //go:build integration
 
-// gitwrap_test.go exercises headSHA, dirty, reconcileReportHead and refuseMidMerge against real
-// scratch git repositories built fresh under t.TempDir() for each test,
-// reusing the package's existing hermetic TestMain (testmain_test.go) so
-// these git spawns never inherit the operator's global gitconfig.
+// gitwrap_test.go exercises headSHA, dirty, reconcileReportHead and refuseMidMerge against real scratch git repositories built fresh under t.TempDir() for each test,
+// reusing the package's existing hermetic TestMain (testmain_test.go) so these git spawns never inherit the operator's global gitconfig.
 
 package websterengine
 
@@ -101,8 +99,8 @@ func TestDirty_TrueAndFalse(t *testing.T) {
 	}
 }
 
-// gitwrapMergeSide branches off the current branch as side, commits one file there, returns to the
-// original branch and merges side with --no-ff, so a merge commit lands even without divergence.
+// gitwrapMergeSide branches off the current branch as side, commits one file there, returns to the original branch and merges side with --no-ff,
+// so a merge commit lands even without divergence.
 // It returns the merge commit SHA and the side branch's own tip SHA.
 func gitwrapMergeSide(t *testing.T, dir, side string) (mergeSHA, sideTip string) {
 	t.Helper()
@@ -243,8 +241,7 @@ func TestReconcileReportHead_Refusals(t *testing.T) {
 	})
 }
 
-// gitwrapConflictingMerge sets up a conflict on file c.txt between the current branch and a side
-// branch, leaving the merge in progress in dir.
+// gitwrapConflictingMerge sets up a conflict on file c.txt between the current branch and a side branch, leaving the merge in progress in dir.
 func gitwrapConflictingMerge(t *testing.T, dir string) {
 	t.Helper()
 	base := strings.TrimSpace(gitwrapMustGit(t, dir, "rev-parse", "--abbrev-ref", "HEAD"))

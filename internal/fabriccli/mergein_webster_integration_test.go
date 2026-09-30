@@ -1,7 +1,6 @@
 //go:build integration
 
-// mergein_webster_integration_test.go drives "lyx fabric merge-in" through fabriccli.RunCLIIn against a
-// real hubforge pair while webster state sits under the worktree's anchor,
+// mergein_webster_integration_test.go drives "lyx fabric merge-in" through fabriccli.RunCLIIn against a real hubforge pair while webster state sits under the worktree's anchor,
 // asserting the optional "warnings" key that reports a mid-run parent merge and never blocks it.
 
 package fabriccli_test
@@ -18,8 +17,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// seedWebsterState writes state.json, plus outcome.yaml when outcome is non-empty, under the
-// hub's webster directory and commits it on the prime weft, so the pair is clean when the weft feature branch is cut.
+// seedWebsterState writes state.json, plus outcome.yaml when outcome is non-empty, under the hub's webster directory and commits it on the prime weft,
+// so the pair is clean when the weft feature branch is cut.
 func seedWebsterState(t *testing.T, h *hubforge.Hub, outcome string) {
 	t.Helper()
 

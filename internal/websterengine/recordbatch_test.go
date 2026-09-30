@@ -935,9 +935,7 @@ func TestRecordBatch_NilStateIsRefusedNotPanicked(t *testing.T) {
 	}
 }
 
-// parentMerge simulates a parent merge-in: it branches side off startSHA, commits one file there
-// (name=content), returns to the original branch and merges side with --no-ff, returning the merge
-// commit's SHA.
+// parentMerge simulates a parent merge-in: it branches side off startSHA, commits one file there (name=content), returns to the original branch and merges side with --no-ff, returning the merge commit's SHA.
 func parentMerge(t *testing.T, fx *recordFixture, side, name, content string) string {
 	t.Helper()
 	base := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "--abbrev-ref", "HEAD"))
@@ -948,9 +946,8 @@ func parentMerge(t *testing.T, fx *recordFixture, side, name, content string) st
 	return strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
 }
 
-// snapshotRecordState captures the fork-transcript bookkeeping RecordBatch mutates before it can
-// refuse, and returns a restore func: the CLI never persists a refused call's state, so a retry
-// runs against the state as it stood before that call.
+// snapshotRecordState captures the fork-transcript bookkeeping RecordBatch mutates before it can refuse, and returns a restore func:
+// the CLI never persists a refused call's state, so a retry runs against the state as it stood before that call.
 func snapshotRecordState(fx *recordFixture) (restore func()) {
 	seen := append([]string(nil), fx.Deps.State.SeenForkTranscripts...)
 	forks := append([]string(nil), fx.Deps.State.Batches[1].ForkTranscripts...)
@@ -979,8 +976,8 @@ func assertBatchOpen(t *testing.T, fx *recordFixture) {
 	}
 }
 
-// TestRecordBatch_ParentMergeAfterForkCommit proves a parent merge-in landing after the fork's
-// commit no longer wedges record-batch: the batch is recorded at the report's own head_sha.
+// TestRecordBatch_ParentMergeAfterForkCommit proves a parent merge-in landing after the fork's commit no longer wedges record-batch:
+// the batch is recorded at the report's own head_sha.
 func TestRecordBatch_ParentMergeAfterForkCommit(t *testing.T) {
 	fx := parentMergeFixture(t)
 	merge := parentMerge(t, fx, "parent1", "parent1.txt", "p1")
@@ -1028,8 +1025,8 @@ func TestRecordBatch_TwoParentMergesAfterForkCommit(t *testing.T) {
 	}
 }
 
-// TestRecordBatch_ParentMergeSymbolsAreNotTheBatchsOwn proves the delta is the fork's own
-// StartSHA..head_sha range: a symbol the parent side brought in raises no scope, drift or bind finding.
+// TestRecordBatch_ParentMergeSymbolsAreNotTheBatchsOwn proves the delta is the fork's own StartSHA..head_sha range:
+// a symbol the parent side brought in raises no scope, drift or bind finding.
 func TestRecordBatch_ParentMergeSymbolsAreNotTheBatchsOwn(t *testing.T) {
 	fx := parentMergeFixture(t)
 	fx.Deps.Plan.Cards[0].Targets = []string{"unrelated/thing#Nothing"}
@@ -1086,8 +1083,8 @@ func TestRecordBatch_NonMergeMovementRefused(t *testing.T) {
 	}
 }
 
-// TestRecordBatch_MergeInProgressRefusedThenSucceeds proves a conflicting parent merge left in
-// progress refuses record-batch, and that the same call succeeds once the merge is concluded.
+// TestRecordBatch_MergeInProgressRefusedThenSucceeds proves a conflicting parent merge left in progress refuses record-batch,
+// and that the same call succeeds once the merge is concluded.
 func TestRecordBatch_MergeInProgressRefusedThenSucceeds(t *testing.T) {
 	fx := parentMergeFixture(t)
 	restore := snapshotRecordState(fx)

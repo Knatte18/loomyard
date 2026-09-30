@@ -554,8 +554,7 @@ func TestRecoverBatch_ReportHeadSHAMismatchIsHardError(t *testing.T) {
 	}
 }
 
-// recoverAtReportHead spawns the recovery strand, then seeds a done report at the worktree's
-// current HEAD and returns that head.
+// recoverAtReportHead spawns the recovery strand, then seeds a done report at the worktree's current HEAD and returns that head.
 func recoverAtReportHead(t *testing.T, fx *recoverFixture, clk *recoverFakeClock) string {
 	t.Helper()
 	first, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk)
@@ -570,9 +569,9 @@ func recoverAtReportHead(t *testing.T, fx *recoverFixture, clk *recoverFakeClock
 	return head
 }
 
-// TestRecoverBatch_ParentMergeAfterReportHead proves recover-batch follows record-batch's merge-only
-// head rule: a --no-ff parent merge landing after the recovery report's head is accepted, the batch
-// is recorded at the report's head, and the moved-HEAD notice names the merge.
+// TestRecoverBatch_ParentMergeAfterReportHead proves recover-batch follows record-batch's merge-only head rule:
+// a --no-ff parent merge landing after the recovery report's head is accepted, the batch is recorded at the report's head,
+// and the moved-HEAD notice names the merge.
 func TestRecoverBatch_ParentMergeAfterReportHead(t *testing.T) {
 	fx := newRecoverFixture(t)
 	clk := &recoverFakeClock{now: time.Unix(0, 0)}
@@ -609,8 +608,7 @@ func TestRecoverBatch_ParentMergeAfterReportHead(t *testing.T) {
 	}
 }
 
-// TestRecoverBatch_NonMergeCommitAfterReportHeadRefused proves a plain commit on top of the report's
-// head is refused with both SHAs and the merge-only rule, leaving the batch non-terminal.
+// TestRecoverBatch_NonMergeCommitAfterReportHeadRefused proves a plain commit on top of the report's head is refused with both SHAs and the merge-only rule, leaving the batch non-terminal.
 func TestRecoverBatch_NonMergeCommitAfterReportHeadRefused(t *testing.T) {
 	fx := newRecoverFixture(t)
 	clk := &recoverFakeClock{now: time.Unix(0, 0)}
@@ -633,8 +631,7 @@ func TestRecoverBatch_NonMergeCommitAfterReportHeadRefused(t *testing.T) {
 	}
 }
 
-// TestRecoverBatch_MergeInProgressRefused proves a conflicting merge left in progress refuses
-// recover-batch with the merge --continue/--abort pointer, leaving the batch non-terminal.
+// TestRecoverBatch_MergeInProgressRefused proves a conflicting merge left in progress refuses recover-batch with the merge --continue/--abort pointer, leaving the batch non-terminal.
 func TestRecoverBatch_MergeInProgressRefused(t *testing.T) {
 	fx := newRecoverFixture(t)
 	clk := &recoverFakeClock{now: time.Unix(0, 0)}
