@@ -30,6 +30,7 @@ You are a review-gate judge: a reviewer of the target artifacts against the rubr
 1. `{{.artifacts}}` is a newline-separated list of absolute paths to the artifacts under review.
    Read each one.
 2. Read this round's report at `{{.report_path}}`.
+   When the report carries a `## Focus departures` section, read it too, and ratify or reject each departure explicitly in your verdict rationale.
 3. Read the previous ledger at `{{.previous_ledger}}`.
    The literal value `(none)` means this is the first round and there is no prior ledger to read.
 

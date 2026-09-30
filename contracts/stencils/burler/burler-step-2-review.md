@@ -44,6 +44,11 @@ Frontmatter rules, all strict:
 
 Below the closing `---`, write prose: one `### [SEVERITY] <title>` block per finding, each carrying `**Location:**`, `**Issue:**`, and `**Fix:**` lines.
 
+When you departed from a focus directive this round, add a `## Focus departures` section below the frontmatter, after the finding blocks.
+Write one entry per departed directive, quoting the directive and giving your reason for departing.
+Omit the section when you departed from none.
+The section is prose and never a frontmatter key — the frontmatter schema above is unchanged.
+
 ## Source-grounding rule
 
 Never fabricate file contents.

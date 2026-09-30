@@ -34,3 +34,12 @@ func TestBurlerFocusDirective_MarkersAndPrecedenceRules(t *testing.T) {
 		}
 	}
 }
+
+func TestFocusDepartures_ReviewFormatAndJudgeRatification(t *testing.T) {
+	if !strings.Contains(string(BurlerStep2Review), "## Focus departures") {
+		t.Errorf("burler-step-2-review.md does not contain %q", "## Focus departures")
+	}
+	if !strings.Contains(string(BouncerTemplateJudge), "ratify or reject each departure explicitly") {
+		t.Errorf("bouncer-template-judge.md does not contain the ratify-or-reject instruction")
+	}
+}
