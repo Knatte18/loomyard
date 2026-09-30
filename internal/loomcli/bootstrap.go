@@ -58,29 +58,68 @@ func mustSpawnDriver(runLockHeld bool, driverStrandLive bool) bool {
 	return !runLockHeld && !driverStrandLive
 }
 
-// mustAttach reports whether the bootstrap must hand the terminal over to the tmux session, from the
-// operator's own --no-attach choice. It is the twin of mustSpawnDriver: both are the whole of a
-// re-entrancy or handoff decision, expressed as one pure predicate rather than written inline in the
-// verb body.
+// handover is what step 7 of the bootstrap does with the operator's terminal.
+type handover int
+
+const (
+	// handoverAttach hands the terminal to a tmux attach, as the bootstrap always did.
+	handoverAttach handover = iota
+	// handoverEnvelope returns the success envelope: the caller is unattended, or already sits in the
+	// task's own session.
+	handoverEnvelope
+	// handoverSwitch switches the caller's tmux client onto the task's session.
+	handoverSwitch
+	// handoverHint returns the success envelope with a hint naming the command to attach from outside
+	// tmux: the caller is inside a tmux server the bootstrap must not nest into.
+	handoverHint
+)
+
+// decideHandover picks step 7's handover from where the command runs. It is the twin of
+// mustSpawnDriver: the whole of a handoff decision, expressed as one pure function rather than
+// written inline in the verb body.
 //
-// The terminal handover this predicate gates is the CLI/Cobra Invariant's narrow interactive-handoff
-// exception for `lyx loom start`/`lyx start`. Skipping it on noAttach's say-so removes that exception
-// for this one invocation -- every step before it, including the run-lock handshake, still runs --
-// rather than adding a new exception of its own.
-func mustAttach(noAttach bool) bool {
-	return !noAttach
+// noAttach wins over every branch. An unset $TMUX attaches, which also covers psmux on Windows where
+// $TMUX may be absent. A $TMUX naming another tmux server never nests: reedOwns is false, so the
+// caller gets the envelope and a hint. A $TMUX naming reed's server compares currentSession, the
+// session the caller's pane belongs to, against taskSession: equal returns the envelope, different
+// switches the client. An empty currentSession means the pane's session could not be read, and falls
+// back to the hint rather than nesting.
+//
+// The attach this decision can return is the CLI/Cobra Invariant's narrow interactive-handoff
+// exception for `lyx loom start`/`lyx start`; every other branch reports on the envelope.
+func decideHandover(noAttach bool, tmuxEnv string, reedOwns bool, currentSession, taskSession string) handover {
+	switch {
+	case noAttach:
+		return handoverEnvelope
+	case tmuxEnv == "":
+		return handoverAttach
+	case !reedOwns:
+		return handoverHint
+	case currentSession == "":
+		return handoverHint
+	case currentSession == taskSession:
+		return handoverEnvelope
+	default:
+		return handoverSwitch
+	}
 }
 
-// noAttachFields builds the success envelope `lyx loom start --no-attach` prints once the driver is
-// confirmed up: the run's driver, slug and status file, with "attached": false stating which tail
-// was skipped. It is a pure function so a Tier 1 test can pin the key set.
-func noAttachFields(driver, slug, statusFile string) map[string]any {
-	return map[string]any{
+// noAttachFields builds the success envelope `lyx loom start` prints in place of an attach: the run's
+// driver, slug, resolved run id and status file, with "attached": false stating which tail was
+// skipped. A non-empty hint adds a "hint" key naming the command to attach from outside tmux. It is a
+// pure function so a Tier 1 test can pin the key set.
+func noAttachFields(driver, slug, runID, statusFile, hint string) map[string]any {
+	fields := map[string]any{
 		"attached":    false,
 		"driver":      driver,
 		"slug":        slug,
+		"run_id":      runID,
 		"status_file": statusFile,
 	}
+	if hint != "" {
+		fields["hint"] = hint
+	}
+	return fields
 }
 
 // awaitRunLockResult is the four-way outcome of awaitRunLock.

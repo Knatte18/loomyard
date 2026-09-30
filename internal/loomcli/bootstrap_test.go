@@ -122,31 +122,11 @@ func TestDriverStrandDisplayName_DiffersFromOtherStrandNames(t *testing.T) {
 	}
 }
 
-func TestMustAttach(t *testing.T) {
-	tests := []struct {
-		name       string
-		noAttach   bool
-		wantAttach bool
-	}{
-		{"NoAttachSet_NoAttach", true, false},
-		{"NoAttachUnset_Attach", false, true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := mustAttach(tt.noAttach)
-			if got != tt.wantAttach {
-				t.Errorf("mustAttach(%v) = %v; want %v", tt.noAttach, got, tt.wantAttach)
-			}
-		})
-	}
-}
-
 // TestStartVerb_NoAttachFlag_DefaultsFalse pins the regression this flag most plausibly causes: a
 // silently flipped default. It reads the built command tree's own flag lookup -- rather than the
 // package variable a stray reassignment elsewhere in the package could leave stale -- so the
 // assertion covers registration and default together, then ties that default to the branch it
-// controls by feeding it straight into mustAttach.
+// controls by feeding it straight into decideHandover.
 //
 // An invocation that never passes --no-attach must take today's attach path unchanged, and nothing
 // else in this package would catch a default silently flipped to true.
@@ -161,8 +141,8 @@ func TestStartVerb_NoAttachFlag_DefaultsFalse(t *testing.T) {
 	}
 
 	defaultNoAttach := flag.Value.String() == "true"
-	if got := mustAttach(defaultNoAttach); !got {
-		t.Errorf("mustAttach(%v) over the registered default = %v; want true -- an invocation with no flag must still attach", defaultNoAttach, got)
+	if got := decideHandover(defaultNoAttach, "", false, "", ""); got != handoverAttach {
+		t.Errorf("decideHandover(%v, unset $TMUX) over the registered default = %v; want handoverAttach -- an invocation with no flag must still attach", defaultNoAttach, got)
 	}
 }
 
@@ -170,12 +150,13 @@ func TestStartVerb_NoAttachFlag_DefaultsFalse(t *testing.T) {
 // once the driver is up: before it, the verb returned exit 0 with no output at all, so a script
 // could not tell a driver that came up from a silent failure (crucible round fable-high-r2, F2).
 func TestNoAttachFields_PinsSuccessEnvelope(t *testing.T) {
-	got := noAttachFields("llm", "task-priority", "/hub/task-priority/_lyx/shed/self/status.json")
+	got := noAttachFields("llm", "task-priority", "task-priority", "/hub/task-priority/_lyx/shed/task-priority/status.json", "")
 	want := map[string]any{
 		"attached":    false,
 		"driver":      "llm",
 		"slug":        "task-priority",
-		"status_file": "/hub/task-priority/_lyx/shed/self/status.json",
+		"run_id":      "task-priority",
+		"status_file": "/hub/task-priority/_lyx/shed/task-priority/status.json",
 	}
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Errorf("noAttachFields() mismatch (-want +got):\n%s", diff)

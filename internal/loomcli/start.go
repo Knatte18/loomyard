@@ -246,6 +246,10 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 	return true
 }
 
+// attachHint is the "hint" the success envelope carries when the caller sits inside a tmux server the
+// bootstrap must not nest into.
+const attachHint = `run "lyx reed attach" from outside tmux to reach the task's session`
+
 // startCmd builds the `start` subcommand: the session bootstrap.
 func (c *loomCLI) startCmd() *cobra.Command {
 	var parentFlag string
@@ -267,7 +271,12 @@ func (c *loomCLI) startCmd() *cobra.Command {
      a second invocation while a driver is running ensures substrate and
      attaches rather than spawning a second one; which driver runs is the
      seed's recorded choice, never a flag on this command
-  4. hand the terminal to the tmux session
+  4. hand the terminal over, by where the command runs: attach to the
+     session when $TMUX is unset; when $TMUX names reed's own tmux server,
+     print the success envelope if this terminal is already in the task's
+     session, or switch-client onto it if not; when $TMUX names another tmux
+     server, never nest -- print the envelope with "attached": false and a
+     "hint" naming the command to attach from outside tmux
 
 The detached Go driver's own stdout/stderr go to the log the ephemeral-tree
 driver-log accessor names, never to this command's own output -- an ly-drive
@@ -289,7 +298,8 @@ failed, since psmux on Windows may not export it. A worktree whose
 .vscode/tasks.json predates this convention is upgraded by deleting that
 file and re-running "lyx ide spawn".
 
---no-attach performs steps 1 through 3 and returns once the driver's
+--no-attach is for unattended callers (scripts, agents): it wins over every
+handover above. It performs steps 1 through 3 and returns once the driver's
 readiness signal confirms it is up, instead of running step 4. That
 readiness signal is the run lock being taken for the Go driver; for an
 ly-drive driver, it is the driver's provider TUI coming up ready, with any
@@ -304,7 +314,7 @@ could not remove the strand -- are attached to, or returned over with
 meaning is the same on both paths:
 perform every bootstrap step, confirm the driver is up by that path's own
 signal, and return without the terminal handover, printing a success
-envelope ("attached": false, plus the run's driver, slug and status file)
+envelope ("attached": false, plus the run's driver, slug, run id and status file)
 in place of the handover.
 
 Example:
@@ -361,7 +371,7 @@ Example:
 			// Still part of step 4, not a step of its own: this call reports nothing on the
 			// envelope, so it earns no "// Step N:" marker, and giving it one would leave a reader
 			// wondering why the numbering appears to skip something. Three placement facts matter
-			// here. First, it sits outside this RunE's own mustAttach gate below -- the daemon is
+			// here. First, it sits outside this RunE's own handover decision below -- the daemon is
 			// per-hub and reconciles a session that exists on every invocation, --no-attach
 			// included, where the detached driver still spawns agent strands that need
 			// reconciling. Second, it is called here rather than from inside ensureStatusStrand,
@@ -401,11 +411,53 @@ Example:
 			// reported before stdio is handed away here.
 			_ = bootstrapLock.Release()
 
-			if !mustAttach(noAttachFlag) {
-				// A --no-attach invocation skips the JSON-exempt handover tail below, so it
-				// reports its success on the envelope like every other verb: a silent exit 0 is
-				// indistinguishable from a driver that never came up without a follow-up status.
-				output.Ok(out, noAttachFields(driver, slug, c.shedPaths.StatusPath))
+			// The handover follows from where this command runs: $TMUX says whether the caller is
+			// inside a tmux server, reed says whether that server is its own, and only then is the
+			// caller's pane asked for its session. A failed session read leaves currentSession empty,
+			// which decideHandover answers with a hint rather than a nested attach.
+			tmuxEnv := os.Getenv("TMUX")
+			taskSession := c.reed.SessionName()
+			reedOwns := tmuxEnv != "" && c.reed.OwnsTmuxEnv(tmuxEnv)
+			currentSession := ""
+			if reedOwns {
+				sess, err := c.reed.ClientSession(os.Getenv("TMUX_PANE"))
+				if err != nil {
+					logger.Warn("loom: could not read the client's tmux session, returning a hint instead of switching", "err", err)
+				} else {
+					currentSession = sess
+				}
+			}
+
+			decision := decideHandover(noAttachFlag, tmuxEnv, reedOwns, currentSession, taskSession)
+			runID := shedrun.ResolveRunID(c.location, c.runID)
+			switch decision {
+			case handoverEnvelope:
+				// A handover that skips the JSON-exempt tail below reports its success on the
+				// envelope like every other verb: a silent exit 0 is indistinguishable from a
+				// driver that never came up without a follow-up status.
+				output.Ok(out, noAttachFields(driver, slug, runID, c.shedPaths.StatusPath, ""))
+				return nil
+			case handoverHint:
+				output.Ok(out, noAttachFields(driver, slug, runID, c.shedPaths.StatusPath, attachHint))
+				return nil
+			case handoverSwitch:
+				argv := c.reed.SwitchClientArgv()
+				switchCmd := exec.Command(c.reed.TmuxPath(), argv...)
+				switchCmd.Stdin = os.Stdin
+				switchCmd.Stdout = os.Stdout
+				switchCmd.Stderr = os.Stderr
+				logger.Info("loomcli: spawning tmux switch-client", "tmux", c.reed.TmuxPath(), "session", taskSession)
+				if err := switchCmd.Run(); err != nil {
+					exitCode := 1
+					var exitErr *exec.ExitError
+					if errors.As(err, &exitErr) {
+						exitCode = exitErr.ExitCode()
+					}
+					logger.Info("loomcli: tmux switch-client exited", "tmux", c.reed.TmuxPath(), "exitCode", exitCode)
+					clihelp.SetExit(ctx, exitCode)
+				} else {
+					logger.Info("loomcli: tmux switch-client exited", "tmux", c.reed.TmuxPath(), "exitCode", 0)
+				}
 				return nil
 			}
 
@@ -448,7 +500,7 @@ Example:
 	}
 
 	cmd.Flags().StringVar(&parentFlag, "parent", "", "write the pair's provenance record once for a worktree created before that record existed; refused when it disagrees with an already-recorded value")
-	cmd.Flags().BoolVar(&noAttachFlag, "no-attach", false, "return once a driver this invocation spawns is confirmed up (the Go driver has taken the run lock; an ly-drive driver's provider TUI is ready, with any one-time startup gate dismissed), instead of handing the terminal to the session")
+	cmd.Flags().BoolVar(&noAttachFlag, "no-attach", false, "for unattended callers: return once a driver this invocation spawns is confirmed up (the Go driver has taken the run lock; an ly-drive driver's provider TUI is ready, with any one-time startup gate dismissed), instead of handing the terminal to the session")
 
 	return cmd
 }
