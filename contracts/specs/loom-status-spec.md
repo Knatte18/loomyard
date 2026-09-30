@@ -85,7 +85,7 @@ Spec for check 4, loom's own precondition layered over `Shed`'s shell (`internal
 - `shed.state` must be one of `Shed`'s six legal values and must not be `"done"`, a finished run.
 - `shed.error` is tolerated at any value, including non-empty — it is the previous halt's reason a human resumes after reading.
 - `shed.activity` is never validated — `Shed` recomposes it mechanically on every persist.
-- Every `shed.history[].outcome` must be `"done"` or `"stuck"`, and every `shed.history[].at` must be RFC3339 UTC.
+- Every `shed.history[].outcome` must be `"done"`, `"stuck"` or `"awaiting"`, and every `shed.history[].at` must be RFC3339 UTC.
 - **Fresh-start check:** a `shed.history[]` entry naming any producer other than `"Preflight"` or `"Loom-Preflight"` is a half-finished failure; entries naming either of those two are tolerated, since `Shed.Run` appends a history entry before persisting `state: "blocked"` on every `Stuck` route including the `OnStuck: ""` escalation, so a `Stuck` at either row 1 or row 2 leaves one matching entry behind and a resumable blocked run must not fail this check forever.
 - A non-null `product.start_sha`, or `shed.pause_requested: true`, is also a half-finished failure — the task has already advanced past the point the two Preflight rows are meant to gate.
 - A `product` that fails to decode as loom's own shape is a `seed-incoherent` verdict, not an infra error.
