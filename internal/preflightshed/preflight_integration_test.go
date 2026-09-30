@@ -107,7 +107,7 @@ func TestPreflight_BrokenPreconditionMapsToStuck(t *testing.T) {
 	if want := "preconditions not met: " + formatFailures(report) + wayForward(report); ptr.Reason != want {
 		t.Errorf("Call() Reason = %q; want %q", ptr.Reason, want)
 	}
-	if !strings.Contains(ptr.Reason, "way forward: commit or stash the warp's changes with git") {
+	if !strings.Contains(ptr.Reason, "way forward: commit or stash the code changes with git") {
 		t.Errorf("Call() Reason = %q; want the worktree-clean way forward", ptr.Reason)
 	}
 
