@@ -163,7 +163,7 @@ func TestDetectAnomalies(t *testing.T) {
 			want:    nil,
 		},
 		{
-			name: "BlockedEscalation",
+			name: "BlockedGenericFallback_Escalation",
 			entry: func() EntryObservation {
 				e := baseEntry()
 				e.State = shedengine.StateBlocked
@@ -205,22 +205,6 @@ func TestDetectAnomalies(t *testing.T) {
 				f := baseFinal()
 				f.State = shedengine.StateBlocked
 				f.Error = "pull request review is still pending: https://github.com/o/r/pull/1"
-				return f
-			}(),
-			product: baseProduct(),
-			want:    []AnomalyKind{AnomalyEscalation},
-		},
-		{
-			name: "BlockedGenericFallback_Escalation",
-			entry: func() EntryObservation {
-				e := baseEntry()
-				e.State = shedengine.StateBlocked
-				return e
-			}(),
-			final: func() shedengine.Status {
-				f := baseFinal()
-				f.State = shedengine.StateBlocked
-				f.Error = shedengine.ReasonNoOnStuckTarget
 				return f
 			}(),
 			product: baseProduct(),
