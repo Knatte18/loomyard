@@ -227,6 +227,7 @@ Verbs:
   lyx webster await-batch 3                  block until batch 3's report lands (forks are backgrounded)
   lyx webster record-batch 3                 Master's bracket call once batch 3's fork has delivered
   lyx webster recover-batch 3 --wait 8m      escalate batch 3 to a cold recovery strand
+  lyx webster rebaseline                     accept a mid-run plan edit without dropping batch records
 
 Modes:
   webster runs in hub mode inside a lyx hub worktree, and in standalone
@@ -270,6 +271,7 @@ Example (standalone, outside any lyx hub):
 	parent.AddCommand(c.awaitBatchCmd())
 	parent.AddCommand(c.recordBatchCmd())
 	parent.AddCommand(c.recoverBatchCmd())
+	parent.AddCommand(c.rebaselineCmd())
 
 	return parent
 }

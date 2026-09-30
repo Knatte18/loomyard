@@ -972,3 +972,103 @@ func TestPersistPlanFingerprintRebaseline(t *testing.T) {
 		}
 	})
 }
+
+// seedTwoCardPlan rewrites fx's plan as two cards: card 1 "only" and card 2 "second" with the given
+// intent text, so a later edit to card 2 changes the plan fingerprint without touching card 1.
+func seedTwoCardPlan(t *testing.T, planDir, secondIntent string) {
+	t.Helper()
+	overview := "---\nformat: 5\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n" +
+		"1 — only — placeholder card\n2 — second — second card\n"
+	card1 := "# Card 1 — only\n\n**Create:**\n- `internal/only/new.go`\n\n**Intent:** placeholder card.\n"
+	card2 := "# Card 2 — second\n\n**Create:**\n- `internal/only/two.go`\n\n**Intent:** " + secondIntent + "\n"
+	for name, body := range map[string]string{"00-overview.md": overview, "01-only.md": card1, "02-second.md": card2} {
+		if err := os.WriteFile(filepath.Join(planDir, name), []byte(body), 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+}
+
+// TestRebaselineCmd_AcceptsForeignEditAndKeepsRecords proves a plan edit to a later card is accepted:
+// the verb exits 0 with batches_kept 1, restamps the fingerprint and leaves batch 1's record intact.
+func TestRebaselineCmd_AcceptsForeignEditAndKeepsRecords(t *testing.T) {
+	t.Setenv("WEFT_SKIP_GIT", "1")
+	fx := newVerbsFixture(t)
+	seedTwoCardPlan(t, fx.CLI.geom.PlanDir, "second card.")
+	st := fx.initState(t, "master-model")
+	st.Batches[1] = &websterengine.BatchState{Slug: "only", Cards: []string{"01-only"}, StartSHA: "abc123", Kind: "fork", Digest: &websterengine.Digest{Batch: "01-only", Status: websterengine.DigestStatusDone, HeadSHA: "def456"}}
+	if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, st); err != nil {
+		t.Fatalf("SaveState() error = %v", err)
+	}
+	before := st.PlanFingerprint
+
+	seedTwoCardPlan(t, fx.CLI.geom.PlanDir, "second card, edited mid-run.")
+
+	var out strings.Builder
+	exitCode := clihelp.Execute(fx.CLI.rebaselineCmd(), &out, nil)
+	if exitCode != 0 {
+		t.Fatalf("rebaseline = %d; want 0, output: %s", exitCode, out.String())
+	}
+	if !strings.Contains(out.String(), `"batches_kept":1`) {
+		t.Errorf("output missing batches_kept:1; got %q", out.String())
+	}
+
+	loaded, err := websterengine.LoadState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir)
+	if err != nil || loaded == nil {
+		t.Fatalf("LoadState() = %v, %v; want a state, nil", loaded, err)
+	}
+	want := testPlanFingerprint(t, fx.CLI.geom.PlanDir)
+	if loaded.PlanFingerprint != want || loaded.PlanFingerprint == before {
+		t.Errorf("PlanFingerprint = %q; want the recomputed %q (was %q)", loaded.PlanFingerprint, want, before)
+	}
+	bs := loaded.Batches[1]
+	if bs == nil || bs.StartSHA != "abc123" || bs.Digest == nil || bs.Digest.HeadSHA != "def456" {
+		t.Errorf("batch 1 record = %+v; want it intact", bs)
+	}
+}
+
+// TestRebaselineCmd_RefusesRemovedCard proves removing a begun batch's card is refused with the
+// --fresh way forward and leaves state.json byte-identical.
+func TestRebaselineCmd_RefusesRemovedCard(t *testing.T) {
+	t.Setenv("WEFT_SKIP_GIT", "1")
+	fx := newVerbsFixture(t)
+	st := fx.initState(t, "master-model")
+	st.Batches[1] = &websterengine.BatchState{Slug: "only", Cards: []string{"01-only"}, StartSHA: "abc123", Kind: "fork"}
+	if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, st); err != nil {
+		t.Fatalf("SaveState() error = %v", err)
+	}
+	statePath := filepath.Join(fx.CLI.geom.WebsterDir, "state.json")
+	before, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatalf("read state.json: %v", err)
+	}
+
+	// Replace card 1 with a differently-slugged card so batch 1 no longer exists.
+	planDir := fx.CLI.geom.PlanDir
+	if err := os.Remove(filepath.Join(planDir, "01-only.md")); err != nil {
+		t.Fatalf("remove card: %v", err)
+	}
+	overview := "---\nformat: 5\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — other — replacement card\n"
+	card := "# Card 1 — other\n\n**Create:**\n- `internal/only/other.go`\n\n**Intent:** replacement card.\n"
+	if err := os.WriteFile(filepath.Join(planDir, "00-overview.md"), []byte(overview), 0o644); err != nil {
+		t.Fatalf("write overview: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(planDir, "01-other.md"), []byte(card), 0o644); err != nil {
+		t.Fatalf("write card: %v", err)
+	}
+
+	var out strings.Builder
+	exitCode := clihelp.Execute(fx.CLI.rebaselineCmd(), &out, nil)
+	if exitCode == 0 {
+		t.Fatalf("rebaseline = 0; want non-zero, output: %s", out.String())
+	}
+	if !strings.Contains(out.String(), "--fresh") {
+		t.Errorf("output missing --fresh way forward; got %q", out.String())
+	}
+	after, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatalf("read state.json: %v", err)
+	}
+	if string(before) != string(after) {
+		t.Error("state.json changed on a refused rebaseline; want byte-identical")
+	}
+}
