@@ -212,7 +212,8 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 			// A non-empty outcome outside the vocabulary is a different case and is still
 			// recorded verbatim, because there the value IS the diagnosis -- it is what the
 			// broken adapter actually returned.
-			return append([]HistoryEntry(nil), st.History...)
+			// Copied onto a non-nil slice so an empty history stays [] on disk rather than null.
+			return append(make([]HistoryEntry, 0, len(st.History)), st.History...)
 		}
 		return appendOrFold(st.History, HistoryEntry{
 			Producer:     def.Name,
