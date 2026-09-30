@@ -56,6 +56,12 @@ func TestRefScanner_Matches(t *testing.T) {
 		{"weft-suffixed string literal is text", `echo "archive-happy-weft"`, false},
 		{"heredoc body is content", "cat > x_test.go <<'EOF'\n\tconst branch = \"archive-happy-weft\"\n\t// lyx fabric sync\n\tp := main-weft\nEOF\ngo test ./x", false},
 		{"command after a heredoc is still checked", "cat > x.txt <<EOF\nhello\nEOF\nlyx fabric sync", true},
+		{"slug merely containing the suffix is not a weft path", "cd /hub/fabric-readd-weft-push/internal/gitrepo && grep -n x y.go", false},
+		{"bare slug merely containing the suffix is text", "git -C fabric-readd-weft-push status", false},
+		{"weft twin of a suffix-containing slug matches", "cd /hub/fabric-readd-weft-push-weft/_lyx && ls", true},
+		{"weft name ending the command matches", "ls /hub/other-weft", true},
+		{"escaped alternation in a quoted grep is text", `grep -n "weftBranch\s*[:=]\|WeftSuffix\|-weft" x_test.go`, false},
+		{"windows sibling weft path matches", `dir C:\hub\other-weft\_lyx`, true},
 	}
 
 	for _, tt := range tests {

@@ -44,4 +44,4 @@ A producer may append its own sections to the body after writing it, and any suc
 
 ## See also
 
-- [webster-spec.md](webster-spec.md) — webster's own writer-side additions: when the artifact is required, its archive-never-refuse discipline, and the integration-failure section webster's own bisect appends.
+- [webster-spec.md](webster-spec.md) — webster's own writer-side additions: when the artifact is required, its archive-never-refuse discipline, the integration-failure section webster's own bisect appends for a regression, and the integration-triage section it appends for failures triaged flaky or pre-existing.

@@ -50,6 +50,11 @@ var LoomRubricPlanReview []byte
 //go:embed loom/loom-rubric-webster-review.md
 var LoomRubricWebsterReview []byte
 
+// LoomTemplatePriorPlan is the prior-plan block appended to the end of the Plan prompt on a respawn.
+//
+//go:embed loom/loom-template-prior-plan.md
+var LoomTemplatePriorPlan []byte
+
 // BurlerTemplateRoundOrchestrator is burler's shipped-default per-round orchestrator prompt.
 //
 //go:embed burler/burler-template-round-orchestrator.md
@@ -135,6 +140,21 @@ var WebsterPrefixRecovery []byte
 //go:embed webster/webster-body-implementer.md
 var WebsterBodyImplementer []byte
 
+// OrchTemplateStart is orch's shipped-default fresh-launch prompt.
+//
+//go:embed orch/orch-template-start.md
+var OrchTemplateStart []byte
+
+// OrchTemplateHandoff is orch's shipped-default one-line handoff instruction.
+//
+//go:embed orch/orch-template-handoff.md
+var OrchTemplateHandoff []byte
+
+// OrchTemplateResume is orch's shipped-default one-line resume prompt.
+//
+//go:embed orch/orch-template-resume.md
+var OrchTemplateResume []byte
+
 // PatternDirectiveImplementer is the shipped-default PATTERN directive for RoleImplementer.
 //
 //go:embed pattern/pattern-directive-implementer.md
@@ -191,6 +211,7 @@ var entries = []registryEntry{
 	{"loom-rubric-discussion-review", &LoomRubricDiscussionReview},
 	{"loom-rubric-plan-review", &LoomRubricPlanReview},
 	{"loom-rubric-webster-review", &LoomRubricWebsterReview},
+	{"loom-template-prior-plan", &LoomTemplatePriorPlan},
 	{"burler-template-round-orchestrator", &BurlerTemplateRoundOrchestrator},
 	{"burler-step-1-explore", &BurlerStep1Explore},
 	{"burler-step-2-review", &BurlerStep2Review},
@@ -207,6 +228,9 @@ var entries = []registryEntry{
 	{"webster-prefix-fork", &WebsterPrefixFork},
 	{"webster-prefix-recovery", &WebsterPrefixRecovery},
 	{"webster-body-implementer", &WebsterBodyImplementer},
+	{"orch-template-start", &OrchTemplateStart},
+	{"orch-template-handoff", &OrchTemplateHandoff},
+	{"orch-template-resume", &OrchTemplateResume},
 	{"pattern-directive-implementer", &PatternDirectiveImplementer},
 	{"pattern-directive-review-fix", &PatternDirectiveReviewFix},
 	{"pattern-directive-orchestrator", &PatternDirectiveOrchestrator},

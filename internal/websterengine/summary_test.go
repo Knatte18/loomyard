@@ -128,3 +128,89 @@ func TestArchiveStaleSummary_SameSecondCollisionAppendsSuffix(t *testing.T) {
 		t.Errorf("second archive content = %q; want it to read \"# Second\"", secondContent)
 	}
 }
+
+// readSummaryFile returns the summary.md content under dir.
+func readSummaryFile(t *testing.T, dir string) string {
+	t.Helper()
+	b, err := os.ReadFile(summaryparser.Path(dir))
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	return string(b)
+}
+
+const failedSectionHead = "\n\n## Integration suite failed\n\nThe plan-level `## verify:` suite failed. SHA-bisect localized the failure to card `03-c` (commit `abc123`).\n"
+
+// TestAppendIntegrationFailure_RegressionsListedWithTails asserts each regressing identity is appended with its tail in a fenced block after the localized-card sentence.
+func TestAppendIntegrationFailure_RegressionsListedWithTails(t *testing.T) {
+	dir := t.TempDir()
+	writeSummaryFile(t, summaryparser.Path(dir), "# S\n")
+	regs := []websterengine.IntegrationFailure{
+		{ID: "TestA", Kind: websterengine.FailureKindTest, Tail: "a boom\n"},
+		{ID: "pkg/b", Kind: websterengine.FailureKindPackage, Tail: "b boom"},
+	}
+	if err := websterengine.AppendIntegrationFailure(dir, "03-c", "abc123", regs); err != nil {
+		t.Fatalf("AppendIntegrationFailure: %v", err)
+	}
+	want := "# S\n" + failedSectionHead +
+		"\nRegressing failures:\n" +
+		"\n### `TestA`\n\n```\na boom\n```\n" +
+		"\n### `pkg/b`\n\n```\nb boom\n```\n"
+	if got := readSummaryFile(t, dir); got != want {
+		t.Errorf("summary = %q, want %q", got, want)
+	}
+}
+
+// TestAppendIntegrationFailure_NilRegressionsUnchanged asserts nil regressions yield today's section.
+func TestAppendIntegrationFailure_NilRegressionsUnchanged(t *testing.T) {
+	dir := t.TempDir()
+	writeSummaryFile(t, summaryparser.Path(dir), "# S\n")
+	if err := websterengine.AppendIntegrationFailure(dir, "03-c", "abc123", nil); err != nil {
+		t.Fatalf("AppendIntegrationFailure: %v", err)
+	}
+	if got, want := readSummaryFile(t, dir), "# S\n"+failedSectionHead; got != want {
+		t.Errorf("summary = %q, want %q", got, want)
+	}
+}
+
+const triageSectionHead = "\n\n## Integration suite triage\n\nThe plan-level `## verify:` suite failed, but webster's triage did not attribute the failure to this run.\n"
+
+// TestAppendIntegrationTriage_BothCategories asserts both sub-lists are written by identity.
+func TestAppendIntegrationTriage_BothCategories(t *testing.T) {
+	dir := t.TempDir()
+	writeSummaryFile(t, summaryparser.Path(dir), "# S\n")
+	if err := websterengine.AppendIntegrationTriage(dir, []string{"TestF1", "TestF2"}, []string{"TestP"}); err != nil {
+		t.Fatalf("AppendIntegrationTriage: %v", err)
+	}
+	want := "# S\n" + triageSectionHead +
+		"\nFlaky (passed on rerun):\n\n- `TestF1`\n- `TestF2`\n" +
+		"\nPre-existing (already failing at the plan's starting commit):\n\n- `TestP`\n"
+	if got := readSummaryFile(t, dir); got != want {
+		t.Errorf("summary = %q, want %q", got, want)
+	}
+}
+
+// TestAppendIntegrationTriage_OnlyFlaky asserts no pre-existing sub-list appears when that category is empty.
+func TestAppendIntegrationTriage_OnlyFlaky(t *testing.T) {
+	dir := t.TempDir()
+	writeSummaryFile(t, summaryparser.Path(dir), "# S\n")
+	if err := websterengine.AppendIntegrationTriage(dir, []string{"TestF1"}, nil); err != nil {
+		t.Fatalf("AppendIntegrationTriage: %v", err)
+	}
+	want := "# S\n" + triageSectionHead + "\nFlaky (passed on rerun):\n\n- `TestF1`\n"
+	if got := readSummaryFile(t, dir); got != want {
+		t.Errorf("summary = %q, want %q", got, want)
+	}
+}
+
+// TestAppendIntegrationTriage_EmptyIsNoOp asserts empty lists leave the file untouched.
+func TestAppendIntegrationTriage_EmptyIsNoOp(t *testing.T) {
+	dir := t.TempDir()
+	writeSummaryFile(t, summaryparser.Path(dir), "# S\n")
+	if err := websterengine.AppendIntegrationTriage(dir, nil, nil); err != nil {
+		t.Fatalf("AppendIntegrationTriage: %v", err)
+	}
+	if got := readSummaryFile(t, dir); got != "# S\n" {
+		t.Errorf("summary = %q, want untouched", got)
+	}
+}

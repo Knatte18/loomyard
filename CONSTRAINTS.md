@@ -21,7 +21,7 @@ An engine is handed the absolute paths it operates on and derives none of its ow
 - Three tiers: `lyxcwd.Resolve` → `preflight.Check` (fabric wired/synced/clean) → `loomengine.CheckSeed`.
 - A producer needs none of the tiers; an orchestrator needs tier 3; a standalone CLI probes tier 1 via `preflight.ResolveMode` only.
 - `internal/hubgeom`/`internal/standalonegeom` are the only `Geometry`-struct constructors.
-- Bound packages: `internal/tokenvocab`, `pattern`, `buildinfo`, `standalonestate`, `shedengine`, `treadleengine`, `loomshed`, `landingshed`, `mergeresolve`, `shedrecipe`, `shedbuild`, `loomrecipe`, `planparser`, `planglyph`, `configengine`, `shuttleengine`, `reedengine`, `burlerengine`, `websterengine`, `cliwire`, `battenshed`, `battenrecipe`.
+- Bound packages: `internal/tokenvocab`, `pattern`, `buildinfo`, `standalonestate`, `shedengine`, `treadleengine`, `loomshed`, `landingshed`, `mergeresolve`, `shedrecipe`, `shedbuild`, `loomrecipe`, `planparser`, `planglyph`, `configengine`, `shuttleengine`, `reedengine`, `burlerengine`, `websterengine`, `cliwire`, `battenshed`, `battenrecipe`, `orchengine`.
 - A `shuttleengine` runner whose anchor is deliberately outside its worktree root is constructed only through `shuttleengine.NewDetachedRunner`, only from a standalone CLI's own wiring, and `NewRunner`'s containment assertion is never relaxed to accommodate it.
 
 ## Cliwire Sole-Wiring Invariant
@@ -141,7 +141,7 @@ The transient mark is declared only in `internal/shedengine`, and its class set 
 
 ## Driver Choice Single-Site Invariant
 
-A *recorded* seed driver value is read in exactly one place per recipe, that recipe's own bootstrap verb, and the branch on it selects a spawn and nothing else.
+A *recorded* seed driver value is read in exactly one place per recipe, that recipe's own bootstrap verb, and the branch on it selects the run's driving surface — which driver spawns and whether the session carries the loom status strand — and nothing else.
 
 - No producer, no generic verb and no engine reads the recorded value, and no code path gates *behaviour* on it.
 - One carve-out, and only this shape: a CLI verb may compare a driver value the operator **just typed** against the addressed run's recorded one and refuse on the envelope when they disagree — `internal/battencli`'s `refuseAdoptedSeed`. It selects no spawn and changes no behaviour, and it is the loud command-line failure this invariant's own rationale prefers over silently discarding the typed flag. A refusal decided by the recorded value alone, with nothing typed to compare it against, is not this shape and stays barred.
@@ -190,7 +190,7 @@ Every lyx CLI module is a cobra subtree assembled under one root in `cmd/lyx/mai
 - An alias command may delegate into another module's subtree with no seam function of its own.
 - Non-empty `Short` on every command.
 - Errors are JSON via `internal/output`, one object per line; every `RunE` checks `clihelp.ShouldAbort` first.
-- Interactive-handoff exception, narrow and per-command: `reedengine` `attach`/`watchdog`, `lyx loom status --watch`, `lyx loom start`/`lyx start`, `lyx shed status --watch`, `lyx batten status --watch`, and the `status` verbs' terminal rendering.
+- Interactive-handoff exception, narrow and per-command: `reedengine` `attach`/`watchdog`, `lyx loom status --watch`, `lyx loom start`/`lyx start`, `lyx orch start`, `lyx shed status --watch`, `lyx batten status --watch`, and the `status` verbs' terminal rendering.
 - Package naming: `<module>cli` imports `<module>engine`; engine never imports cli/cobra. Deviations: `stencilcli` → `internal/stencilstore`; `quarrycli` → `internal/planglyph`; `battencli` → `internal/battenshed`, `internal/battenrecipe` (no engine package of its own); `shedcli` → `internal/shedverbs`, `internal/loomcli`, `internal/battencli` (no engine package of its own).
 
 ## Completion Signal Invariant
@@ -235,6 +235,7 @@ Every git op LYX's own code performs, on either weft or warp, goes through `inte
 - Junction exclusion is `.git/info/exclude` on both sides, mutated only via `fabricengine.mutateGitExclude`, never a tracked `.gitignore`.
 - `Unwire` removes warp junctions/exclude entries only — weft-side `_lyx`/`.lyx` content always preserved.
 - Every teardown of an existing pair's weft branch (`Remove`, `RemovePairBranch`, `Cleanup`) first pushes an `archive/<slug>/<tip>` tag to the weft origin, so the run records stay reachable; a rolled-back `Add` is excepted, and `force` never skips it.
+  `Add` replaces a leftover remote weft branch only when an `archive/<slug>/*` tag covers its tip.
 
 ## Fabric Destruction Chokepoint Invariant
 
@@ -310,6 +311,9 @@ A strand pane reed creates resolves `lyx` to the binary that spawned it.
 - Scope is strand panes only, with Selvage's split and the `new-session` first pane exempt by name,
   and the detached `lyx loom run` and watchdog daemon spawns excluded because both are already
   spawned from the executable path and neither resolves `lyx` from `PATH`.
+- The prelude and launch command ride a per-strand launch script at `<AnchorPath>/.lyx/reed/launch/<guid><ext>` that the send-keys line sources through `internal/shell`'s `Source`;
+  the script exists only while its GUID is in reed's strand table;
+  a script write failure degrades to typing the composed line plus a named `logger.Warn`, never a failed launch.
 - An unresolvable executable path degrades to a pane with no prelude plus a named `logger.Warn`,
   never a failed launch.
 - Backed by `internal/reedengine/panebin_enforcement_test.go`, which fails if a `split-window`
@@ -400,7 +404,7 @@ An instruction file never duplicates or paraphrases another producer's format-co
 
 `internal/configengine` offers `Load` (strict) and `LoadOrTemplate` (degrades to embedded template) — a caller adopts exactly one.
 
-- Degrading: `{shuttleengine, reedengine, websterengine, batcher}`. Strict: `{fabricengine, boardengine, loomengine, landingshed}`.
+- Degrading: `{shuttleengine, reedengine, websterengine, batcher, orchengine, loggerconfig}`. Strict: `{fabricengine, boardengine, loomengine, landingshed}`.
 - A template list is a default, not a minimum length.
 
 ## GitHub Auth Invariant

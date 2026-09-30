@@ -509,6 +509,11 @@ func runAdd(ctx context.Context, out io.Writer, args []string) int {
 	slug := args[0]
 	r, err := top.Add(l, slug, addOptionsFromEnv())
 	if err != nil {
+		// A leftover refusal fires before Add's first mutation, so it is a pre-flight failure: a bare output.Err.
+		var leftover *fabricengine.ErrRemoteLeftover
+		if errors.As(err, &leftover) {
+			return output.Err(out, err.Error())
+		}
 		return errWithRecord(out, r.Mutated(), err)
 	}
 	return okWithRecord(out, r.Mutated(), map[string]any{

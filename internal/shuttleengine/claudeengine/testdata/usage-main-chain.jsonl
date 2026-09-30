@@ -1,0 +1,6 @@
+{"type":"user","message":{"role":"user","content":"start"}}
+{"type":"assistant","isSidechain":false,"message":{"role":"assistant","usage":{"input_tokens":10,"cache_creation_input_tokens":100,"cache_read_input_tokens":1000,"output_tokens":5}}}
+{"type":"assistant","isSidechain":false,"message":{"role":"assistant","usage":{"input_tokens":20,"cache_creation_input_tokens":200,"cache_read_input_tokens":2000,"output_tokens":7}}}
+{"type":"assistant","isSidechain":false,"message":{"role":"assistant","usage":{"input_tokens":3,"cache_creation_input_tokens":40,"cache_read_input_tokens":5000,"output_tokens":9}}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]}}
+{"type":"user","message":{"role":"user","content":"more"}}

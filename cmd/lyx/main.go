@@ -28,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/idecli"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomcli"
+	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/quarrycli"
 	"github.com/Knatte18/loomyard/internal/reedcli"
 	"github.com/Knatte18/loomyard/internal/selfreportcli"
@@ -43,8 +44,8 @@ func main() {
 	root.SetOut(os.Stdout)
 	root.SetErr(os.Stderr)
 	code := clihelp.RunRoot(root, os.Stdout)
-	// Force-open the durable sink on a non-zero exit for post-mortem inspection.
-	logger.NotifyExit(code)
+	// The exit hook force-opens the durable sink on a non-zero exit for post-mortem inspection, then sweeps an armed sink's directory.
+	notifyExitAndSweep(code)
 	os.Exit(code)
 }
 
@@ -55,8 +56,8 @@ func run(args []string, out io.Writer) int {
 	root.SetErr(out)
 	root.SetArgs(args)
 	code := clihelp.RunRoot(root, out)
-	// Force-open the durable sink on a non-zero exit.
-	logger.NotifyExit(code)
+	// The exit hook force-opens the durable sink on a non-zero exit, then sweeps an armed sink's directory.
+	notifyExitAndSweep(code)
 	return code
 }
 
@@ -74,7 +75,7 @@ It assembles every module's cobra command tree under a single root so that
 all modules are discoverable via "lyx --help" and every subcommand carries
 its own --help and --json help output.
 
-Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler, webster, stencil, loom, start, quarry, batten, shed.`,
+Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler, webster, stencil, loom, start, quarry, batten, shed, orch.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		// Modules' PersistentPreRunE hooks run after root's via EnableTraverseRunHooks.
@@ -112,6 +113,7 @@ Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler
 		loomcli.Command(),
 		battencli.Command(),
 		shedcli.Command(),
+		orchcli.Command(),
 		// StartAliasCommand registers the same "start" verb as loomcli.Command()'s
 		// subtree already carries, a second time, as a bare root child rather
 		// than spliced into the argument vector, so it is discoverable in help
