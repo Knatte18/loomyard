@@ -189,9 +189,8 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 	// re-calls it and appends a duplicate history entry -- defeating the exact
 	// crash-safety property step 5 exists to provide.
 	//
-	// Appended or folded (see appendOrFold) on a copy of the history read at step 1, never
-	// mutating the read slice in place. An outcome the producer never reached is the one case
-	// that records nothing at all -- see the skip below.
+	// Appended or folded (see appendOrFold) on a copy of the history read at step 1, never mutating the read slice in place.
+	// An outcome the producer never reached is the one case that records nothing at all -- see the skip below.
 	appendHistory := func() []HistoryEntry {
 		if outcome == "" {
 			// A producer that returned an error and no outcome at all reached no verdict, so
