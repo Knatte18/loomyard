@@ -440,7 +440,7 @@ func (c *battenCLI) battenPreRun(ctx context.Context) error {
 		switch st.State {
 		case shedengine.StateDone:
 			return c.doneSlugRefusal()
-		case shedengine.StateRunning, shedengine.StateBlocked, shedengine.StateFailed, shedengine.StatePaused:
+		case shedengine.StateRunning, shedengine.StateBlocked, shedengine.StateAwaiting, shedengine.StateFailed, shedengine.StatePaused:
 			// Each of these resumes silently from the persisted current producer, with no
 			// re-seed, no prompt, and no flag: the engine itself already resumes from blocked
 			// and failed, and StateBlocked is the everyday path, since every operator-fixable
@@ -515,7 +515,7 @@ func (c *battenCLI) battenPreStep(ctx context.Context) (string, error) {
 		switch st.State {
 		case shedengine.StateDone:
 			return shedverbs.KindBootstrap, c.doneSlugRefusal()
-		case shedengine.StateRunning, shedengine.StateBlocked, shedengine.StateFailed, shedengine.StatePaused:
+		case shedengine.StateRunning, shedengine.StateBlocked, shedengine.StateAwaiting, shedengine.StateFailed, shedengine.StatePaused:
 			// Resumes silently, exactly as battenPreRun's own identical switch does.
 		default:
 			return shedverbs.KindBootstrap, fmt.Errorf("battencli: unrecognized status state %q", st.State)
