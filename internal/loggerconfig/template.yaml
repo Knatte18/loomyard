@@ -1,0 +1,2 @@
+trace_retention_count: 200 # number of non-live trace groups the exit sweep keeps; older groups beyond this count are deleted
+trace_retention_days: 14 # days a non-live trace group may go without activity before the exit sweep deletes it
