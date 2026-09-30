@@ -116,6 +116,12 @@ Frontmatter rules, all strict:
 
 Below the closing `---`, prose rationale is optional.
 
+What a `focus` entry may say:
+
+- An entry names where to look and which question to settle.
+- An entry never caps severity, and never pre-states a verdict.
+- Promote a concrete instance into an entry only after checking it against the rubric's `Do not flag` list and its symmetry rule.
+
 An `APPROVED` verdict still writes `{{.focus_path}}`, with {{.approved_focus_lists}}, because the run is classified complete only when every declared output file exists --
 a judge that writes two of three files has its approval discarded.
 

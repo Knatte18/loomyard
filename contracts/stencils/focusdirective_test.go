@@ -43,3 +43,21 @@ func TestFocusDepartures_ReviewFormatAndJudgeRatification(t *testing.T) {
 		t.Errorf("bouncer-template-judge.md does not contain the ratify-or-reject instruction")
 	}
 }
+
+func TestBouncerStencils_FocusEntryGuidance(t *testing.T) {
+	stencils := map[string][]byte{
+		"bouncer-template-seed.md":  BouncerTemplateSeed,
+		"bouncer-template-judge.md": BouncerTemplateJudge,
+	}
+	for name, body := range stencils {
+		for _, phrase := range []string{
+			"never caps severity",
+			"never pre-states a verdict",
+			"against the rubric's `Do not flag` list",
+		} {
+			if !strings.Contains(string(body), phrase) {
+				t.Errorf("%s does not contain %q", name, phrase)
+			}
+		}
+	}
+}

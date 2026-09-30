@@ -49,4 +49,10 @@ Frontmatter rules, all strict:
 
 Below the closing `---`, prose rationale is optional.
 
+What a `focus` entry may say:
+
+- An entry names where to look and which question to settle.
+- An entry never caps severity, and never pre-states a verdict.
+- Promote a concrete instance into an entry only after checking it against the rubric's `Do not flag` list and its symmetry rule.
+
 Write only that one file: `{{.focus_path}}`.
