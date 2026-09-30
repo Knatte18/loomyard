@@ -1,8 +1,7 @@
 //go:build integration
 
-// mutation_record_integration_test.go asserts the mutation record at the engine boundary: a Remove
-// refused for a dirty worktree records nothing, and an Add that fails partway and runs rollbackAdd
-// is the mutated-then-errored case.
+// mutation_record_integration_test.go asserts the mutation record at the engine boundary: a Remove refused for a dirty worktree records nothing,
+// and an Add that fails partway and runs rollbackAdd is the mutated-then-errored case.
 // Both are read through res.Mutated().Entries(), exercising the exported surface a CLI or this
 // package's own live-state harness consumer actually has.
 //
@@ -21,11 +20,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 )
 
-// TestMutationRecord_RemoveDirtyWarpRefusalRecordsNothing covers the ordering this slice polices:
-// remove.go runs its dirty pre-flight before its archive and every teardown, so a correctly-refusing
-// Remove has mutated nothing and its record is empty. The pre-flight's own error is a bare
-// fmt.Errorf, never a *destructiveRefusal — RefusalOf(err) must report false, asserted as an
-// absence, not a set of contents.
+// TestMutationRecord_RemoveDirtyWarpRefusalRecordsNothing covers the ordering this slice polices: remove.go runs its dirty pre-flight before its archive and every teardown, so a correctly-refusing Remove has mutated nothing and its record is empty.
+// The pre-flight's own error is a bare fmt.Errorf, never a *destructiveRefusal — RefusalOf(err) must report false, asserted as an absence, not a set of contents.
 func TestMutationRecord_RemoveDirtyWarpRefusalRecordsNothing(t *testing.T) {
 	t.Parallel()
 
