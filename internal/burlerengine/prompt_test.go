@@ -18,9 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/contracts/stencils"
 )
 
-// newTestStencilsDir builds a t.TempDir() seeded with burler's four stencils plus the three
-// pattern-directive stencils, copied byte-for-byte from the stencils package's embedded defaults, and
-// returns the directory to pass as stencilsDir.
+// newTestStencilsDir builds a t.TempDir() seeded with burler's five stencils plus the three pattern-directive stencils, copied byte-for-byte from the stencils package's embedded defaults, and returns the directory to pass as stencilsDir.
 func newTestStencilsDir(t *testing.T) string {
 	t.Helper()
 
@@ -34,6 +32,7 @@ func newTestStencilsDir(t *testing.T) string {
 		"burler-step-1-explore.md":              stencils.BurlerStep1Explore,
 		"burler-step-2-review.md":               stencils.BurlerStep2Review,
 		"burler-step-3-fix.md":                  stencils.BurlerStep3Fix,
+		"burler-focus-directive.md":             stencils.BurlerFocusDirective,
 	}
 	for name, content := range files {
 		if err := os.WriteFile(filepath.Join(burlerDir, name), content, 0o644); err != nil {
@@ -113,6 +112,46 @@ func combinedPrompt(orchestrator string, files []instructionFile) string {
 		parts = append(parts, f.Content)
 	}
 	return strings.Join(parts, "\n")
+}
+
+// TestComposePrompt_FocusDirective proves a round's focus file reaches instruction 1 through its own channel, with the precedence rule, and never reaches instruction 2's prior-rounds block;
+// and that a round without a directive renders no focus text and no marker residue.
+func TestComposePrompt_FocusDirective(t *testing.T) {
+	stencilsDir := newTestStencilsDir(t)
+
+	t.Run("directive present", func(t *testing.T) {
+		p := newComposableProfile(t)
+		p.FocusDirective = filepath.Join(t.TempDir(), "focus.md")
+		if err := os.WriteFile(p.FocusDirective, []byte("look at the seam"), 0o644); err != nil {
+			t.Fatalf("WriteFile(focus) = %v; want nil", err)
+		}
+
+		_, files, err := composePrompt(stencilsDir, &p, "", "", testInst1Path, testInst2Path, testInst3Path)
+		if err != nil {
+			t.Fatalf("composePrompt() = %v; want nil error", err)
+		}
+		requireContains(t, files[0].Content, p.FocusDirective)
+		requireContains(t, files[0].Content, "The rubric binds over the focus directive")
+		if strings.Contains(files[1].Content, p.FocusDirective) {
+			t.Errorf("instruction 2 contains the focus path %q; want it absent", p.FocusDirective)
+		}
+	})
+
+	t.Run("directive absent", func(t *testing.T) {
+		p := newComposableProfile(t)
+
+		_, files, err := composePrompt(stencilsDir, &p, "", "", testInst1Path, testInst2Path, testInst3Path)
+		if err != nil {
+			t.Fatalf("composePrompt() = %v; want nil error", err)
+		}
+		got := files[0].Content
+		if strings.Contains(got, "Focus directive for this round") {
+			t.Errorf("instruction 1 contains the focus heading with no directive: %q", got)
+		}
+		if strings.Contains(got, "{{") || strings.Contains(got, "<no value>") {
+			t.Errorf("instruction 1 contains marker residue: %q", got)
+		}
+	})
 }
 
 // TestComposePrompt_FillsAllMarkers proves a minimal valid profile composes cleanly through stencil

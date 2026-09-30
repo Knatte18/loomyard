@@ -30,6 +30,7 @@ You are a review-gate judge: a reviewer of the target artifacts against the rubr
 1. `{{.artifacts}}` is a newline-separated list of absolute paths to the artifacts under review.
    Read each one.
 2. Read this round's report at `{{.report_path}}`.
+   When the report carries a `## Focus departures` section, read it too, and ratify or reject each departure explicitly in your verdict rationale.
 3. Read the previous ledger at `{{.previous_ledger}}`.
    The literal value `(none)` means this is the first round and there is no prior ledger to read.
 
@@ -114,6 +115,12 @@ Frontmatter rules, all strict:
   a file the parser rejects is discarded and replaced with an empty-lists fallback.
 
 Below the closing `---`, prose rationale is optional.
+
+What a `focus` entry may say:
+
+- An entry names where to look and which question to settle.
+- An entry never caps severity, and never pre-states a verdict.
+- Promote a concrete instance into an entry only after checking it against the rubric's `Do not flag` list and its symmetry rule.
 
 An `APPROVED` verdict still writes `{{.focus_path}}`, with {{.approved_focus_lists}}, because the run is classified complete only when every declared output file exists --
 a judge that writes two of three files has its approval discarded.

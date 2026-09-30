@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
@@ -241,5 +242,94 @@ func TestCommitStatusSeam_Real_UnreachableRemoteWarnsToo(t *testing.T) {
 	}
 	if got := headSHA(t, weftSibling); got == before {
 		t.Errorf("weft HEAD = %q; want it moved off %q — the commit lands even though the push failed", got, before)
+	}
+}
+
+// writeReviewFile writes content at rel under the reviews directory, creating its directories.
+func writeReviewFile(t *testing.T, location *lyxcwd.Location, rel, content string) {
+	t.Helper()
+	path := filepath.Join(loomengine.LoomReviewsDir(location), rel)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll(%s) error = %v; want nil", filepath.Dir(path), err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("WriteFile(%s) error = %v; want nil", path, err)
+	}
+}
+
+// TestCommitStatusSeam_Real_CommitsTheRoundRecord asserts a round's files written before a transition land in the weft HEAD commit and leave the reviews directory clean.
+func TestCommitStatusSeam_Real_CommitsTheRoundRecord(t *testing.T) {
+	seam, location, weftSibling := realSeamFixture(t)
+	files := []string{"plan/round-1-review.md", "plan/round-1-fixer-report.md", "plan/round-1-focus.md"}
+	for _, f := range files {
+		writeReviewFile(t, location, f, "record\n")
+	}
+
+	if err := seam("Plan-Review", "running"); err != nil {
+		t.Fatalf("seam error = %v; want nil", err)
+	}
+
+	got := mustGitOut(t, weftSibling, "show", "--name-only", "--format=", "HEAD")
+	for _, f := range files {
+		want := filepath.ToSlash(filepath.Join(loomengine.LoomReviewsDirRel(), f))
+		if !strings.Contains(got, want) {
+			t.Errorf("weft HEAD touched %q; want it to include %q", got, want)
+		}
+	}
+	if st := mustGitOut(t, weftSibling, "status", "--porcelain", "--", filepath.ToSlash(loomengine.LoomReviewsDirRel())); st != "" {
+		t.Errorf("weft status under the reviews directory = %q; want clean", st)
+	}
+}
+
+// TestCommitStatusSeam_Real_NoReviewsDirTouchesOnlyStatus asserts a run with no reviews directory commits the status file alone.
+func TestCommitStatusSeam_Real_NoReviewsDirTouchesOnlyStatus(t *testing.T) {
+	seam, _, weftSibling := realSeamFixture(t)
+
+	if err := seam("Discussion-Write", "running"); err != nil {
+		t.Fatalf("seam error = %v; want nil", err)
+	}
+	if got := mustGitOut(t, weftSibling, "show", "--name-only", "--format=", "HEAD"); got != filepath.ToSlash(shedrun.StatusRel(shedrun.SelfRunID)) {
+		t.Errorf("weft HEAD touched %q; want only the status file", got)
+	}
+}
+
+// TestCommitStatusSeam_Real_EmptyReviewsSegmentTouchesOnlyStatus asserts the recipe-build state — the reviews root holding only an empty segment directory — neither errors nor widens the commit.
+func TestCommitStatusSeam_Real_EmptyReviewsSegmentTouchesOnlyStatus(t *testing.T) {
+	seam, location, weftSibling := realSeamFixture(t)
+	if err := os.MkdirAll(filepath.Join(loomengine.LoomReviewsDir(location), "plan"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := seam("Discussion-Write", "running"); err != nil {
+		t.Fatalf("seam error = %v; want nil", err)
+	}
+	if got := mustGitOut(t, weftSibling, "show", "--name-only", "--format=", "HEAD"); got != filepath.ToSlash(shedrun.StatusRel(shedrun.SelfRunID)) {
+		t.Errorf("weft HEAD touched %q; want only the status file", got)
+	}
+}
+
+// TestCommitStatusSeam_Real_ArchiveRenameCommitsAdditionAndDeletion asserts a committed round file renamed to a timestamped sibling is recorded as both an addition and a deletion by the next commit.
+func TestCommitStatusSeam_Real_ArchiveRenameCommitsAdditionAndDeletion(t *testing.T) {
+	seam, location, weftSibling := realSeamFixture(t)
+	writeReviewFile(t, location, "plan/round-1-review.md", "record\n")
+	if err := seam("Plan-Review", "running"); err != nil {
+		t.Fatalf("first seam error = %v; want nil", err)
+	}
+
+	dir := filepath.Join(loomengine.LoomReviewsDir(location), "plan")
+	if err := os.Rename(filepath.Join(dir, "round-1-review.md"), filepath.Join(dir, "round-1-review-20260101T000000.md")); err != nil {
+		t.Fatal(err)
+	}
+	if err := seam("Plan-Review", "done"); err != nil {
+		t.Fatalf("second seam error = %v; want nil", err)
+	}
+
+	got := mustGitOut(t, weftSibling, "show", "--no-renames", "--name-status", "--format=", "HEAD")
+	prefix := filepath.ToSlash(filepath.Join(loomengine.LoomReviewsDirRel(), "plan")) + "/"
+	if !strings.Contains(got, "A\t"+prefix+"round-1-review-20260101T000000.md") {
+		t.Errorf("weft HEAD = %q; want the timestamped sibling added", got)
+	}
+	if !strings.Contains(got, "D\t"+prefix+"round-1-review.md") {
+		t.Errorf("weft HEAD = %q; want the original deleted", got)
 	}
 }
