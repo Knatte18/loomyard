@@ -10,7 +10,7 @@
 # status once per bounce without looping internally. The 12-hour budget counts the running watch
 # only: the wait for an operator's approval of an awaiting child and the wait for a done child's
 # driver to finish its stop report are budget-exempt bounces, the latter bounded by
-# config.driver_exit_grace_s instead. Row names and max_bounces are unchanged. It never routes to
+# config.driver_exit_grace_s instead. It never routes to
 # Worktree-Teardown: the destructive teardown row is unreachable from any failure path because
 # Run-Shed's own hard-error return -- not an empty on_stuck -- is what shedengine turns into
 # StateFailed at Run-Shed with the run halted. A dropped max_bounces would silently inherit the
