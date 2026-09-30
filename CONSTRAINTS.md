@@ -131,7 +131,7 @@ Every value in `internal/shedrecipe`'s registry constructs a `shedengine.ShedPro
 
 ## Driver Choice Single-Site Invariant
 
-A *recorded* seed driver value is read in exactly one place per recipe, that recipe's own bootstrap verb, and the branch on it selects a spawn and nothing else.
+A *recorded* seed driver value is read in exactly one place per recipe, that recipe's own bootstrap verb, and the branch on it selects the run's driving surface — which driver spawns and whether the session carries the loom status strand — and nothing else.
 
 - No producer, no generic verb and no engine reads the recorded value, and no code path gates *behaviour* on it.
 - One carve-out, and only this shape: a CLI verb may compare a driver value the operator **just typed** against the addressed run's recorded one and refuse on the envelope when they disagree — `internal/battencli`'s `refuseAdoptedSeed`. It selects no spawn and changes no behaviour, and it is the loud command-line failure this invariant's own rationale prefers over silently discarding the typed flag. A refusal decided by the recorded value alone, with nothing typed to compare it against, is not this shape and stays barred.
@@ -301,6 +301,9 @@ A strand pane reed creates resolves `lyx` to the binary that spawned it.
 - Scope is strand panes only, with Selvage's split and the `new-session` first pane exempt by name,
   and the detached `lyx loom run` and watchdog daemon spawns excluded because both are already
   spawned from the executable path and neither resolves `lyx` from `PATH`.
+- The prelude and launch command ride a per-strand launch script at `<AnchorPath>/.lyx/reed/launch/<guid><ext>` that the send-keys line sources through `internal/shell`'s `Source`;
+  the script exists only while its GUID is in reed's strand table;
+  a script write failure degrades to typing the composed line plus a named `logger.Warn`, never a failed launch.
 - An unresolvable executable path degrades to a pane with no prelude plus a named `logger.Warn`,
   never a failed launch.
 - Backed by `internal/reedengine/panebin_enforcement_test.go`, which fails if a `split-window`
@@ -391,7 +394,7 @@ An instruction file never duplicates or paraphrases another producer's format-co
 
 `internal/configengine` offers `Load` (strict) and `LoadOrTemplate` (degrades to embedded template) — a caller adopts exactly one.
 
-- Degrading: `{shuttleengine, reedengine, websterengine, batcher}`. Strict: `{fabricengine, boardengine, loomengine, landingshed}`.
+- Degrading: `{shuttleengine, reedengine, websterengine, batcher, loggerconfig}`. Strict: `{fabricengine, boardengine, loomengine, landingshed}`.
 - A template list is a default, not a minimum length.
 
 ## GitHub Auth Invariant

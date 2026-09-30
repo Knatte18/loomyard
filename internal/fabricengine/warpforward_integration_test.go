@@ -1,8 +1,8 @@
 //go:build integration
 
 // warpforward_integration_test.go is the Tier-2 real-git coverage for the
-// four warp-only Fabric methods added in warpforward.go: CheckoutDetached,
-// RestoreBranch, CurrentBranch, and ResetHard. Each test drives a real paired
+// warp-only Fabric methods added in warpforward.go: CheckoutDetached,
+// RestoreBranch, CurrentBranch, IsAncestor, and ResetHard. Each test drives a real paired
 // Fabric built from newFabricFixture's warp worktree and asserts the
 // resulting git state directly — no fake, no mock — since the whole point of
 // this file is proving the thin delegation actually reaches real git.
@@ -91,6 +91,28 @@ func TestFabricWarp_DetachVerifyRestoreRoundTrip(t *testing.T) {
 	}
 	if got := currentBranchOf(t, fixture.Layout.WorktreePath()); got != originalBranch {
 		t.Errorf("branch after RestoreBranch = %q; want %q (original)", got, originalBranch)
+	}
+}
+
+// TestFabricWarp_IsAncestorOrdersWarpCommits proves IsAncestor reaches the warp checkout's history:
+// an older warp commit is an ancestor of a later one, and not the other way round.
+func TestFabricWarp_IsAncestorOrdersWarpCommits(t *testing.T) {
+	t.Parallel()
+
+	fixture := newFabricFixture(t)
+	f, err := fabricengine.Open(fixture.Layout)
+	if err != nil {
+		t.Fatalf("fabricengine.Open: %v", err)
+	}
+
+	olderSHA := currentSHAOf(t, fixture.Layout.WorktreePath())
+	laterSHA := commitFile(t, fixture.Layout.WorktreePath(), "ancestry.txt", "v1", "ancestry commit")
+
+	if got, err := f.IsAncestor(olderSHA, laterSHA); err != nil || !got {
+		t.Errorf("IsAncestor(older, later) = %v, %v; want true, nil", got, err)
+	}
+	if got, err := f.IsAncestor(laterSHA, olderSHA); err != nil || got {
+		t.Errorf("IsAncestor(later, older) = %v, %v; want false, nil", got, err)
 	}
 }
 

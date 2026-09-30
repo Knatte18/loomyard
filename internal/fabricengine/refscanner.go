@@ -46,9 +46,15 @@ type RefScanner struct {
 func NewRefScanner(l *lyxcwd.Location) *RefScanner {
 	weftPath := regexp.QuoteMeta(WeftWorktree(l))
 	weftSuffix := regexp.QuoteMeta(weftname.Suffix)
+	// The suffix must end the name: `\b` alone would also match inside a slug that merely contains
+	// it, such as the task worktree `/hub/fabric-readd-weft-push`, since `-` is a word boundary.
+	nameEnd := "(?:$|[\\s/\\\\\"'`;&|)])"
+	// A path segment never holds a shell or regex metacharacter, so a backslash escape inside a quoted
+	// search pattern (`grep "a\|-weft"`) is not read as a Windows separator before a weft name.
+	segment := "[^\\s/\\\\\"'`|&;()<>*?\\[\\]{}$]*"
 	return &RefScanner{
-		pathPattern: regexp.MustCompile(weftPath + "|[/\\\\][^\\s/\\\\\"'`]*" + weftSuffix + `\b`),
-		barePattern: regexp.MustCompile(`\S*` + weftSuffix + `\b`),
+		pathPattern: regexp.MustCompile(weftPath + "|[/\\\\]" + segment + weftSuffix + nameEnd),
+		barePattern: regexp.MustCompile(`\S*` + weftSuffix + nameEnd),
 	}
 }
 

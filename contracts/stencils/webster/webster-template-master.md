@@ -122,8 +122,9 @@ Once every batch in your card list above has reached a terminal `done` (never re
   - `status: OK` → the plan is genuinely finished;
     proceed to your final action below with `outcome: done`.
   - `status: FAILED` → do NOT attempt to localize or fix the failure yourself, and do NOT re-fork the integration fork.
-    Your job for this stage ends here: proceed straight to your final action below with `outcome: stuck` and a `stuck_reason` naming the integration failure.
-    Webster's own in-process SHA-bisect runs automatically once your session ends and extends your summary with the localized offending card — you hand off to it by finishing normally, not by trying to run it yourself.
+    Your job for this stage ends here: proceed straight to your final action below with `outcome: done`, and note in your `summary.md` that the integration suite reported `FAILED` and that webster triages it after the session ends.
+    Once your session ends, webster reruns the suite, compares it against the plan's starting commit, and escalates only a regression to `stuck` (with a SHA-bisect that localizes the offending card);
+    a flaky or pre-existing failure is recorded and the run stays `done` — you hand off to it by finishing normally, not by trying to run it yourself.
 
 ## A paused refusal ends your run immediately
 

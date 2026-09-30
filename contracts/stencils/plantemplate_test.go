@@ -8,6 +8,14 @@ import (
 	"testing"
 )
 
+// TestLoomTemplatePlan_NamesPriorPlanSection asserts the template tells the agent to act on a trailing `Prior plan` section before writing.
+func TestLoomTemplatePlan_NamesPriorPlanSection(t *testing.T) {
+	const phrase = "ends with a `Prior plan` section"
+	if !strings.Contains(string(LoomTemplatePlan), phrase) {
+		t.Errorf("LoomTemplatePlan does not contain %q", phrase)
+	}
+}
+
 // TestLoomTemplatePlan_StatesVerifyCoverage asserts the template tells the plan writer the verify section covers every targeted package, hermetic build-tagged tests included, and compiles rather than runs live-substrate tags.
 // Each assertion is a short, distinctive substring rather than a whole paragraph, following discussiontemplate_test.go's precedent, so ordinary prose edits do not break this test.
 func TestLoomTemplatePlan_StatesVerifyCoverage(t *testing.T) {

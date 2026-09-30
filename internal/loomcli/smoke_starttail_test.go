@@ -1,11 +1,7 @@
 //go:build smoke
 
-// smoke_starttail_test.go covers the two live-substrate properties of `lyx loom start`'s tail
-// against a real wired hub and a real tmux session: the attach tail's strand set -- it adds no
-// loom-operator strand, so the status strand is the only non-driver strand -- and the watchdog
-// spawn's gate position -- that it fires even under --no-attach, the one thing
-// start_watchdog_test.go's Tier 1 file cannot reach through the real RunE (see its own doc comment)
-// because ensureStatusStrand needs a live tmux server.
+// smoke_starttail_test.go covers the two live-substrate properties of `lyx loom start`'s tail against a real wired hub and a real tmux session:
+// the attach tail's strand set -- on the unseeded fixture, which resolveSeedDriver seeds llm, it adds neither a loom-operator strand nor a status strand -- and the watchdog spawn's gate position -- that it fires even under --no-attach, the one thing start_watchdog_test.go's Tier 1 file cannot reach through the real RunE (see its own doc comment) because reed Up needs a live tmux server.
 //
 // It reuses this package's existing smoke fixtures throughout: buildLyxBinary, newWiredPairFixture,
 // registerBootstrapTeardown, probeReedEngine, statusStrandCount, and tmuxBinaryPath, rather than
@@ -20,11 +16,12 @@ import (
 	"time"
 )
 
-// TestSmokeStart_AttachTailAddsNoOperatorStrand pins that an attached `lyx loom start` leaves no
-// strand named "loom-operator" and exactly one status strand. The smoke run has no TTY, so the
-// attach itself exits non-zero after the tail ran; the strand table is what is asserted. The
-// literal is spelled inline as a guard against the removed operator strand coming back: Selvage is
-// the operator's terminal, not a strand.
+// TestSmokeStart_AttachTailAddsNoOperatorStrand pins that an attached `lyx loom start` leaves no strand named "loom-operator" and no status strand:
+// the fixture is unseeded, so resolveSeedDriver seeds it llm,
+// and an llm-driven start carries no status strand.
+// The smoke run has no TTY, so the attach itself exits non-zero after the tail ran;
+// the strand table is what is asserted.
+// The literal is spelled inline as a guard against the removed operator strand coming back: Selvage is the operator's terminal, not a strand.
 func TestSmokeStart_AttachTailAddsNoOperatorStrand(t *testing.T) {
 	tmuxBinaryPath(t)
 	exe := buildLyxBinary(t)
@@ -42,8 +39,8 @@ func TestSmokeStart_AttachTailAddsNoOperatorStrand(t *testing.T) {
 	if count := statusStrandCount(t, eng, "loom-operator"); count != 0 {
 		t.Errorf("loom-operator strands after an attached start = %d; want 0 -- Selvage is the operator's terminal, not a strand", count)
 	}
-	if count := statusStrandCount(t, eng, statusStrandDisplayName); count != 1 {
-		t.Errorf("status strands after an attached start = %d; want exactly 1", count)
+	if count := statusStrandCount(t, eng, statusStrandDisplayName); count != 0 {
+		t.Errorf("status strands after an attached llm-driven start = %d; want 0", count)
 	}
 }
 

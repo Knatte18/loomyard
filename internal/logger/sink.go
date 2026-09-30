@@ -82,6 +82,8 @@ var sinkArmed bool
 var sinkPath string
 var sinkOK bool
 var sinkDirOverride string
+var sinkDir string
+var sinkAnchorPath string
 var sinkMu sync.Mutex
 var sinkBytesWritten int64
 var sinkTruncated bool
@@ -113,7 +115,7 @@ func ensureDurableSink() bool {
 // level of nesting rather than a sinkOK assignment inside a closure -- the shape that made the
 // unlocked writes easy to miss in the first place.
 func armDurableSinkLocked() bool {
-	dir, worktreeRoot, ok := resolveSinkDirLocked()
+	dir, worktreeRoot, anchorPath, ok := resolveSinkDirLocked()
 	if !ok {
 		return false
 	}
@@ -129,8 +131,6 @@ func armDurableSinkLocked() bool {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return false
 	}
-
-	_ = Sweep(dir)
 
 	filename := fmt.Sprintf("trace-%s-%s-%d.log",
 		time.Now().UTC().Format(traceFileTimestampLayout),
@@ -152,34 +152,61 @@ func armDurableSinkLocked() bool {
 	_ = f.Close()
 
 	sinkPath = path
+	sinkDir = dir
+	sinkAnchorPath = anchorPath
 	sinkBytesWritten = int64(len(line))
 	return true
 }
 
-// resolveSinkDirLocked resolves the directory the durable sink writes to, plus the worktree root to
-// record in the header, and reports whether a directory could be resolved.
+// resolveSinkDirLocked resolves the directory the durable sink writes to, plus the worktree root to record in the header and the lyx anchor path the resolution used,
+// and reports whether a directory could be resolved.
 // Callers hold sinkMu.
-// An override returns an empty worktreeRoot; otherwise the cwd-anchored resolution applies, gated
-// off under `go test` unless LYX_TRACE is "1".
-func resolveSinkDirLocked() (dir, worktreeRoot string, ok bool) {
+// An override returns an empty worktreeRoot and anchorPath;
+// otherwise the cwd-anchored resolution applies, gated off under `go test` unless LYX_TRACE is "1".
+func resolveSinkDirLocked() (dir, worktreeRoot, anchorPath string, ok bool) {
 	if sinkDirOverride != "" {
-		return sinkDirOverride, "", true
+		return sinkDirOverride, "", "", true
 	}
 	if testing.Testing() && os.Getenv("LYX_TRACE") != "1" {
-		return "", "", false
+		return "", "", "", false
 	}
 	cwd, err := lyxcwd.Getwd()
 	if err != nil {
-		return "", "", false
+		return "", "", "", false
 	}
 	layout, err := lyxcwd.Resolve(cwd)
 	if err != nil {
-		return "", "", false
+		return "", "", "", false
 	}
 	if !isLyxWorktree(layout) {
-		return "", "", false
+		return "", "", "", false
 	}
-	return LogsDir(layout), layout.WorktreePath(), true
+	return LogsDir(layout), layout.WorktreePath(), layout.AnchorPath(), true
+}
+
+// SinkArmState describes the durable sink's state for the current sink generation.
+type SinkArmState struct {
+	// Armed reports whether the sink came up in the current generation.
+	Armed bool
+	// Redirected reports whether a SetDurableSinkDir* override was in force.
+	Redirected bool
+	// Dir is the sink directory; empty until the sink arms.
+	Dir string
+	// AnchorPath is the lyx worktree anchor the cwd-anchored resolution used; empty when redirected.
+	AnchorPath string
+}
+
+// CurrentSinkArmState reports the durable sink's arm state without arming the sink, creating anything, or logging.
+func CurrentSinkArmState() SinkArmState {
+	sinkMu.Lock()
+	defer sinkMu.Unlock()
+
+	return SinkArmState{
+		Armed:      sinkArmed && sinkOK,
+		Redirected: sinkDirOverride != "",
+		Dir:        sinkDir,
+		AnchorPath: sinkAnchorPath,
+	}
 }
 
 // TraceFile forces the lazy durable sink open and returns the absolute path of this process's trace file.
@@ -201,7 +228,7 @@ func TraceDir() string {
 	sinkMu.Lock()
 	defer sinkMu.Unlock()
 
-	dir, _, ok := resolveSinkDirLocked()
+	dir, _, _, ok := resolveSinkDirLocked()
 	if !ok {
 		return ""
 	}
@@ -214,7 +241,7 @@ func TraceDir() string {
 // It gates the cwd-anchored fallback above because lyxcwd.Resolve succeeds for ANY plain git
 // repository standing at its root — resolveCore defaults AnchorRel to "." when no hub records one, so
 // no hub is required — and the fallback then creates <repo>/.lyx/logs/trace-*.log inside a checkout
-// lyx does not own. cmd/lyx's logger.NotifyExit(code) force-arms the sink on EVERY non-zero exit, so
+// lyx does not own. cmd/lyx's exit hook, through logger.NotifyExit(code), force-arms the sink on EVERY non-zero exit, so
 // every refusal reached that fallback: a standalone webster or burler invocation refused before
 // wireStandalone's own redirect could point the sink at the derived state directory, and an unknown
 // subcommand that never reached wiring at all. Standalone mode's whole premise is that nothing lyx
@@ -294,6 +321,8 @@ func resetDurableSinkLocked(dir string) {
 	sinkDirOverride = dir
 	sinkArmed = false
 	sinkPath = ""
+	sinkDir = ""
+	sinkAnchorPath = ""
 	sinkOK = false
 	header = sinkHeader{}
 	headerOnce = sync.Once{}
