@@ -1,10 +1,7 @@
-// refusal.go declares refuseNonPrime, the pure decision behind orch's pre-run refusal: every orch
-// verb runs only from the hub's prime worktree.
+// refusal.go declares refuseNonPrime, the pure decision behind orch's pre-run refusal: every orch verb runs only from the hub's prime worktree.
 //
-// It is battencli's shape with orch wording, duplicated rather than imported because a
-// <module>cli importing another <module>cli would couple two cobra seams.
-// The caller runs fabricengine.RequireDrivableWorktree first, since the name comparison alone
-// admits the prime's weft sibling, whose own prime is itself.
+// It is battencli's shape with orch wording, duplicated rather than imported because a <module>cli importing another <module>cli would couple two cobra seams.
+// The caller runs fabricengine.RequireDrivableWorktree first, since the name comparison alone admits the prime's fabric sibling, whose own prime is itself.
 
 package orchcli
 
