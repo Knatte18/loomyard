@@ -194,7 +194,7 @@ func (c *loomCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) err
 // The set is the two read-only status verbs (status, pause), the three standalone format
 // self-checks (validate-discussion, validate-plan, validate-description), which read only c.env's
 // path fields and never a loaded config, and approve, which reads the status file, the fabric and
-// GitHub but builds no producer and so needs no module config either. Crucible round
+// GitHub but builds no producer and so needs no module config either, and commit-records, which commits through fabric and builds no producer, so a broken module config must not refuse it at the driver's last act. Crucible round
 // sonnet5-xhigh-r8's F2 extended the set from the original two after finding the writer agents'
 // own stencil-mandated pre-handoff self-check failed on an unrelated module's broken config, the
 // identical hazard that got status/pause this lightweight path in the first place (see
@@ -205,7 +205,7 @@ func (c *loomCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) err
 // "start" and "run" do.
 func verbUsesLightweightWiring(name string) bool {
 	switch name {
-	case "status", "pause", "validate-discussion", "validate-plan", "validate-description", "approve":
+	case "status", "pause", "validate-discussion", "validate-plan", "validate-description", "approve", "commit-records":
 		return true
 	default:
 		return false
@@ -334,7 +334,9 @@ standalone form of the mechanical gates Discussion-Write's and Plan-Write's
 own rows carry, callable by the writer agent before handoff, and
 "validate-description" does the same for the Describe row's change description.
 "approve" records the operator's approval of the open pull request for a run
-blocked at Publish; "lyx loom start" then lands it.
+blocked at Publish; "lyx loom start" then lands it. "commit-records" commits and
+pushes the run's records (status, reviews, friction notes, drive reports); the
+ly-drive end-of-session command runs it after the driver writes its stop report.
 
 Example:
   lyx loom start
@@ -346,7 +348,8 @@ Example:
   lyx loom validate-discussion
   lyx loom validate-plan
   lyx loom validate-description
-  lyx loom approve`,
+  lyx loom approve
+  lyx loom commit-records`,
 		// RunE is set so that bare "lyx loom" lists subcommands and "lyx
 		// loom bogus" emits a JSON error envelope instead of falling
 		// through to cobra's plain-text help.
@@ -368,7 +371,7 @@ Example:
 	statusVerb.Args = cobra.MaximumNArgs(1)
 	pauseVerb.Args = cobra.MaximumNArgs(1)
 
-	parent.AddCommand(c.startCmd(), runVerb, stepVerb, statusVerb, pauseVerb, c.validateDiscussionCmd(), c.validatePlanCmd(), c.validateDescriptionCmd(), c.approveCmd())
+	parent.AddCommand(c.startCmd(), runVerb, stepVerb, statusVerb, pauseVerb, c.validateDiscussionCmd(), c.validatePlanCmd(), c.validateDescriptionCmd(), c.approveCmd(), c.commitRecordsCmd())
 
 	return parent
 }
