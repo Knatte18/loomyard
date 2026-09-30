@@ -48,7 +48,7 @@ type commitStatusDeps struct {
 	Push func() error
 }
 
-// statusCommitPathspec returns the weft pathspec one status commit stages: shedrun.StatusRel(runID)
+// statusCommitPathspec returns the fabric-sibling pathspec one status commit stages: shedrun.StatusRel(runID)
 // alone, plus loomengine.LoomReviewsDirRel() when the reviews directory holds at least one
 // non-directory entry anywhere beneath it.
 // Existence alone is not enough: shedrecipe's Bouncer and BurlerRound entries os.MkdirAll every
