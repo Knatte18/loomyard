@@ -1,7 +1,8 @@
 // height.go implements the derived height policy: within the below-parent stack, a shrink:true
-// ancestor collapses to a compact strip once it has a present descendant, and the active/bottom
-// pane plus every shrink:false strand split the remaining rows equally (remainder to the active
-// pane).
+// ancestor collapses to a compact strip once it has a present descendant, a strand carrying a
+// positive Display.FixedRows takes exactly that many rows (the active/bottom strand excepted), and
+// the active/bottom pane plus every remaining full strand split the remaining rows equally
+// (remainder to the active pane).
 // When the window is too short to satisfy that natural policy, a strict-priority clamp reclaims
 // rows so every pane still gets a positive height.
 
@@ -43,9 +44,10 @@ func clampBandHeight(bandRows, windowRows, minStackRows int) int {
 }
 
 // stackHeights computes a height for every strand in stack within box.
-// Shrink:true ancestors collapse to a strip height, full panes split the
-// remainder equally (with the remainder to the active pane), and clampToFit
-// reclaims rows if any would be non-positive.
+// Shrink:true ancestors collapse to a strip height and strands with a positive
+// Display.FixedRows take that budget (never the active strand, which stays a
+// full pane); full panes split the remainder equally (with the remainder to
+// the active pane), and clampToFit reclaims rows if any would be non-positive.
 func stackHeights(stack []Strand, box Box, p Params) []placement {
 	n := len(stack)
 	if n == 0 {
@@ -56,21 +58,33 @@ func stackHeights(stack []Strand, box Box, p Params) []placement {
 	usable := box.H - dividers
 	activeIdx := n - 1 // orderStack places the deepest/active strand last
 
-	isStrip := make([]bool, n)
-	numStrips := 0
-	for i, s := range stack {
-		isStrip[i] = isAncestor(s, stack) && s.Display.ShrinkWhenWaitingOnChild
-		if isStrip[i] {
-			numStrips++
-		}
-	}
-	numFull := n - numStrips
-
 	stripRows := p.CollapsedStripRows
 	if stripRows < 1 {
 		stripRows = 1
 	}
-	stripDemand := numStrips * stripRows
+
+	// isStrip marks every absolute-budget placement; budget holds its rows.
+	// A fixed budget wins over the shrink rule, and the active strand never
+	// takes one, so every non-empty stack keeps at least one full pane.
+	isStrip := make([]bool, n)
+	budget := make([]int, n)
+	numStrips := 0
+	stripDemand := 0
+	for i, s := range stack {
+		switch {
+		case i != activeIdx && s.Display.FixedRows > 0:
+			isStrip[i] = true
+			budget[i] = s.Display.FixedRows
+		case isAncestor(s, stack) && s.Display.ShrinkWhenWaitingOnChild:
+			isStrip[i] = true
+			budget[i] = stripRows
+		}
+		if isStrip[i] {
+			numStrips++
+			stripDemand += budget[i]
+		}
+	}
+	numFull := n - numStrips
 	fullRemaining := usable - stripDemand
 
 	var fullBase, fullRemainder int
@@ -82,7 +96,7 @@ func stackHeights(stack []Strand, box Box, p Params) []placement {
 	heights := make([]int, n)
 	for i := range stack {
 		if isStrip[i] {
-			heights[i] = stripRows
+			heights[i] = budget[i]
 		} else {
 			heights[i] = fullBase
 		}
@@ -102,8 +116,9 @@ func stackHeights(stack []Strand, box Box, p Params) []placement {
 }
 
 // clampToFit repairs any non-positive height left by stackHeights' natural
-// split, reclaiming rows from donors in strict priority order: strips first,
-// then non-active full panes, then the active pane itself, all floored at 1.
+// split, reclaiming rows from donors in strict priority order: absolute-budget
+// placements (collapsed strips and fixed budgets) first, then non-active full
+// panes, then the active pane itself, all floored at 1.
 func clampToFit(heights []int, isStrip []bool, activeIdx int, p Params) []int {
 	minFull := p.MinFullRows
 	if minFull < 1 {
@@ -144,7 +159,7 @@ func clampToFit(heights []int, isStrip []bool, activeIdx int, p Params) []int {
 		}
 	}
 
-	// Priority 1: strips shrink toward 1 row.
+	// Priority 1: absolute-budget placements shrink toward 1 row.
 	reclaim(1, func(i int) bool { return !isStrip[i] })
 	if borrowed == 0 {
 		return heights

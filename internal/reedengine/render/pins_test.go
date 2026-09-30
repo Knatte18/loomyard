@@ -129,6 +129,61 @@ func TestFixedHeightPinsMatchesRulesPlacedHeights(t *testing.T) {
 			wantPins: nil,
 		},
 		{
+			name:     "FixedBudgetAboveFullStrandIsPinned",
+			strands:  []Strand{fixedStrand("a", "", "%1", 3, false), fixedStrand("b", "a", "%2", 0, false)},
+			box:      Box{X: 0, Y: 0, W: 100, H: 21},
+			params:   Params{CollapsedStripRows: 2, MinFullRows: 3},
+			wantPins: []Pin{{PaneID: "%1", Height: 3}},
+		},
+		{
+			name:     "FixedBudgetThatIsAlsoAShrinkAncestorPinsFixedRowsNotStripRows",
+			strands:  []Strand{fixedStrand("a", "", "%1", 3, true), fixedStrand("b", "a", "%2", 0, false)},
+			box:      Box{X: 0, Y: 0, W: 100, H: 21},
+			params:   Params{CollapsedStripRows: 2, MinFullRows: 3},
+			wantPins: []Pin{{PaneID: "%1", Height: 3}},
+		},
+		{
+			name:     "LoneFixedBudgetWithoutSelvageIsNotPinned",
+			strands:  []Strand{fixedStrand("a", "", "%1", 3, false)},
+			box:      Box{X: 0, Y: 0, W: 100, H: 21},
+			params:   Params{CollapsedStripRows: 2, MinFullRows: 3},
+			wantPins: nil,
+		},
+		{
+			name:     "LoneFixedBudgetWithSelvageOnlyTheSelvageIsPinned",
+			strands:  []Strand{fixedStrand("a", "", "%1", 3, false)},
+			box:      Box{X: 0, Y: 0, W: 100, H: 21},
+			params:   Params{CollapsedStripRows: 2, MinFullRows: 3, Selvage: Selvage{PaneID: "%h", HeightRows: 2}},
+			wantPins: []Pin{{PaneID: "%h", Height: 2}},
+		},
+		{
+			name:     "FixedBudgetAtBottomOfStackIsNotPinned",
+			strands:  []Strand{fixedStrand("a", "", "%1", 0, false), fixedStrand("b", "a", "%2", 3, false)},
+			box:      Box{X: 0, Y: 0, W: 100, H: 21},
+			params:   Params{CollapsedStripRows: 2, MinFullRows: 3},
+			wantPins: nil,
+		},
+		{
+			// Window too short: the fixed budget (6) is reclaimed down to make room for the two full panes.
+			name: "TooShortWindowFixedPinCarriesTheReclaimedValue",
+			strands: []Strand{
+				fixedStrand("a", "", "%1", 6, false),
+				fixedStrand("b", "a", "%2", 0, false),
+				fixedStrand("c", "b", "%3", 0, false),
+			},
+			box:      Box{X: 0, Y: 0, W: 100, H: 8},
+			params:   Params{CollapsedStripRows: 2, MinFullRows: 3},
+			wantPins: []Pin{{PaneID: "%1", Height: 4}},
+		},
+		{
+			// Band pin first, then the fixed strand at its placed height.
+			name:     "SelvageBandThenFixedStrandPinOrder",
+			strands:  []Strand{fixedStrand("a", "", "%1", 3, false), fixedStrand("b", "a", "%2", 0, false)},
+			box:      Box{X: 0, Y: 0, W: 100, H: 21},
+			params:   Params{CollapsedStripRows: 2, MinFullRows: 3, Selvage: Selvage{PaneID: "%h", HeightRows: 2}},
+			wantPins: []Pin{{PaneID: "%h", Height: 2}, {PaneID: "%1", Height: 3}},
+		},
+		{
 			name: "AnchorOwnWindowYieldsNilNotAPanicMatchingRulesError",
 			strands: []Strand{
 				{GUID: "a", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorOwnWindow}},

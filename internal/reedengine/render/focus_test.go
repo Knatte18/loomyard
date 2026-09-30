@@ -10,19 +10,19 @@ package render
 import "testing"
 
 // TestFocusTarget_ColdBootstrapFallsThroughToBottomMost pins case 1: two parentless strands in
-// insertion order — a status strand then an operator strand, neither carrying Display.Focus —
-// resolve to the operator strand's pane. orderStack sorts by chain depth with sort.SliceStable and
-// equal-depth strands keep insertion order, leaving the operator strand last, and focusTarget falls
+// insertion order — a status strand then a driver strand, neither carrying Display.Focus —
+// resolve to the driver strand's pane. orderStack sorts by chain depth with sort.SliceStable and
+// equal-depth strands keep insertion order, leaving the driver strand last, and focusTarget falls
 // through to bottom-most.
 func TestFocusTarget_ColdBootstrapFallsThroughToBottomMost(t *testing.T) {
 	strands := []Strand{
 		{GUID: "status", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorBelowParent}},
-		{GUID: "operator", PaneID: "%2", Live: true, Display: Display{Anchor: AnchorBelowParent}},
+		{GUID: "driver", PaneID: "%2", Live: true, Display: Display{Anchor: AnchorBelowParent}},
 	}
 	ordered := orderStack(strands)
 	got := focusTarget(ordered)
 	if want := "%2"; got != want {
-		t.Errorf("focusTarget(cold bootstrap) = %q; want %q (the operator strand)", got, want)
+		t.Errorf("focusTarget(cold bootstrap) = %q; want %q (the driver strand)", got, want)
 	}
 }
 
@@ -32,8 +32,8 @@ func TestFocusTarget_ColdBootstrapFallsThroughToBottomMost(t *testing.T) {
 func TestFocusTarget_ReentrantBootstrapFocusesTheDeepestStrand(t *testing.T) {
 	strands := []Strand{
 		{GUID: "status", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorBelowParent}},
-		{GUID: "operator", PaneID: "%2", Live: true, Display: Display{Anchor: AnchorBelowParent}},
-		{GUID: "child", Parent: "operator", PaneID: "%3", Live: true, Display: Display{Anchor: AnchorBelowParent}},
+		{GUID: "driver", PaneID: "%2", Live: true, Display: Display{Anchor: AnchorBelowParent}},
+		{GUID: "child", Parent: "driver", PaneID: "%3", Live: true, Display: Display{Anchor: AnchorBelowParent}},
 	}
 	ordered := orderStack(strands)
 	got := focusTarget(ordered)
@@ -49,8 +49,8 @@ func TestFocusTarget_ReentrantBootstrapFocusesTheDeepestStrand(t *testing.T) {
 func TestFocusTarget_PersistedFocusFlagWinsRegardlessOfDepth(t *testing.T) {
 	strands := []Strand{
 		{GUID: "status", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorBelowParent}},
-		{GUID: "operator", PaneID: "%2", Live: true, Display: Display{Anchor: AnchorBelowParent}},
-		{GUID: "child", Parent: "operator", PaneID: "%3", Live: true, Display: Display{Anchor: AnchorBelowParent}},
+		{GUID: "driver", PaneID: "%2", Live: true, Display: Display{Anchor: AnchorBelowParent}},
+		{GUID: "child", Parent: "driver", PaneID: "%3", Live: true, Display: Display{Anchor: AnchorBelowParent}},
 		{GUID: "focused", PaneID: "%4", Live: true, Display: Display{Anchor: AnchorBelowParent, Focus: true}},
 	}
 	ordered := orderStack(strands)

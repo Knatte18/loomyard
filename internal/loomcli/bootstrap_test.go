@@ -16,6 +16,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shell"
@@ -98,9 +99,9 @@ func TestResolveDriverStrandAction(t *testing.T) {
 }
 
 // TestDriverStrandDisplayName_AddAndLookupAgree pins that the name used to add the driver strand and
-// the name looked up are the same constant, in the shape statusStrandDisplayName and
-// operatorStrandDisplayName are already pinned: reed's add has no upsert semantics, so a mismatch
-// between the two would stack a second pane rather than match the first.
+// the name looked up are the same constant, in the shape statusStrandDisplayName is already pinned:
+// reed's add has no upsert semantics, so a mismatch between the two would stack a second pane rather
+// than match the first.
 func TestDriverStrandDisplayName_AddAndLookupAgree(t *testing.T) {
 	strands := []reedengine.StrandStatus{{GUID: "g0", Name: driverStrandDisplayName, PaneID: "%0", Live: true}}
 	action, guid := resolveDriverStrandAction(strands)
@@ -113,14 +114,11 @@ func TestDriverStrandDisplayName_AddAndLookupAgree(t *testing.T) {
 }
 
 // TestDriverStrandDisplayName_DiffersFromOtherStrandNames guards against a name collision with
-// either of the other two pinned strand names, which would append a second pane rather than replace
-// the first (reed's add has no upsert semantics).
+// the status strand's pinned name, which would append a second pane rather than replace the first
+// (reed's add has no upsert semantics).
 func TestDriverStrandDisplayName_DiffersFromOtherStrandNames(t *testing.T) {
 	if driverStrandDisplayName == statusStrandDisplayName {
 		t.Errorf("driverStrandDisplayName and statusStrandDisplayName are both %q; want distinct names", driverStrandDisplayName)
-	}
-	if driverStrandDisplayName == operatorStrandDisplayName {
-		t.Errorf("driverStrandDisplayName and operatorStrandDisplayName are both %q; want distinct names", driverStrandDisplayName)
 	}
 }
 
@@ -449,45 +447,6 @@ func TestDispositionForHandshake(t *testing.T) {
 	}
 }
 
-// TestOperatorStrandAddSpec pins operatorStrandAddSpec's whole output shape, including the two
-// fields an implementer would most plausibly "fix" to something else and be wrong: Focus, because
-// Display.Focus is persisted and re-evaluated on every subsequent AddStrand, so a true value would
-// re-capture focus on every later agent-pane spawn for the rest of the run; and Cmd, because a
-// Strand's Cmd is typed into an already-running shell via send-keys, not passed as a trailing
-// split-window argument, so a non-empty value here would nest a shell inside the pane's own shell.
-func TestOperatorStrandAddSpec(t *testing.T) {
-	got := operatorStrandAddSpec()
-
-	if got.NameOverride != operatorStrandDisplayName {
-		t.Errorf("operatorStrandAddSpec().NameOverride = %q; want %q", got.NameOverride, operatorStrandDisplayName)
-	}
-	if !got.IfAbsent {
-		t.Error("operatorStrandAddSpec().IfAbsent = false; want true -- lyx loom start is re-entrant")
-	}
-	if got.Cmd != "" {
-		t.Errorf("operatorStrandAddSpec().Cmd = %q; want empty -- the pane runs whatever shell tmux gives a freshly split pane", got.Cmd)
-	}
-	if got.Display.Anchor != render.AnchorBelowParent {
-		t.Errorf("operatorStrandAddSpec().Display.Anchor = %q; want %q", got.Display.Anchor, render.AnchorBelowParent)
-	}
-	if got.Display.Focus {
-		t.Error("operatorStrandAddSpec().Display.Focus = true; want false -- Focus is persisted and re-evaluated on every later AddStrand")
-	}
-	if got.Display.ShrinkWhenWaitingOnChild {
-		t.Error("operatorStrandAddSpec().Display.ShrinkWhenWaitingOnChild = true; want false -- the operator's own pane must never collapse")
-	}
-}
-
-// TestOperatorStrandDisplayName_DiffersFromStatusStrandDisplayName guards the exact failure
-// resolveStatusStrandAction's own doc comment describes: reed's add has no upsert semantics, so a
-// name collision between the two pinned strand names would append a second pane rather than replace
-// the first.
-func TestOperatorStrandDisplayName_DiffersFromStatusStrandDisplayName(t *testing.T) {
-	if operatorStrandDisplayName == statusStrandDisplayName {
-		t.Errorf("operatorStrandDisplayName and statusStrandDisplayName are both %q; want distinct names", operatorStrandDisplayName)
-	}
-}
-
 // TestResolveStatusStrandAction is the regression guard for a status pane that never came back.
 // The DeadEntry row is the defect: the bootstrap used to decide by presence alone, and reed keeps
 // tracking a strand whose pane is gone, so after any reed server restart -- a reboot, a crash, a
@@ -795,5 +754,57 @@ func plantedGate(seed shedrun.Seed) bool { return seed.Driver == shedrun.DriverL
 	sort.Strings(functions)
 	if got, want := strings.Join(functions, ","), "allowedReader,plantedGate"; got != want {
 		t.Errorf("scanFileForDriverFieldReads() functions = %q; want %q", got, want)
+	}
+}
+
+func TestStatusStrandAddSpec(t *testing.T) {
+	got := statusStrandAddSpec("watch-cmd")
+	if got.NameOverride != statusStrandDisplayName {
+		t.Errorf("NameOverride = %q; want %q", got.NameOverride, statusStrandDisplayName)
+	}
+	if got.Cmd != "watch-cmd" {
+		t.Errorf("Cmd = %q; want %q", got.Cmd, "watch-cmd")
+	}
+	if got.IfAbsent {
+		t.Error("IfAbsent = true; want false")
+	}
+	if got.Display.Anchor != render.AnchorBelowParent {
+		t.Errorf("Display.Anchor = %v; want AnchorBelowParent", got.Display.Anchor)
+	}
+	if got.Display.Focus {
+		t.Error("Display.Focus = true; want false")
+	}
+	if !got.Display.ShrinkWhenWaitingOnChild {
+		t.Error("Display.ShrinkWhenWaitingOnChild = false; want true")
+	}
+	if got.Display.FixedRows != statusStrandFixedRows {
+		t.Errorf("Display.FixedRows = %d; want %d", got.Display.FixedRows, statusStrandFixedRows)
+	}
+}
+
+// TestStatusStrandAddSpecPinnedByRender ties the spec to render's layout: stacked above a driver
+// strand the status strand is pinned at exactly its budget, and alone it is the active strand and
+// is not pinned. Both strands are parentless, as the bootstrap adds them, so the shrink rule never
+// applies and only FixedRows can pin the band.
+func TestStatusStrandAddSpecPinnedByRender(t *testing.T) {
+	status := render.Strand{GUID: "s", Display: statusStrandAddSpec("x").Display, PaneID: "%1", Live: true}
+	driver := render.Strand{
+		GUID:    "d",
+		Display: driverSpec("p", "r", loomengine.DriverSettings{}).Display,
+		PaneID:  "%2",
+		Live:    true,
+	}
+	box := render.Box{W: 200, H: 50}
+	params := render.Params{CollapsedStripRows: 2, MinFullRows: 3}
+
+	pins := render.FixedHeightPins([]render.Strand{status, driver}, box, params)
+	want := []render.Pin{{PaneID: "%1", Height: statusStrandFixedRows}}
+	if diff := cmp.Diff(want, pins); diff != "" {
+		t.Errorf("pins mismatch (-want +got):\n%s", diff)
+	}
+
+	pins = render.FixedHeightPins([]render.Strand{status}, box, params)
+	if len(pins) != 0 {
+		t.Errorf("lone status strand pins = %v; want none", pins)
 	}
 }
