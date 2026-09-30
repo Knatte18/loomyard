@@ -492,10 +492,9 @@ func TestRecordBatch_MultipleNewTranscriptsWarnsNeverErrors(t *testing.T) {
 	}
 }
 
-// TestRecordBatch_ParentWriteOutsideContractFilesErrors proves CheckParent's write-policy violation
-// is surfaced as a hard error naming the offending write, even when the fork-transcript count and
-// the report itself are both otherwise clean.
-func TestRecordBatch_ParentWriteOutsideContractFilesErrors(t *testing.T) {
+// TestRecordBatch_ParentWriteOutsideWorktreeWarns proves a parent write outside the worktree is a
+// policy finding: the batch records done with one recorded warning naming the write.
+func TestRecordBatch_ParentWriteOutsideWorktreeWarns(t *testing.T) {
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
 		{
 			Forks:        []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}},
@@ -504,12 +503,343 @@ func TestRecordBatch_ParentWriteOutsideContractFilesErrors(t *testing.T) {
 	})
 	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
 
-	_, err := websterengine.RecordBatch(fx.Deps, 1)
-	if err == nil {
-		t.Fatal("RecordBatch() error = nil; want a hard error for a parent write outside the two contract files")
+	result, err := websterengine.RecordBatch(fx.Deps, 1)
+	if err != nil {
+		t.Fatalf("RecordBatch() error = %v; want nil (a write outside the worktree is policy)", err)
 	}
-	if !strings.Contains(err.Error(), "hand-written-file.go") {
-		t.Errorf("RecordBatch() error = %q; want it to name the offending parent write", err.Error())
+	if result.Digest == nil || result.Digest.Status != websterengine.DigestStatusDone {
+		t.Fatalf("Digest = %+v; want done", result.Digest)
+	}
+	if !warningsContain(result.Warnings, "audit warning (parent-write)", "hand-written-file.go") {
+		t.Errorf("Warnings = %v; want a parent-write audit warning naming the write", result.Warnings)
+	}
+}
+
+// fabricMatcher is a RefMatcher that matches any command containing "FABRICREF".
+type fabricMatcher struct{}
+
+func (fabricMatcher) Matches(cmd string) bool { return strings.Contains(cmd, "FABRICREF") }
+
+// warningsContain reports whether any warning contains every one of subs.
+func warningsContain(warnings []string, subs ...string) bool {
+	for _, w := range warnings {
+		ok := true
+		for _, s := range subs {
+			if !strings.Contains(w, s) {
+				ok = false
+			}
+		}
+		if ok {
+			return true
+		}
+	}
+	return false
+}
+
+// setCardVerify gives fx's only card the verify command cmd, in the batch list RecordBatch reads.
+func setCardVerify(fx *recordFixture, cmd string) {
+	fx.Deps.Batches[0].Cards[0].Verify = cmd
+	fx.Deps.Batches[0].Cards[0].HasVerify = true
+}
+
+// forkFabricRefAudit scripts one fork transcript whose Bash ran a fabric-referencing command.
+func forkFabricRefAudit() shuttleengine.ForkAudit {
+	return shuttleengine.ForkAudit{Forks: []shuttleengine.ForkReport{{
+		TranscriptPath: "subagents/f1.jsonl",
+		ReportReturned: true,
+		BashCommands:   []string{"lyx FABRICREF sync"},
+	}}}
+}
+
+// archivedReports lists the archived copies of batch 1's report.
+func archivedReports(t *testing.T, reportsDir string) []string {
+	t.Helper()
+	archived, err := filepath.Glob(filepath.Join(reportsDir, "01-json-flag-*.yaml"))
+	if err != nil {
+		t.Fatalf("glob archived reports: %v", err)
+	}
+	return archived
+}
+
+// TestRecordBatch_ForkFabricReferenceWarnsWhenVerifyPasses proves a policy finding with an OK report
+// and a passing card verify records the batch done with exactly one recorded warning.
+func TestRecordBatch_ForkFabricReferenceWarnsWhenVerifyPasses(t *testing.T) {
+	fx := newRecordFixture(t, []shuttleengine.ForkAudit{forkFabricRefAudit()})
+	fx.Deps.RefMatcher = fabricMatcher{}
+	setCardVerify(fx, "exit 0")
+	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
+
+	result, err := websterengine.RecordBatch(fx.Deps, 1)
+	if err != nil {
+		t.Fatalf("RecordBatch() error = %v; want nil", err)
+	}
+	if result.Digest == nil || result.Digest.Status != websterengine.DigestStatusDone {
+		t.Fatalf("Digest = %+v; want done", result.Digest)
+	}
+	n := 0
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "audit warning (fabric-reference)") {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("Warnings = %v; want exactly one audit warning (fabric-reference)", result.Warnings)
+	}
+	if got := fx.Deps.State.Batches[1].AuditWarnings; len(got) != 1 {
+		t.Errorf("AuditWarnings = %v; want one entry", got)
+	}
+}
+
+// TestRecordBatch_RetryNeverDuplicatesWarning proves a finding first seen on a no-report call is
+// warned once: the later OK report re-runs the verify and records done without a second warning.
+func TestRecordBatch_RetryNeverDuplicatesWarning(t *testing.T) {
+	audit := shuttleengine.ForkAudit{
+		Forks:              []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}},
+		ParentBashCommands: []string{"lyx FABRICREF sync"},
+	}
+	audit2 := audit
+	audit2.Forks = []shuttleengine.ForkReport{
+		{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true},
+		{TranscriptPath: "subagents/f2.jsonl", ReportReturned: true},
+	}
+	fx := newRecordFixture(t, []shuttleengine.ForkAudit{audit, audit2})
+	fx.Deps.RefMatcher = fabricMatcher{}
+	marker := filepath.Join(fx.Worktree, "verify-ran.marker")
+	setCardVerify(fx, "touch verify-ran.marker")
+
+	result, err := websterengine.RecordBatch(fx.Deps, 1)
+	if err != nil {
+		t.Fatalf("first RecordBatch() error = %v; want nil", err)
+	}
+	if !result.NoReport {
+		t.Fatal("first call NoReport = false; want true")
+	}
+	if got := fx.Deps.State.Batches[1].AuditWarnings; len(got) != 1 {
+		t.Fatalf("AuditWarnings after first call = %v; want one", got)
+	}
+
+	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
+	result, err = websterengine.RecordBatch(fx.Deps, 1)
+	if err != nil {
+		t.Fatalf("second RecordBatch() error = %v; want nil", err)
+	}
+	if result.Digest == nil || result.Digest.Status != websterengine.DigestStatusDone {
+		t.Fatalf("Digest = %+v; want done", result.Digest)
+	}
+	if got := fx.Deps.State.Batches[1].AuditWarnings; len(got) != 1 {
+		t.Errorf("AuditWarnings after second call = %v; want still exactly one", got)
+	}
+	if _, statErr := os.Stat(marker); statErr != nil {
+		t.Errorf("verify marker missing: %v; want the card verify re-run on the OK report", statErr)
+	}
+}
+
+// TestRecordBatch_RetryFailingVerifyFailsNamingEarlierWarning proves the same flow with a failing
+// verify fails the batch, and the earlier recorded warning is among the reasons.
+func TestRecordBatch_RetryFailingVerifyFailsNamingEarlierWarning(t *testing.T) {
+	audit := shuttleengine.ForkAudit{
+		Forks:              []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}},
+		ParentBashCommands: []string{"lyx FABRICREF sync"},
+	}
+	audit2 := audit
+	audit2.Forks = []shuttleengine.ForkReport{
+		{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true},
+		{TranscriptPath: "subagents/f2.jsonl", ReportReturned: true},
+	}
+	fx := newRecordFixture(t, []shuttleengine.ForkAudit{audit, audit2})
+	fx.Deps.RefMatcher = fabricMatcher{}
+	setCardVerify(fx, "exit 1")
+
+	if _, err := websterengine.RecordBatch(fx.Deps, 1); err != nil {
+		t.Fatalf("first RecordBatch() error = %v; want nil", err)
+	}
+	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
+	result, err := websterengine.RecordBatch(fx.Deps, 1)
+	if !errors.Is(err, websterengine.ErrBatchFailed) {
+		t.Fatalf("second RecordBatch() error = %v; want ErrBatchFailed", err)
+	}
+	if !result.Failed || result.Digest.Status != websterengine.DigestStatusFailed {
+		t.Fatalf("result = %+v; want a failed digest", result)
+	}
+	if !warningsContain(result.Digest.Reasons, "audit warning (fabric-reference)") {
+		t.Errorf("Reasons = %v; want the earlier warning among them", result.Digest.Reasons)
+	}
+	if !warningsContain(result.Digest.Reasons, "verify exit 1 exited 1") {
+		t.Errorf("Reasons = %v; want the verify failure among them", result.Digest.Reasons)
+	}
+}
+
+// TestRecordBatch_CorrectnessParentFindingNoReportFailsBatch proves a parent write to a tracked file
+// fails the batch with no report at all, archiving nothing and naming the path in the reasons.
+func TestRecordBatch_CorrectnessParentFindingNoReportFailsBatch(t *testing.T) {
+	fx := newRecordFixture(t, []shuttleengine.ForkAudit{{
+		Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}},
+	}})
+	tracked := filepath.Join(fx.Worktree, "internal", "foo", "impl.go")
+	fx.Engine.scripted[0].ParentWrites = []string{tracked}
+
+	result, err := websterengine.RecordBatch(fx.Deps, 1)
+	if !errors.Is(err, websterengine.ErrBatchFailed) {
+		t.Fatalf("RecordBatch() error = %v; want ErrBatchFailed", err)
+	}
+	if !strings.Contains(err.Error(), "lyx webster recover-batch") {
+		t.Errorf("error = %q; want it to name recover-batch", err.Error())
+	}
+	bs := fx.Deps.State.Batches[1]
+	if !bs.Terminal || bs.Status != websterengine.DigestStatusFailed || !result.Failed {
+		t.Errorf("batch = %+v, result = %+v; want terminal failed", bs, result)
+	}
+	if !warningsContain(result.Digest.Reasons, tracked) {
+		t.Errorf("Reasons = %v; want the written path named", result.Digest.Reasons)
+	}
+	if got := archivedReports(t, fx.ReportsDir); len(got) != 0 {
+		t.Errorf("archived reports = %v; want none (no report existed)", got)
+	}
+}
+
+// TestRecordBatch_CorrectnessFindingFailedReportFailsBatch proves a correctness finding fails the
+// batch even over a FAILED report, and archives that report.
+func TestRecordBatch_CorrectnessFindingFailedReportFailsBatch(t *testing.T) {
+	fx := newRecordFixture(t, []shuttleengine.ForkAudit{{
+		Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}},
+	}})
+	fx.Engine.scripted[0].ParentWrites = []string{filepath.Join(fx.Worktree, "internal", "foo", "impl.go")}
+	writeReport(t, fx.ReportsDir, "status: FAILED\nhead_sha: "+fx.HeadSHA+"\n")
+
+	_, err := websterengine.RecordBatch(fx.Deps, 1)
+	if !errors.Is(err, websterengine.ErrBatchFailed) {
+		t.Fatalf("RecordBatch() error = %v; want ErrBatchFailed", err)
+	}
+	if got := archivedReports(t, fx.ReportsDir); len(got) != 1 {
+		t.Errorf("archived reports = %v; want exactly one", got)
+	}
+}
+
+// TestRecordBatch_PolicyFindingFailingVerifySameCallFailsBatch proves step 7's first trigger: a fork
+// fabric-reference on an OK report whose card verify exits 1 fails the batch on the same call.
+func TestRecordBatch_PolicyFindingFailingVerifySameCallFailsBatch(t *testing.T) {
+	fx := newRecordFixture(t, []shuttleengine.ForkAudit{forkFabricRefAudit()})
+	fx.Deps.RefMatcher = fabricMatcher{}
+	setCardVerify(fx, "exit 1")
+	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
+
+	_, err := websterengine.RecordBatch(fx.Deps, 1)
+	if !errors.Is(err, websterengine.ErrBatchFailed) {
+		t.Fatalf("RecordBatch() error = %v; want ErrBatchFailed", err)
+	}
+	if !strings.Contains(err.Error(), "lyx webster recover-batch") {
+		t.Errorf("error = %q; want it to name recover-batch", err.Error())
+	}
+	if _, statErr := os.Stat(filepath.Join(fx.ReportsDir, websterengine.ReportFileName(1, "json-flag"))); !os.IsNotExist(statErr) {
+		t.Errorf("live report stat = %v; want it archived away", statErr)
+	}
+	if got := archivedReports(t, fx.ReportsDir); len(got) != 1 {
+		t.Errorf("archived reports = %v; want exactly one", got)
+	}
+}
+
+// TestRecordBatch_NamedSpawnWarnsOnceAcrossBatches proves a whole-session parent finding is
+// dispositioned by the first record-batch that reports it: the next batch in the same session
+// records done with no refusal and no repeated warning.
+func TestRecordBatch_NamedSpawnWarnsOnceAcrossBatches(t *testing.T) {
+	f1 := shuttleengine.ForkReport{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}
+	f2 := shuttleengine.ForkReport{TranscriptPath: "subagents/f2.jsonl", ReportReturned: true}
+	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
+		{Forks: []shuttleengine.ForkReport{f1}, NamedSpawns: 1},
+		{Forks: []shuttleengine.ForkReport{f1, f2}, NamedSpawns: 1},
+	})
+	addPendingCard(fx, nil)
+	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
+
+	result, err := websterengine.RecordBatch(fx.Deps, 1)
+	if err != nil {
+		t.Fatalf("batch 1 RecordBatch() error = %v; want nil", err)
+	}
+	if !warningsContain(result.Warnings, "audit warning (named-spawn)") {
+		t.Fatalf("batch 1 Warnings = %v; want a named-spawn audit warning", result.Warnings)
+	}
+
+	fx.Deps.State.Batches[2] = &websterengine.BatchState{Slug: "pending", StartSHA: fx.StartSHA, Kind: "fork", SessionID: "session-1"}
+	fx.Deps.State.CurrentBatch = 2
+	path := filepath.Join(fx.ReportsDir, websterengine.ReportFileName(2, "pending"))
+	if err := os.WriteFile(path, []byte(validReport(fx.HeadSHA)), 0o644); err != nil {
+		t.Fatalf("write batch 2 report: %v", err)
+	}
+	result, err = websterengine.RecordBatch(fx.Deps, 2)
+	if err != nil {
+		t.Fatalf("batch 2 RecordBatch() error = %v; want nil", err)
+	}
+	if result.Digest == nil || result.Digest.Status != websterengine.DigestStatusDone {
+		t.Fatalf("batch 2 Digest = %+v; want done", result.Digest)
+	}
+	if warningsContain(result.Warnings, "named-spawn") {
+		t.Errorf("batch 2 Warnings = %v; want no repeated named-spawn warning", result.Warnings)
+	}
+}
+
+// TestRecordBatch_ParentWriteToRunStateFailsBatch proves a Master write to the run's state.json is a
+// correctness finding that fails the batch, naming the path.
+func TestRecordBatch_ParentWriteToRunStateFailsBatch(t *testing.T) {
+	fx := newRecordFixture(t, []shuttleengine.ForkAudit{{
+		Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}},
+	}})
+	fx.Deps.Geom.WebsterDir = t.TempDir()
+	state := filepath.Join(fx.Deps.Geom.WebsterDir, "state.json")
+	fx.Engine.scripted[0].ParentWrites = []string{state}
+	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
+
+	result, err := websterengine.RecordBatch(fx.Deps, 1)
+	if !errors.Is(err, websterengine.ErrBatchFailed) {
+		t.Fatalf("RecordBatch() error = %v; want ErrBatchFailed", err)
+	}
+	if !warningsContain(result.Digest.Reasons, state) {
+		t.Errorf("Reasons = %v; want the state.json path named", result.Digest.Reasons)
+	}
+}
+
+// TestRecordBatch_ForkContractWriteFailsBatch proves a fork writing a Master contract file fails the
+// batch and archives its report.
+func TestRecordBatch_ForkContractWriteFailsBatch(t *testing.T) {
+	fx := newRecordFixture(t, []shuttleengine.ForkAudit{{
+		Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}},
+	}})
+	fx.Engine.scripted[0].Forks[0].WritePaths = []string{fx.Deps.OutcomePath}
+	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
+
+	_, err := websterengine.RecordBatch(fx.Deps, 1)
+	if !errors.Is(err, websterengine.ErrBatchFailed) {
+		t.Fatalf("RecordBatch() error = %v; want ErrBatchFailed", err)
+	}
+	if got := archivedReports(t, fx.ReportsDir); len(got) != 1 {
+		t.Errorf("archived reports = %v; want exactly one", got)
+	}
+}
+
+// TestRecordBatch_Regression20260930_ForkAuditFalsePositive pins the 2026-09-30 incident: a
+// fabric-reference finding on an otherwise clean batch records done with a warning instead of
+// refusing every retry.
+func TestRecordBatch_Regression20260930_ForkAuditFalsePositive(t *testing.T) {
+	fx := newRecordFixture(t, []shuttleengine.ForkAudit{forkFabricRefAudit()})
+	fx.Deps.RefMatcher = fabricMatcher{}
+	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
+
+	for attempt := 1; attempt <= 2; attempt++ {
+		result, err := websterengine.RecordBatch(fx.Deps, 1)
+		if attempt == 2 {
+			if !errors.Is(err, websterengine.ErrNoBeginRecord) {
+				t.Fatalf("second RecordBatch() error = %v; want ErrNoBeginRecord (already terminal)", err)
+			}
+			break
+		}
+		if err != nil {
+			t.Fatalf("RecordBatch() error = %v; want nil", err)
+		}
+		if result.Digest == nil || result.Digest.Status != websterengine.DigestStatusDone {
+			t.Fatalf("Digest = %+v; want done", result.Digest)
+		}
+		if !warningsContain(result.Warnings, "audit warning (fabric-reference)") {
+			t.Errorf("Warnings = %v; want the fabric-reference warning", result.Warnings)
+		}
 	}
 }
 

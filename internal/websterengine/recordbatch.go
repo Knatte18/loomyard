@@ -1,7 +1,8 @@
 // recordbatch.go implements RecordBatch, the second of webster's two bracket verbs Master calls
 // around each in-session fork, immediately after a fork returns: the bracket-discipline fail-loud
 // check (a record without a matching begin-batch record is refused), the incremental fork audit
-// with its bounded settle retry, webster's fork-audit policy checks, the unconditional
+// with its bounded settle retry, webster's fork-audit findings and their once-per-run dispositions
+// (a policy finding warns, a correctness finding fails the batch), the unconditional
 // transcript-attribution advance, the batch-report presence check and parse, the head-SHA
 // cross-check against the fork's own self-reported head_sha, and the distilled digest's
 // persistence.
@@ -71,6 +72,9 @@ type RecordDeps struct {
 	// ParentBranch names the run's parent branch for the head cross-check's clean-parent-merge rule;
 	// nil (standalone mode) accepts no merge commit between the report's head_sha and HEAD.
 	ParentBranch ParentBranchFunc
+	// VerifyTimeout bounds each card verify command the policy-warning evidence re-run executes;
+	// zero means DefaultCardVerifyTimeout.
+	VerifyTimeout time.Duration
 }
 
 // RecordResult is what one successful RecordBatch call hands back to its caller
@@ -78,16 +82,23 @@ type RecordDeps struct {
 // a terminal classification (nil when NoReport is true);
 // NoReport reports whether the batch-report file was still absent this call (the batch stays
 // non-terminal and State.CurrentBatch stays unchanged — Master's ladder re-forks once);
-// Warnings carries every non-fatal fork-audit-policy warning observed this call (a multi-new-transcript notice, a fork that never returned a final report, a dirty worktree after the batch's own commits, or a moved-HEAD notice when a parent merge-in landed after the fork's commit), never treated as a failure.
+// Warnings carries every non-fatal fork-audit-policy warning observed this call (a multi-new-transcript notice, a fork that never returned a final report, a dirty worktree after the batch's own commits, a moved-HEAD notice when a parent merge-in landed after the fork's commit, or a recorded policy audit warning), never treated as a failure;
+// Failed is set when the batch was taken terminal-failed on its audit findings, with Digest the failed digest.
 type RecordResult struct {
 	Digest   *Digest
 	NoReport bool
+	Failed   bool
 	Warnings []string
 }
 
 // RecordBatch drives one record-batch call: the bracket-discipline check, incremental fork audit,
-// fork-audit policy checks, transcript-attribution advance, report parse, and digest persistence.
-// The caller persists deps.State via SaveState once RecordBatch returns successfully.
+// fork-audit finding dispositions, transcript-attribution advance, report parse, and digest persistence.
+// Each audit finding is dispositioned once per run: a policy finding is recorded as a warning
+// (after its batch's card verify commands pass, when the report is OK),
+// and a correctness finding, or a policy finding whose evidence re-run fails, fails the batch
+// and returns a *BatchFailedError naming `lyx webster recover-batch`, alongside a RecordResult
+// carrying the failed digest.
+// The caller persists deps.State via SaveState once RecordBatch returns, whether or not it returned a *BatchFailedError.
 func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	// The plan is a hard precondition, refused loudly rather than dereferenced several frames down
 	// inside planglyph. Every production caller parses it (internal/webstercli's record-batch verb),
@@ -154,33 +165,70 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	// forkWarnings are held back and appended only on the no-report path: once the report file
 	// exists, the report is the fork's contract and "never returned a final report" is false noise.
 	var forkWarnings []string
-	var violations []error
-	for _, v := range CheckParent(audit, deps.OutcomePath, deps.SummaryPath, deps.Geom.WorktreeRoot, deps.RefMatcher) {
-		violations = append(violations, v)
-	}
+	var candidates []AuditViolation
+	candidates = append(candidates, CheckParent(audit, deps.OutcomePath, deps.SummaryPath, deps.Geom.WorktreeRoot, deps.RefMatcher)...)
 	for _, f := range newReports {
-		for _, v := range CheckFork(f, deps.OutcomePath, deps.SummaryPath, deps.Geom.WorktreeRoot, deps.RefMatcher) {
-			violations = append(violations, v)
-		}
+		candidates = append(candidates, CheckFork(f, deps.OutcomePath, deps.SummaryPath, deps.Geom.WorktreeRoot, deps.RefMatcher)...)
 		forkWarnings = append(forkWarnings, ForkWarnings(f)...)
 	}
-	if len(violations) > 0 {
-		return nil, errors.Join(violations...)
+
+	// A finding dispositioned by an earlier call is dropped: the whole-session parent audit repeats
+	// every earlier finding on each record-batch, and a finding is reported once per run.
+	// Classification is the only fallible step and runs before any mutation.
+	var policy, correctness []classifiedFinding
+	for _, v := range candidates {
+		id := findingIdentity(bs.SessionID, v)
+		if isDispositioned(deps.State, id) {
+			continue
+		}
+		severity, err := ClassifyViolation(v, deps.Geom)
+		if err != nil {
+			return nil, err
+		}
+		cf := classifiedFinding{ID: id, Violation: v}
+		if severity == AuditSeverityCorrectness {
+			correctness = append(correctness, cf)
+		} else {
+			policy = append(policy, cf)
+		}
 	}
 
-	// Attribution advances before report-presence check so a retry sees only its own new transcript.
 	newPaths := make([]string, 0, len(newReports))
 	for _, f := range newReports {
 		newPaths = append(newPaths, f.TranscriptPath)
 	}
+
+	polledID := fmt.Sprintf("%02d-%s", number, slug)
+	reportPath := filepath.Join(deps.Geom.ReportsDir, ReportFileName(number, slug))
+
+	// A correctness finding fails the batch whatever the report says, and with no report at all:
+	// it is a halt with a way forward, and failing the batch dispositions every finding once.
+	if len(correctness) > 0 {
+		all := append(append([]classifiedFinding(nil), correctness...), policy...)
+		var suspects []string
+		for _, cf := range correctness {
+			if cf.Violation.Path != "" {
+				suspects = append(suspects, cf.Violation.Path)
+			}
+		}
+		headSHA := ""
+		if r, perr := ParseReport(reportPath); perr == nil {
+			headSHA = r.HeadSHA
+		}
+		return failFromFindings(deps, bs, number, slug, headSHA, all, nil, nil, suspects, newPaths, warnings)
+	}
+
+	// Attribution advances before report-presence check so a retry sees only its own new transcript.
 	deps.State.SeenForkTranscripts = append(deps.State.SeenForkTranscripts, newPaths...)
 	bs.ForkTranscripts = append(bs.ForkTranscripts, newPaths...)
 
-	polledID := fmt.Sprintf("%02d-%s", number, slug)
-
-	reportPath := filepath.Join(deps.Geom.ReportsDir, ReportFileName(number, slug))
 	if _, statErr := os.Stat(reportPath); statErr != nil {
 		if os.IsNotExist(statErr) {
+			for _, cf := range policy {
+				if text, added := recordBatchWarning(deps.State, bs, cf.ID, string(cf.Violation.Class), cf.Violation.Detail); added {
+					warnings = append(warnings, text)
+				}
+			}
 			return &RecordResult{NoReport: true, Warnings: append(warnings, forkWarnings...)}, nil
 		}
 		return nil, fmt.Errorf("webster: stat batch report %s: %w", reportPath, statErr)
@@ -211,6 +259,25 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		warnings = append(warnings, moved)
 	}
 
+	// An OK report that carries policy findings, or whose batch already holds warnings from an
+	// earlier no-report call, must show its cards' own verify commands still pass: a policy
+	// warning is only safe to carry once the work is evidenced.
+	// A FAILED report takes its policy findings as warnings with no re-run.
+	if report.Status == ReportStatusOK && (len(policy) > 0 || len(bs.AuditWarnings) > 0) {
+		if failures := rerunCardVerifies(batch.Cards, deps.Geom.WorktreeRoot, deps.VerifyTimeout); len(failures) > 0 {
+			var earlier []string
+			for _, w := range bs.AuditWarnings {
+				earlier = append(earlier, auditWarningText(w))
+			}
+			return failFromFindings(deps, bs, number, slug, report.HeadSHA, policy, earlier, failures, nil, nil, warnings)
+		}
+	}
+	for _, cf := range policy {
+		if text, added := recordBatchWarning(deps.State, bs, cf.ID, string(cf.Violation.Class), cf.Violation.Detail); added {
+			warnings = append(warnings, text)
+		}
+	}
+
 	postWarnings, err := postBatchChecks(postBatchInputs{
 		Plan:      deps.Plan,
 		State:     deps.State,
@@ -236,6 +303,45 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	deps.State.CurrentBatch = 0
 
 	return &RecordResult{Digest: &digest, Warnings: warnings}, nil
+}
+
+// classifiedFinding is one audit finding with its ledger identity.
+type classifiedFinding struct {
+	ID        string
+	Violation AuditViolation
+}
+
+// failFromFindings takes the batch terminal-failed on its audit findings.
+// Every finding is marked failed in the ledger, and the reasons are the findings' own text,
+// then the earlier recorded warnings, then the verify failures.
+// suspects are the correctness paths, newTranscripts the transcripts this call consumes.
+// It returns the failed digest with Failed set, together with the *BatchFailedError.
+func failFromFindings(deps RecordDeps, bs *BatchState, number int, slug, headSHA string, findings []classifiedFinding, earlier, verifyFailures, suspects, newTranscripts, warnings []string) (*RecordResult, error) {
+	var reasons []string
+	for _, cf := range findings {
+		reasons = append(reasons, cf.Violation.Error())
+	}
+	reasons = append(reasons, earlier...)
+	reasons = append(reasons, verifyFailures...)
+	bfe, err := failBatch(failBatchInput{
+		State:          deps.State,
+		Batch:          bs,
+		Number:         number,
+		Slug:           slug,
+		ReportsDir:     deps.Geom.ReportsDir,
+		HeadSHA:        headSHA,
+		Reasons:        reasons,
+		SuspectPaths:   suspects,
+		NewTranscripts: newTranscripts,
+		Now:            time.Now,
+	})
+	if err != nil {
+		return nil, err
+	}
+	for _, cf := range findings {
+		recordFailedFinding(deps.State, cf.ID)
+	}
+	return &RecordResult{Digest: bs.Digest, Failed: true, Warnings: warnings}, bfe
 }
 
 // postBatchInputs carries everything the shared post-batch mechanical pass needs.
