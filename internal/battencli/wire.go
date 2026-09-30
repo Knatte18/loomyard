@@ -25,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/ideengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -529,6 +530,13 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			},
 			ReadStatus: func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
 				return state.ReadJSONStrict[shedengine.Status](statusPath, statusLockPath)
+			},
+			// OpenIDE confirms the pair first so an absent one is named in the warning, then hands the prime location to the driven open.
+			OpenIDE: func(ctx context.Context) error {
+				if _, err := taskWorktreeLocation(location, slug); err != nil {
+					return err
+				}
+				return ideengine.SpawnDriven(location, slug)
 			},
 		},
 		SeedChild: battenshed.SeedChildDeps{

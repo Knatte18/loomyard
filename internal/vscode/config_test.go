@@ -20,7 +20,7 @@ func TestWriteVSCodeConfigCreatesFilesWhenAbsent(t *testing.T) {
 	lyxPath := "/opt/lyx/bin/lyx"
 	claudePath := "/usr/local/bin/claude"
 
-	err := WriteConfig(worktreeDir, relpath, slug, color, lyxPath, claudePath)
+	err := WriteConfig(worktreeDir, relpath, slug, color, lyxPath, claudePath, TaskChainInteractive)
 	if err != nil {
 		t.Fatalf("WriteConfig failed: %v", err)
 	}
@@ -45,6 +45,9 @@ func TestWriteVSCodeConfigCreatesFilesWhenAbsent(t *testing.T) {
 	}
 	if _, ok := settings["window.title"]; !ok {
 		t.Fatalf("missing window.title in settings.json")
+	}
+	if got := settings["terminal.integrated.defaultLocation"]; got != "editor" {
+		t.Errorf("terminal.integrated.defaultLocation = %v; want \"editor\" so the reed attach terminal opens in the main area", got)
 	}
 
 	watcherExclude, ok := settings["files.watcherExclude"].(map[string]any)
@@ -231,7 +234,7 @@ func assertPresentation(t *testing.T, label string, task map[string]any, wantRev
 func TestWriteVSCodeConfigFallsBackToBareLyxName(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	if err := WriteConfig(tmpDir, ".", "test-slug", "#2d7d46", "", "/usr/local/bin/claude"); err != nil {
+	if err := WriteConfig(tmpDir, ".", "test-slug", "#2d7d46", "", "/usr/local/bin/claude", TaskChainInteractive); err != nil {
 		t.Fatalf("WriteConfig failed: %v", err)
 	}
 
@@ -250,7 +253,7 @@ func TestWriteVSCodeConfigFallsBackToBareLyxName(t *testing.T) {
 func TestWriteVSCodeConfigFallsBackToBareClaudeName(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	if err := WriteConfig(tmpDir, ".", "test-slug", "#2d7d46", "/opt/lyx/bin/lyx", ""); err != nil {
+	if err := WriteConfig(tmpDir, ".", "test-slug", "#2d7d46", "/opt/lyx/bin/lyx", "", TaskChainInteractive); err != nil {
 		t.Fatalf("WriteConfig failed: %v", err)
 	}
 
@@ -331,7 +334,7 @@ func TestWriteVSCodeConfigDoesNotClobber(t *testing.T) {
 	}
 
 	// Call WriteConfig
-	err := WriteConfig(worktreeDir, relpath, slug, color, "/opt/lyx/bin/lyx", "/usr/local/bin/claude")
+	err := WriteConfig(worktreeDir, relpath, slug, color, "/opt/lyx/bin/lyx", "/usr/local/bin/claude", TaskChainInteractive)
 	if err != nil {
 		t.Fatalf("WriteConfig failed: %v", err)
 	}
@@ -372,7 +375,7 @@ func TestWriteVSCodeConfigRegistersInGitignore(t *testing.T) {
 	slug := "test-slug"
 	color := "#2d7d46"
 
-	err := WriteConfig(worktreeDir, relpath, slug, color, "/opt/lyx/bin/lyx", "/usr/local/bin/claude")
+	err := WriteConfig(worktreeDir, relpath, slug, color, "/opt/lyx/bin/lyx", "/usr/local/bin/claude", TaskChainInteractive)
 	if err != nil {
 		t.Fatalf("WriteConfig failed: %v", err)
 	}
@@ -391,5 +394,120 @@ func TestWriteVSCodeConfigRegistersInGitignore(t *testing.T) {
 	content := string(gitignoreContent)
 	if !strings.Contains(content, ".vscode/") {
 		t.Fatalf(".gitignore does not contain '.vscode/' entry")
+	}
+}
+
+func readAttachOnlyTasks(t *testing.T, dir string) []map[string]any {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(dir, ".vscode", "tasks.json"))
+	if err != nil {
+		t.Fatalf("failed to read tasks.json: %v", err)
+	}
+	var tasks struct {
+		Tasks []map[string]any `json:"tasks"`
+	}
+	if err := json.Unmarshal(data, &tasks); err != nil {
+		t.Fatalf("tasks.json is not valid JSON: %v", err)
+	}
+	return tasks.Tasks
+}
+
+func TestWriteConfigAttachOnlyWritesSingleFolderOpenTask(t *testing.T) {
+	dir := t.TempDir()
+
+	if err := WriteConfig(dir, ".", "slug", "#2d7d46", "/opt/lyx/bin/lyx", "", TaskChainAttachOnly); err != nil {
+		t.Fatalf("WriteConfig failed: %v", err)
+	}
+
+	tasks := readAttachOnlyTasks(t, dir)
+	if len(tasks) != 1 {
+		t.Fatalf("got %d tasks, want exactly 1", len(tasks))
+	}
+	task := tasks[0]
+	if task["label"] != "reed attach" {
+		t.Errorf("label = %v, want reed attach", task["label"])
+	}
+	if task["command"] != "/opt/lyx/bin/lyx" {
+		t.Errorf("command = %v, want /opt/lyx/bin/lyx", task["command"])
+	}
+	args, _ := task["args"].([]any)
+	if len(args) != 2 || args[0] != "reed" || args[1] != "attach" {
+		t.Errorf("args = %v, want [reed attach]", task["args"])
+	}
+	runOptions, _ := task["runOptions"].(map[string]any)
+	if runOptions["runOn"] != "folderOpen" {
+		t.Errorf("runOptions.runOn = %v, want folderOpen", runOptions["runOn"])
+	}
+	if _, ok := task["dependsOn"]; ok {
+		t.Errorf("attach-only task must not carry dependsOn")
+	}
+	for _, tk := range tasks {
+		if tk["label"] == "reed up" || tk["label"] == "reed add claude" {
+			t.Errorf("unexpected task %v in attach-only chain", tk["label"])
+		}
+	}
+}
+
+func TestWriteConfigAttachOnlyEmptyLyxPathFallsBack(t *testing.T) {
+	dir := t.TempDir()
+
+	if err := WriteConfig(dir, ".", "slug", "#2d7d46", "", "", TaskChainAttachOnly); err != nil {
+		t.Fatalf("WriteConfig failed: %v", err)
+	}
+
+	tasks := readAttachOnlyTasks(t, dir)
+	if len(tasks) != 1 || tasks[0]["command"] != "lyx" {
+		t.Fatalf("tasks = %v, want one task with command lyx", tasks)
+	}
+}
+
+func TestWriteConfigAttachOnlyOverwritesTasksButKeepsSettings(t *testing.T) {
+	dir := t.TempDir()
+
+	if err := WriteConfig(dir, ".", "slug", "#2d7d46", "/opt/lyx/bin/lyx", "/usr/local/bin/claude", TaskChainInteractive); err != nil {
+		t.Fatalf("interactive WriteConfig failed: %v", err)
+	}
+	settingsPath := filepath.Join(dir, ".vscode", "settings.json")
+	custom := []byte(`{"operator":"edit"}`)
+	if err := os.WriteFile(settingsPath, custom, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := WriteConfig(dir, ".", "slug", "#2d7d46", "/opt/lyx/bin/lyx", "", TaskChainAttachOnly); err != nil {
+		t.Fatalf("attach-only WriteConfig failed: %v", err)
+	}
+
+	if tasks := readAttachOnlyTasks(t, dir); len(tasks) != 1 || tasks[0]["label"] != "reed attach" {
+		t.Fatalf("tasks.json not overwritten with attach-only chain: %v", tasks)
+	}
+	got, err := os.ReadFile(settingsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(custom) {
+		t.Errorf("settings.json changed: %q", got)
+	}
+}
+
+func TestWriteConfigAttachOnlyLeavesGitignoreAlone(t *testing.T) {
+	dir := t.TempDir()
+
+	if err := WriteConfig(dir, ".", "slug", "#2d7d46", "/opt/lyx/bin/lyx", "", TaskChainAttachOnly); err != nil {
+		t.Fatalf("WriteConfig failed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".gitignore")); !os.IsNotExist(err) {
+		t.Errorf(".gitignore should not exist, stat err = %v", err)
+	}
+
+	existing := []byte("build/\n")
+	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), existing, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteConfig(dir, ".", "slug", "#2d7d46", "/opt/lyx/bin/lyx", "", TaskChainAttachOnly); err != nil {
+		t.Fatalf("WriteConfig failed: %v", err)
+	}
+	got, _ := os.ReadFile(filepath.Join(dir, ".gitignore"))
+	if string(got) != string(existing) {
+		t.Errorf(".gitignore modified: %q", got)
 	}
 }

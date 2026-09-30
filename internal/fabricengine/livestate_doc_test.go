@@ -44,22 +44,6 @@
 // rather than carrying a copy of its own; there is deliberately no CheckForce member, and fabricengine.
 // Check's own doc comment (internal/fabricengine/destroy.go) is this rule's one declarer, not this file.
 //
-// # One known refusal-with-side-effects anomaly
-//
-// Remove runs removePortal and removeLaunchers at remove.go:61-66, before its own dirty pre-flight at
-// remove.go:68-76.
-// A dirty-Remove cell that correctly refuses has therefore already destroyed the pair's portal and
-// launcher paths before the refusal is ever returned.
-// This is deliberate, documented behaviour, not a defect: the cell that exercises it declares
-// _portals/<anchor>/<slug> and _launchers/<anchor>/<slug> as permitted removal roots rather than
-// treating their disappearance as a failure.
-// "What did this call actually mutate before it failed" is what slice 14's truthfulness work made
-// representable in a refusal's own shape: it landed as AssertRecordMatchesDiff (mutationoracle.go),
-// wired into every cell in this package (batch 7 card 31).
-// This cell's own record now names the portal and launcher deletions RefusedBefore's own path took
-// before returning, so the cell asserts both halves at once — that the deletions were allowed under this
-// cell's permitted roots, and that the envelope admitted to them.
-//
 // # Honesty is a distinct property from survival, not a restatement of it
 //
 // AssertRecordMatchesDiff's own unit tests (mutationoracle_test.go) exercise its rules directly.

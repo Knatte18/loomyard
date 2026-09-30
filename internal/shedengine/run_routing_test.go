@@ -7,6 +7,7 @@ package shedengine
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -332,6 +333,32 @@ func TestRun_ProducerError(t *testing.T) {
 	}
 	if got.Activity.Last != "Preflight → done" {
 		t.Errorf("persisted activity.last = %q; want %q -- the last real verdict, never a producer name with nothing after the arrow", got.Activity.Last, "Preflight → done")
+	}
+}
+
+func TestStep_NoOutcomeErrorKeepsEmptyHistoryAnArray(t *testing.T) {
+	shed, statusPath, _, statusLockPath := newTestShed(t)
+	shed.Producers = []ProducerDef{{Name: "Preflight", Producer: &funcProducer{fn: func(ctx context.Context) (Outcome, OutputPointer, error) {
+		return "", OutputPointer{}, errors.New("preflight: broken")
+	}}}}
+	seed := commonSeed("Preflight")
+	seed.History = []HistoryEntry{}
+	seedStatus(t, statusPath, statusLockPath, seed)
+
+	if _, err := shed.Step(context.Background()); err == nil {
+		t.Fatalf("Step(...) = _, nil; want the producer error")
+	}
+
+	raw, err := os.ReadFile(statusPath)
+	if err != nil {
+		t.Fatalf("read status file: %v", err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatalf("decode status file: %v", err)
+	}
+	if history, ok := doc["history"].([]any); !ok || len(history) != 0 {
+		t.Errorf("persisted history = %#v; want an empty array, never null", doc["history"])
 	}
 }
 

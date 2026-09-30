@@ -62,8 +62,7 @@ func TestRefusalOf(t *testing.T) {
 		},
 		{
 			// remove.go's own dirty pre-flight shape: a bare fmt.Errorf, never a *destructiveRefusal.
-			// This is the case batch 6's envelope relies on to omit the refusal object on the Remove
-			// anomaly path.
+			// This is the case batch 6's envelope relies on to omit the refusal object on Remove's dirty pre-flight refusal.
 			name:   "RemovePreFlightDirtyError",
 			err:    fmt.Errorf("worktree has uncommitted changes; use --force"),
 			want:   Refusal{},
