@@ -314,8 +314,8 @@ func (e *Engine) updateStrandLocked(st *ReedState, guid string, display render.D
 
 // removeStrandLocked removes guid, rejecting non-leaf strands without
 // recursive, and cascading descendants. It returns pane ids of every
-// removed strand that held a live binding. It also deletes the launch script of every removed
-// strand, so surviving strands keep theirs.
+// removed strand that held a live binding.
+// It also deletes the launch script of every removed strand, so surviving strands keep theirs.
 func (e *Engine) removeStrandLocked(st *ReedState, guid string, recursive bool) (Removed, []string, error) {
 	if _, ok := strandByGUID(st.Strands, guid); !ok {
 		return Removed{}, nil, fmt.Errorf("unknown strand %q", guid)
