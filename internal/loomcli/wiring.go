@@ -7,7 +7,11 @@
 package loomcli
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
@@ -44,10 +48,52 @@ type commitStatusDeps struct {
 	Push func() error
 }
 
+// statusCommitPathspec returns the weft pathspec one status commit stages: shedrun.StatusRel(runID)
+// alone, plus loomengine.LoomReviewsDirRel() when the reviews directory holds at least one
+// non-directory entry anywhere beneath it.
+// Existence alone is not enough: shedrecipe's Bouncer and BurlerRound entries os.MkdirAll every
+// review row's run directory at recipe build time, so from a run's first transition the reviews root
+// exists holding only empty segment directories.
+// `git add -- <dir>` accepts an empty directory, but StageAndCommit's `git commit -- <pathspec>` then
+// fails with "pathspec did not match any file(s) known to git", which the seam would turn into a
+// hard error; a directory with no file is nothing to commit, never an error, so every absent,
+// unreadable, non-directory or file-less outcome omits the entry.
+// The directory pathspec is whole rather than per-file because StageAndCommit runs
+// `git add -- <pathspec>`: an archive rename commits both the new timestamped sibling and the old
+// path's removal, and a transition whose commit was skipped mid-merge is caught up by the next one.
+func statusCommitPathspec(location *lyxcwd.Location, runID string) []string {
+	paths := []string{shedrun.StatusRel(runID)}
+	if reviewsHoldFile(loomengine.LoomReviewsDir(location)) {
+		paths = append(paths, loomengine.LoomReviewsDirRel())
+	}
+	return paths
+}
+
+// reviewsHoldFile reports whether dir is a directory holding at least one non-directory entry
+// anywhere beneath it, stopping the walk at the first such entry.
+func reviewsHoldFile(dir string) bool {
+	info, err := os.Stat(dir)
+	if err != nil || !info.IsDir() {
+		return false
+	}
+	found := false
+	walkErr := filepath.WalkDir(dir, func(_ string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() {
+			found = true
+			return fs.SkipAll
+		}
+		return nil
+	})
+	return found && (walkErr == nil || errors.Is(walkErr, fs.SkipAll))
+}
+
 // loomCommitStatusDeps builds a commitStatusDeps over location and runID, filling each field from
 // fabric: MergeActive from fabricengine.MergeStateActive, Commit from
-// fabricengine.CommitAnchoredPaths scoped to shedrun.StatusRel(runID), and Push from
-// fabricengine.PushAnchored.
+// fabricengine.CommitAnchoredPaths scoped to statusCommitPathspec (the status file, plus the
+// review round record when one exists), and Push from fabricengine.PushAnchored.
 func loomCommitStatusDeps(location *lyxcwd.Location, runID string) commitStatusDeps {
 	return commitStatusDeps{
 		MergeActive: func() (bool, error) {
@@ -57,7 +103,7 @@ func loomCommitStatusDeps(location *lyxcwd.Location, runID string) commitStatusD
 		// landingdeps.go's own CommitStatus closure does -- which is what makes a second call over
 		// an already-clean tracked path a no-op rather than a failure.
 		Commit: func(msg string) error {
-			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, []string{shedrun.StatusRel(runID)}, msg, fabricengine.EnvSyncOptions())
+			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, statusCommitPathspec(location, runID), msg, fabricengine.EnvSyncOptions())
 			return err
 		},
 		Push: func() error {
@@ -440,9 +486,10 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// suffix is the one place a test wants to inject a clock.
 		StencilsDir: websterGeom.StencilsDir,
 		SpecsDir:    websterGeom.SpecsDir,
-		RunRoot:     loomengine.LoomReviewsDir(location),
-		Burler:      burlerEngine,
-		Now:         time.Now,
+		// RunRoot is durable: the status seam commits it with every transition.
+		RunRoot: loomengine.LoomReviewsDir(location),
+		Burler:  burlerEngine,
+		Now:     time.Now,
 
 		ReviewModel:   reviewSettings.Model,
 		ReviewEffort:  reviewSettings.Effort,

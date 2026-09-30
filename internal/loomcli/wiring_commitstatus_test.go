@@ -8,9 +8,13 @@ package loomcli
 import (
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
@@ -281,5 +285,56 @@ func TestWire_CommitStatusFilled(t *testing.T) {
 
 	if c.shedPaths.CommitStatus == nil {
 		t.Error("c.shedPaths.CommitStatus = nil; want a non-nil seam")
+	}
+}
+
+// TestStatusCommitPathspec asserts the pathspec names the reviews directory only when it holds a
+// file: the empty segment directories recipe build creates would make the commit's pathspec match
+// nothing and fail.
+func TestStatusCommitPathspec(t *testing.T) {
+	t.Parallel()
+
+	statusRel := shedrun.StatusRel(shedrun.SelfRunID)
+	withReviews := []string{statusRel, loomengine.LoomReviewsDirRel()}
+
+	tests := []struct {
+		name  string
+		setup func(t *testing.T, reviews string)
+		want  []string
+	}{
+		{"absent", func(t *testing.T, reviews string) {}, []string{statusRel}},
+		{"only empty segment directories", func(t *testing.T, reviews string) {
+			if err := os.MkdirAll(filepath.Join(reviews, "plan"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}, []string{statusRel}},
+		{"file in a segment directory", func(t *testing.T, reviews string) {
+			seg := filepath.Join(reviews, "plan")
+			if err := os.MkdirAll(seg, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(seg, "round-1-review.md"), []byte("x\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}, withReviews},
+		{"regular file at the reviews path", func(t *testing.T, reviews string) {
+			if err := os.MkdirAll(filepath.Dir(reviews), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(reviews, []byte("x\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}, []string{statusRel}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			location := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+			tt.setup(t, loomengine.LoomReviewsDir(location))
+			got := statusCommitPathspec(location, shedrun.SelfRunID)
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("statusCommitPathspec() = %v; want %v", got, tt.want)
+			}
+		})
 	}
 }
