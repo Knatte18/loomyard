@@ -158,7 +158,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		// Clearing the flag in the same persist is what stops the next step re-pausing
 		// forever on the flag it is resuming from; the durable record of "this run is
 		// paused" is state, not the flag.
-		if pauseErr := s.persist(st.CurrentProducer, StatePaused, "", st.History, true); pauseErr != nil {
+		if pauseErr := s.persist(st.CurrentProducer, StatePaused, "", st.History, true, ""); pauseErr != nil {
 			return StepResult{}, pauseErr
 		}
 		return StepResult{Next: st.CurrentProducer, State: StatePaused, History: st.History}, nil
@@ -175,7 +175,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 	// is deliberately conditional: on the ordinary running-to-running path it never fires, so
 	// the loop's one-persist-per-iteration shape is unchanged for every step after the first.
 	if st.State != StateRunning {
-		if err := s.persist(st.CurrentProducer, StateRunning, "", st.History, false); err != nil {
+		if err := s.persist(st.CurrentProducer, StateRunning, "", st.History, false, ""); err != nil {
 			return StepResult{}, err
 		}
 	}
@@ -241,7 +241,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		// trade: a producer returning a genuine, unrelated error in the same instant an
 		// operator cancels is reported as a pause, which is harmless because the producer
 		// is re-called on resume and the real error surfaces again then.
-		if err := s.persist(st.CurrentProducer, StatePaused, "", st.History, true); err != nil {
+		if err := s.persist(st.CurrentProducer, StatePaused, "", st.History, true, ""); err != nil {
 			return StepResult{}, err
 		}
 		return StepResult{Producer: def.Name, Next: st.CurrentProducer, State: StatePaused, History: st.History}, nil
@@ -256,7 +256,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		// operator's envelope naming a commit-seam or git fault while the failure that
 		// actually stopped the step -- the only one they can act on -- went unreported.
 		nextHistory := appendHistory()
-		if persistErr := s.persist(st.CurrentProducer, StateFailed, callErr.Error(), nextHistory, false); persistErr != nil {
+		if persistErr := s.persist(st.CurrentProducer, StateFailed, callErr.Error(), nextHistory, false, ""); persistErr != nil {
 			return StepResult{}, errors.Join(callErr, persistErr)
 		}
 		return StepResult{}, callErr
@@ -266,7 +266,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		switch {
 		case def.OnStuck == "":
 			reason := stuckReason(output.Reason)
-			if err := s.persist(st.CurrentProducer, StateBlocked, reason, nextHistory, false); err != nil {
+			if err := s.persist(st.CurrentProducer, StateBlocked, reason, nextHistory, false, ""); err != nil {
 				return StepResult{}, err
 			}
 			return StepResult{Producer: def.Name, Outcome: outcome, Output: output.Path, Next: st.CurrentProducer, State: StateBlocked, Reason: reason, History: nextHistory}, nil
@@ -277,12 +277,12 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 			// The boundary is pinned exactly, restated per-producer: a budget of three
 			// performs three bounce-backs and blocks on the fourth Stuck.
 			reason := ReasonBounceBudgetExhausted
-			if err := s.persist(st.CurrentProducer, StateBlocked, reason, nextHistory, false); err != nil {
+			if err := s.persist(st.CurrentProducer, StateBlocked, reason, nextHistory, false, ""); err != nil {
 				return StepResult{}, err
 			}
 			return StepResult{Producer: def.Name, Outcome: outcome, Output: output.Path, Next: st.CurrentProducer, State: StateBlocked, Reason: reason, History: nextHistory}, nil
 		default:
-			if err := s.persist(def.OnStuck, StateRunning, "", nextHistory, false); err != nil {
+			if err := s.persist(def.OnStuck, StateRunning, "", nextHistory, false, def.OnStuck); err != nil {
 				return StepResult{}, err
 			}
 			return StepResult{Producer: def.Name, Outcome: outcome, Output: output.Path, Next: def.OnStuck, State: StateRunning, History: nextHistory}, nil
@@ -294,7 +294,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		// re-calls the same producer through step 3b's resume write.
 		nextHistory := appendHistory()
 		reason := stuckReason(output.Reason)
-		if err := s.persist(st.CurrentProducer, StateAwaiting, reason, nextHistory, false); err != nil {
+		if err := s.persist(st.CurrentProducer, StateAwaiting, reason, nextHistory, false, ""); err != nil {
 			return StepResult{}, err
 		}
 		return StepResult{Producer: def.Name, Outcome: outcome, Output: output.Path, Next: st.CurrentProducer, State: StateAwaiting, Reason: reason, History: nextHistory}, nil
@@ -308,7 +308,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 			// would leave both fields meaningless at the happy-path terminal a reader of a
 			// finished status file most wants to understand. The terminal is now chosen by
 			// an empty OnDone, not by list position.
-			if err := s.persist(def.Name, StateDone, "", nextHistory, false); err != nil {
+			if err := s.persist(def.Name, StateDone, "", nextHistory, false, ""); err != nil {
 				return StepResult{}, err
 			}
 			return StepResult{Producer: def.Name, Outcome: outcome, Output: output.Path, Next: def.Name, State: StateDone, History: nextHistory}, nil
@@ -316,7 +316,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		// A non-empty OnDone needs no lookup here: validate has already rejected an OnDone
 		// naming no producer in the list, so the name is persisted as-is and resolved by
 		// step 2's lookup on the next iteration.
-		if err := s.persist(def.OnDone, StateRunning, "", nextHistory, false); err != nil {
+		if err := s.persist(def.OnDone, StateRunning, "", nextHistory, false, ""); err != nil {
 			return StepResult{}, err
 		}
 		return StepResult{Producer: def.Name, Outcome: outcome, Output: output.Path, Next: def.OnDone, State: StateRunning, History: nextHistory}, nil
@@ -330,7 +330,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		nextHistory := appendHistory()
 		failErr := fmt.Errorf("shedengine: producer %q returned an unrecognised outcome %q", def.Name, outcome)
 		// Joined rather than replaced, for the same reason the producer-error arm above joins.
-		if persistErr := s.persist(st.CurrentProducer, StateFailed, failErr.Error(), nextHistory, false); persistErr != nil {
+		if persistErr := s.persist(st.CurrentProducer, StateFailed, failErr.Error(), nextHistory, false, ""); persistErr != nil {
 			return StepResult{}, errors.Join(failErr, persistErr)
 		}
 		return StepResult{}, failErr
@@ -465,6 +465,12 @@ func effectiveMaxBounces(def ProducerDef, shedMax int) int {
 // consumePause is true, also writes pause_requested false; otherwise pause_requested is left
 // exactly as re-read. persist never touches product.
 //
+// routedTo is the row a Stuck verdict was just routed to, and the empty string for every other
+// write; it selects the "<producer> → bounced to <routedTo>" wording of activity.last. A persist
+// that appends no history entry (the pause writes and the step-3b resume write) carries the file's
+// existing activity.last forward, read inside the mutate, so a pause right after a bounce keeps the
+// bounce wording and a resume after a halt keeps "<producer> → stuck".
+//
 // The merge exists rather than a whole-file rewrite from an in-memory copy because Shed is not the
 // status file's only writer: a pause requested during a long producer call, and an external
 // product update, must both survive. That safety is conditional, not unconditional -- internal/
@@ -509,16 +515,21 @@ func effectiveMaxBounces(def ProducerDef, shedMax int) int {
 // error is empty by construction on that transition, since it is a Stuck verdict rather than a
 // hard error, and the accumulated history is committed whole by the next transition that does
 // change producer or state.
-func (s *Shed) persist(nextCurrentProducer string, nextState State, nextError string, nextHistory []HistoryEntry, consumePause bool) error {
+func (s *Shed) persist(nextCurrentProducer string, nextState State, nextError string, nextHistory []HistoryEntry, consumePause bool, routedTo string) error {
 	err := state.UpdateJSON(s.StatusPath, s.StatusLockPath, func(cur Status, found bool) (Status, error) {
 		if !found {
 			return Status{}, fmt.Errorf("shedengine: status file %q vanished mid-run; Shed refuses to create one", s.StatusPath)
 		}
+		prevLast := cur.Activity.Last
+		appended := len(nextHistory) > len(cur.History)
 		cur.CurrentProducer = nextCurrentProducer
 		cur.State = nextState
 		cur.Error = nextError
 		cur.History = nextHistory
-		cur.Activity = composeActivity(nextCurrentProducer, nextHistory, nextState, nextError)
+		cur.Activity = composeActivity(nextCurrentProducer, nextHistory, nextState, nextError, routedTo)
+		if !appended {
+			cur.Activity.Last = prevLast
+		}
 		if consumePause {
 			cur.PauseRequested = false
 		}
