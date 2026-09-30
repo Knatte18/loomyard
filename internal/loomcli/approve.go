@@ -74,10 +74,10 @@ func approveVerb(ctx context.Context, out io.Writer, d approveDeps) int {
 		return output.Err(out, "loom: approve: look up the pull request: "+err.Error()+"; way forward: transient, re-run lyx loom approve")
 	}
 	if pr == nil {
-		return output.Err(out, fmt.Sprintf("loom: approve: no pull request from %s to %s in %s/%s; way forward: lyx loom step opens it at Publish", taskBranch, parentBranch, owner, repo))
+		return output.Err(out, fmt.Sprintf("loom: approve: no pull request from %s to %s in %s/%s; way forward: \"lyx loom goto --to %s\" moves the run back to %s, then \"lyx loom step\" opens a new pull request", taskBranch, parentBranch, owner, repo, loomshed.NamePublish, loomshed.NamePublish))
 	}
 	if pr.GetState() != "open" || !pr.GetMergedAt().IsZero() {
-		return output.Err(out, fmt.Sprintf("loom: approve: pull request #%d is not open (%s); way forward: lyx loom step opens a new one at Publish", pr.GetNumber(), pr.GetHTMLURL()))
+		return output.Err(out, fmt.Sprintf("loom: approve: pull request #%d is not open (%s); way forward: \"lyx loom goto --to %s\" moves the run back to %s, then \"lyx loom step\" opens a new pull request", pr.GetNumber(), pr.GetHTMLURL(), loomshed.NamePublish, loomshed.NamePublish))
 	}
 
 	local, err := d.headSHA()
@@ -86,7 +86,7 @@ func approveVerb(ctx context.Context, out io.Writer, d approveDeps) int {
 	}
 	remote := pr.GetHead().GetSHA()
 	if local != remote {
-		return output.Err(out, fmt.Sprintf("loom: approve: local task HEAD %s differs from the pull request's head %s; way forward: push or sync the task branch (lyx fabric push), then re-run lyx loom approve", local, remote))
+		return output.Err(out, fmt.Sprintf("loom: approve: local task HEAD %s differs from the pull request's head %s; way forward: push the task branch with \"git push\" when the local HEAD is ahead, or pull it with \"git pull\" when the pull request's head is ahead, then re-run lyx loom approve", local, remote))
 	}
 
 	rec := landingshed.Approval{
