@@ -507,8 +507,9 @@
 // `Healthy(l)` returns a typed `HealthReason` (drift.go) rather than a string a caller would have to
 // substring-match, so a caller like `preflight.CheckResolved` switches on `HealthReason.Cause`
 // instead of parsing prose.
-// `PushAnchored(l, opts)`, `MergeStateActive(l)` and `RequireDrivableWorktree(l)` are three further
-// vocabulary-neutral, `l`-in entry points reachable the same way `CommitAnchoredPaths` is.
+// `PushAnchored(l, opts)`, `MergeStateActive(l)`, `MidMerge(l)` and `RequireDrivableWorktree(l)` are further vocabulary-neutral, `l`-in entry points reachable the same way `CommitAnchoredPaths` is.
+// `MidMerge(l)` answers whether the pair carries an unfinished merge and which paths are still conflicted,
+// and `lyx loom start` consults it before putting a driver to work.
 // `RequireDrivableWorktree` is `RequireWarpWorktree` under a name a non-owner may say at all — the
 // invariant's scan matches the bare token inside an identifier, so the published name is itself the
 // leak, and a caller that must refuse fabric's own checkouts before driving topology has no other

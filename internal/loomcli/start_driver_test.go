@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -285,6 +286,9 @@ func newTestSpawnAndWaitReceiver(t *testing.T, starter driverStarter, probe driv
 		registry:        modelspec.Registry{},
 		driverStarter:   starter,
 		driverPaneProbe: probe,
+		midMerge: func(*lyxcwd.Location) (fabricengine.MidMergeState, error) {
+			return fabricengine.MidMergeState{Kind: fabricengine.MidMergeNone}, nil
+		},
 		shedPaths: shedbuild.ShedPaths{
 			LockPath:       filepath.Join(runLockDir, "run.lock"),
 			StatusPath:     filepath.Join(runLockDir, "status.json"),
