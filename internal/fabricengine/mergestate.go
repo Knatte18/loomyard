@@ -256,10 +256,22 @@ type foreignProbeReadings struct {
 	weftConflicted []string
 }
 
-// readForeignProbes runs the four git-level merge-state probes — MERGE_HEAD and conflicted files on
-// each side — unconditionally, so no evaluation-order timing difference ever leaks which side (if
-// either) carries the state. It is the one place the four calls exist; foreignMergeStatePresent
-// and MidMerge both read through it.
+// readForeignProbes runs the four git-level merge-state probes, MERGE_HEAD and conflicted files on each side, and is the one place those four calls exist;
+// foreignMergeStatePresent and MidMerge both read through it.
+// All four probes are evaluated unconditionally before any caller combines them, rather than short-circuiting on the first true result, so no evaluation-order timing difference ever leaks which side (if either) carries the state.
+//
+// The two probe KINDS are not redundant spellings of one condition, and neither can be dropped as implied by the other.
+// An ordinary conflicted `git merge` sets both at once, which is what makes that shape useless for proving either one;
+// the two states that separate them are real and reachable:
+//   - MERGE_HEAD live with an EMPTY unmerged set — a foreign merge resolved but not concluded, seen only by the MERGE_HEAD probe, and the most dangerous shape because nothing about the worktree looks wrong.
+//   - Unmerged entries with NO MERGE_HEAD — a conflicted `git merge --squash`, which writes none, and equally a conflicted cherry-pick or `checkout -m`.
+//     Seen only by the conflicted-index probe.
+//
+// Each of the four probes is pinned by its own row of TestMergeVerbs_ForeignMergeState_EverySideAndShapeRefuses (three shapes x two sides).
+// Before that matrix existed, deleting either weft probe, or either warp probe, left the whole suite green.
+//
+// Both weft probes are deliberately kept even though the weft is no longer a merge participant:
+// this is the one weft-reading guard the change leaves in place, and it still refuses a mutating merge verb on weft-side foreign merge state.
 func (f *Fabric) readForeignProbes() (foreignProbeReadings, error) {
 	var r foreignProbeReadings
 	var err error
@@ -280,26 +292,7 @@ func (f *Fabric) readForeignProbes() (foreignProbeReadings, error) {
 
 // foreignMergeStatePresent reports whether git-level merge state exists on either side that fabric
 // did not itself start: a live MERGE_HEAD or unmerged index entries, checked on both warp and weft.
-// All four probes are evaluated unconditionally before combining, rather than short-circuiting on
-// the first true result, so no evaluation-order timing difference ever leaks which side (if either)
-// carries the state.
-//
-// The two probe KINDS are not redundant spellings of one condition, and neither can be dropped as
-// implied by the other. An ordinary conflicted `git merge` sets both at once, which is what makes
-// that shape useless for proving either one; the two states that separate them are real and reachable:
-//   - MERGE_HEAD live with an EMPTY unmerged set — a foreign merge resolved but not concluded, seen
-//     only by the MERGE_HEAD probe, and the most dangerous shape because nothing about the worktree
-//     looks wrong.
-//   - Unmerged entries with NO MERGE_HEAD — a conflicted `git merge --squash`, which writes none, and
-//     equally a conflicted cherry-pick or `checkout -m`. Seen only by the conflicted-index probe.
-//
-// Each of the four probes is pinned by its own row of
-// TestMergeVerbs_ForeignMergeState_EverySideAndShapeRefuses (three shapes x two sides). Before that
-// matrix existed, deleting either weft probe, or either warp probe, left the whole suite green.
-//
-// Both weft probes are deliberately kept even though the weft is no longer a merge participant: this
-// is the one weft-reading guard the change leaves in place, and it still refuses a mutating merge
-// verb on weft-side foreign merge state.
+// It combines the four readings of readForeignProbes, which documents why each probe exists.
 func (f *Fabric) foreignMergeStatePresent() (bool, error) {
 	r, err := f.readForeignProbes()
 	if err != nil {
