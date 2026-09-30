@@ -1,90 +1,61 @@
-Load skills `mill:prose`, then `mill:conversation`, before reading the rest of this document.
+Load skills `scribe:prose`, then `scribe:conversation`, before reading the rest of this document.
 
-# Handoff
+# Handoff — loomyard on lyx
 
-## Where you are
+The operator drives in Norwegian; reply in Norwegian.
+In design discussions, give an assessment and get explicit agreement before editing or committing.
+This file is updated only when the operator asks.
 
-`/home/knatte/Code/loomyard/wts/loomyard` — the **main** worktree, direct push allowed here per `CLAUDE.md`.
-Clean tree, in sync with `origin/main` at `2c7c0c251`.
-No task worktrees exist, no Monitor waits are armed, no forks are running.
+## Where work happens now
 
-The user drives design in Norwegian; reply in Norwegian.
-In design discussions, give your assessment and get explicit agreement BEFORE editing or committing.
-Orient from `git log` and the wiki daemon client, not from this file alone — it goes stale between sessions.
+loomyard is developed **through lyx**, from the lyx hub `~/Code/loomyard-LYXHUB/` (warp `Knatte18/loomyard`, weft `Knatte18/loomyard-weft`, private).
+The orchestrator session sits in the hub prime `~/Code/loomyard-LYXHUB/loomyard` (on `main`), not in the mill worktree `~/Code/loomyard/wts/loomyard`, which is now only a fallback for when lyx itself is stuck.
+Both are the same GitHub repo; the mill wiki is empty and no longer used for this work — tasks live on the lyx board (`lyx board list`).
 
-## Just landed
+Run loop, per task:
 
-`#018`, `#020`, `#021` and the `#019 crucible-batten-followup` campaign (`93559ad52`) are merged.
-The campaign ran four rounds without a safety pass; its defects moved outward from batten's rows to fabric's crash windows under batten.
-Its record (HANDOFF, round and fixer reports) lives in `_mill/` under the `archive/crucible-batten-followup` tag, never on shared ground — `crucible/campaigns/` was deleted for that reason.
+1. `lyx board upsert` the task (brief = the triaged issues it covers), then `lyx fabric add <slug>`.
+2. Start it headless yourself: `cd <hub>/<slug> && lyx loom start --no-attach` — `llm` is the default driver, so this spawns an ly-drive strand that drives the whole run.
+   The operator watches with `cd <hub>/<slug> && lyx reed attach` (detach: `Ctrl+b d`).
+3. The run ends blocked at Publish with a PR (landing is PR mode). Review it, squash-merge with a clean message (never the Webster narrative), then tell the ly-drive session to re-step; it goes through Finalize to `done`.
+4. Deploy from the hub prime: `git pull`, then `./update-plugins.sh` (see CLAUDE.md "Production lyx and plugins") — it moves `prod`.
+5. Clean up: `lyx board set-status '{"slug":"<slug>","status":"done"}'` (#275), `lyx fabric remove --remote <slug>`, then `git branch -d <slug>` in the prime (#293 leaves it).
 
-## Direction: stop hardening, start using
+Messages to ly-drive sessions (SendMessage, name from ListAgents) are held for the operator's approval because those sessions run in bypass mode; tell the operator to approve in that pane.
+Worker review-round-cap asks get `approve` immediately.
 
-Crucible campaigns kept finding crash windows without end, so the user changed course: `lyx` stops trying to be perfect against every crash, and an LLM outer loop repairs instead, the property that has made millhouse useful.
-The design is `manifest/designs/shed-llm-driver.md`: `ly-drive` becomes a recipe-blind driver of `lyx shed step`, every step leaves a trace complete enough to repair from, and a repo-wide orchestrator drives runs through forks.
+## In flight
 
-## Unclaimed backlog
+- **`stuck-reason-in-status`** (#283): `done`, PR #296 squash-merged as `e29b9de5a`. Not yet deployed; deploy (step 4), then clean up (step 5).
+  Its driver reported a hiccup worth an issue, not yet filed: Webster's Master ended its turn while waiting on its integration fork via Monitor; shuttle classified that as "asking" (`cleanedUp=false`) and the row blocked while the session kept working, and the next step killed and respawned the live strand instead of attaching. Details in `<hub>/stuck-reason-in-status/.lyx/shed/self/drive-report-20260930-095507-5c34.md` (read it before `fabric remove` deletes the pair).
+- **`integration-verify-fence`** (#285): `done`, PR #294 merged and deployed. Only cleanup remains (step 5 above).
+- Leftover local warp branches in the hub prime from removed pairs (#293): `board-done-on-landing`, `burler-exclude-warn`, `loom-start-layout`, `stencil-drift-remedy` — `git branch -d` each.
+- Production: `prod` = `db68c5b8a`; `main` is ahead.
 
-- `#028 shed-llm-driver` — the design above; it absorbed the fabric crash-state and remedy-text tasks the campaign filed.
-- `#023 loom-done-after-friction` — loom persists `done` before Tier 2 friction reflection, so batten's teardown deletes the friction report. A happy-path bug, independent of the above.
+## Next: triage
 
-The campaign's other crash-window findings are parked as GitHub issues #269, #270 and #271, to be re-checked once `lyx` is in real use.
+Agreed with the operator: findings are filed as issues; triage groups issues into tasks (never one issue per task); the reader of the issues does the grouping.
+Three board tasks to create, replacing the stale board entries `board-done-on-landing` and `stencil-drift-remedy`:
 
-## Pending cleanup on this machine
+- **Landing:** #275, #276, #289, #292, #293.
+- **Operator surface:** #295, #277, #286, plus three findings not yet filed as issues:
+  - a deploy does not upgrade running sessions (`lyx loom start` finds the existing status strand via `IfAbsent` and keeps its old display);
+  - layout rule: every pane but the bottom-most collapses to a fixed configurable minimum (3 rows), the bottom-most takes the rest, adding a pane moves nothing above it (`3+20` → `3+3+17`), Selvage excluded;
+  - ly-drive reporting: name the run by slug, never `self`; give the run's own history position, not ly-drive's step counter; say when a reported state is from before it acted. Also `_lyx/shed/self/` should be named by slug, with `self` only an alias.
+- **Review (Burler):** #287, #282, #263, plus one finding not yet filed: the 100-column comment width, and how a leading tab counts toward it, is written down nowhere, so a width finding costs a whole review round (friction note `burler-webster-r2.md` from `stuck-reason-in-status`).
 
-The user has not yet chosen what to delete; ask before acting.
-A batch delete of branches was refused by the auto-mode permission classifier, so each deletion needs the user's explicit go-ahead.
+Leave parked: #269, #270, #271, #274. #281 is an auto-filed anomaly already resolved — close it. #227/#228 are older ideas.
 
-- Local branches, mostly `mill-checkpoint-*`, whose tips are already in `main` or an `archive/*` tag.
-- Local branches with commits found nowhere else: `backup/fable-high-r2-local-knatte`, `loom-step-supervisor`, `standalone-producers`, `mill-checkpoint-fabric-crucible-hardening`.
-- Stray directories: `<container>/live-r2/` (a disposable August fixture of bare repos) and `wts/_board/` (not a git repo; only deployed stencils and specs).
-- Remote branches of long-merged or abandoned work, listed by `git ls-remote --heads origin`.
+## Open design points
 
-## Open findings
-
-**The "added forms, never widened signatures" decision has no definition site.**
-It is cited six times — `burlerengine/engine.go:26`, `shedadapters/singlellm.go:40` and `:104`, `shuttleengine/attach.go:42`, `shuttleengine/run.go:260` and `:390` — and defined in none of `CONSTRAINTS.md`, `docs/`, or `manifest/`.
-Only `singlellm.go:40` states the condition (add a form when the seam is shared by callers that will never use the parameter; widen otherwise); the other five give the conclusion alone.
-The user rejected appending a section to `CONSTRAINTS.md`, since accretion makes it long and badly written.
-Unresolved; the alternative on the table is to designate one existing site as the definition and have the other five name it, adding no new prose.
-
-**Three `#017` review notes** (PR #261) were judged non-blocking at merge and nothing else records them:
-
-- The PR summary claims the prelude also resolves the agent binary (`claude`). It does not — only `lyx`'s own directory is prepended; the `claude` half is a manual pre-condition check in `SANDBOX-SHUTTLE-SUITE.md`.
-- The `Pane Binary Resolution` clause pins the dialect to `shell.ForGOOS()`, which is not the pane's real shell when an operator sets `LYX_REED_SHELL`. `Chain` joins with `;`, so a rejected prelude never kills the launch line, but the clause does not name the override.
-- `Shell Mechanics Seam` was softened in passing (its method list is now "illustrative, not exhaustive") to make room for `ExportEnv`/`PrependPathEntry`/`Chain`.
-
-## Rules in force
-
-`manifest/` holds only unbuilt work: a design doc whose work has shipped is deleted, and a doc pinning a format shared between modules moves to `contracts/specs/`.
-No tombstones — a dropped idea is removed, not recorded as dropped.
-
-`plugins/scribe/skills/prose/SKILL.md` carries a **Never pin a count** section. It governs every doc and comment you write.
-
-Everything in `.scratch/` is disposable by definition, and the user empties it at will.
-Never put anything there whose loss would matter, and never treat a file vanishing from it as an event worth reporting.
-
-Wiki writes go through the daemon client or `/mill-*` skills only. Reading the wiki's git history is fine — use `git -C <container>/wiki`, never `cd` into it.
-
-## Machine note (hanf/WSL2 only, not knatte)
-
-`GOPROXY=direct` is set machine-locally there and should stay.
-The route to `proxy.golang.org` stalls partway through any large object from this network, while github.com serves the same bytes fine; MTU was ruled out.
-`GOPRIVATE` is deliberately empty, since quarry is public.
-A build failing on `github.com/Knatte18/quarry@v0.2.0` is this environment, never a code defect.
-
-## Needs a decision
-
-- The roadmap's two `shuttle Spec` items declare themselves unmotivated (*"stays unmotivated rather than blocked on anything"*, *"meaningless until a second engine lands"*). Under the rule above they belong in GitHub issues, not `manifest/`.
-- A spec deployed by an earlier version stays on disk in target repos — `stencilstore` seeds and reconciles registered names and has no removal path, so a stale `loom-plan-card-format.md` may linger in one.
-- [millhouse#1127](https://github.com/Knatte18/millhouse/issues/1127) asks `mill-setup` Phase 4.8 to retire the operator's target-blind `Bash(rm -rf:*)` deny rule for target-scoped ones. Until it lands, that rule still blocks scratch and fixture cleanup on every machine.
+- **Opening a task in VS Code, one operation:** extend `lyx ide spawn <slug>` to create the pair when missing (ide depends on fabric, never the reverse; fabric must not call ide), and generate a VS Code task that runs `lyx reed attach` on folder open (`runOptions.runOn: folderOpen`; the operator's settings already allow automatic tasks). Not `lyx loom start` — that starts a run. Not yet filed.
+- **`main-weft` is never pushed** and never advances on landing; either lazy by design or a weft-side landing gap. Uninvestigated.
+- **Shared conventions:** `Knatte18/scribe` (local `~/Code/scribe`) is the one source; version frozen at `1.1.0`, deploy edits with its own `./update-plugins.sh`, never bump. The operator's `~/.claude/CLAUDE.md` still carries the old sed wording that lets agents read awk as fine for edits.
+- **Agent context baseline** is ~47k tokens per spawned agent, mostly Claude Code's own tool definitions; this motivates the Someday item "shuttle `Spec`: generic tools-restriction" (currently marked unmotivated).
 
 ## Suggested skills
 
-- `mill:prose` + `mill:conversation` — load before writing anything.
-- `mill:mill-status` / `mill:mill-inspect` — confirm task state before acting.
-- `mill:mill-spawn` — for the next backlog task; `CLAUDE.md` requires the user's explicit say-so before creating a worktree.
-- `mill:mill-resume` — to pick up a task whose branch was pushed from another machine; `mill-spawn` would claim a new task instead.
-- `mill:orch-review` — only when the user starts a task with `--orch`; this session owns the Monitor wait and forks only once `discussion.md` exists.
-- `mill:mill-quick` — fits a mechanical, compiler-checked task; `mill-config.yaml` has the `done_gate` it requires. It runs no reviewer, so verify the suite yourself and read the doc comments it wrote.
-- `mill:git-workflow` — `CLAUDE.md` overrides its `--onmain` gate for this worktree.
+- `scribe:prose`, `scribe:conversation` — before writing anything.
+- `scribe:handoff` — for the next handoff.
+- `ly:ly-drive` — only to read what the driver does; the orchestrator never runs it itself.
+- `mill:git-workflow` — for commits in the hub prime.
