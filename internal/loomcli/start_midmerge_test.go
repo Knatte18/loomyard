@@ -65,6 +65,20 @@ func assertMergeRefusal(t *testing.T, out string, want []string) midMergeEnvelop
 	return env
 }
 
+// assertNothingPutToWork asserts a refusal neither started a driver, typed a resume line, nor opened the go arm's driver log.
+func assertNothingPutToWork(t *testing.T, c *loomCLI, starter *fakeDriverStarter, sender *fakeDriverSender) {
+	t.Helper()
+	if starter.called {
+		t.Error("the starter was called")
+	}
+	if len(sender.texts) != 0 {
+		t.Errorf("sender sent %d line(s); want none", len(sender.texts))
+	}
+	if _, err := os.Stat(loomengine.LoomDriverLog(c.location)); !os.IsNotExist(err) {
+		t.Errorf("driver log exists after a refusal (stat err %v)", err)
+	}
+}
+
 func TestRunDriverSpawnAndWait_MidMerge_SpawnRefusals(t *testing.T) {
 	fabricMsg := []string{"lyx fabric merge-stage", "lyx fabric merge --continue", "lyx fabric merge --abort"}
 	tests := []struct {
@@ -85,7 +99,9 @@ func TestRunDriverSpawnAndWait_MidMerge_SpawnRefusals(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			starter := &fakeDriverStarter{}
+			sender := &fakeDriverSender{}
 			c, lockPath := newTestSpawnAndWaitReceiver(t, starter, &fakeDriverPaneProbeFull{strandsFn: noStrands})
+			c.driverSender = sender
 			fake := &fakeMidMerge{state: tc.state}
 			c.midMerge = fake.probe
 			marker := shedrun.ParkMarker(c.location, shedrun.ResolveRunID(c.location, c.runID))
@@ -119,12 +135,7 @@ func TestRunDriverSpawnAndWait_MidMerge_SpawnRefusals(t *testing.T) {
 					t.Errorf("message %q contains %q", env.Error, s)
 				}
 			}
-			if starter.called {
-				t.Error("the starter was called")
-			}
-			if _, err := os.Stat(loomengine.LoomDriverLog(c.location)); !os.IsNotExist(err) {
-				t.Errorf("driver log exists after a refusal (stat err %v)", err)
-			}
+			assertNothingPutToWork(t, c, starter, sender)
 			if tc.staleMark && !markerExists(marker) {
 				t.Error("park marker removed by a refusal")
 			}
@@ -153,9 +164,7 @@ func TestRunDriverSpawnAndWait_MidMerge_ParkedLiveDriverRefused(t *testing.T) {
 		t.Fatal("runDriverSpawnAndWait() = true; want a refusal")
 	}
 	assertMergeRefusal(t, out.String(), []string{"a.go"})
-	if len(sender.texts) != 0 || starter.called {
-		t.Errorf("sent %d line(s), starter called = %v; want neither", len(sender.texts), starter.called)
-	}
+	assertNothingPutToWork(t, c, starter, sender)
 	if !markerExists(marker) {
 		t.Error("park marker removed by a refusal")
 	}
@@ -207,7 +216,9 @@ func TestRunDriverSpawnAndWait_MidMerge_LiveWorkingDriverNotProbed(t *testing.T)
 
 func TestRunDriverSpawnAndWait_MidMerge_ProbeErrorRefuses(t *testing.T) {
 	starter := &fakeDriverStarter{}
+	sender := &fakeDriverSender{}
 	c, lockPath := newTestSpawnAndWaitReceiver(t, starter, &fakeDriverPaneProbeFull{strandsFn: noStrands})
+	c.driverSender = sender
 	fake := &fakeMidMerge{err: errors.New("boom")}
 	c.midMerge = fake.probe
 
@@ -222,15 +233,15 @@ func TestRunDriverSpawnAndWait_MidMerge_ProbeErrorRefuses(t *testing.T) {
 	if env.OK || env.Kind == shedrun.StartMergeInProgressKind || !strings.Contains(env.Error, "boom") {
 		t.Errorf("envelope = %+v; want a plain error naming boom", env)
 	}
-	if starter.called {
-		t.Error("the starter was called")
-	}
+	assertNothingPutToWork(t, c, starter, sender)
 	assertBootstrapLockReleased(t, lockPath)
 }
 
 func TestRunDriverSpawnAndWait_MidMerge_RealProbeOnNonPairRefuses(t *testing.T) {
 	starter := &fakeDriverStarter{}
+	sender := &fakeDriverSender{}
 	c, lockPath := newTestSpawnAndWaitReceiver(t, starter, &fakeDriverPaneProbeFull{strandsFn: noStrands})
+	c.driverSender = sender
 	c.midMerge = fabricengine.MidMerge
 
 	var out bytes.Buffer
@@ -244,9 +255,7 @@ func TestRunDriverSpawnAndWait_MidMerge_RealProbeOnNonPairRefuses(t *testing.T) 
 	if env.OK || env.Kind == shedrun.StartMergeInProgressKind {
 		t.Errorf("envelope = %+v; want a plain probe error", env)
 	}
-	if starter.called {
-		t.Error("the starter was called")
-	}
+	assertNothingPutToWork(t, c, starter, sender)
 	assertBootstrapLockReleased(t, lockPath)
 }
 
