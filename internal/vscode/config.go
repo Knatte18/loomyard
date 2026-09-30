@@ -25,10 +25,8 @@ const (
 )
 
 // WriteConfig generates VS Code configuration files in a worktree.
-// With TaskChainInteractive, settings.json and tasks.json are each written only if they don't
-// already exist (never clobbering operator edits), and ".vscode/" is added to .gitignore.
-// With TaskChainAttachOnly, settings.json keeps the write-only-when-absent rule, but tasks.json is
-// always written, overwriting any existing file, and holds a single folderOpen "reed attach" task;
+// With TaskChainInteractive, settings.json and tasks.json are each written only if they don't already exist (never clobbering operator edits), and ".vscode/" is added to .gitignore.
+// With TaskChainAttachOnly, settings.json keeps the write-only-when-absent rule, but tasks.json is always written, overwriting any existing file, and holds a single folderOpen "reed attach" task;
 // .gitignore is not touched (the caller keeps .vscode/ out of git through info/exclude).
 // lyxPath and claudePath are the resolved absolute binary paths stamped into the generated
 // folderOpen launch chain; WriteConfig owns the bare-name fallback for either one: an empty
