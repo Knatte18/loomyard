@@ -1152,7 +1152,9 @@ func TestRun_PausedOutcomeLeavesPauseFlagIntact(t *testing.T) {
 // standalone-mode explanation.
 func TestRun_NilOpenBisectorRecordsUnlocalizedIntegrationFailure(t *testing.T) {
 	fx := newRunFixture(t, 2)
-	appendIntegrationVerify(t, fx.PlanDir, "true")
+	// The verify fails on rerun, so triage classifies a regression; with no bisector there is no
+	// baseline either.
+	appendIntegrationVerify(t, fx.PlanDir, "false")
 	fx.Deps.OpenBisector = nil
 
 	sha1 := commitFile(t, fx.Worktree, "card1.txt", "one", "card1")
@@ -1223,13 +1225,77 @@ func TestRun_NilOpenBisectorRecordsUnlocalizedIntegrationFailure(t *testing.T) {
 	}
 
 	found := false
+	baselineWarned := false
 	for _, w := range result.Warnings {
 		if strings.Contains(w, "no fabric repo to bisect against") {
 			found = true
 		}
+		if strings.Contains(w, "baseline comparison unavailable") {
+			baselineWarned = true
+		}
 	}
 	if !found {
 		t.Errorf("RunResult.Warnings = %v; want one explaining the unlocalized failure (no fabric repo to bisect against)", result.Warnings)
+	}
+	if !baselineWarned {
+		t.Errorf("RunResult.Warnings = %v; want one stating the baseline comparison was unavailable", result.Warnings)
+	}
+
+	report, err := websterengine.ParseIntegrationReport(websterengine.IntegrationReportPath(fx.Deps.Geom.ReportsDir))
+	if err != nil {
+		t.Fatalf("ParseIntegrationReport() error = %v", err)
+	}
+	if report.Triage == nil || report.Triage.Verdict != websterengine.TriageVerdictRegression {
+		t.Errorf("report triage = %+v; want verdict regression", report.Triage)
+	}
+}
+
+// TestRun_NilOpenBisectorFlakyVerifyKeepsDone proves a nil-bisector run whose verify passes on
+// rerun is classified flaky: Master's done stands and the flaky warning is the only warning.
+func TestRun_NilOpenBisectorFlakyVerifyKeepsDone(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	appendIntegrationVerify(t, fx.PlanDir, "true")
+	fx.Deps.OpenBisector = nil
+
+	sha1 := commitFile(t, fx.Worktree, "card1.txt", "one", "card1")
+	seedMatchingState(t, fx, &websterengine.State{
+		Batches: map[int]*websterengine.BatchState{
+			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", CardSHAs: []string{sha1}},
+		},
+	})
+
+	fx.Starter.handle = &runFakeHandle{
+		strandGUID: "master-strand-nilflaky",
+		result: shuttleengine.Result{
+			Outcome:   shuttleengine.OutcomeDone,
+			SessionID: "master-session-nilflaky",
+			RunDir:    "/run/dir/nilflaky",
+			ForkAudit: &shuttleengine.ForkAudit{
+				Forks: []shuttleengine.ForkReport{{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true}},
+			},
+		},
+		onWait: func() {
+			write := func(path, content string) {
+				if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+					t.Fatalf("write %s: %v", path, err)
+				}
+			}
+			write(websterengine.IntegrationReportPath(fx.Deps.Geom.ReportsDir), "status: FAILED\nhead_sha: "+sha1+"\ndeviations: []\n")
+			write(filepath.Join(fx.Deps.Geom.WebsterDir, "outcome.yaml"), "outcome: done\nstuck_reason: null\nbatches_done: 1\n")
+			write(filepath.Join(fx.Deps.Geom.WebsterDir, "summary.md"), "# Batch shipped\n\nLanded.\n")
+		},
+	}
+	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-nilflaky", "master-session-nilflaky")
+
+	result, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	if err != nil {
+		t.Fatalf("Run() error = %v; want nil", err)
+	}
+	if result.Outcome != "done" {
+		t.Errorf("Outcome = %q; want done", result.Outcome)
+	}
+	if len(result.Warnings) != 1 || !strings.Contains(result.Warnings[0], "flaky") {
+		t.Errorf("Warnings = %v; want exactly the flaky warning", result.Warnings)
 	}
 }
 

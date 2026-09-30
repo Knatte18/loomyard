@@ -17,12 +17,14 @@
 package websterengine_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -202,13 +204,14 @@ func TestIntegrationStage_FailingForkTriggersBisectAndEscalates(t *testing.T) {
 
 	originalBranch := strings.TrimSpace(mustGit(t, fx.Worktree, "symbolic-ref", "--short", "HEAD"))
 
+	start := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
 	sha1 := commitFile(t, fx.Worktree, "card1.txt", "one", "card1")
 	sha2 := commitFile(t, fx.Worktree, "card2.txt", "two", "card2")
 	sha3 := commitFile(t, fx.Worktree, "bad.marker", "bad", "card3 introduces the bug")
 
 	seedMatchingState(t, fx, &websterengine.State{
 		Batches: map[int]*websterengine.BatchState{
-			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", CardSHAs: []string{sha1}},
+			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", CardSHAs: []string{sha1}, StartSHA: start},
 			2: {Slug: "batch2", Kind: "fork", Terminal: true, Status: "done", CardSHAs: []string{sha2}},
 			3: {Slug: "batch3", Kind: "fork", Terminal: true, Status: "done", CardSHAs: []string{sha3}},
 		},
@@ -406,91 +409,381 @@ func TestIntegrationStage_MissingReport_DoneOutcomeFailsLoud(t *testing.T) {
 	}
 }
 
-// TestIntegrationStage_FailedSuite_DoneOutcomeFailsLoud proves the FAILED integration report under
-// a done outcome is fail-loud, SYMMETRIC with the missing-report-under-done case above: a done
-// outcome CLAIMS a passing integration suite, so a Master that wrote outcome: done while the
-// plan-level verify actually FAILED is a genuine inconsistency the run must not report as done.
-// It also proves the escalation still persists despite the loud return — the reserved -1 record and
-// summary.md's SHA-bisect- localized card are written BEFORE the fail-loud error, so a resume or a
-// human still sees the offending card. (Before this was fixed the run returned Master's done
-// verbatim, contradicting its own escalated summary.md.)
-func TestIntegrationStage_FailedSuite_DoneOutcomeFailsLoud(t *testing.T) {
-	fx := newRunFixture(t, 3)
-	appendIntegrationVerify(t, fx.PlanDir, "test ! -f bad.marker")
+// countingBisector wraps a FabricBisector and counts its detached checkouts, so a test can tell
+// whether triage's baseline run or the localizing bisect ever moved the worktree.
+type countingBisector struct {
+	websterengine.FabricBisector
+	checkouts int
+}
 
-	sha1 := commitFile(t, fx.Worktree, "card1.txt", "one", "card1")
-	sha2 := commitFile(t, fx.Worktree, "card2.txt", "two", "card2")
-	sha3 := commitFile(t, fx.Worktree, "bad.marker", "bad", "card3 introduces the bug")
+func (c *countingBisector) CheckoutDetached(sha string) error {
+	c.checkouts++
+	return c.FabricBisector.CheckoutDetached(sha)
+}
 
-	seedMatchingState(t, fx, &websterengine.State{
-		Batches: map[int]*websterengine.BatchState{
-			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", CardSHAs: []string{sha1}},
-			2: {Slug: "batch2", Kind: "fork", Terminal: true, Status: "done", CardSHAs: []string{sha2}},
-			3: {Slug: "batch3", Kind: "fork", Terminal: true, Status: "done", CardSHAs: []string{sha3}},
-		},
-	})
+// seedVerifyScripts commits the three verify scripts the triage tests run, so they exist at every
+// SHA the run checks out.
+// verify.sh fails with a go test-shaped TestBad failure whenever bad.marker exists; always.sh
+// always fails with a TestAlways failure; dirty.sh does the same after dirtying the tree with an
+// untracked file and an uncommitted change to the tracked base.txt.
+func seedVerifyScripts(t *testing.T, worktree string) {
+	t.Helper()
+	failure := func(test string) string {
+		return "printf -- '--- FAIL: " + test + " (0.00s)\\n    x_test.go:1: " + test + " failed\\nFAIL\\nFAIL\\texample/pkg\\t0.01s\\n'\n"
+	}
+	commitFile(t, worktree, "verify.sh", "if [ -f bad.marker ]; then\n"+failure("TestBad")+"exit 1\nfi\n", "verify script")
+	commitFile(t, worktree, "always.sh", failure("TestAlways")+"exit 1\n", "always-failing script")
+	commitFile(t, worktree, "dirty.sh", "echo dirty >> base.txt\necho x > untracked.txt\n"+failure("TestAlways")+"exit 1\n", "dirtying script")
+}
 
-	handle := &runFakeHandle{
-		strandGUID: "master-strand-intfaildone",
+// failedSuite scripts one run whose integration fork reports FAILED.
+type failedSuite struct {
+	// batches is each batch's CardSHAs; its length must equal the fixture's card count.
+	batches [][]string
+	// startSHA is batch 1's recorded StartSHA.
+	startSHA string
+	// masterOutcome is "done" or "stuck".
+	masterOutcome string
+	// forkLog is the fork's captured first-run log; empty writes none.
+	forkLog string
+}
+
+// runFailedSuite seeds fx's state from s, scripts Master and the integration fork from onWait,
+// and returns Run's result.
+func runFailedSuite(t *testing.T, fx *runFixture, s failedSuite) (websterengine.RunResult, error) {
+	t.Helper()
+	n := len(s.batches)
+
+	st := &websterengine.State{Batches: map[int]*websterengine.BatchState{}}
+	var forks []shuttleengine.ForkReport
+	for i, shas := range s.batches {
+		st.Batches[i+1] = &websterengine.BatchState{
+			Slug: fmt.Sprintf("batch%d", i+1), Kind: "fork", Terminal: true, Status: "done", CardSHAs: shas,
+		}
+		forks = append(forks, shuttleengine.ForkReport{TranscriptPath: fmt.Sprintf("/transcripts/fork%d.jsonl", i+1), ReportReturned: true})
+	}
+	st.Batches[1].StartSHA = s.startSHA
+	seedMatchingState(t, fx, st)
+
+	head := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	outcome := "outcome: done\nstuck_reason: null\n"
+	if s.masterOutcome == "stuck" {
+		outcome = "outcome: stuck\nstuck_reason: \"master says stuck\"\n"
+	}
+	outcome += fmt.Sprintf("batches_done: %d\n", n)
+
+	fx.Starter.handle = &runFakeHandle{
+		strandGUID: "master-strand-triage",
 		result: shuttleengine.Result{
 			Outcome:   shuttleengine.OutcomeDone,
-			SessionID: "master-session-intfaildone",
-			RunDir:    "/run/dir/intfaildone",
-			ForkAudit: &shuttleengine.ForkAudit{
-				Forks: []shuttleengine.ForkReport{
-					{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true},
-					{TranscriptPath: "/transcripts/fork2.jsonl", ReportReturned: true},
-					{TranscriptPath: "/transcripts/fork3.jsonl", ReportReturned: true},
-				},
-			},
+			SessionID: "master-session-triage",
+			RunDir:    "/run/dir/triage",
+			ForkAudit: &shuttleengine.ForkAudit{Forks: forks},
 		},
 		onWait: func() {
-			// The integration report lands FAILED, but Master (wrongly) claims
-			// outcome: done — the exact template-violating contradiction this
-			// test exists to catch.
-			reportPath := websterengine.IntegrationReportPath(fx.Deps.Geom.ReportsDir)
-			if err := os.WriteFile(reportPath, []byte("status: FAILED\nhead_sha: "+sha3+"\ndeviations: []\n"), 0o644); err != nil {
-				t.Fatalf("write integration report: %v", err)
+			write := func(path, content string) {
+				if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+					t.Fatalf("write %s: %v", path, err)
+				}
 			}
-			if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "outcome.yaml"), []byte("outcome: done\nstuck_reason: null\nbatches_done: 3\n"), 0o644); err != nil {
-				t.Fatalf("write outcome.yaml: %v", err)
+			if s.forkLog != "" {
+				write(websterengine.IntegrationLogPath(fx.Deps.Geom.ScratchDir), s.forkLog)
 			}
-			if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "summary.md"), []byte("# Batches shipped\n\nAll three batches landed.\n"), 0o644); err != nil {
-				t.Fatalf("write summary.md: %v", err)
-			}
+			write(websterengine.IntegrationReportPath(fx.Deps.Geom.ReportsDir), "status: FAILED\nhead_sha: "+head+"\ndeviations: []\n")
+			write(filepath.Join(fx.Deps.Geom.WebsterDir, "outcome.yaml"), outcome)
+			write(filepath.Join(fx.Deps.Geom.WebsterDir, "summary.md"), "# Batches shipped\n\nAll batches landed.\n")
 		},
 	}
-	fx.Starter.handle = handle
-	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-intfaildone", "master-session-intfaildone")
+	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-triage", "master-session-triage")
 
-	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
-	if err == nil {
-		t.Fatal("Run() = nil error for outcome: done over a FAILED integration suite; want the fail-loud inconsistency error")
-	}
-	if !strings.Contains(err.Error(), "a done outcome requires a passing integration suite") {
-		t.Errorf("Run() error = %q; want the done-over-FAILED-suite inconsistency named", err.Error())
-	}
+	return websterengine.Run(fx.Deps, websterengine.RunOptions{})
+}
 
-	// The escalation must persist despite the loud return: the reserved -1
-	// record and summary.md's localized card are written before the error.
+// integrationReportOf parses the run's integration report.
+func integrationReportOf(t *testing.T, fx *runFixture) *websterengine.IntegrationReport {
+	t.Helper()
+	r, err := websterengine.ParseIntegrationReport(websterengine.IntegrationReportPath(fx.Deps.Geom.ReportsDir))
+	if err != nil {
+		t.Fatalf("ParseIntegrationReport() error = %v", err)
+	}
+	return r
+}
+
+// summaryOf reads the run's summary.md.
+func summaryOf(t *testing.T, fx *runFixture) string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(fx.Deps.Geom.WebsterDir, "summary.md"))
+	if err != nil {
+		t.Fatalf("read summary.md: %v", err)
+	}
+	return string(data)
+}
+
+// hasEscalationRecord reports whether state.json carries the reserved -1 integration record.
+func hasEscalationRecord(t *testing.T, fx *runFixture) bool {
+	t.Helper()
 	st, err := websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
 	if err != nil {
 		t.Fatalf("LoadState() error = %v", err)
 	}
-	escalated, ok := st.Batches[-1]
-	if !ok || escalated == nil {
-		t.Fatalf("state.json carries no integration escalation record after the loud return; want one at the reserved key")
+	rec, ok := st.Batches[-1]
+	return ok && rec != nil
+}
+
+// assertOnBranch fails unless the worktree is back on branch.
+func assertOnBranch(t *testing.T, fx *runFixture, branch string) {
+	t.Helper()
+	if got := strings.TrimSpace(mustGit(t, fx.Worktree, "symbolic-ref", "--short", "HEAD")); got != branch {
+		t.Errorf("HEAD branch = %q; want restored to %q", got, branch)
 	}
-	if escalated.Slug != "03-batch3" {
-		t.Errorf("escalated record Slug = %q; want %q (the localized offending card)", escalated.Slug, "03-batch3")
+}
+
+const flakyForkLog = "--- FAIL: TestFlaky (0.00s)\n    flaky_test.go:1: intermittent boom\nFAIL\nFAIL\texample/pkg\t0.01s\n"
+
+// TestIntegrationStage_Flaky_DoneKeepsDone proves a verify that fails once and passes on rerun
+// under Master done ends done: the report, summary, warnings and friction note record the flaky
+// identity, nothing is bisected, and no escalation record exists.
+func TestIntegrationStage_Flaky_DoneKeepsDone(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	appendIntegrationVerify(t, fx.PlanDir, "true")
+	fx.Deps.FrictionDir = t.TempDir()
+	bis := &countingBisector{FabricBisector: gitrepo.New(fx.Worktree)}
+	fx.Deps.OpenBisector = func() (websterengine.FabricBisector, error) { return bis, nil }
+
+	start := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	sha1 := commitFile(t, fx.Worktree, "card1.txt", "one", "card1")
+
+	result, err := runFailedSuite(t, fx, failedSuite{batches: [][]string{{sha1}}, startSHA: start, masterOutcome: "done", forkLog: flakyForkLog})
+	if err != nil {
+		t.Fatalf("Run() error = %v; want nil", err)
+	}
+	if result.Outcome != "done" {
+		t.Errorf("Outcome = %q; want done", result.Outcome)
 	}
 
-	summaryData, err := os.ReadFile(filepath.Join(fx.Deps.Geom.WebsterDir, "summary.md"))
-	if err != nil {
-		t.Fatalf("read summary.md: %v", err)
+	report := integrationReportOf(t, fx)
+	if report.Triage == nil || report.Triage.Verdict != websterengine.TriageVerdictFlaky {
+		t.Fatalf("report triage = %+v; want verdict flaky", report.Triage)
 	}
-	if !strings.Contains(string(summaryData), "03-batch3") {
-		t.Errorf("summary.md does not name the localized offending card after the loud return; got:\n%s", summaryData)
+	if len(report.Failures) != 1 || report.Failures[0].ID != "example/pkg.TestFlaky" || !strings.Contains(report.Failures[0].Tail, "intermittent boom") {
+		t.Errorf("report failures = %+v; want the first-run TestFlaky identity with its tail", report.Failures)
+	}
+	if !strings.Contains(summaryOf(t, fx), "## Integration suite triage") {
+		t.Errorf("summary.md carries no triage section; got:\n%s", summaryOf(t, fx))
+	}
+	if !strings.Contains(strings.Join(result.Warnings, "\n"), "example/pkg.TestFlaky") {
+		t.Errorf("Warnings = %v; want one naming the flaky identity", result.Warnings)
+	}
+	// NotePath allocates the next free name, so a written note shows up as the file it skips.
+	if matches, _ := filepath.Glob(filepath.Join(fx.Deps.FrictionDir, "webster-verify-triage*")); len(matches) != 1 {
+		t.Errorf("friction notes in %s = %v; want exactly one", fx.Deps.FrictionDir, matches)
+	}
+	if bis.checkouts != 0 {
+		t.Errorf("detached checkouts = %d; want 0 (a flaky verdict never bisects)", bis.checkouts)
+	}
+	if hasEscalationRecord(t, fx) {
+		t.Errorf("escalation record present for a flaky verdict; want none")
+	}
+}
+
+// TestIntegrationStage_Flaky_NoFrictionNoteWithoutDir proves the friction note is absent when
+// FrictionDir is empty.
+func TestIntegrationStage_Flaky_NoFrictionNoteWithoutDir(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	appendIntegrationVerify(t, fx.PlanDir, "true")
+	fx.Deps.FrictionDir = ""
+
+	start := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	sha1 := commitFile(t, fx.Worktree, "card1.txt", "one", "card1")
+
+	if _, err := runFailedSuite(t, fx, failedSuite{batches: [][]string{{sha1}}, startSHA: start, masterOutcome: "done", forkLog: flakyForkLog}); err != nil {
+		t.Fatalf("Run() error = %v; want nil", err)
+	}
+	if got := friction.NotePath("", "webster-verify-triage"); got != "" {
+		t.Errorf("NotePath with an empty dir = %q; want empty", got)
+	}
+}
+
+// TestIntegrationStage_PreExisting_DoneKeepsDone proves a failure present at both head and the
+// plan's starting commit ends done with a pre-existing verdict, and only the baseline run checks
+// anything out.
+func TestIntegrationStage_PreExisting_DoneKeepsDone(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	appendIntegrationVerify(t, fx.PlanDir, "sh always.sh")
+	seedVerifyScripts(t, fx.Worktree)
+	bis := &countingBisector{FabricBisector: gitrepo.New(fx.Worktree)}
+	fx.Deps.OpenBisector = func() (websterengine.FabricBisector, error) { return bis, nil }
+	branch := strings.TrimSpace(mustGit(t, fx.Worktree, "symbolic-ref", "--short", "HEAD"))
+
+	start := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	sha1 := commitFile(t, fx.Worktree, "card1.txt", "one", "card1")
+
+	result, err := runFailedSuite(t, fx, failedSuite{
+		batches: [][]string{{sha1}}, startSHA: start, masterOutcome: "done",
+		forkLog: "--- FAIL: TestAlways (0.00s)\n    x_test.go:1: TestAlways failed\nFAIL\nFAIL\texample/pkg\t0.01s\n",
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v; want nil", err)
+	}
+	if result.Outcome != "done" {
+		t.Errorf("Outcome = %q; want done", result.Outcome)
+	}
+	report := integrationReportOf(t, fx)
+	if report.Triage == nil || report.Triage.Verdict != websterengine.TriageVerdictPreExisting {
+		t.Fatalf("report triage = %+v; want verdict pre-existing", report.Triage)
+	}
+	if !strings.Contains(strings.Join(result.Warnings, "\n"), "pre-existing") {
+		t.Errorf("Warnings = %v; want a pre-existing warning", result.Warnings)
+	}
+	if !strings.Contains(summaryOf(t, fx), "## Integration suite triage") {
+		t.Errorf("summary.md carries no triage section")
+	}
+	if bis.checkouts != 1 {
+		t.Errorf("detached checkouts = %d; want 1 (the baseline run only, no bisect)", bis.checkouts)
+	}
+	if hasEscalationRecord(t, fx) {
+		t.Errorf("escalation record present for a pre-existing verdict; want none")
+	}
+	assertOnBranch(t, fx, branch)
+}
+
+// TestIntegrationStage_Regression_DemotesDone proves a failure at head that passes at the starting
+// commit demotes Master's done to stuck, localizes the card, writes the -1 record, and puts the
+// failing test and its tail in summary.md.
+func TestIntegrationStage_Regression_DemotesDone(t *testing.T) {
+	fx := newRunFixture(t, 3)
+	appendIntegrationVerify(t, fx.PlanDir, "sh verify.sh")
+	seedVerifyScripts(t, fx.Worktree)
+	branch := strings.TrimSpace(mustGit(t, fx.Worktree, "symbolic-ref", "--short", "HEAD"))
+
+	start := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	sha1 := commitFile(t, fx.Worktree, "card1.txt", "one", "card1")
+	sha2 := commitFile(t, fx.Worktree, "card2.txt", "two", "card2")
+	sha3 := commitFile(t, fx.Worktree, "bad.marker", "bad", "card3 introduces the bug")
+
+	result, err := runFailedSuite(t, fx, failedSuite{
+		batches: [][]string{{sha1}, {sha2}, {sha3}}, startSHA: start, masterOutcome: "done",
+		forkLog: "--- FAIL: TestBad (0.00s)\n    x_test.go:1: TestBad failed\nFAIL\nFAIL\texample/pkg\t0.01s\n",
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v; want nil (a demotion is a result, not an error)", err)
+	}
+	if result.Outcome != "stuck" {
+		t.Fatalf("Outcome = %q; want stuck", result.Outcome)
+	}
+	for _, want := range []string{"example/pkg.TestBad", "03-batch3"} {
+		if !strings.Contains(result.StuckReason, want) {
+			t.Errorf("StuckReason = %q; want it to name %q", result.StuckReason, want)
+		}
+	}
+	if result.BatchesDone != 3 || result.SummaryTitle == "" {
+		t.Errorf("BatchesDone = %d, SummaryTitle = %q; want Master's own 3 and a title", result.BatchesDone, result.SummaryTitle)
+	}
+	if report := integrationReportOf(t, fx); report.Triage == nil || report.Triage.Verdict != websterengine.TriageVerdictRegression {
+		t.Errorf("report triage = %+v; want verdict regression", report.Triage)
+	}
+	if !hasEscalationRecord(t, fx) {
+		t.Errorf("no -1 escalation record after a regression")
+	}
+	summary := summaryOf(t, fx)
+	if !strings.Contains(summary, "example/pkg.TestBad") || !strings.Contains(summary, "TestBad failed") {
+		t.Errorf("summary.md does not name the regressing test with its tail; got:\n%s", summary)
+	}
+	assertOnBranch(t, fx, branch)
+}
+
+// TestIntegrationStage_MasterStuck_KeepsStuckAndGetsTriage proves a Master stuck over a FAILED
+// report with a flaky verdict stays stuck with its own reason, and the report and summary still
+// carry the triage.
+func TestIntegrationStage_MasterStuck_KeepsStuckAndGetsTriage(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	appendIntegrationVerify(t, fx.PlanDir, "true")
+
+	start := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	sha1 := commitFile(t, fx.Worktree, "card1.txt", "one", "card1")
+
+	result, err := runFailedSuite(t, fx, failedSuite{batches: [][]string{{sha1}}, startSHA: start, masterOutcome: "stuck", forkLog: flakyForkLog})
+	if err != nil {
+		t.Fatalf("Run() error = %v; want nil", err)
+	}
+	if result.Outcome != "stuck" || result.StuckReason != "master says stuck" {
+		t.Errorf("Outcome = %q, StuckReason = %q; want Master's own stuck and reason", result.Outcome, result.StuckReason)
+	}
+	if report := integrationReportOf(t, fx); report.Triage == nil || report.Triage.Verdict != websterengine.TriageVerdictFlaky {
+		t.Errorf("report triage = %+v; want verdict flaky", report.Triage)
+	}
+	if !strings.Contains(summaryOf(t, fx), "## Integration suite triage") {
+		t.Errorf("summary.md carries no triage section")
+	}
+}
+
+// TestIntegrationStage_BaselineIsBatchOneStartSHA proves the baseline is the HEAD before batch 1
+// began, not the commit before its last card: batch 1 holds two commits and the first breaks a test,
+// so the test is a regression.
+func TestIntegrationStage_BaselineIsBatchOneStartSHA(t *testing.T) {
+	fx := newRunFixture(t, 2)
+	appendIntegrationVerify(t, fx.PlanDir, "sh verify.sh")
+	seedVerifyScripts(t, fx.Worktree)
+
+	start := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	c1 := commitFile(t, fx.Worktree, "bad.marker", "bad", "batch 1 first commit breaks a test")
+	c2 := commitFile(t, fx.Worktree, "card1.txt", "one", "batch 1 second commit")
+	c3 := commitFile(t, fx.Worktree, "card2.txt", "two", "batch 2")
+
+	result, err := runFailedSuite(t, fx, failedSuite{
+		batches: [][]string{{c1, c2}, {c3}}, startSHA: start, masterOutcome: "done",
+		forkLog: "--- FAIL: TestBad (0.00s)\n    x_test.go:1: TestBad failed\nFAIL\nFAIL\texample/pkg\t0.01s\n",
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v; want nil", err)
+	}
+	if result.Outcome != "stuck" {
+		t.Errorf("Outcome = %q; want stuck (TestBad passes at the starting commit)", result.Outcome)
+	}
+	report := integrationReportOf(t, fx)
+	if report.Triage == nil || report.Triage.Verdict != websterengine.TriageVerdictRegression || report.Triage.BaselineSHA != start {
+		t.Errorf("report triage = %+v; want a regression against baseline %s", report.Triage, start)
+	}
+}
+
+// TestIntegrationStage_DirtyBaselineRunRestoresBranch proves the worktree is back on its branch
+// after a baseline verify that leaves an untracked file and an uncommitted change to a tracked file
+// that is identical at baseline and head.
+func TestIntegrationStage_DirtyBaselineRunRestoresBranch(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	appendIntegrationVerify(t, fx.PlanDir, "sh dirty.sh")
+	seedVerifyScripts(t, fx.Worktree)
+	branch := strings.TrimSpace(mustGit(t, fx.Worktree, "symbolic-ref", "--short", "HEAD"))
+
+	start := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	sha1 := commitFile(t, fx.Worktree, "card1.txt", "one", "card1")
+
+	result, err := runFailedSuite(t, fx, failedSuite{batches: [][]string{{sha1}}, startSHA: start, masterOutcome: "done"})
+	if err != nil {
+		t.Fatalf("Run() error = %v; want nil", err)
+	}
+	if result.Outcome != "done" {
+		t.Errorf("Outcome = %q; want done (the failure is pre-existing)", result.Outcome)
+	}
+	assertOnBranch(t, fx, branch)
+}
+
+// TestIntegrationStage_MissingForkLogDoesNotError proves a missing fork log is not an error and the
+// identities come from the rerun.
+func TestIntegrationStage_MissingForkLogDoesNotError(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	appendIntegrationVerify(t, fx.PlanDir, "sh always.sh")
+	seedVerifyScripts(t, fx.Worktree)
+
+	start := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	sha1 := commitFile(t, fx.Worktree, "card1.txt", "one", "card1")
+
+	if _, err := runFailedSuite(t, fx, failedSuite{batches: [][]string{{sha1}}, startSHA: start, masterOutcome: "done"}); err != nil {
+		t.Fatalf("Run() error = %v; want nil for a missing fork log", err)
+	}
+	report := integrationReportOf(t, fx)
+	if len(report.Failures) != 1 || report.Failures[0].ID != "example/pkg.TestAlways" {
+		t.Errorf("report failures = %+v; want the rerun's TestAlways identity", report.Failures)
 	}
 }
 
