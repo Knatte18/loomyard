@@ -1,6 +1,4 @@
-// config_test.go verifies logger.yaml's template, Load's degrading-absence and validation paths, and
-// ConfigPath, seeded via plain os.MkdirAll/os.WriteFile against a t.TempDir() so the test stays
-// untagged and spawn-free.
+// config_test.go verifies logger.yaml's template, Load's degrading-absence and validation paths, and ConfigPath, seeded via plain os.MkdirAll/os.WriteFile against a t.TempDir() so the test stays untagged and spawn-free.
 
 package loggerconfig_test
 

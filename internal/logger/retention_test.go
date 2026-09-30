@@ -1,6 +1,4 @@
-// retention_test.go exercises Sweep's trace grouping, activity ranking, age bound, count bound,
-// grammar-scoping, and delete-failure tolerance over a t.TempDir() — pure filesystem logic, no
-// git/exec spawns, per the Test Tier Purity Invariant.
+// retention_test.go exercises Sweep's trace grouping, activity ranking, age bound, count bound, grammar-scoping, and delete-failure tolerance over a t.TempDir() — pure filesystem logic, no git/exec spawns, per the Test Tier Purity Invariant.
 
 package logger
 
@@ -20,8 +18,7 @@ func traceTestFileName(ts time.Time, id string, pid int) string {
 	return fmt.Sprintf("trace-%s-%s-%d.log", ts.UTC().Format(traceFileTimestampLayout), id, pid)
 }
 
-// writeTraceTestFile writes a trace file named for ts and sets its mtime to ts, so ranking by
-// activity is deterministic.
+// writeTraceTestFile writes a trace file named for ts and sets its mtime to ts, so ranking by activity is deterministic.
 func writeTraceTestFile(t *testing.T, dir string, ts time.Time, id string, pid int) string {
 	t.Helper()
 	path := filepath.Join(dir, traceTestFileName(ts, id, pid))
@@ -86,8 +83,8 @@ func TestSweep_AgeBound(t *testing.T) {
 	assertExists(t, recentFile)
 }
 
-// TestSweep_CountBoundKeepsNewestGroupsWhole verifies the newest Count groups by activity survive
-// with every file, and every file of each older group is deleted.
+// TestSweep_CountBoundKeepsNewestGroupsWhole verifies the newest Count groups by activity survive with every file,
+// and every file of each older group is deleted.
 func TestSweep_CountBoundKeepsNewestGroupsWhole(t *testing.T) {
 	dir := t.TempDir()
 	base := time.Now().Add(-time.Minute)
@@ -116,8 +113,7 @@ func TestSweep_CountBoundKeepsNewestGroupsWhole(t *testing.T) {
 	}
 }
 
-// TestSweep_LiveGroupKeptRegardlessOfAgeAndBudget verifies a group holding a live-pid file keeps all
-// its files past the age bound and does not consume count budget.
+// TestSweep_LiveGroupKeptRegardlessOfAgeAndBudget verifies a group holding a live-pid file keeps all its files past the age bound and does not consume count budget.
 func TestSweep_LiveGroupKeptRegardlessOfAgeAndBudget(t *testing.T) {
 	dir := t.TempDir()
 	now := time.Now()
@@ -142,9 +138,7 @@ func TestSweep_LiveGroupKeptRegardlessOfAgeAndBudget(t *testing.T) {
 	}
 }
 
-// TestSweep_LongRunningStepSurvivesByMtime verifies a group whose filename timestamp is the oldest
-// but whose mtime is the newest survives a count-bound sweep that deletes groups with later filename
-// timestamps and older mtimes.
+// TestSweep_LongRunningStepSurvivesByMtime verifies a group whose filename timestamp is the oldest but whose mtime is the newest survives a count-bound sweep that deletes groups with later filename timestamps and older mtimes.
 func TestSweep_LongRunningStepSurvivesByMtime(t *testing.T) {
 	dir := t.TempDir()
 	now := time.Now()
@@ -173,8 +167,8 @@ func TestSweep_LongRunningStepSurvivesByMtime(t *testing.T) {
 	}
 }
 
-// TestSweep_AgeBoundOverridesCountBudgetButNotLiveness verifies a non-live group past MaxAge is
-// deleted though Count would keep it, and a live group past MaxAge is kept.
+// TestSweep_AgeBoundOverridesCountBudgetButNotLiveness verifies a non-live group past MaxAge is deleted though Count would keep it,
+// and a live group past MaxAge is kept.
 func TestSweep_AgeBoundOverridesCountBudgetButNotLiveness(t *testing.T) {
 	dir := t.TempDir()
 	old := time.Now().Add(-20 * 24 * time.Hour)
@@ -191,8 +185,8 @@ func TestSweep_AgeBoundOverridesCountBudgetButNotLiveness(t *testing.T) {
 	assertExists(t, live)
 }
 
-// TestSweep_StatFailureFallsBackToFilenameTimestamp verifies a file whose stat fails ranks by its
-// filename timestamp, and the sweep still returns nil and processes the rest.
+// TestSweep_StatFailureFallsBackToFilenameTimestamp verifies a file whose stat fails ranks by its filename timestamp,
+// and the sweep still returns nil and processes the rest.
 func TestSweep_StatFailureFallsBackToFilenameTimestamp(t *testing.T) {
 	dir := t.TempDir()
 	now := time.Now()

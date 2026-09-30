@@ -230,16 +230,14 @@ func TestRunDispatchesToConfigReconcile(t *testing.T) {
 	}
 }
 
-// exitSweepFixture is a git repo carrying _lyx/ (so the cwd-anchored sink may arm) and a
-// .lyx/logs directory pre-seeded with dead-pid traces.
+// exitSweepFixture is a git repo carrying _lyx/ (so the cwd-anchored sink may arm) and a .lyx/logs directory pre-seeded with dead-pid traces.
 type exitSweepFixture struct {
 	cwd    string
 	logs   string
 	seeded []string // file names, newest mtime first
 }
 
-// newExitSweepFixture seeds four dead-pid traces whose mtimes are 1..4 days old, and writes logger.yaml
-// when loggerYAML is non-empty.
+// newExitSweepFixture seeds four dead-pid traces whose mtimes are 1..4 days old, and writes logger.yaml when loggerYAML is non-empty.
 func newExitSweepFixture(t *testing.T, loggerYAML string) exitSweepFixture {
 	t.Helper()
 	cwd := t.TempDir()

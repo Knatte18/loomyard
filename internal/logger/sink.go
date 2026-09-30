@@ -158,12 +158,11 @@ func armDurableSinkLocked() bool {
 	return true
 }
 
-// resolveSinkDirLocked resolves the directory the durable sink writes to, plus the worktree root to
-// record in the header and the lyx anchor path the resolution used, and reports whether a directory
-// could be resolved.
+// resolveSinkDirLocked resolves the directory the durable sink writes to, plus the worktree root to record in the header and the lyx anchor path the resolution used,
+// and reports whether a directory could be resolved.
 // Callers hold sinkMu.
-// An override returns an empty worktreeRoot and anchorPath; otherwise the cwd-anchored resolution
-// applies, gated off under `go test` unless LYX_TRACE is "1".
+// An override returns an empty worktreeRoot and anchorPath;
+// otherwise the cwd-anchored resolution applies, gated off under `go test` unless LYX_TRACE is "1".
 func resolveSinkDirLocked() (dir, worktreeRoot, anchorPath string, ok bool) {
 	if sinkDirOverride != "" {
 		return sinkDirOverride, "", "", true
@@ -197,8 +196,7 @@ type SinkArmState struct {
 	AnchorPath string
 }
 
-// CurrentSinkArmState reports the durable sink's arm state without arming the sink, creating
-// anything, or logging.
+// CurrentSinkArmState reports the durable sink's arm state without arming the sink, creating anything, or logging.
 func CurrentSinkArmState() SinkArmState {
 	sinkMu.Lock()
 	defer sinkMu.Unlock()

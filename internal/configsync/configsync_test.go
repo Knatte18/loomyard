@@ -128,8 +128,7 @@ func TestReconcileAll_ApplyCreatesFiles(t *testing.T) {
 	}
 }
 
-// TestReconcileAll_SeedsLoggerYAML pins that reconcile seeds logger.yaml from the template when the
-// file is absent.
+// TestReconcileAll_SeedsLoggerYAML pins that reconcile seeds logger.yaml from the template when the file is absent.
 func TestReconcileAll_SeedsLoggerYAML(t *testing.T) {
 	tmpDir := t.TempDir()
 	if err := os.MkdirAll(configengine.ConfigDir(tmpDir), 0o755); err != nil {

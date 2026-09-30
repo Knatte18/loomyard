@@ -5,8 +5,7 @@
 // it reads logger.CurrentSinkArmState and returns when the sink never armed;
 // otherwise it picks the retention bounds and sweeps the sink's directory once.
 // The config load waits for the arm check because a degrading configengine load logs at Info,
-// and an Info record arms the sink, so loading first would arm a sink on every zero-exit run
-// that logged nothing else.
+// and an Info record arms the sink, so loading first would arm a sink on every zero-exit run that logged nothing else.
 // A redirected sink sweeps with the compiled-in defaults and never reads logger.yaml,
 // since a redirected directory belongs to a caller other than the worktree the config describes.
 
@@ -31,8 +30,8 @@ func notifyExitAndSweep(code int) {
 
 // exitSweepBounds picks the bounds the exit sweep runs with.
 // A redirected sink gets the defaults without a config load;
-// otherwise logger.yaml under the anchor decides, and an unusable one logs one Warn
-// naming the file and falls back to the defaults.
+// otherwise logger.yaml under the anchor decides,
+// and an unusable one logs one Warn naming the file and falls back to the defaults.
 func exitSweepBounds(state logger.SinkArmState) logger.RetentionBounds {
 	if state.Redirected {
 		return logger.DefaultRetentionBounds()

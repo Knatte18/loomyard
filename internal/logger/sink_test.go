@@ -601,8 +601,8 @@ func TestTraceDir_NoSinkReturnsEmpty(t *testing.T) {
 	}
 }
 
-// TestEnsureDurableSink_ArmingDoesNotSweep pins that opening the sink leaves a pre-seeded, aged,
-// dead-pid trace file in place; the sweep runs at process exit, never at arm.
+// TestEnsureDurableSink_ArmingDoesNotSweep pins that opening the sink leaves a pre-seeded, aged, dead-pid trace file in place;
+// the sweep runs at process exit, never at arm.
 func TestEnsureDurableSink_ArmingDoesNotSweep(t *testing.T) {
 	dir := t.TempDir()
 	SetDurableSinkDir(dir)

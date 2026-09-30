@@ -1,9 +1,7 @@
 // Package loggerconfig owns _lyx/config/logger.yaml, the trace-retention bounds the exit sweep reads.
 //
-// It lives outside internal/logger because internal/configengine imports internal/logger, so the
-// logger cannot load its own config without an import cycle.
-// Load never resolves cwd itself: the caller hands it the anchor (see the Cwd Resolution Invariant
-// in CONSTRAINTS.md).
+// It lives outside internal/logger because internal/configengine imports internal/logger, so the logger cannot load its own config without an import cycle.
+// Load never resolves cwd itself: the caller hands it the anchor (see the Cwd Resolution Invariant in CONSTRAINTS.md).
 package loggerconfig
 
 import (
@@ -27,7 +25,8 @@ const (
 const day = 24 * time.Hour
 
 // maxRetentionDays is the largest trace_retention_days a time.Duration can hold.
-// A larger value would overflow MaxAge into a negative duration, and the sweep would then delete every non-live trace.
+// A larger value would overflow MaxAge into a negative duration,
+// and the sweep would then delete every non-live trace.
 const maxRetentionDays = int(math.MaxInt64 / int64(day))
 
 // config mirrors logger.yaml's two keys as raw nodes, so Load can check each one's YAML tag.
@@ -73,8 +72,7 @@ func Load(anchorPath string) (logger.RetentionBounds, error) {
 }
 
 // positiveInt decodes node as a positive integer.
-// The tag check rejects a float: yaml.v3 decodes a !!float such as 1.5 or 14.0 into an int by
-// truncation without an error.
+// The tag check rejects a float: yaml.v3 decodes a !!float such as 1.5 or 14.0 into an int by truncation without an error.
 func positiveInt(key string, node *yaml.Node) (int, error) {
 	if node.Kind != yaml.ScalarNode || node.ShortTag() != "!!int" {
 		return 0, fmt.Errorf("logger config: %s must be a positive integer", key)

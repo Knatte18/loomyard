@@ -59,14 +59,10 @@
 // A process sweeps its sink directory once at exit, only when its sink armed in the current generation,
 // through cmd/lyx's exit hook; arming alone never deletes a file.
 // The bounds come from _lyx/config/logger.yaml, with the compiled-in defaults below for a redirected sink or an unusable file.
-// Files are grouped by trace ID, and a group's activity time is the newest
-// mtime among its files, so a long-running step that keeps writing stays
-// recent however long ago its file was named.
-// Groups with no activity for 14 days are deleted whole,
-// then only the 200 most recently active of what remains are kept.
-// A group holding a file whose PID belongs to a currently-running process
-// (including the sweeping process itself) is never deleted and never counts
-// toward the 200-trace bound, regardless of age.
+// Files are grouped by trace ID,
+// and a group's activity time is the newest mtime among its files, so a long-running step that keeps writing stays recent however long ago its file was named.
+// Groups with no activity for 14 days are deleted whole, then only the 200 most recently active of what remains are kept.
+// A group holding a file whose PID belongs to a currently-running process (including the sweeping process itself) is never deleted and never counts toward the 200-trace bound, regardless of age.
 //
 // # Activation outside the lyx CLI
 //
