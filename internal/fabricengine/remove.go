@@ -23,6 +23,19 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
+// ErrPairSiblingDirty is the sentinel Remove's no-force refusal wraps when the pair's other worktree
+// carries uncommitted changes.
+// It is worded without naming either side of the pair so callers outside the fabric vocabulary
+// owner set can match it with errors.Is and offer their own remedy.
+var ErrPairSiblingDirty = errors.New("the pair's sibling worktree has uncommitted changes")
+
+// siblingDirtyRefusal carries the refusal text unchanged while unwrapping to ErrPairSiblingDirty.
+type siblingDirtyRefusal struct{ msg string }
+
+func (e siblingDirtyRefusal) Error() string { return e.msg }
+
+func (e siblingDirtyRefusal) Unwrap() error { return ErrPairSiblingDirty }
+
 // RemoveResult contains the result of successfully removing a worktree pair.
 // It embeds MutationRecord, which carries the mutation record accumulated over the call.
 type RemoveResult struct {
@@ -297,7 +310,7 @@ func refuseDirtyWeftWorktree(weftTarget string) error {
 		return fmt.Errorf("check weft worktree status: %w", err)
 	}
 	if dirty {
-		return fmt.Errorf("weft worktree has uncommitted changes; run \"lyx fabric sync\" or use --force")
+		return siblingDirtyRefusal{"weft worktree has uncommitted changes; run \"lyx fabric sync\" or use --force"}
 	}
 	return nil
 }
