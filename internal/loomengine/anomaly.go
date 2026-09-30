@@ -8,6 +8,7 @@ package loomengine
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
@@ -157,12 +158,13 @@ func DetectAnomalies(entry EntryObservation, final shedengine.Status, product St
 // blocked with anything else, or failed matching on state alone. shedengine persists
 // StateBlocked from exactly two arms, so "blocked and not budget-exhausted" is exactly the
 // escalation arm whatever reason its producer supplied. The one text the partition still matches
-// is the budget literal: a producer reason spelling it verbatim would read as budget exhaustion,
-// and no shipped producer returns it.
+// is the budget prefix, matched with strings.HasPrefix because the persisted reason carries the
+// exhausted row and a goto way forward after it: a producer reason starting with it would read as
+// budget exhaustion, and no shipped producer returns one.
 func detectHaltAnomaly(final shedengine.Status, product Status) (Anomaly, bool) {
 	var kind AnomalyKind
 	switch {
-	case final.State == shedengine.StateBlocked && final.Error == shedengine.ReasonBounceBudgetExhausted:
+	case final.State == shedengine.StateBlocked && strings.HasPrefix(final.Error, shedengine.ReasonBounceBudgetExhausted):
 		kind = AnomalyBudgetExhausted
 	case final.State == shedengine.StateBlocked:
 		kind = AnomalyEscalation

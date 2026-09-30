@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -156,8 +157,8 @@ func TestStep_StuckAtBudgetBoundary(t *testing.T) {
 		t.Errorf("fourth Step State = %q; want %q", res.State, StateBlocked)
 	}
 	const wantReason = ReasonBounceBudgetExhausted
-	if res.Reason != wantReason {
-		t.Errorf("fourth Step Reason = %q; want %q", res.Reason, wantReason)
+	if !strings.HasPrefix(res.Reason, wantReason) {
+		t.Errorf("fourth Step Reason = %q; want prefix %q", res.Reason, wantReason)
 	}
 	if a.calls != 4 {
 		t.Errorf("a.calls = %d; want 4", a.calls)
@@ -489,10 +490,10 @@ func TestStep_BudgetArmIgnoresProducerReason(t *testing.T) {
 			t.Fatalf("Step %d = _, %v; want nil error", i, err)
 		}
 	}
-	if res.State != StateBlocked || res.Reason != ReasonBounceBudgetExhausted {
-		t.Errorf("State, Reason = %q, %q; want blocked, %q", res.State, res.Reason, ReasonBounceBudgetExhausted)
+	if res.State != StateBlocked || !strings.HasPrefix(res.Reason, ReasonBounceBudgetExhausted) {
+		t.Errorf("State, Reason = %q, %q; want blocked, prefix %q", res.State, res.Reason, ReasonBounceBudgetExhausted)
 	}
-	if got := readStatus(t, statusPath, statusLockPath); got.Error != ReasonBounceBudgetExhausted {
-		t.Errorf("persisted Error = %q; want %q", got.Error, ReasonBounceBudgetExhausted)
+	if got := readStatus(t, statusPath, statusLockPath); !strings.HasPrefix(got.Error, ReasonBounceBudgetExhausted) {
+		t.Errorf("persisted Error = %q; want prefix %q", got.Error, ReasonBounceBudgetExhausted)
 	}
 }

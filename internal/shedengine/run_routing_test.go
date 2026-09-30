@@ -241,11 +241,11 @@ func TestRun_BounceBudgetExhaustion(t *testing.T) {
 
 	got := readStatus(t, statusPath, statusLockPath)
 	const wantReason = ReasonBounceBudgetExhausted
-	if result.Reason != wantReason {
-		t.Errorf("Result.Reason = %q; want %q", result.Reason, wantReason)
+	if !strings.HasPrefix(result.Reason, wantReason) {
+		t.Errorf("Result.Reason = %q; want prefix %q", result.Reason, wantReason)
 	}
-	if got.Error != wantReason {
-		t.Errorf("persisted Error = %q; want %q", got.Error, wantReason)
+	if !strings.HasPrefix(got.Error, wantReason) {
+		t.Errorf("persisted Error = %q; want prefix %q", got.Error, wantReason)
 	}
 }
 

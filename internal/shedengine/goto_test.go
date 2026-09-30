@@ -152,3 +152,67 @@ func TestGoto_StepResumesAtTarget(t *testing.T) {
 		t.Errorf("Step State = %q; want done", res.State)
 	}
 }
+
+func TestStep_UnknownCurrentProducerNamesGoto(t *testing.T) {
+	shed, a, b := gotoShed(t)
+	seed := commonSeed("Renamed")
+	seed.State = StateBlocked
+	seedStatus(t, shed.StatusPath, shed.StatusLockPath, seed)
+	before := readStatus(t, shed.StatusPath, shed.StatusLockPath)
+
+	_, err := shed.Step(context.Background())
+	if err == nil {
+		t.Fatal("Step(...) = nil error; want a refusal")
+	}
+	for _, want := range []string{"lyx shed goto", "A, B"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not contain %q", err, want)
+		}
+	}
+	if after := readStatus(t, shed.StatusPath, shed.StatusLockPath); !reflect.DeepEqual(before, after) {
+		t.Errorf("status file changed on a lookup refusal")
+	}
+
+	got, err := Goto(gotoRequest(shed, "B"))
+	if err != nil {
+		t.Fatalf("Goto(...) = _, %v; want nil error", err)
+	}
+	if got.CurrentProducer != "B" || got.State != StatePaused {
+		t.Errorf("CurrentProducer, State = %q, %q; want B, paused", got.CurrentProducer, got.State)
+	}
+	if _, err := shed.Step(context.Background()); err != nil {
+		t.Fatalf("Step after goto = _, %v; want nil error", err)
+	}
+	if a.calls != 0 || b.calls != 1 {
+		t.Errorf("calls A, B = %d, %d; want 0, 1", a.calls, b.calls)
+	}
+}
+
+func TestStep_BudgetExhaustionNamesGotoAndGotoRestoresBudget(t *testing.T) {
+	shed, statusPath, statusLockPath := scriptedStuckShed(t, 1, []bool{false})
+
+	if res, err := shed.Step(context.Background()); err != nil || res.State != StateRunning {
+		t.Fatalf("first Step = %q, %v; want running bounce", res.State, err)
+	}
+	res, err := shed.Step(context.Background())
+	if err != nil {
+		t.Fatalf("second Step = _, %v; want nil", err)
+	}
+	if res.State != StateBlocked {
+		t.Fatalf("second Step State = %q; want blocked", res.State)
+	}
+	if got := readStatus(t, statusPath, statusLockPath); !strings.Contains(got.Error, "lyx shed goto") || !strings.HasPrefix(got.Error, ReasonBounceBudgetExhausted) {
+		t.Errorf("persisted Error = %q; want the budget prefix and a lyx shed goto way forward", got.Error)
+	}
+
+	if _, err := Goto(gotoRequest(shed, "Wait")); err != nil {
+		t.Fatalf("Goto(...) = _, %v; want nil error", err)
+	}
+	res, err = shed.Step(context.Background())
+	if err != nil {
+		t.Fatalf("Step after goto = _, %v; want nil", err)
+	}
+	if res.State != StateRunning || res.Next != "Wait" {
+		t.Errorf("Step after goto State/Next = %q/%q; want a bounce, running/Wait", res.State, res.Next)
+	}
+}

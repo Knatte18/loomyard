@@ -24,8 +24,10 @@ import (
 // target and its producer supplied no OutputPointer.Reason.
 const ReasonNoOnStuckTarget = "stuck with no OnStuck target"
 
-// ReasonBounceBudgetExhausted is the error the budget-exhausted blocked arm persists, regardless
+// ReasonBounceBudgetExhausted is the exact prefix of the error the budget-exhausted blocked arm persists, regardless
 // of any OutputPointer.Reason the producer supplied.
+// The persisted error continues with the exhausted row and the goto way forward,
+// so a reader matches it with strings.HasPrefix, never equality.
 const ReasonBounceBudgetExhausted = "bounce budget exhausted"
 
 // stuckReason normalizes a producer's Reason to one line: trimmed, with every run of line-break
@@ -148,7 +150,11 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 	// nearest match, because both fabricate a status nobody confirmed.
 	def, ok := findProducer(s.Producers, st.CurrentProducer)
 	if !ok {
-		return StepResult{}, fmt.Errorf("shedengine: current_producer %q in %q names no producer in the list; the producer list has changed since the file was last written", st.CurrentProducer, s.StatusPath)
+		names := make([]string, len(s.Producers))
+		for i, p := range s.Producers {
+			names[i] = p.Name
+		}
+		return StepResult{}, fmt.Errorf("shedengine: current_producer %q in %q names no producer in the list; the producer list has changed since the file was last written; way forward: \"lyx shed goto --to <producer>\" moves the run onto a row that exists; valid producers: %s", st.CurrentProducer, s.StatusPath, strings.Join(names, ", "))
 	}
 
 	// Step 3, the pause and cancellation check. The two conditions are treated identically
@@ -283,7 +289,11 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		case !output.BudgetExempt && episodeStuckCount(st.History, def, s.Producers) >= effectiveMaxBounces(def, s.MaxBounces):
 			// The boundary is pinned exactly, restated per-producer: a budget of three
 			// performs three bounce-backs and blocks on the fourth Stuck.
-			reason := ReasonBounceBudgetExhausted
+			scope := fmt.Sprintf("row %q", def.Name)
+			if def.Segment != "" {
+				scope = fmt.Sprintf("segment %q", def.Segment)
+			}
+			reason := fmt.Sprintf("%s for %s; way forward: \"lyx shed goto --to %s\" gives %s a fresh budget", ReasonBounceBudgetExhausted, def.Name, def.Name, scope)
 			if err := s.persist(st.CurrentProducer, StateBlocked, reason, nextHistory, false, ""); err != nil {
 				return StepResult{}, err
 			}

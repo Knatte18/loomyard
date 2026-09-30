@@ -64,7 +64,7 @@ func TestStep_ExemptStuckInterleavedWithinBudget(t *testing.T) {
 	if err != nil {
 		t.Fatalf("final Step = _, %v; want nil", err)
 	}
-	if res.State != StateBlocked || res.Reason != ReasonBounceBudgetExhausted {
+	if res.State != StateBlocked || !strings.HasPrefix(res.Reason, ReasonBounceBudgetExhausted) {
 		t.Errorf("final Step State/Reason = %q/%q; want blocked/%q", res.State, res.Reason, ReasonBounceBudgetExhausted)
 	}
 	got := readStatus(t, statusPath, statusLockPath)
@@ -91,7 +91,7 @@ func TestStep_ExemptStuckAfterBudgetFullySpent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Step 3 = _, %v; want nil", err)
 	}
-	if res.State != StateBlocked || res.Reason != ReasonBounceBudgetExhausted {
+	if res.State != StateBlocked || !strings.HasPrefix(res.Reason, ReasonBounceBudgetExhausted) {
 		t.Errorf("Step 3 State/Reason = %q/%q; want blocked/%q", res.State, res.Reason, ReasonBounceBudgetExhausted)
 	}
 }
