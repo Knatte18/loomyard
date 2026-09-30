@@ -561,8 +561,7 @@ func mustGitRemoteURL(tb testing.TB, dir string) string {
 }
 
 // removeCase builds Topology.Remove's VerbCase.
-// Its dirty-refusal cells declare no permitted roots: Remove runs both no-force dirtiness checks
-// before its archive and every teardown, so a correctly-refusing cell changes nothing.
+// Its dirty-refusal cells declare no permitted roots: Remove runs both no-force dirtiness checks before its archive and every teardown, so a correctly-refusing cell changes nothing.
 func removeCase() VerbCase {
 	return VerbCase{
 		Name: "Remove",
