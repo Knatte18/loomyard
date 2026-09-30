@@ -36,7 +36,7 @@ func TestRunCLIIn_BareListingNeedsNoGitRepository(t *testing.T) {
 	if exitCode != 0 {
 		t.Fatalf("RunCLIIn(nil) exit code = %d; want 0; output: %s", exitCode, out.String())
 	}
-	for _, sub := range []string{"run", "step", "status", "pause", "seed"} {
+	for _, sub := range []string{"run", "step", "status", "pause", "goto", "seed"} {
 		if !strings.Contains(out.String(), sub) {
 			t.Errorf("bare shed listing missing subcommand %q; got:\n%s", sub, out.String())
 		}

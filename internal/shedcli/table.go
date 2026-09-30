@@ -53,12 +53,12 @@ type entry struct {
 var recipes = map[string]entry{
 	"loom": {
 		Arm:           loomcli.ArmAt,
-		Verbs:         []string{"run", "step", "status", "pause"},
+		Verbs:         []string{"run", "step", "status", "pause", "goto"},
 		BootstrapVerb: loomcli.BootstrapVerb,
 	},
 	"batten": {
 		Arm:           battencli.ArmAt,
-		Verbs:         []string{"run", "step", "status", "pause"},
+		Verbs:         []string{"run", "step", "status", "pause", "goto"},
 		BootstrapVerb: battencli.BootstrapVerb,
 		RefuseSeedAt:  battencli.RefuseUnlessPrime,
 	},

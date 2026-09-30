@@ -59,7 +59,7 @@ import (
 // seed-presence check below.
 func genericShedVerb(verb string) bool {
 	switch verb {
-	case "run", "step", "status", "pause":
+	case "run", "step", "status", "pause", "goto":
 		return true
 	default:
 		return false

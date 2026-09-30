@@ -203,7 +203,7 @@ func (c *loomCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) err
 // "step" is deliberately excluded from this set for that same reason: it drives a producer through shedengine.Shed's own Step, so it needs the full wire() and its early config refusal exactly as "start" and "run" do.
 func verbUsesLightweightWiring(name string) bool {
 	switch name {
-	case "status", "pause", "validate-discussion", "validate-plan", "validate-description", "approve", "commit-records":
+	case "status", "pause", "goto", "validate-discussion", "validate-plan", "validate-description", "approve", "commit-records":
 		return true
 	default:
 		return false
@@ -307,6 +307,22 @@ Example:
   lyx loom pause
   lyx loom pause <run-id>`,
 	},
+	Goto: shedverbs.VerbText{
+		Use:   "goto [run-id] --to <producer>",
+		Short: "move a halted run onto a named row, paused, with a fresh segment budget",
+		Long: `goto moves a halted run onto the row named by --to and leaves it paused.
+It records a "goto" history entry that resets that row's segment bounce
+budget. It refuses while a driver holds the run lock and on a done run, and
+never re-opens a finished run.
+
+An optional run-id positional addresses a run other than this worktree's
+own default ("self"); goto refuses when no seed already exists at that
+run-id.
+
+Example:
+  lyx loom goto --to Plan-Write
+  lyx loom goto <run-id> --to Plan-Write`,
+	},
 }
 
 // Command returns the cobra command tree for the loom module.
@@ -329,7 +345,8 @@ idempotently and drives exactly one producer, reporting a JSON envelope --
 the single-producer primitive an external supervisor drives; "status"
 reports the current phase and, with --watch, tails it, printing a line
 only when the activity changes; "pause" requests a pause at the next
-producer boundary. "validate-discussion" and "validate-plan" are the
+producer boundary; "goto" moves a halted run onto a named row, paused, with a
+fresh segment budget. "validate-discussion" and "validate-plan" are the
 standalone form of the mechanical gates Discussion-Write's and Plan-Write's
 own rows carry, callable by the writer agent before handoff, and
 "validate-description" does the same for the Describe row's change description.
@@ -345,6 +362,7 @@ Example:
   lyx loom status
   lyx loom status --watch
   lyx loom pause
+  lyx loom goto --to Plan-Write
   lyx loom validate-discussion
   lyx loom validate-plan
   lyx loom validate-description
@@ -358,7 +376,7 @@ Example:
 	}
 
 	verbs := shedverbs.Verbs(loomVerbTexts, c.spec)
-	runVerb, stepVerb, statusVerb, pauseVerb := verbs[0], verbs[1], verbs[2], verbs[3]
+	runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb := verbs[0], verbs[1], verbs[2], verbs[3], verbs[4]
 	stepVerb.Flags().StringVar(&c.parentFlag, "parent", "", "write the pair's provenance record once for a worktree created before that record existed; refused when it disagrees with an already-recorded value")
 
 	// Each of the four generic verbs takes at most one positional argument -- the run-id arm
@@ -370,8 +388,9 @@ Example:
 	stepVerb.Args = cobra.MaximumNArgs(1)
 	statusVerb.Args = cobra.MaximumNArgs(1)
 	pauseVerb.Args = cobra.MaximumNArgs(1)
+	gotoVerb.Args = cobra.MaximumNArgs(1)
 
-	parent.AddCommand(c.startCmd(), runVerb, stepVerb, statusVerb, pauseVerb, c.validateDiscussionCmd(), c.validatePlanCmd(), c.validateDescriptionCmd(), c.approveCmd(), c.commitRecordsCmd())
+	parent.AddCommand(c.startCmd(), runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb, c.validateDiscussionCmd(), c.validatePlanCmd(), c.validateDescriptionCmd(), c.approveCmd(), c.commitRecordsCmd())
 
 	return parent
 }

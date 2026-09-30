@@ -145,6 +145,21 @@ run-id refuses by name rather than defaulting to "self".
 Example:
   lyx batten step some-slug`,
 	},
+	Goto: shedverbs.VerbText{
+		Use:   "goto [<run-id>] --to <producer>",
+		Short: "move a halted lifecycle onto a named row, paused, with a fresh segment budget",
+		Long: `goto moves a halted lifecycle onto the row named by --to and leaves it
+paused. It records a "goto" history entry that resets that row's segment
+bounce budget. It refuses while a driver holds the run lock and on a done run,
+and never re-opens a finished run.
+
+The run-id positional is required in practice, even though cobra accepts
+its absence: prime hosts many slug-addressed batten runs, so an omitted
+run-id refuses by name rather than defaulting to "self".
+
+Example:
+  lyx batten goto some-slug --to Worktree-Teardown`,
+	},
 }
 
 // Command returns the cobra command tree for the batten module.
@@ -158,16 +173,18 @@ func Command() *cobra.Command {
 worktree's own run, run it to a terminal state, and tear down -- as a single
 Shed run over a per-slug status.json. "run" starts or resumes that run for a
 slug; "step" drives it exactly one producer forward; "status" reports its
-current state; "pause" requests a pause at the run's next producer boundary.
+current state; "pause" requests a pause at the run's next producer boundary;
+"goto" moves a halted run onto a named row, paused, with a fresh segment budget.
 
-All four verbs run from the hub's prime worktree only: they refuse when invoked
+All five verbs run from the hub's prime worktree only: they refuse when invoked
 from a task worktree, from the pair's fabric sibling, or from _board.
 
 Example:
   lyx batten run some-slug
   lyx batten step some-slug
   lyx batten status some-slug
-  lyx batten pause some-slug`,
+  lyx batten pause some-slug
+  lyx batten goto some-slug --to Teardown`,
 		// RunE is set so that bare "lyx batten" lists subcommands and "lyx batten bogus"
 		// emits a JSON error envelope instead of falling through to cobra's plain-text help.
 		RunE:              clihelp.GroupRunE,
@@ -175,7 +192,7 @@ Example:
 	}
 
 	verbs := shedverbs.Verbs(battenVerbTexts, c.spec)
-	runVerb, stepVerb, statusVerb, pauseVerb := verbs[0], verbs[1], verbs[2], verbs[3]
+	runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb := verbs[0], verbs[1], verbs[2], verbs[3], verbs[4]
 	// MaximumNArgs(1), not ExactArgs(1): all three surfaces -- "lyx shed", "lyx batten", "lyx loom"
 	// -- land on this one arity contract. "lyx batten run" with no argument stops being an arity
 	// error and becomes a "self" address, which arm.go's refuseSelfAddress rejects by name with a
@@ -184,6 +201,7 @@ Example:
 	stepVerb.Args = cobra.MaximumNArgs(1)
 	statusVerb.Args = cobra.MaximumNArgs(1)
 	pauseVerb.Args = cobra.MaximumNArgs(1)
+	gotoVerb.Args = cobra.MaximumNArgs(1)
 
 	// --driver and --child-driver answer different questions now: --driver names the process the
 	// operator typed, and batten has no bootstrap verb, so armSeed's refuseBattenOwnDriverLLM still
@@ -196,7 +214,7 @@ Example:
 	stepVerb.Flags().StringVar(&c.driverFlag, "driver", shedrun.DriverGo, "the run's own driver (batten has no bootstrap verb, so \"llm\" is refused)")
 	stepVerb.Flags().StringVar(&c.childDriverFlag, "child-driver", shedrun.DriverLLM, "the driver the task worktree's own inner run uses")
 
-	parent.AddCommand(runVerb, stepVerb, statusVerb, pauseVerb)
+	parent.AddCommand(runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb)
 
 	return parent
 }
