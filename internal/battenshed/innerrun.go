@@ -63,7 +63,8 @@ func ideOpenedFile(scratchDir, producer string) string {
 	return filepath.Join(scratchDir, producer+ideOpenedFileSuffix)
 }
 
-// approvalActedFile returns the path of the marker holding the approval identity already resumed on and the child's history length at that resume; a one-line marker reads as the old layout.
+// approvalActedFile returns the path of the marker holding the approval identity already resumed on and the child's history length at that resume;
+// a one-line marker reads as the old layout.
 func approvalActedFile(scratchDir, producer string) string {
 	return filepath.Join(scratchDir, producer+approvalActedFileSuffix)
 }
@@ -286,7 +287,8 @@ func (p *innerRunProducer) exemptWait(ctx context.Context, reason string) (shede
 
 // callAwaiting handles a child halted at a human hand-off: it waits for an approval, resumes the child once per approval, and otherwise waits, always with a budget-exempt Stuck.
 // An approval already acted on has two outcomes, told apart by the child's history length against the length the marker recorded at the resume:
-// an equal length means the resume was delivered and the child's driver has not re-stepped yet, and any other length (or an old-layout marker) means the child is awaiting again and gets the re-approve hint.
+// an equal length means the resume was delivered and the child's driver has not re-stepped yet,
+// and any other length (or an old-layout marker) means the child is awaiting again and gets the re-approve hint.
 // The length is a clock-free discriminator because a re-await appends at least the child's own Awaiting entry, which the history fold never folds onto.
 func (p *innerRunProducer) callAwaiting(ctx context.Context, status shedengine.Status) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	approval, found, err := p.deps.ReadApproval()
