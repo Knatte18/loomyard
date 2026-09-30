@@ -62,6 +62,7 @@ func durableSet(l *lyxcwd.Location) []namedPath {
 		{"loomengine.LandingDir", loomengine.LandingDir(l)},
 		{"loomengine.LoomReviewsDir", loomengine.LoomReviewsDir(l)},
 		{"shedrun.StatusFile", shedrun.StatusFile(l, shedrun.SelfRunID)},
+		{"shedrun.DriveReportsDir", shedrun.DriveReportsDir(l, shedrun.SelfRunID)},
 		{"websterengine.Dir", websterengine.Dir(l.AnchorPath())},
 		{"websterengine.ReportsDir", websterengine.ReportsDir(l.AnchorPath())},
 		{"websterengine.ReportsDir/blk", filepath.Join(websterengine.ReportsDir(l.AnchorPath()), "blk")},
