@@ -592,7 +592,7 @@ func TestPublish_ClosedAndUnmergedPR_StuckDistinctFromOpen(t *testing.T) {
 	}
 	closedUnmergedReason := requireReason(t, ptr)
 
-	// Re-run against an open PR in a fresh scratch dir and compare reason-file contents.
+	// Re-run against an open PR and compare the returned reasons.
 	deps2 := newTestDeps(t)
 	deps2.PushBranch = func() error { return nil }
 	res2 := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
