@@ -4,8 +4,6 @@
 package quarrycli
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
 
 	"github.com/Knatte18/quarry/quarry"
@@ -70,14 +68,4 @@ Example:
 			return nil
 		},
 	}
-}
-
-// describeRejectedResolve formats r's own fields into one diagnostic line for a resolve result
-// that is not found, is ambiguous, or was rejected by the glyph grammar before resolution -- the
-// pre-resolution rejection case, where Error carries the message and Status is empty.
-func describeRejectedResolve(r quarry.ResolveResult) string {
-	if r.Error != "" {
-		return fmt.Sprintf("%s: %s", r.Target, r.Error)
-	}
-	return fmt.Sprintf("%s: %s", r.Target, r.Status)
 }
