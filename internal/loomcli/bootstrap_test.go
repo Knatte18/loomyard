@@ -1,6 +1,7 @@
 package loomcli
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"go/ast"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
@@ -808,5 +810,62 @@ func TestStatusStrandAddSpecPinnedByRender(t *testing.T) {
 	pins = render.FixedHeightPins([]render.Strand{status}, box, params)
 	if len(pins) != 0 {
 		t.Errorf("lone status strand pins = %v; want none", pins)
+	}
+}
+
+func TestRemoveStatusStrands(t *testing.T) {
+	strands := func(pairs ...string) []reedengine.StrandStatus {
+		var out []reedengine.StrandStatus
+		for i := 0; i < len(pairs); i += 2 {
+			out = append(out, reedengine.StrandStatus{GUID: pairs[i], Name: pairs[i+1]})
+		}
+		return out
+	}
+	tests := []struct {
+		name       string
+		strands    []reedengine.StrandStatus
+		statusErr  error
+		failGUIDs  map[string]bool
+		wantRemove []string
+		wantWarns  int
+		wantInLog  string
+	}{
+		{name: "none named", strands: strands("a", "ly-drive", "b", "other")},
+		{name: "one among others", strands: strands("a", "ly-drive", "b", "loom-status", "c", "loom-status-extra"), wantRemove: []string{"b"}},
+		{name: "two named", strands: strands("a", "loom-status", "b", "x", "c", "loom-status"), wantRemove: []string{"a", "c"}},
+		{name: "status fails", strands: strands("a", "loom-status"), statusErr: errors.New("boom"), wantWarns: 1},
+		{name: "first remove fails", strands: strands("a", "loom-status", "b", "loom-status"), failGUIDs: map[string]bool{"a": true}, wantRemove: []string{"a", "b"}, wantWarns: 1, wantInLog: "a"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			logger.SetOutput(&buf)
+			t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+
+			var removed []string
+			status := func() (reedengine.StatusResult, error) {
+				return reedengine.StatusResult{Strands: tt.strands}, tt.statusErr
+			}
+			remove := func(guid string, recursive bool) (reedengine.Removed, error) {
+				if recursive {
+					t.Errorf("remove(%q) called with recursive=true", guid)
+				}
+				removed = append(removed, guid)
+				if tt.failGUIDs[guid] {
+					return reedengine.Removed{}, errors.New("refused")
+				}
+				return reedengine.Removed{}, nil
+			}
+			removeStatusStrands(status, remove)
+			if diff := cmp.Diff(tt.wantRemove, removed); diff != "" {
+				t.Errorf("removed guids mismatch (-want +got):\n%s", diff)
+			}
+			if got := strings.Count(buf.String(), "\n"); got != tt.wantWarns {
+				t.Errorf("warning lines = %d; want %d; log: %q", got, tt.wantWarns, buf.String())
+			}
+			if tt.wantInLog != "" && !strings.Contains(buf.String(), tt.wantInLog) {
+				t.Errorf("log %q does not name guid %q", buf.String(), tt.wantInLog)
+			}
+		})
 	}
 }
