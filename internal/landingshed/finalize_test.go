@@ -38,6 +38,9 @@ type recordingParentMerger struct {
 	// headSHA and headErr script HeadSHA's return.
 	headSHA string
 	headErr error
+	// order, when non-nil, receives "merge" and "push" as those calls happen, so a test can
+	// assert their order against other seams that append to the same slice.
+	order *[]string
 }
 
 type mergeCall struct {
@@ -53,6 +56,9 @@ type mergeCallResult struct {
 func (m *recordingParentMerger) Merge(source string, opts fabricengine.MergeOptions) (fabricengine.MergeResult, error) {
 	idx := len(m.calls)
 	m.calls = append(m.calls, mergeCall{source: source, opts: opts})
+	if m.order != nil {
+		*m.order = append(*m.order, "merge")
+	}
 	if idx >= len(m.results) {
 		idx = len(m.results) - 1
 	}
@@ -64,6 +70,9 @@ func (m *recordingParentMerger) Merge(source string, opts fabricengine.MergeOpti
 
 func (m *recordingParentMerger) PushBranch(opts fabricengine.SyncOptions) (fabricengine.PushResult, error) {
 	m.pushCalls = append(m.pushCalls, opts)
+	if m.order != nil {
+		*m.order = append(*m.order, "push")
+	}
 	return fabricengine.PushResult{}, m.pushErr
 }
 
@@ -632,5 +641,106 @@ func TestFinalize_NoGitHubCallWhenNotRequiredOrPushSkipped(t *testing.T) {
 				t.Errorf("requests = %v; want none", s.requests)
 			}
 		})
+	}
+}
+
+// --- MarkTaskDone ---
+
+// TestFinalize_MarkTaskDone_OrderAndVerdict pins where the board seam sits relative to the merge
+// and the push, and that neither a failing push nor a failing seam changes what it is called for.
+func TestFinalize_MarkTaskDone_OrderAndVerdict(t *testing.T) {
+	tests := []struct {
+		name        string
+		pushErr     error
+		markErr     error
+		wantOutcome shedengine.Outcome
+	}{
+		{"merge, mark, push", nil, nil, shedengine.Done},
+		{"failing push still marks", errors.New("remote rejected"), nil, shedengine.Stuck},
+		{"erroring closure still Done", nil, errors.New("board unavailable"), shedengine.Done},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var order []string
+			deps := newFinalizeDeps(t)
+			deps.MarkTaskDone = func() error {
+				order = append(order, "mark")
+				return tt.markErr
+			}
+			res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
+			merger := &recordingParentMerger{
+				results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}},
+				pushErr: tt.pushErr,
+				order:   &order,
+			}
+			fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return merger, nil }}
+
+			outcome, _, err := fz.Call(context.Background())
+			if err != nil {
+				t.Fatalf("Call() error = %v; want nil", err)
+			}
+			if outcome != tt.wantOutcome {
+				t.Errorf("Call() outcome = %q; want %q", outcome, tt.wantOutcome)
+			}
+			if got, want := strings.Join(order, ","), "merge,mark,push"; got != want {
+				t.Errorf("call order = %q; want %q", got, want)
+			}
+		})
+	}
+}
+
+// TestFinalize_MarkTaskDone_CalledAfterMergeInRetry asserts the seam runs once, after the retried
+// parent-side merge that finally lands, not after the failed first attempt.
+func TestFinalize_MarkTaskDone_CalledAfterMergeInRetry(t *testing.T) {
+	var order []string
+	deps := newFinalizeDeps(t)
+	deps.MarkTaskDone = func() error { order = append(order, "mark"); return nil }
+	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
+	merger := &recordingParentMerger{
+		results: []mergeCallResult{
+			{err: &fabricengine.ErrMergeInRequired{}},
+			{result: fabricengine.MergeResult{Committed: true}},
+		},
+		order: &order,
+	}
+	fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return merger, nil }}
+
+	outcome, _, err := fz.Call(context.Background())
+	if err != nil || outcome != shedengine.Done {
+		t.Fatalf("Call() = (%q, %v); want (Done, nil)", outcome, err)
+	}
+	if got, want := strings.Join(order, ","), "merge,merge,mark,push"; got != want {
+		t.Errorf("call order = %q; want %q", got, want)
+	}
+}
+
+// TestFinalize_MarkTaskDone_NotCalledOnFailedMerge asserts a merge that never lands never marks the
+// task done, and that a nil seam is simply skipped.
+func TestFinalize_MarkTaskDone_NotCalledOnFailedMerge(t *testing.T) {
+	called := false
+	deps := newFinalizeDeps(t)
+	deps.MarkTaskDone = func() error { called = true; return nil }
+	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
+	merger := &recordingParentMerger{results: []mergeCallResult{{err: errors.New("boom")}}}
+	fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return merger, nil }}
+
+	outcome, _, err := fz.Call(context.Background())
+	if err != nil || outcome != shedengine.Stuck {
+		t.Fatalf("Call() = (%q, %v); want (Stuck, nil)", outcome, err)
+	}
+	if called {
+		t.Error("MarkTaskDone was called after a failed parent-side merge; want it never called")
+	}
+}
+
+func TestFinalize_MarkTaskDone_NilIsAbsent(t *testing.T) {
+	deps := newFinalizeDeps(t)
+	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
+	merger := &recordingParentMerger{results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}}
+	fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return merger, nil }}
+
+	outcome, _, err := fz.Call(context.Background())
+	if err != nil || outcome != shedengine.Done {
+		t.Fatalf("Call() = (%q, %v); want (Done, nil)", outcome, err)
 	}
 }

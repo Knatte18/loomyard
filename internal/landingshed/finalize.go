@@ -166,6 +166,7 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 	mergeOpts := fabricengine.MergeOptions{Squash: fz.deps.Config.Squash, Message: summary.LandingMessage(fz.deps.Config.CoAuthoredBy)}
 	_, mergeErr := parentHandle.Merge(fz.deps.TaskBranch, mergeOpts)
 	if mergeErr == nil {
+		fz.markTaskDone()
 		return fz.pushParent(ctx, parentHandle)
 	}
 
@@ -180,6 +181,7 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 		}
 		_, retryErr := parentHandle.Merge(fz.deps.TaskBranch, mergeOpts)
 		if retryErr == nil {
+			fz.markTaskDone()
 			return fz.pushParent(ctx, parentHandle)
 		}
 		mergeErr = retryErr
@@ -193,6 +195,18 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 		return fz.stuckOrCancelled(ctx, guardErr.Error())
 	}
 	return fz.stuckOrCancelled(ctx, fmt.Sprintf("parent-side merge failed: %v", mergeErr), "error", mergeErr)
+}
+
+// markTaskDone marks the task's board entry done right after a parent-side merge succeeds, ahead of
+// the push, so a skipped or failed push still leaves the task done: the change is on the parent once
+// the merge lands. A failure is a logged warning and never changes the verdict.
+func (fz *Finalize) markTaskDone() {
+	if fz.deps.MarkTaskDone == nil {
+		return
+	}
+	if err := fz.deps.MarkTaskDone(); err != nil {
+		logger.Warn("landingshed: mark board task done failed", "producer", finalizeName, "cause", err)
+	}
 }
 
 // pushParent publishes the parent branch the merge just landed on to its upstream, so a landing

@@ -108,6 +108,16 @@ type Deps struct {
 	ApprovalPath string
 	TaskHead     func() (string, error)
 
+	// MarkTaskDone marks the task's board entry done. Finalize calls it once the parent-side merge
+	// has landed, before the parent push, and only logs a failure: the change is on the parent
+	// whatever the board says. landingshed names no board path, so the board wiring lives in the
+	// closure.
+	//
+	// Nil means "no board to update", following CommitStatus's nil-is-absent convention; a missing
+	// seam fails safe by leaving the board untouched. internal/loomcli's landingDeps fills it, and
+	// its drift guard keeps it filled.
+	MarkTaskDone func() error
+
 	// Shuttle is the session-runner seam, told exactly the way every existing session-driving
 	// constructor in this tree takes its own. The resolver's constructor rejects a nil value for
 	// it, so without this field neither producer could build a resolver at all, and the conflict
