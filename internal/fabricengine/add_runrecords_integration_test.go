@@ -105,6 +105,34 @@ func TestAdd_DropsParentRunRecords(t *testing.T) {
 	}
 }
 
+// TestAdd_DropsParentRunRecords_SubpathAnchor repeats the drop in a hub anchored at a subpath, where the run-records root is joined under AnchorRel both for the fork's index drop and for the first weft commit, so the two joins must name the same tree.
+func TestAdd_DropsParentRunRecords_SubpathAnchor(t *testing.T) {
+	t.Parallel()
+
+	h := hubforge.NewHub(t, "backend")
+	l := h.Location
+	const slug = "drops-records-subpath"
+	weftRoot := mustWeftRepoRoot(t, l)
+
+	commitRunRecords(t, l, weftRoot)
+	forkPoint := shaOf(t, weftRoot, fabricengine.WeftBranchName("main"))
+
+	if _, err := h.Topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
+		t.Fatalf("Add(%q): %v", slug, err)
+	}
+
+	weftBranch := fabricengine.WeftBranchName(slug)
+	if got := gitRevListCount(t, weftRoot, forkPoint+".."+weftBranch); got != 1 {
+		t.Errorf("weft branch is %d commits ahead of the fork point; want exactly 1", got)
+	}
+	if got := trackedUnderRoot(t, l, weftRoot, weftBranch); got != "" {
+		t.Errorf("pair weft branch still tracks run records:\n%s", got)
+	}
+	if _, err := os.Stat(filepath.Join(fabricengine.WeftWorktreePath(l, slug), l.AnchorRel, shedrun.RunsRootRel())); !os.IsNotExist(err) {
+		t.Errorf("run-records root exists on the pair's weft disk (stat err = %v)", err)
+	}
+}
+
 // TestAdd_NoRunRecordsToDrop asserts a parent tracking nothing under the root gives the same single origin-record commit as before the drop existed.
 func TestAdd_NoRunRecordsToDrop(t *testing.T) {
 	t.Parallel()
