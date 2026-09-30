@@ -544,8 +544,9 @@ const maxStatusHistoryEntries = 20
 // History is bounded to the most recent maxStatusHistoryEntries entries, always alongside the true
 // history_length, so a bounded view is never mistaken for a short one.
 // A blocked run also carries the producer's own recorded stuck reason: Worktree-Create, Seed-Child
-// and Worktree-Teardown carry no on_stuck, so their reason is the persisted error, and this extra
-// is kept for the Run-Shed block through the budget arm, whose error stays the fixed budget literal.
+// and Worktree-Teardown carry no on_stuck, so their reason is the persisted error, and this
+// extra is kept for the Run-Shed block through the budget arm, whose error stays the fixed budget
+// literal.
 func (c *battenCLI) battenStatusExtras(st shedengine.Status) (map[string]any, error) {
 	history, truncated := recentHistory(st.History)
 	extras := map[string]any{
