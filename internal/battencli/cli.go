@@ -184,7 +184,7 @@ Example:
   lyx batten step some-slug
   lyx batten status some-slug
   lyx batten pause some-slug
-  lyx batten goto some-slug --to Teardown`,
+  lyx batten goto some-slug --to Worktree-Teardown`,
 		// RunE is set so that bare "lyx batten" lists subcommands and "lyx batten bogus"
 		// emits a JSON error envelope instead of falling through to cobra's plain-text help.
 		RunE:              clihelp.GroupRunE,
