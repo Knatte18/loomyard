@@ -54,16 +54,15 @@ func joinSectionBody(section []string) string {
 // so the first failing command fails the whole check.
 const verifyCommandJoiner = " && "
 
-// joinVerifyCommands returns section's command lines — the non-blank lines left after skipping fence and comment lines — trimmed and chained with verifyCommandJoiner
-// into the single command line webster runs, or "" if section is nil or holds only blank, fence, and comment lines.
-// Two kinds of line are skipped, judged on the trimmed line: a markdown code-fence line (starts with
-// "```" or "~~~", so info strings, longer fences, and indented fences need no open/close tracking),
+// joinVerifyCommands returns section's command lines — the non-blank lines left after skipping fence and comment lines — trimmed and chained with verifyCommandJoiner into the single command line webster runs,
+// or "" if section is nil or holds only blank, fence, and comment lines.
+// Two kinds of line are skipped, judged on the trimmed line:
+// a markdown code-fence line (starts with "```" or "~~~", so info strings, longer fences, and indented fences need no open/close tracking),
 // and a full-line shell comment (starts with "#").
-// A chained fence marker is a shell syntax error at every commit, and a chained comment turns every
-// later command into comment text, a silent false pass.
+// A chained fence marker is a shell syntax error at every commit,
+// and a chained comment turns every later command into comment text, a silent false pass.
 // The plan stencil tells the planner the section holds one or more commands, one per line;
-// keeping only the first line silently dropped every later one, so a plan whose section read
-// `go vet ./...` then `go test ./...` had its tests skipped by the integration gate.
+// keeping only the first line silently dropped every later one, so a plan whose section read `go vet ./...` then `go test ./...` had its tests skipped by the integration gate.
 func joinVerifyCommands(section []string) string {
 	var commands []string
 	for _, raw := range section {
