@@ -415,7 +415,8 @@ func TestCreateRefusal_LeftoverBranchRemedyNeverNamesCheckout(t *testing.T) {
 
 // TestTeardownRefusal_RecordsRemedyNamesCommitRecordsNeverForce asserts an uncommitted-run-records
 // refusal is reworded to batten's own recovery -- commit the records in the task anchor, then
-// resume -- and never names --force, while every other teardown error passes through unchanged.
+// resume -- and never names --force, that a failed archive names the resume, and that every other
+// teardown error passes through unchanged.
 func TestTeardownRefusal_RecordsRemedyNamesCommitRecordsNeverForce(t *testing.T) {
 	const anchor = "/work/wts/some-slug"
 	dirty := fmt.Errorf("remove: %w", fabricengine.ErrPairSiblingDirty)
@@ -431,6 +432,20 @@ func TestTeardownRefusal_RecordsRemedyNamesCommitRecordsNeverForce(t *testing.T)
 	}
 	if strings.Contains(got.Error(), "--force") {
 		t.Errorf("teardownRefusal(sibling dirty) = %q; want it to never name --force", got.Error())
+	}
+
+	archiveFailed := fmt.Errorf("%w: push refused", fabricengine.ErrArchiveFailed)
+	got = teardownRefusal(archiveFailed, "some-slug", anchor)
+	if !errors.Is(got, fabricengine.ErrArchiveFailed) {
+		t.Errorf("teardownRefusal(archive failed) = %v; want it to still wrap ErrArchiveFailed", got)
+	}
+	for _, want := range []string{"left in place", "push refused", "lyx batten run some-slug"} {
+		if !strings.Contains(got.Error(), want) {
+			t.Errorf("teardownRefusal(archive failed) = %q; want it to contain %q", got.Error(), want)
+		}
+	}
+	if strings.Contains(got.Error(), "--force") {
+		t.Errorf("teardownRefusal(archive failed) = %q; want it to never name --force", got.Error())
 	}
 
 	other := errors.New("the task worktree has uncommitted changes")

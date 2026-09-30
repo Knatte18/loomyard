@@ -111,7 +111,7 @@ func waitForDriveReport(t *testing.T, dir string, timeout time.Duration) string 
 // delay elapses, proving shuttle's own blocking Start returns past the provider's startup gates
 // rather than waiting on the whole driver session to finish; the started run's persisted state file
 // exists under the run directory the handle reports; and the drive report the stubbed driver writes
-// and exits lands under the run's ephemeral scratch directory, never its durable one.
+// and exits lands under the run's durable drive-reports directory, never its ephemeral scratch one.
 func TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver(t *testing.T) {
 	const stubSettleDelay = 2 * time.Second
 	stubPath := integrationWriteStubDriverScript(t, stubSettleDelay)
@@ -163,9 +163,9 @@ func TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver(t *testing.
 		t.Errorf("run state file %s: %v; want it persisted under the run directory the handle reports", runStatePath, err)
 	}
 
-	scratchDir := shedrun.ScratchDir(loc, c.runID)
-	reportPath := waitForDriveReport(t, scratchDir, 10*time.Second)
-	if !strings.HasPrefix(reportPath, scratchDir+string(filepath.Separator)) {
-		t.Errorf("drive report path = %q; want it under the run's ephemeral scratch directory %q, not its durable one", reportPath, scratchDir)
+	reportsDir := shedrun.DriveReportsDir(loc, c.runID)
+	reportPath := waitForDriveReport(t, reportsDir, 10*time.Second)
+	if !strings.HasPrefix(reportPath, reportsDir+string(filepath.Separator)) {
+		t.Errorf("drive report path = %q; want it under the run's durable drive-reports directory %q, not its ephemeral scratch one", reportPath, reportsDir)
 	}
 }

@@ -19,6 +19,13 @@ import (
 // archiveTagSHALen is how many leading hex digits of the tip SHA the archive tag name carries.
 const archiveTagSHALen = 12
 
+// ErrArchiveFailed is the sentinel every archiveWeftTip error wraps, so a teardown caller can tell
+// a failed archive -- which left the pair untouched, so a plain re-run retries it -- from any other
+// refusal with errors.Is and offer its own remedy.
+// It is worded without naming either side of the pair, for callers outside the fabric vocabulary
+// owner set.
+var ErrArchiveFailed = errors.New("archiving the pair's records before teardown failed")
+
 // archiveWeftTip tags the tip of weftBranch as archive/<slug>/<first 12 hex of the tip SHA> and
 // pushes that tag to the weft repo's origin.
 // The tip is the local refs/heads/<weftBranch> when present, else the origin's copy, fetched.
@@ -29,8 +36,15 @@ const archiveTagSHALen = 12
 // A branch present neither locally nor on origin returns no tag, no reason and no error, since there
 // is nothing to archive.
 // An existing tag of that name pointing elsewhere, and any push failure, are returned errors.
+// Every returned error wraps ErrArchiveFailed.
 // KindTagPushed is recorded on rec only after the push observably succeeded.
 func archiveWeftTip(rec *Mutations, l *lyxcwd.Location, slug, weftBranch string) (tag string, skippedReason string, err error) {
+	defer func() {
+		if err != nil {
+			err = fmt.Errorf("%w: %w", ErrArchiveFailed, err)
+		}
+	}()
+
 	weftRoot, err := WeftRepoRoot(l)
 	if err != nil {
 		return "", "", fmt.Errorf("archive weft tip of %q: resolve weft repo: %w", weftBranch, err)

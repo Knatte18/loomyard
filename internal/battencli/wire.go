@@ -161,10 +161,13 @@ func taskWorktreeComplete(prime *lyxcwd.Location, slug string) (present, complet
 // "lyx fabric remove --force" run from prime removes whatever part of the pair Add got to -- the
 // task worktree, its sibling, their junctions, portal and launcher entries, and the sibling's
 // branch -- in one command, which no pair of plain git commands can do from here: the sibling is a
-// worktree of another repository. The task branch is named with fabric's branch prefix, since
-// Remove never deletes it and Add refuses a leftover one.
+// worktree of another repository. Remove also deletes the task branch when its work is already on
+// another ref -- always so for a create interrupted before any work -- and keeps it otherwise, so
+// the branch deletion is named as conditional on the branch surviving the removal: an unconditional
+// "git branch -D" fails on the branch Remove already deleted. The task branch is named with fabric's
+// branch prefix, since Add refuses a leftover one.
 func incompletePairRemedy(slug, branch string) string {
-	return fmt.Sprintf("remove it by hand from here (\"lyx fabric remove --force %s\") and its branch (\"git branch -D %s\")", slug, branch)
+	return fmt.Sprintf("remove it by hand from here (\"lyx fabric remove --force %s\"), then, only if its branch %s is still present afterwards, delete that branch too (\"git branch -D %s\")", slug, branch, branch)
 }
 
 // createRefusal rewords the one create refusal whose fabric remedy is wrong from prime, and passes
@@ -188,13 +191,18 @@ func createRefusal(err error) error {
 	)
 }
 
-// teardownRefusal rewords the teardown refusal for uncommitted run records, and passes every other
-// error through unchanged.
+// teardownRefusal rewords the teardown refusal for uncommitted run records, names the resume for a
+// failed archive of the run records, and passes every other error through unchanged.
 //
 // fabric's own refusal for a dirty pair sibling leaves --force as the way out, and --force would
 // discard exactly the records this task exists to keep. The records are uncommitted when a driver
 // ended before its end-of-session commit, so the remedy named here commits them first.
+// A failed archive runs before any teardown mutation, so the pair is still whole and a plain resume
+// retries it once the remote is reachable.
 func teardownRefusal(err error, slug, taskAnchor string) error {
+	if errors.Is(err, fabricengine.ErrArchiveFailed) {
+		return fmt.Errorf("the pair for %q was left in place because archiving its run records to the remote failed: %w; make the remote reachable, then resume this run with \"lyx batten run %s\"", slug, err, slug)
+	}
 	if !errors.Is(err, fabricengine.ErrPairSiblingDirty) {
 		return err
 	}
