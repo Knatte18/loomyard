@@ -8,6 +8,7 @@ package loggerconfig
 
 import (
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
@@ -22,6 +23,12 @@ const (
 	countKey = "trace_retention_count"
 	daysKey  = "trace_retention_days"
 )
+
+const day = 24 * time.Hour
+
+// maxRetentionDays is the largest trace_retention_days a time.Duration can hold.
+// A larger value would overflow MaxAge into a negative duration, and the sweep would then delete every non-live trace.
+const maxRetentionDays = int(math.MaxInt64 / int64(day))
 
 // config mirrors logger.yaml's two keys as raw nodes, so Load can check each one's YAML tag.
 type config struct {
@@ -38,6 +45,7 @@ func ConfigPath(anchorPath string) string {
 // Load resolves the trace-retention bounds from logger.yaml under anchorPath.
 // An absent _lyx/ directory or an absent logger.yaml resolves the embedded ConfigTemplate() instead of erroring;
 // a file that exists but is invalid, or carries a non-positive or non-integer value, errors naming the key.
+// A trace_retention_days value above maxRetentionDays also errors naming the key.
 func Load(anchorPath string) (logger.RetentionBounds, error) {
 	resolved, err := configengine.LoadOrTemplate(anchorPath, moduleName, []byte(ConfigTemplate()))
 	if err != nil {
@@ -57,8 +65,11 @@ func Load(anchorPath string) (logger.RetentionBounds, error) {
 	if err != nil {
 		return logger.RetentionBounds{}, err
 	}
+	if days > maxRetentionDays {
+		return logger.RetentionBounds{}, fmt.Errorf("logger config: %s must be at most %d, got %d", daysKey, maxRetentionDays, days)
+	}
 
-	return logger.RetentionBounds{Count: count, MaxAge: time.Duration(days) * 24 * time.Hour}, nil
+	return logger.RetentionBounds{Count: count, MaxAge: time.Duration(days) * day}, nil
 }
 
 // positiveInt decodes node as a positive integer.

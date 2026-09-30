@@ -107,6 +107,34 @@ func TestLoad_InvalidValueErrorsNamingKey(t *testing.T) {
 	}
 }
 
+// TestLoad_DaysBeyondDurationRangeErrors pins that a day count too large for a time.Duration errors instead of overflowing MaxAge into a negative duration that would sweep every non-live trace.
+func TestLoad_DaysBeyondDurationRangeErrors(t *testing.T) {
+	anchor := t.TempDir()
+	seedConfig(t, anchor, "trace_retention_count: 200\ntrace_retention_days: 1000000\n")
+
+	_, err := loggerconfig.Load(anchor)
+	if err == nil {
+		t.Fatal("Load: want error for an out-of-range day count, got nil")
+	}
+	if !strings.Contains(err.Error(), "trace_retention_days") {
+		t.Errorf("error %q does not name key %q", err, "trace_retention_days")
+	}
+}
+
+// TestLoad_LargestDurationDayCountLoads pins that the largest day count a time.Duration holds still loads, with a positive MaxAge.
+func TestLoad_LargestDurationDayCountLoads(t *testing.T) {
+	anchor := t.TempDir()
+	seedConfig(t, anchor, "trace_retention_count: 200\ntrace_retention_days: 106751\n")
+
+	got, err := loggerconfig.Load(anchor)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got.MaxAge <= 0 {
+		t.Errorf("Load MaxAge = %v; want positive", got.MaxAge)
+	}
+}
+
 func TestLoad_MissingKeyErrors(t *testing.T) {
 	anchor := t.TempDir()
 	seedConfig(t, anchor, "trace_retention_count: 200\n")
