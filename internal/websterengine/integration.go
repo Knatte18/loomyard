@@ -14,16 +14,16 @@
 package websterengine
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/verifyrun"
 )
 
 // FabricBisector is the git surface in-process bisect drives: capture branch, checkout SHA detached,
@@ -166,29 +166,14 @@ func checkoutAndVerify(repo FabricBisector, sha, verifyCmd, worktree string) (bo
 	return runVerifyCommand(verifyCmd, worktree)
 }
 
-// runVerifyCommand runs verifyCmd in-process via os/exec. A non-zero exit is
-// a failed verify (false, nil); a spawn failure propagates as a real error.
+// runVerifyCommand runs verifyCmd in worktree through the shared verifyrun runner.
+// A non-zero exit is a failed verify (false, nil); a spawn failure propagates as a real error.
 func runVerifyCommand(verifyCmd, worktree string) (bool, error) {
-	shell, flag := "sh", "-c"
-	if runtime.GOOS == "windows" {
-		shell, flag = "cmd", "/C"
-	}
-
-	cmd := exec.Command(shell, flag, verifyCmd)
-	cmd.Dir = worktree
-	logger.Info("websterengine: spawning verify command", "shell", shell, "verifyCmd", verifyCmd, "worktree", worktree)
-	if err := cmd.Run(); err != nil {
-		// *exec.ExitError is a failed verify (expected); other errors propagate.
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
-			logger.Info("websterengine: verify command exited", "verifyCmd", verifyCmd, "worktree", worktree, "exitCode", exitErr.ExitCode())
-			return false, nil
-		}
-		logger.Warn("websterengine: verify command failed to spawn", "verifyCmd", verifyCmd, "worktree", worktree, "cause", err)
+	exitCode, err := verifyrun.Run(context.Background(), verifyCmd, worktree, io.Discard)
+	if err != nil {
 		return false, fmt.Errorf("webster: bisect: run verify command %q: %w", verifyCmd, err)
 	}
-	logger.Info("websterengine: verify command exited", "verifyCmd", verifyCmd, "worktree", worktree, "exitCode", 0)
-	return true, nil
+	return exitCode == 0, nil
 }
 
 // RecordIntegrationFailure marks a terminal, non-successful record for the integration stage into
