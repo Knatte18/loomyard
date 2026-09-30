@@ -39,6 +39,7 @@ func statusFields(st orchengine.State, cfg orchengine.Config, strand reedengine.
 		"cycle_count":       st.CycleCount,
 		"last_handoff":      st.LastHandoff,
 		"last_abort_reason": st.LastAbortReason,
+		"stuck":             st.Stuck,
 		"watcher_exit":      st.WatcherExit,
 	}
 }
@@ -50,7 +51,8 @@ func (c *orchCLI) statusCmd() *cobra.Command {
 		Short: "report the orchestrator strand, watcher and cycle state",
 		Long: `status prints one JSON envelope: the recorded strand and whether it is live,
 whether a watcher holds its lock, the latest context reading against the cycle
-threshold, and the persisted cycle phase, count, last handoff and abort reason.`,
+threshold, and the persisted cycle phase, count, last handoff and abort reason.
+stuck names why an overdue phase is still waiting for the session to go idle.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {

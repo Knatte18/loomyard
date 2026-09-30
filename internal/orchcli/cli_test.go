@@ -103,7 +103,7 @@ func TestStatus_ReportsPopulatedState(t *testing.T) {
 	c := newTestCLI(t, fake)
 	err := orchengine.SaveState(c.paths, orchengine.State{
 		Strand: "g1", Phase: orchengine.PhaseClearing, LastContextTokens: 999, LastContextKnown: true,
-		CycleCount: 4, LastHandoff: "h.md", LastAbortReason: "why", WatcherExit: "gone",
+		CycleCount: 4, LastHandoff: "h.md", LastAbortReason: "why", Stuck: "busy", WatcherExit: "gone",
 		PhaseEnteredAt: time.Unix(0, 0),
 	})
 	if err != nil {
@@ -117,7 +117,7 @@ func TestStatus_ReportsPopulatedState(t *testing.T) {
 	want := map[string]any{
 		"strand": "g1", "strand_live": true, "watcher_live": false, "context_tokens": float64(999),
 		"threshold_tokens": float64(1234), "phase": "clearing", "cycle_count": float64(4),
-		"last_handoff": "h.md", "last_abort_reason": "why", "watcher_exit": "gone",
+		"last_handoff": "h.md", "last_abort_reason": "why", "stuck": "busy", "watcher_exit": "gone",
 	}
 	for k, v := range want {
 		if env[k] != v {

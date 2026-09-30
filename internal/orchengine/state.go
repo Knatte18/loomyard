@@ -58,6 +58,7 @@ type State struct {
 
 	CycleCount      int    `json:"cycle_count"`       // Cycles that reached /clear.
 	LastAbortReason string `json:"last_abort_reason"` // Why the last cycle aborted.
+	Stuck           string `json:"stuck"`             // Why the current phase is overdue and waiting on the session; empty while on time.
 	WatcherExit     string `json:"watcher_exit"`      // Why the last watcher exited; empty while one runs.
 }
 
@@ -80,6 +81,39 @@ func SaveState(p Paths, s State) error {
 	}
 	if err := state.WriteJSON(p.StatePath, p.StateLockPath, s); err != nil {
 		return fmt.Errorf("orch: save state: %w", err)
+	}
+	return nil
+}
+
+// errStrandReplaced reports that the persisted state was bound to another strand after the caller loaded it.
+var errStrandReplaced = errors.New("orch: state was bound to another strand since it was loaded")
+
+// saveStateForStrand writes s only while the persisted record still names s.Strand, checked and written under one lock.
+// It returns errStrandReplaced without writing when the record names another strand,
+// so a watcher can never overwrite the binding a concurrent `start` just recorded.
+func saveStateForStrand(p Paths, s State) error {
+	err := state.UpdateJSON(p.StatePath, p.StateLockPath, func(cur State, found bool) (State, error) {
+		if found && cur.Strand != s.Strand {
+			return cur, errStrandReplaced
+		}
+		return s, nil
+	})
+	if err != nil && !errors.Is(err, errStrandReplaced) {
+		return fmt.Errorf("orch: save state: %w", err)
+	}
+	return err
+}
+
+// updateState applies mutate to the persisted state under one lock, starting from a zero State in phase idle when the file is absent.
+func updateState(p Paths, mutate func(State) State) error {
+	err := state.UpdateJSON(p.StatePath, p.StateLockPath, func(cur State, found bool) (State, error) {
+		if !found {
+			cur = State{Phase: PhaseIdle}
+		}
+		return mutate(cur), nil
+	})
+	if err != nil {
+		return fmt.Errorf("orch: update state: %w", err)
 	}
 	return nil
 }
@@ -135,6 +169,7 @@ func ResetForFreshLaunch(s State, strand string) State {
 	s.PhaseInjected = false
 	s.PendingHandoff = ""
 	s.PendingResume = ""
+	s.Stuck = ""
 	s.WatcherExit = ""
 	return s
 }

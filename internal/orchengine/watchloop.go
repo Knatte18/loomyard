@@ -62,14 +62,13 @@ func acquireWatchLock(p Paths, sleep func(time.Duration)) (*lock.FileLock, error
 	return nil, ErrWatcherRunning
 }
 
-// recordExit persists why the watcher is exiting.
+// recordExit persists reason as the watcher's exit reason under the state lock, touching no other field.
+// An empty reason marks a watcher as running.
 func (w *Watcher) recordExit(reason string) error {
-	st, err := LoadState(w.paths)
-	if err != nil {
-		return err
-	}
-	st.WatcherExit = reason
-	return SaveState(w.paths, st)
+	return updateState(w.paths, func(st State) State {
+		st.WatcherExit = reason
+		return st
+	})
 }
 
 // Run holds the watch lock and calls Tick every PollInterval until Tick reports done, ctx is cancelled, or the cap on consecutive tick errors is reached.
@@ -84,12 +83,7 @@ func (w *Watcher) Run(ctx context.Context, sleep func(time.Duration)) error {
 	}
 	defer l.Release()
 
-	st, err := LoadState(w.paths)
-	if err != nil {
-		return err
-	}
-	st.WatcherExit = ""
-	if err := SaveState(w.paths, st); err != nil {
+	if err := w.recordExit(""); err != nil {
 		return err
 	}
 

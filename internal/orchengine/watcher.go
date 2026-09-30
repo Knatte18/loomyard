@@ -3,6 +3,7 @@
 // Every provider and reed interaction goes through the Session seam, so the whole state machine runs against a fake in untagged unit tests.
 // The watcher saves State before every side effect, and a restarted watcher resumes from it:
 // a non-idle phase's injection is treated as unconfirmed until a turn end proves it landed or a passing idle probe shows it did not, and then it is sent again.
+// Nothing is typed into the pane, text or `/clear`, unless the idle probe passed on the same tick.
 
 package orchengine
 
@@ -12,6 +13,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -49,17 +51,27 @@ type Watcher struct {
 	strand  string // Strand the cursor belongs to.
 	cursor  int64  // Events-file position read through.
 
+	// replaying is true from a restart into a non-idle phase until the first read,
+	// whose events predate the restart in unknown order against the handoff file.
+	replaying bool
+
 	newest     *shuttleengine.Event // Newest event read since the last return to idle.
 	newestRead time.Time            // When newest was first read.
 
 	seen phaseEvents // What the current non-idle phase has read so far.
 }
 
-// phaseEvents records the events read in the current non-idle phase, which the cursor has moved past and a later tick must still know.
+// phaseEvents records what the current non-idle phase has observed, which the cursor has moved past and a later tick must still know.
 type phaseEvents struct {
 	turnEnd      bool
 	firstTurnEnd shuttleengine.Event
 	ask          bool
+
+	// handoffWritten is set once a stat taken before a tick's event read finds the handoff file written.
+	handoffWritten bool
+	// turnEndAfterHandoff is set by a turn end read after handoffWritten was set,
+	// so a turn end that predates the file never opens the clear gate.
+	turnEndAfterHandoff bool
 }
 
 // NewWatcher builds a watcher over session.
@@ -75,7 +87,23 @@ func isTurnEnd(ev shuttleengine.Event) bool {
 // Tick runs one poll.
 // done is true when the watcher should exit because the strand is gone.
 // An error leaves the persisted phase as it was for the next tick or watcher.
+// A tick whose state is bound to another strand while it runs saves nothing and returns no error,
+// and the next tick follows the new strand.
 func (w *Watcher) Tick() (done bool, err error) {
+	done, err = w.tick()
+	if errors.Is(err, errStrandReplaced) {
+		logger.Info("orch: state was bound to another strand mid-tick; the next tick follows it", "strandGUID", w.strand)
+		return false, nil
+	}
+	return done, err
+}
+
+// save persists st unless the state has been bound to another strand since this tick loaded it.
+func (w *Watcher) save(st State) error {
+	return saveStateForStrand(w.paths, st)
+}
+
+func (w *Watcher) tick() (done bool, err error) {
 	st, err := LoadState(w.paths)
 	if err != nil {
 		return false, err
@@ -90,11 +118,18 @@ func (w *Watcher) Tick() (done bool, err error) {
 	}
 	if !alive {
 		st.WatcherExit = "strand gone"
-		return true, SaveState(w.paths, st)
+		return true, w.save(st)
 	}
 
 	if !w.started || w.strand != st.Strand {
 		if st, err = w.initCursor(st); err != nil {
+			return false, err
+		}
+	}
+
+	if st.Phase == PhaseHandoffRequested && !w.seen.handoffWritten {
+		// Stat before the event read, so every turn end read from here on was read after the file was seen written.
+		if w.seen.handoffWritten, err = handoffWritten(st.PendingHandoff); err != nil {
 			return false, err
 		}
 	}
@@ -130,12 +165,19 @@ func (w *Watcher) Tick() (done bool, err error) {
 		if ev.Kind == shuttleengine.EventAsk {
 			w.seen.ask = true
 		}
-		if isTurnEnd(ev) && !w.seen.turnEnd {
+		if !isTurnEnd(ev) {
+			continue
+		}
+		if !w.seen.turnEnd {
 			w.seen.turnEnd, w.seen.firstTurnEnd = true, ev
 		}
+		if w.seen.handoffWritten && !w.replaying {
+			w.seen.turnEndAfterHandoff = true
+		}
 	}
+	w.replaying = false
 	if readingChanged {
-		if err := SaveState(w.paths, st); err != nil {
+		if err := w.save(st); err != nil {
 			return false, err
 		}
 	}
@@ -158,7 +200,7 @@ func (w *Watcher) Tick() (done bool, err error) {
 // and a same-strand phase's injection is marked unconfirmed so the landed check runs again.
 func (w *Watcher) initCursor(st State) (State, error) {
 	w.started, w.strand = true, st.Strand
-	w.newest, w.seen = nil, phaseEvents{}
+	w.newest, w.seen, w.replaying = nil, phaseEvents{}, false
 	switch {
 	case st.Phase == PhaseIdle:
 		w.cursor = st.LastInjectionOffset
@@ -169,8 +211,9 @@ func (w *Watcher) initCursor(st State) (State, error) {
 	default:
 		st.PhaseInjected = false
 		w.cursor = st.PhaseEventsOffset
+		w.replaying = true
 	}
-	return st, SaveState(w.paths, st)
+	return st, w.save(st)
 }
 
 // toIdle returns st to idle, persisting the cursor read through and forgetting the newest event,
@@ -179,12 +222,13 @@ func (w *Watcher) toIdle(st State, abortReason string) error {
 	st.Phase = PhaseIdle
 	st.PhaseInjected = false
 	st.PendingHandoff, st.PendingResume = "", ""
+	st.Stuck = ""
 	st.LastInjectionOffset = w.cursor
 	if abortReason != "" {
 		st.LastAbortReason = abortReason
 	}
 	w.newest, w.seen = nil, phaseEvents{}
-	return SaveState(w.paths, st)
+	return w.save(st)
 }
 
 // enter persists a new non-idle phase, unconfirmed, before its side effect.
@@ -194,14 +238,26 @@ func (w *Watcher) enter(st State, phase Phase, now time.Time) (State, error) {
 	st.PhaseEnteredAt = now
 	st.PhaseEventsOffset = w.cursor
 	st.PhaseInjected = false
+	st.Stuck = ""
 	w.seen = phaseEvents{}
-	return st, SaveState(w.paths, st)
+	return st, w.save(st)
 }
 
 // confirm persists that the phase's injection landed.
 func (w *Watcher) confirm(st State) error {
 	st.PhaseInjected = true
-	return SaveState(w.paths, st)
+	return w.save(st)
+}
+
+// markStuck records reason as the current phase's stuck condition for `status`,
+// saving and logging it only when it changes so a long wait logs once.
+func (w *Watcher) markStuck(st State, reason string) error {
+	if st.Stuck == reason {
+		return nil
+	}
+	logger.Warn("orch: cycle phase stuck", "phase", string(st.Phase), "reason", reason, "strandGUID", st.Strand)
+	st.Stuck = reason
+	return w.save(st)
 }
 
 func (w *Watcher) tickIdle(st State, now time.Time) error {
@@ -247,12 +303,14 @@ func (w *Watcher) tickHandoff(st State, now time.Time) error {
 	if w.seen.ask {
 		return w.toIdle(st, "session asked a question during the handoff")
 	}
-	written, err := handoffWritten(st.PendingHandoff)
-	if err != nil {
-		return err
-	}
-	if written && w.seen.turnEnd {
-		return w.startClearing(st, now)
+	if w.seen.turnEndAfterHandoff {
+		idle, err := w.session.SessionIdle(st.Strand)
+		if err != nil {
+			return err
+		}
+		if idle {
+			return w.startClearing(st, now)
+		}
 	}
 	if now.Sub(st.PhaseEnteredAt) >= w.cfg.HandoffTimeout() {
 		return w.toIdle(st, "handoff timed out")
@@ -293,6 +351,7 @@ func handoffWritten(path string) (bool, error) {
 }
 
 // startClearing renders the resume prompt first, so the text the cleared session needs is known good before /clear runs, then persists clearing and types /clear.
+// The caller must have seen the session idle on this tick.
 func (w *Watcher) startClearing(st State, now time.Time) error {
 	resume, err := RenderResumePrompt(w.stencilsDir, st.PendingHandoff)
 	if err != nil {
@@ -309,29 +368,33 @@ func (w *Watcher) startClearing(st State, now time.Time) error {
 	return w.confirm(st)
 }
 
+// tickClearing types nothing while the session is not idle, however long that lasts;
+// past the handoff timeout it records the wait in State.Stuck instead.
+// Once idle, an unconfirmed clear is typed again before the timeout and skipped after it, and a confirmed one moves on to resuming.
 func (w *Watcher) tickClearing(st State, now time.Time) error {
 	timedOut := now.Sub(st.PhaseEnteredAt) >= w.cfg.HandoffTimeout()
-	if !timedOut {
-		if !st.PhaseInjected {
-			// A clear that errored never reached the pane, and a pre-clear pane passes the idle probe too.
-			if err := w.session.ClearSession(st.Strand); err != nil {
-				return err
-			}
-			return w.confirm(st)
+	idle, err := w.session.SessionIdle(st.Strand)
+	if err != nil {
+		return err
+	}
+	if !idle {
+		if timedOut {
+			return w.markStuck(st, "clearing timed out with the session not idle; nothing is typed until it is idle")
 		}
-		idle, err := w.session.SessionIdle(st.Strand)
-		if err != nil {
+		return nil
+	}
+	if !st.PhaseInjected && !timedOut {
+		// A clear that errored never reached the pane, and a pre-clear pane passes the idle probe too.
+		if err := w.session.ClearSession(st.Strand); err != nil {
 			return err
 		}
-		if !idle {
-			return nil
-		}
+		return w.confirm(st)
 	}
 
 	if st.PhaseInjected {
 		st.CycleCount++
 	}
-	st, err := w.enter(st, PhaseResuming, now)
+	st, err = w.enter(st, PhaseResuming, now)
 	if err != nil {
 		return err
 	}

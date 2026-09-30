@@ -30,9 +30,15 @@ type fakeSession struct {
 	calls     []string // "send:<text>" and "clear", in order.
 	tokenAsks []string
 	onSend    func()
+	onAlive   func()
 }
 
-func (f *fakeSession) StrandAlive(string) (bool, error) { return f.alive, nil }
+func (f *fakeSession) StrandAlive(string) (bool, error) {
+	if f.onAlive != nil {
+		f.onAlive()
+	}
+	return f.alive, nil
+}
 
 func (f *fakeSession) ReadEvents(_ string, offset int64) ([]shuttleengine.Event, int64, error) {
 	if offset > int64(len(f.events)) {
@@ -387,7 +393,7 @@ func TestWatcher_HandoffCompleteClearsThenResumes(t *testing.T) {
 	}
 }
 
-func TestWatcher_ProbeNeverPassingResumesAfterTimeout(t *testing.T) {
+func TestWatcher_ClearingTimeoutNeverTypesWhileBusy(t *testing.T) {
 	e := newWatchEnv(t)
 	e.reachClearing()
 	e.s.idle = false
@@ -397,9 +403,89 @@ func TestWatcher_ProbeNeverPassingResumesAfterTimeout(t *testing.T) {
 	}
 	e.clock.advance(101 * time.Second)
 	e.tick()
+	e.tick()
 	st := e.state()
-	if st.Phase != PhaseResuming || st.CycleCount != 1 || e.s.count("send:") != 2 {
+	if st.Phase != PhaseClearing || st.Stuck == "" || e.s.count("send:") != 1 || e.s.count("clear") != 1 {
+		t.Fatalf("typed into a busy pane or stuck unrecorded: state = %+v calls = %v", st, e.s.calls)
+	}
+	e.s.idle = true
+	e.tick()
+	st = e.state()
+	if st.Phase != PhaseResuming || st.CycleCount != 1 || st.Stuck != "" || e.s.count("send:") != 2 {
 		t.Fatalf("state = %+v calls = %v", st, e.s.calls)
+	}
+}
+
+func TestWatcher_HandoffGateWaitsForIdleBeforeClear(t *testing.T) {
+	e := newWatchEnv(t)
+	e.injectHandoff()
+	e.writeHandoff()
+	e.s.events = append(e.s.events, stop("handoff"))
+	e.s.idle = false
+	e.tick()
+	e.tick()
+	if e.s.count("clear") != 0 || e.state().Phase != PhaseHandoffRequested {
+		t.Fatalf("cleared a busy pane: calls = %v phase = %s", e.s.calls, e.state().Phase)
+	}
+	e.s.idle = true
+	e.tick()
+	if e.s.count("clear") != 1 || e.state().Phase != PhaseClearing {
+		t.Fatalf("calls = %v phase = %s", e.s.calls, e.state().Phase)
+	}
+}
+
+func TestWatcher_TurnEndBeforeHandoffFileDoesNotOpenClearGate(t *testing.T) {
+	e := newWatchEnv(t)
+	e.injectHandoff()
+	e.s.events = append(e.s.events, stop("before the file"))
+	e.tick()
+	e.writeHandoff()
+	e.tick()
+	e.tick()
+	if e.s.count("clear") != 0 || e.state().Phase != PhaseHandoffRequested {
+		t.Fatalf("an earlier turn end opened the gate: calls = %v phase = %s", e.s.calls, e.state().Phase)
+	}
+	e.s.events = append(e.s.events, stop("after the file"))
+	e.tick()
+	if e.s.count("clear") != 1 || e.state().Phase != PhaseClearing {
+		t.Fatalf("calls = %v phase = %s", e.s.calls, e.state().Phase)
+	}
+}
+
+func TestWatcher_RestartReplayedTurnEndDoesNotOpenClearGate(t *testing.T) {
+	e := newWatchEnv(t)
+	e.injectHandoff()
+	e.writeHandoff()
+	e.s.events = append(e.s.events, stop("handoff"))
+	e.w = e.newWatcher()
+	e.tick()
+	e.tick()
+	if e.s.count("clear") != 0 {
+		t.Fatalf("a replayed turn end opened the gate: %v", e.s.calls)
+	}
+	e.s.events = append(e.s.events, stop("later"))
+	e.tick()
+	if e.s.count("clear") != 1 || e.state().Phase != PhaseClearing {
+		t.Fatalf("calls = %v phase = %s", e.s.calls, e.state().Phase)
+	}
+}
+
+func TestWatcher_ClearRetryWaitsForIdle(t *testing.T) {
+	e := newWatchEnv(t)
+	e.injectHandoff()
+	e.writeHandoff()
+	e.s.events = append(e.s.events, stop("handoff"))
+	e.s.clearErrs = []error{errBoom}
+	e.tickErr()
+	e.s.idle = false
+	e.tick()
+	e.clock.advance(101 * time.Second)
+	e.tick()
+	if e.s.count("clear") != 1 || e.s.count("send:") != 1 {
+		t.Fatalf("typed into a busy pane: %v", e.s.calls)
+	}
+	if e.state().Stuck == "" {
+		t.Error("an overdue clearing phase should record Stuck")
 	}
 }
 
@@ -703,8 +789,11 @@ func TestWatcher_ClearTimeoutSendErrorResendsOnlyOncePassing(t *testing.T) {
 	e.reachClearing()
 	e.s.idle = false
 	e.clock.advance(101 * time.Second)
+	e.tick()
+	e.s.idle = true
 	e.s.sendErrs = []error{errBoom}
 	e.tickErr()
+	e.s.idle = false
 	resume := e.s.calls[len(e.s.calls)-1]
 	sends := e.s.count("send:")
 	e.tick()
@@ -817,5 +906,26 @@ func TestWatcher_StrandGoneIsDone(t *testing.T) {
 	}
 	if e.state().WatcherExit == "" {
 		t.Error("WatcherExit should be recorded")
+	}
+}
+
+func TestWatcher_StrandReboundMidTickIsNotOverwritten(t *testing.T) {
+	e := newWatchEnv(t)
+	e.s.alive = false
+	e.s.onAlive = func() {
+		e.setState(func(s *State) { s.Strand = "s2" })
+	}
+	done, err := e.w.Tick()
+	if err != nil || done {
+		t.Fatalf("Tick = %v, %v; want false, nil", done, err)
+	}
+	if st := e.state(); st.Strand != "s2" || st.WatcherExit != "" {
+		t.Fatalf("the rebound state was overwritten: %+v", st)
+	}
+
+	e.s.alive, e.s.onAlive = true, nil
+	e.tick()
+	if e.w.strand != "s2" {
+		t.Errorf("watcher strand = %q; want s2", e.w.strand)
 	}
 }

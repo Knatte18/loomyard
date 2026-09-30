@@ -60,17 +60,27 @@
 // The watcher saves State before every side effect, so a restarted watcher resumes from it.
 //
 //   - handoff-requested: the handoff instruction is sent, naming a new timestamped file under handoffs/.
-//     The phase ends the moment the file exists and is non-empty and a turn end has been seen.
+//     The phase ends once the file exists and is non-empty, a turn end has been read after the file was first seen written,
+//     and the idle probe passes.
 //   - clearing: the resume prompt is rendered first, so a stencil failure aborts before anything is cleared.
 //     Then `/clear` is typed, and the phase waits for the pane to show an idle input box.
 //   - resuming: the resume prompt is sent verbatim, and the phase ends at the resumed session's first turn end, whose context reading becomes the new one.
 //   - idle: every return, completed or aborted, persists the events position read through.
 //
+// Nothing is ever typed into the pane, an instruction, a prompt or `/clear`, unless the idle probe passed on the same tick,
+// so a running turn, a permission prompt or an operator's draft is never typed over.
+// When in doubt the watcher waits.
+//
 // Restart rules: a non-idle phase's injection is unconfirmed until a turn end proves it landed or a passing idle probe shows it did not, and it is then sent again.
+// The turn ends a restarted watcher re-reads from a handoff-requested phase's start never open the clear gate, since their order against the file write is unknown.
 // A phase belonging to another strand is reset to idle.
 // A handoff-requested or resuming phase that exceeds the handoff timeout, or a session that asks a question during the handoff, aborts back to idle with LastAbortReason set.
-// A clearing phase that exceeds it moves on to resuming, since the handoff is already written and the resume prompt lands harmlessly in an uncleared session.
+// A clearing phase that exceeds it keeps waiting for the idle probe and records the wait in State.Stuck, which `status` reports.
+// Once the session is idle it moves on to resuming, and an unconfirmed `/clear` is not retried then, since the handoff is already written and the resume prompt lands in an idle, uncleared session.
 // The guarantee holds through every restart: nothing before the handoff file is written and seen can reach `/clear`, and LastHandoff moves only when a cycle passes that gate.
+//
+// A tick saves State only while the record still names the strand it loaded, checked under the state lock,
+// so a watcher never overwrites the binding a concurrent `start` just recorded.
 //
 // # The .lyx/orch/ layout
 //
