@@ -139,7 +139,7 @@ func stepCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 
 			// The in-flight record is written before anything can refuse, and the envelope the body
 			// prints, success or refusal, is teed into its own record when the body returns.
-			rec := newStepRecorder(spec.StepsDir, logger.TraceID())
+			rec := newStepRecorder(spec.StepsDir, logger.TraceID(), runningBuildIdentity())
 			rec.begin()
 			defer rec.finish()
 			out := rec.tee(cmd.OutOrStdout())

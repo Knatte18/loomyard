@@ -181,7 +181,7 @@ func statusCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 				"trace_dir":        traceDir,
 				"run_id":           spec.RunID,
 				"progress":         progressOf(spec.Routing, st.CurrentProducer),
-				"last_step":        lastStepOf(spec.StepsDir),
+				"last_step":        lastStepOf(spec.StepsDir, runningBuildIdentity()),
 			}
 			if spec.Hooks.StatusExtras != nil {
 				extras, err := spec.Hooks.StatusExtras(st)

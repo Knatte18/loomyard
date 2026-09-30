@@ -345,6 +345,7 @@ User-facing modules each get one `lyx <module>` namespace:
   `status` reports the current phase as a single JSON envelope and, with `--watch`, tails it, printing a line only when the composed activity changes rather than once per poll.
   On a terminal `status` renders a human view instead, and `--json` forces the envelope there; `--watch --json` is refused.
   The envelope carries `run_id`, `progress` (the main-line position and bounce count over the recipe's producer graph) and `last_step` (the record `lyx shed step` keeps under `.lyx`).
+  It also carries the build identity (`vcs_revision`, `vcs_modified`) of the `lyx` that ran that step, and `binary_changed`, true when the running `lyx` is a different known build.
   A routed `stuck` reads as `bounced to <row>` in `activity.last`.
   The run directory is named by the worktree slug (`_lyx/shed/<slug>/`), with `self` kept as an alias that resolves to it,
   and a legacy `_lyx/shed/self/` still resolves.
