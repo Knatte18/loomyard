@@ -56,7 +56,7 @@ func (g *PRGate) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outpu
 	}
 
 	if !contains(g.deps.Config.RequirePRToBase, g.deps.ParentBranch) {
-		return shedengine.Done, shedengine.OutputPointer{}, nil
+		return g.done(ctx)
 	}
 
 	owner, repo, err := githubclient.ParseOwnerRepo(g.deps.OriginURL)
@@ -79,7 +79,7 @@ func (g *PRGate) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outpu
 
 	switch {
 	case pr != nil && !pr.GetMergedAt().IsZero():
-		return shedengine.Done, shedengine.OutputPointer{}, nil
+		return g.done(ctx)
 	case pr == nil:
 		return g.awaiting(ctx, "no pull request exists for the task branch; reopen the pull request or abandon the task")
 	case pr.GetState() != "open":
@@ -105,7 +105,7 @@ func (g *PRGate) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outpu
 	}
 
 	if approved && pr.GetNumber() == approval.PRNumber && head == approval.HeadSHA && taskHead == approval.HeadSHA {
-		return shedengine.Done, shedengine.OutputPointer{}, nil
+		return g.done(ctx)
 	}
 	if rejected && pr.GetNumber() == rejection.PRNumber && head == rejection.HeadSHA && taskHead == rejection.HeadSHA {
 		return g.stuck(ctx, withPRURL(fmt.Sprintf("pull request #%d was rejected at %s; the findings go to rework", rejection.PRNumber, rejection.HeadSHA), pr.GetHTMLURL()))
@@ -125,6 +125,14 @@ func (g *PRGate) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outpu
 		mismatch = fmt.Sprintf("the open pull request is now #%d", pr.GetNumber())
 	}
 	return g.awaiting(ctx, withPRURL(fmt.Sprintf("the %s of pull request #%d at %s no longer matches: %s; inspect the pull request and re-run `lyx loom approve` or `lyx loom reject` (the record was written by `lyx loom %s`)", kind, recNumber, recHead, mismatch, verb), pr.GetHTMLURL()))
+}
+
+// done returns Done after consulting cancelErr first, so every exit of Call, Done included, reports an operator stop as the cancellation error.
+func (g *PRGate) done(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
+	if cerr := cancelErr(ctx, prGateName); cerr != nil {
+		return "", shedengine.OutputPointer{}, cerr
+	}
+	return shedengine.Done, shedengine.OutputPointer{}, nil
 }
 
 // awaiting ends a call at a human hand-off: a cancelled context returns the cancellation error, and otherwise it logs reason and returns Awaiting with reason on the output pointer.

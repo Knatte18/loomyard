@@ -266,3 +266,23 @@ func TestPRGate_CancelledContext_IsError(t *testing.T) {
 		t.Error("Call() under a cancelled context: error = nil; want cancellation error")
 	}
 }
+
+// TestPRGate_CancelledBeforeDone_IsError cancels the context after the pull-request query, inside TaskHead, and asserts a matching approval's Done exit reports the cancellation instead.
+func TestPRGate_CancelledBeforeDone_IsError(t *testing.T) {
+	f := newPRGateFixture(t, openPR(3, prGateHead))
+	writeApprovalAt(t, f.deps.ApprovalPath, 3, prGateHead)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	f.deps.TaskHead = func() (string, error) {
+		cancel()
+		return prGateHead, nil
+	}
+	g, err := NewPRGate(f.deps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outcome, _, err := g.Call(ctx)
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("Call() = %q, %v; want a context.Canceled error", outcome, err)
+	}
+}
