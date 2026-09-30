@@ -52,15 +52,15 @@
 //     same Call that produced it; at Call entry, an already-APPROVED verdict maps to the clear
 //     instead -- unless the entry-time probe finds the judge that wrote it still alive, in which
 //     case waiting on that judge is itself the harvest that earns the Done (see "Every spawning
-//     adapter probes for a live agent first" below). A parsed BLOCKING verdict maps to Stuck on harvest or on a BLOCKING replay, both
-//     reporting the round's ledger path as the pointer; every other path -- the seed call, the
-//     re-bounce, the clear itself, every degraded path -- reports an empty Path, with the re-bounce
-//     and degraded paths carrying their cause on Reason. The ledger is
-//     reported rather than withheld because the Bouncer's ledger is a real cross-round artifact a
-//     human reads, and hiding it on a BLOCKING Stuck would hide it exactly when an operator most
-//     needs it. The exists-or-empty rule matters because Shed never stats a pointer, so a pointer
-//     naming an unwritten file is caught nowhere and is simply persisted into the history for a
-//     human to read as though the artifact were there.
+//     adapter probes for a live agent first" below). A parsed BLOCKING verdict maps to Stuck on
+//     harvest or on a BLOCKING replay, both reporting the round's ledger path as the pointer; every
+//     other path -- the seed call, the re-bounce, the clear itself, every degraded path -- reports
+//     an empty Path, with the re-bounce and degraded paths carrying their cause on Reason. The
+//     ledger is reported rather than withheld because the Bouncer's ledger is a real cross-round
+//     artifact a human reads, and hiding it on a BLOCKING Stuck would hide it exactly when an
+//     operator most needs it. The exists-or-empty rule matters because Shed never stats a pointer,
+//     so a pointer naming an unwritten file is caught nowhere and is simply persisted into the
+//     history for a human to read as though the artifact were there.
 //
 // # Told, never derived
 //
