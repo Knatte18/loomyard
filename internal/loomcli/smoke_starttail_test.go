@@ -20,10 +20,11 @@ import (
 	"time"
 )
 
-// an attached `lyx loom start` leaves no strand named "loom-operator" and exactly one status
-// strand. The smoke run has no TTY, so the attach itself exits non-zero after the tail ran; the
-// strand table is what is asserted. The literal is spelled inline as a guard against the removed operator strand
-// coming back: Selvage is the operator's terminal, not a strand.
+// TestSmokeStart_AttachTailAddsNoOperatorStrand pins that an attached `lyx loom start` leaves no
+// strand named "loom-operator" and exactly one status strand. The smoke run has no TTY, so the
+// attach itself exits non-zero after the tail ran; the strand table is what is asserted. The
+// literal is spelled inline as a guard against the removed operator strand coming back: Selvage is
+// the operator's terminal, not a strand.
 func TestSmokeStart_AttachTailAddsNoOperatorStrand(t *testing.T) {
 	tmuxBinaryPath(t)
 	exe := buildLyxBinary(t)
@@ -46,11 +47,11 @@ func TestSmokeStart_AttachTailAddsNoOperatorStrand(t *testing.T) {
 	}
 }
 
-// a `lyx loom start --no-attach` bootstrap still leaves a live per-hub watchdog daemon for the
-// fixture hub, found by the same argv-signature scan the smoke teardown uses. This is what proves
-// the watchdog call sits outside the mustAttach gate -- the single thing a later edit is most
-// likely to get wrong -- which is the one property start_watchdog_test.go structurally cannot reach
-// (see its own doc comment).
+// TestSmokeWatchdog_NoAttachStillSpawnsTheDaemon pins that a `lyx loom start --no-attach`
+// bootstrap still leaves a live per-hub watchdog daemon for the fixture hub, found by the same
+// argv-signature scan the smoke teardown uses. This is what proves the watchdog call sits outside
+// the mustAttach gate -- the single thing a later edit is most likely to get wrong -- which is the
+// one property start_watchdog_test.go structurally cannot reach (see its own doc comment).
 func TestSmokeWatchdog_NoAttachStillSpawnsTheDaemon(t *testing.T) {
 	tmuxBinaryPath(t)
 	exe := buildLyxBinary(t)
