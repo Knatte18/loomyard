@@ -104,6 +104,9 @@ type Spec struct {
 	// RunID is the resolved run-id the arming module addressed, reported as run_id on the status and
 	// every step envelope. The empty string means the arming module supplied none.
 	RunID string
+	// MissingStatusWayForward is the told trailing "way forward:" clause for a missing status file, passed to goto.
+	// The empty string falls back to shedengine's generic clause.
+	MissingStatusWayForward string
 	// Routing is the told projection of the recipe's producer graph that the envelopes' progress key
 	// is derived from. The zero value (no producers) means no progress is known, and progress is
 	// then reported as null.

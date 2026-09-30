@@ -190,8 +190,10 @@ func (c *loomCLI) specFor(verb string) shedverbs.Spec {
 		LockPath:            c.shedPaths.LockPath,
 		StatusLockPath:      c.shedPaths.StatusLockPath,
 		EnsureStatusLockDir: true,
-		StatusLabel:         "loom",
-		DecodeErrPrefix:     "loom:",
+
+		MissingStatusWayForward: c.shedPaths.MissingStatusWayForward,
+		StatusLabel:             "loom",
+		DecodeErrPrefix:         "loom:",
 		// Both busy messages are passthrough: loom's run reports the bare ErrShedBusy sentinel
 		// text as an ordinary error envelope today, and step reports err.Error() verbatim
 		// alongside its own kind.

@@ -369,3 +369,18 @@ func TestGoto_BlockedAtOffshootAdmitsPartnerNotSuccessor(t *testing.T) {
 		t.Errorf("Goto --to PR-Gate = %v; want nil", err)
 	}
 }
+
+// TestGoto_MissingStatusFileUsesToldWayForward pins that a told clause replaces the generic seed advice.
+func TestGoto_MissingStatusFileUsesToldWayForward(t *testing.T) {
+	shed, _, _ := gotoShed(t)
+	req := gotoRequest(shed, "A")
+	req.MissingStatusWayForward = "way forward: told clause"
+
+	_, err := Goto(req)
+	if err == nil {
+		t.Fatal("Goto(...) over a missing status file = nil error; want a refusal")
+	}
+	if !strings.Contains(err.Error(), "way forward: told clause") || strings.Contains(err.Error(), "lyx shed seed") {
+		t.Errorf("error %q; want the told clause and not lyx shed seed", err)
+	}
+}

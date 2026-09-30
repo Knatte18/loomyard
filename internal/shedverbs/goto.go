@@ -49,6 +49,9 @@ func gotoCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 				StatusLockPath: spec.StatusLockPath,
 				Producers:      spec.Routing.Producers,
 				Target:         target,
+
+				RunID:                   spec.RunID,
+				MissingStatusWayForward: spec.MissingStatusWayForward,
 			})
 			if err != nil {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))

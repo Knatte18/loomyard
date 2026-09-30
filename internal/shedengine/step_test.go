@@ -528,3 +528,45 @@ func TestStep_BudgetArmIgnoresProducerReason(t *testing.T) {
 		t.Errorf("persisted Error = %q; want prefix %q", got.Error, ReasonBounceBudgetExhausted)
 	}
 }
+
+// TestStep_ToldRunIDNamesGotoWithRunID pins that an exhausted budget and a missing producer address the told run-id in their goto way forward.
+func TestStep_ToldRunIDNamesGotoWithRunID(t *testing.T) {
+	const want = "lyx shed goto some-slug --to"
+
+	shed, statusPath, statusLockPath := scriptedStuckShed(t, 1, []bool{false})
+	shed.RunID = "some-slug"
+	if _, err := shed.Step(context.Background()); err != nil {
+		t.Fatalf("first Step = _, %v; want nil", err)
+	}
+	if _, err := shed.Step(context.Background()); err != nil {
+		t.Fatalf("second Step = _, %v; want nil", err)
+	}
+	if got := readStatus(t, statusPath, statusLockPath); !strings.Contains(got.Error, want) {
+		t.Errorf("exhausted-budget reason = %q; want it to contain %q", got.Error, want)
+	}
+
+	shed, _, _ = gotoShed(t)
+	shed.RunID = "some-slug"
+	seed := commonSeed("Renamed")
+	seed.State = StateBlocked
+	seedStatus(t, shed.StatusPath, shed.StatusLockPath, seed)
+	_, err := shed.Step(context.Background())
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Errorf("missing-producer error = %v; want it to contain %q", err, want)
+	}
+}
+
+// TestStep_ToldMissingStatusWayForward pins that a told clause replaces the generic seed advice.
+func TestStep_ToldMissingStatusWayForward(t *testing.T) {
+	shed, _, _, _ := newTestShed(t)
+	shed.Producers = []ProducerDef{{Name: "A", Producer: fixedOutcomeProducer(Done, "")}}
+	shed.MissingStatusWayForward = "way forward: told clause"
+
+	_, err := shed.Step(context.Background())
+	if err == nil {
+		t.Fatal("Step(...) with no status file = nil; want a refusal")
+	}
+	if !strings.Contains(err.Error(), "way forward: told clause") || strings.Contains(err.Error(), "lyx shed seed") {
+		t.Errorf("Step(...) error = %q; want the told clause and not lyx shed seed", err.Error())
+	}
+}

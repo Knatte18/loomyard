@@ -121,6 +121,30 @@ const busyWayForward = "way forward: \"lyx shed pause\" asks the live driver to 
 // missingStatusWayForward is the trailing clause Step and Goto put on a missing-status-file refusal.
 const missingStatusWayForward = "way forward: seed the run through its recipe's bootstrap verb, or \"lyx shed seed\" for a recipe without one"
 
+// missingStatusClause returns the told missing-status clause, or the generic one when none is told.
+func missingStatusClause(told string) string {
+	if told != "" {
+		return told
+	}
+	return missingStatusWayForward
+}
+
+// runVerb renders a quoted `lyx shed <verb> [<run-id>]` command for a way-forward text.
+func runVerb(verb, runID string) string {
+	if runID == "" {
+		return fmt.Sprintf("\"lyx shed %s\"", verb)
+	}
+	return fmt.Sprintf("\"lyx shed %s %s\"", verb, runID)
+}
+
+// gotoCommand renders the quoted goto command a way-forward text names, addressing the run by run-id when one is told.
+func gotoCommand(runID, target string) string {
+	if runID == "" {
+		return fmt.Sprintf("\"lyx shed goto --to %s\"", target)
+	}
+	return fmt.Sprintf("\"lyx shed goto %s --to %s\"", runID, target)
+}
+
 // stepLocked runs exactly one iteration of the six-step loop and reports it as a StepResult.
 // It assumes the run lock is already held by the caller and never acquires or releases it itself
 // -- Run holds it for the whole loop, and Step holds it for this one call alone.
@@ -132,7 +156,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		return StepResult{}, fmt.Errorf("shedengine: read status file %q: %w", s.StatusPath, err)
 	}
 	if !found {
-		return StepResult{}, fmt.Errorf("shedengine: status file %q does not exist; Shed never seeds one; %s", s.StatusPath, missingStatusWayForward)
+		return StepResult{}, fmt.Errorf("shedengine: status file %q does not exist; Shed never seeds one; %s", s.StatusPath, missingStatusClause(s.MissingStatusWayForward))
 	}
 	if !st.State.valid() {
 		return StepResult{}, fmt.Errorf("shedengine: status file %q carries an invalid state %q", s.StatusPath, st.State)
@@ -160,7 +184,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		for i, p := range s.Producers {
 			names[i] = p.Name
 		}
-		return StepResult{}, fmt.Errorf("shedengine: current_producer %q in %q names no producer in the list; the producer list has changed since the file was last written; way forward: \"lyx shed goto --to <producer>\" moves the run onto a row that exists; valid producers: %s", st.CurrentProducer, s.StatusPath, strings.Join(names, ", "))
+		return StepResult{}, fmt.Errorf("shedengine: current_producer %q in %q names no producer in the list; the producer list has changed since the file was last written; way forward: %s moves the run onto a row that exists; valid producers: %s", st.CurrentProducer, s.StatusPath, gotoCommand(s.RunID, "<producer>"), strings.Join(names, ", "))
 	}
 
 	// Step 3, the pause and cancellation check. The two conditions are treated identically
@@ -297,7 +321,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 			if def.Segment != "" {
 				scope = fmt.Sprintf("segment %q", def.Segment)
 			}
-			reason := fmt.Sprintf("%s for %s; way forward: \"lyx shed goto --to %s\" gives %s a fresh budget", ReasonBounceBudgetExhausted, def.Name, def.Name, scope)
+			reason := fmt.Sprintf("%s for %s; way forward: %s gives %s a fresh budget", ReasonBounceBudgetExhausted, def.Name, gotoCommand(s.RunID, def.Name), scope)
 			if err := s.persist(st.CurrentProducer, StateBlocked, reason, nextHistory, false, ""); err != nil {
 				return StepResult{}, err
 			}

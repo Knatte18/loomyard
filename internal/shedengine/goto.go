@@ -22,6 +22,10 @@ type GotoRequest struct {
 	StatusLockPath string
 	Producers      []ProducerDef
 	Target         string
+	// RunID is the addressed run-id the goto texts name; see Shed.RunID.
+	RunID string
+	// MissingStatusWayForward is the told clause for a missing status file; see Shed.MissingStatusWayForward.
+	MissingStatusWayForward string
 }
 
 // Goto moves a halted run onto the Target row and leaves it paused.
@@ -50,7 +54,7 @@ func Goto(req GotoRequest) (Status, error) {
 		return Status{}, fmt.Errorf("shedengine: read status file %q: %w", req.StatusPath, err)
 	}
 	if !found {
-		return Status{}, fmt.Errorf("shedengine: status file %q does not exist; Shed never seeds one; %s", req.StatusPath, missingStatusWayForward)
+		return Status{}, fmt.Errorf("shedengine: status file %q does not exist; Shed never seeds one; %s", req.StatusPath, missingStatusClause(req.MissingStatusWayForward))
 	}
 	if !st.State.valid() {
 		return Status{}, fmt.Errorf("shedengine: status file %q carries an invalid state %q", req.StatusPath, st.State)
@@ -67,7 +71,7 @@ func Goto(req GotoRequest) (Status, error) {
 	}
 
 	if st.State == StateRunning {
-		return Status{}, fmt.Errorf("shedengine: goto moves only a halted run, and this run is running; way forward: \"lyx shed pause\" then \"lyx shed step\" leaves the run paused at its next producer boundary, then re-run goto")
+		return Status{}, fmt.Errorf("shedengine: goto moves only a halted run, and this run is running; way forward: %s then %s leaves the run paused at its next producer boundary, then re-run goto", runVerb("pause", req.RunID), runVerb("step", req.RunID))
 	}
 	reference, admitted := gotoAdmitted(req.Producers, st)
 	if !containsName(admitted, req.Target) {

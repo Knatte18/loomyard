@@ -110,3 +110,38 @@ func TestGotoCmd_RefusesHeldRunLock(t *testing.T) {
 		t.Errorf("error %q does not name lyx shed pause", msg)
 	}
 }
+
+// TestGotoCmd_PassesToldWayForwardTexts asserts the verb hands the spec's run-id and missing-status clause to the engine, seen in a refusal.
+func TestGotoCmd_PassesToldWayForwardTexts(t *testing.T) {
+	paths := newTestPaths(t)
+	spec := gotoSpec(paths)
+	spec.MissingStatusWayForward = "way forward: told clause"
+
+	env, code := execEnvelope(t, gotoCmd(gotoTexts(), spec), []string{"--to", "A"})
+	if code == 0 {
+		t.Fatalf("exit code = 0 over a missing status file; want a refusal (env %v)", env)
+	}
+	if msg, _ := env["error"].(string); !strings.Contains(msg, "way forward: told clause") {
+		t.Errorf("message = %q; want the spec's missing-status clause", msg)
+	}
+
+	seedRunning(t, paths)
+	env, code = execEnvelope(t, gotoCmd(gotoTexts(), spec), []string{"--to", "A"})
+	if code == 0 {
+		t.Fatalf("exit code = 0 over a running run; want a refusal (env %v)", env)
+	}
+	if msg, _ := env["error"].(string); !strings.Contains(msg, "lyx shed pause run-1") {
+		t.Errorf("message = %q; want the running refusal to name the spec's run-id", msg)
+	}
+}
+
+func seedRunning(t *testing.T, paths testPaths) {
+	t.Helper()
+	if err := state.WriteJSON(paths.StatusPath, paths.StatusLockPath, shedengine.Status{
+		CurrentProducer: "B",
+		State:           shedengine.StateRunning,
+		History:         []shedengine.HistoryEntry{},
+	}); err != nil {
+		t.Fatalf("seed running status: %v", err)
+	}
+}
