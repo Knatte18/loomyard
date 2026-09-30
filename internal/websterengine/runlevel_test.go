@@ -537,6 +537,7 @@ func TestRun_FingerprintMismatchWithoutFreshLeavesPauseIntact(t *testing.T) {
 	if !errors.Is(err, websterengine.ErrFingerprintMismatch) {
 		t.Fatalf("Run() error = %v; want errors.Is(err, ErrFingerprintMismatch)", err)
 	}
+	requireWayForward(t, err, "lyx webster rebaseline", "lyx webster run --fresh")
 	if !websterengine.PauseRequested(fx.Deps.Geom.ScratchDir) {
 		t.Error("pause flag cleared on a refused run; want it left intact")
 	}

@@ -41,9 +41,7 @@ func TestRebaseline_ForeignEditAcceptedMidRun(t *testing.T) {
 	if !errors.Is(err, websterengine.ErrFingerprintMismatch) {
 		t.Fatalf("BeginBatch(2) error = %v; want errors.Is(err, ErrFingerprintMismatch)", err)
 	}
-	if !strings.Contains(err.Error(), "lyx webster rebaseline") {
-		t.Errorf("BeginBatch(2) error = %q; want it to name `lyx webster rebaseline`", err.Error())
-	}
+	requireWayForward(t, err, "lyx webster rebaseline", "lyx webster run --fresh")
 
 	res, err := websterengine.Rebaseline(websterengine.RebaselineDeps{Plan: fx.Deps.Plan, Batches: fx.Deps.Batches, State: fx.Deps.State})
 	if err != nil {

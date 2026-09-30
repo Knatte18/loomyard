@@ -41,6 +41,9 @@ var ErrPaused = errors.New("webster: paused")
 // sentinel identity (webster-owns-its-own-domain-types).
 var ErrFingerprintMismatch = errors.New("webster: on-disk plan fingerprint does not match this run's recorded state")
 
+// fingerprintMismatchWayForward is the trailing clause BeginBatch and Run put on an ErrFingerprintMismatch wrap.
+const fingerprintMismatchWayForward = "way forward: if the edit keeps every begun batch's cards, run `lyx webster rebaseline` to accept it, otherwise reset the branch to the run's start commit and run `lyx webster run --fresh`"
+
 // ErrPlanDrifted is the sentinel BeginBatch returns when the dispatch-boundary re-resolution
 // (planglyph.ValidateDispatch, called against deps.Geom.WorktreeRoot with the completed cards
 // excluded) reports a non-empty blocking
@@ -247,7 +250,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 		return nil, err
 	}
 	if deps.State.PlanFingerprint != fp {
-		return nil, fmt.Errorf("%w: on-disk plan fingerprint %s does not match this run's recorded fingerprint %s; the plan changed since state.json was created; if the edit keeps every begun batch's cards, run `lyx webster rebaseline` to accept it, otherwise reset the branch to the run's start commit and run `lyx webster run --fresh`", ErrFingerprintMismatch, fp, deps.State.PlanFingerprint)
+		return nil, fmt.Errorf("%w: on-disk plan fingerprint %s does not match this run's recorded fingerprint %s; the plan changed since state.json was created; %s", ErrFingerprintMismatch, fp, deps.State.PlanFingerprint, fingerprintMismatchWayForward)
 	}
 
 	// Re-resolve the plan against the current tree before a pack is built, never from a cache.
