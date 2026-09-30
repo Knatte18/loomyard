@@ -8,8 +8,8 @@ import (
 // TestDriverPrompt_NamesRunIDReportPathAndAutonomousMode asserts the prompt names the run-id, the
 // report path verbatim, states autonomous mode, and mentions no step cap.
 func TestDriverPrompt_NamesRunIDReportPathAndAutonomousMode(t *testing.T) {
-	runID := "self"
-	reportPath := "/hub/worktree/.lyx/shed/self/drive-report-20260920-120000-cafe.md"
+	runID := "worktree"
+	reportPath := "/hub/worktree/.lyx/shed/worktree/drive-report-20260920-120000-cafe.md"
 
 	got := driverPrompt(runID, reportPath)
 
@@ -56,8 +56,8 @@ func TestDriverPrompt_NamesSlugRunIDAndExactTeardownCommand(t *testing.T) {
 // report path, since a prompt that grew into a copy of the skill would fail only at launch, after a
 // bootstrap has already seeded and committed.
 func TestDriverPrompt_StaysWellUnderLaunchPromptCap(t *testing.T) {
-	runID := "self"
-	reportPath := "/hub/some-realistic-worktree-name/.lyx/shed/self/drive-report-20260920-120000-cafe.md"
+	runID := "some-realistic-worktree-name"
+	reportPath := "/hub/some-realistic-worktree-name/.lyx/shed/some-realistic-worktree-name/drive-report-20260920-120000-cafe.md"
 
 	got := driverPrompt(runID, reportPath)
 

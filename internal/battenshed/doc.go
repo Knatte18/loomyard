@@ -16,7 +16,7 @@
 // interactive prompt its launcher never answered -- or that stops of its own accord with the run
 // still non-terminal -- an llm driver escalating a failure it cannot repair
 // or finding its skill unavailable, each leaving its report under the task worktree's
-// .lyx/shed/self/ -- is not detected here, by design: the InnerRun row watches the child's
+// .lyx/shed/<slug>/ -- is not detected here, by design: the InnerRun row watches the child's
 // persisted status file, never the driver's own liveness or progress. A long-quiet Run-Shed
 // therefore means "possibly dead, parked or stopped", not "working", until the row's bounce budget
 // runs out; an operator tells the cases apart by attaching to the child's session.

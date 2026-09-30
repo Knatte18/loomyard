@@ -10,7 +10,7 @@ import (
 // TestDriverSpec pins driverSpec's whole output shape, each field as its own named assertion.
 func TestDriverSpec(t *testing.T) {
 	prompt := "run the ly-drive skill"
-	reportPath := "/hub/wt/.lyx/shed/self/drive-report-20260920-120000-cafe.md"
+	reportPath := "/hub/wt/.lyx/shed/wt/drive-report-20260920-120000-cafe.md"
 	settings := loomengine.DriverSettings{
 		Model:   "claude-resolved-model-id",
 		Effort:  "high",

@@ -292,7 +292,7 @@ func TestBattenIntegration_RealReadStatus_OnAFreshPairReportsAbsentRatherThanErr
 // read-status answering StateDone through the whole four-row list one row at a time: Worktree-Create,
 // Seed-Child, Run-Shed, Worktree-Teardown.
 // It asserts the pair exists on disk after the create row, that the child's own
-// _lyx/shed/self/seed.json exists after the seed row, names the Board task's own "type" as its
+// _lyx/shed/<slug>/seed.json exists after the seed row, names the Board task's own "type" as its
 // recipe, and is committed (not merely written) on the child's own weft pair, and that the pair is
 // gone after the teardown row.
 func TestBattenIntegration_FourRowRun_SeedsChildCommitsAndTearsDown(t *testing.T) {

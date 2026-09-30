@@ -252,7 +252,7 @@ The branch itself, the conjunction predicate that decides whether a spawn is nee
 This carries no mechanical enforcement of its own — it is a prose note, not a gate — and loom stays covered under this scenario's own `**Covers:** loom` tag above: the Sandbox Suite Coverage gate is module-keyed with no sub-module slot for one path within a covered module, so adding loom to `cmd/lyx/sandbox_coverage_test.go`'s excluded-modules list would both fail the gate's own rule that an exclusion names a registered module and silently drop loom's existing coverage. Do not reach for that list for this gap.
 
 **Watch:** Before writing either fixture, run `lyx loom status` and `lyx loom pause` against the freshly-added, never-bootstrapped pair.
-Does each refuse by naming the seed as absent -- `loom: no seed found for run "self"; no run is seeded yet. run "lyx loom start" first to bootstrap this task` -- rather than leaking an internal lock path such as `.lyx/shed/self/status.json.lock: no such file or directory`?
+Does each refuse by naming the seed as absent -- `loom: no seed found for run "self"; no run is seeded yet. run "lyx loom start" first to bootstrap this task` -- rather than leaking an internal lock path such as `.lyx/shed/<slug>/status.json.lock: no such file or directory`?
 This is the supervisor skill's literal first instruction, so it is the first thing to check, not an afterthought.
 
 Then write both fixtures and continue.
