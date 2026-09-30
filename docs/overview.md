@@ -350,6 +350,7 @@ User-facing modules each get one `lyx <module>` namespace:
   `start` resumes a parked ly-drive driver by typing one line into its pane (returning under `--no-attach` once the line's delivery is verified), and refuses after a bounded wait when the pane is not ready, since the driver may have resumed on its own.
   A live driver over a run halted at a hand-back with no park marker yet is still writing its stop report, so `start` refuses with the retryable kind `driver_not_parked`;
   batten's Inner-Run retries it on its next poll without recording the approval as acted on.
+  When `start` would spawn or resume a driver over a pair with an unfinished merge it refuses with the non-retryable kind `merge_in_progress`, listing the conflicted paths under `conflicts` and naming the remedy.
   `run` is the no-tmux escape hatch that runs the phase machine in the foreground, for debugging and CI.
   `step` bootstraps idempotently, exactly as `start` does, and drives exactly one producer through `shedengine.Shed`'s own `Step`, emitting a JSON envelope; it spawns no detached driver and hands the terminal over to nothing, making it the single-producer primitive an external supervisor drives.
   `status` reports the current phase as a single JSON envelope and, with `--watch`, tails it, printing a line only when the composed activity changes rather than once per poll.
