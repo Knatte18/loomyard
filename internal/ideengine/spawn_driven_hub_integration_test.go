@@ -61,6 +61,21 @@ func readTasks(t *testing.T, anchorDir string) []map[string]any {
 	return tasks.Tasks
 }
 
+// assertSingleAttachTask fails the test unless anchorDir's tasks.json holds exactly one task running `reed attach` on folderOpen.
+func assertSingleAttachTask(t *testing.T, anchorDir string) {
+	t.Helper()
+	tasks := readTasks(t, anchorDir)
+	if len(tasks) != 1 {
+		t.Fatalf("tasks = %v, want exactly one", tasks)
+	}
+	task := tasks[0]
+	args, _ := task["args"].([]any)
+	runOptions, _ := task["runOptions"].(map[string]any)
+	if task["label"] != "reed attach" || len(args) != 2 || args[0] != "reed" || args[1] != "attach" || runOptions["runOn"] != "folderOpen" {
+		t.Errorf("task = %v, want label and args reed attach, runOn folderOpen", task)
+	}
+}
+
 // TestSpawnDrivenWritesAttachOnlyAndExcludes covers the launch argument, the single attach task, a clean tree and the anchored exclude at both anchors.
 func TestSpawnDrivenWritesAttachOnlyAndExcludes(t *testing.T) {
 	for _, anchor := range []string{".", "wts/some-task"} {
@@ -92,10 +107,7 @@ func TestSpawnDrivenWritesAttachOnlyAndExcludes(t *testing.T) {
 			if resolved.AnchorPath() != want {
 				t.Errorf("launched %s, ResolveWorktree AnchorPath = %s", want, resolved.AnchorPath())
 			}
-			tasks := readTasks(t, want)
-			if len(tasks) != 1 || tasks[0]["label"] != "reed attach" {
-				t.Errorf("tasks = %v, want the single attach task", tasks)
-			}
+			assertSingleAttachTask(t, want)
 			if status := gitOut(t, worktreeDir, "status", "--porcelain"); status != "" {
 				t.Errorf("git status --porcelain not empty:\n%s", status)
 			}
@@ -140,9 +152,7 @@ func TestSpawnDrivenOverwritesTasksKeepsSettings(t *testing.T) {
 		t.Fatalf("SpawnDriven: %v", err)
 	}
 
-	if tasks := readTasks(t, filepath.Dir(vscodeDir)); len(tasks) != 1 {
-		t.Errorf("tasks = %v, want the single attach task", tasks)
-	}
+	assertSingleAttachTask(t, filepath.Dir(vscodeDir))
 	got, err := os.ReadFile(filepath.Join(vscodeDir, "settings.json"))
 	if err != nil {
 		t.Fatalf("read settings: %v", err)
