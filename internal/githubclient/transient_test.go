@@ -2,6 +2,8 @@ package githubclient
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"net"
@@ -43,6 +45,10 @@ func TestIsTransient(t *testing.T) {
 		{"abuse rate limit", abuse, false},
 		{"bare canceled", context.Canceled, false},
 		{"url error wrapping canceled", &url.Error{Op: "Get", Err: context.Canceled}, false},
+		{"url parse error", &url.Error{Op: "parse", URL: "repos/%zz", Err: errors.New("invalid URL escape")}, false},
+		{"unknown authority", &url.Error{Op: "Get", Err: &tls.CertificateVerificationError{Err: x509.UnknownAuthorityError{}}}, false},
+		{"hostname mismatch", fmt.Errorf("x: %w", &url.Error{Op: "Get", Err: x509.HostnameError{Host: "h"}}), false},
+		{"invalid certificate", &url.Error{Op: "Get", Err: x509.CertificateInvalidError{Reason: x509.Expired}}, false},
 		{"plain", errors.New("boom"), false},
 		{"nil", nil, false},
 	}
