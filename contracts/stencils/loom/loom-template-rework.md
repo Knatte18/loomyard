@@ -51,7 +51,7 @@ Write one or more new cards into `{{.plan_dir}}`, and their Card Index lines int
   Go compares the result against the plan committed at HEAD after your session, and any other change rejects the round.
 - Cover every finding with at least one new card.
   Several findings may share one card.
-  A finding that needs no code change still needs a card or an explicit entry in the coverage file stating why.
+  A round with no new card is rejected, so never answer a finding with a coverage entry alone.
 
 ## Step 4 — Self-check
 
