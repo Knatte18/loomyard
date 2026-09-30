@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
@@ -598,4 +599,17 @@ func TestTraceDir_NoSinkReturnsEmpty(t *testing.T) {
 	if got := TraceDir(); got != "" {
 		t.Errorf("TraceDir() = %q; want empty", got)
 	}
+}
+
+// TestEnsureDurableSink_ArmingDoesNotSweep pins that opening the sink leaves a pre-seeded, aged,
+// dead-pid trace file in place; the sweep runs at process exit, never at arm.
+func TestEnsureDurableSink_ArmingDoesNotSweep(t *testing.T) {
+	dir := t.TempDir()
+	SetDurableSinkDir(dir)
+	t.Cleanup(func() { SetDurableSinkDir("") })
+	aged := writeTraceTestFile(t, dir, time.Now().Add(-15*24*time.Hour), hexID(1), deadTestPID)
+
+	Info("arm the sink")
+
+	assertExists(t, aged)
 }

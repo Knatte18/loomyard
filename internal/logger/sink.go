@@ -132,8 +132,6 @@ func armDurableSinkLocked() bool {
 		return false
 	}
 
-	_ = Sweep(dir, DefaultRetentionBounds())
-
 	filename := fmt.Sprintf("trace-%s-%s-%d.log",
 		time.Now().UTC().Format(traceFileTimestampLayout),
 		header.TraceID,
@@ -245,7 +243,7 @@ func TraceDir() string {
 // It gates the cwd-anchored fallback above because lyxcwd.Resolve succeeds for ANY plain git
 // repository standing at its root — resolveCore defaults AnchorRel to "." when no hub records one, so
 // no hub is required — and the fallback then creates <repo>/.lyx/logs/trace-*.log inside a checkout
-// lyx does not own. cmd/lyx's logger.NotifyExit(code) force-arms the sink on EVERY non-zero exit, so
+// lyx does not own. cmd/lyx's exit hook, through logger.NotifyExit(code), force-arms the sink on EVERY non-zero exit, so
 // every refusal reached that fallback: a standalone webster or burler invocation refused before
 // wireStandalone's own redirect could point the sink at the derived state directory, and an unknown
 // subcommand that never reached wiring at all. Standalone mode's whole premise is that nothing lyx

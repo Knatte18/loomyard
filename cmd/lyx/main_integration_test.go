@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,6 +19,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
@@ -225,5 +227,161 @@ func TestRunDispatchesToConfigReconcile(t *testing.T) {
 	}
 	if ok, _ := result["ok"].(bool); !ok {
 		t.Fatalf("expected ok=true from config reconcile command, got %v", result)
+	}
+}
+
+// exitSweepFixture is a git repo carrying _lyx/ (so the cwd-anchored sink may arm) and a
+// .lyx/logs directory pre-seeded with dead-pid traces.
+type exitSweepFixture struct {
+	cwd    string
+	logs   string
+	seeded []string // file names, newest mtime first
+}
+
+// newExitSweepFixture seeds four dead-pid traces whose mtimes are 1..4 days old, and writes logger.yaml
+// when loggerYAML is non-empty.
+func newExitSweepFixture(t *testing.T, loggerYAML string) exitSweepFixture {
+	t.Helper()
+	cwd := t.TempDir()
+	if _, _, exitCode, err := gitexec.RunGit([]string{"init"}, cwd); err != nil || exitCode != 0 {
+		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
+	}
+	if err := os.MkdirAll(configengine.ConfigDir(cwd), 0o755); err != nil {
+		t.Fatalf("failed to create _lyx/config: %v", err)
+	}
+	if loggerYAML != "" {
+		if err := os.WriteFile(configengine.ConfigFile(cwd, "logger"), []byte(loggerYAML), 0o644); err != nil {
+			t.Fatalf("failed to write logger.yaml: %v", err)
+		}
+	}
+	logs := filepath.Join(cwd, ".lyx", "logs")
+	if err := os.MkdirAll(logs, 0o755); err != nil {
+		t.Fatalf("failed to create logs dir: %v", err)
+	}
+	fx := exitSweepFixture{cwd: cwd, logs: logs}
+	for i := 1; i <= 4; i++ {
+		mtime := time.Now().Add(-time.Duration(i) * 24 * time.Hour)
+		name := fmt.Sprintf("trace-%s-%016x-999999999.log", mtime.UTC().Format("20060102T150405Z"), i)
+		path := filepath.Join(logs, name)
+		if err := os.WriteFile(path, []byte("seeded"), 0o644); err != nil {
+			t.Fatalf("write %s: %v", path, err)
+		}
+		if err := os.Chtimes(path, mtime, mtime); err != nil {
+			t.Fatalf("Chtimes(%s) = %v", path, err)
+		}
+		fx.seeded = append(fx.seeded, name)
+	}
+	return fx
+}
+
+// run executes lyx in the fixture and returns its exit code and combined output.
+func (fx exitSweepFixture) run(t *testing.T, lyxExe string, args ...string) (int, string) {
+	t.Helper()
+	cmd := exec.Command(lyxExe, args...)
+	cmd.Dir = fx.cwd
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		return 0, string(out)
+	}
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("lyx %v: %v; output: %s", args, err, out)
+	}
+	return exitErr.ExitCode(), string(out)
+}
+
+// logNames lists the file names in the fixture's logs directory.
+func (fx exitSweepFixture) logNames(t *testing.T) map[string]bool {
+	t.Helper()
+	entries, err := os.ReadDir(fx.logs)
+	if err != nil {
+		t.Fatalf("ReadDir(%q): %v", fx.logs, err)
+	}
+	names := map[string]bool{}
+	for _, e := range entries {
+		names[e.Name()] = true
+	}
+	return names
+}
+
+func TestExitSweep_ConfiguredCountKeepsNewestSeededTraces(t *testing.T) {
+	lyxExe := buildLyxBinary(t)
+	fx := newExitSweepFixture(t, "trace_retention_count: 2\ntrace_retention_days: 14\n")
+
+	code, out := fx.run(t, lyxExe, "bogus-subcommand")
+	if code == 0 {
+		t.Fatalf("expected non-zero exit; output: %s", out)
+	}
+
+	names := fx.logNames(t)
+	if len(names) != 3 {
+		t.Fatalf("logs dir holds %v; want this process's own trace plus two seeded", names)
+	}
+	for _, kept := range fx.seeded[:2] {
+		if !names[kept] {
+			t.Errorf("newest seeded trace %s was deleted; logs: %v", kept, names)
+		}
+	}
+	for _, gone := range fx.seeded[2:] {
+		if names[gone] {
+			t.Errorf("older seeded trace %s survived; logs: %v", gone, names)
+		}
+	}
+}
+
+func TestExitSweep_InvalidConfigWarnsAndKeepsExitCode(t *testing.T) {
+	lyxExe := buildLyxBinary(t)
+	baseline := newExitSweepFixture(t, "")
+	wantCode, _ := baseline.run(t, lyxExe, "bogus-subcommand")
+
+	fx := newExitSweepFixture(t, "trace_retention_count: 0\ntrace_retention_days: 14\n")
+	code, out := fx.run(t, lyxExe, "bogus-subcommand")
+
+	if code != wantCode {
+		t.Errorf("exit code = %d; want %d (the code without any logger.yaml)", code, wantCode)
+	}
+	warns := 0
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "logger.yaml") && strings.Contains(line, "trace_retention_count") {
+			warns++
+		}
+	}
+	if warns != 1 {
+		t.Errorf("Warn lines naming logger.yaml and trace_retention_count = %d; want 1; output: %s", warns, out)
+	}
+	names := fx.logNames(t)
+	for _, seeded := range fx.seeded {
+		if !names[seeded] {
+			t.Errorf("seeded trace %s was deleted under the default bounds; logs: %v", seeded, names)
+		}
+	}
+}
+
+func TestExitSweep_QuietZeroExitNeitherArmsNorSweeps(t *testing.T) {
+	lyxExe := buildLyxBinary(t)
+	for name, loggerYAML := range map[string]string{
+		"absent":  "",
+		"invalid": "trace_retention_count: 0\ntrace_retention_days: 14\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			fx := newExitSweepFixture(t, loggerYAML)
+
+			code, out := fx.run(t, lyxExe, "--help")
+			if code != 0 {
+				t.Fatalf("lyx --help exit code = %d; output: %s", code, out)
+			}
+			if strings.Contains(out, "level=WARN") {
+				t.Errorf("output carries a Warn; want none: %s", out)
+			}
+			names := fx.logNames(t)
+			if len(names) != len(fx.seeded) {
+				t.Errorf("logs dir holds %v; want exactly the seeded traces", names)
+			}
+			for _, seeded := range fx.seeded {
+				if !names[seeded] {
+					t.Errorf("seeded trace %s missing; logs: %v", seeded, names)
+				}
+			}
+		})
 	}
 }

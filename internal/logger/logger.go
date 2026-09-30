@@ -55,8 +55,10 @@
 // written and further writes to that file become silent no-ops rather than
 // growing it further.
 //
-// A background-free sweep (retention.go's Sweep, run once per sink open)
-// keeps the logs directory bounded.
+// A background-free sweep (retention.go's Sweep) keeps the logs directory bounded.
+// A process sweeps its sink directory once at exit, only when its sink armed in the current generation,
+// through cmd/lyx's exit hook; arming alone never deletes a file.
+// The bounds come from _lyx/config/logger.yaml, with the compiled-in defaults below for a redirected sink or an unusable file.
 // Files are grouped by trace ID, and a group's activity time is the newest
 // mtime among its files, so a long-running step that keeps writing stays
 // recent however long ago its file was named.

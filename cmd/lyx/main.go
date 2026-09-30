@@ -43,8 +43,9 @@ func main() {
 	root.SetOut(os.Stdout)
 	root.SetErr(os.Stderr)
 	code := clihelp.RunRoot(root, os.Stdout)
-	// Force-open the durable sink on a non-zero exit for post-mortem inspection.
-	logger.NotifyExit(code)
+	// The exit hook force-opens the durable sink on a non-zero exit for post-mortem inspection,
+	// then sweeps an armed sink's directory.
+	notifyExitAndSweep(code)
 	os.Exit(code)
 }
 
@@ -55,8 +56,8 @@ func run(args []string, out io.Writer) int {
 	root.SetErr(out)
 	root.SetArgs(args)
 	code := clihelp.RunRoot(root, out)
-	// Force-open the durable sink on a non-zero exit.
-	logger.NotifyExit(code)
+	// The exit hook force-opens the durable sink on a non-zero exit, then sweeps an armed sink's directory.
+	notifyExitAndSweep(code)
 	return code
 }
 
