@@ -192,16 +192,16 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 		}
 		logger.Info("landingshed: pull request created", "owner", owner, "repo", repo, "number", created.GetNumber())
 
-		// Stuck rather than done: a done verdict would let the run advance to the next row and
+		// Awaiting rather than done: a done verdict would let the run advance to the next row and
 		// merge to the parent seconds after opening the pull request, defeating it entirely.
-		return p.stuckOrCancelled(ctx, withPRURL("pull request created; awaiting review, then run `lyx loom approve` and `lyx loom start`", created.GetHTMLURL()))
+		return p.awaitingOrCancelled(ctx, withPRURL("pull request created; awaiting review, then run `lyx loom approve` and `lyx loom start`", created.GetHTMLURL()))
 	}
 
 	switch {
 	case pr.GetState() == "open":
 		// No second pull request created and no second merge-in. The push at step 5 still ran, so
 		// a resumed call refreshes the pull request with any commits added since.
-		return p.stuckOrCancelled(ctx, withPRURL(fmt.Sprintf("an open pull request already exists against parent branch %q; run `lyx loom approve` and `lyx loom start` once it is reviewed", p.deps.ParentBranch), pr.GetHTMLURL()))
+		return p.awaitingOrCancelled(ctx, withPRURL(fmt.Sprintf("an open pull request already exists against parent branch %q; run `lyx loom approve` and `lyx loom start` once it is reviewed", p.deps.ParentBranch), pr.GetHTMLURL()))
 	case !pr.GetMergedAt().IsZero():
 		// GitHub's List Pull Requests endpoint -- the query above -- never populates the "merged"
 		// boolean field; that field is only ever set on the single-PR Get endpoint's response. Every
@@ -294,6 +294,17 @@ func (p *Publish) stuckOrCancelled(ctx context.Context, reason string, fields ..
 	}
 	reportStuck(publishName, reason, fields...)
 	return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
+}
+
+// awaitingOrCancelled is stuckOrCancelled's sibling for the planned human hand-off: it consults
+// cancelErr first, then logs reason as an awaiting halt and returns Awaiting with reason on the
+// output pointer.
+func (p *Publish) awaitingOrCancelled(ctx context.Context, reason string) (shedengine.Outcome, shedengine.OutputPointer, error) {
+	if cerr := cancelErr(ctx, publishName); cerr != nil {
+		return "", shedengine.OutputPointer{}, cerr
+	}
+	logger.Info("landingshed: producer awaiting", "producer", publishName, "reason", reason)
+	return shedengine.Awaiting, shedengine.OutputPointer{Reason: reason}, nil
 }
 
 // withPRURL ends a pull-request-state reason with the pull request's URL, or returns the bare
