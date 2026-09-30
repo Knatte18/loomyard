@@ -20,6 +20,8 @@ import (
 var registry = map[string]Constructor{
 	"Preflight":        preflightEntry,
 	"Publish":          publishEntry,
+	"PRGate":           prGateEntry,
+	"PRRework":         prReworkEntry,
 	"Finalize":         finalizeEntry,
 	"FrictionReflect":  frictionReflectEntry,
 	"LoomPreflight":    loomPreflightEntry,

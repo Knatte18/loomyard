@@ -84,7 +84,7 @@ func worktreeTeardownEntry(name string, cfg Config, env Env) (shedengine.ShedPro
 // innerRunEntry is the Constructor for the "InnerRun" registry row: it reads the optional int Config key poll_interval_s through configInt, defaulting to defaultInnerRunPollIntervalS when the extracted value is zero -- configInt reports an absent key and an explicit zero identically, so both resolve to the same default -- and rejects a negative value with an error naming the key.
 // It reads driver_exit_grace_s the same way, defaulting to defaultInnerRunDriverExitGraceS.
 // poll_attempts is retired: the wait budget now lives on the recipe row's own max_bounces, read by shedengine itself, not on a Config key this entry reads, so poll_attempts is rejected as an unrecognised key rather than silently read.
-// It validates Env.Slug, Env.ScratchDir, and Env.InnerRun.Spawn/ResolveStatus/ReadStatus/ReadApproval/DriverAlive -- and not Env.InnerRun.Sleep or Env.InnerRun.Now, whose nil values are legitimate and select the production sleep and clock.
+// It validates Env.Slug, Env.ScratchDir, and Env.InnerRun.Spawn/ResolveStatus/ReadStatus/ReadDecision/DriverAlive -- and not Env.InnerRun.Sleep or Env.InnerRun.Now, whose nil values are legitimate and select the production sleep and clock.
 // It returns battenshed.NewInnerRun(name, env.Slug, env.InnerRun, time.Duration(pollIntervalS)*time.Second, env.ScratchDir, time.Duration(driverExitGraceS)*time.Second).
 func innerRunEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	pollIntervalS, err := configInt(cfg, "poll_interval_s", false)
@@ -127,7 +127,7 @@ func innerRunEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, e
 	if err := requireSeam("InnerRun", "InnerRun.ReadStatus", env.InnerRun.ReadStatus); err != nil {
 		return nil, err
 	}
-	if err := requireSeam("InnerRun", "InnerRun.ReadApproval", env.InnerRun.ReadApproval); err != nil {
+	if err := requireSeam("InnerRun", "InnerRun.ReadDecision", env.InnerRun.ReadDecision); err != nil {
 		return nil, err
 	}
 	if err := requireSeam("InnerRun", "InnerRun.DriverAlive", env.InnerRun.DriverAlive); err != nil {

@@ -10,12 +10,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-func TestApproveVerb_AwaitingAndBlockedAtPublish(t *testing.T) {
+func TestApproveVerb_AwaitingAndBlockedAtGate(t *testing.T) {
 	for _, state := range []shedengine.State{shedengine.StateAwaiting, shedengine.StateBlocked} {
 		t.Run(string(state), func(t *testing.T) {
 			d, written := approveFixture()
 			d.readStatus = func() (shedengine.Status, bool, error) {
-				return shedengine.Status{State: state, CurrentProducer: loomshed.NamePublish}, true, nil
+				return shedengine.Status{State: state, CurrentProducer: loomshed.NamePRGate}, true, nil
 			}
 			var out bytes.Buffer
 			if code := approveVerb(context.Background(), &out, d); code != 0 {
@@ -45,10 +45,24 @@ func TestApproveVerb_AwaitingAtOtherProducerRefused(t *testing.T) {
 	}
 }
 
+func TestApproveVerb_AwaitingAtPublishRefused(t *testing.T) {
+	d, written := approveFixture()
+	d.readStatus = func() (shedengine.Status, bool, error) {
+		return shedengine.Status{State: shedengine.StateAwaiting, CurrentProducer: loomshed.NamePublish}, true, nil
+	}
+	var out bytes.Buffer
+	if code := approveVerb(context.Background(), &out, d); code != 1 {
+		t.Fatalf("exit = %d; want 1; out = %s", code, out.String())
+	}
+	if !strings.Contains(out.String(), loomshed.NamePRGate) || len(*written) != 0 {
+		t.Errorf("output %q, %d approvals; want a refusal naming the gate and no write", out.String(), len(*written))
+	}
+}
+
 func TestApproveCmd_HelpNamesAwaitingOrBlocked(t *testing.T) {
 	cmd := (&loomCLI{}).approveCmd()
-	if !strings.Contains(cmd.Long, "awaiting or blocked at Publish") {
-		t.Errorf("Long %q does not say \"awaiting or blocked at Publish\"", cmd.Long)
+	if !strings.Contains(cmd.Long, "awaiting or blocked at PR-Gate") {
+		t.Errorf("Long %q does not say \"awaiting or blocked at PR-Gate\"", cmd.Long)
 	}
 }
 

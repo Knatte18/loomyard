@@ -32,6 +32,8 @@ const (
 	NameWebsterBurler     = "Webster-Burler"
 	NameDescribe          = "Describe"
 	NamePublish           = "Publish"
+	NamePRGate            = "PR-Gate"
+	NamePRRework          = "PR-Rework"
 	NameFinalize          = "Finalize"
 	NameFrictionReflect   = "Friction-Reflect"
 )

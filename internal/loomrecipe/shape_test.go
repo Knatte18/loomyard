@@ -63,7 +63,9 @@ var wantProducerTable = []wantProducerRow{
 	{loomshed.NameWebsterBouncer, loomshed.NameWebsterBurler, loomshed.NameDescribe, "Webster-Review", 5, reflect.TypeOf(&shedadapters.Bouncer{})},
 	{loomshed.NameWebsterBurler, loomshed.NameWebsterBouncer, loomshed.NameWebsterBouncer, "Webster-Review", 5, reflect.TypeOf(&shedadapters.BurlerProducer{})},
 	{loomshed.NameDescribe, "", loomshed.NamePublish, "", 0, reflect.TypeOf(loomshed.NewDiscussionWrite("", nil, nil))},
-	{loomshed.NamePublish, "", loomshed.NameFinalize, "", 0, reflect.TypeOf(&landingshed.Publish{})},
+	{loomshed.NamePublish, "", loomshed.NamePRGate, "", 0, reflect.TypeOf(&landingshed.Publish{})},
+	{loomshed.NamePRGate, loomshed.NamePRRework, loomshed.NameFinalize, "PR-Review", 5, reflect.TypeOf(&landingshed.PRGate{})},
+	{loomshed.NamePRRework, "", loomshed.NameWebster, "PR-Review", 0, reflect.TypeOf(loomshed.NewPRRework("", nil, loomshed.PRReworkDeps{}))},
 	{loomshed.NameFinalize, "", loomshed.NameFrictionReflect, "", 0, reflect.TypeOf(&landingshed.Finalize{})},
 	{loomshed.NameFrictionReflect, "", "", "", 0, frictionReflectProducerType()},
 }
@@ -137,6 +139,8 @@ func testEnv(t *testing.T) (shedrecipe.Env, shedbuild.ShedPaths) {
 			return shuttleengine.Spec{Prompt: "describe prompt", Role: "describe"}, nil
 		},
 		CommitDescription: func() error { return nil },
+		ReworkSpec:        testReworkSpec,
+		Rework:            testReworkDeps(dir),
 		PlanSpec: func() (shuttleengine.Spec, error) {
 			return shuttleengine.Spec{
 				Prompt:      "plan prompt",

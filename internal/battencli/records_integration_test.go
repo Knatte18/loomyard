@@ -180,3 +180,49 @@ func TestBattenIntegration_AwaitingApprovalResumeDoneTeardown_ArchivesTheRunReco
 		}
 	}
 }
+
+func TestBattenIntegration_AwaitingRejectionResumesTheChildOnce(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+	slug := "batten-rejection"
+	hubforge.AddPair(t, h, slug)
+
+	childLocation, err := taskWorktreeLocation(h.Location, slug)
+	if err != nil {
+		t.Fatalf("resolve child location: %v", err)
+	}
+
+	spawns := 0
+	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
+		return shedengine.Status{State: shedengine.StateAwaiting, Error: "awaiting pull-request decision"}, true, nil
+	})
+	c.env.InnerRun.Sleep = func(ctx context.Context, d time.Duration) {}
+	c.env.InnerRun.Spawn = func(ctx context.Context) error {
+		spawns++
+		return nil
+	}
+
+	seedEntryStatus(t, c, battenrecipe.NameRunShed, shedengine.StateRunning, []shedengine.HistoryEntry{
+		{Producer: battenrecipe.NameWorktreeCreate, Outcome: shedengine.Done},
+		{Producer: battenrecipe.NameSeedChild, Outcome: shedengine.Done},
+	})
+	shed, err := shedbuild.NewShed([]byte(shortPollBattenRecipe), c.env, c.shedPaths)
+	if err != nil {
+		t.Fatalf("shedbuild.NewShed: %v", err)
+	}
+	ctx := context.Background()
+
+	if err := landingshed.WriteRejection(loomengine.LoomRejectionPath(childLocation), landingshed.Rejection{
+		PRNumber: 7, HeadSHA: "abc123", RejectedAt: "2026-01-02T03:04:05Z", Findings: "fix the thing",
+	}); err != nil {
+		t.Fatalf("write rejection: %v", err)
+	}
+
+	for i := 0; i < 2; i++ {
+		if _, err := shed.Step(ctx); err != nil {
+			t.Fatalf("Step %d: %v", i, err)
+		}
+	}
+	if spawns != 1 {
+		t.Fatalf("spawns after the rejection = %d; want 1 (resumed once, not again for the same record)", spawns)
+	}
+}
