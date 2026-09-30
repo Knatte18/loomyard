@@ -20,6 +20,27 @@ import (
 // duplicating it.
 const statusStrandDisplayName = "loom-status"
 
+// statusStrandFixedRows is the status strand's fixed row budget. `lyx loom status --watch` appends
+// one line per activity change and leaves the cursor on a fresh empty row, so 3 rows show the
+// current activity plus the previous one. It is a constant, not a config key.
+const statusStrandFixedRows = 3
+
+// statusStrandAddSpec builds the status strand's reedengine.AddSpec for the given pane command: a
+// below-parent pane carrying the statusStrandFixedRows budget. ShrinkWhenWaitingOnChild stays true
+// but is inert, because the fixed budget wins over the shrink rule. IfAbsent stays false because
+// ensureStatusStrand does its own keep/replace/add dance.
+func statusStrandAddSpec(cmd string) reedengine.AddSpec {
+	return reedengine.AddSpec{
+		NameOverride: statusStrandDisplayName,
+		Cmd:          cmd,
+		Display: render.Display{
+			Anchor:                   render.AnchorBelowParent,
+			ShrinkWhenWaitingOnChild: true,
+			FixedRows:                statusStrandFixedRows,
+		},
+	}
+}
+
 // operatorStrandDisplayName is the operator's own strand's stable identity, pinned for the same
 // three reasons statusStrandDisplayName is: it is the --if-absent match key operatorStrandAddSpec's
 // IfAbsent option matches against, it is the name an operator sees for their own pane in

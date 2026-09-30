@@ -16,6 +16,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shell"
@@ -795,5 +796,57 @@ func plantedGate(seed shedrun.Seed) bool { return seed.Driver == shedrun.DriverL
 	sort.Strings(functions)
 	if got, want := strings.Join(functions, ","), "allowedReader,plantedGate"; got != want {
 		t.Errorf("scanFileForDriverFieldReads() functions = %q; want %q", got, want)
+	}
+}
+
+func TestStatusStrandAddSpec(t *testing.T) {
+	got := statusStrandAddSpec("watch-cmd")
+	if got.NameOverride != statusStrandDisplayName {
+		t.Errorf("NameOverride = %q; want %q", got.NameOverride, statusStrandDisplayName)
+	}
+	if got.Cmd != "watch-cmd" {
+		t.Errorf("Cmd = %q; want %q", got.Cmd, "watch-cmd")
+	}
+	if got.IfAbsent {
+		t.Error("IfAbsent = true; want false")
+	}
+	if got.Display.Anchor != render.AnchorBelowParent {
+		t.Errorf("Display.Anchor = %v; want AnchorBelowParent", got.Display.Anchor)
+	}
+	if got.Display.Focus {
+		t.Error("Display.Focus = true; want false")
+	}
+	if !got.Display.ShrinkWhenWaitingOnChild {
+		t.Error("Display.ShrinkWhenWaitingOnChild = false; want true")
+	}
+	if got.Display.FixedRows != statusStrandFixedRows {
+		t.Errorf("Display.FixedRows = %d; want %d", got.Display.FixedRows, statusStrandFixedRows)
+	}
+}
+
+// TestStatusStrandAddSpecPinnedByRender ties the spec to render's layout: stacked above a driver
+// strand the status strand is pinned at exactly its budget, and alone it is the active strand and
+// is not pinned.
+func TestStatusStrandAddSpecPinnedByRender(t *testing.T) {
+	status := render.Strand{GUID: "s", Display: statusStrandAddSpec("x").Display, PaneID: "%1", Live: true}
+	driver := render.Strand{
+		GUID:    "d",
+		Parent:  "s",
+		Display: driverSpec("p", "r", loomengine.DriverSettings{}).Display,
+		PaneID:  "%2",
+		Live:    true,
+	}
+	box := render.Box{W: 200, H: 50}
+	params := render.Params{CollapsedStripRows: 2, MinFullRows: 3}
+
+	pins := render.FixedHeightPins([]render.Strand{status, driver}, box, params)
+	want := []render.Pin{{PaneID: "%1", Height: statusStrandFixedRows}}
+	if diff := cmp.Diff(want, pins); diff != "" {
+		t.Errorf("pins mismatch (-want +got):\n%s", diff)
+	}
+
+	pins = render.FixedHeightPins([]render.Strand{status}, box, params)
+	if len(pins) != 0 {
+		t.Errorf("lone status strand pins = %v; want none", pins)
 	}
 }
