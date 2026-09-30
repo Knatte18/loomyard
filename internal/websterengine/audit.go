@@ -17,6 +17,7 @@ package websterengine
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -86,10 +87,36 @@ const (
 // TranscriptPath is the fork's TranscriptPath for a CheckFork violation,
 // or "" for a CheckParent violation (ForkAudit carries no path for Master's own parent transcript —
 // webster tracks Master's session ID separately, in State.MasterSessionID).
+// Key is the finding's deterministic identity, filled by CheckFork and CheckParent:
+// `fork:<transcript path>:<class>:<ordinal>` for a fork finding (the ordinal counts that class within the transcript),
+// `parent:<class>:<ordinal>` for a parent one (1..NamedSpawns for named-spawn, the index into ParentWrites or ParentBashCommands otherwise).
+// Path is the transcript-recorded write path for parent-write and fork-contract-write, empty for every other class.
 type AuditViolation struct {
 	Class          AuditViolationClass
 	TranscriptPath string
 	Detail         string
+	Key            string
+	Path           string
+}
+
+// AuditSeverity is the D4 class of an audit finding: whether it endangers the batch's correctness or only breaks webster's process policy.
+type AuditSeverity string
+
+const (
+	// AuditSeverityCorrectness marks a finding that can change the run's own state or the code under review.
+	AuditSeverityCorrectness AuditSeverity = "correctness"
+	// AuditSeverityPolicy marks a finding that breaks a process rule without touching the run's state or tracked content.
+	AuditSeverityPolicy AuditSeverity = "policy"
+)
+
+// forkKey builds a fork finding's Key from its transcript, class and per-class ordinal.
+func forkKey(transcript string, class AuditViolationClass, ordinal int) string {
+	return fmt.Sprintf("fork:%s:%s:%d", transcript, class, ordinal)
+}
+
+// parentKey builds a parent finding's Key from its class and ordinal.
+func parentKey(class AuditViolationClass, ordinal int) string {
+	return fmt.Sprintf("parent:%s:%d", class, ordinal)
 }
 
 // Error implements the error interface, formatting the violation as a single-line, webster-prefixed
@@ -116,6 +143,7 @@ func CheckFork(f shuttleengine.ForkReport, outcomePath, summaryPath, workdir str
 		violations = append(violations, AuditViolation{
 			Class:          ClassNestedAgent,
 			TranscriptPath: f.TranscriptPath,
+			Key:            forkKey(f.TranscriptPath, ClassNestedAgent, 1),
 			Detail: fmt.Sprintf(
 				"attempted %d Agent tool call(s) — forks cannot nest and must never call the Agent tool, even when the attempt was denied",
 				f.AgentCalls,
@@ -125,22 +153,29 @@ func CheckFork(f shuttleengine.ForkReport, outcomePath, summaryPath, workdir str
 
 	cleanOutcome := filepath.Clean(outcomePath)
 	cleanSummary := filepath.Clean(summaryPath)
+	contractWrites := 0
 	for _, w := range f.WritePaths {
 		cw := resolveWritePath(workdir, w)
 		if cw == cleanOutcome || cw == cleanSummary {
+			contractWrites++
 			violations = append(violations, AuditViolation{
 				Class:          ClassForkContractWrite,
 				TranscriptPath: f.TranscriptPath,
+				Key:            forkKey(f.TranscriptPath, ClassForkContractWrite, contractWrites),
+				Path:           w,
 				Detail:         fmt.Sprintf("fork wrote %q — outcome.yaml and summary.md are Master's own contract files; a fork writing either forges the run's terminal judgment", w),
 			})
 		}
 	}
 
+	fabricRefs := 0
 	for _, cmd := range f.BashCommands {
 		if fabricRef.Matches(cmd) {
+			fabricRefs++
 			violations = append(violations, AuditViolation{
 				Class:          ClassFabricReference,
 				TranscriptPath: f.TranscriptPath,
+				Key:            forkKey(f.TranscriptPath, ClassFabricReference, fabricRefs),
 				Detail:         fmt.Sprintf("ran a fabric-referencing command (%q) — an implementer fork must never touch the fabric repo directly", cmd),
 			})
 		}
@@ -187,38 +222,125 @@ func isTranscriptPathAbsolute(path string) bool {
 func CheckParent(a shuttleengine.ForkAudit, outcomePath, summaryPath, workdir string, fabricRef RefMatcher) []AuditViolation {
 	var violations []AuditViolation
 
-	if a.NamedSpawns > 0 {
+	for i := 1; i <= a.NamedSpawns; i++ {
 		violations = append(violations, AuditViolation{
 			Class: ClassNamedSpawn,
+			Key:   parentKey(ClassNamedSpawn, i),
 			Detail: fmt.Sprintf(
-				"%d fork(s) were spawned with a name — named forks silently lose inherited context, which is a silent quality-degradation defect, not an advisory",
-				a.NamedSpawns,
+				"named spawn %d of %d: a fork was spawned with a name — named forks silently lose inherited context, which is a silent quality-degradation defect, not an advisory",
+				i, a.NamedSpawns,
 			),
 		})
 	}
 
 	cleanOutcome := filepath.Clean(outcomePath)
 	cleanSummary := filepath.Clean(summaryPath)
-	for _, w := range a.ParentWrites {
+	for i, w := range a.ParentWrites {
 		cw := resolveWritePath(workdir, w)
 		if cw != cleanOutcome && cw != cleanSummary {
 			violations = append(violations, AuditViolation{
 				Class:  ClassParentWrite,
+				Key:    parentKey(ClassParentWrite, i),
+				Path:   w,
 				Detail: fmt.Sprintf("Master wrote %q — Master may write only its two contract files (outcome.yaml and summary.md); any other write means Master implemented a batch itself or hand-wrote a batch report", w),
 			})
 		}
 	}
 
-	for _, cmd := range a.ParentBashCommands {
+	for i, cmd := range a.ParentBashCommands {
 		if fabricRef.Matches(cmd) {
 			violations = append(violations, AuditViolation{
 				Class:  ClassFabricReference,
+				Key:    parentKey(ClassFabricReference, i),
 				Detail: fmt.Sprintf("ran a fabric-referencing command (%q) — Master must never touch the fabric repo directly; the fabric sync is webstercli's own in-process job", cmd),
 			})
 		}
 	}
 
 	return violations
+}
+
+// ClassifyViolation assigns v its D4 severity, checking the correctness rule first.
+// A fork-contract-write is correctness.
+// A parent-write is correctness when its path lies under the run's state, reports or plan directory, or the run's `_lyx` directory (the parent of geom.WebsterDir),
+// or when it lies inside the worktree and git does not ignore it; every other parent-write is policy.
+// Every other class is policy.
+// Prefix tests compare link-resolved paths, so a write spelled through a link to the run's `_lyx` still classes as correctness.
+// The error return is only the git probe's or the link resolution's failure.
+func ClassifyViolation(v AuditViolation, geom Geometry) (AuditSeverity, error) {
+	switch v.Class {
+	case ClassForkContractWrite:
+		return AuditSeverityCorrectness, nil
+	case ClassParentWrite:
+	default:
+		return AuditSeverityPolicy, nil
+	}
+
+	written, err := canonicalPath(resolveWritePath(geom.WorktreeRoot, v.Path))
+	if err != nil {
+		return "", err
+	}
+	runDirs := []string{geom.WebsterDir, geom.ReportsDir, geom.PlanDir, filepath.Dir(geom.WebsterDir)}
+	for _, dir := range runDirs {
+		canon, err := canonicalPath(dir)
+		if err != nil {
+			return "", err
+		}
+		if pathWithin(canon, written) {
+			return AuditSeverityCorrectness, nil
+		}
+	}
+
+	worktree, err := canonicalPath(geom.WorktreeRoot)
+	if err != nil {
+		return "", err
+	}
+	if !pathWithin(worktree, written) {
+		return AuditSeverityPolicy, nil
+	}
+	ignored, err := ignoredPath(geom.WorktreeRoot, written)
+	if err != nil {
+		return "", err
+	}
+	if ignored {
+		return AuditSeverityPolicy, nil
+	}
+	return AuditSeverityCorrectness, nil
+}
+
+// pathWithin reports whether path is dir itself or lies beneath it; both must already be canonical.
+func pathWithin(dir, path string) bool {
+	rel, err := filepath.Rel(dir, path)
+	if err != nil {
+		return false
+	}
+	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
+}
+
+// canonicalPath resolves links in path through its nearest existing ancestor and re-joins the missing tail,
+// so a path that does not exist yet still compares against a link-resolved directory.
+func canonicalPath(path string) (string, error) {
+	cleaned := filepath.Clean(path)
+	var tail []string
+	cur := cleaned
+	for {
+		resolved, err := filepath.EvalSymlinks(cur)
+		if err == nil {
+			for i := len(tail) - 1; i >= 0; i-- {
+				resolved = filepath.Join(resolved, tail[i])
+			}
+			return resolved, nil
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return "", fmt.Errorf("websterengine: resolve links in %s: %w", cur, err)
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			return cleaned, nil
+		}
+		tail = append(tail, filepath.Base(cur))
+		cur = parent
+	}
 }
 
 // ForkWarnings evaluates f for webster's warning-only (never round-failing) classes: a fork that

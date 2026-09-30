@@ -170,6 +170,22 @@ func parentMergeRefusal(subject, reportHead, head, merge, reason string) error {
 		subject, reportHead, head, merge, reason, reportHead)
 }
 
+// ignoredPath reports whether git ignores path in worktree.
+// A path that does not exist and is not ignored reads as not ignored, the conservative answer.
+// It wraps gitexec.Run directly for the same reason dirty does.
+func ignoredPath(worktree, path string) (bool, error) {
+	stdout, err := gitexec.Run([]string{"status", "--porcelain", "--ignored", "--", path}, worktree)
+	if err != nil {
+		return false, fmt.Errorf("websterengine: git status --ignored %s in %s: %w", path, worktree, err)
+	}
+	for _, line := range strings.Split(stdout, "\n") {
+		if strings.HasPrefix(line, "!! ") {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // dirty reports whether worktree has any uncommitted or untracked changes.
 // It wraps gitexec.Run directly since gitrepo.Repo exposes no porcelain/status method.
 func dirty(worktree string) (bool, error) {
