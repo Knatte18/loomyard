@@ -453,7 +453,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 
 	case st.PlanFingerprint != fingerprint:
 		if !opts.Fresh {
-			return RunResult{}, fmt.Errorf("%w: on-disk plan fingerprint %s does not match this run's recorded fingerprint %s; the plan changed since state.json was created — re-run with --fresh to archive the stale state and reports and start over", ErrFingerprintMismatch, fingerprint, st.PlanFingerprint)
+			return RunResult{}, fmt.Errorf("%w: on-disk plan fingerprint %s does not match this run's recorded fingerprint %s; the plan changed since state.json was created; if the edit keeps every begun batch's cards, run `lyx webster rebaseline` to accept it, otherwise reset the branch to the run's start commit and run `lyx webster run --fresh`",ErrFingerprintMismatch, fingerprint, st.PlanFingerprint)
 		}
 
 		if _, err := archiveStateFile(deps.Geom.WebsterDir, time.Now); err != nil {
