@@ -46,6 +46,9 @@ func TestWriteVSCodeConfigCreatesFilesWhenAbsent(t *testing.T) {
 	if _, ok := settings["window.title"]; !ok {
 		t.Fatalf("missing window.title in settings.json")
 	}
+	if got := settings["terminal.integrated.defaultLocation"]; got != "editor" {
+		t.Errorf("terminal.integrated.defaultLocation = %v; want \"editor\" so the reed attach terminal opens in the main area", got)
+	}
 
 	watcherExclude, ok := settings["files.watcherExclude"].(map[string]any)
 	if !ok {

@@ -65,6 +65,8 @@ func WriteConfig(worktreeDir, relpath, slug, color, lyxPath, claudePath string, 
 			"window.title":                                 slug,
 			"workbench.startupEditor":                      "none",
 			"workbench.secondarySideBar.defaultVisibility": "hidden",
+			// The reed attach terminal is the window's main content, so it opens as an editor tab, not in the panel.
+			"terminal.integrated.defaultLocation": "editor",
 		}
 		data, err := json.MarshalIndent(settings, "", "  ")
 		if err != nil {
