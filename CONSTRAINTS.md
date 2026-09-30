@@ -118,6 +118,16 @@ Every value in `internal/shedrecipe`'s registry constructs a `shedengine.ShedPro
 - `internal/shedverbs` is not itself a CLI module and is not counted in the CLI/Cobra Invariant's tally at all — it exposes no `Command()`/`RunCLI` seam, only the `Verbs(texts, spec)` constructor the three subtrees build from.
 - Neither `shedverbs` nor `shedcli` is added to the Told-Geometry Invariant's bound-packages list: that list binds engines, both sit above that layer. `shedverbs` keeps this invariant's own no-resolver clause verbatim as its no-derived-paths obligation, enforced by `internal/shedverbs/seam_enforcement_test.go`. `internal/shedcli` is carved out of that clause by name, the one site in this pair that resolves: `resolvePersistentPreRun` must read a seed before it knows which recipe to arm, a seed read is a path read, and a path read needs an anchor, so `shedcli` calls `lyxcwd.Resolve` and builds seed paths from the result. Its narrower obligation is that every path it touches comes from an `internal/shedrun` constructor and none is derived locally — `shedcli` still declares no path segment of its own, it just resolves the anchor those `shedrun` constructors need.
 
+## Transient Stop Invariant
+
+The transient mark is declared only in `internal/shedengine`, and its class set is closed at the declaration (the set is named there, not restated here).
+
+- A lower-level package exposes its own classification, and `internal/shedtransient` alone translates it into the mark.
+- The mark is set only at a producer boundary (the `Shed.Transient` classifier `shedbuild.NewShed` tells) or a step bootstrap boundary (a `PreStep` hook).
+- A producer returns a failure `shedtransient.Class` classifies as a hard error rather than a verdict, so it reaches that classifier.
+- A gate verdict (`blocked`, `awaiting`, `paused`) never carries the mark.
+- Rationale: a mark added at a new site changes what the ly-drive driver re-steps without a human deciding.
+
 ## Shed Run-Directory Invariant
 
 `internal/shedrun` is the sole declarer of the `shed` path segment, of the run-id vocabulary including the literal `self`, and the sole parser and writer of `seed.json`.

@@ -37,6 +37,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/shedtransient"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/state"
 )
@@ -493,7 +494,17 @@ func (c *battenCLI) doneSlugRefusal() error {
 // shedverbs.KindBootstrap. shedverbs.KindOwnership is not used -- it exists for loom's own
 // seeded-status-belongs-to-another-slug check, which has no batten analogue -- and
 // shedverbs.KindProducer is shed.Step's own to emit, never this hook's.
+//
+// Every returned error passes through shedtransient.Mark, the bootstrap boundary of the Transient
+// Stop Invariant. No sub-step here reaches a remote, so the mark is inert today and held in place
+// for a future remote one.
 func (c *battenCLI) battenPreStep(ctx context.Context) (string, error) {
+	kind, err := c.battenPreStepUnmarked(ctx)
+	return kind, shedtransient.Mark(err)
+}
+
+// battenPreStepUnmarked is battenPreStep's body, before the transient mark.
+func (c *battenCLI) battenPreStepUnmarked(ctx context.Context) (string, error) {
 	if err := os.MkdirAll(filepath.Dir(c.shedPaths.LockPath), 0o755); err != nil {
 		return shedverbs.KindBootstrap, err
 	}
