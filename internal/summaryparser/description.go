@@ -6,6 +6,7 @@ package summaryparser
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"strings"
 	"unicode/utf8"
@@ -57,7 +58,7 @@ func ValidateDescription(path string) ([]Finding, error) {
 
 	var findings []Finding
 	if n := utf8.RuneCountInString(s.Title); n > maxTitleLen {
-		findings = append(findings, Finding{CheckTitleTooLong, "title is longer than 72 characters"})
+		findings = append(findings, Finding{CheckTitleTooLong, fmt.Sprintf("title is %d characters; the limit is %d", n, maxTitleLen)})
 	}
 	if strings.TrimSpace(s.Body) == "" {
 		findings = append(findings, Finding{CheckEmptyBody, "body is empty"})
