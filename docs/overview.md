@@ -116,7 +116,9 @@ lyx organizes overlay artifacts (configuration, task state, raddle docs, and the
   ├── _board/                       (weft:main worktree; the task store)
   │     └── .lyx/                   (hub-wide machine-local scratch; a real dir, never a junction)
   ├── _portals/<anchor>/<slug>      (junction into <slug>'s _lyx; anchor-mirrored)
-  └── _launchers/<anchor>/<slug>    (per-worktree launcher scripts; anchor-mirrored)
+  └── _launchers/<anchor>/          (anchor-mirrored)
+        ├── <slug>                  (per-worktree launcher scripts)
+        └── <prime>.code-workspace  (the prime's hub workspace; lyx-owned)
 ```
 
 `_board`, `_portals`, and `_launchers` are hub geometry, so none of them can be claimed as a worktree slug
@@ -294,6 +296,9 @@ User-facing modules each get one `lyx <module>` namespace:
   `lyx config <module> --set key=value` (repeatable) writes one or more config values directly with no editor invocation, for scripts/agents that need a non-interactive path. ✅ Implemented.
 - **fabric** — the sole warp↔weft git-coordination module, unified over two `internal/gitrepo.Repo` instances: clone (the hub creator), dual-worktree add/remove, coordinated checkout (switches warp+weft together + re-points junctions), reconcile, status, prune, cleanup, weft content-sync (commit/push/pull/sync/diff), and a merge/conflict lifecycle (`merge-in`/`merge`/`merge-stage`/`merge --continue`/`merge --abort`, mirroring git's own exit codes and surfacing conflicts as unified, worktree-relative paths; `merge-stage` marks resolved paths so `--continue`'s index gate can pass, and is the only route for a conflict under a wired junction name, which git refuses to stage through), all in one command tree (`internal/fabriccli` + `internal/fabricengine`); CLI surface is `lyx fabric clone|add|list|remove|checkout|pairs|reconcile|prune|cleanup|unwire|status|commit|push|pull|sync|diff|merge-in|merge|merge-stage`. `clone` takes the weft URL first with the warp URL optional, derived from the warp binding recorded on the weft's main branch when omitted; `reconcile` backfills that binding for hubs whose weft predates it. `status` is the unified both-sides uncommitted-change view (`Fabric.Status`); `diff` reports the side-labelled changes since a given warp SHA (`Fabric.Diff`). `pull` is now unified across warp+weft, not weft-only: it fast-forwards weft first, then fetches and inspects warp, detecting a rebased/force-pushed warp remote via ancestry and safely re-anchoring weft's correspondence to it when it is safe to do so. `remove` also deletes the pair's local task branch once both worktrees are gone, when its work is pushed or landed on the recorded parent, and keeps the branch with a reason in the result otherwise, reporting both as `warp_branch_deleted` and `warp_branch_kept_reason` on the envelope; `--force` never overrides that check. ✅ Implemented; see the `internal/fabricengine` package documentation for rationale.
 - **ide** — one-shot VS Code launcher with interactive menu.
+  `lyx ide spawn <prime>` opens a hub workspace (prime, `_board`, `_portals`) whose `settings` carry the prime's `.vscode/settings.json`.
+  The file is lyx-owned and regenerated on each prime spawn, overwriting any edit made in it;
+  a task slug still opens its bare folder.
   The generated `folderOpen` task is now the sequenced reed launch chain (`reed up` → `reed add --if-absent` → `reed attach`) rather than a bare `claude`, with both binary paths (`lyx`, `claude`) stamped absolute at generation time.
   An existing worktree keeps its current `tasks.json` because `WriteConfig` never clobbers;
   the manual upgrade is to delete `.vscode/tasks.json` and re-run `lyx ide spawn`. ✅ Implemented.
@@ -317,7 +322,10 @@ User-facing modules each get one `lyx <module>` namespace:
   no other package reads that tree directly, and it also declares where that tree *is* — the worktree-relative form (`PlanDirName`/`PlanDirRel`) and the absolute told-anchor form (`PlanDir`/`PlanOverview`), with the caller supplying the anchor path (`internal/planparser`). ✅ Implemented.
 - **planglyph** — the sole owner of every `quarry.Repo` call (`Open`, `Resolve`, `DeltaGit`) and of the package-level `quarry.Name`, plus the resolve-backed validation pass layered on top of `planparser`'s pure checks: `planglyph.ValidateFormat`/`Validate` call `planparser.ValidateFormat`/`Validate` and append only resolve findings, composing rather than reimplementing (`internal/planglyph`). ✅ Implemented.
 - **quarry** — the planner's only source of glyph spellings: four read-only repository queries over the current worktree's own glyph alphabet, each delegating to a `planglyph` wrapper and emitting quarry's own rendering verbatim, with no repository-path flag on any of them (`internal/quarrycli`; `lyx quarry toc|glyphs|resolve|expand`).
-  `toc` answers a table-of-contents query for a path; `glyphs` answers the same query under quarry's frozen depth-all/symbols-on preset, projected into a flat, depth-first index — the spelling the planner copies verbatim; `resolve` checks that one or more copied spellings, given positionally in one call, name something real; `expand` reports a type glyph's own head plus every member whose owner chain begins with it.
+  `toc` answers a table-of-contents query for a path;
+  `glyphs` answers the same query under quarry's frozen depth-all/symbols-on preset, projected into a flat, depth-first index — the spelling the planner copies verbatim, and with `--text` quarry's own one-line-per-symbol view, which a line filter can cut whole symbols from;
+  `resolve` checks that one or more copied spellings, given positionally in one call, name something real, answering each glyph separately: it prints every answer and exits non-zero when any glyph is negative;
+  `expand` reports a type glyph's own head plus every member whose owner chain begins with it.
   `delta` and `name` are deliberately absent — both are pipeline-internal, and `name` in an agent's hands is a glyph-spelling machine, the one thing the copied-verbatim rule exists to prevent.
   `quarrycli` is a named CLI/Cobra Invariant package-naming deviation: it imports `internal/planglyph`, not a `quarryengine`. ✅ Implemented.
 - **discussionparser** — the sole reader of `_lyx/discussion/`'s on-disk format (the decision record's required sections and the support log's existence);
