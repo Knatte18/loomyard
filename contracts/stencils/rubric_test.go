@@ -149,8 +149,10 @@ func TestLoomRubricWebsterReview_NamesEveryRequiredItem(t *testing.T) {
 		{"anything the plan's own gates already check", "Plan-Write`'s and `Plan-Burler`'s own gates"},
 		{"the plan is the measuring stick and never the subject", "measuring stick and never the subject"},
 		{"a missing ImpactSummary belongs to Plan-Review", "Both belong to "},
-		{"this segment's own round artifacts are never the subject", ".lyx/loom/reviews/webster/"},
+		{"this segment's own round artifacts are never the subject", "_lyx/reviews/webster/"},
 		{"comment-convention compliance checks the target repository's own conventions", "target repository's own conventions"},
+		{"a written rule outranks a convention inferred from surrounding code", "outranks a convention inferred from the surrounding code"},
+		{"a line width is never inferred from surrounding code", "A line width is never inferred from the surrounding code"},
 		{"per-card mechanical check names assert-no-callers for a Delete card", "assert-no-callers"},
 	}
 
