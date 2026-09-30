@@ -1,6 +1,4 @@
-// session.go holds Runner's session-cycling surface: reading a live run's events from a caller-held
-// offset, and the SessionCycler-backed operations (context usage, idle probe, clear) an orchestrator
-// watcher needs.
+// session.go holds Runner's session-cycling surface: reading a live run's events from a caller-held offset, and the SessionCycler-backed operations (context usage, idle probe, clear) an orchestrator watcher needs.
 // All of it is provider-invariant; provider specifics stay behind Engine and SessionCycler.
 
 package shuttleengine
@@ -11,8 +9,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// sessionCycler returns the engine's SessionCycler capability, or an error naming it when the
-// engine lacks it.
+// sessionCycler returns the engine's SessionCycler capability, or an error naming it when the engine lacks it.
 func (r *Runner) sessionCycler() (SessionCycler, error) {
 	cycler, ok := r.engine.(SessionCycler)
 	if !ok {
@@ -21,10 +18,9 @@ func (r *Runner) sessionCycler() (SessionCycler, error) {
 	return cycler, nil
 }
 
-// ReadEvents returns the events of the run identified by guid that lie past byte offset, and the
-// offset to resume from.
-// A partial trailing line stays unconsumed, a parse error returns the original offset, and an
-// absent events file returns no events and the original offset, matching pollEventsTick.
+// ReadEvents returns the events of the run identified by guid that lie past byte offset, and the offset to resume from.
+// A partial trailing line stays unconsumed, a parse error returns the original offset,
+// and an absent events file returns no events and the original offset, matching pollEventsTick.
 func (r *Runner) ReadEvents(guid string, offset int64) ([]Event, int64, error) {
 	if r.toldErr != nil {
 		return nil, offset, r.toldErr
@@ -82,10 +78,9 @@ func (r *Runner) SessionIdle(guid string) (bool, error) {
 	return idle, nil
 }
 
-// ClearSession plays the provider's clear-session key choreography into the live pane of the run
-// identified by guid.
-// It skips requireReadyAgentPane on purpose: right after a clear the pane may briefly show no ready
-// marker, and the caller has already probed idleness itself.
+// ClearSession plays the provider's clear-session key choreography into the live pane of the run identified by guid.
+// It skips requireReadyAgentPane on purpose: right after a clear the pane may briefly show no ready marker,
+// and the caller has already probed idleness itself.
 func (r *Runner) ClearSession(guid string) error {
 	if r.toldErr != nil {
 		return r.toldErr

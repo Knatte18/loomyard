@@ -1,6 +1,4 @@
-// session_test.go covers Runner's session surface: ReadEvents' offset rules and the
-// SessionCycler-backed ContextTokens, SessionIdle and ClearSession, including the plain-engine
-// refusals.
+// session_test.go covers Runner's session surface: ReadEvents' offset rules and the SessionCycler-backed ContextTokens, SessionIdle and ClearSession, including the plain-engine refusals.
 
 package shuttleengine
 
@@ -28,8 +26,7 @@ func (e *cyclerEngine) IdleSession(capture string) bool {
 }
 func (e *cyclerEngine) ClearSessionSequence() []PaneInput { return e.clear }
 
-// newSessionTestRunner seeds a run for guid whose events file is eventsPath (returned) and
-// returns a Runner over reed/engine.
+// newSessionTestRunner seeds a run for guid whose events file is eventsPath (returned) and returns a Runner over reed/engine.
 func newSessionTestRunner(t *testing.T, reed ReedOps, engine Engine, guid string) (*Runner, string) {
 	t.Helper()
 	worktreeRoot := t.TempDir()
