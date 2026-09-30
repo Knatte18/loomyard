@@ -256,8 +256,12 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		// second, independent fault on the way out. Replacing one with the other left an
 		// operator's envelope naming a commit-seam or git fault while the failure that
 		// actually stopped the step -- the only one they can act on -- went unreported.
+		// A classified failure is re-wrapped with the transient mark, persisted with its class, and returned marked.
+		if s.Transient != nil {
+			callErr = MarkTransient(s.Transient(callErr), callErr)
+		}
 		nextHistory := appendHistory()
-		if persistErr := s.persist(st.CurrentProducer, StateFailed, callErr.Error(), nextHistory, false, ""); persistErr != nil {
+		if persistErr := s.persistTransient(st.CurrentProducer, StateFailed, callErr.Error(), nextHistory, false, "", TransientOf(callErr)); persistErr != nil {
 			return StepResult{}, errors.Join(callErr, persistErr)
 		}
 		return StepResult{}, callErr
@@ -518,7 +522,15 @@ func effectiveMaxBounces(def ProducerDef, shedMax int) int {
 // error is empty by construction on that transition, since it is a Stuck verdict rather than a
 // hard error, and the accumulated history is committed whole by the next transition that does
 // change producer or state.
+//
+// persist writes an empty transient class; the producer-error arm alone calls persistTransient.
 func (s *Shed) persist(nextCurrentProducer string, nextState State, nextError string, nextHistory []HistoryEntry, consumePause bool, routedTo string) error {
+	return s.persistTransient(nextCurrentProducer, nextState, nextError, nextHistory, consumePause, routedTo, "")
+}
+
+// persistTransient is persist with the transient class the write records.
+// Every write sets Transient, so a later step never carries a stale class.
+func (s *Shed) persistTransient(nextCurrentProducer string, nextState State, nextError string, nextHistory []HistoryEntry, consumePause bool, routedTo string, transient TransientClass) error {
 	err := state.UpdateJSON(s.StatusPath, s.StatusLockPath, func(cur Status, found bool) (Status, error) {
 		if !found {
 			return Status{}, fmt.Errorf("shedengine: status file %q vanished mid-run; Shed refuses to create one", s.StatusPath)
@@ -528,6 +540,7 @@ func (s *Shed) persist(nextCurrentProducer string, nextState State, nextError st
 		cur.CurrentProducer = nextCurrentProducer
 		cur.State = nextState
 		cur.Error = nextError
+		cur.Transient = string(transient)
 		cur.History = nextHistory
 		cur.Activity = composeActivity(nextCurrentProducer, nextHistory, nextState, nextError, routedTo)
 		if !appended {

@@ -72,6 +72,9 @@ func TestBattenPreStep_RunLockHeld_KindBusy(t *testing.T) {
 	if kind != shedverbs.KindBusy {
 		t.Errorf("battenPreStep() kind = %q; want %q", kind, shedverbs.KindBusy)
 	}
+	if got := shedengine.TransientOf(err); got != "" {
+		t.Errorf("TransientOf(battenPreStep error) = %q; want empty", got)
+	}
 }
 
 // TestBattenPreStep_DecodeFailure_KindUnseeded asserts battenPreStep returns
@@ -89,6 +92,9 @@ func TestBattenPreStep_DecodeFailure_KindUnseeded(t *testing.T) {
 	}
 	if kind != shedverbs.KindUnseeded {
 		t.Errorf("battenPreStep() kind = %q; want %q", kind, shedverbs.KindUnseeded)
+	}
+	if got := shedengine.TransientOf(err); got != "" {
+		t.Errorf("TransientOf(battenPreStep error) = %q; want empty", got)
 	}
 }
 
@@ -108,6 +114,9 @@ func TestBattenPreStep_DoneSlug_KindBootstrap(t *testing.T) {
 	}
 	if kind != shedverbs.KindBootstrap {
 		t.Errorf("battenPreStep() kind = %q; want %q", kind, shedverbs.KindBootstrap)
+	}
+	if got := shedengine.TransientOf(err); got != "" {
+		t.Errorf("TransientOf(battenPreStep error) = %q; want empty", got)
 	}
 	// The remedy must be the whole abandon path: a torn-down pair keeps its task branch locally and
 	// on the remote, so deleting the run directory alone leads straight into the create row's

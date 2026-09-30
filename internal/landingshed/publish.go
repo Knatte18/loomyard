@@ -92,6 +92,14 @@ func NewPublish(deps Deps) (*Publish, error) {
 }
 
 // Call runs one Publish iteration.
+//
+// A failed task-branch push, pull-request query or pull-request create is split by shedtransient.Class:
+// a transient failure is returned as an error, so the driver re-steps once (a re-step re-queries before creating, so nothing is duplicated),
+// and anything else is a Stuck verdict for a human.
+// Out of scope: Finalize's pull-request close calls only warn;
+// batten's Worktree-Create row keeps a failed fabricengine.Add push as Stuck, because Add's rollback keeps the branch it made and an immediate re-step would stop again;
+// the status-commit and Seed-Child pushes only warn;
+// batten's Worktree-Teardown returns a failed remote branch deletion as an unmarked error, since fabricengine.RemoveResult reports it as text with no chain to classify.
 func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, publishName); err != nil {
 		return "", shedengine.OutputPointer{}, err
@@ -161,6 +169,9 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 	// push, so without this the task branch exists only locally, the create call fails, and the
 	// resume query could never match either.
 	if err := p.deps.PushBranch(); err != nil {
+		if terr := transientFailure(ctx, publishName, "push task branch", err); terr != nil {
+			return "", shedengine.OutputPointer{}, terr
+		}
 		if errors.Is(err, gitrepo.ErrPushRejected) {
 			return p.stuckOrCancelled(ctx, "push rejected by the remote", "error", err)
 		}
@@ -182,6 +193,9 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 	pr, err := FindPullRequest(ctx, client, owner, repo, p.deps.TaskBranch, p.deps.ParentBranch)
 	if err != nil {
 		logger.Warn("landingshed: github call failed", "producer", publishName, "action", "query existing pull request", "owner", owner, "repo", repo, "cause", err)
+		if terr := transientFailure(ctx, publishName, "query existing pull request", err); terr != nil {
+			return "", shedengine.OutputPointer{}, terr
+		}
 		return p.stuckOrCancelled(ctx, publishGitHubErrorReason("query existing pull request", err))
 	}
 
@@ -203,6 +217,9 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 		})
 		if err != nil {
 			logger.Warn("landingshed: github call failed", "producer", publishName, "action", "create pull request", "owner", owner, "repo", repo, "cause", err)
+			if terr := transientFailure(ctx, publishName, "create pull request", err); terr != nil {
+				return "", shedengine.OutputPointer{}, terr
+			}
 			return p.stuckOrCancelled(ctx, publishGitHubErrorReason("create pull request", err))
 		}
 		logger.Info("landingshed: pull request created", "owner", owner, "repo", repo, "number", created.GetNumber())
@@ -239,6 +256,10 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 //
 // The approval never outranks a merged or closed pull request: `lyx loom approve` refuses without
 // an open one, so a stale record there could never be replaced.
+//
+// A transient failure of the pull-request query is returned as an error with decided true,
+// so Call returns it before any merge-in or push and the driver re-steps once;
+// any other query failure is a Stuck verdict for a human.
 func (p *Publish) checkApproval(ctx context.Context) (outcome shedengine.Outcome, ptr shedengine.OutputPointer, decided bool, err error) {
 	approval, found, err := ReadApproval(p.deps.ApprovalPath)
 	if err != nil {
@@ -263,6 +284,9 @@ func (p *Publish) checkApproval(ctx context.Context) (outcome shedengine.Outcome
 	pr, err := FindPullRequest(ctx, client, owner, repo, p.deps.TaskBranch, p.deps.ParentBranch)
 	if err != nil {
 		logger.Warn("landingshed: github call failed", "producer", publishName, "action", "query existing pull request", "owner", owner, "repo", repo, "cause", err)
+		if terr := transientFailure(ctx, publishName, "query existing pull request for the approval", err); terr != nil {
+			return "", shedengine.OutputPointer{}, true, terr
+		}
 		outcome, ptr, err = p.stuckOrCancelled(ctx, publishGitHubErrorReason("query existing pull request", err))
 		return outcome, ptr, true, err
 	}
@@ -303,6 +327,7 @@ func (p *Publish) checkApproval(ctx context.Context) (outcome shedengine.Outcome
 // stuckOrCancelled consults cancelErr first -- the point-9 obligation every non-success exit
 // discharges -- and otherwise logs reason via reportStuck and returns Stuck with reason on the
 // output pointer.
+// Callers that can see a transient remote failure return it as an error first (transientFailure), so a verdict here is always one for a human.
 func (p *Publish) stuckOrCancelled(ctx context.Context, reason string, fields ...any) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if cerr := cancelErr(ctx, publishName); cerr != nil {
 		return "", shedengine.OutputPointer{}, cerr

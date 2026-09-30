@@ -38,6 +38,11 @@ type Shed struct {
 	// mutate callback: a synchronous network push inside that lock would block every status
 	// reader -- "lyx loom status --watch" included -- for the push's duration.
 	CommitStatus func(producer, state string) error
+	// Transient is the caller-supplied classifier the producer boundary uses to translate a lower-level failure into the transient mark.
+	// It is told, like CommitStatus, so this package never imports the packages whose failures it classifies.
+	// Nil means no error is ever classified.
+	// It runs only on a producer's returned error, never on a verdict.
+	Transient func(error) TransientClass
 }
 
 // RunOutcome is the whole run's terminal classification.

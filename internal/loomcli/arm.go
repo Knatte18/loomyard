@@ -49,6 +49,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/shedtransient"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 )
 
@@ -374,7 +375,17 @@ func (c *loomCLI) loomPostRun(ctx context.Context, result shedengine.Result, run
 // Step never adds or removes the status strand:
 // removal needs the driver, which step must not read,
 // and an unconditional removal would strip the band from a halted go run an operator steps by hand.
+//
+// Every returned error passes through shedtransient.Mark, the bootstrap boundary of the Transient Stop Invariant.
+// No bootstrap sub-step makes a remote call today (the seed-and-commit stage commits without pushing),
+// so the mark is inert now and held in place for a future remote one.
 func (c *loomCLI) loomPreStep(ctx context.Context) (string, error) {
+	kind, err := c.loomPreStepUnmarked(ctx)
+	return kind, shedtransient.Mark(err)
+}
+
+// loomPreStepUnmarked is loomPreStep's body, before the transient mark.
+func (c *loomCLI) loomPreStepUnmarked(ctx context.Context) (string, error) {
 	// The MkdirAll is part of the probe rather than an accident of ordering: the run lock lives
 	// in the ephemeral tree, internal/lock opens with O_CREATE but never creates a parent, and
 	// "start" creates that same directory at its own step 4 before its own step-5 probe -- so

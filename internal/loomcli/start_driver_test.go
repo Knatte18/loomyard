@@ -3,6 +3,7 @@ package loomcli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -15,8 +16,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
+	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/state"
 )
 
 // TestMustUseLLMDriverArm asserts the go driver value and an empty driver value both select the
@@ -282,7 +285,11 @@ func newTestSpawnAndWaitReceiver(t *testing.T, starter driverStarter, probe driv
 		registry:        modelspec.Registry{},
 		driverStarter:   starter,
 		driverPaneProbe: probe,
-		shedPaths:       shedbuild.ShedPaths{LockPath: filepath.Join(runLockDir, "run.lock")},
+		shedPaths: shedbuild.ShedPaths{
+			LockPath:       filepath.Join(runLockDir, "run.lock"),
+			StatusPath:     filepath.Join(runLockDir, "status.json"),
+			StatusLockPath: filepath.Join(runLockDir, "status.json.lock"),
+		},
 	}
 	bootstrapLockPath := filepath.Join(dir, "bootstrap.lock")
 	return c, bootstrapLockPath
@@ -488,4 +495,190 @@ func TestRunDriverSpawnAndWait_LLMArm_NeverConsultsTheRunLockHandshake(t *testin
 		t.Errorf("the go arm's lockHeld seam was consulted %d time(s) on an llm-seeded bootstrap; want 0", lockHeldCalls)
 	}
 	_ = bootstrapLock.Release()
+}
+
+// parkedStrands answers a table holding one driver strand, live or dead.
+func parkedStrands(live bool) func() ([]reedengine.StrandStatus, error) {
+	return func() ([]reedengine.StrandStatus, error) {
+		return []reedengine.StrandStatus{{GUID: "g-drv", Name: driverStrandDisplayName, Live: live}}, nil
+	}
+}
+
+// newResumeBranchReceiver builds a runDriverSpawnAndWait receiver carrying a sender, a counting wait and a park marker on disk.
+func newResumeBranchReceiver(t *testing.T, starter driverStarter, probe driverPaneProbe, sender *fakeDriverSender) (*loomCLI, string, string) {
+	t.Helper()
+	c, bootstrapLockPath := newTestSpawnAndWaitReceiver(t, starter, probe)
+	c.driverSender = sender
+	c.driverResumeWait = func() {}
+	marker := shedrun.ParkMarker(c.location, shedrun.ResolveRunID(c.location, c.runID))
+	if err := os.MkdirAll(filepath.Dir(marker), 0o755); err != nil {
+		t.Fatalf("mkdir marker dir: %v", err)
+	}
+	if err := os.WriteFile(marker, nil, 0o644); err != nil {
+		t.Fatalf("write marker: %v", err)
+	}
+	return c, bootstrapLockPath, marker
+}
+
+func TestRunDriverSpawnAndWait_LiveParkedDriverIsResumedNotSpawned(t *testing.T) {
+	starter := &fakeDriverStarter{}
+	sender := &fakeDriverSender{}
+	c, lockPath, marker := newResumeBranchReceiver(t, starter, &fakeDriverPaneProbeFull{strandsFn: parkedStrands(true)}, sender)
+
+	var out bytes.Buffer
+	bootstrapLock := acquireTestBootstrapLock(t, lockPath)
+	ok := c.runDriverSpawnAndWait(context.Background(), &out, shedrun.DriverLLM, bootstrapLock, noopLockHeld)
+
+	if !ok {
+		t.Fatalf("runDriverSpawnAndWait() = false; want true (output %q)", out.String())
+	}
+	if len(sender.texts) != 1 {
+		t.Errorf("SendDriver calls = %d; want 1", len(sender.texts))
+	}
+	if starter.called {
+		t.Error("the starter was called on a live parked driver")
+	}
+	if markerExists(marker) {
+		t.Error("park marker still on disk after the resume")
+	}
+	if out.Len() != 0 {
+		t.Errorf("a refusal was recorded: %q", out.String())
+	}
+	_ = bootstrapLock.Release()
+}
+
+func TestRunDriverSpawnAndWait_LiveDriverWithoutMarkerSendsNothing(t *testing.T) {
+	starter := &fakeDriverStarter{}
+	sender := &fakeDriverSender{}
+	c, lockPath, marker := newResumeBranchReceiver(t, starter, &fakeDriverPaneProbeFull{strandsFn: parkedStrands(true)}, sender)
+	if err := os.Remove(marker); err != nil {
+		t.Fatalf("remove marker: %v", err)
+	}
+
+	bootstrapLock := acquireTestBootstrapLock(t, lockPath)
+	ok := c.runDriverSpawnAndWait(context.Background(), &bytes.Buffer{}, shedrun.DriverLLM, bootstrapLock, noopLockHeld)
+
+	if !ok {
+		t.Fatal("runDriverSpawnAndWait() = false; want true")
+	}
+	if len(sender.texts) != 0 || starter.called {
+		t.Errorf("sent %d line(s), starter called = %v; want neither", len(sender.texts), starter.called)
+	}
+	_ = bootstrapLock.Release()
+}
+
+// writeTestRunState persists a status file in state st at the receiver's status path.
+func writeTestRunState(t *testing.T, c *loomCLI, st shedengine.State) {
+	t.Helper()
+	if err := state.WriteJSON(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, shedengine.Status{State: st}); err != nil {
+		t.Fatalf("write status: %v", err)
+	}
+}
+
+func TestRunDriverSpawnAndWait_LiveUnparkedDriverAtHandBackRefusesRetryably(t *testing.T) {
+	for _, st := range []shedengine.State{shedengine.StateAwaiting, shedengine.StateBlocked, shedengine.StatePaused, shedengine.StateFailed} {
+		t.Run(string(st), func(t *testing.T) {
+			starter := &fakeDriverStarter{}
+			sender := &fakeDriverSender{}
+			c, lockPath, marker := newResumeBranchReceiver(t, starter, &fakeDriverPaneProbeFull{strandsFn: parkedStrands(true)}, sender)
+			if err := os.Remove(marker); err != nil {
+				t.Fatalf("remove marker: %v", err)
+			}
+			writeTestRunState(t, c, st)
+
+			var out bytes.Buffer
+			bootstrapLock := acquireTestBootstrapLock(t, lockPath)
+			ok := c.runDriverSpawnAndWait(context.Background(), &out, shedrun.DriverLLM, bootstrapLock, noopLockHeld)
+
+			if ok {
+				t.Fatal("runDriverSpawnAndWait() = true; want a refusal while the driver has not parked")
+			}
+			var envelope struct {
+				OK    bool   `json:"ok"`
+				Kind  string `json:"kind"`
+				Error string `json:"error"`
+			}
+			if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
+				t.Fatalf("envelope %q: %v", out.String(), err)
+			}
+			if envelope.OK || envelope.Kind != shedrun.StartNotParkedKind {
+				t.Errorf("envelope = %+v; want ok=false kind=%q", envelope, shedrun.StartNotParkedKind)
+			}
+			for _, want := range []string{"not parked yet", "lyx loom start"} {
+				if !strings.Contains(envelope.Error, want) {
+					t.Errorf("error = %q; want substring %q", envelope.Error, want)
+				}
+			}
+			if len(sender.texts) != 0 || starter.called {
+				t.Errorf("sent %d line(s), starter called = %v; want neither", len(sender.texts), starter.called)
+			}
+			assertBootstrapLockReleased(t, lockPath)
+		})
+	}
+}
+
+func TestRunDriverSpawnAndWait_LiveDriverOverRunningRunIsANoOp(t *testing.T) {
+	starter := &fakeDriverStarter{}
+	sender := &fakeDriverSender{}
+	c, lockPath, marker := newResumeBranchReceiver(t, starter, &fakeDriverPaneProbeFull{strandsFn: parkedStrands(true)}, sender)
+	if err := os.Remove(marker); err != nil {
+		t.Fatalf("remove marker: %v", err)
+	}
+	writeTestRunState(t, c, shedengine.StateRunning)
+
+	var out bytes.Buffer
+	bootstrapLock := acquireTestBootstrapLock(t, lockPath)
+	ok := c.runDriverSpawnAndWait(context.Background(), &out, shedrun.DriverLLM, bootstrapLock, noopLockHeld)
+
+	if !ok {
+		t.Fatalf("runDriverSpawnAndWait() = false; want true (output %q)", out.String())
+	}
+	if out.Len() != 0 || len(sender.texts) != 0 || starter.called {
+		t.Errorf("output %q, sent %d line(s), starter called = %v; want none", out.String(), len(sender.texts), starter.called)
+	}
+	_ = bootstrapLock.Release()
+}
+
+func TestRunDriverSpawnAndWait_DeadDriverWithStaleMarkerRemovesItAndSpawns(t *testing.T) {
+	starter := &fakeDriverStarter{handle: stubDriverHandle{guid: "g-new", runDir: "/run/dir"}}
+	sender := &fakeDriverSender{}
+	c, lockPath, marker := newResumeBranchReceiver(t, starter, &fakeDriverPaneProbeFull{strandsFn: parkedStrands(false)}, sender)
+
+	bootstrapLock := acquireTestBootstrapLock(t, lockPath)
+	ok := c.runDriverSpawnAndWait(context.Background(), &bytes.Buffer{}, shedrun.DriverLLM, bootstrapLock, noopLockHeld)
+
+	if !ok {
+		t.Fatal("runDriverSpawnAndWait() = false; want true")
+	}
+	if markerExists(marker) {
+		t.Error("stale park marker survived a fresh spawn")
+	}
+	if !starter.called || len(sender.texts) != 0 {
+		t.Errorf("starter called = %v, sent %d line(s); want a spawn and no send", starter.called, len(sender.texts))
+	}
+	_ = bootstrapLock.Release()
+}
+
+func TestRunDriverSpawnAndWait_ResumeNeverReadyRefusesAndKeepsMarker(t *testing.T) {
+	starter := &fakeDriverStarter{}
+	sender := &fakeDriverSender{repeatErr: notReady()}
+	c, lockPath, marker := newResumeBranchReceiver(t, starter, &fakeDriverPaneProbeFull{strandsFn: parkedStrands(true)}, sender)
+
+	var out bytes.Buffer
+	bootstrapLock := acquireTestBootstrapLock(t, lockPath)
+	ok := c.runDriverSpawnAndWait(context.Background(), &out, shedrun.DriverLLM, bootstrapLock, noopLockHeld)
+
+	if ok {
+		t.Error("runDriverSpawnAndWait() = true; want a refusal")
+	}
+	if !markerExists(marker) {
+		t.Error("park marker was removed despite the failed resume")
+	}
+	if starter.called {
+		t.Error("the starter was called despite a live driver")
+	}
+	if !strings.Contains(out.String(), "lyx loom start") {
+		t.Errorf("envelope %q does not name the retry", out.String())
+	}
+	assertBootstrapLockReleased(t, lockPath)
 }
