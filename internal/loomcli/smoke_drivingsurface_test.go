@@ -1,15 +1,15 @@
 //go:build smoke
 
 // smoke_drivingsurface_test.go pins the live-substrate properties behind a run's driving surface.
-// On the start side, an llm-seeded start removes every status strand and a failed reed Up refuses
-// before any spawn. On the step side: "lyx loom step" and "lyx shed step" bring reed up and never add, replace or
-// remove a status strand, whatever driver the run was seeded with. ensureStatusStrand's branches are
-// pinned at Tier 1 through resolveStatusStrandAction; what only a real tmux server can show is that
-// a step leaves reed's strand table without a status strand, and leaves a pre-existing one alone.
+// On the start side, an llm-seeded start removes every status strand,
+// and a failed reed Up refuses before any spawn.
+// On the step side, "lyx loom step" and "lyx shed step" bring reed up and never add, replace or remove a status strand, whatever driver the run was seeded with.
+// ensureStatusStrand's branches are pinned at Tier 1 through resolveStatusStrandAction;
+// what only a real tmux server can show is that a step leaves reed's strand table without a status strand, and leaves a pre-existing one alone.
 //
-// Zero real LLM subprocesses: the fixtures are reused from smoke_test.go and
-// smoke_driverstrand_test.go, and the shuttle config is the providerless one, so the producer a step
-// reaches bounces at launch rather than starting a provider.
+// Zero real LLM subprocesses: the fixtures are reused from smoke_test.go and smoke_driverstrand_test.go,
+// and the shuttle config is the providerless one,
+// so the producer a step reaches bounces at launch rather than starting a provider.
 package loomcli
 
 import (
@@ -101,8 +101,8 @@ func TestSmokeStep_LeavesAPreexistingStatusStrandUntouched(t *testing.T) {
 	}
 }
 
-// newBadReedUpFixture builds a hub whose reed config carries an invalid mouse value, so reed Up
-// fails, and returns the resolved location and the worktree path, seeded by seed.
+// newBadReedUpFixture builds a hub whose reed config carries an invalid mouse value, so reed Up fails.
+// It seeds the pair with seed and returns the resolved location and the worktree path.
 func newBadReedUpFixture(t *testing.T, seed func(*testing.T, *lyxcwd.Location)) (*lyxcwd.Location, string) {
 	t.Helper()
 	reedCfg := reedengine.ConfigTemplate()
@@ -160,9 +160,8 @@ func TestSmokeStep_FailedReedUpRefusesWithBootstrapKind(t *testing.T) {
 	}
 }
 
-// TestSmokeStart_LLMRunRemovesEveryStatusStrand pins that an llm-seeded start removes every status
-// strand the session holds, duplicates included. The providerless shuttle config makes the driver
-// launch fail, which the test ignores: the removal runs before the driver spawn.
+// TestSmokeStart_LLMRunRemovesEveryStatusStrand pins that an llm-seeded start removes every status strand the session holds, duplicates included.
+// The providerless shuttle config makes the driver launch fail, which the test ignores: the removal runs before the driver spawn.
 func TestSmokeStart_LLMRunRemovesEveryStatusStrand(t *testing.T) {
 	tmuxBinaryPath(t)
 	exe := buildLyxBinary(t)
@@ -193,8 +192,8 @@ func TestSmokeStart_LLMRunRemovesEveryStatusStrand(t *testing.T) {
 	}
 }
 
-// TestSmokeStart_FailedReedUpRefusesOnEitherDriver pins that a failed reed Up refuses start before
-// the watchdog and driver spawn on both arms. It needs no tmux.
+// TestSmokeStart_FailedReedUpRefusesOnEitherDriver pins that a failed reed Up refuses start before the watchdog and driver spawn on both arms.
+// It needs no tmux.
 func TestSmokeStart_FailedReedUpRefusesOnEitherDriver(t *testing.T) {
 	exe := buildLyxBinary(t)
 

@@ -1,11 +1,11 @@
 // sharedbootstrap.go holds the blocks `start` and `step` share.
-// Every helper here is lock-agnostic: none acquires or releases loomengine.LoomBootstrapLock,
-// because the lock's position differs between the two calling verbs -- `start` acquires it later than
-// its own seed/verify/commit block and holds it across the strand work, the driver spawn, and the
-// run-lock handshake, while `step` spawns no driver and runs no handshake, so it wraps reed Up
-// alone and releases before calling the producer. ensureStatusStrand is `start`'s alone: `step`
-// touches no strand. Each verb wraps its own lock window around these calls; no helper here may
-// assume either window.
+// Every helper here is lock-agnostic: none acquires or releases loomengine.LoomBootstrapLock, because the lock's position differs between the two calling verbs.
+// `start` acquires it later than its own seed/verify/commit block and holds it across the strand work, the driver spawn, and the run-lock handshake,
+// while `step` spawns no driver and runs no handshake,
+// so it wraps reed Up alone and releases before calling the producer.
+// ensureStatusStrand is `start`'s alone: `step` touches no strand.
+// Each verb wraps its own lock window around these calls;
+// no helper here may assume either window.
 
 package loomcli
 
@@ -223,9 +223,9 @@ func ensureFrictionDirAfterSeed(frictionDir string, seedErr error) {
 	friction.EnsureDir(frictionDir)
 }
 
-// ensureStatusStrand is the go arm's status-strand work: it keeps, replaces or adds the worktree's
-// status strand.
-// The caller has already brought reed up, and only `start` calls it.
+// ensureStatusStrand is the go arm's status-strand work: it keeps, replaces or adds the worktree's status strand.
+// The caller has already brought reed up,
+// and only `start` calls it.
 // It runs after the bootstrap-lock acquisition and ends before the run-lock probe.
 //
 // It returns the first error encountered, unwrapped, and nil on success. It must not acquire or

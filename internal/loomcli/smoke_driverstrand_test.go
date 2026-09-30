@@ -7,8 +7,8 @@
 // table; what only a real tmux server and a real spawned pane can prove is that a do-not-spawn
 // verdict really leaves reed holding one strand rather than two, and that a dead pane's corpse is
 // removed before a relaunch rather than left beside a second, live one -- reed's own add has no
-// upsert semantics to reconcile either case for us. It also pins, in the same session, that an
-// llm-seeded start adds no status strand while its driver strand still spawns.
+// upsert semantics to reconcile either case for us.
+// It also pins, in the same session, that an llm-seeded start adds no status strand while its driver strand still spawns.
 //
 // Like this package's other smoke tests it drives the real built cmd/lyx binary as a subprocess,
 // never RunCLI in-process (see smoke_test.go's own header): "lyx loom start" spawns its llm driver
@@ -172,9 +172,8 @@ func waitDriverStrandDead(t *testing.T, eng *reedengine.Engine, timeout time.Dur
 // pane beside it -- the count is what distinguishes corpse removal from a second add, a distinction
 // reed's own upsert-less add cannot make for us.
 //
-// After each bootstrap it also asserts no status strand exists: this is the one llm-seeded start
-// whose driver strand really spawns, so it pins that an llm-seeded start over a strand-free session
-// adds no status strand while its driver strand still spawns.
+// After each bootstrap it also asserts no status strand exists: this is the one llm-seeded start whose driver strand really spawns,
+// so it pins that an llm-seeded start over a strand-free session adds no status strand while its driver strand still spawns.
 func TestSmokeDriverStrand_ReentrantAcrossThreeBootstraps(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 	exe := buildLyxBinary(t)

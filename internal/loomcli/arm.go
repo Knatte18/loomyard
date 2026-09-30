@@ -368,9 +368,7 @@ func (c *loomCLI) loomPostRun(ctx context.Context, result shedengine.Result, run
 	return map[string]any{"friction": frictionStatus}
 }
 
-// loomPreStep implements the PreStep hook for loom's spec: the early run-lock probe, then step's
-// bootstrap, then reed Up -- today's stepCmd body, in today's order, each returned error paired
-// with its refusal kind.
+// loomPreStep implements the PreStep hook for loom's spec: the early run-lock probe, then step's bootstrap, then reed Up -- today's stepCmd body, in today's order, each returned error paired with its refusal kind.
 //
 // Up stays because the producers under step spawn agents into reed panes.
 // Step never adds or removes the status strand:

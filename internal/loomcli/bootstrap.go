@@ -230,12 +230,10 @@ func findStatusStrand(strands []reedengine.StrandStatus, name string) (reedengin
 	return reedengine.StrandStatus{}, false
 }
 
-// removeStatusStrands removes every strand named statusStrandDisplayName, for the llm arm, where the
-// ly-drive strand is the driving surface and the status band is not wanted.
+// removeStatusStrands removes every strand named statusStrandDisplayName, for the llm arm, where the ly-drive strand is the driving surface and the status band is not wanted.
 // It removes every match rather than the first, because an older build may have left a duplicate.
-// Removal is never recursive: reed refuses a non-recursive removal of a strand with children and
-// removes nothing, so a status strand with anything parented beneath it stays up instead of
-// cascading through strands this call never meant to touch.
+// Removal is never recursive: reed refuses a non-recursive removal of a strand with children and removes nothing,
+// so a status strand with anything parented beneath it stays up instead of cascading through strands this call never meant to touch.
 // It never fails its caller: a failed status read or removal logs a warning and carries on,
 // because a leftover band costs the operator screen rows, not the run
 // (the same stance ensureStatusStrand takes on a failed ReplaceStrand).

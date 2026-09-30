@@ -1,9 +1,5 @@
 // start.go implements the `start` loom verb: the session bootstrap.
-// It resolves the recorded parent branch, seeds the status file when absent, commits that seed
-// into the fabric, ensures the reed substrate and picks the session's status strand by the recorded
-// driver (kept on a go-driven run, removed on an llm-driven one), spawns the detached driver when none
-// is already alive, waits for the handshake that confirms the driver took the run lock, and finally
-// hands the operator's terminal to a tmux attach.
+// It resolves the recorded parent branch, seeds the status file when absent, commits that seed into the fabric, ensures the reed substrate and picks the session's status strand by the recorded driver (kept on a go-driven run, removed on an llm-driven one), spawns the detached driver when none is already alive, waits for the handshake that confirms the driver took the run lock, and finally hands the operator's terminal to a tmux attach.
 // Every fallible step runs pre-flight, on the envelope; only the terminal handover at the very end
 // takes the CLI/Cobra Invariant's narrow interactive-handoff exception.
 
@@ -41,8 +37,7 @@ const (
 )
 
 // mustUseLLMDriverArm reports whether the run takes the llm arm, from the run's recorded driver.
-// It selects step 4's strand branch (the llm arm removes the status strand, the go arm keeps it) and
-// step 5's spawn (the llm arm's strand launch rather than the go arm's detached spawn).
+// It selects step 4's strand branch (the llm arm removes the status strand, the go arm keeps it) and step 5's spawn (the llm arm's strand launch rather than the go arm's detached spawn).
 //
 // An unseeded run is seeded with the llm driver (resolveSeedDriver), while a seed file with no driver
 // value still reads as the go driver, so this is a two-value switch -- any value other than
@@ -341,18 +336,19 @@ Example:
 			// helper also returns is deliberately discarded here: `run` writes the same envelope on
 			// any failure regardless of which sub-step produced it, exactly as before this
 			// extraction; `step` is the caller that maps the stage onto its own refusal-kind
-			// vocabulary. The returned driver is the branch condition for step 4's strand branch
-			// and step 5's spawn below -- this call is the only read of it: seedAndCommitBootstrap has just written or found this run's
-			// seed, so a second shedrun.ReadSeed here would re-read a value already in hand.
+			// vocabulary.
+			// The returned driver is the branch condition for step 4's strand branch and step 5's spawn below -- this call is the only read of it:
+			// seedAndCommitBootstrap has just written or found this run's seed,
+			// so a second shedrun.ReadSeed here would re-read a value already in hand.
 			_, driver, _, err := c.seedAndCommitBootstrap(slug, parentFlag)
 			if err != nil {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
 
-			// Step 4: take the bootstrap lock, then bring the reed substrate up and choose the
-			// session's driving surface by the recorded driver. The lock's parent directory is the same ephemeral-tree directory the run
-			// lock and driver log also live in, so creating it here also covers those.
+			// Step 4: take the bootstrap lock, then bring the reed substrate up and choose the session's driving surface by the recorded driver.
+			// The lock's parent directory is the same ephemeral-tree directory the run lock and driver log also live in,
+			// so creating it here also covers those.
 			bootstrapLockPath := loomengine.LoomBootstrapLock(c.location)
 			if err := os.MkdirAll(filepath.Dir(bootstrapLockPath), 0o755); err != nil {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
@@ -374,8 +370,8 @@ Example:
 				return nil
 			}
 			if mustUseLLMDriverArm(driver) {
-				// The ly-drive strand is the driving surface, so the status band goes; a failed
-				// removal never fails start.
+				// The ly-drive strand is the driving surface, so the status band goes;
+				// a failed removal never fails start.
 				removeStatusStrands(c.reed.Status, c.reed.RemoveStrand)
 			} else if err := c.ensureStatusStrand(); err != nil {
 				_ = bootstrapLock.Release()
@@ -389,9 +385,10 @@ Example:
 			// here. First, it sits outside this RunE's own handover decision below -- the daemon is
 			// per-hub and reconciles a session that exists on every invocation, --no-attach
 			// included, where the detached driver still spawns agent strands that need
-			// reconciling. Second, it sits after the strand branch, outside it, so both arms reach
-			// it, and `step` does not spawn the watchdog. Third, it
-			// stays inside the region where the bootstrap lock is still held, deliberately: the
+			// reconciling.
+			// Second, it sits after the strand branch, outside it, so both arms reach it,
+			// and `step` does not spawn the watchdog.
+			// Third, it stays inside the region where the bootstrap lock is still held, deliberately: the
 			// spawn is a MkdirAll, an os.Executable(), and a detached Start with no Wait, so it is
 			// bounded and cannot extend the hold the way a wait could, while releasing the lock
 			// earlier to place this call outside it would mean releasing before the driver-spawn
