@@ -338,8 +338,10 @@ func TestAdd_WeftReplaceLeaseRaceRefused(t *testing.T) {
 	weftBranch := fabricengine.WeftBranchName(slug)
 	f := removedPair(t, slug)
 
+	var moved string
 	fabricengine.SetAddBeforeWeftReplaceHookForTest(t, func() {
 		pushCommitToOrigin(t, f.WeftBare, weftBranch)
+		moved = weftBareTip(t, f.WeftBare, weftBranch)
 	})
 
 	topology := fabricengine.NewTopology(fabricengine.Config{})
@@ -353,7 +355,10 @@ func TestAdd_WeftReplaceLeaseRaceRefused(t *testing.T) {
 	if _, statErr := os.Lstat(fabricengine.WeftWorktreePath(f.Layout, slug)); !os.IsNotExist(statErr) {
 		t.Errorf("weft worktree remains after the refused Add (stat err = %v)", statErr)
 	}
-	if got := weftBareTip(t, f.WeftBare, weftBranch); got == "" {
-		t.Errorf("origin weft branch %q was deleted despite the moved tip", weftBranch)
+	if moved == "" {
+		t.Fatal("the replace hook never ran; want Add to reach the step-12 replacement")
+	}
+	if got := weftBareTip(t, f.WeftBare, weftBranch); got != moved {
+		t.Errorf("origin weft branch %q = %q; want the moved tip %q", weftBranch, got, moved)
 	}
 }
