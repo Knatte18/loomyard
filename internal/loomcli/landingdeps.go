@@ -94,8 +94,8 @@ func landingDeps(
 			done := "done"
 			return boardengine.New(bc).SetStatus(seedSlug(l.WorktreeName), &done)
 		},
-		// VerifyCommand reads the plan's verify command each time it is called, never at
-		// construction: landingDeps runs at bootstrap, before the plan exists on a fresh run,
+		// VerifyCommand reads the plan's verify command each time it is called, never at construction:
+		// landingDeps runs at bootstrap, before the plan exists on a fresh run,
 		// so a value captured here would be empty and the gate would silently skip.
 		// A read or parse error is returned, not mapped to an empty command;
 		// only a parsed plan with no "## verify:" section yields "".
