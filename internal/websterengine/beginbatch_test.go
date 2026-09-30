@@ -23,6 +23,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -570,6 +571,28 @@ func TestBeginBatch_ReBeginKeepsStartSHA(t *testing.T) {
 	}
 	if got := fx.Deps.State.Batches[1].StartSHA; got != original {
 		t.Errorf("Batches[1].StartSHA = %q; want the kept %q", got, original)
+	}
+}
+
+// TestBeginBatch_RecordsCardSet proves begin-batch persists the batch's card set as NN-<slug> entries, on a first begin and on a re-begin.
+func TestBeginBatch_RecordsCardSet(t *testing.T) {
+	fx := newBeginFixture(t)
+	fx.Deps.State.AssertedModel = "master-model" // skip the injector
+	want := []string{"01-json-flag"}
+
+	if _, err := websterengine.BeginBatch(fx.Deps, 1); err != nil {
+		t.Fatalf("BeginBatch(1) error = %v; want nil", err)
+	}
+	if got := fx.Deps.State.Batches[1].Cards; !slices.Equal(got, want) {
+		t.Errorf("Batches[1].Cards after begin = %v; want %v", got, want)
+	}
+
+	fx.Deps.State.Batches[1].Cards = nil
+	if _, err := websterengine.BeginBatch(fx.Deps, 1); err != nil {
+		t.Fatalf("re-BeginBatch(1) error = %v; want nil", err)
+	}
+	if got := fx.Deps.State.Batches[1].Cards; !slices.Equal(got, want) {
+		t.Errorf("Batches[1].Cards after re-begin = %v; want %v", got, want)
 	}
 }
 

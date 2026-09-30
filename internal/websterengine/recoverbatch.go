@@ -219,6 +219,7 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 
 	return &BatchState{
 		Slug:          slug,
+		Cards:         batchCardIDs(batch),
 		StartSHA:      start,
 		AuditWarnings: priorWarnings,
 		Kind:          "recovery",

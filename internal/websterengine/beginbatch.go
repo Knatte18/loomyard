@@ -410,6 +410,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 
 	deps.State.Batches[number] = &BatchState{
 		Slug:          slug,
+		Cards:         batchCardIDs(batch),
 		StartSHA:      startSHA,
 		Kind:          "fork",
 		AuditWarnings: priorWarnings,

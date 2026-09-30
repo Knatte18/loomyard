@@ -24,6 +24,7 @@ import (
 	"path"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -163,6 +164,9 @@ type State struct {
 type BatchState struct {
 	// Slug is the batch's <batch-slug> segment.
 	Slug string `json:"slug"`
+	// Cards is the batch's card set as begun: one NN-<slug> entry per card, in the batch's card order.
+	// A record written before the field existed has none, and reads as the single card NN-<Slug> the identity batcher produced.
+	Cards []string `json:"cards,omitempty"`
 	// StartSHA is the repo HEAD immediately before this batch's implementer
 	// first forked — the durable base-commit record a resume, an operator
 	// diagnosis, and the post-batch delta all read. A recovery batch inherits
@@ -270,4 +274,13 @@ func SaveState(websterDir, scratchDir string, st *State) error {
 		return fmt.Errorf("webster: save state %s: %w", path, err)
 	}
 	return nil
+}
+
+// batchCardIDs returns one NN-<slug> entry per card of b, in the batch's card order.
+func batchCardIDs(b batcher.Batch) []string {
+	ids := make([]string, 0, len(b.Cards))
+	for _, c := range b.Cards {
+		ids = append(ids, fmt.Sprintf("%02d-%s", c.Number, c.Slug))
+	}
+	return ids
 }

@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -895,6 +896,20 @@ func TestRecoverSpawn_InheritsTheStuckForksStartSHA(t *testing.T) {
 	}
 	if got.StartSHA != bracketStart {
 		t.Errorf("recovery BatchState.StartSHA = %q; want the stuck fork's own %q — the post-batch delta must span the whole bracket, not just the recovery's own share of it", got.StartSHA, bracketStart)
+	}
+}
+
+// TestRecoverSpawn_RecordsCardSet proves the spawned recovery record carries the batch's card set as NN-<slug> entries.
+func TestRecoverSpawn_RecordsCardSet(t *testing.T) {
+	fx := newRecoverFixture(t)
+	clk := &recoverFakeClock{now: time.Unix(0, 0)}
+
+	if _, _, err := websterengine.RecoverSpawnOrAttach(fx.Deps, 1, clk); err != nil {
+		t.Fatalf("RecoverSpawnOrAttach() error = %v; want nil", err)
+	}
+	got := fx.Deps.State.Batches[1].Cards
+	if want := []string{"01-json-flag"}; !slices.Equal(got, want) {
+		t.Errorf("recovery BatchState.Cards = %v; want %v", got, want)
 	}
 }
 
