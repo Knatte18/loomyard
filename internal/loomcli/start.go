@@ -146,6 +146,26 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 	driverAction, driverGUID := resolveDriverStrandAction(strands)
 	mustSpawn := mustSpawnDriver(runLockHeld, driverAction == driverStrandLive)
 
+	// The resume branch reads only strand liveness and the park marker, never the seed's driver value
+	// a second time (Driver Choice Single-Site Invariant). A spawn first removes a stale marker; a
+	// live strand with the marker is a parked driver, resumed with one typed line.
+	markerPath := shedrun.ParkMarker(c.location, shedrun.ResolveRunID(c.location, c.runID))
+	if mustSpawn {
+		if err := os.Remove(markerPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+			_ = bootstrapLock.Release()
+			clihelp.SetExit(ctx, output.Err(out, err.Error()))
+			return false
+		}
+	} else if driverAction == driverStrandLive {
+		if _, statErr := os.Stat(markerPath); statErr == nil {
+			if err := c.resumeParkedDriver(driverGUID); err != nil {
+				_ = bootstrapLock.Release()
+				clihelp.SetExit(ctx, output.Err(out, err.Error()))
+				return false
+			}
+		}
+	}
+
 	var childPID int
 	if mustSpawn && mustUseLLMDriverArm(driver) {
 		_, err = c.startLLMDriverArm(driverAction, driverGUID, c.runID)
@@ -273,7 +293,10 @@ func (c *loomCLI) startCmd() *cobra.Command {
      Claude strand running ly-drive in this worktree's own reed session --
      a second invocation while a driver is running ensures substrate and
      attaches rather than spawning a second one; which driver runs is the
-     seed's recorded choice, never a flag on this command
+     seed's recorded choice, never a flag on this command; a live ly-drive
+     driver that parked at a hand-back is resumed by typing one line into its
+     pane, and start refuses after a bounded wait when that pane is not
+     ready, leaving the driver parked
   4. hand the terminal over, by where the command runs: attach to the
      session when $TMUX is unset; when $TMUX names reed's own tmux server,
      print the success envelope if this terminal is already in the task's
@@ -302,7 +325,8 @@ failed, since psmux on Windows may not export it. A worktree whose
 file and re-running "lyx ide spawn".
 
 --no-attach is for unattended callers (scripts, agents): it wins over every
-handover above. It performs steps 1 through 3 and returns once the driver's
+handover above. For a parked ly-drive driver it returns once the delivery of
+the resume line is verified. It performs steps 1 through 3 and returns once the driver's
 readiness signal confirms it is up, instead of running step 4. That
 readiness signal is the run lock being taken for the Go driver; for an
 ly-drive driver, it is the driver's provider TUI coming up ready, with any
@@ -503,7 +527,7 @@ Example:
 	}
 
 	cmd.Flags().StringVar(&parentFlag, "parent", "", "write the pair's provenance record once for a worktree created before that record existed; refused when it disagrees with an already-recorded value")
-	cmd.Flags().BoolVar(&noAttachFlag, "no-attach", false, "for unattended callers: return once a driver this invocation spawns is confirmed up (the Go driver has taken the run lock; an ly-drive driver's provider TUI is ready, with any one-time startup gate dismissed), instead of handing the terminal to the session")
+	cmd.Flags().BoolVar(&noAttachFlag, "no-attach", false, "for unattended callers: return once a driver this invocation spawns is confirmed up (the Go driver has taken the run lock; an ly-drive driver's provider TUI is ready, with any one-time startup gate dismissed), instead of handing the terminal to the session; a parked ly-drive driver is resumed by one typed line and this returns once that line's delivery is verified")
 
 	return cmd
 }

@@ -612,6 +612,12 @@ const (
 	agentPaneProbeInterval = 250 * time.Millisecond
 )
 
+// ErrPaneNotReady marks requireReadyAgentPane's not-ready refusal: the strand's pane was captured
+// but shows no input-ready provider. A caller waiting for a booting provider matches it with
+// errors.Is instead of matching message text; the capture-failure refusal and every other Send
+// error do not wrap it.
+var ErrPaneNotReady = errors.New("shuttle: the strand's pane shows no input-ready provider")
+
 // requireReadyAgentPane fails unless guid's strand has a live pane and the
 // current capture classifies as StartupReady. Distinguishes between a provider
 // that failed at launch and one still booting, with known residual limitations
@@ -642,8 +648,15 @@ func requireReadyAgentPane(reed ReedOps, engine Engine, guid string) error {
 	if lastCaptureErr != nil {
 		return fmt.Errorf("shuttle: capture strand %q's pane to confirm the provider TUI: %w", guid, lastCaptureErr)
 	}
-	return fmt.Errorf("shuttle: strand %q's pane shows no input-ready provider TUI — either the provider is still starting up (retry once it is ready), or its process exited (launch failure or crash) while the pane's shell stayed alive, in which case keys would be executed by the shell instead of reaching an agent", guid)
+	return paneNotReadyError{msg: fmt.Sprintf("shuttle: strand %q's pane shows no input-ready provider TUI — either the provider is still starting up (retry once it is ready), or its process exited (launch failure or crash) while the pane's shell stayed alive, in which case keys would be executed by the shell instead of reaching an agent", guid)}
 }
+
+// paneNotReadyError carries the not-ready refusal's full wording while satisfying
+// errors.Is(err, ErrPaneNotReady), so the message stays exactly as operators and tests know it.
+type paneNotReadyError struct{ msg string }
+
+func (e paneNotReadyError) Error() string { return e.msg }
+func (e paneNotReadyError) Unwrap() error { return ErrPaneNotReady }
 
 // requireLiveStrand fails unless guid's strand is tracked by reed and bound
 // to a live pane. This guards against tmux send-keys exiting 0 on dead panes.

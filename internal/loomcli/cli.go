@@ -104,6 +104,12 @@ type loomCLI struct {
 	// Test Tier Purity Invariant bars a real spawn from an untagged file and *shuttleengine.Runner is
 	// a concrete type.
 	driverStarter driverStarter
+	// driverSender is the seam through which `start` types the resume line into a parked, live
+	// driver's pane, wrapping the same *shuttleengine.Runner driverStarter does.
+	driverSender driverSender
+	// driverResumeWait is the pause between resume send attempts; a test substitutes a counting fake
+	// so no real sleep happens. A nil value means no pause.
+	driverResumeWait func()
 	// driverPaneProbe is the seam through which the llm arm reads and removes driver strands,
 	// wrapping the same *reedengine.Engine c.reed already carries. The seam exists for the same
 	// reason driverStarter does: *reedengine.Engine is a concrete type and the Test Tier Purity
