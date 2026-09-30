@@ -157,10 +157,9 @@ func DetectAnomalies(entry EntryObservation, final shedengine.Status, product St
 // three triggers partition final.State: blocked with shedengine.ReasonBounceBudgetExhausted,
 // blocked with anything else, or failed matching on state alone. shedengine persists
 // StateBlocked from exactly two arms, so "blocked and not budget-exhausted" is exactly the
-// escalation arm whatever reason its producer supplied. The one text the partition still matches
-// is the budget prefix, matched with strings.HasPrefix because the persisted reason carries the
-// exhausted row and a goto way forward after it: a producer reason starting with it would read as
-// budget exhaustion, and no shipped producer returns one.
+// escalation arm whatever reason its producer supplied.
+// The one text the partition still matches is the budget prefix, matched with strings.HasPrefix because the persisted reason carries the exhausted row and a goto way forward after it:
+// a producer reason starting with it would read as budget exhaustion, and no shipped producer returns one.
 func detectHaltAnomaly(final shedengine.Status, product Status) (Anomaly, bool) {
 	var kind AnomalyKind
 	switch {

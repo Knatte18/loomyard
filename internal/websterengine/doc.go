@@ -139,30 +139,25 @@
 // so a genuine foreign edit still fails exactly as it did.
 //
 // A foreign edit an operator means to keep has its own way forward:
-// `lyx webster rebaseline` (Rebaseline) accepts the on-disk plan as the new baseline without dropping any batch record,
-// provided the edited plan's batch of each recorded number still holds exactly the cards that record names.
+// `lyx webster rebaseline` (Rebaseline) accepts the on-disk plan as the new baseline without dropping any batch record, provided the edited plan's batch of each recorded number still holds exactly the cards that record names.
 // The fingerprint refusals in begin-batch and run name it.
 // Each batch record carries the card set it was begun with (BatchState.Cards) so that check has something to compare against.
 //
 // # audit findings: correctness fails the batch, policy warns once
 //
 // The fork and parent audits classify each finding (ClassifyViolation) as correctness or policy.
-// A correctness finding means the delta or the run's own state may be wrong: a fork writing one of Master's two contract files,
-// or a parent write under the run's `_lyx` directory or into the worktree's tracked (not git-ignored) content;
+// A correctness finding means the delta or the run's own state may be wrong: a fork writing one of Master's two contract files, or a parent write under the run's `_lyx` directory or into the worktree's tracked (not git-ignored) content;
 // a policy finding breaks a steering rule without touching correctness, such as a named spawn or a fabric reference.
 // Each finding carries a stable identity (its Key, prefixed by the session id for a parent finding),
 // and state.json's ledger dispositions it once per run, so the whole-session parent audit repeating earlier findings on every record-batch never re-judges them.
 // A policy finding is recorded as a warning on the batch once the evidence holds:
-// an OK report on a batch that carries policy findings first has its cards' verify commands re-run in-process (rerunCardVerifies),
-// and a failing re-run makes those findings correctness for the batch and fails it.
+// an OK report on a batch that carries policy findings first has its cards' verify commands re-run in-process (rerunCardVerifies), and a failing re-run makes those findings correctness for the batch and fails it.
 // A correctness finding fails the batch on its merits instead of wedging it:
 // the batch goes terminal with digest status failed and its reasons, the report is archived, and record-batch returns *BatchFailedError naming `lyx webster recover-batch`.
 // recover-batch proceeds from a failed batch and hands its strand the failure digest.
 // A report that cannot be attributed to a begun batch, or to any fork transcript, is archived and returned as *ReportArchivedError naming `lyx webster begin-batch`, which re-drives the batch.
-// The post-batch done-checks fail the batch the same way when a card's own declared work is missing,
-// while drift that concerns only a later card is recorded as a warning rather than blocking this batch.
-// At run exit the audit cross-check drops dispositioned findings, records the rest of the policy findings as run-level warnings, appended to summary.md under "Audit warnings",
-// and demotes Master's outcome done to stuck for an undispositioned correctness finding.
+// The post-batch done-checks fail the batch the same way when a card's own declared work is missing, while drift that concerns only a later card is recorded as a warning rather than blocking this batch.
+// At run exit the audit cross-check drops dispositioned findings, records the rest of the policy findings as run-level warnings, appended to summary.md under "Audit warnings", and demotes Master's outcome done to stuck for an undispositioned correctness finding.
 //
 // Every refusal this package can return, and the way forward from it, is tabulated in contracts/specs/refusal-spec.md;
 // this documentation links that table rather than restating its rows.
@@ -310,8 +305,7 @@
 // projects directory, while state.json and the reports are fabric-synced —
 // a different machine sees the report with no transcript behind it, which
 // record-batch treats exactly as it treats a forged report:
-// it archives the report and returns a *ReportArchivedError naming
-// `lyx webster begin-batch`, which re-drives the batch.
+// it archives the report and returns a *ReportArchivedError naming `lyx webster begin-batch`, which re-drives the batch.
 //
 // # Integration-suite fork + in-process bisect + terminal escalation
 //

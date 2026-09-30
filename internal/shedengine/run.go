@@ -212,8 +212,8 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 			// there is nothing to record -- the same reasoning the cancellation branch below
 			// already applies, and the reason this is a skip rather than a placeholder value:
 			// history[].outcome is a persisted enum whose whole vocabulary is done, stuck and
-			// awaiting, plus the history-only goto that no producer returns, and there is no
-			// further spelling for "the call did not get that far".
+			// awaiting, plus the history-only goto that no producer returns,
+			// and there is no further spelling for "the call did not get that far".
 			//
 			// Writing the empty string there was not free. It is out of vocabulary on disk, so
 			// internal/loomengine's own seed-coherence check rejects it -- an ordinary hard
@@ -453,9 +453,8 @@ func nowRFC3339() string {
 // rather than special-cased: the engine records the verdict a producer actually returned, and
 // state: "failed" halts the run, so every continuation past it is a fresh human-initiated act.
 // A Stuck entry whose BudgetExempt is true is skipped and never counted.
-// An OutcomeGoto entry also ends the episode when its target (the entry's Producer) shares def.Segment,
-// or is def itself when def.Segment is empty, so a goto into a segment gives every row of that
-// segment a fresh budget.
+// An OutcomeGoto entry also ends the episode when its target (the entry's Producer) shares def.Segment, or is def itself when def.Segment is empty,
+// so a goto into a segment gives every row of that segment a fresh budget.
 // producers resolves a target's segment; a target no longer in the list ends no episode.
 func episodeStuckCount(history []HistoryEntry, def ProducerDef, producers []ProducerDef) int {
 	name := def.Name

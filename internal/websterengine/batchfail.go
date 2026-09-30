@@ -1,6 +1,5 @@
 // batchfail.go implements the one primitive that takes a batch terminal-failed.
-// record-batch and recover-batch share it, so a batch rejected on its merits never stays
-// non-terminal with an OK report on disk, the state that made the three verbs refuse each other.
+// record-batch and recover-batch share it, so a batch rejected on its merits never stays non-terminal with an OK report on disk, the state that made the three verbs refuse each other.
 
 package websterengine
 

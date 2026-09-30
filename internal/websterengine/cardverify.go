@@ -19,8 +19,7 @@ import (
 const DefaultCardVerifyTimeout = 10 * time.Minute
 
 // rerunCardVerifies runs each card's Verify through verifyrun.Run in worktree, in card order, each under its own timeout and with output discarded.
-// It returns one line per failing card, `card NN-<slug> verify <command> <how>`,
-// where <how> is `exited <code>`, `failed to start: <err>`, or `timed out after <timeout>`.
+// It returns one line per failing card, `card NN-<slug> verify <command> <how>`, where <how> is `exited <code>`, `failed to start: <err>`, or `timed out after <timeout>`.
 // A card with no Verify passes, and a zero timeout means DefaultCardVerifyTimeout.
 // It returns no error: a verify that cannot start is a failed verify.
 func rerunCardVerifies(cards []planparser.Card, worktree string, timeout time.Duration) []string {

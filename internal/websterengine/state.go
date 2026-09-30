@@ -151,10 +151,9 @@ type State struct {
 	// incremental audit consults this set to parse only what is new since
 	// the previous batch boundary.
 	SeenForkTranscripts []string `json:"seenForkTranscripts,omitempty"`
-	// AuditDispositions maps a finding's identity (findingIdentity) to the disposition it received,
-	// "warned" or "failed".
-	// A finding is dispositioned once per run: the whole-session parent audit repeats every earlier
-	// finding on each record-batch, and this ledger is what keeps a repeat from warning or refusing again.
+	// AuditDispositions maps a finding's identity (findingIdentity) to the disposition it received, "warned" or "failed".
+	// A finding is dispositioned once per run: the whole-session parent audit repeats every earlier finding on each record-batch,
+	// and this ledger is what keeps a repeat from warning or refusing again.
 	AuditDispositions map[string]string `json:"auditDispositions,omitempty"`
 	// AuditWarnings is the run-level list of warnings recorded at run exit, each added once per identity.
 	AuditWarnings []AuditWarning `json:"auditWarnings,omitempty"`
@@ -212,8 +211,7 @@ type BatchState struct {
 	// attributed to this specific batch (a subset of State.SeenForkTranscripts).
 	ForkTranscripts []string `json:"forkTranscripts,omitempty"`
 	// AuditWarnings is every warning recorded against this batch, each added once per finding identity.
-	// A re-begin and a recovery carry it onto their fresh record, because the identity stays
-	// dispositioned in State.AuditDispositions and no later call records the warning again.
+	// A re-begin and a recovery carry it onto their fresh record, because the identity stays dispositioned in State.AuditDispositions and no later call records the warning again.
 	AuditWarnings []AuditWarning `json:"auditWarnings,omitempty"`
 
 	// The following three fields are populated only for a recovery batch

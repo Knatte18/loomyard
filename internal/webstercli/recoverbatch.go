@@ -10,8 +10,7 @@
 // digest, PersistRecoveryTerminal into a FRESHLY reloaded state under a re-acquired lease, followed
 // by the "... <status>" terminal fabric commit -- webster's third and fourth fabric-commit points, each
 // now carrying exactly the mutation its label names.
-// A *BatchFailedError from that persist step saves the reloaded state and commits it "... failed"
-// before the batch_failed error envelope.
+// A *BatchFailedError from that persist step saves the reloaded state and commits it "... failed" before the batch_failed error envelope.
 package webstercli
 
 import (
@@ -238,8 +237,8 @@ Example:
 				if err == nil {
 					err = websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, fresh)
 				} else if batchFailed {
-					// The batch went terminal failed: the whole reloaded state is the point, so it
-					// is saved rather than only the fingerprint re-baseline.
+					// The batch went terminal failed: the whole reloaded state is the point,
+					// so it is saved rather than only the fingerprint re-baseline.
 					if saveErr := websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, fresh); saveErr != nil {
 						err = fmt.Errorf("%w; additionally, persisting the failed batch failed: %v", err, saveErr)
 						batchFailed = false

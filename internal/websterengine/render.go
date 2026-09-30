@@ -213,9 +213,8 @@ func RenderForkPrompt(batch batcher.Batch, prevDigest, reportPath, planDir, prom
 // pattern.Directive call immediately above, which does propagate.
 // specsDir is the told deployed-specs directory, filled into the shared implementer-job body's
 // required specs_dir marker.
-// failureDigest is the prior failed record's reasons and suspect paths, or "" when the batch
-// was not failed; it fills the optional failure_digest marker, rendered as "none" when empty,
-// and being optional it leaves an older deployed stencil rendering.
+// failureDigest is the prior failed record's reasons and suspect paths, or "" when the batch was not failed;
+// it fills the optional failure_digest marker, rendered as "none" when empty, and being optional it leaves an older deployed stencil rendering.
 func RenderRecoveryPrompt(batch batcher.Batch, prevDigest, failureDigest, reportPath, anchorRoot, planDir, promptWorktreeRoot, stencilsDir, specsDir string, selfFixCap int, notePath string) ([]byte, error) {
 	digestLine := prevDigest
 	if strings.TrimSpace(digestLine) == "" {

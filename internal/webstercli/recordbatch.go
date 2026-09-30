@@ -6,9 +6,8 @@
 // fabric-ownership decision): state.json and the batch report, once RecordBatch either lands a
 // terminal digest or advances transcript attribution on a no_report retry -- both mutate
 // deps.State, so both are durable before Master's next tool call.
-// Two refusals persist as well: a *BatchFailedError saves the whole mutated state and commits it
-// ("record-batch NN failed"), and a *ReportArchivedError commits the archive move
-// ("record-batch NN report-archived"), each before the error envelope is emitted.
+// Two refusals persist as well: a *BatchFailedError saves the whole mutated state and commits it ("record-batch NN failed"),
+// and a *ReportArchivedError commits the archive move ("record-batch NN report-archived"), each before the error envelope is emitted.
 package webstercli
 
 import (
@@ -128,8 +127,8 @@ Example:
 
 			result, err := websterengine.RecordBatch(deps, batchNumber)
 			if errors.Is(err, websterengine.ErrBatchFailed) {
-				// The batch went terminal failed and its report was archived: every mutation on st is
-				// the point, so the whole state is saved, not just the fingerprint re-baseline.
+				// The batch went terminal failed and its report was archived: every mutation on st is the point,
+				// so the whole state is saved, not just the fingerprint re-baseline.
 				batchName := fmt.Sprintf("%02d-%s", batchNumber, st.Batches[batchNumber].Slug)
 				saveErr := websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, st)
 				_ = mutateLock.Release()

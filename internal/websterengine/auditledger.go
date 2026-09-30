@@ -1,9 +1,8 @@
 // auditledger.go is the durable ledger webster's audit dispositions record into.
-// A finding is dispositioned at most once per run, by identity: the whole-session parent audit repeats
-// every earlier finding on each record-batch, so the ledger is what lets a finding warn or refuse once
-// and then stay quiet.
-// The ledger lives in state.json (State.AuditDispositions, plus the batch-level and run-level
-// AuditWarnings lists); every helper here mutates the in-memory *State and leaves persisting to the caller.
+// A finding is dispositioned at most once per run, by identity: the whole-session parent audit repeats every earlier finding on each record-batch,
+// so the ledger is what lets a finding warn or refuse once and then stay quiet.
+// The ledger lives in state.json (State.AuditDispositions, plus the batch-level and run-level AuditWarnings lists);
+// every helper here mutates the in-memory *State and leaves persisting to the caller.
 
 package websterengine
 

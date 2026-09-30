@@ -1,6 +1,5 @@
 // goto.go declares the status-file mutation behind `lyx shed goto`.
-// It lives here, beside the other status-file writes, so the generic verb body in
-// internal/shedverbs stays a thin caller that derives no path.
+// It lives here, beside the other status-file writes, so the generic verb body in internal/shedverbs stays a thin caller that derives no path.
 
 package shedengine
 
@@ -26,8 +25,7 @@ type GotoRequest struct {
 }
 
 // Goto moves a halted run onto the Target row and leaves it paused.
-// It writes paused, never running: the next step resumes through the ordinary resume write,
-// whereas running with the lock free would read as a crashed driver.
+// It writes paused, never running: the next step resumes through the ordinary resume write, whereas running with the lock free would read as a crashed driver.
 // The appended history entry carries the OutcomeGoto outcome, which ends the target segment's bounce episode.
 // It calls no CommitStatus and sets no transient mark; the next step's persist commits the file, as pause's write is.
 func Goto(req GotoRequest) (Status, error) {

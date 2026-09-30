@@ -1,5 +1,4 @@
-// summary.go implements webster's write-side helpers over the final-summary artifact
-// (AppendIntegrationTriage and AppendAuditWarnings append further sections beside the two below):
+// summary.go implements webster's write-side helpers over the final-summary artifact (AppendIntegrationTriage and AppendAuditWarnings append further sections beside the two below):
 // ArchiveStaleSummary applies the same archive-never-refuse timestamp-rename discipline as
 // outcome.go's own archiveStaleOutcome, reusing archive.go's firstFreeArchivePath rather than
 // re-implementing the same-second collision loop; AppendIntegrationFailure extends an

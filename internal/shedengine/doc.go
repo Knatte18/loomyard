@@ -49,13 +49,12 @@
 // That outcome is history-only: no producer returns it, and it is never a Call verdict.
 // The entry leaves the run paused, never running, so the next Run reads as an ordinary resume.
 // It also sets an episode boundary for the target's segment:
-// episodeStuckCount stops counting Stuck entries at a goto whose target shares the producer's Segment
-// (or is the producer itself when it has no Segment), so the moved-onto segment starts with a fresh bounce budget.
+// episodeStuckCount stops counting Stuck entries at a goto whose target shares the producer's Segment (or is the producer itself when it has no Segment),
+// so the moved-onto segment starts with a fresh bounce budget.
 // A goto whose target is missing from the producer list ends no episode.
 //
 // Two stops name goto as their way forward in a trailing `way forward:` clause:
-// the missing-producer refusal, which lists every valid producer name,
-// and the budget-exhausted reason, whose ReasonBounceBudgetExhausted stays its exact prefix.
+// the missing-producer refusal, which lists every valid producer name, and the budget-exhausted reason, whose ReasonBounceBudgetExhausted stays its exact prefix.
 // Every refusal's way forward is tabulated in contracts/specs/refusal-spec.md, which this documentation links rather than restates.
 //
 // # Told, never derived

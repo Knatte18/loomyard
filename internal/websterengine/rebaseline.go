@@ -14,8 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
-// ErrRebaselineCardSetChanged is the sentinel Rebaseline returns when the edited plan no longer holds
-// a begun batch's recorded card set, which no restamp can make safe.
+// ErrRebaselineCardSetChanged is the sentinel Rebaseline returns when the edited plan no longer holds a begun batch's recorded card set, which no restamp can make safe.
 var ErrRebaselineCardSetChanged = errors.New("webster: the edited plan changes the cards of a batch this run already begun")
 
 // RebaselineDeps is what Rebaseline reads: the edited on-disk plan, the batches sequenced from it,
@@ -37,8 +36,7 @@ type RebaselineResult struct {
 }
 
 // Rebaseline accepts the on-disk plan as the run's plan without discarding any batch record.
-// It refuses, wrapping ErrRebaselineCardSetChanged, when a begun batch's card set differs from the
-// card set the edited plan's batch of that number now holds, or the plan no longer has that number.
+// It refuses, wrapping ErrRebaselineCardSetChanged, when a begun batch's card set differs from the card set the edited plan's batch of that number now holds, or the plan no longer has that number.
 // Otherwise it restamps State.PlanFingerprint and leaves every other field untouched.
 // It never saves; the caller holds the state-mutation lease and saves, as for the bracket verbs.
 func Rebaseline(deps RebaselineDeps) (*RebaselineResult, error) {

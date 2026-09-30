@@ -25,10 +25,8 @@ func formatFailures(report preflight.Report) string {
 	return strings.Join(parts, "; ")
 }
 
-// wayForward returns the trailing "way forward" clause for report's failures, one fix per failed
-// check that has one, or "" when none does.
-// A failed geometry check, and a junction failure from an unreadable fabric.yaml, have no
-// operator-runnable fix and stay bare.
+// wayForward returns the trailing "way forward" clause for report's failures, one fix per failed check that has one, or "" when none does.
+// A failed geometry check, and a junction failure from an unreadable fabric.yaml, have no operator-runnable fix and stay bare.
 func wayForward(report preflight.Report) string {
 	var steps []string
 	seen := map[string]bool{}

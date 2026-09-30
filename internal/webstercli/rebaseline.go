@@ -1,7 +1,5 @@
-// rebaseline.go implements the `rebaseline` webster verb: the operator's way to accept a plan edit
-// made mid-run without discarding any batch record.
-// It runs websterengine.Rebaseline under the state-mutation lease (load, restamp, save, release),
-// then fabric-syncs the restamped state.json.
+// rebaseline.go implements the `rebaseline` webster verb: the operator's way to accept a plan edit made mid-run without discarding any batch record.
+// It runs websterengine.Rebaseline under the state-mutation lease (load, restamp, save, release), then fabric-syncs the restamped state.json.
 package webstercli
 
 import (

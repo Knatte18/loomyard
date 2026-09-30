@@ -1,11 +1,4 @@
-// recordbatch.go implements RecordBatch, the second of webster's two bracket verbs Master calls
-// around each in-session fork, immediately after a fork returns: the bracket-discipline fail-loud
-// check (a record without a matching begin-batch record is refused), the incremental fork audit
-// with its bounded settle retry, webster's fork-audit findings and their once-per-run dispositions
-// (a policy finding warns, a correctness finding fails the batch), the unconditional
-// transcript-attribution advance, the batch-report presence check and parse, the head-SHA
-// cross-check against the fork's own self-reported head_sha, and the distilled digest's
-// persistence.
+// recordbatch.go implements RecordBatch, the second of webster's two bracket verbs Master calls around each in-session fork, immediately after a fork returns: the bracket-discipline fail-loud check (a record without a matching begin-batch record is refused), the incremental fork audit with its bounded settle retry, webster's fork-audit findings and their once-per-run dispositions (a policy finding warns, a correctness finding fails the batch), the unconditional transcript-attribution advance, the batch-report presence check and parse, the head-SHA cross-check against the fork's own self-reported head_sha, and the distilled digest's persistence.
 // RecordBatch never touches the fabric repo — the caller fabric-commits state.json and the batch
 // report once RecordBatch returns successfully, webster's own fabric-commit-boundary discipline.
 
@@ -26,8 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// ErrNoBeginRecord is the cause RecordBatch reports when deps.State.Batches[batchNumber] is
-// absent — a record call with no matching begin-batch record.
+// ErrNoBeginRecord is the cause RecordBatch reports when deps.State.Batches[batchNumber] is absent — a record call with no matching begin-batch record.
 // This is the bracket-discipline fail-loud check: a fork's own report, however legitimate it looks,
 // is never trusted without Go's own record that begin-batch actually opened this batch first.
 var ErrNoBeginRecord = errors.New("webster: record-batch called with no begin-batch record for this batch")
@@ -114,9 +106,8 @@ type RecordResult struct {
 	Warnings       []string
 }
 
-// archiveUnattributable archives batch number's report, when one exists, and returns the error a record-batch
-// attribution refusal ends with: a *ReportArchivedError when a report was archived,
-// otherwise cause wrapped with the same begin-batch way forward.
+// archiveUnattributable archives batch number's report, when one exists, and returns the error a record-batch attribution refusal ends with:
+// a *ReportArchivedError when a report was archived, otherwise cause wrapped with the same begin-batch way forward.
 // The batch record is left as it is.
 func archiveUnattributable(deps RecordDeps, number int, slug string, cause error) (*RecordResult, error) {
 	archived, err := archiveStaleReport(deps.Geom.ReportsDir, number, slug, time.Now)
@@ -134,13 +125,9 @@ func archiveUnattributable(deps RecordDeps, number int, slug string, cause error
 	}
 }
 
-// RecordBatch drives one record-batch call: the bracket-discipline check, incremental fork audit,
-// fork-audit finding dispositions, transcript-attribution advance, report parse, and digest persistence.
-// Each audit finding is dispositioned once per run: a policy finding is recorded as a warning
-// (after its batch's card verify commands pass, when the report is OK),
-// and a correctness finding, or a policy finding whose evidence re-run fails, fails the batch
-// and returns a *BatchFailedError naming `lyx webster recover-batch`, alongside a RecordResult
-// carrying the failed digest.
+// RecordBatch drives one record-batch call: the bracket-discipline check, incremental fork audit, fork-audit finding dispositions, transcript-attribution advance, report parse, and digest persistence.
+// Each audit finding is dispositioned once per run: a policy finding is recorded as a warning (after its batch's card verify commands pass, when the report is OK),
+// and a correctness finding, or a policy finding whose evidence re-run fails, fails the batch and returns a *BatchFailedError naming `lyx webster recover-batch`, alongside a RecordResult carrying the failed digest.
 // The caller persists deps.State via SaveState once RecordBatch returns, whether or not it returned a *BatchFailedError.
 func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	// The plan is a hard precondition, refused loudly rather than dereferenced several frames down
@@ -227,8 +214,8 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		forkWarnings = append(forkWarnings, ForkWarnings(f)...)
 	}
 
-	// A finding dispositioned by an earlier call is dropped: the whole-session parent audit repeats
-	// every earlier finding on each record-batch, and a finding is reported once per run.
+	// A finding dispositioned by an earlier call is dropped: the whole-session parent audit repeats every earlier finding on each record-batch,
+	// and a finding is reported once per run.
 	// Classification is the only fallible step and runs before any mutation.
 	var policy, correctness []classifiedFinding
 	for _, v := range candidates {
@@ -314,9 +301,8 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		warnings = append(warnings, moved)
 	}
 
-	// An OK report that carries policy findings, or whose batch already holds warnings from an
-	// earlier no-report call, must show its cards' own verify commands still pass: a policy
-	// warning is only safe to carry once the work is evidenced.
+	// An OK report that carries policy findings, or whose batch already holds warnings from an earlier no-report call, must show its cards' own verify commands still pass:
+	// a policy warning is only safe to carry once the work is evidenced.
 	// A FAILED report takes its policy findings as warnings with no re-run.
 	if report.Status == ReportStatusOK && (len(policy) > 0 || len(bs.AuditWarnings) > 0) {
 		if failures := rerunCardVerifies(batch.Cards, deps.Geom.WorktreeRoot, deps.VerifyTimeout); len(failures) > 0 {
@@ -386,8 +372,8 @@ type classifiedFinding struct {
 }
 
 // failFromFindings takes the batch terminal-failed on its audit findings.
-// Every finding is marked failed in the ledger, and the reasons are the findings' own text,
-// then the earlier recorded warnings, then the verify failures.
+// Every finding is marked failed in the ledger,
+// and the reasons are the findings' own text, then the earlier recorded warnings, then the verify failures.
 // suspects are the correctness paths, newTranscripts the transcripts this call consumes.
 // It returns the failed digest with Failed set, together with the *BatchFailedError.
 func failFromFindings(deps RecordDeps, bs *BatchState, number int, slug, headSHA string, findings []classifiedFinding, earlier, verifyFailures, suspects, newTranscripts, warnings []string) (*RecordResult, error) {
@@ -544,17 +530,15 @@ func postBatchChecks(in postBatchInputs) (warnings []string, err error) {
 	// informational by construction — drift.go's own contract is that the rename-versus-genuine-delete
 	// decision is the reviewer's, never the pipeline's. Failing the batch on it would destroy the very
 	// tier it belongs to, since a finding that kills the batch never reaches a reviewer at all.
-	// So the split here is by whose card the finding concerns: a blocking finding is about a later
-	// card, so it is recorded as a "later card:" warning rather than failing this batch, and an
-	// informational one rides out on warnings exactly as ScopeGuard's findings already do.
+	// So the split here is by whose card the finding concerns: a blocking finding is about a later card, so it is recorded as a "later card:" warning rather than failing this batch,
+	// and an informational one rides out on warnings exactly as ScopeGuard's findings already do.
 	for _, f := range driftFindings {
 		if f.Severity != planglyph.SeverityBlocking {
 			warnings = append(warnings, f.Error())
 			continue
 		}
-		// Drift runs over the pending plan, which already excludes this batch's cards, so a blocking
-		// finding concerns a card still to be built: it warns here, recorded once in the batch's
-		// state, and refuses at that card's own begin-batch.
+		// Drift runs over the pending plan, which already excludes this batch's cards, so a blocking finding concerns a card still to be built:
+		// it warns here, recorded once in the batch's state, and refuses at that card's own begin-batch.
 		detail := "later card: " + f.Error()
 		if text, added := recordBatchWarning(in.State, in.Batch, "later-card-drift:"+f.Error(), "later-card-drift", detail); added {
 			warnings = append(warnings, text)

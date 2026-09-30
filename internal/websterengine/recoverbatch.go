@@ -132,8 +132,7 @@ func refuseRecoveringDoneReport(reportsDir string, number int, slug string, prio
 	return nil
 }
 
-// failureDigestBlock renders a failed prior record's digest for the recovery prompt: the reasons,
-// which failBatch already ends with the suspect paths.
+// failureDigestBlock renders a failed prior record's digest for the recovery prompt: the reasons, which failBatch already ends with the suspect paths.
 // It returns "" when prior is not a failed batch.
 func failureDigestBlock(prior *BatchState) string {
 	if prior == nil || prior.Status != DigestStatusFailed || prior.Digest == nil || len(prior.Digest.Reasons) == 0 {
@@ -313,11 +312,10 @@ func RecoverAwait(deps RecoverDeps, batchNumber int, bs *BatchState, wait time.D
 // recovered that way never bound its plan: handles, so every later card kept referencing an unbound
 // handle for the rest of the plan's life.
 //
-// A blocking finding fails the batch through failBatch: the recovery strand said done, but the tree
-// says the card is not, and webster believes the tree.
-// The report is archived, the record is terminal failed, and the *BatchFailedError is returned with
-// the pass's warnings, so the next recover-batch spawns a fresh strand instead of re-attaching to
-// the finished one and failing the same checks forever.
+// A blocking finding fails the batch through failBatch: the recovery strand said done,
+// but the tree says the card is not, and webster believes the tree.
+// The report is archived, the record is terminal failed, and the *BatchFailedError is returned with the pass's warnings,
+// so the next recover-batch spawns a fresh strand instead of re-attaching to the finished one and failing the same checks forever.
 func PersistRecoveryTerminal(deps RecoverDeps, st *State, batchNumber int, digest *Digest) (warnings []string, err error) {
 	if st == nil {
 		return nil, fmt.Errorf("webster: recovery terminal persistence requires a loaded state; State is nil")

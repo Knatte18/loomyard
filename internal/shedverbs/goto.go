@@ -1,5 +1,4 @@
-// goto.go implements the generic `goto` verb body: it moves a halted run onto a named row and leaves
-// it paused, by calling shedengine.Goto, which owns the status-file write.
+// goto.go implements the generic `goto` verb body: it moves a halted run onto a named row and leaves it paused, by calling shedengine.Goto, which owns the status-file write.
 
 package shedverbs
 
