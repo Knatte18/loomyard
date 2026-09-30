@@ -20,6 +20,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabriccli"
@@ -130,11 +131,13 @@ func TestRunCLI_RemoveRemoteSuccessEnvelopeCarriesRemoteBranchDeleted(t *testing
 	}
 }
 
-// TestRunCLI_CleanupRemoteFailureExitsNonZero covers scenario 3: a cleanup run where one entry
-// carries a RemoteError exits non-zero, emits "ok":false and "partial":true, and still carries the
-// full entries array with that entry's remote_error populated. Induced by pointing the weft repo's
-// origin at a filesystem path that does not exist. Asserts the envelope carries no "refusal" key — a
-// synthesised fmt.Errorf can never match RefusalOf.
+// TestRunCLI_CleanupRemoteFailureExitsNonZero covers scenario 3: a cleanup run whose weft origin is
+// unreachable exits non-zero, emits "ok":false, and still carries the full entries array with the
+// failing branch's own reason. Induced by pointing the weft repo's origin at a filesystem path that
+// does not exist. The archive tag push is the first remote step and runs before any deletion, so its
+// failure keeps the branch and the envelope reports "partial":false with the reason in the entry's
+// error. Asserts the envelope carries no "refusal" key — a synthesised fmt.Errorf can never match
+// RefusalOf.
 func TestRunCLI_CleanupRemoteFailureExitsNonZero(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	weftRoot, err := fabricengine.WeftRepoRoot(h.Location)
@@ -156,8 +159,8 @@ func TestRunCLI_CleanupRemoteFailureExitsNonZero(t *testing.T) {
 	if ok, _ := envelope["ok"].(bool); ok {
 		t.Errorf("envelope ok = true; want false\noutput: %s", out.String())
 	}
-	if partial, _ := envelope["partial"].(bool); !partial {
-		t.Errorf("envelope partial = %v; want true\noutput: %s", envelope["partial"], out.String())
+	if partial, _ := envelope["partial"].(bool); partial {
+		t.Errorf("envelope partial = true; want false — the failed archive precedes every deletion\noutput: %s", out.String())
 	}
 	if _, present := envelope["refusal"]; present {
 		t.Errorf("envelope carries a \"refusal\" key; want none — a synthesised error is never a gate refusal\noutput: %s", out.String())
@@ -174,13 +177,13 @@ func TestRunCLI_CleanupRemoteFailureExitsNonZero(t *testing.T) {
 			continue
 		}
 		if entryBranch, _ := entry["branch"].(string); entryBranch == branch {
-			if reason, _ := entry["remote_error"].(string); reason != "" {
+			if reason, _ := entry["error"].(string); strings.Contains(reason, "archive") {
 				sawRemoteError = true
 			}
 		}
 	}
 	if !sawRemoteError {
-		t.Errorf("no entry carries a \"remote_error\"; want the failing branch's own reason\noutput: %s", out.String())
+		t.Errorf("no entry carries an archive \"error\"; want the failing branch's own reason\noutput: %s", out.String())
 	}
 }
 

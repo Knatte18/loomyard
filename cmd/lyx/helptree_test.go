@@ -111,7 +111,7 @@ func TestHelpTree_VerbModuleSubcommands(t *testing.T) {
 		{
 			name:     "loom",
 			module:   "loom",
-			wantSubs: []string{"start", "run", "step", "status", "pause", "validate-discussion", "validate-plan", "validate-description", "approve"},
+			wantSubs: []string{"start", "run", "step", "status", "pause", "validate-discussion", "validate-plan", "validate-description", "approve", "commit-records"},
 		},
 		{
 			name:     "quarry",
