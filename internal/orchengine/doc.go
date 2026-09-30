@@ -67,7 +67,8 @@
 //
 // Restart rules: a non-idle phase's injection is unconfirmed until a turn end proves it landed or a passing idle probe shows it did not, and it is then sent again.
 // A phase belonging to another strand is reset to idle.
-// A phase that exceeds the handoff timeout, or a session that asks a question during the handoff, aborts back to idle with LastAbortReason set.
+// A handoff-requested or resuming phase that exceeds the handoff timeout, or a session that asks a question during the handoff, aborts back to idle with LastAbortReason set.
+// A clearing phase that exceeds it moves on to resuming, since the handoff is already written and the resume prompt lands harmlessly in an uncleared session.
 // The guarantee holds through every restart: nothing before the handoff file is written and seen can reach `/clear`, and LastHandoff moves only when a cycle passes that gate.
 //
 // # The .lyx/orch/ layout
