@@ -96,8 +96,8 @@ func TestVerifyGate_TreeChangedPass(t *testing.T) {
 	if f.fake.calls != 1 || f.fake.command != "go test ./..." || f.fake.dir != f.gate.dir {
 		t.Fatalf("runner got calls=%d command=%q dir=%q", f.fake.calls, f.fake.command, f.fake.dir)
 	}
-	if f.fake.out == nil {
-		t.Fatal("runner got a nil writer")
+	if file, ok := f.fake.out.(*os.File); !ok || file.Name() != f.output {
+		t.Fatalf("runner got writer %#v; want the output file %q", f.fake.out, f.output)
 	}
 	if f.markerExists(t) {
 		t.Fatal("marker still present after a pass")
