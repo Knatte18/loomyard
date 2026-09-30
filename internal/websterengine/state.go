@@ -190,10 +190,10 @@ type BatchState struct {
 	// resume (found in round fable-r1). Empty for a recovery batch.
 	SessionID string `json:"sessionId,omitempty"`
 	// Terminal reports whether this batch has reached a terminal
-	// classification (done, stuck, or dead).
+	// classification (done, stuck, dead, or failed).
 	Terminal bool `json:"terminal"`
 	// Status is the batch's terminal status once Terminal is true (done,
-	// stuck, or dead); empty while still in flight.
+	// stuck, dead, or failed); empty while still in flight.
 	Status string `json:"status"`
 	// Digest is the distilled digest record-batch persisted at terminal
 	// classification — the carry-forward home that lets begin-batch(N+1)
