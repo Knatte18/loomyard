@@ -247,6 +247,37 @@ func mergeSourceInFlight(l *lyxcwd.Location, warpBranch string) (bool, error) {
 	return false, nil
 }
 
+// foreignProbeReadings holds the four raw git-level readings foreignMergeStatePresent combines:
+// whether MERGE_HEAD is live on each side, and each side's conflicted-path list.
+type foreignProbeReadings struct {
+	warpMergeHead  bool
+	warpConflicted []string
+	weftMergeHead  bool
+	weftConflicted []string
+}
+
+// readForeignProbes runs the four git-level merge-state probes — MERGE_HEAD and conflicted files on
+// each side — unconditionally, so no evaluation-order timing difference ever leaks which side (if
+// either) carries the state. It is the one place the four calls exist; foreignMergeStatePresent
+// and MidMerge both read through it.
+func (f *Fabric) readForeignProbes() (foreignProbeReadings, error) {
+	var r foreignProbeReadings
+	var err error
+	if r.warpMergeHead, err = f.warp.MergeHeadPresent(); err != nil {
+		return foreignProbeReadings{}, fmt.Errorf("fabricengine: check merge head: %w", err)
+	}
+	if r.warpConflicted, err = f.warp.ConflictedFiles(); err != nil {
+		return foreignProbeReadings{}, fmt.Errorf("fabricengine: check conflicted files: %w", err)
+	}
+	if r.weftMergeHead, err = f.weft.MergeHeadPresent(); err != nil {
+		return foreignProbeReadings{}, fmt.Errorf("fabricengine: check merge head: %w", err)
+	}
+	if r.weftConflicted, err = f.weft.ConflictedFiles(); err != nil {
+		return foreignProbeReadings{}, fmt.Errorf("fabricengine: check conflicted files: %w", err)
+	}
+	return r, nil
+}
+
 // foreignMergeStatePresent reports whether git-level merge state exists on either side that fabric
 // did not itself start: a live MERGE_HEAD or unmerged index entries, checked on both warp and weft.
 // All four probes are evaluated unconditionally before combining, rather than short-circuiting on
@@ -270,22 +301,9 @@ func mergeSourceInFlight(l *lyxcwd.Location, warpBranch string) (bool, error) {
 // is the one weft-reading guard the change leaves in place, and it still refuses a mutating merge
 // verb on weft-side foreign merge state.
 func (f *Fabric) foreignMergeStatePresent() (bool, error) {
-	warpMergeHead, err := f.warp.MergeHeadPresent()
+	r, err := f.readForeignProbes()
 	if err != nil {
-		return false, fmt.Errorf("fabricengine: check merge head: %w", err)
+		return false, err
 	}
-	warpConflicted, err := f.warp.ConflictedFiles()
-	if err != nil {
-		return false, fmt.Errorf("fabricengine: check conflicted files: %w", err)
-	}
-	weftMergeHead, err := f.weft.MergeHeadPresent()
-	if err != nil {
-		return false, fmt.Errorf("fabricengine: check merge head: %w", err)
-	}
-	weftConflicted, err := f.weft.ConflictedFiles()
-	if err != nil {
-		return false, fmt.Errorf("fabricengine: check conflicted files: %w", err)
-	}
-
-	return warpMergeHead || len(warpConflicted) > 0 || weftMergeHead || len(weftConflicted) > 0, nil
+	return r.warpMergeHead || len(r.warpConflicted) > 0 || r.weftMergeHead || len(r.weftConflicted) > 0, nil
 }
