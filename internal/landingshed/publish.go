@@ -43,6 +43,7 @@ var NewGitHubClient = githubclient.New
 type Publish struct {
 	deps     Deps
 	resolver resolver
+	gate     verifyGate
 }
 
 var _ shedengine.ShedProducer = (*Publish)(nil)
@@ -87,7 +88,7 @@ func NewPublish(deps Deps) (*Publish, error) {
 		return nil, fmt.Errorf("landingshed: NewPublish: build resolver: %w", err)
 	}
 
-	return &Publish{deps: deps, resolver: res}, nil
+	return &Publish{deps: deps, resolver: res, gate: newVerifyGate(deps)}, nil
 }
 
 // Call runs one Publish iteration.
@@ -140,6 +141,20 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 	}
 	if mergeResult.Outcome == mergeresolve.OutcomeStuck {
 		return p.stuckOrCancelled(ctx, mergeResult.Reason)
+	}
+
+	// Step 4a: verify the merged tree before anything leaves the worktree. A merge can compile
+	// cleanly and still break tests, and only a no-op merge leaves the tree the plan-level verify
+	// already passed.
+	reason, err := p.gate.check(ctx, publishName, p.deps.ParentBranch, !mergeResult.AlreadyUpToDate)
+	if err != nil {
+		if cerr := cancelErr(ctx, publishName); cerr != nil {
+			return "", shedengine.OutputPointer{}, cerr
+		}
+		return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: %w", publishName, err)
+	}
+	if reason != "" {
+		return p.stuckOrCancelled(ctx, reason)
 	}
 
 	// Step 5: push the task branch. Mandatory and load-bearing: agents commit per fix and never

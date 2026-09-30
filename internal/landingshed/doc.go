@@ -8,13 +8,18 @@
 // and head SHA match both the record and the task branch's local HEAD returns Done with no merge-in
 // and no push, a mismatch is Stuck, and a merged pull request is Done and a closed one Stuck whatever
 // the record says. Without an approval, Publish syncs the task branch against the parent through
-// internal/mergeresolve, pushes it, and opens or refreshes a pull request whose title and body come
+// internal/mergeresolve, verifies the merged tree, pushes it, and opens or refreshes a pull request whose title and body come
 // from the change description (the file the Describe row writes, one source shared with the landing
 // commit). Publish never returns Done once an unapproved pull request is open -- it returns Awaiting,
 // the planned hand-off to the reviewer, instead, deliberately: a Done verdict there would let the
 // driving engine advance straight to Finalize and merge to the parent seconds after the pull request
 // went up, defeating the pull request entirely. Progress past an open pull request is
 // `lyx loom approve` followed by `lyx loom start`.
+//
+// After the merge-in, a merge that changed the task tree, or a pending-verify marker left by an
+// earlier unverified merge, runs the told verify command before the push.
+// A failure is Stuck with the merge commit kept for the operator to fix forward,
+// and a missing command logs a warning and proceeds.
 //
 // require_pr_to_base is a list of base-branch names, not a bool, because whether a pull request is
 // needed depends on which parent branch a task targets -- a per-task runtime fact no static profile
