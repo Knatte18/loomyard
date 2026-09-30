@@ -18,8 +18,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/shell"
 )
 
-// readTrimmed returns path's content, or "" when it cannot be read yet.
-func readTrimmed(path string) string {
+// readOrEmpty returns path's content, or "" when it cannot be read yet.
+func readOrEmpty(path string) string {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return ""
@@ -50,7 +50,7 @@ func TestLaunchScript_SourcedScriptRunsInThePaneShellScope(t *testing.T) {
 	}
 
 	waitUntil(t, 10*time.Second, "strand command never wrote its marker", func() bool {
-		return strings.TrimSpace(readTrimmed(marker)) == "launched"
+		return strings.TrimSpace(readOrEmpty(marker)) == "launched"
 	})
 
 	scriptPath := launchScriptPath(sh, e.stateDir(), strand.GUID)
@@ -71,9 +71,9 @@ func TestLaunchScript_SourcedScriptRunsInThePaneShellScope(t *testing.T) {
 		t.Fatalf("send Enter: %v", err)
 	}
 	waitUntil(t, 10*time.Second, "probe never wrote its output", func() bool {
-		return strings.Count(readTrimmed(probe), "\n") >= 2
+		return strings.Count(readOrEmpty(probe), "\n") >= 2
 	})
-	lines := strings.Split(strings.TrimRight(readTrimmed(probe), "\n"), "\n")
+	lines := strings.Split(strings.TrimRight(readOrEmpty(probe), "\n"), "\n")
 	if lines[0] != fakeExe {
 		t.Errorf("LYX_BIN in pane = %q, want %q", lines[0], fakeExe)
 	}
