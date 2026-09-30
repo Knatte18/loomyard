@@ -50,8 +50,7 @@ func (p posixShell) PrependPathEntry(dir string) string {
 	return "export PATH=" + p.Quote(dir) + `${PATH:+:$PATH}`
 }
 
-// Source returns the POSIX `. <quoted path>` statement, which runs the file's statements in the
-// current shell's own scope.
+// Source returns the POSIX `. <quoted path>` statement, which runs the file's statements in the current shell's own scope.
 func (p posixShell) Source(path string) string {
 	return ". " + p.Quote(path)
 }

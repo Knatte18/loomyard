@@ -1,7 +1,4 @@
-// shell.go defines the Shell interface — pane-shell mechanics (argument quoting, the call operator,
-// the prompt-file read idiom, session-scoped env export, live-PATH prepend, single-line statement
-// chaining, script sourcing, and the sourced-script file extension) that every provider engine composes its launch/resume command strings from — and the
-// ForGOOS/Pwsh/Posix constructors that select or directly expose an implementation.
+// shell.go defines the Shell interface — pane-shell mechanics (argument quoting, the call operator, the prompt-file read idiom, session-scoped env export, live-PATH prepend, single-line statement chaining, script sourcing, and the sourced-script file extension) that every provider engine composes its launch/resume command strings from — and the ForGOOS/Pwsh/Posix constructors that select or directly expose an implementation.
 
 package shell
 
@@ -42,11 +39,10 @@ type Shell interface {
 	// The separator is ";" rather than "&&", so a rejected earlier statement cannot suppress a
 	// later one, and empty parts are dropped so a trailing separator is never emitted.
 	Chain(parts ...string) string
-	// Source returns a standalone statement that runs the statements in the file at path in the
-	// current shell's own scope, so exports and PATH changes land in the calling session.
+	// Source returns a standalone statement that runs the statements in the file at path in the current shell's own scope,
+	// so exports and PATH changes land in the calling session.
 	Source(path string) string
-	// ScriptExt returns the file extension, leading dot included, that a script this dialect
-	// sources carries.
+	// ScriptExt returns the file extension, leading dot included, that a script this dialect sources carries.
 	ScriptExt() string
 }
 
