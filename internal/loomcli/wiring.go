@@ -158,9 +158,9 @@ func newCommitStatusSeam(deps commitStatusDeps) func(producer, state string) err
 }
 
 // wireLightweight builds the minimum the verbUsesLightweightWiring set needs onto c: location, cwd,
-// the two status-file paths, and (for the two validate verbs) the four c.env path fields
-// validateDiscussionCmd/validatePlanCmd read. It loads no module config, constructs no engine, and
-// can fail only if loomengine's own path accessors do, which they cannot.
+// the two status-file paths, and (for the validate verbs) the c.env path fields they read. It loads
+// no module config, constructs no engine, and can fail only if loomengine's own path accessors do,
+// which they cannot.
 //
 // It exists because wire() below loads eight module configs, a model-spec registry and the active
 // batchifier before any verb body runs, so a fault in ANY of them refused "lyx loom status" and
@@ -174,6 +174,10 @@ func newCommitStatusSeam(deps commitStatusDeps) func(producer, state string) err
 // pre-handoff self-check, mid-run, while a sibling process may be actively rewriting any of the eight
 // configs wire() loads -- and validateDiscussionCmd/validatePlanCmd (validate.go) read only
 // DecisionRecordPath/SupportLogPath/AnchorPath/WorktreeRoot, none of which need any config load.
+// validate-description joined for the same reason, reading DescriptionPath alone.
+//
+// approve is on this path because it builds no producer: it reads the status file, opens the fabric
+// on demand and queries GitHub, then writes the approval record, none of which needs a module config.
 //
 // The verbs that actually build producers -- start and run -- deliberately keep the full wire(), and
 // keep failing early on a bad config, because for them an unloadable config is a real refusal rather
@@ -182,8 +186,8 @@ func newCommitStatusSeam(deps commitStatusDeps) func(producer, state string) err
 func (c *loomCLI) wireLightweight(location *lyxcwd.Location, cwd string) {
 	c.location = location
 	c.cwd = cwd
-	// CommitStatus is filled here too, even though every verb on this path is read-only and so never
-	// invokes it: filling both literals keeps them structurally identical, so a future verb promoted
+	// CommitStatus is filled here too, even though no verb on this path writes the status file and so
+	// none invokes it: filling both literals keeps them structurally identical, so a future verb promoted
 	// from this path to wire()'s cannot silently lose the hook. loomCommitStatusDeps builds three
 	// closures and performs no I/O at build time, so it neither loads config nor opens a fabric --
 	// this doc comment's own claim that wireLightweight "loads no module config, constructs no
@@ -195,10 +199,10 @@ func (c *loomCLI) wireLightweight(location *lyxcwd.Location, cwd string) {
 		StatusLockPath: shedrun.StatusLock(location, c.runID),
 		CommitStatus:   newCommitStatusSeam(loomCommitStatusDeps(location, c.runID)),
 	}
-	// c.env is otherwise left at its zero value deliberately: status/pause read nothing from it, and
-	// filling only the five fields the validate verbs actually read (rather than the
-	// whole of wire()'s c.env assembly) is what keeps this path from re-acquiring the eight-config
-	// load it exists to avoid.
+	// c.env is otherwise left at its zero value deliberately: status/pause/approve read nothing from
+	// it, and filling only the fields the validate verbs actually read (rather than the whole of
+	// wire()'s c.env assembly) is what keeps this path from re-acquiring the eight-config load it
+	// exists to avoid.
 	c.env.AnchorPath = location.AnchorPath()
 	c.env.WorktreeRoot = location.WorktreePath()
 	c.env.DecisionRecordPath = loomengine.DiscussionDecisionRecord(location)

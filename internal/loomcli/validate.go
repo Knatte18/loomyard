@@ -1,9 +1,8 @@
-// validate.go implements the `validate-discussion` and `validate-plan` loom verbs: standalone,
-// zero-argument callers of the identical package functions Discussion-Write's and
-// Discussion-Burler's own gate, and Plan-Write's and Plan-Burler's own gate, call, per the
-// shared-implementation-is-the-whole-point Shared Decision. Neither verb re-implements or
-// re-derives any check; both map their package's result onto the envelope-and-exit-contract Shared
-// Decision.
+// validate.go implements the `validate-discussion`, `validate-plan` and `validate-description` loom
+// verbs: standalone, zero-argument callers of the identical package functions the Discussion,
+// Plan and Describe rows' own gates call, per the shared-implementation-is-the-whole-point Shared
+// Decision. No verb re-implements or re-derives any check; each maps its package's result onto the
+// envelope-and-exit-contract Shared Decision.
 
 package loomcli
 

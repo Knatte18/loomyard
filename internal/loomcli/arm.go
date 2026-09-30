@@ -219,8 +219,9 @@ func (c *loomCLI) specFor(verb string) shedverbs.Spec {
 // receiver via newLoomCLI and returns c.arm(cwd, verb, args), resolving cwd itself. A package-level
 // Arm alone could not serve resolvePersistentPreRun, because that pre-run must wire its own c:
 // start.go reads thirteen receiver fields and validate.go reads four more, so arming a throwaway
-// receiver and assigning only *c.spec would break start, validate-discussion and validate-plan,
-// none of which is a shedverbs verb and none of which reads c.spec.
+// receiver and assigning only *c.spec would break start, validate-discussion, validate-plan,
+// validate-description and approve, none of which is a shedverbs verb and none of which reads
+// c.spec.
 func Arm(cwd string, verb string, args []string) (shedverbs.Spec, error) {
 	c := newLoomCLI()
 	return c.arm(cwd, verb, args)
