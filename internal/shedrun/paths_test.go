@@ -48,6 +48,15 @@ func TestStatusFile(t *testing.T) {
 	}
 }
 
+func TestStepsDir(t *testing.T) {
+	l := syntheticLocation(t)
+	got := StepsDir(l, "self")
+	want := filepath.Join(ScratchDir(l, "self"), "steps")
+	if got != want {
+		t.Errorf("StepsDir(l, %q) = %q; want %q", "self", got, want)
+	}
+}
+
 func TestScratchDir(t *testing.T) {
 	l := syntheticLocation(t)
 	got := ScratchDir(l, "self")

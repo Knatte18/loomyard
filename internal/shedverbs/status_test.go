@@ -403,6 +403,9 @@ func TestStatusCmd_FoundEnvelope_GenericCore(t *testing.T) {
 			if _, ok := env["trace_dir"]; !ok {
 				t.Errorf("envelope missing trace_dir: %v", env)
 			}
+			if v, ok := env["last_step"]; !ok || v != nil {
+				t.Errorf("last_step = %v (present %v); want present and null with no StepsDir", v, ok)
+			}
 		})
 	}
 }

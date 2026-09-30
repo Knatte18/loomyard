@@ -133,7 +133,13 @@ func stepCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 			}
 			logger.Info("shed: step", "status_file", spec.StatusPath)
 			ctx := cmd.Context()
-			out := cmd.OutOrStdout()
+
+			// The in-flight record is written before anything can refuse, and the envelope the body
+			// prints, success or refusal, is teed into its own record when the body returns.
+			rec := newStepRecorder(spec.StepsDir, logger.TraceID())
+			rec.begin()
+			defer rec.finish()
+			out := rec.tee(cmd.OutOrStdout())
 
 			// locations is computed after the Warn so the trace file it names is the one holding it.
 			locations := func() StepLocations {

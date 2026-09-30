@@ -44,6 +44,12 @@ func ScratchDir(l *lyxcwd.Location, runID string) string {
 	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, shedDirName, runSegment(l, runID))
 }
 
+// StepsDir returns the path to the ephemeral directory holding a run's `lyx shed step` records, under
+// ScratchDir(l, runID), so it sits under .lyx per the Durable-vs-Ephemeral State Invariant.
+func StepsDir(l *lyxcwd.Location, runID string) string {
+	return filepath.Join(ScratchDir(l, runID), "steps")
+}
+
 // RunLock returns the path to a run's ephemeral advisory lock guarding the whole duration of the
 // run, under ScratchDir(l, runID).
 // It must never equal StatusLock(l, runID): shedengine.Shed's own validation rejects
