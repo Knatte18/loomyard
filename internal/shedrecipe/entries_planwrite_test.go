@@ -159,9 +159,7 @@ func TestPlanWriteEntry_CallDone(t *testing.T) {
 	}
 }
 
-// TestPlanWriteEntry_CallAppendsPriorPlanBlock seeds a stale plan file under env.AnchorPath and a
-// minimal prior-plan stencil into env.StencilsDir, then asserts one Call hands the shuttle a spec
-// whose prompt is the composed prompt followed by the rendered block.
+// TestPlanWriteEntry_CallAppendsPriorPlanBlock seeds a stale plan file under env.AnchorPath and a minimal prior-plan stencil into env.StencilsDir, then asserts one Call hands the shuttle a spec whose prompt is the composed prompt followed by the rendered block.
 func TestPlanWriteEntry_CallAppendsPriorPlanBlock(t *testing.T) {
 	env := newTestEnv(t)
 	writeStencil(t, env.StencilsDir, "loom-template-prior-plan", "PRIOR {{.archive_dir}}\n{{.moved_files}}\n")
