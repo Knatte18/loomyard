@@ -265,7 +265,8 @@ github.com/Knatte18/loomyard/
 ├── internal/tokenvocab/          shared token vocabulary (repo, hub, worktree) + Render compose over stencil, a leaf
 ├── internal/pattern/             PATTERN active check + role directive leaf, consumed by webster/burler/loom
 ├── internal/friction/            the Tier 2 friction-note directive leaf, consumed by webster, burler, and loom
-└── internal/shell/               provider-invariant pane-shell mechanics leaf (pwsh + posix)
+├── internal/shell/               provider-invariant pane-shell mechanics leaf (pwsh + posix)
+└── internal/verifyrun/          in-process shell-command runner shared by webster's integration bisect and landing's post-merge verify gate
 ```
 
 `cmd/lyx` is `package main`;
@@ -409,7 +410,7 @@ The cross-OS spawn primitive **proc**, and the generic outer phase-FSM **shed**,
 see the [Execution stack](#execution-stack-orchestration-layers) section below for how proc / reed / shuttle fit together. (Earlier drafts split reed into separate `shed`/`glance` modules;
 both folded back into reed — see the `internal/reedengine` package documentation. This `shed` is an abandoned earlier `reed` model/view draft, unrelated to `Shed` (`internal/shedengine`) the outer phase-FSM.)
 
-The user-facing modules sit on a thin layer of shared infrastructure (`internal/configengine`, `internal/gitexec`, `internal/gitrepo`, `internal/lock`, `internal/logger`, `internal/output`, `internal/lyxcwd`, `internal/lyxdirs`, `internal/state`, `internal/shell`, `internal/modelspec`, `internal/tokenvocab`, `internal/pattern`, `internal/friction`, `internal/buildinfo`, `internal/standalonestate`) — defined in [shared-libs/README.md](shared-libs/README.md). `internal/pattern` is the leaf that computes whether `_lyx/PATTERN.md` is present and returns the role-appropriate constraints directive injected into every code-touching agent prompt (webster fork/Master, burler review+fix, loom plan).
+The user-facing modules sit on a thin layer of shared infrastructure (`internal/configengine`, `internal/gitexec`, `internal/gitrepo`, `internal/lock`, `internal/logger`, `internal/output`, `internal/lyxcwd`, `internal/lyxdirs`, `internal/state`, `internal/shell`, `internal/verifyrun`, `internal/modelspec`, `internal/tokenvocab`, `internal/pattern`, `internal/friction`, `internal/buildinfo`, `internal/standalonestate`) — defined in [shared-libs/README.md](shared-libs/README.md). `internal/pattern` is the leaf that computes whether `_lyx/PATTERN.md` is present and returns the role-appropriate constraints directive injected into every code-touching agent prompt (webster fork/Master, burler review+fix, loom plan).
 `internal/friction` is the leaf that returns the role-appropriate friction-note directive injected into all seven agent prompts when Tier 2 is enabled, with the note path composed by its own non-clobbering `NotePath`.
 Above the engines sits a separate precondition-and-geometry layer, not the shared-infrastructure layer above: `internal/preflight` is the tier-1/tier-2 precondition layer (worktree geometry, worktree-pair cleanliness, Fabric readiness/sync), and `internal/hubgeom` and `internal/standalonegeom` are its hub-mode and told-mode constructors of the `Geometry` struct each engine is handed — see the [Told-Geometry Invariant](../CONSTRAINTS.md#told-geometry-invariant).
 `internal/cliwire` sits between the two: it is the CLI-boundary resolver a standalone-capable CLI calls once `preflight.ResolveMode` has chosen hub or standalone mode, and it hands each CLI the told strings — the resolved target, the derived standalone state directory, the resolved stencils and plan directories — that `internal/hubgeom` and `internal/standalonegeom` then build into a `Geometry` struct.
