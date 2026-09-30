@@ -11,11 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// planWriteEntry is the Constructor for the "PlanWrite" registry row: it validates Env.PlanSpec,
-// Env.CommitPlan, Env.Shuttle, Env.AnchorPath, and Env.StencilsDir, resolves the row's "gate"/"gate_attempts"
-// Config keys through resolveGateSpec, then builds a gated SingleLLMProducer carrying
-// loomshed.NewPlanDirRotator as its fresh-spawn preparation, behind loomshed.NewPlanWrite's
-// post-Done commit decorator.
+// planWriteEntry is the Constructor for the "PlanWrite" registry row: it validates Env.PlanSpec, Env.CommitPlan, Env.Shuttle, Env.AnchorPath, and Env.StencilsDir, resolves the row's "gate"/"gate_attempts" Config keys through resolveGateSpec, then builds a gated SingleLLMProducer carrying loomshed.NewPlanDirRotator as its fresh-spawn preparation, behind loomshed.NewPlanWrite's post-Done commit decorator.
 //
 // The Spec arrives as an injected shedadapters.SpecSource closure rather than as recipe Config
 // because building it needs a *lyxcwd.Location, which the Shed Recipe Registry Invariant bars this
