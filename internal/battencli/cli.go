@@ -151,14 +151,15 @@ Example:
 		Long: `goto moves a halted lifecycle onto the row named by --to and leaves it
 paused. It records a "goto" history entry that resets that row's segment
 bounce budget. It refuses while a driver holds the run lock and on a done run,
-and never re-opens a finished run.
+and never re-opens a finished run. goto moves a halted run only back, to a row at or before its current row (strictly before when the run is awaiting), and refuses a running run.
+Worktree-Teardown is reachable only once the child run is done.
 
 The run-id positional is required in practice, even though cobra accepts
 its absence: prime hosts many slug-addressed batten runs, so an omitted
 run-id refuses by name rather than defaulting to "self".
 
 Example:
-  lyx batten goto some-slug --to Worktree-Teardown`,
+  lyx batten goto some-slug --to Run-Shed`,
 	},
 }
 
@@ -184,7 +185,7 @@ Example:
   lyx batten step some-slug
   lyx batten status some-slug
   lyx batten pause some-slug
-  lyx batten goto some-slug --to Worktree-Teardown`,
+  lyx batten goto some-slug --to Run-Shed`,
 		// RunE is set so that bare "lyx batten" lists subcommands and "lyx batten bogus"
 		// emits a JSON error envelope instead of falling through to cobra's plain-text help.
 		RunE:              clihelp.GroupRunE,

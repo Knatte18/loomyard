@@ -4,6 +4,10 @@
 package shedverbs
 
 import (
+	"bytes"
+	"context"
+	"errors"
+	"os"
 	"strings"
 	"testing"
 
@@ -143,5 +147,46 @@ func seedRunning(t *testing.T, paths testPaths) {
 		History:         []shedengine.HistoryEntry{},
 	}); err != nil {
 		t.Fatalf("seed running status: %v", err)
+	}
+}
+
+// TestGotoCmd_PreGotoRefusalLeavesStatusUntouched asserts a refusing PreGoto hook puts its message on the envelope and leaves the status file byte-identical.
+func TestGotoCmd_PreGotoRefusalLeavesStatusUntouched(t *testing.T) {
+	paths := newTestPaths(t)
+	seedBlocked(t, paths, "B")
+	before, err := os.ReadFile(paths.StatusPath)
+	if err != nil {
+		t.Fatalf("read status: %v", err)
+	}
+
+	spec := gotoSpec(paths)
+	spec.Hooks.PreGoto = func(_ context.Context, target string) error {
+		return errors.New("hook refused " + target)
+	}
+	env, code := execEnvelope(t, gotoCmd(gotoTexts(), spec), []string{"--to", "A"})
+	if code != 1 {
+		t.Fatalf("exit code = %d; want 1", code)
+	}
+	if msg, _ := env["error"].(string); msg != "hook refused A" {
+		t.Errorf("error = %q; want the hook's message verbatim", msg)
+	}
+	after, err := os.ReadFile(paths.StatusPath)
+	if err != nil {
+		t.Fatalf("re-read status: %v", err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Errorf("status file changed under a refusing hook")
+	}
+}
+
+// TestGotoCmd_PassingPreGotoMoves asserts a passing hook still lets the move through; the nil-hook case is TestGotoCmd_MovesBlockedRunOntoRow.
+func TestGotoCmd_PassingPreGotoMoves(t *testing.T) {
+	paths := newTestPaths(t)
+	seedBlocked(t, paths, "B")
+	spec := gotoSpec(paths)
+	spec.Hooks.PreGoto = func(context.Context, string) error { return nil }
+	env, code := execEnvelope(t, gotoCmd(gotoTexts(), spec), []string{"--to", "A"})
+	if code != 0 || env["current_producer"] != "A" {
+		t.Errorf("code=%d env=%v; want a move onto A", code, env)
 	}
 }

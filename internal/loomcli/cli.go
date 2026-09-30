@@ -318,7 +318,7 @@ Example:
 		Long: `goto moves a halted run onto the row named by --to and leaves it paused.
 It records a "goto" history entry that resets that row's segment bounce
 budget. It refuses while a driver holds the run lock and on a done run, and
-never re-opens a finished run.
+never re-opens a finished run. goto moves a halted run only back, to a row at or before its current row (strictly before when the run is awaiting), and refuses a running run.
 
 An optional run-id positional addresses a run other than this worktree's
 own default ("self"); goto refuses when no seed already exists at that

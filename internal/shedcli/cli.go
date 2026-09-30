@@ -48,7 +48,7 @@ var shedVerbTexts = shedverbs.VerbTexts{
 		Short: "run the addressed run's phase machine in the foreground",
 		Long: `run arms the recipe named by the addressed run's own seed and runs its phase
 machine in the foreground, exactly as that recipe's own "run" verb does. The
-run-id positional defaults to "self" when omitted.
+run-id positional defaults to "self" when omitted. goto moves a halted run only back, to a row at or before its current row (strictly before when the run is awaiting), and refuses a running run.
 
 Example:
   lyx shed run
@@ -83,7 +83,7 @@ Example:
 		Short: "request a pause at the addressed run's next producer boundary",
 		Long: `pause arms the recipe named by the addressed run's own seed and requests a
 pause at its next producer boundary, exactly as that recipe's own "pause"
-verb does. The run-id positional defaults to "self" when omitted.
+verb does. The run-id positional defaults to "self" when omitted. goto moves a halted run only back, to a row at or before its current row (strictly before when the run is awaiting), and refuses a running run.
 
 Example:
   lyx shed pause
@@ -96,7 +96,7 @@ Example:
 run onto the row named by --to, leaving it paused. It records a "goto" history
 entry that resets that row's segment bounce budget. It refuses while a driver
 holds the run lock and on a done run, and never re-opens a finished run. The
-run-id positional defaults to "self" when omitted.
+run-id positional defaults to "self" when omitted. goto moves a halted run only back, to a row at or before its current row (strictly before when the run is awaiting), and refuses a running run.
 
 Example:
   lyx shed goto --to Plan-Write

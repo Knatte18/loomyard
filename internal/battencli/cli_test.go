@@ -224,3 +224,17 @@ func TestRunCLI_UnknownSubcommand_NoGitRepoNeeded(t *testing.T) {
 		t.Errorf("RunCLIIn(%q, [bogus]) output missing ok:false envelope; got: %q", dir, out.String())
 	}
 }
+
+// TestCommand_HelpCarriesNoTeardownGotoExample asserts no help text shows the forward move to Worktree-Teardown as an example.
+func TestCommand_HelpCarriesNoTeardownGotoExample(t *testing.T) {
+	var walk func(cmd *cobra.Command)
+	walk = func(cmd *cobra.Command) {
+		if strings.Contains(cmd.Long, "--to Worktree-Teardown") {
+			t.Errorf("%q help carries a --to Worktree-Teardown example", cmd.CommandPath())
+		}
+		for _, sub := range cmd.Commands() {
+			walk(sub)
+		}
+	}
+	walk(Command())
+}

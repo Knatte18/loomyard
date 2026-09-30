@@ -36,6 +36,13 @@ func gotoCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 				return nil
 			}
 
+			if spec.Hooks.PreGoto != nil {
+				if err := spec.Hooks.PreGoto(ctx, target); err != nil {
+					clihelp.SetExit(ctx, output.Err(out, err.Error()))
+					return nil
+				}
+			}
+
 			if spec.EnsureStatusLockDir {
 				if err := ensureStatusLockDir(spec.DecodeErrPrefix, spec.StatusLockPath); err != nil {
 					clihelp.SetExit(ctx, output.Err(out, err.Error()))

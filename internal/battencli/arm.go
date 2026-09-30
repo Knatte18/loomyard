@@ -371,6 +371,7 @@ func (c *battenCLI) specFor(verb string) shedverbs.Spec {
 			PostRun:      c.battenPostRun,
 			PreStep:      c.battenPreStep,
 			StatusExtras: c.battenStatusExtras,
+			PreGoto:      c.battenPreGoto,
 		},
 	}
 
