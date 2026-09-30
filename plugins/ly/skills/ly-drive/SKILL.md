@@ -179,6 +179,19 @@ The automatic re-step budgets are separate from this cap and do not count toward
 The `reinvoke` sub-case counts toward the cap.
 `("", 0)` is a valid key for a run with no status file.
 
+## Ways forward
+
+A refusal's message ends in a `way forward:` clause, and `contracts/specs/refusal-spec.md` lists every refusal with the way forward it names.
+When a stop report quotes a refusal, it looks the refusal text up in that table and names the way forward beside it, so the operator reads a next step rather than a diagnosis alone.
+A refusal the table does not list is reported verbatim with no way forward added.
+
+Two stops name `lyx shed goto --to <producer>` as their way forward:
+
+- a `current_producer` that is no longer in the recipe;
+- an exhausted bounce budget.
+
+The driver reports `goto` as the way forward and never runs it: it is an operator and orchestrator verb, and a run moved by the driver itself would hide the decision from the person who owns it.
+
 ## Repair records and the stop report
 
 Write one record per repair under `<scratch_dir>/repairs/`: the failure, the trace lines acted on, the action taken and the outcome.
