@@ -107,7 +107,7 @@ func (p *worktreeTeardownProducer) Call(ctx context.Context) (shedengine.Outcome
 		}
 		reason := fmt.Sprintf("prime lock %q is already held; another batten producer is creating or tearing down a task worktree", p.primeLock.Path)
 		reportStuck(p.name, reason, p.scratchDir, "slug", p.slug)
-		return shedengine.Stuck, shedengine.OutputPointer{}, nil
+		return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
 	}
 	defer func() {
 		if rerr := release(); rerr != nil {
@@ -122,7 +122,7 @@ func (p *worktreeTeardownProducer) Call(ctx context.Context) (shedengine.Outcome
 		}
 		reason := fmt.Sprintf("session shutdown failed: %s", shutdownErr.Error())
 		reportStuck(p.name, reason, p.scratchDir, "slug", p.slug)
-		return shedengine.Stuck, shedengine.OutputPointer{}, nil
+		return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
 	}
 	recordAbandonedSession(p.name, p.slug, abandonedSession, p.scratchDir)
 
@@ -132,7 +132,7 @@ func (p *worktreeTeardownProducer) Call(ctx context.Context) (shedengine.Outcome
 		}
 		reason := fmt.Sprintf("worktree removal failed (session shutdown already succeeded): %s", err.Error())
 		reportStuck(p.name, reason, p.scratchDir, "slug", p.slug)
-		return shedengine.Stuck, shedengine.OutputPointer{}, nil
+		return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
 	}
 
 	if cerr := cancelErr(ctx, p.name); cerr != nil {

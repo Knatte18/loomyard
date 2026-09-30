@@ -64,7 +64,7 @@ func TestWorktreeTeardown_ShutdownFailureNeverCallsRemove(t *testing.T) {
 	rec := &teardownCallRecorder{}
 	producer := NewWorktreeTeardown("teardown", "myslug", rec.deps(shutdownErr, "", nil), lock, scratchDir)
 
-	outcome, _, err := producer.Call(context.Background())
+	outcome, ptr, err := producer.Call(context.Background())
 	if err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
 	}
@@ -77,7 +77,7 @@ func TestWorktreeTeardown_ShutdownFailureNeverCallsRemove(t *testing.T) {
 	if !released {
 		t.Error("release was not invoked on the Shutdown-error Stuck path")
 	}
-	reason := readStuckFile(t, scratchDir, "teardown")
+	reason := readStuckFile(t, scratchDir, "teardown", ptr)
 	if !strings.Contains(reason, "session shutdown") {
 		t.Errorf("stuck-reason file = %q; want it to name session shutdown as the failed half", reason)
 	}
@@ -95,7 +95,7 @@ func TestWorktreeTeardown_RemoveFailureNamesRemovalHalf(t *testing.T) {
 	rec := &teardownCallRecorder{}
 	producer := NewWorktreeTeardown("teardown", "myslug", rec.deps(nil, "", removeErr), lock, scratchDir)
 
-	outcome, _, err := producer.Call(context.Background())
+	outcome, ptr, err := producer.Call(context.Background())
 	if err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
 	}
@@ -105,7 +105,7 @@ func TestWorktreeTeardown_RemoveFailureNamesRemovalHalf(t *testing.T) {
 	if len(rec.calls) != 2 {
 		t.Errorf("call count = %d; want 2 (both Shutdown and Remove called)", len(rec.calls))
 	}
-	reason := readStuckFile(t, scratchDir, "teardown")
+	reason := readStuckFile(t, scratchDir, "teardown", ptr)
 	if !strings.Contains(reason, "worktree removal") {
 		t.Errorf("stuck-reason file = %q; want it to name worktree removal as the failed half", reason)
 	}
@@ -123,14 +123,14 @@ func TestWorktreeTeardown_RemoveRefusalMergeInProgress(t *testing.T) {
 	rec := &teardownCallRecorder{}
 	producer := NewWorktreeTeardown("teardown", "myslug", rec.deps(nil, "", removeErr), lock, scratchDir)
 
-	outcome, _, err := producer.Call(context.Background())
+	outcome, ptr, err := producer.Call(context.Background())
 	if err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
 	}
 	if outcome != shedengine.Stuck {
 		t.Errorf("Call() outcome = %v; want Stuck", outcome)
 	}
-	reason := readStuckFile(t, scratchDir, "teardown")
+	reason := readStuckFile(t, scratchDir, "teardown", ptr)
 	if !strings.Contains(reason, "merge in progress") {
 		t.Errorf("stuck-reason file = %q; want the merge-in-progress refusal text preserved", reason)
 	}
@@ -161,7 +161,7 @@ func TestWorktreeTeardown_PrimeLockDispositions(t *testing.T) {
 		rec := &teardownCallRecorder{}
 		producer := NewWorktreeTeardown("teardown", "myslug", rec.deps(nil, "", nil), lock, scratchDir)
 
-		outcome, _, err := producer.Call(context.Background())
+		outcome, ptr, err := producer.Call(context.Background())
 		if err != nil {
 			t.Fatalf("Call() error = %v; want nil", err)
 		}
@@ -171,7 +171,7 @@ func TestWorktreeTeardown_PrimeLockDispositions(t *testing.T) {
 		if len(rec.calls) != 0 {
 			t.Errorf("call count = %d; want 0 under lock contention", len(rec.calls))
 		}
-		reason := readStuckFile(t, scratchDir, "teardown")
+		reason := readStuckFile(t, scratchDir, "teardown", ptr)
 		if !strings.Contains(reason, "/lock/contended/path") {
 			t.Errorf("stuck-reason file = %q; want it to name the prime lock path", reason)
 		}

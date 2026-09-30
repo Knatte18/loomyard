@@ -111,9 +111,12 @@ func TestCheckCoherence(t *testing.T) {
 			wantEmpty:  true,
 		},
 		{
-			name:       "NonEmptyErrorTolerated",
-			mutateShed: func(s shedengine.Status) shedengine.Status { s.Error = "bounce budget exhausted"; return s },
-			wantEmpty:  true,
+			name: "NonEmptyErrorTolerated",
+			mutateShed: func(s shedengine.Status) shedengine.Status {
+				s.Error = shedengine.ReasonBounceBudgetExhausted
+				return s
+			},
+			wantEmpty: true,
 		},
 		{
 			name: "BadEnum_HistoryOutcome",
@@ -149,7 +152,7 @@ func TestCheckCoherence(t *testing.T) {
 			name: "HistoryOfOnlyLoomPreflightPassesFreshStartCheck",
 			mutateShed: func(s shedengine.Status) shedengine.Status {
 				s.State = shedengine.StateBlocked
-				s.Error = "bounce budget exhausted"
+				s.Error = shedengine.ReasonBounceBudgetExhausted
 				s.History = []shedengine.HistoryEntry{{Producer: "Loom-Preflight", Outcome: shedengine.Stuck, At: "2026-07-17T10:01:30Z"}}
 				return s
 			},
@@ -170,7 +173,7 @@ func TestCheckCoherence(t *testing.T) {
 			name: "HistoryMixingBothTolerated_Passes",
 			mutateShed: func(s shedengine.Status) shedengine.Status {
 				s.State = shedengine.StateBlocked
-				s.Error = "bounce budget exhausted"
+				s.Error = shedengine.ReasonBounceBudgetExhausted
 				s.History = []shedengine.HistoryEntry{
 					{Producer: "Preflight", Outcome: shedengine.Done, At: "2026-07-17T10:01:30Z"},
 					{Producer: "Loom-Preflight", Outcome: shedengine.Stuck, At: "2026-07-17T10:05:00Z"},

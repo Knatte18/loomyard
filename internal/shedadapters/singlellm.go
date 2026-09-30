@@ -187,7 +187,8 @@ func (p *SingleLLMProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 // diagnosable rather than sitting in a dirty working tree. This is the writer-row half of the "the two
 // producers' output pointers mean different things" decision; BurlerProducer's own gate-failed exit
 // carries the opposite, empty pointer, because emptiness is what tells the segment's Bouncer there
-// is no round artifact to judge -- a meaning this producer has no downstream consumer for.
+// is no round artifact to judge (its cause rides on Reason instead) -- a meaning this producer has
+// no downstream consumer for.
 func (p *SingleLLMProducer) mapOutcome(ctx context.Context, spec shuttleengine.Spec, result shuttleengine.Result) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	switch result.Outcome {
 	case shuttleengine.OutcomeDone:
@@ -201,7 +202,7 @@ func (p *SingleLLMProducer) mapOutcome(ctx context.Context, spec shuttleengine.S
 				return "", shedengine.OutputPointer{}, cerr
 			}
 			logger.Warn("shedadapters: shuttle run's gate did not pass", "producer", p.name, "engine", singleLLMEngineLabel, "attempts", result.Gate.Attempts, "findingsPath", result.Gate.FindingsPath, "sessionID", result.SessionID, "strandGUID", result.StrandGUID)
-			return shedengine.Stuck, shedengine.OutputPointer{Path: spec.OutputFiles[0], GateAttempts: gateAttemptsPointer(result.Gate)}, nil
+			return shedengine.Stuck, shedengine.OutputPointer{Path: spec.OutputFiles[0], GateAttempts: gateAttemptsPointer(result.Gate), Reason: gateFailedReason(result.Gate)}, nil
 		}
 		// A genuine success verdict survives cancellation -- the one exception cancelErr never
 		// applies to.
@@ -212,7 +213,15 @@ func (p *SingleLLMProducer) mapOutcome(ctx context.Context, spec shuttleengine.S
 			return "", shedengine.OutputPointer{}, cerr
 		}
 		logger.Warn("shedadapters: shuttle run is asking", "producer", p.name, "engine", singleLLMEngineLabel, "lastAssistantMessage", result.LastAssistantMessage, "sessionID", result.SessionID, "strandGUID", result.StrandGUID, "runDir", result.RunDir)
-		return shedengine.Stuck, shedengine.OutputPointer{}, nil
+		// A fixed summary, never the agent's own message: that would bury the strand line.
+		reason := "agent is asking a question"
+		switch {
+		case result.SessionID != "":
+			reason += "; session " + result.SessionID
+		case result.RunDir != "":
+			reason += "; run dir " + result.RunDir
+		}
+		return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
 
 	case shuttleengine.OutcomeDied, shuttleengine.OutcomeTimeout:
 		if cerr := cancelErr(ctx, p.name, singleLLMEngineLabel); cerr != nil {

@@ -118,7 +118,7 @@ func TestStep_StuckWithNoOnStuck(t *testing.T) {
 	if res.State != StateBlocked {
 		t.Errorf("State = %q; want %q", res.State, StateBlocked)
 	}
-	const wantReason = "stuck with no OnStuck target"
+	const wantReason = ReasonNoOnStuckTarget
 	if res.Reason != wantReason {
 		t.Errorf("Reason = %q; want %q", res.Reason, wantReason)
 	}
@@ -155,7 +155,7 @@ func TestStep_StuckAtBudgetBoundary(t *testing.T) {
 	if res.State != StateBlocked {
 		t.Errorf("fourth Step State = %q; want %q", res.State, StateBlocked)
 	}
-	const wantReason = "bounce budget exhausted"
+	const wantReason = ReasonBounceBudgetExhausted
 	if res.Reason != wantReason {
 		t.Errorf("fourth Step Reason = %q; want %q", res.Reason, wantReason)
 	}
@@ -413,5 +413,86 @@ func TestStep_ValidateFailsBeforeTouchingLock(t *testing.T) {
 
 	if _, statErr := os.Stat(lockPath); !os.IsNotExist(statErr) {
 		t.Errorf("os.Stat(lockPath) = _, %v; want a not-exist error -- validate must fail before the lock is ever touched", statErr)
+	}
+}
+
+func TestStep_StuckReasonPersistence(t *testing.T) {
+	cases := []struct {
+		name   string
+		reason string
+		want   string
+	}{
+		{"supplied", "x", "x"},
+		{"empty", "", ReasonNoOnStuckTarget},
+		{"whitespace only", " \t\r\n ", ReasonNoOnStuckTarget},
+		{"multi-line", "line one\r\n\nline two", "line one line two"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			shed, statusPath, _, statusLockPath := newTestShed(t)
+			shed.Producers = []ProducerDef{{Name: "A", Producer: &funcProducer{
+				fn: func(context.Context) (Outcome, OutputPointer, error) {
+					return Stuck, OutputPointer{Reason: tc.reason}, nil
+				},
+			}}}
+			seedStatus(t, statusPath, statusLockPath, commonSeed("A"))
+
+			res, err := shed.Step(context.Background())
+			if err != nil {
+				t.Fatalf("Step(...) = _, %v; want nil error", err)
+			}
+			if res.State != StateBlocked || res.Reason != tc.want {
+				t.Errorf("State, Reason = %q, %q; want %q, %q", res.State, res.Reason, StateBlocked, tc.want)
+			}
+			got := readStatus(t, statusPath, statusLockPath)
+			if got.State != StateBlocked || got.Error != tc.want || got.Activity.Wait != tc.want {
+				t.Errorf("persisted state/error/wait = %q/%q/%q; want %q/%q/%q", got.State, got.Error, got.Activity.Wait, StateBlocked, tc.want, tc.want)
+			}
+		})
+	}
+}
+
+func TestStep_StuckReasonIgnoredWhenBouncing(t *testing.T) {
+	shed, statusPath, _, statusLockPath := newTestShed(t)
+	shed.Producers = []ProducerDef{{Name: "A", OnStuck: "A", Producer: &funcProducer{
+		fn: func(context.Context) (Outcome, OutputPointer, error) {
+			return Stuck, OutputPointer{Reason: "ignored"}, nil
+		},
+	}}}
+	seedStatus(t, statusPath, statusLockPath, commonSeed("A"))
+
+	res, err := shed.Step(context.Background())
+	if err != nil {
+		t.Fatalf("Step(...) = _, %v; want nil error", err)
+	}
+	if res.State != StateRunning || res.Reason != "" {
+		t.Errorf("State, Reason = %q, %q; want running, empty", res.State, res.Reason)
+	}
+	if got := readStatus(t, statusPath, statusLockPath); got.Error != "" {
+		t.Errorf("persisted Error = %q; want empty", got.Error)
+	}
+}
+
+func TestStep_BudgetArmIgnoresProducerReason(t *testing.T) {
+	shed, statusPath, _, statusLockPath := newTestShed(t)
+	shed.Producers = []ProducerDef{{Name: "A", OnStuck: "A", MaxBounces: 1, Producer: &funcProducer{
+		fn: func(context.Context) (Outcome, OutputPointer, error) {
+			return Stuck, OutputPointer{Reason: "producer reason"}, nil
+		},
+	}}}
+	seedStatus(t, statusPath, statusLockPath, commonSeed("A"))
+
+	var res StepResult
+	for i := 0; i < 2; i++ {
+		var err error
+		if res, err = shed.Step(context.Background()); err != nil {
+			t.Fatalf("Step %d = _, %v; want nil error", i, err)
+		}
+	}
+	if res.State != StateBlocked || res.Reason != ReasonBounceBudgetExhausted {
+		t.Errorf("State, Reason = %q, %q; want blocked, %q", res.State, res.Reason, ReasonBounceBudgetExhausted)
+	}
+	if got := readStatus(t, statusPath, statusLockPath); got.Error != ReasonBounceBudgetExhausted {
+		t.Errorf("persisted Error = %q; want %q", got.Error, ReasonBounceBudgetExhausted)
 	}
 }

@@ -26,6 +26,10 @@ type OutputPointer struct {
 	// producer applied no gate to this call; a gated producer sets it regardless of Path,
 	// including on the gate-failed exit whose Path is deliberately empty.
 	GateAttempts *int
+	// Reason is one human-readable line naming why the call is stuck. Shed reads it only on a
+	// Stuck verdict whose row has no OnStuck target, persisting it as the blocked halt's error;
+	// every other arm ignores it. The empty value means "none supplied".
+	Reason string
 }
 
 // ShedProducer is the seam Shed drives once per iteration: Call runs one producer to a verdict

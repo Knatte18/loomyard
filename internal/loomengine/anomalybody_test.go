@@ -31,7 +31,7 @@ func anomalyOfKind(kind AnomalyKind) Anomaly {
 		Parent:          "main",
 		State:           shedengine.StateBlocked,
 		CurrentProducer: "Discussion-Review",
-		Error:           "bounce budget exhausted",
+		Error:           shedengine.ReasonBounceBudgetExhausted,
 		History: []shedengine.HistoryEntry{
 			{Producer: "Discussion-Review", Outcome: shedengine.Stuck, At: "2026-07-17T10:01:30Z"},
 		},

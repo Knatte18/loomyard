@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -128,7 +129,7 @@ func TestInnerRun_VerdictTable(t *testing.T) {
 			_, _, deps := newInnerRunDeps(nil, nil, tt.statuses, clock)
 
 			producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir)
-			outcome, _, err := producer.Call(context.Background())
+			outcome, ptr, err := producer.Call(context.Background())
 
 			if tt.wantErr {
 				if err == nil {
@@ -147,6 +148,15 @@ func TestInnerRun_VerdictTable(t *testing.T) {
 			}
 			if tt.wantStuck && outcome != shedengine.Stuck {
 				t.Errorf("Call() outcome = %v; want Stuck", outcome)
+			}
+			if tt.wantStuck {
+				data, readErr := os.ReadFile(filepath.Join(scratchDir, "innerrun"+stuckFileSuffix))
+				if readErr != nil {
+					t.Fatalf("read stuck file: %v", readErr)
+				}
+				if ptr.Reason == "" || ptr.Reason+"\n" != string(data) {
+					t.Errorf("returned Reason = %q; want the reason file's line %q", ptr.Reason, strings.TrimSuffix(string(data), "\n"))
+				}
 			}
 		})
 	}

@@ -6,6 +6,7 @@
 package shedverbs
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -455,5 +456,30 @@ func TestStatusCmd_TraceDirMatchesOverride(t *testing.T) {
 	traces, _ := filepath.Glob(filepath.Join(dir, "trace-*.log"))
 	if len(traces) != 0 {
 		t.Errorf("trace files in override dir = %v; want none", traces)
+	}
+}
+
+// TestRenderStatusLine_ProducerReasonReachesWait pins that a no-OnStuck Stuck's own Reason
+// travels from the producer through the persisted status into the rendered status line's wait tail.
+func TestRenderStatusLine_ProducerReasonReachesWait(t *testing.T) {
+	const reason = "pull request created; awaiting review: https://github.com/Knatte18/loomyard/pull/280"
+	paths := newTestPaths(t)
+	shed := newFakeShed(paths, []shedengine.ProducerDef{{Name: "Publish", Producer: &funcProducer{
+		call: func(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
+			return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
+		},
+	}}})
+	seedStatus(t, paths, "Publish")
+
+	if _, err := shed.Step(context.Background()); err != nil {
+		t.Fatalf("Step(...) = _, %v; want nil error", err)
+	}
+	st, found, err := state.ReadJSONStrict[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
+	if err != nil || !found {
+		t.Fatalf("read status: found=%v err=%v", found, err)
+	}
+	want := "loom blocked | now Publish | last Publish → stuck | wait " + reason
+	if got := RenderStatusLine("loom", st); got != want {
+		t.Errorf("RenderStatusLine = %q; want %q", got, want)
 	}
 }

@@ -13,11 +13,43 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/state"
 )
+
+// ReasonNoOnStuckTarget is the error a blocked halt persists when a Stuck row has no OnStuck
+// target and its producer supplied no OutputPointer.Reason.
+const ReasonNoOnStuckTarget = "stuck with no OnStuck target"
+
+// ReasonBounceBudgetExhausted is the error the budget-exhausted blocked arm persists, regardless
+// of any OutputPointer.Reason the producer supplied.
+const ReasonBounceBudgetExhausted = "bounce budget exhausted"
+
+// stuckReason normalizes a producer's Reason to one line: trimmed, with every run of line-break
+// characters collapsed to a single space; an empty result falls back to ReasonNoOnStuckTarget.
+func stuckReason(reason string) string {
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return ReasonNoOnStuckTarget
+	}
+	var b strings.Builder
+	inBreak := false
+	for _, r := range reason {
+		if r == '\r' || r == '\n' {
+			if !inBreak {
+				b.WriteByte(' ')
+			}
+			inBreak = true
+			continue
+		}
+		inBreak = false
+		b.WriteRune(r)
+	}
+	return b.String()
+}
 
 // findProducer looks up name in producers, returning the matching definition and whether it was
 // found. It never guesses: a caller that gets found == false must hard-error rather than
@@ -233,7 +265,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		nextHistory := appendHistory()
 		switch {
 		case def.OnStuck == "":
-			reason := "stuck with no OnStuck target"
+			reason := stuckReason(output.Reason)
 			if err := s.persist(st.CurrentProducer, StateBlocked, reason, nextHistory, false); err != nil {
 				return StepResult{}, err
 			}
@@ -244,7 +276,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		case episodeStuckCount(st.History, def.Name) >= effectiveMaxBounces(def, s.MaxBounces):
 			// The boundary is pinned exactly, restated per-producer: a budget of three
 			// performs three bounce-backs and blocks on the fourth Stuck.
-			reason := "bounce budget exhausted"
+			reason := ReasonBounceBudgetExhausted
 			if err := s.persist(st.CurrentProducer, StateBlocked, reason, nextHistory, false); err != nil {
 				return StepResult{}, err
 			}

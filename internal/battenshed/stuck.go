@@ -1,13 +1,15 @@
 // stuck.go declares reportStuck, the one helper all four producers in this package route every
 // stuck verdict through.
 //
-// The producer seam (shedengine.ShedProducer) returns only a verdict, an output pointer, and an
-// error. shedengine.Run persists its own fixed reason string -- "stuck with no OnStuck target" --
-// for every stuck verdict regardless of what the producer knows, so a producer-supplied reason
-// reaches a human only through the structured warning log line this helper writes and the one-line
-// reason file it also writes -- the log scrolls away in an unattended run, so the file is what the
-// tests assert two stuck causes are distinguishable against, since the engine's own persisted
-// reason is identical in all of them.
+// The producer seam (shedengine.ShedProducer) returns a verdict, an output pointer, and an error.
+// Each producer also hands its reason to shedengine on OutputPointer.Reason, and the engine
+// persists it as the run's error when a stuck verdict has no OnStuck target, which is the case for
+// Worktree-Create, Seed-Child and Worktree-Teardown.
+// Run-Shed self-bounces and ends blocked through shedengine's budget arm, whose persisted error is
+// the fixed bounce-budget literal, so the one-line reason file this helper writes is the only
+// durable carrier of its reason there.
+// The structured warning log line scrolls away in an unattended run, so the file is also what the
+// tests assert two stuck causes are distinguishable against.
 
 package battenshed
 
@@ -26,8 +28,8 @@ const stuckFileSuffix = "-stuck.md"
 // StuckReasonFile returns the path reportStuck writes producer's one-line reason to, under
 // scratchDir.
 // It is exported so the file's reader and writer share one declarer of its name: the file is the
-// only durable carrier of a producer-supplied stuck reason, so a CLI reporting why a run is blocked
-// has to read it.
+// only durable carrier of the reason when Run-Shed blocks through the budget arm, so a CLI
+// reporting why a run is blocked reads it.
 func StuckReasonFile(scratchDir, producer string) string {
 	return filepath.Join(scratchDir, producer+stuckFileSuffix)
 }

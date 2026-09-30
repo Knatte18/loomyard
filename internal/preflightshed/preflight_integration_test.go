@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
@@ -91,12 +92,19 @@ func TestPreflight_BrokenPreconditionMapsToStuck(t *testing.T) {
 	}
 
 	p := NewPreflight("Preflight", h.PrimeWorktree())
-	outcome, _, err := p.Call(context.Background())
+	outcome, ptr, err := p.Call(context.Background())
 	if err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
 	}
 	if outcome != shedengine.Stuck {
 		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
+	}
+	report, _, cerr := preflight.Check(h.PrimeWorktree())
+	if cerr != nil {
+		t.Fatalf("preflight.Check error = %v; want nil", cerr)
+	}
+	if want := "preconditions not met: " + formatFailures(report); ptr.Reason != want {
+		t.Errorf("Call() Reason = %q; want %q", ptr.Reason, want)
 	}
 }
 

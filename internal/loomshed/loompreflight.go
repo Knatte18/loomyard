@@ -56,10 +56,10 @@ func NewLoomPreflight(name, statusPath, statusLockPath string) shedengine.ShedPr
 // Call implements shedengine.ShedProducer: it invokes loomengine.CheckSeed(p.statusPath,
 // p.statusLockPath, NameLoomPreflight, []string{NamePreflight, NameLoomPreflight}) and maps its
 // result -- a Report with OK true to shedengine.Done with an empty pointer, a Report with OK false
-// to shedengine.Stuck with an empty pointer, and a non-nil error to a returned error. That mapping
-// is the whole producer -- CheckSeed reports a determined verdict rather than erroring on anything
-// short of an infra failure, so its OK false is a verdict to route and its error is an undetermined
-// failure to escalate.
+// to shedengine.Stuck with an empty Path and the cause on Reason, and a non-nil error to a returned
+// error. That mapping is the whole producer -- CheckSeed reports a determined verdict rather than
+// erroring on anything short of an infra failure, so its OK false is a verdict to route and its
+// error is an undetermined failure to escalate.
 //
 // NameLoomPreflight and NamePreflight are passed as the expected name and the tolerated history set
 // directly, never p.name -- see the told-names-never-come-from-the-producer-name-field Shared
@@ -83,10 +83,11 @@ func (p *loomPreflightProducer) Call(ctx context.Context) (shedengine.Outcome, s
 			return "", shedengine.OutputPointer{}, cerr
 		}
 		// Surfaced rather than discarded, for the same reason Preflight surfaces its own: this row
-		// carries no OnStuck, so its Stuck halts the run for a human who would otherwise be told only
-		// Shed's generic "stuck with no OnStuck target".
-		logger.Warn("loomshed: seed is not a coherent fresh start", "producer", p.name, "statusPath", p.statusPath, "failures", formatSeedFailures(report))
-		return shedengine.Stuck, shedengine.OutputPointer{}, nil
+		// carries no OnStuck, so its Stuck halts the run for a human. The cause is returned as the
+		// row's reason, which reaches the persisted error and activity.wait, and also logged.
+		failures := formatSeedFailures(report)
+		logger.Warn("loomshed: seed is not a coherent fresh start", "producer", p.name, "statusPath", p.statusPath, "failures", failures)
+		return shedengine.Stuck, shedengine.OutputPointer{Reason: "seed is not a coherent fresh start: " + failures}, nil
 	}
 
 	return shedengine.Done, shedengine.OutputPointer{}, nil

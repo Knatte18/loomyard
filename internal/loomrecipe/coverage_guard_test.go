@@ -137,9 +137,9 @@ func TestCoverageGuard_EveryDirectionFailsOnItsOwnTrigger(t *testing.T) {
 // loomshed.NamePublish and loomshed.NameFinalize exist in the recipe's built list.
 //
 // Both underlying constructors discard the name argument because their identity is a package
-// constant carried by their log lines, error text, and stuck-reason filename -- publishName and
-// finalizeName in internal/landingshed -- so a renamed row would produce a producer whose on-disk
-// identity disagrees with its row name.
+// constant carried by their log lines and error text -- publishName and finalizeName in
+// internal/landingshed -- so a renamed row would produce a producer whose logged identity
+// disagrees with its row name.
 func TestCoverageGuard_PublishAndFinalizeRowNamesMatchTheirProducerIdentity(t *testing.T) {
 	env, paths := testEnv(t)
 	shed, err := New(env, paths)

@@ -34,11 +34,14 @@ func fakePrimeLock(path string, ok bool, acquireErr error, releaseErr error, rel
 	}
 }
 
-func readStuckFile(t *testing.T, scratchDir, producer string) string {
+func readStuckFile(t *testing.T, scratchDir, producer string, ptr shedengine.OutputPointer) string {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join(scratchDir, producer+stuckFileSuffix))
 	if err != nil {
 		t.Fatalf("read stuck file: %v", err)
+	}
+	if ptr.Reason == "" || ptr.Reason+"\n" != string(data) {
+		t.Errorf("returned Reason = %q; want the reason file's line %q", ptr.Reason, strings.TrimSuffix(string(data), "\n"))
 	}
 	return string(data)
 }
@@ -79,7 +82,7 @@ func TestWorktreeCreate_CreateWorktreeError(t *testing.T) {
 		return wantErr
 	}, lock, scratchDir)
 
-	outcome, _, err := producer.Call(context.Background())
+	outcome, ptr, err := producer.Call(context.Background())
 	if err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
 	}
@@ -89,7 +92,7 @@ func TestWorktreeCreate_CreateWorktreeError(t *testing.T) {
 	if !released {
 		t.Error("release was not invoked on the createWorktree-error Stuck path")
 	}
-	reason := readStuckFile(t, scratchDir, "create")
+	reason := readStuckFile(t, scratchDir, "create", ptr)
 	if !strings.Contains(reason, wantErr.Error()) {
 		t.Errorf("stuck-reason file = %q; want it to contain %q verbatim", reason, wantErr.Error())
 	}
@@ -105,14 +108,14 @@ func TestWorktreeCreate_PreExistingBranchRemedySurvivesVerbatim(t *testing.T) {
 		return fabricErr
 	}, lock, scratchDir)
 
-	outcome, _, err := producer.Call(context.Background())
+	outcome, ptr, err := producer.Call(context.Background())
 	if err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
 	}
 	if outcome != shedengine.Stuck {
 		t.Errorf("Call() outcome = %v; want Stuck", outcome)
 	}
-	reason := readStuckFile(t, scratchDir, "create")
+	reason := readStuckFile(t, scratchDir, "create", ptr)
 	if !strings.Contains(reason, "switch a pair onto it with") {
 		t.Errorf("stuck-reason file = %q; want fabric's own remedy wording preserved unreworded", reason)
 	}
@@ -128,14 +131,14 @@ func TestWorktreeCreate_DirtyDrivingWorktreePassesThroughVerbatim(t *testing.T) 
 		return dirtyErr
 	}, lock, scratchDir)
 
-	outcome, _, err := producer.Call(context.Background())
+	outcome, ptr, err := producer.Call(context.Background())
 	if err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
 	}
 	if outcome != shedengine.Stuck {
 		t.Errorf("Call() outcome = %v; want Stuck", outcome)
 	}
-	reason := readStuckFile(t, scratchDir, "create")
+	reason := readStuckFile(t, scratchDir, "create", ptr)
 	if !strings.Contains(reason, "source worktree has uncommitted changes") {
 		t.Errorf("stuck-reason file = %q; want the bare dirty-worktree string preserved verbatim", reason)
 	}
@@ -152,7 +155,7 @@ func TestWorktreeCreate_PrimeLockUnavailable(t *testing.T) {
 		return nil
 	}, lock, scratchDir)
 
-	outcome, _, err := producer.Call(context.Background())
+	outcome, ptr, err := producer.Call(context.Background())
 	if err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
 	}
@@ -162,7 +165,7 @@ func TestWorktreeCreate_PrimeLockUnavailable(t *testing.T) {
 	if called {
 		t.Error("createWorktree was called despite lock contention")
 	}
-	reason := readStuckFile(t, scratchDir, "create")
+	reason := readStuckFile(t, scratchDir, "create", ptr)
 	if !strings.Contains(reason, "/lock/contended/path") {
 		t.Errorf("stuck-reason file = %q; want it to name the prime lock path", reason)
 	}

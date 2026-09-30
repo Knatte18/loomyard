@@ -152,7 +152,7 @@ func TestStepEnvelope_FieldMapping(t *testing.T) {
 				Outcome:  shedengine.Stuck,
 				Next:     "Discussion-Bouncer",
 				State:    shedengine.StateBlocked,
-				Reason:   "bounce budget exhausted",
+				Reason:   shedengine.ReasonBounceBudgetExhausted,
 				History:  []shedengine.HistoryEntry{{Producer: "Discussion-Bouncer", Outcome: shedengine.Stuck}},
 			},
 			wantProducer: "Discussion-Bouncer",
@@ -160,7 +160,7 @@ func TestStepEnvelope_FieldMapping(t *testing.T) {
 			wantNext:     "Discussion-Bouncer",
 			wantState:    string(shedengine.StateBlocked),
 			wantContinue: false,
-			wantReason:   "bounce budget exhausted",
+			wantReason:   shedengine.ReasonBounceBudgetExhausted,
 		},
 		{
 			name: "AlreadyDoneShortCircuit",

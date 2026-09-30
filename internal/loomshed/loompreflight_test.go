@@ -114,3 +114,37 @@ func TestLoomPreflight_Call_LockParentUncreatableReturnsError(t *testing.T) {
 		t.Errorf("Call() outcome = %q; want no verdict alongside an infra error", outcome)
 	}
 }
+
+// TestLoomPreflight_Call_StuckReasonNamesTheFailures pins that the incoherent-seed Reason is the
+// fixed prefix followed by formatSeedFailures of the same report, and that a seed failing a
+// different check yields a different Reason.
+func TestLoomPreflight_Call_StuckReasonNamesTheFailures(t *testing.T) {
+	reasonFor := func(currentProducer string) (string, string) {
+		dir := t.TempDir()
+		statusPath := filepath.Join(dir, "status.json")
+		statusLockPath := filepath.Join(dir, "status.json.lock")
+		writeLoomPreflightFixture(t, statusPath, statusLockPath, currentProducer)
+
+		report, err := loomengine.CheckSeed(statusPath, statusLockPath, NameLoomPreflight, []string{NamePreflight, NameLoomPreflight})
+		if err != nil {
+			t.Fatalf("CheckSeed() error = %v", err)
+		}
+		_, pointer, err := NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath).Call(context.Background())
+		if err != nil {
+			t.Fatalf("Call() error = %v; want nil", err)
+		}
+		return pointer.Reason, "seed is not a coherent fresh start: " + formatSeedFailures(report)
+	}
+
+	got1, want1 := reasonFor(NamePreflight)
+	if got1 != want1 {
+		t.Errorf("Reason = %q; want %q", got1, want1)
+	}
+	got2, want2 := reasonFor("Some-Other-Producer")
+	if got2 != want2 {
+		t.Errorf("Reason = %q; want %q", got2, want2)
+	}
+	if got1 == got2 {
+		t.Errorf("two different seed failures gave the same Reason %q", got1)
+	}
+}
