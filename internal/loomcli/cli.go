@@ -379,8 +379,7 @@ Example:
 	runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb := verbs[0], verbs[1], verbs[2], verbs[3], verbs[4]
 	stepVerb.Flags().StringVar(&c.parentFlag, "parent", "", "write the pair's provenance record once for a worktree created before that record existed; refused when it disagrees with an already-recorded value")
 
-	// Each of the four generic verbs takes at most one positional argument -- the run-id arm
-	// resolves (arm.go). None declared an Args validator before this card, so a second positional
+	// Each generic verb takes at most one positional argument -- the run-id arm resolves (arm.go). None declared an Args validator before this card, so a second positional
 	// was silently swallowed and the command addressed "self" regardless -- the worst of the
 	// available behaviours. "lyx loom start" keeps its own arity (no positional at all): it takes
 	// no run-id.

@@ -25,8 +25,8 @@
 // A Stuck outcome routes via OnStuck: "" escalates to a human (state: "blocked"), and a non-empty
 // value bounces back to the Name it names, forward or backward, budget permitting.
 // The OnStuck "" escalation persists the producer's own OutputPointer.Reason as the blocked halt's
-// error (one line, falling back to ReasonNoOnStuckTarget when empty); budget exhaustion persists
-// ReasonBounceBudgetExhausted regardless of the producer's Reason.
+// error (one line, falling back to ReasonNoOnStuckTarget when empty);
+// budget exhaustion persists a reason that starts with ReasonBounceBudgetExhausted, regardless of the producer's Reason.
 // An Awaiting outcome is the planned human hand-off and routes nowhere: the run halts in state
 // "awaiting" with the producer's Reason as the error, no bounce budget is consulted or spent, and a
 // resume re-calls the same producer, exactly as it does after a blocked halt.
@@ -38,8 +38,8 @@
 // exhaustively rather than relying on Shed to catch a missing entry.
 // The bounce budget backing OnStuck is per-producer and episode-scoped: it is counted from the
 // persisted history[] rather than held in memory, as the number of Stuck entries a producer has
-// authored since its own most recent Done entry (all of them, if it has never returned Done), so the
-// count spans invocations, crashes, and human resumes rather than resetting on every new Run call.
+// authored since its own most recent Done entry or a goto into its segment (all of them, if neither exists),
+// so the count spans invocations, crashes, and human resumes rather than resetting on every new Run call.
 // See this package's own routing and bounce-budget documentation for the full design and its
 // rationale; this package documentation states the contract, not the argument for it.
 //

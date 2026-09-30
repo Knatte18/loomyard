@@ -15,9 +15,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 )
 
-// entry is one recipe's arming contract: the Location-taking function that resolves and wires that
-// recipe's whole engine stack, and the set of the four generic shedverbs verbs that recipe actually
-// supports.
+// entry is one recipe's arming contract: the Location-taking function that resolves and wires that recipe's whole engine stack,
+// and the set of the generic shedverbs verbs that recipe actually supports.
 type entry struct {
 	// Arm is the recipe's exported Location-taking resolution entry point -- loomcli.ArmAt or
 	// battencli.ArmAt -- called with the already-resolved *lyxcwd.Location, the invoked verb name,
@@ -25,9 +24,9 @@ type entry struct {
 	// resolves cwd exactly once, ahead of the seed read that decides which recipe this entry belongs
 	// to, and hands the same Location on to Arm here.
 	Arm func(location *lyxcwd.Location, verb string, runID string) (shedverbs.Spec, error)
-	// Verbs names the shedverbs verbs this recipe supports. It is this table's sole authority on
-	// which verb/recipe pairs exist: the four generic verbs are registered once for every recipe,
-	// but the recipes do not all support all four.
+	// Verbs names the shedverbs verbs this recipe supports.
+	// It is this table's sole authority on which verb/recipe pairs exist: the generic verbs are registered once for every recipe,
+	// but a recipe need not support every one of them.
 	Verbs []string
 	// BootstrapVerb answers "may a run seeded for this recipe be driven by an LLM": it is populated
 	// from the owning module's own exported constant (loomcli.BootstrapVerb, battencli.BootstrapVerb),
