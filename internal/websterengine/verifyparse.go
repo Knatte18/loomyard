@@ -49,7 +49,9 @@ func parseVerifyFailures(output string, passed bool) []IntegrationFailure {
 	for i := 0; i < len(lines); i++ {
 		line := lines[i]
 
-		if rest, ok := strings.CutPrefix(strings.TrimLeft(line, " \t"), failHeaderPrefix); ok {
+		// go test prints a top-level header at column 0 and nests each subtest header inside its block,
+		// so an indented header is a subtest or a test's own log output, never a new identity.
+		if rest, ok := strings.CutPrefix(line, failHeaderPrefix); ok {
 			fields := strings.Fields(rest)
 			if len(fields) == 0 {
 				continue

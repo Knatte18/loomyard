@@ -45,6 +45,14 @@ func TestParseVerifyFailures(t *testing.T) {
 			},
 		},
 		{
+			name: "indented FAIL header in a test's log output is not an identity",
+			output: "--- FAIL: TestA (0.00s)\n    a_test.go:3: sub output:\n        --- FAIL: TestPhantom (0.00s)\n    a_test.go:3: boom\n" +
+				"FAIL\nFAIL\tpkg/a\t0.1s\n",
+			want: []IntegrationFailure{
+				{ID: "pkg/a.TestA", Kind: FailureKindTest, Tail: "    a_test.go:3: sub output:\n        --- FAIL: TestPhantom (0.00s)\n    a_test.go:3: boom"},
+			},
+		},
+		{
 			name:   "build failed is a package identity",
 			output: "# pkg/a\npkg/a/a.go:3: undefined: x\nFAIL\tpkg/a [build failed]\n",
 			want: []IntegrationFailure{
