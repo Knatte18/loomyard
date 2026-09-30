@@ -143,7 +143,7 @@ Every verb runs from the hub's prime worktree only.`,
 		},
 	}
 
-	parent.AddCommand(c.statusCmd(), c.cycleCmd(), c.stopCmd())
+	parent.AddCommand(c.statusCmd(), c.cycleCmd(), c.stopCmd(), c.watchCmd())
 	return parent
 }
 
