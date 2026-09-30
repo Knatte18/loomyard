@@ -289,21 +289,27 @@
 // outcome-aware: fail-loud under Master's outcome: done (a done claim
 // requires a passing suite), consistent-and-preserved under stuck (the
 // fork died or the stage never started; Master's own judgment stands).
-// On a FAILED integration report, bisect performs an in-process binary
-// search over the accumulated per-card SHA trail (every terminal batch's
-// own BatchState.CardSHAs) — checking out each candidate SHA detached and
-// running the plan's verify command in-process via os/exec, never a fork
-// per bisect candidate — to localize the first offending card in
-// logarithmic, not linear, re-runs. BisectAndEscalate then records that
-// localized finding as a terminal, non-successful entry in State.Batches
-// under the reserved key -1 (RecordIntegrationFailure — never a real plan
-// card number, so RenderProgress's walk over batch numbers, which are equally positive, can
-// never surface it by accident) and extends summary.md naming the
-// offending card (AppendIntegrationFailure). A Master claiming outcome: done
-// over a FAILED suite is then fail-loud after that escalation — symmetric
-// with the missing-report-under-done case, since a done outcome requires a
-// passing suite; a stuck outcome keeps its own judgment, merely sharpened by
-// the localized card.
+// The fork redirects the verify command's output to a scratch log (IntegrationLogPath),
+// so Go can name every failing test and its output tail (parseVerifyFailures) without trusting the fork's own account.
+// On a FAILED integration report, webster reruns the verify once at head and compares the remaining failures against the plan's starting commit,
+// classifying each failing identity flaky (the rerun passes), pre-existing (it also fails at the baseline), or regression.
+// The baseline is the earliest of the batches' recorded start commits by ancestry, since begin-batch does not enforce execution order;
+// start commits with no single earliest member leave nothing excused as pre-existing.
+// A test identity is the deepest failing test or subtest path go test prints, so a failing TestX/a at baseline never excuses a new TestX/b.
+// Triage excuses only what it can attribute to a named test: a package identity (a build or setup failure, a panic or timeout, a TestMain failure, a test binary that exited before reporting) or an opaque one is never pre-existing,
+// though it is still flaky when the rerun passes cleanly.
+// For the same reason the verify command must be a plain "&&" chain whose rerun reached its last step (a marker echoed before that step proves it),
+// and must not run with -failfast;
+// otherwise a non-test step's failure, or a step left unrun behind a pre-existing failure, could hide behind it, and every failure is a regression.
+// A step that runs go test inside a script is outside this reach: its own non-test failures surface only as the step's exit status.
+// The report carries the result in its optional failures and triage fields.
+// A regression demotes a Master outcome: done to stuck;
+// flaky and pre-existing failures keep the outcome and are recorded as RunResult warnings, an "## Integration suite triage" section in summary.md (AppendIntegrationTriage), and a friction note.
+// A regression is then localized: bisect performs an in-process binary search over the accumulated per-card SHA trail (every terminal batch's own BatchState.CardSHAs) — checking out each candidate SHA detached and running the plan's verify command in-process via os/exec, never a fork per bisect candidate — to find the first offending card in logarithmic, not linear, re-runs.
+// A candidate passes when none of the regressing identities fails there, not when the whole command exits zero,
+// so an unrelated flaky or pre-existing failure cannot misdirect the search.
+// BisectAndEscalate then records that localized finding as a terminal, non-successful entry in State.Batches under the reserved key -1 (RecordIntegrationFailure — never a real plan card number, so RenderProgress's walk over batch numbers, which are equally positive, can never surface it by accident)
+// and extends summary.md naming the offending card and the regressing identities with their tails (AppendIntegrationFailure).
 //
 // # No shared substrate or parser with any other batch-implementation loop
 //

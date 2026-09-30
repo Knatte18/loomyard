@@ -61,17 +61,27 @@ func ParseReport(path string) (*Report, error) {
 		return nil, fmt.Errorf("websterengine: report %s: %w", path, err)
 	}
 
-	switch r.Status {
-	case ReportStatusOK, ReportStatusFailed:
-	default:
-		return nil, fmt.Errorf("websterengine: report %s: unrecognized status %q; want %q or %q", path, r.Status, ReportStatusOK, ReportStatusFailed)
-	}
-
-	if strings.TrimSpace(r.HeadSHA) == "" {
-		return nil, fmt.Errorf("websterengine: report %s: missing required field %q", path, "head_sha")
+	if err := validateReportFields(path, r.Status, r.HeadSHA); err != nil {
+		return nil, err
 	}
 
 	return &r, nil
+}
+
+// validateReportFields enforces the status and head_sha shape shared by ParseReport and ParseIntegrationReport,
+// so the two parsers cannot drift.
+func validateReportFields(path, status, headSHA string) error {
+	switch status {
+	case ReportStatusOK, ReportStatusFailed:
+	default:
+		return fmt.Errorf("websterengine: report %s: unrecognized status %q; want %q or %q", path, status, ReportStatusOK, ReportStatusFailed)
+	}
+
+	if strings.TrimSpace(headSHA) == "" {
+		return fmt.Errorf("websterengine: report %s: missing required field %q", path, "head_sha")
+	}
+
+	return nil
 }
 
 // WriteReport serializes r's three fields to path, the per-batch report file the fork writes under

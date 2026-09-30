@@ -96,7 +96,9 @@ type BeginResult struct {
 	BatchName string
 	// PromptPath is the absolute path of the fork prompt file BeginBatch just wrote.
 	PromptPath string
-	// StartSHA is the repo HEAD captured before this call returns.
+	// StartSHA is the value recorded in the batch's state: the repo HEAD captured before this call returns,
+	// or — on a re-begin over a record that already carries one — that earlier value,
+	// so it stays the HEAD from before the batch's first fork.
 	StartSHA string
 	// AssertedModel is the model BeginBatch asserted Master's pane onto for this batch.
 	AssertedModel string
@@ -393,9 +395,16 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 		deps.State.AssertedModel = targetModel
 	}
 
+	// A re-begin keeps the StartSHA the batch was first recorded with: the captured head may already sit past commits an earlier fork landed,
+	// and the recorded start must name the base of the whole bracket (recover-batch applies the same inheritance to a recovery record).
+	startSHA := head
+	if prior := deps.State.Batches[number]; prior != nil && prior.StartSHA != "" {
+		startSHA = prior.StartSHA
+	}
+
 	deps.State.Batches[number] = &BatchState{
 		Slug:      slug,
-		StartSHA:  head,
+		StartSHA:  startSHA,
 		Kind:      "fork",
 		SpawnedAt: time.Now().UTC().Format(time.RFC3339),
 		// Stamp the opening Master session so the run-exit audit cross-check
@@ -408,7 +417,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	return &BeginResult{
 		BatchName:     batchName,
 		PromptPath:    promptPath,
-		StartSHA:      head,
+		StartSHA:      startSHA,
 		AssertedModel: deps.State.AssertedModel,
 		Advisories:    advisories,
 	}, nil

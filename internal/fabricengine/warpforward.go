@@ -34,6 +34,12 @@ func (f *Fabric) HeadSHA() (string, error) {
 	return f.warp.CurrentSHA()
 }
 
+// IsAncestor reports whether sha is an ancestor of ref in the warp checkout.
+// It is a thin, read-only delegation to gitrepo.Repo.IsAncestor on f.warp.
+func (f *Fabric) IsAncestor(sha, ref string) (bool, error) {
+	return f.warp.IsAncestor(sha, ref)
+}
+
 // ResetHard has moved to destroy.go, where it becomes the gated executor for the ResetHard
 // primitive — see that file's own doc comment. It is not a thin delegation like its neighbours
 // above: there is exactly one correct ownership/dirtiness declaration for "reset this Fabric's warp

@@ -254,14 +254,19 @@ func RenderRecoveryPrompt(batch batcher.Batch, prevDigest, reportPath, anchorRoo
 
 // RenderIntegrationPrompt fills webster-template-integration for the plan's single
 // integration-suite fork, read from stencilsDir.
-// Returns an error if plan.Verify is empty.
+// Returns an error if plan.Verify or logPath is empty.
+// logPath is the absolute path the fork redirects the verify command's combined output to,
+// so Go can parse the failures after the fork ends.
 // notePath is the caller-composed friction note path (friction.NotePath), or "" when Tier 2 is off;
 // friction_directive is injected via friction.RoleImplementer when Tier 2 is on, with a
 // friction.Directive error swallowed as a Warn rather than propagated.
-func RenderIntegrationPrompt(plan *planparser.Plan, reportPath, worktreeRoot, stencilsDir string, notePath string) ([]byte, error) {
+func RenderIntegrationPrompt(plan *planparser.Plan, reportPath, logPath, worktreeRoot, stencilsDir string, notePath string) ([]byte, error) {
 	verify := strings.TrimSpace(plan.Verify)
 	if verify == "" {
 		return nil, fmt.Errorf("webster: render integration prompt: plan carries no plan-level \"## verify:\" section")
+	}
+	if strings.TrimSpace(logPath) == "" {
+		return nil, fmt.Errorf("webster: render integration prompt: verify log path is empty")
 	}
 
 	directive, err := friction.Directive(notePath, stencilsDir, friction.RoleImplementer)
@@ -273,6 +278,7 @@ func RenderIntegrationPrompt(plan *planparser.Plan, reportPath, worktreeRoot, st
 	values := map[string]string{
 		"verify":            verify,
 		"report_path":       reportPath,
+		"verify_log_path":   logPath,
 		"worktree_root":     worktreeRoot,
 		friction.MarkerName: directive,
 	}
