@@ -7,7 +7,6 @@
 package loomcli
 
 import (
-	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -78,7 +77,8 @@ func reviewsHoldFile(dir string) bool {
 		return false
 	}
 	found := false
-	walkErr := filepath.WalkDir(dir, func(_ string, d fs.DirEntry, err error) error {
+	// A walk error can only end the walk before a file is found, so found alone is the answer.
+	_ = filepath.WalkDir(dir, func(_ string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -88,7 +88,7 @@ func reviewsHoldFile(dir string) bool {
 		}
 		return nil
 	})
-	return found && (walkErr == nil || errors.Is(walkErr, fs.SkipAll))
+	return found
 }
 
 // loomCommitStatusDeps builds a commitStatusDeps over location and runID, filling each field from
