@@ -163,7 +163,11 @@ func TestRemove_AddSucceedsAfterWarpBranchDeleted(t *testing.T) {
 		t.Fatalf("setup Add(%q): %v", slug, err)
 	}
 
-	res, err := topology.Remove(l, slug, false, false)
+	// remote=true: a plain Remove leaves the pushed weft branch on origin, and the second Add's
+	// re-created weft branch then pushes only when its bootstrap commits land in the same second as
+	// the first Add's (identical SHAs); otherwise the push is rejected non-fast-forward. That re-add
+	// gap is tracked on the board as fabric-readd-weft-push; this test pins the warp-branch half.
+	res, err := topology.Remove(l, slug, false, true)
 	if err != nil {
 		t.Fatalf("Remove(%q) error = %v", slug, err)
 	}
