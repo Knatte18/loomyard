@@ -23,6 +23,7 @@
 package websterengine
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -111,10 +112,11 @@ func archiveStaleReport(reportsDir string, number int, slug string, now func() t
 
 // refuseRecoveringDoneReport refuses to recover a batch whose report already
 // has status: OK (record-batch is the consuming verb), except when prior is
-// terminal dead (a late orphan report), or missing/unparseable.
+// terminal dead (a late orphan report), terminal failed (a still-running fork's late report,
+// or one left over after the failure), or missing/unparseable.
 func refuseRecoveringDoneReport(reportsDir string, number int, slug string, prior *BatchState) error {
-	// Dead-orphan exception: archive a late report the orphan wrote after dead classification.
-	if prior != nil && prior.Terminal && prior.Status == DigestStatusDead {
+	// Dead-orphan and failed exceptions: archive a late report written after the terminal classification.
+	if prior != nil && prior.Terminal && (prior.Status == DigestStatusDead || prior.Status == DigestStatusFailed) {
 		return nil
 	}
 
@@ -128,6 +130,20 @@ func refuseRecoveringDoneReport(reportsDir string, number int, slug string, prio
 		return fmt.Errorf("webster: batch %02d-%s already has a report with status: OK at %s — recover-batch never archives finished work; record it with `lyx webster record-batch %d` instead", number, slug, reportPath, number)
 	}
 	return nil
+}
+
+// failureDigestBlock renders a failed prior record's digest for the recovery prompt: the reasons,
+// which failBatch already ends with the suspect paths.
+// It returns "" when prior is not a failed batch.
+func failureDigestBlock(prior *BatchState) string {
+	if prior == nil || prior.Status != DigestStatusFailed || prior.Digest == nil || len(prior.Digest.Reasons) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	for _, r := range prior.Digest.Reasons {
+		fmt.Fprintf(&b, "- %s\n", r)
+	}
+	return strings.TrimRight(b.String(), "\n")
 }
 
 // recoverSpawn archives any stale report, stops a live prior strand, renders
@@ -162,7 +178,7 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 	}
 
 	notePath := friction.NotePath(deps.FrictionDir, batchName+"-recovery")
-	prompt, err := RenderRecoveryPrompt(batch, prevDigest, reportPath, deps.Geom.AnchorRoot, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Geom.SpecsDir, deps.Config.SelfFixCap, notePath)
+	prompt, err := RenderRecoveryPrompt(batch, prevDigest, failureDigestBlock(prior), reportPath, deps.Geom.AnchorRoot, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Geom.SpecsDir, deps.Config.SelfFixCap, notePath)
 	if err != nil {
 		return nil, err
 	}
@@ -297,8 +313,11 @@ func RecoverAwait(deps RecoverDeps, batchNumber int, bs *BatchState, wait time.D
 // recovered that way never bound its plan: handles, so every later card kept referencing an unbound
 // handle for the rest of the plan's life.
 //
-// A blocking finding leaves the batch NON-terminal and returns an ErrCardNotDone-wrapped error: the
-// recovery strand said done, but the tree says the card is not, and webster believes the tree.
+// A blocking finding fails the batch through failBatch: the recovery strand said done, but the tree
+// says the card is not, and webster believes the tree.
+// The report is archived, the record is terminal failed, and the *BatchFailedError is returned with
+// the pass's warnings, so the next recover-batch spawns a fresh strand instead of re-attaching to
+// the finished one and failing the same checks forever.
 func PersistRecoveryTerminal(deps RecoverDeps, st *State, batchNumber int, digest *Digest) (warnings []string, err error) {
 	if st == nil {
 		return nil, fmt.Errorf("webster: recovery terminal persistence requires a loaded state; State is nil")
@@ -340,7 +359,24 @@ func PersistRecoveryTerminal(deps RecoverDeps, st *State, batchNumber int, diges
 		Label:     fmt.Sprintf("%02d-%s", number, slug),
 	})
 	if err != nil {
-		return warnings, err
+		if !errors.Is(err, ErrCardNotDone) {
+			return warnings, err
+		}
+		reasons := strings.Split(strings.TrimPrefix(err.Error(), ErrCardNotDone.Error()+": "), "; ")
+		bfe, ferr := failBatch(failBatchInput{
+			State:      st,
+			Batch:      bs,
+			Number:     number,
+			Slug:       slug,
+			ReportsDir: deps.Geom.ReportsDir,
+			HeadSHA:    head,
+			Reasons:    reasons,
+			Now:        time.Now,
+		})
+		if ferr != nil {
+			return warnings, ferr
+		}
+		return warnings, bfe
 	}
 
 	bs.Digest = digest

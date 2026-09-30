@@ -213,10 +213,17 @@ func RenderForkPrompt(batch batcher.Batch, prevDigest, reportPath, planDir, prom
 // pattern.Directive call immediately above, which does propagate.
 // specsDir is the told deployed-specs directory, filled into the shared implementer-job body's
 // required specs_dir marker.
-func RenderRecoveryPrompt(batch batcher.Batch, prevDigest, reportPath, anchorRoot, planDir, promptWorktreeRoot, stencilsDir, specsDir string, selfFixCap int, notePath string) ([]byte, error) {
+// failureDigest is the prior failed record's reasons and suspect paths, or "" when the batch
+// was not failed; it fills the optional failure_digest marker, rendered as "none" when empty,
+// and being optional it leaves an older deployed stencil rendering.
+func RenderRecoveryPrompt(batch batcher.Batch, prevDigest, failureDigest, reportPath, anchorRoot, planDir, promptWorktreeRoot, stencilsDir, specsDir string, selfFixCap int, notePath string) ([]byte, error) {
 	digestLine := prevDigest
 	if strings.TrimSpace(digestLine) == "" {
 		digestLine = noPrecedingBatchDigest
+	}
+	failureLine := failureDigest
+	if strings.TrimSpace(failureLine) == "" {
+		failureLine = "none"
 	}
 
 	directive, err := pattern.Directive(anchorRoot, stencilsDir, pattern.RoleImplementer)
@@ -236,6 +243,7 @@ func RenderRecoveryPrompt(batch batcher.Batch, prevDigest, reportPath, anchorRoo
 		"self_fix_cap":      fmt.Sprintf("%d", selfFixCap),
 		"worktree_root":     promptWorktreeRoot,
 		"prev_digest":       digestLine,
+		"failure_digest":    failureLine,
 		"pattern_directive": directive,
 		"specs_dir":         specsDir,
 		friction.MarkerName: frictionDirective,
@@ -245,7 +253,7 @@ func RenderRecoveryPrompt(batch batcher.Batch, prevDigest, reportPath, anchorRoo
 		return nil, fmt.Errorf("webster: read recovery template: %w", err)
 	}
 	friction.WarnIfMarkerAbsent(template, "webster-prefix-recovery", frictionDirective)
-	prompt, err := stencil.FillOptional(template, values, []string{"pattern_directive", friction.MarkerName})
+	prompt, err := stencil.FillOptional(template, values, []string{"pattern_directive", "failure_digest", friction.MarkerName})
 	if err != nil {
 		return nil, fmt.Errorf("webster: fill recovery template: %w", err)
 	}

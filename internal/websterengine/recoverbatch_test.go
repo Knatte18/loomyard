@@ -831,7 +831,8 @@ func TestRecoverBatch_UnrecordedOrTerminalBatchSpawnsFresh(t *testing.T) {
 // handle for the rest of the plan's life.
 //
 // Here the recovery reports done over a Create card whose target never appeared in the tree. The
-// mechanical pass must refuse it and leave the batch non-terminal, exactly as record-batch does.
+// mechanical pass must refuse it and take the batch terminal failed with its report archived,
+// exactly as record-batch does, so the next recover-batch spawns a fresh strand.
 func TestRecoverBatch_TerminalRunsTheSamePostBatchChecksAsRecordBatch(t *testing.T) {
 	fx := newRecoverFixture(t)
 	clk := &recoverFakeClock{now: time.Unix(0, 0)}
@@ -860,11 +861,94 @@ func TestRecoverBatch_TerminalRunsTheSamePostBatchChecksAsRecordBatch(t *testing
 	writeRecoverReport(t, fx.ReportsDir, "status: OK\nhead_sha: "+realHead+"\n")
 
 	_, err = driveRecoverBatch(fx.Deps, 1, 2*time.Second, clk)
-	if !errors.Is(err, websterengine.ErrCardNotDone) {
-		t.Fatalf("RecoverBatch() second call error = %v; want errors.Is(err, ErrCardNotDone) — a recovery reporting done over an unlanded Create target must be refused", err)
+	if !errors.Is(err, websterengine.ErrBatchFailed) {
+		t.Fatalf("RecoverBatch() second call error = %v; want errors.Is(err, ErrBatchFailed) — a recovery reporting done over an unlanded Create target must be failed", err)
 	}
-	if bs := fx.Deps.State.Batches[1]; bs.Terminal {
-		t.Error("BatchState.Terminal = true; want false — a refused mechanical pass must never persist a terminal recovery digest")
+	bs := fx.Deps.State.Batches[1]
+	if !bs.Terminal || bs.Status != websterengine.DigestStatusFailed {
+		t.Errorf("BatchState = terminal %v status %q; want terminal failed", bs.Terminal, bs.Status)
+	}
+	if bs.Digest == nil || len(bs.Digest.Reasons) == 0 {
+		t.Errorf("failed digest = %+v; want reasons naming the done-check finding", bs.Digest)
+	}
+	if _, statErr := os.Stat(filepath.Join(fx.ReportsDir, websterengine.ReportFileName(1, "json-flag"))); !os.IsNotExist(statErr) {
+		t.Errorf("stat(live report) = %v; want the report archived away", statErr)
+	}
+	if fx.Deps.State.CurrentBatch != 0 {
+		t.Errorf("State.CurrentBatch = %d; want 0", fx.Deps.State.CurrentBatch)
+	}
+
+	// The next recover-batch spawns a fresh strand rather than re-attaching to the finished one.
+	again, err := driveRecoverBatch(fx.Deps, 1, 1*time.Second, clk)
+	if err != nil {
+		t.Fatalf("RecoverBatch() third call error = %v; want nil", err)
+	}
+	if !again.Spawned {
+		t.Errorf("third call = %+v; want Spawned=true after a failed recovery", again)
+	}
+}
+
+// failedRecord builds the record RecordBatch leaves behind for a batch it failed on its merits:
+// terminal, status failed, reasons ending with the suspect paths.
+func failedRecord(reasons ...string) *websterengine.BatchState {
+	return &websterengine.BatchState{
+		Slug: "json-flag", Kind: "fork", Terminal: true, Status: websterengine.DigestStatusFailed,
+		Digest: &websterengine.Digest{Batch: "01-json-flag", Status: websterengine.DigestStatusFailed, Reasons: reasons},
+	}
+}
+
+// TestRecoverSpawnOrAttach_FailedBatchSpawnsWithFailureDigest proves recover-batch works from a
+// failed batch for every reason class: no refusal, and the rendered prompt carries every reason
+// and suspect path.
+func TestRecoverSpawnOrAttach_FailedBatchSpawnsWithFailureDigest(t *testing.T) {
+	tests := []struct {
+		name    string
+		reasons []string
+	}{
+		{name: "fork contract write", reasons: []string{"fork wrote the report contract file", "suspect path: _lyx/webster/state.json"}},
+		{name: "fabric reference with failing verify", reasons: []string{"fabric-reference in parent transcript", "card verify failed: go test ./x", "suspect path: internal/x/x.go"}},
+		{name: "done-check finding", reasons: []string{"Create target internal/never/there.go# does not resolve"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fx := newRecoverFixture(t)
+			fx.Deps.State.Batches[1] = failedRecord(tt.reasons...)
+			clk := &recoverFakeClock{now: time.Unix(0, 0)}
+
+			_, spawned, err := websterengine.RecoverSpawnOrAttach(fx.Deps, 1, clk)
+			if err != nil {
+				t.Fatalf("RecoverSpawnOrAttach() error = %v; want nil", err)
+			}
+			if !spawned {
+				t.Fatal("spawned = false; want a fresh recovery strand")
+			}
+			prompt := fx.Engine.lastPromptText()
+			for _, r := range tt.reasons {
+				if !strings.Contains(prompt, r) {
+					t.Errorf("recovery prompt lacks reason %q", r)
+				}
+			}
+		})
+	}
+}
+
+// TestRecoverSpawnOrAttach_FailedBatchArchivesLateReport proves an OK report a still-running fork
+// writes after the batch failed is archived rather than refused, so no refusal ring re-forms.
+func TestRecoverSpawnOrAttach_FailedBatchArchivesLateReport(t *testing.T) {
+	fx := newRecoverFixture(t)
+	fx.Deps.State.Batches[1] = failedRecord("fork wrote the report contract file")
+	writeRecoverReport(t, fx.ReportsDir, "status: OK\nhead_sha: abc\n")
+	clk := &recoverFakeClock{now: time.Unix(0, 0)}
+
+	if _, spawned, err := websterengine.RecoverSpawnOrAttach(fx.Deps, 1, clk); err != nil || !spawned {
+		t.Fatalf("RecoverSpawnOrAttach() = spawned %v, err %v; want spawned without a refusal", spawned, err)
+	}
+	if _, statErr := os.Stat(filepath.Join(fx.ReportsDir, websterengine.ReportFileName(1, "json-flag"))); !os.IsNotExist(statErr) {
+		t.Errorf("stat(live report) = %v; want the late report archived away", statErr)
+	}
+	archived, _ := filepath.Glob(filepath.Join(fx.ReportsDir, "01-json-flag-*.yaml"))
+	if len(archived) != 1 {
+		t.Errorf("archived reports = %v; want exactly 1", archived)
 	}
 }
 
