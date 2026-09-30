@@ -247,7 +247,7 @@ Covered headlessly by `TestSmokeRemoveReapsRemovedPaneChildProcesses`.
 
 **Goal:** "Build a busy below-parent-only session -- a parent strand, a child under it, then a second child under the parent -- and confirm every strand still has its own live pane."
 
-**Watch:** After all three `add`s, `lyx reed status` reports all three strands `live: true`, and `tmux -L <socket> list-panes` (controlled exception) shows exactly three panes with sane geometry: the parent shrunk to `collapsed_rows` once a child exists, and the deepest child dominant (the tallest, bottom-most pane).
+**Watch:** After all three `add`s, `lyx reed status` reports all three strands `live: true`, and `tmux -L <socket> list-panes` (controlled exception) shows exactly three panes with sane geometry: the parent and the first child each at `collapsed_rows`, and the second child, added last, dominant (the tallest, bottom-most pane).
 A pane count below three, an empty pane list,
 or a strand that flips to `live: false` after the next verb means a split/apply silently destroyed panes -- that is a `FAIL`, not cosmetics.
 
