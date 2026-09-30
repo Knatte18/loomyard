@@ -18,8 +18,10 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/lock"
 )
 
 // operatorExcludePattern stands in for the exclude entries a repository already carries before
@@ -104,6 +106,175 @@ func TestMutateGitExclude_ReportsWhetherContentChanged(t *testing.T) {
 	if changed {
 		t.Error("re-applying the same pattern reported changed=true; want false")
 	}
+}
+
+// TestExcludeAnchoredDir_AppendsAnchoredLineOnce pins the exact bytes written and the idempotent
+// second call.
+func TestExcludeAnchoredDir_AppendsAnchoredLineOnce(t *testing.T) {
+	repoDir := newGitRepoForExcludeTest(t)
+	excludePath := seedExclude(t, repoDir, operatorExcludePattern+"\n")
+
+	gotPath, changed, err := ExcludeAnchoredDir(repoDir, ".", ".vscode")
+	if err != nil {
+		t.Fatalf("ExcludeAnchoredDir = %v; want nil", err)
+	}
+	if !changed {
+		t.Error("first call reported changed=false; want true")
+	}
+	if gotPath != excludePath {
+		t.Errorf("returned exclude path = %q; want %q", gotPath, excludePath)
+	}
+	first := readFileT(t, excludePath)
+	if want := operatorExcludePattern + "\n/.vscode/\n"; first != want {
+		t.Errorf("exclude content = %q; want %q", first, want)
+	}
+
+	_, changed, err = ExcludeAnchoredDir(repoDir, ".", ".vscode")
+	if err != nil {
+		t.Fatalf("second ExcludeAnchoredDir = %v; want nil", err)
+	}
+	if changed {
+		t.Error("second call reported changed=true; want false")
+	}
+	if second := readFileT(t, excludePath); second != first {
+		t.Errorf("second call changed content to %q; want %q", second, first)
+	}
+}
+
+// TestExcludeAnchoredDir_AnchorsToSubpath pins that the entry covers only the anchor's own
+// directory.
+func TestExcludeAnchoredDir_AnchorsToSubpath(t *testing.T) {
+	repoDir := newGitRepoForExcludeTest(t)
+	seedExclude(t, repoDir, "")
+
+	excludePath, _, err := ExcludeAnchoredDir(repoDir, "wts/some-task", ".vscode")
+	if err != nil {
+		t.Fatalf("ExcludeAnchoredDir = %v; want nil", err)
+	}
+	if got, want := readFileT(t, excludePath), "/wts/some-task/.vscode/\n"; got != want {
+		t.Errorf("exclude content = %q; want %q", got, want)
+	}
+
+	if !checkIgnored(t, repoDir, "wts/some-task/.vscode/tasks.json") {
+		t.Error("wts/some-task/.vscode/tasks.json is not ignored; want ignored")
+	}
+	if checkIgnored(t, repoDir, ".vscode/tasks.json") {
+		t.Error("root .vscode/tasks.json is ignored; want not ignored")
+	}
+}
+
+// TestExcludeAnchoredDir_AlreadyIgnoredWritesNothing pins the check-ignore short-circuit.
+func TestExcludeAnchoredDir_AlreadyIgnoredWritesNothing(t *testing.T) {
+	repoDir := newGitRepoForExcludeTest(t)
+	if err := os.WriteFile(filepath.Join(repoDir, ".gitignore"), []byte(".vscode/\n"), 0o644); err != nil {
+		t.Fatalf("write .gitignore: %v", err)
+	}
+	excludePath, err := resolveGitExcludePath(repoDir)
+	if err != nil {
+		t.Fatalf("resolveGitExcludePath = %v", err)
+	}
+	before, _ := os.ReadFile(excludePath)
+
+	_, changed, err := ExcludeAnchoredDir(repoDir, ".", ".vscode")
+	if err != nil {
+		t.Fatalf("ExcludeAnchoredDir = %v; want nil", err)
+	}
+	if changed {
+		t.Error("reported changed=true for an already-ignored dir; want false")
+	}
+	after, _ := os.ReadFile(excludePath)
+	if string(after) != string(before) {
+		t.Errorf("exclude content changed from %q to %q; want untouched", before, after)
+	}
+}
+
+// TestExcludeAnchoredDir_HoldsExcludeLock pins that the write waits on the shared exclude lock.
+func TestExcludeAnchoredDir_HoldsExcludeLock(t *testing.T) {
+	repoDir := newGitRepoForExcludeTest(t)
+	excludePath := seedExclude(t, repoDir, operatorExcludePattern+"\n")
+
+	held, err := lock.AcquireWriteLock(filepath.Join(filepath.Dir(excludePath), gitExcludeLockFileName))
+	if err != nil {
+		t.Fatalf("acquire exclude lock: %v", err)
+	}
+	released := false
+	defer func() {
+		if !released {
+			_ = held.Release()
+		}
+	}()
+
+	type result struct {
+		changed bool
+		err     error
+	}
+	done := make(chan result, 1)
+	go func() {
+		_, changed, err := ExcludeAnchoredDir(repoDir, ".", ".vscode")
+		done <- result{changed, err}
+	}()
+
+	select {
+	case r := <-done:
+		t.Fatalf("ExcludeAnchoredDir returned (%v, %v) while the lock was held; want blocked", r.changed, r.err)
+	case <-time.After(300 * time.Millisecond):
+	}
+	if got, want := readFileT(t, excludePath), operatorExcludePattern+"\n"; got != want {
+		t.Errorf("exclude content while locked = %q; want %q", got, want)
+	}
+
+	if err := held.Release(); err != nil {
+		t.Fatalf("release exclude lock: %v", err)
+	}
+	released = true
+
+	select {
+	case r := <-done:
+		if r.err != nil || !r.changed {
+			t.Fatalf("ExcludeAnchoredDir after release = (%v, %v); want (true, nil)", r.changed, r.err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("ExcludeAnchoredDir did not return after the lock was released")
+	}
+	if got, want := readFileT(t, excludePath), operatorExcludePattern+"\n/.vscode/\n"; got != want {
+		t.Errorf("exclude content after release = %q; want %q", got, want)
+	}
+}
+
+// seedExclude writes content into repoDir's exclude file and returns that file's path.
+func seedExclude(t *testing.T, repoDir, content string) string {
+	t.Helper()
+	excludePath, err := resolveGitExcludePath(repoDir)
+	if err != nil {
+		t.Fatalf("resolveGitExcludePath(%q) = %v", repoDir, err)
+	}
+	if err := os.MkdirAll(filepath.Dir(excludePath), 0o755); err != nil {
+		t.Fatalf("mkdir exclude dir: %v", err)
+	}
+	if err := os.WriteFile(excludePath, []byte(content), 0o644); err != nil {
+		t.Fatalf("seed exclude file: %v", err)
+	}
+	return excludePath
+}
+
+// readFileT returns path's content as a string, failing the test on error.
+func readFileT(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	return string(data)
+}
+
+// checkIgnored reports whether git considers relPath ignored in repoDir.
+func checkIgnored(t *testing.T, repoDir, relPath string) bool {
+	t.Helper()
+	_, _, exitCode, err := gitexec.RunGit([]string{"check-ignore", "-q", "--", relPath}, repoDir)
+	if err != nil {
+		t.Fatalf("git check-ignore %s: %v", relPath, err)
+	}
+	return exitCode == 0
 }
 
 // appendPatternOnce builds a rewrite that adds pattern unless it is already present.
