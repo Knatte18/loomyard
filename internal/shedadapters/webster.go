@@ -114,7 +114,7 @@ func (p *WebsterProducer) Call(ctx context.Context) (shedengine.Outcome, shedeng
 		if cerr := cancelErr(ctx, p.name, websterEngineLabel); cerr != nil {
 			return "", shedengine.OutputPointer{}, cerr
 		}
-		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): webster run paused out of band", p.name, websterEngineLabel)
+		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): webster run paused out of band; way forward: re-step the %s row, since lyx webster run clears the pause and resumes", p.name, websterEngineLabel, p.name)
 
 	default:
 		if cerr := cancelErr(ctx, p.name, websterEngineLabel); cerr != nil {

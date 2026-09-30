@@ -73,7 +73,7 @@ func (p *discussionWrite) Call(ctx context.Context) (shedengine.Outcome, shedeng
 	}
 
 	if err := p.commit(); err != nil {
-		return "", shedengine.OutputPointer{}, fmt.Errorf("loomshed: %s: commit produced artifacts: %w", p.name, err)
+		return "", shedengine.OutputPointer{}, fmt.Errorf("loomshed: %s: commit produced artifacts: %w; way forward: the fault is transient, re-step the %s row", p.name, err, p.name)
 	}
 
 	return outcome, pointer, nil

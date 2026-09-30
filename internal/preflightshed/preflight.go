@@ -25,6 +25,39 @@ func formatFailures(report preflight.Report) string {
 	return strings.Join(parts, "; ")
 }
 
+// wayForward returns the trailing "way forward" clause for report's failures, one fix per failed
+// check that has one, or "" when none does.
+// A failed geometry check, and a junction failure from an unreadable fabric.yaml, have no
+// operator-runnable fix and stay bare.
+func wayForward(report preflight.Report) string {
+	var steps []string
+	seen := map[string]bool{}
+	add := func(s string) {
+		if !seen[s] {
+			seen[s] = true
+			steps = append(steps, s)
+		}
+	}
+	for _, f := range report.Failures {
+		switch f.Check {
+		case preflight.CheckWorktreeClean:
+			add("commit or stash the warp's changes with git, and commit the weft's _lyx changes with `lyx fabric commit`, then re-step")
+		case preflight.CheckFabricSync:
+			add("`lyx fabric checkout` re-checks out the current warp branch and re-syncs the weft side, then re-step")
+		case preflight.CheckFabricReady, preflight.CheckJunction:
+			// An unreadable fabric.yaml is a config decode error reconcile cannot repair.
+			if strings.Contains(f.Reason, "cannot load fabric.yaml") {
+				continue
+			}
+			add("`lyx fabric reconcile` recreates a missing weft worktree and re-points broken junctions, then re-step")
+		}
+	}
+	if len(steps) == 0 {
+		return ""
+	}
+	return "; way forward: " + strings.Join(steps, "; ")
+}
+
 // preflightProducer is the general Preflight producer: it wraps preflight.Check, mapping its
 // determined Report onto shedengine's contract.
 type preflightProducer struct {
@@ -74,7 +107,7 @@ func (p *preflightProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 		// empty: this is a gate signal, not an artifact.
 		failures := formatFailures(report)
 		logger.Warn("preflightshed: preconditions not met", "producer", p.name, "cwd", p.cwd, "failures", failures)
-		return shedengine.Stuck, shedengine.OutputPointer{Reason: "preconditions not met: " + failures}, nil
+		return shedengine.Stuck, shedengine.OutputPointer{Reason: "preconditions not met: " + failures + wayForward(report)}, nil
 	}
 
 	return shedengine.Done, shedengine.OutputPointer{}, nil

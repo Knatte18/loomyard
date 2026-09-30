@@ -16,6 +16,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -103,8 +104,20 @@ func TestPreflight_BrokenPreconditionMapsToStuck(t *testing.T) {
 	if cerr != nil {
 		t.Fatalf("preflight.Check error = %v; want nil", cerr)
 	}
-	if want := "preconditions not met: " + formatFailures(report); ptr.Reason != want {
+	if want := "preconditions not met: " + formatFailures(report) + wayForward(report); ptr.Reason != want {
 		t.Errorf("Call() Reason = %q; want %q", ptr.Reason, want)
+	}
+	if !strings.Contains(ptr.Reason, "way forward: commit or stash the warp's changes with git") {
+		t.Errorf("Call() Reason = %q; want the worktree-clean way forward", ptr.Reason)
+	}
+
+	// Taking the way forward (clearing the dirt) lets the same row proceed.
+	if err := os.Remove(untracked); err != nil {
+		t.Fatalf("remove untracked file: %v", err)
+	}
+	outcome, _, err = p.Call(context.Background())
+	if err != nil || outcome != shedengine.Done {
+		t.Errorf("re-step Call() = (%q, %v); want Done once the worktree is clean", outcome, err)
 	}
 }
 

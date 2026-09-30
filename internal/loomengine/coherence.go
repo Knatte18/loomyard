@@ -77,7 +77,7 @@ func checkCoherence(shed shedengine.Status, product Status, expectedProducer str
 		if h.Outcome != shedengine.Done && h.Outcome != shedengine.Stuck && h.Outcome != shedengine.Awaiting && h.Outcome != shedengine.OutcomeGoto {
 			failures = append(failures, Failure{
 				Check:  CheckSeedIncoherent,
-				Reason: fmt.Sprintf("history[%d].outcome %q is not a valid outcome", i, h.Outcome),
+				Reason: fmt.Sprintf("history[%d].outcome %q is not a valid outcome; way forward: seed a new run", i, h.Outcome),
 			})
 		}
 		if !isRFC3339UTC(h.At) {

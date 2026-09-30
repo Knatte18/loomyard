@@ -86,6 +86,16 @@ func TestWebsterProducer_OutcomePaused(t *testing.T) {
 	if err == nil {
 		t.Fatal("Call() error = nil; want non-nil")
 	}
+	if !strings.Contains(err.Error(), "way forward: re-step the loom row") || !strings.Contains(err.Error(), "lyx webster run") {
+		t.Errorf("Call() error %q does not end in the re-step way forward", err.Error())
+	}
+
+	// Taking the way forward: the pause is cleared, so the re-step proceeds.
+	fake.result = websterengine.RunResult{Outcome: "done"}
+	outcome, _, err := p.Call(context.Background())
+	if err != nil || outcome != shedengine.Done {
+		t.Errorf("re-step Call() = (%q, %v); want Done once the pause is cleared", outcome, err)
+	}
 }
 
 func TestWebsterProducer_UnrecognizedOutcome(t *testing.T) {
