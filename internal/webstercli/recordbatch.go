@@ -140,7 +140,7 @@ Example:
 				}
 				msg := err.Error()
 				if _, syncErr := fabricSync(c.openFabric, c.anchorRel, fmt.Sprintf("record-batch %s failed", batchName)); syncErr != nil {
-					msg = fmt.Sprintf("%s; additionally, the fabric sync failed: %v", msg, syncErr)
+					msg = fmt.Sprintf("%s; additionally, the fabric sync failed: %v; %s", msg, syncErr, fabricSyncWayForward)
 				}
 				var resultWarnings []string
 				if result != nil {
@@ -165,7 +165,7 @@ Example:
 				mutateHeld = false
 				msg := err.Error()
 				if _, syncErr := fabricSync(c.openFabric, c.anchorRel, fmt.Sprintf("record-batch %s report-archived", batchName)); syncErr != nil {
-					msg = fmt.Sprintf("%s; additionally, the fabric sync failed: %v", msg, syncErr)
+					msg = fmt.Sprintf("%s; additionally, the fabric sync failed: %v; %s", msg, syncErr, fabricSyncWayForward)
 				}
 				clihelp.SetExit(cmd.Context(), output.ErrFields(out, msg, map[string]any{
 					"report_archived": true,
@@ -181,7 +181,7 @@ Example:
 				_ = mutateLock.Release()
 				mutateHeld = false
 				if saveErr != nil {
-					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("%s; additionally, persisting the plan-fingerprint re-baseline this call had already earned failed: %v", err.Error(), saveErr)))
+					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("%s; additionally, persisting the plan-fingerprint re-baseline this call had already earned failed: %v; %s", err.Error(), saveErr, rebaselineWayForward)))
 					return nil
 				}
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
@@ -204,7 +204,7 @@ Example:
 				label = result.Digest.Status
 			}
 			if _, syncErr := fabricSync(c.openFabric, c.anchorRel, fmt.Sprintf("record-batch %s %s", batchName, label)); syncErr != nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: batch %s recorded but the fabric sync failed: %v", batchName, syncErr)))
+				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: batch %s recorded but the fabric sync failed: %v; %s", batchName, syncErr, fabricSyncWayForward)))
 				return nil
 			}
 

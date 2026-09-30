@@ -108,7 +108,7 @@ Example:
 			// operator's or loom's own to manage.
 			if c.reedUp != nil {
 				if err := c.reedUp(cmd.Context(), true); err != nil {
-					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: bring up the standalone reed session: %v", err)))
+					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: bring up the standalone reed session: %v; way forward: transient, re-run `lyx webster run`", err)))
 					return nil
 				}
 			}
@@ -129,14 +129,14 @@ Example:
 			if runErr != nil {
 				msg := runErr.Error()
 				if syncErr != nil {
-					msg = fmt.Sprintf("%s (additionally, the fabric sync failed: %v)", msg, syncErr)
+					msg = fmt.Sprintf("%s (additionally, the fabric sync failed: %v; %s)", msg, syncErr, fabricSyncWayForward)
 				}
 				clihelp.SetExit(cmd.Context(), output.Err(out, msg))
 				return nil
 			}
 
 			if syncErr != nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: run finished (%s) but the fabric sync failed: %v", result.Outcome, syncErr)))
+				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: run finished (%s) but the fabric sync failed: %v; %s", result.Outcome, syncErr, fabricSyncWayForward)))
 				return nil
 			}
 

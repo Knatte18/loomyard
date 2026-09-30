@@ -258,13 +258,13 @@ Example:
 					msg = "webster: quarry could not answer validating plan: " + validateErr.Error()
 				}
 				if rebaseErr != nil {
-					msg = fmt.Sprintf("%s (additionally, persisting the plan-fingerprint re-baseline this call had already earned failed: %v)", msg, rebaseErr)
+					msg = fmt.Sprintf("%s (additionally, persisting the plan-fingerprint re-baseline this call had already earned failed: %v; way forward: re-run `lyx webster validate`, or `lyx webster rebaseline`)", msg, rebaseErr)
 				}
 				clihelp.SetExit(cmd.Context(), output.Err(out, msg))
 				return nil
 			}
 			if rebaseErr != nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: validate finished but persisting the plan-fingerprint re-baseline failed: %v -- state.json may now be stale; the next begin-batch/record-batch/run may refuse the plan as foreign", rebaseErr)))
+				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: validate finished but persisting the plan-fingerprint re-baseline failed: %v -- state.json may now be stale; the next begin-batch/record-batch/run may refuse the plan as foreign; way forward: re-run `lyx webster validate`, or `lyx webster rebaseline`", rebaseErr)))
 				return nil
 			}
 

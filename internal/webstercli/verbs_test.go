@@ -24,6 +24,7 @@
 package webstercli
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -1141,5 +1142,137 @@ func TestRebaselineCmd_RefusesRemovedCard(t *testing.T) {
 	}
 	if string(before) != string(after) {
 		t.Error("state.json changed on a refused rebaseline; want byte-identical")
+	}
+}
+
+// failingFabricOpen is an openFabric that cannot reach the fabric repo, so fabricSync errors exactly
+// where a failed weft commit would.
+func failingFabricOpen() (*fabricengine.Fabric, error) {
+	return nil, fmt.Errorf("weft commit failed (injected)")
+}
+
+// wantWayForward fails unless got carries the trailing way-forward clause and names substr in it.
+func wantWayForward(t *testing.T, got, substr string) {
+	t.Helper()
+	i := strings.Index(got, "way forward:")
+	if i < 0 {
+		t.Fatalf("output has no way forward clause; got %q", got)
+	}
+	if !strings.Contains(got[i:], substr) {
+		t.Errorf("way forward clause missing %q; got %q", substr, got[i:])
+	}
+}
+
+// TestBeginBatchCmd_FabricSyncFailureWayForward reaches begin-batch's fabric-sync refusal, checks the
+// state was saved locally anyway, and takes the way forward: the next bracket verb's sync succeeds.
+func TestBeginBatchCmd_FabricSyncFailureWayForward(t *testing.T) {
+	t.Setenv("WEFT_SKIP_GIT", "")
+	fx := newVerbsFixture(t)
+	fx.initState(t, "master-model")
+	fx.CLI.openFabric = failingFabricOpen
+
+	var out strings.Builder
+	if code := clihelp.Execute(fx.CLI.beginBatchCmd(), &out, []string{"1"}); code == 0 {
+		t.Fatalf("begin-batch 1 = 0; want non-zero, output: %s", out.String())
+	}
+	wantWayForward(t, out.String(), "lyx fabric commit")
+	loaded, err := websterengine.LoadState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir)
+	if err != nil || loaded == nil || loaded.Batches[1] == nil {
+		t.Fatalf("LoadState() = %v, %v; want the saved batch record", loaded, err)
+	}
+
+	fx.CLI.openFabric = nil
+	out.Reset()
+	if code := clihelp.Execute(fx.CLI.beginBatchCmd(), &out, []string{"1"}); code != 0 {
+		t.Fatalf("begin-batch 1 after the way forward = %d; want 0, output: %s", code, out.String())
+	}
+}
+
+// TestRecordBatchCmd_FabricSyncFailureWayForward is the record-batch twin of the begin-batch test:
+// the batch is terminal on disk despite the sync failure, which is what the way forward commits.
+func TestRecordBatchCmd_FabricSyncFailureWayForward(t *testing.T) {
+	t.Setenv("WEFT_SKIP_GIT", "")
+	fx := newVerbsFixture(t)
+	st := fx.initState(t, "master-model")
+	startSHA := commitFile(t, fx.CLI.geom.WorktreeRoot, "internal/only/new.go", "package only\n", "01.1: add impl")
+	st.Batches[1] = &websterengine.BatchState{Slug: "only", StartSHA: startSHA, Kind: "fork"}
+	st.CurrentBatch = 1
+	if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, st); err != nil {
+		t.Fatalf("SaveState() error = %v", err)
+	}
+	fx.Engine.auditForks = shuttleengine.ForkAudit{
+		Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/fork1.jsonl", ReportReturned: true}},
+	}
+	writeBatchReport(t, fx.CLI.geom.ReportsDir, startSHA)
+	fx.CLI.openFabric = failingFabricOpen
+
+	var out strings.Builder
+	if code := clihelp.Execute(fx.CLI.recordBatchCmd(), &out, []string{"1"}); code == 0 {
+		t.Fatalf("record-batch 1 = 0; want non-zero, output: %s", out.String())
+	}
+	wantWayForward(t, out.String(), "lyx fabric commit")
+	loaded, err := websterengine.LoadState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir)
+	if err != nil || loaded == nil || !loaded.Batches[1].Terminal {
+		t.Fatalf("LoadState() = %v, %v; want batch 1 terminal on disk despite the sync failure", loaded, err)
+	}
+}
+
+// TestRecoverBatchCmd_FabricSyncAndReedBootWayForward reaches recover-batch's reed-boot refusal and
+// its spawn-time fabric-sync refusal, taking the way forward each time.
+func TestRecoverBatchCmd_FabricSyncAndReedBootWayForward(t *testing.T) {
+	t.Setenv("WEFT_SKIP_GIT", "")
+	fx := newVerbsFixture(t)
+	fx.initState(t, "master-model")
+
+	fx.CLI.reedUp = func(context.Context, bool) error { return fmt.Errorf("tmux not ready (injected)") }
+	var out strings.Builder
+	if code := clihelp.Execute(fx.CLI.recoverBatchCmd(), &out, []string{"1", "--wait", "1ns"}); code == 0 {
+		t.Fatalf("recover-batch 1 with a failing reed boot = 0; want non-zero, output: %s", out.String())
+	}
+	wantWayForward(t, out.String(), "recover-batch")
+
+	fx.CLI.reedUp = nil
+	fx.CLI.openFabric = failingFabricOpen
+	out.Reset()
+	if code := clihelp.Execute(fx.CLI.recoverBatchCmd(), &out, []string{"1", "--wait", "1ns"}); code == 0 {
+		t.Fatalf("recover-batch 1 with a failing sync = 0; want non-zero, output: %s", out.String())
+	}
+	wantWayForward(t, out.String(), "lyx fabric commit")
+
+	fx.CLI.openFabric = nil
+	out.Reset()
+	if code := clihelp.Execute(fx.CLI.recoverBatchCmd(), &out, []string{"1", "--wait", "1ns"}); code != 0 {
+		t.Fatalf("recover-batch 1 after the way forward = %d; want 0, output: %s", code, out.String())
+	}
+}
+
+// TestBracketVerbs_NoRunInProgressWayForward reaches the "no run in progress" refusal on each bracket
+// verb, then takes its way forward: once the run's state exists the same verb proceeds.
+func TestBracketVerbs_NoRunInProgressWayForward(t *testing.T) {
+	t.Setenv("WEFT_SKIP_GIT", "1")
+	fx := newVerbsFixture(t)
+	verbs := map[string]*cobra.Command{
+		"begin-batch":   fx.CLI.beginBatchCmd(),
+		"record-batch":  fx.CLI.recordBatchCmd(),
+		"recover-batch": fx.CLI.recoverBatchCmd(),
+	}
+	for name, cmd := range verbs {
+		var out strings.Builder
+		args := []string{"1"}
+		if name == "recover-batch" {
+			args = append(args, "--wait", "1ns")
+		}
+		if code := clihelp.Execute(cmd, &out, args); code == 0 {
+			t.Fatalf("%s before any run = 0; want non-zero, output: %s", name, out.String())
+		}
+		if !strings.Contains(out.String(), "no run in progress") || !strings.Contains(out.String(), "first") {
+			t.Errorf("%s refusal missing its way forward; got %q", name, out.String())
+		}
+	}
+
+	fx.initState(t, "master-model")
+	var out strings.Builder
+	if code := clihelp.Execute(fx.CLI.beginBatchCmd(), &out, []string{"1"}); code != 0 {
+		t.Fatalf("begin-batch 1 once the run exists = %d; want 0, output: %s", code, out.String())
 	}
 }

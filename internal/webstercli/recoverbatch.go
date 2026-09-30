@@ -149,7 +149,7 @@ Example:
 			// unowned goroutine in an exiting process.
 			if c.reedUp != nil {
 				if err := c.reedUp(cmd.Context(), false); err != nil {
-					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: bring up the standalone reed session: %v", err)))
+					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: bring up the standalone reed session: %v; way forward: transient, re-run `lyx webster recover-batch %s`", err, batchName)))
 					return nil
 				}
 			}
@@ -194,7 +194,7 @@ Example:
 
 			if spawned {
 				if _, syncErr := fabricSync(c.openFabric, c.anchorRel, fmt.Sprintf("recover-batch %s spawn", batchName)); syncErr != nil {
-					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: batch %s recovery spawned but the fabric sync failed: %v", batchName, syncErr)))
+					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: batch %s recovery spawned but the fabric sync failed: %v; %s", batchName, syncErr, fabricSyncWayForward)))
 					return nil
 				}
 			}
@@ -225,7 +225,7 @@ Example:
 				}()
 				fresh, err := websterengine.LoadState(c.geom.WebsterDir, c.geom.ScratchDir)
 				if err == nil && fresh == nil {
-					err = fmt.Errorf("webster: state.json disappeared during the recovery wait for batch %s", batchName)
+					err = fmt.Errorf("webster: state.json disappeared during the recovery wait for batch %s; way forward: re-run `lyx webster recover-batch %s`", batchName, batchName)
 				}
 				var fingerprintBefore string
 				var postWarnings []string
@@ -258,7 +258,7 @@ Example:
 				if batchFailed {
 					msg := err.Error()
 					if _, syncErr := fabricSync(c.openFabric, c.anchorRel, fmt.Sprintf("recover-batch %s failed", batchName)); syncErr != nil {
-						msg = fmt.Sprintf("%s; additionally, the fabric sync failed: %v", msg, syncErr)
+						msg = fmt.Sprintf("%s; additionally, the fabric sync failed: %v; %s", msg, syncErr, fabricSyncWayForward)
 					}
 					clihelp.SetExit(cmd.Context(), output.ErrFields(out, msg, map[string]any{
 						"batch_failed": true,
@@ -273,7 +273,7 @@ Example:
 				}
 
 				if _, syncErr := fabricSync(c.openFabric, c.anchorRel, fmt.Sprintf("recover-batch %s %s", batchName, result.Digest.Status)); syncErr != nil {
-					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: batch %s recovery classified %s but the fabric sync failed: %v", batchName, result.Digest.Status, syncErr)))
+					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: batch %s recovery classified %s but the fabric sync failed: %v; %s", batchName, result.Digest.Status, syncErr, fabricSyncWayForward)))
 					return nil
 				}
 
