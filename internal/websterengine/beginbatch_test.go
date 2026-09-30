@@ -974,3 +974,53 @@ func TestBeginBatch_Regression20260930_ReBeginOfBegunUnrecordedBatch(t *testing.
 		t.Errorf("StartSHA = %q (record %q); want the first begin's %q kept", result.StartSHA, fx.Deps.State.Batches[1].StartSHA, recordedStart)
 	}
 }
+
+// TestBeginBatch_WayForward_UnknownBatch proves a batch number outside the plan names
+// `lyx webster status`, and that naming one of the run's batches then begins it.
+func TestBeginBatch_WayForward_UnknownBatch(t *testing.T) {
+	fx := newBeginFixture(t)
+
+	_, err := websterengine.BeginBatch(fx.Deps, 99)
+	if err == nil || !strings.Contains(err.Error(), "way forward: `lyx webster status` lists the run's batches") {
+		t.Fatalf("BeginBatch(99) error = %v; want the status way forward", err)
+	}
+
+	if _, err := websterengine.BeginBatch(fx.Deps, 1); err != nil {
+		t.Fatalf("BeginBatch(1) error = %v; want nil", err)
+	}
+}
+
+// TestBeginBatch_WayForward_ModelSwitchFailureIsTransient proves a failed model-switch injection
+// names the begin-batch re-run, and that the re-run succeeds once the injection does.
+func TestBeginBatch_WayForward_ModelSwitchFailureIsTransient(t *testing.T) {
+	fx := newBeginFixture(t)
+	fx.Injector.err = errors.New("pane did not take the keys")
+
+	_, err := websterengine.BeginBatch(fx.Deps, 1)
+	if err == nil || !strings.Contains(err.Error(), "way forward: transient, re-run `lyx webster begin-batch 1`") {
+		t.Fatalf("BeginBatch(1) error = %v; want the transient re-run way forward", err)
+	}
+
+	fx.Injector.err = nil
+	if _, err := websterengine.BeginBatch(fx.Deps, 1); err != nil {
+		t.Fatalf("BeginBatch(1) after the retry error = %v; want nil", err)
+	}
+}
+
+// TestBeginBatch_WayForward_ReportExistsIsRecorded proves the report-exists refusal names record-batch
+// and leaves the report in place for it.
+func TestBeginBatch_WayForward_ReportExistsIsRecorded(t *testing.T) {
+	fx := newBeginFixture(t)
+	reportPath := filepath.Join(fx.Deps.Geom.ReportsDir, websterengine.ReportFileName(1, "json-flag"))
+	if err := os.WriteFile(reportPath, []byte("status: OK\nhead_sha: deadbeef\n"), 0o644); err != nil {
+		t.Fatalf("seed report: %v", err)
+	}
+
+	_, err := websterengine.BeginBatch(fx.Deps, 1)
+	if err == nil || !strings.Contains(err.Error(), "`lyx webster record-batch 1`") {
+		t.Fatalf("BeginBatch(1) error = %v; want the record-batch way forward", err)
+	}
+	if _, statErr := os.Stat(reportPath); statErr != nil {
+		t.Errorf("stat(report) = %v; want it left for record-batch", statErr)
+	}
+}

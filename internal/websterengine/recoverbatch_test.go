@@ -1034,3 +1034,73 @@ func TestRecoverSpawnOrAttach_NotReadyStartSurfacesAndRecordsNothing(t *testing.
 		t.Errorf("State.Batches[1] = %+v; want nil — a strand shuttle already tore down must record no guid", fx.Deps.State.Batches[1])
 	}
 }
+
+// TestRecoverSpawnOrAttach_WayForward_StartFailureIsTransient proves a failed recovery-strand start
+// names the re-run, and that re-running the verb once the provider answers spawns the strand.
+func TestRecoverSpawnOrAttach_WayForward_StartFailureIsTransient(t *testing.T) {
+	fx := newRecoverFixture(t)
+	realStarter := fx.Deps.Starter
+	fx.Deps.Starter = erroringStarter{}
+	clk := &recoverFakeClock{now: time.Unix(0, 0)}
+
+	_, _, err := websterengine.RecoverSpawnOrAttach(fx.Deps, 1, clk)
+	if err == nil || !strings.Contains(err.Error(), "way forward: transient, re-run `lyx webster recover-batch 1`") {
+		t.Fatalf("RecoverSpawnOrAttach() error = %v; want the transient re-run way forward", err)
+	}
+
+	fx.Deps.Starter = realStarter
+	_, spawned, err := websterengine.RecoverSpawnOrAttach(fx.Deps, 1, clk)
+	if err != nil || !spawned {
+		t.Fatalf("RecoverSpawnOrAttach() after the retry = spawned %v, error %v; want a spawned strand", spawned, err)
+	}
+}
+
+// TestPersistRecoveryTerminal_WayForward_NoRecordedState proves a batch whose record vanished
+// underneath the recovery wait names the recover-batch re-run, and that re-running spawns afresh.
+func TestPersistRecoveryTerminal_WayForward_NoRecordedState(t *testing.T) {
+	fx := newRecoverFixture(t)
+	clk := &recoverFakeClock{now: time.Unix(0, 0)}
+
+	_, err := websterengine.PersistRecoveryTerminal(fx.Deps, fx.Deps.State, 1, &websterengine.Digest{Batch: "01-json-flag", Status: websterengine.DigestStatusDone})
+	if err == nil || !strings.Contains(err.Error(), "way forward: re-run `lyx webster recover-batch 1`") {
+		t.Fatalf("PersistRecoveryTerminal() error = %v; want the recover-batch re-run way forward", err)
+	}
+
+	if _, spawned, err := websterengine.RecoverSpawnOrAttach(fx.Deps, 1, clk); err != nil || !spawned {
+		t.Fatalf("RecoverSpawnOrAttach() after the way forward = spawned %v, error %v; want a spawned strand", spawned, err)
+	}
+}
+
+// TestRecoverSpawnOrAttach_WayForward_MalformedReport proves the way forward record-batch names for
+// a malformed report: recover-batch archives it and spawns a recovery strand.
+func TestRecoverSpawnOrAttach_WayForward_MalformedReport(t *testing.T) {
+	fx := newRecoverFixture(t)
+	writeRecoverReport(t, fx.ReportsDir, "status: bogus\nhead_sha: deadbeef\n")
+	clk := &recoverFakeClock{now: time.Unix(0, 0)}
+
+	_, spawned, err := websterengine.RecoverSpawnOrAttach(fx.Deps, 1, clk)
+	if err != nil || !spawned {
+		t.Fatalf("RecoverSpawnOrAttach() over a malformed report = spawned %v, error %v; want it archived and a strand spawned", spawned, err)
+	}
+	if _, statErr := os.Stat(filepath.Join(fx.ReportsDir, "01-json-flag.yaml")); !os.IsNotExist(statErr) {
+		t.Errorf("stat(malformed report) = %v; want it archived out of the report path", statErr)
+	}
+}
+
+// TestRecoverBatch_WayForward_DoneReportRecordsInstead proves the OK-report refusal names record-batch
+// and that the report it leaves in place is exactly what record-batch consumes: once the operator
+// takes the way forward by removing the prior record's obstruction (here a terminal dead prior, the
+// state after which the report is late), recover-batch proceeds and archives it.
+func TestRecoverBatch_WayForward_DoneReportRecordsInstead(t *testing.T) {
+	fx := newRecoverFixture(t)
+	writeRecoverReport(t, fx.ReportsDir, "status: OK\nhead_sha: deadbeef\n")
+	clk := &recoverFakeClock{now: time.Unix(0, 0)}
+
+	_, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk)
+	if err == nil || !strings.Contains(err.Error(), "`lyx webster record-batch 1`") {
+		t.Fatalf("RecoverBatch() error = %v; want the record-batch way forward", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(fx.ReportsDir, "01-json-flag.yaml")); statErr != nil {
+		t.Errorf("stat(done report) = %v; want it left for record-batch", statErr)
+	}
+}

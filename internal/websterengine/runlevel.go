@@ -235,8 +235,15 @@ type MasterAskingError struct {
 }
 
 func (e *MasterAskingError) Error() string {
-	return fmt.Sprintf("webster: master asked a question instead of finishing (session %s, kept run dir %s): %s", e.SessionID, e.RunDir, e.Message)
+	return fmt.Sprintf("webster: master asked a question instead of finishing (session %s, kept run dir %s): %s%s", e.SessionID, e.RunDir, e.Message, masterRerunWayForward)
 }
+
+// runExitWayForward is the trailing way-forward clause every run-exit refusal carries:
+// state.json keeps every terminal batch, so a fresh Master resumes and re-drives each batch without a done record.
+const runExitWayForward = "; way forward: re-run `lyx webster run`; a fresh Master resumes from state.json and re-drives every batch without a done record"
+
+// masterRerunWayForward is the trailing way-forward clause of the Master-ended-early errors.
+const masterRerunWayForward = "; way forward: re-run `lyx webster run` (re-step the Webster row); a fresh Master resumes from state.json"
 
 // Unwrap lets a caller match this error via errors.Is(err, ErrMasterAsking).
 func (e *MasterAskingError) Unwrap() error { return ErrMasterAsking }
@@ -252,7 +259,7 @@ type MasterDiedError struct {
 }
 
 func (e *MasterDiedError) Error() string {
-	return fmt.Sprintf("webster: master pane died (session %s, kept run dir %s)", e.SessionID, e.RunDir)
+	return fmt.Sprintf("webster: master pane died (session %s, kept run dir %s)%s", e.SessionID, e.RunDir, masterRerunWayForward)
 }
 
 // Unwrap lets a caller match this error via errors.Is(err, ErrMasterDied).
@@ -270,7 +277,7 @@ type MasterTimeoutError struct {
 }
 
 func (e *MasterTimeoutError) Error() string {
-	return fmt.Sprintf("webster: master run timed out (session %s, kept run dir %s)", e.SessionID, e.RunDir)
+	return fmt.Sprintf("webster: master run timed out (session %s, kept run dir %s)%s", e.SessionID, e.RunDir, masterRerunWayForward)
 }
 
 // Unwrap lets a caller match this error via errors.Is(err, ErrMasterTimeout).
@@ -366,7 +373,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		return RunResult{}, fmt.Errorf("webster: acquire run lock in %s: %w", deps.Geom.ScratchDir, err)
 	}
 	if !locked {
-		return RunResult{}, fmt.Errorf("%w: %q (run.lock held); wait for it to finish, or check `lyx webster status`", ErrRunBusy, deps.Geom.ScratchDir)
+		return RunResult{}, fmt.Errorf("%w: %q (run.lock held); way forward: wait for it to finish, or check `lyx webster status`", ErrRunBusy, deps.Geom.ScratchDir)
 	}
 	defer runLock.Release()
 
@@ -379,7 +386,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	// state phase has settled, because its resolve-backed half must be scoped by the completed
 	// cards only state.json knows about (see the ValidateDispatch call below).
 	if !plan.Approved {
-		return RunResult{}, fmt.Errorf("webster: plan %s is not approved (frontmatter approved: is not true); webster never runs an unapproved plan", deps.Geom.PlanDir)
+		return RunResult{}, fmt.Errorf("webster: plan %s is not approved (frontmatter approved: is not true); webster never runs an unapproved plan; way forward: approve the plan through its review, then re-run `lyx webster run`", deps.Geom.PlanDir)
 	}
 
 	if deps.Batcher == nil {
@@ -394,7 +401,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	// SequenceBatches below is length-preserving and can neither create nor
 	// remove this condition.
 	if len(batches) == 0 {
-		return RunResult{}, fmt.Errorf("webster: plan %s produced zero execution batches; nothing to build is a malformed plan, never a vacuous outcome: done", deps.Geom.PlanDir)
+		return RunResult{}, fmt.Errorf("webster: plan %s produced zero execution batches; nothing to build is a malformed plan, never a vacuous outcome: done; way forward: fix the plan's cards, run `lyx webster rebaseline` when state.json already records this run, then re-run `lyx webster run`", deps.Geom.PlanDir)
 	}
 
 	// Re-bind batches through the sequencer: every later use in this
@@ -456,7 +463,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 
 	case st.PlanFingerprint != fingerprint:
 		if !opts.Fresh {
-			return RunResult{}, fmt.Errorf("%w: on-disk plan fingerprint %s does not match this run's recorded fingerprint %s; the plan changed since state.json was created; if the edit keeps every begun batch's cards, run `lyx webster rebaseline` to accept it, otherwise reset the branch to the run's start commit and run `lyx webster run --fresh`",ErrFingerprintMismatch, fingerprint, st.PlanFingerprint)
+			return RunResult{}, fmt.Errorf("%w: on-disk plan fingerprint %s does not match this run's recorded fingerprint %s; the plan changed since state.json was created; if the edit keeps every begun batch's cards, run `lyx webster rebaseline` to accept it, otherwise reset the branch to the run's start commit and run `lyx webster run --fresh`", ErrFingerprintMismatch, fingerprint, st.PlanFingerprint)
 		}
 
 		if _, err := archiveStateFile(deps.Geom.WebsterDir, time.Now); err != nil {
@@ -518,7 +525,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 			// Its own returned error, named for quarry rather than the plan — a gate that could not
 			// read the code has not found a plan defect to refuse the run over, matching
 			// internal/loomshed/planvalidate.go's producer-side disposition.
-			return RunResult{}, fmt.Errorf("webster: quarry could not answer validating plan %s: %w", deps.Geom.PlanDir, err)
+			return RunResult{}, fmt.Errorf("webster: quarry could not answer validating plan %s: %w; way forward: transient, re-run `lyx webster run` once quarry answers", deps.Geom.PlanDir, err)
 		}
 		return RunResult{}, err
 	}
@@ -527,7 +534,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		for i, f := range findings {
 			msgs[i] = f.Error()
 		}
-		return RunResult{}, fmt.Errorf("webster: plan validation refused this run (%d finding(s)): %s", len(findings), strings.Join(msgs, "; "))
+		return RunResult{}, fmt.Errorf("webster: plan validation refused this run (%d finding(s)): %s; way forward: fix the named cards in the plan, run `lyx webster rebaseline` when state.json already records this run, then re-run `lyx webster run`", len(findings), strings.Join(msgs, "; "))
 	}
 	// No second re-baseline: the one above already ran immediately after the rewriting call, ahead
 	// of both refusals, and persisted itself.
@@ -643,7 +650,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	// contract. At run entry no batch forks exist yet, so the hold stalls nothing in practice.
 	handle, err := deps.Starter.StartMaster(spec, deps.Gate)
 	if err != nil {
-		return RunResult{}, fmt.Errorf("webster: start master: %w", err)
+		return RunResult{}, fmt.Errorf("webster: start master: %w; way forward: transient, re-run `lyx webster run`", err)
 	}
 
 	// Record and persist Master's strand GUID the instant it exists — BEFORE
@@ -766,7 +773,8 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 func mapMasterDone(deps RunDeps, batches []batcher.Batch, outcomePath, summaryPath string, result shuttleengine.Result) (RunResult, error) {
 	outcome, err := parseOutcome(outcomePath)
 	if err != nil {
-		return RunResult{}, err
+		// Run archives a stale outcome.yaml at entry, so a re-run starts a fresh Master that writes a new one.
+		return RunResult{}, fmt.Errorf("%w; way forward: re-run `lyx webster run`; the stale file is archived and a fresh Master writes a new one", err)
 	}
 
 	var summaryTitle string
@@ -777,7 +785,7 @@ func mapMasterDone(deps RunDeps, batches []batcher.Batch, outcomePath, summaryPa
 		// loom-finalize PR-text source.
 		summary, err := summaryparser.Parse(summaryPath)
 		if err != nil {
-			return RunResult{}, fmt.Errorf("webster: run reached outcome: done but summary.md is missing or malformed: %w", err)
+			return RunResult{}, fmt.Errorf("webster: run reached outcome: done but summary.md is missing or malformed: %w%s", err, runExitWayForward)
 		}
 		summaryTitle = summary.Title
 
@@ -853,7 +861,7 @@ func verifyEveryBatchDone(websterDir, scratchDir string, batches []batcher.Batch
 		return err
 	}
 	if st == nil {
-		return fmt.Errorf("webster: run reached outcome: done but no state.json exists — no batch was ever recorded")
+		return fmt.Errorf("webster: run reached outcome: done but no state.json exists — no batch was ever recorded%s", runExitWayForward)
 	}
 
 	var offenders []string
@@ -870,7 +878,7 @@ func verifyEveryBatchDone(websterDir, scratchDir string, batches []batcher.Batch
 		}
 	}
 	if len(offenders) > 0 {
-		return fmt.Errorf("webster: run reached outcome: done but %d batch(es) lack a terminal done record: %s — a batch was begun without being recorded done, or Master claimed done prematurely", len(offenders), strings.Join(offenders, ", "))
+		return fmt.Errorf("webster: run reached outcome: done but %d batch(es) lack a terminal done record: %s — a batch was begun without being recorded done, or Master claimed done prematurely%s", len(offenders), strings.Join(offenders, ", "), runExitWayForward)
 	}
 	return nil
 }
@@ -895,7 +903,7 @@ func verifyEveryBatchDone(websterDir, scratchDir string, batches []batcher.Batch
 // The outcome file stays on disk for diagnosis (Run never removes it).
 func runExitAuditCrossCheck(deps RunDeps, outcomePath, summaryPath string, result shuttleengine.Result) (warnings []string, stuckReason string, err error) {
 	if result.ForkAudit == nil {
-		return nil, "", fmt.Errorf("webster: run reached outcome: done on a fork-authorized master spawn but its whole-session fork audit did not complete (nil ForkAudit) — this is fail-loud, never skipped")
+		return nil, "", fmt.Errorf("webster: run reached outcome: done on a fork-authorized master spawn but its whole-session fork audit did not complete (nil ForkAudit) — this is fail-loud, never skipped%s", runExitWayForward)
 	}
 
 	mutateLock, err := AcquireStateMutation(deps.Geom.ScratchDir)
@@ -912,7 +920,7 @@ func runExitAuditCrossCheck(deps RunDeps, outcomePath, summaryPath string, resul
 		return nil, "", err
 	}
 	if st == nil {
-		return nil, "", fmt.Errorf("webster: run-exit audit cross-check: no state.json to disposition findings against")
+		return nil, "", fmt.Errorf("webster: run-exit audit cross-check: no state.json to disposition findings against%s", runExitWayForward)
 	}
 
 	var candidates []AuditViolation
@@ -943,7 +951,7 @@ func runExitAuditCrossCheck(deps RunDeps, outcomePath, summaryPath string, resul
 	begun := countBegunForkBatches(st, result.SessionID)
 	audited := len(result.ForkAudit.Forks)
 	if audited < begun {
-		return nil, "", fmt.Errorf("webster: run-exit audit cross-check: %d audited fork transcript(s) is fewer than %d begun fork batch(es) — a batch was recorded without its fork surviving audit", audited, begun)
+		return nil, "", fmt.Errorf("webster: run-exit audit cross-check: %d audited fork transcript(s) is fewer than %d begun fork batch(es) — a batch was recorded without its fork surviving audit%s", audited, begun, runExitWayForward)
 	}
 
 	for _, cf := range policy {
@@ -1052,7 +1060,7 @@ func runIntegrationStage(deps RunDeps, plan *planparser.Plan, batches []batcher.
 		// Master stuck out before the stage) — Master's own graceful judgment
 		// is the run's result, and erroring here would overwrite it.
 		if masterOutcome == outcomeDone {
-			return nil, "", fmt.Errorf("webster: run reached outcome: done on a plan with a \"## verify:\" section but its integration report never landed — the integration fork never ran or never reported")
+			return nil, "", fmt.Errorf("webster: run reached outcome: done on a plan with a \"## verify:\" section but its integration report never landed — the integration fork never ran or never reported%s", runExitWayForward)
 		}
 		return nil, "", nil
 	}

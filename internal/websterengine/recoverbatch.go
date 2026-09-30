@@ -201,7 +201,7 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 
 	run, err := deps.Starter.Start(spec)
 	if err != nil {
-		return nil, fmt.Errorf("webster: start recovery strand for batch %s: %w", batchName, err)
+		return nil, fmt.Errorf("webster: start recovery strand for batch %s: %w; way forward: transient, re-run `lyx webster recover-batch %d`", batchName, err, number)
 	}
 
 	runState, runDir, err := shuttleengine.FindRun(deps.ShuttleCfg, deps.Geom.AnchorRoot, run.StrandGUID())
@@ -327,7 +327,7 @@ func PersistRecoveryTerminal(deps RecoverDeps, st *State, batchNumber int, diges
 	}
 	bs, ok := st.Batches[batchNumber]
 	if !ok || bs == nil {
-		return nil, fmt.Errorf("webster: no recorded state for batch %d at recovery terminal persistence — state.json changed underneath the recovery wait", batchNumber)
+		return nil, fmt.Errorf("webster: no recorded state for batch %d at recovery terminal persistence — state.json changed underneath the recovery wait; way forward: re-run `lyx webster recover-batch %d`", batchNumber, batchNumber)
 	}
 
 	batch, err := findBatch(deps.Batches, batchNumber)

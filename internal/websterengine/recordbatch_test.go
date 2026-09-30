@@ -909,6 +909,7 @@ func TestRecordBatch_HeadSHAMismatchErrors(t *testing.T) {
 		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
 	})
 	writeReport(t, fx.ReportsDir, "status: OK\nhead_sha: 0000000000000000000000000000000000000000000000000000000000000000\n")
+	restore := snapshotRecordState(fx)
 
 	_, err := websterengine.RecordBatch(fx.Deps, 1)
 	if err == nil {
@@ -916,6 +917,13 @@ func TestRecordBatch_HeadSHAMismatchErrors(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), fx.HeadSHA) {
 		t.Errorf("RecordBatch() error = %q; want it to name the worktree's actual HEAD %q", err.Error(), fx.HeadSHA)
+	}
+
+	// Taking the way forward: the report names the worktree's actual HEAD, and the same call records.
+	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
+	restore()
+	if _, err := websterengine.RecordBatch(fx.Deps, 1); err != nil {
+		t.Fatalf("RecordBatch() with a corrected head_sha error = %v; want nil", err)
 	}
 }
 
@@ -930,6 +938,27 @@ func TestRecordBatch_MalformedReportYAMLErrors(t *testing.T) {
 	_, err := websterengine.RecordBatch(fx.Deps, 1)
 	if err == nil {
 		t.Fatal("RecordBatch() error = nil; want a hard error for an unrecognized status value")
+	}
+	if !strings.Contains(err.Error(), "way forward: `lyx webster recover-batch 1` archives the malformed report") {
+		t.Errorf("RecordBatch() error = %q; want the recover-batch way forward", err.Error())
+	}
+}
+
+// TestRecordBatch_WayForward_UnknownBatch proves a batch number outside the plan names `lyx webster status`,
+// and that naming a batch the run does have then reaches the ordinary begin-record refusal instead.
+func TestRecordBatch_WayForward_UnknownBatch(t *testing.T) {
+	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
+		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
+	})
+	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
+
+	_, err := websterengine.RecordBatch(fx.Deps, 99)
+	if err == nil || !strings.Contains(err.Error(), "way forward: `lyx webster status` lists the run's batches") {
+		t.Fatalf("RecordBatch(99) error = %v; want the status way forward", err)
+	}
+
+	if _, err := websterengine.RecordBatch(fx.Deps, 1); err != nil {
+		t.Errorf("RecordBatch(1) error = %v; want the named batch to record", err)
 	}
 }
 
@@ -1496,6 +1525,7 @@ func TestRecordBatch_NonMergeMovementRefused(t *testing.T) {
 	for name, move := range cases {
 		t.Run(name, func(t *testing.T) {
 			fx := parentMergeFixture(t)
+			restore := snapshotRecordState(fx)
 			move(t, fx)
 			newHead := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
 
@@ -1509,6 +1539,13 @@ func TestRecordBatch_NonMergeMovementRefused(t *testing.T) {
 				}
 			}
 			assertBatchOpen(t, fx)
+
+			// Taking the way forward: HEAD goes back to the report's head_sha and the same call records.
+			mustGit(t, fx.Worktree, "reset", "--hard", fx.HeadSHA)
+			restore()
+			if _, err := websterengine.RecordBatch(fx.Deps, 1); err != nil {
+				t.Fatalf("retry RecordBatch() error = %v; want nil", err)
+			}
 		})
 	}
 }
@@ -1517,6 +1554,7 @@ func TestRecordBatch_NonMergeMovementRefused(t *testing.T) {
 // so content outside the audited StartSHA..head_sha delta can never ride in on a merge commit.
 func TestRecordBatch_EvilParentMergeRefused(t *testing.T) {
 	fx := parentMergeFixture(t)
+	restore := snapshotRecordState(fx)
 	base := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "--abbrev-ref", "HEAD"))
 	mustGit(t, fx.Worktree, "checkout", "-b", recordParentBranch, fx.StartSHA)
 	commitFile(t, fx.Worktree, "parent1.txt", "p1", "parent1 commit")
@@ -1538,6 +1576,13 @@ func TestRecordBatch_EvilParentMergeRefused(t *testing.T) {
 		}
 	}
 	assertBatchOpen(t, fx)
+
+	// Taking the way forward: HEAD goes back to the report's head_sha and the same call records.
+	mustGit(t, fx.Worktree, "reset", "--hard", fx.HeadSHA)
+	restore()
+	if _, err := websterengine.RecordBatch(fx.Deps, 1); err != nil {
+		t.Fatalf("retry RecordBatch() error = %v; want nil", err)
+	}
 }
 
 // TestRecordBatch_MergeInProgressRefusedThenSucceeds proves a conflicting parent merge left in progress refuses record-batch,

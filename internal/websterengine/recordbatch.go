@@ -291,7 +291,7 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 
 	report, err := ParseReport(reportPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w; way forward: `lyx webster recover-batch %d` archives the malformed report and re-drives the batch", err, number)
 	}
 
 	// A merge in progress leaves the batch non-terminal and retryable.

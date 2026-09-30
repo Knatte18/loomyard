@@ -168,7 +168,7 @@ func findBatch(batches []batcher.Batch, number int) (batcher.Batch, error) {
 			return b, nil
 		}
 	}
-	return batcher.Batch{}, fmt.Errorf("webster: batch %d not found in the plan's execution batches", number)
+	return batcher.Batch{}, fmt.Errorf("webster: batch %d not found in the plan's execution batches; way forward: `lyx webster status` lists the run's batches, name one of those", number)
 }
 
 // digestSummaryLine renders d into the one-line summary RenderForkPrompt's prevDigest parameter expects.
@@ -247,7 +247,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 		return nil, err
 	}
 	if deps.State.PlanFingerprint != fp {
-		return nil, fmt.Errorf("%w: on-disk plan fingerprint %s does not match this run's recorded fingerprint %s; the plan changed since state.json was created; if the edit keeps every begun batch's cards, run `lyx webster rebaseline` to accept it, otherwise reset the branch to the run's start commit and run `lyx webster run --fresh`",ErrFingerprintMismatch, fp, deps.State.PlanFingerprint)
+		return nil, fmt.Errorf("%w: on-disk plan fingerprint %s does not match this run's recorded fingerprint %s; the plan changed since state.json was created; if the edit keeps every begun batch's cards, run `lyx webster rebaseline` to accept it, otherwise reset the branch to the run's start commit and run `lyx webster run --fresh`", ErrFingerprintMismatch, fp, deps.State.PlanFingerprint)
 	}
 
 	// Re-resolve the plan against the current tree before a pack is built, never from a cache.
@@ -390,7 +390,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	// in-memory recording remains below) or neither does.
 	if deps.State.AssertedModel != targetModel {
 		if err := deps.Injector.Inject(deps.State.MasterStrand, deps.Engine.ModelSwitchSequence(targetModel)); err != nil {
-			return nil, fmt.Errorf("webster: inject model switch for batch %d: %w", batchNumber, err)
+			return nil, fmt.Errorf("webster: inject model switch for batch %d: %w; way forward: transient, re-run `lyx webster begin-batch %d`", batchNumber, err, batchNumber)
 		}
 		deps.State.AssertedModel = targetModel
 	}
