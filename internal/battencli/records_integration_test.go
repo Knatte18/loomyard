@@ -10,6 +10,7 @@ package battencli
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -120,6 +121,31 @@ func TestBattenIntegration_AwaitingApprovalResumeDoneTeardown_ArchivesTheRunReco
 	}
 	if spawns != 1 {
 		t.Fatalf("spawns after the approval = %d; want 1", spawns)
+	}
+
+	// An OpenIDE failure is only a warning, so the driven path's effect is checked directly.
+	tasksData, err := os.ReadFile(filepath.Join(childLocation.AnchorPath(), ".vscode", "tasks.json"))
+	if err != nil {
+		t.Fatalf("read the driven pair's tasks.json: %v", err)
+	}
+	var tasksFile struct {
+		Tasks []struct {
+			Args       []string `json:"args"`
+			RunOptions struct {
+				RunOn string `json:"runOn"`
+			} `json:"runOptions"`
+		} `json:"tasks"`
+	}
+	if err := json.Unmarshal(tasksData, &tasksFile); err != nil {
+		t.Fatalf("decode tasks.json: %v", err)
+	}
+	if len(tasksFile.Tasks) != 1 || strings.Join(tasksFile.Tasks[0].Args, " ") != "reed attach" || tasksFile.Tasks[0].RunOptions.RunOn != "folderOpen" {
+		t.Errorf("tasks.json tasks = %+v; want exactly one `reed attach` task on folderOpen", tasksFile.Tasks)
+	}
+	if out, err := exec.Command("git", "-C", h.PairWarpWorktree(slug), "status", "--porcelain").Output(); err != nil {
+		t.Fatalf("git status in the pair's warp worktree: %v", err)
+	} else if strings.TrimSpace(string(out)) != "" {
+		t.Errorf("pair's warp worktree is dirty after the driven open:\n%s", out)
 	}
 
 	// Done, driver gone: the row completes, and the same approval never spawns again.

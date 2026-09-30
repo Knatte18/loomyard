@@ -72,6 +72,7 @@ func TestWire_LazySeams(t *testing.T) {
 		{"TeardownRemove", c.env.Teardown.Remove != nil},
 		{"ReadApproval", c.env.InnerRun.ReadApproval != nil},
 		{"DriverAlive", c.env.InnerRun.DriverAlive != nil},
+		{"OpenIDE", c.env.InnerRun.OpenIDE != nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

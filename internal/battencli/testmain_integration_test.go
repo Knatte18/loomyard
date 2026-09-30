@@ -13,10 +13,13 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/ideengine"
 )
 
-// TestMain runs HermeticGitEnv before any test spawns git.
+// TestMain runs HermeticGitEnv before any test spawns git, and replaces ideengine.CodeLauncher with a no-op for the whole binary:
+// the tests stub Spawn but keep the real OpenIDE, so any that reaches a successful spawn runs the real driven path, and none may start a real `code` process.
 func TestMain(m *testing.M) {
 	gitkit.HermeticGitEnv()
+	ideengine.CodeLauncher = func(string) error { return nil }
 	os.Exit(m.Run())
 }
