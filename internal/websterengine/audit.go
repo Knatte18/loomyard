@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -91,12 +92,14 @@ const (
 // `fork:<transcript path>:<class>:<ordinal>` for a fork finding (the ordinal counts that class within the transcript),
 // `parent:<class>:<ordinal>` for a parent one (1..NamedSpawns for named-spawn, the index into ParentWrites or ParentBashCommands otherwise).
 // Path is the transcript-recorded write path for parent-write and fork-contract-write, empty for every other class.
+// Command is the Bash command a fabric-reference finding matched, empty for every other class.
 type AuditViolation struct {
 	Class          AuditViolationClass
 	TranscriptPath string
 	Detail         string
 	Key            string
 	Path           string
+	Command        string
 }
 
 // AuditSeverity is the D4 class of an audit finding: whether it endangers the batch's correctness or only breaks webster's process policy.
@@ -176,7 +179,8 @@ func CheckFork(f shuttleengine.ForkReport, outcomePath, summaryPath, workdir str
 				Class:          ClassFabricReference,
 				TranscriptPath: f.TranscriptPath,
 				Key:            forkKey(f.TranscriptPath, ClassFabricReference, fabricRefs),
-				Detail:         fmt.Sprintf("ran a fabric-referencing command (%q) — an implementer fork must never touch the fabric repo directly", cmd),
+				Command:        cmd,
+				Detail:         fabricReferenceDetail(cmd, "an implementer fork must never touch the fabric repo directly"),
 			})
 		}
 	}
@@ -250,9 +254,10 @@ func CheckParent(a shuttleengine.ForkAudit, outcomePath, summaryPath, workdir st
 	for i, cmd := range a.ParentBashCommands {
 		if fabricRef.Matches(cmd) {
 			violations = append(violations, AuditViolation{
-				Class:  ClassFabricReference,
-				Key:    parentKey(ClassFabricReference, i),
-				Detail: fmt.Sprintf("ran a fabric-referencing command (%q) — Master must never touch the fabric repo directly; the fabric sync is webstercli's own in-process job", cmd),
+				Class:   ClassFabricReference,
+				Key:     parentKey(ClassFabricReference, i),
+				Command: cmd,
+				Detail:  fabricReferenceDetail(cmd, "Master must never touch the fabric repo directly; the fabric sync is webstercli's own in-process job"),
 			})
 		}
 	}
@@ -260,10 +265,104 @@ func CheckParent(a shuttleengine.ForkAudit, outcomePath, summaryPath, workdir st
 	return violations
 }
 
+// fabricReferenceDetail words a fabric-reference finding; a command that can change files says it can rewrite run state.
+func fabricReferenceDetail(cmd, rule string) string {
+	if mutatingCommand(cmd) {
+		return fmt.Sprintf("ran a fabric-referencing command (%q) that can rewrite run state — %s", cmd, rule)
+	}
+	return fmt.Sprintf("ran a fabric-referencing command (%q) — %s", cmd, rule)
+}
+
+var (
+	commandSeparator = regexp.MustCompile(`&&|\|\||;|\|`)
+	harmlessRedirect = regexp.MustCompile(`\d*>&\d+|\d*>>?\s*/dev/null`)
+
+	readOnlyGit    = stringSet("status", "log", "show", "diff", "rev-parse", "ls-files", "ls-tree", "cat-file", "grep", "blame", "describe", "for-each-ref", "show-ref", "merge-base")
+	readOnlyFabric = stringSet("status", "diff", "list", "pairs")
+	mutatingTools  = stringSet("rm", "mv", "cp", "touch", "truncate", "tee", "ln")
+)
+
+func stringSet(words ...string) map[string]bool {
+	set := make(map[string]bool, len(words))
+	for _, w := range words {
+		set[w] = true
+	}
+	return set
+}
+
+// mutatingCommand reports whether the Bash command cmd can change files.
+// It splits cmd into segments at `&&`, `||`, `;` and `|`, and is true when any segment runs git with a subcommand outside the read-only set,
+// runs `lyx fabric` with a verb outside the read-only set (`prune` and `cleanup` only with `--apply`),
+// runs rm, mv, cp, touch, truncate, tee or ln, runs sed or perl with `-i`, or carries an output redirect other than descriptor duplication or `> /dev/null`.
+// Every other command is read-only.
+func mutatingCommand(cmd string) bool {
+	for _, segment := range commandSeparator.Split(cmd, -1) {
+		if strings.Contains(harmlessRedirect.ReplaceAllString(segment, " "), ">") {
+			return true
+		}
+		if mutatingSegment(strings.Fields(segment)) {
+			return true
+		}
+	}
+	return false
+}
+
+// mutatingSegment applies mutatingCommand's per-program rules to one segment's words.
+func mutatingSegment(words []string) bool {
+	for len(words) > 0 && strings.Contains(words[0], "=") && !strings.HasPrefix(words[0], "-") {
+		words = words[1:]
+	}
+	if len(words) == 0 {
+		return false
+	}
+	prog := filepath.Base(words[0])
+	args := words[1:]
+	switch {
+	case prog == "git":
+		for i := 0; i < len(args); i++ {
+			switch {
+			case args[i] == "-C" || args[i] == "-c":
+				i++
+			case strings.HasPrefix(args[i], "-"):
+			default:
+				return !readOnlyGit[args[i]]
+			}
+		}
+		return false
+	case prog == "lyx":
+		if len(args) < 2 || args[0] != "fabric" {
+			return false
+		}
+		verb := args[1]
+		if verb == "prune" || verb == "cleanup" {
+			for _, a := range args[2:] {
+				if a == "--apply" {
+					return true
+				}
+			}
+			return false
+		}
+		return !readOnlyFabric[verb]
+	case mutatingTools[prog]:
+		return true
+	case prog == "sed" || prog == "perl":
+		for _, a := range args {
+			if strings.HasPrefix(a, "--in-place") {
+				return true
+			}
+			if strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "--") && strings.Contains(a, "i") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // ClassifyViolation assigns v its D4 severity, checking the correctness rule first.
 // A fork-contract-write is correctness.
 // A parent-write is correctness when its path lies under the run's state, reports or plan directory, or the run's `_lyx` directory (the parent of geom.WebsterDir),
 // or when it lies inside the worktree and git does not ignore it; every other parent-write is policy.
+// A fabric-reference is correctness when its Command can change files (see mutatingCommand), since a rewrite of the fabric checkout can rewrite run state that a re-run of the cards' verify commands cannot detect; a read-only fabric reference is policy.
 // Every other class is policy.
 // Prefix tests compare link-resolved paths, so a write spelled through a link to the run's `_lyx` still classes as correctness.
 // The error return is only the git probe's or the link resolution's failure.
@@ -271,6 +370,11 @@ func ClassifyViolation(v AuditViolation, geom Geometry) (AuditSeverity, error) {
 	switch v.Class {
 	case ClassForkContractWrite:
 		return AuditSeverityCorrectness, nil
+	case ClassFabricReference:
+		if mutatingCommand(v.Command) {
+			return AuditSeverityCorrectness, nil
+		}
+		return AuditSeverityPolicy, nil
 	case ClassParentWrite:
 	default:
 		return AuditSeverityPolicy, nil

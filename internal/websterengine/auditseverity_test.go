@@ -88,6 +88,36 @@ func TestClassifyViolation(t *testing.T) {
 	}
 }
 
+func TestClassifyViolation_FabricReferenceByCommand(t *testing.T) {
+	const dir = "/fabric/sibling"
+	tests := []struct {
+		command string
+		want    AuditSeverity
+	}{
+		{"git -C " + dir + " checkout HEAD~1 -- webster/state.json", AuditSeverityCorrectness},
+		{"git -C " + dir + " reset --hard", AuditSeverityCorrectness},
+		{"git -C " + dir + " stash", AuditSeverityCorrectness},
+		{"rm " + dir + "/webster/reports/01-a.yaml", AuditSeverityCorrectness},
+		{"echo x > " + dir + "/webster/state.json", AuditSeverityCorrectness},
+		{"lyx fabric commit", AuditSeverityCorrectness},
+		{"cat " + dir + "/webster/state.json | head", AuditSeverityPolicy},
+		{"git -C " + dir + " log -1", AuditSeverityPolicy},
+		{"lyx fabric status", AuditSeverityPolicy},
+	}
+	for _, tt := range tests {
+		t.Run(tt.command, func(t *testing.T) {
+			v := AuditViolation{Class: ClassFabricReference, Command: tt.command}
+			got, err := ClassifyViolation(v, Geometry{})
+			if err != nil {
+				t.Fatalf("ClassifyViolation: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("ClassifyViolation(%q) = %q; want %q", tt.command, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestCheckParent_KeysDistinctAndStable(t *testing.T) {
 	audit := shuttleengine.ForkAudit{
 		NamedSpawns:  2,

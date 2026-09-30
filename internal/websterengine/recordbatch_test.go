@@ -646,6 +646,44 @@ func TestRecordBatch_ForkFabricReferenceWarnsWhenVerifyPasses(t *testing.T) {
 	}
 }
 
+// TestRecordBatch_MutatingFabricReferenceFailsBatch proves a fork that rewrote the fabric checkout through Bash is correctness:
+// the batch is recorded failed, its OK report archived, and the digest names the command;
+// the failed record is the state recover-batch proceeds from.
+func TestRecordBatch_MutatingFabricReferenceFailsBatch(t *testing.T) {
+	cmd := "git -C /fabric/sibling checkout HEAD~1 -- webster/state.json"
+	fx := newRecordFixture(t, []shuttleengine.ForkAudit{{Forks: []shuttleengine.ForkReport{{
+		TranscriptPath: "subagents/f1.jsonl",
+		ReportReturned: true,
+		BashCommands:   []string{cmd},
+	}}}})
+	fx.Deps.RefMatcher = fabricPathMatcher("/fabric/sibling")
+	setCardVerify(fx, "exit 0")
+	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
+
+	result, err := websterengine.RecordBatch(fx.Deps, 1)
+	if !errors.Is(err, websterengine.ErrBatchFailed) {
+		t.Fatalf("RecordBatch() error = %v; want ErrBatchFailed", err)
+	}
+	if !strings.Contains(err.Error(), "recover-batch") {
+		t.Errorf("error = %q; want it to name recover-batch", err.Error())
+	}
+	bs := fx.Deps.State.Batches[1]
+	if !bs.Terminal || bs.Status != websterengine.DigestStatusFailed || !result.Failed {
+		t.Errorf("batch = %+v, result = %+v; want terminal failed", bs, result)
+	}
+	if !warningsContain(result.Digest.Reasons, cmd) {
+		t.Errorf("Reasons = %v; want the command named", result.Digest.Reasons)
+	}
+	if got := archivedReports(t, fx.ReportsDir); len(got) != 1 {
+		t.Errorf("archived reports = %v; want exactly one", got)
+	}
+}
+
+// fabricPathMatcher is a RefMatcher that matches any command containing its fabric path.
+type fabricPathMatcher string
+
+func (m fabricPathMatcher) Matches(cmd string) bool { return strings.Contains(cmd, string(m)) }
+
 // TestRecordBatch_RetryNeverDuplicatesWarning proves a finding first seen on a no-report call is warned once:
 // the later OK report re-runs the verify and records done without a second warning.
 func TestRecordBatch_RetryNeverDuplicatesWarning(t *testing.T) {
