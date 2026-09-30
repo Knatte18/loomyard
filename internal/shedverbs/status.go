@@ -174,6 +174,8 @@ func statusCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 				"history_length":   len(st.History),
 				"interrupt_policy": interruptPolicy,
 				"trace_dir":        traceDir,
+				"run_id":           spec.RunID,
+				"progress":         progressOf(spec.Routing, st.CurrentProducer),
 			}
 			if spec.Hooks.StatusExtras != nil {
 				extras, err := spec.Hooks.StatusExtras(st)

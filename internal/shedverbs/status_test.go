@@ -407,6 +407,46 @@ func TestStatusCmd_FoundEnvelope_GenericCore(t *testing.T) {
 	}
 }
 
+// TestStatusCmd_FoundEnvelope_RunIDAndProgress asserts the found envelope carries the told run_id
+// and a progress matching ProgressAt for the current producer, and null progress when Routing is
+// unarmed.
+func TestStatusCmd_FoundEnvelope_RunIDAndProgress(t *testing.T) {
+	routing := shedengine.Routing{
+		Entry: "Only",
+		Producers: []shedengine.ProducerDef{
+			{Name: "Only"},
+		},
+	}
+
+	armed := seededStatusSpec(t, Hooks{})
+	armed.RunID = "my-slug"
+	armed.Routing = routing
+	env, code := execEnvelope(t, statusCmd(statusTexts(), armed), nil)
+	if code != 0 {
+		t.Fatalf("exit code = %d; want 0", code)
+	}
+	if env["run_id"] != "my-slug" {
+		t.Errorf("run_id = %v; want my-slug", env["run_id"])
+	}
+	want := routing.ProgressAt("Only")
+	got, ok := env["progress"].(map[string]any)
+	if !ok {
+		t.Fatalf("progress = %v; want an object", env["progress"])
+	}
+	if got["step"] != float64(want.Step) || got["steps"] != float64(want.Steps) || got["name"] != want.Name {
+		t.Errorf("progress = %v; want %+v", got, want)
+	}
+
+	unarmed := seededStatusSpec(t, Hooks{})
+	env, code = execEnvelope(t, statusCmd(statusTexts(), unarmed), nil)
+	if code != 0 {
+		t.Fatalf("exit code = %d; want 0", code)
+	}
+	if v, ok := env["progress"]; !ok || v != nil {
+		t.Errorf("progress = %v (present=%v); want null", v, ok)
+	}
+}
+
 // TestStatusCmd_ErrorEnvelopesCarryTraceDirOnly asserts the decode-failure and StatusExtras-error
 // envelopes carry trace_dir and no found key.
 func TestStatusCmd_ErrorEnvelopesCarryTraceDirOnly(t *testing.T) {
