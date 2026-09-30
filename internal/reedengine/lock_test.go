@@ -53,13 +53,13 @@ func newTestEngine(t *testing.T) *Engine {
 		HubPath:      hub,
 	}
 	cfg := Config{
-		Tmux:               filepath.Join(hub, "does-not-exist-tmux.exe"),
-		Shell:              filepath.Join(hub, "does-not-exist-shell.exe"),
-		Width:              100,
-		Height:             21,
-		CollapsedStripRows: 2,
-		MinFullRows:        3,
-		StrandName:         "<ROLE>:<ROUND>:<SHORT_GUID>",
+		Tmux:          filepath.Join(hub, "does-not-exist-tmux.exe"),
+		Shell:         filepath.Join(hub, "does-not-exist-shell.exe"),
+		Width:         100,
+		Height:        21,
+		CollapsedRows: 2,
+		MinFullRows:   3,
+		StrandName:    "<ROLE>:<ROUND>:<SHORT_GUID>",
 		// A valid value so every caller of this shared fixture that reaches
 		// ensureServerAndSessionLocked (watchdogOption's boot-path validation)
 		// does not start failing on "invalid watchdog value" instead of on
@@ -91,13 +91,13 @@ func TestWithOpLock_PathIsUnderDotLyx(t *testing.T) {
 		HubPath:      hub,
 	}
 	cfg := Config{
-		Tmux:               filepath.Join(hub, "does-not-exist-tmux.exe"),
-		Shell:              filepath.Join(hub, "does-not-exist-shell.exe"),
-		Width:              100,
-		Height:             21,
-		CollapsedStripRows: 2,
-		MinFullRows:        3,
-		StrandName:         "<ROLE>:<ROUND>:<SHORT_GUID>",
+		Tmux:          filepath.Join(hub, "does-not-exist-tmux.exe"),
+		Shell:         filepath.Join(hub, "does-not-exist-shell.exe"),
+		Width:         100,
+		Height:        21,
+		CollapsedRows: 2,
+		MinFullRows:   3,
+		StrandName:    "<ROLE>:<ROUND>:<SHORT_GUID>",
 	}
 	e := New(cfg, geom)
 

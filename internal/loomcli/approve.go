@@ -54,8 +54,9 @@ func approveVerb(ctx context.Context, out io.Writer, d approveDeps) int {
 	if !found {
 		return output.Err(out, `loom: approve: no status file; run "lyx loom start" first to bootstrap this task`)
 	}
-	if st.State != shedengine.StateBlocked || st.CurrentProducer != loomshed.NamePublish {
-		return output.Err(out, fmt.Sprintf("loom: approve: the run is not blocked at %s (state %q, producer %q); approval applies only to a run blocked at %s", loomshed.NamePublish, st.State, st.CurrentProducer, loomshed.NamePublish))
+	halted := st.State == shedengine.StateAwaiting || st.State == shedengine.StateBlocked
+	if !halted || st.CurrentProducer != loomshed.NamePublish {
+		return output.Err(out, fmt.Sprintf("loom: approve: the run is not awaiting or blocked at %s (state %q, producer %q); approval applies only to a run awaiting or blocked at %s", loomshed.NamePublish, st.State, st.CurrentProducer, loomshed.NamePublish))
 	}
 
 	taskBranch, parentBranch, originURL, err := d.branches()
@@ -109,7 +110,7 @@ func (c *loomCLI) approveCmd() *cobra.Command {
 		Use:   "approve",
 		Short: "record approval of the task's open pull request so the next lyx loom start lands it",
 		Long: `approve records the operator's approval of the task's open pull request,
-for a run blocked at Publish. It refuses unless the run is blocked at Publish,
+for a run awaiting or blocked at Publish. It refuses unless the run is awaiting or blocked at Publish,
 the pull request is open, and the local task HEAD equals the pull request's
 head commit. It writes the approval record and never resumes the run; run
 "lyx loom start" afterwards to land it.

@@ -43,25 +43,26 @@ type Shed struct {
 // RunOutcome is the whole run's terminal classification.
 type RunOutcome string
 
-// The three legal RunOutcome values. Their string values are deliberately identical to State's
-// three clean-exit values, so mapping between the two is identity, never a lookup table.
+// The four legal RunOutcome values. Their string values are deliberately identical to State's
+// four clean-exit values, so mapping between the two is identity, never a lookup table.
 const (
-	RunDone    RunOutcome = "done"
-	RunBlocked RunOutcome = "blocked"
-	RunPaused  RunOutcome = "paused"
+	RunDone     RunOutcome = "done"
+	RunBlocked  RunOutcome = "blocked"
+	RunPaused   RunOutcome = "paused"
+	RunAwaiting RunOutcome = "awaiting"
 )
 
 // Result is what Run reports on a clean exit.
 // A caller must branch on Outcome before reading Reason, which is populated only alongside
-// RunBlocked.
+// RunBlocked and RunAwaiting.
 // Result is meaningless unless the returned error is nil: RunOutcome's zero value is the empty
-// string, not one of the three legal constants above, and every hard-error path returns an
+// string, not one of the four legal constants above, and every hard-error path returns an
 // unpopulated Result alongside its error.
 type Result struct {
 	Outcome RunOutcome
 	// HaltedProducer is the producer current_producer named when Run returned.
 	HaltedProducer string
-	// Reason is set only alongside RunBlocked.
+	// Reason is set only alongside RunBlocked and RunAwaiting.
 	Reason string
 	// History is the full persisted history as it stands when Run returns, not only the entries
 	// this invocation appended.

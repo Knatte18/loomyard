@@ -93,7 +93,7 @@ func ValidateRecipe(name string) error {
 // mutated mid-run -- decodes strictly so an unknown key is an error, defaults an absent or empty
 // Driver to DriverGo, and validates the decoded Driver and every Params key being non-empty.
 func ReadSeed(l *lyxcwd.Location, runID string) (Seed, bool, error) {
-	if err := ValidateRunID(runID); err != nil {
+	if err := ValidateRunID(ResolveRunID(l, runID)); err != nil {
 		return Seed{}, false, err
 	}
 
@@ -142,7 +142,7 @@ func decodeSeed(data []byte) (Seed, error) {
 // second time -- while refusing a disagreeing existing seed with an ErrDisagreeingSeed-wrapped
 // message naming both the existing and the incoming values.
 func WriteSeed(l *lyxcwd.Location, runID string, seed Seed) error {
-	if err := ValidateRunID(runID); err != nil {
+	if err := ValidateRunID(ResolveRunID(l, runID)); err != nil {
 		return err
 	}
 	if err := ValidateRecipe(seed.Recipe); err != nil {

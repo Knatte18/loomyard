@@ -38,23 +38,12 @@ func paneHeightFromLayout(t *testing.T, layout, paneID string) int {
 	return 0
 }
 
-// twoFullSiblings returns two co-equal, non-shrinking below-parent strands with no strip anywhere in
-// the stack — the fixture the no-strip cases build on.
-func twoFullSiblings() []Strand {
+// twoSiblings returns two below-parent strands in insertion order — the first collapses and the
+// second (bottom-most) takes the rest.
+func twoSiblings() []Strand {
 	return []Strand{
 		{GUID: "a", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorBelowParent}},
 		{GUID: "b", PaneID: "%2", Live: true, Display: Display{Anchor: AnchorBelowParent}},
-	}
-}
-
-// twoDistinctStrips returns a root->mid->active chain where BOTH root and mid collapse to a strip —
-// each is an ancestor of the present active descendant — leaving active as the sole full pane. This
-// is the fixture the ordering test uses to prove two strip pins both follow the header pin.
-func twoDistinctStrips() []Strand {
-	return []Strand{
-		{GUID: "root", Parent: "", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorBelowParent, ShrinkWhenWaitingOnChild: true}},
-		{GUID: "mid", Parent: "root", PaneID: "%2", Live: true, Display: Display{Anchor: AnchorBelowParent, ShrinkWhenWaitingOnChild: true}},
-		{GUID: "active", Parent: "mid", PaneID: "%3", Live: true, Display: Display{Anchor: AnchorBelowParent}},
 	}
 }
 
@@ -68,56 +57,65 @@ func TestFixedHeightPinsMatchesRulesPlacedHeights(t *testing.T) {
 		wantErr  bool
 	}{
 		{
-			name:     "SelvagePlusTwoFullStrandsOnlyTheSelvageIsPinned",
-			strands:  twoFullSiblings(),
+			name:     "SelvagePlusTwoStrandsSelvageThenTheCollapsedOne",
+			strands:  twoSiblings(),
 			box:      Box{X: 0, Y: 0, W: 100, H: 21},
-			params:   Params{CollapsedStripRows: 2, MinFullRows: 3, Selvage: Selvage{PaneID: "%h", HeightRows: 2}},
-			wantPins: []Pin{{PaneID: "%h", Height: 2}},
+			params:   Params{CollapsedRows: 2, MinFullRows: 3, Selvage: Selvage{PaneID: "%h", HeightRows: 2}},
+			wantPins: []Pin{{PaneID: "%h", Height: 2}, {PaneID: "%1", Height: 2}},
 		},
 		{
 			// Mirrors rules_test.go's TestRulesSelvageBandEnumeratesEveryStrandCellPlusSelvage fixture:
-			// band unclamped at 3, mid collapses to CollapsedStripRows (2).
-			name:     "SelvagePlusShrinkAncestorWithPresentDescendantSelvageThenStrip",
+			// band unclamped at 3, root and mid collapse to CollapsedRows (2).
+			name:     "SelvagePlusChainSelvageThenEveryCollapsedPlacement",
 			strands:  belowParentChain(),
 			box:      Box{X: 0, Y: 0, W: 100, H: 21},
-			params:   Params{CollapsedStripRows: 2, MinFullRows: 3, Selvage: Selvage{PaneID: "%h", HeightRows: 3}},
-			wantPins: []Pin{{PaneID: "%h", Height: 3}, {PaneID: "%2", Height: 2}},
+			params:   Params{CollapsedRows: 2, MinFullRows: 3, Selvage: Selvage{PaneID: "%h", HeightRows: 3}},
+			wantPins: []Pin{{PaneID: "%h", Height: 3}, {PaneID: "%1", Height: 2}, {PaneID: "%2", Height: 2}},
 		},
 		{
-			// Mirrors TestRulesGolden's BelowParentFormsBottomDominantStackOrderedByParentChain
-			// fixture with no Selvage band configured: only the strip (mid) is pinned.
-			name:     "NoSelvageConfiguredWithStripPresentOnlyTheStripIsPinned",
+			// Mirrors TestRulesGolden's BelowParentFormsBottomDominantStackOrderedByInsertion
+			// fixture with no Selvage band configured: only the collapsed placements are pinned.
+			name:     "NoSelvageConfiguredOnlyTheCollapsedPlacementsArePinned",
 			strands:  belowParentChain(),
 			box:      Box{X: 0, Y: 0, W: 100, H: 21},
-			params:   Params{CollapsedStripRows: 2, MinFullRows: 3},
-			wantPins: []Pin{{PaneID: "%2", Height: 2}},
+			params:   Params{CollapsedRows: 2, MinFullRows: 3},
+			wantPins: []Pin{{PaneID: "%1", Height: 2}, {PaneID: "%2", Height: 2}},
 		},
 		{
-			name:     "NoSelvageAndNoStripYieldsNoPins",
-			strands:  twoFullSiblings(),
+			name:     "NoSelvageAndOneStrandYieldsNoPins",
+			strands:  []Strand{{GUID: "a", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorBelowParent}}},
 			box:      Box{X: 0, Y: 0, W: 100, H: 21},
-			params:   Params{CollapsedStripRows: 2, MinFullRows: 3},
+			params:   Params{CollapsedRows: 2, MinFullRows: 3},
 			wantPins: nil,
+		},
+		{
+			name:     "OneStrandWithSelvageOnlyTheSelvageIsPinned",
+			strands:  []Strand{{GUID: "a", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorBelowParent}}},
+			box:      Box{X: 0, Y: 0, W: 100, H: 21},
+			params:   Params{CollapsedRows: 2, MinFullRows: 3, Selvage: Selvage{PaneID: "%h", HeightRows: 2}},
+			wantPins: []Pin{{PaneID: "%h", Height: 2}},
 		},
 		{
 			// heightRows=25 requested; clampBandHeight(25, box.H-1=20, MinFullRows=3) clamps to
 			// windowRows-floor=17 to preserve the stack's floor — the pin must carry 17, never the
-			// configured 25.
+			// configured 25. The 3-row stack region then leaves 2 usable rows, so the collapsed
+			// placement is itself reclaimed from 2 down to 1.
 			name:     "OversizedSelvageHeightRowsPinCarriesTheClampedValueNotConfigured",
-			strands:  twoFullSiblings(),
+			strands:  twoSiblings(),
 			box:      Box{X: 0, Y: 0, W: 100, H: 21},
-			params:   Params{CollapsedStripRows: 2, MinFullRows: 3, Selvage: Selvage{PaneID: "%h", HeightRows: 25}},
-			wantPins: []Pin{{PaneID: "%h", Height: 17}},
+			params:   Params{CollapsedRows: 2, MinFullRows: 3, Selvage: Selvage{PaneID: "%h", HeightRows: 25}},
+			wantPins: []Pin{{PaneID: "%h", Height: 17}, {PaneID: "%1", Height: 1}},
 		},
 		{
 			// Mirrors rules_test.go's SelvagePresentClampedRowNoCellEverNonPositive golden row: the
-			// window is too short for the strip's natural CollapsedStripRows (2), and clampToFit's
-			// priority-1 pass reclaims it down to 1 — the pin must carry 1, never CollapsedStripRows.
-			name:     "TooShortWindowStripPinCarriesTheReclaimedValueNotCollapsedStripRows",
+			// window is too short for the collapsed placements' natural CollapsedRows (2), and
+			// clampToFit's priority-1 pass reclaims each down to 1 — the pins must carry 1, never
+			// CollapsedRows.
+			name:     "TooShortWindowCollapsedPinsCarryTheReclaimedValueNotCollapsedRows",
 			strands:  belowParentChain(),
 			box:      Box{X: 0, Y: 0, W: 100, H: 8},
-			params:   Params{CollapsedStripRows: 2, MinFullRows: 3, Selvage: Selvage{PaneID: "%h", HeightRows: 2}},
-			wantPins: []Pin{{PaneID: "%h", Height: 2}, {PaneID: "%2", Height: 1}},
+			params:   Params{CollapsedRows: 2, MinFullRows: 3, Selvage: Selvage{PaneID: "%h", HeightRows: 2}},
+			wantPins: []Pin{{PaneID: "%h", Height: 2}, {PaneID: "%1", Height: 1}, {PaneID: "%2", Height: 1}},
 		},
 		{
 			// The sole-band branch: a Selvage band configured with no strand placed claims the whole
@@ -125,63 +123,8 @@ func TestFixedHeightPinsMatchesRulesPlacedHeights(t *testing.T) {
 			name:     "SelvageConfiguredWithNoStrandPlacedYieldsNoPin",
 			strands:  nil,
 			box:      Box{X: 0, Y: 0, W: 100, H: 21},
-			params:   Params{CollapsedStripRows: 2, MinFullRows: 3, Selvage: Selvage{PaneID: "%h", HeightRows: 3}},
+			params:   Params{CollapsedRows: 2, MinFullRows: 3, Selvage: Selvage{PaneID: "%h", HeightRows: 3}},
 			wantPins: nil,
-		},
-		{
-			name:     "FixedBudgetAboveFullStrandIsPinned",
-			strands:  []Strand{fixedStrand("a", "", "%1", 3, false), fixedStrand("b", "a", "%2", 0, false)},
-			box:      Box{X: 0, Y: 0, W: 100, H: 21},
-			params:   Params{CollapsedStripRows: 2, MinFullRows: 3},
-			wantPins: []Pin{{PaneID: "%1", Height: 3}},
-		},
-		{
-			name:     "FixedBudgetThatIsAlsoAShrinkAncestorPinsFixedRowsNotStripRows",
-			strands:  []Strand{fixedStrand("a", "", "%1", 3, true), fixedStrand("b", "a", "%2", 0, false)},
-			box:      Box{X: 0, Y: 0, W: 100, H: 21},
-			params:   Params{CollapsedStripRows: 2, MinFullRows: 3},
-			wantPins: []Pin{{PaneID: "%1", Height: 3}},
-		},
-		{
-			name:     "LoneFixedBudgetWithoutSelvageIsNotPinned",
-			strands:  []Strand{fixedStrand("a", "", "%1", 3, false)},
-			box:      Box{X: 0, Y: 0, W: 100, H: 21},
-			params:   Params{CollapsedStripRows: 2, MinFullRows: 3},
-			wantPins: nil,
-		},
-		{
-			name:     "LoneFixedBudgetWithSelvageOnlyTheSelvageIsPinned",
-			strands:  []Strand{fixedStrand("a", "", "%1", 3, false)},
-			box:      Box{X: 0, Y: 0, W: 100, H: 21},
-			params:   Params{CollapsedStripRows: 2, MinFullRows: 3, Selvage: Selvage{PaneID: "%h", HeightRows: 2}},
-			wantPins: []Pin{{PaneID: "%h", Height: 2}},
-		},
-		{
-			name:     "FixedBudgetAtBottomOfStackIsNotPinned",
-			strands:  []Strand{fixedStrand("a", "", "%1", 0, false), fixedStrand("b", "a", "%2", 3, false)},
-			box:      Box{X: 0, Y: 0, W: 100, H: 21},
-			params:   Params{CollapsedStripRows: 2, MinFullRows: 3},
-			wantPins: nil,
-		},
-		{
-			// Window too short: the fixed budget (6) is reclaimed down to make room for the two full panes.
-			name: "TooShortWindowFixedPinCarriesTheReclaimedValue",
-			strands: []Strand{
-				fixedStrand("a", "", "%1", 6, false),
-				fixedStrand("b", "a", "%2", 0, false),
-				fixedStrand("c", "b", "%3", 0, false),
-			},
-			box:      Box{X: 0, Y: 0, W: 100, H: 8},
-			params:   Params{CollapsedStripRows: 2, MinFullRows: 3},
-			wantPins: []Pin{{PaneID: "%1", Height: 4}},
-		},
-		{
-			// Band pin first, then the fixed strand at its placed height.
-			name:     "SelvageBandThenFixedStrandPinOrder",
-			strands:  []Strand{fixedStrand("a", "", "%1", 3, false), fixedStrand("b", "a", "%2", 0, false)},
-			box:      Box{X: 0, Y: 0, W: 100, H: 21},
-			params:   Params{CollapsedStripRows: 2, MinFullRows: 3, Selvage: Selvage{PaneID: "%h", HeightRows: 2}},
-			wantPins: []Pin{{PaneID: "%h", Height: 2}, {PaneID: "%1", Height: 3}},
 		},
 		{
 			name: "AnchorOwnWindowYieldsNilNotAPanicMatchingRulesError",
@@ -189,7 +132,7 @@ func TestFixedHeightPinsMatchesRulesPlacedHeights(t *testing.T) {
 				{GUID: "a", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorOwnWindow}},
 			},
 			box:      Box{X: 0, Y: 0, W: 100, H: 21},
-			params:   Params{CollapsedStripRows: 2, MinFullRows: 3},
+			params:   Params{CollapsedRows: 2, MinFullRows: 3},
 			wantPins: nil,
 			wantErr:  true,
 		},
@@ -226,16 +169,17 @@ func TestFixedHeightPinsMatchesRulesPlacedHeights(t *testing.T) {
 	}
 }
 
-// TestFixedHeightPinsOrdersTheSelvagePinFirstThenEveryStripPin asserts pin ordering directly: with
-// the Selvage band and two distinct strips present, the Selvage pin is index 0 and both strip pins
-// follow — hook-array fire order, not screen position, since the band itself renders at the bottom.
-func TestFixedHeightPinsOrdersTheSelvagePinFirstThenEveryStripPin(t *testing.T) {
-	params := Params{CollapsedStripRows: 2, MinFullRows: 3, Selvage: Selvage{PaneID: "%h", HeightRows: 2}}
+// TestFixedHeightPinsOrdersTheSelvagePinFirstThenEveryCollapsedPin asserts pin ordering directly:
+// with the Selvage band and two collapsed placements present, the Selvage pin is index 0 and both
+// collapsed pins follow — hook-array fire order, not screen position, since the band itself renders
+// at the bottom.
+func TestFixedHeightPinsOrdersTheSelvagePinFirstThenEveryCollapsedPin(t *testing.T) {
+	params := Params{CollapsedRows: 2, MinFullRows: 3, Selvage: Selvage{PaneID: "%h", HeightRows: 2}}
 	box := Box{X: 0, Y: 0, W: 100, H: 21}
 
-	pins := FixedHeightPins(twoDistinctStrips(), box, params)
+	pins := FixedHeightPins(belowParentChain(), box, params)
 	if len(pins) != 3 {
-		t.Fatalf("FixedHeightPins() returned %d pins, want 3 (Selvage + two strips): %+v", len(pins), pins)
+		t.Fatalf("FixedHeightPins() returned %d pins, want 3 (Selvage + two collapsed): %+v", len(pins), pins)
 	}
 	if pins[0].PaneID != "%h" {
 		t.Errorf("pins[0].PaneID = %q, want the Selvage pane %q first", pins[0].PaneID, "%h")
@@ -252,7 +196,7 @@ func TestFixedHeightPinsOrdersTheSelvagePinFirstThenEveryStripPin(t *testing.T) 
 // box.Y .. box.Y+H-B-2 and the Selvage cell occupies rows box.Y+H-B .. box.Y+H-1 — the single row at
 // box.Y+H-B-1 is the divider between the stack and the band, never claimed by either.
 func TestSelvageBandCellOffsetsSumToTheBoxWithDivider(t *testing.T) {
-	params := Params{CollapsedStripRows: 2, MinFullRows: 3, Selvage: Selvage{PaneID: "%h", HeightRows: 3}}
+	params := Params{CollapsedRows: 2, MinFullRows: 3, Selvage: Selvage{PaneID: "%h", HeightRows: 3}}
 	box := Box{X: 0, Y: 0, W: 100, H: 21}
 
 	layout, _, err := Rules(belowParentChain(), box, params, nil)

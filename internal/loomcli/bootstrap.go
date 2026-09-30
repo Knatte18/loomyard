@@ -20,23 +20,15 @@ import (
 // duplicating it.
 const statusStrandDisplayName = "loom-status"
 
-// statusStrandFixedRows is the status strand's fixed row budget. `lyx loom status --watch` appends
-// one line per activity change and leaves the cursor on a fresh empty row, so 3 rows show the
-// current activity plus the previous one. It is a constant, not a config key.
-const statusStrandFixedRows = 3
-
 // statusStrandAddSpec builds the status strand's reedengine.AddSpec for the given pane command: a
-// below-parent pane carrying the statusStrandFixedRows budget. ShrinkWhenWaitingOnChild stays true
-// but is inert, because the fixed budget wins over the shrink rule. IfAbsent stays false because
-// ensureStatusStrand does its own keep/replace/add dance.
+// plain below-parent pane, sized by reed's one layout rule like every other strand. IfAbsent stays
+// false because ensureStatusStrand does its own keep/replace/add dance.
 func statusStrandAddSpec(cmd string) reedengine.AddSpec {
 	return reedengine.AddSpec{
 		NameOverride: statusStrandDisplayName,
 		Cmd:          cmd,
 		Display: render.Display{
-			Anchor:                   render.AnchorBelowParent,
-			ShrinkWhenWaitingOnChild: true,
-			FixedRows:                statusStrandFixedRows,
+			Anchor: render.AnchorBelowParent,
 		},
 	}
 }
@@ -66,29 +58,68 @@ func mustSpawnDriver(runLockHeld bool, driverStrandLive bool) bool {
 	return !runLockHeld && !driverStrandLive
 }
 
-// mustAttach reports whether the bootstrap must hand the terminal over to the tmux session, from the
-// operator's own --no-attach choice. It is the twin of mustSpawnDriver: both are the whole of a
-// re-entrancy or handoff decision, expressed as one pure predicate rather than written inline in the
-// verb body.
+// handover is what step 7 of the bootstrap does with the operator's terminal.
+type handover int
+
+const (
+	// handoverAttach hands the terminal to a tmux attach, as the bootstrap always did.
+	handoverAttach handover = iota
+	// handoverEnvelope returns the success envelope: the caller is unattended, or already sits in the
+	// task's own session.
+	handoverEnvelope
+	// handoverSwitch switches the caller's tmux client onto the task's session.
+	handoverSwitch
+	// handoverHint returns the success envelope with a hint naming the command to attach from outside
+	// tmux: the caller is inside a tmux server the bootstrap must not nest into.
+	handoverHint
+)
+
+// decideHandover picks step 7's handover from where the command runs. It is the twin of
+// mustSpawnDriver: the whole of a handoff decision, expressed as one pure function rather than
+// written inline in the verb body.
 //
-// The terminal handover this predicate gates is the CLI/Cobra Invariant's narrow interactive-handoff
-// exception for `lyx loom start`/`lyx start`. Skipping it on noAttach's say-so removes that exception
-// for this one invocation -- every step before it, including the run-lock handshake, still runs --
-// rather than adding a new exception of its own.
-func mustAttach(noAttach bool) bool {
-	return !noAttach
+// noAttach wins over every branch. An unset $TMUX attaches, which also covers psmux on Windows where
+// $TMUX may be absent. A $TMUX naming another tmux server never nests: reedOwns is false, so the
+// caller gets the envelope and a hint. A $TMUX naming reed's server compares currentSession, the
+// session the caller's pane belongs to, against taskSession: equal returns the envelope, different
+// switches the client. An empty currentSession means the pane's session could not be read, and falls
+// back to the hint rather than nesting.
+//
+// The attach this decision can return is the CLI/Cobra Invariant's narrow interactive-handoff
+// exception for `lyx loom start`/`lyx start`; every other branch reports on the envelope.
+func decideHandover(noAttach bool, tmuxEnv string, reedOwns bool, currentSession, taskSession string) handover {
+	switch {
+	case noAttach:
+		return handoverEnvelope
+	case tmuxEnv == "":
+		return handoverAttach
+	case !reedOwns:
+		return handoverHint
+	case currentSession == "":
+		return handoverHint
+	case currentSession == taskSession:
+		return handoverEnvelope
+	default:
+		return handoverSwitch
+	}
 }
 
-// noAttachFields builds the success envelope `lyx loom start --no-attach` prints once the driver is
-// confirmed up: the run's driver, slug and status file, with "attached": false stating which tail
-// was skipped. It is a pure function so a Tier 1 test can pin the key set.
-func noAttachFields(driver, slug, statusFile string) map[string]any {
-	return map[string]any{
+// noAttachFields builds the success envelope `lyx loom start` prints in place of an attach: the run's
+// driver, slug, resolved run id and status file, with "attached": false stating which tail was
+// skipped. A non-empty hint adds a "hint" key naming the command to attach from outside tmux. It is a
+// pure function so a Tier 1 test can pin the key set.
+func noAttachFields(driver, slug, runID, statusFile, hint string) map[string]any {
+	fields := map[string]any{
 		"attached":    false,
 		"driver":      driver,
 		"slug":        slug,
+		"run_id":      runID,
 		"status_file": statusFile,
 	}
+	if hint != "" {
+		fields["hint"] = hint
+	}
+	return fields
 }
 
 // awaitRunLockResult is the four-way outcome of awaitRunLock.
@@ -227,12 +258,16 @@ const (
 // A dead entry is replaced rather than simply added over, because reed's add has no upsert
 // semantics: a second add under the same display name appends a second pane instead of replacing the
 // first, which is the very reason statusStrandDisplayName is a pinned constant.
-func resolveStatusStrandAction(strands []reedengine.StrandStatus) (statusStrandAction, string) {
+//
+// A live strand is kept only when the recorded sidecar names its GUID and equals the current build
+// identity; a missing, unreadable or otherwise-mismatched sidecar means the strand may run a
+// different lyx build, so it is replaced.
+func resolveStatusStrandAction(strands []reedengine.StrandStatus, sidecar *statusSidecar, current buildIdentity) (statusStrandAction, string) {
 	strand, found := findStatusStrand(strands, statusStrandDisplayName)
 	switch {
 	case !found:
 		return statusStrandAdd, ""
-	case strand.Live:
+	case strand.Live && sidecar != nil && sidecar.GUID == strand.GUID && sidecar.Build == current:
 		return statusStrandKeep, strand.GUID
 	default:
 		return statusStrandReplace, strand.GUID

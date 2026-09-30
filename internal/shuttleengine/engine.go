@@ -55,10 +55,10 @@ type PaneInput struct {
 	SettleMS int    // Milliseconds to pause after this step lands before the next step is sent (prevents escape-sequence coalescing).
 }
 
-// EventKind discriminates the two signals ParseEvents can surface from events.jsonl: a turn-end and
-// a live question.
+// EventKind discriminates the signals ParseEvents can surface from events.jsonl: a turn-end, a live
+// question, and a turn-end with background work still outstanding.
 // It is a parse-time discriminator only, selecting which payload field an Event's Message comes
-// from.
+// from; the wait loop reads it in one place, to treat EventWaiting as still running.
 type EventKind int
 
 // Kinds a parsed Event can carry.
@@ -68,15 +68,19 @@ const (
 	// EventAsk: live, in-progress tool-call signal when the agent is asking a question (observed when
 	// tool call opens, not at turn end).
 	EventAsk
+	// EventWaiting: provider's turn ended, but background work the session launched is still
+	// outstanding, so the agent is not asking anything and will resume on its own.
+	// The wait loop treats it as still running; a later EventStop or EventAsk classifies as usual.
+	EventWaiting
 )
 
-// Event is one parsed line from events.jsonl: either a turn-end signal (EventStop) or a live ask
-// (EventAsk).
-// Message carries the agent's final message (EventStop) or question text (EventAsk);
+// Event is one parsed line from events.jsonl: a turn-end signal (EventStop), a live ask (EventAsk),
+// or a turn-end with background work outstanding (EventWaiting).
+// Message carries the agent's final message (EventStop, EventWaiting) or question text (EventAsk);
 // Raw is the exact JSON line.
 type Event struct {
 	Kind    EventKind // Discriminates which signal this Event carries.
-	Message string    // Agent's final message (EventStop) or question text (EventAsk); "" if event carried none.
+	Message string    // Agent's final message (EventStop, EventWaiting) or question text (EventAsk); "" if event carried none.
 	Raw     []byte    // Exact JSON line this Event was parsed from.
 }
 

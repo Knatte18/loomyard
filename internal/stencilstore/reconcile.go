@@ -163,8 +163,60 @@ func seedGitattributes(baseDir string) (bool, error) {
 	return true, nil
 }
 
+// driftClass names which sides of a board/source/embedded triple changed, and so which remedy the
+// port-back drift warning may recommend.
+type driftClass int
+
+// String names the class for the warning's structured "class" attribute.
+func (c driftClass) String() string {
+	switch c {
+	case driftHandEdited:
+		return "hand-edited"
+	case driftSourceAhead:
+		return "source-ahead"
+	case driftBoth:
+		return "both"
+	default:
+		return "neither"
+	}
+}
+
+const (
+	// driftHandEdited: the board body no longer matches its own stamp, and the source matches the
+	// embedded bytes this binary carries.
+	driftHandEdited driftClass = iota
+	// driftSourceAhead: the board copy is untouched, and the source differs from the embedded bytes.
+	driftSourceAhead
+	// driftBoth: the board copy was hand-edited and the source differs from the embedded bytes.
+	driftBoth
+	// driftNeither: the board copy is untouched and the source equals the embedded bytes, so the
+	// board copy is merely older than what this binary carries.
+	driftNeither
+)
+
+// classifyPortBackDrift classifies a differing board copy on the two signals the warning turns on:
+// hand-edited (Classify reports StateEdited against the embedded bytes) and source-ahead (the source
+// body differs from the embedded body).
+// It returns the class and the warning's message, which names the remedy that class allows.
+func classifyPortBackDrift(boardContent, sourceContent, embedded []byte) (driftClass, string) {
+	handEdited := Classify(boardContent, true, embedded) == StateEdited
+	sourceAhead := BodyHash(sourceContent) != BodyHash(embedded)
+
+	switch {
+	case handEdited && sourceAhead:
+		return driftBoth, "stencilstore: board copy has drifted from worktree source; both sides changed and promote would overwrite the source's changes -- reconcile by hand"
+	case handEdited:
+		return driftHandEdited, "stencilstore: board copy has drifted from worktree source; it was hand-edited -- run \"lyx stencil promote <name>\" to port it back"
+	case sourceAhead:
+		return driftSourceAhead, "stencilstore: board copy has drifted from worktree source; the board copy is untouched and a binary older than the source deployed it -- run a production deploy (update-plugins.sh)"
+	default:
+		return driftNeither, "stencilstore: board copy has drifted from worktree source; the board copy is untouched but older than this binary's embedded bytes (a dev build never refreshes one) -- run \"lyx stencil sync\""
+	}
+}
+
 // warnPortBackDrift compares each registry name's on-disk board copy against sourceDir's worktree
-// copy and emits one logger.Warn per differing stencil.
+// copy and emits one logger.Warn per differing stencil, naming the stencil, its drift class and
+// the remedy that class allows (see classifyPortBackDrift).
 // A missing source file is skipped silently; this comparison never returns an error and never
 // affects an exit code, per the drift-notification-is-logger-warn-and-never-blocks Shared Decision.
 func warnPortBackDrift(baseDir string, registry Registry, sourceDir string) {
@@ -184,7 +236,9 @@ func warnPortBackDrift(baseDir string, registry Registry, sourceDir string) {
 		boardBody := NormalizeLF([]byte(stencil.StripLeadingComment(string(boardContent))))
 		sourceBody := NormalizeLF([]byte(stencil.StripLeadingComment(string(sourceContent))))
 		if string(boardBody) != string(sourceBody) {
-			logger.Warn("stencilstore: board copy has drifted from worktree source; see lyx stencil promote", "stencil", name)
+			embedded, _ := registry.Default(name)
+			class, msg := classifyPortBackDrift(boardContent, sourceContent, embedded)
+			logger.Warn(msg, "stencil", name, "class", class.String())
 		}
 	}
 }

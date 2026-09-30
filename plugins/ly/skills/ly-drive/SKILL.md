@@ -8,7 +8,7 @@ argument-hint: "[run-id]"
 
 ## What it does
 
-Drive one addressed run by repeatedly invoking `lyx shed step [<run-id>]`; the run-id defaults to `self`.
+Drive one addressed run by repeatedly invoking `lyx shed step [<run-id>]`; the run-id defaults to `self`, an alias for the worktree's slug.
 Read each envelope, repair what can be repaired from the step's trace, and escalate what cannot.
 This skill carries no phase knowledge.
 Which recipe runs is a property of the run's seed alone, so every branch below is on an envelope field, a policy word or one of the five error kinds, never on a row or recipe name.
@@ -22,12 +22,12 @@ A wrong directory surfaces as the recipe's own refusal text, which the driver re
 
 ## How to invoke a step
 
-Mint a fresh 16-lowercase-hex `LYX_TRACE_ID` for each invocation and export it into the subshell.
+Run `lyx shed step <run-id>` as one background job.
+Mint no `LYX_TRACE_ID`, create no `mktemp` step directory and add no redirects: `lyx shed step` mints its own trace id and keeps its own record of each invocation under the run's untracked `.lyx` scratch directory, so the records never dirty the worktree.
 Never run a step as a blocking foreground call: a step can block for a whole agent run, longer than any foreground shell call allows.
-Launch it in the background with stdout redirected to `<step-dir>/step-<n>.json`, where `<step-dir>` is a private directory created once per drive with `mktemp -d` and recorded as an absolute path.
-Never put step output under the drive directory, or under the session's cwd when that is the drive directory, as it is for a driver a recipe's bootstrap verb launches: any file there dirties the run's worktree and fails its clean-tree gates.
 Launch one step per background job, and read its envelope and its trace before launching the next; never a loop that runs several steps without the session reading each one in between, since a trace read only after the loop ends may already be swept.
-Wait for that background job's own exit, by its completion notice or by `wait <pid>` in the shell that launched it, then read the envelope from that file.
+Wait for that background job's own exit, by its completion notice or by `wait <pid>` in the shell that launched it, then read the envelope from the job's own output.
+When the job left no output, read `lyx shed status <run-id>` and take the envelope from its `last_step`: the file named by `envelope_path`, present once `finished` is true.
 Never wait by matching text of any command line (`pgrep -f`, `ps | grep`), whatever the text is: the step's own verb, a wrapper script, the step directory's path.
 The waiting shell's own command line carries the same text, so such a wait never ends.
 
@@ -36,7 +36,8 @@ The waiting shell's own command line carries the same text, so such a wait never
 Before the first step, read `lyx shed status [<run-id>]` once and record `current_producer` and `history_length`.
 An envelope with `found: false`, success or error, is an empty baseline `("", 0)`; proceed to the first step, whose own bootstrap seeds the status file.
 Any other status error is handed back.
-A baseline `state` of `blocked`, `paused` or `failed` is not a stop: starting a driver on such a run is how an operator resumes it after resolving the cause, so proceed to the first step, which resumes the run.
+A baseline `state` of `blocked`, `awaiting`, `paused` or `failed` is not a stop: starting a driver on such a run is how an operator resumes it after resolving the cause (for `awaiting`, after approving), so proceed to the first step, which resumes the run.
+Label that read as taken before the driver acted, for example "before step: blocked at Publish".
 
 ## The loop
 
@@ -48,6 +49,8 @@ After every step, read its `trace_file` right away, because traces are swept by 
 
 On `continue: false`, `state: done` stops the loop.
 `blocked` and `paused` are handed back with the envelope's `reason` and are never repaired: a Go gate concluded a human is needed.
+`awaiting` is handed back the same way, as a planned hand-off with the envelope's `reason`: the run waits on a person by design, so the report words it as a hand-off and never as a failure,
+and nothing is repaired.
 
 ## Error envelopes
 
@@ -70,7 +73,7 @@ Read `lyx shed status [<run-id>]` once and branch on that read:
 - Unchanged and `interrupt_policy: handback` or `""`: hand back unconditionally.
   A live agent may still be running, and re-invoking would restart it.
 
-The trace of an interrupted step is every file in the status envelope's `trace_dir` whose name carries that step's `LYX_TRACE_ID`, read in the order of the UTC timestamp in the name (`trace-<UTC>-<traceid>-<pid>.log`).
+The trace of an interrupted step is found by the status envelope's `last_step.trace_id`: every file in `trace_dir` whose name carries that id, read in the order of the UTC timestamp in the name (`trace-<UTC>-<traceid>-<pid>.log`).
 A child spawned into another worktree, or a process in a reed strand pane, is reached only through paths the parent trace names, never by id.
 
 ## Repairing
@@ -123,6 +126,9 @@ The `reinvoke` sub-case counts toward the cap.
 Write one record per repair under `<scratch_dir>/repairs/`: the failure, the trace lines acted on, the action taken and the outcome.
 Write the stop report under `scratch_dir` too, or to the path a launch prompt names.
 At every stop the report lists `friction_dir` and `<scratch_dir>/repairs/`.
+Every report names the run by the envelope's `run_id` and gives its position as `history_length` plus `progress` (`step` of `steps`, and `name`).
+It never cites the driver's own step count.
+When the launch prompt names an end-of-session command, run it as the last act, after writing the stop report.
 
 ## Self-report
 

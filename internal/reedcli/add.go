@@ -77,9 +77,8 @@ Example:
 				ResumeCmd:    resumeCmd,
 				Parent:       parent,
 				Display: render.Display{
-					Anchor:                   render.Anchor(anchor),
-					Focus:                    focus,
-					ShrinkWhenWaitingOnChild: true,
+					Anchor: render.Anchor(anchor),
+					Focus:  focus,
 				},
 				IfAbsent: ifAbsent,
 			}

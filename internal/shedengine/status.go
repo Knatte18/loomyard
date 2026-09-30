@@ -10,17 +10,20 @@ import "encoding/json"
 // values Run can never return (running, failed).
 type State string
 
-// The five legal State values. A persisted value outside this set -- including the empty
+// The six legal State values. A persisted value outside this set -- including the empty
 // string -- is a hard error at the read gate.
+// StateAwaiting is the planned hand-off halt: it behaves like blocked wherever a halt is
+// observed, but is no failure and spends no bounce budget.
 const (
-	StateRunning State = "running"
-	StatePaused  State = "paused"
-	StateDone    State = "done"
-	StateBlocked State = "blocked"
-	StateFailed  State = "failed"
+	StateRunning  State = "running"
+	StatePaused   State = "paused"
+	StateDone     State = "done"
+	StateBlocked  State = "blocked"
+	StateFailed   State = "failed"
+	StateAwaiting State = "awaiting"
 )
 
-// valid reports whether s is one of the five legal State constants.
+// valid reports whether s is one of the six legal State constants.
 // The empty string is rejected rather than tolerated: State is a mandatory enum string read from
 // a file an external actor seeds, so a typo or a partial seed would otherwise fall through to
 // undefined behaviour -- silently treated as running, or as done.
@@ -30,7 +33,7 @@ const (
 // and History (slice) below keep that zero-value tolerance here for the same reason.
 func (s State) valid() bool {
 	switch s {
-	case StateRunning, StatePaused, StateDone, StateBlocked, StateFailed:
+	case StateRunning, StatePaused, StateDone, StateBlocked, StateFailed, StateAwaiting:
 		return true
 	default:
 		return false

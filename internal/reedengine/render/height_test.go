@@ -1,42 +1,46 @@
 // height_test.go exercises the derived height policy in height.go: the heights-fill-the-box
-// invariant, the collapsed-strip height, the active pane's remainder rule, the too-short-window
-// clamp order, and the band-vs-window height clamp (clampBandHeight).
-// It also exercises layout.go's buildStackBody/wrapLayout and focus.go's isAncestor, since cards 5
-// and 7 ship no standalone test file.
+// invariant, the uniform collapsed_rows rule with the remainder going to the bottom-most pane, the
+// too-short-window clamp order, and the band-vs-window height clamp (clampBandHeight).
+// It also exercises layout.go's buildStackBody/wrapLayout over the resulting placements.
 
 package render
 
 import "testing"
 
-// chainStack builds a root->mid->active three-level parent chain, all
-// AnchorBelowParent, live, with a pane id per strand, so tests can control
-// each level's ShrinkWhenWaitingOnChild independently.
-func chainStack(rootShrink, midShrink bool) []Strand {
-	return []Strand{
-		{GUID: "root", Parent: "", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorBelowParent, ShrinkWhenWaitingOnChild: rootShrink}},
-		{GUID: "mid", Parent: "root", PaneID: "%2", Live: true, Display: Display{Anchor: AnchorBelowParent, ShrinkWhenWaitingOnChild: midShrink}},
-		{GUID: "active", Parent: "mid", PaneID: "%3", Live: true, Display: Display{Anchor: AnchorBelowParent}},
+// stackOf builds n live below-parent strands with pane ids %1..%n, in insertion order.
+func stackOf(n int) []Strand {
+	names := []string{"a", "b", "c", "d", "e", "f"}
+	stack := make([]Strand, n)
+	for i := range stack {
+		stack[i] = Strand{GUID: names[i], PaneID: "%" + string(rune('1'+i)), Live: true, Display: Display{Anchor: AnchorBelowParent}}
 	}
+	return stack
 }
 
-func TestStackHeightsFillBoxAndCollapsedStripEqualsParam(t *testing.T) {
+func heightsOf(placements []placement) []int {
+	out := make([]int, len(placements))
+	for i, pl := range placements {
+		out[i] = pl.height
+	}
+	return out
+}
+
+func TestStackHeightsFillBoxAndCollapsedEqualsParam(t *testing.T) {
 	tests := []struct {
-		name               string
-		collapsedStripRows int
-		boxH               int
+		name          string
+		collapsedRows int
+		boxH          int
 	}{
-		{"strip1", 1, 15},
-		{"strip2", 2, 15},
-		{"strip4", 4, 20},
-		{"strip6", 6, 30},
+		{"rows1", 1, 15},
+		{"rows2", 2, 15},
+		{"rows4", 4, 20},
+		{"rows6", 6, 30},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// A single-ancestor chain: root collapses (shrink:true), mid
-			// stays full (shrink:false), active is always full.
-			stack := chainStack(true, false)
+			stack := stackOf(3)
 			box := Box{X: 0, Y: 0, W: 100, H: tt.boxH}
-			p := Params{CollapsedStripRows: tt.collapsedStripRows, MinFullRows: 3}
+			p := Params{CollapsedRows: tt.collapsedRows, MinFullRows: 3}
 
 			placements := stackHeights(stack, box, p)
 			if len(placements) != len(stack) {
@@ -55,81 +59,75 @@ func TestStackHeightsFillBoxAndCollapsedStripEqualsParam(t *testing.T) {
 				t.Errorf("heights sum + dividers = %d, want box.H %d", sum+dividers, box.H)
 			}
 
-			// root is the only collapsed ancestor in this fixture.
-			if placements[0].height != tt.collapsedStripRows {
-				t.Errorf("collapsed ancestor height = %d, want CollapsedStripRows %d", placements[0].height, tt.collapsedStripRows)
+			for i := 0; i < len(stack)-1; i++ {
+				if placements[i].height != tt.collapsedRows || !placements[i].strip {
+					t.Errorf("placement[%d] = %+v, want collapsed at %d", i, placements[i], tt.collapsedRows)
+				}
+			}
+			if last := placements[len(placements)-1]; last.strip {
+				t.Errorf("bottom-most placement %+v must not be collapsed", last)
 			}
 		})
 	}
 }
 
-func TestStackHeightsActiveStrictlyTallestWithSingleAncestor(t *testing.T) {
-	// root collapses (single shrink:true ancestor), mid also collapses so
-	// the active pane is genuinely alone as the sole full pane.
-	stack := []Strand{
-		{GUID: "root", Parent: "", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorBelowParent, ShrinkWhenWaitingOnChild: true}},
-		{GUID: "active", Parent: "root", PaneID: "%2", Live: true, Display: Display{Anchor: AnchorBelowParent}},
-	}
-	box := Box{X: 0, Y: 0, W: 100, H: 15}
-	p := Params{CollapsedStripRows: 2, MinFullRows: 3}
-
-	placements := stackHeights(stack, box, p)
-	if placements[1].height <= placements[0].height {
-		t.Errorf("active height %d must be strictly greater than ancestor height %d", placements[1].height, placements[0].height)
-	}
-	if placements[0].height != p.CollapsedStripRows {
-		t.Errorf("ancestor height = %d, want CollapsedStripRows %d", placements[0].height, p.CollapsedStripRows)
+func TestStackHeightsOneStrandGetsTheWholeBox(t *testing.T) {
+	got := heightsOf(stackHeights(stackOf(1), Box{W: 100, H: 20}, Params{CollapsedRows: 3, MinFullRows: 3}))
+	if len(got) != 1 || got[0] != 20 {
+		t.Errorf("heights = %v, want [20]", got)
 	}
 }
 
-func TestStackHeightsRemainderGoesToActivePane(t *testing.T) {
-	// root stays full (shrink:false) even though it is mid's ancestor; mid
-	// collapses; active is full. So there are two full panes (root,
-	// active) splitting the remainder, and >=2-full-pane remainder
-	// assignment must be deterministic: always to the active/bottom pane.
-	stack := chainStack(false, true)
-	box := Box{X: 0, Y: 0, W: 100, H: 21} // usable = 21 - 2 dividers = 19
-	p := Params{CollapsedStripRows: 2, MinFullRows: 3}
+func TestStackHeightsTwoStrandsGetCollapsedPlusRest(t *testing.T) {
+	got := heightsOf(stackHeights(stackOf(2), Box{W: 100, H: 20}, Params{CollapsedRows: 3, MinFullRows: 3}))
+	want := []int{3, 16} // usable 20 - 1 divider = 19; 3 collapsed, 16 rest
+	if got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("heights = %v, want %v", got, want)
+	}
+}
 
-	placements := stackHeights(stack, box, p)
-	rootH, midH, activeH := placements[0].height, placements[1].height, placements[2].height
+func TestStackHeightsAddingAThirdKeepsTheFirstPaneHeight(t *testing.T) {
+	p := Params{CollapsedRows: 3, MinFullRows: 3}
+	box := Box{W: 100, H: 30}
+	two := heightsOf(stackHeights(stackOf(2), box, p))
+	three := heightsOf(stackHeights(stackOf(3), box, p))
 
-	if midH != p.CollapsedStripRows {
-		t.Fatalf("mid (collapsed) height = %d, want %d", midH, p.CollapsedStripRows)
+	if two[0] != three[0] {
+		t.Errorf("first pane height changed from %d to %d when a third strand was added", two[0], three[0])
 	}
-	// usable=19, stripDemand=2, fullRemaining=17, fullBase=8, remainder=1.
-	if rootH != 8 {
-		t.Errorf("root (full, non-active) height = %d, want 8 (base, no remainder)", rootH)
+	if three[1] != 3 {
+		t.Errorf("previous bottom-most height = %d, want it collapsed to 3", three[1])
 	}
-	if activeH != 9 {
-		t.Errorf("active height = %d, want 9 (base + remainder)", activeH)
+	want := 30 - 2 - 3 - 3 // usable minus the two collapsed
+	if three[2] != want {
+		t.Errorf("bottom-most height = %d, want %d", three[2], want)
 	}
-	if activeH <= rootH {
-		t.Errorf("active height %d must exceed the other full pane's height %d once the remainder is applied", activeH, rootH)
-	}
+}
 
-	sum := rootH + midH + activeH
-	if dividers := len(stack) - 1; sum+dividers != box.H {
-		t.Errorf("heights sum + dividers = %d, want box.H %d", sum+dividers, box.H)
+func TestStackHeightsRemovingTheBottomMostExpandsTheOneAbove(t *testing.T) {
+	p := Params{CollapsedRows: 3, MinFullRows: 3}
+	box := Box{W: 100, H: 30}
+	three := heightsOf(stackHeights(stackOf(3), box, p))
+	two := heightsOf(stackHeights(stackOf(2), box, p))
+
+	if two[1] <= three[1] {
+		t.Errorf("strand above the removed bottom-most did not expand: %d -> %d", three[1], two[1])
+	}
+	if want := 30 - 1 - 3; two[1] != want {
+		t.Errorf("new bottom-most height = %d, want %d", two[1], want)
 	}
 }
 
 func TestStackHeightsClampYieldsOnlyPositiveHeightsInTooShortWindow(t *testing.T) {
-	// Three ancestors (all shrink:true, each demanding CollapsedStripRows=3)
-	// plus one active pane, but the window only has 5 usable rows for 4
-	// panes — the natural split would drive the active pane negative.
-	// clampToFit must reclaim rows from the strips (priority 1) first and
-	// still land on an exact, all-positive split.
-	stack := []Strand{
-		{GUID: "r1", Parent: "", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorBelowParent, ShrinkWhenWaitingOnChild: true}},
-		{GUID: "r2", Parent: "r1", PaneID: "%2", Live: true, Display: Display{Anchor: AnchorBelowParent, ShrinkWhenWaitingOnChild: true}},
-		{GUID: "r3", Parent: "r2", PaneID: "%3", Live: true, Display: Display{Anchor: AnchorBelowParent, ShrinkWhenWaitingOnChild: true}},
-		{GUID: "active", Parent: "r3", PaneID: "%4", Live: true, Display: Display{Anchor: AnchorBelowParent}},
-	}
+	// Three collapsed placements each demanding CollapsedRows=3 plus one bottom-most pane, but the
+	// window only has 5 usable rows for 4 panes — the natural split would drive the bottom-most
+	// pane negative. clampToFit must reclaim rows from the collapsed placements first and still
+	// land on an exact, all-positive split.
+	stack := stackOf(4)
 	dividers := len(stack) - 1
 	usable := 5
 	box := Box{X: 0, Y: 0, W: 100, H: usable + dividers}
-	p := Params{CollapsedStripRows: 3, MinFullRows: 3}
+	p := Params{CollapsedRows: 3, MinFullRows: 3}
 
 	placements := stackHeights(stack, box, p)
 	sum := 0
@@ -148,17 +146,10 @@ func TestStackHeightsExtremelyShortWindowNeverNonPositive(t *testing.T) {
 	// A window shorter than the pane count cannot be filled exactly (each
 	// pane needs at least 1 row), but stackHeights must still never return
 	// a non-positive height even in that impossible-to-satisfy case.
-	stack := []Strand{
-		{GUID: "r1", Parent: "", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorBelowParent, ShrinkWhenWaitingOnChild: true}},
-		{GUID: "r2", Parent: "r1", PaneID: "%2", Live: true, Display: Display{Anchor: AnchorBelowParent, ShrinkWhenWaitingOnChild: true}},
-		{GUID: "r3", Parent: "r2", PaneID: "%3", Live: true, Display: Display{Anchor: AnchorBelowParent, ShrinkWhenWaitingOnChild: true}},
-		{GUID: "active", Parent: "r3", PaneID: "%4", Live: true, Display: Display{Anchor: AnchorBelowParent}},
-	}
 	box := Box{X: 0, Y: 0, W: 100, H: 6} // usable = 6 - 3 dividers = 3, less than 4 panes
-	p := Params{CollapsedStripRows: 3, MinFullRows: 3}
+	p := Params{CollapsedRows: 3, MinFullRows: 3}
 
-	placements := stackHeights(stack, box, p)
-	for _, pl := range placements {
+	for _, pl := range stackHeights(stackOf(4), box, p) {
 		if pl.height <= 0 {
 			t.Errorf("placement %+v has non-positive height in an impossible-to-fit window", pl)
 		}
@@ -225,21 +216,12 @@ func TestClampBandHeight(t *testing.T) {
 	}
 }
 
-func TestIsAncestorAndBuildStackBodyIntegration(t *testing.T) {
-	// Cards 5 (layout.go) and 7 (focus.go) ship no standalone _test.go
-	// files; this exercises isAncestor's role in stackHeights' collapse
-	// decision together with buildStackBody/wrapLayout turning the
-	// resulting placements into a checksum-prefixed layout string.
-	stack := chainStack(true, false)
-	if !isAncestor(stack[0], stack) {
-		t.Errorf("root must be an ancestor of mid and active")
-	}
-	if isAncestor(stack[2], stack) {
-		t.Errorf("active (leaf) must not be an ancestor of anything")
-	}
-
+func TestStackHeightsAndBuildStackBodyIntegration(t *testing.T) {
+	// Exercises stackHeights together with buildStackBody/wrapLayout turning
+	// the resulting placements into a checksum-prefixed layout string.
+	stack := stackOf(3)
 	box := Box{X: 0, Y: 0, W: 100, H: 15}
-	p := Params{CollapsedStripRows: 2, MinFullRows: 3}
+	p := Params{CollapsedRows: 2, MinFullRows: 3}
 	placements := stackHeights(stack, box, p)
 
 	body := buildStackBody(box, placements)
@@ -249,106 +231,5 @@ func TestIsAncestorAndBuildStackBodyIntegration(t *testing.T) {
 	}
 	if full[4] != ',' {
 		t.Errorf("layout string = %q, want checksum then comma then body", full)
-	}
-}
-
-// fixedStrand returns a live below-parent strand with the given fixed row budget.
-func fixedStrand(guid, parent, pane string, fixed int, shrink bool) Strand {
-	return Strand{GUID: guid, Parent: parent, PaneID: pane, Live: true,
-		Display: Display{Anchor: AnchorBelowParent, FixedRows: fixed, ShrinkWhenWaitingOnChild: shrink}}
-}
-
-func TestStackHeightsFixedRowsBudget(t *testing.T) {
-	tests := []struct {
-		name    string
-		stack   []Strand
-		boxH    int
-		strip   int
-		want    []int
-		wantPin []bool
-	}{
-		{
-			name:    "FixedAboveOneFull",
-			stack:   []Strand{fixedStrand("a", "", "%1", 3, false), fixedStrand("b", "a", "%2", 0, false)},
-			boxH:    20,
-			strip:   2,
-			want:    []int{3, 20 - 3 - 1},
-			wantPin: []bool{true, false},
-		},
-		{
-			name: "FixedAboveSeveralFullRemainderToBottom",
-			stack: []Strand{
-				fixedStrand("a", "", "%1", 3, false),
-				fixedStrand("b", "a", "%2", 0, false),
-				fixedStrand("c", "a", "%3", 0, false),
-			},
-			boxH:    20,
-			strip:   2,
-			want:    []int{3, 7, 8}, // usable 18 - 3 = 15 -> 7 each, remainder 1 to the bottom
-			wantPin: []bool{true, false, false},
-		},
-		{
-			name:    "FixedWinsOverShrinkCollapse",
-			stack:   []Strand{fixedStrand("a", "", "%1", 3, true), fixedStrand("b", "a", "%2", 0, false)},
-			boxH:    20,
-			strip:   2,
-			want:    []int{3, 16},
-			wantPin: []bool{true, false},
-		},
-		{
-			name:    "LoneFixedFillsBox",
-			stack:   []Strand{fixedStrand("a", "", "%1", 3, false)},
-			boxH:    20,
-			strip:   2,
-			want:    []int{20},
-			wantPin: []bool{false},
-		},
-		{
-			name:    "FixedAtBottomIsAFullPane",
-			stack:   []Strand{fixedStrand("a", "", "%1", 0, false), fixedStrand("b", "a", "%2", 3, false)},
-			boxH:    20,
-			strip:   2,
-			want:    []int{9, 10},
-			wantPin: []bool{false, false},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := stackHeights(tt.stack, Box{W: 100, H: tt.boxH}, Params{CollapsedStripRows: tt.strip, MinFullRows: 3})
-			sum := len(got) - 1
-			for i, pl := range got {
-				if pl.height != tt.want[i] {
-					t.Errorf("height[%d] = %d, want %d (all: %+v)", i, pl.height, tt.want[i], got)
-				}
-				if pl.strip != tt.wantPin[i] {
-					t.Errorf("strip[%d] = %v, want %v", i, pl.strip, tt.wantPin[i])
-				}
-				sum += pl.height
-			}
-			if sum != tt.boxH {
-				t.Errorf("heights plus dividers = %d, want box %d", sum, tt.boxH)
-			}
-		})
-	}
-}
-
-func TestStackHeightsFixedRowsTooShortWindowReclaimsFixedFirst(t *testing.T) {
-	stack := []Strand{
-		fixedStrand("a", "", "%1", 6, false),
-		fixedStrand("b", "a", "%2", 0, false),
-		fixedStrand("c", "b", "%3", 0, false),
-	}
-	// usable = 8 - 2 = 6; fixed 6 leaves 0 for two full panes -> both borrow 1, reclaimed from the fixed strand.
-	got := stackHeights(stack, Box{W: 100, H: 8}, Params{CollapsedStripRows: 2, MinFullRows: 3})
-	want := []int{4, 1, 1}
-	sum := 2
-	for i, pl := range got {
-		if pl.height != want[i] {
-			t.Errorf("height[%d] = %d, want %d (all: %+v)", i, pl.height, want[i], got)
-		}
-		sum += pl.height
-	}
-	if sum != 8 {
-		t.Errorf("heights plus dividers = %d, want 8", sum)
 	}
 }

@@ -9,7 +9,9 @@ import "fmt"
 // driverPrompt composes the ly-drive session's launch prompt: a short pointer, never a copy of the
 // skill. It names the ly-drive skill invocation and the plugin it ships in, the run-id, the report
 // path the session must write at every stop condition, and an explicit statement that this session
-// runs in autonomous mode with no operator to ask.
+// runs in autonomous mode with no operator to ask. As its last act, after writing its stop report,
+// the session runs driverTeardownCommand to end its own strand; the command rides this loom-launched
+// prompt alone, so an operator-launched ly-drive gets none and stays open.
 // A session without the skill is told to stop rather than search for a copy: a filesystem search
 // finds whichever checkout happens to exist, so the run would follow an arbitrary version of the
 // skill's contract.
@@ -22,7 +24,11 @@ import "fmt"
 // provider specifics under the claude engine package.
 func driverPrompt(runID string, reportPath string) string {
 	return fmt.Sprintf(
-		"Run the ly-drive skill (from loomyard's ly plugin) for run-id %q. If that skill is not available to you, do not search the filesystem for a copy, which may be a stale version: write to the report that the ly plugin is not installed and stop. You are running autonomously, with no operator to ask -- decide and proceed on your own judgment. Write your report to %q at every stop condition (task done, or a failure you cannot repair).",
-		runID, reportPath,
+		"Run the ly-drive skill (from loomyard's ly plugin) for run-id %q. If that skill is not available to you, do not search the filesystem for a copy, which may be a stale version: write to the report that the ly plugin is not installed and stop. You are running autonomously, with no operator to ask -- decide and proceed on your own judgment. Write your report to %q at every stop condition (task done, or a failure you cannot repair). After writing it, as your very last act, end your own session by running: %s",
+		runID, reportPath, driverTeardownCommand,
 	)
 }
+
+// driverTeardownCommand is the end-of-session command a loom-launched driver runs after its stop
+// report. It is built from driverStrandDisplayName so the name cannot drift from the strand's own.
+const driverTeardownCommand = "lyx reed remove --name " + driverStrandDisplayName + " --detach"

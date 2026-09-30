@@ -105,6 +105,11 @@ type RunState struct {
 	// default a pre-this-change binary's run.json also decodes to, so an old record costs one extra
 	// probe rather than silently skipping one it never earned.
 	Started bool `json:"started"`
+	// AskingOffset is the events-file byte offset Run.finalize had consumed when it classified
+	// OutcomeAsking, nil for every other outcome and for a record written by a binary that predates
+	// the field. Attach compares it against the events file's current size: growth past it means the
+	// strand kept working after the ask, so the run is attachable rather than respawn-eligible.
+	AskingOffset *int64 `json:"askingOffset,omitempty"`
 }
 
 // createRunDir mints a fresh run id, creates <root>/<runID>, and returns

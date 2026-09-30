@@ -122,31 +122,11 @@ func TestDriverStrandDisplayName_DiffersFromOtherStrandNames(t *testing.T) {
 	}
 }
 
-func TestMustAttach(t *testing.T) {
-	tests := []struct {
-		name       string
-		noAttach   bool
-		wantAttach bool
-	}{
-		{"NoAttachSet_NoAttach", true, false},
-		{"NoAttachUnset_Attach", false, true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := mustAttach(tt.noAttach)
-			if got != tt.wantAttach {
-				t.Errorf("mustAttach(%v) = %v; want %v", tt.noAttach, got, tt.wantAttach)
-			}
-		})
-	}
-}
-
 // TestStartVerb_NoAttachFlag_DefaultsFalse pins the regression this flag most plausibly causes: a
 // silently flipped default. It reads the built command tree's own flag lookup -- rather than the
 // package variable a stray reassignment elsewhere in the package could leave stale -- so the
 // assertion covers registration and default together, then ties that default to the branch it
-// controls by feeding it straight into mustAttach.
+// controls by feeding it straight into decideHandover.
 //
 // An invocation that never passes --no-attach must take today's attach path unchanged, and nothing
 // else in this package would catch a default silently flipped to true.
@@ -161,8 +141,8 @@ func TestStartVerb_NoAttachFlag_DefaultsFalse(t *testing.T) {
 	}
 
 	defaultNoAttach := flag.Value.String() == "true"
-	if got := mustAttach(defaultNoAttach); !got {
-		t.Errorf("mustAttach(%v) over the registered default = %v; want true -- an invocation with no flag must still attach", defaultNoAttach, got)
+	if got := decideHandover(defaultNoAttach, "", false, "", ""); got != handoverAttach {
+		t.Errorf("decideHandover(%v, unset $TMUX) over the registered default = %v; want handoverAttach -- an invocation with no flag must still attach", defaultNoAttach, got)
 	}
 }
 
@@ -170,12 +150,13 @@ func TestStartVerb_NoAttachFlag_DefaultsFalse(t *testing.T) {
 // once the driver is up: before it, the verb returned exit 0 with no output at all, so a script
 // could not tell a driver that came up from a silent failure (crucible round fable-high-r2, F2).
 func TestNoAttachFields_PinsSuccessEnvelope(t *testing.T) {
-	got := noAttachFields("llm", "task-priority", "/hub/task-priority/_lyx/shed/self/status.json")
+	got := noAttachFields("llm", "task-priority", "task-priority", "/hub/task-priority/_lyx/shed/task-priority/status.json", "")
 	want := map[string]any{
 		"attached":    false,
 		"driver":      "llm",
 		"slug":        "task-priority",
-		"status_file": "/hub/task-priority/_lyx/shed/self/status.json",
+		"run_id":      "task-priority",
+		"status_file": "/hub/task-priority/_lyx/shed/task-priority/status.json",
 	}
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Errorf("noAttachFields() mismatch (-want +got):\n%s", diff)
@@ -454,9 +435,12 @@ func TestDispositionForHandshake(t *testing.T) {
 // worktree saw the stale "loom-status" entry, reported "already there", and left the operator with
 // no status read-out at all.
 func TestResolveStatusStrandAction(t *testing.T) {
+	cur := buildIdentity{Path: "/bin/lyx", Size: 10, ModTime: 100}
+	matching := &statusSidecar{GUID: "g0", Build: cur}
 	tests := []struct {
 		name     string
 		strands  []reedengine.StrandStatus
+		sidecar  *statusSidecar
 		want     statusStrandAction
 		wantGUID string
 	}{
@@ -473,18 +457,21 @@ func TestResolveStatusStrandAction(t *testing.T) {
 		{
 			name:     "LiveStatusStrand",
 			strands:  []reedengine.StrandStatus{{GUID: "g0", Name: statusStrandDisplayName, PaneID: "%0", Live: true}},
+			sidecar:  matching,
 			want:     statusStrandKeep,
 			wantGUID: "g0",
 		},
 		{
 			name:     "DeadEntryWithClearedPaneBinding",
 			strands:  []reedengine.StrandStatus{{GUID: "g0", Name: statusStrandDisplayName, PaneID: "", Live: false}},
+			sidecar:  matching,
 			want:     statusStrandReplace,
 			wantGUID: "g0",
 		},
 		{
 			name:     "DeadEntryWithADeadPane",
 			strands:  []reedengine.StrandStatus{{GUID: "g0", Name: statusStrandDisplayName, PaneID: "%0", Live: false}},
+			sidecar:  matching,
 			want:     statusStrandReplace,
 			wantGUID: "g0",
 		},
@@ -494,14 +481,35 @@ func TestResolveStatusStrandAction(t *testing.T) {
 				{GUID: "g1", Name: "plan::g1", PaneID: "%3", Live: true},
 				{GUID: "g0", Name: statusStrandDisplayName, PaneID: "%0", Live: true},
 			},
+			sidecar:  matching,
 			want:     statusStrandKeep,
+			wantGUID: "g0",
+		},
+		{
+			name:     "LiveStrandDifferentBuildReplaces",
+			strands:  []reedengine.StrandStatus{{GUID: "g0", Name: statusStrandDisplayName, PaneID: "%0", Live: true}},
+			sidecar:  &statusSidecar{GUID: "g0", Build: buildIdentity{Path: "/bin/lyx", Size: 11, ModTime: 100}},
+			want:     statusStrandReplace,
+			wantGUID: "g0",
+		},
+		{
+			name:     "LiveStrandNoSidecarReplaces",
+			strands:  []reedengine.StrandStatus{{GUID: "g0", Name: statusStrandDisplayName, PaneID: "%0", Live: true}},
+			want:     statusStrandReplace,
+			wantGUID: "g0",
+		},
+		{
+			name:     "LiveStrandSidecarNamesOtherGUIDReplaces",
+			strands:  []reedengine.StrandStatus{{GUID: "g0", Name: statusStrandDisplayName, PaneID: "%0", Live: true}},
+			sidecar:  &statusSidecar{GUID: "other", Build: cur},
+			want:     statusStrandReplace,
 			wantGUID: "g0",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, gotGUID := resolveStatusStrandAction(tt.strands)
+			got, gotGUID := resolveStatusStrandAction(tt.strands, tt.sidecar, cur)
 			if got != tt.want {
 				t.Errorf("resolveStatusStrandAction(%+v) action = %v; want %v", tt.strands, got, tt.want)
 			}
@@ -774,18 +782,12 @@ func TestStatusStrandAddSpec(t *testing.T) {
 	if got.Display.Focus {
 		t.Error("Display.Focus = true; want false")
 	}
-	if !got.Display.ShrinkWhenWaitingOnChild {
-		t.Error("Display.ShrinkWhenWaitingOnChild = false; want true")
-	}
-	if got.Display.FixedRows != statusStrandFixedRows {
-		t.Errorf("Display.FixedRows = %d; want %d", got.Display.FixedRows, statusStrandFixedRows)
-	}
 }
 
 // TestStatusStrandAddSpecPinnedByRender ties the spec to render's layout: stacked above a driver
-// strand the status strand is pinned at exactly its budget, and alone it is the active strand and
-// is not pinned. Both strands are parentless, as the bootstrap adds them, so the shrink rule never
-// applies and only FixedRows can pin the band.
+// strand the status strand is the collapsed placement and is pinned at collapsed_rows, and alone it
+// is the bottom-most strand and is not pinned. Both strands are parentless, as the bootstrap adds
+// them; the layout rule sizes them by insertion position alone.
 func TestStatusStrandAddSpecPinnedByRender(t *testing.T) {
 	status := render.Strand{GUID: "s", Display: statusStrandAddSpec("x").Display, PaneID: "%1", Live: true}
 	driver := render.Strand{
@@ -795,10 +797,10 @@ func TestStatusStrandAddSpecPinnedByRender(t *testing.T) {
 		Live:    true,
 	}
 	box := render.Box{W: 200, H: 50}
-	params := render.Params{CollapsedStripRows: 2, MinFullRows: 3}
+	params := render.Params{CollapsedRows: 2, MinFullRows: 3}
 
 	pins := render.FixedHeightPins([]render.Strand{status, driver}, box, params)
-	want := []render.Pin{{PaneID: "%1", Height: statusStrandFixedRows}}
+	want := []render.Pin{{PaneID: "%1", Height: params.CollapsedRows}}
 	if diff := cmp.Diff(want, pins); diff != "" {
 		t.Errorf("pins mismatch (-want +got):\n%s", diff)
 	}

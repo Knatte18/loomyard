@@ -11,9 +11,8 @@ import "testing"
 
 // TestFocusTarget_ColdBootstrapFallsThroughToBottomMost pins case 1: two parentless strands in
 // insertion order — a status strand then a driver strand, neither carrying Display.Focus —
-// resolve to the driver strand's pane. orderStack sorts by chain depth with sort.SliceStable and
-// equal-depth strands keep insertion order, leaving the driver strand last, and focusTarget falls
-// through to bottom-most.
+// resolve to the driver strand's pane. orderStack keeps insertion order, leaving the driver strand
+// last, and focusTarget falls through to bottom-most.
 func TestFocusTarget_ColdBootstrapFallsThroughToBottomMost(t *testing.T) {
 	strands := []Strand{
 		{GUID: "status", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorBelowParent}},

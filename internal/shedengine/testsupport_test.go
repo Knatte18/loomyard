@@ -108,7 +108,7 @@ func commonSeed(currentProducer string) Status {
 		State:           StateRunning,
 		Error:           "",
 		PauseRequested:  false,
-		Activity:        composeActivity(currentProducer, nil, StateRunning, ""),
+		Activity:        composeActivity(currentProducer, nil, StateRunning, "", ""),
 		History:         nil,
 	}
 }

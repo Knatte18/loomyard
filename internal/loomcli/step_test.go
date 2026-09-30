@@ -23,10 +23,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 )
 
-// TestStepEnvelope_KeySetIsExactlyThirteen asserts stepEnvelope's returned map carries exactly the thirteen
+// TestStepEnvelope_KeySetIsExactlySixteen asserts stepEnvelope's returned map carries exactly the sixteen
 // documented keys, no more and no fewer, built and compared in both directions so a key added
 // without a test fails here.
-func TestStepEnvelope_KeySetIsExactlyThirteen(t *testing.T) {
+func TestStepEnvelope_KeySetIsExactlySixteen(t *testing.T) {
 	res := shedengine.StepResult{
 		Producer: "Discussion-Write",
 		Outcome:  shedengine.Done,
@@ -36,12 +36,12 @@ func TestStepEnvelope_KeySetIsExactlyThirteen(t *testing.T) {
 		Reason:   "",
 		History:  []shedengine.HistoryEntry{{Producer: "Discussion-Write", Outcome: shedengine.Done}},
 	}
-	envelope := shedverbs.StepEnvelope(res, "reinvoke", "/tmp/status.json", shedverbs.StepLocations{})
+	envelope := shedverbs.StepEnvelope(res, "reinvoke", "/tmp/status.json", shedverbs.StepLocations{}, nil)
 
 	want := []string{
 		"producer", "outcome", "output", "next", "state", "reason",
 		"continue", "history_length", "next_interrupt_policy", "status_file",
-		"trace_file", "friction_dir", "scratch_dir",
+		"trace_file", "friction_dir", "scratch_dir", "trace_id", "run_id", "progress",
 	}
 
 	if len(envelope) != len(want) {
@@ -78,7 +78,7 @@ func TestStepEnvelope_ContinueTracksRunningState(t *testing.T) {
 	}
 	for _, state := range states {
 		t.Run(string(state), func(t *testing.T) {
-			envelope := shedverbs.StepEnvelope(shedengine.StepResult{State: state}, "", "", shedverbs.StepLocations{})
+			envelope := shedverbs.StepEnvelope(shedengine.StepResult{State: state}, "", "", shedverbs.StepLocations{}, nil)
 			want := state == shedengine.StateRunning
 			if envelope["continue"] != want {
 				t.Errorf("shedverbs.StepEnvelope(state=%q)[\"continue\"] = %v; want %v", state, envelope["continue"], want)
@@ -179,7 +179,7 @@ func TestStepEnvelope_FieldMapping(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			envelope := shedverbs.StepEnvelope(tt.res, "", "/some/status.json", shedverbs.StepLocations{})
+			envelope := shedverbs.StepEnvelope(tt.res, "", "/some/status.json", shedverbs.StepLocations{}, nil)
 
 			if got := envelope["producer"]; got != tt.wantProducer {
 				t.Errorf("envelope[\"producer\"] = %v; want %v", got, tt.wantProducer)
@@ -226,7 +226,7 @@ func TestStepEnvelope_NextInterruptPolicyMatchesTable(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			nextPolicy := loomshed.InterruptPolicyFor(tt.next)
-			envelope := shedverbs.StepEnvelope(shedengine.StepResult{Next: tt.next}, nextPolicy, "", shedverbs.StepLocations{})
+			envelope := shedverbs.StepEnvelope(shedengine.StepResult{Next: tt.next}, nextPolicy, "", shedverbs.StepLocations{}, nil)
 			if got := envelope["next_interrupt_policy"]; got != tt.want {
 				t.Errorf("envelope[\"next_interrupt_policy\"] = %v; want %v", got, tt.want)
 			}

@@ -20,9 +20,10 @@ const shedDirName = "shed"
 
 // RunDir returns the path to the durable, fabric-synced directory holding a single run's
 // seed.json and status.json: the given *lyxcwd.Location's AnchorPath() joined with
-// lyxdirs.LyxDirName, shedDirName, and runID.
+// lyxdirs.LyxDirName, shedDirName, and the run's directory segment (runSegment: the worktree slug
+// for SelfRunID, or the legacy "self" directory when only that one exists).
 func RunDir(l *lyxcwd.Location, runID string) string {
-	return filepath.Join(l.AnchorPath(), lyxdirs.LyxDirName, shedDirName, runID)
+	return filepath.Join(l.AnchorPath(), lyxdirs.LyxDirName, shedDirName, runSegment(l, runID))
 }
 
 // SeedFile returns the path to a run's durable seed.json, under RunDir(l, runID).
@@ -37,10 +38,16 @@ func StatusFile(l *lyxcwd.Location, runID string) string {
 
 // ScratchDir returns the path to the ephemeral, never-tracked scratch directory mirroring RunDir at
 // the .lyx subpath: the given *lyxcwd.Location's AnchorPath() joined with lyxdirs.DotLyxDirName,
-// shedDirName, and runID.
+// shedDirName, and the same directory segment RunDir joins.
 // Per the Durable-vs-Ephemeral State Invariant, it sits at the mirrored subpath of RunDir.
 func ScratchDir(l *lyxcwd.Location, runID string) string {
-	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, shedDirName, runID)
+	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, shedDirName, runSegment(l, runID))
+}
+
+// StepsDir returns the path to the ephemeral directory holding a run's `lyx shed step` records, under
+// ScratchDir(l, runID), so it sits under .lyx per the Durable-vs-Ephemeral State Invariant.
+func StepsDir(l *lyxcwd.Location, runID string) string {
+	return filepath.Join(ScratchDir(l, runID), "steps")
 }
 
 // RunLock returns the path to a run's ephemeral advisory lock guarding the whole duration of the
@@ -65,19 +72,21 @@ func LastCommitMarker(l *lyxcwd.Location, runID string) string {
 }
 
 // SeedRel returns the worktree-anchor-relative form of SeedFile's path: the join of
-// lyxdirs.LyxDirName, shedDirName, runID, and "seed.json".
+// lyxdirs.LyxDirName, shedDirName, the run's directory segment under l, and "seed.json".
 // It exists so a caller building a fabric commit pathspec for fabricengine.CommitAnchoredPaths'
 // relPaths argument never has to name a directory segment shedrun owns.
-func SeedRel(runID string) string {
-	return filepath.Join(lyxdirs.LyxDirName, shedDirName, runID, "seed.json")
+// It takes l for the same alias resolution RunDir applies, so it names the file WriteSeed writes.
+func SeedRel(l *lyxcwd.Location, runID string) string {
+	return filepath.Join(lyxdirs.LyxDirName, shedDirName, runSegment(l, runID), "seed.json")
 }
 
 // StatusRel returns the worktree-anchor-relative form of StatusFile's path: the join of
-// lyxdirs.LyxDirName, shedDirName, runID, and "status.json".
+// lyxdirs.LyxDirName, shedDirName, the run's directory segment under l, and "status.json".
 // It exists so a caller building a fabric commit pathspec for fabricengine.CommitAnchoredPaths'
 // relPaths argument never has to name a directory segment shedrun owns.
-func StatusRel(runID string) string {
-	return filepath.Join(lyxdirs.LyxDirName, shedDirName, runID, "status.json")
+// It takes l for the same alias resolution RunDir applies, so it names the file StatusFile addresses.
+func StatusRel(l *lyxcwd.Location, runID string) string {
+	return filepath.Join(lyxdirs.LyxDirName, shedDirName, runSegment(l, runID), "status.json")
 }
 
 // PrimeRunLock returns the path to the hub-scoped ephemeral advisory lock that sits one level above

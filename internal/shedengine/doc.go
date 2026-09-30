@@ -27,6 +27,10 @@
 // The OnStuck "" escalation persists the producer's own OutputPointer.Reason as the blocked halt's
 // error (one line, falling back to ReasonNoOnStuckTarget when empty); budget exhaustion persists
 // ReasonBounceBudgetExhausted regardless of the producer's Reason.
+// An Awaiting outcome is the planned human hand-off and routes nowhere: the run halts in state
+// "awaiting" with the producer's Reason as the error, no bounce budget is consulted or spent, and a
+// resume re-calls the same producer, exactly as it does after a blocked halt.
+// The persisted state vocabulary is running, paused, done, blocked, failed and awaiting.
 // A Done outcome routes via OnDone the same way: "" finishes the whole run from any list position
 // (state: "done"), and a non-empty value jumps to the Name it names with no positional fallback of
 // any kind -- an omitted OnDone is indistinguishable from an intended terminal one and ends the run
@@ -50,8 +54,8 @@
 // # The ShedProducer contract's two caller-side obligations
 //
 // A ShedProducer implementation binds itself to two obligations Shed cannot enforce mechanically.
-// First, Call must return exactly Done or Stuck and nothing else; a third value is an engine-level
-// failure, not a producer verdict.
+// First, Call must return exactly Done, Stuck or Awaiting and nothing else; a fourth value is an
+// engine-level failure, not a producer verdict.
 // Second, Call must surface context cancellation as a non-nil error, never as Stuck.
 // The second obligation cannot be enforced mechanically: a Stuck return with a cancelled context is
 // indistinguishable to Shed from a genuine producer verdict, so a producer that reports cancellation

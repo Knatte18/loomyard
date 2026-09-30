@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
+	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
@@ -35,6 +36,9 @@ type battenCLI struct {
 	shedPaths shedbuild.ShedPaths
 	// slug is the task slug read from the command's own arguments.
 	slug string
+	// routing is the recipe's producer-graph projection armAt loads (loadRouting) and specFor copies
+	// onto the Spec; zero on a hand-populated receiver, which reports no progress.
+	routing shedengine.Routing
 	// abandonedSession is the value the Teardown.Shutdown seam records on the receiver -- carried
 	// here rather than only returned from the seam, so the run verb can surface it on the envelope
 	// after the Shed's own Run has returned.

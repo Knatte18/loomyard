@@ -11,6 +11,9 @@ import (
 )
 
 // SelfRunID is the literal default run-id, meaning "this worktree's own primary run".
+// It is an alias for the worktree's slug that ResolveRunID alone interprets: a new run's directory
+// is named by the slug, and only a run started before that rename keeps living under the "self"
+// directory, through a read-only legacy fallback in the directory-segment resolution.
 // It is always a legal address: ValidateRunID accepts it and IsReserved is the only check that
 // treats it specially, and only at slug-derivation sites.
 const SelfRunID = "self"

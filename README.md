@@ -165,7 +165,7 @@ Preflight → Loom-Preflight
   → Discussion-Write → [Discussion-Review segment]
   → Plan-Write → [Plan-Review segment]
   → Batchifier → Webster → [Webster-Review segment]
-  → Publish → Finalize
+  → Describe → Publish → Finalize → Friction-Reflect
 ```
 
 Each `[…-Review segment]` is two rows: a **`Bouncer`** (the judge — reads the artifact against a rubric, writes a verdict and a cross-round ledger) and a **`BurlerRound`** (one `burler` review+fix round).

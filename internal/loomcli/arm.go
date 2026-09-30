@@ -157,7 +157,26 @@ func (c *loomCLI) armAt(location *lyxcwd.Location, verb string, args []string) (
 		return shedverbs.Spec{}, err
 	}
 
+	if err := c.loadRouting(); err != nil {
+		return shedverbs.Spec{}, err
+	}
+
 	return c.specFor(verb), nil
+}
+
+// loadRouting projects loom's recipe routing onto c.routing, with MaxBounces taken from c.shedPaths
+// so status reports the same bounce budget the engine enforces. It runs after wiring, which is what
+// fills c.shedPaths, and is the one place the routing can return an error; specFor only copies it.
+func (c *loomCLI) loadRouting() error {
+	routing, err := loomrecipe.Routing()
+	if err != nil {
+		return err
+	}
+
+	routing.MaxBounces = c.shedPaths.MaxBounces
+	c.routing = routing
+
+	return nil
 }
 
 // specFor fills a Spec from c's already-wired fields, performing no resolution, no wire call, and
@@ -198,7 +217,10 @@ func (c *loomCLI) specFor(verb string) shedverbs.Spec {
 	// location working.
 	if c.location != nil {
 		spec.ScratchDir = shedrun.ScratchDir(c.location, c.runID)
+		spec.StepsDir = shedrun.StepsDir(c.location, c.runID)
+		spec.RunID = shedrun.ResolveRunID(c.location, c.runID)
 	}
+	spec.Routing = c.routing
 
 	// BuildShed is filled per verb, never left generic: step drives c.buildLoomShed, which
 	// already performs the whole fabricengine.Open/CurrentBranch/OriginURL/ReadOrigin/

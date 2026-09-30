@@ -63,9 +63,9 @@ type commitStatusDeps struct {
 // Shed driven without batten's own auto-seed -- which every caller outside the CLI verbs is -- has
 // no seed to commit.
 func battenRunCommitPaths(location *lyxcwd.Location, runID string) []string {
-	paths := []string{shedrun.StatusRel(runID)}
+	paths := []string{shedrun.StatusRel(location, runID)}
 	if _, err := os.Stat(shedrun.SeedFile(location, runID)); err == nil {
-		paths = append(paths, shedrun.SeedRel(runID))
+		paths = append(paths, shedrun.SeedRel(location, runID))
 	}
 	return paths
 }

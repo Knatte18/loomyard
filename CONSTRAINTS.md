@@ -112,7 +112,7 @@ Every value in `internal/shedrecipe`'s registry constructs a `shedengine.ShedPro
   Enforced by `internal/shedverbs/seam_enforcement_test.go`.
 - The `lyx shed` recipe table lives in `internal/shedcli` alone, as one map literal reached through accessors, with every name armed by exactly one arming function and no `init()` self-registration. Enforced by `internal/shedcli/table_test.go`.
 - The `step` refusal-kind vocabulary stays closed at its five values.
-  The step envelope's key set (closed by doc comment and test, not by this invariant) carries `trace_file`, `friction_dir` and `scratch_dir` on the success and every error envelope, and the status envelope carries `trace_dir` on every envelope.
+  The step envelope's key set (closed by doc comment and test, not by this invariant) carries `trace_file`, `friction_dir`, `scratch_dir`, `trace_id` and `run_id` on the success and every error envelope, and the status envelope carries `trace_dir` on every envelope.
   Enforced by `internal/shedverbs/step_test.go`.
 - `internal/shedverbs` is not itself a CLI module and is not counted in the CLI/Cobra Invariant's tally at all — it exposes no `Command()`/`RunCLI` seam, only the `Verbs(texts, spec)` constructor the three subtrees build from.
 - Neither `shedverbs` nor `shedcli` is added to the Told-Geometry Invariant's bound-packages list: that list binds engines, both sit above that layer. `shedverbs` keeps this invariant's own no-resolver clause verbatim as its no-derived-paths obligation, enforced by `internal/shedverbs/seam_enforcement_test.go`. `internal/shedcli` is carved out of that clause by name, the one site in this pair that resolves: `resolvePersistentPreRun` must read a seed before it knows which recipe to arm, a seed read is a path read, and a path read needs an anchor, so `shedcli` calls `lyxcwd.Resolve` and builds seed paths from the result. Its narrower obligation is that every path it touches comes from an `internal/shedrun` constructor and none is derived locally — `shedcli` still declares no path segment of its own, it just resolves the anchor those `shedrun` constructors need.
@@ -124,6 +124,9 @@ Every value in `internal/shedrecipe`'s registry constructs a `shedengine.ShedPro
 - No other production file names the `shed` segment or the `seed.json` filename in path-construction context.
 - No other package decodes or encodes the `Seed` struct.
 - A run-id is validated as a single path segment (`ValidateRunID`) before being joined onto any anchor.
+- `self` is an alias only `shedrun.ResolveRunID` interprets: it maps to the told location's worktree slug (`l.WorktreeName`), and a run's directory is named by that slug.
+  The one exception is a read-only legacy fallback in `shedrun`'s directory-segment resolution: when `_lyx/shed/<slug>/` is absent and `_lyx/shed/self/` exists, both spellings join `self`, so a run started before the rename keeps working with no on-disk migration.
+  No other package resolves `self`, and none joins `SelfRunID` onto a path itself.
 
 ## Driver Choice Single-Site Invariant
 
@@ -176,7 +179,7 @@ Every lyx CLI module is a cobra subtree assembled under one root in `cmd/lyx/mai
 - An alias command may delegate into another module's subtree with no seam function of its own.
 - Non-empty `Short` on every command.
 - Errors are JSON via `internal/output`, one object per line; every `RunE` checks `clihelp.ShouldAbort` first.
-- Interactive-handoff exception, narrow and per-command: `reedengine` `attach`/`watchdog`, `lyx loom status --watch`, `lyx loom start`/`lyx start`, `lyx shed status --watch`, `lyx batten status --watch`.
+- Interactive-handoff exception, narrow and per-command: `reedengine` `attach`/`watchdog`, `lyx loom status --watch`, `lyx loom start`/`lyx start`, `lyx shed status --watch`, `lyx batten status --watch`, and the `status` verbs' terminal rendering.
 - Package naming: `<module>cli` imports `<module>engine`; engine never imports cli/cobra. Deviations: `stencilcli` → `internal/stencilstore`; `quarrycli` → `internal/planglyph`; `battencli` → `internal/battenshed`, `internal/battenrecipe` (no engine package of its own); `shedcli` → `internal/shedverbs`, `internal/loomcli`, `internal/battencli` (no engine package of its own).
 
 ## Completion Signal Invariant

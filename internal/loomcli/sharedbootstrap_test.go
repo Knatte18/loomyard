@@ -192,15 +192,16 @@ func TestResolveSeedDriver_ReadsOnlyTheSeedNeverAFlagOrConfig(t *testing.T) {
 // SelfRunID) alongside the status file and origin record, so a crashed-and-resumed bootstrap's
 // seed self-heals into the fabric exactly as the status file and origin record already do.
 func TestBootstrapCommitPaths_IncludesSeedRel(t *testing.T) {
-	got := bootstrapCommitPaths()
+	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "task-slug", AnchorRel: "."}
+	got := bootstrapCommitPaths(loc)
 
 	want := []string{
-		shedrun.StatusRel(shedrun.SelfRunID),
-		shedrun.SeedRel(shedrun.SelfRunID),
+		shedrun.StatusRel(loc, shedrun.SelfRunID),
+		shedrun.SeedRel(loc, shedrun.SelfRunID),
 		fabricengine.OriginRecordRel(),
 	}
 	if !reflect.DeepEqual(got, want) {
-		t.Errorf("bootstrapCommitPaths() = %v; want %v", got, want)
+		t.Errorf("bootstrapCommitPaths(loc) = %v; want %v", got, want)
 	}
 }
 

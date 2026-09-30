@@ -11,8 +11,9 @@
 //
 // # Outcome mapping
 //
-// Each adapter maps its own verdict onto shedengine's two-value Outcome contract, Done or Stuck,
-// and reports the output pointer differently because the four adapters report success differently:
+// Each adapter maps its own verdict onto Done or Stuck -- the two of shedengine's three outcomes
+// these adapters produce, since none of them hands off to a person with Awaiting -- and reports the
+// output pointer differently because the four adapters report success differently:
 //
 //   - SingleLLMProducer: shuttleengine.OutcomeDone maps to Done, reporting the first entry of the
 //     evaluated Spec's OutputFiles as the pointer's path.

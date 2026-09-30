@@ -135,6 +135,27 @@ func TestStartLLMDriverArm_ComposesAndStarts(t *testing.T) {
 	}
 }
 
+// TestStartLLMDriverArm_AddressesRunBySlug asserts the literal "self" never reaches the prompt: the
+// arm resolves it to the worktree slug for both the prompt and the report path.
+func TestStartLLMDriverArm_AddressesRunBySlug(t *testing.T) {
+	starter := &fakeDriverStarter{handle: stubDriverHandle{guid: "g-new", runDir: "/run/dir"}}
+	c := newTestLLMArmReceiver(t, starter, &fakeDriverPaneProbeForArm{})
+
+	if _, err := c.startLLMDriverArm(driverStrandNone, "", shedrun.SelfRunID); err != nil {
+		t.Fatalf("startLLMDriverArm() error = %v; want nil", err)
+	}
+	prompt := starter.gotSpec.Prompt
+	if !strings.Contains(prompt, `run-id "warp"`) {
+		t.Errorf("prompt = %q; want it to name the slug run-id \"warp\"", prompt)
+	}
+	if strings.Contains(prompt, `"self"`) || strings.Contains(prompt, string(filepath.Separator)+"self"+string(filepath.Separator)) {
+		t.Errorf("prompt = %q; want no literal self run-id or report path segment", prompt)
+	}
+	if !strings.Contains(prompt, "lyx reed remove --name loom-driver --detach") {
+		t.Errorf("prompt = %q; want the teardown command", prompt)
+	}
+}
+
 // TestStartLLMDriverArm_RemovesCorpseBeforeStart asserts the corpse removal happens before the run
 // start when the strand action is dead: a relaunch that started first and removed second would leave
 // two strands under one name, which reed's add has no upsert semantics to reconcile.

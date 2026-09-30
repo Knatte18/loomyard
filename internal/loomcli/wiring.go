@@ -48,7 +48,7 @@ type commitStatusDeps struct {
 	Push func() error
 }
 
-// statusCommitPathspec returns the fabric-sibling pathspec one status commit stages: shedrun.StatusRel(runID) alone, plus loomengine.LoomReviewsDirRel() when the reviews directory holds at least one non-directory entry anywhere beneath it.
+// statusCommitPathspec returns the fabric-sibling pathspec one status commit stages: shedrun.StatusRel(location, runID) alone, plus loomengine.LoomReviewsDirRel() when the reviews directory holds at least one non-directory entry anywhere beneath it.
 // Existence alone is not enough: shedrecipe's Bouncer and BurlerRound entries os.MkdirAll every review row's run directory at recipe build time,
 // so from a run's first transition the reviews root exists holding only empty segment directories.
 // `git add -- <dir>` accepts an empty directory,
@@ -58,7 +58,7 @@ type commitStatusDeps struct {
 // an archive rename commits both the new timestamped sibling and the old path's removal,
 // and a transition whose commit was skipped mid-merge is caught up by the next one.
 func statusCommitPathspec(location *lyxcwd.Location, runID string) []string {
-	paths := []string{shedrun.StatusRel(runID)}
+	paths := []string{shedrun.StatusRel(location, runID)}
 	if reviewsHoldFile(loomengine.LoomReviewsDir(location)) {
 		paths = append(paths, loomengine.LoomReviewsDirRel())
 	}

@@ -91,7 +91,7 @@ func TestConstructorAnchoring_Unanchored(t *testing.T) {
 	assertPath(t, "loomengine.DiscussionDecisionRecord", loomengine.DiscussionDecisionRecord(l), filepath.Join(lyxBase, "discussion", "decision-record.md"))
 	assertPath(t, "loomengine.DiscussionSupportLog", loomengine.DiscussionSupportLog(l), filepath.Join(lyxBase, "discussion", "support-log.md"))
 	assertPath(t, "loomengine.LandingDir", loomengine.LandingDir(l), filepath.Join(lyxBase, "landing"))
-	assertPath(t, "shedrun.StatusFile", shedrun.StatusFile(l, shedrun.SelfRunID), filepath.Join(lyxBase, "shed", shedrun.SelfRunID, "status.json"))
+	assertPath(t, "shedrun.StatusFile", shedrun.StatusFile(l, shedrun.SelfRunID), filepath.Join(lyxBase, "shed", l.WorktreeName, "status.json"))
 	assertPath(t, "websterengine.Dir", websterengine.Dir(l.AnchorPath()), filepath.Join(lyxBase, "webster"))
 	assertPath(t, "websterengine.ReportsDir", websterengine.ReportsDir(l.AnchorPath()), filepath.Join(lyxBase, "webster", "reports"))
 	assertPath(t, "pattern.File", pattern.File(l.AnchorPath()), filepath.Join(anchor, lyxdirs.LyxDirName, "PATTERN.md"))
@@ -100,8 +100,8 @@ func TestConstructorAnchoring_Unanchored(t *testing.T) {
 	// worktree-level .lyx entry, ephemeral and never git-tracked, joins onto
 	// dotLyxBase.
 	dotLyxBase := filepath.Join(anchor, ".lyx")
-	assertPath(t, "shedrun.StatusLock", shedrun.StatusLock(l, shedrun.SelfRunID), filepath.Join(dotLyxBase, "shed", shedrun.SelfRunID, "status.json.lock"))
-	assertPath(t, "shedrun.RunLock", shedrun.RunLock(l, shedrun.SelfRunID), filepath.Join(dotLyxBase, "shed", shedrun.SelfRunID, "run.lock"))
+	assertPath(t, "shedrun.StatusLock", shedrun.StatusLock(l, shedrun.SelfRunID), filepath.Join(dotLyxBase, "shed", l.WorktreeName, "status.json.lock"))
+	assertPath(t, "shedrun.RunLock", shedrun.RunLock(l, shedrun.SelfRunID), filepath.Join(dotLyxBase, "shed", l.WorktreeName, "run.lock"))
 	assertPath(t, "loomengine.LoomDriverLog", loomengine.LoomDriverLog(l), filepath.Join(dotLyxBase, "loom", "driver.log"))
 	assertPath(t, "loomengine.LoomBootstrapLock", loomengine.LoomBootstrapLock(l), filepath.Join(dotLyxBase, "loom", "bootstrap.lock"))
 	assertPath(t, "loomengine.LoomSelfreportFiled", loomengine.LoomSelfreportFiled(l), filepath.Join(dotLyxBase, "loom", "selfreport-filed.json"))
@@ -151,7 +151,7 @@ func TestConstructorAnchoring_SubpathAnchored(t *testing.T) {
 	assertPath(t, "loomengine.DiscussionDecisionRecord", loomengine.DiscussionDecisionRecord(l), filepath.Join(lyxBase, "discussion", "decision-record.md"))
 	assertPath(t, "loomengine.DiscussionSupportLog", loomengine.DiscussionSupportLog(l), filepath.Join(lyxBase, "discussion", "support-log.md"))
 	assertPath(t, "loomengine.LandingDir", loomengine.LandingDir(l), filepath.Join(lyxBase, "landing"))
-	assertPath(t, "shedrun.StatusFile", shedrun.StatusFile(l, shedrun.SelfRunID), filepath.Join(lyxBase, "shed", shedrun.SelfRunID, "status.json"))
+	assertPath(t, "shedrun.StatusFile", shedrun.StatusFile(l, shedrun.SelfRunID), filepath.Join(lyxBase, "shed", l.WorktreeName, "status.json"))
 	assertPath(t, "websterengine.Dir", websterengine.Dir(l.AnchorPath()), filepath.Join(lyxBase, "webster"))
 	assertPath(t, "websterengine.ReportsDir", websterengine.ReportsDir(l.AnchorPath()), filepath.Join(lyxBase, "webster", "reports"))
 	assertPath(t, "pattern.File", pattern.File(l.AnchorPath()), filepath.Join(anchor, lyxdirs.LyxDirName, "PATTERN.md"))
@@ -160,8 +160,8 @@ func TestConstructorAnchoring_SubpathAnchored(t *testing.T) {
 	// entry moves down by AnchorRel here too, just like the _lyx-durable
 	// group above.
 	dotLyxBase := filepath.Join(anchor, ".lyx")
-	assertPath(t, "shedrun.StatusLock", shedrun.StatusLock(l, shedrun.SelfRunID), filepath.Join(dotLyxBase, "shed", shedrun.SelfRunID, "status.json.lock"))
-	assertPath(t, "shedrun.RunLock", shedrun.RunLock(l, shedrun.SelfRunID), filepath.Join(dotLyxBase, "shed", shedrun.SelfRunID, "run.lock"))
+	assertPath(t, "shedrun.StatusLock", shedrun.StatusLock(l, shedrun.SelfRunID), filepath.Join(dotLyxBase, "shed", l.WorktreeName, "status.json.lock"))
+	assertPath(t, "shedrun.RunLock", shedrun.RunLock(l, shedrun.SelfRunID), filepath.Join(dotLyxBase, "shed", l.WorktreeName, "run.lock"))
 	assertPath(t, "loomengine.LoomDriverLog", loomengine.LoomDriverLog(l), filepath.Join(dotLyxBase, "loom", "driver.log"))
 	assertPath(t, "loomengine.LoomBootstrapLock", loomengine.LoomBootstrapLock(l), filepath.Join(dotLyxBase, "loom", "bootstrap.lock"))
 	assertPath(t, "loomengine.LoomSelfreportFiled", loomengine.LoomSelfreportFiled(l), filepath.Join(dotLyxBase, "loom", "selfreport-filed.json"))

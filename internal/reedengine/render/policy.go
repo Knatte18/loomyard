@@ -1,12 +1,10 @@
 // policy.go implements the anchor-to-placement dispatch: filtering strands down to the below-parent
-// stack (or excluding them entirely), ordering the stack deterministically by parent-chain depth,
-// and repairing a corrupt cyclic parent table so ordering always terminates.
+// stack (or excluding them entirely), ordering the stack by insertion,
+// and repairing a corrupt cyclic parent table so a persisted parent chain never hangs a caller.
 // This is the legible half of the policy layer — adding a new anchor means adding a case here, not
 // touching the mechanics layer in layout.go/checksum.go.
 
 package render
-
-import "sort"
 
 // partitionByAnchor filters strands down to the below-parent stack,
 // excluding AnchorHidden, not-live, and empty-PaneID strands that render
@@ -108,42 +106,11 @@ func severParent(out []Strand, guid string) {
 	}
 }
 
-// orderStack returns stack ordered by parent-chain depth (roots first),
-// preserving insertion order for siblings.
+// orderStack returns stack ordered by insertion — the persisted strand-table order the caller
+// passes — so a newly added strand is the bottom-most and no strand above it moves.
+// The parent chain plays no part in the order.
 func orderStack(stack []Strand) []Strand {
-	byGUID := make(map[string]Strand, len(stack))
-	for _, s := range stack {
-		byGUID[s.GUID] = s
-	}
-
-	depth := make(map[string]int, len(stack))
-	for _, s := range stack {
-		depth[s.GUID] = chainDepth(s, byGUID)
-	}
-
 	ordered := make([]Strand, len(stack))
 	copy(ordered, stack)
-	// sort.SliceStable preserves the original slice order among strands at
-	// the same depth, which is exactly the "siblings ordered by insertion
-	// order" rule.
-	sort.SliceStable(ordered, func(i, j int) bool {
-		return depth[ordered[i].GUID] < depth[ordered[j].GUID]
-	})
 	return ordered
-}
-
-// chainDepth counts hops from s up its parent chain until reaching a root or
-// a parent not in this stack.
-func chainDepth(s Strand, byGUID map[string]Strand) int {
-	depth := 0
-	cur := s.Parent
-	for cur != "" {
-		parent, ok := byGUID[cur]
-		if !ok {
-			break
-		}
-		depth++
-		cur = parent.Parent
-	}
-	return depth
 }

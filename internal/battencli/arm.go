@@ -312,7 +312,27 @@ func (c *battenCLI) armAt(location *lyxcwd.Location, runID string, explicit bool
 		return shedverbs.Spec{}, err
 	}
 
+	if err := c.loadRouting(); err != nil {
+		return shedverbs.Spec{}, err
+	}
+
 	return c.specFor(verb), nil
+}
+
+// loadRouting projects batten's recipe routing onto c.routing, with MaxBounces taken from
+// c.shedPaths so status reports the same bounce budget the engine enforces. It runs after wiring,
+// which is what fills c.shedPaths, and is the one place the routing can return an error; specFor
+// only copies it.
+func (c *battenCLI) loadRouting() error {
+	routing, err := battenrecipe.Routing()
+	if err != nil {
+		return err
+	}
+
+	routing.MaxBounces = c.shedPaths.MaxBounces
+	c.routing = routing
+
+	return nil
 }
 
 // specFor fills a Spec from c's already-wired fields, performing no resolution, no wire call, and
@@ -362,7 +382,10 @@ func (c *battenCLI) specFor(verb string) shedverbs.Spec {
 	// Batten carries no agent friction directory, so FrictionDir stays empty.
 	if c.location != nil {
 		spec.ScratchDir = shedrun.ScratchDir(c.location, c.slug)
+		spec.StepsDir = shedrun.StepsDir(c.location, c.slug)
+		spec.RunID = shedrun.ResolveRunID(c.location, c.slug)
 	}
+	spec.Routing = c.routing
 
 	return spec
 }
@@ -417,7 +440,7 @@ func (c *battenCLI) battenPreRun(ctx context.Context) error {
 		switch st.State {
 		case shedengine.StateDone:
 			return c.doneSlugRefusal()
-		case shedengine.StateRunning, shedengine.StateBlocked, shedengine.StateFailed, shedengine.StatePaused:
+		case shedengine.StateRunning, shedengine.StateBlocked, shedengine.StateAwaiting, shedengine.StateFailed, shedengine.StatePaused:
 			// Each of these resumes silently from the persisted current producer, with no
 			// re-seed, no prompt, and no flag: the engine itself already resumes from blocked
 			// and failed, and StateBlocked is the everyday path, since every operator-fixable
@@ -492,7 +515,7 @@ func (c *battenCLI) battenPreStep(ctx context.Context) (string, error) {
 		switch st.State {
 		case shedengine.StateDone:
 			return shedverbs.KindBootstrap, c.doneSlugRefusal()
-		case shedengine.StateRunning, shedengine.StateBlocked, shedengine.StateFailed, shedengine.StatePaused:
+		case shedengine.StateRunning, shedengine.StateBlocked, shedengine.StateAwaiting, shedengine.StateFailed, shedengine.StatePaused:
 			// Resumes silently, exactly as battenPreRun's own identical switch does.
 		default:
 			return shedverbs.KindBootstrap, fmt.Errorf("battencli: unrecognized status state %q", st.State)

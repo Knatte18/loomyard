@@ -340,8 +340,8 @@ func runAndGetReason(t *testing.T, p *Publish) string {
 	if err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
 	}
-	if outcome != shedengine.Stuck {
-		t.Fatalf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
+	if outcome != shedengine.Stuck && outcome != shedengine.Awaiting {
+		t.Fatalf("Call() outcome = %q; want %q or %q", outcome, shedengine.Stuck, shedengine.Awaiting)
 	}
 	return requireReason(t, ptr)
 }
@@ -475,7 +475,7 @@ func TestPublish_CreatePRFails_WarnsWithActionOwnerRepoAndCause(t *testing.T) {
 	}
 }
 
-func TestPublish_NoExistingPR_CreatesAndReportsStuck(t *testing.T) {
+func TestPublish_NoExistingPR_CreatesAndReportsAwaiting(t *testing.T) {
 	deps := newTestDeps(t)
 	writeSummary(t, deps.DescriptionPath, "My PR Title", "My PR body.")
 	var order []string
@@ -490,8 +490,8 @@ func TestPublish_NoExistingPR_CreatesAndReportsStuck(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
 	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
+	if outcome != shedengine.Awaiting {
+		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Awaiting)
 	}
 
 	wantOrder := []string{"push", "list", "create"}
@@ -517,7 +517,7 @@ func TestPublish_NoExistingPR_CreatesAndReportsStuck(t *testing.T) {
 	requireReason(t, ptr)
 }
 
-func TestPublish_OpenPR_StuckNoCreate(t *testing.T) {
+func TestPublish_OpenPR_AwaitingNoCreate(t *testing.T) {
 	deps := newTestDeps(t)
 	var order []string
 	deps.PushBranch = func() error { order = append(order, "push"); return nil }
@@ -535,8 +535,8 @@ func TestPublish_OpenPR_StuckNoCreate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
 	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
+	if outcome != shedengine.Awaiting {
+		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Awaiting)
 	}
 	if len(srv.createdBodies) != 0 {
 		t.Errorf("created pull requests = %d; want 0 (an open PR already exists)", len(srv.createdBodies))
@@ -849,8 +849,8 @@ func TestPublish_NilTaskHead_ApprovalIgnored(t *testing.T) {
 	fx := newApprovalFixture(t, `[{"number":7,"state":"open","head":{"sha":"aaa"}}]`, &Approval{PRNumber: 7, HeadSHA: "aaa", ApprovedAt: "2026-01-01T00:00:00Z"}, nil)
 	fx.p.deps.TaskHead = nil
 	outcome, ptr, err := fx.p.Call(context.Background())
-	if err != nil || outcome != shedengine.Stuck {
-		t.Fatalf("Call() = %q, %v; want Stuck, nil", outcome, err)
+	if err != nil || outcome != shedengine.Awaiting {
+		t.Fatalf("Call() = %q, %v; want Awaiting, nil", outcome, err)
 	}
 	if !strings.Contains(ptr.Reason, "already exists") {
 		t.Errorf("reason %q; want the ordinary already-open reason", ptr.Reason)
