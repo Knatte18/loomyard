@@ -1,4 +1,4 @@
-// paths.go declares the shed run-directory path constructors: the durable paths under _lyx (the run directory, its seed and status files, and the drive-reports directory), the ephemeral paths under .lyx (including the driver park marker), the anchor-relative paths for fabric commit pathspecs, and one hub-scoped ephemeral lock that sits one level above any single run-id.
+// paths.go declares the shed run-directory path constructors: the durable paths under _lyx (the run directory, its seed and status files, and the drive-reports directory), the ephemeral paths under .lyx (including the driver park marker), the anchor-relative paths for fabric commit pathspecs (including the run-records root), and one hub-scoped ephemeral lock that sits one level above any single run-id.
 // Every constructor is a plain filepath.Join onto the given *lyxcwd.Location's AnchorPath(), per the Cwd Resolution Invariant -- none of them calls os.Getwd or any git command.
 
 package shedrun
@@ -121,6 +121,15 @@ func DriveReportsDir(l *lyxcwd.Location, runID string) string {
 // It exists so a caller building a fabric commit pathspec never has to name a segment shedrun owns.
 func DriveReportsRel(l *lyxcwd.Location, runID string) string {
 	return filepath.Join(lyxdirs.LyxDirName, shedDirName, runSegment(l, runID), driveReportsDirName)
+}
+
+// RunsRootRel returns the worktree-anchor-relative path of the run-records root: the join of
+// lyxdirs.LyxDirName and shedDirName, the directory every run's RunDir sits under.
+// It takes no *lyxcwd.Location, because the root carries no run-id and so needs none of runSegment's alias resolution.
+// It exists so fabricengine's Add can drop the whole run-records tree from a freshly forked pair without naming the shed segment itself.
+// The path is anchor-relative, the same shape SeedRel and StatusRel return, suitable for fabricengine.CommitWeftPaths' relPaths.
+func RunsRootRel() string {
+	return filepath.Join(lyxdirs.LyxDirName, shedDirName)
 }
 
 // PrimeRunLock returns the path to the hub-scoped ephemeral advisory lock that sits one level above
