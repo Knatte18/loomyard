@@ -27,7 +27,11 @@ import (
 // reference with a future product's producer list rather than loom's private property.
 // SingleLLM is the other tolerated entry: the two other "loom: real LLM producers" roadmap items
 // (manifest/roadmap.md) have not yet landed a row that reaches it.
+//
+// Describe is allowlisted until card 10 (describe-recipe-row) adds the recipe row that reaches it,
+// and that card removes this entry.
 var coverageGuardAllowedUnreachableEngines = map[string]bool{
+	"Describe":  true,
 	"SingleLLM": true,
 	"Stub":      true,
 }
