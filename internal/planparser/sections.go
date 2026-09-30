@@ -54,7 +54,7 @@ func joinSectionBody(section []string) string {
 // so the first failing command fails the whole check.
 const verifyCommandJoiner = " && "
 
-// joinVerifyCommands returns section's non-blank lines, trimmed, chained with verifyCommandJoiner
+// joinVerifyCommands returns section's command lines — the non-blank lines left after skipping fence and comment lines — trimmed and chained with verifyCommandJoiner
 // into the single command line webster runs, or "" if section is nil or holds only blank, fence, and comment lines.
 // Two kinds of line are skipped, judged on the trimmed line: a markdown code-fence line (starts with
 // "```" or "~~~", so info strings, longer fences, and indented fences need no open/close tracking),
