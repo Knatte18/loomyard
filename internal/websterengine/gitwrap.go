@@ -35,7 +35,7 @@ func refuseMidMerge(worktree string) error {
 		return fmt.Errorf("websterengine: probe merge in progress in %s: %w", worktree, err)
 	}
 	if present {
-		return fmt.Errorf("websterengine: worktree %s has a git merge in progress; conclude it first "+
+		return fmt.Errorf("webster: worktree %s has a git merge in progress; conclude it first "+
 			"(`lyx fabric merge --continue` / `lyx fabric merge --abort` in a hub, "+
 			"`git merge --continue` / `git merge --abort` for a standalone run)", worktree)
 	}
