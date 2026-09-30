@@ -74,8 +74,9 @@ const forkSubagentEnvKey = "CLAUDE_CODE_FORK_SUBAGENT"
 
 // buildLaunchCmd composes the pane-shell line that starts a fresh claude session.
 // It reads the prompt via sh.ReadFile, quotes all interpolated values, and appends --effort/--model only when non-empty.
+// When notice is non-empty it rides the line as --append-system-prompt, so the session is told which tools are denied; an empty notice leaves the line unchanged.
 // When forkSubagents is true, it wraps the line via sh.WithEnv to enable fork subagent type.
-func buildLaunchCmd(sh shell.Shell, bin, promptPath, settingsPath, sessionID, model, effort string, interactive, forkSubagents bool) string {
+func buildLaunchCmd(sh shell.Shell, bin, promptPath, settingsPath, sessionID, model, effort, notice string, interactive, forkSubagents bool) string {
 	cmd := sh.Invoke(bin) + " " + sh.ReadFile(promptPath) +
 		" --session-id " + sh.Quote(sessionID) + " --settings " + sh.Quote(settingsPath)
 	if model != "" {
@@ -86,6 +87,9 @@ func buildLaunchCmd(sh shell.Shell, bin, promptPath, settingsPath, sessionID, mo
 	}
 	if !interactive {
 		cmd += " --dangerously-skip-permissions"
+	}
+	if notice != "" {
+		cmd += " --append-system-prompt " + sh.Quote(notice)
 	}
 	if forkSubagents {
 		cmd = sh.WithEnv(forkSubagentEnvKey, "1", cmd)
@@ -102,8 +106,10 @@ func buildLaunchCmd(sh shell.Shell, bin, promptPath, settingsPath, sessionID, mo
 // Dropping them silently downgraded a resumed run: an autonomous run came back permission-gated and
 // stalled at its first tool dialog with no operator present, which shuttle can only classify as a
 // timeout, and it came back on the provider default model rather than the one the caller pinned.
+// It carries the notice too, when non-empty: Claude Code re-renders the system prompt from the current flags after a compaction and where recording is not enabled,
+// so a resume line without --append-system-prompt would lose the notice.
 // When forkSubagents is true, the line is wrapped to keep the fork-subagent capability.
-func buildResumeCmd(sh shell.Shell, bin, settingsPath, sessionID, model, effort string, interactive, forkSubagents bool) string {
+func buildResumeCmd(sh shell.Shell, bin, settingsPath, sessionID, model, effort, notice string, interactive, forkSubagents bool) string {
 	cmd := sh.Invoke(bin) + " --resume " + sh.Quote(sessionID) + " --settings " + sh.Quote(settingsPath)
 	if model != "" {
 		cmd += " --model " + sh.Quote(model)
@@ -113,6 +119,9 @@ func buildResumeCmd(sh shell.Shell, bin, settingsPath, sessionID, model, effort 
 	}
 	if !interactive {
 		cmd += " --dangerously-skip-permissions"
+	}
+	if notice != "" {
+		cmd += " --append-system-prompt " + sh.Quote(notice)
 	}
 	if forkSubagents {
 		cmd = sh.WithEnv(forkSubagentEnvKey, "1", cmd)

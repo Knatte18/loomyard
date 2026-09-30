@@ -45,6 +45,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 		sessionID     string
 		model         string
 		effort        string
+		notice        string
 		interactive   bool
 		forkSubagents bool
 		want          string
@@ -200,6 +201,27 @@ func TestBuildLaunchCmd(t *testing.T) {
 			want:         `& 'claude' (Get-Content -Raw 'C:\run\prompt.md') --session-id 'abc-123' --settings 'C:\run\settings.json' --effort 'my effort''s name' --dangerously-skip-permissions`,
 		},
 		{
+			name:         "notice_pwsh",
+			bin:          "claude",
+			promptPath:   `C:\run\prompt.md`,
+			settingsPath: `C:\run\settings.json`,
+			sessionID:    "abc-123",
+			notice:       "Agent is denied. It's final.",
+			interactive:  false,
+			want:         `& 'claude' (Get-Content -Raw 'C:\run\prompt.md') --session-id 'abc-123' --settings 'C:\run\settings.json' --dangerously-skip-permissions --append-system-prompt 'Agent is denied. It''s final.'`,
+		},
+		{
+			name:         "notice_posix",
+			sh:           shell.Posix(),
+			bin:          "claude",
+			promptPath:   "/run/prompt.md",
+			settingsPath: "/run/settings.json",
+			sessionID:    "abc-123",
+			notice:       "Agent is denied.",
+			interactive:  true,
+			want:         `'claude' "$(cat '/run/prompt.md')" --session-id 'abc-123' --settings '/run/settings.json' --append-system-prompt 'Agent is denied.'`,
+		},
+		{
 			// Proves the seam is shell-agnostic: the same builder produces the
 			// posix form when handed shell.Posix() instead of the default
 			// shell.Pwsh() every other row above exercises.
@@ -258,7 +280,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 			if sh == nil {
 				sh = shell.Pwsh()
 			}
-			got := buildLaunchCmd(sh, tt.bin, tt.promptPath, tt.settingsPath, tt.sessionID, tt.model, tt.effort, tt.interactive, tt.forkSubagents)
+			got := buildLaunchCmd(sh, tt.bin, tt.promptPath, tt.settingsPath, tt.sessionID, tt.model, tt.effort, tt.notice, tt.interactive, tt.forkSubagents)
 			if got != tt.want {
 				t.Errorf("buildLaunchCmd(...) = %q; want %q", got, tt.want)
 			}
@@ -351,23 +373,25 @@ func TestBuildResumeCmd(t *testing.T) {
 		name          string
 		model         string
 		effort        string
+		notice        string
 		interactive   bool
 		forkSubagents bool
 		want          string
 	}{
-		{"autonomous_bare", "", "", false, false, `& 'claude' --resume 'abc-123' --settings 'C:\run\settings.json' --dangerously-skip-permissions`},
-		{"interactive_bare", "", "", true, false, `& 'claude' --resume 'abc-123' --settings 'C:\run\settings.json'`},
-		{"model_and_effort_pinned", "haiku", "low", false, false, `& 'claude' --resume 'abc-123' --settings 'C:\run\settings.json' --model 'haiku' --effort 'low' --dangerously-skip-permissions`},
+		{"autonomous_bare", "", "", "", false, false, `& 'claude' --resume 'abc-123' --settings 'C:\run\settings.json' --dangerously-skip-permissions`},
+		{"interactive_bare", "", "", "", true, false, `& 'claude' --resume 'abc-123' --settings 'C:\run\settings.json'`},
+		{"model_and_effort_pinned", "haiku", "low", "", false, false, `& 'claude' --resume 'abc-123' --settings 'C:\run\settings.json' --model 'haiku' --effort 'low' --dangerously-skip-permissions`},
+		{"notice_on_resume", "", "", "Agent is denied.", false, false, `& 'claude' --resume 'abc-123' --settings 'C:\run\settings.json' --dangerously-skip-permissions --append-system-prompt 'Agent is denied.'`},
 		{
 			// A resumed fork-mode session must keep the fork-subagent
 			// capability it launched with.
-			"fork_mode_on", "", "", true, true,
+			"fork_mode_on", "", "", "", true, true,
 			`$env:CLAUDE_CODE_FORK_SUBAGENT = '1'; & 'claude' --resume 'abc-123' --settings 'C:\run\settings.json'`,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := buildResumeCmd(shell.Pwsh(), "claude", `C:\run\settings.json`, "abc-123", tt.model, tt.effort, tt.interactive, tt.forkSubagents)
+			got := buildResumeCmd(shell.Pwsh(), "claude", `C:\run\settings.json`, "abc-123", tt.model, tt.effort, tt.notice, tt.interactive, tt.forkSubagents)
 			if got != tt.want {
 				t.Errorf("buildResumeCmd(...) = %q; want %q", got, tt.want)
 			}
