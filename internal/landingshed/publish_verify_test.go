@@ -20,12 +20,11 @@ import (
 
 // publishVerifyFixture is a Publish over a real gate with a fake runner, a fake resolver and a push closure that records whether it ran.
 type publishVerifyFixture struct {
-	p       *Publish
-	gate    *gateFixture
-	res     *recordingResolver
-	pushed  bool
-	order   []string
-	ghCalls int
+	p      *Publish
+	gate   *gateFixture
+	res    *recordingResolver
+	pushed bool
+	order  []string
 }
 
 func newPublishVerifyFixture(t *testing.T, command string, alreadyUpToDate bool) *publishVerifyFixture {
