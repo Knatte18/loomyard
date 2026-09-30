@@ -120,9 +120,10 @@
 //
 // # Open risks
 //
-// Two questions are settled only by a real session, and are unverified until the smoke test in
-// internal/orchcli records an answer:
+// Two questions are settled only by a real session.
+// `TestSmokeOrch_OneFullCycle` in internal/orchcli logs an observation for each, but has not been
+// run against a live Claude Code install, so both remain unverified, pending a smoke run:
 //
-//   - Whether a background task survives `/clear`.
-//   - Whether a `SendMessage` address stays stable across `/clear`.
+//   - Whether a background task survives `/clear`: unverified, pending a smoke run.
+//   - Whether a `SendMessage` address stays stable across `/clear`: unverified, pending a smoke run.
 package orchengine
