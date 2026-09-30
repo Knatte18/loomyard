@@ -363,17 +363,17 @@ Example:
 			// wondering why the numbering appears to skip something. Three placement facts matter
 			// here. First, it sits outside this RunE's own mustAttach gate below -- the daemon is
 			// per-hub and reconciles a session that exists on every invocation, --no-attach
-			// included, where the detached driver still spawns agent strands that need reconciling. Second, it is called here rather
-			// than from inside ensureStatusStrand, because that helper lives in
-			// sharedbootstrap.go and `lyx loom step` calls it too, and widening the watchdog spawn
-			// onto `step` is out of this task's scope. Third, it stays inside the region where the
-			// bootstrap lock is still held, deliberately: the spawn is a MkdirAll, an
-			// os.Executable(), and a detached Start with no Wait, so it is bounded and cannot
-			// extend the hold the way a wait could, while releasing the lock earlier to place this
-			// call outside it would mean releasing before the driver-spawn and handshake steps the
-			// lock exists to serialise. The call returns nothing and is never error-checked or
-			// reported on the envelope: every failure path inside the seam logs and returns, and
-			// up, attach and resume already treat it as best-effort.
+			// included, where the detached driver still spawns agent strands that need
+			// reconciling. Second, it is called here rather than from inside ensureStatusStrand,
+			// because that helper lives in sharedbootstrap.go and `lyx loom step` calls it too,
+			// and widening the watchdog spawn onto `step` is out of this task's scope. Third, it
+			// stays inside the region where the bootstrap lock is still held, deliberately: the
+			// spawn is a MkdirAll, an os.Executable(), and a detached Start with no Wait, so it is
+			// bounded and cannot extend the hold the way a wait could, while releasing the lock
+			// earlier to place this call outside it would mean releasing before the driver-spawn
+			// and handshake steps the lock exists to serialise. The call returns nothing and is
+			// never error-checked or reported on the envelope: every failure path inside the seam
+			// logs and returns, and up, attach and resume already treat it as best-effort.
 			c.spawnWatchdog(c.location.HubPath, c.reed.TmuxPath(), c.reed.ShellPath(), c.suppressWatchdogSpawn)
 
 			// Steps 5 and 6: probe the run lock and the driver strand table, decide whether a spawn
