@@ -1,9 +1,8 @@
-// integration.go implements the plan-level integration-suite stage: the skip-check
-// (ShouldRunIntegration), the single dedicated integration fork's own await/report plumbing
-// (AwaitIntegration/RunIntegration, reusing AwaitBatch's own bounded long-poll idiom over a fixed,
-// non-batch report path, and webster's own ParseReport for the fork's OK/FAILED), and the
-// in-process SHA-bisect + escalation path a FAILED report triggers (bisect,
-// RecordIntegrationFailure, BisectAndEscalate).
+// integration.go implements the plan-level integration-suite stage's plumbing.
+// It holds the skip-check (ShouldRunIntegration) and the single dedicated integration fork's await plumbing (AwaitIntegration, reusing AwaitBatch's own bounded long-poll idiom over a fixed, non-batch report path).
+// It also holds the verify runner seam and its log paths (runVerifyCapture, IntegrationLogPath),
+// and the in-process SHA-bisect + escalation path a triaged regression triggers (bisect, RecordIntegrationFailure, BisectAndEscalate);
+// the report itself is parsed by ParseIntegrationReport and triaged in triage.go.
 // The integration fork itself is spawned the same way a batch's own implementer is — Master's own
 // in-session Agent-tool fork call, per webster-template-master.md's own integration-fork bracket
 // instruction — so this file never spawns anything;
