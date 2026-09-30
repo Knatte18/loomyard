@@ -24,11 +24,14 @@ import "fmt"
 // provider specifics under the claude engine package.
 func driverPrompt(runID string, reportPath string) string {
 	return fmt.Sprintf(
-		"Run the ly-drive skill (from loomyard's ly plugin) for run-id %q. If that skill is not available to you, do not search the filesystem for a copy, which may be a stale version: write to the report that the ly plugin is not installed and stop. You are running autonomously, with no operator to ask -- decide and proceed on your own judgment. Write your report to %q at every stop condition (task done, or a failure you cannot repair). After writing it, as your very last act, end your own session by running: %s",
+		"Run the ly-drive skill (from loomyard's ly plugin) for run-id %q. If that skill is not available to you, do not search the filesystem for a copy, which may be a stale version: write to the report that the ly plugin is not installed and stop. You are running autonomously, with no operator to ask -- decide and proceed on your own judgment. Write your report to %q at every stop condition (task done, or a failure you cannot repair). After writing it, as your very last act, commit the run records and end your own session by running: %s",
 		runID, reportPath, driverTeardownCommand,
 	)
 }
 
 // driverTeardownCommand is the end-of-session command a loom-launched driver runs after its stop
-// report. It is built from driverStrandDisplayName so the name cannot drift from the strand's own.
-const driverTeardownCommand = "lyx reed remove --name " + driverStrandDisplayName + " --detach"
+// report. It commits the run records first, then removes the driver's own strand.
+// The two are joined with `;` rather than `&&` so the strand removal runs even when the commit fails:
+// a driver that stayed open on a failed commit would leave its strand alive for a run that has finished.
+// It is built from driverStrandDisplayName so the name cannot drift from the strand's own.
+const driverTeardownCommand = "lyx loom commit-records; lyx reed remove --name " + driverStrandDisplayName + " --detach"

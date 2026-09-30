@@ -42,12 +42,29 @@ func TestDriverPrompt_NamesSlugRunIDAndExactTeardownCommand(t *testing.T) {
 	if !strings.Contains(got, `"operator-surface"`) {
 		t.Errorf("driverPrompt() = %q; want it to name the slug run-id", got)
 	}
-	const want = "lyx reed remove --name loom-driver --detach"
+	const want = "lyx loom commit-records; lyx reed remove --name loom-driver --detach"
 	if !strings.Contains(got, want) {
 		t.Errorf("driverPrompt() = %q; want it to name the teardown command %q", got, want)
 	}
 	if !strings.HasSuffix(got, want) {
 		t.Errorf("driverPrompt() = %q; want the teardown command to be the prompt's last words", got)
+	}
+}
+
+// TestDriverTeardownCommand_CommitsRecordsBeforeRemovingStrandJoinedBySemicolon asserts the records
+// commit precedes the strand removal and the two are joined by `;`, so a failed commit still ends
+// the session.
+func TestDriverTeardownCommand_CommitsRecordsBeforeRemovingStrandJoinedBySemicolon(t *testing.T) {
+	commit := strings.Index(driverTeardownCommand, "lyx loom commit-records")
+	remove := strings.Index(driverTeardownCommand, "lyx reed remove")
+	if commit < 0 || remove < 0 || commit >= remove {
+		t.Fatalf("driverTeardownCommand = %q; want lyx loom commit-records before lyx reed remove", driverTeardownCommand)
+	}
+	if !strings.Contains(driverTeardownCommand, "lyx loom commit-records; lyx reed remove") {
+		t.Errorf("driverTeardownCommand = %q; want the two joined by ';'", driverTeardownCommand)
+	}
+	if strings.Contains(driverTeardownCommand, "&&") {
+		t.Errorf("driverTeardownCommand = %q; want no '&&', so removal runs after a failed commit", driverTeardownCommand)
 	}
 }
 
