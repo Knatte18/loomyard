@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/loomshed"
@@ -282,8 +283,10 @@ func TestBounceRouting_EmptyTargetBlocksInstead(t *testing.T) {
 	if result.HaltedProducer != loomshed.NameBatchifier {
 		t.Errorf("Run() HaltedProducer = %q; want %q", result.HaltedProducer, loomshed.NameBatchifier)
 	}
-	if result.Reason != shedengine.ReasonNoOnStuckTarget {
-		t.Errorf("Run() Reason = %q; want %q", result.Reason, shedengine.ReasonNoOnStuckTarget)
+	// The block carries the Batchifier's own cause, not the generic no-OnStuck reason.
+	const wantPrefix = "active batchifier did not resolve: "
+	if !strings.HasPrefix(result.Reason, wantPrefix) {
+		t.Errorf("Run() Reason = %q; want prefix %q", result.Reason, wantPrefix)
 	}
 }
 
