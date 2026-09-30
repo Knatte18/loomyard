@@ -1,4 +1,5 @@
-// summary.go implements webster's two write-side helpers over the final-summary artifact:
+// summary.go implements webster's write-side helpers over the final-summary artifact
+// (AppendIntegrationTriage and AppendAuditWarnings append further sections beside the two below):
 // ArchiveStaleSummary applies the same archive-never-refuse timestamp-rename discipline as
 // outcome.go's own archiveStaleOutcome, reusing archive.go's firstFreeArchivePath rather than
 // re-implementing the same-second collision loop; AppendIntegrationFailure extends an
@@ -76,6 +77,20 @@ func AppendIntegrationTriage(websterDir string, flaky, preExisting []string) err
 	writeTriageList(&b, "Flaky (passed on rerun)", flaky)
 	writeTriageList(&b, "Pre-existing (already failing at the plan's starting commit)", preExisting)
 	return appendToSummary(websterDir, "integration triage", b.String())
+}
+
+// AppendAuditWarnings appends an "Audit warnings" section listing findings recorded as warnings, one bullet each in the order given.
+// It is a no-op when warnings is empty.
+func AppendAuditWarnings(websterDir string, warnings []string) error {
+	if len(warnings) == 0 {
+		return nil
+	}
+	var b strings.Builder
+	b.WriteString("\n\n## Audit warnings\n\nThese findings (fork-audit policy findings, and drift about a later card) were recorded as warnings and did not stop the run.\n\n")
+	for _, w := range warnings {
+		fmt.Fprintf(&b, "- %s\n", w)
+	}
+	return appendToSummary(websterDir, "audit warnings", b.String())
 }
 
 // writeTriageList writes one titled sub-list of identities, or nothing when ids is empty.
