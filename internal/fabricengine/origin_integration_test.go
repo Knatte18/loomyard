@@ -235,8 +235,14 @@ func TestAddRollback_CreatedPathLeavesNoOriginRecord(t *testing.T) {
 
 	gitkit.MustRun(t, l.WorktreePath(), "git", "remote", "set-url", "origin", filepath.Join(t.TempDir(), "no-such-remote"))
 
-	if _, err := h.Topology.Add(l, slug, fabricengine.AddOptions{}); err == nil {
+	// SkipPush skips Add's pre-flight probes of origin, which would otherwise refuse on the broken URL before any mutation;
+	// step 11's warp push ignores SkipPush, so it still fails after the record step.
+	_, err := h.Topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true})
+	if err == nil {
 		t.Fatalf("Add(%q) should have failed (broken origin remote)", slug)
+	}
+	if !strings.Contains(err.Error(), "push branch") {
+		t.Fatalf("Add(%q) error = %v; want the step-11 push failure, so rollback runs after the record step", slug, err)
 	}
 
 	if branchExistsAt(t, mustWeftRepoRoot(t, l), weftBranch) {
@@ -280,7 +286,9 @@ func TestAddRollback_AdoptedPathPreservesOriginRecordCommit(t *testing.T) {
 	// post-wiring failure shape.
 	gitkit.MustRun(t, l.WorktreePath(), "git", "remote", "set-url", "origin", filepath.Join(t.TempDir(), "no-such-remote"))
 
-	if _, err := h.Topology.Add(l, slug, fabricengine.AddOptions{}); err == nil {
+	// SkipPush skips Add's pre-flight probes of origin, which would otherwise refuse on the broken URL before any mutation;
+	// step 11's warp push ignores SkipPush, so it still fails after creation.
+	if _, err := h.Topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err == nil {
 		t.Fatalf("Add(%q) should have failed (broken origin remote)", slug)
 	}
 

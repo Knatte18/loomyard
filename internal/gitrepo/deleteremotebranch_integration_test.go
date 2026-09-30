@@ -7,9 +7,12 @@
 package gitrepo_test
 
 import (
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/gitrepo"
 )
 
 // TestDeleteRemoteBranch_ExistingBranch_DeletesAndReportsTrue asserts the first of
@@ -126,5 +129,136 @@ func TestDeleteRemoteBranch_UnreachableRemote_ReturnsError(t *testing.T) {
 	}
 	if deleted {
 		t.Errorf("DeleteRemoteBranch() against an unreachable remote deleted = true; want false")
+	}
+}
+
+// pushFeatureBranch creates branch in the clone with one commit, pushes it to origin, and returns the pushed tip SHA.
+func pushFeatureBranch(t *testing.T, clonePath, branch string) string {
+	t.Helper()
+
+	if _, _, code, err := runGit(t, clonePath, "checkout", "-b", branch); err != nil || code != 0 {
+		t.Fatalf("git checkout -b %s error = %v, code = %d", branch, err, code)
+	}
+	writeFile(t, clonePath, "feature.txt", "from "+branch)
+	commitAll(t, clonePath, "commit on "+branch)
+	if _, _, code, err := runGit(t, clonePath, "push", "origin", branch); err != nil || code != 0 {
+		t.Fatalf("git push origin %s error = %v, code = %d", branch, err, code)
+	}
+	stdout, _, code, err := runGit(t, clonePath, "rev-parse", "HEAD")
+	if err != nil || code != 0 {
+		t.Fatalf("git rev-parse HEAD error = %v, code = %d", err, code)
+	}
+	return strings.TrimSpace(stdout)
+}
+
+// remoteHeads returns `git ls-remote --heads` output for the bare remote.
+func remoteHeads(t *testing.T, container, bareRemote string) string {
+	t.Helper()
+
+	out, _, code, err := runGit(t, container, "ls-remote", "--heads", bareRemote)
+	if err != nil || code != 0 {
+		t.Fatalf("git ls-remote --heads error = %v, code = %d", err, code)
+	}
+	return out
+}
+
+// TestDeleteRemoteBranchLeased_LeaseAtTip_Deletes asserts a lease at the remote's current tip deletes the branch.
+func TestDeleteRemoteBranchLeased_LeaseAtTip_Deletes(t *testing.T) {
+	container := t.TempDir()
+	bareRemote := newBareRemote(t, container)
+
+	cloneAPath, repoA := newRepoWithRemote(t, container, "cloneA", bareRemote)
+	writeFile(t, cloneAPath, "a.txt", "from A")
+	commitAll(t, cloneAPath, "commit from A")
+	if err := repoA.Push(); err != nil {
+		t.Fatalf("Push() (establish upstream) error = %v; want nil", err)
+	}
+
+	const branch = "feature-x"
+	tip := pushFeatureBranch(t, cloneAPath, branch)
+
+	if err := repoA.DeleteRemoteBranchLeased("origin", branch, tip); err != nil {
+		t.Fatalf("DeleteRemoteBranchLeased(%q, %s) error = %v; want nil", branch, tip, err)
+	}
+	if heads := remoteHeads(t, container, bareRemote); strings.Contains(heads, "refs/heads/"+branch) {
+		t.Errorf("bare remote heads after leased delete = %q; want no refs/heads/%s", heads, branch)
+	}
+}
+
+// TestDeleteRemoteBranchLeased_StaleLease_ErrorsAndKeepsBranch asserts a lease whose SHA the remote branch has since moved past fails and leaves the branch at its advanced tip.
+func TestDeleteRemoteBranchLeased_StaleLease_ErrorsAndKeepsBranch(t *testing.T) {
+	container := t.TempDir()
+	bareRemote := newBareRemote(t, container)
+
+	cloneAPath, repoA := newRepoWithRemote(t, container, "cloneA", bareRemote)
+	writeFile(t, cloneAPath, "a.txt", "from A")
+	commitAll(t, cloneAPath, "commit from A")
+	if err := repoA.Push(); err != nil {
+		t.Fatalf("Push() (establish upstream) error = %v; want nil", err)
+	}
+
+	const branch = "feature-x"
+	staleTip := pushFeatureBranch(t, cloneAPath, branch)
+
+	cloneBPath, _ := cloneFromBare(t, container, "cloneB", bareRemote)
+	if _, _, code, err := runGit(t, cloneBPath, "checkout", branch); err != nil || code != 0 {
+		t.Fatalf("git checkout %s in cloneB error = %v, code = %d", branch, err, code)
+	}
+	writeFile(t, cloneBPath, "advance.txt", "advanced")
+	commitAll(t, cloneBPath, "advance "+branch)
+	if _, _, code, err := runGit(t, cloneBPath, "push", "origin", branch); err != nil || code != 0 {
+		t.Fatalf("git push origin %s from cloneB error = %v, code = %d", branch, err, code)
+	}
+	advancedOut, _, _, _ := runGit(t, cloneBPath, "rev-parse", "HEAD")
+	advanced := strings.TrimSpace(advancedOut)
+
+	if err := repoA.DeleteRemoteBranchLeased("origin", branch, staleTip); err == nil {
+		t.Fatal("DeleteRemoteBranchLeased() with a stale lease error = nil; want an error")
+	}
+	heads := remoteHeads(t, container, bareRemote)
+	if !strings.Contains(heads, advanced+"\trefs/heads/"+branch) {
+		t.Errorf("bare remote heads after failed lease = %q; want %s at %s", heads, branch, advanced)
+	}
+}
+
+// TestDeleteRemoteBranchLeased_AbsentBranch_ReturnsError asserts an absent remote branch is a failed lease, not an idempotent success.
+func TestDeleteRemoteBranchLeased_AbsentBranch_ReturnsError(t *testing.T) {
+	container := t.TempDir()
+	bareRemote := newBareRemote(t, container)
+
+	cloneAPath, repoA := newRepoWithRemote(t, container, "cloneA", bareRemote)
+	writeFile(t, cloneAPath, "a.txt", "from A")
+	commitAll(t, cloneAPath, "commit from A")
+	if err := repoA.Push(); err != nil {
+		t.Fatalf("Push() (establish upstream) error = %v; want nil", err)
+	}
+	tipOut, _, _, _ := runGit(t, cloneAPath, "rev-parse", "HEAD")
+
+	if err := repoA.DeleteRemoteBranchLeased("origin", "gone-branch", strings.TrimSpace(tipOut)); err == nil {
+		t.Fatal("DeleteRemoteBranchLeased() against an absent branch error = nil; want an error")
+	}
+}
+
+// TestDeleteRemoteBranchLeased_MalformedSHA_ReturnsErrInvalidSHA asserts a malformed expectSHA is rejected before the remote is touched.
+func TestDeleteRemoteBranchLeased_MalformedSHA_ReturnsErrInvalidSHA(t *testing.T) {
+	container := t.TempDir()
+	bareRemote := newBareRemote(t, container)
+
+	cloneAPath, repoA := newRepoWithRemote(t, container, "cloneA", bareRemote)
+	writeFile(t, cloneAPath, "a.txt", "from A")
+	commitAll(t, cloneAPath, "commit from A")
+	if err := repoA.Push(); err != nil {
+		t.Fatalf("Push() (establish upstream) error = %v; want nil", err)
+	}
+
+	const branch = "feature-x"
+	pushFeatureBranch(t, cloneAPath, branch)
+
+	err := repoA.DeleteRemoteBranchLeased("origin", branch, "not-a-sha")
+	if !errors.Is(err, gitrepo.ErrInvalidSHA) {
+		t.Fatalf("DeleteRemoteBranchLeased() error = %v; want ErrInvalidSHA", err)
+	}
+	if heads := remoteHeads(t, container, bareRemote); !strings.Contains(heads, "refs/heads/"+branch) {
+		t.Errorf("bare remote heads = %q; want refs/heads/%s untouched", heads, branch)
 	}
 }

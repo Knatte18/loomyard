@@ -472,6 +472,13 @@
 // `archiveWeftTip` pushes an `archive/<slug>/<tip>` tag to the weft origin, so the run records on the weft branch stay reachable once the branch is deleted.
 // A failed archive returns its error with the worktrees, portal, launchers and both branches still in place, so a plain re-run retries it; `force` and `remote` never skip it, and a weft repo with no origin proceeds with `ArchiveSkippedReason` set.
 //
+// `Add` (add.go) handles a re-add after a plain `Remove`, which leaves both remote branches behind.
+// Before its first mutation it probes both origins read-only (remoteleftover.go), refusing an unreplaceable leftover with an `*ErrRemoteLeftover`.
+// The archive tag is the orphan proof: a remote weft tip equal to, or an ancestor of, an `archive/<slug>/*` tag's target on origin is replaceable, and anything else is refused.
+// A replaceable weft leftover is deleted at step 12, immediately before the weft push, through the destructive gate with a lease on the probed tip, so a branch that moved since the probe is refused and `Add` rolls back.
+// A rollback never restores the deleted branch: its content is reachable from the archive tag.
+// No remote warp branch is ever deleted, and `SkipPush`/`SkipGit` skip every probe and the replacement.
+//
 // # The one-repo illusion at the public API boundary
 //
 // fabric exists to sell one illusion to every other package: a developer, an agent, and every lyx

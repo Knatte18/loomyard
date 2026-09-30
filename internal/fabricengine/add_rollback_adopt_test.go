@@ -314,8 +314,14 @@ func TestAddRollback_UnwiresJunctionsOnPostWiringFailure(t *testing.T) {
 	const branchPrefix = "task/"
 	warpBranch := branchPrefix + slug
 	topology := fabricengine.NewTopology(fabricengine.Config{BranchPrefix: branchPrefix})
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{}); err == nil {
+	// SkipPush skips Add's pre-flight probes of origin, which would otherwise refuse on the broken URL before any mutation;
+	// step 11's warp push ignores SkipPush, so it still fails after wiring.
+	_, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true})
+	if err == nil {
 		t.Fatalf("Add should have failed (broken origin remote)")
+	}
+	if !strings.Contains(err.Error(), "push branch") {
+		t.Fatalf("Add error = %v; want the step-11 push failure, so rollback runs after wiring", err)
 	}
 
 	// rollbackAdd removed both warp junctions it wired.
@@ -373,9 +379,13 @@ func TestAdd_GitFailureCarriesGitsOwnReason(t *testing.T) {
 		filepath.Join(t.TempDir(), "no-such-remote.git"))
 
 	topology := fabricengine.NewTopology(fabricengine.Config{})
-	_, err := topology.Add(l, "push-fail", fabricengine.AddOptions{})
+	// SkipPush skips Add's pre-flight probes of origin, so the failure comes from step 11's warp push, which ignores SkipPush.
+	_, err := topology.Add(l, "push-fail", fabricengine.AddOptions{SkipPush: true})
 	if err == nil {
 		t.Fatal("Add() error = nil; want a push failure against a nonexistent remote")
+	}
+	if !strings.Contains(err.Error(), "push branch") {
+		t.Errorf("Add() error = %q; want the step-11 push failure", err.Error())
 	}
 	if strings.Contains(err.Error(), "cwd is not a valid git worktree") {
 		t.Errorf("Add() error = %q; want the real cause, not a claim about cwd", err.Error())

@@ -502,7 +502,9 @@ func addCase() VerbCase {
 		},
 		Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabricengine.Mutations, error) {
 			tb.Helper()
-			res, err := h.Topology.Add(h.Location, f.Slug, fabricengine.AddOptions{})
+			// SkipPush skips Add's pre-flight probes of origin, which would otherwise refuse on the broken URL before any mutation;
+			// step 11's warp push ignores SkipPush, so it still fails after creation.
+			res, err := h.Topology.Add(h.Location, f.Slug, fabricengine.AddOptions{SkipPush: true})
 			return res.Mutated(), err
 		},
 		Expect: func(state string) Expectation {

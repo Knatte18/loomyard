@@ -2,8 +2,9 @@
 // resilience), PushCoalesced (a single-pusher lock plus one guarded push, coalescing across
 // processes via the lock queue rather than an internal retry loop), PushRebaseFree (a single
 // plain push that never rebases, for callers that supply their own serialization), and
-// DeleteRemoteBranch (a single remote branch deletion, idempotent when the ref is already absent).
-// All four are push-shaped remote calls; committing is always the caller's separate StageAndCommit
+// DeleteRemoteBranch (a single remote branch deletion, idempotent when the ref is already absent),
+// and DeleteRemoteBranchLeased (the same deletion, only while the remote branch sits at an expected SHA).
+// All five are push-shaped remote calls; committing is always the caller's separate StageAndCommit
 // or StageAllAndCommit call.
 
 package gitrepo
@@ -129,6 +130,24 @@ func (r *Repo) DeleteRemoteBranch(remote, branch string) (deleted bool, err erro
 		return false, nil
 	}
 	return false, fmt.Errorf("gitrepo: git push --delete: %w", err)
+}
+
+// DeleteRemoteBranchLeased deletes branch on the named remote via `git push --force-with-lease=refs/heads/<branch>:<expectSHA> --delete`,
+// succeeding only while the remote branch still sits at expectSHA.
+// expectSHA must be a valid hex object name, or ErrInvalidSHA is returned before any git spawn.
+// Unlike DeleteRemoteBranch, an already-absent remote ref is not an idempotent success:
+// the lease names a SHA the caller saw, so a branch that moved or vanished since is a failed lease.
+func (r *Repo) DeleteRemoteBranchLeased(remote, branch, expectSHA string) error {
+	if !validSHA(expectSHA) {
+		return ErrInvalidSHA
+	}
+
+	lease := "--force-with-lease=refs/heads/" + branch + ":" + expectSHA
+	_, err := r.runChecked("push", lease, remote, "--delete", branch)
+	if err != nil {
+		return fmt.Errorf("gitrepo: git push --delete (leased at %s): %w", expectSHA, err)
+	}
+	return nil
 }
 
 // containsAny reports whether s contains any substring from substrs.

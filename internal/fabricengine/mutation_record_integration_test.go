@@ -95,7 +95,9 @@ func TestMutationRecord_AddRollbackOrdersCreationBeforeItsOwnDestruction(t *test
 		filepath.Join(t.TempDir(), "no-such-remote.git"))
 
 	topology := fabricengine.NewTopology(fabricengine.Config{})
-	res, err := topology.Add(l, slug, fabricengine.AddOptions{})
+	// SkipPush skips Add's pre-flight probes of origin, which would otherwise refuse on the broken URL before any mutation;
+	// step 11's warp push ignores SkipPush, so it still fails after creation.
+	res, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true})
 	if err == nil {
 		t.Fatalf("Add(%q) = nil error; want the broken-origin push failure", slug)
 	}
