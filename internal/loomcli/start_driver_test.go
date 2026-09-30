@@ -390,14 +390,14 @@ func TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnCorpseRemovalFailure(t *test
 
 // TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnReportDirMkdirFailure covers failure site 4 of 5:
 // the report directory's mkdir-all. It forces the failure by pre-creating a plain FILE at the exact
-// path the report's parent directory (shedrun.ScratchDir) must occupy, so os.MkdirAll there fails
+// path the report's parent directory (shedrun.DriveReportsDir) must occupy, so os.MkdirAll there fails
 // with "not a directory".
 func TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnReportDirMkdirFailure(t *testing.T) {
 	starter := &fakeDriverStarter{}
 	probe := &fakeDriverPaneProbeFull{strandsFn: noStrands}
 	c, bootstrapLockPath := newTestSpawnAndWaitReceiver(t, starter, probe)
 
-	scratchDir := shedrun.ScratchDir(c.location, c.runID)
+	scratchDir := shedrun.DriveReportsDir(c.location, c.runID)
 	if err := os.MkdirAll(filepath.Dir(scratchDir), 0o755); err != nil {
 		t.Fatalf("mkdir scratch dir's parent: %v", err)
 	}

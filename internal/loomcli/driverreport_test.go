@@ -1,6 +1,7 @@
 package loomcli
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -35,17 +36,17 @@ func TestDriverReportPath_FrozenClock_TwoCallsProduceDifferentPaths(t *testing.T
 	}
 }
 
-// TestDriverReportPath_LandsUnderRunScratchDir asserts the composed path lands under the run's
-// ephemeral scratch directory, composed through shedrun.ScratchDir.
-func TestDriverReportPath_LandsUnderRunScratchDir(t *testing.T) {
+// TestDriverReportPath_LandsUnderDriveReportsDir asserts the composed path lands directly under the
+// run's durable drive-reports directory, composed through shedrun.DriveReportsDir.
+func TestDriverReportPath_LandsUnderDriveReportsDir(t *testing.T) {
 	l := &lyxcwd.Location{}
 	now := func() time.Time { return time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC) }
 	stubRand := func() string { return "cafe" }
 
 	got := driverReportPath(l, "self", now, stubRand)
-	want := shedrun.ScratchDir(l, "self")
-	if !strings.HasPrefix(got, want+string([]rune{'/'})) && !strings.HasPrefix(got, want) {
-		t.Errorf("driverReportPath() = %q; want it to land under scratch dir %q", got, want)
+	want := shedrun.DriveReportsDir(l, "self")
+	if parent := filepath.Dir(got); parent != want {
+		t.Errorf("driverReportPath() = %q; want its parent to be the drive-reports dir %q, got %q", got, want, parent)
 	}
 }
 
