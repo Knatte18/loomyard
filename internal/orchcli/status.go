@@ -1,5 +1,4 @@
-// status.go implements the `status` orch verb: one envelope describing the recorded strand, the
-// watcher and the persisted cycle state.
+// status.go implements the `status` orch verb: one envelope describing the recorded strand, the watcher and the persisted cycle state.
 
 package orchcli
 

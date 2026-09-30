@@ -1,16 +1,11 @@
 //go:build smoke
 
-// smoke_cycle_test.go drives one full handoff cycle against a real Claude Code session in a real reed
-// strand: start, one turn that launches a background task, a manual cycle, and the assertions that the
-// handoff was written, the session was cleared and the resume prompt was typed.
-// It also records, without failing, the two questions only a live session answers: whether a background
-// task's completion notification survives `/clear`, and whether the session's `SendMessage` address does.
+// smoke_cycle_test.go drives one full handoff cycle against a real Claude Code session in a real reed strand: start, one turn that launches a background task, a manual cycle, and the assertions that the handoff was written, the session was cleared and the resume prompt was typed.
+// It also records, without failing, the two questions only a live session answers: whether a background task's completion notification survives `/clear`, and whether the session's `SendMessage` address does.
 //
-// Like the loomcli smoke tests it drives the real built cmd/lyx binary as a subprocess, never RunCLI
-// in-process, because `lyx orch start` spawns a detached `lyx orch watch` from os.Executable(), which
-// must never be this test binary (Live-Substrate Spawn Observability Invariant).
-// The threshold is set far above anything the session can reach so the manual `lyx orch cycle` is the
-// only trigger; the threshold-triggered path is covered by the watcher's unit cases.
+// Like the loomcli smoke tests it drives the real built cmd/lyx binary as a subprocess, never RunCLI in-process, because `lyx orch start` spawns a detached `lyx orch watch` from os.Executable(), which must never be this test binary (Live-Substrate Spawn Observability Invariant).
+// The threshold is set far above anything the session can reach so the manual `lyx orch cycle` is the only trigger;
+// the threshold-triggered path is covered by the watcher's unit cases.
 //
 // The test skips when tmux or a `claude` binary is unavailable, and needs a logged-in Claude Code install.
 
@@ -70,8 +65,7 @@ func smokeStatus(t *testing.T, exe, prime string) map[string]any {
 	return env
 }
 
-// latestTranscript returns the transcript_path of the newest Stop payload in the run's events file,
-// or "" when there is none yet.
+// latestTranscript returns the transcript_path of the newest Stop payload in the run's events file, or "" when there is none yet.
 func latestTranscript(t *testing.T, eventsPath string) string {
 	t.Helper()
 	data, err := os.ReadFile(eventsPath)
@@ -237,8 +231,7 @@ poll_interval_ms: 500
 	}
 }
 
-// smokeStatusIdle reports whether the session's pane shows an idle input box, via the pane capture
-// alone (the provider's own probe is exercised by the watcher).
+// smokeStatusIdle reports whether the session's pane shows an idle input box, via the pane capture alone (the provider's own probe is exercised by the watcher).
 func smokeStatusIdle(t *testing.T, reed *reedengine.Engine, guid string) bool {
 	t.Helper()
 	pane, err := reed.CapturePane(guid)

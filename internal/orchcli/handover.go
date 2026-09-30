@@ -1,8 +1,6 @@
 // handover.go decides and performs the terminal handover at the end of `start`.
-// It is loomcli's decision, duplicated rather than imported because a <module>cli importing
-// another <module>cli would couple two cobra seams.
-// The attach and switch-client spawns are this command's interactive-handoff exception to the
-// CLI/Cobra Invariant: every fallible step has reported on the envelope before they run.
+// It is loomcli's decision, duplicated rather than imported because a <module>cli importing another <module>cli would couple two cobra seams.
+// The attach and switch-client spawns are this command's interactive-handoff exception to the CLI/Cobra Invariant: every fallible step has reported on the envelope before they run.
 
 package orchcli
 

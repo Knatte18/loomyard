@@ -1,5 +1,4 @@
-// session.go declares runnerSession, the production adapter that satisfies orchengine.Session over
-// the receiver's shuttle Runner and reed strand seam.
+// session.go declares runnerSession, the production adapter that satisfies orchengine.Session over the receiver's shuttle Runner and reed strand seam.
 
 package orchcli
 

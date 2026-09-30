@@ -1,7 +1,5 @@
-// start.go implements the `start` orch verb: the idempotent bootstrap that leaves one live
-// orchestrator strand and one watcher bound to it, then hands the terminal over.
-// Every fallible step reports on the envelope before the handover, which alone takes the
-// CLI/Cobra Invariant's interactive-handoff exception.
+// start.go implements the `start` orch verb: the idempotent bootstrap that leaves one live orchestrator strand and one watcher bound to it, then hands the terminal over.
+// Every fallible step reports on the envelope before the handover, which alone takes the CLI/Cobra Invariant's interactive-handoff exception.
 
 package orchcli
 
@@ -52,8 +50,7 @@ func (s runnerSessionStarter) StartSession(spec shuttleengine.Spec) (string, err
 	return run.StrandGUID(), nil
 }
 
-// orchSpec builds the orchestrator run's spec: interactive, awaiting the operator, focused,
-// with a never-written sentinel as its one output file so the run never finishes on one.
+// orchSpec builds the orchestrator run's spec: interactive, awaiting the operator, focused, with a never-written sentinel as its one output file so the run never finishes on one.
 func (c *orchCLI) orchSpec(prompt string, now time.Time) shuttleengine.Spec {
 	sentinel := filepath.Join(c.paths.Dir, "session-"+now.UTC().Format("20060102T150405Z")+".never")
 	return shuttleengine.Spec{

@@ -1,7 +1,6 @@
 //go:build integration
 
-// prime_integration_test.go proves the prime-only rule end to end: `status` and `start` run from a task
-// worktree and from the prime's weft sibling refuses on the envelope and creates no .lyx/orch.
+// prime_integration_test.go proves the prime-only rule end to end: `status` and `start`, run from a task worktree or from the prime's weft sibling, refuse on the envelope and create no .lyx/orch.
 
 package orchcli
 

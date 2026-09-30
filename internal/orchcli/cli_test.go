@@ -1,6 +1,4 @@
-// cli_test.go covers the orchcli seam without a live session: the prime refusal decision, the
-// shuttle-config override, and the status, cycle and stop verbs over hand-built receivers with a
-// fake strandOps.
+// cli_test.go covers the orchcli seam without a live session: the prime refusal decision, the shuttle-config override, and the status, cycle and stop verbs over hand-built receivers with a fake strandOps.
 
 package orchcli
 

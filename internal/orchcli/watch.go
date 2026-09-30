@@ -1,5 +1,4 @@
-// watch.go implements the hidden `watch` orch verb: the detached daemon `start` launches, which
-// polls the orchestrator session and runs the handoff cycle until the strand is gone.
+// watch.go implements the hidden `watch` orch verb: the detached daemon `start` launches, which polls the orchestrator session and runs the handoff cycle until the strand is gone.
 
 package orchcli
 

@@ -1,5 +1,4 @@
-// stop.go implements the `stop` orch verb: remove the orchestrator strand and let the watcher
-// notice and exit on its own.
+// stop.go implements the `stop` orch verb: remove the orchestrator strand and let the watcher notice and exit on its own.
 
 package orchcli
 

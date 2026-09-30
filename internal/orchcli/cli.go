@@ -1,8 +1,5 @@
-// cli.go builds the cobra command tree for the orch module and the RunCLI seam that wires it into
-// the standard io.Writer-based call contract.
-// The parent "orch" command's PersistentPreRunE resolves cwd -> prime check -> orch, shuttle and
-// reed config -> reed engine -> claude engine -> shuttleengine.Runner -> paths exactly once per
-// invocation, into a receiver every verb closes over, so no verb re-resolves geometry itself.
+// cli.go builds the cobra command tree for the orch module and the RunCLI seam that wires it into the standard io.Writer-based call contract.
+// The parent "orch" command's PersistentPreRunE resolves cwd -> prime check -> orch, shuttle and reed config -> reed engine -> claude engine -> shuttleengine.Runner -> paths exactly once per invocation, into a receiver every verb closes over, so no verb re-resolves geometry itself.
 
 package orchcli
 
@@ -161,8 +158,7 @@ func RunCLI(out io.Writer, args []string) int {
 	return RunCLIIn("", out, args)
 }
 
-// RunCLIIn is RunCLI's cwd-carrying sibling: an empty cwd reads the process cwd, any other value
-// seeds cwd into the execution context, because lyxcwd.WithCwd panics on an empty directory.
+// RunCLIIn is RunCLI's cwd-carrying sibling: an empty cwd reads the process cwd, any other value seeds cwd into the execution context, because lyxcwd.WithCwd panics on an empty directory.
 func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	if cwd == "" {
 		return clihelp.Execute(Command(), out, args)

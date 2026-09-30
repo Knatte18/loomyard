@@ -1,6 +1,4 @@
-// paths.go declares the orch module's one scratch accessor: every file orch writes lives under
-// the prime's `<anchor>/.lyx/orch/`, joined here once and handed to orchengine as told paths
-// (Durable-vs-Ephemeral State, Lyxdirs Single-Declarer and Told-Geometry Invariants).
+// paths.go declares the orch module's one scratch accessor: every file orch writes lives under the prime's `<anchor>/.lyx/orch/`, joined here once and handed to orchengine as told paths (Durable-vs-Ephemeral State, Lyxdirs Single-Declarer and Told-Geometry Invariants).
 
 package orchcli
 

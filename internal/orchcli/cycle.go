@@ -1,5 +1,4 @@
-// cycle.go implements the `cycle` orch verb: an operator's request that the watcher run one
-// handoff cycle at its next idle moment.
+// cycle.go implements the `cycle` orch verb: an operator's request that the watcher run one handoff cycle at its next idle moment.
 
 package orchcli
 

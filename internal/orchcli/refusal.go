@@ -8,8 +8,8 @@ package orchcli
 import "fmt"
 
 // refuseNonPrime returns nil only when primeNameErr is nil and worktreeName equals primeName.
-// An unresolvable prime name is a refusal, never a pass-through: it means the hub geometry is
-// already broken, and orch must not create a session from an unverified vantage point.
+// An unresolvable prime name is a refusal, never a pass-through: it means the hub geometry is already broken,
+// and orch must not create a session from an unverified vantage point.
 func refuseNonPrime(worktreeName, primeName string, primeNameErr error) error {
 	if primeNameErr != nil {
 		return fmt.Errorf("orch: cannot verify this is the hub's prime worktree: %w", primeNameErr)
