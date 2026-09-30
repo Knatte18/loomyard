@@ -88,6 +88,11 @@ func TestGoto_RunLockHeldRefusesAndLeavesFile(t *testing.T) {
 			t.Errorf("error %q does not name %q", err, want)
 		}
 	}
+	req := gotoRequest(shed, "A")
+	req.RunID = "some-slug"
+	if _, err := Goto(req); err == nil || !strings.Contains(err.Error(), `"lyx shed pause some-slug"`) || !strings.Contains(err.Error(), `"lyx shed status some-slug"`) {
+		t.Errorf("Goto(...) told RunID error = %v; want the pause and status verbs addressing some-slug", err)
+	}
 	if after := readStatus(t, shed.StatusPath, shed.StatusLockPath); !reflect.DeepEqual(before, after) {
 		t.Errorf("status file changed on a busy refusal: %+v -> %+v", before, after)
 	}
@@ -297,6 +302,11 @@ func TestGoto_AwaitingRefusesFinalizeAndAdmitsEarlierRow(t *testing.T) {
 	}
 	if !strings.Contains(msg, "lyx shed status") {
 		t.Errorf("error %q does not name lyx shed status", msg)
+	}
+	told := gotoRequest(shed, "Finalize")
+	told.RunID = "some-slug"
+	if _, err := Goto(told); err == nil || !strings.Contains(err.Error(), `"lyx shed status some-slug"`) {
+		t.Errorf("Goto(...) told RunID error = %v; want lyx shed status addressing some-slug", err)
 	}
 
 	got, err := Goto(gotoRequest(shed, "Publish"))

@@ -377,6 +377,11 @@ func TestStep_ErrShedBusy(t *testing.T) {
 	if _, err := shed.Run(context.Background()); !errors.Is(err, ErrShedBusy) || !strings.Contains(err.Error(), "way forward: \"lyx shed pause\"") {
 		t.Errorf("Run(...) error = %v; want ErrShedBusy carrying the same way forward", err)
 	}
+	shed.RunID = "some-slug"
+	if _, err := shed.Step(context.Background()); err == nil || !strings.Contains(err.Error(), `"lyx shed pause some-slug"`) || !strings.Contains(err.Error(), `"lyx shed status some-slug"`) {
+		t.Errorf("Step(...) on a Shed told RunID error = %v; want the pause and status verbs addressing some-slug", err)
+	}
+	shed.RunID = ""
 
 	// The way forward taken: the holder releases, and the refused call succeeds.
 	statusPath := shed.StatusPath

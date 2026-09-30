@@ -115,8 +115,10 @@ func (s *Shed) preflight() error {
 	return nil
 }
 
-// busyWayForward is the trailing clause Run, Step and Goto put on an ErrShedBusy wrap.
-const busyWayForward = "way forward: \"lyx shed pause\" asks the live driver to stop at its next producer boundary; check the holder with \"lyx shed status\", then retry"
+// busyWayForward returns the trailing clause Run, Step and Goto put on an ErrShedBusy wrap, addressing the run by runID when one is told.
+func busyWayForward(runID string) string {
+	return fmt.Sprintf("way forward: %s asks the live driver to stop at its next producer boundary; check the holder with %s, then retry", runVerb("pause", runID), runVerb("status", runID))
+}
 
 // missingStatusWayForward is the trailing clause Step and Goto put on a missing-status-file refusal.
 const missingStatusWayForward = "way forward: seed the run through its recipe's bootstrap verb, or \"lyx shed seed\" for a recipe without one"
@@ -403,7 +405,7 @@ func (s *Shed) Run(ctx context.Context) (Result, error) {
 		return Result{}, fmt.Errorf("shedengine: acquire run lock %q: %w", s.LockPath, err)
 	}
 	if !locked {
-		return Result{}, fmt.Errorf("%w: %q; %s", ErrShedBusy, s.LockPath, busyWayForward)
+		return Result{}, fmt.Errorf("%w: %q; %s", ErrShedBusy, s.LockPath, busyWayForward(s.RunID))
 	}
 	defer runLock.Release()
 
@@ -451,7 +453,7 @@ func (s *Shed) Step(ctx context.Context) (StepResult, error) {
 		return StepResult{}, fmt.Errorf("shedengine: acquire run lock %q: %w", s.LockPath, err)
 	}
 	if !locked {
-		return StepResult{}, fmt.Errorf("%w: %q; %s", ErrShedBusy, s.LockPath, busyWayForward)
+		return StepResult{}, fmt.Errorf("%w: %q; %s", ErrShedBusy, s.LockPath, busyWayForward(s.RunID))
 	}
 	defer runLock.Release()
 

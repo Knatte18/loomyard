@@ -45,7 +45,7 @@ func Goto(req GotoRequest) (Status, error) {
 		return Status{}, fmt.Errorf("shedengine: acquire run lock %q: %w", req.LockPath, err)
 	}
 	if !locked {
-		return Status{}, fmt.Errorf("%w: %q; %s", ErrShedBusy, req.LockPath, busyWayForward)
+		return Status{}, fmt.Errorf("%w: %q; %s", ErrShedBusy, req.LockPath, busyWayForward(req.RunID))
 	}
 	defer runLock.Release()
 
@@ -76,7 +76,7 @@ func Goto(req GotoRequest) (Status, error) {
 	reference, admitted := gotoAdmitted(req.Producers, st)
 	if !containsName(admitted, req.Target) {
 		if st.State == StateAwaiting {
-			return Status{}, fmt.Errorf("shedengine: goto target %q is not before the row %q the run is awaiting at; goto only moves a run back, so it never skips a row's own work or a review or approval row; \"lyx shed status\" shows the hand-off the run waits on; way forward: re-run goto with --to naming one of: %s", req.Target, reference, strings.Join(admitted, ", "))
+			return Status{}, fmt.Errorf("shedengine: goto target %q is not before the row %q the run is awaiting at; goto only moves a run back, so it never skips a row's own work or a review or approval row; %s shows the hand-off the run waits on; way forward: re-run goto with --to naming one of: %s", req.Target, reference, runVerb("status", req.RunID), strings.Join(admitted, ", "))
 		}
 		return Status{}, fmt.Errorf("shedengine: goto target %q lies past the run's current row %q; goto only moves a run back, so it never skips a row's own work or a review or approval row; way forward: re-run goto with --to naming one of: %s", req.Target, reference, strings.Join(admitted, ", "))
 	}

@@ -88,7 +88,7 @@ A finding is dispositioned once per run, by the first `record-batch` or run-exit
 
 | Refusal | Trigger | Class | Way forward |
 |---|---|---|---|
-| shed busy | another driver holds the run lock, at `run`, `step` or `goto` | transient | `lyx shed pause` asks the live driver to stop at its next producer boundary; check the holder with `lyx shed status`, then retry |
+| shed busy | another driver holds the run lock, at `run`, `step` or `goto` | transient | `lyx shed pause <run-id>` asks the live driver to stop at its next producer boundary; check the holder with `lyx shed status <run-id>`, then retry |
 | seed missing | a verb addresses a run-id with no seed | correctness halt | run `lyx shed seed <run-id> --recipe <name>` first |
 | status file missing | `step` or `goto` finds no status file; Shed never seeds one | correctness halt | the recipe's own, as the message names it: `lyx loom start` for loom, `lyx batten run <slug>` for batten, `lyx shed seed` otherwise |
 | current producer missing | the status file's `current_producer` names no row in the list | correctness halt | `lyx shed goto <run-id> --to <row>` moves the run onto a row that exists |
