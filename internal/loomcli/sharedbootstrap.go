@@ -19,8 +19,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/loomshed"
-	"github.com/Knatte18/loomyard/internal/reedengine"
-	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shell"
@@ -256,14 +254,7 @@ func (c *loomCLI) ensureStatusStrand() error {
 		if err != nil {
 			return err
 		}
-		addSpec := reedengine.AddSpec{
-			NameOverride: statusStrandDisplayName,
-			Cmd:          statusStrandCmd(shell.ForGOOS(), exe),
-			Display: render.Display{
-				Anchor:                   render.AnchorBelowParent,
-				ShrinkWhenWaitingOnChild: true,
-			},
-		}
+		addSpec := statusStrandAddSpec(statusStrandCmd(shell.ForGOOS(), exe))
 		if _, err := c.reed.AddStrand(addSpec); err != nil {
 			return err
 		}
