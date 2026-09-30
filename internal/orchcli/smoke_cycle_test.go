@@ -28,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 )
 
 // smokeRun runs exe with args in dir, bounded by timeout, and returns the combined output and exit code.
@@ -82,6 +83,25 @@ func latestTranscript(t *testing.T, eventsPath string) string {
 		}
 	}
 	return latest
+}
+
+// turnEnds counts the turn ends (Stop or Waiting) the run's events file holds so far, 0 while it is unreadable.
+func turnEnds(eventsPath string) int {
+	data, err := os.ReadFile(eventsPath)
+	if err != nil {
+		return 0
+	}
+	events, err := claudeengine.New().ParseEvents(data)
+	if err != nil {
+		return 0
+	}
+	n := 0
+	for _, ev := range events {
+		if ev.Kind == shuttleengine.EventStop || ev.Kind == shuttleengine.EventWaiting {
+			n++
+		}
+	}
+	return n
 }
 
 // waitFor polls cond every second, up to attempts times, failing the test with what on exhaustion.
@@ -170,17 +190,18 @@ poll_interval_ms: 500
 	}
 
 	// (3) one turn that starts a short background task, then wait for its turn end.
-	waitFor(t, 120, "the start prompt's turn to end", func() bool { return latestTranscript(t, run.EventsPath) != "" })
-	beforeTranscript := latestTranscript(t, run.EventsPath)
+	// The start prompt's turn end already names the transcript, so only a turn-end count past it proves the background-task turn ended.
+	waitFor(t, 120, "the start prompt's turn to end", func() bool { return turnEnds(run.EventsPath) > 0 })
+	turnEndsBefore := turnEnds(run.EventsPath)
 	if err := reed.SendText(guid, "Start a background shell task with `sleep 40; echo BGDONE` (run_in_background), then end your turn immediately without waiting for it.", true); err != nil {
 		t.Fatalf("send background-task turn: %v", err)
 	}
 	waitFor(t, 180, "the background-task turn to end", func() bool {
-		return latestTranscript(t, run.EventsPath) != "" && smokeStatusIdle(t, reed, guid)
+		return turnEnds(run.EventsPath) > turnEndsBefore && smokeStatusIdle(t, reed, guid)
 	})
 	preCycleTranscript := latestTranscript(t, run.EventsPath)
 	if preCycleTranscript == "" {
-		t.Fatalf("no Stop payload names a transcript (before=%q)", beforeTranscript)
+		t.Fatalf("no Stop payload names a transcript after %d turn ends", turnEnds(run.EventsPath))
 	}
 	prePane, _ := reed.CapturePane(guid)
 
