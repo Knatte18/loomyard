@@ -38,8 +38,9 @@ func paneBinPrelude(sh shell.Shell, exe string) string {
 	return sh.Chain(sh.PrependPathEntry(filepath.Dir(exe)), sh.ExportEnv(lyxBinEnvKey, exe))
 }
 
-// composePaneLaunchLine returns the send-keys payload launchStrandLocked sends: the pane-binary
-// prelude followed by launchCmd, on sh's dialect. It reads the running process's own path via
+// composePaneLaunchLine returns the launch script's content: the pane-binary prelude followed by
+// launchCmd, on sh's dialect. launchStrandLocked writes it through stageLaunchScript and types only
+// the source statement. It reads the running process's own path via
 // executablePath; on error it logs a named logger.Warn and returns launchCmd unchanged, so the pane
 // launches with no prelude rather than failing the strand launch (executable-error-warns-and-degrades
 // Shared Decision). Because Chain drops empty parts, an empty launchCmd yields the prelude alone with

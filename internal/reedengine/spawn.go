@@ -71,11 +71,14 @@ func sendKeysLiteralArg(text string) string {
 // persisting a partial one from inside this helper.
 //
 // The prelude that resolves this strand pane's `lyx` to the binary that spawned it is owned by
-// panebin.go and composed here, at the one send-keys payload every strand-realizing path funnels
-// through — see composePaneLaunchLine. The split issued below still carries no trailing
+// panebin.go and composed here, at the one launch every strand-realizing path funnels through — see
+// composePaneLaunchLine. The prelude and launchCmd ride the strand's launch script, which the
+// send-keys line typed into the pane sources in the shell's own scope; a script write failure
+// degrades to typing the composed line itself. The split issued below still carries no trailing
 // shell-command argument, so the pane remains tmux's own default-shell started as a login shell
-// (pane-start-mode-is-untouched Shared Decision); the prelude rides the send-keys line typed into
-// that shell afterward, alongside launchCmd, rather than changing how the pane's shell itself starts.
+// (pane-start-mode-is-untouched Shared Decision), rather than changing how the pane's shell itself
+// starts. The script is written on every launch, so a relaunch with a different command or a
+// different spawning executable always regenerates it.
 func (e *Engine) launchStrandLocked(st *ReedState, s *Strand, launchCmd string) error {
 	session := e.SessionName()
 
@@ -135,12 +138,16 @@ func (e *Engine) launchStrandLocked(st *ReedState, s *Strand, launchCmd string) 
 	s.PaneID = paneID
 	// composePaneLaunchLine joins the pane-binary prelude (panebin.go) onto launchCmd, on the same
 	// shell.ForGOOS() dialect the launch command itself was built with, so the two never disagree
-	// about which shell is typed into. Send the composed line as a literal string (-l) so tmux never
-	// reinterprets any part of the opaque payload as a key name (e.g. "Enter", "C-c") or splits it on
-	// an embedded ';' — the caller (shuttle) builds arbitrary PowerShell command chains. A separate
-	// Enter then submits it.
-	composedLine := composePaneLaunchLine(shell.ForGOOS(), launchCmd, s.GUID)
-	if err := e.tmux.run("send-keys", "-t", paneID, "-l", sendKeysLiteralArg(composedLine)); err != nil {
+	// about which shell is typed into. stageLaunchScript writes that composed line to the strand's
+	// launch script and returns the dialect's source statement for it, which is what the pane shows;
+	// a write failure returns the composed line itself, so the pane still launches. The payload is sent
+	// as a literal string (-l) so tmux never reinterprets any part of it as a key name (e.g. "Enter",
+	// "C-c") or splits it on an embedded ';' — the launch command is opaque and shuttle builds
+	// arbitrary PowerShell command chains. A separate Enter then submits it.
+	sh := shell.ForGOOS()
+	composedLine := composePaneLaunchLine(sh, launchCmd, s.GUID)
+	payload := stageLaunchScript(sh, e.stateDir(), s.GUID, composedLine)
+	if err := e.tmux.run("send-keys", "-t", paneID, "-l", sendKeysLiteralArg(payload)); err != nil {
 		return fmt.Errorf("send launch command: %w", err)
 	}
 	if err := e.tmux.run("send-keys", "-t", paneID, "Enter"); err != nil {

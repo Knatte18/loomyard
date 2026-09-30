@@ -21,6 +21,7 @@ The launcher prints a warning when it detects non-console stdio.
 `sandbox/win/core-suite.cmd` (`sandbox/posix/core-suite.sh` on POSIX) resolves the `lyx` binary to test — the derived `.dev-bin/lyx.exe` when it exists, else the binary on PATH as a prod fallback — fingerprints it, drops a fresh `SANDBOX-CORE-SUITE.md` (stamped with the fingerprint and a `Source: dev` / `Source: prod` marker) into the Hub warp repo, and launches an interactive black-box agent there.
 When the resolved binary is the dev build, the suite prepends `.dev-bin` to the agent's own child-process PATH, so its bare `lyx` invocations resolve to it — the agent still drives `lyx` from PATH only (never the source tree), just scoped to its own session, not your shell.
 Panes the agent itself spawns inherit the same resolution from reed rather than from the launcher: reed prepends the spawning binary's directory to each strand pane's `PATH` and exports `LYX_BIN`,
+writing those statements to the strand pane's launch script, which the pane shell sources,
 so a nested `lyx …` inside a spawned pane resolves to the binary under test too.
 The two mechanisms are complementary and neither replaces the other — the launcher composes a Go child process's environment, reed composes a pane shell statement.
 The agent writes WARN/FAIL findings to `sandbox-report.json` in the warp repo.

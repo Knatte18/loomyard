@@ -7,11 +7,12 @@
 //
 // This is the one assumption in this task's _mill/discussion.md prelude-is-session-scoped-in-both-dialects
 // decision that no existing code already pins: with the pane-binary prelude in place (panebin.go),
-// an empty-Cmd strand's launchStrandLocked send-keys literal is the composed prelude alone, with no
-// trailing separator and no empty command fragment, rather than the empty string send-keys -l ""
-// this test pinned before the prelude landed. This test confirms a real tmux accepts that payload
-// and leaves the pane live -- the reason the empty-Cmd operator pane now receives a session-scoped
-// statement in both dialects rather than nothing on POSIX.
+// an empty-Cmd strand's launch script holds the composed prelude alone, with no trailing separator
+// and no empty command fragment, and the launchStrandLocked send-keys literal is the source
+// statement for that script, rather than the empty string send-keys -l "" this test pinned before
+// the prelude landed. This test confirms a real tmux accepts that payload and leaves the pane
+// live -- the reason the empty-Cmd operator pane now receives a session-scoped statement in both
+// dialects rather than nothing on POSIX.
 
 package reedengine
 

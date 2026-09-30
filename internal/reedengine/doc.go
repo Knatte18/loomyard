@@ -113,7 +113,9 @@
 //
 // Every strand pane reed creates resolves `lyx` to the binary that spawned it, because
 // launchStrandLocked prepends that binary's directory to the pane's PATH and exports LYX_BIN to its
-// absolute path as shell statements riding the same send-keys line the launch command already rode.
+// absolute path as shell statements. The composed line, prelude and launch command together, is
+// written to the strand's launch script, and the typed send-keys line sources it in the pane shell's
+// own scope, so the prelude still runs after the pane shell's profile.
 // The composition lives in panebin.go and is reached from the one chokepoint, so the property holds
 // by construction for every present and future AddStrand caller including Resume's replay. The
 // mechanism is a typed shell statement rather than `split-window -e` or `set-environment`, so it

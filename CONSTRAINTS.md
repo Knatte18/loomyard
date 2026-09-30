@@ -299,6 +299,9 @@ A strand pane reed creates resolves `lyx` to the binary that spawned it.
 - Scope is strand panes only, with Selvage's split and the `new-session` first pane exempt by name,
   and the detached `lyx loom run` and watchdog daemon spawns excluded because both are already
   spawned from the executable path and neither resolves `lyx` from `PATH`.
+- The prelude and launch command ride a per-strand launch script at `<AnchorPath>/.lyx/reed/launch/<guid><ext>` that the send-keys line sources through `internal/shell`'s `Source`;
+  the script exists only while its GUID is in reed's strand table;
+  a script write failure degrades to typing the composed line plus a named `logger.Warn`, never a failed launch.
 - An unresolvable executable path degrades to a pane with no prelude plus a named `logger.Warn`,
   never a failed launch.
 - Backed by `internal/reedengine/panebin_enforcement_test.go`, which fails if a `split-window`

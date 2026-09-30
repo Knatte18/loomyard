@@ -274,6 +274,8 @@ func (e *Engine) addStrandLocked(st *ReedState, spec AddSpec) (Strand, error) {
 
 	if needsLaunchOnAdd(spec.Display) {
 		if err := e.launchStrandLocked(st, strand, strand.Cmd); err != nil {
+			// The record is never persisted, so a script the launch already wrote has no owner.
+			removeLaunchScripts(shell.ForGOOS(), e.stateDir(), []string{guid})
 			return Strand{}, fmt.Errorf("launch strand: %w", err)
 		}
 	}
@@ -475,6 +477,7 @@ func (e *Engine) AddStrand(spec AddSpec) (Strand, error) {
 		// pane never becomes an untracked orphan the next select-layout would
 		// silently reap.
 		if err := SaveState(e.stateDir(), st); err != nil {
+			removeLaunchScripts(shell.ForGOOS(), e.stateDir(), []string{strand.GUID})
 			return fmt.Errorf("persist strand: %w", err)
 		}
 
