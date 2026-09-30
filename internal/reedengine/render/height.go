@@ -117,8 +117,8 @@ func stackHeights(stack []Strand, box Box, p Params) []placement {
 
 // clampToFit repairs any non-positive height left by stackHeights' natural
 // split, reclaiming rows from donors in strict priority order: absolute-budget
-// placements (collapsed strips and fixed budgets) first,
-// then non-active full panes, then the active pane itself, all floored at 1.
+// placements (collapsed strips and fixed budgets) first, then non-active full
+// panes, then the active pane itself, all floored at 1.
 func clampToFit(heights []int, isStrip []bool, activeIdx int, p Params) []int {
 	minFull := p.MinFullRows
 	if minFull < 1 {
