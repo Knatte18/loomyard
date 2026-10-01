@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -277,7 +278,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		// The count argument is st.History, the slice read at step 1, and never
 		// nextHistory: a post-append read shifts the boundary by one and would look
 		// like an off-by-one bug rather than the semantic change it would actually be.
-		case !output.BudgetExempt && episodeStuckCount(st.History, def.Name) >= effectiveMaxBounces(def, s.MaxBounces):
+		case !output.BudgetExempt && episodeStuckCount(st.History, def.Name, segmentEnders(s.Producers, def)...) >= effectiveMaxBounces(def, s.MaxBounces):
 			// The boundary is pinned exactly, restated per-producer: a budget of three
 			// performs three bounce-backs and blocks on the fourth Stuck.
 			reason := ReasonBounceBudgetExhausted
@@ -425,30 +426,46 @@ func nowRFC3339() string {
 }
 
 // episodeStuckCount walks history backward from the end and counts the Stuck entries authored by
-// name within its current episode: the run of entries since name's own most recent Done. It
-// returns immediately at the first entry whose Producer equals name and whose Outcome is Done, and
-// otherwise counts the entries whose Producer equals name and whose Outcome is Stuck; entries
-// authored by other producers are skipped and never terminate the scan, so a Done by some other
-// producer does not end this producer's episode.
+// name within its current episode: the run of entries since the most recent Done by name or by any
+// name in enders. It returns immediately at the first such Done, and otherwise counts the entries
+// whose Producer equals name and whose Outcome is Stuck; entries authored by any other producer
+// are skipped and never terminate the scan.
+// segmentEnders supplies enders: a Burler-round row only ever returns Stuck, so its episode ends
+// when its segment's Bouncer passes, or every later rework round would add to one ever-growing count.
 // A done entry written by the hard-failure arm also terminates the scan, and that is accepted
 // rather than special-cased: the engine records the verdict a producer actually returned, and
 // state: "failed" halts the run, so every continuation past it is a fresh human-initiated act.
 // A Stuck entry whose BudgetExempt is true is skipped and never counted.
-func episodeStuckCount(history []HistoryEntry, name string) int {
+func episodeStuckCount(history []HistoryEntry, name string, enders ...string) int {
 	count := 0
 	for i := len(history) - 1; i >= 0; i-- {
 		entry := history[i]
+		if entry.Outcome == Done && (entry.Producer == name || slices.Contains(enders, entry.Producer)) {
+			return count
+		}
 		if entry.Producer != name {
 			continue
-		}
-		if entry.Outcome == Done {
-			return count
 		}
 		if entry.Outcome == Stuck && !entry.BudgetExempt {
 			count++
 		}
 	}
 	return count
+}
+
+// segmentEnders returns the names of every other producer sharing def's non-empty Segment, whose
+// Done ends def's episode; a standalone producer has none, so its episode ends at its own Done only.
+func segmentEnders(producers []ProducerDef, def ProducerDef) []string {
+	if def.Segment == "" {
+		return nil
+	}
+	var names []string
+	for _, p := range producers {
+		if p.Segment == def.Segment && p.Name != def.Name {
+			names = append(names, p.Name)
+		}
+	}
+	return names
 }
 
 // appendOrFold returns a fresh copy of history with entry recorded: folded into the last element when both are budget-exempt Stucks with the same Producer, Output, and GateAttempts, else appended unchanged.
