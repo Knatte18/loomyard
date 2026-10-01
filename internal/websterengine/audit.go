@@ -276,13 +276,15 @@ func fabricReferenceDetail(cmd, rule string) string {
 var (
 	readOnlyGit    = stringSet("status", "log", "show", "diff", "rev-parse", "ls-files", "ls-tree", "cat-file", "grep", "blame", "describe", "for-each-ref", "show-ref", "merge-base")
 	readOnlyFabric = stringSet("status", "diff", "list", "pairs")
-	// readOnlyTools are programs that write nothing without an output redirect.
-	readOnlyTools = stringSet("cat", "ls", "grep", "head", "tail", "wc", "stat", "cd", "pwd", "echo", "printf", "true", "test", "[")
+	// readOnlyTools are programs, builtins and test keywords that write nothing without an output redirect.
+	readOnlyTools = stringSet("cat", "ls", "grep", "head", "tail", "wc", "stat", "cd", "pwd", "echo", "printf", "true", "test", "[", "[[", "read")
+	// loopHeaders open a loop whose header line runs nothing; any substitution in its word list is judged on its own.
+	loopHeaders = stringSet("for", "select")
 
 	// gitValueOptions are git's global options whose value may follow as a separate word.
 	gitValueOptions = stringSet("-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env", "--super-prefix")
 	// shellKeywords are words that open or join a compound command and run nothing themselves.
-	shellKeywords = stringSet("{", "}", "!", "if", "then", "else", "elif", "do", "while", "until")
+	shellKeywords = stringSet("{", "}", "!", "if", "then", "else", "elif", "fi", "do", "done", "while", "until")
 	// commandWrappers run the command that follows their own options.
 	commandWrappers = stringSet("sudo", "env", "nice", "nohup", "command", "exec", "time")
 	// xargsValueOptions are xargs options whose value follows as a separate word.
@@ -545,7 +547,7 @@ func splitShell(cmd string) (segments []shellSegment, substitutions []string) {
 
 // readOnlySegment reports whether one simple command's words are a known read-only shape.
 // After leading shell keywords and `NAME=value` assignments, it is true for a bare assignment,
-// a program in readOnlyTools, git with a subcommand in readOnlyGit, no `--output` option, no `-c` or `--config-env` global option and, for grep, no `-O`,
+// a program in readOnlyTools, a `for` or `select` loop header, git with a subcommand in readOnlyGit, no `--output` option, no `-c` or `--config-env` global option and, for grep, no `-O`,
 // and `lyx fabric` with a verb in readOnlyFabric (`prune` and `cleanup` only without `--apply`).
 // It is also true for `find` with no `-delete` or `-fprint`-family action whose every `-exec` command is read-only,
 // for a wrapper (sudo, env, timeout, xargs) whose wrapped command is read-only,
@@ -564,7 +566,7 @@ func readOnlySegment(words []string) bool {
 	}
 	args := words[1:]
 	switch {
-	case readOnlyTools[prog]:
+	case readOnlyTools[prog], loopHeaders[prog]:
 		return true
 	case commandWrappers[prog]:
 		for len(args) > 0 && strings.HasPrefix(args[0], "-") {

@@ -162,6 +162,12 @@ func TestClassifyViolation_FabricReferenceByCommand(t *testing.T) {
 		{"git -C " + dir + " grep --open-files-in-pager=vim state", AuditSeverityCorrectness},
 		{"git -C " + dir + " grep -n state -- webster", AuditSeverityPolicy},
 		{"git -C " + dir + " log -O order.txt -1", AuditSeverityPolicy},
+		{"for f in " + dir + `/webster/*; do cat "$f"; done`, AuditSeverityPolicy},
+		{"if test -f " + dir + "/x; then cat " + dir + "/x; fi", AuditSeverityPolicy},
+		{"while read l; do echo $l; done < " + dir + "/webster/state.json", AuditSeverityPolicy},
+		{"[[ -f " + dir + "/x ]] && cat " + dir + "/x", AuditSeverityPolicy},
+		{"for f in " + dir + `/webster/*; do rm "$f"; done`, AuditSeverityCorrectness},
+		{"for f in $(rm " + dir + "/x); do cat $f; done", AuditSeverityCorrectness},
 		{"cat <<EOF | grep x\nrm " + dir + " > y\nEOF\nls " + dir, AuditSeverityPolicy},
 		{"ls " + dir + " # > not a redirect", AuditSeverityPolicy},
 	}
