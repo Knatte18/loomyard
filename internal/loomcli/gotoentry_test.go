@@ -35,10 +35,10 @@ func TestObserveEntry_GotoIsNotACrashResume(t *testing.T) {
 		LockPath:       runLockPath,
 		StatusLockPath: statusLockPath,
 		Producers: []shedengine.ProducerDef{
-			{Name: "Discussion-Write"},
 			{Name: "Loom-Preflight"},
+			{Name: "Discussion-Write"},
 		},
-		Target: "Discussion-Write",
+		Target: "Loom-Preflight",
 	}); err != nil {
 		t.Fatalf("shedengine.Goto() error = %v", err)
 	}
