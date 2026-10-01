@@ -700,7 +700,8 @@ func TestRecordBatch_UnlistedWriterFabricReferenceFailsBatch(t *testing.T) {
 	if !bs.Terminal || bs.Status != websterengine.DigestStatusFailed || !result.Failed {
 		t.Errorf("batch = %+v, result = %+v; want terminal failed", bs, result)
 	}
-	if !warningsContain(result.Digest.Reasons, cmd) {
+	// The reason quotes the command with %q, so its inner quotes come back escaped.
+	if !warningsContain(result.Digest.Reasons, fmt.Sprintf("%q", cmd)) {
 		t.Errorf("Reasons = %v; want the command named", result.Digest.Reasons)
 	}
 	if got := archivedReports(t, fx.ReportsDir); len(got) != 1 {

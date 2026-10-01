@@ -62,7 +62,8 @@ func TestClassifyViolation(t *testing.T) {
 		want AuditSeverity
 	}{
 		{"fork-contract-write", AuditViolation{Class: ClassForkContractWrite, Path: "x"}, geom, AuditSeverityCorrectness},
-		{"fabric-reference", AuditViolation{Class: ClassFabricReference}, geom, AuditSeverityPolicy},
+		// A fabric reference with no recorded command is not provably read-only, so it fails closed.
+		{"fabric-reference", AuditViolation{Class: ClassFabricReference}, geom, AuditSeverityCorrectness},
 		{"named-spawn", AuditViolation{Class: ClassNamedSpawn}, geom, AuditSeverityPolicy},
 		{"nested-agent", AuditViolation{Class: ClassNestedAgent}, geom, AuditSeverityPolicy},
 		{"tracked file", AuditViolation{Class: ClassParentWrite, Path: filepath.Join(root, "tracked.txt")}, geom, AuditSeverityCorrectness},
