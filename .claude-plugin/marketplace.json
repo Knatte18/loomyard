@@ -8,16 +8,6 @@
   },
   "plugins": [
     {
-      "name": "prowler",
-      "description": "Fetch blocked/restricted/JS-rendered web pages and output readable markdown",
-      "version": "1.1.0",
-      "author": {
-        "name": "Knatte18"
-      },
-      "source": "./plugins/prowler",
-      "category": "productivity"
-    },
-    {
       "name": "ly",
       "description": "Operator surface over lyx's loom verbs: skills that drive a loom task, never where sequencing logic lives",
       "version": "1.0.0",

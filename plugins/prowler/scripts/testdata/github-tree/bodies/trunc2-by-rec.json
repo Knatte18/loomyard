@@ -1,7 +1,0 @@
-{
-  "sha": "tby",
-  "truncated": false,
-  "tree": [
-    { "path": "y1.txt", "mode": "100644", "type": "blob", "sha": "by1" }
-  ]
-}
