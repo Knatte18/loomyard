@@ -172,6 +172,10 @@ Example:
 			if err != nil {
 				_ = mutateLock.Release()
 				mutateHeld = false
+				if errors.Is(err, websterengine.ErrRecoveryNeedsFresh) {
+					clihelp.SetExit(cmd.Context(), output.ErrFields(out, err.Error(), map[string]any{"needs_fresh": true}))
+					return nil
+				}
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}

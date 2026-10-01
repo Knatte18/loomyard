@@ -250,6 +250,10 @@ type BatchState struct {
 	// SuspectPaths is the correctness findings' paths with the content each held when the batch failed.
 	// A recovery carries it forward, and PersistRecoveryTerminal checks it before recording the batch done.
 	SuspectPaths []SuspectPath `json:"suspectPaths,omitempty"`
+	// Uncheckable is one entry per correctness finding the recovery check cannot verify:
+	// the path, or "<class>: <detail>" for a finding with no path.
+	// recover-batch refuses a failed batch carrying any, toward run --fresh.
+	Uncheckable []string `json:"uncheckable,omitempty"`
 
 	// The following three fields are populated only for a recovery batch
 	// (Kind == "recovery"); a fork batch carries no strand fields, since

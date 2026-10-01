@@ -261,7 +261,16 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		if r, perr := ParseReport(reportPath); perr == nil {
 			headSHA = r.HeadSHA
 		}
-		return failFromFindings(deps, bs, number, slug, headSHA, all, nil, nil, suspects, newPaths, warnings)
+		uncheckable, err := uncheckableSuspects(deps.Geom, deps.State, suspects)
+		if err != nil {
+			return nil, err
+		}
+		for _, cf := range correctness {
+			if cf.Violation.Path == "" {
+				uncheckable = append(uncheckable, fmt.Sprintf("%s: %s", cf.Violation.Class, cf.Violation.Detail))
+			}
+		}
+		return failFromFindings(deps, bs, number, slug, headSHA, all, nil, nil, suspects, uncheckable, newPaths, warnings)
 	}
 
 	// A plan edited since the run recorded it, or a begun card edited since its batch began, is refused before anything mutates or any card verify runs:
@@ -323,7 +332,7 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 			for _, w := range bs.AuditWarnings {
 				earlier = append(earlier, auditWarningText(w))
 			}
-			return failFromFindings(deps, bs, number, slug, report.HeadSHA, policy, earlier, failures, nil, nil, warnings)
+			return failFromFindings(deps, bs, number, slug, report.HeadSHA, policy, earlier, failures, nil, nil, nil, warnings)
 		}
 	}
 	for _, cf := range policy {
@@ -387,9 +396,9 @@ type classifiedFinding struct {
 // failFromFindings takes the batch terminal-failed on its audit findings.
 // Every finding is marked failed in the ledger,
 // and the reasons are the findings' own text, then the earlier recorded warnings, then the verify failures.
-// suspects are the correctness paths, newTranscripts the transcripts this call consumes.
+// suspects are the correctness paths, uncheckable the entries recovery cannot verify, newTranscripts the transcripts this call consumes.
 // It returns the failed digest with Failed set, together with the *BatchFailedError.
-func failFromFindings(deps RecordDeps, bs *BatchState, number int, slug, headSHA string, findings []classifiedFinding, earlier, verifyFailures, suspects, newTranscripts, warnings []string) (*RecordResult, error) {
+func failFromFindings(deps RecordDeps, bs *BatchState, number int, slug, headSHA string, findings []classifiedFinding, earlier, verifyFailures, suspects, uncheckable, newTranscripts, warnings []string) (*RecordResult, error) {
 	var reasons []string
 	for _, cf := range findings {
 		reasons = append(reasons, cf.Violation.Error())
@@ -406,6 +415,7 @@ func failFromFindings(deps RecordDeps, bs *BatchState, number int, slug, headSHA
 		HeadSHA:        headSHA,
 		Reasons:        reasons,
 		SuspectPaths:   suspects,
+		Uncheckable:    uncheckable,
 		NewTranscripts: newTranscripts,
 		Now:            time.Now,
 	})

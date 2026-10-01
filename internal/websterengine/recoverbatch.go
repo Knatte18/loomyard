@@ -37,6 +37,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
+// ErrRecoveryNeedsFresh is the sentinel RecoverSpawnOrAttach's refusal of an uncheckable failed batch unwraps to.
+var ErrRecoveryNeedsFresh = errors.New("webster: recovery cannot check the batch's findings")
+
+// recoveryNeedsFreshError carries the refusal text verbatim and unwraps to ErrRecoveryNeedsFresh.
+type recoveryNeedsFreshError struct{ msg string }
+
+func (e *recoveryNeedsFreshError) Error() string { return e.msg }
+
+func (e *recoveryNeedsFreshError) Unwrap() error { return ErrRecoveryNeedsFresh }
+
 // Clock abstracts time.Now/time.Sleep so RecoverBatch's bounded wait runs instantly under test,
 // mirroring shuttleengine's wait.go seam and webster's own poll.go clock.
 // Clock is deliberately a plain, exported webster-local interface — it structurally satisfies
@@ -282,6 +292,17 @@ func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *Bat
 	if prior != nil && prior.Kind == "recovery" && !prior.Terminal && prior.StrandGUID != "" {
 		return prior, false, nil
 	}
+	if prior != nil && prior.Terminal && prior.Status == DigestStatusFailed && len(prior.Uncheckable) > 0 {
+		bases, err := runEvidenceBases(deps.Geom.WorktreeRoot, deps.State)
+		if err != nil {
+			return nil, false, err
+		}
+		reset := "reset the branch to the run's start commit with git"
+		if bases.Start != "" {
+			reset = fmt.Sprintf("reset the branch to the run's start commit %s with git", bases.Start)
+		}
+		return nil, false, &recoveryNeedsFreshError{msg: fmt.Sprintf("webster: batch %02d failed on findings recovery cannot check: %s; way forward: %s and run \"lyx webster run --fresh\"", batchNumber, strings.Join(prior.Uncheckable, ", "), reset)}
+	}
 
 	prevDigest := predecessorDigestLine(deps.Batches, deps.State, batchNumber)
 
@@ -324,7 +345,7 @@ func RecoverAwait(deps RecoverDeps, batchNumber int, bs *BatchState, wait time.D
 // Before that pass, every suspect path the failed batch recorded is checked at the report's head.
 // A plan file must match the plan as the run recorded it, a tracked path must not differ from the head,
 // and a tracked path must not still hold the flagged blob unless the start commit held it too.
-// A path the check cannot verify is skipped.
+// A batch recording a finding the check cannot verify never reaches it: RecoverSpawnOrAttach refuses it with ErrRecoveryNeedsFresh.
 // A recovery that leaves any of them fails the batch again with the same suspect paths, so the next recover-batch checks them again.
 // Accepted residual: a strand whose re-derivation is byte-identical to the flagged content is failed again;
 // the operator's way forward is to revert the path and edit its card.

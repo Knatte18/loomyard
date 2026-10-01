@@ -774,6 +774,39 @@ func TestRecordBatchCmd_ReportArchivedEnvelope(t *testing.T) {
 	}
 }
 
+// TestRecoverBatchCmd_NeedsFreshEnvelope proves recover-batch over a batch failed on an uncheckable finding exits non-zero with needs_fresh, names run --fresh, and spawns nothing.
+func TestRecoverBatchCmd_NeedsFreshEnvelope(t *testing.T) {
+	t.Setenv("WEFT_SKIP_GIT", "1")
+	fx := newVerbsFixture(t)
+	st := fx.initState(t, "master-model")
+	st.Batches[1] = &websterengine.BatchState{
+		Slug: "only", Kind: "fork", Terminal: true, Status: websterengine.DigestStatusFailed,
+		Digest:      &websterengine.Digest{Batch: "01-only", Status: websterengine.DigestStatusFailed},
+		Uncheckable: []string{"fabric-reference: cat FABRICREF/webster/state.json"},
+	}
+	if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, st); err != nil {
+		t.Fatalf("SaveState() error = %v", err)
+	}
+
+	var out strings.Builder
+	if code := clihelp.Execute(fx.CLI.recoverBatchCmd(), &out, []string{"1", "--wait", "1ns"}); code == 0 {
+		t.Fatalf("recover-batch 1 = 0; want non-zero, output: %s", out.String())
+	}
+	got := out.String()
+	for _, want := range []string{`"needs_fresh":true`, `lyx webster run --fresh`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("output missing %q; got %q", want, got)
+		}
+	}
+	loaded, err := websterengine.LoadState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir)
+	if err != nil || loaded == nil {
+		t.Fatalf("LoadState() = %v, %v; want a state, nil", loaded, err)
+	}
+	if bs := loaded.Batches[1]; !bs.Terminal || bs.Status != websterengine.DigestStatusFailed || bs.StrandGUID != "" {
+		t.Errorf("loaded.Batches[1] = %+v; want the failed record unchanged", bs)
+	}
+}
+
 // TestRecoverBatchCmd_RunningThenTerminal drives recover-batch across two calls against the same
 // batch: the first call performs the spawn and returns a running snapshot (the strand has no report
 // yet), proving the running envelope touches neither status nor digest fields;

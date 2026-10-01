@@ -2469,6 +2469,66 @@ func TestRun_FreshDropsPathlessFinding(t *testing.T) {
 	}
 }
 
+// seedUncheckableState seeds a state with one batch failed on an uncheckable finding, started at the fixture's first commit, and returns that start commit.
+func seedUncheckableState(t *testing.T, fx *runFixture) string {
+	t.Helper()
+	start := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	seedMatchingState(t, fx, &websterengine.State{
+		RunGUID: "stale-run",
+		Batches: map[int]*websterengine.BatchState{
+			1: {
+				Slug: "batch1", Kind: "fork", StartSHA: start, Terminal: true, Status: websterengine.DigestStatusFailed,
+				Digest:      &websterengine.Digest{Batch: "01-batch1", Status: websterengine.DigestStatusFailed, HeadSHA: start},
+				Uncheckable: []string{"fabric-reference: cat FABRICREF/webster/state.json"},
+			},
+		},
+	})
+	return start
+}
+
+// TestRun_FreshDropsUncheckableBatch proves --fresh on an unchanged plan with HEAD at the start commit drops a batch failed on an uncheckable finding:
+// the run re-initialises and the drop warning names the batch and its entries.
+func TestRun_FreshDropsUncheckableBatch(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	seedUncheckableState(t, fx)
+	askingMaster(t, fx, "uncheckable")
+	var logs bytes.Buffer
+	logger.SetOutput(&logs)
+	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+
+	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
+	requireReachedMaster(t, fx, err)
+	if !strings.Contains(logs.String(), "--fresh dropped batch 01's uncheckable findings: fabric-reference: cat FABRICREF/webster/state.json") {
+		t.Errorf("log = %q; want the drop warning naming batch 01 and its entry", logs.String())
+	}
+	st, err := websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
+	if err != nil {
+		t.Fatalf("LoadState() error = %v", err)
+	}
+	if bs := st.Batches[1]; st.RunGUID == "stale-run" || (bs != nil && len(bs.Uncheckable) != 0) {
+		t.Errorf("state = %+v; want a re-initialised run without the failed batch", st)
+	}
+}
+
+// TestRun_FreshRefusesUncheckableBatchPastStart proves the HEAD rule applies to a batch failed on an uncheckable finding:
+// with HEAD one commit past the start, --fresh refuses naming the start commit and archives nothing.
+func TestRun_FreshRefusesUncheckableBatchPastStart(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	start := seedUncheckableState(t, fx)
+	commitFile(t, fx.Worktree, "base.txt", "hand-edited by master", "suspect write")
+
+	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
+	if !errors.Is(err, websterengine.ErrPendingAuditFindings) {
+		t.Fatalf("Run() error = %v; want ErrPendingAuditFindings", err)
+	}
+	if !strings.Contains(err.Error(), "is not the run's start commit "+start) {
+		t.Errorf("Run() error = %q; want it to name the start commit %s", err, start)
+	}
+	if _, statErr := os.Stat(filepath.Join(fx.Deps.Geom.WebsterDir, "state.json")); statErr != nil {
+		t.Errorf("state.json was archived: %v", statErr)
+	}
+}
+
 // TestRun_FreshOnUnchangedPlanWithoutFindingsResumes proves --fresh stays a no-op on an unchanged plan with nothing pending: the state is kept.
 func TestRun_FreshOnUnchangedPlanWithoutFindingsResumes(t *testing.T) {
 	fx := newRunFixture(t, 1)

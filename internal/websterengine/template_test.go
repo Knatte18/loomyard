@@ -509,6 +509,9 @@ func TestMasterTemplate_TeachesBatchFailedAndReportArchivedRungs(t *testing.T) {
 	// recover-batch's own batch_failed is a failed recovery, a terminal rung, never another recover-batch.
 	requireContains(t, text, "- `recover-batch <NN>` refuses with `{\"batch_failed\": true}` → the recovery strand said done but webster's checks rejected its work")
 	requireContains(t, text, "Do NOT call `recover-batch` for that batch again")
+	// A finding recovery cannot check is refused toward run --fresh, so it is terminal for the run too.
+	requireContains(t, text, "- `recover-batch <NN>` refuses with `{\"needs_fresh\": true}` →")
+	requireContains(t, text, "comes back from `recover-batch` as `{\"needs_fresh\": true}`")
 	requireContains(t, text, "call `lyx webster begin-batch <NN>` and re-fork that batch")
 	requireContains(t, text, "`lyx webster rebaseline --card NN`")
 }

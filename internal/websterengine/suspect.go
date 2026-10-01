@@ -290,6 +290,33 @@ func trackedRel(worktree, p string) (rel string, ok bool, err error) {
 	return filepath.ToSlash(r), true, nil
 }
 
+// uncheckableSuspects returns the paths of paths that checkRecoveredSuspects cannot check:
+// neither under geom.PlanDir with st.PlanFileHashes recorded, nor accepted by trackedRel.
+// The error is a link-resolution or git probe failure.
+func uncheckableSuspects(geom Geometry, st *State, paths []string) ([]string, error) {
+	planPaths, _, err := splitPlanPaths(geom, paths)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, p := range paths {
+		if slices.Contains(planPaths, p) {
+			if len(st.PlanFileHashes) == 0 {
+				out = append(out, p)
+			}
+			continue
+		}
+		_, ok, err := trackedRel(geom.WorktreeRoot, p)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			out = append(out, p)
+		}
+	}
+	return out, nil
+}
+
 // suspectBlobs records, for each of paths, the blob of its worktree content now.
 // A path outside the tracked tree, or an absent file, gets an empty Blob.
 func suspectBlobs(worktree string, paths []string) ([]SuspectPath, error) {
@@ -312,7 +339,8 @@ func suspectBlobs(worktree string, paths []string) ([]SuspectPath, error) {
 
 // checkRecoveredSuspects returns one reason per suspect path the recovery left unresolved at head:
 // a plan file differing from the run's recorded hashes, a tracked path differing from head, or a tracked path whose head content is still the flagged blob and not the start commit's.
-// A path checkSuspectPaths reports unverifiable is not checked.
+// A path checkSuspectPaths reports unverifiable is not checked here:
+// RecoverSpawnOrAttach refuses a batch recording one, so none reaches this check.
 // number is the batch's number, named in the plan-path way forward.
 func checkRecoveredSuspects(geom Geometry, st *State, bs *BatchState, number int, head string) ([]string, error) {
 	var paths []string

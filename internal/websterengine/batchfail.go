@@ -52,6 +52,7 @@ type failBatchInput struct {
 	HeadSHA        string
 	Reasons        []string
 	SuspectPaths   []string
+	Uncheckable    []string
 	NewTranscripts []string
 	Now            func() time.Time
 }
@@ -97,6 +98,9 @@ func failBatch(in failBatchInput) (*BatchFailedError, error) {
 	}
 	if len(blobs) > 0 {
 		in.Batch.SuspectPaths = blobs
+	}
+	if len(in.Uncheckable) > 0 {
+		in.Batch.Uncheckable = in.Uncheckable
 	}
 	in.Batch.Terminal = true
 	in.Batch.Status = DigestStatusFailed

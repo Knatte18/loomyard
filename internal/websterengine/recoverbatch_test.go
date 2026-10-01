@@ -966,6 +966,46 @@ func TestRecoverSpawnOrAttach_FailedBatchSpawnsWithFailureDigest(t *testing.T) {
 	}
 }
 
+// TestRecoverSpawnOrAttach_RefusesUncheckableFindings proves a batch failed on findings recovery cannot check is refused toward run --fresh,
+// with no strand spawned and the record unchanged.
+func TestRecoverSpawnOrAttach_RefusesUncheckableFindings(t *testing.T) {
+	tests := []struct {
+		name        string
+		uncheckable []string
+	}{
+		{name: "fabric reference", uncheckable: []string{"fabric-reference: Bash command references the fabric"}},
+		{name: "scratch pause flag", uncheckable: []string{".lyx/webster/pause"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fx := newRecoverFixture(t)
+			rec := failedRecord("correctness finding")
+			rec.Uncheckable = tt.uncheckable
+			fx.Deps.State.Batches[1] = rec
+			clk := &recoverFakeClock{now: time.Unix(0, 0)}
+
+			_, spawned, err := websterengine.RecoverSpawnOrAttach(fx.Deps, 1, clk)
+			if !errors.Is(err, websterengine.ErrRecoveryNeedsFresh) {
+				t.Fatalf("RecoverSpawnOrAttach() error = %v; want ErrRecoveryNeedsFresh", err)
+			}
+			if spawned {
+				t.Error("spawned = true; want no strand")
+			}
+			for _, want := range append([]string{"lyx webster run --fresh", "batch 01"}, tt.uncheckable...) {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q lacks %q", err, want)
+				}
+			}
+			if fx.Deps.State.Batches[1] != rec || !rec.Terminal || rec.Status != websterengine.DigestStatusFailed || rec.StrandGUID != "" {
+				t.Errorf("record changed: %+v", rec)
+			}
+			if got := fx.Engine.lastPromptText(); got != "" {
+				t.Errorf("a recovery prompt was rendered: %q", got)
+			}
+		})
+	}
+}
+
 // TestRecoverSpawnOrAttach_FailedBatchArchivesLateReport proves an OK report a still-running fork writes after the batch failed is archived rather than refused, so no refusal ring re-forms.
 func TestRecoverSpawnOrAttach_FailedBatchArchivesLateReport(t *testing.T) {
 	fx := newRecoverFixture(t)

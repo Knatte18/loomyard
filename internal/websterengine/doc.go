@@ -175,7 +175,10 @@
 // an OK report on a batch that carries policy findings first has its cards' verify commands re-run in-process (rerunCardVerifies), and a failing re-run makes those findings correctness for the batch and fails it.
 // A correctness finding fails the batch on its merits instead of wedging it:
 // the batch goes terminal with digest status failed and its reasons, the report is archived, and record-batch returns *BatchFailedError naming `lyx webster recover-batch`.
-// recover-batch proceeds from a failed batch and hands its strand the failure digest.
+// recover-batch proceeds from a failed batch and hands its strand the failure digest,
+// except a batch failed on a correctness finding the recovery check cannot verify (a finding with no path, or a path outside the tracked tree and the plan directory), which its record lists as Uncheckable:
+// recover-batch refuses it with ErrRecoveryNeedsFresh before spawning anything, and the way forward is `lyx webster run --fresh` after resetting the branch to the run's start commit.
+// `run --fresh` drops such a batch under the same HEAD and path rules as a pending finding.
 // A report that cannot be attributed to a begun batch, or to any fork transcript, is archived and returned as *ReportArchivedError naming `lyx webster begin-batch`, which re-drives the batch.
 // The post-batch done-checks fail the batch the same way when a card's own declared work is missing, while drift that concerns only a later card is recorded as a warning rather than blocking this batch.
 // At run exit the audit cross-check drops dispositioned findings, records the rest of the policy findings as run-level warnings, appended to summary.md under "Audit warnings", and demotes Master's outcome done to stuck for an undispositioned correctness finding.

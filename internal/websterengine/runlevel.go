@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -1108,8 +1109,19 @@ func pendingPathsWayForward(geom Geometry, paths []string, tail string) (string,
 // When no batch recorded a start, the worktree's HEAD stands in for it.
 // An unverifiable path, a pathless finding and a differing plan path whose recorded copy is missing from the store are dropped with the archived state,
 // since no verb could restore the last; its warning says so.
+// A batch record with Uncheckable entries counts as a pending finding: its SuspectPaths join the path check, and it adds its own drop warning.
 func freshPendingDrop(geom Geometry, st *State, opts RunOptions) (drop bool, warnings []string, err error) {
-	if !opts.Fresh || st == nil || len(st.PendingAuditFindings) == 0 {
+	if !opts.Fresh || st == nil {
+		return false, nil, nil
+	}
+	var uncheckableBatches []int
+	for n, bs := range st.Batches {
+		if bs != nil && len(bs.Uncheckable) > 0 {
+			uncheckableBatches = append(uncheckableBatches, n)
+		}
+	}
+	sort.Ints(uncheckableBatches)
+	if len(st.PendingAuditFindings) == 0 && len(uncheckableBatches) == 0 {
 		return false, nil, nil
 	}
 	bases, err := runEvidenceBases(geom.WorktreeRoot, st)
@@ -1134,6 +1146,14 @@ func freshPendingDrop(geom Geometry, st *State, opts RunOptions) (drop bool, war
 			if !seen[p] {
 				seen[p] = true
 				allPaths = append(allPaths, p)
+			}
+		}
+	}
+	for _, n := range uncheckableBatches {
+		for _, sp := range st.Batches[n].SuspectPaths {
+			if !seen[sp.Path] {
+				seen[sp.Path] = true
+				allPaths = append(allPaths, sp.Path)
 			}
 		}
 	}
@@ -1192,6 +1212,9 @@ func freshPendingDrop(geom Geometry, st *State, opts RunOptions) (drop bool, war
 			w += fmt.Sprintf("; plan file(s) %s differ from the recorded plan and their recorded copy is missing from the plan baseline store, so no verb could restore them", strings.Join(lost, ", "))
 		}
 		warnings = append(warnings, w)
+	}
+	for _, n := range uncheckableBatches {
+		warnings = append(warnings, fmt.Sprintf("--fresh dropped batch %02d's uncheckable findings: %s", n, strings.Join(st.Batches[n].Uncheckable, ", ")))
 	}
 	return true, warnings, nil
 }

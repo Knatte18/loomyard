@@ -698,6 +698,60 @@ func TestRecordBatch_MutatingFabricReferenceFailsBatch(t *testing.T) {
 	}
 }
 
+// TestRecordBatch_FabricReferenceRecordsUncheckable proves a fork's fabric reference fails the batch with an Uncheckable entry naming its class, since it has no path recovery could check.
+func TestRecordBatch_FabricReferenceRecordsUncheckable(t *testing.T) {
+	fx := newRecordFixture(t, []shuttleengine.ForkAudit{{Forks: []shuttleengine.ForkReport{{
+		TranscriptPath: "subagents/f1.jsonl",
+		ReportReturned: true,
+		BashCommands:   []string{"cat /fabric/sibling/webster/state.json"},
+	}}}})
+	fx.Deps.RefMatcher = fabricPathMatcher("/fabric/sibling")
+	setCardVerify(fx, "exit 0")
+	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
+
+	if _, err := websterengine.RecordBatch(fx.Deps, 1); !errors.Is(err, websterengine.ErrBatchFailed) {
+		t.Fatalf("RecordBatch() error = %v; want ErrBatchFailed", err)
+	}
+	got := fx.Deps.State.Batches[1].Uncheckable
+	if len(got) != 1 || !strings.HasPrefix(got[0], string(websterengine.ClassFabricReference)+": ") {
+		t.Errorf("Uncheckable = %v; want one fabric-reference entry", got)
+	}
+}
+
+// TestRecordBatch_ScratchParentWriteRecordsUncheckable proves a Master write to the scratch pause flag fails the batch with its path as an Uncheckable entry.
+func TestRecordBatch_ScratchParentWriteRecordsUncheckable(t *testing.T) {
+	fx := newRecordFixture(t, []shuttleengine.ForkAudit{{
+		Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}},
+	}})
+	fx.Deps.Geom.ScratchDir = t.TempDir()
+	pause := filepath.Join(fx.Deps.Geom.ScratchDir, "pause")
+	fx.Engine.scripted[0].ParentWrites = []string{pause}
+	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
+
+	if _, err := websterengine.RecordBatch(fx.Deps, 1); !errors.Is(err, websterengine.ErrBatchFailed) {
+		t.Fatalf("RecordBatch() error = %v; want ErrBatchFailed", err)
+	}
+	if got := fx.Deps.State.Batches[1].Uncheckable; len(got) != 1 || got[0] != pause {
+		t.Errorf("Uncheckable = %v; want [%s]", got, pause)
+	}
+}
+
+// TestRecordBatch_TrackedParentWriteLeavesUncheckableEmpty proves a Master write to a tracked file fails the batch yet stays checkable by recovery.
+func TestRecordBatch_TrackedParentWriteLeavesUncheckableEmpty(t *testing.T) {
+	fx := newRecordFixture(t, []shuttleengine.ForkAudit{{
+		Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}},
+	}})
+	fx.Engine.scripted[0].ParentWrites = []string{filepath.Join(fx.Worktree, "internal/foo/impl.go")}
+	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
+
+	if _, err := websterengine.RecordBatch(fx.Deps, 1); !errors.Is(err, websterengine.ErrBatchFailed) {
+		t.Fatalf("RecordBatch() error = %v; want ErrBatchFailed", err)
+	}
+	if got := fx.Deps.State.Batches[1].Uncheckable; len(got) != 0 {
+		t.Errorf("Uncheckable = %v; want empty", got)
+	}
+}
+
 // fabricPathMatcher is a RefMatcher that matches any command containing its fabric path.
 type fabricPathMatcher string
 
@@ -928,6 +982,8 @@ func TestRecordBatch_ForkPlanWriteFailsBatch(t *testing.T) {
 	}})
 	card := filepath.Join(fx.Deps.Geom.PlanDir, "03-x.md")
 	fx.Engine.scripted[0].Forks[0].WritePaths = []string{card}
+	// A plan file is checkable by recovery only against recorded plan hashes.
+	fx.Deps.State.PlanFileHashes = map[string]string{"03-x.md": "recorded"}
 	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
 
 	result, err := websterengine.RecordBatch(fx.Deps, 1)
@@ -953,7 +1009,7 @@ func TestRecordBatch_ForkPlanWriteFailsBatch(t *testing.T) {
 // TestRecordBatch_Regression20260930_ForkAuditFalsePositive pins the 2026-09-30 incident:
 // a fork's fabric reference (`cat FABRICREF/webster/state.json`) on an otherwise clean batch no longer wedges every retry.
 // The first call fails the batch with its report archived and names recover-batch,
-// a second RecordBatch call returns no audit refusal, and recover-batch spawns its strand from the failed record.
+// a second RecordBatch call returns no audit refusal, and recover-batch refuses the failed record toward run --fresh, because a fabric reference is a finding recovery cannot check.
 func TestRecordBatch_Regression20260930_ForkAuditFalsePositive(t *testing.T) {
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{{Forks: []shuttleengine.ForkReport{{
 		TranscriptPath: "subagents/f1.jsonl",
@@ -983,8 +1039,9 @@ func TestRecordBatch_Regression20260930_ForkAuditFalsePositive(t *testing.T) {
 	failed := *fx.Deps.State.Batches[1]
 	rfx.Deps.State.Batches[1] = &failed
 	clk := &recoverFakeClock{now: time.Unix(0, 0)}
-	if _, spawned, err := websterengine.RecoverSpawnOrAttach(rfx.Deps, 1, clk); err != nil || !spawned {
-		t.Fatalf("RecoverSpawnOrAttach() = spawned %v, err %v; want a recovery strand spawned", spawned, err)
+	// A fabric reference has no path recovery could check, so recover-batch names run --fresh instead of spawning.
+	if _, spawned, err := websterengine.RecoverSpawnOrAttach(rfx.Deps, 1, clk); !errors.Is(err, websterengine.ErrRecoveryNeedsFresh) || spawned || !strings.Contains(err.Error(), "lyx webster run --fresh") {
+		t.Fatalf("RecoverSpawnOrAttach() = spawned %v, err %v; want ErrRecoveryNeedsFresh naming run --fresh", spawned, err)
 	}
 }
 

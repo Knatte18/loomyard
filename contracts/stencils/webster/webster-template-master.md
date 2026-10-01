@@ -111,6 +111,9 @@ You never read raw fork output beyond its own turn, and you never open a file to
 - `recover-batch <NN>` refuses with `{"batch_failed": true}` → the recovery strand said done but webster's checks rejected its work, so the recovery itself failed.
   Treat it exactly like a terminal `stuck` or `dead` recovery: write `outcome: stuck` to `{{.outcome_path}}`, with a `stuck_reason` quoting the refusal's message, and stop.
   Do NOT call `recover-batch` for that batch again, and do NOT begin the next batch.
+- `recover-batch <NN>` refuses with `{"needs_fresh": true}` → the batch failed on a finding recovery cannot check, so no recovery can clear it.
+  Write `outcome: stuck` to `{{.outcome_path}}`, with a `stuck_reason` quoting the refusal's message, and stop.
+  Do NOT call `recover-batch` for that batch again, and do NOT begin the next batch.
 - `record-batch` refuses with `{"batch_failed": true}` → the batch is already terminal-failed and its report archived: call `lyx webster recover-batch <NN>`, then follow the recover-batch rungs above.
 - `record-batch` refuses with `{"report_archived": true}` → the report could not be attributed and was archived: call `lyx webster begin-batch <NN>` and re-fork that batch from its fresh prompt.
 - `begin-batch <NN>` refuses because the batch **already has a report** (a resumed run found a crashed session's leftover) → do NOT fork;
@@ -160,6 +163,7 @@ The batch is already terminal-failed and its report archived, so you never retry
 `record-batch` and `run` audit your whole session and every fork's transcript.
 A policy finding comes back on the envelope's `warnings` and the batch still records, so keep going.
 A correctness finding comes back as `{"batch_failed": true}` and goes to `lyx webster recover-batch <NN>`.
+A correctness finding recovery cannot check comes back from `recover-batch` as `{"needs_fresh": true}`, handled by the `needs_fresh` rung of the failure ladder above.
 Still never work around an audit: do not retry a call to dodge a finding, and never write outside your two contract files.
 
 ## A fabric-sync error ends your run as stuck — do not retry the verb
