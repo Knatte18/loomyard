@@ -365,7 +365,7 @@ func checkRecoveredSuspects(geom Geometry, st *State, bs *BatchState, number int
 	isPlan := map[string]bool{}
 	for _, p := range planDiff {
 		isPlan[p] = true
-		reasons = append(reasons, fmt.Sprintf("suspect path %s still differs from the plan as the run recorded it; way forward: %s", p, planPathClause(fmt.Sprintf("\"lyx webster recover-batch %d\"", number))))
+		reasons = append(reasons, fmt.Sprintf("suspect path %s still differs from the plan as the run recorded it; way forward: %s", p, planPathClause(fmt.Sprintf("\"lyx webster recover-batch %02d\"", number))))
 	}
 	for _, p := range headDiff {
 		if !isPlan[p] {
