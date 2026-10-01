@@ -1321,6 +1321,30 @@ func TestPersistRecoveryTerminal_FailsWhenSuspectContentMoved(t *testing.T) {
 	}
 }
 
+// TestPersistRecoveryTerminal_FailsWhenSuspectUntrackedAndMoved proves the blob search still runs when the strand moves the flagged file and leaves an ignored file at the suspect path.
+func TestPersistRecoveryTerminal_FailsWhenSuspectUntrackedAndMoved(t *testing.T) {
+	fx, _, _ := suspectRecovery(t)
+	clk := &recoverFakeClock{now: time.Unix(0, 0)}
+	if _, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk); err != nil {
+		t.Fatal(err)
+	}
+	commitFile(t, fx.Worktree, "internal/x.go", "forged", "strand keeps forged")
+	mustGit(t, fx.Worktree, "mv", "internal/x.go", "internal/y.go")
+	commitFile(t, fx.Worktree, ".gitignore", "internal/x.go\n", "strand moves forged and ignores x")
+	if err := os.WriteFile(filepath.Join(fx.Worktree, "internal", "x.go"), []byte("ignored"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	head := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	writeRecoverReport(t, fx.ReportsDir, "status: OK\nhead_sha: "+head+"\n")
+	_, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk)
+	if !errors.Is(err, websterengine.ErrBatchFailed) {
+		t.Fatalf("error = %v; want ErrBatchFailed", err)
+	}
+	if !strings.Contains(err.Error(), "internal/y.go") {
+		t.Errorf("error = %q; want the moved path named", err.Error())
+	}
+}
+
 func TestPersistRecoveryTerminal_PassesWhenStartHeldSameContent(t *testing.T) {
 	fx := newRecoverFixture(t)
 	commitFile(t, fx.Worktree, "internal/z.go", "forged", "z holds forged")

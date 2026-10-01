@@ -145,6 +145,23 @@ func reversedOrderFixture(t *testing.T) (fx *suspectFixture, c0, c1, c2 string) 
 	return fx, c0, c1, c2
 }
 
+// TestCheckRecoveredSuspects_EmptyStartHoldsNothing proves a record with no StartSHA treats every copy of the flagged blob in the head tree as new,
+// rather than reading the index, which holds head's blob once the strand committed.
+func TestCheckRecoveredSuspects_EmptyStartHoldsNothing(t *testing.T) {
+	fx := newSuspectFixture(t)
+	root := fx.geom.WorktreeRoot
+	blob := strings.TrimSpace(gitwrapMustGit(t, root, "rev-parse", fx.head+":tracked.txt"))
+	bs := &BatchState{SuspectPaths: []SuspectPath{{Path: filepath.Join(root, "gone.txt"), Blob: blob}}}
+
+	reasons, err := checkRecoveredSuspects(fx.geom, fx.st, bs, 1, fx.head)
+	if err != nil {
+		t.Fatalf("checkRecoveredSuspects() error = %v", err)
+	}
+	if len(reasons) != 1 || !strings.Contains(reasons[0], "at tracked.txt") {
+		t.Errorf("reasons = %v; want one naming the copy at tracked.txt", reasons)
+	}
+}
+
 func TestRunEvidenceBases_PicksByAncestry(t *testing.T) {
 	fx, c0, _, c2 := reversedOrderFixture(t)
 	root := fx.geom.WorktreeRoot

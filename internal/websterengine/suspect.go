@@ -341,6 +341,8 @@ func suspectBlobs(worktree string, paths []string) ([]SuspectPath, error) {
 // checkRecoveredSuspects returns one reason per suspect path the recovery left unresolved at head:
 // a plan file differing from the run's recorded hashes, a tracked path differing from head, or the flagged blob still held at head under any path that did not hold it at the start commit.
 // The blob search covers the whole head tree, so a strand that moves the flagged file keeps the finding.
+// It runs for every path recording a blob, which suspectBlobs records only for a path in the tracked tree when the batch failed,
+// so a strand that untracks the original path still has its moved copy found.
 // A path checkSuspectPaths reports unverifiable is not checked here:
 // RecoverSpawnOrAttach refuses a batch recording one, so none reaches this check.
 // number is the batch's number, named in the plan-path way forward.
@@ -374,21 +376,18 @@ func checkRecoveredSuspects(geom Geometry, st *State, bs *BatchState, number int
 		if isPlan[p] || blobs[p] == "" || slices.Contains(headDiff, p) {
 			continue
 		}
-		_, ok, err := trackedRel(geom.WorktreeRoot, p)
-		if err != nil {
-			return nil, err
-		}
-		if !ok {
-			continue
-		}
 		listed, err := treePathsWithBlob(geom.WorktreeRoot, head, blobs[p])
 		if err != nil {
 			return nil, err
 		}
 		for _, lp := range listed {
-			atStart, err := commitBlob(geom.WorktreeRoot, bs.StartSHA, lp)
-			if err != nil {
-				return nil, err
+			// With no start commit recorded, nothing was held at the start;
+			// commitBlob would otherwise read ":<path>", the index entry.
+			atStart := ""
+			if bs.StartSHA != "" {
+				if atStart, err = commitBlob(geom.WorktreeRoot, bs.StartSHA, lp); err != nil {
+					return nil, err
+				}
 			}
 			if atStart != blobs[p] {
 				reasons = append(reasons, fmt.Sprintf("suspect path %s still holds the content the audit flagged, at %s; revert it to %s or re-derive it", p, lp, bs.StartSHA))
