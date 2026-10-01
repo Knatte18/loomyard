@@ -77,8 +77,8 @@ const (
 	// (outcome.yaml, summary.md) — those are Master's only permitted writes, and a fork writing them
 	// forges the run's terminal judgment.
 	ClassForkContractWrite AuditViolationClass = "fork-contract-write"
-	// ClassForkPlanWrite means a fork's own transcript wrote under the run's plan directory,
-	// which only webster itself rewrites — a fork writing there can change a later card or its own card's Verify.
+	// ClassForkPlanWrite means a fork's own transcript wrote under the run's plan directory, which only webster itself rewrites.
+	// A fork writing there can change a later card or its own card's Verify.
 	ClassForkPlanWrite AuditViolationClass = "fork-plan-write"
 )
 
@@ -136,8 +136,7 @@ func (v AuditViolation) Error() string {
 
 // CheckFork evaluates one fork's transcript facts against webster's implementer policy: Write/Edit
 // and repo-native git are explicitly allowed.
-// It bans four hard violations: any attempted Agent call, any write to the two contract files
-// (outcomePath or summaryPath), any write under the plan directory, and any Bash command referencing the fabric repo.
+// It bans four hard violations: any attempted Agent call, any write to the two contract files (outcomePath or summaryPath), any write under the plan directory, and any Bash command referencing the fabric repo.
 // planDirs holds the plan directory's spellings (the told path and its link-resolved form, see planDirSpellings),
 // so CheckFork stays free of filesystem reads;
 // a write that is also a contract write yields only its fork-contract-write finding.

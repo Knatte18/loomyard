@@ -110,14 +110,12 @@
 // pass computes its delta from that SHA, and a fork frequently commits part
 // of its work before getting stuck.
 //
-// A batch failed on a correctness finding records its suspect paths with the
-// blob each held when it failed, and recover-batch records the batch done only
-// once each of them was reverted or re-derived and committed: a plan file must
-// match the run's recorded hashes, a tracked path must not differ from the
-// report's head, and a tracked path must not still hold the flagged blob unless
-// the start commit held it too. A strand whose re-derivation is byte-identical
-// to the flagged content is failed again; the way forward is to revert the
-// path and edit its card.
+// A batch failed on a correctness finding records its suspect paths with the blob each held when it first failed,
+// and recover-batch records the batch done only once each of them was reverted or re-derived and committed.
+// A plan file must match the run's recorded hashes, a tracked path must not differ from the report's head,
+// and a tracked path must not still hold the flagged blob unless the start commit held it too.
+// A strand whose re-derivation is byte-identical to the flagged content is failed again;
+// the way forward is to revert the path and edit its card.
 //
 // # the plan-staleness guard re-baselines at the rewrite, not at the return
 //
@@ -159,8 +157,9 @@
 // # audit findings: correctness fails the batch, policy warns once
 //
 // The fork and parent audits classify each finding (ClassifyViolation) as correctness or policy.
-// A correctness finding means the delta or the run's own state may be wrong: a fork writing one of Master's two contract files or anything under the plan directory, a parent write under the run's `_lyx` directory or into the worktree's tracked (not git-ignored) content, under webster's scratch directory (its pause flag and locks), or into another worktree of the task repository,
-// or a fabric reference whatever its command, since an agent never touches the fabric repo and that can rewrite run state the cards' verify commands cannot detect;
+// A correctness finding means the delta or the run's own state may be wrong.
+// It is a fork writing one of Master's two contract files or anything under the plan directory, or a parent write under the run's `_lyx` directory, into the worktree's tracked (not git-ignored) content, under webster's scratch directory (its pause flag and locks), or into another worktree of the task repository.
+// Every fabric reference is correctness too, whatever its command, since an agent never touches the fabric repo and the command can rewrite run state the cards' verify commands cannot detect;
 // a policy finding breaks a steering rule without touching correctness, such as a named spawn or a nested agent call.
 // Each finding carries a stable identity (its Key, prefixed by the session id for a parent finding),
 // and state.json's ledger dispositions it once per run, so the whole-session parent audit repeating earlier findings on every record-batch never re-judges them.

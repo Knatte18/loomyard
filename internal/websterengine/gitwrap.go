@@ -4,9 +4,9 @@
 // refuseMidMerge and reconcileReportHead are the read-only probes record-batch and recover-batch share:
 // the first refuses while a git merge is in progress, the second accepts a HEAD that is only clean parent merges past the report's head_sha.
 // The suspect-path probes (ignoredPath, worktreePathDiffers, worktreeBlob, commitBlob) and otherWorktrees are the read-only evidence queries accept-audit, recovery and fresh runs share.
-// Per the Shared Decision git-verification-via-gitrepo, every helper here goes through gitrepo.Repo
-// except dirty and those read-only probes, which gitrepo exposes no method for and so wrap the checked gitexec.Run
-// directly — the carved-out exception the decision names, kept in this one file so no other webster file runs git.
+// Per the Shared Decision git-verification-via-gitrepo, every helper here goes through gitrepo.Repo except dirty and those read-only probes.
+// gitrepo exposes no method for them, so they wrap the checked gitexec.Run directly, the carved-out exception the decision names;
+// they are kept in this one file so no other webster file runs git.
 
 package websterengine
 
@@ -200,8 +200,8 @@ func dirty(worktree string) (bool, error) {
 	return strings.TrimSpace(stdout) != "", nil
 }
 
-// otherWorktrees returns the canonical root of every worktree of worktree's repository except worktree itself,
-// read from the repository's own worktree list so websterengine derives no hub path.
+// otherWorktrees returns the canonical root of every worktree of worktree's repository except worktree itself.
+// It reads the repository's own worktree list, so websterengine derives no hub path.
 func otherWorktrees(worktree string) ([]string, error) {
 	self, err := canonicalPath(worktree)
 	if err != nil {

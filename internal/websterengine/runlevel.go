@@ -1065,8 +1065,8 @@ func pendingAuditFindingsError(pending []PendingAuditFinding) error {
 }
 
 // freshPendingDrop decides whether opts.Fresh discards st's pending audit findings, and returns one warning per dropped finding.
-// It refuses with ErrPendingAuditFindings while a suspect path outside the plan directory still differs from the run's start commit,
-// falling back to the worktree's HEAD when no batch recorded a start.
+// It refuses with ErrPendingAuditFindings while a suspect path outside the plan directory still differs from the run's start commit.
+// When no batch recorded a start, the worktree's HEAD stands in for it.
 // A plan file differs by design, and an unverifiable path or a pathless finding is dropped with the archived state.
 func freshPendingDrop(geom Geometry, st *State, opts RunOptions) (drop bool, warnings []string, err error) {
 	if !opts.Fresh || st == nil || len(st.PendingAuditFindings) == 0 {

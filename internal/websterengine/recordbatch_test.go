@@ -645,9 +645,9 @@ func TestRecordBatch_ForkNestedAgentWarnsWhenVerifyPasses(t *testing.T) {
 	}
 }
 
-// TestRecordBatch_MutatingFabricReferenceFailsBatch proves a fork that touched the fabric checkout through Bash is correctness whatever its command,
-// a read-only one, a mutating one or a writer no allowlist names:
-// the batch is recorded failed, its OK report archived, and the digest names the command;
+// TestRecordBatch_MutatingFabricReferenceFailsBatch proves a fork that touched the fabric checkout through Bash is correctness whatever its command.
+// It covers a read-only command, a mutating one and a writer no allowlist names;
+// for each, the batch is recorded failed, its OK report archived, and the digest names the command;
 // the failed record is the state recover-batch proceeds from.
 func TestRecordBatch_MutatingFabricReferenceFailsBatch(t *testing.T) {
 	tests := []struct {
@@ -913,8 +913,8 @@ func TestRecordBatch_ForkContractWriteFailsBatch(t *testing.T) {
 	}
 }
 
-// TestRecordBatch_ForkPlanWriteFailsBatch proves a fork writing a card file under the plan directory fails the batch,
-// archives its report, names the card file as a suspect path, and leaves a failed record recover-batch proceeds from.
+// TestRecordBatch_ForkPlanWriteFailsBatch proves a fork writing a card file under the plan directory fails the batch.
+// The report is archived, the card file is named as a suspect path, and the failed record is one recover-batch proceeds from.
 func TestRecordBatch_ForkPlanWriteFailsBatch(t *testing.T) {
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{{
 		Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}},
