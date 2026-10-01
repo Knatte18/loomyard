@@ -1045,6 +1045,47 @@ func TestRecordBatch_ForgedTerminalRecordFails(t *testing.T) {
 	}
 }
 
+// TestRecordBatch_TerminalAuditSkipsAnotherForksTranscript proves a repeated record-batch on a done batch never attributes another fork's unseen transcript to it:
+// while a later fork batch of the same session is open, or once the integration report exists, the call refuses as already terminal and consumes nothing.
+func TestRecordBatch_TerminalAuditSkipsAnotherForksTranscript(t *testing.T) {
+	tests := []struct {
+		name  string
+		setup func(t *testing.T, fx *recordFixture)
+	}{
+		{"later batch open", func(t *testing.T, fx *recordFixture) {
+			fx.Deps.State.Batches[2] = &websterengine.BatchState{Slug: "later", Kind: "fork", SessionID: "session-1"}
+		}},
+		{"integration report present", func(t *testing.T, fx *recordFixture) {
+			if err := os.WriteFile(websterengine.IntegrationReportPath(fx.ReportsDir), []byte("status: OK\n"), 0o644); err != nil {
+				t.Fatalf("write integration report: %v", err)
+			}
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fx := newRecordFixture(t, []shuttleengine.ForkAudit{{
+				Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f2.jsonl", ReportReturned: true}},
+			}})
+			fx.Deps.State.Batches[1].Terminal = true
+			fx.Deps.State.Batches[1].Status = websterengine.DigestStatusDone
+			fx.Deps.State.Batches[1].Digest = &websterengine.Digest{Batch: "01-json-flag", Status: websterengine.DigestStatusDone, HeadSHA: fx.HeadSHA}
+			fx.Engine.scripted[0].Forks[0].WritePaths = []string{filepath.Join(fx.ReportsDir, websterengine.ReportFileName(2, "later"))}
+			tt.setup(t, fx)
+
+			_, err := websterengine.RecordBatch(fx.Deps, 1)
+			if err == nil || !strings.Contains(err.Error(), "already terminal") {
+				t.Fatalf("RecordBatch() error = %v; want the already-terminal refusal", err)
+			}
+			if got := fx.Deps.State.Batches[1].Status; got != websterengine.DigestStatusDone {
+				t.Errorf("status = %q; want it unchanged (done)", got)
+			}
+			if len(fx.Deps.State.SeenForkTranscripts) != 0 {
+				t.Errorf("SeenForkTranscripts = %v; want the other fork's transcript left unseen", fx.Deps.State.SeenForkTranscripts)
+			}
+		})
+	}
+}
+
 // TestRecordBatch_Regression20260930_ForkAuditFalsePositive pins the 2026-09-30 incident:
 // a fork's fabric reference (`cat FABRICREF/webster/state.json`) on an otherwise clean batch no longer wedges every retry.
 // The first call fails the batch with its report archived and names recover-batch,
