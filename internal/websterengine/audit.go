@@ -76,6 +76,9 @@ const (
 	// (outcome.yaml, summary.md) — those are Master's only permitted writes, and a fork writing them
 	// forges the run's terminal judgment.
 	ClassForkContractWrite AuditViolationClass = "fork-contract-write"
+	// ClassForkPlanWrite means a fork's own transcript wrote under the run's plan directory,
+	// which only webster itself rewrites — a fork writing there can change a later card or its own card's Verify.
+	ClassForkPlanWrite AuditViolationClass = "fork-plan-write"
 )
 
 // AuditViolation is one hard fork-audit policy violation observed in either a fork's own transcript
@@ -132,13 +135,16 @@ func (v AuditViolation) Error() string {
 
 // CheckFork evaluates one fork's transcript facts against webster's implementer policy: Write/Edit
 // and repo-native git are explicitly allowed.
-// It bans three hard violations: any attempted Agent call, any write to the two contract files
-// (outcomePath or summaryPath), and any Bash command referencing the fabric repo.
+// It bans four hard violations: any attempted Agent call, any write to the two contract files
+// (outcomePath or summaryPath), any write under the plan directory, and any Bash command referencing the fabric repo.
+// planDirs holds the plan directory's spellings (the told path and its link-resolved form, see planDirSpellings),
+// so CheckFork stays free of filesystem reads;
+// a write that is also a contract write yields only its fork-contract-write finding.
 // fabricRef is the injected RefMatcher — the caller-supplied fabric-reference class matcher (a real
 // *fabricengine.RefScanner in hub mode, NeverMatches in standalone) — and is never nil in either
 // mode: Matches is called unguarded here, so a nil interface is a panic, which is why NeverMatches
 // exists as the pinned no-fabric supplier.
-func CheckFork(f shuttleengine.ForkReport, outcomePath, summaryPath, workdir string, fabricRef RefMatcher) []AuditViolation {
+func CheckFork(f shuttleengine.ForkReport, outcomePath, summaryPath, workdir string, planDirs []string, fabricRef RefMatcher) []AuditViolation {
 	var violations []AuditViolation
 
 	if f.AgentCalls > 0 {
@@ -156,6 +162,7 @@ func CheckFork(f shuttleengine.ForkReport, outcomePath, summaryPath, workdir str
 	cleanOutcome := filepath.Clean(outcomePath)
 	cleanSummary := filepath.Clean(summaryPath)
 	contractWrites := 0
+	planWrites := 0
 	for _, w := range f.WritePaths {
 		cw := resolveWritePath(workdir, w)
 		if cw == cleanOutcome || cw == cleanSummary {
@@ -167,6 +174,20 @@ func CheckFork(f shuttleengine.ForkReport, outcomePath, summaryPath, workdir str
 				Path:           w,
 				Detail:         fmt.Sprintf("fork wrote %q — outcome.yaml and summary.md are Master's own contract files; a fork writing either forges the run's terminal judgment", w),
 			})
+			continue
+		}
+		for _, dir := range planDirs {
+			if pathWithin(filepath.Clean(dir), cw) {
+				planWrites++
+				violations = append(violations, AuditViolation{
+					Class:          ClassForkPlanWrite,
+					TranscriptPath: f.TranscriptPath,
+					Key:            forkKey(f.TranscriptPath, ClassForkPlanWrite, planWrites),
+					Path:           w,
+					Detail:         fmt.Sprintf("fork wrote %q — the plan directory is rewritten only by webster itself; a fork writing there can change a later card or its own card's Verify", w),
+				})
+				break
+			}
 		}
 	}
 
@@ -185,6 +206,21 @@ func CheckFork(f shuttleengine.ForkReport, outcomePath, summaryPath, workdir str
 	}
 
 	return violations
+}
+
+// planDirSpellings returns geom.PlanDir and its link-resolved form, deduplicated,
+// so a write spelled through the `_lyx` link and one spelled through its target both match.
+// The error is canonicalPath's.
+func planDirSpellings(geom Geometry) ([]string, error) {
+	canon, err := canonicalPath(geom.PlanDir)
+	if err != nil {
+		return nil, err
+	}
+	dirs := []string{geom.PlanDir}
+	if canon != geom.PlanDir {
+		dirs = append(dirs, canon)
+	}
+	return dirs, nil
 }
 
 // resolveWritePath canonicalizes a transcript-recorded write path: cleaned,
@@ -271,7 +307,7 @@ func fabricReferenceDetail(cmd, rule string) string {
 }
 
 // ClassifyViolation assigns v its D4 severity, checking the correctness rule first.
-// A fork-contract-write is correctness.
+// A fork-contract-write and a fork-plan-write are correctness.
 // A parent-write is correctness when its path lies under the run's state, reports or plan directory, or the run's `_lyx` directory (the parent of geom.WebsterDir),
 // or when it lies inside the worktree and git does not ignore it;
 // every other parent-write is policy.
@@ -282,7 +318,7 @@ func fabricReferenceDetail(cmd, rule string) string {
 // The error return is only the git probe's or the link resolution's failure.
 func ClassifyViolation(v AuditViolation, geom Geometry) (AuditSeverity, error) {
 	switch v.Class {
-	case ClassForkContractWrite:
+	case ClassForkContractWrite, ClassForkPlanWrite:
 		return AuditSeverityCorrectness, nil
 	case ClassFabricReference:
 		return AuditSeverityCorrectness, nil

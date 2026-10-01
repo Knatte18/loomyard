@@ -62,6 +62,7 @@ func TestClassifyViolation(t *testing.T) {
 		want AuditSeverity
 	}{
 		{"fork-contract-write", AuditViolation{Class: ClassForkContractWrite, Path: "x"}, geom, AuditSeverityCorrectness},
+		{"fork-plan-write", AuditViolation{Class: ClassForkPlanWrite, Path: "x"}, geom, AuditSeverityCorrectness},
 		{"fabric-reference", AuditViolation{Class: ClassFabricReference}, geom, AuditSeverityCorrectness},
 		{"fabric-reference read-only command", AuditViolation{Class: ClassFabricReference, Command: "cat <dir>/webster/state.json"}, geom, AuditSeverityCorrectness},
 		{"named-spawn", AuditViolation{Class: ClassNamedSpawn}, geom, AuditSeverityPolicy},

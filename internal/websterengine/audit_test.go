@@ -124,6 +124,7 @@ func TestCheckFork(t *testing.T) {
 		name        string
 		fork        shuttleengine.ForkReport
 		wantClasses []AuditViolationClass
+		wantPath    string
 	}{
 		{
 			name: "nested Agent call is a hard error even when denied",
@@ -189,6 +190,49 @@ func TestCheckFork(t *testing.T) {
 			wantClasses: []AuditViolationClass{ClassForkContractWrite},
 		},
 		{
+			name: "absolute fork write under the plan directory is a plan write",
+			fork: shuttleengine.ForkReport{
+				TranscriptPath: "p1", ReportReturned: true,
+				WritePaths: []string{"/hub/master-builder/_lyx/plan/03-x.md"},
+			},
+			wantClasses: []AuditViolationClass{ClassForkPlanWrite},
+			wantPath:    "/hub/master-builder/_lyx/plan/03-x.md",
+		},
+		{
+			name: "relative fork write under the plan directory is a plan write",
+			fork: shuttleengine.ForkReport{
+				TranscriptPath: "p2", ReportReturned: true,
+				WritePaths: []string{"_lyx/plan/03-x.md"},
+			},
+			wantClasses: []AuditViolationClass{ClassForkPlanWrite},
+			wantPath:    "_lyx/plan/03-x.md",
+		},
+		{
+			name: "fork write through the second plan spelling is a plan write",
+			fork: shuttleengine.ForkReport{
+				TranscriptPath: "p3", ReportReturned: true,
+				WritePaths: []string{"/fabric/weft/plan/03-x.md"},
+			},
+			wantClasses: []AuditViolationClass{ClassForkPlanWrite},
+			wantPath:    "/fabric/weft/plan/03-x.md",
+		},
+		{
+			name: "fork write to a worktree source file is no plan write",
+			fork: shuttleengine.ForkReport{
+				TranscriptPath: "p4", ReportReturned: true,
+				WritePaths: []string{"internal/foo/foo.go"},
+			},
+			wantClasses: nil,
+		},
+		{
+			name: "two plan writes in one transcript are two findings",
+			fork: shuttleengine.ForkReport{
+				TranscriptPath: "p5", ReportReturned: true,
+				WritePaths: []string{"_lyx/plan/03-x.md", "_lyx/plan/04-y.md"},
+			},
+			wantClasses: []AuditViolationClass{ClassForkPlanWrite, ClassForkPlanWrite},
+		},
+		{
 			name: "fork write to its own batch report stays allowed",
 			fork: shuttleengine.ForkReport{
 				TranscriptPath: "h", ReportReturned: true,
@@ -200,12 +244,19 @@ func TestCheckFork(t *testing.T) {
 
 	const outcomePath = "/hub/master-builder/_lyx/webster/outcome.yaml"
 	const summaryPath = "/hub/master-builder/_lyx/webster/summary.md"
+	planDirs := []string{"/hub/master-builder/_lyx/plan", "/fabric/weft/plan"}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := CheckFork(tt.fork, outcomePath, summaryPath, "/hub/master-builder", fabricRef)
+			got := CheckFork(tt.fork, outcomePath, summaryPath, "/hub/master-builder", planDirs, fabricRef)
 			if len(got) != len(tt.wantClasses) {
 				t.Fatalf("CheckFork() = %v; want %d violation(s) of class %v", got, len(tt.wantClasses), tt.wantClasses)
+			}
+			if tt.wantPath != "" && got[0].Path != tt.wantPath {
+				t.Errorf("CheckFork()[0].Path = %q; want %q", got[0].Path, tt.wantPath)
+			}
+			if tt.name == "two plan writes in one transcript are two findings" && got[0].Key == got[1].Key {
+				t.Errorf("CheckFork() keys = %q and %q; want distinct", got[0].Key, got[1].Key)
 			}
 			for i, v := range got {
 				if v.Class != tt.wantClasses[i] {
@@ -346,12 +397,12 @@ func TestCheckFork_RelativeWritePathResolvesAgainstWorkdirNotAnchorRoot(t *testi
 		WritePaths:     []string{"_lyx/webster/outcome.yaml"},
 	}
 
-	got := CheckFork(fork, outcomePath, summaryPath, workdir, NeverMatches{})
+	got := CheckFork(fork, outcomePath, summaryPath, workdir, nil, NeverMatches{})
 	if len(got) != 1 || got[0].Class != ClassForkContractWrite {
 		t.Fatalf("CheckFork() joined against workdir = %v; want exactly one %q violation", got, ClassForkContractWrite)
 	}
 
-	gotAnchor := CheckFork(fork, outcomePath, summaryPath, anchorRoot, NeverMatches{})
+	gotAnchor := CheckFork(fork, outcomePath, summaryPath, anchorRoot, nil, NeverMatches{})
 	if len(gotAnchor) != 0 {
 		t.Errorf("CheckFork() joined against the anchor-shaped directory = %v; want none — workdir and the anchor root must not be interchangeable", gotAnchor)
 	}

@@ -927,10 +927,14 @@ func runExitAuditCrossCheck(deps RunDeps, outcomePath, summaryPath string, resul
 		return nil, "", fmt.Errorf("webster: run-exit audit cross-check: no state.json to disposition findings against%s", runExitWayForward)
 	}
 
+	planDirs, err := planDirSpellings(deps.Geom)
+	if err != nil {
+		return nil, "", err
+	}
 	var candidates []AuditViolation
 	candidates = append(candidates, CheckParent(*result.ForkAudit, outcomePath, summaryPath, deps.Geom.WorktreeRoot, deps.RefMatcher)...)
 	for _, f := range result.ForkAudit.Forks {
-		candidates = append(candidates, CheckFork(f, outcomePath, summaryPath, deps.Geom.WorktreeRoot, deps.RefMatcher)...)
+		candidates = append(candidates, CheckFork(f, outcomePath, summaryPath, deps.Geom.WorktreeRoot, planDirs, deps.RefMatcher)...)
 	}
 
 	// Classification is the only fallible step and runs before any mutation.

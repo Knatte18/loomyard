@@ -207,10 +207,14 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	// forkWarnings are held back and appended only on the no-report path: once the report file
 	// exists, the report is the fork's contract and "never returned a final report" is false noise.
 	var forkWarnings []string
+	planDirs, err := planDirSpellings(deps.Geom)
+	if err != nil {
+		return nil, err
+	}
 	var candidates []AuditViolation
 	candidates = append(candidates, CheckParent(audit, deps.OutcomePath, deps.SummaryPath, deps.Geom.WorktreeRoot, deps.RefMatcher)...)
 	for _, f := range newReports {
-		candidates = append(candidates, CheckFork(f, deps.OutcomePath, deps.SummaryPath, deps.Geom.WorktreeRoot, deps.RefMatcher)...)
+		candidates = append(candidates, CheckFork(f, deps.OutcomePath, deps.SummaryPath, deps.Geom.WorktreeRoot, planDirs, deps.RefMatcher)...)
 		forkWarnings = append(forkWarnings, ForkWarnings(f)...)
 	}
 

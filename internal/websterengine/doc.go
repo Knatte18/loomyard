@@ -148,7 +148,7 @@
 // # audit findings: correctness fails the batch, policy warns once
 //
 // The fork and parent audits classify each finding (ClassifyViolation) as correctness or policy.
-// A correctness finding means the delta or the run's own state may be wrong: a fork writing one of Master's two contract files, a parent write under the run's `_lyx` directory or into the worktree's tracked (not git-ignored) content,
+// A correctness finding means the delta or the run's own state may be wrong: a fork writing one of Master's two contract files or anything under the plan directory, a parent write under the run's `_lyx` directory or into the worktree's tracked (not git-ignored) content,
 // or a fabric reference whatever its command, since an agent never touches the fabric repo and that can rewrite run state the cards' verify commands cannot detect;
 // a policy finding breaks a steering rule without touching correctness, such as a named spawn or a nested agent call.
 // Each finding carries a stable identity (its Key, prefixed by the session id for a parent finding),

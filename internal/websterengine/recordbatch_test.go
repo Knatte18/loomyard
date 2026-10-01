@@ -913,6 +913,36 @@ func TestRecordBatch_ForkContractWriteFailsBatch(t *testing.T) {
 	}
 }
 
+// TestRecordBatch_ForkPlanWriteFailsBatch proves a fork writing a card file under the plan directory fails the batch,
+// archives its report, names the card file as a suspect path, and leaves a failed record recover-batch proceeds from.
+func TestRecordBatch_ForkPlanWriteFailsBatch(t *testing.T) {
+	fx := newRecordFixture(t, []shuttleengine.ForkAudit{{
+		Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}},
+	}})
+	card := filepath.Join(fx.Deps.Geom.PlanDir, "03-x.md")
+	fx.Engine.scripted[0].Forks[0].WritePaths = []string{card}
+	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
+
+	result, err := websterengine.RecordBatch(fx.Deps, 1)
+	if !errors.Is(err, websterengine.ErrBatchFailed) {
+		t.Fatalf("RecordBatch() error = %v; want ErrBatchFailed", err)
+	}
+	if !warningsContain(result.Digest.Reasons, card) {
+		t.Errorf("Reasons = %v; want the card file %q named", result.Digest.Reasons, card)
+	}
+	if got := archivedReports(t, fx.ReportsDir); len(got) != 1 {
+		t.Errorf("archived reports = %v; want exactly one", got)
+	}
+
+	rfx := newRecoverFixture(t)
+	failed := *fx.Deps.State.Batches[1]
+	rfx.Deps.State.Batches[1] = &failed
+	clk := &recoverFakeClock{now: time.Unix(0, 0)}
+	if _, spawned, err := websterengine.RecoverSpawnOrAttach(rfx.Deps, 1, clk); err != nil || !spawned {
+		t.Fatalf("RecoverSpawnOrAttach() = spawned %v, err %v; want a recovery strand spawned", spawned, err)
+	}
+}
+
 // TestRecordBatch_Regression20260930_ForkAuditFalsePositive pins the 2026-09-30 incident:
 // a fork's fabric reference (`cat FABRICREF/webster/state.json`) on an otherwise clean batch no longer wedges every retry.
 // The first call fails the batch with its report archived and names recover-batch,
