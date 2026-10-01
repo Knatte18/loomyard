@@ -26,19 +26,10 @@ import (
 // wrote, so folding it into plan identity made webster's own drift repair
 // invalidate the plan it had just repaired.
 func fingerprint(planDir string) (string, error) {
-	entries, err := os.ReadDir(planDir)
+	names, err := planFileNames(planDir)
 	if err != nil {
-		return "", fmt.Errorf("websterengine: fingerprint %s: %w", planDir, err)
+		return "", err
 	}
-
-	var names []string
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") || e.Name() == planparser.AmendmentsFileName {
-			continue
-		}
-		names = append(names, e.Name())
-	}
-	sort.Strings(names)
 
 	h := sha256.New()
 	for _, name := range names {
