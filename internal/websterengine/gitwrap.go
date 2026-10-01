@@ -296,6 +296,16 @@ func treePathsWithBlob(worktree, commit, blob string) ([]string, error) {
 	return paths, nil
 }
 
+// shaExists reports whether sha names a commit in worktree's repository.
+func shaExists(worktree, sha string) bool {
+	return gitrepo.New(worktree).SHAExists(sha)
+}
+
+// isAncestor reports whether sha is an ancestor of ref in worktree's repository.
+func isAncestor(worktree, sha, ref string) (bool, error) {
+	return gitrepo.New(worktree).IsAncestor(sha, ref)
+}
+
 // gitExitCode returns the exit code of a git command gitexec.Run reports as rejected, and false for nil or an exec-level failure.
 func gitExitCode(err error) (int, bool) {
 	var gitErr *gitexec.GitError

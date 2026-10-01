@@ -18,7 +18,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
@@ -55,16 +54,15 @@ func runEvidenceBases(worktree string, st *State) (evidenceBases, error) {
 	if len(starts) == 0 && len(heads) == 0 {
 		return out, nil
 	}
-	repo := gitrepo.New(worktree)
 	startsMissing, headsMissing := false, false
 	for _, sha := range starts {
-		if !repo.SHAExists(sha) {
+		if !shaExists(worktree, sha) {
 			startsMissing = true
 			out.Missing = append(out.Missing, sha)
 		}
 	}
 	for _, sha := range heads {
-		if !repo.SHAExists(sha) {
+		if !shaExists(worktree, sha) {
 			headsMissing = true
 			if !slices.Contains(out.Missing, sha) {
 				out.Missing = append(out.Missing, sha)
@@ -74,12 +72,12 @@ func runEvidenceBases(worktree string, st *State) (evidenceBases, error) {
 	sort.Strings(out.Missing)
 	var err error
 	if !startsMissing {
-		if out.Start, err = pickByAncestry(repo, starts, true); err != nil {
+		if out.Start, err = pickByAncestry(worktree, starts, true); err != nil {
 			return evidenceBases{}, err
 		}
 	}
 	if !headsMissing {
-		if out.Last, err = pickByAncestry(repo, heads, false); err != nil {
+		if out.Last, err = pickByAncestry(worktree, heads, false); err != nil {
 			return evidenceBases{}, err
 		}
 	}
@@ -87,7 +85,7 @@ func runEvidenceBases(worktree string, st *State) (evidenceBases, error) {
 }
 
 // pickByAncestry returns the commit of shas that is an ancestor of every other (oldest) or that every other is an ancestor of (!oldest), or "" when none qualifies.
-func pickByAncestry(repo *gitrepo.Repo, shas []string, oldest bool) (string, error) {
+func pickByAncestry(worktree string, shas []string, oldest bool) (string, error) {
 	for _, cand := range shas {
 		qualifies := true
 		for _, other := range shas {
@@ -98,7 +96,7 @@ func pickByAncestry(repo *gitrepo.Repo, shas []string, oldest bool) (string, err
 			if !oldest {
 				sha, ref = other, cand
 			}
-			ok, err := repo.IsAncestor(sha, ref)
+			ok, err := isAncestor(worktree, sha, ref)
 			if err != nil {
 				return "", err
 			}
@@ -188,7 +186,7 @@ func checkSuspectPaths(geom Geometry, st *State, base string, paths []string) (d
 	if err != nil {
 		return nil, nil, err
 	}
-	if base != "" && !gitrepo.New(geom.WorktreeRoot).SHAExists(base) {
+	if base != "" && !shaExists(geom.WorktreeRoot, base) {
 		base = ""
 	}
 	for _, p := range paths {
