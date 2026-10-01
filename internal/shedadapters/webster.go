@@ -90,6 +90,15 @@ func (p *WebsterProducer) Call(ctx context.Context) (shedengine.Outcome, shedeng
 			return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
 		}
 
+		if errors.Is(err, websterengine.ErrPendingAuditFindings) {
+			// A correctness halt only the operator can clear: the run blocks with the entry
+			// refusal's own text, which names the suspect paths and the accept-audit verb.
+			if cerr := cancelErr(ctx, p.name, websterEngineLabel); cerr != nil {
+				return "", shedengine.OutputPointer{}, cerr
+			}
+			return shedengine.Stuck, shedengine.OutputPointer{Reason: fmt.Sprintf("%s, then re-step the %s row", err.Error(), p.name)}, nil
+		}
+
 		if cerr := cancelErr(ctx, p.name, websterEngineLabel); cerr != nil {
 			return "", shedengine.OutputPointer{}, cerr
 		}
