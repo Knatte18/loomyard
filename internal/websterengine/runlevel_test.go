@@ -1002,7 +1002,8 @@ func TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck(t *testing.T) {
 	fx := newRunFixture(t, 1)
 	seedMatchingState(t, fx, &websterengine.State{
 		Batches: map[int]*websterengine.BatchState{
-			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", SessionID: "master-session-violation"},
+			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", SessionID: "master-session-violation",
+				Digest: &websterengine.Digest{Status: "done", HeadSHA: strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))}},
 		},
 	})
 	tracked := filepath.Join(fx.Worktree, "base.txt")
@@ -1052,8 +1053,13 @@ func TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck(t *testing.T) {
 		t.Errorf("Starter calls = %d after the refused Run; want %d", got, before)
 	}
 
+	if _, err := websterengine.AcceptPendingAudit(st, fx.Deps.Geom); !errors.Is(err, websterengine.ErrAuditNotAcceptable) || !strings.Contains(err.Error(), tracked) {
+		t.Fatalf("AcceptPendingAudit() before the revert error = %v; want ErrAuditNotAcceptable naming %s", err, tracked)
+	}
 	mustGit(t, fx.Worktree, "checkout", "--", "base.txt")
-	websterengine.AcceptPendingAudit(st)
+	if _, err := websterengine.AcceptPendingAudit(st, fx.Deps.Geom); err != nil {
+		t.Fatalf("AcceptPendingAudit() after the revert error = %v; want nil", err)
+	}
 	if err := websterengine.SaveState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir, st); err != nil {
 		t.Fatalf("SaveState() error = %v", err)
 	}

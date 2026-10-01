@@ -4,9 +4,11 @@
 package websterengine
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
@@ -121,26 +123,18 @@ func TestAuditLedger_StateRoundTrip(t *testing.T) {
 	}
 }
 
-func TestAcceptPendingAudit_RecordsAcceptedAndClears(t *testing.T) {
+func TestAcceptPendingAudit_RefusesPathlessFinding(t *testing.T) {
 	t.Parallel()
-	st := &State{PendingAuditFindings: []PendingAuditFinding{
-		{ID: "s1/parent:parent-write:1", Class: "parent-write", Detail: "d1", Paths: []string{"a.txt"}},
-		{ID: "s1/parent:named-spawn:1", Class: "named-spawn", Detail: "d2"},
-	}}
+	st := &State{PendingAuditFindings: []PendingAuditFinding{{ID: "s1/parent:named-spawn:1", Class: "named-spawn", Detail: "d"}}}
 
-	got := AcceptPendingAudit(st)
-	if len(got) != 2 {
-		t.Fatalf("AcceptPendingAudit returned %d findings; want 2", len(got))
+	_, err := AcceptPendingAudit(st, Geometry{WorktreeRoot: t.TempDir(), PlanDir: t.TempDir(), ScratchDir: t.TempDir()})
+	if !errors.Is(err, ErrAuditNotAcceptable) {
+		t.Fatalf("AcceptPendingAudit() error = %v; want ErrAuditNotAcceptable", err)
 	}
-	for _, f := range got {
-		if st.AuditDispositions[f.ID] != dispositionAccepted {
-			t.Errorf("disposition of %q = %q; want %q", f.ID, st.AuditDispositions[f.ID], dispositionAccepted)
-		}
+	if !strings.Contains(err.Error(), "lyx webster run --fresh") {
+		t.Errorf("error = %q; want it to name lyx webster run --fresh", err)
 	}
-	if len(st.PendingAuditFindings) != 0 {
-		t.Errorf("PendingAuditFindings = %v; want empty", st.PendingAuditFindings)
-	}
-	if again := AcceptPendingAudit(st); len(again) != 0 {
-		t.Errorf("second AcceptPendingAudit returned %v; want nothing", again)
+	if len(st.PendingAuditFindings) != 1 {
+		t.Errorf("PendingAuditFindings = %v; want unchanged", st.PendingAuditFindings)
 	}
 }

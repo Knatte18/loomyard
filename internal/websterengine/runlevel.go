@@ -1004,7 +1004,11 @@ func runExitAuditCrossCheck(deps RunDeps, outcomePath, summaryPath string, resul
 		if len(paths) > 0 {
 			pathList = strings.Join(paths, ", ")
 		}
-		stuckReason = fmt.Sprintf("run-exit audit found %d correctness finding(s): %s; suspect paths: %s; way forward: revert or re-derive the named paths in the task worktree with git, then run \"lyx webster accept-audit\" and re-step the Webster row (lyx webster run)", len(correctness), strings.Join(details, "; "), pathList)
+		pathless := false
+		for _, cf := range correctness {
+			pathless = pathless || cf.Violation.Path == ""
+		}
+		stuckReason = fmt.Sprintf("run-exit audit found %d correctness finding(s): %s; suspect paths: %s; way forward: restore the named paths to the last batch head with git, then run \"lyx webster accept-audit\" and re-step the Webster row (lyx webster run)%s", len(correctness), strings.Join(details, "; "), pathList, pathlessClause(pathless))
 	}
 
 	return warnings, stuckReason, nil
@@ -1041,7 +1045,19 @@ func pendingAuditFindingsError(pending []PendingAuditFinding) error {
 	if len(paths) > 0 {
 		pathList = strings.Join(paths, ", ")
 	}
-	return fmt.Errorf("%w: %d correctness finding(s) from an earlier run exit are pending: %s; suspect paths: %s; way forward: revert or re-derive the named paths in the task worktree with git, then run \"lyx webster accept-audit\"", ErrPendingAuditFindings, len(pending), strings.Join(details, "; "), pathList)
+	pathless := false
+	for _, f := range pending {
+		pathless = pathless || len(f.Paths) == 0
+	}
+	return fmt.Errorf("%w: %d correctness finding(s) from an earlier run exit are pending: %s; suspect paths: %s; way forward: restore the named paths to the last batch head with git, then run \"lyx webster accept-audit\"%s", ErrPendingAuditFindings, len(pending), strings.Join(details, "; "), pathList, pathlessClause(pathless))
+}
+
+// pathlessClause is the way-forward clause for a pending finding that names no path, or "" when every finding names one.
+func pathlessClause(pathless bool) string {
+	if !pathless {
+		return ""
+	}
+	return "; a finding with no path clears only through \"lyx webster run --fresh\" after resetting the branch to the run's start commit"
 }
 
 // appendRecordedAuditWarnings reloads state and appends every recorded audit warning to summary.md as its "Audit warnings" section.

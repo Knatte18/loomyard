@@ -1,0 +1,192 @@
+//go:build integration
+
+// suspect_test.go exercises the suspect-path check and AcceptPendingAudit's evidence rule over real scratch git repositories.
+
+package websterengine
+
+import (
+	"errors"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"testing"
+)
+
+// suspectFixture is a scratch repo with a tracked file, a git-ignored one, and plan and scratch directories outside it.
+type suspectFixture struct {
+	geom Geometry
+	st   *State
+	head string
+}
+
+func newSuspectFixture(t *testing.T) *suspectFixture {
+	t.Helper()
+	root := gitwrapNewScratchRepo(t)
+	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte("ignored.log\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitwrapMustGit(t, root, "add", ".gitignore")
+	gitwrapMustGit(t, root, "commit", "-m", "ignore")
+	head := gitwrapCommitFile(t, root, "tracked.txt", "x", "add tracked")
+	if err := os.WriteFile(filepath.Join(root, "ignored.log"), []byte("log"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	planDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(planDir, "01-card.md"), []byte("card"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	geom := Geometry{
+		WorktreeRoot: root,
+		PlanDir:      planDir,
+		WebsterDir:   filepath.Join(root, "_lyx", "webster"),
+		ScratchDir:   filepath.Join(root, ".lyx", "webster"),
+	}
+	st := &State{Batches: map[int]*BatchState{
+		1: {Slug: "one", StartSHA: "start-sha", Terminal: true, Status: DigestStatusDone, Digest: &Digest{HeadSHA: head}},
+	}}
+	if err := restampFingerprint(st, planDir); err != nil {
+		t.Fatal(err)
+	}
+	return &suspectFixture{geom: geom, st: st, head: head}
+}
+
+func TestCheckSuspectPaths(t *testing.T) {
+	fx := newSuspectFixture(t)
+	root := fx.geom.WorktreeRoot
+	tracked := filepath.Join(root, "tracked.txt")
+
+	check := func(t *testing.T, base string, paths ...string) (differing, unverifiable []string) {
+		t.Helper()
+		d, u, err := checkSuspectPaths(fx.geom, fx.st, base, paths)
+		if err != nil {
+			t.Fatalf("checkSuspectPaths() error = %v", err)
+		}
+		return d, u
+	}
+	expect := func(t *testing.T, got []string, want ...string) {
+		t.Helper()
+		if len(got) == 0 && len(want) == 0 {
+			return
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("got %v; want %v", got, want)
+		}
+	}
+
+	t.Run("unchanged tracked file", func(t *testing.T) {
+		d, u := check(t, fx.head, "tracked.txt")
+		expect(t, d)
+		expect(t, u)
+	})
+	t.Run("ignored and run-state paths are unverifiable", func(t *testing.T) {
+		scratchFile := filepath.Join(fx.geom.ScratchDir, "x.lock")
+		d, u := check(t, fx.head, "ignored.log", "_lyx/webster/state.json", scratchFile, "/elsewhere/file")
+		expect(t, d)
+		expect(t, u, "/elsewhere/file", scratchFile, "_lyx/webster/state.json", "ignored.log")
+	})
+	t.Run("plan file hash", func(t *testing.T) {
+		card := filepath.Join(fx.geom.PlanDir, "01-card.md")
+		d, u := check(t, fx.head, card)
+		expect(t, d)
+		expect(t, u)
+		if err := os.WriteFile(card, []byte("edited"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		d, u = check(t, fx.head, card)
+		expect(t, d, card)
+		expect(t, u)
+	})
+	t.Run("empty base", func(t *testing.T) {
+		d, u := check(t, "", "tracked.txt")
+		expect(t, d)
+		expect(t, u, "tracked.txt")
+	})
+	t.Run("untracked new file differs", func(t *testing.T) {
+		if err := os.WriteFile(filepath.Join(root, "new.txt"), []byte("n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		d, _ := check(t, fx.head, "new.txt")
+		expect(t, d, "new.txt")
+	})
+	t.Run("edited then committed past base differs", func(t *testing.T) {
+		if err := os.WriteFile(tracked, []byte("edited"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		d, _ := check(t, fx.head, "tracked.txt")
+		expect(t, d, "tracked.txt")
+		gitwrapMustGit(t, root, "commit", "-am", "edit")
+		d, _ = check(t, fx.head, "tracked.txt")
+		expect(t, d, "tracked.txt")
+	})
+}
+
+func TestLastBatchHeadAndRunStartCommit(t *testing.T) {
+	st := &State{Batches: map[int]*BatchState{
+		integrationBatchKey: {Terminal: true, Digest: &Digest{HeadSHA: "integration"}},
+		2:                   {StartSHA: "s2", Terminal: true, Digest: &Digest{HeadSHA: "h2"}},
+		1:                   {StartSHA: "s1", Terminal: true, Digest: &Digest{HeadSHA: "h1"}},
+		3:                   {StartSHA: "s3"},
+	}}
+	if got := lastBatchHead(st); got != "h2" {
+		t.Errorf("lastBatchHead = %q; want h2", got)
+	}
+	if got := runStartCommit(st); got != "s1" {
+		t.Errorf("runStartCommit = %q; want s1", got)
+	}
+	if got := lastBatchHead(&State{}); got != "" {
+		t.Errorf("lastBatchHead on empty state = %q; want empty", got)
+	}
+}
+
+func TestAcceptPendingAudit_ClearsWhenPathsMatchHead(t *testing.T) {
+	fx := newSuspectFixture(t)
+	fx.st.PendingAuditFindings = []PendingAuditFinding{{ID: "s1/parent:parent-write:1", Class: "parent-write", Detail: "d", Paths: []string{"tracked.txt"}}}
+
+	got, err := AcceptPendingAudit(fx.st, fx.geom)
+	if err != nil {
+		t.Fatalf("AcceptPendingAudit() error = %v", err)
+	}
+	if len(got) != 1 || len(fx.st.PendingAuditFindings) != 0 {
+		t.Errorf("returned %v, pending %v; want one cleared finding and an empty list", got, fx.st.PendingAuditFindings)
+	}
+	if len(fx.st.AuditDispositions) != 0 {
+		t.Errorf("AuditDispositions = %v; want none recorded", fx.st.AuditDispositions)
+	}
+}
+
+func TestAcceptPendingAudit_RefusesDifferingPath(t *testing.T) {
+	fx := newSuspectFixture(t)
+	fx.st.PendingAuditFindings = []PendingAuditFinding{{ID: "f1", Class: "parent-write", Detail: "d", Paths: []string{"tracked.txt"}}}
+	if err := os.WriteFile(filepath.Join(fx.geom.WorktreeRoot, "tracked.txt"), []byte("edited"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := AcceptPendingAudit(fx.st, fx.geom)
+	if !errors.Is(err, ErrAuditNotAcceptable) {
+		t.Fatalf("AcceptPendingAudit() error = %v; want ErrAuditNotAcceptable", err)
+	}
+	for _, want := range []string{"tracked.txt", "git checkout " + fx.head} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error = %q; want it to contain %q", err, want)
+		}
+	}
+	if len(fx.st.PendingAuditFindings) != 1 {
+		t.Errorf("PendingAuditFindings = %v; want unchanged", fx.st.PendingAuditFindings)
+	}
+}
+
+func TestAcceptPendingAudit_RefusesUnverifiablePath(t *testing.T) {
+	fx := newSuspectFixture(t)
+	fx.st.PendingAuditFindings = []PendingAuditFinding{{ID: "f1", Class: "parent-write", Detail: "d", Paths: []string{"ignored.log"}}}
+
+	_, err := AcceptPendingAudit(fx.st, fx.geom)
+	if !errors.Is(err, ErrAuditNotAcceptable) {
+		t.Fatalf("AcceptPendingAudit() error = %v; want ErrAuditNotAcceptable", err)
+	}
+	for _, want := range []string{"ignored.log", "run --fresh", "start-sha"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error = %q; want it to contain %q", err, want)
+		}
+	}
+}

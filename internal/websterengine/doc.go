@@ -163,7 +163,9 @@
 // A report that cannot be attributed to a begun batch, or to any fork transcript, is archived and returned as *ReportArchivedError naming `lyx webster begin-batch`, which re-drives the batch.
 // The post-batch done-checks fail the batch the same way when a card's own declared work is missing, while drift that concerns only a later card is recorded as a warning rather than blocking this batch.
 // At run exit the audit cross-check drops dispositioned findings, records the rest of the policy findings as run-level warnings, appended to summary.md under "Audit warnings", and demotes Master's outcome done to stuck for an undispositioned correctness finding.
-// A correctness finding stays pending in state.json until `lyx webster accept-audit` accepts it, and run entry refuses with ErrPendingAuditFindings meanwhile.
+// A correctness finding stays pending in state.json until `lyx webster accept-audit` clears it, and run entry refuses with ErrPendingAuditFindings meanwhile.
+// accept-audit needs evidence: it checks every suspect path against the last batch head (a plan file against the run's recorded plan hashes) and refuses with ErrAuditNotAcceptable while any path differs, cannot be checked, or a finding names no path;
+// the last two clear only through `lyx webster run --fresh` after resetting the branch to the run's start commit.
 //
 // Every refusal this package can return, and the way forward from it, is tabulated in contracts/specs/refusal-spec.md;
 // this documentation links that table rather than restating its rows.

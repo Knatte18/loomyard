@@ -7,7 +7,9 @@
 package websterengine
 
 import (
+	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 )
@@ -26,8 +28,6 @@ type AuditWarning struct {
 const (
 	dispositionWarned = "warned"
 	dispositionFailed = "failed"
-	// dispositionAccepted marks a run-exit correctness finding the operator accepted through AcceptPendingAudit.
-	dispositionAccepted = "accepted"
 )
 
 // findingIdentity returns v's ledger identity.
@@ -83,16 +83,53 @@ func recordFailedFinding(st *State, id string) {
 	markDisposition(st, id, dispositionFailed)
 }
 
-// AcceptPendingAudit records every pending finding's identity as accepted, clears st.PendingAuditFindings and returns what it accepted.
+// ErrAuditNotAcceptable is the sentinel AcceptPendingAudit returns while a pending finding's evidence is missing.
+var ErrAuditNotAcceptable = errors.New("webster: pending audit findings cannot be accepted")
+
+// AcceptPendingAudit clears st.PendingAuditFindings and returns what it cleared, once every finding's suspect paths are back at the last recorded batch head.
+// The evidence rule: checkSuspectPaths runs over every pending path with lastBatchHead(st) as base,
+// and any differing path, any unverifiable path and any finding with no path refuses with ErrAuditNotAcceptable, mutating nothing.
+// It records no disposition, because a later run's audit covers a new Master session whose finding identities never repeat these.
 // It never saves;
 // the caller holds the state-mutation lease and saves.
-func AcceptPendingAudit(st *State) []PendingAuditFinding {
-	accepted := st.PendingAuditFindings
-	for _, f := range accepted {
-		markDisposition(st, f.ID, dispositionAccepted)
+func AcceptPendingAudit(st *State, geom Geometry) ([]PendingAuditFinding, error) {
+	pending := st.PendingAuditFindings
+	var paths []string
+	pathless := false
+	for _, f := range pending {
+		if len(f.Paths) == 0 {
+			pathless = true
+		}
+		paths = append(paths, f.Paths...)
 	}
-	st.PendingAuditFindings = nil
-	return accepted
+	head := lastBatchHead(st)
+	differing, unverifiable, err := checkSuspectPaths(geom, st, head, paths)
+	if err != nil {
+		return nil, err
+	}
+	if len(differing) == 0 && len(unverifiable) == 0 && !pathless {
+		st.PendingAuditFindings = nil
+		return pending, nil
+	}
+	var parts []string
+	if len(differing) > 0 {
+		parts = append(parts, fmt.Sprintf("differs from the last batch head: %s; way forward: restore each with \"git checkout %s -- <path>\" (delete a path the head does not hold), then re-run \"lyx webster accept-audit\"", strings.Join(differing, ", "), head))
+	}
+	if len(unverifiable) > 0 || pathless {
+		var what []string
+		if len(unverifiable) > 0 {
+			what = append(what, "cannot be checked: "+strings.Join(unverifiable, ", "))
+		}
+		if pathless {
+			what = append(what, "a finding names no path")
+		}
+		start := runStartCommit(st)
+		if start != "" {
+			start = " " + start
+		}
+		parts = append(parts, fmt.Sprintf("%s; way forward: reset the branch to the run's start commit%s with git and run \"lyx webster run --fresh\"", strings.Join(what, "; "), start))
+	}
+	return nil, fmt.Errorf("%w: %s", ErrAuditNotAcceptable, strings.Join(parts, "; "))
 }
 
 // auditWarningText renders w as its envelope line.

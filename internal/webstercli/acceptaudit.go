@@ -15,11 +15,12 @@ import (
 func (c *websterCLI) acceptAuditCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "accept-audit",
-		Short: "accept the pending run-exit audit findings once their paths are checked",
-		Long: `accept-audit accepts the run-exit audit findings the last run left pending.
-Run it after reverting or re-deriving every suspect path the findings name.
-It only records the acknowledgement in state.json and never changes the task
-worktree.
+		Short: "clear the pending run-exit audit findings once their paths are restored",
+		Long: `accept-audit clears the run-exit audit findings the last run left pending.
+It checks every suspect path against the last batch head and refuses, changing
+nothing, while any differs or cannot be checked.
+Restore the named paths with git first, then run it.
+It only edits state.json and never changes the task worktree.
 With nothing pending it succeeds and reports an empty accepted list, so a
 repeated call is harmless.
 On success the envelope carries accepted, one entry per accepted finding with
@@ -57,7 +58,11 @@ Example:
 				return nil
 			}
 
-			pending := websterengine.AcceptPendingAudit(st)
+			pending, err := websterengine.AcceptPendingAudit(st, c.geom)
+			if err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				return nil
+			}
 			if err := websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, st); err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
