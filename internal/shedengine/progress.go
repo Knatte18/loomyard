@@ -130,5 +130,5 @@ func (r Routing) Bounces(current string, history []HistoryEntry) (count int, bud
 			}
 		}
 	}
-	return episodeStuckCount(history, row.Name), effectiveMaxBounces(row, r.MaxBounces), true
+	return episodeStuckCount(history, row.Name, segmentEnders(r.Producers, row)...), effectiveMaxBounces(row, r.MaxBounces), true
 }
