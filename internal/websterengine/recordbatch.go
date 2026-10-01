@@ -153,6 +153,11 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		return archiveUnattributable(deps, number, slug, ErrNoBeginRecord)
 	}
 	if bs.Terminal {
+		if bs.Kind == "fork" {
+			if res, err := auditTerminalFork(deps, bs, batchNumber); res != nil || err != nil {
+				return res, err
+			}
+		}
 		way := fmt.Sprintf("lyx webster recover-batch %02d", batchNumber)
 		if bs.Status == DigestStatusDone {
 			way = "continue with the next batch"
@@ -211,10 +216,15 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	if err != nil {
 		return nil, err
 	}
+	websterDirs, err := websterDirSpellings(deps.Geom)
+	if err != nil {
+		return nil, err
+	}
+	ownReport := filepath.Join(deps.Geom.ReportsDir, ReportFileName(number, slug))
 	var candidates []AuditViolation
 	candidates = append(candidates, CheckParent(audit, deps.OutcomePath, deps.SummaryPath, deps.Geom.WorktreeRoot, deps.RefMatcher)...)
 	for _, f := range newReports {
-		candidates = append(candidates, CheckFork(f, deps.OutcomePath, deps.SummaryPath, deps.Geom.WorktreeRoot, planDirs, deps.RefMatcher)...)
+		candidates = append(candidates, CheckFork(f, deps.OutcomePath, deps.SummaryPath, deps.Geom.WorktreeRoot, planDirs, websterDirs, ownReport, deps.RefMatcher)...)
 		forkWarnings = append(forkWarnings, ForkWarnings(f)...)
 	}
 
@@ -251,26 +261,11 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	// it is a halt with a way forward, and failing the batch dispositions every finding once.
 	if len(correctness) > 0 {
 		all := append(append([]classifiedFinding(nil), correctness...), policy...)
-		var suspects []string
-		for _, cf := range correctness {
-			if cf.Violation.Path != "" {
-				suspects = append(suspects, cf.Violation.Path)
-			}
-		}
 		headSHA := ""
 		if r, perr := ParseReport(reportPath); perr == nil {
 			headSHA = r.HeadSHA
 		}
-		uncheckable, err := uncheckableSuspects(deps.Geom, deps.State, suspects)
-		if err != nil {
-			return nil, err
-		}
-		for _, cf := range correctness {
-			if cf.Violation.Path == "" {
-				uncheckable = append(uncheckable, fmt.Sprintf("%s: %s", cf.Violation.Class, cf.Violation.Detail))
-			}
-		}
-		return failFromFindings(deps, bs, number, slug, headSHA, all, nil, nil, suspects, uncheckable, newPaths, warnings)
+		return failOnCorrectness(deps, bs, number, slug, headSHA, all, correctness, newPaths, warnings)
 	}
 
 	// A plan edited since the run recorded it, or a begun card edited since its batch began, is refused before anything mutates or any card verify runs:
@@ -385,6 +380,95 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	deps.State.CurrentBatch = 0
 
 	return &RecordResult{Digest: &digest, Warnings: warnings}, nil
+}
+
+// failOnCorrectness fails the batch on its audit findings, naming the correctness findings' paths as suspects.
+// A correctness finding with no path is recorded as uncheckable, since recovery cannot verify it.
+func failOnCorrectness(deps RecordDeps, bs *BatchState, number int, slug, headSHA string, all, correctness []classifiedFinding, newPaths, warnings []string) (*RecordResult, error) {
+	var suspects []string
+	for _, cf := range correctness {
+		if cf.Violation.Path != "" {
+			suspects = append(suspects, cf.Violation.Path)
+		}
+	}
+	uncheckable, err := uncheckableSuspects(deps.Geom, deps.State, suspects)
+	if err != nil {
+		return nil, err
+	}
+	for _, cf := range correctness {
+		if cf.Violation.Path == "" {
+			uncheckable = append(uncheckable, fmt.Sprintf("%s: %s", cf.Violation.Class, cf.Violation.Detail))
+		}
+	}
+	return failFromFindings(deps, bs, number, slug, headSHA, all, nil, nil, suspects, uncheckable, newPaths, warnings)
+}
+
+// auditTerminalFork audits the fork transcripts a terminal fork batch has not consumed yet, once and without the settle wait,
+// so a fork that forged its own batch record cannot land behind the "already terminal" refusal.
+// An undispositioned correctness finding replaces the terminal record with a failed one and returns its *BatchFailedError;
+// otherwise nothing is mutated and both results are nil, leaving the caller to refuse the batch as already terminal.
+// A session whose transcripts are not on this machine has nothing to audit and is not an error.
+func auditTerminalFork(deps RecordDeps, bs *BatchState, batchNumber int) (*RecordResult, error) {
+	batch, err := findBatch(deps.Batches, batchNumber)
+	if err != nil {
+		return nil, err
+	}
+	number, slug := batchIdentity(batch)
+
+	seenSet := make(map[string]bool, len(deps.State.SeenForkTranscripts))
+	for _, p := range deps.State.SeenForkTranscripts {
+		seenSet[p] = true
+	}
+	audit, err := deps.Engine.AuditForksIncremental(bs.SessionID, deps.Geom.WorktreeRoot, seenSet)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	newReports := NewTranscripts(audit, deps.State.SeenForkTranscripts)
+	if len(newReports) == 0 {
+		return nil, nil
+	}
+
+	planDirs, err := planDirSpellings(deps.Geom)
+	if err != nil {
+		return nil, err
+	}
+	websterDirs, err := websterDirSpellings(deps.Geom)
+	if err != nil {
+		return nil, err
+	}
+	ownReport := filepath.Join(deps.Geom.ReportsDir, ReportFileName(number, slug))
+	var correctness []classifiedFinding
+	for _, f := range newReports {
+		for _, v := range CheckFork(f, deps.OutcomePath, deps.SummaryPath, deps.Geom.WorktreeRoot, planDirs, websterDirs, ownReport, deps.RefMatcher) {
+			id := findingIdentity(bs.SessionID, v)
+			if isDispositioned(deps.State, id) {
+				continue
+			}
+			severity, err := ClassifyViolation(v, deps.Geom)
+			if err != nil {
+				return nil, err
+			}
+			if severity == AuditSeverityCorrectness {
+				correctness = append(correctness, classifiedFinding{ID: id, Violation: v})
+			}
+		}
+	}
+	if len(correctness) == 0 {
+		return nil, nil
+	}
+
+	newPaths := make([]string, 0, len(newReports))
+	for _, f := range newReports {
+		newPaths = append(newPaths, f.TranscriptPath)
+	}
+	headSHA := ""
+	if bs.Digest != nil {
+		headSHA = bs.Digest.HeadSHA
+	}
+	return failOnCorrectness(deps, bs, number, slug, headSHA, correctness, correctness, newPaths, nil)
 }
 
 // classifiedFinding is one audit finding with its ledger identity.

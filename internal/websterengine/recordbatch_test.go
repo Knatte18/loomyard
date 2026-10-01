@@ -67,6 +67,9 @@ func (e *recordFakeEngine) AuditForksIncremental(sessionID, workdir string, seen
 	if e.auditErr != nil {
 		return shuttleengine.ForkAudit{}, e.auditErr
 	}
+	if len(e.scripted) == 0 {
+		return shuttleengine.ForkAudit{}, nil
+	}
 	idx := e.callCount - 1
 	if idx >= len(e.scripted) {
 		idx = len(e.scripted) - 1
@@ -1003,6 +1006,42 @@ func TestRecordBatch_ForkPlanWriteFailsBatch(t *testing.T) {
 	clk := &recoverFakeClock{now: time.Unix(0, 0)}
 	if _, spawned, err := websterengine.RecoverSpawnOrAttach(rfx.Deps, 1, clk); err != nil || !spawned {
 		t.Fatalf("RecoverSpawnOrAttach() = spawned %v, err %v; want a recovery strand spawned", spawned, err)
+	}
+}
+
+// TestRecordBatch_ForgedTerminalRecordFails proves a fork that marks its own batch done by writing state.json is audited before the "already terminal" refusal:
+// the batch fails with its reasons naming fork-state-write, while a terminal batch with no new transcript still refuses untouched.
+func TestRecordBatch_ForgedTerminalRecordFails(t *testing.T) {
+	fx := newRecordFixture(t, []shuttleengine.ForkAudit{{
+		Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}},
+	}})
+	fx.Deps.State.Batches[1].Terminal = true
+	fx.Deps.State.Batches[1].Status = websterengine.DigestStatusDone
+	fx.Deps.State.Batches[1].Digest = &websterengine.Digest{Batch: "01-json-flag", Status: websterengine.DigestStatusDone, HeadSHA: fx.HeadSHA}
+
+	// No new transcript: the refusal stands and nothing moves.
+	fx.Deps.State.SeenForkTranscripts = []string{"subagents/f1.jsonl"}
+	_, err := websterengine.RecordBatch(fx.Deps, 1)
+	if err == nil || !strings.Contains(err.Error(), "already terminal") {
+		t.Fatalf("RecordBatch() with no new transcript error = %v; want the already-terminal refusal", err)
+	}
+	if got := fx.Deps.State.Batches[1].Status; got != websterengine.DigestStatusDone {
+		t.Fatalf("status after the plain refusal = %q; want it unchanged (done)", got)
+	}
+
+	// A new transcript that wrote state.json fails the batch.
+	fx.Deps.State.SeenForkTranscripts = nil
+	fx.Engine.scripted[0].Forks[0].WritePaths = []string{filepath.Join(fx.Deps.Geom.WebsterDir, "state.json")}
+	result, err := websterengine.RecordBatch(fx.Deps, 1)
+	if !errors.Is(err, websterengine.ErrBatchFailed) {
+		t.Fatalf("RecordBatch() error = %v; want ErrBatchFailed", err)
+	}
+	bs := fx.Deps.State.Batches[1]
+	if !bs.Terminal || bs.Status != websterengine.DigestStatusFailed {
+		t.Errorf("record = terminal %v, status %q; want terminal failed", bs.Terminal, bs.Status)
+	}
+	if !warningsContain(result.Digest.Reasons, "fork-state-write") {
+		t.Errorf("Reasons = %v; want fork-state-write named", result.Digest.Reasons)
 	}
 }
 

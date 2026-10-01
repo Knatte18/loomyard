@@ -166,7 +166,7 @@
 //
 // The fork and parent audits classify each finding (ClassifyViolation) as correctness or policy.
 // A correctness finding means the delta or the run's own state may be wrong.
-// It is a fork writing one of Master's two contract files or anything under the plan directory, or a parent write under the run's `_lyx` directory, into the worktree's tracked (not git-ignored) content, under webster's scratch directory (its pause flag and locks), or into another worktree of the task repository.
+// It is a fork writing one of Master's two contract files, anything under the plan directory, or anything under webster's run directory but its own report (fork-state-write), or a parent write under the run's `_lyx` directory, into the worktree's tracked (not git-ignored) content, under webster's scratch directory (its pause flag and locks), or into another worktree of the task repository.
 // Every fabric reference is correctness too, whatever its command, since an agent never touches the fabric repo and the command can rewrite run state the cards' verify commands cannot detect;
 // a policy finding breaks a steering rule without touching correctness, such as a named spawn or a nested agent call.
 // Each finding carries a stable identity (its Key, prefixed by the session id for a parent finding),
@@ -179,6 +179,8 @@
 // except a batch failed on a correctness finding the recovery check cannot verify (a finding with no path, or a path outside the tracked tree and the plan directory), which its record lists as Uncheckable:
 // recover-batch refuses it with ErrRecoveryNeedsFresh before spawning anything, and the way forward is `lyx webster run --fresh` after resetting the branch to the run's start commit.
 // `run --fresh` drops such a batch under the same HEAD and path rules as a pending finding.
+// record-batch on a batch already terminal as a fork batch first audits the fork transcripts it has not consumed, once and without the settle wait:
+// an undispositioned correctness finding (a fork that marked its own batch done by writing state.json) replaces the terminal record with a failed one, and otherwise the "already terminal" refusal stands.
 // A report that cannot be attributed to a begun batch, or to any fork transcript, is archived and returned as *ReportArchivedError naming `lyx webster begin-batch`, which re-drives the batch.
 // The post-batch done-checks fail the batch the same way when a card's own declared work is missing, while drift that concerns only a later card is recorded as a warning rather than blocking this batch.
 // At run exit the audit cross-check drops dispositioned findings, records the rest of the policy findings as run-level warnings, appended to summary.md under "Audit warnings", and demotes Master's outcome done to stuck for an undispositioned correctness finding.

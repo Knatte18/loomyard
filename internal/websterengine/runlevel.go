@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -956,10 +957,14 @@ func runExitAuditCrossCheck(deps RunDeps, outcomePath, summaryPath string, resul
 	if err != nil {
 		return nil, "", err
 	}
+	websterDirs, err := websterDirSpellings(deps.Geom)
+	if err != nil {
+		return nil, "", err
+	}
 	var candidates []AuditViolation
 	candidates = append(candidates, CheckParent(*result.ForkAudit, outcomePath, summaryPath, deps.Geom.WorktreeRoot, deps.RefMatcher)...)
 	for _, f := range result.ForkAudit.Forks {
-		candidates = append(candidates, CheckFork(f, outcomePath, summaryPath, deps.Geom.WorktreeRoot, planDirs, deps.RefMatcher)...)
+		candidates = append(candidates, CheckFork(f, outcomePath, summaryPath, deps.Geom.WorktreeRoot, planDirs, websterDirs, forkOwnReport(st, deps.Geom, f.TranscriptPath), deps.RefMatcher)...)
 	}
 
 	// Classification is the only fallible step and runs before any mutation.
@@ -1035,6 +1040,18 @@ func runExitAuditCrossCheck(deps RunDeps, outcomePath, summaryPath string, resul
 	}
 
 	return warnings, stuckReason, nil
+}
+
+// forkOwnReport returns the report the fork behind transcript may write:
+// the report of the batch whose ForkTranscripts holds it, or the integration report when no batch does,
+// since only the integration fork runs outside a batch bracket.
+func forkOwnReport(st *State, geom Geometry, transcript string) string {
+	for number, bs := range st.Batches {
+		if bs != nil && slices.Contains(bs.ForkTranscripts, transcript) {
+			return filepath.Join(geom.ReportsDir, ReportFileName(number, bs.Slug))
+		}
+	}
+	return IntegrationReportPath(geom.ReportsDir)
 }
 
 // hasPendingFinding reports whether st already carries a pending finding with identity id.

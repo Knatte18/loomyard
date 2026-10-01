@@ -1183,6 +1183,60 @@ func TestRun_DoneWithNestedAgentInIntegrationForkWarns(t *testing.T) {
 	}
 }
 
+// TestRun_ForkStateWriteAtRunExit proves the run-exit audit leaves a pending fork-state-write finding for a fork writing state.json,
+// and none for a fork writing only its own batch's report.
+func TestRun_ForkStateWriteAtRunExit(t *testing.T) {
+	tests := []struct {
+		name        string
+		write       func(geom websterengine.Geometry) string
+		wantPending bool
+	}{
+		{"state.json", func(g websterengine.Geometry) string { return filepath.Join(g.WebsterDir, "state.json") }, true},
+		{"own report", func(g websterengine.Geometry) string {
+			return filepath.Join(g.ReportsDir, websterengine.ReportFileName(1, "batch1"))
+		}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			const session = "master-session-statewrite"
+			fx := newRunFixture(t, 1)
+			appendIntegrationVerify(t, fx.PlanDir, "true")
+			seedMatchingState(t, fx, &websterengine.State{
+				Batches: map[int]*websterengine.BatchState{
+					1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", SessionID: session, CardSHAs: []string{"deadbeef"}, ForkTranscripts: []string{"/transcripts/fork1.jsonl"}},
+				},
+			})
+			forks := []shuttleengine.ForkReport{
+				{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true, WritePaths: []string{tt.write(fx.Deps.Geom)}},
+				{TranscriptPath: "/transcripts/integration.jsonl", ReportReturned: true},
+			}
+			fx.Starter.handle = auditDoneHandle(t, fx, session, 1, shuttleengine.ForkAudit{Forks: forks}, func() {
+				head := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+				report := "status: OK\nhead_sha: " + head + "\ndeviations: []\n"
+				if err := os.WriteFile(websterengine.IntegrationReportPath(fx.Deps.Geom.ReportsDir), []byte(report), 0o644); err != nil {
+					t.Fatalf("write integration report: %v", err)
+				}
+			})
+			seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-audit", session)
+
+			if _, err := websterengine.Run(fx.Deps, websterengine.RunOptions{}); err != nil {
+				t.Fatalf("Run() error = %v; want nil", err)
+			}
+			st, err := websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
+			if err != nil {
+				t.Fatalf("LoadState() error = %v", err)
+			}
+			if tt.wantPending {
+				if len(st.PendingAuditFindings) != 1 || st.PendingAuditFindings[0].Class != "fork-state-write" {
+					t.Errorf("PendingAuditFindings = %+v; want one fork-state-write finding", st.PendingAuditFindings)
+				}
+			} else if len(st.PendingAuditFindings) != 0 {
+				t.Errorf("PendingAuditFindings = %+v; want none", st.PendingAuditFindings)
+			}
+		})
+	}
+}
+
 // TestRun_FabricReferenceInIntegrationForkIsStuck proves a fabric reference in the integration fork's transcript is correctness whatever its command:
 // the run ends stuck, the stuck reason quotes the command, and state.json carries one pending finding with no path.
 func TestRun_FabricReferenceInIntegrationForkIsStuck(t *testing.T) {

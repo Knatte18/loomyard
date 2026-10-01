@@ -240,15 +240,50 @@ func TestCheckFork(t *testing.T) {
 			},
 			wantClasses: nil,
 		},
+		{
+			name: "fork write to state.json is a state write",
+			fork: shuttleengine.ForkReport{
+				TranscriptPath: "s1", ReportReturned: true,
+				WritePaths: []string{"/hub/master-builder/_lyx/webster/state.json"},
+			},
+			wantClasses: []AuditViolationClass{ClassForkStateWrite},
+			wantPath:    "/hub/master-builder/_lyx/webster/state.json",
+		},
+		{
+			name: "fork write to another batch's report is a state write",
+			fork: shuttleengine.ForkReport{
+				TranscriptPath: "s2", ReportReturned: true,
+				WritePaths: []string{"/hub/master-builder/_lyx/webster/reports/02-other.yaml"},
+			},
+			wantClasses: []AuditViolationClass{ClassForkStateWrite},
+		},
+		{
+			name: "fork write through the second webster spelling is a state write",
+			fork: shuttleengine.ForkReport{
+				TranscriptPath: "s3", ReportReturned: true,
+				WritePaths: []string{"/fabric/weft/webster/state.json"},
+			},
+			wantClasses: []AuditViolationClass{ClassForkStateWrite},
+		},
+		{
+			name: "fork write to outcome.yaml is only a contract write, not also a state write",
+			fork: shuttleengine.ForkReport{
+				TranscriptPath: "s4", ReportReturned: true,
+				WritePaths: []string{"/hub/master-builder/_lyx/webster/outcome.yaml"},
+			},
+			wantClasses: []AuditViolationClass{ClassForkContractWrite},
+		},
 	}
 
 	const outcomePath = "/hub/master-builder/_lyx/webster/outcome.yaml"
 	const summaryPath = "/hub/master-builder/_lyx/webster/summary.md"
+	const ownReport = "/hub/master-builder/_lyx/webster/reports/01-json-flag.yaml"
 	planDirs := []string{"/hub/master-builder/_lyx/plan", "/fabric/weft/plan"}
+	websterDirs := []string{"/hub/master-builder/_lyx/webster", "/fabric/weft/webster"}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := CheckFork(tt.fork, outcomePath, summaryPath, "/hub/master-builder", planDirs, fabricRef)
+			got := CheckFork(tt.fork, outcomePath, summaryPath, "/hub/master-builder", planDirs, websterDirs, ownReport, fabricRef)
 			if len(got) != len(tt.wantClasses) {
 				t.Fatalf("CheckFork() = %v; want %d violation(s) of class %v", got, len(tt.wantClasses), tt.wantClasses)
 			}
@@ -397,12 +432,12 @@ func TestCheckFork_RelativeWritePathResolvesAgainstWorkdirNotAnchorRoot(t *testi
 		WritePaths:     []string{"_lyx/webster/outcome.yaml"},
 	}
 
-	got := CheckFork(fork, outcomePath, summaryPath, workdir, nil, NeverMatches{})
+	got := CheckFork(fork, outcomePath, summaryPath, workdir, nil, nil, "", NeverMatches{})
 	if len(got) != 1 || got[0].Class != ClassForkContractWrite {
 		t.Fatalf("CheckFork() joined against workdir = %v; want exactly one %q violation", got, ClassForkContractWrite)
 	}
 
-	gotAnchor := CheckFork(fork, outcomePath, summaryPath, anchorRoot, nil, NeverMatches{})
+	gotAnchor := CheckFork(fork, outcomePath, summaryPath, anchorRoot, nil, nil, "", NeverMatches{})
 	if len(gotAnchor) != 0 {
 		t.Errorf("CheckFork() joined against the anchor-shaped directory = %v; want none — workdir and the anchor root must not be interchangeable", gotAnchor)
 	}
