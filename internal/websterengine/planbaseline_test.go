@@ -74,6 +74,27 @@ func TestStorePlanBaseline_ContentAddressed(t *testing.T) {
 	}
 }
 
+// TestStorePlanBaseline_RefusesBytesNotMatchingTheirHash proves a file edited after its hash was computed is refused and nothing is stored under that hash.
+func TestStorePlanBaseline_RefusesBytesNotMatchingTheirHash(t *testing.T) {
+	t.Parallel()
+	planDir := t.TempDir()
+	fingerprintWriteFiles(t, planDir, map[string]string{"01-a.md": "alpha"})
+	hashes, err := planFileHashes(planDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fingerprintWriteFiles(t, planDir, map[string]string{"01-a.md": "edited"})
+	websterDir := t.TempDir()
+
+	err = storePlanBaseline(websterDir, planDir, hashes)
+	if err == nil || !strings.Contains(err.Error(), "01-a.md") {
+		t.Fatalf("storePlanBaseline() error = %v; want a refusal naming 01-a.md", err)
+	}
+	if _, statErr := os.Stat(planBaselinePath(websterDir, hashes["01-a.md"])); !errors.Is(statErr, os.ErrNotExist) {
+		t.Errorf("stored copy stat = %v; want none stored", statErr)
+	}
+}
+
 func TestStorePlanBaseline_EmptyWebsterDirIsAnError(t *testing.T) {
 	t.Parallel()
 	if err := storePlanBaseline("", t.TempDir(), map[string]string{}); err == nil {

@@ -43,7 +43,8 @@ func planBaselineHas(websterDir, hash string) (bool, error) {
 }
 
 // storePlanBaseline writes each plan file's bytes to its hash's file under websterDir when that file is absent.
-// The store is content-addressed, so a repeat write is a no-op and no stored copy is ever wrong.
+// The store is content-addressed, so a repeat write is a no-op.
+// Bytes that no longer hash to their recorded value (the file changed since its hash was computed) are refused, writing nothing for that file, so no stored copy is ever wrong.
 // An empty websterDir is a wiring error, returned rather than resolved against the working directory.
 func storePlanBaseline(websterDir, planDir string, hashes map[string]string) error {
 	if websterDir == "" {
@@ -66,6 +67,9 @@ func storePlanBaseline(websterDir, planDir string, hashes map[string]string) err
 		data, err := os.ReadFile(filepath.Join(planDir, name))
 		if err != nil {
 			return fmt.Errorf("websterengine: store plan baseline: read %s: %w", name, err)
+		}
+		if sum := sha256.Sum256(data); hex.EncodeToString(sum[:]) != hashes[name] {
+			return fmt.Errorf("websterengine: store plan baseline: %s changed since its hash was recorded; way forward: transient, re-run the verb once nothing else is editing the plan", name)
 		}
 		if err := writeFileAtomic(dir, dst, data); err != nil {
 			return fmt.Errorf("websterengine: store plan baseline: %s: %w", name, err)
