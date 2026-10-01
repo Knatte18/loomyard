@@ -234,9 +234,8 @@ Example:
 				fingerprintBefore = st.PlanFingerprint
 			}
 
-			// The edit check runs before scopedValidate's own rewrite: the restamp below exists to adopt
-			// webster's own rewrites, so any difference seen here is someone else's edit and is refused,
-			// never adopted into the plan hashes.
+			// The edit check runs before scopedValidate's own rewrite:
+			// the restamp below exists to adopt webster's own rewrites, so any difference seen here is someone else's edit and is refused, never adopted into the plan hashes.
 			var editErr error
 			if st != nil {
 				editErr = websterengine.PlanEditError(st, plan.Dir)

@@ -143,7 +143,8 @@ A pause is operational, not something for you to judge.
 ## A plan-drift refusal ends your run as stuck — do not retry the verb
 
 If `begin-batch` refuses with `{"plan_drifted": true}`, that means `begin-batch`'s own re-resolution of the plan against the current tree — run immediately before it would have built a pack — found a blocking defect: the plan changed since it was approved, in a way the tree now contradicts.
-`record-batch` and `recover-batch` also refuse with `{"plan_drifted": true}` when the plan changed since the run recorded it or since the batch began, and the same rung applies.
+`record-batch` and `recover-batch` also refuse with `{"plan_drifted": true}` when the plan changed since the run recorded it or since the batch began,
+and the same rung applies.
 This is NOT a batch outcome for you to work around: you never edit the plan yourself (see "What you never do" below), so there is nothing for you to fix.
 Do not retry the verb and do not try another batch: write `outcome: stuck` to `{{.outcome_path}}` right away, with a `stuck_reason` quoting the refusal's own message verbatim, then stop.
 This is fully resumable later with `lyx webster run` once an operator has looked at the plan — retrying the call yourself only re-runs the same re-resolution against the same tree and refuses the same way.

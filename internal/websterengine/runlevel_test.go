@@ -2712,7 +2712,8 @@ func TestRun_FreshRefusesDifferingPlanPath(t *testing.T) {
 	}
 }
 
-// TestRun_FreshDropsPlanPathWithoutCopy proves --fresh drops a differing plan path whose recorded copy is missing from the store, and the drop warning names the card.
+// TestRun_FreshDropsPlanPathWithoutCopy proves --fresh drops a differing plan path whose recorded copy is missing from the store,
+// and the drop warning names the card.
 func TestRun_FreshDropsPlanPathWithoutCopy(t *testing.T) {
 	fx := newRunFixture(t, 1)
 	card := filepath.Join(fx.PlanDir, "01-batch1.md")

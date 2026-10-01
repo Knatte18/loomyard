@@ -152,9 +152,11 @@
 // The fingerprint refusals in begin-batch and run name it.
 //
 // validate, record-batch and recovery refuse a plan that changed before their own rewrites, instead of adopting it:
-// each checks the plan against the recorded fingerprint (PlanEditError) before its first rewrite, and record-batch and recovery also check that no card of the batch changed since it was begun.
+// each checks the plan against the recorded fingerprint (PlanEditError) before its first rewrite,
+// and record-batch and recovery also check that no card of the batch changed since it was begun.
 // Their restamps exist to adopt webster's own rewrites, so a difference seen at that point is someone else's edit.
-// A refusal there mutates nothing; validate still lints but skips its restamp.
+// A refusal there mutates nothing;
+// validate still lints but skips its restamp.
 // Every plan-hash restamp and run initialisation also stores the hashed content under `<WebsterDir>/plan-baseline/`, one file per content named by its SHA-256, so the fabric sync carries it with state.json.
 // `lyx webster restore-plan` (RestorePlan) writes every plan file that differs from the recorded plan back from that store and removes a plan file the run never recorded;
 // it never touches state.json, and refuses with ErrPlanBaselineMissing, changing nothing, when a copy is missing.
@@ -177,7 +179,8 @@
 // the batch goes terminal with digest status failed and its reasons, the report is archived, and record-batch returns *BatchFailedError naming `lyx webster recover-batch`.
 // recover-batch proceeds from a failed batch and hands its strand the failure digest,
 // except a batch failed on a correctness finding the recovery check cannot verify (a finding with no path, or a path outside the tracked tree and the plan directory), which its record lists as Uncheckable:
-// recover-batch refuses it with ErrRecoveryNeedsFresh before spawning anything, and the way forward is `lyx webster run --fresh` after resetting the branch to the run's start commit.
+// recover-batch refuses it with ErrRecoveryNeedsFresh before spawning anything,
+// and the way forward is `lyx webster run --fresh` after resetting the branch to the run's start commit.
 // `run --fresh` drops such a batch under the same HEAD and path rules as a pending finding.
 // record-batch on a batch already terminal as a fork batch first audits the fork transcripts it has not consumed, once and without the settle wait:
 // an undispositioned correctness finding (a fork that marked its own batch done by writing state.json) replaces the terminal record with a failed one,
@@ -192,7 +195,8 @@
 // the last two clear only through `lyx webster run --fresh` after resetting the branch to the run's start commit.
 // `run --fresh` drops pending findings, with one warning per finding, even on an unchanged plan, and refuses with ErrPendingAuditFindings, archiving nothing, while a pending suspect path outside the plan still differs from the run's start commit or HEAD is not the start commit.
 // It also refuses while a pending plan path differs from the plan the run recorded and `lyx webster restore-plan` can undo that (the recorded copy is stored, or the file was never recorded);
-// a differing plan path whose recorded copy is missing is dropped with the archived state, and its warning says so.
+// a differing plan path whose recorded copy is missing is dropped with the archived state,
+// and its warning says so.
 // Every way forward for a differing plan path names restore-plan or `rebaseline --card`, never a git checkout.
 //
 // Every refusal this package can return, and the way forward from it, is tabulated in contracts/specs/refusal-spec.md;

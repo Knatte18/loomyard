@@ -1,5 +1,6 @@
 // planbaseline.go keeps the content behind every plan hash webster records, and writes it back on demand.
-// State.PlanFileHashes records only hashes, and a plan directory is not tracked by git on a task branch (nor exists in any repository for a standalone run),
+// State.PlanFileHashes records only hashes,
+// and a plan directory is not tracked by git on a task branch (nor exists in any repository for a standalone run),
 // so without a stored copy no command could restore a plan edited since the run recorded it.
 
 package websterengine
@@ -30,7 +31,8 @@ func planBaselinePath(websterDir, hash string) string {
 }
 
 // planBaselineHas reports whether the store holds a copy for hash.
-// An absent file is false with no error; any other stat failure is returned.
+// An absent file is false with no error;
+// any other stat failure is returned.
 func planBaselineHas(websterDir, hash string) (bool, error) {
 	_, err := os.Stat(planBaselinePath(websterDir, hash))
 	if err == nil {
@@ -106,8 +108,10 @@ func writeFileAtomic(dir, dst string, data []byte) error {
 }
 
 // RestorePlan restores every plan file changedPlanFiles reports.
-// A recorded file is written back from the store after checking the stored bytes hash to the recorded value, and a file the run never recorded is removed.
-// Every needed copy is checked before anything is written; a missing or corrupt copy refuses with ErrPlanBaselineMissing naming each such file, changing nothing.
+// A recorded file is written back from the store after checking the stored bytes hash to the recorded value,
+// and a file the run never recorded is removed.
+// Every needed copy is checked before anything is written;
+// a missing or corrupt copy refuses with ErrPlanBaselineMissing naming each such file, changing nothing.
 // It returns the restored file names, sorted, and never touches state.json.
 func RestorePlan(st *State, geom Geometry) ([]string, error) {
 	if len(st.PlanFileHashes) == 0 {

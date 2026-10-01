@@ -408,7 +408,7 @@ func failOnCorrectness(deps RecordDeps, bs *BatchState, number int, slug, headSH
 // An undispositioned correctness finding replaces the terminal record with a failed one and returns its *BatchFailedError;
 // otherwise nothing is mutated and both results are nil, leaving the caller to refuse the batch as already terminal.
 // A session whose transcripts are not on this machine has nothing to audit and is not an error.
-// It audits nothing while another fork batch of the session is begun and not terminal, or the integration report exists:
+// It audits nothing while another fork batch of the session is begun and not terminal or the integration report exists:
 // every fork of a Master session shares its session id, so an unseen transcript may then be that fork's.
 // That batch's own record-batch, or the run-exit audit for the integration fork, audits it instead.
 func auditTerminalFork(deps RecordDeps, bs *BatchState, batchNumber int) (*RecordResult, error) {

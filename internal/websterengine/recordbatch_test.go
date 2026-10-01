@@ -1089,7 +1089,8 @@ func TestRecordBatch_TerminalAuditSkipsAnotherForksTranscript(t *testing.T) {
 // TestRecordBatch_Regression20260930_ForkAuditFalsePositive pins the 2026-09-30 incident:
 // a fork's fabric reference (`cat FABRICREF/webster/state.json`) on an otherwise clean batch no longer wedges every retry.
 // The first call fails the batch with its report archived and names recover-batch,
-// a second RecordBatch call returns no audit refusal, and recover-batch refuses the failed record toward run --fresh, because a fabric reference is a finding recovery cannot check.
+// a second RecordBatch call returns no audit refusal,
+// and recover-batch refuses the failed record toward run --fresh, because a fabric reference is a finding recovery cannot check.
 func TestRecordBatch_Regression20260930_ForkAuditFalsePositive(t *testing.T) {
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{{Forks: []shuttleengine.ForkReport{{
 		TranscriptPath: "subagents/f1.jsonl",

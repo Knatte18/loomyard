@@ -1154,8 +1154,10 @@ func pendingPathsWayForward(geom Geometry, paths []string, pathless bool, tail s
 // When no batch recorded a start, the worktree's HEAD stands in for it.
 // When starts are recorded but none is an ancestor of all the others, HEAD stands in only while it is an ancestor of every recorded start (headBeforeEveryStart).
 // An unverifiable path, a pathless finding and a differing plan path whose recorded copy is missing from the store are dropped with the archived state,
-// since no verb could restore the last; its warning says so.
-// A batch record with Uncheckable entries counts as a pending finding: its SuspectPaths join the path check, and it adds its own drop warning.
+// since no verb could restore the last;
+// its warning says so.
+// A batch record with Uncheckable entries counts as a pending finding: its SuspectPaths join the path check,
+// and it adds its own drop warning.
 func freshPendingDrop(geom Geometry, st *State, opts RunOptions) (drop bool, warnings []string, err error) {
 	if !opts.Fresh || st == nil {
 		return false, nil, nil
@@ -1270,7 +1272,8 @@ func freshPendingDrop(geom Geometry, st *State, opts RunOptions) (drop bool, war
 
 // headBeforeEveryStart refuses --fresh with ErrPendingAuditFindings unless head is an ancestor of, or equal to, every one of starts.
 // It is the HEAD rule for recorded starts that share no single oldest commit, as after a branch rewritten mid-run:
-// no recorded start can be named as the run's, but a HEAD that every one of them descends from carries no commit the run made.
+// no recorded start can be named as the run's,
+// but a HEAD that every one of them descends from carries no commit the run made.
 // An empty starts passes, since nothing was recorded to compare with.
 // The error is an IsAncestor failure or the refusal.
 func headBeforeEveryStart(worktree, head string, starts []string) error {

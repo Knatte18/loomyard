@@ -455,7 +455,8 @@ func TestBeginBatchCmd_HappyPath(t *testing.T) {
 }
 
 // TestValidateCmd_RefusesOverviewEditWithoutRestamp proves validate refuses a plan whose 00-overview.md changed since the run recorded it:
-// it exits non-zero naming rebaseline, leaves PlanFileHashes and PlanFingerprint untouched in state.json, and the next run entry's fingerprint check still refuses the edit.
+// it exits non-zero naming rebaseline and leaves PlanFileHashes and PlanFingerprint untouched in state.json,
+// and the next run entry's fingerprint check still refuses the edit.
 func TestValidateCmd_RefusesOverviewEditWithoutRestamp(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)

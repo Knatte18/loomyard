@@ -268,7 +268,8 @@ func TestPlanEditError_NilOnUnchangedPlanAndNamesWayForwardAfterEdit(t *testing.
 	}
 }
 
-// TestBatchCardEditError_NamesTheEditedBegunCard proves a begun card edited since its batch began is named, and an unedited one passes.
+// TestBatchCardEditError_NamesTheEditedBegunCard proves a begun card edited since its batch began is named,
+// and an unedited one passes.
 func TestBatchCardEditError_NamesTheEditedBegunCard(t *testing.T) {
 	st, bs, b, planDir := editFixture(t)
 
