@@ -1,3 +1,0 @@
-first line of ordinary file content
-second line, still ordinary
-third and final line, no trailing newline

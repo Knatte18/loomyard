@@ -189,9 +189,9 @@ The [sandbox Hub](docs/sandbox-howto.md) is a bench for running the real binary 
 [`plugins/`](plugins/) holds this repo's Claude Code marketplace:
 
 - **ly** — `ly-drive`, the recipe-blind driver described above.
-- **prowler** — fetch blocked or JS-rendered web pages as readable markdown, plus cross-repo code search.
 
-The writing and code conventions every agent loads come from the shared [scribe](https://github.com/Knatte18/scribe) plugin.
+The writing and code conventions every agent loads come from the shared [scribe](https://github.com/Knatte18/scribe) plugin;
+its marketplace also carries `prowler`, the web-fetch plugin that used to live here.
 
 ## Lineage: Millhouse
 

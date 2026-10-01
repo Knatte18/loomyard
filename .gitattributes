@@ -29,7 +29,6 @@ internal/reedengine/template_windows.yaml text eol=lf
 internal/reedengine/status-line.md text eol=lf
 internal/shuttleengine/template.yaml text eol=lf
 internal/fabricengine/post-checkout.sh text eol=lf
-plugins/prowler/scripts/*.sh text eol=lf
 # Root POSIX deploy launchers run via `#!/usr/bin/env bash` shebang -- a CRLF
 # checkout (autocrlf=true) breaks the shebang line, so pin them to LF.
 deploy text eol=lf
