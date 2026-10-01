@@ -420,9 +420,10 @@ func TestMasterTemplate_QuotesDigestFieldsAndNoOthers(t *testing.T) {
 	}
 }
 
-// TestMasterTemplate_DoneCheckSectionTeachesLaterCardWarning asserts the done-check section no
-// longer lists a deleted-symbol reference as a batch_failed done-check, since postBatchChecks now
-// records it as a later-card warning, and that the section carries the later-card warning sentence.
+// TestMasterTemplate_DoneCheckSectionTeachesLaterCardWarning asserts the done-check section no longer lists a deleted-symbol reference as a batch_failed done-check,
+// since postBatchChecks now records it as a later-card warning.
+// It also asserts the section carries the later-card warning sentence quoting begin-batch's own way forward,
+// and that the batch_failed sentence names its own subject.
 func TestMasterTemplate_DoneCheckSectionTeachesLaterCardWarning(t *testing.T) {
 	text := string(mustMasterTemplate(t, newTestStencilsDir(t)))
 
@@ -435,7 +436,8 @@ func TestMasterTemplate_DoneCheckSectionTeachesLaterCardWarning(t *testing.T) {
 
 	requireNotContains(t, section, "a symbol this batch deleted that the remaining plan still references")
 	requireContains(t, section, "A finding about a later card (drift, or a symbol this batch deleted that a later card still references) comes back on the envelope's `warnings` and the batch still records;")
-	requireContains(t, section, "that later card's own `begin-batch` refuses it, naming \"edit the plan, then `lyx webster rebaseline`\".")
+	requireContains(t, section, "that later card's own `begin-batch` refuses it, naming \"edit the plan so the named cards match the tree, run \"lyx webster rebaseline\", then begin-batch NN again\".")
+	requireContains(t, section, "A done-check failure comes back as `{\"batch_failed\": true}`")
 }
 
 // TestMasterTemplate_QuotesOutcomeSchemaKeys asserts the master template's outcome-file bullet list

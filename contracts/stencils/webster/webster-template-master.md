@@ -150,8 +150,8 @@ The operator's way forward is to edit the plan and run `lyx webster rebaseline` 
 The batch's own mechanical done-checks run against the worktree's real post-batch tree, immediately before the digest would have been persisted.
 They find declared work missing: a Create target that still does not resolve, a Delete target that still does, or a `plan:` handle that bound to nothing.
 A finding about a later card (drift, or a symbol this batch deleted that a later card still references) comes back on the envelope's `warnings` and the batch still records;
-that later card's own `begin-batch` refuses it, naming "edit the plan, then `lyx webster rebaseline`".
-That failure comes back as `{"batch_failed": true}`, handled by the `batch_failed` rung of the failure ladder above.
+that later card's own `begin-batch` refuses it, naming "edit the plan so the named cards match the tree, run "lyx webster rebaseline", then begin-batch NN again".
+A done-check failure comes back as `{"batch_failed": true}`, handled by the `batch_failed` rung of the failure ladder above.
 The batch is already terminal-failed and its report archived, so you never retry `record-batch` and never edit a target file yourself (see "What you never do" below).
 
 ## Audit findings: policy warns, correctness fails the batch
