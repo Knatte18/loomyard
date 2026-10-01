@@ -49,6 +49,14 @@ func IntegrationReportPath(reportsDir string) string {
 // integrationPromptFileName is the integration fork's prompt file name inside a webster prompts dir.
 const integrationPromptFileName = "integration.md"
 
+// masterPromptFileName is Master's own prompt file name inside a webster prompts dir.
+const masterPromptFileName = "master.md"
+
+// MasterPromptPointer is the short launch prompt that hands Master its rendered prompt file.
+func MasterPromptPointer(path string) string {
+	return "You are webster's Master. Your complete instructions are in a file: your FIRST action is to Read it in full, then follow it exactly. It is authoritative. " + path
+}
+
 // ShouldRunIntegration reports whether plan carries a plan-level "## verify:" section.
 func ShouldRunIntegration(plan *planparser.Plan) bool {
 	return plan.Verify != ""
