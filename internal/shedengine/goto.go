@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -74,7 +75,7 @@ func Goto(req GotoRequest) (Status, error) {
 		return Status{}, fmt.Errorf("shedengine: goto moves only a halted run, and this run is running; way forward: %s then %s leaves the run paused at its next producer boundary, then re-run goto", runVerb("pause", req.RunID), runVerb("step", req.RunID))
 	}
 	reference, admitted := gotoAdmitted(req.Producers, st)
-	if !containsName(admitted, req.Target) {
+	if !slices.Contains(admitted, req.Target) {
 		if st.State == StateAwaiting {
 			return Status{}, fmt.Errorf("shedengine: goto target %q is not before the row %q the run is awaiting at; goto only moves a run back, so it never skips a row's own work or a review or approval row; %s shows the hand-off the run waits on; way forward: re-run goto with --to naming one of: %s", req.Target, reference, runVerb("status", req.RunID), strings.Join(admitted, ", "))
 		}
@@ -149,13 +150,4 @@ func gotoAdmitted(producers []ProducerDef, st Status) (reference string, admitte
 		}
 	}
 	return producers[refIdx].Name, admitted
-}
-
-func containsName(names []string, name string) bool {
-	for _, n := range names {
-		if n == name {
-			return true
-		}
-	}
-	return false
 }
