@@ -1301,6 +1301,45 @@ func TestPersistRecoveryTerminal_PassesRederived(t *testing.T) {
 	}
 }
 
+func TestPersistRecoveryTerminal_FailsWhenSuspectContentMoved(t *testing.T) {
+	fx, _, _ := suspectRecovery(t)
+	clk := &recoverFakeClock{now: time.Unix(0, 0)}
+	if _, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk); err != nil {
+		t.Fatal(err)
+	}
+	commitFile(t, fx.Worktree, "internal/x.go", "forged", "strand keeps forged")
+	mustGit(t, fx.Worktree, "mv", "internal/x.go", "internal/y.go")
+	mustGit(t, fx.Worktree, "commit", "-m", "strand moves forged")
+	head := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	writeRecoverReport(t, fx.ReportsDir, "status: OK\nhead_sha: "+head+"\n")
+	_, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk)
+	if !errors.Is(err, websterengine.ErrBatchFailed) {
+		t.Fatalf("error = %v; want ErrBatchFailed", err)
+	}
+	if !strings.Contains(err.Error(), "internal/x.go") || !strings.Contains(err.Error(), "internal/y.go") {
+		t.Errorf("error = %q; want both the suspect path and the moved path", err.Error())
+	}
+}
+
+func TestPersistRecoveryTerminal_PassesWhenStartHeldSameContent(t *testing.T) {
+	fx := newRecoverFixture(t)
+	commitFile(t, fx.Worktree, "internal/z.go", "forged", "z holds forged")
+	start := commitFile(t, fx.Worktree, "internal/x.go", "orig", "orig")
+	blob := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", start+":internal/z.go"))
+	fx.Deps.State.Batches[1] = &websterengine.BatchState{
+		Slug: "json-flag", Kind: "fork", Terminal: true, Status: websterengine.DigestStatusFailed, StartSHA: start,
+		SuspectPaths: []websterengine.SuspectPath{{Path: "internal/x.go", Blob: blob}},
+	}
+	commitFile(t, fx.Worktree, "other.txt", "o", "other work")
+	result, err := recoverSuspect(t, fx)
+	if err != nil {
+		t.Fatalf("error = %v; want nil", err)
+	}
+	if result.Digest == nil || result.Digest.Status != websterengine.DigestStatusDone {
+		t.Fatalf("Digest = %+v; want done", result.Digest)
+	}
+}
+
 func TestRecoverSpawn_CarriesSuspectPaths(t *testing.T) {
 	fx, _, blob := suspectRecovery(t)
 	clk := &recoverFakeClock{now: time.Unix(0, 0)}

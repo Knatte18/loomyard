@@ -338,7 +338,8 @@ func suspectBlobs(worktree string, paths []string) ([]SuspectPath, error) {
 }
 
 // checkRecoveredSuspects returns one reason per suspect path the recovery left unresolved at head:
-// a plan file differing from the run's recorded hashes, a tracked path differing from head, or a tracked path whose head content is still the flagged blob and not the start commit's.
+// a plan file differing from the run's recorded hashes, a tracked path differing from head, or the flagged blob still held at head under any path that did not hold it at the start commit.
+// The blob search covers the whole head tree, so a strand that moves the flagged file keeps the finding.
 // A path checkSuspectPaths reports unverifiable is not checked here:
 // RecoverSpawnOrAttach refuses a batch recording one, so none reaches this check.
 // number is the batch's number, named in the plan-path way forward.
@@ -372,26 +373,25 @@ func checkRecoveredSuspects(geom Geometry, st *State, bs *BatchState, number int
 		if isPlan[p] || blobs[p] == "" || slices.Contains(headDiff, p) {
 			continue
 		}
-		rel, ok, err := trackedRel(geom.WorktreeRoot, p)
+		_, ok, err := trackedRel(geom.WorktreeRoot, p)
 		if err != nil {
 			return nil, err
 		}
 		if !ok {
 			continue
 		}
-		atHead, err := commitBlob(geom.WorktreeRoot, head, rel)
+		listed, err := treePathsWithBlob(geom.WorktreeRoot, head, blobs[p])
 		if err != nil {
 			return nil, err
 		}
-		if atHead != blobs[p] {
-			continue
-		}
-		atStart, err := commitBlob(geom.WorktreeRoot, bs.StartSHA, rel)
-		if err != nil {
-			return nil, err
-		}
-		if atStart != atHead {
-			reasons = append(reasons, fmt.Sprintf("suspect path %s still holds the content the audit flagged; revert it to %s or re-derive it", p, bs.StartSHA))
+		for _, lp := range listed {
+			atStart, err := commitBlob(geom.WorktreeRoot, bs.StartSHA, lp)
+			if err != nil {
+				return nil, err
+			}
+			if atStart != blobs[p] {
+				reasons = append(reasons, fmt.Sprintf("suspect path %s still holds the content the audit flagged, at %s; revert it to %s or re-derive it", p, lp, bs.StartSHA))
+			}
 		}
 	}
 	return reasons, nil

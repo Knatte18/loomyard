@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
@@ -272,6 +273,27 @@ func commitBlob(worktree, commit, path string) (string, error) {
 		return "", fmt.Errorf("websterengine: git rev-parse %s:%s in %s: %w", commit, path, worktree, err)
 	}
 	return strings.TrimSpace(stdout), nil
+}
+
+// treePathsWithBlob returns, sorted, every path in commit's whole tree whose object id is blob.
+func treePathsWithBlob(worktree, commit, blob string) ([]string, error) {
+	stdout, err := gitexec.Run([]string{"ls-tree", "-r", commit}, worktree)
+	if err != nil {
+		return nil, fmt.Errorf("websterengine: git ls-tree -r %s in %s: %w", commit, worktree, err)
+	}
+	var paths []string
+	for _, line := range strings.Split(stdout, "\n") {
+		meta, path, ok := strings.Cut(line, "\t")
+		if !ok {
+			continue
+		}
+		fields := strings.Fields(meta)
+		if len(fields) == 3 && fields[2] == blob {
+			paths = append(paths, path)
+		}
+	}
+	sort.Strings(paths)
+	return paths, nil
 }
 
 // gitExitCode returns the exit code of a git command gitexec.Run reports as rejected, and false for nil or an exec-level failure.
