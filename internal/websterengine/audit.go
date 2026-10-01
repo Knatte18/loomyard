@@ -545,7 +545,7 @@ func splitShell(cmd string) (segments []shellSegment, substitutions []string) {
 
 // readOnlySegment reports whether one simple command's words are a known read-only shape.
 // After leading shell keywords and `NAME=value` assignments, it is true for a bare assignment,
-// a program in readOnlyTools, git with a subcommand in readOnlyGit and no `--output` option,
+// a program in readOnlyTools, git with a subcommand in readOnlyGit, no `--output` option, no `-c` or `--config-env` global option and, for grep, no `-O`,
 // and `lyx fabric` with a verb in readOnlyFabric (`prune` and `cleanup` only without `--apply`).
 // It is also true for `find` with no `-delete` or `-fprint`-family action whose every `-exec` command is read-only,
 // for a wrapper (sudo, env, timeout, xargs) whose wrapped command is read-only,
@@ -620,11 +620,14 @@ func readOnlySegment(words []string) bool {
 		}
 		for i := 0; i < len(args); i++ {
 			switch {
+			case args[i] == "-c" || args[i] == "--config-env" || strings.HasPrefix(args[i], "--config-env="):
+				// A config value can name a program git runs, such as core.fsmonitor or diff.external.
+				return false
 			case gitValueOptions[args[i]]:
 				i++
 			case strings.HasPrefix(args[i], "-"):
 			default:
-				return readOnlyGit[args[i]]
+				return readOnlyGit[args[i]] && !(args[i] == "grep" && grepOpensPager(args[i+1:]))
 			}
 		}
 		return false
@@ -642,6 +645,20 @@ func readOnlySegment(words []string) bool {
 			return true
 		}
 		return readOnlyFabric[verb]
+	}
+	return false
+}
+
+// grepOpensPager reports whether `git grep`'s args carry `-O` or `--open-files-in-pager`, which run a program on the matched files.
+// An `O` anywhere in a short-option cluster counts, and so does any `--open` abbreviation.
+func grepOpensPager(args []string) bool {
+	for _, a := range args {
+		if a == "--" {
+			return false
+		}
+		if strings.HasPrefix(a, "--open") || (strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "--") && strings.Contains(a, "O")) {
+			return true
+		}
 	}
 	return false
 }
