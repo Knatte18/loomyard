@@ -1123,11 +1123,10 @@ func TestRun_DoneWithNamedSpawnAlreadyDispositionedAddsNoWarning(t *testing.T) {
 	}
 }
 
-// TestRun_DoneWithFabricReferenceInIntegrationForkWarns proves a policy finding in the integration fork's transcript leaves the run done, records one run-level warning in state.json, returns it on RunResult.Warnings, and lists it in summary.md's "Audit warnings" section.
-func TestRun_DoneWithFabricReferenceInIntegrationForkWarns(t *testing.T) {
-	const session = "master-session-fabric"
+// TestRun_DoneWithNestedAgentInIntegrationForkWarns proves a policy finding in the integration fork's transcript leaves the run done, records one run-level warning in state.json, returns it on RunResult.Warnings, and lists it in summary.md's "Audit warnings" section.
+func TestRun_DoneWithNestedAgentInIntegrationForkWarns(t *testing.T) {
+	const session = "master-session-nested"
 	fx := newRunFixture(t, 1)
-	fx.Deps.RefMatcher = fabricMatcher{}
 	appendIntegrationVerify(t, fx.PlanDir, "true")
 	seedMatchingState(t, fx, &websterengine.State{
 		Batches: map[int]*websterengine.BatchState{
@@ -1136,7 +1135,7 @@ func TestRun_DoneWithFabricReferenceInIntegrationForkWarns(t *testing.T) {
 	})
 	forks := []shuttleengine.ForkReport{
 		{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true},
-		{TranscriptPath: "/transcripts/integration.jsonl", ReportReturned: true, BashCommands: []string{"cat FABRICREF/webster/state.json"}},
+		{TranscriptPath: "/transcripts/integration.jsonl", ReportReturned: true, AgentCalls: 1},
 	}
 	fx.Starter.handle = auditDoneHandle(t, fx, session, 1, shuttleengine.ForkAudit{Forks: forks}, func() {
 		head := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
@@ -1154,8 +1153,8 @@ func TestRun_DoneWithFabricReferenceInIntegrationForkWarns(t *testing.T) {
 	if result.Outcome != "done" {
 		t.Fatalf("RunResult.Outcome = %q; want %q", result.Outcome, "done")
 	}
-	if !warningsContain(result.Warnings, "audit warning (fabric-reference)") {
-		t.Errorf("Warnings = %v; want the fabric-reference warning", result.Warnings)
+	if !warningsContain(result.Warnings, "audit warning (nested-agent)") {
+		t.Errorf("Warnings = %v; want the nested-agent warning", result.Warnings)
 	}
 	st, err := websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
 	if err != nil {
@@ -1168,8 +1167,53 @@ func TestRun_DoneWithFabricReferenceInIntegrationForkWarns(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read summary.md: %v", err)
 	}
-	if !strings.Contains(string(summary), "## Audit warnings") || !strings.Contains(string(summary), "fabric-reference") {
-		t.Errorf("summary.md = %q; want an Audit warnings section naming the fabric-reference finding", summary)
+	if !strings.Contains(string(summary), "## Audit warnings") || !strings.Contains(string(summary), "nested-agent") {
+		t.Errorf("summary.md = %q; want an Audit warnings section naming the nested-agent finding", summary)
+	}
+}
+
+// TestRun_FabricReferenceInIntegrationForkIsStuck proves a fabric reference in the integration fork's transcript is correctness whatever its command:
+// the run ends stuck, the stuck reason quotes the command, and state.json carries one pending finding with no path.
+func TestRun_FabricReferenceInIntegrationForkIsStuck(t *testing.T) {
+	const session = "master-session-fabric"
+	const cmd = "cat FABRICREF/webster/state.json"
+	fx := newRunFixture(t, 1)
+	fx.Deps.RefMatcher = fabricMatcher{}
+	appendIntegrationVerify(t, fx.PlanDir, "true")
+	seedMatchingState(t, fx, &websterengine.State{
+		Batches: map[int]*websterengine.BatchState{
+			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", SessionID: session, CardSHAs: []string{"deadbeef"}},
+		},
+	})
+	forks := []shuttleengine.ForkReport{
+		{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true},
+		{TranscriptPath: "/transcripts/integration.jsonl", ReportReturned: true, BashCommands: []string{cmd}},
+	}
+	fx.Starter.handle = auditDoneHandle(t, fx, session, 1, shuttleengine.ForkAudit{Forks: forks}, func() {
+		head := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+		report := "status: OK\nhead_sha: " + head + "\ndeviations: []\n"
+		if err := os.WriteFile(websterengine.IntegrationReportPath(fx.Deps.Geom.ReportsDir), []byte(report), 0o644); err != nil {
+			t.Fatalf("write integration report: %v", err)
+		}
+	})
+	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-audit", session)
+
+	result, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	if err != nil {
+		t.Fatalf("Run() error = %v; want nil (a correctness finding demotes, it is not an error)", err)
+	}
+	if result.Outcome != "stuck" {
+		t.Fatalf("RunResult.Outcome = %q; want %q", result.Outcome, "stuck")
+	}
+	if !strings.Contains(result.StuckReason, cmd) {
+		t.Errorf("StuckReason = %q; want it to quote %q", result.StuckReason, cmd)
+	}
+	st, err := websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
+	if err != nil {
+		t.Fatalf("LoadState() error = %v", err)
+	}
+	if len(st.PendingAuditFindings) != 1 || len(st.PendingAuditFindings[0].Paths) != 0 {
+		t.Errorf("PendingAuditFindings = %+v; want one finding with no path", st.PendingAuditFindings)
 	}
 }
 

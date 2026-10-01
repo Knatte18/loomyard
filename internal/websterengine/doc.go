@@ -149,8 +149,8 @@
 //
 // The fork and parent audits classify each finding (ClassifyViolation) as correctness or policy.
 // A correctness finding means the delta or the run's own state may be wrong: a fork writing one of Master's two contract files, a parent write under the run's `_lyx` directory or into the worktree's tracked (not git-ignored) content,
-// or a fabric reference unless every command in it is a known read-only program with no write redirect, since that can rewrite run state the cards' verify commands cannot detect;
-// a policy finding breaks a steering rule without touching correctness, such as a named spawn or a read-only fabric reference.
+// or a fabric reference whatever its command, since an agent never touches the fabric repo and that can rewrite run state the cards' verify commands cannot detect;
+// a policy finding breaks a steering rule without touching correctness, such as a named spawn or a nested agent call.
 // Each finding carries a stable identity (its Key, prefixed by the session id for a parent finding),
 // and state.json's ledger dispositions it once per run, so the whole-session parent audit repeating earlier findings on every record-batch never re-judges them.
 // A policy finding is recorded as a warning on the batch once the evidence holds:
