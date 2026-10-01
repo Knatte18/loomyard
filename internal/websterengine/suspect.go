@@ -13,9 +13,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
-	"strings"
 
-	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
@@ -138,26 +136,6 @@ func planFileDiffers(st *State, planDir, canon string) (differs, ok bool, err er
 	return !recorded || want != hex.EncodeToString(sum[:]), true, nil
 }
 
-// worktreePathDiffers reports whether path differs from base in worktree: a changed tracked file or an untracked new one.
-func worktreePathDiffers(worktree, base, path string) (bool, error) {
-	_, stderr, code, err := gitexec.RunGit([]string{"diff", "--quiet", base, "--", path}, worktree)
-	if err != nil {
-		return false, fmt.Errorf("websterengine: git diff %s in %s: %w", path, worktree, err)
-	}
-	switch code {
-	case 0:
-	case 1:
-		return true, nil
-	default:
-		return false, fmt.Errorf("websterengine: git diff %s in %s exited %d: %s", path, worktree, code, strings.TrimSpace(stderr))
-	}
-	stdout, err := gitexec.Run([]string{"ls-files", "--others", "--exclude-standard", "--", path}, worktree)
-	if err != nil {
-		return false, fmt.Errorf("websterengine: git ls-files %s in %s: %w", path, worktree, err)
-	}
-	return strings.TrimSpace(stdout) != "", nil
-}
-
 // trackedRel returns the slash-separated path of p relative to worktree when p lies in the task worktree's tracked tree:
 // inside the worktree, outside its _lyx and not git-ignored.
 // ok is false for every other path, which has no blob to compare.
@@ -188,36 +166,6 @@ func trackedRel(worktree, p string) (rel string, ok bool, err error) {
 		return "", false, fmt.Errorf("websterengine: relate %s to %s: %w", canon, root, err)
 	}
 	return filepath.ToSlash(r), true, nil
-}
-
-// worktreeBlob returns the git blob id of path's content in the worktree, or "" when the file is absent.
-func worktreeBlob(worktree, path string) (string, error) {
-	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
-		return "", nil
-	} else if err != nil {
-		return "", fmt.Errorf("websterengine: stat %s: %w", path, err)
-	}
-	stdout, err := gitexec.Run([]string{"hash-object", "--", path}, worktree)
-	if err != nil {
-		return "", fmt.Errorf("websterengine: git hash-object %s in %s: %w", path, worktree, err)
-	}
-	return strings.TrimSpace(stdout), nil
-}
-
-// commitBlob returns the git blob id of path at commit, or "" when the commit does not hold the path.
-func commitBlob(worktree, commit, path string) (string, error) {
-	stdout, stderr, code, err := gitexec.RunGit([]string{"rev-parse", "--verify", "--quiet", commit + ":" + path}, worktree)
-	if err != nil {
-		return "", fmt.Errorf("websterengine: git rev-parse %s:%s in %s: %w", commit, path, worktree, err)
-	}
-	switch code {
-	case 0:
-		return strings.TrimSpace(stdout), nil
-	case 1:
-		return "", nil
-	default:
-		return "", fmt.Errorf("websterengine: git rev-parse %s:%s in %s exited %d: %s", commit, path, worktree, code, strings.TrimSpace(stderr))
-	}
 }
 
 // suspectBlobs records, for each of paths, the blob of its worktree content now.

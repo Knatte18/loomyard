@@ -43,7 +43,7 @@ var rawGitMutationBannedTokens = []string{
 // out when the mutating paths in this package migrated onto
 // internal/fabricengine's warp-only methods.
 var rawGitMutationAllowlist = map[string]string{
-	"internal/websterengine/gitwrap.go": "grandfathered read-only exemptions — CurrentSHA via gitrepo.New and `status --porcelain` via gitexec.Run, the checked entry point dirty now uses per the Shared Decision git-verification-via-gitrepo's carved-out exception",
+	"internal/websterengine/gitwrap.go": "grandfathered read-only exemptions — CurrentSHA via gitrepo.New, and via the checked gitexec.Run the read-only probes the Shared Decision git-verification-via-gitrepo's carved-out exception covers: `status --porcelain` (dirty, ignoredPath), `worktree list --porcelain` (otherWorktrees), `diff --quiet` and `ls-files --others` (worktreePathDiffers), `hash-object` (worktreeBlob) and `rev-parse --verify --quiet` (commitBlob)",
 }
 
 // rawGitMutationMinScannedFiles is the vacuous-scan floor for this guard's

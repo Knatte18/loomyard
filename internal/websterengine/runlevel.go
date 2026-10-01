@@ -22,7 +22,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/friction"
-	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -1070,11 +1069,11 @@ func freshPendingDrop(geom Geometry, st *State, opts RunOptions) (drop bool, war
 	}
 	base := runStartCommit(st)
 	if base == "" {
-		head, err := gitexec.Run([]string{"rev-parse", "HEAD"}, geom.WorktreeRoot)
+		head, err := headSHA(geom.WorktreeRoot)
 		if err != nil {
-			return false, nil, fmt.Errorf("webster: resolve HEAD in %s: %w", geom.WorktreeRoot, err)
+			return false, nil, err
 		}
-		base = strings.TrimSpace(head)
+		base = head
 	}
 	planDir, err := canonicalPath(geom.PlanDir)
 	if err != nil {

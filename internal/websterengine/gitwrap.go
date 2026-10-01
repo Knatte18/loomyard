@@ -3,14 +3,17 @@
 // signal.
 // refuseMidMerge and reconcileReportHead are the read-only probes record-batch and recover-batch share:
 // the first refuses while a git merge is in progress, the second accepts a HEAD that is only clean parent merges past the report's head_sha.
+// The suspect-path probes (ignoredPath, worktreePathDiffers, worktreeBlob, commitBlob) and otherWorktrees are the read-only evidence queries accept-audit, recovery and fresh runs share.
 // Per the Shared Decision git-verification-via-gitrepo, every helper here goes through gitrepo.Repo
-// except dirty, which gitrepo exposes no porcelain/status method for and so wraps gitexec.Run
-// directly — the one carved-out exception the decision names.
+// except dirty and those read-only probes, which gitrepo exposes no method for and so wrap the checked gitexec.Run
+// directly — the carved-out exception the decision names, kept in this one file so no other webster file runs git.
 
 package websterengine
 
 import (
+	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
@@ -204,12 +207,9 @@ func otherWorktrees(worktree string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	stdout, stderr, exitCode, err := gitexec.RunGit([]string{"worktree", "list", "--porcelain"}, worktree)
+	stdout, err := gitexec.Run([]string{"worktree", "list", "--porcelain"}, worktree)
 	if err != nil {
 		return nil, fmt.Errorf("websterengine: list worktrees of %s: %w", worktree, err)
-	}
-	if exitCode != 0 {
-		return nil, fmt.Errorf("websterengine: list worktrees of %s: git exited %d: %s", worktree, exitCode, strings.TrimSpace(stderr))
 	}
 	var others []string
 	for _, line := range strings.Split(stdout, "\n") {
@@ -226,4 +226,59 @@ func otherWorktrees(worktree string) ([]string, error) {
 		}
 	}
 	return others, nil
+}
+
+// worktreePathDiffers reports whether path differs from base in worktree: a changed tracked file or an untracked new one.
+// `git diff --quiet` exits 1 to answer "differs", so that exit is the answer rather than an error;
+// any other nonzero exit is a failure.
+func worktreePathDiffers(worktree, base, path string) (bool, error) {
+	_, err := gitexec.Run([]string{"diff", "--quiet", base, "--", path}, worktree)
+	if code, ok := gitExitCode(err); ok && code == 1 {
+		return true, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("websterengine: git diff %s in %s: %w", path, worktree, err)
+	}
+	stdout, err := gitexec.Run([]string{"ls-files", "--others", "--exclude-standard", "--", path}, worktree)
+	if err != nil {
+		return false, fmt.Errorf("websterengine: git ls-files %s in %s: %w", path, worktree, err)
+	}
+	return strings.TrimSpace(stdout) != "", nil
+}
+
+// worktreeBlob returns the git blob id of path's content in the worktree, or "" when the file is absent.
+func worktreeBlob(worktree, path string) (string, error) {
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		return "", nil
+	} else if err != nil {
+		return "", fmt.Errorf("websterengine: stat %s: %w", path, err)
+	}
+	stdout, err := gitexec.Run([]string{"hash-object", "--", path}, worktree)
+	if err != nil {
+		return "", fmt.Errorf("websterengine: git hash-object %s in %s: %w", path, worktree, err)
+	}
+	return strings.TrimSpace(stdout), nil
+}
+
+// commitBlob returns the git blob id of path at commit, or "" when the commit does not hold the path.
+// `git rev-parse --verify --quiet` exits 1 with no output for a name that does not resolve, so that exit is the "" answer;
+// any other nonzero exit is a failure.
+func commitBlob(worktree, commit, path string) (string, error) {
+	stdout, err := gitexec.Run([]string{"rev-parse", "--verify", "--quiet", commit + ":" + path}, worktree)
+	if code, ok := gitExitCode(err); ok && code == 1 {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("websterengine: git rev-parse %s:%s in %s: %w", commit, path, worktree, err)
+	}
+	return strings.TrimSpace(stdout), nil
+}
+
+// gitExitCode returns the exit code of a git command gitexec.Run reports as rejected, and false for nil or an exec-level failure.
+func gitExitCode(err error) (int, bool) {
+	var gitErr *gitexec.GitError
+	if errors.As(err, &gitErr) {
+		return gitErr.ExitCode, true
+	}
+	return 0, false
 }
