@@ -9,6 +9,7 @@ package websterengine
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
@@ -100,7 +101,11 @@ func AcceptPendingAudit(st *State, geom Geometry) ([]PendingAuditFinding, error)
 		if len(f.Paths) == 0 {
 			pathless = true
 		}
-		paths = append(paths, f.Paths...)
+		for _, p := range f.Paths {
+			if !slices.Contains(paths, p) {
+				paths = append(paths, p)
+			}
+		}
 	}
 	head := lastBatchHead(st)
 	differing, unverifiable, err := checkSuspectPaths(geom, st, head, paths)

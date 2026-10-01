@@ -157,7 +157,10 @@ func TestAcceptPendingAudit_ClearsWhenPathsMatchHead(t *testing.T) {
 
 func TestAcceptPendingAudit_RefusesDifferingPath(t *testing.T) {
 	fx := newSuspectFixture(t)
-	fx.st.PendingAuditFindings = []PendingAuditFinding{{ID: "f1", Class: "parent-write", Detail: "d", Paths: []string{"tracked.txt"}}}
+	fx.st.PendingAuditFindings = []PendingAuditFinding{
+		{ID: "f1", Class: "parent-write", Detail: "d", Paths: []string{"tracked.txt"}},
+		{ID: "f2", Class: "parent-write", Detail: "d", Paths: []string{"tracked.txt"}},
+	}
 	if err := os.WriteFile(filepath.Join(fx.geom.WorktreeRoot, "tracked.txt"), []byte("edited"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +174,11 @@ func TestAcceptPendingAudit_RefusesDifferingPath(t *testing.T) {
 			t.Errorf("error = %q; want it to contain %q", err, want)
 		}
 	}
-	if len(fx.st.PendingAuditFindings) != 1 {
+	// Two findings naming one path list it once.
+	if n := strings.Count(err.Error(), "tracked.txt"); n != 1 {
+		t.Errorf("error = %q names tracked.txt %d times; want once", err, n)
+	}
+	if len(fx.st.PendingAuditFindings) != 2 {
 		t.Errorf("PendingAuditFindings = %v; want unchanged", fx.st.PendingAuditFindings)
 	}
 }
