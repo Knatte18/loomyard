@@ -150,6 +150,10 @@ func TestClassifyViolation_FabricReferenceByCommand(t *testing.T) {
 		{"env LC_ALL=C grep x " + dir + "/webster/state.json", AuditSeverityPolicy},
 		{`bash -c "cat ` + dir + `/webster/state.json"`, AuditSeverityPolicy},
 		{"lyx fabric prune", AuditSeverityPolicy},
+		{"./cat " + dir + "/webster/state.json", AuditSeverityCorrectness},
+		{"/tmp/tools/grep x " + dir + "/webster/state.json", AuditSeverityCorrectness},
+		{"/usr/bin/cat " + dir + "/webster/state.json", AuditSeverityPolicy},
+		{"/bin/bash -c 'cat " + dir + "/webster/state.json'", AuditSeverityPolicy},
 		{"cat <<EOF | grep x\nrm " + dir + " > y\nEOF\nls " + dir, AuditSeverityPolicy},
 		{"ls " + dir + " # > not a redirect", AuditSeverityPolicy},
 	}

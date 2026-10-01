@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -286,6 +287,8 @@ var (
 	commandWrappers = stringSet("sudo", "env", "nice", "nohup", "command", "exec", "time")
 	// xargsValueOptions are xargs options whose value follows as a separate word.
 	xargsValueOptions = stringSet("-I", "-n", "-P", "-d", "-E", "-L", "-s", "-a")
+	// systemBinDirs are the directories a path-spelled program may run from and still count as its allowlisted name.
+	systemBinDirs = stringSet("/bin", "/usr/bin", "/usr/local/bin")
 	// harmlessRedirectTargets are output redirect targets that change no file.
 	harmlessRedirectTargets = stringSet("/dev/null", "/dev/stdout", "/dev/stderr")
 )
@@ -547,7 +550,7 @@ func splitShell(cmd string) (segments []shellSegment, substitutions []string) {
 // It is also true for `find` with no `-delete` or `-fprint`-family action whose every `-exec` command is read-only,
 // for a wrapper (sudo, env, timeout, xargs) whose wrapped command is read-only,
 // and for `bash -c` with a script mutatingCommand finds read-only.
-// Every other shape is mutating: an unknown program, a program spelled through a variable, `bash` without `-c`, eval, source, sed, perl, awk, any other lyx verb.
+// Every other shape is mutating: an unknown program, a program spelled through a variable or through a path outside a system bin directory, `bash` without `-c`, eval, source, sed, perl, awk, any other lyx verb.
 func readOnlySegment(words []string) bool {
 	for len(words) > 0 && (shellKeywords[words[0]] || (strings.Contains(words[0], "=") && !strings.HasPrefix(words[0], "-"))) {
 		words = words[1:]
@@ -555,7 +558,10 @@ func readOnlySegment(words []string) bool {
 	if len(words) == 0 {
 		return true
 	}
-	prog := filepath.Base(words[0])
+	prog, known := programName(words[0])
+	if !known {
+		return false
+	}
 	args := words[1:]
 	switch {
 	case readOnlyTools[prog]:
@@ -638,6 +644,16 @@ func readOnlySegment(words []string) bool {
 		return readOnlyFabric[verb]
 	}
 	return false
+}
+
+// programName returns the program name a simple command's first word runs, and whether that name can be trusted.
+// A bare name is trusted.
+// A path-spelled program is trusted only from a system bin directory, since any other path may be a script that shares an allowlisted name.
+func programName(word string) (string, bool) {
+	if !strings.Contains(word, "/") {
+		return word, true
+	}
+	return path.Base(word), systemBinDirs[path.Dir(word)]
 }
 
 // ClassifyViolation assigns v its D4 severity, checking the correctness rule first.
