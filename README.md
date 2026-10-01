@@ -1,249 +1,213 @@
 # LoomYard
 
-LoomYard (LY) is a task-orchestration system for [Claude Code](https://claude.ai/code).
-It manages the lifecycle of coding tasks — from a discussion of what to build, through planning, implementation, and review, to the merge back — with each task isolated in its own git worktree.
+LoomYard is an autonomous software-development pipeline built on [Claude Code](https://claude.ai/code).
+You hand it a task, and it can discuss the task with you before it writes a plan.
+It then implements the plan batch by batch, has independent agents review every artifact, opens a pull request, and lands it once you approve.
+Each task runs in its own isolated git worktree pair, and many tasks can run at once.
 
-**The central idea: replace as much of the agent loop as possible with deterministic Go.**
+At its center is **`lyx`**, a single Go binary (LoomYard eXecutable) that owns the task board, the git topology, every phase transition, and every agent launch.
+LoomYard is developed with LoomYard: its own tasks run through the same pipeline, with their state in [`loomyard-weft`](https://github.com/Knatte18/loomyard-weft).
+
+## The central idea: deterministic Go around narrow LLM calls
 
 An agentic system built out of prompts asks a model to do work a program does better.
-Deciding what runs next, parsing a plan, walking a directory, staging a commit, checking whether an artifact satisfies its format, retrying a failed step, resuming after a crash — every one of those is a program, and every one of them is slow, expensive, and *non-reproducible* when a language model does it instead.
-Worse, it fails differently each time.
+Deciding what runs next, parsing a plan, staging a commit, checking an artifact against its format, retrying a failed step, resuming after a crash: each of these is a program, and each is slow, expensive, and non-reproducible when a model does it instead.
 
-So LoomYard draws a hard line.
-Control flow, state, git, parsing, validation, geometry, routing, retry, and resume are Go — tested, deterministic, and cheap.
-A model is called only where judgment is genuinely irreducible: is this plan sound, does this diff match its plan, write this code.
-Those calls are made through a narrow file contract — a prompt goes in, named files come out — so even the LLM steps have a machine-checkable shape around them.
+LoomYard draws a hard line.
+Control flow, state, git, parsing, validation, routing, retry, and resume are Go — tested, deterministic, and cheap.
+Models do two kinds of work.
+Inside a run, they do the steps that need judgment: is this plan sound, does this diff match its plan, write this code.
+Above a run, an LLM driver steps it forward and supervises it: it reads what each step reported, repairs what went wrong, and escalates what it cannot fix.
+The driver never decides what runs next, though;
+the phase engine does.
+Every call inside a run goes through a narrow file contract — a prompt goes in, named files come out — and a mechanical gate checks the output before the run moves on.
+An agent whose output fails its gate is re-prompted in the same session with the findings, rather than trusted.
 
-The practical payoff is that the same run does the same thing twice, a crashed run resumes exactly where it stopped, and the parts most likely to break are the parts covered by `go test` rather than by hope.
+The payoff: the same run does the same thing twice, a crashed run resumes exactly where it stopped, and the parts most likely to break are covered by `go test` rather than by hope.
 
-At its center is **`lyx`** — a single Go binary (LoomYard eXecutable) that owns the task board, the git topology, and the orchestrator.
-The full spine now ships: `lyx start` in a worktree bootstraps a task and drives it through its phase machine to a merge-back, unattended.
+## What a task run looks like
 
-> **Built on Millhouse's ideas, not a port of it.** LoomYard started as a Go rebuild of [Millhouse](https://github.com/Knatte18/millhouse) and still owes it the core premise — task orchestration for Claude Code, isolated worktrees, AI subagents for the judgment steps. It has since grown well past that: the orchestrator is a data-driven phase machine rather than a skill set, review is a Go-owned gate loop, and the git topology is a model Millhouse has no equivalent of.
-
-## Inspiration
-
-Through Millhouse, LoomYard builds on ideas from three projects:
-
-- **[claude-code-plugins](https://github.com/motlin/claude-code-plugins)** by Craig Motlin — task tracking and skill plugins for Claude Code
-- **[autoboard](https://github.com/willietran/autoboard)** by Willie Tran — autonomous agent orchestration patterns
-- **[skills](https://github.com/mattpocock/skills)** by Matt Pocock — Claude Code skill conventions
-
-## Naming: `lyx` · `loom` · `ly`
-
-Three names for three layers, deliberately non-overlapping:
-
-- **`lyx`** — the binary/CLI (**L**oom**Y**ard e**X**ecutable): one binary with a namespaced subcommand tree (`lyx board`, `lyx fabric`, `lyx webster`, …).
-- **`loom`** — the orchestrator *module* (`lyx loom start`), a domain like `board` or `fabric` that drives a phased run.
-- **`ly`** — the skill / orchestration plugin;
-  skills are `/ly-*`.
-  Still a plan rather than a shipped set — see [docs/skills.md](docs/skills.md) for which mill skills become `lyx` verbs and which survive as skills.
-
-Convenience alias: **`lyx start` → `lyx loom start`** (the everyday autonomous call).
-
-## Design principles
-
-1. **Go where it can be;
-   LLM only for judgment.**
-   The principle above, stated as a build rule: deterministic work — verbs, control flow, parsing, distillation, geometry, git — is Go;
-   a model handles only what a program cannot (review verdicts, batch implementation, an orchestrator's recovery decisions).
-   When a step could plausibly go either way, it goes to Go.
-2. **Toolkit-first.**
-   Build small, composable primitives (board, fabric, reed) before the orchestrator that ties them together.
-3. **One-shot, daemonless, file-coordinated.**
-   A command does its work, writes JSON to stdout, and exits.
-   Concurrent processes cooperate through files and locks, not a server.
-4. **cwd-authoritative.**
-   Config and state resolve from the current working directory, which need not equal the git-repo root.
-5. **Told, never derived.**
-   Every layer from `reed` up is *handed* its geometry — absolute paths, already resolved — instead of computing it.
-   That is what lets the same producer run inside a hub or against a plain checkout with no hub at all;
-   see the Told-Geometry Invariant in [CONSTRAINTS.md](CONSTRAINTS.md).
-6. **Correctness by tool design, not by recall.**
-   A `lyx` command makes the correct path the path of least resistance and makes drift *detectable*, rather than relying on an operator or agent to remember a rule.
-
-## Fabric: the warp and the weft
-
-An orchestrator has to keep state somewhere — config, task board, plans, review verdicts, run status.
-Putting that in your repo pollutes it;
-putting it outside your repo means it doesn't travel, doesn't branch with the work, and can't be resumed on another machine.
-
-LoomYard's answer is a **piggyback repo woven into your own**.
-Your repository is the **warp**;
-a second git repository, the **weft**, carries everything LoomYard generates.
-Every warp worktree gets a weft sibling on a matching branch, and the two are wired together on disk so that state written while working in a worktree lands in the weft — invisibly, without a single LoomYard file ever appearing in your repo's history or its `.gitignore`.
-
-Woven together, the two sides are one thing: the **Fabric**.
-That is the name that matters — warp and weft are only used where the two sides genuinely have to be told apart.
-From the outside the Fabric behaves as a single repository, because `lyx fabric` is the seam that keeps it coherent and moves both sides as one:
-`add` and `remove` create and destroy a worktree *pair*, `checkout` switches both branches together and re-points the wiring, `pull` reconciles both sides against their remotes, `status` is one both-sides view of uncommitted work, and `diff` reports the change since a given commit across the pair.
-You say "switch this task to that branch" once, against the Fabric, and never think about which of the two repositories underneath had to move.
-
-```
-<hub>/                                (top-level Hub, NOT a git repo)
-  ├── <prime>/                        (your repo, main branch)   ┐ one Fabric,
-  ├── <prime>-weft/                   (its weft side)            ┘ two checkouts
-  ├── <slug>/                         (a task worktree)          ┐ likewise, on
-  ├── <slug>-weft/                    (its weft side)            ┘ the task branch
-  ├── _board/                         (the task store, on weft's main branch)
-  ├── _portals/                       (per-worktree entry points into the weft side)
-  └── _launchers/                     (per-worktree launcher scripts)
-```
-
-Because the weft is a real git repository that branches in lockstep with the warp, a task's whole state is versioned, pushed, and recoverable:
-pick the task up on another machine and it resumes where it stopped.
-And because state is per-branch rather than global, two agents working two tasks never see each other's plans, verdicts, or run status.
-
-Holding that illusion up is a hard rule rather than a convention: every git operation LoomYard's own code performs, on either side, goes through the `fabric` engine in Go — never raw git, and never an agent.
-An agent commits its own code to the warp and nothing else;
-the weft is committed by Go, at boundaries the orchestrator controls.
-When a pair does drift or get broken by hand, `lyx fabric reconcile` converges it back onto the recorded layout.
-
-All path resolution goes through a single package, `internal/lyxcwd`, so this geometry has exactly one owner;
-see [CONSTRAINTS.md](CONSTRAINTS.md) and [docs/overview.md](docs/overview.md) for the on-disk detail.
-
-## Modules
-
-Every user-facing module is a `lyx <module>` namespace, assembled into one cobra root.
-All commands print JSON: `{"ok":true, ...}` on success, `{"ok":false,"error":"..."}` on failure.
-
-- **board** — the task-tracker board, plus a parallel not-yet-claimable `notes` surface and `promote-note` between them.
-- **config** — view/edit module configs;
-  `lyx config reconcile` reconciles all configs against their templates;
-  `lyx config <module> --set key=value` writes values non-interactively.
-- **fabric** — the sole warp↔weft git-coordination module, unifying topology (clone, dual-worktree add/remove, coordinated checkout, reconcile, status, prune, cleanup), weft content-sync (`status|commit|push|pull|sync|diff`), and a merge/conflict lifecycle (`merge-in|merge|merge-stage|merge --continue|--abort`) in one command tree.
-  `lyx fabric clone` is the hub creator and does the whole job in one call — there is no separate activation step (the former `lyx init` dissolved into it).
-- **ide** — one-shot IDE launcher for worktrees, with an interactive menu.
-- **reed** — the tmux overlay + strand bookkeeping + render, with a watchdog daemon that reconciles resize geometry and reaps dead panes.
-- **shuttle** — runs one LLM agent as an interactive tmux strand over a file contract, via a swappable provider engine (Claude today), classifying every run as `done`/`asking`/`died`/`timeout`.
-- **burler** — one review+fix round over an artifact: A-review → B-fix, one agent, no self-grading, driven entirely by a profile YAML so the round itself carries zero domain knowledge.
-- **webster** — the implementer: one long-lived Master session reads the flat card-list plan once and forks one implementer per batch **in-session**, bracketed by `begin-batch`/`await-batch`/`record-batch`, escalating a stuck fork to a cold recovery strand.
-- **stencil** — the operator surface over the producer prompts every agent reads from disk at call time: `list|validate|diff|sync|promote`.
-- **loom** — the phased orchestrator (`start|run|status|pause|validate-discussion|validate-plan`).
-  See [the phase machine](#the-phase-machine) below.
-- **selfreport** — file bugs/enhancements against the repo via go-github, authenticated through `internal/githubclient` (`gh` is a fallback token source, not the transport).
-
-Under these sit the internal (non-CLI) layers: **proc** (cross-OS process spawn), **shed** (the generic phase engine), the landing producers (`Publish`/`Finalize`), the precondition/geometry layer (`preflight`, `hubgeom`, `standalonegeom`), and the sole-parser leaves each on-disk format gets exactly one of — `planparser`, `discussionparser`, `summaryparser`.
-`treadleengine` is shipped but consumer-less on purpose: it is the generalized round-loop engine kept for the future `Tenter`.
-See [docs/overview.md](docs/overview.md) for the full map and [manifest/designs/](manifest/designs/) for what is designed but not yet built.
-
-## Orchestration stack
-
-The orchestrator is a layered stack, each layer knowing only the one below.
-It has this shape because agents run as **interactive tmux sessions, never headless `claude -p`** — so spawning an agent is "place a pane, launch a provider, drive it, detect completion," not a plain `exec`.
-
-```
-internal/proc     spawn any OS process, cross-OS                     [OS primitive]
-internal/reed     tmux overlay + strand bookkeeping + render         [builds on proc]
-internal/shuttle  run ONE LLM agent via a swappable engine           [builds on reed]
-burler            one review+fix round: review → fix                 [builds on shuttle]
-shed              walk a flat producer list to a terminal outcome    [engine; adapters wrap the above]
-loom              shed + loom's own producer list                    [builds on shed]
-```
-
-`webster` branches off `shuttle` directly (an LLM orchestrator driving fat Go verbs, not a review-gate loop).
-The whole stack runs headless (auto mode): strands exist, agents run, output files are read, nobody need watch.
-
-The stack has two entry modes.
-In **hub mode** a command resolves its geometry from the surrounding hub;
-in **standalone mode** it is told a target directory instead, so `lyx burler run --target-dir …` and `lyx webster run --target-dir …` work against a plain git checkout with no hub, no fabric, and no orchestrator seed.
-
-## The phase machine
-
-`shed` (`internal/shedengine`) is a generic engine with **no predefined slots** — no Preflight slot, no Finalize slot, no review slot.
-It walks one flat, ordered list of producers, honoring resume, crash-recovery, and pause uniformly at producer granularity.
-What makes a product a product is purely which producers are in its list.
-
-Routing is per-producer and explicit, never positional: a `Done` verdict follows that row's own `on_done`, a `Stuck` verdict follows its `on_stuck` (bouncing back to any row, forward or backward, within a per-producer bounce budget) or escalates to a human when `on_stuck` is empty.
-List order is display order only.
-
-`loom` is therefore `shed` plus one list, and that list is data rather than code: [`contracts/recipes/loom-recipe.yaml`](contracts/recipes/loom-recipe.yaml), embedded into the binary and assembled into producers by `internal/loomrecipe` against `internal/shedrecipe`'s engine registry.
-Its rows:
+A task's run is a flat list of producers, walked by a generic phase engine (`shed`).
+The list is data, not code — [`contracts/recipes/loom-recipe.yaml`](contracts/recipes/loom-recipe.yaml), embedded in the binary:
 
 ```
 Preflight → Loom-Preflight
-  → Discussion-Write → [Discussion-Review segment]
-  → Plan-Write → [Plan-Review segment]
-  → Batchifier → Webster → [Webster-Review segment]
-  → Describe → Publish → Finalize → Friction-Reflect
+  → Discussion-Write → [Discussion review]
+  → Plan-Write       → [Plan review]
+  → Batchifier → Webster → [Webster review]
+  → Describe → Publish → PR-Gate ⇄ PR-Rework
+  → Finalize → Friction-Reflect
 ```
 
-Each `[…-Review segment]` is two rows: a **`Bouncer`** (the judge — reads the artifact against a rubric, writes a verdict and a cross-round ledger) and a **`BurlerRound`** (one `burler` review+fix round).
-The two are bound by a shared `segment:` label, and `shedengine`'s validator refuses an `on_stuck` that crosses a segment boundary — so the pair's mutual bounce edges are structurally enforced rather than conventional.
-The `Bouncer` returns `Done` only on an `APPROVED` verdict;
-the round producer never returns `Done` at all, handing back to its judge every time.
-Re-entering a settled segment re-judges from a fresh round 1 rather than replaying the old approval.
+- **Discussion** — an agent turns the task into a decision record: scope, decisions taken, what is out of scope.
+  It can stop and ask you when a decision is yours to make.
+- **Plan** — an agent writes a plan as a list of cards, each naming the code it touches by *glyph* — a stable symbol spelling resolved against the real tree through [quarry](https://github.com/Knatte18/quarry), so a plan that names a function that does not exist fails validation before any code is written.
+- **Webster** — the implementer.
+  One long-lived Master session reads the plan once and forks one implementer per batch inside its own session, bracketed by Go verbs (`begin-batch`, `await-batch`, `record-batch`) that verify and record each batch.
+  A stuck fork escalates to a cold recovery session.
+- **Review segments** — each `[… review]` is a judge (`Bouncer`) paired with a review-and-fix round (`burler`).
+  The judge approves or sends the artifact back for another round, within a bounce budget;
+  an exhausted budget halts the run for a human rather than looping.
+  The judge and the reviewer are fresh agents, independent of the one that wrote the artifact, so no agent ever reviews its own work.
+- **Landing** — `Describe` writes the change description, `Publish` opens the pull request, and `PR-Gate` waits for the operator.
+  `lyx loom approve` lands it;
+  `lyx loom reject <review-file>` sends the operator's findings to `PR-Rework`, which plans and implements a rework round and comes back to the gate.
+- **Friction-Reflect** — the agents' own notes on what was hard or broken in the tooling are reflected on and can be filed as issues against LoomYard itself (`selfreport`).
 
-From `loom`'s side every segment is the same black box with two exits.
-Only three things differ per phase: the rubric, the round's **fix-scope** (`overlay` for discussion and plan, whose targets are weft content the loop owner must commit;
-`source` for Webster, where the agent commits each fix to the warp repo itself), and the segment's **commit seam**.
-That split is the Fabric Git Invariant: every weft commit belongs to the loop owner in Go, and the agent's own commit-per-fix to the warp repo is the single named exception.
+Routing is explicit per row (`on_done`, `on_stuck`), never positional, and the engine's validator refuses a recipe whose edges cross a review segment's boundary.
+Resume, pause, and crash recovery work uniformly at producer granularity.
 
-See the `internal/shedengine`, `internal/shedadapters` and `internal/loomrecipe` package documentation for how the list is built and driven, and `internal/shedadapters` for the round-artifact contract the two rows share.
+## Three layers of driving
 
-## Contracts
+The phase engine only moves one producer at a time;
+what calls it is a choice of driver.
 
-`contracts/` holds what crosses a module boundary, versioned with the code that reads it:
+- **`lyx shed step`** — drive one producer forward and report a JSON envelope naming its outcome and the trace it wrote.
+  This is the primitive every driver is built on.
+- **`ly-drive`** — a Claude Code skill that drives a run by repeated `lyx shed step`, reads each envelope and trace, repairs what it can, re-steps after a transient failure, and escalates what it cannot.
+  It carries no phase knowledge: which recipe runs is a property of the run's seed alone.
+  `lyx loom start` (alias `lyx start`) bootstraps a task worktree and launches its driver session.
+- **`lyx batten`** — drives a task worktree's whole lifecycle from the hub's main worktree as one run of its own: create the worktree pair, seed the task's run, watch it to a terminal state, tear the pair down.
+- **`lyx orch`** — hosts the hub orchestrator: one long-lived Claude session that dispatches and supervises runs.
+  A detached watcher reads its context usage after each turn;
+  past a threshold, while idle, it has the session write a handoff, clears it, and resumes it from that handoff, so the orchestrator outlives any single context window.
 
-- **`contracts/stencils/`** — every prompt an agent is given, shipped as an embedded default and **read from the hub's stencils directory at call time**, never from a compiled-in copy, so an operator can edit a live prompt without a rebuild.
-  `lyx stencil` is the surface over that: `diff` shows upstream changes not yet taken (or, with `--all`, board edits not yet ported back), and `promote` copies an edit back into this source tree.
-- **`contracts/specs/`** — the on-disk format contracts (`loom-plan-spec.md`, `loom-status-spec.md`, `webster-spec.md`, `final-summary-spec.md`, `llm-model-spec.md`), each with exactly one parser package in `internal/`.
-- **`contracts/recipes/`** — `loom-recipe.yaml`, the producer list above.
+The split is the same principle again: the engine decides *what* runs next, and the LLM layers above it only decide how to recover when a step fails.
 
-## Building
+## Agents run as interactive tmux sessions, never `claude -p`
+
+Every agent LoomYard launches is an interactive Claude Code session in a tmux pane, never headless `claude -p`.
+Interactive sessions keep subscription coverage;
+headless usage is moving to API billing.
+
+So launching an agent is not an `exec`: it is "place a pane, launch the provider, dismiss its startup dialogs, drive it, detect completion."
+That is a layered stack, each layer knowing only the one below:
+
+```
+proc     spawn any OS process, cross-OS
+reed     tmux overlay: strand bookkeeping, layout, a watchdog that reaps dead panes
+shuttle  run ONE agent over the file contract via a swappable provider engine
+burler   one review+fix round              webster   the batch implementer
+shed     walk a flat producer list to a terminal outcome
+loom     shed + the task recipe            batten    shed + the worktree-lifecycle recipe
+```
+
+`shuttle` classifies every run as `done`, `asking`, `died`, or `timeout`, and owns everything provider-specific — how Claude is launched and which startup gates it shows — behind an engine interface, so a second provider plugs in as another engine without any layer above changing.
+
+## Fabric: state that travels without touching your repo
+
+An orchestrator has to keep state somewhere: config, the task board, plans, review verdicts, run status.
+In your repo it pollutes your history;
+outside it, the state does not branch with the work and cannot resume on another machine.
+
+LoomYard keeps it in a second git repository woven into yours.
+Your repository is the **warp**;
+the **weft** carries everything LoomYard generates.
+Every warp worktree gets a weft sibling on a matching branch, wired together on disk, so state written while working in a worktree lands in the weft without a single LoomYard file in your repo's history or `.gitignore`.
+
+Together the two are the **Fabric**, and `lyx fabric` is the seam that moves both sides as one: `add`/`remove` a worktree pair, `checkout` both branches together, `pull`, `status`, `diff`, `merge`, and `reconcile` a pair that drifted back onto the recorded layout.
+Every git operation LoomYard's own code performs goes through the `fabric` engine — never raw git, and never an agent.
+An agent commits its own code to the warp and nothing else;
+the weft is committed by Go, at boundaries the orchestrator controls.
+
+Because the weft branches in lockstep with the warp, a task's whole state is versioned and pushed:
+pick the task up on another machine and it resumes where it stopped, and two tasks never see each other's plans or status.
+
+```
+<hub>/                    (not a git repo)
+  ├── <prime>/            your repo, main branch        ┐ one Fabric
+  ├── <prime>-weft/       its weft side                 ┘
+  ├── <slug>/             a task worktree               ┐ likewise, on
+  ├── <slug>-weft/        its weft side                 ┘ the task branch
+  ├── _board/             the task store
+  ├── _portals/           entry points into each worktree's state
+  └── _launchers/         per-worktree launcher scripts and workspaces
+```
+
+## Engineering discipline
+
+- **Structural invariants as tests.**
+  [`CONSTRAINTS.md`](CONSTRAINTS.md) records the repo's cross-cutting invariants, and most of them are enforced by `go test` scans rather than by review: one package owns path resolution, one parser exists per on-disk format, nothing outside `shuttle` touches provider readiness, and so on.
+- **Told, never derived.**
+  Every layer from `reed` up is handed its geometry — absolute, already-resolved paths — instead of computing it, which is what lets the same producer run inside a hub or against a plain checkout (`--target-dir`) with no hub at all.
+- **Prompts are versioned contracts.**
+  Every prompt an agent reads is a stencil under [`contracts/stencils/`](contracts/stencils/), embedded as a default and read from the hub at call time, so an operator can edit a live prompt without a rebuild and `lyx stencil` shows the drift.
+- **Correctness by tool design, not by recall.**
+  A `lyx` command makes the correct path the path of least resistance and makes drift detectable, instead of relying on an agent to remember a rule.- **Crucible.**
+  Modules that drive live tmux and real agents are hardened by [crucible](crucible/README.md): serial, model-rotating review-and-fix rounds against the live substrate, each finding proved by sabotage — revert the fix, watch the regression test fail, restore.
+
+## Modules
+
+Every user-facing module is a `lyx <module>` namespace;
+`lyx --help` lists them, and every command takes `--help` (or `--json` for structured help).
+Commands print a JSON envelope: `{"ok":true, ...}` or `{"ok":false,"error":"..."}`.
+
+| Module | What it does |
+|---|---|
+| `board` | the task board, plus a not-yet-claimable notes surface |
+| `fabric` | warp↔weft topology, sync, and the merge lifecycle; `fabric clone` creates a hub in one call |
+| `config` | view, edit, and reconcile module configs against their templates |
+| `reed` | the tmux strand overlay and its watchdog |
+| `shuttle` | run one agent over the file contract |
+| `burler` | one review+fix round over an artifact |
+| `webster` | the batch implementer |
+| `shed` | the generic `seed`/`run`/`step`/`status`/`pause` verbs over any recipe |
+| `loom` | the task pipeline, plus `approve`/`reject` at the PR gate and the standalone validators its gates use |
+| `batten` | a task worktree's whole lifecycle as one run |
+| `orch` | the self-cycling hub orchestrator session |
+| `quarry` | glyph lookups against the worktree's own code, the planner's source of symbol spellings |
+| `stencil` | inspect, diff, and promote the prompts agents read |
+| `selfreport` | file a bug or enhancement against LoomYard's own repo |
+| `ide` | open a worktree in VS Code |
+
+[`docs/overview.md`](docs/overview.md) maps every package, including the internal layers under these.
+
+## Getting started
 
 ```bash
-go build ./cmd/lyx        # build the lyx binary
-go test ./...             # run the full suite (structural invariants included)
+go build ./cmd/lyx                                  # build the binary
+lyx fabric clone <weft-url> <warp-url>              # create a hub: both repos, wiring, config, board
+lyx fabric add <slug>                               # a task worktree pair
+cd <hub>/<slug> && lyx start                        # bootstrap the task and hand the terminal to its driver
 ```
 
-`./update-plugins.sh` (`update-plugins.cmd` on Windows) is the only route to production: from a clean tree pushed to `origin/main` it mirrors the installed loomyard plugins into the Claude Code plugin cache, builds `lyx` into the Go bin dir (`go env GOBIN`, else `GOPATH/bin`), and moves the `prod` branch to the deployed commit.
-Nothing on `main` is in production until it runs; `git log -1 origin/prod` shows what is.
-`./deploy-dev` builds the working tree into a derived `.dev-bin` for internal tests, and never touches production.
+`./update-plugins.sh` (`update-plugins.cmd` on Windows) is the only route to production: from a clean tree pushed to `origin/main`, it installs the plugins, builds `lyx` into the Go bin dir, and moves the `prod` branch to that commit.
+`./deploy-dev` builds the working tree into `.dev-bin` for testing without touching production.
 
-To start a hub, run `lyx fabric clone <weft-url> [<warp-url>]` — it clones both repos, wires the junctions, materializes every module's config, and creates `_board`, in one call.
-Then `lyx fabric add <slug>` for a task worktree, and `lyx start` inside it.
+The [sandbox Hub](docs/sandbox-howto.md) is a bench for running the real binary end to end against a throwaway hub, with per-module suites an agent drives and reports findings from.
 
-## Sandbox Hub
+### Requirements
 
-The **sandbox Hub** is a dedicated bench for dogfooding `lyx` against itself, exercising the real deployed binary end to end against a throwaway hub cloned from `lyx-test`/`lyx-test-weft`.
-Each suite is an agent script driving the binary and reporting findings.
-
-Build it with `sandbox/posix/build.sh` (`sandbox/win/build.cmd` on Windows), run a suite with `sandbox/posix/core-suite.sh` — plus `fabric-`, `reed-`, `reed-watch-`, `shuttle-`, `burler-`, and `webster-suite.sh` for the per-module benches — and collect findings with `sandbox/posix/fetch.sh`.
-See [docs/sandbox-howto.md](docs/sandbox-howto.md) for the runbook.
+- [Claude Code](https://claude.ai/code), logged in
+- Go (the version in `go.mod`) and a C toolchain — `lyx` links quarry's tree-sitter grammars through cgo
+- Git 2.42+
+- tmux (on Windows, psmux)
+- A GitHub token for `Publish` and `selfreport`: `GH_TOKEN`, `GITHUB_TOKEN`, or an authenticated `gh` CLI
 
 ## Plugins
 
-`plugins/` holds this marketplace's Claude Code plugins (`.claude-plugin/marketplace.json`), each its own Go module or skill set:
+[`plugins/`](plugins/) holds this repo's Claude Code marketplace:
 
-- **prowler** — fetch blocked, restricted, or JS-rendered web pages and output readable markdown, plus cross-repo code search.
-- **ly** — the operator surface over lyx's shed verbs: `ly-drive`, the recipe-blind driver of `lyx shed step`.
+- **ly** — `ly-drive`, the recipe-blind driver described above.
+- **prowler** — fetch blocked or JS-rendered web pages as readable markdown, plus cross-repo code search.
 
-The writing and code conventions every lyx agent loads (`scribe:prose`, `scribe:testing`, and the rest) come from the shared [`Knatte18/scribe`](https://github.com/Knatte18/scribe) plugin, used by millhouse too.
-Install it once per machine: `/plugin marketplace add Knatte18/scribe`, then `/plugin install scribe@scribe`.
+The writing and code conventions every agent loads come from the shared [scribe](https://github.com/Knatte18/scribe) plugin.
 
-`tools/` holds the repo's own dev tools (`deploy`, the sandbox driver, and the `mdreflow`/`godocreflow`/`wordswap` text-mechanics sweepers).
+## Lineage: Millhouse
 
-## Requirements
+LoomYard grew out of [Millhouse](https://github.com/Knatte18/millhouse), a set of Claude Code skills and Python tools for running parallel Claude Code sessions with minimal input:
+isolated worktrees per task, a wiki-backed task board, and subagents for discussion, planning, implementation, and review.
+Millhouse proved the workflow and is still how much of LoomYard was built.
+LoomYard is the rebuild that moved the workflow out of prompts and into a program: the phase machine is data, review is a Go-owned gate loop, and the git topology is a model Millhouse has no equivalent of.
 
-- [Claude Code](https://claude.ai/code)
-- Go 1.26+
-- A C toolchain (gcc/clang on POSIX, mingw-w64 on Windows): `lyx` links quarry's tree-sitter grammars through cgo, so `CGO_ENABLED=1` and a C compiler on `PATH` are required.
-  `CGO_ENABLED` already defaults to `1` for a native build when a C compiler is on `PATH`, so nothing needs setting on an ordinary developer machine;
-  `go env -w CGO_ENABLED=1` pins it per-user but is machine-local and does not install a compiler.
-- Git 2.42+ (for `git worktree add --orphan`)
-- tmux (for the orchestration layers;
-  on Windows via psmux)
-- A resolvable GitHub token for `selfreport` and `Publish`: set `GH_TOKEN` or `GITHUB_TOKEN`, or have the `gh` CLI installed and authenticated (`gh auth login`) as a fallback token source — `gh` is not required when either environment variable is set
+Through Millhouse, LoomYard builds on ideas from [claude-code-plugins](https://github.com/motlin/claude-code-plugins) (Craig Motlin), [autoboard](https://github.com/willietran/autoboard) (Willie Tran), and [skills](https://github.com/mattpocock/skills) (Matt Pocock).
 
 ## Documentation
 
-- [CONSTRAINTS.md](CONSTRAINTS.md) — the repo's structural invariants (authoritative).
-- [docs/overview.md](docs/overview.md) — architecture, naming, module and shared-lib map.
-- [docs/shared-libs/](docs/shared-libs/README.md) — the shared infrastructure packages under the modules.
-- [manifest/roadmap.md](manifest/roadmap.md) — what's planned and what's shipped.
-- [manifest/designs/](manifest/designs/) — per-module design docs for planned, not-yet-built modules.
-- [crucible/](crucible/README.md) — `crucible`, the hand-run serial review+fix loop for hardening a live-substrate module before merge (not documentation of shipped code, so it lives at the repo root, not under `docs/`).
+- [CONSTRAINTS.md](CONSTRAINTS.md) — the structural invariants (authoritative).
+- [docs/overview.md](docs/overview.md) — architecture, naming, and the module and package map.
+- [contracts/specs/](contracts/specs/) — the on-disk format contracts, each with exactly one parser.
+- [manifest/](manifest/roadmap.md) — what is planned and not yet built.
+- [crucible/](crucible/README.md) — the hardening method for live-substrate modules.
 
-Per-package documentation lives in each package's own `doc.go` and is the durable detail for anything shipped;
-a design doc under `manifest/designs/` is deleted once its module ships.
+Per-package documentation lives in each package's `doc.go` and is the durable detail for anything shipped.
