@@ -309,11 +309,11 @@ func fabricReferenceDetail(cmd, rule string) string {
 
 // ClassifyViolation assigns v its D4 severity, checking the correctness rule first.
 // A fork-contract-write and a fork-plan-write are correctness.
-// A parent-write is correctness when its path lies under the run's state, reports or plan directory, or the run's `_lyx` directory (the parent of geom.WebsterDir),
-// or under webster's scratch directory (its pause flag and `*.lock` files decide what a run does),
-// or within another worktree of the task repository or that worktree's `_lyx`,
-// or when it lies inside the worktree and git does not ignore it;
-// every other parent-write is policy.
+// A parent-write is correctness when its path lies under the run's state, reports or plan directory, or the run's `_lyx` directory (the parent of geom.WebsterDir).
+// It is correctness under webster's scratch directory too, since its pause flag and `*.lock` files decide what a run does.
+// A write within another worktree of the task repository, or within that worktree's `_lyx`, is correctness;
+// the innermost worktree holding the write decides, so a worktree enclosing this one never claims a write inside it.
+// A write inside this worktree is correctness when git does not ignore it, and every other parent-write is policy.
 // A fabric-reference is correctness whatever its command:
 // an agent never touches the fabric repo, and a command that reaches it can rewrite run state that a re-run of the cards' verify commands cannot detect.
 // Every other class is policy.
@@ -354,6 +354,10 @@ func ClassifyViolation(v AuditViolation, geom Geometry) (AuditSeverity, error) {
 		return "", err
 	}
 	for _, other := range others {
+		// The innermost worktree holding a write decides its class, so a worktree enclosing this one never claims a write inside it.
+		if pathWithin(other, worktree) && pathWithin(worktree, written) {
+			continue
+		}
 		lyx, err := canonicalPath(filepath.Join(other, lyxdirs.LyxDirName))
 		if err != nil {
 			return "", err

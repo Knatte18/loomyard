@@ -58,6 +58,21 @@ func TestClassifyViolation(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// A third worktree of root, nested inside root's own checkout, with its own geometry.
+	nested := filepath.Join(root, "wts", "nested")
+	gitwrapMustGit(t, root, "worktree", "add", nested)
+	nestedGeom := Geometry{
+		AnchorRoot:   nested,
+		WorktreeRoot: nested,
+		WebsterDir:   filepath.Join(nested, "_lyx", "webster"),
+		ReportsDir:   filepath.Join(nested, "_lyx", "webster", "reports"),
+		PlanDir:      filepath.Join(nested, "_lyx", "plan"),
+		ScratchDir:   filepath.Join(nested, ".lyx", "scratch"),
+	}
+	if err := os.WriteFile(filepath.Join(nested, "ignored.log"), []byte("i"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
 	if err := os.WriteFile(filepath.Join(root, "untracked.txt"), []byte("u"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -89,6 +104,9 @@ func TestClassifyViolation(t *testing.T) {
 		{"lock file", AuditViolation{Class: ClassParentWrite, Path: filepath.Join(geom.ScratchDir, "mutate.lock")}, geom, AuditSeverityCorrectness},
 		{"other worktree tracked file", AuditViolation{Class: ClassParentWrite, Path: filepath.Join(second, "tracked.txt")}, geom, AuditSeverityCorrectness},
 		{"other worktree _lyx link", AuditViolation{Class: ClassParentWrite, Path: filepath.Join(secondLyx, "x.md")}, geom, AuditSeverityCorrectness},
+		{"nested worktree tracked file", AuditViolation{Class: ClassParentWrite, Path: filepath.Join(nested, "tracked.txt")}, geom, AuditSeverityCorrectness},
+		{"inside nested worktree, ignored", AuditViolation{Class: ClassParentWrite, Path: filepath.Join(nested, "ignored.log")}, nestedGeom, AuditSeverityPolicy},
+		{"inside nested worktree, tracked", AuditViolation{Class: ClassParentWrite, Path: filepath.Join(nested, "tracked.txt")}, nestedGeom, AuditSeverityCorrectness},
 		{"through link target", AuditViolation{Class: ClassParentWrite, Path: filepath.Join(lyxTarget, "webster", "state.json")}, linkGeom, AuditSeverityCorrectness},
 	}
 	for _, tt := range tests {
