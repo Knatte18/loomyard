@@ -242,25 +242,29 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 
 	// Recorded audit warnings carry over as well: their identities stay dispositioned in
 	// State.AuditDispositions (the once-per-identity rule), so no later call would record them again.
+	// The batch's fork transcripts carry over too, so the run-exit audit still knows which report each of those forks owns.
 	var priorWarnings []AuditWarning
 	var priorSuspects []SuspectPath
+	var priorTranscripts []string
 	if prior != nil {
 		priorWarnings = prior.AuditWarnings
 		priorSuspects = prior.SuspectPaths
+		priorTranscripts = prior.ForkTranscripts
 	}
 
 	return &BatchState{
-		Slug:          slug,
-		Cards:         batchCardIDs(batch),
-		CardHashes:    cardHashes,
-		StartSHA:      start,
-		AuditWarnings: priorWarnings,
-		SuspectPaths:  priorSuspects,
-		Kind:          "recovery",
-		SpawnedAt:     clk.Now().UTC().Format(time.RFC3339),
-		StrandGUID:    run.StrandGUID(),
-		ShuttleRunDir: runDir,
-		EventsPath:    runState.EventsPath,
+		Slug:            slug,
+		Cards:           batchCardIDs(batch),
+		CardHashes:      cardHashes,
+		StartSHA:        start,
+		AuditWarnings:   priorWarnings,
+		SuspectPaths:    priorSuspects,
+		ForkTranscripts: priorTranscripts,
+		Kind:            "recovery",
+		SpawnedAt:       clk.Now().UTC().Format(time.RFC3339),
+		StrandGUID:      run.StrandGUID(),
+		ShuttleRunDir:   runDir,
+		EventsPath:      runState.EventsPath,
 	}, nil
 }
 

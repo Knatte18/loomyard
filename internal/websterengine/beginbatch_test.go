@@ -607,12 +607,13 @@ func TestBeginBatch_RecordsCardSet(t *testing.T) {
 }
 
 // TestBeginBatch_ReBeginKeepsAuditWarnings proves a re-begin carries the prior record's recorded audit warnings onto the fresh record, since their identities stay dispositioned and no later call records them again.
+// It carries the prior record's fork transcripts too, so the run-exit audit still maps those forks to the batch's report.
 func TestBeginBatch_ReBeginKeepsAuditWarnings(t *testing.T) {
 	fx := newBeginFixture(t)
 	fx.Deps.State.AssertedModel = "master-model" // skip the injector
 	w := websterengine.AuditWarning{Identity: "s/parent:named-spawn:1", Class: "named-spawn", Detail: "spawned x"}
 	fx.Deps.State.Batches = map[int]*websterengine.BatchState{
-		1: {Slug: "json-flag", Kind: "fork", AuditWarnings: []websterengine.AuditWarning{w}},
+		1: {Slug: "json-flag", Kind: "fork", AuditWarnings: []websterengine.AuditWarning{w}, ForkTranscripts: []string{"subagents/f1.jsonl"}},
 	}
 
 	if _, err := websterengine.BeginBatch(fx.Deps, 1); err != nil {
@@ -621,6 +622,9 @@ func TestBeginBatch_ReBeginKeepsAuditWarnings(t *testing.T) {
 	got := fx.Deps.State.Batches[1].AuditWarnings
 	if len(got) != 1 || got[0] != w {
 		t.Errorf("Batches[1].AuditWarnings = %v; want [%v]", got, w)
+	}
+	if transcripts := fx.Deps.State.Batches[1].ForkTranscripts; !slices.Equal(transcripts, []string{"subagents/f1.jsonl"}) {
+		t.Errorf("Batches[1].ForkTranscripts = %v; want the prior record's transcripts", transcripts)
 	}
 }
 

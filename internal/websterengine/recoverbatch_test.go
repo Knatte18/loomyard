@@ -1340,8 +1340,11 @@ func TestPersistRecoveryTerminal_PassesWhenStartHeldSameContent(t *testing.T) {
 	}
 }
 
-func TestRecoverSpawn_CarriesSuspectPaths(t *testing.T) {
+// TestRecoverSpawn_CarriesSuspectPathsAndTranscripts proves the recovery record keeps the failed record's suspect paths and its fork transcripts,
+// so the run-exit audit still maps the original fork to its own batch report.
+func TestRecoverSpawn_CarriesSuspectPathsAndTranscripts(t *testing.T) {
 	fx, _, blob := suspectRecovery(t)
+	fx.Deps.State.Batches[1].ForkTranscripts = []string{"subagents/f1.jsonl"}
 	clk := &recoverFakeClock{now: time.Unix(0, 0)}
 	if _, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk); err != nil {
 		t.Fatal(err)
@@ -1349,5 +1352,8 @@ func TestRecoverSpawn_CarriesSuspectPaths(t *testing.T) {
 	bs := fx.Deps.State.Batches[1]
 	if bs.Kind != "recovery" || len(bs.SuspectPaths) != 1 || bs.SuspectPaths[0].Path != "internal/x.go" || bs.SuspectPaths[0].Blob != blob {
 		t.Errorf("recovery record = %+v; want SuspectPaths carried", bs)
+	}
+	if !slices.Equal(bs.ForkTranscripts, []string{"subagents/f1.jsonl"}) {
+		t.Errorf("recovery record ForkTranscripts = %v; want the failed record's transcripts carried", bs.ForkTranscripts)
 	}
 }

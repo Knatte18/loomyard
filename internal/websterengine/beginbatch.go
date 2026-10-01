@@ -439,19 +439,23 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 		startSHA = prior.StartSHA
 	}
 	// Recorded warnings carry over too: their identities stay dispositioned, so no later call would record them again.
+	// So do the fork transcripts already attributed to the batch, so the run-exit audit still knows which report each of those forks owns.
 	var priorWarnings []AuditWarning
+	var priorTranscripts []string
 	if prior != nil {
 		priorWarnings = prior.AuditWarnings
+		priorTranscripts = prior.ForkTranscripts
 	}
 
 	deps.State.Batches[number] = &BatchState{
-		Slug:          slug,
-		Cards:         batchCardIDs(batch),
-		CardHashes:    cardHashes,
-		StartSHA:      startSHA,
-		Kind:          "fork",
-		AuditWarnings: priorWarnings,
-		SpawnedAt:     time.Now().UTC().Format(time.RFC3339),
+		Slug:            slug,
+		Cards:           batchCardIDs(batch),
+		CardHashes:      cardHashes,
+		StartSHA:        startSHA,
+		Kind:            "fork",
+		AuditWarnings:   priorWarnings,
+		ForkTranscripts: priorTranscripts,
+		SpawnedAt:       time.Now().UTC().Format(time.RFC3339),
 		// Stamp the opening Master session so the run-exit audit cross-check
 		// can scope its begun-batch count to the session whose forks the
 		// whole-session audit actually covers.
