@@ -150,8 +150,8 @@ func TestLoomPreflight_Call_StuckReasonNamesTheFailures(t *testing.T) {
 	}
 }
 
-// halfFinishedRun writes a blocked status file whose history reaches Discussion-Write, and returns
-// the paths plus a goto helper that moves the run with shedengine.Goto as the verb does.
+// halfFinishedRun writes a blocked status file whose history reaches Discussion-Write,
+// and returns the paths plus a goto helper that moves the run with shedengine.Goto as the verb does.
 func halfFinishedRun(t *testing.T, slug string) (statusPath, statusLockPath string, gotoTo func(string)) {
 	t.Helper()
 	dir := t.TempDir()
@@ -192,8 +192,7 @@ func halfFinishedRun(t *testing.T, slug string) (statusPath, statusLockPath stri
 	return statusPath, statusLockPath, gotoTo
 }
 
-// TestLoomPreflight_Call_GotoReentryPassesAndLeavesStatusUnchanged pins that a run deliberately
-// moved back onto Loom-Preflight is a policy case: the half-finished failure is waived.
+// TestLoomPreflight_Call_GotoReentryPassesAndLeavesStatusUnchanged pins that a run deliberately moved back onto Loom-Preflight is a policy case: the half-finished failure is waived.
 func TestLoomPreflight_Call_GotoReentryPassesAndLeavesStatusUnchanged(t *testing.T) {
 	statusPath, statusLockPath, gotoTo := halfFinishedRun(t, "fixture-slug")
 	gotoTo(NameLoomPreflight)

@@ -32,9 +32,11 @@ type ShedPaths struct {
 	// CommitStatus is copied verbatim onto the constructed shedengine.Shed. See
 	// shedengine.Shed.CommitStatus's own field doc.
 	CommitStatus func(producer, state string) error
-	// RunID is copied onto the constructed shedengine.Shed. See shedengine.Shed.RunID's own field doc.
+	// RunID is copied onto the constructed shedengine.Shed.
+	// See shedengine.Shed.RunID's own field doc.
 	RunID string
-	// MissingStatusWayForward is copied onto the constructed shedengine.Shed. See shedengine.Shed.MissingStatusWayForward's own field doc.
+	// MissingStatusWayForward is copied onto the constructed shedengine.Shed.
+	// See shedengine.Shed.MissingStatusWayForward's own field doc.
 	MissingStatusWayForward string
 }
 

@@ -69,8 +69,8 @@ type Hooks struct {
 	// generic found/trace_dir (plus status_path on the non-refusing disposition), never an extras
 	// key.
 	StatusExtras func(st shedengine.Status) (map[string]any, error)
-	// PreGoto runs in goto's RunE after the --to check and before shedengine.Goto. A non-nil error is
-	// reported verbatim on the error envelope and the status file is not touched.
+	// PreGoto runs in goto's RunE after the --to check and before shedengine.Goto.
+	// A non-nil error is reported verbatim on the error envelope and the status file is not touched.
 	PreGoto func(ctx context.Context, target string) error
 }
 
