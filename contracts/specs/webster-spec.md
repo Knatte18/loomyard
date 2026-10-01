@@ -15,7 +15,7 @@ webster groups a plan's cards into execution batches via a batcher configured th
 
 ## `_lyx/webster/` as an ownership boundary
 
-Webster owns `_lyx/webster/` and everything in it — `state.json`, the reports directory, `outcome.yaml`, `summary.md` — resolved via `internal/websterengine`'s own `Dir`/`ReportsDir` helpers, which are the sole declarers of that path segment.
+Webster owns `_lyx/webster/` and everything in it — `state.json`, the reports directory, `plan-baseline/` (the content store behind the recorded plan hashes), `outcome.yaml`, `summary.md` — resolved via `internal/websterengine`'s own `Dir`/`ReportsDir` helpers, which are the sole declarers of that path segment.
 Its never-tracked siblings — the pause flag, the rendered fork prompts, every `*.lock` — live at the mirrored subpath under `.lyx/webster/` via `internal/websterengine`'s `ScratchDir`/`PromptsDir` helpers, and are deliberately outside the fabric-committed pathspec.
 No other module writes into either directory.
 
