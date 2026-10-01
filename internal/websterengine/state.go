@@ -182,8 +182,8 @@ type PendingAuditFinding struct {
 }
 
 // SuspectPath is one path a failed batch's correctness findings name.
-// Blob is the git blob id of the path's worktree content when the batch failed,
-// empty when the file was absent or lies outside the task worktree's tracked tree.
+// Blob is the git blob id of the path's worktree content when the batch first failed, and a re-failed recovery keeps it.
+// It is empty when the file was absent or lies outside the task worktree's tracked tree.
 type SuspectPath struct {
 	Path string `json:"path"`
 	Blob string `json:"blob,omitempty"`

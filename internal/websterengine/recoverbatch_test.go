@@ -1151,6 +1151,40 @@ func TestPersistRecoveryTerminal_FailsWhenSuspectContentSurvives(t *testing.T) {
 	}
 }
 
+// TestPersistRecoveryTerminal_RefailKeepsFlaggedBlob proves a re-failed recovery keeps the blob the audit first flagged:
+// a strand that deletes the committed flagged file without committing the delete fails, and a later strand that restores it is failed again.
+func TestPersistRecoveryTerminal_RefailKeepsFlaggedBlob(t *testing.T) {
+	fx, start, blob := suspectRecovery(t)
+	clk := &recoverFakeClock{now: time.Unix(0, 0)}
+	if _, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk); err != nil {
+		t.Fatal(err)
+	}
+	commitFile(t, fx.Worktree, "internal/x.go", "forged", "strand keeps forged")
+	if err := os.Remove(filepath.Join(fx.Worktree, "internal", "x.go")); err != nil {
+		t.Fatal(err)
+	}
+	head := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	writeRecoverReport(t, fx.ReportsDir, "status: OK\nhead_sha: "+head+"\n")
+	if _, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk); !errors.Is(err, websterengine.ErrBatchFailed) {
+		t.Fatalf("first recovery error = %v; want ErrBatchFailed", err)
+	}
+	if got := fx.Deps.State.Batches[1].SuspectPaths; len(got) != 1 || got[0].Blob != blob {
+		t.Fatalf("SuspectPaths after re-fail = %+v; want the flagged blob %s kept", got, blob)
+	}
+
+	if _, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk); err != nil {
+		t.Fatal(err)
+	}
+	mustGit(t, fx.Worktree, "checkout", "--", "internal/x.go")
+	commitFile(t, fx.Worktree, "other.txt", "o", "other work")
+	head = strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	writeRecoverReport(t, fx.ReportsDir, "status: OK\nhead_sha: "+head+"\n")
+	_, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk)
+	if !errors.Is(err, websterengine.ErrBatchFailed) || !strings.Contains(err.Error(), "revert it to "+start) {
+		t.Fatalf("second recovery error = %v; want ErrBatchFailed naming the revert to %s", err, start)
+	}
+}
+
 func TestPersistRecoveryTerminal_FailsOnUncommittedSuspectPath(t *testing.T) {
 	fx, _, _ := suspectRecovery(t)
 	if err := os.WriteFile(filepath.Join(fx.Worktree, "internal", "x.go"), []byte("forged"), 0o644); err != nil {

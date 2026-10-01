@@ -85,6 +85,16 @@ func failBatch(in failBatchInput) (*BatchFailedError, error) {
 		reasons = append(reasons, "suspect path: "+p)
 	}
 
+	// A path the batch already records keeps its recorded blob, so a re-failed recovery still checks the content the audit first flagged.
+	recorded := map[string]string{}
+	for _, sp := range in.Batch.SuspectPaths {
+		recorded[sp.Path] = sp.Blob
+	}
+	for i, sp := range blobs {
+		if blob, ok := recorded[sp.Path]; ok {
+			blobs[i].Blob = blob
+		}
+	}
 	if len(blobs) > 0 {
 		in.Batch.SuspectPaths = blobs
 	}
