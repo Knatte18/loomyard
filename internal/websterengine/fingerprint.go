@@ -124,8 +124,8 @@ func Fingerprint(planDir string) (string, error) {
 	return fingerprint(planDir)
 }
 
-// restampFingerprint recomputes planDir's fingerprint into st.PlanFingerprint, and is called by
-// each bracket verb after any planglyph pass that may have rewritten the plan on disk.
+// restampFingerprint recomputes planDir's fingerprint into st.PlanFingerprint and its per-file hashes into st.PlanFileHashes.
+// Each bracket verb calls it after any planglyph pass that may have rewritten the plan on disk.
 //
 // The staleness guard exists to catch a plan edited from OUTSIDE the run between two batches, and
 // it cannot tell that apart from webster's own sanctioned rewrites — handle canonicalization at

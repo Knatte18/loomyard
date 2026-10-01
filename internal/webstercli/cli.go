@@ -295,8 +295,8 @@ Example (standalone, outside any lyx hub):
 // genuine foreign edit failing ErrFingerprintMismatch exactly as it did before.
 // Callers invoke this while still holding the state-mutation lease.
 //
-// It persists the fingerprint and NOTHING ELSE: the state it writes is re-loaded from disk here and
-// carries only the new fingerprint, rather than being the caller's whole in-memory *State.
+// It persists the plan baseline, the fingerprint and the per-file hashes, and NOTHING ELSE.
+// The state it writes is re-loaded from disk here and carries only the new baseline, rather than being the caller's whole in-memory *State.
 // The caller's copy is not a fingerprint-only delta. RecordBatch appends to State.SeenForkTranscripts
 // the moment it attributes a fork's transcripts, well BEFORE the step that can fail, so saving the
 // whole struct persisted the transcript as CONSUMED on a call that then failed ErrCardNotDone. The

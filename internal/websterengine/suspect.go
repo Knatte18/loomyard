@@ -1,6 +1,9 @@
-// suspect.go checks a run-exit finding's suspect paths against what the run recorded, the evidence accept-audit and the run-entry paths share.
-// A path is verifiable only against the last batch head (a tracked file in the task worktree) or the run's plan hashes (a plan file);
-// every other path has nothing recorded to compare with, so it is reported unverifiable rather than guessed at.
+// suspect.go checks suspect paths against what the run recorded, the evidence accept-audit, run --fresh and recover-batch share.
+// A tracked file in the task worktree is checked against a commit its caller chooses:
+// the last batch head for accept-audit, the run's start commit for run --fresh, and the recovery report's head for recover-batch.
+// A plan file is checked against the run's plan hashes.
+// Every other path has nothing recorded to compare with, so it is reported unverifiable rather than guessed at.
+// suspectBlobs and checkRecoveredSuspects add the recovery half: the flagged blob a failed batch records, and the check that a recovery left none of it behind.
 
 package websterengine
 

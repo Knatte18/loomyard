@@ -44,7 +44,7 @@ type RebaselineResult struct {
 // It refuses, wrapping ErrRebaselineCardSetChanged, when a begun batch's card set differs from the card set the edited plan's batch of that number now holds, or the plan no longer has that number,
 // or when a begun card's file content differs from the hash recorded at begin (a record without hashes compares ids only).
 // It also refuses when 00-overview.md changed, or a changed card file's number is not in deps.Cards, unless the state predates State.PlanFileHashes.
-// Otherwise it restamps State.PlanFingerprint and leaves every other field untouched.
+// Otherwise it restamps State.PlanFingerprint and State.PlanFileHashes and leaves every other field untouched.
 // It never saves;
 // the caller holds the state-mutation lease and saves, as for the bracket verbs.
 func Rebaseline(deps RebaselineDeps) (*RebaselineResult, error) {
