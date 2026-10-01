@@ -127,7 +127,9 @@ func Fingerprint(planDir string) (string, error) {
 //
 // Re-baselining costs nothing the guard was actually providing: a foreign edit landing between this
 // call and the next begin-batch is still caught, which is the whole window the guard covers.
-func restampFingerprint(st *State, planDir string) error {
+//
+// It also stores the hashed content under websterDir (see storePlanBaseline) before mutating st, so a store failure leaves the state's hashes unchanged.
+func restampFingerprint(st *State, planDir, websterDir string) error {
 	fp, err := fingerprint(planDir)
 	if err != nil {
 		return err
@@ -136,14 +138,17 @@ func restampFingerprint(st *State, planDir string) error {
 	if err != nil {
 		return err
 	}
+	if err := storePlanBaseline(websterDir, planDir, hashes); err != nil {
+		return err
+	}
 	st.PlanFingerprint = fp
 	st.PlanFileHashes = hashes
 	return nil
 }
 
 // RestampPlanBaseline is restampFingerprint's exported seam for webstercli's validate verb, which re-baselines after its own rewrite-capable pass.
-func RestampPlanBaseline(st *State, planDir string) error {
-	return restampFingerprint(st, planDir)
+func RestampPlanBaseline(st *State, planDir, websterDir string) error {
+	return restampFingerprint(st, planDir, websterDir)
 }
 
 // restampAndSaveFingerprint is restampFingerprint followed by SaveState, for Run — the one
@@ -152,7 +157,7 @@ func RestampPlanBaseline(st *State, planDir string) error {
 // every path that returns before Run's later saves, which is exactly the wedge the re-baseline
 // exists to prevent.
 func restampAndSaveFingerprint(geom Geometry, st *State) error {
-	if err := restampFingerprint(st, geom.PlanDir); err != nil {
+	if err := restampFingerprint(st, geom.PlanDir, geom.WebsterDir); err != nil {
 		return err
 	}
 	return SaveState(geom.WebsterDir, geom.ScratchDir, st)

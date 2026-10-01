@@ -377,7 +377,7 @@ func addCardCreateTarget(t *testing.T, planDir string, cardNumber int, target st
 func seedMatchingState(t *testing.T, fx *runFixture, st *websterengine.State) {
 	t.Helper()
 	st.PlanFingerprint = mustFingerprint(t, fx.PlanDir)
-	if err := websterengine.RestampPlanBaseline(st, fx.PlanDir); err != nil {
+	if err := websterengine.RestampPlanBaseline(st, fx.PlanDir, fx.Deps.Geom.WebsterDir); err != nil {
 		t.Fatalf("stamp plan file hashes: %v", err)
 	}
 	if st.Batches == nil {
@@ -1920,7 +1920,7 @@ func rebaselineOnDisk(t *testing.T, fx *runFixture, cards ...int) {
 		t.Fatalf("LoadState() = %v, %v; want recorded state", st, err)
 	}
 	batches, _ := websterengine.SequenceBatches(fx.Deps.Batcher.Batch(plan.Cards))
-	if _, err := websterengine.Rebaseline(websterengine.RebaselineDeps{Plan: plan, Batches: batches, State: st, Cards: cards}); err != nil {
+	if _, err := websterengine.Rebaseline(websterengine.RebaselineDeps{Plan: plan, Batches: batches, State: st, Cards: cards, Geom: fx.Deps.Geom}); err != nil {
 		t.Fatalf("Rebaseline() error = %v", err)
 	}
 	if err := websterengine.SaveState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir, st); err != nil {

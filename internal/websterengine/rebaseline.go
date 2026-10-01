@@ -140,7 +140,7 @@ func Rebaseline(deps RebaselineDeps) (*RebaselineResult, error) {
 	}
 
 	previous := deps.State.PlanFingerprint
-	if err := restampFingerprint(deps.State, deps.Plan.Dir); err != nil {
+	if err := restampFingerprint(deps.State, deps.Plan.Dir, deps.Geom.WebsterDir); err != nil {
 		return nil, err
 	}
 	return &RebaselineResult{

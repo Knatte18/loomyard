@@ -481,7 +481,7 @@ func postBatchChecks(in postBatchInputs) (warnings []string, err error) {
 	// staleness re-baseline runs HERE rather than once past every refusal below. See this package's
 	// doc.go for what restamping past the refusals cost.
 	// A restamp failure never masks bindErr: the caller is already returning for that reason.
-	if rebaseErr := restampFingerprint(in.State, in.Geom.PlanDir); rebaseErr != nil && bindErr == nil {
+	if rebaseErr := restampFingerprint(in.State, in.Geom.PlanDir, in.Geom.WebsterDir); rebaseErr != nil && bindErr == nil {
 		return nil, rebaseErr
 	}
 	if bindErr != nil {
@@ -524,7 +524,7 @@ func postBatchChecks(in postBatchInputs) (warnings []string, err error) {
 	// The exact-tier repair's own RewriteRefs lands on disk before this call reports anything, and
 	// its blocking plan-references-deleted-symbol finding is computed from a different part of the
 	// same delta, so re-baseline here for exactly the reason BindHandles does above.
-	if rebaseErr := restampFingerprint(in.State, in.Geom.PlanDir); rebaseErr != nil && driftErr == nil {
+	if rebaseErr := restampFingerprint(in.State, in.Geom.PlanDir, in.Geom.WebsterDir); rebaseErr != nil && driftErr == nil {
 		return warnings, rebaseErr
 	}
 	if driftErr != nil {

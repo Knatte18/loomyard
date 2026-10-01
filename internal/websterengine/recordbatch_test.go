@@ -154,6 +154,7 @@ func newRecordFixture(t *testing.T, scripted []shuttleengine.ForkAudit) *recordF
 		Geom: websterengine.Geometry{
 			AnchorRoot:   worktree,
 			WorktreeRoot: worktree,
+			WebsterDir:   t.TempDir(),
 			ReportsDir:   reportsDir,
 			PlanDir:      planDir,
 		},

@@ -386,7 +386,7 @@ func (fx *verbsFixture) initState(t *testing.T, assertedModel string) *websteren
 		AssertedModel:   assertedModel,
 		Batches:         map[int]*websterengine.BatchState{},
 	}
-	if err := websterengine.RestampPlanBaseline(st, fx.CLI.geom.PlanDir); err != nil {
+	if err := websterengine.RestampPlanBaseline(st, fx.CLI.geom.PlanDir, fx.CLI.geom.WebsterDir); err != nil {
 		t.Fatalf("RestampPlanBaseline() error = %v", err)
 	}
 	if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, st); err != nil {

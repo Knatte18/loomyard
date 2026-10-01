@@ -201,11 +201,19 @@ func TestRestampFingerprint_RebaselinesTheStalenessGuard(t *testing.T) {
 	// Stand in for BindHandles' own RewriteRefs pass.
 	fingerprintWriteFiles(t, dir, map[string]string{"01-card.md": "after the bind"})
 
-	if err := restampFingerprint(st, dir); err != nil {
+	websterDir := t.TempDir()
+	if err := restampFingerprint(st, dir, websterDir); err != nil {
 		t.Fatalf("restampFingerprint(...) returned error: %v", err)
 	}
 	if st.PlanFingerprint == original {
 		t.Fatal("restampFingerprint left the stale fingerprint in place")
+	}
+	stored, err := os.ReadDir(filepath.Join(websterDir, planBaselineDirName))
+	if err != nil {
+		t.Fatalf("read plan baseline store: %v", err)
+	}
+	if len(stored) != len(st.PlanFileHashes) {
+		t.Errorf("stored copies = %d; want one per recorded hash (%d)", len(stored), len(st.PlanFileHashes))
 	}
 
 	current, err := fingerprint(dir)

@@ -303,7 +303,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	// pre-rewrite fingerprint while the plan on disk carries this run's own sanctioned edit, and every
 	// later begin-batch refuses it as a foreign one. See this package's doc.go.
 	// A restamp failure never masks resolveErr: the caller is already returning for that reason.
-	if err := restampFingerprint(deps.State, deps.Plan.Dir); err != nil && resolveErr == nil {
+	if err := restampFingerprint(deps.State, deps.Plan.Dir, deps.Geom.WebsterDir); err != nil && resolveErr == nil {
 		return nil, err
 	}
 	if resolveErr != nil {

@@ -239,7 +239,7 @@ Example:
 			// st (no run in progress) means there is no state.json to desync, so this is a no-op.
 			var rebaseErr error
 			if st != nil {
-				if fpErr := websterengine.RestampPlanBaseline(st, plan.Dir); fpErr != nil {
+				if fpErr := websterengine.RestampPlanBaseline(st, plan.Dir, c.geom.WebsterDir); fpErr != nil {
 					rebaseErr = fpErr
 				} else {
 					rebaseErr = persistPlanFingerprintRebaseline(c.geom, st, fingerprintBefore)

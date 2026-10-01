@@ -468,6 +468,9 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 			PlanFileHashes:  fileHashes,
 			Batches:         map[int]*BatchState{},
 		}
+		if err := storePlanBaseline(deps.Geom.WebsterDir, deps.Geom.PlanDir, fileHashes); err != nil {
+			return RunResult{}, err
+		}
 		if err := SaveState(deps.Geom.WebsterDir, deps.Geom.ScratchDir, st); err != nil {
 			return RunResult{}, err
 		}
@@ -501,6 +504,9 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 			PlanFingerprint: fingerprint,
 			PlanFileHashes:  fileHashes,
 			Batches:         map[int]*BatchState{},
+		}
+		if err := storePlanBaseline(deps.Geom.WebsterDir, deps.Geom.PlanDir, fileHashes); err != nil {
+			return RunResult{}, err
 		}
 		if err := SaveState(deps.Geom.WebsterDir, deps.Geom.ScratchDir, st); err != nil {
 			return RunResult{}, err

@@ -48,7 +48,7 @@ func newSuspectFixture(t *testing.T) *suspectFixture {
 	st := &State{Batches: map[int]*BatchState{
 		1: {Slug: "one", StartSHA: start, Terminal: true, Status: DigestStatusDone, Digest: &Digest{HeadSHA: head}},
 	}}
-	if err := restampFingerprint(st, planDir); err != nil {
+	if err := restampFingerprint(st, planDir, geom.WebsterDir); err != nil {
 		t.Fatal(err)
 	}
 	return &suspectFixture{geom: geom, st: st, head: head, start: start}

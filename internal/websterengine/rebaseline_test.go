@@ -44,7 +44,7 @@ func TestRebaseline_ForeignEditAcceptedMidRun(t *testing.T) {
 	}
 	requireWayForward(t, err, "lyx webster rebaseline", "lyx webster run --fresh")
 
-	res, err := websterengine.Rebaseline(websterengine.RebaselineDeps{Plan: fx.Deps.Plan, Batches: fx.Deps.Batches, State: fx.Deps.State})
+	res, err := websterengine.Rebaseline(websterengine.RebaselineDeps{Plan: fx.Deps.Plan, Batches: fx.Deps.Batches, State: fx.Deps.State, Geom: fx.Deps.Geom})
 	if err != nil {
 		t.Fatalf("Rebaseline() error = %v; want nil", err)
 	}
@@ -75,7 +75,7 @@ func rebaselineDeps(t *testing.T, batches []batcher.Batch, recs map[int]*webster
 		Plan:    &planparser.Plan{Dir: planDir, Format: 5},
 		Batches: batches,
 		State:   &websterengine.State{PlanFingerprint: "old-fingerprint", Batches: recs},
-		Geom:    websterengine.Geometry{WorktreeRoot: worktree},
+		Geom:    websterengine.Geometry{WorktreeRoot: worktree, WebsterDir: t.TempDir()},
 	}
 }
 
@@ -175,7 +175,7 @@ func beginAndFinishBatchOne(t *testing.T, fx *beginFixture) {
 }
 
 func rebaselineFixtureDeps(fx *beginFixture) websterengine.RebaselineDeps {
-	return websterengine.RebaselineDeps{Plan: fx.Deps.Plan, Batches: fx.Deps.Batches, State: fx.Deps.State}
+	return websterengine.RebaselineDeps{Plan: fx.Deps.Plan, Batches: fx.Deps.Batches, State: fx.Deps.State, Geom: fx.Deps.Geom}
 }
 
 func TestRebaseline_RefusesChangedBegunCardBody(t *testing.T) {
