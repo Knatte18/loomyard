@@ -15,7 +15,7 @@ import (
 
 // GotoRequest is everything Goto needs.
 // All three paths are told.
-// Producers needs only Name and Segment, so a Routing.Producers projection works.
+// Producers needs only Name, Segment, OnDone and OnStuck, so a Routing.Producers projection works.
 type GotoRequest struct {
 	StatusPath     string
 	LockPath       string
