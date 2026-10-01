@@ -77,7 +77,7 @@ A finding is dispositioned once per run, by the first `record-batch` or run-exit
 | run-exit audit correctness | Master reports done over an undispositioned correctness finding | correctness halt | revert or re-derive the named paths in the task worktree with git, then run `lyx webster accept-audit` and re-step the Webster row (lyx webster run); done is demoted to stuck |
 | pending audit findings | run entry finds correctness findings from an earlier run exit still pending | correctness halt | revert or re-derive the named paths in the task worktree with git, then run `lyx webster accept-audit` |
 | Webster row paused out of band | the Webster row's run ends paused with no pause loom requested | transient | re-step the Webster row, since lyx webster run clears the pause and resumes |
-| fabric sync failed | a bracket verb, `run` or `rebaseline` cannot commit its state to the fabric | transient | the state is saved locally; `lyx fabric commit` commits it, or the next bracket verb's own sync carries it |
+| fabric sync failed | a bracket verb, `run`, `rebaseline` or `accept-audit` cannot commit its state to the fabric | transient | the state is saved locally; `lyx fabric commit` commits it, or the next bracket verb's own sync carries it |
 | re-baseline persist failed, bracket verb | begin-batch or record-batch cannot persist the plan-fingerprint re-baseline | transient | re-run the same verb; the re-baseline is recomputed from the plan on disk |
 | re-baseline persist failed, validate | `lyx webster validate` cannot persist the plan-fingerprint re-baseline | transient | re-run `lyx webster validate`, or `lyx webster rebaseline` |
 | standalone reed boot failed | the standalone reed session does not come up | transient | transient, re-run the verb |
