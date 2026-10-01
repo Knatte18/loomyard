@@ -1102,3 +1102,103 @@ func TestRecoverBatch_WayForward_DoneReportRecordsInstead(t *testing.T) {
 		t.Errorf("stat(done report) = %v; want it left for record-batch", statErr)
 	}
 }
+
+// suspectRecovery seeds a failed batch 1 whose Master parent-write flagged internal/x.go holding "forged".
+// internal/x.go is committed as "orig" (the batch's start commit) and the failed record carries the flagged blob.
+// It returns the fixture, the start commit, and the flagged blob.
+func suspectRecovery(t *testing.T) (*recoverFixture, string, string) {
+	t.Helper()
+	fx := newRecoverFixture(t)
+	start := commitFile(t, fx.Worktree, "internal/x.go", "orig", "orig")
+	if err := os.WriteFile(filepath.Join(fx.Worktree, "internal", "x.go"), []byte("forged"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	blob := strings.TrimSpace(mustGit(t, fx.Worktree, "hash-object", "internal/x.go"))
+	mustGit(t, fx.Worktree, "checkout", "--", "internal/x.go")
+	fx.Deps.State.Batches[1] = &websterengine.BatchState{
+		Slug: "json-flag", Kind: "fork", Terminal: true, Status: websterengine.DigestStatusFailed, StartSHA: start,
+		SuspectPaths: []websterengine.SuspectPath{{Path: "internal/x.go", Blob: blob}},
+	}
+	return fx, start, blob
+}
+
+func recoverSuspect(t *testing.T, fx *recoverFixture) (*recoverDriveResult, error) {
+	t.Helper()
+	clk := &recoverFakeClock{now: time.Unix(0, 0)}
+	recoverAtReportHead(t, fx, clk)
+	return driveRecoverBatch(fx.Deps, 1, time.Second, clk)
+}
+
+func TestPersistRecoveryTerminal_FailsWhenSuspectContentSurvives(t *testing.T) {
+	fx, start, _ := suspectRecovery(t)
+	clk := &recoverFakeClock{now: time.Unix(0, 0)}
+	if _, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk); err != nil {
+		t.Fatal(err)
+	}
+	commitFile(t, fx.Worktree, "internal/x.go", "forged", "strand keeps forged")
+	head := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	writeRecoverReport(t, fx.ReportsDir, "status: OK\nhead_sha: "+head+"\n")
+	_, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk)
+	if !errors.Is(err, websterengine.ErrBatchFailed) {
+		t.Fatalf("error = %v; want ErrBatchFailed", err)
+	}
+	if !strings.Contains(err.Error(), "internal/x.go") || !strings.Contains(err.Error(), "revert it to "+start) {
+		t.Errorf("error = %q; want the path and the revert instruction", err.Error())
+	}
+	bs := fx.Deps.State.Batches[1]
+	if !bs.Terminal || bs.Status != websterengine.DigestStatusFailed || len(bs.SuspectPaths) != 1 || bs.SuspectPaths[0].Blob == "" {
+		t.Errorf("record = %+v; want terminal failed with SuspectPaths kept", bs)
+	}
+}
+
+func TestPersistRecoveryTerminal_FailsOnUncommittedSuspectPath(t *testing.T) {
+	fx, _, _ := suspectRecovery(t)
+	if err := os.WriteFile(filepath.Join(fx.Worktree, "internal", "x.go"), []byte("forged"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	commitFile(t, fx.Worktree, "other.txt", "o", "other work")
+	head := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	_, err := recoverSuspect(t, fx)
+	if !errors.Is(err, websterengine.ErrBatchFailed) {
+		t.Fatalf("error = %v; want ErrBatchFailed", err)
+	}
+	if !strings.Contains(err.Error(), "internal/x.go") || !strings.Contains(err.Error(), head) {
+		t.Errorf("error = %q; want the path and the head %s", err.Error(), head)
+	}
+}
+
+func TestPersistRecoveryTerminal_PassesReverted(t *testing.T) {
+	fx, _, _ := suspectRecovery(t)
+	commitFile(t, fx.Worktree, "other.txt", "o", "other work")
+	result, err := recoverSuspect(t, fx)
+	if err != nil {
+		t.Fatalf("error = %v; want nil", err)
+	}
+	if result.Digest == nil || result.Digest.Status != websterengine.DigestStatusDone {
+		t.Fatalf("Digest = %+v; want done", result.Digest)
+	}
+}
+
+func TestPersistRecoveryTerminal_PassesRederived(t *testing.T) {
+	fx, _, _ := suspectRecovery(t)
+	commitFile(t, fx.Worktree, "internal/x.go", "derived", "strand re-derives")
+	result, err := recoverSuspect(t, fx)
+	if err != nil {
+		t.Fatalf("error = %v; want nil", err)
+	}
+	if result.Digest == nil || result.Digest.Status != websterengine.DigestStatusDone {
+		t.Fatalf("Digest = %+v; want done", result.Digest)
+	}
+}
+
+func TestRecoverSpawn_CarriesSuspectPaths(t *testing.T) {
+	fx, _, blob := suspectRecovery(t)
+	clk := &recoverFakeClock{now: time.Unix(0, 0)}
+	if _, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk); err != nil {
+		t.Fatal(err)
+	}
+	bs := fx.Deps.State.Batches[1]
+	if bs.Kind != "recovery" || len(bs.SuspectPaths) != 1 || bs.SuspectPaths[0].Path != "internal/x.go" || bs.SuspectPaths[0].Blob != blob {
+		t.Errorf("recovery record = %+v; want SuspectPaths carried", bs)
+	}
+}

@@ -181,6 +181,14 @@ type PendingAuditFinding struct {
 	Paths []string `json:"paths,omitempty"`
 }
 
+// SuspectPath is one path a failed batch's correctness findings name.
+// Blob is the git blob id of the path's worktree content when the batch failed,
+// empty when the file was absent or lies outside the task worktree's tracked tree.
+type SuspectPath struct {
+	Path string `json:"path"`
+	Blob string `json:"blob,omitempty"`
+}
+
 // BatchState is one batch's own persisted run record.
 type BatchState struct {
 	// Slug is the batch's <batch-slug> segment.
@@ -239,6 +247,9 @@ type BatchState struct {
 	// AuditWarnings is every warning recorded against this batch, each added once per finding identity.
 	// A re-begin and a recovery carry it onto their fresh record, because the identity stays dispositioned in State.AuditDispositions and no later call records the warning again.
 	AuditWarnings []AuditWarning `json:"auditWarnings,omitempty"`
+	// SuspectPaths is the correctness findings' paths with the content each held when the batch failed.
+	// A recovery carries it forward, and PersistRecoveryTerminal checks it before recording the batch done.
+	SuspectPaths []SuspectPath `json:"suspectPaths,omitempty"`
 
 	// The following three fields are populated only for a recovery batch
 	// (Kind == "recovery"); a fork batch carries no strand fields, since

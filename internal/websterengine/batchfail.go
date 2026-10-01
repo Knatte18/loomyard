@@ -48,6 +48,7 @@ type failBatchInput struct {
 	Number         int
 	Slug           string
 	ReportsDir     string
+	WorktreeRoot   string
 	HeadSHA        string
 	Reasons        []string
 	SuspectPaths   []string
@@ -58,8 +59,12 @@ type failBatchInput struct {
 // failBatch archives the batch's report, records the batch terminal failed with its reasons,
 // and clears State.CurrentBatch.
 // The returned error is only the archive's I/O failure;
-// the archive runs first, so nothing in State has been mutated when it fails.
+// the blob probes and the archive run first, so nothing in State has been mutated when one fails.
 func failBatch(in failBatchInput) (*BatchFailedError, error) {
+	blobs, err := suspectBlobs(in.WorktreeRoot, in.SuspectPaths)
+	if err != nil {
+		return nil, err
+	}
 	archived, err := archiveStaleReport(in.ReportsDir, in.Number, in.Slug, in.Now)
 	if err != nil {
 		return nil, err
@@ -80,6 +85,9 @@ func failBatch(in failBatchInput) (*BatchFailedError, error) {
 		reasons = append(reasons, "suspect path: "+p)
 	}
 
+	if len(blobs) > 0 {
+		in.Batch.SuspectPaths = blobs
+	}
 	in.Batch.Terminal = true
 	in.Batch.Status = DigestStatusFailed
 	in.Batch.Digest = &Digest{

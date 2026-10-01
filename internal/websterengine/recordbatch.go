@@ -393,6 +393,7 @@ func failFromFindings(deps RecordDeps, bs *BatchState, number int, slug, headSHA
 		Number:         number,
 		Slug:           slug,
 		ReportsDir:     deps.Geom.ReportsDir,
+		WorktreeRoot:   deps.Geom.WorktreeRoot,
 		HeadSHA:        headSHA,
 		Reasons:        reasons,
 		SuspectPaths:   suspects,

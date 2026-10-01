@@ -233,8 +233,10 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 	// Recorded audit warnings carry over as well: their identities stay dispositioned in
 	// State.AuditDispositions (the once-per-identity rule), so no later call would record them again.
 	var priorWarnings []AuditWarning
+	var priorSuspects []SuspectPath
 	if prior != nil {
 		priorWarnings = prior.AuditWarnings
+		priorSuspects = prior.SuspectPaths
 	}
 
 	return &BatchState{
@@ -243,6 +245,7 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 		CardHashes:    cardHashes,
 		StartSHA:      start,
 		AuditWarnings: priorWarnings,
+		SuspectPaths:  priorSuspects,
 		Kind:          "recovery",
 		SpawnedAt:     clk.Now().UTC().Format(time.RFC3339),
 		StrandGUID:    run.StrandGUID(),
@@ -318,6 +321,14 @@ func RecoverAwait(deps RecoverDeps, batchNumber int, bs *BatchState, wait time.D
 // recovered that way never bound its plan: handles, so every later card kept referencing an unbound
 // handle for the rest of the plan's life.
 //
+// Before that pass, every suspect path the failed batch recorded is checked at the report's head.
+// A plan file must match the plan as the run recorded it, a tracked path must not differ from the head,
+// and a tracked path must not still hold the flagged blob unless the start commit held it too.
+// A path the check cannot verify is skipped.
+// A recovery that leaves any of them fails the batch again with the same suspect paths, so the next recover-batch checks them again.
+// Accepted residual: a strand whose re-derivation is byte-identical to the flagged content is failed again;
+// the operator's way forward is to revert the path and edit its card.
+//
 // A blocking finding fails the batch through failBatch: the recovery strand said done,
 // but the tree says the card is not, and webster believes the tree.
 // The report is archived, the record is terminal failed, and the *BatchFailedError is returned with the pass's warnings,
@@ -349,6 +360,33 @@ func PersistRecoveryTerminal(deps RecoverDeps, st *State, batchNumber int, diges
 		if err != nil {
 			return nil, err
 		}
+	}
+
+	suspectReasons, err := checkRecoveredSuspects(deps.Geom, st, bs, head)
+	if err != nil {
+		return nil, err
+	}
+	if len(suspectReasons) > 0 {
+		var paths []string
+		for _, sp := range bs.SuspectPaths {
+			paths = append(paths, sp.Path)
+		}
+		bfe, ferr := failBatch(failBatchInput{
+			State:        st,
+			Batch:        bs,
+			Number:       number,
+			Slug:         slug,
+			ReportsDir:   deps.Geom.ReportsDir,
+			WorktreeRoot: deps.Geom.WorktreeRoot,
+			HeadSHA:      head,
+			Reasons:      suspectReasons,
+			SuspectPaths: paths,
+			Now:          time.Now,
+		})
+		if ferr != nil {
+			return nil, ferr
+		}
+		return nil, bfe
 	}
 
 	warnings, err = postBatchChecks(postBatchInputs{

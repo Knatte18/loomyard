@@ -110,6 +110,15 @@
 // pass computes its delta from that SHA, and a fork frequently commits part
 // of its work before getting stuck.
 //
+// A batch failed on a correctness finding records its suspect paths with the
+// blob each held when it failed, and recover-batch records the batch done only
+// once each of them was reverted or re-derived and committed: a plan file must
+// match the run's recorded hashes, a tracked path must not differ from the
+// report's head, and a tracked path must not still hold the flagged blob unless
+// the start commit held it too. A strand whose re-derivation is byte-identical
+// to the flagged content is failed again; the way forward is to revert the
+// path and edit its card.
+//
 // # the plan-staleness guard re-baselines at the rewrite, not at the return
 //
 // begin-batch compares the plan directory's fingerprint against the one

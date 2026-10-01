@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -155,4 +156,144 @@ func worktreePathDiffers(worktree, base, path string) (bool, error) {
 		return false, fmt.Errorf("websterengine: git ls-files %s in %s: %w", path, worktree, err)
 	}
 	return strings.TrimSpace(stdout) != "", nil
+}
+
+// trackedRel returns the slash-separated path of p relative to worktree when p lies in the task worktree's tracked tree:
+// inside the worktree, outside its _lyx and not git-ignored.
+// ok is false for every other path, which has no blob to compare.
+func trackedRel(worktree, p string) (rel string, ok bool, err error) {
+	root, err := canonicalPath(worktree)
+	if err != nil {
+		return "", false, err
+	}
+	lexical := resolveWritePath(worktree, p)
+	canon, err := canonicalPath(lexical)
+	if err != nil {
+		return "", false, err
+	}
+	lyxLink := filepath.Join(worktree, lyxdirs.LyxDirName)
+	lyxReal, err := canonicalPath(lyxLink)
+	if err != nil {
+		return "", false, err
+	}
+	if !pathWithin(root, canon) || pathWithin(lyxReal, canon) || pathWithin(lyxLink, lexical) {
+		return "", false, nil
+	}
+	ignored, err := ignoredPath(worktree, canon)
+	if err != nil || ignored {
+		return "", false, err
+	}
+	r, err := filepath.Rel(root, canon)
+	if err != nil {
+		return "", false, fmt.Errorf("websterengine: relate %s to %s: %w", canon, root, err)
+	}
+	return filepath.ToSlash(r), true, nil
+}
+
+// worktreeBlob returns the git blob id of path's content in the worktree, or "" when the file is absent.
+func worktreeBlob(worktree, path string) (string, error) {
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		return "", nil
+	} else if err != nil {
+		return "", fmt.Errorf("websterengine: stat %s: %w", path, err)
+	}
+	stdout, err := gitexec.Run([]string{"hash-object", "--", path}, worktree)
+	if err != nil {
+		return "", fmt.Errorf("websterengine: git hash-object %s in %s: %w", path, worktree, err)
+	}
+	return strings.TrimSpace(stdout), nil
+}
+
+// commitBlob returns the git blob id of path at commit, or "" when the commit does not hold the path.
+func commitBlob(worktree, commit, path string) (string, error) {
+	stdout, stderr, code, err := gitexec.RunGit([]string{"rev-parse", "--verify", "--quiet", commit + ":" + path}, worktree)
+	if err != nil {
+		return "", fmt.Errorf("websterengine: git rev-parse %s:%s in %s: %w", commit, path, worktree, err)
+	}
+	switch code {
+	case 0:
+		return strings.TrimSpace(stdout), nil
+	case 1:
+		return "", nil
+	default:
+		return "", fmt.Errorf("websterengine: git rev-parse %s:%s in %s exited %d: %s", commit, path, worktree, code, strings.TrimSpace(stderr))
+	}
+}
+
+// suspectBlobs records, for each of paths, the blob of its worktree content now.
+// A path outside the tracked tree, or an absent file, gets an empty Blob.
+func suspectBlobs(worktree string, paths []string) ([]SuspectPath, error) {
+	var out []SuspectPath
+	for _, p := range paths {
+		sp := SuspectPath{Path: p}
+		rel, ok, err := trackedRel(worktree, p)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			if sp.Blob, err = worktreeBlob(worktree, filepath.Join(worktree, filepath.FromSlash(rel))); err != nil {
+				return nil, err
+			}
+		}
+		out = append(out, sp)
+	}
+	return out, nil
+}
+
+// checkRecoveredSuspects returns one reason per suspect path the recovery left unresolved at head:
+// a plan file differing from the run's recorded hashes, a tracked path differing from head, or a tracked path whose head content is still the flagged blob and not the start commit's.
+// A path checkSuspectPaths reports unverifiable is not checked.
+func checkRecoveredSuspects(geom Geometry, st *State, bs *BatchState, head string) ([]string, error) {
+	var paths []string
+	blobs := map[string]string{}
+	for _, sp := range bs.SuspectPaths {
+		paths = append(paths, sp.Path)
+		blobs[sp.Path] = sp.Blob
+	}
+	planDiff, _, err := checkSuspectPaths(geom, st, "", paths)
+	if err != nil {
+		return nil, err
+	}
+	headDiff, _, err := checkSuspectPaths(geom, st, head, paths)
+	if err != nil {
+		return nil, err
+	}
+	var reasons []string
+	isPlan := map[string]bool{}
+	for _, p := range planDiff {
+		isPlan[p] = true
+		reasons = append(reasons, fmt.Sprintf("suspect path %s still differs from the plan as the run recorded it", p))
+	}
+	for _, p := range headDiff {
+		if !isPlan[p] {
+			reasons = append(reasons, fmt.Sprintf("suspect path %s has changes the recovery report's head %s does not hold", p, head))
+		}
+	}
+	for _, p := range paths {
+		if isPlan[p] || blobs[p] == "" || slices.Contains(headDiff, p) {
+			continue
+		}
+		rel, ok, err := trackedRel(geom.WorktreeRoot, p)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			continue
+		}
+		atHead, err := commitBlob(geom.WorktreeRoot, head, rel)
+		if err != nil {
+			return nil, err
+		}
+		if atHead != blobs[p] {
+			continue
+		}
+		atStart, err := commitBlob(geom.WorktreeRoot, bs.StartSHA, rel)
+		if err != nil {
+			return nil, err
+		}
+		if atStart != atHead {
+			reasons = append(reasons, fmt.Sprintf("suspect path %s still holds the content the audit flagged; revert it to %s or re-derive it", p, bs.StartSHA))
+		}
+	}
+	return reasons, nil
 }
