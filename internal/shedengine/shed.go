@@ -43,11 +43,14 @@ type Shed struct {
 	// Nil means no error is ever classified.
 	// It runs only on a producer's returned error, never on a verdict.
 	Transient func(error) TransientClass
-	// RunID is the run-id the verbs address this run by; every way-forward text naming a shed verb names it, so a slug-addressed run is reachable.
-	// It is told; the empty string names the run-id-less form, which addresses self.
+	// RunID is the run-id the verbs address this run by;
+	// every way-forward text naming a shed verb names it, so a slug-addressed run is reachable.
+	// It is told;
+	// the empty string names the run-id-less form, which addresses self.
 	RunID string
 	// MissingStatusWayForward is the trailing "way forward:" clause for a missing status file.
-	// It is told; the empty string falls back to a generic clause.
+	// It is told;
+	// the empty string falls back to a generic clause.
 	MissingStatusWayForward string
 }
 

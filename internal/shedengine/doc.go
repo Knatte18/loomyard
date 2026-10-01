@@ -56,7 +56,8 @@
 // Goto only moves a halted run back.
 // It refuses a running run, because the run lock is free between a step-driven driver's steps and nothing else tells a live driver from a crashed one.
 // The reference row is the row current_producer names, or, when that names no row, the producer of the latest history entry that does, whose routed row (OnDone after done, OnStuck after stuck) is admitted too.
-// A target is admitted when it sits at or before the reference row in the producer list; an awaiting run admits only rows strictly before it, since moving onto or past a hand-off would bypass it.
+// A target is admitted when it sits at or before the reference row in the producer list;
+// an awaiting run admits only rows strictly before it, since moving onto or past a hand-off would bypass it.
 // Every refusal leaves the status file unchanged.
 //
 // Two stops name goto as their way forward in a trailing `way forward:` clause:

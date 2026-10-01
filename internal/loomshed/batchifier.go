@@ -25,7 +25,8 @@ var _ shedengine.ShedProducer = (*batchifier)(nil)
 // Batchifier row and the Webster row -- so both word the fault identically; the error text follows.
 const batchifierReasonPrefix = "active batchifier did not resolve: "
 
-// batchifierWayForward closes that reason; the fault sits in batcher.yaml, so the operator fixes it there.
+// batchifierWayForward closes that reason;
+// the fault sits in batcher.yaml, so the operator fixes it there.
 const batchifierWayForward = "; way forward: fix batcher.yaml's active: key, then re-step"
 
 // NewBatchifier returns a batchifier identified as name, gating batcher.Active(anchorPath). The

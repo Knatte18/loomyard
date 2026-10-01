@@ -32,7 +32,8 @@ type GotoRequest struct {
 // Goto moves a halted run onto the Target row and leaves it paused.
 // It writes paused, never running: the next step resumes through the ordinary resume write, whereas running with the lock free would read as a crashed driver.
 // The appended history entry carries the OutcomeGoto outcome, which ends the target segment's bounce episode.
-// It calls no CommitStatus and sets no transient mark; the next step's persist commits the file, as pause's write is.
+// It calls no CommitStatus and sets no transient mark;
+// the next step's persist commits the file, as pause's write is.
 func Goto(req GotoRequest) (Status, error) {
 	if err := os.MkdirAll(filepath.Dir(req.LockPath), 0o755); err != nil {
 		return Status{}, fmt.Errorf("shedengine: create run lock parent dir: %w", err)
@@ -106,7 +107,8 @@ func Goto(req GotoRequest) (Status, error) {
 // gotoAdmitted returns the reference row's name and every admitted goto target in list order.
 // The reference row is current_producer, or, when that names no row, the producer of the latest history entry that does;
 // that entry's routed row is admitted too.
-// An awaiting run admits only rows strictly before the reference row; paused, blocked and failed admit the reference row itself.
+// An awaiting run admits only rows strictly before the reference row;
+// paused, blocked and failed admit the reference row itself.
 func gotoAdmitted(producers []ProducerDef, st Status) (reference string, admitted []string) {
 	refIdx := -1
 	routed := ""

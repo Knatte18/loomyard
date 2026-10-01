@@ -479,7 +479,8 @@ func nowRFC3339() string {
 // A Stuck entry whose BudgetExempt is true is skipped and never counted.
 // An OutcomeGoto entry also ends the episode when its target (the entry's Producer) shares def.Segment, or is def itself when def.Segment is empty,
 // so a goto into a segment gives every row of that segment a fresh budget.
-// producers resolves a target's segment; a target no longer in the list ends no episode.
+// producers resolves a target's segment;
+// a target no longer in the list ends no episode.
 func episodeStuckCount(history []HistoryEntry, def ProducerDef, producers []ProducerDef) int {
 	name := def.Name
 	count := 0

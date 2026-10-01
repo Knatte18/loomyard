@@ -47,7 +47,8 @@ func preGoto(target, slug, ownStatusPath string, childStatus func() (string, err
 	return fmt.Errorf("batten goto: Worktree-Teardown is reachable only once the child run is done (child state %q); way forward: \"lyx batten step %s\" drives Run-Shed until the child run finishes, and \"lyx batten status %s\" shows where it is", childState, slug, slug)
 }
 
-// readStatusFile decodes a status file without taking its lock; ok is false when the file is absent or undecodable.
+// readStatusFile decodes a status file without taking its lock;
+// ok is false when the file is absent or undecodable.
 func readStatusFile(path string) (shedengine.Status, bool) {
 	var st shedengine.Status
 	data, err := os.ReadFile(path)

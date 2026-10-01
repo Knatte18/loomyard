@@ -266,7 +266,8 @@ func CheckParent(a shuttleengine.ForkAudit, outcomePath, summaryPath, workdir st
 	return violations
 }
 
-// fabricReferenceDetail words a fabric-reference finding; a command that can change files says it can rewrite run state.
+// fabricReferenceDetail words a fabric-reference finding;
+// a command that can change files says it can rewrite run state.
 func fabricReferenceDetail(cmd, rule string) string {
 	if mutatingCommand(cmd) {
 		return fmt.Sprintf("ran a fabric-referencing command (%q) that can rewrite run state — %s", cmd, rule)
@@ -279,7 +280,8 @@ var (
 	readOnlyFabric = stringSet("status", "diff", "list", "pairs")
 	// readOnlyTools are programs, builtins and test keywords that write nothing without an output redirect.
 	readOnlyTools = stringSet("cat", "ls", "grep", "head", "tail", "wc", "stat", "cd", "pwd", "echo", "printf", "true", "test", "[", "[[", "read")
-	// loopHeaders open a loop whose header line runs nothing; any substitution in its word list is judged on its own.
+	// loopHeaders open a loop whose header line runs nothing;
+	// any substitution in its word list is judged on its own.
 	loopHeaders = stringSet("for", "select")
 
 	// gitValueOptions are git's global options whose value may follow as a separate word.
@@ -318,7 +320,8 @@ func stringSet(words ...string) map[string]bool {
 	return set
 }
 
-// mutatingCommand reports whether the Bash command cmd can change files; it fails closed.
+// mutatingCommand reports whether the Bash command cmd can change files;
+// it fails closed.
 // It splits cmd into simple commands, quote-aware, at `&&`, `||`, `;`, `|`, a lone `&`, a newline and a parenthesis,
 // and also reads each `$(...)` or backtick substitution as a command of its own.
 // It is true when any simple command carries an output redirect other than descriptor duplication or one to /dev/null, /dev/stdout or /dev/stderr,
@@ -742,7 +745,8 @@ func programName(word string) (string, bool) {
 // ClassifyViolation assigns v its D4 severity, checking the correctness rule first.
 // A fork-contract-write is correctness.
 // A parent-write is correctness when its path lies under the run's state, reports or plan directory, or the run's `_lyx` directory (the parent of geom.WebsterDir),
-// or when it lies inside the worktree and git does not ignore it; every other parent-write is policy.
+// or when it lies inside the worktree and git does not ignore it;
+// every other parent-write is policy.
 // A fabric-reference is policy only when every simple command in its Command is a known read-only program with no write redirect (see mutatingCommand);
 // every other fabric reference is correctness, since a rewrite of the fabric checkout can rewrite run state that a re-run of the cards' verify commands cannot detect.
 // Every other class is policy.
@@ -794,7 +798,8 @@ func ClassifyViolation(v AuditViolation, geom Geometry) (AuditSeverity, error) {
 	return AuditSeverityCorrectness, nil
 }
 
-// pathWithin reports whether path is dir itself or lies beneath it; both must already be canonical.
+// pathWithin reports whether path is dir itself or lies beneath it;
+// both must already be canonical.
 func pathWithin(dir, path string) bool {
 	rel, err := filepath.Rel(dir, path)
 	if err != nil {

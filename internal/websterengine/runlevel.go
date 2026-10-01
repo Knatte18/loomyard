@@ -897,7 +897,8 @@ func verifyEveryBatchDone(websterDir, scratchDir string, batches []batcher.Batch
 // recorded with Kind: "fork" under THIS Master session (see
 // countBegunForkBatches — a prior crashed session's batches are outside the
 // current session's audit by construction) — a shortfall means a batch was
-// recorded without its fork surviving audit; both stay errors.
+// recorded without its fork surviving audit;
+// both stay errors.
 //
 // Findings are then dispositioned like record-batch's: every identity the ledger already holds is dropped, because the whole-session parent audit repeats every finding an earlier record-batch warned on or failed a batch for.
 // A policy finding nobody dispositioned is recorded as a run-level warning (saved to state.json before the lease is released) and its text is returned in warnings.

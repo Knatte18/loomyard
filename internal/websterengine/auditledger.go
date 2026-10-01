@@ -84,7 +84,8 @@ func recordFailedFinding(st *State, id string) {
 }
 
 // AcceptPendingAudit records every pending finding's identity as accepted, clears st.PendingAuditFindings and returns what it accepted.
-// It never saves; the caller holds the state-mutation lease and saves.
+// It never saves;
+// the caller holds the state-mutation lease and saves.
 func AcceptPendingAudit(st *State) []PendingAuditFinding {
 	accepted := st.PendingAuditFindings
 	for _, f := range accepted {

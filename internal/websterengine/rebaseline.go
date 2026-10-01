@@ -39,7 +39,8 @@ type RebaselineResult struct {
 // It refuses, wrapping ErrRebaselineCardSetChanged, when a begun batch's card set differs from the card set the edited plan's batch of that number now holds, or the plan no longer has that number,
 // or when a begun card's file content differs from the hash recorded at begin (a record without hashes compares ids only).
 // Otherwise it restamps State.PlanFingerprint and leaves every other field untouched.
-// It never saves; the caller holds the state-mutation lease and saves, as for the bracket verbs.
+// It never saves;
+// the caller holds the state-mutation lease and saves, as for the bracket verbs.
 func Rebaseline(deps RebaselineDeps) (*RebaselineResult, error) {
 	if deps.Plan == nil {
 		return nil, fmt.Errorf("webster: rebaseline requires a parsed plan; RebaselineDeps.Plan is nil")

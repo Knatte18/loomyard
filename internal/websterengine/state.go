@@ -160,7 +160,8 @@ type State struct {
 	// AuditWarnings is the run-level list of warnings recorded at run exit, each added once per identity.
 	AuditWarnings []AuditWarning `json:"auditWarnings,omitempty"`
 	// PendingAuditFindings are the run-exit correctness findings nobody has accepted yet.
-	// Run entry refuses while any is pending; AcceptPendingAudit clears them.
+	// Run entry refuses while any is pending;
+	// AcceptPendingAudit clears them.
 	PendingAuditFindings []PendingAuditFinding `json:"pendingAuditFindings,omitempty"`
 }
 

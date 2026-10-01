@@ -179,7 +179,8 @@ func TestGotoCmd_PreGotoRefusalLeavesStatusUntouched(t *testing.T) {
 	}
 }
 
-// TestGotoCmd_PassingPreGotoMoves asserts a passing hook still lets the move through; the nil-hook case is TestGotoCmd_MovesBlockedRunOntoRow.
+// TestGotoCmd_PassingPreGotoMoves asserts a passing hook still lets the move through;
+// the nil-hook case is TestGotoCmd_MovesBlockedRunOntoRow.
 func TestGotoCmd_PassingPreGotoMoves(t *testing.T) {
 	paths := newTestPaths(t)
 	seedBlocked(t, paths, "B")

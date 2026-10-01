@@ -153,7 +153,8 @@ Example:
 				return nil
 			}
 			if errors.Is(err, websterengine.ErrReportArchived) {
-				// Nothing in state changed; the archive move is what the fabric sync commits.
+				// Nothing in state changed;
+				// the archive move is what the fabric sync commits.
 				// The begin record may be absent, so the name comes from the error, not from st.
 				batchName := fmt.Sprintf("%02d", batchNumber)
 				var archivedErr *websterengine.ReportArchivedError
