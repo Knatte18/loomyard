@@ -1,6 +1,6 @@
 // suspect.go checks suspect paths against what the run recorded, the evidence accept-audit, run --fresh and recover-batch share.
 // A tracked file in the task worktree is checked against a commit its caller chooses:
-// the last batch head for accept-audit, the run's start commit for run --fresh, and the recovery report's head for recover-batch.
+// the last batch head for accept-audit, the run's start commit for run --fresh (both picked by git ancestry, see runEvidenceBases), and the recovery report's head for recover-batch.
 // A plan file is checked against the run's plan hashes.
 // Every other path has nothing recorded to compare with, so it is reported unverifiable rather than guessed at.
 // suspectBlobs and checkRecoveredSuspects add the recovery half: the flagged blob a failed batch records, and the check that a recovery left none of it behind.
@@ -16,42 +16,115 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strings"
 
+	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
-// lastBatchHead returns the Digest.HeadSHA of the highest-numbered terminal batch that carries one, the integration key excluded.
-// It returns "" when no batch does.
-func lastBatchHead(st *State) string {
-	best, head := 0, ""
-	for n, bs := range st.Batches {
-		if n == integrationBatchKey || bs == nil || !bs.Terminal || bs.Digest == nil || bs.Digest.HeadSHA == "" {
-			continue
-		}
-		if n > best {
-			best, head = n, bs.Digest.HeadSHA
-		}
-	}
-	return head
+// evidenceBases are the two commits the suspect-path evidence is checked against, picked by git ancestry rather than batch number.
+type evidenceBases struct {
+	// Start is the run's start commit: the recorded batch StartSHA that is an ancestor of every other.
+	Start string
+	// Last is the last batch head: the recorded terminal Digest.HeadSHA every other terminal head is an ancestor of.
+	Last string
+	// Missing lists every recorded StartSHA and terminal HeadSHA absent from the repository, sorted and deduplicated.
+	Missing []string
 }
 
-// runStartCommit returns the StartSHA of the lowest-numbered batch record that carries one, or "" when none does.
-func runStartCommit(st *State) string {
-	best, sha := 0, ""
+// runEvidenceBases picks st's start commit and last batch head by git ancestry, the integration key excluded.
+// SequenceBatches can run a lower-numbered batch after a higher one, so batch numbers say nothing about order.
+// A pick is "" when nothing is recorded, no candidate qualifies, or any recorded commit of its kind is missing from the repository:
+// a missing commit blanks the pick rather than being skipped, since the pick among the rest would name an older commit.
+// A state recording no SHA returns the zero value without running git.
+// The error is an IsAncestor failure.
+func runEvidenceBases(worktree string, st *State) (evidenceBases, error) {
+	var starts, heads []string
 	for n, bs := range st.Batches {
-		if n == integrationBatchKey || bs == nil || bs.StartSHA == "" {
+		if n == integrationBatchKey || bs == nil {
 			continue
 		}
-		if sha == "" || n < best {
-			best, sha = n, bs.StartSHA
+		if bs.StartSHA != "" && !slices.Contains(starts, bs.StartSHA) {
+			starts = append(starts, bs.StartSHA)
+		}
+		if bs.Terminal && bs.Digest != nil && bs.Digest.HeadSHA != "" && !slices.Contains(heads, bs.Digest.HeadSHA) {
+			heads = append(heads, bs.Digest.HeadSHA)
 		}
 	}
-	return sha
+	var out evidenceBases
+	if len(starts) == 0 && len(heads) == 0 {
+		return out, nil
+	}
+	repo := gitrepo.New(worktree)
+	startsMissing, headsMissing := false, false
+	for _, sha := range starts {
+		if !repo.SHAExists(sha) {
+			startsMissing = true
+			out.Missing = append(out.Missing, sha)
+		}
+	}
+	for _, sha := range heads {
+		if !repo.SHAExists(sha) {
+			headsMissing = true
+			if !slices.Contains(out.Missing, sha) {
+				out.Missing = append(out.Missing, sha)
+			}
+		}
+	}
+	sort.Strings(out.Missing)
+	var err error
+	if !startsMissing {
+		if out.Start, err = pickByAncestry(repo, starts, true); err != nil {
+			return evidenceBases{}, err
+		}
+	}
+	if !headsMissing {
+		if out.Last, err = pickByAncestry(repo, heads, false); err != nil {
+			return evidenceBases{}, err
+		}
+	}
+	return out, nil
+}
+
+// pickByAncestry returns the commit of shas that is an ancestor of every other (oldest) or that every other is an ancestor of (!oldest), or "" when none qualifies.
+func pickByAncestry(repo *gitrepo.Repo, shas []string, oldest bool) (string, error) {
+	for _, cand := range shas {
+		qualifies := true
+		for _, other := range shas {
+			if other == cand {
+				continue
+			}
+			sha, ref := cand, other
+			if !oldest {
+				sha, ref = other, cand
+			}
+			ok, err := repo.IsAncestor(sha, ref)
+			if err != nil {
+				return "", err
+			}
+			if !ok {
+				qualifies = false
+				break
+			}
+		}
+		if qualifies {
+			return cand, nil
+		}
+	}
+	return "", nil
+}
+
+// missingCommitsClause names the recorded commits absent from the repository and the way forward, or "" for an empty list.
+func missingCommitsClause(missing []string) string {
+	if len(missing) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("commit(s) %s recorded by this run are not in this repository; way forward: fetch the task branch from the machine that ran those batches with git, then re-run the verb", strings.Join(missing, ", "))
 }
 
 // checkSuspectPaths sorts each of paths into differing or unverifiable, both returned sorted.
 // A plan file differs when its hash is not the one st.PlanFileHashes recorded, and is unverifiable when no hashes were recorded.
-// A tracked-or-new file in the task worktree outside its _lyx, geom.ScratchDir and git-ignored paths differs when it changed against base, and is unverifiable when base is empty.
+// A tracked-or-new file in the task worktree outside its _lyx, geom.ScratchDir and git-ignored paths differs when it changed against base, and is unverifiable when base is empty or not in the repository.
 // Any other path is unverifiable.
 // The error is a git probe's or a read's failure other than not-exist;
 // the check changes nothing.
@@ -71,6 +144,9 @@ func checkSuspectPaths(geom Geometry, st *State, base string, paths []string) (d
 	lyx, err := canonicalPath(filepath.Join(geom.WorktreeRoot, lyxdirs.LyxDirName))
 	if err != nil {
 		return nil, nil, err
+	}
+	if base != "" && !gitrepo.New(geom.WorktreeRoot).SHAExists(base) {
+		base = ""
 	}
 	for _, p := range paths {
 		lexical := resolveWritePath(geom.WorktreeRoot, p)

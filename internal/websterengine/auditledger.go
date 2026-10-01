@@ -88,8 +88,9 @@ func recordFailedFinding(st *State, id string) {
 var ErrAuditNotAcceptable = errors.New("webster: pending audit findings cannot be accepted")
 
 // AcceptPendingAudit clears st.PendingAuditFindings and returns what it cleared, once every finding's suspect paths are back at the last recorded batch head.
-// The evidence rule: checkSuspectPaths runs over every pending path with lastBatchHead(st) as base,
+// The evidence rule: checkSuspectPaths runs over every pending path with the last batch head as base, picked by git ancestry (runEvidenceBases),
 // and any differing path, any unverifiable path and any finding with no path refuses with ErrAuditNotAcceptable, mutating nothing.
+// It refuses first, with the missing-commit way forward, when a commit the run recorded is not in the repository.
 // It records no disposition, because a later run's audit covers a new Master session whose finding identities never repeat these.
 // It never saves;
 // the caller holds the state-mutation lease and saves.
@@ -107,7 +108,14 @@ func AcceptPendingAudit(st *State, geom Geometry) ([]PendingAuditFinding, error)
 			}
 		}
 	}
-	head := lastBatchHead(st)
+	bases, err := runEvidenceBases(geom.WorktreeRoot, st)
+	if err != nil {
+		return nil, err
+	}
+	if len(bases.Missing) > 0 {
+		return nil, fmt.Errorf("%w: %s", ErrAuditNotAcceptable, missingCommitsClause(bases.Missing))
+	}
+	head := bases.Last
 	differing, unverifiable, err := checkSuspectPaths(geom, st, head, paths)
 	if err != nil {
 		return nil, err
@@ -128,7 +136,7 @@ func AcceptPendingAudit(st *State, geom Geometry) ([]PendingAuditFinding, error)
 		if pathless {
 			what = append(what, "a finding names no path")
 		}
-		start := runStartCommit(st)
+		start := bases.Start
 		if start != "" {
 			start = " " + start
 		}

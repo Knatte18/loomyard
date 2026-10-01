@@ -26,6 +26,8 @@ type RebaselineDeps struct {
 	State   *State
 	// Cards are the card numbers the operator names as edited; a changed card file whose number is absent is refused.
 	Cards []int
+	// Geom locates the worktree whose history names the run's start commit.
+	Geom Geometry
 }
 
 // RebaselineResult reports what one successful Rebaseline changed.
@@ -44,6 +46,7 @@ type RebaselineResult struct {
 // It refuses, wrapping ErrRebaselineCardSetChanged, when a begun batch's card set differs from the card set the edited plan's batch of that number now holds, or the plan no longer has that number,
 // or when a begun card's file content differs from the hash recorded at begin (a record without hashes compares ids only).
 // It also refuses when 00-overview.md changed, or a changed card file's number is not in deps.Cards, unless the state predates State.PlanFileHashes.
+// The start commit a refusal names is picked by git ancestry.
 // Otherwise it restamps State.PlanFingerprint and State.PlanFileHashes and leaves every other field untouched.
 // It never saves;
 // the caller holds the state-mutation lease and saves, as for the bracket verbs.
@@ -96,15 +99,11 @@ func Rebaseline(deps RebaselineDeps) (*RebaselineResult, error) {
 	sort.Ints(numbers)
 
 	var changed []string
-	startSHA := ""
 	for _, n := range numbers {
 		bs := deps.State.Batches[n]
 		recorded := bs.Cards
 		if len(recorded) == 0 {
 			recorded = []string{fmt.Sprintf("%02d-%s", n, bs.Slug)}
-		}
-		if bs.StartSHA != "" && startSHA == "" {
-			startSHA = bs.StartSHA
 		}
 		now, ok := current[n]
 		if ok && slices.Equal(recorded, now) {
@@ -130,8 +129,12 @@ func Rebaseline(deps RebaselineDeps) (*RebaselineResult, error) {
 	}
 	if len(changed) > 0 {
 		startCommit := "the run's start commit"
-		if startSHA != "" {
-			startCommit += " " + startSHA
+		bases, err := runEvidenceBases(deps.Geom.WorktreeRoot, deps.State)
+		if err != nil {
+			return nil, fmt.Errorf("%w; way forward: transient, re-run `lyx webster rebaseline`", err)
+		}
+		if bases.Start != "" {
+			startCommit += " " + bases.Start
 		}
 		return nil, fmt.Errorf("%w: %s; way forward: restore those cards in the plan, or reset the branch to %s with git and run \"lyx webster run --fresh\"", ErrRebaselineCardSetChanged, strings.Join(changed, "; "), startCommit)
 	}

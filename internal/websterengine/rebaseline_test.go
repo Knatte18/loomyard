@@ -64,10 +64,18 @@ func TestRebaseline_ForeignEditAcceptedMidRun(t *testing.T) {
 func rebaselineDeps(t *testing.T, batches []batcher.Batch, recs map[int]*websterengine.BatchState) websterengine.RebaselineDeps {
 	t.Helper()
 	planDir := seedPlanDir(t)
+	worktree := newScratchRepo(t)
+	base := commitFile(t, worktree, "base.txt", "base", "base commit")
+	for _, rec := range recs {
+		if rec.StartSHA == "startsha1" {
+			rec.StartSHA = base
+		}
+	}
 	return websterengine.RebaselineDeps{
 		Plan:    &planparser.Plan{Dir: planDir, Format: 5},
 		Batches: batches,
 		State:   &websterengine.State{PlanFingerprint: "old-fingerprint", Batches: recs},
+		Geom:    websterengine.Geometry{WorktreeRoot: worktree},
 	}
 }
 
@@ -91,7 +99,7 @@ func TestRebaseline_RefusesChangedCardSet(t *testing.T) {
 			if !errors.Is(err, websterengine.ErrRebaselineCardSetChanged) {
 				t.Fatalf("Rebaseline() error = %v; want errors.Is(err, ErrRebaselineCardSetChanged)", err)
 			}
-			for _, want := range []string{"batch 1", "01-json-flag", "--fresh", "startsha1"} {
+			for _, want := range []string{"batch 1", "01-json-flag", "--fresh", deps.State.Batches[1].StartSHA} {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("error %q lacks %q", err.Error(), want)
 				}
@@ -100,6 +108,31 @@ func TestRebaseline_RefusesChangedCardSet(t *testing.T) {
 				t.Errorf("PlanFingerprint = %q; want it unchanged on refusal", deps.State.PlanFingerprint)
 			}
 		})
+	}
+}
+
+// TestRebaseline_RefusalNamesStartCommitByAncestry pins that the start commit a refusal names is the one every other start descends from, not the lowest-numbered batch's:
+// batch 2 ran first, so its start C0 is the run's start and batch 1's start C1 is not.
+func TestRebaseline_RefusalNamesStartCommitByAncestry(t *testing.T) {
+	deps := rebaselineDeps(t, []batcher.Batch{beginCard(3, "other")}, map[int]*websterengine.BatchState{})
+	root := deps.Geom.WorktreeRoot
+	c0 := strings.TrimSpace(mustGit(t, root, "rev-parse", "HEAD"))
+	c1 := commitFile(t, root, "next.txt", "next", "next commit")
+	first := doneBatchOne()
+	first.StartSHA = c1
+	second := doneBatchOne()
+	second.Slug, second.Cards, second.StartSHA = "list-tests", []string{"02-list-tests"}, c0
+	deps.State.Batches = map[int]*websterengine.BatchState{1: first, 2: second}
+
+	_, err := websterengine.Rebaseline(deps)
+	if !errors.Is(err, websterengine.ErrRebaselineCardSetChanged) {
+		t.Fatalf("Rebaseline() error = %v; want errors.Is(err, ErrRebaselineCardSetChanged)", err)
+	}
+	if !strings.Contains(err.Error(), "start commit "+c0) {
+		t.Errorf("error %q; want the start commit %s named", err.Error(), c0)
+	}
+	if strings.Contains(err.Error(), "start commit "+c1) {
+		t.Errorf("error %q names the later commit %s as the start commit", err.Error(), c1)
 	}
 }
 

@@ -18,6 +18,8 @@ type suspectFixture struct {
 	geom Geometry
 	st   *State
 	head string
+	// start is the commit before head, recorded as batch 1's StartSHA.
+	start string
 }
 
 func newSuspectFixture(t *testing.T) *suspectFixture {
@@ -28,6 +30,7 @@ func newSuspectFixture(t *testing.T) *suspectFixture {
 	}
 	gitwrapMustGit(t, root, "add", ".gitignore")
 	gitwrapMustGit(t, root, "commit", "-m", "ignore")
+	start := strings.TrimSpace(gitwrapMustGit(t, root, "rev-parse", "HEAD"))
 	head := gitwrapCommitFile(t, root, "tracked.txt", "x", "add tracked")
 	if err := os.WriteFile(filepath.Join(root, "ignored.log"), []byte("log"), 0o644); err != nil {
 		t.Fatal(err)
@@ -43,12 +46,12 @@ func newSuspectFixture(t *testing.T) *suspectFixture {
 		ScratchDir:   filepath.Join(root, ".lyx", "webster"),
 	}
 	st := &State{Batches: map[int]*BatchState{
-		1: {Slug: "one", StartSHA: "start-sha", Terminal: true, Status: DigestStatusDone, Digest: &Digest{HeadSHA: head}},
+		1: {Slug: "one", StartSHA: start, Terminal: true, Status: DigestStatusDone, Digest: &Digest{HeadSHA: head}},
 	}}
 	if err := restampFingerprint(st, planDir); err != nil {
 		t.Fatal(err)
 	}
-	return &suspectFixture{geom: geom, st: st, head: head}
+	return &suspectFixture{geom: geom, st: st, head: head, start: start}
 }
 
 func TestCheckSuspectPaths(t *testing.T) {
@@ -102,6 +105,11 @@ func TestCheckSuspectPaths(t *testing.T) {
 		expect(t, d)
 		expect(t, u, "tracked.txt")
 	})
+	t.Run("base not in the repository", func(t *testing.T) {
+		d, u := check(t, "0123456789abcdef0123456789abcdef01234567", "tracked.txt")
+		expect(t, d)
+		expect(t, u, "tracked.txt")
+	})
 	t.Run("untracked new file differs", func(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(root, "new.txt"), []byte("n"), 0o644); err != nil {
 			t.Fatal(err)
@@ -121,21 +129,82 @@ func TestCheckSuspectPaths(t *testing.T) {
 	})
 }
 
-func TestLastBatchHeadAndRunStartCommit(t *testing.T) {
-	st := &State{Batches: map[int]*BatchState{
-		integrationBatchKey: {Terminal: true, Digest: &Digest{HeadSHA: "integration"}},
-		2:                   {StartSHA: "s2", Terminal: true, Digest: &Digest{HeadSHA: "h2"}},
-		1:                   {StartSHA: "s1", Terminal: true, Digest: &Digest{HeadSHA: "h1"}},
-		3:                   {StartSHA: "s3"},
-	}}
-	if got := lastBatchHead(st); got != "h2" {
-		t.Errorf("lastBatchHead = %q; want h2", got)
+// reversedOrderFixture is newSuspectFixture's repo with batch 02 run before batch 01:
+// batch 2 started at c0 and ended at c1, batch 1 started at c1 and ended at c2, where c2 changes tracked.txt.
+func reversedOrderFixture(t *testing.T) (fx *suspectFixture, c0, c1, c2 string) {
+	t.Helper()
+	fx = newSuspectFixture(t)
+	root := fx.geom.WorktreeRoot
+	c0 = fx.start
+	c1 = fx.head
+	c2 = gitwrapCommitFile(t, root, "tracked.txt", "changed by batch one", "batch one")
+	fx.st.Batches = map[int]*BatchState{
+		2: {Slug: "two", StartSHA: c0, Terminal: true, Status: DigestStatusDone, Digest: &Digest{HeadSHA: c1}},
+		1: {Slug: "one", StartSHA: c1, Terminal: true, Status: DigestStatusDone, Digest: &Digest{HeadSHA: c2}},
 	}
-	if got := runStartCommit(st); got != "s1" {
-		t.Errorf("runStartCommit = %q; want s1", got)
+	return fx, c0, c1, c2
+}
+
+func TestRunEvidenceBases_PicksByAncestry(t *testing.T) {
+	fx, c0, _, c2 := reversedOrderFixture(t)
+	root := fx.geom.WorktreeRoot
+	fx.st.Batches[integrationBatchKey] = &BatchState{Terminal: true, Digest: &Digest{HeadSHA: "integration"}}
+	fx.st.Batches[3] = &BatchState{Slug: "three"}
+
+	got, err := runEvidenceBases(root, fx.st)
+	if err != nil {
+		t.Fatalf("runEvidenceBases() error = %v", err)
 	}
-	if got := lastBatchHead(&State{}); got != "" {
-		t.Errorf("lastBatchHead on empty state = %q; want empty", got)
+	if got.Start != c0 || got.Last != c2 || len(got.Missing) != 0 {
+		t.Errorf("runEvidenceBases() = %+v; want Start %s, Last %s, nothing missing", got, c0, c2)
+	}
+
+	missing := "0123456789abcdef0123456789abcdef01234567"
+	fx.st.Batches[1].Digest.HeadSHA = missing
+	got, err = runEvidenceBases(root, fx.st)
+	if err != nil {
+		t.Fatalf("runEvidenceBases() error = %v", err)
+	}
+	if got.Last != "" || !reflect.DeepEqual(got.Missing, []string{missing}) {
+		t.Errorf("runEvidenceBases() = %+v; want Last empty and Missing [%s]", got, missing)
+	}
+
+	got, err = runEvidenceBases(root, &State{})
+	if err != nil || !reflect.DeepEqual(got, evidenceBases{}) {
+		t.Errorf("runEvidenceBases(empty) = %+v, %v; want the zero value", got, err)
+	}
+}
+
+func TestAcceptPendingAudit_RefusesMissingCommit(t *testing.T) {
+	fx := newSuspectFixture(t)
+	missing := "0123456789abcdef0123456789abcdef01234567"
+	fx.st.Batches[1].Digest.HeadSHA = missing
+	fx.st.PendingAuditFindings = []PendingAuditFinding{{ID: "f1", Class: "parent-write", Detail: "d", Paths: []string{"tracked.txt"}}}
+
+	_, err := AcceptPendingAudit(fx.st, fx.geom)
+	if !errors.Is(err, ErrAuditNotAcceptable) {
+		t.Fatalf("AcceptPendingAudit() error = %v; want ErrAuditNotAcceptable", err)
+	}
+	for _, want := range []string{missing, "git"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error = %q; want it to contain %q", err, want)
+		}
+	}
+	if len(fx.st.PendingAuditFindings) != 1 {
+		t.Errorf("PendingAuditFindings = %v; want unchanged", fx.st.PendingAuditFindings)
+	}
+}
+
+func TestAcceptPendingAudit_UsesExecutionOrderHead(t *testing.T) {
+	fx, _, _, _ := reversedOrderFixture(t)
+	fx.st.PendingAuditFindings = []PendingAuditFinding{{ID: "f1", Class: "parent-write", Detail: "d", Paths: []string{"tracked.txt"}}}
+
+	got, err := AcceptPendingAudit(fx.st, fx.geom)
+	if err != nil {
+		t.Fatalf("AcceptPendingAudit() error = %v; want accepted against the execution-order head", err)
+	}
+	if len(got) != 1 || len(fx.st.PendingAuditFindings) != 0 {
+		t.Errorf("returned %v, pending %v; want one cleared finding", got, fx.st.PendingAuditFindings)
 	}
 }
 
@@ -191,7 +260,7 @@ func TestAcceptPendingAudit_RefusesUnverifiablePath(t *testing.T) {
 	if !errors.Is(err, ErrAuditNotAcceptable) {
 		t.Fatalf("AcceptPendingAudit() error = %v; want ErrAuditNotAcceptable", err)
 	}
-	for _, want := range []string{"ignored.log", "run --fresh", "start-sha"} {
+	for _, want := range []string{"ignored.log", "run --fresh", fx.start} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error = %q; want it to contain %q", err, want)
 		}

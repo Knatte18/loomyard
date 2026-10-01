@@ -81,7 +81,7 @@ Example:
 				return nil
 			}
 
-			result, err := websterengine.Rebaseline(websterengine.RebaselineDeps{Plan: plan, Batches: batches, State: st, Cards: cards})
+			result, err := websterengine.Rebaseline(websterengine.RebaselineDeps{Plan: plan, Batches: batches, State: st, Cards: cards, Geom: c.geom})
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
