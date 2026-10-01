@@ -586,9 +586,9 @@ func readOnlySegment(words []string) bool {
 	case commandWrappers[prog] != nil:
 		wrapped := skipOptions(args, commandWrappers[prog])
 		if prog == "time" && slices.ContainsFunc(args[:len(args)-len(wrapped)], func(a string) bool {
-			return strings.HasPrefix(a, "-o") || strings.HasPrefix(a, "--o")
+			return strings.HasPrefix(a, "--o") || (strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "--") && strings.Contains(a, "o"))
 		}) {
-			// GNU time's -o writes its report to a file.
+			// GNU time's -o writes its report to a file, and an `o` anywhere in a short-option cluster counts.
 			return false
 		}
 		return readOnlySegment(wrapped)
@@ -686,14 +686,30 @@ func steersPrograms(name string) bool {
 }
 
 // skipOptions returns args past their leading options, dropping each option in values together with the value word that follows it.
+// A short-option cluster drops the following word too when its first letter that is a value option ends the cluster, as getopt reads `-vo FILE`.
 func skipOptions(args []string, values map[string]bool) []string {
 	for len(args) > 0 && strings.HasPrefix(args[0], "-") {
-		if values[args[0]] && len(args) > 1 {
+		if (values[args[0]] || clusterEndsInValue(args[0], values)) && len(args) > 1 {
 			args = args[1:]
 		}
 		args = args[1:]
 	}
 	return args
+}
+
+// clusterEndsInValue reports whether the short-option cluster a takes its value from the next word:
+// its first letter whose single-letter option is in values is its last letter.
+// An earlier value letter takes the rest of the cluster as its value instead.
+func clusterEndsInValue(a string, values map[string]bool) bool {
+	if strings.HasPrefix(a, "--") || len(a) <= 2 {
+		return false
+	}
+	for i := 1; i < len(a); i++ {
+		if values["-"+a[i:i+1]] {
+			return i == len(a)-1
+		}
+	}
+	return false
 }
 
 // grepOpensPager reports whether `git grep`'s args carry `-O` or `--open-files-in-pager`, which run a program on the matched files.
