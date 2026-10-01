@@ -564,8 +564,12 @@ func splitShell(cmd string) (segments []shellSegment, substitutions []string) {
 // After leading shell keywords and `NAME=value` assignments, it is true for a bare assignment, a program in readOnlyTools, a `for` or `select` loop header, git with a subcommand in readOnlyGit and none of `--output`, a `-c` or `--config-env` global option or grep's `-O`, and `lyx fabric` with a verb in readOnlyFabric (`prune` and `cleanup` only without `--apply`).
 // It is also true for `find` with no `-delete` or `-fprint`-family action whose every `-exec` command is read-only, for a commandWrappers program, timeout or xargs whose wrapped command is read-only, and for a shell whose `-c` command string mutatingCommand finds read-only.
 // Every other shape is mutating: an unknown program, a program spelled through a variable or through a path outside a system bin directory, a shell running a script file, eval, source, sed, perl, awk, any other lyx verb.
+// An assignment to a variable that steersPrograms names makes the command mutating too, whether it prefixes a program or stands alone.
 func readOnlySegment(words []string) bool {
 	for len(words) > 0 && (shellKeywords[words[0]] || (strings.Contains(words[0], "=") && !strings.HasPrefix(words[0], "-"))) {
+		if name, _, isAssignment := strings.Cut(words[0], "="); isAssignment && steersPrograms(strings.TrimSuffix(name, "+")) {
+			return false
+		}
 		words = words[1:]
 	}
 	if len(words) == 0 {
@@ -666,6 +670,19 @@ func readOnlySegment(words []string) bool {
 		return readOnlyFabric[verb]
 	}
 	return false
+}
+
+// steersPrograms reports whether assigning the environment variable name can change which program a later command runs or which config it loads.
+// That covers PATH, HOME and XDG_CONFIG_HOME (where git finds its global config), BASH_ENV and ENV (a startup file a shell sources) and every LD_ name the dynamic loader reads.
+// It also covers every GIT_ name, such as GIT_EXTERNAL_DIFF or GIT_CONFIG_COUNT, other than GIT_PAGER, which git ignores without a terminal.
+func steersPrograms(name string) bool {
+	switch name {
+	case "PATH", "HOME", "XDG_CONFIG_HOME", "BASH_ENV", "ENV":
+		return true
+	case "GIT_PAGER":
+		return false
+	}
+	return strings.HasPrefix(name, "LD_") || strings.HasPrefix(name, "GIT_")
 }
 
 // skipOptions returns args past their leading options, dropping each option in values together with the value word that follows it.
