@@ -1141,8 +1141,8 @@ func TestRebaselineCmd_RefusesNonNumericCard(t *testing.T) {
 	if code := clihelp.Execute(fx.CLI.rebaselineCmd(), &out, []string{"--card", "x"}); code == 0 {
 		t.Fatalf("rebaseline --card x = 0; want non-zero, output: %s", out.String())
 	}
-	if !strings.Contains(out.String(), `\"x\"`) {
-		t.Errorf("output does not name x; got %q", out.String())
+	if !strings.Contains(out.String(), `\"x\"`) || !strings.Contains(out.String(), "way forward") {
+		t.Errorf("output does not name x and a way forward; got %q", out.String())
 	}
 }
 

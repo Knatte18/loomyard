@@ -46,7 +46,7 @@ Example:
 			for _, v := range cardFlags {
 				n, convErr := strconv.Atoi(v)
 				if convErr != nil || n <= 0 {
-					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: --card %q is not a card number; pass a positive integer such as 5 or 05", v)))
+					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: --card %q is not a card number; way forward: re-run \"lyx webster rebaseline\" naming each changed card by its number, such as --card 5 or --card 05", v)))
 					return nil
 				}
 				cards = append(cards, n)
