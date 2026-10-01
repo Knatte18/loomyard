@@ -135,5 +135,6 @@ The `validate-*` verbs' findings envelopes are each verb's verdict on its artifa
 
 ## Out of scope
 
-Landing, batten, orch, fabric, burler and board refusals are not in this table; a later audit adds each as its own section.
+Landing, batten, orch, fabric, burler and board refusals are not in this table;
+a later audit adds each as its own section.
 The fast-forward merge-in limit is out of scope too, since its message already names a git recourse.

@@ -104,7 +104,9 @@ Every value in `internal/shedrecipe`'s registry constructs a `shedengine.ShedPro
 
 ## Shed Verb-Set Invariant
 
-`internal/shedverbs` owns the generic `run`/`step`/`status`/`pause`/`goto` verb bodies; no `<module>cli` reimplements one. This first clause is review discipline, not a scan — "reimplements" has no static shape a scan can see.
+`internal/shedverbs` owns the generic `run`/`step`/`status`/`pause`/`goto` verb bodies;
+no `<module>cli` reimplements one.
+This first clause is review discipline, not a scan — "reimplements" has no static shape a scan can see.
 
 - `shedverbs` derives no path and imports no resolver — no `lyxcwd`, no `os.Getwd`, no `git rev-parse` — and imports no `<module>cli`, which is what keeps it a leaf and keeps `internal/shedcli`'s own imports acyclic.
   `shedverbs` does import `internal/logger`, for step-boundary logging, and `logger.TraceFile`/`logger.TraceDir` are the only path sources admitted into it.
@@ -127,7 +129,8 @@ another module joins when its own audit adds its section.
 - Every refusal reachable through a bound module's verbs names its way forward in its message, as that file defines one, and has a row in its module's section.
 - A guard in a bound module that does not protect correctness warns and records rather than halts.
 - A new refusal in a bound module lands with its row and its reaching test in the same commit.
-- Enforcement is review discipline plus the per-row tests; there is no scan.
+- Enforcement is review discipline plus the per-row tests;
+  there is no scan.
 
 ## Transient Stop Invariant
 
