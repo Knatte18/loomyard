@@ -362,7 +362,7 @@ func PersistRecoveryTerminal(deps RecoverDeps, st *State, batchNumber int, diges
 		}
 	}
 
-	suspectReasons, err := checkRecoveredSuspects(deps.Geom, st, bs, head)
+	suspectReasons, err := checkRecoveredSuspects(deps.Geom, st, bs, number, head)
 	if err != nil {
 		return nil, err
 	}

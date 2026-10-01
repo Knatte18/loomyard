@@ -309,3 +309,25 @@ func TestAcceptPendingAudit_RefusesUnverifiablePath(t *testing.T) {
 		}
 	}
 }
+
+func TestAcceptPendingAudit_PlanPathNamesRestorePlan(t *testing.T) {
+	fx := newSuspectFixture(t)
+	card := filepath.Join(fx.geom.PlanDir, "01-card.md")
+	if err := os.WriteFile(card, []byte("edited"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fx.st.PendingAuditFindings = []PendingAuditFinding{{ID: "f1", Class: "parent-write", Detail: "d", Paths: []string{card}}}
+
+	_, err := AcceptPendingAudit(fx.st, fx.geom, nil)
+	if !errors.Is(err, ErrAuditNotAcceptable) {
+		t.Fatalf("AcceptPendingAudit() error = %v; want ErrAuditNotAcceptable", err)
+	}
+	for _, want := range []string{"restore-plan", "rebaseline --card"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error = %q; want it to name %q", err, want)
+		}
+	}
+	if strings.Contains(err.Error(), "git checkout") {
+		t.Errorf("error = %q; want no git checkout for a plan path", err)
+	}
+}

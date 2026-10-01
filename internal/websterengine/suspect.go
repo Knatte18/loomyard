@@ -122,6 +122,49 @@ func missingCommitsClause(missing []string) string {
 	return fmt.Sprintf("commit(s) %s recorded by this run are not in this repository; way forward: fetch the task branch from the machine that ran those batches with git, then re-run the verb", strings.Join(missing, ", "))
 }
 
+// planPathClause is the way forward for plan paths that differ from the plan the run recorded, ending in the verb to re-run as next.
+func planPathClause(next string) string {
+	return fmt.Sprintf("restore them with \"lyx webster restore-plan\", or accept an edit to a card no batch has begun with \"lyx webster rebaseline --card NN\"; then re-run %s", next)
+}
+
+// splitPlanPaths sorts paths into those under geom.PlanDir and the rest, each in input order.
+// The error is a link-resolution failure.
+func splitPlanPaths(geom Geometry, paths []string) (plan, rest []string, err error) {
+	planDir, err := canonicalPath(geom.PlanDir)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, p := range paths {
+		canon, err := canonicalPath(resolveWritePath(geom.WorktreeRoot, p))
+		if err != nil {
+			return nil, nil, err
+		}
+		if pathWithin(planDir, canon) {
+			plan = append(plan, p)
+		} else {
+			rest = append(rest, p)
+		}
+	}
+	return plan, rest, nil
+}
+
+// planFileName returns the slash-separated name of the plan path p relative to geom.PlanDir, the key State.PlanFileHashes uses.
+func planFileName(geom Geometry, p string) (string, error) {
+	planDir, err := canonicalPath(geom.PlanDir)
+	if err != nil {
+		return "", err
+	}
+	canon, err := canonicalPath(resolveWritePath(geom.WorktreeRoot, p))
+	if err != nil {
+		return "", err
+	}
+	rel, err := filepath.Rel(planDir, canon)
+	if err != nil {
+		return "", fmt.Errorf("websterengine: relate %s to %s: %w", canon, planDir, err)
+	}
+	return filepath.ToSlash(rel), nil
+}
+
 // checkSuspectPaths sorts each of paths into differing or unverifiable, both returned sorted.
 // A plan file differs when its hash is not the one st.PlanFileHashes recorded, and is unverifiable when no hashes were recorded.
 // A tracked-or-new file in the task worktree outside its _lyx, geom.ScratchDir and git-ignored paths differs when it changed against base, and is unverifiable when base is empty or not in the repository.
@@ -270,7 +313,8 @@ func suspectBlobs(worktree string, paths []string) ([]SuspectPath, error) {
 // checkRecoveredSuspects returns one reason per suspect path the recovery left unresolved at head:
 // a plan file differing from the run's recorded hashes, a tracked path differing from head, or a tracked path whose head content is still the flagged blob and not the start commit's.
 // A path checkSuspectPaths reports unverifiable is not checked.
-func checkRecoveredSuspects(geom Geometry, st *State, bs *BatchState, head string) ([]string, error) {
+// number is the batch's number, named in the plan-path way forward.
+func checkRecoveredSuspects(geom Geometry, st *State, bs *BatchState, number int, head string) ([]string, error) {
 	var paths []string
 	blobs := map[string]string{}
 	for _, sp := range bs.SuspectPaths {
@@ -289,7 +333,7 @@ func checkRecoveredSuspects(geom Geometry, st *State, bs *BatchState, head strin
 	isPlan := map[string]bool{}
 	for _, p := range planDiff {
 		isPlan[p] = true
-		reasons = append(reasons, fmt.Sprintf("suspect path %s still differs from the plan as the run recorded it", p))
+		reasons = append(reasons, fmt.Sprintf("suspect path %s still differs from the plan as the run recorded it; way forward: %s", p, planPathClause(fmt.Sprintf("\"lyx webster recover-batch %d\"", number))))
 	}
 	for _, p := range headDiff {
 		if !isPlan[p] {

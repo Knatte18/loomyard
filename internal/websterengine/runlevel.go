@@ -514,7 +514,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	}
 
 	if len(st.PendingAuditFindings) > 0 {
-		return RunResult{}, pendingAuditFindingsError(st.PendingAuditFindings)
+		return RunResult{}, pendingAuditFindingsError(st.PendingAuditFindings, deps.Geom)
 	}
 
 	// Validation runs HERE — after the state phase settles — rather than at entry, because its
@@ -1026,7 +1026,11 @@ func runExitAuditCrossCheck(deps RunDeps, outcomePath, summaryPath string, resul
 		for _, cf := range correctness {
 			pathless = pathless || cf.Violation.Path == ""
 		}
-		stuckReason = fmt.Sprintf("run-exit audit found %d correctness finding(s): %s; suspect paths: %s; way forward: restore the named paths to the last batch head with git, then run \"lyx webster accept-audit\" and re-step the Webster row (lyx webster run)%s", len(correctness), strings.Join(details, "; "), pathList, pathlessClause(pathless))
+		wayForward, err := pendingPathsWayForward(deps.Geom, paths, " and re-step the Webster row (lyx webster run)")
+		if err != nil {
+			return nil, "", err
+		}
+		stuckReason = fmt.Sprintf("run-exit audit found %d correctness finding(s): %s; suspect paths: %s; way forward: %s%s", len(correctness), strings.Join(details, "; "), pathList, wayForward, pathlessClause(pathless))
 	}
 
 	return warnings, stuckReason, nil
@@ -1046,7 +1050,9 @@ func hasPendingFinding(st *State, id string) bool {
 var ErrPendingAuditFindings = errors.New("webster: correctness findings from an earlier run exit are pending")
 
 // pendingAuditFindingsError wraps ErrPendingAuditFindings with the pending details and suspect paths.
-func pendingAuditFindingsError(pending []PendingAuditFinding) error {
+// Plan paths are named separately with planPathClause, and the git clause covers only the other paths.
+// The error from sorting the paths is returned as is.
+func pendingAuditFindingsError(pending []PendingAuditFinding, geom Geometry) error {
 	details := make([]string, len(pending))
 	var paths []string
 	seen := map[string]bool{}
@@ -1067,14 +1073,41 @@ func pendingAuditFindingsError(pending []PendingAuditFinding) error {
 	for _, f := range pending {
 		pathless = pathless || len(f.Paths) == 0
 	}
-	return fmt.Errorf("%w: %d correctness finding(s) from an earlier run exit are pending: %s; suspect paths: %s; way forward: restore the named paths to the last batch head with git, then run \"lyx webster accept-audit\"%s", ErrPendingAuditFindings, len(pending), strings.Join(details, "; "), pathList, pathlessClause(pathless))
+	wayForward, err := pendingPathsWayForward(geom, paths, "")
+	if err != nil {
+		return err
+	}
+	return fmt.Errorf("%w: %d correctness finding(s) from an earlier run exit are pending: %s; suspect paths: %s; way forward: %s%s", ErrPendingAuditFindings, len(pending), strings.Join(details, "; "), pathList, wayForward, pathlessClause(pathless))
+}
+
+// pendingPathsWayForward is the way-forward text for pending findings naming paths, ending in "lyx webster accept-audit" followed by tail.
+// A plan path never gets the git clause, which cannot restore it: it gets planPathClause instead, and the git clause covers only the other paths.
+func pendingPathsWayForward(geom Geometry, paths []string, tail string) (string, error) {
+	plan, rest, err := splitPlanPaths(geom, paths)
+	if err != nil {
+		return "", err
+	}
+	gitClause := "restore the named paths to the last batch head with git, then run \"lyx webster accept-audit\"" + tail
+	if len(plan) == 0 {
+		return gitClause, nil
+	}
+	planClause := fmt.Sprintf("for the plan file(s) %s, %s", strings.Join(plan, ", "), planPathClause("\"lyx webster accept-audit\""+tail))
+	if len(rest) == 0 {
+		return planClause, nil
+	}
+	gitClause = "restore the paths other than the plan files to the last batch head with git, then run \"lyx webster accept-audit\"" + tail
+	return gitClause + "; " + planClause, nil
 }
 
 // freshPendingDrop decides whether opts.Fresh discards st's pending audit findings, and returns one warning per dropped finding.
-// It refuses with ErrPendingAuditFindings while a suspect path outside the plan directory still differs from the run's start commit.
+// It refuses with ErrPendingAuditFindings, before anything is archived, in three cases:
+// a suspect path outside the plan directory still differs from the run's start commit;
+// the worktree's HEAD is not the start commit, so an unaudited commit would become the new run's base;
+// a plan path differs from the plan the run recorded and restore-plan can undo that, either because the store holds the recorded copy or because the file was never recorded.
 // The start commit is picked by git ancestry, and a recorded commit missing from the repository refuses with the fetch way forward.
 // When no batch recorded a start, the worktree's HEAD stands in for it.
-// A plan file differs by design, and an unverifiable path or a pathless finding is dropped with the archived state.
+// An unverifiable path, a pathless finding and a differing plan path whose recorded copy is missing from the store are dropped with the archived state,
+// since no verb could restore the last; its warning says so.
 func freshPendingDrop(geom Geometry, st *State, opts RunOptions) (drop bool, warnings []string, err error) {
 	if !opts.Fresh || st == nil || len(st.PendingAuditFindings) == 0 {
 		return false, nil, nil
@@ -1086,31 +1119,27 @@ func freshPendingDrop(geom Geometry, st *State, opts RunOptions) (drop bool, war
 	if len(bases.Missing) > 0 {
 		return false, nil, fmt.Errorf("%w: %s", ErrPendingAuditFindings, missingCommitsClause(bases.Missing))
 	}
-	base := bases.Start
-	if base == "" {
-		head, err := headSHA(geom.WorktreeRoot)
-		if err != nil {
-			return false, nil, err
-		}
-		base = head
-	}
-	planDir, err := canonicalPath(geom.PlanDir)
+	head, err := headSHA(geom.WorktreeRoot)
 	if err != nil {
 		return false, nil, err
 	}
-	var paths []string
+	base := bases.Start
+	if base == "" {
+		base = head
+	}
+	var allPaths []string
 	seen := map[string]bool{}
 	for _, f := range st.PendingAuditFindings {
 		for _, p := range f.Paths {
-			canon, err := canonicalPath(resolveWritePath(geom.WorktreeRoot, p))
-			if err != nil {
-				return false, nil, err
-			}
-			if !seen[p] && !pathWithin(planDir, canon) {
+			if !seen[p] {
 				seen[p] = true
-				paths = append(paths, p)
+				allPaths = append(allPaths, p)
 			}
 		}
+	}
+	planPaths, paths, err := splitPlanPaths(geom, allPaths)
+	if err != nil {
+		return false, nil, err
 	}
 	differing, _, err := checkSuspectPaths(geom, st, base, paths)
 	if err != nil {
@@ -1119,8 +1148,50 @@ func freshPendingDrop(geom Geometry, st *State, opts RunOptions) (drop bool, war
 	if len(differing) > 0 {
 		return false, nil, fmt.Errorf("%w: --fresh would drop pending audit findings while their suspect paths still differ from the run's start commit %s: %s; way forward: reset the branch to %s with git, then re-run \"lyx webster run --fresh\"", ErrPendingAuditFindings, base, strings.Join(differing, ", "), base)
 	}
+	if head != base {
+		return false, nil, fmt.Errorf("%w: --fresh would drop pending audit findings while HEAD %s is not the run's start commit %s; way forward: reset the branch to %s with git, then re-run \"lyx webster run --fresh\"", ErrPendingAuditFindings, head, base, base)
+	}
+	planDiffering, _, err := checkSuspectPaths(geom, st, base, planPaths)
+	if err != nil {
+		return false, nil, err
+	}
+	var restorable []string
+	noCopy := map[string]bool{}
+	for _, p := range planDiffering {
+		name, err := planFileName(geom, p)
+		if err != nil {
+			return false, nil, err
+		}
+		hash, recorded := st.PlanFileHashes[name]
+		if !recorded {
+			restorable = append(restorable, p)
+			continue
+		}
+		has, err := planBaselineHas(geom.WebsterDir, hash)
+		if err != nil {
+			return false, nil, err
+		}
+		if has {
+			restorable = append(restorable, p)
+		} else {
+			noCopy[p] = true
+		}
+	}
+	if len(restorable) > 0 {
+		return false, nil, fmt.Errorf("%w: --fresh would drop pending audit findings while plan file(s) differ from the plan the run recorded: %s; way forward: %s", ErrPendingAuditFindings, strings.Join(restorable, ", "), planPathClause("\"lyx webster run --fresh\""))
+	}
 	for _, f := range st.PendingAuditFindings {
-		warnings = append(warnings, fmt.Sprintf("--fresh dropped pending audit finding %s: %s", f.ID, f.Detail))
+		w := fmt.Sprintf("--fresh dropped pending audit finding %s: %s", f.ID, f.Detail)
+		var lost []string
+		for _, p := range f.Paths {
+			if noCopy[p] {
+				lost = append(lost, p)
+			}
+		}
+		if len(lost) > 0 {
+			w += fmt.Sprintf("; plan file(s) %s differ from the recorded plan and their recorded copy is missing from the plan baseline store, so no verb could restore them", strings.Join(lost, ", "))
+		}
+		warnings = append(warnings, w)
 	}
 	return true, warnings, nil
 }

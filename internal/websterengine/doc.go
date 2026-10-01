@@ -178,7 +178,10 @@
 // accept-audit needs evidence: it checks every suspect path against the last batch head (a plan file against the run's recorded plan hashes) and refuses with ErrAuditNotAcceptable while any path differs, cannot be checked, or a finding names no path;
 // the evidence covers HEAD too, so it also refuses while HEAD carries a commit past the last batch head other than a clean parent merge, and checks the paths against that reconciled HEAD;
 // the last two clear only through `lyx webster run --fresh` after resetting the branch to the run's start commit.
-// `run --fresh` drops pending findings, with one warning per finding, even on an unchanged plan, and refuses with ErrPendingAuditFindings while a pending suspect path outside the plan still differs from the run's start commit.
+// `run --fresh` drops pending findings, with one warning per finding, even on an unchanged plan, and refuses with ErrPendingAuditFindings, archiving nothing, while a pending suspect path outside the plan still differs from the run's start commit or HEAD is not the start commit.
+// It also refuses while a pending plan path differs from the plan the run recorded and `lyx webster restore-plan` can undo that (the recorded copy is stored, or the file was never recorded);
+// a differing plan path whose recorded copy is missing is dropped with the archived state, and its warning says so.
+// Every way forward for a differing plan path names restore-plan or `rebaseline --card`, never a git checkout.
 //
 // Every refusal this package can return, and the way forward from it, is tabulated in contracts/specs/refusal-spec.md;
 // this documentation links that table rather than restating its rows.

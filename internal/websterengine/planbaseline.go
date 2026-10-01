@@ -29,6 +29,19 @@ func planBaselinePath(websterDir, hash string) string {
 	return filepath.Join(websterDir, planBaselineDirName, hash)
 }
 
+// planBaselineHas reports whether the store holds a copy for hash.
+// An absent file is false with no error; any other stat failure is returned.
+func planBaselineHas(websterDir, hash string) (bool, error) {
+	_, err := os.Stat(planBaselinePath(websterDir, hash))
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	return false, fmt.Errorf("websterengine: stat plan baseline copy %s: %w", hash, err)
+}
+
 // storePlanBaseline writes each plan file's bytes to its hash's file under websterDir when that file is absent.
 // The store is content-addressed, so a repeat write is a no-op and no stored copy is ever wrong.
 // An empty websterDir is a wiring error, returned rather than resolved against the working directory.

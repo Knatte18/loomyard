@@ -2485,3 +2485,111 @@ func TestRun_FreshOnUnchangedPlanWithoutFindingsResumes(t *testing.T) {
 		t.Errorf("RunGUID = %q; want %q kept", st.RunGUID, "kept-run")
 	}
 }
+
+// TestRun_FreshRefusesCommitPastStart proves --fresh refuses, archiving nothing, while the suspect file is restored in the worktree but HEAD carries a commit past the run's start commit.
+func TestRun_FreshRefusesCommitPastStart(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	tracked := filepath.Join(fx.Worktree, "base.txt")
+	start := seedFreshPendingState(t, fx, tracked)
+	commitFile(t, fx.Worktree, "base.txt", "hand-edited by master", "suspect write")
+	mustGit(t, fx.Worktree, "checkout", start, "--", "base.txt")
+	marker := filepath.Join(fx.Deps.Geom.ReportsDir, "marker.yaml")
+	if err := os.WriteFile(marker, []byte("x"), 0o644); err != nil {
+		t.Fatalf("write marker: %v", err)
+	}
+
+	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
+	if !errors.Is(err, websterengine.ErrPendingAuditFindings) {
+		t.Fatalf("Run() error = %v; want ErrPendingAuditFindings", err)
+	}
+	if !strings.Contains(err.Error(), "is not the run's start commit "+start) {
+		t.Errorf("Run() error = %q; want it to name the start commit %s", err, start)
+	}
+	requireWayForward(t, err, "git", "run --fresh")
+	if _, statErr := os.Stat(filepath.Join(fx.Deps.Geom.WebsterDir, "state.json")); statErr != nil {
+		t.Errorf("state.json was archived: %v", statErr)
+	}
+	if _, statErr := os.Stat(marker); statErr != nil {
+		t.Errorf("reports dir was archived: %v", statErr)
+	}
+}
+
+// TestRun_FreshRefusesDifferingPlanPath proves --fresh refuses over an edited pending plan path with the restore-plan way forward, and drops the finding once the plan is restored.
+func TestRun_FreshRefusesDifferingPlanPath(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	card := filepath.Join(fx.PlanDir, "01-batch1.md")
+	seedFreshPendingState(t, fx, card)
+	addCardUses(t, fx.PlanDir, 1, "base.txt")
+
+	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
+	if !errors.Is(err, websterengine.ErrPendingAuditFindings) {
+		t.Fatalf("Run() error = %v; want ErrPendingAuditFindings", err)
+	}
+	if !strings.Contains(err.Error(), "restore-plan") || strings.Contains(err.Error(), "git checkout") {
+		t.Errorf("Run() error = %q; want restore-plan and no git checkout", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(fx.Deps.Geom.WebsterDir, "state.json")); statErr != nil {
+		t.Errorf("state.json was archived: %v", statErr)
+	}
+
+	st, err := websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
+	if err != nil || st == nil {
+		t.Fatalf("LoadState() = %v, %v", st, err)
+	}
+	if _, err := websterengine.RestorePlan(st, fx.Deps.Geom); err != nil {
+		t.Fatalf("RestorePlan() error = %v", err)
+	}
+	askingMaster(t, fx, "restored")
+	_, err = websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
+	requireReachedMaster(t, fx, err)
+	st, err = websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
+	if err != nil {
+		t.Fatalf("LoadState() error = %v", err)
+	}
+	if len(st.PendingAuditFindings) != 0 || st.RunGUID == "stale-run" {
+		t.Errorf("state = %+v; want a re-initialised run with no pending finding", st)
+	}
+}
+
+// TestRun_FreshDropsPlanPathWithoutCopy proves --fresh drops a differing plan path whose recorded copy is missing from the store, and the drop warning names the card.
+func TestRun_FreshDropsPlanPathWithoutCopy(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	card := filepath.Join(fx.PlanDir, "01-batch1.md")
+	seedFreshPendingState(t, fx, card)
+	addCardUses(t, fx.PlanDir, 1, "base.txt")
+	if err := os.RemoveAll(filepath.Join(fx.Deps.Geom.WebsterDir, "plan-baseline")); err != nil {
+		t.Fatalf("empty the plan baseline store: %v", err)
+	}
+	askingMaster(t, fx, "no copy")
+	var logs bytes.Buffer
+	logger.SetOutput(&logs)
+	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+
+	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
+	requireReachedMaster(t, fx, err)
+	if !strings.Contains(logs.String(), card) || !strings.Contains(logs.String(), "recorded copy is missing") {
+		t.Errorf("log = %q; want the drop warning naming %s and the missing copy", logs.String(), card)
+	}
+	st, err := websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
+	if err != nil {
+		t.Fatalf("LoadState() error = %v", err)
+	}
+	if len(st.PendingAuditFindings) != 0 || st.RunGUID == "stale-run" {
+		t.Errorf("state = %+v; want a re-initialised run with no pending finding", st)
+	}
+}
+
+// TestRun_PendingPlanPathNamesRestorePlan proves run entry over a pending plan-path finding names restore-plan and rebaseline, never a git checkout.
+func TestRun_PendingPlanPathNamesRestorePlan(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	seedFreshPendingState(t, fx, filepath.Join(fx.PlanDir, "01-batch1.md"))
+
+	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	if !errors.Is(err, websterengine.ErrPendingAuditFindings) {
+		t.Fatalf("Run() error = %v; want ErrPendingAuditFindings", err)
+	}
+	requireWayForward(t, err, "restore-plan", "rebaseline --card")
+	if strings.Contains(err.Error(), "git checkout") || strings.Contains(err.Error(), "with git") {
+		t.Errorf("Run() error = %q; want no git way forward for a plan path", err)
+	}
+}

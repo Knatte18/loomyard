@@ -94,6 +94,8 @@ var ErrAuditNotAcceptable = errors.New("webster: pending audit findings cannot b
 // The evidence covers HEAD as well as the worktree:
 // when the last batch head is known, reconcileReportHead must accept HEAD (the head itself, or a clean parent merge on top of it), else the verb refuses with ErrAuditNotAcceptable;
 // the paths are then checked against that reconciled HEAD, which the differing clause names in its git checkout.
+// A differing plan path never gets a git checkout, which cannot restore a plan file:
+// its way forward is planPathClause (restore-plan or rebaseline --card).
 // It records no disposition, because a later run's audit covers a new Master session whose finding identities never repeat these.
 // It never saves;
 // the caller holds the state-mutation lease and saves.
@@ -136,8 +138,15 @@ func AcceptPendingAudit(st *State, geom Geometry, parentBranch ParentBranchFunc)
 		return pending, nil
 	}
 	var parts []string
-	if len(differing) > 0 {
-		parts = append(parts, fmt.Sprintf("differs from the last batch head: %s; way forward: restore each with \"git checkout %s -- <path>\" (delete a path the head does not hold), then re-run \"lyx webster accept-audit\"", strings.Join(differing, ", "), head))
+	planDiffering, gitDiffering, err := splitPlanPaths(geom, differing)
+	if err != nil {
+		return nil, err
+	}
+	if len(planDiffering) > 0 {
+		parts = append(parts, fmt.Sprintf("plan file(s) differ from the plan the run recorded: %s; way forward: %s", strings.Join(planDiffering, ", "), planPathClause("\"lyx webster accept-audit\"")))
+	}
+	if len(gitDiffering) > 0 {
+		parts = append(parts, fmt.Sprintf("differs from the last batch head: %s; way forward: restore each with \"git checkout %s -- <path>\" (delete a path the head does not hold), then re-run \"lyx webster accept-audit\"", strings.Join(gitDiffering, ", "), head))
 	}
 	if len(unverifiable) > 0 || pathless {
 		var what []string
