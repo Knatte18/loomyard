@@ -233,7 +233,7 @@ func classifyFile(rel string, data []byte) FileStats {
 
 // Scan walks root and returns one FileStats per readable text file.
 // It skips the names in skipDirs, every dotted file and directory unless hidden is set,
-// anything matching excludes, and any file that looks binary.
+// anything matching excludes, any symlink, and any file that looks binary.
 func Scan(root string, hidden bool, excludes []string) ([]FileStats, error) {
 	var out []FileStats
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
@@ -257,7 +257,8 @@ func Scan(root string, hidden bool, excludes []string) ([]FileStats, error) {
 			}
 			return nil
 		}
-		if (!hidden && hiddenName) || matchesAny(excludes, rel, name) {
+		// A link is never followed: what it points at, such as a junction to a sibling repo, is not this tree's own code.
+		if entry.Type()&fs.ModeSymlink != 0 || (!hidden && hiddenName) || matchesAny(excludes, rel, name) {
 			return nil
 		}
 		data, readErr := os.ReadFile(path)

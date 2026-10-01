@@ -234,6 +234,29 @@ func TestScan_SkipsAndCollects(t *testing.T) {
 	}
 }
 
+// TestScan_SkipsDirectoryLink asserts a link to a directory outside the tree, like the `_lyx` junction, is skipped rather than read as a file.
+func TestScan_SkipsDirectoryLink(t *testing.T) {
+	root := t.TempDir()
+	target := t.TempDir()
+	if err := os.WriteFile(filepath.Join(target, "outside.go"), []byte("package outside\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "a.go"), []byte("package a\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	if err := os.Symlink(target, filepath.Join(root, "_lyx")); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+
+	files, err := Scan(root, false, nil)
+	if err != nil {
+		t.Fatalf("Scan() error = %v; want nil", err)
+	}
+	if len(files) != 1 || files[0].Path != "a.go" {
+		t.Errorf("Scan() = %v; want only a.go", files)
+	}
+}
+
 // TestBuild_SplitsSourceFromProse asserts markdown is counted in Total but never in
 // Source, which is what keeps the test share a share of code rather than of prose.
 func TestBuild_SplitsSourceFromProse(t *testing.T) {
