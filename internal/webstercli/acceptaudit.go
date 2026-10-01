@@ -19,6 +19,8 @@ func (c *websterCLI) acceptAuditCmd() *cobra.Command {
 		Long: `accept-audit clears the run-exit audit findings the last run left pending.
 It checks every suspect path against the last batch head and refuses, changing
 nothing, while any differs or cannot be checked.
+It also refuses while HEAD carries a commit past the last batch head other
+than a clean parent merge; move HEAD back to that head with git first.
 Restore the named paths with git first, then run it.
 It only edits state.json and never changes the task worktree.
 With nothing pending it succeeds and reports an empty accepted list, so a
@@ -58,7 +60,7 @@ Example:
 				return nil
 			}
 
-			pending, err := websterengine.AcceptPendingAudit(st, c.geom)
+			pending, err := websterengine.AcceptPendingAudit(st, c.geom, c.parentBranch)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil

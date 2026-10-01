@@ -91,10 +91,13 @@ var ErrAuditNotAcceptable = errors.New("webster: pending audit findings cannot b
 // The evidence rule: checkSuspectPaths runs over every pending path with the last batch head as base, picked by git ancestry (runEvidenceBases),
 // and any differing path, any unverifiable path and any finding with no path refuses with ErrAuditNotAcceptable, mutating nothing.
 // It refuses first, with the missing-commit way forward, when a commit the run recorded is not in the repository.
+// The evidence covers HEAD as well as the worktree:
+// when the last batch head is known, reconcileReportHead must accept HEAD (the head itself, or a clean parent merge on top of it), else the verb refuses with ErrAuditNotAcceptable;
+// the paths are then checked against that reconciled HEAD, which the differing clause names in its git checkout.
 // It records no disposition, because a later run's audit covers a new Master session whose finding identities never repeat these.
 // It never saves;
 // the caller holds the state-mutation lease and saves.
-func AcceptPendingAudit(st *State, geom Geometry) ([]PendingAuditFinding, error) {
+func AcceptPendingAudit(st *State, geom Geometry, parentBranch ParentBranchFunc) ([]PendingAuditFinding, error) {
 	pending := st.PendingAuditFindings
 	var paths []string
 	pathless := false
@@ -116,6 +119,14 @@ func AcceptPendingAudit(st *State, geom Geometry) ([]PendingAuditFinding, error)
 		return nil, fmt.Errorf("%w: %s", ErrAuditNotAcceptable, missingCommitsClause(bases.Missing))
 	}
 	head := bases.Last
+	if head != "" {
+		if _, err := reconcileReportHead(geom.WorktreeRoot, head, "accept-audit: last batch head", parentBranch); err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrAuditNotAcceptable, err)
+		}
+		if head, err = headSHA(geom.WorktreeRoot); err != nil {
+			return nil, err
+		}
+	}
 	differing, unverifiable, err := checkSuspectPaths(geom, st, head, paths)
 	if err != nil {
 		return nil, err

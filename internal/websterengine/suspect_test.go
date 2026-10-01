@@ -181,7 +181,7 @@ func TestAcceptPendingAudit_RefusesMissingCommit(t *testing.T) {
 	fx.st.Batches[1].Digest.HeadSHA = missing
 	fx.st.PendingAuditFindings = []PendingAuditFinding{{ID: "f1", Class: "parent-write", Detail: "d", Paths: []string{"tracked.txt"}}}
 
-	_, err := AcceptPendingAudit(fx.st, fx.geom)
+	_, err := AcceptPendingAudit(fx.st, fx.geom, nil)
 	if !errors.Is(err, ErrAuditNotAcceptable) {
 		t.Fatalf("AcceptPendingAudit() error = %v; want ErrAuditNotAcceptable", err)
 	}
@@ -199,7 +199,7 @@ func TestAcceptPendingAudit_UsesExecutionOrderHead(t *testing.T) {
 	fx, _, _, _ := reversedOrderFixture(t)
 	fx.st.PendingAuditFindings = []PendingAuditFinding{{ID: "f1", Class: "parent-write", Detail: "d", Paths: []string{"tracked.txt"}}}
 
-	got, err := AcceptPendingAudit(fx.st, fx.geom)
+	got, err := AcceptPendingAudit(fx.st, fx.geom, nil)
 	if err != nil {
 		t.Fatalf("AcceptPendingAudit() error = %v; want accepted against the execution-order head", err)
 	}
@@ -212,7 +212,7 @@ func TestAcceptPendingAudit_ClearsWhenPathsMatchHead(t *testing.T) {
 	fx := newSuspectFixture(t)
 	fx.st.PendingAuditFindings = []PendingAuditFinding{{ID: "s1/parent:parent-write:1", Class: "parent-write", Detail: "d", Paths: []string{"tracked.txt"}}}
 
-	got, err := AcceptPendingAudit(fx.st, fx.geom)
+	got, err := AcceptPendingAudit(fx.st, fx.geom, nil)
 	if err != nil {
 		t.Fatalf("AcceptPendingAudit() error = %v", err)
 	}
@@ -234,7 +234,7 @@ func TestAcceptPendingAudit_RefusesDifferingPath(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := AcceptPendingAudit(fx.st, fx.geom)
+	_, err := AcceptPendingAudit(fx.st, fx.geom, nil)
 	if !errors.Is(err, ErrAuditNotAcceptable) {
 		t.Fatalf("AcceptPendingAudit() error = %v; want ErrAuditNotAcceptable", err)
 	}
@@ -252,11 +252,54 @@ func TestAcceptPendingAudit_RefusesDifferingPath(t *testing.T) {
 	}
 }
 
+// committedPastHead commits a change to tracked.txt on top of the fixture's head, then restores the worktree file to the head's content.
+func committedPastHead(t *testing.T, fx *suspectFixture) {
+	t.Helper()
+	root := fx.geom.WorktreeRoot
+	gitwrapCommitFile(t, root, "tracked.txt", "suspect write", "master commit")
+	if err := os.WriteFile(filepath.Join(root, "tracked.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fx.st.PendingAuditFindings = []PendingAuditFinding{{ID: "f1", Class: "parent-write", Detail: "d", Paths: []string{"tracked.txt"}}}
+}
+
+func TestAcceptPendingAudit_RefusesCommitPastHead(t *testing.T) {
+	fx := newSuspectFixture(t)
+	committedPastHead(t, fx)
+
+	_, err := AcceptPendingAudit(fx.st, fx.geom, nil)
+	if !errors.Is(err, ErrAuditNotAcceptable) {
+		t.Fatalf("AcceptPendingAudit() error = %v; want ErrAuditNotAcceptable", err)
+	}
+	for _, want := range []string{fx.head, "move HEAD back"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error = %q; want it to contain %q", err, want)
+		}
+	}
+	if len(fx.st.PendingAuditFindings) != 1 {
+		t.Errorf("PendingAuditFindings = %v; want unchanged", fx.st.PendingAuditFindings)
+	}
+}
+
+func TestAcceptPendingAudit_AcceptsAfterHeadReset(t *testing.T) {
+	fx := newSuspectFixture(t)
+	committedPastHead(t, fx)
+	gitwrapMustGit(t, fx.geom.WorktreeRoot, "reset", "--hard", fx.head)
+
+	got, err := AcceptPendingAudit(fx.st, fx.geom, nil)
+	if err != nil {
+		t.Fatalf("AcceptPendingAudit() error = %v; want accepted after the reset", err)
+	}
+	if len(got) != 1 || len(fx.st.PendingAuditFindings) != 0 {
+		t.Errorf("returned %v, pending %v; want one cleared finding", got, fx.st.PendingAuditFindings)
+	}
+}
+
 func TestAcceptPendingAudit_RefusesUnverifiablePath(t *testing.T) {
 	fx := newSuspectFixture(t)
 	fx.st.PendingAuditFindings = []PendingAuditFinding{{ID: "f1", Class: "parent-write", Detail: "d", Paths: []string{"ignored.log"}}}
 
-	_, err := AcceptPendingAudit(fx.st, fx.geom)
+	_, err := AcceptPendingAudit(fx.st, fx.geom, nil)
 	if !errors.Is(err, ErrAuditNotAcceptable) {
 		t.Fatalf("AcceptPendingAudit() error = %v; want ErrAuditNotAcceptable", err)
 	}

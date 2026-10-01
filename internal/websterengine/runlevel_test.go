@@ -1055,11 +1055,11 @@ func TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck(t *testing.T) {
 		t.Errorf("Starter calls = %d after the refused Run; want %d", got, before)
 	}
 
-	if _, err := websterengine.AcceptPendingAudit(st, fx.Deps.Geom); !errors.Is(err, websterengine.ErrAuditNotAcceptable) || !strings.Contains(err.Error(), tracked) {
+	if _, err := websterengine.AcceptPendingAudit(st, fx.Deps.Geom, nil); !errors.Is(err, websterengine.ErrAuditNotAcceptable) || !strings.Contains(err.Error(), tracked) {
 		t.Fatalf("AcceptPendingAudit() before the revert error = %v; want ErrAuditNotAcceptable naming %s", err, tracked)
 	}
 	mustGit(t, fx.Worktree, "checkout", "--", "base.txt")
-	if _, err := websterengine.AcceptPendingAudit(st, fx.Deps.Geom); err != nil {
+	if _, err := websterengine.AcceptPendingAudit(st, fx.Deps.Geom, nil); err != nil {
 		t.Fatalf("AcceptPendingAudit() after the revert error = %v; want nil", err)
 	}
 	if err := websterengine.SaveState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir, st); err != nil {

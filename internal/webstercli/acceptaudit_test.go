@@ -95,6 +95,46 @@ func TestAcceptAuditCmd_RefusesDifferingPath(t *testing.T) {
 	}
 }
 
+// TestAcceptAuditCmd_RefusesCommitPastHead proves a commit on top of the recorded head refuses even when a second commit restores the file's content, and leaves state.json byte-identical.
+func TestAcceptAuditCmd_RefusesCommitPastHead(t *testing.T) {
+	t.Setenv("WEFT_SKIP_GIT", "1")
+	fx := newVerbsFixture(t)
+	fx.seedPendingFinding(t)
+	basePath := filepath.Join(fx.Worktree, "base.txt")
+	original, err := os.ReadFile(basePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(basePath, []byte("suspect write"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mustGit(t, fx.Worktree, "commit", "-am", "master write")
+	if err := os.WriteFile(basePath, original, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mustGit(t, fx.Worktree, "commit", "-am", "restore content")
+	statePath := filepath.Join(fx.CLI.geom.WebsterDir, "state.json")
+	before, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var out strings.Builder
+	if code := clihelp.Execute(fx.CLI.acceptAuditCmd(), &out, nil); code == 0 {
+		t.Fatalf("accept-audit = 0; want non-zero, output: %s", out.String())
+	}
+	if !strings.Contains(out.String(), "move HEAD back") {
+		t.Errorf("output missing %q; got %q", "move HEAD back", out.String())
+	}
+	after, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(before) != string(after) {
+		t.Errorf("state.json changed by a refused accept-audit")
+	}
+}
+
 // TestAcceptAuditCmd_NoRunRefuses proves the verb names the run verb when there is no state.json.
 func TestAcceptAuditCmd_NoRunRefuses(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
