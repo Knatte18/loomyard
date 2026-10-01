@@ -640,6 +640,9 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 		// own pair on every non-no-op transition: the status file is durable, fabric-synced state
 		// now (see paths.go), so nil is no longer right here.
 		CommitStatus: battenCommitStatusSeam(location, slug),
+
+		RunID:                   slug,
+		MissingStatusWayForward: fmt.Sprintf("way forward: \"lyx batten run %s\" creates the lifecycle's status file", slug),
 	}
 	return nil
 }

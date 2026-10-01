@@ -27,7 +27,7 @@ const commitRecordsMessage = "loom: commit run records"
 func commitRecordsVerb(out io.Writer, d commitStatusDeps) int {
 	active, err := d.MergeActive()
 	if err != nil {
-		return output.Err(out, "loom: commit-records: probe merge state: "+err.Error())
+		return output.Err(out, "loom: commit-records: probe merge state: "+err.Error()+"; way forward: transient, re-run lyx loom commit-records")
 	}
 	if active {
 		return output.Ok(out, map[string]any{
@@ -36,10 +36,10 @@ func commitRecordsVerb(out io.Writer, d commitStatusDeps) int {
 		})
 	}
 	if err := d.Commit(commitRecordsMessage); err != nil {
-		return output.Err(out, "loom: commit-records: commit failed: "+err.Error())
+		return output.Err(out, "loom: commit-records: commit failed: "+err.Error()+"; way forward: transient, re-run lyx loom commit-records")
 	}
 	if err := d.Push(); err != nil {
-		return output.Err(out, "loom: commit-records: the commit landed locally but was not pushed: "+err.Error())
+		return output.Err(out, "loom: commit-records: the commit landed locally but was not pushed: "+err.Error()+"; way forward: lyx fabric push pushes the landed commit, or re-run lyx loom commit-records")
 	}
 	return output.Ok(out, map[string]any{"committed": true})
 }
@@ -85,7 +85,7 @@ Example:
 				// a failed write is the one thing that would stall the run, so it fails the verb.
 				marker := shedrun.ParkMarker(c.location, shedrun.ResolveRunID(c.location, c.runID))
 				if err := writeParkMarker(marker, park); err != nil {
-					code = output.Err(cmd.OutOrStdout(), "loom: commit-records: write park marker "+marker+": "+err.Error())
+					code = output.Err(cmd.OutOrStdout(), "loom: commit-records: write park marker "+marker+": "+err.Error()+"; way forward: transient, re-run lyx loom commit-records --park "+park)
 				}
 			}
 			clihelp.SetExit(cmd.Context(), code)

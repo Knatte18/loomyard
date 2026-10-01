@@ -24,7 +24,7 @@ import (
 // *shedverbs.Spec and reading each returned command's Name(), because Verbs' own texts argument
 // would have to carry non-empty Use strings for Name() to report anything at all -- the documented
 // four-name contract is the simpler, equally authoritative source.
-var allGenericVerbs = []string{"run", "step", "status", "pause"}
+var allGenericVerbs = []string{"run", "step", "status", "pause", "goto"}
 
 // TestRecipes_KeySetIsExactlyLoomAndBatten asserts recipes' key set is exactly {"loom",
 // "batten"} -- no more, no fewer.
@@ -62,16 +62,16 @@ func TestRecipes_VerbsIsSubsetOfGenericVerbs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("lookup(loom): %v", err)
 	}
-	if len(loom.Verbs) != 4 {
-		t.Errorf("loom.Verbs = %v; want all four generic verbs", loom.Verbs)
+	if len(loom.Verbs) != 5 {
+		t.Errorf("loom.Verbs = %v; want all five generic verbs", loom.Verbs)
 	}
 
 	batten, err := lookup("batten")
 	if err != nil {
 		t.Fatalf("lookup(batten): %v", err)
 	}
-	if len(batten.Verbs) != 4 {
-		t.Errorf("batten.Verbs = %v; want all four generic verbs", batten.Verbs)
+	if len(batten.Verbs) != 5 {
+		t.Errorf("batten.Verbs = %v; want all five generic verbs", batten.Verbs)
 	}
 }
 

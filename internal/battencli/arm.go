@@ -344,6 +344,8 @@ func (c *battenCLI) specFor(verb string) shedverbs.Spec {
 		StatusPath:     c.shedPaths.StatusPath,
 		LockPath:       c.shedPaths.LockPath,
 		StatusLockPath: c.shedPaths.StatusLockPath,
+
+		MissingStatusWayForward: c.shedPaths.MissingStatusWayForward,
 		// The status file is durable and its lock is ephemeral, so a machine that never stepped
 		// this slug -- a fresh clone, or a hand-seeded run -- has the file and not the lock's
 		// directory. Creating that directory is not a write to the run: it is what lets the
@@ -369,6 +371,7 @@ func (c *battenCLI) specFor(verb string) shedverbs.Spec {
 			PostRun:      c.battenPostRun,
 			PreStep:      c.battenPreStep,
 			StatusExtras: c.battenStatusExtras,
+			PreGoto:      c.battenPreGoto,
 		},
 	}
 

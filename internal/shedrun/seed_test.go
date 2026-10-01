@@ -178,6 +178,17 @@ func TestWriteSeed_RefusesDisagreeingSeed(t *testing.T) {
 	if !strings.Contains(err.Error(), RecipeLoom) || !strings.Contains(err.Error(), RecipeBatten) {
 		t.Errorf("WriteSeed() error = %q; want it to name both the existing (%q) and incoming (%q) recipe", err.Error(), RecipeLoom, RecipeBatten)
 	}
+	if !strings.Contains(err.Error(), "way forward:") || !strings.Contains(err.Error(), "lyx shed status self") {
+		t.Errorf("WriteSeed() error = %q; want a way forward naming lyx shed status for the run", err.Error())
+	}
+
+	// The way forward taken: driving the existing seed means re-writing it unchanged, which is idempotent.
+	if err := WriteSeed(l, "self", first); err != nil {
+		t.Errorf("WriteSeed() re-asserting the existing seed = %v; want nil", err)
+	}
+	if err := WriteSeed(l, "other-run", second); err != nil {
+		t.Errorf("WriteSeed() under a different run-id = %v; want nil", err)
+	}
 }
 
 func TestList(t *testing.T) {

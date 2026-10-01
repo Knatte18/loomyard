@@ -25,6 +25,10 @@ var _ shedengine.ShedProducer = (*batchifier)(nil)
 // Batchifier row and the Webster row -- so both word the fault identically; the error text follows.
 const batchifierReasonPrefix = "active batchifier did not resolve: "
 
+// batchifierWayForward closes that reason;
+// the fault sits in batcher.yaml, so the operator fixes it there.
+const batchifierWayForward = "; way forward: fix batcher.yaml's active: key, then re-step"
+
 // NewBatchifier returns a batchifier identified as name, gating batcher.Active(anchorPath). The
 // return type is shedengine.ShedProducer, the seam interface, so the internal/shedrecipe registry
 // can call this constructor from outside this package while batchifier itself stays unexported.
@@ -56,7 +60,7 @@ func (b *batchifier) Call(ctx context.Context) (shedengine.Outcome, shedengine.O
 		// and also logged. The conflation of unknown-name, malformed-YAML, and I/O failure into one
 		// bare error is exactly why the error text itself is the only thing that can tell them apart.
 		logger.Warn("loomshed: active batchifier did not resolve", "producer", b.name, "anchorPath", b.anchorPath, "cause", err)
-		return shedengine.Stuck, shedengine.OutputPointer{Reason: batchifierReasonPrefix + err.Error()}, nil
+		return shedengine.Stuck, shedengine.OutputPointer{Reason: batchifierReasonPrefix + err.Error() + batchifierWayForward}, nil
 	}
 
 	return shedengine.Done, shedengine.OutputPointer{}, nil

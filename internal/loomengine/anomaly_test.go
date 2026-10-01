@@ -195,6 +195,22 @@ func TestDetectAnomalies(t *testing.T) {
 			want:    []AnomalyKind{AnomalyBudgetExhausted},
 		},
 		{
+			name: "BlockedBudgetExhaustedWithWayForward",
+			entry: func() EntryObservation {
+				e := baseEntry()
+				e.State = shedengine.StateBlocked
+				return e
+			}(),
+			final: func() shedengine.Status {
+				f := baseFinal()
+				f.State = shedengine.StateBlocked
+				f.Error = shedengine.ReasonBounceBudgetExhausted + ` for Plan-Write; way forward: "lyx shed goto --to Plan-Write" gives row "Plan-Write" a fresh budget`
+				return f
+			}(),
+			product: baseProduct(),
+			want:    []AnomalyKind{AnomalyBudgetExhausted},
+		},
+		{
 			name: "BlockedProducerReason_Escalation",
 			entry: func() EntryObservation {
 				e := baseEntry()

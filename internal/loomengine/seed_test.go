@@ -138,6 +138,36 @@ func TestCheckSeed_ProductDoesNotDecodeAsLoomStatus(t *testing.T) {
 	}
 }
 
+// TestCheckSeed_OutOfVocabularyOutcomeNamesWayForward writes the status file a broken adapter leaves behind (Shed records its outcome verbatim), asserts the failure ends in the seed-a-new-run way forward, and takes it:
+// a fresh seed is coherent.
+func TestCheckSeed_OutOfVocabularyOutcomeNamesWayForward(t *testing.T) {
+	dir := t.TempDir()
+	statusPath := filepath.Join(dir, "status.json")
+	statusLockPath := filepath.Join(dir, "ephemeral", "status.json.lock")
+
+	shed := coherentFreshShed("Loom-Preflight", "Preflight")
+	shed.History[0].Outcome = "weird"
+	writeSeed(t, statusPath, statusLockPath, shed, coherentFreshProduct())
+
+	report, err := CheckSeed(statusPath, statusLockPath, "Loom-Preflight", []string{"Preflight", "Loom-Preflight"})
+	if err != nil {
+		t.Fatalf("CheckSeed(...) error = %v; want nil", err)
+	}
+	if report.OK || len(report.Failures) != 1 {
+		t.Fatalf("CheckSeed(...) = %+v; want one failure", report)
+	}
+	f := report.Failures[0]
+	if f.Check != CheckSeedIncoherent || !strings.HasSuffix(f.Reason, "way forward: seed a new run") {
+		t.Errorf("failure = %+v; want seed-incoherent ending in the seed-a-new-run way forward", f)
+	}
+
+	writeSeed(t, statusPath, statusLockPath, coherentFreshShed("Loom-Preflight", "Preflight"), coherentFreshProduct())
+	report, err = CheckSeed(statusPath, statusLockPath, "Loom-Preflight", []string{"Preflight", "Loom-Preflight"})
+	if err != nil || !report.OK {
+		t.Errorf("CheckSeed(fresh seed) = (%+v, %v); want OK", report, err)
+	}
+}
+
 func TestCheckSeed_CoherentPostRow1Seed(t *testing.T) {
 	dir := t.TempDir()
 	statusPath := filepath.Join(dir, "status.json")

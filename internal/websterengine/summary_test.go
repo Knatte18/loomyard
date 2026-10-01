@@ -203,6 +203,43 @@ func TestAppendIntegrationTriage_OnlyFlaky(t *testing.T) {
 	}
 }
 
+// TestAppendAuditWarnings_EmptyIsNoOp asserts an empty list leaves the file byte-identical.
+func TestAppendAuditWarnings_EmptyIsNoOp(t *testing.T) {
+	dir := t.TempDir()
+	writeSummaryFile(t, summaryparser.Path(dir), "# S\n")
+	if err := websterengine.AppendAuditWarnings(dir, nil); err != nil {
+		t.Fatalf("AppendAuditWarnings: %v", err)
+	}
+	if got := readSummaryFile(t, dir); got != "# S\n" {
+		t.Errorf("summary = %q, want untouched", got)
+	}
+}
+
+// TestAppendAuditWarnings_AppendsBulletsInOrder asserts the section follows the existing content with both bullets in order.
+func TestAppendAuditWarnings_AppendsBulletsInOrder(t *testing.T) {
+	dir := t.TempDir()
+	writeSummaryFile(t, summaryparser.Path(dir), "# S\n")
+	if err := websterengine.AppendAuditWarnings(dir, []string{"first", "second"}); err != nil {
+		t.Fatalf("AppendAuditWarnings: %v", err)
+	}
+	want := "# S\n\n\n## Audit warnings\n\nThese findings (fork-audit policy findings, and drift about a later card) were recorded as warnings and did not stop the run.\n\n- first\n- second\n"
+	if got := readSummaryFile(t, dir); got != want {
+		t.Errorf("summary = %q, want %q", got, want)
+	}
+}
+
+// TestAppendAuditWarnings_MissingFileErrors asserts a missing summary file yields an error naming its path.
+func TestAppendAuditWarnings_MissingFileErrors(t *testing.T) {
+	dir := t.TempDir()
+	err := websterengine.AppendAuditWarnings(dir, []string{"w"})
+	if err == nil {
+		t.Fatal("AppendAuditWarnings on missing file: want error, got nil")
+	}
+	if !strings.Contains(err.Error(), summaryparser.Path(dir)) {
+		t.Errorf("error %q does not name path %q", err, summaryparser.Path(dir))
+	}
+}
+
 // TestAppendIntegrationTriage_EmptyIsNoOp asserts empty lists leave the file untouched.
 func TestAppendIntegrationTriage_EmptyIsNoOp(t *testing.T) {
 	dir := t.TempDir()

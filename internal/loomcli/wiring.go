@@ -248,6 +248,9 @@ func (c *loomCLI) wireLightweight(location *lyxcwd.Location, cwd string) {
 		LockPath:       shedrun.RunLock(location, c.runID),
 		StatusLockPath: shedrun.StatusLock(location, c.runID),
 		CommitStatus:   newCommitStatusSeam(loomCommitStatusDeps(location, c.runID)),
+
+		RunID:                   c.runID,
+		MissingStatusWayForward: loomMissingStatusWayForward,
 	}
 	// c.env is otherwise left at its zero value deliberately: status/pause/approve read nothing from
 	// it, and filling only the fields the validate verbs actually read (rather than the whole of
@@ -572,6 +575,9 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// total -- the budget itself is per-producer and episode-scoped, counted from the
 		// persisted history rather than held in memory.
 		CommitStatus: newCommitStatusSeam(loomCommitStatusDeps(location, c.runID)),
+
+		RunID:                   c.runID,
+		MissingStatusWayForward: loomMissingStatusWayForward,
 	}
 
 	c.location = location
@@ -591,3 +597,6 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	c.driverPaneProbe = newReedDriverPaneProbe(reedEngine)
 	return nil
 }
+
+// loomMissingStatusWayForward is the told trailing clause for a missing status file: loom's own start verb is what bootstraps one.
+const loomMissingStatusWayForward = "way forward: run \"lyx loom start\" first to bootstrap this task"

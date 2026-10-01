@@ -23,6 +23,7 @@
 package websterengine
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -35,6 +36,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
+
+// ErrRecoveryNeedsFresh is the sentinel RecoverSpawnOrAttach's refusal of an uncheckable failed batch unwraps to.
+var ErrRecoveryNeedsFresh = errors.New("webster: recovery cannot check the batch's findings")
+
+// recoveryNeedsFreshError carries the refusal text verbatim and unwraps to ErrRecoveryNeedsFresh.
+type recoveryNeedsFreshError struct{ msg string }
+
+func (e *recoveryNeedsFreshError) Error() string { return e.msg }
+
+func (e *recoveryNeedsFreshError) Unwrap() error { return ErrRecoveryNeedsFresh }
 
 // Clock abstracts time.Now/time.Sleep so RecoverBatch's bounded wait runs instantly under test,
 // mirroring shuttleengine's wait.go seam and webster's own poll.go clock.
@@ -111,10 +122,11 @@ func archiveStaleReport(reportsDir string, number int, slug string, now func() t
 
 // refuseRecoveringDoneReport refuses to recover a batch whose report already
 // has status: OK (record-batch is the consuming verb), except when prior is
-// terminal dead (a late orphan report), or missing/unparseable.
+// terminal dead (a late orphan report), terminal failed (a still-running fork's late report,
+// or one left over after the failure), or missing/unparseable.
 func refuseRecoveringDoneReport(reportsDir string, number int, slug string, prior *BatchState) error {
-	// Dead-orphan exception: archive a late report the orphan wrote after dead classification.
-	if prior != nil && prior.Terminal && prior.Status == DigestStatusDead {
+	// Dead-orphan and failed exceptions: archive a late report written after the terminal classification.
+	if prior != nil && prior.Terminal && (prior.Status == DigestStatusDead || prior.Status == DigestStatusFailed) {
 		return nil
 	}
 
@@ -130,11 +142,29 @@ func refuseRecoveringDoneReport(reportsDir string, number int, slug string, prio
 	return nil
 }
 
+// failureDigestBlock renders a failed prior record's digest for the recovery prompt: the reasons, which failBatch already ends with the suspect paths.
+// It returns "" when prior is not a failed batch.
+func failureDigestBlock(prior *BatchState) string {
+	if prior == nil || prior.Status != DigestStatusFailed || prior.Digest == nil || len(prior.Digest.Reasons) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	for _, r := range prior.Digest.Reasons {
+		fmt.Fprintf(&b, "- %s\n", r)
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
 // recoverSpawn archives any stale report, stops a live prior strand, renders
 // the recovery prompt, and starts the recovery strand, returning a fresh BatchState.
 // clk stamps SpawnedAt so elapsed-since-spawn is measured against the same clock.
 func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prevDigest string, clk Clock) (*BatchState, error) {
 	number, slug := batchIdentity(batch)
+
+	cardHashes, err := batchCardHashes(batch, deps.Geom.PlanDir)
+	if err != nil {
+		return nil, fmt.Errorf("%w; way forward: transient, re-run `lyx webster recover-batch %d`", err, number)
+	}
 
 	if err := refuseRecoveringDoneReport(deps.Geom.ReportsDir, number, slug, prior); err != nil {
 		return nil, err
@@ -162,7 +192,7 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 	}
 
 	notePath := friction.NotePath(deps.FrictionDir, batchName+"-recovery")
-	prompt, err := RenderRecoveryPrompt(batch, prevDigest, reportPath, deps.Geom.AnchorRoot, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Geom.SpecsDir, deps.Config.SelfFixCap, notePath)
+	prompt, err := RenderRecoveryPrompt(batch, prevDigest, failureDigestBlock(prior), reportPath, deps.Geom.AnchorRoot, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Geom.SpecsDir, deps.Config.SelfFixCap, notePath)
 	if err != nil {
 		return nil, err
 	}
@@ -185,7 +215,7 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 
 	run, err := deps.Starter.Start(spec)
 	if err != nil {
-		return nil, fmt.Errorf("webster: start recovery strand for batch %s: %w", batchName, err)
+		return nil, fmt.Errorf("webster: start recovery strand for batch %s: %w; way forward: transient, re-run `lyx webster recover-batch %d`", batchName, err, number)
 	}
 
 	runState, runDir, err := shuttleengine.FindRun(deps.ShuttleCfg, deps.Geom.AnchorRoot, run.StrandGUID())
@@ -210,14 +240,31 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 		start = prior.StartSHA
 	}
 
+	// Recorded audit warnings carry over as well: their identities stay dispositioned in
+	// State.AuditDispositions (the once-per-identity rule), so no later call would record them again.
+	// The batch's fork transcripts carry over too, so the run-exit audit still knows which report each of those forks owns.
+	var priorWarnings []AuditWarning
+	var priorSuspects []SuspectPath
+	var priorTranscripts []string
+	if prior != nil {
+		priorWarnings = prior.AuditWarnings
+		priorSuspects = prior.SuspectPaths
+		priorTranscripts = prior.ForkTranscripts
+	}
+
 	return &BatchState{
-		Slug:          slug,
-		StartSHA:      start,
-		Kind:          "recovery",
-		SpawnedAt:     clk.Now().UTC().Format(time.RFC3339),
-		StrandGUID:    run.StrandGUID(),
-		ShuttleRunDir: runDir,
-		EventsPath:    runState.EventsPath,
+		Slug:            slug,
+		Cards:           batchCardIDs(batch),
+		CardHashes:      cardHashes,
+		StartSHA:        start,
+		AuditWarnings:   priorWarnings,
+		SuspectPaths:    priorSuspects,
+		ForkTranscripts: priorTranscripts,
+		Kind:            "recovery",
+		SpawnedAt:       clk.Now().UTC().Format(time.RFC3339),
+		StrandGUID:      run.StrandGUID(),
+		ShuttleRunDir:   runDir,
+		EventsPath:      runState.EventsPath,
 	}, nil
 }
 
@@ -248,6 +295,17 @@ func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *Bat
 	prior := deps.State.Batches[batchNumber]
 	if prior != nil && prior.Kind == "recovery" && !prior.Terminal && prior.StrandGUID != "" {
 		return prior, false, nil
+	}
+	if prior != nil && prior.Terminal && prior.Status == DigestStatusFailed && len(prior.Uncheckable) > 0 {
+		bases, err := runEvidenceBases(deps.Geom.WorktreeRoot, deps.State)
+		if err != nil {
+			return nil, false, err
+		}
+		reset := "reset the branch to the run's start commit with git"
+		if bases.Start != "" {
+			reset = fmt.Sprintf("reset the branch to the run's start commit %s with git", bases.Start)
+		}
+		return nil, false, &recoveryNeedsFreshError{msg: fmt.Sprintf("webster: batch %02d failed on findings recovery cannot check: %s; way forward: %s and run \"lyx webster run --fresh\"", batchNumber, strings.Join(prior.Uncheckable, ", "), reset)}
 	}
 
 	prevDigest := predecessorDigestLine(deps.Batches, deps.State, batchNumber)
@@ -288,8 +346,18 @@ func RecoverAwait(deps RecoverDeps, batchNumber int, bs *BatchState, wait time.D
 // recovered that way never bound its plan: handles, so every later card kept referencing an unbound
 // handle for the rest of the plan's life.
 //
-// A blocking finding leaves the batch NON-terminal and returns an ErrCardNotDone-wrapped error: the
-// recovery strand said done, but the tree says the card is not, and webster believes the tree.
+// Before that pass, every suspect path the failed batch recorded is checked at the report's head.
+// A plan file must match the plan as the run recorded it, a tracked path must not differ from the head,
+// and a tracked path must not still hold the flagged blob unless the start commit held it too.
+// A batch recording a finding the check cannot verify never reaches it: RecoverSpawnOrAttach refuses it with ErrRecoveryNeedsFresh.
+// A recovery that leaves any of them fails the batch again with the same suspect paths, so the next recover-batch checks them again.
+// Accepted residual: a strand whose re-derivation is byte-identical to the flagged content is failed again;
+// the operator's way forward is to revert the path and edit its card.
+//
+// A blocking finding fails the batch through failBatch: the recovery strand said done,
+// but the tree says the card is not, and webster believes the tree.
+// The report is archived, the record is terminal failed, and the *BatchFailedError is returned with the pass's warnings,
+// so the next recover-batch spawns a fresh strand instead of re-attaching to the finished one and failing the same checks forever.
 func PersistRecoveryTerminal(deps RecoverDeps, st *State, batchNumber int, digest *Digest) (warnings []string, err error) {
 	if st == nil {
 		return nil, fmt.Errorf("webster: recovery terminal persistence requires a loaded state; State is nil")
@@ -299,7 +367,7 @@ func PersistRecoveryTerminal(deps RecoverDeps, st *State, batchNumber int, diges
 	}
 	bs, ok := st.Batches[batchNumber]
 	if !ok || bs == nil {
-		return nil, fmt.Errorf("webster: no recorded state for batch %d at recovery terminal persistence — state.json changed underneath the recovery wait", batchNumber)
+		return nil, fmt.Errorf("webster: no recorded state for batch %d at recovery terminal persistence — state.json changed underneath the recovery wait; way forward: re-run `lyx webster recover-batch %d`", batchNumber, batchNumber)
 	}
 
 	batch, err := findBatch(deps.Batches, batchNumber)
@@ -319,9 +387,45 @@ func PersistRecoveryTerminal(deps RecoverDeps, st *State, batchNumber int, diges
 		}
 	}
 
+	suspectReasons, err := checkRecoveredSuspects(deps.Geom, st, bs, number, head)
+	if err != nil {
+		return nil, err
+	}
+	if len(suspectReasons) > 0 {
+		var paths []string
+		for _, sp := range bs.SuspectPaths {
+			paths = append(paths, sp.Path)
+		}
+		bfe, ferr := failBatch(failBatchInput{
+			State:        st,
+			Batch:        bs,
+			Number:       number,
+			Slug:         slug,
+			ReportsDir:   deps.Geom.ReportsDir,
+			WorktreeRoot: deps.Geom.WorktreeRoot,
+			HeadSHA:      head,
+			Reasons:      suspectReasons,
+			SuspectPaths: paths,
+			Now:          time.Now,
+		})
+		if ferr != nil {
+			return nil, ferr
+		}
+		return nil, bfe
+	}
+
+	// The pass below restamps the plan hashes, so a plan edited since the run recorded it or since this batch was begun is refused first.
+	if err := PlanEditError(st, deps.Geom.PlanDir); err != nil {
+		return nil, err
+	}
+	if err := batchCardEditError(st, bs, batch, deps.Geom.PlanDir); err != nil {
+		return nil, err
+	}
+
 	warnings, err = postBatchChecks(postBatchInputs{
 		Plan:      deps.Plan,
 		State:     st,
+		Batch:     bs,
 		Geom:      deps.Geom,
 		Cards:     batch.Cards,
 		Completed: completedCards(deps.Batches, st, batchNumber),
@@ -330,7 +434,24 @@ func PersistRecoveryTerminal(deps RecoverDeps, st *State, batchNumber int, diges
 		Label:     fmt.Sprintf("%02d-%s", number, slug),
 	})
 	if err != nil {
-		return warnings, err
+		if !errors.Is(err, ErrCardNotDone) {
+			return warnings, err
+		}
+		reasons := strings.Split(strings.TrimPrefix(err.Error(), ErrCardNotDone.Error()+": "), "; ")
+		bfe, ferr := failBatch(failBatchInput{
+			State:      st,
+			Batch:      bs,
+			Number:     number,
+			Slug:       slug,
+			ReportsDir: deps.Geom.ReportsDir,
+			HeadSHA:    head,
+			Reasons:    reasons,
+			Now:        time.Now,
+		})
+		if ferr != nil {
+			return warnings, ferr
+		}
+		return warnings, bfe
 	}
 
 	bs.Digest = digest

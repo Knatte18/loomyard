@@ -64,7 +64,7 @@ func TestStep_ExemptStuckInterleavedWithinBudget(t *testing.T) {
 	if err != nil {
 		t.Fatalf("final Step = _, %v; want nil", err)
 	}
-	if res.State != StateBlocked || res.Reason != ReasonBounceBudgetExhausted {
+	if res.State != StateBlocked || !strings.HasPrefix(res.Reason, ReasonBounceBudgetExhausted) {
 		t.Errorf("final Step State/Reason = %q/%q; want blocked/%q", res.State, res.Reason, ReasonBounceBudgetExhausted)
 	}
 	got := readStatus(t, statusPath, statusLockPath)
@@ -91,7 +91,7 @@ func TestStep_ExemptStuckAfterBudgetFullySpent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Step 3 = _, %v; want nil", err)
 	}
-	if res.State != StateBlocked || res.Reason != ReasonBounceBudgetExhausted {
+	if res.State != StateBlocked || !strings.HasPrefix(res.Reason, ReasonBounceBudgetExhausted) {
 		t.Errorf("Step 3 State/Reason = %q/%q; want blocked/%q", res.State, res.Reason, ReasonBounceBudgetExhausted)
 	}
 }
@@ -122,7 +122,7 @@ func TestHistoryEntry_MissingBudgetExemptDecodesAndCounts(t *testing.T) {
 	if e.BudgetExempt {
 		t.Errorf("BudgetExempt = true; want false when the field is absent")
 	}
-	if got := episodeStuckCount([]HistoryEntry{e}, "Wait"); got != 1 {
+	if got := episodeStuckCount([]HistoryEntry{e}, ProducerDef{Name: "Wait"}, nil); got != 1 {
 		t.Errorf("episodeStuckCount = %d; want 1", got)
 	}
 	b, err := json.Marshal(e)
@@ -193,11 +193,11 @@ func TestEpisodeStuckCount_SegmentDoneEndsEpisode(t *testing.T) {
 		{Name: "Burler", Segment: "Review"},
 		{Name: "Gate"},
 	}
-	if got := episodeStuckCount(history, "Burler", segmentEnders(producers, producers[1])...); got != 1 {
+	if got := episodeStuckCount(history, producers[1], producers); got != 1 {
 		t.Errorf("Burler episode = %d; want 1, the round before the Bouncer passed not counted", got)
 	}
-	if got := episodeStuckCount(history, "Burler"); got != 2 {
-		t.Errorf("Burler with no enders = %d; want 2", got)
+	if got := episodeStuckCount(history, ProducerDef{Name: "Burler"}, producers); got != 2 {
+		t.Errorf("standalone Burler episode = %d; want 2", got)
 	}
 	if got := segmentEnders(producers, producers[2]); got != nil {
 		t.Errorf("segmentEnders(standalone) = %v; want nil", got)

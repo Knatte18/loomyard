@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -156,8 +157,8 @@ func TestStep_StuckAtBudgetBoundary(t *testing.T) {
 		t.Errorf("fourth Step State = %q; want %q", res.State, StateBlocked)
 	}
 	const wantReason = ReasonBounceBudgetExhausted
-	if res.Reason != wantReason {
-		t.Errorf("fourth Step Reason = %q; want %q", res.Reason, wantReason)
+	if !strings.HasPrefix(res.Reason, wantReason) {
+		t.Errorf("fourth Step Reason = %q; want prefix %q", res.Reason, wantReason)
 	}
 	if a.calls != 4 {
 		t.Errorf("a.calls = %d; want 4", a.calls)
@@ -365,11 +366,47 @@ func TestStep_ErrShedBusy(t *testing.T) {
 	if !locked {
 		t.Fatalf("TryAcquireWriteLock(...) locked = false; want true")
 	}
-	defer held.Release()
 
 	_, err = shed.Step(context.Background())
 	if !errors.Is(err, ErrShedBusy) {
-		t.Errorf("Step(...) error = %v; want errors.Is(err, ErrShedBusy)", err)
+		t.Fatalf("Step(...) error = %v; want errors.Is(err, ErrShedBusy)", err)
+	}
+	if !strings.Contains(err.Error(), "way forward:") || !strings.Contains(err.Error(), "lyx shed pause") || !strings.Contains(err.Error(), "lyx shed status") {
+		t.Errorf("Step(...) error = %q; want a way forward naming lyx shed pause and lyx shed status", err.Error())
+	}
+	if _, err := shed.Run(context.Background()); !errors.Is(err, ErrShedBusy) || !strings.Contains(err.Error(), "way forward: \"lyx shed pause\"") {
+		t.Errorf("Run(...) error = %v; want ErrShedBusy carrying the same way forward", err)
+	}
+	shed.RunID = "some-slug"
+	if _, err := shed.Step(context.Background()); err == nil || !strings.Contains(err.Error(), `"lyx shed pause some-slug"`) || !strings.Contains(err.Error(), `"lyx shed status some-slug"`) {
+		t.Errorf("Step(...) on a Shed told RunID error = %v; want the pause and status verbs addressing some-slug", err)
+	}
+	shed.RunID = ""
+
+	// The way forward taken: the holder releases, and the refused call succeeds.
+	statusPath := shed.StatusPath
+	held.Release()
+	seedStatus(t, statusPath, shed.StatusLockPath, commonSeed("A"))
+	if _, err := shed.Step(context.Background()); err != nil {
+		t.Errorf("Step(...) after the lock was released = %v; want nil", err)
+	}
+}
+
+func TestStep_MissingStatusFileNamesSeeding(t *testing.T) {
+	shed, statusPath, _, statusLockPath := newTestShed(t)
+	shed.Producers = []ProducerDef{{Name: "A", Producer: fixedOutcomeProducer(Done, "")}}
+
+	_, err := shed.Step(context.Background())
+	if err == nil {
+		t.Fatal("Step(...) with no status file = nil; want a refusal")
+	}
+	if !strings.Contains(err.Error(), "way forward:") || !strings.Contains(err.Error(), "lyx shed seed") {
+		t.Errorf("Step(...) error = %q; want a way forward naming the bootstrap verb and lyx shed seed", err.Error())
+	}
+
+	seedStatus(t, statusPath, statusLockPath, commonSeed("A"))
+	if _, err := shed.Step(context.Background()); err != nil {
+		t.Errorf("Step(...) after seeding = %v; want nil", err)
 	}
 }
 
@@ -489,10 +526,52 @@ func TestStep_BudgetArmIgnoresProducerReason(t *testing.T) {
 			t.Fatalf("Step %d = _, %v; want nil error", i, err)
 		}
 	}
-	if res.State != StateBlocked || res.Reason != ReasonBounceBudgetExhausted {
-		t.Errorf("State, Reason = %q, %q; want blocked, %q", res.State, res.Reason, ReasonBounceBudgetExhausted)
+	if res.State != StateBlocked || !strings.HasPrefix(res.Reason, ReasonBounceBudgetExhausted) {
+		t.Errorf("State, Reason = %q, %q; want blocked, prefix %q", res.State, res.Reason, ReasonBounceBudgetExhausted)
 	}
-	if got := readStatus(t, statusPath, statusLockPath); got.Error != ReasonBounceBudgetExhausted {
-		t.Errorf("persisted Error = %q; want %q", got.Error, ReasonBounceBudgetExhausted)
+	if got := readStatus(t, statusPath, statusLockPath); !strings.HasPrefix(got.Error, ReasonBounceBudgetExhausted) {
+		t.Errorf("persisted Error = %q; want prefix %q", got.Error, ReasonBounceBudgetExhausted)
+	}
+}
+
+// TestStep_ToldRunIDNamesGotoWithRunID pins that an exhausted budget and a missing producer address the told run-id in their goto way forward.
+func TestStep_ToldRunIDNamesGotoWithRunID(t *testing.T) {
+	const want = "lyx shed goto some-slug --to"
+
+	shed, statusPath, statusLockPath := scriptedStuckShed(t, 1, []bool{false})
+	shed.RunID = "some-slug"
+	if _, err := shed.Step(context.Background()); err != nil {
+		t.Fatalf("first Step = _, %v; want nil", err)
+	}
+	if _, err := shed.Step(context.Background()); err != nil {
+		t.Fatalf("second Step = _, %v; want nil", err)
+	}
+	if got := readStatus(t, statusPath, statusLockPath); !strings.Contains(got.Error, want) {
+		t.Errorf("exhausted-budget reason = %q; want it to contain %q", got.Error, want)
+	}
+
+	shed, _, _ = gotoShed(t)
+	shed.RunID = "some-slug"
+	seed := commonSeed("Renamed")
+	seed.State = StateBlocked
+	seedStatus(t, shed.StatusPath, shed.StatusLockPath, seed)
+	_, err := shed.Step(context.Background())
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Errorf("missing-producer error = %v; want it to contain %q", err, want)
+	}
+}
+
+// TestStep_ToldMissingStatusWayForward pins that a told clause replaces the generic seed advice.
+func TestStep_ToldMissingStatusWayForward(t *testing.T) {
+	shed, _, _, _ := newTestShed(t)
+	shed.Producers = []ProducerDef{{Name: "A", Producer: fixedOutcomeProducer(Done, "")}}
+	shed.MissingStatusWayForward = "way forward: told clause"
+
+	_, err := shed.Step(context.Background())
+	if err == nil {
+		t.Fatal("Step(...) with no status file = nil; want a refusal")
+	}
+	if !strings.Contains(err.Error(), "way forward: told clause") || strings.Contains(err.Error(), "lyx shed seed") {
+		t.Errorf("Step(...) error = %q; want the told clause and not lyx shed seed", err.Error())
 	}
 }

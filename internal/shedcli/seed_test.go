@@ -143,6 +143,12 @@ func TestWriteSeed_LLMDriverGatedOnBootstrapVerbCapability(t *testing.T) {
 		if !strings.Contains(err.Error(), "no bootstrap verb") {
 			t.Errorf("writeSeed(driver=llm) error = %q; want it to name the missing bootstrap verb", err.Error())
 		}
+		if !strings.Contains(err.Error(), "way forward:") || !strings.Contains(err.Error(), "--driver go") {
+			t.Errorf("writeSeed(driver=llm) error = %q; want a way forward naming --driver go", err.Error())
+		}
+		if _, err := writeSeed(loc, "some-slug", shedrun.RecipeBatten, shedrun.DriverGo, nil); err != nil {
+			t.Errorf("writeSeed(driver=go) after the refusal = %v; want nil", err)
+		}
 	})
 
 	t.Run("NonEmptyBootstrapVerbAccepts", func(t *testing.T) {
@@ -263,6 +269,9 @@ func TestWriteSeed_RefusesFabricsOwnCheckouts(t *testing.T) {
 			_, err := writeSeed(loc, "a-run", shedrun.RecipeLoom, "", nil)
 			if err == nil {
 				t.Fatalf("writeSeed(%q) error = nil; want a refusal", tt.worktreeName)
+			}
+			if !strings.Contains(err.Error(), "way forward:") || !strings.Contains(err.Error(), "lyx shed seed") {
+				t.Errorf("writeSeed(%q) error = %q; want a way forward naming lyx shed seed", tt.worktreeName, err.Error())
 			}
 			if _, found, readErr := shedrun.ReadSeed(loc, "a-run"); readErr != nil || found {
 				t.Errorf("ReadSeed after a refused writeSeed = found %v, err %v; want no seed written", found, readErr)

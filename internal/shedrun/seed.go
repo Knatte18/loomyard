@@ -178,7 +178,7 @@ func WriteSeed(l *lyxcwd.Location, runID string, seed Seed) error {
 		if existingSeed.Recipe == seed.Recipe && existingSeed.Driver == seed.Driver && paramsEqual(existingSeed.Params, seed.Params) {
 			return nil
 		}
-		return fmt.Errorf("%w: run %q is already seeded with %+v; refusing to overwrite with %+v", ErrDisagreeingSeed, runID, existingSeed, seed)
+		return fmt.Errorf("%w: run %q is already seeded with %+v; refusing to overwrite with %+v; way forward: keep the existing seed and drive it (\"lyx shed status %s\" shows it), or address a different run-id", ErrDisagreeingSeed, runID, existingSeed, seed, runID)
 	}
 
 	if err := os.WriteFile(path, encoded, 0o644); err != nil {

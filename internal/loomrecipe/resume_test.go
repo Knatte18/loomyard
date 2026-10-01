@@ -348,8 +348,8 @@ func TestBounceRouting_BudgetExhaustionBlocks(t *testing.T) {
 	if result.HaltedProducer != loomshed.NameDiscussionBouncer {
 		t.Errorf("Run() HaltedProducer = %q; want %q", result.HaltedProducer, loomshed.NameDiscussionBouncer)
 	}
-	if result.Reason != shedengine.ReasonBounceBudgetExhausted {
-		t.Errorf("Run() Reason = %q; want %q", result.Reason, shedengine.ReasonBounceBudgetExhausted)
+	if !strings.HasPrefix(result.Reason, shedengine.ReasonBounceBudgetExhausted) {
+		t.Errorf("Run() Reason = %q; want prefix %q", result.Reason, shedengine.ReasonBounceBudgetExhausted)
 	}
 
 	// The blocking Stuck entry is itself appended to history before the inner switch decides

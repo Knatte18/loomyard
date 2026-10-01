@@ -322,7 +322,7 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 		driverLogPath := loomengine.LoomDriverLog(c.location)
 		if dispositionForHandshake(result) == handshakeRefuse {
 			_ = bootstrapLock.Release()
-			clihelp.SetExit(ctx, output.Err(out, "loom: driver did not take the run lock; see "+driverLogPath))
+			clihelp.SetExit(ctx, output.Err(out, "loom: driver did not take the run lock; see "+driverLogPath+" for why the driver exited; way forward: lyx loom start"))
 			return false
 		}
 		if result == awaitRunLockChildDied {

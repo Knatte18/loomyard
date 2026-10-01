@@ -143,3 +143,23 @@ producers:
 		t.Errorf("Transient(plain error) = %q; want empty", got)
 	}
 }
+
+// TestNewShed_CopiesRunIDAndMissingStatusWayForward asserts the two told way-forward values reach the Shed.
+func TestNewShed_CopiesRunIDAndMissingStatusWayForward(t *testing.T) {
+	const recipeYAML = `
+version: 1
+entry: row1
+terminals: [row1]
+producers:
+  - name: row1
+    engine: Stub
+`
+	paths := ShedPaths{RunID: "some-slug", MissingStatusWayForward: "way forward: told clause"}
+	shed, err := NewShed([]byte(recipeYAML), newTestEnv(t), paths)
+	if err != nil {
+		t.Fatalf("NewShed() = _, %v; want nil", err)
+	}
+	if shed.RunID != "some-slug" || shed.MissingStatusWayForward != "way forward: told clause" {
+		t.Errorf("shed.RunID, MissingStatusWayForward = %q, %q; want the told values", shed.RunID, shed.MissingStatusWayForward)
+	}
+}

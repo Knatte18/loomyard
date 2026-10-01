@@ -89,6 +89,19 @@ Example:
   lyx shed pause
   lyx shed pause some-slug`,
 	},
+	Goto: shedverbs.VerbText{
+		Use:   "goto [<run-id>] --to <producer>",
+		Short: "move a halted run onto a named row, paused, with a fresh segment budget",
+		Long: `goto arms the recipe named by the addressed run's own seed and moves a halted
+run onto the row named by --to, leaving it paused. It records a "goto" history
+entry that resets that row's segment bounce budget. It refuses while a driver
+holds the run lock and on a done run, and never re-opens a finished run. The
+run-id positional defaults to "self" when omitted. goto moves a halted run only back, to a row at or before its current row (strictly before when the run is awaiting), and refuses a running run.
+
+Example:
+  lyx shed goto --to Plan-Write
+  lyx shed goto some-slug --to Plan-Write`,
+	},
 }
 
 // Command returns the cobra command tree for the shed subtree.
@@ -97,10 +110,10 @@ func Command() *cobra.Command {
 
 	parent := &cobra.Command{
 		Use:   "shed",
-		Short: "drive an addressed run's generic run/step/status/pause verbs",
-		Long: `shed drives an addressed run's phase machine through the same four generic
+		Short: "drive an addressed run's generic run/step/status/pause/goto verbs",
+		Long: `shed drives an addressed run's phase machine through the same five generic
 verbs internal/shedverbs builds for every module: "run", "step", "status",
-and "pause". Each verb takes an optional run-id positional (defaulting to
+"pause" and "goto". Each verb takes an optional run-id positional (defaulting to
 "self") naming the run to address; the run's own seed.json, written by "lyx
 shed seed", names the recipe that arms the invocation. Not every recipe
 supports every verb, and an unsupported verb/recipe pair is refused before
@@ -110,7 +123,8 @@ Example:
   lyx shed run
   lyx shed run some-slug
   lyx shed status
-  lyx shed pause`,
+  lyx shed pause
+  lyx shed goto --to Plan-Write`,
 		// RunE is set so that bare "lyx shed" lists subcommands and "lyx shed bogus" emits a JSON
 		// error envelope instead of falling through to cobra's plain-text help.
 		RunE:              clihelp.GroupRunE,
@@ -118,7 +132,7 @@ Example:
 	}
 
 	verbs := shedverbs.Verbs(shedVerbTexts, c.spec)
-	runVerb, stepVerb, statusVerb, pauseVerb := verbs[0], verbs[1], verbs[2], verbs[3]
+	runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb := verbs[0], verbs[1], verbs[2], verbs[3], verbs[4]
 
 	// MaximumNArgs(1), not a per-recipe contract read off the table: an addressed run is named by
 	// run-id, not by a per-recipe argument shape, so there is nothing left for a per-recipe
@@ -127,8 +141,9 @@ Example:
 	stepVerb.Args = cobra.MaximumNArgs(1)
 	statusVerb.Args = cobra.MaximumNArgs(1)
 	pauseVerb.Args = cobra.MaximumNArgs(1)
+	gotoVerb.Args = cobra.MaximumNArgs(1)
 
-	parent.AddCommand(runVerb, stepVerb, statusVerb, pauseVerb, newSeedCommand())
+	parent.AddCommand(runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb, newSeedCommand())
 
 	return parent
 }

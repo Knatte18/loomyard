@@ -41,6 +41,41 @@ var ErrPaused = errors.New("webster: paused")
 // sentinel identity (webster-owns-its-own-domain-types).
 var ErrFingerprintMismatch = errors.New("webster: on-disk plan fingerprint does not match this run's recorded state")
 
+// planOverviewFile is the plan's overview file, which carries the integration verify and is never rebaselined.
+const planOverviewFile = "00-overview.md"
+
+// fingerprintMismatchWayForward is the trailing clause BeginBatch and Run put on an ErrFingerprintMismatch wrap.
+// It reads the changed plan files so the clause names the cards to pass to rebaseline;
+// a state without PlanFileHashes names rebaseline without card numbers, and a changedPlanFiles error falls back to the generic text.
+func fingerprintMismatchWayForward(st *State, planDir string) string {
+	const fresh = "reset the branch to the run's start commit and run `lyx webster run --fresh`"
+	const restore = `or restore the plan the run recorded with "lyx webster restore-plan", `
+	if len(st.PlanFileHashes) == 0 {
+		return "way forward: if the edit keeps every begun batch's cards, run `lyx webster rebaseline` to accept it, " + restore + "otherwise " + fresh
+	}
+	changed, err := changedPlanFiles(st, planDir)
+	if err != nil {
+		return "way forward: if the edit keeps every begun batch's cards, run `lyx webster rebaseline --card NN` naming each card you edited, " + restore + "otherwise " + fresh
+	}
+	var flags []string
+	for _, name := range changed {
+		if name == planOverviewFile {
+			return "way forward: " + planOverviewFile + " changed and is never rebaselined; restore it with \"lyx webster restore-plan\", or " + fresh
+		}
+		flags = append(flags, "--card "+cardNumberOf(name))
+	}
+	if len(flags) == 0 {
+		return "way forward: run `lyx webster rebaseline --card NN` naming each card you edited, " + restore + "otherwise " + fresh
+	}
+	return "way forward: run `lyx webster rebaseline " + strings.Join(flags, " ") + "` to accept the edit, " + restore + "otherwise " + fresh
+}
+
+// cardNumberOf returns the digits before the first "-" of a card file name, or the whole name when it has none.
+func cardNumberOf(name string) string {
+	num, _, _ := strings.Cut(name, "-")
+	return num
+}
+
 // ErrPlanDrifted is the sentinel BeginBatch returns when the dispatch-boundary re-resolution
 // (planglyph.ValidateDispatch, called against deps.Geom.WorktreeRoot with the completed cards
 // excluded) reports a non-empty blocking
@@ -168,7 +203,7 @@ func findBatch(batches []batcher.Batch, number int) (batcher.Batch, error) {
 			return b, nil
 		}
 	}
-	return batcher.Batch{}, fmt.Errorf("webster: batch %d not found in the plan's execution batches", number)
+	return batcher.Batch{}, fmt.Errorf("webster: batch %d not found in the plan's execution batches; way forward: `lyx webster status` lists the run's batches, name one of those", number)
 }
 
 // digestSummaryLine renders d into the one-line summary RenderForkPrompt's prevDigest parameter expects.
@@ -242,12 +277,8 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 		return nil, ErrPaused
 	}
 
-	fp, err := fingerprint(deps.Plan.Dir)
-	if err != nil {
+	if err := PlanEditError(deps.State, deps.Plan.Dir); err != nil {
 		return nil, err
-	}
-	if deps.State.PlanFingerprint != fp {
-		return nil, fmt.Errorf("%w: on-disk plan fingerprint %s does not match this run's recorded fingerprint %s; the plan changed since state.json was created — re-run `lyx webster run --fresh` to archive the stale state and reports and start over", ErrFingerprintMismatch, fp, deps.State.PlanFingerprint)
 	}
 
 	// Re-resolve the plan against the current tree before a pack is built, never from a cache.
@@ -269,7 +300,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	// pre-rewrite fingerprint while the plan on disk carries this run's own sanctioned edit, and every
 	// later begin-batch refuses it as a foreign one. See this package's doc.go.
 	// A restamp failure never masks resolveErr: the caller is already returning for that reason.
-	if err := restampFingerprint(deps.State, deps.Plan.Dir); err != nil && resolveErr == nil {
+	if err := restampFingerprint(deps.State, deps.Plan.Dir, deps.Geom.WebsterDir); err != nil && resolveErr == nil {
 		return nil, err
 	}
 	if resolveErr != nil {
@@ -285,7 +316,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 		}
 	}
 	if len(blocking) > 0 {
-		return nil, fmt.Errorf("%w: %s", ErrPlanDrifted, strings.Join(blocking, "; "))
+		return nil, fmt.Errorf("%w: %s; way forward: edit the plan so the named cards match the tree, run \"lyx webster rebaseline --card NN\" naming each card you edited, then begin-batch %02d again", ErrPlanDrifted, strings.Join(blocking, "; "), batchNumber)
 	}
 
 	batch, err := findBatch(deps.Batches, batchNumber)
@@ -293,6 +324,11 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 		return nil, err
 	}
 	number, slug := batchIdentity(batch)
+
+	cardHashes, err := batchCardHashes(batch, deps.Plan.Dir)
+	if err != nil {
+		return nil, fmt.Errorf("%w; way forward: transient, re-run `lyx webster begin-batch %d`", err, batchNumber)
+	}
 
 	// The fork writes its report here with whatever tool it likes — a plain
 	// shell redirect included, which unlike an agent Write tool never creates
@@ -390,7 +426,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	// in-memory recording remains below) or neither does.
 	if deps.State.AssertedModel != targetModel {
 		if err := deps.Injector.Inject(deps.State.MasterStrand, deps.Engine.ModelSwitchSequence(targetModel)); err != nil {
-			return nil, fmt.Errorf("webster: inject model switch for batch %d: %w", batchNumber, err)
+			return nil, fmt.Errorf("webster: inject model switch for batch %d: %w; way forward: transient, re-run `lyx webster begin-batch %d`", batchNumber, err, batchNumber)
 		}
 		deps.State.AssertedModel = targetModel
 	}
@@ -398,15 +434,28 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	// A re-begin keeps the StartSHA the batch was first recorded with: the captured head may already sit past commits an earlier fork landed,
 	// and the recorded start must name the base of the whole bracket (recover-batch applies the same inheritance to a recovery record).
 	startSHA := head
-	if prior := deps.State.Batches[number]; prior != nil && prior.StartSHA != "" {
+	prior := deps.State.Batches[number]
+	if prior != nil && prior.StartSHA != "" {
 		startSHA = prior.StartSHA
+	}
+	// Recorded warnings carry over too: their identities stay dispositioned, so no later call would record them again.
+	// So do the fork transcripts already attributed to the batch, so the run-exit audit still knows which report each of those forks owns.
+	var priorWarnings []AuditWarning
+	var priorTranscripts []string
+	if prior != nil {
+		priorWarnings = prior.AuditWarnings
+		priorTranscripts = prior.ForkTranscripts
 	}
 
 	deps.State.Batches[number] = &BatchState{
-		Slug:      slug,
-		StartSHA:  startSHA,
-		Kind:      "fork",
-		SpawnedAt: time.Now().UTC().Format(time.RFC3339),
+		Slug:            slug,
+		Cards:           batchCardIDs(batch),
+		CardHashes:      cardHashes,
+		StartSHA:        startSHA,
+		Kind:            "fork",
+		AuditWarnings:   priorWarnings,
+		ForkTranscripts: priorTranscripts,
+		SpawnedAt:       time.Now().UTC().Format(time.RFC3339),
 		// Stamp the opening Master session so the run-exit audit cross-check
 		// can scope its begun-batch count to the session whose forks the
 		// whole-session audit actually covers.

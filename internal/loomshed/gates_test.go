@@ -14,6 +14,7 @@
 package loomshed
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -25,7 +26,81 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/websterengine"
 )
+
+// TestGateRows_StopsNameAWayForward pins the trailing way-forward clause on the gate rows' stops and takes each one:
+// the commit-seam failures and the batchifier fault are transient or operator-fixable, so the same row proceeds once the named fix is made.
+func TestGateRows_StopsNameAWayForward(t *testing.T) {
+	commitFault := errors.New("index.lock exists")
+	for _, tt := range []struct {
+		name string
+		make func(commit func() error) shedengine.ShedProducer
+	}{
+		{"DiscussionWrite", func(c func() error) shedengine.ShedProducer {
+			return NewDiscussionWrite("Discussion-Write", &fakeInnerProducer{outcome: shedengine.Done, pointer: shedengine.OutputPointer{Path: "decision-record.md"}}, c)
+		}},
+		{"PlanWrite", func(c func() error) shedengine.ShedProducer {
+			return NewPlanWrite("Plan-Write", &fakeInnerProducer{outcome: shedengine.Done, pointer: shedengine.OutputPointer{Path: "plan"}}, c)
+		}},
+		{"Webster", func(c func() error) shedengine.ShedProducer {
+			fake := &fakeWebsterRun{}
+			anchorPath := t.TempDir()
+			writeBatcherConfig(t, anchorPath, `active: "identity"`+"\n")
+			return NewWebsterProducer("Webster", anchorPath, fake.run, websterengine.RunDeps{}, c)
+		}},
+	} {
+		t.Run("CommitSeam"+tt.name, func(t *testing.T) {
+			fail := true
+			p := tt.make(func() error {
+				if fail {
+					return commitFault
+				}
+				return nil
+			})
+			_, _, err := p.Call(context.Background())
+			if err == nil || !strings.Contains(err.Error(), "way forward: ") || !strings.Contains(err.Error(), "re-step") {
+				t.Fatalf("Call() error = %v; want a trailing way forward naming a re-step", err)
+			}
+			fail = false
+			outcome, _, err := p.Call(context.Background())
+			if err != nil || outcome != shedengine.Done {
+				t.Errorf("re-step Call() = (%q, %v); want Done after the fault cleared", outcome, err)
+			}
+		})
+	}
+
+	for _, tt := range []struct {
+		name string
+		make func(anchorPath string) shedengine.ShedProducer
+	}{
+		{"Batchifier", func(a string) shedengine.ShedProducer { return NewBatchifier("Batchifier", a) }},
+		{"Webster", func(a string) shedengine.ShedProducer {
+			return NewWebsterProducer("Webster", a, (&fakeWebsterRun{}).run, websterengine.RunDeps{}, func() error { return nil })
+		}},
+	} {
+		t.Run("BrokenBatcherConfig"+tt.name, func(t *testing.T) {
+			anchorPath := t.TempDir()
+			writeBatcherConfig(t, anchorPath, `active: "no-such-batcher"`+"\n")
+			p := tt.make(anchorPath)
+
+			outcome, pointer, err := p.Call(context.Background())
+			if err != nil || outcome != shedengine.Stuck {
+				t.Fatalf("Call() = (%q, %v); want Stuck with no error", outcome, err)
+			}
+			if !strings.Contains(pointer.Reason, "way forward: fix batcher.yaml's active: key") {
+				t.Errorf("Reason = %q; want the batcher.yaml way forward", pointer.Reason)
+			}
+
+			writeBatcherConfig(t, anchorPath, `active: "identity"`+"\n")
+			outcome, _, err = p.Call(context.Background())
+			if err != nil || outcome != shedengine.Done {
+				t.Errorf("re-step Call() = (%q, %v); want Done after fixing active:", outcome, err)
+			}
+		})
+	}
+}
 
 func TestNewDiscussionGate(t *testing.T) {
 	t.Run("Pass", func(t *testing.T) {

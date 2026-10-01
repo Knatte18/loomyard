@@ -17,6 +17,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
+	"sort"
 	"strings"
 	"time"
 
@@ -165,6 +167,7 @@ type RunDeps struct {
 // Fresh requests the fingerprint-mismatch escape: archive the stale state.json and reports dir,
 // clear the re-renderable prompts dir, and re-init, rather than refusing with
 // ErrFingerprintMismatch.
+// It also discards pending audit findings, on an unchanged plan too, once their suspect paths match the run's start commit.
 type RunOptions struct {
 	Fresh bool
 }
@@ -235,8 +238,15 @@ type MasterAskingError struct {
 }
 
 func (e *MasterAskingError) Error() string {
-	return fmt.Sprintf("webster: master asked a question instead of finishing (session %s, kept run dir %s): %s", e.SessionID, e.RunDir, e.Message)
+	return fmt.Sprintf("webster: master asked a question instead of finishing (session %s, kept run dir %s): %s%s", e.SessionID, e.RunDir, e.Message, masterRerunWayForward)
 }
+
+// runExitWayForward is the trailing way-forward clause every run-exit refusal carries:
+// state.json keeps every terminal batch, so a fresh Master resumes and re-drives each batch without a done record.
+const runExitWayForward = "; way forward: re-run `lyx webster run`; a fresh Master resumes from state.json and re-drives every batch without a done record"
+
+// masterRerunWayForward is the trailing way-forward clause of the Master-ended-early errors.
+const masterRerunWayForward = "; way forward: re-run `lyx webster run` (re-step the Webster row); a fresh Master resumes from state.json"
 
 // Unwrap lets a caller match this error via errors.Is(err, ErrMasterAsking).
 func (e *MasterAskingError) Unwrap() error { return ErrMasterAsking }
@@ -252,7 +262,7 @@ type MasterDiedError struct {
 }
 
 func (e *MasterDiedError) Error() string {
-	return fmt.Sprintf("webster: master pane died (session %s, kept run dir %s)", e.SessionID, e.RunDir)
+	return fmt.Sprintf("webster: master pane died (session %s, kept run dir %s)%s", e.SessionID, e.RunDir, masterRerunWayForward)
 }
 
 // Unwrap lets a caller match this error via errors.Is(err, ErrMasterDied).
@@ -270,7 +280,7 @@ type MasterTimeoutError struct {
 }
 
 func (e *MasterTimeoutError) Error() string {
-	return fmt.Sprintf("webster: master run timed out (session %s, kept run dir %s)", e.SessionID, e.RunDir)
+	return fmt.Sprintf("webster: master run timed out (session %s, kept run dir %s)%s", e.SessionID, e.RunDir, masterRerunWayForward)
 }
 
 // Unwrap lets a caller match this error via errors.Is(err, ErrMasterTimeout).
@@ -350,6 +360,9 @@ func countBegunForkBatches(st *State, sessionID string) int {
 // Master spawn to outcome.
 // ErrRunBusy and ErrFingerprintMismatch are exported sentinels;
 // non-done shuttle outcomes return *Master*Error types.
+// A done outcome passes through the run-exit audit: policy findings nobody dispositioned become run-level warnings on RunResult.Warnings,
+// and an undispositioned correctness finding demotes the outcome to stuck, the same way a regression in the integration stage does.
+// Once the integration stage has run, every recorded audit warning is appended to summary.md's "Audit warnings" section when that file exists.
 func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	if err := os.MkdirAll(deps.Geom.WebsterDir, 0o755); err != nil {
 		return RunResult{}, fmt.Errorf("webster: create webster dir %s: %w", deps.Geom.WebsterDir, err)
@@ -363,7 +376,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		return RunResult{}, fmt.Errorf("webster: acquire run lock in %s: %w", deps.Geom.ScratchDir, err)
 	}
 	if !locked {
-		return RunResult{}, fmt.Errorf("%w: %q (run.lock held); wait for it to finish, or check `lyx webster status`", ErrRunBusy, deps.Geom.ScratchDir)
+		return RunResult{}, fmt.Errorf("%w: %q (run.lock held); way forward: wait for it to finish, or check `lyx webster status`", ErrRunBusy, deps.Geom.ScratchDir)
 	}
 	defer runLock.Release()
 
@@ -376,7 +389,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	// state phase has settled, because its resolve-backed half must be scoped by the completed
 	// cards only state.json knows about (see the ValidateDispatch call below).
 	if !plan.Approved {
-		return RunResult{}, fmt.Errorf("webster: plan %s is not approved (frontmatter approved: is not true); webster never runs an unapproved plan", deps.Geom.PlanDir)
+		return RunResult{}, fmt.Errorf("webster: plan %s is not approved (frontmatter approved: is not true); webster never runs an unapproved plan; way forward: approve the plan through its review, then re-run `lyx webster run`", deps.Geom.PlanDir)
 	}
 
 	if deps.Batcher == nil {
@@ -391,7 +404,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	// SequenceBatches below is length-preserving and can neither create nor
 	// remove this condition.
 	if len(batches) == 0 {
-		return RunResult{}, fmt.Errorf("webster: plan %s produced zero execution batches; nothing to build is a malformed plan, never a vacuous outcome: done", deps.Geom.PlanDir)
+		return RunResult{}, fmt.Errorf("webster: plan %s produced zero execution batches; nothing to build is a malformed plan, never a vacuous outcome: done; way forward: fix the plan's cards, run `lyx webster rebaseline --card NN` naming each card you edited when state.json already records this run, then re-run `lyx webster run`", deps.Geom.PlanDir)
 	}
 
 	// Re-bind batches through the sequencer: every later use in this
@@ -402,6 +415,10 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	batches, cycles = SequenceBatches(batches)
 
 	fingerprint, err := fingerprint(deps.Geom.PlanDir)
+	if err != nil {
+		return RunResult{}, err
+	}
+	fileHashes, err := planFileHashes(deps.Geom.PlanDir)
 	if err != nil {
 		return RunResult{}, err
 	}
@@ -436,6 +453,11 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		return RunResult{}, err
 	}
 
+	freshDrop, freshWarnings, err := freshPendingDrop(deps.Geom, st, opts)
+	if err != nil {
+		return RunResult{}, err
+	}
+
 	switch {
 	case st == nil:
 		guid, err := newRunGUID()
@@ -445,19 +467,28 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		st = &State{
 			RunGUID:         guid,
 			PlanFingerprint: fingerprint,
+			PlanFileHashes:  fileHashes,
 			Batches:         map[int]*BatchState{},
+		}
+		if err := storePlanBaseline(deps.Geom.WebsterDir, deps.Geom.PlanDir, fileHashes); err != nil {
+			return RunResult{}, err
 		}
 		if err := SaveState(deps.Geom.WebsterDir, deps.Geom.ScratchDir, st); err != nil {
 			return RunResult{}, err
 		}
 
-	case st.PlanFingerprint != fingerprint:
+	case st.PlanFingerprint != fingerprint, freshDrop:
 		if !opts.Fresh {
-			return RunResult{}, fmt.Errorf("%w: on-disk plan fingerprint %s does not match this run's recorded fingerprint %s; the plan changed since state.json was created — re-run with --fresh to archive the stale state and reports and start over", ErrFingerprintMismatch, fingerprint, st.PlanFingerprint)
+			return RunResult{}, fmt.Errorf("%w: on-disk plan fingerprint %s does not match this run's recorded fingerprint %s; the plan changed since state.json was created; %s", ErrFingerprintMismatch, fingerprint, st.PlanFingerprint, fingerprintMismatchWayForward(st, deps.Geom.PlanDir))
 		}
 
 		if _, err := archiveStateFile(deps.Geom.WebsterDir, time.Now); err != nil {
 			return RunResult{}, err
+		}
+		// The drop is committed once the state is archived.
+		// Only a done outcome carries RunResult.Warnings, so each drop is logged here too, where every later refusal, Master outcome and error still leaves it on record.
+		for _, w := range freshWarnings {
+			logger.Warn("websterengine: --fresh dropped a pending audit finding", "warning", w)
 		}
 		if err := archiveReportsDir(deps.Geom.ReportsDir, time.Now); err != nil {
 			return RunResult{}, err
@@ -473,11 +504,19 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		st = &State{
 			RunGUID:         guid,
 			PlanFingerprint: fingerprint,
+			PlanFileHashes:  fileHashes,
 			Batches:         map[int]*BatchState{},
+		}
+		if err := storePlanBaseline(deps.Geom.WebsterDir, deps.Geom.PlanDir, fileHashes); err != nil {
+			return RunResult{}, err
 		}
 		if err := SaveState(deps.Geom.WebsterDir, deps.Geom.ScratchDir, st); err != nil {
 			return RunResult{}, err
 		}
+	}
+
+	if len(st.PendingAuditFindings) > 0 {
+		return RunResult{}, pendingAuditFindingsError(st.PendingAuditFindings, deps.Geom)
 	}
 
 	// Validation runs HERE — after the state phase settles — rather than at entry, because its
@@ -515,7 +554,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 			// Its own returned error, named for quarry rather than the plan — a gate that could not
 			// read the code has not found a plan defect to refuse the run over, matching
 			// internal/loomshed/planvalidate.go's producer-side disposition.
-			return RunResult{}, fmt.Errorf("webster: quarry could not answer validating plan %s: %w", deps.Geom.PlanDir, err)
+			return RunResult{}, fmt.Errorf("webster: quarry could not answer validating plan %s: %w; way forward: transient, re-run `lyx webster run` once quarry answers", deps.Geom.PlanDir, err)
 		}
 		return RunResult{}, err
 	}
@@ -524,7 +563,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		for i, f := range findings {
 			msgs[i] = f.Error()
 		}
-		return RunResult{}, fmt.Errorf("webster: plan validation refused this run (%d finding(s)): %s", len(findings), strings.Join(msgs, "; "))
+		return RunResult{}, fmt.Errorf("webster: plan validation refused this run (%d finding(s)): %s; way forward: fix the named cards in the plan, run `lyx webster rebaseline --card NN` naming each card you edited when state.json already records this run, then re-run `lyx webster run`", len(findings), strings.Join(msgs, "; "))
 	}
 	// No second re-baseline: the one above already ran immediately after the rewriting call, ahead
 	// of both refusals, and persisted itself.
@@ -652,7 +691,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	// contract. At run entry no batch forks exist yet, so the hold stalls nothing in practice.
 	handle, err := deps.Starter.StartMaster(spec, deps.Gate)
 	if err != nil {
-		return RunResult{}, fmt.Errorf("webster: start master: %w", err)
+		return RunResult{}, fmt.Errorf("webster: start master: %w; way forward: transient, re-run `lyx webster run`", err)
 	}
 
 	// Record and persist Master's strand GUID the instant it exists — BEFORE
@@ -708,6 +747,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		// ends stuck/paused/died reaches the operator through that error
 		// path's own message rather than through Cycles — an accepted,
 		// stated limitation, not an oversight.
+		runResult.Warnings = append(freshWarnings, runResult.Warnings...)
 		runResult.Cycles = cycles
 		if len(cycles) > 0 {
 			cycleWarnings := make([]string, len(cycles))
@@ -741,6 +781,11 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 			runResult.Outcome = outcomeStuck
 			runResult.StuckReason = stuckReason
 		}
+		// Every warning recorded this run, at record-batch or at run exit, reaches summary.md once, whatever the outcome;
+		// a missing summary on a non-done outcome skips the section.
+		if err := appendRecordedAuditWarnings(deps, batches, summaryPath); err != nil {
+			return RunResult{}, err
+		}
 		return runResult, nil
 
 	case shuttleengine.OutcomeAsking:
@@ -766,20 +811,23 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 // best-effort otherwise), every-batch-terminal-done and run-exit audit
 // cross-checks (done outcomes only), and pause-flag clear for non-paused
 // terminals.
+// The run-exit audit's warnings ride RunResult.Warnings, and its stuck reason demotes a done outcome to outcomeStuck.
 func mapMasterDone(deps RunDeps, batches []batcher.Batch, outcomePath, summaryPath string, result shuttleengine.Result) (RunResult, error) {
 	outcome, err := parseOutcome(outcomePath)
 	if err != nil {
-		return RunResult{}, err
+		// Run archives a stale outcome.yaml at entry, so a re-run starts a fresh Master that writes a new one.
+		return RunResult{}, fmt.Errorf("%w; way forward: re-run `lyx webster run`; the stale file is archived and a fresh Master writes a new one", err)
 	}
 
 	var summaryTitle string
+	var auditWarnings []string
 	if outcome.Outcome == outcomeDone {
 		// Required: a done run with a missing or malformed summary.md is a
 		// hard error, never guessed — the artifact is the future
 		// loom-finalize PR-text source.
 		summary, err := summaryparser.Parse(summaryPath)
 		if err != nil {
-			return RunResult{}, fmt.Errorf("webster: run reached outcome: done but summary.md is missing or malformed: %w", err)
+			return RunResult{}, fmt.Errorf("webster: run reached outcome: done but summary.md is missing or malformed: %w%s", err, runExitWayForward)
 		}
 		summaryTitle = summary.Title
 
@@ -792,8 +840,16 @@ func mapMasterDone(deps RunDeps, batches []batcher.Batch, outcomePath, summaryPa
 			return RunResult{}, err
 		}
 
-		if err := runExitAuditCrossCheck(deps, outcomePath, summaryPath, result); err != nil {
+		var auditStuck string
+		auditWarnings, auditStuck, err = runExitAuditCrossCheck(deps, outcomePath, summaryPath, result)
+		if err != nil {
 			return RunResult{}, err
+		}
+		// An undispositioned correctness finding demotes Master's done to stuck;
+		// outcome.yaml is never rewritten.
+		if auditStuck != "" {
+			outcome.Outcome = outcomeStuck
+			outcome.StuckReason = auditStuck
 		}
 	} else if summary, err := summaryparser.Parse(summaryPath); err == nil {
 		// summary.md's content is optional on stuck/paused: best-effort
@@ -813,6 +869,7 @@ func mapMasterDone(deps RunDeps, batches []batcher.Batch, outcomePath, summaryPa
 		StuckReason:  outcome.StuckReason,
 		BatchesDone:  outcome.BatchesDone,
 		SummaryTitle: summaryTitle,
+		Warnings:     auditWarnings,
 	}, nil
 }
 
@@ -846,7 +903,7 @@ func verifyEveryBatchDone(websterDir, scratchDir string, batches []batcher.Batch
 		return err
 	}
 	if st == nil {
-		return fmt.Errorf("webster: run reached outcome: done but no state.json exists — no batch was ever recorded")
+		return fmt.Errorf("webster: run reached outcome: done but no state.json exists — no batch was ever recorded%s", runExitWayForward)
 	}
 
 	var offenders []string
@@ -863,7 +920,7 @@ func verifyEveryBatchDone(websterDir, scratchDir string, batches []batcher.Batch
 		}
 	}
 	if len(offenders) > 0 {
-		return fmt.Errorf("webster: run reached outcome: done but %d batch(es) lack a terminal done record: %s — a batch was begun without being recorded done, or Master claimed done prematurely", len(offenders), strings.Join(offenders, ", "))
+		return fmt.Errorf("webster: run reached outcome: done but %d batch(es) lack a terminal done record: %s — a batch was begun without being recorded done, or Master claimed done prematurely%s", len(offenders), strings.Join(offenders, ", "), runExitWayForward)
 	}
 	return nil
 }
@@ -878,42 +935,394 @@ func verifyEveryBatchDone(websterDir, scratchDir string, batches []batcher.Batch
 // recorded with Kind: "fork" under THIS Master session (see
 // countBegunForkBatches — a prior crashed session's batches are outside the
 // current session's audit by construction) — a shortfall means a batch was
-// recorded without its fork surviving audit. Every violation is a hard
-// error carried on the run's own error; the outcome file stays on disk for
-// diagnosis (Run never removes it).
-func runExitAuditCrossCheck(deps RunDeps, outcomePath, summaryPath string, result shuttleengine.Result) error {
+// recorded without its fork surviving audit;
+// both stay errors.
+//
+// Findings are then dispositioned like record-batch's: every identity the ledger already holds is dropped, because the whole-session parent audit repeats every finding an earlier record-batch warned on or failed a batch for.
+// A policy finding nobody dispositioned is recorded as a run-level warning (saved to state.json before the lease is released) and its text is returned in warnings.
+// A correctness finding nobody dispositioned yields stuckReason, which names each suspect path and the way forward pendingPathsWayForward builds;
+// it is recorded in State.PendingAuditFindings, not dispositioned, and blocks run entry until AcceptPendingAudit clears it.
+// The outcome file stays on disk for diagnosis (Run never removes it).
+func runExitAuditCrossCheck(deps RunDeps, outcomePath, summaryPath string, result shuttleengine.Result) (warnings []string, stuckReason string, err error) {
 	if result.ForkAudit == nil {
-		return fmt.Errorf("webster: run reached outcome: done on a fork-authorized master spawn but its whole-session fork audit did not complete (nil ForkAudit) — this is fail-loud, never skipped")
+		return nil, "", fmt.Errorf("webster: run reached outcome: done on a fork-authorized master spawn but its whole-session fork audit did not complete (nil ForkAudit) — this is fail-loud, never skipped%s", runExitWayForward)
 	}
+
+	mutateLock, err := AcquireStateMutation(deps.Geom.ScratchDir)
+	if err != nil {
+		return nil, "", err
+	}
+	defer func() { _ = mutateLock.Release() }()
 
 	// Reload state fresh: begin-batch/record-batch mutated and persisted it
 	// repeatedly across Master's whole run, so the in-memory copy captured
 	// before Master ever spawned is stale by run-exit.
 	st, err := LoadState(deps.Geom.WebsterDir, deps.Geom.ScratchDir)
 	if err != nil {
-		return err
+		return nil, "", err
+	}
+	if st == nil {
+		return nil, "", fmt.Errorf("webster: run-exit audit cross-check: no state.json to disposition findings against%s", runExitWayForward)
 	}
 
-	var violations []error
-	for _, v := range CheckParent(*result.ForkAudit, outcomePath, summaryPath, deps.Geom.WorktreeRoot, deps.RefMatcher) {
-		violations = append(violations, v)
+	planDirs, err := planDirSpellings(deps.Geom)
+	if err != nil {
+		return nil, "", err
 	}
+	websterDirs, err := websterDirSpellings(deps.Geom)
+	if err != nil {
+		return nil, "", err
+	}
+	var candidates []AuditViolation
+	candidates = append(candidates, CheckParent(*result.ForkAudit, outcomePath, summaryPath, deps.Geom.WorktreeRoot, deps.RefMatcher)...)
 	for _, f := range result.ForkAudit.Forks {
-		for _, v := range CheckFork(f, outcomePath, summaryPath, deps.Geom.WorktreeRoot, deps.RefMatcher) {
-			violations = append(violations, v)
-		}
+		candidates = append(candidates, CheckFork(f, outcomePath, summaryPath, deps.Geom.WorktreeRoot, planDirs, websterDirs, forkOwnReport(st, deps.Geom, f.TranscriptPath), deps.RefMatcher)...)
 	}
-	if len(violations) > 0 {
-		return errors.Join(violations...)
+
+	// Classification is the only fallible step and runs before any mutation.
+	var policy, correctness []classifiedFinding
+	for _, v := range candidates {
+		id := findingIdentity(result.SessionID, v)
+		if isDispositioned(st, id) {
+			continue
+		}
+		severity, err := ClassifyViolation(v, deps.Geom)
+		if err != nil {
+			return nil, "", err
+		}
+		cf := classifiedFinding{ID: id, Violation: v}
+		if severity == AuditSeverityCorrectness {
+			correctness = append(correctness, cf)
+		} else {
+			policy = append(policy, cf)
+		}
 	}
 
 	begun := countBegunForkBatches(st, result.SessionID)
 	audited := len(result.ForkAudit.Forks)
 	if audited < begun {
-		return fmt.Errorf("webster: run-exit audit cross-check: %d audited fork transcript(s) is fewer than %d begun fork batch(es) — a batch was recorded without its fork surviving audit", audited, begun)
+		return nil, "", fmt.Errorf("webster: run-exit audit cross-check: %d audited fork transcript(s) is fewer than %d begun fork batch(es) — a batch was recorded without its fork surviving audit%s", audited, begun, runExitWayForward)
 	}
 
+	for _, cf := range policy {
+		if text, added := recordRunWarning(st, cf.ID, string(cf.Violation.Class), cf.Violation.Detail); added {
+			warnings = append(warnings, text)
+		}
+	}
+	if len(warnings) > 0 {
+		if err := SaveState(deps.Geom.WebsterDir, deps.Geom.ScratchDir, st); err != nil {
+			return nil, "", err
+		}
+	}
+
+	if len(correctness) > 0 {
+		details := make([]string, len(correctness))
+		var paths []string
+		seen := map[string]bool{}
+		for i, cf := range correctness {
+			details[i] = cf.Violation.Detail
+			pending := PendingAuditFinding{ID: cf.ID, Class: string(cf.Violation.Class), Detail: cf.Violation.Detail}
+			if p := cf.Violation.Path; p != "" {
+				pending.Paths = []string{p}
+				if !seen[p] {
+					seen[p] = true
+					paths = append(paths, p)
+				}
+			}
+			if !hasPendingFinding(st, cf.ID) {
+				st.PendingAuditFindings = append(st.PendingAuditFindings, pending)
+			}
+		}
+		if err := SaveState(deps.Geom.WebsterDir, deps.Geom.ScratchDir, st); err != nil {
+			return nil, "", err
+		}
+		pathList := "none named"
+		if len(paths) > 0 {
+			pathList = strings.Join(paths, ", ")
+		}
+		pathless := false
+		for _, cf := range correctness {
+			pathless = pathless || cf.Violation.Path == ""
+		}
+		wayForward, err := pendingPathsWayForward(deps.Geom, paths, pathless, " and re-step the Webster row (lyx webster run)")
+		if err != nil {
+			return nil, "", err
+		}
+		stuckReason = fmt.Sprintf("run-exit audit found %d correctness finding(s): %s; suspect paths: %s; way forward: %s", len(correctness), strings.Join(details, "; "), pathList, wayForward)
+	}
+
+	return warnings, stuckReason, nil
+}
+
+// forkOwnReport returns the report the fork behind transcript may write:
+// the report of the batch whose ForkTranscripts holds it, or the integration report when no batch does,
+// since only the integration fork runs outside a batch bracket.
+func forkOwnReport(st *State, geom Geometry, transcript string) string {
+	for number, bs := range st.Batches {
+		if bs != nil && slices.Contains(bs.ForkTranscripts, transcript) {
+			return filepath.Join(geom.ReportsDir, ReportFileName(number, bs.Slug))
+		}
+	}
+	return IntegrationReportPath(geom.ReportsDir)
+}
+
+// hasPendingFinding reports whether st already carries a pending finding with identity id.
+func hasPendingFinding(st *State, id string) bool {
+	for _, f := range st.PendingAuditFindings {
+		if f.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+// ErrPendingAuditFindings is the sentinel Run returns while run-exit correctness findings are pending.
+var ErrPendingAuditFindings = errors.New("webster: correctness findings from an earlier run exit are pending")
+
+// pendingAuditFindingsError wraps ErrPendingAuditFindings with the pending details and suspect paths.
+// Its way forward is pendingPathsWayForward's.
+// The error from sorting the paths is returned as is.
+func pendingAuditFindingsError(pending []PendingAuditFinding, geom Geometry) error {
+	details := make([]string, len(pending))
+	var paths []string
+	seen := map[string]bool{}
+	for i, f := range pending {
+		details[i] = f.Detail
+		for _, p := range f.Paths {
+			if !seen[p] {
+				seen[p] = true
+				paths = append(paths, p)
+			}
+		}
+	}
+	pathList := "none named"
+	if len(paths) > 0 {
+		pathList = strings.Join(paths, ", ")
+	}
+	pathless := false
+	for _, f := range pending {
+		pathless = pathless || len(f.Paths) == 0
+	}
+	wayForward, err := pendingPathsWayForward(geom, paths, pathless, "")
+	if err != nil {
+		return err
+	}
+	return fmt.Errorf("%w: %d correctness finding(s) from an earlier run exit are pending: %s; suspect paths: %s; way forward: %s", ErrPendingAuditFindings, len(pending), strings.Join(details, "; "), pathList, wayForward)
+}
+
+// pendingPathsWayForward is the way-forward text for pending findings naming paths, followed by tail.
+// A finding with no path, or a path outside the plan directory that is not in the task worktree's tracked tree (see trackedRel), clears only through run --fresh,
+// so that route is then the whole way forward:
+// accept-audit refuses every finding while any one of them cannot be checked.
+// Otherwise the text ends in "lyx webster accept-audit".
+// A plan path never gets the git clause, which cannot restore it:
+// it gets planPathClause instead,
+// and the git clause covers only the other paths.
+// The error is a link-resolution or git probe failure.
+func pendingPathsWayForward(geom Geometry, paths []string, pathless bool, tail string) (string, error) {
+	plan, rest, err := splitPlanPaths(geom, paths)
+	if err != nil {
+		return "", err
+	}
+	var unchecked []string
+	for _, p := range rest {
+		_, ok, err := trackedRel(geom.WorktreeRoot, p)
+		if err != nil {
+			return "", err
+		}
+		if !ok {
+			unchecked = append(unchecked, p)
+		}
+	}
+	if pathless || len(unchecked) > 0 {
+		var why []string
+		if len(unchecked) > 0 {
+			why = append(why, "nothing the run recorded can check "+strings.Join(unchecked, ", "))
+		}
+		if pathless {
+			why = append(why, "a finding names no path")
+		}
+		return fmt.Sprintf("reset the branch to the run's start commit with git and run \"lyx webster run --fresh\"%s, since %s", tail, strings.Join(why, " and ")), nil
+	}
+	gitClause := "restore the named paths to the last batch head with git, then run \"lyx webster accept-audit\"" + tail
+	if len(plan) == 0 {
+		return gitClause, nil
+	}
+	planClause := fmt.Sprintf("for the plan file(s) %s, %s", strings.Join(plan, ", "), planPathClause("\"lyx webster accept-audit\""+tail))
+	if len(rest) == 0 {
+		return planClause, nil
+	}
+	gitClause = "restore the paths other than the plan files to the last batch head with git, then run \"lyx webster accept-audit\"" + tail
+	return gitClause + "; " + planClause, nil
+}
+
+// freshPendingDrop decides whether opts.Fresh discards st's pending audit findings, and returns one warning per dropped finding.
+// It refuses with ErrPendingAuditFindings, before anything is archived, in three cases:
+// a suspect path outside the plan directory still differs from the run's start commit;
+// the worktree's HEAD is not the start commit, so an unaudited commit would become the new run's base;
+// a plan path differs from the plan the run recorded and restore-plan can undo that, either because the store holds the recorded copy or because the file was never recorded.
+// The start commit is picked by git ancestry,
+// and a recorded commit missing from the repository refuses with the fetch way forward.
+// When no batch recorded a start, the worktree's HEAD stands in for it.
+// When starts are recorded but none is an ancestor of all the others, HEAD stands in only while it is an ancestor of every recorded start (headBeforeEveryStart).
+// An unverifiable path, a pathless finding and a differing plan path whose recorded copy is missing from the store are dropped with the archived state,
+// since no verb could restore the last;
+// its warning says so.
+// A batch record with Uncheckable entries counts as a pending finding: its SuspectPaths join the path check,
+// and it adds its own drop warning.
+func freshPendingDrop(geom Geometry, st *State, opts RunOptions) (drop bool, warnings []string, err error) {
+	if !opts.Fresh || st == nil {
+		return false, nil, nil
+	}
+	var uncheckableBatches []int
+	for n, bs := range st.Batches {
+		if bs != nil && len(bs.Uncheckable) > 0 {
+			uncheckableBatches = append(uncheckableBatches, n)
+		}
+	}
+	sort.Ints(uncheckableBatches)
+	if len(st.PendingAuditFindings) == 0 && len(uncheckableBatches) == 0 {
+		return false, nil, nil
+	}
+	bases, err := runEvidenceBases(geom.WorktreeRoot, st)
+	if err != nil {
+		return false, nil, err
+	}
+	if len(bases.Missing) > 0 {
+		return false, nil, fmt.Errorf("%w: %s", ErrPendingAuditFindings, missingCommitsClause(bases.Missing))
+	}
+	head, err := headSHA(geom.WorktreeRoot)
+	if err != nil {
+		return false, nil, err
+	}
+	base := bases.Start
+	if base == "" {
+		if err := headBeforeEveryStart(geom.WorktreeRoot, head, bases.Starts); err != nil {
+			return false, nil, err
+		}
+		base = head
+	}
+	var allPaths []string
+	seen := map[string]bool{}
+	for _, f := range st.PendingAuditFindings {
+		for _, p := range f.Paths {
+			if !seen[p] {
+				seen[p] = true
+				allPaths = append(allPaths, p)
+			}
+		}
+	}
+	for _, n := range uncheckableBatches {
+		for _, sp := range st.Batches[n].SuspectPaths {
+			if !seen[sp.Path] {
+				seen[sp.Path] = true
+				allPaths = append(allPaths, sp.Path)
+			}
+		}
+	}
+	planPaths, paths, err := splitPlanPaths(geom, allPaths)
+	if err != nil {
+		return false, nil, err
+	}
+	differing, _, err := checkSuspectPaths(geom, st, base, paths)
+	if err != nil {
+		return false, nil, err
+	}
+	if len(differing) > 0 {
+		return false, nil, fmt.Errorf("%w: --fresh would drop pending audit findings while their suspect paths still differ from the run's start commit %s: %s; way forward: reset the branch to %s with git, then re-run \"lyx webster run --fresh\"", ErrPendingAuditFindings, base, strings.Join(differing, ", "), base)
+	}
+	if head != base {
+		return false, nil, fmt.Errorf("%w: --fresh would drop pending audit findings while HEAD %s is not the run's start commit %s; way forward: reset the branch to %s with git, then re-run \"lyx webster run --fresh\"", ErrPendingAuditFindings, head, base, base)
+	}
+	planDiffering, _, err := checkSuspectPaths(geom, st, base, planPaths)
+	if err != nil {
+		return false, nil, err
+	}
+	var restorable []string
+	noCopy := map[string]bool{}
+	for _, p := range planDiffering {
+		name, err := planFileName(geom, p)
+		if err != nil {
+			return false, nil, err
+		}
+		hash, recorded := st.PlanFileHashes[name]
+		if !recorded {
+			restorable = append(restorable, p)
+			continue
+		}
+		has, err := planBaselineHas(geom.WebsterDir, hash)
+		if err != nil {
+			return false, nil, err
+		}
+		if has {
+			restorable = append(restorable, p)
+		} else {
+			noCopy[p] = true
+		}
+	}
+	if len(restorable) > 0 {
+		return false, nil, fmt.Errorf("%w: --fresh would drop pending audit findings while plan file(s) differ from the plan the run recorded: %s; way forward: %s", ErrPendingAuditFindings, strings.Join(restorable, ", "), planPathClause("\"lyx webster run --fresh\""))
+	}
+	for _, f := range st.PendingAuditFindings {
+		w := fmt.Sprintf("--fresh dropped pending audit finding %s: %s", f.ID, f.Detail)
+		var lost []string
+		for _, p := range f.Paths {
+			if noCopy[p] {
+				lost = append(lost, p)
+			}
+		}
+		if len(lost) > 0 {
+			w += fmt.Sprintf("; plan file(s) %s differ from the recorded plan and their recorded copy is missing from the plan baseline store, so no verb could restore them", strings.Join(lost, ", "))
+		}
+		warnings = append(warnings, w)
+	}
+	for _, n := range uncheckableBatches {
+		warnings = append(warnings, fmt.Sprintf("--fresh dropped batch %02d's uncheckable findings: %s", n, strings.Join(st.Batches[n].Uncheckable, ", ")))
+	}
+	return true, warnings, nil
+}
+
+// headBeforeEveryStart refuses --fresh with ErrPendingAuditFindings unless head is an ancestor of, or equal to, every one of starts.
+// It is the HEAD rule for recorded starts that share no single oldest commit, as after a branch rewritten mid-run:
+// no recorded start can be named as the run's,
+// but a HEAD that every one of them descends from carries no commit the run made.
+// An empty starts passes, since nothing was recorded to compare with.
+// The error is an IsAncestor failure or the refusal.
+func headBeforeEveryStart(worktree, head string, starts []string) error {
+	for _, start := range starts {
+		ok, err := isAncestor(worktree, head, start)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			list := strings.Join(starts, " ")
+			return fmt.Errorf("%w: --fresh would drop pending audit findings while the batches' recorded start commits %s share no single oldest commit and HEAD %s is not an ancestor of every one of them; way forward: reset the branch to a commit every recorded start descends from (git merge-base --octopus %s) with git, then re-run \"lyx webster run --fresh\"", ErrPendingAuditFindings, strings.Join(starts, ", "), head, list)
+		}
+	}
 	return nil
+}
+
+// appendRecordedAuditWarnings reloads state and appends every recorded audit warning to summary.md as its "Audit warnings" section.
+// It is a no-op when nothing was recorded or summary.md does not exist.
+func appendRecordedAuditWarnings(deps RunDeps, batches []batcher.Batch, summaryPath string) error {
+	st, err := LoadState(deps.Geom.WebsterDir, deps.Geom.ScratchDir)
+	if err != nil {
+		return err
+	}
+	if st == nil {
+		return nil
+	}
+	recorded := RecordedAuditWarnings(st, batches)
+	if len(recorded) == 0 {
+		return nil
+	}
+	if _, err := os.Stat(summaryPath); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("webster: stat summary %s: %w", summaryPath, err)
+	}
+	return AppendAuditWarnings(deps.Geom.WebsterDir, recorded)
 }
 
 // runIntegrationStage drives the plan-level integration-suite stage after
@@ -967,7 +1376,7 @@ func runIntegrationStage(deps RunDeps, plan *planparser.Plan, batches []batcher.
 		// Master stuck out before the stage) — Master's own graceful judgment
 		// is the run's result, and erroring here would overwrite it.
 		if masterOutcome == outcomeDone {
-			return nil, "", fmt.Errorf("webster: run reached outcome: done on a plan with a \"## verify:\" section but its integration report never landed — the integration fork never ran or never reported")
+			return nil, "", fmt.Errorf("webster: run reached outcome: done on a plan with a \"## verify:\" section but its integration report never landed — the integration fork never ran or never reported%s", runExitWayForward)
 		}
 		return nil, "", nil
 	}

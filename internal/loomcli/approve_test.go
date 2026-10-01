@@ -50,6 +50,8 @@ func TestApproveVerb_Refusals(t *testing.T) {
 		name    string
 		mutate  func(*approveDeps)
 		wantMsg string
+		wantWay []string
+		noWay   []string
 	}{
 		{
 			name: "NotBlocked",
@@ -75,6 +77,8 @@ func TestApproveVerb_Refusals(t *testing.T) {
 				d.findPR = func(context.Context, string, string, string, string) (*github.PullRequest, error) { return nil, nil }
 			},
 			wantMsg: "no pull request",
+			wantWay: []string{"lyx loom goto --to Publish"},
+			noWay:   []string{"opens it at Publish"},
 		},
 		{
 			name: "PullRequestNotOpen",
@@ -84,6 +88,8 @@ func TestApproveVerb_Refusals(t *testing.T) {
 				}
 			},
 			wantMsg: "not open",
+			wantWay: []string{"lyx loom goto --to Publish"},
+			noWay:   []string{"opens a new one at Publish"},
 		},
 		{
 			name: "HeadDiffers",
@@ -91,6 +97,8 @@ func TestApproveVerb_Refusals(t *testing.T) {
 				d.headSHA = func() (string, error) { return "def456", nil }
 			},
 			wantMsg: "def456",
+			wantWay: []string{"git push", "git pull"},
+			noWay:   []string{"lyx fabric push"},
 		},
 		{
 			name: "LookupError",
@@ -113,8 +121,31 @@ func TestApproveVerb_Refusals(t *testing.T) {
 			if !strings.Contains(out.String(), tt.wantMsg) {
 				t.Errorf("output %q does not contain %q", out.String(), tt.wantMsg)
 			}
+			for _, w := range tt.wantWay {
+				if !strings.Contains(out.String(), w) {
+					t.Errorf("output %q does not name %q", out.String(), w)
+				}
+			}
+			for _, w := range tt.noWay {
+				if strings.Contains(out.String(), w) {
+					t.Errorf("output %q still names %q", out.String(), w)
+				}
+			}
+			if !strings.Contains(out.String(), "way forward: ") {
+				t.Errorf("output %q names no way forward", out.String())
+			}
 			if len(*written) != 0 {
 				t.Errorf("wrote %d approvals on a refusal; want none", len(*written))
+			}
+			// Taking the way forward (the run halts at Publish, the PR opens, the HEAD syncs, the transient clears) leaves a state the same verb accepts.
+			fixed, _ := approveFixture()
+			fixed.writeApproval = d.writeApproval
+			out.Reset()
+			if code := approveVerb(context.Background(), &out, fixed); code != 0 {
+				t.Fatalf("re-run after the way forward: exit = %d; want 0; out = %s", code, out.String())
+			}
+			if len(*written) != 1 {
+				t.Errorf("wrote %d approvals after the way forward; want 1", len(*written))
 			}
 		})
 	}

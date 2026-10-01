@@ -19,11 +19,14 @@
 package websterengine
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -122,6 +125,10 @@ type State struct {
 	// and compares it to detect a stale on-disk plan across a crash/resume
 	// boundary.
 	PlanFingerprint string `json:"planFingerprint"`
+	// PlanFileHashes is the hex SHA-256 of every file the plan fingerprint covers, 00-overview.md included, keyed by file name.
+	// It is recorded beside PlanFingerprint so rebaseline can tell which plan files an edit touched.
+	// A state written before this field existed leaves it empty.
+	PlanFileHashes map[string]string `json:"planFileHashes,omitempty"`
 	// CurrentBatch is the batch number currently in flight, or 0 when none
 	// is (the run has not started yet, or the last batch reached a
 	// terminal classification).
@@ -150,12 +157,49 @@ type State struct {
 	// incremental audit consults this set to parse only what is new since
 	// the previous batch boundary.
 	SeenForkTranscripts []string `json:"seenForkTranscripts,omitempty"`
+	// AuditDispositions maps a finding's identity (findingIdentity) to the disposition it received, "warned" or "failed".
+	// A finding is dispositioned once per run: the whole-session parent audit repeats every earlier finding on each record-batch,
+	// and this ledger is what keeps a repeat from warning or refusing again.
+	AuditDispositions map[string]string `json:"auditDispositions,omitempty"`
+	// AuditWarnings is the run-level list of warnings recorded at run exit, each added once per identity.
+	AuditWarnings []AuditWarning `json:"auditWarnings,omitempty"`
+	// PendingAuditFindings are the run-exit correctness findings nobody has accepted yet.
+	// Run entry refuses while any is pending;
+	// AcceptPendingAudit clears them.
+	PendingAuditFindings []PendingAuditFinding `json:"pendingAuditFindings,omitempty"`
+}
+
+// PendingAuditFinding is one run-exit correctness finding that stays pending until accepted.
+type PendingAuditFinding struct {
+	// ID is the finding's ledger identity (findingIdentity).
+	ID string `json:"id"`
+	// Class is the finding's class name.
+	Class string `json:"class"`
+	// Detail is the human-readable detail.
+	Detail string `json:"detail"`
+	// Paths are the suspect paths, empty for a pathless finding.
+	Paths []string `json:"paths,omitempty"`
+}
+
+// SuspectPath is one path a failed batch's correctness findings name.
+// Blob is the git blob id of the path's worktree content when the batch first failed, and a re-failed recovery keeps it.
+// It is empty when the file was absent or lies outside the task worktree's tracked tree.
+type SuspectPath struct {
+	Path string `json:"path"`
+	Blob string `json:"blob,omitempty"`
 }
 
 // BatchState is one batch's own persisted run record.
 type BatchState struct {
 	// Slug is the batch's <batch-slug> segment.
 	Slug string `json:"slug"`
+	// Cards is the batch's card set as begun: one NN-<slug> entry per card, in the batch's card order.
+	// A record written before the field existed has none, and reads as the single card NN-<Slug> the identity batcher produced.
+	Cards []string `json:"cards,omitempty"`
+	// CardHashes is the hex SHA-256 of each card file's bytes at begin, keyed by the same NN-<slug> id Cards holds.
+	// Rebaseline compares it so a begun card whose body changed while its file name stayed is refused.
+	// A record written before the field existed has none, and Rebaseline compares only its ids.
+	CardHashes map[string]string `json:"cardHashes,omitempty"`
 	// StartSHA is the repo HEAD immediately before this batch's implementer
 	// first forked — the durable base-commit record a resume, an operator
 	// diagnosis, and the post-batch delta all read. A recovery batch inherits
@@ -179,10 +223,10 @@ type BatchState struct {
 	// resume (found in round fable-r1). Empty for a recovery batch.
 	SessionID string `json:"sessionId,omitempty"`
 	// Terminal reports whether this batch has reached a terminal
-	// classification (done, stuck, or dead).
+	// classification (done, stuck, dead, or failed).
 	Terminal bool `json:"terminal"`
 	// Status is the batch's terminal status once Terminal is true (done,
-	// stuck, or dead); empty while still in flight.
+	// stuck, dead, or failed); empty while still in flight.
 	Status string `json:"status"`
 	// Digest is the distilled digest record-batch persisted at terminal
 	// classification — the carry-forward home that lets begin-batch(N+1)
@@ -200,6 +244,16 @@ type BatchState struct {
 	// ForkTranscripts is the set of subagent transcript filenames already
 	// attributed to this specific batch (a subset of State.SeenForkTranscripts).
 	ForkTranscripts []string `json:"forkTranscripts,omitempty"`
+	// AuditWarnings is every warning recorded against this batch, each added once per finding identity.
+	// A re-begin and a recovery carry it onto their fresh record, because the identity stays dispositioned in State.AuditDispositions and no later call records the warning again.
+	AuditWarnings []AuditWarning `json:"auditWarnings,omitempty"`
+	// SuspectPaths is the correctness findings' paths with the content each held when the batch failed.
+	// A recovery carries it forward, and PersistRecoveryTerminal checks it before recording the batch done.
+	SuspectPaths []SuspectPath `json:"suspectPaths,omitempty"`
+	// Uncheckable is one entry per correctness finding the recovery check cannot verify:
+	// the path, or "<class>: <detail>" for a finding with no path.
+	// recover-batch refuses a failed batch carrying any, toward run --fresh.
+	Uncheckable []string `json:"uncheckable,omitempty"`
 
 	// The following three fields are populated only for a recovery batch
 	// (Kind == "recovery"); a fork batch carries no strand fields, since
@@ -259,4 +313,34 @@ func SaveState(websterDir, scratchDir string, st *State) error {
 		return fmt.Errorf("webster: save state %s: %w", path, err)
 	}
 	return nil
+}
+
+// batchCardHashes returns the hex SHA-256 of each card file of b, keyed by the card's NN-<slug> id.
+// A card's file is read from planDir under the file name its SourcePath carries, else NN-<slug>.md.
+func batchCardHashes(b batcher.Batch, planDir string) (map[string]string, error) {
+	hashes := make(map[string]string, len(b.Cards))
+	for _, c := range b.Cards {
+		id := fmt.Sprintf("%02d-%s", c.Number, c.Slug)
+		name := id + ".md"
+		if c.SourcePath != "" {
+			name = filepath.Base(c.SourcePath)
+		}
+		path := filepath.Join(planDir, name)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("webster: read card file %s: %w", path, err)
+		}
+		sum := sha256.Sum256(data)
+		hashes[id] = hex.EncodeToString(sum[:])
+	}
+	return hashes, nil
+}
+
+// batchCardIDs returns one NN-<slug> entry per card of b, in the batch's card order.
+func batchCardIDs(b batcher.Batch) []string {
+	ids := make([]string, 0, len(b.Cards))
+	for _, c := range b.Cards {
+		ids = append(ids, fmt.Sprintf("%02d-%s", c.Number, c.Slug))
+	}
+	return ids
 }

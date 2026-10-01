@@ -75,7 +75,7 @@ func (w *websterProducer) Call(ctx context.Context) (shedengine.Outcome, shedeng
 		// guess without being told. The cause is returned as the row's reason, which reaches the
 		// persisted error and activity.wait, and also logged.
 		logger.Warn("loomshed: active batchifier did not resolve", "producer", w.name, "anchorPath", w.anchorPath, "cause", err)
-		return shedengine.Stuck, shedengine.OutputPointer{Reason: batchifierReasonPrefix + err.Error()}, nil
+		return shedengine.Stuck, shedengine.OutputPointer{Reason: batchifierReasonPrefix + err.Error() + batchifierWayForward}, nil
 	}
 
 	deps := w.deps
@@ -96,7 +96,7 @@ func (w *websterProducer) Call(ctx context.Context) (shedengine.Outcome, shedeng
 		return "", shedengine.OutputPointer{}, fmt.Errorf("loomshed: %s: no commit seam wired; webster's run record would never be committed", w.name)
 	}
 	if err := w.commit(); err != nil {
-		return "", shedengine.OutputPointer{}, fmt.Errorf("loomshed: %s: commit webster's run record: %w", w.name, err)
+		return "", shedengine.OutputPointer{}, fmt.Errorf("loomshed: %s: commit webster's run record: %w; way forward: the fault is transient, re-step the %s row", w.name, err, w.name)
 	}
 	return outcome, pointer, nil
 }

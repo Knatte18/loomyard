@@ -118,7 +118,7 @@ func TestRun_AwaitingDoesNotSpendBounceBudget(t *testing.T) {
 		{Producer: "A", Outcome: Awaiting},
 		{Producer: "A", Outcome: Stuck},
 		{Producer: "A", Outcome: Awaiting},
-	}, "A"); got != 1 {
+	}, ProducerDef{Name: "A"}, nil); got != 1 {
 		t.Errorf("episodeStuckCount = %d; want 1 (Awaiting never counts)", got)
 	}
 }

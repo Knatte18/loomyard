@@ -24,6 +24,7 @@
 package websterengine_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -38,8 +39,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planglyph"
+	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -374,6 +377,9 @@ func addCardCreateTarget(t *testing.T, planDir string, cardNumber int, target st
 func seedMatchingState(t *testing.T, fx *runFixture, st *websterengine.State) {
 	t.Helper()
 	st.PlanFingerprint = mustFingerprint(t, fx.PlanDir)
+	if err := websterengine.RestampPlanBaseline(st, fx.PlanDir, fx.Deps.Geom.WebsterDir); err != nil {
+		t.Fatalf("stamp plan file hashes: %v", err)
+	}
 	if st.Batches == nil {
 		st.Batches = map[int]*websterengine.BatchState{}
 	}
@@ -404,6 +410,13 @@ func TestRun_ErrRunBusy(t *testing.T) {
 	if fx.Starter.callCount() != 0 {
 		t.Errorf("Starter was reached (%d calls) while run.lock was held; want zero", fx.Starter.callCount())
 	}
+	requireWayForward(t, err, "lyx webster status")
+
+	// Taking the way forward: once the other run finishes and releases the lock, Run proceeds.
+	held.Release()
+	askingMaster(t, fx, "busy")
+	_, err = websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	requireReachedMaster(t, fx, err)
 }
 
 // TestRun_NilBatcherRefuses proves Run refuses with ErrNilBatcher when the caller never populated
@@ -529,6 +542,7 @@ func TestRun_FingerprintMismatchWithoutFreshLeavesPauseIntact(t *testing.T) {
 	if !errors.Is(err, websterengine.ErrFingerprintMismatch) {
 		t.Fatalf("Run() error = %v; want errors.Is(err, ErrFingerprintMismatch)", err)
 	}
+	requireWayForward(t, err, "lyx webster rebaseline", "lyx webster run --fresh")
 	if !websterengine.PauseRequested(fx.Deps.Geom.ScratchDir) {
 		t.Error("pause flag cleared on a refused run; want it left intact")
 	}
@@ -958,53 +972,319 @@ func TestRun_DoneWithUnrecordedBatchIsHardError(t *testing.T) {
 	}
 }
 
-// TestRun_DoneWithParentWriteViolationIsHardError proves the run-exit audit cross-check's
-// CheckParent pass fires on a done outcome: a parent write outside the two contract files is a hard
-// error carried on the run's own error, even though the outcome/summary files themselves are
-// well-formed.
-func TestRun_DoneWithParentWriteViolationIsHardError(t *testing.T) {
-	fx := newRunFixture(t, 1)
-
-	// Seed batch 1 as terminal done (recorded under the run's own Master
-	// session) so the run reaches the whole-session audit cross-check rather
-	// than tripping the every-batch-done gate first.
-	seedMatchingState(t, fx, &websterengine.State{
-		Batches: map[int]*websterengine.BatchState{
-			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", SessionID: "master-session-violation"},
-		},
-	})
-
-	handle := &runFakeHandle{
-		strandGUID: "master-strand-violation",
+// auditDoneHandle builds a done Master handle whose onWait writes outcome.yaml (batchesDone batches) and a valid summary.md, with audit as the whole-session fork audit.
+func auditDoneHandle(t *testing.T, fx *runFixture, session string, batchesDone int, audit shuttleengine.ForkAudit, extra func()) *runFakeHandle {
+	t.Helper()
+	return &runFakeHandle{
+		strandGUID: "master-strand-audit",
 		result: shuttleengine.Result{
 			Outcome:   shuttleengine.OutcomeDone,
-			SessionID: "master-session-violation",
-			RunDir:    "/run/dir/violation",
-			ForkAudit: &shuttleengine.ForkAudit{
-				ParentWrites: []string{"/somewhere/else/hand-written-report.yaml"},
-				Forks: []shuttleengine.ForkReport{
-					{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true},
-				},
-			},
+			SessionID: session,
+			RunDir:    "/run/dir/audit",
+			ForkAudit: &audit,
 		},
 		onWait: func() {
-			if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "outcome.yaml"), []byte("outcome: done\nstuck_reason: null\nbatches_done: 1\n"), 0o644); err != nil {
+			if extra != nil {
+				extra()
+			}
+			outcome := fmt.Sprintf("outcome: done\nstuck_reason: null\nbatches_done: %d\n", batchesDone)
+			if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "outcome.yaml"), []byte(outcome), 0o644); err != nil {
 				t.Fatalf("write outcome.yaml: %v", err)
 			}
-			if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "summary.md"), []byte("# Shipped batch1\n"), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "summary.md"), []byte("# Shipped\n\nAll good.\n"), 0o644); err != nil {
 				t.Fatalf("write summary.md: %v", err)
 			}
 		},
 	}
-	fx.Starter.handle = handle
-	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-violation", "master-session-violation")
+}
 
-	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
-	if err == nil {
-		t.Fatalf("Run() error = nil; want a hard error for a parent-write violation")
+// TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck proves the run-exit audit demotes a done outcome to stuck on an undispositioned correctness finding — a Master write into a tracked file — naming the path and the git way forward,
+// that the finding stays pending and refuses a bare re-run, and that once the file is restored with git and the finding accepted a re-run with a clean audit ends done.
+func TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	seedMatchingState(t, fx, &websterengine.State{
+		Batches: map[int]*websterengine.BatchState{
+			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", SessionID: "master-session-violation",
+				Digest: &websterengine.Digest{Status: "done", HeadSHA: strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))}},
+		},
+	})
+	tracked := filepath.Join(fx.Worktree, "base.txt")
+	forks := []shuttleengine.ForkReport{{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true}}
+
+	fx.Starter.handle = auditDoneHandle(t, fx, "master-session-violation", 1,
+		shuttleengine.ForkAudit{ParentWrites: []string{tracked}, Forks: forks},
+		func() {
+			if err := os.WriteFile(tracked, []byte("hand-edited by master"), 0o644); err != nil {
+				t.Fatalf("edit tracked file: %v", err)
+			}
+		})
+	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-audit", "master-session-violation")
+
+	result, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	if err != nil {
+		t.Fatalf("Run() error = %v; want nil (a correctness finding demotes, it is not an error)", err)
 	}
-	if !strings.Contains(err.Error(), "parent-write") {
-		t.Errorf("Run() error = %q; want it to name the parent-write violation", err.Error())
+	if result.Outcome != "stuck" {
+		t.Fatalf("RunResult.Outcome = %q; want %q", result.Outcome, "stuck")
+	}
+	if !strings.Contains(result.StuckReason, tracked) || !strings.Contains(result.StuckReason, "git") {
+		t.Errorf("StuckReason = %q; want it to name %s and the git way forward", result.StuckReason, tracked)
+	}
+
+	if !strings.Contains(result.StuckReason, "lyx webster accept-audit") {
+		t.Errorf("StuckReason = %q; want it to name lyx webster accept-audit", result.StuckReason)
+	}
+	st, err := websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
+	if err != nil {
+		t.Fatalf("LoadState() error = %v", err)
+	}
+	if len(st.PendingAuditFindings) != 1 || len(st.PendingAuditFindings[0].Paths) != 1 || st.PendingAuditFindings[0].Paths[0] != tracked {
+		t.Fatalf("PendingAuditFindings = %+v; want one finding naming %s", st.PendingAuditFindings, tracked)
+	}
+
+	// A bare re-step without accepting is refused and spawns no Master.
+	before := fx.Starter.callCount()
+	_, err = websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	if !errors.Is(err, websterengine.ErrPendingAuditFindings) {
+		t.Fatalf("second Run() error = %v; want ErrPendingAuditFindings", err)
+	}
+	if !strings.Contains(err.Error(), tracked) || !strings.Contains(err.Error(), "lyx webster accept-audit") {
+		t.Errorf("second Run() error = %q; want it to name %s and lyx webster accept-audit", err, tracked)
+	}
+	if got := fx.Starter.callCount(); got != before {
+		t.Errorf("Starter calls = %d after the refused Run; want %d", got, before)
+	}
+
+	if _, err := websterengine.AcceptPendingAudit(st, fx.Deps.Geom, nil); !errors.Is(err, websterengine.ErrAuditNotAcceptable) || !strings.Contains(err.Error(), tracked) {
+		t.Fatalf("AcceptPendingAudit() before the revert error = %v; want ErrAuditNotAcceptable naming %s", err, tracked)
+	}
+	mustGit(t, fx.Worktree, "checkout", "--", "base.txt")
+	if _, err := websterengine.AcceptPendingAudit(st, fx.Deps.Geom, nil); err != nil {
+		t.Fatalf("AcceptPendingAudit() after the revert error = %v; want nil", err)
+	}
+	if err := websterengine.SaveState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir, st); err != nil {
+		t.Fatalf("SaveState() error = %v", err)
+	}
+	fx.Starter.handle = auditDoneHandle(t, fx, "master-session-violation", 1, shuttleengine.ForkAudit{Forks: forks}, nil)
+	result, err = websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	if err != nil {
+		t.Fatalf("third Run() error = %v; want nil", err)
+	}
+	if result.Outcome != "done" {
+		t.Errorf("third RunResult.Outcome = %q; want %q after the file was restored and the finding accepted", result.Outcome, "done")
+	}
+	st, err = websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
+	if err != nil {
+		t.Fatalf("LoadState() error = %v", err)
+	}
+	if len(st.PendingAuditFindings) != 0 {
+		t.Errorf("PendingAuditFindings = %+v; want none", st.PendingAuditFindings)
+	}
+}
+
+// TestRun_DoneWithNamedSpawnAlreadyDispositionedAddsNoWarning proves a finding an earlier record-batch already warned on is dropped by the run-exit audit:
+// the run ends done, no second warning is recorded, and summary.md carries the batch-level warning exactly once under "## Audit warnings".
+func TestRun_DoneWithNamedSpawnAlreadyDispositionedAddsNoWarning(t *testing.T) {
+	const session = "master-session-spawn"
+	fx := newRunFixture(t, 3)
+	id := session + "/parent:named-spawn:1"
+	seedMatchingState(t, fx, &websterengine.State{
+		AuditDispositions: map[string]string{id: "warned"},
+		Batches: map[int]*websterengine.BatchState{
+			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", SessionID: session},
+			2: {Slug: "batch2", Kind: "fork", Terminal: true, Status: "done", SessionID: session,
+				AuditWarnings: []websterengine.AuditWarning{{Identity: id, Class: "named-spawn", Detail: "master spawned a named agent"}}},
+			3: {Slug: "batch3", Kind: "fork", Terminal: true, Status: "done", SessionID: session},
+		},
+	})
+	forks := []shuttleengine.ForkReport{
+		{TranscriptPath: "/transcripts/f1.jsonl", ReportReturned: true},
+		{TranscriptPath: "/transcripts/f2.jsonl", ReportReturned: true},
+		{TranscriptPath: "/transcripts/f3.jsonl", ReportReturned: true},
+	}
+	fx.Starter.handle = auditDoneHandle(t, fx, session, 3, shuttleengine.ForkAudit{NamedSpawns: 1, Forks: forks}, nil)
+	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-audit", session)
+
+	result, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	if err != nil {
+		t.Fatalf("Run() error = %v; want nil", err)
+	}
+	if result.Outcome != "done" {
+		t.Fatalf("RunResult.Outcome = %q; want %q", result.Outcome, "done")
+	}
+	if warningsContain(result.Warnings, "named-spawn") {
+		t.Errorf("Warnings = %v; want no second named-spawn warning", result.Warnings)
+	}
+	st, err := websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
+	if err != nil {
+		t.Fatalf("LoadState() error = %v", err)
+	}
+	if len(st.AuditWarnings) != 0 {
+		t.Errorf("run-level AuditWarnings = %v; want none", st.AuditWarnings)
+	}
+	summary, err := os.ReadFile(filepath.Join(fx.Deps.Geom.WebsterDir, "summary.md"))
+	if err != nil {
+		t.Fatalf("read summary.md: %v", err)
+	}
+	if n := strings.Count(string(summary), "## Audit warnings"); n != 1 {
+		t.Errorf("summary.md carries %d Audit warnings section(s); want 1:\n%s", n, summary)
+	}
+	if n := strings.Count(string(summary), "master spawned a named agent"); n != 1 {
+		t.Errorf("summary.md carries the batch 2 warning %d times; want once:\n%s", n, summary)
+	}
+}
+
+// TestRun_DoneWithNestedAgentInIntegrationForkWarns proves a policy finding in the integration fork's transcript leaves the run done, records one run-level warning in state.json, returns it on RunResult.Warnings, and lists it in summary.md's "Audit warnings" section.
+func TestRun_DoneWithNestedAgentInIntegrationForkWarns(t *testing.T) {
+	const session = "master-session-nested"
+	fx := newRunFixture(t, 1)
+	appendIntegrationVerify(t, fx.PlanDir, "true")
+	seedMatchingState(t, fx, &websterengine.State{
+		Batches: map[int]*websterengine.BatchState{
+			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", SessionID: session, CardSHAs: []string{"deadbeef"}},
+		},
+	})
+	forks := []shuttleengine.ForkReport{
+		{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true},
+		{TranscriptPath: "/transcripts/integration.jsonl", ReportReturned: true, AgentCalls: 1},
+	}
+	fx.Starter.handle = auditDoneHandle(t, fx, session, 1, shuttleengine.ForkAudit{Forks: forks}, func() {
+		head := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+		report := "status: OK\nhead_sha: " + head + "\ndeviations: []\n"
+		if err := os.WriteFile(websterengine.IntegrationReportPath(fx.Deps.Geom.ReportsDir), []byte(report), 0o644); err != nil {
+			t.Fatalf("write integration report: %v", err)
+		}
+	})
+	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-audit", session)
+
+	result, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	if err != nil {
+		t.Fatalf("Run() error = %v; want nil", err)
+	}
+	if result.Outcome != "done" {
+		t.Fatalf("RunResult.Outcome = %q; want %q", result.Outcome, "done")
+	}
+	if !warningsContain(result.Warnings, "audit warning (nested-agent)") {
+		t.Errorf("Warnings = %v; want the nested-agent warning", result.Warnings)
+	}
+	st, err := websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
+	if err != nil {
+		t.Fatalf("LoadState() error = %v", err)
+	}
+	if len(st.AuditWarnings) != 1 {
+		t.Fatalf("run-level AuditWarnings = %v; want exactly one", st.AuditWarnings)
+	}
+	summary, err := os.ReadFile(filepath.Join(fx.Deps.Geom.WebsterDir, "summary.md"))
+	if err != nil {
+		t.Fatalf("read summary.md: %v", err)
+	}
+	if !strings.Contains(string(summary), "## Audit warnings") || !strings.Contains(string(summary), "nested-agent") {
+		t.Errorf("summary.md = %q; want an Audit warnings section naming the nested-agent finding", summary)
+	}
+}
+
+// TestRun_ForkStateWriteAtRunExit proves the run-exit audit leaves a pending fork-state-write finding for a fork writing state.json,
+// and none for a fork writing only its own batch's report.
+func TestRun_ForkStateWriteAtRunExit(t *testing.T) {
+	tests := []struct {
+		name        string
+		write       func(geom websterengine.Geometry) string
+		wantPending bool
+	}{
+		{"state.json", func(g websterengine.Geometry) string { return filepath.Join(g.WebsterDir, "state.json") }, true},
+		{"own report", func(g websterengine.Geometry) string {
+			return filepath.Join(g.ReportsDir, websterengine.ReportFileName(1, "batch1"))
+		}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			const session = "master-session-statewrite"
+			fx := newRunFixture(t, 1)
+			appendIntegrationVerify(t, fx.PlanDir, "true")
+			seedMatchingState(t, fx, &websterengine.State{
+				Batches: map[int]*websterengine.BatchState{
+					1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", SessionID: session, CardSHAs: []string{"deadbeef"}, ForkTranscripts: []string{"/transcripts/fork1.jsonl"}},
+				},
+			})
+			forks := []shuttleengine.ForkReport{
+				{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true, WritePaths: []string{tt.write(fx.Deps.Geom)}},
+				{TranscriptPath: "/transcripts/integration.jsonl", ReportReturned: true},
+			}
+			fx.Starter.handle = auditDoneHandle(t, fx, session, 1, shuttleengine.ForkAudit{Forks: forks}, func() {
+				head := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+				report := "status: OK\nhead_sha: " + head + "\ndeviations: []\n"
+				if err := os.WriteFile(websterengine.IntegrationReportPath(fx.Deps.Geom.ReportsDir), []byte(report), 0o644); err != nil {
+					t.Fatalf("write integration report: %v", err)
+				}
+			})
+			seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-audit", session)
+
+			result, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+			if err != nil {
+				t.Fatalf("Run() error = %v; want nil", err)
+			}
+			st, err := websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
+			if err != nil {
+				t.Fatalf("LoadState() error = %v", err)
+			}
+			if tt.wantPending {
+				if len(st.PendingAuditFindings) != 1 || st.PendingAuditFindings[0].Class != "fork-state-write" {
+					t.Errorf("PendingAuditFindings = %+v; want one fork-state-write finding", st.PendingAuditFindings)
+				}
+				// state.json is under _lyx, which nothing the run recorded can check, so the way forward is the --fresh route and never a git restore.
+				_, way, _ := strings.Cut(result.StuckReason, "way forward:")
+				if !strings.Contains(way, "lyx webster run --fresh") || strings.Contains(way, "accept-audit") {
+					t.Errorf("StuckReason = %q; want the --fresh route without accept-audit", result.StuckReason)
+				}
+			} else if len(st.PendingAuditFindings) != 0 {
+				t.Errorf("PendingAuditFindings = %+v; want none", st.PendingAuditFindings)
+			}
+		})
+	}
+}
+
+// TestRun_FabricReferenceInIntegrationForkIsStuck proves a fabric reference in the integration fork's transcript is correctness whatever its command:
+// the run ends stuck, the stuck reason quotes the command, and state.json carries one pending finding with no path.
+func TestRun_FabricReferenceInIntegrationForkIsStuck(t *testing.T) {
+	const session = "master-session-fabric"
+	const cmd = "cat FABRICREF/webster/state.json"
+	fx := newRunFixture(t, 1)
+	fx.Deps.RefMatcher = fabricMatcher{}
+	appendIntegrationVerify(t, fx.PlanDir, "true")
+	seedMatchingState(t, fx, &websterengine.State{
+		Batches: map[int]*websterengine.BatchState{
+			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", SessionID: session, CardSHAs: []string{"deadbeef"}},
+		},
+	})
+	forks := []shuttleengine.ForkReport{
+		{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true},
+		{TranscriptPath: "/transcripts/integration.jsonl", ReportReturned: true, BashCommands: []string{cmd}},
+	}
+	fx.Starter.handle = auditDoneHandle(t, fx, session, 1, shuttleengine.ForkAudit{Forks: forks}, func() {
+		head := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+		report := "status: OK\nhead_sha: " + head + "\ndeviations: []\n"
+		if err := os.WriteFile(websterengine.IntegrationReportPath(fx.Deps.Geom.ReportsDir), []byte(report), 0o644); err != nil {
+			t.Fatalf("write integration report: %v", err)
+		}
+	})
+	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-audit", session)
+
+	result, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	if err != nil {
+		t.Fatalf("Run() error = %v; want nil (a correctness finding demotes, it is not an error)", err)
+	}
+	if result.Outcome != "stuck" {
+		t.Fatalf("RunResult.Outcome = %q; want %q", result.Outcome, "stuck")
+	}
+	if !strings.Contains(result.StuckReason, cmd) {
+		t.Errorf("StuckReason = %q; want it to quote %q", result.StuckReason, cmd)
+	}
+	st, err := websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
+	if err != nil {
+		t.Fatalf("LoadState() error = %v", err)
+	}
+	if len(st.PendingAuditFindings) != 1 || len(st.PendingAuditFindings[0].Paths) != 0 {
+		t.Errorf("PendingAuditFindings = %+v; want one finding with no path", st.PendingAuditFindings)
 	}
 }
 
@@ -1609,6 +1889,384 @@ func TestRun_ZeroGateReachesStartMasterUngated(t *testing.T) {
 	}
 }
 
+// TestRun_Regression20260930_BegunUnrecordedBatchResumes pins the 2026-09-30 wedge: state records batch 1 begun but not terminal, with its Create target already committed,
+// and Run must pass the entry validation and reach the Master spawn with no create-already-exists refusal.
+func TestRun_Regression20260930_BegunUnrecordedBatchResumes(t *testing.T) {
+	fx := newRunFixture(t, 2)
+	commitFile(t, fx.Worktree, "internal/batch1/new.go", "package batch1\n\nfunc Landed() {}\n", "card 1 landed")
+
+	seedMatchingState(t, fx, &websterengine.State{
+		RunGUID: "resume-run",
+		Batches: map[int]*websterengine.BatchState{
+			1: {Slug: "batch1", Kind: "fork", StartSHA: "0123456789abcdef0123456789abcdef01234567"},
+		},
+	})
+
+	wantSessionID := "master-session-begun"
+	fx.Starter.handle = &runFakeHandle{
+		strandGUID: "master-strand-begun",
+		result: shuttleengine.Result{
+			Outcome:              shuttleengine.OutcomeAsking,
+			SessionID:            wantSessionID,
+			RunDir:               "/run/dir/begun",
+			LastAssistantMessage: "resumed and asking",
+		},
+	}
+	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-begun", wantSessionID)
+
+	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	var target *websterengine.MasterAskingError
+	if !errors.As(err, &target) {
+		t.Fatalf("Run() error = %v; want a *MasterAskingError — a begun, unrecorded batch must resume to the Master spawn", err)
+	}
+	if fx.Starter.callCount() != 1 {
+		t.Errorf("Starter.callCount() = %d; want 1", fx.Starter.callCount())
+	}
+}
+
+// requireWayForward fails unless err carries the trailing "way forward:" clause and every want fragment after it, so each reaching test matches the message the way the refusal table does.
+func requireWayForward(t *testing.T, err error, wants ...string) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("error = nil; want a refusal carrying a way forward")
+	}
+	msg := err.Error()
+	_, clause, found := strings.Cut(msg, "way forward:")
+	if !found {
+		t.Fatalf("error = %q; want a trailing way forward clause", msg)
+	}
+	for _, want := range wants {
+		if !strings.Contains(clause, want) {
+			t.Errorf("way forward clause = %q; want it to contain %q", clause, want)
+		}
+	}
+}
+
+// askingMaster scripts fx's Starter with a Master that ends its turn asking, the cheapest way for a re-run to prove it got past every refusal gate and reached the spawn.
+func askingMaster(t *testing.T, fx *runFixture, label string) {
+	t.Helper()
+	fx.Starter.startErr = nil
+	fx.Starter.handle = &runFakeHandle{
+		strandGUID: "master-strand-" + label,
+		result: shuttleengine.Result{
+			Outcome:   shuttleengine.OutcomeAsking,
+			SessionID: "master-session-" + label,
+			RunDir:    "/run/dir/" + label,
+		},
+	}
+	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-"+label, "master-session-"+label)
+}
+
+// requireReachedMaster asserts err is the Master-asking error of a run that got past every gate.
+func requireReachedMaster(t *testing.T, fx *runFixture, err error) {
+	t.Helper()
+	if !errors.Is(err, websterengine.ErrMasterAsking) {
+		t.Fatalf("Run() after taking the way forward error = %v; want it to reach the Master spawn", err)
+	}
+	if fx.Starter.callCount() == 0 {
+		t.Error("Starter was never reached after taking the way forward")
+	}
+}
+
+// rebaselineOnDisk is what the rebaseline verb does: parse the edited plan, re-derive its batches, restamp the recorded fingerprint and save.
+func rebaselineOnDisk(t *testing.T, fx *runFixture, cards ...int) {
+	t.Helper()
+	plan, err := planparser.ParsePlan(fx.PlanDir)
+	if err != nil {
+		t.Fatalf("ParsePlan() error = %v", err)
+	}
+	st, err := websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
+	if err != nil || st == nil {
+		t.Fatalf("LoadState() = %v, %v; want recorded state", st, err)
+	}
+	batches, _ := websterengine.SequenceBatches(fx.Deps.Batcher.Batch(plan.Cards))
+	if _, err := websterengine.Rebaseline(websterengine.RebaselineDeps{Plan: plan, Batches: batches, State: st, Cards: cards, Geom: fx.Deps.Geom}); err != nil {
+		t.Fatalf("Rebaseline() error = %v", err)
+	}
+	if err := websterengine.SaveState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir, st); err != nil {
+		t.Fatalf("SaveState() error = %v", err)
+	}
+}
+
+// emptyBatcher is a batchifier that derives no execution batches from any plan.
+type emptyBatcher struct{}
+
+func (emptyBatcher) Batch([]planparser.Card) []batcher.Batch { return nil }
+func (emptyBatcher) Name() string                            { return "empty" }
+
+func TestRun_WayForward_UnapprovedPlan(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	overview := filepath.Join(fx.PlanDir, "00-overview.md")
+	data, err := os.ReadFile(overview)
+	if err != nil {
+		t.Fatalf("read overview: %v", err)
+	}
+	if err := os.WriteFile(overview, []byte(strings.Replace(string(data), "approved: true", "approved: false", 1)), 0o644); err != nil {
+		t.Fatalf("write overview: %v", err)
+	}
+
+	_, err = websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	requireWayForward(t, err, "approve the plan", "lyx webster run")
+
+	if err := os.WriteFile(overview, data, 0o644); err != nil {
+		t.Fatalf("approve plan: %v", err)
+	}
+	askingMaster(t, fx, "approved")
+	_, err = websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	requireReachedMaster(t, fx, err)
+}
+
+func TestRun_WayForward_ZeroBatches(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	realBatcher := fx.Deps.Batcher
+	fx.Deps.Batcher = emptyBatcher{}
+
+	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	requireWayForward(t, err, "fix the plan's cards", "lyx webster rebaseline --card", "lyx webster run")
+	if fx.Starter.callCount() != 0 {
+		t.Errorf("Starter was reached (%d calls) for a zero-batch plan; want zero", fx.Starter.callCount())
+	}
+
+	fx.Deps.Batcher = realBatcher
+	askingMaster(t, fx, "zero")
+	_, err = websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	requireReachedMaster(t, fx, err)
+}
+
+func TestRun_WayForward_ValidationRefusal(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	commitFile(t, fx.Worktree, "sub/a.go", "package sub\n\nfunc Foo() {}\n", "add sub package")
+	cardPath := filepath.Join(fx.PlanDir, "01-batch1.md")
+	original, err := os.ReadFile(cardPath)
+	if err != nil {
+		t.Fatalf("read card: %v", err)
+	}
+	addCardUses(t, fx.PlanDir, 1, "sub#Missing")
+
+	_, err = websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	requireWayForward(t, err, "fix the named cards", "lyx webster rebaseline --card", "lyx webster run")
+
+	// The refused run already recorded the edited plan;
+	// fixing the card is a further edit, so the next run refuses it as foreign until the operator rebaselines, which the message names.
+	if err := os.WriteFile(cardPath, original, 0o644); err != nil {
+		t.Fatalf("fix card: %v", err)
+	}
+	askingMaster(t, fx, "validated")
+	_, err = websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	if !errors.Is(err, websterengine.ErrFingerprintMismatch) {
+		t.Fatalf("Run() after the plan fix error = %v; want errors.Is(err, ErrFingerprintMismatch) until rebaselined", err)
+	}
+	rebaselineOnDisk(t, fx, 1)
+	_, err = websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	requireReachedMaster(t, fx, err)
+}
+
+func TestRun_WayForward_QuarryUnavailable(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	worktree := fx.Deps.Geom.WorktreeRoot
+	fx.Deps.Geom.WorktreeRoot = filepath.Join(t.TempDir(), "does-not-exist")
+
+	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	requireWayForward(t, err, "transient", "lyx webster run", "quarry")
+
+	fx.Deps.Geom.WorktreeRoot = worktree
+	askingMaster(t, fx, "quarry")
+	_, err = websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	requireReachedMaster(t, fx, err)
+}
+
+func TestRun_WayForward_StartMasterFailure(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	fx.Starter.startErr = errors.New("provider did not come up")
+
+	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	requireWayForward(t, err, "transient", "lyx webster run")
+
+	askingMaster(t, fx, "start")
+	_, err = websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	requireReachedMaster(t, fx, err)
+}
+
+// TestRun_WayForward_MasterEndedEarly proves the asking, died and timeout errors name the re-run,
+// and that a fresh Master resuming from state.json then finishes.
+func TestRun_WayForward_MasterEndedEarly(t *testing.T) {
+	for _, outcome := range []shuttleengine.Outcome{shuttleengine.OutcomeAsking, shuttleengine.OutcomeDied, shuttleengine.OutcomeTimeout} {
+		t.Run(string(outcome), func(t *testing.T) {
+			fx := newRunFixture(t, 1)
+			seedMatchingState(t, fx, &websterengine.State{
+				Batches: map[int]*websterengine.BatchState{
+					1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", SessionID: "master-session-early"},
+				},
+			})
+			fx.Starter.handle = &runFakeHandle{
+				strandGUID: "master-strand-early",
+				result:     shuttleengine.Result{Outcome: outcome, SessionID: "master-session-early", RunDir: "/run/dir/early"},
+			}
+			seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-early", "master-session-early")
+
+			_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+			requireWayForward(t, err, "lyx webster run", "re-step the Webster row", "resumes from state.json")
+
+			runToDone(t, fx, "master-strand-early", "master-session-early", []shuttleengine.ForkReport{
+				{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true},
+			}, 1)
+		})
+	}
+}
+
+// TestRun_WayForward_RunExitRefusals reaches each run-exit refusal over a done Master, asserts its way forward, then takes it (the state a re-driven batch leaves, a finished summary, an audit that completed) and proves the re-run ends done.
+func TestRun_WayForward_RunExitRefusals(t *testing.T) {
+	const session = "master-session-exit"
+	const strand = "master-strand-exit"
+	oneFork := []shuttleengine.ForkReport{{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true}}
+	doneRecord := func() *websterengine.BatchState {
+		return &websterengine.BatchState{Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", SessionID: session}
+	}
+
+	tests := []struct {
+		name  string
+		state map[int]*websterengine.BatchState
+		audit *shuttleengine.ForkAudit
+		// outcome is outcome.yaml's content; "" writes none.
+		outcome string
+		summary bool
+		// repair mutates the world the way the way forward describes, before the clean re-run.
+		repair func(t *testing.T, fx *runFixture)
+		want   string
+	}{
+		{
+			name:    "malformed outcome",
+			state:   map[int]*websterengine.BatchState{1: doneRecord()},
+			audit:   &shuttleengine.ForkAudit{Forks: oneFork},
+			outcome: "outcome: [not a mapping\n",
+			summary: true,
+			want:    "stale file is archived",
+		},
+		{
+			name:    "missing summary",
+			state:   map[int]*websterengine.BatchState{1: doneRecord()},
+			audit:   &shuttleengine.ForkAudit{Forks: oneFork},
+			outcome: "outcome: done\nstuck_reason: null\nbatches_done: 1\n",
+			summary: false,
+			want:    "re-drives every batch without a done record",
+		},
+		{
+			name:    "batch without a done record",
+			state:   map[int]*websterengine.BatchState{1: {Slug: "batch1", Kind: "fork", SessionID: session}},
+			audit:   &shuttleengine.ForkAudit{Forks: oneFork},
+			outcome: "outcome: done\nstuck_reason: null\nbatches_done: 1\n",
+			summary: true,
+			repair: func(t *testing.T, fx *runFixture) {
+				st, err := websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
+				if err != nil || st == nil {
+					t.Fatalf("LoadState() = %v, %v", st, err)
+				}
+				st.Batches[1] = doneRecord()
+				if err := websterengine.SaveState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir, st); err != nil {
+					t.Fatalf("SaveState() error = %v", err)
+				}
+			},
+			want: "re-drives every batch without a done record",
+		},
+		{
+			name:    "audit never completed",
+			state:   map[int]*websterengine.BatchState{1: doneRecord()},
+			audit:   nil,
+			outcome: "outcome: done\nstuck_reason: null\nbatches_done: 1\n",
+			summary: true,
+			want:    "re-drives every batch without a done record",
+		},
+		{
+			name:    "audited fewer forks than begun",
+			state:   map[int]*websterengine.BatchState{1: doneRecord()},
+			audit:   &shuttleengine.ForkAudit{},
+			outcome: "outcome: done\nstuck_reason: null\nbatches_done: 1\n",
+			summary: true,
+			want:    "re-drives every batch without a done record",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fx := newRunFixture(t, 1)
+			seedMatchingState(t, fx, &websterengine.State{Batches: tt.state})
+			fx.Starter.handle = &runFakeHandle{
+				strandGUID: strand,
+				result: shuttleengine.Result{
+					Outcome:   shuttleengine.OutcomeDone,
+					SessionID: session,
+					RunDir:    "/run/dir/exit",
+					ForkAudit: tt.audit,
+				},
+				onWait: func() {
+					if tt.outcome != "" {
+						if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "outcome.yaml"), []byte(tt.outcome), 0o644); err != nil {
+							t.Fatalf("write outcome.yaml: %v", err)
+						}
+					}
+					if tt.summary {
+						if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "summary.md"), []byte("# Shipped\n\nAll good.\n"), 0o644); err != nil {
+							t.Fatalf("write summary.md: %v", err)
+						}
+					}
+				},
+			}
+			seedShuttleRunState(t, fx.ShuttleRunRoot, strand, session)
+
+			_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+			requireWayForward(t, err, "lyx webster run", tt.want)
+
+			if tt.repair != nil {
+				tt.repair(t, fx)
+			}
+			runToDone(t, fx, strand, session, oneFork, 1)
+		})
+	}
+}
+
+// TestRun_WayForward_MissingIntegrationReport reaches the done-without-integration-report refusal and proves a re-run whose integration fork reports finishes.
+func TestRun_WayForward_MissingIntegrationReport(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	appendIntegrationVerify(t, fx.PlanDir, "true")
+	fx.Deps.Clock = &recoverFakeClock{now: time.Unix(0, 0)}
+	seedMatchingState(t, fx, &websterengine.State{
+		Batches: map[int]*websterengine.BatchState{
+			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", CardSHAs: []string{"deadbeef"}, SessionID: "master-session-intwf"},
+		},
+	})
+
+	forks := &shuttleengine.ForkAudit{Forks: []shuttleengine.ForkReport{{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true}}}
+	writeContract := func() {
+		if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "outcome.yaml"), []byte("outcome: done\nstuck_reason: null\nbatches_done: 1\n"), 0o644); err != nil {
+			t.Fatalf("write outcome.yaml: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "summary.md"), []byte("# Shipped\n\nAll good.\n"), 0o644); err != nil {
+			t.Fatalf("write summary.md: %v", err)
+		}
+	}
+	result := shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, SessionID: "master-session-intwf", RunDir: "/run/dir/intwf", ForkAudit: forks}
+	fx.Starter.handle = &runFakeHandle{strandGUID: "master-strand-intwf", result: result, onWait: writeContract}
+	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-intwf", "master-session-intwf")
+
+	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	requireWayForward(t, err, "lyx webster run", "re-drives every batch without a done record")
+
+	head := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	fx.Starter.handle = &runFakeHandle{strandGUID: "master-strand-intwf", result: result, onWait: func() {
+		writeContract()
+		if err := os.WriteFile(websterengine.IntegrationReportPath(fx.Deps.Geom.ReportsDir), []byte("status: OK\nhead_sha: "+head+"\ndeviations: []\n"), 0o644); err != nil {
+			t.Fatalf("write integration report: %v", err)
+		}
+	}}
+	got, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	if err != nil {
+		t.Fatalf("Run() after the integration fork reported error = %v; want nil", err)
+	}
+	if got.Outcome != "done" {
+		t.Errorf("RunResult.Outcome = %q; want done", got.Outcome)
+	}
+}
+
 // TestRun_ResumesOverExtendedPlanAfterRebaseline proves the rework row's acceptance criterion:
 // a finished two-card run whose plan gains a third card, re-baselined by RebaselinePlanFingerprint, is resumed by Run with no ErrFingerprintMismatch.
 // The finished run's outcome, summary and integration report are cleared before Master spawns, the Master prompt carries batches 1-2 as complete and only batch 3 as pending,
@@ -1703,6 +2361,398 @@ func TestRun_ResumesOverExtendedPlanAfterRebaseline(t *testing.T) {
 
 	if _, statErr := os.Stat(filepath.Join(geom.PromptsDir, "integration.md")); statErr != nil {
 		t.Errorf("integration prompt not written: %v", statErr)
+	}
+}
+
+// TestRun_FirstInitRecordsPlanFileHashes proves the first-init state records a hash for every plan file, 00-overview.md included.
+func TestRun_FirstInitRecordsPlanFileHashes(t *testing.T) {
+	fx := newRunFixture(t, 2)
+	askingMaster(t, fx, "first")
+	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	requireReachedMaster(t, fx, err)
+
+	st, err := websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
+	if err != nil || st == nil {
+		t.Fatalf("LoadState() = %v, %v; want recorded state", st, err)
+	}
+	for _, name := range []string{"00-overview.md", "01-batch1.md", "02-batch2.md"} {
+		if st.PlanFileHashes[name] == "" {
+			t.Errorf("PlanFileHashes = %v; want a hash for %s", st.PlanFileHashes, name)
+		}
+	}
+}
+
+// TestRun_FingerprintMismatchWayForwardNamesTheEditedCards proves the mismatch refusal names the cards to pass to rebaseline, and never a card for 00-overview.md.
+func TestRun_FingerprintMismatchWayForwardNamesTheEditedCards(t *testing.T) {
+	t.Run("edited card", func(t *testing.T) {
+		fx := newRunFixture(t, 2)
+		seedMatchingState(t, fx, &websterengine.State{})
+		addCardUses(t, fx.PlanDir, 2, "base.txt")
+
+		_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+		if !errors.Is(err, websterengine.ErrFingerprintMismatch) {
+			t.Fatalf("Run() error = %v; want errors.Is(err, ErrFingerprintMismatch)", err)
+		}
+		requireWayForward(t, err, "lyx webster rebaseline --card 02", "lyx webster run --fresh")
+	})
+	t.Run("edited overview", func(t *testing.T) {
+		fx := newRunFixture(t, 2)
+		seedMatchingState(t, fx, &websterengine.State{})
+		overview := filepath.Join(fx.PlanDir, "00-overview.md")
+		data, err := os.ReadFile(overview)
+		if err != nil {
+			t.Fatalf("read overview: %v", err)
+		}
+		if err := os.WriteFile(overview, []byte(strings.Replace(string(data), "Framing.", "Framing, edited.", 1)), 0o644); err != nil {
+			t.Fatalf("edit overview: %v", err)
+		}
+
+		_, err = websterengine.Run(fx.Deps, websterengine.RunOptions{})
+		if !errors.Is(err, websterengine.ErrFingerprintMismatch) {
+			t.Fatalf("Run() error = %v; want errors.Is(err, ErrFingerprintMismatch)", err)
+		}
+		requireWayForward(t, err, "--fresh")
+		if strings.Contains(err.Error(), "--card") {
+			t.Errorf("error %q; want no --card for an edited 00-overview.md", err.Error())
+		}
+	})
+}
+
+// seedFreshPendingState seeds a state with one recorded batch started at the fixture's first commit and one pending finding naming paths, and returns that start commit.
+func seedFreshPendingState(t *testing.T, fx *runFixture, paths ...string) string {
+	t.Helper()
+	start := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	seedMatchingState(t, fx, &websterengine.State{
+		RunGUID: "stale-run",
+		Batches: map[int]*websterengine.BatchState{
+			1: {Slug: "batch1", Kind: "fork", StartSHA: start},
+		},
+		PendingAuditFindings: []websterengine.PendingAuditFinding{{ID: "sess/parent:write:1", Class: "parent-write", Detail: "master wrote a tracked file", Paths: paths}},
+	})
+	return start
+}
+
+// TestRun_FreshRefusesWhileSuspectPathDiffers proves --fresh refuses, archiving nothing, while a pending finding's suspect path still differs from the run's start commit.
+func TestRun_FreshRefusesWhileSuspectPathDiffers(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	tracked := filepath.Join(fx.Worktree, "base.txt")
+	start := seedFreshPendingState(t, fx, tracked)
+	commitFile(t, fx.Worktree, "base.txt", "hand-edited by master", "suspect write")
+	marker := filepath.Join(fx.Deps.Geom.ReportsDir, "marker.yaml")
+	if err := os.WriteFile(marker, []byte("x"), 0o644); err != nil {
+		t.Fatalf("write marker: %v", err)
+	}
+
+	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
+	if !errors.Is(err, websterengine.ErrPendingAuditFindings) {
+		t.Fatalf("Run() error = %v; want ErrPendingAuditFindings", err)
+	}
+	if !strings.Contains(err.Error(), tracked) || !strings.Contains(err.Error(), start) {
+		t.Errorf("Run() error = %q; want it to name %s and the start commit %s", err, tracked, start)
+	}
+	if _, statErr := os.Stat(filepath.Join(fx.Deps.Geom.WebsterDir, "state.json")); statErr != nil {
+		t.Errorf("state.json was archived: %v", statErr)
+	}
+	if _, statErr := os.Stat(marker); statErr != nil {
+		t.Errorf("reports dir was archived: %v", statErr)
+	}
+	if got := fx.Starter.callCount(); got != 0 {
+		t.Errorf("Starter calls = %d; want 0", got)
+	}
+}
+
+// TestRun_FreshDropsFindingsOnceReset proves --fresh drops the pending finding once the branch is reset to the start commit, spawns Master, and names the dropped finding in the warnings.
+func TestRun_FreshDropsFindingsOnceReset(t *testing.T) {
+	const session = "master-session-fresh"
+	fx := newRunFixture(t, 1)
+	tracked := filepath.Join(fx.Worktree, "base.txt")
+	start := seedFreshPendingState(t, fx, tracked)
+	commitFile(t, fx.Worktree, "base.txt", "hand-edited by master", "suspect write")
+	mustGit(t, fx.Worktree, "reset", "--hard", start)
+
+	forks := []shuttleengine.ForkReport{{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true}}
+	fx.Starter.handle = auditDoneHandle(t, fx, session, 1, shuttleengine.ForkAudit{Forks: forks}, func() {
+		st, err := websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
+		if err != nil || st == nil {
+			t.Fatalf("LoadState() = %v, %v", st, err)
+		}
+		if len(st.PendingAuditFindings) != 0 {
+			t.Errorf("PendingAuditFindings = %+v; want none in the fresh state", st.PendingAuditFindings)
+		}
+		st.Batches[1] = &websterengine.BatchState{Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", SessionID: session}
+		if err := websterengine.SaveState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir, st); err != nil {
+			t.Fatalf("SaveState() error = %v", err)
+		}
+	})
+	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-audit", session)
+
+	result, err := websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
+	if err != nil {
+		t.Fatalf("Run() error = %v; want nil", err)
+	}
+	if fx.Starter.callCount() == 0 {
+		t.Error("Starter was never reached")
+	}
+	if !warningsContain(result.Warnings, "--fresh dropped pending audit finding sess/parent:write:1") {
+		t.Errorf("Warnings = %v; want the dropped finding named", result.Warnings)
+	}
+	st, err := websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
+	if err != nil {
+		t.Fatalf("LoadState() error = %v", err)
+	}
+	if len(st.PendingAuditFindings) != 0 || st.RunGUID == "stale-run" {
+		t.Errorf("state = %+v; want a re-initialised run with no pending finding", st)
+	}
+}
+
+// TestRun_FreshDropsPathlessFinding proves a pathless pending finding on an unchanged plan is dropped by --fresh, which re-initialises and proceeds.
+func TestRun_FreshDropsPathlessFinding(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	seedFreshPendingState(t, fx)
+	askingMaster(t, fx, "pathless")
+	var logs bytes.Buffer
+	logger.SetOutput(&logs)
+	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+
+	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
+	requireReachedMaster(t, fx, err)
+	// Master ends asking, so no RunResult carries the drop warning; the log does.
+	if !strings.Contains(logs.String(), "--fresh dropped pending audit finding sess/parent:write:1") {
+		t.Errorf("log = %q; want the drop warning naming the finding", logs.String())
+	}
+	st, err := websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
+	if err != nil {
+		t.Fatalf("LoadState() error = %v", err)
+	}
+	if len(st.PendingAuditFindings) != 0 || st.RunGUID == "stale-run" {
+		t.Errorf("state = %+v; want a re-initialised run with no pending finding", st)
+	}
+}
+
+// seedUncheckableState seeds a state with one batch failed on an uncheckable finding, started at the fixture's first commit, and returns that start commit.
+func seedUncheckableState(t *testing.T, fx *runFixture) string {
+	t.Helper()
+	start := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	seedMatchingState(t, fx, &websterengine.State{
+		RunGUID: "stale-run",
+		Batches: map[int]*websterengine.BatchState{
+			1: {
+				Slug: "batch1", Kind: "fork", StartSHA: start, Terminal: true, Status: websterengine.DigestStatusFailed,
+				Digest:      &websterengine.Digest{Batch: "01-batch1", Status: websterengine.DigestStatusFailed, HeadSHA: start},
+				Uncheckable: []string{"fabric-reference: cat FABRICREF/webster/state.json"},
+			},
+		},
+	})
+	return start
+}
+
+// TestRun_FreshDropsUncheckableBatch proves --fresh on an unchanged plan with HEAD at the start commit drops a batch failed on an uncheckable finding:
+// the run re-initialises and the drop warning names the batch and its entries.
+func TestRun_FreshDropsUncheckableBatch(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	seedUncheckableState(t, fx)
+	askingMaster(t, fx, "uncheckable")
+	var logs bytes.Buffer
+	logger.SetOutput(&logs)
+	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+
+	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
+	requireReachedMaster(t, fx, err)
+	if !strings.Contains(logs.String(), "--fresh dropped batch 01's uncheckable findings: fabric-reference: cat FABRICREF/webster/state.json") {
+		t.Errorf("log = %q; want the drop warning naming batch 01 and its entry", logs.String())
+	}
+	st, err := websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
+	if err != nil {
+		t.Fatalf("LoadState() error = %v", err)
+	}
+	if bs := st.Batches[1]; st.RunGUID == "stale-run" || (bs != nil && len(bs.Uncheckable) != 0) {
+		t.Errorf("state = %+v; want a re-initialised run without the failed batch", st)
+	}
+}
+
+// TestRun_FreshRefusesUncheckableBatchPastStart proves the HEAD rule applies to a batch failed on an uncheckable finding:
+// with HEAD one commit past the start, --fresh refuses naming the start commit and archives nothing.
+func TestRun_FreshRefusesUncheckableBatchPastStart(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	start := seedUncheckableState(t, fx)
+	commitFile(t, fx.Worktree, "base.txt", "hand-edited by master", "suspect write")
+
+	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
+	if !errors.Is(err, websterengine.ErrPendingAuditFindings) {
+		t.Fatalf("Run() error = %v; want ErrPendingAuditFindings", err)
+	}
+	if !strings.Contains(err.Error(), "is not the run's start commit "+start) {
+		t.Errorf("Run() error = %q; want it to name the start commit %s", err, start)
+	}
+	if _, statErr := os.Stat(filepath.Join(fx.Deps.Geom.WebsterDir, "state.json")); statErr != nil {
+		t.Errorf("state.json was archived: %v", statErr)
+	}
+}
+
+// TestRun_FreshDivergentStartsNeedHeadBeforeEvery proves --fresh over recorded starts that share no single oldest commit never lets HEAD stand in unchecked:
+// it refuses naming git merge-base while HEAD is past one of them, and drops the findings once HEAD is an ancestor of every start.
+func TestRun_FreshDivergentStartsNeedHeadBeforeEvery(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	root := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	left := commitFile(t, fx.Worktree, "left.txt", "l", "left")
+	mustGit(t, fx.Worktree, "reset", "--hard", root)
+	right := commitFile(t, fx.Worktree, "right.txt", "r", "right")
+	seedMatchingState(t, fx, &websterengine.State{
+		RunGUID: "stale-run",
+		Batches: map[int]*websterengine.BatchState{
+			1: {
+				Slug: "batch1", Kind: "fork", StartSHA: left, Terminal: true, Status: websterengine.DigestStatusFailed,
+				Uncheckable: []string{"fabric-reference: cat FABRICREF/webster/state.json"},
+			},
+			2: {Slug: "batch2", Kind: "fork", StartSHA: right},
+		},
+	})
+
+	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
+	if !errors.Is(err, websterengine.ErrPendingAuditFindings) {
+		t.Fatalf("Run() with HEAD past a start error = %v; want ErrPendingAuditFindings", err)
+	}
+	requireWayForward(t, err, "git merge-base --octopus", "run --fresh")
+	if _, statErr := os.Stat(filepath.Join(fx.Deps.Geom.WebsterDir, "state.json")); statErr != nil {
+		t.Errorf("state.json was archived: %v", statErr)
+	}
+
+	mustGit(t, fx.Worktree, "reset", "--hard", root)
+	askingMaster(t, fx, "divergent")
+	_, err = websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
+	requireReachedMaster(t, fx, err)
+	st, err := websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
+	if err != nil {
+		t.Fatalf("LoadState() error = %v", err)
+	}
+	if st.RunGUID == "stale-run" {
+		t.Errorf("RunGUID = %q; want a re-initialised run", st.RunGUID)
+	}
+}
+
+// TestRun_FreshOnUnchangedPlanWithoutFindingsResumes proves --fresh stays a no-op on an unchanged plan with nothing pending: the state is kept.
+func TestRun_FreshOnUnchangedPlanWithoutFindingsResumes(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	seedMatchingState(t, fx, &websterengine.State{RunGUID: "kept-run"})
+	askingMaster(t, fx, "resume")
+
+	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
+	requireReachedMaster(t, fx, err)
+	st, err := websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
+	if err != nil {
+		t.Fatalf("LoadState() error = %v", err)
+	}
+	if st.RunGUID != "kept-run" {
+		t.Errorf("RunGUID = %q; want %q kept", st.RunGUID, "kept-run")
+	}
+}
+
+// TestRun_FreshRefusesCommitPastStart proves --fresh refuses, archiving nothing, while the suspect file is restored in the worktree but HEAD carries a commit past the run's start commit.
+func TestRun_FreshRefusesCommitPastStart(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	tracked := filepath.Join(fx.Worktree, "base.txt")
+	start := seedFreshPendingState(t, fx, tracked)
+	commitFile(t, fx.Worktree, "base.txt", "hand-edited by master", "suspect write")
+	mustGit(t, fx.Worktree, "checkout", start, "--", "base.txt")
+	marker := filepath.Join(fx.Deps.Geom.ReportsDir, "marker.yaml")
+	if err := os.WriteFile(marker, []byte("x"), 0o644); err != nil {
+		t.Fatalf("write marker: %v", err)
+	}
+
+	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
+	if !errors.Is(err, websterengine.ErrPendingAuditFindings) {
+		t.Fatalf("Run() error = %v; want ErrPendingAuditFindings", err)
+	}
+	if !strings.Contains(err.Error(), "is not the run's start commit "+start) {
+		t.Errorf("Run() error = %q; want it to name the start commit %s", err, start)
+	}
+	requireWayForward(t, err, "git", "run --fresh")
+	if _, statErr := os.Stat(filepath.Join(fx.Deps.Geom.WebsterDir, "state.json")); statErr != nil {
+		t.Errorf("state.json was archived: %v", statErr)
+	}
+	if _, statErr := os.Stat(marker); statErr != nil {
+		t.Errorf("reports dir was archived: %v", statErr)
+	}
+}
+
+// TestRun_FreshRefusesDifferingPlanPath proves --fresh refuses over an edited pending plan path with the restore-plan way forward, and drops the finding once the plan is restored.
+func TestRun_FreshRefusesDifferingPlanPath(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	card := filepath.Join(fx.PlanDir, "01-batch1.md")
+	seedFreshPendingState(t, fx, card)
+	addCardUses(t, fx.PlanDir, 1, "base.txt")
+
+	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
+	if !errors.Is(err, websterengine.ErrPendingAuditFindings) {
+		t.Fatalf("Run() error = %v; want ErrPendingAuditFindings", err)
+	}
+	if !strings.Contains(err.Error(), "restore-plan") || strings.Contains(err.Error(), "git checkout") {
+		t.Errorf("Run() error = %q; want restore-plan and no git checkout", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(fx.Deps.Geom.WebsterDir, "state.json")); statErr != nil {
+		t.Errorf("state.json was archived: %v", statErr)
+	}
+
+	st, err := websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
+	if err != nil || st == nil {
+		t.Fatalf("LoadState() = %v, %v", st, err)
+	}
+	if _, err := websterengine.RestorePlan(st, fx.Deps.Geom); err != nil {
+		t.Fatalf("RestorePlan() error = %v", err)
+	}
+	askingMaster(t, fx, "restored")
+	_, err = websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
+	requireReachedMaster(t, fx, err)
+	st, err = websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
+	if err != nil {
+		t.Fatalf("LoadState() error = %v", err)
+	}
+	if len(st.PendingAuditFindings) != 0 || st.RunGUID == "stale-run" {
+		t.Errorf("state = %+v; want a re-initialised run with no pending finding", st)
+	}
+}
+
+// TestRun_FreshDropsPlanPathWithoutCopy proves --fresh drops a differing plan path whose recorded copy is missing from the store,
+// and the drop warning names the card.
+func TestRun_FreshDropsPlanPathWithoutCopy(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	card := filepath.Join(fx.PlanDir, "01-batch1.md")
+	seedFreshPendingState(t, fx, card)
+	addCardUses(t, fx.PlanDir, 1, "base.txt")
+	if err := os.RemoveAll(filepath.Join(fx.Deps.Geom.WebsterDir, "plan-baseline")); err != nil {
+		t.Fatalf("empty the plan baseline store: %v", err)
+	}
+	askingMaster(t, fx, "no copy")
+	var logs bytes.Buffer
+	logger.SetOutput(&logs)
+	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+
+	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
+	requireReachedMaster(t, fx, err)
+	if !strings.Contains(logs.String(), card) || !strings.Contains(logs.String(), "recorded copy is missing") {
+		t.Errorf("log = %q; want the drop warning naming %s and the missing copy", logs.String(), card)
+	}
+	st, err := websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
+	if err != nil {
+		t.Fatalf("LoadState() error = %v", err)
+	}
+	if len(st.PendingAuditFindings) != 0 || st.RunGUID == "stale-run" {
+		t.Errorf("state = %+v; want a re-initialised run with no pending finding", st)
+	}
+}
+
+// TestRun_PendingPlanPathNamesRestorePlan proves run entry over a pending plan-path finding names restore-plan and rebaseline, never a git checkout.
+func TestRun_PendingPlanPathNamesRestorePlan(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	seedFreshPendingState(t, fx, filepath.Join(fx.PlanDir, "01-batch1.md"))
+
+	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	if !errors.Is(err, websterengine.ErrPendingAuditFindings) {
+		t.Fatalf("Run() error = %v; want ErrPendingAuditFindings", err)
+	}
+	requireWayForward(t, err, "restore-plan", "rebaseline --card")
+	if strings.Contains(err.Error(), "git checkout") || strings.Contains(err.Error(), "with git") {
+		t.Errorf("Run() error = %q; want no git way forward for a plan path", err)
 	}
 }
 

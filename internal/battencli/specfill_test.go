@@ -46,3 +46,20 @@ func TestSpecFor_FillsRunIdentityForSlug(t *testing.T) {
 		t.Errorf("Routing.MaxBounces = %d, want 2", spec.Routing.MaxBounces)
 	}
 }
+
+// TestSpecFor_CarriesBattenMissingStatusWayForward verifies batten's armed spec names the slug's own run verb for a missing status file.
+func TestSpecFor_CarriesBattenMissingStatusWayForward(t *testing.T) {
+	c := &battenCLI{
+		slug: "task-a",
+		shedPaths: shedbuild.ShedPaths{
+			MissingStatusWayForward: `way forward: "lyx batten run task-a" creates the lifecycle's status file`,
+		},
+	}
+
+	spec := c.specFor("goto")
+
+	want := `way forward: "lyx batten run task-a" creates the lifecycle's status file`
+	if spec.MissingStatusWayForward != want {
+		t.Errorf("MissingStatusWayForward = %q, want %q", spec.MissingStatusWayForward, want)
+	}
+}

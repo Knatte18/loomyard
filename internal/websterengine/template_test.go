@@ -421,6 +421,26 @@ func TestMasterTemplate_QuotesDigestFieldsAndNoOthers(t *testing.T) {
 	}
 }
 
+// TestMasterTemplate_DoneCheckSectionTeachesLaterCardWarning asserts the done-check section no longer lists a deleted-symbol reference as a batch_failed done-check,
+// since postBatchChecks now records it as a later-card warning.
+// It also asserts the section carries the later-card warning sentence quoting begin-batch's own way forward,
+// and that the batch_failed sentence names its own subject.
+func TestMasterTemplate_DoneCheckSectionTeachesLaterCardWarning(t *testing.T) {
+	text := string(mustMasterTemplate(t, newTestStencilsDir(t)))
+
+	const heading = "## A done-check failure arrives as `batch_failed`"
+	_, rest, ok := strings.Cut(text, heading)
+	if !ok {
+		t.Fatalf("master template has no %q section", heading)
+	}
+	section, _, _ := strings.Cut(rest, "\n## ")
+
+	requireNotContains(t, section, "a symbol this batch deleted that the remaining plan still references")
+	requireContains(t, section, "A finding about a later card (drift, or a symbol this batch deleted that a later card still references) comes back on the envelope's `warnings` and the batch still records;")
+	requireContains(t, section, "that later card's own `begin-batch` refuses it, naming \"edit the plan so the named cards match the tree, run \"lyx webster rebaseline --card NN\" naming each card you edited, then begin-batch NN again\".")
+	requireContains(t, section, "A done-check failure comes back as `{\"batch_failed\": true}`")
+}
+
 // TestMasterTemplate_QuotesOutcomeSchemaKeys asserts the master template's outcome-file bullet list
 // names exactly the three outcome.yaml schema keys, immediately followed by the literal yaml block
 // spelling out their values, and separately names summary_path's own "# <title>" first-line rule.
@@ -469,9 +489,32 @@ func TestMasterTemplate_ForbidsLyxGitModelAndNamedSubagents(t *testing.T) {
 	requireContains(t, text, "{{.plan_dir}}` holds the plan")
 	requireContains(t, text, "Read and write them all as ordinary files")
 	requireContains(t, text, "You never run git against `_lyx` or the plan directory; they are committed for you.")
-	requireContains(t, text, "## A policy violation ends your run as stuck")
-	requireContains(t, text, "NEVER work around a violation")
-	requireContains(t, text, "The audit is")
+	requireContains(t, text, "## Audit findings: policy warns, correctness fails the batch")
+	requireContains(t, text, "Still never work around an audit")
+	requireContains(t, text, "never write outside your two contract files")
+	for _, removed := range []string{"## A policy violation ends your run as stuck", "once a violation exists", "## A card-not-done refusal ends your run as stuck", `"card_not_done"`} {
+		if strings.Contains(text, removed) {
+			t.Errorf("master template still carries the removed text %q", removed)
+		}
+	}
+}
+
+// TestMasterTemplate_TeachesBatchFailedAndReportArchivedRungs asserts the master template names the `failed` progress rung and the `batch_failed` and `report_archived` ladder rungs with the verb each one takes, so a run recovers in-session instead of ending stuck.
+func TestMasterTemplate_TeachesBatchFailedAndReportArchivedRungs(t *testing.T) {
+	text := string(mustMasterTemplate(t, newTestStencilsDir(t)))
+
+	requireContains(t, text, "- `failed` → webster rejected that batch's report")
+	requireContains(t, text, `"batch_failed": true`)
+	requireContains(t, text, `"report_archived": true`)
+	requireContains(t, text, "call `lyx webster recover-batch <NN>`, then follow the recover-batch rungs")
+	// recover-batch's own batch_failed is a failed recovery, a terminal rung, never another recover-batch.
+	requireContains(t, text, "- `recover-batch <NN>` refuses with `{\"batch_failed\": true}` → the recovery strand said done but webster's checks rejected its work")
+	requireContains(t, text, "Do NOT call `recover-batch` for that batch again")
+	// A finding recovery cannot check is refused toward run --fresh, so it is terminal for the run too.
+	requireContains(t, text, "- `recover-batch <NN>` refuses with `{\"needs_fresh\": true}` →")
+	requireContains(t, text, "comes back from `recover-batch` as `{\"needs_fresh\": true}`")
+	requireContains(t, text, "call `lyx webster begin-batch <NN>` and re-fork that batch")
+	requireContains(t, text, "`lyx webster rebaseline --card NN`")
 }
 
 // TestMasterTemplate_StatesPlanDriftRefusalEndsRunAsStuck asserts the embedded master template's
@@ -485,6 +528,11 @@ func TestMasterTemplate_StatesPlanDriftRefusalEndsRunAsStuck(t *testing.T) {
 	requireContains(t, text, "## A plan-drift refusal ends your run as stuck")
 	requireContains(t, text, `"plan_drifted": true`)
 	requireContains(t, text, "do not retry the verb")
+
+	_, section, _ := strings.Cut(text, "## A plan-drift refusal ends your run as stuck")
+	section, _, _ = strings.Cut(section, "\n## ")
+	requireContains(t, section, "`record-batch` and `recover-batch` also refuse with `{\"plan_drifted\": true}`")
+	requireContains(t, section, "`lyx webster restore-plan`")
 }
 
 // TestMasterTemplate_IntegrationFailedBranchEndsDone asserts the integration-suite stage's `status: FAILED` branch tells Master to finish with `outcome: done` (webster triages the report after the session) and no longer tells it `outcome: stuck` for that branch.
@@ -740,7 +788,7 @@ func TestRecoveryTemplate_FillsWithAllMarkers(t *testing.T) {
 	stencilsDir := newTestStencilsDir(t)
 
 	t.Run("all markers supplied", func(t *testing.T) {
-		if _, err := stencil.FillOptional(mustRecoveryTemplate(t, stencilsDir), recoveryTemplateMarkerValues(), []string{"pattern_directive", "friction_directive"}); err != nil {
+		if _, err := stencil.FillOptional(mustRecoveryTemplate(t, stencilsDir), recoveryTemplateMarkerValues(), []string{"pattern_directive", "failure_digest", "friction_directive"}); err != nil {
 			t.Fatalf("stencil.FillOptional() = %v; want nil", err)
 		}
 	})
@@ -749,7 +797,7 @@ func TestRecoveryTemplate_FillsWithAllMarkers(t *testing.T) {
 		t.Run("missing "+marker, func(t *testing.T) {
 			values := recoveryTemplateMarkerValues()
 			delete(values, marker)
-			_, err := stencil.FillOptional(mustRecoveryTemplate(t, stencilsDir), values, []string{"pattern_directive", "friction_directive"})
+			_, err := stencil.FillOptional(mustRecoveryTemplate(t, stencilsDir), values, []string{"pattern_directive", "failure_digest", "friction_directive"})
 			if err == nil {
 				t.Fatalf("stencil.FillOptional() with %q missing = nil error; want error naming the marker", marker)
 			}
@@ -941,7 +989,7 @@ func TestRenderRecoveryPrompt_InstructsColdOrientation(t *testing.T) {
 
 	t.Run("PATTERN inactive", func(t *testing.T) {
 		anchorRoot, stencilsDir := testLayout(t)
-		got, err := websterengine.RenderRecoveryPrompt(batch, "", "/reports/01-alpha.yaml", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), 2, "")
+		got, err := websterengine.RenderRecoveryPrompt(batch, "", "", "/reports/01-alpha.yaml", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), 2, "")
 		if err != nil {
 			t.Fatalf("RenderRecoveryPrompt() = _, %v; want nil error", err)
 		}
@@ -962,7 +1010,7 @@ func TestRenderRecoveryPrompt_InstructsColdOrientation(t *testing.T) {
 
 	t.Run("PATTERN active", func(t *testing.T) {
 		anchorRoot, stencilsDir := patternActiveLayout(t)
-		got, err := websterengine.RenderRecoveryPrompt(batch, "", "/reports/01-alpha.yaml", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), 2, "")
+		got, err := websterengine.RenderRecoveryPrompt(batch, "", "", "/reports/01-alpha.yaml", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), 2, "")
 		if err != nil {
 			t.Fatalf("RenderRecoveryPrompt() = _, %v; want nil error", err)
 		}
@@ -1000,7 +1048,7 @@ func TestRenderRecoveryPrompt_MissingPatternStencilErrors(t *testing.T) {
 	batch := batcher.Batch{Cards: []planparser.Card{card}}
 	anchorRoot, stencilsDir := patternActiveMissingPatternStencilsLayout(t)
 
-	if _, err := websterengine.RenderRecoveryPrompt(batch, "", "/reports/01-alpha.yaml", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), 2, ""); err == nil {
+	if _, err := websterengine.RenderRecoveryPrompt(batch, "", "", "/reports/01-alpha.yaml", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), 2, ""); err == nil {
 		t.Fatal("RenderRecoveryPrompt() error = nil; want a non-nil error for a missing pattern-directive stencil")
 	}
 }
@@ -1017,7 +1065,7 @@ func TestRenderRecoveryPrompt_StatesSpecsDir(t *testing.T) {
 		t.Fatalf("newTestSpecsDir(t) = %q; want an absolute path", specsDir)
 	}
 
-	got, err := websterengine.RenderRecoveryPrompt(batch, "", "/reports/01-alpha.yaml", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, specsDir, 2, "")
+	got, err := websterengine.RenderRecoveryPrompt(batch, "", "", "/reports/01-alpha.yaml", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, specsDir, 2, "")
 	if err != nil {
 		t.Fatalf("RenderRecoveryPrompt() = _, %v; want nil error", err)
 	}
@@ -1029,6 +1077,31 @@ func TestRenderRecoveryPrompt_StatesSpecsDir(t *testing.T) {
 	}
 }
 
+// TestRenderRecoveryPrompt_FailureDigest asserts a non-empty failure digest renders verbatim and an empty one renders "none", with no literal marker surviving either way.
+func TestRenderRecoveryPrompt_FailureDigest(t *testing.T) {
+	card := cardWithSourcePath(1, "alpha", "add the flag")
+	batch := batcher.Batch{Cards: []planparser.Card{card}}
+	anchorRoot, stencilsDir := testLayout(t)
+	render := func(digest string) string {
+		t.Helper()
+		got, err := websterengine.RenderRecoveryPrompt(batch, "", digest, "/reports/01-alpha.yaml", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), 2, "")
+		if err != nil {
+			t.Fatalf("RenderRecoveryPrompt() = _, %v; want nil error", err)
+		}
+		return string(got)
+	}
+
+	const digest = "- fork wrote outside its worktree\n- suspect path: internal/x/y.go"
+	text := render(digest)
+	requireContains(t, text, digest)
+	if strings.Contains(text, "{{.failure_digest}}") {
+		t.Errorf("non-empty digest: output contains a literal \"{{.failure_digest}}\" marker: %q", text)
+	}
+
+	text = render("")
+	requireContains(t, text, "Why this batch is being recovered\n\nnone\n")
+}
+
 // TestRenderRecoveryPrompt_EmptySpecsDirErrors asserts RenderRecoveryPrompt returns an error, rather
 // than a prompt carrying a blank path, when handed an empty specsDir.
 func TestRenderRecoveryPrompt_EmptySpecsDirErrors(t *testing.T) {
@@ -1036,7 +1109,7 @@ func TestRenderRecoveryPrompt_EmptySpecsDirErrors(t *testing.T) {
 	batch := batcher.Batch{Cards: []planparser.Card{card}}
 	anchorRoot, stencilsDir := testLayout(t)
 
-	if _, err := websterengine.RenderRecoveryPrompt(batch, "", "/reports/01-alpha.yaml", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, "", 2, ""); err == nil {
+	if _, err := websterengine.RenderRecoveryPrompt(batch, "", "", "/reports/01-alpha.yaml", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, "", 2, ""); err == nil {
 		t.Error("RenderRecoveryPrompt(..., specsDir=\"\") = _, nil; want an error")
 	}
 }
@@ -1099,7 +1172,7 @@ func TestRenderRecoveryPrompt_WorktreeRootIsThePromptWorktreeRoot(t *testing.T) 
 
 	t.Run("anchor root equals prompt worktree root", func(t *testing.T) {
 		anchorRoot, stencilsDir := testLayout(t)
-		got, err := websterengine.RenderRecoveryPrompt(batch, "", "/reports/01-alpha.yaml", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), 2, "")
+		got, err := websterengine.RenderRecoveryPrompt(batch, "", "", "/reports/01-alpha.yaml", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), 2, "")
 		if err != nil {
 			t.Fatalf("RenderRecoveryPrompt() = _, %v; want nil error", err)
 		}
@@ -1110,7 +1183,7 @@ func TestRenderRecoveryPrompt_WorktreeRootIsThePromptWorktreeRoot(t *testing.T) 
 		anchorRoot, stencilsDir := testLayout(t)
 		const promptWorktreeRoot = "/standalone/state/worktree"
 
-		got, err := websterengine.RenderRecoveryPrompt(batch, "", "/reports/01-alpha.yaml", anchorRoot, filepath.Join(promptWorktreeRoot, "_lyx", "plan"), promptWorktreeRoot, stencilsDir, newTestSpecsDir(t), 2, "")
+		got, err := websterengine.RenderRecoveryPrompt(batch, "", "", "/reports/01-alpha.yaml", anchorRoot, filepath.Join(promptWorktreeRoot, "_lyx", "plan"), promptWorktreeRoot, stencilsDir, newTestSpecsDir(t), 2, "")
 		if err != nil {
 			t.Fatalf("RenderRecoveryPrompt() = _, %v; want nil error", err)
 		}
@@ -1458,7 +1531,7 @@ func TestRenderRecoveryPrompt_FrictionDirective(t *testing.T) {
 	t.Run("enabled: a non-empty note path appears in the composed prompt verbatim", func(t *testing.T) {
 		anchorRoot, stencilsDir := frictionActiveLayout(t)
 		notePath := filepath.Join(anchorRoot, "_lyx", "friction", "01-alpha-recovery.md")
-		got, err := websterengine.RenderRecoveryPrompt(batch, "", "/reports/01-alpha.yaml", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), 2, notePath)
+		got, err := websterengine.RenderRecoveryPrompt(batch, "", "", "/reports/01-alpha.yaml", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), 2, notePath)
 		if err != nil {
 			t.Fatalf("RenderRecoveryPrompt() = _, %v; want nil error", err)
 		}
@@ -1467,7 +1540,7 @@ func TestRenderRecoveryPrompt_FrictionDirective(t *testing.T) {
 
 	t.Run("disabled: an empty note path composes cleanly and reads no friction stencil", func(t *testing.T) {
 		anchorRoot, stencilsDir := testLayout(t)
-		got, err := websterengine.RenderRecoveryPrompt(batch, "", "/reports/01-alpha.yaml", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), 2, "")
+		got, err := websterengine.RenderRecoveryPrompt(batch, "", "", "/reports/01-alpha.yaml", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), 2, "")
 		if err != nil {
 			t.Fatalf("RenderRecoveryPrompt() = _, %v; want nil error", err)
 		}
@@ -1478,7 +1551,7 @@ func TestRenderRecoveryPrompt_FrictionDirective(t *testing.T) {
 		anchorRoot, stencilsDir := frictionActiveLayout(t)
 		stripFrictionMarker(t, stencilsDir, "webster-prefix-recovery")
 		notePath := filepath.Join(anchorRoot, "_lyx", "friction", "01-alpha-recovery.md")
-		if _, err := websterengine.RenderRecoveryPrompt(batch, "", "/reports/01-alpha.yaml", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), 2, notePath); err != nil {
+		if _, err := websterengine.RenderRecoveryPrompt(batch, "", "", "/reports/01-alpha.yaml", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), 2, notePath); err != nil {
 			t.Fatalf("RenderRecoveryPrompt() = _, %v; want nil error even with a marker-free template", err)
 		}
 	})
