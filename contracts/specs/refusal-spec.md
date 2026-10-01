@@ -32,7 +32,7 @@ Raw I/O failures (`stat`, `mkdir`, `write`) form one grouped transient row per s
 ## webster
 
 A validation verb's findings envelope (`lyx webster validate`) is that verb's verdict on the plan, not a refusal, so it has no row here.
-The audit rows below follow the fork-audit severity split: a fork-contract write, a parent write into the task worktree's tracked content or under the run's `_lyx`, and a fabric reference whose command can change files, are correctness; every other finding is policy.
+The audit rows below follow the fork-audit severity split: a fork-contract write, a parent write into the task worktree's tracked content or under the run's `_lyx`, and a fabric reference unless every command in it is a known read-only program with no write redirect, are correctness; every other finding is policy.
 A finding is dispositioned once per run, by the first `record-batch` or run-exit audit that reports it.
 
 | Refusal | Trigger | Class | Way forward |
@@ -54,8 +54,8 @@ A finding is dispositioned once per run, by the first `record-batch` or run-exit
 | audit: fork-contract-write | a fork's transcript wrote one of the run's two contract files | correctness halt | `lyx webster recover-batch NN`; the batch fails with its report archived |
 | audit: parent-write, tracked or `_lyx` | Master wrote into the worktree's tracked content or under the run's `_lyx` | correctness halt | `lyx webster recover-batch NN` at record-batch; at run exit, revert or re-derive the named paths in the task worktree with git, then run `lyx webster accept-audit` and re-step the Webster row (lyx webster run) |
 | audit: parent-write, elsewhere | Master wrote a path outside the worktree, or a git-ignored path in the task worktree outside `_lyx` | policy guard | warn and record once, after the card verify commands re-run and pass; a failing verify makes the finding correctness |
-| audit: fabric-reference, mutating | a fork or Master ran a fabric-referencing command that can change files | correctness halt | `lyx webster recover-batch NN` at record-batch; at run exit, revert or re-derive the named paths in the task worktree with git, then run `lyx webster accept-audit` and re-step the Webster row (lyx webster run) |
-| audit: fabric-reference, read-only | a fork or Master ran a fabric-referencing command that cannot change files | policy guard | warn and record once; no action needed |
+| audit: fabric-reference, mutating | a fork or Master ran a fabric-referencing command outside the read-only allowlist | correctness halt | `lyx webster recover-batch NN` at record-batch; at run exit, revert or re-derive the named paths in the task worktree with git, then run `lyx webster accept-audit` and re-step the Webster row (lyx webster run) |
+| audit: fabric-reference, read-only | a fork or Master ran a fabric-referencing command made only of known read-only programs with no write redirect | policy guard | warn and record once; no action needed |
 | audit: named-spawn | Master spawned a named subagent | policy guard | warn and record once; no action needed |
 | audit: nested-agent | a fork attempted an Agent call | policy guard | warn and record once; no action needed |
 | card not done | the batch's own done-checks find declared work missing | correctness halt | `lyx webster recover-batch NN`; the batch fails with its report archived |

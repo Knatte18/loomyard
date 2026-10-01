@@ -1136,7 +1136,7 @@ func TestRun_DoneWithFabricReferenceInIntegrationForkWarns(t *testing.T) {
 	})
 	forks := []shuttleengine.ForkReport{
 		{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true},
-		{TranscriptPath: "/transcripts/integration.jsonl", ReportReturned: true, BashCommands: []string{"lyx FABRICREF sync"}},
+		{TranscriptPath: "/transcripts/integration.jsonl", ReportReturned: true, BashCommands: []string{"cat FABRICREF/webster/state.json"}},
 	}
 	fx.Starter.handle = auditDoneHandle(t, fx, session, 1, shuttleengine.ForkAudit{Forks: forks}, func() {
 		head := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))

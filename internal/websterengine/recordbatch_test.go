@@ -604,7 +604,7 @@ func forkFabricRefAudit() shuttleengine.ForkAudit {
 	return shuttleengine.ForkAudit{Forks: []shuttleengine.ForkReport{{
 		TranscriptPath: "subagents/f1.jsonl",
 		ReportReturned: true,
-		BashCommands:   []string{"lyx FABRICREF sync"},
+		BashCommands:   []string{"cat FABRICREF/webster/state.json"},
 	}}}
 }
 
@@ -679,6 +679,35 @@ func TestRecordBatch_MutatingFabricReferenceFailsBatch(t *testing.T) {
 	}
 }
 
+// TestRecordBatch_UnlistedWriterFabricReferenceFailsBatch proves a fork that rewrote the fabric checkout through a program outside the read-only allowlist is correctness,
+// not a warning, even on an OK report with a passing card verify.
+func TestRecordBatch_UnlistedWriterFabricReferenceFailsBatch(t *testing.T) {
+	cmd := `python3 -c "open('/fabric/sibling/webster/state.json','w').write('{}')"`
+	fx := newRecordFixture(t, []shuttleengine.ForkAudit{{Forks: []shuttleengine.ForkReport{{
+		TranscriptPath: "subagents/f1.jsonl",
+		ReportReturned: true,
+		BashCommands:   []string{cmd},
+	}}}})
+	fx.Deps.RefMatcher = fabricPathMatcher("/fabric/sibling")
+	setCardVerify(fx, "exit 0")
+	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
+
+	result, err := websterengine.RecordBatch(fx.Deps, 1)
+	if !errors.Is(err, websterengine.ErrBatchFailed) {
+		t.Fatalf("RecordBatch() error = %v; want ErrBatchFailed", err)
+	}
+	bs := fx.Deps.State.Batches[1]
+	if !bs.Terminal || bs.Status != websterengine.DigestStatusFailed || !result.Failed {
+		t.Errorf("batch = %+v, result = %+v; want terminal failed", bs, result)
+	}
+	if !warningsContain(result.Digest.Reasons, cmd) {
+		t.Errorf("Reasons = %v; want the command named", result.Digest.Reasons)
+	}
+	if got := archivedReports(t, fx.ReportsDir); len(got) != 1 {
+		t.Errorf("archived reports = %v; want exactly one", got)
+	}
+}
+
 // fabricPathMatcher is a RefMatcher that matches any command containing its fabric path.
 type fabricPathMatcher string
 
@@ -689,7 +718,7 @@ func (m fabricPathMatcher) Matches(cmd string) bool { return strings.Contains(cm
 func TestRecordBatch_RetryNeverDuplicatesWarning(t *testing.T) {
 	audit := shuttleengine.ForkAudit{
 		Forks:              []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}},
-		ParentBashCommands: []string{"lyx FABRICREF sync"},
+		ParentBashCommands: []string{"cat FABRICREF/webster/state.json"},
 	}
 	audit2 := audit
 	audit2.Forks = []shuttleengine.ForkReport{
@@ -733,7 +762,7 @@ func TestRecordBatch_RetryNeverDuplicatesWarning(t *testing.T) {
 func TestRecordBatch_RetryFailingVerifyFailsNamingEarlierWarning(t *testing.T) {
 	audit := shuttleengine.ForkAudit{
 		Forks:              []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}},
-		ParentBashCommands: []string{"lyx FABRICREF sync"},
+		ParentBashCommands: []string{"cat FABRICREF/webster/state.json"},
 	}
 	audit2 := audit
 	audit2.Forks = []shuttleengine.ForkReport{

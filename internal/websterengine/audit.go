@@ -275,7 +275,8 @@ func fabricReferenceDetail(cmd, rule string) string {
 var (
 	readOnlyGit    = stringSet("status", "log", "show", "diff", "rev-parse", "ls-files", "ls-tree", "cat-file", "grep", "blame", "describe", "for-each-ref", "show-ref", "merge-base")
 	readOnlyFabric = stringSet("status", "diff", "list", "pairs")
-	mutatingTools  = stringSet("rm", "mv", "cp", "touch", "truncate", "tee", "ln")
+	// readOnlyTools are programs that write nothing without an output redirect.
+	readOnlyTools = stringSet("cat", "ls", "grep", "head", "tail", "wc", "stat", "cd", "pwd", "echo", "printf", "true", "test", "[")
 
 	// gitValueOptions are git's global options whose value may follow as a separate word.
 	gitValueOptions = stringSet("-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env", "--super-prefix")
@@ -297,21 +298,25 @@ func stringSet(words ...string) map[string]bool {
 	return set
 }
 
-// mutatingCommand reports whether the Bash command cmd can change files.
+// mutatingCommand reports whether the Bash command cmd can change files; it fails closed.
 // It splits cmd into simple commands, quote-aware, at `&&`, `||`, `;`, `|`, a lone `&`, a newline and a parenthesis,
 // and also reads each `$(...)` or backtick substitution as a command of its own.
 // It is true when any simple command carries an output redirect other than descriptor duplication or one to /dev/null, /dev/stdout or /dev/stderr,
-// or when mutatingSegment's per-program rules find it can change files.
-// Every other command is read-only.
+// or when it is not a readOnlySegment.
+// Only a command whose every simple command is a known read-only program with no write redirect is read-only;
+// a command with no simple command and no substitution at all is mutating, so an empty or unparseable command fails closed.
 func mutatingCommand(cmd string) bool {
 	segments, substitutions := splitShell(cmd)
+	if len(segments) == 0 && len(substitutions) == 0 {
+		return true
+	}
 	for _, inner := range substitutions {
 		if mutatingCommand(inner) {
 			return true
 		}
 	}
 	for _, s := range segments {
-		if s.writes || mutatingSegment(s.words) {
+		if s.writes || !readOnlySegment(s.words) {
 			return true
 		}
 	}
@@ -535,34 +540,39 @@ func splitShell(cmd string) (segments []shellSegment, substitutions []string) {
 	return segments, substitutions
 }
 
-// mutatingSegment applies mutatingCommand's per-program rules to one simple command's words.
-// It is true when the command runs git with a subcommand outside the read-only set,
-// runs `lyx fabric` with a verb outside the read-only set (`prune` and `cleanup` only with `--apply`),
-// runs rm, mv, cp, touch, truncate, tee or ln, or runs sed or perl in place.
-// A wrapper (sudo, env, xargs, a `bash -c` script, `find -exec`) is judged by the command it runs, and `find -delete` changes files.
-func mutatingSegment(words []string) bool {
+// readOnlySegment reports whether one simple command's words are a known read-only shape.
+// After leading shell keywords and `NAME=value` assignments, it is true for a bare assignment,
+// a program in readOnlyTools, git with a subcommand in readOnlyGit and no `--output` option,
+// and `lyx fabric` with a verb in readOnlyFabric (`prune` and `cleanup` only without `--apply`).
+// It is also true for `find` with no `-delete` or `-fprint`-family action whose every `-exec` command is read-only,
+// for a wrapper (sudo, env, timeout, xargs) whose wrapped command is read-only,
+// and for `bash -c` with a script mutatingCommand finds read-only.
+// Every other shape is mutating: an unknown program, a program spelled through a variable, `bash` without `-c`, eval, source, sed, perl, awk, any other lyx verb.
+func readOnlySegment(words []string) bool {
 	for len(words) > 0 && (shellKeywords[words[0]] || (strings.Contains(words[0], "=") && !strings.HasPrefix(words[0], "-"))) {
 		words = words[1:]
 	}
 	if len(words) == 0 {
-		return false
+		return true
 	}
 	prog := filepath.Base(words[0])
 	args := words[1:]
 	switch {
+	case readOnlyTools[prog]:
+		return true
 	case commandWrappers[prog]:
 		for len(args) > 0 && strings.HasPrefix(args[0], "-") {
 			args = args[1:]
 		}
-		return mutatingSegment(args)
+		return readOnlySegment(args)
 	case prog == "timeout":
 		for len(args) > 0 && strings.HasPrefix(args[0], "-") {
 			args = args[1:]
 		}
 		if len(args) == 0 {
-			return false
+			return true
 		}
-		return mutatingSegment(args[1:])
+		return readOnlySegment(args[1:])
 	case prog == "xargs":
 		for len(args) > 0 && strings.HasPrefix(args[0], "-") {
 			if xargsValueOptions[args[0]] {
@@ -572,38 +582,43 @@ func mutatingSegment(words []string) bool {
 				args = args[1:]
 			}
 		}
-		return mutatingSegment(args)
+		return readOnlySegment(args)
 	case prog == "bash" || prog == "sh" || prog == "zsh" || prog == "dash":
 		for i, a := range args {
 			if strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "--") && strings.Contains(a, "c") && i+1 < len(args) {
-				return mutatingCommand(args[i+1])
+				return !mutatingCommand(args[i+1])
 			}
 		}
 		return false
 	case prog == "find":
 		for i, a := range args {
 			switch a {
-			case "-delete":
-				return true
+			case "-delete", "-fprint", "-fprint0", "-fprintf", "-fls":
+				return false
 			case "-exec", "-execdir", "-ok", "-okdir":
 				end := i + 1
 				for end < len(args) && args[end] != ";" && args[end] != "+" {
 					end++
 				}
-				if mutatingSegment(args[i+1 : end]) {
-					return true
+				if !readOnlySegment(args[i+1 : end]) {
+					return false
 				}
 			}
 		}
-		return false
+		return true
 	case prog == "git":
+		for _, a := range args {
+			if a == "--output" || strings.HasPrefix(a, "--output=") {
+				return false
+			}
+		}
 		for i := 0; i < len(args); i++ {
 			switch {
 			case gitValueOptions[args[i]]:
 				i++
 			case strings.HasPrefix(args[i], "-"):
 			default:
-				return !readOnlyGit[args[i]]
+				return readOnlyGit[args[i]]
 			}
 		}
 		return false
@@ -615,46 +630,12 @@ func mutatingSegment(words []string) bool {
 		if verb == "prune" || verb == "cleanup" {
 			for _, a := range args[2:] {
 				if a == "--apply" {
-					return true
+					return false
 				}
 			}
-			return false
-		}
-		return !readOnlyFabric[verb]
-	case mutatingTools[prog]:
-		return true
-	case prog == "sed":
-		return editsInPlace(args, "efl", "")
-	case prog == "perl":
-		return editsInPlace(args, "eEMmIFxdD", "l0C")
-	}
-	return false
-}
-
-// editsInPlace reports whether args carry an in-place flag: `--in-place`, or an `i` in a short-option cluster.
-// An `i` counts only before the cluster's first letter in valueLetters, since the rest of the cluster is that option's value,
-// and a letter in digitLetters skips the digits that follow it.
-func editsInPlace(args []string, valueLetters, digitLetters string) bool {
-	for _, a := range args {
-		if strings.HasPrefix(a, "--in-place") {
 			return true
 		}
-		if !strings.HasPrefix(a, "-") || strings.HasPrefix(a, "--") {
-			continue
-		}
-	cluster:
-		for j := 1; j < len(a); j++ {
-			switch letter := a[j]; {
-			case letter == 'i':
-				return true
-			case strings.IndexByte(valueLetters, letter) >= 0:
-				break cluster
-			case strings.IndexByte(digitLetters, letter) >= 0:
-				for j+1 < len(a) && a[j+1] >= '0' && a[j+1] <= '9' {
-					j++
-				}
-			}
-		}
+		return readOnlyFabric[verb]
 	}
 	return false
 }
@@ -663,7 +644,7 @@ func editsInPlace(args []string, valueLetters, digitLetters string) bool {
 // A fork-contract-write is correctness.
 // A parent-write is correctness when its path lies under the run's state, reports or plan directory, or the run's `_lyx` directory (the parent of geom.WebsterDir),
 // or when it lies inside the worktree and git does not ignore it; every other parent-write is policy.
-// A fabric-reference is correctness when its Command can change files (see mutatingCommand), since a rewrite of the fabric checkout can rewrite run state that a re-run of the cards' verify commands cannot detect; a read-only fabric reference is policy.
+// A fabric-reference is policy only when every simple command in its Command is a known read-only program with no write redirect (see mutatingCommand); every other fabric reference is correctness, since a rewrite of the fabric checkout can rewrite run state that a re-run of the cards' verify commands cannot detect.
 // Every other class is policy.
 // Prefix tests compare link-resolved paths, so a write spelled through a link to the run's `_lyx` still classes as correctness.
 // The error return is only the git probe's or the link resolution's failure.
