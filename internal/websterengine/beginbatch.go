@@ -41,8 +41,39 @@ var ErrPaused = errors.New("webster: paused")
 // sentinel identity (webster-owns-its-own-domain-types).
 var ErrFingerprintMismatch = errors.New("webster: on-disk plan fingerprint does not match this run's recorded state")
 
+// planOverviewFile is the plan's overview file, which carries the integration verify and is never rebaselined.
+const planOverviewFile = "00-overview.md"
+
 // fingerprintMismatchWayForward is the trailing clause BeginBatch and Run put on an ErrFingerprintMismatch wrap.
-const fingerprintMismatchWayForward = "way forward: if the edit keeps every begun batch's cards, run `lyx webster rebaseline` to accept it, otherwise reset the branch to the run's start commit and run `lyx webster run --fresh`"
+// It reads the changed plan files so the clause names the cards to pass to rebaseline;
+// a state without PlanFileHashes names rebaseline without card numbers, and a changedPlanFiles error falls back to the generic text.
+func fingerprintMismatchWayForward(st *State, planDir string) string {
+	const fresh = "reset the branch to the run's start commit and run `lyx webster run --fresh`"
+	if len(st.PlanFileHashes) == 0 {
+		return "way forward: if the edit keeps every begun batch's cards, run `lyx webster rebaseline` to accept it, otherwise " + fresh
+	}
+	changed, err := changedPlanFiles(st, planDir)
+	if err != nil {
+		return "way forward: if the edit keeps every begun batch's cards, run `lyx webster rebaseline --card NN` naming each card you edited, otherwise " + fresh
+	}
+	var flags []string
+	for _, name := range changed {
+		if name == planOverviewFile {
+			return "way forward: " + planOverviewFile + " changed and is never rebaselined; restore it, or " + fresh
+		}
+		flags = append(flags, "--card "+cardNumberOf(name))
+	}
+	if len(flags) == 0 {
+		return "way forward: run `lyx webster rebaseline --card NN` naming each card you edited, otherwise " + fresh
+	}
+	return "way forward: run `lyx webster rebaseline " + strings.Join(flags, " ") + "` to accept the edit, otherwise " + fresh
+}
+
+// cardNumberOf returns the digits before the first "-" of a card file name, or the whole name when it has none.
+func cardNumberOf(name string) string {
+	num, _, _ := strings.Cut(name, "-")
+	return num
+}
 
 // ErrPlanDrifted is the sentinel BeginBatch returns when the dispatch-boundary re-resolution
 // (planglyph.ValidateDispatch, called against deps.Geom.WorktreeRoot with the completed cards
@@ -250,7 +281,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 		return nil, err
 	}
 	if deps.State.PlanFingerprint != fp {
-		return nil, fmt.Errorf("%w: on-disk plan fingerprint %s does not match this run's recorded fingerprint %s; the plan changed since state.json was created; %s", ErrFingerprintMismatch, fp, deps.State.PlanFingerprint, fingerprintMismatchWayForward)
+		return nil, fmt.Errorf("%w: on-disk plan fingerprint %s does not match this run's recorded fingerprint %s; the plan changed since state.json was created; %s", ErrFingerprintMismatch, fp, deps.State.PlanFingerprint, fingerprintMismatchWayForward(deps.State, deps.Plan.Dir))
 	}
 
 	// Re-resolve the plan against the current tree before a pack is built, never from a cache.
@@ -288,7 +319,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 		}
 	}
 	if len(blocking) > 0 {
-		return nil, fmt.Errorf("%w: %s; way forward: edit the plan so the named cards match the tree, run \"lyx webster rebaseline\", then begin-batch %02d again", ErrPlanDrifted, strings.Join(blocking, "; "), batchNumber)
+		return nil, fmt.Errorf("%w: %s; way forward: edit the plan so the named cards match the tree, run \"lyx webster rebaseline --card NN\" naming each card you edited, then begin-batch %02d again", ErrPlanDrifted, strings.Join(blocking, "; "), batchNumber)
 	}
 
 	batch, err := findBatch(deps.Batches, batchNumber)

@@ -239,10 +239,9 @@ Example:
 			// st (no run in progress) means there is no state.json to desync, so this is a no-op.
 			var rebaseErr error
 			if st != nil {
-				if fp, fpErr := websterengine.Fingerprint(plan.Dir); fpErr != nil {
+				if fpErr := websterengine.RestampPlanBaseline(st, plan.Dir); fpErr != nil {
 					rebaseErr = fpErr
 				} else {
-					st.PlanFingerprint = fp
 					rebaseErr = persistPlanFingerprintRebaseline(c.geom, st, fingerprintBefore)
 				}
 			}
@@ -258,13 +257,13 @@ Example:
 					msg = "webster: quarry could not answer validating plan: " + validateErr.Error()
 				}
 				if rebaseErr != nil {
-					msg = fmt.Sprintf("%s (additionally, persisting the plan-fingerprint re-baseline this call had already earned failed: %v; way forward: re-run `lyx webster validate`, or `lyx webster rebaseline`)", msg, rebaseErr)
+					msg = fmt.Sprintf("%s (additionally, persisting the plan-fingerprint re-baseline this call had already earned failed: %v; way forward: re-run `lyx webster validate`)", msg, rebaseErr)
 				}
 				clihelp.SetExit(cmd.Context(), output.Err(out, msg))
 				return nil
 			}
 			if rebaseErr != nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: validate finished but persisting the plan-fingerprint re-baseline failed: %v -- state.json may now be stale; the next begin-batch/record-batch/run may refuse the plan as foreign; way forward: re-run `lyx webster validate`, or `lyx webster rebaseline`", rebaseErr)))
+				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: validate finished but persisting the plan-fingerprint re-baseline failed: %v -- state.json may now be stale; the next begin-batch/record-batch/run may refuse the plan as foreign; way forward: re-run `lyx webster validate`", rebaseErr)))
 				return nil
 			}
 

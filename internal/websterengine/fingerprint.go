@@ -56,6 +56,62 @@ func fingerprint(planDir string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
+// planFileNames lists the plan files fingerprint covers, sorted: every ".md" file in planDir but planparser.AmendmentsFileName.
+func planFileNames(planDir string) ([]string, error) {
+	entries, err := os.ReadDir(planDir)
+	if err != nil {
+		return nil, fmt.Errorf("websterengine: plan files %s: %w", planDir, err)
+	}
+	var names []string
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") || e.Name() == planparser.AmendmentsFileName {
+			continue
+		}
+		names = append(names, e.Name())
+	}
+	sort.Strings(names)
+	return names, nil
+}
+
+// planFileHashes hashes the same file set fingerprint reads, one hex SHA-256 per file name.
+func planFileHashes(planDir string) (map[string]string, error) {
+	names, err := planFileNames(planDir)
+	if err != nil {
+		return nil, err
+	}
+	hashes := make(map[string]string, len(names))
+	for _, name := range names {
+		data, err := os.ReadFile(filepath.Join(planDir, name))
+		if err != nil {
+			return nil, fmt.Errorf("websterengine: plan file hashes %s: read %s: %w", planDir, name, err)
+		}
+		sum := sha256.Sum256(data)
+		hashes[name] = hex.EncodeToString(sum[:])
+	}
+	return hashes, nil
+}
+
+// changedPlanFiles returns the plan file names whose current hash differs from st.PlanFileHashes, plus files added or removed since, sorted.
+func changedPlanFiles(st *State, planDir string) ([]string, error) {
+	now, err := planFileHashes(planDir)
+	if err != nil {
+		return nil, err
+	}
+	var changed []string
+	for name, h := range now {
+		if want, ok := st.PlanFileHashes[name]; !ok || want != h {
+			changed = append(changed, name)
+		}
+	}
+	for name := range st.PlanFileHashes {
+		if _, ok := now[name]; !ok {
+			changed = append(changed, name)
+		}
+	}
+	sort.Strings(changed)
+	return changed, nil
+}
+
 // Fingerprint is fingerprint's exported seam for a caller outside this package that needs to know
 // the SAME plan-identity digest webster's own bracket verbs compute, without going through
 // BeginBatch/RecordBatch's own State-restamping side effect.
@@ -85,8 +141,18 @@ func restampFingerprint(st *State, planDir string) error {
 	if err != nil {
 		return err
 	}
+	hashes, err := planFileHashes(planDir)
+	if err != nil {
+		return err
+	}
 	st.PlanFingerprint = fp
+	st.PlanFileHashes = hashes
 	return nil
+}
+
+// RestampPlanBaseline is restampFingerprint's exported seam for webstercli's validate verb, which re-baselines after its own rewrite-capable pass.
+func RestampPlanBaseline(st *State, planDir string) error {
+	return restampFingerprint(st, planDir)
 }
 
 // restampAndSaveFingerprint is restampFingerprint followed by SaveState, for Run — the one

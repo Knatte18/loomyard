@@ -375,6 +375,9 @@ func addCardCreateTarget(t *testing.T, planDir string, cardNumber int, target st
 func seedMatchingState(t *testing.T, fx *runFixture, st *websterengine.State) {
 	t.Helper()
 	st.PlanFingerprint = mustFingerprint(t, fx.PlanDir)
+	if err := websterengine.RestampPlanBaseline(st, fx.PlanDir); err != nil {
+		t.Fatalf("stamp plan file hashes: %v", err)
+	}
 	if st.Batches == nil {
 		st.Batches = map[int]*websterengine.BatchState{}
 	}
@@ -1898,7 +1901,7 @@ func requireReachedMaster(t *testing.T, fx *runFixture, err error) {
 }
 
 // rebaselineOnDisk is what the rebaseline verb does: parse the edited plan, re-derive its batches, restamp the recorded fingerprint and save.
-func rebaselineOnDisk(t *testing.T, fx *runFixture) {
+func rebaselineOnDisk(t *testing.T, fx *runFixture, cards ...int) {
 	t.Helper()
 	plan, err := planparser.ParsePlan(fx.PlanDir)
 	if err != nil {
@@ -1909,7 +1912,7 @@ func rebaselineOnDisk(t *testing.T, fx *runFixture) {
 		t.Fatalf("LoadState() = %v, %v; want recorded state", st, err)
 	}
 	batches, _ := websterengine.SequenceBatches(fx.Deps.Batcher.Batch(plan.Cards))
-	if _, err := websterengine.Rebaseline(websterengine.RebaselineDeps{Plan: plan, Batches: batches, State: st}); err != nil {
+	if _, err := websterengine.Rebaseline(websterengine.RebaselineDeps{Plan: plan, Batches: batches, State: st, Cards: cards}); err != nil {
 		t.Fatalf("Rebaseline() error = %v", err)
 	}
 	if err := websterengine.SaveState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir, st); err != nil {
@@ -1951,7 +1954,7 @@ func TestRun_WayForward_ZeroBatches(t *testing.T) {
 	fx.Deps.Batcher = emptyBatcher{}
 
 	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
-	requireWayForward(t, err, "fix the plan's cards", "lyx webster rebaseline", "lyx webster run")
+	requireWayForward(t, err, "fix the plan's cards", "lyx webster rebaseline --card", "lyx webster run")
 	if fx.Starter.callCount() != 0 {
 		t.Errorf("Starter was reached (%d calls) for a zero-batch plan; want zero", fx.Starter.callCount())
 	}
@@ -1973,7 +1976,7 @@ func TestRun_WayForward_ValidationRefusal(t *testing.T) {
 	addCardUses(t, fx.PlanDir, 1, "sub#Missing")
 
 	_, err = websterengine.Run(fx.Deps, websterengine.RunOptions{})
-	requireWayForward(t, err, "fix the named cards", "lyx webster rebaseline", "lyx webster run")
+	requireWayForward(t, err, "fix the named cards", "lyx webster rebaseline --card", "lyx webster run")
 
 	// The refused run already recorded the edited plan;
 	// fixing the card is a further edit, so the next run refuses it as foreign until the operator rebaselines, which the message names.
@@ -1985,7 +1988,7 @@ func TestRun_WayForward_ValidationRefusal(t *testing.T) {
 	if !errors.Is(err, websterengine.ErrFingerprintMismatch) {
 		t.Fatalf("Run() after the plan fix error = %v; want errors.Is(err, ErrFingerprintMismatch) until rebaselined", err)
 	}
-	rebaselineOnDisk(t, fx)
+	rebaselineOnDisk(t, fx, 1)
 	_, err = websterengine.Run(fx.Deps, websterengine.RunOptions{})
 	requireReachedMaster(t, fx, err)
 }
@@ -2291,4 +2294,58 @@ func TestRun_ResumesOverExtendedPlanAfterRebaseline(t *testing.T) {
 	if _, statErr := os.Stat(filepath.Join(geom.PromptsDir, "integration.md")); statErr != nil {
 		t.Errorf("integration prompt not written: %v", statErr)
 	}
+}
+
+// TestRun_FirstInitRecordsPlanFileHashes proves the first-init state records a hash for every plan file, 00-overview.md included.
+func TestRun_FirstInitRecordsPlanFileHashes(t *testing.T) {
+	fx := newRunFixture(t, 2)
+	askingMaster(t, fx, "first")
+	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	requireReachedMaster(t, fx, err)
+
+	st, err := websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
+	if err != nil || st == nil {
+		t.Fatalf("LoadState() = %v, %v; want recorded state", st, err)
+	}
+	for _, name := range []string{"00-overview.md", "01-batch1.md", "02-batch2.md"} {
+		if st.PlanFileHashes[name] == "" {
+			t.Errorf("PlanFileHashes = %v; want a hash for %s", st.PlanFileHashes, name)
+		}
+	}
+}
+
+// TestRun_FingerprintMismatchWayForwardNamesTheEditedCards proves the mismatch refusal names the cards to pass to rebaseline, and never a card for 00-overview.md.
+func TestRun_FingerprintMismatchWayForwardNamesTheEditedCards(t *testing.T) {
+	t.Run("edited card", func(t *testing.T) {
+		fx := newRunFixture(t, 2)
+		seedMatchingState(t, fx, &websterengine.State{})
+		addCardUses(t, fx.PlanDir, 2, "base.txt")
+
+		_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+		if !errors.Is(err, websterengine.ErrFingerprintMismatch) {
+			t.Fatalf("Run() error = %v; want errors.Is(err, ErrFingerprintMismatch)", err)
+		}
+		requireWayForward(t, err, "lyx webster rebaseline --card 02", "lyx webster run --fresh")
+	})
+	t.Run("edited overview", func(t *testing.T) {
+		fx := newRunFixture(t, 2)
+		seedMatchingState(t, fx, &websterengine.State{})
+		overview := filepath.Join(fx.PlanDir, "00-overview.md")
+		data, err := os.ReadFile(overview)
+		if err != nil {
+			t.Fatalf("read overview: %v", err)
+		}
+		if err := os.WriteFile(overview, []byte(strings.Replace(string(data), "Framing.", "Framing, edited.", 1)), 0o644); err != nil {
+			t.Fatalf("edit overview: %v", err)
+		}
+
+		_, err = websterengine.Run(fx.Deps, websterengine.RunOptions{})
+		if !errors.Is(err, websterengine.ErrFingerprintMismatch) {
+			t.Fatalf("Run() error = %v; want errors.Is(err, ErrFingerprintMismatch)", err)
+		}
+		requireWayForward(t, err, "--fresh")
+		if strings.Contains(err.Error(), "--card") {
+			t.Errorf("error %q; want no --card for an edited 00-overview.md", err.Error())
+		}
+	})
 }

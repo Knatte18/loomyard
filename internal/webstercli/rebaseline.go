@@ -4,6 +4,7 @@ package webstercli
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -14,7 +15,8 @@ import (
 
 // rebaselineCmd builds the `rebaseline` subcommand.
 func (c *websterCLI) rebaselineCmd() *cobra.Command {
-	return &cobra.Command{
+	var cardFlags []string
+	cmd := &cobra.Command{
 		Use:   "rebaseline",
 		Short: "accept an on-disk plan edit as the run's plan without dropping batch records",
 		Long: `rebaseline accepts the plan on disk as the run's plan after a mid-run edit,
@@ -24,17 +26,30 @@ batch the run already begun (a begun card's content counts, not only its id),
 or removes such a batch; the way forward then is
 to restore those cards, or to reset the branch to the run's start commit and
 run "lyx webster run --fresh".
-On success the envelope carries previous_fingerprint, plan_fingerprint and
-batches_kept.
+The operator names every card the edit changed with --card (repeatable);
+an edited card that is not named is refused, and 00-overview.md, which
+carries the plan's integration verify, is never accepted.
+On success the envelope carries previous_fingerprint, plan_fingerprint,
+batches_kept and cards_accepted.
 
 Example:
-  lyx webster rebaseline`,
+  lyx webster rebaseline --card 05 --card 07`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()
 
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
+			}
+
+			cards := make([]int, 0, len(cardFlags))
+			for _, v := range cardFlags {
+				n, convErr := strconv.Atoi(v)
+				if convErr != nil || n <= 0 {
+					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: --card %q is not a card number; pass a positive integer such as 5 or 05", v)))
+					return nil
+				}
+				cards = append(cards, n)
 			}
 
 			plan, err := planparser.ParsePlan(c.geom.PlanDir)
@@ -66,7 +81,7 @@ Example:
 				return nil
 			}
 
-			result, err := websterengine.Rebaseline(websterengine.RebaselineDeps{Plan: plan, Batches: batches, State: st})
+			result, err := websterengine.Rebaseline(websterengine.RebaselineDeps{Plan: plan, Batches: batches, State: st, Cards: cards})
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
@@ -87,8 +102,11 @@ Example:
 				"previous_fingerprint": result.PreviousFingerprint,
 				"plan_fingerprint":     result.Fingerprint,
 				"batches_kept":         result.BatchesKept,
+				"cards_accepted":       result.CardsAccepted,
 			}))
 			return nil
 		},
 	}
+	cmd.Flags().StringSliceVar(&cardFlags, "card", nil, "card number the edit changed (repeatable)")
+	return cmd
 }

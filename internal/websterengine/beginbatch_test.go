@@ -761,6 +761,9 @@ func TestBeginBatch_ReResolvesPlanAtDispatch(t *testing.T) {
 		if !errors.Is(err, websterengine.ErrPlanDrifted) {
 			t.Fatalf("BeginBatch() error = %v; want errors.Is(err, ErrPlanDrifted)", err)
 		}
+		if !strings.Contains(err.Error(), "lyx webster rebaseline --card NN") {
+			t.Errorf("error %q; want it to name `lyx webster rebaseline --card NN`", err.Error())
+		}
 		entries, readErr := os.ReadDir(fx.PromptDir)
 		if readErr != nil {
 			t.Fatalf("ReadDir(%q): %v", fx.PromptDir, readErr)

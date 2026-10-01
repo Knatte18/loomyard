@@ -227,7 +227,7 @@ Verbs:
   lyx webster await-batch 3                  block until batch 3's report lands (forks are backgrounded)
   lyx webster record-batch 3                 Master's bracket call once batch 3's fork has delivered
   lyx webster recover-batch 3 --wait 8m      escalate batch 3 to a cold recovery strand
-  lyx webster rebaseline                     accept a mid-run plan edit without dropping batch records
+  lyx webster rebaseline --card NN   accept a mid-run edit of the named cards
   lyx webster accept-audit                   accept the pending run-exit audit findings once their paths are checked
 
 Modes:
@@ -319,6 +319,7 @@ func persistPlanFingerprintRebaseline(geom websterengine.Geometry, st *websteren
 		return fmt.Errorf("webster: state.json disappeared before the plan-fingerprint re-baseline could be persisted; the plan on disk now carries webster's own rewrite with no state to record it")
 	}
 	fresh.PlanFingerprint = st.PlanFingerprint
+	fresh.PlanFileHashes = st.PlanFileHashes
 	return websterengine.SaveState(geom.WebsterDir, geom.ScratchDir, fresh)
 }
 

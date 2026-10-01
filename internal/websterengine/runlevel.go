@@ -401,7 +401,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	// SequenceBatches below is length-preserving and can neither create nor
 	// remove this condition.
 	if len(batches) == 0 {
-		return RunResult{}, fmt.Errorf("webster: plan %s produced zero execution batches; nothing to build is a malformed plan, never a vacuous outcome: done; way forward: fix the plan's cards, run `lyx webster rebaseline` when state.json already records this run, then re-run `lyx webster run`", deps.Geom.PlanDir)
+		return RunResult{}, fmt.Errorf("webster: plan %s produced zero execution batches; nothing to build is a malformed plan, never a vacuous outcome: done; way forward: fix the plan's cards, run `lyx webster rebaseline --card NN` naming each card you edited when state.json already records this run, then re-run `lyx webster run`", deps.Geom.PlanDir)
 	}
 
 	// Re-bind batches through the sequencer: every later use in this
@@ -412,6 +412,10 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	batches, cycles = SequenceBatches(batches)
 
 	fingerprint, err := fingerprint(deps.Geom.PlanDir)
+	if err != nil {
+		return RunResult{}, err
+	}
+	fileHashes, err := planFileHashes(deps.Geom.PlanDir)
 	if err != nil {
 		return RunResult{}, err
 	}
@@ -455,6 +459,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		st = &State{
 			RunGUID:         guid,
 			PlanFingerprint: fingerprint,
+			PlanFileHashes:  fileHashes,
 			Batches:         map[int]*BatchState{},
 		}
 		if err := SaveState(deps.Geom.WebsterDir, deps.Geom.ScratchDir, st); err != nil {
@@ -463,7 +468,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 
 	case st.PlanFingerprint != fingerprint:
 		if !opts.Fresh {
-			return RunResult{}, fmt.Errorf("%w: on-disk plan fingerprint %s does not match this run's recorded fingerprint %s; the plan changed since state.json was created; %s", ErrFingerprintMismatch, fingerprint, st.PlanFingerprint, fingerprintMismatchWayForward)
+			return RunResult{}, fmt.Errorf("%w: on-disk plan fingerprint %s does not match this run's recorded fingerprint %s; the plan changed since state.json was created; %s", ErrFingerprintMismatch, fingerprint, st.PlanFingerprint, fingerprintMismatchWayForward(st, deps.Geom.PlanDir))
 		}
 
 		if _, err := archiveStateFile(deps.Geom.WebsterDir, time.Now); err != nil {
@@ -483,6 +488,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		st = &State{
 			RunGUID:         guid,
 			PlanFingerprint: fingerprint,
+			PlanFileHashes:  fileHashes,
 			Batches:         map[int]*BatchState{},
 		}
 		if err := SaveState(deps.Geom.WebsterDir, deps.Geom.ScratchDir, st); err != nil {
@@ -538,7 +544,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		for i, f := range findings {
 			msgs[i] = f.Error()
 		}
-		return RunResult{}, fmt.Errorf("webster: plan validation refused this run (%d finding(s)): %s; way forward: fix the named cards in the plan, run `lyx webster rebaseline` when state.json already records this run, then re-run `lyx webster run`", len(findings), strings.Join(msgs, "; "))
+		return RunResult{}, fmt.Errorf("webster: plan validation refused this run (%d finding(s)): %s; way forward: fix the named cards in the plan, run `lyx webster rebaseline --card NN` naming each card you edited when state.json already records this run, then re-run `lyx webster run`", len(findings), strings.Join(msgs, "; "))
 	}
 	// No second re-baseline: the one above already ran immediately after the rewriting call, ahead
 	// of both refusals, and persisted itself.

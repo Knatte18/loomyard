@@ -8,6 +8,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -157,7 +158,9 @@ func TestRebaseline_RefusesChangedBegunCardBody(t *testing.T) {
 		t.Fatalf("edit card: %v", err)
 	}
 
-	_, err := websterengine.Rebaseline(rebaselineFixtureDeps(fx))
+	deps := rebaselineFixtureDeps(fx)
+	deps.Cards = []int{1}
+	_, err := websterengine.Rebaseline(deps)
 	if !errors.Is(err, websterengine.ErrRebaselineCardSetChanged) {
 		t.Fatalf("Rebaseline() error = %v; want errors.Is(err, ErrRebaselineCardSetChanged)", err)
 	}
@@ -178,12 +181,20 @@ func TestRebaseline_AcceptsEditedUnbegunCard(t *testing.T) {
 		t.Fatalf("edit card: %v", err)
 	}
 
-	res, err := websterengine.Rebaseline(rebaselineFixtureDeps(fx))
+	deps := rebaselineFixtureDeps(fx)
+	deps.Cards = []int{2}
+	res, err := websterengine.Rebaseline(deps)
 	if err != nil {
 		t.Fatalf("Rebaseline() error = %v; want nil", err)
 	}
 	if res.BatchesKept != 1 {
 		t.Errorf("BatchesKept = %d; want 1", res.BatchesKept)
+	}
+	if !slices.Equal(res.CardsAccepted, []string{"02-list-tests.md"}) {
+		t.Errorf("CardsAccepted = %v; want [02-list-tests.md]", res.CardsAccepted)
+	}
+	if fx.Deps.State.PlanFileHashes["02-list-tests.md"] == "" {
+		t.Errorf("PlanFileHashes = %v; want card 2's new hash recorded", fx.Deps.State.PlanFileHashes)
 	}
 	got := fx.Deps.State.Batches[1]
 	if got.Status != before.Status || got.StartSHA != before.StartSHA || !maps.Equal(got.CardHashes, before.CardHashes) {
@@ -198,7 +209,84 @@ func TestRebaseline_RecordWithoutCardHashesComparesIDsOnly(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(fx.PlanDir, "01-json-flag.md"), []byte("# Card 1 — json-flag\n\n**Prosa:**\n- `base.txt`\n\n**Intent:** edited after begin.\n"), 0o644); err != nil {
 		t.Fatalf("edit card: %v", err)
 	}
-	if _, err := websterengine.Rebaseline(rebaselineFixtureDeps(fx)); err != nil {
+	deps := rebaselineFixtureDeps(fx)
+	deps.Cards = []int{1}
+	if _, err := websterengine.Rebaseline(deps); err != nil {
 		t.Fatalf("Rebaseline() error = %v; want nil for a record without CardHashes", err)
+	}
+}
+
+// editCard2 rewrites unbegun card 2 of the begin fixture with a reworded intent.
+func editCard2(t *testing.T, fx *beginFixture, intent string) {
+	t.Helper()
+	body := "# Card 2 — list-tests\n\n**Prosa:**\n- `base.txt`\n\n**Intent:** " + intent + "\n"
+	if err := os.WriteFile(filepath.Join(fx.PlanDir, "02-list-tests.md"), []byte(body), 0o644); err != nil {
+		t.Fatalf("edit card 2: %v", err)
+	}
+}
+
+func TestRebaseline_RefusesUnnamedEditedCard(t *testing.T) {
+	fx := newBeginFixture(t)
+	beginAndFinishBatchOne(t, fx)
+	fingerprint := fx.Deps.State.PlanFingerprint
+	editCard2(t, fx, "a reworded intent.")
+
+	_, err := websterengine.Rebaseline(rebaselineFixtureDeps(fx))
+	if !errors.Is(err, websterengine.ErrRebaselineCardSetChanged) {
+		t.Fatalf("Rebaseline() error = %v; want errors.Is(err, ErrRebaselineCardSetChanged)", err)
+	}
+	if !strings.Contains(err.Error(), "02-") || !strings.Contains(err.Error(), "--card") {
+		t.Errorf("error %q; want it to name 02- and --card", err.Error())
+	}
+	if fx.Deps.State.PlanFingerprint != fingerprint {
+		t.Errorf("PlanFingerprint = %q; want it unchanged on refusal", fx.Deps.State.PlanFingerprint)
+	}
+}
+
+func TestRebaseline_RefusesEditedOverviewEvenWhenEveryCardIsNamed(t *testing.T) {
+	fx := newBeginFixture(t)
+	beginAndFinishBatchOne(t, fx)
+	if err := os.WriteFile(filepath.Join(fx.PlanDir, "00-overview.md"), []byte("# plan, edited\n"), 0o644); err != nil {
+		t.Fatalf("edit overview: %v", err)
+	}
+
+	deps := rebaselineFixtureDeps(fx)
+	deps.Cards = []int{1, 2}
+	_, err := websterengine.Rebaseline(deps)
+	if !errors.Is(err, websterengine.ErrRebaselineCardSetChanged) {
+		t.Fatalf("Rebaseline() error = %v; want errors.Is(err, ErrRebaselineCardSetChanged)", err)
+	}
+	if !strings.Contains(err.Error(), "00-overview.md") || !strings.Contains(err.Error(), "--fresh") {
+		t.Errorf("error %q; want it to name 00-overview.md and --fresh", err.Error())
+	}
+}
+
+func TestRebaseline_RefusesEditedCardTheOperatorDidNotName(t *testing.T) {
+	fx := newBeginFixture(t)
+	beginAndFinishBatchOne(t, fx)
+	editCard2(t, fx, "a reworded intent.")
+	if err := os.WriteFile(filepath.Join(fx.PlanDir, "03-third.md"), []byte("# Card 3 — third\n\n**Intent:** new.\n"), 0o644); err != nil {
+		t.Fatalf("add card 3: %v", err)
+	}
+
+	deps := rebaselineFixtureDeps(fx)
+	deps.Cards = []int{2}
+	_, err := websterengine.Rebaseline(deps)
+	if !errors.Is(err, websterengine.ErrRebaselineCardSetChanged) {
+		t.Fatalf("Rebaseline() error = %v; want errors.Is(err, ErrRebaselineCardSetChanged)", err)
+	}
+	if !strings.Contains(err.Error(), "03-third.md") || strings.Contains(err.Error(), "02-list-tests.md") {
+		t.Errorf("error %q; want it to name only 03-third.md", err.Error())
+	}
+}
+
+func TestRebaseline_StateWithoutPlanFileHashesChecksBegunCardsOnly(t *testing.T) {
+	fx := newBeginFixture(t)
+	beginAndFinishBatchOne(t, fx)
+	fx.Deps.State.PlanFileHashes = nil
+	editCard2(t, fx, "a reworded intent.")
+
+	if _, err := websterengine.Rebaseline(rebaselineFixtureDeps(fx)); err != nil {
+		t.Fatalf("Rebaseline() error = %v; want nil for a state without PlanFileHashes", err)
 	}
 }

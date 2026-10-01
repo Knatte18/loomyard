@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
@@ -23,6 +24,8 @@ type RebaselineDeps struct {
 	Plan    *planparser.Plan
 	Batches []batcher.Batch
 	State   *State
+	// Cards are the card numbers the operator names as edited; a changed card file whose number is absent is refused.
+	Cards []int
 }
 
 // RebaselineResult reports what one successful Rebaseline changed.
@@ -33,11 +36,14 @@ type RebaselineResult struct {
 	Fingerprint string
 	// BatchesKept is the number of begun batch records the edited plan still holds unchanged.
 	BatchesKept int
+	// CardsAccepted are the changed card file names this call accepted.
+	CardsAccepted []string
 }
 
 // Rebaseline accepts the on-disk plan as the run's plan without discarding any batch record.
 // It refuses, wrapping ErrRebaselineCardSetChanged, when a begun batch's card set differs from the card set the edited plan's batch of that number now holds, or the plan no longer has that number,
 // or when a begun card's file content differs from the hash recorded at begin (a record without hashes compares ids only).
+// It also refuses when 00-overview.md changed, or a changed card file's number is not in deps.Cards, unless the state predates State.PlanFileHashes.
 // Otherwise it restamps State.PlanFingerprint and leaves every other field untouched.
 // It never saves;
 // the caller holds the state-mutation lease and saves, as for the bracket verbs.
@@ -47,6 +53,29 @@ func Rebaseline(deps RebaselineDeps) (*RebaselineResult, error) {
 	}
 	if deps.State == nil {
 		return nil, fmt.Errorf("webster: rebaseline requires loaded run state; RebaselineDeps.State is nil")
+	}
+
+	var cardsAccepted []string
+	if len(deps.State.PlanFileHashes) > 0 {
+		changedFiles, err := changedPlanFiles(deps.State, deps.Plan.Dir)
+		if err != nil {
+			return nil, fmt.Errorf("%w; way forward: transient, re-run `lyx webster rebaseline`", err)
+		}
+		var unnamed []string
+		for _, name := range changedFiles {
+			if name == planOverviewFile {
+				return nil, fmt.Errorf("%w: %s changed; it carries the plan's integration verify and is never rebaselined; way forward: restore %s, or reset the branch to the run's start commit with git and run \"lyx webster run --fresh\"", ErrRebaselineCardSetChanged, planOverviewFile, planOverviewFile)
+			}
+			n, convErr := strconv.Atoi(cardNumberOf(name))
+			if convErr != nil || !slices.Contains(deps.Cards, n) {
+				unnamed = append(unnamed, name)
+				continue
+			}
+			cardsAccepted = append(cardsAccepted, name)
+		}
+		if len(unnamed) > 0 {
+			return nil, fmt.Errorf("%w: %s changed but not named; way forward: re-run \"lyx webster rebaseline\" naming every changed card with --card NN, or restore the unnamed cards", ErrRebaselineCardSetChanged, strings.Join(unnamed, ", "))
+		}
 	}
 
 	current := make(map[int][]string, len(deps.Batches))
@@ -115,5 +144,6 @@ func Rebaseline(deps RebaselineDeps) (*RebaselineResult, error) {
 		PreviousFingerprint: previous,
 		Fingerprint:         deps.State.PlanFingerprint,
 		BatchesKept:         len(numbers),
+		CardsAccepted:       cardsAccepted,
 	}, nil
 }

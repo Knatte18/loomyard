@@ -436,7 +436,7 @@ func TestMasterTemplate_DoneCheckSectionTeachesLaterCardWarning(t *testing.T) {
 
 	requireNotContains(t, section, "a symbol this batch deleted that the remaining plan still references")
 	requireContains(t, section, "A finding about a later card (drift, or a symbol this batch deleted that a later card still references) comes back on the envelope's `warnings` and the batch still records;")
-	requireContains(t, section, "that later card's own `begin-batch` refuses it, naming \"edit the plan so the named cards match the tree, run \"lyx webster rebaseline\", then begin-batch NN again\".")
+	requireContains(t, section, "that later card's own `begin-batch` refuses it, naming \"edit the plan so the named cards match the tree, run \"lyx webster rebaseline --card NN\" naming each card you edited, then begin-batch NN again\".")
 	requireContains(t, section, "A done-check failure comes back as `{\"batch_failed\": true}`")
 }
 
@@ -510,7 +510,7 @@ func TestMasterTemplate_TeachesBatchFailedAndReportArchivedRungs(t *testing.T) {
 	requireContains(t, text, "- `recover-batch <NN>` refuses with `{\"batch_failed\": true}` → the recovery strand said done but webster's checks rejected its work")
 	requireContains(t, text, "Do NOT call `recover-batch` for that batch again")
 	requireContains(t, text, "call `lyx webster begin-batch <NN>` and re-fork that batch")
-	requireContains(t, text, "`lyx webster rebaseline`")
+	requireContains(t, text, "`lyx webster rebaseline --card NN`")
 }
 
 // TestMasterTemplate_StatesPlanDriftRefusalEndsRunAsStuck asserts the embedded master template's

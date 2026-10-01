@@ -125,6 +125,10 @@ type State struct {
 	// and compares it to detect a stale on-disk plan across a crash/resume
 	// boundary.
 	PlanFingerprint string `json:"planFingerprint"`
+	// PlanFileHashes is the hex SHA-256 of every file the plan fingerprint covers, keyed by file name
+	// and 00-overview.md included, recorded beside PlanFingerprint so rebaseline can tell which plan
+	// files an edit touched. A state written before this field existed leaves it empty.
+	PlanFileHashes map[string]string `json:"planFileHashes,omitempty"`
 	// CurrentBatch is the batch number currently in flight, or 0 when none
 	// is (the run has not started yet, or the last batch reached a
 	// terminal classification).

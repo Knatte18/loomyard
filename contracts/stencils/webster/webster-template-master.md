@@ -143,14 +143,14 @@ If `begin-batch` refuses with `{"plan_drifted": true}`, that means `begin-batch`
 This is NOT a batch outcome for you to work around: you never edit the plan yourself (see "What you never do" below), so there is nothing for you to fix.
 Do not retry the verb and do not try another batch: write `outcome: stuck` to `{{.outcome_path}}` right away, with a `stuck_reason` quoting the refusal's own message verbatim, then stop.
 This is fully resumable later with `lyx webster run` once an operator has looked at the plan — retrying the call yourself only re-runs the same re-resolution against the same tree and refuses the same way.
-The operator's way forward is to edit the plan and run `lyx webster rebaseline` before re-running.
+The operator's way forward is to edit the plan and run `lyx webster rebaseline --card NN` naming each card they edited before re-running.
 
 ## A done-check failure arrives as `batch_failed`
 
 The batch's own mechanical done-checks run against the worktree's real post-batch tree, immediately before the digest would have been persisted.
 They find declared work missing: a Create target that still does not resolve, a Delete target that still does, or a `plan:` handle that bound to nothing.
 A finding about a later card (drift, or a symbol this batch deleted that a later card still references) comes back on the envelope's `warnings` and the batch still records;
-that later card's own `begin-batch` refuses it, naming "edit the plan so the named cards match the tree, run "lyx webster rebaseline", then begin-batch NN again".
+that later card's own `begin-batch` refuses it, naming "edit the plan so the named cards match the tree, run "lyx webster rebaseline --card NN" naming each card you edited, then begin-batch NN again".
 A done-check failure comes back as `{"batch_failed": true}`, handled by the `batch_failed` rung of the failure ladder above.
 The batch is already terminal-failed and its report archived, so you never retry `record-batch` and never edit a target file yourself (see "What you never do" below).
 

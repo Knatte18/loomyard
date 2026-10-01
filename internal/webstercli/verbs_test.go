@@ -386,6 +386,9 @@ func (fx *verbsFixture) initState(t *testing.T, assertedModel string) *websteren
 		AssertedModel:   assertedModel,
 		Batches:         map[int]*websterengine.BatchState{},
 	}
+	if err := websterengine.RestampPlanBaseline(st, fx.CLI.geom.PlanDir); err != nil {
+		t.Fatalf("RestampPlanBaseline() error = %v", err)
+	}
 	if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, st); err != nil {
 		t.Fatalf("SaveState() error = %v", err)
 	}
@@ -1074,9 +1077,12 @@ func TestRebaselineCmd_AcceptsForeignEditAndKeepsRecords(t *testing.T) {
 	seedTwoCardPlan(t, fx.CLI.geom.PlanDir, "second card, edited mid-run.")
 
 	var out strings.Builder
-	exitCode := clihelp.Execute(fx.CLI.rebaselineCmd(), &out, nil)
+	exitCode := clihelp.Execute(fx.CLI.rebaselineCmd(), &out, []string{"--card", "2"})
 	if exitCode != 0 {
 		t.Fatalf("rebaseline = %d; want 0, output: %s", exitCode, out.String())
+	}
+	if !strings.Contains(out.String(), `"cards_accepted":["02-second.md"]`) {
+		t.Errorf("output missing cards_accepted; got %q", out.String())
 	}
 	if !strings.Contains(out.String(), `"batches_kept":1`) {
 		t.Errorf("output missing batches_kept:1; got %q", out.String())
@@ -1093,6 +1099,50 @@ func TestRebaselineCmd_AcceptsForeignEditAndKeepsRecords(t *testing.T) {
 	bs := loaded.Batches[1]
 	if bs == nil || bs.StartSHA != "abc123" || bs.Digest == nil || bs.Digest.HeadSHA != "def456" {
 		t.Errorf("batch 1 record = %+v; want it intact", bs)
+	}
+}
+
+// TestRebaselineCmd_RefusesUnnamedCard proves an edited card the operator did not name is refused, naming --card and leaving state.json byte-identical.
+func TestRebaselineCmd_RefusesUnnamedCard(t *testing.T) {
+	t.Setenv("WEFT_SKIP_GIT", "1")
+	fx := newVerbsFixture(t)
+	seedTwoCardPlan(t, fx.CLI.geom.PlanDir, "second card.")
+	fx.initState(t, "master-model")
+	statePath := filepath.Join(fx.CLI.geom.WebsterDir, "state.json")
+	before, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatalf("read state.json: %v", err)
+	}
+	seedTwoCardPlan(t, fx.CLI.geom.PlanDir, "second card, edited mid-run.")
+
+	var out strings.Builder
+	if code := clihelp.Execute(fx.CLI.rebaselineCmd(), &out, nil); code == 0 {
+		t.Fatalf("rebaseline = 0; want non-zero, output: %s", out.String())
+	}
+	if !strings.Contains(out.String(), "--card") {
+		t.Errorf("output missing --card way forward; got %q", out.String())
+	}
+	after, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatalf("read state.json: %v", err)
+	}
+	if string(before) != string(after) {
+		t.Error("state.json changed on a refused rebaseline; want byte-identical")
+	}
+}
+
+// TestRebaselineCmd_RefusesNonNumericCard proves a --card value that is not a positive integer is a usage error naming the value.
+func TestRebaselineCmd_RefusesNonNumericCard(t *testing.T) {
+	t.Setenv("WEFT_SKIP_GIT", "1")
+	fx := newVerbsFixture(t)
+	fx.initState(t, "master-model")
+
+	var out strings.Builder
+	if code := clihelp.Execute(fx.CLI.rebaselineCmd(), &out, []string{"--card", "x"}); code == 0 {
+		t.Fatalf("rebaseline --card x = 0; want non-zero, output: %s", out.String())
+	}
+	if !strings.Contains(out.String(), `\"x\"`) {
+		t.Errorf("output does not name x; got %q", out.String())
 	}
 }
 
@@ -1154,7 +1204,7 @@ func TestRebaselineCmd_FabricSyncFailureWayForward(t *testing.T) {
 	fx.CLI.openFabric = failingFabricOpen
 
 	var out strings.Builder
-	if code := clihelp.Execute(fx.CLI.rebaselineCmd(), &out, nil); code == 0 {
+	if code := clihelp.Execute(fx.CLI.rebaselineCmd(), &out, []string{"--card", "02"}); code == 0 {
 		t.Fatalf("rebaseline with a failing sync = 0; want non-zero, output: %s", out.String())
 	}
 	wantWayForward(t, out.String(), "lyx fabric commit")
