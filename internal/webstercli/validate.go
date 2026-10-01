@@ -67,10 +67,11 @@ func findingsEntries(findings []planglyph.Finding) []map[string]string {
 // scope those findings were collected under -- the refusal envelope needs it as much as the success
 // one does, since which cards were re-resolved is what decides whether a missing finding means
 // "clean" or "out of scope on this call".
-func findingsEnvelope(out io.Writer, findings []planglyph.Finding, scope string) int {
+// msg is the envelope's error text.
+func findingsEnvelope(out io.Writer, msg string, findings []planglyph.Finding, scope string) int {
 	data, _ := json.Marshal(map[string]any{
 		"ok":       false,
-		"error":    fmt.Sprintf("webster: plan validation found %d finding(s)", len(findings)),
+		"error":    msg,
 		"findings": findingsEntries(findings),
 		"scope":    scope,
 	})
@@ -274,14 +275,7 @@ Example:
 				return nil
 			}
 			if editErr != nil {
-				data, _ := json.Marshal(map[string]any{
-					"ok":       false,
-					"error":    editErr.Error(),
-					"findings": findingsEntries(findings),
-					"scope":    scope,
-				})
-				fmt.Fprintln(out, string(data))
-				clihelp.SetExit(cmd.Context(), 1)
+				clihelp.SetExit(cmd.Context(), findingsEnvelope(out, editErr.Error(), findings, scope))
 				return nil
 			}
 			if rebaseErr != nil {
@@ -290,7 +284,7 @@ Example:
 			}
 
 			if findingsHaveBlocking(findings) {
-				clihelp.SetExit(cmd.Context(), findingsEnvelope(out, findings, scope))
+				clihelp.SetExit(cmd.Context(), findingsEnvelope(out, fmt.Sprintf("webster: plan validation found %d finding(s)", len(findings)), findings, scope))
 				return nil
 			}
 
