@@ -680,13 +680,16 @@ func skipOptions(args []string, values map[string]bool) []string {
 }
 
 // grepOpensPager reports whether `git grep`'s args carry `-O` or `--open-files-in-pager`, which run a program on the matched files.
-// An `O` anywhere in a short-option cluster counts, and so does any `--open` abbreviation.
+// An `O` anywhere in a short-option cluster counts.
+// A long option counts when its name, the part before any `=`, is a prefix of `--open-files-in-pager` at least as long as `--op`,
+// since git accepts any unique abbreviation and `--o` alone is ambiguous with `--or` and `--only-matching`.
 func grepOpensPager(args []string) bool {
 	for _, a := range args {
 		if a == "--" {
 			return false
 		}
-		if strings.HasPrefix(a, "--open") || (strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "--") && strings.Contains(a, "O")) {
+		name, _, _ := strings.Cut(a, "=")
+		if (len(name) >= len("--op") && strings.HasPrefix("--open-files-in-pager", name)) || (strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "--") && strings.Contains(a, "O")) {
 			return true
 		}
 	}
