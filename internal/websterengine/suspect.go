@@ -29,6 +29,8 @@ type evidenceBases struct {
 	Last string
 	// Missing lists every recorded StartSHA and terminal HeadSHA absent from the repository, sorted and deduplicated.
 	Missing []string
+	// Starts lists every recorded StartSHA, sorted and deduplicated, so a caller can tell an empty Start with nothing recorded from one where no candidate qualifies.
+	Starts []string
 }
 
 // runEvidenceBases picks st's start commit and last batch head by git ancestry, the integration key excluded.
@@ -54,6 +56,7 @@ func runEvidenceBases(worktree string, st *State) (evidenceBases, error) {
 	if len(starts) == 0 && len(heads) == 0 {
 		return out, nil
 	}
+	out.Starts = slices.Sorted(slices.Values(starts))
 	startsMissing, headsMissing := false, false
 	for _, sha := range starts {
 		if !shaExists(worktree, sha) {

@@ -1122,8 +1122,10 @@ func pendingPathsWayForward(geom Geometry, paths []string, tail string) (string,
 // a suspect path outside the plan directory still differs from the run's start commit;
 // the worktree's HEAD is not the start commit, so an unaudited commit would become the new run's base;
 // a plan path differs from the plan the run recorded and restore-plan can undo that, either because the store holds the recorded copy or because the file was never recorded.
-// The start commit is picked by git ancestry, and a recorded commit missing from the repository refuses with the fetch way forward.
+// The start commit is picked by git ancestry,
+// and a recorded commit missing from the repository refuses with the fetch way forward.
 // When no batch recorded a start, the worktree's HEAD stands in for it.
+// When starts are recorded but none is an ancestor of all the others, HEAD stands in only while it is an ancestor of every recorded start (headBeforeEveryStart).
 // An unverifiable path, a pathless finding and a differing plan path whose recorded copy is missing from the store are dropped with the archived state,
 // since no verb could restore the last; its warning says so.
 // A batch record with Uncheckable entries counts as a pending finding: its SuspectPaths join the path check, and it adds its own drop warning.
@@ -1154,6 +1156,9 @@ func freshPendingDrop(geom Geometry, st *State, opts RunOptions) (drop bool, war
 	}
 	base := bases.Start
 	if base == "" {
+		if err := headBeforeEveryStart(geom.WorktreeRoot, head, bases.Starts); err != nil {
+			return false, nil, err
+		}
 		base = head
 	}
 	var allPaths []string
@@ -1234,6 +1239,25 @@ func freshPendingDrop(geom Geometry, st *State, opts RunOptions) (drop bool, war
 		warnings = append(warnings, fmt.Sprintf("--fresh dropped batch %02d's uncheckable findings: %s", n, strings.Join(st.Batches[n].Uncheckable, ", ")))
 	}
 	return true, warnings, nil
+}
+
+// headBeforeEveryStart refuses --fresh with ErrPendingAuditFindings unless head is an ancestor of, or equal to, every one of starts.
+// It is the HEAD rule for recorded starts that share no single oldest commit, as after a branch rewritten mid-run:
+// no recorded start can be named as the run's, but a HEAD that every one of them descends from carries no commit the run made.
+// An empty starts passes, since nothing was recorded to compare with.
+// The error is an IsAncestor failure or the refusal.
+func headBeforeEveryStart(worktree, head string, starts []string) error {
+	for _, start := range starts {
+		ok, err := isAncestor(worktree, head, start)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			list := strings.Join(starts, " ")
+			return fmt.Errorf("%w: --fresh would drop pending audit findings while the batches' recorded start commits %s share no single oldest commit and HEAD %s is not an ancestor of every one of them; way forward: reset the branch to a commit every recorded start descends from (git merge-base --octopus %s) with git, then re-run \"lyx webster run --fresh\"", ErrPendingAuditFindings, strings.Join(starts, ", "), head, list)
+		}
+	}
+	return nil
 }
 
 // pathlessClause is the way-forward clause for a pending finding that names no path, or "" when every finding names one.

@@ -2583,6 +2583,47 @@ func TestRun_FreshRefusesUncheckableBatchPastStart(t *testing.T) {
 	}
 }
 
+// TestRun_FreshDivergentStartsNeedHeadBeforeEvery proves --fresh over recorded starts that share no single oldest commit never lets HEAD stand in unchecked:
+// it refuses naming git merge-base while HEAD is past one of them, and drops the findings once HEAD is an ancestor of every start.
+func TestRun_FreshDivergentStartsNeedHeadBeforeEvery(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	root := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	left := commitFile(t, fx.Worktree, "left.txt", "l", "left")
+	mustGit(t, fx.Worktree, "reset", "--hard", root)
+	right := commitFile(t, fx.Worktree, "right.txt", "r", "right")
+	seedMatchingState(t, fx, &websterengine.State{
+		RunGUID: "stale-run",
+		Batches: map[int]*websterengine.BatchState{
+			1: {
+				Slug: "batch1", Kind: "fork", StartSHA: left, Terminal: true, Status: websterengine.DigestStatusFailed,
+				Uncheckable: []string{"fabric-reference: cat FABRICREF/webster/state.json"},
+			},
+			2: {Slug: "batch2", Kind: "fork", StartSHA: right},
+		},
+	})
+
+	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
+	if !errors.Is(err, websterengine.ErrPendingAuditFindings) {
+		t.Fatalf("Run() with HEAD past a start error = %v; want ErrPendingAuditFindings", err)
+	}
+	requireWayForward(t, err, "git merge-base --octopus", "run --fresh")
+	if _, statErr := os.Stat(filepath.Join(fx.Deps.Geom.WebsterDir, "state.json")); statErr != nil {
+		t.Errorf("state.json was archived: %v", statErr)
+	}
+
+	mustGit(t, fx.Worktree, "reset", "--hard", root)
+	askingMaster(t, fx, "divergent")
+	_, err = websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
+	requireReachedMaster(t, fx, err)
+	st, err := websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
+	if err != nil {
+		t.Fatalf("LoadState() error = %v", err)
+	}
+	if st.RunGUID == "stale-run" {
+		t.Errorf("RunGUID = %q; want a re-initialised run", st.RunGUID)
+	}
+}
+
 // TestRun_FreshOnUnchangedPlanWithoutFindingsResumes proves --fresh stays a no-op on an unchanged plan with nothing pending: the state is kept.
 func TestRun_FreshOnUnchangedPlanWithoutFindingsResumes(t *testing.T) {
 	fx := newRunFixture(t, 1)
