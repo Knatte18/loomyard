@@ -32,7 +32,8 @@ Raw I/O failures (`stat`, `mkdir`, `write`) form one grouped transient row per s
 ## webster
 
 A validation verb's findings envelope (`lyx webster validate`) is that verb's verdict on the plan, not a refusal, so it has no row here.
-The audit rows below follow the fork-audit severity split: a fork-contract write, a parent write into the task worktree's tracked content or under the run's `_lyx`, and a fabric reference unless every command in it is a known read-only program with no write redirect, are correctness; every other finding is policy.
+The audit rows below follow the fork-audit severity split: a fork-contract write, a parent write into the task worktree's tracked content or under the run's `_lyx`, and a fabric reference unless every command in it is a known read-only program with no write redirect, are correctness;
+every other finding is policy.
 A finding is dispositioned once per run, by the first `record-batch` or run-exit audit that reports it.
 
 | Refusal | Trigger | Class | Way forward |

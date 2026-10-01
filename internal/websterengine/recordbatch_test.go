@@ -679,8 +679,7 @@ func TestRecordBatch_MutatingFabricReferenceFailsBatch(t *testing.T) {
 	}
 }
 
-// TestRecordBatch_UnlistedWriterFabricReferenceFailsBatch proves a fork that rewrote the fabric checkout through a program outside the read-only allowlist is correctness,
-// not a warning, even on an OK report with a passing card verify.
+// TestRecordBatch_UnlistedWriterFabricReferenceFailsBatch proves a fork that rewrote the fabric checkout through a program outside the read-only allowlist is correctness, not a warning, even on an OK report with a passing card verify.
 func TestRecordBatch_UnlistedWriterFabricReferenceFailsBatch(t *testing.T) {
 	cmd := `python3 -c "open('/fabric/sibling/webster/state.json','w').write('{}')"`
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{{Forks: []shuttleengine.ForkReport{{

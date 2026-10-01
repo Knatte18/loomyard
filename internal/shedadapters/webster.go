@@ -91,8 +91,7 @@ func (p *WebsterProducer) Call(ctx context.Context) (shedengine.Outcome, shedeng
 		}
 
 		if errors.Is(err, websterengine.ErrPendingAuditFindings) {
-			// A correctness halt only the operator can clear: the run blocks with the entry
-			// refusal's own text, which names the suspect paths and the accept-audit verb.
+			// A correctness halt only the operator can clear: the run blocks with the entry refusal's own text, which names the suspect paths and the accept-audit verb.
 			if cerr := cancelErr(ctx, p.name, websterEngineLabel); cerr != nil {
 				return "", shedengine.OutputPointer{}, cerr
 			}

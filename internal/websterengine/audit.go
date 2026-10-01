@@ -561,13 +561,9 @@ func splitShell(cmd string) (segments []shellSegment, substitutions []string) {
 }
 
 // readOnlySegment reports whether one simple command's words are a known read-only shape.
-// After leading shell keywords and `NAME=value` assignments, it is true for a bare assignment,
-// a program in readOnlyTools, a `for` or `select` loop header, git with a subcommand in readOnlyGit, no `--output` option, no `-c` or `--config-env` global option and, for grep, no `-O`,
-// and `lyx fabric` with a verb in readOnlyFabric (`prune` and `cleanup` only without `--apply`).
-// It is also true for `find` with no `-delete` or `-fprint`-family action whose every `-exec` command is read-only,
-// for a wrapper (sudo, env, timeout, xargs) whose wrapped command is read-only,
-// and for `bash -c` with a script mutatingCommand finds read-only.
-// Every other shape is mutating: an unknown program, a program spelled through a variable or through a path outside a system bin directory, `bash` without `-c`, eval, source, sed, perl, awk, any other lyx verb.
+// After leading shell keywords and `NAME=value` assignments, it is true for a bare assignment, a program in readOnlyTools, a `for` or `select` loop header, git with a subcommand in readOnlyGit and none of `--output`, a `-c` or `--config-env` global option or grep's `-O`, and `lyx fabric` with a verb in readOnlyFabric (`prune` and `cleanup` only without `--apply`).
+// It is also true for `find` with no `-delete` or `-fprint`-family action whose every `-exec` command is read-only, for a commandWrappers program, timeout or xargs whose wrapped command is read-only, and for a shell whose `-c` command string mutatingCommand finds read-only.
+// Every other shape is mutating: an unknown program, a program spelled through a variable or through a path outside a system bin directory, a shell running a script file, eval, source, sed, perl, awk, any other lyx verb.
 func readOnlySegment(words []string) bool {
 	for len(words) > 0 && (shellKeywords[words[0]] || (strings.Contains(words[0], "=") && !strings.HasPrefix(words[0], "-"))) {
 		words = words[1:]
@@ -711,7 +707,8 @@ func programName(word string) (string, bool) {
 // A fork-contract-write is correctness.
 // A parent-write is correctness when its path lies under the run's state, reports or plan directory, or the run's `_lyx` directory (the parent of geom.WebsterDir),
 // or when it lies inside the worktree and git does not ignore it; every other parent-write is policy.
-// A fabric-reference is policy only when every simple command in its Command is a known read-only program with no write redirect (see mutatingCommand); every other fabric reference is correctness, since a rewrite of the fabric checkout can rewrite run state that a re-run of the cards' verify commands cannot detect.
+// A fabric-reference is policy only when every simple command in its Command is a known read-only program with no write redirect (see mutatingCommand);
+// every other fabric reference is correctness, since a rewrite of the fabric checkout can rewrite run state that a re-run of the cards' verify commands cannot detect.
 // Every other class is policy.
 // Prefix tests compare link-resolved paths, so a write spelled through a link to the run's `_lyx` still classes as correctness.
 // The error return is only the git probe's or the link resolution's failure.
