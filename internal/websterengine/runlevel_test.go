@@ -1643,7 +1643,7 @@ func TestRun_ReorderingIsObservableInMasterPrompt(t *testing.T) {
 	if fx.Starter.callCount() != 1 {
 		t.Fatalf("Starter.callCount() = %d; want 1", fx.Starter.callCount())
 	}
-	prompt := fx.Starter.startCalls[0].Prompt
+	prompt := masterPromptText(t, fx.Starter.startCalls[0].Prompt)
 	idx02 := strings.Index(prompt, "02 — batch2")
 	idx01 := strings.Index(prompt, "01 — batch1")
 	if idx02 == -1 || idx01 == -1 || idx02 >= idx01 {
@@ -2346,7 +2346,7 @@ func TestRun_ResumesOverExtendedPlanAfterRebaseline(t *testing.T) {
 		t.Errorf("archived summary glob = %v; want exactly 1", archived)
 	}
 
-	prompt := fx.Starter.startCalls[0].Prompt
+	prompt := masterPromptText(t, fx.Starter.startCalls[0].Prompt)
 	for _, want := range []string{"01-batch1: done", "02-batch2: done"} {
 		if !strings.Contains(prompt, want) {
 			t.Errorf("Master prompt lacks %q as complete", want)
@@ -2753,5 +2753,24 @@ func TestRun_PendingPlanPathNamesRestorePlan(t *testing.T) {
 	requireWayForward(t, err, "restore-plan", "rebaseline --card")
 	if strings.Contains(err.Error(), "git checkout") || strings.Contains(err.Error(), "with git") {
 		t.Errorf("Run() error = %q; want no git way forward for a plan path", err)
+	}
+}
+
+// masterPromptText reads the rendered Master prompt from the file its launch pointer names.
+func masterPromptText(t *testing.T, pointer string) string {
+	t.Helper()
+	path := pointer[strings.LastIndex(pointer, " ")+1:]
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read master prompt named by %q: %v", pointer, err)
+	}
+	return string(data)
+}
+
+// TestMasterPromptPointer_StaysShort pins the launch prompt far under the provider's
+// command-line limit, whatever the plan's size.
+func TestMasterPromptPointer_StaysShort(t *testing.T) {
+	if got := len(websterengine.MasterPromptPointer(strings.Repeat("p", 400))); got > 1000 {
+		t.Errorf("pointer is %d bytes; want it short", got)
 	}
 }

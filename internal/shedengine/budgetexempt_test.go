@@ -176,3 +176,30 @@ func BenchmarkStep_LongHistory(b *testing.B) {
 		}
 	}
 }
+
+// TestEpisodeStuckCount_SegmentDoneEndsEpisode covers a Burler-round row, which only ever returns
+// Stuck: its segment's Bouncer passing ends its episode, while a standalone row counts on.
+func TestEpisodeStuckCount_SegmentDoneEndsEpisode(t *testing.T) {
+	history := []HistoryEntry{
+		{Producer: "Bouncer", Outcome: Stuck},
+		{Producer: "Burler", Outcome: Stuck},
+		{Producer: "Bouncer", Outcome: Done},
+		{Producer: "Gate", Outcome: Stuck},
+		{Producer: "Bouncer", Outcome: Stuck},
+		{Producer: "Burler", Outcome: Stuck},
+	}
+	producers := []ProducerDef{
+		{Name: "Bouncer", Segment: "Review"},
+		{Name: "Burler", Segment: "Review"},
+		{Name: "Gate"},
+	}
+	if got := episodeStuckCount(history, producers[1], producers); got != 1 {
+		t.Errorf("Burler episode = %d; want 1, the round before the Bouncer passed not counted", got)
+	}
+	if got := episodeStuckCount(history, ProducerDef{Name: "Burler"}, producers); got != 2 {
+		t.Errorf("standalone Burler episode = %d; want 2", got)
+	}
+	if got := segmentEnders(producers, producers[2]); got != nil {
+		t.Errorf("segmentEnders(standalone) = %v; want nil", got)
+	}
+}

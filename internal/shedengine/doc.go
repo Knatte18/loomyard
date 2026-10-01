@@ -38,8 +38,9 @@
 // exhaustively rather than relying on Shed to catch a missing entry.
 // The bounce budget backing OnStuck is per-producer and episode-scoped: it is counted from the
 // persisted history[] rather than held in memory, as the number of Stuck entries a producer has
-// authored since its own most recent Done entry or a goto into its segment (all of them, if neither exists),
-// so the count spans invocations, crashes, and human resumes rather than resetting on every new Run call.
+// authored since its own most recent Done entry, a Done by any producer sharing its non-empty
+// Segment, or a goto into its segment (all of them, if none exists), so the count spans
+// invocations, crashes, and human resumes rather than resetting on every new Run call.
 // See this package's own routing and bounce-budget documentation for the full design and its
 // rationale; this package documentation states the contract, not the argument for it.
 //

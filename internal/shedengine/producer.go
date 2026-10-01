@@ -68,9 +68,9 @@ type ProducerDef struct {
 	// OnDone ends the whole Shed run quietly rather than failing loud, while a non-empty OnDone
 	// jumps to the Name it names regardless of this entry's list position.
 	OnDone string
-	// Segment is a grouping label; "" means standalone. Its only mechanical effect is
+	// Segment is a grouping label; "" means standalone. It has two mechanical effects:
 	// validate()'s rule that a non-empty OnStuck must name a target sharing this producer's
-	// Segment -- it does not scope the bounce budget, and it has no other effect anywhere else.
+	// Segment, and the bounce budget's episode, which a Done by any row of the same Segment ends.
 	Segment string
 	// MaxBounces is this producer's own episode Stuck budget. 0 means "inherit Shed.MaxBounces",
 	// never "no bounces allowed".

@@ -358,6 +358,7 @@ func RenderMasterPrompt(batches []batcher.Batch, st *State, outcomePath, summary
 	values := map[string]string{
 		"batch_index":             RenderBatchIndex(batches),
 		"progress":                RenderProgress(batches, st),
+		"remaining":               RenderRemaining(batches, st),
 		"outcome_path":            outcomePath,
 		"summary_path":            summaryPath,
 		"integration_prompt_path": integrationPrompt,
@@ -435,4 +436,28 @@ func RenderProgress(batches []batcher.Batch, st *State) string {
 		return "none"
 	}
 	return strings.Join(lines, "\n")
+}
+
+// RenderRemaining renders {{.remaining}}: the batches with no terminal record yet, in execution
+// order, as one comma-separated list of "NN-slug", or "none" when every batch is terminal.
+// A resumed run whose plan grew (PR-Rework appends cards) otherwise shows Master a long trail of
+// done batches and leaves the new ones to be spotted in the index alone.
+func RenderRemaining(batches []batcher.Batch, st *State) string {
+	var names []string
+	for _, b := range batches {
+		number, slug := batchIdentity(b)
+		if len(b.Cards) == 0 {
+			continue
+		}
+		if st != nil {
+			if bs, ok := st.Batches[number]; ok && bs != nil && bs.Terminal {
+				continue
+			}
+		}
+		names = append(names, fmt.Sprintf("%02d-%s", number, slug))
+	}
+	if len(names) == 0 {
+		return "none"
+	}
+	return strings.Join(names, ", ")
 }

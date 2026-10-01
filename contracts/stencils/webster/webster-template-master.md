@@ -43,7 +43,10 @@ and no batch is ever skipped or reordered because it "looks independent."
 
 {{.progress}}
 
-`none` means this is a fresh run.
+**Still to run:** {{.remaining}}
+
+Every batch named in "Still to run" must be begun, run and recorded before the run can end `done`; `none` there means every batch already has a terminal record.
+`none` under the progress trail means this is a fresh run.
 Any other value lists one `NN-slug: <status>` line per already-reported batch.
 Read the trail by status — a resumed session thus picks up exactly where the last one left off:
 

@@ -60,7 +60,7 @@ Per-field notes — `product`'s three fields are the whole of loom's own half of
   the board owns durable title/description, not this file.
 - **`product.start_sha`** — the repo `HEAD` stamped when Webster begins, so Raddle can diff `start_sha..HEAD`. `null` until Webster starts.
 - **`history[]` is budget-bearing, not only a log.**
-  Its one-entry-per-producer-call rule (see the schema block above) is no longer merely an audit trail: it is the sole storage of every producer's per-producer, episode-scoped bounce budget, derived by counting a producer's own `stuck` entries since its own most recent `done` entry or the most recent `goto` entry into its segment (into the producer itself when it has no segment).
+  Its one-entry-per-producer-call rule (see the schema block above) is no longer merely an audit trail: it is the sole storage of every producer's per-producer, episode-scoped bounce budget, derived by counting a producer's own `stuck` entries since its own most recent `done` entry, the most recent `done` by a producer of the same segment (a Burler-round row never returns `done`, so its review segment's Bouncer passing ends its episode), or the most recent `goto` entry into its segment (into the producer itself when it has no segment).
   It must never be truncated or compacted — doing so would silently hand every producer a fresh budget with nothing here to warn a future retention task that it just did.
   The unconditional append this depends on is the same one the fresh-start check below already relies on;
   see that check for why a `stuck` entry is appended on every `stuck` route, including a budget-exhausted block.

@@ -343,6 +343,7 @@ func masterTemplateMarkerValues() map[string]string {
 	return map[string]string{
 		"batch_index":             "01 — json-flag — add the --json flag",
 		"progress":                "none",
+		"remaining":               "01-a",
 		"outcome_path":            "/lyx/webster/outcome.yaml",
 		"summary_path":            "/lyx/webster/summary.md",
 		"integration_prompt_path": "/lyx/webster/prompts/integration.md",
@@ -1392,6 +1393,32 @@ func TestRenderProgress_ListsOnlyTerminalBatches(t *testing.T) {
 			t.Errorf("RenderProgress(batches, st) = %q; want %q", got, want)
 		}
 	})
+}
+
+// TestRenderRemaining_NamesEveryBatchWithoutATerminalRecord covers a resumed run whose plan grew:
+// the batches with no terminal record are named in execution order, so Master cannot read a long
+// done trail as the whole run.
+func TestRenderRemaining_NamesEveryBatchWithoutATerminalRecord(t *testing.T) {
+	batches := []batcher.Batch{
+		{Cards: []planparser.Card{cardWithSourcePath(2, "second", "do the second thing")}},
+		{Cards: []planparser.Card{cardWithSourcePath(1, "first", "do the first thing")}},
+		{Cards: []planparser.Card{cardWithSourcePath(3, "third", "do the third thing")}},
+	}
+	if got, want := websterengine.RenderRemaining(batches, nil), "02-second, 01-first, 03-third"; got != want {
+		t.Errorf("RenderRemaining(batches, nil) = %q; want %q", got, want)
+	}
+	st := &websterengine.State{Batches: map[int]*websterengine.BatchState{
+		2: {Slug: "second", Terminal: true, Status: "done"},
+		1: {Slug: "first", Terminal: false},
+	}}
+	if got, want := websterengine.RenderRemaining(batches, st), "01-first, 03-third"; got != want {
+		t.Errorf("RenderRemaining(batches, st) = %q; want %q", got, want)
+	}
+	st.Batches[1] = &websterengine.BatchState{Slug: "first", Terminal: true, Status: "done"}
+	st.Batches[3] = &websterengine.BatchState{Slug: "third", Terminal: true, Status: "done"}
+	if got := websterengine.RenderRemaining(batches, st); got != "none" {
+		t.Errorf("RenderRemaining(all terminal) = %q; want none", got)
+	}
 }
 
 // TestRenderBatchIndex_FollowsSliceOrderNotAscendingNumber asserts RenderBatchIndex emits one line

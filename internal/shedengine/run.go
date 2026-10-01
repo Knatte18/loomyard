@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -468,11 +469,12 @@ func nowRFC3339() string {
 }
 
 // episodeStuckCount walks history backward from the end and counts the Stuck entries authored by
-// name within its current episode: the run of entries since name's own most recent Done. It
-// returns immediately at the first entry whose Producer equals name and whose Outcome is Done, and
-// otherwise counts the entries whose Producer equals name and whose Outcome is Stuck; entries
-// authored by other producers are skipped and never terminate the scan, so a Done by some other
-// producer does not end this producer's episode.
+// def within its current episode: the run of entries since the most recent Done by def or by any
+// producer sharing def's non-empty Segment (segmentEnders). It returns immediately at the first such
+// Done, and otherwise counts the entries whose Producer equals def's name and whose Outcome is Stuck;
+// entries authored by any other producer are skipped and never terminate the scan.
+// A Burler-round row only ever returns Stuck, so its episode ends when its segment's Bouncer passes;
+// otherwise every later rework round would add to one ever-growing count.
 // A done entry written by the hard-failure arm also terminates the scan, and that is accepted
 // rather than special-cased: the engine records the verdict a producer actually returned, and
 // state: "failed" halts the run, so every continuation past it is a fresh human-initiated act.
@@ -483,6 +485,7 @@ func nowRFC3339() string {
 // a target no longer in the list ends no episode.
 func episodeStuckCount(history []HistoryEntry, def ProducerDef, producers []ProducerDef) int {
 	name := def.Name
+	enders := segmentEnders(producers, def)
 	count := 0
 	for i := len(history) - 1; i >= 0; i-- {
 		entry := history[i]
@@ -492,11 +495,11 @@ func episodeStuckCount(history []HistoryEntry, def ProducerDef, producers []Prod
 			}
 			continue
 		}
+		if entry.Outcome == Done && (entry.Producer == name || slices.Contains(enders, entry.Producer)) {
+			return count
+		}
 		if entry.Producer != name {
 			continue
-		}
-		if entry.Outcome == Done {
-			return count
 		}
 		if entry.Outcome == Stuck && !entry.BudgetExempt {
 			count++
@@ -516,6 +519,21 @@ func gotoEndsEpisode(target string, def ProducerDef, producers []ProducerDef) bo
 		}
 	}
 	return false
+}
+
+// segmentEnders returns the names of every other producer sharing def's non-empty Segment, whose
+// Done ends def's episode; a standalone producer has none, so its episode ends at its own Done only.
+func segmentEnders(producers []ProducerDef, def ProducerDef) []string {
+	if def.Segment == "" {
+		return nil
+	}
+	var names []string
+	for _, p := range producers {
+		if p.Segment == def.Segment && p.Name != def.Name {
+			names = append(names, p.Name)
+		}
+	}
+	return names
 }
 
 // appendOrFold returns a fresh copy of history with entry recorded: folded into the last element when both are budget-exempt Stucks with the same Producer, Output, and GateAttempts, else appended unchanged.
