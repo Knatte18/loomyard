@@ -24,6 +24,7 @@
 package websterengine_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -38,6 +39,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -2448,9 +2450,16 @@ func TestRun_FreshDropsPathlessFinding(t *testing.T) {
 	fx := newRunFixture(t, 1)
 	seedFreshPendingState(t, fx)
 	askingMaster(t, fx, "pathless")
+	var logs bytes.Buffer
+	logger.SetOutput(&logs)
+	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
 
 	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
 	requireReachedMaster(t, fx, err)
+	// Master ends asking, so no RunResult carries the drop warning; the log does.
+	if !strings.Contains(logs.String(), "--fresh dropped pending audit finding sess/parent:write:1") {
+		t.Errorf("log = %q; want the drop warning naming the finding", logs.String())
+	}
 	st, err := websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
 	if err != nil {
 		t.Fatalf("LoadState() error = %v", err)

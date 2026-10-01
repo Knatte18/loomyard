@@ -480,6 +480,11 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		if _, err := archiveStateFile(deps.Geom.WebsterDir, time.Now); err != nil {
 			return RunResult{}, err
 		}
+		// The drop is committed once the state is archived.
+		// Only a done outcome carries RunResult.Warnings, so each drop is logged here too, where every later refusal, Master outcome and error still leaves it on record.
+		for _, w := range freshWarnings {
+			logger.Warn("websterengine: --fresh dropped a pending audit finding", "warning", w)
+		}
 		if err := archiveReportsDir(deps.Geom.ReportsDir, time.Now); err != nil {
 			return RunResult{}, err
 		}
