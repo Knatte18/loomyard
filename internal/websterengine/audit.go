@@ -20,6 +20,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -285,10 +286,24 @@ var (
 	gitValueOptions = stringSet("-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env", "--super-prefix")
 	// shellKeywords are words that open or join a compound command and run nothing themselves.
 	shellKeywords = stringSet("{", "}", "!", "if", "then", "else", "elif", "fi", "do", "done", "while", "until")
-	// commandWrappers run the command that follows their own options.
-	commandWrappers = stringSet("sudo", "env", "nice", "nohup", "command", "exec", "time")
+	// commandWrappers run the command that follows their own options, each keyed to its options whose value follows as a separate word.
+	commandWrappers = map[string]map[string]bool{
+		"sudo":    stringSet("-u", "--user", "-g", "--group", "-p", "--prompt", "-C", "--close-from", "-D", "--chdir", "-R", "--chroot", "-r", "--role", "-t", "--type", "-T", "--command-timeout", "-U", "--other-user"),
+		"env":     stringSet("-u", "--unset", "-C", "--chdir", "-P"),
+		"nice":    stringSet("-n", "--adjustment"),
+		"nohup":   stringSet(),
+		"command": stringSet(),
+		"exec":    stringSet("-a"),
+		"time":    stringSet("-f", "--format"),
+	}
+	// timeoutValueOptions are timeout options whose value follows as a separate word.
+	timeoutValueOptions = stringSet("-s", "--signal", "-k", "--kill-after")
 	// xargsValueOptions are xargs options whose value follows as a separate word.
-	xargsValueOptions = stringSet("-I", "-n", "-P", "-d", "-E", "-L", "-s", "-a")
+	xargsValueOptions = stringSet("-I", "-n", "-P", "-d", "-E", "-L", "-s", "-a", "--arg-file", "--delimiter", "--max-args", "--max-procs", "--max-chars", "--process-slot-var")
+	// shells run a `-c` command string, or else a script file, as their first operand.
+	shells = stringSet("bash", "sh", "zsh", "dash")
+	// shellValueOptions are shell options whose value follows as a separate word.
+	shellValueOptions = stringSet("-o", "+o", "-O", "+O", "--rcfile", "--init-file")
 	// systemBinDirs are the directories a path-spelled program may run from and still count as its allowlisted name.
 	systemBinDirs = stringSet("/bin", "/usr/bin", "/usr/local/bin")
 	// harmlessRedirectTargets are output redirect targets that change no file.
@@ -568,33 +583,39 @@ func readOnlySegment(words []string) bool {
 	switch {
 	case readOnlyTools[prog], loopHeaders[prog]:
 		return true
-	case commandWrappers[prog]:
-		for len(args) > 0 && strings.HasPrefix(args[0], "-") {
-			args = args[1:]
+	case commandWrappers[prog] != nil:
+		wrapped := skipOptions(args, commandWrappers[prog])
+		if prog == "time" && slices.ContainsFunc(args[:len(args)-len(wrapped)], func(a string) bool {
+			return strings.HasPrefix(a, "-o") || strings.HasPrefix(a, "--o")
+		}) {
+			// GNU time's -o writes its report to a file.
+			return false
 		}
-		return readOnlySegment(args)
+		return readOnlySegment(wrapped)
 	case prog == "timeout":
-		for len(args) > 0 && strings.HasPrefix(args[0], "-") {
-			args = args[1:]
-		}
+		args = skipOptions(args, timeoutValueOptions)
 		if len(args) == 0 {
 			return true
 		}
 		return readOnlySegment(args[1:])
 	case prog == "xargs":
-		for len(args) > 0 && strings.HasPrefix(args[0], "-") {
-			if xargsValueOptions[args[0]] {
-				args = args[1:]
-			}
-			if len(args) > 0 {
-				args = args[1:]
-			}
-		}
-		return readOnlySegment(args)
-	case prog == "bash" || prog == "sh" || prog == "zsh" || prog == "dash":
-		for i, a := range args {
-			if strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "--") && strings.Contains(a, "c") && i+1 < len(args) {
-				return !mutatingCommand(args[i+1])
+		return readOnlySegment(skipOptions(args, xargsValueOptions))
+	case shells[prog]:
+		runsString := false
+		for i := 0; i < len(args); i++ {
+			a := args[i]
+			switch {
+			case shellValueOptions[a]:
+				i++
+			case strings.HasPrefix(a, "--") || strings.HasPrefix(a, "+"):
+			case strings.HasPrefix(a, "-"):
+				runsString = runsString || strings.Contains(a, "c")
+				if strings.HasSuffix(a, "o") || strings.HasSuffix(a, "O") {
+					i++
+				}
+			default:
+				// The first operand is the -c command string, or else a script file.
+				return runsString && !mutatingCommand(a)
 			}
 		}
 		return false
@@ -649,6 +670,17 @@ func readOnlySegment(words []string) bool {
 		return readOnlyFabric[verb]
 	}
 	return false
+}
+
+// skipOptions returns args past their leading options, dropping each option in values together with the value word that follows it.
+func skipOptions(args []string, values map[string]bool) []string {
+	for len(args) > 0 && strings.HasPrefix(args[0], "-") {
+		if values[args[0]] && len(args) > 1 {
+			args = args[1:]
+		}
+		args = args[1:]
+	}
+	return args
 }
 
 // grepOpensPager reports whether `git grep`'s args carry `-O` or `--open-files-in-pager`, which run a program on the matched files.
