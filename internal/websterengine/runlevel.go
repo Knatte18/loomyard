@@ -22,6 +22,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/friction"
+	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -165,6 +166,7 @@ type RunDeps struct {
 // Fresh requests the fingerprint-mismatch escape: archive the stale state.json and reports dir,
 // clear the re-renderable prompts dir, and re-init, rather than refusing with
 // ErrFingerprintMismatch.
+// It also discards pending audit findings, on an unchanged plan too, once their suspect paths match the run's start commit.
 type RunOptions struct {
 	Fresh bool
 }
@@ -450,6 +452,11 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		return RunResult{}, err
 	}
 
+	freshDrop, freshWarnings, err := freshPendingDrop(deps.Geom, st, opts)
+	if err != nil {
+		return RunResult{}, err
+	}
+
 	switch {
 	case st == nil:
 		guid, err := newRunGUID()
@@ -466,7 +473,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 			return RunResult{}, err
 		}
 
-	case st.PlanFingerprint != fingerprint:
+	case st.PlanFingerprint != fingerprint, freshDrop:
 		if !opts.Fresh {
 			return RunResult{}, fmt.Errorf("%w: on-disk plan fingerprint %s does not match this run's recorded fingerprint %s; the plan changed since state.json was created; %s", ErrFingerprintMismatch, fingerprint, st.PlanFingerprint, fingerprintMismatchWayForward(st, deps.Geom.PlanDir))
 		}
@@ -716,6 +723,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		// ends stuck/paused/died reaches the operator through that error
 		// path's own message rather than through Cycles — an accepted,
 		// stated limitation, not an oversight.
+		runResult.Warnings = append(freshWarnings, runResult.Warnings...)
 		runResult.Cycles = cycles
 		if len(cycles) > 0 {
 			cycleWarnings := make([]string, len(cycles))
@@ -1050,6 +1058,53 @@ func pendingAuditFindingsError(pending []PendingAuditFinding) error {
 		pathless = pathless || len(f.Paths) == 0
 	}
 	return fmt.Errorf("%w: %d correctness finding(s) from an earlier run exit are pending: %s; suspect paths: %s; way forward: restore the named paths to the last batch head with git, then run \"lyx webster accept-audit\"%s", ErrPendingAuditFindings, len(pending), strings.Join(details, "; "), pathList, pathlessClause(pathless))
+}
+
+// freshPendingDrop decides whether opts.Fresh discards st's pending audit findings, and returns one warning per dropped finding.
+// It refuses with ErrPendingAuditFindings while a suspect path outside the plan directory still differs from the run's start commit,
+// falling back to the worktree's HEAD when no batch recorded a start.
+// A plan file differs by design, and an unverifiable path or a pathless finding is dropped with the archived state.
+func freshPendingDrop(geom Geometry, st *State, opts RunOptions) (drop bool, warnings []string, err error) {
+	if !opts.Fresh || st == nil || len(st.PendingAuditFindings) == 0 {
+		return false, nil, nil
+	}
+	base := runStartCommit(st)
+	if base == "" {
+		head, err := gitexec.Run([]string{"rev-parse", "HEAD"}, geom.WorktreeRoot)
+		if err != nil {
+			return false, nil, fmt.Errorf("webster: resolve HEAD in %s: %w", geom.WorktreeRoot, err)
+		}
+		base = strings.TrimSpace(head)
+	}
+	planDir, err := canonicalPath(geom.PlanDir)
+	if err != nil {
+		return false, nil, err
+	}
+	var paths []string
+	seen := map[string]bool{}
+	for _, f := range st.PendingAuditFindings {
+		for _, p := range f.Paths {
+			canon, err := canonicalPath(resolveWritePath(geom.WorktreeRoot, p))
+			if err != nil {
+				return false, nil, err
+			}
+			if !seen[p] && !pathWithin(planDir, canon) {
+				seen[p] = true
+				paths = append(paths, p)
+			}
+		}
+	}
+	differing, _, err := checkSuspectPaths(geom, st, base, paths)
+	if err != nil {
+		return false, nil, err
+	}
+	if len(differing) > 0 {
+		return false, nil, fmt.Errorf("%w: --fresh would drop pending audit findings while their suspect paths still differ from the run's start commit %s: %s; way forward: reset the branch to %s with git, then re-run \"lyx webster run --fresh\"", ErrPendingAuditFindings, base, strings.Join(differing, ", "), base)
+	}
+	for _, f := range st.PendingAuditFindings {
+		warnings = append(warnings, fmt.Sprintf("--fresh dropped pending audit finding %s: %s", f.ID, f.Detail))
+	}
+	return true, warnings, nil
 }
 
 // pathlessClause is the way-forward clause for a pending finding that names no path, or "" when every finding names one.

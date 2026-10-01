@@ -2355,3 +2355,124 @@ func TestRun_FingerprintMismatchWayForwardNamesTheEditedCards(t *testing.T) {
 		}
 	})
 }
+
+// seedFreshPendingState seeds a state with one recorded batch started at the fixture's first commit and one pending finding naming paths, and returns that start commit.
+func seedFreshPendingState(t *testing.T, fx *runFixture, paths ...string) string {
+	t.Helper()
+	start := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	seedMatchingState(t, fx, &websterengine.State{
+		RunGUID: "stale-run",
+		Batches: map[int]*websterengine.BatchState{
+			1: {Slug: "batch1", Kind: "fork", StartSHA: start},
+		},
+		PendingAuditFindings: []websterengine.PendingAuditFinding{{ID: "sess/parent:write:1", Class: "parent-write", Detail: "master wrote a tracked file", Paths: paths}},
+	})
+	return start
+}
+
+// TestRun_FreshRefusesWhileSuspectPathDiffers proves --fresh refuses, archiving nothing, while a pending finding's suspect path still differs from the run's start commit.
+func TestRun_FreshRefusesWhileSuspectPathDiffers(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	tracked := filepath.Join(fx.Worktree, "base.txt")
+	start := seedFreshPendingState(t, fx, tracked)
+	commitFile(t, fx.Worktree, "base.txt", "hand-edited by master", "suspect write")
+	marker := filepath.Join(fx.Deps.Geom.ReportsDir, "marker.yaml")
+	if err := os.WriteFile(marker, []byte("x"), 0o644); err != nil {
+		t.Fatalf("write marker: %v", err)
+	}
+
+	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
+	if !errors.Is(err, websterengine.ErrPendingAuditFindings) {
+		t.Fatalf("Run() error = %v; want ErrPendingAuditFindings", err)
+	}
+	if !strings.Contains(err.Error(), tracked) || !strings.Contains(err.Error(), start) {
+		t.Errorf("Run() error = %q; want it to name %s and the start commit %s", err, tracked, start)
+	}
+	if _, statErr := os.Stat(filepath.Join(fx.Deps.Geom.WebsterDir, "state.json")); statErr != nil {
+		t.Errorf("state.json was archived: %v", statErr)
+	}
+	if _, statErr := os.Stat(marker); statErr != nil {
+		t.Errorf("reports dir was archived: %v", statErr)
+	}
+	if got := fx.Starter.callCount(); got != 0 {
+		t.Errorf("Starter calls = %d; want 0", got)
+	}
+}
+
+// TestRun_FreshDropsFindingsOnceReset proves --fresh drops the pending finding once the branch is reset to the start commit, spawns Master, and names the dropped finding in the warnings.
+func TestRun_FreshDropsFindingsOnceReset(t *testing.T) {
+	const session = "master-session-fresh"
+	fx := newRunFixture(t, 1)
+	tracked := filepath.Join(fx.Worktree, "base.txt")
+	start := seedFreshPendingState(t, fx, tracked)
+	commitFile(t, fx.Worktree, "base.txt", "hand-edited by master", "suspect write")
+	mustGit(t, fx.Worktree, "reset", "--hard", start)
+
+	forks := []shuttleengine.ForkReport{{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true}}
+	fx.Starter.handle = auditDoneHandle(t, fx, session, 1, shuttleengine.ForkAudit{Forks: forks}, func() {
+		st, err := websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
+		if err != nil || st == nil {
+			t.Fatalf("LoadState() = %v, %v", st, err)
+		}
+		if len(st.PendingAuditFindings) != 0 {
+			t.Errorf("PendingAuditFindings = %+v; want none in the fresh state", st.PendingAuditFindings)
+		}
+		st.Batches[1] = &websterengine.BatchState{Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", SessionID: session}
+		if err := websterengine.SaveState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir, st); err != nil {
+			t.Fatalf("SaveState() error = %v", err)
+		}
+	})
+	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-audit", session)
+
+	result, err := websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
+	if err != nil {
+		t.Fatalf("Run() error = %v; want nil", err)
+	}
+	if fx.Starter.callCount() == 0 {
+		t.Error("Starter was never reached")
+	}
+	if !warningsContain(result.Warnings, "--fresh dropped pending audit finding sess/parent:write:1") {
+		t.Errorf("Warnings = %v; want the dropped finding named", result.Warnings)
+	}
+	st, err := websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
+	if err != nil {
+		t.Fatalf("LoadState() error = %v", err)
+	}
+	if len(st.PendingAuditFindings) != 0 || st.RunGUID == "stale-run" {
+		t.Errorf("state = %+v; want a re-initialised run with no pending finding", st)
+	}
+}
+
+// TestRun_FreshDropsPathlessFinding proves a pathless pending finding on an unchanged plan is dropped by --fresh, which re-initialises and proceeds.
+func TestRun_FreshDropsPathlessFinding(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	seedFreshPendingState(t, fx)
+	askingMaster(t, fx, "pathless")
+
+	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
+	requireReachedMaster(t, fx, err)
+	st, err := websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
+	if err != nil {
+		t.Fatalf("LoadState() error = %v", err)
+	}
+	if len(st.PendingAuditFindings) != 0 || st.RunGUID == "stale-run" {
+		t.Errorf("state = %+v; want a re-initialised run with no pending finding", st)
+	}
+}
+
+// TestRun_FreshOnUnchangedPlanWithoutFindingsResumes proves --fresh stays a no-op on an unchanged plan with nothing pending: the state is kept.
+func TestRun_FreshOnUnchangedPlanWithoutFindingsResumes(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	seedMatchingState(t, fx, &websterengine.State{RunGUID: "kept-run"})
+	askingMaster(t, fx, "resume")
+
+	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
+	requireReachedMaster(t, fx, err)
+	st, err := websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
+	if err != nil {
+		t.Fatalf("LoadState() error = %v", err)
+	}
+	if st.RunGUID != "kept-run" {
+		t.Errorf("RunGUID = %q; want %q kept", st.RunGUID, "kept-run")
+	}
+}

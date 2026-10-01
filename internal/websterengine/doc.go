@@ -166,6 +166,7 @@
 // A correctness finding stays pending in state.json until `lyx webster accept-audit` clears it, and run entry refuses with ErrPendingAuditFindings meanwhile.
 // accept-audit needs evidence: it checks every suspect path against the last batch head (a plan file against the run's recorded plan hashes) and refuses with ErrAuditNotAcceptable while any path differs, cannot be checked, or a finding names no path;
 // the last two clear only through `lyx webster run --fresh` after resetting the branch to the run's start commit.
+// `run --fresh` drops pending findings, with one warning per finding, even on an unchanged plan, and refuses with ErrPendingAuditFindings while a pending suspect path outside the plan still differs from the run's start commit.
 //
 // Every refusal this package can return, and the way forward from it, is tabulated in contracts/specs/refusal-spec.md;
 // this documentation links that table rather than restating its rows.

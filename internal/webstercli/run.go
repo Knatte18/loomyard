@@ -61,7 +61,9 @@ state and reports and starts over ONLY on that mismatch; with an
 unchanged plan --fresh is a no-op and the run RESUMES from state.json, so
 a fully-completed plan re-reports done without re-driving anything --
 force a from-scratch re-run of an unchanged plan by editing the plan or
-archiving _lyx/webster/state.json aside by hand), clears any leftover pause flag once
+archiving _lyx/webster/state.json aside by hand; --fresh also discards pending
+audit findings, with a warning each, once their suspect paths match the run's
+start commit, and refuses while any differs), clears any leftover pause flag once
 those refusal gates pass, archives any stale outcome.yaml/summary.md,
 spawns a fresh Master session via shuttle (fork-authorized, never resumed),
 and blocks until Master writes its own outcome.yaml and summary.md
@@ -160,7 +162,7 @@ Example:
 		},
 	}
 
-	cmd.Flags().BoolVar(&fresh, "fresh", false, "archive the stale state.json and reports dir and start a fresh run on a plan-fingerprint mismatch")
+	cmd.Flags().BoolVar(&fresh, "fresh", false, "archive the stale state.json and reports dir and start a fresh run on a plan-fingerprint mismatch; also discards pending audit findings once their suspect paths match the run's start commit, and refuses while any differs")
 
 	return cmd
 }
