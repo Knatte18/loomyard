@@ -40,7 +40,7 @@ A fresh seed carries `current_producer: "Preflight"`, `state: "running"`, empty 
 {
   "current_producer": "Preflight",             // Shed-owned: which producer this run is at
   "state": "running",                          // Shed-owned: running | paused | done | blocked | awaiting | failed
-  "error": "",                                 // Shed-owned: human-readable detail for a failed/blocked/awaiting halt (awaiting is the planned PR-review hand-off at PR-Gate); a blocked halt carries the producer's own stuck reason (the generic "stuck with no OnStuck target" when it supplied none) or the fixed "bounce budget exhausted"
+  "error": "",                                 // Shed-owned: human-readable detail for a failed/blocked/awaiting halt (awaiting is the planned PR-review hand-off at PR-Gate); a blocked halt carries the producer's own stuck reason (the generic "stuck with no OnStuck target" when it supplied none) or, for an exhausted bounce budget, a reason that starts with "bounce budget exhausted" and carries its `goto` way forward after it
   "pause_requested": false,                    // shared write-to-clear: set true by an outside actor, cleared by Shed
   "activity": {"now": "...", "last": "...", "wait": "..."}, // Shed-owned, mechanically composed
   "history": [                                 // Shed-owned: one entry per producer call
@@ -60,7 +60,7 @@ Per-field notes — `product`'s three fields are the whole of loom's own half of
   the board owns durable title/description, not this file.
 - **`product.start_sha`** — the repo `HEAD` stamped when Webster begins, so Raddle can diff `start_sha..HEAD`. `null` until Webster starts.
 - **`history[]` is budget-bearing, not only a log.**
-  Its one-entry-per-producer-call rule (see the schema block above) is no longer merely an audit trail: it is the sole storage of every producer's per-producer, episode-scoped bounce budget, derived by counting a producer's own `stuck` entries since its own most recent `done` entry, or the most recent `done` by a producer of the same segment (a Burler-round row never returns `done`, so its review segment's Bouncer passing ends its episode).
+  Its one-entry-per-producer-call rule (see the schema block above) is no longer merely an audit trail: it is the sole storage of every producer's per-producer, episode-scoped bounce budget, derived by counting a producer's own `stuck` entries since its own most recent `done` entry, the most recent `done` by a producer of the same segment (a Burler-round row never returns `done`, so its review segment's Bouncer passing ends its episode), or the most recent `goto` entry into its segment (into the producer itself when it has no segment).
   It must never be truncated or compacted — doing so would silently hand every producer a fresh budget with nothing here to warn a future retention task that it just did.
   The unconditional append this depends on is the same one the fresh-start check below already relies on;
   see that check for why a `stuck` entry is appended on every `stuck` route, including a budget-exhausted block.
@@ -85,7 +85,7 @@ Spec for check 4, loom's own precondition layered over `Shed`'s shell (`internal
 - `shed.state` must be one of `Shed`'s six legal values and must not be `"done"`, a finished run.
 - `shed.error` is tolerated at any value, including non-empty — it is the previous halt's reason a human resumes after reading.
 - `shed.activity` is never validated — `Shed` recomposes it mechanically on every persist.
-- Every `shed.history[].outcome` must be `"done"`, `"stuck"` or `"awaiting"`, and every `shed.history[].at` must be RFC3339 UTC.
+- Every `shed.history[].outcome` must be `"done"`, `"stuck"`, `"awaiting"` or `"goto"` (a history-only value written by `lyx shed goto` and returned by no producer), and every `shed.history[].at` must be RFC3339 UTC.
 - **Fresh-start check:** a `shed.history[]` entry naming any producer other than `"Preflight"` or `"Loom-Preflight"` is a half-finished failure; entries naming either of those two are tolerated, since `Shed.Run` appends a history entry before persisting `state: "blocked"` on every `Stuck` route including the `OnStuck: ""` escalation, so a `Stuck` at either row 1 or row 2 leaves one matching entry behind and a resumable blocked run must not fail this check forever.
 - A non-null `product.start_sha`, or `shed.pause_requested: true`, is also a half-finished failure — the task has already advanced past the point the two Preflight rows are meant to gate.
 - A `product` that fails to decode as loom's own shape is a `seed-incoherent` verdict, not an infra error.

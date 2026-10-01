@@ -25,8 +25,8 @@
 // A Stuck outcome routes via OnStuck: "" escalates to a human (state: "blocked"), and a non-empty
 // value bounces back to the Name it names, forward or backward, budget permitting.
 // The OnStuck "" escalation persists the producer's own OutputPointer.Reason as the blocked halt's
-// error (one line, falling back to ReasonNoOnStuckTarget when empty); budget exhaustion persists
-// ReasonBounceBudgetExhausted regardless of the producer's Reason.
+// error (one line, falling back to ReasonNoOnStuckTarget when empty);
+// budget exhaustion persists a reason that starts with ReasonBounceBudgetExhausted, regardless of the producer's Reason.
 // An Awaiting outcome is the planned human hand-off and routes nowhere: the run halts in state
 // "awaiting" with the producer's Reason as the error, no bounce budget is consulted or spent, and a
 // resume re-calls the same producer, exactly as it does after a blocked halt.
@@ -38,11 +38,32 @@
 // exhaustively rather than relying on Shed to catch a missing entry.
 // The bounce budget backing OnStuck is per-producer and episode-scoped: it is counted from the
 // persisted history[] rather than held in memory, as the number of Stuck entries a producer has
-// authored since its own most recent Done entry, or a Done by any producer sharing its non-empty
-// Segment (all of them, if neither ever happened), so the count spans invocations, crashes, and
-// human resumes rather than resetting on every new Run call.
+// authored since its own most recent Done entry, a Done by any producer sharing its non-empty
+// Segment, or a goto into its segment (all of them, if none exists), so the count spans
+// invocations, crashes, and human resumes rather than resetting on every new Run call.
 // See this package's own routing and bounce-budget documentation for the full design and its
 // rationale; this package documentation states the contract, not the argument for it.
+//
+// # goto: a history-only outcome that moves a halted run
+//
+// Goto moves a halted run onto a named row and appends an entry whose outcome is OutcomeGoto.
+// That outcome is history-only: no producer returns it, and it is never a Call verdict.
+// The entry leaves the run paused, never running, so the next Run reads as an ordinary resume.
+// It also sets an episode boundary for the target's segment:
+// episodeStuckCount stops counting Stuck entries at a goto whose target shares the producer's Segment (or is the producer itself when it has no Segment),
+// so the moved-onto segment starts with a fresh bounce budget.
+// A goto whose target is missing from the producer list ends no episode.
+//
+// Goto only moves a halted run back.
+// It refuses a running run, because the run lock is free between a step-driven driver's steps and nothing else tells a live driver from a crashed one.
+// The reference row is the row current_producer names, or, when that names no row, the producer of the latest history entry that does, whose routed row (OnDone after done, OnStuck after stuck) is admitted too.
+// A target is admitted when it sits at or before the reference row in the producer list;
+// an awaiting run admits only rows strictly before it, since moving onto or past a hand-off would bypass it.
+// Every refusal leaves the status file unchanged.
+//
+// Two stops name goto as their way forward in a trailing `way forward:` clause:
+// the missing-producer refusal, which lists every valid producer name, and the budget-exhausted reason, whose ReasonBounceBudgetExhausted stays its exact prefix.
+// Every refusal's way forward is tabulated in contracts/specs/refusal-spec.md, which this documentation links rather than restates.
 //
 // # Told, never derived
 //

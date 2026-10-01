@@ -15,7 +15,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// TestParentMergeBetweenForkCommitAndRecordBatch walks begin → fork commit → parent merge → record → next begin and asserts each recorded value exactly.
+// TestParentMergeBetweenForkCommitAndRecordBatch is the 2026-09-30 parent-merge-ring regression.
+// It walks begin → fork commit → parent merge → record → next begin → next record and asserts each recorded value exactly.
 func TestParentMergeBetweenForkCommitAndRecordBatch(t *testing.T) {
 	fx := newBeginFixture(t)
 	deps := fx.Deps
@@ -58,6 +59,7 @@ func TestParentMergeBetweenForkCommitAndRecordBatch(t *testing.T) {
 		Config:  websterengine.Config{},
 		Engine: &recordFakeEngine{scripted: []shuttleengine.ForkAudit{
 			{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
+			{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}, {TranscriptPath: "subagents/f2.jsonl", ReportReturned: true}}},
 		}},
 		Geom:         deps.Geom,
 		RefMatcher:   websterengine.NeverMatches{},
@@ -89,5 +91,22 @@ func TestParentMergeBetweenForkCommitAndRecordBatch(t *testing.T) {
 	}
 	if begun2.StartSHA != mergeSHA || deps.State.Batches[2].StartSHA != mergeSHA {
 		t.Errorf("batch 2 StartSHA = %q (result %q); want merge commit %q", deps.State.Batches[2].StartSHA, begun2.StartSHA, mergeSHA)
+	}
+
+	// 6. The batch after the merge-in is recorded too: no verb in the ring refuses.
+	fork2SHA := commitFile(t, fx.Worktree, "internal/foo/impl2.go", "package foo\n", "2: list-tests")
+	report2Path := filepath.Join(deps.Geom.ReportsDir, websterengine.ReportFileName(2, "list-tests"))
+	if err := os.WriteFile(report2Path, []byte(validReport(fork2SHA)), 0o644); err != nil {
+		t.Fatalf("write batch 2 report: %v", err)
+	}
+	result2, err := websterengine.RecordBatch(recordDeps, 2)
+	if err != nil {
+		t.Fatalf("RecordBatch(2) error = %v; want nil after the parent merge-in", err)
+	}
+	if result2.Digest == nil || !deps.State.Batches[2].Terminal {
+		t.Fatalf("RecordBatch(2) digest = %+v; want batch 2 terminal", result2.Digest)
+	}
+	if got := deps.State.Batches[2].CardSHAs; len(got) != 1 || got[0] != fork2SHA {
+		t.Errorf("batch 2 CardSHAs = %v; want [%s]", got, fork2SHA)
 	}
 }

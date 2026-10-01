@@ -5,11 +5,13 @@ package loomshed
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/state"
 )
 
 // formatSeedFailures renders report's determined failures as a single "check: reason" list,
@@ -85,10 +87,62 @@ func (p *loomPreflightProducer) Call(ctx context.Context) (shedengine.Outcome, s
 		// Surfaced rather than discarded, for the same reason Preflight surfaces its own: this row
 		// carries no OnStuck, so its Stuck halts the run for a human. The cause is returned as the
 		// row's reason, which reaches the persisted error and activity.wait, and also logged.
+		if p.waivesHalfFinished(report) {
+			return shedengine.Done, shedengine.OutputPointer{}, nil
+		}
 		failures := formatSeedFailures(report)
 		logger.Warn("loomshed: seed is not a coherent fresh start", "producer", p.name, "statusPath", p.statusPath, "failures", failures)
-		return shedengine.Stuck, shedengine.OutputPointer{Reason: "seed is not a coherent fresh start: " + failures}, nil
+		reason := "seed is not a coherent fresh start: " + failures
+		for _, f := range report.Failures {
+			if f.Check == loomengine.CheckHalfFinished {
+				reason += fmt.Sprintf("; way forward: seed a new run, or \"lyx loom goto --to %s\" accepts this run as a deliberate re-entry", NameLoomPreflight)
+				break
+			}
+		}
+		return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
 	}
 
 	return shedengine.Done, shedengine.OutputPointer{}, nil
+}
+
+// waivesHalfFinished reports whether report's only failures are CheckHalfFinished ones on a deliberate goto re-entry.
+// A run an operator moved back onto Preflight or Loom-Preflight is not a fresh start this check protects, so those failures are waived and logged.
+// Any other failure, or a history that is not a re-entry, leaves the report to stand.
+func (p *loomPreflightProducer) waivesHalfFinished(report loomengine.Report) bool {
+	halfFinished := false
+	for _, f := range report.Failures {
+		if f.Check != loomengine.CheckHalfFinished {
+			return false
+		}
+		halfFinished = true
+	}
+	if !halfFinished {
+		return false
+	}
+	st, found, err := state.ReadJSONStrict[shedengine.Status](p.statusPath, p.statusLockPath)
+	if err != nil || !found || !isGotoReentry(st.History) {
+		return false
+	}
+	logger.Warn("loomshed: waiving half-finished failures on a deliberate goto re-entry", "producer", p.name, "statusPath", p.statusPath, "failures", formatSeedFailures(report))
+	return true
+}
+
+// isGotoReentry reports whether the latest goto entry in history targets Preflight or Loom-Preflight and every entry after it names only those two rows.
+func isGotoReentry(history []shedengine.HistoryEntry) bool {
+	tolerated := func(name string) bool { return name == NamePreflight || name == NameLoomPreflight }
+	for i := len(history) - 1; i >= 0; i-- {
+		if history[i].Outcome != shedengine.OutcomeGoto {
+			continue
+		}
+		if !tolerated(history[i].Producer) {
+			return false
+		}
+		for _, e := range history[i+1:] {
+			if !tolerated(e.Producer) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
 }

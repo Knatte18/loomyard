@@ -67,10 +67,11 @@ func findingsEntries(findings []planglyph.Finding) []map[string]string {
 // scope those findings were collected under -- the refusal envelope needs it as much as the success
 // one does, since which cards were re-resolved is what decides whether a missing finding means
 // "clean" or "out of scope on this call".
-func findingsEnvelope(out io.Writer, findings []planglyph.Finding, scope string) int {
+// msg is the envelope's error text.
+func findingsEnvelope(out io.Writer, msg string, findings []planglyph.Finding, scope string) int {
 	data, _ := json.Marshal(map[string]any{
 		"ok":       false,
-		"error":    fmt.Sprintf("webster: plan validation found %d finding(s)", len(findings)),
+		"error":    msg,
 		"findings": findingsEntries(findings),
 		"scope":    scope,
 	})
@@ -170,9 +171,12 @@ the lint-without-run pre-flight for a Planner or human; it never spawns
 anything -- but it is not read-only: like every bracket verb, its own
 resolve pass can canonicalize a not-yet-canonical plan: handle, rewriting
 the affected card files on disk, and validate re-baselines state.json's
-plan-fingerprint crash/resume guard afterward exactly as begin-batch and
-record-batch already do, so a rewrite it performs is never later mistaken
-for a foreign edit.
+plan-fingerprint crash/resume guard afterward, so a rewrite it performs is
+never later mistaken for a foreign edit. With a run in progress, validate
+first checks the plan against the fingerprint the run recorded: a plan edited
+since then is still linted, but validate skips the re-baseline, leaves
+state.json untouched and exits non-zero naming "lyx webster rebaseline" and
+"lyx webster restore-plan", so an edit is never adopted unseen.
 
 Which cards are checked follows the run's own progress, exactly as the
 automatic gate "lyx webster run" applies before forking an implementer does,
@@ -231,18 +235,25 @@ Example:
 				fingerprintBefore = st.PlanFingerprint
 			}
 
+			// The edit check runs before scopedValidate's own rewrite:
+			// the restamp below exists to adopt webster's own rewrites, so any difference seen here is someone else's edit and is refused, never adopted into the plan hashes.
+			var editErr error
+			if st != nil {
+				editErr = websterengine.PlanEditError(st, plan.Dir)
+			}
+
 			findings, scope, validateErr := c.scopedValidate(plan)
 
 			// Re-baseline regardless of validateErr, exactly as begin-batch re-baselines ahead of
 			// every refusal below it: a sanctioned rewrite that already landed on disk is a durable
 			// fact about the plan whether or not a LATER step of this same call then fails. A nil
 			// st (no run in progress) means there is no state.json to desync, so this is a no-op.
+			// An edited plan skips it and leaves state.json untouched.
 			var rebaseErr error
-			if st != nil {
-				if fp, fpErr := websterengine.Fingerprint(plan.Dir); fpErr != nil {
+			if st != nil && editErr == nil {
+				if fpErr := websterengine.RestampPlanBaseline(st, plan.Dir, c.geom.WebsterDir); fpErr != nil {
 					rebaseErr = fpErr
 				} else {
-					st.PlanFingerprint = fp
 					rebaseErr = persistPlanFingerprintRebaseline(c.geom, st, fingerprintBefore)
 				}
 			}
@@ -258,18 +269,22 @@ Example:
 					msg = "webster: quarry could not answer validating plan: " + validateErr.Error()
 				}
 				if rebaseErr != nil {
-					msg = fmt.Sprintf("%s (additionally, persisting the plan-fingerprint re-baseline this call had already earned failed: %v)", msg, rebaseErr)
+					msg = fmt.Sprintf("%s (additionally, persisting the plan-fingerprint re-baseline this call had already earned failed: %v; way forward: re-run `lyx webster validate`)", msg, rebaseErr)
 				}
 				clihelp.SetExit(cmd.Context(), output.Err(out, msg))
 				return nil
 			}
+			if editErr != nil {
+				clihelp.SetExit(cmd.Context(), findingsEnvelope(out, editErr.Error(), findings, scope))
+				return nil
+			}
 			if rebaseErr != nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: validate finished but persisting the plan-fingerprint re-baseline failed: %v -- state.json may now be stale; the next begin-batch/record-batch/run may refuse the plan as foreign", rebaseErr)))
+				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: validate finished but persisting the plan-fingerprint re-baseline failed: %v -- state.json may now be stale; the next begin-batch/record-batch/run may refuse the plan as foreign; way forward: re-run `lyx webster validate`", rebaseErr)))
 				return nil
 			}
 
 			if findingsHaveBlocking(findings) {
-				clihelp.SetExit(cmd.Context(), findingsEnvelope(out, findings, scope))
+				clihelp.SetExit(cmd.Context(), findingsEnvelope(out, fmt.Sprintf("webster: plan validation found %d finding(s)", len(findings)), findings, scope))
 				return nil
 			}
 

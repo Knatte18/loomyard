@@ -1,10 +1,10 @@
-// verbs.go assembles the four generic verb bodies into the one constructor batches 4 and 5 consume.
+// verbs.go assembles the five generic verb bodies into the one constructor batches 4 and 5 consume.
 
 package shedverbs
 
 import "github.com/spf13/cobra"
 
-// Verbs returns the four generic subcommands -- run, step, status, pause, in that order -- built
+// Verbs returns the five generic subcommands -- run, step, status, pause, goto, in that order -- built
 // from texts and armed against spec.
 //
 // The two arguments carry deliberately different lifetimes, per the overview's
@@ -19,8 +19,8 @@ import "github.com/spf13/cobra"
 // Args: cobra.ExactArgs(1) on the commands it needs it on. Hooks reach the module's own values by
 // closure over its own receiver, never through a parameter this constructor exposes.
 //
-// Verbs registers no flag beyond status's --watch and --interval, and declares no Args constraint
-// of its own.
+// Verbs registers no flag beyond status's --watch and --interval and goto's --to, and declares no
+// Args constraint of its own.
 //
 // This package exposes no Command()/RunCLI seam: it is not a CLI module and is not counted in the
 // CLI/Cobra Invariant's module tally.
@@ -30,5 +30,6 @@ func Verbs(texts VerbTexts, spec *Spec) []*cobra.Command {
 		stepCmd(texts, spec),
 		statusCmd(texts, spec),
 		pauseCmd(texts, spec),
+		gotoCmd(texts, spec),
 	}
 }

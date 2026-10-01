@@ -412,7 +412,7 @@ func TestGateParity_PlanGate(t *testing.T) {
 func TestGenericVerbs_AcceptOptionalRunIDPositional(t *testing.T) {
 	root := Command()
 
-	for _, name := range []string{"run", "step", "status", "pause"} {
+	for _, name := range []string{"run", "step", "status", "pause", "goto"} {
 		t.Run(name, func(t *testing.T) {
 			cmd, _, err := root.Find([]string{name})
 			if err != nil {

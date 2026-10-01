@@ -53,6 +53,7 @@ Read the trail by status — a resumed session thus picks up exactly where the l
 - `done` → skip that batch;
   it is finished and committed.
 - `stuck` → its fork reported stuck and the previous session never finished the recovery: call `lyx webster recover-batch <NN>` for it and follow the failure ladder below before touching any later batch.
+- `failed` → webster rejected that batch's report: call `lyx webster recover-batch <NN>` and follow the failure ladder below, exactly as for `stuck`.
 - `dead` → its recovery already failed terminally: the run is exhausted for that batch — write `outcome: stuck` naming it (per the dead rung of the failure ladder) and stop.
   Do NOT skip it and do NOT begin any later batch.
 
@@ -110,6 +111,14 @@ You never read raw fork output beyond its own turn, and you never open a file to
 - `recover-batch <NN>` returns a terminal `status: stuck` OR `status: dead` (any `dead_reason`) → the recovery itself failed.
   You have exhausted this batch's recovery: stop the run here — write `outcome: stuck` to `{{.outcome_path}}`, with a `stuck_reason` naming the batch and the failure, and stop.
   Do NOT re-fork it, do NOT begin the next batch (batch N+1 assumes N is committed).
+- `recover-batch <NN>` refuses with `{"batch_failed": true}` → the recovery strand said done but webster's checks rejected its work, so the recovery itself failed.
+  Treat it exactly like a terminal `stuck` or `dead` recovery: write `outcome: stuck` to `{{.outcome_path}}`, with a `stuck_reason` quoting the refusal's message, and stop.
+  Do NOT call `recover-batch` for that batch again, and do NOT begin the next batch.
+- `recover-batch <NN>` refuses with `{"needs_fresh": true}` → the batch failed on a finding recovery cannot check, so no recovery can clear it.
+  Write `outcome: stuck` to `{{.outcome_path}}`, with a `stuck_reason` quoting the refusal's message, and stop.
+  Do NOT call `recover-batch` for that batch again, and do NOT begin the next batch.
+- `record-batch` refuses with `{"batch_failed": true}` → the batch is already terminal-failed and its report archived: call `lyx webster recover-batch <NN>`, then follow the recover-batch rungs above.
+- `record-batch` refuses with `{"report_archived": true}` → the report could not be attributed and was archived: call `lyx webster begin-batch <NN>` and re-fork that batch from its fresh prompt.
 - `begin-batch <NN>` refuses because the batch **already has a report** (a resumed run found a crashed session's leftover) → do NOT fork;
   call `lyx webster record-batch <NN>` to consume that report.
   If record-batch refuses because the batch is a recovery batch, call `lyx webster recover-batch <NN>` instead.
@@ -137,24 +146,29 @@ A pause is operational, not something for you to judge.
 ## A plan-drift refusal ends your run as stuck — do not retry the verb
 
 If `begin-batch` refuses with `{"plan_drifted": true}`, that means `begin-batch`'s own re-resolution of the plan against the current tree — run immediately before it would have built a pack — found a blocking defect: the plan changed since it was approved, in a way the tree now contradicts.
+`record-batch` and `recover-batch` also refuse with `{"plan_drifted": true}` when the plan changed since the run recorded it or since the batch began,
+and the same rung applies.
 This is NOT a batch outcome for you to work around: you never edit the plan yourself (see "What you never do" below), so there is nothing for you to fix.
 Do not retry the verb and do not try another batch: write `outcome: stuck` to `{{.outcome_path}}` right away, with a `stuck_reason` quoting the refusal's own message verbatim, then stop.
 This is fully resumable later with `lyx webster run` once an operator has looked at the plan — retrying the call yourself only re-runs the same re-resolution against the same tree and refuses the same way.
+The operator's way forward is to edit the plan and run `lyx webster rebaseline --card NN` naming each card they edited, or `lyx webster restore-plan` to restore the plan the run recorded, before re-running.
 
-## A card-not-done refusal ends your run as stuck — do not retry the verb
+## A done-check failure arrives as `batch_failed`
 
-If `record-batch` refuses with `{"card_not_done": true}`, that means the batch's own mechanical done-checks — run against the worktree's real post-batch tree, immediately before the digest would have been persisted — found the batch's declared work missing: a Create target that still does not resolve, a Delete target that still does, a `plan:` handle that bound to nothing, or a symbol this batch deleted that the remaining plan still references.
-The fork reported done over work that did not land.
-This is NOT a batch outcome for you to work around: the fix is a change to the batch's own target files, and you never edit a target file yourself (see "What you never do" below), so there is nothing for you to fix.
-Do not retry the verb, do not re-fork the batch, and do not begin the next batch (batch N+1 assumes N is committed): write `outcome: stuck` to `{{.outcome_path}}` right away, with a `stuck_reason` quoting the refusal's own message verbatim, then stop.
-The batch is deliberately left non-terminal, so this is fully resumable later with `lyx webster run` once an operator has looked at it — retrying the call yourself only re-runs the same checks against the same tree and refuses the same way.
+The batch's own mechanical done-checks run against the worktree's real post-batch tree, immediately before the digest would have been persisted.
+They find declared work missing: a Create target that still does not resolve, a Delete target that still does, or a `plan:` handle that bound to nothing.
+A finding about a later card (drift, or a symbol this batch deleted that a later card still references) comes back on the envelope's `warnings` and the batch still records;
+that later card's own `begin-batch` refuses it, naming "edit the plan so the named cards match the tree, run "lyx webster rebaseline --card NN" naming each card you edited, then begin-batch NN again".
+A done-check failure comes back as `{"batch_failed": true}`, handled by the `batch_failed` rung of the failure ladder above.
+The batch is already terminal-failed and its report archived, so you never retry `record-batch` and never edit a target file yourself (see "What you never do" below).
 
-## A policy violation ends your run as stuck
+## Audit findings: policy warns, correctness fails the batch
 
 `record-batch` and `run` audit your whole session and every fork's transcript.
-If a call fails with a policy violation (a fabric-reference, a parent write outside your two contract files, a fork writing either contract file, a named spawn, a nested Agent call), the run is FAILED: write `outcome: stuck` to `{{.outcome_path}}`, with a `stuck_reason` naming the violation verbatim, and stop.
-NEVER work around a violation — do not retry the call, do not route the batch through `recover-batch`, do not finish remaining batches.
-The audit is whole-session: once a violation exists it will fail every later call too, by design.
+A policy finding comes back on the envelope's `warnings` and the batch still records, so keep going.
+A correctness finding comes back as `{"batch_failed": true}` and goes to `lyx webster recover-batch <NN>`.
+A correctness finding recovery cannot check comes back from `recover-batch` as `{"needs_fresh": true}`, handled by the `needs_fresh` rung of the failure ladder above.
+Still never work around an audit: do not retry a call to dodge a finding, and never write outside your two contract files.
 
 ## A fabric-sync error ends your run as stuck — do not retry the verb
 

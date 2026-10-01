@@ -23,6 +23,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -92,8 +93,15 @@ func commitFile(t *testing.T, dir, name, content, message string) string {
 func seedPlanDir(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "00-overview.md"), []byte("# plan\n"), 0o644); err != nil {
-		t.Fatalf("seed plan dir: %v", err)
+	for name, body := range map[string]string{
+		"00-overview.md": "---\nformat: 5\napproved: true\nlanguage: go\n---\n\n# plan\n\n## Card Index\n\n" +
+			"1 — json-flag — add the json flag\n2 — list-tests — list the tests\n",
+		"01-json-flag.md":  "# Card 1 — json-flag\n\n**Prosa:**\n- `base.txt`\n\n**Intent:** placeholder card.\n",
+		"02-list-tests.md": "# Card 2 — list-tests\n\n**Prosa:**\n- `base.txt`\n\n**Intent:** placeholder card.\n",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatalf("seed plan dir: %v", err)
+		}
 	}
 	return dir
 }
@@ -243,7 +251,10 @@ func newBeginFixture(t *testing.T) *beginFixture {
 	planDir := seedPlanDir(t)
 	fp := mustFingerprint(t, planDir)
 
-	plan := &planparser.Plan{Dir: planDir, Format: 5}
+	plan, err := planparser.ParsePlan(planDir)
+	if err != nil {
+		t.Fatalf("ParsePlan(%q): %v", planDir, err)
+	}
 	batches := []batcher.Batch{
 		beginCard(1, "json-flag"),
 		beginCard(2, "list-tests"),
@@ -573,6 +584,50 @@ func TestBeginBatch_ReBeginKeepsStartSHA(t *testing.T) {
 	}
 }
 
+// TestBeginBatch_RecordsCardSet proves begin-batch persists the batch's card set as NN-<slug> entries, on a first begin and on a re-begin.
+func TestBeginBatch_RecordsCardSet(t *testing.T) {
+	fx := newBeginFixture(t)
+	fx.Deps.State.AssertedModel = "master-model" // skip the injector
+	want := []string{"01-json-flag"}
+
+	if _, err := websterengine.BeginBatch(fx.Deps, 1); err != nil {
+		t.Fatalf("BeginBatch(1) error = %v; want nil", err)
+	}
+	if got := fx.Deps.State.Batches[1].Cards; !slices.Equal(got, want) {
+		t.Errorf("Batches[1].Cards after begin = %v; want %v", got, want)
+	}
+
+	fx.Deps.State.Batches[1].Cards = nil
+	if _, err := websterengine.BeginBatch(fx.Deps, 1); err != nil {
+		t.Fatalf("re-BeginBatch(1) error = %v; want nil", err)
+	}
+	if got := fx.Deps.State.Batches[1].Cards; !slices.Equal(got, want) {
+		t.Errorf("Batches[1].Cards after re-begin = %v; want %v", got, want)
+	}
+}
+
+// TestBeginBatch_ReBeginKeepsAuditWarnings proves a re-begin carries the prior record's recorded audit warnings onto the fresh record, since their identities stay dispositioned and no later call records them again.
+// It carries the prior record's fork transcripts too, so the run-exit audit still maps those forks to the batch's report.
+func TestBeginBatch_ReBeginKeepsAuditWarnings(t *testing.T) {
+	fx := newBeginFixture(t)
+	fx.Deps.State.AssertedModel = "master-model" // skip the injector
+	w := websterengine.AuditWarning{Identity: "s/parent:named-spawn:1", Class: "named-spawn", Detail: "spawned x"}
+	fx.Deps.State.Batches = map[int]*websterengine.BatchState{
+		1: {Slug: "json-flag", Kind: "fork", AuditWarnings: []websterengine.AuditWarning{w}, ForkTranscripts: []string{"subagents/f1.jsonl"}},
+	}
+
+	if _, err := websterengine.BeginBatch(fx.Deps, 1); err != nil {
+		t.Fatalf("BeginBatch(1) error = %v; want nil", err)
+	}
+	got := fx.Deps.State.Batches[1].AuditWarnings
+	if len(got) != 1 || got[0] != w {
+		t.Errorf("Batches[1].AuditWarnings = %v; want [%v]", got, w)
+	}
+	if transcripts := fx.Deps.State.Batches[1].ForkTranscripts; !slices.Equal(transcripts, []string{"subagents/f1.jsonl"}) {
+		t.Errorf("Batches[1].ForkTranscripts = %v; want the prior record's transcripts", transcripts)
+	}
+}
+
 // TestBeginBatch_ReBeginEmptyStartSHARecordsHead proves a prior record without a StartSHA gets the current head, as a first begin does.
 func TestBeginBatch_ReBeginEmptyStartSHARecordsHead(t *testing.T) {
 	fx := newBeginFixture(t)
@@ -710,6 +765,9 @@ func TestBeginBatch_ReResolvesPlanAtDispatch(t *testing.T) {
 		if !errors.Is(err, websterengine.ErrPlanDrifted) {
 			t.Fatalf("BeginBatch() error = %v; want errors.Is(err, ErrPlanDrifted)", err)
 		}
+		if !strings.Contains(err.Error(), "lyx webster rebaseline --card NN") {
+			t.Errorf("error %q; want it to name `lyx webster rebaseline --card NN`", err.Error())
+		}
 		entries, readErr := os.ReadDir(fx.PromptDir)
 		if readErr != nil {
 			t.Fatalf("ReadDir(%q): %v", fx.PromptDir, readErr)
@@ -735,6 +793,7 @@ func TestBeginBatch_ReResolvesPlanAtDispatch(t *testing.T) {
 	t.Run("informational-only findings dispatch normally with the advisory carried on the result", func(t *testing.T) {
 		fx := newBeginFixture(t)
 		// A Create target naming a brand-new unit is the informational create-new-unit finding.
+		second := fx.Deps.Plan.Cards[1]
 		fx.Deps.Plan.Cards = []planparser.Card{
 			{
 				Number:         1,
@@ -747,6 +806,7 @@ func TestBeginBatch_ReResolvesPlanAtDispatch(t *testing.T) {
 				TargetGroups:   []planparser.TargetGroup{{Type: planparser.CardTypeCreate, Refs: []string{"brandnew#Thing"}}},
 				Targets:        []string{"brandnew#Thing"},
 			},
+			second,
 		}
 
 		result, err := websterengine.BeginBatch(fx.Deps, 1)
@@ -894,5 +954,88 @@ func TestBeginBatch_NilStateIsRefusedNotPanicked(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "State is nil") {
 		t.Errorf("websterengine.BeginBatch(nil State) error = %v; want it to name BeginDeps.State", err)
+	}
+}
+
+// TestBeginBatch_Regression20260930_ReBeginOfBegunUnrecordedBatch pins the 2026-09-30 wedge:
+// a batch begun but not yet recorded, whose own Create target has already landed, is re-begun (the master_asking resume path) and must neither be refused as create-already-exists nor lose the StartSHA its first begin recorded.
+func TestBeginBatch_Regression20260930_ReBeginOfBegunUnrecordedBatch(t *testing.T) {
+	fx := newBeginFixture(t)
+	commitFile(t, fx.Worktree, "sub/a.go", "package sub\n\nfunc Built() {}\n", "batch 1's own work")
+
+	built := planparser.Card{
+		Number:         1,
+		Slug:           "json-flag",
+		Type:           planparser.CardTypeCreate,
+		TypeLabelCount: 1,
+		HasType:        true,
+		HasIntent:      true,
+		Intent:         "placeholder intent",
+		TargetGroups:   []planparser.TargetGroup{{Type: planparser.CardTypeCreate, Refs: []string{"sub#Built"}}},
+		Targets:        []string{"sub#Built"},
+	}
+	fx.Deps.Plan.Cards = []planparser.Card{built, fx.Deps.Plan.Cards[1]}
+	fx.Deps.Batches = []batcher.Batch{{Cards: []planparser.Card{built}}}
+
+	const recordedStart = "0123456789abcdef0123456789abcdef01234567"
+	fx.Deps.State.Batches = map[int]*websterengine.BatchState{
+		1: {Slug: "json-flag", Kind: "fork", StartSHA: recordedStart},
+	}
+
+	result, err := websterengine.BeginBatch(fx.Deps, 1)
+	if err != nil {
+		t.Fatalf("BeginBatch(1) error = %v; want nil — a begun, unrecorded batch must re-begin past its own landed Create target", err)
+	}
+	if result.StartSHA != recordedStart || fx.Deps.State.Batches[1].StartSHA != recordedStart {
+		t.Errorf("StartSHA = %q (record %q); want the first begin's %q kept", result.StartSHA, fx.Deps.State.Batches[1].StartSHA, recordedStart)
+	}
+}
+
+// TestBeginBatch_WayForward_UnknownBatch proves a batch number outside the plan names `lyx webster status`,
+// and that naming one of the run's batches then begins it.
+func TestBeginBatch_WayForward_UnknownBatch(t *testing.T) {
+	fx := newBeginFixture(t)
+
+	_, err := websterengine.BeginBatch(fx.Deps, 99)
+	if err == nil || !strings.Contains(err.Error(), "way forward: `lyx webster status` lists the run's batches") {
+		t.Fatalf("BeginBatch(99) error = %v; want the status way forward", err)
+	}
+
+	if _, err := websterengine.BeginBatch(fx.Deps, 1); err != nil {
+		t.Fatalf("BeginBatch(1) error = %v; want nil", err)
+	}
+}
+
+// TestBeginBatch_WayForward_ModelSwitchFailureIsTransient proves a failed model-switch injection names the begin-batch re-run,
+// and that the re-run succeeds once the injection does.
+func TestBeginBatch_WayForward_ModelSwitchFailureIsTransient(t *testing.T) {
+	fx := newBeginFixture(t)
+	fx.Injector.err = errors.New("pane did not take the keys")
+
+	_, err := websterengine.BeginBatch(fx.Deps, 1)
+	if err == nil || !strings.Contains(err.Error(), "way forward: transient, re-run `lyx webster begin-batch 1`") {
+		t.Fatalf("BeginBatch(1) error = %v; want the transient re-run way forward", err)
+	}
+
+	fx.Injector.err = nil
+	if _, err := websterengine.BeginBatch(fx.Deps, 1); err != nil {
+		t.Fatalf("BeginBatch(1) after the retry error = %v; want nil", err)
+	}
+}
+
+// TestBeginBatch_WayForward_ReportExistsIsRecorded proves the report-exists refusal names record-batch and leaves the report in place for it.
+func TestBeginBatch_WayForward_ReportExistsIsRecorded(t *testing.T) {
+	fx := newBeginFixture(t)
+	reportPath := filepath.Join(fx.Deps.Geom.ReportsDir, websterengine.ReportFileName(1, "json-flag"))
+	if err := os.WriteFile(reportPath, []byte("status: OK\nhead_sha: deadbeef\n"), 0o644); err != nil {
+		t.Fatalf("seed report: %v", err)
+	}
+
+	_, err := websterengine.BeginBatch(fx.Deps, 1)
+	if err == nil || !strings.Contains(err.Error(), "`lyx webster record-batch 1`") {
+		t.Fatalf("BeginBatch(1) error = %v; want the record-batch way forward", err)
+	}
+	if _, statErr := os.Stat(reportPath); statErr != nil {
+		t.Errorf("stat(report) = %v; want it left for record-batch", statErr)
 	}
 }

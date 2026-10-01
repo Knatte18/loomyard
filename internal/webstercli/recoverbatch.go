@@ -10,9 +10,11 @@
 // digest, PersistRecoveryTerminal into a FRESHLY reloaded state under a re-acquired lease, followed
 // by the "... <status>" terminal fabric commit -- webster's third and fourth fabric-commit points, each
 // now carrying exactly the mutation its label names.
+// A *BatchFailedError from that persist step saves the reloaded state and commits it "... failed" before the batch_failed error envelope.
 package webstercli
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -57,7 +59,11 @@ spawns the recovery strand first waits for its provider to come up
 (normally seconds), and every call then blocks for up to --wait watching it
 for a terminal classification. A terminal
 call fabric-commits the batch report and state.json and returns the digest
-envelope, exactly like record-batch's own terminal envelope. If --wait
+envelope, exactly like record-batch's own terminal envelope. A recovery
+the post-batch checks reject takes the batch terminal failed: the failed
+state and archived report are saved and committed, and the call exits
+non-zero with {"batch_failed": true, "batch": "NN-<slug>", "warnings": [...]};
+the error names "lyx webster recover-batch NN". If --wait
 elapses first it returns {"batch": "NN-<slug>", "status": "running",
 "elapsed_s": N} instead, touching neither git nor the repo -- Master re-calls
 recover-batch again. A call that performs the spawn itself fabric-commits
@@ -142,7 +148,7 @@ Example:
 			// unowned goroutine in an exiting process.
 			if c.reedUp != nil {
 				if err := c.reedUp(cmd.Context(), false); err != nil {
-					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: bring up the standalone reed session: %v", err)))
+					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: bring up the standalone reed session: %v; way forward: transient, re-run `lyx webster recover-batch %02d`", err, batchNumber)))
 					return nil
 				}
 			}
@@ -166,6 +172,10 @@ Example:
 			if err != nil {
 				_ = mutateLock.Release()
 				mutateHeld = false
+				if errors.Is(err, websterengine.ErrRecoveryNeedsFresh) {
+					clihelp.SetExit(cmd.Context(), output.ErrFields(out, err.Error(), map[string]any{"needs_fresh": true}))
+					return nil
+				}
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
@@ -187,7 +197,7 @@ Example:
 
 			if spawned {
 				if _, syncErr := fabricSync(c.openFabric, c.anchorRel, fmt.Sprintf("recover-batch %s spawn", batchName)); syncErr != nil {
-					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: batch %s recovery spawned but the fabric sync failed: %v", batchName, syncErr)))
+					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: batch %s recovery spawned but the fabric sync failed: %v; %s", batchName, syncErr, fabricSyncWayForward)))
 					return nil
 				}
 			}
@@ -218,7 +228,7 @@ Example:
 				}()
 				fresh, err := websterengine.LoadState(c.geom.WebsterDir, c.geom.ScratchDir)
 				if err == nil && fresh == nil {
-					err = fmt.Errorf("webster: state.json disappeared during the recovery wait for batch %s", batchName)
+					err = fmt.Errorf("webster: state.json disappeared during the recovery wait for batch %s; way forward: re-run `lyx webster recover-batch %02d`", batchName, batchNumber)
 				}
 				var fingerprintBefore string
 				var postWarnings []string
@@ -227,8 +237,16 @@ Example:
 					postWarnings, err = websterengine.PersistRecoveryTerminal(deps, fresh, batchNumber, result.Digest)
 					result.Warnings = append(result.Warnings, postWarnings...)
 				}
+				batchFailed := errors.Is(err, websterengine.ErrBatchFailed)
 				if err == nil {
 					err = websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, fresh)
+				} else if batchFailed {
+					// The batch went terminal failed: the whole reloaded state is the point,
+					// so it is saved rather than only the fingerprint re-baseline.
+					if saveErr := websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, fresh); saveErr != nil {
+						err = fmt.Errorf("%w; additionally, persisting the failed batch failed: %v", err, saveErr)
+						batchFailed = false
+					}
 				} else if fresh != nil {
 					// The post-batch pass re-baselines the plan fingerprint the moment handle
 					// binding or the exact-tier drift repair rewrites the plan on disk, and it can
@@ -240,13 +258,29 @@ Example:
 				}
 				_ = terminalLock.Release()
 				terminalHeld = false
+				if batchFailed {
+					msg := err.Error()
+					if _, syncErr := fabricSync(c.openFabric, c.anchorRel, fmt.Sprintf("recover-batch %s failed", batchName)); syncErr != nil {
+						msg = fmt.Sprintf("%s; additionally, the fabric sync failed: %v; %s", msg, syncErr, fabricSyncWayForward)
+					}
+					clihelp.SetExit(cmd.Context(), output.ErrFields(out, msg, map[string]any{
+						"batch_failed": true,
+						"batch":        batchName,
+						"warnings":     ownerlessRunWarnings(c.geom.ScratchDir, result.Warnings),
+					}))
+					return nil
+				}
+				if errors.Is(err, websterengine.ErrFingerprintMismatch) {
+					clihelp.SetExit(cmd.Context(), output.ErrFields(out, err.Error(), map[string]any{"plan_drifted": true}))
+					return nil
+				}
 				if err != nil {
 					clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 					return nil
 				}
 
 				if _, syncErr := fabricSync(c.openFabric, c.anchorRel, fmt.Sprintf("recover-batch %s %s", batchName, result.Digest.Status)); syncErr != nil {
-					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: batch %s recovery classified %s but the fabric sync failed: %v", batchName, result.Digest.Status, syncErr)))
+					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: batch %s recovery classified %s but the fabric sync failed: %v; %s", batchName, result.Digest.Status, syncErr, fabricSyncWayForward)))
 					return nil
 				}
 

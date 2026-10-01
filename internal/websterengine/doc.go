@@ -110,6 +110,13 @@
 // pass computes its delta from that SHA, and a fork frequently commits part
 // of its work before getting stuck.
 //
+// A batch failed on a correctness finding records its suspect paths with the blob each held when it first failed,
+// and recover-batch records the batch done only once each of them was reverted or re-derived and committed.
+// A plan file must match the run's recorded hashes, a tracked path must not differ from the report's head,
+// and a tracked path must not still hold the flagged blob unless the start commit held it too.
+// A strand whose re-derivation is byte-identical to the flagged content is failed again;
+// the way forward is to revert the path and edit its card.
+//
 // # the plan-staleness guard re-baselines at the rewrite, not at the return
 //
 // begin-batch compares the plan directory's fingerprint against the one
@@ -138,6 +145,63 @@
 // what keeps the persist narrow: an unchanged fingerprint writes nothing,
 // so a genuine foreign edit still fails exactly as it did.
 //
+// A foreign edit an operator means to keep has its own way forward:
+// `lyx webster rebaseline --card NN` (Rebaseline) accepts the on-disk plan as the new baseline without dropping any batch record, provided the edited plan's batch of each recorded number still holds exactly the cards that record names.
+// The operator names every card the edit changed with --card: State.PlanFileHashes records a hash of every plan file, and a changed card file whose number is not named is refused.
+// An edit to 00-overview.md, which carries the plan's integration verify, is never accepted; the way forward is to restore it or to reset the branch and run `lyx webster run --fresh`.
+// The fingerprint refusals in begin-batch and run name it.
+//
+// validate, record-batch and recovery refuse a plan that changed before their own rewrites, instead of adopting it:
+// each checks the plan against the recorded fingerprint (PlanEditError) before its first rewrite,
+// and record-batch and recovery also check that no card of the batch changed since it was begun.
+// Their restamps exist to adopt webster's own rewrites, so a difference seen at that point is someone else's edit.
+// A refusal there mutates nothing;
+// validate still lints but skips its restamp.
+// Every plan-hash restamp and run initialisation also stores the hashed content under `<WebsterDir>/plan-baseline/`, one file per content named by its SHA-256, so the fabric sync carries it with state.json.
+// `lyx webster restore-plan` (RestorePlan) writes every plan file that differs from the recorded plan back from that store and removes a plan file the run never recorded;
+// it never touches state.json, and refuses with ErrPlanBaselineMissing, changing nothing, when a copy is missing.
+// Each batch record carries the card set it was begun with (BatchState.Cards) so that check has something to compare against.
+// It also carries each card file's content hash (BatchState.CardHashes), so a begun card whose body changed while its file name stayed is refused too, not only a changed id;
+// a record written before the hashes existed compares ids only.
+//
+// # audit findings: correctness fails the batch, policy warns once
+//
+// The fork and parent audits classify each finding (ClassifyViolation) as correctness or policy.
+// A correctness finding means the delta or the run's own state may be wrong.
+// It is a fork writing one of Master's two contract files, anything under the plan directory, or anything under webster's run directory but its own report (fork-state-write), or a parent write under the run's `_lyx` directory, into the worktree's tracked (not git-ignored) content, under the run's `.lyx` state directory (webster's pause flag and locks, another module's lock or pause flag, a reed launch script), or into another worktree of the task repository.
+// Every fabric reference is correctness too, whatever its command, since an agent never touches the fabric repo and the command can rewrite run state the cards' verify commands cannot detect;
+// a policy finding breaks a steering rule without touching correctness, such as a named spawn or a nested agent call.
+// Each finding carries a stable identity (its Key, prefixed by the session id for a parent finding),
+// and state.json's ledger dispositions it once per run, so the whole-session parent audit repeating earlier findings on every record-batch never re-judges them.
+// A policy finding is recorded as a warning on the batch once the evidence holds:
+// an OK report on a batch that carries policy findings first has its cards' verify commands re-run in-process (rerunCardVerifies), and a failing re-run makes those findings correctness for the batch and fails it.
+// A correctness finding fails the batch on its merits instead of wedging it:
+// the batch goes terminal with digest status failed and its reasons, the report is archived, and record-batch returns *BatchFailedError naming `lyx webster recover-batch`.
+// recover-batch proceeds from a failed batch and hands its strand the failure digest,
+// except a batch failed on a correctness finding the recovery check cannot verify (a finding with no path, or a path outside the tracked tree and the plan directory), which its record lists as Uncheckable:
+// recover-batch refuses it with ErrRecoveryNeedsFresh before spawning anything,
+// and the way forward is `lyx webster run --fresh` after resetting the branch to the run's start commit.
+// `run --fresh` drops such a batch under the same HEAD and path rules as a pending finding.
+// record-batch on a batch already terminal as a fork batch first audits the fork transcripts it has not consumed, once and without the settle wait:
+// an undispositioned correctness finding (a fork that marked its own batch done by writing state.json) replaces the terminal record with a failed one,
+// and otherwise the "already terminal" refusal stands.
+// It audits nothing while a later fork batch of the session is open or the integration report exists, since an unseen transcript may then be that fork's.
+// A report that cannot be attributed to a begun batch, or to any fork transcript, is archived and returned as *ReportArchivedError naming `lyx webster begin-batch`, which re-drives the batch.
+// The post-batch done-checks fail the batch the same way when a card's own declared work is missing, while drift that concerns only a later card is recorded as a warning rather than blocking this batch.
+// At run exit the audit cross-check drops dispositioned findings, records the rest of the policy findings as run-level warnings, appended to summary.md under "Audit warnings", and demotes Master's outcome done to stuck for an undispositioned correctness finding.
+// A correctness finding stays pending in state.json until `lyx webster accept-audit` clears it, and run entry refuses with ErrPendingAuditFindings meanwhile.
+// accept-audit needs evidence: it checks every suspect path against the last batch head (a plan file against the run's recorded plan hashes) and refuses with ErrAuditNotAcceptable while any path differs, cannot be checked, or a finding names no path;
+// the evidence covers HEAD too, so it also refuses while HEAD carries a commit past the last batch head other than a clean parent merge, and checks the paths against that reconciled HEAD;
+// the last two clear only through `lyx webster run --fresh` after resetting the branch to the run's start commit.
+// `run --fresh` drops pending findings, with one warning per finding, even on an unchanged plan, and refuses with ErrPendingAuditFindings, archiving nothing, while a pending suspect path outside the plan still differs from the run's start commit or HEAD is not the start commit.
+// It also refuses while a pending plan path differs from the plan the run recorded and `lyx webster restore-plan` can undo that (the recorded copy is stored, or the file was never recorded);
+// a differing plan path whose recorded copy is missing is dropped with the archived state,
+// and its warning says so.
+// Every way forward for a differing plan path names restore-plan or `rebaseline --card`, never a git checkout.
+//
+// Every refusal this package can return, and the way forward from it, is tabulated in contracts/specs/refusal-spec.md;
+// this documentation links that table rather than restating its rows.
+//
 // # bracket verbs, not spawn/poll
 //
 // Because the fork runs inside Master's own session, there is nothing for
@@ -163,8 +227,8 @@
 // Master's own un-gateable act, so enforcement is two-layer: template
 // discipline (the master template pins the begin -> fork -> await -> record
 // sequence, property-tested) plus fail-loud detection after the fact
-// (record-batch hard-errors when a batch has no begin-batch record; the
-// audit cross-checks fork-transcript count against begun-batch count). This
+// (record-batch archives the report and refuses when a batch has no begin-batch record, naming begin-batch as the way forward;
+// the audit cross-checks fork-transcript count against begun-batch count). This
 // is a steering guard, not a security boundary, the same class as burler's
 // nested-Agent ban.
 //
@@ -280,9 +344,8 @@
 // machine only: fork transcripts live under the machine-local ~/.claude
 // projects directory, while state.json and the reports are fabric-synced —
 // a different machine sees the report with no transcript behind it, which
-// record-batch refuses exactly as it refuses a forged report
-// (ErrNoForkTranscripts names the operator recourse: move the orphan
-// report aside and re-drive the batch).
+// record-batch treats exactly as it treats a forged report:
+// it archives the report and returns a *ReportArchivedError naming `lyx webster begin-batch`, which re-drives the batch.
 //
 // # Integration-suite fork + in-process bisect + terminal escalation
 //

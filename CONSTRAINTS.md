@@ -104,7 +104,9 @@ Every value in `internal/shedrecipe`'s registry constructs a `shedengine.ShedPro
 
 ## Shed Verb-Set Invariant
 
-`internal/shedverbs` owns the generic `run`/`step`/`status`/`pause` verb bodies; no `<module>cli` reimplements one. This first clause is review discipline, not a scan — "reimplements" has no static shape a scan can see.
+`internal/shedverbs` owns the generic `run`/`step`/`status`/`pause`/`goto` verb bodies;
+no `<module>cli` reimplements one.
+This first clause is review discipline, not a scan — "reimplements" has no static shape a scan can see.
 
 - `shedverbs` derives no path and imports no resolver — no `lyxcwd`, no `os.Getwd`, no `git rev-parse` — and imports no `<module>cli`, which is what keeps it a leaf and keeps `internal/shedcli`'s own imports acyclic.
   `shedverbs` does import `internal/logger`, for step-boundary logging, and `logger.TraceFile`/`logger.TraceDir` are the only path sources admitted into it.
@@ -115,8 +117,20 @@ Every value in `internal/shedrecipe`'s registry constructs a `shedengine.ShedPro
 - The `step` refusal-kind vocabulary stays closed at its five values.
   The step envelope's key set (closed by doc comment and test, not by this invariant) carries `trace_file`, `friction_dir`, `scratch_dir`, `trace_id` and `run_id` on the success and every error envelope, every error envelope also carries `transient` (the transient class name, or empty; it is a key, not a sixth kind), and the status envelope carries `trace_dir` on every envelope.
   Enforced by `internal/shedverbs/step_test.go`.
+- `goto` is a history-only outcome: `internal/shedengine` declares it (`OutcomeGoto`), no producer returns it, and every reader that validates history outcomes accepts it.
 - `internal/shedverbs` is not itself a CLI module and is not counted in the CLI/Cobra Invariant's tally at all — it exposes no `Command()`/`RunCLI` seam, only the `Verbs(texts, spec)` constructor the three subtrees build from.
 - Neither `shedverbs` nor `shedcli` is added to the Told-Geometry Invariant's bound-packages list: that list binds engines, both sit above that layer. `shedverbs` keeps this invariant's own no-resolver clause verbatim as its no-derived-paths obligation, enforced by `internal/shedverbs/seam_enforcement_test.go`. `internal/shedcli` is carved out of that clause by name, the one site in this pair that resolves: `resolvePersistentPreRun` must read a seed before it knows which recipe to arm, a seed read is a path read, and a path read needs an anchor, so `shedcli` calls `lyxcwd.Resolve` and builds seed paths from the result. Its narrower obligation is that every path it touches comes from an `internal/shedrun` constructor and none is derived locally — `shedcli` still declares no path segment of its own, it just resolves the anchor those `shedrun` constructors need.
+
+## Refusal Way-Forward Invariant
+
+The invariant binds the modules that have a section in `contracts/specs/refusal-spec.md` (webster, shed and loom today);
+another module joins when its own audit adds its section.
+
+- Every refusal reachable through a bound module's verbs names its way forward in its message, as that file defines one, and has a row in its module's section.
+- A guard in a bound module that does not protect correctness warns and records rather than halts.
+- A new refusal in a bound module lands with its row and its reaching test in the same commit.
+- Enforcement is review discipline plus the per-row tests;
+  there is no scan.
 
 ## Transient Stop Invariant
 

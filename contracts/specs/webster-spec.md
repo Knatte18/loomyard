@@ -15,7 +15,7 @@ webster groups a plan's cards into execution batches via a batcher configured th
 
 ## `_lyx/webster/` as an ownership boundary
 
-Webster owns `_lyx/webster/` and everything in it — `state.json`, the reports directory, `outcome.yaml`, `summary.md` — resolved via `internal/websterengine`'s own `Dir`/`ReportsDir` helpers, which are the sole declarers of that path segment.
+Webster owns `_lyx/webster/` and everything in it — `state.json`, the reports directory, `plan-baseline/` (the content store behind the recorded plan hashes), `outcome.yaml`, `summary.md` — resolved via `internal/websterengine`'s own `Dir`/`ReportsDir` helpers, which are the sole declarers of that path segment.
 Its never-tracked siblings — the pause flag, the rendered fork prompts, every `*.lock` — live at the mirrored subpath under `.lyx/webster/` via `internal/websterengine`'s `ScratchDir`/`PromptsDir` helpers, and are deliberately outside the fabric-committed pathspec.
 No other module writes into either directory.
 
@@ -50,6 +50,7 @@ The bisect mechanism that produces it stays webster-internal and is not describe
 
 - [final-summary-spec.md](final-summary-spec.md) — the producer-agnostic read contract for `summary.md`'s format, validation, and consumers.
 - `contracts/stencils/loom/loom-template-plan.md` — the flat-card format webster consumes via `internal/planparser`, pinned in the Plan producer's own stencil rather than a separate doc.
+- [refusal-spec.md](refusal-spec.md) — the table of webster's refusals and their ways forward.
 - [llm-model-spec.md](llm-model-spec.md) — the model-spec notation webster's roles resolve against.
 - [loom-status-spec.md](loom-status-spec.md) — loom's own status file, the analogous contract for loom's orchestration state.
 - `internal/websterengine` package documentation — the as-built code this doc summarizes.

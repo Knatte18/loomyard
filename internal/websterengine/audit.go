@@ -17,10 +17,12 @@ package websterengine
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -75,6 +77,12 @@ const (
 	// (outcome.yaml, summary.md) — those are Master's only permitted writes, and a fork writing them
 	// forges the run's terminal judgment.
 	ClassForkContractWrite AuditViolationClass = "fork-contract-write"
+	// ClassForkPlanWrite means a fork's own transcript wrote under the run's plan directory, which only webster itself rewrites.
+	// A fork writing there can change a later card or its own card's Verify.
+	ClassForkPlanWrite AuditViolationClass = "fork-plan-write"
+	// ClassForkStateWrite means a fork's own transcript wrote under webster's run directory other than its own batch report.
+	// Only webster writes the run state, so a fork writing there can forge a batch record.
+	ClassForkStateWrite AuditViolationClass = "fork-state-write"
 )
 
 // AuditViolation is one hard fork-audit policy violation observed in either a fork's own transcript
@@ -86,10 +94,38 @@ const (
 // TranscriptPath is the fork's TranscriptPath for a CheckFork violation,
 // or "" for a CheckParent violation (ForkAudit carries no path for Master's own parent transcript —
 // webster tracks Master's session ID separately, in State.MasterSessionID).
+// Key is the finding's deterministic identity, filled by CheckFork and CheckParent:
+// `fork:<transcript path>:<class>:<ordinal>` for a fork finding (the ordinal counts that class within the transcript),
+// `parent:<class>:<ordinal>` for a parent one (1..NamedSpawns for named-spawn, the index into ParentWrites or ParentBashCommands otherwise).
+// Path is the transcript-recorded write path for parent-write and fork-contract-write, empty for every other class.
+// Command is the Bash command a fabric-reference finding matched, empty for every other class.
 type AuditViolation struct {
 	Class          AuditViolationClass
 	TranscriptPath string
 	Detail         string
+	Key            string
+	Path           string
+	Command        string
+}
+
+// AuditSeverity is the D4 class of an audit finding: whether it endangers the batch's correctness or only breaks webster's process policy.
+type AuditSeverity string
+
+const (
+	// AuditSeverityCorrectness marks a finding that can change the run's own state or the code under review.
+	AuditSeverityCorrectness AuditSeverity = "correctness"
+	// AuditSeverityPolicy marks a finding that breaks a process rule without touching the run's state or tracked content.
+	AuditSeverityPolicy AuditSeverity = "policy"
+)
+
+// forkKey builds a fork finding's Key from its transcript, class and per-class ordinal.
+func forkKey(transcript string, class AuditViolationClass, ordinal int) string {
+	return fmt.Sprintf("fork:%s:%s:%d", transcript, class, ordinal)
+}
+
+// parentKey builds a parent finding's Key from its class and ordinal.
+func parentKey(class AuditViolationClass, ordinal int) string {
+	return fmt.Sprintf("parent:%s:%d", class, ordinal)
 }
 
 // Error implements the error interface, formatting the violation as a single-line, webster-prefixed
@@ -103,19 +139,22 @@ func (v AuditViolation) Error() string {
 
 // CheckFork evaluates one fork's transcript facts against webster's implementer policy: Write/Edit
 // and repo-native git are explicitly allowed.
-// It bans three hard violations: any attempted Agent call, any write to the two contract files
-// (outcomePath or summaryPath), and any Bash command referencing the fabric repo.
+// It bans five hard violations: any attempted Agent call, any write to the two contract files (outcomePath or summaryPath), any write under the plan directory, any write under webster's run directory other than the fork's own report, and any Bash command referencing the fabric repo.
+// planDirs and websterDirs hold the plan and webster directories' spellings (the told path and its link-resolved form, see planDirSpellings and websterDirSpellings);
+// ownReport is the report this fork may write, compared in its told and link-resolved spellings.
+// A write that is also a contract write yields only its fork-contract-write finding.
 // fabricRef is the injected RefMatcher — the caller-supplied fabric-reference class matcher (a real
 // *fabricengine.RefScanner in hub mode, NeverMatches in standalone) — and is never nil in either
 // mode: Matches is called unguarded here, so a nil interface is a panic, which is why NeverMatches
 // exists as the pinned no-fabric supplier.
-func CheckFork(f shuttleengine.ForkReport, outcomePath, summaryPath, workdir string, fabricRef RefMatcher) []AuditViolation {
+func CheckFork(f shuttleengine.ForkReport, outcomePath, summaryPath, workdir string, planDirs, websterDirs []string, ownReport string, fabricRef RefMatcher) []AuditViolation {
 	var violations []AuditViolation
 
 	if f.AgentCalls > 0 {
 		violations = append(violations, AuditViolation{
 			Class:          ClassNestedAgent,
 			TranscriptPath: f.TranscriptPath,
+			Key:            forkKey(f.TranscriptPath, ClassNestedAgent, 1),
 			Detail: fmt.Sprintf(
 				"attempted %d Agent tool call(s) — forks cannot nest and must never call the Agent tool, even when the attempt was denied",
 				f.AgentCalls,
@@ -125,28 +164,100 @@ func CheckFork(f shuttleengine.ForkReport, outcomePath, summaryPath, workdir str
 
 	cleanOutcome := filepath.Clean(outcomePath)
 	cleanSummary := filepath.Clean(summaryPath)
+	contractWrites := 0
+	planWrites := 0
+	stateWrites := 0
+	cleanOwn := filepath.Clean(ownReport)
+	canonOwn, ownErr := canonicalPath(ownReport)
 	for _, w := range f.WritePaths {
 		cw := resolveWritePath(workdir, w)
 		if cw == cleanOutcome || cw == cleanSummary {
+			contractWrites++
 			violations = append(violations, AuditViolation{
 				Class:          ClassForkContractWrite,
 				TranscriptPath: f.TranscriptPath,
+				Key:            forkKey(f.TranscriptPath, ClassForkContractWrite, contractWrites),
+				Path:           w,
 				Detail:         fmt.Sprintf("fork wrote %q — outcome.yaml and summary.md are Master's own contract files; a fork writing either forges the run's terminal judgment", w),
 			})
+			continue
+		}
+		for _, dir := range planDirs {
+			if pathWithin(filepath.Clean(dir), cw) {
+				planWrites++
+				violations = append(violations, AuditViolation{
+					Class:          ClassForkPlanWrite,
+					TranscriptPath: f.TranscriptPath,
+					Key:            forkKey(f.TranscriptPath, ClassForkPlanWrite, planWrites),
+					Path:           w,
+					Detail:         fmt.Sprintf("fork wrote %q — the plan directory is rewritten only by webster itself; a fork writing there can change a later card or its own card's Verify", w),
+				})
+				break
+			}
+		}
+		if cw == cleanOwn {
+			continue
+		}
+		if canonW, err := canonicalPath(cw); err == nil && ownErr == nil && canonW == canonOwn {
+			continue
+		}
+		for _, dir := range websterDirs {
+			if pathWithin(filepath.Clean(dir), cw) {
+				stateWrites++
+				violations = append(violations, AuditViolation{
+					Class:          ClassForkStateWrite,
+					TranscriptPath: f.TranscriptPath,
+					Key:            forkKey(f.TranscriptPath, ClassForkStateWrite, stateWrites),
+					Path:           w,
+					Detail:         fmt.Sprintf("fork wrote %q — webster's run state is written only by webster and each fork's own report; a fork writing there can forge a batch record", w),
+				})
+				break
+			}
 		}
 	}
 
+	fabricRefs := 0
 	for _, cmd := range f.BashCommands {
 		if fabricRef.Matches(cmd) {
+			fabricRefs++
 			violations = append(violations, AuditViolation{
 				Class:          ClassFabricReference,
 				TranscriptPath: f.TranscriptPath,
-				Detail:         fmt.Sprintf("ran a fabric-referencing command (%q) — an implementer fork must never touch the fabric repo directly", cmd),
+				Key:            forkKey(f.TranscriptPath, ClassFabricReference, fabricRefs),
+				Command:        cmd,
+				Detail:         fabricReferenceDetail(cmd, "an implementer fork must never touch the fabric repo directly"),
 			})
 		}
 	}
 
 	return violations
+}
+
+// planDirSpellings returns geom.PlanDir and its link-resolved form, deduplicated,
+// so a write spelled through the `_lyx` link and one spelled through its target both match.
+// The error is canonicalPath's.
+func planDirSpellings(geom Geometry) ([]string, error) {
+	return dirSpellings(geom.PlanDir)
+}
+
+// websterDirSpellings returns geom.WebsterDir and its link-resolved form, deduplicated.
+// The error is canonicalPath's.
+func websterDirSpellings(geom Geometry) ([]string, error) {
+	return dirSpellings(geom.WebsterDir)
+}
+
+// dirSpellings returns dir and its link-resolved form, deduplicated.
+// The error is canonicalPath's.
+func dirSpellings(dir string) ([]string, error) {
+	canon, err := canonicalPath(dir)
+	if err != nil {
+		return nil, err
+	}
+	dirs := []string{dir}
+	if canon != dir {
+		dirs = append(dirs, canon)
+	}
+	return dirs, nil
 }
 
 // resolveWritePath canonicalizes a transcript-recorded write path: cleaned,
@@ -187,38 +298,157 @@ func isTranscriptPathAbsolute(path string) bool {
 func CheckParent(a shuttleengine.ForkAudit, outcomePath, summaryPath, workdir string, fabricRef RefMatcher) []AuditViolation {
 	var violations []AuditViolation
 
-	if a.NamedSpawns > 0 {
+	for i := 1; i <= a.NamedSpawns; i++ {
 		violations = append(violations, AuditViolation{
 			Class: ClassNamedSpawn,
+			Key:   parentKey(ClassNamedSpawn, i),
 			Detail: fmt.Sprintf(
-				"%d fork(s) were spawned with a name — named forks silently lose inherited context, which is a silent quality-degradation defect, not an advisory",
-				a.NamedSpawns,
+				"named spawn %d of %d: a fork was spawned with a name — named forks silently lose inherited context, which is a silent quality-degradation defect, not an advisory",
+				i, a.NamedSpawns,
 			),
 		})
 	}
 
 	cleanOutcome := filepath.Clean(outcomePath)
 	cleanSummary := filepath.Clean(summaryPath)
-	for _, w := range a.ParentWrites {
+	for i, w := range a.ParentWrites {
 		cw := resolveWritePath(workdir, w)
 		if cw != cleanOutcome && cw != cleanSummary {
 			violations = append(violations, AuditViolation{
 				Class:  ClassParentWrite,
+				Key:    parentKey(ClassParentWrite, i),
+				Path:   w,
 				Detail: fmt.Sprintf("Master wrote %q — Master may write only its two contract files (outcome.yaml and summary.md); any other write means Master implemented a batch itself or hand-wrote a batch report", w),
 			})
 		}
 	}
 
-	for _, cmd := range a.ParentBashCommands {
+	for i, cmd := range a.ParentBashCommands {
 		if fabricRef.Matches(cmd) {
 			violations = append(violations, AuditViolation{
-				Class:  ClassFabricReference,
-				Detail: fmt.Sprintf("ran a fabric-referencing command (%q) — Master must never touch the fabric repo directly; the fabric sync is webstercli's own in-process job", cmd),
+				Class:   ClassFabricReference,
+				Key:     parentKey(ClassFabricReference, i),
+				Command: cmd,
+				Detail:  fabricReferenceDetail(cmd, "Master must never touch the fabric repo directly; the fabric sync is webstercli's own in-process job"),
 			})
 		}
 	}
 
 	return violations
+}
+
+// fabricReferenceDetail words a fabric-reference finding;
+// every fabric-referencing command can rewrite run state, so the wording never splits by command.
+func fabricReferenceDetail(cmd, rule string) string {
+	return fmt.Sprintf("ran a fabric-referencing command (%q) that can rewrite run state — %s", cmd, rule)
+}
+
+// ClassifyViolation assigns v its D4 severity, checking the correctness rule first.
+// A fork-contract-write, a fork-plan-write and a fork-state-write are correctness.
+// A parent-write is correctness when its path lies under the run's state, reports or plan directory, or the run's `_lyx` directory (the parent of geom.WebsterDir).
+// It is correctness under the run's `.lyx` state directory too (the parent of geom.ScratchDir), since webster's pause flag and locks, another module's lock or pause flag, and a reed launch script all decide what a run does and are git-ignored.
+// A write within another worktree of the task repository, or within that worktree's `_lyx`, is correctness;
+// the innermost worktree holding the write decides, so a worktree enclosing this one never claims a write inside it.
+// A write inside this worktree is correctness when git does not ignore it, and every other parent-write is policy.
+// A fabric-reference is correctness whatever its command:
+// an agent never touches the fabric repo, and a command that reaches it can rewrite run state that a re-run of the cards' verify commands cannot detect.
+// Every other class is policy.
+// Prefix tests compare link-resolved paths, so a write spelled through a link to the run's `_lyx` still classes as correctness.
+// The error return is only the git probe's or the link resolution's failure.
+func ClassifyViolation(v AuditViolation, geom Geometry) (AuditSeverity, error) {
+	switch v.Class {
+	case ClassForkContractWrite, ClassForkPlanWrite, ClassForkStateWrite:
+		return AuditSeverityCorrectness, nil
+	case ClassFabricReference:
+		return AuditSeverityCorrectness, nil
+	case ClassParentWrite:
+	default:
+		return AuditSeverityPolicy, nil
+	}
+
+	written, err := canonicalPath(resolveWritePath(geom.WorktreeRoot, v.Path))
+	if err != nil {
+		return "", err
+	}
+	runDirs := []string{geom.WebsterDir, geom.ReportsDir, geom.PlanDir, filepath.Dir(geom.WebsterDir), filepath.Dir(geom.ScratchDir)}
+	for _, dir := range runDirs {
+		canon, err := canonicalPath(dir)
+		if err != nil {
+			return "", err
+		}
+		if pathWithin(canon, written) {
+			return AuditSeverityCorrectness, nil
+		}
+	}
+
+	worktree, err := canonicalPath(geom.WorktreeRoot)
+	if err != nil {
+		return "", err
+	}
+	others, err := otherWorktrees(worktree)
+	if err != nil {
+		return "", err
+	}
+	for _, other := range others {
+		// The innermost worktree holding a write decides its class, so a worktree enclosing this one never claims a write inside it.
+		if pathWithin(other, worktree) && pathWithin(worktree, written) {
+			continue
+		}
+		lyx, err := canonicalPath(filepath.Join(other, lyxdirs.LyxDirName))
+		if err != nil {
+			return "", err
+		}
+		if pathWithin(other, written) || pathWithin(lyx, written) {
+			return AuditSeverityCorrectness, nil
+		}
+	}
+	if !pathWithin(worktree, written) {
+		return AuditSeverityPolicy, nil
+	}
+	ignored, err := ignoredPath(geom.WorktreeRoot, written)
+	if err != nil {
+		return "", err
+	}
+	if ignored {
+		return AuditSeverityPolicy, nil
+	}
+	return AuditSeverityCorrectness, nil
+}
+
+// pathWithin reports whether path is dir itself or lies beneath it;
+// both must already be canonical.
+func pathWithin(dir, path string) bool {
+	rel, err := filepath.Rel(dir, path)
+	if err != nil {
+		return false
+	}
+	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
+}
+
+// canonicalPath resolves links in path through its nearest existing ancestor and re-joins the missing tail,
+// so a path that does not exist yet still compares against a link-resolved directory.
+func canonicalPath(path string) (string, error) {
+	cleaned := filepath.Clean(path)
+	var tail []string
+	cur := cleaned
+	for {
+		resolved, err := filepath.EvalSymlinks(cur)
+		if err == nil {
+			for i := len(tail) - 1; i >= 0; i-- {
+				resolved = filepath.Join(resolved, tail[i])
+			}
+			return resolved, nil
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return "", fmt.Errorf("websterengine: resolve links in %s: %w", cur, err)
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			return cleaned, nil
+		}
+		tail = append(tail, filepath.Base(cur))
+		cur = parent
+	}
 }
 
 // ForkWarnings evaluates f for webster's warning-only (never round-failing) classes: a fork that
@@ -241,14 +471,9 @@ func ForkWarnings(f shuttleengine.ForkReport) []string {
 // A report file existing alongside zero new transcripts does NOT save the batch from this error: a
 // report with no fork behind it means Master wrote it itself, which is exactly the defect this
 // check exists to catch (pinned check order: transcript count is decided BEFORE report presence).
-// The message names the operator recourse because this error is one leg of a three-verb refusal
-// circle with no in-band exit: with a report on disk but no fork transcript, begin-batch refuses
-// (report exists), record-batch errors here, and recover-batch refuses an OK report — a state a
-// forged report produces, but ALSO a legitimate cross-machine resume of the
-// report-landed-before-record-batch crash window, since fork transcripts live under the
-// machine-local ~/.claude projects dir while state.json and reports are fabric-synced (found live in
-// crucible round fable-r1).
-var ErrNoForkTranscripts = errors.New("zero new fork transcripts since the previous batch boundary — the batch was never forked (or its transcript is not on this machine: fork transcripts are machine-local, so a crash window resumed on a different machine cannot re-attribute its report; an operator resolves that by moving the batch's report file out of the reports dir and re-driving the batch)")
+// A report on disk with no fork transcript is a state a forged report produces, but ALSO a legitimate cross-machine resume of the report-landed-before-record-batch crash window, since fork transcripts live under the machine-local ~/.claude projects dir while state.json and reports are fabric-synced (found live in crucible round fable-r1).
+// RecordBatch does not leave the batch wedged on it: it archives the report, keeps the batch record begun, and returns a *ReportArchivedError whose way forward is `begin-batch`, which re-drives the batch with the report path free.
+var ErrNoForkTranscripts = errors.New("zero new fork transcripts since the previous batch boundary — the batch was never forked (or its transcript is not on this machine: fork transcripts are machine-local, so a crash window resumed on a different machine cannot re-attribute its report)")
 
 // DefaultSettleWindow is SettleRetry's recommended total wait budget before its caller gives up and
 // treats a zero-transcript result as final: a few seconds is enough slack for Claude Code to flush

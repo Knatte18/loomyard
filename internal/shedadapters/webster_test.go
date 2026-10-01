@@ -3,10 +3,13 @@ package shedadapters
 import (
 	"context"
 	"errors"
+	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -85,6 +88,16 @@ func TestWebsterProducer_OutcomePaused(t *testing.T) {
 	_, _, err := p.Call(context.Background())
 	if err == nil {
 		t.Fatal("Call() error = nil; want non-nil")
+	}
+	if !strings.Contains(err.Error(), "way forward: re-step the loom row") || !strings.Contains(err.Error(), "lyx webster run") {
+		t.Errorf("Call() error %q does not end in the re-step way forward", err.Error())
+	}
+
+	// Taking the way forward: the pause is cleared, so the re-step proceeds.
+	fake.result = websterengine.RunResult{Outcome: "done"}
+	outcome, _, err := p.Call(context.Background())
+	if err != nil || outcome != shedengine.Done {
+		t.Errorf("re-step Call() = (%q, %v); want Done once the pause is cleared", outcome, err)
 	}
 }
 
@@ -169,6 +182,77 @@ func TestWebsterProducer_OtherEngineErrors(t *testing.T) {
 				t.Errorf("Call() outcome = %q; want the error, not %q (only the asking sentinel maps to Stuck)", outcome, shedengine.Stuck)
 			}
 		})
+	}
+}
+
+func pendingAuditErr() error {
+	return fmt.Errorf("%w: 1 correctness finding(s) pending; suspect paths: internal/x.go; way forward: run \"lyx webster accept-audit\"", websterengine.ErrPendingAuditFindings)
+}
+
+func TestWebsterProducer_PendingAuditFindingsIsStuck(t *testing.T) {
+	dir := t.TempDir()
+	deps := websterengine.RunDeps{Geom: websterengine.Geometry{WebsterDir: dir}}
+	fake := &fakeWebsterRunner{err: pendingAuditErr()}
+	p := NewWebsterProducer("loom", fake.run, deps)
+
+	outcome, ptr, err := p.Call(context.Background())
+	if err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	if outcome != shedengine.Stuck {
+		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
+	}
+	if ptr.Path != "" {
+		t.Errorf("Call() path = %q; want empty", ptr.Path)
+	}
+	for _, want := range []string{"internal/x.go", "lyx webster accept-audit", "re-step the loom row"} {
+		if !strings.Contains(ptr.Reason, want) {
+			t.Errorf("Reason = %q; want it to contain %q", ptr.Reason, want)
+		}
+	}
+}
+
+func TestWebsterProducer_PendingAuditFindingsBlocksRun(t *testing.T) {
+	dir := t.TempDir()
+	statusPath := filepath.Join(dir, "status.json")
+	statusLockPath := filepath.Join(dir, "status.lock")
+	err := state.UpdateJSON(statusPath, statusLockPath, func(cur shedengine.Status, found bool) (shedengine.Status, error) {
+		cur.CurrentProducer = "Webster"
+		cur.State = shedengine.StateRunning
+		return cur, nil
+	})
+	if err != nil {
+		t.Fatalf("seed status: %v", err)
+	}
+	deps := websterengine.RunDeps{Geom: websterengine.Geometry{WebsterDir: dir}}
+	fake := &fakeWebsterRunner{err: pendingAuditErr()}
+	shed := &shedengine.Shed{
+		Producers:      []shedengine.ProducerDef{{Name: "Webster", Producer: NewWebsterProducer("Webster", fake.run, deps)}},
+		StatusPath:     statusPath,
+		LockPath:       filepath.Join(dir, "run.lock"),
+		StatusLockPath: statusLockPath,
+	}
+
+	res, err := shed.Step(context.Background())
+	if err != nil {
+		t.Fatalf("Step() error = %v; want nil", err)
+	}
+	if res.State != shedengine.StateBlocked {
+		t.Errorf("Step() state = %q; want %q", res.State, shedengine.StateBlocked)
+	}
+	if !strings.Contains(res.Reason, "lyx webster accept-audit") {
+		t.Errorf("Step() reason = %q; want it to name the accept-audit verb", res.Reason)
+	}
+
+	got, _, err := state.ReadJSON[shedengine.Status](statusPath, statusLockPath)
+	if err != nil {
+		t.Fatalf("read status: %v", err)
+	}
+	if got.State != shedengine.StateBlocked || got.CurrentProducer != "Webster" {
+		t.Errorf("status = %q at %q; want blocked at Webster", got.State, got.CurrentProducer)
+	}
+	if got.Error != res.Reason {
+		t.Errorf("status error = %q; want %q", got.Error, res.Reason)
 	}
 }
 

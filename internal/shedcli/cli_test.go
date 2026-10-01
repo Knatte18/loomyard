@@ -36,7 +36,7 @@ func TestRunCLIIn_BareListingNeedsNoGitRepository(t *testing.T) {
 	if exitCode != 0 {
 		t.Fatalf("RunCLIIn(nil) exit code = %d; want 0; output: %s", exitCode, out.String())
 	}
-	for _, sub := range []string{"run", "step", "status", "pause", "seed"} {
+	for _, sub := range []string{"run", "step", "status", "pause", "goto", "seed"} {
 		if !strings.Contains(out.String(), sub) {
 			t.Errorf("bare shed listing missing subcommand %q; got:\n%s", sub, out.String())
 		}
@@ -268,5 +268,18 @@ func TestArmFromSeed_RefusalPrecedence(t *testing.T) {
 				t.Errorf("armFromSeed(%q, %v) error = %q; want it to contain %q", tt.verb, tt.args, err.Error(), tt.want)
 			}
 		})
+	}
+}
+
+// TestShedVerbTexts_GotoAdmissionRuleOnlyOnGoto pins that the goto admission sentence sits on goto's help alone.
+func TestShedVerbTexts_GotoAdmissionRuleOnlyOnGoto(t *testing.T) {
+	const rule = "goto moves a halted run only back"
+	if !strings.Contains(shedVerbTexts.Goto.Long, rule) {
+		t.Errorf("goto Long does not state the admission rule %q", rule)
+	}
+	for name, long := range map[string]string{"run": shedVerbTexts.Run.Long, "step": shedVerbTexts.Step.Long, "status": shedVerbTexts.Status.Long, "pause": shedVerbTexts.Pause.Long} {
+		if strings.Contains(long, rule) {
+			t.Errorf("%s Long carries goto's admission rule", name)
+		}
 	}
 }

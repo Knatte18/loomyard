@@ -271,7 +271,7 @@ func gitwrapParentCommit(t *testing.T, dir, name, content string) (base string) 
 }
 
 // TestReconcileReportHead_UncleanParentMergesRefused proves a merge commit is walked over only when it is a clean merge of the run's parent branch:
-// every other two-or-more-parent shape is refused with the parent-merge refusal and its remedy.
+// every other two-or-more-parent shape is refused with the parent-merge refusal and its way forward.
 func TestReconcileReportHead_UncleanParentMergesRefused(t *testing.T) {
 	t.Parallel()
 
@@ -376,7 +376,7 @@ func TestReconcileReportHead_UncleanParentMergesRefused(t *testing.T) {
 			if err == nil {
 				t.Fatal("error = nil; want refusal")
 			}
-			for _, want := range []string{"does not match the worktree's actual HEAD", report, head, "merge commit " + head + " does not qualify", tc.wantReason, "remedy:"} {
+			for _, want := range []string{"does not match the worktree's actual HEAD", report, head, "merge commit " + head + " does not qualify", tc.wantReason, "way forward: move HEAD back"} {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("error %q missing %q", err, want)
 				}
@@ -456,5 +456,36 @@ func TestRefuseMidMerge_LinkedWorktree(t *testing.T) {
 	err := refuseMidMerge(linked)
 	if err == nil || !strings.Contains(err.Error(), "merge in progress") {
 		t.Fatalf("linked worktree: error = %v; want merge-in-progress refusal", err)
+	}
+}
+
+func TestOtherWorktrees(t *testing.T) {
+	main := gitwrapNewScratchRepo(t)
+	gitwrapCommitFile(t, main, "a.txt", "x", "add a")
+	added := filepath.Join(t.TempDir(), "added")
+	gitwrapMustGit(t, main, "worktree", "add", added)
+
+	mainCanon, err := canonicalPath(main)
+	if err != nil {
+		t.Fatal(err)
+	}
+	addedCanon, err := canonicalPath(added)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := otherWorktrees(main)
+	if err != nil {
+		t.Fatalf("otherWorktrees(main): %v", err)
+	}
+	if len(got) != 1 || got[0] != addedCanon {
+		t.Errorf("otherWorktrees(main) = %v; want [%s]", got, addedCanon)
+	}
+	got, err = otherWorktrees(added)
+	if err != nil {
+		t.Fatalf("otherWorktrees(added): %v", err)
+	}
+	if len(got) != 1 || got[0] != mainCanon {
+		t.Errorf("otherWorktrees(added) = %v; want [%s]", got, mainCanon)
 	}
 }

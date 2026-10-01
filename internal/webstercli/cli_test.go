@@ -504,8 +504,13 @@ func TestValidateCmd_ScopeFollowsRunProgress(t *testing.T) {
 		c.batcher = identity
 		seedTwoCardGlyphPlanDir(t, c.geom.PlanDir, c.geom.WorktreeRoot)
 
+		fingerprint, err := websterengine.Fingerprint(c.geom.PlanDir)
+		if err != nil {
+			t.Fatalf("websterengine.Fingerprint(planDir) = %v; want nil", err)
+		}
 		state := &websterengine.State{
-			RunGUID: "run-guid",
+			RunGUID:         "run-guid",
+			PlanFingerprint: fingerprint,
 			Batches: map[int]*websterengine.BatchState{
 				1: {Terminal: true, Status: "done"},
 			},
@@ -560,9 +565,11 @@ func TestValidateCmd_RebaselinesStalePlanFingerprint(t *testing.T) {
 		t.Fatalf("websterengine.Fingerprint(planDir) = %v; want nil", err)
 	}
 
+	// The recorded fingerprint matches the unedited plan: validate refuses a plan edited since the run
+	// recorded it (TestValidateCmd_RefusesOverviewEditWithoutRestamp), so a restamp is only ever earned over an unedited one.
 	state := &websterengine.State{
 		RunGUID:         "run-guid",
-		PlanFingerprint: "stale-fingerprint-from-before-the-plan-changed",
+		PlanFingerprint: realFingerprint,
 	}
 	if err := websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, state); err != nil {
 		t.Fatalf("SaveState: %v", err)
@@ -688,9 +695,11 @@ func TestRunCmd_PassesWatchTrueToReedUp(t *testing.T) {
 var singleFlagEnvelope = regexp.MustCompile(`map\[string\]any\{"([a-z_]+)": true\}`)
 
 // TestMasterStencilCoversEverySingleFlagRefusal is R4-34's direct regression test. record-batch
-// emits {"card_not_done": true} on an ErrCardNotDone refusal, but the Master stencil's failure
+// emitted {"card_not_done": true} on an ErrCardNotDone refusal, but the Master stencil's failure
 // ladder carried no rung for it, so Master fell through to generic error handling on a refusal with
 // a specific meaning and a specific disposition.
+// record-batch's own flags today are batch_failed and report_archived, which ride in multi-field envelopes (with batch, and warnings on the first) and so are outside this regexp's shape;
+// the master stencil's ladder names both all the same.
 //
 // The flag set is read out of this package's own source rather than pinned as a list, because a
 // hand-maintained list is forgotten by exactly the change that adds a new flag -- which is how this

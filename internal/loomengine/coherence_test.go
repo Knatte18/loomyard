@@ -127,6 +127,14 @@ func TestCheckCoherence(t *testing.T) {
 			wantChecks: []CheckID{CheckSeedIncoherent},
 		},
 		{
+			name: "GotoHistoryOutcomeIsValid",
+			mutateShed: func(s shedengine.Status) shedengine.Status {
+				s.History = []shedengine.HistoryEntry{{Producer: "Loom-Preflight", Outcome: shedengine.OutcomeGoto, At: "2026-07-17T10:01:30Z"}}
+				return s
+			},
+			wantEmpty: true,
+		},
+		{
 			name: "NonRFC3339Timestamp",
 			mutateShed: func(s shedengine.Status) shedengine.Status {
 				s.History = []shedengine.HistoryEntry{{Producer: "Loom-Preflight", Outcome: shedengine.Stuck, At: "not-a-timestamp"}}

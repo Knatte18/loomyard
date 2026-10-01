@@ -227,6 +227,9 @@ Verbs:
   lyx webster await-batch 3                  block until batch 3's report lands (forks are backgrounded)
   lyx webster record-batch 3                 Master's bracket call once batch 3's fork has delivered
   lyx webster recover-batch 3 --wait 8m      escalate batch 3 to a cold recovery strand
+  lyx webster rebaseline --card NN   accept a mid-run edit of the named cards
+  lyx webster accept-audit                   accept the pending run-exit audit findings once their paths are checked
+  lyx webster restore-plan                   restore every plan file that differs from the plan the run recorded
 
 Modes:
   webster runs in hub mode inside a lyx hub worktree, and in standalone
@@ -270,6 +273,9 @@ Example (standalone, outside any lyx hub):
 	parent.AddCommand(c.awaitBatchCmd())
 	parent.AddCommand(c.recordBatchCmd())
 	parent.AddCommand(c.recoverBatchCmd())
+	parent.AddCommand(c.rebaselineCmd())
+	parent.AddCommand(c.acceptAuditCmd())
+	parent.AddCommand(c.restorePlanCmd())
 
 	return parent
 }
@@ -291,8 +297,8 @@ Example (standalone, outside any lyx hub):
 // genuine foreign edit failing ErrFingerprintMismatch exactly as it did before.
 // Callers invoke this while still holding the state-mutation lease.
 //
-// It persists the fingerprint and NOTHING ELSE: the state it writes is re-loaded from disk here and
-// carries only the new fingerprint, rather than being the caller's whole in-memory *State.
+// It persists the plan baseline, the fingerprint and the per-file hashes, and NOTHING ELSE.
+// The state it writes is re-loaded from disk here and carries only the new baseline, rather than being the caller's whole in-memory *State.
 // The caller's copy is not a fingerprint-only delta. RecordBatch appends to State.SeenForkTranscripts
 // the moment it attributes a fork's transcripts, well BEFORE the step that can fail, so saving the
 // whole struct persisted the transcript as CONSUMED on a call that then failed ErrCardNotDone. The
@@ -315,6 +321,7 @@ func persistPlanFingerprintRebaseline(geom websterengine.Geometry, st *websteren
 		return fmt.Errorf("webster: state.json disappeared before the plan-fingerprint re-baseline could be persisted; the plan on disk now carries webster's own rewrite with no state to record it")
 	}
 	fresh.PlanFingerprint = st.PlanFingerprint
+	fresh.PlanFileHashes = st.PlanFileHashes
 	return websterengine.SaveState(geom.WebsterDir, geom.ScratchDir, fresh)
 }
 

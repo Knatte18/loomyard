@@ -150,7 +150,8 @@ func TestEpisodeStuckCount_FoldedEqualsUnfolded(t *testing.T) {
 	if len(folded) >= len(calls) {
 		t.Fatalf("folded len = %d; want fewer than %d", len(folded), len(calls))
 	}
-	if got, want := episodeStuckCount(folded, "Wait"), episodeStuckCount(calls, "Wait"); got != want {
+	wait := ProducerDef{Name: "Wait"}
+	if got, want := episodeStuckCount(folded, wait, nil), episodeStuckCount(calls, wait, nil); got != want {
 		t.Errorf("folded count = %d; want %d", got, want)
 	}
 }

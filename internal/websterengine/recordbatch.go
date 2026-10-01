@@ -1,10 +1,4 @@
-// recordbatch.go implements RecordBatch, the second of webster's two bracket verbs Master calls
-// around each in-session fork, immediately after a fork returns: the bracket-discipline fail-loud
-// check (a record without a matching begin-batch record is refused), the incremental fork audit
-// with its bounded settle retry, webster's fork-audit policy checks, the unconditional
-// transcript-attribution advance, the batch-report presence check and parse, the head-SHA
-// cross-check against the fork's own self-reported head_sha, and the distilled digest's
-// persistence.
+// recordbatch.go implements RecordBatch, the second of webster's two bracket verbs Master calls around each in-session fork, immediately after a fork returns: the bracket-discipline fail-loud check (a record without a matching begin-batch record is refused), the incremental fork audit with its bounded settle retry, webster's fork-audit findings and their once-per-run dispositions (a policy finding warns, a correctness finding fails the batch), the unconditional transcript-attribution advance, the batch-report presence check and parse, the head-SHA cross-check against the fork's own self-reported head_sha, and the distilled digest's persistence.
 // RecordBatch never touches the fabric repo — the caller fabric-commits state.json and the batch
 // report once RecordBatch returns successfully, webster's own fabric-commit-boundary discipline.
 
@@ -25,17 +19,37 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// ErrNoBeginRecord is the sentinel RecordBatch returns when deps.State.Batches[batchNumber] is
-// absent or already Terminal — a record call with no matching (or already-consumed) begin-batch
-// record.
+// ErrNoBeginRecord is the cause RecordBatch reports when deps.State.Batches[batchNumber] is absent — a record call with no matching begin-batch record.
 // This is the bracket-discipline fail-loud check: a fork's own report, however legitimate it looks,
 // is never trusted without Go's own record that begin-batch actually opened this batch first.
 var ErrNoBeginRecord = errors.New("webster: record-batch called with no begin-batch record for this batch")
 
+// ErrReportArchived is the sentinel a *ReportArchivedError unwraps to.
+var ErrReportArchived = errors.New("webster: report archived")
+
+// ReportArchivedError reports a batch report record-batch could not attribute to a fork of its bracket.
+// The report is archived, so `begin-batch` no longer refuses over it, and the batch is re-driven through that verb.
+// Cause is the attribution failure (ErrNoBeginRecord, ErrNoForkTranscripts, or a missing transcript directory).
+type ReportArchivedError struct {
+	Number     int
+	Batch      string
+	ArchivedTo string
+	Cause      error
+}
+
+// Error states why the report could not be attributed, where it was archived, and the way forward.
+func (e *ReportArchivedError) Error() string {
+	return fmt.Sprintf("webster: batch %s's report could not be attributed: %v; report archived to %s; way forward: lyx webster begin-batch %02d re-drives the batch", e.Batch, e.Cause, e.ArchivedTo, e.Number)
+}
+
+// Unwrap returns ErrReportArchived and Cause, so errors.Is matches either.
+func (e *ReportArchivedError) Unwrap() []error { return []error{ErrReportArchived, e.Cause} }
+
 // ErrCardNotDone is the sentinel RecordBatch returns when card 33's DoneChecks report a blocking
 // finding against the just-completed batch's own cards — a Create target that still does not
-// resolve, or a Delete target that still does — meaning the batch is not done and no terminal
-// digest is persisted. webster's own sentinel, per the webster-owns-its-own-domain-types decision.
+// resolve, or a Delete target that still does — meaning the batch is not done.
+// RecordBatch converts it into a failed batch (see failBatch) with the findings as its reasons.
+// webster's own sentinel, per the webster-owns-its-own-domain-types decision.
 var ErrCardNotDone = errors.New("webster: record-batch's done-checks reported a blocking finding")
 
 // RecordDeps carries every seam RecordBatch needs, so a test can fake each one independently:
@@ -71,6 +85,9 @@ type RecordDeps struct {
 	// ParentBranch names the run's parent branch for the head cross-check's clean-parent-merge rule;
 	// nil (standalone mode) accepts no merge commit between the report's head_sha and HEAD.
 	ParentBranch ParentBranchFunc
+	// VerifyTimeout bounds each card verify command the policy-warning evidence re-run executes;
+	// zero means DefaultCardVerifyTimeout.
+	VerifyTimeout time.Duration
 }
 
 // RecordResult is what one successful RecordBatch call hands back to its caller
@@ -78,16 +95,40 @@ type RecordDeps struct {
 // a terminal classification (nil when NoReport is true);
 // NoReport reports whether the batch-report file was still absent this call (the batch stays
 // non-terminal and State.CurrentBatch stays unchanged — Master's ladder re-forks once);
-// Warnings carries every non-fatal fork-audit-policy warning observed this call (a multi-new-transcript notice, a fork that never returned a final report, a dirty worktree after the batch's own commits, or a moved-HEAD notice when a parent merge-in landed after the fork's commit), never treated as a failure.
+// Warnings carries every non-fatal fork-audit-policy warning observed this call (a multi-new-transcript notice, a fork that never returned a final report, a dirty worktree after the batch's own commits, a moved-HEAD notice when a parent merge-in landed after the fork's commit, or a recorded policy audit warning), never treated as a failure;
+// Failed is set when the batch was taken terminal-failed on its audit findings, with Digest the failed digest;
+// ArchivedReport is the path an unattributable report was archived to, returned alongside a *ReportArchivedError so the caller's fabric sync can commit it.
 type RecordResult struct {
-	Digest   *Digest
-	NoReport bool
-	Warnings []string
+	Digest         *Digest
+	NoReport       bool
+	Failed         bool
+	ArchivedReport string
+	Warnings       []string
 }
 
-// RecordBatch drives one record-batch call: the bracket-discipline check, incremental fork audit,
-// fork-audit policy checks, transcript-attribution advance, report parse, and digest persistence.
-// The caller persists deps.State via SaveState once RecordBatch returns successfully.
+// archiveUnattributable archives batch number's report, when one exists, and returns the error a record-batch attribution refusal ends with:
+// a *ReportArchivedError when a report was archived, otherwise cause wrapped with the same begin-batch way forward.
+// The batch record is left as it is.
+func archiveUnattributable(deps RecordDeps, number int, slug string, cause error) (*RecordResult, error) {
+	archived, err := archiveStaleReport(deps.Geom.ReportsDir, number, slug, time.Now)
+	if err != nil {
+		return nil, err
+	}
+	if archived == "" {
+		return nil, fmt.Errorf("%w; way forward: lyx webster begin-batch %02d re-drives the batch", cause, number)
+	}
+	return &RecordResult{ArchivedReport: archived}, &ReportArchivedError{
+		Number:     number,
+		Batch:      fmt.Sprintf("%02d-%s", number, slug),
+		ArchivedTo: archived,
+		Cause:      cause,
+	}
+}
+
+// RecordBatch drives one record-batch call: the bracket-discipline check, incremental fork audit, fork-audit finding dispositions, transcript-attribution advance, report parse, and digest persistence.
+// Each audit finding is dispositioned once per run: a policy finding is recorded as a warning (after its batch's card verify commands pass, when the report is OK),
+// and a correctness finding, or a policy finding whose evidence re-run fails, fails the batch and returns a *BatchFailedError naming `lyx webster recover-batch`, alongside a RecordResult carrying the failed digest.
+// The caller persists deps.State via SaveState once RecordBatch returns, whether or not it returned a *BatchFailedError.
 func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	// The plan is a hard precondition, refused loudly rather than dereferenced several frames down
 	// inside planglyph. Every production caller parses it (internal/webstercli's record-batch verb),
@@ -103,8 +144,25 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	}
 
 	bs, ok := deps.State.Batches[batchNumber]
-	if !ok || bs == nil || bs.Terminal {
-		return nil, ErrNoBeginRecord
+	if !ok || bs == nil {
+		batch, err := findBatch(deps.Batches, batchNumber)
+		if err != nil {
+			return nil, err
+		}
+		number, slug := batchIdentity(batch)
+		return archiveUnattributable(deps, number, slug, ErrNoBeginRecord)
+	}
+	if bs.Terminal {
+		if bs.Kind == "fork" {
+			if res, err := auditTerminalFork(deps, bs, batchNumber); res != nil || err != nil {
+				return res, err
+			}
+		}
+		way := fmt.Sprintf("lyx webster recover-batch %02d", batchNumber)
+		if bs.Status == DigestStatusDone {
+			way = "continue with the next batch"
+		}
+		return nil, fmt.Errorf("webster: batch %02d is already terminal (%s), so record-batch has nothing to record; way forward: %s", batchNumber, bs.Status, way)
 	}
 
 	// Recovery batches are consumed by recover-batch, not record-batch.
@@ -135,7 +193,7 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		// Session transcripts are machine-local, so a cross-machine resume
 		// fails here with the documented operator recourse.
 		if errors.Is(err, fs.ErrNotExist) {
-			return nil, fmt.Errorf("webster: no transcript exists on this machine for the session that opened batch %02d-%s's bracket (%s): %w — session transcripts are machine-local, so a crash window resumed on a different machine cannot re-attribute its report; an operator resolves that by moving the batch's report file out of the reports dir and re-driving the batch", number, slug, bs.SessionID, err)
+			return archiveUnattributable(deps, number, slug, fmt.Errorf("no transcript exists on this machine for the session that opened batch %02d-%s's bracket (%s): %w — session transcripts are machine-local, so a crash window resumed on a different machine cannot re-attribute its report", number, slug, bs.SessionID, err))
 		}
 		return nil, err
 	}
@@ -143,7 +201,7 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	// Check transcripts before report presence so a fake (unfakeable) report is caught.
 	warning, err := ClassifyAttribution(newReports)
 	if err != nil {
-		return nil, err
+		return archiveUnattributable(deps, number, slug, err)
 	}
 
 	var warnings []string
@@ -154,33 +212,82 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	// forkWarnings are held back and appended only on the no-report path: once the report file
 	// exists, the report is the fork's contract and "never returned a final report" is false noise.
 	var forkWarnings []string
-	var violations []error
-	for _, v := range CheckParent(audit, deps.OutcomePath, deps.SummaryPath, deps.Geom.WorktreeRoot, deps.RefMatcher) {
-		violations = append(violations, v)
+	planDirs, err := planDirSpellings(deps.Geom)
+	if err != nil {
+		return nil, err
 	}
+	websterDirs, err := websterDirSpellings(deps.Geom)
+	if err != nil {
+		return nil, err
+	}
+	ownReport := filepath.Join(deps.Geom.ReportsDir, ReportFileName(number, slug))
+	var candidates []AuditViolation
+	candidates = append(candidates, CheckParent(audit, deps.OutcomePath, deps.SummaryPath, deps.Geom.WorktreeRoot, deps.RefMatcher)...)
 	for _, f := range newReports {
-		for _, v := range CheckFork(f, deps.OutcomePath, deps.SummaryPath, deps.Geom.WorktreeRoot, deps.RefMatcher) {
-			violations = append(violations, v)
-		}
+		candidates = append(candidates, CheckFork(f, deps.OutcomePath, deps.SummaryPath, deps.Geom.WorktreeRoot, planDirs, websterDirs, ownReport, deps.RefMatcher)...)
 		forkWarnings = append(forkWarnings, ForkWarnings(f)...)
 	}
-	if len(violations) > 0 {
-		return nil, errors.Join(violations...)
+
+	// A finding dispositioned by an earlier call is dropped: the whole-session parent audit repeats every earlier finding on each record-batch,
+	// and a finding is reported once per run.
+	// Classification is the only fallible step and runs before any mutation.
+	var policy, correctness []classifiedFinding
+	for _, v := range candidates {
+		id := findingIdentity(bs.SessionID, v)
+		if isDispositioned(deps.State, id) {
+			continue
+		}
+		severity, err := ClassifyViolation(v, deps.Geom)
+		if err != nil {
+			return nil, err
+		}
+		cf := classifiedFinding{ID: id, Violation: v}
+		if severity == AuditSeverityCorrectness {
+			correctness = append(correctness, cf)
+		} else {
+			policy = append(policy, cf)
+		}
 	}
 
-	// Attribution advances before report-presence check so a retry sees only its own new transcript.
 	newPaths := make([]string, 0, len(newReports))
 	for _, f := range newReports {
 		newPaths = append(newPaths, f.TranscriptPath)
 	}
+
+	polledID := fmt.Sprintf("%02d-%s", number, slug)
+	reportPath := filepath.Join(deps.Geom.ReportsDir, ReportFileName(number, slug))
+
+	// A correctness finding fails the batch whatever the report says, and with no report at all:
+	// it is a halt with a way forward, and failing the batch dispositions every finding once.
+	if len(correctness) > 0 {
+		all := append(append([]classifiedFinding(nil), correctness...), policy...)
+		headSHA := ""
+		if r, perr := ParseReport(reportPath); perr == nil {
+			headSHA = r.HeadSHA
+		}
+		return failOnCorrectness(deps, bs, number, slug, headSHA, all, correctness, newPaths, warnings)
+	}
+
+	// A plan edited since the run recorded it, or a begun card edited since its batch began, is refused before anything mutates or any card verify runs:
+	// every restamp further down exists to adopt webster's own rewrites, so a difference seen here is someone else's edit.
+	if err := PlanEditError(deps.State, deps.Geom.PlanDir); err != nil {
+		return nil, err
+	}
+	if err := batchCardEditError(deps.State, bs, batch, deps.Geom.PlanDir); err != nil {
+		return nil, err
+	}
+
+	// Attribution advances before report-presence check so a retry sees only its own new transcript.
 	deps.State.SeenForkTranscripts = append(deps.State.SeenForkTranscripts, newPaths...)
 	bs.ForkTranscripts = append(bs.ForkTranscripts, newPaths...)
 
-	polledID := fmt.Sprintf("%02d-%s", number, slug)
-
-	reportPath := filepath.Join(deps.Geom.ReportsDir, ReportFileName(number, slug))
 	if _, statErr := os.Stat(reportPath); statErr != nil {
 		if os.IsNotExist(statErr) {
+			for _, cf := range policy {
+				if text, added := recordBatchWarning(deps.State, bs, cf.ID, string(cf.Violation.Class), cf.Violation.Detail); added {
+					warnings = append(warnings, text)
+				}
+			}
 			return &RecordResult{NoReport: true, Warnings: append(warnings, forkWarnings...)}, nil
 		}
 		return nil, fmt.Errorf("webster: stat batch report %s: %w", reportPath, statErr)
@@ -188,7 +295,7 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 
 	report, err := ParseReport(reportPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w; way forward: `lyx webster recover-batch %d` archives the malformed report and re-drives the batch", err, number)
 	}
 
 	// A merge in progress leaves the batch non-terminal and retryable.
@@ -211,9 +318,28 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		warnings = append(warnings, moved)
 	}
 
+	// An OK report that carries policy findings, or whose batch already holds warnings from an earlier no-report call, must show its cards' own verify commands still pass:
+	// a policy warning is only safe to carry once the work is evidenced.
+	// A FAILED report takes its policy findings as warnings with no re-run.
+	if report.Status == ReportStatusOK && (len(policy) > 0 || len(bs.AuditWarnings) > 0) {
+		if failures := rerunCardVerifies(batch.Cards, deps.Geom.WorktreeRoot, deps.VerifyTimeout); len(failures) > 0 {
+			var earlier []string
+			for _, w := range bs.AuditWarnings {
+				earlier = append(earlier, auditWarningText(w))
+			}
+			return failFromFindings(deps, bs, number, slug, report.HeadSHA, policy, earlier, failures, nil, nil, nil, warnings)
+		}
+	}
+	for _, cf := range policy {
+		if text, added := recordBatchWarning(deps.State, bs, cf.ID, string(cf.Violation.Class), cf.Violation.Detail); added {
+			warnings = append(warnings, text)
+		}
+	}
+
 	postWarnings, err := postBatchChecks(postBatchInputs{
 		Plan:      deps.Plan,
 		State:     deps.State,
+		Batch:     bs,
 		Geom:      deps.Geom,
 		Cards:     batch.Cards,
 		Completed: completedCards(deps.Batches, deps.State, batchNumber),
@@ -223,7 +349,25 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	})
 	warnings = append(warnings, postWarnings...)
 	if err != nil {
-		return nil, err
+		if !errors.Is(err, ErrCardNotDone) {
+			return nil, err
+		}
+		// The findings concern this batch's own cards, so it fails on its merits.
+		reasons := strings.Split(strings.TrimPrefix(err.Error(), ErrCardNotDone.Error()+": "), "; ")
+		bfe, ferr := failBatch(failBatchInput{
+			State:      deps.State,
+			Batch:      bs,
+			Number:     number,
+			Slug:       slug,
+			ReportsDir: deps.Geom.ReportsDir,
+			HeadSHA:    report.HeadSHA,
+			Reasons:    reasons,
+			Now:        time.Now,
+		})
+		if ferr != nil {
+			return nil, ferr
+		}
+		return &RecordResult{Digest: bs.Digest, Failed: true, Warnings: warnings}, bfe
 	}
 
 	digest := distill(report)
@@ -238,14 +382,160 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	return &RecordResult{Digest: &digest, Warnings: warnings}, nil
 }
 
+// failOnCorrectness fails the batch on its audit findings, naming the correctness findings' paths as suspects.
+// A correctness finding with no path is recorded as uncheckable, since recovery cannot verify it.
+func failOnCorrectness(deps RecordDeps, bs *BatchState, number int, slug, headSHA string, all, correctness []classifiedFinding, newPaths, warnings []string) (*RecordResult, error) {
+	var suspects []string
+	for _, cf := range correctness {
+		if cf.Violation.Path != "" {
+			suspects = append(suspects, cf.Violation.Path)
+		}
+	}
+	uncheckable, err := uncheckableSuspects(deps.Geom, deps.State, suspects)
+	if err != nil {
+		return nil, err
+	}
+	for _, cf := range correctness {
+		if cf.Violation.Path == "" {
+			uncheckable = append(uncheckable, fmt.Sprintf("%s: %s", cf.Violation.Class, cf.Violation.Detail))
+		}
+	}
+	return failFromFindings(deps, bs, number, slug, headSHA, all, nil, nil, suspects, uncheckable, newPaths, warnings)
+}
+
+// auditTerminalFork audits the fork transcripts a terminal fork batch has not consumed yet, once and without the settle wait,
+// so a fork that forged its own batch record cannot land behind the "already terminal" refusal.
+// An undispositioned correctness finding replaces the terminal record with a failed one and returns its *BatchFailedError;
+// otherwise nothing is mutated and both results are nil, leaving the caller to refuse the batch as already terminal.
+// A session whose transcripts are not on this machine has nothing to audit and is not an error.
+// It audits nothing while another fork batch of the session is begun and not terminal or the integration report exists:
+// every fork of a Master session shares its session id, so an unseen transcript may then be that fork's.
+// That batch's own record-batch, or the run-exit audit for the integration fork, audits it instead.
+func auditTerminalFork(deps RecordDeps, bs *BatchState, batchNumber int) (*RecordResult, error) {
+	for n, other := range deps.State.Batches {
+		if n != batchNumber && other != nil && other.Kind == "fork" && !other.Terminal && other.SessionID == bs.SessionID {
+			return nil, nil
+		}
+	}
+	if _, err := os.Stat(IntegrationReportPath(deps.Geom.ReportsDir)); err == nil {
+		return nil, nil
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return nil, fmt.Errorf("webster: stat integration report: %w", err)
+	}
+
+	batch, err := findBatch(deps.Batches, batchNumber)
+	if err != nil {
+		return nil, err
+	}
+	number, slug := batchIdentity(batch)
+
+	seenSet := make(map[string]bool, len(deps.State.SeenForkTranscripts))
+	for _, p := range deps.State.SeenForkTranscripts {
+		seenSet[p] = true
+	}
+	audit, err := deps.Engine.AuditForksIncremental(bs.SessionID, deps.Geom.WorktreeRoot, seenSet)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	newReports := NewTranscripts(audit, deps.State.SeenForkTranscripts)
+	if len(newReports) == 0 {
+		return nil, nil
+	}
+
+	planDirs, err := planDirSpellings(deps.Geom)
+	if err != nil {
+		return nil, err
+	}
+	websterDirs, err := websterDirSpellings(deps.Geom)
+	if err != nil {
+		return nil, err
+	}
+	ownReport := filepath.Join(deps.Geom.ReportsDir, ReportFileName(number, slug))
+	var correctness []classifiedFinding
+	for _, f := range newReports {
+		for _, v := range CheckFork(f, deps.OutcomePath, deps.SummaryPath, deps.Geom.WorktreeRoot, planDirs, websterDirs, ownReport, deps.RefMatcher) {
+			id := findingIdentity(bs.SessionID, v)
+			if isDispositioned(deps.State, id) {
+				continue
+			}
+			severity, err := ClassifyViolation(v, deps.Geom)
+			if err != nil {
+				return nil, err
+			}
+			if severity == AuditSeverityCorrectness {
+				correctness = append(correctness, classifiedFinding{ID: id, Violation: v})
+			}
+		}
+	}
+	if len(correctness) == 0 {
+		return nil, nil
+	}
+
+	newPaths := make([]string, 0, len(newReports))
+	for _, f := range newReports {
+		newPaths = append(newPaths, f.TranscriptPath)
+	}
+	headSHA := ""
+	if bs.Digest != nil {
+		headSHA = bs.Digest.HeadSHA
+	}
+	return failOnCorrectness(deps, bs, number, slug, headSHA, correctness, correctness, newPaths, nil)
+}
+
+// classifiedFinding is one audit finding with its ledger identity.
+type classifiedFinding struct {
+	ID        string
+	Violation AuditViolation
+}
+
+// failFromFindings takes the batch terminal-failed on its audit findings.
+// Every finding is marked failed in the ledger,
+// and the reasons are the findings' own text, then the earlier recorded warnings, then the verify failures.
+// suspects are the correctness paths, uncheckable the entries recovery cannot verify, newTranscripts the transcripts this call consumes.
+// It returns the failed digest with Failed set, together with the *BatchFailedError.
+func failFromFindings(deps RecordDeps, bs *BatchState, number int, slug, headSHA string, findings []classifiedFinding, earlier, verifyFailures, suspects, uncheckable, newTranscripts, warnings []string) (*RecordResult, error) {
+	var reasons []string
+	for _, cf := range findings {
+		reasons = append(reasons, cf.Violation.Error())
+	}
+	reasons = append(reasons, earlier...)
+	reasons = append(reasons, verifyFailures...)
+	bfe, err := failBatch(failBatchInput{
+		State:          deps.State,
+		Batch:          bs,
+		Number:         number,
+		Slug:           slug,
+		ReportsDir:     deps.Geom.ReportsDir,
+		WorktreeRoot:   deps.Geom.WorktreeRoot,
+		HeadSHA:        headSHA,
+		Reasons:        reasons,
+		SuspectPaths:   suspects,
+		Uncheckable:    uncheckable,
+		NewTranscripts: newTranscripts,
+		Now:            time.Now,
+	})
+	if err != nil {
+		return nil, err
+	}
+	for _, cf := range findings {
+		recordFailedFinding(deps.State, cf.ID)
+	}
+	return &RecordResult{Digest: bs.Digest, Failed: true, Warnings: warnings}, bfe
+}
+
 // postBatchInputs carries everything the shared post-batch mechanical pass needs.
 // Cards are the completed batch's own cards;
 // Completed names every card whose work landed BEFORE this batch, so drift detection can scope itself to the plan's remaining work;
 // StartSHA is the bracket record's captured start SHA and HeadSHA the reconciled report head;
-// Label names the batch in warnings.
+// Label names the batch in warnings;
+// Batch is the record being finished, which later-card drift warnings are recorded onto.
 type postBatchInputs struct {
 	Plan      *planparser.Plan
 	State     *State
+	Batch     *BatchState
 	Geom      Geometry
 	Cards     []planparser.Card
 	Completed []planparser.Card
@@ -266,8 +556,10 @@ type postBatchInputs struct {
 // every later card kept referencing an unbound plan: handle for the rest of the plan's life —
 // invisible to drift detection too, since its reference index keys on the ref as the card spells it.
 //
-// Blocking findings are returned as an ErrCardNotDone-wrapped error; informational ones ride out on
-// warnings, which are returned alongside any error so a caller never loses them.
+// Findings about the batch's own cards (done-checks, blocking bind findings) are returned as an
+// ErrCardNotDone-wrapped error.
+// Drift findings concern later cards, so they become `later card:` warnings recorded once on in.Batch;
+// informational findings ride out on warnings too, which are returned alongside any error so a caller never loses them.
 func postBatchChecks(in postBatchInputs) (warnings []string, err error) {
 	// A card's completion has a mechanical verdict: a Create target that still does not resolve,
 	// or a Delete target that still does, blocks — neither is a judgment call. This runs its own
@@ -306,7 +598,7 @@ func postBatchChecks(in postBatchInputs) (warnings []string, err error) {
 	// staleness re-baseline runs HERE rather than once past every refusal below. See this package's
 	// doc.go for what restamping past the refusals cost.
 	// A restamp failure never masks bindErr: the caller is already returning for that reason.
-	if rebaseErr := restampFingerprint(in.State, in.Geom.PlanDir); rebaseErr != nil && bindErr == nil {
+	if rebaseErr := restampFingerprint(in.State, in.Geom.PlanDir, in.Geom.WebsterDir); rebaseErr != nil && bindErr == nil {
 		return nil, rebaseErr
 	}
 	if bindErr != nil {
@@ -349,7 +641,7 @@ func postBatchChecks(in postBatchInputs) (warnings []string, err error) {
 	// The exact-tier repair's own RewriteRefs lands on disk before this call reports anything, and
 	// its blocking plan-references-deleted-symbol finding is computed from a different part of the
 	// same delta, so re-baseline here for exactly the reason BindHandles does above.
-	if rebaseErr := restampFingerprint(in.State, in.Geom.PlanDir); rebaseErr != nil && driftErr == nil {
+	if rebaseErr := restampFingerprint(in.State, in.Geom.PlanDir, in.Geom.WebsterDir); rebaseErr != nil && driftErr == nil {
 		return warnings, rebaseErr
 	}
 	if driftErr != nil {
@@ -360,18 +652,19 @@ func postBatchChecks(in postBatchInputs) (warnings []string, err error) {
 	// informational by construction — drift.go's own contract is that the rename-versus-genuine-delete
 	// decision is the reviewer's, never the pipeline's. Failing the batch on it would destroy the very
 	// tier it belongs to, since a finding that kills the batch never reaches a reviewer at all.
-	// So the split here mirrors BeginBatch's own: blocking fails, informational rides out on warnings
-	// exactly as ScopeGuard's findings already do.
-	var driftBlocking []string
+	// So the split here is by whose card the finding concerns: a blocking finding is about a later card, so it is recorded as a "later card:" warning rather than failing this batch,
+	// and an informational one rides out on warnings exactly as ScopeGuard's findings already do.
 	for _, f := range driftFindings {
-		if f.Severity == planglyph.SeverityBlocking {
-			driftBlocking = append(driftBlocking, f.Error())
+		if f.Severity != planglyph.SeverityBlocking {
+			warnings = append(warnings, f.Error())
 			continue
 		}
-		warnings = append(warnings, f.Error())
-	}
-	if len(driftBlocking) > 0 {
-		return warnings, fmt.Errorf("%w: %s", ErrCardNotDone, strings.Join(driftBlocking, "; "))
+		// Drift runs over the pending plan, which already excludes this batch's cards, so a blocking finding concerns a card still to be built:
+		// it warns here, recorded once in the batch's state, and refuses at that card's own begin-batch.
+		detail := "later card: " + f.Error()
+		if text, added := recordBatchWarning(in.State, in.Batch, "later-card-drift:"+f.Error(), "later-card-drift", detail); added {
+			warnings = append(warnings, text)
+		}
 	}
 
 	// No third restamp: the two above already cover every rewrite this pass can perform, and each

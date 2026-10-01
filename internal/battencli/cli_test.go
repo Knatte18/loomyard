@@ -79,7 +79,7 @@ func TestCommand_RegisteredVerbs_ExactSet(t *testing.T) {
 	}
 	sort.Strings(got)
 
-	want := []string{"pause", "run", "status", "step"}
+	want := []string{"goto", "pause", "run", "status", "step"}
 
 	gotSet := make(map[string]bool, len(got))
 	for _, name := range got {
@@ -223,4 +223,18 @@ func TestRunCLI_UnknownSubcommand_NoGitRepoNeeded(t *testing.T) {
 	if !strings.Contains(out.String(), `"ok":false`) {
 		t.Errorf("RunCLIIn(%q, [bogus]) output missing ok:false envelope; got: %q", dir, out.String())
 	}
+}
+
+// TestCommand_HelpCarriesNoTeardownGotoExample asserts no help text shows the forward move to Worktree-Teardown as an example.
+func TestCommand_HelpCarriesNoTeardownGotoExample(t *testing.T) {
+	var walk func(cmd *cobra.Command)
+	walk = func(cmd *cobra.Command) {
+		if strings.Contains(cmd.Long, "--to Worktree-Teardown") {
+			t.Errorf("%q help carries a --to Worktree-Teardown example", cmd.CommandPath())
+		}
+		for _, sub := range cmd.Commands() {
+			walk(sub)
+		}
+	}
+	walk(Command())
 }

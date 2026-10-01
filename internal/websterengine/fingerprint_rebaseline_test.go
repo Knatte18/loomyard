@@ -6,6 +6,8 @@
 package websterengine_test
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"testing"
@@ -48,6 +50,18 @@ func TestRebaselinePlanFingerprint_RestampsStaleFingerprintKeepingBatches(t *tes
 	}
 	if st.PlanFingerprint != want {
 		t.Errorf("PlanFingerprint = %q; want the current digest %q", st.PlanFingerprint, want)
+	}
+	if len(st.PlanFileHashes) != 3 {
+		t.Errorf("PlanFileHashes = %v; want one hash per plan file", st.PlanFileHashes)
+	}
+	var overviewHash string
+	if got := st.PlanFileHashes["00-overview.md"]; got == "" {
+		t.Errorf("PlanFileHashes = %v; want 00-overview.md's hash recorded", st.PlanFileHashes)
+	} else {
+		overviewHash = got
+	}
+	if sum := sha256.Sum256(append(data, []byte("Extra line.\n")...)); overviewHash != hex.EncodeToString(sum[:]) {
+		t.Errorf("00-overview.md hash = %q; want the rewritten file's digest", overviewHash)
 	}
 	for n := 1; n <= 2; n++ {
 		bs := st.Batches[n]

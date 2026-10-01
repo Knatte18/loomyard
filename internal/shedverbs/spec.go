@@ -25,7 +25,7 @@ type AbsentDisposition struct {
 	RefuseMessage string
 }
 
-// Hooks carries the six module-specific extension points the generic verb bodies call at fixed
+// Hooks carries the seven module-specific extension points the generic verb bodies call at fixed
 // points in their own sequence. Every field is nil-by-default and skipped when nil, so a module
 // that needs none of them may leave the whole struct at its zero value.
 type Hooks struct {
@@ -69,6 +69,9 @@ type Hooks struct {
 	// generic found/trace_dir (plus status_path on the non-refusing disposition), never an extras
 	// key.
 	StatusExtras func(st shedengine.Status) (map[string]any, error)
+	// PreGoto runs in goto's RunE after the --to check and before shedengine.Goto.
+	// A non-nil error is reported verbatim on the error envelope and the status file is not touched.
+	PreGoto func(ctx context.Context, target string) error
 }
 
 // VerbTexts carries each verb's cobra Use/Short/Long strings, passed by value at Verbs'
@@ -80,6 +83,7 @@ type VerbTexts struct {
 	Step   VerbText
 	Status VerbText
 	Pause  VerbText
+	Goto   VerbText
 }
 
 // VerbText is one verb's cobra Use/Short/Long triple.
@@ -103,6 +107,9 @@ type Spec struct {
 	// RunID is the resolved run-id the arming module addressed, reported as run_id on the status and
 	// every step envelope. The empty string means the arming module supplied none.
 	RunID string
+	// MissingStatusWayForward is the told trailing "way forward:" clause for a missing status file, passed to goto.
+	// The empty string falls back to shedengine's generic clause.
+	MissingStatusWayForward string
 	// Routing is the told projection of the recipe's producer graph that the envelopes' progress key
 	// is derived from. The zero value (no producers) means no progress is known, and progress is
 	// then reported as null.
@@ -127,7 +134,7 @@ type Spec struct {
 	// carry a nil Landing and the landing rows would fail deep in the run. A nil BuildShed is legal
 	// for status and pause, which never call it, and an error for run and step.
 	BuildShed func() (*shedengine.Shed, error)
-	// Hooks carries the six module-specific extension points; see Hooks' own field docs.
+	// Hooks carries the seven module-specific extension points; see Hooks' own field docs.
 	Hooks Hooks
 	// StatusLabel is the --watch line's literal prefix -- "loom" for the loom recipe.
 	StatusLabel string

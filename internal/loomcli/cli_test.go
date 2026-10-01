@@ -57,7 +57,7 @@ func TestCommand_RegisteredVerbs_ExactSet(t *testing.T) {
 	}
 	sort.Strings(got)
 
-	want := []string{"approve", "commit-records", "pause", "reject", "run", "start", "status", "step", "validate-description", "validate-discussion", "validate-plan"}
+	want := []string{"approve", "commit-records", "goto", "pause", "reject", "run", "start", "status", "step", "validate-description", "validate-discussion", "validate-plan"}
 
 	gotSet := make(map[string]bool, len(got))
 	for _, name := range got {

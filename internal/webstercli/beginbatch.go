@@ -24,6 +24,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// fabricSyncWayForward is the trailing clause of every refusal raised because the fabric sync failed.
+// The state is already saved locally, and fabricSync only commits the scoped _lyx pathspec and never pushes.
+const fabricSyncWayForward = "way forward: the state is saved locally; `lyx fabric commit` commits it, or the next bracket verb's own sync carries it"
+
+// rebaselineWayForward is the trailing clause of every refusal raised because persisting the plan-fingerprint re-baseline failed.
+const rebaselineWayForward = "way forward: re-run the same verb; the re-baseline is recomputed from the plan on disk"
+
 // beginBatchCmd builds the `begin-batch <NN>` subcommand.
 func (c *websterCLI) beginBatchCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -118,7 +125,7 @@ Example:
 				mutateHeld = false
 
 				if saveErr != nil {
-					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("%s; additionally, persisting the plan-fingerprint re-baseline this call had already earned failed: %v", err.Error(), saveErr)))
+					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("%s; additionally, persisting the plan-fingerprint re-baseline this call had already earned failed: %v; %s", err.Error(), saveErr, rebaselineWayForward)))
 					return nil
 				}
 				if errors.Is(err, websterengine.ErrPaused) {
@@ -146,7 +153,7 @@ Example:
 			mutateHeld = false
 
 			if _, syncErr := fabricSync(c.openFabric, c.anchorRel, fmt.Sprintf("begin-batch %s", result.BatchName)); syncErr != nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: batch %s begun but the fabric sync failed: %v", result.BatchName, syncErr)))
+				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: batch %s begun but the fabric sync failed: %v; %s", result.BatchName, syncErr, fabricSyncWayForward)))
 				return nil
 			}
 

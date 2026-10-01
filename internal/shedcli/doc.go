@@ -26,8 +26,7 @@
 // parsed file, anywhere in this tree.
 //
 // Every entry's arming function shares one positional-argument contract, cobra.MaximumNArgs(1),
-// set statically on each of the four generic verbs rather than read off the table: an addressed
-// run is named by run-id, not by a per-recipe argument shape, so there is nothing left for a
-// per-recipe contract to vary. The run-id itself is resolved once, ahead of the recipe lookup, by
+// set statically on each generic verb rather than read off the table:
+// an addressed run is named by run-id, not by a per-recipe argument shape, so there is nothing left for a per-recipe contract to vary. The run-id itself is resolved once, ahead of the recipe lookup, by
 // resolvePersistentPreRun's own seed read — see cli.go's own doc comment for the full sequence.
 package shedcli

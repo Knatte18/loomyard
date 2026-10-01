@@ -25,8 +25,10 @@ import (
 // target and its producer supplied no OutputPointer.Reason.
 const ReasonNoOnStuckTarget = "stuck with no OnStuck target"
 
-// ReasonBounceBudgetExhausted is the error the budget-exhausted blocked arm persists, regardless
+// ReasonBounceBudgetExhausted is the exact prefix of the error the budget-exhausted blocked arm persists, regardless
 // of any OutputPointer.Reason the producer supplied.
+// The persisted error continues with the exhausted row and the goto way forward,
+// so a reader matches it with strings.HasPrefix, never equality.
 const ReasonBounceBudgetExhausted = "bounce budget exhausted"
 
 // stuckReason normalizes a producer's Reason to one line: trimmed, with every run of line-break
@@ -114,6 +116,38 @@ func (s *Shed) preflight() error {
 	return nil
 }
 
+// busyWayForward returns the trailing clause Run, Step and Goto put on an ErrShedBusy wrap, addressing the run by runID when one is told.
+func busyWayForward(runID string) string {
+	return fmt.Sprintf("way forward: %s asks the live driver to stop at its next producer boundary; check the holder with %s, then retry", runVerb("pause", runID), runVerb("status", runID))
+}
+
+// missingStatusWayForward is the trailing clause Step and Goto put on a missing-status-file refusal.
+const missingStatusWayForward = "way forward: seed the run through its recipe's bootstrap verb, or \"lyx shed seed\" for a recipe without one"
+
+// missingStatusClause returns the told missing-status clause, or the generic one when none is told.
+func missingStatusClause(told string) string {
+	if told != "" {
+		return told
+	}
+	return missingStatusWayForward
+}
+
+// runVerb renders a quoted `lyx shed <verb> [<run-id>]` command for a way-forward text.
+func runVerb(verb, runID string) string {
+	if runID == "" {
+		return fmt.Sprintf("\"lyx shed %s\"", verb)
+	}
+	return fmt.Sprintf("\"lyx shed %s %s\"", verb, runID)
+}
+
+// gotoCommand renders the quoted goto command a way-forward text names, addressing the run by run-id when one is told.
+func gotoCommand(runID, target string) string {
+	if runID == "" {
+		return fmt.Sprintf("\"lyx shed goto --to %s\"", target)
+	}
+	return fmt.Sprintf("\"lyx shed goto %s --to %s\"", runID, target)
+}
+
 // stepLocked runs exactly one iteration of the six-step loop and reports it as a StepResult.
 // It assumes the run lock is already held by the caller and never acquires or releases it itself
 // -- Run holds it for the whole loop, and Step holds it for this one call alone.
@@ -125,7 +159,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		return StepResult{}, fmt.Errorf("shedengine: read status file %q: %w", s.StatusPath, err)
 	}
 	if !found {
-		return StepResult{}, fmt.Errorf("shedengine: status file %q does not exist; Shed never seeds one", s.StatusPath)
+		return StepResult{}, fmt.Errorf("shedengine: status file %q does not exist; Shed never seeds one; %s", s.StatusPath, missingStatusClause(s.MissingStatusWayForward))
 	}
 	if !st.State.valid() {
 		return StepResult{}, fmt.Errorf("shedengine: status file %q carries an invalid state %q", s.StatusPath, st.State)
@@ -149,7 +183,11 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 	// nearest match, because both fabricate a status nobody confirmed.
 	def, ok := findProducer(s.Producers, st.CurrentProducer)
 	if !ok {
-		return StepResult{}, fmt.Errorf("shedengine: current_producer %q in %q names no producer in the list; the producer list has changed since the file was last written", st.CurrentProducer, s.StatusPath)
+		names := make([]string, len(s.Producers))
+		for i, p := range s.Producers {
+			names[i] = p.Name
+		}
+		return StepResult{}, fmt.Errorf("shedengine: current_producer %q in %q names no producer in the list; the producer list has changed since the file was last written; way forward: %s moves the run onto a row that exists; valid producers: %s", st.CurrentProducer, s.StatusPath, gotoCommand(s.RunID, "<producer>"), strings.Join(names, ", "))
 	}
 
 	// Step 3, the pause and cancellation check. The two conditions are treated identically
@@ -198,7 +236,8 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 			// there is nothing to record -- the same reasoning the cancellation branch below
 			// already applies, and the reason this is a skip rather than a placeholder value:
 			// history[].outcome is a persisted enum whose whole vocabulary is done, stuck and
-			// awaiting, and there is no fourth spelling for "the call did not get that far".
+			// awaiting, plus the history-only goto that no producer returns,
+			// and there is no further spelling for "the call did not get that far".
 			//
 			// Writing the empty string there was not free. It is out of vocabulary on disk, so
 			// internal/loomengine's own seed-coherence check rejects it -- an ordinary hard
@@ -278,10 +317,14 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		// The count argument is st.History, the slice read at step 1, and never
 		// nextHistory: a post-append read shifts the boundary by one and would look
 		// like an off-by-one bug rather than the semantic change it would actually be.
-		case !output.BudgetExempt && episodeStuckCount(st.History, def.Name, segmentEnders(s.Producers, def)...) >= effectiveMaxBounces(def, s.MaxBounces):
+		case !output.BudgetExempt && episodeStuckCount(st.History, def, s.Producers) >= effectiveMaxBounces(def, s.MaxBounces):
 			// The boundary is pinned exactly, restated per-producer: a budget of three
 			// performs three bounce-backs and blocks on the fourth Stuck.
-			reason := ReasonBounceBudgetExhausted
+			scope := fmt.Sprintf("row %q", def.Name)
+			if def.Segment != "" {
+				scope = fmt.Sprintf("segment %q", def.Segment)
+			}
+			reason := fmt.Sprintf("%s for %s; way forward: %s gives %s a fresh budget", ReasonBounceBudgetExhausted, def.Name, gotoCommand(s.RunID, def.Name), scope)
 			if err := s.persist(st.CurrentProducer, StateBlocked, reason, nextHistory, false, ""); err != nil {
 				return StepResult{}, err
 			}
@@ -363,7 +406,7 @@ func (s *Shed) Run(ctx context.Context) (Result, error) {
 		return Result{}, fmt.Errorf("shedengine: acquire run lock %q: %w", s.LockPath, err)
 	}
 	if !locked {
-		return Result{}, fmt.Errorf("%w: %q", ErrShedBusy, s.LockPath)
+		return Result{}, fmt.Errorf("%w: %q; %s", ErrShedBusy, s.LockPath, busyWayForward(s.RunID))
 	}
 	defer runLock.Release()
 
@@ -411,7 +454,7 @@ func (s *Shed) Step(ctx context.Context) (StepResult, error) {
 		return StepResult{}, fmt.Errorf("shedengine: acquire run lock %q: %w", s.LockPath, err)
 	}
 	if !locked {
-		return StepResult{}, fmt.Errorf("%w: %q", ErrShedBusy, s.LockPath)
+		return StepResult{}, fmt.Errorf("%w: %q; %s", ErrShedBusy, s.LockPath, busyWayForward(s.RunID))
 	}
 	defer runLock.Release()
 
@@ -426,20 +469,32 @@ func nowRFC3339() string {
 }
 
 // episodeStuckCount walks history backward from the end and counts the Stuck entries authored by
-// name within its current episode: the run of entries since the most recent Done by name or by any
-// name in enders. It returns immediately at the first such Done, and otherwise counts the entries
-// whose Producer equals name and whose Outcome is Stuck; entries authored by any other producer
-// are skipped and never terminate the scan.
-// segmentEnders supplies enders: a Burler-round row only ever returns Stuck, so its episode ends
-// when its segment's Bouncer passes, or every later rework round would add to one ever-growing count.
+// def within its current episode: the run of entries since the most recent Done by def or by any
+// producer sharing def's non-empty Segment (segmentEnders). It returns immediately at the first such
+// Done, and otherwise counts the entries whose Producer equals def's name and whose Outcome is Stuck;
+// entries authored by any other producer are skipped and never terminate the scan.
+// A Burler-round row only ever returns Stuck, so its episode ends when its segment's Bouncer passes;
+// otherwise every later rework round would add to one ever-growing count.
 // A done entry written by the hard-failure arm also terminates the scan, and that is accepted
 // rather than special-cased: the engine records the verdict a producer actually returned, and
 // state: "failed" halts the run, so every continuation past it is a fresh human-initiated act.
 // A Stuck entry whose BudgetExempt is true is skipped and never counted.
-func episodeStuckCount(history []HistoryEntry, name string, enders ...string) int {
+// An OutcomeGoto entry also ends the episode when its target (the entry's Producer) shares def.Segment, or is def itself when def.Segment is empty,
+// so a goto into a segment gives every row of that segment a fresh budget.
+// producers resolves a target's segment;
+// a target no longer in the list ends no episode.
+func episodeStuckCount(history []HistoryEntry, def ProducerDef, producers []ProducerDef) int {
+	name := def.Name
+	enders := segmentEnders(producers, def)
 	count := 0
 	for i := len(history) - 1; i >= 0; i-- {
 		entry := history[i]
+		if entry.Outcome == OutcomeGoto {
+			if gotoEndsEpisode(entry.Producer, def, producers) {
+				return count
+			}
+			continue
+		}
 		if entry.Outcome == Done && (entry.Producer == name || slices.Contains(enders, entry.Producer)) {
 			return count
 		}
@@ -451,6 +506,19 @@ func episodeStuckCount(history []HistoryEntry, name string, enders ...string) in
 		}
 	}
 	return count
+}
+
+// gotoEndsEpisode reports whether a goto naming target ends def's bounce-budget episode.
+func gotoEndsEpisode(target string, def ProducerDef, producers []ProducerDef) bool {
+	if def.Segment == "" {
+		return target == def.Name
+	}
+	for _, p := range producers {
+		if p.Name == target {
+			return p.Segment == def.Segment
+		}
+	}
+	return false
 }
 
 // segmentEnders returns the names of every other producer sharing def's non-empty Segment, whose

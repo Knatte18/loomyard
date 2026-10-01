@@ -8,12 +8,14 @@
 
 package websterengine
 
-// The four legal Digest.Status values.
+// The five legal Digest.Status values.
+// failed is a batch whose report webster rejected on its merits.
 const (
 	DigestStatusRunning = "running"
 	DigestStatusDone    = "done"
 	DigestStatusStuck   = "stuck"
 	DigestStatusDead    = "dead"
+	DigestStatusFailed  = "failed"
 )
 
 // The three legal Digest.DeadReason values, set only when Status is DigestStatusDead.
@@ -28,10 +30,11 @@ const (
 // other fields populate at terminal.
 type Digest struct {
 	Batch      string   `json:"batch"`
-	Status     string   `json:"status"` // DigestStatusRunning, Done, Stuck, or Dead
+	Status     string   `json:"status"` // DigestStatusRunning, Done, Stuck, Dead, or Failed
 	HeadSHA    string   `json:"head_sha,omitempty"`
 	Deviations []string `json:"deviations,omitempty"`  // Informational only, never affects Status
 	DeadReason string   `json:"dead_reason,omitempty"` // Set only when Status is Dead
+	Reasons    []string `json:"reasons,omitempty"`     // Set only when Status is Failed
 	ElapsedS   int      `json:"elapsed_s,omitempty"`   // Seconds since spawn, running snapshots only
 }
 
