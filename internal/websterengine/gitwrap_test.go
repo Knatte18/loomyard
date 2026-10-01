@@ -271,7 +271,7 @@ func gitwrapParentCommit(t *testing.T, dir, name, content string) (base string) 
 }
 
 // TestReconcileReportHead_UncleanParentMergesRefused proves a merge commit is walked over only when it is a clean merge of the run's parent branch:
-// every other two-or-more-parent shape is refused with the parent-merge refusal and its remedy.
+// every other two-or-more-parent shape is refused with the parent-merge refusal and its way forward.
 func TestReconcileReportHead_UncleanParentMergesRefused(t *testing.T) {
 	t.Parallel()
 
@@ -376,7 +376,7 @@ func TestReconcileReportHead_UncleanParentMergesRefused(t *testing.T) {
 			if err == nil {
 				t.Fatal("error = nil; want refusal")
 			}
-			for _, want := range []string{"does not match the worktree's actual HEAD", report, head, "merge commit " + head + " does not qualify", tc.wantReason, "remedy:"} {
+			for _, want := range []string{"does not match the worktree's actual HEAD", report, head, "merge commit " + head + " does not qualify", tc.wantReason, "way forward: move HEAD back"} {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("error %q missing %q", err, want)
 				}

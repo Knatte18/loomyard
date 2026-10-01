@@ -59,7 +59,26 @@ type ParentBranchFunc func() (string, error)
 // A non-merge commit, the root, or a merge failing any check ends the walk in refusal, and so does any error while checking.
 // The rule keeps the audit sound: the batch is recorded at reportHead, so content a merge adds beyond a clean parent merge would bypass the audited delta.
 // On acceptance the warning names subject, both heads and every walked merge SHA in walk order.
+// A refusal's way forward is worded for record-batch and recover-batch (reportHeadRefusal).
 func reconcileReportHead(worktree, reportHead, subject string, parentBranch ParentBranchFunc) (warning string, err error) {
+	return reconcileHead(worktree, reportHead, subject, parentBranch, reportHeadRefusal)
+}
+
+// headRefusal words a reconcileHead refusal's way forward for one caller.
+type headRefusal struct {
+	// head names the commit HEAD must move back to, such as "the report's head_sha".
+	head string
+	// rerun is what to re-run once HEAD is back on it, such as "re-run this verb".
+	rerun string
+	// redoMerge is when to redo a parent merge-in that did not qualify, such as "after the batch is recorded".
+	redoMerge string
+}
+
+// reportHeadRefusal is the wording for a verb that records a batch at a report's head_sha.
+var reportHeadRefusal = headRefusal{head: "the report's head_sha", rerun: "re-run this verb", redoMerge: "after the batch is recorded"}
+
+// reconcileHead is reconcileReportHead with the refusal's way forward worded by refusal.
+func reconcileHead(worktree, reportHead, subject string, parentBranch ParentBranchFunc, refusal headRefusal) (warning string, err error) {
 	head, err := headSHA(worktree)
 	if err != nil {
 		return "", err
@@ -83,17 +102,17 @@ func reconcileReportHead(worktree, reportHead, subject string, parentBranch Pare
 		if len(parents) < 2 {
 			return "", fmt.Errorf("webster: %s: head_sha %q does not match the worktree's actual HEAD %q; "+
 				"only merge commits, such as a parent merge-in, may sit between a fork's reported head and HEAD; "+
-				"way forward: move HEAD back to the report's head_sha %s with git, then re-run this verb",
-				subject, reportHead, head, reportHead)
+				"way forward: move HEAD back to %s %s with git, then %s",
+				subject, reportHead, head, refusal.head, reportHead, refusal.rerun)
 		}
 		// The parent tips are resolved once, on the first merge the walk meets.
 		if parentTips == nil {
 			if parentTips, err = resolveParentTips(repo, parentBranch); err != nil {
-				return "", parentMergeRefusal(subject, reportHead, head, cur, err.Error())
+				return "", parentMergeRefusal(subject, reportHead, head, cur, err.Error(), refusal)
 			}
 		}
 		if reason := parentMergeRejection(repo, cur, parents, parentTips); reason != "" {
-			return "", parentMergeRefusal(subject, reportHead, head, cur, reason)
+			return "", parentMergeRefusal(subject, reportHead, head, cur, reason, refusal)
 		}
 		merges = append(merges, cur)
 		cur = parents[0]
@@ -166,13 +185,13 @@ func parentMergeRejection(repo *gitrepo.Repo, sha string, parents, parentTips []
 	return ""
 }
 
-// parentMergeRefusal builds the head_sha mismatch refusal for a walked merge commit that is not a clean parent merge.
-func parentMergeRefusal(subject, reportHead, head, merge, reason string) error {
+// parentMergeRefusal builds the head_sha mismatch refusal for a walked merge commit that is not a clean parent merge, its way forward worded by refusal.
+func parentMergeRefusal(subject, reportHead, head, merge, reason string, refusal headRefusal) error {
 	return fmt.Errorf("webster: %s: head_sha %q does not match the worktree's actual HEAD %q; "+
 		"only merge commits that cleanly merge the run's parent branch may sit between a fork's reported head and HEAD, "+
 		"and merge commit %s does not qualify: %s; "+
-		"remedy: move HEAD back to the report's head_sha %s, re-run this verb, and redo the parent merge-in after the batch is recorded",
-		subject, reportHead, head, merge, reason, reportHead)
+		"way forward: move HEAD back to %s %s, %s, and redo the parent merge-in %s",
+		subject, reportHead, head, merge, reason, refusal.head, reportHead, refusal.rerun, refusal.redoMerge)
 }
 
 // ignoredPath reports whether git ignores path in worktree.

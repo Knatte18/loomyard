@@ -87,6 +87,9 @@ func recordFailedFinding(st *State, id string) {
 // ErrAuditNotAcceptable is the sentinel AcceptPendingAudit returns while a pending finding's evidence is missing.
 var ErrAuditNotAcceptable = errors.New("webster: pending audit findings cannot be accepted")
 
+// acceptAuditHeadRefusal words AcceptPendingAudit's HEAD refusal, which records no batch and is cleared by re-running accept-audit.
+var acceptAuditHeadRefusal = headRefusal{head: "the last batch head", rerun: `re-run "lyx webster accept-audit"`, redoMerge: "once accept-audit accepts the findings"}
+
 // AcceptPendingAudit clears st.PendingAuditFindings and returns what it cleared, once every finding's suspect paths are back at the last recorded batch head.
 // The evidence rule: checkSuspectPaths runs over every pending path with the last batch head as base, picked by git ancestry (runEvidenceBases),
 // and any differing path, any unverifiable path and any finding with no path refuses with ErrAuditNotAcceptable, mutating nothing.
@@ -122,7 +125,7 @@ func AcceptPendingAudit(st *State, geom Geometry, parentBranch ParentBranchFunc)
 	}
 	head := bases.Last
 	if head != "" {
-		if _, err := reconcileReportHead(geom.WorktreeRoot, head, "accept-audit: last batch head", parentBranch); err != nil {
+		if _, err := reconcileHead(geom.WorktreeRoot, head, "accept-audit: last batch head", parentBranch, acceptAuditHeadRefusal); err != nil {
 			return nil, fmt.Errorf("%w: %v", ErrAuditNotAcceptable, err)
 		}
 		if head, err = headSHA(geom.WorktreeRoot); err != nil {

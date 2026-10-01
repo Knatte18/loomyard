@@ -1837,7 +1837,7 @@ func TestRecordBatch_EvilParentMergeRefused(t *testing.T) {
 	if err == nil {
 		t.Fatal("RecordBatch() error = nil; want a refusal")
 	}
-	for _, want := range []string{fx.HeadSHA, "carries changes beyond a clean merge", "remedy:"} {
+	for _, want := range []string{fx.HeadSHA, "carries changes beyond a clean merge", "way forward: move HEAD back to the report's head_sha", "re-run this verb"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q missing %q", err.Error(), want)
 		}
@@ -1887,7 +1887,7 @@ func TestRecordBatch_MergeInProgressRefusedThenSucceeds(t *testing.T) {
 	if err == nil {
 		t.Fatal("RecordBatch() after a hand-resolved merge: error = nil; want a refusal")
 	}
-	for _, want := range []string{"do not merge cleanly", "remedy:"} {
+	for _, want := range []string{"do not merge cleanly", "way forward: move HEAD back"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q missing %q", err.Error(), want)
 		}

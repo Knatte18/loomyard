@@ -271,10 +271,13 @@ func TestAcceptPendingAudit_RefusesCommitPastHead(t *testing.T) {
 	if !errors.Is(err, ErrAuditNotAcceptable) {
 		t.Fatalf("AcceptPendingAudit() error = %v; want ErrAuditNotAcceptable", err)
 	}
-	for _, want := range []string{fx.head, "move HEAD back"} {
+	for _, want := range []string{fx.head, "way forward: move HEAD back to the last batch head " + fx.head, `re-run "lyx webster accept-audit"`} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error = %q; want it to contain %q", err, want)
 		}
+	}
+	if strings.Contains(err.Error(), "re-run this verb") {
+		t.Errorf("error = %q; want accept-audit named instead of this verb", err)
 	}
 	if len(fx.st.PendingAuditFindings) != 1 {
 		t.Errorf("PendingAuditFindings = %v; want unchanged", fx.st.PendingAuditFindings)
