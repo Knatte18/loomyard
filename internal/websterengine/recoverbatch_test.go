@@ -209,11 +209,19 @@ func newRecoverFixture(t *testing.T) *recoverFixture {
 
 	reportsDir := t.TempDir()
 
+	// The terminal recovery path refuses a plan that differs from the recorded fingerprint, so the state records this one.
+	planDir := seedPlanDir(t)
+	websterDir := t.TempDir()
+	state := &websterengine.State{Batches: map[int]*websterengine.BatchState{}}
+	if err := websterengine.RestampPlanBaseline(state, planDir, websterDir); err != nil {
+		t.Fatalf("RestampPlanBaseline() error = %v", err)
+	}
+
 	deps := websterengine.RecoverDeps{
 		Starter:    runner,
 		Plan:       plan,
 		Batches:    batches,
-		State:      &websterengine.State{Batches: map[int]*websterengine.BatchState{}},
+		State:      state,
 		Roles:      roles,
 		Config:     websterengine.Config{SelfFixCap: 2, RecoveryTimeoutMin: 30},
 		Engine:     engine,
@@ -222,7 +230,7 @@ func newRecoverFixture(t *testing.T) *recoverFixture {
 		Geom: websterengine.Geometry{
 			AnchorRoot:   worktree,
 			WorktreeRoot: worktree,
-			WebsterDir:   t.TempDir(),
+			WebsterDir:   websterDir,
 			ReportsDir:   reportsDir,
 			StencilsDir:  fabricengine.StencilsDir(hubPath),
 			SpecsDir:     fabricengine.SpecsDir(hubPath),
@@ -230,7 +238,7 @@ func newRecoverFixture(t *testing.T) *recoverFixture {
 			// post-batch mechanical pass record-batch does, which re-baselines the plan
 			// fingerprint over this directory. No card in this fixture declares a handle, so
 			// nothing is ever written into it.
-			PlanDir: seedPlanDir(t),
+			PlanDir: planDir,
 		},
 	}
 
@@ -443,6 +451,34 @@ func TestRecoverBatch_DoneReportRefusedUnlessPriorDead(t *testing.T) {
 // re-spawning (the fake Starter's Prepare call count stays at 1), and once the batch's own report
 // has landed, returns the terminal digest with state persisted and the done-classified substrate
 // released (strand removed, run dir removed).
+// TestPersistRecoveryTerminal_RefusesPlanEditedSinceSpawn proves a card edited after the recovery spawned is refused with ErrFingerprintMismatch before the post-batch pass restamps over it, and the record stays non-terminal.
+func TestPersistRecoveryTerminal_RefusesPlanEditedSinceSpawn(t *testing.T) {
+	fx := newRecoverFixture(t)
+	clk := &recoverFakeClock{now: time.Unix(0, 0)}
+
+	if _, err := driveRecoverBatch(fx.Deps, 1, 2*time.Second, clk); err != nil {
+		t.Fatalf("first call error = %v; want nil", err)
+	}
+	realHead, err := gitrepo.New(fx.Worktree).CurrentSHA()
+	if err != nil {
+		t.Fatalf("CurrentSHA() error = %v", err)
+	}
+	writeRecoverReport(t, fx.ReportsDir, "status: OK\nhead_sha: "+realHead+"\n")
+
+	cardPath := filepath.Join(fx.Deps.Geom.PlanDir, "01-json-flag.md")
+	if err := os.WriteFile(cardPath, []byte("# Card 1 — json-flag\n\n**Intent:** edited after the spawn.\n"), 0o644); err != nil {
+		t.Fatalf("edit card: %v", err)
+	}
+
+	_, err = driveRecoverBatch(fx.Deps, 1, 2*time.Second, clk)
+	if !errors.Is(err, websterengine.ErrFingerprintMismatch) {
+		t.Fatalf("second call error = %v; want errors.Is(err, ErrFingerprintMismatch)", err)
+	}
+	if bs := fx.Deps.State.Batches[1]; bs.Terminal {
+		t.Errorf("BatchState.Terminal = true; want the record left non-terminal")
+	}
+}
+
 func TestRecoverBatch_SecondCallAttachesAndPersistsDoneDigest(t *testing.T) {
 	fx := newRecoverFixture(t)
 	clk := &recoverFakeClock{now: time.Unix(0, 0)}

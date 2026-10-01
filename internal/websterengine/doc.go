@@ -150,6 +150,11 @@
 // The operator names every card the edit changed with --card: State.PlanFileHashes records a hash of every plan file, and a changed card file whose number is not named is refused.
 // An edit to 00-overview.md, which carries the plan's integration verify, is never accepted; the way forward is to restore it or to reset the branch and run `lyx webster run --fresh`.
 // The fingerprint refusals in begin-batch and run name it.
+//
+// validate, record-batch and recovery refuse a plan that changed before their own rewrites, instead of adopting it:
+// each checks the plan against the recorded fingerprint (PlanEditError) before its first rewrite, and record-batch and recovery also check that no card of the batch changed since it was begun.
+// Their restamps exist to adopt webster's own rewrites, so a difference seen at that point is someone else's edit.
+// A refusal there mutates nothing; validate still lints but skips its restamp.
 // Every plan-hash restamp and run initialisation also stores the hashed content under `<WebsterDir>/plan-baseline/`, one file per content named by its SHA-256, so the fabric sync carries it with state.json.
 // `lyx webster restore-plan` (RestorePlan) writes every plan file that differs from the recorded plan back from that store and removes a plan file the run never recorded;
 // it never touches state.json, and refuses with ErrPlanBaselineMissing, changing nothing, when a copy is missing.

@@ -504,8 +504,13 @@ func TestValidateCmd_ScopeFollowsRunProgress(t *testing.T) {
 		c.batcher = identity
 		seedTwoCardGlyphPlanDir(t, c.geom.PlanDir, c.geom.WorktreeRoot)
 
+		fingerprint, err := websterengine.Fingerprint(c.geom.PlanDir)
+		if err != nil {
+			t.Fatalf("websterengine.Fingerprint(planDir) = %v; want nil", err)
+		}
 		state := &websterengine.State{
-			RunGUID: "run-guid",
+			RunGUID:         "run-guid",
+			PlanFingerprint: fingerprint,
 			Batches: map[int]*websterengine.BatchState{
 				1: {Terminal: true, Status: "done"},
 			},
@@ -560,9 +565,11 @@ func TestValidateCmd_RebaselinesStalePlanFingerprint(t *testing.T) {
 		t.Fatalf("websterengine.Fingerprint(planDir) = %v; want nil", err)
 	}
 
+	// The recorded fingerprint matches the unedited plan: validate refuses a plan edited since the run
+	// recorded it (TestValidateCmd_RefusesOverviewEditWithoutRestamp), so a restamp is only ever earned over an unedited one.
 	state := &websterengine.State{
 		RunGUID:         "run-guid",
-		PlanFingerprint: "stale-fingerprint-from-before-the-plan-changed",
+		PlanFingerprint: realFingerprint,
 	}
 	if err := websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, state); err != nil {
 		t.Fatalf("SaveState: %v", err)

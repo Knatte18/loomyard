@@ -266,6 +266,10 @@ Example:
 					}))
 					return nil
 				}
+				if errors.Is(err, websterengine.ErrFingerprintMismatch) {
+					clihelp.SetExit(cmd.Context(), output.ErrFields(out, err.Error(), map[string]any{"plan_drifted": true}))
+					return nil
+				}
 				if err != nil {
 					clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 					return nil

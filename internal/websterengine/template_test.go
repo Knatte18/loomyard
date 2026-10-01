@@ -524,6 +524,11 @@ func TestMasterTemplate_StatesPlanDriftRefusalEndsRunAsStuck(t *testing.T) {
 	requireContains(t, text, "## A plan-drift refusal ends your run as stuck")
 	requireContains(t, text, `"plan_drifted": true`)
 	requireContains(t, text, "do not retry the verb")
+
+	_, section, _ := strings.Cut(text, "## A plan-drift refusal ends your run as stuck")
+	section, _, _ = strings.Cut(section, "\n## ")
+	requireContains(t, section, "`record-batch` and `recover-batch` also refuse with `{\"plan_drifted\": true}`")
+	requireContains(t, section, "`lyx webster restore-plan`")
 }
 
 // TestMasterTemplate_IntegrationFailedBranchEndsDone asserts the integration-suite stage's `status: FAILED` branch tells Master to finish with `outcome: done` (webster triages the report after the session) and no longer tells it `outcome: stuck` for that branch.

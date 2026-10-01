@@ -27,6 +27,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -450,6 +451,51 @@ func TestBeginBatchCmd_HappyPath(t *testing.T) {
 	}
 	if bs.Kind != "fork" {
 		t.Errorf("loaded.Batches[1].Kind = %q; want \"fork\"", bs.Kind)
+	}
+}
+
+// TestValidateCmd_RefusesOverviewEditWithoutRestamp proves validate refuses a plan whose 00-overview.md changed since the run recorded it:
+// it exits non-zero naming rebaseline, leaves PlanFileHashes and PlanFingerprint untouched in state.json, and the next run entry's fingerprint check still refuses the edit.
+func TestValidateCmd_RefusesOverviewEditWithoutRestamp(t *testing.T) {
+	t.Setenv("WEFT_SKIP_GIT", "1")
+	fx := newVerbsFixture(t)
+	fx.initState(t, "master-model")
+	before, err := websterengine.LoadState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir)
+	if err != nil || before == nil {
+		t.Fatalf("LoadState() = %v, %v; want a state", before, err)
+	}
+
+	overviewPath := filepath.Join(fx.CLI.geom.PlanDir, "00-overview.md")
+	data, err := os.ReadFile(overviewPath)
+	if err != nil {
+		t.Fatalf("read overview: %v", err)
+	}
+	if err := os.WriteFile(overviewPath, append(data, []byte("\n## verify:\n\ntrue\n")...), 0o644); err != nil {
+		t.Fatalf("edit overview: %v", err)
+	}
+
+	var out strings.Builder
+	exitCode := clihelp.Execute(fx.CLI.validateCmd(), &out, nil)
+	if exitCode == 0 {
+		t.Fatalf("validate on an edited plan = 0; want non-zero, output: %s", out.String())
+	}
+	if !strings.Contains(out.String(), "rebaseline") {
+		t.Errorf("output = %s; want it to name rebaseline", out.String())
+	}
+
+	after, err := websterengine.LoadState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir)
+	if err != nil || after == nil {
+		t.Fatalf("LoadState() after validate = %v, %v; want a state", after, err)
+	}
+	if after.PlanFingerprint != before.PlanFingerprint {
+		t.Errorf("PlanFingerprint = %q; want %q unchanged", after.PlanFingerprint, before.PlanFingerprint)
+	}
+	if fmt.Sprint(after.PlanFileHashes) != fmt.Sprint(before.PlanFileHashes) {
+		t.Errorf("PlanFileHashes = %v; want %v unchanged", after.PlanFileHashes, before.PlanFileHashes)
+	}
+	// Run's entry check is this same fingerprint comparison, so the edit is still refused there.
+	if err := websterengine.PlanEditError(after, fx.CLI.geom.PlanDir); !errors.Is(err, websterengine.ErrFingerprintMismatch) {
+		t.Errorf("PlanEditError() after validate = %v; want ErrFingerprintMismatch", err)
 	}
 }
 

@@ -146,6 +146,12 @@ func newRecordFixture(t *testing.T, scripted []shuttleengine.ForkAudit) *recordF
 		},
 	}
 
+	// RecordBatch refuses a plan that differs from the recorded fingerprint, so the state records this one.
+	websterDir := t.TempDir()
+	if err := websterengine.RestampPlanBaseline(state, planDir, websterDir); err != nil {
+		t.Fatalf("RestampPlanBaseline() error = %v", err)
+	}
+
 	deps := websterengine.RecordDeps{
 		Batches: batches,
 		State:   state,
@@ -154,7 +160,7 @@ func newRecordFixture(t *testing.T, scripted []shuttleengine.ForkAudit) *recordF
 		Geom: websterengine.Geometry{
 			AnchorRoot:   worktree,
 			WorktreeRoot: worktree,
-			WebsterDir:   t.TempDir(),
+			WebsterDir:   websterDir,
 			ReportsDir:   reportsDir,
 			PlanDir:      planDir,
 		},
@@ -1100,6 +1106,51 @@ func TestRecordBatch_DoneChecksBlockOnUnresolvedCreate(t *testing.T) {
 	}
 }
 
+// TestRecordBatch_RefusesPlanEditedSinceBegin proves a card's Verify weakened on disk after begin-batch, which no Write/Edit audit sees, is refused with ErrFingerprintMismatch
+// before attribution advances: the batch stays open, the transcripts stay unseen, and the plan hashes are not re-recorded over the edit.
+func TestRecordBatch_RefusesPlanEditedSinceBegin(t *testing.T) {
+	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
+		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
+	})
+	planDir, plan := writeRecordPlanDir(t, "**Intent:** x.\n\n**Verify:** go test ./...\n")
+	fx.Deps.Geom.PlanDir = planDir
+	fx.Deps.Plan = plan
+	if err := websterengine.RestampPlanBaseline(fx.Deps.State, planDir, fx.Deps.Geom.WebsterDir); err != nil {
+		t.Fatalf("RestampPlanBaseline() error = %v", err)
+	}
+	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
+
+	cardPath := filepath.Join(planDir, "01-json-flag.md")
+	if err := os.WriteFile(cardPath, []byte("# Card 1 — json-flag\n\n**Intent:** x.\n\n**Verify:** true\n"), 0o644); err != nil {
+		t.Fatalf("weaken card verify: %v", err)
+	}
+	hashesBefore := fmt.Sprint(fx.Deps.State.PlanFileHashes)
+	fingerprintBefore := fx.Deps.State.PlanFingerprint
+
+	result, err := websterengine.RecordBatch(fx.Deps, 1)
+	if !errors.Is(err, websterengine.ErrFingerprintMismatch) {
+		t.Fatalf("RecordBatch() error = %v; want errors.Is(err, ErrFingerprintMismatch)", err)
+	}
+	if result != nil {
+		t.Errorf("RecordBatch() result = %+v; want nil on a refusal", result)
+	}
+	if !strings.Contains(err.Error(), "restore-plan") {
+		t.Errorf("RecordBatch() error = %q; want the restore-plan way forward", err)
+	}
+	if bs := fx.Deps.State.Batches[1]; bs.Terminal {
+		t.Errorf("BatchState.Terminal = true; want the batch left open")
+	}
+	if len(fx.Deps.State.SeenForkTranscripts) != 0 {
+		t.Errorf("State.SeenForkTranscripts = %v; want none (attribution must not advance)", fx.Deps.State.SeenForkTranscripts)
+	}
+	if got := fmt.Sprint(fx.Deps.State.PlanFileHashes); got != hashesBefore {
+		t.Errorf("State.PlanFileHashes = %s; want %s unchanged", got, hashesBefore)
+	}
+	if fx.Deps.State.PlanFingerprint != fingerprintBefore {
+		t.Errorf("State.PlanFingerprint changed to %q; want %q", fx.Deps.State.PlanFingerprint, fingerprintBefore)
+	}
+}
+
 // writeRecordPlanDir writes a minimal, valid on-disk plan directory holding one card whose body is
 // cardBody, returning the directory and its freshly parsed *planparser.Plan — the record-batch
 // wiring test's own plan-fixture builder, package-local to this file since planglyph's own
@@ -1138,6 +1189,9 @@ func TestRecordBatch_BindsHandleFromDeltaEndToEnd(t *testing.T) {
 	fx.Deps.Geom.PlanDir = planDir
 	fx.Deps.Plan = plan
 	fx.Deps.Batches[0].Cards = plan.Cards
+	if err := websterengine.RestampPlanBaseline(fx.Deps.State, planDir, fx.Deps.Geom.WebsterDir); err != nil {
+		t.Fatalf("RestampPlanBaseline() error = %v", err)
+	}
 
 	headSHA := commitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc Bar() {}\n", "01.1: add Bar")
 	writeReport(t, fx.ReportsDir, validReport(headSHA))

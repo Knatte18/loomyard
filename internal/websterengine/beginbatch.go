@@ -49,24 +49,25 @@ const planOverviewFile = "00-overview.md"
 // a state without PlanFileHashes names rebaseline without card numbers, and a changedPlanFiles error falls back to the generic text.
 func fingerprintMismatchWayForward(st *State, planDir string) string {
 	const fresh = "reset the branch to the run's start commit and run `lyx webster run --fresh`"
+	const restore = `or restore the plan the run recorded with "lyx webster restore-plan", `
 	if len(st.PlanFileHashes) == 0 {
-		return "way forward: if the edit keeps every begun batch's cards, run `lyx webster rebaseline` to accept it, otherwise " + fresh
+		return "way forward: if the edit keeps every begun batch's cards, run `lyx webster rebaseline` to accept it, " + restore + "otherwise " + fresh
 	}
 	changed, err := changedPlanFiles(st, planDir)
 	if err != nil {
-		return "way forward: if the edit keeps every begun batch's cards, run `lyx webster rebaseline --card NN` naming each card you edited, otherwise " + fresh
+		return "way forward: if the edit keeps every begun batch's cards, run `lyx webster rebaseline --card NN` naming each card you edited, " + restore + "otherwise " + fresh
 	}
 	var flags []string
 	for _, name := range changed {
 		if name == planOverviewFile {
-			return "way forward: " + planOverviewFile + " changed and is never rebaselined; restore it, or " + fresh
+			return "way forward: " + planOverviewFile + " changed and is never rebaselined; restore it with \"lyx webster restore-plan\", or " + fresh
 		}
 		flags = append(flags, "--card "+cardNumberOf(name))
 	}
 	if len(flags) == 0 {
-		return "way forward: run `lyx webster rebaseline --card NN` naming each card you edited, otherwise " + fresh
+		return "way forward: run `lyx webster rebaseline --card NN` naming each card you edited, " + restore + "otherwise " + fresh
 	}
-	return "way forward: run `lyx webster rebaseline " + strings.Join(flags, " ") + "` to accept the edit, otherwise " + fresh
+	return "way forward: run `lyx webster rebaseline " + strings.Join(flags, " ") + "` to accept the edit, " + restore + "otherwise " + fresh
 }
 
 // cardNumberOf returns the digits before the first "-" of a card file name, or the whole name when it has none.
@@ -276,12 +277,8 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 		return nil, ErrPaused
 	}
 
-	fp, err := fingerprint(deps.Plan.Dir)
-	if err != nil {
+	if err := PlanEditError(deps.State, deps.Plan.Dir); err != nil {
 		return nil, err
-	}
-	if deps.State.PlanFingerprint != fp {
-		return nil, fmt.Errorf("%w: on-disk plan fingerprint %s does not match this run's recorded fingerprint %s; the plan changed since state.json was created; %s", ErrFingerprintMismatch, fp, deps.State.PlanFingerprint, fingerprintMismatchWayForward(deps.State, deps.Plan.Dir))
 	}
 
 	// Re-resolve the plan against the current tree before a pack is built, never from a cache.

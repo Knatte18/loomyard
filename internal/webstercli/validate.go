@@ -170,9 +170,12 @@ the lint-without-run pre-flight for a Planner or human; it never spawns
 anything -- but it is not read-only: like every bracket verb, its own
 resolve pass can canonicalize a not-yet-canonical plan: handle, rewriting
 the affected card files on disk, and validate re-baselines state.json's
-plan-fingerprint crash/resume guard afterward exactly as begin-batch and
-record-batch already do, so a rewrite it performs is never later mistaken
-for a foreign edit.
+plan-fingerprint crash/resume guard afterward, so a rewrite it performs is
+never later mistaken for a foreign edit. With a run in progress, validate
+first checks the plan against the fingerprint the run recorded: a plan edited
+since then is still linted, but validate skips the re-baseline, leaves
+state.json untouched and exits non-zero naming "lyx webster rebaseline" and
+"lyx webster restore-plan", so an edit is never adopted unseen.
 
 Which cards are checked follows the run's own progress, exactly as the
 automatic gate "lyx webster run" applies before forking an implementer does,
@@ -231,14 +234,23 @@ Example:
 				fingerprintBefore = st.PlanFingerprint
 			}
 
+			// The edit check runs before scopedValidate's own rewrite: the restamp below exists to adopt
+			// webster's own rewrites, so any difference seen here is someone else's edit and is refused,
+			// never adopted into the plan hashes.
+			var editErr error
+			if st != nil {
+				editErr = websterengine.PlanEditError(st, plan.Dir)
+			}
+
 			findings, scope, validateErr := c.scopedValidate(plan)
 
 			// Re-baseline regardless of validateErr, exactly as begin-batch re-baselines ahead of
 			// every refusal below it: a sanctioned rewrite that already landed on disk is a durable
 			// fact about the plan whether or not a LATER step of this same call then fails. A nil
 			// st (no run in progress) means there is no state.json to desync, so this is a no-op.
+			// An edited plan skips it and leaves state.json untouched.
 			var rebaseErr error
-			if st != nil {
+			if st != nil && editErr == nil {
 				if fpErr := websterengine.RestampPlanBaseline(st, plan.Dir, c.geom.WebsterDir); fpErr != nil {
 					rebaseErr = fpErr
 				} else {
@@ -260,6 +272,17 @@ Example:
 					msg = fmt.Sprintf("%s (additionally, persisting the plan-fingerprint re-baseline this call had already earned failed: %v; way forward: re-run `lyx webster validate`)", msg, rebaseErr)
 				}
 				clihelp.SetExit(cmd.Context(), output.Err(out, msg))
+				return nil
+			}
+			if editErr != nil {
+				data, _ := json.Marshal(map[string]any{
+					"ok":       false,
+					"error":    editErr.Error(),
+					"findings": findingsEntries(findings),
+					"scope":    scope,
+				})
+				fmt.Fprintln(out, string(data))
+				clihelp.SetExit(cmd.Context(), 1)
 				return nil
 			}
 			if rebaseErr != nil {

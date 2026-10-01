@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
@@ -101,6 +102,43 @@ func changedPlanFiles(st *State, planDir string) ([]string, error) {
 	}
 	sort.Strings(changed)
 	return changed, nil
+}
+
+// PlanEditError returns nil when the plan on disk fingerprints to st.PlanFingerprint, and otherwise the ErrFingerprintMismatch wrap naming the way forward.
+// BeginBatch, RecordBatch, PersistRecoveryTerminal and webstercli's validate call it before their own rewrites,
+// so any difference it sees is someone else's edit rather than webster's own.
+func PlanEditError(st *State, planDir string) error {
+	fp, err := fingerprint(planDir)
+	if err != nil {
+		return err
+	}
+	if st.PlanFingerprint != fp {
+		return fmt.Errorf("%w: on-disk plan fingerprint %s does not match this run's recorded fingerprint %s; the plan changed since state.json was created; %s", ErrFingerprintMismatch, fp, st.PlanFingerprint, fingerprintMismatchWayForward(st, planDir))
+	}
+	return nil
+}
+
+// batchCardEditError returns nil when every card of b still hashes to the content bs recorded at begin-batch, or when bs recorded none.
+// Otherwise it returns an ErrFingerprintMismatch wrap naming each card that changed since its batch was begun.
+func batchCardEditError(st *State, bs *BatchState, b batcher.Batch, planDir string) error {
+	if len(bs.CardHashes) == 0 {
+		return nil
+	}
+	now, err := batchCardHashes(b, planDir)
+	if err != nil {
+		return err
+	}
+	number, _ := batchIdentity(b)
+	var changed []string
+	for _, id := range batchCardIDs(b) {
+		if want, ok := bs.CardHashes[id]; ok && want != now[id] {
+			changed = append(changed, fmt.Sprintf("batch %02d card %s changed since it was begun", number, id))
+		}
+	}
+	if len(changed) == 0 {
+		return nil
+	}
+	return fmt.Errorf("%w: %s; %s", ErrFingerprintMismatch, strings.Join(changed, "; "), fingerprintMismatchWayForward(st, planDir))
 }
 
 // Fingerprint is fingerprint's exported seam for a caller outside this package that needs to know

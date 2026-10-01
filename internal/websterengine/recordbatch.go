@@ -264,6 +264,15 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		return failFromFindings(deps, bs, number, slug, headSHA, all, nil, nil, suspects, newPaths, warnings)
 	}
 
+	// A plan edited since the run recorded it, or a begun card edited since its batch began, is refused before anything mutates or any card verify runs:
+	// every restamp further down exists to adopt webster's own rewrites, so a difference seen here is someone else's edit.
+	if err := PlanEditError(deps.State, deps.Geom.PlanDir); err != nil {
+		return nil, err
+	}
+	if err := batchCardEditError(deps.State, bs, batch, deps.Geom.PlanDir); err != nil {
+		return nil, err
+	}
+
 	// Attribution advances before report-presence check so a retry sees only its own new transcript.
 	deps.State.SeenForkTranscripts = append(deps.State.SeenForkTranscripts, newPaths...)
 	bs.ForkTranscripts = append(bs.ForkTranscripts, newPaths...)
