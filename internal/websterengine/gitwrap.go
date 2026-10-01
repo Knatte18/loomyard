@@ -196,3 +196,34 @@ func dirty(worktree string) (bool, error) {
 	}
 	return strings.TrimSpace(stdout) != "", nil
 }
+
+// otherWorktrees returns the canonical root of every worktree of worktree's repository except worktree itself,
+// read from the repository's own worktree list so websterengine derives no hub path.
+func otherWorktrees(worktree string) ([]string, error) {
+	self, err := canonicalPath(worktree)
+	if err != nil {
+		return nil, err
+	}
+	stdout, stderr, exitCode, err := gitexec.RunGit([]string{"worktree", "list", "--porcelain"}, worktree)
+	if err != nil {
+		return nil, fmt.Errorf("websterengine: list worktrees of %s: %w", worktree, err)
+	}
+	if exitCode != 0 {
+		return nil, fmt.Errorf("websterengine: list worktrees of %s: git exited %d: %s", worktree, exitCode, strings.TrimSpace(stderr))
+	}
+	var others []string
+	for _, line := range strings.Split(stdout, "\n") {
+		path, ok := strings.CutPrefix(strings.TrimRight(line, "\r"), "worktree ")
+		if !ok {
+			continue
+		}
+		canon, err := canonicalPath(path)
+		if err != nil {
+			return nil, err
+		}
+		if canon != self {
+			others = append(others, canon)
+		}
+	}
+	return others, nil
+}

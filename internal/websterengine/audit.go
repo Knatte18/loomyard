@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -309,6 +310,8 @@ func fabricReferenceDetail(cmd, rule string) string {
 // ClassifyViolation assigns v its D4 severity, checking the correctness rule first.
 // A fork-contract-write and a fork-plan-write are correctness.
 // A parent-write is correctness when its path lies under the run's state, reports or plan directory, or the run's `_lyx` directory (the parent of geom.WebsterDir),
+// or under webster's scratch directory (its pause flag and `*.lock` files decide what a run does),
+// or within another worktree of the task repository or that worktree's `_lyx`,
 // or when it lies inside the worktree and git does not ignore it;
 // every other parent-write is policy.
 // A fabric-reference is correctness whatever its command:
@@ -331,7 +334,7 @@ func ClassifyViolation(v AuditViolation, geom Geometry) (AuditSeverity, error) {
 	if err != nil {
 		return "", err
 	}
-	runDirs := []string{geom.WebsterDir, geom.ReportsDir, geom.PlanDir, filepath.Dir(geom.WebsterDir)}
+	runDirs := []string{geom.WebsterDir, geom.ReportsDir, geom.PlanDir, filepath.Dir(geom.WebsterDir), geom.ScratchDir}
 	for _, dir := range runDirs {
 		canon, err := canonicalPath(dir)
 		if err != nil {
@@ -345,6 +348,19 @@ func ClassifyViolation(v AuditViolation, geom Geometry) (AuditSeverity, error) {
 	worktree, err := canonicalPath(geom.WorktreeRoot)
 	if err != nil {
 		return "", err
+	}
+	others, err := otherWorktrees(worktree)
+	if err != nil {
+		return "", err
+	}
+	for _, other := range others {
+		lyx, err := canonicalPath(filepath.Join(other, lyxdirs.LyxDirName))
+		if err != nil {
+			return "", err
+		}
+		if pathWithin(other, written) || pathWithin(lyx, written) {
+			return AuditSeverityCorrectness, nil
+		}
 	}
 	if !pathWithin(worktree, written) {
 		return AuditSeverityPolicy, nil

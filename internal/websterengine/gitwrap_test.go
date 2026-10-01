@@ -458,3 +458,34 @@ func TestRefuseMidMerge_LinkedWorktree(t *testing.T) {
 		t.Fatalf("linked worktree: error = %v; want merge-in-progress refusal", err)
 	}
 }
+
+func TestOtherWorktrees(t *testing.T) {
+	main := gitwrapNewScratchRepo(t)
+	gitwrapCommitFile(t, main, "a.txt", "x", "add a")
+	added := filepath.Join(t.TempDir(), "added")
+	gitwrapMustGit(t, main, "worktree", "add", added)
+
+	mainCanon, err := canonicalPath(main)
+	if err != nil {
+		t.Fatal(err)
+	}
+	addedCanon, err := canonicalPath(added)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := otherWorktrees(main)
+	if err != nil {
+		t.Fatalf("otherWorktrees(main): %v", err)
+	}
+	if len(got) != 1 || got[0] != addedCanon {
+		t.Errorf("otherWorktrees(main) = %v; want [%s]", got, addedCanon)
+	}
+	got, err = otherWorktrees(added)
+	if err != nil {
+		t.Fatalf("otherWorktrees(added): %v", err)
+	}
+	if len(got) != 1 || got[0] != mainCanon {
+		t.Errorf("otherWorktrees(added) = %v; want [%s]", got, mainCanon)
+	}
+}
