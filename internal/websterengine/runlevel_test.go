@@ -1219,7 +1219,8 @@ func TestRun_ForkStateWriteAtRunExit(t *testing.T) {
 			})
 			seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-audit", session)
 
-			if _, err := websterengine.Run(fx.Deps, websterengine.RunOptions{}); err != nil {
+			result, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+			if err != nil {
 				t.Fatalf("Run() error = %v; want nil", err)
 			}
 			st, err := websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
@@ -1229,6 +1230,11 @@ func TestRun_ForkStateWriteAtRunExit(t *testing.T) {
 			if tt.wantPending {
 				if len(st.PendingAuditFindings) != 1 || st.PendingAuditFindings[0].Class != "fork-state-write" {
 					t.Errorf("PendingAuditFindings = %+v; want one fork-state-write finding", st.PendingAuditFindings)
+				}
+				// state.json is under _lyx, which nothing the run recorded can check, so the way forward is the --fresh route and never a git restore.
+				_, way, _ := strings.Cut(result.StuckReason, "way forward:")
+				if !strings.Contains(way, "lyx webster run --fresh") || strings.Contains(way, "accept-audit") {
+					t.Errorf("StuckReason = %q; want the --fresh route without accept-audit", result.StuckReason)
 				}
 			} else if len(st.PendingAuditFindings) != 0 {
 				t.Errorf("PendingAuditFindings = %+v; want none", st.PendingAuditFindings)

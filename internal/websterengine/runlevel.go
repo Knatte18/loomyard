@@ -928,7 +928,7 @@ func verifyEveryBatchDone(websterDir, scratchDir string, batches []batcher.Batch
 //
 // Findings are then dispositioned like record-batch's: every identity the ledger already holds is dropped, because the whole-session parent audit repeats every finding an earlier record-batch warned on or failed a batch for.
 // A policy finding nobody dispositioned is recorded as a run-level warning (saved to state.json before the lease is released) and its text is returned in warnings.
-// A correctness finding nobody dispositioned yields stuckReason, which names each suspect path and the git way forward;
+// A correctness finding nobody dispositioned yields stuckReason, which names each suspect path and the way forward pendingPathsWayForward builds;
 // it is recorded in State.PendingAuditFindings, not dispositioned, and blocks run entry until AcceptPendingAudit clears it.
 // The outcome file stays on disk for diagnosis (Run never removes it).
 func runExitAuditCrossCheck(deps RunDeps, outcomePath, summaryPath string, result shuttleengine.Result) (warnings []string, stuckReason string, err error) {
@@ -1032,11 +1032,11 @@ func runExitAuditCrossCheck(deps RunDeps, outcomePath, summaryPath string, resul
 		for _, cf := range correctness {
 			pathless = pathless || cf.Violation.Path == ""
 		}
-		wayForward, err := pendingPathsWayForward(deps.Geom, paths, " and re-step the Webster row (lyx webster run)")
+		wayForward, err := pendingPathsWayForward(deps.Geom, paths, pathless, " and re-step the Webster row (lyx webster run)")
 		if err != nil {
 			return nil, "", err
 		}
-		stuckReason = fmt.Sprintf("run-exit audit found %d correctness finding(s): %s; suspect paths: %s; way forward: %s%s", len(correctness), strings.Join(details, "; "), pathList, wayForward, pathlessClause(pathless))
+		stuckReason = fmt.Sprintf("run-exit audit found %d correctness finding(s): %s; suspect paths: %s; way forward: %s", len(correctness), strings.Join(details, "; "), pathList, wayForward)
 	}
 
 	return warnings, stuckReason, nil
@@ -1068,7 +1068,7 @@ func hasPendingFinding(st *State, id string) bool {
 var ErrPendingAuditFindings = errors.New("webster: correctness findings from an earlier run exit are pending")
 
 // pendingAuditFindingsError wraps ErrPendingAuditFindings with the pending details and suspect paths.
-// Plan paths are named separately with planPathClause, and the git clause covers only the other paths.
+// Its way forward is pendingPathsWayForward's.
 // The error from sorting the paths is returned as is.
 func pendingAuditFindingsError(pending []PendingAuditFinding, geom Geometry) error {
 	details := make([]string, len(pending))
@@ -1091,19 +1091,46 @@ func pendingAuditFindingsError(pending []PendingAuditFinding, geom Geometry) err
 	for _, f := range pending {
 		pathless = pathless || len(f.Paths) == 0
 	}
-	wayForward, err := pendingPathsWayForward(geom, paths, "")
+	wayForward, err := pendingPathsWayForward(geom, paths, pathless, "")
 	if err != nil {
 		return err
 	}
-	return fmt.Errorf("%w: %d correctness finding(s) from an earlier run exit are pending: %s; suspect paths: %s; way forward: %s%s", ErrPendingAuditFindings, len(pending), strings.Join(details, "; "), pathList, wayForward, pathlessClause(pathless))
+	return fmt.Errorf("%w: %d correctness finding(s) from an earlier run exit are pending: %s; suspect paths: %s; way forward: %s", ErrPendingAuditFindings, len(pending), strings.Join(details, "; "), pathList, wayForward)
 }
 
-// pendingPathsWayForward is the way-forward text for pending findings naming paths, ending in "lyx webster accept-audit" followed by tail.
-// A plan path never gets the git clause, which cannot restore it: it gets planPathClause instead, and the git clause covers only the other paths.
-func pendingPathsWayForward(geom Geometry, paths []string, tail string) (string, error) {
+// pendingPathsWayForward is the way-forward text for pending findings naming paths, followed by tail.
+// A finding with no path, or a path outside the plan directory that is not in the task worktree's tracked tree (see trackedRel), clears only through run --fresh,
+// so that route is then the whole way forward:
+// accept-audit refuses every finding while any one of them cannot be checked.
+// Otherwise the text ends in "lyx webster accept-audit".
+// A plan path never gets the git clause, which cannot restore it:
+// it gets planPathClause instead,
+// and the git clause covers only the other paths.
+// The error is a link-resolution or git probe failure.
+func pendingPathsWayForward(geom Geometry, paths []string, pathless bool, tail string) (string, error) {
 	plan, rest, err := splitPlanPaths(geom, paths)
 	if err != nil {
 		return "", err
+	}
+	var unchecked []string
+	for _, p := range rest {
+		_, ok, err := trackedRel(geom.WorktreeRoot, p)
+		if err != nil {
+			return "", err
+		}
+		if !ok {
+			unchecked = append(unchecked, p)
+		}
+	}
+	if pathless || len(unchecked) > 0 {
+		var why []string
+		if len(unchecked) > 0 {
+			why = append(why, "nothing the run recorded can check "+strings.Join(unchecked, ", "))
+		}
+		if pathless {
+			why = append(why, "a finding names no path")
+		}
+		return fmt.Sprintf("reset the branch to the run's start commit with git and run \"lyx webster run --fresh\"%s, since %s", tail, strings.Join(why, " and ")), nil
 	}
 	gitClause := "restore the named paths to the last batch head with git, then run \"lyx webster accept-audit\"" + tail
 	if len(plan) == 0 {
@@ -1258,14 +1285,6 @@ func headBeforeEveryStart(worktree, head string, starts []string) error {
 		}
 	}
 	return nil
-}
-
-// pathlessClause is the way-forward clause for a pending finding that names no path, or "" when every finding names one.
-func pathlessClause(pathless bool) string {
-	if !pathless {
-		return ""
-	}
-	return "; a finding with no path clears only through \"lyx webster run --fresh\" after resetting the branch to the run's start commit"
 }
 
 // appendRecordedAuditWarnings reloads state and appends every recorded audit warning to summary.md as its "Audit warnings" section.
