@@ -3,8 +3,9 @@
 // signal.
 // refuseMidMerge and reconcileReportHead are the read-only probes record-batch and recover-batch share:
 // the first refuses while a git merge is in progress, the second accepts a HEAD that is only clean parent merges past the report's head_sha.
-// The suspect-path probes (ignoredPath, worktreePathDiffers, worktreeBlob, commitBlob) and otherWorktrees are the read-only evidence queries accept-audit, recovery and fresh runs share.
-// Per the Shared Decision git-verification-via-gitrepo, every helper here goes through gitrepo.Repo except dirty and those read-only probes.
+// The suspect-path probes (ignoredPath, worktreePathDiffers, worktreeBlob, commitBlob, treePathsWithBlob) and otherWorktrees are the read-only evidence queries accept-audit, recovery and fresh runs share;
+// shaExists and isAncestor are the evidence-base probes runEvidenceBases picks its commits with.
+// Per the Shared Decision git-verification-via-gitrepo, every helper here goes through gitrepo.Repo except dirty and the read-only probes gitrepo has no method for (all the suspect-path probes and otherWorktrees).
 // gitrepo exposes no method for them, so they wrap the checked gitexec.Run directly, the carved-out exception the decision names;
 // they are kept in this one file so no other webster file runs git.
 
