@@ -2,5 +2,14 @@
   "enabledPlugins": {
     "ly@loomyard": true,
     "mill@millhouse": false
+  },
+  "permissions": {
+    "deny": [
+      "Artifact",
+      "Workflow",
+      "ReportFindings",
+      "ScheduleWakeup",
+      "SendFeedback"
+    ]
   }
 }
