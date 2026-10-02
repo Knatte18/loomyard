@@ -102,16 +102,15 @@ func resolveGateEntry(entry string, index int, elem Config, env Env) (shuttleeng
 		return shuttleengine.GateEntry{}, wrap(err)
 	}
 
-	closure, err := resolveGateClosure(entry, name, env)
+	closure, err := resolveGateClosure(entry, index, name, env)
 	if err != nil {
 		return shuttleengine.GateEntry{}, err
 	}
 	return shuttleengine.GateEntry{Name: name, Gate: closure, Attempts: attempts, PassOnCap: passOnCap}, nil
 }
 
-// resolveGateClosure maps a gate name onto its validator closure, checking the Env fields that
-// validator needs.
-func resolveGateClosure(entry, name string, env Env) (shuttleengine.Gate, error) {
+// resolveGateClosure maps the name of the row's "gates" element at index onto its validator closure, checking the Env fields that validator needs.
+func resolveGateClosure(entry string, index int, name string, env Env) (shuttleengine.Gate, error) {
 	switch name {
 	case "discussion":
 		if err := requireAbsRoot(entry, "DecisionRecordPath", env.DecisionRecordPath); err != nil {
@@ -146,6 +145,6 @@ func resolveGateClosure(entry, name string, env Env) (shuttleengine.Gate, error)
 		}
 		return landingshed.NewDescriptionGate(env.DescriptionPath), nil
 	default:
-		return nil, fmt.Errorf("shedrecipe: %s: config key %q must be %q, %q, %q or %q, got %q", entry, "name", "discussion", "plan", "rework-plan", "description", name)
+		return nil, fmt.Errorf("shedrecipe: %s: config key %q element %d: config key %q must be %q, %q, %q or %q, got %q", entry, "gates", index, "name", "discussion", "plan", "rework-plan", "description", name)
 	}
 }

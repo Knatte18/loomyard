@@ -103,6 +103,10 @@ func TestResolveGateSpec_Rejections(t *testing.T) {
 		{"MissingAttempts", Config{"gates": []any{map[string]any{"name": "plan"}}}, "attempts"},
 		{"UnknownElementKey", Config{"gates": []any{map[string]any{"name": "plan", "attempts": 1, "bogus": true}}}, "bogus"},
 		{"UnknownName", gatesCfg("bogus", 1), "bogus"},
+		{"UnknownNameNamesElement", Config{"gates": []any{
+			map[string]any{"name": "plan", "attempts": 1},
+			map[string]any{"name": "bogus", "attempts": 1},
+		}}, `"gates" element 1`},
 		{"BadPassOnCap", Config{"gates": []any{map[string]any{"name": "plan", "attempts": 1, "pass_on_cap": "yes"}}}, "pass_on_cap"},
 	}
 	for _, tt := range tests {
