@@ -128,8 +128,8 @@ func TestRegistry_DescribeAndDescriptionGate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolveGateSpec(description) error = %v; want nil", err)
 	}
-	if spec.Gate == nil {
-		t.Errorf("resolveGateSpec(description) Gate = nil; want the description gate")
+	if len(spec) != 1 || spec[0].Gate == nil {
+		t.Errorf("resolveGateSpec(description) = %+v; want one entry carrying the description gate", spec)
 	}
 	_, err = resolveGateSpec("Describe", Config{"gate": "bogus"}, env)
 	if err == nil || !strings.Contains(err.Error(), "description") {

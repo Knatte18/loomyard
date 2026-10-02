@@ -29,10 +29,12 @@ import (
 // loomshed.NewReworkPlanGate over them; "description"
 // requires env.DescriptionPath to pass requireAbsRoot and returns landingshed.NewDescriptionGate
 // over it; any other non-empty value is an error naming the key and all four legal values. An
-// absent "gate" returns the zero GateSpec, which is what every ungated row carries by saying
-// nothing.
+// absent "gate" returns the empty GateSpec, which is what every ungated row carries by saying
+// nothing; a present one returns a one-entry list named after the "gate" value.
 //
-// "gate_attempts" is an optional int read via configInt. A "gate_attempts" present with no "gate"
+// "gate_attempts" is an optional int read via configInt, becoming that entry's Attempts, and
+// defaultGateAttempts when absent, zero or negative, so no value turns the entry off.
+// A "gate_attempts" present with no "gate"
 // is an error naming both keys, never a silently-ignored key: it is unambiguously an author
 // mistake, and this package's constructors already fail loud on malformed config rather than
 // defaulting.
@@ -98,5 +100,12 @@ func resolveGateSpec(entry string, cfg Config, env Env) (shuttleengine.GateSpec,
 		return shuttleengine.GateSpec{}, fmt.Errorf("shedrecipe: %s: config key %q must be %q, %q, %q or %q, got %q", entry, "gate", "discussion", "plan", "rework-plan", "description", gate)
 	}
 
-	return shuttleengine.GateSpec{Gate: closure, Attempts: attempts}, nil
+	if attempts <= 0 {
+		attempts = defaultGateAttempts
+	}
+	return shuttleengine.GateSpec{{Name: gate, Gate: closure, Attempts: attempts}}, nil
 }
+
+// defaultGateAttempts is the re-prompt budget a row naming a "gate" without a positive
+// "gate_attempts" gets, until the "gates" list replaces both keys.
+const defaultGateAttempts = 3

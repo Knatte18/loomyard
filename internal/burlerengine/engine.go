@@ -22,7 +22,7 @@ import (
 type Shuttle interface {
 	Run(shuttleengine.Spec) (shuttleengine.Result, error)
 	// RunGated is Run, gated: the run's declared output artifacts are additionally validated by
-	// gate.Gate (if non-nil) before the round's report is trusted. Added beside Run rather than a
+	// the gate's entries (if any) before the round's report is trusted. Added beside Run rather than a
 	// widening of it, per the "added forms, never widened signatures" decision.
 	RunGated(shuttleengine.Spec, shuttleengine.GateSpec) (shuttleengine.Result, error)
 }
@@ -99,7 +99,7 @@ type Result struct {
 // build the shuttle Spec (Interactive/Parent/Display/ KeepPane stay zero-valued — rounds are
 // autonomous by default, per the run-tuning-off-profile decision) with Prompt set to the thin
 // orchestrator only;
-// run it through the Shuttle seam via RunGated, wrapping a non-nil opts.Gate.Gate in
+// run it through the Shuttle seam via RunGated, wrapping every entry's closure in opts.Gate in
 // repairReportBeforeGate so a failing gate's findings also instruct the agent to rewrite this
 // round's own review and fixer-report files;
 // populate Result (including its 1:1 Gate passthrough) from the shuttle Result;
@@ -179,9 +179,15 @@ func (e *Engine) Run(p Profile, opts RunOpts) (Result, error) {
 		ForkSubagents: p.ClusterFan != "",
 	}
 
-	gateSpec := opts.Gate
-	if gateSpec.Gate != nil {
-		gateSpec.Gate = repairReportBeforeGate(opts.Gate.Gate, p.ReviewPath, p.FixerReportPath)
+	// A fresh copy, so the caller's slice is never mutated; off entries are wrapped too, since they
+	// never run and the wrap is harmless there.
+	var gateSpec shuttleengine.GateSpec
+	if len(opts.Gate) > 0 {
+		gateSpec = make(shuttleengine.GateSpec, len(opts.Gate))
+		for i, entry := range opts.Gate {
+			entry.Gate = repairReportBeforeGate(entry.Gate, p.ReviewPath, p.FixerReportPath)
+			gateSpec[i] = entry
+		}
 	}
 
 	shuttleResult, err := e.shuttle.RunGated(spec, gateSpec)

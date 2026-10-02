@@ -483,23 +483,23 @@ func TestBurlerRoundEntry_GateConfig(t *testing.T) {
 		cfg["gate_attempts"] = 5
 
 		_, opts := callAndCaptureProfile(t, "review-round", cfg, env)
-		if opts.Gate.Gate == nil {
-			t.Fatal("opts.Gate.Gate = nil; want the discussion closure")
+		if len(opts.Gate) != 1 || opts.Gate[0].Gate == nil {
+			t.Fatalf("opts.Gate = %+v; want one entry carrying the discussion closure", opts.Gate)
 		}
-		if opts.Gate.Attempts != 5 {
-			t.Errorf("opts.Gate.Attempts = %d; want 5", opts.Gate.Attempts)
+		if opts.Gate[0].Attempts != 5 {
+			t.Errorf("opts.Gate[0].Attempts = %d; want 5", opts.Gate[0].Attempts)
 		}
 
 		// Drive the constructed gate rather than comparing func values, which Go cannot compare.
-		result, err := opts.Gate.Gate()
+		result, err := opts.Gate[0].Gate()
 		if err != nil {
-			t.Fatalf("opts.Gate.Gate() error = %v; want nil", err)
+			t.Fatalf("opts.Gate[0].Gate() error = %v; want nil", err)
 		}
 		if result.Passed {
-			t.Fatal("opts.Gate.Gate() Passed = true; want false for a missing support log")
+			t.Fatal("opts.Gate[0].Gate() Passed = true; want false for a missing support log")
 		}
 		if !strings.Contains(result.Findings, "support log does not exist") {
-			t.Errorf("opts.Gate.Gate() Findings = %q; want it to name the missing support log, proving the discussion validator ran", result.Findings)
+			t.Errorf("opts.Gate[0].Gate() Findings = %q; want it to name the missing support log, proving the discussion validator ran", result.Findings)
 		}
 	})
 
@@ -509,15 +509,18 @@ func TestBurlerRoundEntry_GateConfig(t *testing.T) {
 		cfg["gate"] = "plan"
 
 		_, opts := callAndCaptureProfile(t, "review-round", cfg, env)
-		result, err := opts.Gate.Gate()
+		if len(opts.Gate) != 1 {
+			t.Fatalf("opts.Gate = %+v; want one entry", opts.Gate)
+		}
+		result, err := opts.Gate[0].Gate()
 		if err != nil {
-			t.Fatalf("opts.Gate.Gate() error = %v; want nil", err)
+			t.Fatalf("opts.Gate[0].Gate() error = %v; want nil", err)
 		}
 		if result.Passed {
-			t.Fatal("opts.Gate.Gate() Passed = true; want false for a missing plan overview")
+			t.Fatal("opts.Gate[0].Gate() Passed = true; want false for a missing plan overview")
 		}
 		if !strings.Contains(result.Findings, "plan overview not found") {
-			t.Errorf("opts.Gate.Gate() Findings = %q; want it to name the missing plan overview, proving the plan validator ran", result.Findings)
+			t.Errorf("opts.Gate[0].Gate() Findings = %q; want it to name the missing plan overview, proving the plan validator ran", result.Findings)
 		}
 	})
 
@@ -526,13 +529,8 @@ func TestBurlerRoundEntry_GateConfig(t *testing.T) {
 		cfg := minimalBurlerConfig()
 
 		_, opts := callAndCaptureProfile(t, "review-round", cfg, env)
-		// shuttleengine.GateSpec embeds a func field, so it is not comparable with != -- assert its
-		// two fields individually instead.
-		if opts.Gate.Gate != nil {
-			t.Errorf("opts.Gate.Gate = %v; want nil for a row carrying no gate key -- the Webster round's own shape", opts.Gate.Gate)
-		}
-		if opts.Gate.Attempts != 0 {
-			t.Errorf("opts.Gate.Attempts = %d; want 0 for a row carrying no gate key", opts.Gate.Attempts)
+		if len(opts.Gate) != 0 {
+			t.Errorf("opts.Gate = %+v; want an empty list for a row carrying no gate key -- the Webster round's own shape", opts.Gate)
 		}
 	})
 

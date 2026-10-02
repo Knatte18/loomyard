@@ -104,8 +104,8 @@ type MasterHandle interface {
 // Production code passes an adapter over *shuttleengine.Runner (webstercli's own starter);
 // tests pass a local fake.
 //
-// A shuttleengine.GateSpec rides beside the Spec: it is the mechanical validator the Master run's
-// own Wait consults before it may finalize, and its zero value (a nil Gate) means ungated, which is
+// A shuttleengine.GateSpec rides beside the Spec: it is the list of mechanical validators the Master
+// run's own Wait consults before it may finalize, and an empty list means ungated, which is
 // what the Webster row supplies today. The seam is widened rather than joined by a second
 // StartMaster form because it has exactly one call site and two production implementors -- an added
 // form would cost every fake a second method with no caller, which is the price shuttleengine's own
@@ -136,9 +136,9 @@ type RunDeps struct {
 	Geom       Geometry
 	RefMatcher RefMatcher
 
-	// Gate is the mechanical validator Master's own shuttle run is held to: Run hands it to
+	// Gate is the list of mechanical validators Master's own shuttle run is held to: Run hands it to
 	// StartMaster beside the Spec, and the run's Wait re-prompts the live Master on a failed verdict
-	// until it passes or the re-prompt budget is exhausted. The zero value means ungated, which is
+	// until it passes or the failing entry's re-prompt budget is exhausted. An empty list means ungated, which is
 	// what every caller supplies until a Webster validator exists.
 	Gate shuttleengine.GateSpec
 

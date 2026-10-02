@@ -189,7 +189,7 @@ func TestSmokeGate_RepromptsThroughARealPaneAndFixesTheArtifact(t *testing.T) {
 
 	// RunGated blocks until Wait reaches a terminal outcome, bounded by spec.Timeout above -- no
 	// separate test-level deadline is needed on top of it.
-	result, err := runner.RunGated(spec, shuttleengine.GateSpec{Gate: gate, Attempts: 3})
+	result, err := runner.RunGated(spec, shuttleengine.GateSpec{{Gate: gate, Attempts: 3}})
 	if err != nil {
 		t.Fatalf("RunGated() error = %v; want nil", err)
 	}

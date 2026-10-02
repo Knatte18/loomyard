@@ -79,24 +79,42 @@ func (f *fakeShuttle) Attach(spec shuttleengine.Spec) (shuttleengine.Result, boo
 
 // RunGated implements the shared fake contract every shedadapters.Shuttle/burlerengine.Shuttle test
 // fake follows (see the "every test fake evaluates the gate once" decision): record the received
-// GateSpec, delegate to Run's own body, then -- only when gate.Gate is non-nil and the delegated
-// outcome is OutcomeDone -- invoke the closure exactly once, returning its error if non-nil and
-// otherwise stamping a *GateOutcome onto the returned Result. No re-prompt loop is simulated; there
-// is no pane to send into.
+// GateSpec, delegate to Run's own body, then -- only when gate is non-empty and the delegated
+// outcome is OutcomeDone -- invoke the entries once each in list order (see evalGateList), returning
+// a closure's error if non-nil and otherwise stamping a *GateOutcome onto the returned Result. No
+// re-prompt loop is simulated; there is no pane to send into.
 func (f *fakeShuttle) RunGated(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (shuttleengine.Result, error) {
 	f.gotGateSpec = gate
 
 	result, err := f.Run(spec)
-	if err != nil || gate.Gate == nil || result.Outcome != shuttleengine.OutcomeDone {
+	if err != nil || len(gate) == 0 || result.Outcome != shuttleengine.OutcomeDone {
 		return result, err
 	}
 
-	gateResult, gerr := gate.Gate()
+	passed, gerr := evalGateList(gate)
 	if gerr != nil {
 		return result, gerr
 	}
-	result.Gate = &shuttleengine.GateOutcome{Passed: gateResult.Passed, Attempts: f.gateAttempts}
+	result.Gate = &shuttleengine.GateOutcome{Passed: passed, Attempts: f.gateAttempts}
 	return result, nil
+}
+
+// evalGateList runs gate's entries in list order for a test fake, skipping off entries (Attempts 0)
+// and stopping at the first failure, and reports whether every entry run passed.
+func evalGateList(gate shuttleengine.GateSpec) (bool, error) {
+	for _, entry := range gate {
+		if entry.Attempts <= 0 {
+			continue
+		}
+		result, err := entry.Gate()
+		if err != nil {
+			return false, err
+		}
+		if !result.Passed {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 // AttachGated is AttachGated's Attach twin, following the identical shared fake contract.
@@ -104,15 +122,15 @@ func (f *fakeShuttle) AttachGated(spec shuttleengine.Spec, gate shuttleengine.Ga
 	f.gotAttachGateSpec = gate
 
 	result, found, err := f.Attach(spec)
-	if err != nil || !found || gate.Gate == nil || result.Outcome != shuttleengine.OutcomeDone {
+	if err != nil || !found || len(gate) == 0 || result.Outcome != shuttleengine.OutcomeDone {
 		return result, found, err
 	}
 
-	gateResult, gerr := gate.Gate()
+	passed, gerr := evalGateList(gate)
 	if gerr != nil {
 		return result, found, gerr
 	}
-	result.Gate = &shuttleengine.GateOutcome{Passed: gateResult.Passed, Attempts: f.gateAttempts}
+	result.Gate = &shuttleengine.GateOutcome{Passed: passed, Attempts: f.gateAttempts}
 	return result, found, nil
 }
 
@@ -862,9 +880,9 @@ func TestSingleLLMProducer_Gate_PassingGateReachesDone(t *testing.T) {
 	outPath := filepath.Join(dir, "out.md")
 	spec := shuttleengine.Spec{Prompt: "run", OutputFiles: []string{outPath}}
 	shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-	gate := shuttleengine.GateSpec{Gate: func() (shuttleengine.GateResult, error) {
+	gate := shuttleengine.GateSpec{{Attempts: 3, Gate: func() (shuttleengine.GateResult, error) {
 		return shuttleengine.GateResult{Passed: true}, nil
-	}}
+	}}}
 	p := NewSingleLLMProducerGated("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil, gate)
 
 	outcome, ptr, err := p.Call(context.Background())
@@ -888,9 +906,9 @@ func TestSingleLLMProducer_Gate_FailedGateReachesStuckWithArtifactPointer(t *tes
 	outPath := filepath.Join(dir, "out.md")
 	spec := shuttleengine.Spec{Prompt: "run", OutputFiles: []string{outPath}}
 	shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-	gate := shuttleengine.GateSpec{Gate: func() (shuttleengine.GateResult, error) {
+	gate := shuttleengine.GateSpec{{Attempts: 3, Gate: func() (shuttleengine.GateResult, error) {
 		return shuttleengine.GateResult{Passed: false, Findings: "the widget is wrong"}, nil
-	}}
+	}}}
 	p := NewSingleLLMProducerGated("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil, gate)
 
 	outcome, ptr, err := p.Call(context.Background())
@@ -921,10 +939,10 @@ func TestSingleLLMProducer_Gate_AskingKeepsEmptyPointer(t *testing.T) {
 	dir := t.TempDir()
 	spec := shuttleengine.Spec{Prompt: "ask", OutputFiles: []string{filepath.Join(dir, "out.md")}}
 	shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking, LastAssistantMessage: "what next?"}}
-	gate := shuttleengine.GateSpec{Gate: func() (shuttleengine.GateResult, error) {
+	gate := shuttleengine.GateSpec{{Attempts: 3, Gate: func() (shuttleengine.GateResult, error) {
 		t.Fatal("gate closure invoked for a non-done outcome")
 		return shuttleengine.GateResult{}, nil
-	}}
+	}}}
 	p := NewSingleLLMProducerGated("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil, gate)
 
 	outcome, ptr, err := p.Call(context.Background())
@@ -949,15 +967,15 @@ func TestSingleLLMProducer_Gate_AttachPathIsGatedToo(t *testing.T) {
 		attachFound:  true,
 		attachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
 	}
-	gate := shuttleengine.GateSpec{Gate: func() (shuttleengine.GateResult, error) {
+	gate := shuttleengine.GateSpec{{Attempts: 3, Gate: func() (shuttleengine.GateResult, error) {
 		return shuttleengine.GateResult{Passed: true}, nil
-	}}
+	}}}
 	p := NewSingleLLMProducerGated("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil, gate)
 
 	if _, _, err := p.Call(context.Background()); err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
 	}
-	if shuttle.gotAttachGateSpec.Gate == nil {
+	if len(shuttle.gotAttachGateSpec) == 0 {
 		t.Error("AttachGated was not called with the producer's own GateSpec")
 	}
 }
@@ -977,9 +995,9 @@ func TestSingleLLMProducer_Gate_AttemptsPropagatesOntoOutputPointer(t *testing.T
 		result:       shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
 		gateAttempts: 2,
 	}
-	gate := shuttleengine.GateSpec{Gate: func() (shuttleengine.GateResult, error) {
+	gate := shuttleengine.GateSpec{{Attempts: 3, Gate: func() (shuttleengine.GateResult, error) {
 		return shuttleengine.GateResult{Passed: true}, nil
-	}}
+	}}}
 	p := NewSingleLLMProducerGated("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil, gate)
 
 	outcome, ptr, err := p.Call(context.Background())

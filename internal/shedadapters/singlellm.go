@@ -48,7 +48,7 @@ type Shuttle interface {
 	Run(shuttleengine.Spec) (shuttleengine.Result, error)
 	Attach(shuttleengine.Spec) (shuttleengine.Result, bool, error)
 	// RunGated is Run, gated: the run's declared output artifacts are additionally validated by
-	// gate.Gate (if non-nil) before the round's report is trusted.
+	// the gate's entries (if any) before the round's report is trusted.
 	RunGated(shuttleengine.Spec, shuttleengine.GateSpec) (shuttleengine.Result, error)
 	// AttachGated is Attach, gated: an attached run's declared output artifacts are gated exactly as
 	// a freshly-spawned run's are.
@@ -104,7 +104,7 @@ func NewSingleLLMProducer(name string, specs SpecSource, shuttle Shuttle, now fu
 
 // NewSingleLLMProducerGated returns a SingleLLMProducer identical to NewSingleLLMProducer's, gated
 // by gate: the run's declared output artifacts (fresh or attached) are additionally validated by
-// gate.Gate (if non-nil) before the run's outcome is trusted. Added beside NewSingleLLMProducer
+// the gate's entries (if any) before the run's outcome is trusted. Added beside NewSingleLLMProducer
 // rather than a widening of it, per the "added forms, never widened signatures" decision -- the
 // generic SingleLLM registry row, the smoke harness, and roughly thirty existing test call sites
 // have no gate and never will.

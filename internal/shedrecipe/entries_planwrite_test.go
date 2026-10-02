@@ -207,8 +207,7 @@ func TestPlanWriteEntry_CallAppendsPriorPlanBlock(t *testing.T) {
 // TestPlanWriteEntry_GateConfig covers the "gate" and "gate_attempts" Config keys planWriteEntry
 // resolves through resolveGateSpec: a "gate: plan" row resolves to the plan validator, a
 // "gate_attempts" with no "gate" fails loud naming both keys, and an absent "gate_attempts"
-// alongside a present "gate" leaves GateSpec.Attempts at its zero value, which
-// shuttleengine.GateSpec's own doc states means the package default rather than zero attempts.
+// alongside a present "gate" yields the one entry with the default 3 attempts.
 func TestPlanWriteEntry_GateConfig(t *testing.T) {
 	t.Run("GatePlanResolvesToPlanValidator", func(t *testing.T) {
 		env := newTestEnv(t)
@@ -216,8 +215,8 @@ func TestPlanWriteEntry_GateConfig(t *testing.T) {
 		if err != nil {
 			t.Fatalf("resolveGateSpec() error = %v; want nil", err)
 		}
-		if gateSpec.Gate == nil {
-			t.Fatal("resolveGateSpec() GateSpec.Gate = nil; want the plan closure")
+		if len(gateSpec) != 1 || gateSpec[0].Gate == nil {
+			t.Fatalf("resolveGateSpec() = %+v; want one entry carrying the plan closure", gateSpec)
 		}
 
 		// Drive the constructed gate rather than comparing func values, which Go cannot compare.
@@ -225,15 +224,15 @@ func TestPlanWriteEntry_GateConfig(t *testing.T) {
 		// so the plan validator reports the overview not found -- a finding text no discussion-gate
 		// failure could ever produce, which is what proves the plan closure and not the discussion
 		// one was resolved.
-		result, err := gateSpec.Gate()
+		result, err := gateSpec[0].Gate()
 		if err != nil {
-			t.Fatalf("gateSpec.Gate() error = %v; want nil", err)
+			t.Fatalf("gateSpec[0].Gate() error = %v; want nil", err)
 		}
 		if result.Passed {
-			t.Fatal("gateSpec.Gate() Passed = true; want false for a missing plan overview")
+			t.Fatal("gateSpec[0].Gate() Passed = true; want false for a missing plan overview")
 		}
 		if !strings.Contains(result.Findings, "plan overview not found") {
-			t.Errorf("gateSpec.Gate() Findings = %q; want it to name the missing plan overview, proving the plan validator ran", result.Findings)
+			t.Errorf("gateSpec[0].Gate() Findings = %q; want it to name the missing plan overview, proving the plan validator ran", result.Findings)
 		}
 	})
 
@@ -266,8 +265,8 @@ func TestPlanWriteEntry_GateConfig(t *testing.T) {
 		if err != nil {
 			t.Fatalf("resolveGateSpec() error = %v; want nil", err)
 		}
-		if gateSpec.Attempts != 0 {
-			t.Errorf("resolveGateSpec() GateSpec.Attempts = %d; want 0, the package-default sentinel", gateSpec.Attempts)
+		if len(gateSpec) != 1 || gateSpec[0].Attempts != 3 {
+			t.Errorf("resolveGateSpec() = %+v; want one entry with Attempts 3, the package default", gateSpec)
 		}
 	})
 }

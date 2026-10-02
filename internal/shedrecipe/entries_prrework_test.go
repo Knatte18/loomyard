@@ -85,7 +85,7 @@ func TestPRReworkEntry_Config(t *testing.T) {
 		if err != nil {
 			t.Fatalf("resolveGateSpec() error = %v; want nil", err)
 		}
-		if gateSpec.Gate == nil || gateSpec.Attempts != 3 {
+		if len(gateSpec) != 1 || gateSpec[0].Gate == nil || gateSpec[0].Attempts != 3 {
 			t.Errorf("resolveGateSpec() = %+v; want the rework plan closure with 3 attempts", gateSpec)
 		}
 	})
