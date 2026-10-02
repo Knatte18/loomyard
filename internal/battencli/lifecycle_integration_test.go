@@ -206,6 +206,12 @@ func TestBattenIntegration_SeedChild_WritesASeedTheChildBootstrapAgreesWith(t *t
 	if !seedFound {
 		t.Fatalf("Seed-Child wrote no child seed")
 	}
+	if seed.Parent != "" {
+		t.Errorf("child seed Parent = %q; want empty: the parent is resolved from the origin record", seed.Parent)
+	}
+	if origin.ParentWorktree != h.Location.WorktreeName {
+		t.Errorf("child origin ParentWorktree = %q; want the prime %q", origin.ParentWorktree, h.Location.WorktreeName)
+	}
 	if got := seed.Params["parent"]; got != origin.ParentBranch {
 		t.Errorf("child seed params[parent] = %q; want the recorded parent branch %q", got, origin.ParentBranch)
 	}
