@@ -42,6 +42,9 @@ type Shell interface {
 	// Source returns a standalone statement that runs the statements in the file at path in the current shell's own scope,
 	// so exports and PATH changes land in the calling session.
 	Source(path string) string
+	// EnvRef returns the syntax that expands the environment variable key, read when the pane shell runs the line, into exactly one argument.
+	// An unset or spaced value never splits into several words.
+	EnvRef(key string) string
 	// ScriptExt returns the file extension, leading dot included, that a script this dialect sources carries.
 	ScriptExt() string
 }

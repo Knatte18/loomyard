@@ -60,6 +60,11 @@ func (p pwshShell) Source(path string) string {
 	return ". ([scriptblock]::Create(" + p.ReadFile(path) + "))"
 }
 
+// EnvRef returns the double-quoted `"$env:KEY"` expansion, which stays one argument whatever the value holds.
+func (pwshShell) EnvRef(key string) string {
+	return `"$env:` + key + `"`
+}
+
 // ScriptExt returns ".ps1".
 func (pwshShell) ScriptExt() string {
 	return ".ps1"
