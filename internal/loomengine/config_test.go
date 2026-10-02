@@ -234,10 +234,8 @@ parent_review_wait_min: 60
 	}
 }
 
-// TestLoadConfig_MissingFrictionKeys verifies a loom.yaml genuinely lacking the friction and
-// friction_timeout_min keys fails LoadConfig with configengine's "missing keys" error rather than
-// defaulting -- the migration contract the Config Strictness Invariant requires for an
-// already-seeded worktree.
+// TestLoadConfig_MissingFrictionKeys verifies a loom.yaml genuinely lacking the friction and friction_timeout_min keys loads them at their template defaults --
+// an already-seeded worktree picks up a key a deploy adds without a reconcile sweep.
 func TestLoadConfig_MissingFrictionKeys(t *testing.T) {
 	baseDir := t.TempDir()
 	seedLoomConfig(t, baseDir, `discussion: opus[effort=high]
@@ -249,15 +247,15 @@ review: opus[effort=high]
 review_timeout_min: 240
 `)
 
-	_, err := LoadConfig(baseDir, "loom")
-	if err == nil {
-		t.Fatal("LoadConfig() = _, nil; want non-nil error for a loom.yaml missing the friction keys")
+	cfg, err := LoadConfig(baseDir, "loom")
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v; want nil for a loom.yaml missing the friction keys", err)
 	}
-	if !strings.Contains(err.Error(), "missing keys") {
-		t.Errorf("LoadConfig() error = %q; want it to contain %q", err.Error(), "missing keys")
+	if cfg.Friction != "opus[effort=high]" {
+		t.Errorf("cfg.Friction = %q; want the template default %q", cfg.Friction, "opus[effort=high]")
 	}
-	if !strings.Contains(err.Error(), "friction") {
-		t.Errorf("LoadConfig() error = %q; want it to name the missing %q key", err.Error(), "friction")
+	if cfg.FrictionTimeoutMin != 30 {
+		t.Errorf("cfg.FrictionTimeoutMin = %d; want the template default %d", cfg.FrictionTimeoutMin, 30)
 	}
 }
 
