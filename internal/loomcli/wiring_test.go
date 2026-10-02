@@ -805,3 +805,20 @@ func TestArmAt_RecordsTheArmingVerb(t *testing.T) {
 		t.Errorf("c.armedVerb = %q; want %q", c.armedVerb, "start")
 	}
 }
+
+// TestWire_SkipPlanReviewIsFilled asserts c.env.SkipPlanReview is non-nil: Plan-Bouncer's skip_seam
+// is guarded by requireSeam, so a nil closure would fail the recipe build.
+func TestWire_SkipPlanReviewIsFilled(t *testing.T) {
+	t.Parallel()
+
+	loc := hubLocation(t, "warp", ".")
+
+	c := &loomCLI{runID: shedrun.SelfRunID}
+	if err := c.wire(loc, loc.AnchorPath()); err != nil {
+		t.Fatalf("wire() = %v; want nil", err)
+	}
+
+	if c.env.SkipPlanReview == nil {
+		t.Error("c.env.SkipPlanReview = nil; want loomshed.PlanReviewSkippable over the rework deps")
+	}
+}

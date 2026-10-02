@@ -748,6 +748,7 @@ func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, 
 		ApprovePlan: func() error {
 			return planparser.SetApproved(planDir)
 		},
+		SkipPlanReview: func() (bool, error) { return false, nil },
 	}
 
 	paths = shedbuild.ShedPaths{

@@ -65,7 +65,7 @@ var wantProducerTable = []wantProducerRow{
 	{loomshed.NameDescribe, "", loomshed.NamePublish, "", 0, reflect.TypeOf(loomshed.NewDiscussionWrite("", nil, nil))},
 	{loomshed.NamePublish, "", loomshed.NamePRGate, "", 0, reflect.TypeOf(&landingshed.Publish{})},
 	{loomshed.NamePRGate, loomshed.NamePRRework, loomshed.NameFinalize, "PR-Review", 5, reflect.TypeOf(&landingshed.PRGate{})},
-	{loomshed.NamePRRework, "", loomshed.NameWebster, "PR-Review", 0, reflect.TypeOf(loomshed.NewPRRework("", func(loomshed.ReworkTold) shedengine.ShedProducer { return nil }, loomshed.PRReworkDeps{}))},
+	{loomshed.NamePRRework, "", loomshed.NamePlanBouncer, "PR-Review", 0, reflect.TypeOf(loomshed.NewPRRework("", func(loomshed.ReworkTold) shedengine.ShedProducer { return nil }, loomshed.PRReworkDeps{}))},
 	{loomshed.NameFinalize, "", loomshed.NameFrictionReflect, "", 0, reflect.TypeOf(&landingshed.Finalize{})},
 	{loomshed.NameFrictionReflect, "", "", "", 0, frictionReflectProducerType()},
 }
@@ -154,7 +154,8 @@ func testEnv(t *testing.T) (shedrecipe.Env, shedbuild.ShedPaths) {
 		// file's subject is the constructed producer table and its routing graph, never a driven
 		// run, so nothing here reads the plan's approval flag -- card 25's dynamic negative case is
 		// where a deliberately non-writing closure is the thing under test.
-		ApprovePlan: func() error { return nil },
+		ApprovePlan:    func() error { return nil },
+		SkipPlanReview: func() (bool, error) { return false, nil },
 	}
 
 	paths := shedbuild.ShedPaths{

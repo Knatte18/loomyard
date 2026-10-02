@@ -397,6 +397,35 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	statusPath := shedrun.StatusFile(location, c.runID)
 	statusLockPath := shedrun.StatusLock(location, c.runID)
 
+	// reworkDeps opens nothing at wire time: every closure reads or writes on demand, since wire() also runs for status/pause.
+	// PR-Rework and the Plan-Review skip seam share it.
+	reworkDeps := loomshed.PRReworkDeps{
+		PlanDir:      planparser.PlanDir(anchorPath),
+		ReworkDir:    loomengine.LoomReworkDir(location),
+		ReworkDirRel: loomengine.LoomReworkDirRel(),
+		ReviewsDir:   loomengine.LoomReviewsDir(location),
+		// The run subdirectories are the recipe's own run_subdir values for the Plan-Review and Webster-Review segments, the two reviews a generation owns.
+		ReviewRunSubdirs: []string{"plan", "webster"},
+		ReadCommitted:    committedAnchoredReader(location),
+		ArchiveWebster: func(dest string) error {
+			return websterengine.ArchiveRunRecord(websterGeom, dest)
+		},
+		ReadRejection: func() (loomshed.PendingRejection, bool, error) {
+			r, found, err := landingshed.ReadRejection(loomengine.LoomRejectionPath(location))
+			if err != nil || !found {
+				return loomshed.PendingRejection{}, found, err
+			}
+			return loomshed.PendingRejection{PRNumber: r.PRNumber, HeadSHA: r.HeadSHA, RejectedAt: r.RejectedAt, Findings: r.Findings}, true, nil
+		},
+		ClearRejection: func() error {
+			return landingshed.RemoveRecord(loomengine.LoomRejectionPath(location))
+		},
+		Commit: func() error {
+			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, reworkCommitPathspec(location), fmt.Sprintf("loom: rework round for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
+			return err
+		},
+	}
+
 	c.env = shedrecipe.Env{
 		Cwd:                cwd,
 		AnchorPath:         anchorPath,
@@ -518,38 +547,15 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		ApprovePlan: func() error {
 			return planparser.SetApproved(planparser.PlanDir(location.AnchorPath()))
 		},
+		// SkipPlanReview lets Plan-Bouncer approve an exempt rework generation without a judge; it reads committed state on demand and opens nothing at wire time.
+		SkipPlanReview: func() (bool, error) { return loomshed.PlanReviewSkippable(reworkDeps) },
 		// ReworkSpec is evaluated per Call like PlanSpec above, so the stencil is read at call time.
 		// The values the session is told arrive from the PR-Rework producer, which decides them.
 		ReworkSpec: func(told loomshed.ReworkTold) (shuttleengine.Spec, error) {
 			return loomengine.ReworkSpec(location, websterGeom.StencilsDir, websterGeom.SpecsDir, loomCfg, registry, told.FirstCard, told.PriorPlanDir)
 		},
 		// Rework opens nothing at wire time: every closure reads or writes on demand, since wire() also runs for status/pause.
-		Rework: loomshed.PRReworkDeps{
-			PlanDir:      planparser.PlanDir(anchorPath),
-			ReworkDir:    loomengine.LoomReworkDir(location),
-			ReworkDirRel: loomengine.LoomReworkDirRel(),
-			ReviewsDir:   loomengine.LoomReviewsDir(location),
-			// The run subdirectories are the recipe's own run_subdir values for the Plan-Review and Webster-Review segments, the two reviews a generation owns.
-			ReviewRunSubdirs: []string{"plan", "webster"},
-			ReadCommitted:    committedAnchoredReader(location),
-			ArchiveWebster: func(dest string) error {
-				return websterengine.ArchiveRunRecord(websterGeom, dest)
-			},
-			ReadRejection: func() (loomshed.PendingRejection, bool, error) {
-				r, found, err := landingshed.ReadRejection(loomengine.LoomRejectionPath(location))
-				if err != nil || !found {
-					return loomshed.PendingRejection{}, found, err
-				}
-				return loomshed.PendingRejection{PRNumber: r.PRNumber, HeadSHA: r.HeadSHA, RejectedAt: r.RejectedAt, Findings: r.Findings}, true, nil
-			},
-			ClearRejection: func() error {
-				return landingshed.RemoveRecord(loomengine.LoomRejectionPath(location))
-			},
-			Commit: func() error {
-				_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, reworkCommitPathspec(location), fmt.Sprintf("loom: rework round for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
-				return err
-			},
-		},
+		Rework: reworkDeps,
 		// StencilsDir, SpecsDir, RunRoot, Burler, and Now are filled for both review segments --
 		// Discussion-Bouncer/Discussion-Burler and Plan-Bouncer/Plan-Burler alike. StencilsDir and
 		// SpecsDir are websterGeom.StencilsDir and websterGeom.SpecsDir -- the same values the

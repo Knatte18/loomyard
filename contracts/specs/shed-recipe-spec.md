@@ -40,6 +40,9 @@ A `Config` key may **select** among the seams the told `Env` already carries, by
 A `Bouncer` row's `commit_seam` key takes one of exactly two literal values, `plan` and `discussion`, resolving to `Env.CommitPlan` and `Env.CommitDiscussion` respectively.
 Two rules make it safe: an absent key is a legitimate "no seam configured" and leaves the closure nil, while a **present** key naming a closure the `Env` does not carry is a construction error rather than a silent nil — a nil closure would silently mean "commit nothing," the exact condition the key exists to eliminate.
 This is the same shape `rubric_stencil` already has, naming a stencil rather than carrying one, so `commit_seam` extends the existing `Env`-versus-`Config` rule rather than forking it.
+A `Bouncer` row's optional `skip_seam` key takes one value, `rework-exempt`, resolving to `Env.SkipPlanReview`, a closure that tells the Bouncer to approve without a judge.
+It follows the same two rules as `commit_seam`: absent leaves the seam nil, and a present key naming a closure the `Env` does not carry is a construction error.
+An unknown value is a construction error naming `rework-exempt`.
 
 ## The recipe loader/builder
 

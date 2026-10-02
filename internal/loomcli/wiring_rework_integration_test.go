@@ -197,3 +197,67 @@ func atoiOrFail(t *testing.T, s string) int {
 	}
 	return n
 }
+
+// proseSession is a fake rework session whose new generation is one Prosa card on a markdown file.
+type proseSession struct {
+	t        *testing.T
+	planDir  string
+	first    int
+	coverage string
+}
+
+func (s proseSession) Call(context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
+	writeReworkPlan(s.t, s.planDir, s.first, [][2]string{{"docs-card", "words only."}})
+	card := fmt.Sprintf("# Card %d — docs-card\n\n**Prosa:**\n- `docs/note.md`\n\n**Intent:** words only.\n", s.first)
+	writeTestFile(s.t, filepath.Join(s.planDir, fmt.Sprintf("%02d-docs-card.md", s.first)), card)
+	writeTestFile(s.t, s.coverage, "finding 1: the note\n")
+	return shedengine.Done, shedengine.OutputPointer{Path: s.coverage}, nil
+}
+
+// TestWire_Real_PlanReviewSkipFollowsGenerationClass asserts Env.SkipPlanReview, over a real fabric pair,
+// answers true after a round whose new generation is all-Prosa on .md files and false after a round whose generation carries an Edit card.
+func TestWire_Real_PlanReviewSkipFollowsGenerationClass(t *testing.T) {
+	hub := hubforge.NewHub(t, ".")
+	const slug = "reworkskip"
+	hubforge.AddPair(t, hub, slug)
+	location, err := lyxcwd.ResolveWorktree(hub.PairWarpWorktree(slug))
+	if err != nil {
+		t.Fatalf("ResolveWorktree error = %v; want nil", err)
+	}
+
+	c := &loomCLI{runID: shedrun.SelfRunID}
+	if err := c.wire(location, location.AnchorPath()); err != nil {
+		t.Fatalf("wire() = %v; want nil", err)
+	}
+	if c.env.SkipPlanReview == nil {
+		t.Fatal("c.env.SkipPlanReview = nil; want PlanReviewSkippable over the rework deps")
+	}
+	planDir := planparser.PlanDir(location.AnchorPath())
+	writeReworkPlan(t, planDir, 1, [][2]string{{"first-card", "as planned."}})
+	if err := c.env.CommitPlan(); err != nil {
+		t.Fatalf("CommitPlan() = %v; want nil", err)
+	}
+
+	round := func(rejectedAt string, session shedengine.ShedProducer) {
+		t.Helper()
+		deps := c.env.Rework
+		deps.ReadRejection = func() (loomshed.PendingRejection, bool, error) {
+			return loomshed.PendingRejection{PRNumber: 3, HeadSHA: "abc123", RejectedAt: rejectedAt, Findings: "fix it\n"}, true, nil
+		}
+		deps.ClearRejection = func() error { return nil }
+		outcome, ptr, err := loomshed.NewPRRework(loomshed.NamePRRework, func(loomshed.ReworkTold) shedengine.ShedProducer { return session }, deps).Call(context.Background())
+		if err != nil || outcome != shedengine.Done {
+			t.Fatalf("PR-Rework Call = %v, %q, %v; want Done", outcome, ptr.Reason, err)
+		}
+	}
+
+	round("2026-09-30T10:00:00Z", proseSession{t: t, planDir: planDir, first: 2, coverage: filepath.Join(t.TempDir(), "coverage.md")})
+	if skip, err := c.env.SkipPlanReview(); err != nil || !skip {
+		t.Errorf("SkipPlanReview after an all-Prosa generation = %v, %v; want true, nil", skip, err)
+	}
+
+	round("2026-09-30T12:00:00Z", generationSession{t: t, planDir: planDir, first: 3, cards: [][2]string{{"third-card", "changes source."}}, coverage: filepath.Join(t.TempDir(), "coverage2.md")})
+	if skip, err := c.env.SkipPlanReview(); err != nil || skip {
+		t.Errorf("SkipPlanReview after a generation with a source card = %v, %v; want false, nil", skip, err)
+	}
+}

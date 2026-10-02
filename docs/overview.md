@@ -367,7 +367,8 @@ User-facing modules each get one `lyx <module>` namespace:
   A PR-review wait at `PR-Gate` halts the run `awaiting`, the planned hand-off state: it behaves like `blocked` for resume but spends no bounce budget, triggers no friction reflection and raises no anomaly.
   `approve` records an operator approval of the open pull request when the run is awaiting (or blocked) at the gate and the local HEAD equals the PR's head, writing `.lyx/loom/approval.json` and removing a pending rejection; resuming with `lyx loom start` then lets `PR-Gate` return Done without a GitHub merge.
   `reject <review-file>` records the operator's findings (removing a pending approval), and refuses once the `PR-Review` segment's five rejection rounds are spent.
-  `lyx loom start` then routes the run through `PR-Rework`, which starts a new plan generation and re-runs `Webster`, `Webster-Review`, `Describe`, `Publish` and the gate.
+  `lyx loom start` then routes the run through `PR-Rework`, which starts a new plan generation and re-runs `Plan-Review`, `Webster`, `Webster-Review`, `Describe`, `Publish` and the gate.
+  `Plan-Bouncer` skips its judge only for an exempt generation, one whose live cards are all `Prosa` on non-source files.
   Before its session runs, Go archives the live generation into the round's `prior-generation/` directory: the plan (cards, overview, amendments and any `archive-*/` rotation), Webster's run record, and the Plan-Review and Webster-Review run directories.
   The session then writes a whole new plan into the emptied plan directory, numbered on from the retired generation through the overview's `first_card` key, and reads the archived plan for context.
   Go records on the round whether the new generation is exempt from Plan-Review (every card Prosa on a non-source file) or required, commits the round in one weft commit, and removes the pending rejection.
