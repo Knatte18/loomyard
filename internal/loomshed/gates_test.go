@@ -434,8 +434,7 @@ func TestHasBlockingFinding_AgainstTheGate(t *testing.T) {
 	}
 }
 
-// seedReworkGlyphPlan writes a one-card language: go plan under anchorPath: a new generation whose card is numbered cardNumber,
-// declares first_card: cardNumber when that is above 1, creates the glyph creates and, when uses is non-empty, also uses it.
+// seedReworkGlyphPlan writes a one-card language: go plan under anchorPath: a new generation whose card is numbered cardNumber, declares first_card: cardNumber when that is above 1, creates the glyph creates and, when uses is non-empty, also uses it.
 // It returns the plan committed at HEAD before the rework round, keyed by anchor-relative path: a one-card generation whose card 1 creates sub#Foo, already built in the worktree.
 // The told number is therefore 2.
 func seedReworkGlyphPlan(t *testing.T, anchorPath string, cardNumber int, creates, uses string) map[string][]byte {

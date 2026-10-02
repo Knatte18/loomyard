@@ -543,8 +543,7 @@ func reworkParityFixture(t *testing.T, anchorPath, worktreeRoot string, cardNumb
 }
 
 // TestGateParity_ReworkPlanGate drives NewReworkPlanGate and the validate-plan verb's --rework mode over the same fixture set and asserts the two mapped verdicts agree.
-// The cases are a clean whole new plan numbered from the told card (done), a first_card differing from the told number (stuck),
-// a card using a missing symbol (stuck), and a plan with nothing committed at HEAD (error).
+// The cases are a clean whole new plan numbered from the told card (done), a first_card differing from the told number (stuck), a card using a missing symbol (stuck), and a plan with nothing committed at HEAD (error).
 func TestGateParity_ReworkPlanGate(t *testing.T) {
 	cases := []struct {
 		name       string

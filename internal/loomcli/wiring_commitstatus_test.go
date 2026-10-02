@@ -408,8 +408,7 @@ func TestStatusCommitPathspec_RunRecords(t *testing.T) {
 	}
 }
 
-// TestStatusCommitPathspec_PendingRejectionHoldsTheRound asserts a pending rejection leaves the reviews root and the loom durable directory out though each holds a file,
-// whether the highest round is unclassed or classed but uncommitted, and that without a rejection today's pathspec stays.
+// TestStatusCommitPathspec_PendingRejectionHoldsTheRound asserts a pending rejection leaves the reviews root and the loom durable directory out though each holds a file, whether the highest round is unclassed or classed but uncommitted, and that without a rejection today's pathspec stays.
 func TestStatusCommitPathspec_PendingRejectionHoldsTheRound(t *testing.T) {
 	t.Parallel()
 

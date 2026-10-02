@@ -214,8 +214,7 @@ func (s proseSession) Call(context.Context) (shedengine.Outcome, shedengine.Outp
 	return shedengine.Done, shedengine.OutputPointer{Path: s.coverage}, nil
 }
 
-// TestWire_Real_PlanReviewSkipFollowsGenerationClass asserts Env.SkipPlanReview, over a real fabric pair,
-// answers true after a round whose new generation is all-Prosa on .md files and false after a round whose generation carries an Edit card.
+// TestWire_Real_PlanReviewSkipFollowsGenerationClass asserts Env.SkipPlanReview, over a real fabric pair, answers true after a round whose new generation is all-Prosa on .md files and false after a round whose generation carries an Edit card.
 func TestWire_Real_PlanReviewSkipFollowsGenerationClass(t *testing.T) {
 	hub := hubforge.NewHub(t, ".")
 	const slug = "reworkskip"
