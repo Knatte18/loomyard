@@ -464,8 +464,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// git rather than as untracked dirt that refuses the task worktree's removal.
 		// The plan directory rides along because webster rewrites card files during the run
 		// (handle binding, handle canonicalization);
-		// PR-Rework archives the plan at its working-tree state, so a rewrite left uncommitted
-		// would be archived without ever having been committed in place.
+		// PR-Rework archives the plan at its working-tree state, so a rewrite left uncommitted would be archived without ever having been committed in place.
 		CommitWebster: func() error {
 			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, []string{websterengine.DirRel(), planparser.PlanDirRel()}, fmt.Sprintf("loom: webster run record for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
 			return err

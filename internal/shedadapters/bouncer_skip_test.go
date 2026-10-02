@@ -1,5 +1,4 @@
-// bouncer_skip_test.go covers BouncerConfig.Skip -- the optional seam that settles a segment as
-// approved without a seed or judge spawn when the caller says the artifact needs no review.
+// bouncer_skip_test.go covers BouncerConfig.Skip -- the optional seam that settles a segment as approved without a seed or judge spawn when the caller says the artifact needs no review.
 
 package shedadapters
 
@@ -12,8 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// TestBouncer_Skip_TrueSpawnsNothingAndApprovesBeforeCommit pins that a true seam spawns no seed
-// or judge, calls Approve strictly before Commit, and returns Done with an empty pointer.
+// TestBouncer_Skip_TrueSpawnsNothingAndApprovesBeforeCommit pins that a true seam spawns no seed or judge, calls Approve strictly before Commit, and returns Done with an empty pointer.
 func TestBouncer_Skip_TrueSpawnsNothingAndApprovesBeforeCommit(t *testing.T) {
 	var callLog []string
 	shuttle := &fakeShuttle{}
@@ -54,8 +52,7 @@ func TestBouncer_Skip_TrueSpawnsNothingAndApprovesBeforeCommit(t *testing.T) {
 	}
 }
 
-// TestBouncer_Skip_FalseSeedsRoundOne pins that a false seam reviews exactly as an unconfigured
-// Bouncer does: the seed pass runs and the call returns Stuck.
+// TestBouncer_Skip_FalseSeedsRoundOne pins that a false seam reviews exactly as an unconfigured Bouncer does: the seed pass runs and the call returns Stuck.
 func TestBouncer_Skip_FalseSeedsRoundOne(t *testing.T) {
 	shuttle := &fakeShuttle{}
 	cfg := testBouncerConfig(t)
@@ -81,8 +78,7 @@ func TestBouncer_Skip_FalseSeedsRoundOne(t *testing.T) {
 	}
 }
 
-// TestBouncer_Skip_ErrorFallsBackToReview pins that an erroring seam warns and seeds round 1 like
-// a false one, never halting and never approving.
+// TestBouncer_Skip_ErrorFallsBackToReview pins that an erroring seam warns and seeds round 1 like a false one, never halting and never approving.
 func TestBouncer_Skip_ErrorFallsBackToReview(t *testing.T) {
 	approveCalls := 0
 	shuttle := &fakeShuttle{}
@@ -116,8 +112,7 @@ func TestBouncer_Skip_ErrorFallsBackToReview(t *testing.T) {
 	}
 }
 
-// TestBouncer_Skip_FailingApproveSkipsCommit pins that a failing Approve under a true seam skips
-// Commit and fails the way settle does: an error wrapping the cause, never Stuck.
+// TestBouncer_Skip_FailingApproveSkipsCommit pins that a failing Approve under a true seam skips Commit and fails the way settle does: an error wrapping the cause, never Stuck.
 func TestBouncer_Skip_FailingApproveSkipsCommit(t *testing.T) {
 	sentinel := errors.New("approve failed")
 	commitCalls := 0

@@ -495,9 +495,7 @@ func TestGateParity_DescriptionGate(t *testing.T) {
 	}
 }
 
-// reworkParityFixture writes a one-card language: go plan under anchorPath, a new generation whose card is numbered cardNumber (with first_card: cardNumber above 1) and creates newpkg#Bar,
-// also using uses when it is non-empty, and returns a *loomCLI whose committed-file seam serves a one-card generation (card 1 creating sub#Foo) as the plan at HEAD --
-// or nothing at all when committed is false.
+// reworkParityFixture writes a one-card language: go plan under anchorPath, a new generation whose card is numbered cardNumber (with first_card: cardNumber above 1) and creates newpkg#Bar, also using uses when it is non-empty, and returns a *loomCLI whose committed-file seam serves a one-card generation (card 1 creating sub#Foo) as the plan at HEAD -- or nothing at all when committed is false.
 // The told number is therefore 2.
 // It is duplicated from internal/loomshed/gates_test.go's seedReworkGlyphPlan per the duplicate-test-helpers-rather-than-share-them Shared Decision.
 func reworkParityFixture(t *testing.T, anchorPath, worktreeRoot string, cardNumber int, uses string, committed bool) *loomCLI {

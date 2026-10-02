@@ -1175,8 +1175,7 @@ func TestParsePlan_Language(t *testing.T) {
 	})
 }
 
-// TestParsePlan_FirstCard pins how the optional first_card overview key parses, including that a
-// non-integer value reaches validation instead of failing the strict decode.
+// TestParsePlan_FirstCard pins how the optional first_card overview key parses, including that a non-integer value reaches validation instead of failing the strict decode.
 func TestParsePlan_FirstCard(t *testing.T) {
 	t.Parallel()
 

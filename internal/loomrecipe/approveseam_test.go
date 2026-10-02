@@ -57,8 +57,7 @@ func TestShippedRecipe_ApproveSeamWiredOnPlanBouncerOnly(t *testing.T) {
 	}
 }
 
-// TestShippedRecipe_SkipSeamWiredOnPlanBouncerOnly asserts skip_seam: rework-exempt sits on the
-// Plan-Bouncer row and no other row of the shipped recipe.
+// TestShippedRecipe_SkipSeamWiredOnPlanBouncerOnly asserts skip_seam: rework-exempt sits on the Plan-Bouncer row and no other row of the shipped recipe.
 func TestShippedRecipe_SkipSeamWiredOnPlanBouncerOnly(t *testing.T) {
 	r, err := shedbuild.Parse(recipes.LoomRecipe)
 	if err != nil {

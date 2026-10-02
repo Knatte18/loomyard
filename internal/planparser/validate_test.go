@@ -1899,8 +1899,8 @@ func TestCardID(t *testing.T) {
 	}
 }
 
-// TestValidate_IndexFileMismatch_FirstCard covers the first_card numbering base: the Card Index
-// must run first_card..first_card+n-1, and an invalid first_card is a finding of its own.
+// TestValidate_IndexFileMismatch_FirstCard covers the first_card numbering base: the Card Index must run first_card..first_card+n-1,
+// and an invalid first_card is a finding of its own.
 func TestValidate_IndexFileMismatch_FirstCard(t *testing.T) {
 	t.Parallel()
 

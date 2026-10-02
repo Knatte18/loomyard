@@ -89,16 +89,13 @@ func archiveReportsDir(reportsDir string, now func() time.Time) error {
 	return nil
 }
 
-// ArchiveRunRecord moves every entry of geom.WebsterDir into dest, so the next run finds no
-// state and starts fresh over the live plan only.
-// dest is told and never derived; this function knows nothing of what it is archiving for.
-// It refuses with ErrRunBusy while a run holds the run lock, then holds the state-mutation lease
-// across the moves.
+// ArchiveRunRecord moves every entry of geom.WebsterDir into dest, so the next run finds no state and starts fresh over the live plan only.
+// dest is told and never derived;
+// this function knows nothing of what it is archiving for.
+// It refuses with ErrRunBusy while a run holds the run lock, then holds the state-mutation lease across the moves.
 // It is idempotent for crash resume: an absent WebsterDir, or an entry already moved, is skipped.
-// An entry present at both source and destination is an error and nothing is moved, since
-// either copy may be the stale one.
-// The rendered fork prompts are cleared as the --fresh escape does, since they are re-renderable
-// and name the retired run's batches.
+// An entry present at both source and destination is an error and nothing is moved, since either copy may be the stale one.
+// The rendered fork prompts are cleared as the --fresh escape does, since they are re-renderable and name the retired run's batches.
 func ArchiveRunRecord(geom Geometry, dest string) error {
 	if err := os.MkdirAll(geom.ScratchDir, 0o755); err != nil {
 		return fmt.Errorf("websterengine: create webster scratch dir %s: %w", geom.ScratchDir, err)

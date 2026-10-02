@@ -45,8 +45,8 @@ type committedRound struct {
 }
 
 // committedRounds returns the rounds committed at HEAD, in the order roundNumbers lists them.
-// A round counts as committed only when its record carries a class: a classless record is the archive's completion marker
-// and can reach HEAD outside the round commit, and counting it would skip the session.
+// A round counts as committed only when its record carries a class: a classless record is the archive's completion marker and can reach HEAD outside the round commit,
+// and counting it would skip the session.
 func committedRounds(deps PRReworkDeps) ([]committedRound, error) {
 	nums, err := roundNumbers(deps.ReworkDir)
 	if err != nil {

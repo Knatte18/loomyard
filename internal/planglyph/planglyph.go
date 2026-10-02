@@ -31,8 +31,7 @@ func ValidateFormat(plan *planparser.Plan, worktreeRoot string) ([]Finding, erro
 	return findings, err
 }
 
-// ValidateRework is the rework gate's check set: ValidateFormat's findings, then planparser.CheckFirstCard's finding
-// when plan's first_card differs from told, the card number Go told the rework session to start at.
+// ValidateRework is the rework gate's check set: ValidateFormat's findings, then planparser.CheckFirstCard's finding when plan's first_card differs from told, the card number Go told the rework session to start at.
 // It has ValidateFormat's error contract.
 func ValidateRework(plan *planparser.Plan, worktreeRoot string, told int) ([]Finding, error) {
 	findings, err := ValidateFormat(plan, worktreeRoot)

@@ -806,8 +806,7 @@ func TestArmAt_RecordsTheArmingVerb(t *testing.T) {
 	}
 }
 
-// TestWire_SkipPlanReviewIsFilled asserts c.env.SkipPlanReview is non-nil: Plan-Bouncer's skip_seam
-// is guarded by requireSeam, so a nil closure would fail the recipe build.
+// TestWire_SkipPlanReviewIsFilled asserts c.env.SkipPlanReview is non-nil: Plan-Bouncer's skip_seam is guarded by requireSeam, so a nil closure would fail the recipe build.
 func TestWire_SkipPlanReviewIsFilled(t *testing.T) {
 	t.Parallel()
 

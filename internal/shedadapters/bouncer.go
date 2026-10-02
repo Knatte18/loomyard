@@ -84,13 +84,12 @@ type BouncerConfig struct {
 	// Only then do the seed and judge prompts ask for exclude_lenses; the zero value asks for focus
 	// alone.
 	ClusterExcludes bool
-	// Skip is the optional seam a caller tells this Bouncer when the artifact under review may need
-	// no review at all. True settles the segment as approved without a seed or judge spawn; false
-	// reviews as usual; an error warns and reviews as usual, since the seam is an optimisation and
-	// a guard that does not protect correctness warns rather than halts. Nil is the absent value
-	// and leaves every row behaving exactly as before.
-	// The seam can only approve what its caller already classified: it cannot reject, re-route, or
-	// touch the run directory.
+	// Skip is the optional seam a caller tells this Bouncer when the artifact under review may need no review at all.
+	// True settles the segment as approved without a seed or judge spawn;
+	// false reviews as usual;
+	// an error warns and reviews as usual, since the seam is an optimisation and a guard that does not protect correctness warns rather than halts.
+	// Nil is the absent value and leaves every row behaving exactly as before.
+	// The seam can only approve what its caller already classified: it cannot reject, re-route, or touch the run directory.
 	Skip func() (bool, error)
 }
 
@@ -320,9 +319,7 @@ func (b *Bouncer) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 	return b.judgeCall(ctx, n)
 }
 
-// approveWithoutReview settles a skipped segment as approved: Approve then Commit, each when
-// non-nil, failing exactly as settle's approved branch does, then Done with an empty pointer
-// because no ledger exists to point at.
+// approveWithoutReview settles a skipped segment as approved: Approve then Commit, each when non-nil, failing exactly as settle's approved branch does, then Done with an empty pointer because no ledger exists to point at.
 func (b *Bouncer) approveWithoutReview() (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if b.cfg.Approve != nil {
 		if err := b.cfg.Approve(); err != nil {

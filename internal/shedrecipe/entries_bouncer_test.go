@@ -650,8 +650,7 @@ func TestBouncerEntry_CommitSeam(t *testing.T) {
 	})
 }
 
-// TestBouncerEntry_SkipSeam covers skip_seam's absent, accepted and rejected values and the
-// presence guard on a configured-but-missing env.SkipPlanReview.
+// TestBouncerEntry_SkipSeam covers skip_seam's absent, accepted and rejected values and the presence guard on a configured-but-missing env.SkipPlanReview.
 func TestBouncerEntry_SkipSeam(t *testing.T) {
 	t.Run("AbsentConstructsSuccessfully", func(t *testing.T) {
 		env := newTestEnv(t)

@@ -440,8 +440,7 @@ func RenderProgress(batches []batcher.Batch, st *State) string {
 
 // RenderRemaining renders {{.remaining}}: the batches with no terminal record yet, in execution
 // order, as one comma-separated list of "NN-slug", or "none" when every batch is terminal.
-// It serves crash-resume within one generation: a resumed run otherwise shows Master a long trail of
-// done batches and leaves the unfinished ones to be spotted in the index alone.
+// It serves crash-resume within one generation: a resumed run otherwise shows Master a long trail of done batches and leaves the unfinished ones to be spotted in the index alone.
 func RenderRemaining(batches []batcher.Batch, st *State) string {
 	var names []string
 	for _, b := range batches {
