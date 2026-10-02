@@ -2,12 +2,9 @@
 
 // notes_test.go — tests for the "notes" subcommand group (cli.go).
 //
-// Mirrors TestCLIContract's table-driven shape from cli_test.go, but drives
-// the notes verbs (targeting notes.json instead of tasks.json) and adds the
-// distinctive cross-store assertions: a notes upsert must write notes.json
-// (not tasks.json) in the board dir, and a notes remove must leave
-// tasks.json untouched. seedCwd and runCLI are defined in cli_test.go and
-// cli_unit_test.go respectively, same package, directly callable.
+// Mirrors TestCLIContract's table-driven shape from cli_test.go, but drives the notes verbs, which share the one board.json store with the task verbs:
+// a notes upsert must land in board.json and create no legacy file, and notes list returns every entry.
+// seedCwd and runCLI are defined in cli_test.go and cli_unit_test.go respectively, same package, directly callable.
 
 package boardcli_test
 
@@ -19,6 +16,41 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 )
+
+// TestCLINotesAliasReachesTopLevelEntries asserts that the notes group is an alias onto the same store:
+// an entry created by the top-level upsert is reachable and removable through notes.
+func TestCLINotesAliasReachesTopLevelEntries(t *testing.T) {
+	t.Setenv("BOARD_SKIP_GIT", "1")
+	seedCwd(t)
+
+	if exitCode, stdout := runCLI(t, "upsert", `{"slug":"shared","title":"Shared"}`); exitCode != 0 {
+		t.Fatalf("upsert: exit %d; stdout: %s", exitCode, stdout)
+	}
+
+	exitCode, stdout := runCLI(t, "notes", "get", `{"slug":"shared"}`)
+	if exitCode != 0 {
+		t.Fatalf("notes get: exit %d; stdout: %s", exitCode, stdout)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("parse notes get output: %v; stdout: %s", err, stdout)
+	}
+	if task, ok := got["task"].(map[string]any); !ok || task["slug"] != "shared" {
+		t.Fatalf("notes get did not return the top-level entry: %v", got)
+	}
+
+	if exitCode, stdout := runCLI(t, "notes", "remove", `{"slug":"shared"}`); exitCode != 0 {
+		t.Fatalf("notes remove: exit %d; stdout: %s", exitCode, stdout)
+	}
+	_, stdout = runCLI(t, "get", `{"slug":"shared"}`)
+	var after map[string]any
+	if err := json.Unmarshal([]byte(stdout), &after); err != nil {
+		t.Fatalf("parse get output: %v; stdout: %s", err, stdout)
+	}
+	if task, exists := after["task"]; !exists || task != nil {
+		t.Fatalf("expected the entry removed through notes to be gone from the top level, got %v", after)
+	}
+}
 
 // TestCLINotesContract tests the JSON envelope shape and exit code behavior for each happy-path
 // notes verb: upsert, list, get, set-status, remove.
@@ -46,15 +78,16 @@ func TestCLINotesContract(t *testing.T) {
 			wantOK:         true,
 			wantFieldExist: "task",
 			assertFieldExists: func(t *testing.T, result map[string]any, cwd string) {
-				// The write must land in notes.json, not tasks.json, in the board dir.
+				// The write must land in board.json, with no legacy file created in the board dir.
 				boardDir := fabricengine.BoardDir(filepath.Dir(cwd))
-				notesPath := filepath.Join(boardDir, "notes.json")
-				if _, err := os.Stat(notesPath); err != nil {
-					t.Fatalf("notes.json not created at %q: %v", notesPath, err)
+				storePath := filepath.Join(boardDir, "board.json")
+				if _, err := os.Stat(storePath); err != nil {
+					t.Fatalf("board.json not created at %q: %v", storePath, err)
 				}
-				tasksPath := filepath.Join(boardDir, "tasks.json")
-				if _, err := os.Stat(tasksPath); err == nil {
-					t.Fatalf("tasks.json unexpectedly created by notes upsert at %q", tasksPath)
+				for _, legacy := range []string{"tasks.json", "notes.json"} {
+					if _, err := os.Stat(filepath.Join(boardDir, legacy)); err == nil {
+						t.Fatalf("%s unexpectedly created by notes upsert", legacy)
+					}
 				}
 			},
 		},
@@ -63,16 +96,17 @@ func TestCLINotesContract(t *testing.T) {
 			setup: func(t *testing.T) string {
 				cwd := seedCwd(t)
 				runCLI(t, "notes", "upsert", `{"slug":"foo-note","title":"Foo Note"}`)
+				runCLI(t, "upsert", `{"slug":"foo-task","title":"Foo Task"}`)
 				return cwd
 			},
 			args:           []string{"notes", "list"},
 			wantExitCode:   0,
 			wantOK:         true,
-			wantFieldExist: "tasks", // envelope key stays "tasks" even for notes output (ListNotesBrief reuses BriefTask)
+			wantFieldExist: "tasks", // envelope key stays "tasks" (ListTasksBrief reuses BriefTask)
 			assertFieldExists: func(t *testing.T, result map[string]any, _ string) {
 				tasks, ok := result["tasks"].([]any)
-				if !ok || len(tasks) == 0 {
-					t.Fatalf("expected non-empty tasks array, got %v", result)
+				if !ok || len(tasks) != 2 {
+					t.Fatalf("expected the note and the task in the tasks array, got %v", result)
 				}
 			},
 		},
@@ -124,11 +158,12 @@ func TestCLINotesContract(t *testing.T) {
 					t.Fatalf("expected removed note to be gone, got %v", getResult)
 				}
 
-				// tasks.json must be untouched by a notes-scoped remove.
+				// A notes remove must not create a legacy file.
 				boardDir := fabricengine.BoardDir(filepath.Dir(cwd))
-				tasksPath := filepath.Join(boardDir, "tasks.json")
-				if _, err := os.Stat(tasksPath); err == nil {
-					t.Fatalf("tasks.json unexpectedly present after notes remove at %q", tasksPath)
+				for _, legacy := range []string{"tasks.json", "notes.json"} {
+					if _, err := os.Stat(filepath.Join(boardDir, legacy)); err == nil {
+						t.Fatalf("%s unexpectedly present after notes remove", legacy)
+					}
 				}
 			},
 		},

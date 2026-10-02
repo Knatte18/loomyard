@@ -1,13 +1,13 @@
 // store_test.go — unit tests for the Store (store.go).
 //
-// CRUD, sequential ID assignment, and every validation rule: dangling deps, isolated/deferred
-// constraints, cycle detection, and batch/merge atomicity.
+// CRUD, sequential ID assignment, and every validation rule: dangling deps, isolated/tier constraints, cycle detection, and batch/merge atomicity.
 
 package boardengine_test
 
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
@@ -43,7 +43,7 @@ func TestUpsertTaskNewTaskSequentialID(t *testing.T) {
 func TestUpsertTaskDefaults(t *testing.T) {
 	s := boardengine.NewStore("")
 
-	// (b) defaults applied (DependsOn=[], Isolated=false, Deferred=false)
+	// (b) defaults applied (DependsOn=[], Isolated=false, Tier=3, Type=feature)
 	task, err := s.UpsertTask(map[string]any{
 		"slug": "task1",
 	})
@@ -56,9 +56,130 @@ func TestUpsertTaskDefaults(t *testing.T) {
 	if task.Isolated {
 		t.Errorf("expected Isolated=false, got true")
 	}
-	if task.Deferred {
-		t.Errorf("expected Deferred=false, got true")
+	if task.Tier != 3 {
+		t.Errorf("expected Tier=3, got %d", task.Tier)
 	}
+	if task.Type != "feature" {
+		t.Errorf("expected Type=feature, got %q", task.Type)
+	}
+
+	if err := s.UpsertTasksBatch([]map[string]any{{"slug": "task2"}}); err != nil {
+		t.Fatalf("batch: %v", err)
+	}
+	batched, _ := s.GetTask("task2")
+	if batched.Tier != 3 || batched.Type != "feature" {
+		t.Errorf("batch defaults: got tier=%d type=%q", batched.Tier, batched.Type)
+	}
+}
+
+func TestUpsertTierAndTypeValidation(t *testing.T) {
+	for _, tier := range []int{0, 4} {
+		s := boardengine.NewStore("")
+		_, err := s.UpsertTask(map[string]any{"slug": "a", "tier": tier})
+		if err == nil || !stringContains(err.Error(), "1..3") {
+			t.Errorf("tier %d: expected range error, got %v", tier, err)
+		}
+		err = s.UpsertTasksBatch([]map[string]any{{"slug": "a", "tier": tier}})
+		if err == nil {
+			t.Errorf("tier %d: expected batch error", tier)
+		}
+	}
+
+	s := boardengine.NewStore("")
+	_, err := s.UpsertTask(map[string]any{"slug": "a", "type": "batten"})
+	if err == nil || !stringContains(err.Error(), "feature, bug, chore, design") || !stringContains(err.Error(), "recipe") {
+		t.Errorf("expected type error naming the set and recipe, got %v", err)
+	}
+
+	_, err = s.UpsertTask(map[string]any{"slug": "a", "deferred": true})
+	if err == nil || !stringContains(err.Error(), "tier") || !stringContains(err.Error(), "3") {
+		t.Errorf("expected deferred refusal naming tier: 3, got %v", err)
+	}
+
+	if _, err := s.UpsertTask(map[string]any{"slug": "b", "type": "bug", "tier": 1}); err != nil {
+		t.Fatalf("valid tier/type refused: %v", err)
+	}
+	if _, err := s.UpsertTask(map[string]any{"slug": "b", "tier": 9}); err == nil {
+		t.Errorf("patch to tier 9 should be refused")
+	}
+}
+
+func TestTierDependencyRule(t *testing.T) {
+	seed := func(t *testing.T) *boardengine.Store {
+		t.Helper()
+		s := boardengine.NewStore("")
+		if _, err := s.UpsertTask(map[string]any{"slug": "dep", "tier": 2}); err != nil {
+			t.Fatal(err)
+		}
+		return s
+	}
+
+	t.Run("create depending on higher tier refused", func(t *testing.T) {
+		s := seed(t)
+		_, err := s.UpsertTask(map[string]any{"slug": "x", "tier": 1, "depends_on": []string{"dep"}})
+		if err == nil || !stringContains(err.Error(), `"dep"`) {
+			t.Errorf("expected tier refusal naming dep, got %v", err)
+		}
+		if _, err := s.UpsertTask(map[string]any{"slug": "x", "tier": 2, "depends_on": []string{"dep"}}); err != nil {
+			t.Errorf("equal tier should be accepted: %v", err)
+		}
+	})
+
+	t.Run("demoting the dependency refused", func(t *testing.T) {
+		s := seed(t)
+		if _, err := s.UpsertTask(map[string]any{"slug": "x", "tier": 2, "depends_on": []string{"dep"}}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.UpsertTask(map[string]any{"slug": "dep", "tier": 3}); err == nil {
+			t.Errorf("demoting dep below its dependent should be refused")
+		}
+	})
+
+	t.Run("promoting the dependent refused", func(t *testing.T) {
+		s := seed(t)
+		if _, err := s.UpsertTask(map[string]any{"slug": "x", "tier": 3, "depends_on": []string{"dep"}}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.UpsertTask(map[string]any{"slug": "x", "tier": 1}); err == nil {
+			t.Errorf("promoting dependent above its dependency should be refused")
+		}
+	})
+
+	t.Run("done dependency accepts any tier", func(t *testing.T) {
+		s := seed(t)
+		if err := s.SetStatus("dep", stringPtr("done")); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.UpsertTask(map[string]any{"slug": "x", "tier": 1, "depends_on": []string{"dep"}}); err != nil {
+			t.Errorf("dependency on done entry should be accepted: %v", err)
+		}
+	})
+
+	t.Run("demoting dependency of a done dependent refused", func(t *testing.T) {
+		s := seed(t)
+		if _, err := s.UpsertTask(map[string]any{"slug": "x", "tier": 2, "depends_on": []string{"dep"}, "status": "done"}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.UpsertTask(map[string]any{"slug": "dep", "tier": 3}); err == nil {
+			t.Errorf("done dependent must not exempt the edge")
+		}
+	})
+
+	t.Run("reopening a done higher-tier dependency refused", func(t *testing.T) {
+		s := seed(t)
+		if err := s.SetStatus("dep", stringPtr("done")); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.UpsertTask(map[string]any{"slug": "x", "tier": 1, "depends_on": []string{"dep"}}); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.SetStatus("dep", nil); err == nil {
+			t.Errorf("reopening dep should be refused")
+		}
+		if err := s.SetStatus("dep", stringPtr("done")); err != nil {
+			t.Errorf("setting done stays unchecked: %v", err)
+		}
+	})
 }
 
 func TestUpsertTaskPreservesFields(t *testing.T) {
@@ -191,25 +312,25 @@ func TestUpsertFieldAllowlist(t *testing.T) {
 		}
 	})
 
-	t.Run("upsert_type_field_allowed_and_persisted", func(t *testing.T) {
+	t.Run("upsert_recipe_field_allowed_and_persisted", func(t *testing.T) {
 		s := boardengine.NewStore("")
 		task, err := s.UpsertTask(map[string]any{
-			"slug": "task1",
-			"type": "batten",
+			"slug":   "task1",
+			"recipe": "batten",
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if task.Type != "batten" {
-			t.Errorf("expected type=batten, got %v", task.Type)
+		if task.Recipe != "batten" {
+			t.Errorf("expected recipe=batten, got %v", task.Recipe)
 		}
 		// Verify the value is persisted in the store.
 		retrieved, found := s.GetTask("task1")
 		if !found {
 			t.Fatalf("task not found after upsert")
 		}
-		if retrieved.Type != "batten" {
-			t.Errorf("expected stored type=batten, got %v", retrieved.Type)
+		if retrieved.Recipe != "batten" {
+			t.Errorf("expected stored recipe=batten, got %v", retrieved.Recipe)
 		}
 	})
 
@@ -255,12 +376,9 @@ func TestUpsertFieldAllowlist(t *testing.T) {
 	})
 }
 
-// TestValidateDependencyErrors verifies that UpsertTask rejects all invalid dependency
-// configurations with precise error messages: dangling deps, depending on isolated tasks, and
-// depending on deferred tasks.
+// TestValidateDependencyErrors verifies that UpsertTask rejects all invalid dependency configurations with precise error messages: dangling deps and depending on isolated tasks (the tier rule has its own test).
 //
-// Folds: TestValidateDanglingDependency, TestValidateDependencyOnIsolated,
-// TestValidateDependencyOnDeferred
+// Folds: TestValidateDanglingDependency, TestValidateDependencyOnIsolated
 func TestValidateDependencyErrors(t *testing.T) {
 	t.Run("TestValidateDanglingDependency", func(t *testing.T) {
 		s := boardengine.NewStore("")
@@ -299,31 +417,6 @@ func TestValidateDependencyErrors(t *testing.T) {
 			t.Fatalf("expected error for dependency on isolated task")
 		}
 		if err.Error() != "cannot depend on isolated task \"isolated\"" {
-			t.Errorf("unexpected error: %v", err)
-		}
-	})
-
-	t.Run("TestValidateDependencyOnDeferred", func(t *testing.T) {
-		s := boardengine.NewStore("")
-
-		// Create a deferred task
-		_, err := s.UpsertTask(map[string]any{
-			"slug":     "deferred",
-			"deferred": true,
-		})
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		// (g) dependency on deferred task rejected
-		_, err = s.UpsertTask(map[string]any{
-			"slug":       "task1",
-			"depends_on": []string{"deferred"},
-		})
-		if err == nil {
-			t.Fatalf("expected error for dependency on deferred task")
-		}
-		if err.Error() != "cannot depend on deferred task \"deferred\"" {
 			t.Errorf("unexpected error: %v", err)
 		}
 	})
@@ -590,8 +683,7 @@ func TestMergeTasks(t *testing.T) {
 // The remove and upsert steps are applied in-memory but writeOp discards them when mutate errors —
 // confirmed by loading a fresh store from disk and asserting the task list is identical.
 func TestMergeTasksSetStatusRollback(t *testing.T) {
-	tmpDir := t.TempDir()
-	taskPath := filepath.Join(tmpDir, "tasks.json")
+	taskPath := t.TempDir()
 
 	// Create an initial store with one task.
 	s := boardengine.NewStore(taskPath)
@@ -677,6 +769,40 @@ func TestListTasksBriefLayerAndProposal(t *testing.T) {
 	// Both should have a layer assigned (even if empty or a letter)
 	if task1.Layer == "" || task2.Layer == "" {
 		t.Logf("task1 layer: %s, task2 layer: %s", task1.Layer, task2.Layer)
+	}
+}
+
+// TestListAndFindReadmeOrder verifies ListTasksBrief and Find return entries in README order:
+// tier first, done last.
+func TestListAndFindReadmeOrder(t *testing.T) {
+	s := boardengine.NewStore("")
+	for _, f := range []map[string]any{
+		{"slug": "x-someday", "tier": 3},
+		{"slug": "x-planned", "tier": 1},
+		{"slug": "x-next", "tier": 2},
+		{"slug": "x-done", "tier": 1},
+	} {
+		if _, err := s.UpsertTask(f); err != nil {
+			t.Fatalf("UpsertTask %v: %v", f, err)
+		}
+	}
+	if err := s.SetStatus("x-done", stringPtr("done")); err != nil {
+		t.Fatalf("SetStatus: %v", err)
+	}
+
+	want := "x-planned,x-next,x-someday,x-done"
+	slugs := func(bs []boardengine.BriefTask) string {
+		var out []string
+		for _, b := range bs {
+			out = append(out, b.Slug)
+		}
+		return strings.Join(out, ",")
+	}
+	if got := slugs(s.ListTasksBrief()); got != want {
+		t.Errorf("ListTasksBrief order = %s, want %s", got, want)
+	}
+	if got := slugs(s.Find("x-")); got != want {
+		t.Errorf("Find order = %s, want %s", got, want)
 	}
 }
 
@@ -874,16 +1000,15 @@ func TestUpsertTasksBatch(t *testing.T) {
 // Folds: TestLoadNormalizesNilDependsOn, TestLoadMissingFileReturnsEmpty
 func TestLoadNilDependsOnNormalization(t *testing.T) {
 	t.Run("TestLoadNormalizesNilDependsOn", func(t *testing.T) {
-		tmpDir := t.TempDir()
-		taskPath := filepath.Join(tmpDir, "tasks.json")
+		boardDir := t.TempDir()
 
-		// Write tasks.json with a task that has nil DependsOn
-		err := os.WriteFile(taskPath, []byte(`[{"id":0,"slug":"task1","title":"Task 1"}]`), 0o644)
+		// Write board.json with an entry that has nil DependsOn
+		err := os.WriteFile(filepath.Join(boardDir, "board.json"), []byte(`{"version":1,"entries":[{"id":0,"slug":"task1","title":"Task 1","tier":3,"type":"feature"}]}`), 0o644)
 		if err != nil {
 			t.Fatalf("failed to write test file: %v", err)
 		}
 
-		store := boardengine.NewStore(taskPath)
+		store := boardengine.NewStore(boardDir)
 		err = store.Load()
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -904,11 +1029,8 @@ func TestLoadNilDependsOnNormalization(t *testing.T) {
 	})
 
 	t.Run("TestLoadMissingFileReturnsEmpty", func(t *testing.T) {
-		tmpDir := t.TempDir()
-		taskPath := filepath.Join(tmpDir, "tasks.json")
-
 		// Do not create the file; test that Load handles missing file gracefully
-		store := boardengine.NewStore(taskPath)
+		store := boardengine.NewStore(t.TempDir())
 		err := store.Load()
 		if err != nil {
 			t.Fatalf("expected no error for missing file, got %v", err)
@@ -921,22 +1043,66 @@ func TestLoadNilDependsOnNormalization(t *testing.T) {
 	})
 }
 
-// TestLoadCorruptTasksJSON verifies that Load surfaces a corrupt tasks.json as an error instead of
+// TestLoadFromBoardJSON verifies that Load reads the version-1 shape and a Save round-trips it.
+func TestLoadFromBoardJSON(t *testing.T) {
+	boardDir := t.TempDir()
+	body := `{"version":1,"entries":[{"id":4,"slug":"a","title":"A","tier":2,"type":"bug","depends_on":[]}],"legacy_done":["old"]}`
+	if err := os.WriteFile(filepath.Join(boardDir, "board.json"), []byte(body), 0o644); err != nil {
+		t.Fatalf("write board.json: %v", err)
+	}
+
+	store := boardengine.NewStore(boardDir)
+	if err := store.Load(); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	tasks := store.Tasks()
+	if len(tasks) != 1 || tasks[0].Slug != "a" || tasks[0].Tier != 2 || tasks[0].Type != "bug" {
+		t.Fatalf("loaded %+v; want entry a at tier 2 type bug", tasks)
+	}
+
+	if err := store.Save(); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	raw, err := os.ReadFile(filepath.Join(boardDir, "board.json"))
+	if err != nil {
+		t.Fatalf("read board.json: %v", err)
+	}
+	if !stringContains(string(raw), `"legacy_done"`) {
+		t.Errorf("Save dropped legacy_done: %s", raw)
+	}
+}
+
+// TestLoadUnknownVersionRefused verifies a board.json version other than 1 refuses the load, naming the version.
+func TestLoadUnknownVersionRefused(t *testing.T) {
+	boardDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(boardDir, "board.json"), []byte(`{"version":2,"entries":[]}`), 0o644); err != nil {
+		t.Fatalf("write board.json: %v", err)
+	}
+
+	err := boardengine.NewStore(boardDir).Load()
+	if err == nil {
+		t.Fatalf("expected an error for version 2")
+	}
+	if !stringContains(err.Error(), "version 2") {
+		t.Errorf("error %q does not name version 2", err)
+	}
+}
+
+// TestLoadCorruptBoardJSON verifies that Load surfaces a corrupt board.json as an error instead of
 // silently producing an empty task list.
-func TestLoadCorruptTasksJSON(t *testing.T) {
-	tmpDir := t.TempDir()
-	taskPath := filepath.Join(tmpDir, "tasks.json")
+func TestLoadCorruptBoardJSON(t *testing.T) {
+	boardDir := t.TempDir()
 
 	// Write syntactically corrupt JSON
-	err := os.WriteFile(taskPath, []byte(`{this is not valid json`), 0o644)
+	err := os.WriteFile(filepath.Join(boardDir, "board.json"), []byte(`{this is not valid json`), 0o644)
 	if err != nil {
 		t.Fatalf("failed to write corrupt test file: %v", err)
 	}
 
-	store := boardengine.NewStore(taskPath)
+	store := boardengine.NewStore(boardDir)
 	err = store.Load()
 	if err == nil {
-		t.Fatalf("expected error for corrupt tasks.json, got nil")
+		t.Fatalf("expected error for corrupt board.json, got nil")
 	}
 
 	// Verify the error message indicates a load error
@@ -965,4 +1131,166 @@ func stringContains(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+func TestPromote(t *testing.T) {
+	seed := func(t *testing.T) *boardengine.Store {
+		t.Helper()
+		s := boardengine.NewStore("")
+		for _, f := range []map[string]any{
+			{"slug": "a", "tier": 3},
+			{"slug": "b", "tier": 2},
+			{"slug": "c", "tier": 1},
+		} {
+			if _, err := s.UpsertTask(f); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return s
+	}
+	intp := func(n int) *int { return &n }
+
+	t.Run("nil target defaults to one tier lower", func(t *testing.T) {
+		s := seed(t)
+		got, err := s.Promote("a", nil)
+		if err != nil || got.Tier != 2 {
+			t.Fatalf("got tier %d, err %v", got.Tier, err)
+		}
+		stored, _ := s.GetTask("a")
+		if stored.Tier != 2 {
+			t.Errorf("store not updated: tier %d", stored.Tier)
+		}
+	})
+
+	t.Run("skipping tiers allowed", func(t *testing.T) {
+		s := seed(t)
+		got, err := s.Promote("a", intp(1))
+		if err != nil || got.Tier != 1 {
+			t.Fatalf("got tier %d, err %v", got.Tier, err)
+		}
+	})
+
+	t.Run("refused targets", func(t *testing.T) {
+		for name, target := range map[string]*int{"equal": intp(3), "higher": intp(4), "below one": intp(0)} {
+			s := seed(t)
+			_, err := s.Promote("a", target)
+			if err == nil || !stringContains(err.Error(), "tier 3") || !stringContains(err.Error(), "upsert") {
+				t.Errorf("%s: expected refusal naming tier and upsert, got %v", name, err)
+			}
+		}
+	})
+
+	t.Run("tier-1 entry refused", func(t *testing.T) {
+		s := seed(t)
+		_, err := s.Promote("c", nil)
+		if err == nil || !stringContains(err.Error(), "tier 1") || !stringContains(err.Error(), "upsert") {
+			t.Errorf("expected refusal, got %v", err)
+		}
+	})
+
+	t.Run("missing entry refused", func(t *testing.T) {
+		s := seed(t)
+		if _, err := s.Promote("nope", nil); err == nil || !stringContains(err.Error(), "not found") {
+			t.Errorf("expected not found, got %v", err)
+		}
+	})
+
+	t.Run("dependency at higher tier refuses", func(t *testing.T) {
+		s := boardengine.NewStore("")
+		if _, err := s.UpsertTask(map[string]any{"slug": "dep", "tier": 3}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.UpsertTask(map[string]any{"slug": "x", "tier": 3, "depends_on": []string{"dep"}}); err != nil {
+			t.Fatal(err)
+		}
+		_, err := s.Promote("x", intp(2))
+		if err == nil || !stringContains(err.Error(), `"dep"`) {
+			t.Errorf("expected refusal naming dep, got %v", err)
+		}
+		if got, _ := s.GetTask("x"); got.Tier != 3 {
+			t.Errorf("refused promote changed the store: tier %d", got.Tier)
+		}
+	})
+}
+
+func TestPrune(t *testing.T) {
+	s := boardengine.NewStore("")
+	if _, err := s.UpsertTask(map[string]any{"slug": "d1"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.UpsertTask(map[string]any{"slug": "live", "depends_on": []string{"d1"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.UpsertTask(map[string]any{"slug": "d2"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.UpsertTask(map[string]any{"slug": "ab"}); err != nil {
+		t.Fatal(err)
+	}
+	done, abandoned := "done", "abandoned"
+	if err := s.SetStatus("d1", &done); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetStatus("d2", &done); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetStatus("ab", &abandoned); err != nil {
+		t.Fatal(err)
+	}
+
+	removed := s.Prune()
+	if !sliceEqualStrings(removed, []string{"d1", "d2"}) {
+		t.Errorf("removed = %v", removed)
+	}
+	if _, ok := s.GetTask("d1"); ok {
+		t.Errorf("d1 should be gone")
+	}
+	if _, ok := s.GetTask("ab"); !ok {
+		t.Errorf("abandoned entry should survive")
+	}
+	live, _ := s.GetTask("live")
+	if len(live.DependsOn) != 0 {
+		t.Errorf("depends_on not stripped: %v", live.DependsOn)
+	}
+	if again := s.Prune(); len(again) != 0 {
+		t.Errorf("second prune removed %v", again)
+	}
+}
+
+func TestFind(t *testing.T) {
+	s := boardengine.NewStore("")
+	for _, f := range []map[string]any{
+		{"slug": "alpha-slug", "title": "One"},
+		{"slug": "b", "title": "Needle Title"},
+		{"slug": "c", "title": "Three", "brief": "has a NEEDLE here"},
+		{"slug": "d", "title": "Four", "body": "deep needle body"},
+		{"slug": "e", "title": "Five"},
+	} {
+		if _, err := s.UpsertTask(f); err != nil {
+			t.Fatal(err)
+		}
+	}
+	done := "done"
+	if err := s.SetStatus("d", &done); err != nil {
+		t.Fatal(err)
+	}
+
+	slugs := func(bs []boardengine.BriefTask) []string {
+		out := []string{}
+		for _, b := range bs {
+			out = append(out, b.Slug)
+		}
+		return out
+	}
+
+	if got := slugs(s.Find("NEEDLE")); !sliceEqualStrings(got, []string{"b", "c", "d"}) {
+		t.Errorf("title/brief/body match (done included) = %v", got)
+	}
+	if got := slugs(s.Find("ALPHA-SLUG")); !sliceEqualStrings(got, []string{"alpha-slug"}) {
+		t.Errorf("slug match = %v", got)
+	}
+	got := s.Find("zzz")
+	if got == nil || len(got) != 0 {
+		t.Errorf("no match should be an empty slice, got %v", got)
+	}
 }

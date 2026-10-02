@@ -31,8 +31,8 @@ func TestNewTask(t *testing.T) {
 		if task.Isolated != false {
 			t.Errorf("expected Isolated=false, got %v", task.Isolated)
 		}
-		if task.Deferred != false {
-			t.Errorf("expected Deferred=false, got %v", task.Deferred)
+		if task.Tier != 3 || task.Type != "feature" {
+			t.Errorf("expected Tier=3 Type=feature, got %d %q", task.Tier, task.Type)
 		}
 		if task.Status != nil {
 			t.Errorf("expected Status=nil, got %v", task.Status)
@@ -117,21 +117,21 @@ func TestNewTask(t *testing.T) {
 		}
 	})
 
-	t.Run("type field round-trips onto Task.Type", func(t *testing.T) {
+	t.Run("recipe field round-trips onto Task.Recipe", func(t *testing.T) {
 		fields := map[string]any{
-			"slug": "my-task",
-			"type": "batten",
+			"slug":   "my-task",
+			"recipe": "batten",
 		}
 		task, err := boardengine.NewTask(fields, 1)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if task.Type != "batten" {
-			t.Errorf("expected Type='batten', got %q", task.Type)
+		if task.Recipe != "batten" {
+			t.Errorf("expected Recipe='batten', got %q", task.Recipe)
 		}
 	})
 
-	t.Run("absent type field reads back as the empty string", func(t *testing.T) {
+	t.Run("absent recipe field reads back as the empty string", func(t *testing.T) {
 		fields := map[string]any{
 			"slug": "my-task",
 		}
@@ -139,12 +139,19 @@ func TestNewTask(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if task.Type != "" {
-			t.Errorf("expected Type='', got %q", task.Type)
+		if task.Recipe != "" {
+			t.Errorf("expected Recipe='', got %q", task.Recipe)
 		}
 	})
 
-	t.Run("omitempty keeps a record with no type byte-identical to today's", func(t *testing.T) {
+	t.Run("a recipe name in type is refused", func(t *testing.T) {
+		_, err := boardengine.NewTask(map[string]any{"slug": "my-task", "type": "batten"}, 1)
+		if err == nil || !strings.Contains(err.Error(), "recipe") {
+			t.Errorf("expected refusal pointing at recipe, got %v", err)
+		}
+	})
+
+	t.Run("omitempty keeps a record with no recipe free of the key", func(t *testing.T) {
 		task, err := boardengine.NewTask(map[string]any{"slug": "my-task"}, 1)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -153,8 +160,8 @@ func TestNewTask(t *testing.T) {
 		if err != nil {
 			t.Fatalf("marshal: %v", err)
 		}
-		if strings.Contains(string(got), `"type"`) {
-			t.Errorf("expected no \"type\" byte in JSON with empty Type, got: %s", got)
+		if strings.Contains(string(got), `"recipe"`) {
+			t.Errorf("expected no \"recipe\" key in JSON with empty Recipe, got: %s", got)
 		}
 	})
 }
@@ -181,6 +188,8 @@ func TestApplyPatch(t *testing.T) {
 			ID:        1,
 			Slug:      "test",
 			Title:     "Old Title",
+			Tier:      3,
+			Type:      "feature",
 			Brief:     "Original brief",
 			DependsOn: []string{"a"},
 		}
@@ -206,6 +215,8 @@ func TestApplyPatch(t *testing.T) {
 		existing := boardengine.Task{
 			ID:        1,
 			Slug:      "test",
+			Tier:      3,
+			Type:      "feature",
 			DependsOn: []string{"a"},
 		}
 		patch := map[string]any{
@@ -228,6 +239,8 @@ func TestApplyPatch(t *testing.T) {
 		existing := boardengine.Task{
 			ID:     1,
 			Slug:   "test",
+			Tier:   3,
+			Type:   "feature",
 			Status: &statusVal,
 		}
 		patch := map[string]any{
@@ -250,6 +263,8 @@ func TestApplyPatch(t *testing.T) {
 		existing := boardengine.Task{
 			ID:     1,
 			Slug:   "test",
+			Tier:   3,
+			Type:   "feature",
 			Status: &statusVal,
 		}
 		patch := map[string]any{
@@ -279,7 +294,7 @@ func TestApplyPatch(t *testing.T) {
 	})
 
 	t.Run("patching slug at maxSlugLength is accepted", func(t *testing.T) {
-		existing := boardengine.Task{ID: 1, Slug: "test"}
+		existing := boardengine.Task{ID: 1, Slug: "test", Tier: 3, Type: "feature"}
 		patch := map[string]any{
 			"slug": strings.Repeat("a", 32),
 		}

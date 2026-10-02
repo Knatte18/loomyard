@@ -1,9 +1,10 @@
 // layer.go — derived task fields.
 //
-// ComputeLayers assigns each task a dependency depth (its render bucket),
+// ComputeLayers assigns each task a dependency depth, which orders entries inside a README section,
 // and RenderOrder orders tasks for output.
 // All computed at read time;
-// never stored.
+// never stored;
+// layer letters are never rendered.
 
 package boardengine
 
@@ -19,8 +20,6 @@ func ComputeLayers(tasks []Task) (map[string]string, error) {
 	for _, t := range tasks {
 		if t.Status != nil && *t.Status == "done" {
 			layerMap[t.Slug] = "__done__"
-		} else if t.Deferred {
-			layerMap[t.Slug] = "__deferred__"
 		} else if t.Isolated {
 			layerMap[t.Slug] = "Z"
 		}
@@ -138,7 +137,9 @@ type TaskWithLayer struct {
 	Layer string
 }
 
-// RenderOrder returns tasks sorted by bucket order, then by ID.
+// RenderOrder returns tasks in README order.
+// Non-done entries come first, by tier; done entries follow.
+// Within each section, entries order by dependency layer, then by ID.
 func RenderOrder(tasks []Task) ([]TaskWithLayer, error) {
 	layerMap, err := ComputeLayers(tasks)
 	if err != nil {
@@ -161,12 +162,19 @@ func RenderOrder(tasks []Task) ([]TaskWithLayer, error) {
 		"K": 10, "L": 11, "M": 12, "N": 13, "O": 14,
 		"P": 15, "Q": 16, "R": 17, "S": 18, "T": 19,
 		"U": 20, "V": 21, "W": 22, "X": 23, "Y": 24,
-		"Z":            25,
-		"__deferred__": 26,
-		"__done__":     27,
+		"Z":        25,
+		"__done__": 26,
 	}
 
 	sort.Slice(result, func(i, j int) bool {
+		doneI := result[i].Layer == "__done__"
+		doneJ := result[j].Layer == "__done__"
+		if doneI != doneJ {
+			return doneJ
+		}
+		if !doneI && result[i].Tier != result[j].Tier {
+			return result[i].Tier < result[j].Tier
+		}
 		bucketI := bucketOrder[result[i].Layer]
 		bucketJ := bucketOrder[result[j].Layer]
 		if bucketI != bucketJ {
