@@ -1,5 +1,6 @@
 {
   "enabledPlugins": {
-    "ly@loomyard": true
+    "ly@loomyard": true,
+    "mill@millhouse": false
   }
 }
