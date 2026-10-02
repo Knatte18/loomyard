@@ -409,6 +409,30 @@
 // BisectAndEscalate then records that localized finding as a terminal, non-successful entry in State.Batches under the reserved key -1 (RecordIntegrationFailure — never a real plan card number, so RenderProgress's walk over batch numbers, which are equally positive, can never surface it by accident)
 // and extends summary.md naming the offending card and the regressing identities with their tails (AppendIntegrationFailure).
 //
+// # The integration-fix attempt
+//
+// A regression under a Master outcome of done gets one automated fix attempt before it escalates (attemptIntegrationFix, in integrationfix.go);
+// a non-done Master outcome escalates with no attempt, since a fix cannot change it.
+// It runs after the triage and the localization, in two-phase steps that never hold the state-mutation lease across the strand's wait or a verify run:
+// a leased step records State.IntegrationFix with the pre-fix head before any spawn, so a resumed run never spends a second attempt;
+// the strand starts through RunDeps.FixStarter at the recovery role's model, with recovery_timeout_min as its timeout and a report under the reports directory as its output file;
+// a second leased step records its strand GUID, which run entry's reclaim stops if the run died while the strand was live;
+// after the wait the strand and its run directory are removed.
+// A nil FixStarter is a wiring error checked before anything is recorded, so a wiring fault never spends the attempt.
+// Go accepts the strand's work only when the plan fingerprint is unchanged (which catches an on-disk plan write no commit can show) and checkFixCommits passes:
+// non-merge commits outside the plan and `_lyx`, HEAD reconciled with the reported head, and a clean worktree.
+// A refusal there, a timeout or dead outcome, a missing or malformed report and a FAILED report each end the attempt as failed.
+// Success is decided by Go, never by the strand's report: the plan's verify runs once at HEAD, and a red run is triaged against the batches' start commits; no regression in that result means the regression is fixed.
+// A fixed regression keeps the run done and records the attempt in the integration report's Fix field and an "Integration suite fix" section of summary.md, with no -1 record;
+// any other result escalates as above, the pre-fix bisect result under the reserved -1 record, plus the same Fix record and section, and a stuck reason naming the pre-fix head and the fix commits.
+// Go never resets the branch: a failed attempt's commits stay on it for the operator to keep or drop.
+// A State.IntegrationFix with an empty Result, found when the stage next runs, is an attempt the run's end interrupted;
+// it is checked after the integration report loads and before the OK early return, ends as failed whatever the report says, and sets Result in the same save.
+// `run --fresh` builds a new State and so resets the record.
+// The bound is the single recorded attempt, the timeout, the commit check with the plan-fingerprint compare, the post-fix triage deciding success, and the later review rows seeing the fix commits like any other branch commit.
+// Triage sees only failures, so a test the strand deleted or skipped reads as cleared;
+// the strand's prompt forbids it and summary.md names the fix commits and cleared identities for review.
+//
 // # No shared substrate or parser with any other batch-implementation loop
 //
 // websterengine imports no other batch-implementation module's plan

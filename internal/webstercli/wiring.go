@@ -321,7 +321,7 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag str
 	return nil
 }
 
-// setRunner stores runner and its three adapted seams (starter, injector, masterStarter) plus the
+// setRunner stores runner and its four adapted seams (starter, injector, masterStarter, fixStarter) plus the
 // claude/reed engines onto c, shared by both wireHub and wireStandalone so the adaptation is named
 // once.
 func (c *websterCLI) setRunner(runner *shuttleengine.Runner, claudeEngine shuttleengine.Engine, reedEngine shuttleengine.ReedOps) {
@@ -329,6 +329,7 @@ func (c *websterCLI) setRunner(runner *shuttleengine.Runner, claudeEngine shuttl
 	c.starter = runner
 	c.injector = runner
 	c.masterStarter = runnerMasterStarter{runner: runner}
+	c.fixStarter = runnerFixStarter{runner: runner}
 	c.engine = claudeEngine
 	c.reed = reedEngine
 }
