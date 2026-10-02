@@ -747,6 +747,35 @@ func TestForkTemplate_CardLoopReadsCardFileWithWhatFallback(t *testing.T) {
 	requireContains(t, text, "unless the card FILE carries a `**Commit:**` line")
 }
 
+// TestRenderForkPrompt_SelfFixSectionCountsCardCausedFailures asserts the rendered fork prompt's
+// "Bounded self-fix, then stop" section carries the caused-by-the-card rule with both causes, the
+// rendered cap, the FAILED-on-exhaustion rule, and the report-but-never-fix rule for a failure the
+// card did not cause.
+func TestRenderForkPrompt_SelfFixSectionCountsCardCausedFailures(t *testing.T) {
+	card := cardWithSourcePath(1, "json-flag", "add the --json flag")
+	batch := batcher.Batch{Cards: []planparser.Card{card}}
+
+	anchorRoot, stencilsDir := testLayout(t)
+	got, err := websterengine.RenderForkPrompt(batch, "", "/reports/01-json-flag.yaml", filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), 7, "")
+	if err != nil {
+		t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
+	}
+	text := string(got)
+
+	_, rest, ok := strings.Cut(text, "## Bounded self-fix, then stop")
+	if !ok {
+		t.Fatalf("rendered prompt has no \"## Bounded self-fix, then stop\" section")
+	}
+	section, _, _ := strings.Cut(rest, "\n## ")
+
+	requireContains(t, section, "at most `7` in-session fix attempts")
+	requireContains(t, section, "in any other test run you make, counts as that card's gate failure when the card's change caused it")
+	requireContains(t, section, "the failing test exercises code or files the card changed")
+	requireContains(t, section, "a repo scan or enforcement test flags a file the card wrote")
+	requireContains(t, section, "under the same `7`-attempt bound as any gate failure, and report `status: FAILED` when the bound runs out")
+	requireContains(t, section, "A failure the card did not cause is never yours to fix and never a `FAILED` on its own: name it in your final reply to Master")
+}
+
 // TestForkTemplate_FillsWithAllMarkers asserts stencil.FillOptional succeeds when every one of the
 // composed fork template's six required markers plus the optional friction_directive marker is
 // supplied, and fails — naming the marker — when any single REQUIRED one is absent.
