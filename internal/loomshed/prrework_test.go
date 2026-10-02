@@ -174,7 +174,12 @@ func (f *reworkFixture) writeFile(root, rel, body string) {
 }
 
 func (f *reworkFixture) producer() shedengine.ShedProducer {
-	return NewPRRework("PR-Rework", f.session, PRReworkDeps{
+	return NewPRRework("PR-Rework", f.session, f.deps())
+}
+
+// deps returns the told values and fake seams the fixture hands the producer.
+func (f *reworkFixture) deps() PRReworkDeps {
+	return PRReworkDeps{
 		PlanDir:          f.planDir,
 		ReworkDir:        f.reworkDir,
 		ReworkDirRel:     "rework",
@@ -224,7 +229,7 @@ func (f *reworkFixture) producer() shedengine.ShedProducer {
 			f.commitWorkingPlan()
 			return nil
 		},
-	})
+	}
 }
 
 // session is the fixture's session factory; it records what the producer told it.
@@ -289,7 +294,7 @@ func (f *reworkFixture) readRecord(round int) roundRecord {
 
 func (f *reworkFixture) roundDirs() int {
 	f.t.Helper()
-	nums, err := (&prRework{deps: PRReworkDeps{ReworkDir: f.reworkDir}}).roundNumbers()
+	nums, err := roundNumbers(f.reworkDir)
 	if err != nil {
 		f.t.Fatal(err)
 	}

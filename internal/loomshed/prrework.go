@@ -18,7 +18,6 @@ import (
 	"path"
 	"path/filepath"
 	"strconv"
-	"strings"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -233,55 +232,15 @@ func stuck(reason string) (shedengine.Outcome, shedengine.OutputPointer, error) 
 	return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
 }
 
-// roundNumbers lists the N of every round-<N> directory under ReworkDir; an absent directory lists none.
-func (p *prRework) roundNumbers() ([]int, error) {
-	entries, err := os.ReadDir(p.deps.ReworkDir)
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("loomshed: %s: list rework rounds: %w", p.name, err)
-	}
-	var nums []int
-	for _, e := range entries {
-		if !e.IsDir() || !strings.HasPrefix(e.Name(), reworkRoundPrefix) {
-			continue
-		}
-		n, err := strconv.Atoi(strings.TrimPrefix(e.Name(), reworkRoundPrefix))
-		if err != nil || n < 1 {
-			continue
-		}
-		nums = append(nums, n)
-	}
-	return nums, nil
-}
-
 // committedRejections returns the identities of the rejections recorded by rounds committed at HEAD.
-// A round counts as committed only when its record carries a class: a classless record is the archive's completion marker
-// and can reach HEAD outside the round commit, and counting it would skip the session.
 func (p *prRework) committedRejections() (map[string]bool, error) {
-	nums, err := p.roundNumbers()
+	rounds, err := committedRounds(p.deps)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("loomshed: %s: %w", p.name, err)
 	}
 	identities := make(map[string]bool)
-	for _, n := range nums {
-		rel := path.Join(p.deps.ReworkDirRel, reworkRoundPrefix+strconv.Itoa(n), reworkRecordFile)
-		data, ok, err := p.deps.ReadCommitted(rel)
-		if err != nil {
-			return nil, fmt.Errorf("loomshed: %s: read committed %s: %w", p.name, rel, err)
-		}
-		if !ok {
-			continue
-		}
-		var rec roundRecord
-		if err := json.Unmarshal(data, &rec); err != nil {
-			return nil, fmt.Errorf("loomshed: %s: decode committed %s: %w", p.name, rel, err)
-		}
-		if rec.Class == "" {
-			continue
-		}
-		identities[rejectionIdentity(rec.HeadSHA, rec.RejectedAt)] = true
+	for _, r := range rounds {
+		identities[rejectionIdentity(r.record.HeadSHA, r.record.RejectedAt)] = true
 	}
 	return identities, nil
 }
@@ -322,9 +281,9 @@ func NextReworkCardNumber(planDir string, readCommitted func(anchorRel string) (
 // Otherwise the highest round directory with no record.json is this rejection's interrupted archive and is resumed.
 // Otherwise it is a new round, the highest plus one.
 func (p *prRework) roundFor(identity string) (round int, archived bool, err error) {
-	nums, err := p.roundNumbers()
+	nums, err := roundNumbers(p.deps.ReworkDir)
 	if err != nil {
-		return 0, false, err
+		return 0, false, fmt.Errorf("loomshed: %s: %w", p.name, err)
 	}
 	highest, unfinished := 0, 0
 	for _, n := range nums {
@@ -358,7 +317,7 @@ func LatestArchivedWebsterDir(reworkDir string) string {
 
 // latestPriorChild joins child onto the highest round's prior-generation directory under reworkDir.
 func latestPriorChild(reworkDir, child string) string {
-	nums, err := (&prRework{deps: PRReworkDeps{ReworkDir: reworkDir}}).roundNumbers()
+	nums, err := roundNumbers(reworkDir)
 	if err != nil || len(nums) == 0 {
 		return ""
 	}
