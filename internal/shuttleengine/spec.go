@@ -89,9 +89,9 @@ type Spec struct {
 	Parent string
 	// NameOverride is forwarded verbatim into the reedengine.AddSpec that
 	// Runner.Start builds and never interpreted — the same contract
-	// SessionID's own doc comment states above. It is an explicit role
-	// segment or full name; an empty value leaves reed naming the strand
-	// from Role (see reedengine.strandNameLocked).
+	// SessionID's own doc comment states above.
+	// It is an explicit role segment or full name;
+	// an empty value leaves reed naming the strand from Role (see reedengine.strandNameLocked).
 	NameOverride string
 	// Display carries the reed placement/focus/shrink settings for this
 	// run's strand.

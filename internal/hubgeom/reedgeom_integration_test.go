@@ -1,8 +1,8 @@
 //go:build integration
 
-// reedgeom_integration_test.go drives ReedGeometry against a real hub from hubforge: the prime's
-// geometry carries the hub's code with no slug or parent, a task worktree carries its slug and the
-// parent its default run's seed records, and a hub with no .lyx-code yields an empty code and no error.
+// reedgeom_integration_test.go drives ReedGeometry against a real hub from hubforge:
+// the prime's geometry carries the hub's code with no slug or parent, a task worktree carries its slug and the parent its default run's seed records,
+// and a hub with no .lyx-code yields an empty code and no error.
 
 package hubgeom_test
 

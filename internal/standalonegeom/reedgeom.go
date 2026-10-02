@@ -66,8 +66,8 @@ func ReedGeometry(target, stateDir, hash8 string) reedengine.Geometry {
 		RepoName:     filepath.Base(target),
 		WorktreeName: filepath.Base(target),
 		HubPath:      stateDir,
-		// A standalone run has no Board to record a code on and no seed, so the code is derived
-		// from hash8 and the slug and parent stay empty.
+		// A standalone run has no Board to record a code on and no seed,
+		// so the code is derived from hash8 and the slug and parent stay empty.
 		NameCode: agentname.StandaloneCode(hash8),
 	}
 }

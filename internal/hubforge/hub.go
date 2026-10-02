@@ -30,8 +30,7 @@ var (
 	weftBareTemplate string
 )
 
-// TestCode is the repo code every hub NewHub builds is cloned with, recorded as .lyx-code, so every hub
-// fixture is coded.
+// TestCode is the repo code every hub NewHub builds is cloned with, recorded as .lyx-code, so every hub fixture is coded.
 const TestCode = "tst"
 
 // buildBareTemplate builds, once per test binary, the pushed-to warp bare and the genuinely empty

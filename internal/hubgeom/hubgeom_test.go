@@ -122,9 +122,9 @@ func TestBurlerGeometry(t *testing.T) {
 	}
 }
 
-// TestIsPrimeWorktree pins the .git-entry rule ReedGeometry tells the prime from a task worktree by:
-// a directory or a gitdir file pointing straight at a git directory is the main worktree,
-// a gitdir file pointing into worktrees/ is a linked one, and anything else is an error.
+// TestIsPrimeWorktree pins the .git-entry rule ReedGeometry tells the prime from a task worktree by.
+// A directory, or a gitdir file pointing straight at a git directory, is the main worktree.
+// A gitdir file pointing into worktrees/ is a linked one, and anything else is an error.
 func TestIsPrimeWorktree(t *testing.T) {
 	tests := []struct {
 		name      string

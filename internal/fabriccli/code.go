@@ -1,5 +1,5 @@
-// code.go implements `lyx fabric code [<code>]`: it prints the hub's recorded agent-name code, or
-// records one on a hub that has none, which is how a repo bound before codes existed gets its code.
+// code.go implements `lyx fabric code [<code>]`: it prints the hub's recorded agent-name code,
+// or records one on a hub that has none, which is how a repo bound before codes existed gets its code.
 
 package fabriccli
 

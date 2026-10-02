@@ -736,8 +736,8 @@ func TestStrandNameLocked_ForeignPrefixRefuses(t *testing.T) {
 	}
 }
 
-// TestAddStrand_UnformableName_RefusesBeforeAnyTmuxCommand pins both up-front refusals, for add and
-// replace alike: the exact way-forward text, and no tmux command issued.
+// TestAddStrand_UnformableName_RefusesBeforeAnyTmuxCommand pins both up-front refusals, for add and replace alike:
+// the exact way-forward text, and no tmux command issued.
 func TestAddStrand_UnformableName_RefusesBeforeAnyTmuxCommand(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -774,8 +774,8 @@ func TestAddStrand_UnformableName_RefusesBeforeAnyTmuxCommand(t *testing.T) {
 	}
 }
 
-// TestAddStrand_IfAbsent_RoleSegmentMatchesFullName pins that --if-absent matches on the full name
-// a role-segment --name resolves to, so it hits the strand an add by full name created.
+// TestAddStrand_IfAbsent_RoleSegmentMatchesFullName pins that --if-absent matches on the full name a role-segment --name resolves to,
+// so it hits the strand an add by full name created.
 func TestAddStrand_IfAbsent_RoleSegmentMatchesFullName(t *testing.T) {
 	e := newTestEngine(t)
 	e.tmux.execHook = addIfAbsentHook("%1 0 0 100 20 4321\n")

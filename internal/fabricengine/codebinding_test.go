@@ -1,5 +1,4 @@
-// codebinding_test.go covers the .lyx-code record's read/write helpers and every row of
-// resolveEffectiveCode.
+// codebinding_test.go covers the .lyx-code record's read/write helpers and every row of resolveEffectiveCode.
 
 package fabricengine
 

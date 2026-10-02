@@ -1,7 +1,6 @@
-// codebinding.go owns the .lyx-code record: a plain single-line file at the board root holding the
-// repo's short agent-name code, recorded once on weft:main beside .lyx-warp.
-// Like the warp binding, it is written to disk here but committed onto weft:main by the CLI layer
-// through Bolt; this file spawns no git and never calls Bolt itself.
+// codebinding.go owns the .lyx-code record: a plain single-line file at the board root holding the repo's short agent-name code, recorded once on weft:main beside .lyx-warp.
+// Like the warp binding, it is written to disk here but committed onto weft:main by the CLI layer through Bolt;
+// this file spawns no git and never calls Bolt itself.
 
 package fabricengine
 
@@ -19,8 +18,7 @@ import (
 // It holds only the code, plus a trailing newline.
 const CodeFileName = ".lyx-code"
 
-// ReadCode reads the recorded repo code from <boardDir>/.lyx-code and reports whether a usable one
-// was found.
+// ReadCode reads the recorded repo code from <boardDir>/.lyx-code and reports whether a usable one was found.
 // Any read error and an empty-after-trim value report not found, like readWarpBinding;
 // a value failing agentname.ValidateCode also reports not found and logs a named warning,
 // so a damaged record reads as an uncoded hub that `lyx fabric code <code>` or `clone --code` records over.
@@ -59,8 +57,7 @@ func WriteCode(boardDir, code string) error {
 // resolveEffectiveCode encodes the whole code-record rule, pure and git-free.
 // recorded and found are the record at the probed weft, supplied is the --code value,
 // and freshBind is true when the weft carries neither the warp binding nor the anchor marker.
-// It returns the effective code, whether the caller must write a new record, a warning for a
-// bound weft left uncoded, or a refusal.
+// It returns the effective code, whether the caller must write a new record, a warning for a bound weft left uncoded, or a refusal.
 func resolveEffectiveCode(recorded string, found bool, supplied string, freshBind bool) (effective string, writeRecord bool, warning string, err error) {
 	if supplied != "" {
 		if err := agentname.ValidateCode(supplied); err != nil {

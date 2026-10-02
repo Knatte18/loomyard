@@ -56,8 +56,8 @@ func TestArmSeed_RunAndStepSeedBeforeWire(t *testing.T) {
 	}
 }
 
-// TestArmSeed_RecordsTheSpawningSessionAsParent asserts a first seeding under LYX_STRAND_NAME
-// records it as the seed's parent, and with the variable unset records none.
+// TestArmSeed_RecordsTheSpawningSessionAsParent asserts a first seeding under LYX_STRAND_NAME records it as the seed's parent,
+// and with the variable unset records none.
 func TestArmSeed_RecordsTheSpawningSessionAsParent(t *testing.T) {
 	for _, tc := range []struct {
 		name string

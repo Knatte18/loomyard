@@ -1,9 +1,8 @@
 //go:build integration
 
-// codebinding_clone_integration_test.go proves CloneHub's repo-code rule end to end against real local
-// bare-repo fixtures: a fresh bind needs --code, the record lands on weft:main beside .lyx-warp,
-// a later clone derives it, a disagreeing code is refused, and a bound weft without a record either
-// takes a code or warns.
+// codebinding_clone_integration_test.go proves CloneHub's repo-code rule end to end against real local bare-repo fixtures:
+// a fresh bind needs --code, the record lands on weft:main beside .lyx-warp, a later clone derives it, a disagreeing code is refused,
+// and a bound weft without a record either takes a code or warns.
 // The fixture helpers are reused from clone_adopt_test.go and warpbinding_clone_integration_test.go.
 
 package fabricengine_test
@@ -18,8 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 )
 
-// TestCloneHub_FreshBindWithoutCodeRefuses asserts a fresh weft refuses a clone with no code, naming
-// the flag, before any hub directory exists.
+// TestCloneHub_FreshBindWithoutCodeRefuses asserts a fresh weft refuses a clone with no code, naming the flag, before any hub directory exists.
 func TestCloneHub_FreshBindWithoutCodeRefuses(t *testing.T) {
 	fixtures := t.TempDir()
 	warpBare := makeBareRemote(t, fixtures, "nocode-warp")
@@ -39,9 +37,8 @@ func TestCloneHub_FreshBindWithoutCodeRefuses(t *testing.T) {
 	noProbeResidueInParent(t, cloneParent, "nocode-warp")
 }
 
-// TestCloneHub_CodeRecordLifecycle walks one repo through its code record: recorded at the first
-// clone and committed on weft:main, derived by a second clone, kept by a --reset re-clone, and
-// refused when a different code is supplied.
+// TestCloneHub_CodeRecordLifecycle walks one repo through its code record:
+// recorded at the first clone and committed on weft:main, derived by a second clone, kept by a --reset re-clone, and refused when a different code is supplied.
 func TestCloneHub_CodeRecordLifecycle(t *testing.T) {
 	fixtures := t.TempDir()
 	warpBare := makeBareRemote(t, fixtures, "life-warp")
@@ -102,8 +99,8 @@ func TestCloneHub_CodeRecordLifecycle(t *testing.T) {
 	})
 }
 
-// TestCloneHub_BoundWeftWithoutRecord asserts a weft bound before codes existed takes a supplied code
-// and records it, and succeeds with a warning naming `lyx fabric code` when none is supplied.
+// TestCloneHub_BoundWeftWithoutRecord asserts a weft bound before codes existed takes a supplied code and records it,
+// and succeeds with a warning naming `lyx fabric code` when none is supplied.
 func TestCloneHub_BoundWeftWithoutRecord(t *testing.T) {
 	fixtures := t.TempDir()
 	warpBare := makeBareRemote(t, fixtures, "bound-warp")

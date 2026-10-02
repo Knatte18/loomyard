@@ -1,7 +1,6 @@
 //go:build integration && !windows
 
-// naming_integration_test.go drives the reed verbs on a real hub to prove a strand's full name and parent reach its process,
-// survive a server kill and `resume`, and address the right strand on `remove`.
+// naming_integration_test.go drives the reed verbs on a real hub to prove a strand's full name and parent reach its process, survive a server kill and `resume`, and address the right strand on `remove`.
 
 package reedcli
 

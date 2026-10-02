@@ -17,8 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// ReedGeometry builds a reedengine.Geometry for l: the resolved Location's paths, read off its accessors and passed through untouched,
-// plus the name prefix and parent reed forms strand names from.
+// ReedGeometry builds a reedengine.Geometry for l: the resolved Location's paths, read off its accessors and passed through untouched, plus the name prefix and parent reed forms strand names from.
 // It performs no os.Getwd, no git discovery, and no path resolution of its own — internal/lyxcwd stays the sole owner of cwd resolution (the Cwd Resolution Invariant).
 //
 // NameCode is the hub's recorded code; an absent record leaves it empty and is no error here,
@@ -65,8 +64,7 @@ func isPrimeWorktree(worktreeRoot string) (bool, error) {
 	return filepath.Base(filepath.Dir(filepath.Clean(strings.TrimSpace(gitDir)))) != "worktrees", nil
 }
 
-// reedGeometry is ReedGeometry once the prime is told from a task worktree,
-// split out so the unit test can tell either without a .git entry.
+// reedGeometry is ReedGeometry once the prime is told from a task worktree, split out so the unit test can tell either without a .git entry.
 func reedGeometry(l *lyxcwd.Location, prime bool) reedengine.Geometry {
 	code, _ := fabricengine.ReadCode(fabricengine.BoardDir(l.HubPath))
 	var slug, parent string

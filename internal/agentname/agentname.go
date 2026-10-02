@@ -1,7 +1,6 @@
 // Package agentname is the sole former, parser and validator of agent names.
 //
-// A full name is "<code>:<role>" in the prime and in a standalone run, and "<code>:<slug>:<role>"
-// in a task worktree.
+// A full name is "<code>:<role>" in the prime and in a standalone run, and "<code>:<slug>:<role>" in a task worktree.
 // The code is 2-6 characters of [a-z][a-z0-9]; the slug and the role are [a-z][a-z0-9-]*.
 // Every other package forms, parses, validates and matches names through this one,
 // and the package imports the standard library only.

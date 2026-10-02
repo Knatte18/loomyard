@@ -239,8 +239,8 @@ func TestWire_WriteSeedRefusesANonLoomChildBeforeTouchingTheWorktree(t *testing.
 	}
 }
 
-// TestChildSeedFor_CarriesTheBattenSeedsParent asserts the child's seed takes batten's own recorded
-// parent, not batten's identity, and stays empty when batten's seed recorded none.
+// TestChildSeedFor_CarriesTheBattenSeedsParent asserts the child's seed takes batten's own recorded parent, not batten's identity,
+// and stays empty when batten's seed recorded none.
 func TestChildSeedFor_CarriesTheBattenSeedsParent(t *testing.T) {
 	params := map[string]string{"parent": "main"}
 

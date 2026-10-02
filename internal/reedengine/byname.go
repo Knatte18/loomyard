@@ -1,6 +1,6 @@
-// byname.go resolves a strand's name to its guid, and waits out a parent process, for
-// `lyx reed remove --name`. A strand that removes itself (the ly-drive driver) cannot know its own
-// guid when its prompt is composed, but it does know its role segment.
+// byname.go resolves a strand's name to its guid, and waits out a parent process, for `lyx reed remove --name`.
+// A strand that removes itself (the ly-drive driver) cannot know its own guid when its prompt is composed,
+// but it does know its role segment.
 
 package reedengine
 
@@ -20,10 +20,8 @@ const (
 	ParentExitPollInterval = 100 * time.Millisecond
 )
 
-// ResolveStrandGUID returns the guid of the one strand of this worktree's session that name
-// addresses: its full name, its role segment, or a legacy exact name (agentname.Matches).
-// An unknown name and an ambiguous one (two strands carrying it) are both refused, so a
-// removal never lands on a guess.
+// ResolveStrandGUID returns the guid of the one strand of this worktree's session that name addresses: its full name, its role segment, or a legacy exact name (agentname.Matches).
+// An unknown name and an ambiguous one (two strands carrying it) are both refused, so a removal never lands on a guess.
 func (e *Engine) ResolveStrandGUID(name string) (string, error) {
 	res, err := e.Status()
 	if err != nil {

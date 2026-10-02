@@ -19,8 +19,8 @@ import (
 
 // AddSpec carries the caller-supplied inputs AddStrand needs to build a new Strand.
 type AddSpec struct {
-	// Role is the role segment of the strand's name, numbered `-2`, `-3` against the worktree's
-	// strands when taken; empty means reed's default role, defaultRole.
+	// Role is the role segment of the strand's name, numbered `-2`, `-3` against the worktree's strands when taken;
+	// empty means reed's default role, defaultRole.
 	Role string
 	// NameOverride is an explicit name, a role segment or a full name, and is never renumbered:
 	// an add naming a name another strand holds is refused.
@@ -62,9 +62,8 @@ func validateAnchor(anchor render.Anchor) error {
 // validateIfAbsent rejects spec at the op boundary, before any state is loaded, when IfAbsent is set
 // without NameOverride.
 //
-// --if-absent requires --name because an auto-numbered role never matches the strand it would
-// duplicate: the number moves past the existing strand, so --if-absent would stack a duplicate
-// strand on every reopen instead of ever finding one to match.
+// --if-absent requires --name because an auto-numbered role never matches the strand it would duplicate:
+// the number moves past the existing strand, so --if-absent would stack a duplicate strand on every reopen instead of ever finding one to match.
 func validateIfAbsent(spec AddSpec) error {
 	if spec.IfAbsent && spec.NameOverride == "" {
 		return fmt.Errorf("--if-absent requires --name")
@@ -145,13 +144,13 @@ func descendantSubtree(strands []Strand, guid string) []string {
 	return out
 }
 
-// defaultRole is the role a spec naming neither Role nor NameOverride takes, so an operator's
-// `lyx reed add --cmd …` keeps working.
+// defaultRole is the role a spec naming neither Role nor NameOverride takes, so an operator's `lyx reed add --cmd …` keeps working.
 const defaultRole = "strand"
 
-// validateNaming refuses, before any tmux command, an add or replace whose name no geometry-told
-// prefix can form, and returns the full name NameOverride resolves to ("" when it is empty).
-// An empty code is the uncoded hub; a told code or slug failing its grammar is a wiring guard.
+// validateNaming refuses, before any tmux command, an add or replace whose name no geometry-told prefix can form,
+// and returns the full name NameOverride resolves to ("" when it is empty).
+// An empty code is the uncoded hub;
+// a told code or slug failing its grammar is a wiring guard.
 func (e *Engine) validateNaming(spec AddSpec) (string, error) {
 	code, slug := e.geom.NameCode, e.geom.NameSlug
 	if code == "" {
@@ -177,8 +176,8 @@ func (e *Engine) validateNaming(spec AddSpec) (string, error) {
 }
 
 // strandNameLocked forms the full name of the strand spec describes against st's strands:
-// an explicit NameOverride as given, else Role (default defaultRole) numbered past every role
-// segment in state, live or dormant. The geometry's code and slug were validated by validateNaming.
+// an explicit NameOverride as given, else Role (default defaultRole) numbered past every role segment in state, live or dormant.
+// The geometry's code and slug were validated by validateNaming.
 func (e *Engine) strandNameLocked(st *ReedState, spec AddSpec) (string, error) {
 	code, slug := e.geom.NameCode, e.geom.NameSlug
 	if spec.NameOverride != "" {
@@ -427,8 +426,7 @@ func removalEmptiedSession(remaining []Strand, sessionGone bool) bool {
 
 // AddStrand registers a new strand from spec and, unless added anchor:hidden, realizes it into a
 // live pane and runs its cmd, then reconciles and re-applies the layout.
-// The engine, not the caller, stamps Worktree, generates GUID and forms the strand's full name
-// (strandNameLocked, under the state lock, from the prefix the geometry tells it).
+// The engine, not the caller, stamps Worktree, generates GUID and forms the strand's full name (strandNameLocked, under the state lock, from the prefix the geometry tells it).
 //
 // AddStrand self-heals a cold worktree: rather than mirroring Status and failing with the friendly
 // no-session error, its pre-flight boots the session through ensureSessionLocked with up's own
@@ -449,8 +447,7 @@ func (e *Engine) AddStrand(spec AddSpec) (Strand, error) {
 		if err := validateIfAbsent(spec); err != nil {
 			return err
 		}
-		// Likewise a name no told prefix can form: refused before the pre-flight so it never boots
-		// a tmux server.
+		// Likewise a name no told prefix can form: refused before the pre-flight so it never boots a tmux server.
 		explicitName, err := e.validateNaming(spec)
 		if err != nil {
 			return err

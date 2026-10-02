@@ -39,8 +39,8 @@ type warpProbeResult struct {
 	// remote) or its HEAD commit carries lyxcwd.AnchorFileName (or the stale pre-rename marker) at
 	// the root.
 	WeftLooksLikeWeft bool
-	// RecordedCode is the repo code read from the probe's HEAD commit, valid only when CodeFound is
-	// true; a blank or grammar-failing value reports CodeFound false, like ReadCode.
+	// RecordedCode is the repo code read from the probe's HEAD commit, valid only when CodeFound is true;
+	// a blank or grammar-failing value reports CodeFound false, like ReadCode.
 	RecordedCode string
 	// CodeFound is true only when CodeFileName is present at the probe's HEAD with a usable value.
 	CodeFound bool
@@ -48,8 +48,8 @@ type warpProbeResult struct {
 	AnchorFound bool
 }
 
-// freshBind reports whether the probed weft is one lyx has never touched: neither the warp binding
-// nor the anchor marker is present, which an unborn or empty weft is.
+// freshBind reports whether the probed weft is one lyx has never touched:
+// neither the warp binding nor the anchor marker is present, which an unborn or empty weft is.
 func (p warpProbeResult) freshBind() bool { return !p.Found && !p.AnchorFound }
 
 // probeWeftBinding shallow-clones weftURL into a throwaway directory under cwd, reads whatever
@@ -146,8 +146,7 @@ func probeWeftBinding(cwd, weftURL string) (warpProbeResult, error) {
 	if err != nil {
 		return warpProbeResult{}, err
 	}
-	// The stale marker also counts as a bound weft, so its migration error is reached rather than a
-	// fresh-bind --code refusal.
+	// The stale marker also counts as a bound weft, so its migration error is reached rather than a fresh-bind --code refusal.
 	return warpProbeResult{WeftLooksLikeWeft: stalePresent, RecordedCode: recordedCode, CodeFound: codeFound, AnchorFound: stalePresent}, nil
 }
 

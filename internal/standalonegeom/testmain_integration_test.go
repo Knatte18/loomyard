@@ -1,8 +1,7 @@
 //go:build integration
 
-// testmain_integration_test.go wires the integration-tagged tests into the hermetic git test
-// environment, so naming_integration_test.go's `git init` never inherits the operator's global
-// gitconfig (see CONSTRAINTS.md's Hermetic Git Test Environment Invariant).
+// testmain_integration_test.go wires the integration-tagged tests into the hermetic git test environment,
+// so naming_integration_test.go's `git init` never inherits the operator's global gitconfig (see CONSTRAINTS.md's Hermetic Git Test Environment Invariant).
 
 package standalonegeom
 

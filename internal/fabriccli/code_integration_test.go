@@ -1,8 +1,7 @@
 //go:build integration
 
-// code_integration_test.go drives `lyx fabric code [<code>]` against a real hub from hubforge: it
-// prints the recorded code, records one on a hub whose record was removed, treats the same code as
-// a no-op, and refuses a different one.
+// code_integration_test.go drives `lyx fabric code [<code>]` against a real hub from hubforge:
+// it prints the recorded code, records one on a hub whose record was removed, treats the same code as a no-op, and refuses a different one.
 //
 // Package fabriccli_test, sharing the single TestMain in testmain_test.go.
 

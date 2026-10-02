@@ -107,8 +107,7 @@ func TestLoomSeedFor_RecipeAndParentParam(t *testing.T) {
 	}
 }
 
-// TestLoomSeedFor_FirstCallerStaysParent asserts a second seeding from another caller leaves the
-// first one's parent on disk.
+// TestLoomSeedFor_FirstCallerStaysParent asserts a second seeding from another caller leaves the first one's parent on disk.
 func TestLoomSeedFor_FirstCallerStaysParent(t *testing.T) {
 	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
 

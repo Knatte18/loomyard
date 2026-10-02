@@ -23,13 +23,11 @@
 // split: the shared implementation lives in the module that does the work, and the data that
 // varies by caller lives outside it, with the caller.
 //
-// cliwire's production dependency set is fixed: the standard library plus internal/standalonestate,
-// internal/standalonegeom, internal/logger, internal/stencilstore, internal/buildinfo,
-// contracts/stencils, contracts/specs, internal/reedengine and internal/shuttleengine/claudeengine.
-// The last two serve SessionNamer alone: reed is provider-blind, so the watchdog daemon needs a
-// provider filled in by the CLI wiring layer. Two exclusions are deliberate. internal/lyxcwd is barred
-// by the Told-Geometry Invariant and is never needed here, since cwd arrives from the caller rather
-// than being resolved.
+// cliwire's production dependency set is fixed: the standard library plus internal/standalonestate, internal/standalonegeom, internal/logger, internal/stencilstore, internal/buildinfo, contracts/stencils, contracts/specs, internal/reedengine and internal/shuttleengine/claudeengine.
+// The last two serve SessionNamer alone: reed is provider-blind,
+// so the watchdog daemon needs a provider filled in by the CLI wiring layer.
+// Two exclusions are deliberate.
+// internal/lyxcwd is barred by the Told-Geometry Invariant and is never needed here, since cwd arrives from the caller rather than being resolved.
 // internal/planparser is kept out so that webster's own plan-directory layout does not end up
 // living inside a module burler shares; webster supplies its layout as a function value instead.
 //
