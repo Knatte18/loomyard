@@ -53,7 +53,7 @@ These are conversational shorthands; never rename code, files or docs to them un
 
 ## TEMPORARY: workarounds until the bugs are fixed
 
-Each item works around an open bug; delete it in the commit that fixes the bug.
+Each item works around a bug whose issue is folded into a board task (`webster-recovery`, `run-parentage`, `operator-surface-fixes`); the task deletes its items when it lands.
 
 - #329: a re-begun webster batch whose fork landed nothing drops its Create targets from validation.
   Drop the reference from later cards' Uses, `lyx webster rebaseline --card NN`, `lyx loom start --no-attach`.
