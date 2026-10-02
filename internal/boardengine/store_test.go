@@ -1061,3 +1061,165 @@ func stringContains(s, substr string) bool {
 	}
 	return false
 }
+
+func TestPromote(t *testing.T) {
+	seed := func(t *testing.T) *boardengine.Store {
+		t.Helper()
+		s := boardengine.NewStore("")
+		for _, f := range []map[string]any{
+			{"slug": "a", "tier": 3},
+			{"slug": "b", "tier": 2},
+			{"slug": "c", "tier": 1},
+		} {
+			if _, err := s.UpsertTask(f); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return s
+	}
+	intp := func(n int) *int { return &n }
+
+	t.Run("nil target defaults to one tier lower", func(t *testing.T) {
+		s := seed(t)
+		got, err := s.Promote("a", nil)
+		if err != nil || got.Tier != 2 {
+			t.Fatalf("got tier %d, err %v", got.Tier, err)
+		}
+		stored, _ := s.GetTask("a")
+		if stored.Tier != 2 {
+			t.Errorf("store not updated: tier %d", stored.Tier)
+		}
+	})
+
+	t.Run("skipping tiers allowed", func(t *testing.T) {
+		s := seed(t)
+		got, err := s.Promote("a", intp(1))
+		if err != nil || got.Tier != 1 {
+			t.Fatalf("got tier %d, err %v", got.Tier, err)
+		}
+	})
+
+	t.Run("refused targets", func(t *testing.T) {
+		for name, target := range map[string]*int{"equal": intp(3), "higher": intp(4), "below one": intp(0)} {
+			s := seed(t)
+			_, err := s.Promote("a", target)
+			if err == nil || !stringContains(err.Error(), "tier 3") || !stringContains(err.Error(), "upsert") {
+				t.Errorf("%s: expected refusal naming tier and upsert, got %v", name, err)
+			}
+		}
+	})
+
+	t.Run("tier-1 entry refused", func(t *testing.T) {
+		s := seed(t)
+		_, err := s.Promote("c", nil)
+		if err == nil || !stringContains(err.Error(), "tier 1") || !stringContains(err.Error(), "upsert") {
+			t.Errorf("expected refusal, got %v", err)
+		}
+	})
+
+	t.Run("missing entry refused", func(t *testing.T) {
+		s := seed(t)
+		if _, err := s.Promote("nope", nil); err == nil || !stringContains(err.Error(), "not found") {
+			t.Errorf("expected not found, got %v", err)
+		}
+	})
+
+	t.Run("dependency at higher tier refuses", func(t *testing.T) {
+		s := boardengine.NewStore("")
+		if _, err := s.UpsertTask(map[string]any{"slug": "dep", "tier": 3}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.UpsertTask(map[string]any{"slug": "x", "tier": 3, "depends_on": []string{"dep"}}); err != nil {
+			t.Fatal(err)
+		}
+		_, err := s.Promote("x", intp(2))
+		if err == nil || !stringContains(err.Error(), `"dep"`) {
+			t.Errorf("expected refusal naming dep, got %v", err)
+		}
+		if got, _ := s.GetTask("x"); got.Tier != 3 {
+			t.Errorf("refused promote changed the store: tier %d", got.Tier)
+		}
+	})
+}
+
+func TestPrune(t *testing.T) {
+	s := boardengine.NewStore("")
+	if _, err := s.UpsertTask(map[string]any{"slug": "d1"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.UpsertTask(map[string]any{"slug": "live", "depends_on": []string{"d1"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.UpsertTask(map[string]any{"slug": "d2"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.UpsertTask(map[string]any{"slug": "ab"}); err != nil {
+		t.Fatal(err)
+	}
+	done, abandoned := "done", "abandoned"
+	if err := s.SetStatus("d1", &done); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetStatus("d2", &done); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetStatus("ab", &abandoned); err != nil {
+		t.Fatal(err)
+	}
+
+	removed := s.Prune()
+	if !sliceEqualStrings(removed, []string{"d1", "d2"}) {
+		t.Errorf("removed = %v", removed)
+	}
+	if _, ok := s.GetTask("d1"); ok {
+		t.Errorf("d1 should be gone")
+	}
+	if _, ok := s.GetTask("ab"); !ok {
+		t.Errorf("abandoned entry should survive")
+	}
+	live, _ := s.GetTask("live")
+	if len(live.DependsOn) != 0 {
+		t.Errorf("depends_on not stripped: %v", live.DependsOn)
+	}
+	if again := s.Prune(); len(again) != 0 {
+		t.Errorf("second prune removed %v", again)
+	}
+}
+
+func TestFind(t *testing.T) {
+	s := boardengine.NewStore("")
+	for _, f := range []map[string]any{
+		{"slug": "alpha-slug", "title": "One"},
+		{"slug": "b", "title": "Needle Title"},
+		{"slug": "c", "title": "Three", "brief": "has a NEEDLE here"},
+		{"slug": "d", "title": "Four", "body": "deep needle body"},
+		{"slug": "e", "title": "Five"},
+	} {
+		if _, err := s.UpsertTask(f); err != nil {
+			t.Fatal(err)
+		}
+	}
+	done := "done"
+	if err := s.SetStatus("d", &done); err != nil {
+		t.Fatal(err)
+	}
+
+	slugs := func(bs []boardengine.BriefTask) []string {
+		out := []string{}
+		for _, b := range bs {
+			out = append(out, b.Slug)
+		}
+		return out
+	}
+
+	if got := slugs(s.Find("NEEDLE")); !sliceEqualStrings(got, []string{"b", "c", "d"}) {
+		t.Errorf("title/brief/body match (done included) = %v", got)
+	}
+	if got := slugs(s.Find("ALPHA-SLUG")); !sliceEqualStrings(got, []string{"alpha-slug"}) {
+		t.Errorf("slug match = %v", got)
+	}
+	got := s.Find("zzz")
+	if got == nil || len(got) != 0 {
+		t.Errorf("no match should be an empty slice, got %v", got)
+	}
+}

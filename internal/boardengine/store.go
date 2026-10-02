@@ -9,6 +9,7 @@ package boardengine
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/state"
 )
@@ -479,6 +480,93 @@ func (s *Store) ListTasksBrief() []BriefTask {
 			HasProposal: t.Body != "",
 		}
 		result = append(result, brief)
+	}
+	return result
+}
+
+// Promote moves the entry identified by idOrSlug to a lower tier number.
+// A nil target means one tier lower; the target must be at least MinTier and strictly below the
+// entry's current tier, and skipping tiers is allowed.
+// The promoted entry passes validateWrite, so a dependency left at a higher tier refuses it.
+func (s *Store) Promote(idOrSlug any, target *int) (Task, error) {
+	current, ok := s.GetTask(idOrSlug)
+	if !ok {
+		return Task{}, fmt.Errorf("task not found: %v", idOrSlug)
+	}
+
+	to := current.Tier - 1
+	if target != nil {
+		to = *target
+	}
+	if to < MinTier || to >= current.Tier {
+		return Task{}, fmt.Errorf("cannot promote %q from tier %d to tier %d: the target must be between %d and %d; demotion goes through upsert with a tier",
+			current.Slug, current.Tier, to, MinTier, current.Tier-1)
+	}
+
+	incoming := current
+	incoming.Tier = to
+	if err := s.validateWrite(s.tasks, incoming); err != nil {
+		return Task{}, err
+	}
+
+	for i := range s.tasks {
+		if s.tasks[i].Slug == current.Slug {
+			s.tasks[i] = incoming
+			break
+		}
+	}
+	return incoming, nil
+}
+
+// Prune removes every done entry, strips the removed slugs from the survivors' depends_on, and
+// returns the removed slugs in store order.
+// An abandoned entry survives.
+func (s *Store) Prune() []string {
+	removed := []string{}
+	gone := make(map[string]bool)
+	kept := make([]Task, 0, len(s.tasks))
+	for _, t := range s.tasks {
+		if isDone(t) {
+			removed = append(removed, t.Slug)
+			gone[t.Slug] = true
+			continue
+		}
+		kept = append(kept, t)
+	}
+
+	for i := range kept {
+		deps := make([]string, 0, len(kept[i].DependsOn))
+		for _, dep := range kept[i].DependsOn {
+			if !gone[dep] {
+				deps = append(deps, dep)
+			}
+		}
+		kept[i].DependsOn = deps
+	}
+
+	s.tasks = kept
+	return removed
+}
+
+// Find returns the entries whose slug, title, brief or body contains text, case-insensitively,
+// done entries included, in ListTasksBrief's shape and order.
+func (s *Store) Find(text string) []BriefTask {
+	needle := strings.ToLower(text)
+	matches := make(map[string]bool)
+	for _, t := range s.tasks {
+		for _, field := range []string{t.Slug, t.Title, t.Brief, t.Body} {
+			if strings.Contains(strings.ToLower(field), needle) {
+				matches[t.Slug] = true
+				break
+			}
+		}
+	}
+
+	result := []BriefTask{}
+	for _, b := range s.ListTasksBrief() {
+		if matches[b.Slug] {
+			result = append(result, b)
+		}
 	}
 	return result
 }
