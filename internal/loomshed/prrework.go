@@ -280,6 +280,7 @@ func NextReworkCardNumber(planDir string, readCommitted func(anchorRel string) (
 // A working-tree round whose record.json records the identity means the archive is done (archived is true) and the session may have begun, so nothing is moved again.
 // Otherwise the highest round directory with no record.json is this rejection's interrupted archive and is resumed.
 // Otherwise it is a new round, the highest plus one.
+// A record that exists but cannot be read or decoded is an error, since guessing whose round it is could split the round.
 func (p *prRework) roundFor(identity string) (round int, archived bool, err error) {
 	nums, err := roundNumbers(p.deps.ReworkDir)
 	if err != nil {
@@ -288,13 +289,20 @@ func (p *prRework) roundFor(identity string) (round int, archived bool, err erro
 	highest, unfinished := 0, 0
 	for _, n := range nums {
 		highest = max(highest, n)
-		data, err := os.ReadFile(filepath.Join(p.deps.ReworkDir, reworkRoundPrefix+strconv.Itoa(n), reworkRecordFile))
-		if err != nil {
+		recordPath := filepath.Join(p.deps.ReworkDir, reworkRoundPrefix+strconv.Itoa(n), reworkRecordFile)
+		data, err := os.ReadFile(recordPath)
+		if errors.Is(err, fs.ErrNotExist) {
 			unfinished = max(unfinished, n)
 			continue
 		}
+		if err != nil {
+			return 0, false, fmt.Errorf("loomshed: %s: read round record %s: %w", p.name, recordPath, err)
+		}
 		var rec roundRecord
-		if json.Unmarshal(data, &rec) == nil && rejectionIdentity(rec.HeadSHA, rec.RejectedAt) == identity {
+		if err := json.Unmarshal(data, &rec); err != nil {
+			return 0, false, fmt.Errorf("loomshed: %s: decode round record %s: %w; way forward: rewrite the record, or remove it to resume the round's archive, then re-step", p.name, recordPath, err)
+		}
+		if rejectionIdentity(rec.HeadSHA, rec.RejectedAt) == identity {
 			return n, true, nil
 		}
 	}
@@ -447,12 +455,17 @@ func (p *prRework) finishRound(roundDir string, rec roundRecord, coveragePath st
 }
 
 // writeRoundRecord encodes rec into the file at recordPath.
+// It writes a sibling temp file and renames it into place, so a crash never leaves a torn record for roundFor to misread.
 func writeRoundRecord(recordPath string, rec roundRecord) error {
 	data, err := json.MarshalIndent(rec, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode round record: %w", err)
 	}
-	if err := os.WriteFile(recordPath, append(data, '\n'), 0o644); err != nil {
+	tmp := recordPath + ".tmp"
+	if err := os.WriteFile(tmp, append(data, '\n'), 0o644); err != nil {
+		return fmt.Errorf("write round %s: %w", reworkRecordFile, err)
+	}
+	if err := os.Rename(tmp, recordPath); err != nil {
 		return fmt.Errorf("write round %s: %w", reworkRecordFile, err)
 	}
 	return nil

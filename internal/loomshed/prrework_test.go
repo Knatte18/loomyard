@@ -448,6 +448,31 @@ func TestPRRework_CrashResumeConverges(t *testing.T) {
 	})
 }
 
+// TestPRRework_TornRecordIsAnError covers a record.json a crash left undecodable: the next Call refuses rather than opening a second round over the live plan.
+func TestPRRework_TornRecordIsAnError(t *testing.T) {
+	f := newReworkFixture(t)
+	f.onInner = func() {
+		f.writeGeneration(2, reworkNewCard)
+		f.innerErr = errors.New("session crashed")
+	}
+	if _, err := f.call(); err == nil {
+		t.Fatal("first Call err = nil; want the session failure")
+	}
+	f.innerErr = nil
+	f.onInner = nil
+	f.writeFile(filepath.Join(f.reworkDir, "round-1"), "record.json", `{"pr_number": 7, "head_`)
+	_, err := f.call()
+	if err == nil || !strings.Contains(err.Error(), "decode round record") || !strings.Contains(err.Error(), "way forward") {
+		t.Fatalf("Call err = %v; want a decode error naming the way forward", err)
+	}
+	if f.roundDirs() != 1 || f.innerCalls != 1 {
+		t.Errorf("rounds=%d session=%d; want 1 each: nothing runs past a torn record", f.roundDirs(), f.innerCalls)
+	}
+	if _, err := os.Stat(filepath.Join(f.planDir, "02-second-card.md")); err != nil {
+		t.Errorf("the session's file left the live plan: %v", err)
+	}
+}
+
 func TestPRRework_ClasslessRecordAtHeadIsNotCommitted(t *testing.T) {
 	f := newReworkFixture(t)
 	f.commitRound(1, reworkTestHead, reworkTestRejectedAt, "")
