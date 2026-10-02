@@ -9,7 +9,16 @@
       "Workflow",
       "ReportFindings",
       "ScheduleWakeup",
-      "SendFeedback"
+      "SendFeedback",
+      "CronCreate",
+      "CronDelete",
+      "CronList",
+      "RemoteTrigger",
+      "DesignSync",
+      "NotebookEdit",
+      "EnterWorktree",
+      "ExitWorktree",
+      "Skill(dataviz)"
     ]
   }
 }
