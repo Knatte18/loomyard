@@ -291,7 +291,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	// begunCards, not completedCards: the batch record is written further down, so on a first begin
 	// this batch is still validated, while a re-begin of a batch whose earlier fork already landed its
 	// work (see begunCards) is not refused for it.
-	resolveFindings, resolveErr := planglyph.ValidateDispatch(deps.Plan, deps.Geom.WorktreeRoot, begunCards(deps.Batches, deps.State))
+	resolveFindings, resolveErr := planglyph.ValidateDispatch(deps.Plan, deps.Geom.WorktreeRoot, begunCards(deps.Batches, deps.State), nil)
 	// ValidateDispatch's resolve pass canonicalizes handles, which rewrites the plan on disk, and it
 	// then keeps going: the status, Create-inversion and containment passes all run after the
 	// rewrite, so "rewrote the plan" and "reported a blocking finding" co-occur routinely, and the

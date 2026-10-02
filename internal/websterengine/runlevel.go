@@ -528,7 +528,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	// set deliberately omits, already fired at entry above.
 	// The scope here is begunCards, not completedCards: a batch begun but not recorded may already
 	// have landed its work (see begunCards).
-	findings, err := planglyph.ValidateDispatch(plan, deps.Geom.WorktreeRoot, begunCards(batches, st))
+	findings, err := planglyph.ValidateDispatch(plan, deps.Geom.WorktreeRoot, begunCards(batches, st), nil)
 	// The resolve pass canonicalizes handles, rewriting the plan on disk before it reports either a
 	// finding or an error, so the staleness re-baseline runs HERE — ahead of both refusals below —
 	// and is persisted immediately. Restamping only past the refusals left state.json describing the

@@ -90,7 +90,7 @@ func TestResolvePass_LanguageNoneOpensNoRepository(t *testing.T) {
 	plan := minimalPlan(t, t.TempDir())
 	nonRepo := t.TempDir() + "/does-not-exist"
 
-	got, err := resolvePass(plan, nonRepo, nil)
+	got, err := resolvePass(plan, nonRepo, nil, nil)
 	if got != nil {
 		t.Errorf("resolvePass(...) findings = %+v; want nil under language: none", got)
 	}
@@ -254,7 +254,7 @@ func TestResolvePass_FileRenameNewSideIsNotAFinding(t *testing.T) {
 		1: "**Rename:**\n- `sub/a.go` -> `sub/b.go`\n\n**Intent:** rename the file\n",
 	})
 
-	got, err := resolvePass(plan, root, nil)
+	got, err := resolvePass(plan, root, nil, nil)
 	if err != nil {
 		t.Fatalf("resolvePass(...) returned error: %v", err)
 	}
@@ -308,4 +308,71 @@ func TestValidateRework(t *testing.T) {
 			t.Errorf("last finding = %+v; want a blocking rework-first-card", last)
 		}
 	})
+}
+
+// forthcomingFindings runs resolvePass over a two-card plan where card 1 is completed and card 2
+// is pending, with card 1 forthcoming only when forthcoming is true.
+func forthcomingFindings(t *testing.T, card1, card2 string, forthcoming bool) []Finding {
+	t.Helper()
+	root := writeFixtureRepo(t, map[string]string{"sub/a.go": resolveFixture})
+	_, plan := writePlanFixture(t, map[int]string{1: card1, 2: card2})
+	done := map[string]bool{plan.Cards[0].ID(): true}
+	var fc map[string]bool
+	if forthcoming {
+		fc = done
+	}
+	got, err := resolvePass(plan, root, done, fc)
+	if err != nil {
+		t.Fatalf("resolvePass(...) returned error: %v", err)
+	}
+	return got
+}
+
+func hasCheck(findings []Finding, check string) bool {
+	for _, f := range findings {
+		if f.Check == check {
+			return true
+		}
+	}
+	return false
+}
+
+// TestResolvePass_ForthcomingCreateTargetExcludedFromStatus asserts a pending card's Uses of a
+// Create target declared by a completed card is excluded from the status check only when that card
+// is forthcoming.
+func TestResolvePass_ForthcomingCreateTargetExcludedFromStatus(t *testing.T) {
+	card1 := "**Create:**\n- `sub#Gadget`\n\n**Intent:** add the gadget\n"
+	card2 := "**Edit:**\n- `sub#Foo`\n\n**Uses:**\n- `sub#Gadget`\n\n**Intent:** use the gadget\n"
+
+	if got := forthcomingFindings(t, card1, card2, true); hasCheck(got, "glyph-not-found") {
+		t.Errorf("forthcoming Create target: findings = %+v; want no glyph-not-found", got)
+	}
+	if got := forthcomingFindings(t, card1, card2, false); !hasCheck(got, "glyph-not-found") {
+		t.Errorf("completed, not forthcoming: findings = %+v; want glyph-not-found for the Uses", got)
+	}
+}
+
+// TestResolvePass_ForthcomingRenameNewSideExcludedFromStatus asserts a Rename New side declared by a
+// forthcoming card is excluded from the status check the same way.
+func TestResolvePass_ForthcomingRenameNewSideExcludedFromStatus(t *testing.T) {
+	card1 := "**Rename:**\n- `sub#Thing` -> `sub#Widget`\n\n**Intent:** rename the type\n"
+	card2 := "**Edit:**\n- `sub#Foo`\n\n**Uses:**\n- `sub#Widget`\n\n**Intent:** use the renamed type\n"
+
+	if got := forthcomingFindings(t, card1, card2, true); hasCheck(got, "glyph-not-found") {
+		t.Errorf("forthcoming Rename New side: findings = %+v; want no glyph-not-found", got)
+	}
+	if got := forthcomingFindings(t, card1, card2, false); !hasCheck(got, "glyph-not-found") {
+		t.Errorf("completed, not forthcoming: findings = %+v; want glyph-not-found for the Uses", got)
+	}
+}
+
+// TestResolvePass_ForthcomingCardIsNotResolved asserts a forthcoming card's own Create target that
+// already exists draws no create-already-exists, since the card is not resolved.
+func TestResolvePass_ForthcomingCardIsNotResolved(t *testing.T) {
+	card1 := "**Create:**\n- `sub#Foo`\n\n**Intent:** already landed\n"
+	card2 := "**Edit:**\n- `sub#Thing`\n\n**Intent:** unrelated\n"
+
+	if got := forthcomingFindings(t, card1, card2, true); hasCheck(got, "create-already-exists") {
+		t.Errorf("forthcoming card: findings = %+v; want no create-already-exists", got)
+	}
 }

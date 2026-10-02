@@ -150,7 +150,7 @@ func (c *websterCLI) scopedValidate(plan *planparser.Plan) ([]planglyph.Finding,
 		findings, err := planglyph.Validate(plan, c.geom.WorktreeRoot)
 		return findings, scopeWholePlan, err
 	}
-	findings, err := planglyph.ValidateDispatch(plan, c.geom.WorktreeRoot, completed)
+	findings, err := planglyph.ValidateDispatch(plan, c.geom.WorktreeRoot, completed, nil)
 	return findings, scopePending, err
 }
 
