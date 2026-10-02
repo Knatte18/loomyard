@@ -360,12 +360,20 @@ func discussionCommitPathspec(location *lyxcwd.Location) []string {
 }
 
 // newParentReviewConfig builds the Discussion-Write parent-review gate's told input.
-// The reviewer is the seed's Parent, empty when the seed has none or no seed exists;
-// a seed read error is a wiring error.
-func newParentReviewConfig(location *lyxcwd.Location, runID string, cfg loomengine.Config, stencilsDir string) (parentreview.GateConfig, error) {
-	seed, _, err := shedrun.ReadSeed(location, runID)
+// The reviewer is the Parent hubgeom.ResolveParent returns, empty when the run has no parent;
+// a resolver error is a wiring error.
+// ReviewerLive is nil, so the gate treats the reviewer as live, while the parent names no worktree (no parent, or a legacy seed name);
+// otherwise it reads the parent worktree's reed session through reedCfg.
+func newParentReviewConfig(location *lyxcwd.Location, reedCfg reedengine.Config, cfg loomengine.Config, stencilsDir string) (parentreview.GateConfig, error) {
+	parent, err := hubgeom.ResolveParent(location)
 	if err != nil {
-		return parentreview.GateConfig{}, fmt.Errorf("loom: read seed for the parent review reviewer: %w", err)
+		return parentreview.GateConfig{}, fmt.Errorf("loom: resolve the parent review reviewer: %w", err)
+	}
+	var reviewerLive func() (bool, error)
+	if parent.Worktree != "" {
+		reviewerLive = func() (bool, error) {
+			return parentWorktreeReviewerLive(location, reedCfg, parent)
+		}
 	}
 	slug := seedSlug(location.WorktreeName)
 	decisionRecord := loomengine.DiscussionDecisionRecord(location)
@@ -373,17 +381,51 @@ func newParentReviewConfig(location *lyxcwd.Location, runID string, cfg loomengi
 	return parentreview.GateConfig{
 		Store:          parentreview.Store{Root: loomengine.LoomParentReviewDir(location), LockDir: loomengine.LoomParentReviewLockDir(location)},
 		Slug:           slug,
-		Reviewer:       seed.Parent,
+		Reviewer:       parent.Name,
+		ReviewerLive:   reviewerLive,
 		DecisionRecord: decisionRecord,
 		SupportLog:     supportLog,
 		WaitBound:      time.Duration(cfg.ParentReviewWaitMin) * time.Minute,
 		RenderDelivery: func(briefPath string) (string, error) {
-			return loomengine.ParentReviewDeliveryPrompt(stencilsDir, slug, briefPath, seed.Parent)
+			return loomengine.ParentReviewDeliveryPrompt(stencilsDir, slug, briefPath, parent.Name)
 		},
 		RenderBrief: func() (string, error) {
 			return loomengine.ParentReviewBrief(stencilsDir, slug, decisionRecord, supportLog)
 		},
 	}, nil
+}
+
+// parentWorktreeReviewerLive reports whether parent's reviewer has a live strand in its worktree's reed session.
+// The parent worktree is resolved on each call, never at wiring time, so a parent started after the run is seen.
+func parentWorktreeReviewerLive(location *lyxcwd.Location, reedCfg reedengine.Config, parent hubgeom.Parent) (bool, error) {
+	parentLoc, err := lyxcwd.ResolveWorktree(fabricengine.WorktreePath(location, parent.Worktree))
+	if err != nil {
+		return false, fmt.Errorf("loom: resolve parent worktree %q: %w", parent.Worktree, err)
+	}
+	geom, err := hubgeom.ReedGeometry(parentLoc)
+	if err != nil {
+		return false, fmt.Errorf("loom: reed geometry of parent worktree %q: %w", parent.Worktree, err)
+	}
+	return strandLive(parent.Name, reedengine.New(reedCfg, geom).Status)
+}
+
+// strandLive reports whether status lists a live strand named name.
+// An error wrapping reedengine.ErrNoSession answers not live with no error, since a parent with no session has no reviewer;
+// any other status error is returned.
+func strandLive(name string, status func() (reedengine.StatusResult, error)) (bool, error) {
+	res, err := status()
+	if errors.Is(err, reedengine.ErrNoSession) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	for _, s := range res.Strands {
+		if s.Name == name && s.Live {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // wire builds the whole engine stack onto c from location and cwd: every module config anchored at
@@ -521,7 +563,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		},
 	}
 
-	parentReviewCfg, err := newParentReviewConfig(location, c.runID, loomCfg, websterGeom.StencilsDir)
+	parentReviewCfg, err := newParentReviewConfig(location, reedCfg, loomCfg, websterGeom.StencilsDir)
 	if err != nil {
 		return err
 	}

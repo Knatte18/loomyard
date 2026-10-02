@@ -15,6 +15,10 @@
 // A driver strand that dies mid-run, that is alive but parked -- a provider waiting on an interactive prompt its launcher never answered -- or that stops of its own accord with the run still non-terminal -- an llm driver escalating a failure it cannot repair or finding its skill unavailable, each leaving its report under the task worktree's _lyx/shed/<slug>/drive-reports/ -- is not detected here, by design: for a running child the InnerRun row watches the persisted status file, never the driver's own liveness or progress.
 // A long-quiet Run-Shed therefore means "possibly dead, parked or stopped", not "working", until the row's bounce budget runs out; an operator tells the cases apart by attaching to the child's session.
 //
+// A child that halts (blocked, paused or failed) is a budget-exempt wait, not a failure of the Run-Shed row:
+// batten never spawns or resumes a halted child, logs one Warn per halt episode, and keeps polling every poll interval with the child's state, error, current producer and the resume command ("lyx loom start" in the task worktree) as its reason.
+// The wait has no time limit and spends no bounce budget; "lyx batten pause" stops it, and the row reads the child as running again once the operator resumes it.
+//
 // Its counterpart is equally by design: a driver that finishes NORMALLY leaves its strand and its
 // run directory behind. Nothing here tears either down as part of a clean finish -- only the
 // whole-worktree teardown row cleans up, at the very end, by removing the worktree they live in.

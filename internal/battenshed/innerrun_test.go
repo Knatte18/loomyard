@@ -106,22 +106,19 @@ func TestInnerRun_VerdictTable(t *testing.T) {
 			wantStuck: true,
 		},
 		{
-			name:       "Blocked",
-			statuses:   []statusResult{{status: shedengine.Status{State: shedengine.StateBlocked, Error: "boom", CurrentProducer: "p1"}, found: true}},
-			wantErr:    true,
-			wantReason: "blocked",
+			name:      "BlockedIsAWait",
+			statuses:  []statusResult{{status: shedengine.Status{State: shedengine.StateBlocked, Error: "boom", CurrentProducer: "p1"}, found: true}},
+			wantStuck: true,
 		},
 		{
-			name:       "Paused",
-			statuses:   []statusResult{{status: shedengine.Status{State: shedengine.StatePaused, Error: "paused-err", CurrentProducer: "p2"}, found: true}},
-			wantErr:    true,
-			wantReason: "paused",
+			name:      "PausedIsAWait",
+			statuses:  []statusResult{{status: shedengine.Status{State: shedengine.StatePaused, Error: "paused-err", CurrentProducer: "p2"}, found: true}},
+			wantStuck: true,
 		},
 		{
-			name:       "Failed",
-			statuses:   []statusResult{{status: shedengine.Status{State: shedengine.StateFailed, Error: "failed-err", CurrentProducer: "p3"}, found: true}},
-			wantErr:    true,
-			wantReason: "failed",
+			name:      "FailedIsAWait",
+			statuses:  []statusResult{{status: shedengine.Status{State: shedengine.StateFailed, Error: "failed-err", CurrentProducer: "p3"}, found: true}},
+			wantStuck: true,
 		},
 		{
 			name:     "AbsentStatusStillAbsentAfterSpawnIsError",
@@ -180,35 +177,16 @@ func TestInnerRun_VerdictTable(t *testing.T) {
 	}
 }
 
-// TestInnerRun_HaltedAndDoneNeverStuck is the load-bearing assertion the static self-route depends on: a halted child, and a done child whose driver is gone, must never itself be Stuck, since ProducerDef.OnStuck is a static per-producer value and routes every Stuck from this row back to itself with no per-verdict distinction possible.
-// Every Stuck this row returns is a timed wait.
-func TestInnerRun_HaltedAndDoneNeverStuck(t *testing.T) {
-	tests := []struct {
-		name   string
-		status shedengine.Status
-	}{
-		{"Done", shedengine.Status{State: shedengine.StateDone}},
-		{"Blocked", shedengine.Status{State: shedengine.StateBlocked}},
-		{"Paused", shedengine.Status{State: shedengine.StatePaused}},
-		{"Failed", shedengine.Status{State: shedengine.StateFailed}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			scratchDir := t.TempDir()
-			clock := &fakeClock{}
-			_, _, deps := newInnerRunDeps(nil, nil, []statusResult{{status: tt.status, found: true}}, clock)
+// TestInnerRun_DoneWithGoneDriverNeverStuck is the load-bearing assertion the static self-route depends on: a done child whose driver is gone must never itself be Stuck, since ProducerDef.OnStuck is a static per-producer value and routes every Stuck from this row back to itself with no per-verdict distinction possible.
+// Every Stuck this row returns is a timed wait; the halted arm's budget-exempt waits are covered in innerrun_halted_test.go.
+func TestInnerRun_DoneWithGoneDriverNeverStuck(t *testing.T) {
+	clock := &fakeClock{}
+	_, _, deps := newInnerRunDeps(nil, nil, doneStatus(), clock)
 
-			producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
-			outcome, _, err := producer.Call(context.Background())
-			if outcome == shedengine.Stuck {
-				t.Errorf("Call() outcome = Stuck for status %q; want a halted or finished child never Stuck", tt.status.State)
-			}
-			// A halted child is the one outcome the operator has to act on from inside the task
-			// worktree, so the error must say so rather than only name the child's state.
-			if tt.status.State != shedengine.StateDone && (err == nil || !strings.Contains(err.Error(), haltedChildRemedy)) {
-				t.Errorf("Call() error for status %q = %v; want it to carry the halted-child remedy", tt.status.State, err)
-			}
-		})
+	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, t.TempDir(), testGrace)
+	outcome, _, err := producer.Call(context.Background())
+	if err != nil || outcome != shedengine.Done {
+		t.Errorf("Call() = %v %v; want Done for a done child whose driver is gone", outcome, err)
 	}
 }
 

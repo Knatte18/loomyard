@@ -1,4 +1,4 @@
-// innerrun_awaiting_test.go covers the inner-run watch's awaiting hand-off, the resume once per decision, the halted-state remedies, and the done arm's wait for the driver strand.
+// innerrun_awaiting_test.go covers the inner-run watch's awaiting hand-off, the resume once per decision, and the done arm's wait for the driver strand.
 
 package battenshed
 
@@ -285,20 +285,6 @@ func TestInnerRun_ReadDecisionErrorIsHardError(t *testing.T) {
 	_, _, err := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, t.TempDir(), testGrace).Call(context.Background())
 	if !errors.Is(err, readErr) {
 		t.Errorf("Call() error = %v; want it to wrap %v", err, readErr)
-	}
-}
-
-func TestInnerRun_OtherHaltedStatesKeepHaltedChildRemedy(t *testing.T) {
-	for _, state := range []shedengine.State{shedengine.StateBlocked, shedengine.StatePaused, shedengine.StateFailed} {
-		clock := &fakeClock{}
-		statuses := []statusResult{{status: shedengine.Status{State: state}, found: true}}
-		_, _, deps := newInnerRunDeps(nil, nil, statuses, clock)
-
-		producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, t.TempDir(), testGrace)
-		_, _, err := producer.Call(context.Background())
-		if err == nil || !strings.Contains(err.Error(), haltedChildRemedy) {
-			t.Errorf("state %q: error = %v; want it to carry haltedChildRemedy", state, err)
-		}
 	}
 }
 

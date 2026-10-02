@@ -11,6 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/parentreview"
+	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
 // newReviewStore builds a Store over fresh temp directories.
@@ -104,7 +105,7 @@ func TestReviewVerbs_Success(t *testing.T) {
 		s := newReviewStore(t)
 		openReviewRequest(t, s)
 		var out bytes.Buffer
-		if code := reviewApproveVerb(&out, s, "task", ""); code != 0 {
+		if code := reviewApproveVerb(&out, s, "task", "", fakeRunStatus(shedengine.StateRunning)); code != 0 {
 			t.Fatalf("approve exit = %d, output %q", code, out.String())
 		}
 		r, _, _ := s.Latest()
@@ -116,7 +117,7 @@ func TestReviewVerbs_Success(t *testing.T) {
 		s := newReviewStore(t)
 		openReviewRequest(t, s)
 		var out bytes.Buffer
-		if code := reviewApproveVerb(&out, s, "task", writeReviewFile(t, "looks good")); code != 0 {
+		if code := reviewApproveVerb(&out, s, "task", writeReviewFile(t, "looks good"), fakeRunStatus(shedengine.StateRunning)); code != 0 {
 			t.Fatalf("approve --review exit = %d, output %q", code, out.String())
 		}
 		r, _, _ := s.Latest()
@@ -148,8 +149,10 @@ func reviewVerbCalls(t *testing.T, s parentreview.Store) map[string]func(out *by
 	return map[string]func(out *bytes.Buffer) int{
 		"notify":    func(out *bytes.Buffer) int { return reviewNotifyVerb(out, s, "task") },
 		"delivered": func(out *bytes.Buffer) int { return reviewDeliveredVerb(out, s, "task", "") },
-		"approve":   func(out *bytes.Buffer) int { return reviewApproveVerb(out, s, "task", "") },
-		"reject":    func(out *bytes.Buffer) int { return reviewRejectVerb(out, s, "task", review) },
+		"approve": func(out *bytes.Buffer) int {
+			return reviewApproveVerb(out, s, "task", "", fakeRunStatus(shedengine.StateRunning))
+		},
+		"reject": func(out *bytes.Buffer) int { return reviewRejectVerb(out, s, "task", review) },
 	}
 }
 
@@ -213,7 +216,9 @@ func TestReviewVerbs_ReviewFileMissingOrEmpty(t *testing.T) {
 		{"reject empty", func(s parentreview.Store, out *bytes.Buffer) int { return reviewRejectVerb(out, s, "task", empty) }},
 		{"reject missing", func(s parentreview.Store, out *bytes.Buffer) int { return reviewRejectVerb(out, s, "task", missing) }},
 		{"reject none", func(s parentreview.Store, out *bytes.Buffer) int { return reviewRejectVerb(out, s, "task", "") }},
-		{"approve missing", func(s parentreview.Store, out *bytes.Buffer) int { return reviewApproveVerb(out, s, "task", missing) }},
+		{"approve missing", func(s parentreview.Store, out *bytes.Buffer) int {
+			return reviewApproveVerb(out, s, "task", missing, fakeRunStatus(shedengine.StateRunning))
+		}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -308,4 +313,95 @@ func reviewErrMsg(t *testing.T, out *bytes.Buffer) string {
 	t.Helper()
 	msg, _ := decodeReview(t, out)["error"].(string)
 	return msg
+}
+
+// rejectCappedRound opens a round with a request carrying cap and rejects it.
+func rejectCappedRound(t *testing.T, s parentreview.Store, cap int) {
+	t.Helper()
+	if _, err := s.BeginRound(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.OpenRequest(parentreview.OpenSpec{Slug: "task", Reviewer: "ab:hub", Brief: "brief", Cap: cap}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordVerdict(parentreview.VerdictReject, writeReviewFile(t, "fix it")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// fakeRunStatus is a status reader answering with a run in state st.
+func fakeRunStatus(st shedengine.State) reviewStatusReader {
+	return func() (shedengine.Status, bool, error) {
+		return shedengine.Status{State: st}, true, nil
+	}
+}
+
+func TestReviewApprove_SupersedesCapRejectOnBlockedRun(t *testing.T) {
+	s := newReviewStore(t)
+	rejectCappedRound(t, s, 2)
+	rejectCappedRound(t, s, 2)
+	var out bytes.Buffer
+	if code := reviewApproveVerb(&out, s, "task", "", fakeRunStatus(shedengine.StateBlocked)); code != 0 {
+		t.Fatalf("exit = %d, output %q", code, out.String())
+	}
+	env := decodeReview(t, &out)
+	if env["action"] != "approve" || env["superseded"] != true {
+		t.Errorf("envelope = %v; want action approve and superseded true", env)
+	}
+	if msg, _ := env["message"].(string); !strings.Contains(msg, "lyx loom start") {
+		t.Errorf("message = %q; want the way forward lyx loom start", msg)
+	}
+	r, _, _ := s.Latest()
+	if r.Verdict == nil || r.Verdict.Kind != parentreview.VerdictApprove || !r.Verdict.Superseding {
+		t.Errorf("verdict = %+v; want a superseding approve", r.Verdict)
+	}
+	if b, _ := os.ReadFile(r.ReviewPath()); string(b) != "fix it" {
+		t.Errorf("review.md = %q; want the cap's review kept", b)
+	}
+}
+
+func TestReviewApprove_SupersedeRefusals(t *testing.T) {
+	t.Run("run not blocked", func(t *testing.T) {
+		s := newReviewStore(t)
+		rejectCappedRound(t, s, 1)
+		var out bytes.Buffer
+		code := reviewApproveVerb(&out, s, "task", "", fakeRunStatus(shedengine.StateRunning))
+		assertReviewRefusal(t, code, &out, "only on a run halted at the reject cap")
+		if msg := reviewErrMsg(t, &out); !strings.Contains(msg, "lyx loom status <slug>") {
+			t.Errorf("error %q: way forward must point at lyx loom status", msg)
+		}
+	})
+	t.Run("below the cap", func(t *testing.T) {
+		s := newReviewStore(t)
+		rejectCappedRound(t, s, 3)
+		var out bytes.Buffer
+		code := reviewApproveVerb(&out, s, "task", "", fakeRunStatus(shedengine.StateBlocked))
+		assertReviewRefusal(t, code, &out, "not the cap's")
+	})
+	t.Run("review file given", func(t *testing.T) {
+		s := newReviewStore(t)
+		rejectCappedRound(t, s, 1)
+		var out bytes.Buffer
+		code := reviewApproveVerb(&out, s, "task", writeReviewFile(t, "other"), fakeRunStatus(shedengine.StateBlocked))
+		assertReviewRefusal(t, code, &out, "--review")
+		if msg := reviewErrMsg(t, &out); !strings.Contains(msg, "without --review") {
+			t.Errorf("error %q: way forward must say to re-run without --review", msg)
+		}
+	})
+}
+
+func TestReviewApprove_OrdinaryApproveIgnoresRunStatus(t *testing.T) {
+	s := newReviewStore(t)
+	openReviewRequest(t, s)
+	var out bytes.Buffer
+	if code := reviewApproveVerb(&out, s, "task", "", fakeRunStatus(shedengine.StateRunning)); code != 0 {
+		t.Fatalf("exit = %d, output %q", code, out.String())
+	}
+	if env := decodeReview(t, &out); env["superseded"] != nil {
+		t.Errorf("envelope = %v; an ordinary approve must not report superseded", env)
+	}
+	r, _, _ := s.Latest()
+	if r.Verdict == nil || r.Verdict.Kind != parentreview.VerdictApprove || r.Verdict.Superseding {
+		t.Errorf("verdict = %+v; want a plain approve", r.Verdict)
+	}
 }

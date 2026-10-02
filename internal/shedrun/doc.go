@@ -13,11 +13,9 @@
 // When _lyx/shed/<slug>/ is absent and _lyx/shed/self/ exists, both spellings join the legacy "self"
 // directory, so a run started before the rename keeps working with no on-disk migration.
 //
-// The seed carries an optional, write-once parent: the full agent name of the session that spawned the run.
-// `lyx batten run` records the caller's own LYX_STRAND_NAME when it arms the seed, batten's Seed-Child copies that parent into the child run's seed,
-// and `lyx loom start` records its caller the same way.
-// A later write never replaces a recorded parent, and a seed written before the field existed reads back with it empty.
-// Reed tells the parent to every strand in the worktree as LYX_PARENT; see the Agent Name Invariant in CONSTRAINTS.md.
+// The seed's optional `parent` field is legacy: no code path writes it any more, and a seed written before that change still decodes.
+// Only `internal/hubgeom`'s parent resolver reads it, as a fallback when the pair's origin record names no parent worktree.
+// A run's parent is otherwise resolved at use from that origin record; see the Agent Name Invariant in CONSTRAINTS.md.
 //
 // RunsRootRel names the anchor-relative run-records root, because fabricengine's Add drops everything under it from a freshly forked pair.
 //

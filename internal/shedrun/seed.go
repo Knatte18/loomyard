@@ -34,11 +34,10 @@ type Seed struct {
 	// Params carries the run's seed-time parameters, keyed by name.
 	// It is omitted from the encoded JSON entirely when empty.
 	Params map[string]string `json:"params,omitempty"`
-	// Parent is the full agent name of the session that spawned this run.
-	// It is write-once: WriteSeed never rewrites it on an agreeing seed,
-	// and the disagreement check ignores it.
-	// It is omitted from the encoded JSON when empty,
-	// and a seed written before the field existed decodes with it empty.
+	// Parent is the full agent name of the session that spawned this run, as a legacy seed recorded it.
+	// No code path writes it any more; it stays so a seed written before that change decodes under DisallowUnknownFields.
+	// Only internal/hubgeom's parent resolver reads it, as the legacy fallback.
+	// The disagreement check ignores it, and it is omitted from the encoded JSON when empty.
 	Parent string `json:"parent,omitempty"`
 }
 
@@ -147,8 +146,8 @@ func decodeSeed(data []byte) (Seed, error) {
 // against a byte-identical existing seed -- calling WriteSeed twice with the same seed is a no-op the
 // second time -- while refusing a disagreeing existing seed with an ErrDisagreeingSeed-wrapped
 // message naming both the existing and the incoming values.
-// Agreement means recipe, driver and params only: Parent is write-once,
-// so an agreeing existing seed is a no-op whatever either side's Parent holds, and the first parent stays on disk.
+// Agreement means recipe, driver and params only:
+// an agreeing existing seed is a no-op whatever either side's legacy Parent holds, and an existing Parent stays on disk.
 func WriteSeed(l *lyxcwd.Location, runID string, seed Seed) error {
 	if err := ValidateRunID(ResolveRunID(l, runID)); err != nil {
 		return err

@@ -14,10 +14,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
-	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 // runVerb runs one reed verb in worktree and returns the decoded envelope; it fails the test on a non-zero exit.
@@ -72,17 +71,13 @@ func TestNaming_TaskWorktreeRolesParentResumeAndRemove(t *testing.T) {
 	skipWithoutMultiplexer(t, h)
 
 	const slug = "naming-task"
-	const parent = "tst:hub"
+	// The pair is created from the prime, so its parent is the prime's orch strand.
+	parent, err := agentname.Format("tst", "", agentname.RoleOrch)
+	if err != nil {
+		t.Fatalf("agentname.Format: %v", err)
+	}
 	hubforge.AddPair(t, h, slug)
 	worktree := h.PairWarpWorktree(slug)
-	l, err := lyxcwd.ResolveWorktree(worktree)
-	if err != nil {
-		t.Fatalf("ResolveWorktree: %v", err)
-	}
-	seed := shedrun.Seed{Recipe: shedrun.RecipeNames()[0], Driver: shedrun.DriverGo, Parent: parent}
-	if err := shedrun.WriteSeed(l, shedrun.SelfRunID, seed); err != nil {
-		t.Fatalf("WriteSeed: %v", err)
-	}
 	t.Cleanup(func() {
 		var buf bytes.Buffer
 		RunCLIIn(worktree, &buf, []string{"down"})

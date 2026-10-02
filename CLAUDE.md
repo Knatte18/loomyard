@@ -51,15 +51,6 @@ These are conversational shorthands; never rename code, files or docs to them un
 - **perch**: a `Bouncer` row in a `Shed` producer list whose `OnStuck` points at a `Burler`-round row, whose own `OnStuck` points back (see `internal/shedadapters` and `contracts/recipes/loom-recipe.yaml`).
   Each review segment wires its own pair; there is no perch type.
 
-## TEMPORARY: workarounds until the bugs are fixed
-
-Each item works around a bug whose issue is folded into a board task (`webster-recovery`, `run-parentage`); the task deletes its items when it lands.
-
-- #338: a paused or blocked inner run makes `lyx batten run` exit `failed`.
-  Resume the inner run, wait for `running`, then restart `lyx batten run <slug>` from the prime.
-- #341: a run's `parent` is the caller's `LYX_STRAND_NAME`, not the worktree it is seeded from.
-  Start runs from the orch session, so the seed records `ly:orch`.
-
 ## Filesystem links
 
 All links go through `internal/fslink` (`CreateDirLink`): directory junctions on Windows, symlinks elsewhere.
