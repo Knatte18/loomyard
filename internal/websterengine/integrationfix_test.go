@@ -123,6 +123,21 @@ func TestCheckFixCommits_NonMergeCommitAfterReportRefused(t *testing.T) {
 	}
 }
 
+func TestFixCommitsSince_ListsMergeButNotParentBranchCommits(t *testing.T) {
+	t.Parallel()
+	dir, base := fixCheckRepo(t)
+	fix := gitwrapCommitFile(t, dir, "b.txt", "two", "fix")
+	merge, sideTip := gitwrapMergeSide(t, dir, gitwrapParentBranch)
+
+	commits, err := fixCommitsSince(dir, base)
+	if err != nil {
+		t.Fatalf("fixCommitsSince() error = %v", err)
+	}
+	if len(commits) != 2 || commits[0] != fix || commits[1] != merge {
+		t.Errorf("fixCommitsSince() = %v; want [%s %s] without the parent branch's %s", commits, fix, merge, sideTip)
+	}
+}
+
 func TestCheckFixCommits_CleanParentMergeAfterReportWarns(t *testing.T) {
 	t.Parallel()
 	dir, base := fixCheckRepo(t)

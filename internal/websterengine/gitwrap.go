@@ -225,9 +225,11 @@ func dirty(worktree string) (bool, error) {
 	return strings.TrimSpace(stdout) != "", nil
 }
 
-// commitsBetween returns the commits reachable from head and not from base, newest first.
+// commitsBetween returns the commits on head's first-parent chain that base cannot reach, newest first.
+// A merge commit in that range is listed, but the commits it brought in from its other parent are not,
+// so a merged parent branch's own history never reads as commits made on this branch.
 func commitsBetween(worktree, base, head string) ([]string, error) {
-	stdout, err := gitexec.Run([]string{"rev-list", base + ".." + head}, worktree)
+	stdout, err := gitexec.Run([]string{"rev-list", "--first-parent", base + ".." + head}, worktree)
 	if err != nil {
 		return nil, fmt.Errorf("websterengine: git rev-list %s..%s in %s: %w", base, head, worktree, err)
 	}
