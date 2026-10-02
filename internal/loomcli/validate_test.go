@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 )
@@ -378,6 +379,31 @@ func TestValidatePlanCmd_ReworkAndRequireApprovedAreExclusive(t *testing.T) {
 	env := decodeSingleEnvelope(t, out.String())
 	if errMsg, _ := env["error"].(string); !strings.Contains(errMsg, "mutually exclusive") {
 		t.Errorf("envelope error = %q; want it to name the exclusive flags", errMsg)
+	}
+}
+
+// TestValidatePlanCmd_ReworkReportsGateFindingsForFirstCardMismatch asserts the --rework verb reports the same findings as PR-Rework's gate when first_card differs from the told number.
+func TestValidatePlanCmd_ReworkReportsGateFindingsForFirstCardMismatch(t *testing.T) {
+	anchorPath := t.TempDir()
+	worktreeRoot := t.TempDir()
+	writeGlyphRepoForParityTest(t, worktreeRoot, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
+	c := reworkParityFixture(t, anchorPath, worktreeRoot, 1, "", true)
+
+	result, err := loomshed.NewReworkPlanGate(c.env.AnchorPath, c.env.WorktreeRoot, c.env.Rework.ReadCommitted)()
+	if err != nil || result.Passed {
+		t.Fatalf("gate = %+v, %v; want a failing verdict", result, err)
+	}
+
+	var out bytes.Buffer
+	if exitCode := clihelp.Execute(c.validatePlanCmd(), &out, []string{"--rework"}); exitCode != 1 {
+		t.Fatalf("exit code = %d; want 1 (output: %q)", exitCode, out.String())
+	}
+	env := decodeSingleEnvelope(t, out.String())
+	if _, ok := env["findings"]; !ok {
+		t.Fatalf("envelope = %v; want a findings key", env)
+	}
+	if !strings.Contains(result.Findings, "rework-first-card") || !strings.Contains(out.String(), "rework-first-card") {
+		t.Errorf("gate findings = %q, envelope = %q; want both to carry rework-first-card", result.Findings, out.String())
 	}
 }
 

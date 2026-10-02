@@ -180,3 +180,44 @@ func TestSync_SkipPush_CommitsLocallyButDoesNotPush(t *testing.T) {
 		t.Fatal("git log --oneline after skipPush Sync() = \"\"; want a local commit")
 	}
 }
+
+// TestSync_RetireLegacy_CommitsBoardJSONAndLegacyDeletions asserts that after RetireLegacy on a synced board that tracked the legacy files, Sync commits board.json and the deletions and leaves a clean tree.
+func TestSync_RetireLegacy_CommitsBoardJSONAndLegacyDeletions(t *testing.T) {
+	container := t.TempDir()
+	bareRemote := newBareRemote(t, container)
+	boardPath := newBoardRepo(t, container, "board", bareRemote)
+
+	writeBoardFile(t, boardPath, legacyTasksFile, `[{"id":0,"slug":"alpha","title":"Alpha","depends_on":[]}]`)
+	writeBoardFile(t, boardPath, legacyNotesFile, `[]`)
+	if err := Sync(boardPath, false, false); err != nil {
+		t.Fatalf("initial Sync() error = %v", err)
+	}
+
+	b := New(Config{Path: boardPath, Readme: "Home.md", DesignPrefix: "proposal-", SkipGit: true})
+	if err := b.RetireLegacy(); err != nil {
+		t.Fatalf("RetireLegacy() error = %v", err)
+	}
+	if err := Sync(boardPath, false, false); err != nil {
+		t.Fatalf("Sync() after retire error = %v", err)
+	}
+
+	tracked, _, _, err := gitexec.RunGit([]string{"ls-files"}, boardPath)
+	if err != nil {
+		t.Fatalf("git ls-files error = %v", err)
+	}
+	if !strings.Contains(tracked, boardFile) {
+		t.Errorf("tracked files = %q; want %s committed", tracked, boardFile)
+	}
+	for _, name := range []string{legacyTasksFile, legacyNotesFile} {
+		if strings.Contains(tracked, name) {
+			t.Errorf("tracked files = %q; want %s deletion committed", tracked, name)
+		}
+	}
+	status, _, _, err := gitexec.RunGit([]string{"status", "--porcelain"}, boardPath)
+	if err != nil {
+		t.Fatalf("git status error = %v", err)
+	}
+	if strings.TrimSpace(status) != "" {
+		t.Errorf("working tree not clean after Sync: %q", status)
+	}
+}

@@ -819,13 +819,13 @@ func TestCLIBoardPathResolution(t *testing.T) {
 
 	t.Run("no_board_path_resolves_via_paths", func(t *testing.T) {
 		// PersistentPreRunE calls lyxcwd.Resolve and derives cfg.Path = fabricengine.BoardDir(topDir).
-		// Upsert writes tasks.json inside that derived board dir.
+		// Upsert writes board.json inside that derived board dir.
 		exitCode, stdout := runCLI(t, "upsert", `{"slug":"path-test","title":"Path Test"}`)
 		if exitCode != 0 {
 			t.Fatalf("upsert exit %d; stdout: %s", exitCode, stdout)
 		}
-		tasksFile := filepath.Join(expectedBoardDir, "tasks.json")
-		if _, err := os.Stat(tasksFile); err != nil {
+		storeFile := filepath.Join(expectedBoardDir, "board.json")
+		if _, err := os.Stat(storeFile); err != nil {
 			t.Errorf("board not at fabricengine.BoardDir(hub) %q: %v", expectedBoardDir, err)
 		}
 	})

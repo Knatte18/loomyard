@@ -113,7 +113,7 @@ lyx organizes overlay artifacts (configuration, task state, raddle docs, and the
   ├── <prime>-weft/                 (weft Prime worktree; git repo root)
   ├── <slug>/                       (additional warp worktree; git repo root)
   ├── <slug>-weft/                  (weft worktree for <slug>; git repo root)
-  ├── _board/                       (weft:main worktree; the task store)
+  ├── _board/                       (weft:main worktree; holds board.json)
   │     └── .lyx/                   (hub-wide machine-local scratch; a real dir, never a junction)
   ├── _portals/<anchor>/<slug>      (junction into <slug>'s _lyx; anchor-mirrored)
   └── _launchers/<anchor>/          (anchor-mirrored)
@@ -295,7 +295,11 @@ All commands print JSON: `{"ok":true, ...}` on success, `{"ok":false,"error":"..
 
 User-facing modules each get one `lyx <module>` namespace:
 
-- **board** — the task-tracker board (`internal/boardcli` + `internal/boardengine`). ✅ Implemented.
+- **board** — the task-tracker board, which is also the roadmap (`internal/boardcli` + `internal/boardengine`).
+  One `board.json` store holds every entry, and each entry carries a tier (Planned, Next Up or Someday) and a type.
+  The README renders one section per tier.
+  Agents use the board through the `ly:board` skill.
+  ✅ Implemented.
 - **config** — interactive menu for viewing and editing module configs;
   `lyx config reconcile` reconciles all module config files against their live templates (dry-run by default, `--apply` writes atomically) except seed-only modules (today: `models`), which are materialized once when absent and never rewritten again since the file is operator-owned;
   `lyx config <module> --set key=value` (repeatable) writes one or more config values directly with no editor invocation, for scripts/agents that need a non-interactive path. ✅ Implemented.
@@ -364,14 +368,19 @@ User-facing modules each get one `lyx <module>` namespace:
   `pause` requests a pause at the next producer boundary.
   `validate-discussion` runs the same checks Discussion-Write's and Discussion-Burler's own gates run, standalone, exiting 0 on a clean gate and 1 otherwise, with findings in the failure envelope so a writer agent can self-check before handing off.
   `validate-plan` runs the same checks Plan-Write's and Plan-Burler's own gates run, standalone, with the same exit-code and findings-envelope contract, over the current worktree's plan instead of its discussion.
-  `validate-plan --rework` runs the check `PR-Rework`'s own gate runs: the same checks, over only the cards absent from the plan committed at HEAD, since every earlier card has already been built.
+  `validate-plan --rework` runs the check `PR-Rework`'s own gate runs: the format-only checks over the whole new plan, plus a check that its `first_card` equals the card number the session was told.
   `validate-description` runs the same checks the `Describe` row's `description` gate runs over `_lyx/landing/summary.md`, standalone, with the same exit-code and findings-envelope contract.
   A PR-review wait at `PR-Gate` halts the run `awaiting`, the planned hand-off state: it behaves like `blocked` for resume but spends no bounce budget, triggers no friction reflection and raises no anomaly.
   `approve` records an operator approval of the open pull request when the run is awaiting (or blocked) at the gate and the local HEAD equals the PR's head, writing `.lyx/loom/approval.json` and removing a pending rejection; resuming with `lyx loom start` then lets `PR-Gate` return Done without a GitHub merge.
   `reject <review-file>` records the operator's findings (removing a pending approval), and refuses once the `PR-Review` segment's five rejection rounds are spent.
-  `lyx loom start` then routes the run through `PR-Rework`, which appends cards to the plan, re-baselines Webster, and re-runs `Webster`, `Webster-Review`, `Describe`, `Publish` and the gate.
+  `lyx loom start` then routes the run through `PR-Rework`, which starts a new plan generation and re-runs `Plan-Review`, `Webster`, `Webster-Review`, `Describe`, `Publish` and the gate.
+  `Plan-Bouncer` skips its judge only for an exempt generation, one whose live cards are all `Prosa` on non-source files.
+  Before its session runs, Go archives the live generation into the round's `prior-generation/` directory: the plan (cards, overview, amendments and any `archive-*/` rotation), Webster's run record, and the Plan-Review and Webster-Review run directories.
+  The session then writes a whole new plan into the emptied plan directory, numbered on from the retired generation through the overview's `first_card` key, and reads the archived plan for context.
+  Go records on the round whether the new generation is exempt from Plan-Review (every card Prosa on a non-source file) or required, commits the round in one weft commit, and removes the pending rejection.
   Each rejection is its own rework round, keyed by the rejected head and the rejection time, so a second rejection at a head the previous round left unchanged still gets a round.
-  The `Webster` row commits the plan directory alongside its run record, so the cards Webster rewrote during the run are the baseline `PR-Rework`'s append-only check compares against.
+  A round counts as committed only when its `record.json` carries the class, so the archive's classless completion marker never skips the session.
+  The `Webster` row commits the plan directory alongside its run record, so the generation `PR-Rework` archives is the one Webster built.
   A run halted at the gate re-runs only the gate on `lyx loom start`,
   so a fix committed by hand outside loom is pushed by the operator before `approve`, or goes through `reject` instead.
   `commit-records` commits and pushes the run's records through fabric — the status file, the review round record, friction notes and drive reports — and is what the ly-drive end-of-session command runs after the driver writes its stop report, and what a loom-launched driver runs at a hand-back before it parks until `lyx loom start` resumes it; a tree with nothing to commit succeeds without a commit.
@@ -415,8 +424,8 @@ User-facing modules each get one `lyx <module>` namespace:
   Behavior-based reviewer that *runs* a live-substrate module (needs a sandbox repo) to harden it before merge;
   on-demand, post-loom, **off the spine**, shares only the `burler` round discipline.
   See [manifest/designs/hardener.md](../manifest/designs/hardener.md).
-- **batten** — drives one task worktree's whole lifecycle — create, seed the child's own inner run from the Board task's own `type`, run it to a terminal state, and tear down — as a single Shed run from the hub's prime worktree (`internal/battenshed` + `internal/battenrecipe` + `internal/battencli`; `lyx batten run|step|status|pause <run-id>`).
-  The Board task's `type` must be `loom` or empty: `Run-Shed` starts loom's bootstrap verb inside the task worktree, the only one that exists, so `Seed-Child` refuses any other registered recipe before writing a seed rather than committing one the child's own bootstrap would refuse.
+- **batten** — drives one task worktree's whole lifecycle — create, seed the child's own inner run from the Board task's own `recipe`, run it to a terminal state, and tear down — as a single Shed run from the hub's prime worktree (`internal/battenshed` + `internal/battenrecipe` + `internal/battencli`; `lyx batten run|step|status|pause <run-id>`).
+  The Board task's `recipe` must be `loom` or empty: `Run-Shed` starts loom's bootstrap verb inside the task worktree, the only one that exists, so `Seed-Child` refuses any other registered recipe before writing a seed rather than committing one the child's own bootstrap would refuse.
   `Seed-Child` halts `blocked` with a named `stuck_reason`, not a hard failure, for all three ways `WriteSeed` can refuse: an unknown recipe, a recipe the task worktree cannot bootstrap, and a pre-existing child seed that disagrees with the one being written (`shedrun.ErrDisagreeingSeed`/`battenshed.ErrDisagreeingChildSeed`) — the same business-judgment treatment for all three, since none of them is a path-resolution or write failure.
   `Worktree-Create` is idempotent against its own post-condition, which is the whole pair fabric's `Add` builds, not merely the task worktree directory: a process killed anywhere inside `Add`'s own multi-step sequence never runs `Add`'s in-process rollback, so a bare directory check would be satisfied by that sequence's very first step alone. The row instead checks the pair is fully materialised (the task worktree's sibling exists, its junctions are wired, and its origin record names the parent branch `Seed-Child` passes to the child's bootstrap) before reporting done; a worktree present but not yet complete halts `blocked` naming a manual cleanup from prime (`lyx fabric remove --force <slug>`, which removes whatever part of the pair `Add` reached, and deletes the local task branch itself when its work is pushed or landed) rather than silently skipping the create.
   A create refused on a leftover branch (a torn-down pair keeps its task branch on the remote, and locally too unless `remove` proved its work pushed or landed, and a rolled-back create keeps the branch it made) halts `blocked` with batten's own remedy — delete the branch locally and on the remote, and any orphaned sibling branch, then resume — never fabric's `lyx fabric checkout`, which from prime switches prime's own pair onto the task's branches.

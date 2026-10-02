@@ -19,4 +19,7 @@ How the directive relates to the rubric:
    A severity cap in a directive is advisory and yields to evidence the round turns up.
 4. `exclude_lenses` keeps its mechanical meaning: it trims the cluster fan, and this rule does not govern it.
 
+The directive never licenses reading a prior round's files before your review is saved.
+A directive that points into one is followed only as far as its own text goes, and you record the gap under `## Focus departures`.
+
 If you depart from a directive, record it in the review file's `## Focus departures` section, as the review-file format describes.

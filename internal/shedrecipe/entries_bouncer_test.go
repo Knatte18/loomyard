@@ -489,35 +489,32 @@ func (f *judgeSeamFakeShuttle) Attach(shuttleengine.Spec) (shuttleengine.Result,
 	return shuttleengine.Result{}, false, nil
 }
 
-// RunGated implements the shared fake contract every shedadapters.Shuttle/burlerengine.Shuttle test
-// fake follows (see the "every test fake evaluates the gate once" decision): delegate to Run's own
-// body, then -- only when gate.Gate is non-nil and the delegated outcome is OutcomeDone -- invoke
-// the closure exactly once, returning its error if non-nil and otherwise stamping a *GateOutcome
-// onto the returned Result.
+// RunGated implements the shared fake contract every shedadapters.Shuttle/burlerengine.Shuttle test fake follows (see the "every test fake evaluates the gate once" decision):
+// delegate to Run's own body, then -- only when gate is non-empty and the delegated outcome is OutcomeDone -- invoke the entries once each in list order (see evalGateList), returning a closure's error if non-nil and otherwise stamping a *GateOutcome onto the returned Result.
 func (f *judgeSeamFakeShuttle) RunGated(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (shuttleengine.Result, error) {
 	result, err := f.Run(spec)
-	if err != nil || gate.Gate == nil || result.Outcome != shuttleengine.OutcomeDone {
+	if err != nil || len(gate) == 0 || result.Outcome != shuttleengine.OutcomeDone {
 		return result, err
 	}
-	gateResult, gerr := gate.Gate()
+	passed, gerr := evalGateList(gate)
 	if gerr != nil {
 		return result, gerr
 	}
-	result.Gate = &shuttleengine.GateOutcome{Passed: gateResult.Passed}
+	result.Gate = &shuttleengine.GateOutcome{Passed: passed}
 	return result, nil
 }
 
 // AttachGated is Attach's gated twin, following the identical shared fake contract.
 func (f *judgeSeamFakeShuttle) AttachGated(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (shuttleengine.Result, bool, error) {
 	result, found, err := f.Attach(spec)
-	if err != nil || !found || gate.Gate == nil || result.Outcome != shuttleengine.OutcomeDone {
+	if err != nil || !found || len(gate) == 0 || result.Outcome != shuttleengine.OutcomeDone {
 		return result, found, err
 	}
-	gateResult, gerr := gate.Gate()
+	passed, gerr := evalGateList(gate)
 	if gerr != nil {
 		return result, found, gerr
 	}
-	result.Gate = &shuttleengine.GateOutcome{Passed: gateResult.Passed}
+	result.Gate = &shuttleengine.GateOutcome{Passed: passed}
 	return result, found, nil
 }
 
@@ -647,6 +644,50 @@ func TestBouncerEntry_CommitSeam(t *testing.T) {
 		if producer == nil {
 			t.Fatal("bouncerEntry() producer = nil; want non-nil")
 		}
+	})
+}
+
+// TestBouncerEntry_SkipSeam covers skip_seam's absent, accepted and rejected values and the presence guard on a configured-but-missing env.SkipPlanReview.
+func TestBouncerEntry_SkipSeam(t *testing.T) {
+	t.Run("AbsentConstructsSuccessfully", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.SkipPlanReview = nil
+		cfg := minimalBouncerConfig(t, env)
+
+		if _, err := bouncerEntry("review-bounce", cfg, env); err != nil {
+			t.Fatalf("bouncerEntry() error = %v; want nil", err)
+		}
+	})
+
+	t.Run("ReworkExemptConstructsWithClosure", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.SkipPlanReview = func() (bool, error) { return false, nil }
+		cfg := minimalBouncerConfig(t, env)
+		cfg["skip_seam"] = "rework-exempt"
+
+		if _, err := bouncerEntry("review-bounce", cfg, env); err != nil {
+			t.Fatalf("bouncerEntry() error = %v; want nil", err)
+		}
+	})
+
+	t.Run("ReworkExemptWithNilEnvClosureFails", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.SkipPlanReview = nil
+		cfg := minimalBouncerConfig(t, env)
+		cfg["skip_seam"] = "rework-exempt"
+
+		_, err := bouncerEntry("review-bounce", cfg, env)
+		assertErrContains(t, err, "SkipPlanReview")
+	})
+
+	t.Run("UnknownValueFails", func(t *testing.T) {
+		env := newTestEnv(t)
+		cfg := minimalBouncerConfig(t, env)
+		cfg["skip_seam"] = "plan"
+
+		_, err := bouncerEntry("review-bounce", cfg, env)
+		assertErrContains(t, err, "skip_seam")
+		assertErrContains(t, err, "rework-exempt")
 	})
 }
 

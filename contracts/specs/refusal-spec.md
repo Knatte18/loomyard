@@ -154,6 +154,8 @@ The `validate-*` verbs' findings envelopes are each verb's verdict on its artifa
 | invalid history outcome | the status file's history carries an outcome the coherence check does not know | correctness halt | seed a new run |
 | batcher misconfigured | `batcher.yaml`'s `active:` key names no batchifier | correctness halt | fix `batcher.yaml`'s `active:` key, then re-step |
 | produced artifacts commit failed | the Discussion-Write, Plan-Write or Webster row cannot commit its records | transient | the fault is transient, re-step the row |
+| rework archive collision | PR-Rework's archive finds a plan entry, a review run directory or a webster run-record entry at both its origin and its destination under the round's `prior-generation/` | correctness halt | remove whichever copy is stale, then re-step |
+| rework archive: webster busy | PR-Rework's archive of webster's run record finds a webster run holding its run lock | transient | wait for the run to finish, then re-step |
 | wiring guards | nil deps, an invalid producer list, empty paths | wiring guard | none per row; grouped |
 | raw I/O | `stat`, `mkdir`, `read` or `write` of a status, seed, lock or records file fails | transient | re-run the refused verb; nothing is mutated |
 

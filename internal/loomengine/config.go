@@ -240,7 +240,7 @@ func LoomReworkDirRel() string {
 }
 
 // LoomReworkDir returns the root holding one round-<N> directory per rejection round for this worktree.
-// It is durable: each round's findings, record and coverage map are tracked run content committed with the appended cards.
+// It is durable: each round's findings, record, coverage map and prior-generation archive are tracked run content, committed with the new plan generation in PR-Rework's round commit.
 // It is built on LoomDurableDirRel rather than re-joining the durable literal a second time.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func LoomReworkDir(l *lyxcwd.Location) string {

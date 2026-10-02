@@ -88,6 +88,30 @@ type overviewFrontmatter struct {
 	Approved *bool   `yaml:"approved"`
 	Root     *string `yaml:"root"`
 	Language *string `yaml:"language"`
+	// FirstCard stays a raw node so a non-integer value reaches validation as a finding instead of failing the strict decode.
+	// A zero Kind means the key was absent.
+	FirstCard yaml.Node `yaml:"first_card"`
+}
+
+// interpretFirstCard maps the raw first_card node to the plan's first card number.
+// An absent key is 1; a value that is not a positive integer is 1 plus its raw text, or a placeholder when it has none, for index-file-mismatch to report.
+func interpretFirstCard(node yaml.Node) (first int, invalid string) {
+	if node.Kind == 0 {
+		return 1, ""
+	}
+	raw := strings.TrimSpace(node.Value)
+	n, err := strconv.Atoi(raw)
+	if node.Kind != yaml.ScalarNode || err != nil || n < 1 {
+		switch {
+		case node.Kind != yaml.ScalarNode:
+			raw = "<non-scalar>"
+		case raw == "":
+			// An empty value decodes as a null scalar; an empty raw text would read as the valid-or-absent marker.
+			raw = "<empty>"
+		}
+		return 1, raw
+	}
+	return n, ""
 }
 
 // cardIndexEntry is one parsed "## Card Index" line's machine-readable fields before the card file is read.
@@ -176,13 +200,17 @@ func ParsePlanFrom(planDir string, read func(name string) ([]byte, error)) (*Pla
 		cards = append(cards, card)
 	}
 
+	firstCard, firstCardInvalid := interpretFirstCard(fm.FirstCard)
+
 	plan := &Plan{
-		Dir:         planDir,
-		Framing:     framing,
-		Cards:       cards,
-		Root:        root,
-		Language:    language,
-		SurfaceRefs: surfaceRefs,
+		FirstCard:        firstCard,
+		FirstCardInvalid: firstCardInvalid,
+		Dir:              planDir,
+		Framing:          framing,
+		Cards:            cards,
+		Root:             root,
+		Language:         language,
+		SurfaceRefs:      surfaceRefs,
 	}
 	if fm.Format != nil {
 		plan.Format = *fm.Format

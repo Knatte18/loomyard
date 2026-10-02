@@ -51,7 +51,7 @@ Preflight → Loom-Preflight
   The judge and the reviewer are fresh agents, independent of the one that wrote the artifact, so no agent ever reviews its own work.
 - **Landing** — `Describe` writes the change description, `Publish` opens the pull request, and `PR-Gate` waits for the operator.
   `lyx loom approve` lands it;
-  `lyx loom reject <review-file>` sends the operator's findings to `PR-Rework`, which plans and implements a rework round and comes back to the gate.
+  `lyx loom reject <review-file>` sends the operator's findings to `PR-Rework`, which archives the built plan as a generation, plans and implements a new one, and comes back to the gate.
 - **Friction-Reflect** — the agents' own notes on what was hard or broken in the tooling are reflected on and can be filed as issues against LoomYard itself (`selfreport`).
 
 Routing is explicit per row (`on_done`, `on_stuck`), never positional, and the engine's validator refuses a recipe whose edges cross a review segment's boundary.

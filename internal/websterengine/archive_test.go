@@ -6,10 +6,14 @@
 package websterengine
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/lock"
 )
 
 // archiveFixedClock returns a func() time.Time that always returns t.
@@ -170,5 +174,136 @@ func TestArchiveReportsDir_ArchivesExistingContentAndRecreatesEmpty(t *testing.T
 	}
 	if len(entries) != 0 {
 		t.Errorf("recreated reportsDir has %d entries; want empty", len(entries))
+	}
+}
+
+// archiveRecordGeom builds a Geometry over temp directories with a populated webster dir.
+func archiveRecordGeom(t *testing.T) Geometry {
+	t.Helper()
+	root := t.TempDir()
+	geom := Geometry{
+		WebsterDir: filepath.Join(root, "webster"),
+		ReportsDir: filepath.Join(root, "webster", "reports"),
+		PromptsDir: filepath.Join(root, "scratch", "prompts"),
+		ScratchDir: filepath.Join(root, "scratch"),
+	}
+	if err := SaveState(geom.WebsterDir, geom.ScratchDir, &State{RunGUID: "g1"}); err != nil {
+		t.Fatalf("SaveState: %v", err)
+	}
+	if err := os.MkdirAll(geom.ReportsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(geom.ReportsDir, "01.yaml"), []byte("status: OK\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(geom.WebsterDir, "outcome.yaml"), []byte("outcome: done\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(geom.PromptsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(geom.PromptsDir, "01.md"), []byte("p"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return geom
+}
+
+func TestArchiveRunRecord_MovesWholeRecordAndClearsPrompts(t *testing.T) {
+	t.Parallel()
+
+	geom := archiveRecordGeom(t)
+	dest := filepath.Join(t.TempDir(), "dest")
+
+	if err := ArchiveRunRecord(geom, dest); err != nil {
+		t.Fatalf("ArchiveRunRecord() error = %v; want nil", err)
+	}
+
+	for _, rel := range []string{"state.json", "outcome.yaml", filepath.Join("reports", "01.yaml")} {
+		if _, err := os.Stat(filepath.Join(dest, rel)); err != nil {
+			t.Errorf("archived %s missing: %v", rel, err)
+		}
+	}
+	st, err := LoadState(geom.WebsterDir, geom.ScratchDir)
+	if err != nil || st != nil {
+		t.Errorf("LoadState after archive = (%v, %v); want (nil, nil)", st, err)
+	}
+	if _, err := os.Stat(geom.PromptsDir); !os.IsNotExist(err) {
+		t.Errorf("prompts dir still present: %v", err)
+	}
+}
+
+func TestArchiveRunRecord_SecondCallIsNoOp(t *testing.T) {
+	t.Parallel()
+
+	geom := archiveRecordGeom(t)
+	dest := filepath.Join(t.TempDir(), "dest")
+
+	if err := ArchiveRunRecord(geom, dest); err != nil {
+		t.Fatalf("first call: %v", err)
+	}
+	if err := ArchiveRunRecord(geom, dest); err != nil {
+		t.Fatalf("second call error = %v; want nil", err)
+	}
+	if _, err := os.Stat(filepath.Join(dest, "state.json")); err != nil {
+		t.Errorf("archived state.json missing after second call: %v", err)
+	}
+}
+
+func TestArchiveRunRecord_AbsentWebsterDirIsNoOp(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	geom := Geometry{
+		WebsterDir: filepath.Join(root, "webster"),
+		PromptsDir: filepath.Join(root, "scratch", "prompts"),
+		ScratchDir: filepath.Join(root, "scratch"),
+	}
+	dest := filepath.Join(root, "dest")
+
+	if err := ArchiveRunRecord(geom, dest); err != nil {
+		t.Fatalf("ArchiveRunRecord() error = %v; want nil", err)
+	}
+	if _, err := os.Stat(dest); !os.IsNotExist(err) {
+		t.Errorf("dest created for an absent webster dir: %v", err)
+	}
+}
+
+func TestArchiveRunRecord_CollisionErrorsAndMovesNothing(t *testing.T) {
+	t.Parallel()
+
+	geom := archiveRecordGeom(t)
+	dest := filepath.Join(t.TempDir(), "dest")
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dest, "outcome.yaml"), []byte("stale"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	err := ArchiveRunRecord(geom, dest)
+	if err == nil {
+		t.Fatal("ArchiveRunRecord() error = nil; want collision error")
+	}
+	if !strings.Contains(err.Error(), "outcome.yaml") || !strings.Contains(err.Error(), "remove whichever copy is stale, then re-step") {
+		t.Errorf("error = %v; want it to name the entry and the re-step way forward", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(geom.WebsterDir, "state.json")); statErr != nil {
+		t.Errorf("state.json moved despite collision: %v", statErr)
+	}
+}
+
+func TestArchiveRunRecord_HeldRunLockReturnsErrRunBusy(t *testing.T) {
+	t.Parallel()
+
+	geom := archiveRecordGeom(t)
+	held, locked, err := lock.TryAcquireWriteLock(filepath.Join(geom.ScratchDir, runLockName))
+	if err != nil || !locked {
+		t.Fatalf("hold run lock: locked=%v err=%v", locked, err)
+	}
+	defer held.Release()
+
+	err = ArchiveRunRecord(geom, filepath.Join(t.TempDir(), "dest"))
+	if !errors.Is(err, ErrRunBusy) {
+		t.Errorf("ArchiveRunRecord() error = %v; want ErrRunBusy", err)
 	}
 }

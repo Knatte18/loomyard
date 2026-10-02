@@ -34,8 +34,9 @@
 # Publish still escalates: its failures are merge, verify and push faults nothing in the list
 # produces. PR-Gate bounces to PR-Rework, the row that produces the diff it guards. PR-Rework joins
 # the writer rows whose Stuck halts for a human. The gate's episode Stuck count never resets between
-# rounds, so the budget is five rejection rounds per task. Rework cards skip Plan-Review because the
-# findings are operator-authored.
+# rounds, so the budget is five rejection rounds per task. A rework round starts a new plan
+# generation that walks the whole main line again, Plan-Review included; Plan-Bouncer skips its
+# judge only for a generation whose live cards are all exempt.
 #
 # Friction-Reflect is outside the escalate-to-a-human set: it also carries no on_stuck, but it
 # always returns Done and never Stuck, so it stays outside that set.
@@ -70,10 +71,12 @@ producers:
     engine: DiscussionWrite
     on_done: Discussion-Bouncer
     config:
-      # gate holds this row's handoff until the artifact is mechanically valid, re-prompting the
-      # live session up to gate_attempts times, so a failure never reaches the row below.
-      gate: discussion
-      gate_attempts: 3
+      # gates holds this row's handoff until the artifact is mechanically valid: each entry names a
+      # validator and re-prompts the live session up to its attempts times, so a failure never
+      # reaches the row below.
+      gates:
+        - name: discussion
+          attempts: 3
 
   - name: Discussion-Bouncer
     engine: Bouncer
@@ -108,10 +111,12 @@ producers:
       # The same run_subdir value as Discussion-Bouncer is what makes both rows write into one
       # shared run directory.
       run_subdir: discussion
-      # gate holds this row's handoff until the artifact is mechanically valid, re-prompting the
-      # live session up to gate_attempts times, so a failure never reaches the row below.
-      gate: discussion
-      gate_attempts: 3
+      # gates holds this row's handoff until the artifact is mechanically valid: each entry names a
+      # validator and re-prompts the live session up to its attempts times, so a failure never
+      # reaches the row below.
+      gates:
+        - name: discussion
+          attempts: 3
       profile:
         target:
           paths:
@@ -135,10 +140,12 @@ producers:
     engine: PlanWrite
     on_done: Plan-Bouncer
     config:
-      # gate holds this row's handoff until the artifact is mechanically valid, re-prompting the
-      # live session up to gate_attempts times, so a failure never reaches the row below.
-      gate: plan
-      gate_attempts: 3
+      # gates holds this row's handoff until the artifact is mechanically valid: each entry names a
+      # validator and re-prompts the live session up to its attempts times, so a failure never
+      # reaches the row below.
+      gates:
+        - name: plan
+          attempts: 3
 
   - name: Plan-Bouncer
     engine: Bouncer
@@ -166,6 +173,13 @@ producers:
       # this key: neither of their artifacts carries an approval flag, and an absent key leaves the
       # seam nil exactly as an omitted commit_seam already does.
       approve_seam: plan
+      # skip_seam: rework-exempt lets a rework generation whose cards are all exempt pass without a
+      # judge. Its inputs are agent-written -- the overview's first_card and a swept record.json --
+      # so the seam re-classifies the live committed cards: a stale or forged record can at most
+      # skip a generation whose live cards are themselves exempt. It also re-classifies the
+      # working-tree cards, since a Plan-Burler fix lands only through the commit a skip runs.
+      # Generation 0 never skips, and a seam error falls back to a real review.
+      skip_seam: rework-exempt
       # No model/effort/version key: the absence is what makes this row take the run-wide
       # Env.Review* values loom.yaml supplies, rather than a recipe-literal, untunable-without-a-
       # rebuild model.
@@ -183,10 +197,12 @@ producers:
       # The same run_subdir value as Plan-Bouncer is what makes both rows write into one shared
       # run directory.
       run_subdir: plan
-      # gate holds this row's handoff until the artifact is mechanically valid, re-prompting the
-      # live session up to gate_attempts times, so a failure never reaches the row below.
-      gate: plan
-      gate_attempts: 3
+      # gates holds this row's handoff until the artifact is mechanically valid: each entry names a
+      # validator and re-prompts the live session up to its attempts times, so a failure never
+      # reaches the row below.
+      gates:
+        - name: plan
+          attempts: 3
       profile:
         target:
           paths:
@@ -196,7 +212,15 @@ producers:
             - _lyx/discussion/decision-record.md
           instructions: >
             The decision record named above is the answer key: the plan's job is to implement the
-            decisions and constraints it settles. The format authority is
+            decisions and constraints it settles. In a rework generation the live generation's
+            findings.md joins it: every finding is covered by some card, and every card's scope is
+            licensed by the decision record or a finding. The live generation's round is, among
+            _lyx/loom/rework/round-<N>/ directories, the highest N whose record.json carries a
+            class and whose first_card equals the first_card in _lyx/plan/00-overview.md's
+            frontmatter (absent means 1). With no such round (generation 0, or a fresh Plan-Write
+            plan after an operator goto Plan-Write), the decision record alone is the answer key.
+            The round's prior-generation/ archive is context, never the subject of a finding. The
+            format authority is
             contracts/specs/loom-plan-spec.md, and the mechanical checks over that format are
             already enforced by this round's own gate over this round's own output, so re-deriving
             them here is duplicated work. This round may never write the approved: key in the
@@ -265,7 +289,7 @@ producers:
       # The same run_subdir value as Webster-Bouncer is what makes both rows write into one shared
       # run directory.
       run_subdir: webster
-      # No gate key, deliberately: there is no mechanical validator over a committed diff, so this
+      # No gates key, deliberately: there is no mechanical validator over a committed diff, so this
       # row builds an ungated producer.
       profile:
         target:
@@ -308,10 +332,12 @@ producers:
     engine: Describe
     on_done: Publish
     config:
-      # gate holds this row's handoff until the artifact is mechanically valid, re-prompting the
-      # live session up to gate_attempts times, so a failure never reaches the row below.
-      gate: description
-      gate_attempts: 3
+      # gates holds this row's handoff until the artifact is mechanically valid: each entry names a
+      # validator and re-prompts the live session up to its attempts times, so a failure never
+      # reaches the row below.
+      gates:
+        - name: description
+          attempts: 3
 
   - name: Publish
     engine: Publish
@@ -327,19 +353,22 @@ producers:
     on_stuck: PR-Rework
     on_done: Finalize
 
-  # PR-Rework appends cards for the operator's findings and hands back to Webster, so the main line
-  # re-runs through review, describe, publish and the gate. Its Stuck halts the run for a human.
+  # PR-Rework archives the live plan generation and has its session write a whole new one for the
+  # operator's findings, then hands to Plan-Bouncer, so the generation walks Plan-Review, Webster,
+  # Webster-Review, Describe, Publish and the gate. Its Stuck halts the run for a human.
   - name: PR-Rework
     engine: PRRework
     segment: PR-Review
-    on_done: Webster
+    on_done: Plan-Bouncer
     config:
-      # gate holds this row's handoff until the artifact is mechanically valid, re-prompting the
-      # live session up to gate_attempts times, so a failure never reaches the row below.
-      # rework-plan checks only the cards absent from the plan committed at HEAD: every earlier
-      # card has already landed, and re-resolving one against the tree it changed always fails.
-      gate: rework-plan
-      gate_attempts: 3
+      # gates holds this row's handoff until the artifact is mechanically valid: each entry names a
+      # validator and re-prompts the live session up to its attempts times, so a failure never
+      # reaches the row below.
+      # rework-plan validates the whole new generation, plus `first_card` equal to the number the
+      # row told the session.
+      gates:
+        - name: rework-plan
+          attempts: 3
 
   - name: Finalize
     engine: Finalize
