@@ -249,11 +249,11 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 	})
 }
 
-// readmeFixture holds an entry in tiers 1 and 3, leaving tier 2 empty, plus a done entry, an abandoned entry, a body, an isolated entry and a two-layer chain inside tier 1.
+// readmeFixture holds an entry in tiers 1 and 3, leaving tier 2 empty, plus a done entry that another entry depends on, an abandoned entry, a body, an isolated entry and a two-layer chain inside tier 1.
 func readmeFixture() []boardengine.Task {
 	return []boardengine.Task{
 		{ID: 1, Slug: "base", Title: "Base work", Tier: 1, Type: "feature", Brief: "The foundation."},
-		{ID: 2, Slug: "top", Title: "Top work", Tier: 1, Type: "bug", Status: stringPtr("running"), Brief: "Builds on base.", Body: "Design.\nSecond line.", DependsOn: []string{"base"}},
+		{ID: 2, Slug: "top", Title: "Top work", Tier: 1, Type: "bug", Status: stringPtr("running"), Brief: "Builds on base.", Body: "Design.\nSecond line.", DependsOn: []string{"base", "shipped"}},
 		{ID: 6, Slug: "alone", Title: "Alone work", Tier: 1, Type: "chore", Isolated: true},
 		{ID: 3, Slug: "idea", Title: "An idea", Tier: 3, Type: "design"},
 		{ID: 4, Slug: "dropped", Title: "Dropped idea", Tier: 3, Type: "chore", Status: stringPtr("abandoned"), Brief: "No longer wanted."},
@@ -261,7 +261,7 @@ func readmeFixture() []boardengine.Task {
 	}
 }
 
-// TestRenderReadmeGolden pins the README for a fixture with an entry per tier, an empty tier 2, a done entry, an abandoned tier-3 entry, a slug linked to its design doc, After and Before lines, an isolated entry, and a two-layer chain in one section.
+// TestRenderReadmeGolden pins the README for a fixture with an entry per tier, an empty tier 2, a done entry, an abandoned tier-3 entry, a slug linked to its design doc, After and Before lines that leave out a done dependency, an isolated entry, and a two-layer chain in one section.
 func TestRenderReadmeGolden(t *testing.T) {
 	result, err := boardengine.Render(readmeFixture(), boardengine.Outputs{Readme: "README.md", DesignPrefix: "design-"})
 	if err != nil {
