@@ -55,10 +55,10 @@ type CloneOptions struct {
 	// writing a fresh binding): the guard is reachable only there, so ForceBootstrap has no effect
 	// anywhere else.
 	ForceBootstrap bool
-	// Code is the repo's short agent-name code (see agentname.ValidateShortname).
+	// Shortname is the repo's shortname (see agentname.ValidateShortname).
 	// It is required when the weft is a fresh bind;
-	// on a bound weft it records a missing code or must equal the recorded one.
-	Code string
+	// on a bound weft it records a missing shortname or must equal the recorded one.
+	Shortname string
 }
 
 // CloneResult carries the resolved geometry CloneHub hands back to the caller once the git-level
@@ -82,10 +82,10 @@ type CloneResult struct {
 	// WarpBindingRecorded is true only when this clone wrote the .lyx-warp record (a fresh binding,
 	// including the clone-time backfill of a pre-binding hub).
 	WarpBindingRecorded bool
-	// Code is the effective repo code, empty when the weft is bound but uncoded.
-	Code string
-	// CodeRecorded is true only when this clone wrote the .lyx-code record.
-	CodeRecorded bool
+	// Shortname is the effective repo shortname, empty when the weft is bound but has no shortname.
+	Shortname string
+	// ShortnameRecorded is true only when this clone wrote the .lyx-shortname record.
+	ShortnameRecorded bool
 	// Warning is non-empty when the clone succeeded but left something the operator must do.
 	Warning string
 }
@@ -157,8 +157,8 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 
 	var name, hubPath, effective string
 	var writeRecord, derivedFromRecord bool
-	var effectiveCode, codeWarning string
-	var writeCode bool
+	var effectiveShortname, shortnameWarning string
+	var writeShortname bool
 
 	if opts.WarpURL != "" {
 		// Two-argument form: the hub name is derivable with no network at all, so resolve it,
@@ -187,7 +187,7 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 		if err != nil {
 			return CloneResult{}, err
 		}
-		effectiveCode, writeCode, codeWarning, err = resolveEffectiveCode(probe.RecordedCode, probe.CodeFound, opts.Code, probe.freshBind())
+		effectiveShortname, writeShortname, shortnameWarning, err = resolveEffectiveShortname(probe.RecordedShortname, probe.ShortnameFound, opts.Shortname, probe.freshBind())
 		if err != nil {
 			return CloneResult{}, err
 		}
@@ -212,7 +212,7 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 			// caller prefixes it here.
 			return CloneResult{}, fmt.Errorf("weft %s has no recorded warp binding; supply the warp URL explicitly: lyx fabric clone <weft-url> <warp-url>", opts.WeftURL)
 		}
-		effectiveCode, writeCode, codeWarning, err = resolveEffectiveCode(probe.RecordedCode, probe.CodeFound, opts.Code, probe.freshBind())
+		effectiveShortname, writeShortname, shortnameWarning, err = resolveEffectiveShortname(probe.RecordedShortname, probe.ShortnameFound, opts.Shortname, probe.freshBind())
 		if err != nil {
 			return CloneResult{}, err
 		}
@@ -421,14 +421,14 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 		warpBindingRecorded = true
 	}
 
-	// The code record sits beside the warp binding, committed by the same CLI-layer Bolt commit.
-	var codeRecorded bool
-	if writeCode {
-		if err := WriteCode(boardDir, effectiveCode); err != nil {
+	// The shortname record sits beside the warp binding, committed by the same CLI-layer Bolt commit.
+	var shortnameRecorded bool
+	if writeShortname {
+		if err := WriteShortname(boardDir, effectiveShortname); err != nil {
 			return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, err)
 		}
-		rec.Append(KindFileWritten, filepath.Join(boardDir, CodeFileName), "")
-		codeRecorded = true
+		rec.Append(KindFileWritten, filepath.Join(boardDir, ShortnameFileName), "")
+		shortnameRecorded = true
 	}
 
 	// Resolve the prime layout now that the marker exists on disk, so
@@ -449,9 +449,9 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 		PrimeCwd:            primeCwd,
 		WarpURL:             warpURL,
 		WarpBindingRecorded: warpBindingRecorded,
-		Code:                effectiveCode,
-		CodeRecorded:        codeRecorded,
-		Warning:             codeWarning,
+		Shortname:           effectiveShortname,
+		ShortnameRecorded:   shortnameRecorded,
+		Warning:             shortnameWarning,
 	}, nil
 }
 

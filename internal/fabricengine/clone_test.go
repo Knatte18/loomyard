@@ -128,7 +128,7 @@ func TestCloneHub_CreatesHubScratchDir(t *testing.T) {
 		WarpURL:        filepath.ToSlash(warpSrc),
 		Subpath:        ".",
 		ForceBootstrap: true,
-		Code:           "tst",
+		Shortname:      "tst",
 	})
 	if err != nil {
 		t.Fatalf("CloneHub() error = %v; want nil", err)

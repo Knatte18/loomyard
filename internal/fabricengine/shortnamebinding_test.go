@@ -1,4 +1,4 @@
-// codebinding_test.go covers the .lyx-code record's read/write helpers and every row of resolveEffectiveCode.
+// shortnamebinding_test.go covers the .lyx-shortname record's read/write helpers and every row of resolveEffectiveShortname.
 
 package fabricengine
 
@@ -9,24 +9,24 @@ import (
 	"testing"
 )
 
-func TestCodeRecord_RoundTrip(t *testing.T) {
+func TestShortnameRecord_RoundTrip(t *testing.T) {
 	dir := t.TempDir()
-	if err := WriteCode(dir, "lx"); err != nil {
-		t.Fatalf("WriteCode() error = %v; want nil", err)
+	if err := WriteShortname(dir, "lx"); err != nil {
+		t.Fatalf("WriteShortname() error = %v; want nil", err)
 	}
-	raw, err := os.ReadFile(filepath.Join(dir, CodeFileName))
+	raw, err := os.ReadFile(filepath.Join(dir, ShortnameFileName))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if string(raw) != "lx\n" {
 		t.Errorf("record = %q; want %q", raw, "lx\n")
 	}
-	if code, found := ReadCode(dir); !found || code != "lx" {
-		t.Errorf("ReadCode() = %q, %v; want %q, true", code, found, "lx")
+	if shortname, found := ReadShortname(dir); !found || shortname != "lx" {
+		t.Errorf("ReadShortname() = %q, %v; want %q, true", shortname, found, "lx")
 	}
 }
 
-func TestReadCode_NotFound(t *testing.T) {
+func TestReadShortname_NotFound(t *testing.T) {
 	tests := []struct {
 		name    string
 		content *string
@@ -40,12 +40,12 @@ func TestReadCode_NotFound(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := t.TempDir()
 			if tt.content != nil {
-				if err := os.WriteFile(filepath.Join(dir, CodeFileName), []byte(*tt.content), 0o644); err != nil {
+				if err := os.WriteFile(filepath.Join(dir, ShortnameFileName), []byte(*tt.content), 0o644); err != nil {
 					t.Fatal(err)
 				}
 			}
-			if code, found := ReadCode(dir); found || code != "" {
-				t.Errorf("ReadCode() = %q, %v; want empty, false", code, found)
+			if shortname, found := ReadShortname(dir); found || shortname != "" {
+				t.Errorf("ReadShortname() = %q, %v; want empty, false", shortname, found)
 			}
 		})
 	}
@@ -53,7 +53,7 @@ func TestReadCode_NotFound(t *testing.T) {
 
 func ptr(s string) *string { return &s }
 
-func TestResolveEffectiveCode(t *testing.T) {
+func TestResolveEffectiveShortname(t *testing.T) {
 	tests := []struct {
 		name        string
 		recorded    string
@@ -65,18 +65,18 @@ func TestResolveEffectiveCode(t *testing.T) {
 		wantWarnSub string
 		wantErrSubs []string
 	}{
-		{name: "fresh without code refuses", freshBind: true, wantErrSubs: []string{"--code"}},
-		{name: "fresh with code records", freshBind: true, supplied: "lx", wantEff: "lx", wantWrite: true},
+		{name: "fresh without shortname refuses", freshBind: true, wantErrSubs: []string{"--shortname"}},
+		{name: "fresh with shortname records", freshBind: true, supplied: "lx", wantEff: "lx", wantWrite: true},
 		{name: "record present derives", recorded: "lx", found: true, wantEff: "lx"},
-		{name: "record present equal code", recorded: "lx", found: true, supplied: "lx", wantEff: "lx"},
-		{name: "record present differing code refuses", recorded: "lx", found: true, supplied: "ly", wantErrSubs: []string{`"lx"`, "lyx fabric code"}},
-		{name: "bound without record takes code", supplied: "lx", wantEff: "lx", wantWrite: true},
-		{name: "bound without record or code warns", wantWarnSub: "lyx fabric code"},
-		{name: "invalid supplied code refuses first", recorded: "lx", found: true, supplied: "L", wantErrSubs: []string{"invalid"}},
+		{name: "record present equal shortname", recorded: "lx", found: true, supplied: "lx", wantEff: "lx"},
+		{name: "record present differing shortname refuses", recorded: "lx", found: true, supplied: "ly", wantErrSubs: []string{`"lx"`, "lyx fabric shortname"}},
+		{name: "bound without record takes shortname", supplied: "lx", wantEff: "lx", wantWrite: true},
+		{name: "bound without record or shortname warns", wantWarnSub: "lyx fabric shortname"},
+		{name: "invalid supplied shortname refuses first", recorded: "lx", found: true, supplied: "L", wantErrSubs: []string{"invalid"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			eff, write, warning, err := resolveEffectiveCode(tt.recorded, tt.found, tt.supplied, tt.freshBind)
+			eff, write, warning, err := resolveEffectiveShortname(tt.recorded, tt.found, tt.supplied, tt.freshBind)
 			if len(tt.wantErrSubs) > 0 {
 				if err == nil {
 					t.Fatalf("err = nil; want a refusal containing %v", tt.wantErrSubs)

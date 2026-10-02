@@ -149,15 +149,15 @@ const defaultRole = "strand"
 
 // validateNaming refuses, before any tmux command, an add or replace whose name no geometry-told prefix can form,
 // and returns the full name NameOverride resolves to ("" when it is empty).
-// An empty code is the uncoded hub;
-// a told code or slug failing its grammar is a wiring guard.
+// An empty shortname is a hub that has none;
+// a told shortname or slug failing its grammar is a wiring guard.
 func (e *Engine) validateNaming(spec AddSpec) (string, error) {
-	code, slug := e.geom.NameCode, e.geom.NameSlug
-	if code == "" {
-		return "", fmt.Errorf("no strand name can be formed: this hub records no short code; way forward: lyx fabric code <code> records it, then retry")
+	shortname, slug := e.geom.NameCode, e.geom.NameSlug
+	if shortname == "" {
+		return "", fmt.Errorf("no strand name can be formed: this hub records no shortname; way forward: lyx fabric shortname <shortname> records it, then retry")
 	}
-	if err := agentname.ValidateShortname(code); err != nil {
-		return "", fmt.Errorf("no strand name can be formed: the told code is invalid: %w", err)
+	if err := agentname.ValidateShortname(shortname); err != nil {
+		return "", fmt.Errorf("no strand name can be formed: the told shortname is invalid: %w", err)
 	}
 	if slug != "" {
 		if err := agentname.ValidateSlug(slug); err != nil {
@@ -168,7 +168,7 @@ func (e *Engine) validateNaming(spec AddSpec) (string, error) {
 	if spec.NameOverride == "" {
 		return "", nil
 	}
-	n, err := agentname.Resolve(code, slug, spec.NameOverride)
+	n, err := agentname.Resolve(shortname, slug, spec.NameOverride)
 	if err != nil {
 		return "", err
 	}
@@ -177,11 +177,11 @@ func (e *Engine) validateNaming(spec AddSpec) (string, error) {
 
 // strandNameLocked forms the full name of the strand spec describes against st's strands:
 // an explicit NameOverride as given, else Role (default defaultRole) numbered past every role segment in state, live or dormant.
-// The geometry's code and slug were validated by validateNaming.
+// The geometry's shortname and slug were validated by validateNaming.
 func (e *Engine) strandNameLocked(st *ReedState, spec AddSpec) (string, error) {
-	code, slug := e.geom.NameCode, e.geom.NameSlug
+	shortname, slug := e.geom.NameCode, e.geom.NameSlug
 	if spec.NameOverride != "" {
-		n, err := agentname.Resolve(code, slug, spec.NameOverride)
+		n, err := agentname.Resolve(shortname, slug, spec.NameOverride)
 		if err != nil {
 			return "", err
 		}
@@ -205,7 +205,7 @@ func (e *Engine) strandNameLocked(st *ReedState, spec AddSpec) (string, error) {
 			held = append(held, n.Role)
 		}
 	}
-	return agentname.Format(code, slug, agentname.NumberRole(role, held))
+	return agentname.Format(shortname, slug, agentname.NumberRole(role, held))
 }
 
 // ifAbsentDecision is the closed set of branch rows AddStrand's --if-absent path chooses among for a

@@ -740,19 +740,19 @@ func TestStrandNameLocked_ForeignPrefixRefuses(t *testing.T) {
 // the exact way-forward text, and no tmux command issued.
 func TestAddStrand_UnformableName_RefusesBeforeAnyTmuxCommand(t *testing.T) {
 	tests := []struct {
-		name     string
-		code     string
-		slug     string
-		wantText string
+		name      string
+		shortname string
+		slug      string
+		wantText  string
 	}{
-		{"MissingCode", "", "tslug", "no strand name can be formed: this hub records no short code; way forward: lyx fabric code <code> records it, then retry"},
+		{"MissingShortname", "", "tslug", "no strand name can be formed: this hub records no shortname; way forward: lyx fabric shortname <shortname> records it, then retry"},
 		{"BadSlug", "tc", "Bad_Slug", "way forward: lyx fabric add <slug> creates the task under a slug that fits"},
-		{"BadCode", "T-C", "tslug", `"T-C"`},
+		{"BadShortname", "T-C", "tslug", `"T-C"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			e := newTestEngine(t)
-			e.geom.NameCode, e.geom.NameSlug = tt.code, tt.slug
+			e.geom.NameCode, e.geom.NameSlug = tt.shortname, tt.slug
 			var calls int
 			e.tmux.execHook = func(capture bool, args ...string) (string, error) {
 				calls++

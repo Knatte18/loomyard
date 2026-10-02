@@ -86,12 +86,12 @@ warp URL is supplied for an unbound weft.
                            recorded binding
   <warp-name>` + weftname.Suffix + `       — weft prime (lyx artefacts: config, raddle, weft commits)
 
-Use --code <code> to give the repo its short agent-name code (2-6 characters
+Use --shortname <shortname> to give the repo its shortname (2-6 characters
 matching [a-z][a-z0-9]{1,5}). It is required the first time a weft is bound,
-and is recorded in ` + fabricengine.CodeFileName + ` beside the warp binding. A weft that
-already records a code supplies it, and a differing --code is refused. A bound
-weft with no record clones with a warning; record the code with
-"lyx fabric code <code>" or by passing --code here.
+and is recorded in ` + fabricengine.ShortnameFileName + ` beside the warp binding. A weft that
+already records a shortname supplies it, and a differing --shortname is refused. A bound
+weft with no record clones with a warning; record the shortname with
+"lyx fabric shortname <shortname>" or by passing --shortname here.
 
 Use --reset to tear down an existing hub before cloning (idempotent re-clone).
 The teardown is refused unless the target really is a fabric hub — it must hold
@@ -142,11 +142,11 @@ Example:
 			subpath, _ := cloneCmd.Flags().GetString("subpath")
 			forceBootstrap, _ := cloneCmd.Flags().GetBool("force-bootstrap")
 			into, _ := cloneCmd.Flags().GetString("into")
-			code, _ := cloneCmd.Flags().GetString("code")
-			return runCloneWithReset(ctx, out, args, reset, subpath, forceBootstrap, into, code)
+			shortname, _ := cloneCmd.Flags().GetString("shortname")
+			return runCloneWithReset(ctx, out, args, reset, subpath, forceBootstrap, into, shortname)
 		}),
 	}
-	cloneCmd.Flags().String("code", "", "the repo's short agent-name code, 2-6 characters matching [a-z][a-z0-9]{1,5}; required when the weft is bound for the first time, recorded as "+fabricengine.CodeFileName)
+	cloneCmd.Flags().String("shortname", "", "the repo's shortname, 2-6 characters matching [a-z][a-z0-9]{1,5}; required when the weft is bound for the first time, recorded as "+fabricengine.ShortnameFileName)
 	cloneCmd.Flags().Bool("reset", false, "remove an existing hub before cloning (idempotent re-clone)")
 	// The default is the EMPTY string, not "." — CloneHub normalises empty to the "." root anchor
 	// anyway, and only an empty default lets it tell "the operator typed nothing" apart from "the
@@ -434,22 +434,22 @@ Example:
 	})
 
 	cmd.AddCommand(&cobra.Command{
-		Use:   "code [<code>]",
+		Use:   "shortname [<shortname>]",
 		Args:  cobra.MaximumNArgs(1),
-		Short: "print or record the hub's short agent-name code",
-		Long: `Print the hub's short agent-name code, or record one.
+		Short: "print or record the hub's shortname",
+		Long: `Print the hub's shortname, or record one.
 
-With no argument it prints the recorded code. With one argument it records the
-code in ` + fabricengine.CodeFileName + ` on weft:main when the hub has none, committing and
-pushing it; the code is 2-6 characters matching [a-z][a-z0-9]{1,5}.
+With no argument it prints the recorded shortname. With one argument it records the
+shortname in ` + fabricengine.ShortnameFileName + ` on weft:main when the hub has none, committing and
+pushing it; the shortname is 2-6 characters matching [a-z][a-z0-9]{1,5}.
 
-Recording the code a hub already has is a no-op. A different code is refused:
+Recording the shortname a hub already has is a no-op. A different shortname is refused:
 changing it would orphan every agent name already in use.
 
 Example:
-  lyx fabric code
-  lyx fabric code ly`,
-		RunE: clihelp.WrapRunCtx(runCode),
+  lyx fabric shortname
+  lyx fabric shortname ly`,
+		RunE: clihelp.WrapRunCtx(runShortname),
 	})
 
 	// Wire the weft-git content-sync verbs (status/commit/push/pull/sync), their

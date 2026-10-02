@@ -75,7 +75,7 @@ var uncontainedWriteAllowlist = map[string]string{
 	"internal/fabricengine/warpbinding.go": "writeWarpBinding writes .lyx-warp into the _board weft worktree fabric created via " +
 		"containedWorktreeAdd; it is committed onto weft:main by the caller, and the board directory is fabric-owned, never a " +
 		"caller-derived slug path",
-	"internal/fabricengine/codebinding.go": "WriteCode writes .lyx-code into the _board weft worktree fabric created via " +
+	"internal/fabricengine/shortnamebinding.go": "WriteShortname writes .lyx-shortname into the _board weft worktree fabric created via " +
 		"containedWorktreeAdd; it is committed onto weft:main by the caller, and the board directory is fabric-owned, never a " +
 		"caller-derived slug path",
 	"internal/fabricengine/weftgit.go": "ensureWeftLockDirAt's os.MkdirAll(.weft) creates the lock directory inside the weft worktree " +

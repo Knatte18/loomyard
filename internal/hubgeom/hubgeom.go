@@ -20,8 +20,8 @@ import (
 // ReedGeometry builds a reedengine.Geometry for l: the resolved Location's paths, read off its accessors and passed through untouched, plus the name prefix and parent reed forms strand names from.
 // It performs no os.Getwd, no git discovery, and no path resolution of its own — internal/lyxcwd stays the sole owner of cwd resolution (the Cwd Resolution Invariant).
 //
-// NameCode is the hub's recorded code; an absent record leaves it empty and is no error here,
-// since reed refuses the spawn that needs a code while `reed status`, `down` and the watchdog keep working.
+// NameCode is the hub's recorded shortname; an absent record leaves it empty and is no error here,
+// since reed refuses the spawn that needs a shortname while `reed status`, `down` and the watchdog keep working.
 // The prime leaves NameSlug and ParentName empty;
 // a task worktree sets NameSlug to its raw worktree name and ParentName to the parent recorded in its default run's seed.
 // An unreadable seed logs a warning and leaves ParentName empty, since the parent is an optional escalation channel.
@@ -66,7 +66,7 @@ func isPrimeWorktree(worktreeRoot string) (bool, error) {
 
 // reedGeometry is ReedGeometry once the prime is told from a task worktree, split out so the unit test can tell either without a .git entry.
 func reedGeometry(l *lyxcwd.Location, prime bool) reedengine.Geometry {
-	code, _ := fabricengine.ReadCode(fabricengine.BoardDir(l.HubPath))
+	shortname, _ := fabricengine.ReadShortname(fabricengine.BoardDir(l.HubPath))
 	var slug, parent string
 	if !prime {
 		slug = l.WorktreeName
@@ -88,7 +88,7 @@ func reedGeometry(l *lyxcwd.Location, prime bool) reedengine.Geometry {
 		RepoName:     l.RepoName,
 		WorktreeName: l.WorktreeName,
 		HubPath:      l.HubPath,
-		NameCode:     code,
+		NameCode:     shortname,
 		NameSlug:     slug,
 		ParentName:   parent,
 	}

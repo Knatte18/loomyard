@@ -144,7 +144,7 @@ func TestNaming_PrimeStrandHasCodeAndRoleAndNoParent(t *testing.T) {
 	probe := filepath.Join(t.TempDir(), "prime.txt")
 	env := runVerb(t, worktree, "add", "--role", "worker", "--cmd", envProbeCmd(probe))
 
-	want := hubforge.TestCode + ":worker"
+	want := hubforge.TestShortname + ":worker"
 	if name, _ := env["name"].(string); name != want {
 		t.Errorf("prime strand name = %q, want %q", name, want)
 	}

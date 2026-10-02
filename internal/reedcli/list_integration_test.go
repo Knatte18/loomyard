@@ -46,8 +46,8 @@ func TestList_HubWideDirectoryAndDrift(t *testing.T) {
 	runVerb(t, prime, "add", "--role", "worker", "--cmd", "sleep 300")
 	runVerb(t, task, "add", "--role", "worker", "--cmd", "sleep 300")
 
-	primeName := hubforge.TestCode + ":worker"
-	taskName := hubforge.TestCode + ":" + slug + ":worker"
+	primeName := hubforge.TestShortname + ":worker"
+	taskName := hubforge.TestShortname + ":" + slug + ":worker"
 
 	rows := listRows(t, prime)
 	for _, name := range []string{primeName, taskName} {

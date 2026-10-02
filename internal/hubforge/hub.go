@@ -30,8 +30,8 @@ var (
 	weftBareTemplate string
 )
 
-// TestCode is the repo code every hub NewHub builds is cloned with, recorded as .lyx-code, so every hub fixture is coded.
-const TestCode = "tst"
+// TestShortname is the repo shortname every hub NewHub builds is cloned with, recorded as .lyx-shortname, so every hub fixture has a shortname.
+const TestShortname = "tst"
 
 // buildBareTemplate builds, once per test binary, the pushed-to warp bare and the genuinely empty
 // weft bare that NewHub's factory clones copies of.
@@ -234,10 +234,10 @@ func NewHub(tb testing.TB, anchor string) *Hub {
 	}
 
 	res, err := fabriccli.CloneAndWire(container, fabricengine.CloneOptions{
-		WeftURL: filepath.ToSlash(weftBare),
-		WarpURL: filepath.ToSlash(warpBare),
-		Subpath: subpath,
-		Code:    TestCode,
+		WeftURL:   filepath.ToSlash(weftBare),
+		WarpURL:   filepath.ToSlash(warpBare),
+		Subpath:   subpath,
+		Shortname: TestShortname,
 	})
 	if err != nil {
 		tb.Fatalf("NewHub: CloneAndWire: %v", err)

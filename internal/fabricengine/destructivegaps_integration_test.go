@@ -157,9 +157,9 @@ func TestCloneHub_TeardownSucceedsOnAHalfBuiltHub(t *testing.T) {
 	cloneParent := t.TempDir()
 
 	_, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
-		WeftURL: weftRemote,
-		WarpURL: badWarpURL,
-		Code:    "tst",
+		WeftURL:   weftRemote,
+		WarpURL:   badWarpURL,
+		Shortname: "tst",
 	})
 	if err == nil {
 		t.Fatalf("CloneHub against a nonexistent warp URL = nil error; want a clone failure")
