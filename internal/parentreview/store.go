@@ -3,6 +3,7 @@
 package parentreview
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -286,6 +287,7 @@ func (s Store) RecordPrompt(fromNotify bool) error {
 }
 
 // MarkExpired marks the latest round's request expired.
+// It refuses with ErrVerdictRecorded when a verdict landed since the caller's read, checked under the round lock, so a recorded verdict is never expired unread.
 func (s Store) MarkExpired() error {
 	r, ok, err := s.Latest()
 	if err != nil {
@@ -294,7 +296,36 @@ func (s Store) MarkExpired() error {
 	if !ok {
 		return ErrNoOpenRequest
 	}
-	return s.setRequestState(r.Number, StateExpired)
+	return state.UpdateJSON(filepath.Join(r.Dir, requestFile), s.lockPath(r.Number), func(cur Request, found bool) (Request, error) {
+		if !found {
+			return cur, ErrNoOpenRequest
+		}
+		if _, verdicted, err := readHeldJSON[Verdict](filepath.Join(r.Dir, verdictFile)); err != nil || verdicted {
+			if err == nil {
+				err = ErrVerdictRecorded
+			}
+			return cur, err
+		}
+		cur.State = StateExpired
+		return cur, nil
+	})
+}
+
+// readHeldJSON decodes the JSON file at path for a caller already holding the round lock, reporting false when it does not exist.
+// It reads through the standard library because state.ReadJSON would acquire the held lock again and hang.
+func readHeldJSON[T any](path string) (T, bool, error) {
+	var v T
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return v, false, nil
+		}
+		return v, false, fmt.Errorf("parentreview: read %s: %w", path, err)
+	}
+	if err := json.Unmarshal(data, &v); err != nil {
+		return v, false, fmt.Errorf("parentreview: decode %s: %w", path, err)
+	}
+	return v, true, nil
 }
 
 // MarkConsumed marks the latest round's verdict consumed.
@@ -409,15 +440,27 @@ func (s Store) RecordVerdict(kind, reviewPath string) error {
 	} else if kind == VerdictReject {
 		return ErrEmptyReviewFile
 	}
-	if reviewPath != "" {
-		if err := os.WriteFile(r.ReviewPath(), data, 0o644); err != nil {
-			return fmt.Errorf("parentreview: write review: %w", err)
-		}
-	}
 	now := s.now()
+	// The request is re-read and review.md written under the verdict's own round lock,
+	// so a request the gate expired since openUnsettled's read refuses here, and a refused verdict never overwrites another's review.md.
 	return state.UpdateJSON(filepath.Join(r.Dir, verdictFile), s.lockPath(r.Number), func(cur Verdict, found bool) (Verdict, error) {
 		if found {
 			return cur, ErrVerdictRecorded
+		}
+		req, ok, err := readHeldJSON[Request](filepath.Join(r.Dir, requestFile))
+		if err != nil {
+			return cur, err
+		}
+		if !ok || req.State == StateSuperseded {
+			return cur, ErrNoOpenRequest
+		}
+		if req.State == StateExpired {
+			return cur, ErrExpired
+		}
+		if reviewPath != "" {
+			if err := os.WriteFile(r.ReviewPath(), data, 0o644); err != nil {
+				return cur, fmt.Errorf("parentreview: write review: %w", err)
+			}
 		}
 		return Verdict{Kind: kind, RecordedAt: now}, nil
 	})

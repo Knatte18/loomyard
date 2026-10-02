@@ -1,6 +1,8 @@
 package parentreview
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -173,6 +175,36 @@ func TestGate_ExpiryFromOriginalOpenedAtAfterRestart(t *testing.T) {
 	}
 	if !mustEval(t, gate).Passed {
 		t.Fatal("expired round must pass")
+	}
+}
+
+// TestGate_VerdictLandingBeforeExpiryIsRead asserts a reject recorded between the gate's read and its expiry is read and re-prompts, never expired unread.
+// The store's clock runs between the two, so it stands in for the verb's concurrent RecordVerdict.
+func TestGate_VerdictLandingBeforeExpiryIsRead(t *testing.T) {
+	s, c := newStore(t)
+	gate, _ := newGates(t, s, "hub:orch")
+	wantCarry(t, mustEval(t, gate))
+	r := latest(t, s)
+	landed := false
+	s.Now = func() time.Time {
+		if !landed {
+			landed = true
+			if err := os.WriteFile(r.ReviewPath(), []byte("fix it"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(r.Dir, verdictFile), []byte(`{"kind":"reject"}`), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return c.t.Add(time.Hour)
+	}
+	gate, _ = newGates(t, s, "hub:orch")
+	res := mustEval(t, gate)
+	if res.Passed || res.Pending || !strings.Contains(res.Findings, r.ReviewPath()) {
+		t.Fatalf("gate = %+v; want the reject's findings naming %s", res, r.ReviewPath())
+	}
+	if got := latest(t, s).Request.State; got != StateOpen {
+		t.Fatalf("state = %q; want open", got)
 	}
 }
 

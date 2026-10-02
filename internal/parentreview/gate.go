@@ -4,6 +4,7 @@
 package parentreview
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -107,7 +108,10 @@ func (c *closures) gate() (shuttleengine.GateResult, error) {
 	}
 	now := c.now()
 	if now.Sub(r.Request.OpenedAt) >= c.cfg.WaitBound {
-		if err := s.MarkExpired(); err != nil {
+		if err := s.MarkExpired(); errors.Is(err, ErrVerdictRecorded) {
+			// A verdict landed since the read above: evaluate again, so it is read rather than expired.
+			return c.gate()
+		} else if err != nil {
 			return shuttleengine.GateResult{}, err
 		}
 		logger.Warn("parent review timed out; letting the discussion through", "slug", c.cfg.Slug, "reviewer", c.cfg.Reviewer, "request", r.RequestPath())
@@ -173,7 +177,10 @@ func (c *closures) final() (shuttleengine.GateResult, error) {
 		return passed, nil
 	}
 	if r.Verdict == nil {
-		if err := c.cfg.Store.MarkExpired(); err != nil {
+		if err := c.cfg.Store.MarkExpired(); errors.Is(err, ErrVerdictRecorded) {
+			// A verdict landed since the read above: evaluate again, so it is read rather than expired.
+			return c.final()
+		} else if err != nil {
 			return shuttleengine.GateResult{}, err
 		}
 		return c.pending(""), nil

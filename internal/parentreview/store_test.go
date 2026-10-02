@@ -235,6 +235,44 @@ func TestRecordVerdict_Expired(t *testing.T) {
 	}
 }
 
+// TestRecordVerdict_ExpiredSinceRead asserts a request the gate expires between RecordVerdict's refusal checks and its write refuses the verdict and leaves review.md unwritten.
+// The store's clock runs between the two, so it stands in for the gate's concurrent MarkExpired.
+func TestRecordVerdict_ExpiredSinceRead(t *testing.T) {
+	s, c := newStore(t)
+	r := openOne(t, s)
+	s.Now = func() time.Time {
+		req := `{"slug":"x","round":1,"reviewer":"hub:orch","state":"expired"}`
+		if err := os.WriteFile(r.RequestPath(), []byte(req), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return c.t
+	}
+	if err := s.RecordVerdict(VerdictReject, writeFile(t, "fix it")); !errors.Is(err, ErrExpired) {
+		t.Fatalf("RecordVerdict = %v; want ErrExpired", err)
+	}
+	if got := latest(t, s); got.Verdict != nil {
+		t.Fatalf("verdict = %+v; want none", got.Verdict)
+	}
+	if _, err := os.Stat(r.ReviewPath()); !os.IsNotExist(err) {
+		t.Fatalf("review.md stat = %v; want not written", err)
+	}
+}
+
+// TestMarkExpired_RefusesRecordedVerdict asserts a round with a verdict is never expired, so the gate re-reads the verdict instead.
+func TestMarkExpired_RefusesRecordedVerdict(t *testing.T) {
+	s, _ := newStore(t)
+	openOne(t, s)
+	if err := s.RecordVerdict(VerdictApprove, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.MarkExpired(); !errors.Is(err, ErrVerdictRecorded) {
+		t.Fatalf("MarkExpired = %v; want ErrVerdictRecorded", err)
+	}
+	if got := latest(t, s).Request.State; got != StateOpen {
+		t.Fatalf("state = %q; want open", got)
+	}
+}
+
 func TestMarkCapWarned(t *testing.T) {
 	s, _ := newStore(t)
 	openOne(t, s)
