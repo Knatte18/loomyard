@@ -27,7 +27,7 @@ func TestRunCLI_NoArgs(t *testing.T) {
 	}
 
 	got := out.String()
-	wantSubs := []string{"up", "down", "add", "remove", "status", "resume", "attach", "statusline", "watchdog"}
+	wantSubs := []string{"up", "down", "add", "remove", "status", "resume", "attach", "statusline", "watchdog", "list"}
 	for _, sub := range wantSubs {
 		if !strings.Contains(got, sub) {
 			t.Errorf("RunCLI(nil) no-arg listing missing subcommand %q; got:\n%s", sub, got)

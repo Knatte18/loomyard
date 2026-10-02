@@ -12,8 +12,7 @@ package reedengine
 // Exactly five keys use the ${env:VAR:-default} syntax, allowing environment-based overrides while
 // preserving defaults when not set: the two machine tool paths (tmux, shell) plus debug_log, mouse,
 // and watchdog.
-// The layout-tuning keys (width, height, collapsed_rows, min_full_rows, strand_name) and the
-// status_line and selvage blocks are plain literals.
+// The layout-tuning keys (width, height, collapsed_rows, min_full_rows) and the status_line and selvage blocks are plain literals.
 // No provider tool is named here: reed stays provider-invariant per the Shuttle Provider-Seam
 // Invariant, so a claude path belongs to shuttle's template, never this one.
 // On Windows the tmux/shell defaults are the machine's pinned psmux.exe/pwsh.exe paths;

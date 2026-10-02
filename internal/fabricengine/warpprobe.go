@@ -39,7 +39,18 @@ type warpProbeResult struct {
 	// remote) or its HEAD commit carries lyxcwd.AnchorFileName (or the stale pre-rename marker) at
 	// the root.
 	WeftLooksLikeWeft bool
+	// RecordedShortname is the repo shortname read from the probe's HEAD commit, valid only when ShortnameFound is true;
+	// a blank or grammar-failing value reports ShortnameFound false, like ReadShortname.
+	RecordedShortname string
+	// ShortnameFound is true only when ShortnameFileName is present at the probe's HEAD with a usable value.
+	ShortnameFound bool
+	// AnchorFound is true when lyxcwd.AnchorFileName is present at the probe's HEAD.
+	AnchorFound bool
 }
+
+// freshBind reports whether the probed weft is one lyx has never touched:
+// neither the warp binding nor the anchor marker is present, which an unborn or empty weft is.
+func (p warpProbeResult) freshBind() bool { return !p.Found && !p.AnchorFound }
 
 // probeWeftBinding shallow-clones weftURL into a throwaway directory under cwd, reads whatever
 // warp-binding and anchor evidence its HEAD commit carries, then removes the clone before returning.
@@ -81,6 +92,25 @@ func probeWeftBinding(cwd, weftURL string) (warpProbeResult, error) {
 		return warpProbeResult{}, wrapProbeError(weftURL, "rev-parse HEAD", err)
 	}
 
+	shortnamePresent, err := probeTreeHasPath(weftURL, probeDir, ShortnameFileName)
+	if err != nil {
+		return warpProbeResult{}, err
+	}
+	var recordedShortname string
+	var shortnameFound bool
+	if shortnamePresent {
+		stdout, err := gitexec.Run([]string{"show", "HEAD:" + ShortnameFileName}, probeDir)
+		if err != nil {
+			return warpProbeResult{}, wrapProbeError(weftURL, "show", err)
+		}
+		recordedShortname, shortnameFound = usableShortname(stdout, weftURL)
+	}
+
+	anchorPresent, err := probeTreeHasPath(weftURL, probeDir, lyxcwd.AnchorFileName)
+	if err != nil {
+		return warpProbeResult{}, err
+	}
+
 	bindingPresent, err := probeTreeHasPath(weftURL, probeDir, WarpBindingFileName)
 	if err != nil {
 		return warpProbeResult{}, err
@@ -93,18 +123,17 @@ func probeWeftBinding(cwd, weftURL string) (warpProbeResult, error) {
 		}
 		recorded := strings.TrimSpace(stdout)
 		if recorded != "" {
-			return warpProbeResult{RecordedWarpURL: recorded, Found: true}, nil
+			return warpProbeResult{
+				RecordedWarpURL: recorded, Found: true,
+				RecordedShortname: recordedShortname, ShortnameFound: shortnameFound, AnchorFound: anchorPresent,
+			}, nil
 		}
 		// An empty-after-trim value is treated as absent, matching readWarpBinding's own
 		// empty-is-absent rule.
 	}
 
-	anchorPresent, err := probeTreeHasPath(weftURL, probeDir, lyxcwd.AnchorFileName)
-	if err != nil {
-		return warpProbeResult{}, err
-	}
 	if anchorPresent {
-		return warpProbeResult{WeftLooksLikeWeft: true}, nil
+		return warpProbeResult{WeftLooksLikeWeft: true, RecordedShortname: recordedShortname, ShortnameFound: shortnameFound, AnchorFound: true}, nil
 	}
 
 	// A legacy hub predating the anchor rename carries only the old marker, and it is unambiguously
@@ -117,7 +146,8 @@ func probeWeftBinding(cwd, weftURL string) (warpProbeResult, error) {
 	if err != nil {
 		return warpProbeResult{}, err
 	}
-	return warpProbeResult{WeftLooksLikeWeft: stalePresent}, nil
+	// The stale marker also counts as a bound weft, so its migration error is reached rather than a fresh-bind --shortname refusal.
+	return warpProbeResult{WeftLooksLikeWeft: stalePresent, RecordedShortname: recordedShortname, ShortnameFound: shortnameFound, AnchorFound: stalePresent}, nil
 }
 
 // probeTreeHasPath reports whether path is present in probeDir's HEAD commit, using

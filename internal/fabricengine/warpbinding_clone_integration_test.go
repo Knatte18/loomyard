@@ -75,6 +75,7 @@ func TestCloneHub_BootstrapWritesBinding(t *testing.T) {
 		WeftURL:        filepath.ToSlash(weftBare),
 		WarpURL:        warpURL,
 		ForceBootstrap: true,
+		Shortname:      "tst",
 	})
 	if err != nil {
 		t.Fatalf("CloneHub() error = %v; want nil", err)
@@ -315,8 +316,9 @@ func TestCloneHub_EmptyWeftRemoteTaxonomy(t *testing.T) {
 
 		cloneParent := t.TempDir()
 		res, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
-			WeftURL: filepath.ToSlash(weftBare),
-			WarpURL: warpURL,
+			WeftURL:   filepath.ToSlash(weftBare),
+			WarpURL:   warpURL,
+			Shortname: "tst",
 		})
 		if err != nil {
 			t.Fatalf("CloneHub() error = %v; want nil (empty weft remotes bootstrap through ensureBoardWorktree's orphan path)", err)
@@ -491,8 +493,9 @@ func TestCloneHub_OldOrderInvocationIsRefused(t *testing.T) {
 
 	cloneParent := t.TempDir()
 	_, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
-		WeftURL: filepath.ToSlash(ordinarySourceBare),
-		WarpURL: filepath.ToSlash(warpBare),
+		WeftURL:   filepath.ToSlash(ordinarySourceBare),
+		WarpURL:   filepath.ToSlash(warpBare),
+		Shortname: "tst",
 	})
 	if err == nil {
 		t.Fatalf("CloneHub() with the pre-change argument order should have been refused")
@@ -554,6 +557,7 @@ func TestCloneHub_ForceBootstrapOverridesGuard(t *testing.T) {
 		WeftURL:        filepath.ToSlash(ordinarySourceBare),
 		WarpURL:        warpURL,
 		ForceBootstrap: true,
+		Shortname:      "tst",
 	})
 	if err != nil {
 		t.Fatalf("CloneHub() error = %v; want nil (ForceBootstrap is the only way through the old-order guard)", err)
@@ -585,6 +589,7 @@ func TestCloneHub_ResetInBothArgumentForms(t *testing.T) {
 			WeftURL:        filepath.ToSlash(weftBare),
 			WarpURL:        warpURL,
 			ForceBootstrap: true,
+			Shortname:      "tst",
 		}
 		res, err := fabricengine.CloneHub(cloneParent, opts)
 		if err != nil {
@@ -668,6 +673,7 @@ func TestCloneHub_HubExistsCheckPrecedesProbeInTwoArgForm(t *testing.T) {
 		WeftURL:        filepath.ToSlash(weftBare),
 		WarpURL:        warpURL,
 		ForceBootstrap: true,
+		Shortname:      "tst",
 	})
 	if err != nil {
 		t.Fatalf("first CloneHub() error = %v; want nil", err)

@@ -26,3 +26,30 @@ func TestGuidByName(t *testing.T) {
 		t.Errorf("ambiguous name error = %v; want an ambiguity refusal", err)
 	}
 }
+
+func TestGuidByName_RoleSegmentFullNameAndLegacyName(t *testing.T) {
+	strands := []StrandStatus{
+		{GUID: "g1", Name: "tc:tslug:driver"},
+		{GUID: "g2", Name: "tc:tslug:orch-2"},
+		{GUID: "g3", Name: "status:1:abc12345"},
+	}
+
+	tests := []struct {
+		query string
+		want  string
+	}{
+		{"driver", "g1"},
+		{"tc:tslug:driver", "g1"},
+		{"orch-2", "g2"},
+		{"status:1:abc12345", "g3"},
+	}
+	for _, tt := range tests {
+		got, err := guidByName(strands, tt.query)
+		if err != nil || got != tt.want {
+			t.Errorf("guidByName(%q) = %q, %v; want %q, nil", tt.query, got, err, tt.want)
+		}
+	}
+	if _, err := guidByName(strands, "orch"); err == nil {
+		t.Error("guidByName(orch) = nil error; want no match, since orch-2 is a different role segment")
+	}
+}

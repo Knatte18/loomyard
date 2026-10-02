@@ -37,8 +37,9 @@ func TestCloneHub_EmptyWeftRemoteLeavesPrimaryBranchBorn(t *testing.T) {
 	cloneParent := t.TempDir()
 
 	res, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
-		WeftURL: weftRemote,
-		WarpURL: warpRemote,
+		WeftURL:   weftRemote,
+		WarpURL:   warpRemote,
+		Shortname: "tst",
 	})
 	if err != nil {
 		t.Fatalf("CloneHub against an empty weft remote: %v", err)
@@ -82,6 +83,7 @@ func TestCloneHub_NonEmptyWeftRemoteBranchUnchanged(t *testing.T) {
 		// The weft fixture carries a commit but no .lyx-anchor, so the old-order bootstrap guard
 		// would refuse it; this test is about the branch, not the guard.
 		ForceBootstrap: true,
+		Shortname:      "tst",
 	})
 	if err != nil {
 		t.Fatalf("CloneHub: %v", err)

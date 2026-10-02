@@ -11,6 +11,12 @@
 // Later waves add their own siblings here rather than spawning per-engine packages or re-deriving the
 // construction inline at each call site.
 //
+// ReedGeometry is the one teller that does I/O, and it spawns nothing.
+// It reads the worktree's .git entry to tell the prime from a task worktree, the hub's recorded shortname, and a task worktree's default-run seed,
+// because the name prefix and parent are Board and run state that no Location carries.
+// A missing or unreadable .git entry is its one error.
+// It is still the only reader — reedengine resolves neither, per the Told-Geometry Invariant.
+//
 // Standalone CLIs do not call hubgeom — they have no Location to convert, resolving their own
 // geometry from CLI flags and local paths instead.
 package hubgeom

@@ -19,9 +19,11 @@ import (
 // contract Spec enforces treats a run's output file as its return value, and this run has exactly
 // one. Model, Effort, and Version come from settings, which carries the RESOLVED triple -- a provider
 // model id plus its effort and version, never a raw config alias -- since only the resolved values
-// mean anything to the engine that reads them. NameOverride is driverStrandDisplayName: the constant
-// the next bootstrap's lookup uses, and reed's add has no upsert semantics, so add and lookup must
-// agree on this exact byte-stable literal.
+// mean anything to the engine that reads them.
+// NameOverride is driverStrandDisplayName, an explicit role: reed refuses an add whose explicit role is already held rather than renumbering it,
+// and the bootstrap's own dead-strand removal (resolveDriverStrandAction) runs before the add, so a corpse never holds the role when the add arrives.
+// The next bootstrap's lookup uses the same constant, and reed's add has no upsert semantics,
+// so add and lookup must agree on this byte-stable role.
 //
 // Interactive is false, which is shuttle's autonomous posture: it is what adds the
 // --dangerously-skip-permissions flag and the operator-prompt deny an unattended session needs.

@@ -214,7 +214,7 @@ func (p TmuxCmd) hasSession(name string) (bool, error) {
 
 // listPanes returns all panes in the session (by exact match).
 func (p TmuxCmd) listPanes(session string) ([]LivePane, error) {
-	out, err := p.output("list-panes", "-t", exactSessionWindowTarget(session), "-F", "#{pane_id} #{pane_dead} #{pane_top} #{pane_width} #{pane_height} #{pane_pid}")
+	out, err := p.output("list-panes", "-t", exactSessionWindowTarget(session), "-F", "#{pane_id} #{pane_dead} #{pane_top} #{pane_width} #{pane_height} #{pane_pid} #{pane_title}")
 	if err != nil {
 		return nil, err
 	}

@@ -68,7 +68,7 @@ func TestHelpTree_VerbModuleSubcommands(t *testing.T) {
 			module: "fabric",
 			wantSubs: []string{
 				"clone", "add", "list", "remove", "checkout",
-				"pairs", "reconcile", "prune", "cleanup", "unwire",
+				"pairs", "reconcile", "prune", "cleanup", "unwire", "shortname",
 				"status", "commit", "push", "pull", "sync", "diff",
 				"merge", "merge-in",
 			},
@@ -81,7 +81,7 @@ func TestHelpTree_VerbModuleSubcommands(t *testing.T) {
 		{
 			name:     "reed",
 			module:   "reed",
-			wantSubs: []string{"up", "add", "remove", "status", "attach", "resume", "down", "statusline", "watchdog"},
+			wantSubs: []string{"up", "add", "remove", "status", "attach", "resume", "down", "statusline", "watchdog", "list"},
 		},
 		{
 			name:     "selfreport",

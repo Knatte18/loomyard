@@ -64,9 +64,6 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 	if cfg.MinFullRows != 3 {
 		t.Errorf("MinFullRows = %d, want 3", cfg.MinFullRows)
 	}
-	if cfg.StrandName != "<ROLE>:<ROUND>:<SHORT_GUID>" {
-		t.Errorf("StrandName = %q, want %q", cfg.StrandName, "<ROLE>:<ROUND>:<SHORT_GUID>")
-	}
 	if cfg.DebugLog != "0" {
 		t.Errorf("DebugLog = %q, want %q", cfg.DebugLog, "0")
 	}
@@ -158,5 +155,20 @@ func TestLoadConfig_StaleHeaderBlockIsIgnored(t *testing.T) {
 	}
 	if cfg.Selvage.HeightRows != 1 {
 		t.Errorf("Selvage.HeightRows = %d, want 1 (stale header: block must not override it)", cfg.Selvage.HeightRows)
+	}
+}
+
+// An older reed.yaml still carries the retired strand_name key; the non-strict decode ignores it.
+func TestLoadConfig_RetiredStrandNameKeyIsIgnored(t *testing.T) {
+	tmpDir := t.TempDir()
+	oldContent := reedengine.ConfigTemplate() + "\nstrand_name: '<ROLE>:<ROUND>:<SHORT_GUID>'\n"
+	seedLyxConfig(t, tmpDir, "reed", oldContent)
+
+	cfg, err := reedengine.LoadConfig(tmpDir, "reed")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Width != 220 {
+		t.Errorf("Width = %d, want 220 (a retired key must not disturb the rest)", cfg.Width)
 	}
 }

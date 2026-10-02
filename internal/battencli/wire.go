@@ -53,7 +53,7 @@ func driverAliveFrom(present bool, status func() (reedengine.StatusResult, error
 		return false, err
 	}
 	for _, s := range res.Strands {
-		if s.Name == loomengine.LoomDriverStrandName && s.Live {
+		if loomengine.IsDriverStrand(s.Name) && s.Live {
 			return true, nil
 		}
 	}
@@ -288,6 +288,12 @@ func childSeedParams(recipe string, childLocation *lyxcwd.Location) (map[string]
 	return map[string]string{"parent": origin.ParentBranch}, nil
 }
 
+// childSeedFor builds the seed written into the task worktree: the given recipe, driver and params, with the Parent batten's own seed recorded,
+// since the session that ran "lyx batten run" is the parent of every process in that worktree.
+func childSeedFor(battenSeed shedrun.Seed, recipe, driver string, params map[string]string) shedrun.Seed {
+	return shedrun.Seed{Recipe: recipe, Driver: driver, Params: params, Parent: battenSeed.Parent}
+}
+
 // wire builds and stores the shedrecipe.Env and shedbuild.ShedPaths the run and status verbs
 // need, over the resolved prime location and slug.
 func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
@@ -381,7 +387,10 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				if err != nil {
 					return "", err
 				}
-				reedGeom := hubgeom.ReedGeometry(taskLocation)
+				reedGeom, err := hubgeom.ReedGeometry(taskLocation)
+				if err != nil {
+					return "", err
+				}
 				reedEngine := reedengine.New(reedCfg, reedGeom)
 				res, err := reedEngine.Down()
 				if err != nil {
@@ -483,7 +492,11 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 					if err != nil {
 						return reedengine.StatusResult{}, err
 					}
-					return reedengine.New(reedCfg, hubgeom.ReedGeometry(taskLocation)).Status()
+					reedGeom, err := hubgeom.ReedGeometry(taskLocation)
+					if err != nil {
+						return reedengine.StatusResult{}, err
+					}
+					return reedengine.New(reedCfg, reedGeom).Status()
 				})
 			},
 			// ResolveStatus also creates the child's ephemeral status-lock directory, since its
@@ -597,7 +610,13 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				if err != nil {
 					return err
 				}
-				if err := shedrun.WriteSeed(childLocation, shedrun.SelfRunID, shedrun.Seed{Recipe: recipe, Driver: driver, Params: params}); err != nil {
+				// The hub that ran "lyx batten run" is the parent of every process in the task worktree,
+				// so the child's parent is batten's own recorded one, not batten.
+				battenSeed, _, err := shedrun.ReadSeed(location, slug)
+				if err != nil {
+					return err
+				}
+				if err := shedrun.WriteSeed(childLocation, shedrun.SelfRunID, childSeedFor(battenSeed, recipe, driver, params)); err != nil {
 					if errors.Is(err, shedrun.ErrDisagreeingSeed) {
 						return fmt.Errorf("%w: %s", battenshed.ErrDisagreeingChildSeed, err.Error())
 					}

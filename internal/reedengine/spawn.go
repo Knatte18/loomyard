@@ -71,6 +71,7 @@ func sendKeysLiteralArg(text string) string {
 // persisting a partial one from inside this helper.
 //
 // The prelude that resolves this strand pane's `lyx` to the binary that spawned it is owned by panebin.go and composed here, at the one launch every strand-realizing path funnels through — see composePaneLaunchLine.
+// The same composition exports LYX_STRAND_NAME and LYX_PARENT beside LYX_BIN: the name is the strand's stored birth attribute and the parent is re-told from the geometry, so every launch and resume path sees the same values.
 // The split issued below still carries no trailing shell-command argument,
 // so the pane remains tmux's own default-shell started as a login shell (pane-start-mode-is-untouched Shared Decision).
 // The prelude and launchCmd reach that shell afterward through the strand's launch script, which the send-keys line typed into the pane sources in the shell's own scope, rather than by changing how the pane's shell itself starts;
@@ -133,6 +134,14 @@ func (e *Engine) launchStrandLocked(st *ReedState, s *Strand, launchCmd string) 
 	}
 
 	s.PaneID = paneID
+	// Both title commands are display mirrors: allow-set-title off stops the agent inside from overwriting the name,
+	// and no lookup or delivery ever resolves through a title, so a failure of either costs display only and never fails the launch.
+	if err := e.tmux.run("set-option", "-p", "-t", paneID, "allow-set-title", "off"); err != nil {
+		logger.Warn("reed: could not turn off allow-set-title, the pane title may drift", "strand", s.GUID, "pane", paneID, "err", err)
+	}
+	if err := e.tmux.run("select-pane", "-t", paneID, "-T", s.Name); err != nil {
+		logger.Warn("reed: could not set the pane title", "strand", s.GUID, "pane", paneID, "name", s.Name, "err", err)
+	}
 	// composePaneLaunchLine joins the pane-binary prelude (panebin.go) onto launchCmd, on the same shell.ForGOOS() dialect the launch command itself was built with,
 	// so the two never disagree about which shell is typed into.
 	// stageLaunchScript writes that composed line to the strand's launch script and returns the dialect's source statement for it, which is what the pane shows;
@@ -140,7 +149,7 @@ func (e *Engine) launchStrandLocked(st *ReedState, s *Strand, launchCmd string) 
 	// The payload is sent as a literal string (-l) so tmux never reinterprets any part of it as a key name (e.g. "Enter", "C-c") or splits it on an embedded ';' — the launch command is opaque and shuttle builds arbitrary PowerShell command chains.
 	// A separate Enter then submits it.
 	sh := shell.ForGOOS()
-	composedLine := composePaneLaunchLine(sh, launchCmd, s.GUID)
+	composedLine := composePaneLaunchLine(sh, launchCmd, s.GUID, s.Name, e.geom.ParentName)
 	payload := stageLaunchScript(sh, e.stateDir(), s.GUID, composedLine)
 	if err := e.tmux.run("send-keys", "-t", paneID, "-l", sendKeysLiteralArg(payload)); err != nil {
 		return fmt.Errorf("send launch command: %w", err)

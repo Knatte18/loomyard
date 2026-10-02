@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -103,7 +104,7 @@ func (c *loomCLI) seedAndCommitBootstrap(slug, parentFlag string) (string, strin
 		return "", "", bootstrapStageSeed, err
 	}
 	driver := resolveSeedDriver(existingSeed, seedFound)
-	if err := shedrun.WriteSeed(c.location, shedrun.SelfRunID, loomSeedFor(parent, driver)); err != nil {
+	if err := shedrun.WriteSeed(c.location, shedrun.SelfRunID, loomSeedFor(parent, driver, os.Getenv(agentname.StrandNameEnv))); err != nil {
 		return "", "", bootstrapStageSeed, err
 	}
 
@@ -180,11 +181,15 @@ func resolveSeedDriver(existing shedrun.Seed, found bool) string {
 // without driving the whole bootstrap sequence -- WriteSeed itself needs no real fabric, but
 // seedAndCommitBootstrap's own step 1 (fabricengine.ReadOrigin) does, which would otherwise put
 // this value's shape out of a Tier 1 test's reach.
-func loomSeedFor(parent string, driver string) shedrun.Seed {
+//
+// caller is the full agent name of the session that spawned this run, recorded as the seed's Parent;
+// it is not parent, which is the parent branch.
+func loomSeedFor(parent string, driver string, caller string) shedrun.Seed {
 	return shedrun.Seed{
 		Recipe: shedrun.RecipeLoom,
 		Driver: driver,
 		Params: map[string]string{"parent": parent},
+		Parent: caller,
 	}
 }
 

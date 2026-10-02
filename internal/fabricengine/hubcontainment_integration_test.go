@@ -39,6 +39,7 @@ func TestHubContainment_CloneWiresNoBoardJunction(t *testing.T) {
 		WarpURL:        filepath.ToSlash(warpBare),
 		Subpath:        ".",
 		ForceBootstrap: true,
+		Shortname:      "tst",
 	})
 	if err != nil {
 		t.Fatalf("CloneHub() error = %v; want nil", err)

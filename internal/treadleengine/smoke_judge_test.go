@@ -286,7 +286,10 @@ The chair is red and the table is blue; they must match.
 	if err != nil {
 		t.Fatalf("load shuttle config: %v", err)
 	}
-	reedGeom := hubgeom.ReedGeometry(h.Location)
+	reedGeom, err := hubgeom.ReedGeometry(h.Location)
+	if err != nil {
+		t.Fatalf("reed geometry: %v", err)
+	}
 	reedEngine := reedengine.New(reedCfg, reedGeom)
 	runner := shuttleengine.NewRunner(reedEngine, claudeengine.New(), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 

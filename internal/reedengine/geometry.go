@@ -38,8 +38,7 @@ type Geometry struct {
 	// an empty PaneCwd must never silently mean AnchorPath, or a caller that forgets the field spawns
 	// panes in the wrong directory with nothing to catch it.
 	PaneCwd string
-	// WorktreeRoot is what Strand.Worktree is stamped with, and what resolveStrandName substitutes
-	// for the <WORKTREE> token.
+	// WorktreeRoot is what Strand.Worktree is stamped with.
 	WorktreeRoot string
 	// LogsDir is the shared per-hub server's runtime log directory.
 	LogsDir string
@@ -49,4 +48,13 @@ type Geometry struct {
 	WorktreeName string
 	// HubPath is the status-line's "hub" token, passed through internal/tokenvocab.
 	HubPath string
+	// NameShortname is the shortname every strand name starts with; empty means the hub records none.
+	NameShortname string
+	// NameSlug is the task worktree's slug segment of a strand name;
+	// empty in the prime and in a standalone run.
+	NameSlug string
+	// ParentName is the full name of the session that spawned this worktree's default run;
+	// empty when none is recorded.
+	// It is unrelated to Strand.Parent, which is a layout guid.
+	ParentName string
 }

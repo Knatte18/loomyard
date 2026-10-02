@@ -63,7 +63,10 @@ func watchdogIntegrationEngine(t *testing.T, worktreeRoot string) *reedengine.En
 		t.Fatalf("LoadConfig: %v", err)
 	}
 	watchdogIntegrationTmux(t, cfg)
-	geom := hubgeom.ReedGeometry(location)
+	geom, err := hubgeom.ReedGeometry(location)
+	if err != nil {
+		t.Fatalf("reed geometry: %v", err)
+	}
 	eng := reedengine.New(cfg, geom)
 	if _, err := eng.Up(); err != nil {
 		t.Fatalf("eng.Up(): %v", err)
@@ -293,7 +296,10 @@ func TestWatchdogIntegration_OffWorktreeEntersKnownButStartsNoWatcher(t *testing
 	if cfg.Watchdog != "off" {
 		t.Fatalf("seeded config's Watchdog = %q; want %q (fixture seeding did not take)", cfg.Watchdog, "off")
 	}
-	geom := hubgeom.ReedGeometry(location)
+	geom, err := hubgeom.ReedGeometry(location)
+	if err != nil {
+		t.Fatalf("reed geometry: %v", err)
+	}
 	eng := reedengine.New(cfg, geom)
 	if _, err := eng.Up(); err != nil {
 		t.Fatalf("eng.Up(): %v", err)
@@ -562,7 +568,10 @@ func TestWatchdogIntegration_ReEntryReReadsFlippedConfig(t *testing.T) {
 	}
 	hubforge.SeedConfig(t, h, map[string]string{"reed": string(seeded)})
 
-	geom := hubgeom.ReedGeometry(location)
+	geom, err := hubgeom.ReedGeometry(location)
+	if err != nil {
+		t.Fatalf("reed geometry: %v", err)
+	}
 	eng2 := reedengine.New(offCfg, geom)
 	if _, err := eng2.Up(); err != nil {
 		t.Fatalf("eng2.Up() (re-up with watchdog: off): %v", err)

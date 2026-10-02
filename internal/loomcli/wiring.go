@@ -360,7 +360,10 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		return err
 	}
 
-	reedGeom := hubgeom.ReedGeometry(location)
+	reedGeom, err := hubgeom.ReedGeometry(location)
+	if err != nil {
+		return err
+	}
 	reedEngine := reedengine.New(reedCfg, reedGeom)
 	claudeEngine := claudeengine.New()
 	runner := shuttleengine.NewRunner(reedEngine, claudeEngine, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)

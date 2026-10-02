@@ -21,6 +21,20 @@ func TestParsePaneList(t *testing.T) {
 			},
 		},
 		{
+			name: "title with spaces survives",
+			out:  "%1 0 0 220 15 1717 tst:slug:my worker\n",
+			want: []LivePane{
+				{ID: "%1", Top: 0, Width: 220, Height: 15, PID: 1717, Title: "tst:slug:my worker"},
+			},
+		},
+		{
+			name: "empty title",
+			out:  "%1 0 0 220 15 1717 \n",
+			want: []LivePane{
+				{ID: "%1", Top: 0, Width: 220, Height: 15, PID: 1717},
+			},
+		},
+		{
 			name: "empty input is no panes",
 			out:  "   \n",
 			want: nil,

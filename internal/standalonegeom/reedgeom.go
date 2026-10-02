@@ -6,6 +6,7 @@ package standalonegeom
 import (
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/standalonestate"
 )
@@ -65,5 +66,8 @@ func ReedGeometry(target, stateDir, hash8 string) reedengine.Geometry {
 		RepoName:     filepath.Base(target),
 		WorktreeName: filepath.Base(target),
 		HubPath:      stateDir,
+		// A standalone run has no Board to record a shortname on and no seed,
+		// so the shortname is derived from hash8 and the slug and parent stay empty.
+		NameShortname: agentname.StandaloneShortname(hash8),
 	}
 }

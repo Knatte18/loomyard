@@ -90,7 +90,12 @@ provider specifics.`,
 				return nil
 			}
 
-			reedGeom := hubgeom.ReedGeometry(layout)
+			reedGeom, err := hubgeom.ReedGeometry(layout)
+			if err != nil {
+				output.Err(out, err.Error())
+				clihelp.Abort(ctx, 1)
+				return nil
+			}
 			reedEngine := reedengine.New(reedCfg, reedGeom)
 			c.runner = shuttleengine.NewRunner(reedEngine, claudeengine.New(), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 			return nil

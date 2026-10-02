@@ -20,7 +20,6 @@ func (c *reedCLI) addCmd() *cobra.Command {
 	var (
 		cmdFlag   string
 		role      string
-		round     string
 		name      string
 		resumeCmd string
 		parent    string
@@ -35,10 +34,13 @@ func (c *reedCLI) addCmd() *cobra.Command {
 		Long: `add registers a new strand and, unless --anchor hidden, realizes it into
 a live pane and runs --cmd in it.
 
-The strand's display name resolves from --name (if given), else the
-configured strand-name template filled from --role/--round, else a short
-guid. The generated guid and resolved name are printed on success so a
-later --parent or "lyx reed remove" can reference this strand.
+The strand's name is formed by reed as <shortname>:<slug>:<role> in a task
+worktree, <shortname>:<role> in the prime and in a standalone run. The role is
+--role (default "strand"), numbered -2, -3 when this worktree already holds
+it. --name gives an explicit role segment or full name instead; it is never
+renumbered, and an add naming one another strand holds is refused. The
+generated guid and formed name are printed on success so a later --parent or
+"lyx reed remove" can reference this strand.
 
 --if-absent makes a repeated add idempotent: it requires --name, and matches
 that name against this worktree's persisted strands before adding anything.
@@ -48,7 +50,7 @@ is relaunched under its own guid, and only an unmatched name falls through
 to an ordinary add.
 
 Example:
-  lyx reed add --cmd "claude --session-id %SID%" --role producer --round 1`,
+  lyx reed add --cmd "claude --session-id %SID%" --role producer`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
@@ -71,7 +73,6 @@ Example:
 
 			spec := reedengine.AddSpec{
 				Role:         role,
-				Round:        round,
 				NameOverride: name,
 				Cmd:          cmdFlag,
 				ResumeCmd:    resumeCmd,
@@ -98,9 +99,8 @@ Example:
 	}
 
 	cmd.Flags().StringVar(&cmdFlag, "cmd", "", "command to launch in the strand's pane (required)")
-	cmd.Flags().StringVar(&role, "role", "", "role token used to fill the strand-name template")
-	cmd.Flags().StringVar(&round, "round", "", "round token used to fill the strand-name template")
-	cmd.Flags().StringVar(&name, "name", "", "explicit display name, overriding the strand-name template")
+	cmd.Flags().StringVar(&role, "role", "", "role segment of the strand's name, numbered -2, -3 when taken (default strand)")
+	cmd.Flags().StringVar(&name, "name", "", "explicit role segment or full name, never renumbered; refused when another strand holds it")
 	cmd.Flags().StringVar(&resumeCmd, "resume-cmd", "", `command "lyx reed resume" replays instead of --cmd`)
 	cmd.Flags().StringVar(&parent, "parent", "", "parent strand's guid")
 	cmd.Flags().StringVar(&anchor, "anchor", string(render.AnchorBelowParent), "placement: below-parent|hidden")

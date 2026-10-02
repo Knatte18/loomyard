@@ -46,15 +46,17 @@ func newIntegrationEngine(t *testing.T, mouse string) *Engine {
 	cfg.Mouse = mouse
 
 	geom := Geometry{
-		SocketKey:    ServerName(hubDir),
-		SessionName:  SessionName(worktreeDir),
-		AnchorPath:   worktreeDir,
-		PaneCwd:      worktreeDir,
-		WorktreeRoot: worktreeDir,
-		LogsDir:      filepath.Join(hubDir, "logs"),
-		RepoName:     "test-repo",
-		HubPath:      hubDir,
-		WorktreeName: filepath.Base(worktreeDir),
+		SocketKey:     ServerName(hubDir),
+		SessionName:   SessionName(worktreeDir),
+		AnchorPath:    worktreeDir,
+		PaneCwd:       worktreeDir,
+		WorktreeRoot:  worktreeDir,
+		LogsDir:       filepath.Join(hubDir, "logs"),
+		RepoName:      "test-repo",
+		HubPath:       hubDir,
+		WorktreeName:  filepath.Base(worktreeDir),
+		NameShortname: "tc",
+		NameSlug:      "tslug",
 	}
 	e := New(cfg, geom)
 

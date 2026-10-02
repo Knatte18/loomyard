@@ -33,6 +33,7 @@ func TestCommand_EveryVerbRejectsExtraPositionalArgs(t *testing.T) {
 	tooMany := map[string][]string{
 		"add":       {"a", "b"},
 		"remove":    {"a", "b"},
+		"shortname": {"a", "b"},
 		"checkout":  {"a", "b"},
 		"diff":      {"a", "b"},
 		"list":      {"a"},
