@@ -494,14 +494,22 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 			if err != nil {
 				return shuttleengine.Spec{}, err
 			}
+			var priorRecords []string
+			for _, dir := range loomshed.ArchivedWebsterDirs(loomengine.LoomReworkDir(location)) {
+				record := summaryparser.Path(dir)
+				if _, err := os.Stat(record); err == nil {
+					priorRecords = append(priorRecords, record)
+				}
+			}
 			return landingshed.DescribeSpec(landingshed.DescribeInputs{
-				StencilsDir:        websterGeom.StencilsDir,
-				DecisionRecordPath: loomengine.DiscussionDecisionRecord(location),
-				RunRecordPath:      summaryparser.Path(websterGeom.WebsterDir),
-				DescriptionPath:    summaryparser.Path(loomengine.LandingDir(location)),
-				TaskBranch:         taskBranch,
-				ParentBranch:       parentBranch,
-				Slug:               seedSlug(location.WorktreeName),
+				StencilsDir:         websterGeom.StencilsDir,
+				DecisionRecordPath:  loomengine.DiscussionDecisionRecord(location),
+				RunRecordPath:       summaryparser.Path(websterGeom.WebsterDir),
+				PriorRunRecordPaths: priorRecords,
+				DescriptionPath:     summaryparser.Path(loomengine.LandingDir(location)),
+				TaskBranch:          taskBranch,
+				ParentBranch:        parentBranch,
+				Slug:                seedSlug(location.WorktreeName),
 			}, landingCfg, registry)
 		},
 		// CommitDescription mirrors CommitDiscussion, including its discard of (sha, committed),

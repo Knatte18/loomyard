@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"testing"
 )
 
@@ -111,5 +112,27 @@ func TestPlanReviewSkippable_UncommittedPlanErrors(t *testing.T) {
 	f.committed = map[string][]byte{}
 	if got, err := f.skippable(); err == nil || got {
 		t.Errorf("PlanReviewSkippable = %v, %v; want false and an error", got, err)
+	}
+}
+
+func TestArchivedWebsterDirs(t *testing.T) {
+	reworkDir := t.TempDir()
+	for _, n := range []string{"round-10", "round-2", "round-1"} {
+		if err := os.MkdirAll(filepath.Join(reworkDir, n, "prior-generation", "webster"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.MkdirAll(filepath.Join(reworkDir, "round-3", "prior-generation", "plan"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var want []string
+	for _, n := range []string{"round-1", "round-2", "round-10"} {
+		want = append(want, filepath.Join(reworkDir, n, "prior-generation", "webster"))
+	}
+	if got := ArchivedWebsterDirs(reworkDir); !slices.Equal(got, want) {
+		t.Errorf("ArchivedWebsterDirs = %v, want %v", got, want)
+	}
+	if got := ArchivedWebsterDirs(filepath.Join(reworkDir, "absent")); len(got) != 0 {
+		t.Errorf("ArchivedWebsterDirs over absent dir = %v, want none", got)
 	}
 }

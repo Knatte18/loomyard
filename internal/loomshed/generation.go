@@ -7,6 +7,8 @@ import (
 	"io/fs"
 	"os"
 	"path"
+	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -103,4 +105,22 @@ func PlanReviewSkippable(deps PRReworkDeps) (bool, error) {
 		return false, nil
 	}
 	return planparser.ReviewExempt(plan), nil
+}
+
+// ArchivedWebsterDirs lists each round's archived webster directory under reworkDir, ascending by round number.
+// A round whose prior-generation holds no webster directory is skipped, as is an unreadable reworkDir.
+func ArchivedWebsterDirs(reworkDir string) []string {
+	nums, err := roundNumbers(reworkDir)
+	if err != nil {
+		return nil
+	}
+	sort.Ints(nums)
+	var dirs []string
+	for _, n := range nums {
+		dir := filepath.Join(reworkDir, reworkRoundPrefix+strconv.Itoa(n), reworkPriorDir, reworkPriorWebster)
+		if info, err := os.Stat(dir); err == nil && info.IsDir() {
+			dirs = append(dirs, dir)
+		}
+	}
+	return dirs
 }
