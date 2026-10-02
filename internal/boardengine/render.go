@@ -1,7 +1,7 @@
 // render.go — turns the entry list into the wiki's output files.
 //
 // Render is a pure function: entries in, a map of filename → content out (a single README.md built by renderTasksSection, plus design-*.md for any entry with a body).
-// The README reads like manifest/roadmap.md: one section per tier (Planned, Next Up, Someday), then Done, each entry one numbered item.
+// The README reads like manifest/roadmap.md: one section per tier (Planned, Next Up, Someday), each split into dependency layers, then Done, each entry one numbered item.
 // The tier names and their meaning lines are declared here alone;
 // the data holds only the tier number.
 // No I/O — the caller writes the files.
@@ -121,9 +121,14 @@ func tierName(tier int) string {
 	return fmt.Sprintf("tier %d", tier)
 }
 
-// metaLine is `slug` · [middle ·] type[ · status], shared by the README item and the design doc header.
+// metaLine is `slug` · [middle ·] type[ · status], the design doc header's metadata line.
 func metaLine(t Task, middle ...string) string {
-	parts := append([]string{"`" + t.Slug + "`"}, middle...)
+	return metaLineWithSlug(t, "`"+t.Slug+"`", middle...)
+}
+
+// metaLineWithSlug is metaLine with the slug already rendered, so the README can make it a link.
+func metaLineWithSlug(t Task, slug string, middle ...string) string {
+	parts := append([]string{slug}, middle...)
 	parts = append(parts, t.Type)
 	if t.Status != nil {
 		parts = append(parts, *t.Status)
@@ -131,33 +136,43 @@ func metaLine(t Task, middle ...string) string {
 	return strings.Join(parts, " · ")
 }
 
-// renderTasksSection builds the README: a title, an intro, one section per tier, then Done when any entry is done.
+// renderTasksSection builds the README: a title, an intro, one section per tier split into dependency layers, then Done when any entry is done.
 func renderTasksSection(ordered []TaskWithLayer, designPrefix string) string {
 	lines := []string{
 		"# Board",
 		"",
-		"Entries grouped by tier, in dependency order within each tier.",
+		"Entries grouped by tier, then by dependency layer.",
+		"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.",
 		"",
 	}
 
-	writeSection := func(sec readmeSection, entries []TaskWithLayer) {
-		lines = append(lines, "## "+sec.name, "", sec.meaning, "")
+	dependents := openDependents(ordered)
+	writeEntries := func(entries []TaskWithLayer) {
 		for _, twl := range entries {
-			lines = append(lines, renderEntry(twl.Task, designPrefix)...)
+			lines = append(lines, renderEntry(twl.Task, dependents[twl.Slug], designPrefix)...)
 		}
-		if len(entries) > 0 {
-			lines = append(lines, "")
-		}
+		lines = append(lines, "")
 	}
 
 	for tier := MinTier; tier <= MaxTier; tier++ {
+		sec := tierSections[tier]
+		lines = append(lines, "## "+sec.name, "", sec.meaning, "")
 		var entries []TaskWithLayer
 		for _, twl := range ordered {
 			if !isDone(twl.Task) && twl.Tier == tier {
 				entries = append(entries, twl)
 			}
 		}
-		writeSection(tierSections[tier], entries)
+		for start := 0; start < len(entries); {
+			end := start
+			for end < len(entries) && entries[end].Layer == entries[start].Layer {
+				end++
+			}
+			layer := layerSection(entries[start].Layer)
+			lines = append(lines, "### "+layer.name, "", layer.meaning, "")
+			writeEntries(entries[start:end])
+			start = end
+		}
 	}
 
 	var done []TaskWithLayer
@@ -167,35 +182,66 @@ func renderTasksSection(ordered []TaskWithLayer, designPrefix string) string {
 		}
 	}
 	if len(done) > 0 {
-		writeSection(doneSection, done)
+		lines = append(lines, "## "+doneSection.name, "", doneSection.meaning, "")
+		writeEntries(done)
 	}
 
 	return strings.TrimRight(strings.Join(lines, "\n"), "\n") + "\n"
 }
 
-// renderEntry builds the lines of one numbered README item.
-func renderEntry(t Task, designPrefix string) []string {
-	lines := []string{fmt.Sprintf("1. **%s** — %s", t.Title, metaLine(t))}
+// layerSection names a computed dependency layer and says when its entries can start.
+func layerSection(layer string) readmeSection {
+	switch layer {
+	case "A":
+		return readmeSection{"Layer A", "Waits on nothing open; can start now, in parallel."}
+	case isolatedLayer:
+		return readmeSection{"Independent", "Depends on nothing and nothing depends on it, by design."}
+	default:
+		return readmeSection{"Layer " + layer, "Starts when every entry it names under After is done."}
+	}
+}
 
-	detail := t.Brief
+// openDependents maps each slug to the slugs of the open entries that depend on it, in README order.
+func openDependents(ordered []TaskWithLayer) map[string][]string {
+	dependents := make(map[string][]string)
+	for _, twl := range ordered {
+		if isDone(twl.Task) {
+			continue
+		}
+		for _, dep := range twl.DependsOn {
+			dependents[dep] = append(dependents[dep], twl.Slug)
+		}
+	}
+	return dependents
+}
+
+// renderEntry builds the lines of one numbered README item, whose title line links the slug to its design doc when the entry has a body.
+func renderEntry(t Task, dependents []string, designPrefix string) []string {
+	slug := "`" + t.Slug + "`"
 	if t.Body != "" {
-		if detail != "" {
-			detail += " "
-		}
-		detail += fmt.Sprintf("[design](%s%s.md)", designPrefix, t.Slug)
+		slug = fmt.Sprintf("[`%s`](%s%s.md)", t.Slug, designPrefix, t.Slug)
 	}
-	if detail != "" {
-		lines = append(lines, "   "+detail)
-	}
+	lines := []string{fmt.Sprintf("1. **%s** — %s", t.Title, metaLineWithSlug(t, slug))}
 
+	if t.Brief != "" {
+		lines = append(lines, "   "+t.Brief)
+	}
 	if len(t.DependsOn) > 0 {
-		deps := make([]string, len(t.DependsOn))
-		for i, d := range t.DependsOn {
-			deps[i] = "`" + d + "`"
-		}
-		lines = append(lines, "   After "+strings.Join(deps, ", ")+".")
+		lines = append(lines, "   After "+codeList(t.DependsOn)+".")
+	}
+	if len(dependents) > 0 {
+		lines = append(lines, "   Before "+codeList(dependents)+".")
 	}
 	return lines
+}
+
+// codeList joins slugs as comma-separated code spans.
+func codeList(slugs []string) string {
+	quoted := make([]string, len(slugs))
+	for i, s := range slugs {
+		quoted[i] = "`" + s + "`"
+	}
+	return strings.Join(quoted, ", ")
 }
 
 // renderDesigns returns one design-doc file entry per entry with a non-empty body, using the configured design prefix.

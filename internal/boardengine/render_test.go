@@ -249,18 +249,19 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 	})
 }
 
-// readmeFixture holds an entry in tiers 1 and 3, leaving tier 2 empty, plus a done entry, an abandoned entry, a body, a dependency and a two-layer chain inside tier 1.
+// readmeFixture holds an entry in tiers 1 and 3, leaving tier 2 empty, plus a done entry, an abandoned entry, a body, an isolated entry and a two-layer chain inside tier 1.
 func readmeFixture() []boardengine.Task {
 	return []boardengine.Task{
 		{ID: 1, Slug: "base", Title: "Base work", Tier: 1, Type: "feature", Brief: "The foundation."},
-		{ID: 2, Slug: "top", Title: "Top work", Tier: 1, Type: "bug", Brief: "Builds on base.", Body: "Design.\nSecond line.", DependsOn: []string{"base"}},
+		{ID: 2, Slug: "top", Title: "Top work", Tier: 1, Type: "bug", Status: stringPtr("running"), Brief: "Builds on base.", Body: "Design.\nSecond line.", DependsOn: []string{"base"}},
+		{ID: 6, Slug: "alone", Title: "Alone work", Tier: 1, Type: "chore", Isolated: true},
 		{ID: 3, Slug: "idea", Title: "An idea", Tier: 3, Type: "design"},
 		{ID: 4, Slug: "dropped", Title: "Dropped idea", Tier: 3, Type: "chore", Status: stringPtr("abandoned"), Brief: "No longer wanted."},
 		{ID: 5, Slug: "shipped", Title: "Shipped work", Tier: 1, Type: "feature", Status: stringPtr("done")},
 	}
 }
 
-// TestRenderReadmeGolden pins the README for a fixture with an entry per tier, an empty tier 2, a done entry, an abandoned tier-3 entry, a body, a dependency, and a two-layer chain in one section.
+// TestRenderReadmeGolden pins the README for a fixture with an entry per tier, an empty tier 2, a done entry, an abandoned tier-3 entry, a slug linked to its design doc, After and Before lines, an isolated entry, and a two-layer chain in one section.
 func TestRenderReadmeGolden(t *testing.T) {
 	result, err := boardengine.Render(readmeFixture(), boardengine.Outputs{Readme: "README.md", DesignPrefix: "design-"})
 	if err != nil {
@@ -269,17 +270,34 @@ func TestRenderReadmeGolden(t *testing.T) {
 
 	want := "# Board\n" +
 		"\n" +
-		"Entries grouped by tier, in dependency order within each tier.\n" +
+		"Entries grouped by tier, then by dependency layer.\n" +
+		"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.\n" +
 		"\n" +
 		"## Planned\n" +
 		"\n" +
 		"Concretized and claimable.\n" +
 		"\n" +
+		"### Layer A\n" +
+		"\n" +
+		"Waits on nothing open; can start now, in parallel.\n" +
+		"\n" +
 		"1. **Base work** — `base` · feature\n" +
 		"   The foundation.\n" +
-		"1. **Top work** — `top` · bug\n" +
-		"   Builds on base. [design](design-top.md)\n" +
+		"   Before `top`.\n" +
+		"\n" +
+		"### Layer B\n" +
+		"\n" +
+		"Starts when every entry it names under After is done.\n" +
+		"\n" +
+		"1. **Top work** — [`top`](design-top.md) · bug · running\n" +
+		"   Builds on base.\n" +
 		"   After `base`.\n" +
+		"\n" +
+		"### Independent\n" +
+		"\n" +
+		"Depends on nothing and nothing depends on it, by design.\n" +
+		"\n" +
+		"1. **Alone work** — `alone` · chore\n" +
 		"\n" +
 		"## Next Up\n" +
 		"\n" +
@@ -288,6 +306,10 @@ func TestRenderReadmeGolden(t *testing.T) {
 		"## Someday\n" +
 		"\n" +
 		"Loose ideas.\n" +
+		"\n" +
+		"### Layer A\n" +
+		"\n" +
+		"Waits on nothing open; can start now, in parallel.\n" +
 		"\n" +
 		"1. **An idea** — `idea` · design\n" +
 		"1. **Dropped idea** — `dropped` · chore · abandoned\n" +
@@ -313,7 +335,8 @@ func TestRenderReadmeNoDoneSection(t *testing.T) {
 
 	want := "# Board\n" +
 		"\n" +
-		"Entries grouped by tier, in dependency order within each tier.\n" +
+		"Entries grouped by tier, then by dependency layer.\n" +
+		"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.\n" +
 		"\n" +
 		"## Planned\n" +
 		"\n" +
@@ -322,6 +345,10 @@ func TestRenderReadmeNoDoneSection(t *testing.T) {
 		"## Next Up\n" +
 		"\n" +
 		"Planned next, but not yet concretized.\n" +
+		"\n" +
+		"### Layer A\n" +
+		"\n" +
+		"Waits on nothing open; can start now, in parallel.\n" +
 		"\n" +
 		"1. **A** — `a` · chore\n" +
 		"\n" +
@@ -436,7 +463,7 @@ func TestRenderCustomOutputs(t *testing.T) {
 
 		// Check links in Home.md use custom prefix
 		home := result["Home.md"]
-		if !strings.Contains(home, "[design](prop-test-task.md)") {
+		if !strings.Contains(home, "[`test-task`](prop-test-task.md)") {
 			t.Errorf("Home.md should use custom prefix in links\nGot: %s", home)
 		}
 	})

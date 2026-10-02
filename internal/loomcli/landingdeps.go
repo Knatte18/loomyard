@@ -81,19 +81,15 @@ func landingDeps(
 			}
 			return f.HeadSHA()
 		},
-		// MarkTaskDone marks this worktree's board task done once its work has landed. It loads the
-		// board config the way boardcli does, but points Path at the hub's board rather than a
-		// per-worktree link (Hub Containment), and applies boardengine.ApplySkipEnv so render and
-		// sync behave as they do for `lyx board`. landingshed itself names no board path.
+		// MarkTaskDone marks this worktree's board task done once its work has landed.
+		// landingshed itself names no board path.
 		MarkTaskDone: func() error {
-			bc, err := boardengine.LoadConfig(l.AnchorPath(), "board")
+			board, err := openHubBoard(l)
 			if err != nil {
 				return err
 			}
-			bc.Path = fabricengine.BoardDir(l.HubPath)
-			bc = boardengine.ApplySkipEnv(bc)
 			done := "done"
-			return boardengine.New(bc).SetStatus(seedSlug(l.WorktreeName), &done)
+			return board.SetStatus(seedSlug(l.WorktreeName), &done)
 		},
 		// VerifyCommand reads the plan's verify command each time it is called, never at construction:
 		// landingDeps runs at bootstrap, before the plan exists on a fresh run,
@@ -113,4 +109,15 @@ func landingDeps(
 		Registry:          registry,
 		Config:            cfg,
 	}
+}
+
+// openHubBoard opens the hub's board the way boardcli does, but with Path pointed at the hub's board rather than a per-worktree link (Hub Containment),
+// and with boardengine.ApplySkipEnv applied so render and sync behave as they do for `lyx board`.
+func openHubBoard(l *lyxcwd.Location) (*boardengine.Board, error) {
+	bc, err := boardengine.LoadConfig(l.AnchorPath(), "board")
+	if err != nil {
+		return nil, err
+	}
+	bc.Path = fabricengine.BoardDir(l.HubPath)
+	return boardengine.New(boardengine.ApplySkipEnv(bc)), nil
 }
