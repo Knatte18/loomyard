@@ -270,6 +270,12 @@ func enterSession(hub, tmuxPath, sessionName string) (watchedSession, error) {
 			logger.Debug("reed: watchdog's watch loop returned", "session", sessionName, "err", err)
 		}
 	}()
+	// The session-name provider is wired in by the next card; until then only pane titles are repaired.
+	go func() {
+		if err := eng.WatchNames(ctx, nil); err != nil {
+			logger.Debug("reed: watchdog's name repair loop returned", "session", sessionName, "err", err)
+		}
+	}()
 	return watchedSession{eng: eng, cancel: cancel}, nil
 }
 

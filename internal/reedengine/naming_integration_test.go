@@ -93,3 +93,26 @@ func TestNaming_EmptySlugGivesCodeAndRole(t *testing.T) {
 		t.Errorf("pane title = %q, want %q", got, want)
 	}
 }
+
+func TestNaming_RepairNamesRestoresAHandChangedTitle(t *testing.T) {
+	logs := captureLogOutput(t)
+	e := newColdScratchEngine(t)
+	strand, _ := addEnvProbeStrand(t, e, "worker")
+
+	if err := e.tmux.run("select-pane", "-t", strand.PaneID, "-T", "hand-edited"); err != nil {
+		t.Fatalf("select-pane: %v", err)
+	}
+	if got := paneTitle(t, e, strand.PaneID); got != "hand-edited" {
+		t.Fatalf("pane title = %q after the hand edit, want hand-edited", got)
+	}
+
+	if err := e.repairNames(nil); err != nil {
+		t.Fatalf("repairNames: %v", err)
+	}
+	if got := paneTitle(t, e, strand.PaneID); got != strand.Name {
+		t.Errorf("pane title = %q after repair, want %q", got, strand.Name)
+	}
+	if !strings.Contains(logs.String(), "reed: repaired pane title") {
+		t.Errorf("log = %q, want the title repair line", logs.String())
+	}
+}
