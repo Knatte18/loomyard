@@ -70,6 +70,27 @@ func TestLoomReviewsDirRel(t *testing.T) {
 	}
 }
 
+// TestLoomParentReviewAccessors pins the three parent-review accessors: the durable relative and anchored forms sit beside the Discussion-Review run directory, and the lock directory is the .lyx mirror.
+func TestLoomParentReviewAccessors(t *testing.T) {
+	l := &lyxcwd.Location{
+		HubPath:      filepath.Join("home", "user", "repo-LYXHUB"),
+		WorktreeName: "repo",
+		AnchorRel:    filepath.Join("sub", "dir"),
+	}
+
+	wantRel := filepath.Join(lyxdirs.LyxDirName, "reviews", "parent-review")
+	if got := LoomParentReviewDirRel(); got != wantRel {
+		t.Errorf("LoomParentReviewDirRel() = %q; want %q", got, wantRel)
+	}
+	if got, want := LoomParentReviewDir(l), filepath.Join(l.AnchorPath(), wantRel); got != want {
+		t.Errorf("LoomParentReviewDir() = %q; want %q", got, want)
+	}
+	wantLock := filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, "reviews", "parent-review")
+	if got := LoomParentReviewLockDir(l); got != wantLock {
+		t.Errorf("LoomParentReviewLockDir() = %q; want %q", got, wantLock)
+	}
+}
+
 // TestLoomReviewsDir verifies LoomReviewsDir's returned path is AnchorPath-anchored, sits under the durable _lyx tree rather than the ephemeral one, and equals the anchor joined with its Rel form.
 func TestLoomReviewsDir(t *testing.T) {
 	l := &lyxcwd.Location{

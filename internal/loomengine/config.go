@@ -3,8 +3,8 @@
 // Defines the Config type mirroring loom.yaml's keys and LoadConfig, which uses
 // internal/configengine.Load with ConfigTemplate() to strictly validate and resolve loom's config
 // file, then validates the discussion, plan, review, friction, and driver role model-specs' grammar
-// via modelspec.Parse, and rejects a negative value on each of the four timeout knobs, so a mistake
-// in any of those nine keys fails loud at load time rather than hours into a run when the
+// via modelspec.Parse, rejects a negative value on each of the four timeout knobs, and rejects a
+// parent_review_wait_min below 1, so a mistake in any of those ten keys fails loud at load time rather than hours into a run when the
 // discussion, plan, review, friction, or driver producer first spawns.
 // friction and driver are the two role keys validated only when non-empty: a present-but-empty
 // value means, respectively, Tier 2 self-reporting is off or the engine default model runs the
@@ -79,6 +79,10 @@ const loomSelfreportFiledLockFileName = "selfreport-filed.json.lock"
 // reviewsDirName is the relative-path segment loomengine joins onto lyxdirs.LyxDirName to form the review segments' durable run root.
 // loomengine is this segment's sole declarer.
 const reviewsDirName = "reviews"
+
+// parentReviewDirName is the relative-path segment loomengine joins onto the reviews segment to form the parent-review round directories' root.
+// loomengine is this segment's sole declarer.
+const parentReviewDirName = "parent-review"
 
 // frictionDirName is the relative-path segment loomengine joins onto LoomDurableDir to form the Tier 2 friction leaf's directory, and onto LoomScratchDir (with a .lock suffix) for its lock.
 // loomengine is this segment's sole declarer.
@@ -279,6 +283,25 @@ func LoomReviewsDir(l *lyxcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), LoomReviewsDirRel())
 }
 
+// LoomParentReviewDirRel returns the worktree-anchor-relative form of LoomParentReviewDir's path: LoomReviewsDirRel joined with parentReviewDirName.
+// It sits beside the Discussion-Review run directory under the review run root, never under _lyx/discussion/.
+func LoomParentReviewDirRel() string {
+	return filepath.Join(LoomReviewsDirRel(), parentReviewDirName)
+}
+
+// LoomParentReviewDir returns the root of the parent-review round directories (`round-<N>/`) for this worktree.
+// It is durable: the requests, briefs, deliveries, verdicts and reviews under it are tracked content committed with the discussion.
+// Per the Cwd Resolution Invariant, no other package may construct this path.
+func LoomParentReviewDir(l *lyxcwd.Location) string {
+	return filepath.Join(l.AnchorPath(), LoomParentReviewDirRel())
+}
+
+// LoomParentReviewLockDir returns the ephemeral mirror of LoomParentReviewDir under .lyx, where the parent-review store keeps its lock files.
+// It is never tracked, per the Durable-vs-Ephemeral State Invariant.
+func LoomParentReviewLockDir(l *lyxcwd.Location) string {
+	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, reviewsDirName, parentReviewDirName)
+}
+
 // LoomDurableDirRel returns the worktree-anchor-relative form of LoomDurableDir's path: the join of lyxdirs.LyxDirName and loomDirName.
 // Everything under this directory is tracked run content committed by loom's per-transition status commit.
 func LoomDurableDirRel() string {
@@ -341,6 +364,7 @@ type Config struct {
 	Friction              string `yaml:"friction"`
 	FrictionTimeoutMin    int    `yaml:"friction_timeout_min"`
 	Driver                string `yaml:"driver"`
+	ParentReviewWaitMin   int    `yaml:"parent_review_wait_min"`
 }
 
 // LoadConfig loads and unmarshals configuration for the loom module.
@@ -408,6 +432,13 @@ func LoadConfig(baseDir, module string) (Config, error) {
 		if knob.minutes < 0 {
 			return Config{}, fmt.Errorf("loom config key %q: must not be negative, got %d; use 0 to defer to shuttle's run_timeout_min", knob.key, knob.minutes)
 		}
+	}
+
+	// parent_review_wait_min has no "0 defers" meaning: a 0 bound would still open a request and
+	// notify the parent of a request that expires at its next evaluation, so the one off switch is
+	// the gate entry's own attempts, not this key.
+	if cfg.ParentReviewWaitMin < 1 {
+		return Config{}, fmt.Errorf("loom config key %q: must be at least 1, got %d; set attempts: 0 on Discussion-Write's parent-review gate entry to turn the review off", "parent_review_wait_min", cfg.ParentReviewWaitMin)
 	}
 
 	return cfg, nil
