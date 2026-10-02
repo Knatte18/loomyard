@@ -143,7 +143,7 @@ func Resolve(code, slug, query string) (Name, error) {
 	}
 	if n.Code != code || n.Slug != slug {
 		return Name{}, fmt.Errorf("agent name %q belongs to %q, not to %q; way forward: pass the role segment alone, or run the command from the worktree the full name belongs to",
-			query, Name{Code: n.Code, Slug: n.Slug, Role: ""}.prefix(), Name{Code: code, Slug: slug}.prefix())
+			query, n.prefix(), Name{Code: code, Slug: slug}.prefix())
 	}
 	return n, nil
 }
