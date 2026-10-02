@@ -85,6 +85,22 @@ func attemptIntegrationFix(deps RunDeps, in fixInputs) (*fixAttempt, error) {
 		return nil, err
 	}
 
+	// Everything that can fail before the spawn runs ahead of the record, so such a failure never spends the attempt.
+	planBefore, err := fingerprint(deps.Geom.PlanDir)
+	if err != nil {
+		return nil, err
+	}
+	reportPath, err := filepath.Abs(IntegrationFixReportPath(deps.Geom.ReportsDir))
+	if err != nil {
+		return nil, fmt.Errorf("webster: resolve integration fix report path: %w", err)
+	}
+	if err := os.MkdirAll(deps.Geom.ReportsDir, 0o755); err != nil {
+		return nil, fmt.Errorf("webster: create reports dir %s: %w", deps.Geom.ReportsDir, err)
+	}
+	if err := os.Remove(reportPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("webster: remove stale integration fix report %s: %w", reportPath, err)
+	}
+
 	// Leased: the attempt is recorded before the spawn, so a resumed run never spends a second one.
 	spent, err := recordFixStart(deps, head)
 	if err != nil {
@@ -104,27 +120,11 @@ func attemptIntegrationFix(deps RunDeps, in fixInputs) (*fixAttempt, error) {
 		}}, nil
 	}
 
-	planBefore, err := fingerprint(deps.Geom.PlanDir)
-	if err != nil {
-		return nil, err
-	}
-
 	fail := func(result, detail string) *fixAttempt {
 		return &fixAttempt{Record: IntegrationFixRecord{Result: result, Detail: detail, PreFixHead: head, Remaining: failureIDs(in.regressing)}}
 	}
 
 	// Unleased: render and start the strand. A render or start error is a failed attempt, recorded like any other.
-	reportPath, err := filepath.Abs(IntegrationFixReportPath(deps.Geom.ReportsDir))
-	if err != nil {
-		return nil, fmt.Errorf("webster: resolve integration fix report path: %w", err)
-	}
-	if err := os.MkdirAll(deps.Geom.ReportsDir, 0o755); err != nil {
-		return nil, fmt.Errorf("webster: create reports dir %s: %w", deps.Geom.ReportsDir, err)
-	}
-	if err := os.Remove(reportPath); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return nil, fmt.Errorf("webster: remove stale integration fix report %s: %w", reportPath, err)
-	}
-
 	cardHint := ""
 	if in.offendingCard != "unknown" {
 		cardHint = filepath.ToSlash(filepath.Join(masterPlanDirDisplay(worktree, deps.Geom.PlanDir), in.offendingCard+".md"))

@@ -1346,6 +1346,28 @@ func TestIntegrationStage_FixAttempt_UnrecordedStrandIsRemoved(t *testing.T) {
 	}
 }
 
+// TestIntegrationStage_FixAttempt_PreSpawnFailureLeavesAttemptUnspent proves a failure before the spawn returns its error with no attempt recorded,
+// so the next run still has its one attempt.
+func TestIntegrationStage_FixAttempt_PreSpawnFailureLeavesAttemptUnspent(t *testing.T) {
+	sc := newRegressionScene(t, false)
+	fixer := newFakeFixStarter(t, sc.fx.Worktree)
+	sc.suite.fixer = fixer
+	blocker := filepath.Join(websterengine.IntegrationFixReportPath(sc.fx.Deps.Geom.ReportsDir), "occupied")
+	if err := os.MkdirAll(blocker, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := runFailedSuite(t, sc.fx, sc.suite); err == nil || !strings.Contains(err.Error(), "stale integration fix report") {
+		t.Fatalf("Run() error = %v; want the stale-report removal error", err)
+	}
+	if fix := stateOf(t, sc.fx).IntegrationFix; fix != nil {
+		t.Errorf("state IntegrationFix = %+v; want unrecorded", fix)
+	}
+	if fixer.calls != 0 {
+		t.Errorf("StartFix calls = %d; want 0", fixer.calls)
+	}
+}
+
 // TestIntegrationStage_FixAttempt_NonRegressionVerdictsMakeNoAttempt proves flaky-only and pre-existing-only verdicts never spawn a fix strand.
 func TestIntegrationStage_FixAttempt_NonRegressionVerdictsMakeNoAttempt(t *testing.T) {
 	t.Run("flaky", func(t *testing.T) {
