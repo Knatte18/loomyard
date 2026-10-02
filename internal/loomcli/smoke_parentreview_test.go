@@ -7,7 +7,7 @@
 // The seed names a hand-started parent session as the run's parent, and the stub writer stands in for the live Discussion-Write agent.
 // A real agent would answer the delivery prompt by calling SendMessage to the parent;
 // the stub cannot, so it records the text it received in a notice file, which is what the test waits on.
-// The notice must name the request path, which is all a real parent needs to find the review request.
+// The notice must name the brief path, which is all a real parent needs to review and submit.
 //
 // Its compile gate (`go vet -tags smoke ./...`) is the only automatic guard; an operator runs this test by hand against a real substrate.
 
@@ -77,7 +77,7 @@ func (e parentNoticeEngine) Prepare(runDir string, spec shuttleengine.Spec, _ sh
 	return shuttleengine.Launch{Cmd: "sh " + scriptPath, SessionID: "smoke-parent-review"}, nil
 }
 
-// TestSmokeParentReview_NoticeReachesTheWriterPaneAndApproveLetsTheRunThrough proves the delivery prompt, naming the request path, is typed into a real pane after the discussion passes,
+// TestSmokeParentReview_NoticeReachesTheWriterPaneAndApproveLetsTheRunThrough proves the delivery prompt, naming the brief path, is typed into a real pane after the discussion passes,
 // and that an approve submitted through the real verb then ends the wait with the run Done.
 func TestSmokeParentReview_NoticeReachesTheWriterPaneAndApproveLetsTheRunThrough(t *testing.T) {
 	tmuxBinaryPath(t)
@@ -171,8 +171,8 @@ func TestSmokeParentReview_NoticeReachesTheWriterPaneAndApproveLetsTheRunThrough
 	if err != nil || !ok {
 		t.Fatalf("Latest = (%v, %v); want the opened round", ok, err)
 	}
-	if !strings.Contains(notice, latest.RequestPath()) || !strings.Contains(notice, parent) {
-		t.Errorf("notice = %q; want it to name the request path %q and the parent %q", notice, latest.RequestPath(), parent)
+	if !strings.Contains(notice, latest.BriefPath()) || !strings.Contains(notice, parent) {
+		t.Errorf("notice = %q; want it to name the brief path %q and the parent %q", notice, latest.BriefPath(), parent)
 	}
 
 	// The parent approves through the real verb, and the held wait ends with the run Done.

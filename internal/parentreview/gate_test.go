@@ -79,8 +79,8 @@ func TestGate_OpensAndPrompts(t *testing.T) {
 	if r.Request == nil || r.Request.Reviewer != "hub:orch" || r.Delivery.Prompts != 1 {
 		t.Fatalf("round = %+v", r)
 	}
-	if !strings.Contains(res.Send, r.RequestPath()) {
-		t.Fatalf("send %q lacks request path", res.Send)
+	if !strings.Contains(res.Send, r.BriefPath()) {
+		t.Fatalf("send %q lacks brief path", res.Send)
 	}
 }
 

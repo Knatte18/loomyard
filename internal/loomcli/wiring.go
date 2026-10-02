@@ -377,8 +377,8 @@ func newParentReviewConfig(location *lyxcwd.Location, runID string, cfg loomengi
 		DecisionRecord: decisionRecord,
 		SupportLog:     supportLog,
 		WaitBound:      time.Duration(cfg.ParentReviewWaitMin) * time.Minute,
-		RenderDelivery: func(requestPath string) (string, error) {
-			return loomengine.ParentReviewDeliveryPrompt(stencilsDir, slug, requestPath, seed.Parent)
+		RenderDelivery: func(briefPath string) (string, error) {
+			return loomengine.ParentReviewDeliveryPrompt(stencilsDir, slug, briefPath, seed.Parent)
 		},
 		RenderBrief: func() (string, error) {
 			return loomengine.ParentReviewBrief(stencilsDir, slug, decisionRecord, supportLog)

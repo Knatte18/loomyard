@@ -31,8 +31,8 @@ type GateConfig struct {
 	SupportLog     string
 	// WaitBound is how long an open request waits for a verdict, measured from its opened-at.
 	WaitBound time.Duration
-	// RenderDelivery renders the one-line delivery prompt for a request path.
-	RenderDelivery func(requestPath string) (string, error)
+	// RenderDelivery renders the one-line delivery prompt for a brief path.
+	RenderDelivery func(briefPath string) (string, error)
 	// RenderBrief renders the reviewer brief written beside the request.
 	RenderBrief func() (string, error)
 }
@@ -75,7 +75,7 @@ func (c *closures) pending(send string) shuttleengine.GateResult {
 }
 
 func (c *closures) prompt(r Round) (string, error) {
-	return c.cfg.RenderDelivery(r.RequestPath())
+	return c.cfg.RenderDelivery(r.BriefPath())
 }
 
 func (c *closures) gate() (shuttleengine.GateResult, error) {

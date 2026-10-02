@@ -31,16 +31,16 @@ func newParentReviewStencilsDir(t *testing.T) string {
 	return dir
 }
 
-func TestParentReviewDeliveryPrompt_OneLineNamingReviewerSlugRequest(t *testing.T) {
+func TestParentReviewDeliveryPrompt_OneLineNamingReviewerSlugBrief(t *testing.T) {
 	dir := newParentReviewStencilsDir(t)
-	got, err := ParentReviewDeliveryPrompt(dir, "add-json-flag", "/w/_lyx/reviews/parent-review/round-1/request.json", "hub:orch")
+	got, err := ParentReviewDeliveryPrompt(dir, "add-json-flag", "/w/_lyx/reviews/parent-review/round-1/brief.md", "hub:orch")
 	if err != nil {
 		t.Fatalf("ParentReviewDeliveryPrompt(...) = _, %v; want nil error", err)
 	}
 	if strings.ContainsAny(got, "\r\n") {
 		t.Errorf("ParentReviewDeliveryPrompt(...) = %q; want one line", got)
 	}
-	for _, want := range []string{"hub:orch", "add-json-flag", "/w/_lyx/reviews/parent-review/round-1/request.json", "SendMessage", "lyx loom review delivered", "--failed"} {
+	for _, want := range []string{"hub:orch", "add-json-flag", "/w/_lyx/reviews/parent-review/round-1/brief.md", "SendMessage", "lyx loom review delivered", "--failed"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("ParentReviewDeliveryPrompt(...) = %q; want it to contain %q", got, want)
 		}

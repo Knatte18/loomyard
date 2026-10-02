@@ -18,17 +18,17 @@ const (
 	reviewFormatStencil         = "burler-step-2-review"
 )
 
-// ParentReviewDeliveryPrompt renders the delivery prompt for the run slug, naming the request at requestPath and the reviewer's full agent name.
+// ParentReviewDeliveryPrompt renders the delivery prompt for the run slug, naming the reviewer brief at briefPath and the reviewer's full agent name.
 // It errors when the render contains a newline, since shuttle's Send refuses multi-line text.
-func ParentReviewDeliveryPrompt(stencilsDir, slug, requestPath, reviewer string) (string, error) {
+func ParentReviewDeliveryPrompt(stencilsDir, slug, briefPath, reviewer string) (string, error) {
 	template, err := stencilstore.Read(stencilsDir, parentReviewDeliveryStencil)
 	if err != nil {
 		return "", fmt.Errorf("loom: read %s: %w", parentReviewDeliveryStencil, err)
 	}
 	filled, err := stencil.Fill(template, map[string]string{
-		"slug":         slug,
-		"request_path": requestPath,
-		"reviewer":     reviewer,
+		"slug":       slug,
+		"brief_path": briefPath,
+		"reviewer":   reviewer,
 	})
 	if err != nil {
 		return "", fmt.Errorf("loom: fill %s: %w", parentReviewDeliveryStencil, err)

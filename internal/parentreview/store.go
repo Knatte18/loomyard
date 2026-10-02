@@ -87,8 +87,11 @@ type Round struct {
 	Verdict  *Verdict
 }
 
-// RequestPath is the round's request.json path, the one the delivery prompt names.
+// RequestPath is the round's request.json path.
 func (r Round) RequestPath() string { return filepath.Join(r.Dir, requestFile) }
+
+// BriefPath is the round's brief.md path, the one the delivery prompt names: the brief alone tells a reviewer with no prior context what to read and how to submit.
+func (r Round) BriefPath() string { return filepath.Join(r.Dir, briefFile) }
 
 // ReviewPath is the round's copied review.md path.
 func (r Round) ReviewPath() string { return filepath.Join(r.Dir, reviewFile) }

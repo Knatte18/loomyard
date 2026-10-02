@@ -208,8 +208,8 @@ func TestParentReviewExchange_RejectThenFixThenLetThrough(t *testing.T) {
 		// Arrival 1: the discussion passes, the request opens and the delivery prompt names the parent and the request.
 		first := arrive(t, gates)
 		round := f.latest()
-		if !first.Pending || !strings.Contains(first.Send, prReviewParent) || !strings.Contains(first.Send, round.RequestPath()) {
-			t.Fatalf("arrival 1 = %+v; want pending carrying a prompt naming %q and %q", first, prReviewParent, round.RequestPath())
+		if !first.Pending || !strings.Contains(first.Send, prReviewParent) || !strings.Contains(first.Send, round.BriefPath()) {
+			t.Fatalf("arrival 1 = %+v; want pending carrying a prompt naming %q and %q", first, prReviewParent, round.BriefPath())
 		}
 		if round.Number != 1 {
 			t.Fatalf("round number = %d; want 1", round.Number)
