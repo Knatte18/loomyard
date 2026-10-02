@@ -281,6 +281,72 @@ func (b *Board) ListTasksFull() ([]Task, error) {
 	return store.ListTasksFull(), nil
 }
 
+// Promote moves the entry identified by idOrSlug to a lower tier number under the write lock;
+// a nil target means one tier lower.
+func (b *Board) Promote(slug string, target *int) (Task, error) {
+	result, err := b.boardCriticalSection(func(store *Store) (any, error) {
+		return store.Promote(slug, target)
+	}, nil)
+	if err != nil {
+		return Task{}, err
+	}
+	return result.(Task), nil
+}
+
+// Prune removes every done entry under the write lock and returns the removed slugs;
+// the render that follows drops their design docs.
+func (b *Board) Prune() ([]string, error) {
+	result, err := b.boardCriticalSection(func(store *Store) (any, error) {
+		return store.Prune(), nil
+	}, nil)
+	if err != nil {
+		return nil, err
+	}
+	return result.([]string), nil
+}
+
+// Find returns the entries whose slug, title, brief or body contains text, persisting nothing.
+func (b *Board) Find(text string) ([]BriefTask, error) {
+	if _, err := os.Stat(b.boardPath); os.IsNotExist(err) {
+		return nil, nil
+	}
+
+	store, err := b.loadStore()
+	if err != nil {
+		return nil, err
+	}
+	return store.Find(text), nil
+}
+
+// RetireLegacy ends the pre-upgrade compatibility window under the write lock.
+// It refuses when neither legacy file exists; otherwise the load folds the last done marks,
+// the mutate drops legacy_done, and after board.json is saved the legacy files and their swap locks are deleted.
+// board.json is saved before any deletion, so a crash in between leaves legacy files beside a store that
+// already absorbed them.
+func (b *Board) RetireLegacy() error {
+	legacyPaths := []string{
+		filepath.Join(b.boardPath, legacyTasksFile),
+		filepath.Join(b.boardPath, legacyNotesFile),
+	}
+	_, err := b.boardCriticalSection(func(store *Store) (any, error) {
+		if !fileExists(legacyPaths[0]) && !fileExists(legacyPaths[1]) {
+			return nil, fmt.Errorf("nothing to retire: neither %s nor %s exists in the board directory", legacyTasksFile, legacyNotesFile)
+		}
+		store.legacyDone = nil
+		return nil, nil
+	}, func() error {
+		for _, path := range legacyPaths {
+			for _, p := range []string{path, path + swapLockSuffix} {
+				if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+					return fmt.Errorf("remove legacy file: %w", err)
+				}
+			}
+		}
+		return nil
+	})
+	return err
+}
+
 // PromoteNote moves the entry identified by idOrSlug to tier 1 under the write lock.
 // An entry already at tier 1 is returned unchanged without a write.
 func (b *Board) PromoteNote(idOrSlug any) (Task, error) {

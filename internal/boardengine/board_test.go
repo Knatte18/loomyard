@@ -431,3 +431,129 @@ func TestPromoteNotePreservesRecipeAndType(t *testing.T) {
 		t.Errorf("promoted = recipe %q type %q tier %d; want batten bug 1", promoted.Recipe, promoted.Type, promoted.Tier)
 	}
 }
+
+func TestPromoteThroughFacadePersistsTier(t *testing.T) {
+	w, _ := newLegacyBoard(t, nil)
+	if _, err := w.UpsertTask(map[string]any{"slug": "idea", "title": "Idea", "tier": 3}); err != nil {
+		t.Fatalf("UpsertTask: %v", err)
+	}
+
+	two := 2
+	promoted, err := w.Promote("idea", &two)
+	if err != nil {
+		t.Fatalf("Promote: %v", err)
+	}
+	if promoted.Tier != 2 {
+		t.Errorf("promoted tier = %d; want 2", promoted.Tier)
+	}
+
+	got, found, err := w.GetTask("idea")
+	if err != nil || !found || got.Tier != 2 {
+		t.Errorf("GetTask = %+v found=%v err=%v; want persisted tier 2", got, found, err)
+	}
+
+	again, err := w.Promote("idea", nil)
+	if err != nil || again.Tier != 1 {
+		t.Errorf("Promote(nil) = %+v err=%v; want tier 1", again, err)
+	}
+}
+
+func TestPruneRemovesDoneEntryAndDesignDocKeepsAbandoned(t *testing.T) {
+	w, boardPath := newLegacyBoard(t, nil)
+	for _, slug := range []string{"finished", "dropped"} {
+		if _, err := w.UpsertTask(map[string]any{"slug": slug, "title": slug, "body": "design of " + slug}); err != nil {
+			t.Fatalf("UpsertTask %s: %v", slug, err)
+		}
+	}
+	done, abandoned := "done", "abandoned"
+	if err := w.SetStatus("finished", &done); err != nil {
+		t.Fatalf("SetStatus done: %v", err)
+	}
+	if err := w.SetStatus("dropped", &abandoned); err != nil {
+		t.Fatalf("SetStatus abandoned: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(boardPath, "proposal-finished.md")); err != nil {
+		t.Fatalf("design doc missing before prune: %v", err)
+	}
+
+	removed, err := w.Prune()
+	if err != nil {
+		t.Fatalf("Prune: %v", err)
+	}
+	if len(removed) != 1 || removed[0] != "finished" {
+		t.Errorf("removed = %v; want [finished]", removed)
+	}
+	if _, err := os.Stat(filepath.Join(boardPath, "proposal-finished.md")); !os.IsNotExist(err) {
+		t.Errorf("design doc of pruned entry must be gone; stat err = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(boardPath, "proposal-dropped.md")); err != nil {
+		t.Errorf("design doc of abandoned entry must stay: %v", err)
+	}
+	if _, found, _ := w.GetTask("dropped"); !found {
+		t.Errorf("abandoned entry must survive prune")
+	}
+}
+
+func TestFindOnUnmigratedBoardWritesNothing(t *testing.T) {
+	w, boardPath := newLegacyBoard(t, map[string]string{"tasks.json": legacyTasksJSON, "notes.json": legacyNotesJSON})
+	before := dataFiles(t, boardPath)
+
+	found, err := w.Find("IDEA")
+	if err != nil {
+		t.Fatalf("Find: %v", err)
+	}
+	if len(found) != 1 || found[0].Slug != "idea" {
+		t.Errorf("Find(IDEA) = %+v; want only idea", found)
+	}
+
+	assertSameFiles(t, before, dataFiles(t, boardPath))
+	if _, err := os.Stat(filepath.Join(boardPath, "board.json")); !os.IsNotExist(err) {
+		t.Errorf("board.json must stay absent after Find; stat err = %v", err)
+	}
+}
+
+func TestRetireLegacyFoldsDoneMarkAndRemovesLegacyFiles(t *testing.T) {
+	doneTasks := `[{"id":0,"slug":"alpha","title":"Alpha","depends_on":[],"status":"done"}]`
+	w, boardPath := newLegacyBoard(t, map[string]string{"tasks.json": doneTasks, "notes.json": legacyNotesJSON})
+	// A locked read or write leaves swap locks beside the legacy files.
+	for _, name := range []string{"tasks.json.swaplock", "notes.json.swaplock"} {
+		if err := os.WriteFile(filepath.Join(boardPath, name), nil, 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+
+	if err := w.RetireLegacy(); err != nil {
+		t.Fatalf("RetireLegacy: %v", err)
+	}
+
+	for _, name := range []string{"tasks.json", "notes.json", "tasks.json.swaplock", "notes.json.swaplock"} {
+		if _, err := os.Stat(filepath.Join(boardPath, name)); !os.IsNotExist(err) {
+			t.Errorf("%s must be removed; stat err = %v", name, err)
+		}
+	}
+	raw, err := os.ReadFile(filepath.Join(boardPath, "board.json"))
+	if err != nil {
+		t.Fatalf("read board.json: %v", err)
+	}
+	if strings.Contains(string(raw), "legacy_done") {
+		t.Errorf("board.json must not carry legacy_done: %s", raw)
+	}
+	alpha, found, err := w.GetTask("alpha")
+	if err != nil || !found || alpha.Status == nil || *alpha.Status != "done" {
+		t.Errorf("alpha = %+v found=%v err=%v; want the folded done mark kept", alpha, found, err)
+	}
+}
+
+func TestRetireLegacyWithoutLegacyFilesRefusesAndWritesNothing(t *testing.T) {
+	w, boardPath := newLegacyBoard(t, nil)
+	if _, err := w.UpsertTask(map[string]any{"slug": "alpha", "title": "Alpha"}); err != nil {
+		t.Fatalf("UpsertTask: %v", err)
+	}
+	before := dataFiles(t, boardPath)
+
+	err := w.RetireLegacy()
+	if err == nil || !strings.Contains(err.Error(), "nothing to retire") {
+		t.Fatalf("RetireLegacy error = %v; want one saying nothing to retire", err)
+	}
+	assertSameFiles(t, before, dataFiles(t, boardPath))
+}
