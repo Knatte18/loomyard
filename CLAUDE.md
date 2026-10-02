@@ -2,91 +2,56 @@
 
 ## CONSTRAINTS.md is authoritative
 
-Read `CONSTRAINTS.md` before writing or reviewing any code, every session — never proceed as if there are no constraints.
-It encodes structural invariants enforced partly by `go test`/CI and partly by review discipline;
-violating one breaks the build or silently rots the design.
-Current invariants include the **Cwd Resolution Invariant** (`internal/lyxcwd` owns cwd resolution alone — never a weft path, a junction path, or any per-module subdirectory;
-each module owns its own relative subpath), the **gitkit Leaf Invariant**, the **hubforge Fabric-Fixture Invariant**, the **CLI/Cobra Invariant** (module `Command()`/`RunCLI` seam, `Short` on every command, help-tree tests),
-and the **Documentation Lifecycle**.
-Record any new cross-cutting invariant there, same commit.
+Read `CONSTRAINTS.md` before writing or reviewing code.
+Its invariants are enforced partly by `go test` and partly by review.
+A new cross-cutting invariant goes there in the same commit.
 
-## Build prerequisite: cgo
+## Build: cgo
 
-`lyx` links quarry's tree-sitter grammars through cgo, so building this repo requires `CGO_ENABLED=1` and a C compiler (gcc/clang on POSIX, mingw-w64 on Windows) on `PATH`.
-`CGO_ENABLED` already defaults to `1` for a native build when a C compiler is on `PATH`, so nothing needs setting on an ordinary developer machine;
-`go env -w CGO_ENABLED=1` pins it per-user but is machine-local and does not install a compiler.
+`lyx` links tree-sitter grammars through cgo, so a build needs `CGO_ENABLED=1` (the default when a C compiler is on `PATH`) and a C compiler.
 
-## Production lyx and plugins: one route, operator-triggered
+## Production: only `update-plugins.sh`, only when the operator runs it
 
-`update-plugins.sh` (`update-plugins.cmd` on Windows) is the only route to production: from a clean tree whose HEAD is pushed to `origin/main`, it mirrors the installed loomyard plugins into the Claude Code plugin cache, builds `lyx` into the Go bin dir (`go env GOBIN`, else `GOPATH/bin`), and moves the `prod` branch forward to that commit.
-`main` is the working branch; `prod` names what is in production, and only the script moves it — never commit to or push `prod` by hand.
-Code on `main` is not in production until the operator runs it; never run it unasked, and never install `lyx` anywhere else.
-Internal tests use the dev build instead: `./deploy-dev` (`deploy-dev.cmd`) builds the working tree into `.dev-bin` and never touches production.
-There is no versioning: the plugins stay at `1.0.0`, and running the script is the release.
+`update-plugins.sh` (`.cmd` on Windows) is the only route to production: from a clean, pushed `main`, it deploys the plugins, builds `lyx` into the Go bin dir and moves `prod` to that commit.
+Never run it unasked, never move `prod` by hand, never install `lyx` elsewhere.
+For internal tests, `./deploy-dev` builds into `.dev-bin` instead.
+There is no versioning: plugins stay at `1.0.0`.
 
-## Persistent notes go in git, not file-memory
+## Notes go in git, not file-memory
 
-This project is worked in short-lived task **worktrees** torn down on merge — the file-based `memory/` store is per-worktree and vanishes with it.
-Put durable notes in this file, `_lyx/raddle/`, or code comments instead: `_lyx/raddle/` content reaches the parent by being regenerated fresh against the parent's HEAD and committed onto the parent pair at landing time, never by a merge carrying the child's copy forward.
+Task worktrees are torn down on merge, and the file-based `memory/` store goes with them.
+Put durable notes in this file, `_lyx/raddle/` or code comments.
+`_lyx/raddle/` reaches the parent by being regenerated against the parent's HEAD at landing, never through a merge.
 
-## Pushing to main — only from the worktree that IS main
+## Worktrees
 
-Direct pushes to `main` are fine here, no PR gate — but only for the agent whose own current worktree is checked out on `main` (the long-lived `loomyard` worktree).
-Never for an agent working a task worktree (a pair, `<hub>/<slug>`), no matter how small the change.
+- Push to `main` only from the worktree checked out on `main`; never from a task pair (`<hub>/<slug>`).
+- Work only in your own worktree: never edit, commit or push in another, and never create one, unless the user says so for that case.
+  If work belongs elsewhere, say so and ask.
 
-## Worktree isolation — stay in yours
+## Agents run in interactive tmux, never `claude -p`
 
-An agent operates only within the worktree it was spawned in — never edit, commit, or push elsewhere, never spin up a new worktree of its own, unless the user explicitly says so for that case.
-Every other worktree is a black box: uncommitted changes, open files, a mid-commit/push you can't see.
-If work seems to belong elsewhere, say so and ask — don't resolve it unilaterally.
+Headless use is moving off subscription coverage onto API billing, so every agent lyx spawns runs as an interactive tmux session, driven through reed.
 
-## Agent execution: interactive tmux, never `claude -p`
+## Docs land in the same commit
 
-Every LLM agent lyx spawns runs as an interactive tmux session — never headless `claude -p`.
-Reason: Anthropic is moving headless usage off Pro/Max subscription coverage onto API billing;
-interactive sessions keep subscription coverage, and tmux is what makes a programmatically-driven session interactive.
+A task that adds a module, changes observable CLI behavior or adds cross-cutting infrastructure updates, in the same commit: the module doc in `manifest/designs/`, `docs/overview.md` if the module table or execution stack changes, and `CONSTRAINTS.md` for a new invariant.
+`manifest/roadmap.md` changes only when a planned item is completed or added.
 
-- The agent-driving layer depends on **reed** for this reason — it cannot be built on a headless `exec`.
-- Agents are provider-agnostic via **engines** (a Claude engine now, others later) — the verdict/output contract is provider-invariant.
-  Non-Claude support is not a current priority.
-- Cluster reviews (N parallel reviewers) scale via tmux windows, not a pane explosion — future reed work.
+## Markdown: semantic line breaks
 
-## Task completion — docs land in the same commit
+One sentence per line, never fixed-column wrapping, in every `.md` file; see `scribe:prose`.
+Table cells and blockquotes stay on one line.
 
-A task adding a module, changing observable CLI behavior, or introducing cross-cutting infrastructure must update docs in the same commit:
+## Terminology
 
-- The module doc in `manifest/designs/`, if the change touches one.
-- `docs/overview.md`, if the module table or execution stack changes.
-- `CONSTRAINTS.md`, for any new cross-cutting invariant.
+These are conversational shorthands; never rename code, files or docs to them unless told to.
 
-`manifest/roadmap.md` moves only on completing or adding a planned item — not for bugfixes, hardening, or polish passes;
-those are covered by git history and the module docs, not the roadmap.
+- **Merriam**: webster's orchestrating session, named `Master` in `internal/websterengine`.
+- **perch**: a `Bouncer` row in a `Shed` producer list whose `OnStuck` points at a `Burler`-round row, whose own `OnStuck` points back (see `internal/shedadapters` and `contracts/recipes/loom-recipe.yaml`).
+  Each review segment wires its own pair; there is no perch type.
 
-## Markdown: semantic line breaks, no fixed-column hard-wrap
+## Filesystem links
 
-Never hard-wrap prose at a fixed column — that breaks mid-phrase and makes every edit in a paragraph touch every wrapped line in it, not just the changed words.
-Instead, write one sentence per line, and also break inside a long sentence at an internal independent-clause boundary (a comma followed by a coordinating conjunction — "but"/"and"/"or" — or a semicolon, where what follows has its own subject and verb).
-Use a plain newline (soft break), never trailing double-spaces or a backslash — those force a real `<br>`.
-Applies to prose paragraphs and list items in every `.md` file in this repo, not just newly-written ones;
-table cells and blockquotes stay on one line per current mill convention.
-See the `scribe:prose` skill for the full rule and examples.
-
-## Terminology: "Merriam" means webster's Master session
-
-In conversation, "Merriam" is a conversational nickname for webster's long-lived orchestrating session — today named "Master" throughout `internal/websterengine` (`contracts/stencils/webster/webster-template-master.md`, `RoleMaster`, etc.), paired with "Webster" after Merriam-Webster.
-It is shorthand for talking about the session, not an instruction to rename anything — don't rename identifiers, files, config keys, or docs to "Merriam" unless a separate, explicit instruction says so.
-
-## Terminology: "perch" means a Bouncer+Burler pair in a Shed producer list
-
-In conversation, "perch" (lowercase, folk usage — not the retired `internal/perchengine` module) names the pattern of wiring a `Bouncer` instance into a `Shed` producer list with a `Burler`-round producer as its offshoot: the `Bouncer` sits in the main line as the segment's entry/exit, its `OnStuck` points at the `Burler` row, and the `Burler` row's own `OnStuck` always points back at the `Bouncer` (`Stuck`, never `Done`) — see the shipped `internal/shedadapters` package (`Bouncer`, `shedadapters: Burler-round producer`) and `contracts/recipes/loom-recipe.yaml`'s own row pairs.
-It is shorthand for talking about this two-row wiring pattern, not an instruction to build a named module or type for it: each segment (`Discussion-Review`, `Plan-Review`, `Webster-Review`, and eventually `Tenter`) hand-wires its own `Bouncer`+`Burler`-shaped pair directly in its own producer list.
-Don't rename identifiers, files, config keys, or docs to "Perch" unless a separate, explicit instruction says so.
-
-## Filesystem links (fslink)
-
-All cross-OS links go through `internal/fslink`.
-Windows uses directory junctions (no special privileges needed);
-other platforms use symlinks.
-The contract is directory-only — `CreateDirLink` is the entry point, `CreateFileLink` is reserved for later.
-Don't rely on Windows file symlinks (need admin/Developer Mode);
-junctions are the only link type guaranteed everywhere.
+All links go through `internal/fslink` (`CreateDirLink`): directory junctions on Windows, symlinks elsewhere.
+Never rely on Windows file symlinks.

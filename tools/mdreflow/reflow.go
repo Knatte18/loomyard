@@ -1,5 +1,5 @@
 // reflow.go implements the semantic-line-break reflow rule from the
-// scribe:prose skill / CLAUDE.md's "Markdown: semantic line breaks" section:
+// scribe:prose skill (CLAUDE.md's "Markdown: semantic line breaks" points to it):
 // one sentence per line, plus a break at an internal independent-clause
 // boundary (semicolon, or comma+coordinating-conjunction+explicit-subject).
 //
