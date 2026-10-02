@@ -1,6 +1,4 @@
-// gate.go declares the gate contract: the four exported types a caller uses to attach a mechanical
-// validator to a gated run (Gate, GateEntry, GateSpec, GateResult, GateOutcome), plus the package-private
-// helpers the run loop (run.go, wait.go) spends them through.
+// gate.go declares the gate contract: the exported types a caller uses to attach mechanical validators to a gated run and read its report (Gate, GateEntry, GateSpec, GateResult, GateOutcome, GateEntryOutcome, GateEntryState), plus the package-private helpers the run loop (run.go, wait.go) spends them through.
 // It inherits the Shuttle Provider-Seam Invariant (doc.go): the gate loop asks "is a new event in"
 // only through the existing Engine.ParseEvents seam, and knows nothing about any provider's own hook
 // payloads.
