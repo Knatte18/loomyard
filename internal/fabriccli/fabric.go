@@ -433,6 +433,25 @@ Example:
 		RunE: clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int { return runUnwire(ctx, out, args) }),
 	})
 
+	cmd.AddCommand(&cobra.Command{
+		Use:   "code [<code>]",
+		Args:  cobra.MaximumNArgs(1),
+		Short: "print or record the hub's short agent-name code",
+		Long: `Print the hub's short agent-name code, or record one.
+
+With no argument it prints the recorded code. With one argument it records the
+code in ` + fabricengine.CodeFileName + ` on weft:main when the hub has none, committing and
+pushing it; the code is 2-6 characters matching [a-z][a-z0-9]{1,5}.
+
+Recording the code a hub already has is a no-op. A different code is refused:
+changing it would orphan every agent name already in use.
+
+Example:
+  lyx fabric code
+  lyx fabric code ly`,
+		RunE: clihelp.WrapRunCtx(runCode),
+	})
+
 	// Wire the weft-git content-sync verbs (status/commit/push/pull/sync), their
 	// own --weft-path bypass flag, and their scoped PersistentPreRunE.
 	addWeftVerbs(cmd)

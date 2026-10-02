@@ -92,7 +92,7 @@ func TestRunCLI_NoArgs(t *testing.T) {
 	got := out.String()
 	wantVerbs := []string{
 		"clone", "add", "list", "remove", "checkout",
-		"pairs", "reconcile", "prune", "cleanup",
+		"pairs", "reconcile", "prune", "cleanup", "code",
 		"status", "commit", "push", "pull", "sync",
 	}
 	for _, verb := range wantVerbs {
