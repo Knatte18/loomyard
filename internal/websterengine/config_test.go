@@ -169,9 +169,8 @@ func TestLoadConfig_UninitializedFallsBackToTemplate(t *testing.T) {
 	}
 }
 
-// TestLoadConfig_MissingNumericKnobsLoadTemplateDefaults covers the round-4 review's R4-16: a
-// hand-written webster.yaml missing numeric knobs must not leave them at Go's zero value, since
-// RecoveryTimeoutMin at 0 would classify every recovery batch dead/timeout on the first poll.
+// TestLoadConfig_MissingNumericKnobsLoadTemplateDefaults covers the round-4 review's R4-16:
+// a hand-written webster.yaml missing numeric knobs must not leave them at Go's zero value, since RecoveryTimeoutMin at 0 would classify every recovery batch dead/timeout on the first poll.
 // configengine fills the absent keys from the template, so they load at the template defaults.
 func TestLoadConfig_MissingNumericKnobsLoadTemplateDefaults(t *testing.T) {
 	for _, tc := range []struct {
@@ -202,8 +201,7 @@ func TestLoadConfig_MissingNumericKnobsLoadTemplateDefaults(t *testing.T) {
 	}
 }
 
-// TestLoadConfig_ExplicitZeroKnobNamesTheKey pins that webster's own positive-integer check still
-// refuses a knob the file sets to zero, which the template fill never touches.
+// TestLoadConfig_ExplicitZeroKnobNamesTheKey pins that webster's own positive-integer check still refuses a knob the file sets to zero, which the template fill never touches.
 func TestLoadConfig_ExplicitZeroKnobNamesTheKey(t *testing.T) {
 	for _, tc := range []struct {
 		name    string

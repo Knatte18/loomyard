@@ -234,9 +234,8 @@ parent_review_wait_min: 60
 	}
 }
 
-// TestLoadConfig_MissingFrictionKeys verifies a loom.yaml genuinely lacking the friction and
-// friction_timeout_min keys loads them at their template defaults -- an already-seeded worktree
-// picks up a key a deploy adds without a reconcile sweep.
+// TestLoadConfig_MissingFrictionKeys verifies a loom.yaml genuinely lacking the friction and friction_timeout_min keys loads them at their template defaults --
+// an already-seeded worktree picks up a key a deploy adds without a reconcile sweep.
 func TestLoadConfig_MissingFrictionKeys(t *testing.T) {
 	baseDir := t.TempDir()
 	seedLoomConfig(t, baseDir, `discussion: opus[effort=high]

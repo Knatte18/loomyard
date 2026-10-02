@@ -61,8 +61,7 @@ func firstKey(t *testing.T, template string) string {
 	return doc.Content[0].Content[0].Value
 }
 
-// loadFilled seeds module's config file with content and loads it through configengine.Load,
-// returning the loaded value, the captured log and the file's bytes afterwards.
+// loadFilled seeds module's config file with content and loads it through configengine.Load, returning the loaded value, the captured log and the file's bytes afterwards.
 func loadFilled(t *testing.T, module, template string, content []byte) (loaded map[string]interface{}, log string, after []byte) {
 	t.Helper()
 	baseDir := t.TempDir()
@@ -103,8 +102,7 @@ func wantDefault(t *testing.T, module, template string) map[string]interface{} {
 	return got
 }
 
-// assertFilled loads module's template with keyPath dropped and checks the fill reproduces the
-// template default, leaves the file untouched and logs one fill line naming module and keyPath.
+// assertFilled loads module's template with keyPath dropped and checks the fill reproduces the template default, leaves the file untouched and logs one fill line naming module and keyPath.
 func assertFilled(t *testing.T, module, template, keyPath string) {
 	t.Helper()
 	content := dropKey(t, template, keyPath)
@@ -124,8 +122,7 @@ func assertFilled(t *testing.T, module, template, keyPath string) {
 	}
 }
 
-// TestFill_DroppedTopLevelKeyLoadsAtDefault drops one top-level key from each module's real
-// template and checks the load fills it.
+// TestFill_DroppedTopLevelKeyLoadsAtDefault drops one top-level key from each module's real template and checks the load fills it.
 func TestFill_DroppedTopLevelKeyLoadsAtDefault(t *testing.T) {
 	for _, module := range fillModules {
 		t.Run(module, func(t *testing.T) {

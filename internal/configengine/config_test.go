@@ -66,8 +66,7 @@ func TestLoad_HappyPath(t *testing.T) {
 	}
 }
 
-// captureLog redirects the logger's stderr half into a buffer at Info verbosity for the test and
-// restores the defaults in t.Cleanup.
+// captureLog redirects the logger's stderr half into a buffer at Info verbosity for the test and restores the defaults in t.Cleanup.
 func captureLog(t *testing.T) *bytes.Buffer {
 	t.Helper()
 	var buf bytes.Buffer
@@ -80,8 +79,7 @@ func captureLog(t *testing.T) *bytes.Buffer {
 	return &buf
 }
 
-// writeConfig creates _lyx/config/ under a fresh temp dir, writes content as module's config file
-// and returns the base dir and the file path.
+// writeConfig creates _lyx/config/ under a fresh temp dir, writes content as module's config file and returns the base dir and the file path.
 func writeConfig(t *testing.T, module, content string) (baseDir, path string) {
 	t.Helper()
 	baseDir = t.TempDir()
@@ -107,8 +105,7 @@ func assertFileUnchanged(t *testing.T, path, want string) {
 	}
 }
 
-// assertOneFillLine fails unless the captured log holds exactly one fill line naming the module and
-// the key-path.
+// assertOneFillLine fails unless the captured log holds exactly one fill line naming the module and the key-path.
 func assertOneFillLine(t *testing.T, buf *bytes.Buffer, module, keyPath string) {
 	t.Helper()
 	log := buf.String()
@@ -123,8 +120,7 @@ func assertOneFillLine(t *testing.T, buf *bytes.Buffer, module, keyPath string) 
 	}
 }
 
-// TestLoad_MissingKey tests that a template key the file lacks loads at its template default, the
-// file stays byte-identical and one fill line is logged.
+// TestLoad_MissingKey tests that a template key the file lacks loads at its template default, the file stays byte-identical and one fill line is logged.
 func TestLoad_MissingKey(t *testing.T) {
 	buf := captureLog(t)
 	content := "path: custom_path\n"
@@ -162,8 +158,7 @@ func TestLoad_CompleteFileLogsNoFill(t *testing.T) {
 	}
 }
 
-// TestLoad_FillKeepsExtraAndEmptyValues tests that an extra file key survives beside a filled one
-// and that a present empty string and an emptied list are kept rather than refilled.
+// TestLoad_FillKeepsExtraAndEmptyValues tests that an extra file key survives beside a filled one and that a present empty string and an emptied list are kept rather than refilled.
 func TestLoad_FillKeepsExtraAndEmptyValues(t *testing.T) {
 	buf := captureLog(t)
 	template := []byte("name: tpl\nlabel: tpl\nrequire_pr_to_base:\n  - main\nadded: yes\n")
@@ -195,8 +190,7 @@ func TestLoad_FillKeepsExtraAndEmptyValues(t *testing.T) {
 	assertOneFillLine(t, buf, "board", "added")
 }
 
-// TestLoad_FilledEnvMarkerUnsetRefuses tests that a filled ${env:NAME} marker whose variable is
-// unset still refuses.
+// TestLoad_FilledEnvMarkerUnsetRefuses tests that a filled ${env:NAME} marker whose variable is unset still refuses.
 func TestLoad_FilledEnvMarkerUnsetRefuses(t *testing.T) {
 	tmpDir, _ := writeConfig(t, "board", "path: custom\n")
 
@@ -209,8 +203,7 @@ func TestLoad_FilledEnvMarkerUnsetRefuses(t *testing.T) {
 	}
 }
 
-// TestLoad_FillRefusals tests that a shape mismatch, a key missing inside a list element and
-// unparseable YAML each refuse and name the key-path or the file.
+// TestLoad_FillRefusals tests that a shape mismatch, a key missing inside a list element and unparseable YAML each refuse and name the key-path or the file.
 func TestLoad_FillRefusals(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -636,8 +629,7 @@ func TestLoadOrTemplate_BothPresent_MatchesLoad(t *testing.T) {
 	}
 }
 
-// TestLoadOrTemplate_PresentMissingKey tests that a config file present but missing a template key
-// loads that key at its template default, leaves the file byte-identical and logs one fill line.
+// TestLoadOrTemplate_PresentMissingKey tests that a config file present but missing a template key loads that key at its template default, leaves the file byte-identical and logs one fill line.
 func TestLoadOrTemplate_PresentMissingKey(t *testing.T) {
 	buf := captureLog(t)
 	content := "path: custom_path\n"
@@ -659,8 +651,7 @@ func TestLoadOrTemplate_PresentMissingKey(t *testing.T) {
 	assertOneFillLine(t, buf, "board", "home")
 }
 
-// TestLoadOrTemplate_PresentEmpty tests that a present but empty config file loads as the template,
-// is left untouched and logs one fill line.
+// TestLoadOrTemplate_PresentEmpty tests that a present but empty config file loads as the template, is left untouched and logs one fill line.
 func TestLoadOrTemplate_PresentEmpty(t *testing.T) {
 	buf := captureLog(t)
 	tmpDir, yamlFile := writeConfig(t, "board", "")
@@ -681,8 +672,7 @@ func TestLoadOrTemplate_PresentEmpty(t *testing.T) {
 	assertOneFillLine(t, buf, "board", "path")
 }
 
-// TestLoadOrTemplate_PresentCommentsOnly tests that a present comments-only config file loads as the
-// template, is left untouched and logs one fill line.
+// TestLoadOrTemplate_PresentCommentsOnly tests that a present comments-only config file loads as the template, is left untouched and logs one fill line.
 func TestLoadOrTemplate_PresentCommentsOnly(t *testing.T) {
 	buf := captureLog(t)
 	content := "# just a comment\n"

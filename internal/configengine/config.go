@@ -66,10 +66,9 @@ func ConfigFileRel(module string) string {
 }
 
 // Load loads and resolves configuration from a YAML file using a template.
-// A template key the present file lacks resolves to its template default and is logged; the file is
-// never written.
-// Returns the resolved bytes or an error if the file is absent, has a shape the template does not
-// allow, lacks a key inside a list element, or cannot be resolved.
+// A template key the present file lacks resolves to its template default and is logged;
+// the file is never written.
+// Returns the resolved bytes or an error if the file is absent, has a shape the template does not allow, lacks a key inside a list element, or cannot be resolved.
 func Load(baseDir, module string, template []byte) ([]byte, error) {
 	return load(baseDir, module, template, false)
 }
@@ -89,8 +88,8 @@ func LoadOrTemplate(baseDir, module string, template []byte) ([]byte, error) {
 // absent _lyx/ directory (errors.Is(err, ErrNotInitialized)) or an absent config file
 // (os.IsNotExist(err)) -- so a permission or IO failure at either point always propagates unchanged
 // regardless of fallbackOnAbsent.
-// A present file's missing template keys are filled from the template in memory and logged, under
-// both policies; lyx config reconcile stays the only writer of config files.
+// A present file's missing template keys are filled from the template in memory and logged, under both policies;
+// lyx config reconcile stays the only writer of config files.
 func load(baseDir, module string, template []byte, fallbackOnAbsent bool) ([]byte, error) {
 	_, err := FindBaseDir(baseDir)
 	if err != nil {
@@ -120,8 +119,8 @@ func load(baseDir, module string, template []byte, fallbackOnAbsent bool) ([]byt
 		logger.Info("configengine: filled missing keys from template", "module", module, "file", cfgPath, "keys", strings.Join(filledKeys, ","))
 	}
 
-	// FillMissing never descends into lists, so a template key missing inside a list element is the
-	// one gap left; reconcile carries lists whole and cannot add it either, so no reconcile hint.
+	// FillMissing never descends into lists, so a template key missing inside a list element is the one gap left;
+	// reconcile carries lists whole and cannot add it either, so no reconcile hint.
 	missing, err := yamlengine.MissingKeys(template, filled)
 	if err != nil {
 		return nil, fmt.Errorf("config file %s: %w", cfgPath, err)
