@@ -319,20 +319,21 @@ func (b *Board) Find(text string) ([]BriefTask, error) {
 }
 
 // RetireLegacy ends the pre-upgrade compatibility window under the write lock.
-// It refuses when neither legacy file exists; otherwise the load folds the last done marks,
-// the mutate drops legacy_done, and after board.json is saved the legacy files and their swap locks are deleted.
-// board.json is saved before any deletion, so a crash in between leaves legacy files beside a store that
-// already absorbed them.
+// It refuses when neither legacy file exists;
+// otherwise the load folds the last done marks and board.json is saved with legacy_done still in place.
+// The legacy files and their swap locks are then deleted, and only after that is legacy_done dropped and board.json saved again.
+// A crash or a failed deletion therefore leaves the surviving legacy files beside an intact legacy_done, so a reload folds no mark twice and retire-legacy can be rerun.
 func (b *Board) RetireLegacy() error {
 	legacyPaths := []string{
 		filepath.Join(b.boardPath, legacyTasksFile),
 		filepath.Join(b.boardPath, legacyNotesFile),
 	}
+	var retired *Store
 	_, err := b.boardCriticalSection(func(store *Store) (any, error) {
 		if !fileExists(legacyPaths[0]) && !fileExists(legacyPaths[1]) {
 			return nil, fmt.Errorf("nothing to retire: neither %s nor %s exists in the board directory", legacyTasksFile, legacyNotesFile)
 		}
-		store.legacyDone = nil
+		retired = store
 		return nil, nil
 	}, func() error {
 		for _, path := range legacyPaths {
@@ -341,6 +342,10 @@ func (b *Board) RetireLegacy() error {
 					return fmt.Errorf("remove legacy file: %w", err)
 				}
 			}
+		}
+		retired.legacyDone = nil
+		if err := retired.Save(); err != nil {
+			return fmt.Errorf("save store: %w", err)
 		}
 		return nil
 	})

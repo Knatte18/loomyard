@@ -557,3 +557,31 @@ func TestRetireLegacyWithoutLegacyFilesRefusesAndWritesNothing(t *testing.T) {
 	}
 	assertSameFiles(t, before, dataFiles(t, boardPath))
 }
+
+// TestRetireLegacyFailedDeletionKeepsLegacyDone forces the deletion to fail after board.json is saved and checks that the surviving legacy file folds nothing twice:
+// an entry done at migration and reopened since must stay reopened.
+func TestRetireLegacyFailedDeletionKeepsLegacyDone(t *testing.T) {
+	doneNotes := `[{"id":0,"slug":"beta","title":"Beta","depends_on":[],"status":"done"}]`
+	w, boardPath := newLegacyBoard(t, map[string]string{"notes.json": doneNotes})
+	active := "active"
+	if err := w.SetStatus("beta", &active); err != nil {
+		t.Fatalf("SetStatus: %v", err)
+	}
+	// tasks.json is absent, so no load locks its swap lock, but a non-empty directory there makes its removal fail before notes.json is reached.
+	blocker := filepath.Join(boardPath, "tasks.json.swaplock")
+	if err := os.MkdirAll(filepath.Join(blocker, "keep"), 0o755); err != nil {
+		t.Fatalf("mkdir blocker: %v", err)
+	}
+
+	if err := w.RetireLegacy(); err == nil {
+		t.Fatal("RetireLegacy succeeded; want the blocked deletion to fail")
+	}
+
+	if _, err := os.Stat(filepath.Join(boardPath, "notes.json")); err != nil {
+		t.Fatalf("notes.json must survive the failed deletion; stat err = %v", err)
+	}
+	beta, found, err := w.GetTask("beta")
+	if err != nil || !found || beta.Status == nil || *beta.Status != active {
+		t.Errorf("beta = %+v found=%v err=%v; want it to stay %q", beta, found, err, active)
+	}
+}
