@@ -19,6 +19,41 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 )
 
+// TestCLINotesAliasReachesTopLevelEntries asserts that the notes group is an alias onto the same
+// store: an entry created by the top-level upsert is reachable and removable through notes.
+func TestCLINotesAliasReachesTopLevelEntries(t *testing.T) {
+	t.Setenv("BOARD_SKIP_GIT", "1")
+	seedCwd(t)
+
+	if exitCode, stdout := runCLI(t, "upsert", `{"slug":"shared","title":"Shared"}`); exitCode != 0 {
+		t.Fatalf("upsert: exit %d; stdout: %s", exitCode, stdout)
+	}
+
+	exitCode, stdout := runCLI(t, "notes", "get", `{"slug":"shared"}`)
+	if exitCode != 0 {
+		t.Fatalf("notes get: exit %d; stdout: %s", exitCode, stdout)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("parse notes get output: %v; stdout: %s", err, stdout)
+	}
+	if task, ok := got["task"].(map[string]any); !ok || task["slug"] != "shared" {
+		t.Fatalf("notes get did not return the top-level entry: %v", got)
+	}
+
+	if exitCode, stdout := runCLI(t, "notes", "remove", `{"slug":"shared"}`); exitCode != 0 {
+		t.Fatalf("notes remove: exit %d; stdout: %s", exitCode, stdout)
+	}
+	_, stdout = runCLI(t, "get", `{"slug":"shared"}`)
+	var after map[string]any
+	if err := json.Unmarshal([]byte(stdout), &after); err != nil {
+		t.Fatalf("parse get output: %v; stdout: %s", err, stdout)
+	}
+	if task, exists := after["task"]; !exists || task != nil {
+		t.Fatalf("expected the entry removed through notes to be gone from the top level, got %v", after)
+	}
+}
+
 // TestCLINotesContract tests the JSON envelope shape and exit code behavior for each happy-path
 // notes verb: upsert, list, get, set-status, remove.
 // Each case asserts exit 0 + ok=true + the verb's distinctive field, plus a notes-specific

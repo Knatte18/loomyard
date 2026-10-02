@@ -76,6 +76,36 @@ func TestCLIPromoteNote(t *testing.T) {
 	}
 }
 
+// TestCLIPromoteNote_TierOneUnchanged asserts that promote-note on an entry already at tier 1
+// succeeds and leaves it unchanged.
+func TestCLIPromoteNote_TierOneUnchanged(t *testing.T) {
+	t.Setenv("BOARD_SKIP_GIT", "1")
+	seedCwd(t)
+
+	if exitCode, stdout := runCLI(t, "upsert", `{"slug":"already-one","title":"Already One","tier":1}`); exitCode != 0 {
+		t.Fatalf("upsert: exit %d; stdout: %s", exitCode, stdout)
+	}
+
+	exitCode, stdout := runCLI(t, "promote-note", `{"slug":"already-one"}`)
+	if exitCode != 0 {
+		t.Fatalf("promote-note: exit %d; stdout: %s", exitCode, stdout)
+	}
+	var result map[string]any
+	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
+		t.Fatalf("parse promote-note output: %v; stdout: %s", err, stdout)
+	}
+	task, ok := result["task"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected task object, got %v", result)
+	}
+	if tier, _ := task["tier"].(float64); tier != 1 {
+		t.Fatalf("expected tier 1, got %v", task["tier"])
+	}
+	if title, _ := task["title"].(string); title != "Already One" {
+		t.Fatalf("expected title unchanged, got %v", task["title"])
+	}
+}
+
 // TestCLIPromoteNote_NeverANote asserts that promoting a slug that was never a note errors with a
 // message containing "note not found".
 func TestCLIPromoteNote_NeverANote(t *testing.T) {
