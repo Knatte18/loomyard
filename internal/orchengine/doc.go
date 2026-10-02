@@ -151,9 +151,15 @@
 //
 // # Open risks
 //
-// Two questions are settled only by a real session.
-// `TestSmokeOrch_OneFullCycle` in internal/orchcli logs an observation for each, but has not been run against a live Claude Code install, so both remain unverified, pending a smoke run:
+// The smoke suite in internal/orchcli (`go test -tags smoke -run TestSmokeOrch ./internal/orchcli/`) was run against Claude Code 2.1.287 on 2026-10-02, and all four tests passed.
+// What the run showed:
 //
-//   - Whether a background task survives `/clear`: unverified, pending a smoke run.
-//   - Whether a `SendMessage` address stays stable across `/clear`: unverified, pending a smoke run.
+//   - A background task survives `/clear`: its completion notification reached the resumed session, in the transcript and the pane.
+//     A resumed session may therefore find its background shell still running instead of starting another.
+//   - A `SendMessage` address stays stable across `/clear`: `<shortname>:orch` before and after.
+//   - `--resume` with a positional prompt submitted the prompt: an adopted session answered the adopt stencil's turn and its turn end reached the events file.
+//     No startup dialog stopped the resume launch; shuttle's startup probe cleared it without operator input.
+//   - The idle probe passes on a live orch pane.
+//     Claude draws the session name into the input box's top rule (`──── tst:orch ─`), which `isBoxRule` rejected until it accepted a labelled rule, so the probe had never passed on a named session.
+//   - A visible plain run in the prime shares the orch pane's window and can squeeze it too short to draw an input box, which makes the idle probe fail and holds every cycle until the pane is tall again.
 package orchengine

@@ -70,10 +70,14 @@ func (c *Claude) IdleSession(capture string) bool {
 }
 
 // isBoxRule reports whether line is a horizontal rule of the input box: non-blank, made only of rule glyphs, corners, side bars and whitespace, with at least one rule glyph.
+// A named session labels its top rule at the right (`──── tst:orch ─`), so a line that starts with three rule glyphs and ends with one counts as a rule whatever its label says.
 func isBoxRule(line string) bool {
 	trimmed := strings.TrimSpace(line)
 	if !strings.Contains(trimmed, "─") {
 		return false
+	}
+	if strings.HasPrefix(trimmed, "───") && strings.HasSuffix(trimmed, "─") {
+		return true
 	}
 	for _, r := range trimmed {
 		if r != ' ' && !strings.ContainsRune(boxRuleChars, r) {

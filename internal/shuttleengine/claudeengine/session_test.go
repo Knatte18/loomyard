@@ -37,6 +37,11 @@ func TestIdleSession(t *testing.T) {
 			want:    false,
 		},
 		{
+			name:    "named session labels the top rule",
+			capture: rule + " tst:orch ─\n❯ \n" + rule + "\n  ? for shortcuts\n",
+			want:    true,
+		},
+		{
 			name:    "boxed side bars around an empty box",
 			capture: "╭" + rule + "╮\n│ ❯          │\n╰" + rule + "╯\n",
 			want:    true,
