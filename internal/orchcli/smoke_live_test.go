@@ -356,8 +356,10 @@ func TestSmokeOrch_SoftCycle(t *testing.T) {
 	if err != nil || len(bytes.TrimSpace(body)) == 0 {
 		t.Fatalf("handoff %q unreadable or empty: %v", handoff, err)
 	}
+	// The soft stencil itself says "background shell", so only the test's own command proves the handoff names it,
+	// and that the background-shell turn ran before the cycle began.
 	lower := strings.ToLower(string(body))
-	if !strings.Contains(lower, "softbg") && !strings.Contains(lower, "sleep 900") && !strings.Contains(lower, "background") {
+	if !strings.Contains(lower, "softbg") && !strings.Contains(lower, "sleep 900") {
 		t.Errorf("handoff does not name the background shell:\n%s", body)
 	}
 	if resumedTranscript == startTranscript {
