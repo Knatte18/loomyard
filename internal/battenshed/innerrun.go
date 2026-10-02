@@ -177,6 +177,7 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 // After a successful spawn, whether here or in the approved-resume arm, Call opens the operator's IDE through deps.OpenIDE once per run: a once-marker under scratchDir (ideOpenedFile) gates it, a fresh child (no status file) clears the marker first, and an open error is only warned about, never changing the row's outcome.
 // A failed spawn returns before the open.
 // Any Call that finds the child in a state other than done first removes a leftover done-seen marker, so a marker from an earlier run of the same slug never shortens a later wait.
+// Any Call that finds the child out of a halted state likewise removes the halt-warned marker, which ends the halt episode.
 // Then by state:
 //   - running sleeps p.pollInterval and returns a counted Stuck;
 //   - awaiting with no decision record sleeps and returns a budget-exempt Stuck naming the hand-off;
@@ -263,6 +264,14 @@ func (p *innerRunProducer) Call(ctx context.Context) (shedengine.Outcome, sheden
 			return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: clear stale done-seen marker: %w", p.name, err)
 		}
 	}
+	switch status.State {
+	case shedengine.StateBlocked, shedengine.StatePaused, shedengine.StateFailed:
+	default:
+		// A child seen out of a halted state ends the halt episode, so a re-halt Warns again even at the same history length.
+		if err := os.Remove(haltWarnedFile(p.scratchDir, p.name)); err != nil && !os.IsNotExist(err) {
+			return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: clear halt-warned marker: %w", p.name, err)
+		}
+	}
 
 	switch status.State {
 	case shedengine.StateDone:
@@ -312,8 +321,8 @@ func (p *innerRunProducer) exemptWait(ctx context.Context, reason string) (shede
 }
 
 // callHalted handles a blocked, paused or failed child: it never spawns or resumes the child, Warns once per halt episode, and waits with a budget-exempt Stuck until the operator resumes the child.
-// An episode is told apart by the child's history length against the length the halt-warned marker recorded at the last Warn:
-// a resume and re-halt grows the history, so it Warns again, and the polls between stay quiet.
+// An episode ends when Call sees the child out of a halted state, which removes the halt-warned marker, or when the child's history length differs from the length the marker recorded at the last Warn:
+// a re-halt after an observed resume Warns again even at the same history length, since a hard producer error or a mid-call pause appends no history entry, and the polls within one episode stay quiet.
 // A marker read or write failure is a hard error, as the other markers' are.
 func (p *innerRunProducer) callHalted(ctx context.Context, status shedengine.Status) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	markerPath := haltWarnedFile(p.scratchDir, p.name)

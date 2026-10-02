@@ -92,6 +92,36 @@ func TestInnerRun_HaltWarnsOncePerEpisode(t *testing.T) {
 	}
 }
 
+func TestInnerRun_ReHaltAfterObservedResumeWarnsAgainAtTheSameHistoryLength(t *testing.T) {
+	var buf bytes.Buffer
+	logger.SetOutput(&buf)
+	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+
+	// A failed child resumed and failing again on the same producer appends no history entry, so both halts read length 4.
+	statuses := []statusResult{
+		haltedStatus(shedengine.StateFailed, 4),
+		{status: shedengine.Status{State: shedengine.StateRunning, History: make([]shedengine.HistoryEntry, 4)}, found: true},
+		haltedStatus(shedengine.StateFailed, 4),
+	}
+	clock := &fakeClock{}
+	_, _, deps := newInnerRunDeps(nil, nil, statuses, clock)
+	scratchDir := t.TempDir()
+	// The operator's resume ran the child's own driver, so a spawn is already confirmed.
+	if err := os.WriteFile(SpawnConfirmedFile(scratchDir, "innerrun"), []byte("spawned\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
+
+	for i := 0; i < len(statuses); i++ {
+		if _, _, err := producer.Call(context.Background()); err != nil {
+			t.Fatalf("Call() %d error = %v", i, err)
+		}
+	}
+	if got := strings.Count(buf.String(), "inner shed run halted"); got != 2 {
+		t.Errorf("Warn count across two halt episodes at one history length = %d; want 2\nlog: %s", got, buf.String())
+	}
+}
+
 func TestInnerRun_PausedThenRunningThenDoneReachesDone(t *testing.T) {
 	clock := &fakeClock{}
 	statuses := []statusResult{
