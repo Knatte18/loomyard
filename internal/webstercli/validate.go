@@ -5,8 +5,8 @@
 // error envelope carrying every finding for a plan with findings -- exit non-zero either way a
 // blocking finding exists, never plain text.
 // The check set is SCOPED the way Run scopes its own, and the "scope" key names which answer the
-// call gave: planglyph.Validate's whole-plan answer while no batch has completed, and
-// planglyph.ValidateDispatch's pending-cards answer once a run has recorded a terminal batch.
+// call gave: planglyph.Validate's whole-plan answer while no batch has begun, and
+// planglyph.ValidateDispatch's pending-cards answer once a run has begun any batch.
 // See scopedValidate for why the two are not interchangeable.
 // webster's own Run pre-flight ALSO refuses a zero-batch plan outright
 // (nothing-to-build is a malformed plan, never a vacuous outcome: done, per websterengine's
@@ -79,78 +79,41 @@ func findingsEnvelope(out io.Writer, msg string, findings []planglyph.Finding, s
 	return 1
 }
 
-// completedCards returns the cards of every batch the run recorded at c.geom has already driven to
-// a terminal classification, in the execution sequencer's own order -- or nil when no run has
-// started yet.
+// scopedValidate runs the check set this call's own scope calls for, and returns the scope name
+// alongside the findings so every envelope can report it.
+// st is the state validateCmd already loaded under the lease; nil means no run has started.
 //
-// It is the scoping value planglyph.ValidateDispatch takes, and it is what makes this verb's answer
-// agree with the automatic gate it advertises: a plan describes intended CHANGE, so a card whose
-// work already landed necessarily contradicts the tree it would be re-resolved against -- its
-// Create target now exists (create-already-exists under the Create inversion), its Delete target
-// and its Rename's old side are gone (glyph-not-found). Every one of those is the plan working
-// exactly as designed, reported as a blocking defect.
+// With no begun card -- no run at all, or a run that has not begun a batch yet --
+// it runs planglyph.Validate: the whole plan, including the plan-unapproved approval gate, which is
+// the honest answer for the pre-flight case this verb exists to serve.
 //
-// The batch-terminality walk is spelled out here rather than called on websterengine, whose own
-// completedCards is package-private and whose exported surface offers no replacement. The two must
-// stay in step; TestValidateCmd_MidRunScopesToPendingCards pins this one against a state.json
-// shaped exactly as a run writes it.
+// Once a run has begun any batch it runs planglyph.ValidateDispatch scoped by websterengine.DispatchScope,
+// the same call begin-batch and websterengine.Run make.
+// A begun card's own targets are not resolved, since its work may have landed or not;
+// a forthcoming card's Create and Rename New targets are excluded from the status check, so a later card that Uses them passes.
+// Approval is deliberately not re-checked on that branch, and nothing is lost by it:
+// a run cannot have begun a batch without having passed Run's own entry-time approval refusal first.
 //
-// A nil batcher is a wiring bug rather than a state, and it is reported as one: reading it as "no
-// completed cards" would silently hand back the whole-plan answer this function exists to avoid.
-func (c *websterCLI) completedCards(plan *planparser.Plan) ([]planparser.Card, error) {
-	state, err := websterengine.LoadState(c.geom.WebsterDir, c.geom.ScratchDir)
-	if err != nil {
-		return nil, err
-	}
-	if state == nil {
-		return nil, nil
+// A nil batcher with a state on disk is a wiring bug rather than a state, and it is reported as one:
+// reading it as "no begun cards" would silently hand back the whole-plan answer this function exists to avoid.
+func (c *websterCLI) scopedValidate(plan *planparser.Plan, st *websterengine.State) ([]planglyph.Finding, string, error) {
+	if st == nil {
+		findings, err := planglyph.Validate(plan, c.geom.WorktreeRoot)
+		return findings, scopeWholePlan, err
 	}
 	if c.batcher == nil {
-		return nil, websterengine.ErrNilBatcher
+		return nil, "", websterengine.ErrNilBatcher
 	}
 
 	// Every batch-computation site sequences, so all of them agree on one order by construction
 	// rather than by comment.
 	batches, _ := websterengine.SequenceBatches(c.batcher.Batch(plan.Cards))
-
-	var completed []planparser.Card
-	for _, batch := range batches {
-		if len(batch.Cards) == 0 {
-			continue
-		}
-		batchState, ok := state.Batches[batch.Cards[0].Number]
-		if !ok || batchState == nil || !batchState.Terminal {
-			continue
-		}
-		completed = append(completed, batch.Cards...)
-	}
-	return completed, nil
-}
-
-// scopedValidate runs the check set this call's own scope calls for, and returns the scope name
-// alongside the findings so every envelope can report it.
-//
-// With no completed cards -- no run at all, or a run that has not recorded a terminal batch yet --
-// it runs planglyph.Validate: the whole plan, including the plan-unapproved approval gate, which is
-// the honest answer for the pre-flight case this verb exists to serve.
-//
-// Once a batch has landed it runs planglyph.ValidateDispatch scoped by exactly that set, which is
-// the call websterengine.Run makes. Approval is deliberately not re-checked on that branch, and
-// nothing is lost by it: a run cannot have recorded a terminal batch without having passed Run's
-// own entry-time approval refusal first, so approval is an established fact of the run rather than
-// an open question. Before the fix this branch did not exist, and the verb answered mid-run with
-// the whole-plan check set -- exiting 1 over the very plan `lyx webster run` resumes without
-// complaint, the exact wedge websterengine/runlevel.go documents having fixed for Run.
-func (c *websterCLI) scopedValidate(plan *planparser.Plan) ([]planglyph.Finding, string, error) {
-	completed, err := c.completedCards(plan)
-	if err != nil {
-		return nil, "", err
-	}
-	if len(completed) == 0 {
+	begun, forthcoming := websterengine.DispatchScope(batches, st)
+	if len(begun) == 0 {
 		findings, err := planglyph.Validate(plan, c.geom.WorktreeRoot)
 		return findings, scopeWholePlan, err
 	}
-	findings, err := planglyph.ValidateDispatch(plan, c.geom.WorktreeRoot, completed, nil)
+	findings, err := planglyph.ValidateDispatch(plan, c.geom.WorktreeRoot, begun, forthcoming)
 	return findings, scopePending, err
 }
 
@@ -182,15 +145,17 @@ Which cards are checked follows the run's own progress, exactly as the
 automatic gate "lyx webster run" applies before forking an implementer does,
 and every envelope reports the answer it gave under a "scope" key:
 
-  whole-plan  no batch has reached a terminal classification yet (no run
-              at all, or a run that has recorded none). Every card is
-              checked, including the plan-unapproved approval gate.
-  pending     a run has recorded at least one terminal batch. Only the
-              cards whose work has NOT landed are re-resolved: a completed
-              Create target now exists and a completed Delete or Rename-old
-              target is gone, so re-resolving them reports the plan working
-              as designed as a blocking defect. Approval is not re-checked,
-              being already an established fact of that run.
+  whole-plan  no batch has been begun yet (no run at all, or a run that
+              has begun none). Every card is checked, including the
+              plan-unapproved approval gate.
+  pending     a run has begun at least one batch. The cards of every begun
+              batch are excluded from resolving: their work may have landed,
+              so a Create target may exist and a Delete or Rename-old target
+              may be gone. The Create and Rename-new targets of begun
+              batches that are not yet terminal count as forthcoming, so a
+              later card that Uses one is not reported as missing. Approval
+              is not re-checked, being already an established fact of that
+              run.
 
 Example:
   lyx webster validate`,
@@ -242,7 +207,7 @@ Example:
 				editErr = websterengine.PlanEditError(st, plan.Dir)
 			}
 
-			findings, scope, validateErr := c.scopedValidate(plan)
+			findings, scope, validateErr := c.scopedValidate(plan, st)
 
 			// Re-baseline regardless of validateErr, exactly as begin-batch re-baselines ahead of
 			// every refusal below it: a sanctioned rewrite that already landed on disk is a durable

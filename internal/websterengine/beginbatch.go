@@ -173,27 +173,34 @@ func completedCards(batches []batcher.Batch, st *State, exclude int) []planparse
 	return done
 }
 
-// begunCards returns every card belonging to a batch that begin-batch has recorded, terminal or not,
-// in batches' own order.
+// DispatchScope computes the one dispatch scoping begin-batch, run entry and `lyx webster validate` share.
+// begun is every card of a batch begin-batch recorded, terminal or not, in batches' own order.
+// forthcoming is the cards of every begun batch whose record is not terminal.
+// A terminal batch's cards are never forthcoming: its done-checks proved its targets present.
+// A nil state returns two nil slices.
 //
-// It scopes run-entry validation on a resume: a batch begun but never recorded (its record-batch
-// refused, or the run died between the fork's commit and the record) may already have landed its
-// work, so its Create targets can legitimately exist; validating it as unstarted reported them as
-// create-already-exists and refused the very resume that would record the batch.
+// A batch begun but never recorded (its record-batch refused, or the run died between the fork's commit and the record) may already have landed its work, so its Create targets can legitimately exist;
+// validating it as unstarted reported them as create-already-exists and refused the very resume that would record the batch.
+// Its targets may equally not have landed yet, which is why forthcoming exists:
+// planglyph.ValidateDispatch excludes a forthcoming card's Create and Rename New targets from the status check, so a later card that Uses them is not refused.
 // Master re-drives such a batch through record-batch or recover-batch, which apply their own checks.
-func begunCards(batches []batcher.Batch, st *State) []planparser.Card {
+func DispatchScope(batches []batcher.Batch, st *State) (begun, forthcoming []planparser.Card) {
 	if st == nil {
-		return nil
+		return nil, nil
 	}
 
-	var begun []planparser.Card
 	for _, b := range batches {
 		number, _ := batchIdentity(b)
-		if bs, ok := st.Batches[number]; ok && bs != nil {
-			begun = append(begun, b.Cards...)
+		bs, ok := st.Batches[number]
+		if !ok || bs == nil {
+			continue
+		}
+		begun = append(begun, b.Cards...)
+		if !bs.Terminal {
+			forthcoming = append(forthcoming, b.Cards...)
 		}
 	}
-	return begun
+	return begun, forthcoming
 }
 
 // findBatch returns the batcher.Batch in batches whose identity matches number.
@@ -288,10 +295,13 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	// dispatching a pack built on a re-resolve that failed is strictly worse than not dispatching.
 	// Scoped to the cards still to be built: a card already built contradicts the tree by design, and
 	// re-resolving it reports the plan working correctly as a blocking defect.
-	// begunCards, not completedCards: the batch record is written further down, so on a first begin
+	// DispatchScope, not completedCards: the batch record is written further down, so on a first begin
 	// this batch is still validated, while a re-begin of a batch whose earlier fork already landed its
-	// work (see begunCards) is not refused for it.
-	resolveFindings, resolveErr := planglyph.ValidateDispatch(deps.Plan, deps.Geom.WorktreeRoot, begunCards(deps.Batches, deps.State), nil)
+	// work is not refused for it.
+	// The forthcoming half keeps the Create targets of begun, unrecorded batches out of the status check,
+	// so a re-begun batch whose fork landed nothing does not refuse the later cards that Use them (#329).
+	begun, forthcoming := DispatchScope(deps.Batches, deps.State)
+	resolveFindings, resolveErr := planglyph.ValidateDispatch(deps.Plan, deps.Geom.WorktreeRoot, begun, forthcoming)
 	// ValidateDispatch's resolve pass canonicalizes handles, which rewrites the plan on disk, and it
 	// then keeps going: the status, Create-inversion and containment passes all run after the
 	// rewrite, so "rewrote the plan" and "reported a blocking finding" co-occur routinely, and the

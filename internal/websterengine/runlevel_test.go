@@ -1927,6 +1927,24 @@ func TestRun_Regression20260930_BegunUnrecordedBatchResumes(t *testing.T) {
 	}
 }
 
+// TestRun_Regression329_ForthcomingCreateTargetPassesEntryValidation pins #329 at run entry: state records batch 1 begun but not terminal with nothing landed,
+// and card 2 Uses card 1's Create target, which does not exist yet; Run must pass the entry validation and reach the Master spawn.
+func TestRun_Regression329_ForthcomingCreateTargetPassesEntryValidation(t *testing.T) {
+	fx := newRunFixture(t, 2)
+	addCardUses(t, fx.PlanDir, 2, "internal/batch1/new.go")
+
+	seedMatchingState(t, fx, &websterengine.State{
+		RunGUID: "resume-run",
+		Batches: map[int]*websterengine.BatchState{
+			1: {Slug: "batch1", Kind: "fork", StartSHA: "0123456789abcdef0123456789abcdef01234567"},
+		},
+	})
+	askingMaster(t, fx, "forthcoming")
+
+	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	requireReachedMaster(t, fx, err)
+}
+
 // requireWayForward fails unless err carries the trailing "way forward:" clause and every want fragment after it, so each reaching test matches the message the way the refusal table does.
 func requireWayForward(t *testing.T, err error, wants ...string) {
 	t.Helper()

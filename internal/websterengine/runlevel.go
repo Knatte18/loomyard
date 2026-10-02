@@ -526,9 +526,10 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	// the same one begin-batch already uses; a fresh run has no completed cards and gets the
 	// whole-plan answer unchanged. The plan-unapproved gate, which ValidateDispatch's format-only
 	// set deliberately omits, already fired at entry above.
-	// The scope here is begunCards, not completedCards: a batch begun but not recorded may already
-	// have landed its work (see begunCards).
-	findings, err := planglyph.ValidateDispatch(plan, deps.Geom.WorktreeRoot, begunCards(batches, st), nil)
+	// The scope here is DispatchScope, not completedCards: a batch begun but not recorded may already
+	// have landed its work, or not yet, and its forthcoming Create targets stay out of the status check.
+	begun, forthcoming := DispatchScope(batches, st)
+	findings, err := planglyph.ValidateDispatch(plan, deps.Geom.WorktreeRoot, begun, forthcoming)
 	// The resolve pass canonicalizes handles, rewriting the plan on disk before it reports either a
 	// finding or an error, so the staleness re-baseline runs HERE — ahead of both refusals below —
 	// and is persisted immediately. Restamping only past the refusals left state.json describing the

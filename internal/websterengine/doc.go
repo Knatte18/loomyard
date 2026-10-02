@@ -117,6 +117,20 @@
 // A strand whose re-derivation is byte-identical to the flagged content is failed again;
 // the way forward is to revert the path and edit its card.
 //
+// # one dispatch scope for begin-batch, run entry and validate
+//
+// A plan describes intended change, so re-resolving a card whose work may already have landed reports the plan working as designed as a defect.
+// begin-batch, run entry and `lyx webster validate` therefore all take their scope from DispatchScope:
+// begun is every card of a batch begin-batch recorded, terminal or not, and those cards are not resolved;
+// forthcoming is the cards of every begun batch whose record is not terminal.
+// A forthcoming card's Create targets and Rename New sides are excluded from the status check, so a later card that Uses one passes while the fork has landed nothing yet.
+// A terminal batch's cards are never forthcoming: its done-checks proved its targets present.
+// With no begun card, validate runs the whole-plan check set, approval gate included.
+//
+// The bound: drift in a begun, non-terminal card's own targets is reported by none of the three sites.
+// That card was fully validated at its first begin-batch, its bytes stay pinned by its recorded CardHashes, and record-batch and recover-batch still run its done-checks and drift detection.
+// A forthcoming target that never lands keeps the run from outcome done, because the run-exit check requires a terminal done record for every batch.
+//
 // # the plan-staleness guard re-baselines at the rewrite, not at the return
 //
 // begin-batch compares the plan directory's fingerprint against the one
