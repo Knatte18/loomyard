@@ -102,6 +102,7 @@ func testEnv(t *testing.T) (shedrecipe.Env, shedbuild.ShedPaths) {
 	}
 
 	env := shedrecipe.Env{
+		ParentReview:       testParentReviewConfig(dir, decisionRecordPath, supportLogPath),
 		Cwd:                cwd,
 		AnchorPath:         dir,
 		WorktreeRoot:       dir,

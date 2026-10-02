@@ -35,14 +35,19 @@ var writerIsTerminal = func(w io.Writer) bool {
 // a segment, and omitted when routing carries no producers; "now", then "last" when non-empty, then
 // "wait" when non-empty and the state is blocked, failed or awaiting; and "next" naming the
 // main-line steps still ahead, omitted when none remain.
-func RenderStatusHuman(label, runID string, st shedengine.Status, routing shedengine.Routing) string {
+// A non-empty waiting note prints "waiting <note>" in the header in place of the state.
+func RenderStatusHuman(label, runID string, st shedengine.Status, routing shedengine.Routing, waiting string) string {
 	var b strings.Builder
 
 	header := label
 	if runID != "" {
 		header += " " + runID
 	}
-	fmt.Fprintf(&b, "%s | %s\n", header, st.State)
+	if waiting != "" {
+		fmt.Fprintf(&b, "%s | waiting %s\n", header, waiting)
+	} else {
+		fmt.Fprintf(&b, "%s | %s\n", header, st.State)
+	}
 
 	var remaining []string
 	if len(routing.Producers) > 0 {

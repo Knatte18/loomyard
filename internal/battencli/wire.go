@@ -31,6 +31,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/parentreview"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -457,7 +458,19 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			},
 		},
 		InnerRun: battenshed.InnerRunDeps{
-			// ReadDecision and DriverAlive resolve the task worktree on Call like every seam here, never at wiring time.
+			// ReadDecision, DriverAlive and ReviewWait resolve the task worktree on Call like every seam here, never at wiring time.
+			ReviewWait: func() (string, error) {
+				taskLocation, err := taskWorktreeLocation(location, slug)
+				if err != nil {
+					return "", err
+				}
+				store := parentreview.Store{Root: loomengine.LoomParentReviewDir(taskLocation), LockDir: loomengine.LoomParentReviewLockDir(taskLocation)}
+				note, err := store.WaitNote()
+				if err != nil || note == "" {
+					return "", err
+				}
+				return "parent review: " + note, nil
+			},
 			ReadDecision: func() (battenshed.ChildDecision, bool, error) {
 				taskLocation, err := taskWorktreeLocation(location, slug)
 				if err != nil {

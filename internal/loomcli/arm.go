@@ -213,6 +213,7 @@ func (c *loomCLI) specFor(verb string) shedverbs.Spec {
 			PostStep:           c.loomPostStep,
 			InterruptPolicyFor: loomshed.InterruptPolicyFor,
 			StatusExtras:       c.loomStatusExtras,
+			Waiting:            reviewWaitingFor(c.location),
 		},
 	}
 

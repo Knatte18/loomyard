@@ -1,10 +1,9 @@
 // layer.go — derived task fields.
 //
-// ComputeLayers assigns each task a dependency depth, which orders entries inside a README section,
+// ComputeLayers assigns each task a dependency depth, which groups entries into layers inside a README section,
 // and RenderOrder orders tasks for output.
 // All computed at read time;
-// never stored;
-// layer letters are never rendered.
+// never stored.
 
 package boardengine
 
@@ -12,6 +11,9 @@ import (
 	"fmt"
 	"sort"
 )
+
+// isolatedLayer is the layer of an isolated task, which sorts after every dependency layer.
+const isolatedLayer = "Z"
 
 // ComputeLayers assigns each task a bucket based on topological depth.
 func ComputeLayers(tasks []Task) (map[string]string, error) {
@@ -21,7 +23,7 @@ func ComputeLayers(tasks []Task) (map[string]string, error) {
 		if t.Status != nil && *t.Status == "done" {
 			layerMap[t.Slug] = "__done__"
 		} else if t.Isolated {
-			layerMap[t.Slug] = "Z"
+			layerMap[t.Slug] = isolatedLayer
 		}
 	}
 
@@ -162,8 +164,8 @@ func RenderOrder(tasks []Task) ([]TaskWithLayer, error) {
 		"K": 10, "L": 11, "M": 12, "N": 13, "O": 14,
 		"P": 15, "Q": 16, "R": 17, "S": 18, "T": 19,
 		"U": 20, "V": 21, "W": 22, "X": 23, "Y": 24,
-		"Z":        25,
-		"__done__": 26,
+		isolatedLayer: 25,
+		"__done__":    26,
 	}
 
 	sort.Slice(result, func(i, j int) bool {
