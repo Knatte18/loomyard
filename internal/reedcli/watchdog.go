@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/cliwire"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -270,9 +271,8 @@ func enterSession(hub, tmuxPath, sessionName string) (watchedSession, error) {
 			logger.Debug("reed: watchdog's watch loop returned", "session", sessionName, "err", err)
 		}
 	}()
-	// The session-name provider is wired in by the next card; until then only pane titles are repaired.
 	go func() {
-		if err := eng.WatchNames(ctx, nil); err != nil {
+		if err := eng.WatchNames(ctx, cliwire.SessionNamer()); err != nil {
 			logger.Debug("reed: watchdog's name repair loop returned", "session", sessionName, "err", err)
 		}
 	}()

@@ -134,8 +134,10 @@ type transcriptBlock struct {
 // transcriptLine is one JSONL line of a Claude session transcript,
 // with Type discriminating entry kinds and Message.Content carrying assistant blocks.
 type transcriptLine struct {
-	Type    string `json:"type"`
-	Message struct {
+	Type string `json:"type"`
+	// CustomTitle is the session name carried by a `custom-title` line.
+	CustomTitle string `json:"customTitle"`
+	Message     struct {
 		Content []transcriptBlock `json:"content"`
 	} `json:"message"`
 }
