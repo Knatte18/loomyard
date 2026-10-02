@@ -26,24 +26,19 @@ There is no versioning: the plugins stay at `1.0.0`, and running the script is t
 
 ## Persistent notes go in git, not file-memory
 
-This project is worked in short-lived mill **worktrees** torn down on merge — the file-based `memory/` store is per-worktree and vanishes with it.
+This project is worked in short-lived task **worktrees** torn down on merge — the file-based `memory/` store is per-worktree and vanishes with it.
 Put durable notes in this file, `_lyx/raddle/`, or code comments instead: `_lyx/raddle/` content reaches the parent by being regenerated fresh against the parent's HEAD and committed onto the parent pair at landing time, never by a merge carrying the child's copy forward.
 
 ## Pushing to main — only from the worktree that IS main
 
 Direct pushes to `main` are fine here, no PR gate — but only for the agent whose own current worktree is checked out on `main` (the long-lived `loomyard` worktree).
-Never for an agent working a task worktree (`<container>/wts/<slug>`), no matter how small the change.
+Never for an agent working a task worktree (a pair, `<hub>/<slug>`), no matter how small the change.
 
 ## Worktree isolation — stay in yours
 
 An agent operates only within the worktree it was spawned in — never edit, commit, or push elsewhere, never spin up a new worktree of its own, unless the user explicitly says so for that case.
 Every other worktree is a black box: uncommitted changes, open files, a mid-commit/push you can't see.
 If work seems to belong elsewhere, say so and ask — don't resolve it unilaterally.
-
-## Mill wiki — never touched directly
-
-All wiki interaction goes through mill's wiki module: the daemon client (`wiki._client`: `upsert_task`, `set_phase`, `merge_tasks`, `list_tasks_*`) or the `/mill-*` skills.
-Never raw `git`, `Edit`/`Write`, or `cp` on wiki files (`Home.md`, `_Sidebar.md`, `proposal-*.md`, `tasks.json`) — the daemon owns the repo and serializes every write.
 
 ## Agent execution: interactive tmux, never `claude -p`
 
