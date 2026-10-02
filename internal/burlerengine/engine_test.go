@@ -62,13 +62,10 @@ func (f *fakeShuttle) Run(spec shuttleengine.Spec) (shuttleengine.Result, error)
 	return f.result, nil
 }
 
-// RunGated implements the shared fake contract every shedadapters.Shuttle/burlerengine.Shuttle test
-// fake follows (see the "every test fake evaluates the gate once" decision): delegate to Run's own
-// body, then — only when gate is non-empty and the delegated outcome is OutcomeDone — invoke the
-// entries once each in list order, skipping off entries and stopping at the first failure, returning a
-// closure's error if non-nil and otherwise stamping a *GateOutcome onto the returned Result. The fake
-// runs no re-prompt loop; there is no pane to send into, and the loop's own coverage lives against the
-// real Wait in batch 1's tests.
+// RunGated implements the shared fake contract every shedadapters.Shuttle/burlerengine.Shuttle test fake follows (see the "every test fake evaluates the gate once" decision):
+// delegate to Run's own body, then — only when gate is non-empty and the delegated outcome is OutcomeDone — invoke the entries once each in list order, skipping off entries and stopping at the first failure, returning a closure's error if non-nil and otherwise stamping a *GateOutcome onto the returned Result.
+// The fake runs no re-prompt loop;
+// there is no pane to send into, and the loop's own coverage lives against the real Wait in batch 1's tests.
 func (f *fakeShuttle) RunGated(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (shuttleengine.Result, error) {
 	f.gateSpec = gate
 
@@ -705,9 +702,7 @@ func TestEngine_Run_GateFailureFindingsNameRoundPaths(t *testing.T) {
 		t.Fatalf("Result.Gate = %+v; want populated with Passed false", got.Gate)
 	}
 
-	// Engine.Run wraps each opts.Gate entry's closure in repairReportBeforeGate before handing it to
-	// RunGated, so shuttle.gateSpec[0].Gate is the WRAPPED closure the round actually ran — re-invoking
-	// it here (the told closure is pure) recovers the findings text the round's failing attempt produced.
+	// Engine.Run wraps each opts.Gate entry's closure in repairReportBeforeGate before handing it to RunGated, so shuttle.gateSpec[0].Gate is the WRAPPED closure the round actually ran — re-invoking it here (the told closure is pure) recovers the findings text the round's failing attempt produced.
 	gateResult, gerr := shuttle.gateSpec[0].Gate()
 	if gerr != nil {
 		t.Fatalf("shuttle.gateSpec[0].Gate() = %v; want nil error", gerr)
@@ -724,8 +719,8 @@ func TestEngine_Run_GateFailureFindingsNameRoundPaths(t *testing.T) {
 	}
 }
 
-// TestEngine_Run_SecondGateEntryFindingsNameRoundPaths proves every entry of a gate list is wrapped,
-// not only the first: a failing second entry's findings carry the same repair instruction.
+// TestEngine_Run_SecondGateEntryFindingsNameRoundPaths proves every entry of a gate list is wrapped, not only the first:
+// a failing second entry's findings carry the same repair instruction.
 func TestEngine_Run_SecondGateEntryFindingsNameRoundPaths(t *testing.T) {
 	root, p := newEngineTestProfile(t)
 	shuttle := &fakeShuttle{
