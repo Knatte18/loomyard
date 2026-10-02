@@ -135,7 +135,7 @@ func runCloneWithReset(ctx context.Context, out io.Writer, args []string, reset 
 	}
 
 	if len(args) != 1 && len(args) != 2 {
-		return output.Err(out, "usage: lyx fabric clone [--reset] [--subpath <rel>] [--force-bootstrap] [--into <dir>] <weft-url> [<warp-url>]")
+		return output.Err(out, "usage: lyx fabric clone [--shortname <shortname>] [--reset] [--subpath <rel>] [--force-bootstrap] [--into <dir>] <weft-url> [<warp-url>]")
 	}
 	weftURL := args[0]
 	warpURL := ""

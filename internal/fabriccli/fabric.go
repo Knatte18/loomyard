@@ -60,10 +60,10 @@ Example:
 		RunE: clihelp.GroupRunE,
 	}
 
-	// clone [--reset] [--subpath <rel>] [--force-bootstrap] [--into <dir>] <weft-url> [<warp-url>]
+	// clone [--shortname <shortname>] [--reset] [--subpath <rel>] [--force-bootstrap] [--into <dir>] <weft-url> [<warp-url>]
 	var cloneCmd *cobra.Command
 	cloneCmd = &cobra.Command{
-		Use:   "clone [--reset] [--subpath <rel>] [--force-bootstrap] [--into <dir>] <weft-url> [<warp-url>]",
+		Use:   "clone [--shortname <shortname>] [--reset] [--subpath <rel>] [--force-bootstrap] [--into <dir>] <weft-url> [<warp-url>]",
 		Short: "bootstrap a new hub, wiring the entire topology in one shot",
 		Long: `Clone two repositories into a new hub directory (<parent>/<warp-name>-LYXHUB)
 and wire everything: the warp prime, weft prime, _board worktree, lyx-anchor
@@ -134,7 +134,7 @@ Clone wires everything automatically — no follow-up command is needed to
 activate junctions or config.
 
 Example:
-  lyx fabric clone --subpath backend https://github.com/user/mono-weft https://github.com/user/mono
+  lyx fabric clone --shortname mono --subpath backend https://github.com/user/mono-weft https://github.com/user/mono
   lyx fabric clone https://github.com/user/repo-weft
   lyx fabric clone --into ~/repos https://github.com/user/repo-weft`,
 		RunE: clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int {
