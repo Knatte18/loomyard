@@ -1,6 +1,9 @@
 model: ""  # model alias for the orchestrator session; empty uses the provider default
 effort: ""  # effort level, in shuttle's engine vocabulary; empty uses the provider default
-threshold_tokens: 400000  # context-token count at which the watcher cycles the session; an absolute count because the transcript does not state the model's window, and a value above the model's auto-compaction point lets Claude Code compact first; non-positive is floored back to 400000
+permission_mode: bypass  # permission mode of the orch session, passed to shuttle verbatim: bypass or prompt; prompt makes the session and every subagent it spawns prompt in the orch pane
+soft_threshold_tokens: 300000  # context-token count at which the watcher may cycle at a natural break, below threshold_tokens; a value at or above threshold_tokens never fires; non-positive is floored back to 300000
+soft_idle_s: 300  # seconds the newest turn end must be quiet before a soft cycle, and how long a DEFER reply holds the next soft attempt; non-positive is floored back to 300
+threshold_tokens: 400000  # hard cap: context-token count at which the watcher cycles the session; an absolute count because the transcript does not state the model's window, and a value above the model's auto-compaction point lets Claude Code compact first; non-positive is floored back to 400000
 idle_grace_s: 30  # seconds the session must stay idle after its newest event before the watcher acts; non-positive is floored back to 30
 handoff_timeout_s: 600  # seconds the session gets to write its handoff before the cycle aborts; non-positive is floored back to 600
 poll_interval_ms: 2000  # milliseconds between watcher polls; non-positive is floored back to 2000 (an unfloored 0 would busy-spin the watcher)

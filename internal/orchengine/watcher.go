@@ -11,11 +11,15 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
+
+// deferReply is the whole turn-end message with which a session declines a soft cycle.
+const deferReply = "DEFER"
 
 // Session is the seam between the cycle machine and the live orchestrator session.
 // Production satisfies it with an adapter over shuttleengine.Runner and reed.
@@ -72,6 +76,11 @@ type phaseEvents struct {
 	// turnEndAfterHandoff is set by a turn end read after handoffWritten was set,
 	// so a turn end that predates the file never opens the clear gate.
 	turnEndAfterHandoff bool
+
+	// deferred is set by the first turn end read in a soft cycle's handoff-requested phase whose message is exactly DEFER;
+	// deferRead is when it was read.
+	deferred  bool
+	deferRead time.Time
 }
 
 // NewWatcher builds a watcher over session.
@@ -174,6 +183,9 @@ func (w *Watcher) tick() (done bool, err error) {
 		if w.seen.handoffWritten && !w.replaying {
 			w.seen.turnEndAfterHandoff = true
 		}
+		if st.Phase == PhaseHandoffRequested && st.CycleTrigger == TriggerSoft && !w.seen.deferred && strings.TrimSpace(ev.Message) == deferReply {
+			w.seen.deferred, w.seen.deferRead = true, now
+		}
 	}
 	w.replaying = false
 	if readingChanged {
@@ -265,11 +277,29 @@ func (w *Watcher) tickIdle(st State, now time.Time) error {
 	if err != nil {
 		return err
 	}
-	triggered := st.LastContextKnown && st.LastContextTokens >= w.cfg.Threshold()
-	if !triggered && !requested {
+	// The trigger is chosen in a fixed order: the hard cap wins over a request, which wins over the soft threshold.
+	var trigger string
+	switch {
+	case st.LastContextKnown && st.LastContextTokens >= w.cfg.Threshold():
+		trigger = TriggerHard
+	case requested:
+		trigger = TriggerRequested
+	case st.LastContextKnown && st.LastContextTokens >= w.cfg.SoftThreshold():
+		trigger = TriggerSoft
+	default:
 		return nil
 	}
-	if w.newest == nil || !isTurnEnd(*w.newest) || now.Sub(w.newestRead) < w.cfg.IdleGrace() {
+	if w.newest == nil || !isTurnEnd(*w.newest) {
+		return nil
+	}
+	quiet := w.cfg.IdleGrace()
+	if trigger == TriggerSoft {
+		quiet = w.cfg.SoftIdle()
+		if !st.LastDeferral.IsZero() && now.Sub(st.LastDeferral) < quiet {
+			return nil
+		}
+	}
+	if now.Sub(w.newestRead) < quiet {
 		return nil
 	}
 	idle, err := w.session.SessionIdle(st.Strand)
@@ -281,11 +311,12 @@ func (w *Watcher) tickIdle(st State, now time.Time) error {
 	}
 
 	path := NewHandoffPath(w.paths, now)
-	text, err := RenderHandoffInstruction(w.stencilsDir, path)
+	text, err := renderHandoffRequest(w.stencilsDir, trigger, path)
 	if err != nil {
 		return err
 	}
 	st.PendingHandoff = path
+	st.CycleTrigger = trigger
 	if st, err = w.enter(st, PhaseHandoffRequested, now); err != nil {
 		return err
 	}
@@ -299,6 +330,14 @@ func (w *Watcher) tickIdle(st State, now time.Time) error {
 	return w.confirm(st)
 }
 
+// renderHandoffRequest renders the handoff request for trigger: the soft stencil for a soft cycle, the plain one otherwise.
+func renderHandoffRequest(stencilsDir, trigger, handoffPath string) (string, error) {
+	if trigger == TriggerSoft {
+		return RenderSoftHandoffInstruction(stencilsDir, handoffPath)
+	}
+	return RenderHandoffInstruction(stencilsDir, handoffPath)
+}
+
 func (w *Watcher) tickHandoff(st State, now time.Time) error {
 	if w.seen.ask {
 		return w.toIdle(st, "session asked a question during the handoff")
@@ -310,6 +349,20 @@ func (w *Watcher) tickHandoff(st State, now time.Time) error {
 		}
 		if idle {
 			return w.startClearing(st, now)
+		}
+	}
+	if w.seen.deferred {
+		// A file written between the stat and this tick wins over the DEFER, so the file is re-statted before returning to idle.
+		if !w.seen.handoffWritten {
+			written, err := handoffWritten(st.PendingHandoff)
+			if err != nil {
+				return err
+			}
+			w.seen.handoffWritten = written
+			if !written {
+				st.LastDeferral = w.seen.deferRead
+				return w.toIdle(st, "deferred")
+			}
 		}
 	}
 	if now.Sub(st.PhaseEnteredAt) >= w.cfg.HandoffTimeout() {
@@ -328,7 +381,7 @@ func (w *Watcher) tickHandoff(st State, now time.Time) error {
 	if !idle {
 		return nil
 	}
-	text, err := RenderHandoffInstruction(w.stencilsDir, st.PendingHandoff)
+	text, err := renderHandoffRequest(w.stencilsDir, st.CycleTrigger, st.PendingHandoff)
 	if err != nil {
 		return err
 	}

@@ -35,8 +35,17 @@ func TestLoadConfig_TemplateResolvesWithNoFile(t *testing.T) {
 	if cfg.Model != "" || cfg.Effort != "" {
 		t.Errorf("Model/Effort = %q/%q, want empty", cfg.Model, cfg.Effort)
 	}
+	if cfg.PermissionMode != "bypass" {
+		t.Errorf("PermissionMode = %q, want bypass", cfg.PermissionMode)
+	}
 	if got := cfg.Threshold(); got != 400000 {
 		t.Errorf("Threshold() = %d, want 400000", got)
+	}
+	if got := cfg.SoftThreshold(); got != 300000 {
+		t.Errorf("SoftThreshold() = %d, want 300000", got)
+	}
+	if got := cfg.SoftIdle(); got != 300*time.Second {
+		t.Errorf("SoftIdle() = %v, want 300s", got)
 	}
 	if got := cfg.IdleGrace(); got != 30*time.Second {
 		t.Errorf("IdleGrace() = %v, want 30s", got)
@@ -51,7 +60,7 @@ func TestLoadConfig_TemplateResolvesWithNoFile(t *testing.T) {
 
 func TestLoadConfig_PresentFileOverrides(t *testing.T) {
 	tmpDir := t.TempDir()
-	seedLyxConfig(t, tmpDir, "orch", "model: opus\neffort: high\nthreshold_tokens: 90000\nidle_grace_s: 5\nhandoff_timeout_s: 60\npoll_interval_ms: 250\n")
+	seedLyxConfig(t, tmpDir, "orch", "model: opus\neffort: high\npermission_mode: prompt\nsoft_threshold_tokens: 70000\nsoft_idle_s: 7\nthreshold_tokens: 90000\nidle_grace_s: 5\nhandoff_timeout_s: 60\npoll_interval_ms: 250\n")
 
 	cfg, err := orchengine.LoadConfig(tmpDir, "orch")
 	if err != nil {
@@ -60,8 +69,17 @@ func TestLoadConfig_PresentFileOverrides(t *testing.T) {
 	if cfg.Model != "opus" || cfg.Effort != "high" {
 		t.Errorf("Model/Effort = %q/%q, want opus/high", cfg.Model, cfg.Effort)
 	}
+	if cfg.PermissionMode != "prompt" {
+		t.Errorf("PermissionMode = %q, want prompt", cfg.PermissionMode)
+	}
 	if got := cfg.Threshold(); got != 90000 {
 		t.Errorf("Threshold() = %d, want 90000", got)
+	}
+	if got := cfg.SoftThreshold(); got != 70000 {
+		t.Errorf("SoftThreshold() = %d, want 70000", got)
+	}
+	if got := cfg.SoftIdle(); got != 7*time.Second {
+		t.Errorf("SoftIdle() = %v, want 7s", got)
 	}
 	if got := cfg.IdleGrace(); got != 5*time.Second {
 		t.Errorf("IdleGrace() = %v, want 5s", got)
@@ -85,9 +103,15 @@ func TestLoadConfig_InvalidFileErrors(t *testing.T) {
 
 func TestConfig_AccessorsFloorNonPositive(t *testing.T) {
 	for _, v := range []int{0, -1} {
-		cfg := orchengine.Config{ThresholdTokens: v, IdleGraceS: v, HandoffTimeoutS: v, PollIntervalMS: v}
+		cfg := orchengine.Config{ThresholdTokens: v, SoftThresholdTokens: v, SoftIdleS: v, IdleGraceS: v, HandoffTimeoutS: v, PollIntervalMS: v}
 		if got := cfg.Threshold(); got != 400000 {
 			t.Errorf("Threshold() with %d = %d, want 400000", v, got)
+		}
+		if got := cfg.SoftThreshold(); got != 300000 {
+			t.Errorf("SoftThreshold() with %d = %d, want 300000", v, got)
+		}
+		if got := cfg.SoftIdle(); got != 300*time.Second {
+			t.Errorf("SoftIdle() with %d = %v, want 300s", v, got)
 		}
 		if got := cfg.IdleGrace(); got != 30*time.Second {
 			t.Errorf("IdleGrace() with %d = %v, want 30s", v, got)

@@ -304,7 +304,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 			if sh == nil {
 				sh = shell.Pwsh()
 			}
-			got := buildLaunchCmd(sh, tt.bin, tt.promptPath, tt.settingsPath, tt.sessionID, tt.model, tt.effort, tt.notice, tt.interactive, tt.forkSubagents)
+			got := buildLaunchCmd(sh, tt.bin, tt.promptPath, tt.settingsPath, tt.sessionID, tt.model, tt.effort, tt.notice, false, !tt.interactive, tt.forkSubagents)
 			if got != tt.want {
 				t.Errorf("buildLaunchCmd(...) = %q; want %q", got, tt.want)
 			}
@@ -415,7 +415,7 @@ func TestBuildResumeCmd(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := buildResumeCmd(shell.Pwsh(), "claude", `C:\run\settings.json`, "abc-123", tt.model, tt.effort, tt.notice, tt.interactive, tt.forkSubagents)
+			got := buildResumeCmd(shell.Pwsh(), "claude", `C:\run\settings.json`, "abc-123", tt.model, tt.effort, tt.notice, !tt.interactive, tt.forkSubagents)
 			if got != tt.want {
 				t.Errorf("buildResumeCmd(...) = %q; want %q", got, tt.want)
 			}
@@ -431,11 +431,35 @@ func TestBuildResumeCmd_NoticePosix(t *testing.T) {
 	notice := noticeAgentForkDeny + " " + noticeAskUserQuestionDeny
 	want := `CLAUDE_CODE_FORK_SUBAGENT='1' 'claude' --resume 'abc-123' --settings '/run/settings.json' --name "${LYX_STRAND_NAME}" --dangerously-skip-permissions --append-system-prompt '` + notice + `'`
 
-	got := buildResumeCmd(shell.Posix(), "claude", "/run/settings.json", "abc-123", "", "", notice, false, true)
+	got := buildResumeCmd(shell.Posix(), "claude", "/run/settings.json", "abc-123", "", "", notice, true, true)
 	if got != want {
 		t.Errorf("buildResumeCmd(...) = %q; want %q", got, want)
 	}
 	if strings.ContainsAny(got, "\r\n") {
 		t.Errorf("buildResumeCmd(...) = %q; contains a newline, but the command is typed via a single send-keys call", got)
+	}
+}
+
+// TestValidatePermissionMode pins the mode resolution table.
+func TestValidatePermissionMode(t *testing.T) {
+	tests := []struct {
+		mode        string
+		interactive bool
+		wantSkip    bool
+		wantErr     bool
+	}{
+		{"", false, true, false},
+		{"", true, false, false},
+		{"bypass", true, true, false},
+		{"bypass", false, true, false},
+		{"prompt", true, false, false},
+		{"prompt", false, false, true},
+		{"Bypass", true, false, true},
+	}
+	for _, tt := range tests {
+		got, err := validatePermissionMode(tt.mode, tt.interactive)
+		if (err != nil) != tt.wantErr || got != tt.wantSkip {
+			t.Errorf("validatePermissionMode(%q, %v) = (%v, %v); want skip=%v err=%v", tt.mode, tt.interactive, got, err, tt.wantSkip, tt.wantErr)
+		}
 	}
 }

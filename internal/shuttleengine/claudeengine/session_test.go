@@ -37,6 +37,21 @@ func TestIdleSession(t *testing.T) {
 			want:    false,
 		},
 		{
+			name:    "named session labels the top rule",
+			capture: rule + " tst:orch ─\n❯ \n" + rule + "\n  ? for shortcuts\n",
+			want:    true,
+		},
+		{
+			name:    "draft line shaped like a labelled rule below the caret",
+			capture: rule + "\n❯ \n  ─── note ─\n  more text\n" + rule + "\n  ? for shortcuts\n",
+			want:    false,
+		},
+		{
+			name:    "label with no trailing rule glyph is not a top rule",
+			capture: rule + " tst:orch\n❯ \n" + rule + "\n  ? for shortcuts\n",
+			want:    false,
+		},
+		{
 			name:    "boxed side bars around an empty box",
 			capture: "╭" + rule + "╮\n│ ❯          │\n╰" + rule + "╯\n",
 			want:    true,

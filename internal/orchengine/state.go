@@ -38,6 +38,13 @@ const (
 	PhaseResuming         Phase = "resuming"
 )
 
+// The triggers that start a cycle, recorded in State.CycleTrigger.
+const (
+	TriggerSoft      = "soft"      // The context reading passed the soft threshold at a natural break.
+	TriggerHard      = "hard"      // The context reading reached the hard cap.
+	TriggerRequested = "requested" // An operator or session asked for a cycle.
+)
+
 // State is the persisted orch record.
 type State struct {
 	Strand string `json:"strand"` // Guid of the orch strand, written by start.
@@ -60,6 +67,9 @@ type State struct {
 	LastAbortReason string `json:"last_abort_reason"` // Why the last cycle aborted.
 	Stuck           string `json:"stuck"`             // Why the current phase is overdue and waiting on the session; empty while on time.
 	WatcherExit     string `json:"watcher_exit"`      // Why the last watcher exited; empty while one runs.
+
+	CycleTrigger string    `json:"cycle_trigger"` // Trigger that started the current or last cycle: TriggerSoft, TriggerHard or TriggerRequested.
+	LastDeferral time.Time `json:"last_deferral"` // When the last DEFER turn end was read; zero when none.
 }
 
 // LoadState reads the persisted state, returning a zero State in phase idle when the file is absent.
@@ -157,7 +167,7 @@ func NewHandoffPath(p Paths, now time.Time) string {
 // ResetForFreshLaunch returns s prepared for a newly launched session on strand.
 // A non-idle phase is recorded in LastAbortReason as abandoned;
 // the offsets are zeroed because a new run has a new events file.
-// LastHandoff, CycleCount and the context reading survive.
+// LastHandoff, CycleCount, the context reading, CycleTrigger and LastDeferral survive.
 func ResetForFreshLaunch(s State, strand string) State {
 	if s.Phase != "" && s.Phase != PhaseIdle {
 		s.LastAbortReason = fmt.Sprintf("fresh launch abandoned phase %s", s.Phase)
