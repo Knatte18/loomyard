@@ -77,8 +77,9 @@ func committedRounds(deps PRReworkDeps) ([]committedRound, error) {
 // PlanReviewSkippable reports whether the live plan generation is exempt from Plan-Review, decided from committed state.
 // The live generation's round is the highest committed round whose record carries a class and whose first_card equals the live overview's first_card (absent means 1);
 // with none, the live plan is generation 0 and never skips.
-// It reports true only when that round's record is classed exempt and ReviewExempt over the live committed cards agrees.
-// An error means the committed plan or a committed record could not be read or decoded; the Bouncer then reviews for real.
+// It reports true only when that round's record is classed exempt and ReviewExempt agrees over both the live committed cards and the working-tree cards.
+// The working tree counts because a Plan-Burler round commits nothing: its edits land only through the approve-and-commit a skip would run, unreviewed.
+// An error means the committed plan, a committed record or the working-tree plan could not be read or decoded; the Bouncer then reviews for real.
 //
 // The inputs are not Go-only: the rework session writes the overview's first_card, and status commits sweep the rework directory,
 // so an agent-written record.json can reach HEAD.
@@ -101,10 +102,14 @@ func PlanReviewSkippable(deps PRReworkDeps) (bool, error) {
 			live, rec, found = r.number, r.record, true
 		}
 	}
-	if !found || rec.Class != ReworkClassExempt {
+	if !found || rec.Class != ReworkClassExempt || !planparser.ReviewExempt(plan) {
 		return false, nil
 	}
-	return planparser.ReviewExempt(plan), nil
+	working, err := planparser.ParsePlan(deps.PlanDir)
+	if err != nil {
+		return false, fmt.Errorf("loomshed: plan-review skip: parse working-tree plan: %w", err)
+	}
+	return planparser.ReviewExempt(working), nil
 }
 
 // ArchivedWebsterDirs lists each round's archived webster directory under reworkDir, ascending by round number.

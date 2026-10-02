@@ -170,8 +170,9 @@ producers:
       # skip_seam: rework-exempt lets a rework generation whose cards are all exempt pass without a
       # judge. Its inputs are agent-written -- the overview's first_card and a swept record.json --
       # so the seam re-classifies the live committed cards: a stale or forged record can at most
-      # skip a generation whose live cards are themselves exempt. Generation 0 never skips, and a
-      # seam error falls back to a real review.
+      # skip a generation whose live cards are themselves exempt. It also re-classifies the
+      # working-tree cards, since a Plan-Burler fix lands only through the commit a skip runs.
+      # Generation 0 never skips, and a seam error falls back to a real review.
       skip_seam: rework-exempt
       # No model/effort/version key: the absence is what makes this row take the run-wide
       # Env.Review* values loom.yaml supplies, rather than a recipe-literal, untunable-without-a-

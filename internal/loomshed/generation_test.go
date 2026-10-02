@@ -58,6 +58,12 @@ func TestPlanReviewSkippable(t *testing.T) {
 			f.commitWorkingPlan()
 			f.commitRoundAt(1, 2, ReworkClassExempt)
 		}, false},
+		{"uncommitted working-tree edit that classifies required", func(f *reworkFixture) {
+			f.writeGeneration(2, proseCard)
+			f.commitWorkingPlan()
+			f.commitRoundAt(1, 2, ReworkClassExempt)
+			f.writeGeneration(2, sourceCard)
+		}, false},
 		{"exempt record over live cards that classify required", func(f *reworkFixture) {
 			f.writeGeneration(2, sourceCard)
 			f.commitWorkingPlan()
