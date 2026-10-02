@@ -6,6 +6,7 @@ package claudeengine
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -48,8 +49,10 @@ func checkResumable(sessionID, projectDir, registryDir string, alive func(pid in
 	}
 
 	transcript := filepath.Join(projectDir, sessionID+".jsonl")
-	if _, err := os.Stat(transcript); err != nil {
+	if _, err := os.Stat(transcript); errors.Is(err, os.ErrNotExist) {
 		return "", fmt.Errorf("claudeengine: no transcript for session %s in %s; only a session run from this directory can be resumed: %w", sessionID, projectDir, err)
+	} else if err != nil {
+		return "", fmt.Errorf("claudeengine: cannot stat the transcript of session %s: %w", sessionID, err)
 	}
 
 	entries, err := os.ReadDir(registryDir)
