@@ -4,6 +4,8 @@
 package websterengine_test
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"maps"
 	"os"
@@ -321,5 +323,119 @@ func TestRebaseline_StateWithoutPlanFileHashesChecksBegunCardsOnly(t *testing.T)
 
 	if _, err := websterengine.Rebaseline(rebaselineFixtureDeps(fx)); err != nil {
 		t.Fatalf("Rebaseline() error = %v; want nil for a state without PlanFileHashes", err)
+	}
+}
+
+// fileSHA is the hex SHA-256 of the file at path, the hash State.PlanFileHashes and BatchState.CardHashes record.
+func fileSHA(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
+}
+
+// handlePlan is a three-card plan whose card 2 declares a draft handle that card 1 Uses, so canonicalizing card 2's handle rewrites card 1 as well.
+func handlePlan(draft bool) map[string]string {
+	spelling := "Baz"
+	if draft {
+		spelling = "Bazz"
+	}
+	return map[string]string{
+		"00-overview.md": "---\nformat: 5\napproved: true\nlanguage: go\n---\n\n# Plan: handle fixture\n\n## Card Index\n\n" +
+			"1 — json-flag — uses a handle card 2 declares\n2 — list-tests — declares the handle\n3 — third — an unbegun card\n",
+		"01-json-flag.md":  "# Card 1 — json-flag\n\n**Prosa:**\n- `base.txt`\n\n**Uses:**\n- `plan:internal/foo#" + spelling + "`\n\n**Intent:** placeholder card.\n",
+		"02-list-tests.md": "# Card 2 — list-tests\n\n**Create:**\n- `plan:internal/foo#" + spelling + "` -> `func Baz()`\n\n**Intent:** declare the handle.\n",
+		"03-third.md":      "# Card 3 — third\n\n**Prosa:**\n- `base.txt`\n\n**Intent:** placeholder card.\n",
+	}
+}
+
+// beginThenLeaveHandleDraft returns a fixture whose batch 1 is begun and done, and whose plan on disk carries card 2's handle in draft spelling
+// with state.json describing exactly those bytes, so the next BeginBatch's canonicalization rewrites begun card 1 (#330).
+func beginThenLeaveHandleDraft(t *testing.T) *beginFixture {
+	t.Helper()
+	fx := newBeginFixture(t)
+	writePlan := func(files map[string]string) {
+		for name, body := range files {
+			if err := os.WriteFile(filepath.Join(fx.PlanDir, name), []byte(body), 0o644); err != nil {
+				t.Fatalf("write %s: %v", name, err)
+			}
+		}
+	}
+	writePlan(handlePlan(false))
+	plan, err := planparser.ParsePlan(fx.PlanDir)
+	if err != nil {
+		t.Fatalf("ParsePlan: %v", err)
+	}
+	fx.Deps.Plan = plan
+	fx.Deps.Batches = append(fx.Deps.Batches, batcher.Batch{Cards: []planparser.Card{{Number: 3, Slug: "third", Title: "third", Intent: "placeholder card third"}}})
+	fx.Deps.State.PlanFingerprint = mustFingerprint(t, fx.PlanDir)
+	beginAndFinishBatchOne(t, fx)
+
+	writePlan(handlePlan(true))
+	if fx.Deps.Plan, err = planparser.ParsePlan(fx.PlanDir); err != nil {
+		t.Fatalf("ParsePlan: %v", err)
+	}
+	st := fx.Deps.State
+	st.PlanFingerprint = mustFingerprint(t, fx.PlanDir)
+	for name := range st.PlanFileHashes {
+		st.PlanFileHashes[name] = fileSHA(t, filepath.Join(fx.PlanDir, name))
+	}
+	st.Batches[1].CardHashes["01-json-flag"] = fileSHA(t, filepath.Join(fx.PlanDir, "01-json-flag.md"))
+	return fx
+}
+
+func TestRebaseline_AfterBeginBatchRewroteBegunCard_Regression330(t *testing.T) {
+	fx := beginThenLeaveHandleDraft(t)
+	st := fx.Deps.State
+	card1 := filepath.Join(fx.PlanDir, "01-json-flag.md")
+	draftHash := st.Batches[1].CardHashes["01-json-flag"]
+
+	if _, err := websterengine.BeginBatch(fx.Deps, 2); err != nil {
+		t.Fatalf("BeginBatch(2) error = %v; want nil", err)
+	}
+	rewritten, err := os.ReadFile(card1)
+	if err != nil {
+		t.Fatalf("read card 1: %v", err)
+	}
+	if !strings.Contains(string(rewritten), "plan:internal/foo#Baz`") {
+		t.Fatalf("card 1 = %q; want the handle canonicalized, or the fixture exercises no rewrite", rewritten)
+	}
+	if got := st.Batches[1].CardHashes["01-json-flag"]; got == draftHash || got != fileSHA(t, card1) {
+		t.Fatalf("batch 1 CardHashes = %q; want it moved to the rewritten card's hash %q", got, fileSHA(t, card1))
+	}
+
+	if err := os.WriteFile(filepath.Join(fx.PlanDir, "03-third.md"), []byte("# Card 3 — third\n\n**Prosa:**\n- `base.txt`\n\n**Intent:** reworded.\n"), 0o644); err != nil {
+		t.Fatalf("edit card 3: %v", err)
+	}
+	deps := rebaselineFixtureDeps(fx)
+	deps.Cards = []int{3}
+	if _, err := websterengine.Rebaseline(deps); err != nil {
+		t.Fatalf("Rebaseline() naming card 3 error = %v; want nil", err)
+	}
+}
+
+func TestRebaseline_ForeignEditToBegunCardStaysRefused(t *testing.T) {
+	fx := newBeginFixture(t)
+	beginAndFinishBatchOne(t, fx)
+	recorded := maps.Clone(fx.Deps.State.Batches[1].CardHashes)
+
+	card := filepath.Join(fx.PlanDir, "01-json-flag.md")
+	if err := os.WriteFile(card, []byte("# Card 1 — json-flag\n\n**Prosa:**\n- `base.txt`\n\n**Intent:** edited by someone else.\n"), 0o644); err != nil {
+		t.Fatalf("edit card: %v", err)
+	}
+	if _, err := websterengine.BeginBatch(fx.Deps, 2); !errors.Is(err, websterengine.ErrFingerprintMismatch) {
+		t.Fatalf("BeginBatch(2) error = %v; want errors.Is(err, ErrFingerprintMismatch)", err)
+	}
+	if got := fx.Deps.State.Batches[1].CardHashes; !maps.Equal(got, recorded) {
+		t.Errorf("CardHashes = %v; want %v unchanged by the refused call", got, recorded)
+	}
+
+	deps := rebaselineFixtureDeps(fx)
+	deps.Cards = []int{1}
+	if _, err := websterengine.Rebaseline(deps); !errors.Is(err, websterengine.ErrRebaselineCardSetChanged) {
+		t.Fatalf("Rebaseline() naming card 1 error = %v; want errors.Is(err, ErrRebaselineCardSetChanged)", err)
 	}
 }

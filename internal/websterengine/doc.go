@@ -159,6 +159,14 @@
 // what keeps the persist narrow: an unchanged fingerprint writes nothing,
 // so a genuine foreign edit still fails exactly as it did.
 //
+// The restamp also moves the recorded CardHashes of every begun card the rewrite changed,
+// so webster's own rewrite of a begun card is not later refused as an operator edit that `rebaseline` cannot accept.
+// It moves a hash only when the recorded hash equals the pre-rewrite plan file hash for that card's file;
+// a card an earlier untracked rewrite already moved keeps its old hash and stays refused.
+// Each restamp site runs after a foreign-edit check passed in the same call, so an edit on disk when the call starts is refused, never adopted.
+// The check precedes the rewrite rather than being atomic with the restamp, so an edit landing between the two in one call is adopted with the rewrite.
+// `rebaseline` accepts an operator's edit, so it never moves a begun card's hash.
+//
 // A foreign edit an operator means to keep has its own way forward:
 // `lyx webster rebaseline --card NN` (Rebaseline) accepts the on-disk plan as the new baseline without dropping any batch record, provided the edited plan's batch of each recorded number still holds exactly the cards that record names.
 // The operator names every card the edit changed with --card: State.PlanFileHashes records a hash of every plan file, and a changed card file whose number is not named is refused.
