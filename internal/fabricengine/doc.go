@@ -439,14 +439,14 @@
 // (reconcile.go's reconcileWarpBinding), with the CLI layer driving the commit and push, exactly as
 // clone's own binding write is committed CLI-side.
 //
-// The hub's agent-name code is a fifth repo-wide record, held the same way as a plain single-line file, `.lyx-code`, beside `.lyx-warp` at the board root (see codebinding.go).
+// The hub's shortname is a fifth repo-wide record, held the same way as a plain single-line file, `.lyx-shortname`, beside `.lyx-warp` at the board root (see shortnamebinding.go).
 // This package alone reads and writes it.
 // At clone the CLI layer commits it onto weft:main through Bolt, with the rest of the fresh hub;
-// on a live hub `CommitCode` (codecommit.go) commits it alone under the board write lock, so no pending board change rides along.
-// `lyx fabric clone --code <code>` records it; a clone of a fresh bind (a weft carrying neither `.lyx-warp` nor `.lyx-anchor`) refuses without `--code`,
-// while a bound weft that lacks the record takes `--code` or warns.
-// `lyx fabric code [<code>]` prints the recorded code, or records one on a hub that has none, which is how a repo bound before codes existed gets its code.
-// The grammar and the way reed uses the code are the Agent Name Invariant in CONSTRAINTS.md.
+// on a live hub `CommitShortname` (shortnamecommit.go) commits it alone under the board write lock, so no pending board change rides along.
+// `lyx fabric clone --shortname <shortname>` records it; a clone of a fresh bind (a weft carrying neither `.lyx-warp` nor `.lyx-anchor`) refuses without `--shortname`,
+// while a bound weft that lacks the record takes `--shortname` or warns.
+// `lyx fabric shortname [<shortname>]` prints the recorded shortname, or records one on a hub that has none, which is how a repo bound before shortnames existed gets its shortname.
+// The grammar and the way reed uses the shortname are the Agent Name Invariant in CONSTRAINTS.md.
 //
 // The anchor, the repo-wide config, and the warp binding are the three repo-wide records that let a
 // later `lyx fabric reconcile` re-wire a hub with no re-clone at all;

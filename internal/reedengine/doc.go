@@ -124,7 +124,7 @@
 //
 // A strand's full name is formed once, in AddStrand under the state lock, from the prefix the told geometry carries and the strand's role (the grammar is the Agent Name Invariant in CONSTRAINTS.md).
 // A role already held in the worktree is numbered `-N`, and an explicit name that is held refuses.
-// A role-less add takes the default role `strand`, and an empty told code refuses before anything boots, naming `lyx fabric code <code>`.
+// A role-less add takes the default role `strand`, and an empty told shortname refuses before anything boots, naming `lyx fabric shortname <shortname>`.
 // The name is a birth attribute and the only lookup key: it is stored in the strand record and every by-name lookup resolves through it, matching the full name, its role segment, or a legacy exact name.
 // The retired `strand_name` config key is ignored on load.
 //
