@@ -73,3 +73,5 @@ lyx board prune
 
 A `body` renders as ordinary markdown with semantic line breaks.
 A single newline is a soft break, so structure a body with headings and lists rather than relying on line breaks for layout.
+Never name another entry as a dependency in a brief or body: put it in `depends_on` with `lyx board set-deps`.
+The README computes After and Before from `depends_on`, drops a finished entry from both, and `prune` strips it, while a dependency written as prose goes stale once that entry lands.

@@ -298,7 +298,7 @@ User-facing modules each get one `lyx <module>` namespace:
 
 - **board** — the task-tracker board, which is also the roadmap (`internal/boardcli` + `internal/boardengine`).
   One `board.json` store holds every entry, and each entry carries a tier (Planned, Next Up or Someday) and a type.
-  The README renders one section per tier.
+  The README renders one section per tier, split into dependency layers whose entries can run in parallel, and links each slug to its design doc.
   Agents use the board through the `ly:board` skill.
   ✅ Implemented.
 - **config** — interactive menu for viewing and editing module configs;
@@ -402,6 +402,7 @@ User-facing modules each get one `lyx <module>` namespace:
   `Publish` returns Done once the PR is open, refreshing its title and body from the description.
   `Describe` writes the change description at `_lyx/landing/summary.md`, the single source for the PR title and body and for the landing commit, whose message carries exactly one `Co-Authored-By` trailer that Go appends from `landing.yaml`'s `co_authored_by`.
   `PR-Gate` returns Done on a valid approval (matching the branch's current HEAD), and `Finalize` closes the open PR with a comment naming the landing commit, tolerates an already-landed parent, and marks the board task `done` after the parent merge.
+  Every run transition before that writes the board task's status as `<state> · <producer>` (for example `awaiting · PR-Gate`), so the board README shows where each run stands; a failed board write only warns.
   `Publish` and `Finalize` each run the plan's verify command after a parent merge-in that changed the task tree, and halt Stuck on a failure, with the command's output in the loom verify-output log;
   a pending-verify marker keeps the gate armed across a resume until a verify passes.
   `landing.yaml` gains `describe` (the row's model), `describe_timeout_min` and `co_authored_by`; an existing hub picks them up with `lyx config reconcile --apply`, and an in-flight run parked past `Webster-Bouncer` is restarted rather than migrated.

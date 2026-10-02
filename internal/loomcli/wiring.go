@@ -28,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
+	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -50,6 +51,9 @@ type commitStatusDeps struct {
 	Commit func(msg string) error
 	// Push pushes the fabric sibling worktree's unpushed commits.
 	Push func() error
+	// SetBoardStatus writes status onto the run's board entry, leaving an entry that is absent or already done untouched.
+	// Nil writes nothing.
+	SetBoardStatus func(status string) error
 }
 
 // statusCommitPathspec returns the fabric-sibling pathspec one status commit stages: shedrun.StatusRel(location, runID), plus each of loomengine.LoomReviewsDirRel(), loomengine.LoomDurableDirRel() and shedrun.DriveReportsRel(location, runID) when its directory holds at least one non-directory entry anywhere beneath it.
@@ -152,7 +156,28 @@ func loomCommitStatusDeps(location *lyxcwd.Location, runID string) commitStatusD
 			_, err := fabricengine.PushAnchored(location, fabricengine.EnvSyncOptions())
 			return err
 		},
+		SetBoardStatus: func(status string) error {
+			board, err := openHubBoard(location)
+			if err != nil {
+				return err
+			}
+			slug := shedrun.ResolveRunID(location, runID)
+			task, found, err := board.GetTask(slug)
+			if err != nil || !found || (task.Status != nil && *task.Status == "done") {
+				return err
+			}
+			return board.SetStatus(slug, &status)
+		},
 	}
+}
+
+// boardStatus is the board entry status for a run transition: the shed state and the producer it stands at, so the README shows where each run is.
+// A finished run writes nothing, since landing marks the entry done itself.
+func boardStatus(producer, state string) (string, bool) {
+	if state == string(shedengine.StateDone) {
+		return "", false
+	}
+	return state + " · " + producer, true
 }
 
 // commitStatusMessage renders the commit message for a per-transition status commit. It is a
@@ -200,8 +225,10 @@ func commitStatusFailureDisposition(deps commitStatusDeps, producer, state strin
 	return commitErr
 }
 
-// newCommitStatusSeam builds the shedengine.Shed.CommitStatus closure from deps, implementing three
-// dispositions, evaluated in the order they appear in the closure body -- skip first, then commit,
+// newCommitStatusSeam builds the shedengine.Shed.CommitStatus closure from deps.
+// It first writes the run's board status when that status changed, and a failed board write only warns:
+// the board is the hub's overview, never the run's own bookkeeping.
+// It then implements three dispositions, evaluated in the order they appear in the closure body -- skip first, then commit,
 // then push:
 //
 //  1. skip-while-mid-merge: MergeActive reporting true skips both Commit and Push, logged at warn. A
@@ -222,7 +249,16 @@ func commitStatusFailureDisposition(deps commitStatusDeps, producer, state strin
 //     rather than something a background persist may rewrite history over -- and an unreachable
 //     remote is the offline case the disposition exists for -- so the two land in the same place.
 func newCommitStatusSeam(deps commitStatusDeps) func(producer, state string) error {
+	lastBoardStatus := ""
 	return func(producer, state string) error {
+		if status, ok := boardStatus(producer, state); ok && deps.SetBoardStatus != nil && status != lastBoardStatus {
+			if err := deps.SetBoardStatus(status); err != nil {
+				logger.Warn("loomcli: board status write failed, next transition retries", "status", status, "error", err)
+			} else {
+				lastBoardStatus = status
+			}
+		}
+
 		active, err := deps.MergeActive()
 		if err != nil {
 			logger.Warn("loomcli: skip status commit, merge-state probe failed", "producer", producer, "state", state, "error", err)

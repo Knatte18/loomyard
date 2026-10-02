@@ -40,7 +40,7 @@ func Command() *cobra.Command {
 		Long: `board manages the task-tracker board for the current lyx worktree.
 
 The board is one store: every entry carries a tier (1 planned, 2 next up, 3 someday) and a
-type (the kind of work it is). The README renders one section per tier, and an entry may only
+type (the kind of work it is). The README renders one section per tier, split into dependency layers, and an entry may only
 depend on entries at the same or a lower tier number. Agents read and write the board through
 "lyx board", never through the JSON files under _board.
 
