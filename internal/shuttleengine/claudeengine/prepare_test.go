@@ -160,7 +160,7 @@ func TestPrepare_AppendSystemPromptMatchesDenyNotice(t *testing.T) {
 				for _, fork := range []bool{false, true} {
 					cfg := shuttleengine.Config{ClaudeDenyAgentTool: denyAgent, ClaudeDenyAskUserQuestion: denyAsk}
 					spec := shuttleengine.Spec{Prompt: "do the thing", Interactive: interactive, ForkSubagents: fork}
-					notice := buildDenyNotice(interactive, cfg, fork)
+					notice := buildDenyNotice(interactive, cfg, fork, false)
 
 					launch, err := New().Prepare(t.TempDir(), spec, cfg)
 					if err != nil {

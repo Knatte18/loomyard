@@ -59,6 +59,13 @@ type Spec struct {
 	// ForkSubagents is engine vocabulary, exactly like Effort/Version above —
 	// validate does not inspect this field at all.
 	ForkSubagents bool
+	// AllowAgentTool, when true, lets this one run use the Agent tool for
+	// every subagent type: the engine installs no Agent deny and announces
+	// none, whatever the shuttle config's claude_deny_agent_tool says.
+	// Engine vocabulary exactly like ForkSubagents — validate does not
+	// inspect this field at all. No config key or CLI flag reaches it; only
+	// a caller that sets it gets the allowance.
+	AllowAgentTool bool
 	// PermissionMode, when non-empty, selects the run's permission mode;
 	// empty defers to the run mode's default. PermissionMode values are
 	// provider vocabulary, exactly like Effort — validate does NOT inspect

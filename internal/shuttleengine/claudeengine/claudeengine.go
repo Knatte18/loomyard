@@ -94,7 +94,7 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 		}
 	}
 
-	settingsJSON, err := buildSettings(eventsPathForHook, spec.Interactive, cfg, spec.ForkSubagents)
+	settingsJSON, err := buildSettings(eventsPathForHook, spec.Interactive, cfg, spec.ForkSubagents, spec.AllowAgentTool)
 	if err != nil {
 		return shuttleengine.Launch{}, fmt.Errorf("build settings: %w", err)
 	}
@@ -104,7 +104,7 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 	}
 
 	bin := claudeBinary(cfg)
-	notice := buildDenyNotice(spec.Interactive, cfg, spec.ForkSubagents)
+	notice := buildDenyNotice(spec.Interactive, cfg, spec.ForkSubagents, spec.AllowAgentTool)
 	// sh selects pane-shell mechanics per OS (pwsh on Windows, posix elsewhere).
 	sh := shell.ForGOOS()
 	return shuttleengine.Launch{

@@ -3,7 +3,7 @@
 // reads),
 // and the PreToolUse guardrails that keep a run's work visible in its own pane — denying the
 // in-process Agent tool (or, in a fork-mode run, letting fork subagents through it while still
-// denying every other subagent type),
+// denying every other subagent type; a run with Spec.AllowAgentTool set installs no Agent deny at all),
 // refusing `lyx webster` verbs from inside a fork in a fork-mode run (the fork-context deadlock
 // guard), denying AskUserQuestion in autonomous runs (where there is no operator present to answer
 // it), and recording — never denying — a live AskUserQuestion call in interactive runs so the run
@@ -86,13 +86,14 @@ func denyJSON(steer string) string {
 // denyInstalls reports which standing denies a run installs: the Agent deny, and the AskUserQuestion deny.
 // buildSettings and buildDenyNotice both read it, so the hooks and their announcement cannot drift.
 // An interactive run's AskUserQuestion hook only records, never denies, so it reports no AskUserQuestion deny.
-func denyInstalls(interactive bool, cfg shuttleengine.Config) (agentDeny, askUserDeny bool) {
-	return cfg.ClaudeDenyAgentTool, !interactive && cfg.ClaudeDenyAskUserQuestion
+// allowAgentTool is the per-run override (Spec.AllowAgentTool): it removes the Agent deny whatever cfg.ClaudeDenyAgentTool says.
+func denyInstalls(interactive bool, cfg shuttleengine.Config, allowAgentTool bool) (agentDeny, askUserDeny bool) {
+	return cfg.ClaudeDenyAgentTool && !allowAgentTool, !interactive && cfg.ClaudeDenyAskUserQuestion
 }
 
 // buildDenyNotice returns the one-line system-prompt notice announcing each deny buildSettings installs under the same inputs, or "" when it installs none.
-func buildDenyNotice(interactive bool, cfg shuttleengine.Config, forkSubagents bool) string {
-	agentDeny, askUserDeny := denyInstalls(interactive, cfg)
+func buildDenyNotice(interactive bool, cfg shuttleengine.Config, forkSubagents, allowAgentTool bool) string {
+	agentDeny, askUserDeny := denyInstalls(interactive, cfg, allowAgentTool)
 	var sentences []string
 	if agentDeny {
 		if forkSubagents {
@@ -109,8 +110,9 @@ func buildDenyNotice(interactive bool, cfg shuttleengine.Config, forkSubagents b
 
 // buildSettings marshals settings.json: a Stop hook appending turn-end events to eventsPathPosix, and PreToolUse guardrails per cfg and interactive.
 // eventsPathPosix must be a git-bash POSIX path (from shuttleengine.PosixPath); it's embedded via shQuote to escape any apostrophes.
-// Agent-tool and AskUserQuestion denies are controlled by cfg; forkSubagents narrows the Agent deny to non-fork subagent types and adds a webster-verb guard.
-func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.Config, forkSubagents bool) ([]byte, error) {
+// Agent-tool and AskUserQuestion denies are controlled by cfg; forkSubagents narrows the Agent deny to non-fork subagent types and adds a webster-verb guard,
+// and allowAgentTool drops the Agent deny entirely while leaving the webster-verb guard keyed on forkSubagents alone.
+func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.Config, forkSubagents, allowAgentTool bool) ([]byte, error) {
 	quotedEventsPath := shQuote(eventsPathPosix)
 	stopCmd := fmt.Sprintf("cat >> %s && printf '\\n' >> %s", quotedEventsPath, quotedEventsPath)
 
@@ -122,7 +124,7 @@ func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.C
 		},
 	}
 
-	agentDeny, askUserDeny := denyInstalls(interactive, cfg)
+	agentDeny, askUserDeny := denyInstalls(interactive, cfg, allowAgentTool)
 	if agentDeny {
 		if forkSubagents {
 			// Grep the payload for a fork subagent_type; a match exits 0 allowing the call, no

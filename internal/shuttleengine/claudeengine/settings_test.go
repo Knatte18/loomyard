@@ -35,7 +35,7 @@ func hooksFor(doc map[string]any, event string) []any {
 }
 
 func TestBuildSettings_StopHookAlwaysPresent(t *testing.T) {
-	data, err := buildSettings("/c/run/events.jsonl", false, shuttleengine.Config{}, false)
+	data, err := buildSettings("/c/run/events.jsonl", false, shuttleengine.Config{}, false, false)
 	if err != nil {
 		t.Fatalf("buildSettings() error: %v", err)
 	}
@@ -75,7 +75,7 @@ func TestBuildSettings_EventsPathSingleQuoteEscaped(t *testing.T) {
 	// must not be able to break out of the Stop hook's single-quoted shell
 	// argument: the embedded quote is escaped via the standard sh idiom
 	// rather than passed through raw.
-	data, err := buildSettings(`/c/run's dir/events.jsonl`, false, shuttleengine.Config{}, false)
+	data, err := buildSettings(`/c/run's dir/events.jsonl`, false, shuttleengine.Config{}, false, false)
 	if err != nil {
 		t.Fatalf("buildSettings() error: %v", err)
 	}
@@ -115,7 +115,7 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := shuttleengine.Config{ClaudeDenyAgentTool: tt.agentDeny, ClaudeDenyAskUserQuestion: tt.askUserDeny}
-			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, cfg, false)
+			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, cfg, false, false)
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
@@ -229,7 +229,7 @@ func TestBuildSettings_ForkContextWebsterGuard(t *testing.T) {
 	t.Run("fork_mode_emits_bash_guard_independent_of_agent_deny", func(t *testing.T) {
 		for _, agentDeny := range []bool{true, false} {
 			cfg := shuttleengine.Config{ClaudeDenyAgentTool: agentDeny}
-			data, err := buildSettings("/c/run/events.jsonl", false, cfg, true)
+			data, err := buildSettings("/c/run/events.jsonl", false, cfg, true, false)
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
@@ -260,7 +260,7 @@ func TestBuildSettings_ForkContextWebsterGuard(t *testing.T) {
 
 	t.Run("non_fork_mode_emits_no_bash_guard", func(t *testing.T) {
 		cfg := shuttleengine.Config{ClaudeDenyAgentTool: true}
-		data, err := buildSettings("/c/run/events.jsonl", false, cfg, false)
+		data, err := buildSettings("/c/run/events.jsonl", false, cfg, false, false)
 		if err != nil {
 			t.Fatalf("buildSettings() error: %v", err)
 		}
@@ -300,7 +300,7 @@ func agentCommand(t *testing.T, doc map[string]any) (string, bool) {
 func TestBuildSettings_ForkMode(t *testing.T) {
 	t.Run("fork_mode_on_replaces_blanket_deny", func(t *testing.T) {
 		cfg := shuttleengine.Config{ClaudeDenyAgentTool: true}
-		data, err := buildSettings("/c/run/events.jsonl", false, cfg, true)
+		data, err := buildSettings("/c/run/events.jsonl", false, cfg, true, false)
 		if err != nil {
 			t.Fatalf("buildSettings() error: %v", err)
 		}
@@ -322,7 +322,7 @@ func TestBuildSettings_ForkMode(t *testing.T) {
 
 	t.Run("fork_mode_off_keeps_blanket_deny", func(t *testing.T) {
 		cfg := shuttleengine.Config{ClaudeDenyAgentTool: true}
-		data, err := buildSettings("/c/run/events.jsonl", false, cfg, false)
+		data, err := buildSettings("/c/run/events.jsonl", false, cfg, false, false)
 		if err != nil {
 			t.Fatalf("buildSettings() error: %v", err)
 		}
@@ -341,13 +341,101 @@ func TestBuildSettings_ForkMode(t *testing.T) {
 
 	t.Run("deny_off_and_fork_mode_on_emits_no_agent_entry", func(t *testing.T) {
 		cfg := shuttleengine.Config{ClaudeDenyAgentTool: false}
-		data, err := buildSettings("/c/run/events.jsonl", false, cfg, true)
+		data, err := buildSettings("/c/run/events.jsonl", false, cfg, true, false)
 		if err != nil {
 			t.Fatalf("buildSettings() error: %v", err)
 		}
 		doc := parseSettings(t, data)
 		if _, present := agentCommand(t, doc); present {
 			t.Error("Agent PreToolUse entry present; want none when ClaudeDenyAgentTool is false, regardless of fork mode")
+		}
+	})
+}
+
+// matcherCommand returns the first command of the PreToolUse entry with the given matcher, and whether one exists.
+func matcherCommand(doc map[string]any, matcher string) (string, bool) {
+	for _, e := range hooksFor(doc, "PreToolUse") {
+		entry, _ := e.(map[string]any)
+		if entry["matcher"] != matcher {
+			continue
+		}
+		hooks, _ := entry["hooks"].([]any)
+		if len(hooks) == 0 {
+			return "", true
+		}
+		cmd, _ := hooks[0].(map[string]any)
+		command, _ := cmd["command"].(string)
+		return command, true
+	}
+	return "", false
+}
+
+// TestBuildSettings_AllowAgentTool covers the per-run Agent allowance with claude_deny_agent_tool on:
+// it removes the Agent hook and notice sentence with or without ForkSubagents,
+// keeps the fork-context Bash webster guard,
+// and leaves the AskUserQuestion deny and its notice sentence alone.
+func TestBuildSettings_AllowAgentTool(t *testing.T) {
+	cfg := shuttleengine.Config{ClaudeDenyAgentTool: true, ClaudeDenyAskUserQuestion: true}
+
+	t.Run("removes_agent_hook_and_notice_without_fork", func(t *testing.T) {
+		data, err := buildSettings("/c/run/events.jsonl", false, cfg, false, true)
+		if err != nil {
+			t.Fatalf("buildSettings() error: %v", err)
+		}
+		doc := parseSettings(t, data)
+		if _, present := agentCommand(t, doc); present {
+			t.Error("Agent PreToolUse entry present; want none under AllowAgentTool")
+		}
+		if _, present := matcherCommand(doc, "Bash"); present {
+			t.Error("Bash webster guard present without ForkSubagents; want none")
+		}
+		notice := buildDenyNotice(false, cfg, false, true)
+		if strings.Contains(notice, noticeAgentDeny) || strings.Contains(notice, noticeAgentForkDeny) {
+			t.Errorf("notice = %q; want no Agent sentence under AllowAgentTool", notice)
+		}
+	})
+
+	t.Run("removes_agent_hook_and_notice_with_fork_keeps_webster_guard", func(t *testing.T) {
+		data, err := buildSettings("/c/run/events.jsonl", false, cfg, true, true)
+		if err != nil {
+			t.Fatalf("buildSettings() error: %v", err)
+		}
+		doc := parseSettings(t, data)
+		if _, present := agentCommand(t, doc); present {
+			t.Error("Agent PreToolUse entry present; want none under AllowAgentTool with ForkSubagents")
+		}
+		bash, present := matcherCommand(doc, "Bash")
+		if !present || !strings.Contains(bash, steerWebsterForkDeny) {
+			t.Errorf("Bash webster guard = %q (present=%v); want it kept under ForkSubagents", bash, present)
+		}
+		notice := buildDenyNotice(false, cfg, true, true)
+		if strings.Contains(notice, noticeAgentDeny) || strings.Contains(notice, noticeAgentForkDeny) {
+			t.Errorf("notice = %q; want no Agent sentence under AllowAgentTool", notice)
+		}
+	})
+
+	t.Run("fork_env_wrapping_stays", func(t *testing.T) {
+		runDir := t.TempDir()
+		launch, err := New().Prepare(runDir, shuttleengine.Spec{Prompt: "p", ForkSubagents: true, AllowAgentTool: true}, cfg)
+		if err != nil {
+			t.Fatalf("Prepare() error: %v", err)
+		}
+		if !strings.Contains(launch.Cmd, "CLAUDE_CODE_FORK_SUBAGENT") {
+			t.Errorf("Launch.Cmd = %q; want the CLAUDE_CODE_FORK_SUBAGENT wrapping kept", launch.Cmd)
+		}
+	})
+
+	t.Run("askuserquestion_deny_unaffected", func(t *testing.T) {
+		data, err := buildSettings("/c/run/events.jsonl", false, cfg, false, true)
+		if err != nil {
+			t.Fatalf("buildSettings() error: %v", err)
+		}
+		ask, present := matcherCommand(parseSettings(t, data), "AskUserQuestion")
+		if !present || !strings.Contains(ask, steerAskUserQuestionDeny) {
+			t.Errorf("AskUserQuestion command = %q (present=%v); want the deny kept", ask, present)
+		}
+		if notice := buildDenyNotice(false, cfg, false, true); !strings.Contains(notice, noticeAskUserQuestionDeny) {
+			t.Errorf("notice = %q; want the AskUserQuestion sentence kept", notice)
 		}
 	})
 }
@@ -443,7 +531,7 @@ func TestBuildDenyNotice_MatchesInstalledDenies(t *testing.T) {
 			for _, interactive := range []bool{false, true} {
 				for _, fork := range []bool{false, true} {
 					cfg := shuttleengine.Config{ClaudeDenyAgentTool: agentDeny, ClaudeDenyAskUserQuestion: askUserDeny}
-					data, err := buildSettings("/c/run/events.jsonl", interactive, cfg, fork)
+					data, err := buildSettings("/c/run/events.jsonl", interactive, cfg, fork, false)
 					if err != nil {
 						t.Fatalf("buildSettings() error: %v", err)
 					}
@@ -460,7 +548,7 @@ func TestBuildDenyNotice_MatchesInstalledDenies(t *testing.T) {
 							wantAsk = strings.Contains(command, "permissionDecision")
 						}
 					}
-					notice := buildDenyNotice(interactive, cfg, fork)
+					notice := buildDenyNotice(interactive, cfg, fork, false)
 					hasAgent := strings.Contains(notice, noticeAgentDeny) || strings.Contains(notice, noticeAgentForkDeny)
 					if hasAgent != wantAgent {
 						t.Errorf("agent=%v ask=%v interactive=%v fork=%v: notice has Agent sentence = %v; want %v", agentDeny, askUserDeny, interactive, fork, hasAgent, wantAgent)
@@ -485,11 +573,11 @@ func TestBuildDenyNotice_MatchesInstalledDenies(t *testing.T) {
 
 func TestBuildDenyNotice_SentenceContent(t *testing.T) {
 	cfg := shuttleengine.Config{ClaudeDenyAgentTool: true, ClaudeDenyAskUserQuestion: true}
-	forkNotice := buildDenyNotice(false, cfg, true)
+	forkNotice := buildDenyNotice(false, cfg, true, false)
 	if !strings.Contains(forkNotice, "fork subagents") || !strings.Contains(forkNotice, "never spawns further subagents") {
 		t.Errorf("fork notice = %q; want it to name fork subagents as permitted and forbid a fork spawning more", forkNotice)
 	}
-	nonFork := buildDenyNotice(false, cfg, false)
+	nonFork := buildDenyNotice(false, cfg, false, false)
 	if !strings.Contains(nonFork, "The Agent tool is unavailable") {
 		t.Errorf("non-fork notice = %q; want the Agent tool named unavailable", nonFork)
 	}
