@@ -44,15 +44,26 @@
 //
 // # Idle rules
 //
-// In phase idle the watcher acts only when the context reading is at or over the threshold, or a cycle was requested, and only when all of these hold:
+// In phase idle the watcher picks the trigger of a cycle in a fixed order:
 //
-//   - The newest event it has read is a turn end.
+//   - hard: a known context reading at or over `threshold_tokens`, the hard cap, whatever `idle_grace_s` and `soft_idle_s` are.
+//   - requested: a pending cycle request.
+//   - soft: a known reading at or over `soft_threshold_tokens` and below the hard cap.
+//     A soft threshold at or above the hard cap never fires.
+//
+// The trigger is recorded in State.CycleTrigger before the handoff-requested phase is entered, and the soft trigger sends its own handoff stencil, which offers the session a `DEFER` reply.
+// A hard or requested cycle acts only when all of these hold:
+//
+//   - The newest event it has read is a turn end, EventStop or EventWaiting.
 //   - That event was first read at least the idle grace ago.
 //     The arrival time is held in memory, so a watcher restart restarts the grace.
 //   - Session.SessionIdle reports an empty input box with no turn running.
 //
+// A soft cycle holds the same gates with `soft_idle_s` in place of the idle grace, and adds one:
+// State.LastDeferral is zero or at least `soft_idle_s` before now.
+//
 // A context reading that cannot be taken is unknown and never triggers a cycle by itself.
-// The template threshold is 400000 tokens, sized for a session with a context window of about one million tokens.
+// The template hard cap is 400000 tokens, sized for a session with a context window of about one million tokens, and the template soft threshold is 300000.
 //
 // # The four-phase cycle
 //
@@ -62,6 +73,11 @@
 //   - handoff-requested: the handoff instruction is sent, naming a new timestamped file under handoffs/.
 //     The phase ends once the file exists and is non-empty, a turn end has been read after the file was first seen written,
 //     and the idle probe passes.
+//     In a soft cycle a turn end whose message, trimmed of whitespace, is exactly `DEFER` declines the cycle:
+//     the watcher re-stats the handoff file, and when it is still not written records the read time in State.LastDeferral and returns to idle with the abort reason `deferred`.
+//     A written file wins over `DEFER`, and the cycle proceeds through the clear gate above.
+//     In a hard or requested cycle `DEFER` is never recorded, and the phase waits for the file until the handoff timeout.
+//     A restarted watcher re-sends the stencil matching State.CycleTrigger.
 //   - clearing: the resume prompt is rendered first, so a stencil failure aborts before anything is cleared.
 //     Then `/clear` is typed, and the phase waits for the pane to show an idle input box.
 //   - resuming: the resume prompt is sent verbatim, and the phase ends at the resumed session's first turn end, whose context reading becomes the new one.
