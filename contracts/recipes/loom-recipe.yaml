@@ -203,7 +203,15 @@ producers:
             - _lyx/discussion/decision-record.md
           instructions: >
             The decision record named above is the answer key: the plan's job is to implement the
-            decisions and constraints it settles. The format authority is
+            decisions and constraints it settles. In a rework generation the live generation's
+            findings.md joins it: every finding is covered by some card, and every card's scope is
+            licensed by the decision record or a finding. The live generation's round is, among
+            _lyx/loom/rework/round-<N>/ directories, the highest N whose record.json carries a
+            class and whose first_card equals the first_card in _lyx/plan/00-overview.md's
+            frontmatter (absent means 1). With no such round (generation 0, or a fresh Plan-Write
+            plan after an operator goto Plan-Write), the decision record alone is the answer key.
+            The round's prior-generation/ archive is context, never the subject of a finding. The
+            format authority is
             contracts/specs/loom-plan-spec.md, and the mechanical checks over that format are
             already enforced by this round's own gate over this round's own output, so re-deriving
             them here is duplicated work. This round may never write the approved: key in the

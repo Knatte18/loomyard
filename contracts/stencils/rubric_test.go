@@ -90,6 +90,11 @@ func TestLoomRubricPlanReview_NamesEveryRequiredItem(t *testing.T) {
 		{"dependency edges are derived, never authored", "Dependency edges are derived, never authored"},
 		{"Rename carries no ImpactSummary because there is no graded blast radius", "no graded blast radius to summarise"},
 		{"support-log.md is outside this review entirely", "support-log.md"},
+		{"the live generation's findings join the answer key", "findings.md"},
+		{"the live generation's round needs a class", "record.json` carries a `class`"},
+		{"the live generation's round matches first_card", "`first_card`"},
+		{"generation 0 falls back to the decision record alone", "the decision record alone is the answer key"},
+		{"the prior-generation archive is never a subject", "prior-generation/"},
 	}
 
 	for _, tt := range tests {

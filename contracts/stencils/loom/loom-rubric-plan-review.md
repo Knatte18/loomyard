@@ -51,10 +51,15 @@ Do not flag any of the following as a finding:
   A `Custom` card is exempt from `path-missing` on its own targets and from `prosa-symbol-target` — which under the glyph alphabet means a `Prosa` group may only target file and unit self glyphs, with a member glyph (or anything else that fails to parse as a self glyph) the finding — so a mistyped `Custom` card silently escapes two checks the rest of the plan is held to.
   It escapes only those two: `bare-symbol-target` and `directory-target` bind a card's flat `Targets`/`Uses` with no group scoping at all, so this round's own gate already blocks a `Custom` card carrying either — do not hunt for one here.
   A `Custom` card whose targets could instead be expressed as a multi-label combination of the other six is a finding — the format's one-or-more-labels grammar means `Custom` is never the only way to name a mixed target list.
-- **Fidelity to the decision record.**
-  Every Decision and every Constraint in `_lyx/discussion/decision-record.md` is carried by some card, and no card introduces scope that file does not license.
+- **Fidelity to the answer key.**
+  Every Decision and every Constraint in `_lyx/discussion/decision-record.md` is carried by some card, and no card introduces scope the answer key does not license.
   That path is anchor-relative: it resolves from this session's own working directory, and it is deliberately not the absolute form the artifact list uses.
-  The decision record is the measuring stick and never the subject — every finding is raised against the plan, never against the decision record.
+  The answer key is the measuring stick and never the subject — every finding is raised against the plan, never against the decision record or a findings file.
+  In a rework generation the live generation's `findings.md` joins the decision record as the answer key:
+  every finding in it is covered by some card, and every card's scope is licensed by the decision record or by a finding.
+  The live generation's round is, among `_lyx/loom/rework/round-<N>/` directories, the highest `N` whose `record.json` carries a `class` and whose `first_card` equals the `first_card` in `_lyx/plan/00-overview.md`'s frontmatter (absent means `1`).
+  With no such round (generation 0, or a fresh Plan-Write plan after an operator `goto Plan-Write`), the decision record alone is the answer key.
+  The round's `prior-generation/` archive is context only, and a finding raised against anything inside it is never legitimate.
 - **Verify coverage.**
   A package a card targets whose tests the plan's `## verify:` section does not run is a finding against the plan, hermetic build-tagged tests (for example `-tags integration`) included.
   A live-substrate tag such as `smoke` that the section compiles rather than runs (for example `go vet -tags smoke <packages>`) is not a finding.
