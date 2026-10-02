@@ -289,10 +289,10 @@ func childSeedParams(recipe string, childLocation *lyxcwd.Location) (map[string]
 	return map[string]string{"parent": origin.ParentBranch}, nil
 }
 
-// childSeedFor builds the seed written into the task worktree: the given recipe, driver and params, with the Parent batten's own seed recorded,
-// since the session that ran "lyx batten run" is the parent of every process in that worktree.
-func childSeedFor(battenSeed shedrun.Seed, recipe, driver string, params map[string]string) shedrun.Seed {
-	return shedrun.Seed{Recipe: recipe, Driver: driver, Params: params, Parent: battenSeed.Parent}
+// childSeedFor builds the seed written into the task worktree: the given recipe, driver and params.
+// It records no parent: the pair's parent is resolved from fabric's origin record at use.
+func childSeedFor(recipe, driver string, params map[string]string) shedrun.Seed {
+	return shedrun.Seed{Recipe: recipe, Driver: driver, Params: params}
 }
 
 // wire builds and stores the shedrecipe.Env and shedbuild.ShedPaths the run and status verbs
@@ -623,13 +623,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				if err != nil {
 					return err
 				}
-				// The hub that ran "lyx batten run" is the parent of every process in the task worktree,
-				// so the child's parent is batten's own recorded one, not batten.
-				battenSeed, _, err := shedrun.ReadSeed(location, slug)
-				if err != nil {
-					return err
-				}
-				if err := shedrun.WriteSeed(childLocation, shedrun.SelfRunID, childSeedFor(battenSeed, recipe, driver, params)); err != nil {
+				if err := shedrun.WriteSeed(childLocation, shedrun.SelfRunID, childSeedFor(recipe, driver, params)); err != nil {
 					if errors.Is(err, shedrun.ErrDisagreeingSeed) {
 						return fmt.Errorf("%w: %s", battenshed.ErrDisagreeingChildSeed, err.Error())
 					}

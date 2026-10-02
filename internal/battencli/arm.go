@@ -31,7 +31,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -237,8 +236,6 @@ func (c *battenCLI) armSeed(location *lyxcwd.Location, runID, verb string) error
 		Params: map[string]string{
 			"child_driver": childDriver,
 		},
-		// The OS env, never a .env overlay: only reed sets the variable.
-		Parent: os.Getenv(agentname.StrandNameEnv),
 	})
 }
 

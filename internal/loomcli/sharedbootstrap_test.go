@@ -90,10 +90,10 @@ func TestSeedAndCommitBootstrap_SecondCallDoesNotDivergeOnErrSeedExists(t *testi
 // RecipeLoom, the given driver, and a single "parent" param matching the given parent -- the shape
 // seedAndCommitBootstrap's step 1b writes with shedrun.WriteSeed.
 func TestLoomSeedFor_RecipeAndParentParam(t *testing.T) {
-	seed := loomSeedFor("main", shedrun.DriverGo, "ab:hub")
+	seed := loomSeedFor("main", shedrun.DriverGo)
 
-	if seed.Parent != "ab:hub" {
-		t.Errorf("loomSeedFor(...).Parent = %q; want the caller %q", seed.Parent, "ab:hub")
+	if seed.Parent != "" {
+		t.Errorf("loomSeedFor(...).Parent = %q; want empty", seed.Parent)
 	}
 	if seed.Recipe != shedrun.RecipeLoom {
 		t.Errorf("loomSeedFor(%q, %q).Recipe = %q; want %q", "main", shedrun.DriverGo, seed.Recipe, shedrun.RecipeLoom)
@@ -107,25 +107,6 @@ func TestLoomSeedFor_RecipeAndParentParam(t *testing.T) {
 	}
 }
 
-// TestLoomSeedFor_FirstCallerStaysParent asserts a second seeding from another caller leaves the first one's parent on disk.
-func TestLoomSeedFor_FirstCallerStaysParent(t *testing.T) {
-	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
-
-	if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, loomSeedFor("main", shedrun.DriverGo, "ab:first")); err != nil {
-		t.Fatalf("first WriteSeed(...) = %v; want nil", err)
-	}
-	if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, loomSeedFor("main", shedrun.DriverGo, "ab:second")); err != nil {
-		t.Fatalf("second WriteSeed(...) = %v; want nil", err)
-	}
-	seed, _, err := shedrun.ReadSeed(loc, shedrun.SelfRunID)
-	if err != nil {
-		t.Fatalf("ReadSeed(...) = %v; want nil", err)
-	}
-	if seed.Parent != "ab:first" {
-		t.Errorf("seed.Parent = %q; want %q kept", seed.Parent, "ab:first")
-	}
-}
-
 // TestLoomSeedFor_WriteSeedIsIdempotent asserts writing loomSeedFor's shape twice, for the same
 // parent and driver, at the same location and run-id, is a no-op the second time -- the idempotency
 // seedAndCommitBootstrap's own comment relies on to make a crashed-and-resumed bootstrap safe to
@@ -134,10 +115,10 @@ func TestLoomSeedFor_WriteSeedIsIdempotent(t *testing.T) {
 	dir := t.TempDir()
 	loc := &lyxcwd.Location{HubPath: dir, WorktreeName: "warp", AnchorRel: "."}
 
-	if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, loomSeedFor("main", shedrun.DriverGo, "")); err != nil {
+	if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, loomSeedFor("main", shedrun.DriverGo)); err != nil {
 		t.Fatalf("first WriteSeed(...) = %v; want nil", err)
 	}
-	if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, loomSeedFor("main", shedrun.DriverGo, "")); err != nil {
+	if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, loomSeedFor("main", shedrun.DriverGo)); err != nil {
 		t.Errorf("second WriteSeed(...) = %v; want nil (idempotent against a byte-identical seed)", err)
 	}
 
@@ -203,7 +184,7 @@ func TestResolveSeedDriver_ReadsOnlyTheSeedNeverAFlagOrConfig(t *testing.T) {
 		t.Errorf("resolveSeedDriver(%+v, true) = %q; want %q -- an already-recorded llm driver must survive this step's write", existing, got, shedrun.DriverLLM)
 	}
 
-	seed := loomSeedFor("main", got, "")
+	seed := loomSeedFor("main", got)
 	if seed.Driver != shedrun.DriverLLM {
 		t.Errorf("loomSeedFor(%q, %q).Driver = %q; want %q", "main", got, seed.Driver, shedrun.DriverLLM)
 	}

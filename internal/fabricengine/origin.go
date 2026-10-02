@@ -15,10 +15,15 @@ import (
 
 // Origin is fabric's provenance record for one worktree pair, written once at pair-creation time
 // and read thereafter — never inferred.
+// It names both the branch and the worktree the pair was created from.
 type Origin struct {
 	// ParentBranch is the warp branch the pair was forked from, recorded at creation time and
 	// never inferred.
 	ParentBranch string `json:"parent_branch"`
+	// ParentWorktree is the WorktreeName of the worktree Topology.Add ran from, recorded at creation time and never inferred.
+	// It is what a run's parent agent name is resolved from.
+	// A record written before the field existed, and a legacy-worktree repair whose creator is unknown, leave it empty.
+	ParentWorktree string `json:"parent_worktree,omitempty"`
 }
 
 // originRecordDirName, originRecordFileName, and originRecordLockFileName are the segments of the

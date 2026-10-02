@@ -7,8 +7,11 @@
 // The verb bodies take that store and their own arguments, so every refusal is reachable from an untagged test.
 //
 // The verbs check no caller identity.
-// An unchecked verb reaches no further than this one advisory review: an approve skips at most the pass-on-cap parent review,
-// a reject spends at most its single re-prompt, a delivered stamped without a send stops re-sends but leaves the wait visible in status until the bound,
+// The parent reviews every rewrite after a reject, and the cap's reject halts the run `blocked`.
+// An unchecked verb reaches no further than this one advisory review: a reject can halt a run only on the cap's rejected round and only into `blocked`,
+// and one approve lifts it by superseding that reject, gated by the halted state alone (status `blocked`, the store at the cap, the latest round the cap's reject);
+// an approve never rewrites an earlier round or an open round's pending state.
+// A delivered stamped without a send stops re-sends but leaves the wait visible in status until the bound,
 // and a notify sends one prompt and changes no gate count; Discussion-Review runs after every outcome.
 
 package loomcli
@@ -27,12 +30,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/parentreview"
+	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/spf13/cobra"
 )
 
 const (
 	reviewWayNoOpen   = `way forward: only Discussion-Write's parent-review gate opens a request; "lyx loom status <run>" shows whether the run has reached it`
-	reviewWaySettled  = `way forward: the round is settled and the run proceeds on its own; nothing more to submit`
+	reviewWaySettled  = `way forward: the round is settled and the run proceeds on its own; nothing more to submit, except that a run halted at the reject cap proceeds only after "lyx loom review approve <slug>"`
 	reviewWayExpired  = `way forward: the run already passed on its wait bound and Discussion-Review still reviews the discussion; nothing more to submit`
 	reviewWaySlugForm = `pass the task's slug as listed by "lyx board list"`
 )
@@ -123,12 +129,58 @@ func reviewDeliveredVerb(out io.Writer, store parentreview.Store, slug, failedRe
 	return output.Ok(out, map[string]any{"slug": slug, "action": "delivered", "failed": failedReason != ""})
 }
 
+// reviewStatusReader reads the target worktree's default run status; found is false when the run has no status file.
+type reviewStatusReader func() (shedengine.Status, bool, error)
+
 // reviewApproveVerb records an approve verdict, copying reviewFile when given.
-func reviewApproveVerb(out io.Writer, store parentreview.Store, slug, reviewFile string) int {
+// When the latest round carries a reject it takes the supersede path instead, which lifts a run halted at the reject cap.
+func reviewApproveVerb(out io.Writer, store parentreview.Store, slug, reviewFile string, readStatus reviewStatusReader) int {
+	latest, found, err := store.Latest()
+	if err != nil {
+		return reviewStoreErr(out, "approve", err)
+	}
+	if found && latest.Verdict != nil && latest.Verdict.Kind == parentreview.VerdictReject {
+		return reviewSupersedeVerb(out, store, slug, reviewFile, readStatus)
+	}
 	if err := store.RecordVerdict(parentreview.VerdictApprove, reviewFile); err != nil {
 		return reviewStoreErr(out, "approve", err)
 	}
 	return output.Ok(out, map[string]any{"slug": slug, "action": "approve"})
+}
+
+// reviewSupersedeVerb replaces the cap's reject with a superseding approve.
+// The halted state is its only gate: the run's status is blocked, the store is at the cap and the latest round is the cap's reject.
+func reviewSupersedeVerb(out io.Writer, store parentreview.Store, slug, reviewFile string, readStatus reviewStatusReader) int {
+	if reviewFile != "" {
+		return output.Err(out, fmt.Sprintf("loom: review approve: --review is refused when approving over a reject, since the cap's review file is kept; %s", reviewWayNotAtCap("re-run \"lyx loom review approve\" without --review")))
+	}
+	st, found, err := readStatus()
+	if err != nil {
+		return output.Err(out, fmt.Sprintf("loom: review approve: read the run status: %s", err.Error()))
+	}
+	if !found || st.State != shedengine.StateBlocked {
+		return output.Err(out, "loom: review approve: approve supersedes a reject only on a run halted at the reject cap, and this run is not blocked; "+reviewWayNotAtCap(""))
+	}
+	if err := store.SupersedeCapReject(); err != nil {
+		if errors.Is(err, parentreview.ErrNotAtCap) {
+			return output.Err(out, "loom: review approve: the latest round's reject is not the cap's; "+reviewWayNotAtCap(""))
+		}
+		return reviewStoreErr(out, "approve", err)
+	}
+	return output.Ok(out, map[string]any{
+		"slug":       slug,
+		"action":     "approve",
+		"superseded": true,
+		"message":    `the cap's reject is superseded; way forward: run "lyx loom start" in the task worktree`,
+	})
+}
+
+// reviewWayNotAtCap is the way-forward clause for a supersede refusal; lead, when set, names the step to take first.
+func reviewWayNotAtCap(lead string) string {
+	if lead != "" {
+		lead += "; "
+	}
+	return `way forward: ` + lead + `"lyx loom status <slug>" shows the run's state; below the cap the gate re-prompts the writer itself, and the next round's request is approved normally`
 }
 
 // reviewRejectVerb records a reject verdict with the findings in reviewFile.
@@ -156,9 +208,10 @@ func reviewSlugArg(verb string, args []string) string {
 
 // reviewState carries what the review group's pre-run resolved for its verbs.
 type reviewState struct {
-	store parentreview.Store
-	slug  string
-	cwd   string
+	store      parentreview.Store
+	readStatus reviewStatusReader
+	slug       string
+	cwd        string
 }
 
 // resolveFile resolves a review-file argument against the invoking cwd.
@@ -198,6 +251,11 @@ func (s *reviewState) preRun(cmd *cobra.Command, args []string) error {
 	s.cwd = cwd
 	s.slug = target.WorktreeName
 	s.store = reviewStoreFor(target)
+	statusPath := shedrun.StatusFile(target, shedrun.SelfRunID)
+	statusLock := shedrun.StatusLock(target, shedrun.SelfRunID)
+	s.readStatus = func() (shedengine.Status, bool, error) {
+		return state.ReadJSONStrict[shedengine.Status](statusPath, statusLock)
+	}
 	return nil
 }
 
@@ -216,6 +274,9 @@ Each verb takes an optional slug naming the task worktree. A task worktree
 addresses itself; from the prime the slug is required. The verbs check no
 caller identity, and an unchecked verb reaches no further than this one
 advisory review: Discussion-Review runs after every outcome.
+
+The parent reviews every rewrite after a reject. The cap's reject halts the
+run blocked, and approve on that halted run supersedes the reject.
 
 Example:
   lyx loom review notify <slug>
@@ -275,6 +336,11 @@ Example:
 parent-review gate lets the run through. --review copies a review file
 into the round; a relative path resolves against the current directory.
 
+When the latest round carries a reject, approve instead supersedes it, and
+only on a run halted blocked at the reject cap; --review is refused there,
+since the cap's review file is kept. Then run "lyx loom start" in the task
+worktree.
+
 Example:
   lyx loom review approve <slug>
   lyx loom review approve <slug> --review review.md`,
@@ -283,7 +349,7 @@ Example:
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
 			}
-			clihelp.SetExit(cmd.Context(), reviewApproveVerb(cmd.OutOrStdout(), st.store, st.slug, st.resolveFile(approveFile)))
+			clihelp.SetExit(cmd.Context(), reviewApproveVerb(cmd.OutOrStdout(), st.store, st.slug, st.resolveFile(approveFile), st.readStatus))
 			return nil
 		},
 	}
@@ -291,11 +357,13 @@ Example:
 
 	reject := &cobra.Command{
 		Use:   "reject [slug] <review-file>",
-		Short: "reject the discussion with the findings in a review file, re-prompting the writer once",
+		Short: "reject the discussion with the findings in a review file, re-prompting the writer",
 		Long: `reject records a reject verdict on the latest open review request with the
 findings in the review file, which must exist and be non-empty. The
-parent-review gate sends the findings to the still-live writer once; a
-relative path resolves against the current directory.
+parent-review gate sends the findings to the still-live writer and reviews
+the rewrite as the next round; a relative path resolves against the current
+directory. A reject on the cap's round halts the run blocked, and one
+"lyx loom review approve" lifts it.
 
 Example:
   lyx loom review reject <slug> review.md`,

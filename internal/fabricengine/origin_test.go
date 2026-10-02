@@ -33,6 +33,36 @@ func TestOrigin_JSONRoundTrip(t *testing.T) {
 	}
 }
 
+// TestOrigin_ParentWorktreeRoundTrip asserts that ParentWorktree marshals and unmarshals through the parent_worktree wire key,
+// and that a record without the key decodes with it empty.
+func TestOrigin_ParentWorktreeRoundTrip(t *testing.T) {
+	want := Origin{ParentBranch: "main", ParentWorktree: "prime"}
+
+	data, err := json.Marshal(want)
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	if !strings.Contains(string(data), `"parent_worktree":"prime"`) {
+		t.Errorf("Marshal() = %s; want it to contain the parent_worktree wire key", data)
+	}
+
+	var got Origin
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+	if got != want {
+		t.Errorf("Unmarshal() = %+v; want %+v", got, want)
+	}
+
+	var legacy Origin
+	if err := json.Unmarshal([]byte(`{"parent_branch":"main"}`), &legacy); err != nil {
+		t.Fatalf("Unmarshal(legacy) error = %v", err)
+	}
+	if legacy.ParentWorktree != "" {
+		t.Errorf("legacy ParentWorktree = %q; want empty", legacy.ParentWorktree)
+	}
+}
+
 // TestOriginRecordPath_BothAnchors asserts that OriginRecordPath joins the anchor path with
 // OriginRecordRel at both AnchorRel == "." and a subpath anchor, proving the subpath case moves
 // the record down by the anchor.

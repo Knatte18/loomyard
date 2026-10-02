@@ -87,7 +87,8 @@
 // directory and the strand guid in a logged warning, since the operator's only escape from either is
 // out of band, via "lyx reed status".
 //
-// A gated run's GateSpec entries answer passed, failed or pending (GateResult.Pending, PassOnCap entries only).
+// A gated run's GateSpec entries answer passed, failed or pending (GateResult.Pending, PassOnCap or MayHold entries only).
+// A failing result flagged GateResult.Terminal finalizes the run at once with no re-prompt, and its findings text rides GateOutcome.Reason.
 // A pending answer holds the run at a turn boundary without re-prompting or counting a failure:
 // the wait loop sends the entry's carried text once, keeps polling, and re-evaluates on poll ticks while the writer is idle.
 // The deadline and liveness checks keep running, and a deadline or liveness finalize evaluates each entry's optional Final closure in place of Gate, reporting the entry waiting.

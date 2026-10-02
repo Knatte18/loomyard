@@ -14,7 +14,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
-	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 // ReedGeometry builds a reedengine.Geometry for l: the resolved Location's paths, read off its accessors and passed through untouched, plus the name prefix and parent reed forms strand names from.
@@ -23,8 +22,8 @@ import (
 // NameShortname is the hub's recorded shortname; an absent record leaves it empty and is no error here,
 // since reed refuses the spawn that needs a shortname while `reed status`, `down` and the watchdog keep working.
 // The prime leaves NameSlug and ParentName empty;
-// a task worktree sets NameSlug to its raw worktree name and ParentName to the parent recorded in its default run's seed.
-// An unreadable seed logs a warning and leaves ParentName empty, since the parent is an optional escalation channel.
+// a task worktree sets NameSlug to its raw worktree name and ParentName to what ResolveParent returns, the orch name of the worktree the pair was created from.
+// An unresolvable parent logs a warning and leaves ParentName empty, since the parent is an optional escalation channel.
 // Failing to tell the prime from a task worktree is the one error:
 // telling a task worktree a prime's geometry would give its strands the prime's names for life.
 func ReedGeometry(l *lyxcwd.Location) (reedengine.Geometry, error) {
@@ -70,12 +69,11 @@ func reedGeometry(l *lyxcwd.Location, prime bool) reedengine.Geometry {
 	var slug, parent string
 	if !prime {
 		slug = l.WorktreeName
-		seed, found, seedErr := shedrun.ReadSeed(l, shedrun.SelfRunID)
-		switch {
-		case seedErr != nil:
-			logger.Warn("hubgeom: default run seed unreadable; strands get no parent", "worktree", l.WorktreeName, "error", seedErr)
-		case found:
-			parent = seed.Parent
+		resolved, parentErr := ResolveParent(l)
+		if parentErr != nil {
+			logger.Warn("hubgeom: parent unresolvable; strands get no parent", "worktree", l.WorktreeName, "error", parentErr)
+		} else {
+			parent = resolved.Name
 		}
 	}
 	return reedengine.Geometry{

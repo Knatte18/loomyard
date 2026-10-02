@@ -228,6 +228,9 @@ type Run struct {
 	// gateFailedAt is the index into gate of the entry that failed at the memoised arrival, or -1 when none did (every entry passed, was off, or was let through).
 	// Meaningful only while gateVerdict is non-nil.
 	gateFailedAt int
+	// gateTerminal reports that the failing entry's result was GateResult.Terminal, so handleGatedBoundary finalizes on it whatever the entry's failure count.
+	// Meaningful only while gateVerdict is non-nil.
+	gateTerminal bool
 	// gateFindingsPath is the findings file the memoised arrival's failing entry wrote, empty when gateFailedAt is -1.
 	// It is kept apart from GateOutcome.FindingsPath, which is empty whenever the outcome passed — a failing PassOnCap entry still needs a re-prompt that names its file.
 	gateFindingsPath string

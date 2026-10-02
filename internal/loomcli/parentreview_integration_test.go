@@ -32,7 +32,8 @@ import (
 )
 
 const (
-	prReviewParent = "hub:orchestrator"
+	// prReviewParent is the prime's orch name, which the pair resolves as its parent because the fixture creates it from the prime.
+	prReviewParent = hubforge.TestShortname + ":orch"
 	prValidRecord  = "# Decision Record\n\n" +
 		"## Goal\nExercise the parent review.\n\n" +
 		"## Scope\nOne gated Discussion-Write row.\n\n" +
@@ -105,7 +106,9 @@ func newPRFixture(t *testing.T) *prFixture {
 	if err != nil {
 		t.Fatalf("ResolveWorktree = %v; want nil", err)
 	}
-	if err := shedrun.WriteSeed(location, shedrun.SelfRunID, shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: shedrun.DriverGo, Parent: prReviewParent}); err != nil {
+
+	// The loom verbs need a seed, which carries no parent: the reviewer is resolved from the origin record.
+	if err := shedrun.WriteSeed(location, shedrun.SelfRunID, shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: shedrun.DriverGo}); err != nil {
 		t.Fatalf("WriteSeed = %v; want nil", err)
 	}
 
@@ -131,6 +134,8 @@ func newPRFixture(t *testing.T) *prFixture {
 
 	decision, support := loomengine.DiscussionDecisionRecord(location), loomengine.DiscussionSupportLog(location)
 	env := c.env
+	// No orch session runs in the fixture hub, so the wired liveness seam would hold the prompt; the test plays the parent by hand.
+	env.ParentReview.ReviewerLive = nil
 	env.Shuttle = f.shuttle
 	env.DiscussionSpec = func() (shuttleengine.Spec, error) {
 		return shuttleengine.Spec{Prompt: "write the discussion", OutputFiles: []string{decision, support}}, nil
@@ -191,8 +196,8 @@ func (f *prFixture) call() {
 	}
 }
 
-// TestParentReviewExchange_RejectThenFixThenLetThrough drives round 1 through delivery, a reject from the prime, the writer's fix and the let-through,
-// then round 2 through an approve, and checks the commit, the status wait and the round numbering along the way.
+// TestParentReviewExchange_RejectThenFixThenLetThrough drives round 1 through delivery and a reject from the prime, the writer's fix into round 2,
+// and an approve that lets the run through, and checks the commit, the status wait and the round numbering along the way.
 func TestParentReviewExchange_RejectThenFixThenLetThrough(t *testing.T) {
 	f := newPRFixture(t)
 	taskCwd := f.location.AnchorPath()
@@ -213,6 +218,9 @@ func TestParentReviewExchange_RejectThenFixThenLetThrough(t *testing.T) {
 		}
 		if round.Number != 1 {
 			t.Fatalf("round number = %d; want 1", round.Number)
+		}
+		if round.Request.Reviewer != prReviewParent {
+			t.Fatalf("request reviewer = %q; want %q", round.Request.Reviewer, prReviewParent)
 		}
 
 		// Status shows the wait while the request is open.
@@ -245,39 +253,21 @@ func TestParentReviewExchange_RejectThenFixThenLetThrough(t *testing.T) {
 			t.Fatalf("copied review = (%q, %v); want the reviewer's findings", got, err)
 		}
 
-		// Arrival 3: the writer fixed the discussion; discussion re-runs and the parent review lets it through without a second request.
+		// Arrival 3: the writer fixed the discussion; discussion re-runs and the parent review opens round 2 with a fresh prompt.
 		f.writeDiscussion("\nAddressed the parent's finding.\n")
 		third := arrive(t, gates)
-		if !third.Passed || third.Pending || third.Send != "" {
-			t.Fatalf("arrival 3 = %+v; want passed with nothing to send", third)
+		round2 := f.latest()
+		if !third.Pending || third.Send == "" || round2.Number != 2 {
+			t.Fatalf("arrival 3 = %+v in round %d; want pending with a prompt in round 2", third, round2.Number)
 		}
-		if got := f.latest(); got.Number != 1 {
-			t.Fatalf("round number after the fix = %d; want still 1", got.Number)
-		}
-		return shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, Gate: &shuttleengine.GateOutcome{Passed: true}}
-	}
-	f.call()
 
-	// The request directory rode along in the discussion commit.
-	requestRel := filepath.ToSlash(filepath.Join(loomengine.LoomParentReviewDirRel(), "round-1", "request.json"))
-	if got := mustGitOut(t, f.weft, "show", "--name-only", "--format=", "HEAD"); !strings.Contains(got, requestRel) {
-		t.Errorf("weft HEAD touched %q; want it to include %q", got, requestRel)
-	}
-
-	// A fresh start after the completed round opens round 2, and an approve lets the run through with no re-prompt.
-	f.shuttle.script = func(gates shuttleengine.GateSpec) shuttleengine.Result {
-		f.writeDiscussion("")
-		first := arrive(t, gates)
-		round := f.latest()
-		if !first.Pending || first.Send == "" || round.Number != 2 {
-			t.Fatalf("round 2 arrival 1 = %+v in round %d; want pending with a prompt in round 2", first, round.Number)
-		}
+		// Arrival 4: an approve lets the run through with no re-prompt.
 		if code, out := f.verb(taskCwd, "review", "approve"); code != 0 {
 			t.Fatalf("review approve = %d %q; want 0", code, out)
 		}
-		second := arrive(t, gates)
-		if !second.Passed || second.Pending || second.Send != "" {
-			t.Fatalf("round 2 arrival 2 = %+v; want passed with no re-prompt", second)
+		fourth := arrive(t, gates)
+		if !fourth.Passed || fourth.Pending || fourth.Send != "" {
+			t.Fatalf("arrival 4 = %+v; want passed with no re-prompt", fourth)
 		}
 		if v := f.latest().Verdict; v == nil || v.Kind != parentreview.VerdictApprove {
 			t.Fatalf("round 2 verdict = %+v; want approve", v)
@@ -286,8 +276,11 @@ func TestParentReviewExchange_RejectThenFixThenLetThrough(t *testing.T) {
 	}
 	f.call()
 
-	round2Rel := filepath.ToSlash(filepath.Join(loomengine.LoomParentReviewDirRel(), "round-2", "request.json"))
-	if got := mustGitOut(t, f.weft, "show", "--name-only", "--format=", "HEAD"); !strings.Contains(got, round2Rel) {
-		t.Errorf("weft HEAD touched %q; want it to include %q", got, round2Rel)
+	// Both rounds' request directories rode along in the discussion commits.
+	for _, n := range []string{"round-1", "round-2"} {
+		rel := filepath.ToSlash(filepath.Join(loomengine.LoomParentReviewDirRel(), n, "request.json"))
+		if got := mustGitOut(t, f.weft, "log", "--name-only", "--format=", "-n", "3"); !strings.Contains(got, rel) {
+			t.Errorf("weft log touched %q; want it to include %q", got, rel)
+		}
 	}
 }

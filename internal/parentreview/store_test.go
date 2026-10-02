@@ -325,3 +325,162 @@ func TestWaitNote_ExpiredAndSuperseded(t *testing.T) {
 		t.Fatalf("superseded note = %q", n)
 	}
 }
+
+// writeVerdict writes a verdict.json straight into round n's directory, creating it.
+func writeVerdict(t *testing.T, s Store, n int, body string) {
+	t.Helper()
+	if err := os.MkdirAll(s.roundDir(n), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if body == "" {
+		return
+	}
+	if err := os.WriteFile(filepath.Join(s.roundDir(n), verdictFile), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRejectedRounds_CountsOnlyRejects(t *testing.T) {
+	s, _ := newStore(t)
+	if n, err := s.RejectedRounds(); n != 0 || err != nil {
+		t.Fatalf("no rounds = %d, %v", n, err)
+	}
+	writeVerdict(t, s, 1, `{"kind":"reject"}`)
+	writeVerdict(t, s, 2, `{"kind":"approve"}`)
+	writeVerdict(t, s, 3, `{"kind":"reject"}`)
+	writeVerdict(t, s, 4, "")
+	writeVerdict(t, s, 5, `{"kind":"reject"}`)
+	if err := os.WriteFile(filepath.Join(s.roundDir(5), requestFile), []byte(`{"state":"expired"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := s.RejectedRounds(); n != 3 || err != nil {
+		t.Fatalf("RejectedRounds = %d, %v; want 3", n, err)
+	}
+}
+
+func TestPrepareRound(t *testing.T) {
+	tests := []struct {
+		name      string
+		verdict   string
+		expire    bool
+		noRound   bool
+		wantRound int
+	}{
+		{name: "no round", noRound: true, wantRound: 1},
+		{name: "reject kept", verdict: `{"kind":"reject"}`, wantRound: 1},
+		{name: "superseding approve kept", verdict: `{"kind":"approve","superseding":true}`, wantRound: 1},
+		{name: "plain approve begins", verdict: `{"kind":"approve"}`, wantRound: 2},
+		{name: "expired begins", expire: true, wantRound: 2},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s, _ := newStore(t)
+			if !tt.noRound {
+				openOne(t, s)
+				if tt.verdict != "" {
+					writeVerdict(t, s, 1, tt.verdict)
+				}
+				if tt.expire {
+					if err := s.MarkExpired(); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			got, err := s.PrepareRound()
+			if err != nil || got.Number != tt.wantRound {
+				t.Fatalf("PrepareRound = %d, %v; want round %d", got.Number, err, tt.wantRound)
+			}
+		})
+	}
+}
+
+func TestOpenRequest_RecordsCap(t *testing.T) {
+	s, _ := newStore(t)
+	if _, err := s.BeginRound(); err != nil {
+		t.Fatal(err)
+	}
+	r, err := s.OpenRequest(OpenSpec{Slug: "x", Reviewer: "hub:orch", Brief: "b", Cap: 3})
+	if err != nil || r.Request.Cap != 3 {
+		t.Fatalf("OpenRequest = %+v, %v", r.Request, err)
+	}
+	if got := latest(t, s); got.Request.Cap != 3 {
+		t.Fatalf("stored cap = %d", got.Request.Cap)
+	}
+}
+
+// openCapped opens a round with the given cap and records a reject verdict carrying review text.
+func openCapped(t *testing.T, s Store, cap int) {
+	t.Helper()
+	if _, err := s.BeginRound(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.OpenRequest(OpenSpec{Slug: "x", Reviewer: "hub:orch", Brief: "b", Cap: cap}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordVerdict(VerdictReject, writeFile(t, "fix it")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSupersedeCapReject_AtCap(t *testing.T) {
+	s, c := newStore(t)
+	openCapped(t, s, 2)
+	openCapped(t, s, 2)
+	if err := s.SupersedeCapReject(); err != nil {
+		t.Fatal(err)
+	}
+	r := latest(t, s)
+	if r.Verdict == nil || r.Verdict.Kind != VerdictApprove || !r.Verdict.Superseding || !r.Verdict.RecordedAt.Equal(c.t) {
+		t.Fatalf("verdict = %+v", r.Verdict)
+	}
+	if b, _ := os.ReadFile(r.ReviewPath()); string(b) != "fix it" {
+		t.Fatalf("review.md = %q", b)
+	}
+	if n, _ := s.RejectedRounds(); n != 1 {
+		t.Fatalf("RejectedRounds = %d; want the earlier round only", n)
+	}
+	if err := s.SupersedeCapReject(); !errors.Is(err, ErrNotAtCap) {
+		t.Fatalf("second supersede = %v; want ErrNotAtCap", err)
+	}
+}
+
+func TestSupersedeCapReject_Refusals(t *testing.T) {
+	t.Run("below cap", func(t *testing.T) {
+		s, _ := newStore(t)
+		openCapped(t, s, 3)
+		openCapped(t, s, 3)
+		if err := s.SupersedeCapReject(); !errors.Is(err, ErrNotAtCap) {
+			t.Fatalf("err = %v", err)
+		}
+	})
+	t.Run("latest approve", func(t *testing.T) {
+		s, _ := newStore(t)
+		openOne(t, s)
+		if err := s.RecordVerdict(VerdictApprove, ""); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.SupersedeCapReject(); !errors.Is(err, ErrNotAtCap) {
+			t.Fatalf("err = %v", err)
+		}
+	})
+	t.Run("open round without verdict", func(t *testing.T) {
+		s, _ := newStore(t)
+		openOne(t, s)
+		if err := s.SupersedeCapReject(); !errors.Is(err, ErrNotAtCap) {
+			t.Fatalf("err = %v", err)
+		}
+	})
+	t.Run("cap zero", func(t *testing.T) {
+		s, _ := newStore(t)
+		openCapped(t, s, 0)
+		if err := s.SupersedeCapReject(); !errors.Is(err, ErrNotAtCap) {
+			t.Fatalf("err = %v", err)
+		}
+	})
+	t.Run("no round", func(t *testing.T) {
+		s, _ := newStore(t)
+		if err := s.SupersedeCapReject(); !errors.Is(err, ErrNotAtCap) {
+			t.Fatalf("err = %v", err)
+		}
+	})
+}

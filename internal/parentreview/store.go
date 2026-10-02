@@ -48,6 +48,8 @@ var (
 	ErrVerdictRecorded = errors.New("parentreview: verdict already recorded")
 	// ErrEmptyReviewFile means a reject came without a readable, non-empty review file.
 	ErrEmptyReviewFile = errors.New("parentreview: review file missing or empty")
+	// ErrNotAtCap means the latest round is not the cap's reject, so there is nothing to supersede.
+	ErrNotAtCap = errors.New("parentreview: latest round is not the cap's reject")
 )
 
 // Request is request.json.
@@ -59,6 +61,8 @@ type Request struct {
 	DecisionRecord string    `json:"decision_record"`
 	SupportLog     string    `json:"support_log"`
 	State          string    `json:"state"`
+	// Cap is the reject cap the gate held when it opened the round; zero means none was recorded.
+	Cap int `json:"cap,omitempty"`
 }
 
 // Delivery is delivery.json.
@@ -76,6 +80,8 @@ type Verdict struct {
 	Kind       string    `json:"kind"`
 	RecordedAt time.Time `json:"recorded_at"`
 	Consumed   bool      `json:"consumed"`
+	// Superseding is set only on an approve that replaced the cap's reject.
+	Superseding bool `json:"superseding,omitempty"`
 }
 
 // Round is the decoded view of one round directory.
@@ -103,6 +109,8 @@ type OpenSpec struct {
 	DecisionRecord string
 	SupportLog     string
 	Brief          string
+	// Cap is the reject cap recorded on the request.
+	Cap int
 }
 
 // Store is the told geometry of one run's parent-review exchange.
@@ -128,21 +136,35 @@ func (s Store) lockPath(n int) string {
 	return filepath.Join(s.LockDir, roundPrefix+strconv.Itoa(n)+".lock")
 }
 
-func (s Store) latestNumber() (int, error) {
+// roundNumbers lists the numbers of every round directory under Root.
+func (s Store) roundNumbers() ([]int, error) {
 	entries, err := os.ReadDir(s.Root)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return 0, nil
+			return nil, nil
 		}
-		return 0, fmt.Errorf("parentreview: read %s: %w", s.Root, err)
+		return nil, fmt.Errorf("parentreview: read %s: %w", s.Root, err)
 	}
-	latest := 0
+	var nums []int
 	for _, e := range entries {
 		if !e.IsDir() || !strings.HasPrefix(e.Name(), roundPrefix) {
 			continue
 		}
-		n, err := strconv.Atoi(strings.TrimPrefix(e.Name(), roundPrefix))
-		if err == nil && n > latest {
+		if n, err := strconv.Atoi(strings.TrimPrefix(e.Name(), roundPrefix)); err == nil {
+			nums = append(nums, n)
+		}
+	}
+	return nums, nil
+}
+
+func (s Store) latestNumber() (int, error) {
+	nums, err := s.roundNumbers()
+	if err != nil {
+		return 0, err
+	}
+	latest := 0
+	for _, n := range nums {
+		if n > latest {
 			latest = n
 		}
 	}
@@ -213,6 +235,79 @@ func (s Store) BeginRound() (Round, error) {
 	return Round{Number: next, Dir: s.roundDir(next)}, nil
 }
 
+// RejectedRounds counts the rounds under Root whose verdict is a reject.
+func (s Store) RejectedRounds() (int, error) {
+	return s.rejectedRoundsExcept(0)
+}
+
+// rejectedRoundsExcept is RejectedRounds without round skip, for a caller holding that round's lock.
+func (s Store) rejectedRoundsExcept(skip int) (int, error) {
+	nums, err := s.roundNumbers()
+	if err != nil {
+		return 0, err
+	}
+	count := 0
+	for _, n := range nums {
+		if n == skip {
+			continue
+		}
+		r, err := s.load(n)
+		if err != nil {
+			return 0, err
+		}
+		if r.Verdict != nil && r.Verdict.Kind == VerdictReject {
+			count++
+		}
+	}
+	return count, nil
+}
+
+// PrepareRound is Discussion-Write's fresh-spawn preparation.
+// It returns the latest round unchanged when its verdict is a reject or a superseding approve, and otherwise calls BeginRound.
+func (s Store) PrepareRound() (Round, error) {
+	r, ok, err := s.Latest()
+	if err != nil {
+		return Round{}, err
+	}
+	if ok && r.Verdict != nil && (r.Verdict.Kind == VerdictReject || r.Verdict.Superseding) {
+		return r, nil
+	}
+	return s.BeginRound()
+}
+
+// SupersedeCapReject replaces the latest round's reject with a superseding approve, keeping review.md.
+// It refuses with ErrNotAtCap unless, read under the round lock, the latest round's verdict is a reject, its request carries a positive Cap, and the rejected rounds, that one included, reach it.
+func (s Store) SupersedeCapReject() error {
+	r, ok, err := s.Latest()
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrNotAtCap
+	}
+	now := s.now()
+	return state.UpdateJSON(filepath.Join(r.Dir, verdictFile), s.lockPath(r.Number), func(cur Verdict, found bool) (Verdict, error) {
+		if !found || cur.Kind != VerdictReject {
+			return cur, ErrNotAtCap
+		}
+		req, reqFound, err := readHeldJSON[Request](filepath.Join(r.Dir, requestFile))
+		if err != nil {
+			return cur, err
+		}
+		if !reqFound || req.Cap <= 0 {
+			return cur, ErrNotAtCap
+		}
+		earlier, err := s.rejectedRoundsExcept(r.Number)
+		if err != nil {
+			return cur, err
+		}
+		if earlier+1 < req.Cap {
+			return cur, ErrNotAtCap
+		}
+		return Verdict{Kind: VerdictApprove, Superseding: true, RecordedAt: now}, nil
+	})
+}
+
 func (s Store) setRequestState(n int, st string) error {
 	return state.UpdateJSON(filepath.Join(s.roundDir(n), requestFile), s.lockPath(n), func(cur Request, found bool) (Request, error) {
 		if !found {
@@ -252,6 +347,7 @@ func (s Store) OpenRequest(spec OpenSpec) (Round, error) {
 		DecisionRecord: spec.DecisionRecord,
 		SupportLog:     spec.SupportLog,
 		State:          StateOpen,
+		Cap:            spec.Cap,
 	}
 	if err := state.WriteJSON(filepath.Join(r.Dir, requestFile), s.lockPath(r.Number), req); err != nil {
 		return Round{}, err

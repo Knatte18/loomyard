@@ -494,6 +494,11 @@
 // The pair's first weft commit, the origin record's, stages the root's deletions when the fork point tracked anything there.
 // The adopt path drops nothing, because an existing branch's run records are its own, and `Reconcile`'s dormant-weft creation keeps the plain fork since it makes no commit to carry a drop.
 //
+// `Add` records the pair's origin (`_lyx/fabric/origin.json`) in that same first weft commit.
+// The record holds two write-once fields: `parent_branch`, the warp branch the pair was forked from, and `parent_worktree`, the `WorktreeName` of the worktree `Add` ran from.
+// The parent worktree is what a run's parent agent name is resolved from.
+// A record written before `parent_worktree` existed, or by a legacy-worktree repair that cannot know the creator, decodes with it empty.
+//
 // # The one-repo illusion at the public API boundary
 //
 // fabric exists to sell one illusion to every other package: a developer, an agent, and every lyx

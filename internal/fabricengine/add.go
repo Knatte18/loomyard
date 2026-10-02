@@ -1,5 +1,5 @@
 // add.go implements the transactional Add: it creates the warp worktree, portal, and launchers,
-// wires junctions, records and commits the pair's parent-branch provenance, then pushes last,
+// wires junctions, records and commits the pair's parent-branch and parent-worktree provenance, then pushes last,
 // performing a best-effort full rollback on any post-creation failure so a partial worktree PAIR
 // is never left behind.
 // One residue the rollback cannot always clear is the warp branch this Add created: the gate deletes
@@ -67,7 +67,7 @@ func (e *ErrBranchExists) Error() string {
 
 // Add creates a new paired warp and weft git worktree with the given slug.
 // It validates the slug, creates both worktrees, wires junctions, records and commits the pair's
-// parent-branch provenance, and pushes branches, rolling back all changes on any failure.
+// parent-branch and parent-worktree provenance (the acting worktree's name), and pushes branches, rolling back all changes on any failure.
 // A newly forked weft branch does not inherit the parent's shed run records: the fork is no-checkout, so the run-records root never reaches the new worktree's disk,
 // and the pair's first weft commit (the origin record's) also records the root's deletion.
 // An adopted, already-existing weft branch keeps its own run records.
@@ -244,7 +244,7 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 	// (10c) Record and commit the pair's provenance now that the pair is fully wired, and
 	// before step 11's warp push and step 12's weft push — the weft push that already runs at
 	// step 12 carries this commit to the remote, so no new push call is added here.
-	if err := WriteOrigin(rec, l, slug, Origin{ParentBranch: parentBranch}); err != nil {
+	if err := WriteOrigin(rec, l, slug, Origin{ParentBranch: parentBranch, ParentWorktree: l.WorktreeName}); err != nil {
 		_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok)
 		return AddResult{}, fmt.Errorf("record parent branch: %w", err)
 	}

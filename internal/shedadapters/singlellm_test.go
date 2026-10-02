@@ -55,6 +55,8 @@ type fakeShuttle struct {
 	// gate closure is consulted -- a test leaves this at its zero value unless it specifically needs
 	// to assert GateAttempts propagation with a non-zero count.
 	gateAttempts int
+	// gateReason is stamped onto the GateOutcome as Reason when the gate did not pass, standing in for a terminal entry's explanation.
+	gateReason string
 }
 
 func (f *fakeShuttle) Run(spec shuttleengine.Spec) (shuttleengine.Result, error) {
@@ -93,6 +95,9 @@ func (f *fakeShuttle) RunGated(spec shuttleengine.Spec, gate shuttleengine.GateS
 		return result, gerr
 	}
 	result.Gate = &shuttleengine.GateOutcome{Passed: passed, Attempts: f.gateAttempts}
+	if !passed {
+		result.Gate.Reason = f.gateReason
+	}
 	return result, nil
 }
 
@@ -925,6 +930,29 @@ func TestSingleLLMProducer_Gate_FailedGateReachesStuckWithArtifactPointer(t *tes
 	}
 	if strings.HasPrefix(ptr.Reason, "agent is asking") {
 		t.Errorf("Call() Reason %q is the asking reason; want the gate-failed one", ptr.Reason)
+	}
+}
+
+// TestSingleLLMProducer_Gate_TerminalReasonReachesStuck proves a failing gate outcome carrying Reason maps to Stuck with that reason in place of the generic text.
+func TestSingleLLMProducer_Gate_TerminalReasonReachesStuck(t *testing.T) {
+	dir := t.TempDir()
+	outPath := filepath.Join(dir, "out.md")
+	spec := shuttleengine.Spec{Prompt: "run", OutputFiles: []string{outPath}}
+	shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, gateReason: "the parent rejected the cap round"}
+	gate := shuttleengine.GateSpec{{Attempts: 3, Gate: func() (shuttleengine.GateResult, error) {
+		return shuttleengine.GateResult{Passed: false, Findings: "the parent rejected the cap round", Terminal: true}, nil
+	}}}
+	p := NewSingleLLMProducerGated("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil, gate)
+
+	outcome, ptr, err := p.Call(context.Background())
+	if err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	if outcome != shedengine.Stuck {
+		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
+	}
+	if want := "the parent rejected the cap round"; ptr.Reason != want {
+		t.Errorf("Call() Reason = %q; want %q", ptr.Reason, want)
 	}
 }
 

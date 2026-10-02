@@ -1,7 +1,7 @@
 //go:build integration
 
 // reedgeom_integration_test.go drives ReedGeometry against a real hub from hubforge:
-// the prime's geometry carries the hub's shortname with no slug or parent, a task worktree carries its slug and the parent its default run's seed records,
+// the prime's geometry carries the hub's shortname with no slug or parent, a task worktree carries its slug and the parent its origin record names, or its default run's seed records when the origin names none,
 // and a hub with no .lyx-shortname yields an empty shortname and no error.
 
 package hubgeom_test
@@ -50,8 +50,17 @@ func TestReedGeometry_TaskWorktreeCarriesSlugAndSeededParent(t *testing.T) {
 	if before.NameShortname != hubforge.TestShortname || before.NameSlug != slug {
 		t.Errorf("task NameShortname/NameSlug = %q/%q; want %q/%q", before.NameShortname, before.NameSlug, hubforge.TestShortname, slug)
 	}
-	if before.ParentName != "" {
-		t.Errorf("ParentName before seeding = %q; want empty", before.ParentName)
+	if want := hubforge.TestShortname + ":orch"; before.ParentName != want {
+		t.Errorf("ParentName before seeding = %q; want %q (the prime's orch, from the origin record)", before.ParentName, want)
+	}
+
+	origin, found, err := fabricengine.ReadOriginFor(l, slug)
+	if err != nil || !found {
+		t.Fatalf("ReadOriginFor = %v, found %v", err, found)
+	}
+	origin.ParentWorktree = ""
+	if err := fabricengine.WriteOrigin(&fabricengine.Mutations{}, l, slug, origin); err != nil {
+		t.Fatalf("WriteOrigin without parent_worktree: %v", err)
 	}
 
 	const parent = "tst:hub"

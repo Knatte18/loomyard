@@ -78,11 +78,10 @@ producers:
         - name: discussion
           attempts: 3
         # parent-review hands the finished discussion to the run's parent for review once the
-        # mechanical gate passes. attempts: 0 turns it off. A reject re-prompts the live writer
-        # once; the next arrival re-runs the discussion gate and is let through.
+        # mechanical gate passes. attempts: 0 turns it off. The parent reviews every rewrite after
+        # a reject; the third reject halts the run blocked, and `lyx loom review approve` lifts it.
         - name: parent-review
-          attempts: 1
-          pass_on_cap: true
+          attempts: 3
 
   - name: Discussion-Bouncer
     engine: Bouncer

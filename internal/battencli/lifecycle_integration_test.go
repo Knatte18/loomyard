@@ -206,6 +206,12 @@ func TestBattenIntegration_SeedChild_WritesASeedTheChildBootstrapAgreesWith(t *t
 	if !seedFound {
 		t.Fatalf("Seed-Child wrote no child seed")
 	}
+	if seed.Parent != "" {
+		t.Errorf("child seed Parent = %q; want empty: the parent is resolved from the origin record", seed.Parent)
+	}
+	if origin.ParentWorktree != h.Location.WorktreeName {
+		t.Errorf("child origin ParentWorktree = %q; want the prime %q", origin.ParentWorktree, h.Location.WorktreeName)
+	}
 	if got := seed.Params["parent"]; got != origin.ParentBranch {
 		t.Errorf("child seed params[parent] = %q; want the recorded parent branch %q", got, origin.ParentBranch)
 	}
@@ -614,39 +620,57 @@ func TestBattenIntegration_StepDrivenRunShed_ReturnsAfterOnePollInterval(t *test
 	}
 }
 
-// TestBattenIntegration_RunShedBlocked_LeavesThePairIntact drives a read-status answering
-// StateBlocked, asserting the run hard-errors naming the child's own state, with the task worktree
-// still present -- the safety property the whole design turns on.
+// TestBattenIntegration_RunShedPausedChild_WaitsThenTearsDownOnceDone drives a read-status answering StatePaused, then running, then done,
+// asserting the run survives the paused poll with the pair intact and then reaches Worktree-Teardown, which removes the pair.
 //
-// A blocked (or paused, or failed) child is a hard Go error out of InnerRun.Call, never a Stuck
-// verdict: innerrun.go's own doc comment states this outright, since only "the child is still
-// running" is a condition this row can usefully re-enter on. shedengine.Shed.Run therefore returns
-// a non-nil error here, not a Result carrying RunBlocked -- unlike an ordinary bounce-budget or
-// no-OnStuck halt elsewhere in this repo, which persists StateBlocked and returns cleanly.
-func TestBattenIntegration_RunShedBlocked_LeavesThePairIntact(t *testing.T) {
+// A halted child is a budget-exempt wait out of InnerRun.Call, never a hard error:
+// the pair keeps the watcher that lands and tears it down once the operator resumes the child.
+// The running answer appears twice because the running arm re-spawns once with no spawn confirmed and reads the status again.
+func TestBattenIntegration_RunShedPausedChild_WaitsThenTearsDownOnceDone(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
-	slug := "batten-blocked"
-	seedBoardTask(t, h, slug, "loom")
+	slug := "batten-paused"
+	hubforge.AddPair(t, h, slug)
 
+	answers := []shedengine.State{shedengine.StatePaused, shedengine.StateRunning, shedengine.StateRunning}
+	reads := 0
 	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
-		return shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: "loom-side-producer", Error: "loom session blocked"}, true, nil
+		st := shedengine.StateDone
+		if reads < len(answers) {
+			st = answers[reads]
+		}
+		reads++
+		return shedengine.Status{State: st, CurrentProducer: "loom-side-producer", Error: "loom session paused"}, true, nil
 	})
-	seedEntryStatus(t, c, battenrecipe.NameWorktreeCreate, shedengine.StateRunning, nil)
+	seedEntryStatus(t, c, battenrecipe.NameRunShed, shedengine.StateRunning, []shedengine.HistoryEntry{
+		{Producer: battenrecipe.NameWorktreeCreate, Outcome: shedengine.Done},
+		{Producer: battenrecipe.NameSeedChild, Outcome: shedengine.Done},
+	})
 
-	shed, err := battenrecipe.New(c.env, c.shedPaths)
+	shed, err := shedbuild.NewShed([]byte(shortPollBattenRecipe), c.env, c.shedPaths)
 	if err != nil {
-		t.Fatalf("battenrecipe.New: %v", err)
+		t.Fatalf("shedbuild.NewShed: %v", err)
+	}
+	ctx := context.Background()
+	pairPath := h.PairWarpWorktree(slug)
+
+	res, err := shed.Step(ctx)
+	if err != nil {
+		t.Fatalf("Step (Run-Shed over a paused child): %v", err)
+	}
+	if res.Outcome != shedengine.Stuck || res.Next != battenrecipe.NameRunShed || res.State != shedengine.StateRunning {
+		t.Errorf("paused Step = outcome %q next %q state %q; want a Stuck self-route that stays running", res.Outcome, res.Next, res.State)
+	}
+	if !pathExists(pairPath) {
+		t.Fatalf("pair does not exist after a paused poll; want it left intact: %s", pairPath)
 	}
 
-	_, err = shed.Run(context.Background())
-	if err == nil {
-		t.Fatal("Run: want a hard error naming the child's blocked state; got nil")
+	for i := 0; i < 5 && pathExists(pairPath); i++ {
+		if _, err := shed.Step(ctx); err != nil {
+			t.Fatalf("Step %d after the child resumed: %v", i, err)
+		}
 	}
-	if !strings.Contains(err.Error(), "loom-side-producer") || !strings.Contains(err.Error(), "loom session blocked") {
-		t.Errorf("Run error = %q; want it to name the child's current_producer and error", err.Error())
-	}
-	if !pathExists(h.PairWarpWorktree(slug)) {
-		t.Errorf("pair does not exist after a blocked run; want it left intact: %s", h.PairWarpWorktree(slug))
+	if pathExists(pairPath) {
+		t.Errorf("pair still exists after the child reached done; want Worktree-Teardown to remove it: %s", pairPath)
 	}
 }
 

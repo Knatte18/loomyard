@@ -56,16 +56,14 @@ func TestArmSeed_RunAndStepSeedBeforeWire(t *testing.T) {
 	}
 }
 
-// TestArmSeed_RecordsTheSpawningSessionAsParent asserts a first seeding under LYX_STRAND_NAME records it as the seed's parent,
-// and with the variable unset records none.
-func TestArmSeed_RecordsTheSpawningSessionAsParent(t *testing.T) {
+// TestArmSeed_RecordsNoParent asserts a first seeding records no parent, whether or not LYX_STRAND_NAME is set.
+func TestArmSeed_RecordsNoParent(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		env  string
-		want string
 	}{
-		{"set", "ab:hub", "ab:hub"},
-		{"unset", "", ""},
+		{"set", "ab:hub"},
+		{"unset", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv(agentname.StrandNameEnv, tc.env)
@@ -79,8 +77,8 @@ func TestArmSeed_RecordsTheSpawningSessionAsParent(t *testing.T) {
 			if err != nil || !found {
 				t.Fatalf("ReadSeed = (found=%v, err=%v); want (true, nil)", found, err)
 			}
-			if seed.Parent != tc.want {
-				t.Errorf("seed.Parent = %q; want %q", seed.Parent, tc.want)
+			if seed.Parent != "" {
+				t.Errorf("seed.Parent = %q; want empty", seed.Parent)
 			}
 		})
 	}

@@ -7,10 +7,12 @@ package shedrecipe
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/parentreview"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -237,7 +239,7 @@ func hasRound(t *testing.T, env Env) bool {
 func TestDiscussionWriteEntry_ParentReviewBeginRound(t *testing.T) {
 	t.Run("FreshSpawnBeginsRound", func(t *testing.T) {
 		env := parentReviewEnv(t)
-		p, err := discussionWriteEntry("Row", parentReviewCfg(3, true), env)
+		p, err := discussionWriteEntry("Row", parentReviewCfg(3), env)
 		if err != nil {
 			t.Fatalf("discussionWriteEntry() error = %v", err)
 		}
@@ -249,10 +251,44 @@ func TestDiscussionWriteEntry_ParentReviewBeginRound(t *testing.T) {
 			t.Error("no round after a fresh spawn; want BeginRound to have run")
 		}
 	})
+	t.Run("FreshSpawnKeepsRejectRound", func(t *testing.T) {
+		env := parentReviewEnv(t)
+		spec, err := resolveGateSpec("Row", parentReviewCfg(3), env)
+		if err != nil {
+			t.Fatalf("resolveGateSpec() error = %v", err)
+		}
+		if _, err := spec[0].Gate(); err != nil {
+			t.Fatalf("gate() error = %v", err)
+		}
+		round, ok, err := env.ParentReview.Store.Latest()
+		if err != nil || !ok {
+			t.Fatalf("Latest() = %v, %v", ok, err)
+		}
+		review := filepath.Join(t.TempDir(), "review.md")
+		if err := os.WriteFile(review, []byte("fix this"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := env.ParentReview.Store.RecordVerdict(parentreview.VerdictReject, review); err != nil {
+			t.Fatalf("RecordVerdict() error = %v", err)
+		}
+		p, err := discussionWriteEntry("Row", parentReviewCfg(3), env)
+		if err != nil {
+			t.Fatalf("discussionWriteEntry() error = %v", err)
+		}
+		env.Shuttle.(*fakeShuttle).result = shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
+		_, _, _ = p.Call(context.Background())
+		latest, ok, err := env.ParentReview.Store.Latest()
+		if err != nil || !ok {
+			t.Fatalf("Latest() = %v, %v", ok, err)
+		}
+		if latest.Number != round.Number {
+			t.Errorf("latest round = %d after a fresh spawn; want the reject round %d kept", latest.Number, round.Number)
+		}
+	})
 	t.Run("AttachDoesNotBeginRound", func(t *testing.T) {
 		env := parentReviewEnv(t)
 		env.Shuttle = attachingShuttle{env.Shuttle.(*fakeShuttle)}
-		p, err := discussionWriteEntry("Row", parentReviewCfg(3, true), env)
+		p, err := discussionWriteEntry("Row", parentReviewCfg(3), env)
 		if err != nil {
 			t.Fatalf("discussionWriteEntry() error = %v", err)
 		}
@@ -263,7 +299,7 @@ func TestDiscussionWriteEntry_ParentReviewBeginRound(t *testing.T) {
 	})
 	t.Run("DisabledEntryDoesNotBeginRound", func(t *testing.T) {
 		env := parentReviewEnv(t)
-		p, err := discussionWriteEntry("Row", parentReviewCfg(0, true), env)
+		p, err := discussionWriteEntry("Row", parentReviewCfg(0), env)
 		if err != nil {
 			t.Fatalf("discussionWriteEntry() error = %v", err)
 		}

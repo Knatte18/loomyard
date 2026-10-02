@@ -1,11 +1,13 @@
 package shedrecipe
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/parentreview"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // gatesCfg builds a row Config carrying a one-entry "gates" list, the shape every shipped gated row has.
@@ -159,18 +161,60 @@ func parentReviewEnv(t *testing.T) Env {
 	return env
 }
 
-// parentReviewCfg is a one-entry "gates" list naming parent-review with pass_on_cap set as given.
-func parentReviewCfg(attempts int, passOnCap bool) Config {
-	return Config{"gates": []any{map[string]any{"name": "parent-review", "attempts": attempts, "pass_on_cap": passOnCap}}}
+// parentReviewCfg is a one-entry "gates" list naming parent-review with the given attempts and no pass_on_cap.
+func parentReviewCfg(attempts int) Config {
+	return Config{"gates": []any{map[string]any{"name": "parent-review", "attempts": attempts}}}
 }
 
-func TestResolveGateSpec_ParentReviewResolvesWithFinal(t *testing.T) {
-	spec, err := resolveGateSpec("Row", parentReviewCfg(3, true), parentReviewEnv(t))
+func TestResolveGateSpec_ParentReviewResolvesMustPassMayHold(t *testing.T) {
+	spec, err := resolveGateSpec("Row", parentReviewCfg(3), parentReviewEnv(t))
 	if err != nil {
 		t.Fatalf("resolveGateSpec() error = %v; want nil", err)
 	}
-	if len(spec) != 1 || spec[0].Gate == nil || spec[0].Final == nil || !spec[0].PassOnCap || spec[0].Attempts != 3 {
-		t.Fatalf("resolveGateSpec() = %+v; want one pass_on_cap entry with Gate and Final set", spec)
+	if len(spec) != 1 || spec[0].Gate == nil || spec[0].Final == nil || spec[0].PassOnCap || !spec[0].MayHold || spec[0].Attempts != 3 {
+		t.Fatalf("resolveGateSpec() = %+v; want one must-pass MayHold entry with Gate and Final set and Attempts 3", spec)
+	}
+}
+
+// TestResolveGateSpec_ParentReviewCapEqualsAttempts asserts the closure's reject cap is the entry's Attempts: two rejects are non-terminal failures and the third is terminal.
+func TestResolveGateSpec_ParentReviewCapEqualsAttempts(t *testing.T) {
+	env := parentReviewEnv(t)
+	spec, err := resolveGateSpec("Row", parentReviewCfg(3), env)
+	if err != nil {
+		t.Fatalf("resolveGateSpec() error = %v; want nil", err)
+	}
+	gate := spec[0].Gate
+	review := filepath.Join(t.TempDir(), "review.md")
+	if err := os.WriteFile(review, []byte("fix this"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	eval := func() shuttleengine.GateResult {
+		t.Helper()
+		res, err := gate()
+		if err != nil {
+			t.Fatalf("gate() error = %v", err)
+		}
+		return res
+	}
+	if res := eval(); !res.Pending {
+		t.Fatalf("first arrival = %+v; want pending", res)
+	}
+	for round := 1; round <= spec[0].Attempts; round++ {
+		if err := env.ParentReview.Store.RecordVerdict(parentreview.VerdictReject, review); err != nil {
+			t.Fatalf("RecordVerdict() error = %v", err)
+		}
+		res := eval()
+		if res.Passed || res.Pending {
+			t.Fatalf("reject %d = %+v; want a failure", round, res)
+		}
+		if wantTerminal := round == spec[0].Attempts; res.Terminal != wantTerminal {
+			t.Fatalf("reject %d Terminal = %v; want %v", round, res.Terminal, wantTerminal)
+		}
+		if round < spec[0].Attempts {
+			if res := eval(); !res.Pending {
+				t.Fatalf("rewrite after reject %d = %+v; want pending", round, res)
+			}
+		}
 	}
 }
 
@@ -188,8 +232,9 @@ func TestResolveGateSpec_OtherNamesCarryNoFinal(t *testing.T) {
 	}
 }
 
-func TestResolveGateSpec_ParentReviewRequiresPassOnCap(t *testing.T) {
-	_, err := resolveGateSpec("TheRow", parentReviewCfg(3, false), parentReviewEnv(t))
+func TestResolveGateSpec_ParentReviewRefusesPassOnCap(t *testing.T) {
+	cfg := Config{"gates": []any{map[string]any{"name": "parent-review", "attempts": 3, "pass_on_cap": true}}}
+	_, err := resolveGateSpec("TheRow", cfg, parentReviewEnv(t))
 	assertErrContains(t, err, "TheRow")
 	assertErrContains(t, err, "pass_on_cap")
 }
@@ -211,7 +256,7 @@ func TestResolveGateSpec_ParentReviewMissingEnv(t *testing.T) {
 		t.Run(tt.field, func(t *testing.T) {
 			env := parentReviewEnv(t)
 			tt.clear(&env)
-			_, err := resolveGateSpec("Row", parentReviewCfg(1, true), env)
+			_, err := resolveGateSpec("Row", parentReviewCfg(1), env)
 			assertErrContains(t, err, tt.field)
 		})
 	}
