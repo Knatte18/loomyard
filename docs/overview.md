@@ -320,12 +320,11 @@ User-facing modules each get one `lyx <module>` namespace:
   `lyx ide spawn <prime>` opens a hub workspace (prime, `_board`, `_portals`) whose `settings` carry the prime's `.vscode/settings.json`.
   The file is lyx-owned and regenerated on each prime spawn, overwriting any edit made in it;
   a task slug still opens its bare folder.
-  The generated `folderOpen` task is now the sequenced reed launch chain (`reed up` → `reed add --if-absent` → `reed attach`) rather than a bare `claude`, with both binary paths (`lyx`, `claude`) stamped absolute at generation time.
-  An existing worktree keeps its current `tasks.json` because `WriteConfig` never clobbers;
-  the manual upgrade is to delete `.vscode/tasks.json` and re-run `lyx ide spawn`.
-  The driven-pair variant batten uses writes an attach-only `tasks.json` (no `reed up`, no `reed add claude`), overwriting an untracked one and leaving a tracked one alone with a warning.
-  It keeps `settings.json` when present, and keeps `.vscode/` out of git through the repository's shared `info/exclude` at the anchor subpath rather than `.gitignore`.
-  Plain `lyx ide spawn` is unchanged. ✅ Implemented.
+  The generated `folderOpen` task is now the sequenced reed launch chain (`reed up` → `reed add --if-absent --unless-name orch` → `reed attach`) rather than a bare `claude`, with both binary paths (`lyx`, `claude`) stamped absolute at generation time.
+  The add row's `--unless-name orch` keeps a folder-open on a prime whose orch strand is live from stacking `claude` below it.
+  `lyx ide spawn` regenerates `tasks.json` on every spawn, overwriting an untracked one, and keeps `settings.json` when present.
+  It keeps `.vscode/` out of git through the repository's shared `info/exclude` at the anchor subpath rather than `.gitignore`, and leaves a tracked `tasks.json` alone with a warning.
+  The driven-pair variant batten uses writes an attach-only `tasks.json` (no `reed up`, no `reed add claude`) under the same rules. ✅ Implemented.
 - **selfreport** — file bugs and enhancements against `Knatte18/loomyard` via go-github through `internal/githubclient`, triggered two ways: manually (`lyx selfreport create <title>`) and automatically, off `loom`'s own status file (`internal/loomcli`'s `selfreport.go`), which detects five Tier-1 structural anomalies — a crash-resume, an escalation-to-human halt, a bounce-budget-exhausted halt, a producer-hard-failure halt, and a recurring ledger finding — and files them after every `lyx loom run` call, gated by the `selfreport` key in `loom.yaml` (default on).
   Credentials resolve from `GH_TOKEN`/`GITHUB_TOKEN` first, with the `gh` CLI (`gh auth token`) as a bounded, non-blocking fallback token source — not a hard prerequisite.
   Target repo is hardcoded;

@@ -11,7 +11,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Knatte18/loomyard/internal/gitignore"
+	"github.com/Knatte18/loomyard/internal/agentname"
 )
 
 // TaskChain selects which folderOpen task chain WriteConfig generates.
@@ -25,15 +25,16 @@ const (
 )
 
 // WriteConfig generates VS Code configuration files in a worktree.
-// With TaskChainInteractive, settings.json and tasks.json are each written only if they don't already exist (never clobbering operator edits), and ".vscode/" is added to .gitignore.
-// With TaskChainAttachOnly, settings.json keeps the write-only-when-absent rule, but tasks.json is always written, overwriting any existing file, and holds a single folderOpen "reed attach" task;
-// .gitignore is not touched (the caller keeps .vscode/ out of git through info/exclude).
+// settings.json is written only if it doesn't already exist, never clobbering operator edits.
+// Both chains always write tasks.json, overwriting any existing file:
+// TaskChainInteractive holds the reed up, reed add claude and reed attach tasks under one folderOpen entry task, and TaskChainAttachOnly a single folderOpen "reed attach" task.
+// Neither chain touches .gitignore; the caller keeps .vscode/ out of git through info/exclude.
 // lyxPath and claudePath are the resolved absolute binary paths stamped into the generated
 // folderOpen launch chain; WriteConfig owns the bare-name fallback for either one: an empty
 // lyxPath becomes "lyx" and an empty claudePath becomes "claude", so a resolution failure upstream
 // still produces a runnable (PATH-dependent) task file rather than a broken one.
 // claudePath is unused by TaskChainAttachOnly.
-// Returns an error if I/O fails (but not if files already exist).
+// Returns an error if I/O fails (but not if settings.json already exists).
 func WriteConfig(worktreeDir, relpath, slug, color, lyxPath, claudePath string, chain TaskChain) error {
 	if lyxPath == "" {
 		lyxPath = "lyx"
@@ -83,83 +84,80 @@ func WriteConfig(worktreeDir, relpath, slug, color, lyxPath, claudePath string, 
 	if chain == TaskChainAttachOnly {
 		return writeAttachOnlyTasks(tasksPath, lyxPath)
 	}
-	if _, err := os.Stat(tasksPath); err == nil {
-	} else if os.IsNotExist(err) {
-		// dependsOrder: "sequence" is relied on for ordering alone. VS Code's runner has
-		// historically run the next dependent task regardless of the previous one's exit
-		// code, and the chain is still safe: AddStrand now self-heals a cold worktree via
-		// ensureSessionLocked, so a failed "reed up" row is simply followed by an add row
-		// that attempts its own boot and fails for the same underlying reason, leaving no
-		// strand, no pane, and no bare claude either way. No compensating guard of the
-		// runner's behaviour is added here.
-		tasks := map[string]any{
-			"version": "2.0.0",
-			"tasks": []map[string]any{
-				{
-					"label":   "reed up",
-					"type":    "shell",
-					"command": lyxPath,
-					"args":    []string{"reed", "up"},
-					"presentation": map[string]any{
-						"reveal": "silent",
-						"panel":  "shared",
-						"echo":   true,
-						"focus":  false,
-					},
-				},
-				{
-					"label":   "reed add claude",
-					"type":    "shell",
-					"command": lyxPath,
-					"args": []string{
-						"reed", "add",
-						"--if-absent",
-						"--cmd", claudePath,
-						"--name", "claude",
-						"--focus",
-					},
-					"presentation": map[string]any{
-						"reveal": "silent",
-						"panel":  "shared",
-						"echo":   true,
-						"focus":  false,
-					},
-				},
-				{
-					"label":   "reed attach",
-					"type":    "shell",
-					"command": lyxPath,
-					"args":    []string{"reed", "attach"},
-					"presentation": map[string]any{
-						"reveal": "always",
-						"panel":  "new",
-						"echo":   true,
-						"focus":  true,
-					},
-				},
-				{
-					"label":        "Start Claude",
-					"dependsOn":    []string{"reed up", "reed add claude", "reed attach"},
-					"dependsOrder": "sequence",
-					"runOptions": map[string]any{
-						"runOn": "folderOpen",
-					},
+	return writeInteractiveTasks(tasksPath, lyxPath, claudePath)
+}
+
+// writeInteractiveTasks writes the reed up, reed add claude and reed attach chain, overwriting any existing file.
+func writeInteractiveTasks(tasksPath, lyxPath, claudePath string) error {
+	// dependsOrder: "sequence" is relied on for ordering alone. VS Code's runner has
+	// historically run the next dependent task regardless of the previous one's exit
+	// code, and the chain is still safe: AddStrand now self-heals a cold worktree via
+	// ensureSessionLocked, so a failed "reed up" row is simply followed by an add row
+	// that attempts its own boot and fails for the same underlying reason, leaving no
+	// strand, no pane, and no bare claude either way. No compensating guard of the
+	// runner's behaviour is added here.
+	// The add row's --unless-name keeps a folder-open on a prime whose orch strand is live from stacking claude below it.
+	tasks := map[string]any{
+		"version": "2.0.0",
+		"tasks": []map[string]any{
+			{
+				"label":   "reed up",
+				"type":    "shell",
+				"command": lyxPath,
+				"args":    []string{"reed", "up"},
+				"presentation": map[string]any{
+					"reveal": "silent",
+					"panel":  "shared",
+					"echo":   true,
+					"focus":  false,
 				},
 			},
-		}
-		data, err := json.MarshalIndent(tasks, "", "  ")
-		if err != nil {
-			return err
-		}
-		if err := os.WriteFile(tasksPath, data, 0o644); err != nil {
-			return err
-		}
-	} else {
+			{
+				"label":   "reed add claude",
+				"type":    "shell",
+				"command": lyxPath,
+				"args": []string{
+					"reed", "add",
+					"--if-absent",
+					"--unless-name", agentname.RoleOrch,
+					"--cmd", claudePath,
+					"--name", "claude",
+					"--focus",
+				},
+				"presentation": map[string]any{
+					"reveal": "silent",
+					"panel":  "shared",
+					"echo":   true,
+					"focus":  false,
+				},
+			},
+			{
+				"label":   "reed attach",
+				"type":    "shell",
+				"command": lyxPath,
+				"args":    []string{"reed", "attach"},
+				"presentation": map[string]any{
+					"reveal": "always",
+					"panel":  "new",
+					"echo":   true,
+					"focus":  true,
+				},
+			},
+			{
+				"label":        "Start Claude",
+				"dependsOn":    []string{"reed up", "reed add claude", "reed attach"},
+				"dependsOrder": "sequence",
+				"runOptions": map[string]any{
+					"runOn": "folderOpen",
+				},
+			},
+		},
+	}
+	data, err := json.MarshalIndent(tasks, "", "  ")
+	if err != nil {
 		return err
 	}
-
-	_, err := gitignore.Ensure(dir, ".vscode/")
-	return err
+	return os.WriteFile(tasksPath, data, 0o644)
 }
 
 // writeAttachOnlyTasks writes the single-task folderOpen chain, overwriting any existing file.
