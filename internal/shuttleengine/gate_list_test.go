@@ -1,6 +1,4 @@
-// gate_list_test.go covers the ordered gate list: per-entry consecutive-failure counts, PassOnCap, off
-// entries, and the per-entry GateOutcome report, driven through the same fake engine and scripted gate
-// closures gate_test.go uses.
+// gate_list_test.go covers the ordered gate list: per-entry consecutive-failure counts, PassOnCap, off entries, and the per-entry GateOutcome report, driven through the same fake engine and scripted gate closures gate_test.go uses.
 
 package shuttleengine
 
@@ -12,8 +10,7 @@ import (
 	"time"
 )
 
-// scriptedGate returns a Gate that answers from script, one element per call, repeating the last
-// element once the script is spent, and counts its calls through calls.
+// scriptedGate returns a Gate that answers from script, one element per call, repeating the last element once the script is spent, and counts its calls through calls.
 func scriptedGate(calls *int, script ...bool) Gate {
 	return func() (GateResult, error) {
 		i := *calls
@@ -28,9 +25,7 @@ func scriptedGate(calls *int, script ...bool) Gate {
 	}
 }
 
-// runGateList drives a gated Wait whose first arrival is already in the events file and which sees
-// one further arrival per expected re-prompt, so a spec that re-prompts reprompts times settles on
-// arrival reprompts+1.
+// runGateList drives a gated Wait whose first arrival is already in the events file and which sees one further arrival per expected re-prompt, so a spec that re-prompts reprompts times settles on arrival reprompts+1.
 func runGateList(t *testing.T, spec GateSpec, reprompts int) (Result, *fakeReed, string) {
 	t.Helper()
 	runDir := t.TempDir()
@@ -116,10 +111,8 @@ func TestGateList_SecondEntryRunsOnlyAfterFirstPasses(t *testing.T) {
 	wantStates(t, result.Gate, GateEntryPassed, GateEntryPassed)
 }
 
-// TestGateList_FailPassFailStartsBudgetAfresh pins the consecutive-failure reset: an entry that
-// failed, then passed on an arrival where a later entry failed, then fails again, has its whole
-// budget back — so with Attempts 1 it is run and re-prompted again instead of finalizing (or, with
-// PassOnCap, being let through without running).
+// TestGateList_FailPassFailStartsBudgetAfresh pins the consecutive-failure reset:
+// an entry that failed, then passed on an arrival where a later entry failed, then fails again, has its whole budget back — so with Attempts 1 it is run and re-prompted again instead of finalizing (or, with PassOnCap, being let through without running).
 func TestGateList_FailPassFailStartsBudgetAfresh(t *testing.T) {
 	for _, passOnCap := range []bool{false, true} {
 		name := "without_pass_on_cap"
@@ -127,8 +120,8 @@ func TestGateList_FailPassFailStartsBudgetAfresh(t *testing.T) {
 			name = "with_pass_on_cap"
 		}
 		t.Run(name, func(t *testing.T) {
-			// A PassOnCap entry at Attempts 1 would already be let through on arrival two, never
-			// running to pass; Attempts 2 keeps it running until a missing reset would cap it.
+			// A PassOnCap entry at Attempts 1 would already be let through on arrival two, never running to pass;
+			// Attempts 2 keeps it running until a missing reset would cap it.
 			attempts := 1
 			if passOnCap {
 				attempts = 2
@@ -158,9 +151,8 @@ func TestGateList_FailPassFailStartsBudgetAfresh(t *testing.T) {
 	}
 }
 
-// TestGateList_FinalArrivalAtFailingPassOnCapEntry covers both final arrivals that cannot re-prompt —
-// a failed send and an expired deadline — stopping at a failing PassOnCap entry with a required entry
-// after it: the outcome is failed and the later entry is reported not reached.
+// TestGateList_FinalArrivalAtFailingPassOnCapEntry covers both final arrivals that cannot re-prompt — a failed send and an expired deadline — stopping at a failing PassOnCap entry with a required entry after it:
+// the outcome is failed and the later entry is reported not reached.
 func TestGateList_FinalArrivalAtFailingPassOnCapEntry(t *testing.T) {
 	newSpec := func() (GateSpec, *int) {
 		var pCalls, rCalls int
@@ -316,8 +308,7 @@ func TestGateList_ZeroAttemptsEntryIsOffAndNeverCalled(t *testing.T) {
 	}
 }
 
-// TestGateList_EveryStateAndAggregateAttempts reaches all five per-entry states in one final report
-// and checks GateOutcome.Attempts is the sum of the entries' sent counts.
+// TestGateList_EveryStateAndAggregateAttempts reaches all five per-entry states in one final report and checks GateOutcome.Attempts is the sum of the entries' sent counts.
 func TestGateList_EveryStateAndAggregateAttempts(t *testing.T) {
 	var offCalls, xCalls, pCalls, fCalls, nCalls int
 	spec := GateSpec{

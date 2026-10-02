@@ -33,22 +33,18 @@ type GateEntry struct {
 	Name string
 	// Gate is the validator this entry consults.
 	Gate Gate
-	// Attempts is the entry's re-prompt budget: how many consecutive failures re-prompt the agent
-	// before the entry gives up. 0 means the entry is off: it is skipped at every arrival, whatever
-	// its PassOnCap.
+	// Attempts is the entry's re-prompt budget: how many consecutive failures re-prompt the agent before the entry gives up.
+	// 0 means the entry is off: it is skipped at every arrival, whatever its PassOnCap.
 	Attempts int
-	// PassOnCap lets the run through, rather than failing it, once the entry has failed Attempts
-	// consecutive times: from then on the entry's closure is not run again and the entry is
-	// reported let through.
-	// The count lives in memory for one shuttle run, so after an attach a capped entry starts from
-	// zero and can fire again, and a pass before the cap resets the count, so the entry can fire
-	// again later; a request that must not repeat makes its own closure idempotent.
+	// PassOnCap lets the run through, rather than failing it, once the entry has failed Attempts consecutive times:
+	// from then on the entry's closure is not run again and the entry is reported let through.
+	// The count lives in memory for one shuttle run, so after an attach a capped entry starts from zero and can fire again,
+	// and a pass before the cap resets the count, so the entry can fire again later;
+	// a request that must not repeat makes its own closure idempotent.
 	PassOnCap bool
 }
 
-// GateSpec is the ordered list of gate entries a gated run consults at each arrival — the one value
-// every downstream seam (RunGated, AttachGated, a producer's RunOpts.Gate) carries from the point it
-// is known through to the run loop, per the "one GateSpec at every hop" decision.
+// GateSpec is the ordered list of gate entries a gated run consults at each arrival — the one value every downstream seam (RunGated, AttachGated, a producer's RunOpts.Gate) carries from the point it is known through to the run loop, per the "one GateSpec at every hop" decision.
 // An empty or nil list means "ungated", which is what every row but the gated ones supplies.
 type GateSpec []GateEntry
 
@@ -80,19 +76,18 @@ type GateEntryOutcome struct {
 
 // GateOutcome is a gated run's 1:1 gate report, carried on Result.Gate.
 type GateOutcome struct {
-	// Passed reports whether every entry that is neither off nor PassOnCap passed at the run's
-	// final arrival.
+	// Passed reports whether every entry that is neither off nor PassOnCap passed at the run's final arrival.
 	Passed bool
 	// Entries reports each entry in list order.
 	Entries []GateEntryOutcome
-	// Attempts counts re-prompts actually SENT on this run over all entries, and nothing else: a gate
-	// that passed first try reports 0; a Done reached with no live session reports however many
-	// re-prompts had already been sent before the session was lost (0 when it was lost before the
-	// first one); a deadline that expires after N sends reports N. See the "attempts counts
-	// re-prompts actually sent" decision.
+	// Attempts counts re-prompts actually SENT on this run over all entries, and nothing else:
+	// a gate that passed first try reports 0;
+	// a Done reached with no live session reports however many re-prompts had already been sent before the session was lost (0 when it was lost before the first one);
+	// a deadline that expires after N sends reports N.
+	// See the "attempts counts re-prompts actually sent" decision.
 	Attempts int
-	// FindingsPath is the absolute path of the findings file the failing entry wrote, or empty
-	// when Passed. It is diagnostic text ONLY, never a path to dereference after Wait returns: the
+	// FindingsPath is the absolute path of the findings file the failing entry wrote, or empty when Passed.
+	// It is diagnostic text ONLY, never a path to dereference after Wait returns: the
 	// findings file lives in the run directory that finalize deletes on the Done cleanup every
 	// exhausted gate takes, so a producer that opens it is a defect.
 	FindingsPath string

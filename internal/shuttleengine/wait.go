@@ -23,16 +23,11 @@
 // this interview waiting for me, or is it wedged?" reads the trace sink -- stated here because the
 // design that introduced AwaitOperator asserted the driver log records each ask, and it does not.
 //
-// The events-tick Done branch splits in two, on whether run.gate is empty: an ungated run's Done (and every
-// OutcomeAsking not deferred to AwaitOperator) finalizes exactly as before the gate existed, unaware
-// the gate exists at all. A gated Done instead evaluates the gate's entries through run.evaluateGate()
-// and, when an entry failed with its own budget remaining, sends a one-line re-prompt naming the
-// findings file and keeps polling rather than finalizing -- the bounded re-prompt loop the "one GateSpec at every hop"
-// and "attempts counts re-prompts actually sent" plan decisions describe. The other three finalize
-// call sites in this file (the events-unreadable/status-retry mechanism-failure exits via
-// finishedDespiteMechanismFailure, the liveness-tick exit, and the deadline exit) are left untouched:
-// each is reached precisely because the session is gone, the clock ran out, or the bookkeeping broke,
-// so no Send is attempted there and finalize's own evaluation reports Attempts as it stands.
+// The events-tick Done branch splits in two, on whether run.gate is empty:
+// an ungated run's Done (and every OutcomeAsking not deferred to AwaitOperator) finalizes exactly as before the gate existed, unaware the gate exists at all.
+// A gated Done instead evaluates the gate's entries through run.evaluateGate() and, when an entry failed with its own budget remaining, sends a one-line re-prompt naming the findings file and keeps polling rather than finalizing -- the bounded re-prompt loop the "one GateSpec at every hop" and "attempts counts re-prompts actually sent" plan decisions describe.
+// The other three finalize call sites in this file (the events-unreadable/status-retry mechanism-failure exits via finishedDespiteMechanismFailure, the liveness-tick exit, and the deadline exit) are left untouched:
+// each is reached precisely because the session is gone, the clock ran out, or the bookkeeping broke, so no Send is attempted there and finalize's own evaluation reports Attempts as it stands.
 //
 // # Completion Signal Invariant
 //
@@ -264,8 +259,7 @@ func (run *Run) Wait() (Result, error) {
 				}
 				failed := run.gateFailedAt
 				if failed < 0 || run.gateFails[failed] >= run.gate[failed].Attempts {
-					// No failing entry, or its budget is spent: the verdict is the memo evaluateGate
-					// just stored, which finalize reads rather than re-validating.
+					// No failing entry, or its budget is spent: the verdict is the memo evaluateGate just stored, which finalize reads rather than re-validating.
 					return run.finalize(outcome, message)
 				}
 				// An entry failed with budget remaining: re-prompt the agent and keep polling.
@@ -280,18 +274,14 @@ func (run *Run) Wait() (Result, error) {
 						run.gateFails[i] = 0
 					}
 				}
-				// The run directory is deleted on the Done cleanup every exhausted gate takes, so
-				// the findings TEXT (never just its path) is folded into this Warn line — the
-				// durable record of why the gate failed, same as the deleted producers' own warn
-				// lines carried. The file was just written by evaluateGate, so a read failure here
-				// is unexpected but non-fatal to the loop.
+				// The run directory is deleted on the Done cleanup every exhausted gate takes, so the findings TEXT (never just its path) is folded into this Warn line — the durable record of why the gate failed, same as the deleted producers' own warn lines carried.
+				// The file was just written by evaluateGate, so a read failure here is unexpected but non-fatal to the loop.
 				findingsText, rerr := os.ReadFile(run.gateFindingsPath)
 				if rerr != nil {
 					findingsText = []byte(fmt.Sprintf("<unreadable: %v>", rerr))
 				}
 				logger.Warn("shuttle: gate: re-prompting after a failed attempt", "strandGUID", run.state.StrandGUID, "gate", run.gate[failed].Name, "attempt", run.gateFails[failed], "budget", run.gate[failed].Attempts, "findings", string(findingsText))
-				// Clear the memo so the next arrival re-validates rather than reading this
-				// arrival's stale verdict.
+				// Clear the memo so the next arrival re-validates rather than reading this arrival's stale verdict.
 				run.gateVerdict = nil
 			}
 		}
@@ -793,38 +783,28 @@ func (run *Run) identity() Result {
 	}
 }
 
-// evaluateGate runs run's gate entries once per arrival, memoising the verdict on run.gateVerdict —
-// which is what makes "the gate runs exactly once per settling" true: this method returns the stored
-// memo unchanged when it is already non-nil, and Wait clears the memo to nil before each re-prompt so
-// the next arrival re-validates rather than reading the first arrival's stale verdict.
+// evaluateGate runs run's gate entries once per arrival, memoising the verdict on run.gateVerdict — which is what makes "the gate runs exactly once per settling" true:
+// this method returns the stored memo unchanged when it is already non-nil, and Wait clears the memo to nil before each re-prompt so the next arrival re-validates rather than reading the first arrival's stale verdict.
 //
-// Returns (nil, nil) when run.gate is empty (an ungated run) — the method's own way of saying
-// "there is nothing to evaluate", distinct from Result.Gate's own nil-means-no-gate contract.
+// Returns (nil, nil) when run.gate is empty (an ungated run) — the method's own way of saying "there is nothing to evaluate", distinct from Result.Gate's own nil-means-no-gate contract.
 //
-// The entries run in list order and stop at the first failure. An off entry (Attempts 0) is reported
-// off wherever it sits; a PassOnCap entry whose failure count has reached its Attempts is not run and
-// is reported let through; every other entry runs its closure and is reported passed or failed; every
-// non-off entry after the stopping entry is reported not reached.
+// The entries run in list order and stop at the first failure.
+// An off entry (Attempts 0) is reported off wherever it sits;
+// a PassOnCap entry whose failure count has reached its Attempts is not run and is reported let through;
+// every other entry runs its closure and is reported passed or failed;
+// every non-off entry after the stopping entry is reported not reached.
 // Passed is true only when every entry that is neither off nor PassOnCap passed at this arrival.
-// The method never changes a count — only Wait's re-prompt branch does — so a finalize evaluating
-// afresh after a lost session or a deadline cannot change one.
+// The method never changes a count — only Wait's re-prompt branch does — so a finalize evaluating afresh after a lost session or a deadline cannot change one.
 //
-// A non-nil error from a closure is returned verbatim, stores no memo and changes no count, per the
-// "a gate error is never not passed" decision: a gate that could not run has found no defect, it is
-// an infrastructure fault, not a GateResult{Passed: false}.
+// A non-nil error from a closure is returned verbatim, stores no memo and changes no count, per the "a gate error is never not passed" decision:
+// a gate that could not run has found no defect, it is an infrastructure fault, not a GateResult{Passed: false}.
 //
-// On a failing entry the method writes GateResult.Findings to <run.runDir>/gateFindingsFileName,
-// overwriting any previous arrival's file so the agent always reads the current complaint (the
-// "findings always ride a file" decision), and sets GateOutcome.FindingsPath to that path when the
-// outcome did not pass. A write failure is a returned error, not a failed gate —
-// findings the agent can never read cannot fix anything. Both of this method's error returns come
-// back unwrapped, on purpose: this is a helper the two finalize/Wait call sites already wrap with
-// their own "shuttle: gate: %w" context, so wrapping here too would double it, and it keeps this
-// method's own negative-verdict return sites free of the completionsignal_enforcement_test.go
-// tripwire's Errorf marker, which is reserved for the two call sites that actually finalize a run.
+// On a failing entry the method writes GateResult.Findings to <run.runDir>/gateFindingsFileName, overwriting any previous arrival's file so the agent always reads the current complaint (the "findings always ride a file" decision), and sets GateOutcome.FindingsPath to that path when the outcome did not pass.
+// A write failure is a returned error, not a failed gate — findings the agent can never read cannot fix anything.
+// Both of this method's error returns come back unwrapped, on purpose:
+// this is a helper the two finalize/Wait call sites already wrap with their own "shuttle: gate: %w" context, so wrapping here too would double it, and it keeps this method's own negative-verdict return sites free of the completionsignal_enforcement_test.go tripwire's Errorf marker, which is reserved for the two call sites that actually finalize a run.
 //
-// GateOutcome.Attempts is the sum of the entries' re-prompts sent, per the "attempts counts
-// re-prompts actually sent" decision.
+// GateOutcome.Attempts is the sum of the entries' re-prompts sent, per the "attempts counts re-prompts actually sent" decision.
 func (run *Run) evaluateGate() (*GateOutcome, error) {
 	if run.gateVerdict != nil {
 		return run.gateVerdict, nil

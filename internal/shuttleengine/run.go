@@ -220,26 +220,20 @@ type Run struct {
 	// directory as the diagnosis artifact a later operator or attach reads.
 	lastStartupCapture string
 
-	// gate is the GateSpec this run was told, empty for an ungated run — the same zero
-	// value Run/Attach's own RunGated(spec, GateSpec{})/AttachGated(spec, GateSpec{}) delegation
-	// passes, so an ungated run behaves byte-for-byte as it did before the gate existed.
+	// gate is the GateSpec this run was told, empty for an ungated run — the same zero value Run/Attach's own RunGated(spec, GateSpec{})/AttachGated(spec, GateSpec{}) delegation passes, so an ungated run behaves byte-for-byte as it did before the gate existed.
 	gate GateSpec
-	// gateVerdict is the current arrival's gate memo: nil when the current arrival has not been
-	// evaluated yet, non-nil once evaluateGate has run it. The memo is PER ARRIVAL, not per run —
-	// Wait clears it to nil immediately before each re-prompt, so the next arrival re-validates
-	// rather than reading the first arrival's stale verdict.
+	// gateVerdict is the current arrival's gate memo: nil when the current arrival has not been evaluated yet, non-nil once evaluateGate has run it.
+	// The memo is PER ARRIVAL, not per run — Wait clears it to nil immediately before each re-prompt, so the next arrival re-validates rather than reading the first arrival's stale verdict.
 	gateVerdict *GateOutcome
-	// gateFailedAt is the index into gate of the entry that failed at the memoised arrival, or -1
-	// when none did (every entry passed, was off, or was let through). Meaningful only while
-	// gateVerdict is non-nil.
+	// gateFailedAt is the index into gate of the entry that failed at the memoised arrival, or -1 when none did (every entry passed, was off, or was let through).
+	// Meaningful only while gateVerdict is non-nil.
 	gateFailedAt int
-	// gateFindingsPath is the findings file the memoised arrival's failing entry wrote, empty when
-	// gateFailedAt is -1. It is kept apart from GateOutcome.FindingsPath, which is empty whenever
-	// the outcome passed — a failing PassOnCap entry still needs a re-prompt that names its file.
+	// gateFindingsPath is the findings file the memoised arrival's failing entry wrote, empty when gateFailedAt is -1.
+	// It is kept apart from GateOutcome.FindingsPath, which is empty whenever the outcome passed — a failing PassOnCap entry still needs a re-prompt that names its file.
 	gateFindingsPath string
 	// gateFails and gateSent are index-aligned with gate and sized from len(gate) on first use:
-	// the consecutive failures of each entry, and the re-prompts successfully delivered (Send
-	// returned no error) for it. Both live in memory for this run only.
+	// the consecutive failures of each entry, and the re-prompts successfully delivered (Send returned no error) for it.
+	// Both live in memory for this run only.
 	gateFails []int
 	gateSent  []int
 }
@@ -270,9 +264,7 @@ func (r *Runner) Start(spec Spec) (*Run, error) {
 	return r.StartGated(spec, GateSpec{})
 }
 
-// StartGated is Start, gated: the returned handle carries gate, so the Wait the caller performs
-// later validates the run through the gate's entries (if any) at its single verdict site in finalize,
-// exactly as RunGated's own blocking form does.
+// StartGated is Start, gated: the returned handle carries gate, so the Wait the caller performs later validates the run through the gate's entries (if any) at its single verdict site in finalize, exactly as RunGated's own blocking form does.
 // It is the seam a caller that must act BETWEEN the start and the block uses — websterengine's Run
 // persists Master's strand guid to state.json before blocking, which now includes the startup
 // window, and state.json is the record the next run's entry-time reclaim reads, so it cannot spend
@@ -436,9 +428,7 @@ func (r *Runner) Run(spec Spec) (Result, error) {
 	return r.RunGated(spec, GateSpec{})
 }
 
-// RunGated is Run, gated: spec's run is additionally validated by gate's entries (if any) at its
-// single verdict site in finalize, re-prompting the agent up to a failing entry's own Attempts times
-// on a failed verdict before giving up.
+// RunGated is Run, gated: spec's run is additionally validated by gate's entries (if any) at its single verdict site in finalize, re-prompting the agent up to a failing entry's own Attempts times on a failed verdict before giving up.
 // RunGated is a deliberate added form beside Run rather than a widening of it, because Run's shared
 // seam is held by callers that have no gate and never will (see the "added forms" decision).
 //
