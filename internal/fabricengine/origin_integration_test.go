@@ -96,6 +96,46 @@ func TestAdd_RecordsNonDefaultParentBranch(t *testing.T) {
 	}
 }
 
+// TestAdd_RecordsParentWorktree proves that Add records the acting worktree's name as
+// parent_worktree: the prime's name for a pair added from the prime, and the first pair's slug for a
+// pair added from inside that pair.
+func TestAdd_RecordsParentWorktree(t *testing.T) {
+	t.Parallel()
+
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	const first = "first-pair"
+	const second = "second-pair"
+
+	if _, err := h.Topology.Add(l, first, fabricengine.AddOptions{SkipPush: true}); err != nil {
+		t.Fatalf("Add(%q): %v", first, err)
+	}
+	firstLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, first))
+	if err != nil {
+		t.Fatalf("lyxcwd.Resolve(first pair): %v", err)
+	}
+	if _, err := h.Topology.Add(firstLayout, second, fabricengine.AddOptions{SkipPush: true}); err != nil {
+		t.Fatalf("Add(%q) from the first pair: %v", second, err)
+	}
+
+	for _, tc := range []struct{ slug, want string }{
+		{first, l.WorktreeName},
+		{second, first},
+	} {
+		layout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, tc.slug))
+		if err != nil {
+			t.Fatalf("lyxcwd.Resolve(%q): %v", tc.slug, err)
+		}
+		origin, ok, err := fabricengine.ReadOrigin(layout)
+		if err != nil || !ok {
+			t.Fatalf("ReadOrigin(%q) = ok %v, err %v; want a record", tc.slug, ok, err)
+		}
+		if origin.ParentWorktree != tc.want {
+			t.Errorf("%q ParentWorktree = %q; want %q", tc.slug, origin.ParentWorktree, tc.want)
+		}
+	}
+}
+
 // TestAdd_RecordsParentBranch_SubpathAnchoredHub proves the record lands at the anchor-relative path
 // inside the new pair's weft worktree, not at the weft worktree root — the case a "." anchor cannot
 // distinguish.
