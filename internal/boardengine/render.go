@@ -1,13 +1,12 @@
 // render.go — turns the entry list into the wiki's output files.
 //
-// Render is a pure function: entries in, a map of filename → content out (a single README.md built
-// by renderTasksSection, plus design-*.md for any entry with a body).
-// The README reads like manifest/roadmap.md: one section per tier (Planned, Next Up, Someday),
-// then Done, each entry one numbered item.
-// The tier names and their meaning lines are declared here alone; the data holds only the tier number.
+// Render is a pure function: entries in, a map of filename → content out (a single README.md built by renderTasksSection, plus design-*.md for any entry with a body).
+// The README reads like manifest/roadmap.md: one section per tier (Planned, Next Up, Someday), then Done, each entry one numbered item.
+// The tier names and their meaning lines are declared here alone;
+// the data holds only the tier number.
 // No I/O — the caller writes the files.
-// The design files are built by renderDesigns; each opens with a header naming the entry's slug,
-// tier section, type and status, then the stored body unchanged.
+// The design files are built by renderDesigns;
+// each opens with a header naming the entry's slug, tier section, type and status, then the stored body unchanged.
 // RenderToDisk drives the write path and maintains a manifest sidecar (.board-rendered.json) so
 // that renamed or removed outputs are cleaned up on the next render.
 
@@ -199,8 +198,7 @@ func renderEntry(t Task, designPrefix string) []string {
 	return lines
 }
 
-// renderDesigns returns one design-doc file entry per entry with a non-empty body,
-// using the configured design prefix.
+// renderDesigns returns one design-doc file entry per entry with a non-empty body, using the configured design prefix.
 // The doc is a header (title, metadata line, dependencies) followed by the body byte-for-byte.
 func renderDesigns(entries []Task, designPrefix string) map[string]string {
 	hasBody := make(map[string]bool, len(entries))
@@ -229,4 +227,3 @@ func renderDesigns(entries []Task, designPrefix string) map[string]string {
 	}
 	return designs
 }
-

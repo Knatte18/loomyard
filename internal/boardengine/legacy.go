@@ -1,8 +1,7 @@
 // legacy.go — pure conversion from the pre-upgrade tasks.json and notes.json records into store entries.
 //
-// Declares the legacy record shape and file names, the one-time migration, and the done-mark fold
-// that carries a pre-upgrade binary's later done marks into the new store. Everything here works
-// on decoded slices, so the I/O layer stays thin and every rule is testable without a disk.
+// Declares the legacy record shape and file names, the one-time migration, and the done-mark fold that carries a pre-upgrade binary's later done marks into the new store.
+// Everything here works on decoded slices, so the I/O layer stays thin and every rule is testable without a disk.
 
 package boardengine
 
@@ -134,8 +133,9 @@ func entryFromLegacy(r legacyRecord, id, tier int) Task {
 }
 
 // foldLegacyDone carries done marks a pre-upgrade binary wrote after migration into the store.
-// Each legacy record marked done whose slug is not yet in legacyDone sets the matching entry done
-// when one exists, and the slug joins legacyDone either way. No other status or field is folded.
+// Each legacy record marked done whose slug is not yet in legacyDone sets the matching entry done when one exists,
+// and the slug joins legacyDone either way.
+// No other status or field is folded.
 func foldLegacyDone(entries []Task, legacyDone []string, legacy []legacyRecord) ([]Task, []string) {
 	folded := slices.Clone(entries)
 	grown := slices.Clone(legacyDone)

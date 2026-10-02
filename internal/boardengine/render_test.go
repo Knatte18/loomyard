@@ -1,7 +1,6 @@
 // render_test.go — unit tests for rendering (render.go).
 //
-// README and design-doc goldens over the tier-section layout: an entry per tier, an empty tier,
-// done and abandoned entries, dependencies, bodies, and the omitted Done section.
+// README and design-doc goldens over the tier-section layout: an entry per tier, an empty tier, done and abandoned entries, dependencies, bodies, and the omitted Done section.
 // Also covers the manifest-based cleanup introduced in RenderToDisk: renamed outputs are removed
 // across consecutive renders,
 // and a missing or corrupt manifest degrades gracefully.
@@ -250,8 +249,7 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 	})
 }
 
-// readmeFixture holds an entry in tiers 1 and 3, leaving tier 2 empty, plus a done entry,
-// an abandoned entry, a body, a dependency and a two-layer chain inside tier 1.
+// readmeFixture holds an entry in tiers 1 and 3, leaving tier 2 empty, plus a done entry, an abandoned entry, a body, a dependency and a two-layer chain inside tier 1.
 func readmeFixture() []boardengine.Task {
 	return []boardengine.Task{
 		{ID: 1, Slug: "base", Title: "Base work", Tier: 1, Type: "feature", Brief: "The foundation."},
@@ -262,8 +260,7 @@ func readmeFixture() []boardengine.Task {
 	}
 }
 
-// TestRenderReadmeGolden pins the README for a fixture with an entry per tier, an empty tier 2,
-// a done entry, an abandoned tier-3 entry, a body, a dependency, and a two-layer chain in one section.
+// TestRenderReadmeGolden pins the README for a fixture with an entry per tier, an empty tier 2, a done entry, an abandoned tier-3 entry, a body, a dependency, and a two-layer chain in one section.
 func TestRenderReadmeGolden(t *testing.T) {
 	result, err := boardengine.Render(readmeFixture(), boardengine.Outputs{Readme: "README.md", DesignPrefix: "design-"})
 	if err != nil {
@@ -340,8 +337,7 @@ func TestRenderReadmeNoDoneSection(t *testing.T) {
 	}
 }
 
-// TestRenderDesignDocGoldens pins the design-doc header, the Depends on line with one linked and
-// one named dependency, and a multi-line body appearing byte-identical.
+// TestRenderDesignDocGoldens pins the design-doc header, the Depends on line with one linked and one named dependency, and a multi-line body appearing byte-identical.
 func TestRenderDesignDocGoldens(t *testing.T) {
 	tasks := []boardengine.Task{
 		{ID: 1, Slug: "linked", Title: "Linked", Tier: 1, Type: "feature", Body: "linked body"},

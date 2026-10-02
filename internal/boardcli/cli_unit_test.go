@@ -50,8 +50,7 @@ func TestCLINoArg(t *testing.T) {
 	}
 }
 
-// TestCLIAliasesHiddenWithShort asserts that notes and promote-note stay out of the help listing
-// while every alias command, including each notes child, still carries a non-empty Short.
+// TestCLIAliasesHiddenWithShort asserts that notes and promote-note stay out of the help listing while every alias command, including each notes child, still carries a non-empty Short.
 func TestCLIAliasesHiddenWithShort(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 	t.Chdir(t.TempDir())

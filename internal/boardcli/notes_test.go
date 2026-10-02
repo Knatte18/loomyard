@@ -2,11 +2,9 @@
 
 // notes_test.go — tests for the "notes" subcommand group (cli.go).
 //
-// Mirrors TestCLIContract's table-driven shape from cli_test.go, but drives
-// the notes verbs, which share the one board.json store with the task verbs:
-// a notes upsert must land in board.json and create no legacy file, and
-// notes list returns every entry. seedCwd and runCLI are defined in cli_test.go and
-// cli_unit_test.go respectively, same package, directly callable.
+// Mirrors TestCLIContract's table-driven shape from cli_test.go, but drives the notes verbs, which share the one board.json store with the task verbs:
+// a notes upsert must land in board.json and create no legacy file, and notes list returns every entry.
+// seedCwd and runCLI are defined in cli_test.go and cli_unit_test.go respectively, same package, directly callable.
 
 package boardcli_test
 
@@ -19,8 +17,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 )
 
-// TestCLINotesAliasReachesTopLevelEntries asserts that the notes group is an alias onto the same
-// store: an entry created by the top-level upsert is reachable and removable through notes.
+// TestCLINotesAliasReachesTopLevelEntries asserts that the notes group is an alias onto the same store:
+// an entry created by the top-level upsert is reachable and removable through notes.
 func TestCLINotesAliasReachesTopLevelEntries(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 	seedCwd(t)

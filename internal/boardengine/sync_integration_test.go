@@ -181,8 +181,7 @@ func TestSync_SkipPush_CommitsLocallyButDoesNotPush(t *testing.T) {
 	}
 }
 
-// TestSync_RetireLegacy_CommitsBoardJSONAndLegacyDeletions asserts that after RetireLegacy on a synced
-// board that tracked the legacy files, Sync commits board.json and the deletions and leaves a clean tree.
+// TestSync_RetireLegacy_CommitsBoardJSONAndLegacyDeletions asserts that after RetireLegacy on a synced board that tracked the legacy files, Sync commits board.json and the deletions and leaves a clean tree.
 func TestSync_RetireLegacy_CommitsBoardJSONAndLegacyDeletions(t *testing.T) {
 	container := t.TempDir()
 	bareRemote := newBareRemote(t, container)

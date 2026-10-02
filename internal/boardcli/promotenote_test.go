@@ -1,9 +1,7 @@
 //go:build integration
 
-// promotenote_test.go — tests for the top-level "promote-note" command
-// (cli.go), which moves an entry to tier 1 via Board.PromoteNote.
-// seedCwd and runCLI are defined in cli_test.go and
-// cli_unit_test.go respectively, same package, directly callable.
+// promotenote_test.go — tests for the top-level "promote-note" command (cli.go), which moves an entry to tier 1 via Board.PromoteNote.
+// seedCwd and runCLI are defined in cli_test.go and cli_unit_test.go respectively, same package, directly callable.
 
 package boardcli_test
 
@@ -13,8 +11,7 @@ import (
 	"testing"
 )
 
-// TestCLIPromoteNote seeds an entry via "notes upsert", promotes it, and asserts the promoted
-// entry's tier is 1 and its fields round-trip, and that a second promote succeeds unchanged.
+// TestCLIPromoteNote seeds an entry via "notes upsert", promotes it, and asserts the promoted entry's tier is 1 and its fields round-trip, and that a second promote succeeds unchanged.
 func TestCLIPromoteNote(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 	seedCwd(t)
@@ -76,8 +73,7 @@ func TestCLIPromoteNote(t *testing.T) {
 	}
 }
 
-// TestCLIPromoteNote_TierOneUnchanged asserts that promote-note on an entry already at tier 1
-// succeeds and leaves it unchanged.
+// TestCLIPromoteNote_TierOneUnchanged asserts that promote-note on an entry already at tier 1 succeeds and leaves it unchanged.
 func TestCLIPromoteNote_TierOneUnchanged(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 	seedCwd(t)

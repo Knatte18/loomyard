@@ -16,8 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// TestUpsertTask tests the facade persistence wiring: creating a task writes both board.json and
-// Home.md.
+// TestUpsertTask tests the facade persistence wiring: creating a task writes both board.json and Home.md.
 // Drop: store-layer assertion "update preserves fields" (owned by
 // store_test.go:TestUpsertTaskPreservesFields).
 func TestUpsertTask(t *testing.T) {
@@ -51,9 +50,8 @@ func TestUpsertTask(t *testing.T) {
 	}
 }
 
-// TestUpsertTaskUnconfiguredOutputsFailsBeforeWriting locks in boardCriticalSection's fail-fast guard: a Board
-// built without output filenames (the --board-path shape) must reject a write before touching disk,
-// never save board.json and then fail the render on an empty filename.
+// TestUpsertTaskUnconfiguredOutputsFailsBeforeWriting locks in boardCriticalSection's fail-fast guard:
+// a Board built without output filenames (the --board-path shape) must reject a write before touching disk, never save board.json and then fail the render on an empty filename.
 func TestUpsertTaskUnconfiguredOutputsFailsBeforeWriting(t *testing.T) {
 	boardPath := t.TempDir()
 	cfg := boardengine.Config{Path: boardPath, SkipGit: true}

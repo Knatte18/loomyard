@@ -1,12 +1,9 @@
 // cli.go exposes the cobra command tree for the board module.
 //
-// Command() returns the root "board" command over one store, board.json, whose entries carry a
-// tier and a type.
-// The verbs upsert, upsert-batch, set-status, remove, get, list, list-full, merge and set-deps come
-// from one constructor, called once for the top level and once for the hidden "notes" alias group,
-// so both reach the same store by construction.
-// promote, prune, find and retire-legacy, plus the rerender and sync maintenance verbs, exist at the
-// top level only; the hidden promote-note alias promotes to tier 1.
+// Command() returns the root "board" command over one store, board.json, whose entries carry a tier and a type.
+// The verbs upsert, upsert-batch, set-status, remove, get, list, list-full, merge and set-deps come from one constructor, called once for the top level and once for the hidden "notes" alias group, so both reach the same store by construction.
+// promote, prune, find and retire-legacy, plus the rerender and sync maintenance verbs, exist at the top level only;
+// the hidden promote-note alias promotes to tier 1.
 // list and find take --text to print the compact listing from text.go instead of JSON.
 // Configuration resolution happens once in a PersistentPreRunE: the config file (readme,
 // design_prefix) is loaded from _lyx/config/board.yaml, and the board data dir is resolved as
@@ -289,8 +286,7 @@ Example:
 	return cmd
 }
 
-// storeVerbs builds the nine store verbs fresh on every call, so the top level and the notes alias
-// group each get their own command instances over the one store board returns.
+// storeVerbs builds the nine store verbs fresh on every call, so the top level and the notes alias group each get their own command instances over the one store board returns.
 func storeVerbs(board func() *boardengine.Board) []*cobra.Command {
 	// upsert subcommand: create or update a single task.
 	upsertCmd := &cobra.Command{
@@ -732,8 +728,7 @@ Example:
 	}
 }
 
-// writeListing prints tasks as the compact listing when text is set and as the JSON list envelope
-// otherwise.
+// writeListing prints tasks as the compact listing when text is set and as the JSON list envelope otherwise.
 func writeListing(out io.Writer, tasks []boardengine.BriefTask, text bool) int {
 	if !text {
 		return outputListBrief(out, tasks)

@@ -1,9 +1,8 @@
 // store.go — the in-memory entry store over a board directory's board.json.
 //
-// Load/Save plus all CRUD and validation: dangling-dependency, isolated and tier rules, and cycle
-// detection, with batch and merge applied atomically.
-// Load migrates the legacy tasks.json and notes.json in memory when board.json is absent and folds a
-// pre-upgrade binary's done marks; Save writes board.json only.
+// Load/Save plus all CRUD and validation: dangling-dependency, isolated and tier rules, and cycle detection, with batch and merge applied atomically.
+// Load migrates the legacy tasks.json and notes.json in memory when board.json is absent and folds a pre-upgrade binary's done marks;
+// Save writes board.json only.
 // Save and Load take the fine-grained swap lock so a concurrent read never sees a half-written
 // file.
 
@@ -62,7 +61,8 @@ type Store struct {
 	boardDir   string
 }
 
-// NewStore creates an empty, unloaded Store over boardDir. Call Load to populate from disk.
+// NewStore creates an empty, unloaded Store over boardDir.
+// Call Load to populate from disk.
 // An empty boardDir gives a purely in-memory store that Load leaves empty.
 func NewStore(boardDir string) *Store {
 	return &Store{
@@ -193,8 +193,8 @@ func nextIDIn(tasks []Task) int {
 	return maxID + 1
 }
 
-// validateWrite checks incoming against snapshot for dangling deps, isolated and tier
-// constraints, and cycles. snapshot is the projected state after any pending removals.
+// validateWrite checks incoming against snapshot for dangling deps, isolated and tier constraints, and cycles.
+// snapshot is the projected state after any pending removals.
 func (s *Store) validateWrite(snapshot []Task, incoming Task) error {
 	snapshotIndex := make(map[string]*Task)
 	for i := range snapshot {
@@ -272,8 +272,7 @@ func isDone(t Task) bool {
 }
 
 // validateTier enforces the tier dependency rule over snapshot with incoming applied:
-// a dependent's tier must be greater than or equal to its dependency's tier, compared only while
-// the dependency is not done.
+// a dependent's tier must be greater than or equal to its dependency's tier, compared only while the dependency is not done.
 // The dependent's own status never exempts the edge.
 func validateTier(snapshot []Task, incoming Task) error {
 	index := make(map[string]Task, len(snapshot))
@@ -576,8 +575,8 @@ func (s *Store) ListTasksBrief() []BriefTask {
 }
 
 // Promote moves the entry identified by idOrSlug to a lower tier number.
-// A nil target means one tier lower; the target must be at least MinTier and strictly below the
-// entry's current tier, and skipping tiers is allowed.
+// A nil target means one tier lower;
+// the target must be at least MinTier and strictly below the entry's current tier, and skipping tiers is allowed.
 // The promoted entry passes validateWrite, so a dependency left at a higher tier refuses it.
 func (s *Store) Promote(idOrSlug any, target *int) (Task, error) {
 	current, ok := s.GetTask(idOrSlug)
@@ -609,8 +608,7 @@ func (s *Store) Promote(idOrSlug any, target *int) (Task, error) {
 	return incoming, nil
 }
 
-// Prune removes every done entry, strips the removed slugs from the survivors' depends_on, and
-// returns the removed slugs in store order.
+// Prune removes every done entry, strips the removed slugs from the survivors' depends_on, and returns the removed slugs in store order.
 // An abandoned entry survives.
 func (s *Store) Prune() []string {
 	removed := []string{}
@@ -639,8 +637,7 @@ func (s *Store) Prune() []string {
 	return removed
 }
 
-// Find returns the entries whose slug, title, brief or body contains text, case-insensitively,
-// done entries included, in ListTasksBrief's shape and order.
+// Find returns the entries whose slug, title, brief or body contains text, case-insensitively, done entries included, in ListTasksBrief's shape and order.
 func (s *Store) Find(text string) []BriefTask {
 	needle := strings.ToLower(text)
 	matches := make(map[string]bool)

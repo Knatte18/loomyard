@@ -1,7 +1,6 @@
 //go:build integration
 
-// verbs_test.go — tests for the verbs added with the tiered board: promote, prune, find,
-// retire-legacy, and the --text listing on list and find.
+// verbs_test.go — tests for the verbs added with the tiered board: promote, prune, find, retire-legacy, and the --text listing on list and find.
 // seedCwd is defined in cli_test.go and runCLI in cli_unit_test.go, same package.
 
 package boardcli_test

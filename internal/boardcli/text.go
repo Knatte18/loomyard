@@ -1,5 +1,4 @@
-// text.go renders the compact one-line-per-entry listing that "list --text" and "find --text"
-// print instead of JSON.
+// text.go renders the compact one-line-per-entry listing that "list --text" and "find --text" print instead of JSON.
 
 package boardcli
 
@@ -14,8 +13,7 @@ import (
 // columnGap separates the listing's columns.
 const columnGap = "  "
 
-// RenderCompact returns one line per entry, in the order given: tier, type, slug and title,
-// each padded to the widest value in its column, then "[<status>]" when the entry's status is set.
+// RenderCompact returns one line per entry, in the order given: tier, type, slug and title, each padded to the widest value in its column, then "[<status>]" when the entry's status is set.
 // Empty input renders as the empty string.
 func RenderCompact(tasks []boardengine.BriefTask) string {
 	var typeWidth, slugWidth, titleWidth int

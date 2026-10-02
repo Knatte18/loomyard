@@ -2,13 +2,10 @@
 // Board is the only entry point callers use.
 //
 // Board holds one store, board.json, whose entries carry a tier and a type.
-// A board directory that still holds the pre-upgrade tasks.json and notes.json migrates in memory on
-// load and persists to board.json on the first write, and a pre-upgrade binary's later done marks
-// are folded into the store, so a long-running old driver keeps working until the legacy files are
-// retired.
+// A board directory that still holds the pre-upgrade tasks.json and notes.json migrates in memory on load and persists to board.json on the first write,
+// and a pre-upgrade binary's later done marks are folded into the store, so a long-running old driver keeps working until the legacy files are retired.
 //
-// Board sequences all mutating operations with a file lock: lock → load → mutate → save board.json →
-// render → write files.
+// Board sequences all mutating operations with a file lock: lock → load → mutate → save board.json → render → write files.
 // After each write, a detached background sync process (see sync.go) is launched to commit and push
 // changes to the remote.
 // The write returns immediately without waiting for the sync.
@@ -41,8 +38,7 @@
 // apply to it — board's reads/writes to weft:main are a standalone concern, not routed through
 // fabric.Commit.
 //
-// The board is now the roadmap: it carries the planned work, the next-up work and the someday work
-// that manifest/ used to hold.
+// The board is now the roadmap: it carries the planned work, the next-up work and the someday work that manifest/ used to hold.
 // Retiring manifest/ itself is left to task manifest-retire.
 
 package boardengine
@@ -56,8 +52,7 @@ import (
 )
 
 // Board is the high-level facade over a board directory.
-// Every mutating method acquires an exclusive file lock, mutates the store, and renders output
-// files;
+// Every mutating method acquires an exclusive file lock, mutates the store, and renders output files;
 // the remote backup (commit + push) is detached.
 type Board struct {
 	boardPath string
@@ -81,8 +76,7 @@ func New(cfg Config) *Board {
 type noWrite struct{ result any }
 
 // boardCriticalSection runs the locked write scaffolding shared by every mutating Board method:
-// it acquires the lock, loads the store, calls fn to mutate it, saves board.json, runs afterSave
-// when non-nil, renders outputs, and spawns a detached sync.
+// it acquires the lock, loads the store, calls fn to mutate it, saves board.json, runs afterSave when non-nil, renders outputs, and spawns a detached sync.
 // afterSave runs under the lock after the save and before the render.
 // fn returning a noWrite skips every step after the mutation.
 func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSave func() error) (any, error) {
@@ -171,8 +165,7 @@ func (b *Board) RemoveTask(idOrSlug any) error {
 // MergeTasks atomically removes slugs, upserts one task, and optionally applies a status update.
 // setStatus carries the pre-resolved task selector and status value;
 // pass nil to skip the status step.
-// A status update that targets a missing task causes the entire merge to fail
-// (boardCriticalSection discards the in-memory mutation).
+// A status update that targets a missing task causes the entire merge to fail (boardCriticalSection discards the in-memory mutation).
 func (b *Board) MergeTasks(removeSlugs []string, upsert map[string]any, setStatus *MergeStatusUpdate) (Task, error) {
 	result, err := b.boardCriticalSection(func(store *Store) (any, error) {
 		return store.MergeTasks(removeSlugs, upsert, setStatus)
@@ -211,8 +204,7 @@ func (b *Board) Sync() error {
 	return Sync(b.boardPath, b.skipGit, b.skipPush)
 }
 
-// HealthCheck verifies the board directory exists and holds a readable board.json or a readable
-// legacy file.
+// HealthCheck verifies the board directory exists and holds a readable board.json or a readable legacy file.
 // Syntactically corrupt but readable files pass the health check.
 func (b *Board) HealthCheck() error {
 	if _, err := os.Stat(b.boardPath); err != nil {

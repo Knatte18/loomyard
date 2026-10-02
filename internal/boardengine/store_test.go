@@ -1,7 +1,6 @@
 // store_test.go — unit tests for the Store (store.go).
 //
-// CRUD, sequential ID assignment, and every validation rule: dangling deps, isolated/tier
-// constraints, cycle detection, and batch/merge atomicity.
+// CRUD, sequential ID assignment, and every validation rule: dangling deps, isolated/tier constraints, cycle detection, and batch/merge atomicity.
 
 package boardengine_test
 
@@ -377,9 +376,7 @@ func TestUpsertFieldAllowlist(t *testing.T) {
 	})
 }
 
-// TestValidateDependencyErrors verifies that UpsertTask rejects all invalid dependency
-// configurations with precise error messages: dangling deps, depending on isolated tasks, and
-// (the tier rule has its own test).
+// TestValidateDependencyErrors verifies that UpsertTask rejects all invalid dependency configurations with precise error messages: dangling deps and depending on isolated tasks (the tier rule has its own test).
 //
 // Folds: TestValidateDanglingDependency, TestValidateDependencyOnIsolated
 func TestValidateDependencyErrors(t *testing.T) {

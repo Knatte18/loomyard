@@ -86,8 +86,7 @@ func TestLandingDeps_MarkTaskDone_UnknownSlugIsError(t *testing.T) {
 	}
 }
 
-// TestLandingDeps_MarkTaskDone_MigratesLegacyTasksJSON seeds the hub board with a legacy tasks.json
-// holding the pair's slug and checks MarkTaskDone leaves that entry done in board.json.
+// TestLandingDeps_MarkTaskDone_MigratesLegacyTasksJSON seeds the hub board with a legacy tasks.json holding the pair's slug and checks MarkTaskDone leaves that entry done in board.json.
 func TestLandingDeps_MarkTaskDone_MigratesLegacyTasksJSON(t *testing.T) {
 	markDone, _, slug, boardDir := markDoneFixtureDir(t)
 

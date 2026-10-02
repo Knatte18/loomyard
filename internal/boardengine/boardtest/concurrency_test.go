@@ -20,8 +20,7 @@ import (
 
 // TestConcurrentReadsDuringUpserts runs many readers concurrently with a single writer and asserts
 // reads never fail and always observe a consistent board.
-// Reads bypass the write lock and writes are atomic (temp + rename), so every read must see a
-// complete board.json — either the pre- or post-upsert state, never a partial one.
+// Reads bypass the write lock and writes are atomic (temp + rename), so every read must see a complete board.json — either the pre- or post-upsert state, never a partial one.
 //
 // The test is filesystem-bound, not CPU-bound: each write goes through Board.boardCriticalSection which performs
 // 3 AtomicWrite temp-create+rename operations (for board.json, Home.md, and _Sidebar.md), each
