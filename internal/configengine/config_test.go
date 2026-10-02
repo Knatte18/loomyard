@@ -118,7 +118,7 @@ func assertOneFillLine(t *testing.T, buf *bytes.Buffer, module, keyPath string) 
 	if !strings.Contains(log, "module="+module) {
 		t.Errorf("fill line does not name module %q: %s", module, log)
 	}
-	if !strings.Contains(log, keyPath) {
+	if !strings.Contains(log, "keys="+keyPath) {
 		t.Errorf("fill line does not name key-path %q: %s", keyPath, log)
 	}
 }

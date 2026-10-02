@@ -119,7 +119,7 @@ func assertFilled(t *testing.T, module, template, keyPath string) {
 	if n := strings.Count(log, "filled missing keys from template"); n != 1 {
 		t.Fatalf("%s: expected one fill line, got %d in: %s", module, n, log)
 	}
-	if !strings.Contains(log, "module="+module) || !strings.Contains(log, keyPath) {
+	if !strings.Contains(log, "module="+module) || !strings.Contains(log, "keys="+keyPath) {
 		t.Errorf("%s fill line does not name the module and %q: %s", module, keyPath, log)
 	}
 }
