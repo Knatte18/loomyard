@@ -103,7 +103,7 @@
 //
 // # Residuals
 //
-//   - The idle probe fails closed on anything it cannot read as an empty box, including Claude's greyed prompt suggestion, so a session showing one is never cycled until it is cleared.
+//   - Shuttle switches Claude's prompt suggestion off in every settings file it writes, and the idle probe still fails closed on any non-empty box, so a session with a draft is never cycled until it is cleared.
 //   - A SendMessage landing between the handoff turn's end and `/clear` is lost from context.
 //   - The transcript and Stop-payload shapes are Claude Code internals, so usage degrades to unknown rather than failing.
 //   - A threshold above the auto-compaction point lets Claude Code compact first.

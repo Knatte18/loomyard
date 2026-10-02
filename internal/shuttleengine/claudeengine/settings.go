@@ -9,6 +9,8 @@
 // it), and recording — never denying — a live AskUserQuestion call in interactive runs so the run
 // loop can classify it as a real-time asking signal instead of waiting for the timeout.
 // buildDenyNotice, built beside those hooks so the two cannot drift, is the one-line system-prompt notice announcing each installed deny to the session.
+// Every document also sets `promptSuggestionEnabled` to false: a capture carries no styling,
+// so a greyed suggestion in an empty input box would read as a draft and IdleSession would never pass.
 
 package claudeengine
 
@@ -64,8 +66,10 @@ type settingsHooks struct {
 }
 
 // settingsDoc is the Claude Code settings.json document Prepare writes.
+// PromptSuggestionEnabled has no omitempty and buildSettings leaves it false, so every document carries `"promptSuggestionEnabled": false`.
 type settingsDoc struct {
-	Hooks settingsHooks `json:"hooks"`
+	Hooks                   settingsHooks `json:"hooks"`
+	PromptSuggestionEnabled bool          `json:"promptSuggestionEnabled"`
 }
 
 // shQuote wraps s in POSIX shell single quotes, escaping embedded quotes with the standard sh idiom (close, emit escaped quote, reopen).

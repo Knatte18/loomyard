@@ -34,6 +34,34 @@ func hooksFor(doc map[string]any, event string) []any {
 	return entries
 }
 
+func TestBuildSettings_PromptSuggestionOff(t *testing.T) {
+	cases := []struct {
+		name        string
+		interactive bool
+		fork        bool
+	}{
+		{"interactive", true, false},
+		{"autonomous", false, false},
+		{"fork", false, true},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, shuttleengine.Config{}, tt.fork, false)
+			if err != nil {
+				t.Fatalf("buildSettings() error: %v", err)
+			}
+			doc := parseSettings(t, data)
+			v, ok := doc["promptSuggestionEnabled"]
+			if !ok {
+				t.Fatalf("promptSuggestionEnabled missing; data: %s", data)
+			}
+			if b, isBool := v.(bool); !isBool || b {
+				t.Errorf("promptSuggestionEnabled = %v, want false", v)
+			}
+		})
+	}
+}
+
 func TestBuildSettings_StopHookAlwaysPresent(t *testing.T) {
 	data, err := buildSettings("/c/run/events.jsonl", false, shuttleengine.Config{}, false, false)
 	if err != nil {

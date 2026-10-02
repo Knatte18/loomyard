@@ -27,8 +27,8 @@ const boxInteriorChars = gateCaretMarker + "│>"
 // a draft leaves non-blank text between the rules.
 //
 // Two fail-closed residuals, stated rather than papered over.
-// A capture carries no styling, so Claude's greyed prompt suggestion inside an empty box is indistinguishable from a draft and classifies as not idle;
-// the watcher then skips the poll and retries.
+// A capture carries no styling, so any non-empty box classifies as not idle and the watcher skips the poll and retries;
+// the greyed prompt suggestion no longer appears in a shuttle-launched session, since every settings file switches it off.
 // And a transcript line quoting "esc to interrupt" anywhere in the capture classifies as not idle, because the running-turn hint is matched over the whole capture.
 func (c *Claude) IdleSession(capture string) bool {
 	if strings.Contains(normalizeCapture(capture), runningTurnNeedle) {
