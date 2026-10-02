@@ -223,7 +223,7 @@ func (a attachingShuttle) AttachGated(spec shuttleengine.Spec, _ shuttleengine.G
 	return shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, true, nil
 }
 
-// roundCount reports whether the parent-review store holds a round.
+// hasRound reports whether the parent-review store holds a round.
 func hasRound(t *testing.T, env Env) bool {
 	t.Helper()
 	_, ok, err := env.ParentReview.Store.Latest()
