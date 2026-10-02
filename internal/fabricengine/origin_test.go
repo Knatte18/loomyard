@@ -33,8 +33,8 @@ func TestOrigin_JSONRoundTrip(t *testing.T) {
 	}
 }
 
-// TestOrigin_ParentWorktreeRoundTrip asserts that ParentWorktree marshals and unmarshals through the
-// parent_worktree wire key, and that a record without the key decodes with it empty.
+// TestOrigin_ParentWorktreeRoundTrip asserts that ParentWorktree marshals and unmarshals through the parent_worktree wire key,
+// and that a record without the key decodes with it empty.
 func TestOrigin_ParentWorktreeRoundTrip(t *testing.T) {
 	want := Origin{ParentBranch: "main", ParentWorktree: "prime"}
 

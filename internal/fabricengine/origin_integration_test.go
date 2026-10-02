@@ -96,9 +96,8 @@ func TestAdd_RecordsNonDefaultParentBranch(t *testing.T) {
 	}
 }
 
-// TestAdd_RecordsParentWorktree proves that Add records the acting worktree's name as
-// parent_worktree: the prime's name for a pair added from the prime, and the first pair's slug for a
-// pair added from inside that pair.
+// TestAdd_RecordsParentWorktree proves that Add records the acting worktree's name as parent_worktree:
+// the prime's name for a pair added from the prime, and the first pair's slug for a pair added from inside that pair.
 func TestAdd_RecordsParentWorktree(t *testing.T) {
 	t.Parallel()
 

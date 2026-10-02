@@ -20,11 +20,9 @@ type Origin struct {
 	// ParentBranch is the warp branch the pair was forked from, recorded at creation time and
 	// never inferred.
 	ParentBranch string `json:"parent_branch"`
-	// ParentWorktree is the WorktreeName of the worktree Topology.Add ran from, recorded at creation
-	// time and never inferred.
+	// ParentWorktree is the WorktreeName of the worktree Topology.Add ran from, recorded at creation time and never inferred.
 	// It is what a run's parent agent name is resolved from.
-	// A record written before the field existed, and a legacy-worktree repair whose creator is
-	// unknown, leave it empty.
+	// A record written before the field existed, and a legacy-worktree repair whose creator is unknown, leave it empty.
 	ParentWorktree string `json:"parent_worktree,omitempty"`
 }
 

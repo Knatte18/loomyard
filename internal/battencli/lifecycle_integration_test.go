@@ -620,14 +620,12 @@ func TestBattenIntegration_StepDrivenRunShed_ReturnsAfterOnePollInterval(t *test
 	}
 }
 
-// TestBattenIntegration_RunShedPausedChild_WaitsThenTearsDownOnceDone drives a read-status
-// answering StatePaused, then running, then done, asserting the run survives the paused poll with
-// the pair intact and then reaches Worktree-Teardown, which removes the pair.
+// TestBattenIntegration_RunShedPausedChild_WaitsThenTearsDownOnceDone drives a read-status answering StatePaused, then running, then done,
+// asserting the run survives the paused poll with the pair intact and then reaches Worktree-Teardown, which removes the pair.
 //
-// A halted child is a budget-exempt wait out of InnerRun.Call, never a hard error: the pair keeps
-// the watcher that lands and tears it down once the operator resumes the child.
-// The running answer appears twice because the running arm re-spawns once with no spawn confirmed
-// and reads the status again.
+// A halted child is a budget-exempt wait out of InnerRun.Call, never a hard error:
+// the pair keeps the watcher that lands and tears it down once the operator resumes the child.
+// The running answer appears twice because the running arm re-spawns once with no spawn confirmed and reads the status again.
 func TestBattenIntegration_RunShedPausedChild_WaitsThenTearsDownOnceDone(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	slug := "batten-paused"
