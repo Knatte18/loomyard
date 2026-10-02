@@ -59,7 +59,7 @@ func validateSessionID(id string) error {
 }
 
 // Prepare writes prompt.md and settings.json into runDir and returns the Launch command strings.
-// It validates spec.Effort and spec.Model before writing any artifacts.
+// It validates spec.Effort, spec.Model, spec.PermissionMode and spec.ResumeSessionID before writing any artifacts.
 func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {
 	// Reject oversized prompts before any artifact is written (failing now is immediate and self-describing).
 	if len(spec.Prompt) > maxLaunchPromptBytes {
