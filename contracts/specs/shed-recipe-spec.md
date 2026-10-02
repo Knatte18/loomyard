@@ -44,6 +44,9 @@ A `Bouncer` row's optional `skip_seam` key takes one value, `rework-exempt`, res
 It follows the same two rules as `commit_seam`: absent leaves the seam nil, and a present key naming a closure the `Env` does not carry is a construction error.
 An unknown value is a construction error naming `rework-exempt`.
 
+A gate-capable row's `gates` key selects validators by name from a closed vocabulary, in order, each element carrying its own `attempts` budget (0 means off) and an optional `pass_on_cap`.
+An absent key is ungated, while an empty list, a duplicate name, or a negative budget is a construction error.
+
 ## The recipe loader/builder
 
 `internal/shedbuild` is the recipe file format's loader and builder, shipped as a single package.

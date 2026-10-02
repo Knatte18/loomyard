@@ -1,9 +1,6 @@
-// entries_gate.go implements resolveGateSpec, the shared resolver every gate-capable entry
-// (DiscussionWrite, PlanWrite, Describe, BurlerRound, Webster, PRRework) calls to turn its row's
-// "gate"/"gate_attempts" Config keys into a shuttleengine.GateSpec.
+// entries_gate.go implements resolveGateSpec, the shared resolver every gate-capable entry (DiscussionWrite, PlanWrite, Describe, BurlerRound, Webster, PRRework) calls to turn its row's "gates" Config key into a shuttleengine.GateSpec.
 //
-// The selector is a declared string resolved against Env, exactly as bouncerEntry already resolves
-// "commit_seam"/"approve_seam" against Env.CommitPlan/Env.CommitDiscussion/Env.ApprovePlan.
+// Each element selects a validator by a declared name resolved against Env, exactly as bouncerEntry already resolves "commit_seam"/"approve_seam" against Env.CommitPlan/Env.CommitDiscussion/Env.ApprovePlan.
 // Selecting the validator by switching on the row's own Name was rejected: that would make row
 // names load-bearing in a second place beyond resume identity, where a renamed row would silently
 // lose its gate rather than failing to build.
@@ -18,85 +15,126 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// resolveGateSpec is the single place the "gate" and "gate_attempts" Config keys are read and
-// turned into a shuttleengine.GateSpec, shared by every gated entry.
+// gateEntryKeys are the keys one element of a row's "gates" list may carry.
+var gateEntryKeys = []string{"name", "attempts", "pass_on_cap"}
+
+// resolveGateSpec is the single place the "gates" Config key is read and turned into a shuttleengine.GateSpec, shared by every gated entry.
 //
-// "gate" is an optional string read via configString, resolved against a closed four-value
-// vocabulary: "discussion" requires env.DecisionRecordPath and env.SupportLogPath to pass
-// requireAbsRoot and returns loomshed.NewDiscussionGate over them; "plan" requires
-// env.AnchorPath and env.WorktreeRoot and returns loomshed.NewPlanGate over them; "rework-plan"
-// requires the same two roots plus a non-nil env.Rework.ReadCommitted and returns
-// loomshed.NewReworkPlanGate over them; "description"
-// requires env.DescriptionPath to pass requireAbsRoot and returns landingshed.NewDescriptionGate
-// over it; any other non-empty value is an error naming the key and all four legal values. An
-// absent "gate" returns the zero GateSpec, which is what every ungated row carries by saying
-// nothing.
+// "gates" is an optional list of maps, read via configMapList.
+// An absent key returns the empty GateSpec, which is what every ungated row carries by saying nothing;
+// a present empty list is an error, since it is an author mistake rather than an ungated row.
 //
-// "gate_attempts" is an optional int read via configInt. A "gate_attempts" present with no "gate"
-// is an error naming both keys, never a silently-ignored key: it is unambiguously an author
-// mistake, and this package's constructors already fail loud on malformed config rather than
-// defaulting.
+// Each element carries a required "name", resolved against a closed four-value vocabulary:
+// "discussion" requires env.DecisionRecordPath and env.SupportLogPath to pass requireAbsRoot and returns loomshed.NewDiscussionGate over them;
+// "plan" requires env.AnchorPath and env.WorktreeRoot and returns loomshed.NewPlanGate over them;
+// "rework-plan" requires the same two roots plus a non-nil env.Rework.ReadCommitted and returns loomshed.NewReworkPlanGate over them;
+// "description" requires env.DescriptionPath to pass requireAbsRoot and returns landingshed.NewDescriptionGate over it;
+// any other value is an error naming the key and all four legal values.
+// A name may appear once per list.
 //
-// Every error is qualified with entry so a recipe author with a typo is told which row spoke,
-// matching the qualification resolveUnderRoot already applies.
+// "attempts" is required, a non-negative integer read via configInt so 0 is a present value:
+// 0 turns the entry off, yet the entry still resolves its closure and its Env requirements, so a typo in an off gate fails loud.
+// "pass_on_cap" is an optional bool, false when absent.
 //
-// resolveGateSpec reads the "gate" and "gate_attempts" keys but never rejects an unknown key --
-// each caller keeps owning its own configRejectUnknown call, which is where the Config Strictness
-// Invariant's strictness lives.
+// Every error is qualified with entry so a recipe author with a typo is told which row spoke, matching the qualification resolveUnderRoot already applies.
+//
+// resolveGateSpec reads only the "gates" key and rejects unknown keys only inside each element -- each caller keeps owning its own configRejectUnknown call for the row's own keys, which is where the Config Strictness Invariant's strictness lives.
 func resolveGateSpec(entry string, cfg Config, env Env) (shuttleengine.GateSpec, error) {
-	gate, err := configString(cfg, "gate", false)
+	elems, present, err := configMapList(cfg, "gates")
 	if err != nil {
-		return shuttleengine.GateSpec{}, err
+		return nil, fmt.Errorf("shedrecipe: %s: %w", entry, err)
 	}
-	attempts, err := configInt(cfg, "gate_attempts", false)
-	if err != nil {
-		return shuttleengine.GateSpec{}, err
+	if !present {
+		return nil, nil
+	}
+	if len(elems) == 0 {
+		return nil, fmt.Errorf("shedrecipe: %s: config key %q must not be an empty list", entry, "gates")
 	}
 
-	if gate == "" {
-		if _, present := cfg["gate_attempts"]; present {
-			return shuttleengine.GateSpec{}, fmt.Errorf("shedrecipe: %s: config key %q requires config key %q", entry, "gate_attempts", "gate")
+	spec := make(shuttleengine.GateSpec, 0, len(elems))
+	seen := make(map[string]bool, len(elems))
+	for i, elem := range elems {
+		ge, err := resolveGateEntry(entry, i, elem, env)
+		if err != nil {
+			return nil, err
 		}
-		return shuttleengine.GateSpec{}, nil
+		if seen[ge.Name] {
+			return nil, fmt.Errorf("shedrecipe: %s: config key %q element %d repeats gate name %q", entry, "gates", i, ge.Name)
+		}
+		seen[ge.Name] = true
+		spec = append(spec, ge)
+	}
+	return spec, nil
+}
+
+// resolveGateEntry resolves one element of a row's "gates" list, wrapping every config-accessor error with the entry and the element's index because those accessors name neither.
+func resolveGateEntry(entry string, index int, elem Config, env Env) (shuttleengine.GateEntry, error) {
+	wrap := func(err error) error {
+		return fmt.Errorf("shedrecipe: %s: config key %q element %d: %w", entry, "gates", index, err)
 	}
 
-	var closure shuttleengine.Gate
-	switch gate {
+	if err := configRejectUnknown(elem, gateEntryKeys...); err != nil {
+		return shuttleengine.GateEntry{}, wrap(err)
+	}
+	name, err := configString(elem, "name", true)
+	if err != nil {
+		return shuttleengine.GateEntry{}, wrap(err)
+	}
+	attempts, err := configInt(elem, "attempts", true)
+	if err != nil {
+		return shuttleengine.GateEntry{}, wrap(err)
+	}
+	if attempts < 0 {
+		return shuttleengine.GateEntry{}, wrap(fmt.Errorf("config key %q must not be negative, got %d", "attempts", attempts))
+	}
+	passOnCap, err := configBool(elem, "pass_on_cap", false)
+	if err != nil {
+		return shuttleengine.GateEntry{}, wrap(err)
+	}
+
+	closure, err := resolveGateClosure(entry, index, name, env)
+	if err != nil {
+		return shuttleengine.GateEntry{}, err
+	}
+	return shuttleengine.GateEntry{Name: name, Gate: closure, Attempts: attempts, PassOnCap: passOnCap}, nil
+}
+
+// resolveGateClosure maps the name of the row's "gates" element at index onto its validator closure, checking the Env fields that validator needs.
+func resolveGateClosure(entry string, index int, name string, env Env) (shuttleengine.Gate, error) {
+	switch name {
 	case "discussion":
 		if err := requireAbsRoot(entry, "DecisionRecordPath", env.DecisionRecordPath); err != nil {
-			return shuttleengine.GateSpec{}, err
+			return nil, err
 		}
 		if err := requireAbsRoot(entry, "SupportLogPath", env.SupportLogPath); err != nil {
-			return shuttleengine.GateSpec{}, err
+			return nil, err
 		}
-		closure = loomshed.NewDiscussionGate(env.DecisionRecordPath, env.SupportLogPath)
+		return loomshed.NewDiscussionGate(env.DecisionRecordPath, env.SupportLogPath), nil
 	case "plan":
 		if err := requireAbsRoot(entry, "AnchorPath", env.AnchorPath); err != nil {
-			return shuttleengine.GateSpec{}, err
+			return nil, err
 		}
 		if err := requireAbsRoot(entry, "WorktreeRoot", env.WorktreeRoot); err != nil {
-			return shuttleengine.GateSpec{}, err
+			return nil, err
 		}
-		closure = loomshed.NewPlanGate(env.AnchorPath, env.WorktreeRoot)
+		return loomshed.NewPlanGate(env.AnchorPath, env.WorktreeRoot), nil
 	case "rework-plan":
 		if err := requireAbsRoot(entry, "AnchorPath", env.AnchorPath); err != nil {
-			return shuttleengine.GateSpec{}, err
+			return nil, err
 		}
 		if err := requireAbsRoot(entry, "WorktreeRoot", env.WorktreeRoot); err != nil {
-			return shuttleengine.GateSpec{}, err
+			return nil, err
 		}
 		if err := requireSeam(entry, "Rework.ReadCommitted", env.Rework.ReadCommitted); err != nil {
-			return shuttleengine.GateSpec{}, err
+			return nil, err
 		}
-		closure = loomshed.NewReworkPlanGate(env.AnchorPath, env.WorktreeRoot, env.Rework.ReadCommitted)
+		return loomshed.NewReworkPlanGate(env.AnchorPath, env.WorktreeRoot, env.Rework.ReadCommitted), nil
 	case "description":
 		if err := requireAbsRoot(entry, "DescriptionPath", env.DescriptionPath); err != nil {
-			return shuttleengine.GateSpec{}, err
+			return nil, err
 		}
-		closure = landingshed.NewDescriptionGate(env.DescriptionPath)
+		return landingshed.NewDescriptionGate(env.DescriptionPath), nil
 	default:
-		return shuttleengine.GateSpec{}, fmt.Errorf("shedrecipe: %s: config key %q must be %q, %q, %q or %q, got %q", entry, "gate", "discussion", "plan", "rework-plan", "description", gate)
+		return nil, fmt.Errorf("shedrecipe: %s: config key %q element %d: config key %q must be %q, %q, %q or %q, got %q", entry, "gates", index, "name", "discussion", "plan", "rework-plan", "description", name)
 	}
-
-	return shuttleengine.GateSpec{Gate: closure, Attempts: attempts}, nil
 }

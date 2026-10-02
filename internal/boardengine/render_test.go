@@ -1,7 +1,6 @@
 // render_test.go — unit tests for rendering (render.go).
 //
-// README / design-doc output across task shapes: dependencies, status, isolated, deferred, orphans,
-// and title formatting.
+// README and design-doc goldens over the tier-section layout: an entry per tier, an empty tier, done and abandoned entries, dependencies, bodies, and the omitted Done section.
 // Also covers the manifest-based cleanup introduced in RenderToDisk: renamed outputs are removed
 // across consecutive renders,
 // and a missing or corrupt manifest degrades gracefully.
@@ -49,8 +48,8 @@ func TestRenderToDisk(t *testing.T) {
 	}
 
 	tasks := []boardengine.Task{
-		{ID: 0, Slug: "a", Title: "A", Body: "proposal A"},
-		{ID: 1, Slug: "b", Title: "B"}, // no body → no design-doc file
+		{ID: 0, Slug: "a", Title: "A", Tier: 1, Type: "feature", Body: "proposal A"},
+		{ID: 1, Slug: "b", Title: "B", Tier: 1, Type: "feature"}, // no body → no design-doc file
 	}
 
 	for _, tt := range tests {
@@ -67,14 +66,14 @@ func TestRenderToDisk(t *testing.T) {
 			// file; the manifest-based cleanup removes it in the next RenderToDisk call.
 			seedManifest(t, dir, []string{tt.ghostFile})
 
-			if err := boardengine.RenderToDisk(dir, tasks, nil, tt.out); err != nil {
+			if err := boardengine.RenderToDisk(dir, tasks, tt.out); err != nil {
 				t.Fatalf("RenderToDisk: %v", err)
 			}
 
 			if _, err := os.Stat(filepath.Join(dir, "Home.md")); err != nil {
 				t.Errorf("Home.md not written: %v", err)
 			}
-			if b, err := os.ReadFile(filepath.Join(dir, tt.wantProposal)); err != nil || string(b) != "proposal A" {
+			if b, err := os.ReadFile(filepath.Join(dir, tt.wantProposal)); err != nil || !strings.HasSuffix(string(b), "proposal A") {
 				t.Errorf("%s: got %q, err %v", tt.wantProposal, b, err)
 			}
 			noBodyProposal := filepath.Join(dir, tt.out.DesignPrefix+"b.md")
@@ -107,18 +106,18 @@ func seedManifest(t *testing.T, dir string, names []string) {
 func TestRenderToDiskManifestCleanup(t *testing.T) {
 	t.Run("ReadmeRename", func(t *testing.T) {
 		dir := t.TempDir()
-		tasks := []boardengine.Task{{ID: 0, Slug: "a", Title: "A"}}
+		tasks := []boardengine.Task{{ID: 0, Slug: "a", Title: "A", Tier: 1, Type: "feature"}}
 
 		// First render produces Home.md and seeds the manifest with it.
 		out1 := boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-"}
-		if err := boardengine.RenderToDisk(dir, tasks, nil, out1); err != nil {
+		if err := boardengine.RenderToDisk(dir, tasks, out1); err != nil {
 			t.Fatalf("first RenderToDisk: %v", err)
 		}
 
 		// Second render uses Index.md; the manifest from the first render lists Home.md,
 		// so it is removed because the new output set does not contain it.
 		out2 := boardengine.Outputs{Readme: "Index.md", DesignPrefix: "proposal-"}
-		if err := boardengine.RenderToDisk(dir, tasks, nil, out2); err != nil {
+		if err := boardengine.RenderToDisk(dir, tasks, out2); err != nil {
 			t.Fatalf("second RenderToDisk: %v", err)
 		}
 		if _, err := os.Stat(filepath.Join(dir, "Index.md")); err != nil {
@@ -131,11 +130,11 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 
 	t.Run("ProposalPrefixChange", func(t *testing.T) {
 		dir := t.TempDir()
-		tasks := []boardengine.Task{{ID: 0, Slug: "a", Title: "A", Body: "body"}}
+		tasks := []boardengine.Task{{ID: 0, Slug: "a", Title: "A", Tier: 1, Type: "feature", Body: "body"}}
 
 		// First render with prefix "proposal-" produces proposal-a.md.
 		out1 := boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-"}
-		if err := boardengine.RenderToDisk(dir, tasks, nil, out1); err != nil {
+		if err := boardengine.RenderToDisk(dir, tasks, out1); err != nil {
 			t.Fatalf("first RenderToDisk: %v", err)
 		}
 		if _, err := os.Stat(filepath.Join(dir, "proposal-a.md")); err != nil {
@@ -145,7 +144,7 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 		// Second render with prefix "task-" produces task-a.md; manifest cleanup
 		// removes proposal-a.md because it is no longer in the output set.
 		out2 := boardengine.Outputs{Readme: "Home.md", DesignPrefix: "task-"}
-		if err := boardengine.RenderToDisk(dir, tasks, nil, out2); err != nil {
+		if err := boardengine.RenderToDisk(dir, tasks, out2); err != nil {
 			t.Fatalf("second RenderToDisk: %v", err)
 		}
 		if _, err := os.Stat(filepath.Join(dir, "task-a.md")); err != nil {
@@ -158,11 +157,11 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 
 	t.Run("BodyLoss", func(t *testing.T) {
 		dir := t.TempDir()
-		task := boardengine.Task{ID: 0, Slug: "a", Title: "A", Body: "original body"}
+		task := boardengine.Task{ID: 0, Slug: "a", Title: "A", Tier: 1, Type: "feature", Body: "original body"}
 		out := boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-"}
 
 		// First render: task has a body → proposal-a.md is produced and recorded in the manifest.
-		if err := boardengine.RenderToDisk(dir, []boardengine.Task{task}, nil, out); err != nil {
+		if err := boardengine.RenderToDisk(dir, []boardengine.Task{task}, out); err != nil {
 			t.Fatalf("first RenderToDisk: %v", err)
 		}
 		if _, err := os.Stat(filepath.Join(dir, "proposal-a.md")); err != nil {
@@ -172,7 +171,7 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 		// Second render: task loses its body → proposal-a.md is absent from the new
 		// output set but present in the manifest, so the manifest cleanup removes it.
 		task.Body = ""
-		if err := boardengine.RenderToDisk(dir, []boardengine.Task{task}, nil, out); err != nil {
+		if err := boardengine.RenderToDisk(dir, []boardengine.Task{task}, out); err != nil {
 			t.Fatalf("second RenderToDisk: %v", err)
 		}
 		if _, err := os.Stat(filepath.Join(dir, "proposal-a.md")); !os.IsNotExist(err) {
@@ -182,7 +181,7 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 
 	t.Run("UnrelatedFileNotRemoved", func(t *testing.T) {
 		dir := t.TempDir()
-		tasks := []boardengine.Task{{ID: 0, Slug: "a", Title: "A"}}
+		tasks := []boardengine.Task{{ID: 0, Slug: "a", Title: "A", Tier: 1, Type: "feature"}}
 
 		// A hand-added file in the board dir that was never produced by a render.
 		readme := filepath.Join(dir, "NOTES.md")
@@ -192,11 +191,11 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 
 		out := boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-"}
 		// First render seeds the manifest with the rendered files (not NOTES.md).
-		if err := boardengine.RenderToDisk(dir, tasks, nil, out); err != nil {
+		if err := boardengine.RenderToDisk(dir, tasks, out); err != nil {
 			t.Fatalf("first RenderToDisk: %v", err)
 		}
 		// Second render triggers cleanup; NOTES.md was never in the manifest so it is untouched.
-		if err := boardengine.RenderToDisk(dir, tasks, nil, out); err != nil {
+		if err := boardengine.RenderToDisk(dir, tasks, out); err != nil {
 			t.Fatalf("second RenderToDisk: %v", err)
 		}
 		if _, err := os.Stat(readme); err != nil {
@@ -206,7 +205,7 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 
 	t.Run("NoManifestSeedsAndRemovesNothing", func(t *testing.T) {
 		dir := t.TempDir()
-		tasks := []boardengine.Task{{ID: 0, Slug: "a", Title: "A"}}
+		tasks := []boardengine.Task{{ID: 0, Slug: "a", Title: "A", Tier: 1, Type: "feature"}}
 
 		// A file that looks like an orphan under the old glob approach but is absent
 		// from the manifest because no manifest exists yet (pre-upgrade state).
@@ -219,7 +218,7 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 
 		// First render with no prior manifest: nothing is removed (graceful degradation),
 		// and the manifest is seeded with the current output set.
-		if err := boardengine.RenderToDisk(dir, tasks, nil, out); err != nil {
+		if err := boardengine.RenderToDisk(dir, tasks, out); err != nil {
 			t.Fatalf("RenderToDisk should not fail when no manifest exists: %v", err)
 		}
 		if _, err := os.Stat(stale); err != nil {
@@ -232,7 +231,7 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 
 	t.Run("CorruptManifestDoesNotFailWrite", func(t *testing.T) {
 		dir := t.TempDir()
-		tasks := []boardengine.Task{{ID: 0, Slug: "a", Title: "A"}}
+		tasks := []boardengine.Task{{ID: 0, Slug: "a", Title: "A", Tier: 1, Type: "feature"}}
 
 		// Write a corrupt manifest; RenderToDisk must treat it as absent (no cleanup)
 		// and overwrite it with the current render set.
@@ -241,7 +240,7 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 		}
 
 		out := boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-"}
-		if err := boardengine.RenderToDisk(dir, tasks, nil, out); err != nil {
+		if err := boardengine.RenderToDisk(dir, tasks, out); err != nil {
 			t.Errorf("RenderToDisk should not fail with a corrupt manifest: %v", err)
 		}
 		if _, err := os.Stat(filepath.Join(dir, "Home.md")); err != nil {
@@ -250,272 +249,130 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 	})
 }
 
-func TestRenderEmptyTaskList(t *testing.T) {
-	// (a) empty task list, no notes → Home.md is exactly "# Tasks\n", no design docs.
-	result, err := boardengine.Render([]boardengine.Task{}, nil, boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-"})
+// readmeFixture holds an entry in tiers 1 and 3, leaving tier 2 empty, plus a done entry, an abandoned entry, a body, a dependency and a two-layer chain inside tier 1.
+func readmeFixture() []boardengine.Task {
+	return []boardengine.Task{
+		{ID: 1, Slug: "base", Title: "Base work", Tier: 1, Type: "feature", Brief: "The foundation."},
+		{ID: 2, Slug: "top", Title: "Top work", Tier: 1, Type: "bug", Brief: "Builds on base.", Body: "Design.\nSecond line.", DependsOn: []string{"base"}},
+		{ID: 3, Slug: "idea", Title: "An idea", Tier: 3, Type: "design"},
+		{ID: 4, Slug: "dropped", Title: "Dropped idea", Tier: 3, Type: "chore", Status: stringPtr("abandoned"), Brief: "No longer wanted."},
+		{ID: 5, Slug: "shipped", Title: "Shipped work", Tier: 1, Type: "feature", Status: stringPtr("done")},
+	}
+}
+
+// TestRenderReadmeGolden pins the README for a fixture with an entry per tier, an empty tier 2, a done entry, an abandoned tier-3 entry, a body, a dependency, and a two-layer chain in one section.
+func TestRenderReadmeGolden(t *testing.T) {
+	result, err := boardengine.Render(readmeFixture(), boardengine.Outputs{Readme: "README.md", DesignPrefix: "design-"})
 	if err != nil {
-		t.Fatalf("Render failed: %v", err)
+		t.Fatalf("Render: %v", err)
 	}
 
-	expectedHome := "# Tasks\n"
-	if result["Home.md"] != expectedHome {
-		t.Errorf("Home.md mismatch\nExpected: %q\nGot: %q", expectedHome, result["Home.md"])
+	want := "# Board\n" +
+		"\n" +
+		"Entries grouped by tier, in dependency order within each tier.\n" +
+		"\n" +
+		"## Planned\n" +
+		"\n" +
+		"Concretized and claimable.\n" +
+		"\n" +
+		"1. **Base work** — `base` · feature\n" +
+		"   The foundation.\n" +
+		"1. **Top work** — `top` · bug\n" +
+		"   Builds on base. [design](design-top.md)\n" +
+		"   After `base`.\n" +
+		"\n" +
+		"## Next Up\n" +
+		"\n" +
+		"Planned next, but not yet concretized.\n" +
+		"\n" +
+		"## Someday\n" +
+		"\n" +
+		"Loose ideas.\n" +
+		"\n" +
+		"1. **An idea** — `idea` · design\n" +
+		"1. **Dropped idea** — `dropped` · chore · abandoned\n" +
+		"   No longer wanted.\n" +
+		"\n" +
+		"## Done\n" +
+		"\n" +
+		"Finished, awaiting `lyx board prune`.\n" +
+		"\n" +
+		"1. **Shipped work** — `shipped` · feature · done\n"
+	if got := result["README.md"]; got != want {
+		t.Errorf("README mismatch\nwant:\n%s\ngot:\n%s", want, got)
+	}
+}
+
+// TestRenderReadmeNoDoneSection asserts the Done section is omitted when no entry is done.
+func TestRenderReadmeNoDoneSection(t *testing.T) {
+	tasks := []boardengine.Task{{ID: 1, Slug: "a", Title: "A", Tier: 2, Type: "chore"}}
+	result, err := boardengine.Render(tasks, boardengine.Outputs{Readme: "README.md", DesignPrefix: "design-"})
+	if err != nil {
+		t.Fatalf("Render: %v", err)
 	}
 
-	// Check no design-doc files
-	for key := range result {
-		if strings.HasPrefix(key, "proposal-") {
-			t.Errorf("Unexpected design-doc file: %s", key)
+	want := "# Board\n" +
+		"\n" +
+		"Entries grouped by tier, in dependency order within each tier.\n" +
+		"\n" +
+		"## Planned\n" +
+		"\n" +
+		"Concretized and claimable.\n" +
+		"\n" +
+		"## Next Up\n" +
+		"\n" +
+		"Planned next, but not yet concretized.\n" +
+		"\n" +
+		"1. **A** — `a` · chore\n" +
+		"\n" +
+		"## Someday\n" +
+		"\n" +
+		"Loose ideas.\n"
+	got := result["README.md"]
+	if got != want {
+		t.Errorf("README mismatch\nwant:\n%s\ngot:\n%s", want, got)
+	}
+	if strings.Contains(got, "## Done") {
+		t.Errorf("README should omit ## Done when no entry is done:\n%s", got)
+	}
+}
+
+// TestRenderDesignDocGoldens pins the design-doc header, the Depends on line with one linked and one named dependency, and a multi-line body appearing byte-identical.
+func TestRenderDesignDocGoldens(t *testing.T) {
+	tasks := []boardengine.Task{
+		{ID: 1, Slug: "linked", Title: "Linked", Tier: 1, Type: "feature", Body: "linked body"},
+		{ID: 2, Slug: "bare", Title: "Bare", Tier: 2, Type: "chore"},
+		{ID: 3, Slug: "main", Title: "Main", Tier: 2, Type: "bug", Status: stringPtr("active"),
+			DependsOn: []string{"linked", "bare"}, Body: "line one\n\n  indented\nline three"},
+		{ID: 4, Slug: "plain", Title: "Plain", Tier: 3, Type: "design", Body: "just a body"},
+	}
+	result, err := boardengine.Render(tasks, boardengine.Outputs{Readme: "README.md", DesignPrefix: "design-"})
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+
+	tests := []struct {
+		file string
+		want string
+	}{
+		{
+			file: "design-main.md",
+			want: "# Main\n\n`main` · Next Up · bug · active\n\n" +
+				"Depends on: [`linked`](design-linked.md), `bare`\n\n" +
+				"line one\n\n  indented\nline three",
+		},
+		{
+			file: "design-plain.md",
+			want: "# Plain\n\n`plain` · Someday · design\n\njust a body",
+		},
+	}
+	for _, tt := range tests {
+		if got := result[tt.file]; got != tt.want {
+			t.Errorf("%s mismatch\nwant: %q\ngot:  %q", tt.file, tt.want, got)
 		}
 	}
-}
-
-// TestRenderProposalAndShapesHomepage tests the core boardengine.Render() function for various task
-// shapes: dependencies, status variants, isolated tasks, deferred tasks, and brief/title
-// formatting.
-// Each case asserts matching expected Home.md substrings.
-//
-// Folds: TestRenderDependencies, TestRenderSpecialBucketTask, TestRenderIsolatedTask,
-// TestRenderTaskIDFormatting, TestRenderBrief, TestRenderMissingDependency, TestRenderLayerBuckets
-func TestRenderProposalAndShapesHomepage(t *testing.T) {
-	tests := []struct {
-		name           string
-		tasks          []boardengine.Task
-		wantSubstrings []string
-		dontWantSubstr []string
-	}{
-		{
-			name: "TestRenderDependencies",
-			tasks: []boardengine.Task{
-				{ID: 1, Slug: "task-b", Title: "Task B"},
-				{ID: 2, Slug: "task-a", Title: "Task A", DependsOn: []string{"task-b"}},
-			},
-			wantSubstrings: []string{
-				"# Layer A",
-				"# Layer B",
-				"Depends on: #001",
-			},
-		},
-		{
-			name: "TestRenderSpecialBucketTask",
-			tasks: []boardengine.Task{
-				func() boardengine.Task {
-					s := "done"
-					return boardengine.Task{ID: 1, Slug: "done-task", Title: "Done Task", Status: &s}
-				}(),
-			},
-			wantSubstrings: []string{
-				"# Done",
-				"## **#001:** Done Task\n",
-			},
-			dontWantSubstr: []string{"[Done]"},
-		},
-		{
-			name: "TestRenderDeferredTask",
-			tasks: []boardengine.Task{
-				boardengine.Task{ID: 1, Slug: "deferred-task", Title: "Deferred Task", Deferred: true},
-			},
-			wantSubstrings: []string{
-				"# Someday",
-				"## **#001:** Deferred Task\n",
-			},
-		},
-		{
-			name: "TestRenderIsolatedTask",
-			tasks: []boardengine.Task{
-				{ID: 1, Slug: "task-a", Title: "Task A"},
-				{ID: 2, Slug: "task-z", Title: "Isolated Task", Isolated: true},
-			},
-			wantSubstrings: []string{
-				"# Layer A",
-				"# Layer Z",
-			},
-		},
-		{
-			name: "TestRenderTaskIDFormatting",
-			tasks: []boardengine.Task{
-				{ID: 3, Slug: "task-c", Title: "Task C"},
-				{ID: 1, Slug: "task-a", Title: "Task A"},
-				{ID: 2, Slug: "task-b", Title: "Task B"},
-			},
-			wantSubstrings: []string{
-				"## **#001:** Task A",
-				"## **#002:** Task B",
-				"## **#003:** Task C",
-			},
-		},
-		{
-			name: "TestRenderBrief",
-			tasks: []boardengine.Task{
-				{ID: 1, Slug: "test-task", Title: "Test Task", Brief: "This is the brief text"},
-			},
-			wantSubstrings: []string{
-				"This is the brief text",
-			},
-		},
-		{
-			name: "TestRenderMissingDependency",
-			tasks: []boardengine.Task{
-				{ID: 1, Slug: "task-a", Title: "Task A", DependsOn: []string{"missing-task"}},
-			},
-			wantSubstrings: []string{
-				"#???: missing-task (missing)",
-			},
-		},
-		{
-			name: "TestRenderLayerBuckets",
-			tasks: []boardengine.Task{
-				{ID: 1, Slug: "independent-task", Title: "Independent Task"},
-				{ID: 2, Slug: "dependent-task", Title: "Dependent Task", DependsOn: []string{"independent-task"}},
-			},
-			wantSubstrings: []string{
-				"# Layer A",
-				"# Layer B",
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result, err := boardengine.Render(tt.tasks, nil, boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-"})
-			if err != nil {
-				t.Fatalf("Render failed: %v", err)
-			}
-
-			home := result["Home.md"]
-
-			for _, want := range tt.wantSubstrings {
-				if !strings.Contains(home, want) {
-					t.Errorf("Home.md missing %q\nGot: %s", want, home)
-				}
-			}
-
-			for _, dontWant := range tt.dontWantSubstr {
-				if strings.Contains(home, dontWant) {
-					t.Errorf("Home.md should not contain %q\nGot: %s", dontWant, home)
-				}
-			}
-		})
-	}
-}
-
-// TestRenderStatusVariants tests all valid status values;
-// asserts the appropriate status suffix appears in the slug line.
-//
-// Folded: directly tested (no original separate func)
-func TestRenderStatusVariants(t *testing.T) {
-	tests := []struct {
-		name     string
-		status   string
-		wantText string
-	}{
-		{"status-active", "active", "[test-task] [active]"},
-		{"status-pr-pending", "pr-pending", "[test-task] [pr-pending]"},
-		{"status-ready-to-merge", "ready-to-merge", "[test-task] [ready-to-merge]"},
-		{"status-abandoned", "abandoned", "[test-task] [abandoned]"},
-		{"status-done", "done", "[test-task] [done]"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			s := tt.status
-			task := boardengine.Task{
-				ID:     1,
-				Slug:   "test-task",
-				Title:  "Test Task",
-				Status: &s,
-			}
-
-			result, err := boardengine.Render([]boardengine.Task{task}, nil, boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-"})
-			if err != nil {
-				t.Fatalf("Render failed: %v", err)
-			}
-
-			home := result["Home.md"]
-			if !strings.Contains(home, tt.wantText) {
-				t.Errorf("Home.md should contain %q\nGot: %s", tt.wantText, home)
-			}
-		})
-	}
-}
-
-// TestRenderSingleTask tests single-task rendering with and without body, verifying design-doc file
-// creation and Home.md content.
-//
-// Folds: TestRenderSingleTaskNoBody, TestRenderSingleTaskWithBody, TestRenderOrphanDetection
-func TestRenderSingleTask(t *testing.T) {
-	tests := []struct {
-		name            string
-		task            boardengine.Task
-		wantProposalKey string
-		wantProposal    bool // true if design-doc file should exist
-		wantHome        []string
-		dontWantHome    []string
-	}{
-		{
-			name:            "TestRenderSingleTaskNoBody",
-			task:            boardengine.Task{ID: 1, Slug: "test-task", Title: "Test Task"},
-			wantProposalKey: "proposal-test-task.md",
-			wantProposal:    false,
-			wantHome: []string{
-				"## **#001:** Test Task [A]",
-				"[test-task]",
-			},
-		},
-		{
-			name:            "TestRenderSingleTaskWithBody",
-			task:            boardengine.Task{ID: 1, Slug: "test-task", Title: "Test Task", Body: "This is the body content"},
-			wantProposalKey: "proposal-test-task.md",
-			wantProposal:    true,
-			wantHome: []string{
-				"[test-task](proposal-test-task.md)",
-			},
-		},
-		{
-			name:            "TestRenderOrphanDetection",
-			task:            boardengine.Task{ID: 1, Slug: "orphan-task", Title: "Orphan Task", Body: "Original body"},
-			wantProposalKey: "proposal-orphan-task.md",
-			wantProposal:    true,
-			wantHome: []string{
-				"## **#001:** Orphan Task [A]",
-				"[orphan-task]",
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result, err := boardengine.Render([]boardengine.Task{tt.task}, nil, boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-"})
-			if err != nil {
-				t.Fatalf("Render failed: %v", err)
-			}
-
-			home := result["Home.md"]
-
-			for _, want := range tt.wantHome {
-				if !strings.Contains(home, want) {
-					t.Errorf("Home.md missing %q\nGot: %s", want, home)
-				}
-			}
-
-			for _, dontWant := range tt.dontWantHome {
-				if strings.Contains(home, dontWant) {
-					t.Errorf("Home.md should not contain %q\nGot: %s", dontWant, home)
-				}
-			}
-
-			if tt.wantProposal {
-				if proposalContent, ok := result[tt.wantProposalKey]; !ok {
-					t.Errorf("Missing design-doc file: %s", tt.wantProposalKey)
-				} else if proposalContent != tt.task.Body {
-					t.Errorf("Design-doc content mismatch\nExpected: %q\nGot: %q", tt.task.Body, proposalContent)
-				}
-			} else {
-				if _, ok := result[tt.wantProposalKey]; ok {
-					t.Errorf("Unexpected design-doc file: %s", tt.wantProposalKey)
-				}
-			}
-		})
+	if _, ok := result["design-bare.md"]; ok {
+		t.Errorf("design-bare.md should not exist (no body)")
 	}
 }
 
@@ -530,12 +387,14 @@ func TestRenderCustomOutputs(t *testing.T) {
 			ID:    1,
 			Slug:  "test-task",
 			Title: "Test Task",
+			Tier:  1,
+			Type:  "feature",
 		}
 		out := boardengine.Outputs{
 			Readme:       "README.md",
 			DesignPrefix: "proposal-",
 		}
-		result, err := boardengine.Render([]boardengine.Task{task}, nil, out)
+		result, err := boardengine.Render([]boardengine.Task{task}, out)
 		if err != nil {
 			t.Fatalf("Render failed: %v", err)
 		}
@@ -554,13 +413,15 @@ func TestRenderCustomOutputs(t *testing.T) {
 			ID:    1,
 			Slug:  "test-task",
 			Title: "Test Task",
+			Tier:  1,
+			Type:  "feature",
 			Body:  "Proposal body",
 		}
 		out := boardengine.Outputs{
 			Readme:       "Home.md",
 			DesignPrefix: "prop-",
 		}
-		result, err := boardengine.Render([]boardengine.Task{task}, nil, out)
+		result, err := boardengine.Render([]boardengine.Task{task}, out)
 		if err != nil {
 			t.Fatalf("Render failed: %v", err)
 		}
@@ -575,63 +436,10 @@ func TestRenderCustomOutputs(t *testing.T) {
 
 		// Check links in Home.md use custom prefix
 		home := result["Home.md"]
-		if !strings.Contains(home, "[test-task](prop-test-task.md)") {
+		if !strings.Contains(home, "[design](prop-test-task.md)") {
 			t.Errorf("Home.md should use custom prefix in links\nGot: %s", home)
 		}
 	})
-}
-
-// TestRenderManifestSection covers the README's "# Manifest" section: a note with a non-empty body
-// gets a design-doc link, a note depending on another note gets a resolved "Depends on:" line, and
-// the Manifest heading is positioned after the Tasks section's content.
-// Also verifies renderDesigns's union-of-tasks-and-notes behavior: a note with a body produces a
-// design-<slug>.md entry in the result map, same as a task would.
-func TestRenderManifestSection(t *testing.T) {
-	tasks := []boardengine.Task{
-		{ID: 1, Slug: "task-a", Title: "Task A"},
-	}
-	notes := []boardengine.Task{
-		{ID: 2, Slug: "note-body", Title: "Note With Body", Body: "note body content"},
-		{ID: 3, Slug: "note-dep", Title: "Note With Dep", DependsOn: []string{"note-body"}},
-		{ID: 4, Slug: "note-plain", Title: "Plain Note"},
-	}
-
-	result, err := boardengine.Render(tasks, notes, boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-"})
-	if err != nil {
-		t.Fatalf("Render failed: %v", err)
-	}
-
-	readme := result["Home.md"]
-
-	tasksIdx := strings.Index(readme, "# Tasks")
-	manifestIdx := strings.Index(readme, "# Manifest")
-	if tasksIdx == -1 {
-		t.Fatalf("Home.md missing \"# Tasks\" heading\nGot: %s", readme)
-	}
-	if manifestIdx == -1 {
-		t.Fatalf("Home.md missing \"# Manifest\" heading\nGot: %s", readme)
-	}
-	if manifestIdx < tasksIdx {
-		t.Errorf("\"# Manifest\" heading should come after \"# Tasks\" content\nGot: %s", readme)
-	}
-
-	wantSubstrings := []string{
-		"## **#002:** Note With Body",
-		"[note-body](proposal-note-body.md)",
-		"## **#003:** Note With Dep",
-		"Depends on: #002",
-		"## **#004:** Plain Note",
-		"[note-plain]",
-	}
-	for _, want := range wantSubstrings {
-		if !strings.Contains(readme, want) {
-			t.Errorf("Home.md missing %q\nGot: %s", want, readme)
-		}
-	}
-
-	if _, ok := result["proposal-note-body.md"]; !ok {
-		t.Errorf("Result should have proposal-note-body.md key (renderDesigns union of tasks+notes), got keys: %v", getKeys(result))
-	}
 }
 
 // getKeys extracts all keys from a string map, used for error messages.

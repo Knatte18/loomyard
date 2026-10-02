@@ -179,6 +179,37 @@ func configMap(cfg Config, key string, required bool) (Config, error) {
 	return Config(m), nil
 }
 
+// configMapList extracts key from cfg as a []Config, so each element can be fed back through these same accessors.
+// It accepts a []any whose every element is a map[string]any, and a []map[string]any;
+// an element of any other type is an error naming key and the element's index.
+// present reports whether key is in cfg at all.
+// Unlike the other accessors, a present empty list is not absent: it returns an empty slice with present true, so a caller can tell an author mistake apart from a missing key.
+func configMapList(cfg Config, key string) (out []Config, present bool, err error) {
+	raw, ok := cfg[key]
+	if !ok {
+		return nil, false, nil
+	}
+	switch v := raw.(type) {
+	case []map[string]any:
+		out = make([]Config, len(v))
+		for i, m := range v {
+			out[i] = Config(m)
+		}
+	case []any:
+		out = make([]Config, len(v))
+		for i, elem := range v {
+			m, ok := elem.(map[string]any)
+			if !ok {
+				return nil, true, fmt.Errorf("shedrecipe: config key %q element %d must be a map, got %T", key, i, elem)
+			}
+			out[i] = Config(m)
+		}
+	default:
+		return nil, true, fmt.Errorf("shedrecipe: config key %q must be a list of maps, got %T", key, raw)
+	}
+	return out, true, nil
+}
+
 // configRejectUnknown errors naming the first unrecognised key in cfg, in sorted order, so the
 // message is deterministic across runs. A cfg with only recognised keys, and a nil or empty cfg,
 // both return nil.
