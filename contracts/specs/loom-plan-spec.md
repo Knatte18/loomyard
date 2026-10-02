@@ -390,6 +390,9 @@ The rows below stay in one fixed order regardless of which entry point runs them
     `Custom` stays exempt on its own targets — and from the `prosa-symbol-target` rule above, restated in group terms: a `Custom` group's own targets are exempt from both rules — and from nothing else, since every other group and every card-generic check still binds it.
 28. `commit-subject-mismatch` — a present `Commit:` value that does not start with the card's own `N: ` prefix. Card-generic.
 
+One further check, `rework-first-card`, is outside both entry points and has no row above.
+Only the rework gate runs it: `planglyph.ValidateRework` runs it after the format-only set, and it reports a `first_card:` that differs from the card number Go told the rework session to start at.
+
 ## Worked example
 
 A complete plan for a fictional task ("add a `--json` flag to `lyx board list`"), byte-consistent with the golden fixture `internal/planparser`'s own tests parse.

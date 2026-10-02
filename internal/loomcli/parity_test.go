@@ -495,29 +495,33 @@ func TestGateParity_DescriptionGate(t *testing.T) {
 	}
 }
 
-// reworkParityFixture writes a two-card language: go plan under anchorPath whose first card creates sub#Foo and whose appended second card creates newpkg#Bar,
-// also using secondUses when it is non-empty, and returns a *loomCLI whose committed-file seam serves the overview and first card alone as the plan at HEAD --
+// reworkParityFixture writes a one-card language: go plan under anchorPath, a new generation whose card is numbered cardNumber (with first_card: cardNumber above 1) and creates newpkg#Bar,
+// also using uses when it is non-empty, and returns a *loomCLI whose committed-file seam serves a one-card generation (card 1 creating sub#Foo) as the plan at HEAD --
 // or nothing at all when committed is false.
+// The told number is therefore 2.
 // It is duplicated from internal/loomshed/gates_test.go's seedReworkGlyphPlan per the duplicate-test-helpers-rather-than-share-them Shared Decision.
-func reworkParityFixture(t *testing.T, anchorPath, worktreeRoot, secondUses string, committed bool) *loomCLI {
+func reworkParityFixture(t *testing.T, anchorPath, worktreeRoot string, cardNumber int, uses string, committed bool) *loomCLI {
 	t.Helper()
 	planDir := planparser.PlanDir(anchorPath)
 	if err := os.MkdirAll(planDir, 0o755); err != nil {
 		t.Fatalf("mkdir plan dir: %v", err)
 	}
-	overview := func(index string) string {
-		return "---\nformat: 5\napproved: true\nlanguage: go\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n" + index
+	overview := func(firstCard int, index string) string {
+		first := ""
+		if firstCard > 1 {
+			first = fmt.Sprintf("first_card: %d\n", firstCard)
+		}
+		return "---\nformat: 5\napproved: true\nlanguage: go\n" + first + "---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n" + index
 	}
-	firstIndex := "1 — first-card — placeholder card 1\n"
-	firstCard := "# Card 1 — first-card\n\n**Create:**\n- `sub#Foo`\n\n**Intent:** placeholder card.\n"
+	oldIndex := "1 — first-card — placeholder card 1\n"
+	oldCard := "# Card 1 — first-card\n\n**Create:**\n- `sub#Foo`\n\n**Intent:** placeholder card.\n"
 	usesBlock := ""
-	if secondUses != "" {
-		usesBlock = fmt.Sprintf("\n**Uses:**\n- `%s`\n", secondUses)
+	if uses != "" {
+		usesBlock = fmt.Sprintf("\n**Uses:**\n- `%s`\n", uses)
 	}
 	files := map[string]string{
-		"00-overview.md":    overview(firstIndex + "2 — second-card — placeholder card 2\n"),
-		"01-first-card.md":  firstCard,
-		"02-second-card.md": fmt.Sprintf("# Card 2 — second-card\n\n**Create:**\n- `newpkg#Bar`\n%s\n**Intent:** appended card.\n", usesBlock),
+		"00-overview.md": overview(cardNumber, fmt.Sprintf("%d — new-card — placeholder card %d\n", cardNumber, cardNumber)),
+		fmt.Sprintf("%02d-new-card.md", cardNumber): fmt.Sprintf("# Card %d — new-card\n\n**Create:**\n- `newpkg#Bar`\n%s\n**Intent:** new generation card.\n", cardNumber, usesBlock),
 	}
 	for name, body := range files {
 		if err := os.WriteFile(filepath.Join(planDir, name), []byte(body), 0o644); err != nil {
@@ -527,8 +531,8 @@ func reworkParityFixture(t *testing.T, anchorPath, worktreeRoot, secondUses stri
 
 	head := map[string][]byte{}
 	if committed {
-		head[path.Join(planparser.PlanDirRel(), "00-overview.md")] = []byte(overview(firstIndex))
-		head[path.Join(planparser.PlanDirRel(), "01-first-card.md")] = []byte(firstCard)
+		head[path.Join(planparser.PlanDirRel(), "00-overview.md")] = []byte(overview(1, oldIndex))
+		head[path.Join(planparser.PlanDirRel(), "01-first-card.md")] = []byte(oldCard)
 	}
 	return &loomCLI{env: shedrecipe.Env{
 		AnchorPath:   anchorPath,
@@ -541,25 +545,27 @@ func reworkParityFixture(t *testing.T, anchorPath, worktreeRoot, secondUses stri
 }
 
 // TestGateParity_ReworkPlanGate drives NewReworkPlanGate and the validate-plan verb's --rework mode over the same fixture set and asserts the two mapped verdicts agree.
-// Every fixture's first card creates a symbol the worktree already carries, so a check that reached it would fail on create-already-exists:
-// a clean appended card (done), an appended card using a missing symbol (stuck), and a plan with nothing committed at HEAD (error).
+// The cases are a clean whole new plan numbered from the told card (done), a first_card differing from the told number (stuck),
+// a card using a missing symbol (stuck), and a plan with nothing committed at HEAD (error).
 func TestGateParity_ReworkPlanGate(t *testing.T) {
 	cases := []struct {
 		name       string
-		secondUses string
+		cardNumber int
+		uses       string
 		committed  bool
 		want       parityVerdict
 	}{
-		{"BuiltCardSkipped", "", true, verdictDone},
-		{"AppendedCardBlocking", "sub#Missing", true, verdictStuck},
-		{"NothingCommitted", "", false, verdictError},
+		{"WholePlanFromToldCard", 2, "", true, verdictDone},
+		{"FirstCardMismatch", 1, "", true, verdictStuck},
+		{"CardBlocking", 2, "sub#Missing", true, verdictStuck},
+		{"NothingCommitted", 2, "", false, verdictError},
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
 			anchorPath := t.TempDir()
 			worktreeRoot := t.TempDir()
 			writeGlyphRepoForParityTest(t, worktreeRoot, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
-			c := reworkParityFixture(t, anchorPath, worktreeRoot, tt.secondUses, tt.committed)
+			c := reworkParityFixture(t, anchorPath, worktreeRoot, tt.cardNumber, tt.uses, tt.committed)
 
 			result, err := loomshed.NewReworkPlanGate(c.env.AnchorPath, c.env.WorktreeRoot, c.env.Rework.ReadCommitted)()
 			pv := producerVerdict(result, err)

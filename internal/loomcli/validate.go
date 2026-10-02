@@ -148,11 +148,10 @@ plus the plan-unapproved approval check, which no gate runs at all: this
 flag is the one place an operator can still reach that check standalone,
 since its own guarantee otherwise rests on the review segment's approve
 seam failing loudly if it is ever wired nil. With --rework, it runs the
-check set PR-Rework's own gate runs: the format-only set scoped to the
-cards absent from the plan committed at HEAD, since every committed card
-has already been built and re-resolving it against the tree it changed
-reports the plan working as designed as a defect -- the mode the rework
-session calls before handoff. The two flags are mutually exclusive. Every
+check set PR-Rework's own gate runs: the format-only set over the whole
+new plan, plus a check that its first_card equals the card number the
+rework session was told to start at -- the mode the rework session calls
+before handoff. The two flags are mutually exclusive. Every
 mode reports the result as one JSON envelope, carrying any informational
 findings under their own envelope key even on the success path. It takes
 no arguments.
@@ -226,7 +225,7 @@ Example:
 	}
 
 	cmd.Flags().BoolVar(&requireApproved, "require-approved", false, "also run the plan-unapproved approval check, the one check no gate runs -- this flag is the sole way to reach it standalone")
-	cmd.Flags().BoolVar(&rework, "rework", false, "check only the cards absent from the plan committed at HEAD, as PR-Rework's own gate does")
+	cmd.Flags().BoolVar(&rework, "rework", false, "check the whole new plan and its first_card against the told number, as PR-Rework's own gate does")
 
 	return cmd
 }

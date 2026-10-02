@@ -147,7 +147,7 @@ func NewPlanGate(anchorPath, worktreeRoot string) shuttleengine.Gate {
 }
 
 // NewReworkPlanGate returns the PR-Rework row's gate closure: a shuttleengine.Gate that parses the plan under anchorPath and checks it with ValidateReworkPlan,
-// so only the cards the rework session appended are held to the plan-format checks.
+// so the whole new plan is held to the plan-format checks plus the told first_card.
 // readCommitted returns an anchor-relative file as committed at HEAD, with found false when HEAD has no such file.
 //
 // Parse failures, the blocking-versus-informational split and the logging follow the plan gate's contract.
@@ -158,17 +158,16 @@ func NewReworkPlanGate(anchorPath, worktreeRoot string, readCommitted func(ancho
 	})
 }
 
-// ValidateReworkPlan checks plan with every card of the plan committed at HEAD treated as already built,
-// so the check set covers only the cards a rework round appended.
-// The committed cards have landed by the time a pull request is rejected, and re-resolving one against the tree it changed reports the plan working as designed as a blocking defect.
+// ValidateReworkPlan checks the whole new plan with planglyph.ValidateRework: the plan gate's format-only set, plus the check that first_card equals the number Go told the session.
+// The told number is NextReworkCardNumber over the plan committed at HEAD, which still holds the retired generation until the round commit, so it is stable for the gate's whole window.
 // readCommitted returns an anchor-relative file as committed at HEAD, with found false when HEAD has no such file.
 // A plan that cannot be read as committed at HEAD is a returned error.
 func ValidateReworkPlan(plan *planparser.Plan, worktreeRoot string, readCommitted func(anchorRel string) ([]byte, bool, error)) ([]planglyph.Finding, error) {
-	committed, err := ParseCommittedPlan(plan.Dir, readCommitted)
+	told, err := NextReworkCardNumber(plan.Dir, readCommitted)
 	if err != nil {
 		return nil, fmt.Errorf("read the plan committed at HEAD: %w", err)
 	}
-	return planglyph.ValidateDispatch(plan, worktreeRoot, committed.Cards)
+	return planglyph.ValidateRework(plan, worktreeRoot, told)
 }
 
 // planGate builds a plan gate closure named gateName in its log lines: it parses the plan under anchorPath, runs validate over it, and maps the result onto the gate contract.
