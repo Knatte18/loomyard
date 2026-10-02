@@ -78,6 +78,10 @@ type headRefusal struct {
 // reportHeadRefusal is the wording for a verb that records a batch at a report's head_sha.
 var reportHeadRefusal = headRefusal{head: "the report's head_sha", rerun: "re-run this verb", redoMerge: "after the batch is recorded"}
 
+// integrationFixHeadRefusal is the wording for the integration-fix attempt, which fails rather than being re-run:
+// its way forward is the escalation's own, so the wording names the escalation and not a verb to re-run.
+var integrationFixHeadRefusal = headRefusal{head: "the fix strand's reported head", rerun: "re-run `lyx webster run`, which escalates this attempt as failed", redoMerge: "after the run is resumed"}
+
 // reconcileHead is reconcileReportHead with the refusal's way forward worded by refusal.
 func reconcileHead(worktree, reportHead, subject string, parentBranch ParentBranchFunc, refusal headRefusal) (warning string, err error) {
 	head, err := headSHA(worktree)
@@ -219,6 +223,39 @@ func dirty(worktree string) (bool, error) {
 		return false, fmt.Errorf("websterengine: git status --porcelain in %s: %w", worktree, err)
 	}
 	return strings.TrimSpace(stdout) != "", nil
+}
+
+// commitsBetween returns the commits reachable from head and not from base, newest first.
+func commitsBetween(worktree, base, head string) ([]string, error) {
+	stdout, err := gitexec.Run([]string{"rev-list", base + ".." + head}, worktree)
+	if err != nil {
+		return nil, fmt.Errorf("websterengine: git rev-list %s..%s in %s: %w", base, head, worktree, err)
+	}
+	return strings.Fields(stdout), nil
+}
+
+// commitParentCount returns how many parents commit has.
+func commitParentCount(worktree, commit string) (int, error) {
+	parents, err := gitrepo.New(worktree).CommitParents(commit)
+	if err != nil {
+		return 0, fmt.Errorf("websterengine: parents of %s in %s: %w", commit, worktree, err)
+	}
+	return len(parents), nil
+}
+
+// commitChangedPaths returns the slash-separated repository-relative paths a non-merge commit changes, including a root commit's.
+func commitChangedPaths(worktree, commit string) ([]string, error) {
+	stdout, err := gitexec.Run([]string{"diff-tree", "--no-commit-id", "--name-only", "-r", "--root", "-z", commit}, worktree)
+	if err != nil {
+		return nil, fmt.Errorf("websterengine: git diff-tree %s in %s: %w", commit, worktree, err)
+	}
+	var paths []string
+	for _, p := range strings.Split(stdout, "\x00") {
+		if p != "" {
+			paths = append(paths, p)
+		}
+	}
+	return paths, nil
 }
 
 // otherWorktrees returns the canonical root of every worktree of worktree's repository except worktree itself.
