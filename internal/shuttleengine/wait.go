@@ -26,6 +26,9 @@
 // The events-tick Done branch splits in two, on whether run.gate is empty:
 // an ungated run's Done (and every OutcomeAsking not deferred to AwaitOperator) finalizes exactly as before the gate existed, unaware the gate exists at all.
 // A gated Done instead evaluates the gate's entries through run.evaluateGate() and, when an entry failed with its own budget remaining, sends a one-line re-prompt naming the findings file and keeps polling rather than finalizing -- the bounded re-prompt loop the "one GateSpec at every hop" and "attempts counts re-prompts actually sent" plan decisions describe.
+// A gated Done is also the writer's turn boundary, and a PassOnCap entry may answer pending there:
+// the loop sends the entry's carried text (only at a boundary), keeps polling, and re-evaluates on every poll tick with no new arrival while the writer is idle, so a verdict recorded meanwhile is read without a new arrival.
+// Both paths run through handleGatedBoundary, and the run deadline and liveness checks keep running throughout, never extended by the wait.
 // The other three finalize call sites in this file (the events-unreadable/status-retry mechanism-failure exits via finishedDespiteMechanismFailure, the liveness-tick exit, and the deadline exit) are left untouched:
 // each is reached precisely because the session is gone, the clock ran out, or the bookkeeping broke, so no Send is attempted there and finalize's own evaluation reports Attempts as it stands.
 //
@@ -79,6 +82,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -247,42 +251,17 @@ func (run *Run) Wait() (Result, error) {
 				// Not a gated Done: finalize exactly as this branch always has.
 				return run.finalize(outcome, message)
 			} else if outcome == OutcomeDone {
-				// A gated Done. Run.Interrupt is never used anywhere in this branch: the gate fires at
-				// a turn boundary, when there is no in-progress turn to interrupt. No new deadline is
-				// introduced and run.deadline is never extended — the loop runs under the deadline
-				// Start already set from spec.Timeout, so a timeout mid-loop still reaches
-				// classifyDeadlineExpiry, which classifies OutcomeDone when the files are present and
-				// therefore still runs the gate one final time through finalize.
-				verdict, gerr := run.evaluateGate()
-				if gerr != nil {
-					return run.identity(), fmt.Errorf("shuttle: gate: %w", gerr)
+				// A gated Done is the writer's turn boundary: remember the message a later pass finalizes with and let the shared helper judge it.
+				run.gateAtBoundary = true
+				run.gateLastDone = message
+				if result, finished, ferr := run.handleGatedBoundary(); finished {
+					return result, ferr
 				}
-				failed := run.gateFailedAt
-				if failed < 0 || run.gateFails[failed] >= run.gate[failed].Attempts {
-					// No failing entry, or its budget is spent: the verdict is the memo evaluateGate just stored, which finalize reads rather than re-validating.
-					return run.finalize(outcome, message)
+			} else if run.gatePending && run.gateAtBoundary {
+				// No new arrival, an entry is pending and the writer is idle: re-evaluate, so a verdict recorded since is read without waiting for the writer to speak.
+				if result, finished, ferr := run.handleGatedBoundary(); finished {
+					return result, ferr
 				}
-				// An entry failed with budget remaining: re-prompt the agent and keep polling.
-				if serr := run.Send(gateRepromptText(run.gateFindingsPath)); serr != nil {
-					logger.Warn("shuttle: gate: re-prompt send failed, ending the loop with the attempts spent so far", "strandGUID", run.state.StrandGUID, "sessionID", run.state.SessionID, "error", serr)
-					return run.finalize(outcome, message)
-				}
-				run.gateFails[failed]++
-				run.gateSent[failed]++
-				for i, entry := range verdict.Entries {
-					if entry.State == GateEntryPassed {
-						run.gateFails[i] = 0
-					}
-				}
-				// The run directory is deleted on the Done cleanup every exhausted gate takes, so the findings TEXT (never just its path) is folded into this Warn line — the durable record of why the gate failed, same as the deleted producers' own warn lines carried.
-				// The file was just written by evaluateGate, so a read failure here is unexpected but non-fatal to the loop.
-				findingsText, rerr := os.ReadFile(run.gateFindingsPath)
-				if rerr != nil {
-					findingsText = []byte(fmt.Sprintf("<unreadable: %v>", rerr))
-				}
-				logger.Warn("shuttle: gate: re-prompting after a failed attempt", "strandGUID", run.state.StrandGUID, "gate", run.gate[failed].Name, "attempt", run.gateFails[failed], "budget", run.gate[failed].Attempts, "findings", string(findingsText))
-				// Clear the memo so the next arrival re-validates rather than reading this arrival's stale verdict.
-				run.gateVerdict = nil
 			}
 		}
 
@@ -323,6 +302,74 @@ func (run *Run) Wait() (Result, error) {
 
 		run.clock.Sleep(interval)
 	}
+}
+
+// gateEntryError builds a gate-contract violation error for the named entry.
+// It is not an Errorf call on purpose: evaluateGate's returns are infrastructure faults wrapped by their callers with "shuttle: gate: %w", not negative verdicts on whether the run finished.
+func gateEntryError(name, problem string) error {
+	return errors.New("entry " + strconv.Quote(name) + " " + problem)
+}
+
+// handleGatedBoundary evaluates the gate list from its first entry at a turn boundary and reports whether Wait finishes with the returned Result and error.
+// It is reached from a gated Done arrival and from a poll tick with no new arrival while an entry is pending and the writer is idle.
+// Run.Interrupt is never used here: the gate fires at a turn boundary, when there is no in-progress turn to interrupt.
+// No new deadline is introduced and run.deadline is never extended: the loop runs under the deadline Start already set from spec.Timeout,
+// so a timeout mid-wait still reaches classifyDeadlineExpiry, which classifies OutcomeDone when the files are present and therefore still runs the gate one final time through finalize.
+//
+// A pass, or a failure whose budget is spent, finalizes with the remembered Done message.
+// A failure with budget remaining re-prompts and keeps polling;
+// a re-prompt send failure ends the loop as it always has.
+// A pending result sends its Send text when non-empty and keeps polling;
+// a failed pending send logs one Warn naming the entry, the error and the closure's way-forward, leaves the entry pending and the writer at the boundary, and never ends the loop.
+// The memo is cleared after a pending result, so the next evaluation, and a finalize after it, read the closures afresh.
+func (run *Run) handleGatedBoundary() (Result, bool, error) {
+	message := run.gateLastDone
+	verdict, gerr := run.evaluateGate(false)
+	if gerr != nil {
+		return run.identity(), true, fmt.Errorf("shuttle: gate: %w", gerr)
+	}
+	if run.gatePending {
+		run.gateVerdict = nil
+		if run.gatePendingSend == "" {
+			return Result{}, false, nil
+		}
+		if serr := run.Send(run.gatePendingSend); serr != nil {
+			logger.Warn("shuttle: gate: pending send failed, entry stays pending", "strandGUID", run.state.StrandGUID, "sessionID", run.state.SessionID, "gate", run.gate[run.gatePendingAt].Name, "error", serr, "wayForward", run.gatePendingWayForward)
+			return Result{}, false, nil
+		}
+		run.gateAtBoundary = false
+		return Result{}, false, nil
+	}
+	failed := run.gateFailedAt
+	if failed < 0 || run.gateFails[failed] >= run.gate[failed].Attempts {
+		// No failing entry, or its budget is spent: the verdict is the memo evaluateGate just stored, which finalize reads rather than re-validating.
+		result, ferr := run.finalize(OutcomeDone, message)
+		return result, true, ferr
+	}
+	// An entry failed with budget remaining: re-prompt the agent and keep polling.
+	if serr := run.Send(gateRepromptText(run.gateFindingsPath)); serr != nil {
+		logger.Warn("shuttle: gate: re-prompt send failed, ending the loop with the attempts spent so far", "strandGUID", run.state.StrandGUID, "sessionID", run.state.SessionID, "error", serr)
+		result, ferr := run.finalize(OutcomeDone, message)
+		return result, true, ferr
+	}
+	run.gateAtBoundary = false
+	run.gateFails[failed]++
+	run.gateSent[failed]++
+	for i, entry := range verdict.Entries {
+		if entry.State == GateEntryPassed {
+			run.gateFails[i] = 0
+		}
+	}
+	// The run directory is deleted on the Done cleanup every exhausted gate takes, so the findings TEXT (never just its path) is folded into this Warn line — the durable record of why the gate failed, same as the deleted producers' own warn lines carried.
+	// The file was just written by evaluateGate, so a read failure here is unexpected but non-fatal to the loop.
+	findingsText, rerr := os.ReadFile(run.gateFindingsPath)
+	if rerr != nil {
+		findingsText = []byte(fmt.Sprintf("<unreadable: %v>", rerr))
+	}
+	logger.Warn("shuttle: gate: re-prompting after a failed attempt", "strandGUID", run.state.StrandGUID, "gate", run.gate[failed].Name, "attempt", run.gateFails[failed], "budget", run.gate[failed].Attempts, "findings", string(findingsText))
+	// Clear the memo so the next arrival re-validates rather than reading this arrival's stale verdict.
+	run.gateVerdict = nil
+	return Result{}, false, nil
 }
 
 // startupTickCap returns the maximum number of checkLivenessTick calls awaitStartup's loop performs,
@@ -805,7 +852,7 @@ func (run *Run) identity() Result {
 // this is a helper the two finalize/Wait call sites already wrap with their own "shuttle: gate: %w" context, so wrapping here too would double it, and it keeps this method's own negative-verdict return sites free of the completionsignal_enforcement_test.go tripwire's Errorf marker, which is reserved for the two call sites that actually finalize a run.
 //
 // GateOutcome.Attempts is the sum of the entries' re-prompts sent, per the "attempts counts re-prompts actually sent" decision.
-func (run *Run) evaluateGate() (*GateOutcome, error) {
+func (run *Run) evaluateGate(final bool) (*GateOutcome, error) {
 	if run.gateVerdict != nil {
 		return run.gateVerdict, nil
 	}
@@ -816,9 +863,16 @@ func (run *Run) evaluateGate() (*GateOutcome, error) {
 		run.gateFails = make([]int, len(run.gate))
 		run.gateSent = make([]int, len(run.gate))
 	}
+	for _, entry := range run.gate {
+		if entry.Final != nil && !entry.PassOnCap {
+			return nil, gateEntryError(entry.Name, "sets Final but is not pass_on_cap")
+		}
+	}
 
 	outcome := &GateOutcome{Passed: true, Entries: make([]GateEntryOutcome, len(run.gate))}
 	failedAt := -1
+	pendingAt := -1
+	pendingSend, pendingWayForward := "", ""
 	findingsPath := ""
 	for i, entry := range run.gate {
 		line := GateEntryOutcome{Name: entry.Name, Attempts: run.gateSent[i]}
@@ -826,7 +880,7 @@ func (run *Run) evaluateGate() (*GateOutcome, error) {
 		switch {
 		case entry.Attempts <= 0:
 			line.State = GateEntryOff
-		case failedAt >= 0:
+		case failedAt >= 0 || pendingAt >= 0:
 			line.State = GateEntryNotReached
 			if !entry.PassOnCap {
 				outcome.Passed = false
@@ -834,9 +888,23 @@ func (run *Run) evaluateGate() (*GateOutcome, error) {
 		case entry.PassOnCap && run.gateFails[i] >= entry.Attempts:
 			line.State = GateEntryLetThrough
 		default:
-			result, err := entry.Gate()
+			closure := entry.Gate
+			if final && entry.Final != nil {
+				closure = entry.Final
+			}
+			result, err := closure()
 			if err != nil {
 				return nil, err
+			}
+			if result.Pending {
+				if !entry.PassOnCap {
+					return nil, gateEntryError(entry.Name, "returned pending but is not pass_on_cap")
+				}
+				line.State = GateEntryWaiting
+				pendingAt = i
+				pendingSend = result.Send
+				pendingWayForward = result.SendFailedWayForward
+				break
 			}
 			if result.Passed {
 				line.State = GateEntryPassed
@@ -861,6 +929,10 @@ func (run *Run) evaluateGate() (*GateOutcome, error) {
 	run.gateVerdict = outcome
 	run.gateFailedAt = failedAt
 	run.gateFindingsPath = findingsPath
+	run.gatePending = pendingAt >= 0
+	run.gatePendingAt = pendingAt
+	run.gatePendingSend = pendingSend
+	run.gatePendingWayForward = pendingWayForward
 	return outcome, nil
 }
 
@@ -901,7 +973,7 @@ func (run *Run) finalize(outcome Outcome, message string) (Result, error) {
 	}
 
 	if outcome == OutcomeDone {
-		gateOutcome, err := run.evaluateGate()
+		gateOutcome, err := run.evaluateGate(true)
 		if err != nil {
 			return result, fmt.Errorf("shuttle: gate: %w", err)
 		}

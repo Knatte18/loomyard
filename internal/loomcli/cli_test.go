@@ -57,7 +57,7 @@ func TestCommand_RegisteredVerbs_ExactSet(t *testing.T) {
 	}
 	sort.Strings(got)
 
-	want := []string{"approve", "commit-records", "goto", "pause", "reject", "run", "start", "status", "step", "validate-description", "validate-discussion", "validate-plan"}
+	want := []string{"approve", "commit-records", "goto", "pause", "reject", "review", "run", "start", "status", "step", "validate-description", "validate-discussion", "validate-plan"}
 
 	gotSet := make(map[string]bool, len(got))
 	for _, name := range got {
@@ -76,6 +76,57 @@ func TestCommand_RegisteredVerbs_ExactSet(t *testing.T) {
 	for _, name := range got {
 		if !wantSet[name] {
 			t.Errorf("unexpected verb %q is registered under the loom parent command", name)
+		}
+	}
+}
+
+// TestCommand_ReviewSubtree_ExactChildren asserts the review group holds exactly its four verbs, each with a non-empty Short,
+// and that none collides with PR-Gate's top-level approve and reject.
+func TestCommand_ReviewSubtree_ExactChildren(t *testing.T) {
+	var review *cobra.Command
+	for _, sub := range Command().Commands() {
+		if sub.Name() == "review" {
+			review = sub
+		}
+	}
+	if review == nil {
+		t.Fatal(`"review" is not registered under the loom parent command`)
+	}
+	var got []string
+	for _, sub := range review.Commands() {
+		if sub.Name() == "help" || sub.Name() == "completion" {
+			continue
+		}
+		if sub.Short == "" {
+			t.Errorf("review %q has empty Short", sub.Name())
+		}
+		got = append(got, sub.Name())
+	}
+	sort.Strings(got)
+	if want := "approve,delivered,notify,reject"; strings.Join(got, ",") != want {
+		t.Errorf("review children = %v; want %s", got, want)
+	}
+}
+
+// TestResolvePersistentPreRun_SkipsReviewGroup asserts the loom parent's pre-run never arms the review group or its verbs.
+// cmd/lyx sets cobra.EnableTraverseRunHooks, so cobra calls that pre-run for a review verb too;
+// over a non-git cwd an arm would write an error envelope and abort, so silence proves the skip.
+func TestResolvePersistentPreRun_SkipsReviewGroup(t *testing.T) {
+	parent := Command()
+	review, _, err := parent.Find([]string{"review"})
+	if err != nil || review.Name() != "review" {
+		t.Fatalf(`Find("review") = %v, %v; want the review group`, review, err)
+	}
+	for _, cmd := range append([]*cobra.Command{review}, review.Commands()...) {
+		ctx, _ := clihelp.NewExitContext(lyxcwd.WithCwd(t.Context(), t.TempDir()))
+		cmd.SetContext(ctx)
+		var out bytes.Buffer
+		cmd.SetOut(&out)
+		if err := parent.PersistentPreRunE(cmd, []string{"some-slug"}); err != nil {
+			t.Errorf("loom pre-run for %q = %v; want nil", cmd.Name(), err)
+		}
+		if out.Len() != 0 || clihelp.ShouldAbort(ctx) {
+			t.Errorf("loom pre-run for %q wrote %q (abort %v); want it skipped", cmd.Name(), out.String(), clihelp.ShouldAbort(ctx))
 		}
 	}
 }

@@ -24,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/parentreview"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
@@ -346,6 +347,45 @@ func committedAnchoredReader(location *lyxcwd.Location) func(anchorRel string) (
 	}
 }
 
+// discussionCommitPathspec is the pathspec CommitDiscussion stages: the whole discussion directory, plus the parent-review round directories so the review records land in the same commit.
+// The parent-review directory is left out while it holds no file, since git refuses such a pathspec (see statusCommitPathspec):
+// that is a run with no reviewer, whose fresh spawn leaves an empty round directory, or one whose parent-review entry is off.
+// Its round files are never deleted, so a directory holding no file was never tracked either.
+func discussionCommitPathspec(location *lyxcwd.Location) []string {
+	paths := []string{loomengine.DiscussionDirRel()}
+	if holdsFile(loomengine.LoomParentReviewDir(location)) {
+		paths = append(paths, loomengine.LoomParentReviewDirRel())
+	}
+	return paths
+}
+
+// newParentReviewConfig builds the Discussion-Write parent-review gate's told input.
+// The reviewer is the seed's Parent, empty when the seed has none or no seed exists;
+// a seed read error is a wiring error.
+func newParentReviewConfig(location *lyxcwd.Location, runID string, cfg loomengine.Config, stencilsDir string) (parentreview.GateConfig, error) {
+	seed, _, err := shedrun.ReadSeed(location, runID)
+	if err != nil {
+		return parentreview.GateConfig{}, fmt.Errorf("loom: read seed for the parent review reviewer: %w", err)
+	}
+	slug := seedSlug(location.WorktreeName)
+	decisionRecord := loomengine.DiscussionDecisionRecord(location)
+	supportLog := loomengine.DiscussionSupportLog(location)
+	return parentreview.GateConfig{
+		Store:          parentreview.Store{Root: loomengine.LoomParentReviewDir(location), LockDir: loomengine.LoomParentReviewLockDir(location)},
+		Slug:           slug,
+		Reviewer:       seed.Parent,
+		DecisionRecord: decisionRecord,
+		SupportLog:     supportLog,
+		WaitBound:      time.Duration(cfg.ParentReviewWaitMin) * time.Minute,
+		RenderDelivery: func(briefPath string) (string, error) {
+			return loomengine.ParentReviewDeliveryPrompt(stencilsDir, slug, briefPath, seed.Parent)
+		},
+		RenderBrief: func() (string, error) {
+			return loomengine.ParentReviewBrief(stencilsDir, slug, decisionRecord, supportLog)
+		},
+	}, nil
+}
+
 // wire builds the whole engine stack onto c from location and cwd: every module config anchored at
 // location.AnchorPath(), the reed engine and shuttle runner, the assembled websterengine.RunDeps, and
 // the assembled shedrecipe.Env/shedbuild.ShedPaths pair wrapping it.
@@ -481,7 +521,13 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		},
 	}
 
+	parentReviewCfg, err := newParentReviewConfig(location, c.runID, loomCfg, websterGeom.StencilsDir)
+	if err != nil {
+		return err
+	}
+
 	c.env = shedrecipe.Env{
+		ParentReview:       parentReviewCfg,
 		Cwd:                cwd,
 		AnchorPath:         anchorPath,
 		WorktreeRoot:       location.WorktreePath(),
@@ -530,7 +576,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// one, since the Discussion-Bouncer row's approved settle reaches this same closure through
 		// the row's commit_seam: discussion config key.
 		CommitDiscussion: func() error {
-			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, []string{loomengine.DiscussionDirRel()}, fmt.Sprintf("loom: discussion artifacts for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
+			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, discussionCommitPathspec(location), fmt.Sprintf("loom: discussion artifacts for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
 			return err
 		},
 		// DescriptionPath is the change description Describe writes and its gate and the landing

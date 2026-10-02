@@ -194,6 +194,7 @@ selfreport: true
 friction: ""
 friction_timeout_min: 30
 driver: ""
+parent_review_wait_min: 60
 `)
 
 	cfg, err := LoadConfig(baseDir, "loom")
@@ -221,6 +222,7 @@ selfreport: true
 friction: "opus[effort"
 friction_timeout_min: 30
 driver: ""
+parent_review_wait_min: 60
 `)
 
 	_, err := LoadConfig(baseDir, "loom")
@@ -308,6 +310,7 @@ selfreport: true
 friction: opus[effort=high]
 friction_timeout_min: 30
 driver:
+parent_review_wait_min: 60
 `)
 
 	cfg, err := LoadConfig(baseDir, "loom")
@@ -332,6 +335,56 @@ func TestLoadConfig_EmptyDriverLoadsCleanly(t *testing.T) {
 	}
 	if cfg.Driver != "" {
 		t.Errorf("cfg.Driver = %q; want \"\" (defer to the provider default)", cfg.Driver)
+	}
+}
+
+// TestLoadConfig_ParentReviewWaitMinDefault verifies the template's default of 60 minutes.
+func TestLoadConfig_ParentReviewWaitMinDefault(t *testing.T) {
+	baseDir := t.TempDir()
+	seedLoomConfig(t, baseDir, ConfigTemplate())
+
+	cfg, err := LoadConfig(baseDir, "loom")
+	if err != nil {
+		t.Fatalf("LoadConfig(%q, \"loom\") = _, %v; want nil error", baseDir, err)
+	}
+	if cfg.ParentReviewWaitMin != 60 {
+		t.Errorf("cfg.ParentReviewWaitMin = %d; want %d", cfg.ParentReviewWaitMin, 60)
+	}
+}
+
+// TestLoadConfig_ParentReviewWaitMinExplicit verifies an explicit value round-trips.
+func TestLoadConfig_ParentReviewWaitMinExplicit(t *testing.T) {
+	baseDir := t.TempDir()
+	writeLoomConfigWithKey(t, baseDir, "parent_review_wait_min", "5")
+
+	cfg, err := LoadConfig(baseDir, "loom")
+	if err != nil {
+		t.Fatalf("LoadConfig(%q, \"loom\") = _, %v; want nil error", baseDir, err)
+	}
+	if cfg.ParentReviewWaitMin != 5 {
+		t.Errorf("cfg.ParentReviewWaitMin = %d; want %d", cfg.ParentReviewWaitMin, 5)
+	}
+}
+
+// TestLoadConfig_RejectsParentReviewWaitBelowOne verifies 0 and negative values are refused with the way forward,
+// since the sibling timeouts' "0 defers to shuttle" carve-out does not apply to this key.
+func TestLoadConfig_RejectsParentReviewWaitBelowOne(t *testing.T) {
+	for _, value := range []string{"0", "-1"} {
+		t.Run(value, func(t *testing.T) {
+			dir := t.TempDir()
+			writeLoomConfigWithKey(t, dir, "parent_review_wait_min", value)
+
+			_, err := LoadConfig(dir, "loom")
+			if err == nil {
+				t.Fatalf("LoadConfig() error = nil; want a refusal for parent_review_wait_min %s", value)
+			}
+			if !strings.Contains(err.Error(), "parent_review_wait_min") {
+				t.Errorf("LoadConfig() error = %q; want it to name the key", err.Error())
+			}
+			if !strings.Contains(err.Error(), "attempts: 0") {
+				t.Errorf("LoadConfig() error = %q; want it to name the way forward %q", err.Error(), "attempts: 0")
+			}
+		})
 	}
 }
 

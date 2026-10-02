@@ -69,6 +69,13 @@ Per-field notes — `product`'s three fields are the whole of loom's own half of
   A version stamp here would be a rarely-exercised guard that goes stale;
   it is deliberately omitted, to be reintroduced only if a real incompatibility ever forces it.
 
+## The `waiting` key
+
+`lyx loom status` adds a `waiting` key to its envelope while the run's state is `running` and the latest parent-review round has an open request with no verdict.
+Its value is one line prefixed `parent review: `, naming the reviewer, when the request opened, and whether the notice was delivered (or why it was not).
+The key is absent when there is no parent-review directory, when the latest round is verdicted, expired or superseded, or when the run is in any state other than `running`.
+It is read from the round store, never from the status file, so the file's schema above is unchanged.
+
 ## Parse discipline
 
 Strict, fail-loud parsing: the `internal/state` read (`state.ReadJSONStrict`) rejects unknown or malformed fields via `json.Decoder.DisallowUnknownFields()` at the shell level — the JSON analogue of the discipline webster's own strict `outcome.yaml` decode and the burler verdict-parse apply to their own YAML.
