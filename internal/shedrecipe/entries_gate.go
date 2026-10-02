@@ -31,7 +31,7 @@ var gateEntryKeys = []string{"name", "attempts", "pass_on_cap"}
 // "rework-plan" requires the same two roots plus a non-nil env.Rework.ReadCommitted and returns loomshed.NewReworkPlanGate over them;
 // "description" requires env.DescriptionPath to pass requireAbsRoot and returns landingshed.NewDescriptionGate over it;
 // "parent-review" requires the absolute Env.ParentReview.Store.Root, Store.LockDir, DecisionRecord and SupportLog, a non-empty Slug and both render seams, and returns parentreview.NewGate's closure pair, the second being the entry's Final closure;
-// it is refused unless its element sets "pass_on_cap: true", since it can return a pending result;
+// it is must-pass and may hold the run, its "attempts" is the reject cap told to the gate, and an element setting "pass_on_cap: true" is refused;
 // any other value is an error naming the key and all five legal values.
 // A name may appear once per list.
 //
@@ -95,29 +95,39 @@ func resolveGateEntry(entry string, index int, elem Config, env Env) (shuttleeng
 		return shuttleengine.GateEntry{}, wrap(err)
 	}
 
-	closure, final, err := resolveGateClosure(entry, index, name, env)
+	if name == parentReviewGateName && passOnCap {
+		return shuttleengine.GateEntry{}, wrap(fmt.Errorf("gate %q refuses %q: true, because it escalates at its cap rather than letting the run through", name, "pass_on_cap"))
+	}
+
+	closure, final, err := resolveGateClosure(entry, index, name, attempts, env)
 	if err != nil {
 		return shuttleengine.GateEntry{}, err
 	}
-	if final != nil && !passOnCap {
-		return shuttleengine.GateEntry{}, wrap(fmt.Errorf("gate %q requires %q: true, because it can return a pending result that only a pass-on-cap entry may carry", name, "pass_on_cap"))
-	}
-	return shuttleengine.GateEntry{Name: name, Gate: closure, Final: final, Attempts: attempts, PassOnCap: passOnCap}, nil
+	return shuttleengine.GateEntry{Name: name, Gate: closure, Final: final, Attempts: attempts, PassOnCap: passOnCap, MayHold: name == parentReviewGateName}, nil
 }
 
+// parentReviewGateName is the one gate name whose entry may hold the run and escalates at its cap.
+const parentReviewGateName = "parent-review"
+
 // resolveGateClosure maps the name of the row's "gates" element at index onto its validator closure, checking the Env fields that validator needs.
+// attempts is the element's "attempts" value, which "parent-review" tells its gate as the reject cap.
 // The second return is the entry's optional Final closure, non-nil for "parent-review" only.
-func resolveGateClosure(entry string, index int, name string, env Env) (shuttleengine.Gate, shuttleengine.Gate, error) {
-	if name == "parent-review" {
-		return resolveParentReviewClosure(entry, env)
+func resolveGateClosure(entry string, index int, name string, attempts int, env Env) (shuttleengine.Gate, shuttleengine.Gate, error) {
+	if name == parentReviewGateName {
+		return resolveParentReviewClosure(entry, attempts, env)
 	}
 	closure, err := resolvePlainGateClosure(entry, index, name, env)
 	return closure, nil, err
 }
 
-// resolveParentReviewClosure checks the Env fields the "parent-review" gate needs and returns parentreview.NewGate's pair.
-func resolveParentReviewClosure(entry string, env Env) (shuttleengine.Gate, shuttleengine.Gate, error) {
+// resolveParentReviewClosure checks the Env fields the "parent-review" gate needs and returns parentreview.NewGate's pair, with attempts told to the gate as its reject cap.
+//
+// The cap and the entry's own Attempts are the same value, which is what keeps the engine's in-memory failure count behind the store's rejected-round count.
+// The only non-terminal failure the closure returns consumes one distinct rejected round, so the in-memory count is at most Cap-1 when the cap's reject arrives, and that reject fails terminal before the engine's own budget is spent.
+// A later non-terminal failure added to the closure breaks this.
+func resolveParentReviewClosure(entry string, attempts int, env Env) (shuttleengine.Gate, shuttleengine.Gate, error) {
 	pr := env.ParentReview
+	pr.Cap = attempts
 	if err := requireAbsRoot(entry, "ParentReview.Store.Root", pr.Store.Root); err != nil {
 		return nil, nil, err
 	}
