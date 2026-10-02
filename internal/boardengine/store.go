@@ -546,8 +546,17 @@ func (s *Store) ListTasksBrief() []BriefTask {
 		}
 	}
 
+	// README order, so list, find and --text agree with the rendered board; store order when the layers fail.
+	ordered := s.tasks
+	if ro, err := RenderOrder(s.tasks); err == nil {
+		ordered = make([]Task, len(ro))
+		for i, twl := range ro {
+			ordered[i] = twl.Task
+		}
+	}
+
 	result := make([]BriefTask, 0, len(s.tasks))
-	for _, t := range s.tasks {
+	for _, t := range ordered {
 		brief := BriefTask{
 			ID:          t.ID,
 			Slug:        t.Slug,

@@ -2,8 +2,12 @@
 //
 // Render is a pure function: entries in, a map of filename → content out (a single README.md built
 // by renderTasksSection, plus design-*.md for any entry with a body).
+// The README reads like manifest/roadmap.md: one section per tier (Planned, Next Up, Someday),
+// then Done, each entry one numbered item.
+// The tier names and their meaning lines are declared here alone; the data holds only the tier number.
 // No I/O — the caller writes the files.
-// The design files are built by renderDesigns.
+// The design files are built by renderDesigns; each opens with a header naming the entry's slug,
+// tier section, type and status, then the stored body unchanged.
 // RenderToDisk drives the write path and maintains a manifest sidecar (.board-rendered.json) so
 // that renamed or removed outputs are cleaned up on the next render.
 
@@ -84,13 +88,8 @@ func Render(tasks []Task, out Outputs) (map[string]string, error) {
 		return nil, err
 	}
 
-	taskMap := make(map[string]Task, len(tasks))
-	for _, t := range tasks {
-		taskMap[t.Slug] = t
-	}
-
 	result := map[string]string{
-		out.Readme: renderTasksSection(ordered, taskMap, out.DesignPrefix),
+		out.Readme: renderTasksSection(ordered, out.DesignPrefix),
 	}
 
 	for name, content := range renderDesigns(tasks, out.DesignPrefix) {
@@ -99,84 +98,135 @@ func Render(tasks []Task, out Outputs) (map[string]string, error) {
 	return result, nil
 }
 
-// renderTasksSection builds the "# Tasks" section of the README.
-func renderTasksSection(ordered []TaskWithLayer, taskMap map[string]Task, designPrefix string) string {
-	lines := []string{"# Tasks", ""}
-
-	currentBucket := ""
-	for _, twl := range ordered {
-		if twl.Layer != currentBucket {
-			currentBucket = twl.Layer
-			lines = append(lines, bucketHeader(twl.Layer), "")
-		}
-
-		// Heading: "## **#NNN:** Title [Layer]" (no layer suffix for done).
-		displayTitle := fmt.Sprintf("**#%03d:** %s", twl.ID, twl.Title)
-		if !isSpecialBucket(twl.Layer) {
-			displayTitle += " [" + twl.Layer + "]"
-		}
-		lines = append(lines, "## "+displayTitle)
-
-		// Slug line: a design-doc link if the task has a body, else a bare slug.
-		slugLine := fmt.Sprintf("[%s]", twl.Slug)
-		if twl.Body != "" {
-			slugLine = fmt.Sprintf("[%s](%s%s.md)", twl.Slug, designPrefix, twl.Slug)
-		}
-		if twl.Status != nil {
-			switch *twl.Status {
-			case "active", "done", "pr-pending", "ready-to-merge", "abandoned":
-				slugLine += " [" + *twl.Status + "]"
-			}
-		}
-		lines = append(lines, slugLine)
-
-		if len(twl.DependsOn) > 0 {
-			depParts := make([]string, 0, len(twl.DependsOn))
-			for _, depSlug := range twl.DependsOn {
-				if depTask, ok := taskMap[depSlug]; ok {
-					depParts = append(depParts, fmt.Sprintf("#%03d", depTask.ID))
-				} else {
-					depParts = append(depParts, fmt.Sprintf("#???: %s (missing)", depSlug))
-				}
-			}
-			lines = append(lines, "Depends on: "+strings.Join(depParts, ", "))
-		}
-
-		if twl.Brief != "" {
-			lines = append(lines, "", twl.Brief)
-		}
-
-		lines = append(lines, "") // trailing blank line after the task block
-	}
-
-	return strings.Join(lines, "\n")
+// readmeSection is one README section: its heading name and the one-line meaning under it.
+type readmeSection struct {
+	name    string
+	meaning string
 }
 
-// renderDesigns returns one design-doc file entry per task or note with a
-// non-empty body, using the configured design prefix. The file content is the
-// body verbatim.
+// tierSections maps a tier number to its README section; this is the only place tier numbers become words.
+var tierSections = map[int]readmeSection{
+	1: {"Planned", "Concretized and claimable."},
+	2: {"Next Up", "Planned next, but not yet concretized."},
+	3: {"Someday", "Loose ideas."},
+}
+
+// doneSection is the README section holding every done entry, whatever its tier.
+var doneSection = readmeSection{"Done", "Finished, awaiting `lyx board prune`."}
+
+// tierName is the section name of a tier, or "tier N" for a tier outside MinTier..MaxTier.
+func tierName(tier int) string {
+	if s, ok := tierSections[tier]; ok {
+		return s.name
+	}
+	return fmt.Sprintf("tier %d", tier)
+}
+
+// metaLine is `slug` · [middle ·] type[ · status], shared by the README item and the design doc header.
+func metaLine(t Task, middle ...string) string {
+	parts := append([]string{"`" + t.Slug + "`"}, middle...)
+	parts = append(parts, t.Type)
+	if t.Status != nil {
+		parts = append(parts, *t.Status)
+	}
+	return strings.Join(parts, " · ")
+}
+
+// renderTasksSection builds the README: a title, an intro, one section per tier, then Done when any entry is done.
+func renderTasksSection(ordered []TaskWithLayer, designPrefix string) string {
+	lines := []string{
+		"# Board",
+		"",
+		"Entries grouped by tier, in dependency order within each tier.",
+		"",
+	}
+
+	writeSection := func(sec readmeSection, entries []TaskWithLayer) {
+		lines = append(lines, "## "+sec.name, "", sec.meaning, "")
+		for _, twl := range entries {
+			lines = append(lines, renderEntry(twl.Task, designPrefix)...)
+		}
+		if len(entries) > 0 {
+			lines = append(lines, "")
+		}
+	}
+
+	for tier := MinTier; tier <= MaxTier; tier++ {
+		var entries []TaskWithLayer
+		for _, twl := range ordered {
+			if !isDone(twl.Task) && twl.Tier == tier {
+				entries = append(entries, twl)
+			}
+		}
+		writeSection(tierSections[tier], entries)
+	}
+
+	var done []TaskWithLayer
+	for _, twl := range ordered {
+		if isDone(twl.Task) {
+			done = append(done, twl)
+		}
+	}
+	if len(done) > 0 {
+		writeSection(doneSection, done)
+	}
+
+	return strings.TrimRight(strings.Join(lines, "\n"), "\n") + "\n"
+}
+
+// renderEntry builds the lines of one numbered README item.
+func renderEntry(t Task, designPrefix string) []string {
+	lines := []string{fmt.Sprintf("1. **%s** — %s", t.Title, metaLine(t))}
+
+	detail := t.Brief
+	if t.Body != "" {
+		if detail != "" {
+			detail += " "
+		}
+		detail += fmt.Sprintf("[design](%s%s.md)", designPrefix, t.Slug)
+	}
+	if detail != "" {
+		lines = append(lines, "   "+detail)
+	}
+
+	if len(t.DependsOn) > 0 {
+		deps := make([]string, len(t.DependsOn))
+		for i, d := range t.DependsOn {
+			deps[i] = "`" + d + "`"
+		}
+		lines = append(lines, "   After "+strings.Join(deps, ", ")+".")
+	}
+	return lines
+}
+
+// renderDesigns returns one design-doc file entry per entry with a non-empty body,
+// using the configured design prefix.
+// The doc is a header (title, metadata line, dependencies) followed by the body byte-for-byte.
 func renderDesigns(entries []Task, designPrefix string) map[string]string {
+	hasBody := make(map[string]bool, len(entries))
+	for _, e := range entries {
+		hasBody[e.Slug] = e.Body != ""
+	}
+
 	designs := make(map[string]string)
 	for _, e := range entries {
-		if e.Body != "" {
-			designs[fmt.Sprintf("%s%s.md", designPrefix, e.Slug)] = e.Body
+		if e.Body == "" {
+			continue
 		}
+		header := []string{"# " + e.Title, "", metaLine(e, tierName(e.Tier)), ""}
+		if len(e.DependsOn) > 0 {
+			deps := make([]string, len(e.DependsOn))
+			for i, d := range e.DependsOn {
+				if hasBody[d] {
+					deps[i] = fmt.Sprintf("[`%s`](%s%s.md)", d, designPrefix, d)
+				} else {
+					deps[i] = "`" + d + "`"
+				}
+			}
+			header = append(header, "Depends on: "+strings.Join(deps, ", "), "")
+		}
+		designs[fmt.Sprintf("%s%s.md", designPrefix, e.Slug)] = strings.Join(header, "\n") + "\n" + e.Body
 	}
 	return designs
 }
 
-// bucketHeader is the README section heading for a bucket.
-func bucketHeader(layer string) string {
-	switch layer {
-	case "__done__":
-		return "# Done"
-	default:
-		return "# Layer " + layer
-	}
-}
-
-// isSpecialBucket reports whether a layer is one of the non-letter buckets that
-// suppress the "[Layer]" title suffix.
-func isSpecialBucket(layer string) bool {
-	return layer == "__done__"
-}

@@ -8,6 +8,7 @@ package boardengine_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
@@ -771,6 +772,40 @@ func TestListTasksBriefLayerAndProposal(t *testing.T) {
 	// Both should have a layer assigned (even if empty or a letter)
 	if task1.Layer == "" || task2.Layer == "" {
 		t.Logf("task1 layer: %s, task2 layer: %s", task1.Layer, task2.Layer)
+	}
+}
+
+// TestListAndFindReadmeOrder verifies ListTasksBrief and Find return entries in README order:
+// tier first, done last.
+func TestListAndFindReadmeOrder(t *testing.T) {
+	s := boardengine.NewStore("")
+	for _, f := range []map[string]any{
+		{"slug": "x-someday", "tier": 3},
+		{"slug": "x-planned", "tier": 1},
+		{"slug": "x-next", "tier": 2},
+		{"slug": "x-done", "tier": 1},
+	} {
+		if _, err := s.UpsertTask(f); err != nil {
+			t.Fatalf("UpsertTask %v: %v", f, err)
+		}
+	}
+	if err := s.SetStatus("x-done", stringPtr("done")); err != nil {
+		t.Fatalf("SetStatus: %v", err)
+	}
+
+	want := "x-planned,x-next,x-someday,x-done"
+	slugs := func(bs []boardengine.BriefTask) string {
+		var out []string
+		for _, b := range bs {
+			out = append(out, b.Slug)
+		}
+		return strings.Join(out, ",")
+	}
+	if got := slugs(s.ListTasksBrief()); got != want {
+		t.Errorf("ListTasksBrief order = %s, want %s", got, want)
+	}
+	if got := slugs(s.Find("x-")); got != want {
+		t.Errorf("Find order = %s, want %s", got, want)
 	}
 }
 

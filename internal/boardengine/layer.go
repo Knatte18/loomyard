@@ -1,9 +1,10 @@
 // layer.go — derived task fields.
 //
-// ComputeLayers assigns each task a dependency depth (its render bucket),
+// ComputeLayers assigns each task a dependency depth, which orders entries inside a README section,
 // and RenderOrder orders tasks for output.
 // All computed at read time;
-// never stored.
+// never stored;
+// layer letters are never rendered.
 
 package boardengine
 
@@ -136,7 +137,9 @@ type TaskWithLayer struct {
 	Layer string
 }
 
-// RenderOrder returns tasks sorted by bucket order, then by ID.
+// RenderOrder returns tasks in README order.
+// Non-done entries come first, by tier; done entries follow.
+// Within each section, entries order by dependency layer, then by ID.
 func RenderOrder(tasks []Task) ([]TaskWithLayer, error) {
 	layerMap, err := ComputeLayers(tasks)
 	if err != nil {
@@ -164,6 +167,14 @@ func RenderOrder(tasks []Task) ([]TaskWithLayer, error) {
 	}
 
 	sort.Slice(result, func(i, j int) bool {
+		doneI := result[i].Layer == "__done__"
+		doneJ := result[j].Layer == "__done__"
+		if doneI != doneJ {
+			return doneJ
+		}
+		if !doneI && result[i].Tier != result[j].Tier {
+			return result[i].Tier < result[j].Tier
+		}
 		bucketI := bucketOrder[result[i].Layer]
 		bucketJ := bucketOrder[result[j].Layer]
 		if bucketI != bucketJ {

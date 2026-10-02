@@ -5,6 +5,7 @@
 package boardengine_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
@@ -185,6 +186,26 @@ func TestRenderOrder(t *testing.T) {
 					if result[i].Layer != wantLayers[i] {
 						t.Errorf("RenderOrder() position %d got layer %q, want %q", i, result[i].Layer, wantLayers[i])
 					}
+				}
+			},
+		},
+		{
+			name: "tier sorts before layer and done goes last",
+			tasks: []boardengine.Task{
+				{ID: 1, Slug: "done1", Title: "Done", Tier: 1, Status: stringPtr("done")},
+				{ID: 2, Slug: "t3", Title: "Tier 3", Tier: 3},
+				{ID: 3, Slug: "t1b", Title: "Tier 1 dependent", Tier: 1, DependsOn: []string{"t1a"}},
+				{ID: 4, Slug: "t1a", Title: "Tier 1 root", Tier: 1},
+				{ID: 5, Slug: "t2", Title: "Tier 2", Tier: 2},
+			},
+			check: func(t *testing.T, result []boardengine.TaskWithLayer) {
+				var got []string
+				for _, r := range result {
+					got = append(got, r.Slug)
+				}
+				want := []string{"t1a", "t1b", "t2", "t3", "done1"}
+				if strings.Join(got, ",") != strings.Join(want, ",") {
+					t.Errorf("RenderOrder() order = %v, want %v", got, want)
 				}
 			},
 		},
