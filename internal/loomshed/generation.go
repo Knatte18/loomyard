@@ -113,19 +113,26 @@ func PlanReviewSkippable(deps PRReworkDeps) (bool, error) {
 }
 
 // ArchivedWebsterDirs lists each round's archived webster directory under reworkDir, ascending by round number.
-// A round whose prior-generation holds no webster directory is skipped, as is an unreadable reworkDir.
-func ArchivedWebsterDirs(reworkDir string) []string {
+// A round whose prior-generation holds no webster directory is skipped, and an absent reworkDir lists none.
+// Any other read or stat failure is an error, so a prior generation's record is never dropped silently.
+func ArchivedWebsterDirs(reworkDir string) ([]string, error) {
 	nums, err := roundNumbers(reworkDir)
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("loomshed: list archived webster run records: %w", err)
 	}
 	sort.Ints(nums)
 	var dirs []string
 	for _, n := range nums {
 		dir := filepath.Join(reworkDir, reworkRoundPrefix+strconv.Itoa(n), reworkPriorDir, reworkPriorWebster)
-		if info, err := os.Stat(dir); err == nil && info.IsDir() {
+		info, err := os.Stat(dir)
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			// This round archived no webster run record.
+		case err != nil:
+			return nil, fmt.Errorf("loomshed: stat archived webster run record %s: %w", dir, err)
+		case info.IsDir():
 			dirs = append(dirs, dir)
 		}
 	}
-	return dirs
+	return dirs, nil
 }

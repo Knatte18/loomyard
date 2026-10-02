@@ -135,10 +135,21 @@ func TestArchivedWebsterDirs(t *testing.T) {
 	for _, n := range []string{"round-1", "round-2", "round-10"} {
 		want = append(want, filepath.Join(reworkDir, n, "prior-generation", "webster"))
 	}
-	if got := ArchivedWebsterDirs(reworkDir); !slices.Equal(got, want) {
-		t.Errorf("ArchivedWebsterDirs = %v, want %v", got, want)
+	if got, err := ArchivedWebsterDirs(reworkDir); err != nil || !slices.Equal(got, want) {
+		t.Errorf("ArchivedWebsterDirs = %v, %v; want %v, nil", got, err, want)
 	}
-	if got := ArchivedWebsterDirs(filepath.Join(reworkDir, "absent")); len(got) != 0 {
-		t.Errorf("ArchivedWebsterDirs over absent dir = %v, want none", got)
+	if got, err := ArchivedWebsterDirs(filepath.Join(reworkDir, "absent")); err != nil || len(got) != 0 {
+		t.Errorf("ArchivedWebsterDirs over absent dir = %v, %v; want none, nil", got, err)
+	}
+}
+
+// TestArchivedWebsterDirs_UnreadableDirErrors covers a rework directory that cannot be listed: an error, never a silently empty list.
+func TestArchivedWebsterDirs_UnreadableDirErrors(t *testing.T) {
+	notADir := filepath.Join(t.TempDir(), "rework")
+	if err := os.WriteFile(notADir, []byte("not a directory\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := ArchivedWebsterDirs(notADir); err == nil {
+		t.Errorf("ArchivedWebsterDirs = %v, nil; want an error", got)
 	}
 }

@@ -510,12 +510,21 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 			if err != nil {
 				return shuttleengine.Spec{}, err
 			}
+			priorDirs, err := loomshed.ArchivedWebsterDirs(loomengine.LoomReworkDir(location))
+			if err != nil {
+				return shuttleengine.Spec{}, err
+			}
 			var priorRecords []string
-			for _, dir := range loomshed.ArchivedWebsterDirs(loomengine.LoomReworkDir(location)) {
+			for _, dir := range priorDirs {
 				record := summaryparser.Path(dir)
-				if _, err := os.Stat(record); err == nil {
-					priorRecords = append(priorRecords, record)
+				_, err := os.Stat(record)
+				if errors.Is(err, fs.ErrNotExist) {
+					continue
 				}
+				if err != nil {
+					return shuttleengine.Spec{}, fmt.Errorf("loom: describe: stat prior run record %s: %w", record, err)
+				}
+				priorRecords = append(priorRecords, record)
 			}
 			return landingshed.DescribeSpec(landingshed.DescribeInputs{
 				StencilsDir:         websterGeom.StencilsDir,
