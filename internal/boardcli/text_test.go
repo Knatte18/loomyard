@@ -23,6 +23,18 @@ func TestRenderCompact_AlignsColumns(t *testing.T) {
 	}
 }
 
+func TestRenderCompact_AlignsMultiByteTitles(t *testing.T) {
+	got := boardcli.RenderCompact([]boardengine.BriefTask{
+		{Tier: 1, Type: "bug", Slug: "a", Title: "Fix — now", Status: strPtr("active")},
+		{Tier: 1, Type: "bug", Slug: "b", Title: "Plain one", Status: strPtr("done")},
+	})
+	want := "1  bug  a  Fix — now  [active]\n" +
+		"1  bug  b  Plain one  [done]\n"
+	if got != want {
+		t.Fatalf("got:\n%q\nwant:\n%q", got, want)
+	}
+}
+
 func TestRenderCompact_StatusBracketOnlyWhenSet(t *testing.T) {
 	got := boardcli.RenderCompact([]boardengine.BriefTask{
 		{Tier: 1, Type: "bug", Slug: "a", Title: "One"},

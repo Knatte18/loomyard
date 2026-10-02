@@ -6,6 +6,7 @@ package boardcli
 import (
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 )
@@ -19,9 +20,9 @@ const columnGap = "  "
 func RenderCompact(tasks []boardengine.BriefTask) string {
 	var typeWidth, slugWidth, titleWidth int
 	for _, t := range tasks {
-		typeWidth = max(typeWidth, len(t.Type))
-		slugWidth = max(slugWidth, len(t.Slug))
-		titleWidth = max(titleWidth, len(t.Title))
+		typeWidth = max(typeWidth, utf8.RuneCountInString(t.Type))
+		slugWidth = max(slugWidth, utf8.RuneCountInString(t.Slug))
+		titleWidth = max(titleWidth, utf8.RuneCountInString(t.Title))
 	}
 
 	var sb strings.Builder
@@ -39,7 +40,7 @@ func RenderCompact(tasks []boardengine.BriefTask) string {
 	return sb.String()
 }
 
-// pad right-pads s with spaces to width bytes.
+// pad right-pads s with spaces to width characters, so a multi-byte character counts as one column.
 func pad(s string, width int) string {
-	return s + strings.Repeat(" ", width-len(s))
+	return s + strings.Repeat(" ", width-utf8.RuneCountInString(s))
 }
