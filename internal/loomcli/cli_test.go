@@ -108,6 +108,29 @@ func TestCommand_ReviewSubtree_ExactChildren(t *testing.T) {
 	}
 }
 
+// TestResolvePersistentPreRun_SkipsReviewGroup asserts the loom parent's pre-run never arms the review group or its verbs.
+// cmd/lyx sets cobra.EnableTraverseRunHooks, so cobra calls that pre-run for a review verb too;
+// over a non-git cwd an arm would write an error envelope and abort, so silence proves the skip.
+func TestResolvePersistentPreRun_SkipsReviewGroup(t *testing.T) {
+	parent := Command()
+	review, _, err := parent.Find([]string{"review"})
+	if err != nil || review.Name() != "review" {
+		t.Fatalf(`Find("review") = %v, %v; want the review group`, review, err)
+	}
+	for _, cmd := range append([]*cobra.Command{review}, review.Commands()...) {
+		ctx, _ := clihelp.NewExitContext(lyxcwd.WithCwd(t.Context(), t.TempDir()))
+		cmd.SetContext(ctx)
+		var out bytes.Buffer
+		cmd.SetOut(&out)
+		if err := parent.PersistentPreRunE(cmd, []string{"some-slug"}); err != nil {
+			t.Errorf("loom pre-run for %q = %v; want nil", cmd.Name(), err)
+		}
+		if out.Len() != 0 || clihelp.ShouldAbort(ctx) {
+			t.Errorf("loom pre-run for %q wrote %q (abort %v); want it skipped", cmd.Name(), out.String(), clihelp.ShouldAbort(ctx))
+		}
+	}
+}
+
 // TestStartAliasCommand_StaysOneCommandWithSubtreeVerb guards StartAliasCommand and the subtree's own
 // startCmd against drifting into two different commands: the alias must carry a non-empty Short, its
 // Use must be the bare verb ("start"), it must expose the same --parent flag the subtree's own start

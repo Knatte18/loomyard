@@ -170,8 +170,10 @@ func (s runnerMasterStarter) StartMaster(spec shuttleengine.Spec, gate shuttleen
 // Skips resolution entirely when the loom group command itself is invoked (bare listing or
 // unknown-subcommand error path via clihelp.GroupRunE), so neither path requires a git repository to
 // be present.
+// It also skips the review group and its verbs, which resolve their own target worktree in their own PersistentPreRunE:
+// cmd/lyx sets cobra.EnableTraverseRunHooks, so this pre-run still runs for them and would otherwise arm them, reading a slug as a run-id.
 func (c *loomCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) error {
-	if cmd.Name() == "loom" {
+	if cmd.Name() == "loom" || inReviewGroup(cmd) {
 		return nil
 	}
 
@@ -196,6 +198,16 @@ func (c *loomCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) err
 	}
 	*c.spec = armed
 	return nil
+}
+
+// inReviewGroup reports whether cmd is loom's review group or a command under it.
+func inReviewGroup(cmd *cobra.Command) bool {
+	for p := cmd; p.HasParent(); p = p.Parent() {
+		if p.Name() == "review" && p.Parent().Name() == "loom" {
+			return true
+		}
+	}
+	return false
 }
 
 // verbUsesLightweightWiring reports whether the named loom subcommand needs nothing beyond the

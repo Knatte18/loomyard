@@ -1,7 +1,8 @@
 // review.go implements the `review` loom subtree: the verbs through which a run's parent answers the parent-review gate.
 // `notify`, `delivered`, `approve` and `reject` sit under `review` so they never collide with PR-Gate's `lyx loom approve` and `lyx loom reject`.
 //
-// The group carries its own PersistentPreRunE, so the loom parent's arm never runs for it and never reads a slug as a run-id.
+// The group carries its own PersistentPreRunE, and the loom parent's pre-run skips the group, so arm never runs for it and never reads a slug as a run-id.
+// The skip is what holds under cmd/lyx's cobra.EnableTraverseRunHooks, which runs every ancestor's pre-run.
 // The pre-run resolves the target worktree and builds a parentreview.Store from that worktree's told directories.
 // The verb bodies take that store and their own arguments, so every refusal is reachable from an untagged test.
 //
