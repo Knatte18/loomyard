@@ -106,8 +106,7 @@ func TestCLIPromoteNote_TierOneUnchanged(t *testing.T) {
 	}
 }
 
-// TestCLIPromoteNote_NeverANote asserts that promoting a slug that was never a note errors with a
-// message containing "note not found".
+// TestCLIPromoteNote_NeverANote asserts that promoting a slug absent from the board errors with a message containing "task not found".
 func TestCLIPromoteNote_NeverANote(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 	seedCwd(t)
@@ -128,7 +127,7 @@ func TestCLIPromoteNote_NeverANote(t *testing.T) {
 	if !exists {
 		t.Fatalf("expected error message, got %v", result)
 	}
-	if !strings.Contains(errMsg, "note not found") {
-		t.Fatalf("expected error to contain %q, got %q", "note not found", errMsg)
+	if !strings.Contains(errMsg, "task not found") {
+		t.Fatalf("expected error to contain %q, got %q", "task not found", errMsg)
 	}
 }

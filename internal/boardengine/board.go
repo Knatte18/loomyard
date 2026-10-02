@@ -359,7 +359,7 @@ func (b *Board) PromoteNote(idOrSlug any) (Task, error) {
 	result, err := b.boardCriticalSection(func(store *Store) (any, error) {
 		current, found := store.GetTask(idOrSlug)
 		if !found {
-			return nil, fmt.Errorf("note not found: %v", idOrSlug)
+			return nil, fmt.Errorf("task not found: %v", idOrSlug)
 		}
 		if current.Tier <= MinTier {
 			return noWrite{result: current}, nil
