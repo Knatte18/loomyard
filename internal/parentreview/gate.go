@@ -26,7 +26,7 @@ type GateConfig struct {
 	Store Store
 	// Slug is the run slug, named in the notify way-forward.
 	Slug string
-	// Reviewer is the reviewer's full name from the seed; empty means no reviewer and the gate passes.
+	// Reviewer is the full agent name of the run's parent, which the wiring resolves; empty means no reviewer and the gate passes.
 	Reviewer string
 	// DecisionRecord and SupportLog are the discussion paths the request carries.
 	DecisionRecord string
