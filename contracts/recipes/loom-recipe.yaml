@@ -364,8 +364,8 @@ producers:
       # gates holds this row's handoff until the artifact is mechanically valid: each entry names a
       # validator and re-prompts the live session up to its attempts times, so a failure never
       # reaches the row below.
-      # rework-plan checks only the cards absent from the plan committed at HEAD: every earlier
-      # card has already landed, and re-resolving one against the tree it changed always fails.
+      # rework-plan validates the whole new generation, plus `first_card` equal to the number the
+      # row told the session.
       gates:
         - name: rework-plan
           attempts: 3
