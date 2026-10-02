@@ -1,5 +1,5 @@
 // wiring_commitstatus_test.go pins the per-transition status seam's three dispositions --
-// commit-hard-errors, push-warns, skip-while-mid-merge -- and both ShedPaths fill sites. Every test
+// commit-hard-errors, push-warns, skip-while-mid-merge -- its board status write, and both ShedPaths fill sites. Every test
 // here drives newCommitStatusSeam against injected commitStatusDeps stub closures, spawning no git
 // and no process, so the file stays Tier 1 with no hub fixture.
 
@@ -50,6 +50,59 @@ func TestNewCommitStatusSeam_OrdinaryPath(t *testing.T) {
 		if calls[i] != want[i] {
 			t.Errorf("calls[%d] = %q; want %q", i, calls[i], want[i])
 		}
+	}
+}
+
+// TestNewCommitStatusSeam_BoardStatus asserts the seam writes "<state> · <producer>" to the board only when it changed,
+// writes nothing for a finished run, retries a failed write on the next transition, and still commits when the board write fails.
+func TestNewCommitStatusSeam_BoardStatus(t *testing.T) {
+	t.Parallel()
+
+	var written []string
+	commits := 0
+	failNext := false
+	deps := commitStatusDeps{
+		MergeActive: func() (bool, error) { return false, nil },
+		Commit: func(string) error {
+			commits++
+			return nil
+		},
+		Push: func() error { return nil },
+		SetBoardStatus: func(status string) error {
+			if failNext {
+				failNext = false
+				return errors.New("board locked")
+			}
+			written = append(written, status)
+			return nil
+		},
+	}
+
+	seam := newCommitStatusSeam(deps)
+	steps := []struct {
+		producer, state string
+		fail            bool
+	}{
+		{"Plan-Write", "running", false},
+		{"Plan-Write", "running", false},
+		{"Plan-Review", "running", true},
+		{"Plan-Review", "running", false},
+		{"PR-Gate", "awaiting", false},
+		{"Friction-Reflect", "done", false},
+	}
+	for _, st := range steps {
+		failNext = st.fail
+		if err := seam(st.producer, st.state); err != nil {
+			t.Fatalf("seam(%q, %q) = %v; want nil", st.producer, st.state, err)
+		}
+	}
+
+	want := []string{"running · Plan-Write", "running · Plan-Review", "awaiting · PR-Gate"}
+	if !reflect.DeepEqual(written, want) {
+		t.Errorf("board writes = %q; want %q", written, want)
+	}
+	if commits != len(steps) {
+		t.Errorf("commits = %d; want %d", commits, len(steps))
 	}
 }
 
