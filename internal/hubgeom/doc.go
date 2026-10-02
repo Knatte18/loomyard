@@ -12,7 +12,7 @@
 // construction inline at each call site.
 //
 // ReedGeometry is the one teller that does I/O: it reads the hub's recorded code and a task worktree's
-// default-run seed, because the name prefix and parent are weft and run state that no Location carries.
+// default-run seed, because the name prefix and parent are Board and run state that no Location carries.
 // It is still the only reader — reedengine resolves neither, per the Told-Geometry Invariant.
 //
 // Standalone CLIs do not call hubgeom — they have no Location to convert, resolving their own
