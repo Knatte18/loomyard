@@ -1,6 +1,5 @@
 // prrework.go implements the PR-Rework row's producer: it wraps the gated rework session and does everything Go owns around it.
-// That is the archive of the live plan generation into the round's own directory before the session runs,
-// the round record that classifies the new generation as exempt from or subject to Plan-Review, the round commit, and the removal of the pending rejection.
+// That is the archive of the live plan generation into the round's own directory before the session runs, the round record that classifies the new generation as exempt from or subject to Plan-Review, the round commit, and the removal of the pending rejection.
 //
 // The round layout is declared once here, by the constants below:
 // round-<N>/ holds findings.md, record.json, coverage.md and prior-generation/,
@@ -175,7 +174,7 @@ func (p *prRework) Call(ctx context.Context) (shedengine.Outcome, shedengine.Out
 		return p.commitRound()
 	}
 
-	told :=ReworkTold{FirstCard: rec.FirstCard, PriorPlanDir: filepath.Join(roundDir, reworkPriorDir, reworkPriorPlan)}
+	told := ReworkTold{FirstCard: rec.FirstCard, PriorPlanDir: filepath.Join(roundDir, reworkPriorDir, reworkPriorPlan)}
 	outcome, pointer, err := p.session(told).Call(ctx)
 	if err != nil || outcome != shedengine.Done {
 		return outcome, pointer, err
