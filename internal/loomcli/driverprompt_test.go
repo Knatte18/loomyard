@@ -44,7 +44,7 @@ func TestDriverPrompt_NamesSlugRunIDAndExactTeardownCommand(t *testing.T) {
 	if !strings.Contains(got, `"operator-surface"`) {
 		t.Errorf("driverPrompt() = %q; want it to name the slug run-id", got)
 	}
-	const want = "lyx loom commit-records; lyx reed remove --name loom-driver --detach"
+	const want = "lyx loom commit-records; lyx reed remove --name driver --detach"
 	if !strings.Contains(got, want) {
 		t.Errorf("driverPrompt() = %q; want it to name the teardown command %q", got, want)
 	}

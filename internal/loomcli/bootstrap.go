@@ -8,6 +8,7 @@
 package loomcli
 
 import (
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -220,10 +221,21 @@ func dispositionForHandshake(result awaitRunLockResult) handshakeDisposition {
 	}
 }
 
-// findStatusStrand returns the first strand in strands whose Name exactly matches name.
+// findStatusStrand returns the first strand in strands that agentname.Matches addresses as name:
+// the strand's full name, its role segment, or a legacy exact name.
 func findStatusStrand(strands []reedengine.StrandStatus, name string) (reedengine.StrandStatus, bool) {
 	for _, s := range strands {
-		if s.Name == name {
+		if agentname.Matches(s.Name, name) {
+			return s, true
+		}
+	}
+	return reedengine.StrandStatus{}, false
+}
+
+// findDriverStrand returns the first strand loomengine.IsDriverStrand accepts, so a driver recorded under the legacy literal is still found.
+func findDriverStrand(strands []reedengine.StrandStatus) (reedengine.StrandStatus, bool) {
+	for _, s := range strands {
+		if loomengine.IsDriverStrand(s.Name) {
 			return s, true
 		}
 	}
@@ -244,7 +256,7 @@ func removeStatusStrands(status func() (reedengine.StatusResult, error), remove 
 		return
 	}
 	for _, s := range st.Strands {
-		if s.Name != statusStrandDisplayName {
+		if !agentname.Matches(s.Name, statusStrandDisplayName) {
 			continue
 		}
 		if _, err := remove(s.GUID, false); err != nil {
@@ -317,7 +329,7 @@ const (
 // removes anything -- a driverStrandDead result only tells the caller a corpse is present so it can
 // remove it before relaunching.
 func resolveDriverStrandAction(strands []reedengine.StrandStatus) (driverStrandAction, string) {
-	strand, found := findStatusStrand(strands, driverStrandDisplayName)
+	strand, found := findDriverStrand(strands)
 	switch {
 	case !found:
 		return driverStrandNone, ""

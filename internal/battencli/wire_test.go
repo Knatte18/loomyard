@@ -83,7 +83,7 @@ func TestWire_LazySeams(t *testing.T) {
 	}
 }
 
-// TestDriverAliveFrom covers driverAliveFrom's answers without tmux: an absent task worktree is false without reading status, an absent reed session is false with no error, any other status error is returned, and only a live loom-driver strand is true.
+// TestDriverAliveFrom covers driverAliveFrom's answers without tmux: an absent task worktree is false without reading status, an absent reed session is false with no error, any other status error is returned, and only a live driver strand, under its full name, its role or the legacy loom-driver literal, is true.
 func TestDriverAliveFrom(t *testing.T) {
 	boom := errors.New("boom")
 	status := func(res reedengine.StatusResult, err error) func() (reedengine.StatusResult, error) {
@@ -106,6 +106,8 @@ func TestDriverAliveFrom(t *testing.T) {
 		{"NoSessionIsNotLive", true, status(reedengine.StatusResult{}, fmt.Errorf("wrapped: %w", reedengine.ErrNoSession)), false, nil},
 		{"OtherErrorReturned", true, status(reedengine.StatusResult{}, boom), false, boom},
 		{"LiveDriver", true, status(strands(reedengine.StrandStatus{Name: loomengine.LoomDriverStrandName, Live: true}), nil), true, nil},
+		{"LiveFullNameDriver", true, status(strands(reedengine.StrandStatus{Name: "ly:task:driver", Live: true}), nil), true, nil},
+		{"LiveLegacyDriver", true, status(strands(reedengine.StrandStatus{Name: loomengine.LegacyLoomDriverStrandName, Live: true}), nil), true, nil},
 		{"DeadDriver", true, status(strands(reedengine.StrandStatus{Name: loomengine.LoomDriverStrandName}), nil), false, nil},
 		{"OtherStrandLiveOnly", true, status(strands(reedengine.StrandStatus{Name: "other", Live: true}), nil), false, nil},
 		{"NoStrands", true, status(reedengine.StatusResult{}, nil), false, nil},

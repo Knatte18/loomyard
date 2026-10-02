@@ -85,6 +85,24 @@ func TestResolveDriverStrandAction(t *testing.T) {
 			want:     driverStrandDead,
 			wantGUID: "g0",
 		},
+		{
+			name:     "LiveFullNameDriverStrand",
+			strands:  []reedengine.StrandStatus{{GUID: "g0", Name: "ly:task:driver", PaneID: "%0", Live: true}},
+			want:     driverStrandLive,
+			wantGUID: "g0",
+		},
+		{
+			name:     "LiveLegacyDriverStrand",
+			strands:  []reedengine.StrandStatus{{GUID: "g0", Name: loomengine.LegacyLoomDriverStrandName, PaneID: "%0", Live: true}},
+			want:     driverStrandLive,
+			wantGUID: "g0",
+		},
+		{
+			name:     "DeadLegacyDriverStrand",
+			strands:  []reedengine.StrandStatus{{GUID: "g0", Name: loomengine.LegacyLoomDriverStrandName, PaneID: "", Live: false}},
+			want:     driverStrandDead,
+			wantGUID: "g0",
+		},
 	}
 
 	for _, tt := range tests {
@@ -345,6 +363,12 @@ func TestFindStatusStrand(t *testing.T) {
 		{"Missing", strands, "no-such-strand", false},
 		{"ExactNameOverPrefix", strands, statusStrandDisplayName, true},
 	}
+	t.Run("FullName", func(t *testing.T) {
+		got, found := findStatusStrand([]reedengine.StrandStatus{{GUID: "g3", Name: "ly:task:loom-status"}}, statusStrandDisplayName)
+		if !found || got.GUID != "g3" {
+			t.Errorf("findStatusStrand over a full name = %+v, %v; want g3, true", got, found)
+		}
+	})
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

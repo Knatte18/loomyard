@@ -53,7 +53,7 @@ func driverAliveFrom(present bool, status func() (reedengine.StatusResult, error
 		return false, err
 	}
 	for _, s := range res.Strands {
-		if s.Name == loomengine.LoomDriverStrandName && s.Live {
+		if loomengine.IsDriverStrand(s.Name) && s.Live {
 			return true, nil
 		}
 	}
