@@ -28,7 +28,7 @@ The single discipline that makes this work: **you never trust a round's own "mer
    A fork would inherit *your* context and destroy the clean-room independence the whole method depends on.
    You MUST obtain an **explicit** effort-tier pick from the operator before spawning any round — if the operator names only a model ("next round, Opus"), ask for the missing effort pick.
    Never default to a tier and never fall back to `general-purpose`.
-   **Pre-merge recovery path:** in a worktree branched before these profiles merged to `main`, the `crucible-reviewer-<effort>` profile does not exist yet and the spawn will not resolve — sync the worktree (`mill-merge-in` or equivalent) to pull the profiles in, then retry.
+   **Profiles:** the `crucible-reviewer-<effort>` profiles live in `crucible/agents/`; if the spawn does not resolve, copy them into `.claude/agents/` and start a new session, since Claude Code reads agent files at startup.
    This is a required remediation step before the round can proceed, explicitly *not* a licence to fall back to `general-purpose`.
 3. **Stay off the module's code — and off `git add`/`git commit` entirely — while a round runs.**
    The round agent drives the live substrate, deploys the dev binary (`deploy-dev.cmd`/`deploy-dev`), and edits source — if you touch the same files you collide.
@@ -135,7 +135,7 @@ The operator picks both the model and the effort tier per round, independently.
 Model: rotate across Opus / Fable / Sonnet — different models miss different things, and convergence across *different* models is far stronger evidence than N passes from one;
 use the more capable model for the final safety pass and for correctness-critical follow-ups (e.g. a test that must not false-green).
 Effort: a cheap low-effort wide sweep early, a max-effort correctness pass for the final safety round.
-Available effort tiers: `low`, `medium`, `high`, `xhigh`, `max` — see `.claude/agents/crucible-reviewer-<effort>.md`.
+Available effort tiers: `low`, `medium`, `high`, `xhigh`, `max` — see `crucible/agents/crucible-reviewer-<effort>.md`.
 This enumeration is the single place an operator learns what is pickable — if a tier is ever dropped, remove it from this list in the same commit that deletes the file.
 
 ## Hygiene

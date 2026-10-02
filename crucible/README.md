@@ -9,6 +9,9 @@ The method is **module-agnostic** — it is written down here so the modules bui
 - [`orchestrator-prompt.md`](orchestrator-prompt.md) — paste-ready prompt that bootstraps a thread into the **orchestrator** role (drives the loop, spawns rounds, independently verifies).
 - [`review-prompt-template.md`](review-prompt-template.md) — module-agnostic skeleton for the **round agent** prompt (the reviewer-fixer a round spawns).
   The orchestrator fills it per module into `_mill/<module>-review-prompt.md` at run time and **commits it** (see "Commit deliverables continuously, not gitignored" below) — a module's state is stale the moment its review lands, so the file is rewritten and re-committed fresh each round, but every version that ever seeded a round stays in git history rather than being invisible.
+- [`agents/`](agents/) — the effort-tiered `crucible-reviewer-<effort>` round-agent profiles.
+  They live here, not in `.claude/agents/`, so they cost no context in sessions that never run crucible;
+  copy them into `.claude/agents/` before a run and remove them after.
 - This README — the method itself (roles, loop, verification protocol) explained in prose.
 
 > **This is the hand-executed prototype of the review-gate + `burler` (see the `internal/burlerengine` package documentation) round loop** (and the origin of the behavior-based [`hardener`](../../manifest/designs/hardener.md) concept). The automated engine — a fresh `burler` per round that does **A: review** then **B: fix**, with **no self-grading**, looped by a review gate with an **independent** progress check — is exactly this loop with the orchestrator role moved from a human+Claude pair into Go. This is how the method was originally run by hand; this doc remains the reference the engines were modeled on. If you change the method here, reconcile it with the `internal/shedadapters` and `internal/burlerengine` package documentation.
