@@ -1,8 +1,4 @@
-// entries_burler_test.go covers burlerRoundEntry: the happy path, the profile-to-Profile mapping
-// (including the target/fasit relative-path exception), strict unknown-key rejection at all three
-// levels, the run-directory group shared with entries_bouncer_test.go's Bouncer coverage, every
-// construction failure, and the "gates" Config key resolveGateSpec resolves into
-// RunOpts.Gate.
+// entries_burler_test.go covers burlerRoundEntry: the happy path, the profile-to-Profile mapping (including the target/fasit relative-path exception), strict unknown-key rejection at all three levels, the run-directory group shared with entries_bouncer_test.go's Bouncer coverage, every construction failure, and the "gates" Config key resolveGateSpec resolves into RunOpts.Gate.
 //
 // seam_enforcement_test.go's allowlist assertion is the standing guard that loomshed's two gate
 // closures did not drift into this package's own import set; it needs no edit for this coverage and

@@ -11,12 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// discussionWriteEntry is the Constructor for the "DiscussionWrite" registry row: it validates
-// Env.DiscussionSpec, Env.CommitDiscussion, and Env.Shuttle, resolves the row's "gates"
-// Config key through resolveGateSpec, then returns
-// loomshed.NewDiscussionWrite(name, shedadapters.NewSingleLLMProducerGated(name,
-// env.DiscussionSpec, env.Shuttle, env.Now, nil, gate), env.CommitDiscussion) -- a gated
-// SingleLLMProducer behind a commit decorator.
+// discussionWriteEntry is the Constructor for the "DiscussionWrite" registry row: it validates Env.DiscussionSpec, Env.CommitDiscussion, and Env.Shuttle, resolves the row's "gates" Config key through resolveGateSpec, then returns loomshed.NewDiscussionWrite(name, shedadapters.NewSingleLLMProducerGated(name, env.DiscussionSpec, env.Shuttle, env.Now, nil, gate), env.CommitDiscussion) -- a gated SingleLLMProducer behind a commit decorator.
 //
 // The Spec arrives as an injected shedadapters.SpecSource closure rather than as recipe Config
 // because building it needs a *lyxcwd.Location, which the Shed Recipe Registry Invariant bars this
@@ -26,10 +21,8 @@ import (
 // are per-run values a static Config.tokens map cannot carry, and a generic row's own model/effort
 // Config keys would bypass the "discussion" role's model-spec resolution and its timeout entirely.
 //
-// The row carries a "gates" key even though this entry's own dedicated constructor could imply the
-// validator, so that one key means one thing at every gated site and a reader of the recipe can
-// see which validator guards each row without opening Go; this entry therefore never hard-codes a
-// validator choice of its own.
+// The row carries a "gates" key even though this entry's own dedicated constructor could imply the validator, so that one key means one thing at every gated site and a reader of the recipe can see which validator guards each row without opening Go;
+// this entry therefore never hard-codes a validator choice of its own.
 func discussionWriteEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	gate, err := resolveGateSpec("DiscussionWrite", cfg, env)
 	if err != nil {

@@ -441,8 +441,7 @@ func (f *fakeLoomShuttle) AttachGated(spec shuttleengine.Spec, gate shuttleengin
 	return result, found, nil
 }
 
-// evalGateList runs gate's entries in list order for a test fake, skipping off entries (Attempts 0)
-// and stopping at the first failure, and reports whether every entry run passed.
+// evalGateList runs gate's entries in list order for a test fake, skipping off entries (Attempts 0) and stopping at the first failure, and reports whether every entry run passed.
 func evalGateList(gate shuttleengine.GateSpec) (bool, error) {
 	for _, entry := range gate {
 		if entry.Attempts <= 0 {

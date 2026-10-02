@@ -304,8 +304,7 @@ func TestWebsterEntry_SeamFields(t *testing.T) {
 }
 
 // TestWebsterEntry_GateKeys covers the "gates" key websterEntry resolves through resolveGateSpec:
-// an absent "gates" constructs (the shipped row's own ungated shape), and a named validator is
-// rejected by resolveGateSpec's closed vocabulary, since no Webster validator exists to name.
+// an absent "gates" constructs (the shipped row's own ungated shape), and a named validator is rejected by resolveGateSpec's closed vocabulary, since no Webster validator exists to name.
 func TestWebsterEntry_GateKeys(t *testing.T) {
 	t.Run("AbsentGateConstructs", func(t *testing.T) {
 		producer, err := websterEntry("Webster", Config{}, newTestEnv(t))

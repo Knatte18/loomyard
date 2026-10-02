@@ -1871,8 +1871,8 @@ func TestRun_GateReachesStartMaster(t *testing.T) {
 	}
 }
 
-// TestRun_ZeroGateReachesStartMasterUngated proves the ungated path is unchanged: a RunDeps that
-// names no gate hands StartMaster the empty GateSpec, which shuttleengine reads as "ungated".
+// TestRun_ZeroGateReachesStartMasterUngated proves the ungated path is unchanged:
+// a RunDeps that names no gate hands StartMaster the empty GateSpec, which shuttleengine reads as "ungated".
 func TestRun_ZeroGateReachesStartMasterUngated(t *testing.T) {
 	fx := newRunFixture(t, 1)
 

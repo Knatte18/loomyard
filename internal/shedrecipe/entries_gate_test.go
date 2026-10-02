@@ -5,14 +5,12 @@ import (
 	"testing"
 )
 
-// gatesCfg builds a row Config carrying a one-entry "gates" list, the shape every shipped gated
-// row has.
+// gatesCfg builds a row Config carrying a one-entry "gates" list, the shape every shipped gated row has.
 func gatesCfg(name string, attempts int) Config {
 	return Config{"gates": []any{map[string]any{"name": name, "attempts": attempts}}}
 }
 
-// gateCapableEntries lists every gate-capable Constructor with a Config that is otherwise valid,
-// for the leftover-key rejection.
+// gateCapableEntries lists every gate-capable Constructor with a Config that is otherwise valid, for the leftover-key rejection.
 func gateCapableEntries() map[string]Constructor {
 	return map[string]Constructor{
 		"DiscussionWrite": discussionWriteEntry,

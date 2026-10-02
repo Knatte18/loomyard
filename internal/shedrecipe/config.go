@@ -179,12 +179,11 @@ func configMap(cfg Config, key string, required bool) (Config, error) {
 	return Config(m), nil
 }
 
-// configMapList extracts key from cfg as a []Config, so each element can be fed back through these
-// same accessors. It accepts a []any whose every element is a map[string]any, and a []map[string]any;
+// configMapList extracts key from cfg as a []Config, so each element can be fed back through these same accessors.
+// It accepts a []any whose every element is a map[string]any, and a []map[string]any;
 // an element of any other type is an error naming key and the element's index.
-// present reports whether key is in cfg at all. Unlike the other accessors, a present empty list is
-// not absent: it returns an empty slice with present true, so a caller can tell an author mistake
-// apart from a missing key.
+// present reports whether key is in cfg at all.
+// Unlike the other accessors, a present empty list is not absent: it returns an empty slice with present true, so a caller can tell an author mistake apart from a missing key.
 func configMapList(cfg Config, key string) (out []Config, present bool, err error) {
 	raw, ok := cfg[key]
 	if !ok {

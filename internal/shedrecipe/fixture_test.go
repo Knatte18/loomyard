@@ -41,12 +41,9 @@ func (f *fakeShuttle) Attach(shuttleengine.Spec) (shuttleengine.Result, bool, er
 	return shuttleengine.Result{}, false, nil
 }
 
-// RunGated implements the shared fake contract every shedadapters.Shuttle/burlerengine.Shuttle test
-// fake follows (see the "every test fake evaluates the gate once" decision): delegate to Run's own
-// body, then -- only when gate is non-empty and the delegated outcome is OutcomeDone -- invoke
-// the entries once each in list order (see evalGateList), returning a closure's error if non-nil and
-// otherwise stamping a *GateOutcome onto the returned Result. No production caller in this package supplies a non-zero GateSpec until
-// batch 4, so every existing sequence here is unaffected.
+// RunGated implements the shared fake contract every shedadapters.Shuttle/burlerengine.Shuttle test fake follows (see the "every test fake evaluates the gate once" decision):
+// delegate to Run's own body, then -- only when gate is non-empty and the delegated outcome is OutcomeDone -- invoke the entries once each in list order (see evalGateList), returning a closure's error if non-nil and otherwise stamping a *GateOutcome onto the returned Result.
+// No production caller in this package supplies a non-zero GateSpec until batch 4, so every existing sequence here is unaffected.
 func (f *fakeShuttle) RunGated(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (shuttleengine.Result, error) {
 	result, err := f.Run(spec)
 	if err != nil || len(gate) == 0 || result.Outcome != shuttleengine.OutcomeDone {
@@ -74,8 +71,7 @@ func (f *fakeShuttle) AttachGated(spec shuttleengine.Spec, gate shuttleengine.Ga
 	return result, found, nil
 }
 
-// evalGateList runs gate's entries in list order for a test fake, skipping off entries (Attempts 0)
-// and stopping at the first failure, and reports whether every entry run passed.
+// evalGateList runs gate's entries in list order for a test fake, skipping off entries (Attempts 0) and stopping at the first failure, and reports whether every entry run passed.
 func evalGateList(gate shuttleengine.GateSpec) (bool, error) {
 	for _, entry := range gate {
 		if entry.Attempts <= 0 {

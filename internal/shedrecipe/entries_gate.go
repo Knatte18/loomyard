@@ -1,9 +1,6 @@
-// entries_gate.go implements resolveGateSpec, the shared resolver every gate-capable entry
-// (DiscussionWrite, PlanWrite, Describe, BurlerRound, Webster, PRRework) calls to turn its row's
-// "gates" Config key into a shuttleengine.GateSpec.
+// entries_gate.go implements resolveGateSpec, the shared resolver every gate-capable entry (DiscussionWrite, PlanWrite, Describe, BurlerRound, Webster, PRRework) calls to turn its row's "gates" Config key into a shuttleengine.GateSpec.
 //
-// Each element selects a validator by a declared name resolved against Env, exactly as bouncerEntry already resolves
-// "commit_seam"/"approve_seam" against Env.CommitPlan/Env.CommitDiscussion/Env.ApprovePlan.
+// Each element selects a validator by a declared name resolved against Env, exactly as bouncerEntry already resolves "commit_seam"/"approve_seam" against Env.CommitPlan/Env.CommitDiscussion/Env.ApprovePlan.
 // Selecting the validator by switching on the row's own Name was rejected: that would make row
 // names load-bearing in a second place beyond resume identity, where a renamed row would silently
 // lose its gate rather than failing to build.
@@ -21,33 +18,27 @@ import (
 // gateEntryKeys are the keys one element of a row's "gates" list may carry.
 var gateEntryKeys = []string{"name", "attempts", "pass_on_cap"}
 
-// resolveGateSpec is the single place the "gates" Config key is read and turned into a
-// shuttleengine.GateSpec, shared by every gated entry.
+// resolveGateSpec is the single place the "gates" Config key is read and turned into a shuttleengine.GateSpec, shared by every gated entry.
 //
-// "gates" is an optional list of maps, read via configMapList. An absent key returns the empty
-// GateSpec, which is what every ungated row carries by saying nothing; a present empty list is an
-// error, since it is an author mistake rather than an ungated row.
+// "gates" is an optional list of maps, read via configMapList.
+// An absent key returns the empty GateSpec, which is what every ungated row carries by saying nothing;
+// a present empty list is an error, since it is an author mistake rather than an ungated row.
 //
 // Each element carries a required "name", resolved against a closed four-value vocabulary:
-// "discussion" requires env.DecisionRecordPath and env.SupportLogPath to pass requireAbsRoot and
-// returns loomshed.NewDiscussionGate over them; "plan" requires env.AnchorPath and env.WorktreeRoot
-// and returns loomshed.NewPlanGate over them; "rework-plan" requires the same two roots plus a
-// non-nil env.Rework.ReadCommitted and returns loomshed.NewReworkPlanGate over them; "description"
-// requires env.DescriptionPath to pass requireAbsRoot and returns landingshed.NewDescriptionGate
-// over it; any other value is an error naming the key and all four legal values.
+// "discussion" requires env.DecisionRecordPath and env.SupportLogPath to pass requireAbsRoot and returns loomshed.NewDiscussionGate over them;
+// "plan" requires env.AnchorPath and env.WorktreeRoot and returns loomshed.NewPlanGate over them;
+// "rework-plan" requires the same two roots plus a non-nil env.Rework.ReadCommitted and returns loomshed.NewReworkPlanGate over them;
+// "description" requires env.DescriptionPath to pass requireAbsRoot and returns landingshed.NewDescriptionGate over it;
+// any other value is an error naming the key and all four legal values.
 // A name may appear once per list.
 //
-// "attempts" is required, a non-negative integer read via configInt so 0 is a present value: 0 turns
-// the entry off, yet the entry still resolves its closure and its Env requirements, so a typo in an
-// off gate fails loud.
+// "attempts" is required, a non-negative integer read via configInt so 0 is a present value:
+// 0 turns the entry off, yet the entry still resolves its closure and its Env requirements, so a typo in an off gate fails loud.
 // "pass_on_cap" is an optional bool, false when absent.
 //
-// Every error is qualified with entry so a recipe author with a typo is told which row spoke,
-// matching the qualification resolveUnderRoot already applies.
+// Every error is qualified with entry so a recipe author with a typo is told which row spoke, matching the qualification resolveUnderRoot already applies.
 //
-// resolveGateSpec reads only the "gates" key and rejects unknown keys only inside each element --
-// each caller keeps owning its own configRejectUnknown call for the row's own keys, which is where
-// the Config Strictness Invariant's strictness lives.
+// resolveGateSpec reads only the "gates" key and rejects unknown keys only inside each element -- each caller keeps owning its own configRejectUnknown call for the row's own keys, which is where the Config Strictness Invariant's strictness lives.
 func resolveGateSpec(entry string, cfg Config, env Env) (shuttleengine.GateSpec, error) {
 	elems, present, err := configMapList(cfg, "gates")
 	if err != nil {
@@ -76,8 +67,7 @@ func resolveGateSpec(entry string, cfg Config, env Env) (shuttleengine.GateSpec,
 	return spec, nil
 }
 
-// resolveGateEntry resolves one element of a row's "gates" list, wrapping every error with the
-// entry and the element's index because the config accessors it calls name neither.
+// resolveGateEntry resolves one element of a row's "gates" list, wrapping every config-accessor error with the entry and the element's index because those accessors name neither.
 func resolveGateEntry(entry string, index int, elem Config, env Env) (shuttleengine.GateEntry, error) {
 	wrap := func(err error) error {
 		return fmt.Errorf("shedrecipe: %s: config key %q element %d: %w", entry, "gates", index, err)

@@ -132,10 +132,8 @@ func TestDiscussionWriteEntry_CallDone(t *testing.T) {
 	}
 }
 
-// TestDiscussionWriteEntry_GateConfig covers the "gates" Config key
-// discussionWriteEntry resolves through resolveGateSpec: a "discussion" entry resolves to the
-// discussion validator, an unrecognised name fails loud naming both legal values, and a row
-// carrying no key resolves to the empty shuttleengine.GateSpec -- an ungated producer.
+// TestDiscussionWriteEntry_GateConfig covers the "gates" Config key discussionWriteEntry resolves through resolveGateSpec:
+// a "discussion" entry resolves to the discussion validator, an unrecognised name fails loud naming both legal values, and a row carrying no key resolves to the empty shuttleengine.GateSpec -- an ungated producer.
 func TestDiscussionWriteEntry_GateConfig(t *testing.T) {
 	t.Run("GateDiscussionResolvesToDiscussionValidator", func(t *testing.T) {
 		env := newTestEnv(t)

@@ -489,11 +489,8 @@ func (f *judgeSeamFakeShuttle) Attach(shuttleengine.Spec) (shuttleengine.Result,
 	return shuttleengine.Result{}, false, nil
 }
 
-// RunGated implements the shared fake contract every shedadapters.Shuttle/burlerengine.Shuttle test
-// fake follows (see the "every test fake evaluates the gate once" decision): delegate to Run's own
-// body, then -- only when gate is non-empty and the delegated outcome is OutcomeDone -- invoke
-// the closure exactly once, returning its error if non-nil and otherwise stamping a *GateOutcome
-// onto the returned Result.
+// RunGated implements the shared fake contract every shedadapters.Shuttle/burlerengine.Shuttle test fake follows (see the "every test fake evaluates the gate once" decision):
+// delegate to Run's own body, then -- only when gate is non-empty and the delegated outcome is OutcomeDone -- invoke the entries once each in list order (see evalGateList), returning a closure's error if non-nil and otherwise stamping a *GateOutcome onto the returned Result.
 func (f *judgeSeamFakeShuttle) RunGated(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (shuttleengine.Result, error) {
 	result, err := f.Run(spec)
 	if err != nil || len(gate) == 0 || result.Outcome != shuttleengine.OutcomeDone {

@@ -204,8 +204,8 @@ func TestPlanWriteEntry_CallAppendsPriorPlanBlock(t *testing.T) {
 	}
 }
 
-// TestPlanWriteEntry_GateConfig covers the "gates" Config key planWriteEntry resolves through
-// resolveGateSpec: a "plan" entry resolves to the plan validator.
+// TestPlanWriteEntry_GateConfig covers the "gates" Config key planWriteEntry resolves through resolveGateSpec:
+// a "plan" entry resolves to the plan validator.
 func TestPlanWriteEntry_GateConfig(t *testing.T) {
 	t.Run("GatePlanResolvesToPlanValidator", func(t *testing.T) {
 		env := newTestEnv(t)

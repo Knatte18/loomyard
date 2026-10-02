@@ -14,18 +14,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// burlerRoundEntry is the Constructor for the "BurlerRound" registry row: it validates cfg and env,
-// maps cfg's profile map onto a burlerengine.Profile, resolves the row's "gates"
-// Config key through resolveGateSpec into the RunOpts.Gate it builds, joins and creates the run
-// directory this row's segment shares with its Bouncer row, and returns
-// shedadapters.NewBurlerProducer(name, env.Burler, env.Shuttle, profile, opts, runDir, env.Now).
+// burlerRoundEntry is the Constructor for the "BurlerRound" registry row: it validates cfg and env, maps cfg's profile map onto a burlerengine.Profile, resolves the row's "gates" Config key through resolveGateSpec into the RunOpts.Gate it builds, joins and creates the run directory this row's segment shares with its Bouncer row, and returns shedadapters.NewBurlerProducer(name, env.Burler, env.Shuttle, profile, opts, runDir, env.Now).
 //
-// All three burler rows (Discussion-Burler, Plan-Burler, Webster-Burler) share this one
-// constructor, which is why the validator is selected by the "gates" key rather than implied by the
-// constructor: a gate named on the Webster round fails loud through resolveGateSpec's own closed
-// vocabulary, because no third validator exists to name. The Webster round is deliberately
-// ungated -- there is no mechanical validator over a committed diff, so its RunOpts.Gate stays the
-// zero shuttleengine.GateSpec by simply carrying no "gates" key.
+// All three burler rows (Discussion-Burler, Plan-Burler, Webster-Burler) share this one constructor, which is why the validator is selected by the "gates" key rather than implied by the constructor:
+// a gate named on the Webster round fails loud through resolveGateSpec's own closed vocabulary, because no third validator exists to name.
+// The Webster round is deliberately ungated -- there is no mechanical validator over a committed diff, so its RunOpts.Gate stays the zero shuttleengine.GateSpec by simply carrying no "gates" key.
 func burlerRoundEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	runSubdir, err := configString(cfg, "run_subdir", true)
 	if err != nil {
