@@ -33,7 +33,7 @@ func runCode(ctx context.Context, out io.Writer, args []string) int {
 	}
 
 	code := args[0]
-	if err := agentname.ValidateCode(code); err != nil {
+	if err := agentname.ValidateShortname(code); err != nil {
 		return output.Err(out, err.Error())
 	}
 	if found {

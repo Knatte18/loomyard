@@ -28,11 +28,11 @@ func TestReedGeometry_NameCodeIsDerivedFromHash8(t *testing.T) {
 
 	got := ReedGeometry(target, stateDir, "abcd1234")
 
-	if want := agentname.StandaloneCode("abcd1234"); got.NameCode != want {
+	if want := agentname.StandaloneShortname("abcd1234"); got.NameCode != want {
 		t.Errorf("ReedGeometry().NameCode = %q; want %q", got.NameCode, want)
 	}
-	if err := agentname.ValidateCode(got.NameCode); err != nil {
-		t.Errorf("ReedGeometry().NameCode %q fails ValidateCode: %v", got.NameCode, err)
+	if err := agentname.ValidateShortname(got.NameCode); err != nil {
+		t.Errorf("ReedGeometry().NameCode %q fails ValidateShortname: %v", got.NameCode, err)
 	}
 	if got.NameSlug != "" || got.ParentName != "" {
 		t.Errorf("ReedGeometry() NameSlug/ParentName = %q/%q; want both empty", got.NameSlug, got.ParentName)

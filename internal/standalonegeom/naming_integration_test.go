@@ -55,7 +55,7 @@ func TestNaming_StandaloneStrandIsCodeAndRoleWithNoParent(t *testing.T) {
 		t.Fatalf("AddStrand: %v", err)
 	}
 
-	want := agentname.StandaloneCode(hash8) + ":worker"
+	want := agentname.StandaloneShortname(hash8) + ":worker"
 	if strand.Name != want {
 		t.Errorf("strand name = %q, want %q", strand.Name, want)
 	}

@@ -6,27 +6,27 @@ import (
 )
 
 func TestFormatParseRoundTrip(t *testing.T) {
-	tests := []struct{ code, slug, role, want string }{
+	tests := []struct{ shortname, slug, role, want string }{
 		{"ly", "", "orch", "ly:orch"},
 		{"ly", "agent-naming", "driver-2", "ly:agent-naming:driver-2"},
 		{"s1a2b3", "", "strand", "s1a2b3:strand"},
 	}
 	for _, tt := range tests {
-		got, err := Format(tt.code, tt.slug, tt.role)
+		got, err := Format(tt.shortname, tt.slug, tt.role)
 		if err != nil || got != tt.want {
-			t.Fatalf("Format(%q,%q,%q) = %q, %v; want %q", tt.code, tt.slug, tt.role, got, err, tt.want)
+			t.Fatalf("Format(%q,%q,%q) = %q, %v; want %q", tt.shortname, tt.slug, tt.role, got, err, tt.want)
 		}
 		n, err := Parse(got)
-		if err != nil || n != (Name{tt.code, tt.slug, tt.role}) || n.String() != got {
+		if err != nil || n != (Name{tt.shortname, tt.slug, tt.role}) || n.String() != got {
 			t.Fatalf("Parse(%q) = %+v, %v", got, n, err)
 		}
 	}
 }
 
 func TestValidationRejections(t *testing.T) {
-	for _, code := range []string{"", "a", "abcdefg", "1ab", "a-b", "a:b", "a.b", "a@b", "AB"} {
-		if ValidateCode(code) == nil {
-			t.Errorf("ValidateCode(%q) accepted", code)
+	for _, shortname := range []string{"", "a", "abcdefg", "1ab", "a-b", "a:b", "a.b", "a@b", "AB"} {
+		if ValidateShortname(shortname) == nil {
+			t.Errorf("ValidateShortname(%q) accepted", shortname)
 		}
 	}
 	for _, v := range []string{"", "1a", "A", "a_b", "a:b", "a.b"} {
@@ -110,12 +110,12 @@ func TestMatches(t *testing.T) {
 	}
 }
 
-func TestStandaloneCode(t *testing.T) {
-	got := StandaloneCode("a1b2c3d4")
+func TestStandaloneShortname(t *testing.T) {
+	got := StandaloneShortname("a1b2c3d4")
 	if got != "sa1b2c" {
-		t.Fatalf("StandaloneCode = %q", got)
+		t.Fatalf("StandaloneShortname = %q", got)
 	}
-	if err := ValidateCode(got); err != nil {
+	if err := ValidateShortname(got); err != nil {
 		t.Fatal(err)
 	}
 }

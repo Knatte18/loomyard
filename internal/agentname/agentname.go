@@ -1,7 +1,7 @@
 // Package agentname is the sole former, parser and validator of agent names.
 //
-// A full name is "<code>:<role>" in the prime and in a standalone run, and "<code>:<slug>:<role>" in a task worktree.
-// The code is 2-6 characters of [a-z][a-z0-9]; the slug and the role are [a-z][a-z0-9-]*.
+// A full name is "<shortname>:<role>" in the prime and in a standalone run, and "<shortname>:<slug>:<role>" in a task worktree.
+// The shortname is 2-6 characters of [a-z][a-z0-9]; the slug and the role are [a-z][a-z0-9-]*.
 // Every other package forms, parses, validates and matches names through this one,
 // and the package imports the standard library only.
 package agentname
@@ -28,30 +28,30 @@ const (
 
 // Name is a parsed agent name. Slug is empty in the prime and in a standalone run.
 type Name struct {
-	Code string
-	Slug string
-	Role string
+	Shortname string
+	Slug      string
+	Role      string
 }
 
 // String joins the segments with ":", omitting an empty slug.
 func (n Name) String() string {
 	if n.Slug == "" {
-		return n.Code + sep + n.Role
+		return n.Shortname + sep + n.Role
 	}
-	return n.Code + sep + n.Slug + sep + n.Role
+	return n.Shortname + sep + n.Slug + sep + n.Role
 }
 
 func isLower(c byte) bool { return c >= 'a' && c <= 'z' }
 func isDigit(c byte) bool { return c >= '0' && c <= '9' }
 
-// ValidateCode checks the repo code grammar [a-z][a-z0-9]{1,5}.
-func ValidateCode(code string) error {
-	ok := len(code) >= 2 && len(code) <= 6 && isLower(code[0])
-	for i := 1; ok && i < len(code); i++ {
-		ok = isLower(code[i]) || isDigit(code[i])
+// ValidateShortname checks the repo shortname grammar [a-z][a-z0-9]{1,5}.
+func ValidateShortname(shortname string) error {
+	ok := len(shortname) >= 2 && len(shortname) <= 6 && isLower(shortname[0])
+	for i := 1; ok && i < len(shortname); i++ {
+		ok = isLower(shortname[i]) || isDigit(shortname[i])
 	}
 	if !ok {
-		return fmt.Errorf("agent name code %q is invalid: must match [a-z][a-z0-9]{1,5} (2-6 characters, no '-', ':', '.' or '@')", code)
+		return fmt.Errorf("agent name shortname %q is invalid: must match [a-z][a-z0-9]{1,5} (2-6 characters, no '-', ':', '.' or '@')", shortname)
 	}
 	return nil
 }
@@ -74,8 +74,8 @@ func ValidateSlug(slug string) error { return validateDashed("slug", slug) }
 func ValidateRole(role string) error { return validateDashed("role", role) }
 
 // Format validates each segment and joins them; an empty slug gives the two-segment form.
-func Format(code, slug, role string) (string, error) {
-	if err := ValidateCode(code); err != nil {
+func Format(shortname, slug, role string) (string, error) {
+	if err := ValidateShortname(shortname); err != nil {
 		return "", err
 	}
 	if slug != "" {
@@ -86,7 +86,7 @@ func Format(code, slug, role string) (string, error) {
 	if err := ValidateRole(role); err != nil {
 		return "", err
 	}
-	return Name{Code: code, Slug: slug, Role: role}.String(), nil
+	return Name{Shortname: shortname, Slug: slug, Role: role}.String(), nil
 }
 
 // Parse accepts exactly two segments (prime) or three (task); anything else is an error.
@@ -95,13 +95,13 @@ func Parse(name string) (Name, error) {
 	var n Name
 	switch len(parts) {
 	case 2:
-		n = Name{Code: parts[0], Role: parts[1]}
+		n = Name{Shortname: parts[0], Role: parts[1]}
 	case 3:
-		n = Name{Code: parts[0], Slug: parts[1], Role: parts[2]}
+		n = Name{Shortname: parts[0], Slug: parts[1], Role: parts[2]}
 	default:
-		return Name{}, fmt.Errorf("agent name %q is invalid: want <code>:<role> or <code>:<slug>:<role>", name)
+		return Name{}, fmt.Errorf("agent name %q is invalid: want <shortname>:<role> or <shortname>:<slug>:<role>", name)
 	}
-	if _, err := Format(n.Code, n.Slug, n.Role); err != nil {
+	if _, err := Format(n.Shortname, n.Slug, n.Role); err != nil {
 		return Name{}, fmt.Errorf("agent name %q: %w", name, err)
 	}
 	if len(parts) == 3 && n.Slug == "" {
@@ -127,31 +127,31 @@ func NumberRole(role string, held []string) string {
 	}
 }
 
-// Resolve reads a --name-style query: a bare role segment is formed under (code, slug);
-// a query containing ":" is parsed as a full name and refused when its code or slug differ.
-func Resolve(code, slug, query string) (Name, error) {
+// Resolve reads a --name-style query: a bare role segment is formed under (shortname, slug);
+// a query containing ":" is parsed as a full name and refused when its shortname or slug differ.
+func Resolve(shortname, slug, query string) (Name, error) {
 	if !strings.Contains(query, sep) {
-		if _, err := Format(code, slug, query); err != nil {
+		if _, err := Format(shortname, slug, query); err != nil {
 			return Name{}, err
 		}
-		return Name{Code: code, Slug: slug, Role: query}, nil
+		return Name{Shortname: shortname, Slug: slug, Role: query}, nil
 	}
 	n, err := Parse(query)
 	if err != nil {
 		return Name{}, err
 	}
-	if n.Code != code || n.Slug != slug {
+	if n.Shortname != shortname || n.Slug != slug {
 		return Name{}, fmt.Errorf("agent name %q belongs to %q, not to %q; way forward: pass the role segment alone, or run the command from the worktree the full name belongs to",
-			query, n.prefix(), Name{Code: code, Slug: slug}.prefix())
+			query, n.prefix(), Name{Shortname: shortname, Slug: slug}.prefix())
 	}
 	return n, nil
 }
 
 func (n Name) prefix() string {
 	if n.Slug == "" {
-		return n.Code
+		return n.Shortname
 	}
-	return n.Code + sep + n.Slug
+	return n.Shortname + sep + n.Slug
 }
 
 // Matches reports whether query addresses the strand named full: equal to it,
@@ -167,8 +167,8 @@ func Matches(full, query string) bool {
 	return err == nil && n.Role == query
 }
 
-// StandaloneCode derives a standalone run's code: "s" plus the first five characters of hash8.
-func StandaloneCode(hash8 string) string {
+// StandaloneShortname derives a standalone run's shortname: "s" plus the first five characters of hash8.
+func StandaloneShortname(hash8 string) string {
 	if len(hash8) > 5 {
 		hash8 = hash8[:5]
 	}

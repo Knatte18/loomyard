@@ -20,7 +20,7 @@ const CodeFileName = ".lyx-code"
 
 // ReadCode reads the recorded repo code from <boardDir>/.lyx-code and reports whether a usable one was found.
 // Any read error and an empty-after-trim value report not found, like readWarpBinding;
-// a value failing agentname.ValidateCode also reports not found and logs a named warning,
+// a value failing agentname.ValidateShortname also reports not found and logs a named warning,
 // so a damaged record reads as an uncoded hub that `lyx fabric code <code>` or `clone --code` records over.
 func ReadCode(boardDir string) (code string, found bool) {
 	data, err := os.ReadFile(filepath.Join(boardDir, CodeFileName))
@@ -37,7 +37,7 @@ func usableCode(raw, where string) (string, bool) {
 	if trimmed == "" {
 		return "", false
 	}
-	if err := agentname.ValidateCode(trimmed); err != nil {
+	if err := agentname.ValidateShortname(trimmed); err != nil {
 		logger.Warn("fabricengine: recorded repo code is invalid; treating the hub as uncoded", "file", CodeFileName, "where", where, "value", trimmed, "error", err)
 		return "", false
 	}
@@ -60,7 +60,7 @@ func WriteCode(boardDir, code string) error {
 // It returns the effective code, whether the caller must write a new record, a warning for a bound weft left uncoded, or a refusal.
 func resolveEffectiveCode(recorded string, found bool, supplied string, freshBind bool) (effective string, writeRecord bool, warning string, err error) {
 	if supplied != "" {
-		if err := agentname.ValidateCode(supplied); err != nil {
+		if err := agentname.ValidateShortname(supplied); err != nil {
 			return "", false, "", err
 		}
 	}

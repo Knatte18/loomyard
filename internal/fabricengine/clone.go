@@ -55,7 +55,7 @@ type CloneOptions struct {
 	// writing a fresh binding): the guard is reachable only there, so ForceBootstrap has no effect
 	// anywhere else.
 	ForceBootstrap bool
-	// Code is the repo's short agent-name code (see agentname.ValidateCode).
+	// Code is the repo's short agent-name code (see agentname.ValidateShortname).
 	// It is required when the weft is a fresh bind;
 	// on a bound weft it records a missing code or must equal the recorded one.
 	Code string

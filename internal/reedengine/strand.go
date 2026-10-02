@@ -156,7 +156,7 @@ func (e *Engine) validateNaming(spec AddSpec) (string, error) {
 	if code == "" {
 		return "", fmt.Errorf("no strand name can be formed: this hub records no short code; way forward: lyx fabric code <code> records it, then retry")
 	}
-	if err := agentname.ValidateCode(code); err != nil {
+	if err := agentname.ValidateShortname(code); err != nil {
 		return "", fmt.Errorf("no strand name can be formed: the told code is invalid: %w", err)
 	}
 	if slug != "" {
