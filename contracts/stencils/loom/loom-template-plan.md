@@ -136,6 +136,9 @@ An implementation card that bundles its own new test file writes `**Edit:**` for
 A card whose targets can be expressed as a multi-label combination of the other six is not `Custom`.
 A `**Custom:**` group may not be combined with a group of a different type.
 
+A card that introduces a new verb, flag, escape hatch or routing edge, or removes, downgrades or makes bypassable a guard, states in its `**Intent:**` what the change can now skip or let through and what bounds it.
+Plan-Review flags one left unbounded.
+
 A field with no content is omitted entirely — never write a `none` sentinel on any field.
 
 **`Uses:` names what the card reads but does not change — never a target.**

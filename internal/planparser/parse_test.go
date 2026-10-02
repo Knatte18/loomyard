@@ -1174,3 +1174,39 @@ func TestParsePlan_Language(t *testing.T) {
 		}
 	})
 }
+
+// TestParsePlan_FirstCard pins how the optional first_card overview key parses, including that a non-integer value reaches validation instead of failing the strict decode.
+func TestParsePlan_FirstCard(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		line        string
+		wantFirst   int
+		wantInvalid string
+	}{
+		{name: "absent", line: "", wantFirst: 1},
+		{name: "seven", line: "first_card: 7\n", wantFirst: 7},
+		{name: "zero", line: "first_card: 0\n", wantFirst: 1, wantInvalid: "0"},
+		{name: "negative", line: "first_card: -2\n", wantFirst: 1, wantInvalid: "-2"},
+		{name: "non-integer", line: "first_card: seven\n", wantFirst: 1, wantInvalid: "seven"},
+		{name: "empty", line: "first_card:\n", wantFirst: 1, wantInvalid: "<empty>"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dir := writePlanFiles(t, map[string]string{
+				"00-overview.md": "---\nformat: 5\napproved: true\n" + tt.line + "---\n\n# Plan: p\n\nFraming.\n\n## Card Index\n\n1 — only — the only card\n",
+				"01-only.md":     "# Card 1 — only\n\n**Edit:**\n- `a.go`\n\n**Intent:** placeholder.\n",
+			})
+			plan, err := planparser.ParsePlan(dir)
+			if err != nil {
+				t.Fatalf("ParsePlan error = %v; want nil", err)
+			}
+			if plan.FirstCard != tt.wantFirst || plan.FirstCardInvalid != tt.wantInvalid {
+				t.Errorf("FirstCard, FirstCardInvalid = %d, %q; want %d, %q", plan.FirstCard, plan.FirstCardInvalid, tt.wantFirst, tt.wantInvalid)
+			}
+		})
+	}
+}

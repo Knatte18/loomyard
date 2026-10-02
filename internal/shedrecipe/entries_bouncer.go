@@ -12,13 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// bouncerEntry is the Constructor for the "Bouncer" registry row: it validates cfg and env, joins
-// and creates the run directory a segment's Bouncer and BurlerRound rows share, resolves
-// artifact_paths against env.AnchorPath, resolves the optional commit_seam key to one of
-// env.CommitPlan or env.CommitDiscussion, resolves the optional approve_seam key to
-// env.ApprovePlan and nothing else, reads the optional boolean cluster_excludes key (default false)
-// telling the judge whether its partner round has a cluster fan, and returns
-// shedadapters.NewBouncer(cfg).
+// bouncerEntry is the Constructor for the "Bouncer" registry row: it validates cfg and env, joins and creates the run directory a segment's Bouncer and BurlerRound rows share, resolves artifact_paths against env.AnchorPath, resolves the optional commit_seam key to one of env.CommitPlan or env.CommitDiscussion, resolves the optional approve_seam key to env.ApprovePlan and nothing else, resolves the optional skip_seam key to env.SkipPlanReview, reads the optional boolean cluster_excludes key (default false) telling the judge whether its partner round has a cluster fan, and returns shedadapters.NewBouncer(cfg).
 func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	runSubdir, err := configString(cfg, "run_subdir", true)
 	if err != nil {
@@ -52,6 +46,10 @@ func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 	if err != nil {
 		return nil, err
 	}
+	skipSeam, err := configString(cfg, "skip_seam", false)
+	if err != nil {
+		return nil, err
+	}
 	clusterExcludes, err := configBool(cfg, "cluster_excludes", false)
 	if err != nil {
 		return nil, err
@@ -72,7 +70,7 @@ func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 	// There is deliberately no "report_name" key: BouncerConfig.ReportName is pinned below, not
 	// recipe-authorable, so a "report_name" entry in cfg is rejected here as unrecognised rather
 	// than silently ignored.
-	if err := configRejectUnknown(cfg, "run_subdir", "artifact_paths", "rubric_stencil", "model", "effort", "version", "commit_seam", "approve_seam", "cluster_excludes"); err != nil {
+	if err := configRejectUnknown(cfg, "run_subdir", "artifact_paths", "rubric_stencil", "model", "effort", "version", "commit_seam", "approve_seam", "skip_seam", "cluster_excludes"); err != nil {
 		return nil, err
 	}
 
@@ -119,6 +117,21 @@ func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 		approve = env.ApprovePlan
 	default:
 		return nil, fmt.Errorf("shedrecipe: Bouncer: config key %q must be %q, got %q", "approve_seam", "plan", approveSeam)
+	}
+
+	// skip_seam names env.SkipPlanReview through its one accepted value, rework-exempt, and mirrors approve_seam: absent leaves BouncerConfig.Skip nil,
+	// and a present key is guarded by requireSeam so a nil Env closure never silently disables the skip.
+	var skip func() (bool, error)
+	switch skipSeam {
+	case "":
+		// No seam configured; skip stays nil.
+	case "rework-exempt":
+		if err := requireSeam("Bouncer", "SkipPlanReview", env.SkipPlanReview); err != nil {
+			return nil, err
+		}
+		skip = env.SkipPlanReview
+	default:
+		return nil, fmt.Errorf("shedrecipe: Bouncer: config key %q must be %q, got %q", "skip_seam", "rework-exempt", skipSeam)
 	}
 
 	if err := requireAbsRoot("Bouncer", "RunRoot", env.RunRoot); err != nil {
@@ -178,6 +191,7 @@ func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 		Shuttle:         env.Shuttle,
 		Approve:         approve,
 		Commit:          commit,
+		Skip:            skip,
 		Now:             env.Now,
 	}
 

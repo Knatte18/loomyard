@@ -262,3 +262,50 @@ func TestResolvePass_FileRenameNewSideIsNotAFinding(t *testing.T) {
 		t.Errorf("resolvePass(file-rename plan) = %+v; want no findings — the pair's New side names the post-rename destination", got)
 	}
 }
+
+// TestValidateRework asserts ValidateRework returns ValidateFormat's findings, followed by a blocking rework-first-card finding only when first_card differs from the told number.
+func TestValidateRework(t *testing.T) {
+	dir := t.TempDir()
+	plan := minimalPlan(t, dir)
+	plan.Format = 4 // forces a format-unrecognized finding so the prefix is non-empty.
+	plan.FirstCard = 3
+
+	base, err := ValidateFormat(plan, dir)
+	if err != nil {
+		t.Fatalf("ValidateFormat(...) returned error: %v", err)
+	}
+
+	t.Run("Match", func(t *testing.T) {
+		got, err := ValidateRework(plan, dir, 3)
+		if err != nil {
+			t.Fatalf("ValidateRework(...) returned error: %v", err)
+		}
+		if len(got) != len(base) {
+			t.Fatalf("ValidateRework(...) = %v; want exactly ValidateFormat's %v", got, base)
+		}
+		for i := range base {
+			if got[i] != base[i] {
+				t.Errorf("finding %d = %+v; want %+v", i, got[i], base[i])
+			}
+		}
+	})
+
+	t.Run("Mismatch", func(t *testing.T) {
+		got, err := ValidateRework(plan, dir, 7)
+		if err != nil {
+			t.Fatalf("ValidateRework(...) returned error: %v", err)
+		}
+		if len(got) != len(base)+1 {
+			t.Fatalf("ValidateRework(...) = %v; want ValidateFormat's findings plus one", got)
+		}
+		for i := range base {
+			if got[i] != base[i] {
+				t.Errorf("finding %d = %+v; want %+v", i, got[i], base[i])
+			}
+		}
+		last := got[len(got)-1]
+		if last.Check != "rework-first-card" || last.Severity != SeverityBlocking {
+			t.Errorf("last finding = %+v; want a blocking rework-first-card", last)
+		}
+	})
+}

@@ -17,9 +17,11 @@ Read only these sources, and use read-only git for the diff:
 - The decision record, `{{.decision_record_path}}`.
 - The board entry, via `lyx board get {{.slug}}`.
 - The diff of the task branch `{{.task_branch}}` against its merge base with the parent branch `{{.parent_branch}}` — for example `git diff $(git merge-base {{.parent_branch}} {{.task_branch}}) {{.task_branch}}`.
-- The run record, `{{.run_record_path}}`, only as a source of manual-check items.
-  When it carries an `## Integration suite failed` section, carry that failure into your description as an item for the reviewer to check.
-  When it carries an `## Integration suite triage` section, carry it into your description as an item for the reviewer to check too, naming the flaky and pre-existing identities it lists.
+- The run records, one per plan generation with the oldest first and the live one last, only as a source of manual-check items:
+{{.run_record_paths}}
+  A manual-check item from an older generation still counts when the live change does not make it obsolete.
+  When a record carries an `## Integration suite failed` section, carry that failure into your description as an item for the reviewer to check.
+  When a record carries an `## Integration suite triage` section, carry it into your description as an item for the reviewer to check too, naming the flaky and pre-existing identities it lists.
 
 ## What to write
 

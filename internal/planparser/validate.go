@@ -178,7 +178,9 @@ var knownNonCardFiles = map[string]bool{
 	AmendmentsFileName: true,
 }
 
-// checkIndexFileConsistency implements index-file-mismatch: every *.md file on disk must be named by some parsed card, and card numbers must run 1..M with no gaps or duplicates.
+// checkIndexFileConsistency implements index-file-mismatch: every *.md file on disk must be named by some parsed card, and card numbers must run first_card..first_card+M-1 (first_card defaults to 1) with no gaps or duplicates.
+// A non-positive or non-integer first_card is a finding of its own, and the numbering half then checks against 1.
+// This check anchors the Card Index numbering that card-numbering compares each card heading against.
 func checkIndexFileConsistency(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
@@ -228,15 +230,28 @@ func checkIndexFileConsistency(plan *Plan) []ValidationError {
 		}
 	}
 
+	first := plan.FirstCard
+	if plan.FirstCardInvalid != "" {
+		findings = append(findings, ValidationError{
+			Check:  "index-file-mismatch",
+			Detail: fmt.Sprintf("first_card %q is not a positive integer; numbering is checked against 1", plan.FirstCardInvalid),
+		})
+		first = 1
+	}
+	if first < 1 {
+		// A hand-built Plan leaves FirstCard at its zero value, which means the default.
+		first = 1
+	}
+
 	for i, c := range plan.Cards {
-		want := i + 1
+		want := first + i
 		if c.Number != want {
 			findings = append(findings, ValidationError{
 				Check: "index-file-mismatch",
 				Card:  cardID(c),
 				Detail: fmt.Sprintf(
-					"Card Index numbering has a gap or duplicate: expected card number %d at index position %d, got %d",
-					want, i+1, c.Number,
+					"Card Index numbering has a gap, duplicate or card below first_card (%d): expected card number %d at index position %d, got %d",
+					first, want, i+1, c.Number,
 				),
 			})
 		}
@@ -1016,6 +1031,7 @@ func checkProsaSymbolTarget(plan *Plan) []ValidationError {
 }
 
 // checkCardNumbering implements card-numbering: a card file's heading number must equal the Card Index number.
+// The Card Index numbering itself is anchored at first_card by index-file-mismatch.
 func checkCardNumbering(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
