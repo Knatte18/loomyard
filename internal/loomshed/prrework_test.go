@@ -426,8 +426,8 @@ func TestPRRework_CrashResumeConverges(t *testing.T) {
 			t.Fatalf("first Call err = %v; want the commit failure", err)
 		}
 		f.mustDone()
-		if f.roundDirs() != 1 || f.commits != 1 || len(f.archiveCalls) != 1 {
-			t.Errorf("rounds=%d commits=%d archives=%d; want 1 each", f.roundDirs(), f.commits, len(f.archiveCalls))
+		if f.roundDirs() != 1 || f.commits != 1 || len(f.archiveCalls) != 1 || f.innerCalls != 1 {
+			t.Errorf("rounds=%d commits=%d archives=%d session=%d; want 1 each: a classified round only needs its commit", f.roundDirs(), f.commits, len(f.archiveCalls), f.innerCalls)
 		}
 		if rec := f.readRecord(1); rec.Class != ReworkClassRequired {
 			t.Errorf("class = %q; want required", rec.Class)

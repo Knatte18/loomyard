@@ -170,8 +170,12 @@ func (p *prRework) Call(ctx context.Context) (shedengine.Outcome, shedengine.Out
 	if err := p.recreateReviewRunDirs(); err != nil {
 		return "", shedengine.OutputPointer{}, err
 	}
+	if rec.Class != "" {
+		// The session finished and the round was classified before the round commit was interrupted, so only the commit remains.
+		return p.commitRound()
+	}
 
-	told := ReworkTold{FirstCard: rec.FirstCard, PriorPlanDir: filepath.Join(roundDir, reworkPriorDir, reworkPriorPlan)}
+	told :=ReworkTold{FirstCard: rec.FirstCard, PriorPlanDir: filepath.Join(roundDir, reworkPriorDir, reworkPriorPlan)}
 	outcome, pointer, err := p.session(told).Call(ctx)
 	if err != nil || outcome != shedengine.Done {
 		return outcome, pointer, err
@@ -188,6 +192,11 @@ func (p *prRework) Call(ctx context.Context) (shedengine.Outcome, shedengine.Out
 	if err := p.finishRound(roundDir, rec, pointer.Path); err != nil {
 		return "", shedengine.OutputPointer{}, err
 	}
+	return p.commitRound()
+}
+
+// commitRound commits the classified round, then removes the pending rejection and returns Done.
+func (p *prRework) commitRound() (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := p.deps.Commit(); err != nil {
 		return "", shedengine.OutputPointer{}, fmt.Errorf("loomshed: %s: commit rework round: %w", p.name, err)
 	}
