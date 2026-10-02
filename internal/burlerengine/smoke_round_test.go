@@ -315,7 +315,10 @@ func TestSmokeBurlerRoundToyFixture(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load shuttle config: %v", err)
 	}
-	reedGeom := hubgeom.ReedGeometry(h.Location)
+	reedGeom, err := hubgeom.ReedGeometry(h.Location)
+	if err != nil {
+		t.Fatalf("reed geometry: %v", err)
+	}
 	reedEngine := reedengine.New(reedCfg, reedGeom)
 	runner := shuttleengine.NewRunner(reedEngine, claudeengine.New(), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 	engine := burlerengine.New(runner, hubgeom.BurlerGeometry(h.Location), burlerengine.Config{}, fabricengine.StencilsDir(h.Location.HubPath), "")

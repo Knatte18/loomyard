@@ -22,7 +22,6 @@ type Config struct {
 	Height        int    `yaml:"height"`
 	CollapsedRows int    `yaml:"collapsed_rows"`
 	MinFullRows   int    `yaml:"min_full_rows"`
-	StrandName    string `yaml:"strand_name"`
 
 	DebugLog string `yaml:"debug_log"`
 

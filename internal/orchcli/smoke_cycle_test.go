@@ -206,7 +206,11 @@ poll_interval_ms: 500
 	if err != nil {
 		t.Fatalf("load reed config: %v", err)
 	}
-	reed := reedengine.New(reedCfg, hubgeom.ReedGeometry(h.Location))
+	reedGeom, err := hubgeom.ReedGeometry(h.Location)
+	if err != nil {
+		t.Fatalf("reed geometry: %v", err)
+	}
+	reed := reedengine.New(reedCfg, reedGeom)
 	shuttleCfg, err := shuttleengine.LoadConfig(prime, "shuttle")
 	if err != nil {
 		t.Fatalf("load shuttle config: %v", err)

@@ -63,6 +63,7 @@ func newClonedHubFixture(t *testing.T) clonedHubFixture {
 		WarpURL:        filepath.ToSlash(warpBare),
 		Subpath:        ".",
 		ForceBootstrap: true,
+		Shortname:      "tst",
 	})
 	if err != nil {
 		t.Fatalf("CloneHub() error = %v; want nil", err)

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -21,8 +22,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// orchStrandName names the orchestrator strand in the prime's reed session.
-const orchStrandName = "orch"
+// orchStrandName is the role the orchestrator strand is added and addressed by in the prime's reed session.
+const orchStrandName = agentname.RoleOrch
 
 // Envelope "action" values.
 const (
@@ -66,11 +67,11 @@ func (c *orchCLI) orchSpec(prompt string, now time.Time) shuttleengine.Spec {
 	}
 }
 
-// orchStrands returns the strands carrying the orchestrator's name.
+// orchStrands returns the strands agentname.Matches addresses as the orchestrator.
 func orchStrands(strands []reedengine.StrandStatus) []reedengine.StrandStatus {
 	var found []reedengine.StrandStatus
 	for _, s := range strands {
-		if s.Name == orchStrandName {
+		if agentname.Matches(s.Name, orchStrandName) {
 			found = append(found, s)
 		}
 	}

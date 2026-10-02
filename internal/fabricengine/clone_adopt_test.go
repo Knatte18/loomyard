@@ -278,6 +278,7 @@ func TestCloneHub_AdoptsExistingRemoteWeftPrimaryBranch(t *testing.T) {
 		WarpURL:        filepath.ToSlash(warpBare),
 		Subpath:        ".",
 		ForceBootstrap: true,
+		Shortname:      "tst",
 	})
 	if err != nil {
 		t.Fatalf("CloneHub() error = %v; want nil", err)
@@ -335,6 +336,7 @@ func TestCloneHub_CreatesFreshWeftPrimaryBranch(t *testing.T) {
 		WarpURL:        filepath.ToSlash(warpBare),
 		Subpath:        ".",
 		ForceBootstrap: true,
+		Shortname:      "tst",
 	})
 	if err != nil {
 		t.Fatalf("CloneHub() error = %v; want nil", err)
@@ -390,6 +392,7 @@ func TestCloneHub_StrictAbortRemovesHubOnFailure(t *testing.T) {
 		WarpURL:        filepath.ToSlash(nonExistentWarp),
 		Subpath:        ".",
 		ForceBootstrap: true,
+		Shortname:      "tst",
 	})
 	if err == nil {
 		t.Fatalf("CloneHub should have failed with a non-existent warp remote")
@@ -416,9 +419,10 @@ func TestCloneHub_BoardWorktreeOrphanBranchOnEmptyWeftRemote(t *testing.T) {
 	// weftBare is a genuinely empty remote (makeEmptyBareRemote): the probe's unborn-HEAD check
 	// sets WeftLooksLikeWeft, so the old-order guard never fires and no ForceBootstrap is needed.
 	res, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
-		WeftURL: filepath.ToSlash(weftBare),
-		WarpURL: filepath.ToSlash(warpBare),
-		Subpath: ".",
+		WeftURL:   filepath.ToSlash(weftBare),
+		WarpURL:   filepath.ToSlash(warpBare),
+		Subpath:   ".",
+		Shortname: "tst",
 	})
 	if err != nil {
 		t.Fatalf("CloneHub() error = %v; want nil", err)
@@ -464,9 +468,10 @@ func TestCloneHub_EmptyWeftRemoteWithForeignDefaultBranch(t *testing.T) {
 
 	cloneParent := t.TempDir()
 	res, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
-		WeftURL: filepath.ToSlash(weftBare),
-		WarpURL: filepath.ToSlash(warpBare),
-		Subpath: ".",
+		WeftURL:   filepath.ToSlash(weftBare),
+		WarpURL:   filepath.ToSlash(warpBare),
+		Subpath:   ".",
+		Shortname: "tst",
 	})
 	if err != nil {
 		t.Fatalf("CloneHub() error = %v; want nil", err)
@@ -500,6 +505,7 @@ func TestCloneHub_AnchorCreatePath(t *testing.T) {
 		WarpURL:        filepath.ToSlash(warpBare),
 		Subpath:        "backend",
 		ForceBootstrap: true,
+		Shortname:      "tst",
 	})
 	if err != nil {
 		t.Fatalf("CloneHub() error = %v; want nil", err)
@@ -549,6 +555,7 @@ func TestCloneHub_AnchorTypoPathHardErrors(t *testing.T) {
 		WarpURL:        filepath.ToSlash(warpBare),
 		Subpath:        "backedn",
 		ForceBootstrap: true,
+		Shortname:      "tst",
 	})
 	if err == nil {
 		t.Fatalf("CloneHub() with a nonexistent subpath should have failed")
@@ -577,6 +584,7 @@ func TestCloneHub_AnchorFileNotDirectoryHardErrors(t *testing.T) {
 		WarpURL:        filepath.ToSlash(warpBare),
 		Subpath:        "README.md",
 		ForceBootstrap: true,
+		Shortname:      "tst",
 	})
 	if err == nil {
 		t.Fatalf("CloneHub() with a file-valued subpath should have failed")
@@ -606,6 +614,7 @@ func TestCloneHub_AnchorRootDefaultPath(t *testing.T) {
 		WarpURL:        filepath.ToSlash(warpBare),
 		Subpath:        ".",
 		ForceBootstrap: true,
+		Shortname:      "tst",
 	})
 	if err != nil {
 		t.Fatalf("CloneHub() error = %v; want nil", err)
@@ -760,6 +769,7 @@ func TestCloneHub_RejectsUnusableSubpath(t *testing.T) {
 				WarpURL:        filepath.ToSlash(warpBare),
 				Subpath:        tt.subpath,
 				ForceBootstrap: true,
+				Shortname:      "tst",
 			})
 			if err == nil {
 				t.Fatalf("CloneHub(--subpath %q) = nil error; want a rejection", tt.subpath)
@@ -807,6 +817,7 @@ func TestCloneHub_RefusesAWarpRemoteWhoseHeadNamesANonexistentBranch(t *testing.
 			WeftURL:        filepath.ToSlash(weftRemote),
 			WarpURL:        filepath.ToSlash(warpRemote),
 			ForceBootstrap: true,
+			Shortname:      "tst",
 		})
 		if err == nil {
 			t.Fatalf("CloneHub against a warp remote whose HEAD names a nonexistent ref = nil; want a refusal")
@@ -846,6 +857,7 @@ func TestCloneHub_RefusesAWarpRemoteWhoseHeadNamesANonexistentBranch(t *testing.
 			WeftURL:        filepath.ToSlash(weftRemote),
 			WarpURL:        filepath.ToSlash(emptyWarp),
 			ForceBootstrap: true,
+			Shortname:      "tst",
 		}); err != nil {
 			t.Fatalf("CloneHub against a genuinely EMPTY warp remote = %v; want nil — an unborn warp HEAD with no remote branches is the documented bootstrap state, not the refused conjunction", err)
 		}

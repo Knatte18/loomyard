@@ -55,6 +55,11 @@ func (p posixShell) Source(path string) string {
 	return ". " + p.Quote(path)
 }
 
+// EnvRef returns the double-quoted `"${KEY}"` expansion, so an unset or spaced value stays one word.
+func (posixShell) EnvRef(key string) string {
+	return `"${` + key + `}"`
+}
+
 // ScriptExt returns ".sh".
 func (posixShell) ScriptExt() string {
 	return ".sh"

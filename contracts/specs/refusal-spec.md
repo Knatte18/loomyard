@@ -102,6 +102,8 @@ A correctness halt clears only on evidence that HEAD and every suspect path matc
 | re-baseline persist failed, bracket verb | begin-batch or record-batch cannot persist the plan-fingerprint re-baseline | transient | re-run the same verb; the re-baseline is recomputed from the plan on disk |
 | re-baseline persist failed, validate | `lyx webster validate` cannot persist the plan-fingerprint re-baseline | transient | re-run `lyx webster validate` alone |
 | standalone reed boot failed | the standalone reed session does not come up | transient | transient, re-run the verb |
+| strand spawn: no shortname | a strand spawn on a hub whose `.lyx-shortname` records no shortname | correctness halt | `lyx fabric shortname <shortname>` records it, then retry |
+| strand spawn: worktree name not a slug | a strand spawn in a worktree whose name does not fit the name grammar | correctness halt | `lyx fabric add <slug>` creates the task under a slug that fits |
 | wiring guards | nil deps, empty paths and an invalid batcher or geometry, unreachable from any on-disk state a run can produce | wiring guard | none per row; grouped |
 | raw I/O | `stat`, `mkdir`, `read` or `write` of a run file fails | transient | re-run the refused verb; nothing is mutated |
 
@@ -121,6 +123,8 @@ A correctness halt clears only on evidence that HEAD and every suspect path matc
 | status watch as JSON | `status` is given both `--watch` and `--json` | correctness halt | drop `--json`, or drop `--watch` for the JSON envelope |
 | seed disagrees | `seed` finds the run-id already seeded with different values | correctness halt | keep the existing seed and drive it (`lyx shed status <run-id>` shows it), or address a different run-id |
 | seed refuses here | the seed verb runs outside the worktree the recipe drives | correctness halt | run `lyx shed seed` from the worktree the recipe drives, which the cause names |
+| strand spawn: no shortname | a producer's strand spawn on a hub whose `.lyx-shortname` records no shortname | correctness halt | `lyx fabric shortname <shortname>` records it, then retry |
+| strand spawn: worktree name not a slug | a producer's strand spawn in a worktree whose name does not fit the name grammar | correctness halt | `lyx fabric add <slug>` creates the task under a slug that fits |
 | llm driver without bootstrap | `--driver llm` on a recipe with no bootstrap verb | correctness halt | re-run with `--driver go` |
 | wiring guards | nil deps, an invalid producer list, empty paths | wiring guard | none per row; grouped |
 | raw I/O | `stat`, `mkdir`, `read` or `write` of a status, seed or lock file fails | transient | re-run the refused verb; nothing is mutated |

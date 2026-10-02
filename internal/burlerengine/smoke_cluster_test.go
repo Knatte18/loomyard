@@ -133,7 +133,10 @@ func newClusterSmokeEngine(t *testing.T) (*burlerengine.Engine, *hubforge.Hub) {
 	if err != nil {
 		t.Fatalf("load shuttle config: %v", err)
 	}
-	reedGeom := hubgeom.ReedGeometry(h.Location)
+	reedGeom, err := hubgeom.ReedGeometry(h.Location)
+	if err != nil {
+		t.Fatalf("reed geometry: %v", err)
+	}
 	reedEngine := reedengine.New(reedCfg, reedGeom)
 	runner := shuttleengine.NewRunner(reedEngine, claudeengine.New(), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 	cfg := burlerengine.Config{Lenses: clusterSmokeLenses, Fans: clusterSmokeFans}

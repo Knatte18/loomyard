@@ -19,6 +19,8 @@ type LivePane struct {
 	Width  int    `json:"width"`
 	Height int    `json:"height"`
 	PID    int    `json:"pid"`
+	// Title is the pane title, a display mirror of the strand's full name; empty when unset.
+	Title string `json:"title,omitempty"`
 }
 
 // parsePaneList parses list-panes output into LivePane values.
@@ -36,9 +38,14 @@ func parsePaneList(out string) ([]LivePane, error) {
 			continue
 		}
 
-		parts := strings.Fields(line)
+		// The title is the last field and may hold spaces, so everything after the sixth field is the title.
+		parts := strings.SplitN(line, " ", 7)
 		if len(parts) < 6 {
 			return nil, fmt.Errorf("invalid pane format: %q", line)
+		}
+		title := ""
+		if len(parts) == 7 {
+			title = parts[6]
 		}
 
 		// tmux reports pane_dead as "1"/"0"; remain-on-exit keeps the pane
@@ -69,6 +76,7 @@ func parsePaneList(out string) ([]LivePane, error) {
 			Width:  width,
 			Height: height,
 			PID:    pid,
+			Title:  title,
 		})
 	}
 

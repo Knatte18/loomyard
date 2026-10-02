@@ -155,7 +155,7 @@ func TestStartLLMDriverArm_AddressesRunBySlug(t *testing.T) {
 	if strings.Contains(prompt, `"self"`) || strings.Contains(prompt, string(filepath.Separator)+"self"+string(filepath.Separator)) {
 		t.Errorf("prompt = %q; want no literal self run-id or report path segment", prompt)
 	}
-	if !strings.Contains(prompt, "lyx reed remove --name loom-driver --detach") {
+	if !strings.Contains(prompt, "lyx reed remove --name driver --detach") {
 		t.Errorf("prompt = %q; want the teardown command", prompt)
 	}
 }

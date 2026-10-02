@@ -450,7 +450,7 @@ func TestLaunchStrandLocked_SendsThePreludeAheadOfTheStrandCommand(t *testing.T)
 	if strings.Contains(wantLiteral, "\n") {
 		t.Errorf("source statement payload = %q, want a single line with no newline", wantLiteral)
 	}
-	if got, want := readLaunchScript(t, e, s.GUID), composePaneLaunchLine(sh, launchCmd, s.GUID)+"\n"; got != want {
+	if got, want := readLaunchScript(t, e, s.GUID), composePaneLaunchLine(sh, launchCmd, s.GUID, s.Name, e.geom.ParentName)+"\n"; got != want {
 		t.Errorf("launch script = %q, want the composed line %q", got, want)
 	}
 
@@ -474,7 +474,7 @@ func TestLaunchStrandLocked_RelaunchRegeneratesTheScript(t *testing.T) {
 			t.Fatalf("launchStrandLocked(%q): %v", cmd, err)
 		}
 	}
-	if got, want := readLaunchScript(t, e, "new"), composePaneLaunchLine(shell.ForGOOS(), "second cmd", "new")+"\n"; got != want {
+	if got, want := readLaunchScript(t, e, "new"), composePaneLaunchLine(shell.ForGOOS(), "second cmd", "new", s.Name, e.geom.ParentName)+"\n"; got != want {
 		t.Errorf("launch script = %q, want %q", got, want)
 	}
 }
@@ -532,7 +532,7 @@ func TestLaunchStrandLocked_WriteFailureSendsTheFullLine(t *testing.T) {
 	if err := e.launchStrandLocked(st, &st.Strands[0], launchCmd); err != nil {
 		t.Fatalf("launchStrandLocked: %v", err)
 	}
-	want := sendKeysLiteralArg(composePaneLaunchLine(shell.ForGOOS(), launchCmd, "guid-w"))
+	want := sendKeysLiteralArg(composePaneLaunchLine(shell.ForGOOS(), launchCmd, "guid-w", st.Strands[0].Name, e.geom.ParentName))
 	if first := calls[0]; first[len(first)-1] != want {
 		t.Errorf("first send-keys args = %v, want the full composed line %q", first, want)
 	}
@@ -639,5 +639,50 @@ func TestLaunchStrandLocked_SplitWindowCarriesNoTrailingShellCommand(t *testing.
 	last, secondLast := splitArgs[len(splitArgs)-1], splitArgs[len(splitArgs)-2]
 	if secondLast != "-F" || last != "#{pane_id}" {
 		t.Errorf("split-window argv = %v, want it to end with \"-F\" \"#{pane_id}\" and nothing after -- a trailing shell-command argument would make tmux exec a non-login shell that skips the pane's profile", splitArgs)
+	}
+}
+
+// TestLaunchStrandLocked_MirrorsTheFullNameIntoThePaneTitle pins that the two title commands run in order between the split and the send-keys, and carry the strand's full name.
+func TestLaunchStrandLocked_MirrorsTheFullNameIntoThePaneTitle(t *testing.T) {
+	e := newTestEngine(t)
+
+	withInjectedExecutablePath(t, func() (string, error) { return "/opt/lyx/bin/lyx", nil })
+
+	var order []string
+	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
+		switch args[0] {
+		case "list-panes":
+			return "%selvage 0 0 100 20 4321\n", nil
+		case "split-window":
+			order = append(order, "split-window")
+			return "%new\n", nil
+		case "set-option", "select-pane", "send-keys":
+			order = append(order, strings.Join(args, " "))
+		}
+		return "", nil
+	}
+
+	st := &ReedState{SelvagePaneID: "%selvage"}
+	st.Strands = append(st.Strands, Strand{GUID: "new", Name: "tst:slug:worker"})
+	s := &st.Strands[0]
+
+	if err := e.launchStrandLocked(st, s, "claude --continue"); err != nil {
+		t.Fatalf("launchStrandLocked: %v", err)
+	}
+
+	if len(order) < 4 {
+		t.Fatalf("recorded calls = %v, want split-window, set-option, select-pane, send-keys", order)
+	}
+	if order[0] != "split-window" {
+		t.Errorf("first call = %q, want split-window", order[0])
+	}
+	if want := "set-option -p -t %new allow-set-title off"; order[1] != want {
+		t.Errorf("second call = %q, want %q", order[1], want)
+	}
+	if want := "select-pane -t %new -T tst:slug:worker"; order[2] != want {
+		t.Errorf("third call = %q, want %q", order[2], want)
+	}
+	if !strings.HasPrefix(order[3], "send-keys") {
+		t.Errorf("fourth call = %q, want send-keys after the title commands", order[3])
 	}
 }

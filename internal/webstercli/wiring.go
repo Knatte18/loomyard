@@ -182,7 +182,10 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetD
 		geom.PlanDir = resolvedPlanDir
 	}
 
-	reedGeom := hubgeom.ReedGeometry(loc)
+	reedGeom, err := hubgeom.ReedGeometry(loc)
+	if err != nil {
+		return err
+	}
 	reedEngine := reedengine.New(reedCfg, reedGeom)
 	claudeEngine := claudeengine.New()
 	runner := shuttleengine.NewRunner(reedEngine, claudeEngine, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)

@@ -60,10 +60,10 @@ Example:
 		RunE: clihelp.GroupRunE,
 	}
 
-	// clone [--reset] [--subpath <rel>] [--force-bootstrap] [--into <dir>] <weft-url> [<warp-url>]
+	// clone [--shortname <shortname>] [--reset] [--subpath <rel>] [--force-bootstrap] [--into <dir>] <weft-url> [<warp-url>]
 	var cloneCmd *cobra.Command
 	cloneCmd = &cobra.Command{
-		Use:   "clone [--reset] [--subpath <rel>] [--force-bootstrap] [--into <dir>] <weft-url> [<warp-url>]",
+		Use:   "clone [--shortname <shortname>] [--reset] [--subpath <rel>] [--force-bootstrap] [--into <dir>] <weft-url> [<warp-url>]",
 		Short: "bootstrap a new hub, wiring the entire topology in one shot",
 		Long: `Clone two repositories into a new hub directory (<parent>/<warp-name>-LYXHUB)
 and wire everything: the warp prime, weft prime, _board worktree, lyx-anchor
@@ -85,6 +85,13 @@ warp URL is supplied for an unbound weft.
                            one-argument form its name is derived from the
                            recorded binding
   <warp-name>` + weftname.Suffix + `       — weft prime (lyx artefacts: config, raddle, weft commits)
+
+Use --shortname <shortname> to give the repo its shortname (2-6 characters
+matching [a-z][a-z0-9]{1,5}). It is required the first time a weft is bound,
+and is recorded in ` + fabricengine.ShortnameFileName + ` beside the warp binding. A weft that
+already records a shortname supplies it, and a differing --shortname is refused. A bound
+weft with no record clones with a warning; record the shortname with
+"lyx fabric shortname <shortname>" or by passing --shortname here.
 
 Use --reset to tear down an existing hub before cloning (idempotent re-clone).
 The teardown is refused unless the target really is a fabric hub — it must hold
@@ -127,7 +134,7 @@ Clone wires everything automatically — no follow-up command is needed to
 activate junctions or config.
 
 Example:
-  lyx fabric clone --subpath backend https://github.com/user/mono-weft https://github.com/user/mono
+  lyx fabric clone --shortname mono --subpath backend https://github.com/user/mono-weft https://github.com/user/mono
   lyx fabric clone https://github.com/user/repo-weft
   lyx fabric clone --into ~/repos https://github.com/user/repo-weft`,
 		RunE: clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int {
@@ -135,9 +142,11 @@ Example:
 			subpath, _ := cloneCmd.Flags().GetString("subpath")
 			forceBootstrap, _ := cloneCmd.Flags().GetBool("force-bootstrap")
 			into, _ := cloneCmd.Flags().GetString("into")
-			return runCloneWithReset(ctx, out, args, reset, subpath, forceBootstrap, into)
+			shortname, _ := cloneCmd.Flags().GetString("shortname")
+			return runCloneWithReset(ctx, out, args, reset, subpath, forceBootstrap, into, shortname)
 		}),
 	}
+	cloneCmd.Flags().String("shortname", "", "the repo's shortname, 2-6 characters matching [a-z][a-z0-9]{1,5}; required when the weft is bound for the first time, recorded as "+fabricengine.ShortnameFileName)
 	cloneCmd.Flags().Bool("reset", false, "remove an existing hub before cloning (idempotent re-clone)")
 	// The default is the EMPTY string, not "." — CloneHub normalises empty to the "." root anchor
 	// anyway, and only an empty default lets it tell "the operator typed nothing" apart from "the
@@ -422,6 +431,25 @@ always tears wiring down. It leaves the repo-wide weft:main records intact
 Example:
   lyx fabric unwire`,
 		RunE: clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int { return runUnwire(ctx, out, args) }),
+	})
+
+	cmd.AddCommand(&cobra.Command{
+		Use:   "shortname [<shortname>]",
+		Args:  cobra.MaximumNArgs(1),
+		Short: "print or record the hub's shortname",
+		Long: `Print the hub's shortname, or record one.
+
+With no argument it prints the recorded shortname. With one argument it records the
+shortname in ` + fabricengine.ShortnameFileName + ` on weft:main when the hub has none, committing and
+pushing it; the shortname is 2-6 characters matching [a-z][a-z0-9]{1,5}.
+
+Recording the shortname a hub already has is a no-op. A different shortname is refused:
+changing it would orphan every agent name already in use.
+
+Example:
+  lyx fabric shortname
+  lyx fabric shortname ly`,
+		RunE: clihelp.WrapRunCtx(runShortname),
 	})
 
 	// Wire the weft-git content-sync verbs (status/commit/push/pull/sync), their

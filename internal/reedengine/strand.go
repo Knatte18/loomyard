@@ -10,8 +10,8 @@ package reedengine
 
 import (
 	"fmt"
-	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shell"
@@ -19,9 +19,14 @@ import (
 
 // AddSpec carries the caller-supplied inputs AddStrand needs to build a new Strand.
 type AddSpec struct {
-	Role, Round, NameOverride string
-	Parent                    string
-	Cmd, ResumeCmd            string
+	// Role is the role segment of the strand's name, numbered `-2`, `-3` against the worktree's strands when taken;
+	// empty means reed's default role, defaultRole.
+	Role string
+	// NameOverride is an explicit name, a role segment or a full name, and is never renumbered:
+	// an add naming a name another strand holds is refused.
+	NameOverride   string
+	Parent         string
+	Cmd, ResumeCmd string
 	// SessionID is opaque caller metadata reed never reads — mirroring
 	// Strand.SessionID in state.go, it is stamped verbatim into the
 	// appended Strand and never interpreted or branched on by reed.
@@ -57,10 +62,8 @@ func validateAnchor(anchor render.Anchor) error {
 // validateIfAbsent rejects spec at the op boundary, before any state is loaded, when IfAbsent is set
 // without NameOverride.
 //
-// --if-absent requires --name because resolveStrandName falls back to guid[:8] when NameOverride is
-// empty, and the shipped templates (template_posix.yaml, template_windows.yaml) carry <SHORT_GUID>,
-// minted fresh per invocation — so a templated name can never match an existing strand, and
-// --if-absent would stack a duplicate strand on every reopen instead of ever finding one to match.
+// --if-absent requires --name because an auto-numbered role never matches the strand it would duplicate:
+// the number moves past the existing strand, so --if-absent would stack a duplicate strand on every reopen instead of ever finding one to match.
 func validateIfAbsent(spec AddSpec) error {
 	if spec.IfAbsent && spec.NameOverride == "" {
 		return fmt.Errorf("--if-absent requires --name")
@@ -141,22 +144,68 @@ func descendantSubtree(strands []Strand, guid string) []string {
 	return out
 }
 
-// resolveStrandName computes AddStrand's display name: NameOverride wins,
-// else Role fills the template, else the short guid.
-func resolveStrandName(template string, spec AddSpec, guid, worktreeRoot string) string {
+// defaultRole is the role a spec naming neither Role nor NameOverride takes, so an operator's `lyx reed add --cmd …` keeps working.
+const defaultRole = "strand"
+
+// validateNaming refuses, before any tmux command, an add or replace whose name no geometry-told prefix can form,
+// and returns the full name NameOverride resolves to ("" when it is empty).
+// An empty shortname is a hub that has none;
+// a told shortname or slug failing its grammar is a wiring guard.
+func (e *Engine) validateNaming(spec AddSpec) (string, error) {
+	shortname, slug := e.geom.NameShortname, e.geom.NameSlug
+	if shortname == "" {
+		return "", fmt.Errorf("no strand name can be formed: this hub records no shortname; way forward: lyx fabric shortname <shortname> records it, then retry")
+	}
+	if err := agentname.ValidateShortname(shortname); err != nil {
+		return "", fmt.Errorf("no strand name can be formed: the told shortname is invalid: %w", err)
+	}
+	if slug != "" {
+		if err := agentname.ValidateSlug(slug); err != nil {
+			return "", fmt.Errorf("no strand name can be formed: worktree %q does not fit the name grammar [a-z][a-z0-9-]*; way forward: lyx fabric add <slug> creates the task under a slug that fits: %w",
+				e.geom.WorktreeName, err)
+		}
+	}
+	if spec.NameOverride == "" {
+		return "", nil
+	}
+	n, err := agentname.Resolve(shortname, slug, spec.NameOverride)
+	if err != nil {
+		return "", err
+	}
+	return n.String(), nil
+}
+
+// strandNameLocked forms the full name of the strand spec describes against st's strands:
+// an explicit NameOverride as given, else Role (default defaultRole) numbered past every role segment in state, live or dormant.
+// The geometry's shortname and slug were validated by validateNaming.
+func (e *Engine) strandNameLocked(st *ReedState, spec AddSpec) (string, error) {
+	shortname, slug := e.geom.NameShortname, e.geom.NameSlug
 	if spec.NameOverride != "" {
-		return spec.NameOverride
+		n, err := agentname.Resolve(shortname, slug, spec.NameOverride)
+		if err != nil {
+			return "", err
+		}
+		full := n.String()
+		for _, s := range st.Strands {
+			if s.Name == full {
+				return "", fmt.Errorf("strand name %q is already held by strand %s; way forward: lyx reed remove --name %s frees it, or pass another role",
+					full, s.GUID, n.Role)
+			}
+		}
+		return full, nil
 	}
-	if spec.Role == "" {
-		return guid[:8]
+
+	role := spec.Role
+	if role == "" {
+		role = defaultRole
 	}
-	parts := map[string]string{
-		"<ROLE>":       spec.Role,
-		"<ROUND>":      spec.Round,
-		"<WORKTREE>":   filepath.Base(worktreeRoot),
-		"<SHORT_GUID>": guid[:8],
+	held := make([]string, 0, len(st.Strands))
+	for _, s := range st.Strands {
+		if n, err := agentname.Parse(s.Name); err == nil {
+			held = append(held, n.Role)
+		}
 	}
-	return FormatStrandName(template, parts)
+	return agentname.Format(shortname, slug, agentname.NumberRole(role, held))
 }
 
 // ifAbsentDecision is the closed set of branch rows AddStrand's --if-absent path chooses among for a
@@ -251,6 +300,11 @@ func (e *Engine) addStrandLocked(st *ReedState, spec AddSpec) (Strand, error) {
 		return Strand{}, fmt.Errorf("generate guid: %w", err)
 	}
 
+	name, err := e.strandNameLocked(st, spec)
+	if err != nil {
+		return Strand{}, err
+	}
+
 	if spec.Parent != "" {
 		if _, ok := strandByGUID(st.Strands, spec.Parent); !ok {
 			return Strand{}, fmt.Errorf("unknown parent %q", spec.Parent)
@@ -262,7 +316,7 @@ func (e *Engine) addStrandLocked(st *ReedState, spec AddSpec) (Strand, error) {
 
 	st.Strands = append(st.Strands, Strand{
 		GUID:      guid,
-		Name:      resolveStrandName(e.cfg.StrandName, spec, guid, e.geom.WorktreeRoot),
+		Name:      name,
 		Worktree:  e.geom.WorktreeRoot,
 		Parent:    spec.Parent,
 		Cmd:       spec.Cmd,
@@ -372,9 +426,7 @@ func removalEmptiedSession(remaining []Strand, sessionGone bool) bool {
 
 // AddStrand registers a new strand from spec and, unless added anchor:hidden, realizes it into a
 // live pane and runs its cmd, then reconciles and re-applies the layout.
-// The engine, not the caller, stamps Worktree and generates GUID, since it owns both this
-// worktree's geometry and guid generation (the guid-dependent <SHORT_GUID> name token cannot be
-// computed before the guid exists).
+// The engine, not the caller, stamps Worktree, generates GUID and forms the strand's full name (strandNameLocked, under the state lock, from the prefix the geometry tells it).
 //
 // AddStrand self-heals a cold worktree: rather than mirroring Status and failing with the friendly
 // no-session error, its pre-flight boots the session through ensureSessionLocked with up's own
@@ -393,6 +445,11 @@ func (e *Engine) AddStrand(spec AddSpec) (Strand, error) {
 		// it must surface before the session pre-flight below — a rejected call must never deposit
 		// a spawned tmux server as residue over what is actually a missing --name.
 		if err := validateIfAbsent(spec); err != nil {
+			return err
+		}
+		// Likewise a name no told prefix can form: refused before the pre-flight so it never boots a tmux server.
+		explicitName, err := e.validateNaming(spec)
+		if err != nil {
 			return err
 		}
 
@@ -417,7 +474,7 @@ func (e *Engine) AddStrand(spec AddSpec) (Strand, error) {
 				return fmt.Errorf("list panes: %w", err)
 			}
 			// aliveIDSet, not liveIDSet: see classifyIfAbsent's own doc comment for why.
-			decision, idx := classifyIfAbsent(st.Strands, spec.NameOverride, aliveIDSet(live))
+			decision, idx := classifyIfAbsent(st.Strands, explicitName, aliveIDSet(live))
 			switch decision {
 			case ifAbsentNoOpAlive, ifAbsentNoOpHidden:
 				// Neither no-op branch mutates anything: no SaveState, no reconcile/apply, and

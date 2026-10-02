@@ -7,6 +7,7 @@
 package hubgeom
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -39,7 +40,7 @@ func TestReedGeometry(t *testing.T) {
 				AnchorRel:    tt.anchorRel,
 			}
 
-			got := ReedGeometry(l)
+			got := reedGeometry(l, false)
 
 			if want := reedengine.ServerName(hub); got.SocketKey != want {
 				t.Errorf("ReedGeometry(l).SocketKey = %q; want %q (ServerName(hub))", got.SocketKey, want)
@@ -118,5 +119,71 @@ func TestBurlerGeometry(t *testing.T) {
 				t.Errorf("BurlerGeometry(l).WorktreeRoot = %q; want != WorktreeRoot %q", got.WorktreeRoot, worktreeRoot)
 			}
 		})
+	}
+}
+
+// TestIsPrimeWorktree pins the .git-entry rule ReedGeometry tells the prime from a task worktree by.
+// A directory, or a gitdir file pointing straight at a git directory, is the main worktree.
+// A gitdir file pointing into worktrees/ is a linked one, and anything else is an error.
+func TestIsPrimeWorktree(t *testing.T) {
+	tests := []struct {
+		name      string
+		setup     func(t *testing.T, root string)
+		wantPrime bool
+		wantErr   bool
+	}{
+		{"git directory is the prime", func(t *testing.T, root string) {
+			mkdir(t, filepath.Join(root, ".git"))
+		}, true, false},
+		{"gitdir file into worktrees is a task worktree", func(t *testing.T, root string) {
+			writeFile(t, filepath.Join(root, ".git"), "gitdir: /hub/prime/.git/worktrees/some-task\n")
+		}, false, false},
+		{"gitdir file to a separate git directory is the prime", func(t *testing.T, root string) {
+			writeFile(t, filepath.Join(root, ".git"), "gitdir: /elsewhere/repo.git\n")
+		}, true, false},
+		{"missing entry is an error", func(t *testing.T, root string) {}, false, true},
+		{"file without gitdir is an error", func(t *testing.T, root string) {
+			writeFile(t, filepath.Join(root, ".git"), "not a pointer\n")
+		}, false, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root := t.TempDir()
+			tt.setup(t, root)
+
+			prime, err := isPrimeWorktree(root)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("isPrimeWorktree() error = %v; want error %v", err, tt.wantErr)
+			}
+			if err == nil && prime != tt.wantPrime {
+				t.Errorf("isPrimeWorktree() = %v; want %v", prime, tt.wantPrime)
+			}
+		})
+	}
+}
+
+// TestReedGeometry_PrimeAndTaskSlug asserts the prime is told no slug and a task worktree its own name as the slug.
+func TestReedGeometry_PrimeAndTaskSlug(t *testing.T) {
+	l := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "some-task", AnchorRel: "."}
+
+	if got := reedGeometry(l, true).NameSlug; got != "" {
+		t.Errorf("reedGeometry(prime).NameSlug = %q; want empty", got)
+	}
+	if got := reedGeometry(l, false).NameSlug; got != "some-task" {
+		t.Errorf("reedGeometry(task).NameSlug = %q; want %q", got, "some-task")
+	}
+}
+
+func mkdir(t *testing.T, path string) {
+	t.Helper()
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) = %v", path, err)
+	}
+}
+
+func writeFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("WriteFile(%q) = %v", path, err)
 	}
 }

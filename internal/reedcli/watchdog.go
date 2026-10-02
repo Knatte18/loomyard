@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/cliwire"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -245,7 +246,10 @@ func enterSession(hub, tmuxPath, sessionName string) (watchedSession, error) {
 		return watchedSession{}, err
 	}
 
-	geom := hubgeom.ReedGeometry(location)
+	geom, err := hubgeom.ReedGeometry(location)
+	if err != nil {
+		return watchedSession{}, err
+	}
 	cfg, err := reedengine.LoadConfig(location.AnchorPath(), "reed")
 	if err != nil {
 		return watchedSession{}, err
@@ -265,6 +269,11 @@ func enterSession(hub, tmuxPath, sessionName string) (watchedSession, error) {
 	go func() {
 		if err := eng.Watch(ctx); err != nil {
 			logger.Debug("reed: watchdog's watch loop returned", "session", sessionName, "err", err)
+		}
+	}()
+	go func() {
+		if err := eng.WatchNames(ctx, cliwire.SessionNamer()); err != nil {
+			logger.Debug("reed: watchdog's name repair loop returned", "session", sessionName, "err", err)
 		}
 	}()
 	return watchedSession{eng: eng, cancel: cancel}, nil

@@ -123,6 +123,17 @@ func TestServerBootEnv_ExcludesTraceID(t *testing.T) {
 	}
 }
 
+func TestStripAgentNameEnv_DropsNameAndParentOnly(t *testing.T) {
+	env := []string{"LYX_STRAND_NAME=ly:task:driver", "LYX_PARENT=ly:orch", "LYX_PARENTAL=keep", "PATH=/bin"}
+
+	got := stripAgentNameEnv(env)
+
+	want := []string{"LYX_PARENTAL=keep", "PATH=/bin"}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("stripAgentNameEnv(%v) = %v, want %v", env, got, want)
+	}
+}
+
 func TestPlanUpLaunches_NeverLaunchesAnyStrand(t *testing.T) {
 	tables := [][]Strand{
 		nil,

@@ -116,7 +116,12 @@ rather than booting substrate it cannot reach.`,
 				return nil
 			}
 
-			reedGeom := hubgeom.ReedGeometry(location)
+			reedGeom, err := hubgeom.ReedGeometry(location)
+			if err != nil {
+				output.Err(out, err.Error())
+				clihelp.Abort(ctx, 1)
+				return nil
+			}
 			c.eng = reedengine.New(cfg, reedGeom)
 			c.hubPath = location.HubPath
 			c.anchorPath = location.AnchorPath()
@@ -124,7 +129,7 @@ rather than booting substrate it cannot reach.`,
 		},
 	}
 
-	parent.AddCommand(c.upCmd(), c.downCmd(), c.addCmd(), c.removeCmd(), c.statusCmd(), c.resumeCmd(), c.attachCmd(), c.statuslineCmd(), c.watchdogCmd())
+	parent.AddCommand(c.upCmd(), c.downCmd(), c.addCmd(), c.removeCmd(), c.statusCmd(), c.resumeCmd(), c.attachCmd(), c.statuslineCmd(), c.watchdogCmd(), c.listCmd())
 
 	return parent
 }

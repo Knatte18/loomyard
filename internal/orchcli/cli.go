@@ -131,7 +131,10 @@ Every verb runs from the hub's prime worktree only.`,
 				return fail(err)
 			}
 
-			reedGeom := hubgeom.ReedGeometry(location)
+			reedGeom, err := hubgeom.ReedGeometry(location)
+			if err != nil {
+				return fail(err)
+			}
 			reed := reedengine.New(reedCfg, reedGeom)
 
 			c.location = location

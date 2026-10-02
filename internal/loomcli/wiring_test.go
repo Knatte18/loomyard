@@ -156,6 +156,10 @@ func hubLocation(t *testing.T, worktreeName, anchorRel string) *lyxcwd.Location 
 	t.Helper()
 	hub := t.TempDir()
 	loc := &lyxcwd.Location{HubPath: hub, WorktreeName: worktreeName, AnchorRel: anchorRel}
+	// hubgeom.ReedGeometry stats the worktree's .git entry to tell the prime from a task worktree.
+	if err := os.MkdirAll(filepath.Join(loc.WorktreePath(), ".git"), 0o755); err != nil {
+		t.Fatalf("MkdirAll(.git) = %v; want nil", err)
+	}
 	seedLoomConfig(t, loc.AnchorPath())
 	seedLandingConfig(t, loc.AnchorPath())
 	seedDiscussionStencil(t, hub)

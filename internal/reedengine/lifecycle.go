@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/proc"
@@ -333,6 +334,7 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	// Claude-injected-variable diagnostic, and LYX_TRACE_ID is neither
 	// Claude-injected nor meant to be recorded there.
 	clean = stripTraceID(clean)
+	clean = stripAgentNameEnv(clean)
 	spawnSession := func() error {
 		// debugArgs are tmux GLOBAL flags (e.g. -v/-vv) and must precede
 		// -L/new-session on the argv; -c pins new-session's pane default cwd
@@ -465,6 +467,21 @@ func stripTraceID(env []string) []string {
 	out := make([]string, 0, len(env))
 	for _, entry := range env {
 		if strings.SplitN(entry, "=", 2)[0] == "LYX_TRACE_ID" {
+			continue
+		}
+		out = append(out, entry)
+	}
+	return out
+}
+
+// stripAgentNameEnv removes LYX_STRAND_NAME and LYX_PARENT from env before the tmux server inherits them.
+// A server booted from inside a strand would otherwise hand that strand's name and parent to every pane it later creates,
+// and a pane told no parent exports none of its own, so it would escalate to the booting strand's parent.
+func stripAgentNameEnv(env []string) []string {
+	out := make([]string, 0, len(env))
+	for _, entry := range env {
+		key := strings.SplitN(entry, "=", 2)[0]
+		if key == agentname.StrandNameEnv || key == agentname.ParentEnv {
 			continue
 		}
 		out = append(out, entry)

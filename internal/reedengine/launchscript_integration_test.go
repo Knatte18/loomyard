@@ -58,7 +58,7 @@ func TestLaunchScript_SourcedScriptRunsInThePaneShellScope(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read launch script %q: %v", scriptPath, err)
 	}
-	if want := composePaneLaunchLine(sh, cmd, strand.GUID) + "\n"; string(got) != want {
+	if want := composePaneLaunchLine(sh, cmd, strand.GUID, strand.Name, e.geom.ParentName) + "\n"; string(got) != want {
 		t.Errorf("launch script = %q, want %q", got, want)
 	}
 

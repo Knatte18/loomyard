@@ -212,6 +212,15 @@ Each automatic re-step writes a record under `<scratch_dir>/repairs/` holding:
 After a self-initiated re-step, the next stop rewrites the same report file to cover the whole attempt, listing every automatic re-step since the attempt began.
 Its end-of-session command commits the stop report and the friction notes through the orchestrator's own records-commit verb before ending the session, so this skill itself still makes no commits.
 When the launch prompt names an end-of-session command, run it as the last act, after writing the stop report: the teardown command at `done` or `busy`, and at a park the park command (step 2 of parking), with the session then left open.
+Escalations also notify the parent session, as `## Notifying the parent` describes.
+
+## Notifying the parent
+
+At every escalation, after writing the stop report, send the parent session one short SendMessage when `LYX_PARENT` is set and non-empty.
+Address it to the name `LYX_PARENT` holds, and name the run-id and the stop report's path and nothing more.
+When `LYX_PARENT` is unset or empty, or the send fails, the stop report alone is the escalation;
+record a failed send as a line in the report rather than retrying it.
+A stop at `done` sends nothing, since nothing awaits a decision.
 
 ## Self-report
 

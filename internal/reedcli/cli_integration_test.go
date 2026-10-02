@@ -110,8 +110,8 @@ func TestRunCLI_AddNotUp_SelfHealsAndSucceeds(t *testing.T) {
 	if guid == "" {
 		t.Errorf("RunCLI(add) before up envelope = %s; want a non-empty guid", out.String())
 	}
-	if name, _ := env["name"].(string); name != strandName {
-		t.Errorf("RunCLI(add) before up name = %q; want %q", name, strandName)
+	if name, _ := env["name"].(string); name != "tst:"+strandName {
+		t.Errorf("RunCLI(add) before up name = %q; want %q", name, "tst:"+strandName)
 	}
 
 	out.Reset()

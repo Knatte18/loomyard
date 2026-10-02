@@ -13,11 +13,31 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
+
+func TestReedGeometry_NameShortnameIsDerivedFromHash8(t *testing.T) {
+	t.Parallel()
+
+	target := filepath.Join(string(filepath.Separator), "home", "operator", "src", "some-repo")
+	stateDir := filepath.Join(string(filepath.Separator), "var", "lib", "lyx-state", "abcd1234")
+
+	got := ReedGeometry(target, stateDir, "abcd1234")
+
+	if want := agentname.StandaloneShortname("abcd1234"); got.NameShortname != want {
+		t.Errorf("ReedGeometry().NameShortname = %q; want %q", got.NameShortname, want)
+	}
+	if err := agentname.ValidateShortname(got.NameShortname); err != nil {
+		t.Errorf("ReedGeometry().NameShortname %q fails ValidateShortname: %v", got.NameShortname, err)
+	}
+	if got.NameSlug != "" || got.ParentName != "" {
+		t.Errorf("ReedGeometry() NameSlug/ParentName = %q/%q; want both empty", got.NameSlug, got.ParentName)
+	}
+}
 
 func TestBurlerGeometry(t *testing.T) {
 	t.Parallel()

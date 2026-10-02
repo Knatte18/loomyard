@@ -368,6 +368,42 @@ func TestPwshShell_Source(t *testing.T) {
 	}
 }
 
+func TestPosixShell_EnvRef(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"strand_name", "LYX_STRAND_NAME", `"${LYX_STRAND_NAME}"`},
+		{"parent", "LYX_PARENT", `"${LYX_PARENT}"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := Posix().EnvRef(tt.in); got != tt.want {
+				t.Errorf("Posix().EnvRef(%q) = %q; want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPwshShell_EnvRef(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"strand_name", "LYX_STRAND_NAME", `"$env:LYX_STRAND_NAME"`},
+		{"parent", "LYX_PARENT", `"$env:LYX_PARENT"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := Pwsh().EnvRef(tt.in); got != tt.want {
+				t.Errorf("Pwsh().EnvRef(%q) = %q; want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestPosixShell_ScriptExt(t *testing.T) {
 	if got, want := Posix().ScriptExt(), ".sh"; got != want {
 		t.Errorf("Posix().ScriptExt() = %q; want %q", got, want)

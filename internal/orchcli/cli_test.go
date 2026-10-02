@@ -215,3 +215,17 @@ func TestRunCLI_NoArgsListsSubcommands(t *testing.T) {
 		}
 	}
 }
+
+// TestOrchStrands_MatchesFullAndLegacyNames pins that the orchestrator lookup finds a full-name strand and a legacy exact-name strand, and nothing else.
+func TestOrchStrands_MatchesFullAndLegacyNames(t *testing.T) {
+	strands := []reedengine.StrandStatus{
+		{GUID: "g1", Name: "ly:orch"},
+		{GUID: "g2", Name: "orch"},
+		{GUID: "g3", Name: "ly:orch-2"},
+		{GUID: "g4", Name: "ly:task:driver"},
+	}
+	got := orchStrands(strands)
+	if len(got) != 2 || got[0].GUID != "g1" || got[1].GUID != "g2" {
+		t.Errorf("orchStrands = %+v; want g1 and g2 only", got)
+	}
+}

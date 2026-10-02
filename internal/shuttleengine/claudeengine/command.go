@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -77,10 +78,14 @@ const forkSubagentEnvKey = "CLAUDE_CODE_FORK_SUBAGENT"
 // When notice is non-empty it rides the line as --append-system-prompt,
 // so the session is told which tools are denied;
 // an empty notice leaves the line unchanged.
+// It names the session with --name, passed as a reference to LYX_STRAND_NAME rather than a value:
+// shuttle builds this line before reed forms the strand's name,
+// so the pane shell expands the variable from the export reed's launch script makes.
 // When forkSubagents is true, it wraps the line via sh.WithEnv to enable fork subagent type.
 func buildLaunchCmd(sh shell.Shell, bin, promptPath, settingsPath, sessionID, model, effort, notice string, interactive, forkSubagents bool) string {
 	cmd := sh.Invoke(bin) + " " + sh.ReadFile(promptPath) +
-		" --session-id " + sh.Quote(sessionID) + " --settings " + sh.Quote(settingsPath)
+		" --session-id " + sh.Quote(sessionID) + " --settings " + sh.Quote(settingsPath) +
+		" --name " + sh.EnvRef(agentname.StrandNameEnv)
 	if model != "" {
 		cmd += " --model " + sh.Quote(model)
 	}
@@ -110,9 +115,12 @@ func buildLaunchCmd(sh shell.Shell, bin, promptPath, settingsPath, sessionID, mo
 // timeout, and it came back on the provider default model rather than the one the caller pinned.
 // It carries the notice too, when non-empty: Claude Code re-renders the system prompt from the current flags after a compaction and where recording is not enabled,
 // so a resume line without --append-system-prompt would lose the notice.
+// It carries --name as a reference to LYX_STRAND_NAME, not a value, for the same reason buildLaunchCmd does,
+// and because reed replays this line on every resume, a line without it would bring Claude back unnamed.
 // When forkSubagents is true, the line is wrapped to keep the fork-subagent capability.
 func buildResumeCmd(sh shell.Shell, bin, settingsPath, sessionID, model, effort, notice string, interactive, forkSubagents bool) string {
-	cmd := sh.Invoke(bin) + " --resume " + sh.Quote(sessionID) + " --settings " + sh.Quote(settingsPath)
+	cmd := sh.Invoke(bin) + " --resume " + sh.Quote(sessionID) + " --settings " + sh.Quote(settingsPath) +
+		" --name " + sh.EnvRef(agentname.StrandNameEnv)
 	if model != "" {
 		cmd += " --model " + sh.Quote(model)
 	}

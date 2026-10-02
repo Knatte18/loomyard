@@ -150,7 +150,10 @@ func TestSmokeBurlerRound_AttachesToALiveRoundInsteadOfRespawning(t *testing.T) 
 	if err != nil {
 		t.Fatalf("load shuttle config: %v", err)
 	}
-	reedGeom := hubgeom.ReedGeometry(loc)
+	reedGeom, err := hubgeom.ReedGeometry(loc)
+	if err != nil {
+		t.Fatalf("reed geometry: %v", err)
+	}
 	runner := shuttleengine.NewRunner(reedEngine, shellLaunchEngine{quietSeconds: 3}, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 
 	liveSpec := shuttleengine.Spec{
@@ -256,7 +259,10 @@ func TestSmokeSingleLLM_HarvestsAFinishedRunWithReedStateGone(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load shuttle config: %v", err)
 	}
-	reedGeom := hubgeom.ReedGeometry(loc)
+	reedGeom, err := hubgeom.ReedGeometry(loc)
+	if err != nil {
+		t.Fatalf("reed geometry: %v", err)
+	}
 	runner := shuttleengine.NewRunner(reedEngine, shellLaunchEngine{quietSeconds: 1}, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 
 	spec := shuttleengine.Spec{
