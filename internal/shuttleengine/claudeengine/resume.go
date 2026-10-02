@@ -1,3 +1,7 @@
+// resume.go implements Claude's shuttleengine.SessionResumer: the check that an existing session may be taken over by a new run.
+// It reads the session's transcript under Claude's project directory for the pane cwd and Claude's session registry,
+// and every fact about either layout stays in this file, per the Shuttle Provider-Seam Invariant.
+
 package claudeengine
 
 import (
