@@ -15,8 +15,9 @@ import (
 
 // parentreviewAllowedImports are the only non-stdlib import paths production code in this package may use.
 var parentreviewAllowedImports = map[string]bool{
-	"github.com/Knatte18/loomyard/internal/state":  true,
-	"github.com/Knatte18/loomyard/internal/logger": true,
+	"github.com/Knatte18/loomyard/internal/state":         true,
+	"github.com/Knatte18/loomyard/internal/logger":        true,
+	"github.com/Knatte18/loomyard/internal/shuttleengine": true,
 }
 
 // TestToldGeometryInvariant_AllowlistOnly verifies that every non-test .go file imports only stdlib or an entry in parentreviewAllowedImports.
