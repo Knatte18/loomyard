@@ -22,14 +22,16 @@ func reworkTestEnv(t *testing.T) Env {
 		return shuttleengine.Spec{Prompt: "rework prompt", OutputFiles: []string{filepath.Join(dir, "coverage.md")}}, nil
 	}
 	env.Rework = loomshed.PRReworkDeps{
-		PlanDir:        filepath.Join(dir, "plan"),
-		ReworkDir:      filepath.Join(dir, "rework"),
-		ReworkDirRel:   "_lyx/loom/rework",
-		ReadCommitted:  func(string) ([]byte, bool, error) { return nil, false, nil },
-		ReadRejection:  func() (loomshed.PendingRejection, bool, error) { return loomshed.PendingRejection{}, false, nil },
-		ClearRejection: func() error { return nil },
-		Commit:         func() error { return nil },
-		Rebaseline:     func() error { return nil },
+		PlanDir:          filepath.Join(dir, "plan"),
+		ReworkDir:        filepath.Join(dir, "rework"),
+		ReworkDirRel:     "_lyx/loom/rework",
+		ReviewsDir:       filepath.Join(dir, "reviews"),
+		ReviewRunSubdirs: []string{"plan", "webster"},
+		ReadCommitted:    func(string) ([]byte, bool, error) { return nil, false, nil },
+		ReadRejection:    func() (loomshed.PendingRejection, bool, error) { return loomshed.PendingRejection{}, false, nil },
+		ClearRejection:   func() error { return nil },
+		ArchiveWebster:   func(string) error { return nil },
+		Commit:           func() error { return nil },
 	}
 	return env
 }
@@ -94,7 +96,8 @@ func TestPRReworkEntry_ConstructionFailures(t *testing.T) {
 		{"NilReadRejection", "Rework.ReadRejection", func(e *Env) { e.Rework.ReadRejection = nil }},
 		{"NilClearRejection", "Rework.ClearRejection", func(e *Env) { e.Rework.ClearRejection = nil }},
 		{"NilCommit", "Rework.Commit", func(e *Env) { e.Rework.Commit = nil }},
-		{"NilRebaseline", "Rework.Rebaseline", func(e *Env) { e.Rework.Rebaseline = nil }},
+		{"NilArchiveWebster", "Rework.ArchiveWebster", func(e *Env) { e.Rework.ArchiveWebster = nil }},
+		{"EmptyReviewsDir", "Rework.ReviewsDir", func(e *Env) { e.Rework.ReviewsDir = "" }},
 		{"EmptyPlanDir", "Rework.PlanDir", func(e *Env) { e.Rework.PlanDir = "" }},
 		{"EmptyReworkDir", "Rework.ReworkDir", func(e *Env) { e.Rework.ReworkDir = "" }},
 	}

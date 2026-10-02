@@ -75,6 +75,28 @@ func statusCommitPathspec(location *lyxcwd.Location, runID string) []string {
 	return paths
 }
 
+// reworkCommitPathspec returns the pathspec PR-Rework's round commit stages: the plan directory, the rework directory, the reviews root and webster's durable directory,
+// so the moved-from deletions and the archive land in one commit.
+// The reviews root and webster's directory are left out when they match nothing in the index or the working tree, since git refuses such a pathspec (see statusCommitPathspec):
+// that is when neither holds a file now and the round archived no file out of it, so nothing under it was ever tracked for this round to delete.
+// The plan and rework directories always hold files by the time the round commits.
+func reworkCommitPathspec(location *lyxcwd.Location) []string {
+	reworkDir := loomengine.LoomReworkDir(location)
+	paths := []string{planparser.PlanDirRel(), loomengine.LoomReworkDirRel()}
+	if holdsFile(loomengine.LoomReviewsDir(location)) || holdsFileAt(loomshed.LatestArchivedReviewsDir(reworkDir)) {
+		paths = append(paths, loomengine.LoomReviewsDirRel())
+	}
+	if holdsFile(websterengine.Dir(location.AnchorPath())) || holdsFileAt(loomshed.LatestArchivedWebsterDir(reworkDir)) {
+		paths = append(paths, websterengine.DirRel())
+	}
+	return paths
+}
+
+// holdsFileAt is holdsFile with an empty dir meaning no directory, hence no file.
+func holdsFileAt(dir string) bool {
+	return dir != "" && holdsFile(dir)
+}
+
 // holdsFile reports whether dir is a directory holding at least one non-directory entry anywhere beneath it, stopping the walk at the first such entry.
 func holdsFile(dir string) bool {
 	info, err := os.Stat(dir)
@@ -397,8 +419,8 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// git rather than as untracked dirt that refuses the task worktree's removal.
 		// The plan directory rides along because webster rewrites card files during the run
 		// (handle binding, handle canonicalization);
-		// PR-Rework's append-only check compares against the plan at HEAD, so a rewrite left
-		// uncommitted would read as the rework session editing a card it never touched.
+		// PR-Rework archives the plan at its working-tree state, so a rewrite left uncommitted
+		// would be archived without ever having been committed in place.
 		CommitWebster: func() error {
 			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, []string{websterengine.DirRel(), planparser.PlanDirRel()}, fmt.Sprintf("loom: webster run record for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
 			return err
@@ -499,14 +521,20 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// ReworkSpec is evaluated per Call like PlanSpec above, so the stencil is read at call time.
 		// The values the session is told arrive from the PR-Rework producer, which decides them.
 		ReworkSpec: func(told loomshed.ReworkTold) (shuttleengine.Spec, error) {
-			return loomengine.ReworkSpec(location, websterGeom.StencilsDir, websterGeom.SpecsDir, loomCfg, registry, told.FirstCard)
+			return loomengine.ReworkSpec(location, websterGeom.StencilsDir, websterGeom.SpecsDir, loomCfg, registry, told.FirstCard, told.PriorPlanDir)
 		},
 		// Rework opens nothing at wire time: every closure reads or writes on demand, since wire() also runs for status/pause.
 		Rework: loomshed.PRReworkDeps{
-			PlanDir:       planparser.PlanDir(anchorPath),
-			ReworkDir:     loomengine.LoomReworkDir(location),
-			ReworkDirRel:  loomengine.LoomReworkDirRel(),
-			ReadCommitted: committedAnchoredReader(location),
+			PlanDir:      planparser.PlanDir(anchorPath),
+			ReworkDir:    loomengine.LoomReworkDir(location),
+			ReworkDirRel: loomengine.LoomReworkDirRel(),
+			ReviewsDir:   loomengine.LoomReviewsDir(location),
+			// The run subdirectories are the recipe's own run_subdir values for the Plan-Review and Webster-Review segments, the two reviews a generation owns.
+			ReviewRunSubdirs: []string{"plan", "webster"},
+			ReadCommitted:    committedAnchoredReader(location),
+			ArchiveWebster: func(dest string) error {
+				return websterengine.ArchiveRunRecord(websterGeom, dest)
+			},
 			ReadRejection: func() (loomshed.PendingRejection, bool, error) {
 				r, found, err := landingshed.ReadRejection(loomengine.LoomRejectionPath(location))
 				if err != nil || !found {
@@ -518,11 +546,8 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 				return landingshed.RemoveRecord(loomengine.LoomRejectionPath(location))
 			},
 			Commit: func() error {
-				_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, []string{planparser.PlanDirRel(), loomengine.LoomReworkDirRel()}, fmt.Sprintf("loom: rework round for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
+				_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, reworkCommitPathspec(location), fmt.Sprintf("loom: rework round for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
 				return err
-			},
-			Rebaseline: func() error {
-				return websterengine.RebaselinePlanFingerprint(websterGeom)
 			},
 		},
 		// StencilsDir, SpecsDir, RunRoot, Burler, and Now are filled for both review segments --

@@ -363,14 +363,17 @@ User-facing modules each get one `lyx <module>` namespace:
   `pause` requests a pause at the next producer boundary.
   `validate-discussion` runs the same checks Discussion-Write's and Discussion-Burler's own gates run, standalone, exiting 0 on a clean gate and 1 otherwise, with findings in the failure envelope so a writer agent can self-check before handing off.
   `validate-plan` runs the same checks Plan-Write's and Plan-Burler's own gates run, standalone, with the same exit-code and findings-envelope contract, over the current worktree's plan instead of its discussion.
-  `validate-plan --rework` runs the check `PR-Rework`'s own gate runs: the same checks, over only the cards absent from the plan committed at HEAD, since every earlier card has already been built.
-  `validate-description` runs the same checks the `Describe` row's `description` gate runs over `_lyx/landing/summary.md`, standalone, with the same exit-code and findings-envelope contract.
+  `validate-plan --rework` runs the check `PR-Rework`'s own gate runs: the same checks, over only the cards absent from the plan committed at HEAD, since every earlier card has already been built.  `validate-description` runs the same checks the `Describe` row's `description` gate runs over `_lyx/landing/summary.md`, standalone, with the same exit-code and findings-envelope contract.
   A PR-review wait at `PR-Gate` halts the run `awaiting`, the planned hand-off state: it behaves like `blocked` for resume but spends no bounce budget, triggers no friction reflection and raises no anomaly.
   `approve` records an operator approval of the open pull request when the run is awaiting (or blocked) at the gate and the local HEAD equals the PR's head, writing `.lyx/loom/approval.json` and removing a pending rejection; resuming with `lyx loom start` then lets `PR-Gate` return Done without a GitHub merge.
   `reject <review-file>` records the operator's findings (removing a pending approval), and refuses once the `PR-Review` segment's five rejection rounds are spent.
-  `lyx loom start` then routes the run through `PR-Rework`, which appends cards to the plan, re-baselines Webster, and re-runs `Webster`, `Webster-Review`, `Describe`, `Publish` and the gate.
+  `lyx loom start` then routes the run through `PR-Rework`, which starts a new plan generation and re-runs `Webster`, `Webster-Review`, `Describe`, `Publish` and the gate.
+  Before its session runs, Go archives the live generation into the round's `prior-generation/` directory: the plan (cards, overview, amendments and any `archive-*/` rotation), Webster's run record, and the Plan-Review and Webster-Review run directories.
+  The session then writes a whole new plan into the emptied plan directory, numbered on from the retired generation through the overview's `first_card` key, and reads the archived plan for context.
+  Go records on the round whether the new generation is exempt from Plan-Review (every card Prosa on a non-source file) or required, commits the round in one weft commit, and removes the pending rejection.
   Each rejection is its own rework round, keyed by the rejected head and the rejection time, so a second rejection at a head the previous round left unchanged still gets a round.
-  The `Webster` row commits the plan directory alongside its run record, so the cards Webster rewrote during the run are the baseline `PR-Rework`'s append-only check compares against.
+  A round counts as committed only when its `record.json` carries the class, so the archive's classless completion marker never skips the session.
+  The `Webster` row commits the plan directory alongside its run record, so the generation `PR-Rework` archives is the one Webster built.
   A run halted at the gate re-runs only the gate on `lyx loom start`,
   so a fix committed by hand outside loom is pushed by the operator before `approve`, or goes through `reject` instead.
   `commit-records` commits and pushes the run's records through fabric — the status file, the review round record, friction notes and drive reports — and is what the ly-drive end-of-session command runs after the driver writes its stop report, and what a loom-launched driver runs at a hand-back before it parks until `lyx loom start` resumes it; a tree with nothing to commit succeeds without a commit.

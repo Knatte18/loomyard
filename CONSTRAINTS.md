@@ -362,6 +362,15 @@ Sandbox tooling resolves the dev binary via `resolveLyx` (`.dev-bin` first, then
 
 - Consumers read only from the `planparser.Plan` model. `SetApproved` (approval), `RewriteRefs` (ref substitution across the plan), and `AppendAmendment` (the append-only amendment log) are the three write paths — and no others.
 
+## Plan Generation Invariant
+
+`_lyx/plan/`'s top-level files hold exactly one plan generation.
+
+- A retired generation lives only under the rework round that retired it (`round-<N>/prior-generation/`), except where Plan-Write's own `archive-*/` rotation moves the live plan aside on a re-run.
+- Only PR-Rework archives a generation into a round.
+- Webster's run record and the Plan-Review and Webster-Review run directories are generation-scoped: they move into the round with the plan, so the next generation starts with none.
+- `internal/loomshed` declares the round layout once; every path is built from the existing accessors, and webster receives its archive destination as a told path.
+
 ## Ref-Shape Registry Invariant
 
 `internal/planparser` is the sole declarer of ref-shape vocabulary — classification (`classifyRef`/`refKind`) and the `plan:` handle grammar (`HandlePrefix` and the exported handle helpers).

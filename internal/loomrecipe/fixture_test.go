@@ -180,13 +180,14 @@ func testReworkDeps(dir string) loomshed.PRReworkDeps {
 		PlanDir:       filepath.Join(dir, lyxdirs.LyxDirName, "plan"),
 		ReworkDir:     filepath.Join(dir, lyxdirs.LyxDirName, "loom", "rework"),
 		ReworkDirRel:  filepath.Join(lyxdirs.LyxDirName, "loom", "rework"),
+		ReviewsDir:    filepath.Join(dir, lyxdirs.LyxDirName, "reviews"),
 		ReadCommitted: func(string) ([]byte, bool, error) { return nil, false, nil },
 		ReadRejection: func() (loomshed.PendingRejection, bool, error) {
 			return loomshed.PendingRejection{}, false, nil
 		},
 		ClearRejection: func() error { return nil },
+		ArchiveWebster: func(string) error { return nil },
 		Commit:         func() error { return nil },
-		Rebaseline:     func() error { return nil },
 	}
 }
 

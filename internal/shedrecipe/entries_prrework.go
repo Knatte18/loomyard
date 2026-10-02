@@ -1,5 +1,5 @@
 // entries_prrework.go implements prReworkEntry, the Constructor for the "PRRework" registry row:
-// it wraps a gated shedadapters.SingleLLMProducer in loomshed.NewPRRework's append-only-check and round-record decorator, so it lives in its own file like planWriteEntry.
+// it wraps a gated shedadapters.SingleLLMProducer in loomshed.NewPRRework's generation-archive and round-record decorator, so it lives in its own file like planWriteEntry.
 
 package shedrecipe
 
@@ -11,7 +11,7 @@ import (
 )
 
 // prReworkEntry is the Constructor for the "PRRework" registry row:
-// it resolves the row's "gate"/"gate_attempts" Config keys through resolveGateSpec, validates Env.ReworkSpec, Env.Shuttle, every seam of Env.Rework, and the absolute Env.Rework.PlanDir and Env.Rework.ReworkDir, then builds a gated SingleLLMProducer behind loomshed.NewPRRework.
+// it resolves the row's "gate"/"gate_attempts" Config keys through resolveGateSpec, validates Env.ReworkSpec, Env.Shuttle, every seam of Env.Rework, and the absolute Env.Rework.PlanDir, Env.Rework.ReworkDir and Env.Rework.ReviewsDir, then builds a gated SingleLLMProducer behind loomshed.NewPRRework.
 //
 // No fresh-spawn preparation is passed: the adapter already archives a stale coverage file on a fresh spawn,
 // and nothing else may be moved out from under the plan.
@@ -40,7 +40,7 @@ func prReworkEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, e
 		{"Rework.ReadRejection", rw.ReadRejection},
 		{"Rework.ClearRejection", rw.ClearRejection},
 		{"Rework.Commit", rw.Commit},
-		{"Rework.Rebaseline", rw.Rebaseline},
+		{"Rework.ArchiveWebster", rw.ArchiveWebster},
 	}
 	for _, s := range seams {
 		if err := requireSeam("PRRework", s.field, s.seam); err != nil {
@@ -51,6 +51,9 @@ func prReworkEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, e
 		return nil, err
 	}
 	if err := requireAbsRoot("PRRework", "Rework.ReworkDir", rw.ReworkDir); err != nil {
+		return nil, err
+	}
+	if err := requireAbsRoot("PRRework", "Rework.ReviewsDir", rw.ReviewsDir); err != nil {
 		return nil, err
 	}
 	session := func(told loomshed.ReworkTold) shedengine.ShedProducer {

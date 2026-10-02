@@ -143,7 +143,7 @@ type Env struct {
 	// internal/loomcli's wire() is what supplies it.
 	ReworkSpec func(loomshed.ReworkTold) (shuttleengine.Spec, error)
 	// Rework is a whole-struct passthrough to loomshed.NewPRRework, following Env.Landing's own precedent:
-	// the producer has behaviour of its own -- the append-only check, the round record, the re-baseline and the rejection removal -- that per-seam fakes must be able to substitute individually.
+	// the producer has behaviour of its own -- the generation archive, the round record and the rejection removal -- that per-seam fakes must be able to substitute individually.
 	Rework loomshed.PRReworkDeps
 
 	// Slug is the run-wide task slug, read by all three batten entries (WorktreeCreate, InnerRun,
