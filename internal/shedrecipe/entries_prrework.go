@@ -7,6 +7,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // prReworkEntry is the Constructor for the "PRRework" registry row:
@@ -15,7 +16,7 @@ import (
 // No fresh-spawn preparation is passed: the adapter already archives a stale coverage file on a fresh spawn,
 // and nothing else may be moved out from under the plan.
 //
-// The Spec arrives as an injected shedadapters.SpecSource for the reason planWriteEntry gives.
+// The Spec arrives as an injected func(loomshed.ReworkTold) for the reason planWriteEntry gives, evaluated with the value the producer tells each session it builds.
 func prReworkEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	gate, err := resolveGateSpec("PRRework", cfg, env)
 	if err != nil {
@@ -52,6 +53,9 @@ func prReworkEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, e
 	if err := requireAbsRoot("PRRework", "Rework.ReworkDir", rw.ReworkDir); err != nil {
 		return nil, err
 	}
-	inner := shedadapters.NewSingleLLMProducerGated(name, env.ReworkSpec, env.Shuttle, env.Now, nil, gate)
-	return loomshed.NewPRRework(name, inner, rw), nil
+	session := func(told loomshed.ReworkTold) shedengine.ShedProducer {
+		spec := func() (shuttleengine.Spec, error) { return env.ReworkSpec(told) }
+		return shedadapters.NewSingleLLMProducerGated(name, spec, env.Shuttle, env.Now, nil, gate)
+	}
+	return loomshed.NewPRRework(name, session, rw), nil
 }

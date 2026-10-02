@@ -48,6 +48,7 @@ type reworkFixture struct {
 	rebaseline int
 	innerCalls int
 	coverage   string
+	told       []ReworkTold
 
 	// onInner runs inside the fake session, before it reports Done.
 	onInner func()
@@ -113,8 +114,7 @@ func (f *reworkFixture) commitRound(n int, head, rejectedAt string) {
 }
 
 func (f *reworkFixture) producer() shedengine.ShedProducer {
-	inner := reworkInner{f: f}
-	return NewPRRework("PR-Rework", inner, PRReworkDeps{
+	return NewPRRework("PR-Rework", f.session, PRReworkDeps{
 		PlanDir:      f.planDir,
 		ReworkDir:    f.reworkDir,
 		ReworkDirRel: "rework",
@@ -135,6 +135,12 @@ func (f *reworkFixture) producer() shedengine.ShedProducer {
 		Commit:         func() error { f.commits++; return nil },
 		Rebaseline:     func() error { f.rebaseline++; return nil },
 	})
+}
+
+// session is the fixture's session factory; it records what the producer told it.
+func (f *reworkFixture) session(told ReworkTold) shedengine.ShedProducer {
+	f.told = append(f.told, told)
+	return reworkInner{f: f}
 }
 
 type reworkInner struct{ f *reworkFixture }
@@ -325,8 +331,20 @@ func TestNextReworkCardNumber(t *testing.T) {
 	}
 }
 
+func TestPRRework_TellsSessionNextCardNumber(t *testing.T) {
+	f := newReworkFixture(t)
+	f.onInner = f.appendCard
+	if outcome, _, err := f.producer().Call(context.Background()); err != nil || outcome != shedengine.Done {
+		t.Fatalf("Call = %v, %v; want Done", outcome, err)
+	}
+	if len(f.told) != 1 || f.told[0].FirstCard != 2 {
+		t.Errorf("session told %+v; want one ReworkTold{FirstCard: 2}", f.told)
+	}
+}
+
 func TestPRRework_NilSeamIsNamedError(t *testing.T) {
-	p := NewPRRework("PR-Rework", reworkInner{f: newReworkFixture(t)}, PRReworkDeps{})
+	f := newReworkFixture(t)
+	p := NewPRRework("PR-Rework", f.session, PRReworkDeps{})
 	_, _, err := p.Call(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "ReadCommitted") {
 		t.Fatalf("err = %v; want a named missing-seam error", err)

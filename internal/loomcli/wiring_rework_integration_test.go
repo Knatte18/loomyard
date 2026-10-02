@@ -109,7 +109,7 @@ func TestWire_Real_ReworkAppendsOverWebsterRewrittenPlan(t *testing.T) {
 	if err := os.WriteFile(reworkStencil, stencils.LoomTemplateRework, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	spec, err := c.env.ReworkSpec()
+	spec, err := c.env.ReworkSpec(loomshed.ReworkTold{FirstCard: 2})
 	if err != nil {
 		t.Fatalf("ReworkSpec() = %v; want nil", err)
 	}
@@ -130,7 +130,7 @@ func TestWire_Real_ReworkAppendsOverWebsterRewrittenPlan(t *testing.T) {
 		coverage: filepath.Join(t.TempDir(), "coverage.md"),
 	}
 
-	outcome, ptr, err := loomshed.NewPRRework(loomshed.NamePRRework, session, deps).Call(context.Background())
+	outcome, ptr, err := loomshed.NewPRRework(loomshed.NamePRRework, func(loomshed.ReworkTold) shedengine.ShedProducer { return session }, deps).Call(context.Background())
 	if err != nil || outcome != shedengine.Done {
 		t.Fatalf("PR-Rework Call = %v, %q, %v; want Done", outcome, ptr.Reason, err)
 	}

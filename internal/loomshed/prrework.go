@@ -71,19 +71,26 @@ func rejectionIdentity(headSHA, rejectedAt string) string {
 	return headSHA + "@" + rejectedAt
 }
 
-// prRework decorates inner, the gated rework session, with the Go-owned steps around it.
+// ReworkTold carries the values PR-Rework tells its session, decided by the producer rather than by the wiring.
+type ReworkTold struct {
+	// FirstCard is the number the session's first new card takes: one past the highest card committed at HEAD.
+	FirstCard int
+}
+
+// prRework decorates the gated rework session, built per Call by session, with the Go-owned steps around it.
 // It is a distinct type so the recipe shape test can tell the row apart.
 type prRework struct {
-	name  string
-	inner shedengine.ShedProducer
-	deps  PRReworkDeps
+	name    string
+	session func(ReworkTold) shedengine.ShedProducer
+	deps    PRReworkDeps
 }
 
 var _ shedengine.ShedProducer = (*prRework)(nil)
 
-// NewPRRework returns the PR-Rework producer identified as name, wrapping inner.
-func NewPRRework(name string, inner shedengine.ShedProducer, deps PRReworkDeps) shedengine.ShedProducer {
-	return &prRework{name: name, inner: inner, deps: deps}
+// NewPRRework returns the PR-Rework producer identified as name.
+// Each Call builds its session from session, handing it the values the producer decides to tell it.
+func NewPRRework(name string, session func(ReworkTold) shedengine.ShedProducer, deps PRReworkDeps) shedengine.ShedProducer {
+	return &prRework{name: name, session: session, deps: deps}
 }
 
 // Call implements shedengine.ShedProducer.
@@ -118,7 +125,13 @@ func (p *prRework) Call(ctx context.Context) (shedengine.Outcome, shedengine.Out
 		return p.finish(true)
 	}
 
-	outcome, pointer, err := p.inner.Call(ctx)
+	// The first new card's number is read from the plan committed at HEAD and told to the session as a value:
+	// the session runs in the task worktree, where the plan's _lyx junction is excluded from git and so cannot be read at HEAD.
+	firstCard, err := NextReworkCardNumber(p.deps.PlanDir, p.deps.ReadCommitted)
+	if err != nil {
+		return "", shedengine.OutputPointer{}, fmt.Errorf("loomshed: %s: number the first new card: %w", p.name, err)
+	}
+	outcome, pointer, err := p.session(ReworkTold{FirstCard: firstCard}).Call(ctx)
 	if err != nil || outcome != shedengine.Done {
 		return outcome, pointer, err
 	}
@@ -144,6 +157,7 @@ func (p *prRework) checkSeams() error {
 		name    string
 		missing bool
 	}{
+		{"session factory", p.session == nil},
 		{"ReadCommitted", p.deps.ReadCommitted == nil},
 		{"ReadRejection", p.deps.ReadRejection == nil},
 		{"ClearRejection", p.deps.ClearRejection == nil},

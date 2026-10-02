@@ -191,7 +191,7 @@ func testReworkDeps(dir string) loomshed.PRReworkDeps {
 }
 
 // testReworkSpec is a non-writing rework Spec factory for the same fixtures.
-func testReworkSpec() (shuttleengine.Spec, error) {
+func testReworkSpec(loomshed.ReworkTold) (shuttleengine.Spec, error) {
 	return shuttleengine.Spec{Prompt: "rework prompt", Role: "rework"}, nil
 }
 

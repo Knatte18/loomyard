@@ -242,7 +242,7 @@ func newTestEnv(t *testing.T) shedrecipe.Env {
 		},
 		CommitDescription: func() error { return nil },
 		Landing:           testLandingDeps(mustMkdir("landing")),
-		ReworkSpec: func() (shuttleengine.Spec, error) {
+		ReworkSpec: func(loomshed.ReworkTold) (shuttleengine.Spec, error) {
 			return shuttleengine.Spec{
 				Prompt:      "test rework prompt",
 				OutputFiles: []string{filepath.Join(dir, "rework-coverage.md")},

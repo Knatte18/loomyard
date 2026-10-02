@@ -497,15 +497,9 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 			return planparser.SetApproved(planparser.PlanDir(location.AnchorPath()))
 		},
 		// ReworkSpec is evaluated per Call like PlanSpec above, so the stencil is read at call time.
-		// The first new card's number is read from the plan committed at HEAD here and told to the
-		// session as a value: the session runs in the task worktree, where the plan's _lyx junction
-		// is excluded from git and so cannot be read at HEAD.
-		ReworkSpec: func() (shuttleengine.Spec, error) {
-			nextCard, err := loomshed.NextReworkCardNumber(planparser.PlanDir(anchorPath), committedAnchoredReader(location))
-			if err != nil {
-				return shuttleengine.Spec{}, fmt.Errorf("loom: rework: number the first new card: %w", err)
-			}
-			return loomengine.ReworkSpec(location, websterGeom.StencilsDir, websterGeom.SpecsDir, loomCfg, registry, nextCard)
+		// The values the session is told arrive from the PR-Rework producer, which decides them.
+		ReworkSpec: func(told loomshed.ReworkTold) (shuttleengine.Spec, error) {
+			return loomengine.ReworkSpec(location, websterGeom.StencilsDir, websterGeom.SpecsDir, loomCfg, registry, told.FirstCard)
 		},
 		// Rework opens nothing at wire time: every closure reads or writes on demand, since wire() also runs for status/pause.
 		Rework: loomshed.PRReworkDeps{
