@@ -14,6 +14,8 @@
 package reedengine
 
 import (
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -567,6 +569,128 @@ func TestAddStrand_IfAbsent_HiddenOnlyNoOps(t *testing.T) {
 	}
 	if loaded.Strands[0] != persisted {
 		t.Errorf("persisted state after hidden no-op = %+v, want unchanged single strand %+v", loaded.Strands, persisted)
+	}
+}
+
+func TestLiveStrandNamed(t *testing.T) {
+	const orch = "tc:tslug:orch"
+	visible := render.Display{Anchor: render.AnchorBelowParent}
+	tests := []struct {
+		name    string
+		strands []Strand
+		alive   map[string]bool
+		want    int
+	}{
+		{"LiveVisibleMatches", []Strand{{Name: "tc:tslug:other", PaneID: "%0", Display: visible}, {Name: orch, PaneID: "%1", Display: visible}}, map[string]bool{"%0": true, "%1": true}, 1},
+		{"DeadPane", []Strand{{Name: orch, PaneID: "%1", Display: visible}}, map[string]bool{}, -1},
+		{"EmptyPaneID", []Strand{{Name: orch, Display: visible}}, map[string]bool{"": true}, -1},
+		{"Hidden", []Strand{{Name: orch, PaneID: "%1", Display: render.Display{Anchor: render.AnchorHidden}}}, map[string]bool{"%1": true}, -1},
+		{"Absent", nil, map[string]bool{"%1": true}, -1},
+		{"OtherNameLive", []Strand{{Name: "tc:tslug:claude", PaneID: "%1", Display: visible}}, map[string]bool{"%1": true}, -1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := liveStrandNamed(tt.strands, orch, tt.alive); got != tt.want {
+				t.Errorf("liveStrandNamed() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
+// recordingIfAbsentHook wraps addIfAbsentHook and records every tmux subcommand it answers.
+func recordingIfAbsentHook(paneLines string, cmds *[]string) func(capture bool, args ...string) (string, error) {
+	inner := addIfAbsentHook(paneLines)
+	return func(capture bool, args ...string) (string, error) {
+		*cmds = append(*cmds, args[0])
+		return inner(capture, args...)
+	}
+}
+
+func TestAddStrandUnless_LiveNamedSkips(t *testing.T) {
+	e := newTestEngine(t)
+	var cmds []string
+	e.tmux.execHook = recordingIfAbsentHook("%1 0 0 100 20 4321\n", &cmds)
+
+	orch := Strand{GUID: "orch-guid", Name: "tc:tslug:orch", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}}
+	if err := SaveState(e.stateDir(), &ReedState{Strands: []Strand{orch}}); err != nil {
+		t.Fatalf("SaveState: %v", err)
+	}
+	// The seeded state carries no socket, session or pane-generation stamp, and every load stamps them in memory,
+	// so a SaveState on the skip path would change these bytes.
+	statePath := filepath.Join(e.stateDir(), reedStateFileName)
+	stateBefore, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatalf("read state: %v", err)
+	}
+
+	got, skipped, err := e.AddStrandUnless(AddSpec{NameOverride: "claude", Display: render.Display{Anchor: render.AnchorBelowParent, Focus: true}}, "orch")
+	if err != nil {
+		t.Fatalf("AddStrandUnless: %v", err)
+	}
+	if !skipped || got != orch {
+		t.Errorf("AddStrandUnless = (%+v, %v), want (%+v, true)", got, skipped, orch)
+	}
+	for _, c := range cmds {
+		if c == "split-window" || c == "select-layout" || c == "select-pane" || c == "kill-pane" {
+			t.Errorf("tmux %s issued by a skipped add", c)
+		}
+	}
+	stateAfter, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatalf("read state: %v", err)
+	}
+	if string(stateAfter) != string(stateBefore) {
+		t.Errorf("persisted state after skip = %s, want unchanged %s", stateAfter, stateBefore)
+	}
+}
+
+func TestAddStrandUnless_NotLiveAdds(t *testing.T) {
+	tests := []struct {
+		name      string
+		persisted []Strand
+	}{
+		{"DeadOrch", []Strand{{GUID: "orch-guid", Name: "tc:tslug:orch", PaneID: "%9", Display: render.Display{Anchor: render.AnchorBelowParent}}}},
+		{"NoOrch", nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newTestEngine(t)
+			e.tmux.execHook = addIfAbsentHook("%1 0 0 100 20 4321\n")
+			if err := SaveState(e.stateDir(), &ReedState{Strands: tt.persisted}); err != nil {
+				t.Fatalf("SaveState: %v", err)
+			}
+
+			got, skipped, err := e.AddStrandUnless(AddSpec{NameOverride: "claude", Display: render.Display{Anchor: render.AnchorHidden}}, "orch")
+			if err != nil {
+				t.Fatalf("AddStrandUnless: %v", err)
+			}
+			if skipped {
+				t.Error("AddStrandUnless skipped, want an add")
+			}
+			if got.Name != "tc:tslug:claude" {
+				t.Errorf("added strand name = %q, want tc:tslug:claude", got.Name)
+			}
+			loaded, err := LoadState(e.stateDir())
+			if err != nil {
+				t.Fatalf("LoadState: %v", err)
+			}
+			if len(loaded.Strands) != len(tt.persisted)+1 {
+				t.Errorf("strand count = %d, want %d", len(loaded.Strands), len(tt.persisted)+1)
+			}
+		})
+	}
+}
+
+func TestAddStrandUnless_UnformableNameRefusesBeforeTmux(t *testing.T) {
+	e := newTestEngine(t)
+	var cmds []string
+	e.tmux.execHook = recordingIfAbsentHook("%1 0 0 100 20 4321\n", &cmds)
+
+	if _, _, err := e.AddStrandUnless(AddSpec{Display: render.Display{Anchor: render.AnchorHidden}}, "Bad Name"); err == nil {
+		t.Fatal("AddStrandUnless(unformable name) = nil error, want a refusal")
+	}
+	if len(cmds) != 0 {
+		t.Errorf("tmux commands issued before refusal: %v", cmds)
 	}
 }
 

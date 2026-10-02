@@ -36,16 +36,20 @@ Both read the on-disk config file, validate it against a template, and resolve e
 2. Read the config file at `configengine.ConfigFile(baseDir, module)` (e.g., `_lyx/config/board.yaml`).
    If absent, `Load` returns an error instructing the user to run `lyx config reconcile`;
    `LoadOrTemplate` instead takes the degrading path below.
-3. Check for missing template keys via `yamlengine.MissingKeys(template, fileBytes)`.
-   If any keys are missing, return an error naming the file, the missing key-paths, and instructing the user to run `lyx config reconcile`.
+3. Fill the file's missing template keys in memory via `yamlengine.FillMissing(template, fileBytes)`.
+   A shape mismatch or unparseable YAML returns an error naming the file and the key-path.
+   When it filled any key, one `logger.Info` line (`configengine: filled missing keys from template`) carries the module, the file and the filled key-paths.
+   The file on disk is never written;
+   `lyx config reconcile` stays the only writer of config files.
+   Then run `yamlengine.MissingKeys(template, filled)` as a backstop: `FillMissing` never descends into lists, so a template key missing inside a list element of mappings is still reported, and returns an error naming the file and the key-paths, without a reconcile hint, since reconcile carries lists whole and cannot add the key either.
 4. Build the environment via `envsource.Build(baseDir)` (reads `.env`, overlays OS env).
-5. Resolve environment variables via `yamlengine.Resolve(fileBytes, env)` (expands `${env:...}` markers).
+5. Resolve environment variables via `yamlengine.Resolve(filled, env)` (expands `${env:...}` markers).
 6. Return the resolved bytes (see "What it returns" below).
 
 **The degrading path (`LoadOrTemplate` only):**
 
 `LoadOrTemplate` diverges from the flow above at exactly two points, each gated on *proven* absence — `errors.Is(err, ErrNotInitialized)` at step 1, `os.IsNotExist(err)` at step 2 — never on any other failure at either point.
-On either proven absence, it skips step 3 (`yamlengine.MissingKeys` is not run;
+On either proven absence, it skips step 3 (neither `yamlengine.FillMissing` nor `yamlengine.MissingKeys` is run;
 a template compared against itself is vacuously satisfied) and enters at step 4 with `template`'s bytes standing in for the file bytes, then continues through steps 4-6 unchanged.
 A non-absence failure at either point — a stat error, a permission or IO read error — propagates unchanged, exactly as under `Load`.
 A config file that exists but is invalid still errors exactly as under `Load`;
@@ -55,8 +59,11 @@ only its *absence* degrades.
 
 - **All defaults live in the template YAML file**, not in code.
   The template is embedded via `//go:embed` and passed to `Load()`/`LoadOrTemplate()`.
-- **Errors are strict on `Load`**: missing template keys, absent files, or unset required env vars cause hard errors with clear messages naming the file and the problem.
-  Under `LoadOrTemplate`, the missing-template-keys and unset-required-env-var halves still hold;
+- **A key missing from a present config file resolves to its template default and is logged.**
+  Only key-paths in the template are filled, only with the template's own value, and only where the file lacks the key and every ancestor it holds is a mapping.
+  The fill is in memory; the file is never written.
+- **Errors are strict on `Load`**: absent files, shape mismatches, a template key missing inside a list element, or unset required env vars cause hard errors with clear messages naming the file and the problem.
+  Under `LoadOrTemplate`, the shape-mismatch, list-element and unset-required-env-var halves still hold;
   only the absent-file half is replaced by a resolved template default.
 - **Extra/stale keys are tolerated** by both entry points and cleaned up by `lyx config reconcile` (reconciliation).
 - **A key present with an empty value counts as present** and is not flagged missing.
@@ -157,12 +164,13 @@ Do not conflate:
 
 Loads and resolves a module's configuration from disk.
 
-**Behavior:** Implements the six-step flow described in the Resolution model section above: check `_lyx/` exists, read the config file, validate against the template, build environment, and resolve env vars.
+**Behavior:** Implements the six-step flow described in the Resolution model section above: check `_lyx/` exists, read the config file, fill missing template keys, build environment, and resolve env vars.
 
 **Error cases:**
 
 - **Config file absent:** Returns error `config file <path> not found; run "lyx config reconcile"`.
-- **Missing template keys:** Returns error `config file <path>: missing keys: <comma-separated key-paths>; run "lyx config reconcile"`.
+- **Template key missing inside a list element:** Returns error `config file <path>: missing keys: <comma-separated key-paths>`, with no reconcile hint.
+- **Shape mismatch against the template:** Returns error `config file <path>: <error naming the key-path>`.
 - **Unset required env var:** Returns error `config file <path>: unset required env var "NAME"`.
 - **Env build failure:** Returns error `config file <path>: build environment: <underlying error>`.
 - **YAML syntax error:** Returns error `config file <path>: <parse/marshal error>`.
@@ -176,7 +184,7 @@ On error, nil bytes and an error message.
 
 Same signature as `Load`.
 A provably-absent `_lyx/` directory or a provably-absent config file resolves `template` through `envsource.Build` then `yamlengine.Resolve` instead of erroring — see the "degrading path" in the Resolution model section above.
-`yamlengine.MissingKeys` is skipped on that path, since the bytes being resolved are the template itself.
+The fill and `yamlengine.MissingKeys` are skipped on that path, since the bytes being resolved are the template itself.
 A config file that exists but is invalid still errors exactly as under `Load`;
 any non-absence failure — a stat error, a permission or IO read error — propagates unchanged.
 
