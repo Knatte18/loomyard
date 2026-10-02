@@ -469,11 +469,8 @@ func TestBurlerRoundEntry_RunDirectory(t *testing.T) {
 	})
 }
 
-// TestBurlerRoundEntry_GateConfig covers the "gates" Config key burlerRoundEntry resolves through
-// resolveGateSpec into RunOpts.Gate: a "gates" list is accepted at row level and selects the
-// matching validators, "gate_attempts" is rejected inside the profile: sub-map -- the guard
-// against the two allowlists being confused -- and an unrecognised name fails loud, matching the
-// Webster round's own deliberate lack of a third validator to name.
+// TestBurlerRoundEntry_GateConfig covers the "gates" Config key burlerRoundEntry resolves through resolveGateSpec into RunOpts.Gate:
+// a "gates" list is accepted at row level and selects the matching validators, "gates" is rejected inside the profile: sub-map -- the guard against the two allowlists being confused -- and an unrecognised name fails loud, matching the Webster round's own deliberate lack of a third validator to name.
 func TestBurlerRoundEntry_GateConfig(t *testing.T) {
 	t.Run("RowLevelGatesAccepted", func(t *testing.T) {
 		env := newTestEnv(t)
@@ -543,14 +540,15 @@ func TestBurlerRoundEntry_GateConfig(t *testing.T) {
 		assertErrContains(t, err, "plan")
 	})
 
-	t.Run("GateAttemptsRejectedInsideProfileSubMap", func(t *testing.T) {
+	t.Run("GatesRejectedInsideProfileSubMap", func(t *testing.T) {
 		env := newTestEnv(t)
 		cfg := Config{
 			"run_subdir": "review-segment",
-			"profile":    map[string]any{"rubric": "a rubric", "gate_attempts": 3},
+			"profile":    map[string]any{"rubric": "a rubric", "gates": gatesCfg("plan", 3)["gates"]},
 		}
 		_, err := burlerRoundEntry("review-round", cfg, env)
-		assertErrContains(t, err, "gate_attempts")
+		assertErrContains(t, err, "unrecognized config key")
+		assertErrContains(t, err, "gates")
 	})
 }
 
