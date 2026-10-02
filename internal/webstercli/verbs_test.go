@@ -1461,3 +1461,59 @@ func TestBracketVerbs_NoRunInProgressWayForward(t *testing.T) {
 		t.Fatalf("begin-batch 1 once the run exists = %d; want 0, output: %s", code, out.String())
 	}
 }
+
+// TestValidateCmd_Regression329_ForthcomingCreateTargetPassesPending pins #329 at validate: batch 1 is begun but not terminal and nothing has landed,
+// and card 2 Uses card 1's Create target, which does not exist yet.
+// validate must scope to `pending` and exit 0 instead of reporting the Use as glyph-not-found.
+func TestValidateCmd_Regression329_ForthcomingCreateTargetPassesPending(t *testing.T) {
+	identity, err := batcher.Select("identity")
+	if err != nil {
+		t.Fatalf("batcher.Select(identity) = %v; want nil", err)
+	}
+	c, _ := newTestCLI(t)
+	c.batcher = identity
+
+	if err := os.MkdirAll(c.geom.PlanDir, 0o755); err != nil {
+		t.Fatalf("mkdir plan dir: %v", err)
+	}
+	subDir := filepath.Join(c.geom.WorktreeRoot, "sub")
+	if err := os.MkdirAll(subDir, 0o755); err != nil {
+		t.Fatalf("mkdir sub: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(subDir, "a.go"), []byte("package sub\n\nfunc Foo() {}\n"), 0o644); err != nil {
+		t.Fatalf("write sub/a.go: %v", err)
+	}
+	files := map[string]string{
+		"00-overview.md": "---\nformat: 5\napproved: true\nlanguage: go\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n" +
+			"1 — first — creates a symbol\n2 — second — uses it\n",
+		"01-first.md":  "# Card 1 — first\n\n**Create:**\n- `newpkg#Bar`\n\n**Intent:** creates a symbol.\n",
+		"02-second.md": "# Card 2 — second\n\n**Edit:**\n- `sub#Foo`\n\n**Uses:**\n- `newpkg#Bar`\n\n**Intent:** uses it.\n\n**ImpactSummary:** none.\n",
+	}
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(c.geom.PlanDir, name), []byte(content), 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+
+	state := &websterengine.State{
+		RunGUID:         "run-guid",
+		PlanFingerprint: testPlanFingerprint(t, c.geom.PlanDir),
+		Batches:         map[int]*websterengine.BatchState{1: {Slug: "first", Kind: "fork"}},
+	}
+	if err := websterengine.RestampPlanBaseline(state, c.geom.PlanDir, c.geom.WebsterDir); err != nil {
+		t.Fatalf("RestampPlanBaseline() error = %v", err)
+	}
+	if err := websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, state); err != nil {
+		t.Fatalf("SaveState: %v", err)
+	}
+
+	var out strings.Builder
+	exitCode := clihelp.Execute(c.validateCmd(), &out, nil)
+
+	if exitCode != 0 {
+		t.Fatalf("validate on a begun, unrecorded batch = %d; want 0, output: %s", exitCode, out.String())
+	}
+	if !strings.Contains(out.String(), `"scope":"pending"`) {
+		t.Errorf("output missing scope:pending; got %q", out.String())
+	}
+}

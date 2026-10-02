@@ -991,6 +991,52 @@ func TestBeginBatch_Regression20260930_ReBeginOfBegunUnrecordedBatch(t *testing.
 	}
 }
 
+// TestBeginBatch_Regression329_ReBeginKeepsForthcomingCreateTarget pins #329: card 1 creates a file that card 2 Uses,
+// batch 1's first begin records it, no commit lands, and the second begin of batch 1 must not drop the Create target out of the later card's validation.
+func TestBeginBatch_Regression329_ReBeginKeepsForthcomingCreateTarget(t *testing.T) {
+	fx := newBeginFixture(t)
+
+	card := func(number int, slug string, typ planparser.CardType, ref string, uses []string) planparser.Card {
+		c := planparser.Card{
+			Number:         number,
+			Slug:           slug,
+			Type:           typ,
+			TypeLabelCount: 1,
+			HasType:        true,
+			HasIntent:      true,
+			Intent:         "placeholder intent",
+			TargetGroups:   []planparser.TargetGroup{{Type: typ, Refs: []string{ref}}},
+			Targets:        []string{ref},
+			Uses:           uses,
+			HasUses:        len(uses) > 0,
+		}
+		if typ == planparser.CardTypeEdit {
+			c.HasImpactSummary = true
+			c.ImpactSummary = "placeholder impact"
+		}
+		return c
+	}
+	commitFile(t, fx.Worktree, "sub/a.go", "package sub\n\nfunc Existing() {}\n", "existing symbol")
+	commitFile(t, fx.Worktree, "sub/b.go", "package sub\n\nfunc Other() {}\n", "second existing symbol")
+
+	creator := card(1, "json-flag", planparser.CardTypeCreate, "sub/new.go#", nil)
+	user := card(2, "list-tests", planparser.CardTypeEdit, "sub#Existing", []string{"sub/new.go#"})
+	fx.Deps.Plan.Cards = []planparser.Card{creator, user}
+	fx.Deps.Batches = []batcher.Batch{{Cards: []planparser.Card{creator}}, {Cards: []planparser.Card{user}}}
+	fx.Deps.State.Batches = map[int]*websterengine.BatchState{}
+
+	if _, err := websterengine.BeginBatch(fx.Deps, 1); err != nil {
+		t.Fatalf("first BeginBatch(1) error = %v; want nil", err)
+	}
+	if fx.Deps.State.Batches[1] == nil {
+		t.Fatal("first BeginBatch(1) recorded no batch 1")
+	}
+
+	if _, err := websterengine.BeginBatch(fx.Deps, 1); err != nil {
+		t.Fatalf("second BeginBatch(1) error = %v; want nil — the begun, unrecorded batch's Create target must stay forthcoming", err)
+	}
+}
+
 // TestBeginBatch_WayForward_UnknownBatch proves a batch number outside the plan names `lyx webster status`,
 // and that naming one of the run's batches then begins it.
 func TestBeginBatch_WayForward_UnknownBatch(t *testing.T) {

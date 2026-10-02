@@ -27,6 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -447,7 +448,67 @@ type failedSuite struct {
 	masterOutcome string
 	// forkLog is the fork's captured first-run log; empty writes none.
 	forkLog string
+	// fixer scripts the integration-fix strand; nil installs one that reports FAILED.
+	fixer *fakeFixStarter
+	// noFixStarter leaves RunDeps.FixStarter nil.
+	noFixStarter bool
+	// integrationFix seeds state's IntegrationFix record.
+	integrationFix *websterengine.IntegrationFixState
+	// reportStatus is the integration report's status; empty writes FAILED.
+	reportStatus string
 }
+
+// fakeFixStarter is a hermetic websterengine.FixStarter double.
+// The strand's own turn runs from the handle's Wait: work does whatever the strand does to the worktree and returns the status and head_sha it reports.
+type fakeFixStarter struct {
+	t        *testing.T
+	worktree string
+	calls    int
+	startErr error
+	// onStart runs after a successful start, before the handle is returned.
+	onStart func(t *testing.T)
+	// outcome is the strand's shuttle outcome; empty means done.
+	outcome shuttleengine.Outcome
+	// work is the strand's turn, run only when the outcome is done; nil reports FAILED at HEAD.
+	work func(t *testing.T) (status, head string)
+}
+
+func newFakeFixStarter(t *testing.T, worktree string) *fakeFixStarter {
+	return &fakeFixStarter{t: t, worktree: worktree}
+}
+
+func (f *fakeFixStarter) StartFix(spec shuttleengine.Spec) (websterengine.MasterHandle, error) {
+	f.calls++
+	if f.startErr != nil {
+		return nil, f.startErr
+	}
+	if f.onStart != nil {
+		f.onStart(f.t)
+	}
+	outcome := f.outcome
+	if outcome == "" {
+		outcome = shuttleengine.OutcomeDone
+	}
+	return &runFakeHandle{
+		strandGUID: "fix-strand",
+		result:     shuttleengine.Result{Outcome: outcome},
+		onWait: func() {
+			if outcome != shuttleengine.OutcomeDone {
+				return
+			}
+			status, head := websterengine.ReportStatusFailed, strings.TrimSpace(mustGit(f.t, f.worktree, "rev-parse", "HEAD"))
+			if f.work != nil {
+				status, head = f.work(f.t)
+			}
+			report := "status: " + status + "\nhead_sha: " + head + "\ndeviations: []\n"
+			if err := os.WriteFile(spec.OutputFiles[0], []byte(report), 0o644); err != nil {
+				f.t.Fatalf("write fix report: %v", err)
+			}
+		},
+	}, nil
+}
+
+var _ websterengine.FixStarter = (*fakeFixStarter)(nil)
 
 // runFailedSuite seeds fx's state from s, scripts Master and the integration fork from onWait, and returns Run's result.
 func runFailedSuite(t *testing.T, fx *runFixture, s failedSuite) (websterengine.RunResult, error) {
@@ -466,7 +527,20 @@ func runFailedSuite(t *testing.T, fx *runFixture, s failedSuite) (websterengine.
 	for number, sha := range s.laterStartSHAs {
 		st.Batches[number].StartSHA = sha
 	}
+	st.IntegrationFix = s.integrationFix
 	seedMatchingState(t, fx, st)
+
+	if !s.noFixStarter {
+		fixer := s.fixer
+		if fixer == nil {
+			fixer = newFakeFixStarter(t, fx.Worktree)
+		}
+		fx.Deps.FixStarter = fixer
+	}
+	reportStatus := s.reportStatus
+	if reportStatus == "" {
+		reportStatus = websterengine.ReportStatusFailed
+	}
 
 	head := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
 	outcome := "outcome: done\nstuck_reason: null\n"
@@ -492,7 +566,7 @@ func runFailedSuite(t *testing.T, fx *runFixture, s failedSuite) (websterengine.
 			if s.forkLog != "" {
 				write(websterengine.IntegrationLogPath(fx.Deps.Geom.ScratchDir), s.forkLog)
 			}
-			write(websterengine.IntegrationReportPath(fx.Deps.Geom.ReportsDir), "status: FAILED\nhead_sha: "+head+"\ndeviations: []\n")
+			write(websterengine.IntegrationReportPath(fx.Deps.Geom.ReportsDir), "status: "+reportStatus+"\nhead_sha: "+head+"\ndeviations: []\n")
 			write(filepath.Join(fx.Deps.Geom.WebsterDir, "outcome.yaml"), outcome)
 			write(filepath.Join(fx.Deps.Geom.WebsterDir, "summary.md"), "# Batches shipped\n\nAll batches landed.\n")
 		},
@@ -877,5 +951,474 @@ func TestBisectAndEscalate_UnattributableFailureBlamesNoCard(t *testing.T) {
 	branch := strings.TrimSpace(mustGit(t, worktree, "symbolic-ref", "--short", "HEAD"))
 	if branch != originalBranch {
 		t.Errorf("HEAD branch after bisect = %q; want restored to %q", branch, originalBranch)
+	}
+}
+
+const badForkLog = "--- FAIL: TestBad (0.00s)\n    x_test.go:1: TestBad failed\nFAIL\nFAIL\texample/pkg\t0.01s\n"
+
+// regressionScene is a three-card run whose third card introduces the failure verify.sh reports.
+type regressionScene struct {
+	fx    *runFixture
+	suite failedSuite
+	start string
+	shas  []string
+}
+
+// newRegressionScene builds the scene.
+// planInWorktree commits a copy of the plan under the worktree's plan/ directory and points the run at it, so a strand commit can touch the plan.
+func newRegressionScene(t *testing.T, planInWorktree bool) *regressionScene {
+	t.Helper()
+	fx := newRunFixture(t, 3)
+	appendIntegrationVerify(t, fx.PlanDir, "sh verify.sh")
+	if planInWorktree {
+		entries, err := os.ReadDir(fx.PlanDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, e := range entries {
+			data, err := os.ReadFile(filepath.Join(fx.PlanDir, e.Name()))
+			if err != nil {
+				t.Fatal(err)
+			}
+			commitFile(t, fx.Worktree, filepath.Join("plan", e.Name()), string(data), "plan "+e.Name())
+		}
+		fx.PlanDir = filepath.Join(fx.Worktree, "plan")
+		fx.Deps.Geom.PlanDir = fx.PlanDir
+	}
+	seedVerifyScripts(t, fx.Worktree)
+
+	start := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	shas := []string{
+		commitFile(t, fx.Worktree, "card1.txt", "one", "card1"),
+		commitFile(t, fx.Worktree, "card2.txt", "two", "card2"),
+		commitFile(t, fx.Worktree, "bad.marker", "bad", "card3 introduces the bug"),
+	}
+	return &regressionScene{
+		fx:    fx,
+		start: start,
+		shas:  shas,
+		suite: failedSuite{batches: [][]string{{shas[0]}, {shas[1]}, {shas[2]}}, startSHA: start, masterOutcome: "done", forkLog: badForkLog},
+	}
+}
+
+// commitFix commits the removal of bad.marker, the fix for the scene's regression, and returns the commit.
+func commitFix(t *testing.T, worktree string) string {
+	t.Helper()
+	mustGit(t, worktree, "rm", "-q", "bad.marker")
+	mustGit(t, worktree, "commit", "-m", "fix the regression")
+	return strings.TrimSpace(mustGit(t, worktree, "rev-parse", "HEAD"))
+}
+
+// fixerReporting returns a fix strand that runs work and reports OK at the head work returns.
+func fixerReporting(t *testing.T, worktree string, work func(t *testing.T) string) *fakeFixStarter {
+	f := newFakeFixStarter(t, worktree)
+	f.work = func(t *testing.T) (string, string) { return websterengine.ReportStatusOK, work(t) }
+	return f
+}
+
+// stateOf loads the run's state.json.
+func stateOf(t *testing.T, fx *runFixture) *websterengine.State {
+	t.Helper()
+	st, err := websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
+	if err != nil {
+		t.Fatalf("LoadState() error = %v", err)
+	}
+	return st
+}
+
+// assertFixWayForward fails unless reason names preFix, every commit, the reset, the verify-and-commit step and the re-run.
+func assertFixWayForward(t *testing.T, reason, preFix string, commits ...string) {
+	t.Helper()
+	wants := append([]string{preFix, "git reset --hard " + preFix, "## verify:", "commit", "lyx webster run"}, commits...)
+	for _, want := range wants {
+		if !strings.Contains(reason, want) {
+			t.Errorf("StuckReason = %q; want it to name %q", reason, want)
+		}
+	}
+}
+
+// TestIntegrationStage_FixAttempt_Regression332b_FixedKeepsDone is the #332b scene:
+// a regression bisected to card 3, a strand that commits the fix, and a re-run triage that passes.
+// The run stays done with no -1 record, and summary.md and the report record the fix commit and the cleared identity.
+func TestIntegrationStage_FixAttempt_Regression332b_FixedKeepsDone(t *testing.T) {
+	sc := newRegressionScene(t, false)
+	var fixCommit string
+	fixer := fixerReporting(t, sc.fx.Worktree, func(t *testing.T) string {
+		fixCommit = commitFix(t, sc.fx.Worktree)
+		return fixCommit
+	})
+	sc.suite.fixer = fixer
+
+	result, err := runFailedSuite(t, sc.fx, sc.suite)
+	if err != nil {
+		t.Fatalf("Run() error = %v; want nil", err)
+	}
+	if result.Outcome != "done" {
+		t.Fatalf("Outcome = %q, StuckReason = %q; want done", result.Outcome, result.StuckReason)
+	}
+	if fixer.calls != 1 {
+		t.Errorf("StartFix calls = %d; want 1", fixer.calls)
+	}
+	if hasEscalationRecord(t, sc.fx) {
+		t.Errorf("-1 escalation record present after a fixed regression; want none")
+	}
+
+	report := integrationReportOf(t, sc.fx)
+	if report.Triage == nil || report.Triage.Verdict != websterengine.TriageVerdictRegression {
+		t.Errorf("report triage = %+v; want the pre-fix regression verdict kept", report.Triage)
+	}
+	if report.Fix == nil || report.Fix.Result != websterengine.FixResultFixed || report.Fix.PreFixHead != sc.shas[2] ||
+		len(report.Fix.Commits) != 1 || report.Fix.Commits[0] != fixCommit || len(report.Fix.Cleared) != 1 || report.Fix.Cleared[0] != "example/pkg.TestBad" {
+		t.Errorf("report fix = %+v; want fixed from %s with commit %s and TestBad cleared", report.Fix, sc.shas[2], fixCommit)
+	}
+	summary := summaryOf(t, sc.fx)
+	for _, want := range []string{"## Integration suite fix", fixCommit, "example/pkg.TestBad"} {
+		if !strings.Contains(summary, want) {
+			t.Errorf("summary.md does not contain %q; got:\n%s", want, summary)
+		}
+	}
+	if strings.Contains(summary, "## Integration suite failed") {
+		t.Errorf("summary.md carries a failure section after a fixed regression")
+	}
+	if fix := stateOf(t, sc.fx).IntegrationFix; fix == nil || fix.Result != websterengine.FixResultFixed || fix.StrandGUID != "fix-strand" {
+		t.Errorf("state IntegrationFix = %+v; want result fixed and the strand recorded", fix)
+	}
+}
+
+// TestIntegrationStage_FixAttempt_UnfixedEscalates proves each way the strand can fail to fix the regression escalates exactly as before, plus the attempt's record:
+// the -1 record, outcome stuck, and summary.md and the report recording the attempt.
+func TestIntegrationStage_FixAttempt_UnfixedEscalates(t *testing.T) {
+	cases := []struct {
+		name       string
+		result     string
+		build      func(t *testing.T, sc *regressionScene) *fakeFixStarter
+		wantCommit bool
+	}{
+		{
+			name:   "strand reports FAILED",
+			result: websterengine.FixResultFailed,
+			build:  func(t *testing.T, sc *regressionScene) *fakeFixStarter { return newFakeFixStarter(t, sc.fx.Worktree) },
+		},
+		{
+			name:   "strand times out",
+			result: websterengine.FixResultTimeout,
+			build: func(t *testing.T, sc *regressionScene) *fakeFixStarter {
+				f := newFakeFixStarter(t, sc.fx.Worktree)
+				f.outcome = shuttleengine.OutcomeTimeout
+				return f
+			},
+		},
+		{
+			name:   "strand start fails",
+			result: websterengine.FixResultFailed,
+			build: func(t *testing.T, sc *regressionScene) *fakeFixStarter {
+				f := newFakeFixStarter(t, sc.fx.Worktree)
+				f.startErr = fmt.Errorf("provider never came up")
+				return f
+			},
+		},
+		{
+			name:       "strand commit leaves the regression",
+			result:     websterengine.FixResultFailed,
+			wantCommit: true,
+			build: func(t *testing.T, sc *regressionScene) *fakeFixStarter {
+				return fixerReporting(t, sc.fx.Worktree, func(t *testing.T) string {
+					return commitFile(t, sc.fx.Worktree, "unrelated.txt", "x", "unrelated change")
+				})
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			sc := newRegressionScene(t, false)
+			sc.suite.fixer = tc.build(t, sc)
+
+			result, err := runFailedSuite(t, sc.fx, sc.suite)
+			if err != nil {
+				t.Fatalf("Run() error = %v; want nil", err)
+			}
+			if result.Outcome != "stuck" {
+				t.Fatalf("Outcome = %q; want stuck", result.Outcome)
+			}
+			if !hasEscalationRecord(t, sc.fx) {
+				t.Errorf("no -1 escalation record after an unfixed regression")
+			}
+			report := integrationReportOf(t, sc.fx)
+			if report.Fix == nil || report.Fix.Result != tc.result || report.Fix.PreFixHead != sc.shas[2] {
+				t.Fatalf("report fix = %+v; want result %q from %s", report.Fix, tc.result, sc.shas[2])
+			}
+			if !strings.Contains(summaryOf(t, sc.fx), "## Integration suite fix") {
+				t.Errorf("summary.md does not record the attempt")
+			}
+			if fix := stateOf(t, sc.fx).IntegrationFix; fix == nil || fix.Result != tc.result {
+				t.Errorf("state IntegrationFix = %+v; want result %q", fix, tc.result)
+			}
+			var commits []string
+			if tc.wantCommit {
+				commits = report.Fix.Commits
+				if len(commits) != 1 {
+					t.Fatalf("report fix commits = %v; want the strand's one commit", commits)
+				}
+			}
+			assertFixWayForward(t, result.StuckReason, sc.shas[2], commits...)
+		})
+	}
+}
+
+// TestIntegrationStage_FixAttempt_SpentEscalatesWithoutSpawn proves a state that already records the attempt escalates with no StartFix call,
+// and the stuck reason names the recorded pre-fix head and every commit after it.
+func TestIntegrationStage_FixAttempt_SpentEscalatesWithoutSpawn(t *testing.T) {
+	sc := newRegressionScene(t, false)
+	fixer := newFakeFixStarter(t, sc.fx.Worktree)
+	sc.suite.fixer = fixer
+	sc.suite.integrationFix = &websterengine.IntegrationFixState{PreFixHead: sc.shas[0], SpawnedAt: "2026-10-02T00:00:00Z", Result: websterengine.FixResultFailed}
+
+	result, err := runFailedSuite(t, sc.fx, sc.suite)
+	if err != nil {
+		t.Fatalf("Run() error = %v; want nil", err)
+	}
+	if result.Outcome != "stuck" {
+		t.Fatalf("Outcome = %q; want stuck", result.Outcome)
+	}
+	if fixer.calls != 0 {
+		t.Errorf("StartFix calls = %d; want 0 for a spent attempt", fixer.calls)
+	}
+	if report := integrationReportOf(t, sc.fx); report.Fix == nil || report.Fix.Result != websterengine.FixResultSpent {
+		t.Errorf("report fix = %+v; want result spent", report.Fix)
+	}
+	if !hasEscalationRecord(t, sc.fx) {
+		t.Errorf("no -1 escalation record for a spent attempt")
+	}
+	assertFixWayForward(t, result.StuckReason, sc.shas[0], sc.shas[1], sc.shas[2])
+}
+
+// TestIntegrationStage_FixAttempt_RefusedCommitsEscalate proves a strand whose work checkFixCommits or the plan-fingerprint compare refuses fails the attempt with result refused.
+func TestIntegrationStage_FixAttempt_RefusedCommitsEscalate(t *testing.T) {
+	cases := []struct {
+		name           string
+		planInWorktree bool
+		work           func(t *testing.T, sc *regressionScene) string
+		wantDetail     string
+	}{
+		{
+			name:           "commit touches the plan directory",
+			planInWorktree: true,
+			wantDetail:     "plan",
+			work: func(t *testing.T, sc *regressionScene) string {
+				card := filepath.Join(sc.fx.PlanDir, "01-batch1.md")
+				data, err := os.ReadFile(card)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return commitFile(t, sc.fx.Worktree, "plan/01-batch1.md", string(data)+"\nstrand note\n", "touch the plan")
+			},
+		},
+		{
+			name:       "commit touches _lyx",
+			wantDetail: "_lyx",
+			work: func(t *testing.T, sc *regressionScene) string {
+				return commitFile(t, sc.fx.Worktree, "_lyx/notes.md", "x", "touch _lyx")
+			},
+		},
+		{
+			name:       "uncommitted plan edit left on disk",
+			wantDetail: "changed the plan on disk",
+			work: func(t *testing.T, sc *regressionScene) string {
+				card := filepath.Join(sc.fx.PlanDir, "01-batch1.md")
+				data, err := os.ReadFile(card)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(card, append(data, []byte("\nstrand note\n")...), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				return strings.TrimSpace(mustGit(t, sc.fx.Worktree, "rev-parse", "HEAD"))
+			},
+		},
+		{
+			name:       "dirty worktree",
+			wantDetail: "uncommitted",
+			work: func(t *testing.T, sc *regressionScene) string {
+				if err := os.WriteFile(filepath.Join(sc.fx.Worktree, "junk.txt"), []byte("x"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				return strings.TrimSpace(mustGit(t, sc.fx.Worktree, "rev-parse", "HEAD"))
+			},
+		},
+		{
+			name:       "HEAD moved past head_sha by a non-merge commit",
+			wantDetail: "does not match the worktree's actual HEAD",
+			work: func(t *testing.T, sc *regressionScene) string {
+				commitFix(t, sc.fx.Worktree)
+				return sc.shas[2]
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			sc := newRegressionScene(t, tc.planInWorktree)
+			sc.suite.fixer = fixerReporting(t, sc.fx.Worktree, func(t *testing.T) string { return tc.work(t, sc) })
+
+			result, err := runFailedSuite(t, sc.fx, sc.suite)
+			if err != nil {
+				t.Fatalf("Run() error = %v; want nil", err)
+			}
+			if result.Outcome != "stuck" {
+				t.Fatalf("Outcome = %q; want stuck", result.Outcome)
+			}
+			report := integrationReportOf(t, sc.fx)
+			if report.Fix == nil || report.Fix.Result != websterengine.FixResultRefused || !strings.Contains(report.Fix.Detail, tc.wantDetail) {
+				t.Errorf("report fix = %+v; want result refused with a detail naming %q", report.Fix, tc.wantDetail)
+			}
+			if !hasEscalationRecord(t, sc.fx) {
+				t.Errorf("no -1 escalation record after a refused fix")
+			}
+		})
+	}
+}
+
+// TestIntegrationStage_FixAttempt_InFlightAttemptEndsStuck proves a state whose attempt the run's end interrupted ends stuck even over an OK integration report:
+// summary.md names the commits after PreFixHead and the attempt's Result is set.
+func TestIntegrationStage_FixAttempt_InFlightAttemptEndsStuck(t *testing.T) {
+	sc := newRegressionScene(t, false)
+	fixer := newFakeFixStarter(t, sc.fx.Worktree)
+	sc.suite.fixer = fixer
+	sc.suite.reportStatus = websterengine.ReportStatusOK
+	sc.suite.integrationFix = &websterengine.IntegrationFixState{PreFixHead: sc.shas[0], SpawnedAt: "2026-10-02T00:00:00Z", StrandGUID: "gone"}
+
+	result, err := runFailedSuite(t, sc.fx, sc.suite)
+	if err != nil {
+		t.Fatalf("Run() error = %v; want nil", err)
+	}
+	if result.Outcome != "stuck" {
+		t.Fatalf("Outcome = %q; want stuck", result.Outcome)
+	}
+	assertFixWayForward(t, result.StuckReason, sc.shas[0], sc.shas[1], sc.shas[2])
+	summary := summaryOf(t, sc.fx)
+	for _, want := range []string{"## Integration suite fix", sc.shas[1], sc.shas[2]} {
+		if !strings.Contains(summary, want) {
+			t.Errorf("summary.md does not contain %q; got:\n%s", want, summary)
+		}
+	}
+	if fix := stateOf(t, sc.fx).IntegrationFix; fix == nil || fix.Result != websterengine.FixResultFailed {
+		t.Errorf("state IntegrationFix = %+v; want Result set to failed", fix)
+	}
+	if fixer.calls != 0 {
+		t.Errorf("StartFix calls = %d; want 0", fixer.calls)
+	}
+}
+
+// TestIntegrationStage_FixAttempt_NilFixStarterIsWiringError proves a regression with no FixStarter returns the wiring error and records no attempt, so the fault never spends it.
+func TestIntegrationStage_FixAttempt_NilFixStarterIsWiringError(t *testing.T) {
+	sc := newRegressionScene(t, false)
+	sc.suite.noFixStarter = true
+
+	_, err := runFailedSuite(t, sc.fx, sc.suite)
+	if err == nil || !strings.Contains(err.Error(), "FixStarter") {
+		t.Fatalf("Run() error = %v; want the FixStarter wiring error", err)
+	}
+	if fix := stateOf(t, sc.fx).IntegrationFix; fix != nil {
+		t.Errorf("state IntegrationFix = %+v; want unrecorded", fix)
+	}
+}
+
+// TestIntegrationStage_FixAttempt_UnrecordedStrandIsRemoved proves a started fix strand whose GUID cannot be recorded is removed before the stage returns its error,
+// since run entry's reclaim could never find it.
+func TestIntegrationStage_FixAttempt_UnrecordedStrandIsRemoved(t *testing.T) {
+	sc := newRegressionScene(t, false)
+	fixer := newFakeFixStarter(t, sc.fx.Worktree)
+	fixer.onStart = func(t *testing.T) {
+		st := stateOf(t, sc.fx)
+		st.IntegrationFix = nil
+		if err := websterengine.SaveState(sc.fx.Deps.Geom.WebsterDir, sc.fx.Deps.Geom.ScratchDir, st); err != nil {
+			t.Fatalf("SaveState() error = %v", err)
+		}
+		sc.fx.Reed.status = reedengine.StatusResult{Strands: []reedengine.StrandStatus{{GUID: "fix-strand", Live: true}}}
+	}
+	sc.suite.fixer = fixer
+
+	_, err := runFailedSuite(t, sc.fx, sc.suite)
+	if err == nil || !strings.Contains(err.Error(), "fix-strand") {
+		t.Fatalf("Run() error = %v; want the record error naming the fix strand", err)
+	}
+	if len(sc.fx.Reed.removedStrands) != 1 || sc.fx.Reed.removedStrands[0] != "fix-strand" {
+		t.Errorf("RemoveStrand calls = %v; want exactly [fix-strand]", sc.fx.Reed.removedStrands)
+	}
+}
+
+// TestIntegrationStage_FixAttempt_PreSpawnFailureLeavesAttemptUnspent proves a failure before the spawn returns its error with no attempt recorded,
+// so the next run still has its one attempt.
+func TestIntegrationStage_FixAttempt_PreSpawnFailureLeavesAttemptUnspent(t *testing.T) {
+	sc := newRegressionScene(t, false)
+	fixer := newFakeFixStarter(t, sc.fx.Worktree)
+	sc.suite.fixer = fixer
+	blocker := filepath.Join(websterengine.IntegrationFixReportPath(sc.fx.Deps.Geom.ReportsDir), "occupied")
+	if err := os.MkdirAll(blocker, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := runFailedSuite(t, sc.fx, sc.suite); err == nil || !strings.Contains(err.Error(), "stale integration fix report") {
+		t.Fatalf("Run() error = %v; want the stale-report removal error", err)
+	}
+	if fix := stateOf(t, sc.fx).IntegrationFix; fix != nil {
+		t.Errorf("state IntegrationFix = %+v; want unrecorded", fix)
+	}
+	if fixer.calls != 0 {
+		t.Errorf("StartFix calls = %d; want 0", fixer.calls)
+	}
+}
+
+// TestIntegrationStage_FixAttempt_NonRegressionVerdictsMakeNoAttempt proves flaky-only and pre-existing-only verdicts never spawn a fix strand.
+func TestIntegrationStage_FixAttempt_NonRegressionVerdictsMakeNoAttempt(t *testing.T) {
+	t.Run("flaky", func(t *testing.T) {
+		fx := newRunFixture(t, 1)
+		appendIntegrationVerify(t, fx.PlanDir, "true")
+		start := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+		sha1 := commitFile(t, fx.Worktree, "card1.txt", "one", "card1")
+		fixer := newFakeFixStarter(t, fx.Worktree)
+
+		if _, err := runFailedSuite(t, fx, failedSuite{batches: [][]string{{sha1}}, startSHA: start, masterOutcome: "done", forkLog: flakyForkLog, fixer: fixer}); err != nil {
+			t.Fatalf("Run() error = %v; want nil", err)
+		}
+		if fixer.calls != 0 {
+			t.Errorf("StartFix calls = %d; want 0 for a flaky verdict", fixer.calls)
+		}
+	})
+	t.Run("pre-existing", func(t *testing.T) {
+		fx := newRunFixture(t, 1)
+		appendIntegrationVerify(t, fx.PlanDir, "sh always.sh")
+		seedVerifyScripts(t, fx.Worktree)
+		start := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+		sha1 := commitFile(t, fx.Worktree, "card1.txt", "one", "card1")
+		fixer := newFakeFixStarter(t, fx.Worktree)
+
+		if _, err := runFailedSuite(t, fx, failedSuite{
+			batches: [][]string{{sha1}}, startSHA: start, masterOutcome: "done", fixer: fixer,
+			forkLog: "--- FAIL: TestAlways (0.00s)\n    x_test.go:1: TestAlways failed\nFAIL\nFAIL\texample/pkg\t0.01s\n",
+		}); err != nil {
+			t.Fatalf("Run() error = %v; want nil", err)
+		}
+		if fixer.calls != 0 {
+			t.Errorf("StartFix calls = %d; want 0 for a pre-existing verdict", fixer.calls)
+		}
+	})
+}
+
+// TestIntegrationStage_FixAttempt_MasterStuckMakesNoAttempt proves a non-done Master outcome over a regression escalates as before with no StartFix call.
+func TestIntegrationStage_FixAttempt_MasterStuckMakesNoAttempt(t *testing.T) {
+	sc := newRegressionScene(t, false)
+	fixer := newFakeFixStarter(t, sc.fx.Worktree)
+	sc.suite.fixer = fixer
+	sc.suite.masterOutcome = "stuck"
+
+	result, err := runFailedSuite(t, sc.fx, sc.suite)
+	if err != nil {
+		t.Fatalf("Run() error = %v; want nil", err)
+	}
+	if result.Outcome != "stuck" || result.StuckReason != "master says stuck" {
+		t.Errorf("Outcome = %q, StuckReason = %q; want Master's own stuck and reason", result.Outcome, result.StuckReason)
+	}
+	if fixer.calls != 0 {
+		t.Errorf("StartFix calls = %d; want 0", fixer.calls)
 	}
 }

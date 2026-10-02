@@ -137,6 +137,11 @@ var WebsterTemplateMaster []byte
 //go:embed webster/webster-template-integration.md
 var WebsterTemplateIntegration []byte
 
+// WebsterTemplateIntegrationFix is webster's shipped-default integration-fix strand prompt template.
+//
+//go:embed webster/webster-template-integration-fix.md
+var WebsterTemplateIntegrationFix []byte
+
 // WebsterPrefixFork is webster's shipped-default in-session fork prompt prefix, joined ahead of
 // WebsterBodyImplementer to compose the fork prompt.
 //
@@ -253,6 +258,7 @@ var entries = []registryEntry{
 	{"treadle-template-targeting", &TreadleTemplateTargeting},
 	{"webster-template-master", &WebsterTemplateMaster},
 	{"webster-template-integration", &WebsterTemplateIntegration},
+	{"webster-template-integration-fix", &WebsterTemplateIntegrationFix},
 	{"webster-prefix-fork", &WebsterPrefixFork},
 	{"webster-prefix-recovery", &WebsterPrefixRecovery},
 	{"webster-body-implementer", &WebsterBodyImplementer},

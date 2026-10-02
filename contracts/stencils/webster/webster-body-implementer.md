@@ -38,12 +38,21 @@ For EACH card file listed above, in the order listed:
    A non-zero exit fails the card exactly like the build+unit gate in step 3 — there is no separate "deferred verify" concept;
    every card's gate (build+unit, plus its own `verify:` when it declares one) is checked right after that card's own commit, never bundled into a later card.
 
-If any card's gate fails and you cannot fix it within your self-fix bound (see next section), stop and report `status: FAILED` — do not continue to a later card on top of a broken one.
+If any card's gate fails, or a test the card broke fails, and you cannot fix it within your self-fix bound (see next section), stop and report `status: FAILED` — do not continue to a later card on top of a broken one.
 
 ## Bounded self-fix, then stop
 
 If a card's gate (build+unit,
-or its own `verify:`) fails, you get at most `{{.self_fix_cap}}` in-session fix attempts before you stop trying that card: fix, re-run the gate, and repeat, up to that bound — never more, and never fewer when a fix is plausible.
+or its own `verify:` when it declares one) fails, you get at most `{{.self_fix_cap}}` in-session fix attempts before you stop trying that card: fix, re-run the gate, and repeat, up to that bound — never more, and never fewer when a fix is plausible.
+
+Any failing test you observe, in the gate or in any other test run you make, counts as that card's gate failure when the card's change caused it.
+The card caused a failure when either holds:
+
+- the failing test exercises code or files the card changed;
+- a repo scan or enforcement test flags a file the card wrote.
+
+You fix such a failure under the same `{{.self_fix_cap}}`-attempt bound as any gate failure, and report `status: FAILED` when the bound runs out.
+A failure the card did not cause is never yours to fix and never a `FAILED` on its own: name it in your final reply to Master and move on.
 
 ## Your final action: the minimal batch-report
 
@@ -59,4 +68,4 @@ deviations:
 ```
 
 `status` is `OK` when every card above is committed and every gate it ran passed;
-`FAILED` when you stopped after exhausting the self-fix bound on some card. `head_sha` is your worktree's current HEAD commit SHA — capture it with `git rev-parse HEAD` as your very last read before writing the report, so it reflects every commit you made. `deviations` is the list of worktree-relative paths you changed OUTSIDE the deviation union — the batch's own target glyphs across its cards, reported as the paths you touched rather than resolved by you: under the glyph alphabet a symbol-shaped target is a glyph, not a package-qualified name, and the mechanical glyph scope guard (`internal/planglyph`'s `ScopeGuard`, run over the record-batch delta) is what actually compares your work against the union — your own job here is only to report what you touched, never to estimate the comparison yourself. `Uses:` stays out of the union because it is read rather than written. Omit `deviations` entirely when you made no such changes. `deviations` is ALWAYS informational: a non-empty list never makes `status` `FAILED` on its own — only a failed build+unit gate or a failed card `verify:` does.
+`FAILED` when you stopped after exhausting the self-fix bound on some card, whether its gate failed or a test the card broke did. `head_sha` is your worktree's current HEAD commit SHA — capture it with `git rev-parse HEAD` as your very last read before writing the report, so it reflects every commit you made. `deviations` is the list of worktree-relative paths you changed OUTSIDE the deviation union — the batch's own target glyphs across its cards, reported as the paths you touched rather than resolved by you: under the glyph alphabet a symbol-shaped target is a glyph, not a package-qualified name, and the mechanical glyph scope guard (`internal/planglyph`'s `ScopeGuard`, run over the record-batch delta) is what actually compares your work against the union — your own job here is only to report what you touched, never to estimate the comparison yourself. `Uses:` stays out of the union because it is read rather than written. Omit `deviations` entirely when you made no such changes. `deviations` is ALWAYS informational: a non-empty list never makes `status` `FAILED` on its own — only a failed build+unit gate, a failed card `verify:` or a test the card broke does.

@@ -159,6 +159,14 @@ type RunDeps struct {
 	// integration-failure bypass at the runIntegrationStage call site, not "construct the
 	// production default".
 	OpenBisector func() (FabricBisector, error)
+
+	// FixStarter spawns the integration stage's one fix strand on a regression.
+	// A nil FixStarter over a regression is a wiring-guard error that records nothing.
+	FixStarter FixStarter
+
+	// ParentBranch names the branch the run merges its parent in from, for the fix commit check's clean-parent-merge rule.
+	// It is nil in standalone mode, so no merge commit is accepted there.
+	ParentBranch ParentBranchFunc
 }
 
 // RunOptions carries one `run` invocation's caller-supplied choices.
@@ -300,9 +308,9 @@ func clearRenderedPrompts(promptsDir string) error {
 	return nil
 }
 
-// reclaimEntryTimeStrands stops the only two substrates a crashed or killed
-// `run` process can ever leave live behind it: Master's own recorded strand
-// and any recorded, non-terminal recovery-batch strand.
+// reclaimEntryTimeStrands stops the only substrates a crashed or killed `run` process can ever leave live behind it:
+// Master's own recorded strand, any recorded, non-terminal recovery-batch strand, and the integration-fix strand when one is recorded,
+// so a run that crashed during the fix never leaves a strand committing behind a fresh Master.
 // Forks die WITH Master (same process) — there is never an orphaned
 // in-flight fork implementer to reclaim, which is what keeps webster's own
 // entry-time reclaim simple, per
@@ -324,6 +332,12 @@ func reclaimEntryTimeStrands(reed shuttleengine.ReedOps, st *State) error {
 			if err := removeStrandIfLive(reed, bs.StrandGUID); err != nil {
 				return err
 			}
+		}
+	}
+
+	if st.IntegrationFix != nil && st.IntegrationFix.StrandGUID != "" {
+		if err := removeStrandIfLive(reed, st.IntegrationFix.StrandGUID); err != nil {
+			return err
 		}
 	}
 
@@ -526,9 +540,10 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	// the same one begin-batch already uses; a fresh run has no completed cards and gets the
 	// whole-plan answer unchanged. The plan-unapproved gate, which ValidateDispatch's format-only
 	// set deliberately omits, already fired at entry above.
-	// The scope here is begunCards, not completedCards: a batch begun but not recorded may already
-	// have landed its work (see begunCards).
-	findings, err := planglyph.ValidateDispatch(plan, deps.Geom.WorktreeRoot, begunCards(batches, st))
+	// The scope here is DispatchScope, not completedCards: a batch begun but not recorded may already have landed its work, or not yet,
+	// and its forthcoming Create targets stay out of the status check.
+	begun, forthcoming := DispatchScope(batches, st)
+	findings, err := planglyph.ValidateDispatch(plan, deps.Geom.WorktreeRoot, begun, forthcoming)
 	// The resolve pass canonicalizes handles, rewriting the plan on disk before it reports either a
 	// finding or an error, so the staleness re-baseline runs HERE — ahead of both refusals below —
 	// and is persisted immediately. Restamping only past the refusals left state.json describing the
@@ -1384,6 +1399,10 @@ func runIntegrationStage(deps RunDeps, plan *planparser.Plan, batches []batcher.
 	if err != nil {
 		return nil, "", err
 	}
+	// An attempt the run's end interrupted left commits checkFixCommits never saw, so it ends stuck whatever the report says.
+	if reason, err := settleInterruptedFix(deps, reportPath, report); err != nil || reason != "" {
+		return nil, reason, err
+	}
 	if report.Status == ReportStatusOK {
 		// Master's own "done" outcome already reflects a passing integration
 		// suite correctly; nothing further to escalate.
@@ -1441,24 +1460,93 @@ func runIntegrationStage(deps RunDeps, plan *planparser.Plan, batches []batcher.
 		}
 	}
 
+	regressing := failuresByID(outcome.Failures, outcome.Triage.Regressions)
+
+	// A regression under a done Master gets one automated fix attempt before it escalates.
+	// A non-done Master outcome stays as it is, since a fix cannot change it.
+	// The attempt runs its own leased and unleased steps, so no lease is held here.
+	var fix *fixAttempt
+	if regression && masterOutcome == outcomeDone {
+		fix, err = attemptIntegrationFix(deps, fixInputs{plan: plan, regressing: regressing, offendingCard: offendingCard, startSHAs: startSHAs, bisector: bisector})
+		if err != nil {
+			return warnings, "", err
+		}
+		warnings = append(warnings, fix.Warnings...)
+		if fix.Post != nil {
+			warnings = append(warnings, fix.Post.Warnings...)
+			warnings = append(warnings, triageWarnings(fix.Post.Triage)...)
+		}
+	}
+
 	// Phase 3, leased: record the result against a state reloaded fresh under the lease,
 	// since the unleased work above gave every concurrent verb room to persist its own mutations.
-	regressing := failuresByID(outcome.Failures, outcome.Triage.Regressions)
-	if err := recordTriageResult(deps, reportPath, outcome, regressing, offendingCard, offendingSHA); err != nil {
+	if err := recordTriageResult(deps, reportPath, outcome, regressing, offendingCard, offendingSHA, fix); err != nil {
 		return warnings, "", err
 	}
 
+	if fix.fixed() {
+		return warnings, "", nil
+	}
 	if !regression {
 		logger.Warn("websterengine: integration verify failed without a regression", "verdict", outcome.Triage.Verdict, "flaky", outcome.Triage.Flaky, "preExisting", outcome.Triage.PreExisting)
 		return warnings, "", nil
 	}
-	return warnings, triageStuckReason(regressing, offendingCard), nil
+	reason := triageStuckReason(regressing, offendingCard)
+	if fix != nil {
+		reason = fixStuckReason(reason, fix.Record)
+	}
+	return warnings, reason, nil
+}
+
+// settleInterruptedFix ends an integration-fix attempt the run's end interrupted: state records it with an empty Result.
+// It records the attempt as failed, with the commits after its PreFixHead, in the report and summary.md, sets Result in the same leased save, and returns the stuck reason.
+// It returns an empty reason when no attempt was in flight.
+func settleInterruptedFix(deps RunDeps, reportPath string, report *IntegrationReport) (string, error) {
+	mutateLock, err := AcquireStateMutation(deps.Geom.ScratchDir)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = mutateLock.Release() }()
+
+	st, err := LoadState(deps.Geom.WebsterDir, deps.Geom.ScratchDir)
+	if err != nil {
+		return "", err
+	}
+	if st == nil || st.IntegrationFix == nil || st.IntegrationFix.Result != "" {
+		return "", nil
+	}
+
+	commits, err := fixCommitsSince(deps.Geom.WorktreeRoot, st.IntegrationFix.PreFixHead)
+	if err != nil {
+		return "", err
+	}
+	fix := IntegrationFixRecord{
+		Result:     FixResultFailed,
+		Detail:     "the run ended while the fix attempt was in flight, so its commits were never checked",
+		PreFixHead: st.IntegrationFix.PreFixHead,
+		Commits:    commits,
+	}
+	report.Fix = &fix
+	if err := WriteIntegrationReport(reportPath, report); err != nil {
+		return "", err
+	}
+	if err := AppendIntegrationFix(deps.Geom.WebsterDir, fix); err != nil {
+		return "", err
+	}
+	st.IntegrationFix.Result = fix.Result
+	if err := SaveState(deps.Geom.WebsterDir, deps.Geom.ScratchDir, st); err != nil {
+		return "", err
+	}
+	return fixStuckReason("integration verify regressed and its fix attempt was interrupted", fix), nil
 }
 
 // recordTriageResult is runIntegrationStage's leased phase: it reloads the integration report and writes the triage's failures and classification into it,
 // then either escalates a regression (the reserved -1 record and the summary.md section) or records a non-regression (the summary.md triage section and the friction note, with no state record).
+// A non-nil fix is the attempt made on that regression:
+// its record goes into the report and a summary.md section, its Result is set on state in the same save,
+// and a fix that cleared the regression records no -1 record, while its post-fix triage, if any, is recorded the way a non-regression is.
 // The lease is released on return, so the caller's logging runs outside it.
-func recordTriageResult(deps RunDeps, reportPath string, outcome triageOutcome, regressing []IntegrationFailure, offendingCard, offendingSHA string) error {
+func recordTriageResult(deps RunDeps, reportPath string, outcome triageOutcome, regressing []IntegrationFailure, offendingCard, offendingSHA string, fix *fixAttempt) error {
 	mutateLock, err := AcquireStateMutation(deps.Geom.ScratchDir)
 	if err != nil {
 		return err
@@ -1479,24 +1567,56 @@ func recordTriageResult(deps RunDeps, reportPath string, outcome triageOutcome, 
 	}
 	report.Failures = outcome.Failures
 	report.Triage = &outcome.Triage
+	if fix != nil {
+		record := fix.Record
+		report.Fix = &record
+	}
 	if err := WriteIntegrationReport(reportPath, report); err != nil {
 		return err
 	}
 
-	if outcome.Triage.Verdict == TriageVerdictRegression {
-		RecordIntegrationFailure(st, offendingCard, offendingSHA)
-		if err := AppendIntegrationFailure(deps.Geom.WebsterDir, offendingCard, offendingSHA, regressing); err != nil {
-			return err
-		}
-	} else {
-		if err := AppendIntegrationTriage(deps.Geom.WebsterDir, outcome.Triage.Flaky, outcome.Triage.PreExisting); err != nil {
+	recordNonRegression := func(triage IntegrationTriage) error {
+		if err := AppendIntegrationTriage(deps.Geom.WebsterDir, triage.Flaky, triage.PreExisting); err != nil {
 			return err
 		}
 		// The friction note is best-effort, like the rest of the friction plumbing:
 		// the report and summary section already carry the verdict, so a failed note must not fail the run.
-		if err := writeTriageFrictionNote(deps.FrictionDir, outcome.Triage); err != nil {
+		if err := writeTriageFrictionNote(deps.FrictionDir, triage); err != nil {
 			logger.Warn("websterengine: triage friction note not written", "cause", err)
 		}
+		return nil
+	}
+
+	switch {
+	case fix.fixed():
+		if err := AppendIntegrationFix(deps.Geom.WebsterDir, fix.Record); err != nil {
+			return err
+		}
+		if fix.Post != nil {
+			if err := recordNonRegression(fix.Post.Triage); err != nil {
+				return err
+			}
+		}
+	case outcome.Triage.Verdict == TriageVerdictRegression:
+		RecordIntegrationFailure(st, offendingCard, offendingSHA)
+		if err := AppendIntegrationFailure(deps.Geom.WebsterDir, offendingCard, offendingSHA, regressing); err != nil {
+			return err
+		}
+		if fix != nil {
+			if err := AppendIntegrationFix(deps.Geom.WebsterDir, fix.Record); err != nil {
+				return err
+			}
+		}
+	default:
+		if err := recordNonRegression(outcome.Triage); err != nil {
+			return err
+		}
+	}
+
+	// The attempt's result lands in the same save as everything else this phase records.
+	// A spent attempt keeps the result it already carries.
+	if fix != nil && fix.Record.Result != FixResultSpent && st.IntegrationFix != nil {
+		st.IntegrationFix.Result = fix.Record.Result
 	}
 
 	return SaveState(deps.Geom.WebsterDir, deps.Geom.ScratchDir, st)
