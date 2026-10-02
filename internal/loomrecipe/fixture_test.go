@@ -408,11 +408,8 @@ func (f *fakeLoomShuttle) Attach(spec shuttleengine.Spec) (shuttleengine.Result,
 	return f.attachResult, true, nil
 }
 
-// RunGated and AttachGated implement the shared fake contract every shedadapters.Shuttle/
-// burlerengine.Shuttle test fake follows (see the "every test fake evaluates the gate once"
-// decision): delegate to Run/Attach's own body, then -- only when gate is non-empty and the
-// delegated outcome is OutcomeDone -- invoke the closure exactly once, returning its error if
-// non-nil and otherwise stamping a *GateOutcome onto the returned Result.
+// RunGated and AttachGated implement the shared fake contract every shedadapters.Shuttle/burlerengine.Shuttle test fake follows (see the "every test fake evaluates the gate once" decision):
+// delegate to Run/Attach's own body, then -- only when gate is non-empty and the delegated outcome is OutcomeDone -- invoke the entries once each in list order (see evalGateList), returning a closure's error if non-nil and otherwise stamping a *GateOutcome onto the returned Result.
 //
 // This fake's pair matters most among the four downstream fakes this task teaches the gated seam:
 // fakeLoomShuttle is the only one a FULL recipe sequence drives, so it is what makes a gate-failed
