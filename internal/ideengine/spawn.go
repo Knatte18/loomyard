@@ -62,7 +62,6 @@ func Spawn(l *lyxcwd.Location, slug string) error {
 // When .vscode/tasks.json is already tracked in the pair's repo, .vscode/ belongs to the repo:
 // SpawnDriven then writes neither file, leaves the shared info/exclude alone, logs one warning, and still launches.
 // Otherwise it first keeps .vscode/ out of git with an anchored line in the shared info/exclude, so the child's commits never sweep it up.
-// gitignore.Ensure is never called: the child's loom run commits in that worktree.
 func SpawnDriven(l *lyxcwd.Location, slug string) error {
 	worktreeDir, color, _, _ := resolveSpawnTarget(l, slug)
 
