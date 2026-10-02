@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 
 	"github.com/Knatte18/loomyard/internal/shell"
@@ -45,6 +46,18 @@ func newSessionID() (string, error) {
 		b[0:4], b[4:6], b[6:8], b[8:10], b[10:16]), nil
 }
 
+// sessionIDShape is the lowercase hyphenated UUID shape newSessionID mints.
+var sessionIDShape = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+
+// validateSessionID reports an error unless id is the lowercase hyphenated UUID shape newSessionID mints.
+// The shape also keeps shell metacharacters out of the id quoted onto the pane line.
+func validateSessionID(id string) error {
+	if !sessionIDShape.MatchString(id) {
+		return fmt.Errorf("claudeengine: invalid resume session id %q; expected a lowercase hyphenated UUID (8-4-4-4-12 hex digits)", id)
+	}
+	return nil
+}
+
 // Prepare writes prompt.md and settings.json into runDir and returns the Launch command strings.
 // It validates spec.Effort and spec.Model before writing any artifacts.
 func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {
@@ -73,9 +86,18 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 		return shuttleengine.Launch{}, err
 	}
 
-	sessionID, err := newSessionID()
-	if err != nil {
-		return shuttleengine.Launch{}, fmt.Errorf("mint session id: %w", err)
+	// An adopted run takes over an existing session; reject a malformed id before any artifact is written.
+	resume := spec.ResumeSessionID != ""
+	sessionID := spec.ResumeSessionID
+	if resume {
+		if err := validateSessionID(sessionID); err != nil {
+			return shuttleengine.Launch{}, err
+		}
+	} else {
+		sessionID, err = newSessionID()
+		if err != nil {
+			return shuttleengine.Launch{}, fmt.Errorf("mint session id: %w", err)
+		}
 	}
 
 	promptPath := filepath.Join(runDir, "prompt.md")
@@ -108,7 +130,7 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 	// sh selects pane-shell mechanics per OS (pwsh on Windows, posix elsewhere).
 	sh := shell.ForGOOS()
 	return shuttleengine.Launch{
-		Cmd:       buildLaunchCmd(sh, bin, promptPath, settingsPath, sessionID, resolvedModel, spec.Effort, notice, skipPermissions, spec.ForkSubagents),
+		Cmd:       buildLaunchCmd(sh, bin, promptPath, settingsPath, sessionID, resolvedModel, spec.Effort, notice, resume, skipPermissions, spec.ForkSubagents),
 		ResumeCmd: buildResumeCmd(sh, bin, settingsPath, sessionID, resolvedModel, spec.Effort, notice, skipPermissions, spec.ForkSubagents),
 		SessionID: sessionID,
 	}, nil

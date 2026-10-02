@@ -99,7 +99,10 @@ func claudeBinary(cfg shuttleengine.Config) string {
 // It must ride the pane command because the reed server env is scrubbed of CLAUDE_CODE_* at boot.
 const forkSubagentEnvKey = "CLAUDE_CODE_FORK_SUBAGENT"
 
-// buildLaunchCmd composes the pane-shell line that starts a fresh claude session.
+// buildLaunchCmd composes the pane-shell line that starts a claude session.
+// A fresh session is named with --session-id;
+// when resume is true the line takes over the existing session sessionID names with --resume instead,
+// and everything else on the line is identical, so the run's own settings file routes the adopted session's hooks.
 // It reads the prompt via sh.ReadFile, quotes all interpolated values, and appends --effort/--model only when non-empty.
 // When notice is non-empty it rides the line as --append-system-prompt,
 // so the session is told which tools are denied;
@@ -109,9 +112,13 @@ const forkSubagentEnvKey = "CLAUDE_CODE_FORK_SUBAGENT"
 // so the pane shell expands the variable from the export reed's launch script makes.
 // It adds --dangerously-skip-permissions when skipPermissions is true, the mode validatePermissionMode resolved.
 // When forkSubagents is true, it wraps the line via sh.WithEnv to enable fork subagent type.
-func buildLaunchCmd(sh shell.Shell, bin, promptPath, settingsPath, sessionID, model, effort, notice string, skipPermissions, forkSubagents bool) string {
+func buildLaunchCmd(sh shell.Shell, bin, promptPath, settingsPath, sessionID, model, effort, notice string, resume, skipPermissions, forkSubagents bool) string {
+	sessionFlag := " --session-id "
+	if resume {
+		sessionFlag = " --resume "
+	}
 	cmd := sh.Invoke(bin) + " " + sh.ReadFile(promptPath) +
-		" --session-id " + sh.Quote(sessionID) + " --settings " + sh.Quote(settingsPath) +
+		sessionFlag + sh.Quote(sessionID) + " --settings " + sh.Quote(settingsPath) +
 		" --name " + sh.EnvRef(agentname.StrandNameEnv)
 	if model != "" {
 		cmd += " --model " + sh.Quote(model)

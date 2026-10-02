@@ -74,6 +74,12 @@ type Spec struct {
 	// realize is a hard error from the engine (see claudeengine's
 	// validatePermissionMode), not from Spec.validate.
 	PermissionMode string
+	// ResumeSessionID, when non-empty, names an existing session the engine
+	// launches instead of minting a new one; the run takes that session over.
+	// Engine vocabulary exactly like Effort — validate does NOT inspect this
+	// field; the engine validates the id's shape and, through the optional
+	// SessionResumer capability, whether the session can be resumed at all.
+	ResumeSessionID string
 	// Interactive encodes !Autonomous: the Go zero value (false) means
 	// autonomous, the default. Autonomous runs add the AskUserQuestion
 	// PreToolUse deny; interactive runs do not. Whether the launch carries
