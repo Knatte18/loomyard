@@ -94,6 +94,15 @@ func PrintStatusLinesOnChange(out io.Writer, poll func() string, sleep func(), p
 	}
 }
 
+// waitingNote asks spec.Hooks.Waiting what a running run waits on. It returns the empty note when
+// the hook is nil or the state is not running, so the hook never runs against a settled run.
+func waitingNote(spec *Spec, st shedengine.Status) (string, error) {
+	if spec.Hooks.Waiting == nil || st.State != shedengine.StateRunning {
+		return "", nil
+	}
+	return spec.Hooks.Waiting()
+}
+
 // runStatusWatch drives the --watch tail against spec's own status file, using spec.StatusLabel as
 // the rendered line's prefix. It is the narrow, explicitly-taken interactive-handoff exception --
 // everything fallible has already run on the one-shot envelope above. A read failure or a !found
@@ -101,15 +110,23 @@ func PrintStatusLinesOnChange(out io.Writer, poll func() string, sleep func(), p
 // never writes an envelope: the pane is expected to survive the driver rewriting the file underneath
 // it.
 func runStatusWatch(out io.Writer, spec *Spec, interval time.Duration) {
-	unavailable := UnavailableLine(spec.StatusLabel)
-	poll := func() string {
-		polled, polledFound, pollErr := state.ReadJSONStrict[shedengine.Status](spec.StatusPath, spec.StatusLockPath)
-		if pollErr != nil || !polledFound {
-			return unavailable
-		}
-		return RenderStatusLine(spec.StatusLabel, polled)
-	}
+	poll := func() string { return statusWatchLine(spec) }
 	PrintStatusLinesOnChange(out, poll, func() { time.Sleep(interval) }, 0)
+}
+
+// statusWatchLine renders one poll of the --watch tail: the status line, with " | waiting <note>"
+// appended while the Waiting hook reports a note. A hook error drops the note rather than ending
+// the tail.
+func statusWatchLine(spec *Spec) string {
+	polled, found, err := state.ReadJSONStrict[shedengine.Status](spec.StatusPath, spec.StatusLockPath)
+	if err != nil || !found {
+		return UnavailableLine(spec.StatusLabel)
+	}
+	line := RenderStatusLine(spec.StatusLabel, polled)
+	if note, noteErr := waitingNote(spec, polled); noteErr == nil && note != "" {
+		line += " | waiting " + note
+	}
+	return line
 }
 
 // statusCmd builds the generic `status` subcommand, registering the two flags -- --watch and
@@ -194,8 +211,17 @@ func statusCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 					core[k] = v
 				}
 			}
+			waiting, err := waitingNote(spec, st)
+			if err != nil {
+				// Reported verbatim, like StatusExtras: the hook owns its whole string.
+				clihelp.SetExit(ctx, output.ErrFields(out, err.Error(), map[string]any{"trace_dir": traceDir}))
+				return nil
+			}
+			if waiting != "" {
+				core["waiting"] = waiting
+			}
 			if !asJSON && writerIsTerminal(out) {
-				fmt.Fprint(out, RenderStatusHuman(spec.StatusLabel, spec.RunID, st, spec.Routing))
+				fmt.Fprint(out, RenderStatusHuman(spec.StatusLabel, spec.RunID, st, spec.Routing, waiting))
 				return nil
 			}
 			clihelp.SetExit(ctx, output.Ok(out, core))
