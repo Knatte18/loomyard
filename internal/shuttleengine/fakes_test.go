@@ -341,6 +341,39 @@ func (e *fakeEngine) AuditForksIncremental(sessionID, workdir string, seenTransc
 // satisfies the seam it doubles for.
 var _ Engine = (*fakeEngine)(nil)
 
+// resumeFakeEngine is fakeEngine plus the opt-in SessionResumer capability: a test that resumes a session wraps its fakeEngine in it, so the plain fakeEngine keeps satisfying Engine alone.
+// CheckResume records its (sessionID, workdir) and appends "CheckResume" to Order, then returns the canned Warning and Err.
+type resumeFakeEngine struct {
+	*fakeEngine
+
+	Warning string
+	Err     error
+
+	CheckResumeCalls []struct {
+		SessionID string
+		Workdir   string
+	}
+	// Order logs CheckResume and Prepare in call order, so a test can assert the check ran first.
+	Order []string
+}
+
+func (e *resumeFakeEngine) CheckResume(sessionID, workdir string) (string, error) {
+	e.Order = append(e.Order, "CheckResume")
+	e.CheckResumeCalls = append(e.CheckResumeCalls, struct {
+		SessionID string
+		Workdir   string
+	}{sessionID, workdir})
+	return e.Warning, e.Err
+}
+
+func (e *resumeFakeEngine) Prepare(runDir string, spec Spec, cfg Config) (Launch, error) {
+	e.Order = append(e.Order, "Prepare")
+	return e.fakeEngine.Prepare(runDir, spec, cfg)
+}
+
+// var _ SessionResumer = (*resumeFakeEngine)(nil) proves the opt-in double carries the capability.
+var _ SessionResumer = (*resumeFakeEngine)(nil)
+
 // readyStart scripts reed and engine so a Start through the pair resolves its startup step ready on
 // the first probe: reed's StatusQueue reports reed.AddStrandResult.GUID live with a non-empty PaneID
 // (only when StatusQueue is empty, so a test that already scripted its own liveness answers is left

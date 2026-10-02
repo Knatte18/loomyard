@@ -15,10 +15,12 @@ import (
 
 // Template defaults, which the accessors floor a non-positive value back to.
 const (
-	defaultThresholdTokens = 400000
-	defaultIdleGraceS      = 30
-	defaultHandoffTimeoutS = 600
-	defaultPollIntervalMS  = 2000
+	defaultThresholdTokens     = 400000
+	defaultSoftThresholdTokens = 300000
+	defaultSoftIdleS           = 300
+	defaultIdleGraceS          = 30
+	defaultHandoffTimeoutS     = 600
+	defaultPollIntervalMS      = 2000
 )
 
 // Config represents the resolved orch.yaml configuration.
@@ -27,10 +29,14 @@ type Config struct {
 	Model  string `yaml:"model"`  // Model alias; empty is the provider default.
 	Effort string `yaml:"effort"` // Effort level in shuttle's engine vocabulary; empty is the provider default.
 
-	ThresholdTokens int `yaml:"threshold_tokens"`  // Context tokens at which the watcher cycles the session.
-	IdleGraceS      int `yaml:"idle_grace_s"`      // Seconds idle after the newest event before acting.
-	HandoffTimeoutS int `yaml:"handoff_timeout_s"` // Seconds the session gets to write its handoff.
-	PollIntervalMS  int `yaml:"poll_interval_ms"`  // Watcher tick interval in milliseconds.
+	PermissionMode string `yaml:"permission_mode"` // Passed verbatim to the orch run's Spec.PermissionMode; the engine validates it.
+
+	ThresholdTokens     int `yaml:"threshold_tokens"`      // Hard cap: context tokens at which the watcher cycles the session.
+	SoftThresholdTokens int `yaml:"soft_threshold_tokens"` // Context tokens at which the watcher may cycle at a natural break.
+	SoftIdleS           int `yaml:"soft_idle_s"`           // Seconds the newest turn end must be quiet before a soft cycle, and a DEFER's hold.
+	IdleGraceS          int `yaml:"idle_grace_s"`          // Seconds idle after the newest event before acting.
+	HandoffTimeoutS     int `yaml:"handoff_timeout_s"`     // Seconds the session gets to write its handoff.
+	PollIntervalMS      int `yaml:"poll_interval_ms"`      // Watcher tick interval in milliseconds.
 }
 
 // LoadConfig loads and unmarshals orch module configuration.
@@ -56,6 +62,23 @@ func (c Config) Threshold() int {
 		return defaultThresholdTokens
 	}
 	return c.ThresholdTokens
+}
+
+// SoftThreshold returns the context-token count at which the watcher may cycle at a natural break, flooring a non-positive value to the template default.
+// A value at or above Threshold never fires.
+func (c Config) SoftThreshold() int {
+	if c.SoftThresholdTokens <= 0 {
+		return defaultSoftThresholdTokens
+	}
+	return c.SoftThresholdTokens
+}
+
+// SoftIdle returns how long the newest turn end must be quiet before a soft cycle, and how long a DEFER reply holds the next soft attempt, flooring a non-positive value to the template default.
+func (c Config) SoftIdle() time.Duration {
+	if c.SoftIdleS <= 0 {
+		return defaultSoftIdleS * time.Second
+	}
+	return time.Duration(c.SoftIdleS) * time.Second
 }
 
 // IdleGrace returns how long the session must stay idle after its newest event, flooring a non-positive value to the template default.

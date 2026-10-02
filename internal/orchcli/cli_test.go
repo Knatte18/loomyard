@@ -14,7 +14,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
-	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/spf13/cobra"
 )
 
@@ -77,25 +76,6 @@ func TestRefuseNonPrime(t *testing.T) {
 	}
 }
 
-func TestOrchShuttleConfig_ClearsOnlyAgentDeny(t *testing.T) {
-	t.Parallel()
-
-	in := shuttleengine.Config{
-		RunDir: "runs", PollIntervalMS: 7, LivenessEveryNPolls: 3, RunTimeoutMin: 9, StartupTimeoutS: 11,
-		Claude: "claude", ClaudeDenyAgentTool: true, ClaudeDenyAskUserQuestion: true,
-	}
-	got := orchShuttleConfig(in)
-
-	want := in
-	want.ClaudeDenyAgentTool = false
-	if got != want {
-		t.Errorf("orchShuttleConfig = %+v; want %+v", got, want)
-	}
-	if !in.ClaudeDenyAgentTool {
-		t.Error("orchShuttleConfig mutated its argument")
-	}
-}
-
 func TestStatus_ReportsPopulatedState(t *testing.T) {
 	t.Parallel()
 
@@ -104,7 +84,8 @@ func TestStatus_ReportsPopulatedState(t *testing.T) {
 	err := orchengine.SaveState(c.paths, orchengine.State{
 		Strand: "g1", Phase: orchengine.PhaseClearing, LastContextTokens: 999, LastContextKnown: true,
 		CycleCount: 4, LastHandoff: "h.md", LastAbortReason: "why", Stuck: "busy", WatcherExit: "gone",
-		PhaseEnteredAt: time.Unix(0, 0),
+		PhaseEnteredAt: time.Unix(0, 0), CycleTrigger: orchengine.TriggerSoft,
+		LastDeferral: time.Date(2026, 10, 1, 12, 30, 0, 0, time.UTC),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -118,6 +99,8 @@ func TestStatus_ReportsPopulatedState(t *testing.T) {
 		"strand": "g1", "strand_live": true, "watcher_live": false, "context_tokens": float64(999),
 		"threshold_tokens": float64(1234), "phase": "clearing", "cycle_count": float64(4),
 		"last_handoff": "h.md", "last_abort_reason": "why", "stuck": "busy", "watcher_exit": "gone",
+		"soft_threshold_tokens": float64(c.cfg.SoftThreshold()), "cycle_trigger": "soft",
+		"last_deferral": "2026-10-01T12:30:00Z",
 	}
 	for k, v := range want {
 		if env[k] != v {
@@ -139,6 +122,12 @@ func TestStatus_UnknownTokensAreNull(t *testing.T) {
 	}
 	if env["strand_live"] != false {
 		t.Errorf("strand_live = %v; want false", env["strand_live"])
+	}
+	if v, present := env["last_deferral"]; !present || v != nil {
+		t.Errorf("last_deferral = %v (present %v); want null for a zero deferral", v, present)
+	}
+	if env["cycle_trigger"] != "" {
+		t.Errorf("cycle_trigger = %v; want empty before the first cycle", env["cycle_trigger"])
 	}
 }
 

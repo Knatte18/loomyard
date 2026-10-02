@@ -67,13 +67,6 @@ type orchCLI struct {
 	spawnWatcher func() error
 }
 
-// orchShuttleConfig returns cfg with the Agent-tool deny cleared and nothing else changed:
-// the orchestrator relies on subagents and forks, while shuttle.yaml and every other module keep the deny.
-func orchShuttleConfig(cfg shuttleengine.Config) shuttleengine.Config {
-	cfg.ClaudeDenyAgentTool = false
-	return cfg
-}
-
 // Command returns the cobra command tree for the orch module.
 func Command() *cobra.Command {
 	c := &orchCLI{}
@@ -125,7 +118,6 @@ Every verb runs from the hub's prime worktree only.`,
 			if err != nil {
 				return fail(err)
 			}
-			shuttleCfg = orchShuttleConfig(shuttleCfg)
 			reedCfg, err := reedengine.LoadConfig(location.AnchorPath(), "reed")
 			if err != nil {
 				return fail(err)

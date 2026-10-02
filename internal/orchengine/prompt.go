@@ -1,6 +1,6 @@
-// prompt.go renders the three orch stencils (orch-template-start, orch-template-handoff, orch-template-resume).
+// prompt.go renders the orch stencils (orch-template-start, orch-template-handoff, orch-template-resume, orch-template-adopt, orch-template-handoff-soft).
 // Each is read from a told stencils directory at call time via stencilstore.Read, per the Stencil Ownership Invariant, and filled with stencil.Fill, which drops the leading comment.
-// The handoff and resume renders are typed into the session through shuttle's Send, which refuses multi-line text, so each must render to one line;
+// The handoff, resume, adopt and soft handoff renders are typed into the session through shuttle's Send, which refuses multi-line text, so each must render to one line;
 // an operator override that breaks that fails here, naming the stencil to fix.
 
 package orchengine
@@ -17,6 +17,9 @@ const (
 	startStencilName   = "orch-template-start"
 	handoffStencilName = "orch-template-handoff"
 	resumeStencilName  = "orch-template-resume"
+
+	adoptStencilName       = "orch-template-adopt"
+	softHandoffStencilName = "orch-template-handoff-soft"
 )
 
 // RenderStartPrompt renders the fresh-launch prompt read from stencilsDir.
@@ -32,6 +35,16 @@ func RenderHandoffInstruction(stencilsDir, handoffPath string) (string, error) {
 // RenderResumePrompt renders the one-line resume prompt, with handoffPath filled in.
 func RenderResumePrompt(stencilsDir, handoffPath string) (string, error) {
 	return render(stencilsDir, resumeStencilName, map[string]string{"handoff_path": handoffPath}, true)
+}
+
+// RenderAdoptPrompt renders the one-line launch prompt for an adopted session.
+func RenderAdoptPrompt(stencilsDir string) (string, error) {
+	return render(stencilsDir, adoptStencilName, nil, true)
+}
+
+// RenderSoftHandoffInstruction renders the one-line soft-trigger handoff request, with handoffPath filled in.
+func RenderSoftHandoffInstruction(stencilsDir, handoffPath string) (string, error) {
+	return render(stencilsDir, softHandoffStencilName, map[string]string{"handoff_path": handoffPath}, true)
 }
 
 // render reads and fills one stencil.

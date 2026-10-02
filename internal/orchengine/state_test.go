@@ -50,6 +50,8 @@ func TestSaveLoadState_RoundTrip(t *testing.T) {
 		CycleCount:          4,
 		LastAbortReason:     "why",
 		WatcherExit:         "bye",
+		CycleTrigger:        TriggerSoft,
+		LastDeferral:        time.Date(2026, 1, 2, 3, 5, 6, 0, time.UTC),
 	}
 	if err := SaveState(p, want); err != nil {
 		t.Fatalf("SaveState: %v", err)
@@ -61,7 +63,10 @@ func TestSaveLoadState_RoundTrip(t *testing.T) {
 	if !got.PhaseEnteredAt.Equal(want.PhaseEnteredAt) {
 		t.Errorf("PhaseEnteredAt = %v, want %v", got.PhaseEnteredAt, want.PhaseEnteredAt)
 	}
-	got.PhaseEnteredAt = want.PhaseEnteredAt
+	if !got.LastDeferral.Equal(want.LastDeferral) {
+		t.Errorf("LastDeferral = %v, want %v", got.LastDeferral, want.LastDeferral)
+	}
+	got.PhaseEnteredAt, got.LastDeferral = want.PhaseEnteredAt, want.LastDeferral
 	if got != want {
 		t.Errorf("round trip = %+v, want %+v", got, want)
 	}
@@ -105,6 +110,7 @@ func TestNewHandoffPath_DistinctUnderHandoffsDir(t *testing.T) {
 }
 
 func TestResetForFreshLaunch(t *testing.T) {
+	deferred := time.Date(2026, 1, 2, 3, 5, 6, 0, time.UTC)
 	t.Run("idle", func(t *testing.T) {
 		in := State{Phase: PhaseIdle, LastHandoff: "h", PhaseEventsOffset: 5, LastInjectionOffset: 6, CycleCount: 2, LastContextTokens: 9, LastContextKnown: true}
 		got := ResetForFreshLaunch(in, "g2")
@@ -122,7 +128,7 @@ func TestResetForFreshLaunch(t *testing.T) {
 		}
 	})
 	t.Run("non-idle", func(t *testing.T) {
-		in := State{Phase: PhaseClearing, PhaseInjected: true, PendingHandoff: "p", PendingResume: "r", WatcherExit: "x", LastHandoff: "h", PhaseEventsOffset: 5, LastInjectionOffset: 6}
+		in := State{CycleTrigger: TriggerSoft, LastDeferral: deferred, Phase: PhaseClearing, PhaseInjected: true, PendingHandoff: "p", PendingResume: "r", WatcherExit: "x", LastHandoff: "h", PhaseEventsOffset: 5, LastInjectionOffset: 6}
 		got := ResetForFreshLaunch(in, "g2")
 		if !strings.Contains(got.LastAbortReason, string(PhaseClearing)) {
 			t.Errorf("LastAbortReason = %q, want it to name clearing", got.LastAbortReason)
@@ -135,6 +141,9 @@ func TestResetForFreshLaunch(t *testing.T) {
 		}
 		if got.LastHandoff != "h" {
 			t.Errorf("LastHandoff = %q", got.LastHandoff)
+		}
+		if got.CycleTrigger != TriggerSoft || !got.LastDeferral.Equal(deferred) {
+			t.Errorf("CycleTrigger/LastDeferral = %q/%v, want them kept", got.CycleTrigger, got.LastDeferral)
 		}
 	})
 }

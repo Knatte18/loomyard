@@ -55,6 +55,12 @@
 // pane liveness. Neither field grows a Claude specific — both stay provider-invariant, per the
 // Shuttle Provider-Seam Invariant.
 //
+// Spec.PermissionMode, Spec.AllowAgentTool and Spec.ResumeSessionID are caller-owned engine vocabulary, like Spec.Effort: Spec.validate never inspects them,
+// and the engine is the sole validator and realizer.
+// Empty PermissionMode keeps the run mode's default, AllowAgentTool left false keeps shuttle's config-driven Agent deny,
+// and an empty ResumeSessionID mints a new session, so a caller that sets none of them sees no change.
+// A non-empty ResumeSessionID launches that existing session instead.
+//
 // Runner.Attach answers one question: is there a still-live-or-already-finished, never-terminated
 // run for this exact output-file set, and if so, wait on it instead of starting a second agent.
 // That question is answered on the persisted RunState.Outcome plus, in a fixed precedence, the run's

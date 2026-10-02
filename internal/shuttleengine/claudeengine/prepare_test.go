@@ -160,7 +160,7 @@ func TestPrepare_AppendSystemPromptMatchesDenyNotice(t *testing.T) {
 				for _, fork := range []bool{false, true} {
 					cfg := shuttleengine.Config{ClaudeDenyAgentTool: denyAgent, ClaudeDenyAskUserQuestion: denyAsk}
 					spec := shuttleengine.Spec{Prompt: "do the thing", Interactive: interactive, ForkSubagents: fork}
-					notice := buildDenyNotice(interactive, cfg, fork)
+					notice := buildDenyNotice(interactive, cfg, fork, false)
 
 					launch, err := New().Prepare(t.TempDir(), spec, cfg)
 					if err != nil {
@@ -178,5 +178,131 @@ func TestPrepare_AppendSystemPromptMatchesDenyNotice(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// TestPrepare_PermissionModeThreadsIntoBothLines proves the resolved permission mode decides --dangerously-skip-permissions on the launch line and the resume line alike.
+func TestPrepare_PermissionModeThreadsIntoBothLines(t *testing.T) {
+	const flag = "--dangerously-skip-permissions"
+	tests := []struct {
+		name        string
+		mode        string
+		interactive bool
+		wantFlag    bool
+	}{
+		{"interactive_bypass", "bypass", true, true},
+		{"interactive_empty", "", true, false},
+		{"autonomous_empty", "", false, true},
+		{"autonomous_bypass", "bypass", false, true},
+		{"interactive_prompt", "prompt", true, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			spec := shuttleengine.Spec{Prompt: "do the thing", PermissionMode: tt.mode, Interactive: tt.interactive}
+			launch, err := New().Prepare(t.TempDir(), spec, shuttleengine.Config{})
+			if err != nil {
+				t.Fatalf("Prepare() error: %v; want nil", err)
+			}
+			if got := strings.Contains(launch.Cmd, flag); got != tt.wantFlag {
+				t.Errorf("Launch.Cmd = %q; contains %s = %v, want %v", launch.Cmd, flag, got, tt.wantFlag)
+			}
+			if got := strings.Contains(launch.ResumeCmd, flag); got != tt.wantFlag {
+				t.Errorf("Launch.ResumeCmd = %q; contains %s = %v, want %v", launch.ResumeCmd, flag, got, tt.wantFlag)
+			}
+		})
+	}
+}
+
+// TestPrepare_BadPermissionModeRejectedBeforeArtifacts proves an unrealizable permission mode fails Prepare before prompt.md/settings.json are written.
+func TestPrepare_BadPermissionModeRejectedBeforeArtifacts(t *testing.T) {
+	tests := []struct {
+		name        string
+		mode        string
+		interactive bool
+	}{
+		{"prompt_on_autonomous", "prompt", false},
+		{"unknown_value", "yolo", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runDir := t.TempDir()
+			spec := shuttleengine.Spec{Prompt: "do the thing", PermissionMode: tt.mode, Interactive: tt.interactive}
+			if _, err := New().Prepare(runDir, spec, shuttleengine.Config{}); err == nil {
+				t.Fatal("Prepare() = nil error; want the validatePermissionMode rejection")
+			}
+			for _, name := range []string{"prompt.md", "settings.json"} {
+				if _, statErr := os.Stat(filepath.Join(runDir, name)); !os.IsNotExist(statErr) {
+					t.Errorf("%s exists after a rejected Prepare (stat err=%v); want no artifacts written", name, statErr)
+				}
+			}
+		})
+	}
+}
+
+// TestPrepare_ResumeSessionID proves a spec carrying ResumeSessionID launches that session with --resume
+// and names the same id on the resume line and in Launch.SessionID.
+func TestPrepare_ResumeSessionID(t *testing.T) {
+	const id = "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+	spec := shuttleengine.Spec{
+		Prompt:          "adopt",
+		ResumeSessionID: id,
+		PermissionMode:  "bypass",
+		Interactive:     true,
+		Model:           "opus",
+		Effort:          "high",
+	}
+	runDir := t.TempDir()
+	launch, err := New().Prepare(runDir, spec, shuttleengine.Config{})
+	if err != nil {
+		t.Fatalf("Prepare() error: %v; want nil", err)
+	}
+	if launch.SessionID != id {
+		t.Errorf("Launch.SessionID = %q; want %q", launch.SessionID, id)
+	}
+	if strings.Contains(launch.Cmd, "--session-id") {
+		t.Errorf("Launch.Cmd = %q; want no --session-id", launch.Cmd)
+	}
+	for _, want := range []string{"--resume", id, "prompt.md", filepath.Join(runDir, "settings.json"), "opus", "--effort", "--dangerously-skip-permissions"} {
+		if !strings.Contains(launch.Cmd, want) {
+			t.Errorf("Launch.Cmd = %q; want it to contain %q", launch.Cmd, want)
+		}
+	}
+	if !strings.Contains(launch.ResumeCmd, "--resume") || !strings.Contains(launch.ResumeCmd, id) {
+		t.Errorf("Launch.ResumeCmd = %q; want --resume naming %q", launch.ResumeCmd, id)
+	}
+}
+
+// TestPrepare_EmptyResumeSessionIDKeepsSessionIDLine proves an empty ResumeSessionID mints a session as before.
+func TestPrepare_EmptyResumeSessionIDKeepsSessionIDLine(t *testing.T) {
+	launch, err := New().Prepare(t.TempDir(), shuttleengine.Spec{Prompt: "x"}, shuttleengine.Config{})
+	if err != nil {
+		t.Fatalf("Prepare() error: %v; want nil", err)
+	}
+	if !strings.Contains(launch.Cmd, "--session-id") || strings.Contains(launch.Cmd, "--resume") {
+		t.Errorf("Launch.Cmd = %q; want --session-id and no --resume", launch.Cmd)
+	}
+}
+
+// TestPrepare_BadResumeSessionIDRejectedBeforeArtifacts proves a malformed id fails Prepare before prompt.md/settings.json are written.
+func TestPrepare_BadResumeSessionIDRejectedBeforeArtifacts(t *testing.T) {
+	tests := []struct{ name, id string }{
+		{"too_short", "0a1b2c3d-4e5f-4a6b-8c7d"},
+		{"uppercase", "0A1B2C3D-4E5F-4A6B-8C7D-9E0F1A2B3C4D"},
+		{"quote", "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4'"},
+		{"no_hyphens", "0a1b2c3d4e5f4a6b8c7d9e0f1a2b3c4d"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runDir := t.TempDir()
+			spec := shuttleengine.Spec{Prompt: "x", ResumeSessionID: tt.id}
+			if _, err := New().Prepare(runDir, spec, shuttleengine.Config{}); err == nil {
+				t.Fatal("Prepare() = nil error; want the validateSessionID rejection")
+			}
+			for _, name := range []string{"prompt.md", "settings.json"} {
+				if _, statErr := os.Stat(filepath.Join(runDir, name)); !os.IsNotExist(statErr) {
+					t.Errorf("%s exists after a rejected Prepare (stat err=%v); want no artifacts written", name, statErr)
+				}
+			}
+		})
 	}
 }

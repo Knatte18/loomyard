@@ -929,3 +929,222 @@ func TestWatcher_StrandReboundMidTickIsNotOverwritten(t *testing.T) {
 		t.Errorf("watcher strand = %q; want s2", e.w.strand)
 	}
 }
+
+// newSoftEnv is a watch env with soft threshold 500 and soft idle 20s under the hard cap 1000 and grace 10s.
+func newSoftEnv(t *testing.T) *watchEnv {
+	t.Helper()
+	e := newWatchEnv(t)
+	e.cfg.SoftThresholdTokens, e.cfg.SoftIdleS = 500, 20
+	e.w = e.newWatcher()
+	return e
+}
+
+func waiting(msg string) shuttleengine.Event {
+	return shuttleengine.Event{Kind: shuttleengine.EventWaiting, Message: msg}
+}
+
+// injectSoft reads one turn end ev at a soft-range reading and ticks past soft_idle_s, requiring a soft handoff request.
+func (e *watchEnv) injectSoft(ev shuttleengine.Event) {
+	e.t.Helper()
+	e.s.usage[ev.Message] = 600
+	e.s.events = append(e.s.events, ev)
+	e.tick()
+	e.clock.advance(19 * time.Second)
+	e.tick()
+	e.assertNoCalls()
+	e.clock.advance(time.Second)
+	e.tick()
+	st := e.state()
+	if st.Phase != PhaseHandoffRequested || st.CycleTrigger != TriggerSoft {
+		e.t.Fatalf("state = %+v, want a soft handoff request", st)
+	}
+}
+
+func TestWatcher_SoftTriggerFiresOnStopAndWaitingAfterSoftIdle(t *testing.T) {
+	for name, ev := range map[string]shuttleengine.Event{"stop": stop("a"), "waiting": waiting("a")} {
+		t.Run(name, func(t *testing.T) {
+			e := newSoftEnv(t)
+			e.injectSoft(ev)
+			if len(e.s.calls) != 1 || !strings.Contains(e.s.calls[0], "DEFER") {
+				t.Fatalf("calls = %v, want one soft request", e.s.calls)
+			}
+		})
+	}
+}
+
+func TestWatcher_SoftDeferWithoutFileReturnsIdleAndBlocksNextAttempt(t *testing.T) {
+	e := newSoftEnv(t)
+	e.injectSoft(stop("a"))
+	e.s.events = append(e.s.events, stop("DEFER"))
+	e.tick()
+	read := e.clock.Now()
+	st := e.state()
+	if st.Phase != PhaseIdle || st.LastAbortReason != "deferred" || !st.LastDeferral.Equal(read) {
+		t.Fatalf("state = %+v", st)
+	}
+	sends := e.s.count("send:")
+	e.s.usage["b"] = 600
+	e.s.events = append(e.s.events, stop("b"))
+	e.tick()
+	e.clock.advance(19 * time.Second)
+	e.tick()
+	if e.s.count("send:") != sends {
+		t.Fatalf("soft attempt before soft_idle_s after the DEFER: %v", e.s.calls)
+	}
+	e.clock.advance(time.Second)
+	e.tick()
+	if e.s.count("send:") != sends+1 || e.state().CycleTrigger != TriggerSoft {
+		t.Fatalf("calls = %v state = %+v", e.s.calls, e.state())
+	}
+}
+
+// TestWatcher_SoftDeferTurnEndAloneNeverRequalifies pins that a DEFER needs a fresh turn end after it:
+// the DEFER turn end itself never starts another soft cycle, however long the session stays quiet.
+func TestWatcher_SoftDeferTurnEndAloneNeverRequalifies(t *testing.T) {
+	e := newSoftEnv(t)
+	e.injectSoft(stop("a"))
+	e.s.events = append(e.s.events, stop("DEFER"))
+	e.tick()
+	if st := e.state(); st.Phase != PhaseIdle || st.LastAbortReason != "deferred" {
+		t.Fatalf("state = %+v, want idle after the deferral", st)
+	}
+	sends := e.s.count("send:")
+	e.clock.advance(time.Hour)
+	e.tick()
+	if e.s.count("send:") != sends || e.state().Phase != PhaseIdle {
+		t.Fatalf("a soft request was re-sent with no turn end after the DEFER: calls = %v", e.s.calls)
+	}
+}
+
+func TestWatcher_SoftDeferAmongOtherTextDoesNotDefer(t *testing.T) {
+	e := newSoftEnv(t)
+	e.injectSoft(stop("a"))
+	e.s.events = append(e.s.events, stop("DEFER, but first a note"))
+	e.tick()
+	if st := e.state(); st.Phase != PhaseHandoffRequested || !st.LastDeferral.IsZero() {
+		t.Fatalf("state = %+v", st)
+	}
+}
+
+func TestWatcher_SoftDeferWithHandoffWrittenProceedsToClearing(t *testing.T) {
+	e := newSoftEnv(t)
+	e.injectSoft(stop("a"))
+	e.writeHandoff()
+	e.s.events = append(e.s.events, stop("DEFER"))
+	e.tick()
+	if st := e.state(); st.Phase != PhaseClearing || !st.LastDeferral.IsZero() {
+		t.Fatalf("state = %+v", st)
+	}
+}
+
+func TestWatcher_DeferIgnoredInHardAndRequestedCycles(t *testing.T) {
+	t.Run("hard", func(t *testing.T) {
+		e := newWatchEnv(t)
+		e.injectHandoff()
+		e.s.events = append(e.s.events, stop("DEFER"))
+		e.tick()
+		if st := e.state(); st.Phase != PhaseHandoffRequested || st.CycleTrigger != TriggerHard {
+			t.Fatalf("state = %+v", st)
+		}
+		e.clock.advance(101 * time.Second)
+		e.tick()
+		if st := e.state(); st.Phase != PhaseIdle || st.LastAbortReason != "handoff timed out" || !st.LastDeferral.IsZero() {
+			t.Fatalf("state = %+v", st)
+		}
+	})
+	t.Run("requested", func(t *testing.T) {
+		e := newWatchEnv(t)
+		e.s.usage["a"] = 10
+		e.s.events = []shuttleengine.Event{stop("a")}
+		if err := RequestCycle(e.paths); err != nil {
+			t.Fatal(err)
+		}
+		e.tick()
+		e.clock.advance(11 * time.Second)
+		e.tick()
+		e.s.events = append(e.s.events, stop("DEFER"))
+		e.tick()
+		if st := e.state(); st.Phase != PhaseHandoffRequested || st.CycleTrigger != TriggerRequested {
+			t.Fatalf("state = %+v", st)
+		}
+		e.clock.advance(101 * time.Second)
+		e.tick()
+		if st := e.state(); st.Phase != PhaseIdle || st.LastAbortReason != "handoff timed out" || !st.LastDeferral.IsZero() {
+			t.Fatalf("state = %+v", st)
+		}
+	})
+}
+
+func TestWatcher_HardTriggerFiresOnWaitingAfterIdleGrace(t *testing.T) {
+	e := newSoftEnv(t)
+	e.s.usage["a"] = 2000
+	e.s.events = []shuttleengine.Event{waiting("a")}
+	e.tick()
+	e.clock.advance(11 * time.Second)
+	e.tick()
+	st := e.state()
+	if st.Phase != PhaseHandoffRequested || st.CycleTrigger != TriggerHard {
+		t.Fatalf("state = %+v", st)
+	}
+	if len(e.s.calls) != 1 || strings.Contains(e.s.calls[0], "DEFER") {
+		t.Fatalf("calls = %v, want the plain handoff request", e.s.calls)
+	}
+}
+
+func TestWatcher_HardTriggerKeepsIdleGraceWhenLongerThanSoftIdle(t *testing.T) {
+	e := newSoftEnv(t)
+	e.cfg.IdleGraceS = 30
+	e.w = e.newWatcher()
+	e.s.usage["a"] = 1000
+	e.s.events = []shuttleengine.Event{stop("a")}
+	e.tick()
+	e.clock.advance(25 * time.Second)
+	e.tick()
+	e.assertNoCalls()
+	e.clock.advance(6 * time.Second)
+	e.tick()
+	if st := e.state(); st.Phase != PhaseHandoffRequested || st.CycleTrigger != TriggerHard {
+		t.Fatalf("state = %+v", st)
+	}
+}
+
+func TestWatcher_SoftThresholdAtOrAboveHardNeverFires(t *testing.T) {
+	for _, soft := range []int{1000, 1500} {
+		e := newWatchEnv(t)
+		e.cfg.SoftThresholdTokens = soft
+		e.w = e.newWatcher()
+		e.s.usage["a"] = 900
+		e.s.events = []shuttleengine.Event{stop("a")}
+		e.tick()
+		e.clock.advance(time.Hour)
+		e.tick()
+		e.assertNoCalls()
+	}
+}
+
+func TestWatcher_RequestedTriggerRecorded(t *testing.T) {
+	e := newSoftEnv(t)
+	e.s.usage["a"] = 10
+	e.s.events = []shuttleengine.Event{stop("a")}
+	if err := RequestCycle(e.paths); err != nil {
+		t.Fatal(err)
+	}
+	e.tick()
+	e.clock.advance(11 * time.Second)
+	e.tick()
+	if st := e.state(); st.CycleTrigger != TriggerRequested {
+		t.Fatalf("CycleTrigger = %q", st.CycleTrigger)
+	}
+}
+
+func TestWatcher_RestartInSoftHandoffResendsSoftStencil(t *testing.T) {
+	e := newSoftEnv(t)
+	e.injectSoft(stop("a"))
+	first := e.s.calls[0]
+	e.w = e.newWatcher()
+	e.tick()
+	e.tick()
+	if len(e.s.calls) != 2 || e.s.calls[1] != first || !strings.Contains(e.s.calls[1], "DEFER") {
+		t.Fatalf("calls = %v", e.s.calls)
+	}
+}

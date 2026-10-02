@@ -27,8 +27,8 @@ const boxInteriorChars = gateCaretMarker + "│>"
 // a draft leaves non-blank text between the rules.
 //
 // Two fail-closed residuals, stated rather than papered over.
-// A capture carries no styling, so Claude's greyed prompt suggestion inside an empty box is indistinguishable from a draft and classifies as not idle;
-// the watcher then skips the poll and retries.
+// A capture carries no styling, so any non-empty box classifies as not idle and the watcher skips the poll and retries;
+// the greyed prompt suggestion no longer appears in a shuttle-launched session, since every settings file switches it off.
 // And a transcript line quoting "esc to interrupt" anywhere in the capture classifies as not idle, because the running-turn hint is matched over the whole capture.
 func (c *Claude) IdleSession(capture string) bool {
 	if strings.Contains(normalizeCapture(capture), runningTurnNeedle) {
@@ -46,7 +46,7 @@ func (c *Claude) IdleSession(capture string) bool {
 	}
 	top := -1
 	for i := caret - 1; i >= 0; i-- {
-		if isBoxRule(lines[i]) {
+		if isTopBoxRule(lines[i]) {
 			top = i
 			break
 		}
@@ -67,6 +67,18 @@ func (c *Claude) IdleSession(capture string) bool {
 		}
 	}
 	return true
+}
+
+// isTopBoxRule reports whether line is the input box's top rule: a plain rule per isBoxRule, or a labelled one.
+// A named session labels its top rule at the right (`──── tst:orch ─`), so a line that starts with three rule glyphs and ends with one counts as a top rule whatever its label says.
+// Only the top rule carries a label, so the bottom rule is matched by isBoxRule alone,
+// and a draft line shaped like a labelled rule below the caret never closes the box.
+func isTopBoxRule(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	if strings.HasPrefix(trimmed, "───") && strings.HasSuffix(trimmed, "─") {
+		return true
+	}
+	return isBoxRule(line)
 }
 
 // isBoxRule reports whether line is a horizontal rule of the input box: non-blank, made only of rule glyphs, corners, side bars and whitespace, with at least one rule glyph.

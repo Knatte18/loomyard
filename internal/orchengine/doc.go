@@ -11,6 +11,7 @@
 //
 //   - start: the idempotent bootstrap.
 //     It leaves one live orchestrator strand and one watcher bound to it, then hands the terminal over to reed's attach.
+//     `--adopt <session-id>` resumes an existing Claude session as the orchestrator strand instead of launching a fresh one.
 //   - status: reports the strand, the watcher and the persisted cycle state.
 //   - cycle: writes the cycle request, which makes the watcher cycle at its next idle moment regardless of the token count.
 //   - stop: removes the orchestrator strand; the watcher notices and exits on its own.
@@ -22,17 +23,29 @@
 //
 // # Start prompt order
 //
-// ChooseStartPrompt picks the launch prompt in a fixed order:
+// The launch prompt is picked in a fixed order:
 //
-//  1. The resume stencil pointed at the `--handoff` file, when the flag is given.
+//  1. The adopt stencil, when `--adopt` is given; `start` renders it directly, and it is exclusive with `--handoff`.
+//  2. The resume stencil pointed at the `--handoff` file, when the flag is given.
 //     A flag naming a missing file is an error rather than a fallback.
-//  2. The resume stencil pointed at State.LastHandoff, when that file still exists.
+//  3. The resume stencil pointed at State.LastHandoff, when that file still exists.
 //     A PendingHandoff is never chosen, since an aborted cycle may have left it partial.
-//  3. The start stencil, for a first launch.
+//  4. The start stencil, for a first launch.
+//
+// Steps 2 to 4 are ChooseStartPrompt's own order.
 //
 // DecideStart maps the strand and watcher liveness pair onto the branch `start` takes:
 // attach only, spawn a watcher, or relaunch.
 // A dead or absent strand always relaunches.
+//
+// # Permission mode and subagents
+//
+// The orch run's spec carries `permission_mode` from orch.yaml verbatim (template `bypass`), and the claude engine validates it.
+// It also allows the Agent tool and forks, so the session can spawn typed subagents and forks while the fork-context `lyx webster` guard stays installed.
+// Only the orch run sets the allowance, and it has no orch.yaml switch.
+//
+// Under `bypass`, the orch session and every subagent and fork it spawns run every tool with no permission prompt.
+// The operator's lever is `permission_mode: prompt`, under which those agents prompt in the orch pane.
 //
 // # The watcher
 //
@@ -44,15 +57,26 @@
 //
 // # Idle rules
 //
-// In phase idle the watcher acts only when the context reading is at or over the threshold, or a cycle was requested, and only when all of these hold:
+// In phase idle the watcher picks the trigger of a cycle in a fixed order:
 //
-//   - The newest event it has read is a turn end.
+//   - hard: a known context reading at or over `threshold_tokens`, the hard cap, whatever `idle_grace_s` and `soft_idle_s` are.
+//   - requested: a pending cycle request.
+//   - soft: a known reading at or over `soft_threshold_tokens` and below the hard cap.
+//     A soft threshold at or above the hard cap never fires.
+//
+// The trigger is recorded in State.CycleTrigger before the handoff-requested phase is entered, and the soft trigger sends its own handoff stencil, which offers the session a `DEFER` reply.
+// A hard or requested cycle acts only when all of these hold:
+//
+//   - The newest event it has read is a turn end, EventStop or EventWaiting.
 //   - That event was first read at least the idle grace ago.
 //     The arrival time is held in memory, so a watcher restart restarts the grace.
 //   - Session.SessionIdle reports an empty input box with no turn running.
 //
+// A soft cycle holds the same gates with `soft_idle_s` in place of the idle grace, and adds one:
+// State.LastDeferral is zero or at least `soft_idle_s` before now.
+//
 // A context reading that cannot be taken is unknown and never triggers a cycle by itself.
-// The template threshold is 400000 tokens, sized for a session with a context window of about one million tokens.
+// The template hard cap is 400000 tokens, sized for a session with a context window of about one million tokens, and the template soft threshold is 300000.
 //
 // # The four-phase cycle
 //
@@ -62,6 +86,11 @@
 //   - handoff-requested: the handoff instruction is sent, naming a new timestamped file under handoffs/.
 //     The phase ends once the file exists and is non-empty, a turn end has been read after the file was first seen written,
 //     and the idle probe passes.
+//     In a soft cycle a turn end whose message, trimmed of whitespace, is exactly `DEFER` declines the cycle:
+//     the watcher re-stats the handoff file, and when it is still not written records the read time in State.LastDeferral and returns to idle with the abort reason `deferred`.
+//     A written file wins over `DEFER`, and the cycle proceeds through the clear gate above.
+//     In a hard or requested cycle `DEFER` is never recorded, and the phase waits for the file until the handoff timeout.
+//     A restarted watcher re-sends the stencil matching State.CycleTrigger.
 //   - clearing: the resume prompt is rendered first, so a stencil failure aborts before anything is cleared.
 //     Then `/clear` is typed, and the phase waits for the pane to show an idle input box.
 //   - resuming: the resume prompt is sent verbatim, and the phase ends at the resumed session's first turn end, whose context reading becomes the new one.
@@ -101,9 +130,19 @@
 // Then run `lyx orch start --handoff <that file>` from the prime.
 // The new orchestrator strand starts from that handoff instead of the start stencil.
 //
+// # Adopting a running session
+//
+// To keep a session's full context instead of handing it off, read its id from `/status` in that session and exit it.
+// Then run `lyx orch start --adopt <id>` from the prime.
+// The session is resumed as the orchestrator strand with a watcher bound to it, and `LastHandoff` is kept.
+// It resumes only a session recorded under the prime's own directory, and is refused while the orchestrator strand is live.
+// It never kills or removes a strand or process orch did not launch.
+// An absent or unreadable Claude session registry lets an unconfirmed holder through, so two processes can drive one session;
+// the explicit id and the resume warning on the log and envelope bound that.
+//
 // # Residuals
 //
-//   - The idle probe fails closed on anything it cannot read as an empty box, including Claude's greyed prompt suggestion, so a session showing one is never cycled until it is cleared.
+//   - Shuttle switches Claude's prompt suggestion off in every settings file it writes, and the idle probe still fails closed on any non-empty box, so a session with a draft is never cycled until it is cleared.
 //   - A SendMessage landing between the handoff turn's end and `/clear` is lost from context.
 //   - The transcript and Stop-payload shapes are Claude Code internals, so usage degrades to unknown rather than failing.
 //   - A threshold above the auto-compaction point lets Claude Code compact first.
@@ -112,9 +151,15 @@
 //
 // # Open risks
 //
-// Two questions are settled only by a real session.
-// `TestSmokeOrch_OneFullCycle` in internal/orchcli logs an observation for each, but has not been run against a live Claude Code install, so both remain unverified, pending a smoke run:
+// The smoke suite in internal/orchcli (`go test -tags smoke -run TestSmokeOrch ./internal/orchcli/`) was run against Claude Code 2.1.287 on 2026-10-02, and all four tests passed.
+// What the run showed:
 //
-//   - Whether a background task survives `/clear`: unverified, pending a smoke run.
-//   - Whether a `SendMessage` address stays stable across `/clear`: unverified, pending a smoke run.
+//   - A background task survives `/clear`: its completion notification reached the resumed session, in the transcript and the pane.
+//     A resumed session may therefore find its background shell still running instead of starting another.
+//   - A `SendMessage` address stays stable across `/clear`: `<shortname>:orch` before and after.
+//   - `--resume` with a positional prompt submitted the prompt: an adopted session answered the adopt stencil's turn and its turn end reached the events file.
+//     No startup dialog stopped the resume launch; shuttle's startup probe cleared it without operator input.
+//   - The idle probe passes on a live orch pane.
+//     Claude draws the session name into the input box's top rule (`──── tst:orch ─`), which the probe's rule match rejected until it accepted a labelled top rule, so the probe had never passed on a named session.
+//   - A visible plain run in the prime shares the orch pane's window and can squeeze it too short to draw an input box, which makes the idle probe fail and holds every cycle until the pane is tall again.
 package orchengine

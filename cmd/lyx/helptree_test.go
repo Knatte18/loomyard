@@ -43,6 +43,17 @@ func TestHelpTree_RootNamesAllModules(t *testing.T) {
 	}
 }
 
+// TestHelpTree_OrchStartListsAdopt asserts that `lyx orch start --help` lists the --adopt flag.
+func TestHelpTree_OrchStartListsAdopt(t *testing.T) {
+	var out bytes.Buffer
+	if code := run([]string{"orch", "start", "--help"}, &out); code != 0 {
+		t.Fatalf("run([orch start --help]) = %d; want 0. output:\n%s", code, out.String())
+	}
+	if !strings.Contains(out.String(), "--adopt") {
+		t.Errorf("orch start --help missing %q; got:\n%s", "--adopt", out.String())
+	}
+}
+
 // TestHelpTree_VerbModuleSubcommands asserts that each verb-module's help output names all of its
 // subcommands.
 // Each module is invoked via the run() seam with only the module name so cobra prints the

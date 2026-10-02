@@ -3,6 +3,8 @@
 package orchcli
 
 import (
+	"time"
+
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -29,18 +31,25 @@ func statusFields(st orchengine.State, cfg orchengine.Config, strand reedengine.
 	if st.LastContextKnown {
 		tokens = st.LastContextTokens
 	}
+	var lastDeferral any
+	if !st.LastDeferral.IsZero() {
+		lastDeferral = st.LastDeferral.UTC().Format(time.RFC3339)
+	}
 	return map[string]any{
-		"strand":            st.Strand,
-		"strand_live":       tracked && strand.Live,
-		"watcher_live":      watcherLive,
-		"context_tokens":    tokens,
-		"threshold_tokens":  cfg.Threshold(),
-		"phase":             string(st.Phase),
-		"cycle_count":       st.CycleCount,
-		"last_handoff":      st.LastHandoff,
-		"last_abort_reason": st.LastAbortReason,
-		"stuck":             st.Stuck,
-		"watcher_exit":      st.WatcherExit,
+		"strand":                st.Strand,
+		"strand_live":           tracked && strand.Live,
+		"watcher_live":          watcherLive,
+		"context_tokens":        tokens,
+		"soft_threshold_tokens": cfg.SoftThreshold(),
+		"threshold_tokens":      cfg.Threshold(),
+		"phase":                 string(st.Phase),
+		"cycle_count":           st.CycleCount,
+		"cycle_trigger":         st.CycleTrigger,
+		"last_handoff":          st.LastHandoff,
+		"last_abort_reason":     st.LastAbortReason,
+		"last_deferral":         lastDeferral,
+		"stuck":                 st.Stuck,
+		"watcher_exit":          st.WatcherExit,
 	}
 }
 
@@ -50,8 +59,10 @@ func (c *orchCLI) statusCmd() *cobra.Command {
 		Use:   "status",
 		Short: "report the orchestrator strand, watcher and cycle state",
 		Long: `status prints one JSON envelope: the recorded strand and whether it is live,
-whether a watcher holds its lock, the latest context reading against the cycle
-threshold, and the persisted cycle phase, count, last handoff and abort reason.
+whether a watcher holds its lock, the latest context reading against the soft
+threshold (soft_threshold_tokens) and the hard cap (threshold_tokens), and the
+persisted cycle phase, count, trigger (cycle_trigger), last handoff, abort reason
+and last DEFER deferral (last_deferral, RFC 3339 UTC, null when none).
 stuck names why an overdue phase is still waiting for the session to go idle.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {

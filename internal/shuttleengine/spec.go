@@ -59,10 +59,30 @@ type Spec struct {
 	// ForkSubagents is engine vocabulary, exactly like Effort/Version above —
 	// validate does not inspect this field at all.
 	ForkSubagents bool
+	// AllowAgentTool, when true, lets this one run use the Agent tool for every subagent type:
+	// the engine installs no Agent deny and announces none, whatever the shuttle config's claude_deny_agent_tool says.
+	// It is engine vocabulary exactly like ForkSubagents — validate does not inspect this field at all.
+	// No config key or CLI flag reaches it;
+	// only a caller that sets it gets the allowance.
+	AllowAgentTool bool
+	// PermissionMode, when non-empty, selects the run's permission mode;
+	// empty defers to the run mode's default.
+	// PermissionMode values are provider vocabulary, exactly like Effort — validate does NOT inspect this field at all;
+	// the engine is the sole validator, since only it knows which values its provider realizes.
+	// A value the engine cannot realize is a hard error from the engine (see claudeengine's validatePermissionMode), not from Spec.validate.
+	PermissionMode string
+	// ResumeSessionID, when non-empty, names an existing session the engine launches instead of minting a new one;
+	// the run takes that session over.
+	// It is engine vocabulary exactly like Effort — validate does NOT inspect this field;
+	// the engine validates the id's shape and, through the optional SessionResumer capability, whether the session can be resumed at all.
+	ResumeSessionID string
 	// Interactive encodes !Autonomous: the Go zero value (false) means
-	// autonomous, the default. Autonomous runs add
-	// --dangerously-skip-permissions and the AskUserQuestion PreToolUse
-	// deny; interactive runs add neither. The Agent tool deny is included
+	// autonomous, the default.
+	// Autonomous runs add the AskUserQuestion PreToolUse deny;
+	// interactive runs do not.
+	// Whether the launch carries --dangerously-skip-permissions follows the resolved PermissionMode,
+	// whose empty default skips in an autonomous run and prompts in an interactive one.
+	// The Agent tool deny is included
 	// in both modes (each deny still individually toggleable via the
 	// shuttle config's claude_deny_agent_tool / claude_deny_ask_user_question
 	// keys).
