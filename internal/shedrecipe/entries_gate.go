@@ -12,6 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
+	"github.com/Knatte18/loomyard/internal/parentreview"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -24,12 +25,14 @@ var gateEntryKeys = []string{"name", "attempts", "pass_on_cap"}
 // An absent key returns the empty GateSpec, which is what every ungated row carries by saying nothing;
 // a present empty list is an error, since it is an author mistake rather than an ungated row.
 //
-// Each element carries a required "name", resolved against a closed four-value vocabulary:
+// Each element carries a required "name", resolved against a closed five-value vocabulary:
 // "discussion" requires env.DecisionRecordPath and env.SupportLogPath to pass requireAbsRoot and returns loomshed.NewDiscussionGate over them;
 // "plan" requires env.AnchorPath and env.WorktreeRoot and returns loomshed.NewPlanGate over them;
 // "rework-plan" requires the same two roots plus a non-nil env.Rework.ReadCommitted and returns loomshed.NewReworkPlanGate over them;
 // "description" requires env.DescriptionPath to pass requireAbsRoot and returns landingshed.NewDescriptionGate over it;
-// any other value is an error naming the key and all four legal values.
+// "parent-review" requires the absolute Env.ParentReview.Store.Root, Store.LockDir, DecisionRecord and SupportLog, a non-empty Slug and both render seams, and returns parentreview.NewGate's closure pair, the second being the entry's Final closure;
+// it is refused unless its element sets "pass_on_cap: true", since it can return a pending result;
+// any other value is an error naming the key and all five legal values.
 // A name may appear once per list.
 //
 // "attempts" is required, a non-negative integer read via configInt so 0 is a present value:
@@ -92,15 +95,56 @@ func resolveGateEntry(entry string, index int, elem Config, env Env) (shuttleeng
 		return shuttleengine.GateEntry{}, wrap(err)
 	}
 
-	closure, err := resolveGateClosure(entry, index, name, env)
+	closure, final, err := resolveGateClosure(entry, index, name, env)
 	if err != nil {
 		return shuttleengine.GateEntry{}, err
 	}
-	return shuttleengine.GateEntry{Name: name, Gate: closure, Attempts: attempts, PassOnCap: passOnCap}, nil
+	if final != nil && !passOnCap {
+		return shuttleengine.GateEntry{}, wrap(fmt.Errorf("gate %q requires %q: true, because it can return a pending result that only a pass-on-cap entry may carry", name, "pass_on_cap"))
+	}
+	return shuttleengine.GateEntry{Name: name, Gate: closure, Final: final, Attempts: attempts, PassOnCap: passOnCap}, nil
 }
 
 // resolveGateClosure maps the name of the row's "gates" element at index onto its validator closure, checking the Env fields that validator needs.
-func resolveGateClosure(entry string, index int, name string, env Env) (shuttleengine.Gate, error) {
+// The second return is the entry's optional Final closure, non-nil for "parent-review" only.
+func resolveGateClosure(entry string, index int, name string, env Env) (shuttleengine.Gate, shuttleengine.Gate, error) {
+	if name == "parent-review" {
+		return resolveParentReviewClosure(entry, env)
+	}
+	closure, err := resolvePlainGateClosure(entry, index, name, env)
+	return closure, nil, err
+}
+
+// resolveParentReviewClosure checks the Env fields the "parent-review" gate needs and returns parentreview.NewGate's pair.
+func resolveParentReviewClosure(entry string, env Env) (shuttleengine.Gate, shuttleengine.Gate, error) {
+	pr := env.ParentReview
+	if err := requireAbsRoot(entry, "ParentReview.Store.Root", pr.Store.Root); err != nil {
+		return nil, nil, err
+	}
+	if err := requireAbsRoot(entry, "ParentReview.Store.LockDir", pr.Store.LockDir); err != nil {
+		return nil, nil, err
+	}
+	if err := requireNonEmpty(entry, "ParentReview.Slug", pr.Slug); err != nil {
+		return nil, nil, err
+	}
+	if err := requireSeam(entry, "ParentReview.RenderDelivery", pr.RenderDelivery); err != nil {
+		return nil, nil, err
+	}
+	if err := requireSeam(entry, "ParentReview.RenderBrief", pr.RenderBrief); err != nil {
+		return nil, nil, err
+	}
+	if err := requireAbsRoot(entry, "ParentReview.DecisionRecord", pr.DecisionRecord); err != nil {
+		return nil, nil, err
+	}
+	if err := requireAbsRoot(entry, "ParentReview.SupportLog", pr.SupportLog); err != nil {
+		return nil, nil, err
+	}
+	gate, final := parentreview.NewGate(pr)
+	return gate, final, nil
+}
+
+// resolvePlainGateClosure resolves the four validator names that carry no Final closure.
+func resolvePlainGateClosure(entry string, index int, name string, env Env) (shuttleengine.Gate, error) {
 	switch name {
 	case "discussion":
 		if err := requireAbsRoot(entry, "DecisionRecordPath", env.DecisionRecordPath); err != nil {
@@ -135,6 +179,6 @@ func resolveGateClosure(entry string, index int, name string, env Env) (shuttlee
 		}
 		return landingshed.NewDescriptionGate(env.DescriptionPath), nil
 	default:
-		return nil, fmt.Errorf("shedrecipe: %s: config key %q element %d: config key %q must be %q, %q, %q or %q, got %q", entry, "gates", index, "name", "discussion", "plan", "rework-plan", "description", name)
+		return nil, fmt.Errorf("shedrecipe: %s: config key %q element %d: config key %q must be %q, %q, %q, %q or %q, got %q", entry, "gates", index, "name", "discussion", "plan", "rework-plan", "description", "parent-review", name)
 	}
 }

@@ -215,3 +215,64 @@ func TestDiscussionWriteEntry_CallAsking(t *testing.T) {
 		t.Errorf("commit closure invoked %d times; want 0 for an Asking outcome", commitCalls)
 	}
 }
+
+// attachingShuttle reports a live matching run on the attach probe, so the producer takes its attach branch.
+type attachingShuttle struct{ *fakeShuttle }
+
+func (a attachingShuttle) AttachGated(spec shuttleengine.Spec, _ shuttleengine.GateSpec) (shuttleengine.Result, bool, error) {
+	return shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, true, nil
+}
+
+// roundCount reports whether the parent-review store holds a round.
+func hasRound(t *testing.T, env Env) bool {
+	t.Helper()
+	_, ok, err := env.ParentReview.Store.Latest()
+	if err != nil {
+		t.Fatalf("Latest() error = %v", err)
+	}
+	return ok
+}
+
+// TestDiscussionWriteEntry_ParentReviewBeginRound asserts a fresh spawn opens a round, an attach does not, and a disabled entry never does.
+func TestDiscussionWriteEntry_ParentReviewBeginRound(t *testing.T) {
+	t.Run("FreshSpawnBeginsRound", func(t *testing.T) {
+		env := parentReviewEnv(t)
+		p, err := discussionWriteEntry("Row", parentReviewCfg(3, true), env)
+		if err != nil {
+			t.Fatalf("discussionWriteEntry() error = %v", err)
+		}
+		env.Shuttle.(*fakeShuttle).result = shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
+		if _, _, err := p.Call(context.Background()); err != nil {
+			t.Fatalf("Call() error = %v", err)
+		}
+		if !hasRound(t, env) {
+			t.Error("no round after a fresh spawn; want BeginRound to have run")
+		}
+	})
+	t.Run("AttachDoesNotBeginRound", func(t *testing.T) {
+		env := parentReviewEnv(t)
+		env.Shuttle = attachingShuttle{env.Shuttle.(*fakeShuttle)}
+		p, err := discussionWriteEntry("Row", parentReviewCfg(3, true), env)
+		if err != nil {
+			t.Fatalf("discussionWriteEntry() error = %v", err)
+		}
+		_, _, _ = p.Call(context.Background())
+		if hasRound(t, env) {
+			t.Error("round exists after an attach; want BeginRound not to run")
+		}
+	})
+	t.Run("DisabledEntryDoesNotBeginRound", func(t *testing.T) {
+		env := parentReviewEnv(t)
+		p, err := discussionWriteEntry("Row", parentReviewCfg(0, true), env)
+		if err != nil {
+			t.Fatalf("discussionWriteEntry() error = %v", err)
+		}
+		env.Shuttle.(*fakeShuttle).result = shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
+		if _, _, err := p.Call(context.Background()); err != nil {
+			t.Fatalf("Call() error = %v", err)
+		}
+		if hasRound(t, env) {
+			t.Error("round exists with the entry off; want no BeginRound")
+		}
+	})
+}
