@@ -48,42 +48,33 @@ func TestHelpSchema_LeafCommands(t *testing.T) {
 				"body",
 				"depends_on",
 				"isolated",
-				"deferred",
 				"status",
+				"tier",
+				"type",
+				"recipe",
+				"Example",
 			},
+			mustNotContain: []string{"deferred"},
 		},
 		{
-			name: "upsert-batch",
-			args: []string{"upsert-batch"},
-			mustContain: []string{
-				"tasks",
-				"slug",
-			},
+			name:        "upsert-batch",
+			args:        []string{"upsert-batch"},
+			mustContain: []string{"tasks", "slug", "Example"},
 		},
 		{
-			name: "set-status",
-			args: []string{"set-status"},
-			mustContain: []string{
-				"slug",
-				"id",
-				"status",
-			},
+			name:        "set-status",
+			args:        []string{"set-status"},
+			mustContain: []string{"slug", "id", "status", "Example"},
 		},
 		{
-			name: "remove",
-			args: []string{"remove"},
-			mustContain: []string{
-				"slug",
-				"id",
-			},
+			name:        "remove",
+			args:        []string{"remove"},
+			mustContain: []string{"slug", "id", "Example"},
 		},
 		{
-			name: "get",
-			args: []string{"get"},
-			mustContain: []string{
-				"slug",
-				"id",
-			},
+			name:        "get",
+			args:        []string{"get"},
+			mustContain: []string{"slug", "id", `{"task"`, "Example"},
 		},
 		{
 			name: "merge",
@@ -95,15 +86,33 @@ func TestHelpSchema_LeafCommands(t *testing.T) {
 				"slug",
 				"id",
 				"status",
+				"Example",
 			},
 		},
 		{
-			name: "set-deps",
-			args: []string{"set-deps"},
-			mustContain: []string{
-				"slug",
-				"depends_on",
-			},
+			name:        "set-deps",
+			args:        []string{"set-deps"},
+			mustContain: []string{"slug", "depends_on", "Example"},
+		},
+		{
+			name:        "promote",
+			args:        []string{"promote"},
+			mustContain: []string{"slug", "tier", "Example"},
+		},
+		{
+			name:        "find",
+			args:        []string{"find"},
+			mustContain: []string{"--text", "tier", "type", "slug", "title", "status"},
+		},
+		{
+			name:        "list",
+			args:        []string{"list"},
+			mustContain: []string{"--text", "tier", "type", "slug", "title", "status"},
+		},
+		{
+			name:        "prune",
+			args:        []string{"prune"},
+			mustContain: []string{"done", "depends_on"},
 		},
 		{
 			name: "notes upsert",
@@ -115,9 +124,12 @@ func TestHelpSchema_LeafCommands(t *testing.T) {
 				"body",
 				"depends_on",
 				"isolated",
-				"deferred",
 				"status",
+				"tier",
+				"type",
+				"recipe",
 			},
+			mustNotContain: []string{"deferred"},
 		},
 		{
 			name: "notes set-status",
@@ -187,7 +199,7 @@ func TestHelpSchema_LeafCommands(t *testing.T) {
 			}
 
 			// No removed token from the old schema must appear in any command's help.
-			for _, bad := range removedTokens {
+			for _, bad := range append(removedTokens, tt.mustNotContain...) {
 				if strings.Contains(helpText, bad) {
 					t.Errorf("RunCLI(%v --help) help text must not contain removed token %q\noutput:\n%s",
 						tt.args, bad, helpText)

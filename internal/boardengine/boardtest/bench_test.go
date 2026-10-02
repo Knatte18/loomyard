@@ -22,13 +22,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
-// benchSizes is the set of board sizes (number of tasks already in tasks.json)
-// each benchmark is run against. Every write re-renders the whole board, so cost
-// is expected to grow with size — these sizes make that scaling visible.
+// benchSizes is the set of board sizes (number of tasks already in board.json) each benchmark is run against.
+// Every write re-renders the whole board, so cost is expected to grow with size — these sizes make that scaling visible.
 var benchSizes = []int{10, 100, 1000}
 
-// seedWiki writes a tasks.json with n independent (dependency-free) tasks into a
-// fresh temp dir, seeded with _lyx/config/board.yaml for config, and returns the cwd path.
+// seedWiki writes a board.json with n independent (dependency-free) tasks into a fresh temp dir, seeded with _lyx/config/board.yaml for config, and returns the cwd path.
 // Callers must set BOARD_SKIP_GIT=1 so the benchmark measures board logic + file I/O,
 // not git push latency. It takes a testing.TB so both benchmarks and concurrency tests
 // can use it. For direct facade tests (not CLI), construct Board from the config's Path
@@ -52,7 +50,7 @@ func seedWiki(tb testing.TB, n int) string {
 		tb.Fatalf("write board.yaml: %v", err)
 	}
 
-	// Create board directory and tasks.json
+	// Create board directory and board.json
 	boardDir := filepath.Join(dir, "board")
 	if err := os.MkdirAll(boardDir, 0o755); err != nil {
 		tb.Fatalf("mkdir board: %v", err)
@@ -64,16 +62,18 @@ func seedWiki(tb testing.TB, n int) string {
 			ID:        i,
 			Slug:      "task-" + strconv.Itoa(i),
 			Title:     "Task " + strconv.Itoa(i),
+			Tier:      boardengine.DefaultTier,
+			Type:      boardengine.DefaultType,
 			DependsOn: []string{},
 			Brief:     "brief for task " + strconv.Itoa(i),
 		}
 	}
 
-	data, err := json.MarshalIndent(tasks, "", "  ")
+	data, err := json.MarshalIndent(map[string]any{"version": 1, "entries": tasks}, "", "  ")
 	if err != nil {
 		tb.Fatalf("marshal seed: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(boardDir, "tasks.json"), data, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(boardDir, "board.json"), data, 0o644); err != nil {
 		tb.Fatalf("write seed: %v", err)
 	}
 	// Return the cwd (parent) for CLI benchmarks, which will call b.Chdir
@@ -82,7 +82,7 @@ func seedWiki(tb testing.TB, n int) string {
 
 // BenchmarkRender measures the pure Render function (tasks → markdown content), no I/O.
 // A quarter of the tasks have a body so proposal-*.md generation is exercised.
-// Render runs once inside every write (writeOp).
+// Render runs once inside every write (boardCriticalSection).
 func BenchmarkRender(b *testing.B) {
 	for _, n := range benchSizes {
 		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
@@ -96,6 +96,8 @@ func BenchmarkRender(b *testing.B) {
 					ID:        i,
 					Slug:      "task-" + strconv.Itoa(i),
 					Title:     "Task " + strconv.Itoa(i),
+					Tier:      boardengine.DefaultTier,
+					Type:      boardengine.DefaultType,
 					DependsOn: []string{},
 					Brief:     "brief for task " + strconv.Itoa(i),
 					Body:      body,
@@ -105,7 +107,7 @@ func BenchmarkRender(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				if _, err := boardengine.Render(tasks, nil, boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-"}); err != nil {
+				if _, err := boardengine.Render(tasks, boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-"}); err != nil {
 					b.Fatal(err)
 				}
 			}
