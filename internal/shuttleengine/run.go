@@ -236,6 +236,9 @@ type Run struct {
 	// Both live in memory for this run only.
 	gateFails []int
 	gateSent  []int
+
+	// resumeWarning is the non-empty warning SessionResumer.CheckResume returned when it could not confirm the session was resumable, empty otherwise.
+	resumeWarning string
 }
 
 // The run directory's fixed artifact file names. Every Engine.Prepare
@@ -294,6 +297,11 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 		return nil, Result{}, r.toldErr
 	}
 	if err := spec.validate(r.worktreeRoot, r.cfg); err != nil {
+		return nil, Result{}, err
+	}
+
+	resumeWarning, err := r.checkResume(spec)
+	if err != nil {
 		return nil, Result{}, err
 	}
 
@@ -392,6 +400,8 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 		clock:    clk,
 		deadline: clk.Now().Add(spec.Timeout),
 		gate:     gate,
+
+		resumeWarning: resumeWarning,
 	}
 
 	result, err := run.awaitStartup()
@@ -399,6 +409,32 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 		return nil, result, err
 	}
 	return run, Result{}, nil
+}
+
+// checkResume runs the engine's SessionResumer check for a spec that resumes an existing session, against the runner's pane cwd.
+// It returns the check's warning, empty for a spec with no ResumeSessionID.
+// An engine without the capability is an error, so no run resumes a session unchecked.
+func (r *Runner) checkResume(spec Spec) (string, error) {
+	if spec.ResumeSessionID == "" {
+		return "", nil
+	}
+	resumer, ok := r.engine.(SessionResumer)
+	if !ok {
+		return "", fmt.Errorf("shuttle: resume check: the engine does not implement the SessionResumer capability (CheckResume), so it cannot resume a session")
+	}
+	warning, err := resumer.CheckResume(spec.ResumeSessionID, r.paneCwd)
+	if err != nil {
+		return "", fmt.Errorf("shuttle: resume check: %w", err)
+	}
+	if warning != "" {
+		logger.Warn("shuttle: resume check could not confirm the session", "sessionID", spec.ResumeSessionID, "warning", warning)
+	}
+	return warning, nil
+}
+
+// ResumeWarning returns the warning the engine's resume check reported when it could not confirm the resumed session was resumable, empty when it confirmed it or the run resumes nothing.
+func (run *Run) ResumeWarning() string {
+	return run.resumeWarning
 }
 
 // RunDir returns the directory holding this run's artifacts (prompt.md, settings.json, the events

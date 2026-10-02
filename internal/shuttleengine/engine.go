@@ -143,6 +143,16 @@ type Engine interface {
 	AuditForksIncremental(sessionID, workdir string, seenTranscripts map[string]bool) (ForkAudit, error)
 }
 
+// SessionResumer is an optional capability beside Engine: the provider's check that an existing session may be resumed by a new run.
+// Runner.start requires it of an Engine whenever a spec carries a ResumeSessionID, so no run resumes a session unchecked.
+// It is separate from Engine for the same reason SessionCycler is: most implementers and test fakes never resume a session.
+type SessionResumer interface {
+	// CheckResume answers whether the provider session sessionID, recorded under the pane cwd workdir, may be resumed by a new run.
+	// A non-nil error refuses the resume.
+	// A non-empty warning means the check could not confirm something, and the resume proceeds.
+	CheckResume(sessionID, workdir string) (warning string, err error)
+}
+
 // SessionCycler is an optional capability beside Engine: the provider operations a caller needs to cycle a live session's context (read its usage, probe whether it is idle, clear it).
 // An Engine that also implements it lets Runner's session methods work;
 // one that does not makes them return an error naming the missing capability.
