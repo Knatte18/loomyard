@@ -1,5 +1,5 @@
-// list.go implements the `list` reed verb: the hub-wide name directory, one row per strand across every task worktree and the prime,
-// and the diagnostic for the two display mirrors of a strand's name (pane title and session name).
+// list.go implements the `list` reed verb: the hub-wide name directory, one row per strand across every task worktree and the prime.
+// Each row shows the strand's pane title and whether it has drifted from the name.
 // It is read-only — each worktree's engine only reads its own state and its tmux panes.
 
 package reedcli
