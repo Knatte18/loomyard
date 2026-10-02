@@ -477,6 +477,106 @@ func TestFinal_ApprovePasses(t *testing.T) {
 	}
 }
 
+// newPassAtCapGates builds gates with the given cap whose rewrite after the cap's reject passes.
+func newPassAtCapGates(t *testing.T, s Store, rejectCap int) (gate, final shuttleengine.Gate) {
+	t.Helper()
+	return NewGate(GateConfig{
+		Store:          s,
+		Slug:           "x",
+		Reviewer:       "hub:orch",
+		DecisionRecord: "d.md",
+		SupportLog:     "s.md",
+		WaitBound:      time.Hour,
+		Cap:            rejectCap,
+		PassAtCap:      true,
+		RenderDelivery: func(p string) (string, error) { return "review " + p, nil },
+		RenderBrief:    func() (string, error) { return "brief", nil },
+	})
+}
+
+// wantFindingsFailure asserts res is a non-terminal failure whose findings name the latest round's review.
+func wantFindingsFailure(t *testing.T, s Store, res shuttleengine.GateResult) {
+	t.Helper()
+	if res.Passed || res.Pending || res.Terminal || !strings.Contains(res.Findings, latest(t, s).ReviewPath()) {
+		t.Fatalf("want a non-terminal failure naming the review, got %+v", res)
+	}
+}
+
+func TestGate_PassAtCap_ApprovePasses(t *testing.T) {
+	s, _ := newStore(t)
+	gate, _ := newPassAtCapGates(t, s, 1)
+	wantCarry(t, mustEval(t, gate))
+	if err := s.RecordVerdict(VerdictApprove, ""); err != nil {
+		t.Fatal(err)
+	}
+	if !mustEval(t, gate).Passed {
+		t.Fatal("approve must pass")
+	}
+}
+
+func TestGate_PassAtCap_CapRejectGoesToWriterThenRewritePasses(t *testing.T) {
+	s, _ := newStore(t)
+	gate, _ := newPassAtCapGates(t, s, 1)
+	wantCarry(t, mustEval(t, gate))
+	rejectRound(t, s)
+	wantFindingsFailure(t, s, mustEval(t, gate))
+	if !latest(t, s).Verdict.Consumed {
+		t.Fatal("the cap's reject was not consumed")
+	}
+	if !mustEval(t, gate).Passed {
+		t.Fatal("the rewrite after the cap's reject must pass")
+	}
+	if latest(t, s).Number != 1 {
+		t.Fatal("the rewrite opened a second round")
+	}
+}
+
+func TestGate_PassAtCap_BelowCapStillOpensNextRound(t *testing.T) {
+	s, _ := newStore(t)
+	gate, _ := newPassAtCapGates(t, s, 2)
+	wantCarry(t, mustEval(t, gate))
+	rejectRound(t, s)
+	wantFindingsFailure(t, s, mustEval(t, gate))
+	wantCarry(t, mustEval(t, gate))
+	if latest(t, s).Number != 2 {
+		t.Fatal("a reject below the cap must open the next round")
+	}
+}
+
+func TestGate_PassAtCap_FreshGateAfterCapRejectPasses(t *testing.T) {
+	s, _ := newStore(t)
+	gate, _ := newPassAtCapGates(t, s, 1)
+	wantCarry(t, mustEval(t, gate))
+	rejectRound(t, s)
+	mustEval(t, gate)
+	resumed, _ := newPassAtCapGates(t, s, 1)
+	if !mustEval(t, resumed).Passed {
+		t.Fatal("a fresh gate after the consumed cap reject must pass")
+	}
+	if latest(t, s).Number != 1 {
+		t.Fatal("a fresh gate opened a round")
+	}
+}
+
+func TestFinal_PassAtCap_ConsumedCapRejectPasses(t *testing.T) {
+	s, _ := newStore(t)
+	gate, final := newPassAtCapGates(t, s, 1)
+	wantCarry(t, mustEval(t, gate))
+	rejectRound(t, s)
+	mustEval(t, gate)
+	if !mustEval(t, final).Passed {
+		t.Fatal("final must pass the rewrite after a consumed cap reject")
+	}
+}
+
+func TestFinal_PassAtCap_UnconsumedCapRejectFailsTerminal(t *testing.T) {
+	s, _ := newStore(t)
+	gate, final := newPassAtCapGates(t, s, 1)
+	wantCarry(t, mustEval(t, gate))
+	rejectRound(t, s)
+	wantTerminal(t, mustEval(t, final))
+}
+
 func newLiveGates(t *testing.T, s Store, live func() (bool, error)) (gate, final shuttleengine.Gate) {
 	t.Helper()
 	return NewGate(GateConfig{

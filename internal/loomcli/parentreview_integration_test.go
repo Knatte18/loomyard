@@ -196,9 +196,9 @@ func (f *prFixture) call() {
 	}
 }
 
-// TestParentReviewExchange_RejectThenFixThenLetThrough drives round 1 through delivery and a reject from the prime, the writer's fix into round 2,
-// and an approve that lets the run through, and checks the commit, the status wait and the round numbering along the way.
-func TestParentReviewExchange_RejectThenFixThenLetThrough(t *testing.T) {
+// TestParentReviewExchange_RejectThenFixGoesOnToPerch drives the embedded recipe's one parent review through delivery and a reject from the prime,
+// then the writer's fix, which goes on without a second round, and checks the commit, the status wait and the round numbering along the way.
+func TestParentReviewExchange_RejectThenFixGoesOnToPerch(t *testing.T) {
 	f := newPRFixture(t)
 	taskCwd := f.location.AnchorPath()
 	primeCwd := f.hub.Location.AnchorPath()
@@ -253,34 +253,22 @@ func TestParentReviewExchange_RejectThenFixThenLetThrough(t *testing.T) {
 			t.Fatalf("copied review = (%q, %v); want the reviewer's findings", got, err)
 		}
 
-		// Arrival 3: the writer fixed the discussion; discussion re-runs and the parent review opens round 2 with a fresh prompt.
+		// Arrival 3: the writer fixed the discussion; the one parent review is spent, so the rewrite goes on to the perch with no second round.
 		f.writeDiscussion("\nAddressed the parent's finding.\n")
 		third := arrive(t, gates)
-		round2 := f.latest()
-		if !third.Pending || third.Send == "" || round2.Number != 2 {
-			t.Fatalf("arrival 3 = %+v in round %d; want pending with a prompt in round 2", third, round2.Number)
+		if !third.Passed || third.Pending || third.Send != "" {
+			t.Fatalf("arrival 3 = %+v; want passed with no prompt", third)
 		}
-
-		// Arrival 4: an approve lets the run through with no re-prompt.
-		if code, out := f.verb(taskCwd, "review", "approve"); code != 0 {
-			t.Fatalf("review approve = %d %q; want 0", code, out)
-		}
-		fourth := arrive(t, gates)
-		if !fourth.Passed || fourth.Pending || fourth.Send != "" {
-			t.Fatalf("arrival 4 = %+v; want passed with no re-prompt", fourth)
-		}
-		if v := f.latest().Verdict; v == nil || v.Kind != parentreview.VerdictApprove {
-			t.Fatalf("round 2 verdict = %+v; want approve", v)
+		if n := f.latest().Number; n != 1 {
+			t.Fatalf("round number after the fix = %d; want 1", n)
 		}
 		return shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, Gate: &shuttleengine.GateOutcome{Passed: true}}
 	}
 	f.call()
 
-	// Both rounds' request directories rode along in the discussion commits.
-	for _, n := range []string{"round-1", "round-2"} {
-		rel := filepath.ToSlash(filepath.Join(loomengine.LoomParentReviewDirRel(), n, "request.json"))
-		if got := mustGitOut(t, f.weft, "log", "--name-only", "--format=", "-n", "3"); !strings.Contains(got, rel) {
-			t.Errorf("weft log touched %q; want it to include %q", got, rel)
-		}
+	// The round's request directory rode along in the discussion commits.
+	rel := filepath.ToSlash(filepath.Join(loomengine.LoomParentReviewDirRel(), "round-1", "request.json"))
+	if got := mustGitOut(t, f.weft, "log", "--name-only", "--format=", "-n", "3"); !strings.Contains(got, rel) {
+		t.Errorf("weft log touched %q; want it to include %q", got, rel)
 	}
 }

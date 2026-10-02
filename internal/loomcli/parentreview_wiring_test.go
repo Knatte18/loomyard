@@ -20,7 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// TestDiscussionWriteRow_GateListIsDiscussionThenParentReview asserts the embedded recipe's Discussion-Write row lists the discussion gate, then a parent-review gate with attempts 3 and no pass_on_cap.
+// TestDiscussionWriteRow_GateListIsDiscussionThenParentReview asserts the embedded recipe's Discussion-Write row lists the discussion gate, then a parent-review gate with attempts 1 and pass_on_cap: one scope review whose rewrite goes on to the perch.
 func TestDiscussionWriteRow_GateListIsDiscussionThenParentReview(t *testing.T) {
 	t.Parallel()
 
@@ -44,11 +44,11 @@ func TestDiscussionWriteRow_GateListIsDiscussionThenParentReview(t *testing.T) {
 		if second["name"] != "parent-review" {
 			t.Errorf("gates[1].name = %v; want parent-review", second["name"])
 		}
-		if second["attempts"] != 3 {
-			t.Errorf("gates[1].attempts = %v; want 3", second["attempts"])
+		if second["attempts"] != 1 {
+			t.Errorf("gates[1].attempts = %v; want 1", second["attempts"])
 		}
-		if _, set := second["pass_on_cap"]; set {
-			t.Errorf("gates[1].pass_on_cap = %v; want it absent", second["pass_on_cap"])
+		if second["pass_on_cap"] != true {
+			t.Errorf("gates[1].pass_on_cap = %v; want true", second["pass_on_cap"])
 		}
 		return
 	}

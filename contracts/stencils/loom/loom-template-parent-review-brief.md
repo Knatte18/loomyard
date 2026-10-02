@@ -15,8 +15,9 @@ The child has finished its design and is waiting on your verdict.
 
 ## What to judge
 
-Judge whether the design fits the planned work, without duplicating or contradicting any board entry.
-Do not re-review the design's internal quality; the Discussion-Review segment does that.
+This is a scope check only: judge whether the design does what this task's board entry asks, no more and no less, without duplicating or contradicting any other board entry.
+A finding is a scope deviation: a goal or Done-when point left out, work that belongs to another entry, or a direction the entry rules out.
+Do not judge design details or the design's internal quality; the Discussion-Review segment reviews those in detail right after you.
 
 ## Write the review
 
