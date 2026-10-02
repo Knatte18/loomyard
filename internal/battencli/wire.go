@@ -540,9 +540,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			},
 		},
 		SeedChild: battenshed.SeedChildDeps{
-			// ReadBoardType opens the Board fresh on every Call, over fabricengine.BoardDir(
-			// location.HubPath), and returns the task's own Recipe field -- never a value captured at
-			// wiring time, so a type corrected after prime was seeded is still honoured.
+			// ReadBoardType opens the Board fresh on every Call, over fabricengine.BoardDir(location.HubPath), and returns the task's own Recipe field -- never a value captured at wiring time, so a recipe corrected after prime was seeded is still honoured.
 			ReadBoardType: func(ctx context.Context) (string, error) {
 				b := boardengine.New(boardengine.Config{Path: fabricengine.BoardDir(location.HubPath)})
 				task, found, err := b.GetTask(slug)

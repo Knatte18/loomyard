@@ -735,8 +735,7 @@ func (s *Store) UpsertTasksBatch(tasks []map[string]any) error {
 // MergeTasks removes slugs, upserts one task, and optionally sets a status — all atomically.
 // setStatus is the resolved status-update step,
 // or nil to skip it.
-// When setStatus targets a missing task, SetStatus returns an error and writeOp discards the
-// in-memory mutation without saving, leaving the on-disk state unchanged.
+// When setStatus targets a missing task, SetStatus returns an error and boardCriticalSection discards the in-memory mutation without saving, leaving the on-disk state unchanged.
 func (s *Store) MergeTasks(removeSlugs []string, upsert map[string]any, setStatus *MergeStatusUpdate) (Task, error) {
 	projected := make([]Task, 0, len(s.tasks))
 	for _, t := range s.tasks {

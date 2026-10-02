@@ -281,7 +281,7 @@ func (b *Board) ListTasksFull() ([]Task, error) {
 	return store.ListTasksFull(), nil
 }
 
-// Promote moves the entry identified by idOrSlug to a lower tier number under the write lock;
+// Promote moves the entry identified by slug to a lower tier number under the write lock;
 // a nil target means one tier lower.
 func (b *Board) Promote(slug string, target *int) (Task, error) {
 	result, err := b.boardCriticalSection(func(store *Store) (any, error) {
