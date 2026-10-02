@@ -55,12 +55,6 @@ These are conversational shorthands; never rename code, files or docs to them un
 
 Each item works around a bug whose issue is folded into a board task (`webster-recovery`, `run-parentage`, `operator-surface-fixes`); the task deletes its items when it lands.
 
-- #329: a re-begun webster batch whose fork landed nothing drops its Create targets from validation.
-  Drop the reference from later cards' Uses, `lyx webster rebaseline --card NN`, `lyx loom start --no-attach`.
-- #330: `rebaseline` refuses begun cards webster canonicalized itself.
-  Restore the `plan:` line from `_lyx/webster/plan-baseline/<cardHash>` (hash in `state.json` under `batches.<n>.cardHashes`) and rebaseline naming every card the error lists.
-- #332: an integration regression blocks the run with no fix attempt.
-  Fix it on the task branch, run the plan's `## verify:`, commit, `lyx loom start --no-attach`.
 - #334: `lyx ide spawn` writes a lyx-managed block into a pair's tracked `.gitignore`.
   Revert it with `git -C <pair> checkout -- .gitignore`.
 - #338: a paused or blocked inner run makes `lyx batten run` exit `failed`.
