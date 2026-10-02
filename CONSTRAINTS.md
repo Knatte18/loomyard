@@ -232,6 +232,15 @@ Provider specifics live ONLY under `internal/shuttleengine/claudeengine`.
 Pane-shell command strings are built ONLY via `internal/shell`, stdlib-only.
 `Quote`/`Invoke`/`ReadFile` are illustrative of the seam's mechanics, not an exhaustive interface listing.
 
+## Agent Name Invariant
+
+`internal/agentname` is the sole former, parser and validator of agent names and imports the standard library only.
+
+- A full name is `<code>:<role>` in the prime and in a standalone run, and `<code>:<slug>:<role>` in a task worktree.
+- Reed forms it once, in `AddStrand` under its state lock, and stores it in the strand record, which is the only key delivery and lookup resolve through — pane titles and Claude session names are display mirrors.
+- A full name never names a tmux session or socket, since tmux rewrites `:` and `.` there.
+- The hub's code is recorded in `.lyx-code` beside `.lyx-warp`, read and written by `internal/fabricengine` alone, and told to reed by `internal/hubgeom` (a standalone run's derived code by `internal/standalonegeom`).
+
 ## Fabric Vocabulary Invariant
 
 **Fabric** names the wired composite. **warp**/**weft** name the two sides, used only where they must be told apart. "repo" alone never substitutes for warp. **`host` is retired** in the fabric sense, everywhere.
