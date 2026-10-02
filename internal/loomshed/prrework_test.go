@@ -448,6 +448,62 @@ func TestPRRework_CrashResumeConverges(t *testing.T) {
 	})
 }
 
+// TestPRRework_SupersedingRejectionKeepsTheRound covers a rejection that replaces the pending one while PR-Rework is blocked after its archive:
+// the round is re-keyed to the new rejection, and the stopped session's partial plan is never archived as a generation.
+func TestPRRework_SupersedingRejectionKeepsTheRound(t *testing.T) {
+	const secondRejectedAt = "2026-09-30T11:00:00Z"
+	const secondFindings = "the second findings text\n"
+	f := newReworkFixture(t)
+	f.onInner = func() {
+		f.writeFile(f.planDir, "02-partial.md", "half a card\n")
+		f.innerErr = errors.New("session stopped")
+	}
+	if _, err := f.call(); err == nil {
+		t.Fatal("first Call err = nil; want the session failure")
+	}
+	f.innerErr = nil
+	f.pending.RejectedAt = secondRejectedAt
+	f.pending.Findings = secondFindings
+	f.onInner = f.newGeneration(2, reworkNewCard)
+	f.mustDone()
+
+	if f.roundDirs() != 1 || f.commits != 1 || len(f.archiveCalls) != 1 {
+		t.Errorf("rounds=%d commits=%d archives=%d; want 1 each", f.roundDirs(), f.commits, len(f.archiveCalls))
+	}
+	prior := filepath.Join(f.reworkDir, "round-1", "prior-generation", "plan")
+	if got := dirNames(t, prior); strings.Join(got, ",") != "00-overview.md,01-first-card.md" {
+		t.Errorf("archived plan = %v; want generation 0", got)
+	}
+	if got := f.told[len(f.told)-1]; got.PriorPlanDir != prior || got.FirstCard != 2 {
+		t.Errorf("second session told %+v; want first card 2 and prior plan %s", got, prior)
+	}
+	rec := f.readRecord(1)
+	if rec.RejectedAt != secondRejectedAt || rec.FirstCard != 2 || rec.Class != ReworkClassRequired {
+		t.Errorf("round-1 record.json = %+v; want the second rejection, first card 2 and a class", rec)
+	}
+	findings, err := os.ReadFile(filepath.Join(f.reworkDir, "round-1", "findings.md"))
+	if err != nil || string(findings) != secondFindings {
+		t.Errorf("round-1 findings.md = %q, %v; want %q", findings, err, secondFindings)
+	}
+}
+
+// TestPRRework_RecordlessLowerRoundIsNotResumed covers a stray record-less round below a committed one: only the highest round can be in flight, so a new round opens.
+func TestPRRework_RecordlessLowerRoundIsNotResumed(t *testing.T) {
+	f := newReworkFixture(t)
+	if err := os.MkdirAll(filepath.Join(f.reworkDir, "round-1"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	f.commitRound(2, "older-head", reworkTestRejectedAt, ReworkClassRequired)
+	f.onInner = f.newGeneration(2, reworkNewCard)
+	f.mustDone()
+	if _, err := os.Stat(filepath.Join(f.reworkDir, "round-1", "prior-generation")); err == nil {
+		t.Error("the live plan was archived into the stray round-1")
+	}
+	if rec := f.readRecord(3); rec.HeadSHA != reworkTestHead {
+		t.Errorf("round-3 record.json = %+v; want the pending rejection", rec)
+	}
+}
+
 // TestPRRework_TornRecordIsAnError covers a record.json a crash left undecodable: the next Call refuses rather than opening a second round over the live plan.
 func TestPRRework_TornRecordIsAnError(t *testing.T) {
 	f := newReworkFixture(t)

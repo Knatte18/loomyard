@@ -149,23 +149,23 @@ func (p *prRework) Call(ctx context.Context) (shedengine.Outcome, shedengine.Out
 		return p.finish(true)
 	}
 
-	round, archived, err := p.roundFor(identity)
+	round, inFlight, err := p.roundFor(committed)
 	if err != nil {
 		return "", shedengine.OutputPointer{}, err
 	}
 	roundDir := filepath.Join(p.deps.ReworkDir, reworkRoundPrefix+strconv.Itoa(round))
 
 	var rec roundRecord
-	if archived {
-		rec, err = readRoundRecord(filepath.Join(roundDir, reworkRecordFile))
-		if err != nil {
-			return "", shedengine.OutputPointer{}, fmt.Errorf("loomshed: %s: %w", p.name, err)
-		}
-	} else {
+	switch {
+	case inFlight == nil:
 		rec, err = p.archive(pending, roundDir)
-		if err != nil {
-			return "", shedengine.OutputPointer{}, err
-		}
+	case rejectionIdentity(inFlight.HeadSHA, inFlight.RejectedAt) != identity:
+		rec, err = p.rekeyRound(pending, roundDir, inFlight.FirstCard)
+	default:
+		rec = *inFlight
+	}
+	if err != nil {
+		return "", shedengine.OutputPointer{}, err
 	}
 	if err := p.recreateReviewRunDirs(); err != nil {
 		return "", shedengine.OutputPointer{}, err
@@ -276,40 +276,50 @@ func NextReworkCardNumber(planDir string, readCommitted func(anchorRel string) (
 	return highest + 1, nil
 }
 
-// roundFor picks the round for the rejection named by identity.
-// A working-tree round whose record.json records the identity means the archive is done (archived is true) and the session may have begun, so nothing is moved again.
-// Otherwise the highest round directory with no record.json is this rejection's interrupted archive and is resumed.
-// Otherwise it is a new round, the highest plus one.
+// roundFor picks the round for the pending rejection, deciding on the highest round alone, since only the newest round can be uncommitted.
+// A highest round with no record.json is an interrupted archive: inFlight is nil, and the archive resumes into it.
+// A highest round whose record is not among the committed rejections is in flight: its archive is done and the session may have begun, so nothing is moved again, and inFlight is that record.
+// Its identity is the pending rejection's after a crash, or a superseded one's when the operator rejected again while PR-Rework was blocked.
+// Otherwise it is a new round, the highest plus one, with inFlight nil.
 // A record that exists but cannot be read or decoded is an error, since guessing whose round it is could split the round.
-func (p *prRework) roundFor(identity string) (round int, archived bool, err error) {
+func (p *prRework) roundFor(committed map[string]bool) (round int, inFlight *roundRecord, err error) {
 	nums, err := roundNumbers(p.deps.ReworkDir)
 	if err != nil {
-		return 0, false, fmt.Errorf("loomshed: %s: %w", p.name, err)
+		return 0, nil, fmt.Errorf("loomshed: %s: %w", p.name, err)
 	}
-	highest, unfinished := 0, 0
+	highest := 0
 	for _, n := range nums {
 		highest = max(highest, n)
-		recordPath := filepath.Join(p.deps.ReworkDir, reworkRoundPrefix+strconv.Itoa(n), reworkRecordFile)
-		data, err := os.ReadFile(recordPath)
-		if errors.Is(err, fs.ErrNotExist) {
-			unfinished = max(unfinished, n)
-			continue
-		}
-		if err != nil {
-			return 0, false, fmt.Errorf("loomshed: %s: read round record %s: %w", p.name, recordPath, err)
-		}
-		var rec roundRecord
-		if err := json.Unmarshal(data, &rec); err != nil {
-			return 0, false, fmt.Errorf("loomshed: %s: decode round record %s: %w; way forward: rewrite the record, or remove it to resume the round's archive, then re-step", p.name, recordPath, err)
-		}
-		if rejectionIdentity(rec.HeadSHA, rec.RejectedAt) == identity {
-			return n, true, nil
-		}
 	}
-	if unfinished > 0 {
-		return unfinished, false, nil
+	if highest == 0 {
+		return 1, nil, nil
 	}
-	return highest + 1, false, nil
+	rec, err := readRoundRecord(filepath.Join(p.deps.ReworkDir, reworkRoundPrefix+strconv.Itoa(highest), reworkRecordFile))
+	if errors.Is(err, fs.ErrNotExist) {
+		return highest, nil, nil
+	}
+	if err != nil {
+		return 0, nil, fmt.Errorf("loomshed: %s: %w; way forward: rewrite the record, or remove it to resume the round's archive, then re-step", p.name, err)
+	}
+	if committed[rejectionIdentity(rec.HeadSHA, rec.RejectedAt)] {
+		return highest + 1, nil, nil
+	}
+	return highest, &rec, nil
+}
+
+// rekeyRound hands an in-flight round to the pending rejection that superseded the one it was opened for.
+// Its archive is done and HEAD still holds the retired generation, so the round keeps its first_card.
+// Its findings and identity become the pending rejection's, and the class is dropped so the session runs for the new findings.
+// findings.md is written first and record.json last, so a crash between them re-keys again on the next Call.
+func (p *prRework) rekeyRound(pending PendingRejection, roundDir string, firstCard int) (roundRecord, error) {
+	if err := os.WriteFile(filepath.Join(roundDir, reworkFindingsFile), []byte(pending.Findings), 0o644); err != nil {
+		return roundRecord{}, fmt.Errorf("loomshed: %s: write round %s: %w", p.name, reworkFindingsFile, err)
+	}
+	rec := roundRecord{PRNumber: pending.PRNumber, HeadSHA: pending.HeadSHA, RejectedAt: pending.RejectedAt, FirstCard: firstCard}
+	if err := writeRoundRecord(filepath.Join(roundDir, reworkRecordFile), rec); err != nil {
+		return roundRecord{}, fmt.Errorf("loomshed: %s: %w", p.name, err)
+	}
+	return rec, nil
 }
 
 // LatestArchivedReviewsDir returns the reviews directory of the highest round's prior-generation under reworkDir, or "" when no round exists.
