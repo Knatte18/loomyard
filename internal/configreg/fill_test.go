@@ -122,15 +122,21 @@ func assertFilled(t *testing.T, module, template, keyPath string) {
 	}
 }
 
+// moduleTemplate returns module's registered template, failing the test when the registry lacks it.
+func moduleTemplate(t *testing.T, module string) string {
+	t.Helper()
+	fn, ok := configreg.Template(module)
+	if !ok {
+		t.Fatalf("module %q not in the registry", module)
+	}
+	return fn()
+}
+
 // TestFill_DroppedTopLevelKeyLoadsAtDefault drops one top-level key from each module's real template and checks the load fills it.
 func TestFill_DroppedTopLevelKeyLoadsAtDefault(t *testing.T) {
 	for _, module := range fillModules {
 		t.Run(module, func(t *testing.T) {
-			fn, ok := configreg.Template(module)
-			if !ok {
-				t.Fatalf("module %q not in the registry", module)
-			}
-			template := fn()
+			template := moduleTemplate(t, module)
 			assertFilled(t, module, template, firstKey(t, template))
 		})
 	}
@@ -138,8 +144,7 @@ func TestFill_DroppedTopLevelKeyLoadsAtDefault(t *testing.T) {
 
 // TestFill_ReedNestedAndWholeMapping drops reed's selvage.height_rows alone and status_line whole.
 func TestFill_ReedNestedAndWholeMapping(t *testing.T) {
-	fn, _ := configreg.Template("reed")
-	template := fn()
+	template := moduleTemplate(t, "reed")
 	for _, keyPath := range []string{"selvage.height_rows", "status_line"} {
 		t.Run(keyPath, func(t *testing.T) {
 			assertFilled(t, "reed", template, keyPath)
@@ -151,8 +156,7 @@ func TestFill_ReedNestedAndWholeMapping(t *testing.T) {
 func TestFill_EmptyFileLoadsAsTemplate(t *testing.T) {
 	for _, module := range fillModules {
 		t.Run(module, func(t *testing.T) {
-			fn, _ := configreg.Template(module)
-			template := fn()
+			template := moduleTemplate(t, module)
 			loaded, _, after := loadFilled(t, module, template, nil)
 
 			if want := wantDefault(t, module, template); !reflect.DeepEqual(loaded, want) {
