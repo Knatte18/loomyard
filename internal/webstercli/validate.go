@@ -4,9 +4,8 @@
 // JSON envelope: ok with {"valid": true, "cards": <n>, "scope": <scope>} for a clean plan, or an
 // error envelope carrying every finding for a plan with findings -- exit non-zero either way a
 // blocking finding exists, never plain text.
-// The check set is SCOPED the way Run scopes its own, and the "scope" key names which answer the
-// call gave: planglyph.Validate's whole-plan answer while no batch has begun, and
-// planglyph.ValidateDispatch's pending-cards answer once a run has begun any batch.
+// The check set is SCOPED the way Run scopes its own,
+// and the "scope" key names which answer the call gave: planglyph.Validate's whole-plan answer while no batch has begun, and planglyph.ValidateDispatch's pending-cards answer once a run has begun any batch.
 // See scopedValidate for why the two are not interchangeable.
 // webster's own Run pre-flight ALSO refuses a zero-batch plan outright
 // (nothing-to-build is a malformed plan, never a vacuous outcome: done, per websterengine's
@@ -79,13 +78,11 @@ func findingsEnvelope(out io.Writer, msg string, findings []planglyph.Finding, s
 	return 1
 }
 
-// scopedValidate runs the check set this call's own scope calls for, and returns the scope name
-// alongside the findings so every envelope can report it.
+// scopedValidate runs the check set this call's own scope calls for, and returns the scope name alongside the findings so every envelope can report it.
 // st is the state validateCmd already loaded under the lease; nil means no run has started.
 //
 // With no begun card -- no run at all, or a run that has not begun a batch yet --
-// it runs planglyph.Validate: the whole plan, including the plan-unapproved approval gate, which is
-// the honest answer for the pre-flight case this verb exists to serve.
+// it runs planglyph.Validate: the whole plan, including the plan-unapproved approval gate, which is the honest answer for the pre-flight case this verb exists to serve.
 //
 // Once a run has begun any batch it runs planglyph.ValidateDispatch scoped by websterengine.DispatchScope,
 // the same call begin-batch and websterengine.Run make.

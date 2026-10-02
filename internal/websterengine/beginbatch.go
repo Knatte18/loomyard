@@ -295,9 +295,8 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	// dispatching a pack built on a re-resolve that failed is strictly worse than not dispatching.
 	// Scoped to the cards still to be built: a card already built contradicts the tree by design, and
 	// re-resolving it reports the plan working correctly as a blocking defect.
-	// DispatchScope, not completedCards: the batch record is written further down, so on a first begin
-	// this batch is still validated, while a re-begin of a batch whose earlier fork already landed its
-	// work is not refused for it.
+	// DispatchScope, not completedCards: the batch record is written further down,
+	// so on a first begin this batch is still validated, while a re-begin of a batch whose earlier fork already landed its work is not refused for it.
 	// The forthcoming half keeps the Create targets of begun, unrecorded batches out of the status check,
 	// so a re-begun batch whose fork landed nothing does not refuse the later cards that Use them (#329).
 	begun, forthcoming := DispatchScope(deps.Batches, deps.State)

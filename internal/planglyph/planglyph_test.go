@@ -310,8 +310,7 @@ func TestValidateRework(t *testing.T) {
 	})
 }
 
-// forthcomingFindings runs resolvePass over a two-card plan where card 1 is completed and card 2
-// is pending, with card 1 forthcoming only when forthcoming is true.
+// forthcomingFindings runs resolvePass over a two-card plan where card 1 is completed and card 2 is pending, with card 1 forthcoming only when forthcoming is true.
 func forthcomingFindings(t *testing.T, card1, card2 string, forthcoming bool) []Finding {
 	t.Helper()
 	root := writeFixtureRepo(t, map[string]string{"sub/a.go": resolveFixture})
@@ -337,9 +336,7 @@ func hasCheck(findings []Finding, check string) bool {
 	return false
 }
 
-// TestResolvePass_ForthcomingCreateTargetExcludedFromStatus asserts a pending card's Uses of a
-// Create target declared by a completed card is excluded from the status check only when that card
-// is forthcoming.
+// TestResolvePass_ForthcomingCreateTargetExcludedFromStatus asserts a pending card's Uses of a Create target declared by a completed card is excluded from the status check only when that card is forthcoming.
 func TestResolvePass_ForthcomingCreateTargetExcludedFromStatus(t *testing.T) {
 	card1 := "**Create:**\n- `sub#Gadget`\n\n**Intent:** add the gadget\n"
 	card2 := "**Edit:**\n- `sub#Foo`\n\n**Uses:**\n- `sub#Gadget`\n\n**Intent:** use the gadget\n"
@@ -352,8 +349,7 @@ func TestResolvePass_ForthcomingCreateTargetExcludedFromStatus(t *testing.T) {
 	}
 }
 
-// TestResolvePass_ForthcomingRenameNewSideExcludedFromStatus asserts a Rename New side declared by a
-// forthcoming card is excluded from the status check the same way.
+// TestResolvePass_ForthcomingRenameNewSideExcludedFromStatus asserts a Rename New side declared by a forthcoming card is excluded from the status check the same way.
 func TestResolvePass_ForthcomingRenameNewSideExcludedFromStatus(t *testing.T) {
 	card1 := "**Rename:**\n- `sub#Thing` -> `sub#Widget`\n\n**Intent:** rename the type\n"
 	card2 := "**Edit:**\n- `sub#Foo`\n\n**Uses:**\n- `sub#Widget`\n\n**Intent:** use the renamed type\n"
@@ -366,8 +362,7 @@ func TestResolvePass_ForthcomingRenameNewSideExcludedFromStatus(t *testing.T) {
 	}
 }
 
-// TestResolvePass_ForthcomingCardIsNotResolved asserts a forthcoming card's own Create target that
-// already exists draws no create-already-exists, since the card is not resolved.
+// TestResolvePass_ForthcomingCardIsNotResolved asserts a forthcoming card's own Create target that already exists draws no create-already-exists, since the card is not resolved.
 func TestResolvePass_ForthcomingCardIsNotResolved(t *testing.T) {
 	card1 := "**Create:**\n- `sub#Foo`\n\n**Intent:** already landed\n"
 	card2 := "**Edit:**\n- `sub#Thing`\n\n**Intent:** unrelated\n"

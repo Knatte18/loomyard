@@ -308,10 +308,9 @@ func clearRenderedPrompts(promptsDir string) error {
 	return nil
 }
 
-// reclaimEntryTimeStrands stops the only substrates a crashed or killed
-// `run` process can ever leave live behind it: Master's own recorded strand,
-// any recorded, non-terminal recovery-batch strand,
-// and the integration-fix strand when one is recorded, so a run that crashed during the fix never leaves a strand committing behind a fresh Master.
+// reclaimEntryTimeStrands stops the only substrates a crashed or killed `run` process can ever leave live behind it:
+// Master's own recorded strand, any recorded, non-terminal recovery-batch strand, and the integration-fix strand when one is recorded,
+// so a run that crashed during the fix never leaves a strand committing behind a fresh Master.
 // Forks die WITH Master (same process) — there is never an orphaned
 // in-flight fork implementer to reclaim, which is what keeps webster's own
 // entry-time reclaim simple, per
@@ -541,8 +540,8 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	// the same one begin-batch already uses; a fresh run has no completed cards and gets the
 	// whole-plan answer unchanged. The plan-unapproved gate, which ValidateDispatch's format-only
 	// set deliberately omits, already fired at entry above.
-	// The scope here is DispatchScope, not completedCards: a batch begun but not recorded may already
-	// have landed its work, or not yet, and its forthcoming Create targets stay out of the status check.
+	// The scope here is DispatchScope, not completedCards: a batch begun but not recorded may already have landed its work, or not yet,
+	// and its forthcoming Create targets stay out of the status check.
 	begun, forthcoming := DispatchScope(batches, st)
 	findings, err := planglyph.ValidateDispatch(plan, deps.Geom.WorktreeRoot, begun, forthcoming)
 	// The resolve pass canonicalizes handles, rewriting the plan on disk before it reports either a

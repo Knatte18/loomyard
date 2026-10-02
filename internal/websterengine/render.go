@@ -1,14 +1,6 @@
-// render.go implements the six producer prompt assets webster composes and renders
-// (webster-prefix-fork.md, webster-prefix-recovery.md, webster-body-implementer.md,
-// webster-template-master.md, webster-template-integration.md, webster-template-integration-fix.md)
-// and the rendering functions that
-// fill them: RenderForkPrompt (called by begin-batch immediately before each in-session fork),
-// RenderRecoveryPrompt (called by recover-batch immediately before spawning the separate cold
-// recovery strand), RenderMasterPrompt (called by run at Master's own spawn),
-// RenderIntegrationPrompt (called for the plan's single dedicated integration-suite fork, when
-// ShouldRunIntegration reports true), and RenderIntegrationFixPrompt (for the one-shot cold-start
-// strand that repairs an integration regression), plus the two sequenced-execution-order renderers
-// those prompts embed (RenderBatchIndex, RenderProgress).
+// render.go implements the producer prompt assets webster composes and renders (webster-prefix-fork.md, webster-prefix-recovery.md, webster-body-implementer.md, webster-template-master.md, webster-template-integration.md, webster-template-integration-fix.md)
+// and the rendering functions that fill them: RenderForkPrompt (called by begin-batch immediately before each in-session fork), RenderRecoveryPrompt (called by recover-batch immediately before spawning the separate cold recovery strand), RenderMasterPrompt (called by run at Master's own spawn), RenderIntegrationPrompt (called for the plan's single dedicated integration-suite fork, when ShouldRunIntegration reports true), and RenderIntegrationFixPrompt (for the one-shot cold-start strand that repairs an integration regression),
+// plus the two sequenced-execution-order renderers those prompts embed (RenderBatchIndex, RenderProgress).
 // Every asset ships as an embedded default in the top-level stencils package and is read from a
 // told stencils directory at call time via stencilstore.Read, per the runtime-read-not-embed Shared
 // Decision — this file carries no //go:embed directive of its own.
@@ -77,8 +69,7 @@ func IntegrationTemplate(stencilsDir string) ([]byte, error) {
 	return stencilstore.Read(stencilsDir, "webster-template-integration")
 }
 
-// IntegrationFixTemplate reads webster-template-integration-fix's current content from stencilsDir via
-// stencilstore.Read.
+// IntegrationFixTemplate reads webster-template-integration-fix's current content from stencilsDir via stencilstore.Read.
 func IntegrationFixTemplate(stencilsDir string) ([]byte, error) {
 	return stencilstore.Read(stencilsDir, "webster-template-integration-fix")
 }
@@ -316,8 +307,7 @@ func RenderIntegrationPrompt(plan *planparser.Plan, reportPath, logPath, worktre
 // it renders as one hint sentence, or as nothing when empty.
 // planDir is rendered in the display form masterPlanDirDisplay gives it, relative to worktreeRoot when it sits inside it.
 // notePath is the caller-composed friction note path (friction.NotePath), or "" when Tier 2 is off;
-// friction_directive is injected via friction.RoleImplementer when Tier 2 is on, with a
-// friction.Directive error swallowed as a Warn rather than propagated.
+// friction_directive is injected via friction.RoleImplementer when Tier 2 is on, with a friction.Directive error swallowed as a Warn rather than propagated.
 func RenderIntegrationFixPrompt(regressions []IntegrationFailure, verify, cardHint, reportPath, worktreeRoot, planDir, stencilsDir, notePath string) ([]byte, error) {
 	if len(regressions) == 0 {
 		return nil, fmt.Errorf("webster: render integration-fix prompt: no regressions to fix")

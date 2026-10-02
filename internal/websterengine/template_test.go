@@ -749,10 +749,7 @@ func TestForkTemplate_CardLoopReadsCardFileWithWhatFallback(t *testing.T) {
 	requireContains(t, text, "unless the card FILE carries a `**Commit:**` line")
 }
 
-// TestRenderForkPrompt_SelfFixSectionCountsCardCausedFailures asserts the rendered fork prompt's
-// "Bounded self-fix, then stop" section carries the caused-by-the-card rule with both causes, the
-// rendered cap, the FAILED-on-exhaustion rule, and the report-but-never-fix rule for a failure the
-// card did not cause.
+// TestRenderForkPrompt_SelfFixSectionCountsCardCausedFailures asserts the rendered fork prompt's "Bounded self-fix, then stop" section carries the caused-by-the-card rule with both causes, the rendered cap, the FAILED-on-exhaustion rule, and the report-but-never-fix rule for a failure the card did not cause.
 func TestRenderForkPrompt_SelfFixSectionCountsCardCausedFailures(t *testing.T) {
 	card := cardWithSourcePath(1, "json-flag", "add the --json flag")
 	batch := batcher.Batch{Cards: []planparser.Card{card}}

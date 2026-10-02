@@ -62,11 +62,11 @@ func Validate(plan *planparser.Plan, worktreeRoot string) ([]Finding, error) {
 // batch therefore wedged any multi-batch plan carrying a Create, Delete or Rename card at its second
 // batch.
 //
-// forthcoming names the subset of completed whose work may not have landed, such as a begun card
-// whose fork committed nothing. Such a card is excluded from every pass exactly like any completed
-// card, but its Create targets and Rename New sides still count as forthcoming: a pending card's
-// Uses or target of one is excluded from the status check rather than resolved, because the
-// destination may legitimately not exist on disk yet. Its Delete and Edit targets add nothing.
+// forthcoming names the subset of completed whose work may not have landed, such as a begun card whose fork committed nothing.
+// Such a card is excluded from every pass exactly like any completed card,
+// but its Create targets and Rename New sides still count as forthcoming:
+// a pending card's Uses or target of one is excluded from the status check rather than resolved, because the destination may legitimately not exist on disk yet.
+// Its Delete and Edit targets add nothing.
 //
 // The two halves are scoped differently, deliberately. The resolve-backed pass runs over the pending
 // cards ALONE, so a completed card's targets are never resolved and never paired against a pending
@@ -134,8 +134,7 @@ func pendingCardsByID(plan *planparser.Plan, done map[string]bool) *planparser.P
 	return &scoped
 }
 
-// cardsByID returns the view of plan carrying only the cards whose ID is in ids, the complement of
-// pendingCardsByID.
+// cardsByID returns the view of plan carrying only the cards whose ID is in ids, the complement of pendingCardsByID.
 func cardsByID(plan *planparser.Plan, ids map[string]bool) *planparser.Plan {
 	scoped := *plan
 	kept := make([]planparser.Card, 0, len(ids))
@@ -181,12 +180,11 @@ func convertAll(errs []planparser.ValidationError) []Finding {
 // directory: RewriteRefs re-parses it itself, so a handle bound in a pending card is still spelled
 // consistently across every card file, including the completed ones.
 //
-// forthcoming is the set of card IDs within done whose work may not have landed. Those cards stay
-// out of every pass, but after canonicalization they are selected by ID, from the reloaded plan
-// when it was rewritten and from plan otherwise, so a respelled handle matches under its new
-// spelling. Their Create targets and Rename New sides join the exclusion sets below, so a pending
-// ref to something a forthcoming card will create is not reported as missing. They are never
-// selected from current, which holds pending cards only.
+// forthcoming is the set of card IDs within done whose work may not have landed.
+// Those cards stay out of every pass,
+// but after canonicalization they are selected by ID, from the reloaded plan when it was rewritten and from plan otherwise, so a respelled handle matches under its new spelling.
+// Their Create targets and Rename New sides join the exclusion sets below, so a pending ref to something a forthcoming card will create is not reported as missing.
+// They are never selected from current, which holds pending cards only.
 func resolvePass(plan *planparser.Plan, worktreeRoot string, done, forthcoming map[string]bool) ([]Finding, error) {
 	lang, ok := plan.GlyphLanguage()
 	if !ok {
