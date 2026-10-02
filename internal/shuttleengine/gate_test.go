@@ -71,7 +71,7 @@ func TestGate_PassesOnFirstDone(t *testing.T) {
 		state:    RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath},
 		clock:    fc,
 		deadline: fc.Now().Add(time.Hour),
-		gate:     GateSpec{Gate: gate},
+		gate:     GateSpec{{Gate: gate, Attempts: 3}},
 	}
 
 	result, err := run.Wait()
@@ -139,7 +139,7 @@ func TestGate_FailsOnceThenPassesOnNextTurn(t *testing.T) {
 		state:    RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath},
 		clock:    mc,
 		deadline: mc.Now().Add(time.Hour),
-		gate:     GateSpec{Gate: gate},
+		gate:     GateSpec{{Gate: gate, Attempts: 3}},
 	}
 
 	result, err := run.Wait()
@@ -215,7 +215,7 @@ func TestGate_FailsEveryAttempt_ExhaustsBudget(t *testing.T) {
 		state:    RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath},
 		clock:    mc,
 		deadline: mc.Now().Add(time.Hour),
-		gate:     GateSpec{Gate: gate, Attempts: budget},
+		gate:     GateSpec{{Gate: gate, Attempts: budget}},
 	}
 
 	result, err := run.Wait()
@@ -264,7 +264,7 @@ func TestGate_ClosureError(t *testing.T) {
 		state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath},
 		clock:    fc,
 		deadline: fc.Now().Add(time.Hour),
-		gate:     GateSpec{Gate: gate},
+		gate:     GateSpec{{Gate: gate, Attempts: 3}},
 	}
 
 	_, err := run.Wait()
@@ -274,8 +274,10 @@ func TestGate_ClosureError(t *testing.T) {
 	if len(reed.SendTextCalls) != 0 {
 		t.Errorf("SendText calls = %+v, want none", reed.SendTextCalls)
 	}
-	if run.gateSent != 0 {
-		t.Errorf("gateSent = %d, want 0 (an infrastructure error charges no attempt)", run.gateSent)
+	for i, sent := range run.gateSent {
+		if sent != 0 {
+			t.Errorf("gateSent[%d] = %d, want 0 (an infrastructure error charges no attempt)", i, sent)
+		}
 	}
 }
 
@@ -317,7 +319,7 @@ func TestGate_NoLiveSessionDonePaths(t *testing.T) {
 				state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath},
 				clock:    fc,
 				deadline: fc.Now().Add(time.Hour),
-				gate:     GateSpec{Gate: gate},
+				gate:     GateSpec{{Gate: gate, Attempts: 3}},
 			}
 
 			result, err := run.Wait()
@@ -368,7 +370,7 @@ func TestGate_RunDeadlineExpires_NoLiveSession(t *testing.T) {
 		clock:  fc,
 		// Already expired: the very first deadline check trips it.
 		deadline: fc.Now().Add(-time.Minute),
-		gate:     GateSpec{Gate: gate},
+		gate:     GateSpec{{Gate: gate, Attempts: 3}},
 	}
 
 	result, err := run.Wait()
@@ -420,7 +422,7 @@ func TestGate_FinishedDespiteMechanismFailure_NoLiveSession(t *testing.T) {
 		state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath},
 		clock:    fc,
 		deadline: fc.Now().Add(time.Hour),
-		gate:     GateSpec{Gate: gate},
+		gate:     GateSpec{{Gate: gate, Attempts: 3}},
 	}
 
 	result, err := run.Wait()
@@ -453,7 +455,7 @@ func TestGate_EvaluateOncePerAttempt_Memoized(t *testing.T) {
 		callCount++
 		return GateResult{Passed: true}, nil
 	}
-	run := &Run{runDir: t.TempDir(), gate: GateSpec{Gate: gate}}
+	run := &Run{runDir: t.TempDir(), gate: GateSpec{{Gate: gate, Attempts: 3}}}
 
 	first, err := run.evaluateGate()
 	if err != nil {
@@ -501,7 +503,7 @@ func TestGate_SendFailsMidLoop_EndsLoopWithAttemptsSoFar(t *testing.T) {
 		state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath},
 		clock:    fc,
 		deadline: fc.Now().Add(time.Hour),
-		gate:     GateSpec{Gate: gate},
+		gate:     GateSpec{{Gate: gate, Attempts: 3}},
 	}
 
 	result, err := run.Wait()
@@ -559,7 +561,7 @@ func TestGate_DeadlineExpiresBetweenAttempts(t *testing.T) {
 		state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath},
 		clock:    fc,
 		deadline: fc.Now().Add(2 * time.Millisecond),
-		gate:     GateSpec{Gate: gate},
+		gate:     GateSpec{{Gate: gate, Attempts: 3}},
 	}
 
 	result, err := run.Wait()
@@ -645,7 +647,7 @@ func TestAttachGated_ThreadsGateThroughReconstructAndWait(t *testing.T) {
 		return GateResult{Passed: true}, nil
 	}
 
-	result, found, err := runner.AttachGated(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute}, GateSpec{Gate: gate})
+	result, found, err := runner.AttachGated(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute}, GateSpec{{Gate: gate, Attempts: 3}})
 	if err != nil {
 		t.Fatalf("AttachGated() error = %v; want nil", err)
 	}
