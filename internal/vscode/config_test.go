@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -162,7 +161,7 @@ func TestWriteVSCodeConfigCreatesFilesWhenAbsent(t *testing.T) {
 	}
 	assertStepTaskCommand(t, "reed add claude", addTask, lyxPath)
 	assertStepTaskArgs(t, "reed add claude", addTask, []string{
-		"reed", "add", "--if-absent", "--cmd", claudePath, "--name", "claude", "--focus",
+		"reed", "add", "--if-absent", "--unless-name", "orch", "--cmd", claudePath, "--name", "claude", "--focus",
 	})
 	assertPresentation(t, "reed add claude", addTask, "silent", "shared", false)
 
@@ -363,37 +362,34 @@ func TestWriteVSCodeConfigDoesNotClobber(t *testing.T) {
 		t.Fatalf("tasks.json is not valid JSON: %v", err)
 	}
 
-	if tasks["version"] != "999.0.0" {
-		t.Fatalf("tasks.json was clobbered")
+	if tasks["version"] != "2.0.0" {
+		t.Fatalf("tasks.json was not overwritten with the current chain: version = %v", tasks["version"])
+	}
+	if _, ok := tasks["tasks"].([]any); !ok {
+		t.Fatalf("overwritten tasks.json missing tasks array")
 	}
 }
 
-func TestWriteVSCodeConfigRegistersInGitignore(t *testing.T) {
-	tmpDir := t.TempDir()
-	worktreeDir := tmpDir
-	relpath := "."
-	slug := "test-slug"
-	color := "#2d7d46"
+func TestWriteVSCodeConfigInteractiveLeavesGitignoreAlone(t *testing.T) {
+	dir := t.TempDir()
 
-	err := WriteConfig(worktreeDir, relpath, slug, color, "/opt/lyx/bin/lyx", "/usr/local/bin/claude", TaskChainInteractive)
-	if err != nil {
+	if err := WriteConfig(dir, ".", "slug", "#2d7d46", "/opt/lyx/bin/lyx", "/usr/local/bin/claude", TaskChainInteractive); err != nil {
 		t.Fatalf("WriteConfig failed: %v", err)
 	}
-
-	// Check .gitignore exists and contains .vscode/
-	gitignorePath := filepath.Join(worktreeDir, relpath, ".gitignore")
-	if _, err := os.Stat(gitignorePath); err != nil {
-		t.Fatalf(".gitignore not created: %v", err)
+	if _, err := os.Stat(filepath.Join(dir, ".gitignore")); !os.IsNotExist(err) {
+		t.Errorf(".gitignore should not exist, stat err = %v", err)
 	}
 
-	gitignoreContent, err := os.ReadFile(gitignorePath)
-	if err != nil {
-		t.Fatalf("failed to read .gitignore: %v", err)
+	existing := []byte("build/\n")
+	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), existing, 0o644); err != nil {
+		t.Fatal(err)
 	}
-
-	content := string(gitignoreContent)
-	if !strings.Contains(content, ".vscode/") {
-		t.Fatalf(".gitignore does not contain '.vscode/' entry")
+	if err := WriteConfig(dir, ".", "slug", "#2d7d46", "/opt/lyx/bin/lyx", "/usr/local/bin/claude", TaskChainInteractive); err != nil {
+		t.Fatalf("WriteConfig failed: %v", err)
+	}
+	got, _ := os.ReadFile(filepath.Join(dir, ".gitignore"))
+	if string(got) != string(existing) {
+		t.Errorf(".gitignore modified: %q", got)
 	}
 }
 

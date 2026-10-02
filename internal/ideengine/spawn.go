@@ -1,6 +1,6 @@
 // spawn.go implements both ide entry points: Spawn (`ide spawn`) and SpawnDriven (batten's driven-pair open).
 // Each assigns a title-bar color, generates the worktree's .vscode/ config, and launches VS Code;
-// Spawn writes the interactive chain when absent, SpawnDriven the attach-only chain.
+// Spawn regenerates the interactive chain on every call, SpawnDriven the attach-only chain, and both keep .vscode/ out of git through info/exclude.
 // A task slug opens its bare folder.
 // The prime instead opens a lyx-generated hub workspace (prime, _board, _portals) under <hub>/_launchers/<AnchorRel>, regenerated on every prime spawn.
 
@@ -24,7 +24,9 @@ import (
 // Exported so that cli_test.go in the idecli package can swap it.
 var CodeLauncher = vscode.Launch
 
-// Spawn generates a worktree's .vscode/ config (if absent) and launches VS Code.
+// Spawn regenerates a worktree's interactive .vscode/ chain on every call and launches VS Code.
+// It keeps .vscode/ out of git through info/exclude and never writes a .gitignore;
+// a tracked .vscode/tasks.json is left alone with a warning, and the launch still happens.
 // A task slug launches its bare folder <hub>/<slug>/<AnchorRel> and writes no workspace file.
 // When slug names the prime, Spawn writes the hub workspace file, whose settings carry the prime's .vscode/settings.json, and launches that file instead;
 // every error on that path is returned wrapped with its step, never degraded to the bare folder.
@@ -38,7 +40,7 @@ func Spawn(l *lyxcwd.Location, slug string) error {
 	lyxPath, _ := os.Executable()
 	claudePath, _ := exec.LookPath("claude")
 
-	if err := vscode.WriteConfig(worktreeDir, l.AnchorRel, slug, color, lyxPath, claudePath, vscode.TaskChainInteractive); err != nil {
+	if err := writeVSCodeConfig(l, worktreeDir, slug, color, lyxPath, claudePath, vscode.TaskChainInteractive); err != nil {
 		return err
 	}
 
@@ -60,10 +62,21 @@ func Spawn(l *lyxcwd.Location, slug string) error {
 // When .vscode/tasks.json is already tracked in the pair's repo, .vscode/ belongs to the repo:
 // SpawnDriven then writes neither file, leaves the shared info/exclude alone, logs one warning, and still launches.
 // Otherwise it first keeps .vscode/ out of git with an anchored line in the shared info/exclude, so the child's commits never sweep it up.
-// gitignore.Ensure is never called: the child's loom run commits in that worktree.
 func SpawnDriven(l *lyxcwd.Location, slug string) error {
 	worktreeDir, color, _, _ := resolveSpawnTarget(l, slug)
 
+	lyxPath, _ := os.Executable()
+	if err := writeVSCodeConfig(l, worktreeDir, slug, color, lyxPath, "", vscode.TaskChainAttachOnly); err != nil {
+		return err
+	}
+
+	return CodeLauncher(filepath.Join(worktreeDir, l.AnchorRel))
+}
+
+// writeVSCodeConfig keeps .vscode/ out of git and writes the chain's config at the worktree's anchor.
+// When .vscode/tasks.json is already tracked, it logs one warning and writes neither file nor the exclude line.
+// Otherwise it first adds an anchored .vscode line to the shared info/exclude, then calls vscode.WriteConfig.
+func writeVSCodeConfig(l *lyxcwd.Location, worktreeDir, slug, color, lyxPath, claudePath string, chain vscode.TaskChain) error {
 	tasksRel := path.Join(filepath.ToSlash(l.AnchorRel), ".vscode", "tasks.json")
 	tracked, err := fabricengine.PathTracked(worktreeDir, tasksRel)
 	if err != nil {
@@ -71,21 +84,19 @@ func SpawnDriven(l *lyxcwd.Location, slug string) error {
 	}
 	if tracked {
 		logger.Warn("tracked .vscode/tasks.json; leaving .vscode/ untouched", "slug", slug, "path", tasksRel)
-	} else {
-		excludePath, changed, err := fabricengine.ExcludeAnchoredDir(worktreeDir, l.AnchorRel, ".vscode")
-		if err != nil {
-			return fmt.Errorf("exclude .vscode: %w", err)
-		}
-		if changed {
-			logger.Info("excluded .vscode/ from git", "slug", slug, "exclude", excludePath)
-		}
-		lyxPath, _ := os.Executable()
-		if err := vscode.WriteConfig(worktreeDir, l.AnchorRel, slug, color, lyxPath, "", vscode.TaskChainAttachOnly); err != nil {
-			return fmt.Errorf("write vscode config: %w", err)
-		}
+		return nil
 	}
-
-	return CodeLauncher(filepath.Join(worktreeDir, l.AnchorRel))
+	excludePath, changed, err := fabricengine.ExcludeAnchoredDir(worktreeDir, l.AnchorRel, ".vscode")
+	if err != nil {
+		return fmt.Errorf("exclude .vscode: %w", err)
+	}
+	if changed {
+		logger.Info("excluded .vscode/ from git", "slug", slug, "exclude", excludePath)
+	}
+	if err := vscode.WriteConfig(worktreeDir, l.AnchorRel, slug, color, lyxPath, claudePath, chain); err != nil {
+		return fmt.Errorf("write vscode config: %w", err)
+	}
+	return nil
 }
 
 // resolveSpawnTarget resolves slug's worktree path and title-bar color, and the prime's name.

@@ -260,6 +260,8 @@ Every git op LYX's own code performs, on either weft or warp, goes through `inte
 - Every weft-commit caller passes a positive-only file list via `fabricengine.ScopedPathspec`.
 - `structuralNeverCommittedDirs` paths route to a third bucket in `classifyPaths`; `Commit` hard-errors on a non-empty third bucket.
 - Junction exclusion is `.git/info/exclude` on both sides, mutated only via `fabricengine.mutateGitExclude`, never a tracked `.gitignore`.
+  The same holds for every warp-side writer: lyx's own code never writes a `.gitignore` in a warp worktree, the prime included, and every ignore it needs there goes to `.git/info/exclude` through `fabricengine`.
+  The one weft-side `.gitignore` writer is `boardengine`'s lock and manifest patterns in `_board`, the weft's `main` worktree.
 - `Unwire` removes warp junctions/exclude entries only — weft-side `_lyx`/`.lyx` content always preserved.
 - Every teardown of an existing pair's weft branch (`Remove`, `RemovePairBranch`, `Cleanup`) first pushes an `archive/<slug>/<tip>` tag to the weft origin, so the run records stay reachable; a rolled-back `Add` is excepted, and `force` never skips it.
   `Add` replaces a leftover remote weft branch only when an `archive/<slug>/*` tag covers its tip.
@@ -442,6 +444,7 @@ An instruction file never duplicates or paraphrases another producer's format-co
 
 - Degrading: `{shuttleengine, reedengine, websterengine, batcher, orchengine, loggerconfig}`. Strict: `{fabricengine, boardengine, loomengine, landingshed}`.
 - A template list is a default, not a minimum length.
+- A key missing from a present config file resolves to its template default and is logged; `Load` and `LoadOrTemplate` differ only on an absent `_lyx/` or file.
 
 ## GitHub Auth Invariant
 

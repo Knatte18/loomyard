@@ -43,6 +43,8 @@ func (c *websterCLI) runDeps() websterengine.RunDeps {
 		RefMatcher:   c.refMatcher,
 		OpenBisector: openBisector,
 		FrictionDir:  c.frictionDir,
+		FixStarter:   c.fixStarter,
+		ParentBranch: c.parentBranch,
 	}
 }
 

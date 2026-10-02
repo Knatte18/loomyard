@@ -32,7 +32,7 @@ job, not up's.
 Setting debug_log in reed.yaml (or LYX_REED_DEBUG=1) enables server verbose
 logging to <hub>/_board/.lyx/logs/, as forensics for unexplained server deaths; it
 applies only when this up actually boots the shared per-hub server, and
-existing hubs need "lyx config reconcile" after upgrading to adopt the key.
+an existing reed.yaml lacking the key takes the default until "lyx config reconcile" writes it.
 
 Example:
   lyx reed up`,

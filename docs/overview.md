@@ -320,12 +320,11 @@ User-facing modules each get one `lyx <module>` namespace:
   `lyx ide spawn <prime>` opens a hub workspace (prime, `_board`, `_portals`) whose `settings` carry the prime's `.vscode/settings.json`.
   The file is lyx-owned and regenerated on each prime spawn, overwriting any edit made in it;
   a task slug still opens its bare folder.
-  The generated `folderOpen` task is now the sequenced reed launch chain (`reed up` → `reed add --if-absent` → `reed attach`) rather than a bare `claude`, with both binary paths (`lyx`, `claude`) stamped absolute at generation time.
-  An existing worktree keeps its current `tasks.json` because `WriteConfig` never clobbers;
-  the manual upgrade is to delete `.vscode/tasks.json` and re-run `lyx ide spawn`.
-  The driven-pair variant batten uses writes an attach-only `tasks.json` (no `reed up`, no `reed add claude`), overwriting an untracked one and leaving a tracked one alone with a warning.
-  It keeps `settings.json` when present, and keeps `.vscode/` out of git through the repository's shared `info/exclude` at the anchor subpath rather than `.gitignore`.
-  Plain `lyx ide spawn` is unchanged. ✅ Implemented.
+  The generated `folderOpen` task is now the sequenced reed launch chain (`reed up` → `reed add --if-absent --unless-name orch` → `reed attach`) rather than a bare `claude`, with both binary paths (`lyx`, `claude`) stamped absolute at generation time.
+  The add row's `--unless-name orch` keeps a folder-open on a prime whose orch strand is live from stacking `claude` below it.
+  `lyx ide spawn` regenerates `tasks.json` on every spawn, overwriting an untracked one, and keeps `settings.json` when present.
+  It keeps `.vscode/` out of git through the repository's shared `info/exclude` at the anchor subpath rather than `.gitignore`, and leaves a tracked `tasks.json` alone with a warning.
+  The driven-pair variant batten uses writes an attach-only `tasks.json` (no `reed up`, no `reed add claude`) under the same rules. ✅ Implemented.
 - **selfreport** — file bugs and enhancements against `Knatte18/loomyard` via go-github through `internal/githubclient`, triggered two ways: manually (`lyx selfreport create <title>`) and automatically, off `loom`'s own status file (`internal/loomcli`'s `selfreport.go`), which detects five Tier-1 structural anomalies — a crash-resume, an escalation-to-human halt, a bounce-budget-exhausted halt, a producer-hard-failure halt, and a recurring ledger finding — and files them after every `lyx loom run` call, gated by the `selfreport` key in `loom.yaml` (default on).
   Credentials resolve from `GH_TOKEN`/`GITHUB_TOKEN` first, with the `gh` CLI (`gh auth token`) as a bounded, non-blocking fallback token source — not a hard prerequisite.
   Target repo is hardcoded;
@@ -405,7 +404,7 @@ User-facing modules each get one `lyx <module>` namespace:
   Every run transition before that writes the board task's status as `<state> · <producer>` (for example `awaiting · PR-Gate`), so the board README shows where each run stands; a failed board write only warns.
   `Publish` and `Finalize` each run the plan's verify command after a parent merge-in that changed the task tree, and halt Stuck on a failure, with the command's output in the loom verify-output log;
   a pending-verify marker keeps the gate armed across a resume until a verify passes.
-  `landing.yaml` gains `describe` (the row's model), `describe_timeout_min` and `co_authored_by`; an existing hub picks them up with `lyx config reconcile --apply`, and an in-flight run parked past `Webster-Bouncer` is restarted rather than migrated.
+  `landing.yaml` gains `describe` (the row's model), `describe_timeout_min` and `co_authored_by`; an existing hub takes their template defaults until `lyx config reconcile --apply` writes them, and an in-flight run parked past `Webster-Bouncer` is restarted rather than migrated.
   `lyx loom status --watch` and `lyx loom start` (alias `lyx start`) are this module's two registered interactive-handoff exceptions (CONSTRAINTS.md CLI/Cobra Invariant): `status --watch` self-displays the polled status line then blocks forever as its own keepalive tail, and `start` hands the operator's stdio to a `tmux attach-session` child as its own terminal-handover tail — in both cases every fallible step runs pre-flight, on the envelope, and only the named tail itself is exempt from emitting JSON.
   ✅ Implemented. loom's config module (`loom.yaml`, holding the `discussion`/`plan`/`review` role model-specs, `discussion_timeout_min`/`plan_timeout_min`/`review_timeout_min`, `discussion_interactive`, and `parent_review_wait_min`) exists and reconciles via `lyx config reconcile --apply` (the bare verb is a dry run that only reports added and removed keys and writes nothing).
   The `review` pair is the review segments' own model and timeout, and lives here rather than in the recipe because the recipe is embedded in the binary and a recipe-literal model would be untunable without a rebuild.

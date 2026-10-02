@@ -167,6 +167,22 @@ type State struct {
 	// Run entry refuses while any is pending;
 	// AcceptPendingAudit clears them.
 	PendingAuditFindings []PendingAuditFinding `json:"pendingAuditFindings,omitempty"`
+	// IntegrationFix records the run's one integration-fix attempt.
+	// A non-nil value means the attempt is spent.
+	// `run --fresh` builds a new State, which resets it.
+	IntegrationFix *IntegrationFixState `json:"integrationFix,omitempty"`
+}
+
+// IntegrationFixState is the record of the run's one integration-fix attempt.
+type IntegrationFixState struct {
+	// PreFixHead is the HEAD the attempt started from.
+	PreFixHead string `json:"preFixHead"`
+	// StrandGUID is the fix strand's reed GUID, empty until the strand has started.
+	StrandGUID string `json:"strandGuid,omitempty"`
+	// SpawnedAt is the attempt's start time, RFC3339 UTC.
+	SpawnedAt string `json:"spawnedAt"`
+	// Result is empty while the attempt is in flight and the attempt's result once it ends.
+	Result string `json:"result,omitempty"`
 }
 
 // PendingAuditFinding is one run-exit correctness finding that stays pending until accepted.
