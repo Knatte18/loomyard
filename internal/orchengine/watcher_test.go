@@ -998,6 +998,24 @@ func TestWatcher_SoftDeferWithoutFileReturnsIdleAndBlocksNextAttempt(t *testing.
 	}
 }
 
+// TestWatcher_SoftDeferTurnEndAloneNeverRequalifies pins that a DEFER needs a fresh turn end after it:
+// the DEFER turn end itself never starts another soft cycle, however long the session stays quiet.
+func TestWatcher_SoftDeferTurnEndAloneNeverRequalifies(t *testing.T) {
+	e := newSoftEnv(t)
+	e.injectSoft(stop("a"))
+	e.s.events = append(e.s.events, stop("DEFER"))
+	e.tick()
+	if st := e.state(); st.Phase != PhaseIdle || st.LastAbortReason != "deferred" {
+		t.Fatalf("state = %+v, want idle after the deferral", st)
+	}
+	sends := e.s.count("send:")
+	e.clock.advance(time.Hour)
+	e.tick()
+	if e.s.count("send:") != sends || e.state().Phase != PhaseIdle {
+		t.Fatalf("a soft request was re-sent with no turn end after the DEFER: calls = %v", e.s.calls)
+	}
+}
+
 func TestWatcher_SoftDeferAmongOtherTextDoesNotDefer(t *testing.T) {
 	e := newSoftEnv(t)
 	e.injectSoft(stop("a"))
