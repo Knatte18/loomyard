@@ -61,3 +61,13 @@ func TestLoomTemplateDiscussion_FenceNamesTheTwoOutputMarkers(t *testing.T) {
 		}
 	}
 }
+
+// TestLoomTemplateDiscussion_StatesAttackSurfaceBound asserts the template tells the discussion writer to state, in the introducing Decision, what a new edge or weakened guard can skip or let through and what bounds it.
+func TestLoomTemplateDiscussion_StatesAttackSurfaceBound(t *testing.T) {
+	text := string(LoomTemplateDiscussion)
+	for _, phrase := range []string{"skip or let through", "what bounds it"} {
+		if !strings.Contains(text, phrase) {
+			t.Errorf("LoomTemplateDiscussion does not contain %q", phrase)
+		}
+	}
+}

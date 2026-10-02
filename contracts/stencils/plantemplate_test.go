@@ -16,6 +16,16 @@ func TestLoomTemplatePlan_NamesPriorPlanSection(t *testing.T) {
 	}
 }
 
+// TestLoomTemplatePlan_StatesAttackSurfaceBound asserts the template tells the plan writer to state, in the introducing card's `**Intent:**`, what a new edge or weakened guard can skip or let through and what bounds it.
+func TestLoomTemplatePlan_StatesAttackSurfaceBound(t *testing.T) {
+	text := string(LoomTemplatePlan)
+	for _, phrase := range []string{"skip or let through", "what bounds it"} {
+		if !strings.Contains(text, phrase) {
+			t.Errorf("LoomTemplatePlan does not contain %q", phrase)
+		}
+	}
+}
+
 // TestLoomTemplatePlan_StatesVerifyCoverage asserts the template tells the plan writer the verify section covers every targeted package, hermetic build-tagged tests included, and compiles rather than runs live-substrate tags.
 // Each assertion is a short, distinctive substring rather than a whole paragraph, following discussiontemplate_test.go's precedent, so ordinary prose edits do not break this test.
 func TestLoomTemplatePlan_StatesVerifyCoverage(t *testing.T) {

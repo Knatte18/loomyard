@@ -49,6 +49,8 @@ func TestLoomRubricDiscussionReview_NamesEveryRequiredItem(t *testing.T) {
 		{"relocation and exclusion findings are legitimate", "Relocation and exclusion findings"},
 		{"completeness-before-leanness test", "completeness-before-leanness test"},
 		{"writer/reviewer symmetry note", "writer/reviewer symmetry note"},
+		{"attack-surface question asks what it can skip or let through", "skip or let through"},
+		{"attack-surface question asks what bounds it", "what bounds it"},
 	}
 
 	for _, tt := range tests {
@@ -95,6 +97,8 @@ func TestLoomRubricPlanReview_NamesEveryRequiredItem(t *testing.T) {
 		{"the live generation's round matches first_card", "`first_card`"},
 		{"generation 0 falls back to the decision record alone", "the decision record alone is the answer key"},
 		{"the prior-generation archive is never a subject", "prior-generation/"},
+		{"attack-surface question asks what it can skip or let through", "skip or let through"},
+		{"attack-surface question asks what bounds it", "what bounds it"},
 	}
 
 	for _, tt := range tests {
