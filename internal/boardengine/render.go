@@ -147,9 +147,23 @@ func renderTasksSection(ordered []TaskWithLayer, designPrefix string) string {
 	}
 
 	dependents := openDependents(ordered)
+	finished := make(map[string]bool)
+	for _, twl := range ordered {
+		finished[twl.Slug] = isDone(twl.Task)
+	}
 	writeEntries := func(entries []TaskWithLayer) {
 		for _, twl := range entries {
-			lines = append(lines, renderEntry(twl.Task, dependents[twl.Slug], designPrefix)...)
+			var after []string
+			for _, dep := range twl.DependsOn {
+				if !finished[dep] {
+					after = append(after, dep)
+				}
+			}
+			var before []string
+			if !finished[twl.Slug] {
+				before = dependents[twl.Slug]
+			}
+			lines = append(lines, renderEntry(twl.Task, after, before, designPrefix)...)
 		}
 		lines = append(lines, "")
 	}
@@ -216,7 +230,8 @@ func openDependents(ordered []TaskWithLayer) map[string][]string {
 }
 
 // renderEntry builds the lines of one numbered README item, whose title line links the slug to its design doc when the entry has a body.
-func renderEntry(t Task, dependents []string, designPrefix string) []string {
+// after and before name the open entries it waits on and that wait on it, so a finished dependency drops out of both.
+func renderEntry(t Task, after, before []string, designPrefix string) []string {
 	slug := "`" + t.Slug + "`"
 	if t.Body != "" {
 		slug = fmt.Sprintf("[`%s`](%s%s.md)", t.Slug, designPrefix, t.Slug)
@@ -227,11 +242,11 @@ func renderEntry(t Task, dependents []string, designPrefix string) []string {
 	if t.Brief != "" {
 		lines = append(lines, "   - "+t.Brief)
 	}
-	if len(t.DependsOn) > 0 {
-		lines = append(lines, "   - **After:** "+codeList(t.DependsOn))
+	if len(after) > 0 {
+		lines = append(lines, "   - **After:** "+codeList(after))
 	}
-	if len(dependents) > 0 {
-		lines = append(lines, "   - **Before:** "+codeList(dependents))
+	if len(before) > 0 {
+		lines = append(lines, "   - **Before:** "+codeList(before))
 	}
 	return lines
 }
