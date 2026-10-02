@@ -124,14 +124,14 @@ func TestRegistry_DescribeAndDescriptionGate(t *testing.T) {
 	}
 	env := newTestEnv(t)
 	env.DescriptionPath = filepath.Join(t.TempDir(), "summary.md")
-	spec, err := resolveGateSpec("Describe", Config{"gate": "description"}, env)
+	spec, err := resolveGateSpec("Describe", gatesCfg("description", 3), env)
 	if err != nil {
 		t.Fatalf("resolveGateSpec(description) error = %v; want nil", err)
 	}
-	if spec.Gate == nil {
-		t.Errorf("resolveGateSpec(description) Gate = nil; want the description gate")
+	if len(spec) != 1 || spec[0].Gate == nil {
+		t.Errorf("resolveGateSpec(description) = %+v; want one entry carrying the description gate", spec)
 	}
-	_, err = resolveGateSpec("Describe", Config{"gate": "bogus"}, env)
+	_, err = resolveGateSpec("Describe", gatesCfg("bogus", 3), env)
 	if err == nil || !strings.Contains(err.Error(), "description") {
 		t.Errorf("resolveGateSpec(bogus) error = %v; want it to name the description value", err)
 	}
