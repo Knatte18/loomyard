@@ -117,6 +117,20 @@
 // A strand whose re-derivation is byte-identical to the flagged content is failed again;
 // the way forward is to revert the path and edit its card.
 //
+// # one dispatch scope for begin-batch, run entry and validate
+//
+// A plan describes intended change, so re-resolving a card whose work may already have landed reports the plan working as designed as a defect.
+// begin-batch, run entry and `lyx webster validate` therefore all take their scope from DispatchScope:
+// begun is every card of a batch begin-batch recorded, terminal or not, and those cards are not resolved;
+// forthcoming is the cards of every begun batch whose record is not terminal.
+// A forthcoming card's Create targets and Rename New sides are excluded from the status check, so a later card that Uses one passes while the fork has landed nothing yet.
+// A terminal batch's cards are never forthcoming: its done-checks proved its targets present.
+// With no begun card, validate runs the whole-plan check set, approval gate included.
+//
+// The bound: drift in a begun, non-terminal card's own targets is reported by none of the three sites.
+// That card was fully validated at its first begin-batch, its bytes stay pinned by its recorded CardHashes, and record-batch and recover-batch still run its done-checks and drift detection.
+// A forthcoming target that never lands keeps the run from outcome done, because the run-exit check requires a terminal done record for every batch.
+//
 // # the plan-staleness guard re-baselines at the rewrite, not at the return
 //
 // begin-batch compares the plan directory's fingerprint against the one
@@ -144,6 +158,14 @@
 // Comparing against the fingerprint read immediately before the call is
 // what keeps the persist narrow: an unchanged fingerprint writes nothing,
 // so a genuine foreign edit still fails exactly as it did.
+//
+// The restamp also moves the recorded CardHashes of every begun card the rewrite changed,
+// so webster's own rewrite of a begun card is not later refused as an operator edit that `rebaseline` cannot accept.
+// It moves a hash only when the recorded hash equals the pre-rewrite plan file hash for that card's file;
+// a card an earlier untracked rewrite already moved keeps its old hash and stays refused.
+// Each restamp site runs after a foreign-edit check passed in the same call, so an edit on disk when the call starts is refused, never adopted.
+// The check precedes the rewrite rather than being atomic with the restamp, so an edit landing between the two in one call is adopted with the rewrite.
+// `rebaseline` accepts an operator's edit, so it never moves a begun card's hash.
 //
 // A foreign edit an operator means to keep has its own way forward:
 // `lyx webster rebaseline --card NN` (Rebaseline) accepts the on-disk plan as the new baseline without dropping any batch record, provided the edited plan's batch of each recorded number still holds exactly the cards that record names.
@@ -386,6 +408,30 @@
 // so an unrelated flaky or pre-existing failure cannot misdirect the search.
 // BisectAndEscalate then records that localized finding as a terminal, non-successful entry in State.Batches under the reserved key -1 (RecordIntegrationFailure — never a real plan card number, so RenderProgress's walk over batch numbers, which are equally positive, can never surface it by accident)
 // and extends summary.md naming the offending card and the regressing identities with their tails (AppendIntegrationFailure).
+//
+// # The integration-fix attempt
+//
+// A regression under a Master outcome of done gets one automated fix attempt before it escalates (attemptIntegrationFix, in integrationfix.go);
+// a non-done Master outcome escalates with no attempt, since a fix cannot change it.
+// It runs after the triage and the localization, in two-phase steps that never hold the state-mutation lease across the strand's wait or a verify run:
+// a leased step records State.IntegrationFix with the pre-fix head before any spawn, so a resumed run never spends a second attempt;
+// the strand starts through RunDeps.FixStarter at the recovery role's model, with recovery_timeout_min as its timeout and a report under the reports directory as its output file;
+// a second leased step records its strand GUID, which run entry's reclaim stops if the run died while the strand was live;
+// after the wait the strand and its run directory are removed.
+// A nil FixStarter is a wiring error checked before anything is recorded, so a wiring fault never spends the attempt.
+// Go accepts the strand's work only when the plan fingerprint is unchanged (which catches an on-disk plan write no commit can show) and checkFixCommits passes:
+// non-merge commits outside the plan and `_lyx`, HEAD reconciled with the reported head, and a clean worktree.
+// A refusal there, a timeout or dead outcome, a missing or malformed report and a FAILED report each end the attempt as failed.
+// Success is decided by Go, never by the strand's report: the plan's verify runs once at HEAD, and a red run is triaged against the batches' start commits; no regression in that result means the regression is fixed.
+// A fixed regression keeps the run done and records the attempt in the integration report's Fix field and an "Integration suite fix" section of summary.md, with no -1 record;
+// any other result escalates as above, the pre-fix bisect result under the reserved -1 record, plus the same Fix record and section, and a stuck reason naming the pre-fix head and the fix commits.
+// Go never resets the branch: a failed attempt's commits stay on it for the operator to keep or drop.
+// A State.IntegrationFix with an empty Result, found when the stage next runs, is an attempt the run's end interrupted;
+// it is checked after the integration report loads and before the OK early return, ends as failed whatever the report says, and sets Result in the same save.
+// `run --fresh` builds a new State and so resets the record.
+// The bound is the single recorded attempt, the timeout, the commit check with the plan-fingerprint compare, the post-fix triage deciding success, and the later review rows seeing the fix commits like any other branch commit.
+// Triage sees only failures, so a test the strand deleted or skipped reads as cleared;
+// the strand's prompt forbids it and summary.md names the fix commits and cleared identities for review.
 //
 // # No shared substrate or parser with any other batch-implementation loop
 //

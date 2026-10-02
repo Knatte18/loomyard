@@ -167,7 +167,24 @@ func Fingerprint(planDir string) (string, error) {
 // call and the next begin-batch is still caught, which is the whole window the guard covers.
 //
 // It also stores the hashed content under websterDir (see storePlanBaseline) before mutating st, so a store failure leaves the state's hashes unchanged.
+//
+// It moves each begun batch's recorded CardHashes entry along with the rewrite (see moveBegunCardHashes),
+// so a card webster's own rewrite changed is not later refused as an operator edit.
+// The move is bounded: only a card whose recorded hash equals the pre-rewrite PlanFileHashes entry for its file moves.
+// Every caller runs after a foreign-edit check passed in the same call, so an edit on disk when the call starts is refused rather than adopted;
+// an edit landing between that check and this restamp is adopted with the rewrite.
+// Rebaseline calls restampBaseline instead and never moves a begun card's hash.
 func restampFingerprint(st *State, planDir, websterDir string) error {
+	before := st.PlanFileHashes
+	if err := restampBaseline(st, planDir, websterDir); err != nil {
+		return err
+	}
+	moveBegunCardHashes(st, before, st.PlanFileHashes)
+	return nil
+}
+
+// restampBaseline records planDir's fingerprint, per-file hashes and stored baseline into st, and touches no batch record.
+func restampBaseline(st *State, planDir, websterDir string) error {
 	fp, err := fingerprint(planDir)
 	if err != nil {
 		return err
@@ -182,6 +199,28 @@ func restampFingerprint(st *State, planDir, websterDir string) error {
 	st.PlanFingerprint = fp
 	st.PlanFileHashes = hashes
 	return nil
+}
+
+// moveBegunCardHashes sets each batch record's CardHashes entry for card id to after[id+".md"] when it equals before[id+".md"].
+// A card whose recorded hash differs from before keeps it, so a card an earlier untracked rewrite already moved stays refused.
+// A file absent from either map is left alone, and so is every record when before is empty.
+func moveBegunCardHashes(st *State, before, after map[string]string) {
+	if len(before) == 0 {
+		return
+	}
+	for _, bs := range st.Batches {
+		if bs == nil {
+			continue
+		}
+		for id, recorded := range bs.CardHashes {
+			file := id + ".md"
+			old, okBefore := before[file]
+			now, okAfter := after[file]
+			if okBefore && okAfter && recorded == old {
+				bs.CardHashes[id] = now
+			}
+		}
+	}
 }
 
 // RestampPlanBaseline is restampFingerprint's exported seam for webstercli's validate verb, which re-baselines after its own rewrite-capable pass.

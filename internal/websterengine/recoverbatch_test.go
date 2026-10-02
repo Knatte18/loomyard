@@ -30,6 +30,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -1379,5 +1380,65 @@ func TestRecoverSpawn_CarriesSuspectPathsAndTranscripts(t *testing.T) {
 	}
 	if !slices.Equal(bs.ForkTranscripts, []string{"subagents/f1.jsonl"}) {
 		t.Errorf("recovery record ForkTranscripts = %v; want the failed record's transcripts carried", bs.ForkTranscripts)
+	}
+}
+
+// TestPersistRecoveryTerminal_RefusedForeignEditLeavesCardHashes proves a foreign edit to a begun card is refused and the refusal leaves CardHashes unchanged,
+// including when a canonicalizing planglyph.ValidateDispatch ran after the edit with no restamp, as validate's path does when its edit check refuses.
+func TestPersistRecoveryTerminal_RefusedForeignEditLeavesCardHashes(t *testing.T) {
+	for _, canonicalize := range []bool{false, true} {
+		t.Run(fmt.Sprintf("canonicalize=%v", canonicalize), func(t *testing.T) {
+			fx := newRecoverFixture(t)
+			planDir := fx.Deps.Geom.PlanDir
+			if canonicalize {
+				draft := "# Card 2 — list-tests\n\n**Create:**\n- `plan:internal/foo#Barr` -> `func Bar()`\n\n**Intent:** declare a draft handle.\n"
+				if err := os.WriteFile(filepath.Join(planDir, "02-list-tests.md"), []byte(draft), 0o644); err != nil {
+					t.Fatalf("write card 2: %v", err)
+				}
+				if err := websterengine.RestampPlanBaseline(fx.Deps.State, planDir, fx.Deps.Geom.WebsterDir); err != nil {
+					t.Fatalf("RestampPlanBaseline() error = %v", err)
+				}
+			}
+			clk := &recoverFakeClock{now: time.Unix(0, 0)}
+			if _, err := driveRecoverBatch(fx.Deps, 1, 2*time.Second, clk); err != nil {
+				t.Fatalf("first call error = %v; want nil", err)
+			}
+			recorded := fmt.Sprint(fx.Deps.State.Batches[1].CardHashes)
+			if recorded == "map[]" {
+				t.Fatal("recovery BatchState.CardHashes is empty; the test needs a recorded hash")
+			}
+			realHead, err := gitrepo.New(fx.Worktree).CurrentSHA()
+			if err != nil {
+				t.Fatalf("CurrentSHA() error = %v", err)
+			}
+			writeRecoverReport(t, fx.ReportsDir, "status: OK\nhead_sha: "+realHead+"\n")
+
+			if err := os.WriteFile(filepath.Join(planDir, "01-json-flag.md"), []byte("# Card 1 — json-flag\n\n**Intent:** edited after the spawn.\n"), 0o644); err != nil {
+				t.Fatalf("edit card: %v", err)
+			}
+			if canonicalize {
+				plan, err := planparser.ParsePlan(planDir)
+				if err != nil {
+					t.Fatalf("ParsePlan() error = %v", err)
+				}
+				if _, err := planglyph.ValidateDispatch(plan, fx.Worktree, nil, nil); err != nil {
+					t.Fatalf("ValidateDispatch() error = %v", err)
+				}
+				rewritten, err := os.ReadFile(filepath.Join(planDir, "02-list-tests.md"))
+				if err != nil {
+					t.Fatalf("read card 2: %v", err)
+				}
+				if !strings.Contains(string(rewritten), "plan:internal/foo#Bar`") {
+					t.Fatalf("card 2 = %q; want the handle canonicalized, or the fixture exercises no rewrite", rewritten)
+				}
+			}
+
+			if _, err := driveRecoverBatch(fx.Deps, 1, 2*time.Second, clk); !errors.Is(err, websterengine.ErrFingerprintMismatch) {
+				t.Fatalf("second call error = %v; want errors.Is(err, ErrFingerprintMismatch)", err)
+			}
+			if got := fmt.Sprint(fx.Deps.State.Batches[1].CardHashes); got != recorded {
+				t.Errorf("CardHashes = %s; want %s unchanged by the refusal", got, recorded)
+			}
+		})
 	}
 }

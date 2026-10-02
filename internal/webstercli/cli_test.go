@@ -464,15 +464,13 @@ func seedTwoCardGlyphPlanDir(t *testing.T, planDir, worktreeRoot string) {
 	}
 }
 
-// TestValidateCmd_ScopeFollowsRunProgress is R4-07's direct regression test. The verb advertises
-// itself as the gate "lyx webster run" applies, and Run scopes that gate by the run's own completed
-// cards; validate ran the whole-plan check set unconditionally, so the instant one Create card
-// landed the verb exited 1 over a plan Run resumes without complaint.
+// TestValidateCmd_ScopeFollowsRunProgress is R4-07's direct regression test.
+// The verb advertises itself as the gate "lyx webster run" applies, and Run scopes that gate by the run's begun cards;
+// validate ran the whole-plan check set unconditionally, so the instant one Create card landed the verb exited 1 over a plan Run resumes without complaint.
 //
-// One plan drives both rows. With no run recorded, card 1's already-existing Create target is a
-// blocking create-already-exists and the verb must still refuse -- that is the pre-flight answer the
-// verb exists for. With state.json recording batch 1 terminal, that same finding is the plan working
-// as designed and must vanish, leaving only card 2's informational finding and exit 0.
+// One plan drives every row.
+// With no run recorded, card 1's already-existing Create target is a blocking create-already-exists and the verb must still refuse -- that is the pre-flight answer the verb exists for.
+// With state.json recording batch 1 begun, terminal or not, that same finding is the plan working as designed and must vanish, leaving only card 2's informational finding and exit 0.
 func TestValidateCmd_ScopeFollowsRunProgress(t *testing.T) {
 	identity, err := batcher.Select("identity")
 	if err != nil {
@@ -499,40 +497,46 @@ func TestValidateCmd_ScopeFollowsRunProgress(t *testing.T) {
 		}
 	})
 
-	t.Run("TerminalBatchScopesToPendingCards", func(t *testing.T) {
-		c, _ := newTestCLI(t)
-		c.batcher = identity
-		seedTwoCardGlyphPlanDir(t, c.geom.PlanDir, c.geom.WorktreeRoot)
+	for _, tc := range []struct {
+		name  string
+		batch *websterengine.BatchState
+	}{
+		{"TerminalBatchScopesToPendingCards", &websterengine.BatchState{Terminal: true, Status: "done"}},
+		{"BegunBatchScopesToPendingCards", &websterengine.BatchState{Slug: "first"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, _ := newTestCLI(t)
+			c.batcher = identity
+			seedTwoCardGlyphPlanDir(t, c.geom.PlanDir, c.geom.WorktreeRoot)
 
-		fingerprint, err := websterengine.Fingerprint(c.geom.PlanDir)
-		if err != nil {
-			t.Fatalf("websterengine.Fingerprint(planDir) = %v; want nil", err)
-		}
-		state := &websterengine.State{
-			RunGUID:         "run-guid",
-			PlanFingerprint: fingerprint,
-			Batches: map[int]*websterengine.BatchState{
-				1: {Terminal: true, Status: "done"},
-			},
-		}
-		if err := websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, state); err != nil {
-			t.Fatalf("SaveState: %v", err)
-		}
+			fingerprint, err := websterengine.Fingerprint(c.geom.PlanDir)
+			if err != nil {
+				t.Fatalf("websterengine.Fingerprint(planDir) = %v; want nil", err)
+			}
+			state := &websterengine.State{
+				RunGUID:         "run-guid",
+				PlanFingerprint: fingerprint,
+				Batches:         map[int]*websterengine.BatchState{1: tc.batch},
+			}
+			if err := websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, state); err != nil {
+				t.Fatalf("SaveState: %v", err)
+			}
 
-		var out bytes.Buffer
-		exitCode := clihelp.Execute(c.validateCmd(), &out, nil)
+			var out bytes.Buffer
+			exitCode := clihelp.Execute(c.validateCmd(), &out, nil)
 
-		if exitCode != 0 {
-			t.Fatalf("validate with batch 1 terminal = %d; want 0 -- a completed Create card's target existing is the plan working as designed, output: %s", exitCode, out.String())
-		}
-		got := out.String()
-		if !strings.Contains(got, `"scope":"pending"`) {
-			t.Errorf("output missing scope:pending; got %q", got)
-		}
-		if strings.Contains(got, "create-already-exists") {
-			t.Errorf("output still carries card 1's create-already-exists finding after batch 1 went terminal; got %q", got)
-		}
-	})
+			if exitCode != 0 {
+				t.Fatalf("validate with batch 1 begun = %d; want 0 -- a begun Create card's target existing is the plan working as designed, output: %s", exitCode, out.String())
+			}
+			got := out.String()
+			if !strings.Contains(got, `"scope":"pending"`) {
+				t.Errorf("output missing scope:pending; got %q", got)
+			}
+			if strings.Contains(got, "create-already-exists") {
+				t.Errorf("output still carries card 1's create-already-exists finding after batch 1 was begun; got %q", got)
+			}
+		})
+	}
 }
 
 // TestValidateCmd_RebaselinesStalePlanFingerprint is WS-1's own regression test (crucible round

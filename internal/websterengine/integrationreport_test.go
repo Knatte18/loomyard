@@ -56,8 +56,35 @@ func TestIntegrationReport_ForkOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Failures != nil || got.Triage != nil {
-		t.Errorf("Failures=%v Triage=%v; want nil", got.Failures, got.Triage)
+	if got.Failures != nil || got.Triage != nil || got.Fix != nil {
+		t.Errorf("Failures=%v Triage=%v Fix=%v; want nil", got.Failures, got.Triage, got.Fix)
+	}
+}
+
+func TestIntegrationReport_FixRoundTrip(t *testing.T) {
+	want := &websterengine.IntegrationReport{
+		Status:     websterengine.ReportStatusFailed,
+		HeadSHA:    "abc123",
+		Deviations: []string{"a.go"},
+		Fix: &websterengine.IntegrationFixRecord{
+			Result:     websterengine.FixResultFailed,
+			Detail:     "regression remains",
+			PreFixHead: "def456",
+			Commits:    []string{"c1", "c2"},
+			Cleared:    []string{"TestA"},
+			Remaining:  []string{"TestB"},
+		},
+	}
+	path := filepath.Join(t.TempDir(), "r.yaml")
+	if err := websterengine.WriteIntegrationReport(path, want); err != nil {
+		t.Fatal(err)
+	}
+	got, err := websterengine.ParseIntegrationReport(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("round trip = %+v; want %+v", got, want)
 	}
 }
 

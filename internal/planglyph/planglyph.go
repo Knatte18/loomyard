@@ -26,7 +26,7 @@ import (
 // ValidateDispatch instead.
 func ValidateFormat(plan *planparser.Plan, worktreeRoot string) ([]Finding, error) {
 	findings := convertAll(planparser.ValidateFormat(plan, worktreeRoot))
-	resolveFindings, err := resolvePass(plan, worktreeRoot, nil)
+	resolveFindings, err := resolvePass(plan, worktreeRoot, nil, nil)
 	findings = append(findings, resolveFindings...)
 	return findings, err
 }
@@ -44,7 +44,7 @@ func ValidateRework(plan *planparser.Plan, worktreeRoot string, told int) ([]Fin
 // with the same error contract ValidateFormat documents.
 func Validate(plan *planparser.Plan, worktreeRoot string) ([]Finding, error) {
 	findings := convertAll(planparser.Validate(plan, worktreeRoot))
-	resolveFindings, err := resolvePass(plan, worktreeRoot, nil)
+	resolveFindings, err := resolvePass(plan, worktreeRoot, nil, nil)
 	findings = append(findings, resolveFindings...)
 	return findings, err
 }
@@ -62,6 +62,12 @@ func Validate(plan *planparser.Plan, worktreeRoot string) ([]Finding, error) {
 // batch therefore wedged any multi-batch plan carrying a Create, Delete or Rename card at its second
 // batch.
 //
+// forthcoming names the subset of completed whose work may not have landed, such as a begun card whose fork committed nothing.
+// Such a card is excluded from every pass exactly like any completed card,
+// but its Create targets and Rename New sides still count as forthcoming:
+// a pending card's Uses or target of one is excluded from the status check rather than resolved, because the destination may legitimately not exist on disk yet.
+// Its Delete and Edit targets add nothing.
+//
 // The two halves are scoped differently, deliberately. The resolve-backed pass runs over the pending
 // cards ALONE, so a completed card's targets are never resolved and never paired against a pending
 // card for containment — there is no race left to prevent with work that already landed. The pure
@@ -70,7 +76,7 @@ func Validate(plan *planparser.Plan, worktreeRoot string) ([]Finding, error) {
 // every completed card's file as orphaned, card-numbering would see gaps, and path-missing's
 // satisfied-by-another-card union would lose the Create and Rename destinations completed cards
 // contribute to still-pending ones.
-func ValidateDispatch(plan *planparser.Plan, worktreeRoot string, completed []planparser.Card) ([]Finding, error) {
+func ValidateDispatch(plan *planparser.Plan, worktreeRoot string, completed, forthcoming []planparser.Card) ([]Finding, error) {
 	done := cardIDSet(completed)
 
 	var findings []Finding
@@ -81,7 +87,7 @@ func ValidateDispatch(plan *planparser.Plan, worktreeRoot string, completed []pl
 		findings = append(findings, f)
 	}
 
-	resolveFindings, err := resolvePass(plan, worktreeRoot, done)
+	resolveFindings, err := resolvePass(plan, worktreeRoot, done, cardIDSet(forthcoming))
 	findings = append(findings, resolveFindings...)
 	return findings, err
 }
@@ -128,6 +134,19 @@ func pendingCardsByID(plan *planparser.Plan, done map[string]bool) *planparser.P
 	return &scoped
 }
 
+// cardsByID returns the view of plan carrying only the cards whose ID is in ids, the complement of pendingCardsByID.
+func cardsByID(plan *planparser.Plan, ids map[string]bool) *planparser.Plan {
+	scoped := *plan
+	kept := make([]planparser.Card, 0, len(ids))
+	for _, c := range plan.Cards {
+		if ids[c.ID()] {
+			kept = append(kept, c)
+		}
+	}
+	scoped.Cards = kept
+	return &scoped
+}
+
 // convertAll converts every planparser.ValidationError in errs into a Finding, preserving order.
 func convertAll(errs []planparser.ValidationError) []Finding {
 	findings := make([]Finding, 0, len(errs))
@@ -160,7 +179,13 @@ func convertAll(errs []planparser.ValidationError) []Finding {
 // never resolved against a tree it deliberately changed. planDir is still the whole plan's
 // directory: RewriteRefs re-parses it itself, so a handle bound in a pending card is still spelled
 // consistently across every card file, including the completed ones.
-func resolvePass(plan *planparser.Plan, worktreeRoot string, done map[string]bool) ([]Finding, error) {
+//
+// forthcoming is the set of card IDs within done whose work may not have landed.
+// Those cards stay out of every pass,
+// but after canonicalization they are selected by ID, from the reloaded plan when it was rewritten and from plan otherwise, so a respelled handle matches under its new spelling.
+// Their Create targets and Rename New sides join the exclusion sets below, so a pending ref to something a forthcoming card will create is not reported as missing.
+// They are never selected from current, which holds pending cards only.
+func resolvePass(plan *planparser.Plan, worktreeRoot string, done, forthcoming map[string]bool) ([]Finding, error) {
 	lang, ok := plan.GlyphLanguage()
 	if !ok {
 		return nil, nil
@@ -202,6 +227,7 @@ func resolvePass(plan *planparser.Plan, worktreeRoot string, done map[string]boo
 	// failure rather than a plan finding for the same reason -- the gate could not read the artifact,
 	// it did not find a defect in it.
 	current := pending
+	forthcomingSource := plan
 	if rewrote {
 		reloaded, rerr := planparser.ParsePlan(planDir)
 		if rerr != nil {
@@ -210,7 +236,9 @@ func resolvePass(plan *planparser.Plan, worktreeRoot string, done map[string]boo
 			return handleFindings, fmt.Errorf("re-parse plan %s after handle canonicalization: %w", planDir, rerr)
 		}
 		current = pendingCardsByID(reloaded, done)
+		forthcomingSource = reloaded
 	}
+	forthcomingCards := cardsByID(forthcomingSource, forthcoming)
 
 	findings := append([]Finding{}, handleFindings...)
 
@@ -223,6 +251,12 @@ func resolvePass(plan *planparser.Plan, worktreeRoot string, done map[string]boo
 	// blocking glyph-not-found here wedged every plan carrying a file rename.
 	createTargets := createTargetSet(current)
 	renameNewTargets := renameNewTargetSet(current)
+	for t := range createTargetSet(forthcomingCards) {
+		createTargets[t] = true
+	}
+	for t := range renameNewTargetSet(forthcomingCards) {
+		renameNewTargets[t] = true
+	}
 	var nonCreateResults []quarry.ResolveResult
 	for _, r := range results {
 		if createTargets[r.Target] || renameNewTargets[r.Target] {

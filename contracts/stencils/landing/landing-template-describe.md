@@ -22,6 +22,7 @@ Read only these sources, and use read-only git for the diff:
   A manual-check item from an older generation still counts when the live change does not make it obsolete.
   When a record carries an `## Integration suite failed` section, carry that failure into your description as an item for the reviewer to check.
   When a record carries an `## Integration suite triage` section, carry it into your description as an item for the reviewer to check too, naming the flaky and pre-existing identities it lists.
+  When a record carries an `## Integration suite fix` section, carry it into your description as an item for the reviewer to check, naming the fix commits and the identities they cleared.
 
 ## What to write
 

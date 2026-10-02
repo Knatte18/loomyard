@@ -21,6 +21,7 @@
 // (websterengine.MasterStarter, behind the runnerMasterStarter adapter, consumed by run's Master
 // spawn) -- because webster's three verbs each need a distinct narrow seam onto the same underlying
 // *shuttleengine.Runner, none of which the others expose.
+// A fourth view, fixStarter (websterengine.FixStarter, behind the runnerFixStarter adapter), serves run's integration-fix strand.
 package webstercli
 
 import (
@@ -49,6 +50,8 @@ type websterCLI struct {
 	starter       websterengine.Starter
 	injector      websterengine.Injector
 	masterStarter websterengine.MasterStarter
+	// fixStarter is the fourth seam: the integration stage's fix-strand spawn, over the same Runner.
+	fixStarter websterengine.FixStarter
 
 	// engine and reed are the constructed claude and reed engines record-batch and recover-batch need directly.
 	engine shuttleengine.Engine
@@ -151,6 +154,21 @@ type runnerMasterStarter struct {
 // caller blocks on it; a zero gate makes StartGated behave exactly as Start.
 func (s runnerMasterStarter) StartMaster(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (websterengine.MasterHandle, error) {
 	run, err := s.runner.StartGated(spec, gate)
+	if err != nil {
+		return nil, err
+	}
+	return run, nil
+}
+
+// runnerFixStarter adapts *shuttleengine.Runner to websterengine.FixStarter.
+type runnerFixStarter struct {
+	runner *shuttleengine.Runner
+}
+
+// StartFix implements websterengine.FixStarter.
+// It spends Runner.Start, which returns once the strand is past its startup gates and never waits for the run to finish, so the caller can persist the GUID before blocking on the handle.
+func (s runnerFixStarter) StartFix(spec shuttleengine.Spec) (websterengine.MasterHandle, error) {
+	run, err := s.runner.Start(spec)
 	if err != nil {
 		return nil, err
 	}

@@ -38,7 +38,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// newTestStencilsDir builds a t.TempDir() seeded with webster's five stencils, copied byte-for-byte
+// newTestStencilsDir builds a t.TempDir() seeded with webster's six stencils, copied byte-for-byte
 // from the stencils package's embedded defaults (unstamped), and returns the directory to pass as
 // stencilsDir.
 func newTestStencilsDir(t *testing.T) string {
@@ -50,11 +50,12 @@ func newTestStencilsDir(t *testing.T) string {
 		t.Fatalf("MkdirAll(%q) = %v; want nil", websterDir, err)
 	}
 	files := map[string][]byte{
-		"webster-template-master.md":      stencils.WebsterTemplateMaster,
-		"webster-template-integration.md": stencils.WebsterTemplateIntegration,
-		"webster-prefix-fork.md":          stencils.WebsterPrefixFork,
-		"webster-prefix-recovery.md":      stencils.WebsterPrefixRecovery,
-		"webster-body-implementer.md":     stencils.WebsterBodyImplementer,
+		"webster-template-master.md":          stencils.WebsterTemplateMaster,
+		"webster-template-integration.md":     stencils.WebsterTemplateIntegration,
+		"webster-template-integration-fix.md": stencils.WebsterTemplateIntegrationFix,
+		"webster-prefix-fork.md":              stencils.WebsterPrefixFork,
+		"webster-prefix-recovery.md":          stencils.WebsterPrefixRecovery,
+		"webster-body-implementer.md":         stencils.WebsterBodyImplementer,
 	}
 	for name, content := range files {
 		if err := os.WriteFile(filepath.Join(websterDir, name), content, 0o644); err != nil {
@@ -122,14 +123,14 @@ func mustImplementerBodyTemplate(t *testing.T, stencilsDir string) []byte {
 	return got
 }
 
-// seedHubWebsterStencils writes webster's five stencils under hub's real
+// seedHubWebsterStencils writes webster's six stencils under hub's real
 // fabricengine.StencilsDir(hub) location, byte-for-byte from the stencils
 // package's embedded defaults — the geometry RenderForkPrompt,
 // RenderRecoveryPrompt, and RenderMasterPrompt now derive internally via
 // fabricengine.StencilsDir(l.HubPath) before reading through
 // stencilstore.Read.
 // Split out from seedHubStencils so a missing-stencil error-path test can
-// seed webster's five without also seeding the three pattern-directive
+// seed webster's six without also seeding the three pattern-directive
 // stencils.
 func seedHubWebsterStencils(t *testing.T, hub string) {
 	t.Helper()
@@ -138,11 +139,12 @@ func seedHubWebsterStencils(t *testing.T, hub string) {
 		t.Fatalf("MkdirAll(%q) = %v; want nil", websterDir, err)
 	}
 	files := map[string][]byte{
-		"webster-template-master.md":      stencils.WebsterTemplateMaster,
-		"webster-template-integration.md": stencils.WebsterTemplateIntegration,
-		"webster-prefix-fork.md":          stencils.WebsterPrefixFork,
-		"webster-prefix-recovery.md":      stencils.WebsterPrefixRecovery,
-		"webster-body-implementer.md":     stencils.WebsterBodyImplementer,
+		"webster-template-master.md":          stencils.WebsterTemplateMaster,
+		"webster-template-integration.md":     stencils.WebsterTemplateIntegration,
+		"webster-template-integration-fix.md": stencils.WebsterTemplateIntegrationFix,
+		"webster-prefix-fork.md":              stencils.WebsterPrefixFork,
+		"webster-prefix-recovery.md":          stencils.WebsterPrefixRecovery,
+		"webster-body-implementer.md":         stencils.WebsterBodyImplementer,
 	}
 	for name, content := range files {
 		if err := os.WriteFile(filepath.Join(websterDir, name), content, 0o644); err != nil {
@@ -747,6 +749,32 @@ func TestForkTemplate_CardLoopReadsCardFileWithWhatFallback(t *testing.T) {
 	requireContains(t, text, "unless the card FILE carries a `**Commit:**` line")
 }
 
+// TestRenderForkPrompt_SelfFixSectionCountsCardCausedFailures asserts the rendered fork prompt's "Bounded self-fix, then stop" section carries the caused-by-the-card rule with both causes, the rendered cap, the FAILED-on-exhaustion rule, and the report-but-never-fix rule for a failure the card did not cause.
+func TestRenderForkPrompt_SelfFixSectionCountsCardCausedFailures(t *testing.T) {
+	card := cardWithSourcePath(1, "json-flag", "add the --json flag")
+	batch := batcher.Batch{Cards: []planparser.Card{card}}
+
+	anchorRoot, stencilsDir := testLayout(t)
+	got, err := websterengine.RenderForkPrompt(batch, "", "/reports/01-json-flag.yaml", filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), 7, "")
+	if err != nil {
+		t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
+	}
+	text := string(got)
+
+	_, rest, ok := strings.Cut(text, "## Bounded self-fix, then stop")
+	if !ok {
+		t.Fatalf("rendered prompt has no \"## Bounded self-fix, then stop\" section")
+	}
+	section, _, _ := strings.Cut(rest, "\n## ")
+
+	requireContains(t, section, "at most `7` in-session fix attempts")
+	requireContains(t, section, "in any other test run you make, counts as that card's gate failure when the card's change caused it")
+	requireContains(t, section, "the failing test exercises code or files the card changed")
+	requireContains(t, section, "a repo scan or enforcement test flags a file the card wrote")
+	requireContains(t, section, "under the same `7`-attempt bound as any gate failure, and report `status: FAILED` when the bound runs out")
+	requireContains(t, section, "A failure the card did not cause is never yours to fix and never a `FAILED` on its own: name it in your final reply to Master")
+}
+
 // TestForkTemplate_FillsWithAllMarkers asserts stencil.FillOptional succeeds when every one of the
 // composed fork template's six required markers plus the optional friction_directive marker is
 // supplied, and fails — naming the marker — when any single REQUIRED one is absent.
@@ -1244,6 +1272,59 @@ func TestRenderIntegrationPrompt_EmptyVerifyErrors(t *testing.T) {
 
 	if _, err := websterengine.RenderIntegrationPrompt(plan, "/reports/integration.yaml", "/scratch/verify/integration.log", "/worktree", newTestStencilsDir(t), ""); err == nil {
 		t.Fatalf("RenderIntegrationPrompt() error = nil; want an error for a plan with no plan-level verify")
+	}
+}
+
+// renderIntegrationFixForTest renders the integration-fix prompt with fixed paths and two regressions.
+func renderIntegrationFixForTest(t *testing.T, cardHint string) string {
+	t.Helper()
+	regressions := []websterengine.IntegrationFailure{
+		{ID: "TestAlpha", Kind: websterengine.FailureKindTest, Tail: "alpha: want 1, got 2\n"},
+		{ID: "example.com/pkg/beta", Kind: websterengine.FailureKindPackage, Tail: "build failed: undefined: Beta"},
+	}
+	got, err := websterengine.RenderIntegrationFixPrompt(regressions, "go test ./...", cardHint, "/reports/integration-fix.yaml", "/worktree", "/worktree/_lyx/plan", newTestStencilsDir(t), "")
+	if err != nil {
+		t.Fatalf("RenderIntegrationFixPrompt() = _, %v; want nil error", err)
+	}
+	return string(got)
+}
+
+// TestRenderIntegrationFixPrompt_CarriesRegressionsAndRules asserts the rendered strand prompt carries each regression's identity with its tail, the verify command, the plan directory in the never-write rule, the report path as the stated exception to the _lyx rule, the leave-nothing-uncommitted rule and the no-delete/skip/weaken rule.
+func TestRenderIntegrationFixPrompt_CarriesRegressionsAndRules(t *testing.T) {
+	text := renderIntegrationFixForTest(t, "")
+
+	requireContains(t, text, "- `TestAlpha`\n\n```\nalpha: want 1, got 2\n```")
+	requireContains(t, text, "- `example.com/pkg/beta`\n\n```\nbuild failed: undefined: Beta\n```")
+	requireContains(t, text, "go test ./...")
+	requireContains(t, text, "Never write under `_lyx/plan`.")
+	requireContains(t, text, "write nothing else under `_lyx` but `/reports/integration-fix.yaml`")
+	requireContains(t, text, "Leave no uncommitted change behind")
+	requireContains(t, text, "Never delete, skip or weaken a test")
+	requireContains(t, text, "non-merge commits only")
+	requireNotContains(t, text, "{{")
+}
+
+// TestRenderIntegrationFixPrompt_CardHint asserts an empty cardHint renders no hint sentence and a non-empty one names the card file.
+func TestRenderIntegrationFixPrompt_CardHint(t *testing.T) {
+	requireNotContains(t, renderIntegrationFixForTest(t, ""), "Bisect localized")
+
+	text := renderIntegrationFixForTest(t, "_lyx/plan/07-fix-commit-check.md")
+	requireContains(t, text, "Bisect localized the regression to the plan card file `_lyx/plan/07-fix-commit-check.md`")
+}
+
+// TestRenderIntegrationFixPrompt_RefusesEmptyInputs asserts an empty regressions list, verify command or report path is an error.
+func TestRenderIntegrationFixPrompt_RefusesEmptyInputs(t *testing.T) {
+	stencilsDir := newTestStencilsDir(t)
+	one := []websterengine.IntegrationFailure{{ID: "TestAlpha", Kind: websterengine.FailureKindTest, Tail: "x"}}
+
+	if _, err := websterengine.RenderIntegrationFixPrompt(nil, "go test ./...", "", "/r.yaml", "/worktree", "/worktree/_lyx/plan", stencilsDir, ""); err == nil {
+		t.Errorf("RenderIntegrationFixPrompt(no regressions) error = nil; want an error")
+	}
+	if _, err := websterengine.RenderIntegrationFixPrompt(one, "  ", "", "/r.yaml", "/worktree", "/worktree/_lyx/plan", stencilsDir, ""); err == nil {
+		t.Errorf("RenderIntegrationFixPrompt(empty verify) error = nil; want an error")
+	}
+	if _, err := websterengine.RenderIntegrationFixPrompt(one, "go test ./...", "", "", "/worktree", "/worktree/_lyx/plan", stencilsDir, ""); err == nil {
+		t.Errorf("RenderIntegrationFixPrompt(empty report path) error = nil; want an error")
 	}
 }
 

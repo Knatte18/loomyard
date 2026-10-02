@@ -13,6 +13,8 @@
 package websterengine_test
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -24,6 +26,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -1902,5 +1905,72 @@ func TestRecordBatch_MergeInProgressRefusedThenSucceeds(t *testing.T) {
 	}
 	if got := fx.Deps.State.Batches[1].CardSHAs; len(got) != 1 || got[0] != fx.HeadSHA {
 		t.Errorf("CardSHAs = %v; want [%s]", got, fx.HeadSHA)
+	}
+}
+
+// TestRecordBatch_RefusedForeignEditLeavesCardHashes proves a foreign edit to a begun card is refused and the refusal leaves CardHashes unchanged,
+// including when a canonicalizing planglyph.ValidateDispatch ran after the edit with no restamp, as validate's path does when its edit check refuses.
+func TestRecordBatch_RefusedForeignEditLeavesCardHashes(t *testing.T) {
+	for _, canonicalize := range []bool{false, true} {
+		t.Run(fmt.Sprintf("canonicalize=%v", canonicalize), func(t *testing.T) {
+			fx := newRecordFixture(t, []shuttleengine.ForkAudit{
+				{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
+			})
+			planDir, plan := writeRecordPlanDir(t, "**Intent:** x.\n\n**Verify:** go test ./...\n")
+			if canonicalize {
+				if err := os.WriteFile(filepath.Join(planDir, "00-overview.md"), []byte("---\nformat: 5\napproved: true\nlanguage: go\n---\n\n# Plan: test\n\nframing\n\n## Card Index\n\n1 — json-flag — summary\n2 — pending — declares a draft handle\n"), 0o644); err != nil {
+					t.Fatalf("write overview: %v", err)
+				}
+				draft := "# Card 2 — pending\n\n**Create:**\n- `plan:internal/foo#Barr` -> `func Bar()`\n\n**Intent:** declare a draft handle.\n"
+				if err := os.WriteFile(filepath.Join(planDir, "02-pending.md"), []byte(draft), 0o644); err != nil {
+					t.Fatalf("write card 2: %v", err)
+				}
+				var err error
+				if plan, err = planparser.ParsePlan(planDir); err != nil {
+					t.Fatalf("ParsePlan() error = %v", err)
+				}
+			}
+			fx.Deps.Geom.PlanDir = planDir
+			fx.Deps.Plan = plan
+			if err := websterengine.RestampPlanBaseline(fx.Deps.State, planDir, fx.Deps.Geom.WebsterDir); err != nil {
+				t.Fatalf("RestampPlanBaseline() error = %v", err)
+			}
+			cardPath := filepath.Join(planDir, "01-json-flag.md")
+			original, err := os.ReadFile(cardPath)
+			if err != nil {
+				t.Fatalf("read card: %v", err)
+			}
+			sum := sha256.Sum256(original)
+			fx.Deps.State.Batches[1].CardHashes = map[string]string{"01-json-flag": hex.EncodeToString(sum[:])}
+			recorded := fmt.Sprint(fx.Deps.State.Batches[1].CardHashes)
+			writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
+
+			if err := os.WriteFile(cardPath, []byte("# Card 1 — json-flag\n\n**Intent:** x.\n\n**Verify:** true\n"), 0o644); err != nil {
+				t.Fatalf("weaken card verify: %v", err)
+			}
+			if canonicalize {
+				edited, err := planparser.ParsePlan(planDir)
+				if err != nil {
+					t.Fatalf("ParsePlan() error = %v", err)
+				}
+				if _, err := planglyph.ValidateDispatch(edited, fx.Worktree, nil, nil); err != nil {
+					t.Fatalf("ValidateDispatch() error = %v", err)
+				}
+				rewritten, err := os.ReadFile(filepath.Join(planDir, "02-pending.md"))
+				if err != nil {
+					t.Fatalf("read card 2: %v", err)
+				}
+				if !strings.Contains(string(rewritten), "plan:internal/foo#Bar`") {
+					t.Fatalf("card 2 = %q; want the handle canonicalized, or the fixture exercises no rewrite", rewritten)
+				}
+			}
+
+			if _, err := websterengine.RecordBatch(fx.Deps, 1); !errors.Is(err, websterengine.ErrFingerprintMismatch) {
+				t.Fatalf("RecordBatch() error = %v; want errors.Is(err, ErrFingerprintMismatch)", err)
+			}
+			if got := fmt.Sprint(fx.Deps.State.Batches[1].CardHashes); got != recorded {
+				t.Errorf("CardHashes = %s; want %s unchanged by the refusal", got, recorded)
+			}
+		})
 	}
 }

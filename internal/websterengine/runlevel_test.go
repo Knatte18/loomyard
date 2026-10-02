@@ -669,6 +669,75 @@ func TestRun_EntryTimeReclaimStopsLiveMasterAndRecoveryStrandsButNotAbsent(t *te
 	}
 }
 
+// TestRun_EntryTimeReclaimStopsLiveIntegrationFixStrand proves a state recording a live integration-fix strand has it removed at Run entry.
+func TestRun_EntryTimeReclaimStopsLiveIntegrationFixStrand(t *testing.T) {
+	fx := newRunFixture(t, 1)
+
+	seedMatchingState(t, fx, &websterengine.State{
+		IntegrationFix: &websterengine.IntegrationFixState{PreFixHead: "abc", StrandGUID: "fix-strand"},
+	})
+	fx.Reed.status = reedengine.StatusResult{Strands: []reedengine.StrandStatus{{GUID: "fix-strand", Live: true}}}
+	fx.Starter.startErr = fmt.Errorf("stop before spawn")
+
+	if _, err := websterengine.Run(fx.Deps, websterengine.RunOptions{}); err == nil {
+		t.Fatalf("Run() error = nil; want the scripted starter error")
+	}
+
+	if len(fx.Reed.removedStrands) != 1 || fx.Reed.removedStrands[0] != "fix-strand" {
+		t.Errorf("RemoveStrand calls = %v; want exactly [fix-strand]", fx.Reed.removedStrands)
+	}
+}
+
+// TestRun_EntryTimeReclaimLeavesDeadOrEmptyIntegrationFixRecord proves a dead-strand record and an empty-GUID record remove nothing.
+func TestRun_EntryTimeReclaimLeavesDeadOrEmptyIntegrationFixRecord(t *testing.T) {
+	cases := []struct {
+		name   string
+		fix    *websterengine.IntegrationFixState
+		status reedengine.StatusResult
+	}{
+		{
+			name:   "dead strand",
+			fix:    &websterengine.IntegrationFixState{PreFixHead: "abc", StrandGUID: "fix-strand"},
+			status: reedengine.StatusResult{Strands: []reedengine.StrandStatus{{GUID: "fix-strand", Live: false}}},
+		},
+		{
+			name: "empty guid",
+			fix:  &websterengine.IntegrationFixState{PreFixHead: "abc"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fx := newRunFixture(t, 1)
+			seedMatchingState(t, fx, &websterengine.State{IntegrationFix: tc.fix})
+			fx.Reed.status = tc.status
+			fx.Starter.startErr = fmt.Errorf("stop before spawn")
+
+			if _, err := websterengine.Run(fx.Deps, websterengine.RunOptions{}); err == nil {
+				t.Fatalf("Run() error = nil; want the scripted starter error")
+			}
+
+			if len(fx.Reed.removedStrands) != 0 {
+				t.Errorf("RemoveStrand calls = %v; want none", fx.Reed.removedStrands)
+			}
+		})
+	}
+}
+
+// TestRun_EntryTimeReclaimWithoutIntegrationFixRecordRemovesNothing proves a state without the record behaves as before.
+func TestRun_EntryTimeReclaimWithoutIntegrationFixRecordRemovesNothing(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	seedMatchingState(t, fx, &websterengine.State{})
+	fx.Starter.startErr = fmt.Errorf("stop before spawn")
+
+	if _, err := websterengine.Run(fx.Deps, websterengine.RunOptions{}); err == nil {
+		t.Fatalf("Run() error = nil; want the scripted starter error")
+	}
+
+	if len(fx.Reed.removedStrands) != 0 {
+		t.Errorf("RemoveStrand calls = %v; want none", fx.Reed.removedStrands)
+	}
+}
+
 // TestRun_StaleOutcomeAndSummaryArchivedBeforeSpawn proves both stale outcome.yaml and stale
 // summary.md are archived (renamed with a timestamp suffix, never deleted) before Master ever
 // spawns.
@@ -1925,6 +1994,24 @@ func TestRun_Regression20260930_BegunUnrecordedBatchResumes(t *testing.T) {
 	if fx.Starter.callCount() != 1 {
 		t.Errorf("Starter.callCount() = %d; want 1", fx.Starter.callCount())
 	}
+}
+
+// TestRun_Regression329_ForthcomingCreateTargetPassesEntryValidation pins #329 at run entry: state records batch 1 begun but not terminal with nothing landed,
+// and card 2 Uses card 1's Create target, which does not exist yet; Run must pass the entry validation and reach the Master spawn.
+func TestRun_Regression329_ForthcomingCreateTargetPassesEntryValidation(t *testing.T) {
+	fx := newRunFixture(t, 2)
+	addCardUses(t, fx.PlanDir, 2, "internal/batch1/new.go")
+
+	seedMatchingState(t, fx, &websterengine.State{
+		RunGUID: "resume-run",
+		Batches: map[int]*websterengine.BatchState{
+			1: {Slug: "batch1", Kind: "fork", StartSHA: "0123456789abcdef0123456789abcdef01234567"},
+		},
+	})
+	askingMaster(t, fx, "forthcoming")
+
+	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	requireReachedMaster(t, fx, err)
 }
 
 // requireWayForward fails unless err carries the trailing "way forward:" clause and every want fragment after it, so each reaching test matches the message the way the refusal table does.

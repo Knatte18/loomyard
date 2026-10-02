@@ -1,4 +1,4 @@
-// summary.go implements webster's write-side helpers over the final-summary artifact (AppendIntegrationTriage and AppendAuditWarnings append further sections beside the two below):
+// summary.go implements webster's write-side helpers over the final-summary artifact (AppendIntegrationTriage, AppendIntegrationFix and AppendAuditWarnings append further sections beside the two below):
 // ArchiveStaleSummary applies the same archive-never-refuse timestamp-rename discipline as
 // outcome.go's own archiveStaleOutcome, reusing archive.go's firstFreeArchivePath rather than
 // re-implementing the same-second collision loop; AppendIntegrationFailure extends an
@@ -76,6 +76,27 @@ func AppendIntegrationTriage(websterDir string, flaky, preExisting []string) err
 	writeTriageList(&b, "Flaky (passed on rerun)", flaky)
 	writeTriageList(&b, "Pre-existing (already failing at the plan's starting commit)", preExisting)
 	return appendToSummary(websterDir, "integration triage", b.String())
+}
+
+// AppendIntegrationFix appends a section recording the integration-fix attempt: the result, the pre-fix head, each fix commit and the cleared identities.
+// A result other than FixResultFixed adds the remaining identities, the detail and a way-forward sentence naming the pre-fix head and the fix commits, so the operator decides whether to keep them.
+func AppendIntegrationFix(websterDir string, fix IntegrationFixRecord) error {
+	var b strings.Builder
+	fmt.Fprintf(&b, "\n\n## Integration suite fix\n\nA fix strand attempted the integration regression; result: `%s`.\nPre-fix head: `%s`.\n", fix.Result, fix.PreFixHead)
+	writeTriageList(&b, "Fix commits", fix.Commits)
+	writeTriageList(&b, "Cleared regressions", fix.Cleared)
+	if fix.Result != FixResultFixed {
+		writeTriageList(&b, "Remaining regressions", fix.Remaining)
+		if fix.Detail != "" {
+			fmt.Fprintf(&b, "\nDetail: %s\n", fix.Detail)
+		}
+		commits := "none"
+		if len(fix.Commits) > 0 {
+			commits = "`" + strings.Join(fix.Commits, "`, `") + "`"
+		}
+		fmt.Fprintf(&b, "\nThe fix commits (%s) stay on the branch; decide whether to keep them. `git reset --hard %s` drops them.\n", commits, fix.PreFixHead)
+	}
+	return appendToSummary(websterDir, "integration fix", b.String())
 }
 
 // AppendAuditWarnings appends an "Audit warnings" section listing findings recorded as warnings, one bullet each in the order given.

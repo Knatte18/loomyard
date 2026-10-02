@@ -203,6 +203,55 @@ func TestAppendIntegrationTriage_OnlyFlaky(t *testing.T) {
 	}
 }
 
+// TestAppendIntegrationFix_FixedNamesCommitsAndClearedWithoutWayForward asserts a fixed section lists the commits and cleared identities and carries no way-forward sentence.
+func TestAppendIntegrationFix_FixedNamesCommitsAndClearedWithoutWayForward(t *testing.T) {
+	dir := t.TempDir()
+	writeSummaryFile(t, summaryparser.Path(dir), "# S\n")
+	fix := websterengine.IntegrationFixRecord{
+		Result:     websterengine.FixResultFixed,
+		PreFixHead: "pre123",
+		Commits:    []string{"fix1", "fix2"},
+		Cleared:    []string{"TestA"},
+	}
+	if err := websterengine.AppendIntegrationFix(dir, fix); err != nil {
+		t.Fatalf("AppendIntegrationFix: %v", err)
+	}
+	got := readSummaryFile(t, dir)
+	for _, want := range []string{"## Integration suite fix", "`fixed`", "`pre123`", "- `fix1`", "- `fix2`", "- `TestA`"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("summary missing %q: %q", want, got)
+		}
+	}
+	for _, bad := range []string{"git reset", "Remaining", "Detail"} {
+		if strings.Contains(got, bad) {
+			t.Errorf("fixed summary carries %q: %q", bad, got)
+		}
+	}
+}
+
+// TestAppendIntegrationFix_FailedNamesHeadCommitsRemainingAndWayForward asserts a failed section adds the remaining identities, the detail and the way forward.
+func TestAppendIntegrationFix_FailedNamesHeadCommitsRemainingAndWayForward(t *testing.T) {
+	dir := t.TempDir()
+	writeSummaryFile(t, summaryparser.Path(dir), "# S\n")
+	fix := websterengine.IntegrationFixRecord{
+		Result:     websterengine.FixResultFailed,
+		Detail:     "TestB still red",
+		PreFixHead: "pre123",
+		Commits:    []string{"fix1"},
+		Cleared:    []string{"TestA"},
+		Remaining:  []string{"TestB"},
+	}
+	if err := websterengine.AppendIntegrationFix(dir, fix); err != nil {
+		t.Fatalf("AppendIntegrationFix: %v", err)
+	}
+	got := readSummaryFile(t, dir)
+	for _, want := range []string{"`failed`", "`pre123`", "- `fix1`", "- `TestA`", "- `TestB`", "TestB still red", "`git reset --hard pre123`"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("summary missing %q: %q", want, got)
+		}
+	}
+}
+
 // TestAppendAuditWarnings_EmptyIsNoOp asserts an empty list leaves the file byte-identical.
 func TestAppendAuditWarnings_EmptyIsNoOp(t *testing.T) {
 	dir := t.TempDir()
