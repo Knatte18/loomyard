@@ -311,9 +311,6 @@ func committedAnchoredReader(location *lyxcwd.Location) func(anchorRel string) (
 	}
 }
 
-// wire builds the whole engine stack onto c from location and cwd: every module config anchored at
-// location.AnchorPath(), the reed engine and shuttle runner, the assembled websterengine.RunDeps, and
-// the assembled shedrecipe.Env/shedbuild.ShedPaths pair wrapping it.
 // discussionCommitPathspec is the pathspec CommitDiscussion stages: the whole discussion directory, plus the parent-review round directories so the review records land in the same commit.
 // The parent-review directory is left out while it holds no file, since git refuses such a pathspec (see statusCommitPathspec):
 // that is a run with no reviewer, whose fresh spawn leaves an empty round directory, or one whose parent-review entry is off.
@@ -353,6 +350,9 @@ func newParentReviewConfig(location *lyxcwd.Location, runID string, cfg loomengi
 	}, nil
 }
 
+// wire builds the whole engine stack onto c from location and cwd: every module config anchored at
+// location.AnchorPath(), the reed engine and shuttle runner, the assembled websterengine.RunDeps, and
+// the assembled shedrecipe.Env/shedbuild.ShedPaths pair wrapping it.
 func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	anchorPath := location.AnchorPath()
 
@@ -540,7 +540,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// one, since the Discussion-Bouncer row's approved settle reaches this same closure through
 		// the row's commit_seam: discussion config key.
 		CommitDiscussion: func() error {
-			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, discussionCommitPathspec(location),fmt.Sprintf("loom: discussion artifacts for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
+			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, discussionCommitPathspec(location), fmt.Sprintf("loom: discussion artifacts for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
 			return err
 		},
 		// DescriptionPath is the change description Describe writes and its gate and the landing
