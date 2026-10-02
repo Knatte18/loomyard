@@ -7,6 +7,7 @@
 // reedengine.LoadConfig) degrades to its embedded template (or, for burler.yaml, the zero Config) on
 // a proven-absent _lyx/ directory, so a fictional anchor path drives the whole hub branch without
 // touching disk.
+// The one entry each hub case creates is the worktree's .git directory, which hubgeom.ReedGeometry stats to tell the prime from a task worktree.
 //
 // The standalone-mode cases reach standalonestate.Derive through internal/cliwire's own
 // ResolveStandalone, which owns the one production call site of Derive that exists anywhere in this
@@ -64,10 +65,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/standalonestate"
 )
 
-// hubLocation returns a *lyxcwd.Location standing in for a real hub location. It performs no
-// filesystem preparation of its own -- see the file header for why wire's hub branch tolerates that.
-func hubLocation(hub, worktreeName, anchorRel string) *lyxcwd.Location {
-	return &lyxcwd.Location{HubPath: hub, WorktreeName: worktreeName, AnchorRel: anchorRel}
+// hubLocation returns a *lyxcwd.Location standing in for a real hub's prime.
+// Its only filesystem preparation is the worktree's .git directory -- see the file header for why wire's hub branch tolerates the rest being absent.
+func hubLocation(t *testing.T, hub, worktreeName, anchorRel string) *lyxcwd.Location {
+	t.Helper()
+	loc := &lyxcwd.Location{HubPath: hub, WorktreeName: worktreeName, AnchorRel: anchorRel}
+	if err := os.MkdirAll(filepath.Join(loc.WorktreePath(), ".git"), 0o755); err != nil {
+		t.Fatalf("MkdirAll(.git) = %v; want nil", err)
+	}
+	return loc
 }
 
 // hash8For returns standalonestate.Derive's hash8 for target under the environment t.Setenv has
@@ -102,7 +108,7 @@ func TestWire_ModeHubSelectsHubMode(t *testing.T) {
 	t.Parallel()
 
 	hub := t.TempDir()
-	loc := hubLocation(hub, "warp", ".")
+	loc := hubLocation(t, hub, "warp", ".")
 
 	c := &burlerCLI{}
 	if err := c.wire(loc, preflight.ModeHub, "", "", ""); err != nil {
@@ -232,7 +238,7 @@ func TestWire_TargetDirRefusedInHubMode(t *testing.T) {
 	t.Parallel()
 
 	hub := t.TempDir()
-	loc := hubLocation(hub, "warp", ".")
+	loc := hubLocation(t, hub, "warp", ".")
 
 	c := &burlerCLI{}
 	err := c.wire(loc, preflight.ModeHub, "", "", filepath.Join(t.TempDir(), "elsewhere"))
@@ -250,7 +256,7 @@ func TestWire_StencilsDirFlag(t *testing.T) {
 	t.Run("HonouredInHubMode", func(t *testing.T) {
 		t.Parallel()
 		hub := t.TempDir()
-		loc := hubLocation(hub, "warp", ".")
+		loc := hubLocation(t, hub, "warp", ".")
 		override := filepath.Join(t.TempDir(), "custom-stencils")
 		// The told stencils directory must exist on disk since R7-F2's wiring-boundary stat; the
 		// honoured-override behavior under test here is unchanged.
@@ -290,7 +296,7 @@ func TestWire_StencilsDirFlag(t *testing.T) {
 func TestWireHub_AbsentStencilsDirIsRefused(t *testing.T) {
 	t.Parallel()
 	hub := t.TempDir()
-	loc := hubLocation(hub, "warp", ".")
+	loc := hubLocation(t, hub, "warp", ".")
 	told := filepath.Join(t.TempDir(), "no-such-stencils")
 
 	c := &burlerCLI{}
@@ -311,7 +317,7 @@ func TestWire_RelativeStencilsDirResolvesAgainstCwd(t *testing.T) {
 	t.Run("HubMode", func(t *testing.T) {
 		t.Parallel()
 		hub := t.TempDir()
-		loc := hubLocation(hub, "warp", ".")
+		loc := hubLocation(t, hub, "warp", ".")
 		cwd := t.TempDir()
 
 		// Exists on disk since R7-F2's wiring-boundary stat; the resolution behavior under test is
@@ -440,7 +446,7 @@ func TestWireHub_LeavesDurableSinkDirUntouched(t *testing.T) {
 	t.Cleanup(func() { logger.SetDurableSinkDir("") })
 
 	hub := t.TempDir()
-	loc := hubLocation(hub, "warp", ".")
+	loc := hubLocation(t, hub, "warp", ".")
 
 	c := &burlerCLI{}
 	if err := c.wire(loc, preflight.ModeHub, "", "", ""); err != nil {
@@ -516,7 +522,7 @@ func TestWire_ReedUpSeamPerMode(t *testing.T) {
 
 	t.Run("HubLeavesTheSeamNil", func(t *testing.T) {
 		hub := t.TempDir()
-		loc := hubLocation(hub, "warp", ".")
+		loc := hubLocation(t, hub, "warp", ".")
 
 		c := &burlerCLI{}
 		if err := c.wire(loc, preflight.ModeHub, "", "", ""); err != nil {

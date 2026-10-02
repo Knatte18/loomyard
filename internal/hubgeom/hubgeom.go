@@ -4,6 +4,11 @@
 package hubgeom
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -12,35 +17,60 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// ReedGeometry builds a reedengine.Geometry for l: the resolved Location's paths, read off its
-// accessors and passed through untouched, plus the name prefix and parent reed forms strand names from.
-// It performs no os.Getwd, no git discovery, and no path resolution of its own — internal/lyxcwd
-// stays the sole owner of cwd resolution (the Cwd Resolution Invariant).
+// ReedGeometry builds a reedengine.Geometry for l: the resolved Location's paths, read off its accessors and passed through untouched,
+// plus the name prefix and parent reed forms strand names from.
+// It performs no os.Getwd, no git discovery, and no path resolution of its own — internal/lyxcwd stays the sole owner of cwd resolution (the Cwd Resolution Invariant).
 //
 // NameCode is the hub's recorded code; an absent record leaves it empty and is no error here,
 // since reed refuses the spawn that needs a code while `reed status`, `down` and the watchdog keep working.
 // The prime leaves NameSlug and ParentName empty;
 // a task worktree sets NameSlug to its raw worktree name and ParentName to the parent recorded in its default run's seed.
 // An unreadable seed logs a warning and leaves ParentName empty, since the parent is an optional escalation channel.
-// The prime's name failing to resolve is no error either: the wiring functions' Tier 1 tests hand
-// ReedGeometry fictional, git-less locations, and a failure here only costs the slug and parent,
-// so it logs a warning and tells the geometry of a prime.
-// The error return stays so a later check that must stop a wiring can use it without a signature change.
+// Failing to tell the prime from a task worktree is the one error:
+// telling a task worktree a prime's geometry would give its strands the prime's names for life.
 func ReedGeometry(l *lyxcwd.Location) (reedengine.Geometry, error) {
-	prime, err := fabricengine.PrimeName(l)
+	prime, err := isPrimeWorktree(l.WorktreePath())
 	if err != nil {
-		logger.Warn("hubgeom: main worktree name unresolved; telling a prime-shaped name geometry", "worktree", l.WorktreeName, "error", err)
-		prime = l.WorktreeName
+		return reedengine.Geometry{}, err
 	}
 	return reedGeometry(l, prime), nil
 }
 
-// reedGeometry is ReedGeometry once the prime's name is resolved, split out so the unit test can
-// tell a fixture prime without spawning git.
-func reedGeometry(l *lyxcwd.Location, prime string) reedengine.Geometry {
+// gitEntryName is the entry at every git worktree's root.
+const gitEntryName = ".git"
+
+// isPrimeWorktree reports whether the worktree at worktreeRoot is the hub's prime, the repository's main worktree.
+// It reads the .git entry rather than spawning `git worktree list` as fabricengine.PrimeName does,
+// so every hub wiring path stays spawn-free and the untagged wiring tests stay offline (the Test Tier Purity Invariant).
+// The main worktree's .git is a directory, or a gitdir file pointing straight at its git directory;
+// a linked worktree's .git is a gitdir file pointing into the common git directory's worktrees/ directory.
+// A missing or unreadable entry is an error.
+func isPrimeWorktree(worktreeRoot string) (bool, error) {
+	entry := filepath.Join(worktreeRoot, gitEntryName)
+	info, err := os.Stat(entry)
+	if err != nil {
+		return false, fmt.Errorf("hubgeom: cannot tell the prime from a task worktree: %w", err)
+	}
+	if info.IsDir() {
+		return true, nil
+	}
+	data, err := os.ReadFile(entry)
+	if err != nil {
+		return false, fmt.Errorf("hubgeom: cannot tell the prime from a task worktree: %w", err)
+	}
+	gitDir, ok := strings.CutPrefix(strings.TrimSpace(string(data)), "gitdir:")
+	if !ok {
+		return false, fmt.Errorf("hubgeom: cannot tell the prime from a task worktree: %s is neither a directory nor a gitdir file", entry)
+	}
+	return filepath.Base(filepath.Dir(filepath.Clean(strings.TrimSpace(gitDir)))) != "worktrees", nil
+}
+
+// reedGeometry is ReedGeometry once the prime is told from a task worktree,
+// split out so the unit test can tell either without a .git entry.
+func reedGeometry(l *lyxcwd.Location, prime bool) reedengine.Geometry {
 	code, _ := fabricengine.ReadCode(fabricengine.BoardDir(l.HubPath))
 	var slug, parent string
-	if l.WorktreeName != prime {
+	if !prime {
 		slug = l.WorktreeName
 		seed, found, seedErr := shedrun.ReadSeed(l, shedrun.SelfRunID)
 		switch {
