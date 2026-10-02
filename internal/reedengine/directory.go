@@ -54,10 +54,11 @@ func (e *Engine) Directory() ([]DirectoryRow, error) {
 // directoryRows maps strands onto the live pane set; a nil live set makes every row dormant.
 // Drift is whatever planTitleRepairs would repair, so the two never disagree.
 func directoryRows(strands []Strand, live []LivePane) []DirectoryRow {
-	panes := make(map[string]LivePane, len(live))
+	titles := make(map[string]string, len(live))
 	for _, p := range live {
-		panes[p.ID] = p
+		titles[p.ID] = p.Title
 	}
+	alive := aliveIDSet(live)
 	drifted := make(map[string]bool)
 	for _, r := range planTitleRepairs(strands, live) {
 		drifted[r.GUID] = true
@@ -65,9 +66,9 @@ func directoryRows(strands []Strand, live []LivePane) []DirectoryRow {
 	rows := make([]DirectoryRow, 0, len(strands))
 	for _, s := range strands {
 		row := DirectoryRow{Name: s.Name, GUID: s.GUID, Worktree: s.Worktree, PaneID: s.PaneID}
-		if p, ok := panes[s.PaneID]; ok && s.PaneID != "" && !p.Dead {
+		if s.PaneID != "" && alive[s.PaneID] {
 			row.Live = true
-			row.Title = p.Title
+			row.Title = titles[s.PaneID]
 			row.Drift = drifted[s.GUID]
 		}
 		rows = append(rows, row)

@@ -111,11 +111,12 @@ func (e *Engine) repairNames(namer SessionNamer) error {
 		if namer == nil {
 			return nil
 		}
+		alive := aliveIDSet(live)
 		for _, s := range st.Strands {
 			if s.SessionID == "" || s.Name == "" {
 				continue
 			}
-			if !paneIsLive(live, s.PaneID) {
+			if s.PaneID == "" || !alive[s.PaneID] {
 				continue
 			}
 			e.repairSessionName(namer, s)
@@ -126,19 +127,6 @@ func (e *Engine) repairNames(namer SessionNamer) error {
 		logger.Debug("reed: op lock held, deferring this name repair tick", "socket", e.Socket(), "session", e.SessionName())
 	}
 	return err
-}
-
-// paneIsLive reports whether paneID names a present, not-dead pane in live.
-func paneIsLive(live []LivePane, paneID string) bool {
-	if paneID == "" {
-		return false
-	}
-	for _, p := range live {
-		if p.ID == paneID {
-			return !p.Dead
-		}
-	}
-	return false
 }
 
 // repairSessionName renames s's provider session by typing the namer's rename text into its pane, when the session name has drifted and the pane is idle.
