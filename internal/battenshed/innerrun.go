@@ -263,6 +263,9 @@ func (p *innerRunProducer) Call(ctx context.Context) (shedengine.Outcome, sheden
 			return "", shedengine.OutputPointer{}, cerr
 		}
 		reason := fmt.Sprintf("inner shed run still running; sleeping %s before the next bounce", p.pollInterval)
+		if note := p.reviewWaitNote(); note != "" {
+			reason = fmt.Sprintf("inner shed run waiting: %s; sleeping %s before the next bounce", note, p.pollInterval)
+		}
 		reportStuck(p.name, reason, p.scratchDir, "slug", p.slug)
 		return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
 	case shedengine.StateAwaiting:
@@ -275,6 +278,20 @@ func (p *innerRunProducer) Call(ctx context.Context) (shedengine.Outcome, sheden
 	default:
 		return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: unrecognized status state %q", p.name, status.State)
 	}
+}
+
+// reviewWaitNote returns the child's reviewer-wait note, or empty when there is none or ReviewWait is nil.
+// A ReviewWait error logs one Warn and reads as no note, since the note never fails the row.
+func (p *innerRunProducer) reviewWaitNote() string {
+	if p.deps.ReviewWait == nil {
+		return ""
+	}
+	note, err := p.deps.ReviewWait()
+	if err != nil {
+		logger.Warn("battenshed: reviewer wait note unavailable", "producer", p.name, "slug", p.slug, "error", err)
+		return ""
+	}
+	return note
 }
 
 // exemptWait sleeps one poll interval and returns a budget-exempt Stuck carrying reason.
