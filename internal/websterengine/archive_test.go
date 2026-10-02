@@ -284,8 +284,8 @@ func TestArchiveRunRecord_CollisionErrorsAndMovesNothing(t *testing.T) {
 	if err == nil {
 		t.Fatal("ArchiveRunRecord() error = nil; want collision error")
 	}
-	if !strings.Contains(err.Error(), "outcome.yaml") || !strings.Contains(err.Error(), "way forward") {
-		t.Errorf("error = %v; want it to name the entry and a way forward", err)
+	if !strings.Contains(err.Error(), "outcome.yaml") || !strings.Contains(err.Error(), "remove whichever copy is stale, then re-step") {
+		t.Errorf("error = %v; want it to name the entry and the re-step way forward", err)
 	}
 	if _, statErr := os.Stat(filepath.Join(geom.WebsterDir, "state.json")); statErr != nil {
 		t.Errorf("state.json moved despite collision: %v", statErr)

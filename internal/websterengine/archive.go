@@ -127,7 +127,7 @@ func ArchiveRunRecord(geom Geometry, dest string) error {
 		to := filepath.Join(dest, e.Name())
 		if _, err := os.Lstat(to); err == nil {
 			from := filepath.Join(geom.WebsterDir, e.Name())
-			return fmt.Errorf("websterengine: archive run record: %s exists at both %s and %s; way forward: remove whichever copy is stale, then re-run the archive", e.Name(), from, to)
+			return fmt.Errorf("websterengine: archive run record: %s exists at both %s and %s; way forward: remove whichever copy is stale, then re-step", e.Name(), from, to)
 		} else if !os.IsNotExist(err) {
 			return fmt.Errorf("websterengine: stat archive target %s: %w", to, err)
 		}
