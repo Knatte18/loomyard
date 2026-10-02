@@ -46,7 +46,7 @@ func (c *Claude) IdleSession(capture string) bool {
 	}
 	top := -1
 	for i := caret - 1; i >= 0; i-- {
-		if isBoxRule(lines[i]) {
+		if isTopBoxRule(lines[i]) {
 			top = i
 			break
 		}
@@ -69,15 +69,23 @@ func (c *Claude) IdleSession(capture string) bool {
 	return true
 }
 
+// isTopBoxRule reports whether line is the input box's top rule: a plain rule per isBoxRule, or a labelled one.
+// A named session labels its top rule at the right (`──── tst:orch ─`), so a line that starts with three rule glyphs and ends with one counts as a top rule whatever its label says.
+// Only the top rule carries a label, so the bottom rule is matched by isBoxRule alone,
+// and a draft line shaped like a labelled rule below the caret never closes the box.
+func isTopBoxRule(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	if strings.HasPrefix(trimmed, "───") && strings.HasSuffix(trimmed, "─") {
+		return true
+	}
+	return isBoxRule(line)
+}
+
 // isBoxRule reports whether line is a horizontal rule of the input box: non-blank, made only of rule glyphs, corners, side bars and whitespace, with at least one rule glyph.
-// A named session labels its top rule at the right (`──── tst:orch ─`), so a line that starts with three rule glyphs and ends with one counts as a rule whatever its label says.
 func isBoxRule(line string) bool {
 	trimmed := strings.TrimSpace(line)
 	if !strings.Contains(trimmed, "─") {
 		return false
-	}
-	if strings.HasPrefix(trimmed, "───") && strings.HasSuffix(trimmed, "─") {
-		return true
 	}
 	for _, r := range trimmed {
 		if r != ' ' && !strings.ContainsRune(boxRuleChars, r) {
