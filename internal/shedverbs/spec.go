@@ -73,11 +73,11 @@ type Hooks struct {
 	// A non-nil error is reported verbatim on the error envelope and the status file is not touched.
 	PreGoto func(ctx context.Context, target string) error
 	// Waiting names, in one line, what a running run is waiting on; empty means it waits on nothing.
-	// status calls it only when the status file's state is running, and a non-empty note adds a
-	// waiting key to the envelope, replaces the plain running state in the human header and extends
-	// the --watch line. A non-nil error is reported verbatim on the error envelope, like
-	// StatusExtras; the --watch line drops the note on an error rather than ending the tail. The
-	// hook closes over whatever location the arming module was told, so shedverbs stays path-free.
+	// status calls it only when the status file's state is running,
+	// and a non-empty note adds a waiting key to the envelope, replaces the plain running state in the human header and extends the --watch line.
+	// A non-nil error is reported verbatim on the error envelope, like StatusExtras;
+	// the --watch line drops the note on an error rather than ending the tail.
+	// The hook closes over whatever location the arming module was told, so shedverbs stays path-free.
 	Waiting func() (string, error)
 }
 

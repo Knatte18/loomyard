@@ -1,5 +1,4 @@
-// parentreview.go composes the two parent-review prompts: the one-line delivery prompt typed into the live
-// Discussion-Write session, and the reviewer brief the parent's one-shot fork reads.
+// parentreview.go composes the two parent-review prompts: the one-line delivery prompt typed into the live Discussion-Write session, and the reviewer brief the parent's one-shot fork reads.
 // Each reads its stencil from stencilsDir at call time and fills it through internal/stencil.
 // The SendMessage wording lives in the delivery stencil only, per the Shuttle Provider-Seam Invariant.
 

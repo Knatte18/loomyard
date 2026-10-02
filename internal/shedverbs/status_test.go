@@ -549,8 +549,8 @@ func TestRenderStatusLine_ProducerReasonReachesWait(t *testing.T) {
 	}
 }
 
-// TestStatusCmd_WaitingNote_RunningOnly asserts the envelope carries waiting only for a running
-// state with a non-empty note, and that the hook never runs against a settled run.
+// TestStatusCmd_WaitingNote_RunningOnly asserts the envelope carries waiting only for a running state with a non-empty note,
+// and that the hook never runs against a settled run.
 func TestStatusCmd_WaitingNote_RunningOnly(t *testing.T) {
 	calls := 0
 	note := "the parent's review"
@@ -613,8 +613,8 @@ func TestStatusCmd_WaitingErrorVerbatim(t *testing.T) {
 	}
 }
 
-// TestStatusWatchLine_AppendsWaitingNote asserts the polled watch line gains the note while it is
-// non-empty, so the line changes when the wait starts or ends, and survives a hook error.
+// TestStatusWatchLine_AppendsWaitingNote asserts the polled watch line gains the note while it is non-empty, so the line changes when the wait starts or ends,
+// and survives a hook error.
 func TestStatusWatchLine_AppendsWaitingNote(t *testing.T) {
 	note := "the parent's review"
 	var hookErr error

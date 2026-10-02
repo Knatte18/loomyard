@@ -62,8 +62,7 @@ func TestLoomTemplateDiscussion_FenceNamesTheTwoOutputMarkers(t *testing.T) {
 	}
 }
 
-// TestLoomTemplateDiscussion_NamesBoardListAndParentReviewCarveOuts asserts Step 1 reads the wider board
-// and the write fence carries both parent-review carve-outs.
+// TestLoomTemplateDiscussion_NamesBoardListAndParentReviewCarveOuts asserts Step 1 reads the wider board and the write fence carries both parent-review carve-outs.
 func TestLoomTemplateDiscussion_NamesBoardListAndParentReviewCarveOuts(t *testing.T) {
 	text := string(LoomTemplateDiscussion)
 	fenceStart := strings.Index(text, "## What you may write")

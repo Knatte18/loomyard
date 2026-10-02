@@ -1,11 +1,8 @@
 // config.go — configuration for the loom module.
 //
-// Defines the Config type mirroring loom.yaml's keys and LoadConfig, which uses
-// internal/configengine.Load with ConfigTemplate() to strictly validate and resolve loom's config
-// file, then validates the discussion, plan, review, friction, and driver role model-specs' grammar
-// via modelspec.Parse, rejects a negative value on each of the four timeout knobs, and rejects a
-// parent_review_wait_min below 1, so a mistake in any of those ten keys fails loud at load time rather than hours into a run when the
-// discussion, plan, review, friction, or driver producer first spawns.
+// Defines the Config type mirroring loom.yaml's keys and LoadConfig, which uses internal/configengine.Load with ConfigTemplate() to strictly validate and resolve loom's config file,
+// then validates the discussion, plan, review, friction, and driver role model-specs' grammar via modelspec.Parse, rejects a negative value on each of the four timeout knobs, and rejects a parent_review_wait_min below 1,
+// so a mistake in any of those ten keys fails loud at load time rather than hours into a run when the discussion, plan, review, friction, or driver producer first spawns.
 // friction and driver are the two role keys validated only when non-empty: a present-but-empty
 // value means, respectively, Tier 2 self-reporting is off or the engine default model runs the
 // driver, and both must load cleanly, unlike the other role keys, which are always required.
@@ -434,9 +431,9 @@ func LoadConfig(baseDir, module string) (Config, error) {
 		}
 	}
 
-	// parent_review_wait_min has no "0 defers" meaning: a 0 bound would still open a request and
-	// notify the parent of a request that expires at its next evaluation, so the one off switch is
-	// the gate entry's own attempts, not this key.
+	// parent_review_wait_min has no "0 defers" meaning:
+	// a 0 bound would still open a request and notify the parent of a request that expires at its next evaluation,
+	// so the one off switch is the gate entry's own attempts, not this key.
 	if cfg.ParentReviewWaitMin < 1 {
 		return Config{}, fmt.Errorf("loom config key %q: must be at least 1, got %d; set attempts: 0 on Discussion-Write's parent-review gate entry to turn the review off", "parent_review_wait_min", cfg.ParentReviewWaitMin)
 	}

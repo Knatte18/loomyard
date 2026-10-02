@@ -60,8 +60,7 @@ var LoomRubricWebsterReview []byte
 //go:embed loom/loom-template-prior-plan.md
 var LoomTemplatePriorPlan []byte
 
-// LoomTemplateParentReviewDelivery is the one-line prompt that tells the live Discussion-Write
-// session to send its parent a review request.
+// LoomTemplateParentReviewDelivery is the one-line prompt that tells the live Discussion-Write session to send its parent a review request.
 //
 //go:embed loom/loom-template-parent-review-delivery.md
 var LoomTemplateParentReviewDelivery []byte

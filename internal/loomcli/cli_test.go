@@ -80,8 +80,8 @@ func TestCommand_RegisteredVerbs_ExactSet(t *testing.T) {
 	}
 }
 
-// TestCommand_ReviewSubtree_ExactChildren asserts the review group holds exactly its four verbs,
-// each with a non-empty Short, and that none collides with PR-Gate's top-level approve and reject.
+// TestCommand_ReviewSubtree_ExactChildren asserts the review group holds exactly its four verbs, each with a non-empty Short,
+// and that none collides with PR-Gate's top-level approve and reject.
 func TestCommand_ReviewSubtree_ExactChildren(t *testing.T) {
 	var review *cobra.Command
 	for _, sub := range Command().Commands() {

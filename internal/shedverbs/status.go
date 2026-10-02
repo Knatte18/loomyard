@@ -94,8 +94,8 @@ func PrintStatusLinesOnChange(out io.Writer, poll func() string, sleep func(), p
 	}
 }
 
-// waitingNote asks spec.Hooks.Waiting what a running run waits on. It returns the empty note when
-// the hook is nil or the state is not running, so the hook never runs against a settled run.
+// waitingNote asks spec.Hooks.Waiting what a running run waits on.
+// It returns the empty note when the hook is nil or the state is not running, so the hook never runs against a settled run.
 func waitingNote(spec *Spec, st shedengine.Status) (string, error) {
 	if spec.Hooks.Waiting == nil || st.State != shedengine.StateRunning {
 		return "", nil
@@ -103,20 +103,17 @@ func waitingNote(spec *Spec, st shedengine.Status) (string, error) {
 	return spec.Hooks.Waiting()
 }
 
-// runStatusWatch drives the --watch tail against spec's own status file, using spec.StatusLabel as
-// the rendered line's prefix. It is the narrow, explicitly-taken interactive-handoff exception --
-// everything fallible has already run on the one-shot envelope above. A read failure or a !found
-// inside the poll closure returns the precomputed unavailable line, never terminates the tail, and
-// never writes an envelope: the pane is expected to survive the driver rewriting the file underneath
-// it.
+// runStatusWatch drives the --watch tail against spec's own status file, using spec.StatusLabel as the rendered line's prefix.
+// It is the narrow, explicitly-taken interactive-handoff exception -- everything fallible has already run on the one-shot envelope above.
+// A read failure or a !found inside the poll renders the unavailable line, never terminates the tail, and never writes an envelope:
+// the pane is expected to survive the driver rewriting the file underneath it.
 func runStatusWatch(out io.Writer, spec *Spec, interval time.Duration) {
 	poll := func() string { return statusWatchLine(spec) }
 	PrintStatusLinesOnChange(out, poll, func() { time.Sleep(interval) }, 0)
 }
 
-// statusWatchLine renders one poll of the --watch tail: the status line, with " | waiting <note>"
-// appended while the Waiting hook reports a note. A hook error drops the note rather than ending
-// the tail.
+// statusWatchLine renders one poll of the --watch tail: the status line, with " | waiting <note>" appended while the Waiting hook reports a note.
+// A hook error drops the note rather than ending the tail.
 func statusWatchLine(spec *Spec) string {
 	polled, found, err := state.ReadJSONStrict[shedengine.Status](spec.StatusPath, spec.StatusLockPath)
 	if err != nil || !found {
