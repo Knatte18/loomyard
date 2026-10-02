@@ -1,12 +1,14 @@
 package parentreview
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -472,5 +474,101 @@ func TestFinal_ApprovePasses(t *testing.T) {
 	}
 	if !mustEval(t, final).Passed {
 		t.Fatal("final must pass an approve")
+	}
+}
+
+func newLiveGates(t *testing.T, s Store, live func() (bool, error)) (gate, final shuttleengine.Gate) {
+	t.Helper()
+	return NewGate(GateConfig{
+		Store:          s,
+		Slug:           "x",
+		Reviewer:       "hub:orch",
+		DecisionRecord: "d.md",
+		SupportLog:     "s.md",
+		WaitBound:      time.Hour,
+		Cap:            testCap,
+		ReviewerLive:   live,
+		RenderDelivery: func(p string) (string, error) { return "review " + p, nil },
+		RenderBrief:    func() (string, error) { return "brief", nil },
+	})
+}
+
+func TestGate_NotLiveHoldsWithoutSpendingPrompts(t *testing.T) {
+	s, c := newStore(t)
+	live := false
+	gate, _ := newLiveGates(t, s, func() (bool, error) { return live, nil })
+	wantHold(t, mustEval(t, gate))
+	r := latest(t, s)
+	if r.Request == nil || r.Delivery.Prompts != 0 {
+		t.Fatalf("round = %+v, want an open request with no prompt", r)
+	}
+	for i := 0; i < 5; i++ {
+		c.t = c.t.Add(time.Minute)
+		wantHold(t, mustEval(t, gate))
+	}
+	if got := latest(t, s).Delivery.Prompts; got != 0 {
+		t.Fatalf("prompts = %d, want 0", got)
+	}
+	live = true
+	wantCarry(t, mustEval(t, gate))
+	if got := latest(t, s).Delivery.Prompts; got != 1 {
+		t.Fatalf("prompts = %d, want 1", got)
+	}
+}
+
+func TestGate_NilLivenessSeamPromptsAtOnce(t *testing.T) {
+	s, _ := newStore(t)
+	gate, _ := newLiveGates(t, s, nil)
+	wantCarry(t, mustEval(t, gate))
+}
+
+func TestGate_LivenessErrorHoldsAndWarnsOncePerError(t *testing.T) {
+	s, c := newStore(t)
+	var buf strings.Builder
+	logger.SetOutput(&buf)
+	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+	gate, _ := newLiveGates(t, s, func() (bool, error) { return false, errors.New("reed unreachable") })
+	for i := 0; i < 3; i++ {
+		wantHold(t, mustEval(t, gate))
+		c.t = c.t.Add(time.Minute)
+	}
+	if got := strings.Count(buf.String(), "reed unreachable"); got != 1 {
+		t.Fatalf("error Warn count = %d, want 1; log = %q", got, buf.String())
+	}
+	if got := latest(t, s).Delivery.Prompts; got != 0 {
+		t.Fatalf("prompts = %d, want 0", got)
+	}
+}
+
+func TestGate_HeldRequestStillExpiresAtWaitBound(t *testing.T) {
+	s, c := newStore(t)
+	gate, _ := newLiveGates(t, s, func() (bool, error) { return false, nil })
+	wantHold(t, mustEval(t, gate))
+	c.t = c.t.Add(time.Hour)
+	if !mustEval(t, gate).Passed {
+		t.Fatal("a held request must still pass at the wait bound")
+	}
+	if latest(t, s).Request.State != StateExpired {
+		t.Fatal("request not marked expired")
+	}
+}
+
+func TestGate_HeldGateKeepsWaitingNotifyUntilLive(t *testing.T) {
+	s, _ := newStore(t)
+	live := true
+	gate, _ := newLiveGates(t, s, func() (bool, error) { return live, nil })
+	wantCarry(t, mustEval(t, gate))
+	live = false
+	if err := s.AddNotify(); err != nil {
+		t.Fatal(err)
+	}
+	wantHold(t, mustEval(t, gate))
+	if got := latest(t, s).Delivery.WaitingNotifys; got != 1 {
+		t.Fatalf("waiting notifies = %d, want 1 while held", got)
+	}
+	live = true
+	wantCarry(t, mustEval(t, gate))
+	if got := latest(t, s).Delivery.WaitingNotifys; got != 0 {
+		t.Fatalf("waiting notifies = %d, want 0 once carried", got)
 	}
 }

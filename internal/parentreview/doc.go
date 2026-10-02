@@ -5,7 +5,7 @@
 //
 //	request.json   slug, round, reviewer full name, opened-at, the two discussion paths, a state (open, expired, superseded) and the reject cap the gate held (cap, absent when none)
 //	brief.md       the rendered reviewer brief
-//	delivery.json  delivered-at or the last failure reason, gate prompts carried, last-prompt time, waiting notifies, cap-Warn flag
+//	delivery.json  delivered-at or the last failure reason, gate prompts carried (a prompt held back while the reviewer has no live session is not carried, so is not counted), last-prompt time, waiting notifies, cap-Warn flag
 //	verdict.json   approve or reject, recorded-at, consumed, superseding (set only on an approve that replaced the cap's reject)
 //	review.md      the copied review file
 //

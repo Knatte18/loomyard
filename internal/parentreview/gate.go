@@ -37,6 +37,10 @@ type GateConfig struct {
 	// The count comes from the store, so it survives an attach, a driver restart and a resume.
 	// Zero or less means no cap.
 	Cap int
+	// ReviewerLive is the told liveness seam: while it reports false, or errors, the gate holds its delivery prompt, so the prompt budget is not spent during an orch relaunch.
+	// Nil means the reviewer is treated as live, which is how a legacy-name reviewer with no known worktree is wired.
+	// The hold never skips the review short of WaitBound.
+	ReviewerLive func() (bool, error)
 	// RenderDelivery renders the one-line delivery prompt for a brief path.
 	RenderDelivery func(briefPath string) (string, error)
 	// RenderBrief renders the reviewer brief written beside the request.
@@ -52,6 +56,10 @@ func NewGate(cfg GateConfig) (gate, final shuttleengine.Gate) {
 type closures struct {
 	cfg        GateConfig
 	loggedNone bool
+	// heldRound, warnedRound and warnedErr remember what holding last logged; round numbers start at 1, so zero means none.
+	heldRound   int
+	warnedRound int
+	warnedErr   string
 }
 
 func (c *closures) now() time.Time {
@@ -108,7 +116,8 @@ func (c *closures) terminal(r Round, rejected int, atCap bool, afterStart string
 // gate reads the latest round before opening anything.
 // No round or request opens a request; an approve passes; a reject at the cap fails terminally, opening and consuming nothing;
 // an unconsumed reject below the cap is consumed and fails with its findings, and a consumed one opens the next round.
-// An expired request passes, and an open request with no verdict waits, notifies and prompts.
+// An expired request passes, and an open request with no verdict waits, notifies and prompts;
+// while ReviewerLive reports the reviewer not live it only waits, carrying no prompt and leaving the prompt count and waiting notifies untouched.
 func (c *closures) gate() (shuttleengine.GateResult, error) {
 	passed := shuttleengine.GateResult{Passed: true}
 	if c.noReviewer() {
@@ -160,6 +169,9 @@ func (c *closures) gate() (shuttleengine.GateResult, error) {
 		logger.Warn("parent review timed out; letting the discussion through", "slug", c.cfg.Slug, "reviewer", c.cfg.Reviewer, "request", r.RequestPath())
 		return passed, nil
 	}
+	if c.holding(r) {
+		return c.pending(""), nil
+	}
 	d := r.Delivery
 	switch {
 	case d.WaitingNotifys > 0:
@@ -192,7 +204,32 @@ func (c *closures) open() (shuttleengine.GateResult, error) {
 	if err != nil {
 		return shuttleengine.GateResult{}, err
 	}
+	if c.holding(r) {
+		return c.pending(""), nil
+	}
 	return c.carry(r, false)
+}
+
+// holding reports whether the reviewer has no live session, in which case the gate carries no prompt and spends neither a gate prompt nor a waiting notify.
+// A ReviewerLive error counts as not live and is never returned.
+// The Info line and the error Warn each fire once per round, the Warn once per distinct error text, since a pending entry is evaluated on every poll tick.
+func (c *closures) holding(r Round) bool {
+	if c.cfg.ReviewerLive == nil {
+		return false
+	}
+	live, err := c.cfg.ReviewerLive()
+	if err == nil && live {
+		return false
+	}
+	if err != nil && (c.warnedRound != r.Number || c.warnedErr != err.Error()) {
+		c.warnedRound, c.warnedErr = r.Number, err.Error()
+		logger.Warn("parent review reviewer liveness check failed; holding the delivery prompt", "slug", c.cfg.Slug, "reviewer", c.cfg.Reviewer, "round", r.Number, "error", err.Error())
+	}
+	if c.heldRound != r.Number {
+		c.heldRound = r.Number
+		logger.Info("parent review holding the delivery prompt: the reviewer has no live session", "slug", c.cfg.Slug, "reviewer", c.cfg.Reviewer, "round", r.Number)
+	}
+	return true
 }
 
 // carry records one prompt and returns pending carrying its text.
