@@ -122,6 +122,19 @@
 // anything is typed), and it needs no multiplexer capability. Selvage's pane and the new-session
 // first pane are out of scope.
 //
+// A strand's full name is formed once, in AddStrand under the state lock, from the prefix the told geometry carries and the strand's role (the grammar is the Agent Name Invariant in CONSTRAINTS.md).
+// A role already held in the worktree is numbered `-N`, and an explicit name that is held refuses.
+// A role-less add takes the default role `strand`, and an empty told code refuses before anything boots, naming `lyx fabric code <code>`.
+// The name is a birth attribute and the only lookup key: it is stored in the strand record and every by-name lookup resolves through it, matching the full name, its role segment, or a legacy exact name.
+// The retired `strand_name` config key is ignored on load.
+//
+// The name is mirrored outward, never read back as truth.
+// launchStrandLocked exports it to the strand's process as LYX_STRAND_NAME, with LYX_PARENT when a parent is told, ahead of the launch command.
+// It also sets the pane title to the full name after `set-option -p allow-set-title off`, so the program in the pane cannot overwrite it.
+// A provider session name is the other mirror, passed by the launch line as `--name`.
+// The hub watchdog daemon runs a name-repair tick (namerepair.go) beside its resize loop: it resets a drifted pane title itself and repairs a drifted provider session name through the SessionNamer seam, which the provider package implements and cliwire fills.
+// `lyx reed list` reports the hub-wide directory of names across worktrees, with each row's live state.
+//
 // # Multiplexer contract surface
 //
 // This package assumes its configured binary (psmux on Windows today, tmux
