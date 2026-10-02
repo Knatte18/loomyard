@@ -440,7 +440,9 @@
 // clone's own binding write is committed CLI-side.
 //
 // The hub's agent-name code is a fifth repo-wide record, held the same way as a plain single-line file, `.lyx-code`, beside `.lyx-warp` at the board root (see codebinding.go).
-// This package alone reads and writes it, and the CLI layer commits it onto weft:main through Bolt.
+// This package alone reads and writes it.
+// At clone the CLI layer commits it onto weft:main through Bolt, with the rest of the fresh hub;
+// on a live hub `CommitCode` (codecommit.go) commits it alone under the board write lock, so no pending board change rides along.
 // `lyx fabric clone --code <code>` records it; a clone of a fresh bind (a weft carrying neither `.lyx-warp` nor `.lyx-anchor`) refuses without `--code`,
 // while a bound weft that lacks the record takes `--code` or warns.
 // `lyx fabric code [<code>]` prints the recorded code, or records one on a hub that has none, which is how a repo bound before codes existed gets its code.

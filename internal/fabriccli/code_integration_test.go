@@ -85,6 +85,26 @@ func TestCodeVerb_RecordsOnAnUncodedHub(t *testing.T) {
 	}
 }
 
+// A pending board write is not this verb's to commit: the record lands alone and the board change stays uncommitted.
+func TestCodeVerb_CommitsTheRecordAlone(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+	removeCodeRecord(t, h)
+	pending := filepath.Join(h.BoardDir(), "pending-board-write.md")
+	if err := os.WriteFile(pending, []byte("half-written\n"), 0o644); err != nil {
+		t.Fatalf("write pending board file: %v", err)
+	}
+
+	if exit, env := runCodeVerb(t, h, "zz"); exit != 0 {
+		t.Fatalf("record = %d, %v; want exit 0", exit, env)
+	}
+	if got := boardGit(t, h, "show", "--name-only", "--format=", "HEAD"); got != fabricengine.CodeFileName {
+		t.Errorf("files in the code commit = %q; want only %s", got, fabricengine.CodeFileName)
+	}
+	if got := boardGit(t, h, "status", "--porcelain", "--", "pending-board-write.md"); got == "" {
+		t.Errorf("the pending board file was committed; want it left uncommitted")
+	}
+}
+
 func TestCodeVerb_SameCodeIsANoOp(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	before := boardGit(t, h, "rev-parse", "HEAD")

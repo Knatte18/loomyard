@@ -43,22 +43,14 @@ func runCode(ctx context.Context, out io.Writer, args []string) int {
 		return output.Err(out, fmt.Sprintf("this hub's recorded code is %q, not %q; refusing to change it, since that would orphan every name already in use — pass %q or no argument", recorded, code, recorded))
 	}
 
+	// The board is live, so the record is committed alone under the board write lock rather than through Bolt.Commit,
+	// which would sweep any pending board change into this commit.
 	rec := fabricengine.NewMutations(l.HubPath)
-	if err := fabricengine.WriteCode(boardDir, code); err != nil {
+	if _, _, err := fabricengine.CommitCode(l.HubPath, code, "fabric code: record the repo's short code", rec); err != nil {
 		return errWithRecord(out, rec.Snapshot(), err)
-	}
-	rec.Append(fabricengine.KindFileWritten, fabricengine.CodeFileName, "")
-
-	b := fabricengine.NewBolt(boardDir)
-	sha, committed, err := b.Commit("fabric code: record the repo's short code", fabricengine.SyncOptions{})
-	if err != nil {
-		return errWithRecord(out, rec.Snapshot(), err)
-	}
-	if committed {
-		rec.Append(fabricengine.KindCommitCreated, boardDir, sha)
 	}
 	// Bolt.Push records nothing, for the reason CloneAndWire spells out.
-	if err := b.Push(fabricengine.SyncOptions{}); err != nil {
+	if err := fabricengine.NewBolt(boardDir).Push(fabricengine.SyncOptions{}); err != nil {
 		return errWithRecord(out, rec.Snapshot(), err)
 	}
 	return okWithRecord(out, rec.Snapshot(), map[string]any{"code": code})
