@@ -10,6 +10,7 @@
 package configengine_test
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -18,6 +19,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"gopkg.in/yaml.v3"
 )
@@ -64,43 +66,200 @@ func TestLoad_HappyPath(t *testing.T) {
 	}
 }
 
-// TestLoad_MissingKey tests that missing template key in file returns an error.
-func TestLoad_MissingKey(t *testing.T) {
-	tmpDir := t.TempDir()
+// captureLog redirects the logger's stderr half into a buffer at Info verbosity for the test and
+// restores the defaults in t.Cleanup.
+func captureLog(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	logger.SetOutput(&buf)
+	logger.SetVerbosity(1)
+	t.Cleanup(func() {
+		logger.SetOutput(os.Stderr)
+		logger.SetVerbosity(0)
+	})
+	return &buf
+}
 
-	// Create _lyx/config/ directories
-	lyxDir := filepath.Join(tmpDir, lyxdirs.LyxDirName)
-	if err := os.Mkdir(lyxDir, 0755); err != nil {
-		t.Fatalf("failed to create _lyx: %v", err)
-	}
-	configDir := configengine.ConfigDir(tmpDir)
-	if err := os.Mkdir(configDir, 0755); err != nil {
+// writeConfig creates _lyx/config/ under a fresh temp dir, writes content as module's config file
+// and returns the base dir and the file path.
+func writeConfig(t *testing.T, module, content string) (baseDir, path string) {
+	t.Helper()
+	baseDir = t.TempDir()
+	if err := os.MkdirAll(configengine.ConfigDir(baseDir), 0755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
+	path = configengine.ConfigFile(baseDir, module)
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write %s.yaml: %v", module, err)
+	}
+	return baseDir, path
+}
 
-	// Template with two keys
-	template := []byte("path: _board\nhome: Home.md\n")
+// assertFileUnchanged fails when the file at path no longer holds want.
+func assertFileUnchanged(t *testing.T, path, want string) {
+	t.Helper()
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("failed to re-read %s: %v", path, err)
+	}
+	if string(got) != want {
+		t.Errorf("config file was rewritten: got %q, want %q", got, want)
+	}
+}
 
-	// Config file missing "home" key
-	yamlFile := configengine.ConfigFile(tmpDir, "board")
-	if err := os.WriteFile(yamlFile, []byte("path: custom_path\n"), 0644); err != nil {
-		t.Fatalf("failed to write board.yaml: %v", err)
+// assertOneFillLine fails unless the captured log holds exactly one fill line naming the module and
+// the key-path.
+func assertOneFillLine(t *testing.T, buf *bytes.Buffer, module, keyPath string) {
+	t.Helper()
+	log := buf.String()
+	if n := strings.Count(log, "filled missing keys from template"); n != 1 {
+		t.Fatalf("expected exactly one fill line, got %d in log: %s", n, log)
+	}
+	if !strings.Contains(log, "module="+module) {
+		t.Errorf("fill line does not name module %q: %s", module, log)
+	}
+	if !strings.Contains(log, keyPath) {
+		t.Errorf("fill line does not name key-path %q: %s", keyPath, log)
+	}
+}
+
+// TestLoad_MissingKey tests that a template key the file lacks loads at its template default, the
+// file stays byte-identical and one fill line is logged.
+func TestLoad_MissingKey(t *testing.T) {
+	buf := captureLog(t)
+	content := "path: custom_path\n"
+	tmpDir, yamlFile := writeConfig(t, "board", content)
+
+	resolved, err := configengine.Load(tmpDir, "board", []byte("path: _board\nhome: Home.md\n"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 
-	_, err := configengine.Load(tmpDir, "board", template)
+	var result map[string]string
+	if err := yaml.Unmarshal(resolved, &result); err != nil {
+		t.Fatalf("failed to unmarshal resolved config: %v", err)
+	}
+	if result["path"] != "custom_path" {
+		t.Errorf("expected path %q, got %q", "custom_path", result["path"])
+	}
+	if result["home"] != "Home.md" {
+		t.Errorf("expected home %q (template default), got %q", "Home.md", result["home"])
+	}
+	assertFileUnchanged(t, yamlFile, content)
+	assertOneFillLine(t, buf, "board", "home")
+}
+
+// TestLoad_CompleteFileLogsNoFill tests that a file holding every template key logs no fill line.
+func TestLoad_CompleteFileLogsNoFill(t *testing.T) {
+	buf := captureLog(t)
+	tmpDir, _ := writeConfig(t, "board", "path: a\nhome: b\n")
+
+	if _, err := configengine.Load(tmpDir, "board", []byte("path: _board\nhome: Home.md\n")); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(buf.String(), "filled missing keys") {
+		t.Errorf("unexpected fill line for a complete file: %s", buf.String())
+	}
+}
+
+// TestLoad_FillKeepsExtraAndEmptyValues tests that an extra file key survives beside a filled one
+// and that a present empty string and an emptied list are kept rather than refilled.
+func TestLoad_FillKeepsExtraAndEmptyValues(t *testing.T) {
+	buf := captureLog(t)
+	template := []byte("name: tpl\nlabel: tpl\nrequire_pr_to_base:\n  - main\nadded: yes\n")
+	content := "extra_key: extra\nname: \"\"\nlabel: x\nrequire_pr_to_base: []\n"
+	tmpDir, yamlFile := writeConfig(t, "board", content)
+
+	resolved, err := configengine.Load(tmpDir, "board", template)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var result map[string]interface{}
+	if err := yaml.Unmarshal(resolved, &result); err != nil {
+		t.Fatalf("failed to unmarshal resolved config: %v", err)
+	}
+	if result["extra_key"] != "extra" {
+		t.Errorf("extra_key = %v; want it kept", result["extra_key"])
+	}
+	if result["name"] != "" {
+		t.Errorf("name = %v; want the present empty string kept", result["name"])
+	}
+	if list, ok := result["require_pr_to_base"].([]interface{}); !ok || len(list) != 0 {
+		t.Errorf("require_pr_to_base = %v; want the emptied list kept", result["require_pr_to_base"])
+	}
+	if result["added"] == nil {
+		t.Errorf("added was not filled from the template")
+	}
+	assertFileUnchanged(t, yamlFile, content)
+	assertOneFillLine(t, buf, "board", "added")
+}
+
+// TestLoad_FilledEnvMarkerUnsetRefuses tests that a filled ${env:NAME} marker whose variable is
+// unset still refuses.
+func TestLoad_FilledEnvMarkerUnsetRefuses(t *testing.T) {
+	tmpDir, _ := writeConfig(t, "board", "path: custom\n")
+
+	_, err := configengine.Load(tmpDir, "board", []byte("path: _board\ntoken: ${env:TEST_FILL_UNSET_VAR}\n"))
 	if err == nil {
-		t.Fatalf("expected error for missing key, got nil")
+		t.Fatalf("expected error for a filled marker with an unset variable, got nil")
 	}
+	if !strings.Contains(err.Error(), "TEST_FILL_UNSET_VAR") {
+		t.Errorf("expected error naming the variable, got: %v", err)
+	}
+}
 
-	errMsg := err.Error()
-	if !strings.Contains(errMsg, "missing keys") {
-		t.Errorf("expected error containing 'missing keys', got: %v", err)
+// TestLoad_FillRefusals tests that a shape mismatch, a key missing inside a list element and
+// unparseable YAML each refuse and name the key-path or the file.
+func TestLoad_FillRefusals(t *testing.T) {
+	tests := []struct {
+		name     string
+		template string
+		content  string
+		wantErr  []string
+	}{
+		{
+			name:     "null where the template holds a mapping",
+			template: "server:\n  host: localhost\n",
+			content:  "server:\n",
+			wantErr:  []string{"server"},
+		},
+		{
+			name:     "mapping where the template holds a scalar",
+			template: "server: localhost\n",
+			content:  "server:\n  host: x\n",
+			wantErr:  []string{"server"},
+		},
+		{
+			name:     "key missing inside a present list element",
+			template: "items:\n  - name: a\n    size: 1\n",
+			content:  "items:\n  - name: a\n",
+			wantErr:  []string{"missing keys", "items"},
+		},
+		{
+			name:     "unparseable file",
+			template: "path: _board\n",
+			content:  "path: [unclosed\n",
+			wantErr:  []string{"board.yaml"},
+		},
 	}
-	if !strings.Contains(errMsg, "home") {
-		t.Errorf("expected error containing 'home', got: %v", err)
-	}
-	if !strings.Contains(errMsg, "lyx config reconcile") {
-		t.Errorf("expected error containing 'lyx config reconcile', got: %v", err)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			tmpDir, _ := writeConfig(t, "board", tc.content)
+
+			_, err := configengine.Load(tmpDir, "board", []byte(tc.template))
+			if err == nil {
+				t.Fatalf("expected error, got nil")
+			}
+			for _, want := range tc.wantErr {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("expected error containing %q, got: %v", want, err)
+				}
+			}
+			if strings.Contains(err.Error(), "lyx config reconcile") {
+				t.Errorf("a refusal reconcile cannot fix must not hint at it, got: %v", err)
+			}
+		})
 	}
 }
 
@@ -478,89 +637,71 @@ func TestLoadOrTemplate_BothPresent_MatchesLoad(t *testing.T) {
 }
 
 // TestLoadOrTemplate_PresentMissingKey tests that a config file present but missing a template key
-// still returns an error naming the missing key -- the strict-when-present boundary, and the single
-// most important negative assertion in this batch.
+// loads that key at its template default, leaves the file byte-identical and logs one fill line.
 func TestLoadOrTemplate_PresentMissingKey(t *testing.T) {
-	tmpDir := t.TempDir()
+	buf := captureLog(t)
+	content := "path: custom_path\n"
+	tmpDir, yamlFile := writeConfig(t, "board", content)
 
-	lyxDir := filepath.Join(tmpDir, lyxdirs.LyxDirName)
-	if err := os.Mkdir(lyxDir, 0755); err != nil {
-		t.Fatalf("failed to create _lyx: %v", err)
-	}
-	configDir := configengine.ConfigDir(tmpDir)
-	if err := os.Mkdir(configDir, 0755); err != nil {
-		t.Fatalf("failed to create _lyx/config: %v", err)
+	resolved, err := configengine.LoadOrTemplate(tmpDir, "board", []byte("path: _board\nhome: Home.md\n"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 
-	template := []byte("path: _board\nhome: Home.md\n")
-	yamlFile := configengine.ConfigFile(tmpDir, "board")
-	if err := os.WriteFile(yamlFile, []byte("path: custom_path\n"), 0644); err != nil {
-		t.Fatalf("failed to write board.yaml: %v", err)
+	var result map[string]string
+	if err := yaml.Unmarshal(resolved, &result); err != nil {
+		t.Fatalf("failed to unmarshal resolved config: %v", err)
 	}
-
-	_, err := configengine.LoadOrTemplate(tmpDir, "board", template)
-	if err == nil {
-		t.Fatalf("expected error for missing key, got nil")
+	if result["path"] != "custom_path" || result["home"] != "Home.md" {
+		t.Errorf("resolved = %v; want path custom_path and home at its template default", result)
 	}
-	if !strings.Contains(err.Error(), "missing keys") {
-		t.Errorf("expected error containing 'missing keys', got: %v", err)
-	}
-	if !strings.Contains(err.Error(), "home") {
-		t.Errorf("expected error containing 'home', got: %v", err)
-	}
+	assertFileUnchanged(t, yamlFile, content)
+	assertOneFillLine(t, buf, "board", "home")
 }
 
-// TestLoadOrTemplate_PresentEmpty tests that a config file present but empty still returns an error
-// -- the strict-when-present boundary holds even when the file is empty rather than absent.
+// TestLoadOrTemplate_PresentEmpty tests that a present but empty config file loads as the template,
+// is left untouched and logs one fill line.
 func TestLoadOrTemplate_PresentEmpty(t *testing.T) {
-	tmpDir := t.TempDir()
+	buf := captureLog(t)
+	tmpDir, yamlFile := writeConfig(t, "board", "")
 
-	lyxDir := filepath.Join(tmpDir, lyxdirs.LyxDirName)
-	if err := os.Mkdir(lyxDir, 0755); err != nil {
-		t.Fatalf("failed to create _lyx: %v", err)
-	}
-	configDir := configengine.ConfigDir(tmpDir)
-	if err := os.Mkdir(configDir, 0755); err != nil {
-		t.Fatalf("failed to create _lyx/config: %v", err)
+	resolved, err := configengine.LoadOrTemplate(tmpDir, "board", []byte("path: _board\n"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 
-	template := []byte("path: _board\n")
-	yamlFile := configengine.ConfigFile(tmpDir, "board")
-	if err := os.WriteFile(yamlFile, []byte(""), 0644); err != nil {
-		t.Fatalf("failed to write board.yaml: %v", err)
+	var result map[string]string
+	if err := yaml.Unmarshal(resolved, &result); err != nil {
+		t.Fatalf("failed to unmarshal resolved config: %v", err)
 	}
-
-	_, err := configengine.LoadOrTemplate(tmpDir, "board", template)
-	if err == nil {
-		t.Fatalf("expected error for empty config file, got nil")
+	if result["path"] != "_board" {
+		t.Errorf("expected path %q (template default), got %q", "_board", result["path"])
 	}
+	assertFileUnchanged(t, yamlFile, "")
+	assertOneFillLine(t, buf, "board", "path")
 }
 
-// TestLoadOrTemplate_PresentCommentsOnly tests that a config file present but comments-only still
-// returns an error -- the strict-when-present boundary holds even when the file has no keys but is
-// not literally empty.
+// TestLoadOrTemplate_PresentCommentsOnly tests that a present comments-only config file loads as the
+// template, is left untouched and logs one fill line.
 func TestLoadOrTemplate_PresentCommentsOnly(t *testing.T) {
-	tmpDir := t.TempDir()
+	buf := captureLog(t)
+	content := "# just a comment\n"
+	tmpDir, yamlFile := writeConfig(t, "board", content)
 
-	lyxDir := filepath.Join(tmpDir, lyxdirs.LyxDirName)
-	if err := os.Mkdir(lyxDir, 0755); err != nil {
-		t.Fatalf("failed to create _lyx: %v", err)
-	}
-	configDir := configengine.ConfigDir(tmpDir)
-	if err := os.Mkdir(configDir, 0755); err != nil {
-		t.Fatalf("failed to create _lyx/config: %v", err)
+	resolved, err := configengine.LoadOrTemplate(tmpDir, "board", []byte("path: _board\n"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 
-	template := []byte("path: _board\n")
-	yamlFile := configengine.ConfigFile(tmpDir, "board")
-	if err := os.WriteFile(yamlFile, []byte("# just a comment\n"), 0644); err != nil {
-		t.Fatalf("failed to write board.yaml: %v", err)
+	var result map[string]string
+	if err := yaml.Unmarshal(resolved, &result); err != nil {
+		t.Fatalf("failed to unmarshal resolved config: %v", err)
 	}
-
-	_, err := configengine.LoadOrTemplate(tmpDir, "board", template)
-	if err == nil {
-		t.Fatalf("expected error for comments-only config file, got nil")
+	if result["path"] != "_board" {
+		t.Errorf("expected path %q (template default), got %q", "_board", result["path"])
 	}
+	assertFileUnchanged(t, yamlFile, content)
+	assertOneFillLine(t, buf, "board", "path")
 }
 
 // TestLoadOrTemplate_EnvOverride tests that the fallback path honours an env override: a variable

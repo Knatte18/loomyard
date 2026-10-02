@@ -59,7 +59,7 @@ func hubLocation(t *testing.T, hub, worktreeName, anchorRel string) *lyxcwd.Loca
 
 // seedLoomConfigWithFriction writes <anchorPath>/_lyx/config/loom.yaml with a full eleven-key
 // literal whose friction key is the caller-chosen value -- empty to mean Tier 2 is off. All eleven
-// keys are written explicitly because configengine.Load is strict on missing keys.
+// keys are written explicitly so the literal pins every value rather than relying on template fills.
 func seedLoomConfigWithFriction(t *testing.T, anchorPath, friction string) {
 	t.Helper()
 	configDir := filepath.Join(anchorPath, "_lyx", "config")

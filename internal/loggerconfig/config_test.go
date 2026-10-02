@@ -133,12 +133,17 @@ func TestLoad_LargestDurationDayCountLoads(t *testing.T) {
 	}
 }
 
-func TestLoad_MissingKeyErrors(t *testing.T) {
+func TestLoad_MissingKeyLoadsTemplateDefault(t *testing.T) {
 	anchor := t.TempDir()
-	seedConfig(t, anchor, "trace_retention_count: 200\n")
+	seedConfig(t, anchor, "trace_retention_count: 7\n")
 
-	if _, err := loggerconfig.Load(anchor); err == nil {
-		t.Fatal("Load: want error for missing key, got nil")
+	got, err := loggerconfig.Load(anchor)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	want := logger.RetentionBounds{Count: 7, MaxAge: 14 * 24 * time.Hour}
+	if got != want {
+		t.Errorf("Load = %+v, want %+v", got, want)
 	}
 }
 

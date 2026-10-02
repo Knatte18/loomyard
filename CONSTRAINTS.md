@@ -440,6 +440,7 @@ An instruction file never duplicates or paraphrases another producer's format-co
 
 - Degrading: `{shuttleengine, reedengine, websterengine, batcher, orchengine, loggerconfig}`. Strict: `{fabricengine, boardengine, loomengine, landingshed}`.
 - A template list is a default, not a minimum length.
+- A key missing from a present config file resolves to its template default and is logged; `Load` and `LoadOrTemplate` differ only on an absent `_lyx/` or file.
 
 ## GitHub Auth Invariant
 
