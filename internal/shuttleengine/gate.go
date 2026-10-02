@@ -29,7 +29,7 @@ type GateResult struct {
 	SendFailedWayForward string
 	// Terminal marks a failing result the run finalizes at once, with no re-prompt, whatever the entry's in-memory failure count; the count is not incremented for it.
 	// Its Findings text rides GateOutcome.Reason to the producer, because finalize deletes the findings file with the run directory.
-	// Terminal on a passed or pending result is a returned gate error.
+	// Only a must-pass entry may return it: Terminal on a passed or pending result, or from a PassOnCap entry, is a returned gate error.
 	Terminal bool
 }
 

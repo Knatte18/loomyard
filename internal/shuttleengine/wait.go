@@ -841,7 +841,7 @@ func (run *Run) identity() Result {
 // every other entry runs its closure and is reported passed, failed or, for a PassOnCap or MayHold entry, waiting;
 // every non-off entry after the stopping entry is reported not reached.
 // Passed is true only when every entry that is neither off nor PassOnCap passed at this arrival, so a pending MayHold entry is never a pass.
-// A Terminal flag on a passed or pending result, or Pending or a non-nil Final on an entry that is neither PassOnCap nor MayHold, is a returned gate error.
+// A Terminal flag on a passed or pending result or from a PassOnCap entry, or Pending or a non-nil Final on an entry that is neither PassOnCap nor MayHold, is a returned gate error.
 // A Terminal failing result is recorded on run.gateTerminal, and its Findings text is carried on GateOutcome.Reason.
 // The method never changes a count — only Wait's re-prompt branch does — so a finalize evaluating afresh after a lost session or a deadline cannot change one.
 //
@@ -921,6 +921,9 @@ func (run *Run) evaluateGate(final bool) (*GateOutcome, error) {
 				}
 				line.State = GateEntryPassed
 				break
+			}
+			if result.Terminal && entry.PassOnCap {
+				return nil, gateEntryError(entry.Name, "returned a terminal result but is pass_on_cap")
 			}
 			findingsPath = filepath.Join(run.runDir, gateFindingsFileName)
 			if writeErr := os.WriteFile(findingsPath, []byte(result.Findings), 0o644); writeErr != nil {

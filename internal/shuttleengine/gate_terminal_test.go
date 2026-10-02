@@ -106,18 +106,20 @@ func TestGateTerminal_NonTerminalFailureBelowBudgetStillReprompts(t *testing.T) 
 	wantStates(t, result.Gate, GateEntryPassed)
 }
 
-func TestGateTerminal_TerminalOnPassedOrPendingIsGateError(t *testing.T) {
+func TestGateTerminal_TerminalOnPassedOrPendingOrPassOnCapIsGateError(t *testing.T) {
 	for _, tc := range []struct {
-		name   string
-		result GateResult
+		name      string
+		result    GateResult
+		passOnCap bool
 	}{
-		{"passed", GateResult{Passed: true, Terminal: true}},
-		{"pending", GateResult{Pending: true, Terminal: true}},
+		{"passed", GateResult{Passed: true, Terminal: true}, false},
+		{"pending", GateResult{Pending: true, Terminal: true}, false},
+		{"failed on a pass_on_cap entry", GateResult{Findings: "stop", Terminal: true}, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var calls int
 			gate := scriptedPending(&calls, tc.result)
-			f := newPendingFixture(t, GateSpec{{Name: "x", Gate: gate, Attempts: 1, MayHold: true}}, nil)
+			f := newPendingFixture(t, GateSpec{{Name: "x", Gate: gate, Attempts: 1, MayHold: !tc.passOnCap, PassOnCap: tc.passOnCap}}, nil)
 			_, err := f.run.Wait()
 			if err == nil || !strings.Contains(err.Error(), `entry "x" returned a terminal`) {
 				t.Fatalf("Wait() error = %v, want a terminal gate error", err)
