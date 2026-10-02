@@ -14,6 +14,8 @@
 package reedengine
 
 import (
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -613,6 +615,13 @@ func TestAddStrandUnless_LiveNamedSkips(t *testing.T) {
 	if err := SaveState(e.stateDir(), &ReedState{Strands: []Strand{orch}}); err != nil {
 		t.Fatalf("SaveState: %v", err)
 	}
+	// The seeded state carries no socket, session or pane-generation stamp, and every load stamps them in memory,
+	// so a SaveState on the skip path would change these bytes.
+	statePath := filepath.Join(e.stateDir(), reedStateFileName)
+	stateBefore, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatalf("read state: %v", err)
+	}
 
 	got, skipped, err := e.AddStrandUnless(AddSpec{NameOverride: "claude", Display: render.Display{Anchor: render.AnchorBelowParent, Focus: true}}, "orch")
 	if err != nil {
@@ -622,16 +631,16 @@ func TestAddStrandUnless_LiveNamedSkips(t *testing.T) {
 		t.Errorf("AddStrandUnless = (%+v, %v), want (%+v, true)", got, skipped, orch)
 	}
 	for _, c := range cmds {
-		if c == "split-window" || c == "select-layout" || c == "select-pane" {
+		if c == "split-window" || c == "select-layout" || c == "select-pane" || c == "kill-pane" {
 			t.Errorf("tmux %s issued by a skipped add", c)
 		}
 	}
-	loaded, err := LoadState(e.stateDir())
+	stateAfter, err := os.ReadFile(statePath)
 	if err != nil {
-		t.Fatalf("LoadState: %v", err)
+		t.Fatalf("read state: %v", err)
 	}
-	if len(loaded.Strands) != 1 || loaded.Strands[0] != orch {
-		t.Errorf("persisted state after skip = %+v, want unchanged %+v", loaded.Strands, orch)
+	if string(stateAfter) != string(stateBefore) {
+		t.Errorf("persisted state after skip = %s, want unchanged %s", stateAfter, stateBefore)
 	}
 }
 
