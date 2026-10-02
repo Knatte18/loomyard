@@ -4,6 +4,7 @@
 // chokepoint (launchStrandLocked in spawn.go), so the property "every strand pane resolves lyx to its
 // spawning binary" holds by construction rather than by every strand-realizing call site remembering
 // to apply it.
+// The same composition exports LYX_STRAND_NAME (the strand's full name) and LYX_PARENT (the worktree's parent, when told) beside LYX_BIN.
 // The file also owns the per-strand launch script the composed line is written to,
 // so the pane types a short source statement instead of the full line.
 
@@ -13,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shell"
 )
@@ -39,18 +41,34 @@ func paneBinPrelude(sh shell.Shell, exe string) string {
 	return sh.Chain(sh.PrependPathEntry(filepath.Dir(exe)), sh.ExportEnv(lyxBinEnvKey, exe))
 }
 
-// composePaneLaunchLine returns the launch script's content: the pane-binary prelude followed by launchCmd, on sh's dialect.
+// nameExports returns the statements exporting the strand's full name and, when parent is non-empty, its worktree's parent, on sh's dialect.
+// An empty name exports nothing, so a strand with no formed name never sees an empty LYX_STRAND_NAME.
+func nameExports(sh shell.Shell, name, parent string) string {
+	var parts []string
+	if name != "" {
+		parts = append(parts, sh.ExportEnv(agentname.StrandNameEnv, name))
+	}
+	if parent != "" {
+		parts = append(parts, sh.ExportEnv(agentname.ParentEnv, parent))
+	}
+	return sh.Chain(parts...)
+}
+
+// composePaneLaunchLine returns the launch script's content: the pane-binary prelude, the name exports, then launchCmd, on sh's dialect.
 // launchStrandLocked writes it through stageLaunchScript and types only the source statement.
 // It reads the running process's own path via executablePath;
-// on error it logs a named logger.Warn and returns launchCmd unchanged, so the pane launches with no prelude rather than failing the strand launch (executable-error-warns-and-degrades Shared Decision).
-// Because Chain drops empty parts, an empty launchCmd yields the prelude alone with no trailing separator and no empty command fragment.
-func composePaneLaunchLine(sh shell.Shell, launchCmd, strandGUID string) string {
+// on error it logs a named logger.Warn and drops the prelude, so the pane launches with no prelude rather than failing the strand launch (executable-error-warns-and-degrades Shared Decision).
+// The name exports do not depend on that lookup and stay either way.
+// Because Chain drops empty parts, an empty launchCmd yields the statements alone with no trailing separator and no empty command fragment.
+func composePaneLaunchLine(sh shell.Shell, launchCmd, strandGUID, name, parent string) string {
+	prelude := ""
 	exe, err := executablePath()
 	if err != nil {
 		logger.Warn("reed: could not resolve this binary, launching strand pane with no lyx-bin prelude", "strand", strandGUID, "err", err)
-		return launchCmd
+	} else {
+		prelude = paneBinPrelude(sh, exe)
 	}
-	return sh.Chain(paneBinPrelude(sh, exe), launchCmd)
+	return sh.Chain(prelude, nameExports(sh, name, parent), launchCmd)
 }
 
 // launchScriptReedSegment and launchScriptLaunchSegment are reed's own relative subpath under the state dir for per-strand launch scripts.

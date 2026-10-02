@@ -16,6 +16,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/shell"
 )
 
@@ -90,7 +91,7 @@ func TestComposePaneLaunchLine_PreludeThenCommand(t *testing.T) {
 
 	const launchCmd = "claude --continue"
 	sh := shell.Posix()
-	got := composePaneLaunchLine(sh, launchCmd, "strand-guid")
+	got := composePaneLaunchLine(sh, launchCmd, "strand-guid", "", "")
 
 	if strings.Contains(got, "\n") {
 		t.Errorf("composePaneLaunchLine(...) = %q, want a single line with no newline", got)
@@ -120,7 +121,7 @@ func TestComposePaneLaunchLine_EmptyCmdEmitsThePreludeAlone(t *testing.T) {
 	withInjectedExecutablePath(t, func() (string, error) { return exe, nil })
 
 	sh := shell.Posix()
-	got := composePaneLaunchLine(sh, "", "strand-guid")
+	got := composePaneLaunchLine(sh, "", "strand-guid", "", "")
 	want := paneBinPrelude(sh, exe)
 	if got != want {
 		t.Errorf("composePaneLaunchLine(sh, \"\", ...) = %q, want %q (the prelude alone, no trailing separator, no empty trailing fragment)", got, want)
@@ -139,7 +140,7 @@ func TestComposePaneLaunchLine_ExecutableErrorWarnsAndPassesTheCommandThrough(t 
 	buf := captureLogOutput(t)
 
 	const launchCmd = "claude --continue"
-	got := composePaneLaunchLine(shell.Posix(), launchCmd, "strand-guid-1")
+	got := composePaneLaunchLine(shell.Posix(), launchCmd, "strand-guid-1", "", "")
 	if got != launchCmd {
 		t.Errorf("composePaneLaunchLine(...) = %q, want the launch command %q byte-for-byte unchanged", got, launchCmd)
 	}
@@ -149,7 +150,7 @@ func TestComposePaneLaunchLine_ExecutableErrorWarnsAndPassesTheCommandThrough(t 
 
 	t.Run("empty command", func(t *testing.T) {
 		buf.Reset()
-		got := composePaneLaunchLine(shell.Posix(), "", "strand-guid-2")
+		got := composePaneLaunchLine(shell.Posix(), "", "strand-guid-2", "", "")
 		if got != "" {
 			t.Errorf("composePaneLaunchLine(sh, \"\", ...) with an executable-path error = %q, want the empty string", got)
 		}
@@ -165,10 +166,59 @@ func TestComposePaneLaunchLine_UsesTheSameDialectAsTheLaunchCommand(t *testing.T
 	withInjectedExecutablePath(t, func() (string, error) { return exe, nil })
 
 	sh := shell.ForGOOS()
-	got := composePaneLaunchLine(sh, "claude --continue", "strand-guid")
+	got := composePaneLaunchLine(sh, "claude --continue", "strand-guid", "", "")
 	want := sh.Chain(paneBinPrelude(sh, exe), "claude --continue")
 	if got != want {
 		t.Errorf("composePaneLaunchLine(shell.ForGOOS(), ...) = %q, want %q (built from the same shell.ForGOOS() dialect)", got, want)
+	}
+}
+
+// TestComposePaneLaunchLine_NameExports drives both dialects through the name and parent exports:
+// the name export is always present, the parent export only when a parent is told,
+// and the order is prelude, exports, then the command.
+func TestComposePaneLaunchLine_NameExports(t *testing.T) {
+	const exe = "/opt/lyx/bin/lyx"
+	withInjectedExecutablePath(t, func() (string, error) { return exe, nil })
+
+	const (
+		launchCmd = "claude --continue"
+		name      = "tst:wt:driver"
+		parent    = "tst:wt:orch"
+	)
+	for _, sh := range launchScriptDialects() {
+		nameExport := sh.ExportEnv(agentname.StrandNameEnv, name)
+		parentExport := sh.ExportEnv(agentname.ParentEnv, parent)
+		prelude := paneBinPrelude(sh, exe)
+
+		withParent := composePaneLaunchLine(sh, launchCmd, "g", name, parent)
+		if want := sh.Chain(prelude, nameExport, parentExport, launchCmd); withParent != want {
+			t.Errorf("with parent = %q, want %q", withParent, want)
+		}
+
+		noParent := composePaneLaunchLine(sh, launchCmd, "g", name, "")
+		if want := sh.Chain(prelude, nameExport, launchCmd); noParent != want {
+			t.Errorf("without parent = %q, want %q", noParent, want)
+		}
+		if strings.Contains(noParent, agentname.ParentEnv) {
+			t.Errorf("without parent = %q, want no %s export", noParent, agentname.ParentEnv)
+		}
+	}
+}
+
+// TestComposePaneLaunchLine_ExportsSurviveAnExecutableError asserts a failed executable lookup drops only the prelude.
+func TestComposePaneLaunchLine_ExportsSurviveAnExecutableError(t *testing.T) {
+	withInjectedExecutablePath(t, func() (string, error) { return "", errors.New("no executable") })
+	captureLogOutput(t)
+
+	for _, sh := range launchScriptDialects() {
+		got := composePaneLaunchLine(sh, "claude", "g", "tst:driver", "tst:orch")
+		want := sh.Chain(sh.ExportEnv(agentname.StrandNameEnv, "tst:driver"), sh.ExportEnv(agentname.ParentEnv, "tst:orch"), "claude")
+		if got != want {
+			t.Errorf("composePaneLaunchLine = %q, want %q", got, want)
+		}
+		if strings.Contains(got, lyxBinEnvKey) {
+			t.Errorf("composePaneLaunchLine = %q, want no %s prelude", got, lyxBinEnvKey)
+		}
 	}
 }
 

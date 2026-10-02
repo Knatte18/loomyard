@@ -450,7 +450,7 @@ func TestLaunchStrandLocked_SendsThePreludeAheadOfTheStrandCommand(t *testing.T)
 	if strings.Contains(wantLiteral, "\n") {
 		t.Errorf("source statement payload = %q, want a single line with no newline", wantLiteral)
 	}
-	if got, want := readLaunchScript(t, e, s.GUID), composePaneLaunchLine(sh, launchCmd, s.GUID)+"\n"; got != want {
+	if got, want := readLaunchScript(t, e, s.GUID), composePaneLaunchLine(sh, launchCmd, s.GUID, s.Name, e.geom.ParentName)+"\n"; got != want {
 		t.Errorf("launch script = %q, want the composed line %q", got, want)
 	}
 
@@ -474,7 +474,7 @@ func TestLaunchStrandLocked_RelaunchRegeneratesTheScript(t *testing.T) {
 			t.Fatalf("launchStrandLocked(%q): %v", cmd, err)
 		}
 	}
-	if got, want := readLaunchScript(t, e, "new"), composePaneLaunchLine(shell.ForGOOS(), "second cmd", "new")+"\n"; got != want {
+	if got, want := readLaunchScript(t, e, "new"), composePaneLaunchLine(shell.ForGOOS(), "second cmd", "new", s.Name, e.geom.ParentName)+"\n"; got != want {
 		t.Errorf("launch script = %q, want %q", got, want)
 	}
 }
@@ -532,7 +532,7 @@ func TestLaunchStrandLocked_WriteFailureSendsTheFullLine(t *testing.T) {
 	if err := e.launchStrandLocked(st, &st.Strands[0], launchCmd); err != nil {
 		t.Fatalf("launchStrandLocked: %v", err)
 	}
-	want := sendKeysLiteralArg(composePaneLaunchLine(shell.ForGOOS(), launchCmd, "guid-w"))
+	want := sendKeysLiteralArg(composePaneLaunchLine(shell.ForGOOS(), launchCmd, "guid-w", st.Strands[0].Name, e.geom.ParentName))
 	if first := calls[0]; first[len(first)-1] != want {
 		t.Errorf("first send-keys args = %v, want the full composed line %q", first, want)
 	}
