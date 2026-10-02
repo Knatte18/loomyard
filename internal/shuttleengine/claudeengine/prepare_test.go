@@ -180,3 +180,61 @@ func TestPrepare_AppendSystemPromptMatchesDenyNotice(t *testing.T) {
 		}
 	}
 }
+
+// TestPrepare_PermissionModeThreadsIntoBothLines proves the resolved permission mode decides --dangerously-skip-permissions on the launch line and the resume line alike.
+func TestPrepare_PermissionModeThreadsIntoBothLines(t *testing.T) {
+	const flag = "--dangerously-skip-permissions"
+	tests := []struct {
+		name        string
+		mode        string
+		interactive bool
+		wantFlag    bool
+	}{
+		{"interactive_bypass", "bypass", true, true},
+		{"interactive_empty", "", true, false},
+		{"autonomous_empty", "", false, true},
+		{"autonomous_bypass", "bypass", false, true},
+		{"interactive_prompt", "prompt", true, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			spec := shuttleengine.Spec{Prompt: "do the thing", PermissionMode: tt.mode, Interactive: tt.interactive}
+			launch, err := New().Prepare(t.TempDir(), spec, shuttleengine.Config{})
+			if err != nil {
+				t.Fatalf("Prepare() error: %v; want nil", err)
+			}
+			if got := strings.Contains(launch.Cmd, flag); got != tt.wantFlag {
+				t.Errorf("Launch.Cmd = %q; contains %s = %v, want %v", launch.Cmd, flag, got, tt.wantFlag)
+			}
+			if got := strings.Contains(launch.ResumeCmd, flag); got != tt.wantFlag {
+				t.Errorf("Launch.ResumeCmd = %q; contains %s = %v, want %v", launch.ResumeCmd, flag, got, tt.wantFlag)
+			}
+		})
+	}
+}
+
+// TestPrepare_BadPermissionModeRejectedBeforeArtifacts proves an unrealizable permission mode fails Prepare before prompt.md/settings.json are written.
+func TestPrepare_BadPermissionModeRejectedBeforeArtifacts(t *testing.T) {
+	tests := []struct {
+		name        string
+		mode        string
+		interactive bool
+	}{
+		{"prompt_on_autonomous", "prompt", false},
+		{"unknown_value", "yolo", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runDir := t.TempDir()
+			spec := shuttleengine.Spec{Prompt: "do the thing", PermissionMode: tt.mode, Interactive: tt.interactive}
+			if _, err := New().Prepare(runDir, spec, shuttleengine.Config{}); err == nil {
+				t.Fatal("Prepare() = nil error; want the validatePermissionMode rejection")
+			}
+			for _, name := range []string{"prompt.md", "settings.json"} {
+				if _, statErr := os.Stat(filepath.Join(runDir, name)); !os.IsNotExist(statErr) {
+					t.Errorf("%s exists after a rejected Prepare (stat err=%v); want no artifacts written", name, statErr)
+				}
+			}
+		})
+	}
+}

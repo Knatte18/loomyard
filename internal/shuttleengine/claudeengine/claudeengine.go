@@ -61,6 +61,12 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 		return shuttleengine.Launch{}, err
 	}
 
+	// Reject an unrealizable permission mode before any artifact is written.
+	skipPermissions, err := validatePermissionMode(spec.PermissionMode, spec.Interactive)
+	if err != nil {
+		return shuttleengine.Launch{}, err
+	}
+
 	// Resolve the bare-word model + version into the final model id before any artifact is written.
 	resolvedModel, err := resolveModelID(spec.Model, spec.Version)
 	if err != nil {
@@ -102,8 +108,8 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 	// sh selects pane-shell mechanics per OS (pwsh on Windows, posix elsewhere).
 	sh := shell.ForGOOS()
 	return shuttleengine.Launch{
-		Cmd:       buildLaunchCmd(sh, bin, promptPath, settingsPath, sessionID, resolvedModel, spec.Effort, notice, spec.Interactive, spec.ForkSubagents),
-		ResumeCmd: buildResumeCmd(sh, bin, settingsPath, sessionID, resolvedModel, spec.Effort, notice, spec.Interactive, spec.ForkSubagents),
+		Cmd:       buildLaunchCmd(sh, bin, promptPath, settingsPath, sessionID, resolvedModel, spec.Effort, notice, skipPermissions, spec.ForkSubagents),
+		ResumeCmd: buildResumeCmd(sh, bin, settingsPath, sessionID, resolvedModel, spec.Effort, notice, skipPermissions, spec.ForkSubagents),
 		SessionID: sessionID,
 	}, nil
 }

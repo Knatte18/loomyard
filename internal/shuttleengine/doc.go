@@ -55,6 +55,10 @@
 // pane liveness. Neither field grows a Claude specific — both stay provider-invariant, per the
 // Shuttle Provider-Seam Invariant.
 //
+// Spec.PermissionMode is caller-owned engine vocabulary, like Spec.Effort: Spec.validate never inspects it,
+// and the engine is the sole validator and realizer.
+// Empty keeps the run mode's default, so a caller that never sets it sees no change.
+//
 // Runner.Attach answers one question: is there a still-live-or-already-finished, never-terminated
 // run for this exact output-file set, and if so, wait on it instead of starting a second agent.
 // That question is answered on the persisted RunState.Outcome plus, in a fixed precedence, the run's

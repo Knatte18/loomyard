@@ -45,6 +45,32 @@ func validateEffort(effort string) error {
 	return fmt.Errorf("claudeengine: invalid effort %q; valid values are low, medium, high, xhigh, max (case-sensitive, exact-lowercase)", effort)
 }
 
+// Legal Spec.PermissionMode values besides the empty default.
+const (
+	permissionModeBypass = "bypass"
+	permissionModePrompt = "prompt"
+)
+
+// validatePermissionMode resolves a run's permission mode into whether its launch lines carry --dangerously-skip-permissions.
+// Empty resolves to the run mode's default: an autonomous run skips, an interactive run prompts.
+// "bypass" skips and "prompt" adds nothing.
+// "prompt" on an autonomous run is an error, since a run that prompts with nobody to answer stalls;
+// any other value is an error naming the three legal values.
+func validatePermissionMode(mode string, interactive bool) (skipPermissions bool, err error) {
+	switch mode {
+	case "":
+		return !interactive, nil
+	case permissionModeBypass:
+		return true, nil
+	case permissionModePrompt:
+		if !interactive {
+			return false, fmt.Errorf("claudeengine: permission mode %q on an autonomous run would stall at its first permission dialog with no operator to answer; use it only on an interactive run", mode)
+		}
+		return false, nil
+	}
+	return false, fmt.Errorf("claudeengine: invalid permission mode %q; valid values are \"\" (the run mode's default), %q, %q (case-sensitive)", mode, permissionModeBypass, permissionModePrompt)
+}
+
 // resolveModelID translates a bare-word model plus an optional version into the final model id.
 // Empty version defers to the caller's model; a version with no model or a dashed model with version is an error.
 // Otherwise, model and version compose into "claude-<model>-<version, dots as dashes>" (e.g. "sonnet" + "4.5" → "claude-sonnet-4-5").
@@ -81,8 +107,9 @@ const forkSubagentEnvKey = "CLAUDE_CODE_FORK_SUBAGENT"
 // It names the session with --name, passed as a reference to LYX_STRAND_NAME rather than a value:
 // shuttle builds this line before reed forms the strand's name,
 // so the pane shell expands the variable from the export reed's launch script makes.
+// It adds --dangerously-skip-permissions when skipPermissions is true, the mode validatePermissionMode resolved.
 // When forkSubagents is true, it wraps the line via sh.WithEnv to enable fork subagent type.
-func buildLaunchCmd(sh shell.Shell, bin, promptPath, settingsPath, sessionID, model, effort, notice string, interactive, forkSubagents bool) string {
+func buildLaunchCmd(sh shell.Shell, bin, promptPath, settingsPath, sessionID, model, effort, notice string, skipPermissions, forkSubagents bool) string {
 	cmd := sh.Invoke(bin) + " " + sh.ReadFile(promptPath) +
 		" --session-id " + sh.Quote(sessionID) + " --settings " + sh.Quote(settingsPath) +
 		" --name " + sh.EnvRef(agentname.StrandNameEnv)
@@ -92,7 +119,7 @@ func buildLaunchCmd(sh shell.Shell, bin, promptPath, settingsPath, sessionID, mo
 	if effort != "" {
 		cmd += " --effort " + sh.Quote(effort)
 	}
-	if !interactive {
+	if skipPermissions {
 		cmd += " --dangerously-skip-permissions"
 	}
 	if notice != "" {
@@ -118,7 +145,7 @@ func buildLaunchCmd(sh shell.Shell, bin, promptPath, settingsPath, sessionID, mo
 // It carries --name as a reference to LYX_STRAND_NAME, not a value, for the same reason buildLaunchCmd does,
 // and because reed replays this line on every resume, a line without it would bring Claude back unnamed.
 // When forkSubagents is true, the line is wrapped to keep the fork-subagent capability.
-func buildResumeCmd(sh shell.Shell, bin, settingsPath, sessionID, model, effort, notice string, interactive, forkSubagents bool) string {
+func buildResumeCmd(sh shell.Shell, bin, settingsPath, sessionID, model, effort, notice string, skipPermissions, forkSubagents bool) string {
 	cmd := sh.Invoke(bin) + " --resume " + sh.Quote(sessionID) + " --settings " + sh.Quote(settingsPath) +
 		" --name " + sh.EnvRef(agentname.StrandNameEnv)
 	if model != "" {
@@ -127,7 +154,7 @@ func buildResumeCmd(sh shell.Shell, bin, settingsPath, sessionID, model, effort,
 	if effort != "" {
 		cmd += " --effort " + sh.Quote(effort)
 	}
-	if !interactive {
+	if skipPermissions {
 		cmd += " --dangerously-skip-permissions"
 	}
 	if notice != "" {
