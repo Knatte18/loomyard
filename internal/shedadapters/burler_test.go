@@ -1053,9 +1053,9 @@ func TestBurlerProducer_Gate_ProbeLiveRoundPassesGateAndMapsFailedGateIdenticall
 			Gate:    &shuttleengine.GateOutcome{Passed: false},
 		},
 	}
-	opts := burlerengine.RunOpts{Gate: shuttleengine.GateSpec{Gate: func() (shuttleengine.GateResult, error) {
+	opts := burlerengine.RunOpts{Gate: shuttleengine.GateSpec{{Attempts: 3, Gate: func() (shuttleengine.GateResult, error) {
 		return shuttleengine.GateResult{Passed: false}, nil
-	}}}
+	}}}}
 	p := newTestBurlerProducerWithAttach(t, runDir, simpleBurlerProfile(), opts, runner, attach, fixedClock(time.Now()))
 	// Only the review file exists at Call entry -- a complete pair here would make
 	// highestCompleteRound treat round 1 as already finished and hand back before probeLiveRound is
@@ -1079,7 +1079,7 @@ func TestBurlerProducer_Gate_ProbeLiveRoundPassesGateAndMapsFailedGateIdenticall
 	if want := "gate did not pass after 0 attempts; findings: "; ptr.Reason != want {
 		t.Errorf("Call() Reason = %q; want %q", ptr.Reason, want)
 	}
-	if attach.gotAttachGateSpec.Gate == nil {
+	if len(attach.gotAttachGateSpec) == 0 {
 		t.Error("probeLiveRound did not pass p.opts.Gate into AttachGated -- this reopens the resume gate hole")
 	}
 	if runner.calls != 0 {

@@ -710,10 +710,10 @@ func TestStartup_RunGated_NotReady(t *testing.T) {
 	runner, _ := newStartupTestRunner(t, reed, engine, defaultStartupConfig(), fc)
 
 	gateCalls := 0
-	gate := GateSpec{Gate: func() (GateResult, error) {
+	gate := GateSpec{{Attempts: 3, Gate: func() (GateResult, error) {
 		gateCalls++
 		return GateResult{Passed: true}, nil
-	}}
+	}}}
 
 	outputFile := filepath.Join(t.TempDir(), "out.md")
 	result, err := runner.RunGated(Spec{Prompt: "x", OutputFiles: []string{outputFile}}, gate)

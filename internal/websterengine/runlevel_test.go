@@ -1837,13 +1837,13 @@ func TestRun_GateReachesStartMaster(t *testing.T) {
 	fx := newRunFixture(t, 1)
 
 	var called bool
-	fx.Deps.Gate = shuttleengine.GateSpec{
+	fx.Deps.Gate = shuttleengine.GateSpec{{
 		Gate: func() (shuttleengine.GateResult, error) {
 			called = true
 			return shuttleengine.GateResult{Passed: true}, nil
 		},
 		Attempts: 7,
-	}
+	}}
 
 	seedMatchingState(t, fx, &websterengine.State{
 		Batches: map[int]*websterengine.BatchState{
@@ -1857,19 +1857,22 @@ func TestRun_GateReachesStartMaster(t *testing.T) {
 		t.Fatalf("len(Starter.gateCalls) = %d; want 1", len(fx.Starter.gateCalls))
 	}
 	got := fx.Starter.gateCalls[0]
-	if got.Gate == nil {
+	if len(got) != 1 {
+		t.Fatalf("StartMaster received %d gate entries; want 1", len(got))
+	}
+	if got[0].Gate == nil {
 		t.Error("StartMaster received a nil Gate; want the told closure")
 	}
-	if got.Attempts != 7 {
-		t.Errorf("StartMaster received Attempts = %d; want 7", got.Attempts)
+	if got[0].Attempts != 7 {
+		t.Errorf("StartMaster received Attempts = %d; want 7", got[0].Attempts)
 	}
 	if called {
 		t.Error("the gate closure was invoked by Run; want it spent only by shuttle's own Wait")
 	}
 }
 
-// TestRun_ZeroGateReachesStartMasterUngated proves the ungated path is unchanged: a RunDeps that
-// names no gate hands StartMaster the zero GateSpec, which shuttleengine reads as "ungated".
+// TestRun_ZeroGateReachesStartMasterUngated proves the ungated path is unchanged:
+// a RunDeps that names no gate hands StartMaster the empty GateSpec, which shuttleengine reads as "ungated".
 func TestRun_ZeroGateReachesStartMasterUngated(t *testing.T) {
 	fx := newRunFixture(t, 1)
 
@@ -1884,8 +1887,8 @@ func TestRun_ZeroGateReachesStartMasterUngated(t *testing.T) {
 	if len(fx.Starter.gateCalls) != 1 {
 		t.Fatalf("len(Starter.gateCalls) = %d; want 1", len(fx.Starter.gateCalls))
 	}
-	if got := fx.Starter.gateCalls[0]; got.Gate != nil || got.Attempts != 0 {
-		t.Errorf("StartMaster received GateSpec{Gate: %v, Attempts: %d}; want the zero value", got.Gate != nil, got.Attempts)
+	if got := fx.Starter.gateCalls[0]; len(got) != 0 {
+		t.Errorf("StartMaster received %d gate entries; want an empty list", len(got))
 	}
 }
 

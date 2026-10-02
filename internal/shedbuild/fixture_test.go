@@ -57,28 +57,45 @@ func (f *fakeShuttle) Attach(shuttleengine.Spec) (shuttleengine.Result, bool, er
 // fakeShuttle's own doc comment for why neither is ever called.
 func (f *fakeShuttle) RunGated(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (shuttleengine.Result, error) {
 	result, err := f.Run(spec)
-	if err != nil || gate.Gate == nil || result.Outcome != shuttleengine.OutcomeDone {
+	if err != nil || len(gate) == 0 || result.Outcome != shuttleengine.OutcomeDone {
 		return result, err
 	}
-	gateResult, gerr := gate.Gate()
+	passed, gerr := evalGateList(gate)
 	if gerr != nil {
 		return result, gerr
 	}
-	result.Gate = &shuttleengine.GateOutcome{Passed: gateResult.Passed}
+	result.Gate = &shuttleengine.GateOutcome{Passed: passed}
 	return result, nil
 }
 
 func (f *fakeShuttle) AttachGated(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (shuttleengine.Result, bool, error) {
 	result, found, err := f.Attach(spec)
-	if err != nil || !found || gate.Gate == nil || result.Outcome != shuttleengine.OutcomeDone {
+	if err != nil || !found || len(gate) == 0 || result.Outcome != shuttleengine.OutcomeDone {
 		return result, found, err
 	}
-	gateResult, gerr := gate.Gate()
+	passed, gerr := evalGateList(gate)
 	if gerr != nil {
 		return result, found, gerr
 	}
-	result.Gate = &shuttleengine.GateOutcome{Passed: gateResult.Passed}
+	result.Gate = &shuttleengine.GateOutcome{Passed: passed}
 	return result, found, nil
+}
+
+// evalGateList runs gate's entries in list order for a test fake, skipping off entries (Attempts 0) and stopping at the first failure, and reports whether every entry run passed.
+func evalGateList(gate shuttleengine.GateSpec) (bool, error) {
+	for _, entry := range gate {
+		if entry.Attempts <= 0 {
+			continue
+		}
+		result, err := entry.Gate()
+		if err != nil {
+			return false, err
+		}
+		if !result.Passed {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 // fakeBurlerRunner implements shedadapters.BurlerRunner by returning a zero burlerengine.Result and

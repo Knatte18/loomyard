@@ -308,3 +308,45 @@ func TestConfigRejectUnknown(t *testing.T) {
 		}
 	})
 }
+
+func TestConfigMapList(t *testing.T) {
+	t.Run("AbsentIsNotPresent", func(t *testing.T) {
+		got, present, err := configMapList(Config{}, "k")
+		if err != nil || present || got != nil {
+			t.Errorf("configMapList() = %v, %v, %v; want nil, false, nil", got, present, err)
+		}
+	})
+	t.Run("AnyListOfMaps", func(t *testing.T) {
+		got, present, err := configMapList(Config{"k": []any{map[string]any{"a": 1}, map[string]any{"b": 2}}}, "k")
+		if err != nil || !present {
+			t.Fatalf("configMapList() present = %v, error = %v; want true, nil", present, err)
+		}
+		if len(got) != 2 || got[0]["a"] != 1 || got[1]["b"] != 2 {
+			t.Errorf("configMapList() = %v; want both maps in order", got)
+		}
+	})
+	t.Run("TypedListOfMaps", func(t *testing.T) {
+		got, present, err := configMapList(Config{"k": []map[string]any{{"a": 1}}}, "k")
+		if err != nil || !present || len(got) != 1 || got[0]["a"] != 1 {
+			t.Errorf("configMapList() = %v, %v, %v; want one map", got, present, err)
+		}
+	})
+	t.Run("PresentEmptyListIsPresent", func(t *testing.T) {
+		got, present, err := configMapList(Config{"k": []any{}}, "k")
+		if err != nil || !present || len(got) != 0 {
+			t.Errorf("configMapList() = %v, %v, %v; want empty, true, nil", got, present, err)
+		}
+	})
+	t.Run("NonMapElementNamesKeyAndIndex", func(t *testing.T) {
+		_, _, err := configMapList(Config{"k": []any{map[string]any{}, "x"}}, "k")
+		if err == nil || !strings.Contains(err.Error(), `"k"`) || !strings.Contains(err.Error(), "element 1") {
+			t.Errorf("configMapList() error = %v; want it to name key and index 1", err)
+		}
+	})
+	t.Run("WrongShape", func(t *testing.T) {
+		_, _, err := configMapList(Config{"k": 5}, "k")
+		if err == nil || !strings.Contains(err.Error(), `"k"`) {
+			t.Errorf("configMapList() error = %v; want it to name key", err)
+		}
+	})
+}

@@ -17,16 +17,9 @@
 // double-spawn window (the run lock being taken by the child long after the spawn call returns --
 // TestSmokeBootstrap_ConcurrentSpawnHandshakeYieldsOneDriver).
 //
-// A note on driver-liveness timing: loom's own producer table (contracts/recipes/loom-recipe.yaml)
-// backs every row with a real producer -- no row reports Done
-// unconditionally. A freshly-bootstrapped driver against a pair with no discussion or plan
-// artifacts yet still bounces at Discussion-Write's own gate a bounded number of times (its
-// gate_attempts budget) and then blocks, well before reaching any later row -- a lifecycle that can
-// still complete in well under a second. Tests here that
-// assert "a driver process exists" treat that as a best-effort observation (logged, not failed, when
-// the driver has already run to completion by check time) and lean on the STATUS FILE's own history
-// -- durable regardless of whether the driver process itself is still alive -- for the assertions
-// that must hold unconditionally.
+// A note on driver-liveness timing: loom's own producer table (contracts/recipes/loom-recipe.yaml) backs every row with a real producer -- no row reports Done unconditionally.
+// A freshly-bootstrapped driver against a pair with no discussion or plan artifacts yet still bounces at Discussion-Write's own gate a bounded number of times (its "gates" entry's attempts budget) and then blocks, well before reaching any later row -- a lifecycle that can still complete in well under a second.
+// Tests here that assert "a driver process exists" treat that as a best-effort observation (logged, not failed, when the driver has already run to completion by check time) and lean on the STATUS FILE's own history -- durable regardless of whether the driver process itself is still alive -- for the assertions that must hold unconditionally.
 package loomcli
 
 import (

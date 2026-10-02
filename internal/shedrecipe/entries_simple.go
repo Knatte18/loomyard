@@ -139,18 +139,13 @@ func stubEntry(name string, cfg Config, _ Env) (shedengine.ShedProducer, error) 
 	return loomshed.NewStub(name), nil
 }
 
-// websterEntry is the Constructor for the "Webster" registry row: it resolves the row's
-// "gate"/"gate_attempts" Config keys through resolveGateSpec onto RunDeps.Gate, validates
-// Env.AnchorPath, Env.WebsterRun, Env.CommitWebster, and exactly four inner fields of
-// Env.WebsterDeps -- Starter, Reed, Engine, and RefMatcher -- and returns
-// loomshed.NewWebsterProducer(name, env.AnchorPath, env.WebsterRun, deps, env.CommitWebster).
+// websterEntry is the Constructor for the "Webster" registry row: it resolves the row's "gates" Config key through resolveGateSpec onto RunDeps.Gate, validates Env.AnchorPath, Env.WebsterRun, Env.CommitWebster, and exactly four inner fields of Env.WebsterDeps -- Starter, Reed, Engine, and RefMatcher -- and returns loomshed.NewWebsterProducer(name, env.AnchorPath, env.WebsterRun, deps, env.CommitWebster).
 //
 // The gate is resolved here for the same reason the three already-gated rows resolve theirs here:
 // one key means one thing at every gated site, and a reader of the recipe can see which validator
-// guards each row without opening Go. The shipped "Webster" row carries no "gate" key, so
-// resolveGateSpec returns the zero GateSpec and the row runs ungated exactly as before; naming one
-// today fails loud through resolveGateSpec's own closed two-value vocabulary, since no Webster
-// validator exists to name.
+// guards each row without opening Go.
+// The shipped "Webster" row carries no "gates" key, so resolveGateSpec returns the zero GateSpec and the row runs ungated exactly as before;
+// naming one today fails loud through resolveGateSpec's own closed vocabulary, since no Webster validator exists to name.
 //
 // It checks none of WebsterDeps' other nil-able fields, each for its own reason: Batcher is
 // overwritten by loomshed's own wrapper on every Call, and that wrapper's own field doc says the
@@ -163,7 +158,7 @@ func websterEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 	if err != nil {
 		return nil, err
 	}
-	if err := configRejectUnknown(cfg, "gate", "gate_attempts"); err != nil {
+	if err := configRejectUnknown(cfg, "gates"); err != nil {
 		return nil, err
 	}
 	if err := requireAbsRoot("Webster", "AnchorPath", env.AnchorPath); err != nil {

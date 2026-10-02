@@ -25,7 +25,7 @@ func newDescribeTestEnv(t *testing.T) Env {
 }
 
 func TestDescribeEntry_ConstructionFailures(t *testing.T) {
-	gated := Config{"gate": "description"}
+	gated := gatesCfg("description", 3)
 	cases := []struct {
 		name   string
 		mutate func(*Env)
@@ -55,7 +55,7 @@ func TestDescribeEntry_ConstructionFailures(t *testing.T) {
 
 func TestDescribeEntry_HappyPath(t *testing.T) {
 	env := newDescribeTestEnv(t)
-	p, err := describeEntry("Row", Config{"gate": "description", "gate_attempts": 2}, env)
+	p, err := describeEntry("Row", gatesCfg("description", 2), env)
 	if err != nil {
 		t.Fatalf("describeEntry() error = %v; want nil", err)
 	}

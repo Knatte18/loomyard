@@ -295,18 +295,9 @@ func TestBounceRouting_EmptyTargetBlocksInstead(t *testing.T) {
 // Discussion-Bouncer's own bounce budget is consumed and exhausting it blocks -- MaxBounces+1 Stuck
 // entries authored by Discussion-Bouncer, then shedengine.RunBlocked.
 //
-// Discussion-Validate is no longer this test's vehicle. Discussion-Write now carries its own "gate:
-// discussion" Config key (resolveGateSpec, internal/shedrecipe/entries_gate.go), which calls the
-// exact same discussionparser.Validate function Discussion-Validate's own Call does -- so a
-// Discussion-Write whose redo never fixes its artifact fails its OWN gate on every bounce, and
-// Discussion-Write carries no on_stuck, so that failure blocks the whole run on the very first
-// bounce rather than letting Discussion-Validate cycle it repeatedly. Discussion-Bouncer's mutual
-// on_stuck with Discussion-Burler (segment: Discussion-Review) has no such dependency on this
-// task's new gates -- fakeLoomBurler, this fixture's shedadapters.BurlerRunner fake, never reads
-// burlerengine.RunOpts.Gate at all -- so it is what remains a genuinely, repeatably bounceable real
-// producer pair under the new design, matching the property this test exists to prove (a real
-// producer's per-episode bounce budget is consumed and exhausted, never a fake standing in for a
-// generic engine mechanism the recipe's own graph never exercises).
+// Discussion-Validate is no longer this test's vehicle.
+// Discussion-Write now carries its own "gates" entry named "discussion" (resolveGateSpec, internal/shedrecipe/entries_gate.go), which calls the exact same discussionparser.Validate function Discussion-Validate's own Call does -- so a Discussion-Write whose redo never fixes its artifact fails its OWN gate on every bounce, and Discussion-Write carries no on_stuck, so that failure blocks the whole run on the very first bounce rather than letting Discussion-Validate cycle it repeatedly.
+// Discussion-Bouncer's mutual on_stuck with Discussion-Burler (segment: Discussion-Review) has no such dependency on this task's new gates -- fakeLoomBurler, this fixture's shedadapters.BurlerRunner fake, never reads burlerengine.RunOpts.Gate at all -- so it is what remains a genuinely, repeatably bounceable real producer pair under the new design, matching the property this test exists to prove (a real producer's per-episode bounce budget is consumed and exhausted, never a fake standing in for a generic engine mechanism the recipe's own graph never exercises).
 //
 // The budget here is per-producer and episode-scoped, counted from the persisted history[] -- never
 // a run-wide counter. f.bouncerVerdict = "BLOCKING" makes the judge round reject on every pass, so
