@@ -13,7 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/modelspec"
 )
 
-const describeStencilFixture = "slug={{.slug}}\ndecision={{.decision_record_path}}\nrun={{.run_record_path}}\n" +
+const describeStencilFixture = "slug={{.slug}}\ndecision={{.decision_record_path}}\nrun={{.run_record_paths}}\n" +
 	"out={{.description_path}}\ntask={{.task_branch}}\nparent={{.parent_branch}}\n"
 
 func newDescribeInputs(t *testing.T) DescribeInputs {
@@ -67,6 +67,32 @@ func TestDescribeSpec_ComposesSpec(t *testing.T) {
 		if !strings.Contains(spec.Prompt, v) {
 			t.Errorf("prompt %q does not contain input value %q", spec.Prompt, v)
 		}
+	}
+}
+
+func TestDescribeSpec_RunRecordsOldestFirstLiveLast(t *testing.T) {
+	cfg := Config{Describe: "claude:sonnet[effort=high]", DescribeTimeoutMin: 7}
+
+	in := newDescribeInputs(t)
+	in.PriorRunRecordPaths = []string{"/x/round-1/webster/summary.md", "/x/round-2/webster/summary.md"}
+	spec, err := DescribeSpec(in, cfg, modelspec.Registry{})
+	if err != nil {
+		t.Fatalf("DescribeSpec = _, %v; want nil error", err)
+	}
+	first := strings.Index(spec.Prompt, in.PriorRunRecordPaths[0])
+	second := strings.Index(spec.Prompt, in.PriorRunRecordPaths[1])
+	live := strings.Index(spec.Prompt, in.RunRecordPath)
+	if first < 0 || second < first || live < second {
+		t.Errorf("prompt %q must list prior records oldest first, then the live one (indexes %d, %d, %d)", spec.Prompt, first, second, live)
+	}
+
+	in = newDescribeInputs(t)
+	spec, err = DescribeSpec(in, cfg, modelspec.Registry{})
+	if err != nil {
+		t.Fatalf("DescribeSpec = _, %v; want nil error", err)
+	}
+	if strings.Count(spec.Prompt, "/webster/") != 1 || !strings.Contains(spec.Prompt, in.RunRecordPath) {
+		t.Errorf("prompt %q must list only the live record when none is told", spec.Prompt)
 	}
 }
 

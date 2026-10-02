@@ -140,8 +140,9 @@ func (c *loomCLI) rejectCmd() *cobra.Command {
 with the review findings read from <review-file>, and removes any approval.
 It applies to a run awaiting or blocked at PR-Gate, or blocked at PR-Rework
 (the rework session stopped; a new rejection replaces the pending one). The
-next "lyx loom start" sends the findings to PR-Rework, which appends cards to
-the plan and re-runs the main line.
+next "lyx loom start" sends the findings to PR-Rework, which archives the
+built plan generation into the round and plans a new one, then re-runs the
+main line.
 
 It refuses unless the pull request is open, the local task HEAD equals the
 pull request's head commit, and the review file is readable and non-empty.

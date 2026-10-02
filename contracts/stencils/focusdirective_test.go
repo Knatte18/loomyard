@@ -60,3 +60,28 @@ func TestBouncerStencils_FocusEntryGuidance(t *testing.T) {
 		}
 	}
 }
+
+func TestBouncerJudge_FocusEntryIsSelfContained(t *testing.T) {
+	body := string(BouncerTemplateJudge)
+	for _, phrase := range []string{
+		"restates every site, commit and claim it depends on",
+		"never refers the reviewer to a prior round's review, fixer report, or finding ID",
+	} {
+		if !strings.Contains(body, phrase) {
+			t.Errorf("bouncer-template-judge.md does not contain %q", phrase)
+		}
+	}
+}
+
+func TestBurlerFocusDirective_NeverLicensesPriorRoundReads(t *testing.T) {
+	body := string(BurlerFocusDirective)
+	for _, phrase := range []string{
+		"never licenses reading a prior round's files before your review is saved",
+		"followed only as far as its own text goes",
+		"`## Focus departures`",
+	} {
+		if !strings.Contains(body, phrase) {
+			t.Errorf("burler-focus-directive.md does not contain %q", phrase)
+		}
+	}
+}

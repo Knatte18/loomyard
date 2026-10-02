@@ -84,6 +84,13 @@ type BouncerConfig struct {
 	// Only then do the seed and judge prompts ask for exclude_lenses; the zero value asks for focus
 	// alone.
 	ClusterExcludes bool
+	// Skip is the optional seam a caller tells this Bouncer when the artifact under review may need no review at all.
+	// True settles the segment as approved without a seed or judge spawn;
+	// false reviews as usual;
+	// an error warns and reviews as usual, since the seam is an optimisation and a guard that does not protect correctness warns rather than halts.
+	// Nil is the absent value and leaves every row behaving exactly as before.
+	// The seam can only approve what its caller already classified: it cannot reject, re-route, or touch the run directory.
+	Skip func() (bool, error)
 }
 
 // Bouncer is the shedadapters adapter implementing the generic review-gate producer: it composes
@@ -204,6 +211,17 @@ func (b *Bouncer) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 		return "", shedengine.OutputPointer{}, err
 	}
 
+	if b.cfg.Skip != nil {
+		skip, err := b.cfg.Skip()
+		switch {
+		case err != nil:
+			logger.Warn("shedadapters: bouncer skip seam failed; reviewing as usual", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "cause", err)
+		case skip:
+			logger.Info("shedadapters: bouncer skip seam approved the artifact without a review", "producer", b.cfg.Name, "engine", bouncerEngineLabel)
+			return b.approveWithoutReview()
+		}
+	}
+
 	n, err := ResolveRound(b.cfg.RunDir, b.cfg.ReportName)
 	if err != nil {
 		// An unreadable run dir is a hard error rather than a degradation: no later round can
@@ -299,6 +317,21 @@ func (b *Bouncer) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 		return b.settle(ctx, n, false)
 	}
 	return b.judgeCall(ctx, n)
+}
+
+// approveWithoutReview settles a skipped segment as approved: Approve then Commit, each when non-nil, failing exactly as settle's approved branch does, then Done with an empty pointer because no ledger exists to point at.
+func (b *Bouncer) approveWithoutReview() (shedengine.Outcome, shedengine.OutputPointer, error) {
+	if b.cfg.Approve != nil {
+		if err := b.cfg.Approve(); err != nil {
+			return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): approve reviewed artifacts: %w", b.cfg.Name, bouncerEngineLabel, err)
+		}
+	}
+	if b.cfg.Commit != nil {
+		if err := b.cfg.Commit(); err != nil {
+			return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): commit approved artifacts: %w", b.cfg.Name, bouncerEngineLabel, err)
+		}
+	}
+	return shedengine.Done, shedengine.OutputPointer{}, nil
 }
 
 // round1FocusSeeded reports whether round 1's focus file exists and parses -- the seed-versus-

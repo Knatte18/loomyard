@@ -1898,3 +1898,44 @@ func TestCardID(t *testing.T) {
 		t.Errorf("Card.ID() = %q; want %q", got, want)
 	}
 }
+
+// TestValidate_IndexFileMismatch_FirstCard covers the first_card numbering base: the Card Index must run first_card..first_card+n-1,
+// and an invalid first_card is a finding of its own.
+func TestValidate_IndexFileMismatch_FirstCard(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		firstCard    int
+		firstInvalid string
+		numbers      []int
+		want         int
+	}{
+		{name: "absent first_card behaves as 1", numbers: []int{1, 2}, want: 0},
+		{name: "numbering from 7 is clean", firstCard: 7, numbers: []int{7, 8, 9}, want: 0},
+		{name: "gap after first_card", firstCard: 7, numbers: []int{7, 9}, want: 1},
+		{name: "card below first_card", firstCard: 7, numbers: []int{6, 7}, want: 2},
+		{name: "first_card zero", firstInvalid: "0", numbers: []int{1, 2}, want: 1},
+		{name: "first_card negative", firstInvalid: "-2", numbers: []int{1, 2}, want: 1},
+		{name: "first_card non-integer", firstInvalid: "seven", numbers: []int{1, 2}, want: 1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var cards []planparser.Card
+			for _, n := range tt.numbers {
+				cards = append(cards, validCard(n, fmt.Sprintf("c%d", n)))
+			}
+			plan := &planparser.Plan{
+				Format: 5, Approved: true,
+				FirstCard: tt.firstCard, FirstCardInvalid: tt.firstInvalid,
+				Cards: cards,
+			}
+			findings := planparser.Validate(plan, t.TempDir())
+			if got := countFor(findings, "index-file-mismatch"); got != tt.want {
+				t.Errorf("countFor(findings, index-file-mismatch) = %d; want %d (%+v)", got, tt.want, findings)
+			}
+		})
+	}
+}

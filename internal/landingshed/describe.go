@@ -54,8 +54,11 @@ type DescribeInputs struct {
 	StencilsDir string
 	// DecisionRecordPath is the run's decision record, which the agent reads.
 	DecisionRecordPath string
-	// RunRecordPath is webster's summary.md, read only for manual-check items.
+	// RunRecordPath is the live generation's webster summary.md, read only for manual-check items.
 	RunRecordPath string
+	// PriorRunRecordPaths are the summary.md files of the generations a rework round retired, oldest first.
+	// Optional: empty when no round has run.
+	PriorRunRecordPaths []string
 	// DescriptionPath is the file the agent writes: the change description.
 	DescriptionPath string
 	// TaskBranch is the branch whose diff the description covers.
@@ -64,6 +67,16 @@ type DescribeInputs struct {
 	ParentBranch string
 	// Slug is the task's slug, the key for `lyx board get`.
 	Slug string
+}
+
+// runRecordBullets renders one bullet per run record: every prior generation oldest first, then the live record.
+func runRecordBullets(in DescribeInputs) string {
+	paths := append(append([]string{}, in.PriorRunRecordPaths...), in.RunRecordPath)
+	lines := make([]string, len(paths))
+	for i, p := range paths {
+		lines[i] = "  - `" + p + "`"
+	}
+	return strings.Join(lines, "\n")
 }
 
 // DescribeSpec builds the shuttleengine.Spec for the Describe session. An empty input field is an
@@ -102,7 +115,7 @@ func DescribeSpec(in DescribeInputs, cfg Config, reg modelspec.Registry) (shuttl
 	prompt, err := stencil.Fill(template, map[string]string{
 		"slug":                 in.Slug,
 		"decision_record_path": in.DecisionRecordPath,
-		"run_record_path":      in.RunRecordPath,
+		"run_record_paths":     runRecordBullets(in),
 		"description_path":     in.DescriptionPath,
 		"task_branch":          in.TaskBranch,
 		"parent_branch":        in.ParentBranch,

@@ -3,6 +3,9 @@
 package shedrecipe
 
 import (
+	"context"
+	"errors"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -15,18 +18,20 @@ func reworkTestEnv(t *testing.T) Env {
 	t.Helper()
 	env := newTestEnv(t)
 	dir := t.TempDir()
-	env.ReworkSpec = func() (shuttleengine.Spec, error) {
+	env.ReworkSpec = func(loomshed.ReworkTold) (shuttleengine.Spec, error) {
 		return shuttleengine.Spec{Prompt: "rework prompt", OutputFiles: []string{filepath.Join(dir, "coverage.md")}}, nil
 	}
 	env.Rework = loomshed.PRReworkDeps{
-		PlanDir:        filepath.Join(dir, "plan"),
-		ReworkDir:      filepath.Join(dir, "rework"),
-		ReworkDirRel:   "_lyx/loom/rework",
-		ReadCommitted:  func(string) ([]byte, bool, error) { return nil, false, nil },
-		ReadRejection:  func() (loomshed.PendingRejection, bool, error) { return loomshed.PendingRejection{}, false, nil },
-		ClearRejection: func() error { return nil },
-		Commit:         func() error { return nil },
-		Rebaseline:     func() error { return nil },
+		PlanDir:          filepath.Join(dir, "plan"),
+		ReworkDir:        filepath.Join(dir, "rework"),
+		ReworkDirRel:     "_lyx/loom/rework",
+		ReviewsDir:       filepath.Join(dir, "reviews"),
+		ReviewRunSubdirs: []string{"plan", "webster"},
+		ReadCommitted:    func(string) ([]byte, bool, error) { return nil, false, nil },
+		ReadRejection:    func() (loomshed.PendingRejection, bool, error) { return loomshed.PendingRejection{}, false, nil },
+		ClearRejection:   func() error { return nil },
+		ArchiveWebster:   func(string) error { return nil },
+		Commit:           func() error { return nil },
 	}
 	return env
 }
@@ -38,6 +43,44 @@ func TestPRReworkEntry_HappyPath(t *testing.T) {
 	}
 	if producer == nil {
 		t.Fatalf("prReworkEntry() = nil producer; want non-nil")
+	}
+}
+
+func TestPRReworkEntry_EvaluatesReworkSpecWithToldValue(t *testing.T) {
+	var got []loomshed.ReworkTold
+	env := reworkTestEnv(t)
+	env.ReworkSpec = func(told loomshed.ReworkTold) (shuttleengine.Spec, error) {
+		got = append(got, told)
+		return shuttleengine.Spec{}, errors.New("stop here")
+	}
+	// A committed one-card plan lets the producer compute FirstCard = 2.
+	planDir := env.Rework.PlanDir
+	if err := os.MkdirAll(planDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	overview := "---\nformat: 5\napproved: true\nlanguage: none\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — first-card — placeholder\n"
+	card := "# Card 1 — first-card\n\n**Create:**\n- `internal/x/new.go`\n\n**Intent:** placeholder.\n"
+	files := map[string]string{"00-overview.md": overview, "01-first-card.md": card}
+	for name, body := range files {
+		if err := os.WriteFile(filepath.Join(planDir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	env.Rework.ReadCommitted = func(rel string) ([]byte, bool, error) {
+		body, ok := files[filepath.Base(rel)]
+		return []byte(body), ok, nil
+	}
+	env.Rework.ReadRejection = func() (loomshed.PendingRejection, bool, error) {
+		return loomshed.PendingRejection{PRNumber: 1, HeadSHA: "h", RejectedAt: "t"}, true, nil
+	}
+	producer, err := prReworkEntry("Row", Config{}, env)
+	if err != nil {
+		t.Fatalf("prReworkEntry() error = %v; want nil", err)
+	}
+	// The session's Spec failure surfaces as an error or a Stuck; either way the Spec source ran.
+	_, _, _ = producer.Call(context.Background())
+	if len(got) == 0 || got[0].FirstCard != 2 {
+		t.Errorf("ReworkSpec told %+v; want first call FirstCard 2", got)
 	}
 }
 
@@ -53,7 +96,8 @@ func TestPRReworkEntry_ConstructionFailures(t *testing.T) {
 		{"NilReadRejection", "Rework.ReadRejection", func(e *Env) { e.Rework.ReadRejection = nil }},
 		{"NilClearRejection", "Rework.ClearRejection", func(e *Env) { e.Rework.ClearRejection = nil }},
 		{"NilCommit", "Rework.Commit", func(e *Env) { e.Rework.Commit = nil }},
-		{"NilRebaseline", "Rework.Rebaseline", func(e *Env) { e.Rework.Rebaseline = nil }},
+		{"NilArchiveWebster", "Rework.ArchiveWebster", func(e *Env) { e.Rework.ArchiveWebster = nil }},
+		{"EmptyReviewsDir", "Rework.ReviewsDir", func(e *Env) { e.Rework.ReviewsDir = "" }},
 		{"EmptyPlanDir", "Rework.PlanDir", func(e *Env) { e.Rework.PlanDir = "" }},
 		{"EmptyReworkDir", "Rework.ReworkDir", func(e *Env) { e.Rework.ReworkDir = "" }},
 	}

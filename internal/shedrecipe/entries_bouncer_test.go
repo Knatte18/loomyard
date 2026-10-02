@@ -647,6 +647,50 @@ func TestBouncerEntry_CommitSeam(t *testing.T) {
 	})
 }
 
+// TestBouncerEntry_SkipSeam covers skip_seam's absent, accepted and rejected values and the presence guard on a configured-but-missing env.SkipPlanReview.
+func TestBouncerEntry_SkipSeam(t *testing.T) {
+	t.Run("AbsentConstructsSuccessfully", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.SkipPlanReview = nil
+		cfg := minimalBouncerConfig(t, env)
+
+		if _, err := bouncerEntry("review-bounce", cfg, env); err != nil {
+			t.Fatalf("bouncerEntry() error = %v; want nil", err)
+		}
+	})
+
+	t.Run("ReworkExemptConstructsWithClosure", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.SkipPlanReview = func() (bool, error) { return false, nil }
+		cfg := minimalBouncerConfig(t, env)
+		cfg["skip_seam"] = "rework-exempt"
+
+		if _, err := bouncerEntry("review-bounce", cfg, env); err != nil {
+			t.Fatalf("bouncerEntry() error = %v; want nil", err)
+		}
+	})
+
+	t.Run("ReworkExemptWithNilEnvClosureFails", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.SkipPlanReview = nil
+		cfg := minimalBouncerConfig(t, env)
+		cfg["skip_seam"] = "rework-exempt"
+
+		_, err := bouncerEntry("review-bounce", cfg, env)
+		assertErrContains(t, err, "SkipPlanReview")
+	})
+
+	t.Run("UnknownValueFails", func(t *testing.T) {
+		env := newTestEnv(t)
+		cfg := minimalBouncerConfig(t, env)
+		cfg["skip_seam"] = "plan"
+
+		_, err := bouncerEntry("review-bounce", cfg, env)
+		assertErrContains(t, err, "skip_seam")
+		assertErrContains(t, err, "rework-exempt")
+	})
+}
+
 // TestBouncerEntry_ApproveSeam covers the single-value resolution of approve_seam, the presence
 // guard requireSeam enforces on a configured-but-missing env.ApprovePlan, and the allowlist edit
 // that widens configRejectUnknown by exactly one name. Where a case needs to observe which

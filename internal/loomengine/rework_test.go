@@ -43,7 +43,8 @@ func TestReworkSpec(t *testing.T) {
 
 	stencilsDir := newReworkStencilsDir(t)
 	specsDir := newTestSpecsDir(t)
-	spec, err := ReworkSpec(layout, stencilsDir, specsDir, cfg, reg, 4)
+	priorPlan := filepath.Join("prior", "plan")
+	spec, err := ReworkSpec(layout, stencilsDir, specsDir, cfg, reg, 4, priorPlan)
 	if err != nil {
 		t.Fatalf("ReworkSpec(...) = _, %v; want nil error", err)
 	}
@@ -76,14 +77,18 @@ func TestReworkSpec(t *testing.T) {
 		coverage,
 		stencilstore.Path(stencilsDir, "loom-template-plan"),
 		specsDir,
+		priorPlan,
 	}
 	for _, want := range wantPaths {
 		if !strings.Contains(spec.Prompt, want) {
 			t.Errorf("ReworkSpec(...).Prompt does not contain %q", want)
 		}
 	}
-	if !strings.Contains(spec.Prompt, "Number the new cards from 4 upward") {
-		t.Error("ReworkSpec(...).Prompt does not number the new cards from the told card number 4")
+	if !strings.Contains(spec.Prompt, "`first_card: 4`") {
+		t.Error("ReworkSpec(...).Prompt does not carry the told first card 4")
+	}
+	if !strings.Contains(spec.Prompt, "numbered from 4 upward") {
+		t.Error("ReworkSpec(...).Prompt does not number the new cards from the told first card 4")
 	}
 	if !strings.Contains(spec.Prompt, "lyx loom validate-plan --rework") {
 		t.Error("ReworkSpec(...).Prompt does not name the rework-scoped self-check")
@@ -104,7 +109,7 @@ func TestReworkSpec_MissingStencil(t *testing.T) {
 		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 	}
 
-	if _, err := ReworkSpec(layout, newTestStencilsDir(t), newTestSpecsDir(t), cfg, reg, 4); err == nil {
+	if _, err := ReworkSpec(layout, newTestStencilsDir(t), newTestSpecsDir(t), cfg, reg, 4, "prior"); err == nil {
 		t.Error("ReworkSpec(...) with no rework stencil = nil error; want an error")
 	}
 }

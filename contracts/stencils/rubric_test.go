@@ -49,6 +49,8 @@ func TestLoomRubricDiscussionReview_NamesEveryRequiredItem(t *testing.T) {
 		{"relocation and exclusion findings are legitimate", "Relocation and exclusion findings"},
 		{"completeness-before-leanness test", "completeness-before-leanness test"},
 		{"writer/reviewer symmetry note", "writer/reviewer symmetry note"},
+		{"attack-surface question asks what it can skip or let through", "skip or let through"},
+		{"attack-surface question asks what bounds it", "what bounds it"},
 	}
 
 	for _, tt := range tests {
@@ -90,6 +92,13 @@ func TestLoomRubricPlanReview_NamesEveryRequiredItem(t *testing.T) {
 		{"dependency edges are derived, never authored", "Dependency edges are derived, never authored"},
 		{"Rename carries no ImpactSummary because there is no graded blast radius", "no graded blast radius to summarise"},
 		{"support-log.md is outside this review entirely", "support-log.md"},
+		{"the live generation's findings join the answer key", "findings.md"},
+		{"the live generation's round needs a class", "record.json` carries a `class`"},
+		{"the live generation's round matches first_card", "`first_card`"},
+		{"generation 0 falls back to the decision record alone", "the decision record alone is the answer key"},
+		{"the prior-generation archive is never a subject", "prior-generation/"},
+		{"attack-surface question asks what it can skip or let through", "skip or let through"},
+		{"attack-surface question asks what bounds it", "what bounds it"},
 	}
 
 	for _, tt := range tests {
@@ -126,6 +135,10 @@ func TestLoomRubricWebsterReview_NamesEveryRequiredItem(t *testing.T) {
 		{"ordinary diff review is the base", "Ordinary diff review is the base"},
 		{"the review range is derived via git merge-base", "git merge-base"},
 		{"an undeterminable review range raises a BLOCKING finding", "could not be determined"},
+		{"the rework branch finds the live round by class", "carries a `class`"},
+		{"the rework branch finds the live round by first_card", "`first_card`"},
+		{"the rework range starts at the rejected head", "`head_sha`"},
+		{"the rework range excludes mid-run merges", "git log --first-parent --no-merges"},
 		{"anything the plan's own gates already check", "Plan-Write`'s and `Plan-Burler`'s own gates"},
 		{"the plan is the measuring stick and never the subject", "measuring stick and never the subject"},
 		{"a missing ImpactSummary belongs to Plan-Review", "Both belong to "},

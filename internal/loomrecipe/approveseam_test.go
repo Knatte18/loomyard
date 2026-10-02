@@ -57,6 +57,27 @@ func TestShippedRecipe_ApproveSeamWiredOnPlanBouncerOnly(t *testing.T) {
 	}
 }
 
+// TestShippedRecipe_SkipSeamWiredOnPlanBouncerOnly asserts skip_seam: rework-exempt sits on the Plan-Bouncer row and no other row of the shipped recipe.
+func TestShippedRecipe_SkipSeamWiredOnPlanBouncerOnly(t *testing.T) {
+	r, err := shedbuild.Parse(recipes.LoomRecipe)
+	if err != nil {
+		t.Fatalf("shedbuild.Parse(recipes.LoomRecipe) error = %v; want nil", err)
+	}
+
+	for _, row := range r.Producers {
+		skipSeam, hasSkipSeam := row.Config["skip_seam"]
+		if row.Name == loomshed.NamePlanBouncer {
+			if !hasSkipSeam || skipSeam != "rework-exempt" {
+				t.Errorf("row %q: config[\"skip_seam\"] = %v (present=%v); want \"rework-exempt\"", row.Name, skipSeam, hasSkipSeam)
+			}
+			continue
+		}
+		if hasSkipSeam {
+			t.Errorf("row %q: carries an unexpected \"skip_seam\" key = %v; want it absent", row.Name, skipSeam)
+		}
+	}
+}
+
 // approveSeamFixture returns a one-row recipe YAML document: a lone Bouncer row carrying
 // approveSeam as its approve_seam config value (omitted entirely when approveSeam is empty).
 func approveSeamFixture(approveSeam string) string {

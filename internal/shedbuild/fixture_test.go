@@ -259,7 +259,7 @@ func newTestEnv(t *testing.T) shedrecipe.Env {
 		},
 		CommitDescription: func() error { return nil },
 		Landing:           testLandingDeps(mustMkdir("landing")),
-		ReworkSpec: func() (shuttleengine.Spec, error) {
+		ReworkSpec: func(loomshed.ReworkTold) (shuttleengine.Spec, error) {
 			return shuttleengine.Spec{
 				Prompt:      "test rework prompt",
 				OutputFiles: []string{filepath.Join(dir, "rework-coverage.md")},
@@ -270,11 +270,12 @@ func newTestEnv(t *testing.T) shedrecipe.Env {
 			PlanDir:        mustMkdir("rework-plan"),
 			ReworkDir:      mustMkdir("rework-rounds"),
 			ReworkDirRel:   "_lyx/loom/rework",
+			ReviewsDir:     mustMkdir("rework-reviews"),
 			ReadCommitted:  func(string) ([]byte, bool, error) { return nil, false, nil },
 			ReadRejection:  func() (loomshed.PendingRejection, bool, error) { return loomshed.PendingRejection{}, false, nil },
 			ClearRejection: func() error { return nil },
+			ArchiveWebster: func(string) error { return nil },
 			Commit:         func() error { return nil },
-			Rebaseline:     func() error { return nil },
 		},
 		Slug:       "test-slug",
 		ScratchDir: mustMkdir("scratch"),

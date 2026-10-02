@@ -13,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -131,18 +132,21 @@ type Env struct {
 	// entry. It is invoked on the approved branch of that producer's settle, before the commit
 	// seam.
 	ApprovePlan func() error
+	// SkipPlanReview is the injected closure answering whether the live plan generation skips its Plan-Review judge, read by the Bouncer entry's skip_seam key.
+	// An error makes the Bouncer review for real.
+	SkipPlanReview func() (bool, error)
 	// ReflectFriction is the injected closure the FrictionReflect entry's producer calls once per
 	// Call, returning the reflection's status string. It arrives as a closure, following
 	// CommitWebster/CommitDiscussion/ApprovePlan, because the reflection's dependencies are already
 	// resolved on internal/loomcli's receiver, and building them here would pull friction, lock and
 	// loom-config imports into this Told-Geometry-bound package.
 	ReflectFriction func() string
-	// ReworkSpec is the injected shedadapters.SpecSource the PRRework entry evaluates once per Call.
+	// ReworkSpec is the injected Spec factory the PRRework entry evaluates once per Call, with the values the producer tells that session.
 	// It arrives as a closure rather than as recipe Config because building the Spec needs a *lyxcwd.Location, which the Shed Recipe Registry Invariant bars this package from importing directly;
 	// internal/loomcli's wire() is what supplies it.
-	ReworkSpec shedadapters.SpecSource
+	ReworkSpec func(loomshed.ReworkTold) (shuttleengine.Spec, error)
 	// Rework is a whole-struct passthrough to loomshed.NewPRRework, following Env.Landing's own precedent:
-	// the producer has behaviour of its own -- the append-only check, the round record, the re-baseline and the rejection removal -- that per-seam fakes must be able to substitute individually.
+	// the producer has behaviour of its own -- the generation archive, the round record and the rejection removal -- that per-seam fakes must be able to substitute individually.
 	Rework loomshed.PRReworkDeps
 
 	// Slug is the run-wide task slug, read by all three batten entries (WorktreeCreate, InnerRun,

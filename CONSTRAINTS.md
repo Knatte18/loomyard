@@ -362,6 +362,15 @@ Sandbox tooling resolves the dev binary via `resolveLyx` (`.dev-bin` first, then
 
 - Consumers read only from the `planparser.Plan` model. `SetApproved` (approval), `RewriteRefs` (ref substitution across the plan), and `AppendAmendment` (the append-only amendment log) are the three write paths — and no others.
 
+## Plan Generation Invariant
+
+`_lyx/plan/`'s top-level files hold exactly one plan generation.
+
+- A retired generation lives only under the rework round that retired it (`round-<N>/prior-generation/`), except where Plan-Write's own `archive-*/` rotation moves the live plan aside on a re-run.
+- Only PR-Rework archives a generation into a round.
+- Webster's run record and the Plan-Review and Webster-Review run directories are generation-scoped: they move into the round with the plan, so the next generation starts with none.
+- `internal/loomshed` declares the round layout once; every path is built from the existing accessors, and webster receives its archive destination as a told path.
+
 ## Ref-Shape Registry Invariant
 
 `internal/planparser` is the sole declarer of ref-shape vocabulary — classification (`classifyRef`/`refKind`) and the `plan:` handle grammar (`HandlePrefix` and the exported handle helpers).
@@ -397,7 +406,7 @@ In production code, `internal/summaryparser` is the sole declarer of the final-s
 
 A mechanical gate's **closure** and its CLI self-check verb call the same package function for every mode.
 
-- Discussion-Write's and Discussion-Burler's gates ↔ `validate-discussion`: `discussionparser.Validate`. Plan-Write's and Plan-Burler's gates ↔ `validate-plan`: `planglyph.ValidateFormat`. PR-Rework's gate ↔ `validate-plan --rework`: `loomshed.ValidateReworkPlan`. Describe's gate ↔ `validate-description`: `summaryparser.ValidateDescription`.
+- Discussion-Write's and Discussion-Burler's gates ↔ `validate-discussion`: `discussionparser.Validate`. Plan-Write's and Plan-Burler's gates ↔ `validate-plan`: `planglyph.ValidateFormat`. PR-Rework's gate ↔ `validate-plan --rework`: `loomshed.ValidateReworkPlan`, which checks the whole new plan plus the told `first_card`. Describe's gate ↔ `validate-description`: `summaryparser.ValidateDescription`.
 - The verb's `--require-approved` mode, running the full check set, has no recipe counterpart by design: both plan gate sites run strictly before the Plan-Review segment's approve seam writes the approval flag, so demanding it would fail every fix round, and the flag's guarantee rests on that seam failing loudly instead — never on a row re-checking it.
 - Adding a mechanical gate means adding its verb and its parity check in the same task.
 - Moving a gate from a standalone row into a producer's own closure changed *where* the call sits, never the property this invariant binds, which is why the invariant survives the move rather than retiring with the rows.

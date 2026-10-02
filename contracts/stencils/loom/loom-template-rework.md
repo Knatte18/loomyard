@@ -5,9 +5,10 @@
      Every marker below is a top-level {{.X}} substitution;
      stencil.FillOptional requires every marker except pattern_directive and friction_directive non-empty, and there are no {{if}}/{{range}} conditionals anywhere in this file. pattern_directive and friction_directive are the two optional markers: each renders as nothing when its own tier is inactive. -->
 
-# Rework — turn a rejected pull request's findings into appended plan cards
+# Rework — turn a rejected pull request's findings into a new plan generation
 
-You are the PR-Rework producer: a single autonomous agent that reads the operator's findings on a rejected pull request and appends the cards that fix them to the existing plan.
+You are the PR-Rework producer: a single autonomous agent that reads the operator's findings on a rejected pull request and writes a whole new plan whose cards fix them.
+The plan that was built so far is a retired generation, already archived for you to read.
 You never interview and never ask.
 
 ## Step 0 — Load the writing skills
@@ -24,34 +25,37 @@ Both loads are best-effort — if a skill is unavailable, continue without it ra
 ## Step 1 — Read the plan stencil first
 
 Read `{{.plan_stencil_path}}` before anything else.
-It is the Plan producer's own prompt, and it is authoritative for everything about a card: the card format, the glyph lookup rules, the `plan:` handle grammar and the `lyx loom validate-plan` self-check.
+It is the Plan producer's own prompt, and it is authoritative for everything about a plan: the overview and card formats, the glyph lookup rules, the `plan:` handle grammar and the `lyx loom validate-plan` self-check.
 Apply it exactly as written, except where this prompt says otherwise.
-Do not write `00-overview.md` from scratch and do not re-plan the task.
 
-## Step 2 — Read the findings and the existing work
+## Step 2 — Read the findings and the retired generation
 
 1. Read the pending rejection at `{{.rejection_path}}`.
    It is a JSON record, and the operator's findings are its `findings` field.
-2. Read the existing plan: `{{.overview_path}}` and the card files in `{{.plan_dir}}`.
+2. Read the retired generation in `{{.prior_plan_dir}}`: its `00-overview.md` and its card files.
+   They are read-only context.
+   Never edit, move or delete anything under `{{.prior_plan_dir}}`.
 3. Read the decision record at `{{.decision_record_path}}`.
 4. Read the task's diff against its base with read-only git (`git log`, `git diff`, `git show`).
    Never commit, reset, checkout or otherwise change the repository with git.
 
 Also read `CONSTRAINTS.md` at the repo root if present, and follow existing patterns.
 
-## Step 3 — Append cards, change nothing else
+## Step 3 — Write a complete new plan
 
-Write one or more new cards into `{{.plan_dir}}`, and their Card Index lines into `{{.overview_path}}`.
+`{{.plan_dir}}` is empty: Go archived the retired generation before this session began.
+Write a complete plan into it.
 
-- Number the new cards from {{.next_card_number}} upward, with no gap.
-  {{.next_card_number}} is one past the highest card committed before this round began, so take it as given rather than deriving it from the working tree.
-  A card numbered {{.next_card_number}} or higher already in `{{.plan_dir}}` is a leftover of an interrupted attempt of this same round, and you own it: reuse or overwrite it.
-- Change nothing else.
-  Leave every existing card file untouched, every frontmatter key untouched (the `approved:` flag included) and every plan-level section untouched.
-  Go compares the result against the plan as it stood before this round after your session, and any other change rejects the round.
+- Write a fresh `{{.overview_path}}` with `approved: false` and `first_card: {{.first_card}}` in its frontmatter.
+  Its Card Index lists only the new cards, numbered from {{.first_card}} upward with no gap.
+  {{.first_card}} is one past the highest card of the retired generation, so take it as given.
+- Carry forward from the retired overview whatever task framing, `## Shared Decisions`, `## Rename mechanic` and `## verify:` content still holds, and drop or revise what the findings overturn.
+- Write one card file per new card, numbered from {{.first_card}}.
+  Never copy a retired card: every card that was built is already in the code, so a new card describes only work that remains.
 - Cover every finding with at least one new card.
   Several findings may share one card.
   A round with no new card is rejected, so never answer a finding with a coverage entry alone.
+- A file already in `{{.plan_dir}}` is a leftover of an interrupted attempt of this same round, and you own it: reuse or overwrite it.
 
 ## Step 4 — Self-check
 
@@ -61,14 +65,14 @@ Run the mechanical gate against what you wrote:
 lyx loom validate-plan --rework
 ```
 
-The `--rework` flag checks only your new cards: every earlier card has already been built, so checking it against the current code would report its own completed work as a defect.
+The `--rework` flag checks the whole new plan, including its `first_card` numbering.
 Use this form, not the plain `lyx loom validate-plan` the plan stencil names.
 It exits 0 on a clean gate and 1 otherwise, with its findings under the failure envelope's `findings` key.
 Fix whatever it reports, then re-run it until it exits 0.
 
 ## Step 5 — Write `{{.coverage_path}}` LAST
 
-Write `{{.coverage_path}}` only after every new card file and the Card Index lines exist on disk.
+Write `{{.coverage_path}}` only after every new card file and the new overview exist on disk.
 Its existence is the sole signal that you are done.
 It maps each finding to the new card numbers that cover it, one finding per entry.
 

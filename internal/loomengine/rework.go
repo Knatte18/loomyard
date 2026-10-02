@@ -1,10 +1,10 @@
 // rework.go implements ReworkSpec, the PR-Rework producer's Spec factory, and its composeReworkPrompt prompt composer.
 // Like PlanSpec, the rework agent is a prompt/profile fed to shuttle.Run, one shuttle.Run producing one artifact.
-// It turns the pending rejection's findings into cards appended to the existing plan, and writes the coverage file last as its completion signal.
+// It turns the pending rejection's findings into a whole new plan generation, written into the emptied plan directory, and writes the coverage file last as its completion signal.
 // Rework is planning, so it reuses the plan role's model-spec and timeout rather than carrying config keys of its own.
 //
 // ReworkSpec is a pure composer: it stats nothing and spawns nothing.
-// The append-only check on the agent's result is owned by the PR-Rework producer, not by this file.
+// Archiving the retired generation and classifying the new one are owned by the PR-Rework producer, not by this file.
 
 package loomengine
 
@@ -35,12 +35,13 @@ type reworkPaths struct {
 	decisionRecord string
 	coverage       string
 	planStencil    string
+	priorPlan      string
 }
 
 // composeReworkPrompt builds the rework prompt by reading the "loom-template-rework" stencil from stencilsDir and filling it.
-// nextCard is the number the first appended card takes.
+// firstCard is the number the new generation's first card takes.
 // Only pattern_directive and the friction marker are optional; specs_dir and every path marker fail composition when empty.
-func composeReworkPrompt(stencilsDir, specsDir string, p reworkPaths, nextCard int, patternDirective, frictionDirective string) ([]byte, error) {
+func composeReworkPrompt(stencilsDir, specsDir string, p reworkPaths, firstCard int, patternDirective, frictionDirective string) ([]byte, error) {
 	template, err := stencilstore.Read(stencilsDir, reworkStencilName)
 	if err != nil {
 		return nil, err
@@ -55,7 +56,8 @@ func composeReworkPrompt(stencilsDir, specsDir string, p reworkPaths, nextCard i
 		"decision_record_path": p.decisionRecord,
 		"coverage_path":        p.coverage,
 		"plan_stencil_path":    p.planStencil,
-		"next_card_number":     strconv.Itoa(nextCard),
+		"first_card":           strconv.Itoa(firstCard),
+		"prior_plan_dir":       p.priorPlan,
 		"specs_dir":            specsDir,
 		"pattern_directive":    patternDirective,
 		friction.MarkerName:    frictionDirective,
@@ -70,10 +72,10 @@ func composeReworkPrompt(stencilsDir, specsDir string, p reworkPaths, nextCard i
 
 // ReworkSpec builds the shuttleengine.Spec for one PR-Rework agent run.
 // stencilsDir and specsDir are told, never derived: this package is bound by the Told-Geometry Invariant.
-// nextCard is the number the session's first appended card takes, one past the highest card committed at HEAD;
-// it is told as a value because the session cannot read the committed plan from the worktree it runs in.
+// firstCard is the number the new generation's first card takes, one past the highest card of the retired generation,
+// and priorPlanDir is where that generation's plan was archived; both are told as values because the session cannot derive them from the worktree it runs in.
 // The plan role's model-spec and PlanTimeoutMin are reused.
-func ReworkSpec(layout *lyxcwd.Location, stencilsDir, specsDir string, cfg Config, reg modelspec.Registry, nextCard int) (shuttleengine.Spec, error) {
+func ReworkSpec(layout *lyxcwd.Location, stencilsDir, specsDir string, cfg Config, reg modelspec.Registry, firstCard int, priorPlanDir string) (shuttleengine.Spec, error) {
 	spec, err := modelspec.Parse(cfg.Plan)
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("loom: ReworkSpec: plan role model-spec: %w", err)
@@ -90,6 +92,7 @@ func ReworkSpec(layout *lyxcwd.Location, stencilsDir, specsDir string, cfg Confi
 		decisionRecord: DiscussionDecisionRecord(layout),
 		coverage:       LoomReworkCoveragePath(layout),
 		planStencil:    stencilstore.Path(stencilsDir, "loom-template-plan"),
+		priorPlan:      priorPlanDir,
 	}
 
 	directive, err := pattern.Directive(layout.AnchorPath(), stencilsDir, pattern.RoleImplementer)
@@ -109,7 +112,7 @@ func ReworkSpec(layout *lyxcwd.Location, stencilsDir, specsDir string, cfg Confi
 		frictionDirective = ""
 	}
 
-	prompt, err := composeReworkPrompt(stencilsDir, specsDir, paths, nextCard, directive, frictionDirective)
+	prompt, err := composeReworkPrompt(stencilsDir, specsDir, paths, firstCard, directive, frictionDirective)
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("loom: ReworkSpec: %w", err)
 	}

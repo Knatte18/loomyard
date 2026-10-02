@@ -53,6 +53,14 @@ type Plan struct {
 	// out of the glyph alphabet entirely. Absent defaults to "go".
 	Language string
 
+	// FirstCard mirrors the overview frontmatter's optional first_card: key, the number of the plan's first card.
+	// It is 1 when the key is absent or invalid, so a rework generation can number its cards on from the generation it retires.
+	FirstCard int
+
+	// FirstCardInvalid is the raw text of a first_card: value that is not a positive integer, empty when the key is absent or valid.
+	// index-file-mismatch reports it.
+	FirstCardInvalid string
+
 	// Framing is the task-framing paragraph(s) between the overview's title heading and its "## Card Index" heading.
 	Framing string
 

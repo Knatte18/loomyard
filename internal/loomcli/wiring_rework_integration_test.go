@@ -1,7 +1,7 @@
 //go:build integration
 
 // wiring_rework_integration_test.go drives wire()'s real plan, webster and rework seams over a real fabric pair,
-// so PR-Rework's prompt and append-only check read the plan exactly as the earlier rows left it at weft HEAD.
+// so PR-Rework archives each generation, and its round commit lands, exactly as the earlier rows left the tree at weft HEAD.
 
 package loomcli
 
@@ -13,9 +13,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -29,48 +29,49 @@ func reworkPlanCard(number int, slug, intent string) string {
 	return fmt.Sprintf("# Card %d — %s\n\n**Create:**\n- `internal/%s/new.go`\n\n**Intent:** %s\n", number, slug, strings.ReplaceAll(slug, "-", ""), intent)
 }
 
-// writeReworkPlan writes the plan's overview and every card in cards, keyed by slug in index order.
-func writeReworkPlan(t *testing.T, planDir string, cards [][2]string) {
+// writeReworkPlan writes a plan generation whose cards are numbered from first, keyed by slug in index order.
+func writeReworkPlan(t *testing.T, planDir string, first int, cards [][2]string) {
 	t.Helper()
 	if err := os.MkdirAll(planDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	var index strings.Builder
 	for i, c := range cards {
-		fmt.Fprintf(&index, "%d — %s — card %d\n", i+1, c[0], i+1)
-		name := fmt.Sprintf("%02d-%s.md", i+1, c[0])
-		if err := os.WriteFile(filepath.Join(planDir, name), []byte(reworkPlanCard(i+1, c[0], c[1])), 0o644); err != nil {
+		fmt.Fprintf(&index, "%d — %s — card %d\n", first+i, c[0], first+i)
+		name := fmt.Sprintf("%02d-%s.md", first+i, c[0])
+		if err := os.WriteFile(filepath.Join(planDir, name), []byte(reworkPlanCard(first+i, c[0], c[1])), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
-	overview := fmt.Sprintf("---\nformat: 5\napproved: true\nlanguage: none\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n%s", index.String())
+	overview := fmt.Sprintf("---\nformat: 5\napproved: true\nlanguage: none\nfirst_card: %d\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n%s", first, index.String())
 	if err := os.WriteFile(filepath.Join(planDir, "00-overview.md"), []byte(overview), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
 
-// appendingSession is a fake rework session that appends one card and writes its coverage file.
-type appendingSession struct {
+// generationSession is a fake rework session that writes the next plan generation and its coverage file.
+type generationSession struct {
 	t        *testing.T
 	planDir  string
+	first    int
 	cards    [][2]string
 	coverage string
 }
 
-func (s appendingSession) Call(context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
-	writeReworkPlan(s.t, s.planDir, s.cards)
-	if err := os.WriteFile(s.coverage, []byte("finding 1: card 2\n"), 0o644); err != nil {
+func (s generationSession) Call(context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
+	writeReworkPlan(s.t, s.planDir, s.first, s.cards)
+	if err := os.WriteFile(s.coverage, []byte("finding 1: the new card\n"), 0o644); err != nil {
 		s.t.Fatal(err)
 	}
 	return shedengine.Done, shedengine.OutputPointer{Path: s.coverage}, nil
 }
 
-// TestWire_Real_ReworkAppendsOverWebsterRewrittenPlan asserts a card webster rewrote during its run does not fail PR-Rework's append-only check:
-// the Webster row's commit carries the rewrite to weft HEAD, so the round that appends a card after it passes and commits.
-// The rework prompt numbers that card from the plan at weft HEAD too.
-func TestWire_Real_ReworkAppendsOverWebsterRewrittenPlan(t *testing.T) {
+// TestWire_Real_ReworkRoundsArchiveGenerations drives two PR-Rework rounds through wire()'s real seams.
+// Each round is one weft commit carrying both the moved-from deletions and the archive, webster's directory is emptied,
+// and the live plan holds only the newest generation.
+func TestWire_Real_ReworkRoundsArchiveGenerations(t *testing.T) {
 	hub := hubforge.NewHub(t, ".")
-	const slug = "reworkwebster"
+	const slug = "reworkgenerations"
 	hubforge.AddPair(t, hub, slug)
 	location, err := lyxcwd.ResolveWorktree(hub.PairWarpWorktree(slug))
 	if err != nil {
@@ -84,58 +85,178 @@ func TestWire_Real_ReworkAppendsOverWebsterRewrittenPlan(t *testing.T) {
 	}
 	planDir := planparser.PlanDir(location.AnchorPath())
 
-	writeReworkPlan(t, planDir, [][2]string{{"first-card", "as planned."}})
+	// Generation 0 is planned, built by webster and reviewed; every row has committed its records.
+	writeReworkPlan(t, planDir, 1, [][2]string{{"first-card", "as planned."}})
+	if err := c.env.CommitPlan(); err != nil {
+		t.Fatalf("CommitPlan() = %v; want nil", err)
+	}
+	websterDir := websterengine.Dir(location.AnchorPath())
+	reviewsDir := loomengine.LoomReviewsDir(location)
+	writeTestFile(t, filepath.Join(websterDir, "summary.md"), "summary\n")
+	if err := c.env.CommitWebster(); err != nil {
+		t.Fatalf("CommitWebster() = %v; want nil", err)
+	}
+	writeTestFile(t, filepath.Join(reviewsDir, "plan", "report.md"), "plan review\n")
+	writeTestFile(t, filepath.Join(reviewsDir, "webster", "report.md"), "webster review\n")
+	if _, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, []string{loomengine.LoomReviewsDirRel()}, "reviews", fabricengine.EnvSyncOptions()); err != nil {
+		t.Fatalf("commit reviews: %v", err)
+	}
+
+	round := func(n int, rejectedAt string, first int, cards [][2]string) {
+		t.Helper()
+		before := mustGitOut(t, weftSibling, "rev-list", "--count", "HEAD")
+		deps := c.env.Rework
+		deps.ReadRejection = func() (loomshed.PendingRejection, bool, error) {
+			return loomshed.PendingRejection{PRNumber: 3, HeadSHA: "abc123", RejectedAt: rejectedAt, Findings: "fix it\n"}, true, nil
+		}
+		deps.ClearRejection = func() error { return nil }
+		session := generationSession{t: t, planDir: planDir, first: first, cards: cards, coverage: filepath.Join(t.TempDir(), "coverage.md")}
+		outcome, ptr, err := loomshed.NewPRRework(loomshed.NamePRRework, func(loomshed.ReworkTold) shedengine.ShedProducer { return session }, deps).Call(context.Background())
+		if err != nil || outcome != shedengine.Done {
+			t.Fatalf("round %d: PR-Rework Call = %v, %q, %v; want Done", n, outcome, ptr.Reason, err)
+		}
+		after := mustGitOut(t, weftSibling, "rev-list", "--count", "HEAD")
+		if want := fmt.Sprintf("%d", atoiOrFail(t, before)+1); strings.TrimSpace(after) != want {
+			t.Errorf("round %d: weft commit count %s -> %s; want exactly one commit", n, strings.TrimSpace(before), strings.TrimSpace(after))
+		}
+	}
+
+	round1Prior := filepath.ToSlash(filepath.Join(loomengine.LoomReworkDirRel(), "round-1", "prior-generation"))
+	round(1, "2026-09-30T10:00:00Z", 2, [][2]string{{"second-card", "fixes the finding."}})
+	changed := mustGitOut(t, weftSibling, "show", "--no-renames", "--name-status", "--format=", "HEAD")
+	for _, want := range []string{
+		"D\t" + planparser.PlanDirRel() + "/01-first-card.md",
+		"A\t" + round1Prior + "/plan/01-first-card.md",
+		"A\t" + round1Prior + "/webster/summary.md",
+		"D\t" + websterengine.DirRel() + "/summary.md",
+		"A\t" + round1Prior + "/reviews/plan/report.md",
+		"D\t" + filepath.ToSlash(loomengine.LoomReviewsDirRel()) + "/webster/report.md",
+		"A\t" + filepath.ToSlash(loomengine.LoomReworkDirRel()) + "/round-1/record.json",
+		"A\t" + planparser.PlanDirRel() + "/02-second-card.md",
+	} {
+		if !strings.Contains(changed, want) {
+			t.Errorf("round 1 commit lacks %q; got:\n%s", want, changed)
+		}
+	}
+	if entries, err := os.ReadDir(websterDir); err != nil || len(entries) != 0 {
+		t.Errorf("webster dir after round 1 = %v, %v; want empty", entries, err)
+	}
+
+	// Webster runs again over generation 1 and records its run.
+	writeTestFile(t, filepath.Join(websterDir, "summary.md"), "generation one summary\n")
+	if err := c.env.CommitWebster(); err != nil {
+		t.Fatalf("CommitWebster() = %v; want nil", err)
+	}
+	round(2, "2026-09-30T12:00:00Z", 3, [][2]string{{"third-card", "fixes the second finding."}})
+
+	if got := dirEntryNames(t, planDir); strings.Join(got, ",") != "00-overview.md,03-third-card.md" {
+		t.Errorf("live plan = %v; want generation 2 only", got)
+	}
+	if got := dirEntryNames(t, filepath.Join(location.AnchorPath(), loomengine.LoomReworkDirRel(), "round-1", "prior-generation", "plan")); strings.Join(got, ",") != "00-overview.md,01-first-card.md" {
+		t.Errorf("round-1 archived plan = %v; want generation 0", got)
+	}
+	if got := dirEntryNames(t, filepath.Join(location.AnchorPath(), loomengine.LoomReworkDirRel(), "round-2", "prior-generation", "plan")); strings.Join(got, ",") != "00-overview.md,02-second-card.md" {
+		t.Errorf("round-2 archived plan = %v; want generation 1", got)
+	}
+	if entries, err := os.ReadDir(websterDir); err != nil || len(entries) != 0 {
+		t.Errorf("webster dir after round 2 = %v, %v; want empty", entries, err)
+	}
+}
+
+// writeTestFile writes body at path, creating parent directories.
+func writeTestFile(t *testing.T, path, body string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// dirEntryNames lists the entry names of dir.
+func dirEntryNames(t *testing.T, dir string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("ReadDir(%q): %v", dir, err)
+	}
+	names := make([]string, len(entries))
+	for i, e := range entries {
+		names[i] = e.Name()
+	}
+	return names
+}
+
+// atoiOrFail parses s, a git count's output, as an integer.
+func atoiOrFail(t *testing.T, s string) int {
+	t.Helper()
+	var n int
+	if _, err := fmt.Sscanf(strings.TrimSpace(s), "%d", &n); err != nil {
+		t.Fatalf("parse count %q: %v", s, err)
+	}
+	return n
+}
+
+// proseSession is a fake rework session whose new generation is one Prosa card on a markdown file.
+type proseSession struct {
+	t        *testing.T
+	planDir  string
+	first    int
+	coverage string
+}
+
+func (s proseSession) Call(context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
+	writeReworkPlan(s.t, s.planDir, s.first, [][2]string{{"docs-card", "words only."}})
+	card := fmt.Sprintf("# Card %d — docs-card\n\n**Prosa:**\n- `docs/note.md`\n\n**Intent:** words only.\n", s.first)
+	writeTestFile(s.t, filepath.Join(s.planDir, fmt.Sprintf("%02d-docs-card.md", s.first)), card)
+	writeTestFile(s.t, s.coverage, "finding 1: the note\n")
+	return shedengine.Done, shedengine.OutputPointer{Path: s.coverage}, nil
+}
+
+// TestWire_Real_PlanReviewSkipFollowsGenerationClass asserts Env.SkipPlanReview, over a real fabric pair, answers true after a round whose new generation is all-Prosa on .md files and false after a round whose generation carries an Edit card.
+func TestWire_Real_PlanReviewSkipFollowsGenerationClass(t *testing.T) {
+	hub := hubforge.NewHub(t, ".")
+	const slug = "reworkskip"
+	hubforge.AddPair(t, hub, slug)
+	location, err := lyxcwd.ResolveWorktree(hub.PairWarpWorktree(slug))
+	if err != nil {
+		t.Fatalf("ResolveWorktree error = %v; want nil", err)
+	}
+
+	c := &loomCLI{runID: shedrun.SelfRunID}
+	if err := c.wire(location, location.AnchorPath()); err != nil {
+		t.Fatalf("wire() = %v; want nil", err)
+	}
+	if c.env.SkipPlanReview == nil {
+		t.Fatal("c.env.SkipPlanReview = nil; want PlanReviewSkippable over the rework deps")
+	}
+	planDir := planparser.PlanDir(location.AnchorPath())
+	writeReworkPlan(t, planDir, 1, [][2]string{{"first-card", "as planned."}})
 	if err := c.env.CommitPlan(); err != nil {
 		t.Fatalf("CommitPlan() = %v; want nil", err)
 	}
 
-	// Webster rewrites the card in place during its run, then commits its run record.
-	writeReworkPlan(t, planDir, [][2]string{{"first-card", "as bound by webster."}})
-	websterDir := websterengine.Dir(location.AnchorPath())
-	if err := os.MkdirAll(websterDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(websterDir, "summary.md"), []byte("summary\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := c.env.CommitWebster(); err != nil {
-		t.Fatalf("CommitWebster() = %v; want nil", err)
-	}
-
-	reworkStencil := filepath.Join(fabricengine.StencilsDir(location.HubPath), "loom", "loom-template-rework.md")
-	if err := os.MkdirAll(filepath.Dir(reworkStencil), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(reworkStencil, stencils.LoomTemplateRework, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	spec, err := c.env.ReworkSpec()
-	if err != nil {
-		t.Fatalf("ReworkSpec() = %v; want nil", err)
-	}
-	if !strings.Contains(spec.Prompt, "Number the new cards from 2 upward") {
-		t.Error("ReworkSpec().Prompt does not number the new cards from 2, one past the committed card")
+	round := func(rejectedAt string, session shedengine.ShedProducer) {
+		t.Helper()
+		deps := c.env.Rework
+		deps.ReadRejection = func() (loomshed.PendingRejection, bool, error) {
+			return loomshed.PendingRejection{PRNumber: 3, HeadSHA: "abc123", RejectedAt: rejectedAt, Findings: "fix it\n"}, true, nil
+		}
+		deps.ClearRejection = func() error { return nil }
+		outcome, ptr, err := loomshed.NewPRRework(loomshed.NamePRRework, func(loomshed.ReworkTold) shedengine.ShedProducer { return session }, deps).Call(context.Background())
+		if err != nil || outcome != shedengine.Done {
+			t.Fatalf("PR-Rework Call = %v, %q, %v; want Done", outcome, ptr.Reason, err)
+		}
 	}
 
-	deps := c.env.Rework
-	deps.ReadRejection = func() (loomshed.PendingRejection, bool, error) {
-		return loomshed.PendingRejection{PRNumber: 3, HeadSHA: "abc123", RejectedAt: "2026-09-30T10:00:00Z", Findings: "fix it\n"}, true, nil
-	}
-	deps.ClearRejection = func() error { return nil }
-	deps.Rebaseline = func() error { return nil }
-	session := appendingSession{
-		t:        t,
-		planDir:  planDir,
-		cards:    [][2]string{{"first-card", "as bound by webster."}, {"second-card", "fixes the finding."}},
-		coverage: filepath.Join(t.TempDir(), "coverage.md"),
+	round("2026-09-30T10:00:00Z", proseSession{t: t, planDir: planDir, first: 2, coverage: filepath.Join(t.TempDir(), "coverage.md")})
+	if skip, err := c.env.SkipPlanReview(); err != nil || !skip {
+		t.Errorf("SkipPlanReview after an all-Prosa generation = %v, %v; want true, nil", skip, err)
 	}
 
-	outcome, ptr, err := loomshed.NewPRRework(loomshed.NamePRRework, session, deps).Call(context.Background())
-	if err != nil || outcome != shedengine.Done {
-		t.Fatalf("PR-Rework Call = %v, %q, %v; want Done", outcome, ptr.Reason, err)
-	}
-	want := planparser.PlanDirRel() + "/02-second-card.md"
-	if got := mustGitOut(t, weftSibling, "show", "--name-only", "--format=", "HEAD"); !strings.Contains(got, want) {
-		t.Errorf("weft HEAD touched %q; want it to include %q", got, want)
+	round("2026-09-30T12:00:00Z", generationSession{t: t, planDir: planDir, first: 3, cards: [][2]string{{"third-card", "changes source."}}, coverage: filepath.Join(t.TempDir(), "coverage2.md")})
+	if skip, err := c.env.SkipPlanReview(); err != nil || skip {
+		t.Errorf("SkipPlanReview after a generation with a source card = %v, %v; want false, nil", skip, err)
 	}
 }

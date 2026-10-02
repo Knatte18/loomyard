@@ -180,18 +180,19 @@ func testReworkDeps(dir string) loomshed.PRReworkDeps {
 		PlanDir:       filepath.Join(dir, lyxdirs.LyxDirName, "plan"),
 		ReworkDir:     filepath.Join(dir, lyxdirs.LyxDirName, "loom", "rework"),
 		ReworkDirRel:  filepath.Join(lyxdirs.LyxDirName, "loom", "rework"),
+		ReviewsDir:    filepath.Join(dir, lyxdirs.LyxDirName, "reviews"),
 		ReadCommitted: func(string) ([]byte, bool, error) { return nil, false, nil },
 		ReadRejection: func() (loomshed.PendingRejection, bool, error) {
 			return loomshed.PendingRejection{}, false, nil
 		},
 		ClearRejection: func() error { return nil },
+		ArchiveWebster: func(string) error { return nil },
 		Commit:         func() error { return nil },
-		Rebaseline:     func() error { return nil },
 	}
 }
 
 // testReworkSpec is a non-writing rework Spec factory for the same fixtures.
-func testReworkSpec() (shuttleengine.Spec, error) {
+func testReworkSpec(loomshed.ReworkTold) (shuttleengine.Spec, error) {
 	return shuttleengine.Spec{Prompt: "rework prompt", Role: "rework"}, nil
 }
 
@@ -761,6 +762,7 @@ func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, 
 		ApprovePlan: func() error {
 			return planparser.SetApproved(planDir)
 		},
+		SkipPlanReview: func() (bool, error) { return false, nil },
 	}
 
 	paths = shedbuild.ShedPaths{

@@ -14,6 +14,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/lock"
 )
 
 // archiveTimestampFormat is the UTC compact timestamp format webster archive helpers share.
@@ -85,4 +87,60 @@ func archiveReportsDir(reportsDir string, now func() time.Time) error {
 		return fmt.Errorf("websterengine: recreate reports dir %s: %w", reportsDir, err)
 	}
 	return nil
+}
+
+// ArchiveRunRecord moves every entry of geom.WebsterDir into dest, so the next run finds no state and starts fresh over the live plan only.
+// dest is told and never derived;
+// this function knows nothing of what it is archiving for.
+// It refuses with ErrRunBusy while a run holds the run lock, then holds the state-mutation lease across the moves.
+// It is idempotent for crash resume: an absent WebsterDir, or an entry already moved, is skipped.
+// An entry present at both source and destination is an error and nothing is moved, since either copy may be the stale one.
+// The rendered fork prompts are cleared as the --fresh escape does, since they are re-renderable and name the retired run's batches.
+func ArchiveRunRecord(geom Geometry, dest string) error {
+	if err := os.MkdirAll(geom.ScratchDir, 0o755); err != nil {
+		return fmt.Errorf("websterengine: create webster scratch dir %s: %w", geom.ScratchDir, err)
+	}
+	runLock, locked, err := lock.TryAcquireWriteLock(filepath.Join(geom.ScratchDir, runLockName))
+	if err != nil {
+		return fmt.Errorf("websterengine: acquire run lock in %s: %w", geom.ScratchDir, err)
+	}
+	if !locked {
+		return fmt.Errorf("%w: %q (run.lock held); way forward: wait for the run to finish, then retry", ErrRunBusy, geom.ScratchDir)
+	}
+	defer runLock.Release()
+
+	lease, err := AcquireStateMutation(geom.ScratchDir)
+	if err != nil {
+		return err
+	}
+	defer lease.Release()
+
+	entries, err := os.ReadDir(geom.WebsterDir)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("websterengine: read webster dir %s: %w", geom.WebsterDir, err)
+	}
+
+	for _, e := range entries {
+		to := filepath.Join(dest, e.Name())
+		if _, err := os.Lstat(to); err == nil {
+			from := filepath.Join(geom.WebsterDir, e.Name())
+			return fmt.Errorf("websterengine: archive run record: %s exists at both %s and %s; way forward: remove whichever copy is stale, then re-step", e.Name(), from, to)
+		} else if !os.IsNotExist(err) {
+			return fmt.Errorf("websterengine: stat archive target %s: %w", to, err)
+		}
+	}
+
+	if len(entries) > 0 {
+		if err := os.MkdirAll(dest, 0o755); err != nil {
+			return fmt.Errorf("websterengine: create archive dir %s: %w", dest, err)
+		}
+	}
+	for _, e := range entries {
+		from := filepath.Join(geom.WebsterDir, e.Name())
+		if err := os.Rename(from, filepath.Join(dest, e.Name())); err != nil {
+			return fmt.Errorf("websterengine: archive %s into %s: %w", from, dest, err)
+		}
+	}
+
+	return clearRenderedPrompts(geom.PromptsDir)
 }

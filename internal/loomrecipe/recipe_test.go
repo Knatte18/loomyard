@@ -233,8 +233,8 @@ func TestRecipe_PublishRoutesThroughPRGate(t *testing.T) {
 	if gate.OnDone != loomshed.NameFinalize || gate.OnStuck != loomshed.NamePRRework {
 		t.Errorf("PR-Gate OnDone/OnStuck = %q/%q; want %q/%q", gate.OnDone, gate.OnStuck, loomshed.NameFinalize, loomshed.NamePRRework)
 	}
-	if rework.OnDone != loomshed.NameWebster || rework.OnStuck != "" {
-		t.Errorf("PR-Rework OnDone/OnStuck = %q/%q; want %q/empty", rework.OnDone, rework.OnStuck, loomshed.NameWebster)
+	if rework.OnDone != loomshed.NamePlanBouncer || rework.OnStuck != "" {
+		t.Errorf("PR-Rework OnDone/OnStuck = %q/%q; want %q/empty", rework.OnDone, rework.OnStuck, loomshed.NamePlanBouncer)
 	}
 	if gate.Segment != "PR-Review" || rework.Segment != "PR-Review" {
 		t.Errorf("segments = %q/%q; want both PR-Review", gate.Segment, rework.Segment)
