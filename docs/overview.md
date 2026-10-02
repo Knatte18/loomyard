@@ -113,7 +113,7 @@ lyx organizes overlay artifacts (configuration, task state, raddle docs, and the
   ├── <prime>-weft/                 (weft Prime worktree; git repo root)
   ├── <slug>/                       (additional warp worktree; git repo root)
   ├── <slug>-weft/                  (weft worktree for <slug>; git repo root)
-  ├── _board/                       (weft:main worktree; the task store)
+  ├── _board/                       (weft:main worktree; holds board.json)
   │     └── .lyx/                   (hub-wide machine-local scratch; a real dir, never a junction)
   ├── _portals/<anchor>/<slug>      (junction into <slug>'s _lyx; anchor-mirrored)
   └── _launchers/<anchor>/          (anchor-mirrored)
@@ -294,7 +294,11 @@ All commands print JSON: `{"ok":true, ...}` on success, `{"ok":false,"error":"..
 
 User-facing modules each get one `lyx <module>` namespace:
 
-- **board** — the task-tracker board (`internal/boardcli` + `internal/boardengine`). ✅ Implemented.
+- **board** — the task-tracker board, which is also the roadmap (`internal/boardcli` + `internal/boardengine`).
+  One `board.json` store holds every entry, and each entry carries a tier (Planned, Next Up or Someday) and a type.
+  The README renders one section per tier.
+  Agents use the board through the `ly:board` skill.
+  ✅ Implemented.
 - **config** — interactive menu for viewing and editing module configs;
   `lyx config reconcile` reconciles all module config files against their live templates (dry-run by default, `--apply` writes atomically) except seed-only modules (today: `models`), which are materialized once when absent and never rewritten again since the file is operator-owned;
   `lyx config <module> --set key=value` (repeatable) writes one or more config values directly with no editor invocation, for scripts/agents that need a non-interactive path. ✅ Implemented.
