@@ -4,7 +4,7 @@
 // because the wait loop's send must type the delivery prompt into a real pane and the pane must read it back.
 // It follows smoke_gate_test.go: a real hub, a real reed session, a real tmux pane and a real shuttleengine.Runner, with a stub Engine whose Prepare launches a shell script rather than a provider.
 //
-// The seed names a hand-started parent session as the run's parent, and the stub writer stands in for the live Discussion-Write agent.
+// The resolver names the prime's orch as the run's parent, and the stub writer stands in for the live Discussion-Write agent.
 // A real agent would answer the delivery prompt by calling SendMessage to the parent;
 // the stub cannot, so it records the text it received in a notice file, which is what the test waits on.
 // The notice must name the brief path, which is all a real parent needs to review and submit.
@@ -24,11 +24,12 @@ import (
 
 	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/parentreview"
-	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -84,10 +85,8 @@ func TestSmokeParentReview_NoticeReachesTheWriterPaneAndApproveLetsTheRunThrough
 	_, loc, worktree, _ := newWiredPairFixture(t)
 	registerBootstrapTeardown(t, loc, worktree)
 
-	const parent = "smoke:parent"
-	if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: shedrun.DriverGo, Parent: parent}); err != nil {
-		t.Fatalf("WriteSeed: %v", err)
-	}
+	// The fixture's pair is created from the prime, so the resolver names the prime's orch as the parent.
+	const parent = hubforge.TestShortname + ":orch"
 
 	// stencilstore.Read hard-errors on a missing file, so the two stencils the closure renders are deployed by hand.
 	stencilsDir := fabricengine.StencilsDir(loc.HubPath)
@@ -126,10 +125,16 @@ func TestSmokeParentReview_NoticeReachesTheWriterPaneAndApproveLetsTheRunThrough
 	runner := shuttleengine.NewRunner(reedEngine, parentNoticeEngine{gateRepromptReadEngine: gateRepromptReadEngine{quietSeconds: 3}, noticePath: noticePath}, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 
 	// The same two closures resolveGateSpec builds for the row's "gates" list.
-	prCfg, err := newParentReviewConfig(loc, shedrun.SelfRunID, loomengine.Config{ParentReviewWaitMin: 5}, stencilsDir)
+	reedCfg, err := reedengine.LoadConfig(loc.AnchorPath(), "reed")
+	if err != nil {
+		t.Fatalf("load reed config: %v", err)
+	}
+	prCfg, err := newParentReviewConfig(loc, reedCfg, loomengine.Config{ParentReviewWaitMin: 5}, stencilsDir)
 	if err != nil {
 		t.Fatalf("newParentReviewConfig: %v", err)
 	}
+	// No orch session runs in this hub, and the stub writer stands in for the parent's reviewer, so the reviewer counts as live.
+	prCfg.ReviewerLive = nil
 	reviewGate, reviewFinal := parentreview.NewGate(prCfg)
 	gates := shuttleengine.GateSpec{
 		{Name: "discussion", Gate: loomshed.NewDiscussionGate(decisionRecordPath, supportLogPath), Attempts: 3},
