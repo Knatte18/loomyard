@@ -22,6 +22,7 @@ const (
 	SourceFlag        = "flag"
 	SourceLastHandoff = "last-handoff"
 	SourceFresh       = "fresh"
+	SourceAdopt       = "adopt"
 )
 
 // DecideStart maps the strand and watcher liveness pair onto a StartAction.

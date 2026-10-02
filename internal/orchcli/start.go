@@ -32,9 +32,9 @@ const (
 	actionRelaunched     = "relaunched"
 )
 
-// sessionStarter starts the orchestrator's shuttle run and returns its strand guid.
+// sessionStarter starts the orchestrator's shuttle run and returns its strand guid and the resume check's warning, empty when there is none.
 type sessionStarter interface {
-	StartSession(spec shuttleengine.Spec) (guid string, err error)
+	StartSession(spec shuttleengine.Spec) (guid, warning string, err error)
 }
 
 // runnerSessionStarter adapts *shuttleengine.Runner to sessionStarter.
@@ -43,12 +43,12 @@ type runnerSessionStarter struct {
 }
 
 // StartSession delegates to Runner.Start, which returns only once the provider is past its startup gates.
-func (s runnerSessionStarter) StartSession(spec shuttleengine.Spec) (string, error) {
+func (s runnerSessionStarter) StartSession(spec shuttleengine.Spec) (string, string, error) {
 	run, err := s.runner.Start(spec)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	return run.StrandGUID(), nil
+	return run.StrandGUID(), run.ResumeWarning(), nil
 }
 
 // orchSpec builds the orchestrator run's spec: interactive, awaiting the operator, focused, with a never-written sentinel as its one output file so the run never finishes on one.
@@ -89,7 +89,7 @@ func fileExists(path string) bool {
 }
 
 // startFields builds the success envelope.
-func startFields(action, strand, promptSource string, attached bool, hint string) map[string]any {
+func startFields(action, strand, promptSource string, attached bool, hint, warning string) map[string]any {
 	fields := map[string]any{
 		"action":        action,
 		"strand":        strand,
@@ -99,13 +99,16 @@ func startFields(action, strand, promptSource string, attached bool, hint string
 	if hint != "" {
 		fields["hint"] = hint
 	}
+	if warning != "" {
+		fields["warning"] = warning
+	}
 	return fields
 }
 
 // startCmd builds the `start` subcommand.
 func (c *orchCLI) startCmd() *cobra.Command {
 	var noAttach bool
-	var handoffFlag string
+	var handoffFlag, adoptFlag string
 
 	cmd := &cobra.Command{
 		Use:   "start",
@@ -115,6 +118,9 @@ hands the terminal over. With a live strand and no watcher it spawns the watcher
 With a dead or absent strand it removes the corpse, launches a fresh session and
 spawns a watcher for it. The fresh session resumes from --handoff when given, else
 from the last completed handoff, else starts from the start stencil.
+With --adopt <session-id> the fresh launch instead resumes that existing Claude
+session, recorded under the prime's own directory, as the orchestrator strand;
+--adopt and --handoff are exclusive, and --adopt is refused while the strand is live.
 The terminal is attached to reed's session (or the tmux client switched onto it)
 unless --no-attach is given.`,
 		Args: cobra.NoArgs,
@@ -127,6 +133,10 @@ unless --no-attach is given.`,
 			fail := func(err error) error {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
+			}
+
+			if adoptFlag != "" && handoffFlag != "" {
+				return fail(fmt.Errorf("orch: --adopt and --handoff are exclusive; drop one"))
 			}
 
 			if handoffFlag != "" {
@@ -189,7 +199,11 @@ unless --no-attach is given.`,
 				return fail(fmt.Errorf("orch: --handoff applies to a fresh launch only, but the orchestrator strand %s is live -- run `lyx orch stop` first", strand.GUID))
 			}
 
-			envAction, promptSource, guid := "", "", strand.GUID
+			if adoptFlag != "" && action != orchengine.StartRelaunch {
+				return fail(fmt.Errorf("orch: --adopt applies to a fresh launch only, but the orchestrator strand %s is live -- run `lyx orch stop` first", strand.GUID))
+			}
+
+			envAction, promptSource, guid, warning := "", "", strand.GUID, ""
 			switch action {
 			case orchengine.StartRelaunch:
 				if hasStrand {
@@ -197,18 +211,30 @@ unless --no-attach is given.`,
 						return fail(err)
 					}
 				}
-				prompt, source, err := orchengine.ChooseStartPrompt(c.stencilsDir, handoffFlag, st, fileExists)
+				var prompt, source string
+				if adoptFlag != "" {
+					prompt, err = orchengine.RenderAdoptPrompt(c.stencilsDir)
+					source = orchengine.SourceAdopt
+				} else {
+					prompt, source, err = orchengine.ChooseStartPrompt(c.stencilsDir, handoffFlag, st, fileExists)
+				}
 				if err != nil {
 					return fail(err)
 				}
-				guid, err = c.starter.StartSession(c.orchSpec(prompt, time.Now()))
+				spec := c.orchSpec(prompt, time.Now())
+				spec.ResumeSessionID = adoptFlag
+				guid, warning, err = c.starter.StartSession(spec)
 				if err != nil {
 					return fail(err)
 				}
 				if err := orchengine.SaveState(c.paths, orchengine.ResetForFreshLaunch(st, guid)); err != nil {
 					return fail(err)
 				}
-				logger.Info("orch: launched orchestrator session", "strandGUID", guid, "promptSource", source)
+				if adoptFlag != "" {
+					logger.Info("orch: launched orchestrator session", "strandGUID", guid, "adoptedSessionID", adoptFlag, "promptSource", source)
+				} else {
+					logger.Info("orch: launched orchestrator session", "strandGUID", guid, "promptSource", source)
+				}
 				if err := c.spawnWatcher(); err != nil {
 					return fail(err)
 				}
@@ -238,9 +264,9 @@ unless --no-attach is given.`,
 			}
 			switch decision {
 			case handoverEnvelope:
-				clihelp.SetExit(ctx, output.Ok(out, startFields(envAction, guid, promptSource, false, "")))
+				clihelp.SetExit(ctx, output.Ok(out, startFields(envAction, guid, promptSource, false, "", warning)))
 			case handoverHint:
-				clihelp.SetExit(ctx, output.Ok(out, startFields(envAction, guid, promptSource, false, attachHint)))
+				clihelp.SetExit(ctx, output.Ok(out, startFields(envAction, guid, promptSource, false, attachHint, warning)))
 			default:
 				c.runHandover(ctx, decision)
 			}
@@ -249,6 +275,7 @@ unless --no-attach is given.`,
 	}
 	cmd.Flags().BoolVar(&noAttach, "no-attach", false, "for unattended callers: return once the session and watcher are up instead of handing the terminal to the session")
 	cmd.Flags().StringVar(&handoffFlag, "handoff", "", "resume a fresh launch from this handoff file instead of the last completed one; refused while the strand is live")
+	cmd.Flags().StringVar(&adoptFlag, "adopt", "", "resume this existing Claude session (the id `/status` shows in it) as the orchestrator strand; exclusive with --handoff, and refused while the strand is live")
 	return cmd
 }
 

@@ -11,6 +11,7 @@
 //
 //   - start: the idempotent bootstrap.
 //     It leaves one live orchestrator strand and one watcher bound to it, then hands the terminal over to reed's attach.
+//     `--adopt <session-id>` resumes an existing Claude session as the orchestrator strand instead of launching a fresh one.
 //   - status: reports the strand, the watcher and the persisted cycle state.
 //   - cycle: writes the cycle request, which makes the watcher cycle at its next idle moment regardless of the token count.
 //   - stop: removes the orchestrator strand; the watcher notices and exits on its own.
@@ -22,13 +23,16 @@
 //
 // # Start prompt order
 //
-// ChooseStartPrompt picks the launch prompt in a fixed order:
+// The launch prompt is picked in a fixed order:
 //
-//  1. The resume stencil pointed at the `--handoff` file, when the flag is given.
+//  1. The adopt stencil, when `--adopt` is given; `start` renders it directly, and it is exclusive with `--handoff`.
+//  2. The resume stencil pointed at the `--handoff` file, when the flag is given.
 //     A flag naming a missing file is an error rather than a fallback.
-//  2. The resume stencil pointed at State.LastHandoff, when that file still exists.
+//  3. The resume stencil pointed at State.LastHandoff, when that file still exists.
 //     A PendingHandoff is never chosen, since an aborted cycle may have left it partial.
-//  3. The start stencil, for a first launch.
+//  4. The start stencil, for a first launch.
+//
+// Steps 2 to 4 are ChooseStartPrompt's own order.
 //
 // DecideStart maps the strand and watcher liveness pair onto the branch `start` takes:
 // attach only, spawn a watcher, or relaunch.
@@ -125,6 +129,16 @@
 // In the running terminal session, run `/scribe:handoff` and note the file it writes, then exit that session.
 // Then run `lyx orch start --handoff <that file>` from the prime.
 // The new orchestrator strand starts from that handoff instead of the start stencil.
+//
+// # Adopting a running session
+//
+// To keep a session's full context instead of handing it off, read its id from `/status` in that session and exit it.
+// Then run `lyx orch start --adopt <id>` from the prime.
+// The session is resumed as the orchestrator strand with a watcher bound to it, and `LastHandoff` is kept.
+// It resumes only a session recorded under the prime's own directory, and is refused while the orchestrator strand is live.
+// It never kills or removes a strand or process orch did not launch.
+// An absent or unreadable Claude session registry lets an unconfirmed holder through, so two processes can drive one session;
+// the explicit id and the resume warning on the log and envelope bound that.
 //
 // # Residuals
 //

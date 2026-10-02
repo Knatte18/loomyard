@@ -20,16 +20,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
-// fakeStarter records the specs it is asked to start and answers a fixed guid.
+// fakeStarter records the specs it is asked to start and answers a fixed guid and warning.
 type fakeStarter struct {
-	specs []shuttleengine.Spec
-	guid  string
-	err   error
+	specs   []shuttleengine.Spec
+	guid    string
+	warning string
+	err     error
 }
 
-func (f *fakeStarter) StartSession(spec shuttleengine.Spec) (string, error) {
+func (f *fakeStarter) StartSession(spec shuttleengine.Spec) (string, string, error) {
 	f.specs = append(f.specs, spec)
-	return f.guid, f.err
+	return f.guid, f.warning, f.err
 }
 
 // seedStartStencils writes every shipped stencil default into a temporary directory.
@@ -153,9 +154,9 @@ func TestStart_LiveStrandNoWatcherSpawnsWatcherOnly(t *testing.T) {
 func TestStart_DeadStrandRemovedBeforeStart(t *testing.T) {
 	h := newStartHarness(t, reedengine.StrandStatus{GUID: "corpse", Name: "orch", Live: false})
 	removedBeforeStart := false
-	h.cli.starter = starterFunc(func(spec shuttleengine.Spec) (string, error) {
+	h.cli.starter = starterFunc(func(spec shuttleengine.Spec) (string, string, error) {
 		removedBeforeStart = len(h.strands.removed) == 1 && h.strands.removed[0] == "corpse"
-		return "new-guid", nil
+		return "new-guid", "", nil
 	})
 
 	if code, env := h.run(t); code != 0 {
@@ -167,9 +168,9 @@ func TestStart_DeadStrandRemovedBeforeStart(t *testing.T) {
 }
 
 // starterFunc adapts a function to sessionStarter.
-type starterFunc func(shuttleengine.Spec) (string, error)
+type starterFunc func(shuttleengine.Spec) (string, string, error)
 
-func (f starterFunc) StartSession(spec shuttleengine.Spec) (string, error) { return f(spec) }
+func (f starterFunc) StartSession(spec shuttleengine.Spec) (string, string, error) { return f(spec) }
 
 func TestStart_DeadStrandWithLastHandoffResumes(t *testing.T) {
 	h := newStartHarness(t, reedengine.StrandStatus{GUID: "corpse", Name: "orch", Live: false})
@@ -300,5 +301,88 @@ func TestStart_StartSessionFailureReportsAndSavesNothing(t *testing.T) {
 	}
 	if h.spawns != 0 {
 		t.Errorf("spawns = %d; want none after a failed launch", h.spawns)
+	}
+}
+
+const adoptTestSessionID = "11111111-2222-3333-4444-555555555555"
+
+func TestStart_AdoptWithHandoffRefuses(t *testing.T) {
+	h := newStartHarness(t)
+	code, env := h.run(t, "--adopt", adoptTestSessionID, "--handoff", filepath.Join(t.TempDir(), "h.md"))
+	if msg, _ := env["error"].(string); code == 0 || !strings.Contains(msg, "exclusive") {
+		t.Fatalf("exit = %d; env = %v; want the exclusive refusal", code, env)
+	}
+	if len(h.starter.specs) != 0 || h.spawns != 0 {
+		t.Errorf("starts = %d, spawns = %d; want none", len(h.starter.specs), h.spawns)
+	}
+}
+
+func TestStart_AdoptWithLiveStrandRefuses(t *testing.T) {
+	h := newStartHarness(t, reedengine.StrandStatus{GUID: "g1", Name: "orch", Live: true})
+	code, env := h.run(t, "--adopt", adoptTestSessionID)
+	if msg, _ := env["error"].(string); code == 0 || !strings.Contains(msg, "lyx orch stop") {
+		t.Fatalf("exit = %d; env = %v; want the refusal naming lyx orch stop", code, env)
+	}
+	if len(h.starter.specs) != 0 || h.spawns != 0 {
+		t.Errorf("starts = %d, spawns = %d; want none", len(h.starter.specs), h.spawns)
+	}
+}
+
+func TestStart_AdoptLaunchesResumeSpec(t *testing.T) {
+	cases := map[string][]reedengine.StrandStatus{
+		"dead strand": {{GUID: "corpse", Name: "orch", Live: false}},
+		"no strand":   nil,
+	}
+	for name, strands := range cases {
+		t.Run(name, func(t *testing.T) {
+			h := newStartHarness(t, strands...)
+			h.cli.cfg.PermissionMode = "bypass"
+			if err := orchengine.SaveState(h.cli.paths, orchengine.State{Phase: orchengine.PhaseIdle, LastHandoff: "/keep/me.md"}); err != nil {
+				t.Fatal(err)
+			}
+
+			code, env := h.run(t, "--adopt", adoptTestSessionID)
+			if code != 0 || env["prompt_source"] != orchengine.SourceAdopt || env["action"] != actionRelaunched {
+				t.Fatalf("exit = %d; env = %v", code, env)
+			}
+			if _, has := env["warning"]; has {
+				t.Errorf("envelope = %v; want no warning", env)
+			}
+			if len(h.starter.specs) != 1 || h.spawns != 1 {
+				t.Fatalf("starts = %d, spawns = %d; want 1 and 1", len(h.starter.specs), h.spawns)
+			}
+			spec := h.starter.specs[0]
+			if spec.ResumeSessionID != adoptTestSessionID || spec.PermissionMode != "bypass" || !spec.AllowAgentTool || !spec.ForkSubagents {
+				t.Errorf("spec = %+v; want the adopted id, bypass, AllowAgentTool and ForkSubagents", spec)
+			}
+			if st := h.state(t); st.LastHandoff != "/keep/me.md" || st.Strand != "new-guid" {
+				t.Errorf("state = %+v; want LastHandoff kept and strand new-guid", st)
+			}
+		})
+	}
+}
+
+func TestStart_StarterWarningReachesEnvelope(t *testing.T) {
+	h := newStartHarness(t)
+	h.starter.warning = "registry unreadable"
+	code, env := h.run(t, "--adopt", adoptTestSessionID)
+	if code != 0 || env["warning"] != "registry unreadable" {
+		t.Fatalf("exit = %d; env = %v; want the warning on the envelope", code, env)
+	}
+}
+
+func TestStart_AdoptStarterErrorFailsAndSavesNoState(t *testing.T) {
+	h := newStartHarness(t)
+	h.starter.err = errors.New("no transcript for that session")
+
+	code, env := h.run(t, "--adopt", adoptTestSessionID)
+	if msg, _ := env["error"].(string); code == 0 || !strings.Contains(msg, "no transcript for that session") {
+		t.Fatalf("exit = %d; env = %v", code, env)
+	}
+	if h.spawns != 0 {
+		t.Errorf("spawns = %d; want none", h.spawns)
+	}
+	if st := h.state(t); st.Strand != "" {
+		t.Errorf("state = %+v; want none saved", st)
 	}
 }
