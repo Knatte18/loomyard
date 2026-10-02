@@ -1,6 +1,6 @@
 // integrationreport.go implements the integration fork's own report shape.
 // It is a superset of Report: the fork writes status, head_sha and deviations,
-// and Go adds the optional failures and triage fields afterwards.
+// and Go adds the optional failures, triage and fix fields afterwards.
 // Batch reports keep their strict three-field Report shape.
 
 package websterengine
@@ -59,13 +59,39 @@ type IntegrationTriage struct {
 	Regressions []string `yaml:"regressions,omitempty"`
 }
 
-// IntegrationReport is the integration fork's report: the fork-written Status, HeadSHA and Deviations, plus the Go-written optional Failures and Triage.
+// The five legal IntegrationFixRecord.Result values.
+const (
+	FixResultFixed   = "fixed"
+	FixResultFailed  = "failed"
+	FixResultTimeout = "timeout"
+	FixResultRefused = "refused"
+	FixResultSpent   = "spent"
+)
+
+// IntegrationFixRecord is the record of the one integration-fix attempt.
+type IntegrationFixRecord struct {
+	// Result is one of the FixResult* values.
+	Result string `yaml:"result"`
+	// Detail is the reason behind a Result other than FixResultFixed.
+	Detail string `yaml:"detail,omitempty"`
+	// PreFixHead is the HEAD the attempt started from.
+	PreFixHead string `yaml:"pre_fix_head"`
+	// Commits lists the strand's commits after PreFixHead, oldest first.
+	Commits []string `yaml:"commits,omitempty"`
+	// Cleared lists the regressing identities the post-fix triage no longer reports.
+	Cleared []string `yaml:"cleared,omitempty"`
+	// Remaining lists the regressing identities the post-fix triage still reports.
+	Remaining []string `yaml:"remaining,omitempty"`
+}
+
+// IntegrationReport is the integration fork's report: the fork-written Status, HeadSHA and Deviations, plus the Go-written optional Failures, Triage and Fix.
 type IntegrationReport struct {
-	Status     string               `yaml:"status"`
-	HeadSHA    string               `yaml:"head_sha"`
-	Deviations []string             `yaml:"deviations"`
-	Failures   []IntegrationFailure `yaml:"failures,omitempty"`
-	Triage     *IntegrationTriage   `yaml:"triage,omitempty"`
+	Status     string                `yaml:"status"`
+	HeadSHA    string                `yaml:"head_sha"`
+	Deviations []string              `yaml:"deviations"`
+	Failures   []IntegrationFailure  `yaml:"failures,omitempty"`
+	Triage     *IntegrationTriage    `yaml:"triage,omitempty"`
+	Fix        *IntegrationFixRecord `yaml:"fix,omitempty"`
 }
 
 // ParseIntegrationReport reads and strictly decodes the integration report at path, then applies the same status and head_sha validation as ParseReport.
