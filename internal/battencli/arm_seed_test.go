@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
@@ -50,6 +51,36 @@ func TestArmSeed_RunAndStepSeedBeforeWire(t *testing.T) {
 			}
 			if got := seed.Params["child_driver"]; got != shedrun.DriverLLM {
 				t.Errorf("seed.Params[child_driver] = %q; want the default %q", got, shedrun.DriverLLM)
+			}
+		})
+	}
+}
+
+// TestArmSeed_RecordsTheSpawningSessionAsParent asserts a first seeding under LYX_STRAND_NAME
+// records it as the seed's parent, and with the variable unset records none.
+func TestArmSeed_RecordsTheSpawningSessionAsParent(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		env  string
+		want string
+	}{
+		{"set", "ab:hub", "ab:hub"},
+		{"unset", "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(agentname.StrandNameEnv, tc.env)
+			loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+			c := &battenCLI{}
+
+			if err := c.armSeed(loc, "some-slug", "run"); err != nil {
+				t.Fatalf("armSeed() = %v; want nil", err)
+			}
+			seed, found, err := shedrun.ReadSeed(loc, "some-slug")
+			if err != nil || !found {
+				t.Fatalf("ReadSeed = (found=%v, err=%v); want (true, nil)", found, err)
+			}
+			if seed.Parent != tc.want {
+				t.Errorf("seed.Parent = %q; want %q", seed.Parent, tc.want)
 			}
 		})
 	}
