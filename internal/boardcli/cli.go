@@ -179,7 +179,7 @@ Example:
 		Long: `Find tasks whose slug, title, brief or body contains the text, done tasks included.
 The arguments are joined with single spaces into one search text. At least one argument is required.
 Prints the same JSON as "lyx board list"; with --text it prints the compact one-line-per-task
-listing instead (errors stay JSON).
+listing instead (errors stay JSON); its columns are tier, type, slug, title and, when set, [status].
 
 Examples:
   lyx board find retry backoff
@@ -307,13 +307,15 @@ Optional fields:
   "body"       string — full markdown body (proposal / background)
   "depends_on" array  — list of slug strings this task depends on
   "isolated"   bool   — true if the task has no dependencies by design
-  "deferred"   bool   — true if the task is deferred
   "status"     string — lifecycle status (e.g. "active", "done")
-  "type"       string — recipe the task's child worktree runs; empty means "loom"
+  "tier"       integer — 1 to 3, default 3: 1 is planned (committed work), 2 is next up
+                         (to be planned), 3 is someday (ideas); claimable work must be tier 1
+  "type"       string — one of "feature", "bug", "chore", "design"; default "feature"
+  "recipe"     string — recipe the task's child worktree runs; empty means "loom"
   "short_name" string — short display label; falls back to the slug
 
 Example:
-  lyx board upsert '{"slug":"my-task","title":"My Task","brief":"Short summary"}'`,
+  lyx board upsert '{"slug":"my-task","title":"My Task","brief":"Short summary","tier":1,"type":"feature"}'`,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			// cobra strips the "upsert" token; json payload is now args[0].
 			if len(args) == 0 {
@@ -345,7 +347,7 @@ Required wrapper field:
   "tasks" array — one or more task objects (each with "slug" required)
 
 Example:
-  lyx board upsert-batch '{"tasks":[{"slug":"t1","title":"One"},{"slug":"t2","title":"Two"}]}'`,
+  lyx board upsert-batch '{"tasks":[{"slug":"t1","title":"One","tier":1},{"slug":"t2","title":"Two","tier":1}]}'`,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
@@ -480,6 +482,7 @@ Example:
 		Long: `Fetch a single task by slug or numeric ID. Unknown keys are rejected.
 Exactly one of "slug" or "id" is required. Returns {"task":null} if not found (not an error).
 Malformed payloads (no identifier key, unknown key) are errors.
+The result is the envelope {"task": {...}}, which the discussion stencil reads.
 
 Fields:
   "slug" string  — task slug (mutually exclusive with "id")
