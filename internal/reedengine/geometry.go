@@ -38,8 +38,7 @@ type Geometry struct {
 	// an empty PaneCwd must never silently mean AnchorPath, or a caller that forgets the field spawns
 	// panes in the wrong directory with nothing to catch it.
 	PaneCwd string
-	// WorktreeRoot is what Strand.Worktree is stamped with, and what resolveStrandName substitutes
-	// for the <WORKTREE> token.
+	// WorktreeRoot is what Strand.Worktree is stamped with.
 	WorktreeRoot string
 	// LogsDir is the shared per-hub server's runtime log directory.
 	LogsDir string

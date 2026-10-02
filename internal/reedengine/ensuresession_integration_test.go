@@ -51,6 +51,8 @@ func newColdScratchEngine(t *testing.T) *Engine {
 		RepoName:     "test-repo",
 		WorktreeName: filepath.Base(tmpDir),
 		HubPath:      hub,
+		NameCode:     "tc",
+		NameSlug:     "tslug",
 	}
 	e := New(cfg, geom)
 

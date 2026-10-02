@@ -655,6 +655,8 @@ func TestRemoveStrand_SoleStrandEmptiesSessionSucceeds(t *testing.T) {
 		RepoName:     "test-repo",
 		HubPath:      hub,
 		WorktreeName: filepath.Base(tmpDir),
+		NameCode:     "tc",
+		NameSlug:     "tslug",
 	}
 	e := New(cfg, geom)
 
@@ -765,6 +767,8 @@ func TestDeadSelvagePaneIsHealedByUpWithoutCorruptingLayout(t *testing.T) {
 		RepoName:     "test-repo",
 		HubPath:      hub,
 		WorktreeName: filepath.Base(tmpDir),
+		NameCode:     "tc",
+		NameSlug:     "tslug",
 	}
 	e := New(cfg, geom)
 

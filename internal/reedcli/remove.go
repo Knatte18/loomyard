@@ -94,8 +94,8 @@ func (c *reedCLI) removeCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "remove <guid> | --name <name>",
 		Short: "remove a strand from the reed layout",
-		Long: `remove deletes the strand identified by <guid> or by its fixed --name (exactly
-one of the two). Removing a strand that has children requires --recursive,
+		Long: `remove deletes the strand identified by <guid> or by --name, a role segment
+(driver) or a full name (code:slug:driver) (exactly one of the two). Removing a strand that has children requires --recursive,
 which cascades the removal through the strand's whole descendant subtree;
 without --recursive a non-leaf remove is rejected outright, so children are
 never silently orphaned.
@@ -171,7 +171,7 @@ Example:
 	}
 
 	cmd.Flags().BoolVar(&recursive, "recursive", false, "cascade removal through the strand's whole descendant subtree")
-	cmd.Flags().StringVar(&name, "name", "", "remove the strand with this fixed display name instead of a positional guid")
+	cmd.Flags().StringVar(&name, "name", "", "remove the strand this role segment or full name addresses, instead of a positional guid")
 	cmd.Flags().BoolVar(&detach, "detach", false, "with --name: resolve the guid, start a detached remove that waits for this process to exit, and return at once")
 	cmd.Flags().IntVar(&waitPID, "wait-pid", 0, "internal: wait for this pid to exit before removing (set by --detach)")
 	if err := cmd.Flags().MarkHidden("wait-pid"); err != nil {

@@ -38,6 +38,9 @@ func moveStrandTo(strands []Strand, guid string, idx int) []Strand {
 func (e *Engine) ReplaceStrand(guid string, spec AddSpec) (Strand, error) {
 	var result Strand
 	err := e.withOpLock(func() error {
+		if _, err := e.validateNaming(spec); err != nil {
+			return err
+		}
 		if err := e.requireSessionLocked(); err != nil {
 			return err
 		}

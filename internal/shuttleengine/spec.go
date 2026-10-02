@@ -81,17 +81,17 @@ type Spec struct {
 	// promptly, which is the correct trade for a mode whose premise is that
 	// a human is watching the pane.
 	AwaitOperator bool
-	// Role and Round feed the strand display name template
-	// (<ROLE>:<ROUND>:<SHORT_GUID>); both may be empty.
+	// Role is the role segment of the strand's name; it may be empty.
+	// Round is not part of the name; it names the run's directory.
 	Role  string
 	Round string
 	// Parent is the parent strand's GUID, or "" for a root strand.
 	Parent string
 	// NameOverride is forwarded verbatim into the reedengine.AddSpec that
 	// Runner.Start builds and never interpreted — the same contract
-	// SessionID's own doc comment states above. An empty value leaves
-	// reed's own <ROLE>:<ROUND>:<SHORT_GUID> display-name template in
-	// force (see reedengine.resolveStrandName).
+	// SessionID's own doc comment states above. It is an explicit role
+	// segment or full name; an empty value leaves reed naming the strand
+	// from Role (see reedengine.strandNameLocked).
 	NameOverride string
 	// Display carries the reed placement/focus/shrink settings for this
 	// run's strand.

@@ -51,6 +51,8 @@ func newTestEngine(t *testing.T) *Engine {
 		LogsDir:      filepath.Join(hub, "logs"),
 		RepoName:     "test-repo",
 		HubPath:      hub,
+		NameCode:     "tc",
+		NameSlug:     "tslug",
 	}
 	cfg := Config{
 		Tmux:          filepath.Join(hub, "does-not-exist-tmux.exe"),
@@ -59,7 +61,6 @@ func newTestEngine(t *testing.T) *Engine {
 		Height:        21,
 		CollapsedRows: 2,
 		MinFullRows:   3,
-		StrandName:    "<ROLE>:<ROUND>:<SHORT_GUID>",
 		// A valid value so every caller of this shared fixture that reaches
 		// ensureServerAndSessionLocked (watchdogOption's boot-path validation)
 		// does not start failing on "invalid watchdog value" instead of on
@@ -97,7 +98,6 @@ func TestWithOpLock_PathIsUnderDotLyx(t *testing.T) {
 		Height:        21,
 		CollapsedRows: 2,
 		MinFullRows:   3,
-		StrandName:    "<ROLE>:<ROUND>:<SHORT_GUID>",
 	}
 	e := New(cfg, geom)
 

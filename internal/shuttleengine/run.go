@@ -311,7 +311,6 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 
 	strand, err := r.reed.AddStrand(reedengine.AddSpec{
 		Role:         spec.Role,
-		Round:        spec.Round,
 		NameOverride: spec.NameOverride,
 		Parent:       spec.Parent,
 		Cmd:          launch.Cmd,

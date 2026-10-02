@@ -259,7 +259,6 @@ func TestRunner_Start_HappyPath_WiresAddSpecVerbatim(t *testing.T) {
 	got := reed.AddStrandCalls[0]
 	want := reedengine.AddSpec{
 		Role:      "reviewer",
-		Round:     "1",
 		Parent:    "parent-guid",
 		Cmd:       "launch-cmd",
 		ResumeCmd: "resume-cmd",

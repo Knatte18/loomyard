@@ -495,7 +495,7 @@ func TestAddStrand_IfAbsent_MatchedAliveNoOps(t *testing.T) {
 	e.tmux.execHook = addIfAbsentHook("%1 0 0 100 20 4321\n")
 
 	persisted := Strand{
-		GUID: "persisted-guid", Name: "claude", PaneID: "%1",
+		GUID: "persisted-guid", Name: "tc:tslug:claude", PaneID: "%1",
 		Cmd: "old-cmd", ResumeCmd: "old-resume", Parent: "old-parent",
 		Display: render.Display{Anchor: render.AnchorBelowParent, Focus: false},
 	}
@@ -535,7 +535,7 @@ func TestAddStrand_IfAbsent_HiddenOnlyNoOps(t *testing.T) {
 	e.tmux.execHook = addIfAbsentHook("%0 0 0 100 20 4321\n")
 
 	persisted := Strand{
-		GUID: "hidden-guid", Name: "claude",
+		GUID: "hidden-guid", Name: "tc:tslug:claude",
 		Cmd: "old-cmd", ResumeCmd: "old-resume", Parent: "old-parent",
 		Display: render.Display{Anchor: render.AnchorHidden},
 	}
@@ -620,26 +620,180 @@ func TestAddStrand_ColdEngine_NoLongerReturnsNoSessionMessage(t *testing.T) {
 // adding probe round trips"), not an ordering defect to fix. Cold-path validation ordering for
 // AddStrand is covered by the smoke tier instead (batch 5).
 
-func TestResolveStrandName(t *testing.T) {
-	const tpl = "<ROLE>:<ROUND>:<SHORT_GUID>"
-	guid := "abc1234500000000000000000000000"
+// hiddenSpec is a hidden add, which never launches a pane, so addStrandLocked reaches no tmux.
+func hiddenSpec(role, nameOverride string) AddSpec {
+	return AddSpec{Role: role, NameOverride: nameOverride, Display: render.Display{Anchor: render.AnchorHidden}}
+}
 
+func TestStrandNameLocked_FormsAndNumbersRoles(t *testing.T) {
+	e := newTestEngine(t)
+	st := &ReedState{}
+
+	var got []string
+	for _, role := range []string{"worker", "worker", "reviewer"} {
+		s, err := e.addStrandLocked(st, hiddenSpec(role, ""))
+		if err != nil {
+			t.Fatalf("addStrandLocked(role=%q): %v", role, err)
+		}
+		got = append(got, s.Name)
+	}
+	want := []string{"tc:tslug:worker", "tc:tslug:worker-2", "tc:tslug:reviewer"}
+	if !slices.Equal(got, want) {
+		t.Errorf("names = %v, want %v", got, want)
+	}
+}
+
+func TestStrandNameLocked_DormantStrandStillCounts(t *testing.T) {
+	e := newTestEngine(t)
+	st := &ReedState{Strands: []Strand{{GUID: "g1", Name: "tc:tslug:worker", Display: render.Display{Anchor: render.AnchorHidden}}}}
+
+	s, err := e.addStrandLocked(st, hiddenSpec("worker", ""))
+	if err != nil {
+		t.Fatalf("addStrandLocked: %v", err)
+	}
+	if s.Name != "tc:tslug:worker-2" {
+		t.Errorf("Name = %q, want tc:tslug:worker-2 (a dormant strand holds its role)", s.Name)
+	}
+}
+
+func TestStrandNameLocked_LegacyNameHoldsNothing(t *testing.T) {
+	e := newTestEngine(t)
+	st := &ReedState{Strands: []Strand{{GUID: "g1", Name: "worker:1:abc12345"}}}
+
+	s, err := e.addStrandLocked(st, hiddenSpec("worker", ""))
+	if err != nil {
+		t.Fatalf("addStrandLocked: %v", err)
+	}
+	if s.Name != "tc:tslug:worker" {
+		t.Errorf("Name = %q, want tc:tslug:worker (a legacy name holds no role)", s.Name)
+	}
+}
+
+func TestStrandNameLocked_EmptySlugGivesTwoSegments(t *testing.T) {
+	e := newTestEngine(t)
+	e.geom.NameSlug = ""
+
+	s, err := e.addStrandLocked(&ReedState{}, hiddenSpec("orch", ""))
+	if err != nil {
+		t.Fatalf("addStrandLocked: %v", err)
+	}
+	if s.Name != "tc:orch" {
+		t.Errorf("Name = %q, want tc:orch", s.Name)
+	}
+}
+
+func TestStrandNameLocked_DefaultRole(t *testing.T) {
+	e := newTestEngine(t)
+	st := &ReedState{}
+
+	first, err := e.addStrandLocked(st, hiddenSpec("", ""))
+	if err != nil {
+		t.Fatalf("addStrandLocked: %v", err)
+	}
+	second, err := e.addStrandLocked(st, hiddenSpec("", ""))
+	if err != nil {
+		t.Fatalf("addStrandLocked: %v", err)
+	}
+	if first.Name != "tc:tslug:strand" || second.Name != "tc:tslug:strand-2" {
+		t.Errorf("names = %q, %q, want tc:tslug:strand and tc:tslug:strand-2", first.Name, second.Name)
+	}
+}
+
+func TestStrandNameLocked_ExplicitNameHeldRefuses(t *testing.T) {
+	e := newTestEngine(t)
+	st := &ReedState{}
+	held, err := e.addStrandLocked(st, hiddenSpec("", "driver"))
+	if err != nil {
+		t.Fatalf("addStrandLocked(explicit driver): %v", err)
+	}
+	if held.Name != "tc:tslug:driver" {
+		t.Fatalf("explicit role segment Name = %q, want tc:tslug:driver", held.Name)
+	}
+
+	for _, override := range []string{"driver", "tc:tslug:driver"} {
+		_, err := e.addStrandLocked(st, hiddenSpec("", override))
+		if err == nil {
+			t.Fatalf("addStrandLocked(NameOverride=%q) = nil error, want the held-name refusal", override)
+		}
+		for _, want := range []string{held.GUID, "lyx reed remove --name driver frees it, or pass another role"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("NameOverride=%q error = %q, want it to contain %q", override, err, want)
+			}
+		}
+	}
+	if len(st.Strands) != 1 {
+		t.Errorf("strands = %d, want 1 (a refused add registers nothing)", len(st.Strands))
+	}
+}
+
+func TestStrandNameLocked_ForeignPrefixRefuses(t *testing.T) {
+	e := newTestEngine(t)
+
+	for _, override := range []string{"other:tslug:driver", "tc:otherslug:driver"} {
+		if _, err := e.addStrandLocked(&ReedState{}, hiddenSpec("", override)); err == nil {
+			t.Errorf("addStrandLocked(NameOverride=%q) = nil error, want a foreign-prefix refusal", override)
+		}
+	}
+}
+
+// TestAddStrand_UnformableName_RefusesBeforeAnyTmuxCommand pins both up-front refusals, for add and
+// replace alike: the exact way-forward text, and no tmux command issued.
+func TestAddStrand_UnformableName_RefusesBeforeAnyTmuxCommand(t *testing.T) {
 	tests := []struct {
-		name string
-		spec AddSpec
-		want string
+		name     string
+		code     string
+		slug     string
+		wantText string
 	}{
-		{"NameOverrideWinsVerbatim", AddSpec{NameOverride: "custom-name", Role: "main"}, "custom-name"},
-		{"RoleFillsTemplate", AddSpec{Role: "main", Round: "1"}, "main:1:abc12345"},
-		{"NeitherNameNorRole_BareShortGuid", AddSpec{}, "abc12345"},
+		{"MissingCode", "", "tslug", "no strand name can be formed: this hub records no short code; way forward: lyx fabric code <code> records it, then retry"},
+		{"BadSlug", "tc", "Bad_Slug", "way forward: lyx fabric add <slug> creates the task under a slug that fits"},
+		{"BadCode", "T-C", "tslug", `"T-C"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := resolveStrandName(tpl, tt.spec, guid, `C:\Code\loomyard\wts\internal-reed`)
-			if got != tt.want {
-				t.Errorf("resolveStrandName() = %q, want %q", got, tt.want)
+			e := newTestEngine(t)
+			e.geom.NameCode, e.geom.NameSlug = tt.code, tt.slug
+			var calls int
+			e.tmux.execHook = func(capture bool, args ...string) (string, error) {
+				calls++
+				return "", nil
+			}
+
+			spec := hiddenSpec("worker", "")
+			_, addErr := e.AddStrand(spec)
+			_, replaceErr := e.ReplaceStrand("any-guid", spec)
+			for op, err := range map[string]error{"AddStrand": addErr, "ReplaceStrand": replaceErr} {
+				if err == nil || !strings.Contains(err.Error(), tt.wantText) {
+					t.Errorf("%s error = %v, want it to contain %q", op, err, tt.wantText)
+				}
+			}
+			if calls != 0 {
+				t.Errorf("tmux commands issued = %d, want 0 (a refused call never boots tmux)", calls)
 			}
 		})
+	}
+}
+
+// TestAddStrand_IfAbsent_RoleSegmentMatchesFullName pins that --if-absent matches on the full name
+// a role-segment --name resolves to, so it hits the strand an add by full name created.
+func TestAddStrand_IfAbsent_RoleSegmentMatchesFullName(t *testing.T) {
+	e := newTestEngine(t)
+	e.tmux.execHook = addIfAbsentHook("%1 0 0 100 20 4321\n")
+
+	persisted := Strand{
+		GUID: "persisted-guid", Name: "tc:tslug:claude", PaneID: "%1",
+		Display: render.Display{Anchor: render.AnchorBelowParent},
+	}
+	if err := SaveState(e.stateDir(), &ReedState{Strands: []Strand{persisted}}); err != nil {
+		t.Fatalf("SaveState: %v", err)
+	}
+
+	got, err := e.AddStrand(AddSpec{IfAbsent: true, NameOverride: "claude", Display: persisted.Display})
+	if err != nil {
+		t.Fatalf("AddStrand: %v", err)
+	}
+	if got != persisted {
+		t.Errorf("AddStrand(--if-absent, role segment) = %+v, want the persisted strand %+v", got, persisted)
 	}
 }
 

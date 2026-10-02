@@ -55,6 +55,8 @@ func newIntegrationEngine(t *testing.T, mouse string) *Engine {
 		RepoName:     "test-repo",
 		HubPath:      hubDir,
 		WorktreeName: filepath.Base(worktreeDir),
+		NameCode:     "tc",
+		NameSlug:     "tslug",
 	}
 	e := New(cfg, geom)
 

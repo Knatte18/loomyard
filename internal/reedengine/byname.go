@@ -1,12 +1,14 @@
-// byname.go resolves a strand's fixed display name to its guid, and waits out a parent process, for
+// byname.go resolves a strand's name to its guid, and waits out a parent process, for
 // `lyx reed remove --name`. A strand that removes itself (the ly-drive driver) cannot know its own
-// guid when its prompt is composed, but it does know the name loom gave it.
+// guid when its prompt is composed, but it does know its role segment.
 
 package reedengine
 
 import (
 	"fmt"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/agentname"
 )
 
 // Parent-exit wait tuning for WaitPIDGone: the cap is on attempt COUNT, not only elapsed time, per
@@ -18,8 +20,9 @@ const (
 	ParentExitPollInterval = 100 * time.Millisecond
 )
 
-// ResolveStrandGUID returns the guid of the one strand of this worktree's session whose display name
-// is name. An unknown name and an ambiguous one (two strands carrying it) are both refused, so a
+// ResolveStrandGUID returns the guid of the one strand of this worktree's session that name
+// addresses: its full name, its role segment, or a legacy exact name (agentname.Matches).
+// An unknown name and an ambiguous one (two strands carrying it) are both refused, so a
 // removal never lands on a guess.
 func (e *Engine) ResolveStrandGUID(name string) (string, error) {
 	res, err := e.Status()
@@ -33,7 +36,7 @@ func (e *Engine) ResolveStrandGUID(name string) (string, error) {
 func guidByName(strands []StrandStatus, name string) (string, error) {
 	var matches []StrandStatus
 	for _, s := range strands {
-		if s.Name == name {
+		if agentname.Matches(s.Name, name) {
 			matches = append(matches, s)
 		}
 	}
