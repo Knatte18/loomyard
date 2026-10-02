@@ -94,8 +94,9 @@ func (c *reedCLI) removeCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "remove <guid> | --name <name>",
 		Short: "remove a strand from the reed layout",
-		Long: `remove deletes the strand identified by <guid> or by --name, a role segment
-(driver) or a full name (code:slug:driver) (exactly one of the two). Removing a strand that has children requires --recursive,
+		Long: `remove deletes the strand identified by <guid> or by --name (exactly one
+of the two); --name takes a role segment (driver) or a full name
+(code:slug:driver). Removing a strand that has children requires --recursive,
 which cascades the removal through the strand's whole descendant subtree;
 without --recursive a non-leaf remove is rejected outright, so children are
 never silently orphaned.
