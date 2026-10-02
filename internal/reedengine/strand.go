@@ -152,7 +152,7 @@ const defaultRole = "strand"
 // An empty shortname is a hub that has none;
 // a told shortname or slug failing its grammar is a wiring guard.
 func (e *Engine) validateNaming(spec AddSpec) (string, error) {
-	shortname, slug := e.geom.NameCode, e.geom.NameSlug
+	shortname, slug := e.geom.NameShortname, e.geom.NameSlug
 	if shortname == "" {
 		return "", fmt.Errorf("no strand name can be formed: this hub records no shortname; way forward: lyx fabric shortname <shortname> records it, then retry")
 	}
@@ -179,7 +179,7 @@ func (e *Engine) validateNaming(spec AddSpec) (string, error) {
 // an explicit NameOverride as given, else Role (default defaultRole) numbered past every role segment in state, live or dormant.
 // The geometry's shortname and slug were validated by validateNaming.
 func (e *Engine) strandNameLocked(st *ReedState, spec AddSpec) (string, error) {
-	shortname, slug := e.geom.NameCode, e.geom.NameSlug
+	shortname, slug := e.geom.NameShortname, e.geom.NameSlug
 	if spec.NameOverride != "" {
 		n, err := agentname.Resolve(shortname, slug, spec.NameOverride)
 		if err != nil {

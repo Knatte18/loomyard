@@ -79,7 +79,7 @@ func TestNaming_TaskWorktreeStrandNameTitleAndEnv(t *testing.T) {
 	}
 }
 
-func TestNaming_EmptySlugGivesCodeAndRole(t *testing.T) {
+func TestNaming_EmptySlugGivesShortnameAndRole(t *testing.T) {
 	e := newColdScratchEngine(t)
 	e.geom.NameSlug = ""
 

@@ -2,7 +2,7 @@
 
 // naming_integration_test.go carries the standalone acceptance criterion at the engine `lyx webster run --target-dir` and `lyx burler run --target-dir` build,
 // since a CLI-level run would spawn live Claude producers.
-// On a plain checkout with no recorded code it builds the reed engine from standalonestate.Derive and ReedGeometry, as the standalone wiring does.
+// On a plain checkout with no recorded shortname it builds the reed engine from standalonestate.Derive and ReedGeometry, as the standalone wiring does.
 
 package standalonegeom_test
 
@@ -21,7 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/standalonestate"
 )
 
-func TestNaming_StandaloneStrandIsCodeAndRoleWithNoParent(t *testing.T) {
+func TestNaming_StandaloneStrandIsShortnameAndRoleWithNoParent(t *testing.T) {
 	target := t.TempDir()
 	if out, err := exec.Command("git", "-C", target, "init").CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v: %s", err, out)

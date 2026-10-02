@@ -132,7 +132,7 @@ func TestNaming_TaskWorktreeRolesParentResumeAndRemove(t *testing.T) {
 	}
 }
 
-func TestNaming_PrimeStrandHasCodeAndRoleAndNoParent(t *testing.T) {
+func TestNaming_PrimeStrandHasShortnameAndRoleAndNoParent(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	skipWithoutMultiplexer(t, h)
 	worktree := h.PrimeWorktree()

@@ -34,8 +34,8 @@ func (c *reedCLI) addCmd() *cobra.Command {
 		Long: `add registers a new strand and, unless --anchor hidden, realizes it into
 a live pane and runs --cmd in it.
 
-The strand's name is formed by reed as <code>:<slug>:<role> in a task
-worktree, <code>:<role> in the prime and in a standalone run. The role is
+The strand's name is formed by reed as <shortname>:<slug>:<role> in a task
+worktree, <shortname>:<role> in the prime and in a standalone run. The role is
 --role (default "strand"), numbered -2, -3 when this worktree already holds
 it. --name gives an explicit role segment or full name instead; it is never
 renumbered, and an add naming one another strand holds is refused. The

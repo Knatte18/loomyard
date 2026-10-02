@@ -752,7 +752,7 @@ func TestAddStrand_UnformableName_RefusesBeforeAnyTmuxCommand(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			e := newTestEngine(t)
-			e.geom.NameCode, e.geom.NameSlug = tt.shortname, tt.slug
+			e.geom.NameShortname, e.geom.NameSlug = tt.shortname, tt.slug
 			var calls int
 			e.tmux.execHook = func(capture bool, args ...string) (string, error) {
 				calls++

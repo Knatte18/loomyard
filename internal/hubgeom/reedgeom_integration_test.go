@@ -25,8 +25,8 @@ func TestReedGeometry_PrimeCarriesShortnameOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReedGeometry(prime): %v", err)
 	}
-	if geom.NameCode != hubforge.TestShortname {
-		t.Errorf("NameCode = %q; want %q", geom.NameCode, hubforge.TestShortname)
+	if geom.NameShortname != hubforge.TestShortname {
+		t.Errorf("NameShortname = %q; want %q", geom.NameShortname, hubforge.TestShortname)
 	}
 	if geom.NameSlug != "" || geom.ParentName != "" {
 		t.Errorf("prime NameSlug/ParentName = %q/%q; want both empty", geom.NameSlug, geom.ParentName)
@@ -47,8 +47,8 @@ func TestReedGeometry_TaskWorktreeCarriesSlugAndSeededParent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReedGeometry(task) before seeding: %v", err)
 	}
-	if before.NameCode != hubforge.TestShortname || before.NameSlug != slug {
-		t.Errorf("task NameCode/NameSlug = %q/%q; want %q/%q", before.NameCode, before.NameSlug, hubforge.TestShortname, slug)
+	if before.NameShortname != hubforge.TestShortname || before.NameSlug != slug {
+		t.Errorf("task NameShortname/NameSlug = %q/%q; want %q/%q", before.NameShortname, before.NameSlug, hubforge.TestShortname, slug)
 	}
 	if before.ParentName != "" {
 		t.Errorf("ParentName before seeding = %q; want empty", before.ParentName)
@@ -78,7 +78,7 @@ func TestReedGeometry_HubWithNoShortnameYieldsEmptyShortname(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReedGeometry on a hub with no shortname: %v", err)
 	}
-	if geom.NameCode != "" {
-		t.Errorf("NameCode = %q; want empty", geom.NameCode)
+	if geom.NameShortname != "" {
+		t.Errorf("NameShortname = %q; want empty", geom.NameShortname)
 	}
 }

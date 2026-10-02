@@ -43,16 +43,16 @@ func newTestEngine(t *testing.T) *Engine {
 	// a spawn site that regresses to reading AnchorPath instead of PaneCwd
 	// cannot pass by coincidence (see lifecycle_test.go's split-window assertion).
 	geom := Geometry{
-		SocketKey:    ServerName(hub),
-		SessionName:  SessionName(worktreeRoot),
-		AnchorPath:   anchorPath,
-		PaneCwd:      filepath.Join(hub, "pane"),
-		WorktreeRoot: worktreeRoot,
-		LogsDir:      filepath.Join(hub, "logs"),
-		RepoName:     "test-repo",
-		HubPath:      hub,
-		NameCode:     "tc",
-		NameSlug:     "tslug",
+		SocketKey:     ServerName(hub),
+		SessionName:   SessionName(worktreeRoot),
+		AnchorPath:    anchorPath,
+		PaneCwd:       filepath.Join(hub, "pane"),
+		WorktreeRoot:  worktreeRoot,
+		LogsDir:       filepath.Join(hub, "logs"),
+		RepoName:      "test-repo",
+		HubPath:       hub,
+		NameShortname: "tc",
+		NameSlug:      "tslug",
 	}
 	cfg := Config{
 		Tmux:          filepath.Join(hub, "does-not-exist-tmux.exe"),

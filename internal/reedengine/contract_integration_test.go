@@ -646,17 +646,17 @@ func TestRemoveStrand_SoleStrandEmptiesSessionSucceeds(t *testing.T) {
 	// importing it would close an import cycle.
 	hub := filepath.Dir(tmpDir)
 	geom := Geometry{
-		SocketKey:    ServerName(hub),
-		SessionName:  SessionName(tmpDir),
-		AnchorPath:   tmpDir,
-		PaneCwd:      tmpDir,
-		WorktreeRoot: tmpDir,
-		LogsDir:      filepath.Join(hub, "logs"),
-		RepoName:     "test-repo",
-		HubPath:      hub,
-		WorktreeName: filepath.Base(tmpDir),
-		NameCode:     "tc",
-		NameSlug:     "tslug",
+		SocketKey:     ServerName(hub),
+		SessionName:   SessionName(tmpDir),
+		AnchorPath:    tmpDir,
+		PaneCwd:       tmpDir,
+		WorktreeRoot:  tmpDir,
+		LogsDir:       filepath.Join(hub, "logs"),
+		RepoName:      "test-repo",
+		HubPath:       hub,
+		WorktreeName:  filepath.Base(tmpDir),
+		NameShortname: "tc",
+		NameSlug:      "tslug",
 	}
 	e := New(cfg, geom)
 
@@ -758,17 +758,17 @@ func TestDeadSelvagePaneIsHealedByUpWithoutCorruptingLayout(t *testing.T) {
 
 	hub := filepath.Dir(tmpDir)
 	geom := Geometry{
-		SocketKey:    ServerName(hub),
-		SessionName:  SessionName(tmpDir),
-		AnchorPath:   tmpDir,
-		PaneCwd:      tmpDir,
-		WorktreeRoot: tmpDir,
-		LogsDir:      filepath.Join(hub, "logs"),
-		RepoName:     "test-repo",
-		HubPath:      hub,
-		WorktreeName: filepath.Base(tmpDir),
-		NameCode:     "tc",
-		NameSlug:     "tslug",
+		SocketKey:     ServerName(hub),
+		SessionName:   SessionName(tmpDir),
+		AnchorPath:    tmpDir,
+		PaneCwd:       tmpDir,
+		WorktreeRoot:  tmpDir,
+		LogsDir:       filepath.Join(hub, "logs"),
+		RepoName:      "test-repo",
+		HubPath:       hub,
+		WorktreeName:  filepath.Base(tmpDir),
+		NameShortname: "tc",
+		NameSlug:      "tslug",
 	}
 	e := New(cfg, geom)
 

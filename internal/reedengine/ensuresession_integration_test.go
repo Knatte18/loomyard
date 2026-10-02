@@ -42,17 +42,17 @@ func newColdScratchEngine(t *testing.T) *Engine {
 
 	hub := filepath.Dir(tmpDir)
 	geom := Geometry{
-		SocketKey:    ServerName(hub),
-		SessionName:  SessionName(tmpDir),
-		AnchorPath:   tmpDir,
-		PaneCwd:      tmpDir,
-		WorktreeRoot: tmpDir,
-		LogsDir:      filepath.Join(hub, "logs"),
-		RepoName:     "test-repo",
-		WorktreeName: filepath.Base(tmpDir),
-		HubPath:      hub,
-		NameCode:     "tc",
-		NameSlug:     "tslug",
+		SocketKey:     ServerName(hub),
+		SessionName:   SessionName(tmpDir),
+		AnchorPath:    tmpDir,
+		PaneCwd:       tmpDir,
+		WorktreeRoot:  tmpDir,
+		LogsDir:       filepath.Join(hub, "logs"),
+		RepoName:      "test-repo",
+		WorktreeName:  filepath.Base(tmpDir),
+		HubPath:       hub,
+		NameShortname: "tc",
+		NameSlug:      "tslug",
 	}
 	e := New(cfg, geom)
 

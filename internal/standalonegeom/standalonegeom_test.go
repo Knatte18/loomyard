@@ -20,7 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-func TestReedGeometry_NameCodeIsDerivedFromHash8(t *testing.T) {
+func TestReedGeometry_NameShortnameIsDerivedFromHash8(t *testing.T) {
 	t.Parallel()
 
 	target := filepath.Join(string(filepath.Separator), "home", "operator", "src", "some-repo")
@@ -28,11 +28,11 @@ func TestReedGeometry_NameCodeIsDerivedFromHash8(t *testing.T) {
 
 	got := ReedGeometry(target, stateDir, "abcd1234")
 
-	if want := agentname.StandaloneShortname("abcd1234"); got.NameCode != want {
-		t.Errorf("ReedGeometry().NameCode = %q; want %q", got.NameCode, want)
+	if want := agentname.StandaloneShortname("abcd1234"); got.NameShortname != want {
+		t.Errorf("ReedGeometry().NameShortname = %q; want %q", got.NameShortname, want)
 	}
-	if err := agentname.ValidateShortname(got.NameCode); err != nil {
-		t.Errorf("ReedGeometry().NameCode %q fails ValidateShortname: %v", got.NameCode, err)
+	if err := agentname.ValidateShortname(got.NameShortname); err != nil {
+		t.Errorf("ReedGeometry().NameShortname %q fails ValidateShortname: %v", got.NameShortname, err)
 	}
 	if got.NameSlug != "" || got.ParentName != "" {
 		t.Errorf("ReedGeometry() NameSlug/ParentName = %q/%q; want both empty", got.NameSlug, got.ParentName)
