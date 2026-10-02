@@ -23,7 +23,7 @@ import (
 const gateQuiescenceFailureMessage = "re-opens the compound-quiescence question this task deliberately declined -- turn-idle alone would no longer mean the agent is finished; the decision must be re-opened, not this test"
 
 // TestNoGatedRowAuthorizesForkSubagents parses the real embedded recipe and asserts every row
-// carrying a "gate" config key either is a writer row (engine DiscussionWrite, PlanWrite or
+// carrying a non-empty "gates" config list either is a writer row (engine DiscussionWrite, PlanWrite or
 // Describe) -- whose spec factory (internal/loomengine's DiscussionSpec/PlanSpec, or
 // landingshed.DescribeSpec) never sets shuttleengine.Spec.ForkSubagents at all -- or is a burler
 // row (engine BurlerRound) carrying no "cluster-fan" key in its profile: sub-map, since
@@ -38,8 +38,7 @@ func TestNoGatedRowAuthorizesForkSubagents(t *testing.T) {
 
 	gatedRowFound := false
 	for _, row := range r.Producers {
-		gate, hasGate := row.Config["gate"]
-		if !hasGate || gate == "" {
+		if gates, ok := row.Config["gates"].([]any); !ok || len(gates) == 0 {
 			continue
 		}
 		gatedRowFound = true
@@ -63,18 +62,18 @@ func TestNoGatedRowAuthorizesForkSubagents(t *testing.T) {
 				t.Errorf("row %q (engine %q): profile[\"cluster-fan\"] = %v; want absent or empty on a gated burler row -- %s", row.Name, row.Engine, clusterFan, gateQuiescenceFailureMessage)
 			}
 		default:
-			t.Errorf("row %q: carries a \"gate\" config key with engine %q, neither a writer engine (DiscussionWrite/PlanWrite/Describe/PRRework) nor BurlerRound -- %s", row.Name, row.Engine, gateQuiescenceFailureMessage)
+			t.Errorf("row %q: carries a \"gates\" config list with engine %q, neither a writer engine (DiscussionWrite/PlanWrite/Describe/PRRework) nor BurlerRound -- %s", row.Name, row.Engine, gateQuiescenceFailureMessage)
 		}
 	}
 
 	if !gatedRowFound {
-		t.Fatalf("no row in the embedded recipe carries a \"gate\" config key; this test has nothing to assert -- the recipe or this test has drifted")
+		t.Fatalf("no row in the embedded recipe carries a \"gates\" config list; this test has nothing to assert -- the recipe or this test has drifted")
 	}
 }
 
 // TestWebsterRoundCarriesNoGateKey asserts the Webster round -- the one row that could legitimately
 // grow a fan, since Webster-Burler is the sole surviving fix-scope: source round with real
-// production incentive to fan reviewers -- carries no "gate" key at all, so
+// production incentive to fan reviewers -- carries no "gates" key at all, so
 // TestNoGatedRowAuthorizesForkSubagents's writer/burler dichotomy above is exhaustive over every
 // gated row without needing a third case for it.
 func TestWebsterRoundCarriesNoGateKey(t *testing.T) {
@@ -89,8 +88,8 @@ func TestWebsterRoundCarriesNoGateKey(t *testing.T) {
 			continue
 		}
 		found = true
-		if gate, hasGate := row.Config["gate"]; hasGate && gate != "" {
-			t.Errorf("row %q (engine %q): config[\"gate\"] = %v; want absent -- %s", row.Name, row.Engine, gate, gateQuiescenceFailureMessage)
+		if gates, hasGates := row.Config["gates"]; hasGates {
+			t.Errorf("row %q (engine %q): config[\"gates\"] = %v; want absent -- %s", row.Name, row.Engine, gates, gateQuiescenceFailureMessage)
 		}
 	}
 	if !found {

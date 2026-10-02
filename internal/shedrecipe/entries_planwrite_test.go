@@ -204,14 +204,12 @@ func TestPlanWriteEntry_CallAppendsPriorPlanBlock(t *testing.T) {
 	}
 }
 
-// TestPlanWriteEntry_GateConfig covers the "gate" and "gate_attempts" Config keys planWriteEntry
-// resolves through resolveGateSpec: a "gate: plan" row resolves to the plan validator, a
-// "gate_attempts" with no "gate" fails loud naming both keys, and an absent "gate_attempts"
-// alongside a present "gate" yields the one entry with the default 3 attempts.
+// TestPlanWriteEntry_GateConfig covers the "gates" Config key planWriteEntry resolves through
+// resolveGateSpec: a "plan" entry resolves to the plan validator.
 func TestPlanWriteEntry_GateConfig(t *testing.T) {
 	t.Run("GatePlanResolvesToPlanValidator", func(t *testing.T) {
 		env := newTestEnv(t)
-		gateSpec, err := resolveGateSpec("PlanWrite", Config{"gate": "plan"}, env)
+		gateSpec, err := resolveGateSpec("PlanWrite", gatesCfg("plan", 3), env)
 		if err != nil {
 			t.Fatalf("resolveGateSpec() error = %v; want nil", err)
 		}
@@ -233,40 +231,6 @@ func TestPlanWriteEntry_GateConfig(t *testing.T) {
 		}
 		if !strings.Contains(result.Findings, "plan overview not found") {
 			t.Errorf("gateSpec[0].Gate() Findings = %q; want it to name the missing plan overview, proving the plan validator ran", result.Findings)
-		}
-	})
-
-	t.Run("GateAttemptsWithoutGateFails", func(t *testing.T) {
-		env := newTestEnv(t)
-		_, err := planWriteEntry("Row", Config{"gate_attempts": 3}, env)
-		if err == nil {
-			t.Fatal("planWriteEntry() error = nil; want non-nil for gate_attempts with no gate")
-		}
-		assertErrContains(t, err, "gate_attempts")
-		assertErrContains(t, err, "gate")
-	})
-
-	t.Run("ExplicitZeroGateAttemptsWithoutGateStillFails", func(t *testing.T) {
-		// resolveGateSpec must detect "gate_attempts" by key presence, not by a non-zero value: an
-		// explicit "gate_attempts: 0" with no "gate" key is the same author mistake as any other
-		// value and must not pass silently just because it happens to match configInt's zero value.
-		env := newTestEnv(t)
-		_, err := planWriteEntry("Row", Config{"gate_attempts": 0}, env)
-		if err == nil {
-			t.Fatal("planWriteEntry() error = nil; want non-nil for an explicit gate_attempts: 0 with no gate")
-		}
-		assertErrContains(t, err, "gate_attempts")
-		assertErrContains(t, err, "gate")
-	})
-
-	t.Run("AbsentGateAttemptsYieldsPackageDefault", func(t *testing.T) {
-		env := newTestEnv(t)
-		gateSpec, err := resolveGateSpec("PlanWrite", Config{"gate": "plan"}, env)
-		if err != nil {
-			t.Fatalf("resolveGateSpec() error = %v; want nil", err)
-		}
-		if len(gateSpec) != 1 || gateSpec[0].Attempts != 3 {
-			t.Errorf("resolveGateSpec() = %+v; want one entry with Attempts 3, the package default", gateSpec)
 		}
 	})
 }

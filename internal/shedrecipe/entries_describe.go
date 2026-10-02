@@ -10,8 +10,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// describeEntry is the Constructor for the "Describe" registry row: it resolves the row's "gate"/
-// "gate_attempts" Config keys through resolveGateSpec, validates Env.DescribeSpec,
+// describeEntry is the Constructor for the "Describe" registry row: it resolves the row's "gates"
+// Config key through resolveGateSpec, validates Env.DescribeSpec,
 // Env.CommitDescription, and Env.Shuttle, then returns
 // loomshed.NewDiscussionWrite(name, shedadapters.NewSingleLLMProducerGated(name, env.DescribeSpec,
 // env.Shuttle, env.Now, nil, gate), env.CommitDescription).
@@ -28,7 +28,7 @@ func describeEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, e
 	if err != nil {
 		return nil, err
 	}
-	if err := configRejectUnknown(cfg, "gate", "gate_attempts"); err != nil {
+	if err := configRejectUnknown(cfg, "gates"); err != nil {
 		return nil, err
 	}
 	if err := requireSeam("Describe", "DescribeSpec", env.DescribeSpec); err != nil {

@@ -295,8 +295,8 @@ func TestBounceRouting_EmptyTargetBlocksInstead(t *testing.T) {
 // Discussion-Bouncer's own bounce budget is consumed and exhausting it blocks -- MaxBounces+1 Stuck
 // entries authored by Discussion-Bouncer, then shedengine.RunBlocked.
 //
-// Discussion-Validate is no longer this test's vehicle. Discussion-Write now carries its own "gate:
-// discussion" Config key (resolveGateSpec, internal/shedrecipe/entries_gate.go), which calls the
+// Discussion-Validate is no longer this test's vehicle. Discussion-Write now carries its own "gates"
+// entry named "discussion" (resolveGateSpec, internal/shedrecipe/entries_gate.go), which calls the
 // exact same discussionparser.Validate function Discussion-Validate's own Call does -- so a
 // Discussion-Write whose redo never fixes its artifact fails its OWN gate on every bounce, and
 // Discussion-Write carries no on_stuck, so that failure blocks the whole run on the very first

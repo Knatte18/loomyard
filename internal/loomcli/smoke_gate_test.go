@@ -183,7 +183,7 @@ func TestSmokeGate_RepromptsThroughARealPaneAndFixesTheArtifact(t *testing.T) {
 		Timeout:     3 * time.Minute,
 	}
 
-	// The same closure resolveGateSpec builds for a "gate: discussion" row (see
+	// The same closure resolveGateSpec builds for a row's "gates" entry named "discussion" (see
 	// internal/shedrecipe/entries_gate.go), driven here over a real Runner instead of a fake one.
 	gate := loomshed.NewDiscussionGate(decisionRecordPath, supportLogPath)
 

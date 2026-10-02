@@ -11,7 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// planWriteEntry is the Constructor for the "PlanWrite" registry row: it validates Env.PlanSpec, Env.CommitPlan, Env.Shuttle, Env.AnchorPath, and Env.StencilsDir, resolves the row's "gate"/"gate_attempts" Config keys through resolveGateSpec, then builds a gated SingleLLMProducer carrying loomshed.NewPlanDirRotator as its fresh-spawn preparation, behind loomshed.NewPlanWrite's post-Done commit decorator.
+// planWriteEntry is the Constructor for the "PlanWrite" registry row: it validates Env.PlanSpec, Env.CommitPlan, Env.Shuttle, Env.AnchorPath, and Env.StencilsDir, resolves the row's "gates" Config key through resolveGateSpec, then builds a gated SingleLLMProducer carrying loomshed.NewPlanDirRotator as its fresh-spawn preparation, behind loomshed.NewPlanWrite's post-Done commit decorator.
 //
 // The Spec arrives as an injected shedadapters.SpecSource closure rather than as recipe Config
 // because building it needs a *lyxcwd.Location, which the Shed Recipe Registry Invariant bars this
@@ -27,9 +27,9 @@ import (
 // that call and planglyph.ValidateFormat's separate worktree-root parameter, which keeps this
 // package free of any planparser import.
 //
-// The row carries exactly two Config keys, "gate" and "gate_attempts", per the Config Strictness
-// Invariant. It carries a "gate" key even though this entry's own dedicated constructor could
-// imply the validator, so that one key means one thing at all four gated sites and a reader of the
+// The row carries exactly one Config key, "gates", per the Config Strictness
+// Invariant. It carries a "gates" key even though this entry's own dedicated constructor could
+// imply the validator, so that one key means one thing at every gated site and a reader of the
 // recipe can see which validator guards each row without opening Go; this entry therefore never
 // hard-codes a validator choice of its own.
 func planWriteEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
@@ -37,7 +37,7 @@ func planWriteEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, 
 	if err != nil {
 		return nil, err
 	}
-	if err := configRejectUnknown(cfg, "gate", "gate_attempts"); err != nil {
+	if err := configRejectUnknown(cfg, "gates"); err != nil {
 		return nil, err
 	}
 	if err := requireSeam("PlanWrite", "PlanSpec", env.PlanSpec); err != nil {

@@ -21,7 +21,7 @@
 // backs every row with a real producer -- no row reports Done
 // unconditionally. A freshly-bootstrapped driver against a pair with no discussion or plan
 // artifacts yet still bounces at Discussion-Write's own gate a bounded number of times (its
-// gate_attempts budget) and then blocks, well before reaching any later row -- a lifecycle that can
+// "gates" entry's attempts budget) and then blocks, well before reaching any later row -- a lifecycle that can
 // still complete in well under a second. Tests here that
 // assert "a driver process exists" treat that as a best-effort observation (logged, not failed, when
 // the driver has already run to completion by check time) and lean on the STATUS FILE's own history

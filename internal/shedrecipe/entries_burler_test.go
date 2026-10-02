@@ -1,7 +1,7 @@
 // entries_burler_test.go covers burlerRoundEntry: the happy path, the profile-to-Profile mapping
 // (including the target/fasit relative-path exception), strict unknown-key rejection at all three
 // levels, the run-directory group shared with entries_bouncer_test.go's Bouncer coverage, every
-// construction failure, and the "gate"/"gate_attempts" Config keys resolveGateSpec resolves into
+// construction failure, and the "gates" Config key resolveGateSpec resolves into
 // RunOpts.Gate.
 //
 // seam_enforcement_test.go's allowlist assertion is the standing guard that loomshed's two gate
@@ -469,18 +469,16 @@ func TestBurlerRoundEntry_RunDirectory(t *testing.T) {
 	})
 }
 
-// TestBurlerRoundEntry_GateConfig covers the "gate" and "gate_attempts" Config keys
-// burlerRoundEntry resolves through resolveGateSpec into RunOpts.Gate: "gate" is accepted at row
-// level and selects the matching validator, "gate_attempts" is accepted at row level and rejected
-// inside the profile: sub-map -- the guard against the two allowlists being confused -- and an
-// unrecognised "gate" value fails loud, matching the Webster round's own deliberate lack of a
-// third validator to name.
+// TestBurlerRoundEntry_GateConfig covers the "gates" Config key burlerRoundEntry resolves through
+// resolveGateSpec into RunOpts.Gate: a "gates" list is accepted at row level and selects the
+// matching validators, "gate_attempts" is rejected inside the profile: sub-map -- the guard
+// against the two allowlists being confused -- and an unrecognised name fails loud, matching the
+// Webster round's own deliberate lack of a third validator to name.
 func TestBurlerRoundEntry_GateConfig(t *testing.T) {
-	t.Run("RowLevelGateAndGateAttemptsAccepted", func(t *testing.T) {
+	t.Run("RowLevelGatesAccepted", func(t *testing.T) {
 		env := newTestEnv(t)
 		cfg := minimalBurlerConfig()
-		cfg["gate"] = "discussion"
-		cfg["gate_attempts"] = 5
+		cfg["gates"] = gatesCfg("discussion", 5)["gates"]
 
 		_, opts := callAndCaptureProfile(t, "review-round", cfg, env)
 		if len(opts.Gate) != 1 || opts.Gate[0].Gate == nil {
@@ -506,7 +504,7 @@ func TestBurlerRoundEntry_GateConfig(t *testing.T) {
 	t.Run("GatePlanResolvesToPlanValidator", func(t *testing.T) {
 		env := newTestEnv(t)
 		cfg := minimalBurlerConfig()
-		cfg["gate"] = "plan"
+		cfg["gates"] = gatesCfg("plan", 3)["gates"]
 
 		_, opts := callAndCaptureProfile(t, "review-round", cfg, env)
 		if len(opts.Gate) != 1 {
@@ -537,29 +535,12 @@ func TestBurlerRoundEntry_GateConfig(t *testing.T) {
 	t.Run("UnrecognisedGateValueFails", func(t *testing.T) {
 		env := newTestEnv(t)
 		cfg := minimalBurlerConfig()
-		cfg["gate"] = "webster"
+		cfg["gates"] = gatesCfg("webster", 3)["gates"]
 
 		_, err := burlerRoundEntry("review-round", cfg, env)
-		assertErrContains(t, err, "gate")
+		assertErrContains(t, err, "name")
 		assertErrContains(t, err, "discussion")
 		assertErrContains(t, err, "plan")
-	})
-
-	t.Run("GateAttemptsAcceptedAtRowLevel", func(t *testing.T) {
-		env := newTestEnv(t)
-		cfg := minimalBurlerConfig()
-		cfg["gate_attempts"] = 2
-		_, err := burlerRoundEntry("review-round", cfg, env)
-		if err == nil {
-			t.Fatal("burlerRoundEntry() error = nil; want non-nil, since gate_attempts with no gate is still an author mistake at row level")
-		}
-		// gate_attempts is accepted (never "unrecognized config key") but requires a sibling gate
-		// key, so the error names gate_attempts and gate, never "gate_attempts" as unrecognised.
-		if strings.Contains(err.Error(), "unrecognized config key \"gate_attempts\"") {
-			t.Errorf("burlerRoundEntry() error = %v; want gate_attempts recognised at row level, not rejected as unknown", err)
-		}
-		assertErrContains(t, err, "gate_attempts")
-		assertErrContains(t, err, "gate")
 	})
 
 	t.Run("GateAttemptsRejectedInsideProfileSubMap", func(t *testing.T) {

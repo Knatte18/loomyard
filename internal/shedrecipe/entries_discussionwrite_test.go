@@ -132,14 +132,14 @@ func TestDiscussionWriteEntry_CallDone(t *testing.T) {
 	}
 }
 
-// TestDiscussionWriteEntry_GateConfig covers the "gate" and "gate_attempts" Config keys
-// discussionWriteEntry resolves through resolveGateSpec: a "gate: discussion" row resolves to the
-// discussion validator, an unrecognised "gate" value fails loud naming both legal values, and a row
-// carrying neither key resolves to the empty shuttleengine.GateSpec -- an ungated producer.
+// TestDiscussionWriteEntry_GateConfig covers the "gates" Config key
+// discussionWriteEntry resolves through resolveGateSpec: a "discussion" entry resolves to the
+// discussion validator, an unrecognised name fails loud naming both legal values, and a row
+// carrying no key resolves to the empty shuttleengine.GateSpec -- an ungated producer.
 func TestDiscussionWriteEntry_GateConfig(t *testing.T) {
 	t.Run("GateDiscussionResolvesToDiscussionValidator", func(t *testing.T) {
 		env := newTestEnv(t)
-		gateSpec, err := resolveGateSpec("DiscussionWrite", Config{"gate": "discussion"}, env)
+		gateSpec, err := resolveGateSpec("DiscussionWrite", gatesCfg("discussion", 3), env)
 		if err != nil {
 			t.Fatalf("resolveGateSpec() error = %v; want nil", err)
 		}
@@ -165,11 +165,11 @@ func TestDiscussionWriteEntry_GateConfig(t *testing.T) {
 
 	t.Run("UnrecognisedGateValueFails", func(t *testing.T) {
 		env := newTestEnv(t)
-		_, err := discussionWriteEntry("Row", Config{"gate": "bogus"}, env)
+		_, err := discussionWriteEntry("Row", gatesCfg("bogus", 3), env)
 		if err == nil {
 			t.Fatal("discussionWriteEntry() error = nil; want non-nil for an unrecognised gate value")
 		}
-		assertErrContains(t, err, "gate")
+		assertErrContains(t, err, "name")
 		assertErrContains(t, err, "discussion")
 		assertErrContains(t, err, "plan")
 	})

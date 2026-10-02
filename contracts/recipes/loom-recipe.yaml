@@ -70,10 +70,12 @@ producers:
     engine: DiscussionWrite
     on_done: Discussion-Bouncer
     config:
-      # gate holds this row's handoff until the artifact is mechanically valid, re-prompting the
-      # live session up to gate_attempts times, so a failure never reaches the row below.
-      gate: discussion
-      gate_attempts: 3
+      # gates holds this row's handoff until the artifact is mechanically valid: each entry names a
+      # validator and re-prompts the live session up to its attempts times, so a failure never
+      # reaches the row below.
+      gates:
+        - name: discussion
+          attempts: 3
 
   - name: Discussion-Bouncer
     engine: Bouncer
@@ -108,10 +110,12 @@ producers:
       # The same run_subdir value as Discussion-Bouncer is what makes both rows write into one
       # shared run directory.
       run_subdir: discussion
-      # gate holds this row's handoff until the artifact is mechanically valid, re-prompting the
-      # live session up to gate_attempts times, so a failure never reaches the row below.
-      gate: discussion
-      gate_attempts: 3
+      # gates holds this row's handoff until the artifact is mechanically valid: each entry names a
+      # validator and re-prompts the live session up to its attempts times, so a failure never
+      # reaches the row below.
+      gates:
+        - name: discussion
+          attempts: 3
       profile:
         target:
           paths:
@@ -135,10 +139,12 @@ producers:
     engine: PlanWrite
     on_done: Plan-Bouncer
     config:
-      # gate holds this row's handoff until the artifact is mechanically valid, re-prompting the
-      # live session up to gate_attempts times, so a failure never reaches the row below.
-      gate: plan
-      gate_attempts: 3
+      # gates holds this row's handoff until the artifact is mechanically valid: each entry names a
+      # validator and re-prompts the live session up to its attempts times, so a failure never
+      # reaches the row below.
+      gates:
+        - name: plan
+          attempts: 3
 
   - name: Plan-Bouncer
     engine: Bouncer
@@ -183,10 +189,12 @@ producers:
       # The same run_subdir value as Plan-Bouncer is what makes both rows write into one shared
       # run directory.
       run_subdir: plan
-      # gate holds this row's handoff until the artifact is mechanically valid, re-prompting the
-      # live session up to gate_attempts times, so a failure never reaches the row below.
-      gate: plan
-      gate_attempts: 3
+      # gates holds this row's handoff until the artifact is mechanically valid: each entry names a
+      # validator and re-prompts the live session up to its attempts times, so a failure never
+      # reaches the row below.
+      gates:
+        - name: plan
+          attempts: 3
       profile:
         target:
           paths:
@@ -265,7 +273,7 @@ producers:
       # The same run_subdir value as Webster-Bouncer is what makes both rows write into one shared
       # run directory.
       run_subdir: webster
-      # No gate key, deliberately: there is no mechanical validator over a committed diff, so this
+      # No gates key, deliberately: there is no mechanical validator over a committed diff, so this
       # row builds an ungated producer.
       profile:
         target:
@@ -308,10 +316,12 @@ producers:
     engine: Describe
     on_done: Publish
     config:
-      # gate holds this row's handoff until the artifact is mechanically valid, re-prompting the
-      # live session up to gate_attempts times, so a failure never reaches the row below.
-      gate: description
-      gate_attempts: 3
+      # gates holds this row's handoff until the artifact is mechanically valid: each entry names a
+      # validator and re-prompts the live session up to its attempts times, so a failure never
+      # reaches the row below.
+      gates:
+        - name: description
+          attempts: 3
 
   - name: Publish
     engine: Publish
@@ -334,12 +344,14 @@ producers:
     segment: PR-Review
     on_done: Webster
     config:
-      # gate holds this row's handoff until the artifact is mechanically valid, re-prompting the
-      # live session up to gate_attempts times, so a failure never reaches the row below.
+      # gates holds this row's handoff until the artifact is mechanically valid: each entry names a
+      # validator and re-prompts the live session up to its attempts times, so a failure never
+      # reaches the row below.
       # rework-plan checks only the cards absent from the plan committed at HEAD: every earlier
       # card has already landed, and re-resolving one against the tree it changed always fails.
-      gate: rework-plan
-      gate_attempts: 3
+      gates:
+        - name: rework-plan
+          attempts: 3
 
   - name: Finalize
     engine: Finalize
