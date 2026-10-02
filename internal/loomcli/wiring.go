@@ -315,8 +315,15 @@ func committedAnchoredReader(location *lyxcwd.Location) func(anchorRel string) (
 // location.AnchorPath(), the reed engine and shuttle runner, the assembled websterengine.RunDeps, and
 // the assembled shedrecipe.Env/shedbuild.ShedPaths pair wrapping it.
 // discussionCommitPathspec is the pathspec CommitDiscussion stages: the whole discussion directory, plus the parent-review round directories so the review records land in the same commit.
-func discussionCommitPathspec() []string {
-	return []string{loomengine.DiscussionDirRel(), loomengine.LoomParentReviewDirRel()}
+// The parent-review directory is left out while it holds no file, since git refuses such a pathspec (see statusCommitPathspec):
+// that is a run with no reviewer, whose fresh spawn leaves an empty round directory, or one whose parent-review entry is off.
+// Its round files are never deleted, so a directory holding no file was never tracked either.
+func discussionCommitPathspec(location *lyxcwd.Location) []string {
+	paths := []string{loomengine.DiscussionDirRel()}
+	if holdsFile(loomengine.LoomParentReviewDir(location)) {
+		paths = append(paths, loomengine.LoomParentReviewDirRel())
+	}
+	return paths
 }
 
 // newParentReviewConfig builds the Discussion-Write parent-review gate's told input.
@@ -533,7 +540,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// one, since the Discussion-Bouncer row's approved settle reaches this same closure through
 		// the row's commit_seam: discussion config key.
 		CommitDiscussion: func() error {
-			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, discussionCommitPathspec(),fmt.Sprintf("loom: discussion artifacts for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
+			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, discussionCommitPathspec(location),fmt.Sprintf("loom: discussion artifacts for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
 			return err
 		},
 		// DescriptionPath is the change description Describe writes and its gate and the landing

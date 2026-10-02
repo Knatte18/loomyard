@@ -4,6 +4,8 @@
 package loomcli
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 
@@ -81,12 +83,42 @@ func TestNewParentReviewConfig_ReviewerFromSeedParent(t *testing.T) {
 	}
 }
 
-// TestDiscussionCommitPathspec_IncludesParentReviewDir asserts the discussion commit carries the parent-review round directories.
+// TestDiscussionCommitPathspec_IncludesParentReviewDir asserts the discussion commit carries the parent-review round directories once they hold a file,
+// and leaves them out while they are absent or hold only an empty round directory, since git refuses a pathspec that matches no file.
 func TestDiscussionCommitPathspec_IncludesParentReviewDir(t *testing.T) {
 	t.Parallel()
 
-	want := []string{loomengine.DiscussionDirRel(), loomengine.LoomParentReviewDirRel()}
-	if got := discussionCommitPathspec(); !reflect.DeepEqual(got, want) {
-		t.Errorf("discussionCommitPathspec() = %v; want %v", got, want)
+	withoutDir := []string{loomengine.DiscussionDirRel()}
+	withDir := []string{loomengine.DiscussionDirRel(), loomengine.LoomParentReviewDirRel()}
+	for _, tc := range []struct {
+		name  string
+		setup func(root string)
+		want  []string
+	}{
+		{"absent", func(string) {}, withoutDir},
+		{"empty round", func(root string) { mustMkdir(t, filepath.Join(root, "round-1")) }, withoutDir},
+		{"request written", func(root string) {
+			mustMkdir(t, filepath.Join(root, "round-1"))
+			if err := os.WriteFile(filepath.Join(root, "round-1", "request.json"), []byte("{}"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}, withDir},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+			tc.setup(loomengine.LoomParentReviewDir(loc))
+			if got := discussionCommitPathspec(loc); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("discussionCommitPathspec() = %v; want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// mustMkdir creates dir and its parents, failing the test on error.
+func mustMkdir(t *testing.T, dir string) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
 	}
 }
