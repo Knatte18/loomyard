@@ -11,7 +11,11 @@ import (
 
 // gateFailedReason is the one-line Stuck reason for a gate that did not pass, shared by both gated
 // producers so the wording never diverges.
+// A terminal entry's own explanation (GateOutcome.Reason) replaces the generic text.
 func gateFailedReason(gate *shuttleengine.GateOutcome) string {
+	if gate.Reason != "" {
+		return gate.Reason
+	}
 	return fmt.Sprintf("gate did not pass after %d attempts; findings: %s", gate.Attempts, gate.FindingsPath)
 }
 

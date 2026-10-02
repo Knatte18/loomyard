@@ -316,7 +316,7 @@ func gateEntryError(name, problem string) error {
 // No new deadline is introduced and run.deadline is never extended: the loop runs under the deadline Start already set from spec.Timeout,
 // so a timeout mid-wait still reaches classifyDeadlineExpiry, which classifies OutcomeDone when the files are present and therefore still runs the gate one final time through finalize.
 //
-// A pass, or a failure whose budget is spent, finalizes with the remembered Done message.
+// A pass, a terminal failure (GateResult.Terminal, whatever the entry's failure count, with no re-prompt and no count incremented), or a failure whose budget is spent, finalizes with the remembered Done message.
 // A failure with budget remaining re-prompts and keeps polling;
 // a re-prompt send failure ends the loop as it always has.
 // A pending result sends its Send text when non-empty and keeps polling;
@@ -341,8 +341,8 @@ func (run *Run) handleGatedBoundary() (Result, bool, error) {
 		return Result{}, false, nil
 	}
 	failed := run.gateFailedAt
-	if failed < 0 || run.gateFails[failed] >= run.gate[failed].Attempts {
-		// No failing entry, or its budget is spent: the verdict is the memo evaluateGate just stored, which finalize reads rather than re-validating.
+	if failed < 0 || run.gateTerminal || run.gateFails[failed] >= run.gate[failed].Attempts {
+		// No failing entry, a terminal failure, or a spent budget: the verdict is the memo evaluateGate just stored, which finalize reads rather than re-validating.
 		result, ferr := run.finalize(OutcomeDone, message)
 		return result, true, ferr
 	}
@@ -838,9 +838,11 @@ func (run *Run) identity() Result {
 // The entries run in list order and stop at the first failure.
 // An off entry (Attempts 0) is reported off wherever it sits;
 // a PassOnCap entry whose failure count has reached its Attempts is not run and is reported let through;
-// every other entry runs its closure and is reported passed or failed;
+// every other entry runs its closure and is reported passed, failed or, for a PassOnCap or MayHold entry, waiting;
 // every non-off entry after the stopping entry is reported not reached.
-// Passed is true only when every entry that is neither off nor PassOnCap passed at this arrival.
+// Passed is true only when every entry that is neither off nor PassOnCap passed at this arrival, so a pending MayHold entry is never a pass.
+// A Terminal flag on a passed or pending result, or Pending or a non-nil Final on an entry that is neither PassOnCap nor MayHold, is a returned gate error.
+// A Terminal failing result is recorded on run.gateTerminal, and its Findings text is carried on GateOutcome.Reason.
 // The method never changes a count — only Wait's re-prompt branch does — so a finalize evaluating afresh after a lost session or a deadline cannot change one.
 //
 // A non-nil error from a closure is returned verbatim, stores no memo and changes no count, per the "a gate error is never not passed" decision:
@@ -864,7 +866,7 @@ func (run *Run) evaluateGate(final bool) (*GateOutcome, error) {
 		run.gateSent = make([]int, len(run.gate))
 	}
 	for _, entry := range run.gate {
-		if entry.Final != nil && !entry.PassOnCap {
+		if entry.Final != nil && !entry.PassOnCap && !entry.MayHold {
 			return nil, gateEntryError(entry.Name, "sets Final but is not pass_on_cap")
 		}
 	}
@@ -874,6 +876,7 @@ func (run *Run) evaluateGate(final bool) (*GateOutcome, error) {
 	pendingAt := -1
 	pendingSend, pendingWayForward := "", ""
 	findingsPath := ""
+	terminal, reason := false, ""
 	for i, entry := range run.gate {
 		line := GateEntryOutcome{Name: entry.Name, Attempts: run.gateSent[i]}
 		outcome.Attempts += run.gateSent[i]
@@ -897,8 +900,14 @@ func (run *Run) evaluateGate(final bool) (*GateOutcome, error) {
 				return nil, err
 			}
 			if result.Pending {
-				if !entry.PassOnCap {
+				if !entry.PassOnCap && !entry.MayHold {
 					return nil, gateEntryError(entry.Name, "returned pending but is not pass_on_cap")
+				}
+				if result.Terminal {
+					return nil, gateEntryError(entry.Name, "returned a terminal pending result")
+				}
+				if !entry.PassOnCap {
+					outcome.Passed = false
 				}
 				line.State = GateEntryWaiting
 				pendingAt = i
@@ -907,6 +916,9 @@ func (run *Run) evaluateGate(final bool) (*GateOutcome, error) {
 				break
 			}
 			if result.Passed {
+				if result.Terminal {
+					return nil, gateEntryError(entry.Name, "returned a terminal passed result")
+				}
 				line.State = GateEntryPassed
 				break
 			}
@@ -919,15 +931,21 @@ func (run *Run) evaluateGate(final bool) (*GateOutcome, error) {
 			if !entry.PassOnCap {
 				outcome.Passed = false
 			}
+			if result.Terminal {
+				terminal = true
+				reason = result.Findings
+			}
 		}
 		outcome.Entries[i] = line
 	}
 	if !outcome.Passed {
 		outcome.FindingsPath = findingsPath
+		outcome.Reason = reason
 	}
 
 	run.gateVerdict = outcome
 	run.gateFailedAt = failedAt
+	run.gateTerminal = terminal
 	run.gateFindingsPath = findingsPath
 	run.gatePending = pendingAt >= 0
 	run.gatePendingAt = pendingAt

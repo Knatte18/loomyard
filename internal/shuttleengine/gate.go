@@ -19,7 +19,7 @@ type GateResult struct {
 	// findings file and never sent inline — see the "findings always ride a file" decision.
 	Findings string
 	// Pending reports that the gate has no verdict yet and holds the run: the wait loop keeps polling, re-evaluating at turn boundaries, without re-prompting or counting a failure.
-	// Only a PassOnCap entry may return it, and a Pending result is never Passed.
+	// Only a PassOnCap or MayHold entry may return it, and a Pending result is never Passed.
 	// The run deadline and liveness checks keep running while an entry is pending, and a deadline or liveness finalize evaluates the entry's Final closure instead.
 	Pending bool
 	// Send is one line the wait loop sends the writer when the result is Pending, empty for none.
@@ -27,6 +27,10 @@ type GateResult struct {
 	Send string
 	// SendFailedWayForward is the clause the loop's Warn quotes when sending Send fails.
 	SendFailedWayForward string
+	// Terminal marks a failing result the run finalizes at once, with no re-prompt, whatever the entry's in-memory failure count; the count is not incremented for it.
+	// Its Findings text rides GateOutcome.Reason to the producer, because finalize deletes the findings file with the run directory.
+	// Terminal on a passed or pending result is a returned gate error.
+	Terminal bool
 }
 
 // Gate is a mechanical validator a gated run consults at each arrival and at its single verdict site (finalize):
@@ -44,7 +48,7 @@ type GateEntry struct {
 	// Gate is the validator this entry consults.
 	Gate Gate
 	// Final, when non-nil, is the closure finalize evaluates in place of Gate, so a pending-capable entry is read at the final verdict without its opening and consuming transitions.
-	// Only a PassOnCap entry may set it: a non-nil Final on any other entry is a returned gate error at evaluation, so Final can never let a must-pass entry through.
+	// Only a PassOnCap or MayHold entry may set it: a non-nil Final on any other entry is a returned gate error at evaluation, so Final can never let a must-pass entry through.
 	Final Gate
 	// Attempts is the entry's re-prompt budget: how many consecutive failures re-prompt the agent before the entry gives up.
 	// 0 means the entry is off: it is skipped at every arrival, whatever its PassOnCap.
@@ -54,7 +58,13 @@ type GateEntry struct {
 	// The count lives in memory for one shuttle run, so after an attach a capped entry starts from zero and can fire again,
 	// and a pass before the cap resets the count, so the entry can fire again later;
 	// a request that must not repeat makes its own closure idempotent.
+	// A PassOnCap entry may also pend and set Final; every other entry needs MayHold for that.
 	PassOnCap bool
+	// MayHold lets a must-pass entry return Pending and set Final, which evaluateGate otherwise refuses on an entry that is not PassOnCap.
+	// It lifts those two guards and nothing else: the entry stays must-pass, a failure sets GateOutcome.Passed false, and a Pending result never counts as passed, so finalize never reads a held entry as a pass.
+	// A Pending result at a turn boundary holds the run exactly as a PassOnCap entry's does.
+	// Only the parent-review wiring sets it.
+	MayHold bool
 }
 
 // GateSpec is the ordered list of gate entries a gated run consults at each arrival — the one value every downstream seam (RunGated, AttachGated, a producer's RunOpts.Gate) carries from the point it is known through to the run loop, per the "one GateSpec at every hop" decision.
@@ -73,7 +83,7 @@ const (
 	GateEntryLetThrough GateEntryState = "let_through"
 	// GateEntryOff marks an entry with Attempts 0, wherever it sits in the list.
 	GateEntryOff GateEntryState = "off"
-	// GateEntryWaiting marks the PassOnCap entry whose closure returned pending, stopping the evaluation; it counts toward Passed like a let-through entry.
+	// GateEntryWaiting marks the entry whose closure returned pending, stopping the evaluation; a PassOnCap entry counts toward Passed like a let-through entry, a MayHold must-pass entry does not.
 	GateEntryWaiting GateEntryState = "waiting"
 	// GateEntryNotReached marks a non-off entry after the entry that stopped the evaluation.
 	GateEntryNotReached GateEntryState = "not_reached"
@@ -106,6 +116,9 @@ type GateOutcome struct {
 	// findings file lives in the run directory that finalize deletes on the Done cleanup every
 	// exhausted gate takes, so a producer that opens it is a defect.
 	FindingsPath string
+	// Reason is the Findings text of the terminal failing result, empty otherwise.
+	// It rides the outcome because finalize deletes the run directory and the findings file with it, so a terminal entry's explanation reaches the producer only here.
+	Reason string
 }
 
 // gateRepromptText returns the single-line re-prompt text Wait sends the agent after a failed gate
