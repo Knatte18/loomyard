@@ -317,8 +317,8 @@ Then re-run `--reset` against a real hub and confirm the idempotent re-clone sti
 
 **Goal:** "Clone the documented first-ever-setup shape -- a brand-new, zero-commit weft remote -- and confirm the hub it produces is actually usable."
 
-**Watch:** Create a bare weft remote with no commits at all (`git init --bare`, `HEAD` on `main`) and a warp remote with real content, then `lyx fabric clone <empty-weft-url> <warp-url>`.
-The clone reports `ok: true` -- it always did -- so the check is what comes after.
+**Watch:** Create a bare weft remote with no commits at all (`git init --bare`, `HEAD` on `main`) and a warp remote with real content, then `lyx fabric clone --shortname <shortname> <empty-weft-url> <warp-url>`, since a first-ever bind refuses a clone without one.
+The clone reports `ok: true`, so the check is what comes after.
 Confirm `git -C <hub>/<prime>-weft rev-parse --verify refs/heads/main-weft` RESOLVES.
 A branch can be checked out and reported as current while its ref does not exist: `git checkout -b` on an unborn HEAD writes nothing.
 Then run the documented example, `lyx fabric add my-task`, and `lyx fabric remove my-task`.
