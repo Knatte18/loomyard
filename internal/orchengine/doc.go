@@ -34,6 +34,15 @@
 // attach only, spawn a watcher, or relaunch.
 // A dead or absent strand always relaunches.
 //
+// # Permission mode and subagents
+//
+// The orch run's spec carries `permission_mode` from orch.yaml verbatim (template `bypass`), and the claude engine validates it.
+// It also allows the Agent tool and forks, so the session can spawn typed subagents and forks while the fork-context `lyx webster` guard stays installed.
+// Only the orch run sets the allowance, and it has no orch.yaml switch.
+//
+// Under `bypass`, the orch session and every subagent and fork it spawns run every tool with no permission prompt.
+// The operator's lever is `permission_mode: prompt`, under which those agents prompt in the orch pane.
+//
 // # The watcher
 //
 // Watcher.Run polls at the configured interval, calling Tick once per poll.

@@ -257,6 +257,23 @@ func TestStart_FreshLaunchResetsAbandonedPhase(t *testing.T) {
 }
 
 func TestStart_SpecShape(t *testing.T) {
+	for _, mode := range []string{"bypass", "prompt"} {
+		t.Run(mode, func(t *testing.T) {
+			h := newStartHarness(t)
+			h.cli.cfg.PermissionMode = mode
+			if code, env := h.run(t); code != 0 {
+				t.Fatalf("exit = %d; env = %v", code, env)
+			}
+			spec := h.starter.specs[0]
+			if spec.PermissionMode != mode {
+				t.Errorf("PermissionMode = %q; want %q", spec.PermissionMode, mode)
+			}
+			if !spec.AllowAgentTool || !spec.ForkSubagents {
+				t.Errorf("AllowAgentTool/ForkSubagents = %v/%v; want both true", spec.AllowAgentTool, spec.ForkSubagents)
+			}
+		})
+	}
+
 	h := newStartHarness(t)
 	if code, env := h.run(t); code != 0 {
 		t.Fatalf("exit = %d; env = %v", code, env)

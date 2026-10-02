@@ -14,7 +14,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
-	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/spf13/cobra"
 )
 
@@ -74,25 +73,6 @@ func TestRefuseNonPrime(t *testing.T) {
 	err = refuseNonPrime("main", "", errors.New("boom"))
 	if err == nil || !strings.Contains(err.Error(), "boom") {
 		t.Errorf("unresolvable prime refusal = %v; want it to wrap the cause", err)
-	}
-}
-
-func TestOrchShuttleConfig_ClearsOnlyAgentDeny(t *testing.T) {
-	t.Parallel()
-
-	in := shuttleengine.Config{
-		RunDir: "runs", PollIntervalMS: 7, LivenessEveryNPolls: 3, RunTimeoutMin: 9, StartupTimeoutS: 11,
-		Claude: "claude", ClaudeDenyAgentTool: true, ClaudeDenyAskUserQuestion: true,
-	}
-	got := orchShuttleConfig(in)
-
-	want := in
-	want.ClaudeDenyAgentTool = false
-	if got != want {
-		t.Errorf("orchShuttleConfig = %+v; want %+v", got, want)
-	}
-	if !in.ClaudeDenyAgentTool {
-		t.Error("orchShuttleConfig mutated its argument")
 	}
 }
 

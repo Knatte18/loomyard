@@ -52,18 +52,22 @@ func (s runnerSessionStarter) StartSession(spec shuttleengine.Spec) (string, err
 }
 
 // orchSpec builds the orchestrator run's spec: interactive, awaiting the operator, focused, with a never-written sentinel as its one output file so the run never finishes on one.
+// It carries the configured permission mode verbatim and allows the Agent tool with forks, so the hosted hub can spawn typed subagents and forks.
 func (c *orchCLI) orchSpec(prompt string, now time.Time) shuttleengine.Spec {
 	sentinel := filepath.Join(c.paths.Dir, "session-"+now.UTC().Format("20060102T150405Z")+".never")
 	return shuttleengine.Spec{
-		Prompt:        prompt,
-		OutputFiles:   []string{sentinel},
-		Model:         c.cfg.Model,
-		Effort:        c.cfg.Effort,
-		Interactive:   true,
-		AwaitOperator: true,
-		Role:          orchStrandName,
-		NameOverride:  orchStrandName,
-		Display:       render.Display{Focus: true},
+		Prompt:         prompt,
+		OutputFiles:    []string{sentinel},
+		Model:          c.cfg.Model,
+		Effort:         c.cfg.Effort,
+		Interactive:    true,
+		PermissionMode: c.cfg.PermissionMode,
+		AllowAgentTool: true,
+		ForkSubagents:  true,
+		AwaitOperator:  true,
+		Role:           orchStrandName,
+		NameOverride:   orchStrandName,
+		Display:        render.Display{Focus: true},
 	}
 }
 
