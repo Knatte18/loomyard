@@ -134,11 +134,13 @@
 //
 // Pane enumeration: listPanes (overlay.go) always runs
 //
-//	list-panes -F "#{pane_id} #{pane_dead} #{pane_top} #{pane_width} #{pane_height} #{pane_pid}"
+//	list-panes -F "#{pane_id} #{pane_dead} #{pane_top} #{pane_width} #{pane_height} #{pane_pid} #{pane_title}"
 //
-// and parsePaneList (parse.go) parses each output line's six
+// and parsePaneList (parse.go) parses each output line's first six
 // whitespace-separated fields positionally, in that exact order, into a
-// LivePane. #{pane_dead} is reported as the string "1" or "0";
+// LivePane; everything after the sixth field is LivePane.Title, so a title
+// holding spaces survives. The title is a display mirror of the strand's
+// full name, never a lookup key. #{pane_dead} is reported as the string "1" or "0";
 // parsePaneList keys a dead pane on the literal value "1", never a numeric
 // or boolean comparison.
 //

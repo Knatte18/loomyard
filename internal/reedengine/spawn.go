@@ -134,6 +134,14 @@ func (e *Engine) launchStrandLocked(st *ReedState, s *Strand, launchCmd string) 
 	}
 
 	s.PaneID = paneID
+	// Both title commands are display mirrors: allow-set-title off stops the agent inside from overwriting the name,
+	// and no lookup or delivery ever resolves through a title, so a failure of either costs display only and never fails the launch.
+	if err := e.tmux.run("set-option", "-p", "-t", paneID, "allow-set-title", "off"); err != nil {
+		logger.Warn("reed: could not turn off allow-set-title, the pane title may drift", "strand", s.GUID, "pane", paneID, "err", err)
+	}
+	if err := e.tmux.run("select-pane", "-t", paneID, "-T", s.Name); err != nil {
+		logger.Warn("reed: could not set the pane title", "strand", s.GUID, "pane", paneID, "name", s.Name, "err", err)
+	}
 	// composePaneLaunchLine joins the pane-binary prelude (panebin.go) onto launchCmd, on the same shell.ForGOOS() dialect the launch command itself was built with,
 	// so the two never disagree about which shell is typed into.
 	// stageLaunchScript writes that composed line to the strand's launch script and returns the dialect's source statement for it, which is what the pane shows;

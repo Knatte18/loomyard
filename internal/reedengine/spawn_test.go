@@ -641,3 +641,48 @@ func TestLaunchStrandLocked_SplitWindowCarriesNoTrailingShellCommand(t *testing.
 		t.Errorf("split-window argv = %v, want it to end with \"-F\" \"#{pane_id}\" and nothing after -- a trailing shell-command argument would make tmux exec a non-login shell that skips the pane's profile", splitArgs)
 	}
 }
+
+// TestLaunchStrandLocked_MirrorsTheFullNameIntoThePaneTitle pins that the two title commands run in order between the split and the send-keys, and carry the strand's full name.
+func TestLaunchStrandLocked_MirrorsTheFullNameIntoThePaneTitle(t *testing.T) {
+	e := newTestEngine(t)
+
+	withInjectedExecutablePath(t, func() (string, error) { return "/opt/lyx/bin/lyx", nil })
+
+	var order []string
+	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
+		switch args[0] {
+		case "list-panes":
+			return "%selvage 0 0 100 20 4321\n", nil
+		case "split-window":
+			order = append(order, "split-window")
+			return "%new\n", nil
+		case "set-option", "select-pane", "send-keys":
+			order = append(order, strings.Join(args, " "))
+		}
+		return "", nil
+	}
+
+	st := &ReedState{SelvagePaneID: "%selvage"}
+	st.Strands = append(st.Strands, Strand{GUID: "new", Name: "tst:slug:worker"})
+	s := &st.Strands[0]
+
+	if err := e.launchStrandLocked(st, s, "claude --continue"); err != nil {
+		t.Fatalf("launchStrandLocked: %v", err)
+	}
+
+	if len(order) < 4 {
+		t.Fatalf("recorded calls = %v, want split-window, set-option, select-pane, send-keys", order)
+	}
+	if order[0] != "split-window" {
+		t.Errorf("first call = %q, want split-window", order[0])
+	}
+	if want := "set-option -p -t %new allow-set-title off"; order[1] != want {
+		t.Errorf("second call = %q, want %q", order[1], want)
+	}
+	if want := "select-pane -t %new -T tst:slug:worker"; order[2] != want {
+		t.Errorf("third call = %q, want %q", order[2], want)
+	}
+	if !strings.HasPrefix(order[3], "send-keys") {
+		t.Errorf("fourth call = %q, want send-keys after the title commands", order[3])
+	}
+}
