@@ -41,13 +41,6 @@ func TestComputeLayers(t *testing.T) {
 			want: map[string]string{"a": "A", "b": "__done__"},
 		},
 		{
-			name: "deferred task",
-			tasks: []boardengine.Task{
-				{ID: 1, Slug: "a", Title: "Task A", Deferred: true},
-			},
-			want: map[string]string{"a": "__deferred__"},
-		},
-		{
 			name: "isolated task",
 			tasks: []boardengine.Task{
 				{ID: 1, Slug: "a", Title: "Task A", Isolated: true},
@@ -174,18 +167,17 @@ func TestRenderOrder(t *testing.T) {
 			name: "buckets in correct order",
 			tasks: []boardengine.Task{
 				{ID: 1, Slug: "done1", Title: "Done Task", Status: stringPtr("done")},
-				{ID: 2, Slug: "deferred1", Title: "Deferred Task", Deferred: true},
 				{ID: 3, Slug: "z1", Title: "Isolated Task", Isolated: true},
 				{ID: 4, Slug: "a1", Title: "Layer A Task", DependsOn: []string{}},
 				{ID: 5, Slug: "b1", Title: "Layer B Task", DependsOn: []string{"a1"}},
 			},
 			check: func(t *testing.T, result []boardengine.TaskWithLayer) {
-				if len(result) != 5 {
-					t.Fatalf("RenderOrder() got %d tasks, want 5", len(result))
+				if len(result) != 4 {
+					t.Fatalf("RenderOrder() got %d tasks, want 4", len(result))
 				}
-				// Expected order: a1(A), b1(B), z1(Z), deferred1(__deferred__), done1(__done__)
-				wantOrder := []string{"a1", "b1", "z1", "deferred1", "done1"}
-				wantLayers := []string{"A", "B", "Z", "__deferred__", "__done__"}
+				// Expected order: a1(A), b1(B), z1(Z), done1(__done__)
+				wantOrder := []string{"a1", "b1", "z1", "done1"}
+				wantLayers := []string{"A", "B", "Z", "__done__"}
 				for i, slug := range wantOrder {
 					if result[i].Slug != slug {
 						t.Errorf("RenderOrder() position %d got slug %q, want %q", i, result[i].Slug, slug)

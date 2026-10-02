@@ -125,7 +125,7 @@ func renderTasksSection(ordered []TaskWithLayer, taskMap map[string]Task, design
 			lines = append(lines, bucketHeader(twl.Layer), "")
 		}
 
-		// Heading: "## **#NNN:** Title [Layer]" (no layer suffix for done/deferred).
+		// Heading: "## **#NNN:** Title [Layer]" (no layer suffix for done).
 		displayTitle := fmt.Sprintf("**#%03d:** %s", twl.ID, twl.Title)
 		if !isSpecialBucket(twl.Layer) {
 			displayTitle += " [" + twl.Layer + "]"
@@ -231,8 +231,6 @@ func bucketHeader(layer string) string {
 	switch layer {
 	case "__done__":
 		return "# Done"
-	case "__deferred__":
-		return "# Someday"
 	default:
 		return "# Layer " + layer
 	}
@@ -241,5 +239,5 @@ func bucketHeader(layer string) string {
 // isSpecialBucket reports whether a layer is one of the non-letter buckets that
 // suppress the "[Layer]" title suffix.
 func isSpecialBucket(layer string) bool {
-	return layer == "__done__" || layer == "__deferred__"
+	return layer == "__done__"
 }

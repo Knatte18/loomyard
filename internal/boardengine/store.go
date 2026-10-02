@@ -1,6 +1,6 @@
 // store.go — the in-memory task store over tasks.json.
 //
-// Load/Save plus all CRUD and validation: dangling-dependency, isolated/deferred rules, and cycle
+// Load/Save plus all CRUD and validation: dangling-dependency, isolated and tier rules, and cycle
 // detection, with batch and merge applied atomically.
 // Save and Load take the fine-grained swap lock so a concurrent read never sees a half-written
 // file.
@@ -24,8 +24,9 @@ type BriefTask struct {
 	Slug        string   `json:"slug"`
 	Title       string   `json:"title"`
 	DependsOn   []string `json:"depends_on"`
+	Tier        int      `json:"tier"`
+	Type        string   `json:"type"`
 	Isolated    bool     `json:"isolated"`
-	Deferred    bool     `json:"deferred"`
 	Brief       string   `json:"brief"`
 	Status      *string  `json:"status,omitempty"`
 	Layer       string   `json:"layer"`
@@ -109,7 +110,7 @@ func nextIDIn(tasks []Task) int {
 	return maxID + 1
 }
 
-// validateWrite checks incoming against snapshot for dangling deps, isolated/deferred
+// validateWrite checks incoming against snapshot for dangling deps, isolated and tier
 // constraints, and cycles. snapshot is the projected state after any pending removals.
 func (s *Store) validateWrite(snapshot []Task, incoming Task) error {
 	snapshotIndex := make(map[string]*Task)
@@ -127,9 +128,6 @@ func (s *Store) validateWrite(snapshot []Task, incoming Task) error {
 		depTask := snapshotIndex[dep]
 		if depTask.Isolated {
 			return fmt.Errorf("cannot depend on isolated task %q", dep)
-		}
-		if depTask.Deferred {
-			return fmt.Errorf("cannot depend on deferred task %q", dep)
 		}
 	}
 
@@ -183,15 +181,45 @@ func (s *Store) validateWrite(snapshot []Task, incoming Task) error {
 		}
 	}
 
-	if incoming.Deferred {
-		for _, t := range snapshot {
-			if t.Deferred {
-				continue
-			}
-			for _, dep := range t.DependsOn {
-				if dep == incoming.Slug {
-					return fmt.Errorf("cannot defer task %q: non-deferred task %q depends on it", incoming.Slug, t.Slug)
-				}
+	return validateTier(snapshot, incoming)
+}
+
+func isDone(t Task) bool {
+	return t.Status != nil && *t.Status == "done"
+}
+
+// validateTier enforces the tier dependency rule over snapshot with incoming applied:
+// a dependent's tier must be greater than or equal to its dependency's tier, compared only while
+// the dependency is not done.
+// The dependent's own status never exempts the edge.
+func validateTier(snapshot []Task, incoming Task) error {
+	index := make(map[string]Task, len(snapshot))
+	for _, t := range snapshot {
+		index[t.Slug] = t
+	}
+
+	for _, dep := range incoming.DependsOn {
+		depTask, ok := index[dep]
+		if !ok || isDone(depTask) {
+			continue
+		}
+		if depTask.Tier > incoming.Tier {
+			return fmt.Errorf("tier rule: %q (tier %d) depends on %q (tier %d), which has a higher tier; promote %q to tier %d or lower, or demote %q to tier %d or higher",
+				incoming.Slug, incoming.Tier, dep, depTask.Tier, dep, incoming.Tier, incoming.Slug, depTask.Tier)
+		}
+	}
+
+	if isDone(incoming) {
+		return nil
+	}
+	for _, t := range snapshot {
+		if t.Slug == incoming.Slug {
+			continue
+		}
+		for _, dep := range t.DependsOn {
+			if dep == incoming.Slug && t.Tier < incoming.Tier {
+				return fmt.Errorf("tier rule: %q (tier %d) depends on %q (tier %d), which has a higher tier; promote %q to tier %d or lower, or demote %q to tier %d or higher",
+					t.Slug, t.Tier, incoming.Slug, incoming.Tier, incoming.Slug, t.Tier, t.Slug, incoming.Tier)
 			}
 		}
 	}
@@ -215,11 +243,12 @@ var upsertAllowedKeys = map[string]bool{
 	"title":      true,
 	"depends_on": true,
 	"isolated":   true,
-	"deferred":   true,
 	"brief":      true,
 	"body":       true,
 	"status":     true,
+	"tier":       true,
 	"type":       true,
+	"recipe":     true,
 	"short_name": true,
 }
 
@@ -229,6 +258,9 @@ func validateUpsertFields(fields map[string]any) error {
 		if !upsertAllowedKeys[k] {
 			if k == "phase" {
 				return fmt.Errorf("unknown field: %q (did you mean \"status\"?)", k)
+			}
+			if k == "deferred" {
+				return fmt.Errorf("unknown field: %q (deferred is retired; use \"tier\": 3 for someday work)", k)
 			}
 			return fmt.Errorf("unknown field: %q", k)
 		}
@@ -377,6 +409,15 @@ func (s *Store) SetStatus(idOrSlug any, status *string) error {
 		}
 
 		if match {
+			// Reopening can strand a lower-tier dependent behind a now-live dependency;
+			// setting done never introduces a violation, so it stays unchecked.
+			if status == nil || *status != "done" {
+				incoming := s.tasks[i]
+				incoming.Status = status
+				if err := validateTier(s.tasks, incoming); err != nil {
+					return err
+				}
+			}
 			s.tasks[i].Status = status
 			return nil
 		}
@@ -429,8 +470,9 @@ func (s *Store) ListTasksBrief() []BriefTask {
 			Slug:        t.Slug,
 			Title:       t.Title,
 			DependsOn:   t.DependsOn,
+			Tier:        t.Tier,
+			Type:        t.Type,
 			Isolated:    t.Isolated,
-			Deferred:    t.Deferred,
 			Brief:       t.Brief,
 			Status:      t.Status,
 			Layer:       layerMap[t.Slug],

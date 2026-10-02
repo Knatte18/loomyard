@@ -119,7 +119,7 @@ func seedEntryStatus(t *testing.T, c *battenCLI, producer string, rowState shede
 	}
 }
 
-// seedBoardTask upserts a Board task named slug carrying recipeType as its own "type" field,
+// seedBoardTask upserts a Board task named slug carrying recipeType as its own "recipe" field,
 // fataling on error. Seed-Child reads this fresh at Call time -- never a value captured earlier --
 // to choose the child worktree's own recipe, so every test that walks the recipe from
 // Worktree-Create through Seed-Child needs one seeded first.
@@ -131,7 +131,7 @@ func seedBoardTask(t *testing.T, h *hubforge.Hub, slug, recipeType string) {
 	}
 	cfg.Path = h.BoardDir()
 	b := boardengine.New(cfg)
-	if _, err := b.UpsertTask(map[string]any{"slug": slug, "title": slug, "type": recipeType}); err != nil {
+	if _, err := b.UpsertTask(map[string]any{"slug": slug, "title": slug, "recipe": recipeType}); err != nil {
 		t.Fatalf("seed board task %q: %v", slug, err)
 	}
 }

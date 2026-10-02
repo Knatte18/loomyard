@@ -1,6 +1,6 @@
 // render_test.go — unit tests for rendering (render.go).
 //
-// README / design-doc output across task shapes: dependencies, status, isolated, deferred, orphans,
+// README / design-doc output across task shapes: dependencies, status, isolated, orphans,
 // and title formatting.
 // Also covers the manifest-based cleanup introduced in RenderToDisk: renamed outputs are removed
 // across consecutive renders,
@@ -271,7 +271,7 @@ func TestRenderEmptyTaskList(t *testing.T) {
 }
 
 // TestRenderProposalAndShapesHomepage tests the core boardengine.Render() function for various task
-// shapes: dependencies, status variants, isolated tasks, deferred tasks, and brief/title
+// shapes: dependencies, status variants, isolated tasks, and brief/title
 // formatting.
 // Each case asserts matching expected Home.md substrings.
 //
@@ -309,16 +309,6 @@ func TestRenderProposalAndShapesHomepage(t *testing.T) {
 				"## **#001:** Done Task\n",
 			},
 			dontWantSubstr: []string{"[Done]"},
-		},
-		{
-			name: "TestRenderDeferredTask",
-			tasks: []boardengine.Task{
-				boardengine.Task{ID: 1, Slug: "deferred-task", Title: "Deferred Task", Deferred: true},
-			},
-			wantSubstrings: []string{
-				"# Someday",
-				"## **#001:** Deferred Task\n",
-			},
 		},
 		{
 			name: "TestRenderIsolatedTask",

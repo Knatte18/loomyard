@@ -326,16 +326,16 @@ func TestPromoteNoteCrashBetweenSavesConvergesOnRetry(t *testing.T) {
 	}
 }
 
-// TestPromoteNotePreservesType covers taskToUpsertFields' conditional "type" emission: promoting a
-// note that carries a type must preserve it on the resulting task, and a note with no type must
-// still round-trip with the "type" key absent (not present-and-empty), matching the neighbouring
+// TestPromoteNotePreservesRecipe covers taskToUpsertFields' conditional "recipe" emission: promoting a
+// note that carries a recipe must preserve it on the resulting task, and a note with no recipe must
+// still round-trip with the "recipe" key absent (not present-and-empty), matching the neighbouring
 // Status/ShortName conditional shape.
-func TestPromoteNotePreservesType(t *testing.T) {
+func TestPromoteNotePreservesRecipe(t *testing.T) {
 	boardPath := t.TempDir()
 	cfg := boardengine.Config{Path: boardPath, Readme: "Home.md", DesignPrefix: "proposal-", SkipGit: true}
 	w := boardengine.New(cfg)
 
-	if _, err := w.UpsertNote(map[string]any{"slug": "note-typed", "title": "Typed", "type": "batten"}); err != nil {
+	if _, err := w.UpsertNote(map[string]any{"slug": "note-typed", "title": "Typed", "recipe": "batten"}); err != nil {
 		t.Fatalf("UpsertNote note-typed failed: %v", err)
 	}
 	if _, err := w.UpsertNote(map[string]any{"slug": "note-untyped", "title": "Untyped"}); err != nil {
@@ -346,16 +346,19 @@ func TestPromoteNotePreservesType(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PromoteNote note-typed failed: %v", err)
 	}
-	if typed.Type != "batten" {
-		t.Errorf("expected promoted task Type='batten', got %q", typed.Type)
+	if typed.Recipe != "batten" {
+		t.Errorf("expected promoted task Recipe='batten', got %q", typed.Recipe)
 	}
 
 	untyped, err := w.PromoteNote("note-untyped")
 	if err != nil {
 		t.Fatalf("PromoteNote note-untyped failed: %v", err)
 	}
-	if untyped.Type != "" {
-		t.Errorf("expected promoted task Type='', got %q", untyped.Type)
+	if untyped.Recipe != "" {
+		t.Errorf("expected promoted task Recipe='', got %q", untyped.Recipe)
+	}
+	if untyped.Tier != 3 || untyped.Type != "feature" {
+		t.Errorf("expected promoted task tier=3 type=feature, got %d %q", untyped.Tier, untyped.Type)
 	}
 
 	tasksPath := filepath.Join(boardPath, "tasks.json")
@@ -373,15 +376,15 @@ func TestPromoteNotePreservesType(t *testing.T) {
 		if err := json.Unmarshal(rawTask["slug"], &slug); err != nil {
 			t.Fatalf("unmarshal task slug: %v", err)
 		}
-		_, hasType := rawTask["type"]
+		_, hasRecipe := rawTask["recipe"]
 		switch slug {
 		case "note-typed":
-			if !hasType {
-				t.Errorf("expected \"type\" key present for note-typed's promoted task")
+			if !hasRecipe {
+				t.Errorf("expected \"recipe\" key present for note-typed's promoted task")
 			}
 		case "note-untyped":
-			if hasType {
-				t.Errorf("expected \"type\" key absent for note-untyped's promoted task, found it present")
+			if hasRecipe {
+				t.Errorf("expected \"recipe\" key absent for note-untyped's promoted task, found it present")
 			}
 		}
 	}

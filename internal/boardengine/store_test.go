@@ -1,6 +1,6 @@
 // store_test.go — unit tests for the Store (store.go).
 //
-// CRUD, sequential ID assignment, and every validation rule: dangling deps, isolated/deferred
+// CRUD, sequential ID assignment, and every validation rule: dangling deps, isolated/tier
 // constraints, cycle detection, and batch/merge atomicity.
 
 package boardengine_test
@@ -43,7 +43,7 @@ func TestUpsertTaskNewTaskSequentialID(t *testing.T) {
 func TestUpsertTaskDefaults(t *testing.T) {
 	s := boardengine.NewStore("")
 
-	// (b) defaults applied (DependsOn=[], Isolated=false, Deferred=false)
+	// (b) defaults applied (DependsOn=[], Isolated=false, Tier=3, Type=feature)
 	task, err := s.UpsertTask(map[string]any{
 		"slug": "task1",
 	})
@@ -56,9 +56,130 @@ func TestUpsertTaskDefaults(t *testing.T) {
 	if task.Isolated {
 		t.Errorf("expected Isolated=false, got true")
 	}
-	if task.Deferred {
-		t.Errorf("expected Deferred=false, got true")
+	if task.Tier != 3 {
+		t.Errorf("expected Tier=3, got %d", task.Tier)
 	}
+	if task.Type != "feature" {
+		t.Errorf("expected Type=feature, got %q", task.Type)
+	}
+
+	if err := s.UpsertTasksBatch([]map[string]any{{"slug": "task2"}}); err != nil {
+		t.Fatalf("batch: %v", err)
+	}
+	batched, _ := s.GetTask("task2")
+	if batched.Tier != 3 || batched.Type != "feature" {
+		t.Errorf("batch defaults: got tier=%d type=%q", batched.Tier, batched.Type)
+	}
+}
+
+func TestUpsertTierAndTypeValidation(t *testing.T) {
+	for _, tier := range []int{0, 4} {
+		s := boardengine.NewStore("")
+		_, err := s.UpsertTask(map[string]any{"slug": "a", "tier": tier})
+		if err == nil || !stringContains(err.Error(), "1..3") {
+			t.Errorf("tier %d: expected range error, got %v", tier, err)
+		}
+		err = s.UpsertTasksBatch([]map[string]any{{"slug": "a", "tier": tier}})
+		if err == nil {
+			t.Errorf("tier %d: expected batch error", tier)
+		}
+	}
+
+	s := boardengine.NewStore("")
+	_, err := s.UpsertTask(map[string]any{"slug": "a", "type": "batten"})
+	if err == nil || !stringContains(err.Error(), "feature, bug, chore, design") || !stringContains(err.Error(), "recipe") {
+		t.Errorf("expected type error naming the set and recipe, got %v", err)
+	}
+
+	_, err = s.UpsertTask(map[string]any{"slug": "a", "deferred": true})
+	if err == nil || !stringContains(err.Error(), "tier") || !stringContains(err.Error(), "3") {
+		t.Errorf("expected deferred refusal naming tier: 3, got %v", err)
+	}
+
+	if _, err := s.UpsertTask(map[string]any{"slug": "b", "type": "bug", "tier": 1}); err != nil {
+		t.Fatalf("valid tier/type refused: %v", err)
+	}
+	if _, err := s.UpsertTask(map[string]any{"slug": "b", "tier": 9}); err == nil {
+		t.Errorf("patch to tier 9 should be refused")
+	}
+}
+
+func TestTierDependencyRule(t *testing.T) {
+	seed := func(t *testing.T) *boardengine.Store {
+		t.Helper()
+		s := boardengine.NewStore("")
+		if _, err := s.UpsertTask(map[string]any{"slug": "dep", "tier": 2}); err != nil {
+			t.Fatal(err)
+		}
+		return s
+	}
+
+	t.Run("create depending on higher tier refused", func(t *testing.T) {
+		s := seed(t)
+		_, err := s.UpsertTask(map[string]any{"slug": "x", "tier": 1, "depends_on": []string{"dep"}})
+		if err == nil || !stringContains(err.Error(), `"dep"`) {
+			t.Errorf("expected tier refusal naming dep, got %v", err)
+		}
+		if _, err := s.UpsertTask(map[string]any{"slug": "x", "tier": 2, "depends_on": []string{"dep"}}); err != nil {
+			t.Errorf("equal tier should be accepted: %v", err)
+		}
+	})
+
+	t.Run("demoting the dependency refused", func(t *testing.T) {
+		s := seed(t)
+		if _, err := s.UpsertTask(map[string]any{"slug": "x", "tier": 2, "depends_on": []string{"dep"}}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.UpsertTask(map[string]any{"slug": "dep", "tier": 3}); err == nil {
+			t.Errorf("demoting dep below its dependent should be refused")
+		}
+	})
+
+	t.Run("promoting the dependent refused", func(t *testing.T) {
+		s := seed(t)
+		if _, err := s.UpsertTask(map[string]any{"slug": "x", "tier": 3, "depends_on": []string{"dep"}}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.UpsertTask(map[string]any{"slug": "x", "tier": 1}); err == nil {
+			t.Errorf("promoting dependent above its dependency should be refused")
+		}
+	})
+
+	t.Run("done dependency accepts any tier", func(t *testing.T) {
+		s := seed(t)
+		if err := s.SetStatus("dep", stringPtr("done")); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.UpsertTask(map[string]any{"slug": "x", "tier": 1, "depends_on": []string{"dep"}}); err != nil {
+			t.Errorf("dependency on done entry should be accepted: %v", err)
+		}
+	})
+
+	t.Run("demoting dependency of a done dependent refused", func(t *testing.T) {
+		s := seed(t)
+		if _, err := s.UpsertTask(map[string]any{"slug": "x", "tier": 2, "depends_on": []string{"dep"}, "status": "done"}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.UpsertTask(map[string]any{"slug": "dep", "tier": 3}); err == nil {
+			t.Errorf("done dependent must not exempt the edge")
+		}
+	})
+
+	t.Run("reopening a done higher-tier dependency refused", func(t *testing.T) {
+		s := seed(t)
+		if err := s.SetStatus("dep", stringPtr("done")); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.UpsertTask(map[string]any{"slug": "x", "tier": 1, "depends_on": []string{"dep"}}); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.SetStatus("dep", nil); err == nil {
+			t.Errorf("reopening dep should be refused")
+		}
+		if err := s.SetStatus("dep", stringPtr("done")); err != nil {
+			t.Errorf("setting done stays unchecked: %v", err)
+		}
+	})
 }
 
 func TestUpsertTaskPreservesFields(t *testing.T) {
@@ -191,25 +312,25 @@ func TestUpsertFieldAllowlist(t *testing.T) {
 		}
 	})
 
-	t.Run("upsert_type_field_allowed_and_persisted", func(t *testing.T) {
+	t.Run("upsert_recipe_field_allowed_and_persisted", func(t *testing.T) {
 		s := boardengine.NewStore("")
 		task, err := s.UpsertTask(map[string]any{
-			"slug": "task1",
-			"type": "batten",
+			"slug":   "task1",
+			"recipe": "batten",
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if task.Type != "batten" {
-			t.Errorf("expected type=batten, got %v", task.Type)
+		if task.Recipe != "batten" {
+			t.Errorf("expected recipe=batten, got %v", task.Recipe)
 		}
 		// Verify the value is persisted in the store.
 		retrieved, found := s.GetTask("task1")
 		if !found {
 			t.Fatalf("task not found after upsert")
 		}
-		if retrieved.Type != "batten" {
-			t.Errorf("expected stored type=batten, got %v", retrieved.Type)
+		if retrieved.Recipe != "batten" {
+			t.Errorf("expected stored recipe=batten, got %v", retrieved.Recipe)
 		}
 	})
 
@@ -257,10 +378,9 @@ func TestUpsertFieldAllowlist(t *testing.T) {
 
 // TestValidateDependencyErrors verifies that UpsertTask rejects all invalid dependency
 // configurations with precise error messages: dangling deps, depending on isolated tasks, and
-// depending on deferred tasks.
+// (the tier rule has its own test).
 //
-// Folds: TestValidateDanglingDependency, TestValidateDependencyOnIsolated,
-// TestValidateDependencyOnDeferred
+// Folds: TestValidateDanglingDependency, TestValidateDependencyOnIsolated
 func TestValidateDependencyErrors(t *testing.T) {
 	t.Run("TestValidateDanglingDependency", func(t *testing.T) {
 		s := boardengine.NewStore("")
@@ -299,31 +419,6 @@ func TestValidateDependencyErrors(t *testing.T) {
 			t.Fatalf("expected error for dependency on isolated task")
 		}
 		if err.Error() != "cannot depend on isolated task \"isolated\"" {
-			t.Errorf("unexpected error: %v", err)
-		}
-	})
-
-	t.Run("TestValidateDependencyOnDeferred", func(t *testing.T) {
-		s := boardengine.NewStore("")
-
-		// Create a deferred task
-		_, err := s.UpsertTask(map[string]any{
-			"slug":     "deferred",
-			"deferred": true,
-		})
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		// (g) dependency on deferred task rejected
-		_, err = s.UpsertTask(map[string]any{
-			"slug":       "task1",
-			"depends_on": []string{"deferred"},
-		})
-		if err == nil {
-			t.Fatalf("expected error for dependency on deferred task")
-		}
-		if err.Error() != "cannot depend on deferred task \"deferred\"" {
 			t.Errorf("unexpected error: %v", err)
 		}
 	})

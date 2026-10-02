@@ -459,15 +459,16 @@ func taskToUpsertFields(t Task) map[string]any {
 		"title":      t.Title,
 		"depends_on": t.DependsOn,
 		"isolated":   t.Isolated,
-		"deferred":   t.Deferred,
 		"brief":      t.Brief,
 		"body":       t.Body,
+		"tier":       t.Tier,
+		"type":       t.Type,
 	}
 	if t.Status != nil {
 		fields["status"] = *t.Status
 	}
-	if t.Type != "" {
-		fields["type"] = t.Type
+	if t.Recipe != "" {
+		fields["recipe"] = t.Recipe
 	}
 	if t.ShortName != "" {
 		fields["short_name"] = t.ShortName

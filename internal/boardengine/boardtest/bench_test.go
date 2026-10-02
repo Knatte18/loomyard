@@ -64,6 +64,8 @@ func seedWiki(tb testing.TB, n int) string {
 			ID:        i,
 			Slug:      "task-" + strconv.Itoa(i),
 			Title:     "Task " + strconv.Itoa(i),
+			Tier:      boardengine.DefaultTier,
+			Type:      boardengine.DefaultType,
 			DependsOn: []string{},
 			Brief:     "brief for task " + strconv.Itoa(i),
 		}
@@ -96,6 +98,8 @@ func BenchmarkRender(b *testing.B) {
 					ID:        i,
 					Slug:      "task-" + strconv.Itoa(i),
 					Title:     "Task " + strconv.Itoa(i),
+					Tier:      boardengine.DefaultTier,
+					Type:      boardengine.DefaultType,
 					DependsOn: []string{},
 					Brief:     "brief for task " + strconv.Itoa(i),
 					Body:      body,

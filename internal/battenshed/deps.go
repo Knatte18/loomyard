@@ -137,7 +137,7 @@ type InnerRunDeps struct {
 // substitutes with a stub closure, per the seed-encoding-stays-behind-a-seam-in-battenshed Shared
 // Decision -- this type never imports internal/shedrun itself.
 type SeedChildDeps struct {
-	// ReadBoardType returns the Board task's own "type" field, evaluated fresh on every Call --
+	// ReadBoardType returns the Board task's own "recipe" field, evaluated fresh on every Call --
 	// never captured at wiring time -- so a type corrected after prime was seeded is still
 	// honoured. The empty string means "loom".
 	ReadBoardType func(ctx context.Context) (string, error)
