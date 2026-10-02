@@ -27,6 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -464,6 +465,8 @@ type fakeFixStarter struct {
 	worktree string
 	calls    int
 	startErr error
+	// onStart runs after a successful start, before the handle is returned.
+	onStart func(t *testing.T)
 	// outcome is the strand's shuttle outcome; empty means done.
 	outcome shuttleengine.Outcome
 	// work is the strand's turn, run only when the outcome is done; nil reports FAILED at HEAD.
@@ -478,6 +481,9 @@ func (f *fakeFixStarter) StartFix(spec shuttleengine.Spec) (websterengine.Master
 	f.calls++
 	if f.startErr != nil {
 		return nil, f.startErr
+	}
+	if f.onStart != nil {
+		f.onStart(f.t)
 	}
 	outcome := f.outcome
 	if outcome == "" {
@@ -1313,6 +1319,30 @@ func TestIntegrationStage_FixAttempt_NilFixStarterIsWiringError(t *testing.T) {
 	}
 	if fix := stateOf(t, sc.fx).IntegrationFix; fix != nil {
 		t.Errorf("state IntegrationFix = %+v; want unrecorded", fix)
+	}
+}
+
+// TestIntegrationStage_FixAttempt_UnrecordedStrandIsRemoved proves a started fix strand whose GUID cannot be recorded is removed before the stage returns its error,
+// since run entry's reclaim could never find it.
+func TestIntegrationStage_FixAttempt_UnrecordedStrandIsRemoved(t *testing.T) {
+	sc := newRegressionScene(t, false)
+	fixer := newFakeFixStarter(t, sc.fx.Worktree)
+	fixer.onStart = func(t *testing.T) {
+		st := stateOf(t, sc.fx)
+		st.IntegrationFix = nil
+		if err := websterengine.SaveState(sc.fx.Deps.Geom.WebsterDir, sc.fx.Deps.Geom.ScratchDir, st); err != nil {
+			t.Fatalf("SaveState() error = %v", err)
+		}
+		sc.fx.Reed.status = reedengine.StatusResult{Strands: []reedengine.StrandStatus{{GUID: "fix-strand", Live: true}}}
+	}
+	sc.suite.fixer = fixer
+
+	_, err := runFailedSuite(t, sc.fx, sc.suite)
+	if err == nil || !strings.Contains(err.Error(), "fix-strand") {
+		t.Fatalf("Run() error = %v; want the record error naming the fix strand", err)
+	}
+	if len(sc.fx.Reed.removedStrands) != 1 || sc.fx.Reed.removedStrands[0] != "fix-strand" {
+		t.Errorf("RemoveStrand calls = %v; want exactly [fix-strand]", sc.fx.Reed.removedStrands)
 	}
 }
 

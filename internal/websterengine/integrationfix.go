@@ -150,8 +150,12 @@ func attemptIntegrationFix(deps RunDeps, in fixInputs) (*fixAttempt, error) {
 	}
 
 	// Leased: the strand's GUID is durable before Go blocks on it, which is what run entry's reclaim reads.
+	// A strand whose GUID could not be recorded is invisible to that reclaim, so it is stopped here while the handle is still in hand.
 	if err := recordFixStrand(deps, handle.StrandGUID()); err != nil {
-		return nil, err
+		if rmErr := removeStrandIfLive(deps.Reed, handle.StrandGUID()); rmErr != nil {
+			return nil, fmt.Errorf("%w; the fix strand %s could not be removed either (%v): remove it by hand", err, handle.StrandGUID(), rmErr)
+		}
+		return nil, fmt.Errorf("%w; the fix strand %s was removed", err, handle.StrandGUID())
 	}
 
 	// Unleased: wait, then stop the strand and drop its run dir, as recover-batch does for a terminal recovery.
