@@ -60,6 +60,17 @@ var LoomRubricWebsterReview []byte
 //go:embed loom/loom-template-prior-plan.md
 var LoomTemplatePriorPlan []byte
 
+// LoomTemplateParentReviewDelivery is the one-line prompt that tells the live Discussion-Write
+// session to send its parent a review request.
+//
+//go:embed loom/loom-template-parent-review-delivery.md
+var LoomTemplateParentReviewDelivery []byte
+
+// LoomTemplateParentReviewBrief is the reviewer brief the parent's one-shot fork reads.
+//
+//go:embed loom/loom-template-parent-review-brief.md
+var LoomTemplateParentReviewBrief []byte
+
 // BurlerTemplateRoundOrchestrator is burler's shipped-default per-round orchestrator prompt.
 //
 //go:embed burler/burler-template-round-orchestrator.md
@@ -218,6 +229,8 @@ var entries = []registryEntry{
 	{"loom-rubric-plan-review", &LoomRubricPlanReview},
 	{"loom-rubric-webster-review", &LoomRubricWebsterReview},
 	{"loom-template-prior-plan", &LoomTemplatePriorPlan},
+	{"loom-template-parent-review-delivery", &LoomTemplateParentReviewDelivery},
+	{"loom-template-parent-review-brief", &LoomTemplateParentReviewBrief},
 	{"burler-template-round-orchestrator", &BurlerTemplateRoundOrchestrator},
 	{"burler-step-1-explore", &BurlerStep1Explore},
 	{"burler-step-2-review", &BurlerStep2Review},
