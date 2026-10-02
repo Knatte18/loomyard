@@ -62,6 +62,26 @@ func TestLoomTemplateDiscussion_FenceNamesTheTwoOutputMarkers(t *testing.T) {
 	}
 }
 
+// TestLoomTemplateDiscussion_NamesBoardListAndParentReviewCarveOuts asserts Step 1 reads the wider board
+// and the write fence carries both parent-review carve-outs.
+func TestLoomTemplateDiscussion_NamesBoardListAndParentReviewCarveOuts(t *testing.T) {
+	text := string(LoomTemplateDiscussion)
+	fenceStart := strings.Index(text, "## What you may write")
+	if fenceStart == -1 {
+		t.Fatal("LoomTemplateDiscussion has no \"## What you may write\" section")
+	}
+	fence := text[fenceStart:]
+
+	if !strings.Contains(text, "lyx board list") {
+		t.Errorf("LoomTemplateDiscussion does not name %q", "lyx board list")
+	}
+	for _, phrase := range []string{"lyx loom review delivered", "parent-review entry to `## Review rounds`"} {
+		if !strings.Contains(fence, phrase) {
+			t.Errorf("the write fence does not carve out %q", phrase)
+		}
+	}
+}
+
 // TestLoomTemplateDiscussion_StatesAttackSurfaceBound asserts the template tells the discussion writer to state, in the introducing Decision, what a new edge or weakened guard can skip or let through and what bounds it.
 func TestLoomTemplateDiscussion_StatesAttackSurfaceBound(t *testing.T) {
 	text := string(LoomTemplateDiscussion)
