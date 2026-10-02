@@ -282,16 +282,16 @@ func TestRenderReadmeGolden(t *testing.T) {
 		"Waits on nothing open; can start now, in parallel.\n" +
 		"\n" +
 		"1. **Base work** — `base` · feature\n" +
-		"   The foundation.\n" +
-		"   Before `top`.\n" +
+		"   - The foundation.\n" +
+		"   - **Before:** `top`\n" +
 		"\n" +
 		"### Layer B\n" +
 		"\n" +
 		"Starts when every entry it names under After is done.\n" +
 		"\n" +
 		"1. **Top work** — [`top`](design-top.md) · bug · running\n" +
-		"   Builds on base.\n" +
-		"   After `base`.\n" +
+		"   - Builds on base.\n" +
+		"   - **After:** `base`\n" +
 		"\n" +
 		"### Independent\n" +
 		"\n" +
@@ -313,7 +313,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 		"\n" +
 		"1. **An idea** — `idea` · design\n" +
 		"1. **Dropped idea** — `dropped` · chore · abandoned\n" +
-		"   No longer wanted.\n" +
+		"   - No longer wanted.\n" +
 		"\n" +
 		"## Done\n" +
 		"\n" +
