@@ -1,5 +1,5 @@
 <!-- This is the integration-fix strand prompt for webster's one-shot repair of an integration regression.
-     It is filled by RenderIntegrationFixPrompt (render.go) via internal/stencil and written to a prompt file under _lyx/webster/prompts/.
+     It is filled by RenderIntegrationFixPrompt (render.go) via internal/stencil and handed to the fix strand's spawn as its launch prompt; no prompt file is written.
      The strand is a separate cold-start session: it inherits no Master context, so this prompt carries everything it needs.
      Five markers below are required top-level {{.X}} substitutions: regressions, verify, worktree_root, plan_dir and report_path.
      {{.card_hint}} and {{.friction_directive}} are the optional markers (filled via stencil.FillOptional), each rendering as nothing when empty.
