@@ -16,11 +16,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/shell"
 )
 
-// statusStrandDisplayName is the status strand's stable identity: the reed engine's add operation
-// has no upsert semantics, so a second add with the same display name would append a second pane
-// rather than replace the first. Every add and every lookup must use this exact constant so the
-// bootstrap's re-entrant call finds the pane it created on an earlier invocation instead of
-// duplicating it.
+// statusStrandDisplayName is the status strand's stable identity, an explicit role.
+// The reed engine's add operation has no upsert semantics and refuses an add whose explicit role another strand already holds.
+// Every add and every lookup must use this exact constant,
+// so the bootstrap's re-entrant call finds the pane it created on an earlier invocation instead of having its add refused.
 const statusStrandDisplayName = "loom-status"
 
 // statusStrandAddSpec builds the status strand's reedengine.AddSpec for the given pane command: a
@@ -289,9 +288,8 @@ const (
 // never re-added and the operator permanently lost the one-line read-out step 2 of the bootstrap
 // exists to give them.
 //
-// A dead entry is replaced rather than simply added over, because reed's add has no upsert
-// semantics: a second add under the same display name appends a second pane instead of replacing the
-// first, which is the very reason statusStrandDisplayName is a pinned constant.
+// A dead entry is replaced rather than simply added over, because reed's add has no upsert semantics:
+// a second add under the role the dead entry still holds is refused, which is the very reason statusStrandDisplayName is a pinned constant.
 //
 // A live strand is kept only when the recorded sidecar names its GUID and equals the current build
 // identity; a missing, unreadable or otherwise-mismatched sidecar means the strand may run a

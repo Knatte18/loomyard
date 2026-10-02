@@ -15,8 +15,8 @@ import (
 )
 
 // LoomDriverStrandName is the ly-drive session's own strand's stable identity, the role the hub addresses as "<slug>:driver".
-// It is pinned because reed's add has no upsert semantics, so a second add under this same role would append a second pane rather than replace the first.
-// Every add and every lookup must use this exact constant, or a re-entrant bootstrap stacks a second driver pane instead of matching the one already running.
+// It is pinned because reed's add has no upsert semantics and refuses an add whose explicit role another strand already holds.
+// Every add and every lookup must use this exact constant, or a re-entrant bootstrap misses the driver already running and its add is refused.
 // It lives here rather than in loomcli so batten can look the driver up without importing another CLI package.
 const LoomDriverStrandName = agentname.RoleDriver
 
