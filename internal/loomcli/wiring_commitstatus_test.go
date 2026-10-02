@@ -407,3 +407,51 @@ func TestStatusCommitPathspec_RunRecords(t *testing.T) {
 		})
 	}
 }
+
+// TestStatusCommitPathspec_PendingRejectionHoldsTheRound asserts a pending rejection leaves the reviews root and the loom durable directory out though each holds a file,
+// whether the highest round is unclassed or classed but uncommitted, and that without a rejection today's pathspec stays.
+func TestStatusCommitPathspec_PendingRejectionHoldsTheRound(t *testing.T) {
+	t.Parallel()
+
+	writeFile := func(t *testing.T, path, content string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tests := []struct {
+		name        string
+		record      string
+		rejection   bool
+		wantHoldDir bool
+	}{
+		{"pending rejection, unclassed round", `{"first_card":3}`, true, true},
+		{"pending rejection, classed but uncommitted round", `{"first_card":3,"class":"exempt"}`, true, true},
+		{"no pending rejection", `{"first_card":3,"class":"exempt"}`, false, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			location := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+			writeFile(t, filepath.Join(loomengine.LoomReworkDir(location), "round-1", "record.json"), tt.record)
+			writeFile(t, filepath.Join(loomengine.LoomReviewsDir(location), "plan", "round-1-review.md"), "x\n")
+			writeFile(t, filepath.Join(shedrun.DriveReportsDir(location, shedrun.SelfRunID), "report.md"), "x\n")
+			if tt.rejection {
+				writeFile(t, loomengine.LoomRejectionPath(location), "{}\n")
+			}
+
+			want := []string{shedrun.StatusRel(location, shedrun.SelfRunID)}
+			if !tt.wantHoldDir {
+				want = append(want, loomengine.LoomReviewsDirRel(), loomengine.LoomDurableDirRel())
+			}
+			want = append(want, shedrun.DriveReportsRel(location, shedrun.SelfRunID))
+			got := statusCommitPathspec(location, shedrun.SelfRunID)
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("statusCommitPathspec() = %v; want %v", got, want)
+			}
+		})
+	}
+}

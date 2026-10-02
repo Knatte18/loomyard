@@ -7,6 +7,7 @@
 package loomcli
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -44,6 +45,7 @@ type commitStatusDeps struct {
 	MergeActive func() (bool, error)
 	// Commit commits loom's own status file with msg.
 	// When the reviews directory holds a file, the same commit also carries the review round record.
+	// While a rejection is pending the reviews root and the loom durable directory are left out until PR-Rework's round commit has landed and cleared it, so a status commit never lands half of a rework round; the next status commit sweeps them.
 	Commit func(msg string) error
 	// Push pushes the fabric sibling worktree's unpushed commits.
 	Push func() error
@@ -61,18 +63,32 @@ type commitStatusDeps struct {
 // The directory pathspec is whole rather than per-file because StageAndCommit runs `git add -- <pathspec>`:
 // an archive rename commits both the new timestamped sibling and the old path's removal,
 // and a transition whose commit was skipped mid-merge is caught up by the next one.
+// While a rejection is pending the reviews root and the loom durable directory are held back, so a status commit never lands half of a PR-Rework round:
+// `git add -- <dir>` stages deletions too, and a status commit between the archive step and the round commit would land `round-<N>/` and the review run directories' deletions without the plan's.
+// A classed `record.json` that reached HEAD this way would also make the next step count the round as committed and clear the rejection with no round commit.
+// The pending rejection is the marker because `lyx loom reject` writes it before the archive step and PR-Rework removes it only after its round commit has landed.
+// A stat of it that fails for any reason other than not-exist also holds back, since holding back defers the sweep and sweeping could split the round.
+// The round commit's own pathspec covers both held directories, and the next status commit after the rejection clears sweeps what remained, so nothing is lost, only deferred.
 func statusCommitPathspec(location *lyxcwd.Location, runID string) []string {
 	paths := []string{shedrun.StatusRel(location, runID)}
-	if holdsFile(loomengine.LoomReviewsDir(location)) {
-		paths = append(paths, loomengine.LoomReviewsDirRel())
-	}
-	if holdsFile(loomengine.LoomDurableDir(location)) {
-		paths = append(paths, loomengine.LoomDurableDirRel())
+	if !rejectionPending(location) {
+		if holdsFile(loomengine.LoomReviewsDir(location)) {
+			paths = append(paths, loomengine.LoomReviewsDirRel())
+		}
+		if holdsFile(loomengine.LoomDurableDir(location)) {
+			paths = append(paths, loomengine.LoomDurableDirRel())
+		}
 	}
 	if holdsFile(shedrun.DriveReportsDir(location, runID)) {
 		paths = append(paths, shedrun.DriveReportsRel(location, runID))
 	}
 	return paths
+}
+
+// rejectionPending reports whether loomengine.LoomRejectionPath exists, or cannot be ruled out because its stat failed for a reason other than not-exist.
+func rejectionPending(location *lyxcwd.Location) bool {
+	_, err := os.Stat(loomengine.LoomRejectionPath(location))
+	return err == nil || !errors.Is(err, fs.ErrNotExist)
 }
 
 // reworkCommitPathspec returns the pathspec PR-Rework's round commit stages: the plan directory, the rework directory, the reviews root and webster's durable directory,
