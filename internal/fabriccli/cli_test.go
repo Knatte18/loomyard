@@ -505,7 +505,7 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 
 	var out bytes.Buffer
 	exitCode := fabriccli.RunCLI(&out, []string{
-		"clone", "--into", cloneParent, "--subpath", "backend",
+		"clone", "--code", "tst", "--into", cloneParent, "--subpath", "backend",
 		filepath.ToSlash(weftBare), filepath.ToSlash(warpBare),
 	})
 	if exitCode != 0 {
@@ -590,7 +590,7 @@ func TestRunCLI_CloneDefaultSubpathAnchorsAtRoot(t *testing.T) {
 
 	var out bytes.Buffer
 	exitCode := fabriccli.RunCLI(&out, []string{
-		"clone", "--into", cloneParent, filepath.ToSlash(weftBare), filepath.ToSlash(warpBare),
+		"clone", "--code", "tst", "--into", cloneParent, filepath.ToSlash(weftBare), filepath.ToSlash(warpBare),
 	})
 	if exitCode != 0 {
 		t.Fatalf("RunCLI(clone) = %d; want 0\noutput: %s", exitCode, out.String())
@@ -749,7 +749,7 @@ func TestRunCLI_ReconcileBacksFillsWarpBinding(t *testing.T) {
 	// No --force-bootstrap: makeCLICloneWeftBare's fixture is genuinely empty (no commits), which is
 	// the unborn-HEAD case the weft-candidate guard admits on its own.
 	exitCode := fabriccli.RunCLI(&cloneOut, []string{
-		"clone", "--into", cloneParent, filepath.ToSlash(weftBare), filepath.ToSlash(warpBare),
+		"clone", "--code", "tst", "--into", cloneParent, filepath.ToSlash(weftBare), filepath.ToSlash(warpBare),
 	})
 	if exitCode != 0 {
 		t.Fatalf("RunCLI(clone) = %d; want 0\noutput: %s", exitCode, cloneOut.String())
@@ -804,7 +804,7 @@ func TestRunCLI_ReconcileBackfillFailureIsNonFatal(t *testing.T) {
 
 	var cloneOut bytes.Buffer
 	exitCode := fabriccli.RunCLI(&cloneOut, []string{
-		"clone", "--into", cloneParent, filepath.ToSlash(weftBare), filepath.ToSlash(warpBare),
+		"clone", "--code", "tst", "--into", cloneParent, filepath.ToSlash(weftBare), filepath.ToSlash(warpBare),
 	})
 	if exitCode != 0 {
 		t.Fatalf("RunCLI(clone) = %d; want 0\noutput: %s", exitCode, cloneOut.String())
@@ -1053,7 +1053,7 @@ func TestRunCLI_CloneIntoFlagCreatesHubAtDirectory(t *testing.T) {
 
 	var out bytes.Buffer
 	exitCode := fabriccli.RunCLIIn(callerCwd, &out, []string{
-		"clone", "--into", dest,
+		"clone", "--code", "tst", "--into", dest,
 		filepath.ToSlash(weftBare), filepath.ToSlash(warpBare),
 	})
 	if exitCode != 0 {
@@ -1086,10 +1086,10 @@ func TestRunCLI_CloneWithoutIntoFlagUsesResolvedCwd(t *testing.T) {
 
 	var out bytes.Buffer
 	exitCode := fabriccli.RunCLIIn(cwd, &out, []string{
-		"clone", filepath.ToSlash(weftBare), filepath.ToSlash(warpBare),
+		"clone", "--code", "tst", filepath.ToSlash(weftBare), filepath.ToSlash(warpBare),
 	})
 	if exitCode != 0 {
-		t.Fatalf("RunCLIIn(clone) = %d; want 0\noutput: %s", exitCode, out.String())
+		t.Fatalf("RunCLIIn(clone)= %d; want 0\noutput: %s", exitCode, out.String())
 	}
 
 	result := decodeResult(t, &out)

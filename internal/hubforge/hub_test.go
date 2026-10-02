@@ -406,6 +406,7 @@ func TestNewHub_TeardownRemovesJunctionsKeepsTargets(t *testing.T) {
 		res, err := fabriccli.CloneAndWire(container, fabricengine.CloneOptions{
 			WeftURL: filepath.ToSlash(weftBare),
 			WarpURL: filepath.ToSlash(warpBare),
+			Code:    TestCode,
 		})
 		if err != nil {
 			t.Fatalf("CloneAndWire: %v", err)

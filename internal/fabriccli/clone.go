@@ -127,9 +127,10 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 // seam cwd, derives the clone destination from into, and delegates the entire clone-and-wire
 // sequence to CloneAndWire. The returned envelope carries "hub" and "anchor" from the resolved
 // geometry, plus "warp" (the effective warp URL, supplied or derived) and "warp_binding_recorded"
-// (whether this clone wrote the .lyx-warp record) — both always present so a consumer never has to
-// distinguish absent from false.
-func runCloneWithReset(ctx context.Context, out io.Writer, args []string, reset bool, subpath string, forceBootstrap bool, into string) int {
+// (whether this clone wrote the .lyx-warp record), "code" (the effective repo code), "code_recorded"
+// (whether this clone wrote the .lyx-code record) and "warning" (empty when none) — all always
+// present so a consumer never has to distinguish absent from false.
+func runCloneWithReset(ctx context.Context, out io.Writer, args []string, reset bool, subpath string, forceBootstrap bool, into string, code string) int {
 	// Nothing has been mutated yet at cwd resolution: a bare output.Err carries no record.
 	cwd, err := lyxcwd.CwdFrom(ctx)
 	if err != nil {
@@ -166,6 +167,7 @@ func runCloneWithReset(ctx context.Context, out io.Writer, args []string, reset 
 		Subpath:        subpath,
 		Reset:          reset,
 		ForceBootstrap: forceBootstrap,
+		Code:           code,
 	})
 	if err != nil {
 		// CloneAndWire's defer has already populated res by the time it returns, so this failure
@@ -178,5 +180,8 @@ func runCloneWithReset(ctx context.Context, out io.Writer, args []string, reset 
 		"anchor":                res.Anchor,
 		"warp":                  res.WarpURL,
 		"warp_binding_recorded": res.WarpBindingRecorded,
+		"code":                  res.Code,
+		"code_recorded":         res.CodeRecorded,
+		"warning":               res.Warning,
 	})
 }

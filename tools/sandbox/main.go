@@ -28,11 +28,13 @@ const (
 	warpURL = "https://github.com/Knatte18/lyx-test"
 	weftURL = "https://github.com/Knatte18/lyx-test-weft"
 	hubName = "lyx-test-LYXHUB"
+	// sandboxCode is the agent-name code the sandbox hub is cloned with.
+	sandboxCode = "lyt"
 )
 
 // cloneRun is a testability seam for executing the clone command.
 var cloneRun = func(parentDir, lyxPath string) error {
-	cmd := exec.Command(lyxPath, "fabric", "clone", weftURL, warpURL)
+	cmd := exec.Command(lyxPath, "fabric", "clone", "--code", sandboxCode, weftURL, warpURL)
 	cmd.Dir = parentDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

@@ -55,6 +55,9 @@ type CloneOptions struct {
 	// writing a fresh binding): the guard is reachable only there, so ForceBootstrap has no effect
 	// anywhere else.
 	ForceBootstrap bool
+	// Code is the repo's short agent-name code (see agentname.ValidateCode). Required when the weft
+	// is a fresh bind; on a bound weft it records a missing code or must equal the recorded one.
+	Code string
 }
 
 // CloneResult carries the resolved geometry CloneHub hands back to the caller once the git-level
@@ -78,6 +81,12 @@ type CloneResult struct {
 	// WarpBindingRecorded is true only when this clone wrote the .lyx-warp record (a fresh binding,
 	// including the clone-time backfill of a pre-binding hub).
 	WarpBindingRecorded bool
+	// Code is the effective repo code, empty when the weft is bound but uncoded.
+	Code string
+	// CodeRecorded is true only when this clone wrote the .lyx-code record.
+	CodeRecorded bool
+	// Warning is non-empty when the clone succeeded but left something the operator must do.
+	Warning string
 }
 
 // CloneHub orchestrates the cloning of warp and weft repositories, then
@@ -147,6 +156,8 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 
 	var name, hubPath, effective string
 	var writeRecord, derivedFromRecord bool
+	var effectiveCode, codeWarning string
+	var writeCode bool
 
 	if opts.WarpURL != "" {
 		// Two-argument form: the hub name is derivable with no network at all, so resolve it,
@@ -175,6 +186,10 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 		if err != nil {
 			return CloneResult{}, err
 		}
+		effectiveCode, writeCode, codeWarning, err = resolveEffectiveCode(probe.RecordedCode, probe.CodeFound, opts.Code, probe.freshBind())
+		if err != nil {
+			return CloneResult{}, err
+		}
 		if writeRecord && !probe.WeftLooksLikeWeft && !opts.ForceBootstrap {
 			// The guard fires only on the bootstrap path (writeRecord == true), which is reachable
 			// only in this two-argument form, so ForceBootstrap is structurally ignored everywhere
@@ -195,6 +210,10 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 			// resolveEffectiveWarpURL's own message must not attempt to name the weft URL; the
 			// caller prefixes it here.
 			return CloneResult{}, fmt.Errorf("weft %s has no recorded warp binding; supply the warp URL explicitly: lyx fabric clone <weft-url> <warp-url>", opts.WeftURL)
+		}
+		effectiveCode, writeCode, codeWarning, err = resolveEffectiveCode(probe.RecordedCode, probe.CodeFound, opts.Code, probe.freshBind())
+		if err != nil {
+			return CloneResult{}, err
 		}
 		derivedFromRecord = true
 		name = DeriveWarpName(effective)
@@ -401,6 +420,16 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 		warpBindingRecorded = true
 	}
 
+	// The code record sits beside the warp binding, committed by the same CLI-layer Bolt commit.
+	var codeRecorded bool
+	if writeCode {
+		if err := WriteCode(boardDir, effectiveCode); err != nil {
+			return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, err)
+		}
+		rec.Append(KindFileWritten, filepath.Join(boardDir, CodeFileName), "")
+		codeRecorded = true
+	}
+
 	// Resolve the prime layout now that the marker exists on disk, so
 	// RelPath — and therefore WeftBase — reflects the resolved anchor.
 	primeCwd := filepath.Join(warpWorktreePath, anchor)
@@ -419,6 +448,9 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 		PrimeCwd:            primeCwd,
 		WarpURL:             warpURL,
 		WarpBindingRecorded: warpBindingRecorded,
+		Code:                effectiveCode,
+		CodeRecorded:        codeRecorded,
+		Warning:             codeWarning,
 	}, nil
 }
 

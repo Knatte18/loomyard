@@ -86,6 +86,13 @@ warp URL is supplied for an unbound weft.
                            recorded binding
   <warp-name>` + weftname.Suffix + `       — weft prime (lyx artefacts: config, raddle, weft commits)
 
+Use --code <code> to give the repo its short agent-name code (2-6 characters
+matching [a-z][a-z0-9]{1,5}). It is required the first time a weft is bound,
+and is recorded in ` + fabricengine.CodeFileName + ` beside the warp binding. A weft that
+already records a code supplies it, and a differing --code is refused. A bound
+weft with no record clones with a warning; record the code with
+"lyx fabric code <code>" or by passing --code here.
+
 Use --reset to tear down an existing hub before cloning (idempotent re-clone).
 The teardown is refused unless the target really is a fabric hub — it must hold
 a _board entry or a weft sibling. The hub name is derived rather than typed (in
@@ -135,9 +142,11 @@ Example:
 			subpath, _ := cloneCmd.Flags().GetString("subpath")
 			forceBootstrap, _ := cloneCmd.Flags().GetBool("force-bootstrap")
 			into, _ := cloneCmd.Flags().GetString("into")
-			return runCloneWithReset(ctx, out, args, reset, subpath, forceBootstrap, into)
+			code, _ := cloneCmd.Flags().GetString("code")
+			return runCloneWithReset(ctx, out, args, reset, subpath, forceBootstrap, into, code)
 		}),
 	}
+	cloneCmd.Flags().String("code", "", "the repo's short agent-name code, 2-6 characters matching [a-z][a-z0-9]{1,5}; required when the weft is bound for the first time, recorded as "+fabricengine.CodeFileName)
 	cloneCmd.Flags().Bool("reset", false, "remove an existing hub before cloning (idempotent re-clone)")
 	// The default is the EMPTY string, not "." — CloneHub normalises empty to the "." root anchor
 	// anyway, and only an empty default lets it tell "the operator typed nothing" apart from "the

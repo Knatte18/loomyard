@@ -30,6 +30,10 @@ var (
 	weftBareTemplate string
 )
 
+// TestCode is the repo code every hub NewHub builds is cloned with, recorded as .lyx-code, so every hub
+// fixture is coded.
+const TestCode = "tst"
+
 // buildBareTemplate builds, once per test binary, the pushed-to warp bare and the genuinely empty
 // weft bare that NewHub's factory clones copies of.
 // It mirrors gitkit's buildWarpHub/buildWeftPrime pattern: a scratch work repo builds the content,
@@ -234,6 +238,7 @@ func NewHub(tb testing.TB, anchor string) *Hub {
 		WeftURL: filepath.ToSlash(weftBare),
 		WarpURL: filepath.ToSlash(warpBare),
 		Subpath: subpath,
+		Code:    TestCode,
 	})
 	if err != nil {
 		tb.Fatalf("NewHub: CloneAndWire: %v", err)
