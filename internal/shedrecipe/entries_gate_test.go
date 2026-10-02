@@ -232,11 +232,34 @@ func TestResolveGateSpec_OtherNamesCarryNoFinal(t *testing.T) {
 	}
 }
 
-func TestResolveGateSpec_ParentReviewRefusesPassOnCap(t *testing.T) {
-	cfg := Config{"gates": []any{map[string]any{"name": "parent-review", "attempts": 3, "pass_on_cap": true}}}
-	_, err := resolveGateSpec("TheRow", cfg, parentReviewEnv(t))
-	assertErrContains(t, err, "TheRow")
-	assertErrContains(t, err, "pass_on_cap")
+// TestResolveGateSpec_ParentReviewPassOnCapLetsRewriteThrough asserts "pass_on_cap: true" on parent-review reaches the gate, not the engine:
+// the entry stays must-pass MayHold, the cap's reject goes back to the writer as a non-terminal failure, and the rewrite after it passes.
+func TestResolveGateSpec_ParentReviewPassOnCapLetsRewriteThrough(t *testing.T) {
+	env := parentReviewEnv(t)
+	cfg := Config{"gates": []any{map[string]any{"name": "parent-review", "attempts": 1, "pass_on_cap": true}}}
+	spec, err := resolveGateSpec("Row", cfg, env)
+	if err != nil {
+		t.Fatalf("resolveGateSpec() error = %v; want nil", err)
+	}
+	if len(spec) != 1 || spec[0].PassOnCap || !spec[0].MayHold || spec[0].Attempts != 1 {
+		t.Fatalf("resolveGateSpec() = %+v; want one must-pass MayHold entry with Attempts 1", spec)
+	}
+	review := filepath.Join(t.TempDir(), "review.md")
+	if err := os.WriteFile(review, []byte("out of scope"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if res, err := spec[0].Gate(); err != nil || !res.Pending {
+		t.Fatalf("first arrival = %+v, %v; want pending", res, err)
+	}
+	if err := env.ParentReview.Store.RecordVerdict(parentreview.VerdictReject, review); err != nil {
+		t.Fatalf("RecordVerdict() error = %v", err)
+	}
+	if res, err := spec[0].Gate(); err != nil || res.Passed || res.Pending || res.Terminal {
+		t.Fatalf("reject = %+v, %v; want a non-terminal failure", res, err)
+	}
+	if res, err := spec[0].Gate(); err != nil || !res.Passed {
+		t.Fatalf("rewrite after the reject = %+v, %v; want passed", res, err)
+	}
 }
 
 func TestResolveGateSpec_ParentReviewMissingEnv(t *testing.T) {
