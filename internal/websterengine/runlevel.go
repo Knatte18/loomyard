@@ -300,9 +300,10 @@ func clearRenderedPrompts(promptsDir string) error {
 	return nil
 }
 
-// reclaimEntryTimeStrands stops the only two substrates a crashed or killed
-// `run` process can ever leave live behind it: Master's own recorded strand
-// and any recorded, non-terminal recovery-batch strand.
+// reclaimEntryTimeStrands stops the only substrates a crashed or killed
+// `run` process can ever leave live behind it: Master's own recorded strand,
+// any recorded, non-terminal recovery-batch strand,
+// and the integration-fix strand when one is recorded, so a run that crashed during the fix never leaves a strand committing behind a fresh Master.
 // Forks die WITH Master (same process) — there is never an orphaned
 // in-flight fork implementer to reclaim, which is what keeps webster's own
 // entry-time reclaim simple, per
@@ -324,6 +325,12 @@ func reclaimEntryTimeStrands(reed shuttleengine.ReedOps, st *State) error {
 			if err := removeStrandIfLive(reed, bs.StrandGUID); err != nil {
 				return err
 			}
+		}
+	}
+
+	if st.IntegrationFix != nil && st.IntegrationFix.StrandGUID != "" {
+		if err := removeStrandIfLive(reed, st.IntegrationFix.StrandGUID); err != nil {
+			return err
 		}
 	}
 

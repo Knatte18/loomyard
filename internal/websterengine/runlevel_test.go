@@ -669,6 +669,75 @@ func TestRun_EntryTimeReclaimStopsLiveMasterAndRecoveryStrandsButNotAbsent(t *te
 	}
 }
 
+// TestRun_EntryTimeReclaimStopsLiveIntegrationFixStrand proves a state recording a live integration-fix strand has it removed at Run entry.
+func TestRun_EntryTimeReclaimStopsLiveIntegrationFixStrand(t *testing.T) {
+	fx := newRunFixture(t, 1)
+
+	seedMatchingState(t, fx, &websterengine.State{
+		IntegrationFix: &websterengine.IntegrationFixState{PreFixHead: "abc", StrandGUID: "fix-strand"},
+	})
+	fx.Reed.status = reedengine.StatusResult{Strands: []reedengine.StrandStatus{{GUID: "fix-strand", Live: true}}}
+	fx.Starter.startErr = fmt.Errorf("stop before spawn")
+
+	if _, err := websterengine.Run(fx.Deps, websterengine.RunOptions{}); err == nil {
+		t.Fatalf("Run() error = nil; want the scripted starter error")
+	}
+
+	if len(fx.Reed.removedStrands) != 1 || fx.Reed.removedStrands[0] != "fix-strand" {
+		t.Errorf("RemoveStrand calls = %v; want exactly [fix-strand]", fx.Reed.removedStrands)
+	}
+}
+
+// TestRun_EntryTimeReclaimLeavesDeadOrEmptyIntegrationFixRecord proves a dead-strand record and an empty-GUID record remove nothing.
+func TestRun_EntryTimeReclaimLeavesDeadOrEmptyIntegrationFixRecord(t *testing.T) {
+	cases := []struct {
+		name   string
+		fix    *websterengine.IntegrationFixState
+		status reedengine.StatusResult
+	}{
+		{
+			name:   "dead strand",
+			fix:    &websterengine.IntegrationFixState{PreFixHead: "abc", StrandGUID: "fix-strand"},
+			status: reedengine.StatusResult{Strands: []reedengine.StrandStatus{{GUID: "fix-strand", Live: false}}},
+		},
+		{
+			name: "empty guid",
+			fix:  &websterengine.IntegrationFixState{PreFixHead: "abc"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fx := newRunFixture(t, 1)
+			seedMatchingState(t, fx, &websterengine.State{IntegrationFix: tc.fix})
+			fx.Reed.status = tc.status
+			fx.Starter.startErr = fmt.Errorf("stop before spawn")
+
+			if _, err := websterengine.Run(fx.Deps, websterengine.RunOptions{}); err == nil {
+				t.Fatalf("Run() error = nil; want the scripted starter error")
+			}
+
+			if len(fx.Reed.removedStrands) != 0 {
+				t.Errorf("RemoveStrand calls = %v; want none", fx.Reed.removedStrands)
+			}
+		})
+	}
+}
+
+// TestRun_EntryTimeReclaimWithoutIntegrationFixRecordRemovesNothing proves a state without the record behaves as before.
+func TestRun_EntryTimeReclaimWithoutIntegrationFixRecordRemovesNothing(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	seedMatchingState(t, fx, &websterengine.State{})
+	fx.Starter.startErr = fmt.Errorf("stop before spawn")
+
+	if _, err := websterengine.Run(fx.Deps, websterengine.RunOptions{}); err == nil {
+		t.Fatalf("Run() error = nil; want the scripted starter error")
+	}
+
+	if len(fx.Reed.removedStrands) != 0 {
+		t.Errorf("RemoveStrand calls = %v; want none", fx.Reed.removedStrands)
+	}
+}
+
 // TestRun_StaleOutcomeAndSummaryArchivedBeforeSpawn proves both stale outcome.yaml and stale
 // summary.md are archived (renamed with a timestamp suffix, never deleted) before Master ever
 // spawns.
