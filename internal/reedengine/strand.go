@@ -276,6 +276,18 @@ func classifyIfAbsent(strands []Strand, name string, aliveIDs map[string]bool) (
 	return ifAbsentRelaunch, candidates[0]
 }
 
+// liveStrandNamed returns the index of the first strand named name that is visible and alive, or -1.
+// Alive is s.PaneID != "" && aliveIDs[s.PaneID], with aliveIDs the set aliveIDSet builds, never liveIDSet, for the reason classifyIfAbsent records:
+// a dead-but-present pane must not count.
+func liveStrandNamed(strands []Strand, name string, aliveIDs map[string]bool) int {
+	for i, s := range strands {
+		if s.Name == name && s.Display.Anchor != render.AnchorHidden && s.PaneID != "" && aliveIDs[s.PaneID] {
+			return i
+		}
+	}
+	return -1
+}
+
 // needsLaunchOnAdd reports whether AddStrand must realize display into a
 // live pane: every anchor except hidden.
 func needsLaunchOnAdd(display render.Display) bool {
@@ -439,7 +451,18 @@ func removalEmptiedSession(remaining []Strand, sessionGone bool) bool {
 // ifAbsentNoOpAlive for a name that exists in the persisted table. That is the intended answer, not a
 // defect to fix.
 func (e *Engine) AddStrand(spec AddSpec) (Strand, error) {
+	strand, _, err := e.AddStrandUnless(spec, "")
+	return strand, err
+}
+
+// AddStrandUnless is AddStrand that is skipped while a strand named unlessName is live in this worktree.
+// A non-empty unlessName resolves to a full name by the rule an explicit name follows, before the session pre-flight, so an unformable name refuses without booting a server.
+// On a match it returns that strand and true, having saved no state, reconciled nothing, launched nothing and moved no focus.
+// A cold worktree the pre-flight just booted has no live pane, so the add proceeds and returns false.
+// An empty unlessName makes it exactly AddStrand.
+func (e *Engine) AddStrandUnless(spec AddSpec, unlessName string) (Strand, bool, error) {
 	var result Strand
+	var skipped bool
 	err := e.withOpLock(func() error {
 		// The --if-absent name requirement is a pure config error, unrelated to session/state, so
 		// it must surface before the session pre-flight below — a rejected call must never deposit
@@ -451,6 +474,12 @@ func (e *Engine) AddStrand(spec AddSpec) (Strand, error) {
 		explicitName, err := e.validateNaming(spec)
 		if err != nil {
 			return err
+		}
+		unlessFull := ""
+		if unlessName != "" {
+			if unlessFull, err = e.validateNaming(AddSpec{NameOverride: unlessName}); err != nil {
+				return err
+			}
 		}
 
 		booted, err := e.ensureSessionLocked()
@@ -466,6 +495,18 @@ func (e *Engine) AddStrand(spec AddSpec) (Strand, error) {
 		st, err := e.loadOrInitStateLocked()
 		if err != nil {
 			return err
+		}
+
+		if unlessFull != "" {
+			live, err := e.tmux.listPanes(e.SessionName())
+			if err != nil {
+				return fmt.Errorf("list panes: %w", err)
+			}
+			if idx := liveStrandNamed(st.Strands, unlessFull, aliveIDSet(live)); idx != -1 {
+				result = st.Strands[idx]
+				skipped = true
+				return nil
+			}
 		}
 
 		if spec.IfAbsent {
@@ -545,7 +586,7 @@ func (e *Engine) AddStrand(spec AddSpec) (Strand, error) {
 		result, _ = strandByGUID(st.Strands, strand.GUID)
 		return nil
 	})
-	return result, err
+	return result, skipped, err
 }
 
 // UpdateStrand mutates guid's display settings, then reconciles and re-applies the layout.

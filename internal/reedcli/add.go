@@ -26,6 +26,8 @@ func (c *reedCLI) addCmd() *cobra.Command {
 		anchor    string
 		focus     bool
 		ifAbsent  bool
+
+		unlessName string
 	)
 
 	cmd := &cobra.Command{
@@ -48,6 +50,14 @@ A matched strand is left exactly as persisted rather than rewritten from
 this invocation's flags — a live match is returned unchanged, a dead match
 is relaunched under its own guid, and only an unmatched name falls through
 to an ordinary add.
+
+--unless-name makes the add a successful no-op while this worktree holds a
+live, visible strand matching <name> (a role segment or full name, as --name).
+A dead or hidden match does not count. The check runs before --if-absent's, so
+a skip also suppresses the relaunch --if-absent would give a dead --name
+strand. The flag never removes, resizes or refocuses that strand. A skip
+exits 0 with skipped: true and an unless object holding the live strand's
+guid and name.
 
 Example:
   lyx reed add --cmd "claude --session-id %SID%" --role producer`,
@@ -84,9 +94,20 @@ Example:
 				IfAbsent: ifAbsent,
 			}
 
-			strand, err := c.eng.AddStrand(spec)
+			strand, skipped, err := c.eng.AddStrandUnless(spec, unlessName)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				return nil
+			}
+
+			if skipped {
+				clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{
+					"skipped": true,
+					"unless": map[string]any{
+						"guid": strand.GUID,
+						"name": strand.Name,
+					},
+				}))
 				return nil
 			}
 
@@ -106,6 +127,7 @@ Example:
 	cmd.Flags().StringVar(&anchor, "anchor", string(render.AnchorBelowParent), "placement: below-parent|hidden")
 	cmd.Flags().BoolVar(&focus, "focus", false, "give this strand tmux input focus")
 	cmd.Flags().BoolVar(&ifAbsent, "if-absent", false, "make a repeated add idempotent by matching --name against this worktree's strands")
+	cmd.Flags().StringVar(&unlessName, "unless-name", "", "skip the add while a live, visible strand matches this role segment or full name; checked before --if-absent, never touches that strand")
 	if err := cmd.MarkFlagRequired("cmd"); err != nil {
 		// MarkFlagRequired only errors when the named flag does not exist on
 		// cmd; --cmd is registered immediately above, so this can never fire

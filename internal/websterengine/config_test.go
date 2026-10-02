@@ -169,28 +169,45 @@ func TestLoadConfig_UninitializedFallsBackToTemplate(t *testing.T) {
 	}
 }
 
-// TestLoadConfig_MissingNumericKnobNamesTheKey covers the round-4 review's R4-16. LoadOrTemplate
-// degrades to the embedded template only on PROVEN ABSENCE of the file, so a hand-written
-// webster.yaml carrying only the two role keys left every numeric knob at Go's zero value — and
-// those zero values are not conservative, they break the run silently: RecoveryTimeoutMin at 0 makes
-// classify's elapsed-versus-timeout comparison true on the first poll, so every recovery batch
-// classifies dead/timeout immediately with nothing reporting why.
-func TestLoadConfig_MissingNumericKnobNamesTheKey(t *testing.T) {
+// TestLoadConfig_MissingNumericKnobsLoadTemplateDefaults covers the round-4 review's R4-16:
+// a hand-written webster.yaml missing numeric knobs must not leave them at Go's zero value, since RecoveryTimeoutMin at 0 would classify every recovery batch dead/timeout on the first poll.
+// configengine fills the absent keys from the template, so they load at the template defaults.
+func TestLoadConfig_MissingNumericKnobsLoadTemplateDefaults(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		body string
+	}{
+		{
+			name: "every numeric knob absent",
+			body: "master: sonnet\nrecovery: opus\n",
+		},
+		{
+			name: "recovery_timeout_min absent",
+			body: "master: sonnet\nrecovery: opus\nself_fix_cap: 2\nmaster_timeout_min: 480\npoll_wait_s: 480\n",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			baseDir := t.TempDir()
+			seedConfig(t, baseDir, "webster", tc.body)
+
+			cfg, err := websterengine.LoadConfig(baseDir, "webster")
+			if err != nil {
+				t.Fatalf("LoadConfig() error = %v; want nil with the absent knobs at their template defaults", err)
+			}
+			if cfg.SelfFixCap != 2 || cfg.MasterTimeoutMin != 480 || cfg.RecoveryTimeoutMin != 60 || cfg.PollWaitS != 480 {
+				t.Errorf("LoadConfig() = %+v; want the numeric knobs at their template defaults", cfg)
+			}
+		})
+	}
+}
+
+// TestLoadConfig_ExplicitZeroKnobNamesTheKey pins that webster's own positive-integer check still refuses a knob the file sets to zero, which the template fill never touches.
+func TestLoadConfig_ExplicitZeroKnobNamesTheKey(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
 		body    string
 		wantKey string
 	}{
-		{
-			name:    "every numeric knob absent",
-			body:    "master: sonnet\nrecovery: opus\n",
-			wantKey: "self_fix_cap",
-		},
-		{
-			name:    "recovery_timeout_min absent",
-			body:    "master: sonnet\nrecovery: opus\nself_fix_cap: 2\nmaster_timeout_min: 480\npoll_wait_s: 480\n",
-			wantKey: "recovery_timeout_min",
-		},
 		{
 			name:    "poll_wait_s explicitly zero",
 			body:    "master: sonnet\nrecovery: opus\nself_fix_cap: 2\nmaster_timeout_min: 480\nrecovery_timeout_min: 60\npoll_wait_s: 0\n",
