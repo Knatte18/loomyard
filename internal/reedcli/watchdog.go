@@ -245,7 +245,10 @@ func enterSession(hub, tmuxPath, sessionName string) (watchedSession, error) {
 		return watchedSession{}, err
 	}
 
-	geom := hubgeom.ReedGeometry(location)
+	geom, err := hubgeom.ReedGeometry(location)
+	if err != nil {
+		return watchedSession{}, err
+	}
 	cfg, err := reedengine.LoadConfig(location.AnchorPath(), "reed")
 	if err != nil {
 		return watchedSession{}, err

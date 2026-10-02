@@ -279,7 +279,10 @@ func TestSmokeInterruptSendContinues(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reedengine.LoadConfig: %v", err)
 	}
-	reedGeom := hubgeom.ReedGeometry(layout)
+	reedGeom, err := hubgeom.ReedGeometry(layout)
+	if err != nil {
+		t.Fatalf("reed geometry: %v", err)
+	}
 	reedEngine := reedengine.New(reedCfg, reedGeom)
 	engine := claudeengine.New()
 	runner := shuttleengine.NewRunner(reedEngine, engine, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)

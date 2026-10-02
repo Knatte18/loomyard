@@ -388,7 +388,10 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				if err != nil {
 					return "", err
 				}
-				reedGeom := hubgeom.ReedGeometry(taskLocation)
+				reedGeom, err := hubgeom.ReedGeometry(taskLocation)
+				if err != nil {
+					return "", err
+				}
 				reedEngine := reedengine.New(reedCfg, reedGeom)
 				res, err := reedEngine.Down()
 				if err != nil {
@@ -490,7 +493,11 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 					if err != nil {
 						return reedengine.StatusResult{}, err
 					}
-					return reedengine.New(reedCfg, hubgeom.ReedGeometry(taskLocation)).Status()
+					reedGeom, err := hubgeom.ReedGeometry(taskLocation)
+					if err != nil {
+						return reedengine.StatusResult{}, err
+					}
+					return reedengine.New(reedCfg, reedGeom).Status()
 				})
 			},
 			// ResolveStatus also creates the child's ephemeral status-lock directory, since its

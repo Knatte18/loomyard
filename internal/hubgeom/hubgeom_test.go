@@ -39,7 +39,7 @@ func TestReedGeometry(t *testing.T) {
 				AnchorRel:    tt.anchorRel,
 			}
 
-			got := ReedGeometry(l)
+			got := reedGeometry(l, "some-prime")
 
 			if want := reedengine.ServerName(hub); got.SocketKey != want {
 				t.Errorf("ReedGeometry(l).SocketKey = %q; want %q (ServerName(hub))", got.SocketKey, want)

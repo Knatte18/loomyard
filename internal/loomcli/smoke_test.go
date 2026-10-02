@@ -294,7 +294,11 @@ func probeReedEngine(t *testing.T, loc *lyxcwd.Location) *reedengine.Engine {
 	if err != nil {
 		t.Fatalf("load reed config: %v", err)
 	}
-	return reedengine.New(reedCfg, hubgeom.ReedGeometry(loc))
+	reedGeom, err := hubgeom.ReedGeometry(loc)
+	if err != nil {
+		t.Fatalf("reed geometry: %v", err)
+	}
+	return reedengine.New(reedCfg, reedGeom)
 }
 
 // findDriverPIDs returns the pids of every live process whose current working directory is worktree

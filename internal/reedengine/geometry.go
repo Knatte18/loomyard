@@ -49,4 +49,13 @@ type Geometry struct {
 	WorktreeName string
 	// HubPath is the status-line's "hub" token, passed through internal/tokenvocab.
 	HubPath string
+	// NameCode is the code every strand name starts with; empty means the hub records none.
+	NameCode string
+	// NameSlug is the task worktree's slug segment of a strand name;
+	// empty in the prime and in a standalone run.
+	NameSlug string
+	// ParentName is the full name of the session that spawned this worktree's default run;
+	// empty when none is recorded.
+	// It is unrelated to Strand.Parent, which is a layout guid.
+	ParentName string
 }

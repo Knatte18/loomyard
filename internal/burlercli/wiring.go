@@ -127,7 +127,10 @@ func (c *burlerCLI) wireHub(loc *lyxcwd.Location, stencilsDirOverride, targetDir
 		stencilsDir = stencilsDirOverride
 	}
 
-	reedGeom := hubgeom.ReedGeometry(loc)
+	reedGeom, err := hubgeom.ReedGeometry(loc)
+	if err != nil {
+		return err
+	}
 	reedEngine := reedengine.New(reedCfg, reedGeom)
 	runner := shuttleengine.NewRunner(reedEngine, claudeengine.New(), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 
