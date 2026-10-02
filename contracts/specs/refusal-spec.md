@@ -144,6 +144,12 @@ The `validate-*` verbs' findings envelopes are each verb's verdict on its artifa
 | approve: pull request not open | the pull request is closed or merged | correctness halt | `lyx loom goto --to Publish` moves the run back to Publish, then `lyx loom step` opens a new pull request |
 | approve: HEAD differs | the local task HEAD differs from the pull request's head | correctness halt | push the task branch with `git push` when the local HEAD is ahead, or pull it with `git pull` when the pull request's head is ahead, then re-run lyx loom approve |
 | approve: lookup failed | branch resolution, the origin URL, the pull request lookup or the HEAD read fails | transient | transient, re-run `lyx loom approve` |
+| review: no open request | `lyx loom review notify`, `delivered`, `approve` or `reject` finds no round, no request, or a superseded one | correctness halt | only Discussion-Write's parent-review gate opens a request; `lyx loom status <run>` shows whether the run has reached it |
+| review: verdict already recorded | `lyx loom review notify`, `approve` or `reject` finds the round already carries a verdict | correctness halt | the round is settled and the run proceeds on its own; nothing more to submit |
+| review: request expired | `lyx loom review notify`, `delivered`, `approve` or `reject` finds the request past its wait bound | correctness halt | the run already passed on its wait bound and Discussion-Review still reviews the discussion; nothing more to submit |
+| review: review file missing or empty | `lyx loom review reject`'s review file, or `approve --review`'s, is missing or empty | correctness halt | write the review to a non-empty file and re-run `lyx loom review reject` with its path |
+| review: slug required from the prime | a review verb runs from the prime with no slug | correctness halt | pass the task's slug as listed by `lyx board list`, e.g. `lyx loom review notify <slug>` |
+| review: unknown slug | a review verb names a slug with no worktree in the hub | correctness halt | pass the task's slug as listed by `lyx board list` |
 | commit-records: probe or commit failed | the merge-state probe or the commit fails | transient | transient, re-run `lyx loom commit-records` |
 | commit-records: not pushed | the commit landed locally but the push failed | transient | `lyx fabric push` pushes the landed commit, or re-run `lyx loom commit-records` |
 | commit-records: park marker failed | the park marker cannot be written | transient | transient, re-run `lyx loom commit-records --park <park>` |

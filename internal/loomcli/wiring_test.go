@@ -116,6 +116,7 @@ selfreport: true
 friction: opus[effort=high]
 friction_timeout_min: 30
 driver: ""
+parent_review_wait_min: 60
 `, discussionInteractive)
 	if err := os.WriteFile(cfgPath, []byte(contents), 0o644); err != nil {
 		t.Fatalf("WriteFile(%q) = %v; want nil", cfgPath, err)
@@ -144,6 +145,7 @@ selfreport: true
 friction: %s
 friction_timeout_min: 30
 driver: ""
+parent_review_wait_min: 60
 `, friction)
 	if err := os.WriteFile(cfgPath, []byte(contents), 0o644); err != nil {
 		t.Fatalf("WriteFile(%q) = %v; want nil", cfgPath, err)

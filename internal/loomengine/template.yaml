@@ -9,3 +9,4 @@ selfreport: true  # true auto-files Go-detected structural anomalies as GitHub i
 friction: opus[effort=high]  # model-spec for the Tier 2 friction-reflection producer (see docs/reference/model-spec.md); empty turns Tier 2 self-reporting off
 friction_timeout_min: 30  # minutes the friction-reflection agent's shuttle run is allowed to run
 driver: ""  # model-spec for the model that runs an llm-driven run's ly-drive session (see docs/reference/model-spec.md); empty defers to the provider default
+parent_review_wait_min: 60  # minutes Discussion-Write's gate waits for the parent's verdict before passing with a Warn

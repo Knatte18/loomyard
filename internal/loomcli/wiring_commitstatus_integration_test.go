@@ -245,8 +245,8 @@ func TestCommitStatusSeam_Real_UnreachableRemoteWarnsToo(t *testing.T) {
 	}
 }
 
-// writeReviewFile writes content at rel under the reviews directory, creating its directories.
-func writeReviewFile(t *testing.T, location *lyxcwd.Location, rel, content string) {
+// writeReviewsDirFile writes content at rel under the reviews directory, creating its directories.
+func writeReviewsDirFile(t *testing.T, location *lyxcwd.Location, rel, content string) {
 	t.Helper()
 	path := filepath.Join(loomengine.LoomReviewsDir(location), rel)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -262,7 +262,7 @@ func TestCommitStatusSeam_Real_CommitsTheRoundRecord(t *testing.T) {
 	seam, location, weftSibling := realSeamFixture(t)
 	files := []string{"plan/round-1-review.md", "plan/round-1-fixer-report.md", "plan/round-1-focus.md"}
 	for _, f := range files {
-		writeReviewFile(t, location, f, "record\n")
+		writeReviewsDirFile(t, location, f, "record\n")
 	}
 
 	if err := seam("Plan-Review", "running"); err != nil {
@@ -311,7 +311,7 @@ func TestCommitStatusSeam_Real_EmptyReviewsSegmentTouchesOnlyStatus(t *testing.T
 // TestCommitStatusSeam_Real_ArchiveRenameCommitsAdditionAndDeletion asserts a committed round file renamed to a timestamped sibling is recorded as both an addition and a deletion by the next commit.
 func TestCommitStatusSeam_Real_ArchiveRenameCommitsAdditionAndDeletion(t *testing.T) {
 	seam, location, weftSibling := realSeamFixture(t)
-	writeReviewFile(t, location, "plan/round-1-review.md", "record\n")
+	writeReviewsDirFile(t, location, "plan/round-1-review.md", "record\n")
 	if err := seam("Plan-Review", "running"); err != nil {
 		t.Fatalf("first seam error = %v; want nil", err)
 	}
@@ -404,9 +404,9 @@ func TestCommitStatusSeam_Real_FrictionArchiveRenameCommitsAdditionAndDeletion(t
 func TestCommitStatusSeam_Real_PendingRejectionHoldsTheRound(t *testing.T) {
 	seam, location, weftSibling := realSeamFixture(t)
 	reviewRel := "plan/round-1-review.md"
-	writeReviewFile(t, location, reviewRel, "record\n")
+	writeReviewsDirFile(t, location, reviewRel, "record\n")
 	// A file in another run directory keeps the reviews root non-empty after the move, so the released commit still names it.
-	writeReviewFile(t, location, "webster/round-1-review.md", "record\n")
+	writeReviewsDirFile(t, location, "webster/round-1-review.md", "record\n")
 	if err := seam("Plan-Review", "running"); err != nil {
 		t.Fatalf("first seam error = %v; want nil", err)
 	}

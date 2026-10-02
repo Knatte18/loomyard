@@ -236,6 +236,19 @@ type Run struct {
 	// Both live in memory for this run only.
 	gateFails []int
 	gateSent  []int
+	// gatePending reports that the last real evaluation stopped at a pending entry, whose index is gatePendingAt;
+	// gatePendingSend and gatePendingWayForward carry that result's Send and SendFailedWayForward.
+	// Every real evaluation resets all four, and the pending memo itself is cleared by Wait's helper, so a poll-tick re-evaluation reads fresh closure state.
+	gatePending           bool
+	gatePendingAt         int
+	gatePendingSend       string
+	gatePendingWayForward string
+	// gateAtBoundary is the turn-boundary state: the writer's last arrival was Done and the loop has sent it nothing since.
+	// It is false for a fresh run and for one AttachGated reconstructs, and becomes true at the first gated Done arrival;
+	// every gate send and every pending re-evaluation happens only while it is true.
+	gateAtBoundary bool
+	// gateLastDone is the last gated Done arrival's message, the one a later pass finalizes with.
+	gateLastDone string
 }
 
 // The run directory's fixed artifact file names. Every Engine.Prepare

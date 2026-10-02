@@ -46,6 +46,10 @@ An unknown value is a construction error naming `rework-exempt`.
 
 A gate-capable row's `gates` key selects validators by name from a closed vocabulary, in order, each element carrying its own `attempts` budget (0 means off) and an optional `pass_on_cap`.
 An absent key is ungated, while an empty list, a duplicate name, or a negative budget is a construction error.
+The vocabulary is `discussion`, `plan`, `rework-plan`, `description` and `parent-review`.
+`parent-review` waits for the run's parent to review the discussion, so it can return a pending result that the wait loop holds without stalling its liveness and deadline checks, and it carries a `Final` closure that `finalize` evaluates in its place.
+Only a `pass_on_cap` entry may be pending, so a row listing `parent-review` without `pass_on_cap: true` is a construction error naming the row and the key.
+It reads `Env.ParentReview`, and a Discussion-Write row with an enabled `parent-review` entry opens a new review round on each fresh spawn.
 
 ## The recipe loader/builder
 

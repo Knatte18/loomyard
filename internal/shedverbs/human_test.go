@@ -88,7 +88,7 @@ func TestRenderStatusHuman(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := RenderStatusHuman("loom", "self", tc.st, humanRouting())
+			got := RenderStatusHuman("loom", "self", tc.st, humanRouting(), "")
 			if got != tc.want {
 				t.Errorf("RenderStatusHuman =\n%q\nwant\n%q", got, tc.want)
 			}
@@ -98,8 +98,17 @@ func TestRenderStatusHuman(t *testing.T) {
 
 func TestRenderStatusHuman_NoRoutingOmitsProgress(t *testing.T) {
 	st := shedengine.Status{State: shedengine.StateRunning, Activity: shedengine.Activity{Now: "working"}}
-	got := RenderStatusHuman("batten", "", st, shedengine.Routing{})
+	got := RenderStatusHuman("batten", "", st, shedengine.Routing{}, "")
 	want := "batten | running\nnow  working\n"
+	if got != want {
+		t.Errorf("RenderStatusHuman = %q; want %q", got, want)
+	}
+}
+
+func TestRenderStatusHuman_WaitingNoteReplacesState(t *testing.T) {
+	st := shedengine.Status{State: shedengine.StateRunning, Activity: shedengine.Activity{Now: "working"}}
+	got := RenderStatusHuman("loom", "self", st, shedengine.Routing{}, "the parent's review of round 2")
+	want := "loom self | waiting the parent's review of round 2\nnow  working\n"
 	if got != want {
 		t.Errorf("RenderStatusHuman = %q; want %q", got, want)
 	}

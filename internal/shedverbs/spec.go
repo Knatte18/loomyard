@@ -25,7 +25,7 @@ type AbsentDisposition struct {
 	RefuseMessage string
 }
 
-// Hooks carries the seven module-specific extension points the generic verb bodies call at fixed
+// Hooks carries the module-specific extension points the generic verb bodies call at fixed
 // points in their own sequence. Every field is nil-by-default and skipped when nil, so a module
 // that needs none of them may leave the whole struct at its zero value.
 type Hooks struct {
@@ -72,6 +72,13 @@ type Hooks struct {
 	// PreGoto runs in goto's RunE after the --to check and before shedengine.Goto.
 	// A non-nil error is reported verbatim on the error envelope and the status file is not touched.
 	PreGoto func(ctx context.Context, target string) error
+	// Waiting names, in one line, what a running run is waiting on; empty means it waits on nothing.
+	// status calls it only when the status file's state is running,
+	// and a non-empty note adds a waiting key to the envelope, replaces the plain running state in the human header and extends the --watch line.
+	// A non-nil error is reported verbatim on the error envelope, like StatusExtras;
+	// the --watch line drops the note on an error rather than ending the tail.
+	// The hook closes over whatever location the arming module was told, so shedverbs stays path-free.
+	Waiting func() (string, error)
 }
 
 // VerbTexts carries each verb's cobra Use/Short/Long strings, passed by value at Verbs'
@@ -134,7 +141,7 @@ type Spec struct {
 	// carry a nil Landing and the landing rows would fail deep in the run. A nil BuildShed is legal
 	// for status and pause, which never call it, and an error for run and step.
 	BuildShed func() (*shedengine.Shed, error)
-	// Hooks carries the seven module-specific extension points; see Hooks' own field docs.
+	// Hooks carries the module-specific extension points; see Hooks' own field docs.
 	Hooks Hooks
 	// StatusLabel is the --watch line's literal prefix -- "loom" for the loom recipe.
 	StatusLabel string

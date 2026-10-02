@@ -548,3 +548,90 @@ func TestRenderStatusLine_ProducerReasonReachesWait(t *testing.T) {
 		t.Errorf("RenderStatusLine = %q; want %q", got, want)
 	}
 }
+
+// TestStatusCmd_WaitingNote_RunningOnly asserts the envelope carries waiting only for a running state with a non-empty note,
+// and that the hook never runs against a settled run.
+func TestStatusCmd_WaitingNote_RunningOnly(t *testing.T) {
+	calls := 0
+	note := "the parent's review"
+	hook := func() (string, error) {
+		calls++
+		return note, nil
+	}
+
+	t.Run("running with a note", func(t *testing.T) {
+		spec := seededStatusSpec(t, Hooks{Waiting: hook})
+		env, code := execEnvelope(t, statusCmd(statusTexts(), spec), nil)
+		if code != 0 || env["waiting"] != note {
+			t.Errorf("waiting = %v (exit %d); want %q", env["waiting"], code, note)
+		}
+	})
+
+	t.Run("running with an empty note", func(t *testing.T) {
+		note = ""
+		defer func() { note = "the parent's review" }()
+		spec := seededStatusSpec(t, Hooks{Waiting: hook})
+		env, _ := execEnvelope(t, statusCmd(statusTexts(), spec), nil)
+		if _, ok := env["waiting"]; ok {
+			t.Errorf("envelope carries waiting for an empty note: %v", env)
+		}
+	})
+
+	t.Run("not running skips the hook", func(t *testing.T) {
+		spec := seededStatusSpec(t, Hooks{Waiting: hook})
+		st, _, err := state.ReadJSONStrict[shedengine.Status](spec.StatusPath, spec.StatusLockPath)
+		if err != nil {
+			t.Fatalf("read status: %v", err)
+		}
+		st.State = shedengine.StateDone
+		if err := state.WriteJSON(spec.StatusPath, spec.StatusLockPath, st); err != nil {
+			t.Fatalf("write status: %v", err)
+		}
+		before := calls
+		env, _ := execEnvelope(t, statusCmd(statusTexts(), spec), nil)
+		if _, ok := env["waiting"]; ok || calls != before {
+			t.Errorf("done state: waiting key present = %v, hook calls = %d; want none", ok, calls-before)
+		}
+	})
+
+	t.Run("nil hook", func(t *testing.T) {
+		spec := seededStatusSpec(t, Hooks{})
+		env, _ := execEnvelope(t, statusCmd(statusTexts(), spec), nil)
+		if _, ok := env["waiting"]; ok {
+			t.Errorf("envelope carries waiting with no hook: %v", env)
+		}
+	})
+}
+
+// TestStatusCmd_WaitingErrorVerbatim covers a Waiting error reaching the error envelope verbatim.
+func TestStatusCmd_WaitingErrorVerbatim(t *testing.T) {
+	wantErr := errors.New("waiting exploded")
+	spec := seededStatusSpec(t, Hooks{Waiting: func() (string, error) { return "", wantErr }})
+	env, code := execEnvelope(t, statusCmd(statusTexts(), spec), nil)
+	if code != 1 || env["error"] != wantErr.Error() {
+		t.Errorf("error = %v (exit %d); want verbatim %q", env["error"], code, wantErr.Error())
+	}
+}
+
+// TestStatusWatchLine_AppendsWaitingNote asserts the polled watch line gains the note while it is non-empty, so the line changes when the wait starts or ends,
+// and survives a hook error.
+func TestStatusWatchLine_AppendsWaitingNote(t *testing.T) {
+	note := "the parent's review"
+	var hookErr error
+	spec := seededStatusSpec(t, Hooks{Waiting: func() (string, error) { return note, hookErr }})
+	spec.StatusLabel = "loom"
+
+	with := statusWatchLine(spec)
+	if !strings.HasSuffix(with, " | waiting "+note) {
+		t.Errorf("line = %q; want a trailing waiting note", with)
+	}
+	note = ""
+	without := statusWatchLine(spec)
+	if strings.Contains(without, "waiting") || !strings.HasPrefix(without, "loom running") || with == without {
+		t.Errorf("line without a note = %q (with: %q)", without, with)
+	}
+	note, hookErr = "x", errors.New("boom")
+	if got := statusWatchLine(spec); got != without {
+		t.Errorf("line on hook error = %q; want %q", got, without)
+	}
+}

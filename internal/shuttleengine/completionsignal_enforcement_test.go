@@ -81,12 +81,14 @@ var negativeVerdictMarkers = map[string]bool{
 // Every entry carries its justification, because "the count is 7" is not something a future reader
 // can check without one:
 //
-//   - Wait [Errorf] x5 — the events-unreadable cap, the three status-cap arms (all four sit behind
-//     finishedDespiteMechanismFailure, which consults the contract first), plus the gate-evaluation
-//     error the events-tick Done branch returns when run.evaluateGate() fails. That fifth one is an
-//     infrastructure fault that never burns an attempt and never reaches the LLM, so it needs no
-//     file-contract consultation of its own — the run reached a positive OutcomeDone already, and the
-//     gate runs strictly after it, at a turn boundary with no in-progress turn to interrupt.
+//   - Wait [Errorf] x4 — the events-unreadable cap and the three status-cap arms, all four behind
+//     finishedDespiteMechanismFailure, which consults the contract first.
+//   - handleGatedBoundary [Errorf] x1 — the gate-evaluation error returned when run.evaluateGate()
+//     fails at a turn boundary (the events-tick Done branch's former fifth Wait site, moved into the
+//     helper a poll tick also reaches). That is an infrastructure fault that never burns an attempt
+//     and never reaches the LLM, so it needs no file-contract consultation of its own — the run
+//     reached a positive OutcomeDone already, and the gate runs strictly after it, at a turn
+//     boundary with no in-progress turn to interrupt.
 //   - Wait [OutcomeTimeout] x1 — the run deadline, routed through classifyDeadlineExpiry.
 //   - checkLivenessTick [OutcomeDied] x1 — the dead-pane branch, guarded by the allOutputFilesExist
 //     directly above it.
@@ -136,7 +138,8 @@ var auditedNegativeVerdictReturns = map[string]int{
 	"awaitStartup [Errorf]":                           3,
 	"awaitStartup [OutcomeDied]":                      2,
 	"awaitStartup [OutcomeTimeout]":                   1,
-	"Wait [Errorf]":                                   5,
+	"Wait [Errorf]":                                   4,
+	"handleGatedBoundary [Errorf]":                    1,
 	"Wait [OutcomeTimeout]":                           1,
 	"checkLivenessTick [Errorf]":                      1,
 	"checkLivenessTick [OutcomeDied]":                 1,

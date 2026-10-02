@@ -411,6 +411,39 @@ func TestInnerRun_StillRunningSleepsExactlyOnce(t *testing.T) {
 	}
 }
 
+// TestInnerRun_RunningArmReviewWaitNote pins the running arm's reason with a reviewer note, without one, and when ReviewWait fails.
+func TestInnerRun_RunningArmReviewWaitNote(t *testing.T) {
+	plain := "inner shed run still running; sleeping 5s before the next bounce"
+	tests := []struct {
+		name       string
+		reviewWait func() (string, error)
+		wantReason string
+	}{
+		{"note replaces plain reason", func() (string, error) { return "parent review: waiting on the hub", nil }, "inner shed run waiting: parent review: waiting on the hub; sleeping 5s before the next bounce"},
+		{"empty note keeps plain reason", func() (string, error) { return "", nil }, plain},
+		{"nil ReviewWait keeps plain reason", nil, plain},
+		{"failing ReviewWait falls back to plain reason", func() (string, error) { return "", errors.New("boom") }, plain},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, _, deps := newInnerRunDeps(nil, nil, []statusResult{{status: shedengine.Status{State: shedengine.StateRunning}, found: true}}, &fakeClock{})
+			deps.ReviewWait = tt.reviewWait
+
+			outcome, ptr, err := NewInnerRun("innerrun", "myslug", deps, 5*time.Second, t.TempDir(), testGrace).Call(context.Background())
+
+			if err != nil {
+				t.Fatalf("Call() error = %v; want nil", err)
+			}
+			if outcome != shedengine.Stuck {
+				t.Errorf("Call() outcome = %v; want Stuck", outcome)
+			}
+			if ptr.Reason != tt.wantReason {
+				t.Errorf("reason = %q; want %q", ptr.Reason, tt.wantReason)
+			}
+		})
+	}
+}
+
 // NewInnerRun's nil-seam defaults are exercised implicitly by every production caller; this test
 // pins that a nil Now/Sleep resolve to the real stdlib functions rather than panicking.
 func TestInnerRun_NilSeamsDefaultToStdlib(t *testing.T) {

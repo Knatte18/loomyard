@@ -35,6 +35,7 @@ var shedrecipeAllowedImports = map[string]bool{
 	"github.com/Knatte18/loomyard/internal/shedadapters":  true,
 	"github.com/Knatte18/loomyard/internal/loomshed":      true,
 	"github.com/Knatte18/loomyard/internal/landingshed":   true,
+	"github.com/Knatte18/loomyard/internal/parentreview":  true,
 	"github.com/Knatte18/loomyard/internal/battenshed":    true,
 	"github.com/Knatte18/loomyard/internal/preflightshed": true,
 	"github.com/Knatte18/loomyard/internal/websterengine": true,

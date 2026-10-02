@@ -18,6 +18,15 @@ type GateResult struct {
 	// Findings is the detailed what-is-wrong text, empty when Passed. It is written to a per-run
 	// findings file and never sent inline — see the "findings always ride a file" decision.
 	Findings string
+	// Pending reports that the gate has no verdict yet and holds the run: the wait loop keeps polling, re-evaluating at turn boundaries, without re-prompting or counting a failure.
+	// Only a PassOnCap entry may return it, and a Pending result is never Passed.
+	// The run deadline and liveness checks keep running while an entry is pending, and a deadline or liveness finalize evaluates the entry's Final closure instead.
+	Pending bool
+	// Send is one line the wait loop sends the writer when the result is Pending, empty for none.
+	// The closure never sends; the loop does, only at a turn boundary.
+	Send string
+	// SendFailedWayForward is the clause the loop's Warn quotes when sending Send fails.
+	SendFailedWayForward string
 }
 
 // Gate is a mechanical validator a gated run consults at each arrival and at its single verdict site (finalize):
@@ -28,11 +37,15 @@ type GateResult struct {
 type Gate func() (GateResult, error)
 
 // GateEntry is one gate in a GateSpec: a validator closure with its own re-prompt budget.
+// A closure answers passed, failed or pending; a pending answer holds the run at a turn boundary (see GateResult.Pending).
 type GateEntry struct {
 	// Name labels the entry in GateOutcome.Entries and in the re-prompt log line.
 	Name string
 	// Gate is the validator this entry consults.
 	Gate Gate
+	// Final, when non-nil, is the closure finalize evaluates in place of Gate, so a pending-capable entry is read at the final verdict without its opening and consuming transitions.
+	// Only a PassOnCap entry may set it: a non-nil Final on any other entry is a returned gate error at evaluation, so Final can never let a must-pass entry through.
+	Final Gate
 	// Attempts is the entry's re-prompt budget: how many consecutive failures re-prompt the agent before the entry gives up.
 	// 0 means the entry is off: it is skipped at every arrival, whatever its PassOnCap.
 	Attempts int
@@ -60,6 +73,8 @@ const (
 	GateEntryLetThrough GateEntryState = "let_through"
 	// GateEntryOff marks an entry with Attempts 0, wherever it sits in the list.
 	GateEntryOff GateEntryState = "off"
+	// GateEntryWaiting marks the PassOnCap entry whose closure returned pending, stopping the evaluation; it counts toward Passed like a let-through entry.
+	GateEntryWaiting GateEntryState = "waiting"
 	// GateEntryNotReached marks a non-off entry after the entry that stopped the evaluation.
 	GateEntryNotReached GateEntryState = "not_reached"
 )

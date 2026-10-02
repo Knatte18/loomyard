@@ -457,11 +457,11 @@ func TestGate_EvaluateOncePerAttempt_Memoized(t *testing.T) {
 	}
 	run := &Run{runDir: t.TempDir(), gate: GateSpec{{Gate: gate, Attempts: 3}}}
 
-	first, err := run.evaluateGate()
+	first, err := run.evaluateGate(false)
 	if err != nil {
 		t.Fatalf("evaluateGate() error: %v", err)
 	}
-	second, err := run.evaluateGate()
+	second, err := run.evaluateGate(false)
 	if err != nil {
 		t.Fatalf("evaluateGate() error: %v", err)
 	}

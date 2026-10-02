@@ -36,6 +36,11 @@ func TestRenderStartPrompt(t *testing.T) {
 	if !strings.Contains(got, "hub orchestrator") {
 		t.Errorf("start prompt missing role text: %q", got)
 	}
+	for _, want := range []string{"lyx loom review", "one-shot fork"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("start prompt missing %q: %q", want, got)
+		}
+	}
 }
 
 func TestRenderHandoffInstruction(t *testing.T) {
@@ -58,6 +63,11 @@ func TestRenderResumePrompt(t *testing.T) {
 	}
 	if strings.ContainsAny(got, "\r\n") || !strings.Contains(got, "/tmp/h/one.md") {
 		t.Errorf("resume prompt must be one line containing the path: %q", got)
+	}
+	for _, want := range []string{"lyx loom review", "one-shot fork"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("resume prompt missing %q: %q", want, got)
+		}
 	}
 }
 

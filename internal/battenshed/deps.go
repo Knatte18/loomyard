@@ -122,6 +122,11 @@ type InnerRunDeps struct {
 	// Call invokes it once the child is done, to wait for the driver to finish its stop report before the pair is torn down.
 	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
 	DriverAlive func(ctx context.Context) (bool, error)
+	// ReviewWait returns a note naming the reviewer the still-running child waits on, or an empty string when it waits on none.
+	// Call invokes it in the running arm only, to name the wait in the row's reason.
+	// The note is advisory: an error is warned about and never fails the row, and a nil ReviewWait means no note.
+	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
+	ReviewWait func() (string, error)
 	// Now is the clock the driver-exit grace reads.
 	// A nil Now resolves to time.Now in NewInnerRun, the same way a nil Sleep resolves to waitOrCancel; a test replaces it to keep the grace out of real time.
 	Now func() time.Time

@@ -28,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
+	"github.com/Knatte18/loomyard/internal/parentreview"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
@@ -155,6 +156,20 @@ func (f *fakeLoomBurler) Run(p burlerengine.Profile, _ burlerengine.RunOpts) (bu
 // require filled with a synthetic-but-valid told value, so New(env, paths) never fails
 // construction on this package's own tests. dir is used for the told absolute paths
 // landingshed.Deps carries.
+// testParentReviewConfig fills the Env.ParentReview the embedded recipe's parent-review gate entry needs to build.
+// Reviewer is left empty, so the gate passes without opening a request.
+func testParentReviewConfig(dir, decisionRecordPath, supportLogPath string) parentreview.GateConfig {
+	return parentreview.GateConfig{
+		Store:          parentreview.Store{Root: filepath.Join(dir, "parent-review"), LockDir: filepath.Join(dir, "parent-review-lock")},
+		Slug:           "fixture",
+		DecisionRecord: decisionRecordPath,
+		SupportLog:     supportLogPath,
+		WaitBound:      time.Hour,
+		RenderDelivery: func(string) (string, error) { return "delivery", nil },
+		RenderBrief:    func() (string, error) { return "brief", nil },
+	}
+}
+
 func testLandingDeps(dir string) landingshed.Deps {
 	return landingshed.Deps{
 		WorktreeRoot:     dir,
@@ -697,6 +712,7 @@ func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, 
 	}
 
 	env = shedrecipe.Env{
+		ParentReview:       testParentReviewConfig(dir, decisionRecordPath, supportLogPath),
 		Cwd:                cwd,
 		AnchorPath:         dir,
 		WorktreeRoot:       dir,
