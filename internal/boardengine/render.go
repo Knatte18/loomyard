@@ -223,14 +223,15 @@ func renderEntry(t Task, dependents []string, designPrefix string) []string {
 	}
 	lines := []string{fmt.Sprintf("1. **%s** — %s", t.Title, metaLineWithSlug(t, slug))}
 
+	// Each detail is its own sub-item: markdown joins plain continuation lines into one paragraph.
 	if t.Brief != "" {
-		lines = append(lines, "   "+t.Brief)
+		lines = append(lines, "   - "+t.Brief)
 	}
 	if len(t.DependsOn) > 0 {
-		lines = append(lines, "   After "+codeList(t.DependsOn)+".")
+		lines = append(lines, "   - **After:** "+codeList(t.DependsOn))
 	}
 	if len(dependents) > 0 {
-		lines = append(lines, "   Before "+codeList(dependents)+".")
+		lines = append(lines, "   - **Before:** "+codeList(dependents))
 	}
 	return lines
 }
