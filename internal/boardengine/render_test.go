@@ -67,7 +67,7 @@ func TestRenderToDisk(t *testing.T) {
 			// file; the manifest-based cleanup removes it in the next RenderToDisk call.
 			seedManifest(t, dir, []string{tt.ghostFile})
 
-			if err := boardengine.RenderToDisk(dir, tasks, nil, tt.out); err != nil {
+			if err := boardengine.RenderToDisk(dir, tasks, tt.out); err != nil {
 				t.Fatalf("RenderToDisk: %v", err)
 			}
 
@@ -111,14 +111,14 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 
 		// First render produces Home.md and seeds the manifest with it.
 		out1 := boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-"}
-		if err := boardengine.RenderToDisk(dir, tasks, nil, out1); err != nil {
+		if err := boardengine.RenderToDisk(dir, tasks, out1); err != nil {
 			t.Fatalf("first RenderToDisk: %v", err)
 		}
 
 		// Second render uses Index.md; the manifest from the first render lists Home.md,
 		// so it is removed because the new output set does not contain it.
 		out2 := boardengine.Outputs{Readme: "Index.md", DesignPrefix: "proposal-"}
-		if err := boardengine.RenderToDisk(dir, tasks, nil, out2); err != nil {
+		if err := boardengine.RenderToDisk(dir, tasks, out2); err != nil {
 			t.Fatalf("second RenderToDisk: %v", err)
 		}
 		if _, err := os.Stat(filepath.Join(dir, "Index.md")); err != nil {
@@ -135,7 +135,7 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 
 		// First render with prefix "proposal-" produces proposal-a.md.
 		out1 := boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-"}
-		if err := boardengine.RenderToDisk(dir, tasks, nil, out1); err != nil {
+		if err := boardengine.RenderToDisk(dir, tasks, out1); err != nil {
 			t.Fatalf("first RenderToDisk: %v", err)
 		}
 		if _, err := os.Stat(filepath.Join(dir, "proposal-a.md")); err != nil {
@@ -145,7 +145,7 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 		// Second render with prefix "task-" produces task-a.md; manifest cleanup
 		// removes proposal-a.md because it is no longer in the output set.
 		out2 := boardengine.Outputs{Readme: "Home.md", DesignPrefix: "task-"}
-		if err := boardengine.RenderToDisk(dir, tasks, nil, out2); err != nil {
+		if err := boardengine.RenderToDisk(dir, tasks, out2); err != nil {
 			t.Fatalf("second RenderToDisk: %v", err)
 		}
 		if _, err := os.Stat(filepath.Join(dir, "task-a.md")); err != nil {
@@ -162,7 +162,7 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 		out := boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-"}
 
 		// First render: task has a body → proposal-a.md is produced and recorded in the manifest.
-		if err := boardengine.RenderToDisk(dir, []boardengine.Task{task}, nil, out); err != nil {
+		if err := boardengine.RenderToDisk(dir, []boardengine.Task{task}, out); err != nil {
 			t.Fatalf("first RenderToDisk: %v", err)
 		}
 		if _, err := os.Stat(filepath.Join(dir, "proposal-a.md")); err != nil {
@@ -172,7 +172,7 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 		// Second render: task loses its body → proposal-a.md is absent from the new
 		// output set but present in the manifest, so the manifest cleanup removes it.
 		task.Body = ""
-		if err := boardengine.RenderToDisk(dir, []boardengine.Task{task}, nil, out); err != nil {
+		if err := boardengine.RenderToDisk(dir, []boardengine.Task{task}, out); err != nil {
 			t.Fatalf("second RenderToDisk: %v", err)
 		}
 		if _, err := os.Stat(filepath.Join(dir, "proposal-a.md")); !os.IsNotExist(err) {
@@ -192,11 +192,11 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 
 		out := boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-"}
 		// First render seeds the manifest with the rendered files (not NOTES.md).
-		if err := boardengine.RenderToDisk(dir, tasks, nil, out); err != nil {
+		if err := boardengine.RenderToDisk(dir, tasks, out); err != nil {
 			t.Fatalf("first RenderToDisk: %v", err)
 		}
 		// Second render triggers cleanup; NOTES.md was never in the manifest so it is untouched.
-		if err := boardengine.RenderToDisk(dir, tasks, nil, out); err != nil {
+		if err := boardengine.RenderToDisk(dir, tasks, out); err != nil {
 			t.Fatalf("second RenderToDisk: %v", err)
 		}
 		if _, err := os.Stat(readme); err != nil {
@@ -219,7 +219,7 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 
 		// First render with no prior manifest: nothing is removed (graceful degradation),
 		// and the manifest is seeded with the current output set.
-		if err := boardengine.RenderToDisk(dir, tasks, nil, out); err != nil {
+		if err := boardengine.RenderToDisk(dir, tasks, out); err != nil {
 			t.Fatalf("RenderToDisk should not fail when no manifest exists: %v", err)
 		}
 		if _, err := os.Stat(stale); err != nil {
@@ -241,7 +241,7 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 		}
 
 		out := boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-"}
-		if err := boardengine.RenderToDisk(dir, tasks, nil, out); err != nil {
+		if err := boardengine.RenderToDisk(dir, tasks, out); err != nil {
 			t.Errorf("RenderToDisk should not fail with a corrupt manifest: %v", err)
 		}
 		if _, err := os.Stat(filepath.Join(dir, "Home.md")); err != nil {
@@ -252,7 +252,7 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 
 func TestRenderEmptyTaskList(t *testing.T) {
 	// (a) empty task list, no notes → Home.md is exactly "# Tasks\n", no design docs.
-	result, err := boardengine.Render([]boardengine.Task{}, nil, boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-"})
+	result, err := boardengine.Render([]boardengine.Task{}, boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-"})
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -367,7 +367,7 @@ func TestRenderProposalAndShapesHomepage(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := boardengine.Render(tt.tasks, nil, boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-"})
+			result, err := boardengine.Render(tt.tasks, boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-"})
 			if err != nil {
 				t.Fatalf("Render failed: %v", err)
 			}
@@ -416,7 +416,7 @@ func TestRenderStatusVariants(t *testing.T) {
 				Status: &s,
 			}
 
-			result, err := boardengine.Render([]boardengine.Task{task}, nil, boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-"})
+			result, err := boardengine.Render([]boardengine.Task{task}, boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-"})
 			if err != nil {
 				t.Fatalf("Render failed: %v", err)
 			}
@@ -475,7 +475,7 @@ func TestRenderSingleTask(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := boardengine.Render([]boardengine.Task{tt.task}, nil, boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-"})
+			result, err := boardengine.Render([]boardengine.Task{tt.task}, boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-"})
 			if err != nil {
 				t.Fatalf("Render failed: %v", err)
 			}
@@ -525,7 +525,7 @@ func TestRenderCustomOutputs(t *testing.T) {
 			Readme:       "README.md",
 			DesignPrefix: "proposal-",
 		}
-		result, err := boardengine.Render([]boardengine.Task{task}, nil, out)
+		result, err := boardengine.Render([]boardengine.Task{task}, out)
 		if err != nil {
 			t.Fatalf("Render failed: %v", err)
 		}
@@ -550,7 +550,7 @@ func TestRenderCustomOutputs(t *testing.T) {
 			Readme:       "Home.md",
 			DesignPrefix: "prop-",
 		}
-		result, err := boardengine.Render([]boardengine.Task{task}, nil, out)
+		result, err := boardengine.Render([]boardengine.Task{task}, out)
 		if err != nil {
 			t.Fatalf("Render failed: %v", err)
 		}
@@ -569,59 +569,6 @@ func TestRenderCustomOutputs(t *testing.T) {
 			t.Errorf("Home.md should use custom prefix in links\nGot: %s", home)
 		}
 	})
-}
-
-// TestRenderManifestSection covers the README's "# Manifest" section: a note with a non-empty body
-// gets a design-doc link, a note depending on another note gets a resolved "Depends on:" line, and
-// the Manifest heading is positioned after the Tasks section's content.
-// Also verifies renderDesigns's union-of-tasks-and-notes behavior: a note with a body produces a
-// design-<slug>.md entry in the result map, same as a task would.
-func TestRenderManifestSection(t *testing.T) {
-	tasks := []boardengine.Task{
-		{ID: 1, Slug: "task-a", Title: "Task A"},
-	}
-	notes := []boardengine.Task{
-		{ID: 2, Slug: "note-body", Title: "Note With Body", Body: "note body content"},
-		{ID: 3, Slug: "note-dep", Title: "Note With Dep", DependsOn: []string{"note-body"}},
-		{ID: 4, Slug: "note-plain", Title: "Plain Note"},
-	}
-
-	result, err := boardengine.Render(tasks, notes, boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-"})
-	if err != nil {
-		t.Fatalf("Render failed: %v", err)
-	}
-
-	readme := result["Home.md"]
-
-	tasksIdx := strings.Index(readme, "# Tasks")
-	manifestIdx := strings.Index(readme, "# Manifest")
-	if tasksIdx == -1 {
-		t.Fatalf("Home.md missing \"# Tasks\" heading\nGot: %s", readme)
-	}
-	if manifestIdx == -1 {
-		t.Fatalf("Home.md missing \"# Manifest\" heading\nGot: %s", readme)
-	}
-	if manifestIdx < tasksIdx {
-		t.Errorf("\"# Manifest\" heading should come after \"# Tasks\" content\nGot: %s", readme)
-	}
-
-	wantSubstrings := []string{
-		"## **#002:** Note With Body",
-		"[note-body](proposal-note-body.md)",
-		"## **#003:** Note With Dep",
-		"Depends on: #002",
-		"## **#004:** Plain Note",
-		"[note-plain]",
-	}
-	for _, want := range wantSubstrings {
-		if !strings.Contains(readme, want) {
-			t.Errorf("Home.md missing %q\nGot: %s", want, readme)
-		}
-	}
-
-	if _, ok := result["proposal-note-body.md"]; !ok {
-		t.Errorf("Result should have proposal-note-body.md key (renderDesigns union of tasks+notes), got keys: %v", getKeys(result))
-	}
 }
 
 // getKeys extracts all keys from a string map, used for error messages.

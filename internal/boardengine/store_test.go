@@ -685,8 +685,7 @@ func TestMergeTasks(t *testing.T) {
 // The remove and upsert steps are applied in-memory but writeOp discards them when mutate errors —
 // confirmed by loading a fresh store from disk and asserting the task list is identical.
 func TestMergeTasksSetStatusRollback(t *testing.T) {
-	tmpDir := t.TempDir()
-	taskPath := filepath.Join(tmpDir, "tasks.json")
+	taskPath := t.TempDir()
 
 	// Create an initial store with one task.
 	s := boardengine.NewStore(taskPath)
@@ -969,16 +968,15 @@ func TestUpsertTasksBatch(t *testing.T) {
 // Folds: TestLoadNormalizesNilDependsOn, TestLoadMissingFileReturnsEmpty
 func TestLoadNilDependsOnNormalization(t *testing.T) {
 	t.Run("TestLoadNormalizesNilDependsOn", func(t *testing.T) {
-		tmpDir := t.TempDir()
-		taskPath := filepath.Join(tmpDir, "tasks.json")
+		boardDir := t.TempDir()
 
-		// Write tasks.json with a task that has nil DependsOn
-		err := os.WriteFile(taskPath, []byte(`[{"id":0,"slug":"task1","title":"Task 1"}]`), 0o644)
+		// Write board.json with an entry that has nil DependsOn
+		err := os.WriteFile(filepath.Join(boardDir, "board.json"), []byte(`{"version":1,"entries":[{"id":0,"slug":"task1","title":"Task 1","tier":3,"type":"feature"}]}`), 0o644)
 		if err != nil {
 			t.Fatalf("failed to write test file: %v", err)
 		}
 
-		store := boardengine.NewStore(taskPath)
+		store := boardengine.NewStore(boardDir)
 		err = store.Load()
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -999,11 +997,8 @@ func TestLoadNilDependsOnNormalization(t *testing.T) {
 	})
 
 	t.Run("TestLoadMissingFileReturnsEmpty", func(t *testing.T) {
-		tmpDir := t.TempDir()
-		taskPath := filepath.Join(tmpDir, "tasks.json")
-
 		// Do not create the file; test that Load handles missing file gracefully
-		store := boardengine.NewStore(taskPath)
+		store := boardengine.NewStore(t.TempDir())
 		err := store.Load()
 		if err != nil {
 			t.Fatalf("expected no error for missing file, got %v", err)
@@ -1016,22 +1011,66 @@ func TestLoadNilDependsOnNormalization(t *testing.T) {
 	})
 }
 
-// TestLoadCorruptTasksJSON verifies that Load surfaces a corrupt tasks.json as an error instead of
+// TestLoadFromBoardJSON verifies that Load reads the version-1 shape and a Save round-trips it.
+func TestLoadFromBoardJSON(t *testing.T) {
+	boardDir := t.TempDir()
+	body := `{"version":1,"entries":[{"id":4,"slug":"a","title":"A","tier":2,"type":"bug","depends_on":[]}],"legacy_done":["old"]}`
+	if err := os.WriteFile(filepath.Join(boardDir, "board.json"), []byte(body), 0o644); err != nil {
+		t.Fatalf("write board.json: %v", err)
+	}
+
+	store := boardengine.NewStore(boardDir)
+	if err := store.Load(); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	tasks := store.Tasks()
+	if len(tasks) != 1 || tasks[0].Slug != "a" || tasks[0].Tier != 2 || tasks[0].Type != "bug" {
+		t.Fatalf("loaded %+v; want entry a at tier 2 type bug", tasks)
+	}
+
+	if err := store.Save(); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	raw, err := os.ReadFile(filepath.Join(boardDir, "board.json"))
+	if err != nil {
+		t.Fatalf("read board.json: %v", err)
+	}
+	if !stringContains(string(raw), `"legacy_done"`) {
+		t.Errorf("Save dropped legacy_done: %s", raw)
+	}
+}
+
+// TestLoadUnknownVersionRefused verifies a board.json version other than 1 refuses the load, naming the version.
+func TestLoadUnknownVersionRefused(t *testing.T) {
+	boardDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(boardDir, "board.json"), []byte(`{"version":2,"entries":[]}`), 0o644); err != nil {
+		t.Fatalf("write board.json: %v", err)
+	}
+
+	err := boardengine.NewStore(boardDir).Load()
+	if err == nil {
+		t.Fatalf("expected an error for version 2")
+	}
+	if !stringContains(err.Error(), "version 2") {
+		t.Errorf("error %q does not name version 2", err)
+	}
+}
+
+// TestLoadCorruptBoardJSON verifies that Load surfaces a corrupt board.json as an error instead of
 // silently producing an empty task list.
-func TestLoadCorruptTasksJSON(t *testing.T) {
-	tmpDir := t.TempDir()
-	taskPath := filepath.Join(tmpDir, "tasks.json")
+func TestLoadCorruptBoardJSON(t *testing.T) {
+	boardDir := t.TempDir()
 
 	// Write syntactically corrupt JSON
-	err := os.WriteFile(taskPath, []byte(`{this is not valid json`), 0o644)
+	err := os.WriteFile(filepath.Join(boardDir, "board.json"), []byte(`{this is not valid json`), 0o644)
 	if err != nil {
 		t.Fatalf("failed to write corrupt test file: %v", err)
 	}
 
-	store := boardengine.NewStore(taskPath)
+	store := boardengine.NewStore(boardDir)
 	err = store.Load()
 	if err == nil {
-		t.Fatalf("expected error for corrupt tasks.json, got nil")
+		t.Fatalf("expected error for corrupt board.json, got nil")
 	}
 
 	// Verify the error message indicates a load error

@@ -1,7 +1,9 @@
-// store.go — the in-memory task store over tasks.json.
+// store.go — the in-memory entry store over a board directory's board.json.
 //
 // Load/Save plus all CRUD and validation: dangling-dependency, isolated and tier rules, and cycle
 // detection, with batch and merge applied atomically.
+// Load migrates the legacy tasks.json and notes.json in memory when board.json is absent and folds a
+// pre-upgrade binary's done marks; Save writes board.json only.
 // Save and Load take the fine-grained swap lock so a concurrent read never sees a half-written
 // file.
 
@@ -9,6 +11,9 @@ package boardengine
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/state"
@@ -34,48 +39,125 @@ type BriefTask struct {
 	HasProposal bool     `json:"has_proposal"`
 }
 
-// Store holds the in-memory task list for one tasks.json file.
-type Store struct {
-	tasks    []Task
-	filePath string
+const (
+	// boardFile names the one store file a board directory holds.
+	boardFile = "board.json"
+
+	// storeVersion is the only on-disk version Load accepts.
+	storeVersion = 1
+)
+
+// storeFile is the on-disk shape of board.json.
+// LegacyDone lists the slugs whose done mark came from a legacy file, so the fold never re-applies one.
+type storeFile struct {
+	Version    int      `json:"version"`
+	Entries    []Task   `json:"entries"`
+	LegacyDone []string `json:"legacy_done,omitempty"`
 }
 
-// NewStore creates an empty, unloaded Store. Call Load to populate from disk.
-func NewStore(filePath string) *Store {
+// Store holds the in-memory entry list for one board directory's board.json.
+type Store struct {
+	tasks      []Task
+	legacyDone []string
+	boardDir   string
+}
+
+// NewStore creates an empty, unloaded Store over boardDir. Call Load to populate from disk.
+// An empty boardDir gives a purely in-memory store that Load leaves empty.
+func NewStore(boardDir string) *Store {
 	return &Store{
 		tasks:    []Task{},
-		filePath: filePath,
+		boardDir: boardDir,
 	}
 }
 
+// Load populates the store from boardDir and never writes.
+// board.json wins when it exists; otherwise the legacy files that exist are migrated in memory.
+// Whenever a legacy file exists, its done marks are folded into the loaded entries.
 func (s *Store) Load() error {
-	if s.filePath == "" {
-		s.tasks = []Task{}
+	s.tasks = []Task{}
+	s.legacyDone = nil
+	if s.boardDir == "" {
 		return nil
 	}
 
-	tasks, found, err := state.ReadJSON[[]Task](s.filePath, s.filePath+swapLockSuffix)
+	tasksRecords, haveTasks, err := readLegacyFile(filepath.Join(s.boardDir, legacyTasksFile))
+	if err != nil {
+		return fmt.Errorf("load store: %w", err)
+	}
+	notesRecords, haveNotes, err := readLegacyFile(filepath.Join(s.boardDir, legacyNotesFile))
 	if err != nil {
 		return fmt.Errorf("load store: %w", err)
 	}
 
-	if !found {
-		s.tasks = []Task{}
-		return nil
-	}
-
-	for i := range tasks {
-		if tasks[i].DependsOn == nil {
-			tasks[i].DependsOn = []string{}
+	path := filepath.Join(s.boardDir, boardFile)
+	var entries []Task
+	var legacyDone []string
+	if fileExists(path) {
+		file, found, err := state.ReadJSON[storeFile](path, path+swapLockSuffix)
+		if err != nil {
+			return fmt.Errorf("load store: %w", err)
+		}
+		if found {
+			if file.Version != storeVersion {
+				return fmt.Errorf("load store: %s has version %d; this binary reads only version %d", boardFile, file.Version, storeVersion)
+			}
+			entries, legacyDone = file.Entries, file.LegacyDone
+		}
+	} else if haveTasks || haveNotes {
+		entries, legacyDone, err = migrateLegacy(tasksRecords, notesRecords)
+		if err != nil {
+			return fmt.Errorf("load store: %w", err)
 		}
 	}
 
-	s.tasks = tasks
+	if haveTasks || haveNotes {
+		entries, legacyDone = foldLegacyDone(entries, legacyDone, append(slices.Clone(tasksRecords), notesRecords...))
+	}
+
+	if entries == nil {
+		entries = []Task{}
+	}
+	for i := range entries {
+		if entries[i].DependsOn == nil {
+			entries[i].DependsOn = []string{}
+		}
+	}
+	s.tasks = entries
+	s.legacyDone = legacyDone
 	return nil
 }
 
+// readLegacyFile reads one legacy file when it exists, under the swap lock the pre-upgrade binary wrote it with.
+// Existence is checked first so a read never creates a lock file for an absent file.
+func readLegacyFile(path string) ([]legacyRecord, bool, error) {
+	if !fileExists(path) {
+		return nil, false, nil
+	}
+	records, found, err := state.ReadJSON[[]legacyRecord](path, path+swapLockSuffix)
+	if err != nil {
+		return nil, false, err
+	}
+	return records, found, nil
+}
+
+// fileExists reports whether path names an existing file.
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+// Save writes board.json and nothing else.
 func (s *Store) Save() error {
-	return state.WriteJSON(s.filePath, s.filePath+swapLockSuffix, s.tasks)
+	if s.boardDir == "" {
+		return fmt.Errorf("save store: no board directory")
+	}
+	path := filepath.Join(s.boardDir, boardFile)
+	return state.WriteJSON(path, path+swapLockSuffix, storeFile{
+		Version:    storeVersion,
+		Entries:    s.tasks,
+		LegacyDone: s.legacyDone,
+	})
 }
 
 func (s *Store) Tasks() []Task {

@@ -1,11 +1,9 @@
-// render.go — turns the task and note lists into the wiki's output files.
+// render.go — turns the entry list into the wiki's output files.
 //
-// Render is a pure function: tasks and notes in, a map of filename → content out (a single
-// README.md carrying both a "# Tasks" and a "# Manifest" section, plus design-*.md for any task or
-// note with a body).
+// Render is a pure function: entries in, a map of filename → content out (a single README.md built
+// by renderTasksSection, plus design-*.md for any entry with a body).
 // No I/O — the caller writes the files.
-// The README's two sections are built by renderTasksSection and renderManifestSection;
-// the design files are built by renderDesigns.
+// The design files are built by renderDesigns.
 // RenderToDisk drives the write path and maintains a manifest sidecar (.board-rendered.json) so
 // that renamed or removed outputs are cleaned up on the next render.
 
@@ -27,9 +25,9 @@ import (
 // adds commit churn, and it is never itself a member of the rendered file set.
 const renderManifestFile = ".board-rendered.json"
 
-// RenderToDisk renders tasks and notes, persisting the board's output files.
-func RenderToDisk(boardPath string, tasks, notes []Task, out Outputs) error {
-	files, err := Render(tasks, notes, out)
+// RenderToDisk renders the entries, persisting the board's output files.
+func RenderToDisk(boardPath string, tasks []Task, out Outputs) error {
+	files, err := Render(tasks, out)
 	if err != nil {
 		return err
 	}
@@ -79,8 +77,8 @@ func writeRenderManifest(boardPath string, files map[string]string) {
 	_ = fsx.AtomicWriteBytes(filepath.Join(boardPath, renderManifestFile), data)
 }
 
-// Render produces the board output files from the task and note lists.
-func Render(tasks, notes []Task, out Outputs) (map[string]string, error) {
+// Render produces the board output files from the entry list.
+func Render(tasks []Task, out Outputs) (map[string]string, error) {
 	ordered, err := RenderOrder(tasks)
 	if err != nil {
 		return nil, err
@@ -90,25 +88,12 @@ func Render(tasks, notes []Task, out Outputs) (map[string]string, error) {
 	for _, t := range tasks {
 		taskMap[t.Slug] = t
 	}
-	noteMap := make(map[string]Task, len(notes))
-	for _, n := range notes {
-		noteMap[n.Slug] = n
-	}
-
-	tasksSection := renderTasksSection(ordered, taskMap, out.DesignPrefix)
-	manifestSection := renderManifestSection(notes, noteMap, out.DesignPrefix)
-
-	readme := tasksSection
-	if manifestSection != "" {
-		readme += "\n" + manifestSection
-	}
 
 	result := map[string]string{
-		out.Readme: readme,
+		out.Readme: renderTasksSection(ordered, taskMap, out.DesignPrefix),
 	}
 
-	combined := append(append([]Task{}, tasks...), notes...)
-	for name, content := range renderDesigns(combined, out.DesignPrefix) {
+	for name, content := range renderDesigns(tasks, out.DesignPrefix) {
 		result[name] = content
 	}
 	return result, nil
@@ -162,52 +147,6 @@ func renderTasksSection(ordered []TaskWithLayer, taskMap map[string]Task, design
 		}
 
 		lines = append(lines, "") // trailing blank line after the task block
-	}
-
-	return strings.Join(lines, "\n")
-}
-
-// renderManifestSection builds the README's "# Manifest" section: a flat
-// block per note (no layer suffix — notes have no computed layer — and no
-// [status] suffix — notes are not bucket/status-tracked), sorted by ID
-// ascending. Returns "" when notes is empty so a notes-free board's README
-// carries no dangling Manifest heading.
-func renderManifestSection(notes []Task, noteMap map[string]Task, designPrefix string) string {
-	if len(notes) == 0 {
-		return ""
-	}
-
-	sorted := make([]Task, len(notes))
-	copy(sorted, notes)
-	sort.Slice(sorted, func(i, j int) bool { return sorted[i].ID < sorted[j].ID })
-
-	lines := []string{"# Manifest", ""}
-	for _, n := range sorted {
-		lines = append(lines, fmt.Sprintf("## **#%03d:** %s", n.ID, n.Title))
-
-		slugLine := fmt.Sprintf("[%s]", n.Slug)
-		if n.Body != "" {
-			slugLine = fmt.Sprintf("[%s](%s%s.md)", n.Slug, designPrefix, n.Slug)
-		}
-		lines = append(lines, slugLine)
-
-		if len(n.DependsOn) > 0 {
-			depParts := make([]string, 0, len(n.DependsOn))
-			for _, depSlug := range n.DependsOn {
-				if depNote, ok := noteMap[depSlug]; ok {
-					depParts = append(depParts, fmt.Sprintf("#%03d", depNote.ID))
-				} else {
-					depParts = append(depParts, fmt.Sprintf("#???: %s (missing)", depSlug))
-				}
-			}
-			lines = append(lines, "Depends on: "+strings.Join(depParts, ", "))
-		}
-
-		if n.Brief != "" {
-			lines = append(lines, "", n.Brief)
-		}
-
-		lines = append(lines, "") // trailing blank line after the note block
 	}
 
 	return strings.Join(lines, "\n")

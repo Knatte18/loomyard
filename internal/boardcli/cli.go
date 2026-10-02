@@ -545,7 +545,7 @@ Example:
 			if err := json.Unmarshal([]byte(args[0]), &fields); err != nil {
 				return outputError(out, fmt.Sprintf("invalid json: %v", err))
 			}
-			task, err := b.UpsertNote(fields)
+			task, err := b.UpsertTask(fields)
 			if err != nil {
 				return outputError(out, err.Error())
 			}
@@ -606,7 +606,7 @@ Example:
 				notes[i] = m
 			}
 
-			if err := b.UpsertNotesBatch(notes); err != nil {
+			if err := b.UpsertTasksBatch(notes); err != nil {
 				return outputError(out, err.Error())
 			}
 			return outputSuccessWithCount(out, len(notes))
@@ -653,7 +653,7 @@ Examples:
 				status = &s
 			}
 
-			if err := b.SetNoteStatus(selector, status); err != nil {
+			if err := b.SetStatus(selector, status); err != nil {
 				return outputError(out, err.Error())
 			}
 			return outputSuccess(out)
@@ -681,7 +681,7 @@ Example:
 			if err != nil {
 				return outputError(out, err.Error())
 			}
-			if err := b.RemoveNote(selector); err != nil {
+			if err := b.RemoveTask(selector); err != nil {
 				return outputError(out, err.Error())
 			}
 			return outputSuccess(out)
@@ -710,7 +710,7 @@ Example:
 			if err != nil {
 				return outputError(out, err.Error())
 			}
-			task, found, err := b.GetNote(selector)
+			task, found, err := b.GetTask(selector)
 			if err != nil {
 				return outputError(out, err.Error())
 			}
@@ -725,7 +725,7 @@ Example:
 		Use:   "list",
 		Short: "List all notes with computed fields",
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
-			tasks, err := b.ListNotesBrief()
+			tasks, err := b.ListTasksBrief()
 			if err != nil {
 				return outputError(out, err.Error())
 			}
@@ -737,7 +737,7 @@ Example:
 		Use:   "list-full",
 		Short: "List all notes as stored in notes.json",
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
-			tasks, err := b.ListNotesFull()
+			tasks, err := b.ListTasksFull()
 			if err != nil {
 				return outputError(out, err.Error())
 			}
@@ -836,7 +836,7 @@ Example:
 				setStatusPtr = &boardengine.MergeStatusUpdate{Selector: selector, Status: status}
 			}
 
-			task, err := b.MergeNotes(removeSlugs, upsertFields, setStatusPtr)
+			task, err := b.MergeTasks(removeSlugs, upsertFields, setStatusPtr)
 			if err != nil {
 				return outputError(out, err.Error())
 			}
@@ -905,7 +905,7 @@ Example:
 				dependsOn = []string{}
 			}
 
-			if err := b.SetNoteDeps(slug, dependsOn); err != nil {
+			if err := b.SetDeps(slug, dependsOn); err != nil {
 				return outputError(out, err.Error())
 			}
 			return outputSuccess(out)
