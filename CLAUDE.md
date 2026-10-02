@@ -63,8 +63,6 @@ Each item works around a bug whose issue is folded into a board task (`webster-r
   Fix it on the task branch, run the plan's `## verify:`, commit, `lyx loom start --no-attach`.
 - #334: `lyx ide spawn` writes a lyx-managed block into a pair's tracked `.gitignore`.
   Revert it with `git -C <pair> checkout -- .gitignore`.
-- #338: a paused or blocked inner run makes `lyx batten run` exit `failed`.
-  Resume the inner run, wait for `running`, then restart `lyx batten run <slug>` from the prime.
 - #339: after a deploy, run `lyx config reconcile --apply` in the prime and in every pair with a run in flight.
 - #340: while `lyx orch` hosts the hub, open the prime from a plain terminal, not the VS Code workspace.
 

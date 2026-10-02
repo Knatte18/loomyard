@@ -44,9 +44,19 @@ func SpawnConfirmedFile(scratchDir, producer string) string {
 	return filepath.Join(scratchDir, producer+spawnConfirmedFileSuffix)
 }
 
-// haltedChildRemedy is the operator instruction every halted-child error carries: the outer run
-// cannot restart the task worktree's own driver, only watch it.
-const haltedChildRemedy = "the task worktree's own run must be resumed from inside that worktree (its recipe's bootstrap verb, e.g. \"lyx loom start\") before this run is resumed; resuming this run alone only resumes the watch"
+// haltedWaitReason renders the stuck reason of a halted child's wait.
+// Nothing on the prime side can resume the child's own driver, so the reason names the operator's resume command and says this run keeps watching.
+func haltedWaitReason(status shedengine.Status) string {
+	return fmt.Sprintf("inner shed run is %s: error=%q current_producer=%q; run \"lyx loom start\" in the task worktree to resume it; this run then keeps watching", status.State, status.Error, status.CurrentProducer)
+}
+
+// haltWarnedFileSuffix is the fixed suffix of the marker recording the child's history length at the last halt Warn, joined onto the producer's own name.
+const haltWarnedFileSuffix = "-halt-warned"
+
+// haltWarnedFile returns the path of the marker holding the child's history length, in decimal, at the last halt Warn.
+func haltWarnedFile(scratchDir, producer string) string {
+	return filepath.Join(scratchDir, producer+haltWarnedFileSuffix)
+}
 
 // decisionActedFileSuffix is the fixed suffix of the marker recording the decision identity the producer last resumed the child on, followed by the child's history length at that resume, joined onto the producer's own name.
 // A one-line marker reads as the old layout.
@@ -175,13 +185,13 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 //   - awaiting with a decision already acted on and the child's history length unchanged since that resume does not spawn, and sleeps and returns a budget-exempt Stuck saying the resume was delivered and the child's driver has not re-stepped yet;
 //   - awaiting with a decision already acted on and the child's history longer (or an old-layout marker) does not spawn, and sleeps and returns a budget-exempt Stuck naming the recovery of deciding again;
 //   - done records the first-sight time in the done-seen marker and returns Done once the driver strand is gone or driverExitGrace has elapsed since first sight, and otherwise sleeps and returns a budget-exempt Stuck, the wait for the driver to finish its stop report;
-//   - blocked, paused or failed is a hard error whose message carries the child's State, Error and CurrentProducer;
+//   - blocked, paused or failed never spawns, Warns once per halt episode, and sleeps and returns a budget-exempt Stuck whose reason carries the child's State, Error and CurrentProducer and the resume command; a resumed child is then read as running again;
 //   - any other value is a hard error naming the unrecognised state.
 //
 // The self-route's "sole Stuck arm" reasoning still holds in the sense it exists for:
-// ProducerDef.OnStuck is a static per-producer value, so every Stuck this row returns routes back to the same self-route target, which is safe only while every Stuck is a timed wait and never a genuinely stuck child, which would burn the bounce budget in a tight loop before reaching a halt.
-// Every arm above that returns Stuck is such a wait, and a halted child is always a hard error.
-// Only the running arm is counted against the row's bounce budget; the waits on a human and on the driver are exempt, the latter bounded by driverExitGrace instead.
+// ProducerDef.OnStuck is a static per-producer value, so every Stuck this row returns routes back to the same self-route target, which is safe only while every Stuck is a timed wait, never a budget-counted spin that would burn the bounce budget in a tight loop before reaching a halt.
+// Every arm above that returns Stuck is such a wait, a halted child's included.
+// Only the running arm is counted against the row's bounce budget; the waits on a human, on a halted child and on the driver are exempt, the last bounded by driverExitGrace and the halted wait by nothing but the operator's resume or "lyx batten pause".
 //
 // A ResolveStatus error and a ReadStatus error are both returned hard errors, not verdicts: the
 // task worktree is required to exist by the time this row runs, and a status file that exists but
@@ -271,10 +281,7 @@ func (p *innerRunProducer) Call(ctx context.Context) (shedengine.Outcome, sheden
 	case shedengine.StateAwaiting:
 		return p.callAwaiting(ctx, status)
 	case shedengine.StateBlocked, shedengine.StatePaused, shedengine.StateFailed:
-		// The remedy is named here because nothing on the prime side can perform it: this row never
-		// spawns against a halted child, and resuming the outer run resumes the watch, never the
-		// child's own driver.
-		return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: inner shed run reached state %q: error=%q current_producer=%q; %s", p.name, status.State, status.Error, status.CurrentProducer, haltedChildRemedy)
+		return p.callHalted(ctx, status)
 	default:
 		return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: unrecognized status state %q", p.name, status.State)
 	}
@@ -302,6 +309,30 @@ func (p *innerRunProducer) exemptWait(ctx context.Context, reason string) (shede
 	}
 	reportStuck(p.name, reason, p.scratchDir, "slug", p.slug)
 	return shedengine.Stuck, shedengine.OutputPointer{Reason: reason, BudgetExempt: true}, nil
+}
+
+// callHalted handles a blocked, paused or failed child: it never spawns or resumes the child, Warns once per halt episode, and waits with a budget-exempt Stuck until the operator resumes the child.
+// An episode is told apart by the child's history length against the length the halt-warned marker recorded at the last Warn:
+// a resume and re-halt grows the history, so it Warns again, and the polls between stay quiet.
+// A marker read or write failure is a hard error, as the other markers' are.
+func (p *innerRunProducer) callHalted(ctx context.Context, status shedengine.Status) (shedengine.Outcome, shedengine.OutputPointer, error) {
+	markerPath := haltWarnedFile(p.scratchDir, p.name)
+	raw, err := os.ReadFile(markerPath)
+	if err != nil && !os.IsNotExist(err) {
+		return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: read halt-warned marker: %w", p.name, err)
+	}
+	historyLen := len(status.History)
+	recorded, parseErr := strconv.Atoi(strings.TrimSpace(string(raw)))
+	if err != nil || parseErr != nil || recorded != historyLen {
+		logger.Warn("battenshed: inner shed run halted; waiting for the operator to resume it", "producer", p.name, "slug", p.slug, "state", status.State, "error", status.Error, "current_producer", status.CurrentProducer)
+		if err := os.MkdirAll(p.scratchDir, 0o755); err != nil {
+			return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: create scratch directory for halt-warned marker: %w", p.name, err)
+		}
+		if err := os.WriteFile(markerPath, []byte(strconv.Itoa(historyLen)+"\n"), 0o644); err != nil {
+			return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: write halt-warned marker: %w", p.name, err)
+		}
+	}
+	return p.exemptWait(ctx, haltedWaitReason(status))
 }
 
 // callAwaiting handles a child halted at a human hand-off: it waits for a decision, resumes the child once per decision, and otherwise waits, always with a budget-exempt Stuck.
