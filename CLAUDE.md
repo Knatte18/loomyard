@@ -67,7 +67,8 @@ Each item works around an open bug; delete it in the commit that fixes the bug.
   Resume the inner run, wait for `running`, then restart `lyx batten run <slug>` from the prime.
 - #339: after a deploy, run `lyx config reconcile --apply` in the prime and in every pair with a run in flight.
 - #340: while `lyx orch` hosts the hub, open the prime from a plain terminal, not the VS Code workspace.
-- A run's `parent` is today the caller's `LYX_STRAND_NAME`, not the worktree it is seeded from: start runs from the orch session, so the seed records `ly:orch`.
+- #341: a run's `parent` is the caller's `LYX_STRAND_NAME`, not the worktree it is seeded from.
+  Start runs from the orch session, so the seed records `ly:orch`.
 
 ## Filesystem links
 
