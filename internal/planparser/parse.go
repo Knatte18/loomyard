@@ -94,7 +94,7 @@ type overviewFrontmatter struct {
 }
 
 // interpretFirstCard maps the raw first_card node to the plan's first card number.
-// An absent key is 1; a value that is not a positive integer is 1 plus its raw text for index-file-mismatch to report.
+// An absent key is 1; a value that is not a positive integer is 1 plus its raw text, or a placeholder when it has none, for index-file-mismatch to report.
 func interpretFirstCard(node yaml.Node) (first int, invalid string) {
 	if node.Kind == 0 {
 		return 1, ""
@@ -102,8 +102,12 @@ func interpretFirstCard(node yaml.Node) (first int, invalid string) {
 	raw := strings.TrimSpace(node.Value)
 	n, err := strconv.Atoi(raw)
 	if node.Kind != yaml.ScalarNode || err != nil || n < 1 {
-		if node.Kind != yaml.ScalarNode {
+		switch {
+		case node.Kind != yaml.ScalarNode:
 			raw = "<non-scalar>"
+		case raw == "":
+			// An empty value decodes as a null scalar; an empty raw text would read as the valid-or-absent marker.
+			raw = "<empty>"
 		}
 		return 1, raw
 	}

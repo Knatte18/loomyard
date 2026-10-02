@@ -1191,6 +1191,7 @@ func TestParsePlan_FirstCard(t *testing.T) {
 		{name: "zero", line: "first_card: 0\n", wantFirst: 1, wantInvalid: "0"},
 		{name: "negative", line: "first_card: -2\n", wantFirst: 1, wantInvalid: "-2"},
 		{name: "non-integer", line: "first_card: seven\n", wantFirst: 1, wantInvalid: "seven"},
+		{name: "empty", line: "first_card:\n", wantFirst: 1, wantInvalid: "<empty>"},
 	}
 
 	for _, tt := range tests {
