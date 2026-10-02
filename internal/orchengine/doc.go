@@ -160,6 +160,6 @@
 //   - `--resume` with a positional prompt submitted the prompt: an adopted session answered the adopt stencil's turn and its turn end reached the events file.
 //     No startup dialog stopped the resume launch; shuttle's startup probe cleared it without operator input.
 //   - The idle probe passes on a live orch pane.
-//     Claude draws the session name into the input box's top rule (`──── tst:orch ─`), which `isBoxRule` rejected until it accepted a labelled rule, so the probe had never passed on a named session.
+//     Claude draws the session name into the input box's top rule (`──── tst:orch ─`), which the probe's rule match rejected until it accepted a labelled top rule, so the probe had never passed on a named session.
 //   - A visible plain run in the prime shares the orch pane's window and can squeeze it too short to draw an input box, which makes the idle probe fail and holds every cycle until the pane is tall again.
 package orchengine
