@@ -2,7 +2,7 @@
 // checkFixCommits decides whether Go accepts the commits that strand left behind.
 //
 // The path rule binds commits only.
-// When the plan directory or `_lyx` lies outside the task repository, as in the hub geometry where `_lyx` is a directory link to the weft worktree,
+// When the plan directory or `_lyx` lies outside the task repository, as in the hub geometry where `_lyx` is a directory link to the fabric's other side,
 // no commit can reach a file there, and only a commit adding or retargeting the `_lyx` entry itself is visible.
 // An on-disk plan write is caught by the plan-fingerprint compare around the strand;
 // any other on-disk write under `_lyx` outside the repository is bounded by the strand's prompt alone.
