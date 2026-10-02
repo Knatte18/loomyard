@@ -61,6 +61,45 @@ func TestRenderResumePrompt(t *testing.T) {
 	}
 }
 
+func TestRenderAdoptPrompt(t *testing.T) {
+	got, err := RenderAdoptPrompt(seedStencils(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == "" || strings.ContainsAny(got, "\r\n") {
+		t.Errorf("adopt prompt must be one non-empty line: %q", got)
+	}
+}
+
+func TestRenderSoftHandoffInstruction(t *testing.T) {
+	got, err := RenderSoftHandoffInstruction(seedStencils(t), "/tmp/h/one.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.ContainsAny(got, "\r\n") || !strings.Contains(got, "/tmp/h/one.md") || !strings.Contains(got, "DEFER") {
+		t.Errorf("soft instruction must be one line with the path and DEFER: %q", got)
+	}
+}
+
+func TestRenderAdoptAndSoft_MultiLineOverrideFails(t *testing.T) {
+	cases := []struct {
+		name   string
+		render func(dir string) (string, error)
+	}{
+		{adoptStencilName, RenderAdoptPrompt},
+		{softHandoffStencilName, func(dir string) (string, error) { return RenderSoftHandoffInstruction(dir, "/tmp/h/one.md") }},
+	}
+	for _, c := range cases {
+		dir := seedStencils(t)
+		if err := os.WriteFile(stencilstore.Path(dir, c.name), []byte("line one\nline two\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := c.render(dir); err == nil || !strings.Contains(err.Error(), c.name) {
+			t.Errorf("%s: want error naming the stencil, got %v", c.name, err)
+		}
+	}
+}
+
 func TestRenderResumePrompt_MultiLineOverrideFails(t *testing.T) {
 	dir := seedStencils(t)
 	path := stencilstore.Path(dir, resumeStencilName)

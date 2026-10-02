@@ -160,6 +160,16 @@ var OrchTemplateHandoff []byte
 //go:embed orch/orch-template-resume.md
 var OrchTemplateResume []byte
 
+// OrchTemplateAdopt is orch's shipped-default one-line launch prompt for an adopted session.
+//
+//go:embed orch/orch-template-adopt.md
+var OrchTemplateAdopt []byte
+
+// OrchTemplateHandoffSoft is orch's shipped-default one-line soft-trigger handoff request.
+//
+//go:embed orch/orch-template-handoff-soft.md
+var OrchTemplateHandoffSoft []byte
+
 // PatternDirectiveImplementer is the shipped-default PATTERN directive for RoleImplementer.
 //
 //go:embed pattern/pattern-directive-implementer.md
@@ -237,6 +247,8 @@ var entries = []registryEntry{
 	{"orch-template-start", &OrchTemplateStart},
 	{"orch-template-handoff", &OrchTemplateHandoff},
 	{"orch-template-resume", &OrchTemplateResume},
+	{"orch-template-adopt", &OrchTemplateAdopt},
+	{"orch-template-handoff-soft", &OrchTemplateHandoffSoft},
 	{"pattern-directive-implementer", &PatternDirectiveImplementer},
 	{"pattern-directive-review-fix", &PatternDirectiveReviewFix},
 	{"pattern-directive-orchestrator", &PatternDirectiveOrchestrator},
