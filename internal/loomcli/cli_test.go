@@ -57,7 +57,7 @@ func TestCommand_RegisteredVerbs_ExactSet(t *testing.T) {
 	}
 	sort.Strings(got)
 
-	want := []string{"approve", "commit-records", "goto", "pause", "reject", "run", "start", "status", "step", "validate-description", "validate-discussion", "validate-plan"}
+	want := []string{"approve", "commit-records", "goto", "pause", "reject", "review", "run", "start", "status", "step", "validate-description", "validate-discussion", "validate-plan"}
 
 	gotSet := make(map[string]bool, len(got))
 	for _, name := range got {
@@ -77,6 +77,34 @@ func TestCommand_RegisteredVerbs_ExactSet(t *testing.T) {
 		if !wantSet[name] {
 			t.Errorf("unexpected verb %q is registered under the loom parent command", name)
 		}
+	}
+}
+
+// TestCommand_ReviewSubtree_ExactChildren asserts the review group holds exactly its four verbs,
+// each with a non-empty Short, and that none collides with PR-Gate's top-level approve and reject.
+func TestCommand_ReviewSubtree_ExactChildren(t *testing.T) {
+	var review *cobra.Command
+	for _, sub := range Command().Commands() {
+		if sub.Name() == "review" {
+			review = sub
+		}
+	}
+	if review == nil {
+		t.Fatal(`"review" is not registered under the loom parent command`)
+	}
+	var got []string
+	for _, sub := range review.Commands() {
+		if sub.Name() == "help" || sub.Name() == "completion" {
+			continue
+		}
+		if sub.Short == "" {
+			t.Errorf("review %q has empty Short", sub.Name())
+		}
+		got = append(got, sub.Name())
+	}
+	sort.Strings(got)
+	if want := "approve,delivered,notify,reject"; strings.Join(got, ",") != want {
+		t.Errorf("review children = %v; want %s", got, want)
 	}
 }
 
