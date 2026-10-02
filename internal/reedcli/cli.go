@@ -129,7 +129,7 @@ rather than booting substrate it cannot reach.`,
 		},
 	}
 
-	parent.AddCommand(c.upCmd(), c.downCmd(), c.addCmd(), c.removeCmd(), c.statusCmd(), c.resumeCmd(), c.attachCmd(), c.statuslineCmd(), c.watchdogCmd())
+	parent.AddCommand(c.upCmd(), c.downCmd(), c.addCmd(), c.removeCmd(), c.statusCmd(), c.resumeCmd(), c.attachCmd(), c.statuslineCmd(), c.watchdogCmd(), c.listCmd())
 
 	return parent
 }
