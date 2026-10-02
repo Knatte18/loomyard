@@ -4,7 +4,11 @@
 
 package loomcli
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/Knatte18/loomyard/internal/agentname"
+)
 
 // driverPrompt composes the ly-drive session's launch prompt: a short pointer, never a copy of the
 // skill. It names the ly-drive skill invocation and the plugin it ships in, the run-id, the report
@@ -29,8 +33,8 @@ import "fmt"
 // provider specifics under the claude engine package.
 func driverPrompt(runID string, reportPath string) string {
 	return fmt.Sprintf(
-		"Run the ly-drive skill (from loomyard's ly plugin) for run-id %q. If that skill is not available to you, do not search the filesystem for a copy, which may be a stale version: write to the report that the ly plugin is not installed and stop. You are running autonomously, with no operator to ask -- decide and proceed on your own judgment. Write your report to %q at every stop condition. When the run is done, or a step is refused as busy, then after writing it, as your very last act, commit the run records and end your own session by running: %s . At every other stop, park as the skill describes (park command: %s ) and leave this session open for lyx loom start to resume.",
-		runID, reportPath, driverTeardownCommand, driverParkCommand(reportPath),
+		"Run the ly-drive skill (from loomyard's ly plugin) for run-id %q. If that skill is not available to you, do not search the filesystem for a copy, which may be a stale version: write to the report that the ly plugin is not installed and stop. You are running autonomously, with no operator to ask -- decide and proceed on your own judgment. Write your report to %q at every stop condition. At every stop other than done, after writing the report, if the environment variable %s is set, send one short SendMessage to that name naming the run-id and the report path, and treat a failed send as no send. When the run is done, or a step is refused as busy, then after writing it, as your very last act, commit the run records and end your own session by running: %s . At every other stop, park as the skill describes (park command: %s ) and leave this session open for lyx loom start to resume.",
+		runID, reportPath, agentname.ParentEnv, driverTeardownCommand, driverParkCommand(reportPath),
 	)
 }
 
