@@ -74,7 +74,7 @@ Instead, write one sentence per line, and also break inside a long sentence at a
 Use a plain newline (soft break), never trailing double-spaces or a backslash — those force a real `<br>`.
 Applies to prose paragraphs and list items in every `.md` file in this repo, not just newly-written ones;
 table cells and blockquotes stay on one line per current mill convention.
-See the `mill:markdown` skill for the full rule and examples.
+See the `scribe:prose` skill for the full rule and examples.
 
 ## Terminology: "Merriam" means webster's Master session
 
