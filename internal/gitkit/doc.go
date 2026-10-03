@@ -12,6 +12,12 @@
 // gitkit hands out MustRun, SeedConfig, GitStatusPorcelain, HermeticGitEnv and the single primitive
 // fixture CopyRepo, which is callable from internal/lyxcwd alone.
 //
+// Test git plumbing lives here.
+// Git is the one spawning primitive for queries, and query.go builds the rev, branch, ancestry,
+// ls-files and exclude queries and the commit helpers on it.
+// Every new spawn stays in gitkit.go, the file the spawn-observability guard allowlists,
+// because this package cannot import internal/logger.
+//
 // Leaf Invariant: internal/gitkit production code imports only stdlib, internal/lyxcwd,
 // internal/weftname, internal/configengine, and internal/lyxdirs, with internal/configreg and every
 // feature package

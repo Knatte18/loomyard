@@ -73,6 +73,8 @@ No hub-level container is ever junctioned into a worktree. `_board`, `_portals`,
 `internal/gitkit` imports only stdlib, `lyxcwd`, `weftname`, `configengine`, `lyxdirs`.
 
 - `gitkit.CopyRepo` is callable from `lyxcwd` alone; everyone else takes a hub from `hubforge`.
+- Test git plumbing lives in `gitkit`; a package-local `_test.go` helper that shells out to git is a review flag.
+  This is review discipline, not a scan.
 
 ## hubforge Fabric-Fixture Invariant
 
