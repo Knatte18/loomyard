@@ -64,6 +64,8 @@ type StrandStatus struct {
 	Name   string
 	PaneID string
 	Live   bool
+	// Retiring mirrors Strand.Retiring.
+	Retiring bool
 }
 
 // StatusResult reports this session's tracked strands and their live/dead state.
@@ -1090,7 +1092,7 @@ func (e *Engine) Status() (StatusResult, error) {
 		// must not "fix" a missing Selvage row by appending one here.
 		strands := make([]StrandStatus, len(st.Strands))
 		for i, s := range st.Strands {
-			strands[i] = StrandStatus{GUID: s.GUID, Name: s.Name, PaneID: s.PaneID, Live: aliveIDs[s.PaneID]}
+			strands[i] = StrandStatus{GUID: s.GUID, Name: s.Name, PaneID: s.PaneID, Live: aliveIDs[s.PaneID], Retiring: s.Retiring}
 		}
 
 		result = StatusResult{Session: session, Socket: e.Socket(), Strands: strands}

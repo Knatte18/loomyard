@@ -47,6 +47,27 @@ type reedCLI struct {
 	// batch 3 deleted, relocated to the layer that now owns the spawn. An in-package test flips it
 	// back off to drive the real spawn path.
 	suppressWatchdogSpawn bool
+
+	// strands and spawnRemove are test seams for the remove and status verbs; nil means the real
+	// engine and the real detached spawn.
+	strands     strandOps
+	spawnRemove func(guid string, recursive bool) error
+}
+
+// strandOps is the slice of *reedengine.Engine the remove and status verbs call.
+type strandOps interface {
+	ResolveStrandGUID(name string) (string, error)
+	MarkRetiring(guid string, retiring bool) error
+	RemoveStrand(guid string, recursive bool) (reedengine.Removed, error)
+	Status() (reedengine.StatusResult, error)
+}
+
+// strandEngine returns the test seam when set, else the resolved engine.
+func (c *reedCLI) strandEngine() strandOps {
+	if c.strands != nil {
+		return c.strands
+	}
+	return c.eng
 }
 
 // Command returns the cobra command tree for the reed module.

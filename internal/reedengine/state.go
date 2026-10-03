@@ -3,6 +3,8 @@
 // This is the module's dumb-carrier contract in concrete form: Strand stores every field a caller
 // writes (cmd, resumeCmd, sessionId, worktree, name) and reedengine itself reads none of them
 // semantically — only Display feeds the layout decision, via toRenderStrands.
+// Retiring is the one field reed itself owns: lifecycle bookkeeping set by a reed verb
+// (MarkRetiring), never written by a caller of AddStrand.
 
 package reedengine
 
@@ -29,6 +31,9 @@ type Strand struct {
 	SessionID string         `json:"sessionId,omitempty"`
 	PaneID    string         `json:"paneId"`
 	Display   render.Display `json:"display"`
+	// Retiring records that a caller of `reed remove --detach` asked for this strand's removal.
+	// It grants nothing by itself: a caller that finds it set only completes the request.
+	Retiring bool `json:"retiring,omitempty"`
 }
 
 // ReedState is the persisted record for one hub's tmux server: the socket name, the session,
