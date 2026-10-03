@@ -84,8 +84,9 @@ type RemoveResult struct {
 	// text always names the layer that said no — the gate's own refusal, or the remote deletion
 	// itself.
 	RemoteBranchError string `json:"remote_branch_error,omitempty"`
-	// RemoteSkippedReason carries a once-per-verb reason no remote deletion was attempted at all —
-	// today only a weft repo with no origin remote configured.
+	// RemoteSkippedReason carries a once-per-verb reason the sibling branch's remote copy was not deleted and no deletion was attempted:
+	// with remote, a weft repo with no origin remote configured;
+	// without remote, a sibling branch left only on origin, which is kept.
 	RemoteSkippedReason string `json:"remote_skipped_reason,omitempty"`
 	// WarpBranchDeleted reports whether the pair's local warp branch was deleted after the teardown.
 	WarpBranchDeleted bool `json:"warp_branch_deleted"`
