@@ -57,8 +57,7 @@ func (r *Repo) WorktreeChangedFiles() ([]string, error) {
 }
 
 // UntrackedFiles returns the repo-relative paths of every untracked, non-ignored file, sorted.
-// It reads go-git's worktree status the way WorktreeChangedFiles does, with .git/info/exclude
-// honoured, so a junctioned `_lyx` or `.lyx` listed there never appears.
+// It reads go-git's worktree status the way WorktreeChangedFiles does, with .git/info/exclude honoured, so a junctioned `_lyx` or `.lyx` listed there never appears.
 // It returns an empty, never nil, slice when there are none.
 func (r *Repo) UntrackedFiles() ([]string, error) {
 	repo, err := r.goGit()

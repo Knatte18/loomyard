@@ -181,8 +181,7 @@ func TestWebsterGeometryHelpers_ToldDirectory(t *testing.T) {
 	})
 }
 
-// TestWebsterGeometry_VerifyDirBesideScratch pins that the verify directory both tellers fill sits
-// under lyxdirs.DotLyxDirName, beside webster's scratch directory, for a plain told anchor.
+// TestWebsterGeometry_VerifyDirBesideScratch pins that the verify directory both tellers fill sits under lyxdirs.DotLyxDirName, beside webster's scratch directory, for a plain told anchor.
 func TestWebsterGeometry_VerifyDirBesideScratch(t *testing.T) {
 	t.Parallel()
 

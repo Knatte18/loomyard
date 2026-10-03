@@ -280,8 +280,7 @@ func TestWire_WebsterParentBranchNonNil(t *testing.T) {
 	}
 }
 
-// TestWire_RefMatcherIsRealScanner asserts the reference matcher is a non-nil *fabricengine.RefScanner
-// and never websterengine.NeverMatches, the standalone-only stand-in -- loom is hub-only.
+// TestWire_RefMatcherIsRealScanner asserts the reference matcher is a non-nil *fabricengine.RefScanner and never websterengine.NeverMatches, the standalone-only stand-in -- loom is hub-only.
 func TestWire_RefMatcherIsRealScanner(t *testing.T) {
 	t.Parallel()
 

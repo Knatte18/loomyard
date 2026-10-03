@@ -1,7 +1,6 @@
 //go:build integration
 
-// stagetracked_integration_test.go covers StageTrackedChanges and UntrackedFiles against real git
-// repositories, reusing gitrepo_test.go's fixture helpers.
+// stagetracked_integration_test.go covers StageTrackedChanges and UntrackedFiles against real git repositories, reusing gitrepo_test.go's fixture helpers.
 
 package gitrepo_test
 
@@ -15,8 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 )
 
-// TestStageTrackedChanges_StagesModificationAndDeletionNotUntracked asserts `git add -u` semantics: a
-// modified and a deleted tracked file are staged, an untracked one is left alone.
+// TestStageTrackedChanges_StagesModificationAndDeletionNotUntracked asserts `git add -u` semantics: a modified and a deleted tracked file are staged, an untracked one is left alone.
 func TestStageTrackedChanges_StagesModificationAndDeletionNotUntracked(t *testing.T) {
 	dir, repo := newRepo(t)
 	writeFile(t, dir, "modified.txt", "base\n")
@@ -43,8 +41,7 @@ func TestStageTrackedChanges_StagesModificationAndDeletionNotUntracked(t *testin
 	}
 }
 
-// TestUntrackedFiles_ListsNewFileAndOmitsExcluded asserts a new file is listed while a path matched by
-// .git/info/exclude and a tracked file are not.
+// TestUntrackedFiles_ListsNewFileAndOmitsExcluded asserts a new file is listed while a path matched by .git/info/exclude and a tracked file are not.
 func TestUntrackedFiles_ListsNewFileAndOmitsExcluded(t *testing.T) {
 	dir, repo := newRepo(t)
 	writeFile(t, dir, "tracked.txt", "base\n")

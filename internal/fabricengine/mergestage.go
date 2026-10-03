@@ -125,18 +125,14 @@ func (f *Fabric) MergeStageResolved(paths []string) (res StageResult, err error)
 	return StageResult{}, nil
 }
 
-// MergeStageTracked stages every tracked modification and deletion in the warp checkout of an
-// in-progress fabric merge, so edits a conflict session made to already-tracked files land in the merge
-// commit MergeContinue writes.
+// MergeStageTracked stages every tracked modification and deletion in the warp checkout of an in-progress fabric merge,
+// so edits a conflict session made to already-tracked files land in the merge commit MergeContinue writes.
 // Untracked files are never staged;
 // MergeUntrackedFiles lists them so a caller can halt on them.
 // Only the warp side is staged: weft content is never a merge participant for a caller's own edits.
 //
-// It refuses exactly as the guarded merge verbs do: with no fabric merge record it returns
-// *ErrForeignMergeState when git-level merge state fabric did not start is present and
-// *ErrNoMergeInProgress otherwise, staging nothing either way.
-// Like MergeStageResolved it takes no weft write lock, for the same reason: with a record present the
-// guarded sibling verbs already refuse, so no other fabric writer can be in the index concurrently.
+// It refuses exactly as the guarded merge verbs do: with no fabric merge record it returns *ErrForeignMergeState when git-level merge state fabric did not start is present and *ErrNoMergeInProgress otherwise, staging nothing either way.
+// Like MergeStageResolved it takes no weft write lock, for the same reason: with a record present the guarded sibling verbs already refuse, so no other fabric writer can be in the index concurrently.
 func (f *Fabric) MergeStageTracked() (res StageResult, err error) {
 	rec := NewMutations(filepath.Dir(f.warpPath))
 	defer func() { res.Mutations = rec.Snapshot() }()

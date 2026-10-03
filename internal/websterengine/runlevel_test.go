@@ -2774,8 +2774,7 @@ func TestRun_PendingPlanPathNamesRestorePlan(t *testing.T) {
 	}
 }
 
-// TestRun_MasterSpecPromptIsRenderedPromptWithoutMasterFile pins that Run hands the rendered Master
-// prompt straight to the spawn (the provider engine writes its own prompt.md) and writes no master.md.
+// TestRun_MasterSpecPromptIsRenderedPromptWithoutMasterFile pins that Run hands the rendered Master prompt straight to the spawn (the provider engine writes its own prompt.md) and writes no master.md.
 func TestRun_MasterSpecPromptIsRenderedPromptWithoutMasterFile(t *testing.T) {
 	fx := newRunFixture(t, 1)
 	seedMatchingState(t, fx, &websterengine.State{

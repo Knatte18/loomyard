@@ -199,11 +199,10 @@ func (r *Repo) StageResolved(paths []string) error {
 	return nil
 }
 
-// StageTrackedChanges stages every tracked modification and deletion in the working tree and nothing
-// untracked, via `git add -u`.
-// It is how a caller lands edits made to already-tracked files mid-merge: `-u` takes no pathspec, so
-// it cannot be steered at an untracked or ignored path, and it never force-adds (see the Never
-// Force-Add Invariant).
+// StageTrackedChanges stages every tracked modification and deletion in the working tree and nothing untracked, via `git add -u`.
+// It is how a caller lands edits made to already-tracked files mid-merge: `-u` takes no pathspec,
+// so it cannot be steered at an untracked or ignored path,
+// and it never force-adds (see the Never Force-Add Invariant).
 // A tree with nothing tracked to stage is a successful no-op.
 func (r *Repo) StageTrackedChanges() error {
 	if _, err := r.runChecked("add", "-u"); err != nil {

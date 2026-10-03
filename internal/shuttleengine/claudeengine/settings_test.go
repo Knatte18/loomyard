@@ -468,10 +468,9 @@ func TestBuildSettings_AllowAgentTool(t *testing.T) {
 	})
 }
 
-// TestPrepare_PromptLaunchLimit pins that the launch line carries a pointer to prompt.md, never the
-// prompt text, so a prompt over the old 30000-byte bound launches and prompt.md holds all of it.
-// Only a pointer over maxLaunchPromptBytes, reached by a pathological run-directory path, is
-// rejected, before any run artifact is written.
+// TestPrepare_PromptLaunchLimit pins that the launch line carries a pointer to prompt.md, never the prompt text,
+// so a prompt over the old 30000-byte bound launches and prompt.md holds all of it.
+// Only a pointer over maxLaunchPromptBytes, reached by a pathological run-directory path, is rejected, before any run artifact is written.
 func TestPrepare_PromptLaunchLimit(t *testing.T) {
 	cfg := shuttleengine.Config{}
 	c := New()

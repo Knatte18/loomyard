@@ -27,8 +27,7 @@ import (
 // directory. SpecsDir is NOT in that class — there is no flag for it, so it is never overridden
 // after this builder returns.
 //
-// VerifyDir is verifytree.Dir(stateDir), so the verified-tree record sits beside webster's other
-// never-tracked state.
+// VerifyDir is verifytree.Dir(stateDir), so the verified-tree record sits beside webster's other never-tracked state.
 //
 // WorktreeRoot is target, never stateDir: it is the fork-audit workdir and the {{.worktree_root}}
 // token's value in standalone, since target is the git repository an implementer's work happens

@@ -25,11 +25,10 @@ type MergeSurface interface {
 	// MergeStageResolved stages the given, already-resolved conflict paths so MergeContinue's own
 	// index guard can pass.
 	MergeStageResolved(paths []string) (fabricengine.StageResult, error)
-	// MergeStageTracked stages every tracked modification and deletion, so edits the conflict
-	// session made outside the conflicted paths land in the merge commit.
+	// MergeStageTracked stages every tracked modification and deletion,
+	// so edits the conflict session made outside the conflicted paths land in the merge commit.
 	MergeStageTracked() (fabricengine.StageResult, error)
-	// MergeUntrackedFiles lists the untracked, non-ignored worktree-relative paths, which a merge
-	// commit never carries.
+	// MergeUntrackedFiles lists the untracked, non-ignored worktree-relative paths, which a merge commit never carries.
 	MergeUntrackedFiles() ([]string, error)
 	// MergeContinue concludes an in-progress merge once every conflict has been resolved.
 	MergeContinue(msg string) (fabricengine.MergeResult, error)

@@ -47,8 +47,7 @@ func (r *Resolver) Resolve(ctx context.Context, source string) (Result, error) {
 		}
 	}
 
-	// A report is one call's ephemeral diagnostics: one left by an earlier call would trip the spec
-	// validator's existing-output refusal on this call's first attempt.
+	// A report is one call's ephemeral diagnostics: one left by an earlier call would trip the spec validator's existing-output refusal on this call's first attempt.
 	if err := r.clearStaleReports(); err != nil {
 		return Result{}, err
 	}
@@ -120,8 +119,8 @@ func (r *Resolver) resolveConflicts(ctx context.Context, conflicts []string) (Re
 		}
 
 		if len(unresolved) == 0 {
-			// A new file is never part of a merge commit, so the session's untracked files halt the
-			// merge before anything is staged.
+			// A new file is never part of a merge commit,
+			// so the session's untracked files halt the merge before anything is staged.
 			untracked, err := r.deps.Fabric.MergeUntrackedFiles()
 			if err != nil {
 				return Result{}, fmt.Errorf("mergeresolve: list untracked files (attempt %d): %w", attempt, err)
@@ -130,9 +129,7 @@ func (r *Resolver) resolveConflicts(ctx context.Context, conflicts []string) (Re
 				return r.abortAndStuck(ctx, fmt.Sprintf("conflict session left untracked file(s) (attempt %d): %s", attempt, strings.Join(untracked, ", ")))
 			}
 
-			// Clean scan: stage the conflicted paths, then every tracked edit the session made
-			// beyond them, then conclude, in that order — the ordering is the entire reason the
-			// staging verbs exist.
+			// Clean scan: stage the conflicted paths, then every tracked edit the session made beyond them, then conclude, in that order — the ordering is the entire reason the staging verbs exist.
 			if _, err := r.deps.Fabric.MergeStageResolved(conflicts); err != nil {
 				return Result{}, fmt.Errorf("mergeresolve: stage resolved conflict paths (attempt %d): %w", attempt, err)
 			}

@@ -39,8 +39,7 @@ type Config struct {
 	// the cold recovery strand with no report and no live strand classifies
 	// dead (dead_reason: timeout); applies only to recover-batch.
 	RecoveryTimeoutMin int `yaml:"recovery_timeout_min"`
-	// VerifyGateAttempts is the number of attempts the plan-level verify gate
-	// on Merriam's strand gives Merriam before the gate stops the run.
+	// VerifyGateAttempts is the number of attempts the plan-level verify gate on Merriam's strand gives Merriam before the gate stops the run.
 	VerifyGateAttempts int `yaml:"verify_gate_attempts"`
 }
 

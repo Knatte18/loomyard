@@ -1206,8 +1206,7 @@ func TestRenderRecoveryPrompt_FrictionDirective(t *testing.T) {
 	})
 }
 
-// TestRenderVerifyFixPrompt_FrictionDirective is TestRenderForkPrompt_FrictionDirective's
-// RenderVerifyFixPrompt mirror.
+// TestRenderVerifyFixPrompt_FrictionDirective is TestRenderForkPrompt_FrictionDirective's RenderVerifyFixPrompt mirror.
 func TestRenderVerifyFixPrompt_FrictionDirective(t *testing.T) {
 	render := func(anchorRoot, stencilsDir, notePath string) ([]byte, error) {
 		return websterengine.RenderVerifyFixPrompt("/reports/verify-gate.yaml", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), stencilsDir, notePath)

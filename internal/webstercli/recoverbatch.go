@@ -1,5 +1,4 @@
-// recoverbatch.go implements the `recover-batch` webster verb: the re-entrant, blocking
-// escalation call Master's own prompt makes, backgrounded, when a fork reports stuck or never reports at all.
+// recoverbatch.go implements the `recover-batch` webster verb: the re-entrant, blocking escalation call Master's own prompt makes, backgrounded, when a fork reports stuck or never reports at all.
 // It drives websterengine's three lease-scoped phases with a real, wall-clock Clock:
 // RecoverSpawnOrAttach under the state-mutation lease (saved and fabric-committed "...
 // spawn" when this call performed the spawn) -- the spawn phase under the lease now includes the

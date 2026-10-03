@@ -1,9 +1,6 @@
 //go:build integration
 
-// mergestagetracked_integration_test.go covers MergeStageTracked and MergeUntrackedFiles against a
-// real conflicted pair: a tracked, non-conflicted edit staged by the verb lands in the merge commit
-// MergeContinue writes, a file created mid-merge in the warp is listed as untracked,
-// an untracked weft file is not, and the verb refuses with no merge in progress.
+// mergestagetracked_integration_test.go covers MergeStageTracked and MergeUntrackedFiles against a real conflicted pair: a tracked, non-conflicted edit staged by the verb lands in the merge commit MergeContinue writes, a file created mid-merge in the warp is listed as untracked, an untracked weft file is not, and the verb refuses with no merge in progress.
 
 package fabricengine_test
 
@@ -19,9 +16,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 )
 
-// TestMergeStageTracked_EditLandsInMergeCommitAndUntrackedIsListed drives a conflicted MergeIn, edits a
-// tracked file the merge did not conflict on and creates a new file, then asserts the verb stages only
-// the tracked edit and MergeContinue's commit carries it.
+// TestMergeStageTracked_EditLandsInMergeCommitAndUntrackedIsListed drives a conflicted MergeIn, edits a tracked file the merge did not conflict on and creates a new file,
+// then asserts the verb stages only the tracked edit and MergeContinue's commit carries it.
 func TestMergeStageTracked_EditLandsInMergeCommitAndUntrackedIsListed(t *testing.T) {
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 	warpDir := h.PrimeWorktree()
@@ -84,8 +80,7 @@ func TestMergeStageTracked_EditLandsInMergeCommitAndUntrackedIsListed(t *testing
 	}
 }
 
-// TestMergeStageTracked_NoMergeInProgressRefuses asserts the verb refuses, staging nothing, when no
-// fabric merge record exists.
+// TestMergeStageTracked_NoMergeInProgressRefuses asserts the verb refuses, staging nothing, when no fabric merge record exists.
 func TestMergeStageTracked_NoMergeInProgressRefuses(t *testing.T) {
 	_, f, _, _, _, _ := newMergePairFixture(t, ".")
 
@@ -99,8 +94,7 @@ func TestMergeStageTracked_NoMergeInProgressRefuses(t *testing.T) {
 	}
 }
 
-// TestMergeStageTracked_ForeignMergeStateRefuses asserts the verb refuses a plain-git conflicted merge
-// fabric did not start.
+// TestMergeStageTracked_ForeignMergeStateRefuses asserts the verb refuses a plain-git conflicted merge fabric did not start.
 func TestMergeStageTracked_ForeignMergeStateRefuses(t *testing.T) {
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 

@@ -119,9 +119,7 @@ func TestDriverTeardownCommand_CommitsRecordsBeforeRemovingStrandJoinedBySemicol
 	}
 }
 
-// TestDriverPrompt_StaysShort is a bound check, not an exact-length pin: the prompt must stay short
-// for a realistic run-id and report path, since a prompt that grew into a copy of the skill would go
-// stale against the skill it copies.
+// TestDriverPrompt_StaysShort is a bound check, not an exact-length pin: the prompt must stay short for a realistic run-id and report path, since a prompt that grew into a copy of the skill would go stale against the skill it copies.
 func TestDriverPrompt_StaysShort(t *testing.T) {
 	runID := "some-realistic-worktree-name"
 	reportPath := "/hub/some-realistic-worktree-name/.lyx/shed/some-realistic-worktree-name/drive-report-20260920-120000-cafe.md"

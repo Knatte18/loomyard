@@ -319,11 +319,8 @@ func masterPlanDirDisplay(paneCwd, planDir string) string {
 // SequenceBatches already reordered, since nothing in this function reorders it further.
 // It fills no {{.worktree_root}} key at all — anchorRoot feeds pattern.Directive's own probe, and
 // worktreeRoot (the pane's own cwd) feeds only masterPlanDirDisplay's relative-spelling decision.
-// planDir is the told plan directory (Geometry.PlanDir), rendered so a standalone Master — whose
-// plan lives in the derived state directory, not at the pane's own `_lyx/plan` — can actually find
-// what the prompt tells it to read (found live in crucible round fable5-high-r3, F-A4).
-// verifyFixPromptPath is the Go-rendered verify-gate fixer fork prompt file Merriam forwards to
-// its one fixer fork.
+// planDir is the told plan directory (Geometry.PlanDir), rendered so a standalone Master — whose plan lives in the derived state directory, not at the pane's own `_lyx/plan` — can actually find what the prompt tells it to read (found live in crucible round fable5-high-r3, F-A4).
+// verifyFixPromptPath is the Go-rendered verify-gate fixer fork prompt file Merriam forwards to its one fixer fork.
 // pattern_directive is injected via pattern.RoleOrchestrator if PATTERN is active (Master never
 // edits code, only forks).
 // notePath is the caller-composed friction note path (friction.NotePath), or "" when Tier 2 is off;

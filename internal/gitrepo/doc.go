@@ -240,8 +240,8 @@
 //     modified state — the CLI aborts having moved nothing. Pull additionally
 //     failed 25 of 40 trials with a spurious unstaged-changes rejection on a
 //     stock Windows checkout with core.autocrlf=true (0 of 40 with
-//     autocrlf=false), HEAD already moved in all 25 failures. Pull stays
-//     CLI-bound.
+//     autocrlf=false), HEAD already moved in all 25 failures.
+//     Pull stays CLI-bound.
 //   - go-git never invokes a git credential helper. Its only "credential"
 //     occurrences are doc comments on an Auth option field; it accepts an
 //     explicit transport.AuthMethod but has no mechanism to discover one from
