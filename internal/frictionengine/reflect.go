@@ -307,11 +307,10 @@ func writeRecord(path string, notes []string) error {
 	return nil
 }
 
-// archiveCovered moves the covered notes, the record and the report into the first free directory
-// of deps.ArchivePrefix + timestamp, then -2, -3 and so on, and returns a StatusReflected Report for it.
+// archiveCovered moves the covered notes, the report and then the record into the first free directory of deps.ArchivePrefix + timestamp,
+// then -2, -3 and so on, and returns a StatusReflected Report for it.
 // A covered file already gone is skipped.
-// The friction directory itself is never renamed or removed, so a note written after the record
-// stays behind for the next reflection.
+// The friction directory itself is never renamed or removed, so a note written after the record stays behind for the next reflection.
 func archiveCovered(deps Deps, clock Clock, covered []string) (Report, error) {
 	base := deps.ArchivePrefix + clock.Now().UTC().Format(archiveTimestampFormat)
 	archiveDir := base
@@ -326,7 +325,8 @@ func archiveCovered(deps Deps, clock Clock, covered []string) (Report, error) {
 		archiveDir = fmt.Sprintf("%s-%d", base, n)
 	}
 
-	names := append(append([]string{}, covered...), coveredRecordFileName, friction.ReportFileName)
+	// The record moves last, so a failure part-way leaves it beside whatever is left to settle.
+	names := append(append([]string{}, covered...), friction.ReportFileName, coveredRecordFileName)
 	for _, name := range names {
 		err := os.Rename(filepath.Join(deps.FrictionDir, name), filepath.Join(archiveDir, name))
 		if err != nil && !os.IsNotExist(err) {
