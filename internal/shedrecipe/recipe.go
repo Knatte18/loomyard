@@ -79,6 +79,13 @@ type Env struct {
 	ReviewVersion string
 	ReviewTimeout time.Duration
 
+	// JudgeModel, JudgeEffort and JudgeVersion are the run-wide default every Bouncer row falls
+	// back to when its own model/effort/version key is absent.
+	// BurlerRound rows keep reading the Review* fields above.
+	JudgeModel   string
+	JudgeEffort  string
+	JudgeVersion string
+
 	// Shuttle is the injected shedadapters.Shuttle seam, an already-constructed engine (or a
 	// factory over one).
 	Shuttle shedadapters.Shuttle

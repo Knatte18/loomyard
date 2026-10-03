@@ -400,6 +400,10 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	if err != nil {
 		return err
 	}
+	judgeSettings, err := loomengine.ResolveJudge(loomCfg, registry)
+	if err != nil {
+		return err
+	}
 
 	reedGeom, err := hubgeom.ReedGeometry(location)
 	if err != nil {
@@ -657,6 +661,10 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		ReviewEffort:  reviewSettings.Effort,
 		ReviewVersion: reviewSettings.Version,
 		ReviewTimeout: reviewSettings.Timeout,
+
+		JudgeModel:   judgeSettings.Model,
+		JudgeEffort:  judgeSettings.Effort,
+		JudgeVersion: judgeSettings.Version,
 
 		// Landing is deliberately left unfilled here, for a different reason than the four above:
 		// Env.Landing is assembled in run.go, immediately before loomrecipe.New, because

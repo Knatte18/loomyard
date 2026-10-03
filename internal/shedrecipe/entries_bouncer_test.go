@@ -195,14 +195,14 @@ func TestBouncerEntry_ReportNamePinning(t *testing.T) {
 	}
 }
 
-// TestBouncerEntry_EnvReviewFallback covers the three fallback outcomes for bouncerEntry's
-// model/effort/version resolution: a row omitting the keys takes env.ReviewModel/ReviewEffort/
-// ReviewVersion; a row setting all three overrides the Env values; both absent leaves all three
+// TestBouncerEntry_EnvJudgeFallback covers the three fallback outcomes for bouncerEntry's
+// model/effort/version resolution: a row omitting the keys takes env.JudgeModel/JudgeEffort/
+// JudgeVersion, never the Review* values; a row setting all three overrides the Env values; both absent leaves all three
 // empty (the provider default). shedadapters.BouncerConfig's cfg field is unexported and this is a
 // different package, so the resolved triple is asserted through behaviour instead: one Call is
 // driven against the entry's producer with the shedfake.Shuttle already on newTestEnv's Env, and the
 // recorded shuttleengine.Spec's Model, Effort, and Version are asserted.
-func TestBouncerEntry_EnvReviewFallback(t *testing.T) {
+func TestBouncerEntry_EnvJudgeFallback(t *testing.T) {
 	// callAndCaptureSpec constructs a Bouncer entry from cfg and env, drives the seed-pass Call --
 	// the first Call on a fresh run directory spawns unconditionally -- and returns the recorded
 	// shuttleengine.Spec.
@@ -227,9 +227,12 @@ func TestBouncerEntry_EnvReviewFallback(t *testing.T) {
 
 	t.Run("RowOmitsTakesEnvValues", func(t *testing.T) {
 		env := newTestEnv(t)
-		env.ReviewModel = "env-model"
-		env.ReviewEffort = "env-effort"
-		env.ReviewVersion = "env-version"
+		env.JudgeModel = "env-model"
+		env.JudgeEffort = "env-effort"
+		env.JudgeVersion = "env-version"
+		env.ReviewModel = "review-model"
+		env.ReviewEffort = "review-effort"
+		env.ReviewVersion = "review-version"
 		cfg := minimalBouncerConfig(t, env)
 
 		spec := callAndCaptureSpec(t, cfg, env)
@@ -246,9 +249,9 @@ func TestBouncerEntry_EnvReviewFallback(t *testing.T) {
 
 	t.Run("RowSetsOverridesEnvValues", func(t *testing.T) {
 		env := newTestEnv(t)
-		env.ReviewModel = "env-model"
-		env.ReviewEffort = "env-effort"
-		env.ReviewVersion = "env-version"
+		env.JudgeModel = "env-model"
+		env.JudgeEffort = "env-effort"
+		env.JudgeVersion = "env-version"
 		cfg := minimalBouncerConfig(t, env)
 		cfg["model"] = "row-model"
 		cfg["effort"] = "row-effort"

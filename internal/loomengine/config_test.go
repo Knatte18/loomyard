@@ -80,6 +80,9 @@ func TestLoadConfig_WellFormed(t *testing.T) {
 	if cfg.Review != "opus[effort=high]" {
 		t.Errorf("cfg.Review = %q; want %q", cfg.Review, "opus[effort=high]")
 	}
+	if cfg.Judge != "sonnet[medium]" {
+		t.Errorf("cfg.Judge = %q; want %q", cfg.Judge, "sonnet[medium]")
+	}
 	if cfg.ReviewTimeoutMin != 240 {
 		t.Errorf("cfg.ReviewTimeoutMin = %d; want %d", cfg.ReviewTimeoutMin, 240)
 	}
@@ -175,6 +178,21 @@ func TestLoadConfig_MalformedReviewSpec(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "review") {
 		t.Errorf("LoadConfig() error = %q; want it to name the %q key", err.Error(), "review")
+	}
+}
+
+// TestLoadConfig_MalformedJudgeSpec verifies an ungrammatical judge model-spec fails loud at load
+// time, naming the "judge" key.
+func TestLoadConfig_MalformedJudgeSpec(t *testing.T) {
+	baseDir := t.TempDir()
+	writeLoomConfigWithKey(t, baseDir, "judge", `"sonnet[medium"`)
+
+	_, err := LoadConfig(baseDir, "loom")
+	if err == nil {
+		t.Fatal("LoadConfig() = _, nil; want non-nil error for malformed judge spec")
+	}
+	if !strings.Contains(err.Error(), "judge") {
+		t.Errorf("LoadConfig() error = %q; want it to name the %q key", err.Error(), "judge")
 	}
 }
 

@@ -59,13 +59,13 @@ func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 	// the same thing here -- configString with required false returns "" for both -- and that is
 	// deliberate: there is no meaningful "explicitly empty" model.
 	if model == "" {
-		model = env.ReviewModel
+		model = env.JudgeModel
 	}
 	if effort == "" {
-		effort = env.ReviewEffort
+		effort = env.JudgeEffort
 	}
 	if version == "" {
-		version = env.ReviewVersion
+		version = env.JudgeVersion
 	}
 	// There is deliberately no "report_name" key: BouncerConfig.ReportName is pinned below, not
 	// recipe-authorable, so a "report_name" entry in cfg is rejected here as unrecognised rather

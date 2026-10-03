@@ -1,8 +1,8 @@
 // config.go — configuration for the loom module.
 //
 // Defines the Config type mirroring loom.yaml's keys and LoadConfig, which uses internal/configengine.Load with ConfigTemplate() to strictly validate and resolve loom's config file,
-// then validates the discussion, plan, review, friction, and driver role model-specs' grammar via modelspec.Parse, rejects a negative value on each of the four timeout knobs, and rejects a parent_review_wait_min below 1,
-// so a mistake in any of those ten keys fails loud at load time rather than hours into a run when the discussion, plan, review, friction, or driver producer first spawns.
+// then validates the discussion, plan, review, judge, friction, and driver role model-specs' grammar via modelspec.Parse, rejects a negative value on each of the four timeout knobs, and rejects a parent_review_wait_min below 1,
+// so a mistake in any of those eleven keys fails loud at load time rather than hours into a run when the discussion, plan, review, judge, friction, or driver producer first spawns.
 // friction and driver are the two role keys validated only when non-empty: a present-but-empty
 // value means, respectively, Tier 2 self-reporting is off or the engine default model runs the
 // driver, and both must load cleanly, unlike the other role keys, which are always required.
@@ -356,8 +356,9 @@ type Config struct {
 	Plan                  string `yaml:"plan"`
 	PlanTimeoutMin        int    `yaml:"plan_timeout_min"`
 	Review                string `yaml:"review"`
+	Judge                 string `yaml:"judge"`
 	ReviewTimeoutMin      int    `yaml:"review_timeout_min"`
-	Selfreport            bool   `yaml:"selfreport"`
+	Selfreport           bool   `yaml:"selfreport"`
 	Friction              string `yaml:"friction"`
 	FrictionTimeoutMin    int    `yaml:"friction_timeout_min"`
 	Driver                string `yaml:"driver"`
@@ -392,8 +393,12 @@ func LoadConfig(baseDir, module string) (Config, error) {
 		return Config{}, fmt.Errorf("loom config key %q: %w", "review", err)
 	}
 
+	if _, err := modelspec.Parse(cfg.Judge); err != nil {
+		return Config{}, fmt.Errorf("loom config key %q: %w", "judge", err)
+	}
+
 	// friction is validated only when non-empty: a present-but-empty value means Tier 2 is off and
-	// must load cleanly, unlike the three role keys above, which are always required.
+	// must load cleanly, unlike the four role keys above, which are always required.
 	if cfg.Friction != "" {
 		if _, err := modelspec.Parse(cfg.Friction); err != nil {
 			return Config{}, fmt.Errorf("loom config key %q: %w", "friction", err)
