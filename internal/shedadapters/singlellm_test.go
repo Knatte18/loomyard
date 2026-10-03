@@ -13,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
 // captureLogOutput redirects logger output into a buffer for the duration of one test, restoring
@@ -23,116 +24,6 @@ func captureLogOutput(t *testing.T) *bytes.Buffer {
 	logger.SetOutput(&buf)
 	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
 	return &buf
-}
-
-// fakeShuttle records the Spec it was handed and returns a caller-configured Result/error.
-// An optional duringRun hook lets a test cancel the context (or otherwise act) as if it happened
-// mid-run, before Run returns its configured result.
-// attachResult, attachFound, and attachErr script Attach's return; attachCalled and gotAttachSpec
-// record whether Attach ran and with what Spec, so a test can assert the probe ran and with what.
-type fakeShuttle struct {
-	result    shuttleengine.Result
-	err       error
-	called    bool
-	gotSpec   shuttleengine.Spec
-	duringRun func()
-
-	attachResult  shuttleengine.Result
-	attachFound   bool
-	attachErr     error
-	attachCalled  bool
-	gotAttachSpec shuttleengine.Spec
-	// duringAttach is Attach's twin of duringRun: it runs before Attach returns, so a test can
-	// write the files an attached-and-waited-on run would have produced, exactly as duringRun does
-	// for a spawned one.
-	duringAttach func()
-
-	// gotGateSpec and gotAttachGateSpec record the GateSpec RunGated/AttachGated last received.
-	gotGateSpec       shuttleengine.GateSpec
-	gotAttachGateSpec shuttleengine.GateSpec
-
-	// gateAttempts is the count RunGated/AttachGated stamp onto the GateOutcome they build when the
-	// gate closure is consulted -- a test leaves this at its zero value unless it specifically needs
-	// to assert GateAttempts propagation with a non-zero count.
-	gateAttempts int
-	// gateReason is stamped onto the GateOutcome as Reason when the gate did not pass, standing in for a terminal entry's explanation.
-	gateReason string
-}
-
-func (f *fakeShuttle) Run(spec shuttleengine.Spec) (shuttleengine.Result, error) {
-	f.called = true
-	f.gotSpec = spec
-	if f.duringRun != nil {
-		f.duringRun()
-	}
-	return f.result, f.err
-}
-
-// Attach implements shedadapters.Shuttle's probe method, recording spec and returning f's
-// caller-configured attachResult/attachFound/attachErr.
-func (f *fakeShuttle) Attach(spec shuttleengine.Spec) (shuttleengine.Result, bool, error) {
-	f.attachCalled = true
-	f.gotAttachSpec = spec
-	if f.duringAttach != nil {
-		f.duringAttach()
-	}
-	return f.attachResult, f.attachFound, f.attachErr
-}
-
-// RunGated implements the shared fake contract every shedadapters.Shuttle/burlerengine.Shuttle test fake follows (see the "every test fake evaluates the gate once" decision):
-// record the received GateSpec, delegate to Run's own body, then -- only when gate is non-empty and the delegated outcome is OutcomeDone -- invoke the entries once each in list order (see evalGateList), returning a closure's error if non-nil and otherwise stamping a *GateOutcome onto the returned Result.
-// No re-prompt loop is simulated; there is no pane to send into.
-func (f *fakeShuttle) RunGated(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (shuttleengine.Result, error) {
-	f.gotGateSpec = gate
-
-	result, err := f.Run(spec)
-	if err != nil || len(gate) == 0 || result.Outcome != shuttleengine.OutcomeDone {
-		return result, err
-	}
-
-	passed, gerr := evalGateList(gate)
-	if gerr != nil {
-		return result, gerr
-	}
-	result.Gate = &shuttleengine.GateOutcome{Passed: passed, Attempts: f.gateAttempts}
-	if !passed {
-		result.Gate.Reason = f.gateReason
-	}
-	return result, nil
-}
-
-// evalGateList runs gate's entries in list order for a test fake, skipping off entries (Attempts 0) and stopping at the first failure, and reports whether every entry run passed.
-func evalGateList(gate shuttleengine.GateSpec) (bool, error) {
-	for _, entry := range gate {
-		if entry.Attempts <= 0 {
-			continue
-		}
-		result, err := entry.Gate()
-		if err != nil {
-			return false, err
-		}
-		if !result.Passed {
-			return false, nil
-		}
-	}
-	return true, nil
-}
-
-// AttachGated is AttachGated's Attach twin, following the identical shared fake contract.
-func (f *fakeShuttle) AttachGated(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (shuttleengine.Result, bool, error) {
-	f.gotAttachGateSpec = gate
-
-	result, found, err := f.Attach(spec)
-	if err != nil || !found || len(gate) == 0 || result.Outcome != shuttleengine.OutcomeDone {
-		return result, found, err
-	}
-
-	passed, gerr := evalGateList(gate)
-	if gerr != nil {
-		return result, found, gerr
-	}
-	result.Gate = &shuttleengine.GateOutcome{Passed: passed, Attempts: f.gateAttempts}
-	return result, found, nil
 }
 
 func specSource(spec shuttleengine.Spec, err error) SpecSource {
@@ -148,20 +39,14 @@ func TestSingleLLMProducer_OutcomeDone(t *testing.T) {
 		filepath.Join(dir, "secondary.md"),
 	}
 	spec := shuttleengine.Spec{Prompt: "do the thing", OutputFiles: outputs}
-	shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 	p := NewSingleLLMProducer("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil)
 
-	outcome, ptr, err := p.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Done {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Done)
-	}
+	ptr := shedfake.RequireOutcome(t, p, shedengine.Done)
 	if ptr.Path != outputs[0] {
 		t.Errorf("Call() pointer = %q; want %q (first entry)", ptr.Path, outputs[0])
 	}
-	if !shuttle.called {
+	if !shuttle.Called {
 		t.Error("Call() did not invoke the shuttle seam")
 	}
 }
@@ -180,16 +65,10 @@ func TestSingleLLMProducer_OutcomeAsking(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			shuttle := &fakeShuttle{result: tt.result}
+			shuttle := &shedfake.Shuttle{Result: tt.result}
 			p := NewSingleLLMProducer("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil)
 
-			outcome, ptr, err := p.Call(context.Background())
-			if err != nil {
-				t.Fatalf("Call() error = %v; want nil", err)
-			}
-			if outcome != shedengine.Stuck {
-				t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-			}
+			ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 			if ptr.Path != "" || ptr.GateAttempts != nil {
 				t.Errorf("Call() pointer = %+v; want empty Path and no GateAttempts", ptr)
 			}
@@ -216,7 +95,7 @@ func TestSingleLLMProducer_OutcomeDiedAndTimeout(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := t.TempDir()
 			spec := shuttleengine.Spec{Prompt: "run", OutputFiles: []string{filepath.Join(dir, "out.md")}}
-			shuttle := &fakeShuttle{result: shuttleengine.Result{
+			shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{
 				Outcome:    tt.outcome,
 				SessionID:  "session-1",
 				StrandGUID: "strand-1",
@@ -254,7 +133,7 @@ func TestSingleLLMProducer_NotStartedWrapsErrNotStarted(t *testing.T) {
 	for _, notStarted := range []bool{true, false} {
 		dir := t.TempDir()
 		spec := shuttleengine.Spec{Prompt: "run", OutputFiles: []string{filepath.Join(dir, "out.md")}}
-		shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDied, RunDir: dir, NotStarted: notStarted}}
+		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDied, RunDir: dir, NotStarted: notStarted}}
 		p := NewSingleLLMProducer("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil)
 		captureLogOutput(t)
 
@@ -277,9 +156,9 @@ func TestSingleLLMProducer_CancelledDuringRun_DiedOutcomeEmitsNoWarn(t *testing.
 	spec := shuttleengine.Spec{Prompt: "run", OutputFiles: []string{filepath.Join(dir, "out.md")}}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	shuttle := &fakeShuttle{
-		result:    shuttleengine.Result{Outcome: shuttleengine.OutcomeDied},
-		duringRun: cancel,
+	shuttle := &shedfake.Shuttle{
+		Result:    shuttleengine.Result{Outcome: shuttleengine.OutcomeDied},
+		DuringRun: cancel,
 	}
 	p := NewSingleLLMProducer("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil)
 	buf := captureLogOutput(t)
@@ -300,7 +179,7 @@ func TestSingleLLMProducer_SeamErrorPropagates(t *testing.T) {
 	dir := t.TempDir()
 	spec := shuttleengine.Spec{Prompt: "run", OutputFiles: []string{filepath.Join(dir, "out.md")}}
 	seamErr := errors.New("seam exploded")
-	shuttle := &fakeShuttle{err: seamErr}
+	shuttle := &shedfake.Shuttle{Err: seamErr}
 	p := NewSingleLLMProducer("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil)
 
 	_, _, err := p.Call(context.Background())
@@ -317,7 +196,7 @@ func TestSingleLLMProducer_SeamErrorPropagates(t *testing.T) {
 
 func TestSingleLLMProducer_OutcomeDoneWithEmptyOutputFiles(t *testing.T) {
 	spec := shuttleengine.Spec{Prompt: "run", OutputFiles: nil}
-	shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 	p := NewSingleLLMProducer("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil)
 
 	_, _, err := p.Call(context.Background())
@@ -328,7 +207,7 @@ func TestSingleLLMProducer_OutcomeDoneWithEmptyOutputFiles(t *testing.T) {
 
 func TestSingleLLMProducer_SpecSourceError(t *testing.T) {
 	specErr := errors.New("spec build failed")
-	shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 	p := NewSingleLLMProducer("loom", specSource(shuttleengine.Spec{}, specErr), shuttle, fixedClock(time.Now()), nil)
 
 	_, _, err := p.Call(context.Background())
@@ -338,14 +217,14 @@ func TestSingleLLMProducer_SpecSourceError(t *testing.T) {
 	if !errors.Is(err, specErr) {
 		t.Errorf("Call() error = %v; want it to wrap %v", err, specErr)
 	}
-	if shuttle.called {
+	if shuttle.Called {
 		t.Error("Call() invoked the shuttle seam after a SpecSource error")
 	}
 }
 
 func TestSingleLLMProducer_RelativeOutputFileRejected(t *testing.T) {
 	spec := shuttleengine.Spec{Prompt: "run", OutputFiles: []string{"relative/out.md"}}
-	shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 	p := NewSingleLLMProducer("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil)
 
 	_, _, err := p.Call(context.Background())
@@ -355,7 +234,7 @@ func TestSingleLLMProducer_RelativeOutputFileRejected(t *testing.T) {
 	if !strings.Contains(err.Error(), "relative/out.md") {
 		t.Errorf("Call() error %q does not name the offending entry", err.Error())
 	}
-	if shuttle.called {
+	if shuttle.Called {
 		t.Error("Call() invoked the shuttle seam with a relative OutputFiles entry")
 	}
 }
@@ -370,18 +249,16 @@ func TestSingleLLMProducer_ArchivesPreexistingOutput(t *testing.T) {
 	spec := shuttleengine.Spec{Prompt: "run", OutputFiles: []string{outPath}}
 
 	var archivedFree bool
-	shuttle := &fakeShuttle{
-		result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
-		duringRun: func() {
+	shuttle := &shedfake.Shuttle{
+		Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
+		DuringRun: func() {
 			_, err := os.Stat(outPath)
 			archivedFree = os.IsNotExist(err)
 		},
 	}
 	p := NewSingleLLMProducer("loom", specSource(spec, nil), shuttle, fixedClock(instant), nil)
 
-	if _, _, err := p.Call(context.Background()); err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
+	shedfake.CallOK(t, p)
 	if !archivedFree {
 		t.Error("original output path was not free by the time the shuttle seam ran")
 	}
@@ -400,20 +277,16 @@ func TestSingleLLMProducer_ArchiveCollisionSuffix(t *testing.T) {
 	if err := os.WriteFile(outPath, []byte("first"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
-	shuttle1 := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+	shuttle1 := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 	p1 := NewSingleLLMProducer("loom", specSource(spec, nil), shuttle1, fixedClock(instant), nil)
-	if _, _, err := p1.Call(context.Background()); err != nil {
-		t.Fatalf("Call() (first) error = %v; want nil", err)
-	}
+	shedfake.CallOK(t, p1)
 
 	if err := os.WriteFile(outPath, []byte("second"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
-	shuttle2 := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+	shuttle2 := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 	p2 := NewSingleLLMProducer("loom", specSource(spec, nil), shuttle2, fixedClock(instant), nil)
-	if _, _, err := p2.Call(context.Background()); err != nil {
-		t.Fatalf("Call() (second) error = %v; want nil", err)
-	}
+	shedfake.CallOK(t, p2)
 
 	want := filepath.Join(dir, "out-20260816T151326Z-1.md")
 	if _, err := os.Stat(want); err != nil {
@@ -425,12 +298,10 @@ func TestSingleLLMProducer_MissingOutputFileIsNoOp(t *testing.T) {
 	dir := t.TempDir()
 	outPath := filepath.Join(dir, "out.md")
 	spec := shuttleengine.Spec{Prompt: "run", OutputFiles: []string{outPath}}
-	shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 	p := NewSingleLLMProducer("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil)
 
-	if _, _, err := p.Call(context.Background()); err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
+	shedfake.CallOK(t, p)
 }
 
 func TestSingleLLMProducer_NilNowStillArchives(t *testing.T) {
@@ -440,12 +311,10 @@ func TestSingleLLMProducer_NilNowStillArchives(t *testing.T) {
 		t.Fatalf("WriteFile: %v", err)
 	}
 	spec := shuttleengine.Spec{Prompt: "run", OutputFiles: []string{outPath}}
-	shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 	p := NewSingleLLMProducer("loom", specSource(spec, nil), shuttle, nil, nil)
 
-	if _, _, err := p.Call(context.Background()); err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
+	shedfake.CallOK(t, p)
 	if _, err := os.Stat(outPath); !os.IsNotExist(err) {
 		t.Error("original output path still exists after archive under a nil now")
 	}
@@ -464,7 +333,7 @@ func TestSingleLLMProducer_NilNowStillArchives(t *testing.T) {
 func TestSingleLLMProducer_AlreadyCancelledContext(t *testing.T) {
 	dir := t.TempDir()
 	spec := shuttleengine.Spec{Prompt: "run", OutputFiles: []string{filepath.Join(dir, "out.md")}}
-	shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 	p := NewSingleLLMProducer("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -477,7 +346,7 @@ func TestSingleLLMProducer_AlreadyCancelledContext(t *testing.T) {
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("Call() error = %v; want errors.Is(err, context.Canceled)", err)
 	}
-	if shuttle.called {
+	if shuttle.Called {
 		t.Error("Call() invoked the shuttle seam with an already-cancelled context")
 	}
 }
@@ -491,9 +360,9 @@ func TestSingleLLMProducer_CancelledDuringRun_OutcomeDoneStillSucceeds(t *testin
 	spec := shuttleengine.Spec{Prompt: "run", OutputFiles: []string{outPath}}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	shuttle := &fakeShuttle{
-		result:    shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
-		duringRun: cancel,
+	shuttle := &shedfake.Shuttle{
+		Result:    shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
+		DuringRun: cancel,
 	}
 	p := NewSingleLLMProducer("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil)
 
@@ -514,9 +383,9 @@ func TestSingleLLMProducer_CancelledDuringRun_OutcomeAskingYieldsContextError(t 
 	spec := shuttleengine.Spec{Prompt: "run", OutputFiles: []string{filepath.Join(dir, "out.md")}}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	shuttle := &fakeShuttle{
-		result:    shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking},
-		duringRun: cancel,
+	shuttle := &shedfake.Shuttle{
+		Result:    shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking},
+		DuringRun: cancel,
 	}
 	p := NewSingleLLMProducer("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil)
 
@@ -538,20 +407,18 @@ func TestSingleLLMProducer_CancelledDuringRun_OutcomeAskingYieldsContextError(t 
 func TestSingleLLMProducer_NoBridgeInstalled(t *testing.T) {
 	dir := t.TempDir()
 	spec := shuttleengine.Spec{Prompt: "run", OutputFiles: []string{filepath.Join(dir, "out.md")}}
-	shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 	p := NewSingleLLMProducer("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil)
 
-	if _, _, err := p.Call(context.Background()); err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
+	shedfake.CallOK(t, p)
 	// The seam's Run(shuttleengine.Spec) (shuttleengine.Result, error) shape carries no callback
 	// field and no cancellation channel; the recorded Spec being exactly the SpecSource's output
 	// pins that the seam receives nothing else.
-	if shuttle.gotSpec.Prompt != spec.Prompt {
-		t.Errorf("recorded spec.Prompt = %q; want %q", shuttle.gotSpec.Prompt, spec.Prompt)
+	if shuttle.GotSpec.Prompt != spec.Prompt {
+		t.Errorf("recorded spec.Prompt = %q; want %q", shuttle.GotSpec.Prompt, spec.Prompt)
 	}
-	if len(shuttle.gotSpec.OutputFiles) != 1 || shuttle.gotSpec.OutputFiles[0] != spec.OutputFiles[0] {
-		t.Errorf("recorded spec.OutputFiles = %v; want %v", shuttle.gotSpec.OutputFiles, spec.OutputFiles)
+	if len(shuttle.GotSpec.OutputFiles) != 1 || shuttle.GotSpec.OutputFiles[0] != spec.OutputFiles[0] {
+		t.Errorf("recorded spec.OutputFiles = %v; want %v", shuttle.GotSpec.OutputFiles, spec.OutputFiles)
 	}
 }
 
@@ -563,19 +430,17 @@ func TestSingleLLMProducer_ProbeNotFound_ArchivesAndRuns(t *testing.T) {
 	}
 	instant := time.Date(2026, 8, 16, 15, 13, 26, 0, time.UTC)
 	spec := shuttleengine.Spec{Prompt: "run", OutputFiles: []string{outPath}}
-	shuttle := &fakeShuttle{
-		attachFound: false,
-		result:      shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
+	shuttle := &shedfake.Shuttle{
+		AttachFound: false,
+		Result:      shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
 	}
 	p := NewSingleLLMProducer("loom", specSource(spec, nil), shuttle, fixedClock(instant), nil)
 
-	if _, _, err := p.Call(context.Background()); err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if !shuttle.attachCalled {
+	shedfake.CallOK(t, p)
+	if !shuttle.AttachCalled {
 		t.Error("Call() did not probe Attach")
 	}
-	if !shuttle.called {
+	if !shuttle.Called {
 		t.Error("Call() did not call Run after a not-found probe")
 	}
 	want := filepath.Join(dir, "out-20260816T151326Z.md")
@@ -592,20 +457,18 @@ func TestSingleLLMProducer_ProbeFound_NoArchiveNoRun(t *testing.T) {
 		t.Fatalf("WriteFile: %v", err)
 	}
 	spec := shuttleengine.Spec{Prompt: "run", OutputFiles: []string{outPath}}
-	shuttle := &fakeShuttle{
-		attachFound:  true,
-		attachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
-		result:       shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
+	shuttle := &shedfake.Shuttle{
+		AttachFound:  true,
+		AttachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
+		Result:       shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
 	}
 	p := NewSingleLLMProducer("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil)
 
-	if _, _, err := p.Call(context.Background()); err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if !shuttle.attachCalled {
+	shedfake.CallOK(t, p)
+	if !shuttle.AttachCalled {
 		t.Error("Call() did not probe Attach")
 	}
-	if shuttle.called {
+	if shuttle.Called {
 		t.Error("Call() called Run after a found probe; want no respawn")
 	}
 	// Prove no archive happened by asserting the original path still holds its original content --
@@ -631,23 +494,17 @@ func TestSingleLLMProducer_AttachedOutcomeDone(t *testing.T) {
 	dir := t.TempDir()
 	outputs := []string{filepath.Join(dir, "primary.md"), filepath.Join(dir, "secondary.md")}
 	spec := shuttleengine.Spec{Prompt: "run", OutputFiles: outputs}
-	shuttle := &fakeShuttle{
-		attachFound:  true,
-		attachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
+	shuttle := &shedfake.Shuttle{
+		AttachFound:  true,
+		AttachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
 	}
 	p := NewSingleLLMProducer("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil)
 
-	outcome, ptr, err := p.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Done {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Done)
-	}
+	ptr := shedfake.RequireOutcome(t, p, shedengine.Done)
 	if ptr.Path != outputs[0] {
 		t.Errorf("Call() pointer = %q; want %q (first entry)", ptr.Path, outputs[0])
 	}
-	if shuttle.called {
+	if shuttle.Called {
 		t.Error("Call() called Run after an attached OutcomeDone")
 	}
 }
@@ -655,19 +512,13 @@ func TestSingleLLMProducer_AttachedOutcomeDone(t *testing.T) {
 func TestSingleLLMProducer_AttachedOutcomeAsking(t *testing.T) {
 	dir := t.TempDir()
 	spec := shuttleengine.Spec{Prompt: "run", OutputFiles: []string{filepath.Join(dir, "out.md")}}
-	shuttle := &fakeShuttle{
-		attachFound:  true,
-		attachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking, LastAssistantMessage: "what next?"},
+	shuttle := &shedfake.Shuttle{
+		AttachFound:  true,
+		AttachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking, LastAssistantMessage: "what next?"},
 	}
 	p := NewSingleLLMProducer("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil)
 
-	outcome, ptr, err := p.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-	}
+	ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 	if ptr.Path != "" || ptr.Reason != "agent is asking a question" {
 		t.Errorf("Call() pointer = %+v; want empty Path and the asking Reason", ptr)
 	}
@@ -685,9 +536,9 @@ func TestSingleLLMProducer_AttachedOutcomeDiedAndTimeout(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := t.TempDir()
 			spec := shuttleengine.Spec{Prompt: "run", OutputFiles: []string{filepath.Join(dir, "out.md")}}
-			shuttle := &fakeShuttle{
-				attachFound:  true,
-				attachResult: shuttleengine.Result{Outcome: tt.outcome},
+			shuttle := &shedfake.Shuttle{
+				AttachFound:  true,
+				AttachResult: shuttleengine.Result{Outcome: tt.outcome},
 			}
 			p := NewSingleLLMProducer("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil)
 
@@ -698,7 +549,7 @@ func TestSingleLLMProducer_AttachedOutcomeDiedAndTimeout(t *testing.T) {
 			if !strings.Contains(err.Error(), string(tt.outcome)) {
 				t.Errorf("Call() error %q does not contain outcome %q", err.Error(), tt.outcome)
 			}
-			if shuttle.called {
+			if shuttle.Called {
 				t.Error("Call() called Run after an attached outcome")
 			}
 		})
@@ -713,7 +564,7 @@ func TestSingleLLMProducer_ProbeErrorPropagates(t *testing.T) {
 	}
 	spec := shuttleengine.Spec{Prompt: "run", OutputFiles: []string{outPath}}
 	attachErr := errors.New("probe exploded")
-	shuttle := &fakeShuttle{attachErr: attachErr}
+	shuttle := &shedfake.Shuttle{AttachErr: attachErr}
 	p := NewSingleLLMProducer("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil)
 
 	_, _, err := p.Call(context.Background())
@@ -723,7 +574,7 @@ func TestSingleLLMProducer_ProbeErrorPropagates(t *testing.T) {
 	if !errors.Is(err, attachErr) {
 		t.Errorf("Call() error = %v; want it to wrap %v", err, attachErr)
 	}
-	if shuttle.called {
+	if shuttle.Called {
 		t.Error("Call() called Run after a probe error")
 	}
 	got, err2 := os.ReadFile(outPath)
@@ -738,7 +589,7 @@ func TestSingleLLMProducer_ProbeErrorPropagates(t *testing.T) {
 func TestSingleLLMProducer_AlreadyCancelledContext_NoProbeAttempted(t *testing.T) {
 	dir := t.TempDir()
 	spec := shuttleengine.Spec{Prompt: "run", OutputFiles: []string{filepath.Join(dir, "out.md")}}
-	shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 	p := NewSingleLLMProducer("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -751,7 +602,7 @@ func TestSingleLLMProducer_AlreadyCancelledContext_NoProbeAttempted(t *testing.T
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("Call() error = %v; want errors.Is(err, context.Canceled)", err)
 	}
-	if shuttle.attachCalled {
+	if shuttle.AttachCalled {
 		t.Error("Call() probed Attach with an already-cancelled context")
 	}
 }
@@ -762,9 +613,9 @@ func TestSingleLLMProducer_CancelledDuringProbe_YieldsContextError(t *testing.T)
 	attachErr := errors.New("probe exploded")
 
 	ctx, cancel := context.WithCancel(context.Background())
-	shuttle := &fakeShuttleWithAttachHook{
-		fakeShuttle:  fakeShuttle{attachErr: attachErr},
-		duringAttach: cancel,
+	shuttle := &shedfake.Shuttle{
+		AttachErr:    attachErr,
+		DuringAttach: cancel,
 	}
 	p := NewSingleLLMProducer("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil)
 
@@ -775,37 +626,9 @@ func TestSingleLLMProducer_CancelledDuringProbe_YieldsContextError(t *testing.T)
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("Call() error = %v; want errors.Is(err, context.Canceled)", err)
 	}
-	if shuttle.called {
+	if shuttle.Called {
 		t.Error("Call() called Run after a cancelled probe")
 	}
-}
-
-// fakeShuttleWithAttachHook embeds fakeShuttle and runs an optional duringAttach hook mid-Attach, so
-// a test can cancel the context (or otherwise act) as if it happened during the probe, before Attach
-// returns its configured result.
-type fakeShuttleWithAttachHook struct {
-	fakeShuttle
-	duringAttach func()
-}
-
-// Attach overrides fakeShuttle's Attach to run duringAttach (if set) before returning the embedded
-// fakeShuttle's configured attach result.
-func (f *fakeShuttleWithAttachHook) Attach(spec shuttleengine.Spec) (shuttleengine.Result, bool, error) {
-	result, found, err := f.fakeShuttle.Attach(spec)
-	if f.duringAttach != nil {
-		f.duringAttach()
-	}
-	return result, found, err
-}
-
-// AttachGated overrides fakeShuttle's AttachGated in the same shape Attach is overridden above, so
-// the duringAttach hook still fires on the gated call path SingleLLMProducer.Call now drives through.
-func (f *fakeShuttleWithAttachHook) AttachGated(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (shuttleengine.Result, bool, error) {
-	result, found, err := f.fakeShuttle.AttachGated(spec, gate)
-	if f.duringAttach != nil {
-		f.duringAttach()
-	}
-	return result, found, err
 }
 
 // TestSingleLLMProducer_PrepareFreshSpawnRunsOnlyOnTheRespawnPath is the guard for the ordering the
@@ -835,10 +658,10 @@ func TestSingleLLMProducer_PrepareFreshSpawnRunsOnlyOnTheRespawnPath(t *testing.
 				t.Fatalf("WriteFile(%s): %v", output, err)
 			}
 			spec := shuttleengine.Spec{Prompt: "plan", OutputFiles: []string{output}}
-			shuttle := &fakeShuttle{
-				attachFound:  tt.attachFound,
-				attachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
-				result:       shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
+			shuttle := &shedfake.Shuttle{
+				AttachFound:  tt.attachFound,
+				AttachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
+				Result:       shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
 			}
 
 			prepared := 0
@@ -850,18 +673,16 @@ func TestSingleLLMProducer_PrepareFreshSpawnRunsOnlyOnTheRespawnPath(t *testing.
 			}
 			p := NewSingleLLMProducer("Plan-Write", specSource(spec, nil), shuttle, fixedClock(time.Now()), prepare)
 
-			if _, _, err := p.Call(context.Background()); err != nil {
-				t.Fatalf("Call() error = %v; want nil", err)
-			}
+			shedfake.CallOK(t, p)
 
-			if !shuttle.attachCalled {
+			if !shuttle.AttachCalled {
 				t.Error("Call() never probed Attach")
 			}
 			if prepared != tt.wantPrepare {
 				t.Errorf("prepareFreshSpawn ran %d time(s); want %d", prepared, tt.wantPrepare)
 			}
-			if shuttle.called != tt.wantRun {
-				t.Errorf("shuttle.Run called = %v; want %v", shuttle.called, tt.wantRun)
+			if shuttle.Called != tt.wantRun {
+				t.Errorf("shuttle.Run called = %v; want %v", shuttle.Called, tt.wantRun)
 			}
 			_, statErr := os.Stat(output)
 			if tt.attachFound && statErr != nil {
@@ -880,19 +701,13 @@ func TestSingleLLMProducer_Gate_PassingGateReachesDone(t *testing.T) {
 	dir := t.TempDir()
 	outPath := filepath.Join(dir, "out.md")
 	spec := shuttleengine.Spec{Prompt: "run", OutputFiles: []string{outPath}}
-	shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 	gate := shuttleengine.GateSpec{{Attempts: 3, Gate: func() (shuttleengine.GateResult, error) {
 		return shuttleengine.GateResult{Passed: true}, nil
 	}}}
 	p := NewSingleLLMProducerGated("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil, gate)
 
-	outcome, ptr, err := p.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Done {
-		t.Errorf("Call() outcome = %q; want %q -- unchanged from today for a passing gate", outcome, shedengine.Done)
-	}
+	ptr := shedfake.RequireOutcome(t, p, shedengine.Done)
 	if ptr.Path != outPath {
 		t.Errorf("Call() pointer = %q; want %q", ptr.Path, outPath)
 	}
@@ -906,24 +721,18 @@ func TestSingleLLMProducer_Gate_FailedGateReachesStuckWithArtifactPointer(t *tes
 	dir := t.TempDir()
 	outPath := filepath.Join(dir, "out.md")
 	spec := shuttleengine.Spec{Prompt: "run", OutputFiles: []string{outPath}}
-	shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 	gate := shuttleengine.GateSpec{{Attempts: 3, Gate: func() (shuttleengine.GateResult, error) {
 		return shuttleengine.GateResult{Passed: false, Findings: "the widget is wrong"}, nil
 	}}}
 	p := NewSingleLLMProducerGated("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil, gate)
 
-	outcome, ptr, err := p.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-	}
+	ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 	if ptr.Path != outPath {
 		t.Errorf("Call() pointer.Path = %q; want %q (never empty)", ptr.Path, outPath)
 	}
 	if ptr.GateAttempts == nil || *ptr.GateAttempts != 0 {
-		t.Errorf("Call() pointer.GateAttempts = %v; want pointer to 0 (fakeShuttle's default attempt count)", ptr.GateAttempts)
+		t.Errorf("Call() pointer.GateAttempts = %v; want pointer to 0 (shedfake.Shuttle's default attempt count)", ptr.GateAttempts)
 	}
 	if want := "gate did not pass after 0 attempts; findings: "; ptr.Reason != want {
 		t.Errorf("Call() Reason = %q; want %q (attempt count and findings path)", ptr.Reason, want)
@@ -938,19 +747,13 @@ func TestSingleLLMProducer_Gate_TerminalReasonReachesStuck(t *testing.T) {
 	dir := t.TempDir()
 	outPath := filepath.Join(dir, "out.md")
 	spec := shuttleengine.Spec{Prompt: "run", OutputFiles: []string{outPath}}
-	shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, gateReason: "the parent rejected the cap round"}
+	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, GateReason: "the parent rejected the cap round"}
 	gate := shuttleengine.GateSpec{{Attempts: 3, Gate: func() (shuttleengine.GateResult, error) {
 		return shuttleengine.GateResult{Passed: false, Findings: "the parent rejected the cap round", Terminal: true}, nil
 	}}}
 	p := NewSingleLLMProducerGated("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil, gate)
 
-	outcome, ptr, err := p.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-	}
+	ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 	if want := "the parent rejected the cap round"; ptr.Reason != want {
 		t.Errorf("Call() Reason = %q; want %q", ptr.Reason, want)
 	}
@@ -962,20 +765,14 @@ func TestSingleLLMProducer_Gate_TerminalReasonReachesStuck(t *testing.T) {
 func TestSingleLLMProducer_Gate_AskingKeepsEmptyPointer(t *testing.T) {
 	dir := t.TempDir()
 	spec := shuttleengine.Spec{Prompt: "ask", OutputFiles: []string{filepath.Join(dir, "out.md")}}
-	shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking, LastAssistantMessage: "what next?"}}
+	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking, LastAssistantMessage: "what next?"}}
 	gate := shuttleengine.GateSpec{{Attempts: 3, Gate: func() (shuttleengine.GateResult, error) {
 		t.Fatal("gate closure invoked for a non-done outcome")
 		return shuttleengine.GateResult{}, nil
 	}}}
 	p := NewSingleLLMProducerGated("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil, gate)
 
-	outcome, ptr, err := p.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-	}
+	ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 	if ptr.Path != "" || ptr.GateAttempts != nil || ptr.Reason != "agent is asking a question" {
 		t.Errorf("Call() pointer = %+v; want empty Path, no GateAttempts, and the asking Reason", ptr)
 	}
@@ -987,19 +784,17 @@ func TestSingleLLMProducer_Gate_AttachPathIsGatedToo(t *testing.T) {
 	dir := t.TempDir()
 	outputs := []string{filepath.Join(dir, "primary.md")}
 	spec := shuttleengine.Spec{Prompt: "run", OutputFiles: outputs}
-	shuttle := &fakeShuttle{
-		attachFound:  true,
-		attachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
+	shuttle := &shedfake.Shuttle{
+		AttachFound:  true,
+		AttachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
 	}
 	gate := shuttleengine.GateSpec{{Attempts: 3, Gate: func() (shuttleengine.GateResult, error) {
 		return shuttleengine.GateResult{Passed: true}, nil
 	}}}
 	p := NewSingleLLMProducerGated("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil, gate)
 
-	if _, _, err := p.Call(context.Background()); err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if len(shuttle.gotAttachGateSpec) == 0 {
+	shedfake.CallOK(t, p)
+	if len(shuttle.GotAttachGateSpec) == 0 {
 		t.Error("AttachGated was not called with the producer's own GateSpec")
 	}
 }
@@ -1015,22 +810,16 @@ func TestSingleLLMProducer_Gate_AttemptsPropagatesOntoOutputPointer(t *testing.T
 	dir := t.TempDir()
 	outPath := filepath.Join(dir, "out.md")
 	spec := shuttleengine.Spec{Prompt: "run", OutputFiles: []string{outPath}}
-	shuttle := &fakeShuttle{
-		result:       shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
-		gateAttempts: 2,
+	shuttle := &shedfake.Shuttle{
+		Result:       shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
+		GateAttempts: 2,
 	}
 	gate := shuttleengine.GateSpec{{Attempts: 3, Gate: func() (shuttleengine.GateResult, error) {
 		return shuttleengine.GateResult{Passed: true}, nil
 	}}}
 	p := NewSingleLLMProducerGated("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil, gate)
 
-	outcome, ptr, err := p.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Done {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Done)
-	}
+	ptr := shedfake.RequireOutcome(t, p, shedengine.Done)
 	if ptr.GateAttempts == nil || *ptr.GateAttempts != 2 {
 		t.Errorf("Call() pointer.GateAttempts = %v; want pointer to 2 (passed after two re-prompts)", ptr.GateAttempts)
 	}
@@ -1045,7 +834,7 @@ func TestSingleLLMProducer_PrepareFreshSpawnErrorNeitherArchivesNorSpawns(t *tes
 		t.Fatalf("WriteFile(%s): %v", output, err)
 	}
 	spec := shuttleengine.Spec{Prompt: "plan", OutputFiles: []string{output}}
-	shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 	prepareErr := errors.New("rotation failed")
 	p := NewSingleLLMProducer("Plan-Write", specSource(spec, nil), shuttle, fixedClock(time.Now()), func() (string, error) { return "", prepareErr })
 
@@ -1059,7 +848,7 @@ func TestSingleLLMProducer_PrepareFreshSpawnErrorNeitherArchivesNorSpawns(t *tes
 	if ptr != (shedengine.OutputPointer{}) {
 		t.Errorf("Call() pointer = %+v; want the zero value", ptr)
 	}
-	if shuttle.called {
+	if shuttle.Called {
 		t.Error("Call() spawned despite a failed preparation")
 	}
 	if data, readErr := os.ReadFile(output); readErr != nil || string(data) != "stale" {
@@ -1076,7 +865,7 @@ func TestSingleLLMProducer_PrepareFreshSpawnAmendment(t *testing.T) {
 	done := shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
 
 	t.Run("RespawnAppendsAmendmentAndPreparesOnce", func(t *testing.T) {
-		shuttle := &fakeShuttle{result: done}
+		shuttle := &shedfake.Shuttle{Result: done}
 		prepared := 0
 		prepare := func() (string, error) {
 			prepared++
@@ -1084,22 +873,20 @@ func TestSingleLLMProducer_PrepareFreshSpawnAmendment(t *testing.T) {
 		}
 		p := NewSingleLLMProducer("Plan-Write", specSource(newSpec(t), nil), shuttle, fixedClock(time.Now()), prepare)
 
-		if _, _, err := p.Call(context.Background()); err != nil {
-			t.Fatalf("Call() error = %v; want nil", err)
-		}
+		shedfake.CallOK(t, p)
 		if prepared != 1 {
 			t.Errorf("preparation ran %d time(s); want 1", prepared)
 		}
-		if want := composed + "\n\nprior plan here"; shuttle.gotSpec.Prompt != want {
-			t.Errorf("RunGated spec.Prompt = %q; want %q", shuttle.gotSpec.Prompt, want)
+		if want := composed + "\n\nprior plan here"; shuttle.GotSpec.Prompt != want {
+			t.Errorf("RunGated spec.Prompt = %q; want %q", shuttle.GotSpec.Prompt, want)
 		}
-		if shuttle.gotAttachSpec.Prompt != composed {
-			t.Errorf("AttachGated spec.Prompt = %q; want the composed prompt %q", shuttle.gotAttachSpec.Prompt, composed)
+		if shuttle.GotAttachSpec.Prompt != composed {
+			t.Errorf("AttachGated spec.Prompt = %q; want the composed prompt %q", shuttle.GotAttachSpec.Prompt, composed)
 		}
 	})
 
 	t.Run("AttachFoundNeverPreparesAndKeepsComposedPrompt", func(t *testing.T) {
-		shuttle := &fakeShuttle{attachFound: true, attachResult: done}
+		shuttle := &shedfake.Shuttle{AttachFound: true, AttachResult: done}
 		prepared := 0
 		prepare := func() (string, error) {
 			prepared++
@@ -1107,14 +894,12 @@ func TestSingleLLMProducer_PrepareFreshSpawnAmendment(t *testing.T) {
 		}
 		p := NewSingleLLMProducer("Plan-Write", specSource(newSpec(t), nil), shuttle, fixedClock(time.Now()), prepare)
 
-		if _, _, err := p.Call(context.Background()); err != nil {
-			t.Fatalf("Call() error = %v; want nil", err)
-		}
+		shedfake.CallOK(t, p)
 		if prepared != 0 {
 			t.Errorf("preparation ran %d time(s) on the attach branch; want 0", prepared)
 		}
-		if shuttle.gotAttachSpec.Prompt != composed {
-			t.Errorf("AttachGated spec.Prompt = %q; want %q", shuttle.gotAttachSpec.Prompt, composed)
+		if shuttle.GotAttachSpec.Prompt != composed {
+			t.Errorf("AttachGated spec.Prompt = %q; want %q", shuttle.GotAttachSpec.Prompt, composed)
 		}
 	})
 
@@ -1122,14 +907,12 @@ func TestSingleLLMProducer_PrepareFreshSpawnAmendment(t *testing.T) {
 		empty := func() (string, error) { return "", nil }
 		for name, prepare := range map[string]func() (string, error){"Nil": nil, "Empty": empty} {
 			t.Run(name, func(t *testing.T) {
-				shuttle := &fakeShuttle{result: done}
+				shuttle := &shedfake.Shuttle{Result: done}
 				p := NewSingleLLMProducer("Plan-Write", specSource(newSpec(t), nil), shuttle, fixedClock(time.Now()), prepare)
 
-				if _, _, err := p.Call(context.Background()); err != nil {
-					t.Fatalf("Call() error = %v; want nil", err)
-				}
-				if shuttle.gotSpec.Prompt != composed {
-					t.Errorf("RunGated spec.Prompt = %q; want %q", shuttle.gotSpec.Prompt, composed)
+				shedfake.CallOK(t, p)
+				if shuttle.GotSpec.Prompt != composed {
+					t.Errorf("RunGated spec.Prompt = %q; want %q", shuttle.GotSpec.Prompt, composed)
 				}
 			})
 		}

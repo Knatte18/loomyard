@@ -4,7 +4,6 @@
 package shedadapters
 
 import (
-	"context"
 	"fmt"
 	"maps"
 	"os"
@@ -14,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencil"
+	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
 const (
@@ -83,7 +83,7 @@ func TestFocusSchemaMarkers_BothStencilsBothModes(t *testing.T) {
 func TestBouncer_ClusterExcludesReachesSeedAndJudgePrompts(t *testing.T) {
 	for _, clusterExcludes := range []bool{false, true} {
 		t.Run(fmt.Sprintf("Seed_ClusterExcludes=%t", clusterExcludes), func(t *testing.T) {
-			shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+			shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 			cfg := testBouncerConfig(t)
 			cfg.Shuttle = shuttle
 			cfg.ClusterExcludes = clusterExcludes
@@ -92,17 +92,15 @@ func TestBouncer_ClusterExcludesReachesSeedAndJudgePrompts(t *testing.T) {
 				t.Fatalf("NewBouncer(...) error = %v; want nil", err)
 			}
 
-			if _, _, err := b.Call(context.Background()); err != nil {
-				t.Fatalf("Call() error = %v; want nil", err)
-			}
-			if !shuttle.called {
+			shedfake.CallOK(t, b)
+			if !shuttle.Called {
 				t.Fatal("seed Call() did not invoke the shuttle seam")
 			}
-			assertExcludeLensesText(t, shuttle.gotSpec.Prompt, clusterExcludes)
+			assertExcludeLensesText(t, shuttle.GotSpec.Prompt, clusterExcludes)
 		})
 
 		t.Run(fmt.Sprintf("Judge_ClusterExcludes=%t", clusterExcludes), func(t *testing.T) {
-			shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+			shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 			cfg := testBouncerConfig(t)
 			cfg.Shuttle = shuttle
 			cfg.ClusterExcludes = clusterExcludes
@@ -115,16 +113,14 @@ func TestBouncer_ClusterExcludesReachesSeedAndJudgePrompts(t *testing.T) {
 				t.Fatalf("WriteFile(%q) = %v; want nil", report, err)
 			}
 
-			if _, _, err := b.Call(context.Background()); err != nil {
-				t.Fatalf("Call() error = %v; want nil", err)
-			}
-			if !shuttle.called {
+			shedfake.CallOK(t, b)
+			if !shuttle.Called {
 				t.Fatal("judge Call() did not invoke the shuttle seam")
 			}
-			if shuttle.gotSpec.Role != bouncerJudgeRole {
-				t.Fatalf("recorded spec.Role = %q; want %q", shuttle.gotSpec.Role, bouncerJudgeRole)
+			if shuttle.GotSpec.Role != bouncerJudgeRole {
+				t.Fatalf("recorded spec.Role = %q; want %q", shuttle.GotSpec.Role, bouncerJudgeRole)
 			}
-			assertExcludeLensesText(t, shuttle.gotSpec.Prompt, clusterExcludes)
+			assertExcludeLensesText(t, shuttle.GotSpec.Prompt, clusterExcludes)
 		})
 	}
 }

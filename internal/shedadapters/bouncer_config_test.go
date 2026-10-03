@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/stencilstore"
+	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
 // bouncerFixtureStampHash is the fake but well-formed 64-lowercase-hex sha256 newBouncerStencilsFixture
@@ -56,7 +57,7 @@ func validBouncerConfig(t *testing.T, rubricName string) BouncerConfig {
 		ReportName:    func(round int) string { return fmt.Sprintf("round-%d-report.md", round) },
 		StencilsDir:   stencilsDir,
 		RubricStencil: rubricName,
-		Shuttle:       &fakeShuttle{},
+		Shuttle:       &shedfake.Shuttle{},
 	}
 }
 

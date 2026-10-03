@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
 // bouncerJudgeFixture is one round's worth of on-disk state a judge-call test lays out before
@@ -76,12 +77,12 @@ func bouncerLedgerContent(round int) string {
 	return fmt.Sprintf("---\nround: %d\nledger: []\n---\nno open findings\n", round)
 }
 
-// judgeFakeShuttle returns a fakeShuttle whose duringRun writes verdict, ledger, and (unless
+// judgeFakeShuttle returns a shedfake.Shuttle whose DuringRun writes verdict, ledger, and (unless
 // omitted) a next-round focus file to the spec's declared OutputFiles, then reports OutcomeDone.
-func judgeFakeShuttle(round int, verdictBody, ledgerBody string, writeFocus bool) *fakeShuttle {
-	shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-	shuttle.duringRun = func() {
-		outputs := shuttle.gotSpec.OutputFiles
+func judgeFakeShuttle(round int, verdictBody, ledgerBody string, writeFocus bool) *shedfake.Shuttle {
+	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+	shuttle.DuringRun = func() {
+		outputs := shuttle.GotSpec.OutputFiles
 		if len(outputs) != 3 {
 			return
 		}
@@ -114,11 +115,9 @@ func TestBouncer_JudgeCall_ComposedPromptStatesSpecsDir(t *testing.T) {
 	}
 	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 
-	if _, _, err := b.Call(context.Background()); err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
+	shedfake.CallOK(t, b)
 
-	prompt := shuttle.gotSpec.Prompt
+	prompt := shuttle.GotSpec.Prompt
 	if !strings.Contains(prompt, specsDir) {
 		t.Errorf("judge call composed prompt does not contain the told specs directory %q", specsDir)
 	}
@@ -132,13 +131,7 @@ func TestBouncer_JudgeCall_Approved(t *testing.T) {
 	b, cfg := newTestBouncer(t, shuttle)
 	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 
-	outcome, ptr, err := b.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Done {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Done)
-	}
+	ptr := shedfake.RequireOutcome(t, b, shedengine.Done)
 	wantPointer := ledgerPath(cfg.RunDir, 1)
 	if ptr.Path != wantPointer {
 		t.Errorf("Call() pointer = %q; want %q", ptr.Path, wantPointer)
@@ -147,8 +140,8 @@ func TestBouncer_JudgeCall_Approved(t *testing.T) {
 		t.Errorf("os.Stat(reported pointer %q) = %v; want nil", ptr.Path, err)
 	}
 
-	if len(shuttle.gotSpec.OutputFiles) != 3 {
-		t.Errorf("recorded Spec.OutputFiles has %d entries; want 3", len(shuttle.gotSpec.OutputFiles))
+	if len(shuttle.GotSpec.OutputFiles) != 3 {
+		t.Errorf("recorded Spec.OutputFiles has %d entries; want 3", len(shuttle.GotSpec.OutputFiles))
 	}
 
 	nextFocus := focusPath(cfg.RunDir, 2)
@@ -173,20 +166,14 @@ func TestBouncer_JudgeCall_Blocking(t *testing.T) {
 	b, cfg := newTestBouncer(t, shuttle)
 	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 
-	outcome, ptr, err := b.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-	}
+	ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
 	wantPointer := ledgerPath(cfg.RunDir, 1)
 	if ptr.Path != wantPointer {
 		t.Errorf("Call() pointer = %q; want %q", ptr.Path, wantPointer)
 	}
 
-	if len(shuttle.gotSpec.OutputFiles) != 3 {
-		t.Errorf("recorded Spec.OutputFiles has %d entries; want 3", len(shuttle.gotSpec.OutputFiles))
+	if len(shuttle.GotSpec.OutputFiles) != 3 {
+		t.Errorf("recorded Spec.OutputFiles has %d entries; want 3", len(shuttle.GotSpec.OutputFiles))
 	}
 
 	for _, path := range []string{verdictPath(cfg.RunDir, 1), ledgerPath(cfg.RunDir, 1), focusPath(cfg.RunDir, 2)} {
@@ -218,20 +205,14 @@ func TestBouncer_JudgeCall_RoundThree_UsesRoundTwoLedger(t *testing.T) {
 		t.Fatalf("WriteFile(round-2 verdict) = %v; want nil", err)
 	}
 
-	outcome, _, err := b.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Done {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Done)
-	}
+	shedfake.RequireOutcome(t, b, shedengine.Done)
 
 	wantReport := filepath.Join(cfg.RunDir, cfg.ReportName(3))
-	if !strings.Contains(shuttle.gotSpec.Prompt, wantReport) {
+	if !strings.Contains(shuttle.GotSpec.Prompt, wantReport) {
 		t.Errorf("recorded Spec.Prompt does not contain round 3's report path %q", wantReport)
 	}
 	wantPrevLedger := ledgerPath(cfg.RunDir, 2)
-	if !strings.Contains(shuttle.gotSpec.Prompt, wantPrevLedger) {
+	if !strings.Contains(shuttle.GotSpec.Prompt, wantPrevLedger) {
 		t.Errorf("recorded Spec.Prompt does not contain round 2's ledger path %q (previous_ledger)", wantPrevLedger)
 	}
 }
@@ -251,11 +232,9 @@ func TestBouncer_JudgeCall_PreviousLedgerHandling(t *testing.T) {
 			t.Fatalf("WriteFile(round-1 verdict) = %v; want nil", err)
 		}
 
-		if _, _, err := b.Call(context.Background()); err != nil {
-			t.Fatalf("Call() error = %v; want nil", err)
-		}
+		shedfake.CallOK(t, b)
 		wantPrevLedger := ledgerPath(cfg.RunDir, 1)
-		if !strings.Contains(shuttle.gotSpec.Prompt, wantPrevLedger) {
+		if !strings.Contains(shuttle.GotSpec.Prompt, wantPrevLedger) {
 			t.Errorf("recorded Spec.Prompt does not contain the valid prior ledger's absolute path %q", wantPrevLedger)
 		}
 	})
@@ -271,14 +250,8 @@ func TestBouncer_JudgeCall_PreviousLedgerHandling(t *testing.T) {
 			t.Fatalf("WriteFile(round-1 ledger) = %v; want nil", err)
 		}
 
-		outcome, _, err := b.Call(context.Background())
-		if err != nil {
-			t.Fatalf("Call() error = %v; want nil", err)
-		}
-		if outcome != shedengine.Done {
-			t.Errorf("Call() outcome = %q; want %q (the judge still runs)", outcome, shedengine.Done)
-		}
-		if !strings.Contains(shuttle.gotSpec.Prompt, "(none)") {
+		shedfake.RequireOutcome(t, b, shedengine.Done)
+		if !strings.Contains(shuttle.GotSpec.Prompt, "(none)") {
 			t.Error("recorded Spec.Prompt does not contain the (none) literal for a malformed prior ledger")
 		}
 	})
@@ -288,10 +261,8 @@ func TestBouncer_JudgeCall_PreviousLedgerHandling(t *testing.T) {
 		b, cfg := newTestBouncer(t, shuttle)
 		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 
-		if _, _, err := b.Call(context.Background()); err != nil {
-			t.Fatalf("Call() error = %v; want nil", err)
-		}
-		if !strings.Contains(shuttle.gotSpec.Prompt, "(none)") {
+		shedfake.CallOK(t, b)
+		if !strings.Contains(shuttle.GotSpec.Prompt, "(none)") {
 			t.Error("recorded Spec.Prompt does not contain the (none) literal when no prior ledger exists")
 		}
 	})
@@ -352,7 +323,7 @@ func TestBouncer_JudgeCall_Degradations(t *testing.T) {
 		{
 			name: "UnreadableReportFile",
 			buildBouncer: func(t *testing.T) (*Bouncer, BouncerConfig) {
-				b, cfg := newTestBouncer(t, &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}})
+				b, cfg := newTestBouncer(t, &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}})
 				reportPath := filepath.Join(cfg.RunDir, cfg.ReportName(1))
 				if err := os.Mkdir(reportPath, 0o755); err != nil {
 					t.Fatalf("Mkdir(report path) = %v; want nil", err)
@@ -363,7 +334,7 @@ func TestBouncer_JudgeCall_Degradations(t *testing.T) {
 		{
 			name: "EmptyReportFile",
 			buildBouncer: func(t *testing.T) (*Bouncer, BouncerConfig) {
-				b, cfg := newTestBouncer(t, &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}})
+				b, cfg := newTestBouncer(t, &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}})
 				if err := os.WriteFile(filepath.Join(cfg.RunDir, cfg.ReportName(1)), []byte(""), 0o644); err != nil {
 					t.Fatalf("WriteFile(empty report) = %v; want nil", err)
 				}
@@ -373,7 +344,7 @@ func TestBouncer_JudgeCall_Degradations(t *testing.T) {
 		{
 			name: "WhitespaceOnlyReportFile",
 			buildBouncer: func(t *testing.T) (*Bouncer, BouncerConfig) {
-				b, cfg := newTestBouncer(t, &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}})
+				b, cfg := newTestBouncer(t, &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}})
 				layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: "   \n\t  \n"}})
 				return b, cfg
 			},
@@ -394,7 +365,7 @@ func TestBouncer_JudgeCall_Degradations(t *testing.T) {
 					ReportName:    func(round int) string { return fmt.Sprintf("round-%d-report.md", round) },
 					StencilsDir:   stencilsDir,
 					RubricStencil: "bouncer-template-rubric",
-					Shuttle:       &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}},
+					Shuttle:       &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}},
 					Now:           fixedClock(bouncerJudgeTestClock),
 				}
 				b, err := NewBouncer(cfg)
@@ -408,7 +379,7 @@ func TestBouncer_JudgeCall_Degradations(t *testing.T) {
 		{
 			name: "RubricUnreadable",
 			buildBouncer: func(t *testing.T) (*Bouncer, BouncerConfig) {
-				b, cfg := newTestBouncer(t, &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}})
+				b, cfg := newTestBouncer(t, &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}})
 				layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 				if err := os.Remove(filepath.Join(cfg.StencilsDir, "bouncer", "bouncer-template-rubric.md")); err != nil {
 					t.Fatalf("Remove(rubric) = %v; want nil", err)
@@ -433,7 +404,7 @@ func TestBouncer_JudgeCall_Degradations(t *testing.T) {
 					ReportName:    func(round int) string { return fmt.Sprintf("round-%d-report.md", round) },
 					StencilsDir:   stencilsDir,
 					RubricStencil: "bouncer-template-rubric",
-					Shuttle:       &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}},
+					Shuttle:       &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}},
 					Now:           fixedClock(bouncerJudgeTestClock),
 				}
 				b, err := NewBouncer(cfg)
@@ -447,7 +418,7 @@ func TestBouncer_JudgeCall_Degradations(t *testing.T) {
 		{
 			name: "RunError",
 			buildBouncer: func(t *testing.T) (*Bouncer, BouncerConfig) {
-				b, cfg := newTestBouncer(t, &fakeShuttle{err: errors.New("judge run exploded")})
+				b, cfg := newTestBouncer(t, &shedfake.Shuttle{Err: errors.New("judge run exploded")})
 				layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 				return b, cfg
 			},
@@ -455,9 +426,9 @@ func TestBouncer_JudgeCall_Degradations(t *testing.T) {
 		{
 			name: "UnreadableVerdictFile",
 			buildBouncer: func(t *testing.T) (*Bouncer, BouncerConfig) {
-				shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-				shuttle.duringRun = func() {
-					outputs := shuttle.gotSpec.OutputFiles
+				shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+				shuttle.DuringRun = func() {
+					outputs := shuttle.GotSpec.OutputFiles
 					// A directory in place of the verdict file makes os.ReadFile fail without
 					// relying on filesystem permission bits, which are unreliable to flip
 					// portably in a test.
@@ -512,7 +483,7 @@ func TestBouncer_JudgeCall_NonCompletionOutcomesHarvestCannotRescue(t *testing.T
 	for _, oc := range outcomes {
 		t.Run(string(oc), func(t *testing.T) {
 			logBuf := captureBouncerWarnings(t)
-			shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: oc}}
+			shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: oc}}
 			b, cfg := newTestBouncer(t, shuttle)
 			layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 
@@ -527,9 +498,9 @@ func TestBouncer_JudgeCall_NonCompletionOutcomesHarvestCannotRescue(t *testing.T
 
 func TestBouncer_JudgeCall_Harvest(t *testing.T) {
 	t.Run("NonCompletionOutcome_BLOCKING", func(t *testing.T) {
-		shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking}}
-		shuttle.duringRun = func() {
-			outputs := shuttle.gotSpec.OutputFiles
+		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking}}
+		shuttle.DuringRun = func() {
+			outputs := shuttle.GotSpec.OutputFiles
 			_ = os.WriteFile(outputs[0], []byte(bouncerVerdictContent("BLOCKING")), 0o644)
 			_ = os.WriteFile(outputs[1], []byte(bouncerLedgerContent(1)), 0o644)
 			// Deliberately does not write the focus file: harvest is keyed on judged(n), not
@@ -538,13 +509,7 @@ func TestBouncer_JudgeCall_Harvest(t *testing.T) {
 		b, cfg := newTestBouncer(t, shuttle)
 		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 
-		outcome, ptr, err := b.Call(context.Background())
-		if err != nil {
-			t.Fatalf("Call() error = %v; want nil", err)
-		}
-		if outcome != shedengine.Stuck {
-			t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-		}
+		ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
 		wantPointer := ledgerPath(cfg.RunDir, 1)
 		if ptr.Path != wantPointer {
 			t.Errorf("Call() pointer = %q; want %q", ptr.Path, wantPointer)
@@ -555,22 +520,16 @@ func TestBouncer_JudgeCall_Harvest(t *testing.T) {
 	})
 
 	t.Run("RunError_APPROVED", func(t *testing.T) {
-		shuttle := &fakeShuttle{err: errors.New("run failed after write")}
-		shuttle.duringRun = func() {
-			outputs := shuttle.gotSpec.OutputFiles
+		shuttle := &shedfake.Shuttle{Err: errors.New("run failed after write")}
+		shuttle.DuringRun = func() {
+			outputs := shuttle.GotSpec.OutputFiles
 			_ = os.WriteFile(outputs[0], []byte(bouncerVerdictContent("APPROVED")), 0o644)
 			_ = os.WriteFile(outputs[1], []byte(bouncerLedgerContent(1)), 0o644)
 		}
 		b, cfg := newTestBouncer(t, shuttle)
 		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 
-		outcome, ptr, err := b.Call(context.Background())
-		if err != nil {
-			t.Fatalf("Call() error = %v; want nil", err)
-		}
-		if outcome != shedengine.Done {
-			t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Done)
-		}
+		ptr := shedfake.RequireOutcome(t, b, shedengine.Done)
 		wantPointer := ledgerPath(cfg.RunDir, 1)
 		if ptr.Path != wantPointer {
 			t.Errorf("Call() pointer = %q; want %q", ptr.Path, wantPointer)
@@ -578,7 +537,7 @@ func TestBouncer_JudgeCall_Harvest(t *testing.T) {
 	})
 
 	t.Run("Contrast_NothingWrittenDegrades", func(t *testing.T) {
-		shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking}}
+		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking}}
 		b, cfg := newTestBouncer(t, shuttle)
 		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 
@@ -652,10 +611,8 @@ func TestBouncer_JudgeCall_DebrisIsNotJudged(t *testing.T) {
 			layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 			tt.layoutDebris(t, cfg)
 
-			if _, _, err := b.Call(context.Background()); err != nil {
-				t.Fatalf("Call() error = %v; want nil", err)
-			}
-			if !shuttle.called {
+			shedfake.CallOK(t, b)
+			if !shuttle.Called {
 				t.Error("Call() did not invoke the shuttle seam; debris must not be mistaken for judged(N)")
 			}
 
@@ -690,13 +647,7 @@ func TestBouncer_JudgeCall_StaleOutputsArchivedBeforeSpawn(t *testing.T) {
 		t.Fatalf("WriteFile(stale focus) = %v; want nil", err)
 	}
 
-	outcome, ptr, err := b.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Done {
-		t.Errorf("Call() outcome = %q; want %q (the spawn must succeed rather than trip over stale outputs)", outcome, shedengine.Done)
-	}
+	ptr := shedfake.RequireOutcome(t, b, shedengine.Done)
 	wantPointer := ledgerPath(cfg.RunDir, 1)
 	if ptr.Path != wantPointer {
 		t.Errorf("Call() pointer = %q; want %q", ptr.Path, wantPointer)

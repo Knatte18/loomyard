@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
 // TestBouncer_Commit_ApprovedCallsExactlyOnce pins that an APPROVED verdict calls Commit exactly
@@ -30,15 +31,9 @@ func TestBouncer_Commit_ApprovedCallsExactlyOnce(t *testing.T) {
 	}
 	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 
-	outcome, ptr, err := b.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
+	ptr := shedfake.RequireOutcome(t, b, shedengine.Done)
 	if calls != 1 {
 		t.Errorf("Commit call count = %d; want 1", calls)
-	}
-	if outcome != shedengine.Done {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Done)
 	}
 	wantPointer := ledgerPath(cfg.RunDir, 1)
 	if ptr.Path != wantPointer {
@@ -51,7 +46,7 @@ func TestBouncer_Commit_ApprovedCallsExactlyOnce(t *testing.T) {
 func TestBouncer_Commit_BlockingNeverCalls(t *testing.T) {
 	calls := 0
 	cfg := testBouncerConfig(t)
-	cfg.Shuttle = &fakeShuttle{}
+	cfg.Shuttle = &shedfake.Shuttle{}
 	cfg.Commit = func() error {
 		calls++
 		return nil
@@ -67,15 +62,9 @@ func TestBouncer_Commit_BlockingNeverCalls(t *testing.T) {
 		ledger:  bouncerLedgerContent(1),
 	}})
 
-	outcome, _, err := b.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
+	shedfake.RequireOutcome(t, b, shedengine.Stuck)
 	if calls != 0 {
 		t.Errorf("Commit call count = %d; want 0", calls)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
 	}
 }
 
@@ -92,13 +81,7 @@ func TestBouncer_Commit_NilIsNotAnError(t *testing.T) {
 	}
 	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 
-	outcome, ptr, err := b.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Done {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Done)
-	}
+	ptr := shedfake.RequireOutcome(t, b, shedengine.Done)
 	wantPointer := ledgerPath(cfg.RunDir, 1)
 	if ptr.Path != wantPointer {
 		t.Errorf("Call() pointer = %q; want %q", ptr.Path, wantPointer)
@@ -154,7 +137,7 @@ func TestBouncer_Commit_FailingCommitIsAnError(t *testing.T) {
 func TestBouncer_Commit_CancelledContextStillCommits(t *testing.T) {
 	calls := 0
 	cfg := testBouncerConfig(t)
-	cfg.Shuttle = &fakeShuttle{}
+	cfg.Shuttle = &shedfake.Shuttle{}
 	cfg.Commit = func() error {
 		calls++
 		return nil
@@ -211,13 +194,7 @@ func TestBouncer_Approve_CalledBeforeCommit(t *testing.T) {
 	}
 	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 
-	outcome, _, err := b.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Done {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Done)
-	}
+	shedfake.RequireOutcome(t, b, shedengine.Done)
 	want := []string{"approve", "commit"}
 	if len(callLog) != len(want) {
 		t.Fatalf("callLog = %v; want %v", callLog, want)
@@ -247,15 +224,9 @@ func TestBouncer_Approve_NilStillCommits(t *testing.T) {
 	}
 	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 
-	outcome, ptr, err := b.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
+	ptr := shedfake.RequireOutcome(t, b, shedengine.Done)
 	if commitCalls != 1 {
 		t.Errorf("Commit call count = %d; want 1", commitCalls)
-	}
-	if outcome != shedengine.Done {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Done)
 	}
 	wantPointer := ledgerPath(cfg.RunDir, 1)
 	if ptr.Path != wantPointer {
@@ -308,7 +279,7 @@ func TestBouncer_Approve_FailingApproveSkipsCommit(t *testing.T) {
 func TestBouncer_Approve_BlockingNeverCalls(t *testing.T) {
 	calls := 0
 	cfg := testBouncerConfig(t)
-	cfg.Shuttle = &fakeShuttle{}
+	cfg.Shuttle = &shedfake.Shuttle{}
 	cfg.Approve = func() error {
 		calls++
 		return nil
@@ -324,14 +295,8 @@ func TestBouncer_Approve_BlockingNeverCalls(t *testing.T) {
 		ledger:  bouncerLedgerContent(1),
 	}})
 
-	outcome, _, err := b.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
+	shedfake.RequireOutcome(t, b, shedengine.Stuck)
 	if calls != 0 {
 		t.Errorf("Approve call count = %d; want 0", calls)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
 	}
 }

@@ -9,12 +9,13 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
 // TestBouncer_Skip_TrueSpawnsNothingAndApprovesBeforeCommit pins that a true seam spawns no seed or judge, calls Approve strictly before Commit, and returns Done with an empty pointer.
 func TestBouncer_Skip_TrueSpawnsNothingAndApprovesBeforeCommit(t *testing.T) {
 	var callLog []string
-	shuttle := &fakeShuttle{}
+	shuttle := &shedfake.Shuttle{}
 	cfg := testBouncerConfig(t)
 	cfg.Shuttle = shuttle
 	cfg.Skip = func() (bool, error) { return true, nil }
@@ -31,18 +32,12 @@ func TestBouncer_Skip_TrueSpawnsNothingAndApprovesBeforeCommit(t *testing.T) {
 		t.Fatalf("NewBouncer(...) error = %v; want nil", err)
 	}
 
-	outcome, ptr, err := b.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Done {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Done)
-	}
+	ptr := shedfake.RequireOutcome(t, b, shedengine.Done)
 	if ptr != (shedengine.OutputPointer{}) {
 		t.Errorf("Call() pointer = %+v; want empty", ptr)
 	}
-	if shuttle.called || shuttle.attachCalled {
-		t.Errorf("shuttle called = %v, attach called = %v; want neither", shuttle.called, shuttle.attachCalled)
+	if shuttle.Called || shuttle.AttachCalled {
+		t.Errorf("shuttle called = %v, attach called = %v; want neither", shuttle.Called, shuttle.AttachCalled)
 	}
 	if _, err := os.Stat(focusPath(cfg.RunDir, 1)); !os.IsNotExist(err) {
 		t.Errorf("round 1 focus file stat error = %v; want not-exist", err)
@@ -54,7 +49,7 @@ func TestBouncer_Skip_TrueSpawnsNothingAndApprovesBeforeCommit(t *testing.T) {
 
 // TestBouncer_Skip_FalseSeedsRoundOne pins that a false seam reviews exactly as an unconfigured Bouncer does: the seed pass runs and the call returns Stuck.
 func TestBouncer_Skip_FalseSeedsRoundOne(t *testing.T) {
-	shuttle := &fakeShuttle{}
+	shuttle := &shedfake.Shuttle{}
 	cfg := testBouncerConfig(t)
 	cfg.Shuttle = shuttle
 	cfg.Skip = func() (bool, error) { return false, nil }
@@ -63,14 +58,8 @@ func TestBouncer_Skip_FalseSeedsRoundOne(t *testing.T) {
 		t.Fatalf("NewBouncer(...) error = %v; want nil", err)
 	}
 
-	outcome, _, err := b.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-	}
-	if !shuttle.called {
+	shedfake.RequireOutcome(t, b, shedengine.Stuck)
+	if !shuttle.Called {
 		t.Error("shuttle Run was not called; want the round-1 seed spawn")
 	}
 	if _, err := os.Stat(focusPath(cfg.RunDir, 1)); err != nil {
@@ -81,7 +70,7 @@ func TestBouncer_Skip_FalseSeedsRoundOne(t *testing.T) {
 // TestBouncer_Skip_ErrorFallsBackToReview pins that an erroring seam warns and seeds round 1 like a false one, never halting and never approving.
 func TestBouncer_Skip_ErrorFallsBackToReview(t *testing.T) {
 	approveCalls := 0
-	shuttle := &fakeShuttle{}
+	shuttle := &shedfake.Shuttle{}
 	cfg := testBouncerConfig(t)
 	cfg.Shuttle = shuttle
 	cfg.Skip = func() (bool, error) { return true, errors.New("classifier failed") }
@@ -94,14 +83,8 @@ func TestBouncer_Skip_ErrorFallsBackToReview(t *testing.T) {
 		t.Fatalf("NewBouncer(...) error = %v; want nil", err)
 	}
 
-	outcome, _, err := b.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-	}
-	if !shuttle.called {
+	shedfake.RequireOutcome(t, b, shedengine.Stuck)
+	if !shuttle.Called {
 		t.Error("shuttle Run was not called; want the round-1 seed spawn")
 	}
 	if approveCalls != 0 {
@@ -117,7 +100,7 @@ func TestBouncer_Skip_FailingApproveSkipsCommit(t *testing.T) {
 	sentinel := errors.New("approve failed")
 	commitCalls := 0
 	cfg := testBouncerConfig(t)
-	cfg.Shuttle = &fakeShuttle{}
+	cfg.Shuttle = &shedfake.Shuttle{}
 	cfg.Skip = func() (bool, error) { return true, nil }
 	cfg.Approve = func() error { return sentinel }
 	cfg.Commit = func() error {
