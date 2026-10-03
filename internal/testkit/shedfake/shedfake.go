@@ -1,6 +1,6 @@
 // Package shedfake fakes the shed-layer seams: the shuttle, the burler runner, the merge shuttle and the webster run seams, plus the producer Call helpers.
 //
-// Shuttle satisfies shedadapters.Shuttle, BurlerRunner satisfies shedadapters.BurlerRunner, and MergeShuttle satisfies mergeresolve.Shuttle and frictionengine.Shuttle, all structurally, so no consumer package is imported here and shedadapters' and landingshed's in-package tests can use the kit.
+// Shuttle satisfies shedadapters.Shuttle and frictionengine.Shuttle, BurlerRunner satisfies shedadapters.BurlerRunner, and MergeShuttle satisfies mergeresolve.Shuttle, all structurally, so no consumer package is imported here and shedadapters' and landingshed's in-package tests can use the kit.
 // Every fake exposes fields and optional func overrides, and none asserts anything.
 // CallOK and RequireOutcome are the only assertions the kit makes.
 //

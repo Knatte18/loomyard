@@ -323,7 +323,7 @@ func LoomFrictionDir(l *lyxcwd.Location) string {
 
 // LoomFrictionArchivePrefix returns the absolute path prefix a timestamped archive sibling of
 // LoomFrictionDir is composed from: internal/frictionengine appends its own compact timestamp to
-// this prefix and renames the friction directory onto the result.
+// this prefix and moves the covered friction files into the directory that results.
 // It exists as a second accessor, rather than being derived by the caller from LoomFrictionDir,
 // so internal/frictionengine stays told rather than deriving, and the "friction" segment is still
 // named in exactly one place.
@@ -340,9 +340,9 @@ func LoomFrictionArchivePrefix(l *lyxcwd.Location) string {
 // by the run lock at all: shedengine.Run releases it on return, so for the whole of that reflection
 // agent's life the run lock reads as free and a second `lyx loom start` spawns a second driver.
 // That second driver is legitimate -- it is an operator resuming a halted run -- but its own
-// reflection (the row's) would then archive the friction directory out from under the first one's
+// reflection (the row's) would then archive covered files out from under the first one's
 // agent, and both would have declared the same reflection-report.md as an output.
-// The lock file is not inside the friction directory, because the directory itself is renamed away by the archive step while the lock is still held.
+// The lock file is not inside the friction directory, which holds only reflection inputs and outputs.
 // It sits at the mirrored ephemeral subpath of the durable friction directory, under LoomScratchDir.
 func LoomFrictionLock(l *lyxcwd.Location) string {
 	return filepath.Join(LoomScratchDir(l), frictionDirName+".lock")
