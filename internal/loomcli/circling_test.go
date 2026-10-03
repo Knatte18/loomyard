@@ -3,6 +3,8 @@ package loomcli
 import (
 	"bytes"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -97,4 +99,25 @@ func TestCirclingVerb_StatusReadFailure(t *testing.T) {
 		t.Fatalf("exit = %d; want 1", code)
 	}
 	envelope.RequireErr(t, out.String(), "boom")
+}
+
+func TestCirclingStatusReader(t *testing.T) {
+	t.Run("no status file", func(t *testing.T) {
+		dir := t.TempDir()
+		_, found, err := circlingStatusReader(filepath.Join(dir, "status.json"), filepath.Join(dir, "scratch", "status.json.lock"))()
+		if err != nil || found {
+			t.Fatalf("found = %v, err = %v; want not found and no error", found, err)
+		}
+	})
+	t.Run("status file without a scratch directory", func(t *testing.T) {
+		dir := t.TempDir()
+		statusPath := filepath.Join(dir, "status.json")
+		if err := os.WriteFile(statusPath, []byte(`{"current_producer": "Plan-Bouncer", "state": "awaiting"}`), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		st, found, err := circlingStatusReader(statusPath, filepath.Join(dir, "scratch", "status.json.lock"))()
+		if err != nil || !found || st.State != shedengine.StateAwaiting {
+			t.Fatalf("status = %+v, found = %v, err = %v; want the awaiting status read", st, found, err)
+		}
+	})
 }

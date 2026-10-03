@@ -133,19 +133,29 @@ func (s *circlingState) preRun(cmd *cobra.Command, args []string) error {
 	statusLock := shedrun.StatusLock(target, shedrun.SelfRunID)
 	reviewsDir := loomengine.LoomReviewsDir(target)
 	s.deps = circlingDeps{
-		readStatus: func() (shedengine.Status, bool, error) {
-			// The lock file sits beside the status file, so a worktree that never started a run has no directory to lock in.
-			if _, err := os.Stat(filepath.Dir(statusLock)); errors.Is(err, fs.ErrNotExist) {
-				return shedengine.Status{}, false, nil
-			}
-			return state.ReadJSONStrict[shedengine.Status](statusPath, statusLock)
-		},
+		readStatus:    circlingStatusReader(statusPath, statusLock),
 		bouncerSubdir: loomrecipe.BouncerRunSubdir,
 		record: func(subdir string, decision shedadapters.CirclingDecision) (int, error) {
 			return shedadapters.RecordCirclingDecision(filepath.Join(reviewsDir, subdir), decision)
 		},
 	}
 	return nil
+}
+
+// circlingStatusReader reads the status file at statusPath under the lock at statusLock.
+// Absence is decided by the committed status file alone:
+// the lock sits in the untracked scratch tree, which a fresh checkout of a task branch lacks even when its run is awaiting,
+// so a missing lock directory is created rather than read as a missing run.
+func circlingStatusReader(statusPath, statusLock string) reviewStatusReader {
+	return func() (shedengine.Status, bool, error) {
+		if _, err := os.Stat(statusPath); errors.Is(err, fs.ErrNotExist) {
+			return shedengine.Status{}, false, nil
+		}
+		if err := os.MkdirAll(filepath.Dir(statusLock), 0o755); err != nil {
+			return shedengine.Status{}, false, fmt.Errorf("create the status lock directory: %w", err)
+		}
+		return state.ReadJSONStrict[shedengine.Status](statusPath, statusLock)
+	}
 }
 
 // circlingCmd builds the `circling` subtree.
