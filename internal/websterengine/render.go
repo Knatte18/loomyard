@@ -165,7 +165,9 @@ func renderCardPointers(cards []planparser.Card, planDirDisplay string) string {
 // friction.Directive error swallowed as a Warn rather than propagated.
 // specsDir is the told deployed-specs directory, filled into the shared implementer-job body's
 // required specs_dir marker.
-func RenderForkPrompt(batch batcher.Batch, prevDigest, reportPath, planDir, promptWorktreeRoot, stencilsDir, specsDir string, selfFixCap int, notePath string) ([]byte, error) {
+// cardGates is the caller-rendered per-card gate command list (renderCardGates), filled into the
+// body's required card_gates marker; the plan is not a parameter, per the fork-context-hygiene rule.
+func RenderForkPrompt(batch batcher.Batch, cardGates, prevDigest, reportPath, planDir, promptWorktreeRoot, stencilsDir, specsDir string, selfFixCap int, notePath string) ([]byte, error) {
 	digestLine := prevDigest
 	if strings.TrimSpace(digestLine) == "" {
 		digestLine = noPrecedingBatchDigest
@@ -179,6 +181,7 @@ func RenderForkPrompt(batch batcher.Batch, prevDigest, reportPath, planDir, prom
 
 	values := map[string]string{
 		"card_pointers":     renderCardPointers(batch.Cards, masterPlanDirDisplay(promptWorktreeRoot, planDir)),
+		"card_gates":        cardGates,
 		"report_path":       reportPath,
 		"self_fix_cap":      fmt.Sprintf("%d", selfFixCap),
 		"worktree_root":     promptWorktreeRoot,
@@ -212,9 +215,10 @@ func RenderForkPrompt(batch batcher.Batch, prevDigest, reportPath, planDir, prom
 // pattern.Directive call immediately above, which does propagate.
 // specsDir is the told deployed-specs directory, filled into the shared implementer-job body's
 // required specs_dir marker.
+// cardGates is the caller-rendered per-card gate command list, as for RenderForkPrompt.
 // failureDigest is the prior failed record's reasons and suspect paths, or "" when the batch was not failed;
 // it fills the optional failure_digest marker, rendered as "none" when empty, and being optional it leaves an older deployed stencil rendering.
-func RenderRecoveryPrompt(batch batcher.Batch, prevDigest, failureDigest, reportPath, anchorRoot, planDir, promptWorktreeRoot, stencilsDir, specsDir string, selfFixCap int, notePath string) ([]byte, error) {
+func RenderRecoveryPrompt(batch batcher.Batch, cardGates, prevDigest, failureDigest, reportPath, anchorRoot, planDir, promptWorktreeRoot, stencilsDir, specsDir string, selfFixCap int, notePath string) ([]byte, error) {
 	digestLine := prevDigest
 	if strings.TrimSpace(digestLine) == "" {
 		digestLine = noPrecedingBatchDigest
@@ -237,6 +241,7 @@ func RenderRecoveryPrompt(batch batcher.Batch, prevDigest, failureDigest, report
 
 	values := map[string]string{
 		"card_pointers":     renderCardPointers(batch.Cards, masterPlanDirDisplay(promptWorktreeRoot, planDir)),
+		"card_gates":        cardGates,
 		"report_path":       reportPath,
 		"self_fix_cap":      fmt.Sprintf("%d", selfFixCap),
 		"worktree_root":     promptWorktreeRoot,
