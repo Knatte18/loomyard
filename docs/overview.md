@@ -570,6 +570,7 @@ See `internal/fabricengine`'s own package doc for the state matrix, the verb tab
 
 `internal/gitkit` is the below-fabric leaf holding git primitives — `MustRun`, `SeedConfig`, `HermeticGitEnv`, `GitStatusPorcelain`, and the primitive repo fixture `CopyRepo` — and asserts nothing itself; it never imports fabric.
 `internal/hubforge` is the repo-wide real-hub fixture factory: it builds every hub fixture in the repo through `fabriccli.CloneAndWire`, never a hand-assembled stand-in, and asserts nothing about fabric either.
+`internal/testkit` holds the shared test kits, one package per kit, for seams faked in more than one package; the Testkit Invariant in `CONSTRAINTS.md` states what a kit may import and assert.
 
 ## Sandbox Hub
 

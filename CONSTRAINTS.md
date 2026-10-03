@@ -80,6 +80,19 @@ Every hub fixture is built by `internal/hubforge` through `fabriccli.CloneAndWir
 
 - No package in `fabriccli`'s dependency set may import `hubforge`.
 
+## Testkit Invariant
+
+A seam faked in two or more packages is shared through one kit package under `internal/testkit/<kit>/`, never duplicated per package and never placed under the package it fakes.
+
+- No non-test file outside `internal/testkit/` imports a path under it, so every kit is reachable only from tests.
+  Files under `internal/testkit/` are exempt, so a kit may build on another kit.
+- No non-test file under `internal/testkit/` imports an `internal/*cli` package.
+- No non-test file under `internal/testkit/` imports `os/exec`, `internal/gitexec`, `internal/gitkit`, `internal/hubforge` or `internal/testkit/lyxbin`.
+  `internal/testkit/lyxbin` is exempt from the `os/exec` ban alone, bounded to `go build` of `./cmd/lyx`; banning its import keeps the kit-on-kit exemption from handing another kit a transitive `go build`.
+- A kit imports only the lowest packages defining the types it fakes; a package an import cycle bars from a kit keeps exactly one local copy; a fixture used by one package stays in that package's `_test.go` files.
+- Enforced by `internal/testkit/enforcement_test.go` for the import rules.
+  Review discipline covers the rest: a kit starts no process, tmux server or agent beyond what its imports allow, and asserts nothing beyond `t.Fatalf` on its own setup, the `shedfake` `Call`/`RequireOutcome` outcome check and the `envelope` `RequireOK`/`RequireErr` shape check.
+
 ## Modelspec Leaf Invariant
 
 `internal/modelspec` imports only stdlib, `configengine`, `gopkg.in/yaml.v3`. Reverse import never allowed.
