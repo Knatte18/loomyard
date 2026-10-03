@@ -18,7 +18,6 @@ package loomshed
 
 import (
 	"bytes"
-	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,6 +25,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -148,13 +148,7 @@ func TestLoomPreflight_StuckSurfacesItsFailures(t *testing.T) {
 	buf := captureGateWarnings(t)
 	p := NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath)
 
-	outcome, _, err := p.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Fatalf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-	}
+	shedfake.RequireOutcome(t, p, shedengine.Stuck)
 
 	logged := buf.String()
 	if !strings.Contains(logged, "seed is not a coherent fresh start") {
@@ -177,13 +171,7 @@ func TestBatchifier_StuckSurfacesTheBatcherError(t *testing.T) {
 	buf := captureGateWarnings(t)
 	producer := NewBatchifier("Batchifier", anchorPath)
 
-	outcome, _, err := producer.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Fatalf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-	}
+	shedfake.RequireOutcome(t, producer, shedengine.Stuck)
 	got := buf.String()
 	for _, want := range []string{"Batchifier", "no-such-batcher"} {
 		if !strings.Contains(got, want) {
@@ -199,13 +187,7 @@ func TestWebsterProducer_StuckSurfacesTheBatcherError(t *testing.T) {
 	buf := captureGateWarnings(t)
 	producer := NewWebsterProducer("Webster", anchorPath, nil, websterengine.RunDeps{}, func() error { return nil })
 
-	outcome, _, err := producer.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Fatalf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-	}
+	shedfake.RequireOutcome(t, producer, shedengine.Stuck)
 	got := buf.String()
 	for _, want := range []string{"Webster", "no-such-batcher"} {
 		if !strings.Contains(got, want) {

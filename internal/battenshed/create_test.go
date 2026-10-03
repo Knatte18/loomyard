@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
 // fakePrimeLock builds a PrimeLock whose Acquire reports the told disposition and records whether
@@ -88,13 +89,7 @@ func TestWorktreeCreate_HappyPath(t *testing.T) {
 		return nil
 	}, lock, scratchDir)
 
-	outcome, _, err := producer.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Done {
-		t.Errorf("Call() outcome = %v; want Done", outcome)
-	}
+	shedfake.RequireOutcome(t, producer, shedengine.Done)
 	if !called {
 		t.Error("createWorktree was not called")
 	}
@@ -113,13 +108,7 @@ func TestWorktreeCreate_CreateWorktreeError(t *testing.T) {
 		return wantErr
 	}, lock, scratchDir)
 
-	outcome, ptr, err := producer.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %v; want Stuck", outcome)
-	}
+	ptr := shedfake.RequireOutcome(t, producer, shedengine.Stuck)
 	if !released {
 		t.Error("release was not invoked on the createWorktree-error Stuck path")
 	}
@@ -139,13 +128,7 @@ func TestWorktreeCreate_PreExistingBranchRemedySurvivesVerbatim(t *testing.T) {
 		return fabricErr
 	}, lock, scratchDir)
 
-	outcome, ptr, err := producer.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %v; want Stuck", outcome)
-	}
+	ptr := shedfake.RequireOutcome(t, producer, shedengine.Stuck)
 	reason := readStuckFile(t, scratchDir, "create", ptr)
 	if !strings.Contains(reason, "switch a pair onto it with") {
 		t.Errorf("stuck-reason file = %q; want fabric's own remedy wording preserved unreworded", reason)
@@ -162,13 +145,7 @@ func TestWorktreeCreate_DirtyDrivingWorktreePassesThroughVerbatim(t *testing.T) 
 		return dirtyErr
 	}, lock, scratchDir)
 
-	outcome, ptr, err := producer.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %v; want Stuck", outcome)
-	}
+	ptr := shedfake.RequireOutcome(t, producer, shedengine.Stuck)
 	reason := readStuckFile(t, scratchDir, "create", ptr)
 	if !strings.Contains(reason, "source worktree has uncommitted changes") {
 		t.Errorf("stuck-reason file = %q; want the bare dirty-worktree string preserved verbatim", reason)
@@ -186,13 +163,7 @@ func TestWorktreeCreate_PrimeLockUnavailable(t *testing.T) {
 		return nil
 	}, lock, scratchDir)
 
-	outcome, ptr, err := producer.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %v; want Stuck", outcome)
-	}
+	ptr := shedfake.RequireOutcome(t, producer, shedengine.Stuck)
 	if called {
 		t.Error("createWorktree was called despite lock contention")
 	}
@@ -306,13 +277,7 @@ func TestWorktreeCreate_WaitsForContendedLockThenCreates(t *testing.T) {
 		return nil
 	}, lock, scratchDir)
 
-	outcome, _, err := producer.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Done {
-		t.Errorf("Call() outcome = %v; want Done", outcome)
-	}
+	shedfake.RequireOutcome(t, producer, shedengine.Done)
 	if !called {
 		t.Error("createWorktree was not called after the lock freed")
 	}
@@ -336,13 +301,7 @@ func TestWorktreeCreate_LockStillHeldPastBoundIsStuck(t *testing.T) {
 		return nil
 	}, lock, scratchDir)
 
-	outcome, ptr, err := producer.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %v; want Stuck", outcome)
-	}
+	ptr := shedfake.RequireOutcome(t, producer, shedengine.Stuck)
 	if called {
 		t.Error("createWorktree was called although the lock was never acquired")
 	}

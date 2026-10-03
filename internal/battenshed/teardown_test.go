@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
 // teardownCallRecorder records the order Shutdown and Remove were called in.
@@ -40,13 +41,7 @@ func TestWorktreeTeardown_HappyPathOrdering(t *testing.T) {
 	rec := &teardownCallRecorder{}
 	producer := NewWorktreeTeardown("teardown", "myslug", rec.deps(nil, "", nil), lock, scratchDir)
 
-	outcome, _, err := producer.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Done {
-		t.Errorf("Call() outcome = %v; want Done", outcome)
-	}
+	shedfake.RequireOutcome(t, producer, shedengine.Done)
 	if len(rec.calls) != 2 || rec.calls[0] != "shutdown" || rec.calls[1] != "remove" {
 		t.Errorf("call order = %v; want [shutdown remove]", rec.calls)
 	}
@@ -64,13 +59,7 @@ func TestWorktreeTeardown_ShutdownFailureNeverCallsRemove(t *testing.T) {
 	rec := &teardownCallRecorder{}
 	producer := NewWorktreeTeardown("teardown", "myslug", rec.deps(shutdownErr, "", nil), lock, scratchDir)
 
-	outcome, ptr, err := producer.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %v; want Stuck", outcome)
-	}
+	ptr := shedfake.RequireOutcome(t, producer, shedengine.Stuck)
 	if len(rec.calls) != 1 || rec.calls[0] != "shutdown" {
 		t.Errorf("call order = %v; want [shutdown] only, Remove must never be called", rec.calls)
 	}
@@ -95,13 +84,7 @@ func TestWorktreeTeardown_RemoveFailureNamesRemovalHalf(t *testing.T) {
 	rec := &teardownCallRecorder{}
 	producer := NewWorktreeTeardown("teardown", "myslug", rec.deps(nil, "", removeErr), lock, scratchDir)
 
-	outcome, ptr, err := producer.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %v; want Stuck", outcome)
-	}
+	ptr := shedfake.RequireOutcome(t, producer, shedengine.Stuck)
 	if len(rec.calls) != 2 {
 		t.Errorf("call count = %d; want 2 (both Shutdown and Remove called)", len(rec.calls))
 	}
@@ -123,13 +106,7 @@ func TestWorktreeTeardown_RemoveRefusalMergeInProgress(t *testing.T) {
 	rec := &teardownCallRecorder{}
 	producer := NewWorktreeTeardown("teardown", "myslug", rec.deps(nil, "", removeErr), lock, scratchDir)
 
-	outcome, ptr, err := producer.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %v; want Stuck", outcome)
-	}
+	ptr := shedfake.RequireOutcome(t, producer, shedengine.Stuck)
 	reason := readStuckFile(t, scratchDir, "teardown", ptr)
 	if !strings.Contains(reason, "merge in progress") {
 		t.Errorf("stuck-reason file = %q; want the merge-in-progress refusal text preserved", reason)
@@ -144,13 +121,7 @@ func TestWorktreeTeardown_AbandonedSessionOnOtherwiseDoneRow(t *testing.T) {
 	rec := &teardownCallRecorder{}
 	producer := NewWorktreeTeardown("teardown", "myslug", rec.deps(nil, "abandoned-session-1", nil), lock, scratchDir)
 
-	outcome, _, err := producer.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Done {
-		t.Errorf("Call() outcome = %v; want Done even with a non-empty abandoned session", outcome)
-	}
+	shedfake.RequireOutcome(t, producer, shedengine.Done)
 }
 
 func TestWorktreeTeardown_PrimeLockDispositions(t *testing.T) {
@@ -161,13 +132,7 @@ func TestWorktreeTeardown_PrimeLockDispositions(t *testing.T) {
 		rec := &teardownCallRecorder{}
 		producer := NewWorktreeTeardown("teardown", "myslug", rec.deps(nil, "", nil), lock, scratchDir)
 
-		outcome, ptr, err := producer.Call(context.Background())
-		if err != nil {
-			t.Fatalf("Call() error = %v; want nil", err)
-		}
-		if outcome != shedengine.Stuck {
-			t.Errorf("Call() outcome = %v; want Stuck", outcome)
-		}
+		ptr := shedfake.RequireOutcome(t, producer, shedengine.Stuck)
 		if len(rec.calls) != 0 {
 			t.Errorf("call count = %d; want 0 under lock contention", len(rec.calls))
 		}
@@ -202,9 +167,7 @@ func TestWorktreeTeardown_PrimeLockDispositions(t *testing.T) {
 		rec := &teardownCallRecorder{}
 		producer := NewWorktreeTeardown("teardown", "myslug", rec.deps(nil, "", removeErr), lock, scratchDir)
 
-		if _, _, err := producer.Call(context.Background()); err != nil {
-			t.Fatalf("Call() error = %v; want nil", err)
-		}
+		shedfake.CallOK(t, producer)
 		if !released {
 			t.Error("release was not invoked on the Remove-error Stuck path")
 		}
@@ -293,13 +256,7 @@ func TestTeardown_DoneRunRecordsTheAbandonedSession(t *testing.T) {
 	var released bool
 	producer := NewWorktreeTeardown("Worktree-Teardown", "some-slug", deps, fakePrimeLock("/lock/free/path", true, nil, nil, &released), scratchDir)
 
-	outcome, _, err := producer.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Done {
-		t.Fatalf("Call() outcome = %v; want Done", outcome)
-	}
+	shedfake.RequireOutcome(t, producer, shedengine.Done)
 	data, err := os.ReadFile(AbandonedSessionFile(scratchDir))
 	if err != nil {
 		t.Fatalf("read abandoned-session record after a Done teardown: %v", err)
@@ -317,13 +274,7 @@ func TestWorktreeTeardown_WaitsForContendedLockThenTearsDown(t *testing.T) {
 	rec := &teardownCallRecorder{}
 	producer := NewWorktreeTeardown("teardown", "myslug", rec.deps(nil, "", nil), lock, scratchDir)
 
-	outcome, _, err := producer.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Done {
-		t.Errorf("Call() outcome = %v; want Done", outcome)
-	}
+	shedfake.RequireOutcome(t, producer, shedengine.Done)
 	if len(rec.calls) != 2 || rec.calls[0] != "shutdown" || rec.calls[1] != "remove" {
 		t.Errorf("call order = %v; want [shutdown remove]", rec.calls)
 	}
@@ -343,13 +294,7 @@ func TestWorktreeTeardown_LockStillHeldPastBoundIsStuck(t *testing.T) {
 	rec := &teardownCallRecorder{}
 	producer := NewWorktreeTeardown("teardown", "myslug", rec.deps(nil, "", nil), lock, scratchDir)
 
-	outcome, ptr, err := producer.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %v; want Stuck", outcome)
-	}
+	ptr := shedfake.RequireOutcome(t, producer, shedengine.Stuck)
 	if len(rec.calls) != 0 {
 		t.Errorf("calls = %v; want neither Shutdown nor Remove", rec.calls)
 	}

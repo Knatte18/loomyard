@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
 // writeLoomPreflightFixture writes a shedengine.Status shell naming currentProducer as
@@ -63,13 +64,7 @@ func TestLoomPreflight_Call_CoherentSeedReportsDone(t *testing.T) {
 	writeLoomPreflightFixture(t, statusPath, statusLockPath, NameLoomPreflight)
 
 	p := NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath)
-	outcome, _, err := p.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Done {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Done)
-	}
+	shedfake.RequireOutcome(t, p, shedengine.Done)
 }
 
 func TestLoomPreflight_Call_IncoherentSeedReportsStuck(t *testing.T) {
@@ -81,13 +76,7 @@ func TestLoomPreflight_Call_IncoherentSeedReportsStuck(t *testing.T) {
 	writeLoomPreflightFixture(t, statusPath, statusLockPath, NamePreflight)
 
 	p := NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath)
-	outcome, _, err := p.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-	}
+	shedfake.RequireOutcome(t, p, shedengine.Stuck)
 }
 
 func TestLoomPreflight_Call_LockParentUncreatableReturnsError(t *testing.T) {
@@ -130,10 +119,7 @@ func TestLoomPreflight_Call_StuckReasonNamesTheFailures(t *testing.T) {
 		if err != nil {
 			t.Fatalf("CheckSeed() error = %v", err)
 		}
-		_, pointer, err := NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath).Call(context.Background())
-		if err != nil {
-			t.Fatalf("Call() error = %v; want nil", err)
-		}
+		_, pointer := shedfake.CallOK(t, NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath))
 		return pointer.Reason, "seed is not a coherent fresh start: " + formatSeedFailures(report)
 	}
 
@@ -201,10 +187,7 @@ func TestLoomPreflight_Call_GotoReentryPassesAndLeavesStatusUnchanged(t *testing
 		t.Fatalf("read status: %v", err)
 	}
 
-	outcome, pointer, err := NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath).Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
+	outcome, pointer := shedfake.CallOK(t, NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath))
 	if outcome != shedengine.Done || pointer.Reason != "" {
 		t.Errorf("Call() = (%q, reason %q); want (%q, no reason)", outcome, pointer.Reason, shedengine.Done)
 	}
@@ -227,13 +210,7 @@ func TestLoomPreflight_Call_HalfFinishedWithoutGotoStuckNamesReentry(t *testing.
 		t.Fatalf("UpdateJSON: %v", err)
 	}
 
-	outcome, pointer, err := NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath).Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Fatalf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-	}
+	pointer := shedfake.RequireOutcome(t, NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath), shedengine.Stuck)
 	for _, want := range []string{"seed a new run", "lyx loom goto --to " + NameLoomPreflight} {
 		if !strings.Contains(pointer.Reason, want) {
 			t.Errorf("Reason = %q; want it to contain %q", pointer.Reason, want)
@@ -254,13 +231,7 @@ func TestLoomPreflight_Call_GotoThenLaterRowIsNotReentry(t *testing.T) {
 		t.Fatalf("UpdateJSON: %v", err)
 	}
 
-	outcome, _, err := NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath).Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-	}
+	shedfake.RequireOutcome(t, NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath), shedengine.Stuck)
 }
 
 func TestLoomPreflight_Call_ReentryWithOtherFailureStaysStuck(t *testing.T) {
@@ -268,13 +239,7 @@ func TestLoomPreflight_Call_ReentryWithOtherFailureStaysStuck(t *testing.T) {
 	statusPath, statusLockPath, gotoTo := halfFinishedRun(t, "")
 	gotoTo(NameLoomPreflight)
 
-	outcome, pointer, err := NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath).Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Fatalf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-	}
+	pointer := shedfake.RequireOutcome(t, NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath), shedengine.Stuck)
 	if !strings.Contains(pointer.Reason, string(loomengine.CheckSeedIncoherent)) {
 		t.Errorf("Reason = %q; want it to name %q", pointer.Reason, loomengine.CheckSeedIncoherent)
 	}
