@@ -37,7 +37,7 @@ Before the first step, read `lyx shed status [<run-id>]` once and record `curren
 An envelope with `found: false`, success or error, is an empty baseline `("", 0)`; proceed to the first step, whose own bootstrap seeds the status file.
 Any other status error is handed back.
 A baseline `state` of `blocked`, `awaiting`, `paused` or `failed` is not a stop: starting a driver on such a run is how an operator resumes it after resolving the cause (for `awaiting`, after approving or rejecting), so proceed to the first step, which resumes the run.
-Label that read as taken before the driver acted, for example "before step: blocked at Publish".
+Label that read as taken before the driver acted, for example "before step: blocked at <current_producer>".
 
 ## The loop
 
@@ -48,6 +48,7 @@ After every step, read its `trace_file` right away, because traces are swept by 
 ## Stopping on a non-running state
 
 On `continue: false`, `state: done` stops the loop.
+A `done` stop whose envelope reports `friction: failed` is also reported to the parent, as `## Notifying the parent` describes.
 `blocked` and `paused` are handed back with the envelope's `reason` and are never repaired: a Go gate concluded a human is needed.
 `awaiting` is handed back the same way, as a planned hand-off with the envelope's `reason`: the run waits on a person by design, so the report words it as a hand-off and never as a failure,
 and nothing is repaired.
@@ -149,7 +150,7 @@ Repairs act through `lyx`'s own verbs, plus read-only git for diagnosis:
 Never: `lyx shed pause` as a repair, hand-edit a status file or `seed.json`, re-seed, force-push, or delete a branch or worktree the trace does not name as created by the failed step.
 A crash window outside this list, or one no `lyx` verb can repair, escalates by design.
 
-Prefer not to merge the parent into a task worktree while its Webster phase is in flight;
+Prefer not to merge the parent into a task worktree while its in-flight producer is still running;
 when a parent fix is needed mid-run, `lyx fabric merge-in` is survivable and will warn.
 Only a clean merge survives: a conflicted merge-in, once resolved, is refused by record-batch until HEAD returns to the batch report's `head_sha`.
 
@@ -197,13 +198,14 @@ The driver reports `goto` as the way forward and never runs it: it is an operato
 
 ## Repair records and the stop report
 
-Write one record per repair under `<scratch_dir>/repairs/`: the failure, the trace lines acted on, the action taken and the outcome.
-Write the stop report under `scratch_dir` too, or to the path a launch prompt names.
-At every stop the report lists `friction_dir` and `<scratch_dir>/repairs/`.
+Write one record per repair into the envelope's `friction_dir` when it is non-empty, and under `<scratch_dir>/repairs/` only when it is empty: the failure, the trace lines acted on, the action taken and the outcome.
+The driver may write one optional friction note of its own into `friction_dir`, only when something went wrong in driving, under the same rule as the other agents' friction directives.
+Write the stop report under `scratch_dir`, or to the path a launch prompt names.
+At every stop the report lists `friction_dir` and whichever of `friction_dir` or `<scratch_dir>/repairs/` held the records.
 Every report names the run by the envelope's `run_id` and gives its position as `history_length` plus `progress` (`step` of `steps`, and `name`).
 It never cites the driver's own step count.
 A launch prompt from the orchestrator names a report path under the run's durable drive-reports directory.
-Each automatic re-step writes a record under `<scratch_dir>/repairs/` holding:
+Each automatic re-step writes a record, into the same place as a repair record, holding:
 
 - the stop;
 - the field that justified it: the `transient` class, or the build identity `last_step` recorded before the re-step and the one it records after;
@@ -220,14 +222,12 @@ At every escalation, after writing the stop report, send the parent session one 
 Address it to the name `LYX_PARENT` holds, and name the run-id and the stop report's path and nothing more.
 When `LYX_PARENT` is unset or empty, or the send fails, the stop report alone is the escalation;
 record a failed send as a line in the report rather than retrying it.
-A stop at `done` sends nothing, since nothing awaits a decision.
+A stop at `done` sends nothing, since nothing awaits a decision, except a `done` stop whose envelope reports `friction: failed`: it notifies the parent as an escalation does, naming the run-id and the stop report.
 
-## Self-report
+## Filing
 
-After the loop stops, read the `friction_dir` notes and the repair records; every repair record is itself friction data.
-In operator-driven mode, draft at most one `lyx selfreport create` call per supervised run, with the body on stdin via `-b -` and `--label enhancement` for non-defects.
-Fire it only on explicit operator approval: it files a public issue, an outward-facing and hard-to-reverse act.
-In autonomous mode, file nothing and put the draft in the report.
+The driver drafts and files no issue in any mode.
+The run's reflection reads `friction_dir`, repair records included, and files what it finds.
 
 ## Operator choices
 

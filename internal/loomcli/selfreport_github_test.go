@@ -146,9 +146,7 @@ func TestDetectAndFileAnomalies_EngineBoundary_RequestShapes(t *testing.T) {
 	}
 }
 
-// TestDetectAndFileAnomalies_FilingFailure_LeavesMarkerUnfiledAndDoesNotPropagate asserts a
-// filing call that fails leaves that title out of the marker and does not propagate -- both
-// halves, the absent marker entry and the unchanged surrounding behaviour.
+// TestDetectAndFileAnomalies_FilingFailure_LeavesMarkerUnfiledAndDoesNotPropagate asserts a filing call that fails leaves that title out of Titles, keeps it pending with the body the engine boundary was sent, and does not propagate -- the pending entry and the unchanged surrounding behaviour.
 func TestDetectAndFileAnomalies_FilingFailure_LeavesMarkerUnfiledAndDoesNotPropagate(t *testing.T) {
 	var captured []githubRequestCapture
 	server := newGitHubIssueServer(t, http.StatusUnprocessableEntity, `{"message":"Validation Failed"}`, &captured)
@@ -169,7 +167,12 @@ func TestDetectAndFileAnomalies_FilingFailure_LeavesMarkerUnfiledAndDoesNotPropa
 
 	marker := readFiledMarker(f.markerPath, f.markerLockPath)
 	if len(marker.Titles) != 0 {
-		t.Errorf("marker after a failed filing call = %+v; want empty (the title stays unrecorded so it is retried)", marker)
+		t.Errorf("marker after a failed filing call = %+v; want no recorded title (the title is kept pending)", marker)
+	}
+	sentTitle, _ := captured[0].body["title"].(string)
+	sentBody, _ := captured[0].body["body"].(string)
+	if len(marker.Pending) != 1 || marker.Pending[0].Title != sentTitle || marker.Pending[0].Body != sentBody {
+		t.Errorf("pending after a failed filing call = %+v; want one entry holding title %q and the body the engine boundary was sent", marker.Pending, sentTitle)
 	}
 }
 

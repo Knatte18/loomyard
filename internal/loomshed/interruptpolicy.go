@@ -32,10 +32,9 @@ const (
 // match before any archive, so a re-invocation reattaches to the live agent rather than spawning a
 // second one.
 //
-// NameFrictionReflect's premise is its own: the table answers only for `lyx loom step`, and armed
-// for step the row spawns nothing (loomcli's closure returns skipped without reflecting), so a
-// re-invocation cannot double-spawn. Reinvoke holds on the contract's own premise rather than
-// through an Attach probe, which frictionengine.Reflect does not have.
+// NameFrictionReflect's premise is the attach premise:
+// frictionengine.Reflect probes shuttle's attach seam for a live reflection agent and archives a finished reflection's notes instead of spawning,
+// so re-invoking an interrupted step never double-files.
 //
 // NameWebster is the exception because WebsterProducer inherits websterengine's own entry-time
 // reclaim, which stops a leftover Master rather than attaching to it (reclaimEntryTimeStrands in

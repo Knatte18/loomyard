@@ -62,15 +62,15 @@ type commitStatusDeps struct {
 
 // statusCommitPathspec returns the fabric-sibling pathspec one status commit stages: shedrun.StatusRel(location, runID), plus each of loomengine.LoomReviewsDirRel(), loomengine.LoomDurableDirRel() and shedrun.DriveReportsRel(location, runID) when its directory holds at least one non-directory entry anywhere beneath it.
 // The loom durable directory is staged whole rather than its friction directory alone:
-// staging the parent carries the friction directory, every timestamped archive sibling, and a reflection rename's removal of the old path in one entry,
-// where a friction-only entry would miss the removal once the directory is renamed away.
+// staging the parent carries the friction directory and every timestamped archive sibling in one entry,
+// where a friction-only entry would miss the archives.
 // Existence alone is not enough: shedrecipe's Bouncer and BurlerRound entries os.MkdirAll every review row's run directory at recipe build time,
 // so from a run's first transition the reviews root exists holding only empty segment directories.
 // `git add -- <dir>` accepts an empty directory,
 // but StageAndCommit's `git commit -- <pathspec>` then fails with "pathspec did not match any file(s) known to git", which the seam would turn into a hard error;
 // a directory with no file is nothing to commit, never an error, so every absent, unreadable, non-directory or file-less outcome omits the entry.
 // The directory pathspec is whole rather than per-file because StageAndCommit runs `git add -- <pathspec>`:
-// an archive rename commits both the new timestamped sibling and the old path's removal,
+// an archive commits both the new timestamped sibling and the covered files' removal from the friction directory,
 // and a transition whose commit was skipped mid-merge is caught up by the next one.
 // While a rejection is pending the reviews root and the loom durable directory are held back, so a status commit never lands half of a PR-Rework round:
 // `git add -- <dir>` stages deletions too, and a status commit between the archive step and the round commit would land `round-<N>/` and the review run directories' deletions without the plan's.
@@ -514,8 +514,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		DecisionRecordPath: loomengine.DiscussionDecisionRecord(location),
 		SupportLogPath:     loomengine.DiscussionSupportLog(location),
 		WebsterDeps:        runDeps,
-		// ReflectFriction is a method value over the receiver, so frictionDir and armedVerb are read
-		// when the row runs, not when wire runs.
+		// ReflectFriction is a method value over the receiver, so frictionDir is read when the row runs, not when wire runs.
 		ReflectFriction: c.reflectFrictionRow,
 		// WebsterRun is set explicitly to websterengine.Run, per the
 		// env-webster-run-is-filled-explicitly Shared Decision: websterEntry errors on a nil
@@ -716,6 +715,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	c.runDeps = runDeps
 	c.registry = registry
 	c.runner = runner
+	c.reflectionShuttle = runner
 	c.landingCfg = landingCfg
 	c.frictionDir = frictionDir
 	// driverStarter and driverPaneProbe wrap the runner and reed engine already constructed above --

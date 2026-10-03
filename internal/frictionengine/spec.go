@@ -48,6 +48,7 @@ func buildReflectionSpec(deps Deps, notes []string, reportPath string) (shuttlee
 		"friction_dir": deps.FrictionDir,
 		"report_path":  reportPath,
 		"note_list":    renderNoteList(notes),
+		"task_slug":    deps.TaskSlug,
 	}
 	prompt, err := stencil.Fill(template, values)
 	if err != nil {

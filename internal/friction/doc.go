@@ -29,6 +29,10 @@
 // separate enabled flag a resolved path could then contradict — two values that could disagree is
 // the failure this design avoids, mirroring internal/pattern.Directive's own empty-anchorPath case.
 //
+// # Go-authored notes
+//
+// Besides the agent-written notes the directive asks for, internal/loomcli and webster code write Go-authored halt and refusal notes through NotePath, which keeps this package free of feature imports.
+//
 // # Why four roles
 //
 // Role selects one of four directive-text variants, one per agent shape, because each shape needs
