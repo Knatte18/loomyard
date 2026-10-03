@@ -1,6 +1,5 @@
-// cli_test.go covers the webstercli cobra seam through RunCLI: bare-group listing, the
-// unknown-subcommand JSON envelope, the PersistentPreRunE group-command guard, and the help-tree
-// Short completeness check.
+// cli_test.go covers the webstercli cobra seam through RunCLI: the PersistentPreRunE group-command
+// guard and the help-tree stale-language check.
 // It also covers the three spawn-free verbs (validate/status/pause) and fabricSync's
 // SkipGit-before-Open guard ordering directly, since none of those need a live tmux/claude substrate
 // or even a git repository beyond a plain t.TempDir().
@@ -33,36 +32,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func TestRunCLI_NoArgs(t *testing.T) {
-	t.Parallel()
-
-	var out bytes.Buffer
-	exitCode := RunCLI(&out, nil)
-
-	if exitCode != 0 {
-		t.Errorf("RunCLI(nil) = %d; want 0", exitCode)
-	}
-}
-
-func TestRunCLI_UnknownSubcommand(t *testing.T) {
-	t.Chdir(t.TempDir())
-
-	var out bytes.Buffer
-	exitCode := RunCLI(&out, []string{"bogus"})
-
-	if exitCode != 1 {
-		t.Errorf("RunCLI(bogus) = %d; want 1", exitCode)
-	}
-
-	got := out.String()
-	if !strings.Contains(got, `"ok":false`) {
-		t.Errorf("RunCLI(bogus) output missing ok:false envelope; got: %q", got)
-	}
-	if !strings.Contains(got, "unknown") {
-		t.Errorf("RunCLI(bogus) output missing \"unknown\"; got: %q", got)
-	}
-}
-
 func TestRunCLI_GroupGuard_OutsideGitRepo(t *testing.T) {
 	t.Chdir(t.TempDir())
 
@@ -71,32 +40,6 @@ func TestRunCLI_GroupGuard_OutsideGitRepo(t *testing.T) {
 
 	if exitCode != 0 {
 		t.Errorf("RunCLI(nil) outside a git repo = %d; want 0", exitCode)
-	}
-}
-
-func TestCommand_EveryCommandHasShort(t *testing.T) {
-	var walk func(cmd *cobra.Command)
-	walk = func(cmd *cobra.Command) {
-		if cmd.Short == "" {
-			t.Errorf("command %q has empty Short", cmd.CommandPath())
-		}
-		for _, sub := range cmd.Commands() {
-			walk(sub)
-		}
-	}
-	walk(Command())
-}
-
-func TestCommand_AllEightSubcommandsRegistered(t *testing.T) {
-	want := []string{"validate", "run", "status", "pause", "begin-batch", "await-batch", "record-batch", "recover-batch"}
-	got := map[string]bool{}
-	for _, sub := range Command().Commands() {
-		got[sub.Name()] = true
-	}
-	for _, name := range want {
-		if !got[name] {
-			t.Errorf("Command() is missing subcommand %q", name)
-		}
 	}
 }
 

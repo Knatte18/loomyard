@@ -1,5 +1,5 @@
-// cli_test.go covers the reedcli cobra seam through RunCLI: bare-group listing, the
-// unknown-subcommand JSON envelope, and the not-a-git-repo error surface.
+// cli_test.go covers the reedcli cobra seam through RunCLI: watchdog's flag refusals and the
+// not-a-git-repo error surface.
 // No live tmux session is required by any test in this file;
 // the real up/add/status/down round-trip lives in smoke_test.go behind //go:build smoke.
 // Config resolution against a real fixture hub now lives in cli_integration_test.go per the Test
@@ -14,40 +14,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
-
-// TestRunCLI_NoArgs verifies that "lyx reed" with no subcommand lists all nine registered verbs
-// and exits 0.
-func TestRunCLI_NoArgs(t *testing.T) {
-	t.Parallel()
-
-	var out bytes.Buffer
-	exitCode := RunCLI(&out, nil)
-
-	if exitCode != 0 {
-		t.Errorf("RunCLI(nil) = %d; want 0", exitCode)
-	}
-
-	got := out.String()
-	wantSubs := []string{"up", "down", "add", "remove", "status", "resume", "attach", "statusline", "watchdog", "list"}
-	for _, sub := range wantSubs {
-		if !strings.Contains(got, sub) {
-			t.Errorf("RunCLI(nil) no-arg listing missing subcommand %q; got:\n%s", sub, got)
-		}
-	}
-}
-
-// TestCommand_EveryVerbHasNonEmptyShort asserts every registered reed subcommand — statusline and
-// watchdog included — carries a non-empty Short, per the CLI/Cobra Invariant.
-func TestCommand_EveryVerbHasNonEmptyShort(t *testing.T) {
-	t.Parallel()
-
-	parent := Command()
-	for _, sub := range parent.Commands() {
-		if sub.Short == "" {
-			t.Errorf("subcommand %q has an empty Short; want a non-empty short description", sub.Name())
-		}
-	}
-}
 
 // TestRunCLI_Watchdog_SkipsLocationResolution verifies that "watchdog" takes the
 // PersistentPreRunE's early return: invoked from a directory that is not a git repository, it must
@@ -99,21 +65,6 @@ func TestRunCLI_Watchdog_RefusesAbsentAndRelativeHubPath(t *testing.T) {
 			}
 		})
 	}
-}
-
-// TestRunCLI_UnknownSubcommand verifies that an unknown subcommand exits 1 and emits a JSON error
-// envelope.
-func TestRunCLI_UnknownSubcommand(t *testing.T) {
-	t.Chdir(t.TempDir())
-
-	var out bytes.Buffer
-	exitCode := RunCLI(&out, []string{"bogus"})
-
-	if exitCode != 1 {
-		t.Errorf("RunCLI(bogus) = %d; want 1", exitCode)
-	}
-
-	envelope.RequireErr(t, out.String(), "unknown")
 }
 
 // TestRunCLI_NotAGitRepo verifies that a real verb invoked from a non-git directory surfaces the

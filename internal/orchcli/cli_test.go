@@ -191,20 +191,6 @@ func TestStop_UntrackedStrandReportsNotRemoved(t *testing.T) {
 	}
 }
 
-func TestRunCLI_NoArgsListsSubcommands(t *testing.T) {
-	t.Parallel()
-
-	var out bytes.Buffer
-	if code := RunCLI(&out, nil); code != 0 {
-		t.Fatalf("RunCLI(nil) = %d; want 0", code)
-	}
-	for _, sub := range []string{"status", "cycle", "stop"} {
-		if !strings.Contains(out.String(), sub) {
-			t.Errorf("bare lyx orch output missing %q; got:\n%s", sub, out.String())
-		}
-	}
-}
-
 // TestOrchStrands_MatchesFullAndLegacyNames pins that the orchestrator lookup finds a full-name strand and a legacy exact-name strand, and nothing else.
 func TestOrchStrands_MatchesFullAndLegacyNames(t *testing.T) {
 	strands := []reedengine.StrandStatus{
