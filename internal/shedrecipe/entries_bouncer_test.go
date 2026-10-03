@@ -196,10 +196,11 @@ func TestBouncerEntry_ReportNamePinning(t *testing.T) {
 	}
 }
 
-// TestBouncerEntry_EnvJudgeFallback covers the three fallback outcomes for bouncerEntry's
-// model/effort/version resolution: a row omitting the keys takes env.JudgeModel/JudgeEffort/
-// JudgeVersion, never the Review* values; a row setting all three overrides the Env values; both absent leaves all three
-// empty (the provider default). shedadapters.BouncerConfig's cfg field is unexported and this is a
+// TestBouncerEntry_EnvJudgeFallback covers the three fallback outcomes for bouncerEntry's model/effort/version resolution:
+// a row omitting the keys takes env.JudgeModel/JudgeEffort/JudgeVersion, never the Review* values;
+// a row setting all three overrides the Env values;
+// both absent leaves all three empty (the provider default).
+// shedadapters.BouncerConfig's cfg field is unexported and this is a
 // different package, so the resolved triple is asserted through behaviour instead: one Call is
 // driven against the entry's producer with the shedfake.Shuttle already on newTestEnv's Env, and the
 // recorded shuttleengine.Spec's Model, Effort, and Version are asserted.
