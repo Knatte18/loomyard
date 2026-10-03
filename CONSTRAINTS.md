@@ -285,7 +285,8 @@ Every git op LYX's own code performs, on either weft or warp, goes through `inte
   The same holds for every warp-side writer: lyx's own code never writes a `.gitignore` in a warp worktree, the prime included, and every ignore it needs there goes to `.git/info/exclude` through `fabricengine`.
   The one weft-side `.gitignore` writer is `boardengine`'s lock and manifest patterns in `_board`, the weft's `main` worktree.
 - `Unwire` removes warp junctions/exclude entries only — weft-side `_lyx`/`.lyx` content always preserved.
-- Every teardown of an existing pair's weft branch (`Remove`, `RemovePairBranch`, `Cleanup`) first pushes an `archive/<slug>/<tip>` tag to the weft origin, so the run records stay reachable; a rolled-back `Add` is excepted, and `force` never skips it.
+- Every teardown of an existing pair's weft branch (`Remove`, `Cleanup`) first pushes an `archive/<slug>/<tip>` tag to the weft origin, so the run records stay reachable; a rolled-back `Add` is excepted, and `force` never skips it.
+  `Remove` first commits the sibling worktree's uncommitted changes under the scoped record pathspec, so the tag holds them; `force` skips neither the commit nor the tag.
   `Add` replaces a leftover remote weft branch only when an `archive/<slug>/*` tag covers its tip.
 
 ## Fabric Destruction Chokepoint Invariant
@@ -310,6 +311,15 @@ A producer that creates or destroys a task worktree never runs from inside that 
 - Enforcement is review discipline with two partial mechanical proxies, not an enforcing test: the invariant constrains which directory a running process is driven from, which has no static shape an AST scan can see.
   `internal/battenshed`'s seam-enforcement scan bars a direct resolver import so the package cannot resolve its way into the managed worktree, and `internal/battencli`'s path-derivation tests pin the status and lock paths to prime's anchor so a relocation under the managed worktree fails there — neither proves the driver's own working directory, which stays a review obligation.
 - "Prime" means the WARP prime: the weft sibling is a repository of its own whose prime is itself, so the name comparison alone admits it, and `battencli`'s pre-run therefore calls `fabricengine.RequireDrivableWorktree` — `RequireWarpWorktree` under the vocabulary-neutral name a non-owner may say at all — ahead of the name check (integration test `TestBattenIntegration_WeftPrimeRefusal`).
+
+## Pair Teardown Invariant
+
+Every teardown of a pair goes through `internal/pairteardown`, which ends the pair's reed session before any worktree is removed.
+
+- No production package outside `internal/pairteardown` and `internal/fabricengine` calls `Topology.Remove`.
+- The composite waits for the pair's driver to go quiet, bounded by `Request.QuietWait`; `--force` answers dirtiness only and never shortens or skips that wait.
+- `internal/pairteardown` stays inside the Fabric Vocabulary Invariant: it names no side, and passes `fabricengine.RemoveResult` through whole.
+- Enforced by `internal/pairteardown/teardown_enforcement_test.go`, a tripwire and not a completeness proof: it flags a four-argument `Remove` call in a file importing `internal/fabricengine`, and any remaining reference to the retired `RemovePairBranch`.
 
 ## Mutation Record Invariant
 
