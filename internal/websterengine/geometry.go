@@ -1,4 +1,4 @@
-// geometry.go declares Geometry, the nine-field struct webster is told its coordinates through.
+// geometry.go declares Geometry, the ten-field struct webster is told its coordinates through.
 // It declares the type only — no constructor, no validator, and no default; populating every field
 // with a usable absolute path is entirely the caller's obligation, exactly as
 // internal/reedengine/geometry.go does for reed.
