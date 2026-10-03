@@ -47,4 +47,6 @@ type Geometry struct {
 	SpecsDir string
 	// PlanDir is the told directory planparser parses.
 	PlanDir string
+	// VerifyDir is the told directory of the worktree's verified-tree record, running marker and verify log, read by the webster verify gate.
+	VerifyDir string
 }

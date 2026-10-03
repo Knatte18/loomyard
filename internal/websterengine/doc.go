@@ -435,6 +435,34 @@
 // Triage sees only failures, so a test the strand deleted or skipped reads as cleared;
 // the strand's prompt forbids it and summary.md names the fix commits and cleared identities for review.
 //
+// # The verify gate
+//
+// Run hands Merriam's spawn the plan-level verify as one must-pass gate entry named `verify` (NewVerifyGate), beside any entry the caller's RunDeps.Gate carries;
+// a RunDeps.Gate that already names `verify` is refused, so a recipe row cannot add a second entry.
+// Its attempt budget is Config.VerifyGateAttempts, and the count and the pre-fix head live in the closure's memory for one shuttle run, so an attach restarts them from zero.
+// The shipped Webster row supplies no gates of its own, and StartMaster is Merriam's only start, so every Merriam carries the spec.
+//
+// At each gated Done arrival the closure passes without verifying when outcome.yaml names an outcome other than done, so a stuck or paused outcome ends the run as before.
+// Otherwise it fails with the dirty paths when the tree is not clean, and runs no verify.
+// Once a pre-fix head is recorded, every commit from it to HEAD on the first-parent chain must be a non-merge commit or a clean parent merge (fixCommitRejection, in gitwrap.go);
+// any other fails the gate `Terminal`, which ends the run at once with the commit and the reason.
+// A plan with no `## verify:` section passes with a warning.
+// Otherwise verifytree.Verify runs the command under the site label `webster gate`, and a pass records the tree.
+// A failure is parsed from the log and rerun once: a rerun pass passes the gate, and the identities that failed once are flaky, which Run reports after the wait as a warning, a summary.md section and a friction note (VerifyGateNotes.Apply).
+// A failure that survives the rerun returns findings.
+// The first failed evaluation of any kind records HEAD as the pre-fix head, so every commit a fixer makes afterwards is checked at the next arrival.
+//
+// After the wait, a done run whose gate did not pass ends stuck, with a reason naming the failing identities and the attempts spent, or the `Terminal` failure's own reason.
+//
+// # The verify-gate report and findings
+//
+// Every failed evaluation writes the verify-gate report (VerifyGateReportPath, `verify-gate.yaml` in the reports directory) and returns renderVerifyGateFindings of it as the findings Merriam reads.
+// The report carries the attempt and the cap, the failing identities or the dirty paths, the verify log's path, the commits the fixer made since the pre-fix head, and a hint:
+// the cards, in trail order, whose commits changed a file directly in a failing package's directory (cardHint over accumulatedCardSHAs).
+// The hint claims only that a card touched a failing package; Merriam judges it with the plan in hand.
+// The gate runs no bisect, no baseline run and no detached checkout of the live worktree.
+// Run removes a stale report at entry.
+//
 // # No shared substrate or parser with any other batch-implementation loop
 //
 // websterengine imports no other batch-implementation module's plan

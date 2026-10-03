@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 
@@ -234,6 +235,52 @@ func commitsBetween(worktree, base, head string) ([]string, error) {
 		return nil, fmt.Errorf("websterengine: git rev-list %s..%s in %s: %w", base, head, worktree, err)
 	}
 	return strings.Fields(stdout), nil
+}
+
+// commitsSince returns the commits on HEAD's first-parent chain that base cannot reach, oldest first.
+// A merge commit in that range is listed, but the commits it brought in from its other parent are not.
+func commitsSince(worktree, base string) ([]string, error) {
+	newestFirst, err := commitsBetween(worktree, base, "HEAD")
+	if err != nil {
+		return nil, err
+	}
+	slices.Reverse(newestFirst)
+	return newestFirst, nil
+}
+
+// fixCommitRejection walks the commits from base to HEAD and returns the first that is neither a non-merge commit nor a clean parent merge, with the reason it does not qualify.
+// It returns empty strings when every commit qualifies.
+// The parent tips are resolved once, on the first merge the walk meets; a resolution error rejects that merge with the error as the reason, so a nil parentBranch accepts no merge.
+// An error is a failure to read the commits, never a rejection.
+func fixCommitRejection(worktree, base string, parentBranch ParentBranchFunc) (commit, reason string, err error) {
+	commits, err := commitsSince(worktree, base)
+	if err != nil {
+		return "", "", err
+	}
+	repo := gitrepo.New(worktree)
+	var parentTips []string
+	var tipsErr error
+	resolved := false
+	for _, c := range commits {
+		parents, err := repo.CommitParents(c)
+		if err != nil {
+			return "", "", fmt.Errorf("websterengine: parents of %s in %s: %w", c, worktree, err)
+		}
+		if len(parents) < 2 {
+			continue
+		}
+		if !resolved {
+			parentTips, tipsErr = resolveParentTips(repo, parentBranch)
+			resolved = true
+		}
+		if tipsErr != nil {
+			return c, tipsErr.Error(), nil
+		}
+		if rejection := parentMergeRejection(repo, c, parents, parentTips); rejection != "" {
+			return c, rejection, nil
+		}
+	}
+	return "", "", nil
 }
 
 // commitParentCount returns how many parents commit has.

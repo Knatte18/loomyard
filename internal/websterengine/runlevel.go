@@ -182,10 +182,10 @@ type RunOptions struct {
 // (Outcome/StuckReason/BatchesDone) plus the summary.md's title.
 type RunResult struct {
 	// Outcome is one of webster's own outcomeDone, outcomeStuck, or outcomePaused values (outcome.go),
-	// taken verbatim from the parsed outcome.yaml — except that the integration stage demotes a done to outcomeStuck when its triage finds a regression.
+	// taken verbatim from the parsed outcome.yaml — except that a done whose verify gate did not pass is demoted to outcomeStuck.
 	Outcome string
-	// StuckReason is the parsed outcome.yaml's stuck_reason, verbatim — except for a done demoted by the integration stage,
-	// whose reason names the regressing identities and the localized card.
+	// StuckReason is the parsed outcome.yaml's stuck_reason, verbatim — except for a done demoted by the verify gate,
+	// whose reason names the failing identities and the attempts spent.
 	StuckReason string
 	// BatchesDone is the parsed outcome.yaml's batches_done, verbatim.
 	BatchesDone int
@@ -373,8 +373,9 @@ func countBegunForkBatches(st *State, sessionID string) int {
 // ErrRunBusy and ErrFingerprintMismatch are exported sentinels;
 // non-done shuttle outcomes return *Master*Error types.
 // A done outcome passes through the run-exit audit: policy findings nobody dispositioned become run-level warnings on RunResult.Warnings,
-// and an undispositioned correctness finding demotes the outcome to stuck, the same way a regression in the integration stage does.
-// Once the integration stage has run, every recorded audit warning is appended to summary.md's "Audit warnings" section when that file exists.
+// and an undispositioned correctness finding demotes the outcome to stuck, the same way a done whose verify gate did not pass does.
+// Run hands Merriam's spawn the plan-level verify as a must-pass gate entry named `verify` (NewVerifyGate), so a red tree re-prompts Merriam's live session and a gate that never passes ends the run stuck.
+// Every recorded audit warning is appended to summary.md's "Audit warnings" section when that file exists.
 func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	if err := os.MkdirAll(deps.Geom.WebsterDir, 0o755); err != nil {
 		return RunResult{}, fmt.Errorf("webster: create webster dir %s: %w", deps.Geom.WebsterDir, err)
@@ -406,6 +407,12 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 
 	if deps.Batcher == nil {
 		return RunResult{}, ErrNilBatcher
+	}
+	// Run adds the `verify` entry itself, so a caller's gate naming one would run beside it.
+	for _, e := range deps.Gate {
+		if e.Name == verifyGateName {
+			return RunResult{}, fmt.Errorf("webster: RunDeps.Gate already names an entry %q; Run adds the plan-level verify gate itself; way forward: drop the %q entry from the Webster row's gates", verifyGateName, verifyGateName)
+		}
 	}
 	batches := deps.Batcher.Batch(plan.Cards)
 
@@ -629,6 +636,11 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		return RunResult{}, fmt.Errorf("webster: remove stale integration report %s: %w", integrationReportPath, err)
 	}
 
+	// A verify-gate report left by an earlier run describes an earlier attempt and would be read as this run's.
+	if err := os.Remove(VerifyGateReportPath(deps.Geom.ReportsDir)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return RunResult{}, fmt.Errorf("webster: remove stale verify-gate report: %w", err)
+	}
+
 	integrationPromptPath := ""
 	if ShouldRunIntegration(plan) {
 		integrationNotePath := friction.NotePath(deps.FrictionDir, "webster-integration")
@@ -689,7 +701,9 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	// The state-mutation lease acquired above is held across this call, which now includes the
 	// provider's startup window (bounded by startup_timeout_s) — see AcquireStateMutation's own
 	// contract. At run entry no batch forks exist yet, so the hold stalls nothing in practice.
-	handle, err := deps.Starter.StartMaster(spec, deps.Gate)
+	verifyGate, gateNotes := NewVerifyGate(deps.Geom, deps.Config.VerifyGateAttempts, batches, deps.ParentBranch, deps.FrictionDir)
+	gate := append(slices.Clone(deps.Gate), shuttleengine.GateEntry{Name: verifyGateName, Gate: verifyGate, Attempts: deps.Config.VerifyGateAttempts})
+	handle, err := deps.Starter.StartMaster(spec, gate)
 	if err != nil {
 		return RunResult{}, fmt.Errorf("webster: start master: %w; way forward: transient, re-run `lyx webster run`", err)
 	}
@@ -756,30 +770,17 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 			}
 			runResult.Warnings = append(cycleWarnings, runResult.Warnings...)
 		}
-		// The integration-suite stage is a minimal call-site addition at the
-		// end of the run, not a rewrite of the batch loop above: it re-derives
-		// everything it needs from disk (the plan's own ShouldRunIntegration,
-		// every batch's own persisted terminal record) rather than trusting
-		// whatever Master's own outcome.yaml/summary.md already said, so it
-		// runs the same way regardless of whether Master itself reported done
-		// or stuck for this plan.
-		warnings, stuckReason, err := runIntegrationStage(deps, plan, batches, runResult.Outcome)
+		// The plan-level verify ran as a gate on Master's own session, so a flaky pass reaches the run here, after the wait.
+		flakyWarnings, err := gateNotes.Apply(deps.Geom.WebsterDir)
 		if err != nil {
-			// The error paths that remain are a done outcome with no integration report and an infrastructure failure in triage, localization, or recording.
-			// runIntegrationStage can return warnings ALONGSIDE the latter,
-			// and every error return here reports the zero RunResult, so those warnings reach no envelope.
-			// They are logged instead rather than dropped: the triage and "could not be localized" notices explain the state the failed stage left behind.
-			for _, w := range warnings {
-				logger.Warn("websterengine: integration stage warning", "warning", w)
-			}
 			return RunResult{}, err
 		}
-		runResult.Warnings = append(runResult.Warnings, warnings...)
-		// A regression demotes Master's done to stuck; Master's own stuck keeps its own reason.
+		runResult.Warnings = append(runResult.Warnings, flakyWarnings...)
+		// A done whose verify gate did not pass ends stuck; Master's own stuck keeps its own reason.
 		// outcome.yaml is never rewritten.
-		if stuckReason != "" && runResult.Outcome == outcomeDone {
+		if result.Gate != nil && !result.Gate.Passed && runResult.Outcome == outcomeDone {
 			runResult.Outcome = outcomeStuck
-			runResult.StuckReason = stuckReason
+			runResult.StuckReason = verifyGateStuckReason(deps.Geom.ReportsDir, result.Gate)
 		}
 		// Every warning recorded this run, at record-batch or at run exit, reaches summary.md once, whatever the outcome;
 		// a missing summary on a non-done outcome skips the section.
