@@ -546,6 +546,12 @@ func DeleteTaskBranchAtTipForTest(l *lyxcwd.Location, warpBranch, parentBranch, 
 	return deleteTaskBranchAtTip(NewMutations(""), l, warpBranch, parentBranch, tip)
 }
 
+// CommitPendingRecordsForTest re-exports commitPendingRecords for package fabricengine_test integration tests that drive a sibling location Remove would refuse or tear down before the commit is observable on its own.
+// It passes a throwaway NewMutations("") recorder, since its callers assert nothing about the record.
+func CommitPendingRecordsForTest(l *lyxcwd.Location, slug, warpBranch string) (committed bool, err error) {
+	return commitPendingRecords(NewMutations(""), l, slug, warpBranch)
+}
+
 // CleanupRemoteWarpWithHookForTest runs CleanupRemoteWarp with afterEnumerate called between enumeration and the first deletion,
 // so an integration test can move a branch tip after it was observed and prove the lease holds.
 func CleanupRemoteWarpWithHookForTest(t *Topology, l *lyxcwd.Location, apply bool, openPRHeads map[string]bool, afterEnumerate func()) (RemoteWarpCleanupResult, error) {

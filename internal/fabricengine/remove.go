@@ -582,6 +582,10 @@ func commitPendingRecords(rec *Mutations, l *lyxcwd.Location, slug, warpBranch s
 			present = append(present, name)
 		}
 	}
+	// Nothing to commit, so the trailer's git lookups would be wasted, and they fail outright where the sibling location is not a checkout.
+	if len(present) == 0 {
+		return false, nil
+	}
 
 	warpSHA, err := recordTrailerSHA(l, slug, warpBranch, weftTarget)
 	if err != nil {

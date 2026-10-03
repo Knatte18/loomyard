@@ -133,6 +133,27 @@ func TestRemove_OutOfPathspecSiblingDirtRefusesBeforeAnyMutation(t *testing.T) {
 	}
 }
 
+// TestCommitPendingRecords_NothingPresentCommitsNothingWithoutGit points the record commit at a sibling location that is a plain directory holding no record path, with the task worktree and branch both absent.
+// It asserts the commit is skipped without error: with nothing to commit, resolving the Warp-SHA trailer must not run git there.
+func TestCommitPendingRecords_NothingPresentCommitsNothingWithoutGit(t *testing.T) {
+	t.Parallel()
+
+	const slug = "records-plain-sibling"
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	if err := os.MkdirAll(fabricengine.WeftWorktreePath(l, slug), 0o755); err != nil {
+		t.Fatalf("create the plain sibling directory: %v", err)
+	}
+
+	committed, err := fabricengine.CommitPendingRecordsForTest(l, slug, slug)
+	if err != nil {
+		t.Fatalf("commitPendingRecords() error = %v; want nil with no record path present", err)
+	}
+	if committed {
+		t.Error("commitPendingRecords() committed = true; want false with no record path present")
+	}
+}
+
 // TestRemoveRefusal_ProbeLeavesPairUntouched asks RemoveRefusal for each refusal kind and asserts it names the refusal, returns nil for a clean pair, and leaves the pair, both branches and the weft origin untouched.
 func TestRemoveRefusal_ProbeLeavesPairUntouched(t *testing.T) {
 	t.Parallel()
