@@ -1,8 +1,7 @@
 // friction_test.go covers the Tier 2 friction wiring this batch's runCmd/startCmd call sites own: the
 // once-per-task clear-and-create split ensureFrictionDirAfterSeed implements for the shared bootstrap, run's own
-// unconditional ensure, and the reflection-trigger decision shouldReflectFriction/reflectFriction
-// implement for runCmd (only RunBlocked with a non-empty directory reflects in loomPostRun; the done
-// path reflects inside the Friction-Reflect row). Every test here is untagged Tier 1: it spawns no subprocess, drives no
+// unconditional ensure, and the reflection call reflectFriction implements (the done path reflects
+// inside the Friction-Reflect row; halt reflection is covered by halt_test.go). Every test here is untagged Tier 1: it spawns no subprocess, drives no
 // real git operation, builds no real hub fixture, and contains no time.Sleep at or above one second.
 
 package loomcli
@@ -126,39 +125,6 @@ func TestRunEnsuresAbsentFrictionDir(t *testing.T) {
 
 	if _, err := os.Stat(dir); err != nil {
 		t.Errorf("Stat(%q) = %v; want the directory to exist after EnsureDir", dir, err)
-	}
-}
-
-// TestShouldReflectFriction covers every combination of the resolved friction directory and the run
-// outcome shouldReflectFriction gates runCmd's reflection call on: RunPaused never triggers it
-// regardless of the directory, an empty directory never triggers it regardless of outcome, and
-// only RunBlocked triggers it when the directory is non-empty: RunDone reflects inside the
-// Friction-Reflect row, not in loomPostRun.
-//
-// The non-nil-err path is not exercised here because it is structurally unreachable: runCmd's RunE
-// already returns on a non-nil shed.Run error before this decision is ever consulted, so there is no
-// outcome/err combination this function itself could be called with to represent it.
-func TestShouldReflectFriction(t *testing.T) {
-	tests := []struct {
-		name        string
-		frictionDir string
-		outcome     shedengine.RunOutcome
-		want        bool
-	}{
-		{"Done_DirSet", "/tmp/friction", shedengine.RunDone, false},
-		{"Blocked_DirSet", "/tmp/friction", shedengine.RunBlocked, true},
-		{"Paused_DirSet", "/tmp/friction", shedengine.RunPaused, false},
-		{"Done_DirEmpty", "", shedengine.RunDone, false},
-		{"Blocked_DirEmpty", "", shedengine.RunBlocked, false},
-		{"Paused_DirEmpty", "", shedengine.RunPaused, false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := shouldReflectFriction(tt.frictionDir, tt.outcome); got != tt.want {
-				t.Errorf("shouldReflectFriction(%q, %q) = %v; want %v", tt.frictionDir, tt.outcome, got, tt.want)
-			}
-		})
 	}
 }
 
@@ -459,21 +425,5 @@ func TestLoomPostRun_DoneReportsTheRowStatusWithoutReflecting(t *testing.T) {
 	c.rowFrictionStatus = ""
 	if got := c.loomPostRun(context.Background(), done, nil)["friction"]; got != frictionengine.StatusSkipped {
 		t.Errorf("friction = %v; want %q (a reflection attempt would report %q)", got, frictionengine.StatusSkipped, frictionengine.StatusFailed)
-	}
-}
-
-// TestLoomPostRun_BlockedStillReflects asserts the blocked path keeps its own reflection.
-func TestLoomPostRun_BlockedStillReflects(t *testing.T) {
-	t.Parallel()
-
-	blocked := shedengine.Result{Outcome: shedengine.RunBlocked}
-	c := newRelativeFrictionCLI(t)
-	if got := c.loomPostRun(context.Background(), blocked, nil)["friction"]; got != frictionengine.StatusFailed {
-		t.Errorf("friction = %v; want %q", got, frictionengine.StatusFailed)
-	}
-
-	c.frictionDir = ""
-	if got := c.loomPostRun(context.Background(), blocked, nil)["friction"]; got != frictionengine.StatusSkipped {
-		t.Errorf("friction = %v; want %q", got, frictionengine.StatusSkipped)
 	}
 }

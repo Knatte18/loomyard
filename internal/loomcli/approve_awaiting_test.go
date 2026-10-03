@@ -65,9 +65,3 @@ func TestApproveCmd_HelpNamesAwaitingOrBlocked(t *testing.T) {
 		t.Errorf("Long %q does not say \"awaiting or blocked at PR-Gate\"", cmd.Long)
 	}
 }
-
-func TestShouldReflectFriction_AwaitingNeverReflects(t *testing.T) {
-	if shouldReflectFriction("/some/friction", shedengine.RunAwaiting) {
-		t.Error("shouldReflectFriction = true for RunAwaiting; want false")
-	}
-}

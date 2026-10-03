@@ -41,6 +41,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/frictionengine"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/loomshed"
@@ -207,6 +208,7 @@ func (c *loomCLI) specFor(verb string) shedverbs.Spec {
 			PostRun:            c.loomPostRun,
 			PreStep:            c.loomPreStep,
 			PostStep:           c.loomPostStep,
+			AfterStep:          c.loomAfterStep,
 			InterruptPolicyFor: loomshed.InterruptPolicyFor,
 			StatusExtras:       c.loomStatusExtras,
 			Waiting:            reviewWaitingFor(c.location),
@@ -342,9 +344,12 @@ func (c *loomCLI) loomPreRun(ctx context.Context) error {
 // RunDone never reflects here: the Friction-Reflect row already did, under the run lock and before
 // done persisted, so the key reports c.rowFrictionStatus, or frictionengine.StatusSkipped when the
 // row did not run in this process (the engine's done short-circuit on an already-done status file).
-// RunBlocked still reflects here, after Run has returned, without waiting on a held reflection lock.
-// The key is returned unconditionally on the success path so it is never silently dropped from a
-// RunPaused envelope.
+// RunBlocked, and a non-nil runErr behind a `failed` status (failedHalt), each write a halt note and
+// reflect here, after Run has returned, without waiting on a held reflection lock; any other runErr
+// reports skipped.
+// The key is returned unconditionally so it is never silently dropped from a RunPaused envelope, and
+// `run` merges it onto its error envelope as onto its success envelope.
+// RunAwaiting and RunPaused write nothing.
 func (c *loomCLI) loomPostRun(ctx context.Context, result shedengine.Result, runErr error) map[string]any {
 	detectAndFileAnomalies(selfreportDeps{
 		Ctx:            ctx,
@@ -361,10 +366,21 @@ func (c *loomCLI) loomPostRun(ctx context.Context, result shedengine.Result, run
 	})
 
 	frictionStatus := frictionengine.StatusSkipped
-	if result.Outcome == shedengine.RunDone && c.rowFrictionStatus != "" {
+	switch {
+	case runErr != nil:
+		if n, ok := c.failedHalt(runErr); ok {
+			frictionStatus = c.reflectHalt(n)
+		}
+	case result.Outcome == shedengine.RunDone && c.rowFrictionStatus != "":
 		frictionStatus = c.rowFrictionStatus
-	} else if shouldReflectFriction(c.frictionDir, result.Outcome) {
-		frictionStatus = c.reflectFriction(false)
+	case result.Outcome == shedengine.RunBlocked:
+		frictionStatus = c.reflectHalt(haltNote{
+			Producer:   result.HaltedProducer,
+			State:      shedengine.StateBlocked,
+			Reason:     result.Reason,
+			HistoryLen: len(result.History),
+			TraceFile:  logger.TraceFile(),
+		})
 	}
 	return map[string]any{"friction": frictionStatus}
 }

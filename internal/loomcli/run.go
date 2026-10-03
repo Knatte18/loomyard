@@ -1,7 +1,6 @@
-// run.go holds the friction-reflection decision and its calls: shouldReflectFriction, the pure
-// decision loomPostRun (arm.go) gates its blocked-path reflection on, reflectFriction, the call
-// itself, and reflectFrictionRow, the closure the terminal Friction-Reflect row runs. All three are
-// loom's own and were run's own before run's body moved into arm.go's PreRun and PostRun hooks.
+// run.go holds the friction-reflection calls: reflectFriction, the call itself, and
+// reflectFrictionRow, the closure the terminal Friction-Reflect row runs.
+// The halt decision lives in halt.go, in loomAfterStep (step) and loomPostRun (run).
 
 package loomcli
 
@@ -14,22 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/shedengine"
 )
-
-// shouldReflectFriction reports whether loomPostRun should fire the friction reflection step: a
-// non-empty friction directory and an outcome of shedengine.RunBlocked. The done path reflects
-// inside the terminal Friction-Reflect row instead.
-// An awaiting halt is a planned hand-off to the operator, not a stall, so it runs no friction
-// reflection.
-// It is the pure decision the reflection call site gates on, factored out so a test can drive every
-// outcome without a real Shed.
-func shouldReflectFriction(frictionDir string, outcome shedengine.RunOutcome) bool {
-	if frictionDir == "" {
-		return false
-	}
-	return outcome == shedengine.RunBlocked
-}
 
 // reflectFriction builds Deps from c's own already-resolved fields and calls frictionengine.Reflect,
 // returning the envelope's "friction" status. A non-nil error from Reflect is a Deps-validation
@@ -40,7 +24,7 @@ func shouldReflectFriction(frictionDir string, outcome shedengine.RunOutcome) bo
 //
 // The whole call is wrapped in a lock on loomengine.LoomFrictionLock, which guards against two
 // reflections over one friction directory. They can overlap because the blocked-path call (from
-// loomPostRun) runs after shed.Run has returned and released the run lock, so an operator can resume
+// loomPostRun, and loomAfterStep under step) runs after shed.Run or shed.Step has returned and released the run lock, so an operator can resume
 // the task and reach a new driver's Friction-Reflect row while that earlier reflection still runs;
 // the second would archive the directory out from under the first one's live agent while both held
 // the same reflection-report.md as a declared output.
