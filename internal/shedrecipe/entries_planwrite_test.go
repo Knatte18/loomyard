@@ -15,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
 // TestPlanWriteEntry_ConstructionFailures covers the three seams planWriteEntry requires, the
@@ -110,7 +111,7 @@ func TestPlanWriteEntry_HappyPath(t *testing.T) {
 	}
 }
 
-// TestPlanWriteEntry_CallDone drives the happy-path producer's Call once against a fakeShuttle
+// TestPlanWriteEntry_CallDone drives the happy-path producer's Call once against a shedfake.Shuttle
 // reporting Done, and asserts the injected SpecSource was evaluated, the returned
 // OutputPointer.Path equals the Spec's first OutputFiles entry, and the injected commit closure
 // fired exactly once. env.AnchorPath from newTestEnv is a real directory that contains no plan
@@ -138,18 +139,12 @@ func TestPlanWriteEntry_CallDone(t *testing.T) {
 		t.Fatalf("planWriteEntry() error = %v; want nil", err)
 	}
 
-	fake := env.Shuttle.(*fakeShuttle)
-	fake.result = shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
+	fake := env.Shuttle.(*shedfake.Shuttle)
+	fake.Result = shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
 
-	outcome, pointer, err := producer.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Done {
-		t.Errorf("Call() outcome = %v; want %v", outcome, shedengine.Done)
-	}
-	if len(fake.specs) != 1 {
-		t.Fatalf("fake.specs has %d entries; want 1 -- the injected SpecSource must have been evaluated", len(fake.specs))
+	pointer := shedfake.RequireOutcome(t, producer, shedengine.Done)
+	if len(fake.Specs) != 1 {
+		t.Fatalf("fake.Specs has %d entries; want 1 -- the injected SpecSource must have been evaluated", len(fake.Specs))
 	}
 	if pointer.Path != gotSpec.OutputFiles[0] {
 		t.Errorf("Call() OutputPointer.Path = %q; want %q", pointer.Path, gotSpec.OutputFiles[0])
@@ -184,16 +179,16 @@ func TestPlanWriteEntry_CallAppendsPriorPlanBlock(t *testing.T) {
 	if err != nil {
 		t.Fatalf("planWriteEntry() error = %v; want nil", err)
 	}
-	fake := env.Shuttle.(*fakeShuttle)
-	fake.result = shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
+	fake := env.Shuttle.(*shedfake.Shuttle)
+	fake.Result = shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
 
 	if _, _, err := producer.Call(context.Background()); err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
 	}
-	if len(fake.specs) != 1 {
-		t.Fatalf("fake.specs has %d entries; want 1", len(fake.specs))
+	if len(fake.Specs) != 1 {
+		t.Fatalf("fake.Specs has %d entries; want 1", len(fake.Specs))
 	}
-	prompt := fake.specs[0].Prompt
+	prompt := fake.Specs[0].Prompt
 	if !strings.HasPrefix(prompt, "plan prompt\n") {
 		t.Errorf("prompt = %q; want it to start with the composed prompt", prompt)
 	}
@@ -253,16 +248,10 @@ func TestPlanWriteEntry_CallAsking(t *testing.T) {
 		t.Fatalf("planWriteEntry() error = %v; want nil", err)
 	}
 
-	fake := env.Shuttle.(*fakeShuttle)
-	fake.result = shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking}
+	fake := env.Shuttle.(*shedfake.Shuttle)
+	fake.Result = shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking}
 
-	outcome, _, err := producer.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %v; want %v", outcome, shedengine.Stuck)
-	}
+	shedfake.RequireOutcome(t, producer, shedengine.Stuck)
 	if commitCalls != 0 {
 		t.Errorf("commit closure invoked %d times; want 0 for an Asking outcome", commitCalls)
 	}

@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
+	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
 // assertErrContains fails the test unless err is non-nil and its message contains want.
@@ -157,7 +157,7 @@ func TestBouncerEntry_RunDirectory(t *testing.T) {
 // directory this test can distinguish. shedadapters.BouncerConfig.ArtifactPaths is not exposed on
 // the returned shedengine.ShedProducer, so the resolved path is asserted the way this file already
 // asserts other BouncerConfig fields it cannot reach directly (TestBouncerEntry_EnvReviewFallback):
-// through the seed template's rendered prompt, captured by the fakeShuttle.
+// through the seed template's rendered prompt, captured by the shedfake.Shuttle.
 func TestBouncerEntry_ArtifactPathsResolveUnderAnchorPath(t *testing.T) {
 	env := newTestEnv(t)
 	writeStencil(t, env.StencilsDir, "bouncer-template-seed", "{{.artifacts}}\n")
@@ -171,16 +171,16 @@ func TestBouncerEntry_ArtifactPathsResolveUnderAnchorPath(t *testing.T) {
 		t.Fatalf("Call() error = %v; want nil", err)
 	}
 
-	fake := env.Shuttle.(*fakeShuttle)
-	if len(fake.specs) != 1 {
-		t.Fatalf("len(fake.specs) = %d; want 1 (the seed spawn)", len(fake.specs))
+	fake := env.Shuttle.(*shedfake.Shuttle)
+	if len(fake.Specs) != 1 {
+		t.Fatalf("len(fake.Specs) = %d; want 1 (the seed spawn)", len(fake.Specs))
 	}
 	wantUnderAnchor := filepath.Join(env.AnchorPath, "artifact.md")
-	if !strings.Contains(fake.specs[0].Prompt, wantUnderAnchor) {
-		t.Errorf("seed prompt = %q; want it to contain %q (artifact.md resolved under Env.AnchorPath)", fake.specs[0].Prompt, wantUnderAnchor)
+	if !strings.Contains(fake.Specs[0].Prompt, wantUnderAnchor) {
+		t.Errorf("seed prompt = %q; want it to contain %q (artifact.md resolved under Env.AnchorPath)", fake.Specs[0].Prompt, wantUnderAnchor)
 	}
 	notWantUnderWorktree := filepath.Join(env.WorktreeRoot, "artifact.md")
-	if strings.Contains(fake.specs[0].Prompt, notWantUnderWorktree) {
+	if strings.Contains(fake.Specs[0].Prompt, notWantUnderWorktree) {
 		t.Errorf("seed prompt contains %q; want artifact_paths resolved under AnchorPath, not WorktreeRoot", notWantUnderWorktree)
 	}
 }
@@ -213,12 +213,12 @@ func TestBouncerEntry_ReportNamePinning(t *testing.T) {
 		t.Fatalf("Call() error = %v; want nil", err)
 	}
 
-	fake := env.Shuttle.(*fakeShuttle)
-	if len(fake.specs) != 1 {
-		t.Fatalf("len(fake.specs) = %d; want 1 (the judge spawn)", len(fake.specs))
+	fake := env.Shuttle.(*shedfake.Shuttle)
+	if len(fake.Specs) != 1 {
+		t.Fatalf("len(fake.Specs) = %d; want 1 (the judge spawn)", len(fake.Specs))
 	}
-	if fake.specs[0].Role != "bouncer-judge" {
-		t.Errorf("fake.specs[0].Role = %q; want %q (Call must reach the judge branch, not re-seed)", fake.specs[0].Role, "bouncer-judge")
+	if fake.Specs[0].Role != "bouncer-judge" {
+		t.Errorf("fake.Specs[0].Role = %q; want %q (Call must reach the judge branch, not re-seed)", fake.Specs[0].Role, "bouncer-judge")
 	}
 }
 
@@ -227,7 +227,7 @@ func TestBouncerEntry_ReportNamePinning(t *testing.T) {
 // ReviewVersion; a row setting all three overrides the Env values; both absent leaves all three
 // empty (the provider default). shedadapters.BouncerConfig's cfg field is unexported and this is a
 // different package, so the resolved triple is asserted through behaviour instead: one Call is
-// driven against the entry's producer with the fakeShuttle already on newTestEnv's Env, and the
+// driven against the entry's producer with the shedfake.Shuttle already on newTestEnv's Env, and the
 // recorded shuttleengine.Spec's Model, Effort, and Version are asserted.
 func TestBouncerEntry_EnvReviewFallback(t *testing.T) {
 	// callAndCaptureSpec constructs a Bouncer entry from cfg and env, drives the seed-pass Call --
@@ -245,11 +245,11 @@ func TestBouncerEntry_EnvReviewFallback(t *testing.T) {
 			t.Fatalf("Call() error = %v; want nil", err)
 		}
 
-		fake := env.Shuttle.(*fakeShuttle)
-		if len(fake.specs) != 1 {
-			t.Fatalf("len(fake.specs) = %d; want 1 (the seed spawn)", len(fake.specs))
+		fake := env.Shuttle.(*shedfake.Shuttle)
+		if len(fake.Specs) != 1 {
+			t.Fatalf("len(fake.Specs) = %d; want 1 (the seed spawn)", len(fake.Specs))
 		}
-		return fake.specs[0]
+		return fake.Specs[0]
 	}
 
 	t.Run("RowOmitsTakesEnvValues", func(t *testing.T) {
@@ -459,63 +459,23 @@ func layoutBouncerRound1Report(t *testing.T, env Env) {
 	}
 }
 
-// judgeSeamFakeShuttle implements shedadapters.Shuttle by writing round 1's APPROVED verdict and
-// ledger to the spec's declared OutputFiles during Run, so a bouncerEntry-built producer's judge
-// call harvests and settles within the same Call that produced them -- the harvest vehicle this
-// file's commit-seam subtests drive, following shedadapters/bouncer_commit_test.go's own treatment
-// of the same removed APPROVED-replay vehicle.
-type judgeSeamFakeShuttle struct {
-	specs []shuttleengine.Spec
-}
-
-var _ shedadapters.Shuttle = (*judgeSeamFakeShuttle)(nil)
-
-// Run implements shedadapters.Shuttle: it records spec, writes round 1's verdict and ledger to the
-// judge call's first two declared OutputFiles, and reports shuttleengine.OutcomeDone.
-func (f *judgeSeamFakeShuttle) Run(spec shuttleengine.Spec) (shuttleengine.Result, error) {
-	f.specs = append(f.specs, spec)
-	if len(spec.OutputFiles) == 3 {
-		verdict := "---\nverdict: APPROVED\nrationale: \"because reasons\"\n---\n"
-		_ = os.WriteFile(spec.OutputFiles[0], []byte(verdict), 0o644)
-		ledger := "---\nround: 1\nledger: []\n---\nno open findings\n"
-		_ = os.WriteFile(spec.OutputFiles[1], []byte(ledger), 0o644)
+// judgeSeamShuttle returns a shedfake.Shuttle whose Run writes round 1's APPROVED verdict and
+// ledger to the spec's declared OutputFiles and reports shuttleengine.OutcomeDone, so a
+// bouncerEntry-built producer's judge call harvests and settles within the same Call that produced
+// them -- the harvest vehicle this file's commit-seam subtests drive, following
+// shedadapters/bouncer_commit_test.go's own treatment of the same removed APPROVED-replay vehicle.
+func judgeSeamShuttle() *shedfake.Shuttle {
+	return &shedfake.Shuttle{
+		RunFn: func(spec shuttleengine.Spec) (shuttleengine.Result, error) {
+			if len(spec.OutputFiles) == 3 {
+				verdict := "---\nverdict: APPROVED\nrationale: \"because reasons\"\n---\n"
+				_ = os.WriteFile(spec.OutputFiles[0], []byte(verdict), 0o644)
+				ledger := "---\nround: 1\nledger: []\n---\nno open findings\n"
+				_ = os.WriteFile(spec.OutputFiles[1], []byte(ledger), 0o644)
+			}
+			return shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil
+		},
 	}
-	return shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil
-}
-
-// Attach implements shedadapters.Shuttle's probe method by always reporting not-found, matching
-// fakeShuttle's own Attach in fixture_test.go.
-func (f *judgeSeamFakeShuttle) Attach(shuttleengine.Spec) (shuttleengine.Result, bool, error) {
-	return shuttleengine.Result{}, false, nil
-}
-
-// RunGated implements the shared fake contract every shedadapters.Shuttle/burlerengine.Shuttle test fake follows (see the "every test fake evaluates the gate once" decision):
-// delegate to Run's own body, then -- only when gate is non-empty and the delegated outcome is OutcomeDone -- invoke the entries once each in list order (see evalGateList), returning a closure's error if non-nil and otherwise stamping a *GateOutcome onto the returned Result.
-func (f *judgeSeamFakeShuttle) RunGated(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (shuttleengine.Result, error) {
-	result, err := f.Run(spec)
-	if err != nil || len(gate) == 0 || result.Outcome != shuttleengine.OutcomeDone {
-		return result, err
-	}
-	passed, gerr := evalGateList(gate)
-	if gerr != nil {
-		return result, gerr
-	}
-	result.Gate = &shuttleengine.GateOutcome{Passed: passed}
-	return result, nil
-}
-
-// AttachGated is Attach's gated twin, following the identical shared fake contract.
-func (f *judgeSeamFakeShuttle) AttachGated(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (shuttleengine.Result, bool, error) {
-	result, found, err := f.Attach(spec)
-	if err != nil || !found || len(gate) == 0 || result.Outcome != shuttleengine.OutcomeDone {
-		return result, found, err
-	}
-	passed, gerr := evalGateList(gate)
-	if gerr != nil {
-		return result, found, gerr
-	}
-	result.Gate = &shuttleengine.GateOutcome{Passed: passed}
-	return result, found, nil
 }
 
 // TestBouncerEntry_CommitSeam covers the two-value resolution of commit_seam, the presence guard
@@ -527,7 +487,7 @@ func TestBouncerEntry_CommitSeam(t *testing.T) {
 		// than rejected as unknown: bouncerEntry returning a nil error below means the key was
 		// recognised.
 		env := newTestEnv(t)
-		env.Shuttle = &judgeSeamFakeShuttle{}
+		env.Shuttle = judgeSeamShuttle()
 		writeStencil(t, env.StencilsDir, "bouncer-template-judge", "judge template, no markers\n")
 		planCalls := 0
 		env.CommitPlan = func() error { planCalls++; return nil }
@@ -549,7 +509,7 @@ func TestBouncerEntry_CommitSeam(t *testing.T) {
 
 	t.Run("DiscussionResolvesToCommitDiscussion", func(t *testing.T) {
 		env := newTestEnv(t)
-		env.Shuttle = &judgeSeamFakeShuttle{}
+		env.Shuttle = judgeSeamShuttle()
 		writeStencil(t, env.StencilsDir, "bouncer-template-judge", "judge template, no markers\n")
 		planCalls := 0
 		discussionCalls := 0
@@ -576,7 +536,7 @@ func TestBouncerEntry_CommitSeam(t *testing.T) {
 
 	t.Run("AbsentLeavesSeamNil", func(t *testing.T) {
 		env := newTestEnv(t)
-		env.Shuttle = &judgeSeamFakeShuttle{}
+		env.Shuttle = judgeSeamShuttle()
 		writeStencil(t, env.StencilsDir, "bouncer-template-judge", "judge template, no markers\n")
 		planCalls := 0
 		discussionCalls := 0
@@ -695,7 +655,7 @@ func TestBouncerEntry_SkipSeam(t *testing.T) {
 // guard requireSeam enforces on a configured-but-missing env.ApprovePlan, and the allowlist edit
 // that widens configRejectUnknown by exactly one name. Where a case needs to observe which
 // closure was resolved, it follows TestBouncerEntry_CommitSeam's own approach of driving a Call
-// through judgeSeamFakeShuttle and counting closure invocations, rather than inventing a second
+// through judgeSeamShuttle and counting closure invocations, rather than inventing a second
 // mechanism.
 func TestBouncerEntry_ApproveSeam(t *testing.T) {
 	t.Run("PlanResolvesToApprovePlan", func(t *testing.T) {
@@ -703,7 +663,7 @@ func TestBouncerEntry_ApproveSeam(t *testing.T) {
 		// than rejected as unknown: bouncerEntry returning a nil error below means the key was
 		// recognised.
 		env := newTestEnv(t)
-		env.Shuttle = &judgeSeamFakeShuttle{}
+		env.Shuttle = judgeSeamShuttle()
 		writeStencil(t, env.StencilsDir, "bouncer-template-judge", "judge template, no markers\n")
 		approveCalls := 0
 		env.ApprovePlan = func() error { approveCalls++; return nil }
@@ -725,7 +685,7 @@ func TestBouncerEntry_ApproveSeam(t *testing.T) {
 
 	t.Run("AbsentLeavesSeamNil", func(t *testing.T) {
 		env := newTestEnv(t)
-		env.Shuttle = &judgeSeamFakeShuttle{}
+		env.Shuttle = judgeSeamShuttle()
 		writeStencil(t, env.StencilsDir, "bouncer-template-judge", "judge template, no markers\n")
 		approveCalls := 0
 		env.ApprovePlan = func() error { approveCalls++; return nil }
@@ -795,7 +755,7 @@ func TestBouncerEntry_ClusterExcludes(t *testing.T) {
 	judgePrompt := func(t *testing.T, cfgValue any, set bool) string {
 		t.Helper()
 		env := newTestEnv(t)
-		shuttle := &judgeSeamFakeShuttle{}
+		shuttle := judgeSeamShuttle()
 		env.Shuttle = shuttle
 		writeStencil(t, env.StencilsDir, "bouncer-template-judge", "rules:\n{{.focus_list_rules}}\n")
 		cfg := minimalBouncerConfig(t, env)
@@ -811,10 +771,10 @@ func TestBouncerEntry_ClusterExcludes(t *testing.T) {
 		if _, _, err := producer.Call(context.Background()); err != nil {
 			t.Fatalf("Call() error = %v; want nil", err)
 		}
-		if len(shuttle.specs) != 1 {
-			t.Fatalf("recorded specs = %d; want 1", len(shuttle.specs))
+		if len(shuttle.Specs) != 1 {
+			t.Fatalf("recorded specs = %d; want 1", len(shuttle.Specs))
 		}
-		return shuttle.specs[0].Prompt
+		return shuttle.Specs[0].Prompt
 	}
 
 	t.Run("AbsentOmitsExcludeLenses", func(t *testing.T) {

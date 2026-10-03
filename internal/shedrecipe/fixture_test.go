@@ -1,6 +1,6 @@
 // fixture_test.go implements the package-internal test scaffolding every later test file in this
-// package reuses: newTestEnv, the filled-Env builder, and the fake Shuttle/BurlerRunner/
-// WebsterRunner/RunDeps-seam implementations it fills that Env with.
+// package reuses: newTestEnv, the filled-Env builder, and the fake WebsterRunner it fills that Env
+// with alongside the shedfake seams.
 
 package shedrecipe
 
@@ -11,99 +11,12 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
-	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
-
-// fakeShuttle implements shedadapters.Shuttle by returning a caller-settable shuttleengine.Result
-// and error, recording every shuttleengine.Spec it was handed so a later test can assert on the
-// composed spec.
-type fakeShuttle struct {
-	result shuttleengine.Result
-	err    error
-	specs  []shuttleengine.Spec
-}
-
-var _ shedadapters.Shuttle = (*fakeShuttle)(nil)
-
-// Run implements shedadapters.Shuttle: it records spec and returns f's caller-settable result/err.
-func (f *fakeShuttle) Run(spec shuttleengine.Spec) (shuttleengine.Result, error) {
-	f.specs = append(f.specs, spec)
-	return f.result, f.err
-}
-
-// Attach implements shedadapters.Shuttle's probe method by always reporting not-found, so every
-// existing sequence in this package still drives the unchanged archive-then-run path through Run.
-func (f *fakeShuttle) Attach(shuttleengine.Spec) (shuttleengine.Result, bool, error) {
-	return shuttleengine.Result{}, false, nil
-}
-
-// RunGated implements the shared fake contract every shedadapters.Shuttle/burlerengine.Shuttle test fake follows (see the "every test fake evaluates the gate once" decision):
-// delegate to Run's own body, then -- only when gate is non-empty and the delegated outcome is OutcomeDone -- invoke the entries once each in list order (see evalGateList), returning a closure's error if non-nil and otherwise stamping a *GateOutcome onto the returned Result.
-// No production caller in this package supplies a non-zero GateSpec until batch 4, so every existing sequence here is unaffected.
-func (f *fakeShuttle) RunGated(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (shuttleengine.Result, error) {
-	result, err := f.Run(spec)
-	if err != nil || len(gate) == 0 || result.Outcome != shuttleengine.OutcomeDone {
-		return result, err
-	}
-	passed, gerr := evalGateList(gate)
-	if gerr != nil {
-		return result, gerr
-	}
-	result.Gate = &shuttleengine.GateOutcome{Passed: passed}
-	return result, nil
-}
-
-// AttachGated is Attach's gated twin, following the identical shared fake contract.
-func (f *fakeShuttle) AttachGated(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (shuttleengine.Result, bool, error) {
-	result, found, err := f.Attach(spec)
-	if err != nil || !found || len(gate) == 0 || result.Outcome != shuttleengine.OutcomeDone {
-		return result, found, err
-	}
-	passed, gerr := evalGateList(gate)
-	if gerr != nil {
-		return result, found, gerr
-	}
-	result.Gate = &shuttleengine.GateOutcome{Passed: passed}
-	return result, found, nil
-}
-
-// evalGateList runs gate's entries in list order for a test fake, skipping off entries (Attempts 0) and stopping at the first failure, and reports whether every entry run passed.
-func evalGateList(gate shuttleengine.GateSpec) (bool, error) {
-	for _, entry := range gate {
-		if entry.Attempts <= 0 {
-			continue
-		}
-		result, err := entry.Gate()
-		if err != nil {
-			return false, err
-		}
-		if !result.Passed {
-			return false, nil
-		}
-	}
-	return true, nil
-}
-
-// fakeBurlerRunner implements shedadapters.BurlerRunner by returning a zero burlerengine.Result and
-// a nil error, recording every burlerengine.Profile and burlerengine.RunOpts it was handed.
-type fakeBurlerRunner struct {
-	profiles []burlerengine.Profile
-	opts     []burlerengine.RunOpts
-}
-
-var _ shedadapters.BurlerRunner = (*fakeBurlerRunner)(nil)
-
-// Run implements shedadapters.BurlerRunner: it records p and opts and returns a zero Result with a
-// nil error.
-func (f *fakeBurlerRunner) Run(p burlerengine.Profile, opts burlerengine.RunOpts) (burlerengine.Result, error) {
-	f.profiles = append(f.profiles, p)
-	f.opts = append(f.opts, opts)
-	return burlerengine.Result{}, nil
-}
 
 // fakeWebsterRun is a shedadapters.WebsterRunner func value returning a zero
 // websterengine.RunResult and a nil error.
@@ -111,25 +24,12 @@ var fakeWebsterRun shedadapters.WebsterRunner = func(websterengine.RunDeps, webs
 	return websterengine.RunResult{}, nil
 }
 
-// fakeMasterStarter, fakeReedOps, fakeShuttleEngine, and fakeRefMatcher satisfy
-// websterengine.RunDeps' four required seams by embedding the seam interface in an empty struct,
-// which yields a non-nil value satisfying the interface without implementing a single method. Each
-// is a placeholder for a non-nil check only: calling any promoted method panics on the embedded nil
-// interface, which no test in this package does -- websterEntry's own Env validation stops at
-// requireSeam's non-nil check and never calls through any of these seams.
-type (
-	fakeMasterStarter struct{ websterengine.MasterStarter }
-	fakeReedOps       struct{ shuttleengine.ReedOps }
-	fakeShuttleEngine struct{ shuttleengine.Engine }
-	fakeRefMatcher    struct{ websterengine.RefMatcher }
-)
-
 // newTestEnv builds an Env whose every path field is an absolute path derived from a single
 // t.TempDir(), one subdirectory per field: a directory field (Cwd, WorktreeRoot, StencilsDir,
 // SpecsDir, RunRoot, AnchorPath, ScratchDir) is created with os.MkdirAll, while a file field
 // (StatusPath, StatusLockPath, DecisionRecordPath, SupportLogPath, PrimeLock.Path) is left as a
-// joined path nobody creates. It fills Shuttle, Burler, and WebsterRun with this file's fakes,
-// fills WebsterDeps with the four required seams non-nil and every other field left zero, fills
+// joined path nobody creates. It fills Shuttle and Burler with shedfake's fakes and WebsterRun with
+// this file's fake, fills WebsterDeps with shedfake.WebsterSeams, fills
 // DiscussionSpec with a closure returning a shuttleengine.Spec over one absolute output path under
 // the same temp root, fills CommitDiscussion with a closure returning nil, fills PlanSpec with a
 // closure returning a shuttleengine.Spec over one absolute output path under the same temp root,
@@ -166,17 +66,12 @@ func newTestEnv(t *testing.T) Env {
 		RunRoot:            mustMkdir("run-root"),
 		DecisionRecordPath: filepath.Join(dir, "decision-record.md"),
 		SupportLogPath:     filepath.Join(dir, "support-log.md"),
-		Shuttle:            &fakeShuttle{},
-		Burler:             &fakeBurlerRunner{},
+		Shuttle:            &shedfake.Shuttle{},
+		Burler:             &shedfake.BurlerRunner{},
 		WebsterRun:         fakeWebsterRun,
 		CommitWebster:      func() error { return nil },
 		ReflectFriction:    func() string { return "skipped" },
-		WebsterDeps: websterengine.RunDeps{
-			Starter:    fakeMasterStarter{},
-			Reed:       fakeReedOps{},
-			Engine:     fakeShuttleEngine{},
-			RefMatcher: fakeRefMatcher{},
-		},
+		WebsterDeps:        shedfake.WebsterSeams(),
 		DiscussionSpec: func() (shuttleengine.Spec, error) {
 			return shuttleengine.Spec{
 				Prompt:      "test discussion prompt",
