@@ -33,7 +33,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/Knatte18/loomyard/contracts/stencils"
@@ -51,6 +50,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
+	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 	"github.com/spf13/cobra"
 )
@@ -95,93 +95,6 @@ func seedAnchoredGitLink(t *testing.T, anchorPath, worktree string) {
 	}
 }
 
-// verbsFakeReed is a hermetic shuttleengine.ReedOps double.
-type verbsFakeReed struct {
-	mu             sync.Mutex
-	counter        int
-	status         reedengine.StatusResult
-	removedStrands []string
-}
-
-func (m *verbsFakeReed) AddStrand(spec reedengine.AddSpec) (reedengine.Strand, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.counter++
-	guid := fmt.Sprintf("verbs-strand-%d", m.counter)
-	m.status.Strands = append(m.status.Strands, reedengine.StrandStatus{GUID: guid, Live: true})
-	return reedengine.Strand{GUID: guid}, nil
-}
-
-func (m *verbsFakeReed) RemoveStrand(guid string, recursive bool) (reedengine.Removed, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.removedStrands = append(m.removedStrands, guid)
-	for i, s := range m.status.Strands {
-		if s.GUID == guid {
-			m.status.Strands = append(m.status.Strands[:i], m.status.Strands[i+1:]...)
-			break
-		}
-	}
-	return reedengine.Removed{}, nil
-}
-
-func (m *verbsFakeReed) Status() (reedengine.StatusResult, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.status, nil
-}
-
-func (m *verbsFakeReed) SendText(guid, text string, submit bool) error { return nil }
-func (m *verbsFakeReed) SendKey(guid, key string) error                { return nil }
-func (m *verbsFakeReed) CapturePane(guid string) (string, error)       { return "", nil }
-
-var _ shuttleengine.ReedOps = (*verbsFakeReed)(nil)
-
-// verbsFakeEngine is a hermetic shuttleengine.Engine double: Prepare counts
-// every call and returns a canned Launch without writing any real provider
-// artifacts; AuditForksIncremental hands back a caller-scripted ForkAudit;
-// ParseEvents hands back a caller-scripted (default empty, i.e. no Stop
-// event) event slice. Every other method is inert.
-type verbsFakeEngine struct {
-	mu           sync.Mutex
-	prepareCalls int
-	auditForks   shuttleengine.ForkAudit
-	events       []shuttleengine.Event
-}
-
-func (e *verbsFakeEngine) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	e.prepareCalls++
-	return shuttleengine.Launch{Cmd: "fake-launch-cmd", SessionID: fmt.Sprintf("fake-session-%d", e.prepareCalls)}, nil
-}
-func (e *verbsFakeEngine) ParseEvents(data []byte) ([]shuttleengine.Event, error) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	return e.events, nil
-}
-func (e *verbsFakeEngine) Startup(capture string) shuttleengine.StartupState {
-	return shuttleengine.StartupReady
-}
-func (e *verbsFakeEngine) InterruptSequence() []shuttleengine.PaneInput          { return nil }
-func (e *verbsFakeEngine) TrustDismissSequence(string) []shuttleengine.PaneInput { return nil }
-func (e *verbsFakeEngine) ComposeSend(text string) []shuttleengine.PaneInput {
-	return nil
-}
-func (e *verbsFakeEngine) AuditForks(sessionID, workdir string) (shuttleengine.ForkAudit, error) {
-	return shuttleengine.ForkAudit{}, nil
-}
-func (e *verbsFakeEngine) AuditForksIncremental(sessionID, workdir string, seenTranscripts map[string]bool) (shuttleengine.ForkAudit, error) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	return e.auditForks, nil
-}
-func (e *verbsFakeEngine) ModelSwitchSequence(model string) []shuttleengine.PaneInput {
-	return nil
-}
-
-var _ shuttleengine.Engine = (*verbsFakeEngine)(nil)
-
 // verbsFakeMasterStarter is a hermetic websterengine.MasterStarter double
 // that records whether it was ever called and errors loud if it is — used
 // only by tests proving a refusal path never reaches Master's own spawn.
@@ -202,8 +115,8 @@ var _ websterengine.MasterStarter = (*verbsFakeMasterStarter)(nil)
 // fixture seeded under the fixture's own _lyx/plan.
 type verbsFixture struct {
 	CLI      *websterCLI
-	Reed     *verbsFakeReed
-	Engine   *verbsFakeEngine
+	Reed     *shuttlefake.Reed
+	Engine   *shuttlefake.Engine
 	Runner   *shuttleengine.Runner
 	Worktree string
 }
@@ -223,8 +136,11 @@ func newVerbsFixture(t *testing.T) *verbsFixture {
 	// than needing its own separate repository.
 	seedAnchoredGitLink(t, layout.AnchorPath(), worktree)
 
-	reed := &verbsFakeReed{}
-	engine := &verbsFakeEngine{}
+	reed := &shuttlefake.Reed{}
+	engine := &shuttlefake.Engine{}
+	engine.PrepareFn = func(string, shuttleengine.Spec, shuttleengine.Config) (shuttleengine.Launch, error) {
+		return shuttleengine.Launch{Cmd: "fake-launch-cmd", SessionID: fmt.Sprintf("fake-session-%d", engine.PrepareCalls)}, nil
+	}
 	shuttleCfg := shuttleengine.Config{RunDir: filepath.Join(t.TempDir(), "runs"), RunTimeoutMin: 60, StartupTimeoutS: 30}
 	runner := shuttleengine.NewRunner(reed, engine, layout.AnchorPath(), layout.WorktreePath(), shuttleCfg)
 
@@ -633,7 +549,7 @@ func TestRecordBatchCmd_Envelope(t *testing.T) {
 			if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, st); err != nil {
 				t.Fatalf("SaveState() error = %v", err)
 			}
-			fx.Engine.auditForks = shuttleengine.ForkAudit{
+			fx.Engine.Audit = shuttleengine.ForkAudit{
 				Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/fork1.jsonl", ReportReturned: true}},
 			}
 			if tt.writeReport {
@@ -689,7 +605,7 @@ func TestRecordBatchCmd_FailedBatchEnvelope(t *testing.T) {
 	if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, st); err != nil {
 		t.Fatalf("SaveState() error = %v", err)
 	}
-	fx.Engine.auditForks = shuttleengine.ForkAudit{
+	fx.Engine.Audit = shuttleengine.ForkAudit{
 		Forks: []shuttleengine.ForkReport{{
 			TranscriptPath: "subagents/fork1.jsonl",
 			ReportReturned: true,
@@ -806,8 +722,8 @@ func TestRecoverBatchCmd_RunningThenTerminal(t *testing.T) {
 	if !strings.Contains(got1, `"batch":"01-only"`) {
 		t.Errorf("first call output missing batch identifier; got %q", got1)
 	}
-	if fx.Engine.prepareCalls != 1 {
-		t.Fatalf("Engine.prepareCalls after first call = %d; want exactly 1 (the spawn)", fx.Engine.prepareCalls)
+	if fx.Engine.PrepareCalls != 1 {
+		t.Fatalf("Engine.prepareCalls after first call = %d; want exactly 1 (the spawn)", fx.Engine.PrepareCalls)
 	}
 
 	loaded, err := websterengine.LoadState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir)
@@ -843,8 +759,8 @@ func TestRecoverBatchCmd_RunningThenTerminal(t *testing.T) {
 			t.Errorf("second call output missing %q; got %q", want, got2)
 		}
 	}
-	if fx.Engine.prepareCalls != 1 {
-		t.Errorf("Engine.prepareCalls after attach call = %d; want still exactly 1 (no re-spawn)", fx.Engine.prepareCalls)
+	if fx.Engine.PrepareCalls != 1 {
+		t.Errorf("Engine.prepareCalls after attach call = %d; want still exactly 1 (no re-spawn)", fx.Engine.PrepareCalls)
 	}
 
 	loaded, err = websterengine.LoadState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir)
@@ -1355,7 +1271,7 @@ func TestRecordBatchCmd_FabricSyncFailureWayForward(t *testing.T) {
 	if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, st); err != nil {
 		t.Fatalf("SaveState() error = %v", err)
 	}
-	fx.Engine.auditForks = shuttleengine.ForkAudit{
+	fx.Engine.Audit = shuttleengine.ForkAudit{
 		Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/fork1.jsonl", ReportReturned: true}},
 	}
 	writeBatchReport(t, fx.CLI.geom.ReportsDir, startSHA)

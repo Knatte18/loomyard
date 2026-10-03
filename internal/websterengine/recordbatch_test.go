@@ -30,6 +30,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -46,61 +47,43 @@ func (s *recordFakeSleeper) Sleep(d time.Duration) {
 
 var _ websterengine.Sleeper = (*recordFakeSleeper)(nil)
 
-// recordFakeEngine is a hermetic shuttleengine.Engine double: AuditForksIncremental
-// returns scripted[callCount] on each call (clamped to the last entry once the
+// recordAudit scripts a shuttlefake.Engine's AuditForksIncremental:
+// it returns scripted[callCount] on each call (clamped to the last entry once the
 // script is exhausted), so a test can drive a settle-retry sequence (an empty
 // miss followed by a hit, or a stable audit across repeated calls) without any
-// real transcript files. Every other method is unreached by RecordBatch's own
-// path and returns a fixed, inert value.
-type recordFakeEngine struct {
+// real transcript files.
+type recordAudit struct {
 	scripted  []shuttleengine.ForkAudit
 	callCount int
-	// sessions records the sessionID of every AuditForksIncremental call, so a
+	// sessions records the sessionID of every call, so a
 	// test can assert WHICH session the audit was keyed on (the
 	// bracket-opening session, never blindly the current Master session).
 	sessions []string
-	// auditErr, when non-nil, is returned by every AuditForksIncremental call
+	// auditErr, when non-nil, is returned by every call
 	// instead of the script — the missing-transcript failure double for the
 	// cross-machine resume path.
 	auditErr error
 }
 
-func (e *recordFakeEngine) AuditForksIncremental(sessionID, workdir string, seenTranscripts map[string]bool) (shuttleengine.ForkAudit, error) {
-	e.callCount++
-	e.sessions = append(e.sessions, sessionID)
-	if e.auditErr != nil {
-		return shuttleengine.ForkAudit{}, e.auditErr
+func (a *recordAudit) engine() *shuttlefake.Engine {
+	return &shuttlefake.Engine{AuditForksIncrementalFn: a.audit}
+}
+
+func (a *recordAudit) audit(sessionID, workdir string, seenTranscripts map[string]bool) (shuttleengine.ForkAudit, error) {
+	a.callCount++
+	a.sessions = append(a.sessions, sessionID)
+	if a.auditErr != nil {
+		return shuttleengine.ForkAudit{}, a.auditErr
 	}
-	if len(e.scripted) == 0 {
+	if len(a.scripted) == 0 {
 		return shuttleengine.ForkAudit{}, nil
 	}
-	idx := e.callCount - 1
-	if idx >= len(e.scripted) {
-		idx = len(e.scripted) - 1
+	idx := a.callCount - 1
+	if idx >= len(a.scripted) {
+		idx = len(a.scripted) - 1
 	}
-	return e.scripted[idx], nil
+	return a.scripted[idx], nil
 }
-
-func (e *recordFakeEngine) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {
-	return shuttleengine.Launch{}, nil
-}
-func (e *recordFakeEngine) ParseEvents(data []byte) ([]shuttleengine.Event, error) { return nil, nil }
-func (e *recordFakeEngine) Startup(capture string) shuttleengine.StartupState {
-	return shuttleengine.StartupReady
-}
-func (e *recordFakeEngine) InterruptSequence() []shuttleengine.PaneInput          { return nil }
-func (e *recordFakeEngine) TrustDismissSequence(string) []shuttleengine.PaneInput { return nil }
-func (e *recordFakeEngine) ComposeSend(text string) []shuttleengine.PaneInput {
-	return nil
-}
-func (e *recordFakeEngine) AuditForks(sessionID, workdir string) (shuttleengine.ForkAudit, error) {
-	return shuttleengine.ForkAudit{}, nil
-}
-func (e *recordFakeEngine) ModelSwitchSequence(model string) []shuttleengine.PaneInput {
-	return nil
-}
-
-var _ shuttleengine.Engine = (*recordFakeEngine)(nil)
 
 // recordFixture is a fully-wired set of RecordBatch dependencies: a real
 // scratch git repo (one base commit plus one in-scope work commit) as
@@ -113,7 +96,7 @@ var _ shuttleengine.Engine = (*recordFakeEngine)(nil)
 // real HEAD.
 type recordFixture struct {
 	Deps       websterengine.RecordDeps
-	Engine     *recordFakeEngine
+	Audit      *recordAudit
 	Sleeper    *recordFakeSleeper
 	Worktree   string
 	ReportsDir string
@@ -142,7 +125,7 @@ func newRecordFixture(t *testing.T, scripted []shuttleengine.ForkAudit) *recordF
 	// path. No card here declares a handle, so nothing is ever written into it.
 	planDir := t.TempDir()
 
-	engine := &recordFakeEngine{scripted: scripted}
+	audit := &recordAudit{scripted: scripted}
 	sleeper := &recordFakeSleeper{}
 
 	state := &websterengine.State{
@@ -163,7 +146,7 @@ func newRecordFixture(t *testing.T, scripted []shuttleengine.ForkAudit) *recordF
 		Batches: batches,
 		State:   state,
 		Config:  websterengine.Config{},
-		Engine:  engine,
+		Engine:  audit.engine(),
 		Geom: websterengine.Geometry{
 			AnchorRoot:   worktree,
 			WorktreeRoot: worktree,
@@ -178,7 +161,7 @@ func newRecordFixture(t *testing.T, scripted []shuttleengine.ForkAudit) *recordF
 		Plan:        plan,
 	}
 
-	return &recordFixture{Deps: deps, Engine: engine, Sleeper: sleeper, Worktree: worktree, ReportsDir: reportsDir, StartSHA: startSHA, HeadSHA: headSHA}
+	return &recordFixture{Deps: deps, Audit: audit, Sleeper: sleeper, Worktree: worktree, ReportsDir: reportsDir, StartSHA: startSHA, HeadSHA: headSHA}
 }
 
 // addPendingCard appends a second card to fx's plan, in its own second batch that has no BatchState
@@ -228,8 +211,8 @@ func TestRecordBatch_NoBeginRecord(t *testing.T) {
 		if !strings.Contains(err.Error(), "lyx webster begin-batch 01") {
 			t.Errorf("RecordBatch() error = %q; want it to name `lyx webster begin-batch 01`", err.Error())
 		}
-		if fx.Engine.callCount != 0 {
-			t.Errorf("Engine was reached (%d calls) with no begin record; want zero", fx.Engine.callCount)
+		if fx.Audit.callCount != 0 {
+			t.Errorf("Engine was reached (%d calls) with no begin record; want zero", fx.Audit.callCount)
 		}
 		archived := archivedReports(t, fx.ReportsDir)
 		if len(archived) != 1 || result == nil || result.ArchivedReport == "" {
@@ -294,8 +277,8 @@ func TestRecordBatch_RecoveryBatchRefusedLoud(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "recover-batch") {
 		t.Fatalf("RecordBatch() error = %v; want a refusal naming recover-batch", err)
 	}
-	if fx.Engine.callCount != 0 {
-		t.Errorf("Engine was reached (%d calls) for a recovery batch; want zero", fx.Engine.callCount)
+	if fx.Audit.callCount != 0 {
+		t.Errorf("Engine was reached (%d calls) for a recovery batch; want zero", fx.Audit.callCount)
 	}
 }
 
@@ -320,7 +303,7 @@ func TestRecordBatch_AuditsBracketOpeningSession(t *testing.T) {
 	if result.Digest == nil || result.Digest.Status != websterengine.DigestStatusDone {
 		t.Fatalf("RecordBatch() digest = %+v; want a terminal done digest", result.Digest)
 	}
-	for i, session := range fx.Engine.sessions {
+	for i, session := range fx.Audit.sessions {
 		if session != "session-crashed" {
 			t.Errorf("AuditForksIncremental call %d keyed on session %q; want the bracket-opening \"session-crashed\"", i, session)
 		}
@@ -732,7 +715,7 @@ func TestRecordBatch_ScratchParentWriteRecordsUncheckable(t *testing.T) {
 	}})
 	fx.Deps.Geom.ScratchDir = t.TempDir()
 	pause := filepath.Join(fx.Deps.Geom.ScratchDir, "pause")
-	fx.Engine.scripted[0].ParentWrites = []string{pause}
+	fx.Audit.scripted[0].ParentWrites = []string{pause}
 	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
 
 	if _, err := websterengine.RecordBatch(fx.Deps, 1); !errors.Is(err, websterengine.ErrBatchFailed) {
@@ -748,7 +731,7 @@ func TestRecordBatch_TrackedParentWriteLeavesUncheckableEmpty(t *testing.T) {
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{{
 		Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}},
 	}})
-	fx.Engine.scripted[0].ParentWrites = []string{filepath.Join(fx.Worktree, "internal/foo/impl.go")}
+	fx.Audit.scripted[0].ParentWrites = []string{filepath.Join(fx.Worktree, "internal/foo/impl.go")}
 	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
 
 	if _, err := websterengine.RecordBatch(fx.Deps, 1); !errors.Is(err, websterengine.ErrBatchFailed) {
@@ -847,7 +830,7 @@ func TestRecordBatch_CorrectnessParentFindingNoReportFailsBatch(t *testing.T) {
 		Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}},
 	}})
 	tracked := filepath.Join(fx.Worktree, "internal", "foo", "impl.go")
-	fx.Engine.scripted[0].ParentWrites = []string{tracked}
+	fx.Audit.scripted[0].ParentWrites = []string{tracked}
 
 	result, err := websterengine.RecordBatch(fx.Deps, 1)
 	if !errors.Is(err, websterengine.ErrBatchFailed) {
@@ -873,7 +856,7 @@ func TestRecordBatch_CorrectnessFindingFailedReportFailsBatch(t *testing.T) {
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{{
 		Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}},
 	}})
-	fx.Engine.scripted[0].ParentWrites = []string{filepath.Join(fx.Worktree, "internal", "foo", "impl.go")}
+	fx.Audit.scripted[0].ParentWrites = []string{filepath.Join(fx.Worktree, "internal", "foo", "impl.go")}
 	writeReport(t, fx.ReportsDir, "status: FAILED\nhead_sha: "+fx.HeadSHA+"\n")
 
 	_, err := websterengine.RecordBatch(fx.Deps, 1)
@@ -952,7 +935,7 @@ func TestRecordBatch_ParentWriteToRunStateFailsBatch(t *testing.T) {
 	}})
 	fx.Deps.Geom.WebsterDir = t.TempDir()
 	state := filepath.Join(fx.Deps.Geom.WebsterDir, "state.json")
-	fx.Engine.scripted[0].ParentWrites = []string{state}
+	fx.Audit.scripted[0].ParentWrites = []string{state}
 	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
 
 	result, err := websterengine.RecordBatch(fx.Deps, 1)
@@ -969,7 +952,7 @@ func TestRecordBatch_ForkContractWriteFailsBatch(t *testing.T) {
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{{
 		Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}},
 	}})
-	fx.Engine.scripted[0].Forks[0].WritePaths = []string{fx.Deps.OutcomePath}
+	fx.Audit.scripted[0].Forks[0].WritePaths = []string{fx.Deps.OutcomePath}
 	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
 
 	_, err := websterengine.RecordBatch(fx.Deps, 1)
@@ -988,7 +971,7 @@ func TestRecordBatch_ForkPlanWriteFailsBatch(t *testing.T) {
 		Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}},
 	}})
 	card := filepath.Join(fx.Deps.Geom.PlanDir, "03-x.md")
-	fx.Engine.scripted[0].Forks[0].WritePaths = []string{card}
+	fx.Audit.scripted[0].Forks[0].WritePaths = []string{card}
 	// A plan file is checkable by recovery only against recorded plan hashes.
 	fx.Deps.State.PlanFileHashes = map[string]string{"03-x.md": "recorded"}
 	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
@@ -1035,7 +1018,7 @@ func TestRecordBatch_ForgedTerminalRecordFails(t *testing.T) {
 
 	// A new transcript that wrote state.json fails the batch.
 	fx.Deps.State.SeenForkTranscripts = nil
-	fx.Engine.scripted[0].Forks[0].WritePaths = []string{filepath.Join(fx.Deps.Geom.WebsterDir, "state.json")}
+	fx.Audit.scripted[0].Forks[0].WritePaths = []string{filepath.Join(fx.Deps.Geom.WebsterDir, "state.json")}
 	result, err := websterengine.RecordBatch(fx.Deps, 1)
 	if !errors.Is(err, websterengine.ErrBatchFailed) {
 		t.Fatalf("RecordBatch() error = %v; want ErrBatchFailed", err)
@@ -1073,7 +1056,7 @@ func TestRecordBatch_TerminalAuditSkipsAnotherForksTranscript(t *testing.T) {
 			fx.Deps.State.Batches[1].Terminal = true
 			fx.Deps.State.Batches[1].Status = websterengine.DigestStatusDone
 			fx.Deps.State.Batches[1].Digest = &websterengine.Digest{Batch: "01-json-flag", Status: websterengine.DigestStatusDone, HeadSHA: fx.HeadSHA}
-			fx.Engine.scripted[0].Forks[0].WritePaths = []string{filepath.Join(fx.ReportsDir, websterengine.ReportFileName(2, "later"))}
+			fx.Audit.scripted[0].Forks[0].WritePaths = []string{filepath.Join(fx.ReportsDir, websterengine.ReportFileName(2, "later"))}
 			tt.setup(t, fx)
 
 			_, err := websterengine.RecordBatch(fx.Deps, 1)
@@ -1195,7 +1178,7 @@ func TestRecordBatch_WayForward_UnknownBatch(t *testing.T) {
 // errors.Is must still see the underlying fs.ErrNotExist.
 func TestRecordBatch_MissingSessionTranscriptArchivesReport(t *testing.T) {
 	fx := newRecordFixture(t, nil)
-	fx.Engine.auditErr = fmt.Errorf("claudeengine: read parent transcript %q: %w", "/nope/session.jsonl", fs.ErrNotExist)
+	fx.Audit.auditErr = fmt.Errorf("claudeengine: read parent transcript %q: %w", "/nope/session.jsonl", fs.ErrNotExist)
 	writeReport(t, fx.ReportsDir, "status: OK\nhead_sha: "+fx.HeadSHA+"\n")
 
 	result, err := websterengine.RecordBatch(fx.Deps, 1)

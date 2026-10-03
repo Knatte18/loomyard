@@ -1334,7 +1334,7 @@ func TestIntegrationStage_FixAttempt_UnrecordedStrandIsRemoved(t *testing.T) {
 		if err := websterengine.SaveState(sc.fx.Deps.Geom.WebsterDir, sc.fx.Deps.Geom.ScratchDir, st); err != nil {
 			t.Fatalf("SaveState() error = %v", err)
 		}
-		sc.fx.Reed.status = reedengine.StatusResult{Strands: []reedengine.StrandStatus{{GUID: "fix-strand", Live: true}}}
+		sc.fx.Reed.Strands = []reedengine.StrandStatus{{GUID: "fix-strand", Live: true}}
 	}
 	sc.suite.fixer = fixer
 
@@ -1342,8 +1342,8 @@ func TestIntegrationStage_FixAttempt_UnrecordedStrandIsRemoved(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "fix-strand") {
 		t.Fatalf("Run() error = %v; want the record error naming the fix strand", err)
 	}
-	if len(sc.fx.Reed.removedStrands) != 1 || sc.fx.Reed.removedStrands[0] != "fix-strand" {
-		t.Errorf("RemoveStrand calls = %v; want exactly [fix-strand]", sc.fx.Reed.removedStrands)
+	if len(sc.fx.Reed.RemovedGUIDs) != 1 || sc.fx.Reed.RemovedGUIDs[0] != "fix-strand" {
+		t.Errorf("RemoveStrand calls = %v; want exactly [fix-strand]", sc.fx.Reed.RemovedGUIDs)
 	}
 }
 

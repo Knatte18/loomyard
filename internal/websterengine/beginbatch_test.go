@@ -37,6 +37,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -107,35 +108,6 @@ func mustFingerprint(t *testing.T, planDir string) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-// beginFakeReed is a minimal shuttleengine.ReedOps double for BeginBatch's
-// strand-reclaim step: Status returns a scripted set of live strands, and
-// RemoveStrand records every guid it was asked to stop. Only Status and
-// RemoveStrand are reached by BeginBatch's own path.
-type beginFakeReed struct {
-	live    []string
-	removed []string
-}
-
-func (m *beginFakeReed) Status() (reedengine.StatusResult, error) {
-	var strands []reedengine.StrandStatus
-	for _, g := range m.live {
-		strands = append(strands, reedengine.StrandStatus{GUID: g, Live: true})
-	}
-	return reedengine.StatusResult{Strands: strands}, nil
-}
-func (m *beginFakeReed) RemoveStrand(guid string, recursive bool) (reedengine.Removed, error) {
-	m.removed = append(m.removed, guid)
-	return reedengine.Removed{}, nil
-}
-func (m *beginFakeReed) AddStrand(spec reedengine.AddSpec) (reedengine.Strand, error) {
-	return reedengine.Strand{}, nil
-}
-func (m *beginFakeReed) SendText(guid, text string, submit bool) error { return nil }
-func (m *beginFakeReed) SendKey(guid, key string) error                { return nil }
-func (m *beginFakeReed) CapturePane(guid string) (string, error)       { return "", nil }
-
-var _ shuttleengine.ReedOps = (*beginFakeReed)(nil)
-
 // beginCard returns a minimal single-card batcher.Batch identifying number
 // and slug — begin-batch's batchIdentity assumption (batch ≡ card under the
 // identity batchifier).
@@ -163,40 +135,6 @@ func (f *beginFakeInjector) Inject(guid string, inputs []shuttleengine.PaneInput
 
 var _ websterengine.Injector = (*beginFakeInjector)(nil)
 
-// beginFakeEngine is a hermetic shuttleengine.Engine double: ModelSwitchSequence
-// returns a recognizable marker sequence naming the requested model, so a test
-// can assert BeginBatch requested the correct target model without decoding
-// real provider grammar; every other method is unreached by BeginBatch's own
-// path and returns a fixed, inert value.
-type beginFakeEngine struct{}
-
-func (e *beginFakeEngine) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {
-	return shuttleengine.Launch{}, nil
-}
-func (e *beginFakeEngine) ParseEvents(data []byte) ([]shuttleengine.Event, error) { return nil, nil }
-func (e *beginFakeEngine) Startup(capture string) shuttleengine.StartupState {
-	return shuttleengine.StartupReady
-}
-func (e *beginFakeEngine) InterruptSequence() []shuttleengine.PaneInput          { return nil }
-func (e *beginFakeEngine) TrustDismissSequence(string) []shuttleengine.PaneInput { return nil }
-func (e *beginFakeEngine) ComposeSend(text string) []shuttleengine.PaneInput {
-	return nil
-}
-func (e *beginFakeEngine) AuditForks(sessionID, workdir string) (shuttleengine.ForkAudit, error) {
-	return shuttleengine.ForkAudit{}, nil
-}
-func (e *beginFakeEngine) AuditForksIncremental(sessionID, workdir string, seenTranscripts map[string]bool) (shuttleengine.ForkAudit, error) {
-	return shuttleengine.ForkAudit{}, nil
-}
-
-// ModelSwitchSequence returns a single marker PaneInput naming model, so a test asserting
-// BeginBatch's Injector call can read the target model back out of the recorded inputs.
-func (e *beginFakeEngine) ModelSwitchSequence(model string) []shuttleengine.PaneInput {
-	return []shuttleengine.PaneInput{{Text: "/model " + model, Submit: true}}
-}
-
-var _ shuttleengine.Engine = (*beginFakeEngine)(nil)
-
 // beginFixture is a fully-wired set of BeginBatch dependencies: a real
 // scratch git repo as WorktreeRoot, fresh webster/reports/prompts temp dirs,
 // two literal single-card execution batches backed by a seeded plan dir for
@@ -205,7 +143,7 @@ var _ shuttleengine.Engine = (*beginFakeEngine)(nil)
 type beginFixture struct {
 	Deps      websterengine.BeginDeps
 	Injector  *beginFakeInjector
-	Reed      *beginFakeReed
+	Reed      *shuttlefake.Reed
 	Worktree  string
 	PlanDir   string
 	PromptDir string
@@ -236,7 +174,7 @@ func newBeginFixture(t *testing.T) *beginFixture {
 
 	injector := &beginFakeInjector{}
 	promptsDir := t.TempDir()
-	reed := &beginFakeReed{}
+	reed := &shuttlefake.Reed{}
 
 	// webster's prompts are read from disk at call time now, so the fixture's
 	// hub must carry them before BeginBatch reaches RenderForkPrompt.
@@ -244,12 +182,16 @@ func newBeginFixture(t *testing.T) *beginFixture {
 	seedHubStencils(t, hubPath)
 
 	deps := websterengine.BeginDeps{
-		Plan:     plan,
-		Batches:  batches,
-		State:    &websterengine.State{PlanFingerprint: fp, MasterStrand: "master-strand-1"},
-		Roles:    roles,
-		Config:   websterengine.Config{SelfFixCap: 2},
-		Engine:   &beginFakeEngine{},
+		Plan:    plan,
+		Batches: batches,
+		State:   &websterengine.State{PlanFingerprint: fp, MasterStrand: "master-strand-1"},
+		Roles:   roles,
+		Config:  websterengine.Config{SelfFixCap: 2},
+		// ModelSwitchSequence answers a marker input naming the model, so a test can read the
+		// target model back out of the Injector's recorded inputs.
+		Engine: &shuttlefake.Engine{ModelSwitchSequenceFn: func(model string) []shuttleengine.PaneInput {
+			return []shuttleengine.PaneInput{{Text: "/model " + model, Submit: true}}
+		}},
 		Injector: injector,
 		Reed:     reed,
 		Geom: websterengine.Geometry{
@@ -686,14 +628,14 @@ func TestBeginBatch_ReclaimsPriorRecoveryStrandBeforeOverwrite(t *testing.T) {
 	fx.Deps.State.Batches = map[int]*websterengine.BatchState{
 		1: {Slug: "json-flag", Kind: "recovery", Terminal: true, Status: "dead", StrandGUID: "dead-but-live-recovery"},
 	}
-	fx.Reed.live = []string{"dead-but-live-recovery"}
+	fx.Reed.Strands = []reedengine.StrandStatus{{GUID: "dead-but-live-recovery", Live: true}}
 
 	if _, err := websterengine.BeginBatch(fx.Deps, 1); err != nil {
 		t.Fatalf("BeginBatch() error = %v; want nil", err)
 	}
 
-	if len(fx.Reed.removed) != 1 || fx.Reed.removed[0] != "dead-but-live-recovery" {
-		t.Errorf("reed.removed = %v; want exactly [dead-but-live-recovery] stopped before the record overwrite", fx.Reed.removed)
+	if len(fx.Reed.RemovedGUIDs) != 1 || fx.Reed.RemovedGUIDs[0] != "dead-but-live-recovery" {
+		t.Errorf("RemovedGUIDs = %v; want exactly [dead-but-live-recovery] stopped before the record overwrite", fx.Reed.RemovedGUIDs)
 	}
 	// The record was overwritten to a fresh fork batch.
 	if bs := fx.Deps.State.Batches[1]; bs.Kind != "fork" || bs.Terminal || bs.StrandGUID != "" {

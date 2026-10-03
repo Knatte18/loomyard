@@ -46,80 +46,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
-
-// runFakeReed is a hermetic shuttleengine.ReedOps double: RemoveStrand records
-// every call and retires the guid from the scripted Status result; AddStrand
-// is never reached by Run's own path (Run never registers a strand itself —
-// StartMaster's real implementation would, but the fake Starter below skips
-// straight to a scripted handle) and errors loud if ever called, so a stray
-// call surfaces immediately rather than silently no-opping.
-type runFakeReed struct {
-	mu             sync.Mutex
-	status         reedengine.StatusResult
-	removedStrands []string
-}
-
-func (m *runFakeReed) AddStrand(spec reedengine.AddSpec) (reedengine.Strand, error) {
-	return reedengine.Strand{}, fmt.Errorf("run fake reed: AddStrand is not used by Run's own path")
-}
-
-func (m *runFakeReed) RemoveStrand(guid string, recursive bool) (reedengine.Removed, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.removedStrands = append(m.removedStrands, guid)
-	for i, s := range m.status.Strands {
-		if s.GUID == guid {
-			m.status.Strands = append(m.status.Strands[:i], m.status.Strands[i+1:]...)
-			break
-		}
-	}
-	return reedengine.Removed{}, nil
-}
-
-func (m *runFakeReed) Status() (reedengine.StatusResult, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.status, nil
-}
-
-func (m *runFakeReed) SendText(guid, text string, submit bool) error { return nil }
-func (m *runFakeReed) SendKey(guid, key string) error                { return nil }
-func (m *runFakeReed) CapturePane(guid string) (string, error)       { return "", nil }
-
-var _ shuttleengine.ReedOps = (*runFakeReed)(nil)
-
-// runFakeEngine is a hermetic shuttleengine.Engine double: every method
-// returns a fixed, inert value. Run's own path never reaches any of these —
-// the whole-session fork audit Run reads (Result.ForkAudit) is scripted
-// directly on the fake handle's Result, not produced by calling the engine —
-// so this fake exists only to satisfy RunDeps.Engine's type.
-type runFakeEngine struct{}
-
-func (e *runFakeEngine) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {
-	return shuttleengine.Launch{}, nil
-}
-func (e *runFakeEngine) ParseEvents(data []byte) ([]shuttleengine.Event, error) { return nil, nil }
-func (e *runFakeEngine) Startup(capture string) shuttleengine.StartupState {
-	return shuttleengine.StartupReady
-}
-func (e *runFakeEngine) InterruptSequence() []shuttleengine.PaneInput          { return nil }
-func (e *runFakeEngine) TrustDismissSequence(string) []shuttleengine.PaneInput { return nil }
-func (e *runFakeEngine) ComposeSend(text string) []shuttleengine.PaneInput {
-	return nil
-}
-func (e *runFakeEngine) AuditForks(sessionID, workdir string) (shuttleengine.ForkAudit, error) {
-	return shuttleengine.ForkAudit{}, nil
-}
-func (e *runFakeEngine) AuditForksIncremental(sessionID, workdir string, seenTranscripts map[string]bool) (shuttleengine.ForkAudit, error) {
-	return shuttleengine.ForkAudit{}, nil
-}
-func (e *runFakeEngine) ModelSwitchSequence(model string) []shuttleengine.PaneInput {
-	return nil
-}
-
-var _ shuttleengine.Engine = (*runFakeEngine)(nil)
 
 // runFakeHandle is a hermetic websterengine.MasterHandle double: Wait runs
 // the caller-scripted onWait side effect (if any) — modeling Master writing
@@ -249,7 +178,7 @@ func seedShuttleRunState(t *testing.T, runDirRoot, strandGUID, sessionID string)
 // and a fake Starter a test scripts per case.
 type runFixture struct {
 	Deps           websterengine.RunDeps
-	Reed           *runFakeReed
+	Reed           *shuttlefake.Reed
 	Starter        *runFakeStarter
 	Worktree       string
 	PlanDir        string
@@ -263,7 +192,8 @@ func newRunFixture(t *testing.T, numCards int) *runFixture {
 	worktree := newScratchRepo(t)
 	gitkit.CommitFile(t, worktree, "base.txt", "base", "base commit")
 
-	reed := &runFakeReed{}
+	// Run never registers a strand itself, so a stray AddStrand fails loud.
+	reed := &shuttlefake.Reed{AddErr: errors.New("AddStrand is not used by Run's own path")}
 	starter := &runFakeStarter{}
 	hubPath := filepath.Dir(worktree)
 	// webster's prompts are read from disk at call time now, so the fixture's
@@ -290,7 +220,7 @@ func newRunFixture(t *testing.T, numCards int) *runFixture {
 	deps := websterengine.RunDeps{
 		Starter:    starter,
 		Reed:       reed,
-		Engine:     &runFakeEngine{},
+		Engine:     &shuttlefake.Engine{},
 		ShuttleCfg: shuttleCfg,
 		Roles:      roles,
 		Batcher:    activeBatcher,
@@ -645,11 +575,11 @@ func TestRun_EntryTimeReclaimStopsLiveMasterAndRecoveryStrandsButNotAbsent(t *te
 	}
 	seedMatchingState(t, fx, st)
 
-	fx.Reed.status = reedengine.StatusResult{Strands: []reedengine.StrandStatus{
+	fx.Reed.Strands = []reedengine.StrandStatus{
 		{GUID: "prior-master-strand", Live: true},
 		{GUID: "prior-recovery-strand", Live: true},
 		// "absent-recovery-strand" is deliberately absent from Status at all.
-	}}
+	}
 
 	fx.Starter.startErr = fmt.Errorf("stop before spawn")
 
@@ -659,14 +589,14 @@ func TestRun_EntryTimeReclaimStopsLiveMasterAndRecoveryStrandsButNotAbsent(t *te
 	}
 
 	wantRemoved := map[string]bool{"prior-master-strand": true, "prior-recovery-strand": true}
-	for _, guid := range fx.Reed.removedStrands {
+	for _, guid := range fx.Reed.RemovedGUIDs {
 		if guid == "absent-recovery-strand" {
 			t.Errorf("RemoveStrand called for a cleanly-absent strand %q; want it left untouched", guid)
 		}
 		delete(wantRemoved, guid)
 	}
 	if len(wantRemoved) != 0 {
-		t.Errorf("RemoveStrand calls = %v; missing %v", fx.Reed.removedStrands, wantRemoved)
+		t.Errorf("RemoveStrand calls = %v; missing %v", fx.Reed.RemovedGUIDs, wantRemoved)
 	}
 }
 
@@ -677,29 +607,29 @@ func TestRun_EntryTimeReclaimStopsLiveIntegrationFixStrand(t *testing.T) {
 	seedMatchingState(t, fx, &websterengine.State{
 		IntegrationFix: &websterengine.IntegrationFixState{PreFixHead: "abc", StrandGUID: "fix-strand"},
 	})
-	fx.Reed.status = reedengine.StatusResult{Strands: []reedengine.StrandStatus{{GUID: "fix-strand", Live: true}}}
+	fx.Reed.Strands = []reedengine.StrandStatus{{GUID: "fix-strand", Live: true}}
 	fx.Starter.startErr = fmt.Errorf("stop before spawn")
 
 	if _, err := websterengine.Run(fx.Deps, websterengine.RunOptions{}); err == nil {
 		t.Fatalf("Run() error = nil; want the scripted starter error")
 	}
 
-	if len(fx.Reed.removedStrands) != 1 || fx.Reed.removedStrands[0] != "fix-strand" {
-		t.Errorf("RemoveStrand calls = %v; want exactly [fix-strand]", fx.Reed.removedStrands)
+	if len(fx.Reed.RemovedGUIDs) != 1 || fx.Reed.RemovedGUIDs[0] != "fix-strand" {
+		t.Errorf("RemoveStrand calls = %v; want exactly [fix-strand]", fx.Reed.RemovedGUIDs)
 	}
 }
 
 // TestRun_EntryTimeReclaimLeavesDeadOrEmptyIntegrationFixRecord proves a dead-strand record and an empty-GUID record remove nothing.
 func TestRun_EntryTimeReclaimLeavesDeadOrEmptyIntegrationFixRecord(t *testing.T) {
 	cases := []struct {
-		name   string
-		fix    *websterengine.IntegrationFixState
-		status reedengine.StatusResult
+		name    string
+		fix     *websterengine.IntegrationFixState
+		strands []reedengine.StrandStatus
 	}{
 		{
-			name:   "dead strand",
-			fix:    &websterengine.IntegrationFixState{PreFixHead: "abc", StrandGUID: "fix-strand"},
-			status: reedengine.StatusResult{Strands: []reedengine.StrandStatus{{GUID: "fix-strand", Live: false}}},
+			name:    "dead strand",
+			fix:     &websterengine.IntegrationFixState{PreFixHead: "abc", StrandGUID: "fix-strand"},
+			strands: []reedengine.StrandStatus{{GUID: "fix-strand", Live: false}},
 		},
 		{
 			name: "empty guid",
@@ -710,15 +640,15 @@ func TestRun_EntryTimeReclaimLeavesDeadOrEmptyIntegrationFixRecord(t *testing.T)
 		t.Run(tc.name, func(t *testing.T) {
 			fx := newRunFixture(t, 1)
 			seedMatchingState(t, fx, &websterengine.State{IntegrationFix: tc.fix})
-			fx.Reed.status = tc.status
+			fx.Reed.Strands = tc.strands
 			fx.Starter.startErr = fmt.Errorf("stop before spawn")
 
 			if _, err := websterengine.Run(fx.Deps, websterengine.RunOptions{}); err == nil {
 				t.Fatalf("Run() error = nil; want the scripted starter error")
 			}
 
-			if len(fx.Reed.removedStrands) != 0 {
-				t.Errorf("RemoveStrand calls = %v; want none", fx.Reed.removedStrands)
+			if len(fx.Reed.RemovedGUIDs) != 0 {
+				t.Errorf("RemoveStrand calls = %v; want none", fx.Reed.RemovedGUIDs)
 			}
 		})
 	}
@@ -734,8 +664,8 @@ func TestRun_EntryTimeReclaimWithoutIntegrationFixRecordRemovesNothing(t *testin
 		t.Fatalf("Run() error = nil; want the scripted starter error")
 	}
 
-	if len(fx.Reed.removedStrands) != 0 {
-		t.Errorf("RemoveStrand calls = %v; want none", fx.Reed.removedStrands)
+	if len(fx.Reed.RemovedGUIDs) != 0 {
+		t.Errorf("RemoveStrand calls = %v; want none", fx.Reed.RemovedGUIDs)
 	}
 }
 
