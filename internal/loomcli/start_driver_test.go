@@ -248,6 +248,8 @@ type fakeDriverPaneProbeFull struct {
 	strandsFn    func() ([]reedengine.StrandStatus, error)
 	removeErr    error
 	removeCalled bool
+	removeGUID   string
+	order        *[]string
 }
 
 func (f *fakeDriverPaneProbeFull) Strands() ([]reedengine.StrandStatus, error) {
@@ -256,6 +258,10 @@ func (f *fakeDriverPaneProbeFull) Strands() ([]reedengine.StrandStatus, error) {
 
 func (f *fakeDriverPaneProbeFull) RemoveDriverStrand(guid string) error {
 	f.removeCalled = true
+	f.removeGUID = guid
+	if f.order != nil {
+		*f.order = append(*f.order, "remove")
+	}
 	return f.removeErr
 }
 
@@ -397,6 +403,57 @@ func TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnCorpseRemovalFailure(t *test
 		t.Error("runDriverSpawnAndWait() reached the starter seam despite the corpse removal failing -- a relaunch that starts before removing would leave two strands under one name")
 	}
 	assertBootstrapLockReleased(t, bootstrapLockPath)
+}
+
+// TestRunDriverSpawnAndWait_LiveRetiringDriverIsRemovedThenReplaced pins that a live driver strand
+// marked retiring is removed by guid before a fresh driver starts, rather than adopted.
+func TestRunDriverSpawnAndWait_LiveRetiringDriverIsRemovedThenReplaced(t *testing.T) {
+	var order []string
+	retiring := func() ([]reedengine.StrandStatus, error) {
+		return []reedengine.StrandStatus{{GUID: "g-retiring", Name: driverStrandDisplayName, PaneID: "%0", Live: true, Retiring: true}}, nil
+	}
+	probe := &fakeDriverPaneProbeFull{strandsFn: retiring, order: &order}
+	starter := &fakeDriverStarter{handle: stubDriverHandle{guid: "g-new", runDir: "/run/dir"}}
+	c, bootstrapLockPath := newTestSpawnAndWaitReceiver(t, orderingStarter{starter: starter, order: &order}, probe)
+
+	bootstrapLock := acquireTestBootstrapLock(t, bootstrapLockPath)
+	ok := c.runDriverSpawnAndWait(context.Background(), &bytes.Buffer{}, shedrun.DriverLLM, bootstrapLock, noopLockHeld)
+	defer func() { _ = bootstrapLock.Release() }()
+
+	if !ok {
+		t.Fatal("runDriverSpawnAndWait() = false; want true")
+	}
+	if probe.removeGUID != "g-retiring" {
+		t.Errorf("RemoveDriverStrand called with guid %q; want %q", probe.removeGUID, "g-retiring")
+	}
+	if len(order) != 2 || order[0] != "remove" || order[1] != "start" {
+		t.Errorf("call order = %v; want [remove start]", order)
+	}
+}
+
+// TestRunDriverSpawnAndWait_LiveUnmarkedDriverIsNeitherRemovedNorReplaced pins that a live driver strand
+// without the retiring mark keeps today's handling: no removal and no spawn.
+func TestRunDriverSpawnAndWait_LiveUnmarkedDriverIsNeitherRemovedNorReplaced(t *testing.T) {
+	live := func() ([]reedengine.StrandStatus, error) {
+		return []reedengine.StrandStatus{{GUID: "g-live", Name: driverStrandDisplayName, PaneID: "%0", Live: true}}, nil
+	}
+	probe := &fakeDriverPaneProbeFull{strandsFn: live}
+	starter := &fakeDriverStarter{handle: stubDriverHandle{guid: "g-new", runDir: "/run/dir"}}
+	c, bootstrapLockPath := newTestSpawnAndWaitReceiver(t, starter, probe)
+
+	bootstrapLock := acquireTestBootstrapLock(t, bootstrapLockPath)
+	ok := c.runDriverSpawnAndWait(context.Background(), &bytes.Buffer{}, shedrun.DriverLLM, bootstrapLock, noopLockHeld)
+	defer func() { _ = bootstrapLock.Release() }()
+
+	if !ok {
+		t.Fatal("runDriverSpawnAndWait() = false; want true")
+	}
+	if probe.removeCalled {
+		t.Error("runDriverSpawnAndWait() removed a live driver strand that is not marked retiring")
+	}
+	if starter.called {
+		t.Error("runDriverSpawnAndWait() spawned a driver over a live unmarked strand")
+	}
 }
 
 // TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnReportDirMkdirFailure covers failure site 4 of 5:
