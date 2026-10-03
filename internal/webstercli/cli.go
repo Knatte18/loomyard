@@ -291,7 +291,8 @@ Example (standalone, outside any lyx hub):
 // addVerbs registers every webster verb under parent.
 // Every verb but `validate` goes through noteRefusals, so a refusal it prints leaves a friction note.
 // `validate` is a lint an agent iterates against, so its findings are expected rather than friction.
-// A refusal raised in resolvePersistentPreRun stays unnoted, since it fires before the friction directory is resolved.
+// A refusal cobra raises before the verb's RunE stays unnoted, since it fires before the friction directory is resolved:
+// a flag-parse or argument-count error, and one raised in resolvePersistentPreRun.
 func (c *websterCLI) addVerbs(parent *cobra.Command) {
 	parent.AddCommand(c.validateCmd())
 	for _, verb := range []*cobra.Command{

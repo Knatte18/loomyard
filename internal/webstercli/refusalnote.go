@@ -17,6 +17,7 @@ import (
 // noteRefusals wraps cmd.RunE so a refusal envelope the verb prints also writes one friction note.
 // The verb's exit code and envelope are exactly what the original RunE produced: the output is only tee'd, and a note-write failure or an envelope that does not decode logs a warning and changes nothing.
 // An `ok: true` envelope, such as `begin-batch`'s `paused: true`, writes nothing, and so does an empty friction directory.
+// Only what RunE prints is seen: a refusal cobra raises before RunE never reaches the tee.
 func (c *websterCLI) noteRefusals(cmd *cobra.Command) *cobra.Command {
 	inner := cmd.RunE
 	if inner == nil {

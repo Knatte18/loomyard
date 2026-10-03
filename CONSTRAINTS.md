@@ -213,6 +213,7 @@ A *recorded* seed driver value is read in exactly one place per recipe, that rec
 With Tier 2 on, a loom halt and every webster refusal leave a Go-authored friction note, and no note is archived or deleted before a reflection has covered it.
 
 - A loom halt (`blocked` or `failed`, under `run` or `step`) and every `lyx webster` refusal but `validate`'s write one friction note, through `friction.NotePath`, from `loomcli` and webster code respectively.
+  A webster refusal cobra raises before the verb's `RunE` (flag parsing, argument count, the persistent pre-run) fires before the friction directory is resolved and is not noted.
   A note-write failure never changes the verb's exit or envelope.
 - No code path archives or deletes a friction note before a reflection has covered it:
   `frictionengine.Reflect` archives only the notes its covered-notes record names, and only after a clean return or on a finished report.
