@@ -135,7 +135,7 @@ This first clause is review discipline, not a scan — "reimplements" has no sta
   Enforced by `internal/shedverbs/seam_enforcement_test.go`.
 - The `lyx shed` recipe table lives in `internal/shedcli` alone, as one map literal reached through accessors, with every name armed by exactly one arming function and no `init()` self-registration. Enforced by `internal/shedcli/table_test.go`.
 - The `step` refusal-kind vocabulary stays closed at its five values.
-  The step envelope's key set (closed by doc comment and test, not by this invariant) carries `trace_file`, `friction_dir`, `scratch_dir`, `trace_id` and `run_id` on the success and every error envelope, every error envelope also carries `transient` (the transient class name, or empty; it is a key, not a sixth kind), and the status envelope carries `trace_dir` on every envelope.
+  The step envelope's key set (closed by doc comment and test, not by this invariant) carries `trace_file`, `friction_dir`, `scratch_dir`, `trace_id` and `run_id` on the success and every error envelope, the success envelope and every error envelope also carry `friction` (the `AfterStep` hook's status, or empty), every error envelope also carries `transient` (the transient class name, or empty; it is a key, not a sixth kind), `run`'s error envelope carries a module's `PostRun` extras, and the status envelope carries `trace_dir` on every envelope.
   Enforced by `internal/shedverbs/step_test.go`.
 - `goto` is a history-only outcome: `internal/shedengine` declares it (`OutcomeGoto`), no producer returns it, and every reader that validates history outcomes accepts it.
 - `internal/shedverbs` is not itself a CLI module and is not counted in the CLI/Cobra Invariant's tally at all — it exposes no `Command()`/`RunCLI` seam, only the `Verbs(texts, spec)` constructor the three subtrees build from.
@@ -207,6 +207,20 @@ A *recorded* seed driver value is read in exactly one place per recipe, that rec
 `internal/friction` imports only stdlib, `internal/logger`, `internal/stencil`, and `internal/stencilstore` — never a feature package. Reverse import never allowed.
 
 - `internal/logger` is admitted because the marker-absent helper logs rather than returning a bool for seven callers to duplicate, and `internal/friction` already pulls `logger` transitively through `internal/stencilstore`, so the admission widens nothing in practice.
+
+## Friction Capture Invariant
+
+With Tier 2 on, a loom halt and every webster refusal leave a Go-authored friction note, and no note is archived or deleted before a reflection has covered it.
+
+- A loom halt (`blocked` or `failed`, under `run` or `step`) and every `lyx webster` refusal but `validate`'s write one friction note, through `friction.NotePath`, from `loomcli` and webster code respectively.
+  A webster refusal cobra raises before the verb's `RunE` (flag parsing, argument count, the persistent pre-run) fires before the friction directory is resolved and is not noted.
+  A note-write failure never changes the verb's exit or envelope.
+- No code path archives or deletes a friction note before a reflection has covered it:
+  `frictionengine.Reflect` archives only the notes its covered-notes record names, and only after a clean return or on a finished report.
+- The reflection files through `lyx selfreport create` only.
+- With the `selfreport` knob on, Tier 1 anomaly filing files a halt event under `run` and `step` alike, retrying a failed filing on every later pass, and the halt note says so;
+  the reflection files only the lyx problems behind the halt.
+- Enforced by the `loomcli`, `webstercli`, `websterengine` and `frictionengine` tests, including the `selfreport_test.go` and `halt_test.go` cases for the pending retry and the `step` hook, and by review for the rest.
 
 ## Stencil Ownership Invariant
 

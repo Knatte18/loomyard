@@ -41,11 +41,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/frictionengine"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/selfreportengine"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -143,11 +143,7 @@ func (c *loomCLI) arm(cwd string, verb string, args []string) (shedverbs.Spec, e
 // touched the filesystem at all -- so a refusing run/step writes nothing to disk. cwd is derived as
 // location.AnchorPath() for wireLightweight/wire's own cwd parameter, since cwd is provably equal to
 // AnchorPath() after a successful resolve (see lyxcwd.Location's own doc comment).
-//
-// It records verb on c.armedVerb first, before any refusal, so reflectFrictionRow can tell at call
-// time whether this invocation was armed for "run".
 func (c *loomCLI) armAt(location *lyxcwd.Location, verb string, args []string) (shedverbs.Spec, error) {
-	c.armedVerb = verb
 	if err := c.resolveRunID(location, verb, args); err != nil {
 		return shedverbs.Spec{}, err
 	}
@@ -211,6 +207,7 @@ func (c *loomCLI) specFor(verb string) shedverbs.Spec {
 			PostRun:            c.loomPostRun,
 			PreStep:            c.loomPreStep,
 			PostStep:           c.loomPostStep,
+			AfterStep:          c.loomAfterStep,
 			InterruptPolicyFor: loomshed.InterruptPolicyFor,
 			StatusExtras:       c.loomStatusExtras,
 			Waiting:            reviewWaitingFor(c.location),
@@ -340,17 +337,10 @@ func (c *loomCLI) loomPreRun(ctx context.Context) error {
 	return nil
 }
 
-// loomPostRun implements the PostRun hook for loom's spec: it fires detectAndFileAnomalies
-// unconditionally -- including on the hard-error arm, which is why PostRun itself runs
-// unconditionally -- and then returns the envelope's "friction" key.
-// RunDone never reflects here: the Friction-Reflect row already did, under the run lock and before
-// done persisted, so the key reports c.rowFrictionStatus, or frictionengine.StatusSkipped when the
-// row did not run in this process (the engine's done short-circuit on an already-done status file).
-// RunBlocked still reflects here, after Run has returned, without waiting on a held reflection lock.
-// The key is returned unconditionally on the success path so it is never silently dropped from a
-// RunPaused envelope.
-func (c *loomCLI) loomPostRun(ctx context.Context, result shedengine.Result, runErr error) map[string]any {
-	detectAndFileAnomalies(selfreportDeps{
+// anomalyDeps builds the deps Tier 1 anomaly filing runs on, for loomPostRun under run and loomAfterStep under step alike.
+// FileIssue is c.fileIssue, the one filing seam.
+func (c *loomCLI) anomalyDeps(ctx context.Context, runErr error) selfreportDeps {
+	return selfreportDeps{
 		Ctx:            ctx,
 		Selfreport:     c.cfg.Selfreport,
 		Entry:          c.entryObservation,
@@ -361,14 +351,45 @@ func (c *loomCLI) loomPostRun(ctx context.Context, result shedengine.Result, run
 		RunErr:         runErr,
 		IsLedgerPath:   shedadapters.IsLedgerPath,
 		ReadLedger:     shedadapters.ReadLedger,
-		FileIssue:      selfreportengine.CreateIssue,
-	})
+		FileIssue:      c.fileIssue,
+	}
+}
+
+// observeStepEntry sets c.entryObservation exactly as loomPreRun does, for a step that is about to run its shed.
+func (c *loomCLI) observeStepEntry() {
+	c.entryObservation = observeEntry(c.cfg.Selfreport, c.shedPaths.LockPath, c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, loomengine.LoomStepHandoff(c.location), loomengine.LoomStepHandoffLock(c.location))
+}
+
+// loomPostRun implements the PostRun hook for loom's spec: it fires detectAndFileAnomalies
+// unconditionally -- including on the hard-error arm, which is why PostRun itself runs
+// unconditionally -- and then returns the envelope's "friction" key.
+// RunDone never reflects here: the Friction-Reflect row already did, under the run lock and before
+// done persisted, so the key reports c.rowFrictionStatus, or frictionengine.StatusSkipped when the
+// row did not run in this process (the engine's done short-circuit on an already-done status file).
+// RunBlocked, and a non-nil runErr behind a `failed` status (failedHalt), each write a halt note and reflect here, after Run has returned, without waiting on a held reflection lock;
+// any other runErr reports skipped.
+// The key is returned unconditionally so it is never silently dropped from a RunPaused envelope,
+// and `run` merges it onto its error envelope as onto its success envelope.
+// RunAwaiting and RunPaused write nothing.
+func (c *loomCLI) loomPostRun(ctx context.Context, result shedengine.Result, runErr error) map[string]any {
+	detectAndFileAnomalies(c.anomalyDeps(ctx, runErr))
 
 	frictionStatus := frictionengine.StatusSkipped
-	if result.Outcome == shedengine.RunDone && c.rowFrictionStatus != "" {
+	switch {
+	case runErr != nil:
+		if n, ok := c.failedHalt(runErr); ok {
+			frictionStatus = c.reflectHalt(n)
+		}
+	case result.Outcome == shedengine.RunDone && c.rowFrictionStatus != "":
 		frictionStatus = c.rowFrictionStatus
-	} else if shouldReflectFriction(c.frictionDir, result.Outcome) {
-		frictionStatus = c.reflectFriction(false)
+	case result.Outcome == shedengine.RunBlocked:
+		frictionStatus = c.reflectHalt(haltNote{
+			Producer:   result.HaltedProducer,
+			State:      shedengine.StateBlocked,
+			Reason:     result.Reason,
+			HistoryLen: len(result.History),
+			TraceFile:  logger.TraceFile(),
+		})
 	}
 	return map[string]any{"friction": frictionStatus}
 }
@@ -379,6 +400,9 @@ func (c *loomCLI) loomPostRun(ctx context.Context, result shedengine.Result, run
 // Step never adds or removes the status strand:
 // removal needs the driver, which step must not read,
 // and an unconditional removal would strip the band from a halted go run an operator steps by hand.
+//
+// On success it takes the entry observation (observeStepEntry), after the busy probe, the bootstrap and reed Up and still before shed.Step, so a refused step never spends the step clean-handoff marker and the previous step's completed aftermath matches it rather than reading as a crash.
+// The observation is what loomAfterStep's Tier 1 filing reads.
 //
 // Every returned error passes through shedtransient.Mark, the bootstrap boundary of the Transient Stop Invariant.
 // No bootstrap sub-step makes a remote call today (the seed-and-commit stage commits without pushing),
@@ -434,6 +458,9 @@ func (c *loomCLI) loomPreStepUnmarked(ctx context.Context) (string, error) {
 	// Released immediately, before the producer call: the lock must never be held across a
 	// minutes-long LLM row.
 	_ = bootstrapLock.Release()
+
+	// Last, so a step this hook refuses, busy or at the bootstrap, neither observes nor consumes the clean-handoff marker.
+	c.observeStepEntry()
 
 	return "", nil
 }

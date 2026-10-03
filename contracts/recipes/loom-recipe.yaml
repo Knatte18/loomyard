@@ -390,7 +390,7 @@ producers:
   # Friction-Reflect runs the Tier 2 friction reflection under the run lock and is the recipe's
   # sole terminal, so the engine persists state: done only after the reflection returns (batten's
   # Run-Shed row reads that done as "finished" and tears the worktree down, deleting the friction
-  # notes). It always returns Done, and under step loomcli's closure skips the reflection.
+  # notes). It always returns Done, and reflects under step as under run.
   - name: Friction-Reflect
     engine: FrictionReflect
     # on_done is explicitly empty: the empty value is load-bearing and is what ends the whole run

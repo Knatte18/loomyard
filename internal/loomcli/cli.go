@@ -11,17 +11,20 @@
 package loomcli
 
 import (
+	"errors"
 	"io"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/frictionengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/selfreportengine"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
@@ -119,14 +122,21 @@ type loomCLI struct {
 	// reason driverStarter does: *reedengine.Engine is a concrete type and the Test Tier Purity
 	// Invariant bars a real reed call from an untagged file.
 	driverPaneProbe driverPaneProbe
-	// armedVerb is the verb armAt was called with. reflectFrictionRow reads it at call time so the
-	// Friction-Reflect row reflects only under "run", a fact of this invocation rather than the
-	// recorded seed driver, which the Driver Choice Single-Site Invariant bars any code path from
-	// gating behaviour on.
-	armedVerb string
+	// reflectionShuttle is the frictionengine.Shuttle every friction reflection goes through, wired to the shuttle runner in production.
+	// It is the seam tests fake the reflection agent, and so its filing, through.
+	// It stays nil on the lightweight wiring path, which frictionengine.Reflect's Deps validation reports as failed.
+	reflectionShuttle frictionengine.Shuttle
 	// rowFrictionStatus is the status the Friction-Reflect row's closure recorded in this process;
 	// empty when the row did not run here. loomPostRun reports it on RunDone.
 	rowFrictionStatus string
+	// fileIssue is the filer both hooks pass to detectAndFileAnomalies, matching selfreportengine.CreateIssue.
+	// newLoomCLI assigns it, and a test that pins filing replaces it with a fake.
+	fileIssue func(title string, body *string, labels []string) (url string, number int, err error)
+}
+
+// refuseFileIssue is the filer a test binary gets from newLoomCLI: it files nothing and reports an error, so no test files a real issue.
+func refuseFileIssue(string, *string, []string) (string, int, error) {
+	return "", 0, errors.New("loomcli: filing issues is disabled under go test")
 }
 
 // newLoomCLI is the only place production code may build a *loomCLI: it is what keeps
@@ -134,10 +144,15 @@ type loomCLI struct {
 // of this package's two constructors (Command, StartAliasCommand) can forget one and leave a nil
 // spawnWatchdog to panic rather than degrade.
 func newLoomCLI() *loomCLI {
+	fileIssue := selfreportengine.CreateIssue
+	if testing.Testing() {
+		fileIssue = refuseFileIssue
+	}
 	return &loomCLI{
 		suppressWatchdogSpawn: testing.Testing(),
 		spawnWatchdog:         reedengine.SpawnWatchdog,
 		midMerge:              fabricengine.MidMerge,
+		fileIssue:             fileIssue,
 		spec:                  &shedverbs.Spec{},
 	}
 }
@@ -355,7 +370,7 @@ on the generic shed engine. The machine walks its producer rows: a
 two-row preflight, then Discussion, Plan, and Webster, each of the three
 followed by its own LLM review segment that loops until it approves or
 escalates, then Describe, which writes the change description, then Publish and Finalize, and last Friction-Reflect, which runs
-"run"'s Tier 2 friction reflection before the run records done. "start" is
+the Tier 2 friction reflection, under "run" and under "step" alike, before the run records done. "start" is
 the bootstrap verb: it seeds the status file, commits the seed, and spawns/attaches the
 detached driver session; "run" is the no-tmux escape hatch that runs the
 phase machine in the foreground for debugging and CI; "step" bootstraps

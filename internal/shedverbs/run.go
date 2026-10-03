@@ -59,7 +59,7 @@ func runCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 				if errors.Is(runErr, shedengine.ErrShedBusy) && spec.RunBusyMessage != "" {
 					msg = spec.RunBusyMessage
 				}
-				clihelp.SetExit(ctx, output.Err(out, msg))
+				clihelp.SetExit(ctx, output.ErrFields(out, msg, extras))
 				return nil
 			}
 

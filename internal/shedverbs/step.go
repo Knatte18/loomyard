@@ -40,11 +40,9 @@ const (
 // silently.
 var StepKinds = []string{KindBusy, KindUnseeded, KindOwnership, KindBootstrap, KindProducer}
 
-// StepEnvelope builds step's success envelope from res -- the StepResult shed.Step returned --
-// alongside nextPolicy (spec.Hooks.InterruptPolicyFor(res.Next), or the empty string when the hook
-// is nil), statusFile (the shed's own StatusPath) and progress (the recipe progress for res.Next, or
-// nil when none is known). The returned map carries exactly the sixteen documented keys below; the
-// key set is closed -- a key outside these sixteen has no test and no documented meaning:
+// StepEnvelope builds step's success envelope from res -- the StepResult shed.Step returned -- alongside nextPolicy (spec.Hooks.InterruptPolicyFor(res.Next), or the empty string when the hook is nil), statusFile (the shed's own StatusPath), friction (Hooks.AfterStep's return, or the empty string when the hook is nil) and progress (the recipe progress for res.Next, or nil when none is known).
+// The returned map carries exactly the documented keys below;
+// the key set is closed -- a key outside them has no test and no documented meaning:
 //
 //   - producer: res.Producer
 //   - outcome: string(res.Outcome)
@@ -56,6 +54,7 @@ var StepKinds = []string{KindBusy, KindUnseeded, KindOwnership, KindBootstrap, K
 //   - history_length: len(res.History)
 //   - next_interrupt_policy: nextPolicy
 //   - status_file: statusFile
+//   - friction: friction
 //   - trace_file: loc.TraceFile
 //   - friction_dir: loc.FrictionDir
 //   - scratch_dir: loc.ScratchDir
@@ -65,7 +64,7 @@ var StepKinds = []string{KindBusy, KindUnseeded, KindOwnership, KindBootstrap, K
 //
 // "continue" is derived here, rather than left to the caller, so a thin external supervisor skill
 // never carries its own copy of the State vocabulary -- it only ever branches on this one boolean.
-func StepEnvelope(res shedengine.StepResult, nextPolicy, statusFile string, loc StepLocations, progress *shedengine.Progress) map[string]any {
+func StepEnvelope(res shedengine.StepResult, nextPolicy, statusFile, friction string, loc StepLocations, progress *shedengine.Progress) map[string]any {
 	return map[string]any{
 		"producer":              res.Producer,
 		"outcome":               string(res.Outcome),
@@ -77,6 +76,7 @@ func StepEnvelope(res shedengine.StepResult, nextPolicy, statusFile string, loc 
 		"history_length":        len(res.History),
 		"next_interrupt_policy": nextPolicy,
 		"status_file":           statusFile,
+		"friction":              friction,
 		"trace_file":            loc.TraceFile,
 		"friction_dir":          loc.FrictionDir,
 		"scratch_dir":           loc.ScratchDir,
@@ -89,6 +89,7 @@ func StepEnvelope(res shedengine.StepResult, nextPolicy, statusFile string, loc 
 // StepLocations carries the keys every step envelope, success or error, reports: trace_file
 // (TraceFile), friction_dir (FrictionDir), scratch_dir (ScratchDir), trace_id (TraceID) and run_id
 // (RunID).
+// Every envelope also carries friction, which comes from Hooks.AfterStep and not from this struct.
 // It is one struct so StepEnvelope and the error-envelope helper share a single source.
 type StepLocations struct {
 	TraceFile   string
@@ -98,13 +99,15 @@ type StepLocations struct {
 	RunID       string
 }
 
-// stepErrFields builds an error envelope's extra fields: kind, transient and the five location keys.
+// stepErrFields builds an error envelope's extra fields: kind, transient, friction and the five location keys.
+// friction is the AfterStep hook's status, or the empty string where no step ran.
 // transient is the class name shedengine.TransientOf reports for the failure, or the empty string when it is not transient;
 // it is a key, not a sixth kind.
-func stepErrFields(kind, transient string, loc StepLocations) map[string]any {
+func stepErrFields(kind, transient, friction string, loc StepLocations) map[string]any {
 	return map[string]any{
 		"kind":         kind,
 		"transient":    transient,
+		"friction":     friction,
 		"trace_file":   loc.TraceFile,
 		"friction_dir": loc.FrictionDir,
 		"scratch_dir":  loc.ScratchDir,
@@ -148,39 +151,43 @@ func stepCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 			locations := func() StepLocations {
 				return StepLocations{TraceFile: logger.TraceFile(), FrictionDir: spec.FrictionDir, ScratchDir: spec.ScratchDir, TraceID: logger.TraceID(), RunID: spec.RunID}
 			}
-			refuse := func(kind, transient, msg string) {
+			refuse := func(kind, transient, friction, msg string) {
 				logger.Warn("shed: step refused", "kind", kind, "transient", transient, "error", msg)
-				clihelp.SetExit(ctx, output.ErrFields(out, msg, stepErrFields(kind, transient, locations())))
+				clihelp.SetExit(ctx, output.ErrFields(out, msg, stepErrFields(kind, transient, friction, locations())))
 			}
 
 			if spec.Hooks.PreStep != nil {
 				if kind, err := spec.Hooks.PreStep(ctx); err != nil {
-					refuse(kind, string(shedengine.TransientOf(err)), err.Error())
+					refuse(kind, string(shedengine.TransientOf(err)), "", err.Error())
 					return nil
 				}
 			}
 
 			if spec.BuildShed == nil {
-				refuse(KindBootstrap, "", "shedverbs: step: no BuildShed constructor configured")
+				refuse(KindBootstrap, "", "", "shedverbs: step: no BuildShed constructor configured")
 				return nil
 			}
 			shed, err := spec.BuildShed()
 			if err != nil {
-				refuse(KindBootstrap, string(shedengine.TransientOf(err)), err.Error())
+				refuse(KindBootstrap, string(shedengine.TransientOf(err)), "", err.Error())
 				return nil
 			}
 
 			res, err := shed.Step(ctx)
 			if err != nil {
+				friction := ""
+				if spec.Hooks.AfterStep != nil {
+					friction = spec.Hooks.AfterStep(ctx, res, err)
+				}
 				if errors.Is(err, shedengine.ErrShedBusy) {
 					msg := err.Error()
 					if spec.StepBusyMessage != "" {
 						msg = spec.StepBusyMessage
 					}
-					refuse(spec.StepBusyKind, "", msg)
+					refuse(spec.StepBusyKind, "", friction, msg)
 					return nil
 				}
-				refuse(KindProducer, string(shedengine.TransientOf(err)), err.Error())
+				refuse(KindProducer, string(shedengine.TransientOf(err)), friction, err.Error())
 				return nil
 			}
 			logger.Info("shed: step done", "producer", res.Producer, "outcome", string(res.Outcome), "state", string(res.State), "next", res.Next, "reason", res.Reason)
@@ -189,11 +196,16 @@ func stepCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 				spec.Hooks.PostStep(res)
 			}
 
+			friction := ""
+			if spec.Hooks.AfterStep != nil {
+				friction = spec.Hooks.AfterStep(ctx, res, nil)
+			}
+
 			nextPolicy := ""
 			if spec.Hooks.InterruptPolicyFor != nil {
 				nextPolicy = spec.Hooks.InterruptPolicyFor(res.Next)
 			}
-			clihelp.SetExit(ctx, output.Ok(out, StepEnvelope(res, nextPolicy, spec.StatusPath, locations(), progressOf(spec.Routing, res.Next))))
+			clihelp.SetExit(ctx, output.Ok(out, StepEnvelope(res, nextPolicy, spec.StatusPath, friction, locations(), progressOf(spec.Routing, res.Next))))
 			return nil
 		},
 	}

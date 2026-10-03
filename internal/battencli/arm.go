@@ -555,13 +555,14 @@ func (c *battenCLI) battenPreStepUnmarked(ctx context.Context) (string, error) {
 // battenPostRun implements the PostRun hook for batten's spec: it returns the envelope's
 // "abandonedSession" key only when c.abandonedSession is non-empty, preserving today's
 // conditional emission.
+// It returns nil on a non-nil runErr, so batten's error envelope keeps exactly its own keys.
 //
 // The run envelope deliberately carries neither a mutations array nor a partial bool: a run may
 // perform zero, one, or two topology mutations at arbitrary points hours apart, so there is no
 // coherent single array at run scope, and partial has no referent here. The mutation records are
 // logged at Info by the wiring closures (wire.go) instead of discarded.
 func (c *battenCLI) battenPostRun(ctx context.Context, result shedengine.Result, runErr error) map[string]any {
-	if c.abandonedSession == "" {
+	if runErr != nil || c.abandonedSession == "" {
 		return nil
 	}
 	return map[string]any{"abandonedSession": c.abandonedSession}
