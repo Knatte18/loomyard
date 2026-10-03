@@ -14,8 +14,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// MergeSurface is the narrow five-method seam this package drives over Fabric's own merge verbs.
-// Every verb named here is vocabulary-free by construction — none of the five names either
+// MergeSurface is the narrow seam this package drives over Fabric's own merge verbs.
+// Every verb named here is vocabulary-free by construction — none names either
 // fabric-internal side — which is why this seam can exist in a package outside the Fabric
 // Vocabulary Invariant's owner set at all.
 type MergeSurface interface {
@@ -25,6 +25,12 @@ type MergeSurface interface {
 	// MergeStageResolved stages the given, already-resolved conflict paths so MergeContinue's own
 	// index guard can pass.
 	MergeStageResolved(paths []string) (fabricengine.StageResult, error)
+	// MergeStageTracked stages every tracked modification and deletion, so edits the conflict
+	// session made outside the conflicted paths land in the merge commit.
+	MergeStageTracked() (fabricengine.StageResult, error)
+	// MergeUntrackedFiles lists the untracked, non-ignored worktree-relative paths, which a merge
+	// commit never carries.
+	MergeUntrackedFiles() ([]string, error)
 	// MergeContinue concludes an in-progress merge once every conflict has been resolved.
 	MergeContinue(msg string) (fabricengine.MergeResult, error)
 	// MergeAbort discards an in-progress merge, restoring the pair to its pre-merge state.

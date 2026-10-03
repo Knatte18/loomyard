@@ -16,6 +16,16 @@
 // so every exit that has not yet concluded aborts before returning stuck, and a still-dirty scan after
 // the last retry aborts and reports stuck rather than concluding anyway.
 //
+// Once the markers are gone, Resolve stages in a fixed order: the conflicted paths, then every tracked
+// modification and deletion, then it concludes. An edit the session made to a tracked file outside the
+// conflicted paths, to keep the merged tree building, therefore lands in the merge commit. A new file
+// never does: if the session left any untracked file, Resolve aborts the merge before staging anything
+// and reports stuck naming every one.
+//
+// A resolution report is one call's ephemeral diagnostics, so Resolve removes every report an earlier
+// call left in the scratch directory at entry, after aborting an in-progress merge and before the
+// first attempt.
+//
 // Merge state a human left behind is never touched. When the merge-in call itself reports a foreign
 // merge already in progress, Resolve reports stuck with that cause as the reason and neither aborts
 // nor overrides it -- a human put that state there on purpose, and this package has no way to know
