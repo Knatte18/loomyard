@@ -25,7 +25,6 @@
 package battencli
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -33,6 +32,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/statuscommit"
 )
 
 // commitStatusDeps carries the three fabric calls newCommitStatusSeam drives, injected as plain
@@ -92,35 +92,6 @@ func battenCommitStatusDeps(location *lyxcwd.Location, runID string) commitStatu
 	}
 }
 
-// commitStatusMessage renders the commit message for a per-transition status commit, exactly as
-// loomcli's own commitStatusMessage does, with batten's own prefix.
-func commitStatusMessage(producer, st string) string {
-	return fmt.Sprintf("batten: %s -> %s", producer, st)
-}
-
-// commitStatusFailureDisposition decides what a failed status Commit means, mirroring
-// loomcli's own commitStatusFailureDisposition: the mid-merge probe is unlocked by construction,
-// so a merge can become live in the window between MergeActive answering false and the commit
-// running, and when it does the commit fails on git's own "cannot do a partial commit during a
-// merge" -- a path-scoped commit is a partial commit by definition. Re-probing here turns that
-// failure back into the skip it was always meant to be. Every other commit failure keeps the
-// hard-error disposition: a git fault on the run's own bookkeeping with no merge to explain it is
-// real infrastructure breakage.
-func commitStatusFailureDisposition(deps commitStatusDeps, producer, st string, commitErr error) error {
-	active, probeErr := deps.MergeActive()
-	if probeErr != nil {
-		logger.Warn("battencli: status commit failed and the merge-state re-probe failed too; continuing",
-			"producer", producer, "state", st, "commit_error", commitErr, "probe_error", probeErr)
-		return nil
-	}
-	if active {
-		logger.Warn("battencli: status commit failed because the fabric sibling went mid-merge after the probe; skipping this transition",
-			"producer", producer, "state", st, "error", commitErr)
-		return nil
-	}
-	return commitErr
-}
-
 // commitStatusMarker is the on-disk shape newCommitStatusSeam persists at markerPath: the last
 // (producer, state) pair the seam actually committed. It is the no-op-transition skip's memory,
 // read before deciding and rewritten after a successful commit -- never held in a closure variable,
@@ -136,14 +107,27 @@ type commitStatusMarker struct {
 //
 // Evaluation order: the no-op-transition skip first -- when the incoming (producer, state) pair
 // equals the marker's last-committed pair, return nil without committing or pushing -- then
-// loomcli's newCommitStatusSeam's own three dispositions, unchanged: skip-while-mid-merge,
-// commit-hard-errors, push-warns.
+// the shared statuscommit core's three dispositions: skip-while-mid-merge, commit-hard-errors,
+// push-warns.
 //
 // A missing or corrupt marker falls back to committing once rather than erroring: the marker is a
-// cache, and losing it costs one redundant commit, never correctness. The marker is rewritten right
-// after a successful Commit, ahead of the Push attempt, so a subsequent call skips re-committing the
-// same pair even if the push that followed is still only warned about, not retried.
+// cache, and losing it costs one redundant commit, never correctness. The marker is rewritten by
+// the core's after-commit callback, right after a successful Commit and ahead of the Push attempt,
+// so a subsequent call skips re-committing the same pair even if the push that followed is still
+// only warned about, not retried.
 func newCommitStatusSeam(deps commitStatusDeps, markerPath, markerLockPath string) func(producer, st string) error {
+	// Rewritten unconditionally on a successful commit. A failed marker write only costs one
+	// redundant commit on the next call -- the same cost a missing marker costs on read -- so it
+	// is warned about rather than escalated.
+	core := statuscommit.New(statuscommit.Deps{
+		MergeActive: deps.MergeActive,
+		Commit:      deps.Commit,
+		Push:        deps.Push,
+	}, "batten", "battencli", func(producer, st string) {
+		if err := state.WriteJSON(markerPath, markerLockPath, commitStatusMarker{Producer: producer, State: st}); err != nil {
+			logger.Warn("battencli: status commit succeeded but the marker write failed; a future call may recommit", "producer", producer, "state", st, "error", err)
+		}
+	})
 	return func(producer, st string) error {
 		marker, found, err := state.ReadJSON[commitStatusMarker](markerPath, markerLockPath)
 		if err != nil {
@@ -154,32 +138,7 @@ func newCommitStatusSeam(deps commitStatusDeps, markerPath, markerLockPath strin
 			return nil
 		}
 
-		active, err := deps.MergeActive()
-		if err != nil {
-			logger.Warn("battencli: skip status commit, merge-state probe failed", "producer", producer, "state", st, "error", err)
-			return nil
-		}
-		if active {
-			logger.Warn("battencli: skip status commit, fabric sibling is mid-merge", "producer", producer, "state", st)
-			return nil
-		}
-
-		if err := deps.Commit(commitStatusMessage(producer, st)); err != nil {
-			return commitStatusFailureDisposition(deps, producer, st, err)
-		}
-
-		// Rewritten unconditionally on a successful commit. A failed marker write only costs one
-		// redundant commit on the next call -- the same cost a missing marker costs on read -- so it
-		// is warned about rather than escalated.
-		if err := state.WriteJSON(markerPath, markerLockPath, commitStatusMarker{Producer: producer, State: st}); err != nil {
-			logger.Warn("battencli: status commit succeeded but the marker write failed; a future call may recommit", "producer", producer, "state", st, "error", err)
-		}
-
-		if err := deps.Push(); err != nil {
-			logger.Warn("battencli: status push failed, next transition will catch up", "producer", producer, "state", st, "error", err)
-			return nil
-		}
-		return nil
+		return core(producer, st)
 	}
 }
 
